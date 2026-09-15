@@ -589,7 +589,7 @@ describe('assert-ceiling-budget — a cap without a sourced ceiling is the failu
         ),
       },
     }));
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /NOT ONE arithmetic comparison ran/);
   });
@@ -821,7 +821,7 @@ describe('assert-ceiling-budget — a cap without a sourced ceiling is the failu
     const c = baseCeilings();
     delete c.writeAmplification;
     const r = run(tree({ ceilings: c }));
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /declares no `writeAmplification` block/);
   });
@@ -830,13 +830,13 @@ describe('assert-ceiling-budget — a cap without a sourced ceiling is the failu
     const c = baseCeilings();
     delete c.writeAmplification.table;
     const r = run(tree({ ceilings: c }));
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /names no `migrationsDir` and\/or no `table`/);
   });
 
   test('COVERAGE LOST when the migrations directory holds no .sql', () => {
     const r = run(tree({ files: { [MIGRATION]: null } }));
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /holds NO \.sql file/);
   });
@@ -847,7 +847,7 @@ describe('assert-ceiling-budget — a cap without a sourced ceiling is the failu
     const c = baseCeilings();
     c.writeAmplification.table = 'analytics_events';
     const r = run(tree({ ceilings: c }));
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /creates the table `analytics_events`/);
   });
@@ -861,7 +861,7 @@ describe('assert-ceiling-budget — a cap without a sourced ceiling is the failu
         [MIGRATION]: MIGRATION_SQL.replace(/CREATE (UNIQUE )?INDEX[^;]*ON events[^;]*;/g, ''),
       },
     }));
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /ZERO `CREATE INDEX … ON events` statements/);
   });
@@ -869,14 +869,14 @@ describe('assert-ceiling-budget — a cap without a sourced ceiling is the failu
   // ── the scans must still be reaching the tree ──────────────────────────────
   test('COVERAGE LOST when tooling/ceilings.json is absent', () => {
     const r = run(tree({ ceilings: null }));
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /does not exist/);
   });
 
   test('COVERAGE LOST when the ceilings array is emptied [MC15]', () => {
     const r = run(tree({ ceilings: { ceilings: [], batchCallSites: { sites: [] }, configCeilings: { checks: [] } } }));
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /declares ZERO ceilings/);
   });
 
@@ -884,7 +884,7 @@ describe('assert-ceiling-budget — a cap without a sourced ceiling is the failu
     const c = baseCeilings();
     c.configCeilings.checks = [];
     const r = run(tree({ ceilings: c }));
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /no `configCeilings\.checks`/);
   });
@@ -893,13 +893,13 @@ describe('assert-ceiling-budget — a cap without a sourced ceiling is the failu
     const c = baseCeilings();
     c.batchCallSites.sites = [];
     const r = run(tree({ ceilings: c }));
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST/);
   });
 
   test('COVERAGE LOST when the capability register lists no cloudflare surfaces [MC17]', () => {
     const r = run(tree({ cap: { vendors: { cloudflare: { surfaces: [] } } } }));
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /surfaces is missing or empty/);
   });
@@ -911,7 +911,7 @@ describe('assert-ceiling-budget — a cap without a sourced ceiling is the failu
         'services/platform/src/routes/config.ts': null,
       },
     }));
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST/);
   });
 
@@ -919,7 +919,7 @@ describe('assert-ceiling-budget — a cap without a sourced ceiling is the failu
     const r = run(tree({
       files: { 'services/platform/wrangler.jsonc': null, [BRICK_CFG]: null },
     }));
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /no wrangler config was found/);
   });
@@ -1064,7 +1064,7 @@ describe('assert-ceiling-budget — a cap without a sourced ceiling is the failu
     const c = baseCeilings();
     delete c.verificationCadence;
     const r = run(tree({ ceilings: c }));
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /declares no `verificationCadence` block/);
   });
@@ -1075,7 +1075,7 @@ describe('assert-ceiling-budget — a cap without a sourced ceiling is the failu
     const c = baseCeilings();
     c.verificationCadence.cadence = 'twice a year';
     const r = run(tree({ ceilings: c }));
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /is not a duration this repo can parse/);
   });
@@ -1088,7 +1088,7 @@ describe('assert-ceiling-budget — a cap without a sourced ceiling is the failu
       const c = baseCeilings();
       c.verificationCadence.cadence = bad;
       const r = run(tree({ ceilings: c }));
-      assert.equal(r.code, 1, `${bad} was accepted: ${r.out}`);
+      assert.equal(r.code, 2, `${bad} was accepted: ${r.out}`);
       assert.match(r.out, /is not a duration this repo can parse/);
     }
     // And the forms it DOES accept still work, so this is not a blanket refusal.
@@ -1142,7 +1142,7 @@ describe('assert-ceiling-budget — a cap without a sourced ceiling is the failu
     const c = baseCeilings();
     delete c.actualsReadFrom;
     const r = run(tree({ ceilings: c }));
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /declares no `actualsReadFrom` block/);
   });
@@ -1189,7 +1189,7 @@ describe('assert-ceiling-budget — a cap without a sourced ceiling is the failu
     const c = baseCeilings();
     for (const row of c.ceilings) row.scope = 'per-invocation';
     const r = run(tree({ ceilings: c }));
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /ZERO account-wide ceilings were derived/);
   });

@@ -247,7 +247,7 @@ describe('assert-channel-claims — [D-1] an affordance is a promise only if rea
         { id: 'cli-store', surface: 'script', platforms: ['node'], artifactFormats: ['.tgz'] },
       ],
     }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /channel "cli-store" is on surface "script", which tooling\/channel-register\.json `surfaces` does not declare/);
   });
 
@@ -268,7 +268,7 @@ describe('assert-channel-claims — [D-1] an affordance is a promise only if rea
     const { code, out } = run(
       tree({ channels: [{ id: 'android-play', platforms: ['android'], artifactFormats: ['aab-bundle'] }] }),
     );
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /resolve to NO scan pattern/);
   });
 
@@ -289,41 +289,41 @@ describe('assert-channel-claims — [D-1] an affordance is a promise only if rea
 describe('assert-channel-claims — coverage is a relationship, not a number', () => {
   test('FAILS COVERAGE LOST when fewer deploy roots exist than the sibling floor', () => {
     const { code, out } = run(tree({ roots: ['nikatru'] }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /requires at least 2/);
   });
 
   test('FAILS COVERAGE LOST when MIN_SITES can no longer be read from the sibling', () => {
     const { code, out } = run(tree({ siblingConst: 'MIN_SITE_ROOTS' }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /could not read MIN_SITES/);
     assert.match(out, /do not reintroduce a local number/);
   });
 
   test('tracks the sibling UPWARD — raising MIN_SITES raises this floor too', () => {
     const { code, out } = run(tree({ minSites: 3 }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /requires at least 3/);
   });
 
   test('FAILS COVERAGE LOST when apps.json claims no platforms', () => {
     const { code, out } = run(tree({ platforms: [] }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /ZERO platforms/);
   });
 
   test('FAILS COVERAGE LOST when the register lists no disqualified channels', () => {
     const { code, out } = run(tree({ disqualified: [] }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /ZERO disqualified channels/);
   });
 
   test('FAILS COVERAGE LOST when the register is absent entirely', () => {
     const { code, out } = run(tree({ omitRegister: true }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
   });
 
@@ -334,7 +334,7 @@ describe('assert-channel-claims — coverage is a relationship, not a number', (
     writeFileSync(join(root, 'sites/nikatru/index.html'), '<!doctype html><p>nothing here</p>');
     writeFileSync(join(root, 'sites/rajasekarselvam/index.html'), '<!doctype html><p>nor here</p>');
     const { code, out } = run(root);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /ZERO store or artifact affordances/);
   });
 });
@@ -370,7 +370,7 @@ describe('assert-channel-claims — the walk reaches every public surface', () =
 
   test('FAILS COVERAGE LOST when the walk stops reaching site.webmanifest — re-narrowing is loud', () => {
     const { code, out } = run(tree({ omitWebmanifest: true }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /no longer reaches: sites\/nikatru\/site\.webmanifest/);
   });

@@ -295,14 +295,14 @@ describe('assert-policy-archive', () => {
     assert.equal(cloned.status, 0, cloned.stderr);
     assert.ok(existsSync(join(shallow, LIVE)));
     const r = run(shallow);
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(r.stderr, /SHALLOW clone/);
     assert.match(r.stderr, /fetch-depth: 0/);
   });
 
   test('COVERAGE: not a git work tree at all is refused', () => {
     const r = run(repo({ initGit: false }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(r.stderr, /not a git work tree/);
   });
 
@@ -310,7 +310,7 @@ describe('assert-policy-archive', () => {
     const root = repo();
     write(root, LIVE, '<html><body><main><h1>Privacy</h1></main></body></html>');
     const r = run(root);
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(r.stderr, /declares no data-policy-version/);
   });
 
@@ -318,14 +318,14 @@ describe('assert-policy-archive', () => {
     const root = repo();
     rmSync(join(root, LIVE));
     const r = run(root);
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(r.stderr, /COVERAGE LOST — cannot read sites\/nikatru\/privacy\.html/);
   });
 
   test('COVERAGE: an empty archive is refused — nothing to check is not "all clear"', () => {
     const root = repo({ snapshots: [] });
     const r = run(root);
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(r.stderr, /COVERAGE LOST — no snapshot resolved/);
   });
 
@@ -400,7 +400,7 @@ describe('assert-policy-archive — the notice-per-locale relation [pipeline K-1
   test('a tree that has lost its locale declarations is COVERAGE LOST', () => {
     const root = repo({ locales: [] });
     const r = run(root);
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(r.stderr, /no locale resolved from/);
   });
 
@@ -470,7 +470,7 @@ describe('assert-policy-archive · the comparison is <main>, positively', () => 
     const src = readFileSync(live, 'utf8');
     writeFileSync(live, src.replace('<main>', '<div>').replace('</main>', '</div>'));
     const r = run(root);
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(r.stdout + r.stderr, /COVERAGE LOST/);
   });
 

@@ -63,8 +63,8 @@ function mutant(edits) {
 }
 
 /** A catch is a FAIL line the guard meant to print. A crash is not a catch. */
-function caught(res, expected) {
-  assert.equal(res.code, 1, `expected exit 1, got ${res.code}\n${res.out}`);
+function caught(res, expected, code = 1) {
+  assert.equal(res.code, code, `expected exit ${code}, got ${res.code}\n${res.out}`);
   assert.doesNotMatch(res.out, /\b(SyntaxError|ReferenceError|TypeError|ERR_MODULE_NOT_FOUND)\b/, `the guard crashed rather than reporting:\n${res.out}`);
   assert.match(res.out, expected, `wrong message:\n${res.out}`);
 }
@@ -146,17 +146,17 @@ describe('§A — an aggregating job cannot go green over a lane that did not ru
 
   test('renaming the aggregating job is COVERAGE LOST, not a quiet pass', () => {
     const root = mutant([['ci.yml', '\n  ci-gate:\n', '\n  ci-gate-v2:\n']]);
-    caught(run(root), /COVERAGE LOST[\s\S]*none of them is "ci-gate"/);
+    caught(run(root), /COVERAGE LOST[\s\S]*none of them is "ci-gate"/, 2);
   });
 
   test('deleting a named aggregator workflow is COVERAGE LOST', () => {
-    caught(run(mutant([['ci.yml', null, null]])), /COVERAGE LOST[\s\S]*ci\.yml does not exist/);
+    caught(run(mutant([['ci.yml', null, null]])), /COVERAGE LOST[\s\S]*ci\.yml does not exist/, 2);
   });
 
   test('a workflow the parser can no longer read is COVERAGE LOST, not zero problems', () => {
     // Top-level keys survive, `jobs:` does not — the shape a stripper bug leaves.
     const root = mutant([['ci.yml', /^jobs:$/m, 'jobz:']]);
-    caught(run(root), /COVERAGE LOST[\s\S]*ZERO parsed jobs/);
+    caught(run(root), /COVERAGE LOST[\s\S]*ZERO parsed jobs/, 2);
   });
 });
 
@@ -222,7 +222,7 @@ describe('§B — a job cannot green-skip its own body when a secret is absent',
 
   test('deleting the preflight altogether is COVERAGE LOST — section B would sweep everything and find nothing', () => {
     const root = mutant([['e2e.yml', /      - name: Preflight[\s\S]*?running the live suite\."\n/, '']]);
-    caught(run(root), /COVERAGE LOST[\s\S]*e2e\.yml contains no secret-presence check/);
+    caught(run(root), /COVERAGE LOST[\s\S]*e2e\.yml contains no secret-presence check/, 2);
   });
 
   test('the green-skip is caught wherever it appears, not only in e2e.yml', () => {
@@ -405,7 +405,7 @@ describe('§C — a drift check cannot pass by diffing the checkout against itse
     const laneLines = CI.split(String.fromCharCode(10)).filter((l) => l.includes('git diff --exit-code --'));
     assert.ok(laneLines.length >= 1, 'no drift lane found in ci.yml — this case would prove nothing');
     const root = mutant(laneLines.map((l) => ['ci.yml', l, '']));
-    caught(run(root), /COVERAGE LOST[\s\S]*ci\.yml contains no `git diff --exit-code -- <path>` drift check/);
+    caught(run(root), /COVERAGE LOST[\s\S]*ci\.yml contains no `git diff --exit-code -- <path>` drift check/, 2);
   });
 
   test('the committed lane satisfies it, and the count is reported', () => {

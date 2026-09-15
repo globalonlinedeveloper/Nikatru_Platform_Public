@@ -249,7 +249,7 @@ describe('assert-case-count-honest — CI is Linux, this host is Windows', () =>
 describe('assert-case-count-honest — COVERAGE LOST, never a pass', () => {
   test('no --junit at all', () => {
     const r = run([]);
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /no --junit/);
   });
@@ -257,7 +257,7 @@ describe('assert-case-count-honest — COVERAGE LOST, never a pass', () => {
   test('a --junit path that does not exist', () => {
     const { manifestPath } = fixture({ xml: null, manifest: { 'guards.test.mjs': 1 } });
     const r = run(['--junit', join(TMP, 'nope', 'absent.xml'), '--manifest', manifestPath]);
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /does not exist/);
   });
@@ -265,7 +265,7 @@ describe('assert-case-count-honest — COVERAGE LOST, never a pass', () => {
   test('an EMPTY junit file', () => {
     const { junitPath, manifestPath } = fixture({ xml: '   \n', manifest: { 'guards.test.mjs': 1 } });
     const r = run(['--junit', junitPath, '--manifest', manifestPath]);
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /is EMPTY/);
   });
@@ -276,7 +276,7 @@ describe('assert-case-count-honest — COVERAGE LOST, never a pass', () => {
       manifest: { 'guards.test.mjs': 1 },
     });
     const r = run(['--junit', junitPath, '--manifest', manifestPath]);
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /not a junit document/);
   });
@@ -287,7 +287,7 @@ describe('assert-case-count-honest — COVERAGE LOST, never a pass', () => {
       manifest: { 'guards.test.mjs': 1 },
     });
     const r = run(['--junit', junitPath, '--manifest', manifestPath]);
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /NO test case at all/);
   });
@@ -298,7 +298,7 @@ describe('assert-case-count-honest — COVERAGE LOST, never a pass', () => {
       manifest: { 'guards.test.mjs': 1 },
     });
     const r = run(['--junit', junitPath, '--manifest', manifestPath]);
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /no file= attribute/);
   });
@@ -309,7 +309,7 @@ describe('assert-case-count-honest — COVERAGE LOST, never a pass', () => {
       manifest: { 'guards.test.mjs': 383, 'money-config.test.mjs': 32 },
     });
     const r = run(['--junit', junitPath, '--manifest', manifestPath]);
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /not one of the 2 file\(s\)/);
   });
@@ -323,7 +323,7 @@ describe('assert-case-count-honest — COVERAGE LOST, never a pass', () => {
       manifest: { 'guards.test.mjs': 383, 'money-config.test.mjs': 32 },
     });
     const r = run(['--junit', junitPath, '--manifest', manifestPath]);
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /arbitrated by NOTHING/);
     assert.match(r.out, /money-config\.test\.mjs — recorded 32/);
@@ -340,7 +340,7 @@ describe('assert-case-count-honest — COVERAGE LOST, never a pass', () => {
       manifest: { 'guards.test.mjs': 398 },
     });
     const r = run(['--junit', junitPath, '--manifest', manifestPath]);
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /MORE THAN ONE directory/);
   });
@@ -351,7 +351,7 @@ describe('assert-case-count-honest — COVERAGE LOST, never a pass', () => {
       manifest: null,
     });
     const r = run(['--junit', junitPath, '--manifest', manifestPath]);
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST/);
   });
 
@@ -361,7 +361,7 @@ describe('assert-case-count-honest — COVERAGE LOST, never a pass', () => {
       manifest: '{ this is not json',
     });
     const r = run(['--junit', junitPath, '--manifest', manifestPath]);
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /could not be parsed/);
   });
@@ -372,7 +372,7 @@ describe('assert-case-count-honest — COVERAGE LOST, never a pass', () => {
       manifest: '["guards.test.mjs"]',
     });
     const r = run(['--junit', junitPath, '--manifest', manifestPath]);
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /not a JSON object/);
   });
@@ -383,7 +383,7 @@ describe('assert-case-count-honest — COVERAGE LOST, never a pass', () => {
       manifest: {},
     });
     const r = run(['--junit', junitPath, '--manifest', manifestPath]);
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /is EMPTY/);
   });
@@ -392,7 +392,7 @@ describe('assert-case-count-honest — COVERAGE LOST, never a pass', () => {
   test('an unrecognised argument is refused rather than ignored', () => {
     const { junitPath } = fixture({ xml: junit([[`${LINUX_DIR}/guards.test.mjs`, 5]]), manifest: null });
     const r = run(['--juint', junitPath]);
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /unrecognised argument/);
   });
@@ -521,7 +521,7 @@ describe('assert-case-count-honest — the verdict, as a pure function', () => {
 describe('assert-case-count-honest — the real tree', () => {
   test('the guard file is where the workflow names it', () => {
     const r = spawnSync(process.execPath, [GUARD], { encoding: 'utf8' });
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(`${r.stdout}${r.stderr}`, /COVERAGE LOST/);
     assert.match(GUARD, /assert-case-count-honest\.mjs$/);
   });
@@ -537,7 +537,7 @@ describe('assert-case-count-honest — the real tree', () => {
     const out = `${r.stdout}${r.stderr}`;
     // It reaches the real 148-key manifest and reports the floors it could not
     // arbitrate — which proves it found the manifest, from an unrelated cwd.
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out, /arbitrated by NOTHING/);
     assert.match(out, /a11y-coverage\.test\.mjs — recorded/);
   });

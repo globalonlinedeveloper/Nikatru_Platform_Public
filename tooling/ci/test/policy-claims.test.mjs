@@ -262,7 +262,7 @@ describe('the code assertions', () => {
       why: 'a walk with a floor',
     };
     const r = run(fixture({ claims }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /COVERAGE LOST/);
     assert.match(out(r), /would pass by finding nothing to look at/);
   });
@@ -367,7 +367,7 @@ describe('the route limb — a provider arriving in CODE', () => {
     const providers = structuredClone(DEFAULT_PROVIDERS);
     providers.nonProviderRouteSegments = { segments: [] };
     const r = run(fixture({ providers }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /COVERAGE LOST/);
   });
 });
@@ -424,7 +424,7 @@ describe('coverage self-checks', () => {
     const root = fixture();
     rmSync(join(root, 'tooling', 'legal', 'policy-claims.json'));
     const r = run(root);
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /COVERAGE LOST/);
     assert.match(out(r), /An absent register is not an empty one/);
   });
@@ -433,13 +433,13 @@ describe('coverage self-checks', () => {
     const root = fixture();
     writeFileSync(join(root, 'tooling', 'legal', 'provider-register.json'), '{ not json');
     const r = run(root);
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /is not valid JSON/);
   });
 
   test('a page stripped of all emphasis is COVERAGE LOST', () => {
     const r = run(fixture({ pages: { 'refund.html': '<html><body><p>plain</p></body></html>' } }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /yielded ZERO emphasised spans/);
   });
 
@@ -447,7 +447,7 @@ describe('coverage self-checks', () => {
     const root = fixture();
     rmSync(join(root, 'sites', 'nikatru', 'terms.html'));
     const r = run(root);
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /The pages ARE the domain/);
   });
 
@@ -455,7 +455,7 @@ describe('coverage self-checks', () => {
     const root = fixture();
     rmSync(join(root, 'services'), { recursive: true, force: true });
     const r = run(root);
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /COVERAGE LOST/);
   });
 });
@@ -514,7 +514,7 @@ describe('the egress limb — every host a shipped CSP lets a browser reach is o
     const root = fixture();
     write(root, join('sites', 'nikatru', '_headers'), csp(['https://cdn.cloudmark.net']));
     const r = run(root);
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /COVERAGE LOST — provider-register\.json declares no `firstPartyDomains\.domains`/);
   });
 
@@ -522,7 +522,7 @@ describe('the egress limb — every host a shipped CSP lets a browser reach is o
     const root = fixture({ providers: { firstPartyDomains: { domains: ['example.test'] } } });
     write(root, join('apps', 'demo', 'web', '_headers'), '/*\n  X-Frame-Options: DENY\n');
     const r = run(root);
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /ZERO Content-Security-Policy sources were extracted/);
   });
 });

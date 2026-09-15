@@ -210,7 +210,7 @@ describe('the walk cannot narrow in silence', () => {
     // shape of every silent narrowing, depth cap included. Nothing but a
     // BY-NAME requirement can tell that apart from a smaller clean tree.
     withTree({}, (root) => writeFileSync(join(root, 'tooling/bricks/.git'), 'gitdir: ../elsewhere\n'), (r) => {
-      assert.equal(r.status, 1, r.out);
+      assert.equal(r.status, 2, r.out);
       assert.match(r.stderr, /COVERAGE LOST/, r.out);
       assert.match(r.stderr, /2 pubspec\(s\) this guard must read are ON DISK and were NOT collected by the walk/, r.out);
       assert.match(r.stderr, /__brick__/, 'the refusal must name the file the walk stopped reaching');
@@ -221,7 +221,7 @@ describe('the walk cannot narrow in silence', () => {
 
   test('🔴 THE LANDMARK IS GONE — deleting the brick app pubspec is COVERAGE LOST, not a smaller pass', () => {
     withTree({}, (root) => rmSync(join(root, BRICK_APP_PUBSPEC), { force: true }), (r) => {
-      assert.equal(r.status, 1, r.out);
+      assert.equal(r.status, 2, r.out);
       assert.match(r.stderr, /COVERAGE LOST/, r.out);
       assert.match(r.stderr, /declared landmark pubspec\(s\) are not on disk/, r.out);
       assert.match(r.stderr, /__brick__/, 'the refusal must name the file that went missing');
@@ -237,7 +237,7 @@ describe('the walk cannot narrow in silence', () => {
       {},
       (root) => rmSync(join(root, 'tooling/bricks/app/__brick__'), { recursive: true, force: true }),
       (r) => {
-        assert.equal(r.status, 1, r.out);
+        assert.equal(r.status, 2, r.out);
         assert.match(r.stderr, /COVERAGE LOST/, r.out);
         assert.match(r.stderr, /declared landmark pubspec\(s\) are not on disk/, r.out);
         assert.match(r.stderr, /__brick__/, r.out);
@@ -249,7 +249,7 @@ describe('the walk cannot narrow in silence', () => {
     // Two entries in the list, so two cases. Without this one the hooks entry
     // could be deleted from REQUIRED_PUBSPECS and no test would notice.
     withTree({}, (root) => rmSync(join(root, BRICK_HOOKS_PUBSPEC), { force: true }), (r) => {
-      assert.equal(r.status, 1, r.out);
+      assert.equal(r.status, 2, r.out);
       assert.match(r.stderr, /declared landmark pubspec\(s\) are not on disk/, r.out);
       assert.match(r.stderr, /bricks\/app\/hooks\/pubspec\.yaml/, r.out);
     });
@@ -268,7 +268,7 @@ describe('the walk cannot narrow in silence', () => {
         }
       },
       (r) => {
-        assert.equal(r.status, 1, r.out);
+        assert.equal(r.status, 2, r.out);
         assert.match(r.stderr, /packages\/ yielded 1 pubspec\(s\), floor 5/, r.out);
       },
     );
@@ -276,7 +276,7 @@ describe('the walk cannot narrow in silence', () => {
 
   test('🔴 apps/ EMPTIED is COVERAGE LOST on the structural floor, over any tree', () => {
     withTree({ mason: false }, (root) => emptyDir(root, 'apps'), (r) => {
-      assert.equal(r.status, 1, r.out);
+      assert.equal(r.status, 2, r.out);
       assert.match(r.stderr, /0 pubspec\.yaml under apps\//, r.out);
     });
   });
@@ -308,7 +308,7 @@ describe('the passing line does not claim coverage it did not have', () => {
     // Two runs differing in one file is what makes the gate a gate rather than
     // a condition that happens to be false.
     withTree({}, (root) => rmSync(join(root, BRICK_APP_PUBSPEC), { force: true }), (r) => {
-      assert.equal(r.status, 1, r.out);
+      assert.equal(r.status, 2, r.out);
       assert.match(r.stderr, /not on disk under this full checkout/, r.out);
     });
   });

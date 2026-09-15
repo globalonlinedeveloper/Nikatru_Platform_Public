@@ -1401,7 +1401,7 @@ describe('the placeholder scanner and its canary', () => {
     const root = tree([SUBLY], { template: TEMPLATE.replace('[APP NAME]', 'APP NAME') });
     generate(root);
     const r = guard(root);
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /\[APP NAME\]/);
   });
@@ -1415,7 +1415,7 @@ describe('the placeholder scanner and its canary', () => {
     });
     generate(root);
     const r = guard(root);
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /\[0 or price\]/);
     assert.match(r.out, /\[SNAP OR dl\.nikatru\.com APPIMAGE URL\]/);
   });
@@ -1484,7 +1484,7 @@ describe('coverage self-checks — the scan itself must be loud when it stops sc
   test('an EMPTY registry is COVERAGE LOST, never a quiet pass over nothing', () => {
     const root = tree([]);
     const r = guard(root);
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /planned ZERO files/);
     assert.match(r.out, /reason: .*carries no entries/);
@@ -1493,7 +1493,7 @@ describe('coverage self-checks — the scan itself must be loud when it stops sc
   test('an unparseable registry names the PARSE ERROR as the reason, not just "I scanned nothing"', () => {
     const root = tree('{not json');
     const r = guard(root);
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /reason: .*not valid JSON/);
   });
@@ -1503,7 +1503,7 @@ describe('coverage self-checks — the scan itself must be loud when it stops sc
     generate(root);
     rmSync(join(root, 'sites', 'nikatru', 'apps'), { recursive: true, force: true });
     const r = guard(root);
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST/);
   });
 
@@ -1830,7 +1830,7 @@ describe('the web accessibility chrome', () => {
     const only = tree([SUBLY]);
     unlinkSync(p(only, 'index.html'));
     const r = guard(only);
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /1 \.html file\(s\) are served from sites\/nikatru and NONE of them was treated as a chrome page/);
   });
 

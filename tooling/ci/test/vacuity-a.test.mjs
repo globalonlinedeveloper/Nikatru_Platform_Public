@@ -159,7 +159,7 @@ describe('assert-content-licences — the tripwire must read the product tree, n
   test('2. apps/ emptied is COVERAGE LOST, and the message names apps/', () => {
     const dir = freshMirror('apps');
     const { code, out } = run(CONTENT_LICENCES, dir);
-    assert.equal(code, 1, `emptying apps/ must refuse, got ${code}:\n${out}`);
+    assert.equal(code, 2, `emptying apps/ must refuse, got ${code}:\n${out}`);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /0 pubspec\.yaml under apps\//, `the refusal must name the root that emptied:\n${out}`);
     rmSync(dir, { recursive: true, force: true });
@@ -168,7 +168,7 @@ describe('assert-content-licences — the tripwire must read the product tree, n
   test('3. packages/ emptied is COVERAGE LOST, and the message names packages/', () => {
     const dir = freshMirror('packages');
     const { code, out } = run(CONTENT_LICENCES, dir);
-    assert.equal(code, 1, `emptying packages/ must refuse, got ${code}:\n${out}`);
+    assert.equal(code, 2, `emptying packages/ must refuse, got ${code}:\n${out}`);
     assert.match(out, /0 pubspec\.yaml under packages\//, `the refusal must name the root that emptied:\n${out}`);
     rmSync(dir, { recursive: true, force: true });
   });
@@ -179,7 +179,7 @@ describe('assert-content-licences — the tripwire must read the product tree, n
     // tripwire pronounced the product tree clean over 2 files instead of 12.
     const dir = freshMirror('apps', 'packages');
     const { code, out } = run(CONTENT_LICENCES, dir);
-    assert.equal(code, 1, `the brick alone must NOT satisfy the floor, got ${code}:\n${out}`);
+    assert.equal(code, 2, `the brick alone must NOT satisfy the floor, got ${code}:\n${out}`);
     assert.match(out, /COVERAGE LOST/);
     assert.doesNotMatch(
       out,
