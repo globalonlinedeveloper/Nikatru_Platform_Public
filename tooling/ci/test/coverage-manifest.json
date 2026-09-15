@@ -44,7 +44,7 @@
   "channel-surface.test.mjs": 7,
   "chassis-delegation.test.mjs": 54,
   "chassis-ledger.test.mjs": 29,
-  "chassis-parity.test.mjs": 14,
+  "chassis-parity.test.mjs": 19,
   "chrome-raster.test.mjs": 1,
   "chrome-splice.test.mjs": 26,
   "clone-contract.test.mjs": 42,

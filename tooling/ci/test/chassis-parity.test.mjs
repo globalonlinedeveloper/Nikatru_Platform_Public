@@ -221,6 +221,64 @@ describe('assert-chassis-parity — COVERAGE LOST, never a pass', () => {
   });
 });
 
+// ⏱ 2026-09-15 · [ADR 086] partial adoption — one piece at a time. Each case is
+// declared on its own (assert-no-loop-cases).
+const ADOPTING_APP = {
+  'state/providers/auth.dart': "import 'package:nikatru_core/core.dart';\n",
+  'app.dart': "import 'package:nikatru_chassis_screens/shell/app_shell.dart';\n",
+};
+const adoptedRow = (adopted) => ({ ...ROW, adopted });
+const PIECE = { file: 'app.dart', piece: 'OfflineBannerHost', on: '2026-09-15', callSiteDelta: -2 };
+
+describe('assert-chassis-parity — partial adoption ([ADR 086])', () => {
+  test('a partly paid debt passes and PRINTS what was adopted and what stays owed', () => {
+    const { code, out } = run(tree({ appFiles: ADOPTING_APP, rows: [adoptedRow([PIECE])] }));
+    assert.equal(code, 0, out);
+    assert.match(out, /declared debt, partly paid — apps\/demo adopts `nikatru_chassis_screens` in 1 file\(s\) \(OfflineBannerHost -2\)/);
+  });
+
+  test('an import the row does not record FAILS naming it UNRECORDED', () => {
+    const { code, out } = run(
+      tree({
+        appFiles: { ...ADOPTING_APP, 'features/x.dart': "import 'package:nikatru_chassis_screens/auth/sign_in_screen.dart';\n" },
+        rows: [adoptedRow([PIECE])],
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /UNRECORDED: features\/x\.dart/);
+  });
+
+  test('a recorded piece whose file no longer imports the package FAILS', () => {
+    const { code, out } = run(
+      tree({ appFiles: ADOPTING_APP, rows: [adoptedRow([PIECE, { ...PIECE, file: 'gone.dart' }])] }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /NO LONGER IMPORTS: gone\.dart/);
+  });
+
+  test('a callSiteDelta that is not negative FAILS — ADR 066: the call site must shrink', () => {
+    const { code, out } = run(tree({ appFiles: ADOPTING_APP, rows: [adoptedRow([{ ...PIECE, callSiteDelta: 3 }])] }));
+    assert.equal(code, 1, out);
+    assert.match(out, /records callSiteDelta 3/);
+  });
+
+  test('a partly paid row still pins the template files — an ADDED delegation FAILS', () => {
+    const { code, out } = run(
+      tree({
+        templateFiles: {
+          'features/auth/sign_in_screen.dart': "import 'package:nikatru_chassis_screens/auth/sign_in_screen.dart';\n",
+          'features/auth/sign_up_screen.dart': "import 'package:nikatru_chassis_screens/auth/sign_up_screen.dart';\n",
+          'state/providers.dart': "import 'package:nikatru_core/core.dart';\n",
+        },
+        appFiles: ADOPTING_APP,
+        rows: [adoptedRow([PIECE])],
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /ADDED: features\/auth\/sign_up_screen\.dart/);
+  });
+});
+
 describe('assert-chassis-parity — the real repository', () => {
   // 🔴 A GREEN UNIT SUITE OVER A SYNTHETIC TREE PROVES THE GUARD, NOT THE REPO.
   test('the tree as it stands is graded, and its one declared debt is printed', () => {

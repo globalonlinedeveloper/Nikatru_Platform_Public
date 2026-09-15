@@ -621,7 +621,8 @@
       "package": "nikatru_chassis_screens",
       "seams": [],
       "consumers": [
-        "tooling/bricks/app/__brick__/apps/{{app_id}}"
+        "tooling/bricks/app/__brick__/apps/{{app_id}}",
+        "apps/subscriptiontracker"
       ],
       "noSeamReason": "A widget library, not a contract — the adapter constructs the widget directly. Every DECISION stays with the caller by construction: this package can see nikatru_core (which is why the call site shrinks at all) but it can see no provider container, no router and no plugin, so there is nothing here for a seam to abstract. apps/subscriptiontracker is NOT a consumer and will not be one: it is a frozen rail-prover ([ADR 065])."
     },

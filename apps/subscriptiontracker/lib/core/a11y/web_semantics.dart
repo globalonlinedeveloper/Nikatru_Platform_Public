@@ -13,7 +13,7 @@ SemanticsHandle? _heldHandle;
 /// reader landing on the served page finds a `<flt-glass-pane>` with a canvas
 /// inside it and nothing else. Measured: the only occurrence of
 /// `ensureSemantics` anywhere in this app's tree was a PROSE MENTION in a
-/// comment at `lib/app.dart:451` describing what a widget TEST does. A comment
+/// comment at `lib/app.dart:449` describing what a widget TEST does. A comment
 /// naming an API is not a call to it.
 ///
 /// The reason this survived a guard sweep is worth recording, because it will
