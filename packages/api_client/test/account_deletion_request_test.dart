@@ -47,6 +47,43 @@ RestClient _client(_FakeAdapter adapter) => RestClient(
     );
 
 void main() {
+  // ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH.
+  test(
+      '403 reauth_required is reauthFailed — a failed re-authentication, not a refusal',
+      () async {
+    final _FakeAdapter adapter = _FakeAdapter(
+      status: 403,
+      body: '{"error":"reauth_required"}',
+    );
+    await expectLater(
+      requestAccountDeletion(_client(adapter)),
+      throwsA(
+        isA<core.AccountDeletionFailure>().having(
+          (core.AccountDeletionFailure f) => f.outcome,
+          'outcome',
+          core.AccountDeletionOutcome.reauthFailed,
+        ),
+      ),
+    );
+  });
+
+  test('any OTHER 403 is still the server refusing (nothingDeleted)', () async {
+    final _FakeAdapter adapter = _FakeAdapter(
+      status: 403,
+      body: '{"error":"forbidden"}',
+    );
+    await expectLater(
+      requestAccountDeletion(_client(adapter)),
+      throwsA(
+        isA<core.AccountDeletionFailure>().having(
+          (core.AccountDeletionFailure f) => f.outcome,
+          'outcome',
+          core.AccountDeletionOutcome.nothingDeleted,
+        ),
+      ),
+    );
+  });
+
   test('a 2xx returns normally, and hits DELETE /account', () async {
     final _FakeAdapter adapter = _FakeAdapter(
       status: 200,
@@ -62,7 +99,8 @@ void main() {
       () async {
     final _FakeAdapter adapter = _FakeAdapter(
       status: 202,
-      body: '{"ok":true,"status":"erasure_pending","pending":["subscriptiontracker"]}',
+      body:
+          '{"ok":true,"status":"erasure_pending","pending":["subscriptiontracker"]}',
     );
     await expectLater(
       requestAccountDeletion(_client(adapter)),

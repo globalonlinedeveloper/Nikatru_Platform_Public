@@ -307,6 +307,23 @@ export interface Env {
   RELEASE?: string;
 }
 
+/**
+ * ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH — read from a VERIFIED access token.
+ *
+ * `passwordless` is true only when the token POSITIVELY says so: its
+ * `app_metadata.providers` is an array without `email` (a Sign in with Apple
+ * account is `["apple"]`; an email account that later linked Apple is
+ * `["email","apple"]` and keeps a password). `lastAuthenticatedAt` is the newest
+ * `amr[].timestamp` (seconds). GoTrue writes an `amr` entry when the user
+ * AUTHENTICATES and carries it unchanged through every refresh, so it answers
+ * "when did this person last prove who they are" where `iat` — reissued by each
+ * silent refresh — cannot. Null when the token carries no usable entry.
+ */
+export interface AuthRecency {
+  passwordless: boolean;
+  lastAuthenticatedAt: number | null;
+}
+
 /** Hono context Variables set by middleware. */
 export interface Variables {
   /** Correlation id stamped by the request-id middleware (echoed in headers). */
@@ -318,6 +335,12 @@ export interface Variables {
   userId: string;
   /** The token's `email` claim when it carries one. Never required. */
   userEmail?: string;
+  /**
+   * ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH. How the verified token's user signs in
+   * and WHEN they last authenticated, read from the same verified payload as
+   * [userId] by `middleware/auth.ts`. See `authRecencyOf` there.
+   */
+  authRecency?: AuthRecency;
   /**
    * [pipeline B-16] WHICH APP THIS REQUEST IS FOR, set by each route the moment
    * it has resolved and VALIDATED one, and read by `app.onError`.

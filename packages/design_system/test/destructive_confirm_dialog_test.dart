@@ -44,6 +44,7 @@ void main() {
     String cancelLabel = 'Cancel',
     String confirmLabel = 'Delete',
     String acknowledgeLabel = 'Got it',
+    bool secretRequired = true,
   }) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -63,6 +64,7 @@ void main() {
                   confirmLabel: confirmLabel,
                   acknowledgeLabel: acknowledgeLabel,
                   onConfirm: onConfirm,
+                  secretRequired: secretRequired,
                   secretFieldKey: kSecret,
                   confirmKey: kConfirm,
                   resultKey: kResult,
@@ -81,6 +83,33 @@ void main() {
 
   FilledButton confirmButton(WidgetTester tester) =>
       tester.widget<FilledButton>(find.byKey(kConfirm));
+
+  // ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH — a password-less account confirms with
+  // its provider's own sheet, so there is no secret to type.
+  group('secretRequired: false (the confirmation is not a typed secret)', () {
+    testWidgets('no field, the hint still shown, and the button is live', (
+      WidgetTester tester,
+    ) async {
+      final TextEditingController secret = TextEditingController();
+      addTearDown(secret.dispose);
+      int runs = 0;
+      await pump(
+        tester,
+        secret: secret,
+        secretRequired: false,
+        onConfirm: () async {
+          runs++;
+          return const DestructiveActionReport(message: 'gone', succeeded: true);
+        },
+      );
+      expect(find.byKey(kSecret), findsNothing);
+      expect(find.text('Confirm your password to continue.'), findsOneWidget);
+      expect(confirmButton(tester).onPressed, isNotNull);
+      await tester.tap(find.byKey(kConfirm));
+      await tester.pumpAndSettle();
+      expect(runs, 1);
+    });
+  });
 
   group('the destructive control is inert until the form is filled', () {
     testWidgets(

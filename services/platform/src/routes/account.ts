@@ -130,6 +130,20 @@ import {
 
 const account = new Hono<AppEnv>();
 
+/**
+ * ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH. How recent a password-less account's last
+ * AUTHENTICATION must be for `DELETE /v1/account` to proceed. Ten minutes: long
+ * enough for a provider sheet, a web full-page redirect and the user reopening
+ * Settings to tap Delete again; far shorter than the access-token lifetime, so a
+ * session kept alive by refreshes cannot pass. The app re-runs the provider
+ * sign-in when its own last sign-in is older than half this window.
+ */
+// @ceiling none — the age of a token claim (seconds since the user last authenticated), not a platform resource
+export const RECENT_AUTH_SECONDS = 600;
+/** A timestamp this far in the FUTURE is treated as unusable rather than recent. */
+// @ceiling none — clock-skew tolerance on a token claim, not a platform resource
+const CLOCK_SKEW_SECONDS = 60;
+
 // ⏱ 2026-09-12 · THE FOUR DECLARATIONS THAT USED TO SIT HERE NOW LIVE IN
 // services/_shared/src/erasure.ts, imported above. They were byte-identical in both
 // Workers and ABSENT FROM THE APP TEMPLATE, whose erasure route carried a hand-kept
@@ -178,6 +192,31 @@ export function parseErasureEndpoints(raw: string | undefined): Array<{ appId: s
 account.delete('/account', async (c) => {
   const userId = c.get('userId');
   const rid = c.get('requestId') ?? '-';
+
+  // ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH (owner ruling on OWNER_QUEUE A-10). A
+  // PASSWORD-LESS ACCOUNT CONFIRMS DELETION BY SIGNING IN WITH ITS PROVIDER AGAIN,
+  // and the proof is checked HERE, before any precondition and before anything is
+  // destroyed. A password account re-authenticates with its password in the app
+  // and is unchanged by this check.
+  //
+  // 🔴 `amr`, NOT `iat`. Every silent refresh reissues the access token with a
+  // new `iat`, so "the token is recent" is true of a week-old session kept warm in
+  // the background. GoTrue's `amr` entry is written when the person AUTHENTICATES
+  // and is carried unchanged through refreshes, so its timestamp is the moment
+  // they last proved who they are. A refusal is 403 `reauth_required`, not 401:
+  // the client's REST layer treats a 401 as a dead session and signs out, and a
+  // user who has just been asked to confirm deserves to stay signed in.
+  const recency = c.get('authRecency');
+  if (recency?.passwordless) {
+    const now = Math.floor(Date.now() / 1000);
+    const at = recency.lastAuthenticatedAt;
+    if (at === null || now - at > RECENT_AUTH_SECONDS || at - now > CLOCK_SKEW_SECONDS) {
+      console.warn(
+        `[account] rid=${rid} app=${c.env.APP_ID} refusing deletion: password-less account without a sign-in in the last ${RECENT_AUTH_SECONDS}s (amr=${at === null ? 'none' : now - at + 's ago'})`,
+      );
+      return c.json({ error: 'reauth_required' }, 403);
+    }
+  }
 
   // PRECONDITION, CHECKED BEFORE ANYTHING IS DESTROYED. Discovering halfway
   // through that the identity cannot be removed leaves a user with no data and a

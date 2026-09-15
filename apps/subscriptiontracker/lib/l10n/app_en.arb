@@ -118,6 +118,14 @@
   "@deleteAccountReauthHint": {
     "description": "Explains why a password is required to delete the account."
   },
+  "deleteAccountConfirmBodyApple": "This cannot be undone. Deleting removes your sign-in, so Sign in with Apple will no longer open this account.",
+  "@deleteAccountConfirmBodyApple": {
+    "description": "O-OAUTH-DELETE-REAUTH (owner-approved wording pending). The delete confirmation body for a PASSWORD-LESS account (Sign in with Apple). Replaces deleteAccountConfirmBody, which names an email and password this account does not have."
+  },
+  "deleteAccountReauthHintApple": "To confirm it is you, you will sign in with Apple again when you tap Delete account. If you are brought back to the app first, open this screen and tap Delete account again.",
+  "@deleteAccountReauthHintApple": {
+    "description": "O-OAUTH-DELETE-REAUTH. Shown instead of the password field for a password-less account: deletion is confirmed by signing in with Apple again. The second sentence covers web, where Apple's full-page redirect reloads the app before the deletion can run."
+  },
   "deleteAccountFailed": "Could not delete your account. Your account has NOT been deleted.",
   "@deleteAccountFailed": {
     "description": "Shown when deletion fails with nothing removed. Must state plainly that nothing was deleted."
