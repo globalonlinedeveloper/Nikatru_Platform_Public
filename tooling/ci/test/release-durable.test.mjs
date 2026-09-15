@@ -136,7 +136,20 @@ function registerWith(mutate) {
  * refuses a missing surface — is asserted directly against `originEnvironmentsRaw`
  * in "the surface is REQUIRED" below, so the default here cannot hide it.
  */
-const originEnvironments = (register, app, assets, surface = 'app') => originEnvironmentsRaw(register, app, assets, surface);
+/**
+ * ⏱ 2026-09-15 — THE SURFACES EVERY FIXTURE DECLARES, unless it declares its own.
+ * originEnvironments now asks the register's `surfaces.<name>.flutterApp` whether a
+ * non-direct row is an origin (O-EXT-SURFACE-AXIS) and THROWS for a surface that
+ * declares no answer. The real register declares app: true and extension: false;
+ * a fixture written before that field existed gets exactly those two, and the
+ * refusal itself is asserted below against a register that declares neither.
+ */
+const DECLARED_SURFACES = { app: { flutterApp: true }, extension: { flutterApp: false } };
+const withSurfaces = (register) =>
+  register && typeof register === 'object' && !Array.isArray(register) && register.surfaces === undefined
+    ? { ...register, surfaces: DECLARED_SURFACES }
+    : register;
+const originEnvironments = (register, app, assets, surface = 'app') => originEnvironmentsRaw(withSurfaces(register), app, assets, surface);
 
 /** Every fixture root carries the real release-manifest.mjs, because the guard
  *  reads MANIFEST_NAME and the extension derivation OUT of it — that single
@@ -157,9 +170,11 @@ function fixture({ workflows = {}, register = REGISTER, withManifestScript = tru
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, 'tool.json'), JSON.stringify({ id: t.id, surface: t.surface ?? 'extension' }, null, 2));
   }
-  if (register !== null) writeFileSync(join(root, 'tooling', 'channel-register.json'), JSON.stringify(register, null, 2));
+  if (register !== null) writeFileSync(join(root, 'tooling', 'channel-register.json'), JSON.stringify(withSurfaces(register), null, 2));
   if (withManifestScript) copyFileSync(MANIFEST_SCRIPT, join(root, 'tooling', 'ci', 'release-manifest.mjs'));
   if (withManifestScript) copyFileSync(TREE_WALK, join(root, 'tooling', 'ci', 'tree-walk.mjs'));
+  // ⏱ 2026-09-15 — release-manifest.mjs imports channel-surface.mjs too (O-EXT-SURFACE-AXIS).
+  if (withManifestScript) copyFileSync(join(REPO, 'tooling', 'ci', 'channel-surface.mjs'), join(root, 'tooling', 'ci', 'channel-surface.mjs'));
   for (const [name, body] of Object.entries(workflows)) writeFileSync(join(root, '.github', 'workflows', name), body);
   return root;
 }
@@ -2093,6 +2108,23 @@ describe('release-manifest.mjs — the extension surface is an origin too', () =
     assert.deepEqual(r.omitted, []);
   });
 
+  // ⏱ 2026-09-15 — O-EXT-SURFACE-AXIS. Whether a store row is an origin is its
+  // surface's DECLARED `flutterApp: false`, not the name 'extension'.
+  test('a THIRD surface declared `flutterApp: false` is an origin by declaration; UNDECLARED, originEnvironments throws', () => {
+    const cli = { ...EXT_ROW, id: 'cli-store', surface: 'script', artifactFormats: ['.tgz'], deploymentEnvironment: '{app}-cli-store' };
+    const declared = originEnvironmentsRaw(
+      { surfaces: { script: { flutterApp: false } }, channels: [cli] }, 'tool', ['tool-v1.tgz'], 'script');
+    assert.deepEqual(declared.environments, ['tool-cli-store']);
+    assert.throws(
+      () => originEnvironmentsRaw({ surfaces: { app: { flutterApp: true } }, channels: [cli] }, 'tool', ['tool-v1.tgz'], 'script'),
+      /channel "cli-store" is on surface "script", which tooling\/channel-register\.json `surfaces` does not declare/,
+    );
+    // …and the name 'extension' decides nothing on its own: declared Flutter, it is not an origin.
+    const renamed = originEnvironmentsRaw(
+      { surfaces: { extension: { flutterApp: true } }, channels: [EXT_ROW] }, 'fullshot', ['fullshot-chromium.zip'], 'extension');
+    assert.deepEqual(renamed.environments, []);
+  });
+
   test('a kind:"store" row on the APP surface is still withheld — the rule did not widen', () => {
     const appStore = { ...EXT_ROW, id: 'android-play', surface: 'app', artifactFormats: ['.aab'], deploymentEnvironment: '{app}-android-play' };
     const r = originEnvironments({ channels: [appStore] }, 'subscriptiontracker', ['subscriptiontracker-v1-app-release.aab']);
@@ -2214,24 +2246,24 @@ describe('release-manifest.mjs — the SURFACE of the release, not just of the r
   test('the surface is REQUIRED — originEnvironments throws rather than defaulting to every surface', () => {
     // A default would be the defect itself: the caller that forgets the argument
     // gets the widened answer and every log line still reads correct.
-    assert.throws(() => originEnvironmentsRaw(BOTH_SURFACES, 'subscriptiontracker', ['subscriptiontracker-v1.zip']), /needs the SURFACE/);
-    assert.throws(() => originEnvironmentsRaw(BOTH_SURFACES, 'subscriptiontracker', ['subscriptiontracker-v1.zip'], ''), /needs the SURFACE/);
-    assert.throws(() => originEnvironmentsRaw(BOTH_SURFACES, 'subscriptiontracker', ['subscriptiontracker-v1.zip'], null), /needs the SURFACE/);
+    assert.throws(() => originEnvironmentsRaw(withSurfaces(BOTH_SURFACES), 'subscriptiontracker', ['subscriptiontracker-v1.zip']), /needs the SURFACE/);
+    assert.throws(() => originEnvironmentsRaw(withSurfaces(BOTH_SURFACES), 'subscriptiontracker', ['subscriptiontracker-v1.zip'], ''), /needs the SURFACE/);
+    assert.throws(() => originEnvironmentsRaw(withSurfaces(BOTH_SURFACES), 'subscriptiontracker', ['subscriptiontracker-v1.zip'], null), /needs the SURFACE/);
   });
 
   test('an APP release carrying a .zip emits NO extension environment — the 2026-09-05 defect, pinned', () => {
-    const r = originEnvironmentsRaw(BOTH_SURFACES, 'subscriptiontracker', ['subscriptiontracker-1.0.0.zip'], 'app');
+    const r = originEnvironmentsRaw(withSurfaces(BOTH_SURFACES), 'subscriptiontracker', ['subscriptiontracker-1.0.0.zip'], 'app');
     assert.deepEqual(r.environments, [], 'subscriptiontracker-amo / subscriptiontracker-chrome-webstore / subscriptiontracker-edge-addons are submissions that cannot exist');
     assert.deepEqual(r.omitted, [], 'a row on another surface never matched, so it was never withheld either');
   });
 
   test('an EXTENSION release emits its store rows and no direct row', () => {
-    const r = originEnvironmentsRaw(BOTH_SURFACES, 'fullshot', ['fullshot-chromium.zip'], 'extension');
+    const r = originEnvironmentsRaw(withSurfaces(BOTH_SURFACES), 'fullshot', ['fullshot-chromium.zip'], 'extension');
     assert.deepEqual(r.environments, ['fullshot-amo', 'fullshot-chrome-webstore']);
     // windows-direct is a `kind: "direct"` row on the app surface. An extension
     // release has no direct-download channel, and emitting one would record a
     // download origin for a file this lane never built.
-    const withMsix = originEnvironmentsRaw(BOTH_SURFACES, 'fullshot', ['fullshot-chromium.zip', 'fullshot-v1.msix'], 'extension');
+    const withMsix = originEnvironmentsRaw(withSurfaces(BOTH_SURFACES), 'fullshot', ['fullshot-chromium.zip', 'fullshot-v1.msix'], 'extension');
     assert.deepEqual(withMsix.environments, ['fullshot-amo', 'fullshot-chrome-webstore']);
   });
 

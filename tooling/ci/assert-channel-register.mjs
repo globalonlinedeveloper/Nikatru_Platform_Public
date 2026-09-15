@@ -99,6 +99,7 @@ import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
 import { stripSourceComments, stripStringLiterals } from './text-reductions.mjs';
+import { FLUTTER_APP_FIELD, flutterAppChannel } from './channel-surface.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 /** No argument means CI's own invocation against the real repository, where the
@@ -273,6 +274,11 @@ for (const [name, def] of Object.entries(surfaceDefs)) {
       'classifier tests a parsed platform against the union of these lists — so the format comparison',
       'goes silent in the same edit.',
     ]);
+  }
+  if (typeof def[FLUTTER_APP_FIELD] !== 'boolean') {
+    problems.push(
+      `${REGISTER} surfaces."${name}" declares no boolean \`${FLUTTER_APP_FIELD}\`. Six guards scope by it (tooling/ci/channel-surface.mjs) — does this surface ship a Flutter app (catalog/apps.json, Dart, \`flutter build\`)? With no answer, every one of them refuses the surface's rows rather than guessing; write the decision here (O-EXT-SURFACE-AXIS, 2026-09-15).`,
+    );
   }
   SURFACE_PLATFORMS.set(name, new Set(ps));
 }
@@ -636,7 +642,14 @@ for (const c of channels) {
   // question of the thing that actually exists, and the counterpart is checked
   // against DISK rather than against the shape of a string — which makes it
   // strictly the stronger of the two.
-  if (c.kind === 'store' && c.surface === 'extension') {
+  // ⏱ 2026-09-15 — the surface decides through its DECLARED `flutterApp`, not the
+  // literal 'extension' (O-EXT-SURFACE-AXIS). A row on a surface that declares no
+  // boolean gets NEITHER clause set: the surface check above already refuses it,
+  // and grading it as an app — what `=== 'extension'` did — is the silent default.
+  const rowFlutterApp = flutterAppChannel(register, c);
+  if (c.kind === 'store' && rowFlutterApp === null) {
+    // Refused by the surface declaration check; nothing more to ask of this row.
+  } else if (c.kind === 'store' && rowFlutterApp === false) {
     extensionStoreRows++;
     if (c.lane && typeof c.lane.workflow === 'string' && typeof c.lane.job === 'string') extensionLaneRows++;
     checkExtensionStoreRow(c, where, req);

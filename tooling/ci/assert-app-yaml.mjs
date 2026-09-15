@@ -441,10 +441,15 @@ if (privacyPlan.problems.length) {
         + '\n       code is a policy strike at account level.)',
     );
   } else {
-    const extCount = privacyPlan.declarations.filter((d) => d.surface === 'extension').length;
+    // ⏱ 2026-09-15 — counted per DECLARED surface name, not as "extension, and the
+    // rest are apps" (O-EXT-SURFACE-AXIS): a third surface's declarations used to be
+    // printed as app declarations.
+    const bySurface = new Map();
+    for (const d of privacyPlan.declarations) bySurface.set(String(d.surface), (bySurface.get(String(d.surface)) ?? 0) + 1);
+    const split = [...bySurface.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([s, n]) => `${n} ${s}`).join(' and ');
     ok(
       `limb 5 — ${privacyPlan.files.size} notice rendering(s) are byte-identical to what `
-        + `${privacyPlan.declarations.length - extCount} app and ${extCount} extension declaration(s) render to`,
+        + `${split} declaration(s) render to`,
     );
   }
 }

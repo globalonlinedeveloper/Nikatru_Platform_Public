@@ -20,6 +20,7 @@ import { readFileSync, statSync, existsSync } from 'node:fs';
 import { join, sep } from 'node:path';
 import { listDir } from './tree-walk.mjs';
 import { delegationOf as resolveChassisDelegation } from './chassis-delegation.mjs';
+import { partitionByFlutterApp, undeclaredSurfaceLine } from './channel-surface.mjs';
 
 const repo = process.cwd();
 let failed = false;
@@ -1219,10 +1220,16 @@ function jobBody(yaml, jobName) {
     const allLanes = (register.channels ?? []).filter(
       (c) => typeof c?.lane?.workflow === 'string' && typeof c?.lane?.job === 'string',
     );
-    const notFlutter = allLanes.filter((c) => c.surface === 'extension');
-    lanes = allLanes
-      .filter((c) => c.surface !== 'extension')
-      .map((c) => ({ id: c.id, workflow: c.lane.workflow.split('/').pop(), job: c.lane.job }));
+    // ⏱ 2026-09-15 — the split is the surface's DECLARED `flutterApp`
+    // (tooling/ci/channel-surface.mjs), not the literal 'extension'; a lane on a
+    // surface that declares no answer is refused rather than asked for a
+    // `--dart-define` it may have nowhere to put (O-EXT-SURFACE-AXIS).
+    const split = partitionByFlutterApp(register, allLanes);
+    for (const c of split.undeclared) {
+      fail(`COVERAGE LOST — ${undeclaredSurfaceLine(c, 'whether its lane must --dart-define GLITCHTIP_DSN')}`);
+    }
+    const notFlutter = split.other;
+    lanes = split.flutter.map((c) => ({ id: c.id, workflow: c.lane.workflow.split('/').pop(), job: c.lane.job }));
     for (const c of notFlutter) {
       console.log(
         `note ⬜ NO DART TO DEFINE INTO: channel \`${c.id}\` (surface "${c.surface}") names lane ${c.lane.workflow}#${c.lane.job}, ` +

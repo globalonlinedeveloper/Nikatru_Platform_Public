@@ -150,13 +150,16 @@ Future<void> _signOut(BuildContext context, WidgetRef ref, AppLocalizations l10n
       .join('\n        ')}\n`;
   const workflow = (...jobs) => `name: fixture\non: [push]\njobs:\n${jobs.join('')}`;
 
+  // ⏱ 2026-09-15 — the crash-sink lanes are the surfaces DECLARED `flutterApp: true`
+  // (O-EXT-SURFACE-AXIS), so the fixture declares its surface and puts its rows on it.
   const CHANNEL_REGISTER = JSON.stringify(
     {
+      surfaces: { app: { flutterApp: true }, extension: { flutterApp: false } },
       channels: [
-        { id: 'web', lane: { workflow: '.github/workflows/deploy-web.yml', job: 'deploy-web' } },
-        { id: 'android-play', lane: { workflow: '.github/workflows/build-platforms.yml', job: 'linux_web_android' } },
-        { id: 'windows-store', lane: { workflow: '.github/workflows/build-platforms.yml', job: 'windows' } },
-        { id: 'linux-snap', lane: { workflow: '.github/workflows/submit-snap.yml', job: 'dry-run' } },
+        { id: 'web', surface: 'app', lane: { workflow: '.github/workflows/deploy-web.yml', job: 'deploy-web' } },
+        { id: 'android-play', surface: 'app', lane: { workflow: '.github/workflows/build-platforms.yml', job: 'linux_web_android' } },
+        { id: 'windows-store', surface: 'app', lane: { workflow: '.github/workflows/build-platforms.yml', job: 'windows' } },
+        { id: 'linux-snap', surface: 'app', lane: { workflow: '.github/workflows/submit-snap.yml', job: 'dry-run' } },
       ],
     },
     null,
