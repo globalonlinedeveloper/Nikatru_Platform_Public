@@ -210,7 +210,7 @@ function baseManifest({ app = {}, targetSdk = 36, extraComponents = [], activity
 const GOOD_KT = 'package com.example.demo\n\nimport io.flutter.embedding.android.FlutterActivity\n\nclass MainActivity : FlutterActivity()\n';
 const GOOD_ANALYSIS = 'analyzer:\n  errors:\n    avoid_print: error\n';
 
-function fixture({ manifest = baseManifest(), axmlOpts, entries, kotlin = GOOD_KT, analysis = GOOD_ANALYSIS, dart = '' } = {}) {
+function fixture({ manifest = baseManifest(), axmlOpts, entries, kotlin = GOOD_KT, analysis = GOOD_ANALYSIS, dart = '', generated = null, git = true } = {}) {
   const dir = join(TMP, `r${seq++}`);
   const kt = join(dir, 'apps', 'demo', 'android', 'app', 'src', 'main', 'kotlin', 'com', 'example', 'demo');
   mkdirSync(kt, { recursive: true });
@@ -224,6 +224,18 @@ function fixture({ manifest = baseManifest(), axmlOpts, entries, kotlin = GOOD_K
     { name: 'classes.dex', data: Buffer.from('dex\n035\0') },
   ];
   writeFileSync(join(dir, 'app-release.apk'), zip(files));
+  // ⏱ 2026-09-15 · V6 grades TRACKED files: the fixture is a git work tree and the
+  // app sources are staged. `generated` is written AFTER staging, untracked — the
+  // shape `flutter build` leaves GeneratedPluginRegistrant.java in.
+  if (git) {
+    spawnSync('git', ['init', '-q'], { cwd: dir });
+    spawnSync('git', ['add', 'apps'], { cwd: dir });
+  }
+  if (generated !== null) {
+    const gen = join(dir, 'apps', 'demo', 'android', 'app', 'src', 'main', 'java', 'io', 'flutter', 'plugins');
+    mkdirSync(gen, { recursive: true });
+    writeFileSync(join(gen, 'GeneratedPluginRegistrant.java'), generated);
+  }
   return dir;
 }
 
@@ -355,7 +367,33 @@ describe('assert-android-vapt-manifest', () => {
     assert.doesNotMatch(out, /MainActivity\.kt:6/);
   });
 
+  test('V6: an UNTRACKED GeneratedPluginRegistrant.java with Log.e is NOT graded, and is printed', () => {
+    const gen = 'package io.flutter.plugins;\nclass GeneratedPluginRegistrant {\n  void r() { Log.e(TAG, "Error registering plugin app_links"); }\n}\n';
+    const { code, out } = run(fixture({ generated: gen }));
+    assert.equal(code, 0, out);
+    assert.match(out, /V6 not graded, UNTRACKED: apps\/demo\/android\/app\/src\/main\/java\/io\/flutter\/plugins\/GeneratedPluginRegistrant\.java/);
+  });
+
+  test('V6: the SAME Log.e in a TRACKED file still fails — tracking, not the path, decides', () => {
+    const kt = `${GOOD_KT}fun r() { Log.e("TAG", "Error registering plugin") }\n`;
+    const { code, out } = run(fixture({ kotlin: kt, generated: 'class GeneratedPluginRegistrant {}\n' }));
+    assert.equal(code, 1, out);
+    assert.match(out, /FAIL V6 logging — apps\/demo\/android\/app\/src\/main\/kotlin\/com\/example\/demo\/MainActivity\.kt:6 writes to the device log/);
+  });
+
   // ── refusals: "I could not look" never reads as a verdict ─────────────────
+  test('V6 outside a git work tree is COVERAGE LOST: it cannot tell app code from generated code', () => {
+    const { code, out } = run(fixture({ git: false }));
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST — git ls-files could not list the tracked native sources/);
+  });
+
+  test('only an untracked native file (none tracked) is COVERAGE LOST, not a pass', () => {
+    const { code, out } = run(fixture({ kotlin: null, generated: 'class GeneratedPluginRegistrant {}\n' }));
+    assert.equal(code, 2, out);
+    assert.match(out, /holds no TRACKED \.kt or \.java file \(1 on disk\)/);
+  });
+
   test('no artifact argument is COVERAGE LOST', () => {
     const { code, out } = run(fixture(), ['--app', 'demo']);
     assert.equal(code, 2, out);
@@ -406,7 +444,7 @@ describe('assert-android-vapt-manifest', () => {
   test('an app with no native source is COVERAGE LOST: --app named the wrong directory', () => {
     const { code, out } = run(fixture({ kotlin: null }));
     assert.equal(code, 2, out);
-    assert.match(out, /COVERAGE LOST — apps\/demo\/android\/app\/src\/main holds no \.kt or \.java file/);
+    assert.match(out, /COVERAGE LOST — apps\/demo\/android\/app\/src\/main holds no TRACKED \.kt or \.java file/);
   });
 
   test('a missing analyzer config is COVERAGE LOST', () => {

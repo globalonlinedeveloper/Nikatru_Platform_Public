@@ -51,8 +51,23 @@
 //   V6 logging         not a manifest property, so it is checked where it is
 //                      decided: `avoid_print` stays at severity error in the one
 //                      inherited analysis_options.yaml, and the app's own
-//                      Kotlin/Java under android/app/src/main calls no
+//                      TRACKED Kotlin/Java under android/app/src/main calls no
 //                      android.util.Log and no println
+//
+// ⏱ 2026-09-15 · V6 READS TRACKED FILES ONLY (`git ls-files`), and that is the
+// fix for its first real run, not an exemption. Build apps run 34966450109 on
+// cfafbc67 failed V6 on apps/subscriptiontracker/android/app/src/main/java/io/
+// flutter/plugins/GeneratedPluginRegistrant.java — 12 `Log.e` lines, one per
+// plugin — a file `flutter build` WRITES and the app's own android/.gitignore
+// excludes. PR CI never has it, so the guard was green there and red in the one
+// lane that builds. Grading only what git tracks means tool output can never be
+// graded as app code, and a hand-written Log call in a tracked file still fails.
+// Untracked files that exist are PRINTED, never silently skipped. Where the tree
+// is not a git work tree the guard cannot tell app code from generated code and
+// REFUSES (exit 2). "No device logging in release" is ALSO held for generated and
+// third-party code by R8: apps/<app>/android/app/proguard-rules.pro strips
+// android.util.Log calls from the release build (Flutter enables R8 minify for
+// release by default and adds that file when it exists).
 //
 // ── 🔴 WHAT IT DELIBERATELY DOES NOT ASSERT ──────────────────────────────────
 // It does not read a `android:networkSecurityConfig` resource. If the manifest
@@ -76,6 +91,7 @@
 // Exit 1 = an item is violated.
 // Exit 2 = COVERAGE LOST: nothing was read, or what was read could not be judged.
 // ─────────────────────────────────────────────────────────────────────────────
+import { spawnSync } from 'node:child_process';
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { resolve, join, dirname, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -465,18 +481,37 @@ if (!/^\s+avoid_print:\s*error\s*$/m.test(readFileSync(analysisAbs, 'utf8'))) {
   problems.push(`V6 logging — ${ANALYSIS_REL} no longer raises avoid_print to severity error, so a print() in Dart code reaches device logs in a release build.`);
 }
 const nativeRoot = join(ROOT, 'apps', APP, 'android', 'app', 'src', 'main');
-const nativeFiles = [];
+const nativeRel = `apps/${APP}/android/app/src/main`;
+const onDisk = [];
 const collect = (dir) => {
   for (const e of listDir(dir, { withFileTypes: true })) {
     const p = join(dir, e.name);
     if (e.isDirectory()) collect(p);
-    else if (/\.(kt|java)$/.test(e.name)) nativeFiles.push(p);
+    else if (/\.(kt|java)$/.test(e.name)) onDisk.push(p);
   }
 };
 for (const sub of ['kotlin', 'java']) if (existsSync(join(nativeRoot, sub))) collect(join(nativeRoot, sub));
+const lsFiles = spawnSync('git', ['-C', ROOT, 'ls-files', '-z', '--', `${nativeRel}/kotlin`, `${nativeRel}/java`], { encoding: 'utf8' });
+if (lsFiles.status !== 0) {
+  coverageLost([
+    `git ls-files could not list the tracked native sources under ${nativeRel} (exit ${lsFiles.status}).`,
+    'V6 grades only TRACKED Kotlin/Java, so that generated tool output (Flutter\'s GeneratedPluginRegistrant.java)',
+    'is never read as app code. Outside a git work tree it cannot tell the two apart, and it will not guess.',
+    String(lsFiles.stderr || '').trim().split('\n')[0] ?? '',
+  ]);
+}
+const trackedSet = new Set(
+  lsFiles.stdout.split('\0').filter((p) => /\.(kt|java)$/.test(p)).map((p) => resolve(ROOT, p)),
+);
+const nativeFiles = onDisk.filter((p) => trackedSet.has(resolve(p)));
+for (const p of onDisk) {
+  if (!trackedSet.has(resolve(p))) {
+    prints.push(`V6 not graded, UNTRACKED: ${relative(ROOT, p).split(sep).join('/')} — generated or local output git does not track (release builds strip android.util.Log via R8).`);
+  }
+}
 if (nativeFiles.length === 0) {
   coverageLost([
-    `apps/${APP}/android/app/src/main holds no .kt or .java file.`,
+    `apps/${APP}/android/app/src/main holds no TRACKED .kt or .java file (${onDisk.length} on disk).`,
     'Every Flutter Android app declares its MainActivity there; finding none means --app names the wrong directory.',
   ]);
 }
