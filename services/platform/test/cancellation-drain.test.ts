@@ -414,6 +414,10 @@ describe('the census is actually wired into the nightly cron', () => {
       // reason as the lines below - this is the only place a newly wired job shows up.
       'boxb_reachability',
       'cancellation_drain',
+      // Added 2026-09-15 ([ADR 081]): the pending-erasure retry. It writes its
+      // summary row on every run, including a run with nothing due, so it shows
+      // up here on an empty ledger.
+      'erasure_retry',
       'events_rollup',
       // Added 2026-09-03 with the [research/76 §C] Phase 1 dispatcher. This
       // assertion went RED the moment that limb was wired, which is the case

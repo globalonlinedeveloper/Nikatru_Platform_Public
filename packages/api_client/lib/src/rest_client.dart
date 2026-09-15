@@ -67,8 +67,12 @@ class RestClient {
       _send(() => _dio.patch<dynamic>(path, data: body));
 
   /// DELETE [path].
-  Future<void> delete(String path) async {
-    await _send(() => _dio.delete<dynamic>(path));
+  /// ⏱ 2026-09-15: returns the decoded body (it was `Future<void>`), because
+  /// `DELETE /v1/account` answers 202 `{ status: 'erasure_pending' }` ([ADR 081])
+  /// and that body is the only thing that tells "accepted, finishing" from
+  /// "deleted". Every existing caller awaited and ignored the value.
+  Future<dynamic> delete(String path) {
+    return _send(() => _dio.delete<dynamic>(path));
   }
 
   /// Map a successful response [body] through [parse], converting any

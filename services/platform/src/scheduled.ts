@@ -21,6 +21,16 @@ import { isMoneyEnvironment } from './lib/mor/contract';
 import { isKnownProduct } from './config';
 import { verifierFor } from './lib/mor/registry';
 import { deriveAndApply, unconcludedNotifications } from './lib/mor/store';
+import {
+  closeSubject,
+  dueOrders,
+  erasureBindingFor,
+  markConfirmed,
+  markFailed,
+  stuckOrderCount,
+  subjectsReadyForIdentity,
+} from './lib/erasure-ledger';
+import { deleteIdentity, erasePlatformRows } from './lib/platform-erasure';
 
 /** The job name recorded in `cron_heartbeat`. */
 export const KEEPALIVE_JOB = 'supabase_keepalive';
@@ -909,6 +919,107 @@ export async function moneyRederive(env: Env, nowMs: number = Date.now()): Promi
     ],
     MONEY_REDERIVE_JOB,
   );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-15 · [ADR 081] THE ERASURE RETRY — an erasure DELETE /v1/account
+// accepted (202 erasure_pending) but could not finish, finished here.
+//
+// For every due order in platform_db `pending_erasures` it calls the app Worker's
+// `ErasureEntrypoint.eraseSubject(subjectRef, orderId)` over the Service Binding
+// this Worker declares for that app (wrangler.jsonc `services`) — no token, no
+// secret, no public route. A confirmed order waits for its siblings; a failed one
+// is rescheduled with exponential backoff (lib/erasure-ledger.ts). When EVERY
+// order for a subject is confirmed, the subject's platform_db rows are walked
+// AGAIN (rows written while the login still worked) and only THEN is the identity
+// deleted — identity stays LAST, exactly as the synchronous path orders it — and
+// the subject's orders are deleted, which is the ledger's retention bound.
+//
+// 🔴 ONE HEARTBEAT ROW PER ATTEMPT, plus one summary row per run, and none of
+// them carries the subject: `cron_heartbeat` is not erasable, so targets are
+// order ids and details are counts. A row is ok=0 only when an order is STUCK —
+// unconfirmed past ERASURE_STUCK_AFTER_DAYS — because a transient failure the
+// backoff will retry is the design working, and a heartbeat that reddens on it
+// would be ignored the first week. Stuck is RED in the ops register.
+// ─────────────────────────────────────────────────────────────────────────────
+export const ERASURE_RETRY_JOB = 'erasure_retry';
+
+/** @ceiling none — an ALERTING THRESHOLD, not a platform resource: how long an
+ *  unfinished erasure may wait before the heartbeat turns red. */
+export const ERASURE_STUCK_AFTER_DAYS = 7;
+
+/** @ceiling d1.queriesPerInvocation lte — each order costs one RPC and at most two statements. */
+export const MAX_ERASURE_RETRIES_PER_RUN = 50;
+
+export async function erasureRetry(env: Env, nowMs: number = Date.now()): Promise<void> {
+  const nowIso = new Date(nowMs).toISOString();
+  const rows: { target: string; ok: boolean; detail: string }[] = [];
+  const stuckCutoff = new Date(nowMs - ERASURE_STUCK_AFTER_DAYS * MS_PER_DAY).toISOString();
+  let confirmed = 0;
+  let failed = 0;
+  let completed = 0;
+  let identityFailed = 0;
+  try {
+    const due = await dueOrders(env.PLATFORM_DB, nowIso, MAX_ERASURE_RETRIES_PER_RUN);
+    for (const order of due) {
+      const stuck = order.created_at < stuckCutoff;
+      const binding = erasureBindingFor(env, order.app_id);
+      let error: string | null = null;
+      if (binding === null) {
+        error = 'no erasure binding is declared for this app';
+      } else {
+        try {
+          const answer = await binding.eraseSubject(order.subject_ref, order.order_id);
+          if (!answer || answer.ok !== true) error = `app refused: ${answer?.reason ?? answer?.error ?? 'no answer'}`;
+        } catch (err) {
+          error = `binding call threw: ${String(err)}`;
+        }
+      }
+      if (error === null) {
+        await markConfirmed(env.PLATFORM_DB, order.order_id, nowIso);
+        confirmed++;
+        rows.push({ target: `order:${order.order_id}`, ok: true, detail: `app=${order.app_id} attempt=${order.attempts + 1} confirmed` });
+      } else {
+        await markFailed(env.PLATFORM_DB, { orderId: order.order_id, attempts: order.attempts, nowMs, error });
+        failed++;
+        rows.push({
+          target: `order:${order.order_id}`,
+          ok: !stuck,
+          detail: `app=${order.app_id} attempt=${order.attempts + 1} ${stuck ? 'STUCK' : 'retrying'} — ${error}`,
+        });
+      }
+    }
+
+    const serviceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY;
+    for (const subject of await subjectsReadyForIdentity(env.PLATFORM_DB, MAX_ERASURE_RETRIES_PER_RUN)) {
+      if (!serviceRoleKey) {
+        identityFailed++;
+        continue;
+      }
+      const walked = await erasePlatformRows(env.PLATFORM_DB, subject);
+      if (!walked.ok) {
+        identityFailed++;
+        continue;
+      }
+      const identity = await deleteIdentity(env.SUPABASE_URL, serviceRoleKey, subject);
+      if (!identity.ok) {
+        identityFailed++;
+        continue;
+      }
+      await closeSubject(env.PLATFORM_DB, subject);
+      completed++;
+    }
+
+    const stuck = await stuckOrderCount(env.PLATFORM_DB, stuckCutoff);
+    rows.push({
+      target: '(portfolio)',
+      ok: stuck === 0,
+      detail: `due=${due.length} confirmed=${confirmed} failed=${failed} completed=${completed} identity_pending=${identityFailed} stuck=${stuck} (>${ERASURE_STUCK_AFTER_DAYS}d)`,
+    });
+  } catch (err) {
+    rows.push({ target: '(portfolio)', ok: false, detail: `erasure retry FAILED: ${String(err)}` });
+  }
+  await recordHeartbeat(env, rows, ERASURE_RETRY_JOB);
 }
 
 /** The job name recorded in `cron_heartbeat` for the drain census.
@@ -2108,6 +2219,9 @@ async function runFiring(event: ScheduledController | undefined, env: Env): Prom
   // writer and the retention sweep never deletes an unconcluded row, so
   // nothing here depends on running before or after anything else.
   await moneyRederive(env);
+  // [ADR 081] Finishes erasures DELETE /v1/account accepted but could not finish.
+  // Before the destructive sweep only by position; it deletes its own ledger rows.
+  await erasureRetry(env);
   // READ-ONLY, so its position is NOT a safety property: it deletes nothing,
   // and `cancellation_requests` is a reasoned `keep` (tooling/ops/register.json
   // retention.d1.platform_db.cancellation_requests) that the sweep below never

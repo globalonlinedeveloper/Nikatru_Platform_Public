@@ -193,12 +193,14 @@ function harness({
   // execution order. Giving such a test its own URL gives it its own memo,
   // which is also what a real cold isolate has.
   supabaseUrl = SUPABASE_URL,
+  erasureBinding = undefined as unknown,
 }: {
   serviceRoleKey?: string | null;
   db?: RealDb;
   appEndpoints?: string | null;
   kv?: KVNamespace;
   supabaseUrl?: string;
+  erasureBinding?: unknown;
 } = {}) {
   identityCalls = [];
   identityStatus = 204;
@@ -226,6 +228,7 @@ function harness({
     APP_ERASURE_ENDPOINTS: appEndpoints ?? undefined,
     APP_ID: 'platform',
     API_VERSION: 'v1',
+    ERASURE_SUBSCRIPTIONTRACKER: erasureBinding,
   } as unknown as AppEnv['Bindings'];
 
   return {
@@ -694,6 +697,67 @@ describe("LIMB 3 — every app's OWN database, through that app's OWN route", ()
     const res = await h.del('/v1/account', `Bearer ${await token({ sub: 'user-a' })}`);
     expect(res.status).toBe(502);
     expect(identityCalls).toHaveLength(0);
+  });
+
+  // ── ⏱ 2026-09-15 · [ADR 081] — unreachable becomes "accepted, finishing" ────
+  // With the app's Service Binding declared, an unreachable app is QUEUED in
+  // `pending_erasures` and the route answers 202 erasure_pending; the identity is
+  // NOT deleted (it goes LAST, from the nightly retry). The two cases above keep
+  // their 502 because the harness declares no binding there — an order nobody
+  // can retry is not recorded. Each case is declared on its own.
+  const fakeBinding = { eraseSubject: async () => ({ ok: true }) };
+  const ledger = (db: RealDb) =>
+    db.db.prepare('SELECT subject_ref, app_id, attempts, confirmed_at FROM pending_erasures').all() as Array<{
+      subject_ref: string;
+      app_id: string;
+      attempts: number;
+      confirmed_at: string | null;
+    }>;
+
+  it('ADR 081 · an UNREACHABLE app with a binding is queued: 202 erasure_pending, identity kept', async () => {
+    const h = harness({ erasureBinding: fakeBinding });
+    seedEntitlement(h.db, 'user-a');
+    appThrows = true;
+    const res = await h.del('/v1/account', `Bearer ${await token({ sub: 'user-a' })}`);
+    expect(res.status).toBe(202);
+    expect(await res.json()).toMatchObject({
+      ok: true,
+      status: 'erasure_pending',
+      pending: ['subscriptiontracker'],
+      apps: { subscriptiontracker: 'pending' },
+    });
+    expect(identityCalls).toHaveLength(0);
+    expect(h.db.db.prepare("SELECT COUNT(*) AS n FROM entitlements WHERE user_id = 'user-a'").get()).toEqual({ n: 0 });
+    expect(ledger(h.db)).toEqual([{ subject_ref: 'user-a', app_id: 'subscriptiontracker', attempts: 0, confirmed_at: null }]);
+  });
+
+  it('ADR 081 · an app answering 503 with a binding is queued too', async () => {
+    const h = harness({ erasureBinding: fakeBinding });
+    appStatus = 503;
+    const res = await h.del('/v1/account', `Bearer ${await token({ sub: 'user-a' })}`);
+    expect(res.status).toBe(202);
+    expect(ledger(h.db)).toHaveLength(1);
+    expect(identityCalls).toHaveLength(0);
+  });
+
+  it('ADR 081 · an app that REFUSES (403) is not "unreachable": still 502, nothing queued', async () => {
+    const h = harness({ erasureBinding: fakeBinding });
+    appStatus = 403;
+    const res = await h.del('/v1/account', `Bearer ${await token({ sub: 'user-a' })}`);
+    expect(res.status).toBe(502);
+    expect(ledger(h.db)).toHaveLength(0);
+  });
+
+  it('ADR 081 · a later request that completes synchronously settles the open order', async () => {
+    const h = harness({ erasureBinding: fakeBinding });
+    appThrows = true;
+    await h.del('/v1/account', `Bearer ${await token({ sub: 'user-a' })}`);
+    expect(ledger(h.db)).toHaveLength(1);
+    appThrows = false;
+    const res = await h.del('/v1/account', `Bearer ${await token({ sub: 'user-a' })}`);
+    expect(res.status).toBe(200);
+    expect(ledger(h.db)).toHaveLength(0);
+    expect(identityCalls).toHaveLength(1);
   });
 
   it('does NOT forgive a 404 from an app route, the way it forgives one from the identity provider', async () => {

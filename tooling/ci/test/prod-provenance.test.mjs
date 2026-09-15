@@ -132,10 +132,12 @@ describe('assert-prod-provenance — the gate limb', () => {
   // derived count agrees with any schema, including one that quietly stopped
   // enumerating — so it moves in the same commit as the migration that moved it,
   // with the measurement written beside it rather than the number simply edited.
+  // ⏱ 2026-09-15 · 15 -> 16: 0010_pending_erasures.sql ([ADR 081]) adds pending_erasures, over
+  // 10 migration files — measured: `16 table(s) enumerated from services/platform/migrations (10 migration file(s))`.
   test('the real tree passes, and says out loud that it has not seen production', () => {
     const r = spawnSync(process.execPath, [GATE, REPO], { cwd: REPO, encoding: 'utf8' });
     assert.equal(r.status, 0, r.stdout + r.stderr);
-    assert.match(r.stdout, /15 table\(s\) enumerated/);
+    assert.match(r.stdout, /16 table\(s\) enumerated/);
     assert.match(r.stdout, /HAS NOT LOOKED AT PRODUCTION/);
     assert.match(r.stdout, /MONITOR/);
   });
@@ -343,7 +345,7 @@ describe('check-prod-provenance — the monitor limb', () => {
     const r = run({});
     assert.equal(r.status, 0, r.stdout + r.stderr);
     assert.match(r.stdout, /THIS IS A MONITOR, NOT A GATE/);
-    assert.match(r.stdout, /15 table\(s\) enumerated/);
+    assert.match(r.stdout, /16 table\(s\) enumerated/);
   });
 
   test('the real production consent row resolves — it is a shipped build, not residue', () => {

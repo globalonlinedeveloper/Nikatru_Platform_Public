@@ -104,6 +104,7 @@
     "purge": "the table carries a column literally called `user_id`, so the schema-derived sweep in the named `route` DELETEs this person's rows. Checked: the column must exist in the migrations.",
     "unlink": "the row is NOT this person's, but a `*_user_id` column REFERENCES them; the sweep NULLs that column so no dangling identifier of an erased person survives. Requires `column`. Checked: the column must exist and must end in `_user_id`.",
     "pseudonymous": "nothing in the table resolves to an account, so an erasure request cannot address it and 'zero rows for this user' is vacuously true. Requires a written reason. Checked: the table must carry NO user-shaped column — the day one is added this declaration is false and the guard says so.",
+    "completion-ledger": "⏱ 2026-09-15 · [ADR 081]. The table records an erasure IN PROGRESS — it names a person under a deliberately NEUTRAL column (`column`, e.g. `subject_ref`) that the schema-derived sweep cannot see, BECAUSE a `user_id`-named ledger would be deleted by the very erasure it records. Its rows are deleted by the named `deletedBy` code when that erasure completes. Checked: the column exists and is NOT user-shaped (neither `user_id` nor `*_user_id`), and `deletedBy` is a file.",
     "no-personal-data": "the table holds nothing about a person, so there is nothing to erase. Requires personalData:false. Checked the same way as `pseudonymous`.",
     "no-route": "🔴 A STORE HOLDING PERSONAL DATA THAT NO DEPLOYED ERASURE ROUTE REACHES. Requires `blockedBy` naming what stops it. PRINTS on every run rather than failing the build — the fix is an architecture or owner decision, and a guard that reddens main on work nobody can do today is a guard somebody switches off."
   },
@@ -281,6 +282,31 @@
       "disclosure": {
         "page": "privacy.html",
         "quote": "if you buy something, the transaction is processed by the relevant app store or by our payment processor"
+      }
+    },
+    {
+      "id": "table:platform_db.pending_erasures",
+      "kind": "d1-table",
+      "name": "pending_erasures",
+      "personalData": true,
+      "holds": "⏱ 2026-09-15 · [ADR 081]. One row per (subject, app) whose erasure DELETE /v1/account accepted but could not finish because the app Worker was unreachable: the subject (the Supabase `sub`, under `subject_ref`), the app id, when it was accepted, and how the retries are going (attempts, next attempt, last error, confirmation time). It holds no credential of any kind — the retry proves itself to the app over a Cloudflare Service Binding, not with a stored token — and no name, email or app data.",
+      "retention": {
+        "kind": "keep",
+        "reason": "Kept UNTIL THE ERASURE COMPLETES: services/platform/src/scheduled.ts `erasureRetry` deletes a subject's rows once every app has confirmed and the identity record is deleted, and services/platform/src/routes/account.ts deletes them when a later request completes the erasure synchronously. Never on a timer — a sweep by age would abandon an unfinished erasure; a stuck order turns the erasure_retry heartbeat red instead."
+      },
+      "erasure": {
+        "kind": "completion-ledger",
+        "column": "subject_ref",
+        "deletedBy": "services/platform/src/scheduled.ts",
+        "reason": "The row EXISTS to finish this person's erasure, so erasing it first would cancel the erasure. It leaves when the erasure completes (every app confirmed, identity deleted), by the named code."
+      },
+      "writtenBy": [
+        "services/platform/migrations/0010_pending_erasures.sql",
+        "services/platform/src/lib/erasure-ledger.ts"
+      ],
+      "disclosure": {
+        "page": "privacy.html",
+        "quote": "You can ask us to delete information associated with you"
       }
     },
     {

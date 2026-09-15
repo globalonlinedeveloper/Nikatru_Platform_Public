@@ -22,8 +22,9 @@ Future<void> requestAccountDeletion(
   RestClient client, {
   String path = '/account',
 }) async {
+  final Object? body;
   try {
-    await client.delete(path);
+    body = await client.delete(path);
   } on ApiException catch (e) {
     // `statusCode == 0` is RestClient's "no response at all", which
     // AccountDeletionOutcome maps to couldNotReach rather than to a refusal.
@@ -37,6 +38,19 @@ Future<void> requestAccountDeletion(
     throw core.AccountDeletionFailure.forStatus(
       e.statusCode,
       detail: 'DELETE $path -> HTTP ${e.statusCode}: ${e.message}',
+    );
+  }
+  // ⏱ 2026-09-15 · [ADR 081]: A 2xx IS NOT ALWAYS "DELETED". The route answers
+  // 202 `erasure_pending` when it accepted the deletion and an app could not be
+  // reached: that app's data and the sign-in are removed later, automatically.
+  // Reported through the same failure channel as every other not-gone outcome,
+  // because the seam's contract is "returns only when the account is gone" — the
+  // screen then shows [core.AccountDeletionOutcome.pending]'s sentence, never
+  // "your account has been deleted".
+  if (body is Map && body['status'] == 'erasure_pending') {
+    throw core.AccountDeletionFailure(
+      core.AccountDeletionOutcome.pending,
+      detail: 'DELETE $path -> HTTP 202 erasure_pending: ${body['pending']}',
     );
   }
 }

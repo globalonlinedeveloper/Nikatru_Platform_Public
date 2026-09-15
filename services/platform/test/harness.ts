@@ -44,6 +44,7 @@ import cancellations0005 from '../migrations/0005_cancellation_requests.sql?raw'
 import erasureReach0006 from '../migrations/0006_erasure_reach.sql?raw';
 import eventsRollup0007 from '../migrations/0007_events_rollup.sql?raw';
 import bundleGrants0009 from '../migrations/0009_bundle_grants.sql?raw';
+import pendingErasures0010 from '../migrations/0010_pending_erasures.sql?raw';
 
 type SQLValue = string | number | bigint | null | Uint8Array;
 
@@ -67,6 +68,8 @@ export const PLATFORM_MIGRATIONS: readonly string[] = [
   // 0008 is the app_id slug rename — an UPDATE-only data migration over rows
   // this harness never seeds, so it is not in the schema set. 0009 is.
   bundleGrants0009,
+  // ⏱ 2026-09-15 · [ADR 081] the pending-erasure ledger.
+  pendingErasures0010,
 ];
 
 /**
@@ -99,6 +102,8 @@ export const REPLAY_SAFE_MIGRATIONS: readonly string[] = [
   // replays. Listed so the classifier PROVES that rather than the comment
   // asserting it.
   bundleGrants0009,
+  // 0010 ([ADR 081]) is CREATE TABLE / CREATE INDEX IF NOT EXISTS only.
+  pendingErasures0010,
 ];
 
 // `node:sqlite` is fetched through `process.getBuiltinModule` rather than a

@@ -99,6 +99,7 @@ const BRICK_SEGMENTS = [
 const BRICK = BRICK_SEGMENTS.join('/');
 const BRICK_INDEX = `${BRICK}/src/index.ts`;
 const BRICK_ROUTE = `${BRICK}/src/routes/account.ts`;
+const BRICK_ERASE_SUBJECT = `${BRICK}/src/lib/erase-subject.ts`; // [ADR 081] the APP_DB walk the route and the retry entrypoint share
 const BRICK_WRANGLER = `${BRICK}/wrangler.jsonc`;
 const BRICK_MIGRATION = `${BRICK}/migrations/0001_init.sql`;
 
@@ -149,6 +150,51 @@ describe('the real tree', () => {
         assert.ok(auth.includes('SUPABASE_JWT_SECRET'), 'subscriptiontracker-api must really still carry the fallback');
         const route = readFileSync(join(REPO, SUBLY_ROUTE), 'utf8');
         assert.ok(route.includes('tokenAssurance'), 'the route must really carry its own refusal');
+      },
+    );
+  });
+});
+
+// ⏱ 2026-09-15 · [ADR 081] LIMB 4b — every app in APP_ERASURE_ENDPOINTS can be
+// RETRIED over a Service Binding into its `ErasureEntrypoint`. Each mutation is
+// declared on its own (assert-no-loop-cases).
+describe('limb 4b — the erasure retry binding', () => {
+  test('FAILS when the platform declares no ERASURE_<APP> binding for a listed app', () => {
+    withTree(
+      (root) => edit(root, PLATFORM_WRANGLER, (s) => s.replace(/"services": \[[\s\S]*?\],\n\s*"d1_databases"/, '"d1_databases"')),
+      (r) => {
+        assert.equal(r.status, 1, r.stderr);
+        assert.match(r.stderr, /declares no Service Binding `ERASURE_SUBSCRIPTIONTRACKER` for "subscriptiontracker"/);
+      },
+    );
+  });
+
+  test('FAILS when the binding names another entrypoint', () => {
+    withTree(
+      (root) => edit(root, PLATFORM_WRANGLER, (s) => s.replace('"entrypoint": "ErasureEntrypoint"', '"entrypoint": "Default"')),
+      (r) => {
+        assert.equal(r.status, 1, r.stderr);
+        assert.match(r.stderr, /binding ERASURE_SUBSCRIPTIONTRACKER names entrypoint "Default"/);
+      },
+    );
+  });
+
+  test('FAILS when the binding names a Worker that is not the app', () => {
+    withTree(
+      (root) => edit(root, PLATFORM_WRANGLER, (s) => s.replace('"service": "subscriptiontracker-api"', '"service": "someone-else"')),
+      (r) => {
+        assert.equal(r.status, 1, r.stderr);
+        assert.match(r.stderr, /names service "someone-else"/);
+      },
+    );
+  });
+
+  test('FAILS when the app Worker stops exporting ErasureEntrypoint', () => {
+    withTree(
+      (root) => edit(root, SUBLY_INDEX, (s) => s.replace("export { ErasureEntrypoint } from './erasure-entrypoint';", '')),
+      (r) => {
+        assert.equal(r.status, 1, r.stderr);
+        assert.match(r.stderr, /src\/index\.ts does not export `ErasureEntrypoint`/);
       },
     );
   });
@@ -540,16 +586,42 @@ describe('the template root', () => {
     withTemplateTree(
       (root) => {
         edit(root, BRICK_MIGRATION, (s) => `${s}\nCREATE TABLE notes (id TEXT PRIMARY KEY, user_id TEXT NOT NULL);\n`);
+        // ⏱ 2026-09-15 · [ADR 081]: the route no longer calls userOwnedTables
+        // itself — it calls `eraseSubjectRows` from src/lib/erase-subject.ts — so
+        // "back to a list" now means dropping THAT import and listing tables.
         edit(root, BRICK_ROUTE, (s) =>
           s
-            .replace(/import \{ userOwnedTables[^;]*;/, '')
-            .replace('const tables = await userOwnedTables', "const tables = ['records']; //")
-            .replace('tables = await userOwnedTables(c.env.APP_DB);', "tables = ['records'];"),
+            .replace(/import \{ eraseSubjectRows \} from '\.\.\/lib\/erase-subject';/, '')
+            .replace(
+              'const walked = await eraseSubjectRows(c.env.APP_DB, userId);',
+              "const appTables = ['records']; const walked = { ok: true as const, deleted: {}, unlinked: {}, error: '', reason: String(appTables) };",
+            ),
         );
       },
       (r) => {
         assert.equal(r.status, 1, r.stderr);
         assert.match(r.stderr, /does not reach `notes`, which the template's own migrations give a `user_id`/);
+      },
+    );
+  });
+
+  // ⏱ 2026-09-15 · [ADR 081]: the LOCAL hop is verified too. The route imports
+  // src/lib/erase-subject.ts; if that module stops delegating to the shared
+  // derivation, the route no longer derives, and T1 must say so.
+  test('T1 FAILS when the template\'s local erase-subject module stops delegating to the shared derivation', () => {
+    withTemplateTree(
+      (root) => {
+        edit(root, BRICK_MIGRATION, (s) => `${s}\nCREATE TABLE notes (id TEXT PRIMARY KEY, user_id TEXT NOT NULL);\n`);
+        edit(root, BRICK_ERASE_SUBJECT, (s) =>
+          s.replace(
+            "import { userOwnedTables, userReferencingColumns } from '../../../_shared/src/erasure';",
+            "const userOwnedTables = async (_d: unknown) => ['records']; const userReferencingColumns = async (_d: unknown) => [];",
+          ),
+        );
+      },
+      (r) => {
+        assert.equal(r.status, 1, r.stderr);
+        assert.match(r.stderr, /does not reach `notes`/);
       },
     );
   });

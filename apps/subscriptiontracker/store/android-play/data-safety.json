@@ -507,7 +507,8 @@
         "table:subscriptiontracker_db.subscriptions",
         "table:subscriptiontracker_db.budgets",
         "table:subscriptiontracker_db.budget_categories",
-        "table:subscriptiontracker_db.payment_history"
+        "table:subscriptiontracker_db.payment_history",
+        "table:platform_db.pending_erasures"
       ],
       "basis": "The Supabase `sub` (a UUID) keys every row this app writes server-side, and travels on every request inside the bearer JWT. Required — it is the account. Not shared; Cloudflare and Supabase are service providers. Under demo there is no account and SeedApiClient never leaves the device."
     },

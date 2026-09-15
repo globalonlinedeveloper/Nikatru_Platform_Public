@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -44,12 +45,20 @@ import { defineConfig } from 'vitest/config';
 // those 7 failures on vite 7. `resolve` is kept for the client-side/optimizer
 // path and so a downgrade to vite 5 is not silently unprotected.
 // ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-15 · [ADR 081]: `cloudflare:workers` IS A WORKERD BUILT-IN, and
+// src/erasure-entrypoint.ts imports `WorkerEntrypoint` from it. Node cannot load
+// it, so under test it resolves to test/stubs/cloudflare-workers.ts — a stub
+// that stores `ctx` and `env` exactly as the runtime base class does. The RPC
+// method's body is `eraseSubjectForOrder`, which the tests also drive directly.
+const WORKERS_STUB = fileURLToPath(new URL('./test/stubs/cloudflare-workers.ts', import.meta.url));
+
 export default defineConfig({
   test: {
     include: ["test/**/*.test.ts", "../_shared/test/**/*.test.ts"],
   },
   resolve: {
     conditions: ['workerd', 'browser', 'import', 'default'],
+    alias: { 'cloudflare:workers': WORKERS_STUB },
   },
   ssr: {
     resolve: {

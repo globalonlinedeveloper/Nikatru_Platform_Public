@@ -291,10 +291,17 @@ const FINGERPRINTS = [
   // WHICH statements rather than counting them.
   ['services/_shared/src/erasure.ts', 'introspective', /FROM sqlite_master/i, 'the one erasure derivation lists the tables'],
   ['services/_shared/src/erasure.ts', 'introspective', /pragma_table_info\(/i, 'the one erasure derivation asks each table for its columns'],
-  ['services/platform/src/routes/account.ts', 'dynamic-identifier', /^DELETE FROM /i, 'the shared erasure route empties a user-owned table'],
-  ['services/platform/src/routes/account.ts', 'dynamic-identifier', /^UPDATE .* SET /i, 'the shared erasure route unlinks a *_user_id reference'],
-  ['services/subscriptiontracker-api/src/routes/account.ts', 'dynamic-identifier', /^DELETE FROM /i, "Subly's erasure route empties a user-owned table"],
-  ['services/subscriptiontracker-api/src/routes/account.ts', 'dynamic-identifier', /^UPDATE .* SET /i, "Subly's erasure route unlinks a *_user_id reference"],
+  // ⏱ 2026-09-15 · [ADR 081]: THE FOUR ERASURE ROWS FOLLOWED THEIR STATEMENTS. Both
+  // walks moved out of the route files into one function per Worker, because the
+  // Service Binding retry must run the SAME deletion code the public route runs:
+  // platform -> src/lib/platform-erasure.ts (the route and the nightly retry both
+  // call it), subscriptiontracker-api -> src/lib/erase-subject.ts (the route and
+  // ErasureEntrypoint both call it). The rows used to name routes/account.ts in
+  // both services; left pointing there, this floor went red naming the move.
+  ['services/platform/src/lib/platform-erasure.ts', 'dynamic-identifier', /^DELETE FROM /i, 'the shared erasure walk empties a user-owned table'],
+  ['services/platform/src/lib/platform-erasure.ts', 'dynamic-identifier', /^UPDATE .* SET /i, 'the shared erasure walk unlinks a *_user_id reference'],
+  ['services/subscriptiontracker-api/src/lib/erase-subject.ts', 'dynamic-identifier', /^DELETE FROM /i, "Subly's erasure walk empties a user-owned table"],
+  ['services/subscriptiontracker-api/src/lib/erase-subject.ts', 'dynamic-identifier', /^UPDATE .* SET /i, "Subly's erasure walk unlinks a *_user_id reference"],
   ['services/subscriptiontracker-api/src/routes/subscriptions.ts', 'dynamic-identifier', /^UPDATE subscriptions SET /i, 'the allowlisted-column subscription PATCH'],
 ];
 for (const [file, kind, pattern, what] of FINGERPRINTS) {

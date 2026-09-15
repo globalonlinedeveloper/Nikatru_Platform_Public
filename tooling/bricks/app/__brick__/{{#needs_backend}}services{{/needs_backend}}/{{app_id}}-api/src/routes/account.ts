@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
 import { run } from '../lib/d1';
-import { userOwnedTables, userReferencingColumns } from '../../../_shared/src/erasure';
+import { eraseSubjectRows } from '../lib/erase-subject';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // G2 — in-app account deletion (server side). DELETE /v1/account purges every
@@ -71,58 +71,19 @@ account.delete('/', async (c) => {
     return c.json({ error: 'account_deletion_unconfigured' }, 501);
   }
 
-  const deleted: Record<string, number> = {};
-  const unlinked: Record<string, number> = {};
-
-  // App-owned data (APP_DB). The set is DERIVED FROM THE SCHEMA, never listed
-  // here: `user_id` means the row IS this person's, `*_user_id` means the row
-  // REFERENCES them. See services/_shared/src/erasure.ts for why the walk is two
-  // statements and why the two sets are disjoint by construction.
-  let tables: string[];
-  let references: Array<{ table: string; column: string }>;
-  try {
-    tables = await userOwnedTables(c.env.APP_DB);
-    references = await userReferencingColumns(c.env.APP_DB);
-  } catch (err) {
-    console.error(`[account] rid=${c.get('requestId') ?? '-'} schema read failed`, err);
-    return c.json({ error: 'account_deletion_failed' }, 503);
+  // ⏱ 2026-09-15 · [ADR 081]: THE APP_DB WALK MOVED TO src/lib/erase-subject.ts,
+  // unchanged in behaviour, so the platform's Service Binding retry
+  // (src/erasure-entrypoint.ts) runs the SAME deletion code this route runs. Its
+  // two refusals keep their 503: a failed schema read, and 🔴 AN EMPTY SET IS A
+  // FAILURE, NOT A FAST PATH — a walk that found nothing would report ok and the
+  // identity would then be deleted below, orphaning every row behind it.
+  const walked = await eraseSubjectRows(c.env.APP_DB, userId);
+  if (!walked.ok) {
+    console.error(`[account] rid=${c.get('requestId') ?? '-'} refusing deletion: ${walked.reason}`);
+    return c.json({ error: walked.error }, 503);
   }
-
-  // 🔴 AN EMPTY SET IS A FAILURE, NOT A FAST PATH. If the derivation ever stops
-  // finding tables - a schema change, a driver that does not support
-  // pragma_table_info - this route would delete NOTHING and report ok. The
-  // identity would then be deleted below, and every row here would be orphaned
-  // behind a login that no longer exists. Refuse instead.
-  if (tables.length === 0) {
-    console.error(
-      `[account] rid=${c.get('requestId') ?? '-'} refusing deletion: no user-owned table was found, so this request cannot prove it erased anything`,
-    );
-    return c.json({ error: 'account_deletion_failed' }, 503);
-  }
-
-  for (const table of tables) {
-    // Through `run`, not `.run()` directly: D1 lives in a Durable Object that is
-    // occasionally reset, and a DELETE is idempotent by its own shape. The name
-    // comes from sqlite_master, never from the request, and D1 cannot bind an
-    // identifier.
-    // eslint-disable-next-line no-await-in-loop
-    const res = await run(
-      c.env.APP_DB.prepare(`DELETE FROM ${table} WHERE user_id = ?`).bind(userId),
-    );
-    deleted[table] = res.meta.changes ?? 0;
-  }
-
-  // Then the REFERENCES: after this, no `*_user_id` column in APP_DB holds this
-  // person's id. Table and column both come from sqlite_master.
-  for (const ref of references) {
-    // eslint-disable-next-line no-await-in-loop
-    const res = await run(
-      c.env.APP_DB.prepare(
-        `UPDATE ${ref.table} SET ${ref.column} = NULL WHERE ${ref.column} = ?`,
-      ).bind(userId),
-    );
-    unlinked[`${ref.table}.${ref.column}`] = res.meta.changes ?? 0;
-  }
+  const deleted: Record<string, number> = { ...walked.deleted };
+  const unlinked: Record<string, number> = { ...walked.unlinked };
 
   // Shared entitlements (PLATFORM_DB). Best-effort: the table may not exist in a
   // fresh platform database, so a failure here must not block the deletion.
