@@ -111,6 +111,11 @@
       "resolver": "live-environment",
       "reason": "NO `app_version` COLUMN: written by the webhook when money arrived and no account could be resolved. `environment` (0004_money_rail.sql) is stamped by the rail. A sandbox row here is the most misleading kind of residue in the whole schema — it is evidence of an unresolved real payment, and a fake one wastes exactly the investigation the table exists to make possible."
     },
+    "pending_erasures": {
+      "marker": "app_id",
+      "resolver": "app-catalogue",
+      "reason": "⏱ 2026-09-15 · [ADR 081]. NO `app_version` COLUMN: written by DELETE /v1/account (services/platform/src/routes/account.ts) from the authenticated session when an app could not be reached, and deleted by the nightly erasure retry when the erasure completes. `app_id` is NOT NULL and is always an app APP_ERASURE_ENDPOINTS names, i.e. a catalogue app, so a row naming anything else was not written by this route."
+    },
     "cancellation_requests": {
       "marker": "environment",
       "resolver": "live-environment",
