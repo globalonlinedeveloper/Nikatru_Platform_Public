@@ -231,7 +231,7 @@ describe('REQUIRED_COVERAGE — the scan must know when it has stopped scanning'
     withTree(
       (root) => renameSync(join(root, SUBLY, 'lib/features/settings'), join(root, SUBLY, 'lib/features/prefs')),
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /COVERAGE LOST/);
         assert.match(r.stderr, /NO lib\/features\/settings directory/);
       },
@@ -249,7 +249,7 @@ describe('REQUIRED_COVERAGE — the scan must know when it has stopped scanning'
         }
       },
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /not one of the 2 root\(s\) was judged to carry an analytics consent rail/);
       },
     );
@@ -259,7 +259,7 @@ describe('REQUIRED_COVERAGE — the scan must know when it has stopped scanning'
     withTree(
       (root) => edit(root, BRICK_RAIL, (s) => s.replaceAll('recordAnalyticsConsent', 'recordSomethingElse').replaceAll('recordPromoObjection', 'recordSomethingElser')),
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /only 1 root\(s\) carry a consent rail/);
       },
     );
@@ -269,7 +269,7 @@ describe('REQUIRED_COVERAGE — the scan must know when it has stopped scanning'
     withTree(
       (root) => edit(root, 'pubspec.yaml', (s) => s.replace(/^workspace:$/m, 'workspace_disabled:')),
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /no readable `workspace:` block/);
       },
     );
@@ -335,7 +335,7 @@ describe('the first-run prompt is scrollable — limb 4', () => {
           ),
         ),
       (r) => {
-        assert.equal(r.status, 1, r.stdout);
+        assert.equal(r.status, 2, r.stdout);
         assert.match(r.stderr, /COVERAGE LOST[\s\S]*delegation could not be followed/);
       },
     );
@@ -393,7 +393,7 @@ describe('the first-run prompt is scrollable — limb 4', () => {
         edit(root, CHASSIS_SHELL, (s) => s.replaceAll('l10n.consentPrivacy', 'l10n.consentBody'));
       },
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /NOT ONE widget class renders consentPrivacy/);
       },
     );
@@ -494,7 +494,7 @@ describe('REQUIRED_COVERAGE for the objection rail', () => {
     withTree(
       (root) => edit(root, BRICK_RAIL, (s) => s.replaceAll('recordPromoObjection', 'recordSomethingElse')),
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /exactly ONE root carries the Art 21 objection rail/);
       },
     );
@@ -507,7 +507,7 @@ describe('REQUIRED_COVERAGE for the objection rail', () => {
     withTree(
       (root) => edit(root, BRICK_RAIL, (s) => s.replaceAll('recordAnalyticsConsent', 'recordSomethingElse')),
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /declares recordPromoObjection but NOT recordAnalyticsConsent/);
       },
     );
@@ -742,7 +742,7 @@ class _UpgradePromoCard extends ConsumerWidget {
         }
       },
       (r) => {
-        assert.equal(r.status, 1, r.stdout);
+        assert.equal(r.status, 2, r.stdout);
         assert.match(r.stderr, /NOT ONE `\.decide\(` was classified as one/);
       },
     );
@@ -954,7 +954,7 @@ describe('a withdrawal control that moved into the chassis package', () => {
   // import. This must stay EXIT 1.
   test('DW3 · 🔴 an UNUSED chassis import does not stand in for the deleted control', () => {
     withTree(moved({ inPackage: true, used: false }), (r) => {
-      assert.equal(r.status, 1, r.stdout);
+      assert.equal(r.status, 2, r.stdout);
       assert.match(r.stdout + r.stderr, /never references anything it declares \(SettingsBody\)/);
       assert.match(r.stdout + r.stderr, /a reference is evidence/);
     });
@@ -964,7 +964,7 @@ describe('a withdrawal control that moved into the chassis package', () => {
   // delegation", which is the silent-pass shape.
   test('DW4 · 🔴 a delegation to a file that is not on disk is COVERAGE LOST', () => {
     withTree(moved({ onDisk: false }), (r) => {
-      assert.equal(r.status, 1, r.stdout);
+      assert.equal(r.status, 2, r.stdout);
       assert.match(r.stdout + r.stderr, /chassis delegation could not be followed/);
       assert.match(r.stdout + r.stderr, /that file is not on disk/);
     });

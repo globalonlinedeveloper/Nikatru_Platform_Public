@@ -189,7 +189,7 @@ describe('the scan cannot be trusted', () => {
     rmSync(join(root, 'tooling/ci/probe-beta.mjs'));
     try {
       const { code, out } = run(root);
-      assert.equal(code, 1, out);
+      assert.equal(code, 2, out);
       assert.match(out, /COVERAGE LOST — git tracks 3 executable\(s\).*this scan found 2/s);
       assert.match(out, /probe-beta\.mjs/);
     } finally {
@@ -203,7 +203,7 @@ describe('the scan cannot be trusted', () => {
     withTree(
       compliant({ 'tooling/ci/probe-broken.mjs': "import './probe-missing.mjs';\nprocess.exit(1);\n" }),
       ({ code, out }) => {
-        assert.equal(code, 1, out);
+        assert.equal(code, 2, out);
         assert.match(out, /probe-missing\.mjs is imported by something in the guard homes and is not on disk/);
       },
     );
@@ -326,14 +326,14 @@ describe('the scan cannot be trusted', () => {
 
   test('an empty home is COVERAGE LOST, not a smaller clean run', () => {
     withTree(makeTree({ 'tooling/ci/probe-alpha.mjs': REFUSES, 'tooling/scripts/.keep': '' }), ({ code, out }) => {
-      assert.equal(code, 1, out);
+      assert.equal(code, 2, out);
       assert.match(out, /tooling\/scripts contains no \.mjs file/);
     });
   });
 
   test('a missing home is COVERAGE LOST', () => {
     withTree(makeTree({ 'tooling/ci/probe-alpha.mjs': REFUSES }), ({ code, out }) => {
-      assert.equal(code, 1, out);
+      assert.equal(code, 2, out);
       assert.match(out, /tooling\/scripts does not exist/);
     });
   });
@@ -371,7 +371,7 @@ describe('real-repo mode', () => {
       'tooling/ci/probe-alpha.mjs': REFUSES,
       'tooling/scripts/probe-gamma.mjs': REFUSES,
     });
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /tooling\/ci holds \d+ executable\(s\) and the floor is \d+/);
   });
 

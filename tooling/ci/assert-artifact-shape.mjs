@@ -250,7 +250,9 @@ function coverageLost(first, ...more) {
   console.error(`✗ COVERAGE LOST — ${first}`);
   for (const m of more) console.error(`    ${m}`);
   console.error('  The scan is broken, or the lane changed shape. Either way this is not "clean".');
-  process.exit(1);
+  // ⏱ 2026-09-15 — exit 2, not 1: COVERAGE LOST is "did not check enough to be evidence", never a
+  // finding (AGENTS.md exit-code convention; O-EXIT2-CONVENTION-GAP). This helper exited 1 until today.
+  process.exit(2);
 }
 
 const app = flag('app');

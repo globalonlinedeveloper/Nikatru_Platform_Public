@@ -743,35 +743,35 @@ describe('assert-channel-register — the served set exists and is honest', () =
 describe('assert-channel-register — COVERAGE LOST is the loud case', () => {
   test('FAILS COVERAGE LOST when the register does not exist', () => {
     const { code, out } = run(tree({ omitRegister: true }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /does not exist/);
   });
 
   test('FAILS COVERAGE LOST when the register declares zero channels', () => {
     const { code, out } = run(tree({ mutate: (r) => { r.channels = []; } }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /ZERO channels/);
   });
 
   test('FAILS COVERAGE LOST when no channel is served', () => {
     const { code, out } = run(tree({ mutate: (r) => { r.channels.forEach((c) => { c.served = false; }); } }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /NONE is served/);
   });
 
   test('FAILS COVERAGE LOST when an app claims an empty platform set', () => {
     const { code, out } = run(tree({ platforms: [] }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /ZERO platform claims/);
   });
 
   test('FAILS COVERAGE LOST when the register is not valid JSON', () => {
     const { code, out } = run(tree({ registerRaw: '{ "channels": [ ' }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
   });
 });
@@ -1043,13 +1043,13 @@ describe('assert-channel-register — schema, stores and disqualified channels',
   // a label rather than a domain.
   test('FAILS COVERAGE LOST when the register declares no surfaces block', () => {
     const { code, out } = run(tree({ mutate: (r) => { delete r.surfaces; } }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /declares no `surfaces` vocabulary/);
   });
 
   test('FAILS COVERAGE LOST when the surfaces block is emptied', () => {
     const { code, out } = run(tree({ mutate: (r) => { r.surfaces = {}; } }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /ZERO surfaces in it/);
   });
 
@@ -1121,7 +1121,7 @@ describe('assert-channel-register — schema, stores and disqualified channels',
 
   test('FAILS when a surface declares an EMPTY platform vocabulary — it would accept every typo', () => {
     const { code, out } = run(tree({ mutate: (r) => { r.surfaces.app.platforms = []; } }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /declares no non-empty `platforms` array/);
   });
 
@@ -1198,14 +1198,14 @@ describe('assert-channel-register — schema, stores and disqualified channels',
 describe('assert-channel-register — the key vocabulary is the REGISTER\'s', () => {
   test('FAILS COVERAGE LOST when the register declares no keyKinds', () => {
     const { code, out } = run(tree({ mutate: (r) => { delete r.keyKinds; } }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /no `keyKinds` vocabulary/);
   });
 
   test('FAILS COVERAGE LOST when the keyKinds dictionary is emptied', () => {
     const { code, out } = run(tree({ mutate: (r) => { r.keyKinds = {}; } }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
   });
 
@@ -1441,7 +1441,7 @@ describe('assert-channel-register — the lane\'s output vs the formats its chan
   // every format comparison range over an empty set and pass.
   test('FAILS COVERAGE LOST when no served lane yields a readable artifact', () => {
     const { code, out } = run(tree({ laneBuilds: false }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /NOT ONE yielded a readable artifact/);
   });
@@ -1648,7 +1648,7 @@ describe('assert-channel-register — the channel↔account status', () => {
 
   test('COVERAGE LOST when the register declares no store row at all', () => {
     const { code, out } = run(tree({ mutate: (r) => { r.channels[1].kind = 'direct'; r.channels[1].storeMetadataDir = null; } }));
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /no `kind: "store"` row/);
   });
 
@@ -1890,7 +1890,7 @@ describe('assert-channel-register — [9]R-3 limb 2: only declared secrets may b
   // ── REQUIRED_COVERAGE: the empty-domain cases ─────────────────────────────
   test('COVERAGE LOST when secrets are declared as signing and NO lane names any of them', () => {
     const { code, out } = run(tree({ mutate: signingRow() }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /FAIL COVERAGE LOST/);
     assert.match(out, /disjoint sets of names/);
     assert.match(out, /the scan found no/);
@@ -1916,7 +1916,7 @@ describe('assert-channel-register — [9]R-3 limb 2: only declared secrets may b
         },
       }),
     );
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /FAIL COVERAGE LOST/);
     assert.match(out, /is NOT in the \.github\/workflows scan/);
   });
@@ -2096,14 +2096,14 @@ describe('assert-channel-register — [9]R-3: the register agrees with the real 
   // ── prose cannot satisfy a check ──────────────────────────────────────────
   test('COVERAGE LOST when the map exists only inside a comment', () => {
     const { code, out } = run(tree({ withAndroid: true, gradle: { commentOutMap: true } }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /FAIL COVERAGE LOST/);
     assert.match(out, /declares no `val releaseSigningEnv = mapOf\(…\)` outside its comments/);
   });
 
   test('COVERAGE LOST when the map declares no pairs at all', () => {
     const { code, out } = run(tree({ withAndroid: true, gradle: { pairs: [] } }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /FAIL COVERAGE LOST/);
     assert.match(out, /declares no "key" to "VARIABLE" pairs/);
   });
@@ -2111,7 +2111,7 @@ describe('assert-channel-register — [9]R-3: the register agrees with the real 
   // ── the scan must reach what it thinks ────────────────────────────────────
   test('COVERAGE LOST when `declaredIn` resolves to no file on disk', () => {
     const { code, out } = run(tree({ withAndroid: true, omitGradleFile: true }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /FAIL COVERAGE LOST/);
     assert.match(out, /`declaredIn` template reached 0 file\(s\) on disk; REQUIRED_COVERAGE is 1/);
     assert.match(out, /Tried: apps\/subscriptiontracker\/android\/app\/build\.gradle\.kts/);
@@ -2126,7 +2126,7 @@ describe('assert-channel-register — [9]R-3: the register agrees with the real 
         },
       }),
     );
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /FAIL COVERAGE LOST/);
     assert.match(out, /declares no `val signingEnvNames = mapOf\(…\)`/);
   });
@@ -2783,7 +2783,7 @@ describe('assert-channel-register — the extension lane is COMPARED, not assume
 
   test('COVERAGE LOST when the lane runs no pack verb — the comparison would range over nothing', () => {
     const { code, out } = run(tree({ withExtension: true, extensionLane: true, extensionLaneBuilds: false }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /name a lane and the lane scan resolved NO emitted format/);
   });
 
@@ -2832,7 +2832,7 @@ describe('assert-channel-register — the extension lane is COMPARED, not assume
       mutate: (r) => { r.channels.at(-1).artifactFormats = ['.crx']; },
       breakArtifactBuild: (r) => { r.artifactBuild.formats['.crx'] = { flutterTarget: 'web', packagedBy: 'NOT IMPLEMENTED ANYWHERE IN THIS REPOSITORY' }; },
     }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /extension store row\(s\) name a lane and the lane scan resolved NO emitted format/);
   });
 
@@ -2926,7 +2926,7 @@ describe('assert-channel-register — the extension lane is COMPARED, not assume
       extensionLane: true,
       toolJsonTargets: {},
     }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /extension store row\(s\) name a lane and the lane scan resolved NO emitted format/);
   });
 

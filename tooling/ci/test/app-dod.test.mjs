@@ -204,14 +204,14 @@ describe('assert-app-dod', () => {
   // ── N-2: the DOMAIN, which is the stage's root cause ──────────────────────
   test('COVERAGE LOST when the brick has no seed record — on a clean checkout it is the only subject', () => {
     const { code, out } = run(build({ brickRecord: null }));
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /dod\.json does not exist/);
   });
 
   test('COVERAGE LOST when --require-stamped runs where the stamp registered nothing', () => {
     const { code, out } = run(build(), ['--require-stamped']);
-    assert.equal(code, 1, 'the app_brick lane must not pass over the template alone');
+    assert.equal(code, 2, 'the app_brick lane must not pass over the template alone');
     assert.match(out, /invoked with --require-stamped and the workspace lists no non-exempt app member/);
   });
 
@@ -237,7 +237,7 @@ describe('assert-app-dod', () => {
     const dir = build();
     writeFileSync(join(dir, 'pubspec.yaml'), 'name: fixture\n');
     const { code, out } = run(dir);
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /has no `workspace:` block/);
   });
 
@@ -279,7 +279,7 @@ describe('assert-app-dod', () => {
 
   test('COVERAGE LOST when the register declares no items', () => {
     const { code, out } = run(build({ register: { ...REGISTER, items: [] } }));
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /declares no items/);
   });
 
@@ -287,7 +287,7 @@ describe('assert-app-dod', () => {
     const register = { ...REGISTER, items: [{ id: 'B', title: 'Four states', enforcedBy: 'human', check: 'four-states' }] };
     const brickRecord = record('{{app_id}}', { items: { B: { claim: 'pending', note: 'human' } } });
     const { code, out } = run(build({ register, brickRecord }));
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /not one register item is enforced by a guard or a lane/);
   });
 
@@ -437,7 +437,7 @@ describe('assert-app-dod', () => {
 
   test('COVERAGE LOST when the register names no humanReviewRows', () => {
     const { code, out } = run(build({ register: { ...REGISTER, humanReviewRows: [] } }));
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /declares no `humanReviewRows`/);
   });
 

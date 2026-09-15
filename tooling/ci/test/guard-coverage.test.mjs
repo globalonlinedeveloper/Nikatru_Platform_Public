@@ -346,7 +346,7 @@ describe('assert-guard-coverage', () => {
   describe('the invocation identity (replaces MIN_GUARDS)', () => {
     test('a guard a workflow INVOKES but the scan cannot find FAILS, naming it', () => {
       const r = run(repo(compliant(), { invoke: ['assert-thing-0.mjs', 'assert-thing-1.mjs', 'assert-thing-2.mjs', 'assert-thing-3.mjs', 'assert-vanished.mjs'] }));
-      assert.equal(r.status, 1, r.stdout);
+      assert.equal(r.status, 2, r.stdout);
       assert.match(r.stderr, /invoke 1 guard\(s\) this scan did not find: assert-vanished\.mjs/);
     });
 
@@ -461,7 +461,7 @@ describe('assert-guard-coverage', () => {
             '      - run: node tooling/scripts/provision-backend.mjs\n',
         }),
       );
-      assert.equal(r.status, 1, r.stdout);
+      assert.equal(r.status, 2, r.stdout);
       assert.match(r.stderr, /invoke a tooling\/ci path this FLAT scan cannot audit/);
       assert.match(r.stderr, /tooling\/ci\/guards\/assert-buried\.mjs/);
     });
@@ -470,7 +470,7 @@ describe('assert-guard-coverage', () => {
       // The workflows ARE the anchor now. Losing them and passing would be the
       // floors' failure mode with the numbers taken out.
       const r = run(repo(compliant(), { workflow: null }));
-      assert.equal(r.status, 1, r.stdout);
+      assert.equal(r.status, 2, r.stdout);
       assert.match(r.stderr, /COVERAGE LOST/);
       assert.match(r.stderr, /invocation identity ranged over nothing/);
     });
@@ -598,7 +598,7 @@ describe('assert-guard-coverage', () => {
       const root = repo(compliant());
       writeFileSync(join(root, MANIFEST_REL), '{ not json');
       const r = run(root);
-      assert.equal(r.status, 1, r.stdout);
+      assert.equal(r.status, 2, r.stdout);
       assert.match(r.stderr, /COVERAGE LOST/);
       assert.match(r.stderr, /could not be parsed/);
     });
@@ -607,7 +607,7 @@ describe('assert-guard-coverage', () => {
       const root = repo(compliant());
       writeFileSync(join(root, MANIFEST_REL), '[1,2,3]');
       const r = run(root);
-      assert.equal(r.status, 1, r.stdout);
+      assert.equal(r.status, 2, r.stdout);
       assert.match(r.stderr, /is not a JSON object/);
     });
 
@@ -734,7 +734,7 @@ describe('assert-guard-coverage', () => {
           },
         }),
       );
-      assert.equal(r.status, 1, r.stdout);
+      assert.equal(r.status, 2, r.stdout);
       assert.match(r.stderr, /no longer distinguishes a script that is RUN from one that is merely NAMED/);
       assert.match(r.stderr, /must be null/);
     });
@@ -810,7 +810,7 @@ describe('assert-guard-coverage', () => {
       assert.equal(runReal(root).status, 0);
       unlinkSync(join(root, MANIFEST_REL));
       const r = runReal(root);
-      assert.equal(r.status, 1, r.stdout);
+      assert.equal(r.status, 2, r.stdout);
       assert.match(r.stderr, /coverage-manifest\.json does not exist/);
       assert.match(r.stderr, /resets every/);
     });
@@ -820,7 +820,7 @@ describe('assert-guard-coverage', () => {
       assert.equal(runReal(root).status, 0);
       writeFileSync(join(root, MANIFEST_REL), '{}\n');
       const r = runReal(root);
-      assert.equal(r.status, 1, r.stdout);
+      assert.equal(r.status, 2, r.stdout);
       assert.match(r.stderr, /coverage-manifest\.json is empty/);
       assert.match(r.stderr, /deleting the floor, not resetting a cache/);
     });
@@ -830,7 +830,7 @@ describe('assert-guard-coverage', () => {
       // deliberately no fallback number left to answer it with.
       const root = repo(compliant(), { real: true });
       const r = runReal(root); // NOT gitified
-      assert.equal(r.status, 1, r.stdout);
+      assert.equal(r.status, 2, r.stdout);
       assert.match(r.stderr, /returned no tracked workflow/);
     });
 
@@ -842,7 +842,7 @@ describe('assert-guard-coverage', () => {
       gitify(root);
       unlinkSync(join(root, '.github', 'workflows', 'extra.yml'));
       const r = runReal(root);
-      assert.equal(r.status, 1, r.stdout);
+      assert.equal(r.status, 2, r.stdout);
       assert.match(r.stderr, /never saw: extra\.yml/);
     });
 
@@ -978,7 +978,7 @@ describe('assert-guard-coverage', () => {
       const root = join(TMP, 'bare');
       mkdirSync(root, { recursive: true });
       const r = run(root);
-      assert.equal(r.status, 1);
+      assert.equal(r.status, 2);
       assert.match(r.stderr, /COVERAGE LOST/);
     });
   });

@@ -409,7 +409,7 @@ describe('assert-enforcement-index — the index is regenerated and compared, ne
   // ── coverage self-checks ──────────────────────────────────────────────────
   test('COVERAGE LOST when the committed index is absent', () => {
     const { code, out } = run(fixture({ index: null }));
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /enforcement-index\.json/);
   });
@@ -418,14 +418,14 @@ describe('assert-enforcement-index — the index is regenerated and compared, ne
     const root = fixture();
     writeFileSync(join(root, INDEX_REL), '{ "rows": [ }\n');
     const { code, out } = run(root);
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
   });
 
   test('COVERAGE LOST when the committed index has ZERO rows', () => {
     const root = fixture({ index: () => [] });
     const { code, out } = run(root);
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /ZERO rows/);
   });
@@ -434,7 +434,7 @@ describe('assert-enforcement-index — the index is regenerated and compared, ne
     // Without workflows every enforcer reads ORPHAN and an index regenerated in
     // that state compares clean — the exact shape of a scan that stopped.
     const { code, out } = run(fixture({ workflow: null }));
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
   });
 
@@ -442,7 +442,7 @@ describe('assert-enforcement-index — the index is regenerated and compared, ne
     // It is the only public statement that a DoD item is enforced by a job or a
     // person. Without it both would be published as enforced by nothing.
     const { code, out } = run(fixture({ breakAfter: { 'tooling/dod-register.json': null } }));
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /dod-register/);
   });
@@ -453,7 +453,7 @@ describe('assert-enforcement-index — the index is regenerated and compared, ne
     const { code, out } = run(
       fixture({ breakAfter: { 'tooling/ci/assert-guard-coverage.mjs': '#!/usr/bin/env node\nprocess.exit(1);\n' } }),
     );
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /NOT_CI_RUNNABLE/);
   });

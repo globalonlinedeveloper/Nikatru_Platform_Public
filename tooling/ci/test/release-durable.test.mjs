@@ -534,7 +534,7 @@ describe('assert-release-durable.mjs — REQUIRED_COVERAGE', () => {
 
   test('COVERAGE LOST when the mechanism it grades lanes against is gone', () => {
     const r = run(fixture({ withManifestScript: false, workflows: { 'build.yml': lane() } }));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /release-manifest\.mjs does not exist/);
   });
@@ -543,7 +543,7 @@ describe('assert-release-durable.mjs — REQUIRED_COVERAGE', () => {
     const root = fixture({ register: null, workflows: { 'build.yml': lane() } });
     writeFileSync(join(root, 'tooling', 'channel-register.json'), '{ not json');
     const r = run(root);
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /not valid JSON/);
   });
@@ -558,7 +558,7 @@ describe('assert-release-durable.mjs — REQUIRED_COVERAGE', () => {
       releaseJob: false,
     });
     const r = run(fixture({ workflows: { 'build.yml': nothing } }));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /ZERO installable upload steps/);
   });
@@ -567,7 +567,7 @@ describe('assert-release-durable.mjs — REQUIRED_COVERAGE', () => {
     const register = JSON.parse(JSON.stringify(REGISTER));
     register.channels[1].lane = { workflow: '.github/workflows/build.yml', job: 'a_job_nobody_wrote' };
     const r = run(fixture({ register, workflows: { 'build.yml': lane() } }));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /a_job_nobody_wrote/);
   });
