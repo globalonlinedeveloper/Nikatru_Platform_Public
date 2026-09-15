@@ -579,8 +579,11 @@ const REQUIRED_COVERAGE = [
     // ⚠️ A FILE ADDED UNDER `test/` FOR ANY REASON MOVES THIS NUMBER. It is a
     // corpus floor, not a width-suite floor, and the two only look the same
     // while every file under `test/` happens to be a width suite.
+    // ⏱ RAISED 17 → 18 ON 2026-09-15 ([ADR 082] §5 Part A) for exactly that reason:
+    // `test/age_gate_view_test.dart` joined the corpus (the store age gate on
+    // SignUpView and SignInView). Read off the per-root line, `— 18 file(s)`.
     surfaces: 17,
-    widthTestFiles: 17,
+    widthTestFiles: 18,
     coveredSurfaces: 17,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens every stamped ' +

@@ -754,7 +754,7 @@ describe('the chassis_screens floors are floors, not report lines', () => {
     assert.equal(code, 1, out);
     assert.match(
       out,
-      /COVERAGE LOST — `packages\/chassis_screens` yielded only 16 width test file\(s\).*checked-in floor is 17/s,
+      /COVERAGE LOST — `packages\/chassis_screens` yielded only 17 width test file\(s\).*checked-in floor is 18/s,
     );
     // This root ENFORCES, so the surface the deleted file measured is a FAIL and
     // not a print — the half R12 pins for apps/subscriptiontracker, here for the new root.
