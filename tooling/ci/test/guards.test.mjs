@@ -2881,13 +2881,15 @@ Future<void> _signOut(BuildContext context, WidgetRef ref, AppLocalizations l10n
    *  the crash-sink obligation by BEING a lane — which is exactly the property
    *  the derivation exists for, and the reason this fixture moves with the
    *  register rather than pinning a number of its own. */
+  // ⏱ 2026-09-15 — lanes are scoped by the surface's DECLARED `flutterApp` (O-EXT-SURFACE-AXIS).
   const CHANNEL_REGISTER = JSON.stringify(
     {
+      surfaces: { app: { flutterApp: true }, extension: { flutterApp: false } },
       channels: [
-        { id: 'web', lane: { workflow: '.github/workflows/deploy-web.yml', job: 'deploy-web' } },
-        { id: 'android-play', lane: { workflow: '.github/workflows/build-platforms.yml', job: 'linux_web_android' } },
-        { id: 'windows-store', lane: { workflow: '.github/workflows/build-platforms.yml', job: 'windows' } },
-        { id: 'linux-snap', lane: { workflow: '.github/workflows/submit-snap.yml', job: 'dry-run' } },
+        { id: 'web', surface: 'app', lane: { workflow: '.github/workflows/deploy-web.yml', job: 'deploy-web' } },
+        { id: 'android-play', surface: 'app', lane: { workflow: '.github/workflows/build-platforms.yml', job: 'linux_web_android' } },
+        { id: 'windows-store', surface: 'app', lane: { workflow: '.github/workflows/build-platforms.yml', job: 'windows' } },
+        { id: 'linux-snap', surface: 'app', lane: { workflow: '.github/workflows/submit-snap.yml', job: 'dry-run' } },
       ],
     },
     null,
@@ -3711,16 +3713,17 @@ class Ed25519PackVerifier implements PackVerifier {
 
   const consentOk = {
     'tooling/channel-register.json': JSON.stringify({
+      surfaces: { app: { flutterApp: true }, extension: { flutterApp: false } },
       channels: [
-        { id: 'web', lane: { workflow: '.github/workflows/deploy-web.yml', job: 'deploy-web' } },
-        { id: 'android-play', lane: { workflow: '.github/workflows/build-platforms.yml', job: 'linux_web_android' } },
-        { id: 'windows-store', lane: { workflow: '.github/workflows/build-platforms.yml', job: 'windows' } },
+        { id: 'web', surface: 'app', lane: { workflow: '.github/workflows/deploy-web.yml', job: 'deploy-web' } },
+        { id: 'android-play', surface: 'app', lane: { workflow: '.github/workflows/build-platforms.yml', job: 'linux_web_android' } },
+        { id: 'windows-store', surface: 'app', lane: { workflow: '.github/workflows/build-platforms.yml', job: 'windows' } },
         // The fourth lane, from 2026-08-09: submit-snap.yml's `dry-run` job packs
         // a .snap and therefore carries the crash-sink obligation. The guard
         // floors its subject set at what the real register carries, so a fixture
         // one lane short fails on coverage rather than on the verifier these
         // tests are about.
-        { id: 'linux-snap', lane: { workflow: '.github/workflows/submit-snap.yml', job: 'dry-run' } },
+        { id: 'linux-snap', surface: 'app', lane: { workflow: '.github/workflows/submit-snap.yml', job: 'dry-run' } },
       ],
     }),
     '.github/workflows/deploy-web.yml': `name: f\njobs:\n${laneJob('deploy-web')}`,

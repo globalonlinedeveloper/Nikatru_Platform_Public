@@ -113,7 +113,13 @@ const parkedRows = () => [
 ];
 
 const registerDoc = ({ channels = channelRows(), rails = RAILS(), parked = parkedRows(), noRailsDict = false } = {}) => {
-  const doc = { purchaseRails: { rails, awaitingChannelRow: parked }, channels };
+  // ⏱ 2026-09-15 — §A splits by the surface's DECLARED `flutterApp` (O-EXT-SURFACE-AXIS),
+  // so the fixture declares both real surfaces; a row with no `surface` is an app row.
+  const doc = {
+    surfaces: { app: { flutterApp: true }, extension: { flutterApp: false } },
+    purchaseRails: { rails, awaitingChannelRow: parked },
+    channels: channels.map((c) => ('surface' in c ? c : { ...c, surface: 'app' })),
+  };
   if (noRailsDict) delete doc.purchaseRails.rails;
   return JSON.stringify(doc, null, 2);
 };
@@ -499,7 +505,7 @@ describe('assert-purchase-path — the client money rail', () => {
   });
 
   test('FAILS when the matrix declares a channel nobody ships through', () => {
-    const r = run({ channels: JSON.stringify({ channels: JSON.parse(CHANNELS).channels.slice(0, 7) }) });
+    const r = run({ channels: registerDoc({ channels: channelRows().slice(0, 7) }) });
     assert.equal(r.code, 1);
     assert.match(r.out, /declares linux-appimage, which/);
   });
@@ -519,7 +525,7 @@ describe('assert-purchase-path — the client money rail', () => {
   });
 
   test('COVERAGE LOST when the channel register yields almost nothing', () => {
-    const r = run({ channels: JSON.stringify({ channels: [{ id: 'web' }] }) });
+    const r = run({ channels: registerDoc({ channels: [{ id: 'web' }] }) });
     assert.equal(r.code, 1);
     assert.match(r.out, /COVERAGE LOST — the channel register yields only 1/);
   });
@@ -1365,6 +1371,25 @@ describe('assert-purchase-path — an extension row is outside §A and INSIDE §
     assert.equal(r.code, 0, r.out);
     assert.doesNotMatch(r.out, /PurchaseChannel does not cover chrome-webstore/);
     assert.match(r.out, /§A domain: 1 `surface: "extension"` channel\(s\) \(chrome-webstore\)/);
+  });
+
+  // ⏱ 2026-09-15 — O-EXT-SURFACE-AXIS. The literal comparison filed any surface
+  // that was not 'extension' into the Dart matrix; a THIRD one now has to be declared.
+  test('a THIRD surface nobody declared is refused, not demanded as a PurchaseChannel member', () => {
+    const cli = { ...extensionRow(), id: 'cli-store', surface: 'script', platforms: ['node'] };
+    const r = run({ channels: registerDoc({ channels: [...channelRows(), cli] }) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /COVERAGE LOST — channel "cli-store" is on surface "script", which tooling\/channel-register\.json `surfaces` does not declare/);
+    assert.doesNotMatch(r.out, /PurchaseChannel does not cover cli-store/);
+  });
+
+  test('a THIRD surface DECLARED non-Flutter joins the extension rows outside §A', () => {
+    const cli = { ...extensionRow(), id: 'cli-store', surface: 'script', platforms: ['node'] };
+    const doc = JSON.parse(registerDoc({ channels: [...channelRows(), extensionRow(), cli] }));
+    doc.surfaces.script = { flutterApp: false };
+    const r = run({ channels: JSON.stringify(doc) });
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /§A domain: 2 `surface: "extension"` \/ `surface: "script"` channel\(s\) \(chrome-webstore, cli-store\)/);
   });
 
   test('§G STILL grades its rail block — a row with no purchaseRail is COVERAGE LOST', () => {

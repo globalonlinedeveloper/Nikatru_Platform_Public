@@ -42,6 +42,7 @@ import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
 import { delegationOf as resolveChassisDelegation } from './chassis-delegation.mjs';
+import { partitionByFlutterApp, undeclaredSurfaceLine } from './channel-surface.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const problems = [];
@@ -215,12 +216,23 @@ let registerChannels = []; // the register's channel rows, whole
       // did) silences §G on the extension rows, measured: deleting
       // `purchaseRail` from the chrome-webstore row then exited 0. It is ONLY
       // §A's enum equality below that is Dart-shaped, so only §A narrows.
-      registerChannels = (JSON.parse(chRaw).channels ?? []).filter((c) => c && typeof c.id === 'string');
-      const dartChannels = registerChannels.filter((c) => c.surface !== 'extension');
-      const notDart = registerChannels.filter((c) => c.surface === 'extension').map((c) => c.id);
+      // ⏱ 2026-09-15 — THE CORRECTION ABOVE IS NOW DISCHARGED FOR THIS GUARD: the
+      // split is the surface's DECLARED `flutterApp`, read from the register's own
+      // `surfaces` block through tooling/ci/channel-surface.mjs, and a row whose
+      // surface declares no answer is refused instead of joining the Dart matrix
+      // (O-EXT-SURFACE-AXIS).
+      const chRegister = JSON.parse(chRaw);
+      registerChannels = (chRegister.channels ?? []).filter((c) => c && typeof c.id === 'string');
+      const split = partitionByFlutterApp(chRegister, registerChannels);
+      for (const c of split.undeclared) {
+        problems.push(`COVERAGE LOST — ${undeclaredSurfaceLine(c, 'whether it belongs in the PurchaseChannel (Dart) matrix')}`);
+      }
+      const dartChannels = split.flutter;
+      const notDart = split.other.map((c) => c.id);
+      const notDartSurfaces = [...new Set(split.other.map((c) => c.surface))].sort();
       if (notDart.length) {
         console.log(
-          `note §A domain: ${notDart.length} \`surface: "extension"\` channel(s) (${notDart.join(', ')}) are OUTSIDE the PurchaseChannel matrix — ` +
+          `note §A domain: ${notDart.length} ${notDartSurfaces.map((n) => `\`surface: "${n}"\``).join(' / ')} channel(s) (${notDart.join(', ')}) are OUTSIDE the PurchaseChannel matrix — ` +
             'they ship no Dart and resolve through no `TargetPlatform`. Their `purchaseRail` blocks are ' +
             'still graded by §G below — rail, why, source, forbids and the contradiction check — because ' +
             'those are questions about the REGISTER. Only this enum equality is Dart-shaped.',

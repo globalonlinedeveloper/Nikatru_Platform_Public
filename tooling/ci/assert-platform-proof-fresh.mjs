@@ -143,6 +143,7 @@ import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseWorkflow, shellSegments, WORKFLOW_DIR } from './workflow-scan.mjs';
 import { cronExpressions } from './assert-e2e-proof-fresh.mjs';
+import { flutterAppChannel, undeclaredSurfaceLine } from './channel-surface.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const WORKFLOW = 'build-platforms.yml';
@@ -365,6 +366,7 @@ export function flutterBuildTargets(wf) {
 /** The platforms this factory claims, and the build targets that prove each. */
 export function requiredTargets(register) {
   const platforms = new Set();
+  const undeclared = [];
   for (const c of register?.channels ?? []) {
     // 🔴 THE SIX-PLATFORM PROOF IS A `flutter build` PROOF, SO ITS DOMAIN IS THE
     // FLUTTER SURFACE. Every target in PLATFORM_BUILD_TARGETS is a verb this
@@ -382,13 +384,24 @@ export function requiredTargets(register) {
     // format that lane emits against what each extension row accepts. The
     // unmapped-platform limb keeps its full force over the app surface: add a
     // seventh Flutter platform and it still refuses.
-    if (c?.surface === 'extension') continue;
+    //
+    // ⏱ 2026-09-15 — "the Flutter surface" is now the surface's DECLARED
+    // `flutterApp`, not "not the literal 'extension'" (O-EXT-SURFACE-AXIS,
+    // tooling/ci/channel-surface.mjs). A row whose surface declares no answer is
+    // returned in `undeclared`, and the caller refuses: filing it as Flutter would
+    // demand `flutter build` targets for a thing nobody said Flutter builds.
+    const flutterApp = flutterAppChannel(register, c);
+    if (flutterApp === null) {
+      undeclared.push(undeclaredSurfaceLine(c, 'whether the six-platform `flutter build` proof covers it'));
+      continue;
+    }
+    if (flutterApp === false) continue;
     for (const p of c?.platforms ?? []) if (typeof p === 'string' && p !== '') platforms.add(p);
   }
   const unmapped = [...platforms].filter((p) => !PLATFORM_BUILD_TARGETS.has(p)).sort();
   const required = new Map();
   for (const p of [...platforms].sort()) if (PLATFORM_BUILD_TARGETS.has(p)) required.set(p, PLATFORM_BUILD_TARGETS.get(p));
-  return { platforms: [...platforms].sort(), required, unmapped };
+  return { platforms: [...platforms].sort(), required, unmapped, undeclared };
 }
 
 // ── THE CEILING AND THE TIMER, KEPT IN CONTACT ───────────────────────────────
@@ -556,7 +569,10 @@ export function platformProofCoverage(root = ROOT) {
   } catch (e) {
     return lost(`COVERAGE LOST — ${REGISTER_REL} is not valid JSON (${e.message}), so the required platform set has no source.`);
   }
-  const { platforms, required, unmapped } = requiredTargets(register);
+  const { platforms, required, unmapped, undeclared } = requiredTargets(register);
+  if (undeclared.length) {
+    return lost(`COVERAGE LOST — ${undeclared.join(' · ')}`);
+  }
   if (platforms.length === 0) {
     return lost(
       `COVERAGE LOST — no row in ${REGISTER_REL} declares a \`platforms\` array, so "the factory claims N platforms" has no answer ` +

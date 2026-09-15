@@ -815,7 +815,9 @@ describe('coverage self-check — the DERIVED platform set can itself go missing
     // The whole point of deriving the list: adding a platform to the register
     // must not be able to widen the claim without widening the proof.
     const reg = real();
-    reg.channels.push({ id: 'fuchsia-store', kind: 'store', served: false, platforms: ['fuchsia'], artifactFormats: ['.far'] });
+    // A Flutter-app row (surface 'app'): since 2026-09-15 a row with no declared surface is refused
+    // for a different reason, and this case is about the unmapped platform.
+    reg.channels.push({ id: 'fuchsia-store', kind: 'store', surface: 'app', served: false, platforms: ['fuchsia'], artifactFormats: ['.far'] });
     const root = mutate((s) => s, reg);
     const problem = assertWatchedWorkflowIntact(root);
     assert.match(problem, /no build command for: fuchsia/);
@@ -896,7 +898,13 @@ jobs:
 
   test('requiredTargets is the register union, and every mapped platform names a real subcommand', () => {
     const { platforms, required, unmapped } = requiredTargets({
-      channels: [{ platforms: ['web', 'android'] }, { platforms: ['android', 'ios'] }, { platforms: ['plan9'] }],
+      surfaces: { app: { flutterApp: true }, extension: { flutterApp: false } },
+      channels: [
+        { surface: 'app', platforms: ['web', 'android'] },
+        { surface: 'app', platforms: ['android', 'ios'] },
+        { surface: 'app', platforms: ['plan9'] },
+        { surface: 'extension', platforms: ['chrome'] },
+      ],
     });
     assert.deepEqual(platforms, ['android', 'ios', 'plan9', 'web']);
     assert.deepEqual(unmapped, ['plan9']);
@@ -906,6 +914,24 @@ jobs:
       assert.ok(targets.length > 0, `${p} must name at least one build target`);
       for (const t of targets) assert.match(t, /^[a-z]+$/);
     }
+  });
+
+  // ⏱ 2026-09-15 — O-EXT-SURFACE-AXIS. The domain is the surface DECLARED
+  // `flutterApp: true`, not "anything but the literal 'extension'".
+  test('a THIRD surface declared non-Flutter joins no build requirement; an UNDECLARED one is returned for refusal', () => {
+    const declared = requiredTargets({
+      surfaces: { app: { flutterApp: true }, script: { flutterApp: false } },
+      channels: [{ surface: 'app', platforms: ['web'] }, { surface: 'script', platforms: ['plan9'] }],
+    });
+    assert.deepEqual(declared.platforms, ['web']);
+    assert.deepEqual(declared.undeclared, []);
+    const undeclared = requiredTargets({
+      surfaces: { app: { flutterApp: true } },
+      channels: [{ id: 'cli', surface: 'script', platforms: ['plan9'] }, { surface: 'app', platforms: ['web'] }],
+    });
+    assert.deepEqual(undeclared.platforms, ['web'], 'the undeclared row must not be filed as Flutter');
+    assert.equal(undeclared.undeclared.length, 1);
+    assert.match(undeclared.undeclared[0], /channel "cli" is on surface "script", which tooling\/channel-register\.json `surfaces` does not declare/);
   });
 
   test('an empty register yields no requirement — which is why the caller treats it as COVERAGE LOST', () => {

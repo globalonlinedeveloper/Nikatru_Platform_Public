@@ -138,6 +138,7 @@ import { fileURLToPath } from 'node:url';
 // integration run; it is the same defect that had .claude/worktrees — eleven
 // full copies of this repo — resolving citations into stale branches today.
 import { listDir } from './tree-walk.mjs';
+import { flutterAppChannel, undeclaredSurfaceLine } from './channel-surface.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = resolve(join(HERE, '..', '..'));  // tooling/ci -> repo root
@@ -763,8 +764,19 @@ export function originEnvironments(register, app, assetNames, surface) {
     // and never "is this release an extension release?", so `--app subscriptiontracker`
     // emitted three browser-store environments. See `channelIsOnSurface`.
     if (!channelIsOnSurface(c, surface)) continue;
-    const isExtension = c?.surface === 'extension';
-    if (c?.kind !== 'direct' && !isExtension) continue;
+    // ⏱ 2026-09-15 — a non-direct row is an origin only on a surface DECLARED
+    // `flutterApp: false` (the extension stores today), read through
+    // tooling/ci/channel-surface.mjs rather than the literal 'extension'. A row
+    // whose surface declares no answer THROWS, like a missing surface above: an
+    // origin record for a channel nobody classified is not a guess to make
+    // quietly (O-EXT-SURFACE-AXIS).
+    if (c?.kind !== 'direct') {
+      const flutterApp = flutterAppChannel(register, c);
+      if (flutterApp === null) {
+        throw new TypeError(`originEnvironments: ${undeclaredSurfaceLine(c, 'whether it records an origin environment')}`);
+      }
+      if (flutterApp) continue;
+    }
     const tpl = c.deploymentEnvironment;
     if (typeof tpl !== 'string' || !tpl.includes('{app}')) continue;
     const formats = (c.artifactFormats ?? []).filter((f) => typeof f === 'string' && f.startsWith('.'));

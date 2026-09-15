@@ -75,6 +75,7 @@ function tree({
     { id: 'web', platforms: ['web'], artifactFormats: ['static-bundle'] },
   ],
   omitRegister = false,
+  extraSurfaces = {},
   // The guard's REQUIRED_COVERAGE (review 2026-07-31) demands the walk still
   // reach site.webmanifest and both sitemaps, so every fixture ships them —
   // same reason every fixture ships TEMPLATE_BLOCK for the affordance floor.
@@ -102,7 +103,12 @@ function tree({
   write('catalog/apps.json', JSON.stringify([{ slug: 'subscriptiontracker', platforms, status: 'live' }]));
   write(`tooling/ci/check-site-integrity.mjs`, `const ${siblingConst} = ${minSites};\n`);
   if (!omitRegister) {
-    write('tooling/channel-register.json', JSON.stringify({ channels, disqualified }, null, 2));
+    // ⏱ 2026-09-15 — the guard scopes by the surface's DECLARED `flutterApp`
+    // (O-EXT-SURFACE-AXIS), so the fixture declares the two real surfaces and puts
+    // a row with no `surface` of its own on `app`, which is what these rows are.
+    const surfaces = { app: { flutterApp: true }, extension: { flutterApp: false }, ...extraSurfaces };
+    const placed = channels.map((c) => ('surface' in c ? c : { ...c, surface: 'app' }));
+    write('tooling/channel-register.json', JSON.stringify({ surfaces, channels: placed, disqualified }, null, 2));
   }
   return root;
 }
@@ -231,6 +237,31 @@ describe('assert-channel-claims — [D-1] an affordance is a promise only if rea
     const { code, out } = run(tree({ nikatruBody: '<a href="/dl/Subly-Setup.exe">Windows</a>' }));
     assert.equal(code, 1, out);
     assert.match(out, /a \.exe artifact \(register: windows-direct\)/);
+  });
+
+  // ⏱ 2026-09-15 — O-EXT-SURFACE-AXIS: a THIRD surface.
+  test('a THIRD surface nobody declared is COVERAGE LOST — never graded as an app', () => {
+    const { code, out } = run(tree({
+      channels: [
+        { id: 'windows-direct', platforms: ['windows'], artifactFormats: ['.msix', '.exe'] },
+        { id: 'cli-store', surface: 'script', platforms: ['node'], artifactFormats: ['.tgz'] },
+      ],
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /channel "cli-store" is on surface "script", which tooling\/channel-register\.json `surfaces` does not declare/);
+  });
+
+  test('a THIRD surface DECLARED `flutterApp: false` is outside the apps.json scan, and named in the note', () => {
+    const { code, out } = run(tree({
+      extraSurfaces: { script: { flutterApp: false } },
+      nikatruBody: '<a href="/dl/tool.tgz">CLI</a>',
+      channels: [
+        { id: 'windows-direct', platforms: ['windows'], artifactFormats: ['.msix', '.exe'] },
+        { id: 'cli-store', surface: 'script', platforms: ['node'], artifactFormats: ['.tgz'] },
+      ],
+    }));
+    assert.equal(code, 0, out);
+    assert.match(out, /on the `script` surface are OUTSIDE this scan: cli-store: \.tgz/);
   });
 
   test('FAILS COVERAGE LOST when a register format cannot resolve to a pattern', () => {

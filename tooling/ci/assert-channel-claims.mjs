@@ -58,6 +58,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
+import { flutterAppChannel, undeclaredSurfaceLine } from './channel-surface.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const SITES = join(ROOT, 'sites');
@@ -239,6 +240,8 @@ function artifactAffordances(register) {
   const out = [];
   const uncovered = [];
   const offSurface = [];
+  const offSurfaceNames = new Set();
+  const undeclared = [];
   for (const c of register.channels ?? []) {
     // 🔴 THE HONESTY TEST HERE IS "IS THIS PLATFORM CLAIMED IN catalog/apps.json",
     // SO THE DOMAIN IS THE SURFACE apps.json DESCRIBES. On 2026-09-05 the
@@ -258,7 +261,16 @@ function artifactAffordances(register) {
     // PRINTED on every run by the caller below, and it is smaller than the false
     // failure it replaces — a guard that fires on correct input is worse than a
     // stated gap, which is this file's own rule about invented limits.
-    if (c.surface === 'extension') {
+    // ⏱ 2026-09-15 — decided by the surface's DECLARED `flutterApp`, not the literal
+    // 'extension' (O-EXT-SURFACE-AXIS, tooling/ci/channel-surface.mjs). A surface
+    // that declares no answer is refused below rather than graded as an app.
+    const flutterApp = flutterAppChannel(register, c);
+    if (flutterApp === null) {
+      undeclared.push(undeclaredSurfaceLine(c, 'whether its artifacts are graded against catalog/apps.json'));
+      continue;
+    }
+    if (flutterApp === false) {
+      offSurfaceNames.add(c.surface);
       for (const fmt of c.artifactFormats ?? []) offSurface.push(`${c.id}: ${typeof fmt === 'string' ? fmt : JSON.stringify(fmt)}`);
       continue;
     }
@@ -285,7 +297,7 @@ function artifactAffordances(register) {
       });
     }
   }
-  return { patterns: out, uncovered, offSurface };
+  return { patterns: out, uncovered, offSurface, offSurfaceNames: [...offSurfaceNames].sort(), undeclared };
 }
 
 /** Prose that claims a platform COUNT. Printed, never failed — see the header. */
@@ -352,6 +364,7 @@ const disqualified = Array.isArray(register.disqualified) ? register.disqualifie
 // ── assemble the affordance set: hand-listed store domains + register-derived
 //    artifact formats, with a coverage assertion tying the two together ───────
 const derived = artifactAffordances(register);
+if (derived.undeclared.length) coverageLost(derived.undeclared);
 if (derived.uncovered.length) {
   coverageLost([
     `register artifactFormats that resolve to NO scan pattern: ${derived.uncovered.join(', ')}.`,
@@ -361,7 +374,7 @@ if (derived.uncovered.length) {
 }
 if (derived.offSurface.length) {
   console.log(
-    `note  ${derived.offSurface.length} artifactFormat(s) on the \`extension\` surface are OUTSIDE this scan: ` +
+    `note  ${derived.offSurface.length} artifactFormat(s) on the ${derived.offSurfaceNames.map((n) => `\`${n}\``).join(', ')} surface are OUTSIDE this scan: ` +
       `${derived.offSurface.join(', ')}. [D-1] limb (ii) asks whether an advertised platform is CLAIMED in ` +
       `${APPS_JSON}, which holds apps and Flutter platform names — a browser is not one, so grading them here ` +
       `could only ever produce a false failure. No guard reads sites/ for an extension artifact link today.`,

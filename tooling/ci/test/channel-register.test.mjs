@@ -506,6 +506,7 @@ function tree({
     surfaces: {
       app: {
         what: 'a Flutter application delivered to a device',
+        flutterApp: true,
         platforms: ['android', 'ios', 'linux', 'macos', 'web', 'windows'],
         platformsSource: "Flutter's own target names",
         storeMetadataGradedBy: 'tooling/ci/assert-store-metadata.mjs',
@@ -548,6 +549,7 @@ function tree({
   if (withExtension) {
     register.surfaces.extension = {
       what: 'a browser extension shipped from extensions/',
+      flutterApp: false,
       platforms: ['chrome', 'edge', 'firefox'],
       platformsSource: 'the browser names',
       storeMetadataGradedBy: 'tooling/ci/assert-store-metadata.mjs',
@@ -1068,6 +1070,7 @@ describe('assert-channel-register — schema, stores and disqualified channels',
       mutate: (r) => {
         r.surfaces.extension = {
           what: 'a browser extension',
+          flutterApp: false,
           platforms: ['chrome', 'edge', 'firefox'],
           platformsSource: 'the browser names',
           storeMetadataGradedBy: 'tooling/ci/assert-store-metadata.mjs',
@@ -1085,6 +1088,37 @@ describe('assert-channel-register — schema, stores and disqualified channels',
     assert.match(out, /which does not exist. A surface pointing at a deleted grader/);
   });
 
+  // ⏱ 2026-09-15 — O-EXT-SURFACE-AXIS. `flutterApp` is the declaration six guards
+  // scope by (tooling/ci/channel-surface.mjs); a surface without it is refused here.
+  test('FAILS when a surface declares no boolean `flutterApp` — six guards would have to guess', () => {
+    const { code, out } = run(tree({ mutate: (r) => { delete r.surfaces.app.flutterApp; } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /surfaces\."app" declares no boolean `flutterApp`/);
+  });
+
+  test('FAILS when `flutterApp` is not a boolean — "yes" is not a declaration', () => {
+    const { code, out } = run(tree({ mutate: (r) => { r.surfaces.app.flutterApp = 'yes'; } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /surfaces\."app" declares no boolean `flutterApp`/);
+  });
+
+  test('a THIRD surface declared without `flutterApp` is refused, and its store row gets NEITHER clause set', () => {
+    const { code, out } = run(tree({
+      mutate: (r) => {
+        r.surfaces.script = {
+          what: 'a hypothetical third surface',
+          platforms: ['node'],
+          platformsSource: 'this test',
+          storeMetadataGradedBy: 'tooling/ci/assert-store-metadata.mjs',
+        };
+        r.channels.push({ ...structuredClone(r.channels[1]), id: 'cli-store', surface: 'script', platforms: ['node'] });
+      },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /surfaces\."script" declares no boolean `flutterApp`/);
+    assert.doesNotMatch(out, /cli-store[^\n]*storeMetadataDir/, 'an undecided row must not be graded with the APP clauses');
+  });
+
   test('FAILS when a surface declares an EMPTY platform vocabulary — it would accept every typo', () => {
     const { code, out } = run(tree({ mutate: (r) => { r.surfaces.app.platforms = []; } }));
     assert.equal(code, 1, out);
@@ -1096,6 +1130,7 @@ describe('assert-channel-register — schema, stores and disqualified channels',
       mutate: (r) => {
         r.surfaces.extension = {
           what: 'a browser extension',
+          flutterApp: false,
           platforms: ['chrome', 'web'],
           platformsSource: 'the browser names',
           storeMetadataGradedBy: 'tooling/ci/assert-store-metadata.mjs',

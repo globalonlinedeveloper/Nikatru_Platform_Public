@@ -1072,10 +1072,18 @@
       "`storeMetadataGradedBy` NAMES THE GUARD THAT OWNS THIS SURFACE'S LISTING TREES, and",
       "assert-store-metadata.mjs reads it rather than carrying the other guard's name as a string.",
       "A surface whose trees nothing grades would be a listing corpus with no reader, which is the",
-      "state [10]D-5 exists to abolish."
+      "state [10]D-5 exists to abolish.",
+      "",
+      "⏱ 2026-09-15 — `flutterApp` IS REQUIRED ON EVERY SURFACE, and it is the answer six guards used to spell as",
+      "`surface !== 'extension'`: does this surface ship a Flutter application (catalog/apps.json, Dart, `flutter build`,",
+      "PurchaseChannel)? assert-channel-claims, assert-channel-register, assert-platform-proof-fresh, assert-purchase-path,",
+      "assert-seams-wired and release-manifest now read it through tooling/ci/channel-surface.mjs, and each refuses a row on",
+      "a surface that does not declare it. A third surface is therefore a DECISION written here, not six guards quietly",
+      "filing it as an app (O-EXT-SURFACE-AXIS)."
     ],
     "app": {
       "what": "A Flutter application this repository builds and delivers to a device or a browser tab. Its listing trees live under apps/{app}/store/<channel>.",
+      "flutterApp": true,
       "platforms": [
         "android",
         "ios",
@@ -1089,6 +1097,7 @@
     },
     "extension": {
       "what": "A browser extension shipped from extensions/ — build-free source (ADR 067 decision 1), packed by extensions/scripts/pack.mjs, submitted to a browser add-on store. Its listing trees live under extensions/Extension/<tool>/store/<store>.",
+      "flutterApp": false,
       "platforms": [
         "chrome",
         "edge",
