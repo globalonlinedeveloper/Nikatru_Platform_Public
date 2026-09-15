@@ -51,7 +51,8 @@ beforeAll(async () => {
       if (method === 'GET') return new Response(JSON.stringify(userRead.body), { status: userRead.status });
       return new Response(null, { status: 204 });
     }
-    if (url.startsWith(APP_ORIGIN)) return new Response('{"ok":true}', { status: 200 });
+    // Compared as a parsed ORIGIN, not a string prefix (CodeQL js/incomplete-url-substring-sanitization).
+    if (new URL(url).origin === APP_ORIGIN) return new Response('{"ok":true}', { status: 200 });
     throw new Error(`unexpected fetch in test: ${url}`);
   });
 });
