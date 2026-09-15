@@ -34,6 +34,10 @@ dependencies:
   nikatru_design_system:
     path: ../../packages/design_system
 
+  # ⏱ 2026-09-15 · [ADR 086] the chassis screen bodies, adopted one piece at a time.
+  nikatru_chassis_screens:
+    path: ../../packages/chassis_screens
+
   # Plugin-backed impls of core's storage seams. Needed by the G-12 analytics
   # funnel: the pseudonymous `anon_id` and the consent decision must BOTH
   # survive a restart, and the queue must survive being offline.

@@ -43,6 +43,16 @@
         "features/settings/settings_screen.dart",
         "main.dart"
       ],
+      "adopted": [
+        {
+          "file": "app.dart",
+          "piece": "OfflineBannerHost",
+          "on": "2026-09-15",
+          "callSiteDelta": -2,
+          "measured": "apps/subscriptiontracker/lib/app.dart 661 -> 659 lines, each after dart format with no package resolution (CI mode), Flutter 3.47.2. The private _OfflineBanner body (Column + OfflineNotice + AppLocalizations) became OfflineBannerHost(unreachable:, onRetry:, child:); +1 import, +3 for the ChassisLocalizations delegate list, +1 dated comment. The chassis host also carries the PR #743 a11y fix the private copy lacked (notice painted after the routed child, so BlockSemantics no longer drops it)."
+        }
+      ],
+      "_adoptedWhy": "⏱ 2026-09-15 · [ADR 086] ONE PIECE AT A TIME: the app now imports the package in the files listed here; tooling/ci/assert-chassis-parity.mjs holds that list equal to the scan and every callSiteDelta negative ([ADR 066]). The row is deleted when the last template file is adopted.",
       "_filesNote": "The TEMPLATE files that import this package, as the guard re-derives them. Two of them have no counterpart in the app at all (features/auth/sign_in_screen.dart, features/firstrun/onboarding_screen.dart) — the app's sign-in and onboarding live under different names — which is why this list is the template's and not the app's."
     }
   ]

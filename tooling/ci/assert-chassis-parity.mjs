@@ -43,6 +43,20 @@
 //      row must be deleted, or this file becomes a list of things that used to be
 //      true, which is how the register rows in this repository rot.
 //
+// ── ⏱ 2026-09-15 · [ADR 086] PARTIAL ADOPTION IS A STATE, NOT A PAID DEBT ──────
+// The owner decided the live app adopts the chassis ONE SCREEN (or shell piece)
+// AT A TIME. Rule 3 above read the first adopted piece as "the debt is paid —
+// delete the row", which would have erased the record of every screen still owed
+// the day the first one moved. So a row may now carry `adopted`: one entry per
+// app file that imports the package, each with the chassis `piece` it took, the
+// `on` date and its measured `callSiteDelta` (lines after − before, after
+// `dart format` in CI's mode). Graded both ways against the scan:
+//   · the app files that import the package must equal the `adopted` files —
+//     an import nobody recorded, or a record with no import, is a finding;
+//   · every `callSiteDelta` must be NEGATIVE — [ADR 066]'s rule that a move lands
+//     only where the calling code measurably shrinks;
+//   · an app that imports the package with a row and NO `adopted` is still rule 3.
+//
 // ── COVERAGE, FAIL-CLOSED ────────────────────────────────────────────────────
 // Exit 2 when the scan cannot establish its own subject: no template lib, no
 // shared-package import found in it, or no app with a `lib/`. A guard that finds
@@ -134,15 +148,21 @@ if (apps.length === 0) {
 }
 /** app → package → how many of its files import it. */
 const appImports = new Map();
+/** app → package → WHICH of its files import it ([ADR 086] partial adoption). */
+const appImportFiles = new Map();
 for (const app of apps) {
   const libAbs = join(appsDir, app, 'lib');
   const counts = new Map();
+  const byPkg = new Map();
   for (const rel of dartFiles(libAbs)) {
     for (const pkg of importsIn(readFileSync(join(libAbs, ...rel.split('/')), 'utf8'))) {
       counts.set(pkg, (counts.get(pkg) ?? 0) + 1);
+      if (!byPkg.has(pkg)) byPkg.set(pkg, new Set());
+      byPkg.get(pkg).add(rel);
     }
   }
   appImports.set(app, counts);
+  appImportFiles.set(app, byPkg);
 }
 
 // ── 3 · the manifest ─────────────────────────────────────────────────────────
@@ -186,7 +206,55 @@ for (const app of apps) {
     const row = declared.get(key);
     const used = counts.get(pkg) ?? 0;
 
-    if (used > 0) {
+    if (used > 0 && row && Array.isArray(row.adopted) && row.adopted.length > 0) {
+      // [ADR 086] partial adoption: the record must match the imports, both ways.
+      const importing = [...(appImportFiles.get(app)?.get(pkg) ?? [])].sort();
+      const recorded = row.adopted.map((a) => a?.file).filter((f) => typeof f === 'string').sort();
+      const unrecorded = importing.filter((f) => !recorded.includes(f));
+      const stale = recorded.filter((f) => !importing.includes(f));
+      if (unrecorded.length > 0 || stale.length > 0) {
+        problems.push(
+          `${MANIFEST_REL} row for \`${app}\`/\`${pkg}\` records \`adopted\` in [${recorded.join(', ')}], and apps/${app} imports ` +
+            `the package in [${importing.join(', ')}].` +
+            (unrecorded.length > 0 ? ` UNRECORDED: ${unrecorded.join(', ')}.` : '') +
+            (stale.length > 0 ? ` NO LONGER IMPORTS: ${stale.join(', ')}.` : '') +
+            ' [ADR 086]: each adopted piece is written down with its measured callSiteDelta, in the same commit as the import.',
+        );
+      }
+      for (const [i, a] of row.adopted.entries()) {
+        for (const field of ['file', 'piece', 'on']) {
+          if (typeof a?.[field] !== 'string' || a[field].trim() === '') {
+            problems.push(`${MANIFEST_REL} row for \`${app}\`/\`${pkg}\` adopted[${i}] has no \`${field}\`.`);
+          }
+        }
+        if (typeof a?.callSiteDelta !== 'number' || !(a.callSiteDelta < 0)) {
+          problems.push(
+            `${MANIFEST_REL} row for \`${app}\`/\`${pkg}\` adopted[${i}] (${a?.file}) records callSiteDelta ${JSON.stringify(a?.callSiteDelta)}. ` +
+              "[ADR 066]: a piece moves only where the calling code measurably SHRINKS after dart format — a delta that is not negative is a revert, recorded as STAYS.",
+          );
+        }
+      }
+      prints.push(
+        `⬜ declared debt, partly paid — apps/${app} adopts \`${pkg}\` in ${importing.length} file(s) (` +
+          `${row.adopted.map((a) => `${a.piece} ${a.callSiteDelta}`).join(', ')}); the rest stays owed (${(row.files ?? []).length} template file(s), since ${row.since}).`,
+      );
+      // The row still pins WHICH template delegations it covers — rule 2 applies to a
+      // partly paid debt exactly as to an unpaid one.
+      const wantP = [...files].sort();
+      const haveP = [...(row.files ?? [])].sort();
+      const addedP = wantP.filter((f) => !haveP.includes(f));
+      const goneP = haveP.filter((f) => !wantP.includes(f));
+      if (addedP.length > 0 || goneP.length > 0) {
+        problems.push(
+          `${MANIFEST_REL} row for \`${app}\`/\`${pkg}\` lists ${haveP.length} template file(s); the template now ` +
+            `delegates ${wantP.length}.` +
+            (addedP.length > 0 ? ` ADDED: ${addedP.join(', ')}.` : '') +
+            (goneP.length > 0 ? ` GONE: ${goneP.join(', ')}.` : '') +
+            ' Re-measure the row in the same commit as the change.',
+        );
+      }
+      continue;
+    } else if (used > 0) {
       if (row) {
         problems.push(
           `${MANIFEST_REL} still declares \`${pkg}\` as not adopted by \`${app}\`, but ${app} now imports it in ` +

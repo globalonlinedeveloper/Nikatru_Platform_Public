@@ -4,6 +4,7 @@
 // Subly shell, which `routerProvider` drives.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:nikatru_chassis_screens/shell/app_shell.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -42,7 +43,10 @@ class SublyApp extends ConsumerWidget {
     return MaterialApp.router(
       title: AppConfig.appName,
       debugShowCheckedModeBanner: false,
-      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      localizationsDelegates: <LocalizationsDelegate<dynamic>>[
+        ...AppLocalizations.localizationsDelegates,
+        ChassisLocalizations.delegate,
+      ],
       supportedLocales: AppLocalizations.supportedLocales,
       // [pipeline C-13] The persisted language override. NULL is not "no value"
       // — it is "follow the device", and MaterialApp already does the right
@@ -240,19 +244,13 @@ class _OfflineBanner extends ConsumerWidget {
 
   final Widget child;
 
+  // ⏱ 2026-09-15 · [ADR 086] adopted chassis OfflineBannerHost (PR #743).
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (!ref.watch(networkUnreachableProvider)) return child;
-    final AppLocalizations l10n = AppLocalizations.of(context);
-    return Column(
-      children: <Widget>[
-        OfflineNotice(
-          message: l10n.offlineMessage,
-          retryLabel: l10n.retry,
-          onRetry: () => ref.invalidate(appConfigProvider),
-        ),
-        Expanded(child: child),
-      ],
+    return OfflineBannerHost(
+      unreachable: ref.watch(networkUnreachableProvider),
+      onRetry: () => ref.invalidate(appConfigProvider),
+      child: child,
     );
   }
 }
