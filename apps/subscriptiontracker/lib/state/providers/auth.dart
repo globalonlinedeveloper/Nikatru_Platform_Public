@@ -14,6 +14,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart'
     show ChangeNotifier, defaultTargetPlatform, kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:nikatru_age_signals/nikatru_age_signals.dart'
+    show storeAgeSignalSourceFor;
 import 'package:nikatru_api_client/nikatru_api_client.dart';
 import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
     show
@@ -180,11 +182,12 @@ final Provider<Uri> launchUriProvider = Provider<Uri>((ref) => Uri.base);
 /// ⏱ 2026-09-15 · [ADR 082] §5 — the store age signal both sign-up doors read
 /// before an account is created (`login_screen.dart`, `sign_up_screen.dart`).
 /// A provider so a test can inject a store answer; the shipped value is the
-/// source for the running host (no store adapter is built in yet, so every
-/// host reads no signal and proceeds on the 18+ declaration).
+/// source for the running host: Google Play Age Signals on android, Apple
+/// Declared Age Range on ios, no signal elsewhere (`nikatru_age_signals`). The
+/// age range is used ONLY for this gate and is never stored, logged or sent.
 final Provider<core.AgeSignalSource> ageSignalSourceProvider =
     Provider<core.AgeSignalSource>(
-      (ref) => core.ageSignalSourceFor(
+      (ref) => storeAgeSignalSourceFor(
         core.ageSignalHostNamed(
           isWeb: kIsWeb,
           platform: defaultTargetPlatform.name,
