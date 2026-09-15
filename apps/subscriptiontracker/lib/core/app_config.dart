@@ -320,6 +320,33 @@ class AppConfig {
   /// because it is a list of consumers and not a citation.
   static bool get isBackendLive => isSupabaseConfigured && isApiConfigured;
 
+  // ── Cloudflare Turnstile (WEB sign-in only, [ADR 084]) ────────────────────
+  //
+  // ⏱ 2026-09-15 · THE ONE HOME FOR THIS READ. Until today
+  // `features/auth/turnstile_gate.dart` read `String.fromEnvironment` itself —
+  // the one build input that bypassed this chassis (open row
+  // O-TURNSTILE-CHASSIS). It lives here now, beside the other defines, and
+  // `assert-store-build-config.mjs` refuses a second read of it anywhere else
+  // under `lib/`.
+  //
+  // 🔴 [ADR 084], OWNER, 2026-09-15: "Store builds skip it". The PUBLIC site key
+  // is compiled into the WEB build only. A store build is built WITHOUT it on
+  // purpose — a Turnstile widget inside a native webview is unverified on every
+  // device, and a wrong answer blocks sign-in — so native sign-up relies on the
+  // identity provider's rate limits until bot sign-ups are observed on a native
+  // channel (the ADR's written revisit trigger). The guard grades that intent in
+  // BOTH directions by walking [isTurnstileConfigured] to its define: every web
+  // lane MUST pass it and every store lane MUST NOT.
+  //
+  // ⚠️ THE GETTER'S NAME IS READ BY THAT GUARD, exactly as [isBackendLive]'s is.
+  // Renaming it leaves an app that imports the captcha with no declared key,
+  // which the guard refuses as COVERAGE LOST rather than grading nothing.
+  static const String turnstileSiteKey = String.fromEnvironment(
+    'TURNSTILE_SITE_KEY',
+  );
+
+  static bool get isTurnstileConfigured => turnstileSiteKey.isNotEmpty;
+
   // ── CFG-1 launch fetch ────────────────────────────────────────────────────
   // Whether the launch-time CFG-1 fetch may run. DELIBERATELY SEPARATE from
   // [isBackendLive]: the config service is not the identity service, and

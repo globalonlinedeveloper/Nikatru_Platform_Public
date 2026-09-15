@@ -79,6 +79,8 @@ function makeRoot({
   lane = { workflow: '.github/workflows/build.yml', job: 'android' },
   submission = null,
   extraJob = '',
+  web = null,
+  extraLib = null,
 } = {}) {
   const root = join(TMP, `r${seq++}`);
   mkdirSync(join(root, 'tooling'), { recursive: true });
@@ -97,11 +99,26 @@ function makeRoot({
   const row = { id: 'android-play', kind, platforms, artifactFormats: ['.aab'] };
   if (lane) row.lane = lane;
   if (submission) row.submission = submission;
+  const channels = [row];
+  // [ADR 084] fixtures: a `web` row whose lane builds web, and a captcha import.
+  if (web) {
+    channels.push({ id: 'web', kind: 'web', platforms: ['web'], lane: { workflow: '.github/workflows/web.yml', job: 'deploy-web' } });
+    writeFileSync(
+      join(root, '.github', 'workflows', 'web.yml'),
+      `name: web\non:\n  push:\npermissions:\n  contents: read\njobs:\n  deploy-web:\n    runs-on: ubuntu-24.04\n    steps:\n${buildStep('web', web.defines)}`,
+    );
+  }
+  if (extraLib) {
+    for (const [rel, text] of Object.entries(extraLib)) {
+      mkdirSync(dirname(join(root, rel)), { recursive: true });
+      writeFileSync(join(root, rel), text);
+    }
+  }
   // `storeMetadataContract.appConfigPaths` is where BOTH this guard and
   // assert-store-metadata.mjs learn the layouts. A fixture that omits it
   // would exercise a fallback the real register never takes.
   writeFileSync(join(root, 'tooling', 'channel-register.json'), JSON.stringify({
-    channels: [row],
+    channels,
     storeMetadataContract: { appConfigPaths },
   }));
 
@@ -292,5 +309,82 @@ describe('assert-store-build-config — coverage self-checks', () => {
   test('an empty evaluation set is never reported as a pass', () => {
     const r = run(makeRoot({ lane: null, submission: null }));
     assert.doesNotMatch(out(r), /assert-store-build-config: OK/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-15 · [ADR 084] — the web-only captcha key, graded BOTH ways.
+// Owner: "Store builds skip it". Each case declared on its own (assert-no-loop-cases).
+// ─────────────────────────────────────────────────────────────────────────────
+const TURNSTILE_CONFIG = CONFIG.replace(
+  'static bool get isBackendLive',
+  "static const String turnstileSiteKey = String.fromEnvironment('TURNSTILE_SITE_KEY');\n  static bool get isTurnstileConfigured => turnstileSiteKey.isNotEmpty;\n  static bool get isBackendLive",
+);
+const GATE = { 'apps/subscriptiontracker/lib/features/auth/turnstile_gate.dart': "import 'package:cloudflare_turnstile/cloudflare_turnstile.dart';\nclass TurnstileGate {}\n" };
+const WEB_OK = { defines: [...ALL, 'TURNSTILE_SITE_KEY'] };
+
+describe('assert-store-build-config — [ADR 084] the captcha key is WEB-ONLY', () => {
+  test('green: the web lane passes the key and the store lane does not', () => {
+    const r = run(makeRoot({ config: TURNSTILE_CONFIG, extraLib: GATE, web: WEB_OK }));
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /web-only define\(s\) TURNSTILE_SITE_KEY via subscriptiontracker: isTurnstileConfigured: passed by 1 web build step\(s\), refused on 1 store build step\(s\)/);
+  });
+
+  test('W1 FAILS when the web lane does not pass the key — a keyless web build is an error', () => {
+    const r = run(makeRoot({ config: TURNSTILE_CONFIG, extraLib: GATE, web: { defines: ALL } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /W1 \.github\/workflows\/web\.yml:\d+ \(web channel "web", lane job "deploy-web", `flutter build web`\) does not pass TURNSTILE_SITE_KEY/);
+  });
+
+  test('W2 FAILS when a store lane starts passing the key', () => {
+    const r = run(makeRoot({ config: TURNSTILE_CONFIG, extraLib: GATE, web: WEB_OK, defines: [...ALL, 'TURNSTILE_SITE_KEY'] }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /W2 \.github\/workflows\/build\.yml:\d+ \(channel "android-play".*passes TURNSTILE_SITE_KEY/);
+  });
+
+  test('W3 FAILS when a second file under lib/ reads the define itself', () => {
+    const r = run(makeRoot({
+      config: TURNSTILE_CONFIG,
+      web: WEB_OK,
+      extraLib: { ...GATE, 'apps/subscriptiontracker/lib/features/auth/login.dart': "const k = String.fromEnvironment('TURNSTILE_SITE_KEY');\n" },
+    }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /W3 apps\/subscriptiontracker\/lib\/features\/auth\/login\.dart reads String\.fromEnvironment\('TURNSTILE_SITE_KEY'\) itself/);
+  });
+
+  test('W4 FAILS when isBackendLive also reaches the web-only key', () => {
+    const both = TURNSTILE_CONFIG.replace('=> isSupabaseConfigured && isApiConfigured;', '=> isSupabaseConfigured && isApiConfigured && isTurnstileConfigured;');
+    const r = run(makeRoot({ config: both, extraLib: GATE, web: WEB_OK, defines: [...ALL, 'TURNSTILE_SITE_KEY'] }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /W4 TURNSTILE_SITE_KEY is reached by BOTH/);
+  });
+
+  test('COVERAGE LOST when the app imports the captcha and declares no isTurnstileConfigured', () => {
+    const r = run(makeRoot({ config: CONFIG, extraLib: GATE, web: WEB_OK }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /COVERAGE LOST — .*declares no `isTurnstileConfigured` getter\. — and .*turnstile_gate\.dart import\(s\) the captcha package/);
+  });
+
+  test('COVERAGE LOST when a web-only key exists and no web lane builds web', () => {
+    const r = run(makeRoot({ config: TURNSTILE_CONFIG, extraLib: GATE }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /COVERAGE LOST — 1 web-only define\(s\) \(TURNSTILE_SITE_KEY\) and ZERO release `flutter build web` steps were graded/);
+  });
+
+  test('COVERAGE LOST when the only web build is a DEBUG build — e2e is not the web lane', () => {
+    const root = makeRoot({ config: TURNSTILE_CONFIG, extraLib: GATE, web: WEB_OK });
+    writeFileSync(
+      join(root, '.github', 'workflows', 'web.yml'),
+      'name: web\non:\n  push:\npermissions:\n  contents: read\njobs:\n  deploy-web:\n    runs-on: ubuntu-24.04\n    steps:\n      - name: Build\n        run: flutter build web --debug --dart-define=TURNSTILE_SITE_KEY=x\n',
+    );
+    const r = run(root);
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /ZERO release `flutter build web` steps were graded/);
+  });
+
+  test('an app with NO captcha and no getter grades nothing web-only, and says so', () => {
+    const r = run(makeRoot());
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /no `isTurnstileConfigured` and no captcha import under apps\/subscriptiontracker\/lib/);
   });
 });

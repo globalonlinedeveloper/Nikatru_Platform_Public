@@ -54,8 +54,30 @@
 //     a secret's contents, so a store lane wired to a STAGING Supabase passes
 //     here. Printed on every run rather than left implied.
 //
+// ── ⏱ 2026-09-15 · THE SECOND QUESTION: A WEB-ONLY DEFINE, GRADED BOTH WAYS ──
+// [ADR 084], owner, 2026-09-15: "Store builds skip it" — Cloudflare Turnstile is
+// a WEB sign-in check, and a store build is built WITHOUT its site key on purpose
+// (a widget inside a native webview is unverified on every device; a wrong answer
+// blocks sign-in). An absence nobody states is indistinguishable from an
+// accident, so this guard now states it:
+//   · THE WEB-ONLY SET IS DERIVED, the same way the required set is: the defines
+//     `AppConfig.isTurnstileConfigured` (WEB_ONLY_GETTER) reaches. An app whose
+//     lib/ imports the captcha package and declares no such getter is COVERAGE
+//     LOST — a renamed getter must not quietly grade nothing.
+//   · W1 every release `flutter build web` step in a lane a `web` platform row
+//     declares MUST pass every web-only define;
+//   · W2 every store build step graded above MUST NOT pass one — a store build
+//     that starts carrying the key is a finding, not a silent behaviour change;
+//   · W3 the define is read in ONE place: a `String.fromEnvironment('<define>')`
+//     anywhere else under apps/<slug>/lib/ is a second home;
+//   · W4 a web-only define may not also be one `isBackendLive` requires — the two
+//     rules would contradict each other on every store lane.
+// The app itself treats "no key" as "no captcha" only in a native build; a web
+// build with a live backend and no key reports an error (turnstile_gate.dart).
+//
 // Usage:  node tooling/ci/assert-store-build-config.mjs [repoRoot]
-// Exit 0 = no store artifact is a demo build. 1 = at least one is.
+// Exit 0 = no store artifact is a demo build, and the web-only defines reach the web
+//          lanes and no store lane. 1 = a finding (or COVERAGE LOST, see coverageLost).
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
@@ -66,6 +88,8 @@ import { fileURLToPath } from 'node:url';
 // it found 2 of the 11 defines that existed. Four copies of a workflow parser
 // drift in the one way that reports "clean".
 import { parseAllWorkflows } from './workflow-scan.mjs';
+// The one directory listing (assert-walks-bounded.mjs) — W3 walks each app's lib/.
+import { listDir } from './tree-walk.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER = 'tooling/channel-register.json';
@@ -93,6 +117,14 @@ const configCandidateTemplates = (reg) => {
 /** The getter every store artifact must satisfy. Named once; everything it
  *  requires is read out of the source, never listed here. */
 const ROOT_GETTER = 'isBackendLive';
+
+/** [ADR 084] The getter whose defines are WEB-ONLY. Named once, like ROOT_GETTER;
+ *  the define names are read out of the source. */
+const WEB_ONLY_GETTER = 'isTurnstileConfigured';
+
+/** An app whose lib/ imports this package HAS a captcha, so it must declare
+ *  WEB_ONLY_GETTER — otherwise W1/W2 would grade an empty set and say ok. */
+const CAPTCHA_IMPORT = /import\s+['"]package:cloudflare_turnstile\//;
 
 /** `flutter build <target>` → the platform it produces for. Same vocabulary as
  *  assert-channel-register.mjs's BUILD_TARGETS, restricted to the question this
@@ -130,7 +162,7 @@ function coverageLost(lines) {
  * transitively reaches, which a text search for "SUPABASE" could not produce and
  * a hard-coded list could not keep.
  */
-function requiredDefines(source, rel) {
+function requiredDefines(source, rel, rootGetter = ROOT_GETTER) {
   const fields = new Map();
   for (const m of source.matchAll(/static\s+const\s+String\s+(\w+)\s*=\s*String\.fromEnvironment\(\s*'([A-Za-z_][A-Za-z0-9_]*)'/g)) {
     fields.set(m[1], m[2]);
@@ -139,11 +171,11 @@ function requiredDefines(source, rel) {
   for (const m of source.matchAll(/static\s+bool\s+get\s+(\w+)\s*=>\s*([^;]+);/g)) {
     getters.set(m[1], m[2]);
   }
-  if (!getters.has(ROOT_GETTER)) return { missingRoot: `${rel} declares no \`${ROOT_GETTER}\` getter.` };
+  if (!getters.has(rootGetter)) return { missingRoot: `${rel} declares no \`${rootGetter}\` getter.` };
 
   const seen = new Set();
   const need = new Set();
-  const queue = [ROOT_GETTER];
+  const queue = [rootGetter];
   while (queue.length) {
     const g = queue.pop();
     if (seen.has(g)) continue;
@@ -194,6 +226,24 @@ try {
 const REQUIRED = new Set();
 let configsRead = 0;
 const getterChains = [];
+/** [ADR 084] defines a web lane MUST pass and a store lane MUST NOT. */
+const WEB_ONLY = new Set();
+const webOnlyChains = [];
+
+/** Every .dart file under a repo-relative directory, repo-relative, '/'-joined. */
+function dartUnder(relDir) {
+  const out = [];
+  const walk = (d) => {
+    if (!existsSync(join(ROOT, d))) return;
+    for (const e of listDir(join(ROOT, d), { withFileTypes: true })) {
+      const child = `${d}/${e.name}`;
+      if (e.isDirectory()) walk(child);
+      else if (e.name.endsWith('.dart')) out.push(child);
+    }
+  };
+  walk(relDir);
+  return out;
+}
 for (const app of Array.isArray(apps) ? apps : []) {
   const candidates = CONFIG_TEMPLATES.map((t) => t.split('{app}').join(app.slug));
   const rel = candidates.find((c) => read(c) !== null) ?? null;
@@ -214,6 +264,41 @@ for (const app of Array.isArray(apps) ? apps : []) {
   configsRead++;
   for (const d of r.defines) REQUIRED.add(d);
   getterChains.push(`${app.slug}: ${[...r.getters].join(' → ')}`);
+
+  // [ADR 084] the web-only set, the app's captcha import, and W3's second home.
+  const libRel = `apps/${app.slug}/lib`;
+  const dartFiles = dartUnder(libRel);
+  const importsCaptcha = dartFiles.filter((f) => CAPTCHA_IMPORT.test(read(f) ?? ''));
+  const w = requiredDefines(src, rel, WEB_ONLY_GETTER);
+  if (w.missingRoot) {
+    if (importsCaptcha.length) {
+      coverageLost([
+        `${w.missingRoot} — and ${importsCaptcha.join(', ')} import(s) the captcha package.`,
+        `[ADR 084] grades the captcha's site key web-only through that getter. With it renamed or removed the`,
+        'web-only set is EMPTY, so no web lane is required to pass the key and no store lane is refused for',
+        'passing it — the rule graded over nothing. If the getter moved, re-point WEB_ONLY_GETTER in the same change.',
+      ]);
+    }
+    prints.push(`${app.slug}: no \`${WEB_ONLY_GETTER}\` and no captcha import under ${libRel} — no web-only define to grade for this app.`);
+    continue;
+  }
+  if (w.defines.size === 0) {
+    coverageLost([
+      `\`${WEB_ONLY_GETTER}\` in ${rel} reaches ZERO dart-defines.`,
+      'The web-only set is derived from it; an empty set lets every lane pass W1 and W2 by grading nothing.',
+    ]);
+  }
+  for (const d of w.defines) {
+    WEB_ONLY.add(d);
+    const reads = new RegExp(`String\\.fromEnvironment\\(\\s*'${d}'`);
+    for (const f of dartFiles) {
+      if (f === rel) continue;
+      if (reads.test(read(f) ?? '')) {
+        problems.push(`W3 ${f} reads String.fromEnvironment('${d}') itself. [ADR 084]: the web-only key has ONE home, ${rel} (AppConfig.${WEB_ONLY_GETTER}); a second read is how a define lands in the copy nobody grades.`);
+      }
+    }
+  }
+  webOnlyChains.push(`${app.slug}: ${[...w.getters].join(' → ')}`);
 }
 if (configsRead === 0) {
   coverageLost([
@@ -229,6 +314,11 @@ if (REQUIRED.size === 0) {
     'guards is gone and this guard should be deleted — or the field parse has stopped matching. Both',
     'produce a requirement of nothing, which every lane satisfies.',
   ]);
+}
+for (const d of WEB_ONLY) {
+  if (REQUIRED.has(d)) {
+    problems.push(`W4 ${d} is reached by BOTH \`${ROOT_GETTER}\` (every store lane must pass it) and \`${WEB_ONLY_GETTER}\` (no store lane may pass it). [ADR 084] makes it web-only; one of the two getters is wrong.`);
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -265,6 +355,7 @@ if (declared.length === 0) {
 
 const NON_RELEASE = /--debug\b|--profile\b/;
 let graded = 0;
+let storeStepsGradedForWebOnly = 0;
 const rowsWithNoBuild = new Map();
 
 for (const d of declared) {
@@ -291,6 +382,17 @@ for (const d of declared) {
       graded++;
       const where = `${d.workflow}:${line.n} (channel "${d.row.id}", ${d.kind} job "${d.job}", \`flutter build ${m[1]}\`)`;
       const absent = [...REQUIRED].filter((name) => !new RegExp(`--dart-define(?:=|\\s+)${name}=`).test(line.text));
+      // W2 [ADR 084]: a store build carries no captcha BY DESIGN.
+      const carried = [...WEB_ONLY].filter((name) => new RegExp(`--dart-define(?:=|\\s+)${name}=`).test(line.text));
+      storeStepsGradedForWebOnly++;
+      if (carried.length) {
+        problems.push(
+          `W2 ${where} passes ${carried.join(', ')}. [ADR 084] (owner, 2026-09-15, "Store builds skip it"): a store build ` +
+            'is built WITHOUT the captcha site key on purpose — a Turnstile widget in a native webview is unverified on ' +
+            'any device and a wrong answer blocks sign-in. Remove the define from this step; if bot sign-ups were ' +
+            'observed on a native channel, that is the ADR\'s revisit trigger, and it is a decision, not a lane edit.',
+        );
+      }
       if (absent.length) {
         problems.push(
           `${where} does not pass ${absent.join(', ')}. ` +
@@ -333,6 +435,48 @@ if (graded === 0) {
   ]);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 3. [ADR 084] W1 — EVERY WEB LANE PASSES THE WEB-ONLY DEFINES.
+//    The subject is every row whose platforms include `web` and that is NOT a
+//    store row, read from the register like the store rows are.
+// ─────────────────────────────────────────────────────────────────────────────
+let webGraded = 0;
+if (WEB_ONLY.size > 0) {
+  const webRows = (register.channels ?? []).filter((c) => c.kind !== 'store' && (c.platforms ?? []).includes('web'));
+  for (const row of webRows) {
+    for (const [kind, decl] of [['lane', row.lane], ['submission', row.submission]]) {
+      if (!decl || typeof decl.workflow !== 'string' || typeof decl.job !== 'string') continue;
+      const wf = workflows.get(decl.workflow);
+      const job = wf?.jobs.get(decl.job);
+      if (!job) {
+        problems.push(`W1 ${REGISTER}: web channel "${row.id}" declares ${kind} ${decl.workflow} job "${decl.job}", which this scan did not find, so no web build was graded for it.`);
+        continue;
+      }
+      for (const line of job.logical) {
+        if (!/flutter\s+build\s+web\b/.test(line.text) || NON_RELEASE.test(line.text)) continue;
+        webGraded++;
+        const absent = [...WEB_ONLY].filter((name) => !new RegExp(`--dart-define(?:=|\\s+)${name}=`).test(line.text));
+        if (absent.length) {
+          problems.push(
+            `W1 ${decl.workflow}:${line.n} (web channel "${row.id}", ${kind} job "${decl.job}", \`flutter build web\`) does not pass ${absent.join(', ')}. ` +
+              `[ADR 084]: Turnstile guards WEB sign-in, and a web build with a live backend and no key is an error — the ` +
+              'identity provider refuses every sign-in it sends without a captcha token.',
+          );
+        }
+      }
+    }
+  }
+  if (webGraded === 0) {
+    for (const p of problems) console.error(`FAIL ${p}`);
+    coverageLost([
+      `${WEB_ONLY.size} web-only define(s) (${[...WEB_ONLY].join(', ')}) and ZERO release \`flutter build web\` steps were graded.`,
+      `No non-store ${REGISTER} row with platform \`web\` declares a lane that builds web, so "every web lane passes the`,
+      'key" ranged over nothing — exactly the half of [ADR 084] that makes a keyless web build an error.',
+    ]);
+  }
+  prints.push(`[ADR 084] web-only define(s) ${[...WEB_ONLY].sort().join(', ')} via ${webOnlyChains.join(' | ')}: passed by ${webGraded} web build step(s), refused on ${storeStepsGradedForWebOnly} store build step(s).`);
+}
+
 prints.push(`VALUES ARE NOT CHECKED — this reads workflow structure, so a store lane wired to a STAGING Supabase project passes here. What it can see is that the define is passed at all.`);
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -354,5 +498,6 @@ if (problems.length) {
 console.log(
   `assert-store-build-config: OK — ${graded} store build step(s) across ${declared.length} declared lane(s) ` +
     `each pass all ${REQUIRED.size} define(s) AppConfig.${ROOT_GETTER} reaches (${[...REQUIRED].sort().join(', ')}), ` +
-    `derived from ${configsRead} app config file(s) via ${getterChains.join(' | ')}`,
+      `derived from ${configsRead} app config file(s) via ${getterChains.join(' | ')}; ` +
+    `[ADR 084] ${WEB_ONLY.size} web-only define(s) passed by ${webGraded} web step(s) and by none of the store steps`,
 );

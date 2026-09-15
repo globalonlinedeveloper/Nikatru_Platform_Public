@@ -184,7 +184,7 @@
   "stamp-wiring.test.mjs": 17,
   "start-here.test.mjs": 7,
   "store-bijection.test.mjs": 26,
-  "store-build-config.test.mjs": 22,
+  "store-build-config.test.mjs": 31,
   "store-identity.test.mjs": 45,
   "store-matrix.test.mjs": 21,
   "store-metadata.test.mjs": 74,
