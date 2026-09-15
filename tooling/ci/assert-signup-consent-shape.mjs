@@ -28,6 +28,11 @@
 //      either position. An optional consent that gates the service is GDPR
 //      Art 7(4) conditionality, declined in the research as legally unavailable
 //      rather than as a matter of taste.
+//   4. APPLE ACCEPTS FIRST (⏱ 2026-09-15 · O-SIWA-NO-CLICKWRAP) — every file that
+//      calls Sign in with Apple is a listed door, and in each door the terms
+//      refusal, the disabled button and the recorded acceptance all come BEFORE
+//      the provider call. Counted by call site, because a door with no boxes was
+//      never a surface limbs 1-3 could find missing.
 //
 // ── COVERAGE SELF-CHECK ─────────────────────────────────────────────────────
 // Every limb above is satisfied by an EMPTY set of surfaces. A guard that finds
@@ -47,9 +52,17 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { stripSourceComments } from './text-reductions.mjs';
+import { listDir } from './tree-walk.mjs';
 import { delegationOf as resolveChassisDelegation } from './chassis-delegation.mjs';
 
 const ROOT = resolve(process.argv[2] ?? process.cwd());
+
+/** The span of ONE `onPressed:` expression, for the per-button checks below: it
+ *  may not run into the next control's `onPressed:` or `key:`. Widget trees
+ *  carry no `;`, so without this bound a check on one button is satisfied by the
+ *  flag on the NEXT button down — measured: deleting the sign-up submit's
+ *  disabling half went green because the Apple button below still had one. */
+const ONE_EXPRESSION = '(?:(?!onPressed|\\bkey\\s*:)[^;])*?';
 
 /** The surfaces that TAKE a consent decision. Both trees, always.
  *
@@ -70,6 +83,12 @@ const SURFACES = [
     file: 'apps/subscriptiontracker/lib/features/auth/login_screen.dart',
     terms: '_acceptedTerms',
     marketing: '_marketingEmail',
+    // ⏱ 2026-09-15 · this screen's flags now gate TWO controls — the sign-up
+    // submit and the Apple button (O-SIWA-NO-CLICKWRAP). A file-wide "some
+    // onPressed disables on the flag" stopped proving the submit is one of them
+    // (the case that deletes its disabling half went green), so limb 2 reads the
+    // SUBMIT's own onPressed here; limb 4 reads the Apple button's.
+    button: 'E2EKeys\\.loginSubmit',
   },
   {
     file: 'apps/subscriptiontracker/lib/features/auth/reaccept_terms_screen.dart',
@@ -86,7 +105,66 @@ const SURFACES = [
     terms: '_accepted',
     marketing: null,
   },
+  {
+    // ⏱ 2026-09-15 · O-SIWA-NO-CLICKWRAP. THE THIRD DOOR, AND IT HAD NO BOX AT ALL.
+    // Sign in with Apple can create an account, so the chassis sign-in body now
+    // carries the same two flags for the Apple button (read through the brick
+    // adapter's delegation). Subly's `LoginScreen`, above, gates its Apple button
+    // on the flags it already declares.
+    file: 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/auth/sign_in_screen.dart',
+    terms: '_acceptedTerms',
+    marketing: '_marketingEmail',
+  },
 ];
+
+/** ⏱ 2026-09-15 · O-SIWA-NO-CLICKWRAP — every door that reaches Sign in with Apple.
+ *
+ *  🔴 LIMBS 1-3 CANNOT SEE THIS GAP, AND IT SHIPPED THROUGH THEM. They check that
+ *  a surface's boxes arrive unticked and block its button; a door with NO boxes
+ *  is not a surface, so it is not on the list, so nothing is missing. Sign in
+ *  with Apple creates an account on first use, and for as long as it had no
+ *  clickwrap every limb here printed ok. Limb 4 therefore counts CALL SITES, not
+ *  surfaces: every file under a shipped lib tree that calls the provider must be
+ *  a door below (or a file a door delegates to), and in each door the acceptance
+ *  must be recorded, behind the terms flag, BEFORE the provider is called.
+ *
+ *  `accept` is the acceptance call in that door's code; `provider` is the call it
+ *  must precede. The brick adapter delegates its ordering to the chassis body, so
+ *  it is read through the delegation and additionally has its wiring checked. */
+const APPLE_DOORS = [
+  {
+    file: 'apps/subscriptiontracker/lib/features/auth/login_screen.dart',
+    provider: /\bsignInWithApple\s*\(\s*\)/,
+    accept: /legalAcceptanceProvider\s*\.\s*notifier\s*\)\s*\.\s*accept\s*\(/,
+    button: new RegExp(`continueWithApple\\s*,\\s*onPressed\\s*:${ONE_EXPRESSION}!_acceptedTerms\\b`),
+  },
+  {
+    file: 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/auth/sign_in_screen.dart',
+    provider: /\bwidget\s*\.\s*onSignInWithApple\s*\(\s*\)/,
+    accept: /\bwidget\s*\.\s*onAcceptTerms\s*\(/,
+    button: new RegExp(`SignInView\\s*\\.\\s*appleButton\\s*,\\s*onPressed\\s*:${ONE_EXPRESSION}!_acceptedTerms\\b`),
+    wiring: [
+      {
+        re: /appleTermsOwed\s*:\s*core\s*\.\s*needsLegalReacceptance\s*\(\s*acceptedStamp\s*:\s*ref\s*\.\s*watch\s*\(\s*legalAcceptanceProvider\s*\)\s*,\s*current\s*:\s*kLegalVersions\s*,?\s*\)/,
+        what: '`appleTermsOwed:` must be `core.needsLegalReacceptance(acceptedStamp: ref.watch(legalAcceptanceProvider), current: kLegalVersions)` — anything else decides for the device whether it owes the terms, and "not known yet" (null) must count as owed',
+      },
+      {
+        re: /onAcceptTerms\s*:[\s\S]{0,160}?legalAcceptanceProvider\s*\.\s*notifier\s*\)\s*\.\s*accept\s*\(/,
+        what: '`onAcceptTerms:` must call `legalAcceptanceProvider.notifier).accept(` — the consent artifact and the device stamp, not a no-op',
+      },
+    ],
+  },
+];
+
+/** Lib trees whose provider calls must all belong to a door. Declarations
+ *  (`Future<void> signInWithApple()`) and the seam implementations in
+ *  packages/auth_supabase and packages/core are not call sites. */
+const APPLE_SCAN_ROOTS = [
+  'apps',
+  'tooling/bricks/app/__brick__/apps/{{app_id}}/lib',
+  'packages/chassis_screens/lib',
+];
+const APPLE_CALL = /(?<!Future<void>\s)\b(?:signInWithApple|onSignInWithApple)\s*\(\s*\)/;
 
 /** The shared widget both trees render the boxes with. Its checkbox `value:`
  *  comes from the caller and it takes no `initial…` argument at all — the
@@ -113,7 +191,7 @@ const WIDGETS = [
  *  [MIN_SURFACES] is for. The floor was therefore redundant in every direction
  *  it could point, and this repository's rule is that an assertion nobody can
  *  write a failing input for is worse than none: it inflates apparent coverage. */
-const MIN_SURFACES = 5;
+const MIN_SURFACES = 6;
 
 const problems = [];
 const notes = [];
@@ -212,7 +290,9 @@ for (const s of SURFACES) {
 
   // ── limb 2 · THE TERMS TICK BLOCKS, IN BOTH POSITIONS ─────────────────────
   const guarded = new RegExp(`if\\s*\\([^)]*!${s.terms}\\b[^)]*\\)`).test(code);
-  const disables = new RegExp(`onPressed\\s*:[\\s\\S]{0,200}?!${s.terms}\\b`).test(code);
+  const disables = s.button
+    ? new RegExp(`${s.button}(?:(?!onPressed)[^;])*?onPressed\\s*:${ONE_EXPRESSION}!${s.terms}\\b`).test(code)
+    : new RegExp(`onPressed\\s*:[\\s\\S]{0,200}?!${s.terms}\\b`).test(code);
   if (guarded && disables) {
     blocking++;
   } else {
@@ -281,6 +361,101 @@ for (const rel of WIDGETS) {
   }
 }
 
+// ── limb 4 · EVERY APPLE DOOR RECORDS THE ACCEPTANCE BEFORE THE PROVIDER ──────
+// ⏱ 2026-09-15 · O-SIWA-NO-CLICKWRAP. See APPLE_DOORS for why limbs 1-3 could not.
+let appleDoors = 0;
+const doorFiles = new Set();
+for (const d of APPLE_DOORS) {
+  if (!existsSync(join(ROOT, d.file))) {
+    problems.push(`COVERAGE LOST — ${d.file} is an Apple door on the list and does not exist.`);
+    continue;
+  }
+  const scan = readWithDelegation(d.file);
+  if (scan.lost) {
+    problems.push(`COVERAGE LOST — ${d.file} ${scan.lost} Limb 4 reads the door PLUS what it delegates to.`);
+    continue;
+  }
+  doorFiles.add(d.file);
+  for (const f of scan.files) doorFiles.add(f);
+  const code = scan.code;
+  const call = d.provider.exec(code);
+  if (!call) {
+    problems.push(
+      `${d.file}: no Sign in with Apple call (\`${d.provider.source}\`) found in the door or what it delegates to. ` +
+        'The door this limb checks is gone or renamed; remove it from APPLE_DOORS deliberately if so.',
+    );
+    continue;
+  }
+  // The handler that makes the call: from the nearest preceding function
+  // declaration to the call itself. The acceptance and its terms guard must
+  // both sit inside that span, BEFORE the provider.
+  const head = code.slice(0, call.index);
+  const fnStart = Math.max(
+    ...[...head.matchAll(/(?:Future<void>|void)\s+_\w+\s*\([^)]*\)\s*(?:async\s*)?\{/g)].map((m) => m.index),
+    -1,
+  );
+  const span = fnStart < 0 ? '' : head.slice(fnStart);
+  const accepted = d.accept.test(span);
+  const guarded = /if\s*\([^)]*!_acceptedTerms\b[^)]*\)/.test(span);
+  if (!accepted || !guarded) {
+    problems.push(
+      `🔴 APPLE ACCOUNT WITHOUT ACCEPTED TERMS — ${d.file}: the handler that calls Sign in with Apple ` +
+        `${accepted ? '' : 'does NOT record the acceptance (' + d.accept.source + ') before it, and '}` +
+        `${guarded ? '' : 'has NO early `if (… !_acceptedTerms …)` refusal ahead of it, and '}` +
+        'so a first-time Apple sign-in can create an account the clickwrap never reached. The account may exist ' +
+        'the instant the redirect returns, so the acceptance has to be on record before the call.',
+    );
+  } else if (!d.button.test(code)) {
+    problems.push(
+      `${d.file}: the Sign in with Apple button is not disabled on \`!_acceptedTerms\` (\`${d.button.source}\`). ` +
+        'The refusal in the handler holds, but a live button that silently does nothing reads as a broken app — ' +
+        'limb 2 asks both halves of every other clickwrap for the same reason.',
+    );
+  } else {
+    appleDoors++;
+  }
+  for (const w of d.wiring ?? []) {
+    if (!w.re.test(read(d.file))) problems.push(`${d.file}: ${w.what}.`);
+  }
+}
+
+// Every call site belongs to a door — the count that limbs 1-3 never took.
+function dartFilesUnder(rel, out = []) {
+  const abs = join(ROOT, rel);
+  if (!existsSync(abs)) return out;
+  for (const e of listDir(abs, { withFileTypes: true })) {
+    const child = `${rel}/${e.name}`;
+    if (e.isDirectory()) {
+      if (['build', '.dart_tool', 'test', 'integration_test', 'android', 'ios', 'macos', 'windows', 'linux', 'web'].includes(e.name)) continue;
+      dartFilesUnder(child, out);
+    } else if (e.name.endsWith('.dart')) {
+      out.push(child);
+    }
+  }
+  return out;
+}
+const appleCallFiles = [];
+for (const root of APPLE_SCAN_ROOTS) {
+  for (const f of dartFilesUnder(root)) {
+    if (APPLE_CALL.test(read(f))) appleCallFiles.push(f);
+  }
+}
+if (appleCallFiles.length === 0) {
+  problems.push(
+    'COVERAGE LOST — limb 4 found NO Sign in with Apple call site under ' +
+      `${APPLE_SCAN_ROOTS.join(', ')}. Either the provider is gone everywhere (remove the limb deliberately) ` +
+      'or this scan has stopped seeing it.',
+  );
+}
+for (const f of appleCallFiles) {
+  if (!doorFiles.has(f)) {
+    problems.push(
+      `🔴 UNLISTED APPLE DOOR — ${f} calls Sign in with Apple and is not in APPLE_DOORS. A door this guard does ` +
+        'not know about is a door nobody checks for the clickwrap: add it, with the acceptance before the call.',
+    );
+  }
+}
+
 // ── coverage self-checks ─────────────────────────────────────────────────────
 if (scanned < MIN_SURFACES) {
   problems.push(
@@ -302,5 +477,6 @@ if (problems.length) {
 
 ok(
   `signup consent shape — ${scanned} surface(s) scanned, every consent flag initialises to false, ` +
-    `${blocking} terms tick(s) block in both positions, no optional consent gates a sign-up`,
+    `${blocking} terms tick(s) block in both positions, no optional consent gates a sign-up, ` +
+    `${appleDoors} Sign in with Apple door(s) record the acceptance before the provider (${appleCallFiles.length} call-site file(s), all listed)`,
 );

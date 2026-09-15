@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 
 import 'turnstile_gate.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
@@ -183,6 +184,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   Future<void> _apple() async {
     final AppLocalizations l10n = AppLocalizations.of(context);
+    // ⏱ 2026-09-15 · O-SIWA-NO-CLICKWRAP — Sign in with Apple can CREATE an account,
+    // and whether this tap will is only knowable after the redirect returns. So
+    // a device that still owes the terms (nothing current accepted here; "not
+    // known yet" counts as owed) answers the SAME clickwrap BEFORE the provider
+    // is called — exactly when the post-sign-in re-acceptance gate would
+    // otherwise have asked, so a returning user who has accepted on this device
+    // is never shown it. The button is disabled too; this holds for every other
+    // way into the handler.
+    final bool termsOwed = core.needsLegalReacceptance(
+      acceptedStamp: ref.read(legalAcceptanceProvider),
+      current: kLegalVersions,
+    );
+    if (termsOwed && !_acceptedTerms) {
+      _snack(l10n.legalMustAcceptTerms);
+      return;
+    }
     setState(() => _loading = true);
     final auth = ref.read(authRepositoryProvider);
     try {
@@ -197,6 +214,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       if (core.signUpAgeGate(ageSignal) == core.SignUpAgeGate.refuse) {
         _snack(l10n.signUpAgeRefused);
         return;
+      }
+      // 🔴 THE ACCEPTANCE IS RECORDED BEFORE THE PROVIDER IS CALLED — the reverse
+      // of the email arm above, and for the reason that arm cannot share: there
+      // the account exists when `signUpWithEmail` returns and not before, so
+      // recording after it is possible; here the account may exist the instant
+      // the redirect lands, so the consent artifact has to be written while it
+      // still does not. The cost, stated: accepting and then cancelling Apple's
+      // sheet leaves an acceptance on this device for a sign-in that did not
+      // happen — an extra record of a real, affirmative act, never a missing one.
+      if (termsOwed) {
+        await ref
+            .read(legalAcceptanceProvider.notifier)
+            .accept(marketingEmail: _marketingEmail);
       }
       await auth.signInWithApple();
       if (mounted && auth.currentUser != null) context.go('/scan');
@@ -312,6 +342,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     // …and whether the SERVER will accept the provider at all, which the
     // capability matrix does not describe. Both must be true; see below.
     final AuthProviders providers = ref.watch(authProvidersProvider);
+    // ⏱ 2026-09-15 · O-SIWA-NO-CLICKWRAP — whether the Apple door must carry the
+    // clickwrap on THIS device. See `_apple`.
+    // 🔴 THE SOURCE PROVIDER, COMPARED HERE — NOT `legalReacceptanceNeededProvider`.
+    // Reading the DERIVED provider inside build makes Riverpod recompute it
+    // mid-build, and the router's refresh listener on that provider then fires
+    // DURING this build ("setState() or markNeedsBuild() called during build",
+    // measured on check_inbox_test and legal_gates_test). The comparison is the
+    // same one the derived provider makes; null (not hydrated yet) is owed.
+    final bool appleTermsOwed = core.needsLegalReacceptance(
+      acceptedStamp: ref.watch(legalAcceptanceProvider),
+      current: kLegalVersions,
+    );
     return Scaffold(
       backgroundColor: t.bg,
       body: SafeArea(
@@ -551,11 +593,31 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   // translator drops, and would therefore render differently
                   // per locale for no stated reason. The reused key is the
                   // chassis's plain `continueWithApple`.
-                  if (providers.apple)
+                  if (providers.apple) ...<Widget>[
+                    // ⏱ 2026-09-15 · O-SIWA-NO-CLICKWRAP. On the sign-IN arm, a
+                    // device that owes the terms gets the SAME boxes directly
+                    // above the Apple button; the sign-up arm already shows them
+                    // above, and both doors read the same two flags.
+                    if (!_signUp && appleTermsOwed) ...<Widget>[
+                      LegalConsentFields(
+                        termsAccepted: _acceptedTerms,
+                        marketingAccepted: _marketingEmail,
+                        enabled: !_loading,
+                        onTermsChanged: (bool v) =>
+                            setState(() => _acceptedTerms = v),
+                        onMarketingChanged: (bool v) =>
+                            setState(() => _marketingEmail = v),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
                     SoftButton(
                       label: l10n.continueWithApple,
-                      onPressed: _loading ? null : _apple,
+                      onPressed:
+                          (_loading || (appleTermsOwed && !_acceptedTerms))
+                          ? null
+                          : _apple,
                     ),
+                  ],
                 ],
                 const SizedBox(height: 24),
                 Center(

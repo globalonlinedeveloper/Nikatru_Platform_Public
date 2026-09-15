@@ -6,6 +6,7 @@ import 'package:nikatru_chassis_screens/auth/sign_in_screen.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 
 import '../../state/providers.dart';
+import 'legal_consent_fields.dart';
 
 /// Sign-in — the ADAPTER half.
 ///
@@ -59,6 +60,37 @@ class SignInScreen extends ConsumerWidget {
       onNeedAccount: () => context.go('/sign-up'),
       showAppleButton: caps.oauthRedirect && providers.any && providers.apple,
       onSignInWithApple: () => auth.signInWithApple(),
+      // ⏱ 2026-09-15 · O-SIWA-NO-CLICKWRAP — Sign in with Apple can create an
+      // account, so a device that still owes the terms answers the SAME clickwrap
+      // before the provider is called, and the acceptance is recorded first.
+      // "Not known yet" (null) counts as owed.
+      // 🔴 THE SOURCE PROVIDER, COMPARED HERE — NOT `legalReacceptanceNeededProvider`.
+      // Reading the DERIVED provider inside build makes Riverpod recompute it
+      // mid-build, and the router's refresh listener on that provider then fires
+      // DURING this build ("setState() or markNeedsBuild() called during build",
+      // measured on check_inbox_test and legal_gates_test). The comparison is the
+      // same one the derived provider makes; null (not hydrated yet) is owed.
+      appleTermsOwed: core.needsLegalReacceptance(
+        acceptedStamp: ref.watch(legalAcceptanceProvider),
+        current: kLegalVersions,
+      ),
+      consentFields:
+          ({
+            required bool termsAccepted,
+            required bool marketingAccepted,
+            required bool enabled,
+            required ValueChanged<bool> onTermsChanged,
+            required ValueChanged<bool> onMarketingChanged,
+          }) => LegalConsentFields(
+            termsAccepted: termsAccepted,
+            marketingAccepted: marketingAccepted,
+            enabled: enabled,
+            onTermsChanged: onTermsChanged,
+            onMarketingChanged: onMarketingChanged,
+          ),
+      onAcceptTerms: ({required bool marketingEmail}) => ref
+          .read(legalAcceptanceProvider.notifier)
+          .accept(marketingEmail: marketingEmail),
       deletion: deletion,
       deletionDetail: ref.watch(lastAccountDeletionDetailProvider),
       onDismissDeletionNotice: () {

@@ -104,7 +104,12 @@ describe('the real tree', () => {
       () => {},
       (r) => {
         assert.equal(r.status, 0, r.stderr);
-        assert.match(r.stdout, /5 surface\(s\) scanned/);
+        assert.match(r.stdout, /6 surface\(s\) scanned/);
+        // ⏱ 2026-09-15 · O-SIWA-NO-CLICKWRAP: limb 4 saw both Apple doors and every call site.
+        assert.match(
+          r.stdout,
+          /2 Sign in with Apple door\(s\) record the acceptance before the provider \(3 call-site file\(s\), all listed\)/,
+        );
         assert.match(r.stdout, /every consent flag initialises to false/);
       },
     );
@@ -119,7 +124,7 @@ describe('the real tree', () => {
     // went with the boxes they belong to, so the file that must carry them is
     // the package one. Subly is untouched — it is a frozen rail-prover, so its
     // two surfaces still declare their own.
-    for (const rel of [SUBLY_SIGNUP, SUBLY_LOGIN, CHASSIS_SIGNUP]) {
+    for (const rel of [SUBLY_SIGNUP, SUBLY_LOGIN, CHASSIS_SIGNUP, `${CHASSIS_LIB}/auth/sign_in_screen.dart`]) {
       const src = readFileSync(join(REPO, rel), 'utf8');
       assert.ok(src.includes('bool _acceptedTerms = false;'), `${rel} must carry the terms flag`);
       assert.ok(src.includes('bool _marketingEmail = false;'), `${rel} must carry the marketing flag`);
@@ -434,6 +439,116 @@ describe('the guard knows when it is not looking', () => {
             'bool _acceptedTerms = false;',
             '// once upon a time somebody wrote bool _acceptedTerms = true; here\n  bool _acceptedTerms = false;',
           ),
+        ),
+      (r) => {
+        assert.equal(r.status, 0, r.stderr);
+      },
+    );
+  });
+});
+
+// ⏱ 2026-09-15 · O-SIWA-NO-CLICKWRAP — limb 4. Sign in with Apple can create an
+// account, and for as long as its door had no clickwrap limbs 1-3 printed ok,
+// because a door with no boxes is not a surface. Each case below breaks one way
+// that gap could come back.
+describe('limb 4 · every Sign in with Apple door records the acceptance first', () => {
+  const CHASSIS_SIGNIN = `${CHASSIS_LIB}/auth/sign_in_screen.dart`;
+  const BRICK_SIGNIN = `${BRICK}/lib/features/auth/sign_in_screen.dart`;
+
+  test('🔴 the chassis Apple handler no longer records the acceptance → caught', () => {
+    withTree(
+      (root) =>
+        edit(root, CHASSIS_SIGNIN, (src) =>
+          src.replace('      await widget.onAcceptTerms(marketingEmail: _marketingEmail);\n', ''),
+        ),
+      (r) => {
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(r.stderr, /APPLE ACCOUNT WITHOUT ACCEPTED TERMS — tooling\/bricks\/app\/__brick__\/apps\/\{\{app_id\}\}\/lib\/features\/auth\/sign_in_screen\.dart/);
+      },
+    );
+  });
+
+  test("🔴 the acceptance moved AFTER the provider in Subly's LoginScreen → caught", () => {
+    withTree(
+      (root) =>
+        edit(root, SUBLY_LOGIN, (src) => {
+          const accept =
+            /      if \(termsOwed\) \{\n        await ref\n            \.read\(legalAcceptanceProvider\.notifier\)\n            \.accept\(marketingEmail: _marketingEmail\);\n      \}\n/;
+          const m = accept.exec(src);
+          assert.ok(m, 'the acceptance block the mutation moves must exist');
+          return src
+            .replace(accept, '')
+            .replace('      await auth.signInWithApple();\n', `      await auth.signInWithApple();\n${m[0]}`);
+        }),
+      (r) => {
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(r.stderr, /APPLE ACCOUNT WITHOUT ACCEPTED TERMS — apps\/subscriptiontracker\/lib\/features\/auth\/login_screen\.dart/);
+      },
+    );
+  });
+
+  test('🔴 the terms refusal ahead of the chassis provider is gone → caught', () => {
+    withTree(
+      (root) =>
+        edit(root, CHASSIS_SIGNIN, (src) =>
+          src.replace('if (widget.appleTermsOwed && !_acceptedTerms) {', 'if (false) {'),
+        ),
+      (r) => {
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(r.stderr, /has NO early `if \(… !_acceptedTerms …\)` refusal/);
+      },
+    );
+  });
+
+  test('🔴 the chassis Apple button stays live while the terms are unticked → caught', () => {
+    withTree(
+      (root) =>
+        edit(root, CHASSIS_SIGNIN, (src) =>
+          src.replace('(_busy || (widget.appleTermsOwed && !_acceptedTerms))', '_busy'),
+        ),
+      (r) => {
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(r.stderr, /the Sign in with Apple button is not disabled on `!_acceptedTerms`/);
+      },
+    );
+  });
+
+  test('🔴 the brick adapter decides the device owes nothing → caught', () => {
+    withTree(
+      (root) =>
+        edit(root, BRICK_SIGNIN, (src) =>
+          src.replace(
+            /appleTermsOwed: core\.needsLegalReacceptance\([\s\S]*?kLegalVersions,\n\s*\),/,
+            'appleTermsOwed: false,',
+          ),
+        ),
+      (r) => {
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(r.stderr, /`appleTermsOwed:` must be `core\.needsLegalReacceptance\(acceptedStamp: ref\.watch\(legalAcceptanceProvider\)/);
+      },
+    );
+  });
+
+  test('🔴 a NEW door that calls Sign in with Apple and is not listed → caught', () => {
+    withTree(
+      (root) =>
+        writeFileSync(
+          join(root, SUBLY, 'lib', 'features', 'auth', 'quick_apple.dart'),
+          'Future<void> quick(dynamic auth) async {\n  await auth.signInWithApple();\n}\n',
+        ),
+      (r) => {
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(r.stderr, /UNLISTED APPLE DOOR — apps\/subscriptiontracker\/lib\/features\/auth\/quick_apple\.dart/);
+      },
+    );
+  });
+
+  test('a DECLARATION of the seam method is not a call site', () => {
+    withTree(
+      (root) =>
+        writeFileSync(
+          join(root, SUBLY, 'lib', 'features', 'auth', 'declares_apple.dart'),
+          'abstract class X {\n  Future<void> signInWithApple();\n}\n',
         ),
       (r) => {
         assert.equal(r.status, 0, r.stderr);

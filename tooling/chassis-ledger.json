@@ -20,7 +20,7 @@
   "_rootsNote": "TWO roots since 2026-09-07 ([ADR 067] phase 2, unit app-shell). The Worker half of the template - 13 files, 917 lines every stamped backend app inherits - was outside this ledger entirely while `root` was one string, and `git ls-files -- <that one root>` could not see it to complain. assert-chassis-ledger.mjs is the authority on this list and cross-checks it; a row's `root` is optional and defaults to roots[0], which is why the 96 rows written against the single root are unchanged. ⏱ THE FIGURES IN THIS NOTE MOVED ON 2026-09-08 AND ARE CORRECTED RATHER THAN REWRITTEN: the Worker half is now 14 files and 1,021 lines, because the template gained src/lib/error-sink.ts — a stamped backend had NO crash sink at all and failed tooling/ci/assert-worker-error-sink.mjs on limbs 2, 3 and 5 at its first CI run. The guard PRINTS both figures per root on every run, which is the number to read; this sentence is prose and prose rots.",
   "totals": {
     "files": 128,
-    "lines": 17790,
+    "lines": 17822,
     "unclassified": 0,
     "unclassifiedLines": 0
   },
@@ -129,7 +129,7 @@
     },
     {
       "path": "lib/features/auth/sign_in_screen.dart",
-      "lines": 72,
+      "lines": 104,
       "verdict": "MOVES",
       "why": "[ADR 067] decision 2 / [ADR 071] — MEASURED 2026-09-06: 298 -> 68 brick lines, 303 package lines, callSiteDelta -230. THREE things stayed, each for a named guard and not for taste: the caps.oauthRedirect read (assert-no-seam-forks:610-616 fails when a PARITY chassis file yields zero caps.<field> reads, and the zero-caps COVERAGE LOST names the ADAPTER), signInWithEmail( (dod.json:75 anchors the auth-redirect mutation proof at this path and assert-app-dod:836 fails when the symbol leaves the file), and the two context.go calls. The rest — the preflight, the busy latch, the FocusNode, the deletion notice — is now one file for every stamped app.",
       "target": "packages/chassis_screens/lib/auth/sign_in_screen.dart",

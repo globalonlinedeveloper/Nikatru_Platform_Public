@@ -67,14 +67,45 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  Widget signIn(core.AgeSignalSource ages, void Function() onApple) =>
+  /// [owed] is whether THIS DEVICE still owes the terms clickwrap; [log]
+  /// records the ORDER of the two effects, which is the whole of
+  /// O-SIWA-NO-CLICKWRAP: `accept:<marketing>` must come before `apple`.
+  Widget signIn(
+    core.AgeSignalSource ages,
+    void Function() onApple, {
+    bool owed = false,
+    List<String>? log,
+  }) =>
       SignInView(
         ageSignals: ages,
         onSignIn: (String _, String __) async {},
         onForgotPassword: (String _) async {},
         onNeedAccount: () {},
         showAppleButton: true,
-        onSignInWithApple: () async => onApple(),
+        onSignInWithApple: () async {
+          log?.add('apple');
+          onApple();
+        },
+        appleTermsOwed: owed,
+        consentFields: ({
+          required bool termsAccepted,
+          required bool marketingAccepted,
+          required bool enabled,
+          required ValueChanged<bool> onTermsChanged,
+          required ValueChanged<bool> onMarketingChanged,
+        }) =>
+            LegalConsentFieldsView(
+          termsAccepted: termsAccepted,
+          marketingAccepted: marketingAccepted,
+          enabled: enabled,
+          showMarketing: true,
+          onTermsChanged: onTermsChanged,
+          onMarketingChanged: onMarketingChanged,
+          onOpenTerms: () {},
+          onOpenPrivacy: () {},
+        ),
+        onAcceptTerms: ({required bool marketingEmail}) async =>
+            log?.add('accept:$marketingEmail'),
       );
 
   group('SignUpView — email sign-up', () {
@@ -127,6 +158,81 @@ void main() {
       await tester.tap(find.byKey(SignInView.appleButton));
       await tester.pumpAndSettle();
       expect(calls, 1);
+    });
+  });
+
+  // ⏱ 2026-09-15 · O-SIWA-NO-CLICKWRAP. Sign in with Apple can create an account,
+  // so a device that owes the terms answers the SAME clickwrap before the
+  // provider is called, and the acceptance is recorded FIRST. A device that has
+  // accepted (a returning user) is never shown it.
+  group('SignInView — the Apple door carries the clickwrap', () {
+    testWidgets(
+        'FIRST TIME: the provider is unreachable until the terms are ticked, '
+        'and the acceptance is recorded BEFORE it is called',
+        (WidgetTester tester) async {
+      final List<String> log = <String>[];
+      await pumpChassis(
+          tester, kPhone, signIn(_none, () {}, owed: true, log: log));
+      expect(find.byType(LegalConsentFieldsView), findsOneWidget,
+          reason: 'a device that owes the terms must be shown them');
+      await tester.ensureVisible(find.byKey(SignInView.appleButton));
+      await tester.tap(find.byKey(SignInView.appleButton));
+      await tester.pumpAndSettle();
+      expect(log, isEmpty,
+          reason: 'unticked: no acceptance and no Apple account');
+      await tester.tap(find.byKey(LegalConsentFieldsView.termsCheckbox));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(SignInView.appleButton));
+      await tester.pumpAndSettle();
+      expect(log, <String>['accept:false', 'apple'],
+          reason: 'the account can exist the moment the redirect returns, so '
+              'the acceptance must already be on record');
+    });
+
+    testWidgets(
+        'the optional marketing box never opens the door on its own, '
+        'and its answer is what gets recorded', (WidgetTester tester) async {
+      final List<String> log = <String>[];
+      await pumpChassis(
+          tester, kPhone, signIn(_none, () {}, owed: true, log: log));
+      await tester.tap(find.byKey(LegalConsentFieldsView.marketingCheckbox));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(SignInView.appleButton));
+      await tester.tap(find.byKey(SignInView.appleButton));
+      await tester.pumpAndSettle();
+      expect(log, isEmpty, reason: 'GDPR Art 7(4): marketing may not gate');
+      await tester.tap(find.byKey(LegalConsentFieldsView.termsCheckbox));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(SignInView.appleButton));
+      await tester.pumpAndSettle();
+      expect(log, <String>['accept:true', 'apple']);
+    });
+
+    testWidgets('RETURNING: a device that has accepted is not re-prompted',
+        (WidgetTester tester) async {
+      final List<String> log = <String>[];
+      await pumpChassis(
+          tester, kPhone, signIn(_none, () {}, owed: false, log: log));
+      expect(find.byType(LegalConsentFieldsView), findsNothing);
+      await tester.tap(find.byKey(SignInView.appleButton));
+      await tester.pumpAndSettle();
+      expect(log, <String>['apple'],
+          reason: 'no second acceptance for somebody who already accepted');
+    });
+
+    testWidgets('a store signal BELOW ADULT records no acceptance either',
+        (WidgetTester tester) async {
+      final List<String> log = <String>[];
+      await pumpChassis(
+          tester, kPhone, signIn(_minor, () {}, owed: true, log: log));
+      await tester.tap(find.byKey(LegalConsentFieldsView.termsCheckbox));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(SignInView.appleButton));
+      await tester.tap(find.byKey(SignInView.appleButton));
+      await tester.pumpAndSettle();
+      expect(log, isEmpty,
+          reason: 'the age gate runs first; a refused tap creates nothing '
+              'and records nothing');
     });
   });
 
