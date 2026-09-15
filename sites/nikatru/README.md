@@ -13,7 +13,9 @@ follows rename redirects and the old name answers 200.)*
 directory `sites/nikatru` and output dir `/`. Pushes redeploy automatically — no build step, plain static
 HTML + one Pages Function. (GitHub Pages is intentionally not used.)
 
-The `/api/subscribe` Function uses the KV binding `SIGNUPS → nikatru-signups`.
+The `/api/subscribe` Function uses two production bindings set on the Pages project (not in any wrangler
+config): D1 `PLATFORM_DB → platform_db`, where the signup list lives in table `signups` ([ADR 087],
+2026-09-15), and KV `SIGNUPS → nikatru-signups`, which holds only the one-hour `rl:` rate-limit counter.
 
 > rajasekarselvam.com is a **separate** site in the same monorepo at `sites/rajasekarselvam/`
 > (Cloudflare Pages project `rajasekarselvam`).

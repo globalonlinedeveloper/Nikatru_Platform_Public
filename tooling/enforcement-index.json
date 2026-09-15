@@ -603,6 +603,7 @@
   {
     "claims": [
       "ADR 081",
+      "ADR 087",
       "K-8"
     ],
     "invokedBy": [
@@ -770,7 +771,8 @@
   },
   {
     "claims": [
-      "ADR 081"
+      "ADR 081",
+      "ADR 087"
     ],
     "invokedBy": [
       ".github/workflows/ci.yml#guards-legal"
@@ -1546,6 +1548,7 @@
   },
   {
     "claims": [
+      "ADR 087",
       "B-17",
       "R-1"
     ],
@@ -1768,6 +1771,7 @@
   },
   {
     "claims": [
+      "ADR 087",
       "K-8",
       "O-17"
     ],
@@ -2324,6 +2328,7 @@
   {
     "claims": [
       "ADR 075",
+      "ADR 087",
       "C-6",
       "F-9",
       "INC-12",
@@ -2732,6 +2737,7 @@
   {
     "claims": [
       "ADR 057",
+      "ADR 087",
       "B-17"
     ],
     "invokedBy": [

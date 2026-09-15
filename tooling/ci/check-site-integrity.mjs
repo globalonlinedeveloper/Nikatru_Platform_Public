@@ -1156,6 +1156,13 @@ for (const { root, files } of functionsByRoot) {
       //     env.*(SALT|SECRET|KEY) raw 288 SUBSCRIBE_RATE_LIMIT_SALT -> 288, same
       //     length 17734 -> 17734, blanked and never deleted, so every line
       //     number above is the same number in both views.
+      // ⏱ RE-MEASURED 2026-09-15 after [ADR 087] removed the KV list writer and its
+      // retention block from the same file (the rate-limit code is byte-identical):
+      //     /HMAC/                raw 11, 19, 128, 139, 143  ->  139, 143
+      //     crypto.subtle.sign(   raw 143                    ->  143
+      //     cf-connecting-ip      raw 220                    ->  220
+      //     env.*(SALT|SECRET|KEY) raw 221 SUBSCRIBE_RATE_LIMIT_SALT -> 221, same
+      //     length 12771 -> 12771. Same verdicts; only the numbers moved.
       // Three of the five /HMAC/ matches were the paragraph explaining why the
       // rate-limit key is an HMAC. House style FORBIDS deleting an explanatory
       // comment, so those three are PERMANENT: that half of the conjunction
@@ -1186,7 +1193,7 @@ for (const { root, files } of functionsByRoot) {
       // subject IS a comment (subscribe.js:4 is the only such marker in the tree,
       // 1 match raw and 0 after the reduction), which is why `src` is not
       // rebound for the whole loop body. String literals pass through VERBATIM,
-      // load-bearing here: "HMAC" at 132 and 136 IS a string literal, because
+      // load-bearing here: "HMAC" at 139 and 143 (132 and 136 before 2026-09-15) IS a string literal, because
       // that is how WebCrypto names an algorithm, and a reduction that blanked
       // strings too would take this correct file to zero HMAC matches and fail
       // it. Do not "harden" this with stripStringLiterals.

@@ -35,6 +35,11 @@ beforeEach(() => {
   identityStatus = 204;
   vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
+    // ⏱ 2026-09-15 · [ADR 087]: the signup purge reads the account before the identity
+    // goes; an account with no address skips it, which is what these cases are not about.
+    if (url.startsWith(`${SUPABASE_URL}/auth/v1/admin/users/`) && (init?.method ?? 'GET') === 'GET') {
+      return new Response(JSON.stringify({ email: null }), { status: 200 });
+    }
     if (url.startsWith(`${SUPABASE_URL}/auth/v1/admin/users/`) && init?.method === 'DELETE') {
       identityCalls.push(url);
       return new Response(null, { status: identityStatus });

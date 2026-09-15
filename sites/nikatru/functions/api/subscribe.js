@@ -1,5 +1,5 @@
 // Cloudflare Pages Function: POST /api/subscribe
-// Stores launch-notify signups in a Cloudflare KV namespace.
+// Stores launch-notify signups in platform_db (Cloudflare D1, APAC) — [ADR 087].
 //
 // SITE PROMISE: "We store your email address and the time you signed up, and nothing else."
 //
@@ -40,27 +40,34 @@
 // needs a Durable Object — a coordination primitive this site does not otherwise
 // need, for a soft anti-spam counter.
 //
-// SETUP (one time, in the Cloudflare dashboard):
-//   1. Workers & Pages -> KV -> Create namespace, e.g. "nikatru-signups".
-//   2. Pages project "nikatru" -> Settings -> Functions ->
-//      KV namespace bindings -> Add binding:
+// SETUP (one time, in the Cloudflare dashboard — Pages project "nikatru" ->
+// Settings -> Bindings; there is deliberately no wrangler config for this site):
+//   1. D1 database binding, Production:
+//         Variable name: PLATFORM_DB
+//         D1 database:   platform_db
+//      The signup list lives here, in table `signups`
+//      (services/platform/migrations/0011_signups.sql, applied by services/platform).
+//   2. KV namespace binding, Production:
 //         Variable name: SIGNUPS
 //         KV namespace:  nikatru-signups
-//      (Add it for Production, and Preview if you want.)
-//   3. Redeploy (any push) so the binding takes effect.
+//      Since [ADR 087] (2026-09-15) it holds ONLY the `rl:` rate-limit counter.
+//   3. Redeploy (any push) so the bindings take effect.
 //   4. 🔑 OWNER ACTION — Settings -> Environment variables and secrets -> Add,
 //      as an ENCRYPTED secret (not a plaintext variable):
 //         Variable name: SUBSCRIBE_RATE_LIMIT_SALT
 //         Value:         32+ random bytes, e.g. `openssl rand -hex 32`
-//      Add it for Production AND Preview. Rotating it simply resets the live
-//      counters (every key expires within an hour anyway).
+//      Rotating it simply resets the live counters (every key expires within an
+//      hour anyway).
 //      🔴 WITHOUT THIS SECRET THE PER-IP RATE LIMIT IS OFF — deliberately.
 //      The alternative is storing a reversible fingerprint of a visitor's network
 //      address, and a weaker anti-spam guard is a smaller harm than that. The
 //      honeypot, the address validation and the per-address dedup all still apply.
+//      (Measured 2026-09-15: it had never been set in production, so the limit
+//      WAS off; the owner set it that day — Private platform-state
+//      O-SIGNUP-RATE-LIMIT-OFF.)
 //
-// Read signups later: dashboard KV browser (keys prefixed "sub:"), or
-//   `wrangler kv key list --binding SIGNUPS`.
+// Read signups later (counts, never addresses, in anything that is logged):
+//   `wrangler d1 execute platform_db --remote --command "SELECT COUNT(*) FROM signups"`.
 
 // 🔴 `_headers` DOES NOT REACH THIS FILE, AND THAT IS DOCUMENTED, NOT A BUG.
 // Cloudflare states it for both files: "Custom headers defined in the `_headers`
@@ -143,108 +150,33 @@ async function fingerprint(secret, text) {
 const RATE_LIMIT = 12; // max signups per fingerprint per hour
 const RATE_WINDOW_SECONDS = 3600;
 
-// ── SIGNUP RETENTION — ~~365 DAYS (OWNER, 2026-08-09)~~ → 400 DAYS ───────────
+// ── WHERE THE SIGNUP GOES, AND HOW LONG IT STAYS — [ADR 087], 2026-09-15 ──────
 //
-// 🔴 CORRECTED IN PLACE 2026-08-13, AND THE CORRECTION IS NOT A PREFERENCE — IT
-// IS A LEAP YEAR. Read this before touching the number, and do NOT "optimise" it
-// back to 365: 365 is the number that is wrong, and it is wrong by one day.
+// The list moved from the KV namespace `nikatru-signups` (no location control)
+// to table `signups` in platform_db, served from Singapore. The owner chose it:
+// "Move to D1 in APAC (Recommended)", then "List to D1, counter stays
+// (Recommended)" — so the `rl:` counter above stays in KV, unchanged.
 //
-//   DPDP Rules 2025 **Rule 8(3)** requires personal data to be retained "for a
-//   minimum period of one year from the date of such processing"; Rule 6(1)(e)
-//   adds a second one-year floor for security logs. Rule 8(3) is UNQUALIFIED as
-//   to class — unlike Rule 8(1), which is limited to Third-Schedule fiduciaries
-//   — so it reaches this store. "One year" is an ANNIVERSARY, not 365 sleeps.
-//   A key written on date D and expired by a 365-day TTL dies at D+365 days,
-//   but its one-year anniversary is D+366 days whenever the interval [D, D+1yr)
-//   contains a 29 February. Concretely: **every signup written between
-//   1 Mar 2027 and 29 Feb 2028 would be deleted ONE DAY SHORT of the floor** —
-//   and all of those are written AFTER the 13 May 2027 phase-in, so all of them
-//   are inside the period when the floor actually bites. A TTL is fixed at write
-//   time and cannot be lengthened afterwards, so the day this is noticed is
-//   already the day the affected keys are unrecoverable.
+// 🔴 NO FALLBACK TO KV. If PLATFORM_DB is not bound, the request fails exactly as
+// it does when SIGNUPS is not bound (503, below). Writing the list back to KV
+// "just in case" would put an email address in the store this move exists to
+// leave, silently, on the one day nobody is watching.
 //
-//   400 = 365 + 35 days of margin, DELIBERATELY THE SAME SHAPE as the `events`
-//   period in [ADR 045] §2: clear the floor, never sit on it. It clears 366 by
-//   34 days, which absorbs a late sweep, a clock-skewed comparison and the leap
-//   day at once.
+// RETENTION is 400 days from the ORIGINAL signup time. A D1 table has no expiry,
+// so the platform Worker's nightly `retentionSweep` deletes the rows
+// (services/platform/src/scheduled.ts `SIGNUPS_RETENTION_DAYS`, register row
+// tooling/ops/register.json → retention.d1.platform_db.signups). Why 400 and not
+// 365 — a DPDP Rules 2025 Rule 8(3) one-year floor that 365 misses in a leap
+// year — is written there, and the full reasoning that stood in this file until
+// this change is in its git history.
 //
-// ⚠️ THE 400 IS AGENT-RAISED AND OWNER-REVIEWABLE. THE 365 WAS THE OWNER'S.
-// The paragraph below is preserved verbatim because it is still the reason this
-// line is safe to trust — and it argues that an agent picking a number here is
-// writing policy. That argument is not retired by this edit; it is why this edit
-// is FLAGGED rather than quiet. What changed is the KIND of number: 365 was a
-// free policy choice among defensible values, and it has since acquired a legal
-// FLOOR that it fails by one day. Raising it to clear a floor is a different act
-// from choosing it. 👤 **OWNER: the direction of this change costs privacy.**
-// This is the only store in the repository holding a plain email address, its
-// erasure route is `no-route` (operator-only, tooling/legal/data-inventory.json
-// → `kv:nikatru-signups`), so 35 extra days is 35 more days of un-erasable
-// contactable identity. Any number ≥ 366 satisfies the floor; 400 is the one
-// chosen for margin, and moving it costs one value here plus the register's
-// `ttlSource`.
+// A repeat signup writes NOTHING: the email is the primary key (COLLATE NOCASE,
+// so letter case does not make a second row) and the insert does nothing on
+// conflict, so `signed_up_at` stays the first signup's time.
 //
-// 🔑 THE NUMBER ON THE `SIGNUP_RETENTION_DAYS` LINE IS THE OWNER'S POLICY CALL,
-// NOT AN ENGINEERING ONE — and it has now been made. Why it shipped as `null`
-// until 2026-08-09 stays written down, because it is the reason this line is
-// safe to trust: the published privacy policy says information is kept "only
-// for as long as necessary", no number is derivable from anything in this tree,
-// and an agent picking 180 or 365 would have been WRITING POLICY under the
-// appearance of fixing a bug — while silently deleting the owner's real launch
-// list once the period passed. So the engineering half was built dormant and
-// the policy half was left as ONE VALUE. This is that value, and the decision
-// behind it is recorded in nikatru/decisions/decisions-log.md (2026-08-09).
-//
-// WHAT HOLDS THIS NUMBER TO THE REST OF THE SYSTEM — change it and all of these
-// move with it, or the build goes red rather than the claim going stale:
-//   · tooling/ops/register.json → retention.kv.nikatru-signups.signup carries
-//     `rule: "ttl"` and a `mechanism.ttlSource` that must appear VERBATIM in
-//     this file, so the register's declared period is READ OFF THIS LINE rather
-//     than asserted beside it (tooling/ci/assert-retention-coverage.mjs).
-//   · tooling/ci/test/signup-retention.test.mjs loads THIS module and asserts
-//     the put really carries `expirationTtl: days × 86400`, and that the
-//     register row and this constant agree that a period exists.
-//   · tooling/legal/data-inventory.json → `kv:nikatru-signups` declares
-//     retention `ttl` and names this file as the code that sets the expiry.
-//
-// ⚠️ IT APPLIES TO SUBSEQUENT WRITES ONLY, AND THAT IS NOT A DETAIL. Workers KV
-// fixes a key's expiry at WRITE time, so every signup stored BEFORE this line
-// changed still carries no expiry and will never acquire one by itself. Ageing
-// those out is an operator action against the namespace (re-put or delete by
-// key), not something this code path does — and until it happens the store
-// still holds contactable addresses with no bound, which is exactly the fact
-// docs/runbooks/breach-response.md's notifiable-population step turns on.
-//
-// 📌 THE SAME SENTENCE NOW CUTS A SECOND WAY, ADDED 2026-08-13. Keys written
-// between 2026-08-09 and this edit carry a 365-day TTL that CANNOT BE EXTENDED
-// in place — the 400 reaches subsequent writes only. Those keys expire between
-// ~2027-08-09 and ~2027-08-13; each spans a non-leap window (Feb 2027 has 28
-// days), so 365 days IS one year for exactly that cohort and none of them is
-// short. The defect this edit prevents opens for writes from 1 Mar 2027 only.
-// No re-put is therefore required to fix a breach of the floor; a re-put would
-// be an operator choice about uniformity, not a repair.
-const SIGNUP_RETENTION_DAYS = 400;
-
-const SECONDS_PER_DAY = 86400;
-
-/** KV put options for a signup record, or `undefined` if no period is declared.
- *
- *  ⚠️ RETURNS `undefined` RATHER THAN `{ expirationTtl: undefined }`, and the
- *  call site spreads it away entirely, so a period of `null` is a plain two-arg
- *  `put(key, value)` — byte for byte the call this site made before a period
- *  existed. That branch is dormant now that 365 days are declared, and it is
- *  kept (and tested) because it is what makes REVERTING the period a one-value
- *  change too: if the inert state were an options object with an undefined
- *  field, "no declared period changes nothing" would be a claim resting on how
- *  KV treats that field rather than a property of this file.
- *
- *  🔴 `0`, negatives and non-numbers fall to `undefined` DELIBERATELY. KV reads
- *  a tiny or absent TTL as "expire almost immediately", so a fat-fingered `0`
- *  must mean NO EXPIRY — never "delete the launch list now". */
-export function signupPutOptions(days = SIGNUP_RETENTION_DAYS) {
-  return typeof days === "number" && Number.isFinite(days) && days > 0
-    ? { expirationTtl: Math.round(days * SECONDS_PER_DAY) }
-    : undefined;
-}
+// The only statement this Function sends to platform_db.
+export const SIGNUP_INSERT =
+  "INSERT INTO signups (email, signed_up_at) VALUES (?, ?) ON CONFLICT(email) DO NOTHING";
 
 export async function onRequestPost({ request, env }) {
   let email = "";
@@ -272,8 +204,9 @@ export async function onRequestPost({ request, env }) {
     return json({ ok: false, error: "Please enter a valid email address." }, 400);
   }
 
-  // KV not bound yet -> fail gracefully (see SETUP above).
-  if (!env || !env.SIGNUPS) {
+  // Bindings not in place -> fail gracefully (see SETUP above). BOTH are required:
+  // the list lives in D1 and the abuse counter in KV. Never a KV fallback.
+  if (!env || !env.SIGNUPS || !env.PLATFORM_DB) {
     return json(
       { ok: false, error: "Signups aren't switched on yet. Please try again soon." },
       503
@@ -306,19 +239,9 @@ export async function onRequestPost({ request, env }) {
   }
 
   // --- Store the signup: email + timestamp ONLY. ---
-  const key = "sub:" + email.toLowerCase();
   try {
-    const existing = await env.SIGNUPS.get(key);
-    if (!existing) {
-      const record = { email, ts: new Date().toISOString() };
-      // With the declared period this is a three-argument put carrying
-      // `expirationTtl`; with none it collapses back to `put(key, value)` and
-      // nothing more. See SIGNUP_RETENTION_DAYS above — the period is the only
-      // thing that decides which, and both shapes are held by
-      // tooling/ci/test/signup-retention.test.mjs.
-      const ttl = signupPutOptions();
-      await env.SIGNUPS.put(key, JSON.stringify(record), ...(ttl ? [ttl] : []));
-    }
+    const record = { email, ts: new Date().toISOString() };
+    await env.PLATFORM_DB.prepare(SIGNUP_INSERT).bind(record.email, record.ts).run();
     return json({ ok: true });
   } catch (_) {
     return json({ ok: false, error: "Something went wrong. Please try again." }, 500);

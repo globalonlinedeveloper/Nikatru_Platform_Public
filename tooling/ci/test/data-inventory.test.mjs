@@ -115,6 +115,8 @@ const ERASURE_KINDS = {
   'no-route': 'nothing reaches it; needs blockedBy; prints',
   // ⏱ 2026-09-15 · [ADR 081]
   'completion-ledger': 'an erasure in progress under a neutral column; deleted by deletedBy when it completes',
+  // ⏱ 2026-09-15 · [ADR 087]
+  'purge-by-verified-email': 'an address-keyed table the route reaches through the account\'s confirmed email',
 };
 
 const RETENTION_KINDS = {
@@ -766,5 +768,44 @@ describe('every table declares how an erasure request reaches it', () => {
     const r = run(fixture({ derivation: { minErasureRowsChecked: 9 } }));
     assert.equal(r.status, 2);
     assert.match(out(r), /erasure declaration\(s\) were compared to the schema, floor 9/);
+  });
+});
+
+// ⏱ 2026-09-15 · [ADR 087] `purge-by-verified-email` — an address-keyed table.
+// Each case declared on its own (assert-no-loop-cases).
+const ADDRESS_MIGRATION = MIGRATION.replace(', user_id TEXT', '');
+const asAddressKeyed = (stores, erasure) => {
+  tableRow(stores).erasure = {
+    kind: 'purge-by-verified-email',
+    column: 'email',
+    route: 'services/api/src/routes/account.ts',
+    verifiedBy: 'services/api/src/routes/account.ts',
+    reason: 'reached through the confirmed account address',
+    blockedBy: 'a person with no account is served by the operator',
+    ...erasure,
+  };
+};
+describe('purge-by-verified-email — an address-keyed table reached by confirmed email', () => {
+  test('passes when the address column exists, nothing is user-shaped, and both files exist', () => {
+    const r = run(fixture({ migration: ADDRESS_MIGRATION, stores: withStores((s) => asAddressKeyed(s, {})) }));
+    assert.equal(r.status, 0, out(r));
+  });
+
+  test('FAILS when the declared column is user-shaped — that table is `purge`', () => {
+    const r = run(fixture({ migration: ADDRESS_MIGRATION, stores: withStores((s) => asAddressKeyed(s, { column: 'owner_user_id' })) }));
+    assert.equal(r.status, 1);
+    assert.match(out(r), /purge-by-verified-email` on "owner_user_id", which IS user-shaped/);
+  });
+
+  test('FAILS when verifiedBy is not a file', () => {
+    const r = run(fixture({ migration: ADDRESS_MIGRATION, stores: withStores((s) => asAddressKeyed(s, { verifiedBy: 'services/api/src/gone.ts' })) }));
+    assert.equal(r.status, 1);
+    assert.match(out(r), /its `verifiedBy` .* is not a file/);
+  });
+
+  test('FAILS when blockedBy is missing — the people the route cannot reach are unaccounted for', () => {
+    const r = run(fixture({ migration: ADDRESS_MIGRATION, stores: withStores((s) => asAddressKeyed(s, { blockedBy: '' })) }));
+    assert.equal(r.status, 1);
+    assert.match(out(r), /purge-by-verified-email` and no `blockedBy`/);
   });
 });

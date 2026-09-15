@@ -1,7 +1,13 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
-import { erasePlatformRows, deleteIdentity } from '../lib/platform-erasure';
-import { clearPendingErasure, closeSubject, erasureBindingFor, recordPendingErasure } from '../lib/erasure-ledger';
+import { erasePlatformRows, deleteIdentity, purgeVerifiedSignups, signupPurgeToken } from '../lib/platform-erasure';
+import {
+  SIGNUP_PURGE_STEP,
+  clearPendingErasure,
+  closeSubject,
+  erasureBindingFor,
+  recordPendingErasure,
+} from '../lib/erasure-ledger';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DELETE /v1/account — the shared server's erasure route.
@@ -75,6 +81,9 @@ import { clearPendingErasure, closeSubject, erasureBindingFor, recordPendingEras
 //      an erased person survives in a row that is not theirs
 //   2. entitlements specifically (it is one of the above; named because
 //      master §0.1 G2 names it)
+//   1b. ⏱ 2026-09-15 · [ADR 087] the launch list (`signups`), keyed by EMAIL: the row
+//      whose address is this account's CONFIRMED email, read from the identity
+//      provider while the identity still exists (src/lib/platform-erasure.ts)
 //   3. EVERY APP'S OWN DATABASE, through that app's own erasure route
 //   4. THE IDENTITY RECORD — after which the same credentials no longer sign in.
 //      A deletion that leaves a working login is one the user cannot detect as
@@ -224,6 +233,25 @@ account.delete('/account', async (c) => {
   }
   const { deleted, unlinked } = walked;
 
+  // ── LIMB 1b · ⏱ 2026-09-15 · [ADR 087] THE LAUNCH LIST, BY CONFIRMED EMAIL ──
+  // `signups` is keyed by email, so the walk above cannot see it. The account's
+  // address and its confirmation are read from the identity provider NOW, while the
+  // identity still exists — after `deleteIdentity` below there is nothing to read.
+  // Confirmed → the row goes. No address, or not confirmed → skipped, and the
+  // response says so; the erasure never fails for it.
+  // A TRANSIENT read failure is not a guess: the step is queued in the [ADR 081]
+  // ledger exactly like an unreachable app, the identity is kept, and the nightly
+  // retry runs the purge. Any other refusal (e.g. the service-role key refused) is
+  // a 502 with the identity kept — the same "not known" the identity delete itself
+  // would hit with that key.
+  const signupPurge = await purgeVerifiedSignups(c.env.PLATFORM_DB, c.env.SUPABASE_URL, serviceRoleKey, userId);
+  const signups = signupPurgeToken(signupPurge);
+  if (signupPurge.kind === 'purged') deleted['signups'] = signupPurge.deleted;
+  if (signupPurge.kind === 'failed') {
+    console.error(`[account] rid=${rid} app=${c.env.APP_ID} signup purge could not confirm the address: ${signupPurge.why}`);
+    return c.json({ error: 'account_deletion_failed' }, 502);
+  }
+
   // ── LIMB 3 · EVERY APP'S OWN DATABASE, THROUGH ITS OWN ROUTE ──────────────
   // Before the identity, so a failure here leaves the user a working login and a
   // retryable request. The caller's own Authorization header is forwarded
@@ -260,6 +288,30 @@ account.delete('/account', async (c) => {
     apps[appId] = 'pending';
     return true;
   };
+  // [ADR 087]: the signup step is queued the same way, without a binding — the
+  // retry runs it in this Worker. A ledger write that fails is a 502, identity kept.
+  if (signupPurge.kind === 'purged' || signupPurge.kind === 'skipped') {
+    // A request that settled the purge settles any step an earlier request left open.
+    try {
+      await clearPendingErasure(c.env.PLATFORM_DB, userId, SIGNUP_PURGE_STEP);
+    } catch (err) {
+      console.error(`[account] rid=${rid} app=${c.env.APP_ID} could not clear a settled signup step`, err);
+    }
+  }
+  if (signupPurge.kind === 'transient') {
+    try {
+      await recordPendingErasure(c.env.PLATFORM_DB, {
+        subjectRef: userId,
+        appId: SIGNUP_PURGE_STEP,
+        nowIso: new Date().toISOString(),
+        reason: signupPurge.why,
+      });
+    } catch (err) {
+      console.error(`[account] rid=${rid} app=${c.env.APP_ID} could not record the pending signup purge`, err);
+      return c.json({ error: 'account_deletion_failed' }, 502);
+    }
+    pending.push(SIGNUP_PURGE_STEP);
+  }
   for (const { appId, origin } of endpoints) {
     let res: Response;
     try {
@@ -312,7 +364,7 @@ account.delete('/account', async (c) => {
   // NOT deleted — it goes LAST, from the cron, after every pending app confirms.
   if (pending.length > 0) {
     console.log(`[account] rid=${rid} app=${c.env.APP_ID} erasure pending for ${pending.join(', ')}`);
-    return c.json({ ok: true, status: 'erasure_pending', pending, deleted, unlinked, apps }, 202);
+    return c.json({ ok: true, status: 'erasure_pending', pending, deleted, unlinked, apps, signups }, 202);
   }
 
   // The IDENTITY record, LAST — the row that decides whether the login still
@@ -340,7 +392,7 @@ account.delete('/account', async (c) => {
     console.error(`[account] rid=${rid} app=${c.env.APP_ID} could not close settled erasure orders`, err);
   }
 
-  return c.json({ ok: true, deleted, unlinked, apps });
+  return c.json({ ok: true, deleted, unlinked, apps, signups });
 });
 
 export default account;

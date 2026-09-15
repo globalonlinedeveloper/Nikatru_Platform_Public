@@ -56,7 +56,7 @@ describe('🔴 THE FAIL-CLOSED INTERLOCK — the sweep cannot outrun the rollup'
     expect(before).toBe(30);
 
     // Every row is far past a 1-day period. Age alone would delete all but today's.
-    await retentionSweep(envOf(db), { events: 1, events_daily: null, provider_notifications: null }, NOW);
+    await retentionSweep(envOf(db), { events: 1, events_daily: null, provider_notifications: null, signups: null }, NOW);
 
     // The watermark is NULL — nothing has been rolled up — so the limb is INERT.
     expect(await rolledThrough(envOf(db))).toBeNull();
@@ -73,7 +73,7 @@ describe('🔴 THE FAIL-CLOSED INTERLOCK — the sweep cannot outrun the rollup'
     const wm = await rolledThrough(envOf(db));
     expect(wm).not.toBeNull();
 
-    await retentionSweep(envOf(db), { events: 1, events_daily: null, provider_notifications: null }, NOW);
+    await retentionSweep(envOf(db), { events: 1, events_daily: null, provider_notifications: null, signups: null }, NOW);
 
     // Nothing newer than the watermark's day survives being deleted only because
     // the rollup consumed it — every surviving row must be AFTER rolled_through.
@@ -101,7 +101,7 @@ describe('🔴 THE FAIL-CLOSED INTERLOCK — the sweep cannot outrun the rollup'
   it('the heartbeat NAMES the interlock rather than reporting a bare inert store', async () => {
     const db = realPlatformDb();
     seedDays(db, 5);
-    await retentionSweep(envOf(db), { events: 1, events_daily: null, provider_notifications: null }, NOW);
+    await retentionSweep(envOf(db), { events: 1, events_daily: null, provider_notifications: null, signups: null }, NOW);
     const detail = String(db.rows("SELECT detail FROM cron_heartbeat WHERE job = 'retention_sweep'")[0].detail);
     // `events(unrolled)` must be distinguishable from "no period declared" —
     // one needs the owner, the other resolves itself on the next rollup.
@@ -258,7 +258,7 @@ describe('events_daily is itself swept, on age alone', () => {
          ('2020-01-01', 'subscriptiontracker', 'a1', 'app_launch', '', 3),
          ('2026-08-01', 'subscriptiontracker', 'a1', 'app_launch', '', 4)`,
     );
-    const periods: RetentionPeriods = { events: null, events_daily: 30, provider_notifications: null };
+    const periods: RetentionPeriods = { events: null, events_daily: 30, provider_notifications: null, signups: null };
     await retentionSweep(envOf(db), periods, NOW);
     expect(db.rows('SELECT day FROM events_daily')).toEqual([{ day: '2026-08-01' }]);
   });

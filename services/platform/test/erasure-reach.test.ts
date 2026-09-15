@@ -84,13 +84,24 @@ beforeAll(async () => {
   const pair = await generateKeyPair('ES256', { extractable: true });
   signingKey = pair.privateKey;
   publicJwk = { ...(await exportJWK(pair.publicKey)), alg: 'ES256', kid: 'test-key-1' };
-  vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
+  vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url.endsWith('/.well-known/jwks.json')) {
       return new Response(JSON.stringify({ keys: [publicJwk] }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       });
+    }
+    // ⏱ 2026-09-15 · [ADR 087]: the account read the signup purge makes. SUBJECT has a
+    // CONFIRMED address equal to the signup row `plant` writes for it (tag `a`, column 0),
+    // so the `purge-by-verified-email` branch below is graded on a real deletion; the
+    // bystander's row (tag `b`) must survive.
+    if (url.includes('/auth/v1/admin/users/') && (init?.method ?? 'GET') === 'GET') {
+      const confirmed = url.endsWith(`/${encodeURIComponent(SUBJECT)}`);
+      return new Response(
+        JSON.stringify(confirmed ? { email: 'FILLER-signups-a-0', email_confirmed_at: '2026-01-01T00:00:00Z' } : { email: null }),
+        { status: 200 },
+      );
     }
     if (url.includes('/auth/v1/admin/users/')) return new Response(null, { status: 204 });
     // LIMB 3 — the per-app erasure relay. Held constant here for the same reason
@@ -212,7 +223,9 @@ describe('the erasure surface — the register, the schema and the route are one
         // ⏱ 2026-09-15 · [ADR 081] `completion-ledger`: pending_erasures, which the
         // sweep must NOT reach (it records the erasure in progress); the planting
         // test below grades it on the "untouched" branch.
-        ['purge', 'unlink', 'pseudonymous', 'no-personal-data', 'completion-ledger'],
+        // ⏱ 2026-09-15 · [ADR 087] `purge-by-verified-email`: signups, keyed by address, reached
+        // through the account's CONFIRMED email before the identity is deleted.
+        ['purge', 'unlink', 'pseudonymous', 'no-personal-data', 'completion-ledger', 'purge-by-verified-email'],
         `${name} declares erasure kind ${row.erasure?.kind}, which no platform_db table may use — ` +
           '`no-route` describes a store this Worker cannot reach, and platform_db is the one it binds',
       ).toContain(row.erasure?.kind);
@@ -241,6 +254,7 @@ describe('the erasure surface — the register, the schema and the route are one
     let purged = 0;
     let unlinked = 0;
     let untouched = 0;
+    let verified = 0;
     for (const [table, row] of declared) {
       const kind = row.erasure?.kind;
       const cols = columnsOf(db, table).map((c) => c.name);
@@ -277,6 +291,14 @@ describe('the erasure surface — the register, the schema and the route are one
         expect(db.count(table, `${col} = ?`, BYSTANDER), `${table}.${col} lost an unrelated link`).toBe(1);
         expect(db.count(table, `${col} IS NULL`)).toBe(1);
         expect(body.unlinked[`${table}.${col}`]).toBe(1);
+      } else if (kind === 'purge-by-verified-email') {
+        verified++;
+        const col = row.erasure?.column as string;
+        expect(cols, `${table} declares erasure \`purge-by-verified-email\` on ${col}, which is not a column`).toContain(col);
+        // The subject's confirmed address is the tag-`a` filler (case differs on purpose: NOCASE).
+        expect(db.count(table, `${col} = ?`, 'filler-signups-a-0'), `${table} still holds the erased user's confirmed address`).toBe(0);
+        expect(db.count(table, `${col} = ?`, 'filler-signups-b-0'), `${table} lost an unrelated address`).toBe(1);
+        expect(body.deleted[table], `${table} is not in the route's own report`).toBe(1);
       } else {
         untouched++;
         // 🔴 ASSERTED, NOT ASSUMED. A sweep that widened to "any table" would
@@ -293,6 +315,7 @@ describe('the erasure surface — the register, the schema and the route are one
     expect(purged, 'no `purge` table was exercised').toBeGreaterThan(0);
     expect(unlinked, 'no `unlink` table was exercised').toBeGreaterThan(0);
     expect(untouched, 'no unreachable table was exercised').toBeGreaterThan(0);
+    expect(verified, 'no `purge-by-verified-email` table was exercised').toBeGreaterThan(0);
   });
 
   it('THE SWEEP — after the deletion the erased id survives in NO column of ANY table', async () => {

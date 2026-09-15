@@ -55,6 +55,11 @@ const b64urlDecode = (s: string) =>
  *  was REQUESTED rather than on the route's own return value. */
 let identityCalls: Array<{ url: string; method: string; hasKey: boolean }> = [];
 let identityStatus = 204;
+/** ⏱ 2026-09-15 · [ADR 087]: the account READ the signup purge makes before the
+ *  identity is deleted. Kept apart from `identityCalls` (which are the DELETEs), and
+ *  answered by default with an account that has no address, so the purge skips. */
+let userReads: string[] = [];
+let userRead: { status: number; body: unknown } = { status: 200, body: { email: null } };
 
 /** The per-app erasure relay ([4]B-5 limb 3). Recorded the same way and for the
  *  same reason: "the app's rows were erased" is a claim about a REQUEST THIS
@@ -128,6 +133,10 @@ beforeAll(async () => {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       });
+    }
+    if (url.includes('/auth/v1/admin/users/') && (init?.method ?? 'GET') === 'GET') {
+      userReads.push(url);
+      return new Response(JSON.stringify(userRead.body), { status: userRead.status });
     }
     if (url.includes('/auth/v1/admin/users/')) {
       const headers = new Headers(init?.headers);
@@ -204,6 +213,8 @@ function harness({
 } = {}) {
   identityCalls = [];
   identityStatus = 204;
+  userReads = [];
+  userRead = { status: 200, body: { email: null } };
   appCalls = [];
   appStatus = 200;
   appThrows = false;

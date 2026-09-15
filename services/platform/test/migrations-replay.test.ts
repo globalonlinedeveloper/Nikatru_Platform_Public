@@ -214,6 +214,8 @@ describe('platform_db migrations re-apply cleanly', () => {
       'provider_notifications',
       'revocation_reasons',
       'rollup_state',
+      // ⏱ 2026-09-15 · [ADR 087] migration 0011.
+      'signups',
       'unclaimed_payments',
     ]);
   });

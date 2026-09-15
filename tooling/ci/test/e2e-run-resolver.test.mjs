@@ -88,11 +88,17 @@ describe('the register and the implementation name the same thing', () => {
     const carriers = Object.entries(register.tables)
       .filter(([, r]) => Array.isArray(r.alsoResolves) && r.alsoResolves.length > 0)
       .map(([name]) => name);
+    // ⏱ 2026-09-15 · [ADR 087] the SECOND carrier, with its own argument: `pending_erasures`
+    // takes `erasure-step`, and ONLY that — a non-app step (`platform:signups`) of an erasure
+    // still pending, which `app-catalogue` must refuse because it is not an app. Its value
+    // set is the `export const <NAME>_STEP` literals the Worker declares, not a list here.
     assert.deepEqual(
       carriers,
-      ['consent_artifacts'],
+      ['consent_artifacts', 'pending_erasures'],
       'a second resolver is a value this monitor will no longer go red for; each one needs its own argument',
     );
+    assert.deepEqual(register.tables.pending_erasures.alsoResolves, ['erasure-step']);
+    assert.equal(register.tables.pending_erasures.resolver, 'app-catalogue');
   });
 
   test('`events` is NOT given the e2e exemption, though it also carries app_version', () => {

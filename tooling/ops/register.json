@@ -723,8 +723,7 @@
       "failure.github-account-lost",
       "failure.google-account-lost",
       "review.kill-or-keep",
-      "retention.kv.nikatru-signups.rate-limit",
-      "retention.kv.nikatru-signups.signup"
+      "retention.kv.nikatru-signups.rate-limit"
     ]
   },
   "_retiredRows": {
@@ -883,6 +882,37 @@
           "source": "unverified",
           "unverifiedWhy": "The six-month non-use figure is this repository's own, carried over from expiring.drive-refresh-token-non-use, and no Google page was fetched for THIS row. It is recorded as unconfirmed for the same reason that row is: the mitigation (a weekly exchange) is orders of magnitude inside any plausible window.",
           "expiryKnownAt": "NO CALENDAR DATE EXISTS for this one, by construction: it is a non-use clock. The checkable fact is the keep-alive job's own run history, once that job has one. Private/runbooks/store-submission-extensions.md"
+        }
+      },
+      {
+        "id": "retention.kv.nikatru-signups.signup",
+        "retiredOn": "2026-09-15",
+        "retiredWhy": "[ADR 087] (owner, 2026-09-15: \"Move to D1 in APAC (Recommended)\", amended §4 \"List to D1, counter stays (Recommended)\"). The signup list left the KV namespace `nikatru-signups` for platform_db table `signups`, and in the SAME release sites/nikatru/functions/api/subscribe.js stopped writing `sub:` keys. The store this row enforced a TTL on has no writer any more; its successor row is retention.d1.platform_db.signups (400 days from the original signup, deleted by retention_sweep). The namespace itself is NOT retired: it keeps the `rl:` counter, whose row retention.kv.nikatru-signups.rate-limit stays.",
+        "evidence": "Measured at 09:54:07 UTC on 2026-09-15 from the code at this change (sub: literals 0, SIGNUP_RETENTION_DAYS 0, env.SIGNUPS.put calls 1): the comment-stripped sites/nikatru/functions/api/subscribe.js carries no `sub:` key literal and no `SIGNUP_RETENTION_DAYS`; its only KV put is the `rl:` counter with `expirationTtl: RATE_WINDOW_SECONDS`, and the signup is `env.PLATFORM_DB.prepare(SIGNUP_INSERT)`. Both held by tooling/ci/test/signup-retention.test.mjs. ⚠️ RESIDUE AT RETIREMENT: the namespace still held 3 `sub:` keys (measured 2026-09-15, counts only), written before this change. They are moved by the ADR 087 operator migration (read, insert into `signups` with the ORIGINAL signup time, read back, then delete the key), run after this change is deployed; the retirement is of the WRITER, and that residue is the migration's to empty.",
+        "whatTheRetirementCosts": "Nothing enforces a TTL on `sub:` keys any more. That is correct once the operator migration has emptied them, and until then the 3 residual keys are bounded by nothing new — exactly the state they were already in (2 of them never had an expiry).",
+        "row": {
+          "id": "retention.kv.nikatru-signups.signup",
+          "kind": "retention",
+          "store": "kv:nikatru-signups:sub-prefix",
+          "what": "THE SIGNUP RECORDS THEMSELVES — an email address and a timestamp. This is the store O-17 was written about, and the drafted acceptance excluded it by construction because it quantified over 'every store WITH a retention rule'. Every signup written since 2026-08-09 carries an expirationTtl; see the ownerGap for the keys written BEFORE that, which do not. ⚠️ THE PERIOD IS 400 DAYS SINCE 2026-08-13, ~~365~~ BEFORE IT — three cohorts now exist in this namespace and they are not interchangeable: no TTL (pre-2026-08-09), 365 days (2026-08-09 → 2026-08-13), 400 days (since). KV fixes expiry at WRITE time, so this row describes a store whose keys carry three different bounds and no code path reconciles them.",
+          "rule": "ttl",
+          "detector": "tooling/ci/assert-retention-coverage.mjs — this row is in _requiredCoverage, so it cannot leave the domain by having no rule, and its `ttl` limb reads `mechanism.ttlSource` out of the anchor rather than believing this row.",
+          "response": "n/a for new records — the store expires them itself. The PERIOD was the missing half and it was a policy decision, not an engineering one: the published privacy policy says 'as long as necessary', and an agent picking 180 or 365 would have been WRITING POLICY under the appearance of fixing a bug. DECLARED BY THE OWNER 2026-08-09 at ~~365~~ days (nikatru/decisions/decisions-log.md); the engineering half had been built dormant the same day, so the decision cost exactly one value at sites/nikatru/functions/api/subscribe.js (`SIGNUP_RETENTION_DAYS`), with both branches held by tooling/ci/test/signup-retention.test.mjs. 🔴 RAISED TO 400 DAYS 2026-08-13, BY AN AGENT, ON A FLOOR RATHER THAN A PREFERENCE — and the sentence above is why it is flagged and not quiet. DPDP Rules 2025 Rule 8(3) requires 'a minimum period of one year from the date of such processing' (Rule 6(1)(e) adds a one-year floor for security logs), and Rule 8(3) carries no class qualifier — unlike Rule 8(1), which is limited to Third-Schedule fiduciaries — so it reaches this store. 'One year' is an anniversary, not 365 sleeps: a key written on D expires at D+365 while its anniversary is D+366 whenever [D, D+1yr) contains a 29 February, so EVERY signup written between 1 Mar 2027 and 29 Feb 2028 would have died one day short of the floor, all of them after the 13 May 2027 phase-in. 400 = 365 + 35, the same shape as `events` in [ADR 045] §2. 👤 THE NUMBER REMAINS THE OWNER'S TO MOVE — any value >= 366 satisfies the floor and the direction of this change costs privacy on the one store holding a plain email address with no automated erasure route; see the ADR 045 addendum.",
+          "cadence": "365d",
+          "mechanism": {
+            "substrate": "cloudflare-kv",
+            "anchor": "sites/nikatru/functions/api/subscribe.js",
+            "record": "the expirationTtl on the signup put, computed from `SIGNUP_RETENTION_DAYS` in the anchor",
+            "failingValue": "the anchor declaring a period this row's `ttlSource` does not match (the register claiming one number while the code writes another), or the signup put losing its options argument so the declared period reaches no key",
+            "readBy": "tooling/ci/assert-retention-coverage.mjs — the `ttl` limb requires `mechanism.ttlSource` to appear VERBATIM in the anchor, which is what stops this row's period from being a claim written beside the code. tooling/ci/test/signup-retention.test.mjs then loads the module and asserts the put actually carries `expirationTtl: days x 86400`.",
+            "ttlSource": "const SIGNUP_RETENTION_DAYS = 400;"
+          },
+          "accessProviders": [
+            "cloudflare"
+          ],
+          "ownerGated": true,
+          "ownerGap": "🔴 THE KEYS WRITTEN BEFORE 2026-08-09 STILL HAVE NO EXPIRY, AND NO CODE PATH WILL GIVE THEM ONE. Workers KV fixes a key's expiry at WRITE time, so the declared period (~~365~~ 400 days since 2026-08-13) reaches subsequent writes only — ageing out the existing `sub:` keys is an OPERATOR action against the namespace (re-put or delete by key), which is why this row stays owner-gated after the period was declared. Until that is done this store still holds contactable addresses with no bound, and it remains — with Supabase auth — one of the two stores that determine the notifiable population in a breach (docs/runbooks/breach-response.md step 2); the D1 tables are pseudonymous and notifiable only by public notice. ✅ THE PERIOD ITSELF IS DECIDED AND UNDER A GUARD: owner, 2026-08-09, ~~365 days~~ — raised by an agent to 400 on 2026-08-13 to clear the DPDP Rule 8(3) one-year floor, which 365 misses by one day across a leap year. 👤 A SECOND OWNER LINE IS NOW OWED HERE, AND IT IS ONE WORD: keep 400, or name another value >= 366. The engineering half needs nothing either way — this row's `mechanism.ttlSource` and sites/nikatru/functions/api/subscribe.js move together or the build goes red.",
+          "source": "verified"
         }
       }
     ]
@@ -3842,6 +3872,30 @@
       }
     },
     {
+      "id": "retention.d1.platform_db.signups",
+      "kind": "retention",
+      "store": "d1:platform_db:signups",
+      "what": "⏱ 2026-09-15 · [ADR 087]. The nikatru.com launch-notification list: one row per address, `email` and `signed_up_at` and nothing else (the published promise on sites/nikatru/privacy.html). Moved here from the KV namespace `nikatru-signups`, which has no location control; platform_db is served from SIN (APAC). Written only by the Pages Function sites/nikatru/functions/api/subscribe.js through the Pages project's production D1 binding `PLATFORM_DB`.",
+      "rule": "period",
+      "periodDays": 400,
+      "declaredBy": "[ADR 087] carries over the period the KV store had held since 2026-08-13 (the owner's 365 of 2026-08-09, raised to 400 to clear the DPDP Rules 2025 Rule 8(3) one-year floor, [ADR 045] §9); the value lives in services/platform/src/scheduled.ts `SIGNUPS_RETENTION_DAYS` and this row and that constant are cross-checked by services/platform/test/retention-sweep.test.ts and tooling/ci/test/signup-retention.test.mjs",
+      "detector": "tooling/ci/assert-retention-coverage.mjs — the store set is ENUMERATED from migrations, so a store cannot leave the domain by having no rule.",
+      "response": "n/a — the nightly sweep deletes a row 400 days after its ORIGINAL signup time. A repeat signup never moves `signed_up_at` (the Function inserts ON CONFLICT DO NOTHING), and rows migrated from KV carry their original time, so the two KV keys that never had an expiry are bounded here for the first time. Erasure: DELETE /v1/account removes the row for an account's CONFIRMED address before it deletes the identity; a person with no account is served by the operator deleting one row (tooling/legal/data-inventory.json `table:platform_db.signups`, erasure `purge-by-verified-email`).",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/platform/migrations/0011_signups.sql",
+        "record": "the table itself",
+        "failingValue": "a row whose `signed_up_at` is older than 400 days",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs (coverage half); the deletion half is `deletingJob`"
+      },
+      "deletingJob": "retention_sweep — the nightly Cloudflare cron limb `retentionSweep` in services/platform/src/scheduled.ts, watched by duty.platform-cron.watchedJobs and read by tooling/ops/check-heartbeats.mjs. The `signups` limb deletes rows whose `signed_up_at` is older than SIGNUPS_RETENTION_DAYS, at most 1000 per run (MAX_ROWS_PER_SWEEP), filtered and idempotent, on age alone because nothing is derived from the table. Held by services/platform/test/retention-sweep.test.ts.",
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
       "id": "retention.d1.subscriptiontracker_db.subscriptions",
       "kind": "retention",
       "store": "d1:subscriptiontracker_db:subscriptions",
@@ -3933,7 +3987,7 @@
       "id": "retention.kv.platform.SIGNUPS",
       "kind": "retention",
       "store": "kv:platform:SIGNUPS",
-      "what": "🔴 THE SAME PHYSICAL NAMESPACE AS `retention.kv.nikatru-signups.signup` AND `.rate-limit`, SEEN FROM A SECOND BINDING. It entered this guard's domain on 2026-09-05, when services/platform bound `nikatru-signups` READ-ONLY so the nightly export could back it up (research/revamp-2026-09-05/06 §3.4 measured it bound to no Worker at all). The tree walk enumerates stores as `kv:<worker>:<binding>`, so a namespace bound twice is two stores to this guard and one store in the account — and the second view must not be allowed to imply a second, weaker rule. It does not: the rule is the SAME rule, set at the SAME place, and this row points at that place rather than restating a period beside it.",
+      "what": "🔴 THE SAME PHYSICAL NAMESPACE AS `retention.kv.nikatru-signups.rate-limit`, SEEN FROM A SECOND BINDING. It entered this guard's domain on 2026-09-05, when services/platform bound `nikatru-signups` READ-ONLY so the nightly export could back it up (research/revamp-2026-09-05/06 §3.4 measured it bound to no Worker at all). The tree walk enumerates stores as `kv:<worker>:<binding>`, so a namespace bound twice is two stores to this guard and one store in the account — and the second view must not be allowed to imply a second, weaker rule. It does not: the rule is the SAME rule, set at the SAME place, and this row points at that place rather than restating a period beside it. ⏱ 2026-09-15 · [ADR 087]: the namespace now holds only the `rl:` counter (the signup list moved to platform_db `signups`, which the nightly export backs up as part of platform_db), so this row's `ttlSource` is the counter's TTL.",
       "rule": "ttl",
       "detector": "tooling/ci/assert-retention-coverage.mjs — the `ttl` limb requires `mechanism.ttlSource` to appear VERBATIM in the anchor, so this row cannot claim a period the writer does not set.",
       "response": "n/a from this binding. ⚠️ THE PLATFORM WORKER NEVER WRITES THIS NAMESPACE — it lists and reads it once a night into R2 (services/platform/src/backup/index.ts) and nothing else, so it can neither set nor extend any key's expiry. Workers KV fixes expiry at WRITE time and the only writer is the Pages Function in the anchor. The owner-gated gap on the pre-2026-08-09 keys is recorded ONCE, on `retention.kv.nikatru-signups.signup`, and is not restated here: two copies of one gap is two things to close.",
@@ -3941,10 +3995,10 @@
       "mechanism": {
         "substrate": "cloudflare-kv",
         "anchor": "sites/nikatru/functions/api/subscribe.js",
-        "record": "the expirationTtl on the signup put, computed from `SIGNUP_RETENTION_DAYS` in the anchor",
+        "record": "the expirationTtl on the `rl:` counter put in the anchor — the only key kind the Pages Function writes to this namespace since [ADR 087]",
         "failingValue": "the anchor losing the declared period, or this Worker gaining a WRITE to the namespace — which would make a second writer able to set a different expiry and make this row's pointer to a single anchor false",
         "readBy": "tooling/ci/assert-retention-coverage.mjs",
-        "ttlSource": "const SIGNUP_RETENTION_DAYS = 400;"
+        "ttlSource": "expirationTtl: RATE_WINDOW_SECONDS"
       },
       "accessProviders": [
         "cloudflare"
@@ -4043,7 +4097,7 @@
       "id": "retention.kv.nikatru-signups.rate-limit",
       "kind": "retention",
       "store": "kv:nikatru-signups:rl-prefix",
-      "what": "The soft per-fingerprint rate-limit keys written by the signup endpoint.",
+      "what": "The soft per-fingerprint rate-limit keys written by the signup endpoint: `rl:<HMAC-128(salt, cf-connecting-ip)>:<uuid>`, one per attempt, no email. ⏱ 2026-09-15 · [ADR 087] §4: since the signup list moved to platform_db `signups`, this is the ONLY kind of key sites/nikatru/functions/api/subscribe.js writes to the `nikatru-signups` namespace.",
       "rule": "ttl",
       "detector": "tooling/ci/assert-retention-coverage.mjs — and the TTL is IN THE CODE, at sites/nikatru/functions/api/subscribe.js, so the guard reads the mechanism rather than a claim about it.",
       "response": "n/a — every key carries expirationTtl: RATE_WINDOW_SECONDS and expires inside the window.",
@@ -4059,30 +4113,6 @@
       "accessProviders": [
         "cloudflare"
       ],
-      "source": "verified"
-    },
-    {
-      "id": "retention.kv.nikatru-signups.signup",
-      "kind": "retention",
-      "store": "kv:nikatru-signups:sub-prefix",
-      "what": "THE SIGNUP RECORDS THEMSELVES — an email address and a timestamp. This is the store O-17 was written about, and the drafted acceptance excluded it by construction because it quantified over 'every store WITH a retention rule'. Every signup written since 2026-08-09 carries an expirationTtl; see the ownerGap for the keys written BEFORE that, which do not. ⚠️ THE PERIOD IS 400 DAYS SINCE 2026-08-13, ~~365~~ BEFORE IT — three cohorts now exist in this namespace and they are not interchangeable: no TTL (pre-2026-08-09), 365 days (2026-08-09 → 2026-08-13), 400 days (since). KV fixes expiry at WRITE time, so this row describes a store whose keys carry three different bounds and no code path reconciles them.",
-      "rule": "ttl",
-      "detector": "tooling/ci/assert-retention-coverage.mjs — this row is in _requiredCoverage, so it cannot leave the domain by having no rule, and its `ttl` limb reads `mechanism.ttlSource` out of the anchor rather than believing this row.",
-      "response": "n/a for new records — the store expires them itself. The PERIOD was the missing half and it was a policy decision, not an engineering one: the published privacy policy says 'as long as necessary', and an agent picking 180 or 365 would have been WRITING POLICY under the appearance of fixing a bug. DECLARED BY THE OWNER 2026-08-09 at ~~365~~ days (nikatru/decisions/decisions-log.md); the engineering half had been built dormant the same day, so the decision cost exactly one value at sites/nikatru/functions/api/subscribe.js (`SIGNUP_RETENTION_DAYS`), with both branches held by tooling/ci/test/signup-retention.test.mjs. 🔴 RAISED TO 400 DAYS 2026-08-13, BY AN AGENT, ON A FLOOR RATHER THAN A PREFERENCE — and the sentence above is why it is flagged and not quiet. DPDP Rules 2025 Rule 8(3) requires 'a minimum period of one year from the date of such processing' (Rule 6(1)(e) adds a one-year floor for security logs), and Rule 8(3) carries no class qualifier — unlike Rule 8(1), which is limited to Third-Schedule fiduciaries — so it reaches this store. 'One year' is an anniversary, not 365 sleeps: a key written on D expires at D+365 while its anniversary is D+366 whenever [D, D+1yr) contains a 29 February, so EVERY signup written between 1 Mar 2027 and 29 Feb 2028 would have died one day short of the floor, all of them after the 13 May 2027 phase-in. 400 = 365 + 35, the same shape as `events` in [ADR 045] §2. 👤 THE NUMBER REMAINS THE OWNER'S TO MOVE — any value >= 366 satisfies the floor and the direction of this change costs privacy on the one store holding a plain email address with no automated erasure route; see the ADR 045 addendum.",
-      "cadence": "365d",
-      "mechanism": {
-        "substrate": "cloudflare-kv",
-        "anchor": "sites/nikatru/functions/api/subscribe.js",
-        "record": "the expirationTtl on the signup put, computed from `SIGNUP_RETENTION_DAYS` in the anchor",
-        "failingValue": "the anchor declaring a period this row's `ttlSource` does not match (the register claiming one number while the code writes another), or the signup put losing its options argument so the declared period reaches no key",
-        "readBy": "tooling/ci/assert-retention-coverage.mjs — the `ttl` limb requires `mechanism.ttlSource` to appear VERBATIM in the anchor, which is what stops this row's period from being a claim written beside the code. tooling/ci/test/signup-retention.test.mjs then loads the module and asserts the put actually carries `expirationTtl: days x 86400`.",
-        "ttlSource": "const SIGNUP_RETENTION_DAYS = 400;"
-      },
-      "accessProviders": [
-        "cloudflare"
-      ],
-      "ownerGated": true,
-      "ownerGap": "🔴 THE KEYS WRITTEN BEFORE 2026-08-09 STILL HAVE NO EXPIRY, AND NO CODE PATH WILL GIVE THEM ONE. Workers KV fixes a key's expiry at WRITE time, so the declared period (~~365~~ 400 days since 2026-08-13) reaches subsequent writes only — ageing out the existing `sub:` keys is an OPERATOR action against the namespace (re-put or delete by key), which is why this row stays owner-gated after the period was declared. Until that is done this store still holds contactable addresses with no bound, and it remains — with Supabase auth — one of the two stores that determine the notifiable population in a breach (docs/runbooks/breach-response.md step 2); the D1 tables are pseudonymous and notifiable only by public notice. ✅ THE PERIOD ITSELF IS DECIDED AND UNDER A GUARD: owner, 2026-08-09, ~~365 days~~ — raised by an agent to 400 on 2026-08-13 to clear the DPDP Rule 8(3) one-year floor, which 365 misses by one day across a leap year. 👤 A SECOND OWNER LINE IS NOW OWED HERE, AND IT IS ONE WORD: keep 400, or name another value >= 366. The engineering half needs nothing either way — this row's `mechanism.ttlSource` and sites/nikatru/functions/api/subscribe.js move together or the build goes red.",
       "source": "verified"
     }
   ]

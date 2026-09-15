@@ -33,6 +33,20 @@ export function erasureBindingName(appId: string): string {
   return `ERASURE_${appId.toUpperCase()}`;
 }
 
+/**
+ * ⏱ 2026-09-15 · [ADR 087]. A ledger order that is NOT an app: the signup-list
+ * purge, which needs the account's email and its confirmation from the identity
+ * provider BEFORE the identity is deleted. When that read fails transiently the
+ * route records an order under this id instead of an app id, the identity stays,
+ * and `erasureRetry` runs the purge rather than a Service Binding call.
+ *
+ * ⚠️ THE `<NAME>_STEP` SPELLING IS READ BY tooling/ops/check-prod-provenance.mjs
+ * (resolver `erasure-step`), which accepts a `pending_erasures.app_id` that is not
+ * an app only if it is one of these exported literals. The `:` cannot appear in an
+ * app slug, so a step can never be mistaken for an app or collide with one.
+ */
+export const SIGNUP_PURGE_STEP = 'platform:signups';
+
 /** The binding for an app, or null when this Worker declares none for it. */
 export function erasureBindingFor(env: object, appId: string): ErasureBinding | null {
   const candidate = (env as Record<string, unknown>)[erasureBindingName(appId)];

@@ -27,7 +27,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { enumerateMigrationTables, sqlLiteral } from '../migration-tables.mjs';
-import { attestationCommitRead, attestationDeployments, CouldNotLook } from '../../ops/check-prod-provenance.mjs';
+import { attestationCommitRead, attestationDeployments, CouldNotLook, reservedAddressCensusSql } from '../../ops/check-prod-provenance.mjs';
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const GATE = join(REPO, 'tooling', 'ci', 'assert-prod-provenance.mjs');
@@ -134,10 +134,11 @@ describe('assert-prod-provenance — the gate limb', () => {
   // with the measurement written beside it rather than the number simply edited.
   // ⏱ 2026-09-15 · 15 -> 16: 0010_pending_erasures.sql ([ADR 081]) adds pending_erasures, over
   // 10 migration files — measured: `16 table(s) enumerated from services/platform/migrations (10 migration file(s))`.
+  // ⏱ 2026-09-15 · 16 -> 17: 0011_signups.sql ([ADR 087]) adds signups, over 11 migration files.
   test('the real tree passes, and says out loud that it has not seen production', () => {
     const r = spawnSync(process.execPath, [GATE, REPO], { cwd: REPO, encoding: 'utf8' });
     assert.equal(r.status, 0, r.stdout + r.stderr);
-    assert.match(r.stdout, /16 table\(s\) enumerated/);
+    assert.match(r.stdout, /17 table\(s\) enumerated/);
     assert.match(r.stdout, /HAS NOT LOOKED AT PRODUCTION/);
     assert.match(r.stdout, /MONITOR/);
   });
@@ -300,6 +301,20 @@ describe('assert-prod-provenance — the gate limb', () => {
     );
   });
 
+  test('⏱ 2026-09-15 · [ADR 087] `not-reserved-address` on a column other than `email` is RED', () => {
+    withTree(
+      (root) => {
+        const reg = readRegister(root);
+        reg.tables.signups.marker = 'signed_up_at';
+        writeRegister(root, reg);
+      },
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /`signups` declares resolver `not-reserved-address` on `signed_up_at`/);
+      },
+    );
+  });
+
   test('COVERAGE LOST when the register declares no resolvers', () => {
     withTree(
       (root) => {
@@ -345,7 +360,7 @@ describe('check-prod-provenance — the monitor limb', () => {
     const r = run({});
     assert.equal(r.status, 0, r.stdout + r.stderr);
     assert.match(r.stdout, /THIS IS A MONITOR, NOT A GATE/);
-    assert.match(r.stdout, /16 table\(s\) enumerated/);
+    assert.match(r.stdout, /17 table\(s\) enumerated/);
   });
 
   test('the real production consent row resolves — it is a shipped build, not residue', () => {
@@ -400,6 +415,39 @@ describe('check-prod-provenance — the monitor limb', () => {
     const bad = run({ cron_heartbeat: [{ marker: 'supabase_ping', n: 4 }] });
     assert.equal(bad.status, 1);
     assert.match(bad.stderr, /job `supabase_ping` is declared by no/);
+  });
+
+  test('⏱ 2026-09-15 · [ADR 087] a signup at an ordinary domain resolves; one at a reserved test domain is residue', () => {
+    const ok = run({ signups: [{ marker: 'unreserved', n: 3 }] });
+    assert.equal(ok.status, 0, ok.stdout + ok.stderr);
+    assert.match(ok.stdout, /signups\s+3 row\(s\), 0 unattributable/);
+    const bad = run({ signups: [{ marker: 'unreserved', n: 3 }, { marker: 'reserved', n: 1 }] });
+    assert.equal(bad.status, 1);
+    assert.match(bad.stderr, /signups: 1 row\(s\) — addressed to a domain reserved for testing/);
+  });
+
+  test('🔴 the signups census query returns COUNTS, never an address, and classifies the reserved domains', async () => {
+    const sql = reservedAddressCensusSql('signups', 'email');
+    assert.match(sql, /^SELECT CASE WHEN .* THEN 'reserved' ELSE 'unreserved' END AS marker, COUNT\(\*\) AS n FROM "signups" GROUP BY 1$/);
+    assert.doesNotMatch(sql, /SELECT "email"/, 'the generic census shape would return every address');
+    const { DatabaseSync } = await import('node:sqlite');
+    const db = new DatabaseSync(':memory:');
+    db.exec(readFileSync(join(REPO, MIGRATIONS, '0011_signups.sql'), 'utf8'));
+    const put = db.prepare('INSERT INTO signups (email, signed_up_at) VALUES (?, ?)');
+    for (const e of ['probe@example.com', 'a@sub.EXAMPLE.org', 'x@foo.test', 'y@host.invalid', 'z@localhost', 'real@gmail.com', 'person@example.co.uk', 'me@notexample.com']) {
+      put.run(e, '2026-09-15T00:00:00.000Z');
+    }
+    const got = Object.fromEntries(db.prepare(sql).all().map((r) => [r.marker, Number(r.n)]));
+    assert.deepEqual(got, { reserved: 5, unreserved: 3 });
+  });
+
+  test('⏱ 2026-09-15 · [ADR 087] a pending signup-purge step resolves by the second resolver; an undeclared step does not', () => {
+    const ok = run({ pending_erasures: [{ marker: 'subscriptiontracker', n: 2 }, { marker: 'platform:signups', n: 1 }] });
+    assert.equal(ok.status, 0, ok.stdout + ok.stderr);
+    assert.match(ok.stdout, /second-resolver acceptance: pending_erasures: 1 row\(s\) with `app_id` = `platform:signups` .* `erasure-step`/);
+    const bad = run({ pending_erasures: [{ marker: 'platform:renamed', n: 1 }] });
+    assert.equal(bad.status, 1);
+    assert.match(bad.stderr, /pending_erasures: 1 row\(s\)/);
   });
 
   test('a revocation reason outside the migration seed does not resolve', () => {

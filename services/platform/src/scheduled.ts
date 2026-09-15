@@ -22,6 +22,7 @@ import { isKnownProduct } from './config';
 import { verifierFor } from './lib/mor/registry';
 import { deriveAndApply, unconcludedNotifications } from './lib/mor/store';
 import {
+  SIGNUP_PURGE_STEP,
   closeSubject,
   dueOrders,
   erasureBindingFor,
@@ -30,7 +31,7 @@ import {
   stuckOrderCount,
   subjectsReadyForIdentity,
 } from './lib/erasure-ledger';
-import { deleteIdentity, erasePlatformRows } from './lib/platform-erasure';
+import { deleteIdentity, erasePlatformRows, purgeVerifiedSignups } from './lib/platform-erasure';
 
 /** The job name recorded in `cron_heartbeat`. */
 export const KEEPALIVE_JOB = 'supabase_keepalive';
@@ -963,9 +964,19 @@ export async function erasureRetry(env: Env, nowMs: number = Date.now()): Promis
     const due = await dueOrders(env.PLATFORM_DB, nowIso, MAX_ERASURE_RETRIES_PER_RUN);
     for (const order of due) {
       const stuck = order.created_at < stuckCutoff;
-      const binding = erasureBindingFor(env, order.app_id);
       let error: string | null = null;
-      if (binding === null) {
+      // ⏱ 2026-09-15 · [ADR 087]: a signup-purge step is not an app. It runs here,
+      // in this Worker, while the identity still exists (the identity is only ever
+      // deleted after every order for the subject is confirmed, below).
+      const binding = order.app_id === SIGNUP_PURGE_STEP ? null : erasureBindingFor(env, order.app_id);
+      if (order.app_id === SIGNUP_PURGE_STEP) {
+        if (!env.SUPABASE_SERVICE_ROLE_KEY) {
+          error = 'SUPABASE_SERVICE_ROLE_KEY is not set, so the account address cannot be confirmed';
+        } else {
+          const purge = await purgeVerifiedSignups(env.PLATFORM_DB, env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, order.subject_ref);
+          if (purge.kind === 'transient' || purge.kind === 'failed') error = `signup purge: ${purge.why}`;
+        }
+      } else if (binding === null) {
         error = 'no erasure binding is declared for this app';
       } else {
         try {
@@ -998,6 +1009,14 @@ export async function erasureRetry(env: Env, nowMs: number = Date.now()): Promis
       }
       const walked = await erasePlatformRows(env.PLATFORM_DB, subject);
       if (!walked.ok) {
+        identityFailed++;
+        continue;
+      }
+      // [ADR 087]: the launch-list purge runs again, BEFORE the identity goes, for the
+      // same reason the walk above runs again — an address confirmed or a signup made
+      // between the 202 and now. Not known → the identity stays for the next night.
+      const signupPurge = await purgeVerifiedSignups(env.PLATFORM_DB, env.SUPABASE_URL, serviceRoleKey, subject);
+      if (signupPurge.kind === 'transient' || signupPurge.kind === 'failed') {
         identityFailed++;
         continue;
       }
@@ -1260,7 +1279,7 @@ export const RETENTION_SWEEP_JOB = 'retention_sweep';
 
 /** The platform_db stores whose retention is a PERIOD rather than a reasoned
  *  `keep`. Each name is also the store suffix of its register row id. */
-export type RetentionStore = 'events' | 'events_daily' | 'provider_notifications';
+export type RetentionStore = 'events' | 'events_daily' | 'provider_notifications' | 'signups';
 
 /** Days-to-keep per store. `null` is UNDECLARED, and undeclared is INERT. */
 export type RetentionPeriods = Record<RetentionStore, number | null>;
@@ -1354,6 +1373,26 @@ export const EVENTS_DAILY_RETENTION_DAYS = 1100;
 // @ceiling none — a RETENTION PERIOD is a policy number, not a platform resource; nothing in tooling/ceilings.json bounds how long rows may be kept.
 export const PROVIDER_NOTIFICATIONS_RETENTION_DAYS = 730;
 
+// 🔒 DECLARED — 400 DAYS FROM THE ORIGINAL SIGNUP. [ADR 087] moved the
+// nikatru.com launch-notification list from the KV namespace `nikatru-signups`
+// into `signups` (0011_signups.sql). Register row:
+// retention.d1.platform_db.signups.
+//
+// THE NUMBER IS NOT NEW. It is the period the KV store carried as
+// `SIGNUP_RETENTION_DAYS` in sites/nikatru/functions/api/subscribe.js from
+// 2026-08-13 (the owner's 365 of 2026-08-09, raised to clear the DPDP Rules 2025
+// Rule 8(3) one-year floor, which 365 misses by one day whenever the year
+// contains a 29 February). That reasoning is in git history at that file; the
+// only thing that changed on 2026-09-15 is WHO forgets: a KV expiry was fixed at
+// write time by the store, and a D1 table has no expiry, so this sweep deletes.
+//
+// ⚠️ THE CUTOFF IS ON `signed_up_at`, THE ORIGINAL SIGNUP TIME, and a repeat
+// signup never moves it (subscribe.js inserts ON CONFLICT DO NOTHING). Rows
+// migrated from KV keep their original time too, so the two KV keys that never
+// had an expiry are bounded here for the first time.
+// @ceiling none — a RETENTION PERIOD is a policy number, not a platform resource; nothing in tooling/ceilings.json bounds how long rows may be kept.
+export const SIGNUPS_RETENTION_DAYS = 400;
+
 // The per-store, per-run delete bound. A sweep is a CATCH-UP job, not a one
 // shot: hitting the bound leaves the remainder for tomorrow and says `capped=1`
 // rather than pretending the store is clean. Worst case per night is 2 × 1000
@@ -1372,7 +1411,7 @@ const MS_PER_DAY = 86400000;
  * 🔴 `0`, NEGATIVES AND NON-NUMBERS FALL TO `null` DELIBERATELY, and this is the
  * most important line in the section. A cutoff computed from `0` is NOW, and a
  * sweep whose cutoff is now deletes the WHOLE TABLE. Same rule and same reason
- * as `signupPutOptions` in sites/nikatru/functions/api/subscribe.js: a
+ * as `signupPutOptions` had in sites/nikatru/functions/api/subscribe.js until [ADR 087] moved the list to D1: a
  * fat-fingered zero must mean NO RETENTION, never "delete everything".
  *
  * ISO-8601 UTC because both columns store exactly that (`events.server_ts`,
@@ -1636,6 +1675,12 @@ async function deleteOlderThan(env: Env, store: RetentionStore, cutoff: string):
       ? env.PLATFORM_DB.prepare(
           'DELETE FROM events WHERE rowid IN (SELECT rowid FROM events WHERE server_ts < ? ORDER BY server_ts LIMIT ?)',
         )
+      : store === 'signups'
+        ? env.PLATFORM_DB.prepare(
+            // [ADR 087]. On AGE ALONE, from the original signup time: nothing is
+            // derived from this table and nothing downstream consumes it.
+            'DELETE FROM signups WHERE rowid IN (SELECT rowid FROM signups WHERE signed_up_at < ? ORDER BY signed_up_at LIMIT ?)',
+          )
       : store === 'events_daily'
         ? env.PLATFORM_DB.prepare(
             // Deletes on AGE ALONE, and that asymmetry with `events` is
@@ -1713,10 +1758,11 @@ export async function retentionSweep(
     events: EVENTS_RETENTION_DAYS,
     events_daily: EVENTS_DAILY_RETENTION_DAYS,
     provider_notifications: PROVIDER_NOTIFICATIONS_RETENTION_DAYS,
+    signups: SIGNUPS_RETENTION_DAYS,
   },
   nowMs: number = Date.now(),
 ): Promise<void> {
-  const stores: RetentionStore[] = ['events', 'events_daily', 'provider_notifications'];
+  const stores: RetentionStore[] = ['events', 'events_daily', 'provider_notifications', 'signups'];
   const n_stores = stores.length;
   let declared = 0;
   let deleted = 0;
