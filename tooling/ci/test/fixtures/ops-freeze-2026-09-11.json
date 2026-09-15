@@ -6,7 +6,8 @@
   "still in flight then (34546423386 itself) is absent, exactly as it was to the grading run. GlitchTip, D1 and",
   "the Renovate issue carry the values that run PRINTED. Read by the replay describe in ops-register.test.mjs.",
   "runs[wf] rows are [id, event, conclusion, updated_at] on main; jobs[runId] rows are [name, conclusion,",
-  "steps?]; glitchtip[monitor] is [newestUp, interval, checks, misses]; d1.jobs / d1.targets are MAX(ran_at)."
+  "steps?]; glitchtip[monitor] is [newestUp, interval, checks, misses]; d1.jobs / d1.targets are MAX(ran_at).",
+  "⏱ 2026-09-15 — ONE ANSWER HERE IS NOT FROM THAT RUN: glitchtip[\"38\"]. duty.boxb.diun reads monitor 38, which was created 2026-09-15, after this world; the replay grades the CURRENT register, so without an answer the row reads as a monitor that does not exist (404) and every host goes red on a row the freeze never had. It is given a fresh, clean answer (newest up 3 min before `now`, interval 10800, 2 checks, 0 misses) so every other answer still decides exactly what it decided on 2026-09-11. A future heartbeat row needs the same treatment, and this line is where to say so."
  ],
  "now": "2026-09-11T00:26:07Z",
  "repo": "globalonlinedeveloper/Nikatru_Platform_Public",
@@ -3871,6 +3872,12 @@
    86400,
    3,
    1
+  ],
+  "38": [
+   "2026-09-11T00:23:01.000Z",
+   10800,
+   2,
+   0
   ]
  },
  "d1": {

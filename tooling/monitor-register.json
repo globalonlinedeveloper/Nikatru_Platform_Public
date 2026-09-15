@@ -275,6 +275,10 @@
     "    06:38:17Z. The full record is in that row's `closedGap.🔴 forcedDownProof`.",
     "  · beszel.nikatru.com and logs.nikatru.com are rows with `monitor: null` and a stated gap, so",
     "    assert-monitor-coverage.mjs names them on stdout on every single run.",
+    "    ⏱ 2026-09-15 — NO LONGER: both rows now carry Heartbeat monitor 39 `Box B dashboards origin`,",
+    "    fed by an origin-side poster on Box B over loopback (closure (a) of their own gap action). It",
+    "    asserts ORIGIN health only; the tunnel is the platform Worker's boxbReachability probe. Each",
+    "    row keeps its gap as `closedGap`. Ids 38 and 39 are in expectedMonitors too.",
     "Both new ids are in tooling/ops/alarm-chains.json → expectedMonitors, which is still the only",
     "guard in the tree that fails when a monitor is deleted and recreated.",
     "",
@@ -531,11 +535,20 @@
       "what": "Beszel hub 0.19.0 on Box B — host metrics for BOTH boxes, including the read-only agent that is the ONE sanctioned exception to C-BOXA-SUPABASE-ONLY",
       "derivedFrom": "declared",
       "why": "Same structural reason as ntfy and vault — nothing in this tree deploys Box B. It is filed here WITH `monitor: null` rather than left as a paragraph in `_notInThisRegister` so that the absence is machine-read and PRINTED on every CI run, instead of being prose a reader has to find. \"Absent from this file\" and \"nobody has looked\" are indistinguishable; a null row with a stated reason is the difference.",
-      "monitor": null,
-      "gap": {
+      "monitor": {
+        "id": 39,
+        "name": "Box B dashboards origin",
+        "type": "Heartbeat",
+        "intervalSeconds": 10800,
+        "verifiedOn": "2026-09-15",
+        "asserts": "ORIGIN health, NOT the tunnel and NOT Cloudflare Access. /opt/backup/dashboards-origin-liveness.sh on Box B, root cron hourly at :29, checks BOTH origins over the loopback addresses the tunnel itself uses — Beszel http://127.0.0.1:8090/api/health must answer 200 and Dozzle http://127.0.0.1:8095/healthcheck must answer 200 — and beats only when both are healthy. One monitor covers this row and logs.nikatru.com: a silent monitor means at least one of the two origins is down (or the box, the cron or the poster is). The tunnel and the edge are covered elsewhere — the platform Worker's boxbReachability probe reaches Box B through vault, ntfy and glitchtip — and Access was left untouched."
+      },
+      "closedGap": {
         "why": "It sits behind Cloudflare Access, so from outside it answers 302 to the Access login — re-measured 2026-09-07, a 143-byte nginx redirect body. A GET monitor asserting 302 would be GREEN whenever the EDGE is healthy, because the 302 is produced at the edge BEFORE the origin is consulted (`phase3a-beszel-dozzle.md` §8 states exactly this). It would watch Cloudflare and read as coverage of Beszel — the same defect this file recorded for `Ping` monitors on 2026-08-11 and refused for SSL monitors on 2026-09-03.",
         "action": "Do NOT weaken Access to make it probeable; a dashboard is not worth that trade. Two honest closures exist and neither belongs to the unit that filed this row: (a) an origin-side check on Box B beating a GlitchTip Heartbeat, which needs a cron on a box this repository does not own; (b) a Cloudflare Access service token on a bypass path, which is a change to the Access application itself. Until one is chosen, this row IS the coverage — it is the thing that says out loud, on every run, that nothing watches it.",
-        "openedOn": "2026-09-05"
+        "openedOn": "2026-09-05",
+        "closedOn": "2026-09-15",
+        "howItWasClosed": "Honest closure (a) of the action above: an origin-side check on Box B beating a GlitchTip Heartbeat. Monitor 39 was created 2026-09-15T01:05:04Z by the session lead, not by this repository, and its first beat read back isUp true at 01:05:07Z. Re-read through the API (read-only GET organizations/nikatru/monitors/) at 2026-09-15T01:31:11Z: isUp true, project \"2\", interval 10800, checks at 01:05:07.187Z and 01:29:01.616Z (the :29 cron slot), both up."
       }
     },
     {
@@ -543,11 +556,20 @@
       "what": "Dozzle v10.9.2 on Box B — read-only container logs for the services box",
       "derivedFrom": "declared",
       "why": "Same structural reason and the same choice as beszel.nikatru.com: filed with a null monitor so the gap is machine-read and printed rather than described in prose.",
-      "monitor": null,
-      "gap": {
+      "monitor": {
+        "id": 39,
+        "name": "Box B dashboards origin",
+        "type": "Heartbeat",
+        "intervalSeconds": 10800,
+        "verifiedOn": "2026-09-15",
+        "asserts": "ORIGIN health, NOT the tunnel and NOT Cloudflare Access. /opt/backup/dashboards-origin-liveness.sh on Box B, root cron hourly at :29, checks BOTH origins over the loopback addresses the tunnel itself uses — Beszel http://127.0.0.1:8090/api/health must answer 200 and Dozzle http://127.0.0.1:8095/healthcheck must answer 200 — and beats only when both are healthy. One monitor covers this row and beszel.nikatru.com: a silent monitor means at least one of the two origins is down (or the box, the cron or the poster is). The tunnel and the edge are covered elsewhere — the platform Worker's boxbReachability probe reaches Box B through vault, ntfy and glitchtip — and Access was left untouched."
+      },
+      "closedGap": {
         "why": "Behind Cloudflare Access, 302 from outside — re-measured 2026-09-07, the same 143-byte redirect. Identical reasoning to beszel.nikatru.com: an edge-produced 302 tells you nothing about the origin.",
         "action": "As beszel.nikatru.com. Note that of the four Box B services this is the LEAST consequential to lose — Dozzle reads logs and holds no state — which is why neither honest closure was worth buying for it today, and why that judgement is written down rather than left implicit.",
-        "openedOn": "2026-09-05"
+        "openedOn": "2026-09-05",
+        "closedOn": "2026-09-15",
+        "howItWasClosed": "Honest closure (a) of the action above: an origin-side check on Box B beating a GlitchTip Heartbeat. Monitor 39 was created 2026-09-15T01:05:04Z by the session lead, not by this repository, and its first beat read back isUp true at 01:05:07Z. Re-read through the API (read-only GET organizations/nikatru/monitors/) at 2026-09-15T01:31:11Z: isUp true, project \"2\", interval 10800, checks at 01:05:07.187Z and 01:29:01.616Z (the :29 cron slot), both up."
       }
     }
   ],
