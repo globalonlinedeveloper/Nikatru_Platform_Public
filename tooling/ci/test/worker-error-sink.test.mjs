@@ -297,7 +297,7 @@ describe('assert-worker-error-sink — the deploy end of the pipe', () => {
 describe('assert-worker-error-sink — coverage self-checks', () => {
   test('COVERAGE LOST when fewer Workers are found than exist today', () => {
     const r = run(makeRepo((f) => ({ ...f, 'services/subscriptiontracker-api/src/index.ts': null })));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST — 1 Worker entrypoint\(s\) found/);
   });
 
@@ -305,13 +305,13 @@ describe('assert-worker-error-sink — coverage self-checks', () => {
     const root = join(TMP, `empty${seq++}`);
     mkdirSync(root, { recursive: true });
     const r = run(root);
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST — no services\/ directory/);
   });
 
   test('COVERAGE LOST when the deploy workflow is gone', () => {
     const r = run(makeRepo((f) => ({ ...f, '.github/workflows/deploy-workers.yml': null })));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST — .*deploy-workers\.yml does not exist/s);
   });
 

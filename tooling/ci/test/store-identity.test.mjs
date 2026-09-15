@@ -218,7 +218,7 @@ describe('assert-store-identity — the snap name is DERIVED, and a retired toke
     const register = REGISTER();
     delete register.retiredIdentityTokens;
     const { code, out } = run(fixture({ register }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST — tooling\/channel-register\.json declares no `retiredIdentityTokens\.tokens`/);
   });
 
@@ -226,7 +226,7 @@ describe('assert-store-identity — the snap name is DERIVED, and a retired toke
     const register = REGISTER();
     register.channels.find((c) => c.id === 'linux-snap').snapName.derivation = 'whatever the author typed';
     const { code, out } = run(fixture({ register }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /the only derivation this guard implements is "param-case\(apps\/\{app\}\/app\.yaml name\)"/);
   });
 });
@@ -292,7 +292,7 @@ describe('assert-store-identity', () => {
   // ── coverage self-checks ──────────────────────────────────────────────────
   test('COVERAGE LOST when the catalogue is empty', () => {
     const { code, out } = run(fixture({ apps: [] }));
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /lists no app/);
   });
 
@@ -300,7 +300,7 @@ describe('assert-store-identity', () => {
     const register = REGISTER();
     for (const c of register.channels) delete c.identity;
     const { code, out } = run(fixture({ register }));
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /declares an `identity` block/);
     assert.match(out, /having no identity read exactly like having the right one/);
   });
@@ -314,7 +314,7 @@ describe('assert-store-identity', () => {
       identity: { kind: 'apple-bundle-id', declaredIn: 'apps/{app}/ios/project.pbxproj' },
     });
     const { code, out } = run(fixture({ register, files: { 'apps/subscriptiontracker/ios/project.pbxproj': '// empty\n' } }));
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /compares nothing to nothing and agrees/);
   });
@@ -326,7 +326,7 @@ describe('assert-store-identity', () => {
         files: { 'apps/webonly/pubspec.yaml': 'name: webonly\n' },
       }),
     );
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /produced ZERO comparisons/);
   });
 
@@ -334,7 +334,7 @@ describe('assert-store-identity', () => {
     const root = join(TMP, `bare${seq++}`);
     mkdirSync(root, { recursive: true });
     const { code, out } = run(root);
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
   });
 });
@@ -470,7 +470,7 @@ describe('assert-store-identity — Windows: a store-assigned identity, and a pl
     reg.channels.find((c) => c.id === 'windows-store').identity.expectedFrom = 'packageIdentity.somethingElse';
     writeFileSync(regPath, JSON.stringify(reg, null, 2));
     const { code, out } = run(root);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /the only field this guard knows how to read is "packageIdentity\.identityName"/);
   });

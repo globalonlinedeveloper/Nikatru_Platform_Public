@@ -840,7 +840,7 @@ describe('limb 9 — the channel README may not cite code that is gone either', 
         rmSync(join(root, `${SUBLY_IOS}/README.md`));
       },
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /COVERAGE LOST/);
         assert.match(r.stderr, /not one channel README was read/);
       },
@@ -858,7 +858,7 @@ describe('limb 9 — the channel README may not cite code that is gone either', 
         }
       },
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /COVERAGE LOST/);
         assert.match(r.stderr, /matched ZERO repository paths/);
       },
@@ -1185,7 +1185,7 @@ describe('REQUIRED_COVERAGE — the scan must know when it has stopped scanning'
           j.storeMetadataContract.perChannel['ios-appstore'].additionalFiles.push('privacy-nutrition.json');
         }),
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /COVERAGE LOST/);
         assert.match(r.stderr, /privacy-nutrition\.json/);
       },
@@ -1200,7 +1200,7 @@ describe('REQUIRED_COVERAGE — the scan must know when it has stopped scanning'
           j.storeMetadataContract.perChannel['android-play'].additionalFiles = a.filter((f) => f !== 'content-rating.json');
         }),
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /no longer declares as sworn/);
       },
     );
@@ -1210,7 +1210,7 @@ describe('REQUIRED_COVERAGE — the scan must know when it has stopped scanning'
     withTree(
       (root) => rmSync(join(root, CR)),
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /never exercised/);
       },
     );
@@ -1220,7 +1220,7 @@ describe('REQUIRED_COVERAGE — the scan must know when it has stopped scanning'
     withTree(
       (root) => rmSync(join(root, BRICK_STORE, 'data-safety.json')),
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /COVERAGE LOST/);
         assert.match(r.stderr, /brick template/);
       },
@@ -1231,7 +1231,7 @@ describe('REQUIRED_COVERAGE — the scan must know when it has stopped scanning'
     withTree(
       (root) => editText(root, 'pubspec.yaml', (s) => s.replace(/^workspace:$/m, 'workspace_disabled:')),
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /no readable `workspace:` block/);
       },
     );

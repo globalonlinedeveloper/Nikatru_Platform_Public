@@ -235,7 +235,7 @@ describe('vacuity-c — per-root coverage floors', () => {
     const dir = mirror();
     emptyRoot(dir, 'apps');
     const { code, out } = run(WEB_CACHE, dir, ...CLAIMED);
-    assert.equal(code, 1, `expected a refusal, got exit ${code}:\n${out}`);
+    assert.equal(code, 2, `expected a refusal, got exit ${code}:\n${out}`);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /produced ZERO flutter-web bundles of its own/);
     // The brick is named, because the brick surviving is the whole mechanism.
@@ -253,7 +253,7 @@ describe('vacuity-c — per-root coverage floors', () => {
     const dir = mirror();
     removeRoot(dir, 'apps');
     const { code, out } = run(WEB_CACHE, dir, ...CLAIMED);
-    assert.equal(code, 1, `expected a refusal, got exit ${code}:\n${out}`);
+    assert.equal(code, 2, `expected a refusal, got exit ${code}:\n${out}`);
     assert.match(out, /produced ZERO flutter-web bundles of its own/);
     assert.doesNotMatch(out, /found no deployed bundle/);
   });
@@ -264,7 +264,7 @@ describe('vacuity-c — per-root coverage floors', () => {
     const dir = mirror();
     emptyRoot(dir, 'sites');
     const { code, out } = run(WEB_CACHE, dir, ...CLAIMED);
-    assert.equal(code, 1, `expected a refusal, got exit ${code}:\n${out}`);
+    assert.equal(code, 2, `expected a refusal, got exit ${code}:\n${out}`);
     assert.match(out, /produced ZERO static-site deploy roots/);
   });
 

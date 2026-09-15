@@ -406,7 +406,7 @@ describe('assert-walks-bounded.mjs — the prohibition can fail', () => {
     rmSync(guard);
     // run the REAL guard against the emptied fixture root
     const r = spawnSync(process.execPath, [GUARD, root], { encoding: 'utf8' });
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(`${r.stdout}${r.stderr}`, /COVERAGE LOST/);
     assert.ok(kept.length > 0);
   });
@@ -416,7 +416,7 @@ describe('assert-walks-bounded.mjs — the prohibition can fail', () => {
     // which is not what this guard asserts. The positive half must be present.
     const root = fixtureRoot({ 'assert-thing.mjs': 'void 0;\n' });
     const { status, out } = run(root);
-    assert.equal(status, 1);
+    assert.equal(status, 2);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /not one file/);
   });
@@ -430,7 +430,7 @@ describe('assert-walks-bounded.mjs — the prohibition can fail', () => {
     const src = readFileSync(helper, 'utf8');
     writeFileSync(helper, src.replace('export function isNestedCheckout(absDir) {', 'export function isNestedCheckout(absDir) {\n  if (absDir) return false;'));
     const { status, out } = run(root);
-    assert.equal(status, 1);
+    assert.equal(status, 2);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /no longer excludes what it claims to|failed to recognise a checkout/);
   });
@@ -443,7 +443,7 @@ describe('assert-walks-bounded.mjs — the prohibition can fail', () => {
     const src = readFileSync(helper, 'utf8');
     writeFileSync(helper, src.replace('export function isNestedCheckout(absDir) {', 'export function isNestedCheckout(absDir) {\n  if (absDir) return true;'));
     const { status, out } = run(root);
-    assert.equal(status, 1);
+    assert.equal(status, 2);
     assert.match(out, /COVERAGE LOST/);
   });
 
@@ -453,7 +453,7 @@ describe('assert-walks-bounded.mjs — the prohibition can fail', () => {
     const src = readFileSync(helper, 'utf8');
     writeFileSync(helper, src.replace('if (withinTree(cwd, match)) yield match;', 'void cwd; yield match;'));
     const { status, out } = run(root);
-    assert.equal(status, 1);
+    assert.equal(status, 2);
     assert.match(out, /boundedGlob/);
   });
 });
@@ -577,7 +577,7 @@ describe('assert-walks-bounded.mjs — the sanctioned crossing is a route, not a
       ),
     );
     const { status, out } = run(root);
-    assert.equal(status, 1);
+    assert.equal(status, 2);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /listCheckoutsAcrossWorkspace` returned \[\]/);
   });
@@ -596,7 +596,7 @@ describe('assert-walks-bounded.mjs — the sanctioned crossing is a route, not a
     assert.notEqual(mutated, src, 'the filter this test mutates must still exist in tree-walk.mjs');
     writeFileSync(helper, mutated);
     const { status, out } = run(root);
-    assert.equal(status, 1);
+    assert.equal(status, 2);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /listCheckoutsAcrossWorkspace` returned \[[^\]]*ordinary/);
   });
@@ -624,7 +624,7 @@ describe('assert-walks-bounded.mjs — the sanctioned crossing is a route, not a
     ].join('\n');
     writeFileSync(helper, src.replace('export function listCheckoutsAcrossWorkspace(dir, options) {', recursing));
     const { status, out } = run(root);
-    assert.equal(status, 1);
+    assert.equal(status, 2);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /inner-checkout/);
   });

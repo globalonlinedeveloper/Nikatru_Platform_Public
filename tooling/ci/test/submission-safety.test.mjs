@@ -149,7 +149,7 @@ describe('assert-submission-safety — the web-prove-first rule', () => {
 
   test('COVERAGE LOST when --submitting is given with no --app', () => {
     const { code, out } = run(fixture(), ['--submitting']);
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /--submitting was given with no --app/);
   });
 });
@@ -241,7 +241,7 @@ describe('assert-submission-safety — the cadence limb is OURS and says so', ()
 
   test('COVERAGE LOST when the named ledger is not there', () => {
     const { code, out } = run(fixture(), ['--ledger', 'nope.json']);
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /a count of nothing reported as compliance/);
   });
 });
@@ -249,7 +249,7 @@ describe('assert-submission-safety — the cadence limb is OURS and says so', ()
 describe('assert-submission-safety — coverage and the limb that only PRINTS', () => {
   test('COVERAGE LOST when the catalogue is empty', () => {
     const { code, out } = run(fixture({ apps: [] }));
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /lists no app/);
   });
 
@@ -257,7 +257,7 @@ describe('assert-submission-safety — coverage and the limb that only PRINTS', 
     const root = join(TMP, `bare${seq++}`);
     mkdirSync(root, { recursive: true });
     const { code, out } = run(root);
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
   });
 
