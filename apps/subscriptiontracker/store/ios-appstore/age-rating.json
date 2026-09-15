@@ -132,7 +132,7 @@
       "answer": "NO",
       "claim": "The app embeds NO browser. Every outbound link is handed to the SYSTEM browser and the URL set is first-party only.",
       "derivation": "dependency-tells",
-      "note": "MEASURED 2026-09-12, so this is no longer the open question it was written as. Every launchUrl call site in the app passes LaunchMode.externalApplication — apps/subscriptiontracker/lib/app.dart:212, features/settings/settings_screen.dart:1152, features/shared/widgets.dart:750 — which hands the URL to the system browser and renders nothing in-app. There is no WebView widget in the app at all. The URLs reachable from the source are first-party only: nikatru.com and its /privacy, /terms, /refund, /contact and /checkout-return paths, plus config.nikatru.com. Apple treats an EMBEDDED browser as unrestricted web access; handing a fixed first-party URL to the OS is not one."
+      "note": "MEASURED 2026-09-12, so this is no longer the open question it was written as. Every launchUrl call site in the app passes LaunchMode.externalApplication — apps/subscriptiontracker/lib/app.dart:216, features/settings/settings_screen.dart:1152, features/shared/widgets.dart:750 — which hands the URL to the system browser and renders nothing in-app. There is no WebView widget in the app at all. The URLs reachable from the source are first-party only: nikatru.com and its /privacy, /terms, /refund, /contact and /checkout-return paths, plus config.nikatru.com. Apple treats an EMBEDDED browser as unrestricted web access; handing a fixed first-party URL to the OS is not one."
     },
     {
       "id": "user-generated-content",

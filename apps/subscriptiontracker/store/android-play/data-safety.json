@@ -254,7 +254,7 @@
       "  providers/auth.dart:120          isBackendLive ? SupabaseAuthRepository : InMemoryAuthRepository",
       "  providers/subscriptions.dart:80  !isApiConfigured -> SeedApiClient (wrapped by PersistedApiClient: device-local storage, never leaves the device)",
       "  analytics_providers.dart:536  !isBackendLive (via analyticsEnabledProvider) -> NoOpAnalytics",
-      "  app.dart:470                  the consent prompt shows only when analyticsEnabledProvider is true",
+      "  app.dart:468                  the consent prompt shows only when analyticsEnabledProvider is true",
       "",
       "⚠️ THOSE FOUR LINE NUMBERS WERE RE-MEASURED 2026-08-10 AND THREE OF THEM WERE WRONG — the two",
       "providers.dart citations were ~500 and ~1300 lines out (they predate the P2.6 re-stamp), the",
@@ -1790,6 +1790,10 @@
       "nikatru_design_system": {
         "introduces": [],
         "why": "First-party. Tokens, theming and widgets. No network, no storage."
+      },
+      "nikatru_chassis_screens": {
+        "introduces": [],
+        "why": "First-party. The chassis screen bodies: widgets that take plain values and callbacks, with no third-party dependency, no network and no storage. Added 2026-09-15 ([ADR 086]) when the app adopted its first piece, OfflineBannerHost."
       },
       "nikatru_platform_storage": {
         "introduces": [],

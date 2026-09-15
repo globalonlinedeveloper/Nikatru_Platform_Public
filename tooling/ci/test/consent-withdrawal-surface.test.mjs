@@ -387,6 +387,10 @@ describe('the first-run prompt is scrollable — limb 4', () => {
       (root) => {
         edit(root, SUBLY_APP, (s) => s.replaceAll('l10n.consentPrivacy', 'l10n.consentBody'));
         edit(root, BRICK_APP, (s) => s.replaceAll('l10n.consentPrivacy', 'l10n.consentBody'));
+        // ⏱ 2026-09-15 · [ADR 086]: the live app now imports nikatru_chassis_screens
+        // too, so its prompt scan follows the delegation into the chassis shell
+        // exactly as the brick's does — the subject has to leave there as well.
+        edit(root, CHASSIS_SHELL, (s) => s.replaceAll('l10n.consentPrivacy', 'l10n.consentBody'));
       },
       (r) => {
         assert.equal(r.status, 1);
