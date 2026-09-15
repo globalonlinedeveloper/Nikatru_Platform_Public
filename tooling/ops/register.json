@@ -249,7 +249,8 @@
     ],
     "supabase-box-cron": "oci",
     "windows-task-scheduler": "laptop",
-    "claude-scheduled-task": "laptop"
+    "claude-scheduled-task": "laptop",
+    "selfhost-image-watch-cron": "hostinger"
   },
   "_kinds": [
     "duty",
@@ -321,7 +322,7 @@
       "only by editing this file on a host that has just read a success, which the guard then demands."
     ],
     "_maxUnreachable": 5,
-    "_maxUnreadable": 12,
+    "_maxUnreadable": 13,
     "_maxUnreadableWhy": [
       "🔴 RATCHETED 7 -> 3 ON 2026-09-02, AND THE RATCHET IS THE POINT — this key exists to fall as credentials",
       "and platforms arrive, never to rise when a row goes dark. What changed is that the last reader needing a",
@@ -415,7 +416,13 @@
       "Re-run on the laptop on 2026-09-09 WITH the secrets sourced it reads 22 queried / 0 unreadable, identical to",
       "CI. So the two causes are cleanly separated and neither is a record living where CI cannot see it: rows",
       "whose RECORD is out of reach are the 5 `reader: \"unreachable\"` rows, already at their own ceiling of 5;",
-      "rows that read as unreadable on a given host are a CREDENTIAL absent on that host, and CI holds all of them."
+      "rows that read as unreadable on a given host are a CREDENTIAL absent on that host, and CI holds all of them.",
+      "",
+      "⏱ 2026-09-15 — 12 -> 13, RE-DERIVED IN THE SAME CHANGE AS THE ROW THAT MOVED IT, for the reason the paragraph",
+      "two above gives: a constant above its derivation FAILS, so it cannot go first. duty.boxb.diun reads GlitchTip",
+      "monitor 38, one more row behind the GlitchTip box, so that provider count went 11 -> 12 and",
+      "max(rows behind any single NON-GitHub provider) + 1 spare is 13. The guard printed exactly that on the row",
+      "alone: \"`_maxUnreadable` is 12 but the derivation now gives 13\". Kind unchanged; arithmetic only."
     ],
     "_windowMultiplier": 1.5,
     "_windowMultiplierWhy": [
@@ -2210,6 +2217,43 @@
       "ownerGap": "The schedule, both scripts and both repositories are on a host this repository cannot reach. Three named items are open and are enumerated here so they are countable rather than remembered: (1) PAPER ESCROW of the restic password — see `absenceWatcher.gap`; (2) no third copy — research 17 §1.2 specifies R2 primary plus a Backblaze B2 write-only key and neither exists, though the R2 credential and the `r2backups:` rclone remote both do, which makes it one `restic init` plus one leg; (3) the remote repository has never been restored from DIFFERENT HARDWARE, so today's drill proves the repository and the password, not the recovery of the box.",
       "source": "verified",
       "verifiedHow": "2026-09-05 — drilled, not installed, and with a control. Two files were restored from BOTH repositories and diffed against the live ones: /opt/ntfy/lib/user.db (118,784 bytes, sha256 345333a3f9ec…) and /opt/glitchtip/backups/gt-2026-09-05.dump (3,778,666 bytes, sha256 0047f026f744…), every diff exit 0 — and a NEGATIVE control (one byte appended to a copy) made the same diff exit 1, so the green diffs are evidence rather than a command that cannot fail. The four SQLite databases were restored from the REMOTE repository and each passed `PRAGMA integrity_check` and a real query. `check --read-data-subset=10%` on the remote returned `no errors were found`. Monitor 23's first five checks are all `isUp: true` — 14:35:34, 14:36:17, 14:40:59, 14:47:07 and 14:52:20 on 2026-09-05, three posted by restic-run.sh and two by restic-liveness.sh, so BOTH posters are proven and not just the nightly one. ⚠️ Retention has never actually DELETED a snapshot — `--prune` exiting 0 is proven, pruning a snapshot out is not, and will not be for 14 days."
+    },
+    {
+      "id": "duty.boxb.diun",
+      "kind": "duty",
+      "what": "Diun (the new-image-tag watcher) on the self-hosted services box, and its liveness poster /opt/diun/diun-liveness.sh, root cron hourly at :23. Diun's own analysis writes `Jobs completed ... failed=<n>`; that line is copied into /opt/diun/log/runs.log, and the poster beats ONLY while the newest recorded analysis is under 26 h old AND reported failed=0. So the beat asserts the OUTCOME of the newest Diun run, not that cron reached a line. Diun's run cadence is daily; the 26 h is 24 h + 2 h grace, the same shape as duty.restic-snapshot's restic-liveness.sh.",
+      "detector": "GlitchTip heartbeat monitor 38 'Box B Diun run', project `ops` (\"2\"), interval 10800 s, created 2026-09-15T01:05:04Z. 🔴 THAT INTERVAL IS A POLLING WINDOW, NOT THE DIUN CADENCE: the grace lives in the poster's 26 h freshness threshold, because GlitchTip has no grace field and refuses an interval above 86400 s (duty.restic-snapshot records the HTTP 422). Net effect: a Diun run that fails, or never fires, stops the beats ~26 h after the last good analysis, and the monitor goes Down within 3 h of that.",
+      "response": "Read /opt/diun/log/runs.log on the box for the newest `Jobs completed` line and its failed= count, then the poster's own log, then run /opt/diun/diun-liveness.sh by hand. A silent monitor with a fresh failed=0 line means the POSTER (cron, URL, network) is the thing that stopped; a stale or failed>0 line means Diun is.",
+      "cadence": "1d",
+      "mechanism": {
+        "substrate": "selfhost-image-watch-cron",
+        "anchor": "Private/runbooks/operations.md",
+        "record": "GlitchTip heartbeat monitor 38's check history, plus /opt/diun/log/runs.log, which the hourly poster reads before it beats",
+        "failingValue": "no successful heartbeat inside the window — which is what a failed Diun analysis (failed>0), a stale newest analysis (over 26 h), a dead cron and an off box all look like",
+        "readBy": "tooling/ci/assert-ops-register.mjs, through this row's `recordQuery`, and tooling/ops/verify-monitors.mjs on the ops-watch schedule",
+        "recordQuery": {
+          "reader": "glitchtip-heartbeat",
+          "org": "nikatru",
+          "monitor": 38,
+          "monitorName": "Box B Diun run — carried for a HUMAN READER ONLY; the reader keys by `monitor` and never asserts this string. ⛔ Like monitor 23 it carries a box name, which `_substrateHosts._portabilityWhy` says never to do, and so does this row's id (named by the session lead on 2026-09-15); recorded rather than renamed, because the monitor id is the identity.",
+          "why": "The record is a heartbeat check-history row in GlitchTip, read with GLITCHTIP_TOKEN, so it is readable from a Linux runner exactly as monitor 23 is. What a fresh beat proves: the newest Diun analysis recorded in runs.log completed inside the last 26 h with failed=0. What it does NOT prove: that Diun WATCHES every image it should — the watch list is Diun's own configuration on the box, which nothing here reads."
+        }
+      },
+      "absenceWatcher": {
+        "substrate": "glitchtip-heartbeat",
+        "what": "GlitchTip heartbeat monitor 38, project `ops`, on the same box the cron runs on. Created AFTER the poster's first real beat, which was read back isUp true at 2026-09-15T01:05:06Z (TRAPS ci-27: a watched duty with zero records reads RED with no grace).",
+        "signal": "No heartbeat inside the 3 h polling window -> Down transition -> the `ops` uptime alert rule -> email and the ntfy page topic, the same chain as monitor 23.",
+        "margin": "3 h polling window against a 26 h freshness threshold that is itself 24 h + 2 h. As with duty.restic-snapshot this is not the 1.5x interval-to-cadence ratio and is not meant to be: the interval polls a separate freshness assertion.",
+        "ownerGated": true,
+        "gap": "🔴 THE WATCHER IS ON THE MACHINE IT WATCHES: Diun, the poster, GlitchTip, the alert evaluation and the notification hops are one box, so that box dying is indistinguishable from Diun being healthy ([pipeline E-9b], the same gap duty.restic-snapshot states). ⬜ The Down transition of monitor 38 has never been forced, so no `downTransitionDrill` field is carried; neither has the poster's failed>0 / stale refusal been exercised on the box by this repository."
+      },
+      "accessProviders": [
+        "hostinger"
+      ],
+      "ownerGated": true,
+      "ownerGap": "Diun, its configuration, runs.log and the poster are on a host this repository cannot reach; only the owner or an SSH session can change them. Open: (1) the refusal limbs of diun-liveness.sh (stale, failed>0) have no recorded forced control; (2) monitor 38's Down transition has never been forced.",
+      "source": "verified",
+      "verifiedHow": "2026-09-15 — the duty is proven by its first record, not by installation (ci-27). The session lead read monitor 38 back isUp true at 01:05:06Z after the poster's first beat; re-read by this change through the GlitchTip API (read-only, GET organizations/nikatru/monitors/) at 2026-09-15T01:31:11Z: monitor 38 'Box B Diun run', Heartbeat, interval 10800, project \"2\", isUp true, checks at 01:05:06.293Z and 01:23:01.352Z, both up — the second one is the :23 cron slot."
     },
     {
       "id": "duty.supabase-dump",
