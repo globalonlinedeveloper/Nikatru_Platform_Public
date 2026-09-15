@@ -83,8 +83,8 @@ class SignInView extends StatefulWidget {
   /// ⏱ 2026-09-15 · O-SIWA-NO-CLICKWRAP. Whether THIS DEVICE still owes the terms
   /// clickwrap: true when nothing current was accepted here (a fresh install, or
   /// a session ended since — see the app's `LegalAcceptanceController`). The
-  /// adapter passes `legalReacceptanceNeededProvider != false`, so "not known
-  /// yet" counts as owed.
+  /// adapter passes `core.needsLegalReacceptance` over the accepted stamp, so
+  /// "not known yet" counts as owed.
   ///
   /// 🔴 SIGN IN WITH APPLE CAN CREATE AN ACCOUNT, AND WHETHER THIS TAP WILL IS
   /// ONLY KNOWABLE AFTER THE REDIRECT RETURNS. So the clickwrap cannot wait for a

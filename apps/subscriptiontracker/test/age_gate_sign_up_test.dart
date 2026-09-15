@@ -56,6 +56,12 @@ class _AppleAuth extends MockAuthRepository {
   }
 }
 
+/// A device that has accepted the CURRENT terms (a returning user, here).
+class _AcceptedHere extends LegalAcceptanceController {
+  @override
+  String? build() => kLegalVersions.stamp;
+}
+
 /// Captures what would have gone to the append-only consent record, in order.
 class _RecordingTransport implements core.ConsentTransport {
   _RecordingTransport(this.log);
@@ -81,10 +87,12 @@ Future<void> _pump(
   await tester.pumpWidget(
     ProviderScope(
       overrides: <Override>[
-        // Null leaves the REAL legal gate in place — an empty store, which is
-        // a device that owes the clickwrap.
-        if (termsOwed != null)
-          legalReacceptanceNeededProvider.overrideWithValue(termsOwed),
+        // Null leaves the REAL legal provider in place — an empty store, which
+        // is a device that owes the clickwrap.
+        // false = a device that has ACCEPTED the current terms: the source
+        // provider the Apple door compares, stamped with the current versions.
+        if (termsOwed == false)
+          legalAcceptanceProvider.overrideWith(_AcceptedHere.new),
         if (transport != null)
           consentTransportProvider.overrideWithValue(transport),
         keyValueStoreProvider.overrideWith((ref) async => _MemStore()),

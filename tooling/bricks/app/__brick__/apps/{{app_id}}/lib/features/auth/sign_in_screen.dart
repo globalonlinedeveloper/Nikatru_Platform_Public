@@ -64,7 +64,16 @@ class SignInScreen extends ConsumerWidget {
       // account, so a device that still owes the terms answers the SAME clickwrap
       // before the provider is called, and the acceptance is recorded first.
       // "Not known yet" (null) counts as owed.
-      appleTermsOwed: ref.watch(legalReacceptanceNeededProvider) != false,
+      // 🔴 THE SOURCE PROVIDER, COMPARED HERE — NOT `legalReacceptanceNeededProvider`.
+      // Reading the DERIVED provider inside build makes Riverpod recompute it
+      // mid-build, and the router's refresh listener on that provider then fires
+      // DURING this build ("setState() or markNeedsBuild() called during build",
+      // measured on check_inbox_test and legal_gates_test). The comparison is the
+      // same one the derived provider makes; null (not hydrated yet) is owed.
+      appleTermsOwed: core.needsLegalReacceptance(
+        acceptedStamp: ref.watch(legalAcceptanceProvider),
+        current: kLegalVersions,
+      ),
       consentFields:
           ({
             required bool termsAccepted,

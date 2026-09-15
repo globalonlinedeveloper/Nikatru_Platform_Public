@@ -145,8 +145,8 @@ const APPLE_DOORS = [
     button: new RegExp(`SignInView\\s*\\.\\s*appleButton\\s*,\\s*onPressed\\s*:${ONE_EXPRESSION}!_acceptedTerms\\b`),
     wiring: [
       {
-        re: /appleTermsOwed\s*:\s*ref\s*\.\s*watch\s*\(\s*legalReacceptanceNeededProvider\s*\)\s*!=\s*false/,
-        what: '`appleTermsOwed:` must be `ref.watch(legalReacceptanceNeededProvider) != false` — anything else decides for the device whether it owes the terms, and "not known yet" must count as owed',
+        re: /appleTermsOwed\s*:\s*core\s*\.\s*needsLegalReacceptance\s*\(\s*acceptedStamp\s*:\s*ref\s*\.\s*watch\s*\(\s*legalAcceptanceProvider\s*\)\s*,\s*current\s*:\s*kLegalVersions\s*,?\s*\)/,
+        what: '`appleTermsOwed:` must be `core.needsLegalReacceptance(acceptedStamp: ref.watch(legalAcceptanceProvider), current: kLegalVersions)` — anything else decides for the device whether it owes the terms, and "not known yet" (null) must count as owed',
       },
       {
         re: /onAcceptTerms\s*:[\s\S]{0,160}?legalAcceptanceProvider\s*\.\s*notifier\s*\)\s*\.\s*accept\s*\(/,

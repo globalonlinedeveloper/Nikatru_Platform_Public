@@ -192,7 +192,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     // otherwise have asked, so a returning user who has accepted on this device
     // is never shown it. The button is disabled too; this holds for every other
     // way into the handler.
-    final bool termsOwed = ref.read(legalReacceptanceNeededProvider) != false;
+    final bool termsOwed = core.needsLegalReacceptance(
+      acceptedStamp: ref.read(legalAcceptanceProvider),
+      current: kLegalVersions,
+    );
     if (termsOwed && !_acceptedTerms) {
       _snack(l10n.legalMustAcceptTerms);
       return;
@@ -315,8 +318,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     // `catch` after an await, and `AppLocalizations.of` on a disposed element
     // throws where the old string literal simply could not.
     final AppLocalizations l10n = AppLocalizations.of(context);
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(_friendlyMessage(l10n, e))));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(_friendlyMessage(l10n, e))));
   }
 
   /// Delegates to the shared mapper. This WAS the only implementation, private
@@ -340,8 +344,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final AuthProviders providers = ref.watch(authProvidersProvider);
     // ⏱ 2026-09-15 · O-SIWA-NO-CLICKWRAP — whether the Apple door must carry the
     // clickwrap on THIS device. See `_apple`.
-    final bool appleTermsOwed =
-        ref.watch(legalReacceptanceNeededProvider) != false;
+    // 🔴 THE SOURCE PROVIDER, COMPARED HERE — NOT `legalReacceptanceNeededProvider`.
+    // Reading the DERIVED provider inside build makes Riverpod recompute it
+    // mid-build, and the router's refresh listener on that provider then fires
+    // DURING this build ("setState() or markNeedsBuild() called during build",
+    // measured on check_inbox_test and legal_gates_test). The comparison is the
+    // same one the derived provider makes; null (not hydrated yet) is owed.
+    final bool appleTermsOwed = core.needsLegalReacceptance(
+      acceptedStamp: ref.watch(legalAcceptanceProvider),
+      current: kLegalVersions,
+    );
     return Scaffold(
       backgroundColor: t.bg,
       body: SafeArea(

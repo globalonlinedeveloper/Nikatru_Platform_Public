@@ -518,13 +518,13 @@ describe('limb 4 · every Sign in with Apple door records the acceptance first',
       (root) =>
         edit(root, BRICK_SIGNIN, (src) =>
           src.replace(
-            'appleTermsOwed: ref.watch(legalReacceptanceNeededProvider) != false,',
+            /appleTermsOwed: core\.needsLegalReacceptance\([\s\S]*?kLegalVersions,\n\s*\),/,
             'appleTermsOwed: false,',
           ),
         ),
       (r) => {
         assert.equal(r.status, 1, r.stdout);
-        assert.match(r.stderr, /`appleTermsOwed:` must be `ref\.watch\(legalReacceptanceNeededProvider\) != false`/);
+        assert.match(r.stderr, /`appleTermsOwed:` must be `core\.needsLegalReacceptance\(acceptedStamp: ref\.watch\(legalAcceptanceProvider\)/);
       },
     );
   });
