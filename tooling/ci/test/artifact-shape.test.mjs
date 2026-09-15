@@ -407,14 +407,14 @@ describe('assert-artifact-shape — the apple lane asserts what it produces, and
 describe('assert-artifact-shape — COVERAGE LOST: the derivation, not the tree', () => {
   test('the register is missing entirely', () => {
     const { code, out } = run(fixture({ register: null, build: WINDOWS_OK }), ['--app', 'subscriptiontracker', '--platform', 'windows']);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /tooling\/channel-register\.json does not exist/);
   });
 
   test('the register is unparseable', () => {
     const { code, out } = run(fixture({ register: '{ not json', build: WINDOWS_OK }), ['--app', 'subscriptiontracker', '--platform', 'windows']);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /is not valid JSON/);
   });
@@ -423,7 +423,7 @@ describe('assert-artifact-shape — COVERAGE LOST: the derivation, not the tree'
   // expectation by containing nothing to contradict it.
   test('the register declares no channel at all', () => {
     const { code, out } = run(fixture({ register: { channels: [] }, build: WINDOWS_OK }), ['--app', 'subscriptiontracker', '--platform', 'windows']);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     // `.apk` is EXTRA_INSTALLABLE, so the set is never truly empty — what fails
     // is direction (a): `.msix`/`.exe` are no longer derivable from the register.
@@ -444,21 +444,21 @@ describe('assert-artifact-shape — COVERAGE LOST: the derivation, not the tree'
       lane: { workflow: '.github/workflows/build-platforms.yml', job: 'windows' },
     });
     const { code, out } = run(fixture({ register, build: WINDOWS_OK }), ['--app', 'subscriptiontracker', '--platform', 'windows']);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /channel "windows-sideload" declares lane job "windows" and accepts "\.zip"/);
   });
 
   test('an unknown --platform is a renamed job, not a clean lane', () => {
     const { code, out } = run(fixture({ build: WINDOWS_OK }), ['--app', 'subscriptiontracker', '--platform', 'windows_2026']);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /no output layout is declared for lane job "windows_2026"/);
   });
 
   test('an app directory that is not there', () => {
     const { code, out } = run(fixture({ withApp: false }), ['--app', 'ghost', '--platform', 'windows']);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /apps\/ghost does not exist/);
   });

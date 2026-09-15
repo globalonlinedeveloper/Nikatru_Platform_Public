@@ -189,7 +189,7 @@ describe('assert-store-build-config — every derived define is load-bearing', (
 describe('assert-store-build-config — the subject set is derived from the register', () => {
   test('a NON-store row is not graded — the six-platform proof is not a store lane', () => {
     const r = run(makeRoot({ kind: 'direct', defines: [] }));
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     // Not a define failure: with no store rows at all the guard must refuse to
     // report clean rather than sweep an empty set.
     assert.match(out(r), /COVERAGE LOST/);
@@ -220,7 +220,7 @@ describe('assert-store-build-config — the subject set is derived from the regi
       'name: build\non:\n  push:\npermissions:\n  contents: read\njobs:\n  android:\n    runs-on: ubuntu-24.04\n    steps:\n      - name: Build\n        run: flutter build appbundle --debug\n',
     );
     const r = run(root);
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     // Nothing graded -> COVERAGE LOST, never a quiet pass.
     assert.match(out(r), /ZERO graded build steps/);
   });
@@ -237,20 +237,20 @@ describe('assert-store-build-config — the subject set is derived from the regi
 
   test('a row whose declared job builds nothing for its platform PRINTS rather than fails', () => {
     const r = run(makeRoot({ platforms: ['ios'], defines: ALL }));
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     // No graded steps at all -> COVERAGE LOST, and the row is named.
     assert.match(out(r), /android-play/);
   });
 
   test('a declared job that does not exist is a failure, not a silent skip', () => {
     const r = run(makeRoot({ lane: { workflow: '.github/workflows/build.yml', job: 'ghost' } }));
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /declares lane job "ghost"/);
   });
 
   test('a declared workflow that does not exist is a failure, not a silent skip', () => {
     const r = run(makeRoot({ lane: { workflow: '.github/workflows/nope.yml', job: 'android' } }));
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /which this scan did not parse/);
   });
 });
@@ -258,7 +258,7 @@ describe('assert-store-build-config — the subject set is derived from the regi
 describe('assert-store-build-config — coverage self-checks', () => {
   test('COVERAGE LOST when app_config.dart is gone from every app', () => {
     const r = run(makeRoot({ config: null }));
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /COVERAGE LOST/);
   });
 
@@ -276,19 +276,19 @@ describe('assert-store-build-config — coverage self-checks', () => {
 
   test('COVERAGE LOST when the register declares no app_config layout at all', () => {
     const r = run(makeRoot({ appConfigPaths: [] }));
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /appConfigPaths is missing, empty/);
   });
 
   test('COVERAGE LOST when isBackendLive is renamed — the requirement would be EMPTY', () => {
     const r = run(makeRoot({ config: CONFIG.replace('get isBackendLive', 'get isBackendReady') }));
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /declares no `isBackendLive` getter/);
   });
 
   test('COVERAGE LOST when isBackendLive reaches no define at all', () => {
     const r = run(makeRoot({ config: CONFIG.replace('=> isSupabaseConfigured && isApiConfigured;', '=> true;') }));
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /reaches ZERO dart-defines/);
   });
 
@@ -296,13 +296,13 @@ describe('assert-store-build-config — coverage self-checks', () => {
     const root = makeRoot();
     rmSync(join(root, 'tooling', 'channel-register.json'));
     const r = run(root);
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /COVERAGE LOST/);
   });
 
   test('COVERAGE LOST when no store row declares a lane or a submission', () => {
     const r = run(makeRoot({ lane: null, submission: null }));
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /NOT ONE declares a `lane` or `submission`/);
   });
 
@@ -361,13 +361,13 @@ describe('assert-store-build-config — [ADR 084] the captcha key is WEB-ONLY', 
 
   test('COVERAGE LOST when the app imports the captcha and declares no isTurnstileConfigured', () => {
     const r = run(makeRoot({ config: CONFIG, extraLib: GATE, web: WEB_OK }));
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /COVERAGE LOST — .*declares no `isTurnstileConfigured` getter\. — and .*turnstile_gate\.dart import\(s\) the captcha package/);
   });
 
   test('COVERAGE LOST when a web-only key exists and no web lane builds web', () => {
     const r = run(makeRoot({ config: TURNSTILE_CONFIG, extraLib: GATE }));
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /COVERAGE LOST — 1 web-only define\(s\) \(TURNSTILE_SITE_KEY\) and ZERO release `flutter build web` steps were graded/);
   });
 
@@ -378,7 +378,7 @@ describe('assert-store-build-config — [ADR 084] the captcha key is WEB-ONLY', 
       'name: web\non:\n  push:\npermissions:\n  contents: read\njobs:\n  deploy-web:\n    runs-on: ubuntu-24.04\n    steps:\n      - name: Build\n        run: flutter build web --debug --dart-define=TURNSTILE_SITE_KEY=x\n',
     );
     const r = run(root);
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /ZERO release `flutter build web` steps were graded/);
   });
 

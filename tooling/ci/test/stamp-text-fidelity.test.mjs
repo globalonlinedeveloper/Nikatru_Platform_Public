@@ -485,7 +485,7 @@ describe('assert-stamp-text-fidelity', () => {
           write(`apps/${app}/lib/main.dart`, 'Future<void> main() async {\n  runApp(const App());\n}\n'),
       }),
     );
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /no `release:` to TelemetryConfig/);
   });
@@ -494,7 +494,7 @@ describe('assert-stamp-text-fidelity', () => {
     const r = run(
       tree({ mutate: ({ root, app }) => rmSync(join(root, 'apps', app, 'lib', 'main.dart'), { force: true }) }),
     );
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /main\.dart is missing/);
   });
@@ -562,7 +562,7 @@ describe('assert-stamp-text-fidelity', () => {
           write('catalog/apps.json', `${JSON.stringify([{ slug: 'subscriptiontracker', name: 'Subly' }], null, 2)}\n`),
       }),
     );
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /check ci\.yml's step order/);
   });
@@ -574,7 +574,7 @@ describe('assert-stamp-text-fidelity', () => {
           rmSync(join(root, 'catalog', 'apps.json'), { force: true }),
       }),
     );
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /apps\.json is missing/);
   });
@@ -582,21 +582,21 @@ describe('assert-stamp-text-fidelity', () => {
   // ── the fixture audit: a probe that cannot trigger the checks is LOST ─────
   test('COVERAGE LOST when the probe name holds no hyphen inside a word', () => {
     const r = run(tree({ name: "Probe's & Co — 24/7 Smoke" }));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /no hyphen inside a word/);
   });
 
   test('COVERAGE LOST when the probe display_name holds none of & < > " \' /', () => {
     const r = run(tree({ name: 'Probe Brick Smoke Test' }));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /display_name/);
   });
 
   test('COVERAGE LOST when the probe description holds none of the escape set', () => {
     const r = run(tree({ desc: 'A plain smoke probe.' }));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /description/);
   });
@@ -609,7 +609,7 @@ describe('assert-stamp-text-fidelity', () => {
         vars: { subdomain: 'probeapi.nikatru.com', api_domain: 'probeapi-api.nikatru.com' },
       }),
     );
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /both subdomain and api_domain/i);
   });
@@ -622,7 +622,7 @@ describe('assert-stamp-text-fidelity', () => {
         },
       }),
     );
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /text file\(s\) of the stamped tree/);
   });
@@ -631,7 +631,7 @@ describe('assert-stamp-text-fidelity', () => {
     const t = tree();
     rmSync(join(t.root, 'apps', t.app), { recursive: true, force: true });
     const r = run(t);
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST/);
   });
 
@@ -641,7 +641,7 @@ describe('assert-stamp-text-fidelity', () => {
       cwd: t.root,
       encoding: 'utf8',
     });
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(`${r.stdout}${r.stderr}`, /COVERAGE LOST/);
   });
 });
@@ -695,21 +695,21 @@ describe('assert-stamp-text-fidelity — the icon label', () => {
 
   test('COVERAGE LOST when the probe declares no icon_label at all', () => {
     const r = run(tree({ vars: { icon_label: '' } }));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /names no icon_label/);
   });
 
   test('COVERAGE LOST when icon_label EQUALS display_name — the check would be a tautology', () => {
     const r = run(tree({ icon: NAME }));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /same string/);
   });
 
   test('COVERAGE LOST when icon_label holds none of & < > " \' /', () => {
     const r = run(tree({ icon: 'EBook Co' }));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /icon_label \("EBook Co"\)/);
   });
