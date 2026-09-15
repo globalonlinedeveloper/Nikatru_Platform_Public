@@ -1289,11 +1289,28 @@ let rcDuplicationClosed = false;
       // The duplication is gone and this Worker now speaks the authored table.
       rcDuplicationClosed = true;
     } else if (empty.length > 0) {
+      // ⏱ 2026-09-15 · O-ENTITLEMENT-LIMB7-MISLEADING. This branch said "and that
+      // file does not import contracts/entitlement/contract.js either" on EVERY
+      // path — including the one Public writer 3 forced while landing #752: the
+      // Worker IMPORTS the contract and a single literal GRACE_TYPES was re-added
+      // beside the import. The message sent the reader looking for a missing
+      // import that was there. It now names what was MEASURED: which sets parsed
+      // names, which parsed none, and whether the import is present.
+      const parsed = WORKER_SET_NAMES.filter((n) => sets.get(n).size > 0);
+      const measured =
+        parsed.length === 0
+          ? `parsed ZERO event names out of ${empty.join(', ')} in ${WEBHOOK_REL}`
+          : `parsed event names out of ${parsed.map((n) => `${n} (${sets.get(n).size})`).join(', ')} and ZERO out of ` +
+            `${empty.join(', ')} in ${WEBHOOK_REL}`;
       fail(
-        `COVERAGE LOST — limb 7 parsed ZERO event names out of ${empty.join(', ')} in ${WEBHOOK_REL}, ` +
-          'and that file does not import contracts/entitlement/contract.js either. An empty right-hand ' +
-          'side agrees with any left-hand side, so the divergence between the authored table and the one ' +
-          'runtime that reads a RevenueCat event today would be unmeasured.',
+        `COVERAGE LOST — limb 7 ${measured}, ` +
+          (importsContract
+            ? 'and that file DOES import contracts/entitlement/contract.js. So this is a PARTIAL transcription re-grown ' +
+              'beside the import: some literal sets came back while others did not, and a declared divergence cannot be ' +
+              'measured against half a vocabulary. Delete the literal set(s) and read the ruling from the contract.'
+            : 'and that file does not import contracts/entitlement/contract.js either. An empty right-hand ' +
+              'side agrees with any left-hand side, so the divergence between the authored table and the one ' +
+              'runtime that reads a RevenueCat event today would be unmeasured.'),
       );
     } else {
       const worker = new Set([...sets.values()].flatMap((v) => [...v]));

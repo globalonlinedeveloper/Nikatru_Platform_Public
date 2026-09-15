@@ -1361,6 +1361,24 @@ describe('assert-entitlement-contract limb 7 — the one runtime that already re
     assert.match(r.out, /An empty right-hand side agrees with any left-hand side/);
   });
 
+  // ⏱ 2026-09-15 · O-ENTITLEMENT-LIMB7-MISLEADING — the case Public writer 3 forced
+  // while landing #752: the Worker imports the contract and ONE literal set came
+  // back. The message must say the import is THERE and name the sets it measured.
+  test('COVERAGE LOST names a PARTIAL transcription beside a present import, not a missing import', () => {
+    const r = run({ workerActive: [], workerInactive: [], workerImportsContract: true });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /parsed event names out of GRACE_TYPES \(2\) and ZERO out of ACTIVE_TYPES, INACTIVE_TYPES/);
+    assert.match(r.out, /that file DOES import contracts\/entitlement\/contract\.js/);
+    assert.doesNotMatch(r.out, /does not import contracts\/entitlement\/contract\.js either/);
+  });
+
+  test('a PARTIAL transcription with NO import says both halves — what parsed, and that the import is absent', () => {
+    const r = run({ workerActive: [], workerInactive: [] });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /parsed event names out of GRACE_TYPES \(2\) and ZERO out of ACTIVE_TYPES, INACTIVE_TYPES/);
+    assert.match(r.out, /does not import contracts\/entitlement\/contract\.js either/);
+  });
+
   test('COVERAGE LOST when that Worker file is gone entirely', () => {
     const r = run({ webhooks: null });
     assert.equal(r.code, 1, r.out);
