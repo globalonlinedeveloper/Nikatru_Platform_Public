@@ -17,7 +17,7 @@
 // the grading.
 //
 // ── WHAT IT ASSERTS ──────────────────────────────────────────────────────────
-//   R1 every code file outside .github/ and tooling/ci/ that reads a workflow by
+//   R1 every code file outside .github/ (tooling/ci/ included since 2026-09-15) that reads a workflow by
 //      text has a row in the register (detected, never listed by hand)
 //   R2 a `workflow-scan` row's file imports workflow-scan.mjs
 //   R3 a `refuses-blind` row's `evidence` — the text it prints when it cannot
@@ -39,6 +39,19 @@
 // reader to prove the refusal fires — the evidence string proves the refusal is
 // WRITTEN; each reader's own tests prove it runs.
 //
+// ⏱ 2026-09-15 — tooling/ci/ IS NOW IN THE DOMAIN, and the paragraph above is
+// kept as what this guard first shipped with. "Its guards run in CI" was not a
+// reason: the failure this register exists for is a reader computing on a
+// detail that moved, and CI running such a guard on every change only proves it
+// still exits 0 — which is exactly what a blind guard does. Measured that day by
+// moving .github/workflows aside in a worktree and running the 20 tooling/ci
+// readers that did not import workflow-scan.mjs: assert-lockfile-discipline and
+// assert-version-consistency printed `ok` and exited 0 having read no workflow,
+// assert-lane-coverage and assert-no-clone-tells reported findings about the
+// tree, and assert-analytics-contract died on an ENOENT. Those five now refuse
+// by name; the other fifteen already did. Only tooling/ci/workflow-scan.mjs, the
+// one parse, is not a reader of itself. Test files stay out, as before.
+//
 // Usage:  node tooling/ci/assert-workflow-readers.mjs [repoRoot]
 // Exit 0 = clean. Exit 1 = a finding. Exit 2 = COVERAGE LOST.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -50,7 +63,12 @@ import { stripSourceComments } from './text-reductions.mjs';
 const ROOT = resolve(process.argv[2] ?? process.cwd());
 const REGISTER = 'tooling/workflow-readers.json';
 const SCAN_ROOTS = ['tooling', 'extensions', 'apps', 'packages', 'services', 'sites', 'contracts'];
-const EXCLUDED_PREFIXES = ['tooling/ci/', '.github/'];
+const EXCLUDED_PREFIXES = ['.github/'];
+/** The one workflow parse is not a reader of itself, and this grader names that
+ *  module as data (the exclusion below, the detector's import pattern) without
+ *  reading any workflow. */
+const EXCLUDED_FILES = new Set(['tooling/ci/workflow-scan.mjs', 'tooling/ci/assert-workflow-readers.mjs']);
+const CI_PREFIX = 'tooling/ci/';
 const SKIP_DIRS = new Set(['node_modules', 'build', 'dist', '.dart_tool', '.wrangler', 'test', 'tests', 'fixtures', '__brick__']);
 const CODE = /\.(mjs|cjs|js|ts)$/;
 const PROPERTIES = new Set(['workflow-scan', 'refuses-blind']);
@@ -88,7 +106,7 @@ const walk = (rel) => {
       continue;
     }
     if (!CODE.test(e.name) || /\.test\.(mjs|js|ts)$/.test(e.name)) continue;
-    if (EXCLUDED_PREFIXES.some((p) => child.startsWith(p))) continue;
+    if (EXCLUDED_PREFIXES.some((p) => child.startsWith(p)) || EXCLUDED_FILES.has(child)) continue;
     scanned++;
     const raw = readFileSync(join(ROOT, child), 'utf8');
     const code = stripSourceComments(raw, e.name.slice(e.name.lastIndexOf('.')));
@@ -101,6 +119,13 @@ if (found.size === 0) {
   coverageLost([
     `read ${scanned} code file(s) and detected ZERO workflow readers.`,
     'guard-sweep.mjs and gen-start-here.mjs both read workflows; finding none means the detector stopped matching.',
+  ]);
+}
+const ciReaders = [...found.keys()].filter((rel) => rel.startsWith(CI_PREFIX)).length;
+if (existsSync(join(ROOT, CI_PREFIX)) && ciReaders === 0) {
+  coverageLost([
+    `${CI_PREFIX} exists and the detector found ZERO workflow readers in it.`,
+    'assert-guard-coverage.mjs and the workflow guards read workflows; finding none there means the tooling/ci walk stopped reaching them.',
   ]);
 }
 
@@ -156,6 +181,6 @@ if (problems.length) {
 }
 const byProp = [...rows.values()].reduce((a, r) => ({ ...a, [r.property]: (a[r.property] ?? 0) + 1 }), {});
 console.log(
-  `ok  workflow readers — ${found.size} reader(s) in ${scanned} code file(s) outside .github/ and tooling/ci/: ` +
+  `ok  workflow readers — ${found.size} reader(s) (${ciReaders} in ${CI_PREFIX}) in ${scanned} code file(s) outside .github/: ` +
     Object.entries(byProp).map(([k, v]) => `${v} ${k}`).join(' · '),
 );

@@ -35,8 +35,12 @@ const baseRegister = () => ({
   readers: [
     { path: 'tooling/scripts/gen.mjs', property: 'workflow-scan' },
     { path: 'tooling/ops/rerun.mjs', property: 'refuses-blind', evidence: 'the concurrency block this reads is gone' },
+    { path: 'tooling/ci/assert-something.mjs', property: 'refuses-blind', evidence: 'no workflow file was read at all here' },
   ],
 });
+const CI_READER =
+  "const p = join(ROOT, '.github', 'workflows');\n" +
+  "if (!n) { console.error('COVERAGE LOST — no workflow file was read at all here'); process.exit(2); }\n";
 
 function fixture({ files = {}, register = baseRegister() } = {}) {
   const dir = join(TMP, `r${seq++}`);
@@ -45,7 +49,9 @@ function fixture({ files = {}, register = baseRegister() } = {}) {
     'tooling/ops/rerun.mjs': BLIND_READER,
     'tooling/scripts/plain.mjs': "console.log('Dispatch .github/workflows/submit-play.yml instead.');\n",
     'extensions/scripts/discover.mjs': "const TOUCHES = ['core/', '.github/workflows/', 'contracts/'];\n",
-    'tooling/ci/assert-something.mjs': "const p = join(ROOT, '.github', 'workflows');\n",
+    'tooling/ci/assert-something.mjs': CI_READER,
+    'tooling/ci/workflow-scan.mjs': "export const WORKFLOW_DIR = '.github/workflows';\n",
+    'tooling/ci/test/something.test.mjs': "const p = join(dir, '.github', 'workflows');\n",
     'tooling/scripts/test/helper.test.mjs': "const p = '.github/workflows/ci.yml';\n",
     ...files,
   };
@@ -63,10 +69,30 @@ const run = (dir) => {
 };
 
 describe('assert-workflow-readers', () => {
-  test('passes: two declared readers; a message, a path PREFIX, tooling/ci and a test file are not readers', () => {
+  test('passes: three declared readers; a message, a path PREFIX, workflow-scan.mjs itself and test files are not readers', () => {
     const { code, out } = run(fixture());
     assert.equal(code, 0, out);
-    assert.match(out, /ok {2}workflow readers — 2 reader\(s\) in \d+ code file\(s\) outside \.github\/ and tooling\/ci\/: 1 workflow-scan · 1 refuses-blind/);
+    assert.match(out, /ok {2}workflow readers — 3 reader\(s\) \(1 in tooling\/ci\/\) in \d+ code file\(s\) outside \.github\/: 1 workflow-scan · 2 refuses-blind/);
+  });
+
+  test('R1: a tooling/ci guard that reads a workflow by text with no row fails (2026-09-15, the domain widened)', () => {
+    const { code, out } = run(fixture({ files: { 'tooling/ci/assert-new.mjs': "const ci = readFileSync(join(ROOT, '.github/workflows/ci.yml'), 'utf8');\n" } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /R1 tooling\/ci\/assert-new\.mjs reads a workflow by text and has no row/);
+  });
+
+  test('R3: a tooling/ci refuses-blind row whose refusal was removed fails', () => {
+    const { code, out } = run(fixture({ files: { 'tooling/ci/assert-something.mjs': "const p = join(ROOT, '.github', 'workflows');\n" } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /R3 tooling\/ci\/assert-something\.mjs is declared `refuses-blind` and its evidence text is not in the file/);
+  });
+
+  test('COVERAGE LOST: tooling/ci/ exists and the detector finds no reader in it', () => {
+    const reg = baseRegister();
+    reg.readers = reg.readers.filter((r) => !r.path.startsWith('tooling/ci/'));
+    const { code, out } = run(fixture({ files: { 'tooling/ci/assert-something.mjs': "console.log('z');\n" }, register: reg }));
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST — tooling\/ci\/ exists and the detector found ZERO workflow readers in it/);
   });
 
   test('R1: a new script that reads a workflow file by text with no row fails', () => {
@@ -132,7 +158,7 @@ describe('assert-workflow-readers', () => {
   });
 
   test('COVERAGE LOST: a tree where the detector finds no reader at all', () => {
-    const { code, out } = run(fixture({ files: { 'tooling/scripts/gen.mjs': "console.log('x');\n", 'tooling/ops/rerun.mjs': "console.log('y');\n" }, register: { readers: [] } }));
+    const { code, out } = run(fixture({ files: { 'tooling/scripts/gen.mjs': "console.log('x');\n", 'tooling/ops/rerun.mjs': "console.log('y');\n", 'tooling/ci/assert-something.mjs': "console.log('z');\n" }, register: { readers: [] } }));
     assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST — read \d+ code file\(s\) and detected ZERO workflow readers/);
   });

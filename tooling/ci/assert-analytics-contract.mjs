@@ -1532,6 +1532,13 @@ for (const contract of WIRE_CONTRACTS) {
     // place that knows about nested checkouts. That is the same defect class
     // that made `.claude/worktrees` — eleven full copies of this repo — resolve
     // citations into stale branches earlier today. The rule is not pedantry.
+    // ⏱ 2026-09-15 — an ABSENT directory used to throw ENOENT out of listDir, a
+    // crash rather than a refusal (O-LOCAL-SCRIPTS-PARSE-MOVED-WORKFLOWS: a reader
+    // that loses its workflows must SAY so). Moved .github/workflows aside in a
+    // worktree to measure it.
+    if (!existsSync(join(ROOT, contract.consumer.dir))) {
+      coverageLost(`${contract.id}: ${contract.consumer.dir} does not exist, so no workflow could be read for the ${contract.consumer.script} consumer.`);
+    }
     const wfFiles = listDir(join(ROOT, contract.consumer.dir))
       .filter((f) => /\.ya?ml$/.test(f))
       .sort()

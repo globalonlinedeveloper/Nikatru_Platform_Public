@@ -183,10 +183,15 @@ const LOOSE_INSTALLS = [
   },
 ];
 
+/** ANY install, loose or reproducible — the detail limb 2 parses. */
+const ANY_INSTALL = /\b(?:npm\s+(?:ci|install)|pnpm\s+(?:install|i)|yarn\s+install)\b/;
+let installLines = 0;
+
 for (const wf of workflows) {
   const text = readFileSync(join(wfDir, wf), 'utf8');
   text.split('\n').forEach((line, i) => {
     const code = line.replace(/#.*$/, '');
+    if (ANY_INSTALL.test(code)) installLines++;
     const hit = LOOSE_INSTALLS.find((c) => c.re.test(code));
     if (!hit) return;
     // Allowed only inside a job step that belongs to a bootstrap exception. The
@@ -197,6 +202,20 @@ for (const wf of workflows) {
       problems.push(`.github/workflows/${wf}:${i + 1} installs non-reproducibly — ${hit.fix}`);
     }
   });
+}
+
+// ⏱ 2026-09-15 — LIMB 2 OVER NOTHING IS COVERAGE LOST. With .github/workflows
+// moved aside this guard printed "every workflow install is reproducible" and
+// exited 0 having read no workflow (O-LOCAL-SCRIPTS-PARSE-MOVED-WORKFLOWS). The
+// same holds if the installs move out of the workflows (into a composite action,
+// say): a limb that sees no install at all has stopped checking, not passed.
+if (workflows.length === 0 || installLines === 0) {
+  console.error(
+    `✗ COVERAGE LOST — read ${workflows.length} workflow file(s) under .github/workflows and ${installLines} install ` +
+      'command(s) in them, so "every workflow install is reproducible" was asked of nothing.',
+  );
+  for (const p of problems) console.error(`    (also) ${p}`);
+  process.exit(2);
 }
 
 if (problems.length) {
