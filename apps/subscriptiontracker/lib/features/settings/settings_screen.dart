@@ -1748,15 +1748,25 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
           onPressed: _busy ? null : () => Navigator.pop(context),
           child: Text(l10n.cancel),
         ),
-        FilledButton(
-          key: E2EKeys.deleteAccountConfirm,
-          style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
-          onPressed:
-              (_busy || (!widget.passwordless && widget.password.text.isEmpty))
-              ? null
-              : _run,
-          child: Text(_busy ? l10n.deletingEllipsis : l10n.deleteAccount),
-        ),
+        // ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH. TWO BUTTONS, NOT ONE CONDITION.
+        // The password form keeps its secret gate byte-for-byte — the exact
+        // expression `assert-deletion-control.mjs` reads and its mutation cases
+        // rewrite. A password-less account has no secret to type: its button is
+        // live when idle, and the provider sheet `_run` opens is the confirmation.
+        if (widget.passwordless)
+          FilledButton(
+            key: E2EKeys.deleteAccountConfirm,
+            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+            onPressed: _busy ? null : _run,
+            child: Text(_busy ? l10n.deletingEllipsis : l10n.deleteAccount),
+          )
+        else
+          FilledButton(
+            key: E2EKeys.deleteAccountConfirm,
+            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+            onPressed: (_busy || widget.password.text.isEmpty) ? null : _run,
+            child: Text(_busy ? l10n.deletingEllipsis : l10n.deleteAccount),
+          ),
       ],
     );
   }

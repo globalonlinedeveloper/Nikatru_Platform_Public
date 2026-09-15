@@ -138,8 +138,10 @@ const account = new Hono<AppEnv>();
  * session kept alive by refreshes cannot pass. The app re-runs the provider
  * sign-in when its own last sign-in is older than half this window.
  */
+// @ceiling none — the age of a token claim (seconds since the user last authenticated), not a platform resource
 export const RECENT_AUTH_SECONDS = 600;
 /** A timestamp this far in the FUTURE is treated as unusable rather than recent. */
+// @ceiling none — clock-skew tolerance on a token claim, not a platform resource
 const CLOCK_SKEW_SECONDS = 60;
 
 // ⏱ 2026-09-12 · THE FOUR DECLARATIONS THAT USED TO SIT HERE NOW LIVE IN
