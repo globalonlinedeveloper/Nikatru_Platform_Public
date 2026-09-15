@@ -18,6 +18,10 @@ import webhooks, {
   isHandledType,
   validateEvent,
 } from '../src/routes/webhooks';
+import {
+  REVENUECAT_EVENT_REASONS,
+  revenueCatAccessRuling,
+} from '../../../contracts/entitlement/contract.js';
 import entitlements from '../src/routes/entitlements';
 import { realPlatformDb, RecordingDb, TEST_ENV } from './harness';
 import type { AppEnv } from '../src/types';
@@ -183,6 +187,31 @@ describe('resolveIsActive — access state, not event name', () => {
     for (const t of ['SUBSCRIPTION_PAUSED', 'TRANSFER', 'TEST', '']) {
       expect(isHandledType(t), t).toBe(false);
     }
+  });
+
+  // ⏱ 2026-09-15 — the route stopped restating ACTIVE / INACTIVE / GRACE sets and
+  // reads contracts/entitlement/contract.js instead (O-REVENUECAT-VERIFIER). These
+  // pin that it answers from THAT table, row by row, so a new row there is a new
+  // handled event here with no edit to the route — and a removed row stops being one.
+  it('handles exactly the events the contract table rules on, with the table’s ruling', () => {
+    const rows = REVENUECAT_EVENT_REASONS.map((r) => r.event);
+    expect(rows.length).toBeGreaterThan(0);
+    for (const event of rows) {
+      const ruling = revenueCatAccessRuling(event);
+      expect(isHandledType(event), event).toBe(ruling !== null);
+      if (ruling === 'grant') expect(resolveIsActive(event, now - DAY, now), event).toBe(1);
+      if (ruling === 'revoke') expect(resolveIsActive(event, now + 30 * DAY, now), event).toBe(0);
+      if (ruling === 'paid-through') {
+        expect(resolveIsActive(event, now + DAY, now), event).toBe(1);
+        expect(resolveIsActive(event, now - 1, now), event).toBe(0);
+      }
+    }
+  });
+
+  it('SUBSCRIPTION_PAUSED is named by the table and still revokes nothing — the vendor says revoke only on EXPIRATION', () => {
+    expect(REVENUECAT_EVENT_REASONS.some((r) => r.event === 'SUBSCRIPTION_PAUSED')).toBe(true);
+    expect(revenueCatAccessRuling('SUBSCRIPTION_PAUSED')).toBeNull();
+    expect(isHandledType('SUBSCRIPTION_PAUSED')).toBe(false);
   });
 });
 

@@ -94,7 +94,10 @@ const List<RevenueCatEventReason> kRevenueCatEventReasons =
     <RevenueCatEventReason>[
   RevenueCatEventReason('CANCELLATION', 'cancelled_at_period_end', dateDerived: true),
   RevenueCatEventReason('EXPIRATION', 'subscription_expired', dateDerived: false),
-  RevenueCatEventReason('SUBSCRIPTION_PAUSED', 'subscription_paused', dateDerived: false),
+  RevenueCatEventReason('SUBSCRIPTION_PAUSED', null, dateDerived: false),
+  RevenueCatEventReason('NON_RENEWING_PURCHASE', null, dateDerived: false),
+  RevenueCatEventReason('PRODUCT_CHANGE', null, dateDerived: false),
+  RevenueCatEventReason('SUBSCRIPTION_EXTENDED', null, dateDerived: false),
   RevenueCatEventReason('BILLING_ISSUE', null, dateDerived: true),
   RevenueCatEventReason('INITIAL_PURCHASE', null, dateDerived: false),
   RevenueCatEventReason('RENEWAL', null, dateDerived: false),
