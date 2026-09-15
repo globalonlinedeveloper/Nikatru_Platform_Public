@@ -298,6 +298,56 @@ function replayStubUrl() {
   }
   return replayStubHref;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-15 · O-HEARTBEAT-DUTY-BREAKS-REPLAY-FIXTURE. THE FREEZE FIXTURE IS A
+// PAST WORLD AND THE REGISTER IS THE PRESENT ONE. The replay grades the CURRENT
+// register, so every glitchtip-heartbeat duty added after 2026-09-11 named a
+// monitor the fixture had no answer for; the stub answered 404, the guard read
+// "the monitor is gone", and a correct register change read as a failing test
+// until somebody hand-wrote an answer into the fixture (monitors 37 and 38 were).
+//
+// So the answers are now SPLIT BY PROVENANCE:
+//   · `glitchtipMonitorsAtFreeze` lists the monitors grading run 34546423386
+//     actually read. Each one is answered ONLY by the fixture, with the value
+//     that run printed. A missing answer for one of them is NOT filled in — it
+//     stays a 404, and the replay goes red (the control below proves it).
+//   · every OTHER monitor the register's glitchtip-heartbeat rows name is
+//     derived here, from the register, as one clean beat at the fixture's `now`,
+//     so a new duty changes nothing any original answer decided.
+// The derivation lives in the TEST, never in the guard (INV5).
+// ─────────────────────────────────────────────────────────────────────────────
+const REPLAY_REGISTER = join(resolve(CI_DIR, '..', '..'), 'tooling', 'ops', 'register.json');
+
+/** The world a replay serves: the fixture, plus a derived answer for each
+ *  register-declared heartbeat monitor the freeze never had. Pure. */
+function replayWorld(fixture, register) {
+  const atFreeze = new Set((fixture.glitchtipMonitorsAtFreeze ?? []).map(String));
+  const glitchtip = { ...(fixture.glitchtip ?? {}) };
+  const derived = [];
+  const beat = new Date(Date.parse(fixture.now)).toISOString();
+  for (const row of register.rows ?? []) {
+    const q = row?.mechanism?.recordQuery;
+    if (q?.reader !== 'glitchtip-heartbeat') continue;
+    const id = String(q.monitor);
+    if (atFreeze.has(id) || Object.hasOwn(glitchtip, id)) continue;
+    glitchtip[id] = [beat, 3600, 1, 0];
+    derived.push(id);
+  }
+  return { world: { ...fixture, glitchtip }, derived };
+}
+
+/** Writes `replayWorld(fixture, register)` to a file a spawned guard can read.
+ *  `mutate(world)` edits the world first — the red controls use it. */
+function replayWorldFile(fixturePath, mutate = null) {
+  const fixture = JSON.parse(readFileSync(fixturePath, 'utf8'));
+  const register = JSON.parse(readFileSync(REPLAY_REGISTER, 'utf8'));
+  const { world } = replayWorld(fixture, register);
+  if (mutate) mutate(world);
+  const p = join(TMP, `replay-world-${seq++}.json`);
+  writeFileSync(p, JSON.stringify(world));
+  return p;
+}
 /** A child environment with every inherited GitHub, GlitchTip, Cloudflare and
  *  replay variable removed — a guard-meta job runs this suite INSIDE a
  *  pull_request run, and a spawned guard must not inherit that host by accident. */
@@ -2011,7 +2061,7 @@ describe('assert-ops-register — end to end, against the real repository', () =
     if (realRun) return realRun;
     const countFile = join(TMP, `real-guard-count-${seq++}.json`);
     const env = scrubbedEnv({
-      OPS_REPLAY_FILE: REPLAY_FIXTURE,
+      OPS_REPLAY_FILE: replayWorldFile(REPLAY_FIXTURE),
       OPS_REPLAY_COUNT_FILE: countFile,
       GITHUB_TOKEN: 'replay',
       GLITCHTIP_TOKEN: 'replay',
@@ -5075,9 +5125,11 @@ describe('the 2026-09-11 freeze, replayed — INV1..INV6 against the exact answe
     OFF: {},
   };
   const LIVE_PRINT = '⬜  [LIVE] 🔴 FAILING, NOT BLOCKING IN THIS HOST — ';
+  let worldFile = null;
   const replay = (host, extra = {}) => {
+    worldFile ??= replayWorldFile(FIXTURE);
     const env = scrubbedEnv({
-      OPS_REPLAY_FILE: FIXTURE,
+      OPS_REPLAY_FILE: worldFile,
       GITHUB_TOKEN: 'replay',
       GLITCHTIP_TOKEN: 'replay',
       CLOUDFLARE_API_TOKEN: 'replay',
@@ -5129,6 +5181,43 @@ describe('the 2026-09-11 freeze, replayed — INV1..INV6 against the exact answe
     assert.equal(step("Judge whether the analytics rail's silence is a FAULT"), 'success');
     assert.equal(step('Live D1 still runs every statement the Workers send it'), 'success');
     assert.equal(f.jobs['34533663312'].find(([n]) => n.startsWith('The Cloudflare Pages builds'))[1], 'success');
+  });
+
+  test('O-HEARTBEAT-DUTY-BREAKS-REPLAY-FIXTURE · the fixture answers EXACTLY the monitors the grading run read — no hand-added answer for a later monitor', () => {
+    const f = JSON.parse(readFileSync(FIXTURE, 'utf8'));
+    const atFreeze = f.glitchtipMonitorsAtFreeze.map(String).sort();
+    assert.deepEqual(atFreeze, ['19', '22', '23', '24', '25', '26', '27', '29', '30', '33', '6'], 'the monitors run 34546423386 printed, and no other');
+    assert.deepEqual(Object.keys(f.glitchtip).sort(), atFreeze, 'an answer for a monitor the freeze never read is a hand list again; the register derives those');
+  });
+
+  test('O-HEARTBEAT-DUTY-BREAKS-REPLAY-FIXTURE · a heartbeat duty added after the freeze is answered FROM THE REGISTER, and no original answer moves', () => {
+    const f = JSON.parse(readFileSync(FIXTURE, 'utf8'));
+    const register = JSON.parse(readFileSync(REPLAY_REGISTER, 'utf8'));
+    const template = register.rows.find((r) => r?.mechanism?.recordQuery?.reader === 'glitchtip-heartbeat');
+    const throwaway = structuredClone(template);
+    throwaway.id = 'duty.replay-throwaway-heartbeat';
+    const free = String(1 + Math.max(...register.rows.map((r) => Number(r?.mechanism?.recordQuery?.monitor) || 0)));
+    throwaway.mechanism.recordQuery.monitor = Number(free);
+    const before = replayWorld(f, register);
+    const after = replayWorld(f, { ...register, rows: [...register.rows, throwaway] });
+    assert.deepEqual(after.derived, [...before.derived, free], 'the new monitor is derived, and nothing else changes');
+    assert.deepEqual(after.world.glitchtip[free], [new Date(Date.parse(f.now)).toISOString(), 3600, 1, 0], 'one clean beat at the replayed instant');
+    for (const id of f.glitchtipMonitorsAtFreeze.map(String)) {
+      assert.deepEqual(after.world.glitchtip[id], f.glitchtip[id], `monitor ${id} still carries exactly what run 34546423386 received`);
+    }
+  });
+
+  test('O-HEARTBEAT-DUTY-BREAKS-REPLAY-FIXTURE · RED CONTROL — a MISSING answer for a monitor the freeze had is NOT filled in, and the replay goes red on it', () => {
+    const f = JSON.parse(readFileSync(FIXTURE, 'utf8'));
+    const register = JSON.parse(readFileSync(REPLAY_REGISTER, 'utf8'));
+    const { 19: _dropped, ...rest } = f.glitchtip;
+    const pure = replayWorld({ ...f, glitchtip: rest }, register);
+    assert.equal(Object.hasOwn(pure.world.glitchtip, '19'), false, 'the derivation must never answer a monitor the freeze read');
+    const missing = replay(HOST.OPS, { OPS_REPLAY_FILE: replayWorldFile(FIXTURE, (w) => { delete w.glitchtip['19']; }) });
+    const clean = replay(HOST.OPS);
+    assert.equal(has(clean.problems, /GlitchTip has no monitor 19 /), false, 'green control: the clean world answers monitor 19');
+    assert.equal(missing.code, 1, missing.out.slice(-3000));
+    assert.ok(has(missing.problems, /GlitchTip has no monitor 19 /), `the dropped answer must be a PROBLEM:\n${missing.problems.join('\n')}`);
   });
 
   test('INV1 · GREEN CONTROL — ci.yml on pull_request exits 0 on today\'s state, and all four TRUE verdicts still PRINT with their remedy', () => {
