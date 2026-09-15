@@ -187,7 +187,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { existsSync, readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { join, resolve, sep } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 
 import { stripSourceComments, stripStringLiterals } from './text-reductions.mjs';
 import { listDir, boundedGlob } from './tree-walk.mjs';
@@ -322,6 +322,8 @@ for (const entry of listDir(SERVICES, { withFileTypes: true })) {
   services.push({
     id: entry.name,
     dir,
+    workerName: typeof cfg.name === 'string' ? cfg.name : null,
+    serviceBindings: Array.isArray(cfg.services) ? cfg.services : [],
     vars: cfg.vars ?? {},
     appId: typeof cfg.vars?.APP_ID === 'string' ? cfg.vars.APP_ID : null,
     owns: dbs.filter((d) => typeof d?.migrations_dir === 'string').map((d) => d.database_name),
@@ -930,6 +932,67 @@ for (const appId of declaredEndpoints.keys()) {
     );
   }
 }
+// ── LIMB 4b · ⏱ 2026-09-15 · [ADR 081] every listed app can be RETRIED ────────
+// DELETE /v1/account now answers 202 erasure_pending when an app is unreachable,
+// and the nightly retry reaches that app ONLY over a Service Binding the entry
+// Worker declares: `ERASURE_<APP_ID>` → the app Worker's `ErasureEntrypoint`.
+// An app in APP_ERASURE_ENDPOINTS with no such binding is an app whose erasure the
+// route cannot queue (it answers 502 again), and a binding to a Worker that does
+// not export the entrypoint is a retry that throws every night. Both directions.
+const ERASURE_ENTRYPOINT = 'ErasureEntrypoint';
+const ENTRYPOINT_EXPORT = new RegExp(
+  `export\\s+(?:\\{[^}]*\\b${ERASURE_ENTRYPOINT}\\b[^}]*\\}|class\\s+${ERASURE_ENTRYPOINT}\\b)`,
+);
+let retryBindingsChecked = 0;
+for (const appId of declaredEndpoints.keys()) {
+  const svc = appsWithRoutes.find((s) => s.appId === appId);
+  if (!svc) continue; // already reported above
+  const bindingName = `ERASURE_${appId.toUpperCase()}`;
+  const binding = entry.serviceBindings.find((b) => b?.binding === bindingName);
+  if (!binding) {
+    problems.push(
+      `services/${entry.id}/wrangler.jsonc declares no Service Binding \`${bindingName}\` for "${appId}". [ADR 081]: an ` +
+        'unreachable app is queued and retried ONLY over that binding, so without it the route cannot queue the erasure ' +
+        'and answers 502 — the failure the ledger exists to remove.',
+    );
+    continue;
+  }
+  retryBindingsChecked++;
+  if (binding.service !== svc.workerName) {
+    problems.push(
+      `services/${entry.id}/wrangler.jsonc binding ${bindingName} names service ${JSON.stringify(binding.service)}, and ` +
+        `services/${svc.id} is deployed as ${JSON.stringify(svc.workerName)}. The retry would call a Worker that is not this app.`,
+    );
+  }
+  if (binding.entrypoint !== ERASURE_ENTRYPOINT) {
+    problems.push(
+      `services/${entry.id}/wrangler.jsonc binding ${bindingName} names entrypoint ${JSON.stringify(binding.entrypoint)}; ` +
+        `the app side exports \`${ERASURE_ENTRYPOINT}\`. A binding without it reaches the Worker's default fetch handler, not the erasure.`,
+    );
+  }
+  const indexAbs = join(svc.dir, 'src', 'index.ts');
+  const indexSrc = existsSync(indexAbs) ? readFileSync(indexAbs, 'utf8') : '';
+  if (!ENTRYPOINT_EXPORT.test(indexSrc)) {
+    problems.push(
+      `services/${svc.id}/src/index.ts does not export \`${ERASURE_ENTRYPOINT}\`, and services/${entry.id} binds it. A Service ` +
+        'Binding to a named entrypoint the Worker does not export fails at call time — every nightly retry for this app would throw.',
+    );
+  }
+}
+for (const b of entry.serviceBindings) {
+  if (typeof b?.binding !== 'string' || !b.binding.startsWith('ERASURE_')) continue;
+  const appId = b.binding.slice('ERASURE_'.length).toLowerCase();
+  if (!declaredEndpoints.has(appId)) {
+    problems.push(
+      `services/${entry.id}/wrangler.jsonc declares erasure binding ${b.binding}, and APP_ERASURE_ENDPOINTS names no app "${appId}". ` +
+        'A retry door for an app the erasure route never calls is a binding nothing reaches.',
+    );
+  }
+}
+if (declaredEndpoints.size > 0 && retryBindingsChecked === 0 && problems.length === 0) {
+  coverageLost([`${declaredEndpoints.size} app(s) in APP_ERASURE_ENDPOINTS and ZERO erasure Service Bindings were checked.`]);
+}
+
 if (appsWithRoutes.length === 0 && problems.length === 0) {
   coverageLost([
     'no service OTHER than the entry point serves an erasure route.',
@@ -1093,7 +1156,21 @@ for (const tpl of templateOwners) {
     // so reading the raw source made the check pass over a module whose derivation had
     // been renamed away - measured here, by mutation, before this line was trusted.
     NAMES_SCHEMA.test(readCode(sharedErasureAbs));
-  const derivesFromSchema = NAMES_SCHEMA.test(tplRoute) || delegatesToSharedErasure;
+  // ⏱ 2026-09-15 · [ADR 081] · AND ONE LOCAL HOP BEFORE THAT. The template's APP_DB
+  // walk moved from the route into `src/lib/erase-subject.ts`, because the Service
+  // Binding retry entrypoint must run the same deletion code the route runs. The
+  // route now imports that module, which imports the shared derivation. Followed
+  // the same way — the local module must exist and must itself delegate to the
+  // shared erasure file that names sqlite_master — so a local module that stopped
+  // deriving is still refused. First measured red on this branch, naming `records`.
+  const sharedDerives = existsSync(sharedErasureAbs) && NAMES_SCHEMA.test(readCode(sharedErasureAbs));
+  const delegatesViaLocalModule = [...tplRoute.matchAll(/from\s+['"](\.\.?\/[^'"]+)['"]/g)].some((m) => {
+    const localAbs = join(dirname(routeAbs), `${m[1]}.ts`);
+    if (!existsSync(localAbs)) return false;
+    const local = readCode(localAbs);
+    return /_shared\/src\/erasure['"]/.test(local) && sharedDerives;
+  });
+  const derivesFromSchema = NAMES_SCHEMA.test(tplRoute) || delegatesToSharedErasure || delegatesViaLocalModule;
   for (const table of [...tplUserOwned].sort()) {
     templateTablesChecked++;
     if (derivesFromSchema) continue;

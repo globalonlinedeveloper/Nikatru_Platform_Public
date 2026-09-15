@@ -19,8 +19,8 @@
   ],
   "_rootsNote": "TWO roots since 2026-09-07 ([ADR 067] phase 2, unit app-shell). The Worker half of the template - 13 files, 917 lines every stamped backend app inherits - was outside this ledger entirely while `root` was one string, and `git ls-files -- <that one root>` could not see it to complain. assert-chassis-ledger.mjs is the authority on this list and cross-checks it; a row's `root` is optional and defaults to roots[0], which is why the 96 rows written against the single root are unchanged. ⏱ THE FIGURES IN THIS NOTE MOVED ON 2026-09-08 AND ARE CORRECTED RATHER THAN REWRITTEN: the Worker half is now 14 files and 1,021 lines, because the template gained src/lib/error-sink.ts — a stamped backend had NO crash sink at all and failed tooling/ci/assert-worker-error-sink.mjs on limbs 2, 3 and 5 at its first CI run. The guard PRINTS both figures per root on every run, which is the number to read; this sentence is prose and prose rots.",
   "totals": {
-    "files": 124,
-    "lines": 17500,
+    "files": 128,
+    "lines": 17664,
     "unclassified": 0,
     "unclassifiedLines": 0
   },
@@ -183,7 +183,7 @@
     },
     {
       "path": "lib/features/settings/settings_screen.dart",
-      "lines": 616,
+      "lines": 620,
       "verdict": "MOVES",
       "why": "[ADR 067] decision 2 — MEASURED 2026-09-06: 968 -> 616 brick lines, 519 package lines, callSiteDelta -352. THE [ADR 066] PRESUMED 'NO' WAS WRONG, AND THE MEASUREMENT IS WHY. That presumption was taken before `ChassisLocalizations` existed: the page reads 46 chassis strings, and a package that could not see them would have taken all 46 as parameters — the 58-parameter tax the presumption was about. With the chassis catalogue in the package the constructor is 26 values and callbacks, and the page (the ListView, the width cap, every tile) is 352 lines lighter here. RETAINED, each for a named guard rather than for taste: `recordAnalyticsConsent(ref, granted: on)` and `ref.watch(analyticsConsentProvider)` (assert-consent-withdrawal-surface — DPDP §6(3)); `recordPromoObjection(` and `promoObjectedProvider` (GDPR Art 21); `NotificationCapabilities.forPlatform(` and `applyReminderChoice(` (stamp-properties :1123/:1131); `ref.watch(authUserProvider)` (:1081); `onSave: () => _saveProfile(` and `.updateProfile(displayName:` (:1077/:1078); `onConfirm: () => _deleteAccount(`, `await auth.deleteAccount()`, `await auth.signInWithEmail(` and `core.accountDeletionOutcomeOf(` (:1043-:1061); `_openUrl(AppConfig.<name>)` for all three published legal pages (:459); and `deleteAccountFailureMessage`, which `chassis_properties_test.dart:2100` calls by name. Every one of them needs a WidgetRef, url_launcher or nikatru_notifications — none of which `packages/chassis_screens` may declare (assert-package-boundaries limb C). Four screen-register rows were re-pointed at the adapter's wiring in the same commit and each says so in its own `why`.",
       "target": "packages/chassis_screens/lib/settings/settings_screen.dart",
@@ -694,7 +694,7 @@
     {
       "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
       "path": "src/index.ts",
-      "lines": 181,
+      "lines": 185,
       "verdict": "STAYS",
       "why": "Per-app route table and the erasureAuth mount. assert-deploy-triggers-deploy reads the import graph from here."
     },
@@ -740,9 +740,37 @@
     {
       "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
       "path": "src/routes/account.ts",
-      "lines": 170,
+      "lines": 131,
       "verdict": "STAYS",
       "why": "Per-app erasure route: it re-checks the assurance label and names this app's own tables."
+    },
+    {
+      "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
+      "path": "test/stubs/cloudflare-workers.ts",
+      "lines": 11,
+      "verdict": "STAYS",
+      "why": "ADR 081 (2026-09-15): Node test stub for the workerd built-in cloudflare:workers."
+    },
+    {
+      "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
+      "path": "test/erasure-entrypoint.test.ts",
+      "lines": 71,
+      "verdict": "STAYS",
+      "why": "ADR 081 (2026-09-15): the retry door erases one subject idempotently and is exported by the bound name."
+    },
+    {
+      "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
+      "path": "src/lib/erase-subject.ts",
+      "lines": 61,
+      "verdict": "STAYS",
+      "why": "ADR 081 (2026-09-15): this app Worker APP_DB erasure walk, shared by the public route and the retry entrypoint."
+    },
+    {
+      "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
+      "path": "src/erasure-entrypoint.ts",
+      "lines": 42,
+      "verdict": "STAYS",
+      "why": "ADR 081 (2026-09-15): the Service Binding retry door; binds this app Worker APP_DB to the shared erasure retry."
     },
     {
       "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
@@ -761,14 +789,14 @@
     {
       "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
       "path": "vitest.config.ts",
-      "lines": 47,
+      "lines": 54,
       "verdict": "STAYS",
       "why": "Per-Worker test config: it resolves the workerd build of jose, not the node build, and inherits services/_shared/test so a stamped Worker runs the chassis suite from its first `npm test`."
     },
     {
       "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
       "path": "test/chassis-wiring.test.ts",
-      "lines": 81,
+      "lines": 84,
       "verdict": "STAYS",
       "why": "The one test a stamped Worker owns: its src/lib/* files must stay RE-EXPORTS of the one home, and its erasure route must derive rather than list tables. Everything else worth testing is the chassis suite, which runs here too."
     },

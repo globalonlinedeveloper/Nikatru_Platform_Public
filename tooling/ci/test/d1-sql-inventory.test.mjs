@@ -49,8 +49,11 @@ const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const STATIC_GUARD = join(REPO, 'tooling', 'ci', 'assert-d1-sql-inventory.mjs');
 const LIVE_GUARD = join(REPO, 'tooling', 'ops', 'check-d1-accepts-live-sql.mjs');
 
-const PLATFORM_ROUTE = 'services/platform/src/routes/account.ts';
-const SUBLY_ROUTE = 'services/subscriptiontracker-api/src/routes/account.ts';
+// ⏱ 2026-09-15 · [ADR 081]: the DELETE and UPDATE left the two route files for one
+// function per Worker (the Service Binding retry runs the same deletion code), so
+// these two names now point at those homes. The constants keep their old names.
+const PLATFORM_ROUTE = 'services/platform/src/lib/platform-erasure.ts';
+const SUBLY_ROUTE = 'services/subscriptiontracker-api/src/lib/erase-subject.ts';
 // ⏱ 2026-09-12: the introspective half of both routes moved to ONE home the
 // carriers re-export, so a mutation about the sqlite_master read or the pragma walk
 // belongs here. The routes keep their DELETE and UPDATE, and their mutations still
@@ -446,7 +449,7 @@ describe('R3 — interpolated identifiers are constrained', () => {
         ),
       (r) => {
         assert.equal(r.status, 1);
-        assert.match(r.stderr, /\[R3\] services\/platform\/src\/routes\/account\.ts[\s\S]*DELETE FROM/);
+        assert.match(r.stderr, /\[R3\] services\/platform\/src\/lib\/platform-erasure\.ts[\s\S]*DELETE FROM/);
       },
     );
   });
@@ -871,7 +874,7 @@ describe('check-d1-accepts-live-sql.mjs — the exit contract', () => {
       // skipping the statement would be the loosening this file refuses.
       assert.match(r.stdout, /step 1 — services\/platform\/src\/renewals\.ts:\d+ accepted, 6 row\(s\)/);
       // …and both erasure statements ran against a REAL table.
-      assert.match(r.stdout, /step 2 — services\/platform\/src\/routes\/account\.ts:\d+ executed on subscriptions, changes=0/);
+      assert.match(r.stdout, /step 2 — services\/platform\/src\/lib\/platform-erasure\.ts:\d+ executed on subscriptions, changes=0/);
       // 4, not 3, since 2026-09-05: the nightly export's catalogue read in
       // services/platform/src/backup/dump.ts is a fourth introspective statement
       // this Worker deploys, so it is a fourth one the live half must execute.

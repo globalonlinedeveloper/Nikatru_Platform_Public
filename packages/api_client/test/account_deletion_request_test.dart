@@ -57,6 +57,25 @@ void main() {
     expect(adapter.lastRequest!.path, '/account');
   });
 
+  // ⏱ 2026-09-15 · [ADR 081]: a 2xx is not always "deleted".
+  test('202 erasure_pending SURVIVES AS pending — never read as deleted',
+      () async {
+    final _FakeAdapter adapter = _FakeAdapter(
+      status: 202,
+      body: '{"ok":true,"status":"erasure_pending","pending":["subscriptiontracker"]}',
+    );
+    await expectLater(
+      requestAccountDeletion(_client(adapter)),
+      throwsA(
+        isA<core.AccountDeletionFailure>().having(
+          (core.AccountDeletionFailure f) => f.outcome,
+          'outcome',
+          core.AccountDeletionOutcome.pending,
+        ),
+      ),
+    );
+  });
+
   test('🔴 501 SURVIVES AS notConfigured — nothing was deleted', () async {
     // What the live route answers while SUPABASE_SERVICE_ROLE_KEY is unset.
     final _FakeAdapter adapter = _FakeAdapter(

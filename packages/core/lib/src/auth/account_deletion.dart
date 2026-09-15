@@ -33,6 +33,15 @@ enum AccountDeletionOutcome {
   /// 2xx. The rows the route reaches are gone and so is the identity record.
   deleted,
 
+  /// ⏱ 2026-09-15 · 202 `erasure_pending` ([ADR 081]). The server ACCEPTED the
+  /// deletion and could not finish it inside the request: at least one app could
+  /// not be reached, so its erasure was recorded and is retried automatically,
+  /// and the identity record is deleted LAST, after every app confirms. Until
+  /// then the same credentials may still sign in, so it is NOT [deleted] and
+  /// [accountIsGone] stays false. No turnaround time is stated — the published
+  /// policy states none.
+  pending,
+
   /// 501 — the route refused up front because it cannot remove the identity.
   /// The precondition is checked BEFORE anything is destroyed, which is what
   /// makes "nothing was deleted" a safe thing to say here.
@@ -84,6 +93,9 @@ enum AccountDeletionOutcome {
   /// the one that makes somebody look. Give it a confident "nothing was
   /// deleted" and a broken path reads as ordinary server behaviour.
   static AccountDeletionOutcome forStatus(int statusCode) {
+    // ⏱ 2026-09-15 · [ADR 081]: 202 is the one 2xx that is NOT "deleted" — the
+    // route answers it exactly when the erasure is accepted and still finishing.
+    if (statusCode == 202) return AccountDeletionOutcome.pending;
     if (statusCode >= 200 && statusCode < 300) {
       return AccountDeletionOutcome.deleted;
     }
@@ -113,6 +125,8 @@ enum AccountDeletionOutcome {
       case AccountDeletionOutcome.deleted:
         return 'Your account has been deleted. Signing in with the same email '
             'and password will not work any more.';
+      case AccountDeletionOutcome.pending:
+        return 'Your account deletion was accepted and is still being completed. Some of your data could not be removed yet; it will be removed automatically, and your sign-in will be removed after that. Do not assume the deletion has finished. You have been signed out of this device.';
       case AccountDeletionOutcome.notConfigured:
         return 'Nothing was deleted. This app cannot complete an account '
             'deletion yet, so the server refused the request rather than delete '

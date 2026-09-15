@@ -113,6 +113,8 @@ const ERASURE_KINDS = {
   pseudonymous: 'no column resolves to an account',
   'no-personal-data': 'nothing about a person',
   'no-route': 'nothing reaches it; needs blockedBy; prints',
+  // ⏱ 2026-09-15 · [ADR 081]
+  'completion-ledger': 'an erasure in progress under a neutral column; deleted by deletedBy when it completes',
 };
 
 const RETENTION_KINDS = {
@@ -552,6 +554,37 @@ const withStores = (mutate) => {
   return stores;
 };
 const tableRow = (stores) => stores.find((s) => s.id === 'table:main_db.people');
+
+// ⏱ 2026-09-15 · [ADR 081] `completion-ledger` — the pending-erasure ledger shape.
+// Each case declared on its own (assert-no-loop-cases).
+const LEDGER_MIGRATION = MIGRATION.replace(', user_id TEXT', ', subject_ref TEXT');
+const asLedger = (stores, erasure) => {
+  tableRow(stores).erasure = { kind: 'completion-ledger', column: 'subject_ref', deletedBy: 'services/api/src/routes/account.ts', reason: 'finishes the erasure', ...erasure };
+};
+describe('completion-ledger — a ledger the sweep must not reach', () => {
+  test('passes when the neutral column exists, nothing is user-shaped, and deletedBy is a file', () => {
+    const r = run(fixture({ migration: LEDGER_MIGRATION, stores: withStores((s) => asLedger(s, {})) }));
+    assert.equal(r.status, 0, out(r));
+  });
+
+  test('FAILS when the declared column is user-shaped — the ledger would erase its own order', () => {
+    const r = run(fixture({ migration: LEDGER_MIGRATION, stores: withStores((s) => asLedger(s, { column: 'subject_user_id' })) }));
+    assert.equal(r.status, 1);
+    assert.match(out(r), /completion-ledger` on column "subject_user_id", which IS user-shaped/);
+  });
+
+  test('FAILS when the table itself carries user_id — the sweep will reach it', () => {
+    const r = run(fixture({ stores: withStores((s) => asLedger(s, {})) }));
+    assert.equal(r.status, 1);
+    assert.match(out(r), /the sweep will reach this ledger/);
+  });
+
+  test('FAILS when deletedBy is not a file — nothing ever deletes the ledger', () => {
+    const r = run(fixture({ migration: LEDGER_MIGRATION, stores: withStores((s) => asLedger(s, { deletedBy: 'services/api/src/gone.ts' })) }));
+    assert.equal(r.status, 1);
+    assert.match(out(r), /its `deletedBy` .* is not a file/);
+  });
+});
 
 describe('every table declares how an erasure request reaches it', () => {
   test('a table row with NO `erasure` at all FAILS', () => {

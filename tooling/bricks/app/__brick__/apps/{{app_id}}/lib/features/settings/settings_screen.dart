@@ -502,6 +502,10 @@ String deleteAccountFailureMessage(
     // 501 — the route refused BEFORE touching anything, because it cannot
     // remove the identity record (`SUPABASE_SERVICE_ROLE_KEY` is an owner
     // action). Nothing was deleted, and that is safe to say.
+    // ⏱ 2026-09-15 · 202 erasure_pending ([ADR 081]): accepted and still
+    // finishing. Not a failure and not "deleted" — its own sentence.
+    case core.AccountDeletionOutcome.pending:
+      return l10n.deleteAccountPending;
     case core.AccountDeletionOutcome.notConfigured:
       return l10n.deleteAccountNotConfigured;
     // 502 — the rows went and the identity did not. THE OPPOSITE of "nothing

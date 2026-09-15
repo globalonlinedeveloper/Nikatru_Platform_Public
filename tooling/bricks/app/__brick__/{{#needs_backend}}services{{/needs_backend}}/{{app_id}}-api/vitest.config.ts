@@ -1,4 +1,10 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
+
+// ⏱ 2026-09-15 · [ADR 081]: `cloudflare:workers` is a workerd built-in that
+// src/erasure-entrypoint.ts imports; under Node tests it resolves to a stub that
+// stores `ctx` and `env` as the runtime base class does.
+const WORKERS_STUB = fileURLToPath(new URL('./test/stubs/cloudflare-workers.ts', import.meta.url));
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 🔴 RESOLVE THE BUILD THAT ACTUALLY SHIPS, NOT THE ONE NODE PREFERS.
@@ -38,6 +44,7 @@ export default defineConfig({
   },
   resolve: {
     conditions: ['workerd', 'browser', 'import', 'default'],
+    alias: { 'cloudflare:workers': WORKERS_STUB },
   },
   ssr: {
     resolve: {

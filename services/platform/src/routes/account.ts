@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
-import { allRows } from '../lib/d1';
-import { userOwnedTables, userReferencingColumns } from '../../../_shared/src/erasure';
+import { erasePlatformRows, deleteIdentity } from '../lib/platform-erasure';
+import { clearPendingErasure, closeSubject, erasureBindingFor, recordPendingErasure } from '../lib/erasure-ledger';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DELETE /v1/account — the shared server's erasure route.
@@ -211,53 +211,18 @@ account.delete('/account', async (c) => {
     return c.json({ error: 'account_deletion_unconfigured' }, 501);
   }
 
-  const deleted: Record<string, number> = {};
-  const unlinked: Record<string, number> = {};
-
-  let tables: string[];
-  let references: Array<{ table: string; column: string }>;
-  try {
-    tables = await userOwnedTables(c.env.PLATFORM_DB);
-    references = await userReferencingColumns(c.env.PLATFORM_DB);
-  } catch (err) {
-    console.error(`[account] rid=${rid} app=${c.env.APP_ID} schema read failed`, err);
+  // ⏱ 2026-09-15 · [ADR 081]: LIMBS 1 AND 2 MOVED TO src/lib/platform-erasure.ts,
+  // unchanged in behaviour, because the nightly erasure retry re-walks platform_db
+  // before it deletes a pending subject's identity. The two refusals keep their
+  // status and their words: a failed schema read, and 🔴 AN EMPTY SET IS A
+  // FAILURE, NOT A FAST PATH — a walk that found no table would delete nothing,
+  // report ok, and then delete the identity, leaving the rows behind forever.
+  const walked = await erasePlatformRows(c.env.PLATFORM_DB, userId);
+  if (!walked.ok) {
+    console.error(`[account] rid=${rid} app=${c.env.APP_ID} refusing deletion: ${walked.reason}`);
     return c.json({ error: 'account_deletion_failed' }, 503);
   }
-
-  // 🔴 AN EMPTY SET IS A FAILURE, NOT A FAST PATH. If the derivation ever stops
-  // finding tables — a schema change, a driver that does not support
-  // pragma_table_info — this route would delete NOTHING, report `ok: true`, and
-  // then delete the identity, leaving the user's rows behind forever with no
-  // login able to reach them. Refuse instead.
-  if (tables.length === 0) {
-    console.error(
-      `[account] rid=${rid} app=${c.env.APP_ID} refusing deletion: no user-owned table was found in platform_db, so this request would erase the identity and orphan every row`,
-    );
-    return c.json({ error: 'account_deletion_failed' }, 503);
-  }
-
-  for (const table of tables) {
-    // The name comes from sqlite_master, not from the request — there is no
-    // caller-controlled value in this string, and D1 cannot bind an identifier.
-    const res = await c.env.PLATFORM_DB.prepare(`DELETE FROM ${table} WHERE user_id = ?`)
-      .bind(userId)
-      .run();
-    deleted[table] = res.meta.changes ?? 0;
-  }
-
-  // Then the REFERENCES. After this no `*_user_id` column anywhere in
-  // platform_db holds this person's id — which is what "erased" has to mean for
-  // a row that is evidence about a payment rather than a record about a person.
-  // Table and column both come from sqlite_master; there is no caller-controlled
-  // value in this string, and D1 cannot bind an identifier.
-  for (const { table, column } of references) {
-    const res = await c.env.PLATFORM_DB.prepare(
-      `UPDATE ${table} SET ${column} = NULL WHERE ${column} = ?`,
-    )
-      .bind(userId)
-      .run();
-    unlinked[`${table}.${column}`] = res.meta.changes ?? 0;
-  }
+  const { deleted, unlinked } = walked;
 
   // ── LIMB 3 · EVERY APP'S OWN DATABASE, THROUGH ITS OWN ROUTE ──────────────
   // Before the identity, so a failure here leaves the user a working login and a
@@ -265,8 +230,36 @@ account.delete('/account', async (c) => {
   // verbatim: the app route verifies the same ES256 signature against the same
   // public JWKS, so tenancy is the user's own token end to end and no shared
   // secret exists anywhere on this path.
+  //
+  // ⏱ 2026-09-15 · [ADR 081] — AN UNREACHABLE APP IS NOW "ACCEPTED, FINISHING", NOT
+  // "FAILED, TRY AGAIN". When the relay cannot reach an app (a transport error, a
+  // 5xx or a 429), the route records a pending erasure for (this subject, that
+  // app) in platform_db and moves on; the nightly cron retries it over a Service
+  // Binding into the app's `ErasureEntrypoint`, with no token and no secret. The
+  // response becomes 202 `erasure_pending` and the IDENTITY IS NOT DELETED — it
+  // stays LAST, deleted by the cron once every app has confirmed.
+  // A 4xx other than 429 is NOT queued and still answers 502: 404 means the route
+  // is not there, 401/403 mean the app refused THIS proof, and neither is "could
+  // not be reached". And an app this Worker has no binding for cannot be retried,
+  // so recording an order for it would promise a retry that can never run: 502.
   const authorization = c.req.header('Authorization');
   const apps: Record<string, string> = {};
+  const pending: string[] = [];
+  const queue = async (appId: string, why: string): Promise<boolean> => {
+    if (erasureBindingFor(c.env, appId) === null) {
+      console.error(`[account] rid=${rid} app=${c.env.APP_ID} cannot queue ${appId}: no erasure binding is declared for it (${why})`);
+      return false;
+    }
+    try {
+      await recordPendingErasure(c.env.PLATFORM_DB, { subjectRef: userId, appId, nowIso: new Date().toISOString(), reason: why });
+    } catch (err) {
+      console.error(`[account] rid=${rid} app=${c.env.APP_ID} could not record the pending erasure for ${appId}`, err);
+      return false;
+    }
+    pending.push(appId);
+    apps[appId] = 'pending';
+    return true;
+  };
   for (const { appId, origin } of endpoints) {
     let res: Response;
     try {
@@ -287,6 +280,9 @@ account.delete('/account', async (c) => {
       );
       // NOT ok:true, and the identity is NOT deleted. The user keeps a login and
       // can retry; every limb above is idempotent.
+      // ⏱ 2026-09-15 · [ADR 081]: queued for the Service Binding retry instead,
+      // unless it cannot be (no binding, or the ledger write failed).
+      if (await queue(appId, 'unreachable')) continue;
       return c.json({ error: 'app_data_delete_failed', app: appId }, 502);
     }
     if (!res.ok) {
@@ -299,23 +295,34 @@ account.delete('/account', async (c) => {
       console.error(
         `[account] rid=${rid} app=${c.env.APP_ID} app-data erasure for ${appId} answered ${res.status}`,
       );
+      // ⏱ 2026-09-15 · [ADR 081]: only a 5xx or a 429 is "could not be reached".
+      if ((res.status >= 500 || res.status === 429) && (await queue(appId, `answered ${res.status}`))) continue;
       return c.json({ error: 'app_data_delete_failed', app: appId }, 502);
     }
     apps[appId] = 'deleted';
+    // A request that reached the app settles any order an earlier request left open.
+    try {
+      await clearPendingErasure(c.env.PLATFORM_DB, userId, appId);
+    } catch (err) {
+      console.error(`[account] rid=${rid} app=${c.env.APP_ID} could not clear a settled order for ${appId}`, err);
+    }
+  }
+
+  // ⏱ 2026-09-15 · [ADR 081]: ACCEPTED, FINISHING. The identity is deliberately
+  // NOT deleted — it goes LAST, from the cron, after every pending app confirms.
+  if (pending.length > 0) {
+    console.log(`[account] rid=${rid} app=${c.env.APP_ID} erasure pending for ${pending.join(', ')}`);
+    return c.json({ ok: true, status: 'erasure_pending', pending, deleted, unlinked, apps }, 202);
   }
 
   // The IDENTITY record, LAST — the row that decides whether the login still
   // works. 404 counts as done: the user is gone, which is what was asked for,
   // and a retry after a partial failure must not fail on the second pass. The
   // key is never echoed, logged, or returned.
-  const identityRes = await fetch(
-    `${c.env.SUPABASE_URL}/auth/v1/admin/users/${encodeURIComponent(userId)}`,
-    {
-      method: 'DELETE',
-      headers: { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}` },
-    },
-  );
-  if (!identityRes.ok && identityRes.status !== 404) {
+  // ⏱ 2026-09-15: the call moved to src/lib/platform-erasure.ts `deleteIdentity`
+  // (the cron deletes a pending subject's identity through the same function).
+  const identityRes = await deleteIdentity(c.env.SUPABASE_URL, serviceRoleKey, userId);
+  if (!identityRes.ok) {
     console.error(
       `[account] rid=${rid} app=${c.env.APP_ID} identity delete failed with ${identityRes.status}`,
     );
@@ -325,6 +332,13 @@ account.delete('/account', async (c) => {
     return c.json({ error: 'identity_delete_failed' }, 502);
   }
   deleted['identity'] = 1;
+  // ⏱ 2026-09-15 · [ADR 081]: the erasure completed synchronously, so any order an
+  // earlier 202 left for this subject is settled — the ledger's retention bound.
+  try {
+    await closeSubject(c.env.PLATFORM_DB, userId);
+  } catch (err) {
+    console.error(`[account] rid=${rid} app=${c.env.APP_ID} could not close settled erasure orders`, err);
+  }
 
   return c.json({ ok: true, deleted, unlinked, apps });
 });

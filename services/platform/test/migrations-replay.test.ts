@@ -208,6 +208,8 @@ describe('platform_db migrations re-apply cleanly', () => {
       'events_daily',
       'feature_set_members',
       'feature_sets',
+      // ⏱ 2026-09-15 · [ADR 081] migration 0010.
+      'pending_erasures',
       'provider_accounts',
       'provider_notifications',
       'revocation_reasons',

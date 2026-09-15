@@ -1,7 +1,6 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
-import { allRows } from '../lib/d1';
-import { userOwnedTables, userReferencingColumns } from '../../../_shared/src/erasure';
+import { eraseSubjectRows } from '../lib/erase-subject';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DELETE /v1/account — SUBLY'S OWN ERASURE ROUTE, over subscriptiontracker_db (APP_DB).
@@ -129,57 +128,25 @@ account.delete('/account', async (c) => {
 
   const userId = c.get('userId');
 
-  const deleted: Record<string, number> = {};
-  const unlinked: Record<string, number> = {};
-
-  let tables: string[];
-  let references: Array<{ table: string; column: string }>;
-  try {
-    tables = await userOwnedTables(c.env.APP_DB);
-    references = await userReferencingColumns(c.env.APP_DB);
-  } catch (err) {
-    console.error(`[account] rid=${rid} app=${c.env.APP_ID} schema read failed`, err);
-    return c.json({ error: 'account_deletion_failed' }, 503);
+  // ⏱ 2026-09-15 · [ADR 081]: THE WALK MOVED TO src/lib/erase-subject.ts, VERBATIM
+  // IN BEHAVIOUR, so the platform's Service Binding retry (src/erasure-entrypoint.ts)
+  // runs the SAME deletion code this route runs. What stayed here is what only this
+  // door has: the asymmetric-token limb above, the request id and the HTTP shape.
+  // The two refusals keep their status (503) and their reasons:
+  //   · the schema read failed;
+  //   · 🔴 AN EMPTY SET IS A FAILURE, NOT A FAST PATH — a derivation that stops
+  //     finding tables would delete NOTHING and report `ok: true`, the shared route
+  //     would take that as permission to delete the identity, and every row here
+  //     would be orphaned behind a login that no longer exists.
+  // And `scope` is still not decoration: this Worker erases ONE database, and a
+  // caller that read a bare `{ ok: true }` as "the account is gone" would be wrong
+  // in the one direction that matters.
+  const result = await eraseSubjectRows(c.env.APP_DB, userId);
+  if (!result.ok) {
+    console.error(`[account] rid=${rid} app=${c.env.APP_ID} refusing deletion: ${result.reason}`);
+    return c.json({ error: result.error }, 503);
   }
-
-  // 🔴 AN EMPTY SET IS A FAILURE, NOT A FAST PATH. If the derivation ever stops
-  // finding tables — a schema change, a driver that does not support
-  // pragma_table_info — this route would delete NOTHING and report `ok: true`.
-  // The caller (the shared erasure route) would then take that as permission to
-  // delete the identity, and every row here would be orphaned behind a login that
-  // no longer exists. Refuse instead.
-  if (tables.length === 0) {
-    console.error(
-      `[account] rid=${rid} app=${c.env.APP_ID} refusing deletion: no user-owned table was found in subscriptiontracker_db, so this request would report success while erasing nothing`,
-    );
-    return c.json({ error: 'account_deletion_failed' }, 503);
-  }
-
-  for (const table of tables) {
-    // The name comes from sqlite_master, not from the request — there is no
-    // caller-controlled value in this string, and D1 cannot bind an identifier.
-    const res = await c.env.APP_DB.prepare(`DELETE FROM ${table} WHERE user_id = ?`)
-      .bind(userId)
-      .run();
-    deleted[table] = res.meta.changes ?? 0;
-  }
-
-  // Then the REFERENCES: after this, no `*_user_id` column in subscriptiontracker_db holds this
-  // person's id. Table and column both come from sqlite_master.
-  for (const { table, column } of references) {
-    const res = await c.env.APP_DB.prepare(
-      `UPDATE ${table} SET ${column} = NULL WHERE ${column} = ?`,
-    )
-      .bind(userId)
-      .run();
-    unlinked[`${table}.${column}`] = res.meta.changes ?? 0;
-  }
-
-  // `scope` is not decoration. This Worker erases ONE database; the identity and
-  // the shared tables are the platform Worker's, and a caller that read a bare
-  // `{ ok: true }` as "the account is gone" would be wrong in the one direction
-  // that matters. Naming the scope makes the partial result unmistakable.
-  return c.json({ ok: true, scope: 'subscriptiontracker_db', deleted, unlinked });
+  return c.json(result);
 });
 
 export default account;

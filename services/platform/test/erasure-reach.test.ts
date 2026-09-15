@@ -209,7 +209,10 @@ describe('the erasure surface — the register, the schema and the route are one
     for (const [name, row] of declared) {
       expect(row.erasure?.kind, `${name} declares no erasure kind`).toBeTruthy();
       expect(
-        ['purge', 'unlink', 'pseudonymous', 'no-personal-data'],
+        // ⏱ 2026-09-15 · [ADR 081] `completion-ledger`: pending_erasures, which the
+        // sweep must NOT reach (it records the erasure in progress); the planting
+        // test below grades it on the "untouched" branch.
+        ['purge', 'unlink', 'pseudonymous', 'no-personal-data', 'completion-ledger'],
         `${name} declares erasure kind ${row.erasure?.kind}, which no platform_db table may use — ` +
           '`no-route` describes a store this Worker cannot reach, and platform_db is the one it binds',
       ).toContain(row.erasure?.kind);

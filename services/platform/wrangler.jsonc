@@ -133,6 +133,27 @@
     // live session token.
     "APP_ERASURE_ENDPOINTS": "subscriptiontracker=https://subscriptiontracker-api.nikatru.com"
   },
+  // ── ⏱ 2026-09-15 · THE ERASURE RETRY, OVER A SERVICE BINDING ([ADR 081]) ──
+  //
+  // When DELETE /v1/account cannot reach an app it records a pending erasure and
+  // answers 202; the nightly cron (src/scheduled.ts) retries by calling the app's
+  // `ErasureEntrypoint` through the binding below. A Service Binding is declared
+  // HERE, in the calling Worker's own config, and is callable only by this Worker
+  // inside the account: no public route, no bearer token, no shared secret. Proven
+  // on this account with two throwaway Workers on 2026-09-15 (both deleted).
+  //
+  // ⚠️ ONE BINDING PER APP IN APP_ERASURE_ENDPOINTS, named `ERASURE_<APP_ID>` in
+  // upper case (src/lib/erasure-ledger.ts `erasureBindingName`), entrypoint
+  // `ErasureEntrypoint`. tooling/ci/assert-erasure-reach.mjs refuses an app in the
+  // list above with no matching binding: without it an unreachable app is a 502
+  // again, because an order nobody can retry is not recorded.
+  "services": [
+    {
+      "binding": "ERASURE_SUBSCRIPTIONTRACKER",
+      "service": "subscriptiontracker-api",
+      "entrypoint": "ErasureEntrypoint"
+    }
+  ],
   "d1_databases": [
     {
       // SHARED entitlements DB. platform is the SOLE migrations applier.

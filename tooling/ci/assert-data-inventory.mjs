@@ -524,6 +524,37 @@ for (const s of stores) {
               'of the two is wrong, and both are in this file.',
           );
         }
+      } else if (e.kind === 'completion-ledger') {
+        // ⏱ 2026-09-15 · [ADR 081]. A ledger of erasures IN PROGRESS names its
+        // subject under a neutral column so the derived sweep cannot delete the
+        // order it is finishing. Both halves of that are checkable: the column
+        // is really there and really NOT user-shaped, and the code that deletes
+        // the rows when the erasure completes is really a file.
+        if (typeof e.column !== 'string' || !e.column) {
+          problems.push(`${where} declares erasure \`completion-ledger\` and names no subject \`column\`.`);
+        } else if (e.column === 'user_id' || /_user_id$/.test(e.column)) {
+          problems.push(
+            `${where} declares erasure \`completion-ledger\` on column ${JSON.stringify(e.column)}, which IS user-shaped. ` +
+              'The derived sweep deletes or NULLs exactly that spelling, so this ledger would erase its own order mid-erasure.',
+          );
+        } else if (cols && !cols.has(e.column.toLowerCase())) {
+          problems.push(
+            `${where} declares erasure \`completion-ledger\` on ${JSON.stringify(e.column)} and no migration gives ` +
+              `${JSON.stringify(s.name)} that column.`,
+          );
+        }
+        if (userOwned === true || refs.length > 0) {
+          problems.push(
+            `${where} declares erasure \`completion-ledger\` and the schema gives it ` +
+              `${[userOwned ? 'user_id' : null, ...refs].filter(Boolean).join(', ')} — the sweep will reach this ledger.`,
+          );
+        }
+        if (typeof e.deletedBy !== 'string' || !existsSync(join(repoRoot, ...e.deletedBy.split('/')))) {
+          problems.push(
+            `${where} declares erasure \`completion-ledger\` and its \`deletedBy\` (${JSON.stringify(e.deletedBy)}) is not a file. ` +
+              'A ledger nothing deletes from is a permanent record of who asked to be forgotten.',
+          );
+        }
       } else if (e.kind === 'no-route') {
         if (typeof e.blockedBy !== 'string' || e.blockedBy.trim() === '') {
           problems.push(

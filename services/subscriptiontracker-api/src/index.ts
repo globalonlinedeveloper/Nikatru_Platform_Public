@@ -219,3 +219,8 @@ app.onError((err, c) => {
 });
 
 export default { fetch: app.fetch };
+
+// ⏱ 2026-09-15 · [ADR 081]: the Service Binding retry door. A NAMED export, so it is
+// reachable only by a binding that names `entrypoint: "ErasureEntrypoint"`
+// (services/platform/wrangler.jsonc) and never through `fetch` above.
+export { ErasureEntrypoint } from './erasure-entrypoint';

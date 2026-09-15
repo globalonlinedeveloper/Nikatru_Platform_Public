@@ -27,6 +27,16 @@ void main() {
       }
     });
 
+    // ⏱ 2026-09-15 · [ADR 081]: 202 erasure_pending is accepted-and-finishing.
+    test('202 · pending — accepted, NOT gone, and the one 2xx that is not deleted',
+        () {
+      expect(AccountDeletionOutcome.forStatus(202),
+          AccountDeletionOutcome.pending);
+      expect(AccountDeletionOutcome.pending.accountIsGone, isFalse);
+      expect(AccountDeletionOutcome.pending.plainMessage,
+          contains('still being completed'));
+    });
+
     test('501 · nothing was deleted — the route refuses BEFORE it destroys',
         () {
       expect(

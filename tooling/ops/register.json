@@ -950,6 +950,9 @@
         "money_rederive": [
           "0 6 * * *"
         ],
+        "erasure_retry": [
+          "0 6 * * *"
+        ],
         "github_dispatch": [
           "0 0 * * *",
           "0 6 * * *",
@@ -969,6 +972,7 @@
         "retention_sweep": "2026-08-12T07:43:30Z",
         "cancellation_drain": "2026-08-25T04:18:24Z",
         "money_rederive": "2026-09-10T02:54:53Z",
+        "erasure_retry": "2026-09-15T05:51:24Z",
         "github_dispatch": "2026-09-03T06:50:37Z",
         "boxb_reachability": "2026-09-12T11:22:49Z"
       },
@@ -3810,6 +3814,28 @@
       "mechanism": {
         "substrate": "cloudflare-d1",
         "anchor": "services/platform/migrations/0005_cancellation_requests.sql",
+        "record": "the table itself",
+        "failingValue": "not applicable to a reasoned keep",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      }
+    },
+    {
+      "kind": "retention",
+      "detector": "tooling/ci/assert-retention-coverage.mjs — the store set is ENUMERATED from wrangler bindings and migrations, so a store cannot leave the domain by having no rule.",
+      "response": "n/a",
+      "cadence": "365d",
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified",
+      "id": "retention.d1.platform_db.pending_erasures",
+      "store": "d1:platform_db:pending_erasures",
+      "what": "One row per (subject, app) whose erasure DELETE /v1/account accepted (202 erasure_pending) but could not finish; ADR 081.",
+      "rule": "keep",
+      "keepWhy": "⏱ 2026-09-15 · [ADR 081]. Kept UNTIL THE ERASURE COMPLETES, never on a timer: the nightly erasure retry (services/platform/src/scheduled.ts `erasureRetry`) deletes a subject's rows once every app has confirmed and the identity is deleted, and DELETE /v1/account deletes them when an erasure completes synchronously. A time-based sweep would silently abandon an unfinished erasure, so an order unconfirmed past ERASURE_STUCK_AFTER_DAYS (7) writes an ok=0 heartbeat instead. The subject column is `subject_ref`, deliberately not `user_id`: the derived erasure sweep would otherwise delete the order mid-erasure.",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/platform/migrations/0010_pending_erasures.sql",
         "record": "the table itself",
         "failingValue": "not applicable to a reasoned keep",
         "readBy": "tooling/ci/assert-retention-coverage.mjs"
