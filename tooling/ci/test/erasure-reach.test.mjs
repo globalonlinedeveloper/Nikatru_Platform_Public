@@ -200,6 +200,78 @@ describe('limb 4b — the erasure retry binding', () => {
   });
 });
 
+// ⏱ 2026-09-15 · [ADR 087] LIMB 5 — `signups` is keyed by address and reached through the
+// account's CONFIRMED email, before the identity is deleted. Each red control is a real
+// mutation of the shipped code, declared on its own (assert-no-loop-cases).
+const PLATFORM_ERASURE = `${PLATFORM}/src/lib/platform-erasure.ts`;
+const PLATFORM_ROUTE = `${PLATFORM}/src/routes/account.ts`;
+const PLATFORM_SCHEDULED = `${PLATFORM}/src/scheduled.ts`;
+describe('limb 5 — the signup list is reached by confirmed email, before the identity goes', () => {
+  test('the real tree passes and says what limb 5 checked', () => {
+    withTree(
+      () => {},
+      (r) => {
+        assert.equal(r.status, 0, r.stderr);
+        assert.match(r.stdout, /1 address-keyed table\(s\) reached by CONFIRMED email .* all 2 identity delete\(s\) in services\/platform\/src call the purge/);
+      },
+    );
+  });
+
+  test('FAILS when the purge no longer deletes from signups', () => {
+    withTree(
+      (root) => edit(root, PLATFORM_ERASURE, (t) => t.replace("'DELETE FROM signups WHERE email = ?'", "'SELECT 1 FROM signups WHERE email = ?'")),
+      (r) => {
+        assert.equal(r.status, 1, r.stderr);
+        assert.match(r.stderr, /has no top-level function that runs `DELETE FROM signups WHERE email = \?`/);
+      },
+    );
+  });
+
+  test('FAILS when the purge deletes without checking email_confirmed_at', () => {
+    withTree(
+      (root) =>
+        edit(root, PLATFORM_ERASURE, (t) =>
+          t.replace("  if (typeof user.email_confirmed_at !== 'string' || user.email_confirmed_at === '') {\n    return { kind: 'skipped', why: 'unconfirmed' };\n  }\n", ''),
+        ),
+      (r) => {
+        assert.equal(r.status, 1, r.stderr);
+        assert.match(r.stderr, /`purgeVerifiedSignups` deletes from signups on email without first reading `email_confirmed_at`/);
+      },
+    );
+  });
+
+  test('FAILS when the route purges AFTER deleting the identity', () => {
+    withTree(
+      (root) =>
+        edit(root, PLATFORM_ROUTE, (t) =>
+          t
+            .replace('const signupPurge = await purgeVerifiedSignups(c.env.PLATFORM_DB, c.env.SUPABASE_URL, serviceRoleKey, userId);', "const signupPurge = { kind: 'skipped', why: 'no_email' } as const;")
+            .replace("  deleted['identity'] = 1;\n", "  deleted['identity'] = 1;\n  await purgeVerifiedSignups(c.env.PLATFORM_DB, c.env.SUPABASE_URL, serviceRoleKey, userId);\n"),
+        ),
+      (r) => {
+        assert.equal(r.status, 1, r.stderr);
+        assert.match(r.stderr, /src\/routes\/account\.ts:\d+ deletes the identity and its block does not call `purgeVerifiedSignups` before it/);
+      },
+    );
+  });
+
+  test('FAILS when the nightly retry deletes a pending identity without purging first', () => {
+    withTree(
+      (root) =>
+        edit(root, PLATFORM_SCHEDULED, (t) =>
+          t.replace(
+            'const signupPurge = await purgeVerifiedSignups(env.PLATFORM_DB, env.SUPABASE_URL, serviceRoleKey, subject);',
+            "const signupPurge = { kind: 'skipped', why: 'no_email' } as const;",
+          ),
+        ),
+      (r) => {
+        assert.equal(r.status, 1, r.stderr);
+        assert.match(r.stderr, /src\/scheduled\.ts:\d+ deletes the identity and its block does not call `purgeVerifiedSignups` before it/);
+      },
+    );
+  });
+});
+
 describe('LIMB 3 — the erasure route must not be reachable through the shared secret', () => {
   test('FAILS when the erasure route is guarded by the fallback-capable middleware', () => {
     // 🔴 THE MUTATION THIS GUARD EXISTS FOR. One identifier, in one line of

@@ -262,6 +262,17 @@ for (const [name, rule] of Object.entries(rules)) {
     }
   }
 
+  // LIMB 6c · ⏱ 2026-09-15 · [ADR 087]. `not-reserved-address` reads an EMAIL
+  // column through a count-only projection; on any other column its buckets mean
+  // nothing and every row would quietly resolve as "unreserved".
+  if (resolverId === 'not-reserved-address' && marker !== 'email') {
+    problems.push(
+      `\`${name}\` declares resolver \`not-reserved-address\` on \`${marker}\`. That resolver asks whether an EMAIL ADDRESS is at a ` +
+        'domain reserved for testing, so its marker must be the `email` column: on any other column every row reads ' +
+        '"unreserved" and the count is an assertion that cannot fail.',
+    );
+  }
+
   // LIMB 7 · the written reason.
   const reason = rule?.reason;
   if (typeof reason !== 'string' || reason.trim().length < MIN_REASON) {

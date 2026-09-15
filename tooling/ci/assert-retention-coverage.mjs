@@ -428,6 +428,14 @@ function main() {
     // same length and any line number derived from it still points where it did —
     // measured on this anchor today: 17734 characters in, 17734 out.
     //
+    // ⏱ 2026-09-15 · [ADR 087]. The line numbers in this block are the 2026-08-21
+    // measurement of a file that has since changed shape: the signup list moved to
+    // D1, so subscribe.js now carries ONE `ttl` row's put (the `rl:` counter,
+    // `expirationTtl: RATE_WINDOW_SECONDS` at 234, code) and no `SIGNUP_RETENTION_DAYS`,
+    // 12771 characters in and out. The two-rows-one-anchor case above is still real —
+    // retention.kv.platform.SIGNUPS and retention.kv.nikatru-signups.rate-limit share
+    // this anchor — but both now name the same line, so neither can borrow the other's.
+    //
     // 🔴 AND THE REDUCTION MUST ACTUALLY REDUCE. `stripSourceComments` dispatches on
     // EXTENSION and returns an UNKNOWN one VERBATIM, saying nothing — text-reductions.mjs's
     // own header records that trap costing `.kts` a whole scan before the map learned it.

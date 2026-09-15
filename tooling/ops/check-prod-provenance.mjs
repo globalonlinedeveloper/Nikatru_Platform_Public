@@ -511,6 +511,24 @@ function cronJobNames() {
   return jobs;
 }
 
+/** ⏱ 2026-09-15 · [ADR 087] the non-app erasure steps services/platform/src declares
+ *  as `export const <NAME>_STEP = '<literal>'` — the same shape-derived set as
+ *  `cronJobNames`, for the `erasure-step` second resolver on `pending_erasures`. */
+function erasureStepNames() {
+  const src = join(ROOT, 'services', 'platform', 'src');
+  if (!existsSync(src)) throw new CouldNotLook('services/platform/src does not exist, so the declared erasure-step set is empty');
+  let text = '';
+  const walk = (d) => {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      const p = join(d, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (/\.(ts|js|mjs)$/.test(e.name)) text += readFileSync(p, 'utf8');
+    }
+  };
+  walk(src);
+  return new Set([...text.matchAll(/export\s+const\s+\w*_STEP\s*=\s*['"]([^'"]+)['"]/g)].map((m) => m[1]));
+}
+
 function providerIds() {
   const reg = readJson(PROVIDERS_REL);
   const raw = reg.providers;
@@ -559,6 +577,32 @@ async function queryD1(dbId, sql) {
   const rows = body?.result?.[0]?.results;
   if (!Array.isArray(rows)) throw new CouldNotLook('the D1 API response carried no results array');
   return rows;
+}
+
+/**
+ * ⏱ 2026-09-15 · [ADR 087]. The census query for a table resolved by
+ * `not-reserved-address`: each row is projected to `reserved` / `unreserved`
+ * INSIDE D1 and only a count per bucket comes back.
+ *
+ * 🔴 THE ADDRESS NEVER LEAVES THE DATABASE, and that is the whole reason this is
+ * a separate query rather than the generic `SELECT "<marker>" … GROUP BY`. The
+ * generic shape returns every distinct marker VALUE — for `signups` that is every
+ * email address, pulled onto a GitHub runner and printed in a violation line.
+ *
+ * Reserved for testing: RFC 2606 (example.com/.net/.org, .test, .example,
+ * .invalid, .localhost) and RFC 6761 (the same names, as special-use). The domain
+ * is everything after the first `@`, lower-cased.
+ */
+export function reservedAddressCensusSql(table, marker) {
+  if (!/^[a-z_][a-z0-9_]*$/.test(table) || !/^[a-z_][a-z0-9_]*$/.test(marker)) {
+    throw new CouldNotLook(`refusing to build a census query over \`${table}\`.\`${marker}\`: not a plain identifier`);
+  }
+  const d = `substr(lower("${marker}"), instr("${marker}", '@') + 1)`;
+  const reserved = [
+    `${d} IN ('example.com', 'example.net', 'example.org', 'example', 'test', 'invalid', 'localhost')`,
+    ...['example.com', 'example.net', 'example.org', 'example', 'test', 'invalid', 'localhost'].map((t) => `${d} LIKE '%.${t}'`),
+  ].join(' OR ');
+  return `SELECT CASE WHEN ${reserved} THEN 'reserved' ELSE 'unreserved' END AS marker, COUNT(*) AS n FROM "${table}" GROUP BY 1`;
 }
 
 // ── main ────────────────────────────────────────────────────────────────────
@@ -703,6 +747,9 @@ async function main() {
       if (!witnessed.includes(note)) witnessed.push(note);
     }),
     'e2e-run': e2eRunResolver,
+    // ⏱ 2026-09-15 · [ADR 087]. A SECOND resolver only (pending_erasures), so an empty
+    // set refuses every step value rather than admitting one.
+    'erasure-step': ((set) => (v) => (typeof v === 'string' && set.has(v) ? null : `\`${v}\` is not an erasure step declared by \`export const <NAME>_STEP\` in services/platform/src`))(erasureStepNames()),
     'live-environment': (v) =>
       v === 'live' ? null : v == null ? 'no environment at all — the rail could not attribute this row to a money world' : `environment is \`${v}\`, not \`live\``,
     'cron-job': ((set) => (v) => (typeof v === 'string' && set.has(v) ? null : `job \`${v}\` is declared by no \`export const <NAME>_JOB\` in services/platform/src`))(cronJobNames()),
@@ -768,6 +815,15 @@ async function main() {
         return s;
       })(),
     ),
+    // ⏱ 2026-09-15 · [ADR 087]. Receives ONLY the bucket name the projection in
+    // `reservedAddressCensusSql` returns — never an address — and never echoes
+    // an unexpected value, in case a future query shape hands it one.
+    'not-reserved-address': (v) =>
+      v === 'unreserved'
+        ? null
+        : v === 'reserved'
+          ? 'addressed to a domain reserved for testing (RFC 2606 / RFC 6761) — probe residue, not a person who asked to hear about a launch'
+          : 'the reserved-address projection returned a value that is neither `reserved` nor `unreserved`, so this reader cannot tell what it counted',
     'migration-seed': null, // built per table below — the allowed set is that table's own seeds
   };
 
@@ -814,7 +870,12 @@ async function main() {
 
     const groups = fixture
       ? (fixture[name] ?? [])
-      : await queryD1(dbId, `SELECT "${marker}" AS marker, COUNT(*) AS n FROM "${name}" GROUP BY "${marker}"`);
+      : await queryD1(
+          dbId,
+          rule.resolver === 'not-reserved-address'
+            ? reservedAddressCensusSql(name, marker)
+            : `SELECT "${marker}" AS marker, COUNT(*) AS n FROM "${name}" GROUP BY "${marker}"`,
+        );
 
     let total = 0;
     let bad = 0;
@@ -826,9 +887,13 @@ async function main() {
         for (const [id, fn] of alts) {
           if (fn(g.marker) !== null) continue;
           alsoAccepted.push(
-            `${name}: ${n} row(s) with \`${marker}\` = \`${g.marker}\` — refused by \`${rule.resolver}\` and accepted by ` +
-              `the narrower \`${id}\`. These rows were written by a live verification, which B-17 permits; what B-17 ` +
-              'also requires is that the harness removed them, and THAT is asserted by the harness, not here.',
+            id === 'erasure-step'
+              ? `${name}: ${n} row(s) with \`${marker}\` = \`${g.marker}\` — refused by \`${rule.resolver}\` and accepted by ` +
+                  'the narrower `erasure-step`: a non-app step of an erasure that is still pending ([ADR 087]). The nightly ' +
+                  'erasure_retry heartbeat, not this census, is what turns red if it never finishes.'
+              : `${name}: ${n} row(s) with \`${marker}\` = \`${g.marker}\` — refused by \`${rule.resolver}\` and accepted by ` +
+                  `the narrower \`${id}\`. These rows were written by a live verification, which B-17 permits; what B-17 ` +
+                  'also requires is that the harness removed them, and THAT is asserted by the harness, not here.',
           );
           why = null;
           break;

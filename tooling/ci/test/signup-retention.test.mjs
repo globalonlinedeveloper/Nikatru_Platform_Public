@@ -1,334 +1,237 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// signup-retention.test.mjs — the KV retention seam in
-// sites/nikatru/functions/api/subscribe.js must be INERT while no period is
-// declared, and must actually set the TTL the moment one is.
+// signup-retention.test.mjs — WHERE A nikatru.com SIGNUP IS STORED, AND THAT IT
+// IS BOUNDED. [ADR 087], rewritten 2026-09-15.
 //
-// [pipeline O-17] tooling/ops/register.json → retention.kv.nikatru-signups.signup
-// is the one store in the portfolio holding a contactable identity with no
-// expiry. The PERIOD is a policy decision the owner owns; the WIRING is not, and
-// this suite is what makes the wiring a fact rather than an intention.
+// Until 2026-09-15 this suite held the KV retention seam in
+// sites/nikatru/functions/api/subscribe.js: a `sub:<email>` put carrying
+// `expirationTtl` from `SIGNUP_RETENTION_DAYS`. [ADR 087] moved the list to table
+// `signups` in platform_db (APAC) and kept only the `rl:` rate-limit counter in
+// the KV namespace. A D1 table has no expiry, so the period (still 400 days) is
+// now enforced by the platform Worker's nightly `retentionSweep` — tested
+// against the real schema in services/platform/test/retention-sweep.test.ts.
+// What stays HERE is the site half, which no Worker test can reach:
 //
-// 🔴 WHY THIS TESTS MUTATED COPIES OF THE REAL FILE AND NOT A FIXTURE.
-// "A fixture you wrote encodes the same misunderstanding as the guard you
-// wrote" — assert-seams-wired.mjs shipped green with its caller check matching
-// the function's own declaration, and all six of its fixtures passed. So the
-// modules under test here ARE sites/nikatru/functions/api/subscribe.js, read off
-// disk, with exactly ONE VALUE substituted — which is precisely the one-line
-// change the owner will make. The activated branch is therefore a rehearsal of
-// that change, not a model of it.
+//   · the Function writes the signup to PLATFORM_DB and never a `sub:` key to KV;
+//   · a repeat signup, in any letter case, writes nothing and keeps the ORIGINAL
+//     signup time — the time the 400 days are counted from;
+//   · 🔴 with PLATFORM_DB unbound it fails exactly as it does with SIGNUPS
+//     unbound (503) and NEVER falls back to KV — the fallback would silently put
+//     an email address back in the store the move exists to leave;
+//   · the row is the published promise: two columns, email and time;
+//   · the register, the migration and the sweep constant agree on the period.
 //
-// 🔑 AND WHY THE REAL-FILE CASE DERIVES ITS EXPECTATION INSTEAD OF PINNING null.
-// A test asserting "the shipped file declares null" would go RED the day the
-// owner declares a period — turning a one-line change into a two-line one and
-// making this suite an obstacle to the very decision it exists to enable. So it
-// reads the declared value and asserts the file BEHAVES CONSISTENTLY WITH IT.
-// That case is correct in both states; the two forced-variant cases below cover
-// both branches regardless of what is shipped.
+// 🔴 THE D1 DOUBLE IS A REAL SQL ENGINE. `node:sqlite` applies the real
+// services/platform/migrations/0011_signups.sql, so ON CONFLICT and COLLATE
+// NOCASE are executed, not modelled — a recorder cannot tell an INSERT naming a
+// column no migration created from a correct one (services/platform/test/harness.ts).
+// The module under test is the real file, imported unmodified.
 //
-// ✅ AND THAT DAY CAME, ON THE SAME DAY: the owner declared 365 days on
-// 2026-08-09, the constant moved `null` -> `365`, and this suite needed NO edit
-// to stay correct — which is the property the paragraph above was written for.
-// What WAS added is the case below that pins the register's number to the
-// code's, because "a period exists" and "the period is 365" are different
-// claims and only the first was held.
-//
-// NEGATIVE-TESTED (2026-08-09, real mutations of the real file, restored after):
-//   N1 call site reverted to `put(key, JSON.stringify(record))`
-//        -> "declares 30 day(s) and the put carried no options" (the wiring test
-//           is the one that catches a severed seam; both others stayed green,
-//           which is exactly why it exists)
-//   N2 helper changed to always return `{ expirationTtl: … }`
-//        -> "must be the same two-argument put the site makes today" (arity 3)
-//   N3 `SECONDS_PER_DAY` changed 86400 -> 3600
-//        -> conversion case red: expected 2592000, got 108000
-//   N5 register `mechanism.ttlSource` moved to 180 while the code says 365
-//        -> "the register claims 180 day(s) and … declares 365" (the new case;
-//           every other case in this file stayed GREEN under that mutation,
-//           which is the whole reason it was added)
-//   N6 the shipped constant moved 365 -> null with the register left at `ttl`
-//        -> "the code declares no period; the register must still say so."
-//   N7 a SECOND `const SIGNUP_RETENTION_DAYS = 180;` injected at column 0 inside
-//      a block comment ABOVE the real one — so the register's `ttlSource` is
-//      still present verbatim and only the FIRST-DECLARED number differs
-//        -> "the register claims 365 day(s) and … declares 180". Run because the
-//           verbatim check alone would have made the number comparison an
-//           assertion with no reachable failing input, and one of those is worse
-//           than none: it inflates the coverage this row is credited with.
+// NEGATIVE-TESTED (2026-09-15, real mutations of the real file, restored after):
+//   N1 the binding check reverted to `!env.SIGNUPS` only        -> the unbound-D1 case
+//   N2 a `sub:` put added back beside the INSERT                 -> the no-KV-list case
+//   N3 `ON CONFLICT(email) DO NOTHING` -> `DO UPDATE SET signed_up_at = excluded.signed_up_at`
+//                                                                -> the original-time case
+//   N4 `COLLATE NOCASE` dropped from the migration                -> the letter-case case
 //
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
-import { test, describe, before, after } from 'node:test';
+import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
-import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { DatabaseSync } from 'node:sqlite';
+
+import { stripSourceComments } from '../text-reductions.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const SUBSCRIBE_REL = 'sites/nikatru/functions/api/subscribe.js';
-const SUBSCRIBE = join(REPO, SUBSCRIBE_REL);
+const MIGRATION_REL = 'services/platform/migrations/0011_signups.sql';
+const SCHEDULED_REL = 'services/platform/src/scheduled.ts';
+const REGISTER_REL = 'tooling/ops/register.json';
 
-const SECONDS_PER_DAY = 86400;
+const read = (rel) => readFileSync(join(REPO, rel), 'utf8');
+const load = () => import(pathToFileURL(join(REPO, SUBSCRIBE_REL)).href);
 
-/** The one line this whole seam turns on. Matched rather than assumed: if the
- *  constant is ever renamed or deleted, every case below would otherwise test a
- *  module that no longer has the seam in it and report green. */
-const DECL_RE = /^const SIGNUP_RETENTION_DAYS = ([^;]+);$/m;
-
-let TMP;
-let SRC;
-before(() => {
-  TMP = mkdtempSync(join(tmpdir(), 'nikatru-sig-'));
-  SRC = readFileSync(SUBSCRIBE, 'utf8');
-});
-after(() => {
-  rmSync(TMP, { recursive: true, force: true });
-});
-
-let seq = 0;
-
-/** Load subscribe.js with `SIGNUP_RETENTION_DAYS` forced to `literal`.
- *  `.mjs` because a bare `.js` in a temp dir with no package.json is parsed as
- *  CommonJS and the ESM `export` would throw — a failure that looks like a
- *  broken module rather than a broken harness. */
-async function loadWithPeriod(literal) {
-  assert.match(
-    SRC,
-    DECL_RE,
-    `${SUBSCRIBE_REL} no longer declares \`const SIGNUP_RETENTION_DAYS = …;\`. The seam this suite ` +
-      'exists to hold open is gone, and every case below would be testing a module without it.',
-  );
-  const next = SRC.replace(DECL_RE, `const SIGNUP_RETENTION_DAYS = ${literal};`);
-  // Assert the CONSTANT NOW READS the intended literal, not that the bytes
-  // changed: forcing `null` onto a file that already ships `null` is a legitimate
-  // no-op, and a bytes-changed check turns that into a spurious failure. What
-  // must never pass silently is a substitution that did not take.
-  const applied = next.match(DECL_RE);
-  assert.ok(
-    applied && applied[1].trim() === String(literal),
-    `substituting ${literal} did not take — the constant now reads \`${applied?.[1]?.trim()}\`.`,
-  );
-  const file = join(TMP, `subscribe-${literal}-${seq++}.mjs`);
-  writeFileSync(file, next);
-  return import(pathToFileURL(file).href);
-}
-
-/** The real shipped module, unmutated. */
-async function loadReal() {
-  return import(pathToFileURL(SUBSCRIBE).href);
-}
-
-/** The register row that owns this store. Read fresh rather than cached: it is
- *  the other half of every claim below, and a missing row is a seam with no
- *  recorded owner rather than a test that quietly has nothing to compare. */
-function signupRow() {
-  const reg = JSON.parse(readFileSync(join(REPO, 'tooling/ops/register.json'), 'utf8'));
-  const row = (reg.rows ?? []).find((r) => r.id === 'retention.kv.nikatru-signups.signup');
-  assert.ok(row, 'retention.kv.nikatru-signups.signup is gone from the register — the seam has no recorded owner.');
-  return row;
-}
-
-/** What the shipped file declares today: `null`, or a number. */
-function declaredPeriod() {
-  const m = SRC.match(DECL_RE);
-  assert.ok(m, `${SUBSCRIBE_REL} declares no SIGNUP_RETENTION_DAYS`);
-  const raw = m[1].trim();
-  return raw === 'null' ? null : Number(raw);
-}
-
-const request = (email = 'someone@example.test') => ({
-  headers: { get: (h) => (String(h).toLowerCase() === 'content-type' ? 'application/json' : null) },
-  json: async () => ({ email }),
-});
-
-/** A KV double that RECORDS THE ARGUMENT LIST, not just the options object —
- *  the difference between `put(k, v)` and `put(k, v, undefined)` is the whole
- *  claim that the dormant seam changes nothing, and an options-only recorder
- *  cannot see it. */
-function recordingEnv() {
-  const puts = [];
+/** A D1 binding over a real SQLite database holding the real 0011 schema. */
+function d1() {
+  const db = new DatabaseSync(':memory:');
+  db.exec(read(MIGRATION_REL));
+  const sent = [];
+  let fail = false;
   return {
-    puts,
-    SIGNUPS: {
-      get: async () => null,
-      list: async () => ({ keys: [] }),
-      put: async (...args) => {
-        puts.push(args);
+    db,
+    sent,
+    failNext() { fail = true; },
+    rows: () => db.prepare('SELECT email, signed_up_at FROM signups ORDER BY signed_up_at, email').all().map((r) => ({ ...r })),
+    binding: {
+      prepare(sql) {
+        return {
+          bind: (...args) => ({
+            run: async () => {
+              sent.push({ sql, args });
+              if (fail) throw new Error('D1_ERROR: simulated');
+              const r = db.prepare(sql).run(...args);
+              return { success: true, meta: { changes: Number(r.changes) } };
+            },
+          }),
+        };
       },
     },
   };
 }
 
-async function signup(mod, env) {
-  const res = await mod.onRequestPost({ request: request(), env: { SIGNUPS: env.SIGNUPS } });
-  assert.equal(res.status, 200, 'the signup path itself failed, so nothing below is about retention');
-  return env.puts;
+/** A KV binding that records every write. */
+function kv() {
+  const puts = [];
+  return { puts, binding: { list: async () => ({ keys: [] }), get: async () => null, put: async (...a) => { puts.push(a); } } };
 }
 
-describe('signupPutOptions — the pure half', () => {
-  test('no declared period yields NO options object at all', async () => {
-    const { signupPutOptions } = await loadReal();
-    assert.equal(signupPutOptions(null), undefined);
-    // ⚠️ NOT `signupPutOptions(undefined)`. That argument triggers the DEFAULT
-    // PARAMETER and so returns whatever the file currently declares — it is the
-    // "use the shipped period" call, not the "no period" one. Asserting it
-    // returned undefined would have passed only while the shipped value was
-    // null, and would have gone red the day the owner declared a period: a test
-    // that turns the intended one-line change into a two-line one. Caught by
-    // running the owner's change as a mutation (N4 in the header) rather than
-    // by reading — and the shipped value IS 365 now, so that mutation is simply
-    // the tree. The default-parameter path is covered by the shipped-file case
-    // below, which derives its expectation instead of pinning it.
+const req = (email, ip = null) => ({
+  headers: {
+    get: (h) => {
+      const k = String(h).toLowerCase();
+      if (k === 'content-type') return 'application/json';
+      if (k === 'cf-connecting-ip') return ip;
+      return null;
+    },
+  },
+  json: async () => ({ email }),
+});
+
+describe('the signup lands in platform_db, and only there', () => {
+  test('a valid signup inserts one row: the address as submitted, and an ISO signup time', async () => {
+    const { onRequestPost } = await load();
+    const D = d1();
+    const K = kv();
+    const before = Date.now();
+    const res = await onRequestPost({ request: req('Someone@Example.test'), env: { PLATFORM_DB: D.binding, SIGNUPS: K.binding } });
+    assert.equal(res.status, 200);
+    const rows = D.rows();
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].email, 'Someone@Example.test');
+    assert.match(rows[0].signed_up_at, /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/);
+    assert.ok(Date.parse(rows[0].signed_up_at) >= before - 1000);
   });
 
-  test('a positive number of days converts to seconds', async () => {
-    const { signupPutOptions } = await loadReal();
-    assert.deepEqual(signupPutOptions(1), { expirationTtl: 86400 });
-    assert.deepEqual(signupPutOptions(30), { expirationTtl: 2592000 });
-    assert.deepEqual(signupPutOptions(365), { expirationTtl: 31536000 });
+  test('🔴 no `sub:` key and no email reaches KV — with no salt the Function writes nothing to KV at all', async () => {
+    const { onRequestPost } = await load();
+    const D = d1();
+    const K = kv();
+    await onRequestPost({ request: req('someone@example.test', '203.0.113.9'), env: { PLATFORM_DB: D.binding, SIGNUPS: K.binding } });
+    assert.deepEqual(K.puts, [], 'the list moved to D1; any KV write here without a salt is the list leaking back');
   });
 
-  test('values that are not a positive number stay INERT rather than becoming a TTL', async () => {
-    const { signupPutOptions } = await loadReal();
-    // 🔴 `0` and a negative are the dangerous ones: KV reads a tiny/absent TTL
-    // as "expire immediately", so a fat-fingered 0 must mean NO EXPIRY, never
-    // "delete the launch list now".
-    for (const v of [0, -1, -365, NaN, Infinity, '30', '', true, {}, []]) {
-      assert.equal(signupPutOptions(v), undefined, `${JSON.stringify(String(v))} must not produce a TTL`);
-    }
+  test('with the salt set, the ONLY KV write is the one-hour `rl:` counter, and it carries no address', async () => {
+    const { onRequestPost } = await load();
+    const D = d1();
+    const K = kv();
+    await onRequestPost({
+      request: req('someone@example.test', '203.0.113.9'),
+      env: { PLATFORM_DB: D.binding, SIGNUPS: K.binding, SUBSCRIBE_RATE_LIMIT_SALT: 'test-salt-not-a-secret' },
+    });
+    assert.equal(K.puts.length, 1);
+    const [key, value, opts] = K.puts[0];
+    assert.match(key, /^rl:[0-9a-f]{32}:[0-9a-f-]{36}$/);
+    assert.equal(value, '1');
+    assert.deepEqual(opts, { expirationTtl: 3600 });
+    assert.ok(!JSON.stringify(K.puts).includes('example.test'), 'an address reached KV');
+    assert.equal(D.rows().length, 1);
   });
 
-  test('a fractional period is rounded to whole seconds', async () => {
-    const { signupPutOptions } = await loadReal();
-    assert.deepEqual(signupPutOptions(0.5), { expirationTtl: 43200 });
+  test('the Function sends exactly one statement, and it is the exported SIGNUP_INSERT', async () => {
+    const mod = await load();
+    const D = d1();
+    await mod.onRequestPost({ request: req('someone@example.test'), env: { PLATFORM_DB: D.binding, SIGNUPS: kv().binding } });
+    assert.equal(D.sent.length, 1);
+    assert.equal(D.sent[0].sql, mod.SIGNUP_INSERT);
+    assert.match(mod.SIGNUP_INSERT, /^INSERT INTO signups \(email, signed_up_at\) VALUES \(\?, \?\) ON CONFLICT\(email\) DO NOTHING$/);
   });
 });
 
-describe('the wiring — what the real put actually receives', () => {
-  test('DORMANT: with no period the put is the same two-argument call the site makes today', async () => {
-    const mod = await loadWithPeriod('null');
-    const env = recordingEnv();
-    const puts = await signup(mod, env);
-    assert.equal(puts.length, 1, 'the signup was not stored at all');
-    assert.equal(
-      puts[0].length,
-      2,
-      'with no declared period the write must be the same two-argument put the site makes today — ' +
-        `got ${puts[0].length} argument(s): ${JSON.stringify(puts[0].slice(2))}. An options object here means ` +
-        'leaving the period undeclared is no longer a no-op.',
-    );
-    assert.equal(JSON.parse(puts[0][1]).email, 'someone@example.test');
+describe('a repeat signup keeps the ORIGINAL signup time', () => {
+  test('the same address again writes nothing and the first time stands', async () => {
+    const { onRequestPost } = await load();
+    const D = d1();
+    D.db.exec("INSERT INTO signups (email, signed_up_at) VALUES ('someone@example.test', '2026-01-01T00:00:00.000Z')");
+    const res = await onRequestPost({ request: req('someone@example.test'), env: { PLATFORM_DB: D.binding, SIGNUPS: kv().binding } });
+    assert.equal(res.status, 200, 'a repeat signup is still a success to the visitor');
+    assert.deepEqual(D.rows(), [{ email: 'someone@example.test', signed_up_at: '2026-01-01T00:00:00.000Z' }]);
   });
 
-  test('ACTIVATED: one value turns the same call into a TTL\'d write', async () => {
-    const mod = await loadWithPeriod('30');
-    const env = recordingEnv();
-    const puts = await signup(mod, env);
-    assert.equal(puts.length, 1);
-    assert.equal(
-      puts[0].length,
-      3,
-      'the module declares 30 day(s) and the put carried no options — the seam is declared but NOT WIRED, ' +
-        'which is the failure this case exists for: the constant reads like a working switch and changes nothing.',
-    );
-    assert.deepEqual(puts[0][2], { expirationTtl: 30 * SECONDS_PER_DAY });
-  });
-
-  test('the TTL tracks the declared period rather than being a constant', async () => {
-    // Two different periods must produce two different TTLs. A hardcoded
-    // `expirationTtl` at the call site would satisfy the case above and fail here.
-    for (const days of [1, 7, 400]) {
-      const mod = await loadWithPeriod(String(days));
-      const env = recordingEnv();
-      const puts = await signup(mod, env);
-      assert.deepEqual(puts[0][2], { expirationTtl: days * SECONDS_PER_DAY }, `period of ${days} day(s)`);
-    }
-  });
-
-  test('the rate-limit key keeps its own TTL, untouched by the signup seam', async () => {
-    // The two puts in this file have DIFFERENT retention rules and different
-    // register rows. Wiring one must not disturb the other.
-    const mod = await loadWithPeriod('null');
-    const src = SRC;
-    assert.match(src, /expirationTtl: RATE_WINDOW_SECONDS/, 'the rate-limit put lost its TTL');
-    assert.ok(mod.onRequestPost, 'module did not load');
+  test('a different letter case is the SAME signup, not a second row', async () => {
+    const { onRequestPost } = await load();
+    const D = d1();
+    D.db.exec("INSERT INTO signups (email, signed_up_at) VALUES ('someone@example.test', '2026-01-01T00:00:00.000Z')");
+    await onRequestPost({ request: req('SOMEONE@EXAMPLE.TEST'), env: { PLATFORM_DB: D.binding, SIGNUPS: kv().binding } });
+    assert.deepEqual(D.rows(), [{ email: 'someone@example.test', signed_up_at: '2026-01-01T00:00:00.000Z' }]);
   });
 });
 
-describe('the shipped file', () => {
-  test('behaves consistently with the period it declares', async () => {
-    // Correct whether the owner has declared a period or not — see the header.
-    const declared = declaredPeriod();
-    const mod = await loadReal();
-    const env = recordingEnv();
-    const puts = await signup(mod, env);
-    assert.equal(puts.length, 1);
-    if (declared === null) {
-      assert.equal(puts[0].length, 2, `${SUBSCRIBE_REL} declares no period yet writes options — that is not the dormant state.`);
-      assert.equal(mod.signupPutOptions(), undefined);
-    } else {
-      assert.equal(puts[0].length, 3, `${SUBSCRIBE_REL} declares ${declared} day(s) and the put carried no options.`);
-      assert.deepEqual(puts[0][2], { expirationTtl: Math.round(declared * SECONDS_PER_DAY) });
-    }
+describe('🔴 no binding, no signup — and never a KV fallback', () => {
+  test('PLATFORM_DB unbound is a 503 and nothing is written anywhere', async () => {
+    const { onRequestPost } = await load();
+    const K = kv();
+    const res = await onRequestPost({
+      request: req('someone@example.test', '203.0.113.9'),
+      env: { SIGNUPS: K.binding, SUBSCRIBE_RATE_LIMIT_SALT: 'test-salt-not-a-secret' },
+    });
+    assert.equal(res.status, 503);
+    assert.deepEqual(K.puts, [], 'with the list store missing, a KV write of any kind is a fallback');
   });
 
-  test('the register row and the code agree on whether a period exists', async () => {
-    // The coupling that stops the two halves drifting: if the owner declares a
-    // period in the code, the register row must stop calling it undeclared (and
-    // assert-retention-coverage.mjs then verifies the TTL by reading the file).
-    const row = signupRow();
-    const declared = declaredPeriod();
-    if (declared === null) {
-      assert.equal(row.rule, 'period-undeclared', 'the code declares no period; the register must still say so.');
-    } else {
-      assert.notEqual(
-        row.rule,
-        'period-undeclared',
-        `${SUBSCRIBE_REL} declares ${declared} day(s) but the register still calls the period undeclared. ` +
-          'Move the row to `rule: "ttl"` so the guard verifies it against the code.',
-      );
-    }
+  test('SIGNUPS unbound is the same 503, with the same message', async () => {
+    const { onRequestPost } = await load();
+    const D = d1();
+    const noKv = await onRequestPost({ request: req('someone@example.test'), env: { PLATFORM_DB: D.binding } });
+    const noD1 = await onRequestPost({ request: req('someone@example.test'), env: { SIGNUPS: kv().binding } });
+    assert.equal(noKv.status, 503);
+    assert.deepEqual(await noKv.json(), await noD1.json());
+    assert.deepEqual(D.rows(), []);
   });
 
-  test('the register row and the code agree on WHAT THE PERIOD IS, not merely that there is one', async () => {
-    // 🔴 THE STRONGER HALF, AND IT IS NOT REDUNDANT. The case above passes for
-    // ANY non-undeclared rule; a register claiming 30 days while this file
-    // writes 365 would satisfy it completely. What closes that is
-    // `mechanism.ttlSource` — the register naming the exact source line — which
-    // assert-retention-coverage.mjs requires to appear VERBATIM in the anchor.
-    // That guard limb had to be built with this activation: subscribe.js writes
-    // TWO KV values, so the rate-limit put's own `expirationTtl` already
-    // satisfied the older "the anchor mentions expirationTtl" check on the
-    // signup row's behalf — an assertion that could not fail.
-    const row = signupRow();
-    const declared = declaredPeriod();
-    const ttlSource = row?.mechanism?.ttlSource;
+  test('a D1 failure is a 500, and the address does not go to KV instead', async () => {
+    const { onRequestPost } = await load();
+    const D = d1();
+    const K = kv();
+    D.failNext();
+    const res = await onRequestPost({ request: req('someone@example.test'), env: { PLATFORM_DB: D.binding, SIGNUPS: K.binding } });
+    assert.equal(res.status, 500);
+    assert.deepEqual(K.puts, []);
+  });
+});
 
-    if (declared === null) {
-      assert.equal(
-        ttlSource,
-        undefined,
-        'the code declares no period, so the register must not name a line that sets one.',
-      );
-      return;
-    }
+describe('the stored row IS the published promise, and the period is one number in three places', () => {
+  test('the migration creates exactly two columns: email and signed_up_at', () => {
+    const db = new DatabaseSync(':memory:');
+    db.exec(read(MIGRATION_REL));
+    const cols = db.prepare('SELECT name FROM pragma_table_info(?) ORDER BY cid').all('signups').map((r) => r.name);
+    assert.deepEqual(
+      cols,
+      ['email', 'signed_up_at'],
+      'sites/nikatru/privacy.html promises "your email address and the time you signed up, and nothing else"; a third column makes it false',
+    );
+  });
 
-    assert.equal(row.rule, 'ttl', 'a declared period is enforced here as a KV TTL, so the row reads `rule: "ttl"`.');
-    assert.ok(
-      typeof ttlSource === 'string' && ttlSource.trim() !== '',
-      '`rule: ttl` with no `mechanism.ttlSource` — the register would be asserting a period no guard can read off the code.',
-    );
-    assert.ok(
-      SRC.includes(ttlSource),
-      `the register names \`${ttlSource}\` as the line that sets this TTL and ${SUBSCRIBE_REL} does not contain it.`,
-    );
-    const m = ttlSource.match(DECL_RE);
-    assert.ok(m, `\`mechanism.ttlSource\` must BE the \`SIGNUP_RETENTION_DAYS\` declaration, got ${JSON.stringify(ttlSource)}.`);
+  test('the code of subscribe.js writes no `sub:` key — the KV list writer is gone, not commented out', () => {
+    const code = stripSourceComments(read(SUBSCRIBE_REL), '.js');
+    assert.doesNotMatch(code, /["'`]sub:/, 'a `sub:` key literal is back in the code');
+    assert.match(code, /env\.PLATFORM_DB\.prepare\(SIGNUP_INSERT\)/);
+  });
+
+  test('register periodDays, the sweep constant and the ADR agree: 400 days', () => {
+    const m = read(SCHEDULED_REL).match(/^export const SIGNUPS_RETENTION_DAYS = (\d+);$/m);
+    assert.ok(m, `${SCHEDULED_REL} no longer declares SIGNUPS_RETENTION_DAYS`);
+    const reg = JSON.parse(read(REGISTER_REL));
+    const row = reg.rows.find((r) => r.id === 'retention.d1.platform_db.signups');
+    assert.ok(row, 'retention.d1.platform_db.signups is gone from the register');
+    assert.equal(row.rule, 'period');
+    assert.equal(row.periodDays, Number(m[1]));
+    assert.equal(Number(m[1]), 400, '[ADR 087] carries the 400-day period over unchanged; moving it is an owner decision');
     assert.equal(
-      Number(m[1].trim()),
-      declared,
-      `the register claims ${m[1].trim()} day(s) and ${SUBSCRIBE_REL} declares ${declared}. One of them is a promise ` +
-        'about how long a contactable email address is kept, and they cannot both be it.',
+      reg.rows.some((r) => r.id === 'retention.kv.nikatru-signups.signup'),
+      false,
+      'the KV `sub:` retention row must retire with the KV writer — a row describing a writer that no longer exists is a stale claim',
     );
   });
 });

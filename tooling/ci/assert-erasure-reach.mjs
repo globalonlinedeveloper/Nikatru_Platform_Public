@@ -993,6 +993,106 @@ if (declaredEndpoints.size > 0 && retryBindingsChecked === 0 && problems.length 
   coverageLost([`${declaredEndpoints.size} app(s) in APP_ERASURE_ENDPOINTS and ZERO erasure Service Bindings were checked.`]);
 }
 
+// ── LIMB 5 · ⏱ 2026-09-15 · [ADR 087] an address-keyed table, reached through a CONFIRMED email ──
+// A table declared `purge-by-verified-email` (platform_db `signups`) is keyed by an
+// email address, so the account-id sweep cannot see it. Three things make its erasure
+// real, and each is read here from the code, never from the register's prose:
+//   (a) `verifiedBy` holds a top-level function that DELETEs from that table on that
+//       column — a purge that drops the delete is RED;
+//   (b) inside that function `email_confirmed_at` is read BEFORE the delete — deleting
+//       on an unconfirmed address would let anyone remove someone else's row — RED
+//       without it;
+//   (c) every call of `deleteIdentity(` in the entry Worker's src is preceded, IN ITS
+//       OWN ENCLOSING BLOCK, by a call of that purge — after the identity is gone the
+//       address can no longer be read or confirmed, so a purge placed after it (or
+//       dropped from that path) is RED.
+// ⚠️ (c) READS ORDER AS TEXT within a block. It cannot see a purge that runs before
+// the identity delete on only SOME paths through that block (an early `continue` or
+// `return` between them); services/platform/test/signup-erasure.test.ts drives those.
+const verifiedRows = [...rows.values()].filter((r) => r.erasure?.kind === 'purge-by-verified-email');
+let verifiedCallsChecked = 0;
+/** Index of the `{` that opens the innermost block containing `idx`, or -1. */
+const enclosingBlockStart = (text, idx) => {
+  let depth = 0;
+  for (let i = idx - 1; i >= 0; i--) {
+    if (text[i] === '}') depth++;
+    else if (text[i] === '{') {
+      if (depth === 0) return i;
+      depth--;
+    }
+  }
+  return -1;
+};
+const codeFilesUnder = (dir) => {
+  const out = [];
+  if (!existsSync(dir)) return out;
+  for (const d of listDir(dir, { withFileTypes: true })) {
+    const abs = join(dir, d.name);
+    if (d.isDirectory()) out.push(...codeFilesUnder(abs));
+    else if (/\.(ts|js|mjs)$/.test(d.name)) out.push(abs);
+  }
+  return out;
+};
+for (const row of verifiedRows) {
+  const e = row.erasure ?? {};
+  const table = String(row.name ?? '');
+  const column = String(e.column ?? '');
+  const verifiedRel = typeof e.verifiedBy === 'string' ? e.verifiedBy : '';
+  const verifiedAbs = verifiedRel ? join(ROOT, ...verifiedRel.split('/')) : '';
+  if (!verifiedRel || !existsSync(verifiedAbs) || !/^[A-Za-z_]\w*$/.test(table) || !/^[A-Za-z_]\w*$/.test(column)) {
+    problems.push(
+      `${row.id} declares erasure \`purge-by-verified-email\` without a readable \`verifiedBy\` file, table and column ` +
+        '(the three things limb 5 reads), so the erasure it claims cannot be found in any code.',
+    );
+    continue;
+  }
+  const code = readCode(verifiedAbs);
+  const del = new RegExp(`DELETE\\s+FROM\\s+${escapeRe(table)}\\s+WHERE\\s+${escapeRe(column)}\\s*=\\s*\\?`, 'i');
+  const purger = [...declarations(code)].find(([, body]) => del.test(body));
+  if (!purger) {
+    problems.push(
+      `${row.id} declares erasure \`purge-by-verified-email\` and ${verifiedRel} has no top-level function that runs ` +
+        `\`DELETE FROM ${table} WHERE ${column} = ?\`. The route claims to reach this table and nothing deletes from it — ` +
+        'the person is told the list forgot them and it did not. [ADR 087]',
+    );
+    continue;
+  }
+  const [purgeName, purgeBody] = purger;
+  // A PROPERTY READ, not the bare name: the type annotation `email_confirmed_at?: unknown`
+  // spells it too, and a check that a type satisfies is a check that cannot fail.
+  const confirmedAt = purgeBody.search(/\.\s*email_confirmed_at\b|\[\s*['"]email_confirmed_at['"]\s*\]/);
+  if (confirmedAt === -1 || confirmedAt > purgeBody.search(del)) {
+    problems.push(
+      `${verifiedRel} \`${purgeName}\` deletes from ${table} on ${column} without first reading \`email_confirmed_at\`. ` +
+        "An unconfirmed address is one anybody can type: without the check, registering an account in someone else's " +
+        'address and deleting it takes that person off the list. [ADR 087]',
+    );
+  }
+  const callRe = new RegExp(`\\b${escapeRe(purgeName)}\\s*\\(`);
+  for (const f of codeFilesUnder(join(entry.dir, 'src'))) {
+    if (f === verifiedAbs) continue;
+    const text = stripStringLiterals(readCode(f));
+    for (const m of text.matchAll(/\bdeleteIdentity\s*\(/g)) {
+      verifiedCallsChecked++;
+      const start = enclosingBlockStart(text, m.index);
+      if (!callRe.test(text.slice(Math.max(0, start), m.index))) {
+        const line = text.slice(0, m.index).split('\n').length;
+        problems.push(
+          `${toPosix(f.slice(ROOT.length + 1))}:${line} deletes the identity and its block does not call \`${purgeName}\` before it. ` +
+            `After the identity is deleted the account's address can no longer be read or confirmed, so ${table} is never ` +
+            'reached for this person again. Call the purge first, in the same block. [ADR 087]',
+        );
+      }
+    }
+  }
+}
+if (verifiedRows.length > 0 && verifiedCallsChecked === 0 && problems.length === 0) {
+  coverageLost([
+    `${verifiedRows.length} table(s) declare \`purge-by-verified-email\` and not one \`deleteIdentity(\` call was found in services/${entry.id}/src.`,
+    'Limb 5 (c) orders the purge before each identity delete; with no call to order, it ranged over nothing.',
+  ]);
+}
+
 if (appsWithRoutes.length === 0 && problems.length === 0) {
   coverageLost([
     'no service OTHER than the entry point serves an erasure route.',
@@ -1282,6 +1382,10 @@ console.log(
 console.log(
   `    the entry point (services/${entry.id}) declares an erasure endpoint for every one of the ${appsWithRoutes.length} ` +
     `app Worker(s) that own a database, and names no app that is not there`,
+);
+console.log(
+  `    ${verifiedRows.length} address-keyed table(s) reached by CONFIRMED email ([ADR 087]): each delete reads \`email_confirmed_at\` first, ` +
+    `and all ${verifiedCallsChecked} identity delete(s) in services/${entry.id}/src call the purge before them in their own block`,
 );
 // 🔴 THE TEMPLATE ROOT IS REPORTED SEPARATELY AND ITS BRANCH IS PRINTED. A
 // second root folded into the counts above would be a union, and the reader

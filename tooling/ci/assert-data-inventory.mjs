@@ -555,6 +555,44 @@ for (const s of stores) {
               'A ledger nothing deletes from is a permanent record of who asked to be forgotten.',
           );
         }
+      } else if (e.kind === 'purge-by-verified-email') {
+        // ⏱ 2026-09-15 · [ADR 087]. An address-keyed table the route reaches through
+        // the account's CONFIRMED email. What is checkable from the schema and the
+        // tree is checked here; the delete, its confirmation check and its order
+        // before the identity delete are read by assert-erasure-reach.mjs.
+        if (typeof e.column !== 'string' || !e.column) {
+          problems.push(`${where} declares erasure \`purge-by-verified-email\` and names no address \`column\`.`);
+        } else if (e.column === 'user_id' || /_user_id$/.test(e.column)) {
+          problems.push(
+            `${where} declares erasure \`purge-by-verified-email\` on ${JSON.stringify(e.column)}, which IS user-shaped. ` +
+              'A table keyed by an account id is `purge`; this kind is for a table the account-id sweep cannot address.',
+          );
+        } else if (cols && !cols.has(e.column.toLowerCase())) {
+          problems.push(
+            `${where} declares erasure \`purge-by-verified-email\` on ${JSON.stringify(e.column)} and no migration gives ` +
+              `${JSON.stringify(s.name)} that column.`,
+          );
+        }
+        if (userOwned === true || refs.length > 0) {
+          problems.push(
+            `${where} declares erasure \`purge-by-verified-email\` and the schema gives it ` +
+              `${[userOwned ? 'user_id' : null, ...refs].filter(Boolean).join(', ')} — the account-id sweep reaches it, so it is \`purge\` or \`unlink\`.`,
+          );
+        }
+        for (const field of ['route', 'verifiedBy']) {
+          if (typeof e[field] !== 'string' || !existsSync(join(repoRoot, ...e[field].split('/')))) {
+            problems.push(
+              `${where} declares erasure \`purge-by-verified-email\` and its \`${field}\` (${JSON.stringify(e[field])}) is not a file. ` +
+                'An erasure claimed through code that is not there is the claim this register exists to refuse.',
+            );
+          }
+        }
+        if (typeof e.blockedBy !== 'string' || e.blockedBy.trim() === '') {
+          problems.push(
+            `${where} declares erasure \`purge-by-verified-email\` and no \`blockedBy\`. The route reaches only people with a ` +
+              'confirmed account address; how everyone else on the list is served has to be written down.',
+          );
+        }
       } else if (e.kind === 'no-route') {
         if (typeof e.blockedBy !== 'string' || e.blockedBy.trim() === '') {
           problems.push(

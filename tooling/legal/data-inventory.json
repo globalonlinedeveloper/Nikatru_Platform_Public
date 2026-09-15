@@ -106,6 +106,7 @@
     "pseudonymous": "nothing in the table resolves to an account, so an erasure request cannot address it and 'zero rows for this user' is vacuously true. Requires a written reason. Checked: the table must carry NO user-shaped column — the day one is added this declaration is false and the guard says so.",
     "completion-ledger": "⏱ 2026-09-15 · [ADR 081]. The table records an erasure IN PROGRESS — it names a person under a deliberately NEUTRAL column (`column`, e.g. `subject_ref`) that the schema-derived sweep cannot see, BECAUSE a `user_id`-named ledger would be deleted by the very erasure it records. Its rows are deleted by the named `deletedBy` code when that erasure completes. Checked: the column exists and is NOT user-shaped (neither `user_id` nor `*_user_id`), and `deletedBy` is a file.",
     "no-personal-data": "the table holds nothing about a person, so there is nothing to erase. Requires personalData:false. Checked the same way as `pseudonymous`.",
+    "purge-by-verified-email": "⏱ 2026-09-15 · [ADR 087]. The table is keyed by an EMAIL ADDRESS, not by an account, so the schema-derived sweep cannot address it — but the erasure route reaches it for a person who HAS an account: before the identity is deleted it reads the account from the identity provider and deletes the rows whose `column` equals that account's address, ONLY when the provider says the address is CONFIRMED (an unconfirmed address would let anyone remove someone else's row). Requires `column`, `route` and `verifiedBy` (the file that holds the confirmed-address delete). Checked here: the column exists and is NOT user-shaped, both files exist. Checked by tooling/ci/assert-erasure-reach.mjs: `verifiedBy` deletes from this table on this column only after reading `email_confirmed_at`, and every caller of the identity delete calls that purge first. A person with no account (or no confirmed address) is not reached by the route; `blockedBy` says how they are served.",
     "no-route": "🔴 A STORE HOLDING PERSONAL DATA THAT NO DEPLOYED ERASURE ROUTE REACHES. Requires `blockedBy` naming what stops it. PRINTS on every run rather than failing the build — the fix is an architecture or owner decision, and a guard that reddens main on work nobody can do today is a guard somebody switches off."
   },
   "stores": [
@@ -307,6 +308,35 @@
       "disclosure": {
         "page": "privacy.html",
         "quote": "You can ask us to delete information associated with you"
+      }
+    },
+    {
+      "id": "table:platform_db.signups",
+      "kind": "d1-table",
+      "name": "signups",
+      "personalData": true,
+      "holds": "⏱ 2026-09-15 · [ADR 087]. The nikatru.com launch-notification list: one row per address, `email` (as submitted, the PRIMARY KEY, COLLATE NOCASE) and `signed_up_at` (the ORIGINAL signup time), and nothing else. The email address is stored in plain text and is the only directly-identifying value in platform_db. Moved here from the KV namespace `nikatru-signups` because Workers KV has no location control; platform_db is served from SIN (APAC). The KV namespace keeps only the `rl:` rate-limit counter (rows `kv:nikatru-signups` and `kv:d73cf5ffd0fd4d8396012fccd15906ad`).",
+      "retention": {
+        "kind": "swept",
+        "periodDays": 400,
+        "sweptBy": "services/platform/src/scheduled.ts",
+        "reason": "400 days from the ORIGINAL signup time — the period this list carried in KV since 2026-08-13, carried over unchanged by [ADR 087]: the owner declared 365 on 2026-08-09 and an agent raised it to 400 on 2026-08-13 to clear the DPDP Rules 2025 Rule 8(3) one-year floor, which 365 misses by one day across a 29 February ([ADR 045] §9). `swept`, not `ttl`: a D1 table has no expiry, so the platform Worker's nightly `retentionSweep` deletes rows whose `signed_up_at` is older than `SIGNUPS_RETENTION_DAYS`. A repeat signup never moves the time (INSERT … ON CONFLICT DO NOTHING), and rows migrated from KV carry their original time — so the two KV keys that never had an expiry are bounded here for the first time."
+      },
+      "erasure": {
+        "kind": "purge-by-verified-email",
+        "column": "email",
+        "route": "services/platform/src/routes/account.ts",
+        "verifiedBy": "services/platform/src/lib/platform-erasure.ts",
+        "reason": "[ADR 087] §3: \"a signup is personal data and must be reachable by erasure\". DELETE /v1/account reads the account from Supabase (`GET /auth/v1/admin/users/<id>`, service role) BEFORE deleting the identity and, when `email_confirmed_at` is set, runs `DELETE FROM signups WHERE email = ?` (NOCASE, the column's collation). No address or an unconfirmed one: skipped, reported in the response as `signups: skipped_*`, never a failure. A transient read failure queues the step in `pending_erasures` (app id `platform:signups`), keeps the identity and answers 202 erasure_pending; the nightly `erasureRetry` runs the purge, and runs it again before it deletes the identity.",
+        "blockedBy": "For a person with NO account (or no confirmed address on one) nothing in this repository can prove they own an address, so no route deletes their row: the list is written by a public form and read by nothing, and there is no authenticated surface on this site that could own a delete. An erasure request for that person is served by the OPERATOR deleting the row, which is a real answer and not an automated one, and sites/nikatru/delete-account.html says so in those words rather than implying the website erases it. Building a public delete endpoint here would need an ownership proof (a confirmation link to the address) that nothing on this site can send today — no transactional mail path exists."
+      },
+      "writtenBy": [
+        "services/platform/migrations/0011_signups.sql",
+        "sites/nikatru/functions/api/subscribe.js"
+      ],
+      "disclosure": {
+        "page": "privacy.html",
+        "quote": "email address and the time you signed up"
       }
     },
     {
@@ -649,21 +679,21 @@
       "kind": "kv-namespace",
       "name": "SIGNUPS",
       "personalData": true,
-      "holds": "🔴 THE SAME PHYSICAL NAMESPACE AS `kv:nikatru-signups` BELOW — the launch-notification signup list, `sub:<email>` → { email, ts }, plus the `rl:` rate-limit prefix. It holds the only plain-text email address anywhere in this repository. This row exists because services/platform bound it on 2026-09-05 so the nightly export could back it up, and the two walks that find it derive DIFFERENT ids for one store: the Pages walk uses the id the register supplies (`kv:nikatru-signups`, chosen before the namespace id was to hand), and the wrangler walk uses the real namespace id. Merging them onto one row would mean changing the Pages row's id, and apps/subscriptiontracker/store/android-play/data-safety.json cites that id verbatim in `inventory.notFromThisApp` — so the id stays and the duplication is written down instead. Everything substantive lives on the row below; this one must not drift from it.",
+      "holds": "🔴 THE SAME PHYSICAL NAMESPACE AS `kv:nikatru-signups` BELOW, seen from the platform Worker's read-only binding. ⏱ 2026-09-15 · [ADR 087] §4: it holds ONLY the `rl:` rate-limit counter — `rl:<HMAC-128(salt, cf-connecting-ip)>:<uuid>`, value `1`, one-hour expiry, no email. The signup list moved to `table:platform_db.signups`. (Until the ADR 087 operator migration empties them, the namespace also still holds the `sub:` keys written before that change — 3, measured 2026-09-15, counts only.) This row exists because services/platform bound the namespace on 2026-09-05 so the nightly export could back it up, and the two walks that find it derive DIFFERENT ids for one store: the Pages walk uses the id the register supplies (`kv:nikatru-signups`), and the wrangler walk uses the real namespace id. apps/subscriptiontracker/store/android-play/data-safety.json cites the Pages id verbatim in `inventory.notFromThisApp`, so the id stays and the duplication is written down instead. Everything substantive lives on the row below; this one must not drift from it.",
       "retention": {
         "kind": "ttl",
-        "reason": "Identical to `kv:nikatru-signups` below, because it is the same namespace: 400 days, fixed at WRITE time by `const SIGNUP_RETENTION_DAYS = 400;` in sites/nikatru/functions/api/subscribe.js, with three cohorts already written (no TTL before 2026-08-09, 365 until 2026-08-13, 400 since). ⚠️ THE PLATFORM WORKER CANNOT AFFECT ANY OF THAT. It holds this binding to LIST and GET, once a night, into the R2 backup bucket; it never writes a key, so it can neither set nor extend an expiry. If that ever stops being true, this row and the one below are both false and must move together."
+        "reason": "Identical to `kv:nikatru-signups` below, because it is the same namespace: every key the Pages Function writes here is the `rl:` counter, put with `expirationTtl: RATE_WINDOW_SECONDS` (3600 s) in sites/nikatru/functions/api/subscribe.js. ⚠️ THE PLATFORM WORKER CANNOT AFFECT THAT. It holds this binding to LIST and GET, once a night, into the R2 backup bucket; it never writes a key, so it can neither set nor extend an expiry."
       },
       "erasure": {
         "kind": "no-route",
-        "blockedBy": "The same absence recorded on `kv:nikatru-signups` below: no code in this repository deletes a signup key, and an erasure request is served by the operator deleting it. This binding adds nothing to that and takes nothing away — it is read-only. ⚠️ IT DOES ADD ONE THING TO DISCLOSE, and it is on the R2 row above, not here: from 2026-09-05 a copy of this namespace lands in `r2:nikatru-backups` every night and lives there up to 30 days, so an operator deletion is now complete only after that window."
+        "blockedBy": "The same as `kv:nikatru-signups` below: an `rl:` key is a salted one-way fingerprint of a network address that nothing can resolve to a person, and it is gone within the hour, so there is no request it could answer. The residual pre-[ADR 087] `sub:` keys are moved and deleted by the ADR 087 operator migration; until then an erasure request for one is served by the operator deleting the key. This binding is read-only and adds nothing to either. ⚠️ A copy of this namespace lands in `r2:nikatru-backups` every night and lives there up to 30 days."
       },
       "writtenBy": [
         "sites/nikatru/functions/api/subscribe.js"
       ],
       "disclosure": {
         "page": "privacy.html",
-        "quote": "email address and the time you signed up"
+        "quote": "salted, one-way fingerprint"
       },
       "note": "🔴 THE BINDING IS SPELLED `SIGNUPS` IN services/platform/wrangler.jsonc AND THAT SPELLING IS LOAD-BEARING. A first pass called it `SIGNUPS_KV`, and this file could then satisfy neither of two limbs at once: `rule: ttl` requires a `writtenBy` file that sets `expirationTtl`, and every `writtenBy` file must mention the store's name — and no single file could do both, because the only writer is a Pages Function that spells the binding `SIGNUPS`. Matching the Pages name makes one store read as one store from both walks, which is what it is. Bound in services/platform/wrangler.jsonc for the nightly export ONLY (services/platform/src/backup/index.ts). Before 2026-09-05 this namespace was bound to no Worker at all — `research/revamp-2026-09-05/06 §3.4` measured 2 list operations and zero reads or writes in seven days — which is the shape of a store that disappears without anyone noticing, and it is the one holding contactable addresses."
     },
@@ -697,21 +727,21 @@
       "kind": "kv-namespace-pages",
       "name": "SIGNUPS",
       "personalData": true,
-      "holds": "Launch-notification signups: `sub:<email>` → { email, ts }. AND, under a separate `rl:` prefix, a short-lived per-fingerprint rate-limit counter. The email address is stored in plain text and is the only directly-identifying value anywhere in this repository.",
+      "holds": "⏱ 2026-09-15 · [ADR 087] §4 (\"List to D1, counter stays (Recommended)\"): ONLY the short-lived per-fingerprint rate-limit counter — `rl:<HMAC-128(salt, cf-connecting-ip)>:<uuid>` → `1`, one key per attempt, one-hour expiry, never stored with an email. The launch-notification list that used to live here under `sub:<email>` moved to `table:platform_db.signups`, and sites/nikatru/functions/api/subscribe.js stopped writing `sub:` keys in the same release. Until the ADR 087 operator migration (read, insert with the original time, read back, delete the key) runs after that release, the namespace still holds the `sub:` keys written before it — 3, measured 2026-09-15, counts only.",
       "retention": {
         "kind": "ttl",
-        "reason": "DECIDED BY THE OWNER 2026-08-09: ~~365 days~~. 🔴 RAISED TO 400 DAYS 2026-08-13 — by an agent, against a legal FLOOR rather than a preference, and flagged as owner-reviewable in tooling/ops/register.json → retention.kv.nikatru-signups.signup and in Private/decisions/045-retention-periods-locked.md §9 (cited under the old `knowledge/decisions/` prefix until the 2026-08-15 flatten merged `knowledge/` into `Private/`; §9 is unmoved). DPDP Rules 2025 Rule 8(3) requires 'a minimum period of one year from the date of such processing' and carries no class qualifier (unlike Rule 8(1), limited to Third-Schedule fiduciaries), so it reaches this store; Rule 6(1)(e) adds a second one-year floor for security logs. 'One year' is an ANNIVERSARY: a key written on D expires at D+365 days while its anniversary is D+366 whenever the interval [D, D+1yr) contains a 29 February, so every signup written between 1 Mar 2027 and 29 Feb 2028 would have been deleted ONE DAY SHORT of the floor — all of them after the 13 May 2027 phase-in, and unrecoverable by the time anyone noticed, because a KV TTL is fixed at write time. 400 = 365 + 35, deliberately the same shape as `events` in [ADR 045] §2. ⚠️ Any value >= 366 clears the floor; the direction of the change costs privacy on the only store here holding a plain email address, whose erasure route is `no-route`. sites/nikatru/functions/api/subscribe.js sets it in one place — `const SIGNUP_RETENTION_DAYS = 400;` — and the signup put carries `expirationTtl` exactly as the rate-limit key beside it always did. This was THE SHARPEST GAP IN THIS FILE and it was deliberately left open until then: setting a TTL on this namespace silently deletes the owner's real launch list after whatever number an agent picks, and no number was derivable from anything in this tree, so what was needed was a decision and not a guess. tooling/ops/register.json → retention.kv.nikatru-signups.signup carries the machine-checked half (`rule: ttl` + a `ttlSource` that assert-retention-coverage.mjs must find verbatim in the code), and tooling/ci/test/signup-retention.test.mjs asserts the put really carries the TTL. ⚠️ KEYS WRITTEN BEFORE 2026-08-09 KEEP NO EXPIRY, AND KEYS WRITTEN 2026-08-09 → 2026-08-13 KEEP THE OLD 365 — three cohorts, one row. The 365-day cohort is NOT short of the floor: it expires between ~2027-08-09 and ~2027-08-13, and Feb 2027 has 28 days, so 365 days is exactly one year for those keys. No re-put repairs anything; a re-put would be a uniformity choice. Workers KV fixes expiry at write time, so ageing the un-expiring keys out is an operator action against the namespace, not something this code does."
+        "reason": "Every key the Function writes here expires by itself: the `rl:` put carries `expirationTtl: RATE_WINDOW_SECONDS` (3600 s) in sites/nikatru/functions/api/subscribe.js, which is what privacy.html means by \"discarded automatically within an hour\". The signup list's 400-day period moved with the list to `table:platform_db.signups`; its history (the owner's 365 of 2026-08-09, raised to 400 on 2026-08-13 against the DPDP Rule 8(3) floor) is recorded there and in this row's git history."
       },
       "erasure": {
         "kind": "no-route",
-        "blockedBy": "No code in this repository deletes a signup key. The store is a Cloudflare Pages KV namespace bound in the dashboard, keyed `sub:<email>`, and the only writer (sites/nikatru/functions/api/subscribe.js) is a PUT — there is no DELETE handler and no authenticated surface on this site that could own one. An erasure request for this store is served by the OPERATOR deleting the key, which is a real answer and not an automated one, and sites/nikatru/delete-account.html says so in those words rather than implying the website erases it. Building a public delete endpoint here would need an ownership proof (a confirmation link to the address) that nothing on this site can send today — no transactional mail path exists."
+        "blockedBy": "An `rl:` key is a salted one-way fingerprint of a network address: nothing in this repository or held by the operator can resolve it to a person, so no erasure request can address one, and each is gone within the hour. The residual pre-[ADR 087] `sub:` keys are moved and deleted by the ADR 087 operator migration; until then an erasure request for one is served by the operator deleting the key."
       },
       "writtenBy": [
         "sites/nikatru/functions/api/subscribe.js"
       ],
       "disclosure": {
         "page": "privacy.html",
-        "quote": "email address and the time you signed up"
+        "quote": "salted, one-way fingerprint"
       },
       "note": "Bound in the Cloudflare Pages dashboard and declared in NO wrangler config, which is exactly why the Pages-Function walk exists: a wrangler-only inventory would report full coverage while missing the one store holding a plain email address."
     }
