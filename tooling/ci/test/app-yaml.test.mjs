@@ -1027,3 +1027,74 @@ describe('every live vendor that receives personal data is named in each app not
     }
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-15 · [ADR 085] A — the RevenueCat app-id routing map is RENDERED.
+// The platform verifier routes an event to the app that declares its RevenueCat
+// app id; the Worker cannot read YAML, so render.mjs writes the table into
+// services/platform/src/lib/mor/revenuecat-app-ids.ts. Each case is declared on
+// its own (assert-no-loop-cases).
+describe('ADR 085 A — the RevenueCat app-id map is rendered from the declarations', () => {
+  const MODULE = 'services/platform/src/lib/mor/revenuecat-app-ids.ts';
+  const IAP =
+    '\nbilling:\n  mobileIap:\n    provider: revenuecat\n    entitlementId: pro\n' +
+    '    revenuecatAppIds:\n      android: rc_fixture_android\n      ios: rc_fixture_ios\n';
+  const withModule = () => {
+    const root = tree();
+    mkdirSync(join(root, dirname(MODULE)), { recursive: true });
+    cpSync(join(REPO, MODULE), join(root, MODULE));
+    return root;
+  };
+
+  test('the committed module matches the declarations (no app declares mobile IAP today)', () => {
+    const root = withModule();
+    try {
+      const { code, out } = spawn(RENDER, [root, '--check']);
+      assert.equal(code, 0, out);
+      assert.match(get(root, MODULE), /export const REVENUECAT_APP_IDS: Readonly<Record<string, string>> = \{\n\};/);
+    } finally { kill(root); }
+  });
+
+  test('a declaration renders its ids into the module, and --check names the stale file first', () => {
+    const root = withModule();
+    try {
+      put(root, APP_YAML, get(root, APP_YAML) + IAP);
+      const stale = spawn(RENDER, [root, '--check']);
+      assert.equal(stale.code, 1, stale.out);
+      assert.match(stale.out, /revenuecat-app-ids\.ts/);
+      const wrote = spawn(RENDER, [root]);
+      assert.equal(wrote.code, 0, wrote.out);
+      const text = get(root, MODULE);
+      assert.match(text, /"rc_fixture_android": "subscriptiontracker",/);
+      assert.match(text, /"rc_fixture_ios": "subscriptiontracker",/);
+    } finally { kill(root); }
+  });
+
+  test('a HAND EDIT to the module is refused by --check', () => {
+    const root = withModule();
+    try {
+      put(root, MODULE, get(root, MODULE).replace('= {\n', '= {\n  "rc_hand": "subscriptiontracker",\n'));
+      const { code, out } = spawn(RENDER, [root, '--check']);
+      assert.equal(code, 1, out);
+      assert.match(out, /revenuecat-app-ids\.ts/);
+    } finally { kill(root); }
+  });
+
+  test('one RevenueCat id declared by TWO apps is a problem, never last-writer-wins', () => {
+    const root = withModule();
+    try {
+      put(root, APP_YAML, get(root, APP_YAML) + IAP);
+      mkdirSync(join(root, 'apps/twin'), { recursive: true });
+      // The twin carries no `shortName`, so it is not asked for icon-label files
+      // this fixture has no reason to copy.
+      put(
+        root,
+        'apps/twin/app.yaml',
+        get(root, APP_YAML).replace(/^id: subscriptiontracker$/m, 'id: twin').replace(/^shortName:.*\n/m, ''),
+      );
+      const { code, out } = spawn(RENDER, [root, '--check']);
+      assert.notEqual(code, 0, out);
+      assert.match(out, /revenuecatAppIds\.android is "rc_fixture_android", which apps\/subscriptiontracker\/app\.yaml\s+also declares/);
+    } finally { kill(root); }
+  });
+});

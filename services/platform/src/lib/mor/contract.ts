@@ -138,6 +138,15 @@ export interface SubjectSubscription {
   accountAppId: string | null;
   customerId: string | null;
   customerEmail: string | null;
+  /**
+   * ⏱ 2026-09-15 · The money world the BODY says it belongs to, when the rail
+   * documents such a field (RevenueCat: `environment`, "Store environment:
+   * `SANDBOX` or `PRODUCTION`"). Absent or null for a rail that documents none
+   * (Paddle — see `MoneyEnvironment` above). When present and it differs from the
+   * CONFIGURED world, the store REFUSES: configuration stays the authority, and a
+   * sandbox purchase can never grant a live unlock ([5]M-12).
+   */
+  railEnvironment?: MoneyEnvironment | null;
 }
 
 /** A refund / chargeback / reversal against a transaction. */
@@ -163,7 +172,24 @@ export interface SubjectUnknown {
   detail: string;
 }
 
-export type MoneySubject = SubjectSubscription | SubjectAdjustment | SubjectUnknown;
+/**
+ * ⏱ 2026-09-15 · [ADR 085] — a body the adapter READ, whose attribution it must
+ * REFUSE: a RevenueCat event from an app id no NIKATRU app declares, or for an
+ * anonymous app user id, or of a type the vocabulary does not decide.
+ *
+ * Not a parse failure (the body is well-formed and is stored verbatim, so the
+ * refusal is auditable and the nightly re-derivation counts it), and not
+ * `unknown` (which the store answers 200 as "ignored"). The store derives it as
+ * `refused`: nothing is written to `entitlements`, the route answers 503, and the
+ * `money_rederive` heartbeat prints the refused count every night.
+ */
+export interface SubjectRefused {
+  kind: 'refused';
+  /** Why the attribution was refused. Recorded as `refused: <detail>`. */
+  detail: string;
+}
+
+export type MoneySubject = SubjectSubscription | SubjectAdjustment | SubjectUnknown | SubjectRefused;
 
 /**
  * One notification, normalised. Every field here is REQUIRED to have been read

@@ -4,7 +4,9 @@ import {
   revenueCatSignature,
   parseRevenueCatSignatureHeader,
   REVENUECAT_REPLAY_TOLERANCE_SECONDS,
+  makeRevenuecatVerifier,
 } from '../src/lib/mor/revenuecat';
+import { decideSubscription } from '../src/lib/mor/contract';
 import { verifierFor, MOR_VERIFIERS } from '../src/lib/mor/registry';
 // Side-effect import: the harness installs `crypto.subtle.timingSafeEqual`, the
 // Workers extension Node's WebCrypto lacks — without it a refusal and a crash
@@ -162,22 +164,180 @@ describe('revenuecat verify — the three refusals stay distinct', () => {
   });
 });
 
-describe('revenuecat parse — refuses rather than guesses', () => {
-  it('refuses, and the reason names the four undecided row facts and what is already enforced', () => {
-    const r = revenuecatVerifier.parse(BODY);
-    expect(r.ok).toBe(false);
-    if (r.ok) return;
-    expect(r.reason).toMatch(/signature is verified/);
-    expect(r.reason).toMatch(/contracts\/entitlement\/contract\.js/);
-    expect(r.reason).toMatch(/\(A\) which of OUR app ids/);
-    expect(r.reason).toMatch(/\(B\)/);
-    expect(r.reason).toMatch(/\(C\) the refund reading/);
-    expect(r.reason).toMatch(/\(D\)/);
+// ⏱ 2026-09-15 · [ADR 085]. The block that stood here was 'revenuecat parse —
+// refuses rather than guesses' and pinned the four undecided facts in the refusal
+// text. The owner decided them; the cases below pin each decision instead.
+// Event bodies follow revenuecat.com/docs/integrations/webhooks/event-types-and-fields
+// (read 2026-09-15): `api_version` at the root, every other field under `event`.
+const RC_APP = 'app_rc_test_android';
+const ROUTES = { [RC_APP]: 'subscriptiontracker' } as const;
+const routed = makeRevenuecatVerifier(ROUTES);
+const USER = '6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b';
+
+function rcEvent(over: Record<string, unknown> = {}): string {
+  return JSON.stringify({
+    api_version: '1.0',
+    event: {
+      id: 'evt_rc_1',
+      type: 'INITIAL_PURCHASE',
+      event_timestamp_ms: NOW_MS,
+      app_id: RC_APP,
+      app_user_id: USER,
+      original_app_user_id: '$RCAnonymousID:abc',
+      environment: 'PRODUCTION',
+      original_transaction_id: 'otx_1',
+      transaction_id: 'tx_1',
+      expiration_at_ms: NOW_MS + 30 * 86_400_000,
+      period_type: 'NORMAL',
+      ...over,
+    },
+  });
+}
+
+function subjectOf(raw: string, v = routed) {
+  const r = v.parse(raw);
+  if (!r.ok) throw new Error(`parse failed: ${r.reason}`);
+  return r.notification.subject;
+}
+
+describe('revenuecat parse — a body that is not a RevenueCat event is a 400', () => {
+  it('refuses a non-JSON body', () => {
+    expect(routed.parse('').ok).toBe(false);
   });
 
-  it('refuses an empty body and a well-formed event alike — it is not shape-sensitive yet', () => {
-    expect(revenuecatVerifier.parse('').ok).toBe(false);
-    expect(revenuecatVerifier.parse(BODY).ok).toBe(false);
+  it('refuses a body with no `event` object', () => {
+    expect(routed.parse('{"api_version":"1.0"}').ok).toBe(false);
+  });
+
+  it('refuses an event with no millisecond `event_timestamp_ms`', () => {
+    expect(routed.parse(rcEvent({ event_timestamp_ms: 'yesterday' })).ok).toBe(false);
+  });
+
+  it('reads `id` as the event id and `event_timestamp_ms` as the ordering clock', () => {
+    const r = routed.parse(rcEvent());
+    expect(r.ok && r.notification.eventId).toBe('evt_rc_1');
+    expect(r.ok && r.notification.occurredAt).toBe(new Date(NOW_MS).toISOString());
+  });
+
+  it('a TEST event is acknowledged and attributed to nobody', () => {
+    expect(subjectOf(rcEvent({ type: 'TEST', app_id: 'app_nobody' })).kind).toBe('unknown');
+  });
+});
+
+describe('revenuecat parse — A · an event is routed by the app id an app declares', () => {
+  it('an app id no app declares is REFUSED, not guessed, and says so', () => {
+    const s = subjectOf(rcEvent({ app_id: 'app_undeclared' }));
+    expect(s.kind).toBe('refused');
+    expect(s.kind === 'refused' && s.detail).toMatch(/declared by no NIKATRU app.*ADR 085 A/);
+  });
+
+  it('a declared id routes to that NIKATRU app', () => {
+    const s = subjectOf(rcEvent());
+    expect(s.kind === 'subscription' && s.accountAppId).toBe('subscriptiontracker');
+  });
+
+  it('THE REGISTERED VERIFIER SHIPS REFUSING ON A: no app declares a RevenueCat id yet', () => {
+    // The rendered table is empty (tooling/app-yaml/render.mjs), so a fully valid
+    // event is refused. This case goes red the day an app declares one — which is
+    // the day it should be rewritten, not deleted.
+    expect(subjectOf(rcEvent(), revenuecatVerifier).kind).toBe('refused');
+  });
+});
+
+describe('revenuecat parse — B · the app user id IS the NIKATRU user id', () => {
+  it('a logged-in event names the account by app_user_id and links by original_transaction_id', () => {
+    const s = subjectOf(rcEvent());
+    expect(s.kind).toBe('subscription');
+    if (s.kind !== 'subscription') return;
+    expect(s.accountUserId).toBe(USER);
+    expect(s.subscriptionId).toBe('otx_1');
+    expect(s.access).toBe('granted');
+  });
+
+  it('an anonymous app_user_id is REFUSED until the purchase is attached to a logged-in user', () => {
+    const s = subjectOf(rcEvent({ app_user_id: '$RCAnonymousID:9f8e7d' }));
+    expect(s.kind).toBe('refused');
+    expect(s.kind === 'refused' && s.detail).toMatch(/anonymous.*ADR 085 B/);
+  });
+
+  it('an event with no original_transaction_id is refused — later events could not be linked', () => {
+    expect(subjectOf(rcEvent({ original_transaction_id: undefined })).kind).toBe('refused');
+  });
+});
+
+describe('revenuecat parse — C · a CANCELLATION is read refund-first', () => {
+  it('cancel_reason CUSTOMER_SUPPORT is a refund: revoked NOW as refund_approved', () => {
+    const s = subjectOf(rcEvent({ type: 'CANCELLATION', cancel_reason: 'CUSTOMER_SUPPORT' }));
+    expect(s.kind === 'subscription' && [s.access, s.endsWithReason]).toEqual(['suspended', 'refund_approved']);
+    if (s.kind !== 'subscription') return;
+    const d = decideSubscription(s, NOW_MS);
+    expect(d.ok && [d.decision.isActive, d.decision.revocationReason]).toEqual([0, 'refund_approved']);
+  });
+
+  it('a stated non-refund reason (UNSUBSCRIBE) keeps access to the period end', () => {
+    const s = subjectOf(rcEvent({ type: 'CANCELLATION', cancel_reason: 'UNSUBSCRIBE' }));
+    expect(s.kind === 'subscription' && [s.access, s.endsWithReason]).toEqual(['until_end', 'cancelled_at_period_end']);
+    if (s.kind !== 'subscription') return;
+    const d = decideSubscription(s, NOW_MS);
+    expect(d.ok && d.decision.isActive).toBe(1);
+  });
+
+  it('NO reason and a PAST expiration: the date is the fallback, refund_approved now', () => {
+    const s = subjectOf(rcEvent({ type: 'CANCELLATION', expiration_at_ms: NOW_MS - 86_400_000 }));
+    if (s.kind !== 'subscription') throw new Error(s.kind);
+    const d = decideSubscription(s, NOW_MS);
+    expect(d.ok && [d.decision.isActive, d.decision.revocationReason]).toEqual([0, 'refund_approved']);
+  });
+
+  it('cancel_reason UNKNOWN and a FUTURE expiration: access stands to that date', () => {
+    const s = subjectOf(rcEvent({ type: 'CANCELLATION', cancel_reason: 'UNKNOWN' }));
+    if (s.kind !== 'subscription') throw new Error(s.kind);
+    const d = decideSubscription(s, NOW_MS);
+    expect(d.ok && [d.decision.isActive, d.decision.revocationReason]).toEqual([1, null]);
+  });
+});
+
+describe('revenuecat parse — D · a lapsed BILLING_ISSUE is payment_failed_final', () => {
+  it('while the paid-through date is ahead, access stands', () => {
+    const s = subjectOf(rcEvent({ type: 'BILLING_ISSUE' }));
+    if (s.kind !== 'subscription') throw new Error(s.kind);
+    const d = decideSubscription(s, NOW_MS);
+    expect(d.ok && d.decision.isActive).toBe(1);
+  });
+
+  it('once the paid-through date is past, access ends as payment_failed_final — not a 503 loop', () => {
+    const s = subjectOf(
+      rcEvent({ type: 'BILLING_ISSUE', expiration_at_ms: NOW_MS - 1000, grace_period_expiration_at_ms: NOW_MS + 86_400_000 }),
+    );
+    if (s.kind !== 'subscription') throw new Error(s.kind);
+    const d = decideSubscription(s, NOW_MS);
+    expect(d.ok && [d.decision.isActive, d.decision.revocationReason]).toEqual([0, 'payment_failed_final']);
+  });
+});
+
+describe('revenuecat parse — what else the table decides, and what it does not', () => {
+  it('SUBSCRIPTION_PAUSED changes no access: acknowledged, not attributed', () => {
+    expect(subjectOf(rcEvent({ type: 'SUBSCRIPTION_PAUSED' })).kind).toBe('unknown');
+  });
+
+  it('an event type outside the contract table (TRANSFER) is REFUSED, not ignored', () => {
+    expect(subjectOf(rcEvent({ type: 'TRANSFER' })).kind).toBe('refused');
+  });
+
+  it('EXPIRATION with expiration_reason SUBSCRIPTION_PAUSED revokes as subscription_paused', () => {
+    const s = subjectOf(rcEvent({ type: 'EXPIRATION', expiration_reason: 'SUBSCRIPTION_PAUSED' }));
+    expect(s.kind === 'subscription' && [s.access, s.endsWithReason]).toEqual(['suspended', 'subscription_paused']);
+  });
+
+  it('a TRIAL period is trialing, with the trial end recorded', () => {
+    const s = subjectOf(rcEvent({ period_type: 'TRIAL' }));
+    expect(s.kind === 'subscription' && [s.access, s.trialEnd !== null]).toEqual(['trialing', true]);
+  });
+
+  it('environment SANDBOX is carried as the sandbox world; any other value is refused', () => {
+    const s = subjectOf(rcEvent({ environment: 'SANDBOX' }));
+    expect(s.kind === 'subscription' && s.railEnvironment).toBe('sandbox');
+    expect(subjectOf(rcEvent({ environment: 'STAGING' })).kind).toBe('refused');
   });
 });
 

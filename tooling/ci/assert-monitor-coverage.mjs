@@ -98,7 +98,7 @@
 //   FAIL  · a catalogue `origin` the tree does not corroborate — the STALE case
 //           (limb 5). The corroborating source is the app's OWN declaration,
 //           apps/<slug>/app.yaml `hosts.pagesOrigin` (or `hosts.web` when it is
-//           absent, which is the same fallback tooling/app-yaml/render.mjs:344
+//           absent, which is the same fallback tooling/app-yaml/render.mjs:367
 //           uses to COMPOSE the catalogue field). Rename the Pages project in
 //           one file and not the other and the router fetches a host that is
 //           gone, with every other guard in this repository green.
@@ -144,7 +144,7 @@ const SERVICES = 'services';
 const SITES = 'sites';
 const CATALOGUE = 'catalog/apps.json';
 /** ⏱ 2026-09-09 — where the app's OWN declaration of its Pages alias lives.
- *  `catalog/apps.json` is RENDERED from it (tooling/app-yaml/render.mjs:344),
+ *  `catalog/apps.json` is RENDERED from it (tooling/app-yaml/render.mjs:367),
  *  so the two are one fact with two spellings and limb 5 holds them equal. */
 const APPS_DIR = 'apps';
 
