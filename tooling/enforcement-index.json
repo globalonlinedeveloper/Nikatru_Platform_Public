@@ -1209,6 +1209,16 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guard-meta"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-no-loop-cases.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "ADR 057"
     ],
