@@ -171,6 +171,7 @@
       "answers are still `github`."
     ],
     "cloudflare-cron": "cloudflare",
+    "worker-cron-beat": "cloudflare",
     "github-actions": "github",
     "renovate-app": "github",
     "oci-console": "oci",
@@ -322,7 +323,7 @@
       "only by editing this file on a host that has just read a success, which the guard then demands."
     ],
     "_maxUnreachable": 5,
-    "_maxUnreadable": 13,
+    "_maxUnreadable": 14,
     "_maxUnreadableWhy": [
       "🔴 RATCHETED 7 -> 3 ON 2026-09-02, AND THE RATCHET IS THE POINT — this key exists to fall as credentials",
       "and platforms arrive, never to rise when a row goes dark. What changed is that the last reader needing a",
@@ -422,7 +423,11 @@
       "two above gives: a constant above its derivation FAILS, so it cannot go first. duty.boxb.diun reads GlitchTip",
       "monitor 38, one more row behind the GlitchTip box, so that provider count went 11 -> 12 and",
       "max(rows behind any single NON-GitHub provider) + 1 spare is 13. The guard printed exactly that on the row",
-      "alone: \"`_maxUnreadable` is 12 but the derivation now gives 13\". Kind unchanged; arithmetic only."
+      "alone: \"`_maxUnreadable` is 12 but the derivation now gives 13\". Kind unchanged; arithmetic only.",
+      "",
+      "⏱ 2026-09-15 (later) — 13 -> 14, in the same change as duty.platform-cron-beat, which reads GlitchTip monitor 37:",
+      "one more row behind the GlitchTip box, and the guard printed \"`_maxUnreadable` is 13 but the derivation now gives 14\".",
+      "A row with only a glitchtip-heartbeat reader counts against that provider alone; Cloudflare is its duty host, not its record's."
     ],
     "_windowMultiplier": 1.5,
     "_windowMultiplierWhy": [
@@ -1006,6 +1011,45 @@
         "cloudflare"
       ],
       "source": "verified"
+    },
+    {
+      "id": "duty.platform-cron-beat",
+      "kind": "duty",
+      "what": "The platform Worker's off-Cloudflare heartbeat: every firing of services/platform's crons (00:00, 02:30, 06:00, 12:00 and 18:00 UTC, services/platform/wrangler.jsonc) ends in `platformCronBeat` (services/platform/src/scheduled.ts), which POSTs the GlitchTip Heartbeat URL held in the Worker secret PLATFORM_CRON_HEARTBEAT_URL — AFTER the firing's own limbs have returned, so a beat claims the timer fired and its work ran to the end. It is the half of O-GITHUB-SCHEDULER that does not live on GitHub: duty.platform-cron's only other absence watcher is check-heartbeats.mjs on ops-watch.yml, which runs on GitHub's scheduler (measured 10.1% on time) and is itself dispatched by this same Worker.",
+      "detector": "GlitchTip heartbeat monitor 37 'Platform Worker cron', project `ops` (\"2\"), interval 32400 s, confirmationThreshold 1, created 2026-09-15T00:47:27Z on the owner's word (2026-09-14, \"Yes, create and set both\"). A firing that does not run, a limb that throws past its catch, an unset or wrong secret and a Worker that no longer deploys all read as the same silence.",
+      "response": "Read the platform Worker's logs for the last firing (`[cron]` lines: \"PLATFORM_CRON_HEARTBEAT_URL is not set\" means the secret went missing; a non-2xx or transport failure is logged without the URL), then the `cron_heartbeat` rows duty.platform-cron reads. A silent monitor with fresh cron_heartbeat rows means the BEAT is broken, not the cron.",
+      "cadence": "6h",
+      "mechanism": {
+        "substrate": "worker-cron-beat",
+        "anchor": "services/platform/src/scheduled.ts",
+        "record": "GlitchTip heartbeat monitor 37's check history",
+        "failingValue": "no successful heartbeat inside the window — the longest gap between two triggers is 6 h (06:00→12:00, 12:00→18:00, 18:00→00:00), and 6 h × 1.5 is the monitor's own 32400 s interval",
+        "readBy": "tooling/ci/assert-ops-register.mjs, through this row's `recordQuery`",
+        "recordQuery": {
+          "reader": "glitchtip-heartbeat",
+          "org": "nikatru",
+          "monitor": 37,
+          "monitorName": "Platform Worker cron — carried for a HUMAN READER ONLY; the reader keys by `monitor` and never asserts this string.",
+          "why": "The record is a heartbeat check-history row in GlitchTip, read with GLITCHTIP_TOKEN from a Linux runner exactly as monitors 23 and 24 are. What a fresh beat proves: a platform cron trigger fired inside the last 9 h and every limb of that firing returned. What it does NOT prove: that any limb SUCCEEDED — a limb that records ok = 0 still returns, and duty.platform-cron's cron_heartbeat reader is the one that grades outcomes."
+        }
+      },
+      "absenceWatcher": {
+        "substrate": "glitchtip-heartbeat",
+        "what": "GlitchTip heartbeat monitor 37, project `ops`, on the self-hosted services box — a different provider from the Cloudflare cron it watches, and not GitHub. Created AFTER the code (#739) and the secret, and declared here only after its first real beat was read back (TRAPS ci-27): isUp true, one check at 2026-09-15T02:30:33.153Z, the 02:30 trigger.",
+        "signal": "No heartbeat inside the 32400 s window -> Down transition -> the `ops` uptime alert rule -> email and the ntfy page topic, the chain monitors 23 and 24 use.",
+        "margin": "32400 s against the 6 h worst-case gap between triggers is exactly the 1.5x this register asks for. Measured against the real schedule: missing ONE of the 06:00 / 12:00 / 18:00 / 00:00 triggers opens a 12 h gap and alarms; missing the 02:30 trigger alone leaves 6 h (00:00 to 06:00) and is absorbed.",
+        "ownerGated": true,
+        "gap": "⬜ monitor 37's Down transition has never been forced, so no `downTransitionDrill` is carried. And the watcher's own host is watched BY this Worker (BOXB_REACH_JOB) — the two watch each other, which is the design, but a simultaneous loss of both reads as silence on both sides."
+      },
+      "accessProviders": [
+        "cloudflare",
+        "hostinger"
+      ],
+      "ownerGated": true,
+      "ownerGap": "The monitor and the Worker secret are live configuration only the owner creates or rotates (both were set on his word, 2026-09-14). The code half is this repository's and is covered by services/platform/test/scheduled.test.ts and scheduled-crons.test.ts.",
+      "source": "verified",
+      "verifiedHow": "2026-09-15 — proven by its first record, not by installation (ci-27). Read-only GET organizations/nikatru/monitors/ at 2026-09-15T01:31:11Z: monitor 37 isUp null, 0 checks (before the 02:30 trigger). Read again at 2026-09-15T04:02:47Z: monitor 37 'Platform Worker cron', Heartbeat, interval 32400, project \"2\", isUp true, lastChange 2026-09-15T02:30:33.153Z, one check at 2026-09-15T02:30:33.153Z, up — the beat arrived within a minute of the 02:30 trigger.",
+      "_substrateWhy": "Not `cloudflare-cron`, although that is where it runs: tooling/ops/check-heartbeats.mjs claims every `cloudflare-cron` duty as a set of platform_db.cron_heartbeat jobs (`watchedJobs`), and this duty writes no heartbeat row — its record is GlitchTip. The role is the beat a Worker cron sends at the end of a firing; `_substrateHosts` resolves it to cloudflare, the same host."
     },
     {
       "_whyAnchoredAtTheScript": "🔴 THE ANCHOR IS THE READER, NOT ops-watch.yml, AND THE REASON IS MECHANICAL RATHER THAN STYLISTIC. assert-ops-register.mjs builds its `anchored` map as `anchor -> row`, so a SECOND duty row anchored at .github/workflows/ops-watch.yml would silently overwrite duty.workflow.ops-watch.yml in that map and take its place in the [14]O-10 freshness limb — dropping that row's `freshnessGap` print with nothing said. A guard that quietly stops checking one row is the single defect this repository keeps re-finding, so the anchor names the file this duty actually IS. The coupling is not weakened by it: the [14]O-10 limb takes the anchor's basename and requires the named reader to mention it, so deleting the step from ops-watch.yml reddens assert-ops-register.mjs.",

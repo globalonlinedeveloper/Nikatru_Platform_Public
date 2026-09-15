@@ -263,6 +263,10 @@
     {
       "id": 39,
       "name": "Box B dashboards origin"
+    },
+    {
+      "id": 37,
+      "name": "Platform Worker cron"
     }
   ],
   "chainsObserved": {
