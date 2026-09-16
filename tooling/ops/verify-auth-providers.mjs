@@ -91,7 +91,9 @@ function fromVault(key) {
   return null;
 }
 
-const cred = (key) => process.env[key]?.trim() || fromVault(key);
+/// Exported for tooling/ops/provision-apple.mjs, so the ASC key is read by this one
+/// vault reader (quote-stripping included) rather than by a second copy of it.
+export const cred = (key) => process.env[key]?.trim() || fromVault(key);
 
 /// THE WHOLE JUDGEMENT, as a pure function — declared vs live, in.
 /// Problems out.

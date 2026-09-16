@@ -413,6 +413,11 @@ jobs:
         run: node tooling/ci/assert-launch-smoke.mjs
       - name: One app_id derives every store identity, on every platform
         run: node tooling/ci/assert-store-identity.mjs
+      # why: THE TREE HALF OF O-STAMP-APPLE-PROVISIONING-MANUAL. Runner.entitlements
+      # is derived from tooling/apple-provisioning.json; the live-profile half needs
+      # the ASC key and is `node tooling/ops/provision-apple.mjs --app <slug>`.
+      - name: Every iOS entitlements file is derived from its declared Apple capabilities
+        run: node tooling/ci/assert-apple-entitlements.mjs
       - name: No live resource carries a retired name [ADR 079]
         run: node tooling/ci/assert-retired-names.mjs
       - name: Every NIKATRU hostname is the apex or one label deep [ADR 080]
