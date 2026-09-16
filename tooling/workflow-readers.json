@@ -208,6 +208,10 @@
       "property": "workflow-scan"
     },
     {
+      "path": "tooling/ci/assert-ungraded-baseline-doc.mjs",
+      "property": "workflow-scan"
+    },
+    {
       "path": "tooling/ci/assert-version-consistency.mjs",
       "property": "refuses-blind",
       "evidence": "remaining targets with each other and still prints",
