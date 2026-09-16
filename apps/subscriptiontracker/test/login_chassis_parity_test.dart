@@ -487,23 +487,35 @@ void main() {
       );
     });
 
-    testWidgets('THE SHIPPING DEFAULT hides it — no overrides at all', (
+    testWidgets('THE SHIPPING DEFAULT shows it — no overrides at all', (
       WidgetTester tester,
     ) async {
       // 🔴 THE ONE CASE THAT IS ABOUT REAL USERS. Everything else in this file
       // overrides something; this pumps the screen exactly as a build does, so
-      // it asserts what a person actually sees. It fails the moment
-      // `AuthProviders.configured` claims a provider the server has not been
-      // told about — which is the mistake that would put the 400 back.
+      // it asserts what a person actually sees.
+      //
+      // ⏱ 2026-09-16 — THIS CASE INVERTED, AND THE INVERSION IS THE POINT.
+      // It read `findsNothing` from 2026-08-11 until today, because the live
+      // project honoured no federated provider. Sign in with Apple was
+      // provisioned on 2026-09-16 and `external.apple` is now `true`, so the
+      // shipping default must RENDER the button — a build that still hid it
+      // would be hiding a capability the owner paid to stand up, which
+      // `verify-auth-providers.mjs` grades as a failure in its own right.
+      //
+      // The case this file existed to catch has NOT gone away: declaring a
+      // provider the server does not honour is still a defect, and it is still
+      // covered — by `kNoProviders` in the overridden cases below, and by
+      // `verify-auth-providers.mjs`, which compares the declaration against the
+      // live settings endpoint in BOTH directions on every ops-watch run.
       await pumpLogin(tester, caps: kWithRedirect);
 
       expect(
         find.text(en.continueWithApple),
-        findsNothing,
+        findsOneWidget,
         reason:
-            'measured 2026-08-11: GET /auth/v1/settings returns every external '
-            'provider false. While that is true, no shipping build may render '
-            'this button on any platform',
+            'measured 2026-09-16: GET /auth/v1/settings returns external.apple '
+            'true. While that is true, a shipping build must offer the button '
+            'on every platform that can complete an OAuth redirect',
       );
     });
 
@@ -514,12 +526,23 @@ void main() {
       // shows up in review rather than a quiet edit inside a widget tree.
       // `verify-auth-providers.mjs` is the other half: this asserts what we
       // DECLARED, that asserts the server still AGREES.
-      expect(AuthProviders.configured.apple, isFalse);
-      expect(AuthProviders.configured.google, isFalse);
+      expect(
+        AuthProviders.configured.apple,
+        isTrue,
+        reason:
+            'provisioned 2026-09-16: Services ID com.nikatru.signin against the '
+            'com.nikatru.platform consent group, and external_apple_enabled is '
+            'true on the live project',
+      );
+      expect(
+        AuthProviders.configured.google,
+        isFalse,
+        reason: 'Google is still owner-gated; no credential has been created',
+      );
       expect(
         AuthProviders.configured.any,
-        isFalse,
-        reason: 'no federated provider is enabled, so the whole limb is hidden',
+        isTrue,
+        reason: 'Apple is enabled, so the federated limb and its divider show',
       );
     });
   });
@@ -593,6 +616,15 @@ void main() {
       WidgetTester tester,
     ) async {
       await pumpLogin(tester, auth: _SignInAuth());
+      // ⏱ 2026-09-16 — ensureVisible IS LOAD-BEARING SINCE APPLE WAS ENABLED.
+      // The OAuth limb (divider + "Continue with Apple") now renders by default,
+      // which pushes this toggle below the test viewport; the tap then landed on
+      // nothing, the arm never flipped, and the failure surfaced as the sign-up
+      // SUBTITLE being absent rather than as a missed tap. Scrolling it into view
+      // is the honest fix — the screen is scrollable and a real user reaches the
+      // toggle the same way.
+      await tester.ensureVisible(find.text(en.newHerePrompt));
+      await tester.pumpAndSettle();
       await tester.tap(find.text(en.newHerePrompt));
       await tester.pump();
 

@@ -398,14 +398,18 @@ void main() {
       ) async {
         final AppLocalizations l10n = await _load(code);
         // 🔴 THE OAUTH LIMB IS FORCED ON HERE, AND ONLY HERE.
-        // `AuthProviders.configured` is `apple: false` — measured against the
-        // live project — so a plain pump renders no "Continue with Apple" and
-        // no divider, and the two assertions below would be asserting that a
-        // hidden widget is absent, which says nothing about TRANSLATION. This
-        // file's job is to prove every string a user can meet exists in both
-        // locales; the string is still in both arbs and still ships the day the
-        // provider is enabled, so the honest way to keep covering it is to
-        // pump the state in which it renders.
+        // ⏱ 2026-09-16 — `AuthProviders.configured` is now `apple: true`, so a
+        // plain pump WOULD render the button and this override is no longer
+        // load-bearing for Apple. It is kept deliberately: this file's job is to
+        // prove every string a user can meet exists in both locales, and that
+        // job must not depend on which providers happen to be switched on at the
+        // identity server this week. Forcing the limb keeps the coverage stable
+        // across a provider being enabled or disabled again.
+        // ORIGINAL REASON, left because it is why the override was written:
+        // `configured` was `apple: false`, so a plain pump rendered no
+        // "Continue with Apple" and no divider, and the assertions below would
+        // have been asserting that a hidden widget is absent — which says
+        // nothing about TRANSLATION.
         await _pump(
           tester,
           Locale(code),
