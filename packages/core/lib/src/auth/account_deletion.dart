@@ -130,8 +130,8 @@ enum AccountDeletionOutcome {
   String get plainMessage {
     switch (this) {
       case AccountDeletionOutcome.deleted:
-        return 'Your account has been deleted. Signing in to it again, with a '
-            'password or with Apple, will not work any more.';
+        return 'Your account has been deleted. You can\'t sign in to it '
+            'again, with a password or with Apple.';
       case AccountDeletionOutcome.pending:
         return 'Your deletion request was accepted but isn\'t finished yet. Some of your data couldn\'t be removed right away. We\'ll keep trying automatically, and your sign-in is removed last. You\'ve been signed out of this device.';
       case AccountDeletionOutcome.notConfigured:
@@ -146,10 +146,9 @@ enum AccountDeletionOutcome {
         return 'Your account was not deleted. The server refused the request '
             'and nothing was removed. You have been signed out of this device.';
       case AccountDeletionOutcome.reauthFailed:
-        return 'We could not confirm it was you, so nothing was deleted and '
-            'nothing was sent. You are still signed in. If you use a password, '
-            'check it and try again. If you use Sign in with Apple, finish '
-            'signing in with Apple and try again.';
+        return 'We couldn\'t confirm it was you, so nothing was deleted. '
+            'You\'re still signed in. Check your password, or finish signing '
+            'in with Apple, then try again.';
       case AccountDeletionOutcome.couldNotReach:
         return 'We could not reach the server, so we do not know whether '
             'anything was deleted. Check before assuming your account is gone.';
