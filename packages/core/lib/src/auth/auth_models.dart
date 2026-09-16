@@ -142,10 +142,19 @@ class AuthSession {
     required this.accessToken,
     this.refreshToken,
     this.expiresAt,
+    this.providerRefreshToken,
   });
 
   final String accessToken;
   final String? refreshToken;
+
+  /// ⏱ 2026-09-16 · O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE. The IDENTITY PROVIDER'S own
+  /// refresh token — Apple's, not ours — present only in the session that
+  /// completes an OAuth sign-in and null in every session after it. It is here so
+  /// [keepAppleRefreshToken] can hand it to the server that revokes it when the
+  /// account is deleted; nothing else reads it, and nothing writes it to the
+  /// device.
+  final String? providerRefreshToken;
 
   /// Absolute expiry, UTC. Null when the provider does not report one — treated
   /// as "unknown", never as "never expires".

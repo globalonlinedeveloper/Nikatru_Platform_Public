@@ -254,7 +254,7 @@
       "  providers/auth.dart:122          isBackendLive ? SupabaseAuthRepository : InMemoryAuthRepository",
       "  providers/subscriptions.dart:80  !isApiConfigured -> SeedApiClient (wrapped by PersistedApiClient: device-local storage, never leaves the device)",
       "  analytics_providers.dart:536  !isBackendLive (via analyticsEnabledProvider) -> NoOpAnalytics",
-      "  app.dart:468                  the consent prompt shows only when analyticsEnabledProvider is true",
+      "  app.dart:474                  the consent prompt shows only when analyticsEnabledProvider is true",
       "",
       "⚠️ THOSE FOUR LINE NUMBERS WERE RE-MEASURED 2026-08-10 AND THREE OF THEM WERE WRONG — the two",
       "providers.dart citations were ~500 and ~1300 lines out (they predate the P2.6 re-stamp), the",
@@ -508,9 +508,10 @@
         "table:subscriptiontracker_db.budgets",
         "table:subscriptiontracker_db.budget_categories",
         "table:subscriptiontracker_db.payment_history",
-        "table:platform_db.pending_erasures"
+        "table:platform_db.pending_erasures",
+        "table:platform_db.apple_provider_tokens"
       ],
-      "basis": "The Supabase `sub` (a UUID) keys every row this app writes server-side, and travels on every request inside the bearer JWT. Required — it is the account. Not shared; Cloudflare and Supabase are service providers. Under demo there is no account and SeedApiClient never leaves the device."
+      "basis": "The Supabase `sub` (a UUID) keys every row this app writes server-side, and travels on every request inside the bearer JWT. Required — it is the account. Not shared; Cloudflare and Supabase are service providers. Under demo there is no account and SeedApiClient never leaves the device. ⏱ 2026-09-16 · O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE ADDS ONE MORE VALUE ON THIS SAME RAIL, and it is named here rather than left implied: after a Sign in with Apple the app sends Apple's OWN refresh token for this account to the shared platform Worker (PUT /v1/account/apple-token, packages/core/lib/src/auth/apple_token_keeper.dart), which holds it in platform_db.apple_provider_tokens for ONE purpose — revoking it at Apple when the account is deleted, which Apple requires of an app offering Sign in with Apple. Account management, backend-live only, never shared, never used for advertising or analytics, and never written to device storage. It identifies the same person the Supabase subject id does, and is declared under this type for that reason."
     },
     {
       "category": "Personal info",

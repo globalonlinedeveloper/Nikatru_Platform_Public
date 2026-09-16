@@ -463,6 +463,10 @@ class SupabaseAuthRepository implements core.AuthRepository {
     return core.AuthSession(
       accessToken: s.accessToken,
       refreshToken: s.refreshToken,
+      // ⏱ 2026-09-16 · O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE: Apple's own refresh
+      // token, which gotrue puts on the session that completes the OAuth redirect
+      // and on no session after it.
+      providerRefreshToken: s.providerRefreshToken,
       // GoTrue reports expiry as UNIX seconds; null when it does not know.
       expiresAt: s.expiresAt == null
           ? null

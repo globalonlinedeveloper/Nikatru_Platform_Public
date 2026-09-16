@@ -22,6 +22,7 @@ import { isKnownProduct } from './config';
 import { verifierFor } from './lib/mor/registry';
 import { deriveAndApply, unconcludedNotifications } from './lib/mor/store';
 import {
+  APPLE_REVOKE_STEP,
   SIGNUP_PURGE_STEP,
   closeSubject,
   dueOrders,
@@ -32,6 +33,7 @@ import {
   subjectsReadyForIdentity,
 } from './lib/erasure-ledger';
 import { deleteIdentity, erasePlatformRows, purgeVerifiedSignups } from './lib/platform-erasure';
+import { dropAppleToken, revokeAppleToken } from './lib/apple-revoke';
 
 /** The job name recorded in `cron_heartbeat`. */
 export const KEEPALIVE_JOB = 'supabase_keepalive';
@@ -968,8 +970,17 @@ export async function erasureRetry(env: Env, nowMs: number = Date.now()): Promis
       // ⏱ 2026-09-15 · [ADR 087]: a signup-purge step is not an app. It runs here,
       // in this Worker, while the identity still exists (the identity is only ever
       // deleted after every order for the subject is confirmed, below).
-      const binding = order.app_id === SIGNUP_PURGE_STEP ? null : erasureBindingFor(env, order.app_id);
-      if (order.app_id === SIGNUP_PURGE_STEP) {
+      const isStep = order.app_id === SIGNUP_PURGE_STEP || order.app_id === APPLE_REVOKE_STEP;
+      const binding = isStep ? null : erasureBindingFor(env, order.app_id);
+      if (order.app_id === APPLE_REVOKE_STEP) {
+        // O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE: the revoke runs HERE, in this Worker,
+        // while the identity still exists. `blocked` (credentials absent, or Apple
+        // refused this client) stays an error on purpose: it keeps the order open,
+        // keeps the identity, and turns the heartbeat red once it is stuck, which
+        // is what makes a missing credential impossible to ship past unnoticed.
+        const revoke = await revokeAppleToken(env, order.subject_ref, `cron:${order.order_id}`);
+        if (revoke.kind === 'blocked' || revoke.kind === 'transient') error = `apple revoke: ${revoke.why}`;
+      } else if (order.app_id === SIGNUP_PURGE_STEP) {
         if (!env.SUPABASE_SERVICE_ROLE_KEY) {
           error = 'SUPABASE_SERVICE_ROLE_KEY is not set, so the account address cannot be confirmed';
         } else {
@@ -1026,6 +1037,11 @@ export async function erasureRetry(env: Env, nowMs: number = Date.now()): Promis
         continue;
       }
       await closeSubject(env.PLATFORM_DB, subject);
+      // O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE: the erasure is over, so no Apple token
+      // may survive it. The revoke order above had to confirm before the subject
+      // could reach this loop, so this only ever removes a row a failed delete
+      // left behind.
+      await dropAppleToken(env.PLATFORM_DB, subject);
       completed++;
     }
 

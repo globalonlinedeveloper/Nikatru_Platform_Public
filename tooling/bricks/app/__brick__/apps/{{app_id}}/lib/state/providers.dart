@@ -1257,6 +1257,30 @@ final Provider<Future<String?> Function()> authTokenProvider =
 /// function rather than an inline closure precisely so a test can drive it: the
 /// old closure lived inside `RestClient` where nothing could reach it, which is
 /// why a rule this consequential shipped with no assertion at all.
+/// ⏱ 2026-09-16 · O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE — CAPTURE APPLE'S OWN REFRESH
+/// TOKEN, WHICH IS OFFERED EXACTLY ONCE.
+///
+/// Apple requires an app offering Sign in with Apple to revoke the user's tokens
+/// when their account is deleted, and the revoke call takes a token. The identity
+/// provider puts it on the session that completes the OAuth redirect and on no
+/// session after it, and stores none of it — so if this listener is not running
+/// when the sign-in lands, that account's deletion has nothing to revoke with and
+/// the server refuses to report it as finished.
+///
+/// Held open for the app's whole life by a `ref.watch` in the root widget: a
+/// provider nobody reads is a listener that never subscribes.
+final Provider<void> appleTokenKeeperProvider = Provider<void>((ref) {
+  final StreamSubscription<core.AuthUser?> sub = core.keepAppleRefreshToken(
+    auth: ref.watch(authRepositoryProvider),
+    send: (String token) => storeAppleRefreshToken(
+      ref.read(restClientProvider),
+      token,
+      appId: AppConfig.appId,
+    ),
+  );
+  ref.onDispose(sub.cancel);
+});
+
 final Provider<RestClient> restClientProvider = Provider<RestClient>(
   (ref) => RestClient(
     baseUrl: AppConfig.apiBaseUrl,

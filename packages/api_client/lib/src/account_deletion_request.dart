@@ -66,3 +66,30 @@ Future<void> requestAccountDeletion(
     );
   }
 }
+
+/// ⏱ 2026-09-16 · O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE — `PUT {baseUrl}/account/apple-token`.
+///
+/// Hands the identity provider's own refresh token to the server that will revoke
+/// it when this account is deleted. It lives beside [requestAccountDeletion]
+/// because it is the same erasure: without this call the deletion has nothing to
+/// revoke with, and the server refuses to report such a deletion as finished.
+///
+/// 🔴 THE TOKEN GOES IN THE BODY, NEVER IN A URL, and nothing here logs it. A
+/// query parameter would land in every proxy log between here and the Worker.
+///
+/// Throws [ApiException] on a refusal, which the caller treats as "not captured"
+/// — the next sign-in offers another token.
+Future<void> storeAppleRefreshToken(
+  RestClient client,
+  String refreshToken, {
+  required String appId,
+  String path = '/account/apple-token',
+}) async {
+  await client.put(
+    path,
+    // `appId` is the row's PROVENANCE MARKER, not a permission: the shared
+    // Worker's production monitor attributes each stored token to an app the
+    // factory ships, the way it does for a pending erasure.
+    body: <String, Object?>{'refreshToken': refreshToken, 'appId': appId},
+  );
+}

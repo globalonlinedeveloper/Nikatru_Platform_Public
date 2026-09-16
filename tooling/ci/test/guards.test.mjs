@@ -4022,6 +4022,10 @@ group('property: store-age-gate-refuses', () {
   testWidgets('ag1', (t) async {});
   testWidgets('ag2', (t) async {});
 });
+group('property: apple-token-kept', () {
+  test('ak1', () {});
+  test('ak2', () {});
+});
 group('property: profile-edit-works', () {
   test('ll', () {});
   test('mm', () {});
@@ -4120,6 +4124,10 @@ void initState() {
 // [pipeline 10]D-8 The wall's destination, RESOLVED then wired. The resolution
 // and the button are separate anchors because computing a value the button does
 // not use reads exactly like a working feature.
+// O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE, 2026-09-16: watched for its EFFECT — the
+// keeper subscribes so Apple's refresh token can be captured the once it is offered.
+ref.watch(appleTokenKeeperProvider);
+
 final String updateUrl =
     ref.watch(appConfigProvider).valueOrNull?.updateUrl ??
     AppConfig.updateUrl;
@@ -4268,6 +4276,10 @@ final StateProvider<String?> lastAccountDeletionDetailProvider = X();
 // both-directions classification reason as the deletion pair above, and it is
 // also the PROVIDERS anchor of store-age-gate-refuses.
 final Provider<core.AgeSignalSource> ageSignalSourceProvider = X();
+// O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE, 2026-09-16 — the Apple refresh-token keeper.
+// Here for the same both-directions classification reason as the rows above.
+final Provider<void> appleTokenKeeperProvider = X();
+final Provider<void> _appleKeeper = core.keepAppleRefreshToken(auth: X(), send: X());
 final Provider<core.ConsentStatus> analyticsConsentProvider = X();
 final Provider<bool> consentDecidedProvider = X();
 // The legal gate's anchors, and all three are load-bearing for the
@@ -6811,7 +6823,9 @@ onTap: () => _openUrl(AppConfig.refundUrl),
       // real router), so the domain moves by two and the gap count below does not.
       // 60 since 2026-09-15: [ADR 082] §5 added `ageSignalSourceProvider`,
       // classified under `store-age-gate-refuses`, so the gap count does not move.
-      assert.match(out, /tracked domain: 60 chassis behaviour\(s\)/);
+      // 61 since 2026-09-16: `appleTokenKeeperProvider`, classified under
+      // `apple-token-kept`, so the gap count does not move.
+      assert.match(out, /tracked domain: 61 chassis behaviour\(s\)/);
       // The admitted gaps must PRINT. An inventory nobody sees is a list that
       // quietly grows; this is the same reasoning as the owner-gated residual.
       // 9, not 10: [pipeline C-13] moved notificationServiceProvider out of the
@@ -6897,7 +6911,8 @@ onTap: () => _openUrl(AppConfig.refundUrl),
       // how it was caught this time too.
       // 2026-09-15: 58 → 59, the same three-file act for `ageSignalSourceProvider`
       // ([ADR 082] §5); MIN_DOMAIN went 59 → 60 in the same commit.
-      assert.match(out, /COVERAGE LOST — the domain parse found 59/);
+      // 2026-09-16: 59 → 60 for `appleTokenKeeperProvider`; MIN_DOMAIN went 60 → 61.
+      assert.match(out, /COVERAGE LOST — the domain parse found 60/);
     });
 
     // The scanner-stopped-scanning case, which is how this repo has been bitten

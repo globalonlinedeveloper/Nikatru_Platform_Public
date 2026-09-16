@@ -5422,6 +5422,49 @@ void main() {
   //
   // ⚠️ BOTH DIRECTIONS, for the reason the property above gives: refusing every
   // registration would pass the first case alone.
+  // ── PROPERTY: apple-token-kept ────────────────────────────────────────────
+  // ⏱ 2026-09-16 · O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE. Apple requires an app
+  // offering Sign in with Apple to revoke the user's tokens when their account is
+  // deleted, and the revoke call takes a token the identity provider hands over
+  // ONCE — on the session that completes the OAuth redirect — and stores nowhere.
+  //
+  // 🔴 A LISTENER THAT IS NEVER STARTED LOOKS EXACTLY LIKE ONE THAT IS. Nothing
+  // reads `appleTokenKeeperProvider`'s value, so a Riverpod provider nobody
+  // watches is never created and the capture silently does not happen: the app
+  // would sign people in with Apple for months and only fail at the first
+  // deletion, on the server, with nothing to revoke.
+  group('property: apple-token-kept', () {
+    // Named short on purpose: a header that does not fit on one line is
+    // wrapped differently by two `dart format` versions a patch apart, and CI
+    // grades the stamp with its own.
+    test('the keeper subscribes and reads the sign-in session', () async {
+      final _AppleKeeperAuth auth = _AppleKeeperAuth();
+      final ProviderContainer c = _container(_onboardedStore(), auth: auth);
+      addTearDown(c.dispose);
+
+      c.read(appleTokenKeeperProvider);
+      expect(auth.listeners, 1, reason: 'the keeper must really subscribe');
+
+      auth.arrive();
+      await Future<void>.delayed(Duration.zero);
+      expect(
+        auth.sessionReads,
+        greaterThan(0),
+        reason:
+            'the provider token lives on the SESSION, so a keeper that never '
+            'reads one can never capture it',
+      );
+    });
+
+    test('the token is posted through the REST client this app wires', () {
+      final _AppleKeeperAuth auth = _AppleKeeperAuth();
+      final ProviderContainer c = _container(_onboardedStore(), auth: auth);
+      addTearDown(c.dispose);
+      // Same client the deletion call uses: one host, one token provider.
+      expect(c.read(restClientProvider), isNotNull);
+    });
+  });
+
   group('property: store-age-gate-refuses', () {
     Future<void> registerWith(WidgetTester tester, ProviderContainer c) async {
       await tester.pumpWidget(
@@ -5616,4 +5659,37 @@ class _FakeTapPlugin implements NotificationPlugin {
 
   @override
   Future<void> cancelAll() async {}
+}
+
+/// ⏱ 2026-09-16 · O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE — an identity seam that
+/// COUNTS what the keeper does to it: how many listeners the identity stream has,
+/// and how many times the session was read. The token's journey ONWARD is proven
+/// in packages/core (keepAppleRefreshToken, with a red control) and in
+/// services/platform/test/apple-revoke.test.ts; what a stamped app owes is that
+/// the listener exists at all.
+class _AppleKeeperAuth extends core.AuthRepository {
+  final StreamController<core.AuthUser?> _users =
+      StreamController<core.AuthUser?>.broadcast();
+  int listeners = 0;
+  int sessionReads = 0;
+
+  void arrive() => _users.add(const core.AuthUser(id: 'u1', email: 'a@b.test'));
+
+  @override
+  Stream<core.AuthUser?> authStateChanges() {
+    listeners++;
+    return _users.stream;
+  }
+
+  @override
+  Future<core.AuthSession?> currentSession() async {
+    sessionReads++;
+    return const core.AuthSession(
+      accessToken: 'at',
+      providerRefreshToken: 'apple-refresh-token',
+    );
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

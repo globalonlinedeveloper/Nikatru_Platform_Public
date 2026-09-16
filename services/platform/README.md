@@ -142,3 +142,39 @@ it landed.
 inside 0.35.x and start HOLDING BACK the upstream the day miniflare moves to
 0.36. `>=0.35.4` says the only thing we actually mean — never below the fix —
 so the line retires itself instead of becoming the next thing to remember.
+
+## The Sign in with Apple revocation secrets (OWNER ACTION, not an agent's)
+
+Apple requires an app offering Sign in with Apple to REVOKE the user's tokens when
+their account is deleted. `DELETE /v1/account` does that through
+`POST https://appleid.apple.com/auth/revoke` (`src/lib/apple-revoke.ts`), which
+takes a client secret signed with a Sign in with Apple key. **No agent creates or
+downloads that key.** Until all four secrets are set, a deletion for an account
+that has a stored Apple token answers `202 erasure_pending`, keeps the identity,
+and is retried nightly — it is never reported as finished.
+
+1. **Apple Developer → Certificates, Identifiers & Profiles → Keys → +**: name it
+   (e.g. `nikatru sign in with apple`), tick **Sign in with Apple**, Configure and
+   pick the primary App ID, then Continue → Register.
+2. **Download the `.p8` ONCE** — Apple never offers it again — and note the
+   **Key ID** on that page and the **Team ID** (top right of the portal).
+3. The **client id** is the identifier the tokens were issued to: the Services ID
+   the identity provider signs in with (the `client_id` in the Supabase Apple
+   provider settings), NOT the app's bundle id, unless that is what is configured
+   there. A mismatch is Apple's `invalid_client`, which this Worker treats as
+   blocked and says so in the log rather than retrying forever.
+4. Set the four, from `services/platform`:
+
+   ```
+   wrangler secret put APPLE_REVOKE_CLIENT_ID     # the Services ID above
+   wrangler secret put APPLE_REVOKE_TEAM_ID       # 10 characters
+   wrangler secret put APPLE_REVOKE_KEY_ID        # 10 characters
+   wrangler secret put APPLE_REVOKE_PRIVATE_KEY   # the whole .p8, BEGIN/END lines included
+   ```
+
+5. Apply the migration that holds the token the revoke consumes:
+   `wrangler d1 migrations apply PLATFORM_DB --remote`.
+
+The client secret is minted per call and lives five minutes; Apple's own cap is six
+months, so nothing long-lived is stored anywhere. Rotating the key is one
+`wrangler secret put` of the new `.p8` plus its Key ID.

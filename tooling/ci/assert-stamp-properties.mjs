@@ -1504,6 +1504,15 @@ const REQUIRED_COVERAGE = [
     // wire between them: a sign-up screen that passes a hard-coded source, or
     // none, gates nothing on a real store while every one of those tests stays
     // green. Two anchors, one per edit that cuts the wire.
+    key: 'apple-token-kept',
+    group: /group\(\s*'property: apple-token-kept'/,
+    sources: [
+      { file: PROVIDERS, re: /core\.keepAppleRefreshToken\s*\(/, what: 'the stamped app must really start the keeper — the identity provider hands Apple\'s refresh token over ONCE, on the session that completes the OAuth redirect, and stores none of it' },
+      { file: APP_ROOT, re: /ref\.watch\(\s*appleTokenKeeperProvider\s*\)/, what: 'the keeper must be WATCHED from the app root: a Riverpod provider nobody reads is never created, so the listener silently does not exist and the capture never happens' },
+    ],
+    why: "Apple requires an app offering Sign in with Apple to revoke the user's tokens when their account is deleted (O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE), the revoke call takes a token, and that token is offered exactly once — so an app that does not capture it signs people in happily for months and fails at the first deletion, on the server, with nothing to revoke",
+  },
+  {
     key: 'store-age-gate-refuses',
     group: /group\(\s*'property: store-age-gate-refuses'/,
     sources: [
@@ -1590,7 +1599,11 @@ const DOMAIN_RE = /^final\s+[\w<>,?\s.()]*?\b(\w+Provider)\s*=/gm;
 // 2026-09-15: 59 → 60 with `ageSignalSourceProvider` ([ADR 082] §5, the store
 // age signal the sign-up doors read). Classified under `store-age-gate-refuses`,
 // which DRIVES it in both directions, in the same commit as the provider.
-const MIN_DOMAIN = 60;
+// 2026-09-16: 60 → 61 with `appleTokenKeeperProvider` (O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE,
+// the Sign in with Apple refresh token the deletion revokes with). Classified under
+// `apple-token-kept`, which DRIVES it — the property reads the provider and counts
+// the subscription it makes — in the same commit as the provider.
+const MIN_DOMAIN = 61;
 
 // Each key names the property that actually exercises it — the property test
 // must drive this provider, not merely construct it.
@@ -1834,6 +1847,10 @@ const COVERED_BY = {
   // [ADR 082] §5. Driven, not constructed: the property overrides it with a
   // below-adult answer and asserts no account, then an adult one and asserts one.
   ageSignalSourceProvider: 'store-age-gate-refuses',
+  // O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE. Driven, not constructed: the property reads
+  // the provider, then asserts the identity stream gained a listener and the
+  // session was read when a sign-in arrived.
+  appleTokenKeeperProvider: 'apple-token-kept',
 };
 
 // Dated, reasoned gaps. NOT an excuse list — it is the honest inventory of what

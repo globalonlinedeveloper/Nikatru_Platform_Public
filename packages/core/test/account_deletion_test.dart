@@ -20,6 +20,13 @@ class _ProviderAuth extends AuthRepository {
     if (emitOnApple != null) users.add(emitOnApple);
   }
 
+  /// The session [currentSession] hands back — the ONE place Apple's own refresh
+  /// token ever appears.
+  AuthSession? session;
+
+  @override
+  Future<AuthSession?> currentSession() async => session;
+
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
@@ -341,6 +348,92 @@ void main() {
       );
       expect(AccountDeletionOutcome.reauthFailed.plainMessage,
           contains('still signed in'));
+    });
+  });
+  // ⏱ 2026-09-16 · O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE. The provider offers its own
+  // refresh token exactly once — on the session that completes the OAuth redirect —
+  // and stores none of it. Miss that moment and the account's deletion has nothing
+  // to revoke with.
+  group('keepAppleRefreshToken', () {
+    test('sends the token the moment a sign-in carries one', () async {
+      final List<String> sent = <String>[];
+      final _ProviderAuth auth = _ProviderAuth()
+        ..session = const AuthSession(
+          accessToken: 'a',
+          providerRefreshToken: 'apple-refresh-1',
+        );
+      final StreamSubscription<AuthUser?> sub = keepAppleRefreshToken(
+        auth: auth,
+        send: (String t) async => sent.add(t),
+      );
+      addTearDown(sub.cancel);
+      auth.users.add(const AuthUser(id: 'u1', email: 'a@b.test'));
+      await Future<void>.delayed(Duration.zero);
+      expect(sent, <String>['apple-refresh-1']);
+    });
+
+    test('🔴 the SAME token is never sent twice, and a NEW one is', () async {
+      final List<String> sent = <String>[];
+      final _ProviderAuth auth = _ProviderAuth()
+        ..session = const AuthSession(
+          accessToken: 'a',
+          providerRefreshToken: 'apple-refresh-1',
+        );
+      final StreamSubscription<AuthUser?> sub = keepAppleRefreshToken(
+        auth: auth,
+        send: (String t) async => sent.add(t),
+      );
+      addTearDown(sub.cancel);
+      const AuthUser u = AuthUser(id: 'u1', email: 'a@b.test');
+      auth.users.add(u);
+      await Future<void>.delayed(Duration.zero);
+      // A token refresh re-emits the same user; the session's provider token is
+      // the same string, and re-posting it every time would be a credential on
+      // the wire for no reason.
+      auth.users.add(u);
+      await Future<void>.delayed(Duration.zero);
+      expect(sent, <String>['apple-refresh-1']);
+
+      auth.session = const AuthSession(
+        accessToken: 'a',
+        providerRefreshToken: 'apple-refresh-2',
+      );
+      auth.users.add(u);
+      await Future<void>.delayed(Duration.zero);
+      expect(sent, <String>['apple-refresh-1', 'apple-refresh-2']);
+    });
+
+    test('a sign-out, and a session with no provider token, send nothing', () async {
+      final List<String> sent = <String>[];
+      final _ProviderAuth auth = _ProviderAuth()
+        ..session = const AuthSession(accessToken: 'a');
+      final StreamSubscription<AuthUser?> sub = keepAppleRefreshToken(
+        auth: auth,
+        send: (String t) async => sent.add(t),
+      );
+      addTearDown(sub.cancel);
+      auth.users.add(null);
+      auth.users.add(const AuthUser(id: 'u1', email: 'a@b.test'));
+      await Future<void>.delayed(Duration.zero);
+      expect(sent, isEmpty);
+    });
+
+    test('🔴 a failed send never breaks the sign-in', () async {
+      final List<Object> errors = <Object>[];
+      final _ProviderAuth auth = _ProviderAuth()
+        ..session = const AuthSession(
+          accessToken: 'a',
+          providerRefreshToken: 'apple-refresh-1',
+        );
+      final StreamSubscription<AuthUser?> sub = keepAppleRefreshToken(
+        auth: auth,
+        send: (String _) async => throw StateError('server refused'),
+        onError: errors.add,
+      );
+      addTearDown(sub.cancel);
+      auth.users.add(const AuthUser(id: 'u1', email: 'a@b.test'));
+      await Future<void>.delayed(Duration.zero);
+      expect(errors, hasLength(1));
     });
   });
 }

@@ -57,11 +57,9 @@
     "the regression this register exists to catch — B-17's prose named four shared tables and the",
     "migrations create nine, three days apart."
   ],
-
   "database": "platform_db",
   "wrangler": "services/platform/wrangler.jsonc",
   "migrationsDir": "services/platform/migrations",
-
   "resolvers": {
     "operator-minted": "The marker value must be a NON-EMPTY provenance string recorded by the operator act that created the row — a commit sha or a register hash. Rows in these tables are neither client-written nor migration-seeded: they are minted by a dated, reviewed human act, so the honest question is not \"which build shipped this\" but \"what state was this minted against\". NULL or empty fails, which is the point: a row minted against nothing is a row nobody can review.",
     "product-kind": "The marker value must be one of the product kinds declared in contracts/entitlement/bundle.js (`app` | `extension` | `script`) — the same list tooling/bundle-availability.mjs derives the live-product set from. A value outside it is a row nothing in this tree could have written. Deliberately NOT a join against the product catalogues: a RETIRED product leaves the catalogue while grants that pinned it must keep resolving, so a catalogue join would turn honest history into a false red.",
@@ -75,7 +73,6 @@
     "not-reserved-address": "The marker column holds an EMAIL ADDRESS, and the monitor NEVER READS IT: the query D1 runs projects each row to `reserved` or `unreserved` inside D1 and returns only a COUNT per bucket, so no address leaves platform_db, reaches a runner or appears in a log. A row resolves when its address is NOT at a domain reserved for testing by RFC 2606 / RFC 6761 — example.com, example.net, example.org and their subdomains, and the .example, .test, .invalid and .localhost names. ⏱ 2026-09-15 · [ADR 087]. ⚠️ DELIBERATELY WEAKER THAN `released-build`, AND IT SAYS SO: it cannot prove a real person signed up, only that the row is not addressed to a place no person receives mail. That is the residue this table actually produces — the 2026-09-15 live rate-limiter probe posted `limiter-probe-2026-09-15@example.com` — and a stronger marker would need a column, which the published promise (\"your email address and the time you signed up, and nothing else\") forbids.",
     "app-catalogue": "The marker value must be the slug of an app the factory actually ships, read from tooling/channel-register.json's `apps` list — the same catalogue assert-channel-register.mjs grades its own rows against, never a second list here. For DERIVED tables that carry no build marker of their own. ⚠️ DELIBERATELY WEAKER THAN `released-build`, AND IT SAYS SO: it proves the row belongs to a real app, not that a released build wrote it, so a row derived from a `dev`-stamped event still resolves. That residual is accepted only because the SOURCE table is separately held to `released-build`, and it is recorded here rather than hidden. What it does catch is the state this portfolio has actually produced — rows for an app id nothing ships, i.e. probe residue (`c6-localprobe`)."
   },
-
   "tables": {
     "events": {
       "marker": "app_version",
@@ -85,7 +82,9 @@
     "consent_artifacts": {
       "marker": "app_version",
       "resolver": "released-build",
-      "alsoResolves": ["e2e-run"],
+      "alsoResolves": [
+        "e2e-run"
+      ],
       "reason": "Carries `app_version` (0002_analytics.sql:77), same writer, same envelope. Append-only by design, so a stray row can never be corrected by an UPDATE — it can only be deleted, which is exactly the disposition B-17 wants proven. ⬜ `alsoResolves` ADDED 2026-08-28 AND IT IS THE ONLY TABLE THAT CARRIES ONE. From that date .github/workflows/e2e.yml stamps `APP_VERSION=e2e-<run_number>-<sha7>` on the nightly's live verification, so this table legitimately receives rows the release lane did not ship — B-17's own premise is that verification against production is permitted and EXPECTED. Those rows fail `released-build` by construction, and widening `released-build` to admit them is the empty-predicate failure this register's _readme was written against, so the second resolver is a SEPARATE, NARROW one instead. `resolver` stays `released-build`: it is still the primary rule, assert-prod-provenance.mjs limb 5 requires exactly that of any table carrying `app_version`, and `alsoResolves` is consulted only for a value the primary has already refused."
     },
     "entitlements": {
@@ -121,7 +120,9 @@
     "pending_erasures": {
       "marker": "app_id",
       "resolver": "app-catalogue",
-      "alsoResolves": ["erasure-step"],
+      "alsoResolves": [
+        "erasure-step"
+      ],
       "reason": "⏱ 2026-09-15 · [ADR 081]. NO `app_version` COLUMN: written by DELETE /v1/account (services/platform/src/routes/account.ts) from the authenticated session when an app could not be reached, and deleted by the nightly erasure retry when the erasure completes. `app_id` is NOT NULL and is always an app APP_ERASURE_ENDPOINTS names, i.e. a catalogue app, so a row naming anything else was not written by this route."
     },
     "cancellation_requests": {
@@ -130,27 +131,27 @@
       "reason": "NO `app_version` COLUMN: written by the cancellation route (0005) from the authenticated session, not from an app envelope. `environment` is NOT NULL in the DDL for the same [5]M-12 reason as the rest of the rail, so the marker is guaranteed present and only its VALUE can be wrong."
     },
     "bundle_grants": {
-    "marker": "provider_environment",
-    "resolver": "live-environment",
-    "reason": "THE SAME ANSWER `entitlements` GIVES, AND FOR THE SAME REASON — one vocabulary, one set of readers. No `app_version` column and never will have one: the row is written by the money rail from a merchant-of-record notification or a server-side receipt pull, not by a client, so no app build is involved and there is no version to record. `provider_environment` (0009_bundle_grants.sql section A) is the column that answers the same question — which money world produced this row. 🔴 IT CARRIES THE SAME FIRST-REVENUE CONSEQUENCE AS `entitlements`, MULTIPLIED: a test bundle grant in production is a free Pro unlock across EVERY member product, not one, and a NULL here is precisely such a row. ⚠️ THE TWO EXEMPT SOURCES DO NOT BREAK THE RULE: `promo_code` and `owner_comp` grants carry no receipt, but they are still written by this Worker in this environment and still stamp `provider_environment` — the exemption is from a RECEIPT, never from the money world.",
-    "_note": "As of 2026-09-09 this table has zero rows in production; the rule exists before the first one, which is the only time it is free."
-  },
-  "bundle_sources": {
-    "marker": "source",
-    "resolver": "migration-seed",
-    "reason": "NO `app_version` COLUMN AND NO WRITER AT ALL: reference data seeded by 0009_bundle_grants.sql section B and extendable only by an additive INSERT in a later migration. Nothing in the running system writes it, so 'traced to a released build' is the wrong question — the right one is 'is this row in the migration ledger'. Same shape as `revocation_reasons`, and the same reason emptiness could never have been the rule: it has seven rows the day it is created."
-  },
-  "feature_sets": {
-    "marker": "minted_from",
-    "resolver": "operator-minted",
-    "reason": "NO `app_version` COLUMN, BECAUSE NEITHER A CLIENT NOR THE MONEY RAIL WRITES THIS, AND IT IS NOT SEEDED EITHER — which is why it needs its own resolver rather than borrowing one that would fit badly. A feature-set version is MINTED by a dated, reviewed operator act ([ADR 057] §4: adding a product to the bundle is forward-only and explicit), and `minted_from` is the commit or register hash that act recorded. A row with a NULL or empty `minted_from` is a version somebody created by hand against no reviewed state — and because a `sellable` version's members are frozen and grants PIN it, such a row silently defines what a stranger bought. Reusing `migration-seed` here would have been the empty-predicate failure this register's _readme was written against: no migration seeds this table, so the predicate would range over nothing and print clean forever."
-  },
-  "feature_set_members": {
-    "marker": "product_kind",
-    "resolver": "product-kind",
-    "reason": "NO `app_version` COLUMN — no client build touches these rows. THE MEMBER ROWS ARE THE RESOLUTION OF A PURCHASE, so an unattributable one is the sharpest failure in this migration: a member row silently added or removed changes what an EXISTING grant unlocks, with no revocation, no notification and no trace. There is no version string and no environment on these rows; what there is, is the category the slug came from, and `product_kind` outside the declared set (`app` | `extension` | `script`) means a row nothing in the tree could have written. ⚠️ THE STRONGER CHECK — that `product_slug` names a product in `catalog/apps.json` or `extensions/catalog/extensions.json` — is deliberately NOT this rule: a RETIRED product legitimately leaves the catalogue while old grants must keep resolving it, so a catalogue join would turn honest history into a false red. That check belongs to the mint, not to the monitor."
-  },
-  "revocation_reasons": {
+      "marker": "provider_environment",
+      "resolver": "live-environment",
+      "reason": "THE SAME ANSWER `entitlements` GIVES, AND FOR THE SAME REASON — one vocabulary, one set of readers. No `app_version` column and never will have one: the row is written by the money rail from a merchant-of-record notification or a server-side receipt pull, not by a client, so no app build is involved and there is no version to record. `provider_environment` (0009_bundle_grants.sql section A) is the column that answers the same question — which money world produced this row. 🔴 IT CARRIES THE SAME FIRST-REVENUE CONSEQUENCE AS `entitlements`, MULTIPLIED: a test bundle grant in production is a free Pro unlock across EVERY member product, not one, and a NULL here is precisely such a row. ⚠️ THE TWO EXEMPT SOURCES DO NOT BREAK THE RULE: `promo_code` and `owner_comp` grants carry no receipt, but they are still written by this Worker in this environment and still stamp `provider_environment` — the exemption is from a RECEIPT, never from the money world.",
+      "_note": "As of 2026-09-09 this table has zero rows in production; the rule exists before the first one, which is the only time it is free."
+    },
+    "bundle_sources": {
+      "marker": "source",
+      "resolver": "migration-seed",
+      "reason": "NO `app_version` COLUMN AND NO WRITER AT ALL: reference data seeded by 0009_bundle_grants.sql section B and extendable only by an additive INSERT in a later migration. Nothing in the running system writes it, so 'traced to a released build' is the wrong question — the right one is 'is this row in the migration ledger'. Same shape as `revocation_reasons`, and the same reason emptiness could never have been the rule: it has seven rows the day it is created."
+    },
+    "feature_sets": {
+      "marker": "minted_from",
+      "resolver": "operator-minted",
+      "reason": "NO `app_version` COLUMN, BECAUSE NEITHER A CLIENT NOR THE MONEY RAIL WRITES THIS, AND IT IS NOT SEEDED EITHER — which is why it needs its own resolver rather than borrowing one that would fit badly. A feature-set version is MINTED by a dated, reviewed operator act ([ADR 057] §4: adding a product to the bundle is forward-only and explicit), and `minted_from` is the commit or register hash that act recorded. A row with a NULL or empty `minted_from` is a version somebody created by hand against no reviewed state — and because a `sellable` version's members are frozen and grants PIN it, such a row silently defines what a stranger bought. Reusing `migration-seed` here would have been the empty-predicate failure this register's _readme was written against: no migration seeds this table, so the predicate would range over nothing and print clean forever."
+    },
+    "feature_set_members": {
+      "marker": "product_kind",
+      "resolver": "product-kind",
+      "reason": "NO `app_version` COLUMN — no client build touches these rows. THE MEMBER ROWS ARE THE RESOLUTION OF A PURCHASE, so an unattributable one is the sharpest failure in this migration: a member row silently added or removed changes what an EXISTING grant unlocks, with no revocation, no notification and no trace. There is no version string and no environment on these rows; what there is, is the category the slug came from, and `product_kind` outside the declared set (`app` | `extension` | `script`) means a row nothing in the tree could have written. ⚠️ THE STRONGER CHECK — that `product_slug` names a product in `catalog/apps.json` or `extensions/catalog/extensions.json` — is deliberately NOT this rule: a RETIRED product legitimately leaves the catalogue while old grants must keep resolving it, so a catalogue join would turn honest history into a false red. That check belongs to the mint, not to the monitor."
+    },
+    "revocation_reasons": {
       "marker": "reason",
       "resolver": "migration-seed",
       "reason": "NO `app_version` COLUMN and no writer at all: this is REFERENCE DATA seeded by 0004_money_rail.sql:282 and extended only by an additive INSERT in a later migration. Nothing in the running system writes it, so 'traced to a released build' is the wrong question — the right one is 'is this row in the migration ledger'. Its 8 rows are the second reason emptiness could never have been the rule."
@@ -164,6 +165,11 @@
       "marker": "rollup",
       "resolver": "migration-seed",
       "reason": "NO `app_version` COLUMN and no app at all: this is a CONTROL, not data — one row naming the last day the rollup fully consumed, which the events sweep reads to decide how far it may delete. 0007_events_rollup.sql seeds the only legitimate value (`events_daily`) with an INSERT … ON CONFLICT DO NOTHING, so the migration ledger IS its provenance and 'traced to a released build' is the wrong question, exactly as it is for revocation_reasons one entry up. A `rollup` value outside the seeded set was put there by hand."
+    },
+    "apple_provider_tokens": {
+      "marker": "app_id",
+      "resolver": "app-catalogue",
+      "reason": "⏱ 2026-09-16 · O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE. NO app_version COLUMN AND NO USABLE TIMESTAMP: rows are written by PUT /v1/account/apple-token from an authenticated app, hold the user's Apple refresh token, and that token may NEVER be read by a monitor — so the marker is app_id, the app whose sign-in produced the token, resolved against the shipped catalogue exactly as pending_erasures is. A row naming anything but an app this factory ships is unattributed and says so."
     }
   }
 }

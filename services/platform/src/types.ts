@@ -255,6 +255,31 @@ export interface Env {
   SUPABASE_SERVICE_ROLE_KEY?: string;
 
   /**
+   * ⏱ 2026-09-16 · O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE — the four values
+   * `POST https://appleid.apple.com/auth/revoke` needs, all OWNER-PROVISIONED.
+   *
+   * 🔴 NO AGENT CREATES OR DOWNLOADS THE KEY. The Sign in with Apple key is made
+   * in the Apple developer portal (Certificates, Identifiers & Profiles → Keys),
+   * downloaded ONCE as a `.p8`, and set here with `wrangler secret put`. The PR
+   * that added this lists the exact steps for the owner.
+   *
+   * ⚠️ ABSENT ⇒ A DELETION WITH A STORED APPLE TOKEN IS REFUSED LOUDLY, not
+   * skipped: the route answers 202 `erasure_pending`, the identity stays, and the
+   * nightly retry keeps trying. See src/lib/apple-revoke.ts.
+   *
+   *   · CLIENT_ID   — the identifier the token was issued to (the Services ID the
+   *                   identity provider signs in with). A mismatch is Apple's
+   *                   `invalid_client`, which this treats as blocked, not transient.
+   *   · TEAM_ID     — the Apple Team ID, the client secret's `iss`.
+   *   · KEY_ID      — the key's id, the client secret's `kid`.
+   *   · PRIVATE_KEY — the `.p8` PKCS#8 PEM, whole, newlines and armour included.
+   */
+  APPLE_REVOKE_CLIENT_ID?: string;
+  APPLE_REVOKE_TEAM_ID?: string;
+  APPLE_REVOKE_KEY_ID?: string;
+  APPLE_REVOKE_PRIVATE_KEY?: string;
+
+  /**
    * WHERE EACH APP'S OWN ERASURE ROUTE LIVES — `"<appId>=<https origin>"`,
    * comma-separated. Today: `"subscriptiontracker=https://subscriptiontracker-api.nikatru.com"`.
    *

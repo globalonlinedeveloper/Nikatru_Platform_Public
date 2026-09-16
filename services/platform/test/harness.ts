@@ -46,6 +46,7 @@ import eventsRollup0007 from '../migrations/0007_events_rollup.sql?raw';
 import bundleGrants0009 from '../migrations/0009_bundle_grants.sql?raw';
 import pendingErasures0010 from '../migrations/0010_pending_erasures.sql?raw';
 import signups0011 from '../migrations/0011_signups.sql?raw';
+import appleTokens0012 from '../migrations/0012_apple_provider_tokens.sql?raw';
 
 type SQLValue = string | number | bigint | null | Uint8Array;
 
@@ -73,6 +74,9 @@ export const PLATFORM_MIGRATIONS: readonly string[] = [
   pendingErasures0010,
   // ⏱ 2026-09-15 · [ADR 087] the nikatru.com signup list.
   signups0011,
+  // ⏱ 2026-09-16 · O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE: the Apple token a deletion
+  // has to revoke with.
+  appleTokens0012,
 ];
 
 /**
@@ -109,6 +113,8 @@ export const REPLAY_SAFE_MIGRATIONS: readonly string[] = [
   pendingErasures0010,
   // 0011 ([ADR 087]) is CREATE TABLE / CREATE INDEX IF NOT EXISTS only.
   signups0011,
+  // 0012 is one CREATE TABLE IF NOT EXISTS — it replays.
+  appleTokens0012,
 ];
 
 // `node:sqlite` is fetched through `process.getBuiltinModule` rather than a

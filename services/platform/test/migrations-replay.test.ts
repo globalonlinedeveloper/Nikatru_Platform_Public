@@ -194,6 +194,9 @@ describe('platform_db migrations re-apply cleanly', () => {
       .rows("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
       .map((r) => String(r.name));
     expect(tables).toEqual([
+      // 0012 — the Apple refresh token a deletion revokes with
+      // (O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE).
+      'apple_provider_tokens',
       // 0009 — the bundle purchase ([ADR 057]). Four tables, and the list is
       // spelled out here rather than counted so a migration silently dropped
       // from PLATFORM_MIGRATIONS is visible as a NAME and not as an arithmetic

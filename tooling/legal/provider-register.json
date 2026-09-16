@@ -96,33 +96,34 @@
       "plan",
       "cancel",
       "checkout",
-    "subject",
-    "receipts"
+      "subject",
+      "receipts",
+      "apple-token"
     ],
     "_subject": [
-   "🟢 `subject` ADDED 2026-09-09, AND THIS LIMB CAUGHT IT AGAIN. GET /v1/entitlements/subject is the",
-   "\"what do I own\" read the per-app route cannot answer — [ADR 057] §5, the bundle union. It is a",
-   "RESOURCE OF OURS and not a provider tell: nothing posts to it, it takes no body, and it is behind",
-   "platformAuth like the route it sits under.",
-   "",
-   "⚠️ IT IS LISTED BECAUSE THE GUARD IS RIGHT TO ASK. A new segment under a Worker that already",
-   "carries the money rail is exactly where a payment webhook would land unnoticed, and the answer",
-   "has to be written down by the person adding it rather than inferred from the name."
+      "🟢 `subject` ADDED 2026-09-09, AND THIS LIMB CAUGHT IT AGAIN. GET /v1/entitlements/subject is the",
+      "\"what do I own\" read the per-app route cannot answer — [ADR 057] §5, the bundle union. It is a",
+      "RESOURCE OF OURS and not a provider tell: nothing posts to it, it takes no body, and it is behind",
+      "platformAuth like the route it sits under.",
+      "",
+      "⚠️ IT IS LISTED BECAUSE THE GUARD IS RIGHT TO ASK. A new segment under a Worker that already",
+      "carries the money rail is exactly where a payment webhook would land unnoticed, and the answer",
+      "has to be written down by the person adding it rather than inferred from the name."
     ],
     "_receipts": [
-   "🟢 `receipts` ADDED 2026-09-09, AND THIS LIMB CAUGHT IT AGAIN. POST /v1/receipts/:store is a",
-   "RESOURCE OF OURS and NOT a provider tell, and the distinction is the whole design: a provider",
-   "tell is a segment the PROVIDER posts to (RevenueCat's `/revenuecat`), whereas nothing external",
-   "posts here at all. Our own authenticated client posts an opaque store token, and the SERVER then",
-   "calls the store's API itself — the push is never the evidence ([ADR 057]; the bundle entitlement",
-   "design §3.2). Google's RTDN carries no proof in its body and Microsoft has no push whatsoever.",
-   "",
-   "⚠️ THIS IS EXACTLY THE SEGMENT THE LIMB EXISTS FOR. A route named `receipts` under the Worker that",
-   "already carries the money rail is where a payment webhook would land unnoticed, and the answer has",
-   "to be written down by the person adding it rather than inferred from the name. If a store rail",
-   "ever DOES push here, this entry becomes false and a provider row is owed instead."
-  ],
-  "_checkout": [
+      "🟢 `receipts` ADDED 2026-09-09, AND THIS LIMB CAUGHT IT AGAIN. POST /v1/receipts/:store is a",
+      "RESOURCE OF OURS and NOT a provider tell, and the distinction is the whole design: a provider",
+      "tell is a segment the PROVIDER posts to (RevenueCat's `/revenuecat`), whereas nothing external",
+      "posts here at all. Our own authenticated client posts an opaque store token, and the SERVER then",
+      "calls the store's API itself — the push is never the evidence ([ADR 057]; the bundle entitlement",
+      "design §3.2). Google's RTDN carries no proof in its body and Microsoft has no push whatsoever.",
+      "",
+      "⚠️ THIS IS EXACTLY THE SEGMENT THE LIMB EXISTS FOR. A route named `receipts` under the Worker that",
+      "already carries the money rail is where a payment webhook would land unnoticed, and the answer has",
+      "to be written down by the person adding it rather than inferred from the name. If a store rail",
+      "ever DOES push here, this entry becomes false and a provider row is owed instead."
+    ],
+    "_checkout": [
       "🟢 `checkout` ADDED 2026-08-12, AND THIS LIMB CAUGHT IT AGAIN — the third time. The route",
       "services/platform/src/routes/checkout.ts mounts POST /v1/checkout (the Paddle",
       "create-transaction server half, [ADR 044]) and it passed typecheck, its own tests and every",
@@ -173,7 +174,8 @@
       "own vocabulary — deliberately not \"subscription\", which [pipeline C-10] bans from shared code as",
       "apps/subscriptiontracker's domain noun. `cancel` is the verb. No merchant of record is named in either, and none",
       "can be: the route resolves the subscription from the verified session, never from the request."
-    ]
+    ],
+    "_appleToken": "⏱ 2026-09-16 · O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE. `apple-token` is OURS, not a provider's tell: PUT /v1/account/apple-token is the app handing us the user's Apple refresh token so the account deletion can revoke it at Apple. Nothing calls IN on it — it is not a webhook, takes no provider signature, and is behind platformAuth like the rest of /v1/account. The call OUT to Apple is in services/platform/src/lib/apple-revoke.ts and reaches appleid.apple.com, never this Worker."
   },
   "roles": {
     "_why": "The vocabulary rows are validated against, declared once HERE rather than inside the guard — the same reason keyKinds lives in tooling/channel-register.json. Renaming a role out from under the rows still using it fails.",
@@ -214,55 +216,98 @@
     ],
     "ip_address": {
       "what": "The network address a request came from, in a form that still identifies the connection. Personal data under GDPR and India's DPDP. ⚠️ GlitchTip's `scrub_ip_addresses` flag ANONYMISES (IPv4 /24, IPv6 /64) and then STORES — an anonymised prefix is still this category, which is exactly why the flag reading `True` hid the breach for weeks.",
-      "tells": ["ip address", "ip addresses"]
+      "tells": [
+        "ip address",
+        "ip addresses"
+      ]
     },
     "ip_fingerprint": {
       "what": "A salted, one-way fingerprint of a network address, used as an abuse counter key and discarded within the hour. A DIFFERENT category from ip_address on purpose, and the published page draws the same line ('The fingerprint is not reversible to an IP address'). The construction is keyed (crypto.subtle.sign), not a digest — an unsalted sha256 of an IPv4 address is reversible by exhausting 2^32 values and would BE the address wearing a hash.",
-      "tells": ["one-way fingerprint"]
+      "tells": [
+        "one-way fingerprint"
+      ]
     },
     "crash_report": {
       "what": "An exception, its stack trace and the app/platform/version context around it. Received by GlitchTip, which we run ourselves.",
-      "tells": ["crash report", "crash reports", "stack trace"]
+      "tells": [
+        "crash report",
+        "crash reports",
+        "stack trace"
+      ]
     },
     "usage_event": {
       "what": "One record that a feature of an app was used, written only after consent.",
-      "tells": ["usage statistic", "usage statistics"]
+      "tells": [
+        "usage statistic",
+        "usage statistics"
+      ]
     },
     "install_identifier": {
       "what": "The random per-install identifier (`anon_id`) that makes usage records pseudonymous rather than anonymous. Not a name, not an email, not an advertising ID — but stable, so records from one installation group together.",
-      "tells": ["install identifier", "random identifier created on your device"]
+      "tells": [
+        "install identifier",
+        "random identifier created on your device"
+      ]
     },
     "approximate_location": {
       "what": "Country, region and city, derived at the network edge from an address that is then discarded. Coarse by construction; it is not a coordinate.",
-      "tells": ["approximate location", "coarse location"]
+      "tells": [
+        "approximate location",
+        "coarse location"
+      ]
     },
     "consent_record": {
       "what": "The append-only record that a consent decision was made: which install, when, granted or withdrawn, and which policy version was shown.",
-      "tells": ["consent record", "consent records"]
+      "tells": [
+        "consent record",
+        "consent records"
+      ]
     },
     "email_address": {
       "what": "A plain email address, as typed. Held by the launch-notification signup list, and present verbatim inside a merchant-of-record notification.",
-      "tells": ["email address", "email addresses"]
+      "tells": [
+        "email address",
+        "email addresses"
+      ]
     },
     "buyer_billing_details": {
       "what": "The buyer's name and billing country, as they arrive inside a merchant-of-record notification stored VERBATIM ([pipeline 5]M-2 — a re-serialised or redacted copy can never be re-verified against the signature it came with).",
-      "tells": ["billing address", "billing country", "buyer name"]
+      "tells": [
+        "billing address",
+        "billing country",
+        "buyer name"
+      ]
     },
     "entitlement_record": {
       "what": "What a person has paid for: one row per (user, app, entitlement).",
-      "tells": ["what you have paid for", "entitlement", "entitlements"]
+      "tells": [
+        "what you have paid for",
+        "entitlement",
+        "entitlements"
+      ]
     },
     "account_identifier": {
       "what": "The account id a row is keyed on (a Supabase `sub`, or a store/aggregator user id). Not a credential.",
-      "tells": ["account identifier", "account id"]
+      "tells": [
+        "account identifier",
+        "account id"
+      ]
     },
     "user_content": {
       "what": "What a person created inside an app — for apps/subscriptiontracker, the subscriptions they track and their budget figures. User-entered content about their own finances.",
-      "tells": ["what you created inside an app", "subscriptions you track"]
+      "tells": [
+        "what you created inside an app",
+        "subscriptions you track"
+      ]
     },
     "payment_instrument": {
       "what": "A card or bank number, CVV, IBAN or equivalent — the instrument itself. NOTHING in this factory receives this category, and no migration may declare a column for one (asserted separately by the `full card or bank details` claim row in policy-claims.json).",
-      "tells": ["card or bank details", "card details", "bank details", "card number"]
+      "tells": [
+        "card or bank details",
+        "card details",
+        "bank details",
+        "card number"
+      ]
     }
   },
   "denialsOutOfScope": {
@@ -441,15 +486,15 @@
         "buyer sees is an unverified vendor fact, while WHO THE SELLER IS is a decided one. The pages carry",
         "the second and not the first.",
         "",
-        "\u26d4 THE INDIA PARAGRAPH ABOVE IS SUPERSEDED 2026-09-09 BY [ADR 076] AND IS KEPT VERBATIM AS THE",
+        "⛔ THE INDIA PARAGRAPH ABOVE IS SUPERSEDED 2026-09-09 BY [ADR 076] AND IS KEPT VERBATIM AS THE",
         "DATED RECORD IT IS. Paddle is NO LONGER the India rail: the owner moved India to Razorpay on",
         "2026-09-09 on a like-for-like re-measurement of D6's own comparison (see the `razorpay` row below",
         "for the arithmetic). Paddle remains the rail for every other channel, and [ADR 004]'s",
-        "merchant-of-record lock is untouched \u2014 only D6's India limb moved.",
-        "\ud83d\udd34 WHAT THIS MAKES WRONG ON A PUBLISHED PAGE, and it is why the correction sits in this row and",
+        "merchant-of-record lock is untouched — only D6's India limb moved.",
+        "🔴 WHAT THIS MAKES WRONG ON A PUBLISHED PAGE, and it is why the correction sits in this row and",
         "not only in the ADR: terms.html and refund.html name Paddle as the seller 'in every country we sell",
         "to, including India'. That sentence was true when it was written and is not true under [ADR 076].",
-        "Nothing is sold from the website today, so nobody is being misled right now \u2014 but the pages must",
+        "Nothing is sold from the website today, so nobody is being misled right now — but the pages must",
         "be corrected BEFORE the first India sale, and editing them is owner work. Carried here rather than",
         "as a `disclosureGap` row because a gap row needs a `stillTrue` probe over the CURRENT page text,",
         "and the current text is not yet wrong about anything sold.",
@@ -567,40 +612,40 @@
         "is private-SSoT material (see the ⚠️ note at the top of this file). `not-named-not-wired` is a",
         "statement about this repository and the published pages, and about nothing else.",
         "",
-        "\ud83d\udfe2 CORRECTED 2026-09-09 BY [ADR 076], WHICH AMENDS [ADR 039] D6. EVERYTHING ABOVE IS LEFT",
-        "VERBATIM AS THE DATED RECORD IT IS \u2014 it was written while D6 stood, and it argued from D6's",
+        "🟢 CORRECTED 2026-09-09 BY [ADR 076], WHICH AMENDS [ADR 039] D6. EVERYTHING ABOVE IS LEFT",
+        "VERBATIM AS THE DATED RECORD IT IS — it was written while D6 stood, and it argued from D6's",
         "numbers. The correction follows it; read them as one.",
         "",
-        "  \u26d4 THE PARAGRAPH BEGINNING '\ud83d\udd12 AND [ADR 039] D6 (2026-08-09) SETTLED IT ON MEASUREMENT' IS",
-        "  SUPERSEDED. Its arithmetic \u2014 'net ~82% of sticker via Razorpay against ~92.5% via Paddle' \u2014",
-        "  compared two DIFFERENT prices: the 82% took GST out of \u20b9999 while the 92.5% added GST on top,",
+        "  ⛔ THE PARAGRAPH BEGINNING '🔒 AND [ADR 039] D6 (2026-08-09) SETTLED IT ON MEASUREMENT' IS",
+        "  SUPERSEDED. Its arithmetic — 'net ~82% of sticker via Razorpay against ~92.5% via Paddle' —",
+        "  compared two DIFFERENT prices: the 82% took GST out of ₹999 while the 92.5% added GST on top,",
         "  and the 92.5% omitted Paddle's FX margin entirely (MSA cl. 7.1 charges 3% on INR; the clause was",
         "  first read 2026-08-31, three weeks AFTER D6 locked, and it is absent from Paddle's pricing page).",
-        "  Held at ONE customer-facing price the model gives Razorpay \u20b9795 against Paddle \u20b9702 \u2014 Razorpay",
-        "  ahead by \u20b993 per payer per year, and ahead at \u20b9999+GST too. Razorpay's real cost is 2% platform",
+        "  Held at ONE customer-facing price the model gives Razorpay ₹795 against Paddle ₹702 — Razorpay",
+        "  ahead by ₹93 per payer per year, and ahead at ₹999+GST too. Razorpay's real cost is 2% platform",
         "  plus a 0.5% subscriptions add-on, with the 18% GST on the fee returning as input tax credit.",
         "",
-        "\ud83d\udd12 SO INDIA IS RAZORPAY BY OWNER DECISION, 2026-09-09. International stays Paddle, unchanged.",
-        "Paddle cannot serve an India MONTHLY SKU at all \u2014 the $0.50 flat fee on \u20b9149 is ~42% effective \u2014",
+        "🔒 SO INDIA IS RAZORPAY BY OWNER DECISION, 2026-09-09. International stays Paddle, unchanged.",
+        "Paddle cannot serve an India MONTHLY SKU at all — the $0.50 flat fee on ₹149 is ~42% effective —",
         "and the owner separately recalls Paddle transaction failures in India, which is D6's own revisit",
         "trigger ('measured-poor Paddle UPI acceptance') firing on his own experience.",
         "",
-        "\ud83d\udd34 AND `status` STAYS `not-named-not-wired`, WHICH IS THE POINT OF THIS PARAGRAPH RATHER THAN AN",
+        "🔴 AND `status` STAYS `not-named-not-wired`, WHICH IS THE POINT OF THIS PARAGRAPH RATHER THAN AN",
         "OVERSIGHT. This field is a statement about THIS REPOSITORY and the published pages, and both halves",
         "of it remain true on 2026-09-09: there is still no Razorpay route, key or webhook anywhere in this",
-        "tree, and no published page names Razorpay. What changed is the DECISION, not the code \u2014 so the row",
+        "tree, and no published page names Razorpay. What changed is the DECISION, not the code — so the row",
         "now records a divergence between the two, deliberately, instead of a status that would claim a rail",
         "that does not exist. `services/platform/src/routes/checkout.ts` carries `PADDLE_PRICE_IDS` and no",
         "Razorpay equivalent; `services/platform/src/app-config-data.json` declares USD offerings and no INR",
         "ones, and its own README says why.",
         "",
-        "\u2b1c WHAT CLOSES THE DIVERGENCE, and none of it is agent work: a Razorpay merchant account and",
+        "⬜ WHAT CLOSES THE DIVERGENCE, and none of it is agent work: a Razorpay merchant account and",
         "integration, INR SKUs on a config that first needs a region dimension, and RE-DISCLOSURE on the",
-        "published pages. That last one is OWNER work twice over \u2014 terms.html and refund.html name Paddle as",
+        "published pages. That last one is OWNER work twice over — terms.html and refund.html name Paddle as",
         "the seller 'in every country we sell to, including India', which this decision makes wrong for",
         "India, and privacy.html is inside the policy-VERSION surface, so correcting it is a version bump",
-        "plus an archive snapshot (assert-policy-archive.mjs) plus a signature. \u26a0\ufe0f NOTE THE GAP THE",
-        "PARAGRAPH ABOVE ALREADY NAMED: the both-pages rule in assert-policy-claims.mjs \u00a73(c) applies to the",
+        "plus an archive snapshot (assert-policy-archive.mjs) plus a signature. ⚠️ NOTE THE GAP THE",
+        "PARAGRAPH ABOVE ALREADY NAMED: the both-pages rule in assert-policy-claims.mjs §3(c) applies to the",
         "merchant of record and NOT to a gateway, so nothing here would catch the re-disclosure silently",
         "going undone. It is a human duty and this is still where it is written."
       ]

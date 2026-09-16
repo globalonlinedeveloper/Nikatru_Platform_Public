@@ -316,6 +316,30 @@ bool shouldHoldForPasswordReset({
 /// (DDC) does not. A defect that only exists where the tests run is still a
 /// defect — and it is the reason the one automated proof of erasure could not
 /// go green while production looked healthy.
+/// ⏱ 2026-09-16 · O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE — CAPTURE APPLE'S OWN REFRESH
+/// TOKEN, WHICH IS OFFERED EXACTLY ONCE.
+///
+/// Apple requires an app offering Sign in with Apple to revoke the user's tokens
+/// when their account is deleted, and the revoke call takes a token. The identity
+/// provider puts it on the session that completes the OAuth redirect and on no
+/// session after it, and stores none of it — so if this listener is not running
+/// when the sign-in lands, that account's deletion has nothing to revoke with and
+/// the server refuses to report it as finished.
+///
+/// Held open for the app's whole life by a `ref.watch` in the root widget: a
+/// provider nobody reads is a listener that never subscribes.
+final Provider<void> appleTokenKeeperProvider = Provider<void>((ref) {
+  final StreamSubscription<core.AuthUser?> sub = core.keepAppleRefreshToken(
+    auth: ref.watch(authRepositoryProvider),
+    send: (String token) => storeAppleRefreshToken(
+      ref.read(platformRestClientProvider),
+      token,
+      appId: AppConfig.appId,
+    ),
+  );
+  ref.onDispose(sub.cancel);
+});
+
 final Provider<RestClient> platformRestClientProvider = Provider<RestClient>(
   (ref) => RestClient(
     baseUrl: '${AppConfig.platformBaseUrl}/v1',

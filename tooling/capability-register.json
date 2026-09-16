@@ -257,6 +257,33 @@
         "alternative": "The dispatched workflow's own `schedule:` block, which is deliberately KEPT as a backstop and is what evidences the cadence today — so losing this surface degrades timeliness and loses nothing else.",
         "swapCost": "Low — one URL, one header set, one status code. The fallback needs no change at all because it was never removed."
       }
+    },
+    "apple": {
+      "surface": "⏱ 2026-09-16 · O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE. IDENTITY PROVIDER for Sign in with Apple, on ONE call: `POST https://appleid.apple.com/auth/revoke`, which the account deletion makes so Apple stops listing this app as connected. The sign-in itself does NOT go through these surfaces — it is Supabase's OAuth flow — so what is claimed here is the revocation only.",
+      "stickiness": "★★★ — not a swappable vendor at all: it is Apple's own identity, required by Apple's own review rules for any app offering Sign in with Apple. The bounded part is that nothing but the revoke call depends on it, so the cost of Apple changing it is one module.",
+      "surfaces": [
+        "APPLE_REVOKE_CLIENT_ID",
+        "APPLE_REVOKE_TEAM_ID",
+        "APPLE_REVOKE_KEY_ID",
+        "APPLE_REVOKE_PRIVATE_KEY"
+      ],
+      "openProtocol": "PARTIAL — the call is plain OAuth 2.0 token revocation (RFC 7009 shape: `client_id`, `client_secret`, `token`, `token_type_hint`, form-encoded, 200 with no body), but the `client_secret` is an Apple-specific ES256 JWT (`iss` Team ID, `sub` client id, `aud` https://appleid.apple.com, `kid` the key id), so a generic OAuth client cannot be pointed at it unchanged.",
+      "seam": {
+        "file": "services/platform/src/lib/apple-revoke.ts",
+        "symbol": "revokeAppleToken"
+      },
+      "configKeyed": {
+        "kind": "runtime-secret",
+        "reason": "Four Worker secrets, owner-provisioned with `wrangler secret put`. The private key is the `.p8` Apple issues ONCE in the developer portal; no agent creates or downloads it. Absent, the revoke returns `blocked`, the deletion stays 202 `erasure_pending` and the identity is not deleted — a refusal, never a skip."
+      },
+      "ownTheRecord": "N/A — there is no record of ours here. The only thing held is the user's own Apple refresh token (platform_db.apple_provider_tokens), and it exists to be destroyed: the revoke consumes it and the row goes.",
+      "exportPath": {
+        "detail": "NO EXPORT PATH, BECAUSE THERE IS NOTHING TO EXPORT, and the missing `path` is deliberate — the same shape cloudflare-turnstile uses. Nothing of ours lives at Apple through this surface: the single call is a DESTRUCTION (revoke the user's token) and Apple answers it with no body. The one value that exists is the user's own Apple refresh token, held in platform_db.apple_provider_tokens, which exports with that database's migrations and is deleted the moment the revoke succeeds."
+      },
+      "exitPlan": {
+        "alternative": "None, and that is the honest answer: if the product offers Sign in with Apple, Apple is the revocation authority. Dropping Sign in with Apple as a sign-in option is what retires this vendor, and it retires the whole surface with it.",
+        "swapCost": "Low in code (one module, one call, four secrets) and not a decision about code: it is the decision to keep or drop Sign in with Apple."
+      }
     }
   },
   "nonVendorSurfaces": {

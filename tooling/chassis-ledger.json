@@ -20,7 +20,7 @@
   "_rootsNote": "TWO roots since 2026-09-07 ([ADR 067] phase 2, unit app-shell). The Worker half of the template - 13 files, 917 lines every stamped backend app inherits - was outside this ledger entirely while `root` was one string, and `git ls-files -- <that one root>` could not see it to complain. assert-chassis-ledger.mjs is the authority on this list and cross-checks it; a row's `root` is optional and defaults to roots[0], which is why the 96 rows written against the single root are unchanged. ⏱ THE FIGURES IN THIS NOTE MOVED ON 2026-09-08 AND ARE CORRECTED RATHER THAN REWRITTEN: the Worker half is now 14 files and 1,021 lines, because the template gained src/lib/error-sink.ts — a stamped backend had NO crash sink at all and failed tooling/ci/assert-worker-error-sink.mjs on limbs 2, 3 and 5 at its first CI run. The guard PRINTS both figures per root on every run, which is the number to read; this sentence is prose and prose rots.",
   "totals": {
     "files": 128,
-    "lines": 17851,
+    "lines": 17956,
     "unclassified": 0,
     "unclassifiedLines": 0
   },
@@ -69,7 +69,7 @@
     },
     {
       "path": "lib/app.dart",
-      "lines": 347,
+      "lines": 352,
       "verdict": "MOVES",
       "why": "[ADR 067] decision 2 / unit app-shell - MEASURED 2026-09-07: 570 -> 347 brick lines, 519 package lines, callSiteDelta -223. RE-MEASURED 2026-09-07 ([ADR 067] phase 2b, unit app-shell-residues), appended and not rewritten: `wc -l packages/chassis_screens/lib/shell/app_shell.dart` at the app-shell merge 5c87a753 gives 519, which is what this row records and is correct; the app-shell report's 649 for the SHELL DIRECTORY was not (519 + 133 = 652). That directory total is corrected in the report and the spine ledger, not here. This unit then added a 16-line comment correction to the same package file, so `wc -l` on it now reads 532; the BRICK count this row's `lines` field grades is untouched at 347 and `callSiteDelta` is still -223. MaterialApp.router, the clamped text scaling, the force-update gate, the consent card, the consent scrim, the offline banner and the four-state lifecycle flush all moved into `NikatruApp` and the four surfaces beside it. What stayed is the COMPOSITION ROOT and only that: the stamped `const Color(0xFF{{seed_hex}})` seed (mustache, so it cannot leave), this app's own localisation delegates, every `ref.watch`/`ref.read`, the `url_launcher` call, `recordAnalyticsConsent(`, and the three ConsumerWidget gates the shell is handed. Anchors held where they were: assert-vendor-portability:513 (`valueOrNull?.updateUrl ??`), dod.json:123/125 (AnalyticsGate) and :135/137 (darkTheme), seven screen-register rows, and 13 of the 14 stamp-properties APP_ROOT anchors. The fourteenth (`child: AnalyticsGate(`) was re-pointed to `shell: (...) => AnalyticsGate(`, the same mounting claim, with a mutation proving it.",
       "target": "packages/chassis_screens/lib/shell/app_shell.dart",
@@ -227,7 +227,7 @@
     },
     {
       "path": "lib/state/providers.dart",
-      "lines": 2625,
+      "lines": 2649,
       "verdict": "STAYS",
       "why": "MEASURED: undeletable (9 guards) and NOT reducible to declarations — a 98-line stub carrying all 51 provider names and all 14 class/typedef signatures still left 8 guards red. MIN_DOMAIN=59 is NOT the binding constraint (its regex does accept a one-line delegation, verified: 51 such lines count 51); the binding constraints are 37 literal anchors in assert-stamp-properties, the analytics envelope literal (assert-analytics-contract:207), the consent gate (assert-policy-claims POLICY_CONSTS), two sole non-test seam call sites (assert-seams-wired:588,622) and MIN_PROVIDERS=20 (assert-provider-graph-acyclic:419, the stub parsed 9)."
     },
@@ -587,7 +587,7 @@
     },
     {
       "path": "test/chassis_properties_test.dart",
-      "lines": 5619,
+      "lines": 5695,
       "verdict": "STAYS",
       "why": "MEASURED: undeletable — assert-stamp-properties:2197 exits 1 with COVERAGE LOST, and all SIX feature rows in the brick dod.json resolve to declarations that exist ONLY in this file. 26 property groups, 123 cases, 3,595 code lines. Its bulk is WIRING proof, not duplication: 42 cases boot the real stamped app root and none unit-tests a package class. Reducible only per-property, which the file itself sanctions. One genuine candidate: the content-pack group (117 lines) tests a rail 0 of 600 shipped Dart files read."
     },

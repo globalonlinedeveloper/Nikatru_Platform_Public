@@ -138,7 +138,7 @@ describe('assert-prod-provenance — the gate limb', () => {
   test('the real tree passes, and says out loud that it has not seen production', () => {
     const r = spawnSync(process.execPath, [GATE, REPO], { cwd: REPO, encoding: 'utf8' });
     assert.equal(r.status, 0, r.stdout + r.stderr);
-    assert.match(r.stdout, /17 table\(s\) enumerated/);
+    assert.match(r.stdout, /18 table\(s\) enumerated/);
     assert.match(r.stdout, /HAS NOT LOOKED AT PRODUCTION/);
     assert.match(r.stdout, /MONITOR/);
   });
@@ -360,7 +360,7 @@ describe('check-prod-provenance — the monitor limb', () => {
     const r = run({});
     assert.equal(r.status, 0, r.stdout + r.stderr);
     assert.match(r.stdout, /THIS IS A MONITOR, NOT A GATE/);
-    assert.match(r.stdout, /17 table\(s\) enumerated/);
+    assert.match(r.stdout, /18 table\(s\) enumerated/);
   });
 
   test('the real production consent row resolves — it is a shipped build, not residue', () => {

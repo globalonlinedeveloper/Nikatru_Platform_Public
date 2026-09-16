@@ -446,6 +446,15 @@
       "unconsumedReason": "🔄 CORRECTED 2026-08-06 — THE CLIENT HALF EXISTS. `packages/core/lib/src/auth/account_deletion.dart` models the three refusals this route answers with, `packages/auth_supabase/lib/src/supabase_auth_repository.dart:43` calls `DELETE /v1/account`, and `packages/core/test/account_deletion_test.dart` covers the 501. The claim that it was \"blocked on stage 2\" was true when written and false at head. [4]B-14 pins the STATUS SET rather than a body, because this route's client reads no body key — `AccountDeletionFailure.forStatus` is the contract."
     },
     {
+      "id": "account-apple-token",
+      "method": "PUT",
+      "path": "/v1/account/apple-token",
+      "auth": "required",
+      "owningFile": "services/platform/src/routes/apple-token.ts",
+      "purpose": "⏱ 2026-09-16 · O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE. KEEPS THE ONE VALUE THE DELETION ABOVE CANNOT BE DONE WITHOUT: Apple's own refresh token for this account. Apple requires an app offering Sign in with Apple to revoke the user's tokens when the account is deleted, and 'POST https://appleid.apple.com/auth/revoke' takes a token; the identity provider hands it to the CLIENT once, on the session that completes the OAuth redirect, and stores none of it (supabase/auth#1308 is closed as not planned). So the app posts it here and platform_db.apple_provider_tokens holds it until the deletion consumes it. Body is one field, bounded 8..4096 chars; the response is a COUNT. The token is never logged, never echoed and readable by no route — its only reader is src/lib/apple-revoke.ts.",
+      "unconsumedReason": "CONSUMED: packages/core/lib/src/auth/apple_token_keeper.dart (keepAppleRefreshToken) posts it through packages/api_client/lib/src/account_deletion_request.dart (storeAppleRefreshToken), wired in both trees by appleTokenKeeperProvider and proven in services/platform/test/apple-revoke.test.ts."
+    },
+    {
       "id": "entitlements",
       "method": "GET",
       "path": "/v1/entitlements",
