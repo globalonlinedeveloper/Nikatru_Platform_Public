@@ -5434,12 +5434,12 @@ void main() {
   // would sign people in with Apple for months and only fail at the first
   // deletion, on the server, with nothing to revoke.
   group('property: apple-token-kept', () {
-    test('reading the keeper subscribes to the identity stream and reads the session a sign-in brings', () async {
+    // Named short on purpose: a header that does not fit on one line is
+    // wrapped differently by two `dart format` versions a patch apart, and CI
+    // grades the stamp with its own.
+    test('the keeper subscribes and reads the sign-in session', () async {
       final _AppleKeeperAuth auth = _AppleKeeperAuth();
-      final ProviderContainer c = _container(
-        _onboardedStore(),
-        auth: auth,
-      );
+      final ProviderContainer c = _container(_onboardedStore(), auth: auth);
       addTearDown(c.dispose);
 
       c.read(appleTokenKeeperProvider);
@@ -5450,17 +5450,15 @@ void main() {
       expect(
         auth.sessionReads,
         greaterThan(0),
-        reason: 'the provider token lives on the SESSION, so a keeper that never '
+        reason:
+            'the provider token lives on the SESSION, so a keeper that never '
             'reads one can never capture it',
       );
     });
 
-    test('the shared REST client the token is posted through is the one this app wires', () {
+    test('the token is posted through the REST client this app wires', () {
       final _AppleKeeperAuth auth = _AppleKeeperAuth();
-      final ProviderContainer c = _container(
-        _onboardedStore(),
-        auth: auth,
-      );
+      final ProviderContainer c = _container(_onboardedStore(), auth: auth);
       addTearDown(c.dispose);
       // Same client the deletion call uses: one host, one token provider.
       expect(c.read(restClientProvider), isNotNull);

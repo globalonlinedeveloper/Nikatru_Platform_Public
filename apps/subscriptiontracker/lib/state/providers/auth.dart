@@ -331,12 +331,11 @@ bool shouldHoldForPasswordReset({
 final Provider<void> appleTokenKeeperProvider = Provider<void>((ref) {
   final StreamSubscription<core.AuthUser?> sub = core.keepAppleRefreshToken(
     auth: ref.watch(authRepositoryProvider),
-    send: (String token) =>
-        storeAppleRefreshToken(
-          ref.read(platformRestClientProvider),
-          token,
-          appId: AppConfig.appId,
-        ),
+    send: (String token) => storeAppleRefreshToken(
+      ref.read(platformRestClientProvider),
+      token,
+      appId: AppConfig.appId,
+    ),
   );
   ref.onDispose(sub.cancel);
 });
