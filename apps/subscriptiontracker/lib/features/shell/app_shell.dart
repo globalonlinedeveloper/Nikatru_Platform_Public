@@ -283,6 +283,9 @@ class AppShell extends StatelessWidget {
     // announced as text with no role and, worse, no indication of WHICH ONE YOU
     // ARE ON. `selected:` is the half that carries that.
     //
+    // ⏱ 2026-09-16 · [ADR 083]: medium, large and extra-large all render the
+    // `NavigationRail` now; no class renders the `NavigationDrawer`.
+    //
     // No `label:`: the tab's own `Text` is right there and `MergeSemantics`
     // folds it in, so restating it in Dart would announce the name twice and
     // give the arb key a second, drift-prone consumer.

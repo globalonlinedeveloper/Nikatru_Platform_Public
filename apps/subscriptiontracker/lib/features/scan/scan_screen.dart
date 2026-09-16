@@ -227,6 +227,10 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
         // LOOSENING of this screen's, not a fix, and it would part this screen
         // from onboarding, its only sibling in the first-run role. 720 stands.
         //
+        // ⏱ 2026-09-16 · [ADR 083]: a 1440 px window now gives the body 1439 -
+        // R (1323 px for a 116 px rail), because the slim rail replaced the 360
+        // px drawer. 720 binds there too.
+        //
         // The `Padding(24)` this replaces moved INTO the pane, which is the
         // same box it always was: `ContentPane` applies its inset INSIDE the
         // cap (`content_pane.dart:43-46`), so at any width below 720 — every

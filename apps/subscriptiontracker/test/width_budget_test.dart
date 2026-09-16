@@ -22,6 +22,11 @@
 // (`min(W - 361, 1280)`), so the second column appears at a WINDOW width of
 // 1561. `budget_screen.dart`'s `_twoUp` carries that arithmetic.
 //
+// ⏱ 2026-09-16 · [ADR 083]: the 361 px was the drawer's, and no window class
+// has the drawer now. From 1200 px up the body is `min(W - R - 1, 1280)`, R
+// being the slim rail's rendered width, so the second column appears at a
+// window of 1200 + R + 1 (1317 px for a 116 px rail), not 1561.
+//
 // 🔴 THE RING CARD IS NOT PART OF THE GRID, AND THAT IS MEASURED HERE TOO.
 // It is the page's one summary and there is no second card to sit beside it, so
 // the two-up layout holds it at `reading` rather than stretching it across

@@ -1,6 +1,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // a11y_app_scaffold_test.dart — the accessibility sweep for `AppScaffold`'s
-// LARGE-class navigation rail ([ADR 083]).
+// LARGE- and EXTRA-LARGE-class navigation rail ([ADR 083]).
 //
 // ⏱ 2026-09-15 · WHY THIS FILE EXISTS. The owner decided the large window class
 // (1200–1599 px) navigates by a slim `NavigationRail` instead of the 360 px
@@ -14,6 +14,12 @@
 // ⚠️ EACH WIDTH IS ITS OWN CASE, declared individually rather than generated in
 // a loop: 1200 is the first large width, 1440 the laptop the complaint was
 // about, 1599 the last large width before the drawer returns.
+//
+// ⏱ 2026-09-16 · [ADR 083] §4 ("Rail for all wide windows"): the drawer does
+// not return. Extra-large takes the same slim rail, and §4 asks for every
+// destination to be announced there too. 1600 is the first extra-large width,
+// 1621 the last width of the band that lost Home's side panel under the drawer,
+// and 1920 a wide desktop.
 // ─────────────────────────────────────────────────────────────────────────────
 import 'dart:ui' show Tristate;
 
@@ -175,6 +181,83 @@ void main() {
       WidgetTester tester,
     ) async {
       const Size size = Size(1599, 900);
+      final SemanticsHandle handle = tester.ensureSemantics();
+      await _pumpAt(
+        tester,
+        size,
+        AppScaffold(
+          destinations: _destinations,
+          selectedIndex: 1,
+          onDestinationSelected: (_) {},
+          body: const Center(child: Text('BODY')),
+        ),
+      );
+      _expectRailAnnounced(tester, size);
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(textContrastGuideline));
+      expect(await _tabOrder(tester), _labels,
+          reason: 'Tab reaches the destinations in the order they are drawn');
+      handle.dispose();
+    });
+  });
+
+  group('AppScaffold extra-large-class rail is accessible (ADR 083 §4)', () {
+    testWidgets('1600 — labels, one selected, tap targets, focus order', (
+      WidgetTester tester,
+    ) async {
+      const Size size = Size(1600, 900);
+      final SemanticsHandle handle = tester.ensureSemantics();
+      await _pumpAt(
+        tester,
+        size,
+        AppScaffold(
+          destinations: _destinations,
+          selectedIndex: 1,
+          onDestinationSelected: (_) {},
+          body: const Center(child: Text('BODY')),
+        ),
+      );
+      _expectRailAnnounced(tester, size);
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(textContrastGuideline));
+      expect(await _tabOrder(tester), _labels,
+          reason: 'Tab reaches the destinations in the order they are drawn');
+      handle.dispose();
+    });
+
+    testWidgets('1621 — labels, one selected, tap targets, focus order', (
+      WidgetTester tester,
+    ) async {
+      const Size size = Size(1621, 900);
+      final SemanticsHandle handle = tester.ensureSemantics();
+      await _pumpAt(
+        tester,
+        size,
+        AppScaffold(
+          destinations: _destinations,
+          selectedIndex: 1,
+          onDestinationSelected: (_) {},
+          body: const Center(child: Text('BODY')),
+        ),
+      );
+      _expectRailAnnounced(tester, size);
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(textContrastGuideline));
+      expect(await _tabOrder(tester), _labels,
+          reason: 'Tab reaches the destinations in the order they are drawn');
+      handle.dispose();
+    });
+
+    testWidgets('1920 — labels, one selected, tap targets, focus order', (
+      WidgetTester tester,
+    ) async {
+      const Size size = Size(1920, 900);
       final SemanticsHandle handle = tester.ensureSemantics();
       await _pumpAt(
         tester,

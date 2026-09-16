@@ -12,6 +12,13 @@
 // argument for 720 rather than 840 or 960 is written on the `ContentPane.reading`
 // call itself, because that is where somebody will go to change it.
 //
+// ⏱ 2026-09-16 · [ADR 083]: the 361 px above was the 360 px drawer and its
+// divider, and no window class uses the drawer now. From 1200 px up the body is
+// `min(W - R - 1, 1280)`, where R is the slim rail's rendered width (116 px for
+// a "Settings" label on Flutter 3.47.2). So a 1440 px window gives 1439 - R
+// (1323 px for a 116 px rail), not 1079. The 720 cap chosen here still binds
+// there.
+//
 // 📐 THE RIG LIVES IN `test/support/width_harness.dart` and its header is the
 // primary record for the three rules every case here obeys: the assertion is on
 // incoming `constraints`, never on `size`; every case PINS the surface; and a
@@ -31,6 +38,10 @@
 // provably inert. A width test for this screen that pumps only 1920 measures a
 // window almost nobody has and skips the one everybody does.
 //
+// ⏱ 2026-09-16 · [ADR 083]: 1079 WAS that width under the 360 px drawer. A 1440
+// px window now gives 1439 - R. [kShell] stays at 1079 as a desktop-range body
+// width at which the 720 cap is still falsifiable.
+//
 // ⚠️ NO TAP CASES HERE. `pumpAt` builds a bare `MaterialApp` with no router and
 // this screen's rows call `context.go(...)`; building is safe because go_router
 // is only touched on tap, but a tap would throw "no GoRouter found in context",
@@ -46,6 +57,10 @@ import 'support/width_harness.dart';
 /// The body width `AppScaffold` hands a branch on a maximised 1440 px desktop:
 /// `min(1440 - 361, 1280)`. Named, because a bare `1079` in a `Size` reads as
 /// an arbitrary number and it is the opposite of one.
+///
+/// ⏱ 2026-09-16 · [ADR 083]: stale since the rail replaced the drawer (a 1440
+/// px window now gives 1439 - R). Kept as a desktop-range body width; see the
+/// file header.
 const Size kShell = Size(1079, 900);
 
 /// Exactly the cap — the no-op boundary. See the file header for why it is here
@@ -116,8 +131,9 @@ void main() {
         offeredWidth(tester, inPane(ListView)),
         AppBreakpoints.reading,
         reason:
-            '1079 is what AppScaffold hands this branch on a maximised 1440 '
-            'display, and it is the width at which the previous 1280 cap was '
+            '1079 was what AppScaffold handed this branch on a maximised 1440 '
+            'display under the old drawer, and it is the width at which the '
+            'previous 1280 cap was '
             'provably inert: every row spread its glyph to one edge and its '
             'chevron to the other with a thousand pixels of nothing between',
       );

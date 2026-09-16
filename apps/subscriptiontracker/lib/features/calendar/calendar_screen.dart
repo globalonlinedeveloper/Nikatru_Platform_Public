@@ -251,6 +251,13 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     // was a no-op and this screen was a phone column that had simply been made
     // wider — the defect the pane was added to fix, still shipping.
     //
+    // ⏱ 2026-09-16 · [ADR 083]: the 361 px above was the 360 px drawer and its
+    // divider, and no window class uses the drawer now. From 1200 px up the
+    // body is `min(W - R - 1, 1280)`, where R is the slim rail's rendered width
+    // (116 px for a "Settings" label on Flutter 3.47.2). So a 1440 px window
+    // gives 1439 - R (1323 px for a 116 px rail), not 1079. The 720 cap chosen
+    // here still binds there.
+    //
     // `.reading` (720), and it is the design system's OWN answer for this shape
     // rather than a number picked here. Two measurements decide it:
     //   · THE MONTH GRID. `crossAxisCount: 7` is semantic, so extra width goes
@@ -297,6 +304,11 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
           // a 1200 px window is 839 px of body. Deriving from the window would
           // drop the renewals out of this column while the detail column was not
           // being built at all, i.e. lose them from the screen entirely.
+          //
+          // ⏱ 2026-09-16 · [ADR 083]: the 361 px was the drawer's. With the
+          // rail from 1200 px up, a 1200 px window is 1200 - R - 1 px of body
+          // (1083 for a 116 px rail), not 839. Window and body still differ, so
+          // the rule stands.
           final bool split = TwoPane.isTwoPaneOf(context);
           return ContentPane.reading(
             // ⚠️ KEYED because there are now TWO panes on this screen and

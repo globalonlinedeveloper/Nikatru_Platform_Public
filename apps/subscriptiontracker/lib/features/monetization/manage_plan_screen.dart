@@ -171,6 +171,13 @@ class _ManagePlanScreenState extends ConsumerState<ManagePlanScreen> {
       // screen was left bare in that pass and this comment went false with it:
       // it claimed parity with settings while being 560px wider.
       //
+      // ⏱ 2026-09-16 · [ADR 083]: the 361 px above was the 360 px drawer and
+      // its divider, and no window class uses the drawer now. From 1200 px up
+      // the body is `min(W - R - 1, 1280)`, where R is the slim rail's rendered
+      // width (116 px for a "Settings" label on Flutter 3.47.2). So a 1440 px
+      // window gives 1439 - R (1323 px for a 116 px rail), not 1079. The 720
+      // cap chosen here still binds there.
+      //
       // ROSCA argues for the tighter cap rather than against it. The rule is
       // about how hard the cancel control is to FIND, and a 1280px row whose
       // label sits a window away from its icon is harder to find than a 720px

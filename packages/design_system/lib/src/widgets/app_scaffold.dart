@@ -52,11 +52,16 @@ class AppBreakpoints {
   /// [NavigationRail], the same one as [medium].
   static const double large = 1200;
 
-  /// Desktop maximised. → permanent [NavigationDrawer], body capped at
-  /// [kMaxBodyWidth] — unchanged by [ADR 083].
+  /// Desktop maximised. → the SLIM (collapsed) [NavigationRail], body capped
+  /// at [kMaxBodyWidth].
+  ///
+  /// ⏱ 2026-09-16 · [ADR 083] §4 (owner, 2026-09-15: "Rail for all wide
+  /// windows"). This class kept the 360 px [NavigationDrawer] until today, so a
+  /// 1600–1621 px window had a narrower body than a 1599 px one and lost Home's
+  /// side panel. No window class uses the drawer now.
   static const double extraLarge = 1600;
 
-  /// Ultra-wide. Still a drawer, but the body stops growing — see
+  /// Ultra-wide. Still the rail, but the body stops growing — see
   /// [kMaxBodyWidth]. A line of text 1400 px wide is unreadable, so "more
   /// pixels" stops meaning "wider content" somewhere, and this is where.
   static const double kMaxBodyWidth = 1280;
@@ -128,6 +133,10 @@ WindowClass windowClassFor(double width) {
 /// medium → slim rail; expanded → extended rail; LARGE → slim rail (it was the
 /// drawer); extra-large → drawer with the body capped. The sentence above
 /// predates the five classes and is kept as written.
+///
+/// ⏱ 2026-09-16 · [ADR 083] §4: extra-large → slim rail with the body capped.
+/// The drawer is gone from every class, so the map is: compact → bar; expanded
+/// → extended rail; medium, large and extra-large → slim rail.
 class AppScaffold extends StatelessWidget {
   const AppScaffold({
     super.key,
@@ -200,7 +209,10 @@ class AppScaffold extends StatelessWidget {
             // so a 1440 laptop window holds Home's list, detail and side panel.
             return _rail(extended: false);
           case WindowClass.extraLarge:
-            return _drawer(capBodyWidth: true);
+            // ⏱ 2026-09-16 · [ADR 083] §4: the same slim rail, and the body
+            // stops at kMaxBodyWidth. It was the 360 px drawer, which made the
+            // body at 1600–1621 narrower than at 1599.
+            return _rail(extended: false, capBodyWidth: true);
         }
       },
     );
@@ -240,7 +252,40 @@ class AppScaffold extends StatelessWidget {
   // ⏱ 2026-09-15 · LARGE (1200–1599) takes the COLLAPSED rail too ([ADR 083]).
   // Collapsed rather than extended because the point of the change is body
   // width: the extended rail would hand back most of what the drawer took.
-  Widget _rail({required bool extended}) {
+  //
+  // ⏱ 2026-09-16 · EXTRA-LARGE (>=1600) takes it too ([ADR 083] §4), with
+  // `capBodyWidth: true`. The two classes differ in one real way: past 1600
+  // the body stops growing. A paragraph 1400 px wide is hard to read, because
+  // the eye loses the line return. So beyond some width, more pixels must stop
+  // meaning wider text. That is why extra-large is a class of its own.
+  //
+  // The body is `min(W - rail - 1, 1280)` from 1200 up (rail + 1 px divider),
+  // capped only from 1600. The slim rail's width is whatever Material renders
+  // for the longest label: 116 px for a "Settings" label on Flutter 3.47.2,
+  // measured 2026-09-16. The tests read it off the widget, never assume it.
+  Widget _rail({required bool extended, bool capBodyWidth = false}) {
+    final Widget content = capBodyWidth
+        ? Align(
+            // 🔴 topCenter, NOT topLeft. The cap only ever produces LEFTOVER
+            // width, and pinning left donated every pixel of it to one side.
+            // Measured 2026-08-21 under the old drawer: at 1920 the capped 1280
+            // sat flush left behind 279px of dead gutter on the right.
+            // Centring splits the leftover, and it is what `ContentPane` has
+            // always done, so the chassis and the panes inside it agree about
+            // where a capped column belongs.
+            //
+            // `top`, never `Alignment.center`: vertical centring makes a body
+            // that grows (an error line appears under a form) push everything
+            // already on screen upward. Same reasoning as `ContentPane`'s.
+            alignment: Alignment.topCenter,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                maxWidth: AppBreakpoints.kMaxBodyWidth,
+              ),
+              child: body,
+            ),
+          )
+        : body;
     return Scaffold(
       appBar: _appBar(),
       floatingActionButton: floatingActionButton,
@@ -263,74 +308,6 @@ class AppScaffold extends StatelessWidget {
                     label: Text(d.label),
                   ),
               ],
-            ),
-            const VerticalDivider(width: 1, thickness: 1),
-            Expanded(child: body),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // LARGE (1200–1599) and EXTRA-LARGE (>=1600): permanent NavigationDrawer.
-  // ⏱ 2026-09-15: EXTRA-LARGE ONLY since [ADR 083]; large takes the rail above.
-  // `capBodyWidth: false` has no caller left and is kept so the drawer's shape
-  // is one method, not two.
-  //
-  // The two differ in one real way rather than a cosmetic one: past 1600 the
-  // body stops growing. A paragraph measured 1400 px wide is genuinely hard to
-  // read — the eye loses the line return — so beyond some width "more pixels"
-  // must stop meaning "wider text". That is the whole reason extra-large is a
-  // class of its own and not just "large, but more".
-  Widget _drawer({required bool capBodyWidth}) {
-    final Widget content = capBodyWidth
-        ? Align(
-            // 🔴 topCenter, NOT topLeft. The cap only ever produces LEFTOVER
-            // width, and pinning left donated every pixel of it to one side.
-            // Measured 2026-08-21: the body is `min(W - 361, 1280)` — the 360px
-            // drawer and its 1px divider take the width first — so at 1920 the
-            // capped 1280 sat flush left behind 279px of dead gutter on the
-            // right. Centring splits the leftover, and it is what `ContentPane`
-            // has always done, so the chassis and the panes inside it no longer
-            // disagree about where a capped column belongs.
-            //
-            // `top`, never `Alignment.center`: vertical centring makes a body
-            // that grows (an error line appears under a form) push everything
-            // already on screen upward. Same reasoning as `ContentPane`'s.
-            alignment: Alignment.topCenter,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(
-                maxWidth: AppBreakpoints.kMaxBodyWidth,
-              ),
-              child: body,
-            ),
-          )
-        : body;
-    return _drawerScaffold(content);
-  }
-
-  Widget _drawerScaffold(Widget content) {
-    return Scaffold(
-      appBar: _appBar(),
-      floatingActionButton: floatingActionButton,
-      body: SafeArea(
-        child: Row(
-          children: <Widget>[
-            SizedBox(
-              width: 360,
-              child: NavigationDrawer(
-                selectedIndex: selectedIndex,
-                onDestinationSelected: onDestinationSelected,
-                children: <Widget>[
-                  const SizedBox(height: 12),
-                  for (final AppDestination d in destinations)
-                    NavigationDrawerDestination(
-                      icon: Icon(d.icon),
-                      selectedIcon: Icon(d.selectedIcon),
-                      label: Text(d.label),
-                    ),
-                ],
-              ),
             ),
             const VerticalDivider(width: 1, thickness: 1),
             Expanded(child: content),

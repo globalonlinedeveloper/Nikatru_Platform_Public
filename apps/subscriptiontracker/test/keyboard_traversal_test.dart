@@ -53,6 +53,11 @@
 // `width_settings_test.dart`. A keyboard sweep belongs at a DESKTOP width
 // because a desktop is where a keyboard-only user is.
 //
+// ⏱ 2026-09-16 · [ADR 083]: that derivation is stale. With the slim rail from
+// 1200 px up, a 1440 px window gives the body 1439 - R, not 1079. The surface
+// stays at 1079: it is still a desktop-range body width, and every count below
+// was measured on it.
+//
 // 2400 tall is what makes the sweep COMPLETE rather than merely long. A
 // `ListView` culls what is off-screen, and a culled control is neither
 // reachable nor unreachable — it does not exist, so a sweep run in a short

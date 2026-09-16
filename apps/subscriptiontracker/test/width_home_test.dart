@@ -435,6 +435,8 @@ void main() {
   // the body of a real `AppScaffold`, so the large class's rail is what
   // decides the body, at 1200 (first large width), 1440 (the laptop) and 1599
   // (last large width). Declared one by one, not in a loop.
+  // ⏱ 2026-09-16 · [ADR 083] §4: and at 1600, 1621 and 1920, where the
+  // extra-large class now takes the same rail.
   group('ADR 083 · Home inside AppScaffold, at window widths', () {
     testWidgets('1200 window: the rail, a split, and no side panel yet', (
       WidgetTester tester,
@@ -475,6 +477,49 @@ void main() {
       await pumpAt(tester, const Size(1599, 900), _shell());
       expect(find.byType(NavigationRail), findsOneWidget);
       expect(kAside, findsOneWidget);
+      expect(kPlaceholder, findsOneWidget);
+    });
+
+    // ⏱ 2026-09-16 · [ADR 083] §4 ("Rail for all wide windows"). Under the
+    // drawer, extra-large handed Home min(W - 361, 1280): 1239 at 1600 and
+    // 1260 at 1621, both below `asideMinBodyWidth`, so these windows lost the
+    // side panel that 1599 shows. Both cases fail on that code. 1920 is the
+    // wide control, where the 1280 body cap binds.
+    testWidgets('1600 window: extra-large keeps the rail and the side panel', (
+      WidgetTester tester,
+    ) async {
+      await pumpAt(tester, const Size(1600, 900), _shell());
+      expect(find.byType(NavigationRail), findsOneWidget);
+      expect(find.byType(NavigationDrawer), findsNothing);
+      expect(
+        kAside,
+        findsOneWidget,
+        reason:
+            'a wider window must not lose the column a 1599 px window shows',
+      );
+      expect(kPlaceholder, findsOneWidget);
+    });
+
+    testWidgets('1621 window: the last width of the old gap has the panel', (
+      WidgetTester tester,
+    ) async {
+      await pumpAt(tester, const Size(1621, 900), _shell());
+      expect(find.byType(NavigationRail), findsOneWidget);
+      expect(
+        kAside,
+        findsOneWidget,
+        reason: 'under the drawer this body was 1260, one short of the panel',
+      );
+      expect(kPlaceholder, findsOneWidget);
+    });
+
+    testWidgets('1920 window: the capped body still holds three columns', (
+      WidgetTester tester,
+    ) async {
+      await pumpAt(tester, const Size(1920, 900), _shell());
+      expect(find.byType(NavigationRail), findsOneWidget);
+      expect(kAside, findsOneWidget);
+      expect(offeredWidth(tester, kAside), AppBreakpoints.form);
       expect(kPlaceholder, findsOneWidget);
     });
   });
