@@ -11,7 +11,8 @@
     "in four independent places, and no build anywhere could go red over any of them:",
     "",
     "  · services/subscriptiontracker-api/src/routes/webhooks.ts declares POST /revenuecat. RevenueCat is named in no",
-    "    published page and in no ADR.",
+    "    published page and in no ADR. ⏱ 2026-09-16: that route is RETIRED; RevenueCat is reached through",
+    "    services/platform's POST /v1/money/:provider (its revenuecatVerifier), and privacy.html names it.",
     "  · [ADR 004] LOCKED Paddle as the merchant of record on 2026-07-23. Paddle is named in none of",
     "    privacy.html, terms.html or refund.html. ✅ HALF FIXED — terms.html §4 and refund.html §2/§4 now",
     "    name Paddle and describe the merchant-of-record role ([ADR 039]). privacy.html still says only",
@@ -655,7 +656,7 @@
       "name": "RevenueCat",
       "role": "iap_aggregator",
       "status": "wired-not-live",
-      "reachableAt": "/revenuecat",
+      "reachableAt": null,
       "tells": [
         "revenuecat",
         "revenue cat"
@@ -665,6 +666,16 @@
       ],
       "privateRecord": null,
       "notes": [
+        "⏱ 2026-09-16 — THE ROUTE MOVED, AND `reachableAt` WENT TO null WITH IT. RevenueCat now arrives at",
+        "services/platform's `POST /v1/money/:provider` as `revenuecat` (revenuecatVerifier in",
+        "services/platform/src/lib/mor/revenuecat.ts, an HMAC over the body), exactly as Paddle does — and",
+        "Paddle's row carries `reachableAt: null` for the same reason: a `:provider` segment is not a literal",
+        "route, so the K-5 route limb cannot see it, and assert-mor-adapters.mjs limb 2b holds every",
+        "registered rail to a row here instead. The legacy bearer-gated route it replaced",
+        "(services/subscriptiontracker-api's POST /v1/webhooks/revenuecat) is retired (O-REVENUECAT-VERIFIER",
+        "leg b). The platform verifier refuses every real event until an app declares its RevenueCat app id",
+        "(O-REVENUECAT-ACCOUNT), so the status stays `wired-not-live`. The paragraphs below are kept as written.",
+        "",
         "🔴 THE ONLY PROVIDER IN THIS REGISTER THAT REAL CODE REACHES, AND IT IS NAMED IN NO PAGE.",
         "services/subscriptiontracker-api/src/routes/webhooks.ts mounts POST /v1/webhooks/revenuecat, authenticated by a",
         "shared secret and fail-closed when the secret is unset. It upserts rows into platform_db",
@@ -738,7 +749,7 @@
       ],
       "receivesBasis": "🔴 THIS ROW IS WHY THE SINK-DISCLOSURE LIMB EXISTS. Until 2026-08-06 this sink ALSO received `ip_address`, while privacy.html published 'We do not collect or store your IP address' — and nothing in this repository could see it, because the only personal-data store outside Cloudflare appears in no inventory here. Fixed at the sink and verified BY OBSERVATION, not by reading a setting (Private/pre-minimal-2026-09-08:archive/2026-09-05/session-notes.md §17 — the old `knowledge/` prefix merged into `Private/` in the 2026-08-15 flatten; §17 is unmoved): two layers, because either alone is a false fix. (1) The sink refuses — 12 IP keys added to GlitchTip's `sensitive_keys`, which is what catches a CLIENT-SUPPLIED address; tested with 203.0.113.45. (2) Nothing is collected — nginx blanks the 11 client-IP headers in python_ipware's precedence tuple, so `get_client_ip` falls through to the Docker gateway and returns None. Probed after: no `user` object at all on a fresh event; the negative control against the pre-change config returned the address unmodified, so the assertion can fail. The 18 back-catalogue events holding a real address were redacted in place, non-destructively.",
       "transits": {
-        "ip_address": "An ingest request necessarily arrives from the device's address; that is TCP, not a choice. Nothing writes it — see `receivesBasis`. ⚠️ AND THIS IS EXACTLY THE DECLARATION A REPO-RESIDENT GUARD CANNOT CHECK. If somebody re-enables IP storage on the live GlitchTip without editing this line, every guard in this repository stays green. Only a probe against the live GlitchTip API can close that, and no such probe exists today: the compose file lives at /opt/glitchtip on the box and is in no tree CI can read."
+        "ip_address": "An ingest request necessarily arrives from the device's address; that is TCP, not a choice. Nothing writes it — see `receivesBasis`. ⚠️ AND THIS IS EXACTLY THE DECLARATION A REPO-RESIDENT GUARD CANNOT CHECK. If somebody re-enables IP storage on the live GlitchTip without editing this line, every guard in this repository stays green. Only a probe against the live GlitchTip API can close that. ⏱ CORRECTED 2026-09-16 — this sentence said no such probe exists; one does since PR #778 (O-CRASH-EVENT-IP-DROP): `node tooling/ci/assert-glitchtip-no-ip.mjs --live` posts a subject event (no user, spoofed client-IP headers, plus the real CF-Connecting-IP the edge adds) and a negative control through the public glitchtip.nikatru.com edge, then reads both back through the GlitchTip API. It is an ATTENDED, on-demand laptop duty (duty.laptop.glitchtip-no-ip-live in tooling/ops/register.json), never a CI gate, because the compose file lives at /opt/glitchtip on the box and is in no tree CI can read — so nothing runs the live leg automatically. tooling/ci/assert-sink-disclosure.mjs names that probe for this row and exits 2 if the probe, its --live leg or the duty row disappears; it checks the probe's shape on every push and cannot run it."
       },
       "notes": [
         "Crash reports go to a GlitchTip instance we run ourselves on a Hostinger VPS (Box B).",
