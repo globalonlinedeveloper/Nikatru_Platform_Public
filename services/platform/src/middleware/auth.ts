@@ -68,8 +68,9 @@ import {
   isKeySetUnavailable,
   usableJwksDocument,
   verifyOptions,
+  authRecencyOf,
 } from '../../../_shared/src/auth';
-import type { AppEnv, AuthRecency, Env } from '../types';
+import type { AppEnv, Env } from '../types';
 
 /** The remote JWKS *getter*, cached per SUPABASE_URL for the isolate's life.
  *  `createRemoteJWKSet` keeps its own in-memory cache with request coalescing
@@ -154,30 +155,11 @@ async function warmCache(env: Env): Promise<void> {
   }
 }
 
-/**
- * ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH — how the verified token's user signs in,
- * and when they last authenticated. Pure, and only ever called on a payload
- * `jwtVerify` has already accepted. See `AuthRecency` for why `amr` and not `iat`.
- *
- * Every unreadable shape lands on a named side: a non-array `providers` is NOT
- * password-less (no claim to act on), and an `amr` with no numeric timestamp is
- * "never authenticated recently" (null), which the deletion route refuses.
- */
-export function authRecencyOf(payload: Record<string, unknown>): AuthRecency {
-  const meta = payload.app_metadata;
-  const providers = meta && typeof meta === 'object' ? (meta as { providers?: unknown }).providers : undefined;
-  const passwordless = Array.isArray(providers) && !providers.includes('email');
-  let lastAuthenticatedAt: number | null = null;
-  if (Array.isArray(payload.amr)) {
-    for (const entry of payload.amr) {
-      const ts = entry && typeof entry === 'object' ? (entry as { timestamp?: unknown }).timestamp : undefined;
-      if (typeof ts === 'number' && Number.isFinite(ts)) {
-        lastAuthenticatedAt = lastAuthenticatedAt === null ? ts : Math.max(lastAuthenticatedAt, ts);
-      }
-    }
-  }
-  return { passwordless, lastAuthenticatedAt };
-}
+// ⏱ 2026-09-16 · O-APP-API-DELETE-NO-RECENCY — `authRecencyOf` (how the verified
+// token's user signs in, and when they last AUTHENTICATED — `amr`, never `iat`) moved
+// VERBATIM to services/_shared/src/auth.ts, so every erasure door reads one
+// implementation. Re-exported here so this Worker's callers and tests are unchanged.
+export { authRecencyOf } from '../../../_shared/src/auth';
 
 /**
  * Hono middleware. On success sets `userId` (+ `userEmail` when the token

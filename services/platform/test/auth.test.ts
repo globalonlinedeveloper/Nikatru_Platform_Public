@@ -71,6 +71,8 @@ let appStatus = 200;
 /** When set, the relay fetch THROWS — an app Worker that cannot be reached at
  *  all, which is a different failure from one that answers badly. */
 let appThrows = false;
+/** The app route's JSON body; null = the default ok body. */
+let appBody: unknown = null;
 /** When set, the JWKS endpoint is UNREACHABLE — the state that used to 401 the
  *  whole portfolio from a single box being down.
  *
@@ -156,7 +158,7 @@ beforeAll(async () => {
         authorization: new Headers(init?.headers).get('Authorization'),
       });
       if (appThrows) throw new TypeError('fetch failed');
-      return new Response(JSON.stringify({ ok: true, scope: 'subscriptiontracker_db' }), { status: appStatus });
+      return new Response(JSON.stringify(appBody ?? { ok: true, scope: 'subscriptiontracker_db' }), { status: appStatus });
     }
     throw new Error(`unexpected fetch in test: ${url}`);
   });
@@ -218,6 +220,7 @@ function harness({
   appCalls = [];
   appStatus = 200;
   appThrows = false;
+  appBody = null;
   jwksThrows = false;
   jwksStatus = 0;
   jwksRotated = false;
@@ -793,6 +796,19 @@ describe("LIMB 3 — every app's OWN database, through that app's OWN route", ()
     const res = await h.del('/v1/account', `Bearer ${await token({ sub: 'user-a' })}`);
     expect(res.status).toBe(502);
     expect(await res.json()).toEqual({ error: 'app_data_delete_failed', app: 'subscriptiontracker' });
+    expect(identityCalls).toHaveLength(0);
+  });
+
+  it('⏱ 2026-09-16 · an app door refusing reauth_required is passed through as the SAME 403, identity kept', async () => {
+    // O-APP-API-DELETE-NO-RECENCY: the app door applies the shared recency rule a
+    // few ms after this Worker did, so the window can close in between. The client
+    // must hear reauth_required (sign in again, stay signed in), not a failure.
+    const h = harness();
+    appStatus = 403;
+    appBody = { error: 'reauth_required' };
+    const res = await h.del('/v1/account', `Bearer ${await token({ sub: 'user-a' })}`);
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: 'reauth_required' });
     expect(identityCalls).toHaveLength(0);
   });
 

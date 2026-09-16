@@ -44,6 +44,9 @@ async function erase(db: RealDb, env: Partial<typeof ENV> = {}) {
   app.use('*', async (c, next) => {
     c.set('userId', 'u-derive');
     c.set('requestId', 'test');
+    // What platformAuth sets on every admitted request (a password account); the
+    // route refuses without it since O-APP-API-DELETE-NO-RECENCY.
+    c.set('authRecency', { passwordless: false, lastAuthenticatedAt: null });
     await next();
   });
   app.route('/v1', account);
