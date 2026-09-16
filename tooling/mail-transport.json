@@ -34,11 +34,31 @@
     "🔴 READ-ONLY AGAINST SUPABASE, ALWAYS. `PATCH /v1/projects/{ref}/config/auth` REPLACES the auth",
     "config instead of merging it. On 2026-08-04 a one-field PATCH emptied the whole SMTP block, reset",
     "rate_limit_email_sent 100 → 2, and reverted all three branded templates to Supabase defaults. If",
-    "you must write, GET the full config first and send it back COMPLETE."
+    "you must write, GET the full config first and send it back COMPLETE.",
+    "",
+    "⏱ APPENDED 2026-09-16 — THE PARAGRAPH ABOVE IS LEFT EXACTLY AS WRITTEN, and its ADVICE IS NOW THE",
+    "DANGEROUS ONE. Both halves were re-measured today, on this project, before any hardening write:",
+    "",
+    "  (a) PATCH MERGES. A deliberate one-field probe body, `{\"password_min_length\": 8}`, was sent and",
+    "      the whole config re-GET and diffed field by field against the reading taken minutes earlier:",
+    "      EXACTLY 1 of 243 fields changed. The SMTP block, rate_limit_email_sent and all three branded",
+    "      templates were untouched, and `verify-supabase-templates.mjs` re-ran IN SYNC immediately",
+    "      after. The nine remaining hardening fields then went in the same way: 10 of 243 changed, all",
+    "      ten the decided ones. Whatever happened on 2026-08-04, a one-field PATCH does not do it today.",
+    "",
+    "  (b) SENDING THE FULL BODY BACK WOULD DESTROY THE SMTP PASSWORD. `GET config/auth` returns a",
+    "      `smtp_pass` of 64 characters; the real credential in the vault is 36. It is not a row of",
+    "      asterisks, so it does not LOOK masked — it looks like a value, and a full-body round trip",
+    "      would write that opaque 64-character string in as the password. The advice above is what",
+    "      would have caused that.",
+    "",
+    "  ⇒ The rule is now: WRITE THE FIELDS YOU MEAN, then GET the whole config back and DIFF it against",
+    "  the reading you took first. The diff is the control; the body shape is not. Never round-trip a",
+    "  field whose value the API will not give you back."
   ],
 
   "recordedBy": "Private/decisions/029-email-sending-architecture.md",
-  "verifiedLiveOn": "2026-08-04",
+  "verifiedLiveOn": "2026-09-16",
 
   "rails": [
     {
@@ -61,6 +81,17 @@
 
   "supabaseAuth": {
     "_why": "The shared identity project authenticates every app in the portfolio, so its transport is the portfolio's transport. Values below were READ from GET /v1/projects/{ref}/config/auth on verifiedLiveOn. smtp_pass is deliberately absent — it is a secret and lives in .claude/secrets.env.",
+    "_whyHardening": [
+      "⏱ 2026-09-16 — the ten fields after `mailer_autoconfirm` are the password/session hardening the",
+      "owner ruled on 2026-09-15 (OWNER_QUEUE S-9, register O-AUTH-PASSWORD-RESET-HARDENING: \"Turn all",
+      "on\"). They are recorded HERE, beside the transport, because this file is the one record the live",
+      "checker reads and Ops watch's \"The live auth config still matches what the repo recorded\" job is",
+      "the only thing that can see them drift back.",
+      "",
+      "Every key below is a LIVE Supabase field name, read back from a GET after the PATCH landed on",
+      "2026-09-16. `transport` is the one exception and is NOT a live field — it is this register's own",
+      "vocabulary for what the SMTP block adds up to, which is why the checker excludes it by name."
+    ],
     "transport": "custom-smtp",
     "smtp_host": "smtp.resend.com",
     "smtp_port": "465",
@@ -69,7 +100,17 @@
     "smtp_sender_name": "Nikatru",
     "external_email_enabled": true,
     "rate_limit_email_sent": 100,
-    "mailer_autoconfirm": false
+    "mailer_autoconfirm": false,
+    "security_update_password_require_reauthentication": true,
+    "security_update_password_require_current_password": true,
+    "password_min_length": 8,
+    "mailer_notifications_password_changed_enabled": true,
+    "mailer_notifications_email_changed_enabled": true,
+    "mailer_notifications_phone_changed_enabled": true,
+    "mailer_notifications_mfa_factor_enrolled_enabled": true,
+    "mailer_notifications_mfa_factor_unenrolled_enabled": true,
+    "mailer_notifications_identity_linked_enabled": true,
+    "mailer_notifications_identity_unlinked_enabled": true
   },
 
   "supersededTransportClaims": {
