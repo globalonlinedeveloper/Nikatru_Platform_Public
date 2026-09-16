@@ -5691,4 +5691,7 @@ class _AppleKeeperAuth extends core.AuthRepository {
       providerRefreshToken: 'apple-refresh-token',
     );
   }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
