@@ -173,6 +173,18 @@
       "test": "tooling/ci/test/d1-sql-inventory.test.mjs",
       "case": "changing the claim in one file is red",
       "proves": "The describe title of the cases that grade it."
+    },
+    {
+      "file": "tooling/ops/register.json",
+      "anchor": "the INSTALLED cert is the only source that cannot drift.",
+      "status": "demoted",
+      "reason": "Quoted as THE PRIOR TEXT of expiring.cert.origin-ca's `response`, kept as history on 2026-09-16 when the row was corrected by a live Cloudflare API read. The live `response` before it no longer makes the claim; the quote asserts nothing about the row as it stands."
+    },
+    {
+      "file": "tooling/ops/register.json",
+      "anchor": "The INSTALLED certificate's own notAfter is the only source that cannot drift;",
+      "status": "demoted",
+      "reason": "Quoted as THE PRIOR TEXT of expiring.cert.origin-ca's `expiryKnownAt`, kept as history on 2026-09-16. The live text before it names the Cloudflare API read and says an installed copy matches only if openssl agrees; the quote asserts nothing about the row as it stands."
     }
   ],
   "backlog": {
@@ -309,7 +321,7 @@
     "tooling/legal/data-inventory.json": 1,
     "tooling/monitor-register.json": 1,
     "tooling/ops/post-deploy-smoke.mjs": 1,
-    "tooling/ops/register.json": 3,
+    "tooling/ops/register.json": 1,
     "tooling/ops/upload-web-sourcemaps.mjs": 1,
     "tooling/platform-register.json": 1,
     "tooling/release/generate-snapcraft.mjs": 1,
