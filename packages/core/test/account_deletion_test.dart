@@ -6,7 +6,8 @@ import 'package:test/test.dart';
 /// ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH — a repository whose provider sign-in
 /// can land, land as SOMEBODY ELSE, or never land.
 class _ProviderAuth extends AuthRepository {
-  final StreamController<AuthUser?> users = StreamController<AuthUser?>.broadcast();
+  final StreamController<AuthUser?> users =
+      StreamController<AuthUser?>.broadcast();
   int appleCalls = 0;
   AuthUser? emitOnApple;
 
@@ -50,7 +51,8 @@ void main() {
     });
 
     // ⏱ 2026-09-15 · [ADR 081]: 202 erasure_pending is accepted-and-finishing.
-    test('202 · pending — accepted, NOT gone, and the one 2xx that is not deleted',
+    test(
+        '202 · pending — accepted, NOT gone, and the one 2xx that is not deleted',
         () {
       expect(AccountDeletionOutcome.forStatus(202),
           AccountDeletionOutcome.pending);
@@ -235,7 +237,8 @@ void main() {
           lastSignInAt: at,
         );
 
-    test('a sign-in inside the freshness window needs no second sheet', () async {
+    test('a sign-in inside the freshness window needs no second sheet',
+        () async {
       final _ProviderAuth auth = _ProviderAuth();
       await confirmIdentityWithProvider(
         auth: auth,
@@ -245,7 +248,9 @@ void main() {
       expect(auth.appleCalls, 0);
     });
 
-    test('a stale sign-in opens the sheet and returns on a NEWER sign-in of the SAME account', () async {
+    test(
+        'a stale sign-in opens the sheet and returns on a NEWER sign-in of the SAME account',
+        () async {
       final _ProviderAuth auth = _ProviderAuth()
         ..emitOnApple = apple(now.add(const Duration(seconds: 5)));
       await confirmIdentityWithProvider(
@@ -258,7 +263,8 @@ void main() {
 
     test('🔴 a DIFFERENT account arriving is not a confirmation', () async {
       final _ProviderAuth auth = _ProviderAuth()
-        ..emitOnApple = apple(now.add(const Duration(seconds: 5)), id: 'someone-else');
+        ..emitOnApple =
+            apple(now.add(const Duration(seconds: 5)), id: 'someone-else');
       await expectLater(
         confirmIdentityWithProvider(
           auth: auth,
@@ -270,7 +276,9 @@ void main() {
       );
     });
 
-    test('🔴 the same session re-emitted (a refresh, no new sign-in) is not a confirmation', () async {
+    test(
+        '🔴 the same session re-emitted (a refresh, no new sign-in) is not a confirmation',
+        () async {
       final DateTime old = now.subtract(const Duration(hours: 3));
       final _ProviderAuth auth = _ProviderAuth()..emitOnApple = apple(old);
       await expectLater(
@@ -284,7 +292,9 @@ void main() {
       );
     });
 
-    test('🔴 a sheet that never completes times out as an AuthFailure (reauthFailed)', () async {
+    test(
+        '🔴 a sheet that never completes times out as an AuthFailure (reauthFailed)',
+        () async {
       final _ProviderAuth auth = _ProviderAuth();
       await expectLater(
         confirmIdentityWithProvider(
@@ -298,7 +308,8 @@ void main() {
       expect(auth.appleCalls, 1);
     });
 
-    test('the freshness window is strictly inside the server window (600 s)', () {
+    test('the freshness window is strictly inside the server window (600 s)',
+        () {
       expect(kProviderReauthFreshness.inSeconds, lessThan(600));
     });
   });
@@ -315,15 +326,21 @@ void main() {
     });
 
     test('an older payload without the fields reads as a password account', () {
-      final AuthUser u = AuthUser.fromJson(<String, Object?>{'id': 'u1', 'email': 'a@b.test'});
+      final AuthUser u =
+          AuthUser.fromJson(<String, Object?>{'id': 'u1', 'email': 'a@b.test'});
       expect(u.hasPasswordIdentity, isTrue);
       expect(u.lastSignInAt, isNull);
     });
 
     test('the deletion messages no longer send an Apple user to email', () {
-      expect(AccountDeletionOutcome.reauthFailed.plainMessage, isNot(contains('by email')));
-      expect(AccountDeletionOutcome.reauthFailed.plainMessage, contains('Sign in with Apple'));
-      expect(AccountDeletionOutcome.reauthFailed.plainMessage, contains('still signed in'));
+      expect(AccountDeletionOutcome.reauthFailed.plainMessage,
+          isNot(contains('by email')));
+      expect(
+        AccountDeletionOutcome.reauthFailed.plainMessage,
+        contains('signing in with Apple'),
+      );
+      expect(AccountDeletionOutcome.reauthFailed.plainMessage,
+          contains('still signed in'));
     });
   });
 }

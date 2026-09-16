@@ -648,7 +648,7 @@ void main() {
 
     expect(auth.deleteCalls, 0, reason: 'reauth failed — nothing may be sent');
     expect(auth.signedIn, isTrue, reason: 'a typo must not end the session');
-    expect(_resultText(tester), contains('could not confirm it was you'));
+    expect(_resultText(tester), contains("couldn't confirm it was you"));
     expect(_resultText(tester), contains('nothing was deleted'));
     expect(
       _resultText(tester),
@@ -767,7 +767,9 @@ void main() {
     expect(_resultText(tester), contains('has been deleted'));
     expect(
       _resultText(tester),
-      contains('will not work any more'),
+      // ⏱ 2026-09-16 · the owner-approved wording says the same thing in fewer
+      // words: "You can't sign in to it again, with a password or with Apple."
+      contains("can't sign in to it again"),
       reason:
           'the published page tells the user to CHECK the deletion by trying to '
           'sign in; the app must name the same test',
@@ -854,8 +856,8 @@ void main() {
           reason: 'no confirmation — nothing may be sent',
         );
         expect(auth.signedIn, isTrue);
-        expect(_resultText(tester), contains('could not confirm it was you'));
-        expect(_resultText(tester), contains('Sign in with Apple'));
+        expect(_resultText(tester), contains("couldn't confirm it was you"));
+        expect(_resultText(tester), contains('signing in with Apple'));
       },
     );
 
@@ -894,7 +896,7 @@ void main() {
           reason: 'the seam keeps the session on reauth_required',
         );
         expect(auth.signedIn, isTrue);
-        expect(_resultText(tester), contains('could not confirm it was you'));
+        expect(_resultText(tester), contains("couldn't confirm it was you"));
       },
     );
   });
