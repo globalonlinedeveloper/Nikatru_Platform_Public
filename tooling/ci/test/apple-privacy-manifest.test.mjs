@@ -627,11 +627,14 @@ describe('the limbs must bite', () => {
   });
 
   // ── limb 7 ────────────────────────────────────────────────────────────────
+  // Every case here asserts EXIT 2, the repo's COVERAGE LOST code, not merely
+  // non-zero: with `notEqual(code, 0)` the coverageLost helper could exit 1 (a
+  // finding) and no case noticed (O-COVERAGE-LOST-BRANCH-UNTESTED, 2026-09-15).
   test('limb 7 — a SUBJECT-FREE tree REFUSES', () => {
     const root = join(TMP, `empty${seq++}`);
     mkdirSync(root, { recursive: true });
     const { code, out } = run(root);
-    assert.notEqual(code, 0);
+    assert.equal(code, 2, `COVERAGE LOST must exit 2, not ${code}:\n${out}`);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /apps does not exist/);
   });
@@ -640,7 +643,8 @@ describe('the limbs must bite', () => {
     const root = join(TMP, `noaudit${seq++}`);
     mkdirSync(join(root, 'apps', 'ghost'), { recursive: true });
     const { code, out } = run(root);
-    assert.notEqual(code, 0);
+    assert.equal(code, 2, `COVERAGE LOST must exit 2, not ${code}:\n${out}`);
+    assert.match(out, /COVERAGE LOST/);
     assert.match(out, /NOT ONE carries store\/ios-appstore\/privacy-manifest\.json/);
   });
 
@@ -652,7 +656,7 @@ describe('the limbs must bite', () => {
       write(r, rel, `${JSON.stringify(audit, null, 2)}\n`);
     });
     const { code, out } = run(root);
-    assert.notEqual(code, 0);
+    assert.equal(code, 2, `COVERAGE LOST must exit 2, not ${code}:\n${out}`);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /declares no collectedDataTypes\.rows/);
   });
@@ -665,21 +669,24 @@ describe('the limbs must bite', () => {
       write(r, rel, `${JSON.stringify(audit, null, 2)}\n`);
     });
     const { code, out } = run(root);
-    assert.notEqual(code, 0);
+    assert.equal(code, 2, `COVERAGE LOST must exit 2, not ${code}:\n${out}`);
+    assert.match(out, /COVERAGE LOST/);
     assert.match(out, /declares an empty binaryInventory\.macos/);
   });
 
   test('limb 7 — a missing .flutter-plugins-dependencies REFUSES rather than skipping limb 4', () => {
     const root = tree((r) => rmSync(join(r, 'apps', APP, '.flutter-plugins-dependencies')));
     const { code, out } = run(root);
-    assert.notEqual(code, 0);
+    assert.equal(code, 2, `COVERAGE LOST must exit 2, not ${code}:\n${out}`);
+    assert.match(out, /COVERAGE LOST/);
     assert.match(out, /flutter-plugins-dependencies does not exist/);
   });
 
   test('limb 7 — a missing data-safety.json REFUSES rather than skipping limb 5', () => {
     const root = tree((r) => rmSync(join(r, 'apps', APP, 'store', 'android-play', 'data-safety.json')));
     const { code, out } = run(root);
-    assert.notEqual(code, 0);
+    assert.equal(code, 2, `COVERAGE LOST must exit 2, not ${code}:\n${out}`);
+    assert.match(out, /COVERAGE LOST/);
     assert.match(out, /data-safety\.json does not exist/);
   });
 
@@ -691,7 +698,8 @@ describe('the limbs must bite', () => {
       write(r, rel, `${JSON.stringify(audit, null, 2)}\n`);
     });
     const { code, out } = run(root);
-    assert.notEqual(code, 0);
+    assert.equal(code, 2, `COVERAGE LOST must exit 2, not ${code}:\n${out}`);
+    assert.match(out, /COVERAGE LOST/);
     assert.match(out, /enumerates no vocabulary\.purposes\.values/);
   });
 });

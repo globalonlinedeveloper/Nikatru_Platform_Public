@@ -80,7 +80,7 @@
 //
 // Usage:  node tooling/ci/assert-apple-privacy-manifest.mjs [repoRoot]
 // Exit:   0 = both manifests re-derive, are in the bundle, and agree with Play
-//         1 = drift, contradiction, or a scan that could not be trusted
+//         1 = drift or contradiction · 2 = COVERAGE LOST (an untrusted scan)
 // ─────────────────────────────────────────────────────────────────────────────
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve, basename } from 'node:path';
@@ -118,7 +118,7 @@ const warnings = [];
 function coverageLost(lines) {
   console.error(`COVERAGE LOST: ${lines[0]}`);
   for (const l of lines.slice(1)) console.error(`  ${l}`);
-  process.exit(1);
+  process.exit(2);
 }
 
 const sameSet = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);

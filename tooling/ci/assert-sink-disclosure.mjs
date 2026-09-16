@@ -55,6 +55,13 @@
 //     consistent with the pages", NEVER "the sink does not store it".
 // "The guard is green" and "the requirement holds" are the same sentence only
 // for gates. Do not let a roll-up describe this file as proving what a sink does.
+//
+// ⏱ APPENDED 2026-09-16, the paragraph above left as written. "No such probe
+// exists today" stopped being true: tooling/ci/assert-glitchtip-no-ip.mjs
+// --live observes what the GlitchTip sink stores (O-CRASH-EVENT-IP-DROP, PR
+// #778). This file still cannot see the sink; it now NAMES that probe (limb 5,
+// SINK_DELEGATIONS) and exits 2 — COVERAGE LOST — when the probe is absent,
+// its live leg is not a declared ops duty, or it stops covering the category.
 // ─────────────────────────────────────────────────────────────────────────────
 //
 // THE FOUR LIMBS:
@@ -86,10 +93,12 @@
 //
 // Usage:  node tooling/ci/assert-sink-disclosure.mjs [repoRoot]
 // Exit 0 = the declarations and the published denials do not contradict.
+//      1 = a contradiction or an unreviewable declaration. 2 = COVERAGE LOST.
 // ─────────────────────────────────────────────────────────────────────────────
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve, relative, sep } from 'node:path';
-import { visibleText, normaliseForMatch } from './text-reductions.mjs';
+import { visibleText, normaliseForMatch, stripSourceComments } from './text-reductions.mjs';
+import { parseAllWorkflows } from './workflow-scan.mjs';
 
 const repoRoot = resolve(process.argv[2] ?? process.cwd());
 const PROVIDERS = join(repoRoot, 'tooling', 'legal', 'provider-register.json');
@@ -264,6 +273,127 @@ if (declaredBy.size === 0 && problems.length === 0) {
   );
 }
 
+// ── LIMB 5 · THE CEILING IS DELEGATED, AND THE DELEGATE MUST STILL BE THERE ──
+// ⏱ 2026-09-16 (O-SINK-DISCLOSURE-BLIND-TO-SINK). The ceiling paragraph in the
+// header is still true of THIS file. It is no longer the whole truth, because a
+// probe now exists — and nothing tied the two together, so the day the probe
+// went away the ceiling would silently be the whole truth again. Each entry
+// below NAMES the guard that observes one sink for the categories a live row
+// declares it only `transits`, and every way the delegation can quietly stop
+// being real is COVERAGE LOST (exit 2): this guard is then leaning on coverage
+// that does not exist, which is "did not check enough", never a finding.
+//
+// ⚠️ "WIRED" MEANS WHAT THE REPO ACTUALLY DOES, NOT A SCHEDULE IT DOES NOT HAVE.
+// The live leg is deliberately NOT in ops-watch.yml: it depends on the GlitchTip
+// box, and a red ops-watch turns ci-gate red for every PR (owner ruling
+// 2026-09-15, O-CRASH-EVENT-IP-DROP). So the wiring demanded here is:
+//   · the offline limbs are invoked by a workflow on a non-comment line — they
+//     are the merge-blocking half and run on every push;
+//   · the live leg is a DECLARED ops duty in tooling/ops/register.json whose
+//     `detector` carries the exact live command, so assert-ops-register holds
+//     its shape and its on-demand `why`; and IF that duty ever claims the
+//     `github-actions` substrate, its anchor workflow must really run the
+//     live command — a scheduled claim with nothing scheduled is refused.
+//   · the delegate still COVERS the category: its code (comments stripped)
+//     still carries the live flag, the live branch, and the category's field.
+const SINK_DELEGATIONS = [
+  {
+    provider: 'hostinger',
+    categories: ['ip_address'],
+    guard: 'tooling/ci/assert-glitchtip-no-ip.mjs',
+    liveCommand: 'tooling/ci/assert-glitchtip-no-ip.mjs --live',
+    covers: [
+      // A bare `'--live'` literal is not enough: measured 2026-09-16, dropping it
+      // from the accepted-flag set (so every live run dies "unknown flag") left
+      // `argv.includes('--live')` matching and this limb green.
+      { what: 'the `--live` flag in its accepted flag set', re: /new Set\(\[[^\]]*['"]--live['"][^\]]*\]\)/ },
+      { what: '`LIVE` bound to the `--live` argument', re: /\bLIVE\s*=\s*argv\.includes\(\s*['"]--live['"]\s*\)/ },
+      { what: 'the live branch that posts and reads back events', re: /\bif\s*\(\s*LIVE\s*\)/ },
+      { what: 'the `ip_address` field in the IP-bearing key set it reads back', re: /['"]ip_address['"]/ },
+    ],
+  },
+];
+const OPS_REGISTER = join(repoRoot, 'tooling', 'ops', 'register.json');
+const delegated = [];
+{
+  const delegationLost = (d, msg, ...detail) =>
+    coverageLost(
+      `the sink ceiling is delegated to ${d.guard} for ${d.categories.join(', ')} on \`${d.provider}\`, and ${msg}`,
+      ...detail,
+      'Until that is repaired this guard is again the only thing looking, and it cannot see the sink.',
+    );
+  // Through workflow-scan.mjs, the one workflow parse: comment-blanked lines,
+  // so a commented-out step is not a step (tooling/workflow-readers.json).
+  const workflows = parseAllWorkflows(repoRoot);
+  const runsIt = (wf, pred) => wf.lines.some((l) => pred(l.text));
+  const opsRows = (() => {
+    if (!existsSync(OPS_REGISTER)) return null;
+    try {
+      const reg = JSON.parse(readFileSync(OPS_REGISTER, 'utf8'));
+      return Array.isArray(reg.rows) ? reg.rows : null;
+    } catch {
+      return null;
+    }
+  })();
+  for (const d of SINK_DELEGATIONS) {
+    const abs = join(repoRoot, ...d.guard.split('/'));
+    if (!existsSync(abs)) {
+      delegationLost(d, 'that guard does not exist.', 'A renamed or deleted delegate must be renamed HERE too, in the same change.');
+    }
+    const code = stripSourceComments(readFileSync(abs, 'utf8'), '.mjs');
+    const missing = d.covers.filter((c) => !c.re.test(code));
+    if (missing.length) {
+      delegationLost(
+        d,
+        `it no longer carries ${missing.map((c) => c.what).join('; ')}.`,
+        'A delegate that stopped observing the category is a name, not coverage.',
+      );
+    }
+    const offline = `node ${d.guard}`;
+    if (!workflows.some((wf) => runsIt(wf, (t) => t.includes(offline) && !t.includes('--live')))) {
+      delegationLost(d, `no workflow runs \`${offline}\` (its offline, merge-blocking limbs) on a non-comment line.`);
+    }
+    if (opsRows === null) {
+      delegationLost(d, `${rel(OPS_REGISTER)} is absent, unparseable or has no \`rows\`, so the live leg's duty cannot be found.`);
+    }
+    const duty = opsRows.find((r) => r?.kind === 'duty' && String(r.detector ?? '').includes(d.liveCommand));
+    if (!duty) {
+      delegationLost(
+        d,
+        `no \`duty\` row in ${rel(OPS_REGISTER)} names \`${d.liveCommand}\` in its detector.`,
+        'The live leg is on-demand by design; what makes it a duty rather than a memory is that row.',
+      );
+    }
+    if (duty.mechanism?.substrate === 'github-actions') {
+      const anchor = String(duty.mechanism?.anchor ?? '');
+      const wf = workflows.find((w) => w.rel === anchor);
+      if (!wf || !runsIt(wf, (t) => t.includes(d.liveCommand))) {
+        delegationLost(
+          d,
+          `duty ${duty.id} claims the github-actions substrate at \`${anchor}\`, which does not run \`${d.liveCommand}\` on a non-comment line.`,
+        );
+      }
+    }
+    // The register side. A delegation for a declaration nobody makes any more is
+    // not lost coverage — the ceiling it answered is gone — but it must not
+    // outlive the row silently either, so a LIVE row that stopped transiting the
+    // category is a finding. A row that is not live is simply not scoped.
+    const row = providers.find((p) => p.id === d.provider);
+    if (row && liveSinks.includes(row)) {
+      for (const cat of d.categories) {
+        const t = row.transits && typeof row.transits === 'object' ? row.transits : {};
+        if (!Object.prototype.hasOwnProperty.call(t, cat)) {
+          problems.push(
+            `SINK_DELEGATIONS delegates ${JSON.stringify(cat)} on \`${d.provider}\` to ${d.guard}, and that live row no ` +
+              'longer declares the category transit-only. Retire the delegation, or restore the declaration it answers.',
+          );
+        }
+      }
+    }
+    delegated.push({ ...d, duty });
+  }
+}
+
 // ── LIMB 2 · the denials, EXTRACTED FROM THE PAGES ──────────────────────────
 // The domain is the served documents, read through the same reduction
 // assert-policy-claims.mjs uses. It cannot be shrunk except by editing a page a
@@ -369,12 +499,26 @@ for (const d of denials) {
       // so the escape route is ENUMERATED rather than left implicit — this is
       // the exact list a human has to re-verify against the live sink, because
       // nothing in this repository can.
-      prints.push(
-        `TRANSIT-ONLY, NOT PROVEN · ${d.page} denies ${JSON.stringify(cat)} and ` +
-          `${transit.map((t) => t.provider.id).join(', ')} declare(s) seeing it WITHOUT retaining it. That is a ` +
-          'DECLARATION about a sink no repo-resident guard can observe. MONITOR-shaped: only a probe against the ' +
-          'live provider closes it.',
-      );
+      const probeFor = (t) =>
+        delegated.find((g) => g.provider === t.provider.id && g.categories.includes(cat));
+      const withProbe = transit.filter(probeFor);
+      const without = transit.filter((t) => !probeFor(t));
+      if (without.length) {
+        prints.push(
+          `TRANSIT-ONLY, NOT PROVEN · ${d.page} denies ${JSON.stringify(cat)} and ` +
+            `${without.map((t) => t.provider.id).join(', ')} declare(s) seeing it WITHOUT retaining it. That is a ` +
+            'DECLARATION about a sink no repo-resident guard can observe. MONITOR-shaped: only a probe against the ' +
+            'live provider closes it, and none is delegated for it.',
+        );
+      }
+      for (const t of withProbe) {
+        const g = probeFor(t);
+        prints.push(
+          `TRANSIT-ONLY, DELEGATED · ${d.page} denies ${JSON.stringify(cat)} and ${t.provider.id} declares seeing it ` +
+            `WITHOUT retaining it. Not provable here; observed by \`node ${g.liveCommand}\` (ops duty ${g.duty.id}, ` +
+            `cadence ${g.duty.cadence}) — its live verdict is what this declaration rests on.`,
+        );
+      }
     }
   }
 }
@@ -439,6 +583,13 @@ console.log(
 console.log(
   '       row and this guard stays green — that gap is MONITOR-shaped and only a live probe closes it.',
 );
+for (const g of delegated) {
+  console.log(
+    `    ⤷ delegated: ${g.categories.join(', ')} on ${g.provider} → ${g.guard} (offline limbs in CI; live leg ` +
+      `\`node ${g.liveCommand}\` is ops duty ${g.duty.id}, cadence ${g.duty.cadence}). Absent, unwired or no ` +
+      'longer covering → COVERAGE LOST.',
+  );
+}
 if (prints.length) {
   console.log('');
   console.log('   ── printed, not failed (each is a DECLARATION this repository cannot verify from inside) ──');

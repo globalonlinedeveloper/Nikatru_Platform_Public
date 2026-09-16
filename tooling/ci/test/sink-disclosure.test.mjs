@@ -37,7 +37,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -88,13 +88,17 @@ const DEFAULT_PROVIDERS = {
       receivesBasis: 'derived from the store inventory, 2026-08-06',
       transits: { ip_address: 'terminates TLS, so the address is inherent in the connection; nothing writes it' },
     },
+    // The id is the REAL one, because limb 5's delegation is keyed on it: the
+    // crash sink's transit-only `ip_address` is what assert-glitchtip-no-ip.mjs
+    // --live observes. The name stays the fixture's own.
     {
-      id: 'crashbox',
+      id: 'hostinger',
       name: 'Crashbox',
       role: 'infrastructure',
       status: 'live',
       receives: ['crash_report'],
       receivesBasis: 'observed against the live instance, 2026-08-06',
+      transits: { ip_address: 'an ingest request arrives from the device address; nothing writes it' },
     },
     {
       id: 'storeco',
@@ -120,7 +124,25 @@ const DEFAULT_PRIVACY =
   'from them.</p>' +
   '</main></body></html>\n';
 
-function fixture({ providers = {}, claims = {}, pages = {} } = {}) {
+/** Limb 5's subject — the delegate the ceiling is handed to — as the REAL bytes,
+ *  not a stub: a stub would carry exactly the strings this test author expects
+ *  the limb to look for, and prove nothing about the file that ships. */
+const REPO = resolve(CI_DIR, '..', '..');
+const DELEGATE_REL = 'tooling/ci/assert-glitchtip-no-ip.mjs';
+const OPS_REL = 'tooling/ops/register.json';
+const CI_REL = '.github/workflows/ci.yml';
+const OPS_WATCH_REL = '.github/workflows/ops-watch.yml';
+const LIVE_DUTY = 'duty.laptop.glitchtip-no-ip-live';
+const realText = (rel) => readFileSync(join(REPO, ...rel.split('/')), 'utf8');
+const DELEGATE_FILES = Object.fromEntries([DELEGATE_REL, OPS_REL, CI_REL, OPS_WATCH_REL].map((r) => [r, realText(r)]));
+const withOps = (f) => {
+  const o = JSON.parse(DELEGATE_FILES[OPS_REL]);
+  f(o);
+  return `${JSON.stringify(o, null, 2)}\n`;
+};
+
+/** `files` overrides any delegate file by repo-relative path; `null` omits it. */
+function fixture({ providers = {}, claims = {}, pages = {}, files = {} } = {}) {
   const root = join(TMP, `f${seq++}`);
   mkdirSync(root, { recursive: true });
 
@@ -131,6 +153,9 @@ function fixture({ providers = {}, claims = {}, pages = {} } = {}) {
 
   for (const [name, body] of Object.entries({ 'privacy.html': DEFAULT_PRIVACY, ...pages })) {
     if (body !== null) write(root, join('sites', 'nikatru', name), body);
+  }
+  for (const [rel, body] of Object.entries({ ...DELEGATE_FILES, ...files })) {
+    if (body !== null) write(root, join(...rel.split('/')), body);
   }
   return root;
 }
@@ -183,7 +208,7 @@ describe('the intersection — a live sink receiving what a page denies', () => 
     providers.providers[1].receives.push('ip_address');
     const r = run(fixture({ providers }));
     assert.match(out(r), /do not collect or store your IP address with these records/);
-    assert.match(out(r), /crashbox \(Crashbox\)/);
+    assert.match(out(r), /hostinger \(Crashbox\)/);
   });
 
   test('a NON-live infrastructure row is not scoped — the register carries rows for things we are not doing', () => {
@@ -411,5 +436,122 @@ describe('coverage self-checks — an empty domain must be LOUD', () => {
     const r = run(root);
     assert.equal(r.status, 2);
     assert.match(out(r), /The pages ARE the domain/);
+  });
+});
+
+// ── limb 5 · the ceiling is delegated (O-SINK-DISCLOSURE-BLIND-TO-SINK) ─────
+// Real-tree red controls, run 2026-09-16 and restored byte-identical (sha256):
+// rename the delegate → 2 · drop its ops duty row → 2 · drop 'ip_address' from
+// its key set → 2 · drop '--live' from its flag set → 2 (this one was 0 on the
+// first draft, which matched any '--live' literal) · comment ci.yml's offline
+// step → 2 · move the duty to github-actions on ops-watch.yml → 2. Tree → 0.
+describe('limb 5 — the sink ceiling names its probe, and refuses when the probe is gone', () => {
+  const lost = (r, re) => {
+    assert.equal(r.status, 2, `expected COVERAGE LOST (exit 2), got ${r.status}:\n${out(r)}`);
+    assert.match(out(r), /COVERAGE LOST — the sink ceiling is delegated to tooling\/ci\/assert-glitchtip-no-ip\.mjs/);
+    assert.match(out(r), re);
+  };
+
+  test('the baseline names the delegate, its live command and its ops duty', () => {
+    const r = run(fixture());
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /⤷ delegated: ip_address on hostinger → tooling\/ci\/assert-glitchtip-no-ip\.mjs/);
+    assert.match(out(r), /TRANSIT-ONLY, DELEGATED · privacy\.html denies "ip_address" and hostinger/);
+    assert.ok(out(r).includes(`ops duty ${LIVE_DUTY}, cadence on-demand`), out(r));
+  });
+
+  test('…and a transit with NO delegate still prints NOT PROVEN — the delegation is per provider', () => {
+    const r = run(fixture());
+    assert.match(out(r), /TRANSIT-ONLY, NOT PROVEN · privacy\.html denies "ip_address" and edge-co/);
+    assert.doesNotMatch(out(r), /NOT PROVEN[^\n]*hostinger/);
+  });
+
+  test('the delegate ABSENT is COVERAGE LOST', () => {
+    lost(run(fixture({ files: { [DELEGATE_REL]: null } })), /that guard does not exist/);
+  });
+
+  test('the delegate no longer reading `ip_address` is COVERAGE LOST', () => {
+    const src = DELEGATE_FILES[DELEGATE_REL];
+    const next = src.replace("'ip_address', 'ipAddress',", "'ipAddress',");
+    assert.notEqual(next, src, 'fixture anchor not found — the delegate moved under this test');
+    lost(run(fixture({ files: { [DELEGATE_REL]: next } })), /no longer carries the `ip_address` field/);
+  });
+
+  test('the delegate REFUSING `--live` as an unknown flag is COVERAGE LOST, though the literal survives elsewhere', () => {
+    const src = DELEGATE_FILES[DELEGATE_REL];
+    const next = src.replace("new Set(['--root', '--live', '--help', '-h'])", "new Set(['--root', '--help', '-h'])");
+    assert.notEqual(next, src, 'fixture anchor not found — the delegate moved under this test');
+    assert.match(next, /argv\.includes\('--live'\)/, 'the case is only worth having while the loose literal is still there');
+    lost(run(fixture({ files: { [DELEGATE_REL]: next } })), /the `--live` flag in its accepted flag set/);
+  });
+
+  test('the live branch removed is COVERAGE LOST', () => {
+    const src = DELEGATE_FILES[DELEGATE_REL];
+    const next = src.replace(/\bif\s*\(\s*LIVE\s*\)/, 'if (false)');
+    assert.notEqual(next, src);
+    lost(run(fixture({ files: { [DELEGATE_REL]: next } })), /the live branch/);
+  });
+
+  test('a mention in a COMMENT does not count — the delegate is read with comments stripped', () => {
+    const src = DELEGATE_FILES[DELEGATE_REL];
+    const next = `${src.replace("'ip_address', 'ipAddress',", "'ipAddress',")}\n// 'ip_address'\n`;
+    lost(run(fixture({ files: { [DELEGATE_REL]: next } })), /`ip_address` field/);
+  });
+
+  test('no workflow running the offline limbs is COVERAGE LOST — a commented step is not a step', () => {
+    const ci = DELEGATE_FILES[CI_REL];
+    const next = ci.replace('        run: node tooling/ci/assert-glitchtip-no-ip.mjs\n', '        # run: node tooling/ci/assert-glitchtip-no-ip.mjs\n');
+    assert.notEqual(next, ci, 'fixture anchor not found — ci.yml moved under this test');
+    lost(run(fixture({ files: { [CI_REL]: next } })), /no workflow runs `node tooling\/ci\/assert-glitchtip-no-ip\.mjs`/);
+  });
+
+  test('a workflow running ONLY the live leg does not count as the offline limbs', () => {
+    const ci = DELEGATE_FILES[CI_REL].replace(
+      '        run: node tooling/ci/assert-glitchtip-no-ip.mjs\n',
+      '        run: node tooling/ci/assert-glitchtip-no-ip.mjs --live\n',
+    );
+    lost(run(fixture({ files: { [CI_REL]: ci } })), /its offline, merge-blocking limbs/);
+  });
+
+  test('the ops register absent is COVERAGE LOST', () => {
+    lost(run(fixture({ files: { [OPS_REL]: null } })), /is absent, unparseable or has no `rows`/);
+  });
+
+  test('no ops duty naming the live command is COVERAGE LOST — on-demand by design is still a declared duty', () => {
+    const ops = withOps((o) => { o.rows = o.rows.filter((r) => r.id !== LIVE_DUTY); });
+    lost(run(fixture({ files: { [OPS_REL]: ops } })), /no `duty` row in tooling\/ops\/register\.json names/);
+  });
+
+  test('the duty row demoted from `duty` does not count', () => {
+    const ops = withOps((o) => { o.rows.find((r) => r.id === LIVE_DUTY).kind = 'review'; });
+    lost(run(fixture({ files: { [OPS_REL]: ops } })), /no `duty` row/);
+  });
+
+  test('a duty CLAIMING github-actions on a workflow that does not run --live is COVERAGE LOST', () => {
+    const ops = withOps((o) => {
+      const r = o.rows.find((x) => x.id === LIVE_DUTY);
+      r.mechanism.substrate = 'github-actions';
+      r.mechanism.anchor = OPS_WATCH_REL;
+    });
+    lost(run(fixture({ files: { [OPS_REL]: ops } })), /claims the github-actions substrate/);
+  });
+
+  test('…and the same claim on a workflow that DOES run --live passes — the limb follows what is true', () => {
+    const ops = withOps((o) => {
+      const r = o.rows.find((x) => x.id === LIVE_DUTY);
+      r.mechanism.substrate = 'github-actions';
+      r.mechanism.anchor = OPS_WATCH_REL;
+    });
+    const watch = `${DELEGATE_FILES[OPS_WATCH_REL]}\n      - run: node tooling/ci/assert-glitchtip-no-ip.mjs --live\n`;
+    const r = run(fixture({ files: { [OPS_REL]: ops, [OPS_WATCH_REL]: watch } }));
+    assert.equal(r.status, 0, out(r));
+  });
+
+  test('the LIVE delegated row no longer transiting the category is a FINDING (exit 1), not lost coverage', () => {
+    const providers = structuredClone(DEFAULT_PROVIDERS);
+    delete providers.providers[1].transits;
+    const r = run(fixture({ providers }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /that live row no longer declares the category transit-only/);
   });
 });

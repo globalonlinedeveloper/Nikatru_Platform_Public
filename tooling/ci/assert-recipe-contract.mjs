@@ -46,7 +46,7 @@ const prints = [];
 const coverageLost = (...lines) => {
   console.error(`✗ COVERAGE LOST — ${lines[0]}`);
   for (const l of lines.slice(1)) console.error(`  ${l}`);
-  process.exit(1);
+  process.exit(2);
 };
 
 // ── the domain ───────────────────────────────────────────────────────────────

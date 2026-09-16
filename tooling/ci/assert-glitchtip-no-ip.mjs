@@ -82,6 +82,10 @@
 // --live is a LAPTOP AND RUNBOOK STEP, never merge-blocking. ci.yml's standing
 // objection to a CI limb depending on the GlitchTip box stands, and it is the
 // same split assert-glitchtip-project.mjs already runs on.
+// It is declared as an on-demand ops duty (duty.laptop.glitchtip-no-ip-live in
+// tooling/ops/register.json), and tooling/ci/assert-sink-disclosure.mjs names
+// this file as the probe behind the `hostinger` row's transit-only `ip_address`:
+// it exits 2 if this file, its `--live` leg or that duty row disappears.
 //
 // Usage:
 //   node tooling/ci/assert-glitchtip-no-ip.mjs [--root <dir>] [--live]
