@@ -839,6 +839,16 @@
       ".github/workflows/ci.yml#guards-platform"
     ],
     "kind": "guard",
+    "ref": "tooling/ci/assert-glitchtip-no-ip.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-platform"
+    ],
+    "kind": "guard",
     "ref": "tooling/ci/assert-glitchtip-project.mjs",
     "references": [
       "D-2b"
