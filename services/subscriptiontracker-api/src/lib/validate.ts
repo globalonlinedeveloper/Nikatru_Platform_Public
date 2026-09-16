@@ -11,7 +11,7 @@
 // next route does not invent a third dialect of "check the body"; budget.ts's
 // own validator predates this module and is deliberately left alone.
 //
-// A TypeScript interface (`CreateBody`, `RevenueCatEvent`) is NOT a runtime
+// A TypeScript interface (`CreateBody`, say) is NOT a runtime
 // check on a public body — it is erased before the request arrives. Every one of
 // these exists because a route was binding an unchecked value straight into D1.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -43,36 +43,11 @@ export function isBoundedString(v: unknown, max: number): v is string {
   return typeof v === 'string' && v.length <= max;
 }
 
-/** A non-empty string no longer than [max] — for identifiers. */
-export function isIdString(v: unknown, max: number): v is string {
-  return typeof v === 'string' && v.length > 0 && v.length <= max;
-}
-
-/**
- * The largest |ms| a JS Date can represent (ECMA-262 time-value range).
- *
- * Past this, `new Date(ms)` is an Invalid Date and `.toISOString()` THROWS a
- * RangeError. In a webhook handler that is a 500 the sender retries forever, and
- * `1e400` parses out of JSON as `Infinity`, so the input is reachable from the
- * wire — it does not need a hostile client, only a buggy one.
- */
-/** @ceiling none — this is ECMAScript's own maximum time value (ES2024 §21.4.1.1,
- *  ±8.64e15 ms), not a Cloudflare limit. It moves only if the language does, and
- *  no D1/KV/Workers ceiling is related to it. */
-export const MAX_TIME_MS = 8.64e15;
-
-/**
- * Epoch-ms -> ISO-8601, or null when the value is not a representable instant.
- *
- * TOTAL BY CONSTRUCTION: the range check and the conversion are the same
- * function, so they cannot drift apart the way a check in one file and a
- * `new Date(...).toISOString()` in another can.
- */
-export function isoFromEpochMs(ms: unknown): string | null {
-  if (!isFiniteNumber(ms)) return null;
-  if (Math.abs(ms) > MAX_TIME_MS) return null;
-  return new Date(ms).toISOString();
-}
+// ⏱ 2026-09-16 — `isIdString`, `MAX_TIME_MS` and `isoFromEpochMs` were removed
+// with their only caller, the retired legacy RevenueCat route
+// (src/routes/webhooks.ts, O-REVENUECAT-VERIFIER leg b). The RevenueCat instant is
+// now canonicalised on the platform side, by `normalizeInstant` in
+// services/platform/src/lib/mor/contract.ts.
 
 /** 'YYYY-MM-DD' matching a real calendar date (rejects 2026-02-31). */
 export function isCalendarDate(v: unknown): v is string {

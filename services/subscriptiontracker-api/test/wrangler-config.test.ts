@@ -87,9 +87,9 @@ describe('the parse itself reached the config', () => {
   });
 });
 
-describe('vars.MONEY_ENVIRONMENT — load-bearing since both money doors 503 without it', () => {
-  // [5]M-12: the RevenueCat webhook and /v1/entitlements each answer 503 when
-  // this var is absent or unrecognised. A deploy that lost it would not fail a
+describe('vars.MONEY_ENVIRONMENT — load-bearing since the entitlement read 503s without it', () => {
+  // [5]M-12: /v1/entitlements answers 503 when this var is absent or
+  // unrecognised (the legacy RevenueCat webhook, retired 2026-09-16, did too). A deploy that lost it would not fail a
   // health check — it would fail every entitlement read. Production is 'live'
   // by definition; a sandbox deploy edits this knowingly.
   it("is declared and is exactly 'live'", () => {

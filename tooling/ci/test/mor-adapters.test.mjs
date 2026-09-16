@@ -44,6 +44,14 @@
 //         (assert-policy-claims.mjs, the K-5 limb)               ("neither a provider's tell")
 //   None crashed; every one exited 1 with the intended message.
 //
+// ⏱ 2026-09-16 — MOR5 AND MOR12 NAME A FILE THAT NO LONGER EXISTS. The legacy
+// RevenueCat route (services/subscriptiontracker-api/src/routes/webhooks.ts) was
+// retired for services/platform's POST /v1/money/revenuecat
+// (O-REVENUECAT-VERIFIER leg b), and its DECLARED_WRITERS row went with it. The
+// two mutations are kept as the dated record they are; what they proved now lives
+// in two cases below — a RE-GROWN legacy writer is undeclared and fails, and the
+// world column is enforced on store.ts, the one writer left.
+//
 // ⚠️ MOR17'S FIRST ATTEMPT WAS INSUFFICIENT AND SAID SO. Renaming only the row's
 // `id` left `"tells": ["paddle"]` behind, the rail still matched, and the guard
 // correctly printed ok. The mutation had to retire the WHOLE row. That is the
@@ -121,7 +129,7 @@ export function verifierFor(p: string) { return MOR_VERIFIERS.find((v) => v.prov
 
 const STORE_TS = `
 export async function persistNotification(deps, n, raw) {
-  await deps.db.prepare('INSERT INTO entitlements (user_id) VALUES (?)').bind(1).run();
+  await deps.db.prepare('INSERT INTO entitlements (user_id, provider_environment) VALUES (?, ?)').bind(1, 'live').run();
   return { fresh: true };
 }
 export async function deriveAndApply(deps, n) { return { outcome: 'applied' }; }
@@ -173,7 +181,14 @@ describe('the paddle rail', () => {
 `;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// THE LEGACY REVENUECAT ROUTE, IN THREE VARIANTS, BECAUSE ONE CANNOT FAIL.
+// THE WORLD-COLUMN FIXTURE, IN THREE VARIANTS, BECAUSE ONE CANNOT FAIL.
+//
+// ⏱ 2026-09-16 — the variants below were written against the LEGACY RevenueCat
+// route. That route is retired, so the SAME three shapes are now built on
+// store.ts (STORE_TS / STORE_NO_WORLD_TS / STORE_WORLD_ELSEWHERE_TS), the only
+// declared writer left that INSERTs. LEGACY_WEBHOOK_TS stays as the fixture for a
+// RE-GROWN bearer-gated writer, which must fail as undeclared. The paragraph below
+// is left as written.
 //
 // 🔴 Until 2026-08-25 there was ONE variant and its INSERT named no
 // `provider_environment`. A single-variant fixture is structurally incapable of
@@ -191,6 +206,19 @@ describe('the paddle rail', () => {
 // The three differ ONLY in where `provider_environment` appears, so a case that
 // separates them is measuring the predicate and nothing else.
 // ─────────────────────────────────────────────────────────────────────────────
+
+/** The near miss on the one writer left: store.ts READS the column and does not WRITE it. */
+const STORE_WORLD_ELSEWHERE_TS = STORE_TS.replace(
+  "  return { fresh: true };",
+  "  const prior = await deps.db.prepare('SELECT provider_environment FROM entitlements WHERE user_id = ?').bind(1).all();\n  return { fresh: true, prior };",
+).replace('INSERT INTO entitlements (user_id, provider_environment) VALUES (?, ?)', 'INSERT INTO entitlements (user_id) VALUES (?)');
+
+/** The pre-2026-08-25 shape, on store.ts: the world is dropped on the floor. */
+const STORE_NO_WORLD_TS = STORE_TS.replace(
+  'INSERT INTO entitlements (user_id, provider_environment) VALUES (?, ?)',
+  'INSERT INTO entitlements (user_id) VALUES (?)',
+);
+
 const LEGACY_WEBHOOK_TS = `
 app.post('/revenuecat', async (c) => {
   const configured = c.env.REVENUECAT_WEBHOOK_SECRET;
@@ -255,7 +283,11 @@ function run(o = {}) {
   }
   write(root, 'services/platform/test/money.test.ts', o.moneyTest ?? MONEY_TEST_TS);
   write(root, 'services/platform/wrangler.jsonc', o.wrangler ?? '{ "name": "platform", "vars": { "MONEY_ENVIRONMENT": "live" } }');
-  write(root, 'services/subscriptiontracker-api/src/routes/webhooks.ts', o.legacy ?? LEGACY_WEBHOOK_TS);
+  // ⏱ 2026-09-16 — the legacy route is retired, so the default tree has none; a
+  // case passes `legacy` only to prove a re-grown one is refused.
+  if (o.legacy) write(root, 'services/subscriptiontracker-api/src/routes/webhooks.ts', o.legacy);
+  // The app Worker still exists and REQUIRED_COVERAGE still demands it be scanned.
+  write(root, 'services/subscriptiontracker-api/src/index.ts', o.appIndex ?? 'export default {};\n');
   write(root, BRICK_ACCOUNT, o.brickAccount ?? BRICK_ACCOUNT_TS);
   if (o.legalRegister !== null) {
     write(
@@ -363,10 +395,15 @@ describe('assert-mor-adapters — one verifier between a provider and the entitl
     assert.equal(r.code, 0, r.out);
   });
 
-  test('FAILS when the legacy shared-secret writer loses its fail-closed branch', () => {
-    const r = run({ legacy: LEGACY_WEBHOOK_TS.replace('if (!configured)', 'if (false)') });
+  test('FAILS when the RETIRED legacy RevenueCat writer grows back — even fail-closed', () => {
+    // ⏱ 2026-09-16. Until today this case neutered the legacy route's
+    // `if (!configured)` and expected the weaker-gate proof to bite. The route is
+    // retired and its DECLARED_WRITERS row with it, so the honest property now is
+    // stronger: a bearer-gated writer in the app Worker is not declared AT ALL,
+    // however carefully it fails closed.
+    const r = run({ legacy: LEGACY_WEBHOOK_TS });
     assert.equal(r.code, 1);
-    assert.match(r.out, /a fail-closed branch on an unset webhook secret could not be found/);
+    assert.match(r.out, /services\/subscriptiontracker-api\/src\/routes\/webhooks\.ts WRITES the shared `entitlements` table and is NOT declared/);
   });
 
   test("FAILS when the brick's erasure DELETE stops being narrowed to the caller", () => {
@@ -521,9 +558,11 @@ describe('assert-mor-adapters — one verifier between a provider and the entitl
 
   test('FAILS when a DECLARED_WRITERS entry has gone stale', () => {
     // A stale entry inflates apparent coverage and its gate claim can never fail.
-    const r = run({ legacy: 'export const nothing = 1;\n' });
+    // ⏱ 2026-09-16 — re-pointed from the retired legacy route to store.ts, the
+    // declared writer that remains.
+    const r = run({ store: STORE_TS.replace("await deps.db.prepare('INSERT INTO entitlements (user_id, provider_environment) VALUES (?, ?)').bind(1, 'live').run();", '') });
     assert.equal(r.code, 1);
-    assert.match(r.out, /DECLARED_WRITERS names `services\/subscriptiontracker-api\/src\/routes\/webhooks\.ts`, which no longer writes/);
+    assert.match(r.out, /DECLARED_WRITERS names `services\/platform\/src\/lib\/mor\/store\.ts`, which no longer writes/);
   });
 
   test('the PADDLE destination secret must never be a committed var', () => {
@@ -585,16 +624,19 @@ describe('assert-mor-adapters — one verifier between a provider and the entitl
 // limb 1 calls a write, or the check grades itself on the statements it likes.
 //   · no INSERT at all                          → exit 1 as COVERAGE LOST, never ok
 // ─────────────────────────────────────────────────────────────────────────────
-describe('the legacy rail writes a DECIDABLE row — the world column [2026-08-25]', () => {
+// ⏱ 2026-09-16 — RETARGETED. The describe below was the LEGACY rail's world
+// column; that rail is retired and store.ts carries the requirement now. Every
+// case keeps its shape and its direction; only the file under test moved.
+describe('the money writer writes a DECIDABLE row — the world column [2026-08-25, retargeted 2026-09-16]', () => {
   test('the fixture can express BOTH sides of the class', () => {
     // House rule: a fixture that omits the input class is a test that cannot
     // fail over it. This case fails the moment the three variants stop differing
     // in the one property the predicate reads.
-    assert.match(LEGACY_WEBHOOK_TS, /INSERT INTO entitlements \([^)]*\bprovider_environment\b[^)]*\)/);
-    assert.doesNotMatch(LEGACY_WEBHOOK_NO_WORLD_TS, /provider_environment/);
-    assert.match(LEGACY_WEBHOOK_WORLD_ELSEWHERE_TS, /provider_environment/);
+    assert.match(STORE_TS, /INSERT INTO entitlements \([^)]*\bprovider_environment\b[^)]*\)/);
+    assert.doesNotMatch(STORE_NO_WORLD_TS, /provider_environment/);
+    assert.match(STORE_WORLD_ELSEWHERE_TS, /provider_environment/);
     assert.doesNotMatch(
-      LEGACY_WEBHOOK_WORLD_ELSEWHERE_TS,
+      STORE_WORLD_ELSEWHERE_TS,
       /INSERT INTO entitlements \([^)]*provider_environment/,
       'the near-miss variant must NOT name the column in the INSERT column list',
     );
@@ -607,25 +649,25 @@ describe('the legacy rail writes a DECIDABLE row — the world column [2026-08-2
   });
 
   test('🔴 FAILS when the INSERT column list does NOT name provider_environment', () => {
-    const r = run({ legacy: LEGACY_WEBHOOK_NO_WORLD_TS });
+    const r = run({ store: STORE_NO_WORLD_TS });
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /1 of 1 `INSERT INTO entitlements` statement\(s\) do NOT name `provider_environment`/);
     assert.match(r.out, /undecidable and is denied/);
   });
 
   test('🔴 the token elsewhere in the FILE does not satisfy it — a SELECT is not a write', () => {
-    const r = run({ legacy: LEGACY_WEBHOOK_WORLD_ELSEWHERE_TS });
+    const r = run({ store: STORE_WORLD_ELSEWHERE_TS });
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /1 of 1 `INSERT INTO entitlements` statement\(s\) do NOT name `provider_environment`/);
   });
 
   test('🔴 one honest INSERT does not cover a blind one beside it', () => {
-    const two = LEGACY_WEBHOOK_TS.replace(
-      '  return c.json({ ok: true });',
-      "  await c.env.PLATFORM_DB.prepare('INSERT INTO entitlements (user_id, provider) VALUES (?, ?)').bind(userId, 'revenuecat').run();\n  return c.json({ ok: true });",
+    const two = STORE_TS.replace(
+      '  return { fresh: true };',
+      "  await deps.db.prepare('INSERT INTO entitlements (user_id, provider) VALUES (?, ?)').bind(1, 'paddle').run();\n  return { fresh: true };",
     );
     assert.equal((two.match(/INSERT INTO entitlements/g) ?? []).length, 2, 'the two-insert fixture did not build');
-    const r = run({ legacy: two });
+    const r = run({ store: two });
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /1 of 2 `INSERT INTO entitlements` statement\(s\) do NOT name `provider_environment`/);
   });
@@ -635,9 +677,9 @@ describe('the legacy rail writes a DECIDABLE row — the world column [2026-08-2
     // `INSERT INTO entitlements VALUES (…)` names no columns, so the column-list
     // matcher is blind to it while limb 1's WRITE_RE reads it as a write. Before
     // the guard counted its own denominator this case exited 0.
-    const two = LEGACY_WEBHOOK_TS.replace(
-      '  return c.json({ ok: true });',
-      "  await c.env.PLATFORM_DB.prepare('INSERT INTO entitlements VALUES (?, ?, ?, ?)').bind(userId, 'revenuecat', environment, eventId).run();\n  return c.json({ ok: true });",
+    const two = STORE_TS.replace(
+      '  return { fresh: true };',
+      "  await deps.db.prepare('INSERT INTO entitlements VALUES (?, ?)').bind(1, 'live').run();\n  return { fresh: true };",
     );
     assert.equal((two.match(/INSERT INTO entitlements/g) ?? []).length, 2, 'the columnless fixture did not build');
     assert.equal(
@@ -645,26 +687,26 @@ describe('the legacy rail writes a DECIDABLE row — the world column [2026-08-2
       1,
       'the blind statement must carry NO column list, or this case is the previous one',
     );
-    const r = run({ legacy: two });
+    const r = run({ store: two });
     assert.equal(r.code, 1, r.out);
     assert.match(
       r.out,
-      /COVERAGE LOST — services\/subscriptiontracker-api\/src\/routes\/webhooks\.ts carries 2 `INSERT INTO entitlements` statement\(s\) and this check could read the column list of only 1/,
+      /COVERAGE LOST — services\/platform\/src\/lib\/mor\/store\.ts carries 2 `INSERT INTO entitlements` statement\(s\) and this check could read the column list of only 1/,
     );
   });
 
   test('🔴 a COLUMNLESS INSERT alone is COVERAGE LOST, never ok', () => {
-    const blind = LEGACY_WEBHOOK_TS.replace(
-      "INSERT INTO entitlements (user_id, provider, provider_environment, last_event_id) VALUES (?, ?, ?, ?)",
-      'INSERT INTO entitlements VALUES (?, ?, ?, ?)',
+    const blind = STORE_TS.replace(
+      'INSERT INTO entitlements (user_id, provider_environment) VALUES (?, ?)',
+      'INSERT INTO entitlements VALUES (?, ?)',
     );
     assert.doesNotMatch(blind, /INSERT INTO entitlements\s*\(/, 'the columnless fixture did not build');
     assert.match(blind, /INSERT INTO entitlements/);
-    const r = run({ legacy: blind });
+    const r = run({ store: blind });
     assert.equal(r.code, 1, r.out);
     assert.match(
       r.out,
-      /COVERAGE LOST — services\/subscriptiontracker-api\/src\/routes\/webhooks\.ts carries 1 `INSERT INTO entitlements` statement\(s\) and this check could read the column list of only 0/,
+      /COVERAGE LOST — services\/platform\/src\/lib\/mor\/store\.ts carries 1 `INSERT INTO entitlements` statement\(s\) and this check could read the column list of only 0/,
     );
   });
 
@@ -672,16 +714,16 @@ describe('the legacy rail writes a DECIDABLE row — the world column [2026-08-2
     // It still writes (limb 1 keeps it declared), so the column check still has a
     // duty; what it no longer has is anything to read. It must say so rather than
     // pass over zero statements, which is how an assertion becomes unfailable.
-    const upd = LEGACY_WEBHOOK_TS.replace(
-      "INSERT INTO entitlements (user_id, provider, provider_environment, last_event_id) VALUES (?, ?, ?, ?)",
+    const upd = STORE_TS.replace(
+      'INSERT INTO entitlements (user_id, provider_environment) VALUES (?, ?)',
       'UPDATE entitlements SET last_event_id = ? WHERE user_id = ?',
     );
     assert.doesNotMatch(upd, /INSERT INTO entitlements/, 'the no-insert fixture did not build');
-    const r = run({ legacy: upd });
+    const r = run({ store: upd });
     assert.equal(r.code, 1, r.out);
     assert.match(
       r.out,
-      /COVERAGE LOST — services\/subscriptiontracker-api\/src\/routes\/webhooks\.ts is declared with a `provider_environment` column requirement/,
+      /COVERAGE LOST — services\/platform\/src\/lib\/mor\/store\.ts is declared with a `provider_environment` column requirement/,
     );
   });
 });

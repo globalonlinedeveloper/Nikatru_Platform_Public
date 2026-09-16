@@ -304,7 +304,8 @@ export function normalizeInstant(v: unknown): { ok: true; iso: string | null } |
  * Turn a normalised subscription into an entitlement decision.
  *
  * ⚠️ ACCESS IS DERIVED FROM STATE AND DATES, NEVER FROM THE EVENT NAME. The
- * lesson is already recorded in services/subscriptiontracker-api/src/routes/webhooks.ts:40-71
+ * lesson was recorded in the ENTITLEMENT LIFECYCLE header of the legacy RevenueCat
+ * route (retired 2026-09-16; `git show 9698fdce:services/subscriptiontracker-api/src/routes/webhooks.ts`)
  * and it cost a real bug: one event name can carry two opposite access outcomes,
  * distinguishable only by the paid-through date. Deriving from the entity's own
  * status also means this rail does not depend on knowing the complete list of a

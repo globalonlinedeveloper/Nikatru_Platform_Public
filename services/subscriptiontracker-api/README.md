@@ -27,7 +27,6 @@ all six Flutter targets. Auth is **Supabase** — the Worker verifies Supabase J
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
 | GET | `/v1/health` | none | Liveness / deploy verification |
-| POST | `/v1/webhooks/revenuecat` | shared secret | RevenueCat → entitlements upsert |
 | GET | `/v1/subscriptions` | Supabase JWT | List subscriptions (price desc) |
 | POST | `/v1/subscriptions` | Supabase JWT | Create subscription |
 | GET | `/v1/subscriptions/:id` | Supabase JWT | One subscription + payment_history |
@@ -110,8 +109,10 @@ Both are kept rather than deleted, and that is a decision rather than an oversig
   machinery rather than orphans. Renewals: the platform Worker's nightly
   `recomputeRenewals` fan-out (`services/platform/src/renewals.ts`) rolls past-due
   `next_renewal` values forward over this app's `APP_DB` and writes a
-  `payment_history` row per crossed charge, every night. Entitlements: this
-  Worker's own `POST /v1/webhooks/revenuecat` upserts the rows the route reads.
+  `payment_history` row per crossed charge, every night. Entitlements: the
+  platform Worker's money door (`POST /v1/money/:provider`, RevenueCat included
+  since this Worker's own `POST /v1/webhooks/revenuecat` was retired on
+  2026-09-16) upserts the shared `PLATFORM_DB` rows the route reads.
 
 ⚠️ Neither is part of what app #2 inherits: the brick's backend template carries
 `src/routes/account.ts` and nothing else, so a stamped Worker has no renewals or
@@ -243,8 +244,9 @@ delete). The pattern lives in each route's `validate()`; the leaf checks are in
 `is_pro` grants only on an entitlement that is `is_active = 1` **and** either has
 no `expires_at` (a lifetime grant) or has one that parses and is in the future. An
 `expires_at` that is present but **unparseable** denies — it used to grant, forever.
-The RevenueCat webhook rejects (400) an `expiration_at_ms` it cannot read rather
-than storing NULL, because NULL is how this table spells "lifetime". The Flutter
+A writer must therefore never store NULL for an expiry it could not read, because
+NULL is how this table spells "lifetime" (the retired legacy RevenueCat webhook
+answered 400 for exactly that reason; the platform money door now owns the write). The Flutter
 client mirrors both rules in `packages/core/lib/src/models/entitlement.dart`.
 
 ## Local development
@@ -305,7 +307,6 @@ Set config/secrets:
 ```bash
 # non-secret (wrangler.jsonc vars): SUPABASE_URL, APP_ID, API_VERSION
 wrangler secret put SUPABASE_JWT_SECRET        # optional (HS256 fallback)
-wrangler secret put REVENUECAT_WEBHOOK_SECRET  # RevenueCat webhook auth
 ```
 
 **Swap to Firebase/Auth0/etc.:** edit only `auth.ts` — repoint issuer + JWKS URL.

@@ -155,7 +155,8 @@ export const ENTITLEMENTS_SCHEMA = platformEntitlements;
  * The FULL platform_db migration set, imported from the harness that owns it
  * (services/platform/test/harness.ts exports it for exactly this reason — "a
  * second list is a second thing to forget to extend"). Until 2026-08-09 this
- * file applied 0001 alone, so every webhook test ran against a table WITHOUT
+ * file applied 0001 alone, so every webhook test (the legacy RevenueCat route,
+ * retired 2026-09-16) ran against a table WITHOUT
  * the 0004 money-rail columns (`occurred_at`, `provider_environment`, …) that
  * the production table has carried since the money rail landed — the
  * conditional-UPSERT ordering could not even be written against it.
@@ -202,37 +203,10 @@ export class RecordingDb {
   }
 }
 
-// ── one Workers-runtime API Node's WebCrypto does not have ───────────────────
-// `crypto.subtle.timingSafeEqual` is a Cloudflare Workers extension, and
-// webhooks.ts uses it for the shared-secret comparison. Without this shim the
-// route THROWS in Node and every webhook test reports a 500 — which is
-// indistinguishable from a request the handler deliberately rejected, i.e. the
-// suite would look like it was testing rejection while testing a crash.
-// Constant-time-ness is a property of the deployed runtime, not of this shim;
-// what is being restored here is presence.
-{
-  const subtle = (
-    globalThis as unknown as {
-      crypto?: {
-        subtle?: {
-          timingSafeEqual?: (a: ArrayBufferView, b: ArrayBufferView) => boolean;
-        };
-      };
-    }
-  ).crypto?.subtle;
-  if (subtle && typeof subtle.timingSafeEqual !== 'function') {
-    subtle.timingSafeEqual = (a, b) => {
-      const x = new Uint8Array(a.buffer, a.byteOffset, a.byteLength);
-      const y = new Uint8Array(b.buffer, b.byteOffset, b.byteLength);
-      if (x.byteLength !== y.byteLength) {
-        throw new TypeError('timingSafeEqual: inputs must have the same length');
-      }
-      let diff = 0;
-      for (let i = 0; i < x.length; i++) diff |= x[i] ^ y[i];
-      return diff === 0;
-    };
-  }
-}
+// ⏱ 2026-09-16 — the `crypto.subtle.timingSafeEqual` shim that stood here is
+// gone with its only caller: src/routes/webhooks.ts (the legacy RevenueCat
+// route, O-REVENUECAT-VERIFIER leg b) was retired in favour of services/platform's
+// POST /v1/money/revenuecat. Nothing left in this Worker compares a shared secret.
 
 export const TEST_ENV = {
   APP_ID: 'subscriptiontracker',

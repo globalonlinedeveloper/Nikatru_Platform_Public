@@ -1,9 +1,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Worker entrypoint. Wires CORS, a public health check, public webhooks, and a
+// Worker entrypoint. Wires CORS, a public health check, and a
 // Supabase-auth-protected /v1 API group.
 //
 //   PUBLIC   GET    /v1/health              — no auth (deploy verification)
-//   PUBLIC   POST   /v1/webhooks/revenuecat — secret-authed, not user-authed
 //   ES256    DELETE /v1/account             — erasure. ASYMMETRIC-ONLY (see below)
 //   AUTH     *      /v1/subscriptions ...   — Supabase JWT required
 //
@@ -41,7 +40,6 @@ import subscriptions from './routes/subscriptions';
 import renewals from './routes/renewals';
 import budget from './routes/budget';
 import entitlements from './routes/entitlements';
-import webhooks from './routes/webhooks';
 
 const app = new Hono<AppEnv>();
 
@@ -165,8 +163,10 @@ app.get('/v1/health', async (c) => {
   });
 });
 
-// ── Public: webhooks (authenticated by shared secret, not by user JWT) ────────
-app.route('/v1/webhooks', webhooks);
+// ⏱ 2026-09-16 — NO WEBHOOKS ON THIS WORKER. POST /v1/webhooks/revenuecat (a
+// shared-bearer-secret route) was retired: RevenueCat events arrive at
+// services/platform's POST /v1/money/revenuecat, behind an HMAC over the body
+// ([ADR 020]:18 — a per-app Worker never sees a webhook). O-REVENUECAT-VERIFIER.
 
 // ── ERASURE: the ONE route on this Worker behind the strict boundary ──────────
 //

@@ -43,6 +43,13 @@
 //   b. `interface Env` in services/*/src/types.ts — REVENUECAT_WEBHOOK_SECRET
 //      exists ONLY here. Without this source RevenueCat — the amendment's own
 //      headline example — is invisible to the whole check.
+//      ⏱ 2026-09-16 — that secret is GONE (the legacy RevenueCat route was
+//      retired), and the argument for this source did not go with it. MEASURED
+//      that day, keys found by (b) and by neither (a) nor (c): three whole
+//      vendors are visible ONLY here — paddle (PADDLE_NOTIFICATION_SECRET,
+//      PADDLE_API_KEY), github (GITHUB_DISPATCH_TOKEN) and apple (the four
+//      APPLE_REVOKE_* keys) — plus three of supabase's five surfaces and one of
+//      glitchtip's two.
 //   c. wrangler `binding` keys AND `ratelimits[].name`. The ratelimits block
 //      uses `name`, not `binding`, so a binding-only scan cannot see
 //      EVENTS_LIMITER. Confirmed by scanning for bindings and watching it not
@@ -285,7 +292,10 @@ if (dartHits < FLOORS['dart-define']) {
   problems.push(`COVERAGE LOST — source (a) found only ${dartHits} compile-time define(s), expected >= ${FLOORS['dart-define']}. A LINE-BASED scan finds 13 here (measured 2026-08-21, was 2 when this tripwire was written 2026-07-28); if this number collapsed toward 13, the multiline match has broken and most defines including UPDATE_URL are invisible again.`);
 }
 if (envHits < FLOORS['worker-env']) {
-  problems.push(`COVERAGE LOST — source (b) found only ${envHits} Worker Env key(s), expected >= ${FLOORS['worker-env']}. REVENUECAT_WEBHOOK_SECRET exists only here, so losing this source hides a whole vendor.`);
+  // ⏱ 2026-09-16 — the floor is UNCHANGED (15) and so is its reason; only the
+  // example moved. The measured count that day was 41 (42 before the legacy
+  // RevenueCat secret left services/subscriptiontracker-api/src/types.ts).
+  problems.push(`COVERAGE LOST — source (b) found only ${envHits} Worker Env key(s), expected >= ${FLOORS['worker-env']}. Paddle, GitHub and Apple are claimed ONLY through Worker Env keys (measured 2026-09-16), so losing this source hides whole vendors.`);
 }
 
 // ── source (c)/(d) IS A RELATIONSHIP, NOT A NUMBER ───────────────────────────

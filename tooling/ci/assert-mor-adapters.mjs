@@ -16,10 +16,11 @@
 //
 // 🔴 THE MISTAKE THIS GUARD IS SHAPED TO AVOID, named because it is this repo's
 // most expensive recurring one: a guard scoped to the NEW thing cannot see the
-// OLD thing. `services/subscriptiontracker-api/src/routes/webhooks.ts` upserts the SHARED
-// `entitlements` table behind a shared bearer secret, and it is deployed. Scope
+// OLD thing. `services/subscriptiontracker-api/src/routes/webhooks.ts` upserted the SHARED
+// `entitlements` table behind a shared bearer secret, and it was deployed. Scope
 // this guard to `services/platform` — the obvious choice — and it prints clean
-// standing right next to it. So limb 1 enumerates entitlement writes across ALL
+// standing right next to it. (⏱ 2026-09-16: that route is retired; the scan
+// still reaches the app Worker, so a re-grown writer there fails as undeclared.) So limb 1 enumerates entitlement writes across ALL
 // of `services/**` AND the brick template, with a REQUIRED_COVERAGE naming every
 // one of them: a scan that stops reaching a Worker is COVERAGE LOST, not a pass.
 //
@@ -67,7 +68,7 @@ const REQUIRED_COVERAGE = [
   { dir: 'services/platform', label: 'the shared Worker that owns the money rail' },
   {
     dir: 'services/subscriptiontracker-api',
-    label: "the LEGACY app Worker, which upserts the SAME shared table behind a bearer secret and is DEPLOYED — the whole reason this scan is not scoped to services/platform",
+    label: "the deployed app Worker. Until 2026-09-16 it upserted the SAME shared table behind a bearer secret, which is the whole reason this scan is not scoped to services/platform; that route is retired, and the scan stays so it cannot grow back unseen",
   },
   {
     dir: 'tooling/bricks/app/__brick__',
@@ -91,17 +92,18 @@ const DECLARED_WRITERS = [
     file: 'services/platform/src/lib/mor/store.ts',
     gate: 'signature',
     why: 'the money rail. Reached only from POST /v1/money/:provider, after MoRWebhookVerifier.verify has checked an HMAC over the raw body.',
-  },
-  {
-    file: 'services/subscriptiontracker-api/src/routes/webhooks.ts',
-    gate: 'shared_secret',
-    why: 'LEGACY. The RevenueCat route, live and deployed, authenticated by a shared bearer secret rather than a signature over the body. A bearer secret proves the sender knows a string; an HMAC proves THIS BODY came from the holder of that string.',
-    retire:
-      'RevenueCat is the deferred SECOND rail for native store IAP (39-CHASSIS §4 cut 5 defers native mobile; [ADR 004]:30 keeps the rail on the roadmap). It is retired or migrated behind MoRWebhookVerifier when stage 10 takes native IAP off the shelf. Until then it stays, it stays FAIL-CLOSED, and it is printed on every CI run.',
-    // The structural property that keeps a weaker gate acceptable: an unset
-    // secret must REFUSE, not wave the request through.
-    proof: /if\s*\(\s*!\s*configured\s*\)/,
-    proofWhat: 'a fail-closed branch on an unset webhook secret',
+    // ⏱ 2026-09-16 — THE WORLD COLUMN MOVED HERE, and the legacy row it sat on is
+    // GONE. services/subscriptiontracker-api/src/routes/webhooks.ts (gate
+    // `shared_secret`) was retired for POST /v1/money/revenuecat — its own
+    // `retire:` text asked for exactly that: "retired or migrated behind
+    // MoRWebhookVerifier when stage 10 takes native IAP off the shelf". Both
+    // halves are now true: [ADR 039] made store IAP the mobile rail and [ADR 078]
+    // (2026-09-11) sells in-app at v1, and revenuecatVerifier joined the one door
+    // in #753/#761. The requirement below was written for that route and is not a
+    // property of it — every INSERT into the shared table owes the world column —
+    // so it is enforced on the writer that remains rather than deleted with the
+    // route. The history, kept as written:
+    //
     // ── ADDED 2026-08-25 · the GATE that replaced a deleted print ─────────────
     // The second structural property this legacy rail owes, beside the
     // fail-closed branch above. Every `INSERT INTO entitlements (…)` in this file
@@ -311,10 +313,14 @@ for (const w of DECLARED_WRITERS) {
     );
     continue;
   }
-  if (w.gate === 'signature') continue;
-  // A gate weaker than a signature has to earn its place, every run.
+  // ⏱ 2026-09-16 — a signature-gated writer no longer `continue`s here: the
+  // world column below is owed by EVERY declared writer that carries it, and the
+  // one left carrying it is signature-gated. The proof and the print stay
+  // weak-gate only.
+  const weak = w.gate !== 'signature';
   const src = readFileSync(join(ROOT, w.file), 'utf8');
-  if (w.proof && !w.proof.test(stripComments(src))) {
+  // A gate weaker than a signature has to earn its place, every run.
+  if (weak && w.proof && !w.proof.test(stripComments(src))) {
     fail(
       `${w.file} is declared with the weaker \`${w.gate}\` gate, and ${w.proofWhat} could not be found in it. ` +
         'A gate weaker than a signature is only tolerable while the property that makes it safe is still there; ' +
@@ -367,9 +373,11 @@ for (const w of DECLARED_WRITERS) {
       continue;
     }
   }
-  printed.push(
-    `⚠  ${w.file} — WRITES entitlements behind a \`${w.gate}\` gate, not a signature. ${w.why} RETIREMENT: ${w.retire}`,
-  );
+  if (weak) {
+    printed.push(
+      `⚠  ${w.file} — WRITES entitlements behind a \`${w.gate}\` gate, not a signature. ${w.why} RETIREMENT: ${w.retire}`,
+    );
+  }
 }
 
 // ── LIMB 2 · the provider set comes from the registry ────────────────────────

@@ -87,6 +87,9 @@
 //     the authored table unwatched. services/subscriptiontracker-api/src/routes/webhooks.ts
 //     carries its own event sets; the DIFFERENCE between the two vocabularies is
 //     declared here, in both directions, and three shape agreements are held.
+//     ⏱ 2026-09-16 — that route is RETIRED (O-REVENUECAT-VERIFIER leg b). The one
+//     runtime that reads a RevenueCat event is now
+//     services/platform/src/lib/mor/revenuecat.ts, and limb 7 reads THAT file.
 //
 // ⚠️ EVERYTHING IS PARSED, NOTHING IS GREPPED. Comments AND string literals are
 // blanked before the structural scan, because this repo has already shipped a
@@ -118,6 +121,13 @@
 // — services/platform/src/lib/mor/store.ts (the MoR rail, HMAC-gated) and
 // services/subscriptiontracker-api/src/routes/webhooks.ts (the LEGACY RevenueCat route, bearer
 // -gated) write the SAME table for the SAME (user_id, app_id, entitlement) key.
+//
+// ⏱ 2026-09-16 — ONE WRITER NOW. The legacy RevenueCat route was retired for
+// services/platform's POST /v1/money/revenuecat, which writes through store.ts
+// like every rail. So REQUIRED_UPSERT_WRITERS names store.ts alone and
+// INSTANT_PATHS names normalizeInstant alone; the SWEEP below is unchanged, so a
+// second writer growing back anywhere under services/ is still measured against
+// the one clause. The paragraphs in this block are kept as written.
 //
 // THREE THINGS ARE CHECKED, and each has an input that makes it fail ALONE:
 //   (i)   every conditional UPSERT into `entitlements` anywhere under services/
@@ -356,10 +366,9 @@ const REQUIRED_UPSERT_WRITERS = [
     file: 'services/platform/src/lib/mor/store.ts',
     why: 'the MoR rail. Reached only after MoRWebhookVerifier.verify has checked an HMAC over the raw body',
   },
-  {
-    file: 'services/subscriptiontracker-api/src/routes/webhooks.ts',
-    why: 'the LEGACY RevenueCat route — live, deployed, bearer-gated, and writing the SAME shared table. A guard scoped to services/platform prints clean standing right next to it',
-  },
+  // ⏱ 2026-09-16 — services/subscriptiontracker-api/src/routes/webhooks.ts, the
+  // LEGACY RevenueCat route, was the second member here. It is retired; RevenueCat
+  // now reaches this table through store.ts, the member above.
 ];
 
 // ── limbs 8–10's constants (the BUNDLE half, [ADR 057]) ──────────────────────
@@ -481,11 +490,10 @@ const INSTANT_PATHS = [
     fn: 'normalizeInstant',
     why: "the MoR side. Providers send instants as strings in whatever shape they like; this is the one place that turns them into the UTC ISO-8601 the clause compares",
   },
-  {
-    file: 'services/subscriptiontracker-api/src/lib/validate.ts',
-    fn: 'isoFromEpochMs',
-    why: "the RevenueCat side. `event_timestamp_ms` is epoch MILLISECONDS — stored raw it would sort as a number-shaped string against the other writer's ISO strings, and every comparison between the two would be nonsense",
-  },
+  // ⏱ 2026-09-16 — `isoFromEpochMs` in services/subscriptiontracker-api/src/lib/
+  // validate.ts was the RevenueCat side's canonicaliser. It was deleted with its
+  // only caller, the retired legacy route; RevenueCat instants now pass through
+  // `normalizeInstant` above like every other rail's.
 ];
 
 const problems = [];
@@ -831,8 +839,9 @@ function tsSourcesUnder(dir, out = []) {
   for (const e of entries) {
     // node_modules/dist/.wrangler are build output, not source. `test`/`tests`
     // are excluded because a fixture seeding a row is not a writer of
-    // production truth — services/subscriptiontracker-api/test/webhooks.test.ts alone holds
-    // three `INSERT INTO entitlements` that exist to SET UP a stale row.
+    // production truth — services/subscriptiontracker-api/test/webhooks.test.ts (retired
+    // 2026-09-16 with its route) alone held three `INSERT INTO entitlements` that
+    // existed to SET UP a stale row.
     if (['node_modules', 'dist', '.wrangler', 'test', 'tests'].includes(e.name)) continue;
     const p = join(dir, e.name);
     if (e.isDirectory()) tsSourcesUnder(p, out);
@@ -1251,7 +1260,15 @@ const rcAuthored = existsSync(join(ROOT, CONTRACT_JS_REL))
 // the revenuecatVerifier unit makes that Worker IMPORT this contract and drops
 // the three literal sets, the limb sees the import, records that the duplication
 // is closed, and stops holding a divergence that no longer exists.
-const WEBHOOK_REL = 'services/subscriptiontracker-api/src/routes/webhooks.ts';
+//
+// ⏱ 2026-09-16 — RE-POINTED, AS THE COVERAGE-LOST MESSAGE BELOW ASKS ("if it
+// moved, re-point this limb at where it moved to"). The Worker route above was
+// retired (O-REVENUECAT-VERIFIER leg b); the runtime that takes RevenueCat events
+// is now the platform verifier, which imports the contract and restates no set,
+// so this limb reads it and reports the duplication closed. Should a literal set
+// ever grow back there, the branches below fire exactly as they did for the
+// Worker. The prose above is kept as written.
+const WEBHOOK_REL = 'services/platform/src/lib/mor/revenuecat.ts';
 const WORKER_SET_NAMES = ['ACTIVE_TYPES', 'INACTIVE_TYPES', 'GRACE_TYPES'];
 // The divergence as MEASURED on 2026-09-07, declared so it cannot widen unseen.
 const DECLARED_WORKER_ONLY = ['NON_RENEWING_PURCHASE', 'PRODUCT_CHANGE', 'SUBSCRIPTION_EXTENDED'];
@@ -1347,7 +1364,7 @@ let rcDuplicationClosed = false;
             `${WEBHOOK_REL} treats RevenueCat event '${event}' as GRACE-class — access is decided by the ` +
               `paid-through date on the event — but ${CONTRACT_JS_REL} marks it dateDerived: false. One ` +
               'event name, two opposite access outcomes: CANCELLATION is both cancel-at-period-end and a ' +
-              'REFUND, and only expiration_at_ms tells them apart (webhooks.ts:51-55). A consumer reading ' +
+              'REFUND, and only expiration_at_ms tells them apart. A consumer reading ' +
               'the reason without that flag revokes a paying customer or keeps a refunded one.',
           );
         }
@@ -1768,9 +1785,9 @@ if (problems.length) {
   console.error('  [pipeline 5]M-3 The entitlement record is complete BEFORE the first payment lands.');
   console.error('  Private/requirements/ makes migrations ADDITIVE-ONLY (INV-505, INV-S3-10), so every');
   console.error('  column above is free today and permanent the instant a stranger pays.');
-  // [5]M-2, matching the citation the code itself carries at
-  // services/subscriptiontracker-api/src/routes/webhooks.ts:505 ("the conditional DO UPDATE is
-  // [5]M-2's ordering defence"). M-8 is the neighbouring rule about NOT revoking
+  // [5]M-2, matching the citation the retired legacy route carried
+  // (`git show 9698fdce:services/subscriptiontracker-api/src/routes/webhooks.ts`, "the
+  // conditional DO UPDATE is [5]M-2's ordering defence"). M-8 is the neighbouring rule about NOT revoking
   // on cancel-at-period-end and is a different requirement.
   console.error("  [5]M-2 Ordering is the provider's clock, and it is the SAME clause in both writers.");
   process.exit(1);
