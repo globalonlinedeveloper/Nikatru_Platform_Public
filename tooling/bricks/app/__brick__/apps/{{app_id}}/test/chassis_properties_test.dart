@@ -5498,9 +5498,7 @@ void main() {
       await _turnsAndSettleRoute(tester);
       await tester.enterText(find.byType(TextField).at(0), 'newcomer@b.test');
       await tester.enterText(find.byType(TextField).at(1), 'password123');
-      await tester.ensureVisible(
-        find.byKey(LegalConsentFields.termsCheckbox),
-      );
+      await tester.ensureVisible(find.byKey(LegalConsentFields.termsCheckbox));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(LegalConsentFields.termsCheckbox));
       await _turns(tester);
