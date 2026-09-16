@@ -85,6 +85,17 @@ const API = 'https://api.appstoreconnect.apple.com';
 
 class CoverageLost extends Error {}
 
+/** Read a file ONCE; ENOENT is the only "absent" answer. An existsSync-then-read
+ *  pair can see a file vanish between the two (CodeQL js/file-system-race). */
+function readOrNull(path) {
+  try {
+    return readFileSync(path, 'utf8');
+  } catch (e) {
+    if (e.code === 'ENOENT') return null;
+    throw e;
+  }
+}
+
 // ── the client ──────────────────────────────────────────────────────────────
 
 /** ES256 JWT for the App Store Connect API. `ieee-p1363` is load-bearing: a
@@ -107,6 +118,7 @@ export function ascJwt({ issuerId, keyId, privateKey, now = Math.floor(Date.now(
 export function ascClient({ jwt, dryRun, protectedIds = new Set(), protectedCertificates = new Set(), fetchImpl = fetch }) {
   const counts = { GET: 0, mutating: 0, refused: 0 };
   async function call(method, path, body) {
+    const payload = body === undefined ? undefined : JSON.stringify(body);
     if (method !== 'GET') {
       if (dryRun) {
         counts.refused++;
@@ -116,7 +128,7 @@ export function ascClient({ jwt, dryRun, protectedIds = new Set(), protectedCert
       // against all but the certificates: a new profile must NAME the
       // distribution certificate in its relationships, which reads it and does
       // not touch it (the first live mint was refused here for exactly that).
-      const bodyText = body ? JSON.stringify(body) : '';
+      const bodyText = payload ?? '';
       for (const id of protectedIds) {
         if (path.includes(id) || (!protectedCertificates.has(id) && bodyText.includes(id))) {
           counts.refused++;
@@ -129,8 +141,8 @@ export function ascClient({ jwt, dryRun, protectedIds = new Set(), protectedCert
     try {
       res = await fetchImpl(`${API}${path}`, {
         method,
-        headers: { Authorization: `Bearer ${jwt}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
-        ...(body ? { body: JSON.stringify(body) } : {}),
+        headers: { Authorization: `Bearer ${jwt}`, ...(payload ? { 'Content-Type': 'application/json' } : {}) },
+        ...(payload ? { body: payload } : {}),
       });
     } catch (e) {
       throw new CoverageLost(`${method} ${path} was unreachable: ${e.message}`);
@@ -162,9 +174,9 @@ function credentials() {
   const keyId = cred('APPLE_ASC_KEY_ID');
   const keyFile = cred('APPLE_ASC_KEY_FILE');
   if (!issuerId || !keyId || !keyFile) return null;
-  const path = isAbsolute(keyFile) ? keyFile : join(ROOT, keyFile);
-  if (!existsSync(path)) return null;
-  return { issuerId, keyId, privateKey: readFileSync(path, 'utf8') };
+  const privateKey = readOrNull(isAbsolute(keyFile) ? keyFile : join(ROOT, keyFile));
+  if (!privateKey) return null;
+  return { issuerId, keyId, privateKey };
 }
 
 // ── arguments ───────────────────────────────────────────────────────────────
@@ -365,8 +377,9 @@ async function main() {
     const keys = `[${[...expected.keys()].join(', ')}]`;
     let readable = true;
     let diff;
-    if (existsSync(entFile)) {
-      const parsed = parseFlatDict(readFileSync(entFile, 'utf8'));
+    const entText = readOrNull(entFile);
+    if (entText !== null) {
+      const parsed = parseFlatDict(entText);
       if (!parsed.ok) {
         readable = false;
         findings.push(`apps/${slug}/ios/Runner/Runner.entitlements is unreadable (${parsed.reason}) — not rewritten over`);
@@ -388,7 +401,7 @@ async function main() {
       console.log(`  wrote apps/${slug}/ios/Runner/Runner.entitlements ${keys} — review and commit it`);
     }
     const pbx = join(appDir, 'ios', 'Runner.xcodeproj', 'project.pbxproj');
-    if (expected.size && (!existsSync(pbx) || !readFileSync(pbx, 'utf8').includes('CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;'))) {
+    if (expected.size && !(readOrNull(pbx) ?? '').includes('CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;')) {
       findings.push(`apps/${slug}/ios/Runner.xcodeproj never sets CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements — the file is inert until it does`);
     }
   }

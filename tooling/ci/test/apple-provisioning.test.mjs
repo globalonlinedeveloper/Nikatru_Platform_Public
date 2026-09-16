@@ -133,6 +133,18 @@ describe('plist reading', () => {
     assert.equal(r.ok, true);
     assert.equal(r.entries.size, 0);
   });
+  test('a comment that a single strip pass would re-form is not left to confuse the parser', () => {
+    // `<!<!---->--` collapses to `<!--` after ONE pass (CodeQL
+    // js/incomplete-multi-character-sanitization). Here that re-formed opener
+    // wraps a key: one pass would read the key as real; stripped to a fixed
+    // point, the whole re-formed comment goes and the dict is empty.
+    const r = parseFlatDict(`<plist><dict><!<!---->-- <key>${DAR}</key><true/> --></dict></plist>`);
+    assert.equal(r.ok, true, r.reason);
+    assert.deepEqual([...r.entries.keys()], []);
+    // The bare collapse, and an opener that never closes, are refused — never read around.
+    assert.equal(parseFlatDict(`<plist><dict><!<!---->--<key>${DAR}</key><true/></dict></plist>`).ok, false);
+    assert.equal(parseFlatDict(`<plist><dict><!-- <key>${DAR}</key><true/></dict></plist>`).ok, false);
+  });
   test('a nested dict, a data value and a repeated key are REFUSED, not skipped', () => {
     assert.equal(parseFlatDict('<dict><key>a</key><dict></dict></dict>').ok, false);
     assert.equal(parseFlatDict('<dict><key>a</key><data>AA==</data></dict>').ok, false);

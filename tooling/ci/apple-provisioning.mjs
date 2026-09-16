@@ -160,7 +160,16 @@ const escapeXml = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(
  * Runner.entitlements carries one that names the very key it explains.
  */
 export function parseFlatDict(text) {
-  const src = String(text).replace(/<!--[\s\S]*?-->/g, '');
+  // Stripped to a fixed point, then REFUSED if an opener survives: one pass can
+  // leave a comment behind (CodeQL js/incomplete-multi-character-sanitization).
+  // This is a parser, not a sanitiser, so the honest answer to a shape it cannot
+  // read is ok: false.
+  let src = String(text);
+  for (let prev = null; prev !== src; ) {
+    prev = src;
+    src = src.replace(/<!--[\s\S]*?-->/g, '');
+  }
+  if (src.includes('<!--')) return { ok: false, reason: 'an unterminated or nested XML comment' };
   const open = src.indexOf('<dict>');
   const selfClosed = src.search(/<dict\s*\/>/);
   if (open === -1) {
