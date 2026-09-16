@@ -439,6 +439,11 @@ void main() {
         final AppLocalizations l10n = await _load(code);
         await _pump(tester, Locale(code), const LoginScreen());
 
+        // ⏱ 2026-09-16 — scroll it in first: with `apple: true` the OAuth limb
+        // renders above this toggle and pushes it off the test surface, so the tap
+        // lands on nothing and the failure shows up later as a missing form.
+        await tester.ensureVisible(find.text(l10n.newHerePrompt));
+        await tester.pumpAndSettle();
         await tester.tap(find.text(l10n.newHerePrompt));
         await tester.pump();
 

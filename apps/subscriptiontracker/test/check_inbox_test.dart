@@ -201,6 +201,11 @@ Future<void> _signUpViaLoginScreen(
   WidgetTester tester,
   AppLocalizations l10n,
 ) async {
+  // ⏱ 2026-09-16 — scroll it in first: with `apple: true` the OAuth limb
+  // renders above this toggle and pushes it off the test surface, so the tap
+  // lands on nothing and the failure shows up later as a missing form.
+  await tester.ensureVisible(find.text(l10n.newHerePrompt));
+  await tester.pumpAndSettle();
   await tester.tap(find.text(l10n.newHerePrompt));
   await tester.pumpAndSettle();
   await tester.enterText(find.byKey(E2EKeys.loginEmail), _address);

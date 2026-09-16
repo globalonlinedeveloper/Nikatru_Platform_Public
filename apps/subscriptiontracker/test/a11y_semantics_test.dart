@@ -2018,6 +2018,11 @@ void main() {
         // signed-out visitor HERE rather than there. A sweep that only ever
         // measured the sign-in arm would never see the clickwrap, which is the
         // one legally blocking control in the app.
+        // ⏱ 2026-09-16 — scroll it in first: with `apple: true` the OAuth limb
+        // renders above this toggle and pushes it off the test surface, so the tap
+        // lands on nothing and the failure shows up later as a missing form.
+        await tester.ensureVisible(find.text(l10n.newHerePrompt));
+        await tester.pumpAndSettle();
         await tester.tap(find.text(l10n.newHerePrompt));
         await tester.pump();
         expect(
@@ -3421,6 +3426,11 @@ void main() {
         // The second door, and a DIFFERENT TREE — the naked sweep's reason,
         // unchanged here: this arm is where the two consent boxes and their
         // document links live, and no other pump of this screen has them.
+        // ⏱ 2026-09-16 — scroll it in first: with `apple: true` the OAuth limb
+        // renders above this toggle and pushes it off the test surface, so the tap
+        // lands on nothing and the failure shows up later as a missing form.
+        await tester.ensureVisible(find.text(l10n.newHerePrompt));
+        await tester.pumpAndSettle();
         await tester.tap(find.text(l10n.newHerePrompt));
         await tester.pump();
         expect(
@@ -4336,8 +4346,26 @@ void main() {
       WidgetTester tester,
     ) async {
       await semantically(tester, () async {
-        await pumpScreen(tester, const LoginScreen(), theme: appTheme());
+        // ⏱ 2026-09-16 — A TALLER SURFACE THAN `kPhone`, AND THE REASON IS THE
+        // ONE `sizeSurface`'s own note is about. With `apple: true` the sign-up
+        // arm gained the OAuth limb, so at 375x812 its submit button falls below
+        // the fold, is never painted, and the contrast guideline cannot inspect
+        // it — `expectContrastHadSubjects` then fails on "Create account", which
+        // is the anti-vacuity check DOING ITS JOB rather than a contrast defect.
+        // Pinning the surface tall enough to paint the whole arm is what makes
+        // the sweep measure the control this case names; shrinking the `covers`
+        // list instead would have bought green by measuring less.
+        await pumpScreen(
+          tester,
+          const LoginScreen(),
+          theme: appTheme(),
+          size: const Size(375, 1200),
+        );
         final AppLocalizations l10n = await _load('en');
+        // With the taller surface the toggle is on-screen, but ensureVisible is
+        // kept: it costs nothing and it is what every other call site now does.
+        await tester.ensureVisible(find.text(l10n.newHerePrompt));
+        await tester.pumpAndSettle();
         await tester.tap(find.text(l10n.newHerePrompt));
         await tester.pump();
         expect(

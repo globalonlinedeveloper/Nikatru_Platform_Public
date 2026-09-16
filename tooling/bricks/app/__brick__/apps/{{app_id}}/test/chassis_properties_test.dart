@@ -5485,12 +5485,27 @@ void main() {
       final ChassisLocalizations l10n = lookupChassisLocalizations(
         const Locale('en'),
       );
+      // ⏱ 2026-09-16 — SAME REASON AS `openSignUp` ABOVE, AND THIS IS THE COPY
+      // THAT WAS MISSED ON THE FIRST PASS. With `apple: true` the OAuth limb
+      // renders above this toggle and pushes it off an 800x600 surface; the
+      // measured offset was (400, 706). Flutter warned "would not hit test" and
+      // then continued, so the failure surfaced two lines later as a missing
+      // `signUpSubmit` — the tap that never happened is the cause, and the
+      // warning is the only place it is named.
+      await tester.ensureVisible(find.text(l10n.needAccount));
+      await tester.pumpAndSettle();
       await tester.tap(find.text(l10n.needAccount));
       await _turnsAndSettleRoute(tester);
       await tester.enterText(find.byType(TextField).at(0), 'newcomer@b.test');
       await tester.enterText(find.byType(TextField).at(1), 'password123');
+      await tester.ensureVisible(
+        find.byKey(LegalConsentFields.termsCheckbox),
+      );
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(LegalConsentFields.termsCheckbox));
       await _turns(tester);
+      await tester.ensureVisible(find.byKey(SignUpScreen.submitButton));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(SignUpScreen.submitButton));
       await _turnsAndSettleRoute(tester);
     }
