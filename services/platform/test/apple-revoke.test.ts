@@ -87,7 +87,12 @@ beforeAll(async () => {
       identityCalls.push(url);
       return new Response(null, { status: 204 });
     }
-    if (url.startsWith(APP_ORIGIN)) return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    // ORIGIN, not `startsWith`: `https://api.test.evil.example` starts with the
+    // origin too, and CodeQL's js/incomplete-url-substring-sanitization says so
+    // (high, and it failed this PR). Same shape as signup-erasure.test.ts.
+    if (new URL(url).origin === APP_ORIGIN) {
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    }
     throw new Error(`unexpected fetch in test: ${url}`);
   });
 });
