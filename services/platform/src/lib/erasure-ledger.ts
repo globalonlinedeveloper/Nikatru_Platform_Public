@@ -47,6 +47,20 @@ export function erasureBindingName(appId: string): string {
  */
 export const SIGNUP_PURGE_STEP = 'platform:signups';
 
+/**
+ * ⏱ 2026-09-16 · O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE. The SECOND non-app step, and
+ * the same shape as the one above: revoking this subject's Sign in with Apple
+ * token at Apple (`POST https://appleid.apple.com/auth/revoke`) is part of their
+ * erasure, is not an app, and cannot be retried over a Service Binding. When the
+ * call cannot be completed — Apple unreachable, or the owner-provisioned
+ * credentials absent — the route records an order under this id, the identity
+ * STAYS, and `erasureRetry` runs the revoke itself.
+ *
+ * ⚠️ Same load-bearing `<NAME>_STEP` spelling read by
+ * tooling/ops/check-prod-provenance.mjs (resolver `erasure-step`).
+ */
+export const APPLE_REVOKE_STEP = 'platform:apple-revoke';
+
 /** The binding for an app, or null when this Worker declares none for it. */
 export function erasureBindingFor(env: object, appId: string): ErasureBinding | null {
   const candidate = (env as Record<string, unknown>)[erasureBindingName(appId)];

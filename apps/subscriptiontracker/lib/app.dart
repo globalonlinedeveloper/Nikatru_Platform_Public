@@ -23,6 +23,12 @@ class SublyApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(routerProvider);
+    // ⏱ 2026-09-16 · O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE. WATCHED FOR ITS EFFECT,
+    // and that is the whole reason this line exists: the provider subscribes to
+    // the identity stream so Apple's refresh token can be captured the once it is
+    // offered. Nothing reads its value — a Riverpod provider nobody watches is
+    // never created, so without this the listener does not exist.
+    ref.watch(appleTokenKeeperProvider);
     // CFG-1 force-update kill-switch: blocks the app when the running version is
     // below the resolved min_supported_version. Watching this resolves the config
     // at launch too; it fails open while config/version load (never blocks the UI).

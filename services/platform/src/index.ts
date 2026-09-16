@@ -30,6 +30,7 @@ import {
 import { reportWorkerError } from './lib/error-sink';
 import { corsMiddleware } from './middleware/cors';
 import { platformAuth } from './middleware/auth';
+import appleToken from './routes/apple-token';
 import account from './routes/account';
 import config from './routes/config';
 import entitlements from './routes/entitlements';
@@ -185,7 +186,14 @@ app.route('/v1/money', money);
 // exists. Mounting order is the whole difference between "the shared server can
 // authenticate" and "every app is locked out of its own config".
 app.use('/v1/account', platformAuth);
+// ⏱ 2026-09-16 · O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE — A SECOND LINE, AND IT IS NOT
+// REDUNDANT, for the same reason `/v1/entitlements/*` below is not: Hono matches
+// `app.use('/v1/account', …)` on that path ALONE, so `PUT /v1/account/apple-token`
+// would be reached with no `userId` set. That route writes a credential keyed by
+// the caller's subject; unauthenticated it would key it by nothing.
+app.use('/v1/account/*', platformAuth);
 app.route('/v1', account);
+app.route('/v1', appleToken);
 
 // AUTHENTICATED: the shared entitlement read ([5]M-4). The other half of what
 // [4]B-3's middleware lift was for — until this route existed, the only working

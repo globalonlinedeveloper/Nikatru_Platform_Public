@@ -3872,6 +3872,28 @@
       }
     },
     {
+      "kind": "retention",
+      "detector": "tooling/ci/assert-retention-coverage.mjs — the store set is ENUMERATED from wrangler bindings and migrations, so a store cannot leave the domain by having no rule.",
+      "response": "n/a",
+      "cadence": "365d",
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified",
+      "id": "retention.d1.platform_db.apple_provider_tokens",
+      "store": "d1:platform_db:apple_provider_tokens",
+      "what": "One row per subject who signed in with Apple: Apple’s OAuth refresh token for this relying party, which the account deletion revokes with; O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE.",
+      "rule": "keep",
+      "keepWhy": "⏱ 2026-09-16 · O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE. Kept WHILE THE ACCOUNT EXISTS, because it is what makes that account’s deletion revocable at Apple, then deleted the moment Apple answers the revoke (services/platform/src/lib/apple-revoke.ts) and again when the erasure completes (DELETE /v1/account and the nightly erasureRetry). NEVER on a timer: a row deleted by age would silently make that account’s deletion unrevokable, and Apple requires revocation on deletion. A revoke that cannot be completed keeps the row, keeps the identity, and turns the erasure_retry heartbeat red once the order is stuck.",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/platform/migrations/0012_apple_provider_tokens.sql",
+        "record": "the table itself",
+        "failingValue": "not applicable to a reasoned keep",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      }
+    },
+    {
       "id": "retention.d1.platform_db.signups",
       "kind": "retention",
       "store": "d1:platform_db:signups",

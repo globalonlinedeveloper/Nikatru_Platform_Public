@@ -354,6 +354,20 @@ const WIRE_CONTRACTS = [
       'requestAccountDeletion() awaits client.delete(path) and reads only ApiException.statusCode — no key of `{ ok, deleted, unlinked, apps }` is ever subscripted. Pinning that body would be pinning something no released client can break on; the STATUS SET is the contract, so that is what is pinned.',
   },
   {
+    // ⏱ 2026-09-16 · O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE. Apple's own refresh token,
+    // on its way to the deletion that revokes it.
+    id: 'account-apple-token',
+    kind: 'request',
+    server: 'services/platform/src/routes/apple-token.ts',
+    client: {
+      file: 'packages/api_client/lib/src/account_deletion_request.dart',
+      marker: 'body:',
+    },
+    keys: ['refreshToken', 'appId'],
+    responseIsNotTheContract:
+      'storeAppleRefreshToken awaits client.put and returns void: it subscripts no key of { ok, stored }, and the caller (keepAppleRefreshToken) only cares whether the call threw. Pinning that body would pin something no released client can break on. The REQUEST is what both sides must agree about — a renamed key there is a 400 for every released build, and the token then never reaches the server that has to revoke it.',
+  },
+  {
     id: 'entitlements',
     kind: 'body',
     // ⏱ 2026-09-11 · NOT A NAMED PATH. The server half is the register row's
@@ -1459,6 +1473,57 @@ for (const contract of WIRE_CONTRACTS) {
       wireGaps++;
       gap(`wire ${contract.id} — NO CLIENT PINNED. ${contract.reason} (checked: ${dartFiles.length} .dart file(s), none builds \`${contract.absentFromDart}\`)`);
     }
+    continue;
+  }
+
+  // ── ⏱ 2026-09-16 · THE REQUEST IS THE CONTRACT, AND THE RESPONSE IS NOT ────
+  // O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE added the first route of this shape: the
+  // client SENDS a pinned object and reads nothing back but a count it ignores.
+  // The `body` kind cannot describe it — it pins keys a client subscripts, and
+  // this client subscripts none — and `gap` would be a lie, because there IS a
+  // released client. So the pin is the REQUEST literal, both directions: every
+  // key the client sends is read by the server, and every key the contract names
+  // is sent. A rename on either side is a 400 for every released build, which is
+  // exactly what this file exists to catch before it ships.
+  if (contract.kind === 'request') {
+    if (!contract.responseIsNotTheContract || contract.responseIsNotTheContract.trim() === '') {
+      coverageLost(
+        `${contract.id}: a request-only contract must SAY why the response is not pinned. Without it, "the client reads ` +
+          'nothing back" is an assumption rather than a recorded decision.',
+      );
+    }
+    if (!has(contract.client.file)) coverageLost(`${contract.id}: the client half ${contract.client.file} does not exist.`);
+    if (!has(contract.server)) coverageLost(`${contract.id}: the server half ${contract.server} does not exist.`);
+    const dart = stripSourceComments(read(contract.client.file), '.dart');
+    const at = dart.indexOf(contract.client.marker);
+    if (at === -1) {
+      coverageLost(
+        `${contract.id}: ${contract.client.file} no longer contains \`${contract.client.marker}\` — the request literal moved.`,
+      );
+    }
+    const open = dart.indexOf('{', at + contract.client.marker.length);
+    const parsed = open === -1 ? null : objectKeysAt(dart, open);
+    if (!parsed || parsed.keys.length === 0) {
+      coverageLost(`${contract.id}: no key was parsed out of the request literal at \`${contract.client.marker}\`.`);
+    }
+    const sent = parsed.keys.map((k) => k.replace(/^['"]|['"]$/g, ''));
+    const missing = contract.keys.filter((k) => !sent.includes(k));
+    const extra = sent.filter((k) => !contract.keys.includes(k));
+    if (missing.length || extra.length) {
+      fail(`${contract.id} — the request literal sends {${sent.join(', ')}}, the pinned shape is {${contract.keys.join(', ')}}.`);
+      continue;
+    }
+    const serverSrc = stripSourceComments(read(contract.server), '.ts');
+    const unread = contract.keys.filter((k) => !new RegExp(`(\\.${k}\\b|['"\`]${k}['"\`])`).test(serverSrc));
+    if (unread.length) {
+      fail(
+        `${contract.id} — the client sends {${unread.join(', ')}} and ${contract.server} never reads ${unread.length === 1 ? 'it' : 'them'}. ` +
+          'A field nobody reads is a field the client can stop sending without anything going red.',
+      );
+      continue;
+    }
+    wirePinned++;
+    ok(`wire ${contract.id} — request pinned: client sends {${contract.keys.join(', ')}}, ${contract.server} reads all of them`);
     continue;
   }
 

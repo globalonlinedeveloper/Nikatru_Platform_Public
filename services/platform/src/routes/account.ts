@@ -1,7 +1,9 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
 import { erasePlatformRows, deleteIdentity, purgeVerifiedSignups, signupPurgeToken } from '../lib/platform-erasure';
+import { dropAppleToken, revokeAppleToken } from '../lib/apple-revoke';
 import {
+  APPLE_REVOKE_STEP,
   SIGNUP_PURGE_STEP,
   clearPendingErasure,
   closeSubject,
@@ -129,6 +131,7 @@ import {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const account = new Hono<AppEnv>();
+
 
 /**
  * ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH. How recent a password-less account's last
@@ -309,6 +312,12 @@ account.delete('/account', async (c) => {
   // is not there, 401/403 mean the app refused THIS proof, and neither is "could
   // not be reached". And an app this Worker has no binding for cannot be retried,
   // so recording an order for it would promise a retry that can never run: 502.
+  // ⏱ 2026-09-16 · O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE. APPLE FIRST, BEFORE THE
+  // IDENTITY CAN GO. The token lives in `apple_provider_tokens` (subject_ref, so
+  // the schema-derived walk above cannot delete it mid-deletion), and the outcome
+  // is handled exactly like the signup step: settled ⇒ any open order is cleared;
+  // not settled ⇒ an order under APPLE_REVOKE_STEP, a 202, and the identity STAYS.
+  const appleRevoke = await revokeAppleToken(c.env, userId, rid);
   const authorization = c.req.header('Authorization');
   const apps: Record<string, string> = {};
   const pending: string[] = [];
@@ -336,6 +345,30 @@ account.delete('/account', async (c) => {
     } catch (err) {
       console.error(`[account] rid=${rid} app=${c.env.APP_ID} could not clear a settled signup step`, err);
     }
+  }
+  if (appleRevoke.kind === 'revoked' || appleRevoke.kind === 'none') {
+    try {
+      await clearPendingErasure(c.env.PLATFORM_DB, userId, APPLE_REVOKE_STEP);
+    } catch (err) {
+      console.error(`[account] rid=${rid} app=${c.env.APP_ID} could not clear a settled Apple revoke step`, err);
+    }
+  } else {
+    // blocked (credentials absent, or Apple refused this client) and transient
+    // (Apple unreachable) are BOTH pending: neither is "nothing to do", and a
+    // deletion reported as done while Apple still lists this app as connected is
+    // the exact claim this row exists to stop.
+    try {
+      await recordPendingErasure(c.env.PLATFORM_DB, {
+        subjectRef: userId,
+        appId: APPLE_REVOKE_STEP,
+        nowIso: new Date().toISOString(),
+        reason: appleRevoke.why,
+      });
+    } catch (err) {
+      console.error(`[account] rid=${rid} app=${c.env.APP_ID} could not record the pending Apple revoke`, err);
+      return c.json({ error: 'account_deletion_failed' }, 502);
+    }
+    pending.push(APPLE_REVOKE_STEP);
   }
   if (signupPurge.kind === 'transient') {
     try {
@@ -429,6 +462,15 @@ account.delete('/account', async (c) => {
     await closeSubject(c.env.PLATFORM_DB, userId);
   } catch (err) {
     console.error(`[account] rid=${rid} app=${c.env.APP_ID} could not close settled erasure orders`, err);
+  }
+  // ⏱ 2026-09-16 · O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE — AND NO CREDENTIAL IS LEFT
+  // BEHIND. Reaching here means the Apple step settled (`revoked` deleted the row
+  // already, `none` had none), so this is the belt: an account whose identity is
+  // gone must not leave a token in `apple_provider_tokens` for anybody to hold.
+  try {
+    await dropAppleToken(c.env.PLATFORM_DB, userId);
+  } catch (err) {
+    console.error(`[account] rid=${rid} app=${c.env.APP_ID} could not drop a settled Apple token`, err);
   }
 
   return c.json({ ok: true, deleted, unlinked, apps, signups });
