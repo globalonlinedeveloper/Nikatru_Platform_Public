@@ -251,6 +251,7 @@
     "supabase-box-cron": "oci",
     "windows-task-scheduler": "laptop",
     "claude-scheduled-task": "laptop",
+    "laptop": "laptop",
     "selfhost-image-watch-cron": "hostinger"
   },
   "_kinds": [
@@ -2063,6 +2064,27 @@
       ],
       "source": "verified",
       "verifiedHow": "2026-09-09 — the monitor was created and its beat PROVEN FROM THE API rather than from the POST's status code, which is the trap this file records for monitor 22 (GlitchTip answers a heartbeat GET with 405, and a 200 on a POST is not evidence that a check was recorded). Before the test beat the monitor had no `lastChange` and NO CHECK AT ALL; after it, `isUp` True, `lastChange` 2026-09-08T19:14:40.622Z, newest check 2026-09-08T19:14:40.622Z `isUp:true`. Its URL is in the gitignored laptop vault as `PIPELINE_DRIVER_HEARTBEAT_URL` and appears in no prompt, no commit and no report. The task prompt was updated with `update_scheduled_task` carrying every existing instruction through verbatim, and the cron re-read afterwards as `37 9 * * *`, unchanged. Declared in tooling/ops/alarm-chains.json `expectedMonitors` in the same change that created the monitor, and that declaration was proven to bite by mutation: `verify-alarm-chains.mjs` exited 0 over the real list and exited 1, COVERAGE LOST, when this id was pointed at a monitor that does not exist. ⬜ No Down transition forced, so no `downTransitionDrill`."
+    },
+    {
+      "id": "duty.laptop.glitchtip-no-ip-live",
+      "kind": "duty",
+      "what": "The LIVE half of the crash-event IP rule: `node tooling/ci/assert-glitchtip-no-ip.mjs --live` posts a subject event (no user, spoofed client-IP headers, plus the real CF-Connecting-IP the edge adds) and a negative control through the public GlitchTip edge, then reads both back through the GlitchTip API. It is the only thing in either repository that observes what the crash sink STORES, and tooling/ci/assert-sink-disclosure.mjs delegates its declared ceiling to it: the `hostinger` row in tooling/legal/provider-register.json declares `ip_address` as transit-only, which no repo-resident guard can check.",
+      "detector": "Attended: a human (or an agent on the laptop) runs `node tooling/ci/assert-glitchtip-no-ip.mjs --live` with GLITCHTIP_TOKEN from the vault and reads the verdict. The offline limbs of the same guard run on every push from ci.yml; this row is the live leg only.",
+      "response": "Exit 1 means the sink STORED an IP for the subject event: the header strip in the nginx hop in front of GlitchTip has regressed, and privacy.html is false until it is fixed (Private/runbooks/operations.md A.2). Exit 2 means the run proved nothing — no token, or the control did not come back — and must be re-run, never read as a pass.",
+      "cadence": "on-demand",
+      "why": "It depends on the GlitchTip box, and ci.yml carries a standing objection to any merge-blocking limb that does; ops-watch is no refuge, because a red ops-watch turns ci-gate red and blocks every PR on a box outage. The owner ruling of 2026-09-15 (register row O-CRASH-EVENT-IP-DROP) made it a laptop and runbook step. What can drift WITHOUT the box — the SDK flag, the event-building sources, the free-text scrubber — is checked on every push by the offline limbs; what needs re-running is a change to the sink or the nginx hop in front of it.",
+      "mechanism": {
+        "substrate": "laptop",
+        "anchor": "tooling/ci/assert-glitchtip-no-ip.mjs",
+        "record": "the synthetic subject and control events the run posts, kept in the GlitchTip project it names, plus the run output",
+        "failingValue": "exit 1 (the subject event carries an IP-bearing key or an IP-shaped value) or exit 2 (no token, or the control proved the read-back blind)",
+        "readBy": "the human who ran it; tooling/ci/assert-sink-disclosure.mjs refuses with COVERAGE LOST if this row disappears"
+      },
+      "accessProviders": [
+        "laptop",
+        "hostinger"
+      ],
+      "source": "verified"
     },
     {
       "_whyTheseFourRowsExist": [

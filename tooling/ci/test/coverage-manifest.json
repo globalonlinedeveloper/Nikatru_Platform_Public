@@ -173,7 +173,7 @@
   "signup-consent-shape.test.mjs": 28,
   "signup-retention.test.mjs": 12,
   "single-threaded-relaunch.test.mjs": 8,
-  "sink-disclosure.test.mjs": 34,
+  "sink-disclosure.test.mjs": 49,
   "site-integrity.test.mjs": 94,
   "smoke-web-artifact.test.mjs": 15,
   "snap-submission.test.mjs": 41,
