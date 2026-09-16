@@ -56,8 +56,8 @@
 //
 // Usage:  node tooling/ci/assert-render-payload.mjs [repoRoot]
 // Exit:   0 = the payload is current, complete, and carries no pricing source
-//         1 = stale · absent · empty · BOM · a leaked source field · a rendered
-//             price that is not what the config declares
+//         1 = stale · BOM · a leaked source field · a mis-rendered price
+//         2 = COVERAGE LOST — a subject absent/empty, a source unparseable
 // ─────────────────────────────────────────────────────────────────────────────
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -140,7 +140,7 @@ const has = (rel) => existsSync(join(ROOT, ...rel.split('/')));
 function coverageLost(lines) {
   console.error(`✗ COVERAGE LOST — ${lines[0]}`);
   for (const l of lines.slice(1)) console.error(`  ${l}`);
-  process.exit(1);
+  process.exit(2);
 }
 
 // ── limb A · THE SUBJECT EXISTS ─────────────────────────────────────────────

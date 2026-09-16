@@ -46,7 +46,7 @@ const problems = [];
 const coverageLost = (...lines) => {
   console.error(`✗ COVERAGE LOST — ${lines[0]}`);
   for (const l of lines.slice(1)) console.error(`  ${l}`);
-  process.exit(1);
+  process.exit(2);
 };
 
 if (REVIEW_CHECKLIST.length === 0) coverageLost('the review checklist is empty, so limb 6 requires nothing of any verdict row.');

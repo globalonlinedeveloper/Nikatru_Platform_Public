@@ -279,6 +279,25 @@ describe('assert-render-payload — the published projection', () => {
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
 
+  test('COVERAGE LOST exits 2 — not 1, which is a finding, and not a killed process', () => {
+    // O-COVERAGE-LOST-BRANCH-UNTESTED: the two cases above accept any non-zero,
+    // so switching coverageLost's exit code changed nothing they could see. The
+    // RAW status is read here, because `run` maps a null status to 2.
+    for (const [why, overrides] of [
+      ['a missing payload', { payload: null }],
+      ['an empty payload', { payload: '[]\n' }],
+      ['an unparseable rail config', { rail: '{ not json\n' }],
+    ]) {
+      const root = tree(overrides);
+      try {
+        const r = spawnSync(process.execPath, [GUARD, root], { encoding: 'utf8' });
+        const out = `${r.stdout ?? ''}${r.stderr ?? ''}`;
+        assert.equal(r.status, 2, `${why} — expected exit 2 (COVERAGE LOST), got ${r.status}:\n${out}`);
+        assert.match(out, /COVERAGE LOST/, `${why} — exit 2 without the COVERAGE LOST line`);
+      } finally { rmSync(root, { recursive: true, force: true }); }
+    }
+  });
+
   test('an OBJECT MAP keyed by slug is refused — the storefront rejects it at the door', () => {
     const root = tree({ payload: `${JSON.stringify({ subscriptiontracker: payloadRows()[0] }, null, 2)}\n` });
     try {

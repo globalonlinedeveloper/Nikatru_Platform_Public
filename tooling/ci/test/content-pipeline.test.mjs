@@ -86,6 +86,20 @@ function assertRefused(r, re, label) {
   assert.match(out, re, label);
 }
 
+/** The COVERAGE LOST branch, asserted by its EXACT exit code. `assertRefused`
+ *  accepts any non-zero, so every case above stayed green when these guards'
+ *  coverageLost helper was switched from exit 1 to exit 2 (measured 2026-09-15,
+ *  O-COVERAGE-LOST-BRANCH-UNTESTED): nothing forced the branch. 2 is the repo's
+ *  COVERAGE LOST code and 1 is a finding, so a helper exiting 1 — or a limb
+ *  that stops reaching the helper and falls through to the finding list — must
+ *  turn this red. A null status (killed) is not 2 either. */
+function assertCoverageLost(r, re, label) {
+  const out = `${r.stdout}\n${r.stderr}`;
+  assert.equal(r.status, 2, `${label}: expected exit 2 (COVERAGE LOST), got ${r.status}\n${out}`);
+  assert.match(out, /COVERAGE LOST/, `${label}: exit 2 without the COVERAGE LOST line`);
+  assert.match(out, re, label);
+}
+
 describe('assert-recipe-contract — [pipeline 7]P-1 + P-8', () => {
   it('passes on the real tree (or nothing below means anything)', () => {
     assert.equal(run(tree(), 'assert-recipe-contract.mjs').status, 0);
@@ -119,6 +133,12 @@ describe('assert-recipe-contract — [pipeline 7]P-1 + P-8', () => {
     const t = tree();
     edit(t, 'tooling/content_pipeline/src/recipe.mjs', (s) => s.replace('if (spec.enum && !spec.enum.includes(value)) {', 'if (false) {'));
     assertRefused(run(t, 'assert-recipe-contract.mjs'), /"streaming" TTS endpoint was ACCEPTED/, 'streaming TTS accepted');
+  });
+
+  it('COVERAGE LOST (exit 2) when no committed recipe exists — every limb would range over nothing', () => {
+    const t = tree();
+    rmSync(join(t, RECIPE_DIR, 'recipe.json'));
+    assertCoverageLost(run(t, 'assert-recipe-contract.mjs'), /no recipe found under/, 'recipe set empty');
   });
 });
 
@@ -201,6 +221,12 @@ describe('assert-pack-roundtrip — [pipeline 7]P-9 + P-6 + P-11', () => {
     edit(t, `${PACK}/PROVENANCE.json`, (s) => s.replace(/"none\/hand-authored"/g, '"none/renamed"'));
     assertRefused(run(t, 'assert-pack-roundtrip.mjs'), /DRIFTED|no PROVENANCE\.json row does/, 'generator drift');
   });
+
+  it('COVERAGE LOST (exit 2) when the recipe is gone — "the round trip passed" would mean it ran on nothing', () => {
+    const t = tree();
+    rmSync(join(t, RECIPE_DIR, 'recipe.json'));
+    assertCoverageLost(run(t, 'assert-pack-roundtrip.mjs'), /recipe\.json does not exist/, 'nothing produced');
+  });
 });
 
 describe('assert-pack-inert — [pipeline 7]P-7 + P-14', () => {
@@ -234,6 +260,12 @@ describe('assert-pack-inert — [pipeline 7]P-7 + P-14', () => {
       s.replace('export function isAllowedMember(rel) {', 'export function isAllowedMember(rel) {\n  return true;'));
     assertRefused(run(t, 'assert-pack-inert.mjs'), /NOT CAUGHT/, 'member whitelist disabled');
   });
+
+  it('COVERAGE LOST (exit 2) when .gitattributes is absent — the binary-marking check would assert nothing', () => {
+    const t = tree();
+    rmSync(join(t, '.gitattributes'));
+    assertCoverageLost(run(t, 'assert-pack-inert.mjs'), /\.gitattributes does not exist/, 'attributes absent');
+  });
 });
 
 describe('assert-prompt-provenance — [pipeline 7]P-2', () => {
@@ -259,6 +291,12 @@ describe('assert-prompt-provenance — [pipeline 7]P-2', () => {
     edit(t, 'tooling/content_pipeline/src/prompts.mjs', (s) =>
       s.replace('the\\s+(?:art\\s+)?style\\s+of\\b', 'the\\s+(?:art\\s+)?zzzzstyle\\s+of\\b'));
     assertRefused(run(t, 'assert-prompt-provenance.mjs'), /NOT CAUGHT/, 'ban list neutered');
+  });
+
+  it('COVERAGE LOST (exit 2) when no pack carries a PROVENANCE.json — a scan with no log to scan', () => {
+    const t = tree();
+    rmSync(join(t, PACK, 'PROVENANCE.json'));
+    assertCoverageLost(run(t, 'assert-prompt-provenance.mjs'), /no pack with a PROVENANCE\.json/, 'no log');
   });
 });
 
@@ -299,6 +337,12 @@ describe('assert-review-gate — [pipeline 7]P-4', () => {
       `${s.split('\n').filter((l) => l.trim() && !l.includes('"badge.streak"')).join('\n')}\n`);
     assertRefused(run(t, 'assert-review-gate.mjs'), /reviews no image item|has no verdict/, 'image limb retired');
   });
+
+  it('COVERAGE LOST (exit 2) when no (recipe, frozen pack, review.jsonl) triple is found', () => {
+    const t = tree();
+    rmSync(join(t, PACK, 'PROVENANCE.json'));
+    assertCoverageLost(run(t, 'assert-review-gate.mjs'), /no \(recipe, frozen pack, review\.jsonl\) triple/, 'no subject');
+  });
 });
 
 describe('assert-publish-gate — [pipeline 7]P-13 + P-10', () => {
@@ -336,6 +380,12 @@ describe('assert-publish-gate — [pipeline 7]P-13 + P-10', () => {
     const t = tree();
     editJson(t, 'tooling/legal/pack-key-drills.json', (o) => { o.productionKeyIds = []; });
     assertRefused(run(t, 'assert-publish-gate.mjs'), /COVERAGE LOST|no production key/, 'no production key declared');
+  });
+
+  it('COVERAGE LOST (exit 2) when no (recipe, gates dir, frozen pack) triple is found', () => {
+    const t = tree();
+    rmSync(join(t, RECIPE_DIR, 'gates'), { recursive: true, force: true });
+    assertCoverageLost(run(t, 'assert-publish-gate.mjs'), /no \(recipe, gates dir, frozen pack\) triple/, 'no subject');
   });
 
   it('[P-10] the refusal must NOT demand a restore-from-shares drill — [ADR 022] abolished Shamir', () => {
