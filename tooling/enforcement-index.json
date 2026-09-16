@@ -2163,6 +2163,16 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guard-meta"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-ungraded-baseline-doc.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "O-9"
     ],

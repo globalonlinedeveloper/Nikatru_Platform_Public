@@ -387,19 +387,28 @@ fact anybody can re-check in four lines of `grep`.
 #### And the hole is much bigger than eight — it was only ever counted inside `fixtures-adv/`
 
 Every record above scopes the question to one directory. Asked of the whole directory —
-*which fixtures reach a suite that is actually graded* — the answer is **fifteen of
-forty-two**, because `privacy-verify.mjs` and `review-keyboard.mjs` are quarantined too and
-they are the only suites that run **five** of these shapes (three under `privacy-verify.mjs`,
-two under `review-keyboard.mjs` — count the rows). *Eight* stood here in the first draft of
-this very block: a hand-derived number inside the section announcing the end of hand-derived
-numbers, and the guard's own output says five. The other ten of the fifteen are
-`redaction-claim.mjs`'s three and `adversarial-claim.mjs`'s seven:
+*which fixtures reach a suite that is actually graded* — the answer is the block below.
+
+> ⏱ **Corrected 2026-09-16 (O-FULLSHOT-CLAIM-SUITES-STALE).** Until today this passage said
+> **fifteen**, still listed `privacy-verify.mjs` as quarantined, and gave that suite three rows
+> in the table. That suite came off the quarantine on 2026-08-27 (the dated retirement note
+> above the `QUARANTINE` array in `.github/workflows/extensions.yml`, which is where the
+> `fixture-coverage` guard lives since the extensions merged into this repository), and
+> `race-pii`, `wrap-cancel` and `wrap-covered` left `UNGRADED_BASELINE` in that commit. The README
+> did not follow for three weeks, because nothing compared the two. Now something does:
+> `tooling/ci/assert-ungraded-baseline-doc.mjs` (CI, `guard-meta`) reads both arrays from the
+> workflow and fails when the block below disagrees with them. It checks the set of shapes, the
+> suite each row names against the live quarantine list, and the stated count. It does not check
+> the "what would close it" column, which is judgement. It also does not check the total shape
+> count, which the workflow derives on every run and prints on its `fixture-coverage` line.
+
+<!-- ungraded-baseline:begin Extension/Full_Screen_Shot -->
+**12 shapes reach no graded suite.** `review-keyboard.mjs` is the only suite that runs two of
+them. The other ten are `redaction-claim.mjs`'s three and `adversarial-claim.mjs`'s seven. All
+three suites are still quarantined:
 
 | shape | only suite that runs it | state | what would close it |
 |---|---|---|---|
-| `fixtures-verify/race-pii.html` | `privacy-verify.mjs` | quarantined | **WIREABLE** — quarantined on a *fixture* defect (`canvas-pii` B2 antialiasing), not on the suite and not on the product |
-| `fixtures-verify/wrap-cancel.html` | `privacy-verify.mjs` | quarantined | **WIREABLE** — same, one repair closes all three |
-| `fixtures-verify/wrap-covered.html` | `privacy-verify.mjs` | quarantined | **WIREABLE** — same |
 | `fixtures/review-tall.html` | `review-keyboard.mjs` | quarantined | **WIREABLE** — quarantined on a live disagreement (P0 wants ≥2 marks past the tiling floor, gets 0), which somebody has to answer either way |
 | `fixtures/review-tall-clean.html` | `review-keyboard.mjs` | quarantined | **WIREABLE** — same suite, so wiring it closes both at once |
 | `fixtures/clipped-ancestor.html` | `redaction-claim.mjs` | quarantined, unrepairable | **GRADEABLE** — needs a `reduction-corpus.mjs` row; its own suite grades deleted fields |
@@ -412,6 +421,7 @@ numbers, and the guard's own output says five. The other ten of the fifteen are
 | `fixtures-adv/late-frame.html` | `adversarial-claim.mjs` | quarantined, unrepairable | **GRADEABLE** — `late-inject` establishes the pattern |
 | `fixtures-adv/cv-tabs.html` | `adversarial-claim.mjs` | quarantined, unrepairable | **NOT YET — the fixture must be repaired first.** It measures 10 rows of block colour in a plain browser with no extension loaded, which breaks the colour-tolerance rule this README states. A grading row written today would encode the fixture's own defect |
 | `fixtures-adv/late-swap.html` | `adversarial-claim.mjs` | quarantined, unrepairable | **NOT YET — it does not reproduce reliably.** On the run above its own setup check came back `L3 inconclusive run — not graded  — setup=false legible=true`, i.e. the swap did not fire. A shape that does not reproduce cannot be graded by anybody; making the trigger deterministic comes first |
+<!-- ungraded-baseline:end -->
 
 **`honest-pii` is the one to do first.** It is the only shape in either corpus that produces
 a *verified-opaque* block, so it is the only shape that exercises §3.3's mark persistence at
@@ -429,7 +439,8 @@ uses:
   kept: { decoy: [245, 205, 45] } },
 ```
 
-**None of the fifteen was closed here**, and none of the rows above was written: every one
+**None of the fifteen was closed here** (fifteen as counted when this was written; the live
+count is the guarded block above), and none of the rows above was written: every one
 of them lands in a file this unit does not own. What was added is the thing that stops the
 count from being derived by hand a fifth time.
 
