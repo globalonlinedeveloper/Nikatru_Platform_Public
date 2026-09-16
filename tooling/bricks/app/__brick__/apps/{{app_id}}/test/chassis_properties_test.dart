@@ -5223,6 +5223,17 @@ void main() {
       final ChassisLocalizations l10n = lookupChassisLocalizations(
         const Locale('en'),
       );
+      // ⏱ 2026-09-16 — ensureVisible IS LOAD-BEARING SINCE APPLE WAS ENABLED.
+      // `AuthProviders.configured` declares `apple: true`, so the sign-in screen
+      // now renders the OAuth limb (divider + provider button) above this toggle
+      // and pushes it below the test viewport. The tap then landed on nothing,
+      // the sign-up route never opened, and five cases in this file failed on the
+      // `submitButton` premise below — reporting a missing form rather than the
+      // missed tap that caused it. The screen is scrollable and a real user
+      // reaches the toggle the same way, so scrolling it into view is the honest
+      // fix rather than pinning the providers off for the test.
+      await tester.ensureVisible(find.text(l10n.needAccount));
+      await tester.pumpAndSettle();
       await tester.tap(find.text(l10n.needAccount));
       await _turnsAndSettleRoute(tester);
       expect(
@@ -5474,12 +5485,25 @@ void main() {
       final ChassisLocalizations l10n = lookupChassisLocalizations(
         const Locale('en'),
       );
+      // ⏱ 2026-09-16 — SAME REASON AS `openSignUp` ABOVE, AND THIS IS THE COPY
+      // THAT WAS MISSED ON THE FIRST PASS. With `apple: true` the OAuth limb
+      // renders above this toggle and pushes it off an 800x600 surface; the
+      // measured offset was (400, 706). Flutter warned "would not hit test" and
+      // then continued, so the failure surfaced two lines later as a missing
+      // `signUpSubmit` — the tap that never happened is the cause, and the
+      // warning is the only place it is named.
+      await tester.ensureVisible(find.text(l10n.needAccount));
+      await tester.pumpAndSettle();
       await tester.tap(find.text(l10n.needAccount));
       await _turnsAndSettleRoute(tester);
       await tester.enterText(find.byType(TextField).at(0), 'newcomer@b.test');
       await tester.enterText(find.byType(TextField).at(1), 'password123');
+      await tester.ensureVisible(find.byKey(LegalConsentFields.termsCheckbox));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(LegalConsentFields.termsCheckbox));
       await _turns(tester);
+      await tester.ensureVisible(find.byKey(SignUpScreen.submitButton));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(SignUpScreen.submitButton));
       await _turnsAndSettleRoute(tester);
     }

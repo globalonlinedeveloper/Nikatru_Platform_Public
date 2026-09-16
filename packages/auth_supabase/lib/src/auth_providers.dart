@@ -35,6 +35,15 @@ import 'package:flutter/foundation.dart' show immutable;
 /// twenty-odd providers likewise. That is the whole reason both flags below are
 /// `false`.
 ///
+/// ⏱ **RE-PROBED 2026-09-16 — `apple` IS NOW `true`, `google` IS STILL `false`.**
+/// Sign in with Apple was provisioned that day: Services ID `com.nikatru.signin`
+/// is the OAuth client, the app's own bundle id rides in
+/// `external_apple_additional_client_ids` because the NATIVE flow presents the
+/// APP's identifier as the audience rather than the Services ID, and the client
+/// secret is a JWT that Apple caps at six months — it EXPIRES 2027-03-17 and
+/// rotation is a re-mint from the same key, not a portal visit. The sentence
+/// above is left exactly as written: it is the measurement of 2026-08-11.
+///
 /// ⚠️ **A measured constant rots the moment somebody flips the switch in the
 /// dashboard, and nothing in this file would know.** So it is not left on
 /// trust either: `tooling/ops/verify-auth-providers.mjs` re-runs exactly the
@@ -67,8 +76,23 @@ class AuthProviders {
   /// credential with Apple/Google and pasting it into the Supabase dashboard.
   /// The day that happens, flip the flag here and the buttons return on their
   /// own — they are GATED, not deleted, and the parity tests drive both arms.
+  ///
+  /// ⏱ **2026-09-16 — THAT DAY CAME FOR APPLE.** `apple` is `true` because the
+  /// live project now answers `external.apple: true`; the two are flipped in one
+  /// change because `tooling/ops/verify-auth-providers.mjs` fails in BOTH
+  /// directions and runs in ops-watch on main. `google` stays owner-gated.
+  ///
+  /// 🔴 THE CONSENT GROUP IS THE THING TO PRESERVE, NOT THIS FLAG. Apple scopes
+  /// the user identifier to the group anchored at `com.nikatru.platform`, an App
+  /// ID that ships nothing and exists only to be that anchor. Every future app
+  /// must be GROUPED under it (`RELATED_APP_CONSENT`) rather than made its own
+  /// primary — an ungrouped app hands the same person a different identifier, so
+  /// they arrive as a second account with no error anywhere. Grouping cannot be
+  /// done through the App Store Connect API (measured 2026-09-16: the write enum
+  /// accepts only `PRIMARY_APP_CONSENT`), so it is one manual portal step per
+  /// app, and it is the one step that must not be skipped.
   static const AuthProviders configured = AuthProviders(
-    apple: false,
+    apple: true,
     google: false,
   );
 }

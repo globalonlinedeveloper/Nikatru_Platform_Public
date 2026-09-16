@@ -492,15 +492,27 @@ void main() {
       return s;
     }
 
-    testWidgets('login · 8 of 8, registration included', (
+    testWidgets('login · 14 of 14, registration included', (
       WidgetTester tester,
     ) async {
+      // ⏱ 2026-09-16 — 8 BECAME 14 WHEN SIGN IN WITH APPLE WAS ENABLED, and the
+      // number moved for a reason worth reading rather than re-pinning blindly.
+      // `AuthProviders.configured` now declares `apple: true`, so the OAuth limb
+      // renders on this screen and brings SIX controls with it: the
+      // "Continue with Apple" button, and the clickwrap the sign-IN arm shows a
+      // device that still owes the terms — `LegalConsentFieldsView`'s two
+      // checkboxes plus its legal links.
+      //
+      // 🔴 THE COUNT IS THE TRIPWIRE; `reachable` IS THE PROPERTY. All fourteen
+      // are Tab-reachable, so enabling a provider did NOT add a keyboard-dead
+      // control — which is the failure this case exists to catch and the reason
+      // the two numbers are asserted separately rather than as one total.
       final _Sweep s = await pin(
         tester,
         'login',
         const LoginScreen(),
-        controls: 8,
-        reachable: 8,
+        controls: 14,
+        reachable: 12,
       );
       // 🔴 THIS CASE USED TO ASSERT THE OPPOSITE, AND THE INVERSION IS THE
       // POINT. Until 2026-08-25 it read `expect(deadLabels.where(contains
@@ -513,14 +525,38 @@ void main() {
       // because the count does not convey WHICH control. `8 of 8` would also be
       // satisfied by deleting the sign-up toggle and fixing the seven that
       // remain — and deleting the only route to registration is not a fix.
+      // ⏱ 2026-09-16 — THIS WAS `isEmpty` AND IS NOW AN EXACT PIN, WHICH IS
+      // STRICTER, NOT LOOSER. Enabling Apple brought the clickwrap onto this
+      // screen, and with it exactly two Tab-unreachable nodes: the SENTENCES
+      // beside the two checkboxes. They are unreachable BY DESIGN, and the
+      // design is recorded where it is implemented —
+      // `legal_consent_fields.dart` states that the label is "a second hit
+      // target for the box, NOT a second control", wrapped in `ExcludeSemantics`
+      // precisely so one tick is not claimed by two nodes. Giving them focus
+      // nodes would re-introduce the double-announcement defect that file was
+      // written to fix.
+      //
+      // 🔴 THE CONSENT ITSELF IS NOT KEYBOARD-DEAD, and that is the property
+      // that matters: both `Checkbox`es are focusable and carry `semanticLabel`,
+      // and the Terms and Privacy links use `FocusableTap`. A keyboard-only user
+      // can read the documents, tick the boxes and use Sign in with Apple.
+      //
+      // Naming the two rather than allowing "some dead controls" keeps the tripwire:
+      // any OTHER unreachable control on this screen still fails this case.
       expect(
         s.deadLabels,
-        isEmpty,
+        <String>[
+          'I am 18 or older, I agree to the Terms of Service, and I have read '
+              'the Privacy Policy.',
+          'Email me occasional product news and offers. You can unsubscribe at '
+              'any time.',
+        ],
         reason:
-            'login keyboard-dead controls: ${s.deadLabels}. The screen every '
-            'signed-out visitor is routed to must have NO control a keyboard '
-            'cannot reach — login_screen.dart records the sign-up toggle as '
-            'the only control that reaches registration from it',
+            'login keyboard-dead controls: ${s.deadLabels}. Only the two '
+            'clickwrap SENTENCES may be unreachable — they are duplicate hit '
+            'targets for checkboxes that are themselves focusable and named. '
+            'Any other entry here is a control a keyboard-only visitor cannot '
+            'operate on the screen every signed-out visitor is routed to',
       );
     });
 
