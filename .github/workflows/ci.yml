@@ -122,6 +122,8 @@ jobs:
         run: node tooling/ci/assert-workflow-readers.mjs
       - name: No new test case is declared inside a loop, and the loop baseline only shrinks
         run: node tooling/ci/assert-no-loop-cases.mjs
+      - name: A new mechanism claim arrives with its test or a recorded demotion, and the claim backlog only shrinks
+        run: node tooling/ci/assert-mechanism-claims.mjs
       - name: The enforcement index is what the tree says
         run: node tooling/ci/assert-enforcement-index.mjs
       - name: Every line of the app template is accounted for
