@@ -1068,6 +1068,29 @@ describe('assert-play-declarations — data security', () => {
     assert.match(out(r), /the route answering it is gone/);
   });
 
+  // ⏱ 2026-09-16 — O-UNGRADED-MECHANISM-CLAIMS. The guard's header says the route
+  // set is taken from the inventory and that no second list of routes exists. The
+  // case above cannot tell those apart from a hardcoded list naming account.ts:
+  // both fail when that one file is deleted. These two can. A hardcoded list
+  // passes the first (account.ts is still there) and fails the second (account.ts
+  // is gone), which is the reverse of what each asserts.
+  test('the route set comes from the INVENTORY: re-pointed at a missing file, it fails on THAT path', () => {
+    const r = run(makeRoot({ inv: (x) => { x.stores[0].erasure.route = 'services/subscriptiontracker-api/src/routes/erase-v2.ts'; } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /via services\/subscriptiontracker-api\/src\/routes\/erase-v2\.ts, and that file does not exist/);
+  });
+
+  test('…and re-pointed at a file that exists, the OLD route may be deleted and it passes', () => {
+    const r = run(makeRoot({
+      inv: (x) => { x.stores[0].erasure.route = 'services/subscriptiontracker-api/src/routes/erase-v2.ts'; },
+      files: (f) => {
+        f['services/subscriptiontracker-api/src/routes/account.ts'] = null;
+        f['services/subscriptiontracker-api/src/routes/erase-v2.ts'] = '// DELETE /v2/account\n';
+      },
+    }));
+    assert.equal(r.status, 0, out(r));
+  });
+
   test('FAILS when the web deletion URL is not an absolute https URL', () => {
     const r = run(makeRoot({ ds: (x) => { x.dataSecurity.deletionRequestSupported.webDeletionUrl = '/delete-account.html'; } }));
     assert.equal(r.status, 1);
@@ -1882,6 +1905,20 @@ describe('assert-play-declarations — THE FACTORY: the brick is a root of a dif
     }));
     assert.equal(r.status, 1, out(r));
     assert.match(out(r), /declares `google_mobile_ads` as a direct dependency of the APP TEMPLATE/);
+  });
+
+  // ⏱ 2026-09-16 — O-UNGRADED-MECHANISM-CLAIMS. The guard says the watched-package
+  // list for this sweep is taken from the declarations and is not written out a
+  // second time. A package name no source file has ever mentioned proves it: only
+  // a list read from the declaration can contain it, so a hardcoded list stays
+  // green here and this case goes red.
+  test('the needle list comes from the DECLARATION: a tell invented in this case is swept at once', () => {
+    const r = run(makeRoot({
+      ds: (x) => { findAnswer(x, 'Precise location').tells.dartPackages.push('fixture_beacon_sdk'); },
+      files: (f) => { f[`${BRICK}/pubspec.yaml`] = BRICK_PUBSPEC.replace('  go_router:', '  fixture_beacon_sdk: ^1.0.0\n  go_router:'); },
+    }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /declares `fixture_beacon_sdk` as a direct dependency of the APP TEMPLATE/);
   });
 
   test('the template growing an `answers` array FAILS — a template that stopped being one', () => {

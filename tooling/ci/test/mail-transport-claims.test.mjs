@@ -56,7 +56,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -222,6 +222,56 @@ describe('assert-mail-transport-claims — a claim standing alone FAILS', () => 
       },
     }));
     assert.equal(r.status, 0, out(r));
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NO PATH IS EXEMPT — ⏱ 2026-09-16, O-UNGRADED-MECHANISM-CLAIMS.
+//
+// The guard's header says the rule is met by what a file SAYS and that it keeps
+// no list of excused files. Every case above plants its claim at a new path
+// under docs/, so a list naming a REAL file would pass all of them. This case
+// plants an uncorrected claim at each path such a list would name: every
+// tracked file that mentions the superseded transport today (derived from the
+// real register and `git ls-files`, so the set follows the tree), plus the
+// guard, its suite, the live checker and the ADR. Each one must be reported.
+// The one path the guard does skip is the register itself, for the reason
+// written at that `continue`. It is left out here on purpose and not asserted.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-mail-transport-claims — NO PATH IS EXEMPT', () => {
+  const REGISTER_REL = 'tooling/mail-transport.json';
+  const TEXT = /\.(md|mjs|js|cjs|ts|tsx|json|jsonc|yml|yaml|dart|html|txt|sql|toml|sh|ps1)$/i;
+  const historical = () => {
+    const real = JSON.parse(readFileSync(join(REPO, 'tooling', 'mail-transport.json'), 'utf8'));
+    const res = real.supersededTransportClaims.patterns.map((p) => new RegExp(p.pattern, 'i'));
+    const ls = spawnSync('git', ['-C', REPO, 'ls-files'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    assert.equal(ls.status, 0, `git ls-files failed in ${REPO}: ${ls.stderr}`);
+    return ls.stdout.split('\n').map((l) => l.trim()).filter((f) => f && f !== REGISTER_REL && TEXT.test(f)).filter((f) => {
+      try { return res.some((re) => re.test(readFileSync(join(REPO, f), 'utf8'))); } catch { return false; }
+    });
+  };
+
+  test('an uncorrected claim is reported at EVERY path an exemption list would name', () => {
+    const found = historical();
+    // Without this floor the case passes over a tree where the derivation found nothing.
+    assert.ok(found.length >= 1, 'no tracked file mentions the superseded transport; the derivation lost its subject');
+    const paths = [...new Set([
+      ...found,
+      'tooling/ci/assert-mail-transport-claims.mjs',
+      'tooling/ci/test/mail-transport-claims.test.mjs',
+      'tooling/ops/verify-supabase-templates.mjs',
+      'decisions/029-email-sending-architecture.md',
+    ])];
+    const root = makeRoot();
+    for (const rel of paths) {
+      mkdirSync(dirname(join(root, rel)), { recursive: true });
+      writeFileSync(join(root, rel), rel.endsWith('.md') ? '# Transport\n\nMail goes out by flying pigeon today.\n' : 'Mail goes out by flying pigeon today.\n');
+    }
+    const r = run(root);
+    assert.equal(r.status, 1, out(r));
+    for (const rel of paths) {
+      assert.ok(out(r).includes(`${rel}:`), `${rel} carries an uncorrected claim and was not reported — is it exempt?\n${out(r)}`);
+    }
   });
 });
 
