@@ -5223,6 +5223,17 @@ void main() {
       final ChassisLocalizations l10n = lookupChassisLocalizations(
         const Locale('en'),
       );
+      // ⏱ 2026-09-16 — ensureVisible IS LOAD-BEARING SINCE APPLE WAS ENABLED.
+      // `AuthProviders.configured` declares `apple: true`, so the sign-in screen
+      // now renders the OAuth limb (divider + provider button) above this toggle
+      // and pushes it below the test viewport. The tap then landed on nothing,
+      // the sign-up route never opened, and five cases in this file failed on the
+      // `submitButton` premise below — reporting a missing form rather than the
+      // missed tap that caused it. The screen is scrollable and a real user
+      // reaches the toggle the same way, so scrolling it into view is the honest
+      // fix rather than pinning the providers off for the test.
+      await tester.ensureVisible(find.text(l10n.needAccount));
+      await tester.pumpAndSettle();
       await tester.tap(find.text(l10n.needAccount));
       await _turnsAndSettleRoute(tester);
       expect(
