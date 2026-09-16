@@ -370,7 +370,10 @@ describe('the guard says YES on the tree as it is', () => {
     // 21 → 20 unswept — `packages/design_system/test/a11y_app_scaffold_test.dart`
     // sweeps AppScaffold's large-class rail (three cases). Read off the guard's
     // own closing line on that branch.
-    assert.match(out, /68 reachable surface\(s\); 38 swept by 6 a11y test file\(s\) across 168 case\(s\)/);
+    // ⏱ 2026-09-16 · [ADR 083] §4: 168 → 171 cases. The same file sweeps the
+    // extra-large rail at 1600, 1621 and 1920 (three more cases); surfaces,
+    // swept and files are unchanged. Read off the guard's own closing line.
+    assert.match(out, /68 reachable surface\(s\); 38 swept by 6 a11y test file\(s\) across 171 case\(s\)/);
     assert.match(out, /10 swept where they delegate to/);
     assert.match(out, /20 unswept and PRINTED/);
     // The per-family tally for subscriptiontracker, pinned. It read `tap-target ×0` from the
