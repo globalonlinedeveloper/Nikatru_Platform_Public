@@ -484,3 +484,141 @@ describe('verify-supabase-templates — the owner-gated branch ops-watch.yml dep
     assert.match(out(r), /verify-supabase-templates: DRIFT/);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE COMPARISON SET IS DERIVED FROM THE REGISTER — ⏱ 2026-09-16.
+//
+// 🔴 WHAT THESE EXIST FOR. verify-supabase-templates.mjs said, in its own
+// header, "Comparison is on the RECORDED keys, so adding one to the register
+// starts checking it — there is no second list here to forget to update." That
+// was FALSE: the loop walked a hardcoded `COMPARE` array and `continue`d past
+// any recorded key not in it. Found while landing O-AUTH-PASSWORD-RESET-
+// HARDENING (owner ruling 2026-09-15), whose ten new fields would have sat in
+// tooling/mail-transport.json UNCHECKED FOREVER while ops-watch printed a green
+// "the live auth config still matches what the repo recorded" over 8 of 18.
+//
+// Nothing in the suite could have caught it, and that is the point: every case
+// above fixes the register to GOOD_REGISTER, whose five keys were all in the
+// hardcoded array, so the array and the record agreed on every input the suite
+// ever supplied. A1 and A2 below are the first cases that record a field the
+// old array did not contain — A2 is the one that goes red against the old code
+// and green against the new.
+//
+// The exit codes here come from a STUBBED fetch, deliberately: a real-network
+// run of this script on Windows + node v24.18 aborts with a libuv assertion and
+// exits 127 on the `process.exit(1)` drift path, printing the right verdict
+// behind a wrong code. These cases are what CI grades, and they touch no socket.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('verify-supabase-templates — every RECORDED auth field is compared', () => {
+  /** The three DR templates the checker also compares, written into the fixture
+   *  root so a case can reach exit 0 at all. Their bodies are arbitrary; what
+   *  matters is that repo and live agree, leaving the auth fields as the only
+   *  thing a case is varying. */
+  const TEMPLATES = {
+    'confirm-signup.html': '<h2>confirm</h2>\n',
+    'magic-link.html': '<h2>magic</h2>\n',
+    'reset-password.html': '<h2>reset</h2>\n',
+  };
+  const LIVE_TEMPLATE_FIELDS = {
+    'confirm-signup.html': 'mailer_templates_confirmation_content',
+    'magic-link.html': 'mailer_templates_magic_link_content',
+    'reset-password.html': 'mailer_templates_recovery_content',
+  };
+
+  /** A fixture root whose `supabaseAuth` is exactly `auth`. */
+  const rootWithAuth = (auth) => {
+    const register = GOOD_REGISTER();
+    register.supabaseAuth = auth;
+    const root = makeRoot({ register });
+    const dir = join(root, 'docs', 'platform', 'supabase', 'email-templates');
+    mkdirSync(dir, { recursive: true });
+    for (const [name, body] of Object.entries(TEMPLATES)) writeFileSync(join(dir, name), body);
+    return root;
+  };
+
+  /** A live config that agrees with `auth` on every comparable key, plus the
+   *  templates and a non-empty smtp_pass, with `overrides` layered on top. */
+  const liveFor = (auth, overrides = {}) => {
+    const live = { smtp_pass: 'not-empty' };
+    for (const [name, field] of Object.entries(LIVE_TEMPLATE_FIELDS)) live[field] = TEMPLATES[name];
+    for (const [k, v] of Object.entries(auth)) {
+      if (k.startsWith('_') || k === 'transport') continue;
+      live[k] = v;
+    }
+    return { ...live, ...overrides };
+  };
+
+  const runAgainst = (auth, overrides = {}) => {
+    const body = JSON.stringify(liveFor(auth, overrides));
+    const pre = join(TMP, `fetch-stub-derived-${seq++}.mjs`);
+    writeFileSync(pre, `globalThis.fetch = async () => new Response(${JSON.stringify(body)}, { status: 200, headers: { 'content-type': 'application/json' } });\n`);
+    const env = { ...process.env, SUPABASE_PAT: 'sbp_placeholder_for_tests', SUPABASE_PROJECT_REF: 'placeholderref' };
+    return spawnSync(process.execPath, ['--import', pathToFileURL(pre).href, LIVE_CHECKER, rootWithAuth(auth)], { encoding: 'utf8', env });
+  };
+
+  /** A record carrying fields that were NOT in the old hardcoded array. */
+  const HARDENED = {
+    _why: 'prose, not a field',
+    _whyHardening: ['an array of prose', 'also not a field'],
+    transport: 'custom-smtp',
+    smtp_host: 'smtp.provider.test',
+    mailer_autoconfirm: false,
+    security_update_password_require_reauthentication: true,
+    password_min_length: 8,
+    mailer_notifications_password_changed_enabled: true,
+  };
+
+  test('A1 POSITIVE CONTROL — live agrees on every recorded field: exit 0, and the COUNT is the record\'s', () => {
+    const r = runAgainst(HARDENED);
+    assert.equal(r.status, 0, out(r));
+    // 8 keys, minus `_why`, `_whyHardening` and `transport` = 5 compared.
+    assert.match(out(r), /\(5 field\(s\) compared\)/);
+    assert.match(out(r), /IN SYNC/);
+  });
+
+  test('A2 — a hardening field the OLD hardcoded array did not contain now drifts: exit 1', () => {
+    const r = runAgainst(HARDENED, { mailer_notifications_password_changed_enabled: false });
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /mailer_notifications_password_changed_enabled/);
+    assert.match(out(r), /register says true, live says false/);
+  });
+
+  test('A2b — and so does the reauthentication flag, for the same reason', () => {
+    const r = runAgainst(HARDENED, { security_update_password_require_reauthentication: false });
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /security_update_password_require_reauthentication/);
+  });
+
+  test('A3 — a recorded field the live config has NO SUCH key for is drift, not a skip', () => {
+    const auth = { ...HARDENED, mailer_notifications_typoed_enabled: true };
+    // The stub's live body is built from `auth`, so drop the key back out of it.
+    const live = liveFor(auth);
+    delete live.mailer_notifications_typoed_enabled;
+    const pre = join(TMP, `fetch-stub-derived-${seq++}.mjs`);
+    writeFileSync(pre, `globalThis.fetch = async () => new Response(${JSON.stringify(JSON.stringify(live))}, { status: 200, headers: { 'content-type': 'application/json' } });\n`);
+    const env = { ...process.env, SUPABASE_PAT: 'sbp_placeholder_for_tests', SUPABASE_PROJECT_REF: 'placeholderref' };
+    const r = spawnSync(process.execPath, ['--import', pathToFileURL(pre).href, LIVE_CHECKER, rootWithAuth(auth)], { encoding: 'utf8', env });
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /NO SUCH FIELD/);
+  });
+
+  test('A4 — a record of nothing but prose and `transport` compares NOTHING, and says so: exit 1', () => {
+    const r = runAgainst({ _why: 'prose', transport: 'custom-smtp' });
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /declared no comparable field at all/);
+  });
+
+  test('A5 — `transport` is the register\'s vocabulary and is never compared against live', () => {
+    // Live carries no `transport` key at all (liveFor skips it). If it were
+    // compared, A1 could not have passed — this case says so by name.
+    const r = runAgainst(HARDENED);
+    assert.equal(r.status, 0, out(r));
+    assert.doesNotMatch(out(r), /auth `transport`/);
+  });
+
+  test('A6 — `_`-prefixed prose in the record never becomes a field to compare', () => {
+    const r = runAgainst(HARDENED);
+    assert.equal(r.status, 0, out(r));
+    assert.doesNotMatch(out(r), /_whyHardening/);
+  });
+});

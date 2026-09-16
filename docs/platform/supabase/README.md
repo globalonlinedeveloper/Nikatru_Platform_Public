@@ -133,6 +133,32 @@ now do:
 | Check | Sees | Runs |
 |---|---|---|
 | `tooling/ci/assert-supabase-templates.mjs` | the files exist and are structurally sound | every CI run — **cannot see live drift, holds no PAT** |
-| `tooling/ops/verify-supabase-templates.mjs` | the files still equal the LIVE fields, and the live transport still matches the register | `ops-watch.yml`, when `SUPABASE_PAT` is a repo secret; by hand otherwise |
+| `tooling/ops/verify-supabase-templates.mjs` | the files still equal the LIVE fields, and **every field recorded in `supabaseAuth`** still matches live | `ops-watch.yml`, when `SUPABASE_PAT` is a repo secret; by hand otherwise |
+
+## Password-reset hardening, and the probe that proves it — 2026-09-16
+
+Owner ruling 2026-09-15 (`O-AUTH-PASSWORD-RESET-HARDENING`): a password change
+requires reauthentication, a reset ends the other sessions, the security
+notification emails are on, and the minimum length is 8. Those ten fields were
+PATCHed onto the hosted project on 2026-09-16 and are now recorded in
+`tooling/mail-transport.json`'s `supabaseAuth`, which is what the live checker
+above compares — so a silent revert shows up as DRIFT on the next ops-watch tick.
+
+⚠️ **The comparison used to be a hardcoded list** and would have ignored all ten
+while printing green over eight. It is derived from the record now; the reasoning
+is in `verify-supabase-templates.mjs`'s own header.
+
+`tooling/ops/verify-password-reset-revokes.mjs` is the separate, **by-hand**
+probe for the one clause a config field cannot answer: it creates a throwaway
+user, opens two sessions, resets the password through a real recovery link, and
+requires the other session's refresh token to be **rejected afterwards and
+accepted before** — a run whose "before" leg fails is `UNKNOWN` (exit 2), never
+a pass. It provisions a real account, so it is wired into no workflow; run it
+when the auth backend changes, and read its exit code, not its prose.
+
+What it does **not** assert, deliberately: an access token already issued stays
+valid until `jwt_exp` (3600 s live), because GoTrue's JWTs are stateless. The
+ruling asks about refresh tokens; closing the access-token window is separate
+work in `services/_shared/src/auth.ts`.
 
 [adr029]: ../../../knowledge/decisions/029-email-sending-architecture.md
