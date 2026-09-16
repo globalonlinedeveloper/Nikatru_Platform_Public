@@ -431,7 +431,7 @@ jobs:
       # ADDED 2026-09-16. gen-catalog.mjs's own usage line says `--check` is for CI,
       # and no workflow ran it: the README catalog table could drift from the
       # tool.json files with every lane green. Found by the sweep that wired the
-      # private generators' --check into tooling/scripts/spec-guards.mjs.
+      # private generators' --check into the repo's pre-commit runner (spec-guards).
       - name: The README catalog table is what the tool.json files generate
         run: node scripts/gen-catalog.mjs --check
 
