@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
+import { REAUTH_REQUIRED_BODY, REAUTH_REQUIRED_STATUS, deletionRecencyRefusal } from '../../../_shared/src/auth';
 import { erasePlatformRows, deleteIdentity, purgeVerifiedSignups, signupPurgeToken } from '../lib/platform-erasure';
 import { dropAppleToken, revokeAppleToken } from '../lib/apple-revoke';
 import {
@@ -133,19 +134,12 @@ import {
 const account = new Hono<AppEnv>();
 
 
-/**
- * ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH. How recent a password-less account's last
- * AUTHENTICATION must be for `DELETE /v1/account` to proceed. Ten minutes: long
- * enough for a provider sheet, a web full-page redirect and the user reopening
- * Settings to tap Delete again; far shorter than the access-token lifetime, so a
- * session kept alive by refreshes cannot pass. The app re-runs the provider
- * sign-in when its own last sign-in is older than half this window.
- */
-// @ceiling none — the age of a token claim (seconds since the user last authenticated), not a platform resource
-export const RECENT_AUTH_SECONDS = 600;
-/** A timestamp this far in the FUTURE is treated as unusable rather than recent. */
-// @ceiling none — clock-skew tolerance on a token claim, not a platform resource
-const CLOCK_SKEW_SECONDS = 60;
+// ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH. RECENT_AUTH_SECONDS (600) and the
+// clock-skew allowance lived here until 2026-09-16, when O-APP-API-DELETE-NO-RECENCY
+// moved the whole rule — the window, the skew, the `amr` reading and the 403 — to
+// services/_shared/src/auth.ts, so the app Workers' erasure doors apply the SAME
+// rule instead of none. Re-exported so existing callers are unchanged.
+export { RECENT_AUTH_SECONDS } from '../../../_shared/src/auth';
 
 // ⏱ 2026-09-12 · THE FOUR DECLARATIONS THAT USED TO SIT HERE NOW LIVE IN
 // services/_shared/src/erasure.ts, imported above. They were byte-identical in both
@@ -209,16 +203,12 @@ account.delete('/account', async (c) => {
   // they last proved who they are. A refusal is 403 `reauth_required`, not 401:
   // the client's REST layer treats a 401 as a dead session and signs out, and a
   // user who has just been asked to confirm deserves to stay signed in.
-  const recency = c.get('authRecency');
-  if (recency?.passwordless) {
-    const now = Math.floor(Date.now() / 1000);
-    const at = recency.lastAuthenticatedAt;
-    if (at === null || now - at > RECENT_AUTH_SECONDS || at - now > CLOCK_SKEW_SECONDS) {
-      console.warn(
-        `[account] rid=${rid} app=${c.env.APP_ID} refusing deletion: password-less account without a sign-in in the last ${RECENT_AUTH_SECONDS}s (amr=${at === null ? 'none' : now - at + 's ago'})`,
-      );
-      return c.json({ error: 'reauth_required' }, 403);
-    }
+  // ⏱ 2026-09-16 · The decision itself is services/_shared/src/auth.ts
+  // `deletionRecencyRefusal`, read by every erasure door (O-APP-API-DELETE-NO-RECENCY).
+  const stale = deletionRecencyRefusal(c.get('authRecency'));
+  if (stale !== null) {
+    console.warn(`[account] rid=${rid} app=${c.env.APP_ID} refusing deletion: ${stale}`);
+    return c.json(REAUTH_REQUIRED_BODY, REAUTH_REQUIRED_STATUS);
   }
 
   // PRECONDITION, CHECKED BEFORE ANYTHING IS DESTROYED. Discovering halfway
@@ -421,6 +411,16 @@ account.delete('/account', async (c) => {
       );
       // ⏱ 2026-09-15 · [ADR 081]: only a 5xx or a 429 is "could not be reached".
       if ((res.status >= 500 || res.status === 429) && (await queue(appId, `answered ${res.status}`))) continue;
+      // ⏱ 2026-09-16 · O-APP-API-DELETE-NO-RECENCY. The app door now applies the
+      // SAME recency rule as the check above, a few milliseconds later, so the one
+      // way it can refuse a token this Worker just accepted is the window closing
+      // in between. Passed through as the same 403, so the client asks the person
+      // to sign in again (and stays signed in) instead of reporting a failure;
+      // the identity is kept and every limb is idempotent on the retry.
+      if (res.status === REAUTH_REQUIRED_STATUS) {
+        const body = (await res.json().catch(() => null)) as { error?: unknown } | null;
+        if (body?.error === REAUTH_REQUIRED_BODY.error) return c.json(REAUTH_REQUIRED_BODY, REAUTH_REQUIRED_STATUS);
+      }
       return c.json({ error: 'app_data_delete_failed', app: appId }, 502);
     }
     apps[appId] = 'deleted';

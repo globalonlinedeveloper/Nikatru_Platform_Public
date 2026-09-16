@@ -180,3 +180,120 @@ export function usableJwksDocument(cached: string | null): { keys: unknown[] } |
     return null;
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-16 · O-APP-API-DELETE-NO-RECENCY — THE RECENT-SIGN-IN RULE FOR
+// ACCOUNT DELETION, IN ONE PLACE.
+//
+// It was born on the platform Worker (O-OAUTH-DELETE-REAUTH, PR #775) and lived
+// there alone, so the app Worker's DELETE /v1/account — the other end of the SAME
+// erasure — accepted any live token, however long ago its holder last signed in.
+// Anyone holding a session token could call the app Worker directly and erase an
+// account's app rows. The rule moved HERE, unchanged, and every erasure door
+// (services/platform, services/subscriptiontracker-api, the brick's Worker
+// template) reads it, so the ends of one erasure cannot disagree about freshness
+// again. Pure: payload in, verdict out; no `hono`, no `jose` (see the header).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * How recent a password-less account's last AUTHENTICATION must be for account
+ * deletion to proceed. Ten minutes: long enough for a provider sheet, a web
+ * full-page redirect and the user reopening Settings to tap Delete again; far
+ * shorter than the access-token lifetime, so a session kept alive by refreshes
+ * cannot pass. The app re-runs the provider sign-in when its own last sign-in is
+ * older than half this window (packages/core account_deletion.dart).
+ */
+// @ceiling none — the age of a token claim (seconds since the user last authenticated), not a platform resource
+export const RECENT_AUTH_SECONDS = 600;
+/** A timestamp this far in the FUTURE is treated as unusable rather than recent. */
+// @ceiling none — clock-skew tolerance on a token claim, not a platform resource
+export const CLOCK_SKEW_SECONDS = 60;
+
+/**
+ * Read from a VERIFIED access token.
+ *
+ * `passwordless` is true only when the token POSITIVELY says so: its
+ * `app_metadata.providers` is an array without `email` (a Sign in with Apple
+ * account is `["apple"]`; an email account that later linked Apple is
+ * `["email","apple"]` and keeps a password). `lastAuthenticatedAt` is the newest
+ * `amr[].timestamp` (seconds). GoTrue writes an `amr` entry when the user
+ * AUTHENTICATES and carries it unchanged through every refresh, so it answers
+ * "when did this person last prove who they are" where `iat` — reissued by each
+ * silent refresh — cannot. Null when the token carries no usable entry.
+ */
+export interface AuthRecency {
+  passwordless: boolean;
+  lastAuthenticatedAt: number | null;
+}
+
+/**
+ * How the verified token's user signs in, and when they last authenticated.
+ * Only ever called on a payload `jwtVerify` has already accepted.
+ *
+ * Every unreadable shape lands on a named side: a non-array `providers` is NOT
+ * password-less (no claim to act on), and an `amr` with no numeric timestamp is
+ * "never authenticated recently" (null), which [deletionRecencyRefusal] refuses.
+ *
+ * 🔴 `amr`, NEVER `iat`. `iat` is rewritten by every silent refresh, so a
+ * week-old session kept warm in the background reads as "just signed in".
+ */
+export function authRecencyOf(payload: Record<string, unknown>): AuthRecency {
+  const meta = payload.app_metadata;
+  const providers = meta && typeof meta === 'object' ? (meta as { providers?: unknown }).providers : undefined;
+  const passwordless = Array.isArray(providers) && !providers.includes('email');
+  let lastAuthenticatedAt: number | null = null;
+  if (Array.isArray(payload.amr)) {
+    for (const entry of payload.amr) {
+      const ts = entry && typeof entry === 'object' ? (entry as { timestamp?: unknown }).timestamp : undefined;
+      if (typeof ts === 'number' && Number.isFinite(ts)) {
+        lastAuthenticatedAt = lastAuthenticatedAt === null ? ts : Math.max(lastAuthenticatedAt, ts);
+      }
+    }
+  }
+  return { passwordless, lastAuthenticatedAt };
+}
+
+/** The refusal every erasure door answers with. 🔴 403, NEVER 401: the client's
+ *  REST layer treats a 401 as a dead session and signs the user out, and a user
+ *  who has just been asked to confirm must stay signed in to do so. */
+// @ceiling none — an HTTP status code, not a platform resource
+export const REAUTH_REQUIRED_STATUS = 403;
+export const REAUTH_REQUIRED_BODY = { error: 'reauth_required' } as const;
+
+/**
+ * THE DECISION. `null` = proceed; otherwise the reason to log before answering
+ * [REAUTH_REQUIRED_STATUS] [REAUTH_REQUIRED_BODY]. Callers check it BEFORE any
+ * precondition and before anything is destroyed.
+ *
+ * ── DECIDED 2026-09-16: PASSWORD ACCOUNTS ARE NOT HELD TO IT, AT EITHER END ──
+ * A password account confirms deletion by typing its password in the app before
+ * the request is sent (O-OAUTH-DELETE-REAUTH's owner ruling). The platform Worker
+ * has applied the rule to password-less accounts only since PR #775, and the app
+ * doors now read THIS function, so the two ends of one erasure agree by
+ * construction — which is the defect O-APP-API-DELETE-NO-RECENCY exists to close.
+ * Holding password accounts at the app end alone would re-open exactly that
+ * disagreement. ⚠️ STATED, NOT HIDDEN: that means a password account's freshness
+ * is proven client-side only, at both ends equally. Tightening it is one edit
+ * here plus the client flow, and belongs in its own reviewed change.
+ *
+ * 🔴 A MISSING `recency` IS A REFUSAL. Every auth middleware in front of an
+ * erasure door sets it on every admitted request, so undefined means the door was
+ * reached without one; a tidy-up that dropped the `c.set` line must produce a
+ * loud 403, not silently switch the rule off for every account.
+ */
+export function deletionRecencyRefusal(
+  recency: AuthRecency | undefined,
+  nowSeconds: number = Math.floor(Date.now() / 1000),
+): string | null {
+  if (recency === undefined) return 'no sign-in recency was read from the token (the auth middleware did not set it)';
+  if (!recency.passwordless) return null;
+  const at = recency.lastAuthenticatedAt;
+  if (at === null) return `password-less account whose token carries no amr timestamp`;
+  if (nowSeconds - at > RECENT_AUTH_SECONDS) {
+    return `password-less account without a sign-in in the last ${RECENT_AUTH_SECONDS}s (amr=${nowSeconds - at}s ago)`;
+  }
+  if (at - nowSeconds > CLOCK_SKEW_SECONDS) {
+    return `password-less account whose amr timestamp is ${at - nowSeconds}s in the future (skew allowance ${CLOCK_SKEW_SECONDS}s)`;
+  }
+  return null;
+}

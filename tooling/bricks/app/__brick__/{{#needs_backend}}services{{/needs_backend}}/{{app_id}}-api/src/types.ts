@@ -1,3 +1,4 @@
+import type { AuthRecency } from '../../_shared/src/auth';
 import type { Context } from 'hono';
 
 // Bindings from wrangler.jsonc. APP_DB is the ONLY per-app resource;
@@ -67,6 +68,13 @@ export interface Variables {
    * invert exactly that property.
    */
   tokenAssurance?: TokenAssurance;
+  /**
+   * ⏱ 2026-09-16 · O-APP-API-DELETE-NO-RECENCY. How the verified token's user
+   * signs in and when they last AUTHENTICATED, set by both auth middlewares from
+   * the payload they verified. The erasure route refuses when it is absent
+   * (services/_shared/src/auth.ts).
+   */
+  authRecency?: AuthRecency;
 }
 
 export type AppEnv = { Bindings: Env; Variables: Variables };

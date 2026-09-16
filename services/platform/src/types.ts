@@ -334,20 +334,12 @@ export interface Env {
 
 /**
  * ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH — read from a VERIFIED access token.
- *
- * `passwordless` is true only when the token POSITIVELY says so: its
- * `app_metadata.providers` is an array without `email` (a Sign in with Apple
- * account is `["apple"]`; an email account that later linked Apple is
- * `["email","apple"]` and keeps a password). `lastAuthenticatedAt` is the newest
- * `amr[].timestamp` (seconds). GoTrue writes an `amr` entry when the user
- * AUTHENTICATES and carries it unchanged through every refresh, so it answers
- * "when did this person last prove who they are" where `iat` — reissued by each
- * silent refresh — cannot. Null when the token carries no usable entry.
+ * ⏱ 2026-09-16 · O-APP-API-DELETE-NO-RECENCY — declared ONCE, in
+ * services/_shared/src/auth.ts (why `amr` and not `iat` is written there), so the
+ * app Workers' erasure doors read the same shape.
  */
-export interface AuthRecency {
-  passwordless: boolean;
-  lastAuthenticatedAt: number | null;
-}
+export type { AuthRecency } from '../../_shared/src/auth';
+import type { AuthRecency } from '../../_shared/src/auth';
 
 /** Hono context Variables set by middleware. */
 export interface Variables {

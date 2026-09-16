@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
+import { REAUTH_REQUIRED_BODY, REAUTH_REQUIRED_STATUS, deletionRecencyRefusal } from '../../../_shared/src/auth';
 import { run } from '../lib/d1';
 import { eraseSubjectRows } from '../lib/erase-subject';
 
@@ -55,6 +56,24 @@ account.delete('/', async (c) => {
       `[account] rid=${c.get('requestId') ?? '-'} app=${c.env.APP_ID} REFUSING ERASURE: admitted with tokenAssurance=${assurance ?? 'none'}, and account deletion requires an ES256/JWKS-verified token. A shared HS256 secret is one leaked environment variable away from letting anyone erase any account, so it is not an acceptable proof for an irreversible route. Mount DELETE /v1/account behind erasureAuth.`,
     );
     return c.json({ error: 'erasure_requires_asymmetric_auth' }, 403);
+  }
+
+  // ── LIMB 0b · ⏱ 2026-09-16 · O-APP-API-DELETE-NO-RECENCY — A RECENT SIGN-IN ──
+  // 🔴 A VALID TOKEN IS NOT A RECENT SIGN-IN. The limb above proves the token is
+  // real; it says nothing about WHEN its holder last authenticated, so anyone
+  // holding a live session token could call this Worker directly and erase the
+  // account's rows. The rule is the platform Worker's, read from ONE place —
+  // services/_shared/src/auth.ts `deletionRecencyRefusal` — so the two ends of one
+  // erasure cannot disagree: a password-less account must have authenticated
+  // (`amr`, never `iat`) within RECENT_AUTH_SECONDS; a password account is not
+  // held to it at either end (the decision and its reason are recorded there).
+  // Checked BEFORE any precondition and before any row is touched, and refused
+  // with 403 `reauth_required` — never 401, which the client reads as a dead
+  // session and signs the person out.
+  const stale = deletionRecencyRefusal(c.get('authRecency'));
+  if (stale !== null) {
+    console.warn(`[account] rid=${c.get('requestId') ?? '-'} app=${c.env.APP_ID} refusing erasure: ${stale}`);
+    return c.json(REAUTH_REQUIRED_BODY, REAUTH_REQUIRED_STATUS);
   }
 
   const userId = c.get('userId');

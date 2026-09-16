@@ -259,6 +259,86 @@ describe('the DEPLOYED Worker erases subscriptiontracker_db for the caller — a
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
+// ⏱ 2026-09-16 · O-APP-API-DELETE-NO-RECENCY — a VALID token is not a RECENT
+// sign-in. This door applies the platform Worker's rule, read from
+// services/_shared/src/auth.ts, and refuses BEFORE any row is touched. Token
+// shapes are GoTrue's: `app_metadata.providers` and `amr: [{ method, timestamp }]`.
+// ═════════════════════════════════════════════════════════════════════════════
+describe('DELETE /v1/account on the APP Worker — a password-less account must have signed in recently', () => {
+  const nowS = () => Math.floor(Date.now() / 1000);
+  const apple = (amrAgoSeconds: number | null) =>
+    token({
+      sub: SUBJECT,
+      app_metadata: { provider: 'apple', providers: ['apple'] },
+      ...(amrAgoSeconds === null ? {} : { amr: [{ method: 'oauth', timestamp: nowS() - amrAgoSeconds }] }),
+    });
+  const refusedUntouched = async (authz: string) => {
+    const db = realAppDb();
+    const tables = seedEveryTable(db);
+    const res = await deployed(db)('/v1/account', { method: 'DELETE', authz });
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: 'reauth_required' });
+    for (const t of tables) expect(rowsFor(db, t, SUBJECT), `${t} was touched by a refused erasure`).toBe(1);
+  };
+
+  it('a FRESH provider sign-in erases', async () => {
+    const db = realAppDb();
+    const tables = seedEveryTable(db);
+    const res = await deployed(db)('/v1/account', { method: 'DELETE', authz: `Bearer ${await apple(30)}` });
+    expect(res.status).toBe(200);
+    for (const t of tables) expect(rowsFor(db, t, SUBJECT)).toBe(0);
+  });
+
+  it('🔴 a STALE sign-in (older than the window) is refused 403 reauth_required, every row intact', async () => {
+    await refusedUntouched(`Bearer ${await apple(600 + 60)}`);
+  });
+
+  it('🔴 a session kept warm by refresh is refused — a new iat is not a sign-in', async () => {
+    await refusedUntouched(`Bearer ${await apple(2 * 3600)}`);
+  });
+
+  it('🔴 a password-less token with NO amr is refused', async () => {
+    await refusedUntouched(`Bearer ${await apple(null)}`);
+  });
+
+  it('🔴 an amr from beyond the skew allowance in the FUTURE is refused', async () => {
+    await refusedUntouched(`Bearer ${await apple(-3600)}`);
+  });
+
+  it('a PASSWORD account is unaffected: an old sign-in still erases (the decision matches the platform)', async () => {
+    const db = realAppDb();
+    const tables = seedEveryTable(db);
+    const t = await token({
+      sub: SUBJECT,
+      app_metadata: { provider: 'email', providers: ['email', 'apple'] },
+      amr: [{ method: 'password', timestamp: nowS() - 5 * 3600 }],
+    });
+    const res = await deployed(db)('/v1/account', { method: 'DELETE', authz: `Bearer ${t}` });
+    expect(res.status).toBe(200);
+    for (const table of tables) expect(rowsFor(db, table, SUBJECT)).toBe(0);
+  });
+
+  it('🔴 the route refuses when NO middleware set the recency — fail closed, not open', async () => {
+    const app = new Hono<AppEnv>();
+    app.use('*', async (c, next) => {
+      c.set('userId', SUBJECT);
+      c.set('tokenAssurance', 'asymmetric');
+      await next();
+    });
+    app.route('/v1', account);
+    const db = realAppDb();
+    seedEveryTable(db);
+    const res = await app.request(
+      'http://x/v1/account',
+      { method: 'DELETE' },
+      { ...TEST_ENV, APP_DB: db, PLATFORM_DB: realPlatformDb() } as unknown as AppEnv['Bindings'],
+    );
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: 'reauth_required' });
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
 describe('THE HS256 FALLBACK CANNOT REACH THIS ROUTE', () => {
   it('accepts the legacy HS256 token on a DATA route — so the refusal below is about the boundary, not the token', async () => {
     // 🔴 THE HALF THAT MAKES THE NEXT TEST MEAN SOMETHING. Without it, "the

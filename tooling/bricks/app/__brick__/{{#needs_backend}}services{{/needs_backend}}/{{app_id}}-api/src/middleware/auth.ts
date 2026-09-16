@@ -60,6 +60,7 @@ import {
   isKeySetUnavailable,
   usableJwksDocument,
   verifyOptions,
+  authRecencyOf,
 } from '../../../_shared/src/auth';
 import type { AppEnv, Env, TokenAssurance } from '../types';
 
@@ -188,6 +189,7 @@ export const supabaseAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
     }
     c.set('userId', payload.sub);
     c.set('tokenAssurance', assurance);
+    c.set('authRecency', authRecencyOf(payload as Record<string, unknown>));
     const email = (payload as { email?: unknown }).email;
     if (typeof email === 'string') {
       c.set('userEmail', email);
@@ -240,6 +242,8 @@ export const erasureAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
     }
     c.set('userId', payload.sub);
     c.set('tokenAssurance', 'asymmetric');
+    // O-APP-API-DELETE-NO-RECENCY: read from the SAME verified payload, by the shared reader.
+    c.set('authRecency', authRecencyOf(payload as Record<string, unknown>));
     const email = (payload as { email?: unknown }).email;
     if (typeof email === 'string') c.set('userEmail', email);
     await next();

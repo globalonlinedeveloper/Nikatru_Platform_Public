@@ -6,6 +6,12 @@ import {
   isKeySetUnavailable,
   usableJwksDocument,
   verifyOptions,
+  CLOCK_SKEW_SECONDS,
+  REAUTH_REQUIRED_BODY,
+  REAUTH_REQUIRED_STATUS,
+  RECENT_AUTH_SECONDS,
+  authRecencyOf,
+  deletionRecencyRefusal,
 } from '../src/auth';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -144,5 +150,78 @@ describe('the KV constants', () => {
     // constant that breaks the reasoning fails here.
     expect(86400 / JWKS_TTL_SECONDS).toBeLessThan(1000 * 0.2);
     expect(JWKS_TTL_SECONDS).toBeGreaterThan(60);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-16 · O-APP-API-DELETE-NO-RECENCY — the recent-sign-in rule every
+// erasure door reads. Run in BOTH Worker lanes and in the stamped-Worker lane, so
+// the rule is tested once and cannot be tested against a copy.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('deletionRecencyRefusal — the recent-sign-in rule for account deletion', () => {
+  const NOW = 1_800_000_000;
+  const apple = (lastAuthenticatedAt: number | null) => ({ passwordless: true, lastAuthenticatedAt });
+
+  it('a FRESH password-less sign-in proceeds', () => {
+    expect(deletionRecencyRefusal(apple(NOW - 30), NOW)).toBeNull();
+    expect(deletionRecencyRefusal(apple(NOW - RECENT_AUTH_SECONDS), NOW)).toBeNull();
+  });
+
+  it('🔴 a STALE password-less sign-in is refused', () => {
+    expect(deletionRecencyRefusal(apple(NOW - RECENT_AUTH_SECONDS - 1), NOW)).toMatch(/without a sign-in/);
+  });
+
+  it('🔴 a password-less token with NO amr timestamp is refused', () => {
+    expect(deletionRecencyRefusal(apple(null), NOW)).toMatch(/no amr timestamp/);
+  });
+
+  it('🔴 a timestamp beyond the skew allowance in the FUTURE is refused; within it proceeds', () => {
+    expect(deletionRecencyRefusal(apple(NOW + CLOCK_SKEW_SECONDS + 1), NOW)).toMatch(/in the future/);
+    expect(deletionRecencyRefusal(apple(NOW + CLOCK_SKEW_SECONDS), NOW)).toBeNull();
+  });
+
+  it('a PASSWORD account is not held to it, however old its sign-in (the recorded decision)', () => {
+    expect(deletionRecencyRefusal({ passwordless: false, lastAuthenticatedAt: NOW - 5 * 3600 }, NOW)).toBeNull();
+    expect(deletionRecencyRefusal({ passwordless: false, lastAuthenticatedAt: null }, NOW)).toBeNull();
+  });
+
+  it('🔴 NO recency at all (the middleware did not set it) is a refusal, not a pass', () => {
+    expect(deletionRecencyRefusal(undefined, NOW)).toMatch(/did not set it/);
+  });
+
+  it('the window is ten minutes and the skew one', () => {
+    expect(RECENT_AUTH_SECONDS).toBe(600);
+    expect(CLOCK_SKEW_SECONDS).toBe(60);
+  });
+
+  it('🔴 the refusal is 403 reauth_required — never 401, which the client reads as a dead session', () => {
+    expect(REAUTH_REQUIRED_STATUS).toBe(403);
+    expect(REAUTH_REQUIRED_BODY).toEqual({ error: 'reauth_required' });
+  });
+});
+
+describe('authRecencyOf — WHEN the person last authenticated, from `amr`', () => {
+  it('reads only a POSITIVE password-less claim, and the newest amr entry', () => {
+    expect(authRecencyOf({})).toEqual({ passwordless: false, lastAuthenticatedAt: null });
+    expect(authRecencyOf({ app_metadata: { providers: 'apple' } }).passwordless).toBe(false);
+    expect(authRecencyOf({ app_metadata: { providers: ['apple'] } }).passwordless).toBe(true);
+    expect(authRecencyOf({ app_metadata: { providers: ['email', 'apple'] } }).passwordless).toBe(false);
+    expect(
+      authRecencyOf({ amr: [{ method: 'oauth', timestamp: 100 }, { method: 'otp', timestamp: 250 }, { timestamp: 'x' }] })
+        .lastAuthenticatedAt,
+    ).toBe(250);
+  });
+
+  it('🔴 a brand-new `iat` does NOT stand in for a sign-in — a refreshed session stays stale', () => {
+    const now = 1_800_000_000;
+    const refreshed = authRecencyOf({
+      iat: now,
+      app_metadata: { providers: ['apple'] },
+      amr: [{ method: 'oauth', timestamp: now - 7200 }],
+    });
+    expect(refreshed.lastAuthenticatedAt).toBe(now - 7200);
+    expect(deletionRecencyRefusal(refreshed, now)).not.toBeNull();
+    // And a token carrying only `iat` has no authentication time at all.
+    expect(authRecencyOf({ iat: now, app_metadata: { providers: ['apple'] } }).lastAuthenticatedAt).toBeNull();
   });
 });
