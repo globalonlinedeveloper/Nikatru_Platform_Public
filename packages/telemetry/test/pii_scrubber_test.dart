@@ -153,6 +153,105 @@ void main() {
       final out = scrubber.scrubText('order 480000123456 shipped');
       expect(out, 'order $redactedToken shipped');
     });
+
+    // ── IP literals (O-CRASH-EVENT-IP-DROP, owner ruling 2026-09-15) ────────
+    // The ruling is "NO IP at all". `sendDefaultPii = false` and the ingest's
+    // header strip together remove the STRUCTURED field, and neither can see an
+    // address typed into an exception value, a log message or a breadcrumb —
+    // the server-side scrubber matches on field NAME, not on value. These are
+    // the cases for that half. Every literal below is from a documentation
+    // range that is NOT TEST-NET: 198.18.0.0/15 is RFC 2544 benchmarking and
+    // 2001:db8::/32 is RFC 3849, chosen because the TEST-NET ranges
+    // (203.0.113.x / 198.51.100.x) are DISCARDED by the ingest's own ipware and
+    // so cannot appear in a live read-back either.
+    test('redacts an IPv4 literal in free text', () {
+      final out = scrubber.scrubText('connect failed to 198.18.7.9:443');
+      expect(out, contains(redactedToken));
+      expect(out, isNot(contains('198.18.7.9')));
+      expect(out, isNot(contains('198.18')));
+    });
+
+    test('redacts a full 8-group IPv6 literal', () {
+      final out = scrubber
+          .scrubText('peer 2001:0db8:85a3:0000:0000:8a2e:0370:7334 reset');
+      expect(out, contains(redactedToken));
+      expect(out, isNot(contains('2001')));
+      expect(out, isNot(contains('8a2e')));
+    });
+
+    test('redacts a :: compressed IPv6 literal', () {
+      final out = scrubber.scrubText('bound to 2001:db8::1 ok');
+      expect(out, 'bound to $redactedToken ok');
+    });
+
+    test('redacts a bare loopback IPv6 literal', () {
+      final out = scrubber.scrubText('listening on ::1 only');
+      expect(out, 'listening on $redactedToken only');
+    });
+
+    // An IPv4-mapped IPv6 literal: the ADDRESS must go. The `::ffff:` mapping
+    // prefix is not an address and may survive — what must not is any octet.
+    test('redacts the address half of an IPv4-mapped IPv6 literal', () {
+      final out = scrubber.scrubText('remote ::ffff:198.18.7.9 closed');
+      expect(out, contains(redactedToken));
+      expect(out, isNot(contains('198.18.7.9')));
+      expect(out, isNot(contains('18.7')));
+    });
+
+    // 🔴 THE ACCEPTED IP OVER-REDACTION, pinned so the trade is a test and not a
+    // paragraph — exactly as the 12-digit one above is. A four-part dotted
+    // version is redacted because it is shaped like an address. Documented on
+    // PiiScrubber: nothing in this portfolio numbers a release in four dotted
+    // parts, and an unreadable version costs a lookup while an unredacted
+    // address is the leak the owner ruled out entirely.
+    test('over-redacts a four-part dotted version (accepted, fail-closed)', () {
+      final out = scrubber.scrubText('engine 1.2.3.4 started');
+      expect(out, 'engine $redactedToken started');
+    });
+
+    // ── The IP false-positive direction ────────────────────────────────────
+    // 🔴 THE ONE THE OBVIOUS IPv6 REGEX GETS WRONG. A rule of "two or more
+    // colon-separated hex groups" reads 12:30:45 as an address, i.e. EVERY
+    // wall-clock time in every log line. That is not the fail-closed trade the
+    // 12-digit rule makes; it is the most-read field in a crash report
+    // destroyed over a shape that is not an address. The rule therefore
+    // requires the full 8-group form or the `::` compression, and this case is
+    // what holds it there.
+    test('leaves a wall-clock time untouched', () {
+      const control = 'retry scheduled at 12:30:45 after 2 failures';
+      final out = scrubber.scrubText(control);
+      expect(out, control);
+      expect(out, isNot(contains(redactedToken)));
+    });
+
+    test('leaves an ISO-8601 instant untouched', () {
+      const control = 'window closed 2026-09-16T12:30:45Z';
+      final out = scrubber.scrubText(control);
+      expect(out, control);
+    });
+
+    test('leaves a three-part release string untouched', () {
+      const control = 'release 1.0.0+abc1234 on channel beta';
+      final out = scrubber.scrubText(control);
+      expect(out, control);
+      expect(out, isNot(contains(redactedToken)));
+    });
+
+    // A `::`-bearing native symbol is not an address. The lookarounds exclude
+    // every alphanumeric rather than every hex digit for exactly this string:
+    // a hex-only lookaround matches `::ba` here and redacts the middle of it.
+    test('leaves a C++-style scoped symbol untouched', () {
+      const control = 'thrown from nikatru::backoff::retry';
+      final out = scrubber.scrubText(control);
+      expect(out, control);
+      expect(out, isNot(contains(redactedToken)));
+    });
+
+    test('leaves a host:port with no address untouched', () {
+      const control = 'GET glitchtip.nikatru.com:443 timed out';
+      final out = scrubber.scrubText(control);
+      expect(out, control);
+    });
   });
 
   group('PiiScrubber.scrubMap', () {
@@ -173,6 +272,22 @@ void main() {
       final list = out['list'] as List<Object?>;
       expect(list.first, contains(redactedToken));
       expect(list.last, 42);
+    });
+
+    test('scrubs IP literals nested in maps and lists', () {
+      final out = scrubber.scrubMap(<String, dynamic>{
+        'endpoint': '/v1/sync',
+        'detail': 'no route to 198.18.7.9',
+        'peers': <dynamic>['2001:db8::1', 8080],
+      });
+
+      expect(out['detail'], contains(redactedToken));
+      expect(out['detail'], isNot(contains('198.18')));
+      final peers = out['peers'] as List<Object?>;
+      expect(peers.first, redactedToken);
+      expect(peers.last, 8080);
+      // A non-PII field is untouched, so the walk is not blanket-nuking.
+      expect(out['endpoint'], '/v1/sync');
     });
   });
 }

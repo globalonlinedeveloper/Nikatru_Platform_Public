@@ -13,9 +13,100 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_telemetry/src/pii_scrubber.dart';
 import 'package:nikatru_telemetry/src/telemetry_bootstrap.dart';
+import 'package:nikatru_telemetry/src/telemetry_config.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
+const TelemetryConfig _config = TelemetryConfig(
+  dsn: 'https://publickey@glitchtip.example.invalid/7',
+  release: 'probe@1.0.0+abc1234',
+  environment: 'test',
+);
+
 void main() {
+  // ── THE OPTIONS THEMSELVES, NOT THE LINE THAT SPELLS THEM ────────────────
+  //
+  // 🔴 O-CRASH-EVENT-IP-DROP, owner ruling 2026-09-15: a crash report carries
+  // NO IP address, truncated or not. On the client the whole of that promise
+  // rests on ONE assignment — `options.sendDefaultPii = false`, which is what
+  // stops the SDK setting `user.ip_address = "{{auto}}"` and asking the ingest
+  // to resolve one on its behalf.
+  //
+  // Until today NOTHING IN THIS SUITE CALLED `optionsCallback` AT ALL. Every
+  // case below the next group drives `scrubEvent` with a hand-built event, so
+  // the suite was fully green over a bootstrap that never installed
+  // `beforeSend` and never turned default PII off. The one thing standing
+  // between an edit and a silent regression was the LINE-TEXT ANCHOR in
+  // tooling/ci/assert-sworn-store-files.mjs — a citation-integrity guard that
+  // asks whether the sworn Play declaration still matches a string in the
+  // source, not a test of what the SDK is configured to do. These cases make it
+  // two independent nets: one on the text, one on the behaviour.
+  group('TelemetryBootstrap.optionsCallback — the privacy posture', () {
+    // 🔴 THE FLAG IS SET TO `true` FIRST, AND THAT IS THE WHOLE CASE.
+    // MEASURED 2026-09-16 on the pinned sentry_flutter: `SentryFlutterOptions()`
+    // is born with `sendDefaultPii == false`. So the obvious test — construct
+    // the options, run the callback, assert false — PASSES AGAINST A CALLBACK
+    // THAT DOES NOTHING AT ALL, and would go on passing if the assignment were
+    // deleted tomorrow. An assertion that cannot fail is worse than none. The
+    // pre-set is the input that makes this case able to go red, and the
+    // `isTrue` line below is its own positive control: if a future SDK makes
+    // the field read-only or ignores the write, that line fails rather than
+    // the case quietly becoming vacuous again.
+    test('never attaches default PII, so no IP is sent or inferred', () async {
+      final options = SentryFlutterOptions()..sendDefaultPii = true;
+      expect(options.sendDefaultPii, isTrue,
+          reason: 'the pre-set did not take, so the assertion below could pass '
+              'over a callback that assigns nothing');
+
+      await TelemetryBootstrap.optionsCallback(_config, isWeb: false)(options);
+
+      expect(options.sendDefaultPii, isFalse);
+    });
+
+    // Same shape, same reason — except that here the SDK default really is ON
+    // (measured the same day), so the pre-set is belt and braces rather than
+    // load-bearing. It is written the same way so the two cases cannot drift
+    // into meaning different things.
+    test('leaves auto session tracking off', () async {
+      final options = SentryFlutterOptions()..enableAutoSessionTracking = true;
+      expect(options.enableAutoSessionTracking, isTrue);
+
+      await TelemetryBootstrap.optionsCallback(_config, isWeb: false)(options);
+
+      expect(options.enableAutoSessionTracking, isFalse);
+    });
+
+    test('wires beforeSend, and it routes through scrubEvent', () async {
+      final options = SentryFlutterOptions();
+      expect(options.beforeSend, isNull);
+
+      await TelemetryBootstrap.optionsCallback(_config, isWeb: false)(options);
+
+      expect(options.beforeSend, isNotNull,
+          reason: 'with no beforeSend every event reaches the sink unscrubbed');
+      final event = SentryEvent(
+        message: SentryMessage('connect failed to 198.18.7.9'),
+        tags: <String, String>{'peer': '2001:db8::1'},
+      );
+
+      final out = await options.beforeSend!(event, Hint());
+
+      expect(out, isNotNull, reason: 'the hook must scrub, never drop');
+      expect(out!.message!.formatted, contains(redactedToken));
+      expect(out.message!.formatted, isNot(contains('198.18')));
+      expect(out.tags!['peer'], redactedToken);
+    });
+
+    test('the config it is given is passed through unaltered', () async {
+      final options = SentryFlutterOptions();
+
+      await TelemetryBootstrap.optionsCallback(_config, isWeb: false)(options);
+
+      expect(options.dsn, _config.dsn);
+      expect(options.release, _config.release);
+      expect(options.environment, _config.environment);
+    });
+  });
+
   group('TelemetryBootstrap.scrubEvent', () {
     test('scrubs the message and its template', () {
       final event = SentryEvent(
