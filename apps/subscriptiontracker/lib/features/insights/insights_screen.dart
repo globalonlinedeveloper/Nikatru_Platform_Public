@@ -151,6 +151,11 @@ const double _cardGap = 14;
 /// WINDOW width of 1561, not 1200. That is the honest seam anyway: the question
 /// is how much room this screen was actually handed to divide, and the answer
 /// is its own incoming constraints, not the size of the display.
+///
+/// ⏱ 2026-09-16 · [ADR 083]: the 361 px was the drawer's, and no window class
+/// has the drawer now. From 1200 px up the body is `min(W - R - 1, 1280)`, R
+/// being the slim rail's rendered width, so the second column appears at a
+/// window of 1200 + R + 1 (1317 px for a 116 px rail), not 1561.
 bool _twoUp(double width, int cardCount) =>
     width >= AppBreakpoints.large && cardCount >= 2;
 
@@ -372,6 +377,12 @@ class InsightsScreen extends ConsumerWidget {
   // Cancel button at the other with most of the row empty between them, so the
   // DEFECT was real and only the number was invented. The shipped pixels never
   // depended on it.
+  //
+  // ⏱ 2026-09-16 · [ADR 083]: the drawer is gone from every class. From 1200 px
+  // up the body is `min(W - R - 1, 1280)`, R being the slim rail's rendered
+  // width (116 px for a "Settings" label on Flutter 3.47.2). So the LARGE
+  // ceiling is 1599 - R - 1 and a 1440 px window gives 1439 - R. The defect and
+  // the cap below are unchanged; only these widths moved.
   //
   // 🔴 ONE COLUMN → `.reading` (720). This is the cap the file has carried
   // since the P3 port and the reasoning is unchanged: 720 is the design

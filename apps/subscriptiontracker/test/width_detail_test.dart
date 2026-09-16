@@ -37,6 +37,13 @@
 // because `kWide` is wider than any window the app is used in. The screen's own
 // comment carries why 720 and not an 840–960 row-list number.
 //
+// ⏱ 2026-09-16 · [ADR 083]: the 361 px above was the 360 px drawer and its
+// divider, and no window class uses the drawer now. From 1200 px up the body is
+// `min(W - R - 1, 1280)`, where R is the slim rail's rendered width (116 px for
+// a "Settings" label on Flutter 3.47.2). So a 1440 px window gives 1439 - R
+// (1323 px for a 116 px rail), not 1079. The 720 cap chosen here still binds
+// there.
+//
 // ⚠️ AND `at 768 the cap is still a no-op` IS NOW A CAP CASE. 720 < 768, so the
 // small tablet is the FIRST width at which this screen's cap does something —
 // which is the point of moving it, and is why that case is renamed rather than
@@ -104,6 +111,10 @@ void main() {
     // a 1280 px window ever produces is 919 — which is why the OLD version of
     // this case (`lessThanOrEqualTo(kMaxBodyWidth)`) could not fail: 1280 on a
     // 1280 surface is true with the pane deleted. It is an equality now.
+    //
+    // ⏱ 2026-09-16 · [ADR 083]: with the slim rail from 1200 px up, a 1280 px
+    // window now gives 1280 - R - 1 (1163 for a 116 px rail), not 919. The old
+    // case still could not fail, for the reason given.
     testWidgets('at 1280 the list is at the cap', (WidgetTester tester) async {
       await pumpAt(tester, kDesktop, screen);
       expect(

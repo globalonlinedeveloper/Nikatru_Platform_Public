@@ -112,7 +112,9 @@ void main() {
 
     testWidgets('extra-large caps the body width', (WidgetTester tester) async {
       await pumpAt(tester, const Size(2000, 900), harness());
-      expect(find.byType(NavigationDrawer), findsOneWidget);
+      // ⏱ 2026-09-16 · [ADR 083] §4: the rail, not the drawer, at extra-large.
+      expect(find.byType(NavigationRail), findsOneWidget);
+      expect(find.byType(NavigationDrawer), findsNothing);
       // The distinction from `large` must be REAL, or the fifth class is
       // decorative: past 1600 the body stops growing, because a paragraph
       // 1400px wide is genuinely hard to read.
@@ -130,15 +132,17 @@ void main() {
       // `Center(child: Text('BODY'))`, so measuring the text's edges would
       // measure the inner `Center` and pass under either alignment — which is
       // exactly the shape of assertion this repository calls worse than none.
-      final double bodyLeft = tester.getTopLeft(find.byType(NavigationDrawer)).dx +
-          tester.getSize(find.byType(NavigationDrawer)).width;
+      // The body region starts after the rail and its 1 px divider.
+      final double bodyLeft = tester.getTopLeft(find.byType(NavigationRail)).dx +
+          tester.getSize(find.byType(NavigationRail)).width +
+          1;
       final double textCentre = tester.getCenter(find.text('BODY')).dx;
       final double regionCentre = bodyLeft + (2000 - bodyLeft) / 2;
       expect(
         textCentre,
         closeTo(regionCentre, 2.0),
-        reason: 'the capped body must sit in the middle of the space left of '
-            'the drawer, not against its edge',
+        reason: 'the capped body must sit in the middle of the space right '
+            'of the rail, not against its edge',
       );
     });
   });
@@ -188,11 +192,14 @@ void main() {
       expect(find.byType(NavigationRail), findsOneWidget);
     });
 
-    testWidgets('1600 (extra-large) shows the drawer and NOT the app’s bar',
+    // ⏱ 2026-09-16 · [ADR 083] §4: this case was '1600 (extra-large) shows the
+    // drawer and NOT the app's bar'. Extra-large now navigates by the rail.
+    testWidgets('1600 (extra-large) shows the rail and NOT the app’s bar',
         (WidgetTester tester) async {
       await pumpAt(tester, const Size(1600, 900), branded());
       expect(find.byKey(brandBar), findsNothing);
-      expect(find.byType(NavigationDrawer), findsOneWidget);
+      expect(find.byType(NavigationRail), findsOneWidget);
+      expect(find.byType(NavigationDrawer), findsNothing);
     });
 
     testWidgets('omitting it keeps the stock NavigationBar',
@@ -213,6 +220,9 @@ void main() {
   // width), 1440 (the laptop) and 1599 (the last large width), and each case is
   // declared on its own. Measured as the body's INCOMING constraint, the same
   // way the app's width harness measures, so a Center cannot hide a change.
+  //
+  // ⏱ 2026-09-16 · [ADR 083] §4 adds 1600, 1621 and 1920: extra-large takes
+  // the same rail.
   group('large class navigates by a slim rail (ADR 083)', () {
     const Key bodyKey = Key('large-body');
 
@@ -262,13 +272,49 @@ void main() {
           reason: 'the kMaxBodyWidth cap belongs to extra-large only');
     });
 
-    testWidgets('1600 — extra-large keeps its drawer and its body cap',
+    // ⏱ 2026-09-16 · [ADR 083] §4 ("Rail for all wide windows"). This case was
+    // '1600 — extra-large keeps its drawer and its body cap'. Under the drawer
+    // the body at 1600 was min(1600 - 361, 1280) = 1239, below Home's 1261, so
+    // a 1600–1621 px window lost the side panel that a 1599 px one showed. The
+    // three cases below each fail on that code: no rail, and a body below 1261.
+    testWidgets('1600 — extra-large takes the rail, and the body is capped',
         (WidgetTester tester) async {
       await pumpAt(tester, const Size(1600, 900), railHarness());
-      expect(find.byType(NavigationRail), findsNothing);
-      expect(find.byType(NavigationDrawer), findsOneWidget);
+      expect(find.byType(NavigationDrawer), findsNothing);
+      expect(find.byType(NavigationRail), findsOneWidget);
+      expect(
+          tester.widget<NavigationRail>(find.byType(NavigationRail)).extended,
+          isFalse);
+      final double uncapped = 1600 - railWidth(tester) - 1;
+      expect(
+          bodyWidth(tester),
+          uncapped < AppBreakpoints.kMaxBodyWidth
+              ? uncapped
+              : AppBreakpoints.kMaxBodyWidth);
+      expect(bodyWidth(tester), greaterThanOrEqualTo(1261),
+          reason: 'a wider window must not lose the column a 1599 px one has');
+    });
+
+    testWidgets('1621 — the last width of the old gap holds a 1261 px body',
+        (WidgetTester tester) async {
+      await pumpAt(tester, const Size(1621, 900), railHarness());
+      expect(find.byType(NavigationDrawer), findsNothing);
+      expect(find.byType(NavigationRail), findsOneWidget);
+      expect(bodyWidth(tester), greaterThanOrEqualTo(1261),
+          reason: 'under the drawer this body was 1260, one short of Home’s '
+              'side panel');
       expect(bodyWidth(tester),
           lessThanOrEqualTo(AppBreakpoints.kMaxBodyWidth));
+    });
+
+    testWidgets('1920 — a wide desktop: rail, body capped at kMaxBodyWidth',
+        (WidgetTester tester) async {
+      await pumpAt(tester, const Size(1920, 900), railHarness());
+      expect(find.byType(NavigationDrawer), findsNothing);
+      expect(find.byType(NavigationRail), findsOneWidget);
+      expect(bodyWidth(tester), AppBreakpoints.kMaxBodyWidth,
+          reason: 'past 1600 the body stops growing; that cap is what makes '
+              'extra-large a class of its own');
     });
 
     testWidgets('tapping a rail destination at 1440 reports its index',

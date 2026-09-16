@@ -111,6 +111,13 @@ class NotificationsScreen extends ConsumerWidget {
         // longer than the English. A 1280 px band puts a 40 px glyph at one edge
         // and a sentence that stops a third of the way across.
         //
+        // ⏱ 2026-09-16 · [ADR 083]: the 361 px above was the 360 px drawer and
+        // its divider, and no window class uses the drawer now. From 1200 px up
+        // the body is `min(W - R - 1, 1280)`, where R is the slim rail's
+        // rendered width (116 px for a "Settings" label on Flutter 3.47.2). So
+        // a 1440 px window gives 1439 - R (1323 px for a 116 px rail), not
+        // 1079. The 720 cap chosen here still binds there.
+        //
         // `.reading` (720) is the design system's own number for exactly that —
         // 45–75 characters before the eye loses the line return — and it is the
         // narrower of the two candidates the audit offered (840–960 suits a

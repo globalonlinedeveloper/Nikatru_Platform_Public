@@ -46,6 +46,13 @@ void main() {
   // showed up at all. Under `.reading` the cap binds from 768 up, which is where
   // the defect actually lived — see the screen's own note for why a two-line
   // card stack reaches its natural width at 720 rather than at 840–960.
+  //
+  // ⏱ 2026-09-16 · [ADR 083]: the 361 px above was the 360 px drawer and its
+  // divider, and no window class uses the drawer now. From 1200 px up the body
+  // is `min(W - R - 1, 1280)`, where R is the slim rail's rendered width (116
+  // px for a "Settings" label on Flutter 3.47.2). So a 1440 px window gives
+  // 1439 - R (1323 px for a 116 px rail), not 1079. The 720 cap chosen here
+  // still binds there.
   group('notifications is capped at the reading width', () {
     testWidgets('at 375 the cap is a no-op and nothing overflows', (
       WidgetTester tester,

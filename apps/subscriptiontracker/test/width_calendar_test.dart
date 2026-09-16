@@ -117,6 +117,13 @@ void main() {
   // px window offers 1079. The numbers below are the ones that replaced it, and
   // the `TwoPane` adoption must not move them: single column is the whole point
   // of the phone and the small tablet.
+  //
+  // ⏱ 2026-09-16 · [ADR 083]: the 361 px above was the 360 px drawer and its
+  // divider, and no window class uses the drawer now. From 1200 px up the body
+  // is `min(W - R - 1, 1280)`, where R is the slim rail's rendered width (116
+  // px for a "Settings" label on Flutter 3.47.2). So a 1440 px window gives
+  // 1439 - R (1323 px for a 116 px rail), not 1079. The 720 cap chosen here
+  // still binds there.
   group('below the split the calendar is one capped column', () {
     testWidgets('at 375 the cap is a no-op and nothing overflows', (
       WidgetTester tester,
@@ -173,6 +180,10 @@ void main() {
     // actually produces: `AppScaffold` hands the body `min(W - 361, 1280)`, so a
     // 1200 px window is 839 px of body. Without this case an off-by-one in the
     // breakpoint would only show up on a window nobody in the suite pins.
+    //
+    // ⏱ 2026-09-16 · [ADR 083]: with the slim rail from 1200 px up, a 1200 px
+    // window is now 1200 - R - 1 px of body, not 839. 839 stays because it is
+    // the widest single-column body, which is what this case pins.
     testWidgets('at 839 there is still exactly one column', (
       WidgetTester tester,
     ) async {

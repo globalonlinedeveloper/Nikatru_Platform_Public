@@ -33,6 +33,12 @@ import 'app_scaffold.dart' show AppBreakpoints;
 ///    does. How much is a Flutter internal and is NOT sourced here, so this doc
 ///    does not name it — only that the body is narrower than the window.
 ///
+/// ⏱ 2026-09-16 · [ADR 083]: there are no drawer classes left. From 1200 px up
+/// `AppScaffold` uses the slim rail too, so the first bullet no longer
+/// describes any window: a 1200 px window leaves the body 1200 - R - 1, R being
+/// the rail's rendered width. The second bullet now covers every class from
+/// medium up.
+///
 /// So a window at exactly 840 does NOT produce a two-pane body: the body is
 /// narrower than that, and it is the body that has to hold two columns. That is
 /// the honest reading, and it composes — a [TwoPane] nested inside a narrow pane

@@ -3,7 +3,7 @@ description: >-
   Shared design system for NIKATRU apps — colour/text/spacing tokens, a
   ThemeExtension carrying the brand tokens that don't fit ColorScheme, a
   buildAppTheme({seed, brightness}) factory, and a hand-rolled adaptive
-  AppScaffold (NavigationBar → NavigationRail → NavigationDrawer).
+  AppScaffold (NavigationBar → NavigationRail).
 version: 0.1.0
 publish_to: none
 resolution: workspace

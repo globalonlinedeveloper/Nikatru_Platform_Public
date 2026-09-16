@@ -16,6 +16,12 @@
 // a savings row has ever been is ~1204 after the page gutters and card
 // padding. The defect was real; the number was invented.
 //
+// ⏱ 2026-09-16 · [ADR 083]: the drawer is gone from every class. From 1200 px
+// up the body is `min(W - R - 1, 1280)`, R being the slim rail's rendered width
+// (116 px for a "Settings" label on Flutter 3.47.2). So the LARGE ceiling is
+// 1599 - R - 1 and a 1440 px window gives 1439 - R. The defect and the cap
+// below are unchanged; only these widths moved.
+//
 // 🔴 THE SCREEN NOW HAS TWO SHAPES, SO THIS FILE HAS TWO GROUPS.
 // Below `AppBreakpoints.large` (1200) the cards are one column capped at
 // `AppBreakpoints.reading` (720) — unchanged, and the first group pins it. At

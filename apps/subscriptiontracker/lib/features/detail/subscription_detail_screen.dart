@@ -304,6 +304,13 @@ class SubscriptionDetailScreen extends ConsumerWidget {
           // meter and a payment list stretched to 1079, which is the "looks
           // stretched" report this change answers.
           //
+          // ⏱ 2026-09-16 · [ADR 083]: the 361 px above was the 360 px drawer
+          // and its divider, and no window class uses the drawer now. From 1200
+          // px up the body is `min(W - R - 1, 1280)`, where R is the slim
+          // rail's rendered width (116 px for a "Settings" label on Flutter
+          // 3.47.2). So a 1440 px window gives 1439 - R (1323 px for a 116 px
+          // rail), not 1079. The 720 cap chosen here still binds there.
+          //
           // WHY 720 AND NOT AN 840–960 ROW-LIST NUMBER. Both would bind, and a
           // number that binds is the minimum bar, not the decision. 720 is
           // `AppBreakpoints.reading` — a constant this design system already

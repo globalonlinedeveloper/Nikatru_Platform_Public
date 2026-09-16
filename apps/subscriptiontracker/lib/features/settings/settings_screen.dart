@@ -190,6 +190,13 @@ class SettingsScreen extends ConsumerWidget {
       // 1079 and the 1280 cap NEVER engages at any real desktop size. What
       // shipped was a phone column that simply got wider.
       //
+      // ⏱ 2026-09-16 · [ADR 083]: the 361 px above was the 360 px drawer and
+      // its divider, and no window class uses the drawer now. From 1200 px up
+      // the body is `min(W - R - 1, 1280)`, where R is the slim rail's rendered
+      // width (116 px for a "Settings" label on Flutter 3.47.2). So a 1440 px
+      // window gives 1439 - R (1323 px for a 116 px rail), not 1079. The 720
+      // cap chosen here still binds there.
+      //
       // 720 rather than the 840–960 an eyeball would also accept, for a reason
       // that is about this SHAPE and not about taste. Every row here is a
       // glyph, a label, and a control pinned to the FAR edge — `_LinkRow`'s

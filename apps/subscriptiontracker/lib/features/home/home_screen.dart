@@ -206,6 +206,10 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
     // hold one, and nothing would overflow to say so — the hero would simply be
     // squeezed.
     //
+    // ⏱ 2026-09-16 · [ADR 083]: the 361 px was the drawer's. With the slim rail
+    // from 1200 px up, the window and the body are R + 1 px apart, R being the
+    // rail's rendered width. The rule is unchanged: measure the box.
+    //
     // 🔴 AND IT IS ABOVE THE TwoPane RATHER THAN INSIDE ITS `list`, WHICH IS THE
     // ONLY PLACE IT CAN GO. `TwoPaneSplit` caps the list column at
     // [AppBreakpoints.pane] (480) at every width from the split upward, and
@@ -270,6 +274,13 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
         // at a window of 1622 and the body tops out at 1280 — an aside band of
         // 1261…1280. Pumped without a shell (the width test, and any future
         // re-parenting) it runs to whatever width the screen is given.
+        //
+        // ⏱ 2026-09-16 · [ADR 083] §4: STALE, and the band is gone. With the
+        // rail from 1200 px up, the body is `min(W - R - 1, 1280)`, so the
+        // aside opens at a window of 1261 + R + 1 and stays open at every wider
+        // window, because the 1280 cap is above 1261. `width_home_test.dart`
+        // pins 1200, 1440, 1599, 1600, 1621 and 1920 inside a real
+        // `AppScaffold`.
         final bool aside = constraints.maxWidth >= HomeScreen.asideMinBodyWidth;
 
         final Widget panes = TwoPane(
@@ -416,6 +427,13 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
       // 1440p or 1600p desktop lives. Between 839 and 1280 this screen was a
       // phone column that simply got wider — the exact defect the wrapper was
       // added to prevent, surviving inside the fix for it.
+      //
+      // ⏱ 2026-09-16 · [ADR 083]: the 361 px above was the 360 px drawer and
+      // its divider, and no window class uses the drawer now. From 1200 px up
+      // the body is `min(W - R - 1, 1280)`, where R is the slim rail's rendered
+      // width (116 px for a "Settings" label on Flutter 3.47.2). So a 1440 px
+      // window gives 1439 - R (1323 px for a 116 px rail), not 1079. The 720
+      // cap chosen here still binds there.
       //
       // Why `reading` (720) and not a fresh 840–960:
       //   · This body is ONE COLUMN OF CARDS — a hero card, then `RowCard`s
@@ -1218,6 +1236,9 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
     // would decide from the WINDOW while [TwoPane] decided from the BODY — 361
     // px apart inside the chassis — and at the boundary that pushes a full
     // route ON TOP of an already-rendered detail pane.
+    //
+    // ⏱ 2026-09-16 · [ADR 083]: R + 1 px apart now, R being the slim rail's
+    // width. Same rule.
     final bool selected = twoPane && s.id == _selectedId;
 
     final Widget card = RowCard(
