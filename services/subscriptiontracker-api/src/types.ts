@@ -31,10 +31,10 @@ export interface Env {
   ALLOWED_ORIGINS?: string;
   /**
    * [5]M-12 — which money world this deploy is: 'live' or 'sandbox'. Read by
-   * the RevenueCat webhook (events from the OTHER world are acked and ignored,
-   * never written) and by /v1/entitlements (a row from the other world grants
-   * nothing). Absent/unrecognised ⇒ both answer 503 rather than guess — see
-   * src/lib/money.ts for why neither default is safe.
+   * /v1/entitlements (a row from the other world grants nothing).
+   * Absent/unrecognised ⇒ it answers 503 rather than guess — see
+   * src/lib/money.ts for why neither default is safe. (Until 2026-09-16 the
+   * legacy RevenueCat webhook on this Worker read it too; that route is retired.)
    */
   MONEY_ENVIRONMENT?: string;
   /**
@@ -54,7 +54,8 @@ export interface Env {
 
   // Secrets (wrangler secret put / .dev.vars) — optional in template mode
   SUPABASE_JWT_SECRET?: string;
-  REVENUECAT_WEBHOOK_SECRET?: string;
+  // ⏱ 2026-09-16 — REVENUECAT_WEBHOOK_SECRET removed with the retired legacy
+  // RevenueCat route. The platform door reads REVENUECAT_WEBHOOK_SIGNING_SECRET.
 }
 
 /**

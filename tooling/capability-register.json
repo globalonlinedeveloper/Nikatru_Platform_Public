@@ -51,8 +51,10 @@
       "alone is blind (all four verified 2026-07-28):",
       "  a. `*.fromEnvironment('KEY')` in Dart -- MULTILINE. A line-based grep finds 2 of the 11 that",
       "     exist, because dart format wraps the literal onto the next line. UPDATE_URL is one it misses.",
-      "  b. `interface Env` in services/*/src/types.ts -- REVENUECAT_WEBHOOK_SECRET lives ONLY here, so",
-      "     without it RevenueCat, the amendment's own example, is invisible.",
+      "  b. `interface Env` in services/*/src/types.ts -- REVENUECAT_WEBHOOK_SECRET lived ONLY here, so",
+      "     without it RevenueCat, the amendment's own example, was invisible. (2026-09-16: that secret",
+      "     retired with the legacy route; the platform verifier's REVENUECAT_WEBHOOK_SIGNING_SECRET is",
+      "     read dynamically, like PADDLE_NOTIFICATION_SECRET, and is not an Env key.)",
       "  c. wrangler `binding` keys AND `ratelimits[].name` -- ratelimits uses `name`, not `binding`, so",
       "     a binding-only scan cannot see EVENTS_LIMITER.",
       "  d. `triggers.crons` -- a schedule is an external surface too; a dead cron looks like a live one.",
@@ -153,11 +155,10 @@
       }
     },
     "revenuecat": {
-      "surface": "Subscription entitlement provider — the client SDK key and the server webhook secret.",
+      "surface": "Subscription entitlement provider — the client SDK key. (The server webhook secret left this list 2026-09-16 with the legacy bearer route; the platform money door's signing secret is a registry-declared destination secret, as Paddle's is.)",
       "stickiness": "★★★★ — payments, the stickiest point the standard names.",
       "surfaces": [
-        "REVENUECAT_KEY",
-        "REVENUECAT_WEBHOOK_SECRET"
+        "REVENUECAT_KEY"
       ],
       "openProtocol": "NO — payment APIs are proprietary and there is no standard to speak. This is precisely why part 4 carries the weight for this vendor.",
       "seam": {

@@ -259,8 +259,10 @@ function accessForStatus(status: string): {
       return { access: 'trialing', endsWithReason: null };
     case 'canceled':
       // Auto-renew is off. The already-paid period is honoured — revoking here
-      // is the exact defect services/subscriptiontracker-api/src/routes/webhooks.ts:40-63
-      // records and fixed: "do not revoke on cancel-at-period-end".
+      // is the exact defect the legacy RevenueCat route recorded and fixed: "do not
+      // revoke on cancel-at-period-end". That route was retired 2026-09-16; its
+      // ENTITLEMENT LIFECYCLE header reads back with
+      // `git show 9698fdce:services/subscriptiontracker-api/src/routes/webhooks.ts`.
       return { access: 'until_end', endsWithReason: 'cancelled_at_period_end' };
     case 'past_due':
       // A charge failed and the rail is retrying. Access continues to the end of

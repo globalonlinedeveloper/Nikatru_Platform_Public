@@ -69,6 +69,16 @@
 //   O8  the entire `ON CONFLICT … DO UPDATE -> caught: "COVERAGE LOST — no conditional UPSERT
 //        SET … WHERE` cut from webhooks.ts     … was parsed out of …"
 //
+// ⏱ 2026-09-16 — O1, O3, O6, O7 AND O8 NAME FILES THAT ARE GONE. The legacy
+// RevenueCat route (webhooks.ts) and its canonicaliser (`isoFromEpochMs` in
+// validate.ts) were retired for services/platform's POST /v1/money/revenuecat
+// (O-REVENUECAT-VERIFIER leg b). The guard now REQUIRES store.ts and
+// `normalizeInstant` alone, and limb 7 reads services/platform/src/lib/mor/
+// revenuecat.ts. The cases below were retargeted rather than deleted: the
+// canonicaliser cases run on `normalizeInstant`, and the old route survives as an
+// OPTIONAL fixture (`legacyWriter`) that proves a writer growing back under
+// services/ is still swept. The list above is kept as the dated record it is.
+//
 // ⚠️ AND THE ONE THAT DID NOT COUNT, recorded because it is the failure mode of
 // mutation testing itself: O8's first attempt anchored its end-of-cut on the
 // FIRST occurrence of `OR excluded.occurred_at > …`, which is in the file's
@@ -455,7 +465,9 @@ ${rcDart(rcEvents)}
 `;
 }
 
-/** The RevenueCat half's canonicaliser. */
+/** The RETIRED RevenueCat half's canonicaliser (2026-09-16). Written only when a
+ *  case asks for the legacy writer, so the tree that fixture builds still compiles
+ *  in a reader's head; the guard no longer requires it. */
 function validateTs(o = {}) {
   const bypass = o.rcBypass ? '  if (typeof ms === \'string\') return ms;\n' : '';
   const canonical = o.rcCanonical ?? 'new Date(ms).toISOString()';
@@ -526,20 +538,32 @@ const workerSets = (o = {}) => {
 };
 
 /**
- * services/subscriptiontracker-api/src/routes/webhooks.ts — the bearer-gated legacy writer.
+ * services/platform/src/lib/mor/revenuecat.ts — the runtime limb 7 reads since
+ * 2026-09-16. It carries ONLY the limb-7 shape (the import and/or the literal
+ * sets); the DEFAULT keeps the literal sets and no import, so every divergence
+ * case below still measures what it measured when the runtime was the legacy
+ * Worker route.
+ */
+function rcRuntimeTs(o = {}) {
+  const imports = o.workerImportsContract
+    ? "import { revocationReasonForRevenueCatEvent } from '../../../../../contracts/entitlement/contract.js';\n"
+    : '';
+  return `${imports}${workerSets(o)}export const rc = 1;\n`;
+}
+
+/**
+ * services/subscriptiontracker-api/src/routes/webhooks.ts — the bearer-gated legacy
+ * writer, RETIRED 2026-09-16. Written only when a case passes `legacyWriter`,
+ * to prove limb 5's sweep still measures a second writer that grows back.
  *
  * ⚠️ ITS HEADER COMMENT CARRIES THE CLAUSE VERBATIM, exactly as the real file
- * does. That is the fixture's whole point in the `only in a comment` case below:
+ * did. That is the fixture's whole point in the `only in a comment` case below:
  * a text scan of this file finds the clause with the SQL deleted.
  */
 function webhooksTs(o = {}) {
   const call = o.rcUncalled ? 'Number(ev.event_timestamp_ms)' : 'isoFromEpochMs(ev.event_timestamp_ms)';
-  const imports = o.workerImportsContract
-    ? "import { revocationReasonForRevenueCatEvent } from '../../../../../contracts/entitlement/contract.js';\n"
-    : '';
   return `
 import { isoFromEpochMs } from '../lib/validate';
-${imports}${workerSets(o)}
 
 // ORDERING — the same defence services/platform/src/lib/mor/store.ts applies:
 //   \`DO UPDATE … WHERE entitlements.occurred_at IS NULL
@@ -598,8 +622,11 @@ function run(o = {}) {
     writeFileSync(join(generated, 'entitlement_contract.g.dart'), o.dart ?? contractDart(o.dartReasons ?? codeReasons, o.dartRc ?? RC_EVENTS));
   }
   if (o.store !== null) writeFileSync(join(mor, 'store.ts'), o.store ?? storeTs(o));
-  if (o.webhooks !== null) writeFileSync(join(routes, 'webhooks.ts'), o.webhooks ?? webhooksTs(o));
-  if (o.validate !== null) writeFileSync(join(lib, 'validate.ts'), o.validate ?? validateTs(o));
+  if (o.rcRuntime !== null) writeFileSync(join(mor, 'revenuecat.ts'), o.rcRuntime ?? rcRuntimeTs(o));
+  if (o.legacyWriter) {
+    writeFileSync(join(routes, 'webhooks.ts'), webhooksTs(o));
+    writeFileSync(join(lib, 'validate.ts'), validateTs(o));
+  }
   // An extra production file under services/, for the tests that prove the
   // sweep is derived from the tree rather than from the two named writers.
   if (o.extraFile) {
@@ -882,17 +909,25 @@ describe('assert-entitlement-contract limb 4 — every runtime copy of the vocab
   });
 });
 
-describe('assert-entitlement-contract limb 5 — the two writers of the shared row agree on what "older" means', () => {
-  test('PASSES when both writers carry the clause and both instants are canonicalised', () => {
+describe('assert-entitlement-contract limb 5 — every writer of the shared row agrees on what "older" means', () => {
+  test('PASSES when the one required writer carries the clause and its instant is canonicalised', () => {
+    // ⏱ 2026-09-16 — ONE required writer now (store.ts); the legacy route is retired.
     const r = run();
     assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /2 conditional UPSERT\(s\) into entitlements/);
+    assert.match(r.out, /1 conditional UPSERT\(s\) into entitlements across 1 file\(s\)/);
+    assert.match(r.out, /fed by 1 canonicaliser\(s\)/);
   });
 
-  test('FAILS when ONE writer flips `>` to `>=` — the parity case, and it prints found vs required', () => {
+  test('a correct SECOND writer growing back is swept, and does not have to be required', () => {
+    const r = run({ legacyWriter: true });
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /2 conditional UPSERT\(s\) into entitlements across 2 file\(s\)/);
+  });
+
+  test('FAILS when a writer that GROWS BACK flips `>` to `>=` — the parity case, and it prints found vs required', () => {
     // The whole defect in one character: `>=` re-applies a redelivery of the
     // SAME event, and the two writers now disagree about what a tie means.
-    const r = run({ rcTail: CLAUSE.replace('> entitlements', '>= entitlements') });
+    const r = run({ legacyWriter: true, rcTail: CLAUSE.replace('> entitlements', '>= entitlements') });
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /services\/subscriptiontracker-api\/src\/routes\/webhooks\.ts — the UPSERT's ordering clause is not the shared one/);
     assert.match(r.out, /found: +WHERE entitlements\.occurred_at IS NULL OR excluded\.occurred_at >= entitlements\.occurred_at/);
@@ -916,15 +951,15 @@ describe('assert-entitlement-contract limb 5 — the two writers of the shared r
     // webhooksTs()'s header comment carries the clause verbatim, exactly as the
     // real file does — this fixture passes a text scan and must fail this guard.
     // The real-tree form of this is mutation O6 in the header.
-    const r = run({ rcTail: null });
+    const r = run({ legacyWriter: true, rcTail: null });
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /services\/subscriptiontracker-api\/src\/routes\/webhooks\.ts — the UPSERT into `entitlements` is UNCONDITIONAL/);
   });
 
   test('COVERAGE LOST when a required writer loses its ON CONFLICT entirely', () => {
-    const r = run({ rcUpsert: false });
+    const r = run({ storeUpsert: false });
     assert.equal(r.code, 1, r.out);
-    assert.match(r.out, /COVERAGE LOST — no conditional UPSERT into `entitlements` was parsed out of services\/subscriptiontracker-api\/src\/routes\/webhooks\.ts/);
+    assert.match(r.out, /COVERAGE LOST — no conditional UPSERT into `entitlements` was parsed out of services\/platform\/src\/lib\/mor\/store\.ts/);
   });
 
   test('COVERAGE LOST when a required writer file is gone — a missing writer is not a compliant one', () => {
@@ -973,14 +1008,14 @@ describe('assert-entitlement-contract limb 5 — the two writers of the shared r
   });
 
   test('FAILS when a canonicaliser stops ending in toISOString()', () => {
-    const r = run({ rcCanonical: 'new Date(ms).toUTCString()' });
+    const r = run({ morCanonical: 'new Date(ms).toUTCString()' });
     assert.equal(r.code, 1, r.out);
-    assert.match(r.out, /isoFromEpochMs in services\/subscriptiontracker-api\/src\/lib\/validate\.ts never produces `new Date\(…\)\.toISOString\(\)`/);
+    assert.match(r.out, /normalizeInstant in services\/platform\/src\/lib\/mor\/contract\.ts never produces `new Date\(…\)\.toISOString\(\)`/);
     assert.match(r.out, /sorts lexicographically/);
   });
 
   test('FAILS when a canonicaliser stores the raw epoch-ms instead', () => {
-    const r = run({ rcCanonical: 'String(ms)' });
+    const r = run({ morCanonical: 'String(ms)' });
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /never produces `new Date\(…\)\.toISOString\(\)`/);
   });
@@ -989,9 +1024,9 @@ describe('assert-entitlement-contract limb 5 — the two writers of the shared r
     // Mutation O4. The "contains new Date(…).toISOString()" check still passes
     // here — this is the input that makes the per-return rule fail ALONE, which
     // is what stops it being an assertion that cannot fail.
-    const r = run({ rcBypass: true });
+    const r = run({ morBypass: true });
     assert.equal(r.code, 1, r.out);
-    assert.match(r.out, /returns `ms` — an instant that did not go through `\.toISOString\(\)`/);
+    assert.match(r.out, /returns `\{ ok: true, iso: v \}` — an instant that did not go through `\.toISOString\(\)`/);
     assert.doesNotMatch(r.out, /never produces/);
   });
 
@@ -1009,21 +1044,23 @@ describe('assert-entitlement-contract limb 5 — the two writers of the shared r
   });
 
   test('COVERAGE LOST when a canonicaliser is renamed', () => {
-    const r = run({ rcFnName: 'toIsoInstant' });
+    const r = run({ morFnName: 'toIsoInstant' });
     assert.equal(r.code, 1, r.out);
-    assert.match(r.out, /COVERAGE LOST — no `export function isoFromEpochMs` in services\/subscriptiontracker-api\/src\/lib\/validate\.ts/);
+    assert.match(r.out, /COVERAGE LOST — no `export function normalizeInstant` in services\/platform\/src\/lib\/mor\/contract\.ts/);
   });
 
   test('COVERAGE LOST when a canonicaliser file is gone', () => {
-    const r = run({ validate: null });
+    const r = run({ contract: null });
     assert.equal(r.code, 1, r.out);
-    assert.match(r.out, /COVERAGE LOST — services\/subscriptiontracker-api\/src\/lib\/validate\.ts does not exist/);
+    assert.match(r.out, /COVERAGE LOST — services\/platform\/src\/lib\/mor\/contract\.ts does not exist, so `normalizeInstant`/);
   });
 
-  test('FAILS when a canonicaliser is called from nowhere else — a dead seam reports healthy', () => {
-    const r = run({ rcUncalled: true });
-    assert.equal(r.code, 1, r.out);
-    assert.match(r.out, /isoFromEpochMs is declared in .* but CALLED from nowhere else under services\//);
+  test('the RETIRED canonicaliser is not required — no validate.ts, no isoFromEpochMs, still ok', () => {
+    // ⏱ 2026-09-16. Until today a missing validate.ts was COVERAGE LOST. The route
+    // that called it is retired, so demanding it would be a floor on dead code.
+    const r = run();
+    assert.equal(r.code, 0, r.out);
+    assert.doesNotMatch(r.out, /isoFromEpochMs/);
   });
 
   test('FAILS when the MoR canonicaliser is called from nowhere else', () => {
@@ -1057,15 +1094,15 @@ describe('assert-entitlement-contract limb 5 — the two writers of the shared r
     // copy here is even correct on its own terms — it ends in toISOString() —
     // which is exactly why only the CALL can settle the question.
     const r = run({
-      rcUncalled: true,
+      morUncalled: true,
       extraFile: {
         dir: 'services/subscriptiontracker-api/src/lib',
         name: 'time.ts',
-        body: 'export function isoFromEpochMs(ms: number): string {\n  return new Date(ms).toISOString();\n}\n',
+        body: 'export function normalizeInstant(ms: number): string {\n  return new Date(ms).toISOString();\n}\n',
       },
     });
     assert.equal(r.code, 1, r.out);
-    assert.match(r.out, /isoFromEpochMs is declared in .* but CALLED from nowhere else/);
+    assert.match(r.out, /normalizeInstant is declared in .* but CALLED from nowhere else/);
   });
 });
 
@@ -1286,6 +1323,10 @@ describe('assert-entitlement-contract limb 6 — the RevenueCat event map is one
 
 // ─────────────────────────────────────────────────────────────────────────────
 describe('assert-entitlement-contract limb 7 — the one runtime that already reads a RevenueCat event', () => {
+  // ⏱ 2026-09-16 — THAT RUNTIME IS NOW services/platform/src/lib/mor/revenuecat.ts.
+  // The Worker route the paragraph below describes was retired; the fixture writes
+  // the limb-7 shape at the new path (rcRuntimeTs) and every case keeps its
+  // meaning. The paragraph is kept as written.
   // services/subscriptiontracker-api/src/routes/webhooks.ts serves POST /revenuecat today and
   // imports nothing from contracts/: it carries ACTIVE_TYPES / INACTIVE_TYPES /
   // GRACE_TYPES as literal sets. So limb 6's four guarded copies are the four
@@ -1379,10 +1420,10 @@ describe('assert-entitlement-contract limb 7 — the one runtime that already re
     assert.match(r.out, /does not import contracts\/entitlement\/contract\.js either/);
   });
 
-  test('COVERAGE LOST when that Worker file is gone entirely', () => {
-    const r = run({ webhooks: null });
+  test('COVERAGE LOST when that runtime file is gone entirely', () => {
+    const r = run({ rcRuntime: null });
     assert.equal(r.code, 1, r.out);
-    assert.match(r.out, /COVERAGE LOST — services\/subscriptiontracker-api\/src\/routes\/webhooks\.ts does not exist/);
+    assert.match(r.out, /COVERAGE LOST — services\/platform\/src\/lib\/mor\/revenuecat\.ts does not exist/);
   });
 
   test('THE INTENDED FIX SATISFIES THIS LIMB BY DELETION — the Worker imports the contract', () => {
@@ -1467,9 +1508,9 @@ describe('assert-entitlement-contract limb 7b — the SWEEP, so a THIRD copy is 
   test('COVERAGE LOST when the sweep no longer recognises the required member', () => {
     // The half limb 5 puts on its own sweep. A sweep that matched nothing reads
     // exactly like a tree with no duplication left in it.
-    const r = run({ webhooks: 'export const nothing = 1;\n' });
+    const r = run({ rcRuntime: 'export const nothing = 1;\n' });
     assert.equal(r.code, 1, r.out);
-    assert.match(r.out, /did not recognise services\/subscriptiontracker-api\/src\/routes\/webhooks\.ts as a\s+RevenueCat transcription/);
+    assert.match(r.out, /did not recognise services\/platform\/src\/lib\/mor\/revenuecat\.ts as a\s+RevenueCat transcription/);
   });
 });
 

@@ -20,6 +20,10 @@ import { REVENUECAT_APP_IDS } from './revenuecat-app-ids';
 // string. This adapter puts RevenueCat on `POST /v1/money/revenuecat`, the door
 // every rail already uses (routes/money.ts), with a check stronger than a bearer:
 // a signature over the body.
+// ⏱ 2026-09-16 — THIS IS NOW THE ONLY RevenueCat RECEIVER. The bearer-gated
+// legacy route in services/subscriptiontracker-api was retired (leg b of the row);
+// the paragraph above is left as written. tooling/ci/assert-entitlement-contract.mjs
+// limb 7 now reads THIS file as the runtime that takes RevenueCat events.
 //
 // ── WHAT IS ESTABLISHED HERE, AND FROM WHERE ─────────────────────────────────
 // Read 2026-09-15 from RevenueCat's own documentation

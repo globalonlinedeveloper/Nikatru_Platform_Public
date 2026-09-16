@@ -12,7 +12,8 @@
   //
   // Secrets are NOT set here (never committed): set with `wrangler secret put`.
   //   wrangler secret put SUPABASE_JWT_SECRET       # optional HS256 legacy fallback
-  //   wrangler secret put REVENUECAT_WEBHOOK_SECRET  # RevenueCat webhook auth
+  // (REVENUECAT_WEBHOOK_SECRET is no longer read here: the legacy RevenueCat route
+  // was retired 2026-09-16 in favour of services/platform's /v1/money/revenuecat.)
   // ───────────────────────────────────────────────────────────────────────────
   // ✅ THE DEPLOYED NAME MOVED WITH THE SLUG ON 2026-09-11 ([ADR 079]).
   // Until then this file deployed as `subly-api` and recorded the rename as

@@ -81,10 +81,10 @@ jobs:
             subscriptiontracker_api:
               - 'services/subscriptiontracker-api/**'
               - 'services/_shared/**'
-              # why: since 2026-09-15 src/routes/webhooks.ts imports the RevenueCat
-              # event vocabulary from contracts/entitlement/contract.js, which
-              # esbuild inlines — the comment under `platform` below predates it.
-              - 'contracts/entitlement/*.js'
+              # why: no contracts/entitlement claim here. The one importer
+              # (src/routes/webhooks.ts, 2026-09-15) was retired 2026-09-16, so
+              # this Worker again imports nothing from contracts/ — the comment
+              # under `platform` below is true again.
               - '.github/workflows/deploy-workers.yml'
             platform:
               - 'services/platform/**'

@@ -532,11 +532,6 @@
         "note": "One DELETE plus one INSERT per category, deliberately in ONE batch so the replace is atomic. The bound is MAX_CATEGORIES + 1, and it currently exceeds the ceiling — see the `@ceiling-exceeds` declaration at the constant."
       },
       {
-        "file": "services/subscriptiontracker-api/src/routes/webhooks.ts",
-        "boundedBy": "MAX_ENTITLEMENT_IDS",
-        "note": "One UPSERT per entitlement id on a validated RevenueCat event."
-      },
-      {
         "file": "services/platform/src/scheduled.ts",
         "unboundedReason": "The heartbeat writes ONE row per cron TARGET, and the target list is `appTargets()` — a compiled-in array in this repo, not caller input, so its size is a source edit and is visible in review. It is nonetheless unbounded in the arithmetic sense: at 50 apps this batch is 50 statements and crosses the Free ceiling under the worst-case reading. [4]B-11 (increment 9) is where the job/target set stops being a hardcoded array, and the chunking belongs with it rather than here, where it would be a second uncoordinated fan-out policy."
       },

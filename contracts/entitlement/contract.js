@@ -182,6 +182,12 @@ export function restoresAccess(reason) {
  *   · the three events only the Worker knew — NON_RENEWING_PURCHASE,
  *     PRODUCT_CHANGE, SUBSCRIPTION_EXTENDED — are rows now, with the vendor's
  *     own sentence, so the table and the one runtime that reads it are one list.
+ *
+ * ⏱ 2026-09-16 — AND THAT WORKER ROUTE IS RETIRED (O-REVENUECAT-VERIFIER leg b).
+ * The one runtime that reads a RevenueCat event is now
+ * services/platform/src/lib/mor/revenuecat.ts, which imports this file; limb 7
+ * of tooling/ci/assert-entitlement-contract.mjs reads it there. The two
+ * paragraphs above are kept as what was true on their dates.
  */
 
 /** @type {readonly RevenueCatEventReason[]} */
@@ -190,13 +196,13 @@ export const REVENUECAT_EVENT_REASONS = [
     event: 'CANCELLATION',
     reason: 'cancelled_at_period_end',
     dateDerived: true,
-    why: 'ONE EVENT NAME, TWO OPPOSITE ACCESS OUTCOMES, AND THE NAME CANNOT TELL THEM APART. Auto-renew turned off leaves access running to the paid-through date, which is exactly what cancelled_at_period_end names — mapping that to subscription_expired would end access on the day the user pressed cancel. But RevenueCat sends the SAME event for a REFUND, and then expiration_at_ms is in the PAST, access ends at once, and the honest reason is refund_approved. The two shapes differ only by the DATE, never by the event name, which is why this row is dateDerived: the reason above is the cancel-at-period-end shape and a consumer that revokes on the event name alone is wrong on the other one. Already documented and already implemented in this tree: services/subscriptiontracker-api/src/routes/webhooks.ts:53-57 states the split in prose, and resolveIsActive at :132 decides it on the paid-through ruling this row yields by comparing expiration_at_ms against now (re-measured 2026-09-15; until then the Worker held CANCELLATION in its own GRACE_TYPES set). THE REFUND SHAPE, RECORDED RATHER THAN LEFT TO BE REDISCOVERED: on the refund reading of this event the honest reason is refund_approved and access ends at once; that outcome is DATE-DERIVED and it belongs to the VERIFIER, not to this mapper, because the event name cannot carry it and only expiration_at_ms against now can decide it (services/subscriptiontracker-api/src/routes/webhooks.ts:53-57 states the split in prose, and resolveIsActive at :132 is the comparison, on the paid-through ruling it shares with BILLING_ISSUE). It is recorded in this why rather than as a second row because a second row keyed on the same event name would make the table answer twice for one key, and the reason a consumer must not take from the name is precisely the one it would then read first. FIVE OF THE EIGHT SEEDED REASONS ARE REACHABLE FROM NO REVENUECAT EVENT AT ALL TODAY: refund_approved, chargeback, chargeback_reversed, trial_expired and payment_failed_final. Every one of them arrives on the MoR (Paddle) rail or from an operator, never from this table, so a client that renders one of those strings did not learn it here.',
+    why: 'ONE EVENT NAME, TWO OPPOSITE ACCESS OUTCOMES, AND THE NAME CANNOT TELL THEM APART. Auto-renew turned off leaves access running to the paid-through date, which is exactly what cancelled_at_period_end names — mapping that to subscription_expired would end access on the day the user pressed cancel. But RevenueCat sends the SAME event for a REFUND, and then expiration_at_ms is in the PAST, access ends at once, and the honest reason is refund_approved. The two shapes differ only by the DATE, never by the event name, which is why this row is dateDerived: the reason above is the cancel-at-period-end shape and a consumer that revokes on the event name alone is wrong on the other one. Already documented and already implemented in this tree: services/platform/src/lib/mor/revenuecat.ts states the split in its header (decision C) and parseRevenueCatEvent decides it on the paid-through ruling this row yields — a cancel_reason of CUSTOMER_SUPPORT revokes at once as refund_approved, another stated reason runs to expiration_at_ms, and no usable reason lets the past date decide (re-pointed 2026-09-16 from the retired legacy route services/subscriptiontracker-api/src/routes/webhooks.ts, whose resolveIsActive made the date comparison; until 2026-09-15 that Worker held CANCELLATION in its own GRACE_TYPES set). THE REFUND SHAPE, RECORDED RATHER THAN LEFT TO BE REDISCOVERED: on the refund reading of this event the honest reason is refund_approved and access ends at once; that outcome is DATE-DERIVED and it belongs to the VERIFIER, not to this mapper, because the event name cannot carry it and only expiration_at_ms against now can decide it (services/platform/src/lib/mor/revenuecat.ts parseRevenueCatEvent is that verifier since 2026-09-16, on the paid-through ruling it shares with BILLING_ISSUE; the retired legacy route services/subscriptiontracker-api/src/routes/webhooks.ts was, before it). It is recorded in this why rather than as a second row because a second row keyed on the same event name would make the table answer twice for one key, and the reason a consumer must not take from the name is precisely the one it would then read first. FIVE OF THE EIGHT SEEDED REASONS ARE REACHABLE FROM NO REVENUECAT EVENT AT ALL TODAY: refund_approved, chargeback, chargeback_reversed, trial_expired and payment_failed_final. Every one of them arrives on the MoR (Paddle) rail or from an operator, never from this table, so a client that renders one of those strings did not learn it here.',
   },
   {
     event: 'EXPIRATION',
     reason: 'subscription_expired',
     dateDerived: false,
-    why: 'The subscription reached its end and did not renew. This is the event that actually ends access on its own authority (services/subscriptiontracker-api/src/routes/webhooks.ts reads this row as the revoke ruling; until 2026-09-15 it was the Worker\'s own INACTIVE_TYPES set); the finer expiration_reason sub-field is NOT read here, because a per-sub-reason table would be a second vendor fact nobody has verified.',
+    why: 'The subscription reached its end and did not renew. This is the event that actually ends access on its own authority (services/platform/src/lib/mor/revenuecat.ts reads this row as the revoke ruling; until 2026-09-16 the retired legacy route services/subscriptiontracker-api/src/routes/webhooks.ts did, and until 2026-09-15 it was that Worker\'s own INACTIVE_TYPES set); the finer expiration_reason sub-field is NOT read here, because a per-sub-reason table would be a second vendor fact nobody has verified.',
   },
   {
     event: 'SUBSCRIPTION_PAUSED',
@@ -208,13 +214,13 @@ export const REVENUECAT_EVENT_REASONS = [
     event: 'NON_RENEWING_PURCHASE',
     reason: null,
     dateDerived: false,
-    why: 'NOT A REVOCATION — a grant. The vendor reference: "A customer has made a purchase that won\'t auto-renew." Added 2026-09-15 when services/subscriptiontracker-api/src/routes/webhooks.ts stopped restating its own sets; that Worker already granted on it outright (it was one of the three names limb 7 of tooling/ci/assert-entitlement-contract.mjs declared as worker-only). How long the grant lasts is the event\'s own expiration_at_ms, which the reader stores as expires_at; a CANCELLATION of the same purchase is that row\'s date-derived path.',
+    why: 'NOT A REVOCATION — a grant. The vendor reference: "A customer has made a purchase that won\'t auto-renew." Added 2026-09-15 when services/subscriptiontracker-api/src/routes/webhooks.ts (retired 2026-09-16) stopped restating its own sets; that Worker already granted on it outright (it was one of the three names limb 7 of tooling/ci/assert-entitlement-contract.mjs declared as worker-only). How long the grant lasts is the event\'s own expiration_at_ms, which the reader stores as expires_at; a CANCELLATION of the same purchase is that row\'s date-derived path.',
   },
   {
     event: 'PRODUCT_CHANGE',
     reason: null,
     dateDerived: false,
-    why: 'NOT A REVOCATION — the subscriber moved between products, and access continues. The vendor reference warns: "This doesn\'t mean the new subscription is in effect immediately." That is a statement about WHICH product, not about whether access stands, and this table decides only the second; the reader keeps granting on the event\'s own expiration_at_ms, as services/subscriptiontracker-api/src/routes/webhooks.ts did when it restated this name itself (a worker-only name limb 7 declared, added here 2026-09-15). A downgrade that later lapses arrives as EXPIRATION.',
+    why: 'NOT A REVOCATION — the subscriber moved between products, and access continues. The vendor reference warns: "This doesn\'t mean the new subscription is in effect immediately." That is a statement about WHICH product, not about whether access stands, and this table decides only the second; the reader keeps granting on the event\'s own expiration_at_ms, as services/platform/src/lib/mor/revenuecat.ts does today and as the retired legacy route services/subscriptiontracker-api/src/routes/webhooks.ts did when it restated this name itself (a worker-only name limb 7 declared, added here 2026-09-15). A downgrade that later lapses arrives as EXPIRATION.',
   },
   {
     event: 'SUBSCRIPTION_EXTENDED',
@@ -226,7 +232,7 @@ export const REVENUECAT_EVENT_REASONS = [
     event: 'BILLING_ISSUE',
     reason: null,
     dateDerived: true,
-    why: 'NOT A REVOCATION BY NAME. It is a grace-period warning and the store retries; the final outcome arrives later as EXPIRATION. Mapping it to payment_failed_final would lock out a customer whose card recovers, which is the failure this whole table is shaped to avoid. It is dateDerived for the same reason CANCELLATION is: whether access still stands is the paid-through date, not the event name — services/subscriptiontracker-api/src/routes/webhooks.ts reads this row as the paid-through ruling beside CANCELLATION (until 2026-09-15, the Worker\'s own GRACE_TYPES set).',
+    why: 'NOT A REVOCATION BY NAME. It is a grace-period warning and the store retries; the final outcome arrives later as EXPIRATION. Mapping it to payment_failed_final would lock out a customer whose card recovers, which is the failure this whole table is shaped to avoid. It is dateDerived for the same reason CANCELLATION is: whether access still stands is the paid-through date, not the event name — services/platform/src/lib/mor/revenuecat.ts reads this row as the paid-through ruling beside CANCELLATION and ends a lapsed one as payment_failed_final (until 2026-09-16 the retired legacy route services/subscriptiontracker-api/src/routes/webhooks.ts read it; until 2026-09-15 it was that Worker\'s own GRACE_TYPES set).',
   },
   {
     event: 'INITIAL_PURCHASE',

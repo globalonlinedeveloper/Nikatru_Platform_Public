@@ -140,16 +140,6 @@
           "noLimiterReason": "It DOES I/O — two D1 reads (APP_DB, PLATFORM_DB) and one JWKS subrequest — and what bounds it is the per-isolate MEMO, not a limiter: each probe is a reading with a TTL (services/_shared/src/health.ts, READING_TTL_MS = 5 s for D1, JWKS_READING_TTL_MS for the JWKS fetch), so a flood buys at most one fan-out per TTL per isolate, (isolates × 1 per TTL) in total, and every other request costs the Worker invocation itself, which the account-wide request ceiling already bounds. Identical reasoning to the shared host’s health route, and corrected on the same day (2026-09-10) for the same reason: the field claimed the handler touched no dependency at all while it probed three, and limb 4b of assert-platform-register.mjs now refuses that claim. [4]B-13"
         },
         {
-          "id": "subscriptiontracker-webhook-revenuecat",
-          "method": "POST",
-          "path": "/v1/webhooks/revenuecat",
-          "auth": "public",
-          "owningFile": "services/subscriptiontracker-api/src/routes/webhooks.ts",
-          "purpose": "The RevenueCat notification rail. Authenticated by a SHARED SECRET rather than a user JWT (constant-time compare against REVENUECAT_WEBHOOK_SECRET, 503 when unset), refuses any event from a money world that is not this deploy’s ([5]M-12), then derives the entitlement row in the shared PLATFORM_DB. `auth: public` here means \"no user token\", which is the sense [B-13] asks about.",
-          "unconsumedReason": "NO CLIENT IN THIS REPO, BY CONSTRUCTION — the caller is RevenueCat’s own delivery system, not code we ship. Same shape and same honest answer as POST /v1/money/:provider on the shared host. What replaces the client check for this route is its test file (services/subscriptiontracker-api/test/webhooks.test.ts) plus tooling/ci/assert-mor-adapters.mjs, which asserts across ALL of services/** that a verifier exists, is CALLED, and is the only path to an entitlements write.",
-          "noLimiterReason": "⚠️ A REAL GAP, RECORDED RATHER THAN DRESSED UP — this route is not in the class that cannot be made expensive: it does D1 work. Two things bound it today and neither is a limiter: the secret is compared in constant time BEFORE the body is read or any statement is prepared (routes/webhooks.ts:441-444), so an unauthenticated flood costs one comparison; and the account-wide Workers ceiling bounds the rest. There is no limiter CALL because services/subscriptiontracker-api/wrangler.jsonc binds no `ratelimits` namespace at all — closing this is a binding change plus a register entry, and MONEY_CEILING_LIMITER on the shared host is the shape to copy (its own namespace, keyed `edge:<colo>:<asn>` from `request.cf`, so no caller-chosen value is in the key). Printed on every run so it cannot go quiet. [4]B-13"
-        },
-        {
           "id": "subscriptiontracker-account-delete",
           "method": "DELETE",
           "path": "/v1/account",
@@ -528,7 +518,6 @@
         "services/platform/src/routes/events.ts",
         "services/platform/src/scheduled.ts",
         "services/subscriptiontracker-api/src/routes/entitlements.ts",
-        "services/subscriptiontracker-api/src/routes/webhooks.ts",
         "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/src/routes/account.ts"
       ]
     },
