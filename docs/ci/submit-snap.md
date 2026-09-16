@@ -487,7 +487,7 @@ the structured half reports a folded block at the line of its `run:` key.
 A folded record call therefore appears at two different line numbers to
 the two readers and is reported as UNATTRIBUTED — COVERAGE LOST. Every
 other record call in this repository is written on one line for the same
-reason (deploy-web.yml:256, deploy-workers.yml:165, :236).
+reason (deploy-web.yml:340, deploy-workers.yml:183, :254 — re-measured 2026-09-16).
 
 ---
 

@@ -141,6 +141,14 @@ jobs:
       # the residue is, and it is carried in phase3-cutover-blockers.md 8.6 (residue
       # R10). Corrected 2026-09-07: this line said 8.2, which is the empty-sitekey
       # section, not the twelve-lane residue.
+      #
+      # ⏱ APPENDED 2026-09-16, EVERYTHING ABOVE LEFT AS WRITTEN: it predates
+      # [ADR 084] (owner, 2026-09-15, "Store builds skip it"). The twelve store and
+      # desktop lanes omit TURNSTILE_SITE_KEY BY DESIGN, not by defect: the key is
+      # declared in app_config.dart (AppConfig.isTurnstileConfigured), a non-web
+      # build takes CaptchaPosture.notOnThisChannel, and no store lane is owed a
+      # define. assert-store-build-config.mjs grades it both ways — W1: every web
+      # build passes the key; W2: a store build that passes it is refused.
       # 🔴 THE BASE HREF, RESOLVED FROM THE CATALOGUE AND NOT WRITTEN HERE.
       # [ADR 075] publishes every app at a PATH on the apex, so this build must be
       # compiled for `/<id>/` rather than for `/`. This job is a MATRIX over the

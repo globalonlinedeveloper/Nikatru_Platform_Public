@@ -43,7 +43,7 @@
 // scan found 2 of the 11 that existed. Both fold shapes are handled by
 // tooling/ci/workflow-scan.mjs, which is where that lesson lives.
 //
-// Comments are BLANKED before anything is read: `deploy-web.yml:162` is a
+// Comments are BLANKED before anything is read: `deploy-web.yml:242` is a
 // comment about a `--dart-define`, and counting it would demand an allowlist
 // entry for a define nobody passes — a failure caused by prose.
 //
@@ -57,6 +57,11 @@
 // scan. `grep -nE '^\s*#.*dart-define' .github/workflows/*.yml` returns exactly
 // one live subject, and it is the line named above, so the limb still has a
 // real comment that would be miscounted if comment-blanking stopped.
+// ⏱ RE-ANCHORED AGAIN 2026-09-16 (TRAPS git-08). The pointer above said
+// `deploy-web.yml:162`, which had already drifted onto the `flutter build web`
+// line; the comment it means ("APP_VERSION is the `--dart-define` two steps
+// up") was at :234 on main and is at :242 after a dated comment append. The
+// same grep now also returns :123, a quoted `grep -rn "dart-define=…"`.
 //
 // ── SCOPE ────────────────────────────────────────────────────────────────────
 // `--dart-define` and `--dart-define-from-file`, in every workflow. The
