@@ -457,7 +457,7 @@ describe('limb 5 — the sink ceiling names its probe, and refuses when the prob
     assert.equal(r.status, 0, out(r));
     assert.match(out(r), /⤷ delegated: ip_address on hostinger → tooling\/ci\/assert-glitchtip-no-ip\.mjs/);
     assert.match(out(r), /TRANSIT-ONLY, DELEGATED · privacy\.html denies "ip_address" and hostinger/);
-    assert.match(out(r), new RegExp(`ops duty ${LIVE_DUTY.replace(/\./g, '\\.')}, cadence on-demand`));
+    assert.ok(out(r).includes(`ops duty ${LIVE_DUTY}, cadence on-demand`), out(r));
   });
 
   test('…and a transit with NO delegate still prints NOT PROVEN — the delegation is per provider', () => {
