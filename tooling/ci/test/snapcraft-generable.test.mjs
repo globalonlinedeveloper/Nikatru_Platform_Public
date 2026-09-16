@@ -385,20 +385,20 @@ describe('assert-snapcraft-generable — it runs the generator and grades the re
   // ── COVERAGE LOST ─────────────────────────────────────────────────────────
   test('COVERAGE LOST when the register declares no linux store row', () => {
     const g = guard(tree({ mutateRegister: (reg) => { reg.channels[0].kind = 'direct'; } }));
-    assert.equal(g.code, 1, g.out);
+    assert.equal(g.code, 2, g.out);
     assert.match(g.out, /COVERAGE LOST/);
   });
 
   test('COVERAGE LOST when no app carries the store tree', () => {
     const g = guard(tree({ omitStoreTree: true }));
-    assert.equal(g.code, 1, g.out);
+    assert.equal(g.code, 2, g.out);
     assert.match(g.out, /COVERAGE LOST/);
     assert.match(g.out, /carries a "linux-snap" store tree/);
   });
 
   test('COVERAGE LOST when the workflow apt list cannot be read', () => {
     const g = guard(tree({ omitWorkflow: true }));
-    assert.equal(g.code, 1, g.out);
+    assert.equal(g.code, 2, g.out);
     assert.match(g.out, /COVERAGE LOST/);
   });
 
@@ -406,7 +406,7 @@ describe('assert-snapcraft-generable — it runs the generator and grades the re
     const root = tree();
     rmSync(join(root, 'apps'), { recursive: true, force: true });
     const g = guard(root);
-    assert.equal(g.code, 1, g.out);
+    assert.equal(g.code, 2, g.out);
     assert.match(g.out, /COVERAGE LOST/);
     assert.match(g.out, /apps does not exist/);
   });
@@ -548,7 +548,7 @@ describe('assert-snapcraft-generable — it runs the generator and grades the re
     const root = tree();
     const gen = generate(root, ['--bundle', bundle()]);
     const g = guard(root, ['--emitted', gen.recipe, '--app', 'not-an-app']);
-    assert.equal(g.code, 1, g.out);
+    assert.equal(g.code, 2, g.out);
     assert.match(g.out, /COVERAGE LOST/);
   });
 });

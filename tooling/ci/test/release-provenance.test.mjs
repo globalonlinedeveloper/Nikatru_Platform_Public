@@ -341,14 +341,14 @@ describe('assert-release-provenance — a publish must record what shipped', () 
 describe('assert-release-provenance — coverage self-checks', () => {
   test('FAILS COVERAGE LOST when assert-gate-passed.mjs is gone from disk', () => {
     const { code, out } = run(tree({ omitGateScript: true }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /assert-gate-passed\.mjs does not exist/);
   });
 
   test('FAILS COVERAGE LOST when record-deployment.mjs is gone from disk', () => {
     const { code, out } = run(tree({ omitMarkerScript: true }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
   });
 
@@ -356,14 +356,14 @@ describe('assert-release-provenance — coverage self-checks', () => {
     const noRelease = buildWorkflow().replace('--release', '--profile');
     const noReleaseDeploy = deployWorkflow();
     const { code, out } = run(tree({ build: noRelease, deploy: noReleaseDeploy }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /ZERO jobs .* run a `flutter build` in release mode/);
   });
 
   test('FAILS COVERAGE LOST when no publish step exists anywhere', () => {
     const noPublish = deployWorkflow().replace(DEPLOY_STEP, '      - run: echo nothing');
     const { code, out } = run(tree({ deploy: noPublish }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /ZERO publishing jobs/);
   });
 
@@ -759,7 +759,7 @@ describe('assert-release-provenance — a --submit job is gated on an environmen
   // ── the domain floor, and the two ways it is not a pass ────────────────────
   test('COVERAGE LOST when no job invokes a --submit verb anywhere', () => {
     const { code, out } = run(tree({ submit: null }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /ZERO jobs invoke a `--submit` verb/);
   });
@@ -770,13 +770,13 @@ describe('assert-release-provenance — a --submit job is gated on an environmen
     // comment would report a gated lane that does not exist.
     const commented = submitWorkflow({ step: '      # - run: node tooling/release/submit-store.mjs --submit --app subscriptiontracker\n      - run: echo nothing' });
     const { code, out } = run(tree({ submit: commented }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /ZERO jobs invoke a `--submit` verb/);
   });
 
   test('COVERAGE LOST when the --submit script is not on disk — an unread half is not a passed one', () => {
     const { code, out } = run(tree({ submitScript: null }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /could not read/);
     assert.match(out, /submit-store\.mjs/);
@@ -816,7 +816,7 @@ describe('assert-release-provenance — a --submit job is gated on an environmen
     // be counted as a submit lane and reported gated — a limb ranging over a job
     // that never uploads anything.
     const { code, out } = run(tree({ submit: submitWorkflow({ step: '      - run: node tooling/release/submit-store.mjs --submit-preflight --app subscriptiontracker' }) }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /ZERO jobs invoke a `--submit` verb/);
   });
 
@@ -842,7 +842,7 @@ describe('assert-release-provenance — a --submit job is gated on an environmen
     // raise no floor and would be missed. Recorded here, not papered over —
     // widening SUBMIT_RUNNER is a scope decision, not a test fix.
     const { code, out } = run(tree({ submit: submitWorkflow({ step: '      - run: ./tooling/release/submit-store.mjs --submit --app subscriptiontracker' }) }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /ZERO jobs invoke a `--submit` verb/);
   });
 
@@ -857,7 +857,7 @@ describe('assert-release-provenance — a --submit job is gated on an environmen
     // half (b) never asked. Asserted on the `(job "…")` spelling, which is the
     // unnameable branch's own message and not the unreadable one below it.
     const { code, out } = run(tree({ submit: submitWorkflow({ step: '      - run: node -e "await upload()" --submit' }) }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /could not read/);
     assert.match(out, /\(job "submit"\)/);
@@ -893,7 +893,7 @@ describe('assert-release-provenance — a --submit job is gated on an environmen
     // outcomes exit 1, so the discriminator is WHICH floor speaks.
     const step = '      - run: nodemon tooling/release/submit-store.mjs --submit --app subscriptiontracker';
     const { code, out } = run(tree({ submit: submitWorkflow({ step }) }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /ZERO jobs invoke a `--submit` verb/);
     assert.doesNotMatch(out, /could not read/);
   });
@@ -905,7 +905,7 @@ describe('assert-release-provenance — a --submit job is gated on an environmen
     // so the run goes green having checked a script the workflow never invokes.
     const step = '      - run: node tooling/release/submit-store.mjsx --submit --app subscriptiontracker';
     const { code, out } = run(tree({ submit: submitWorkflow({ step }) }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /could not read/);
     assert.match(out, /\(job "submit"\)/);
@@ -1067,7 +1067,7 @@ describe('assert-release-provenance — a --submit job is gated on an environmen
     const { code, out } = run(
       tree({ submit: submitWorkflow({ step }), extraScript: { path: 'tools.mjs', body: SUBMIT_SCRIPT_REAL } }),
     );
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /-tools\.mjs \(not readable under/);
   });
@@ -1080,7 +1080,7 @@ describe('assert-release-provenance — a --submit job is gated on an environmen
     // COVERAGE LOST, so the discriminator is WHICH floor message speaks: the
     // unnameable branch, or the unreadable one.
     const { code, out } = run(tree({ submit: submitWorkflow({ step: '      - run: node --submit .mjs --app subscriptiontracker' }) }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /\(job "submit"\)/);
     assert.doesNotMatch(out, /not readable under/);
@@ -1109,7 +1109,7 @@ describe('assert-release-provenance — a --submit job is gated on an environmen
     // exclusion already pays for, one condition over.
     const step = '      - run: node ./bin/wrapper --submit --app subscriptiontracker && node tooling/release/submit-store.mjs';
     const { code, out } = run(tree({ submit: submitWorkflow({ step }) }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /\(job "submit"\)/);
   });
@@ -1323,7 +1323,7 @@ describe('assert-release-provenance — a --submit job is gated on an environmen
     // path into a neighbouring file that does exist and crediting that instead.
     const step = '      - run: node tooling/release/submit-store.mjs.mjs --submit --app subscriptiontracker';
     const { code, out } = run(tree({ submit: submitWorkflow({ step }) }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /submit-store\.mjs\.mjs \(not readable under/);
   });
@@ -1706,7 +1706,7 @@ describe('assert-release-provenance — the floors ABOVE the job parse', () => {
     // dies with a TypeError instead of saying which single-declaration rule
     // ([pipeline F-2]) was broken.
     const { code, out } = run(tree({ gateScriptBody: "const CHECK_NAME = 'ci-gate';\n" }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /no longer declares/);
   });
@@ -1716,7 +1716,7 @@ describe('assert-release-provenance — the floors ABOVE the job parse', () => {
     // is the everyday way to reach this, and every limb below it would then
     // range over nothing and print clean.
     const { code, out } = run(tree({ workflowDir: 'absent' }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /\.github\/workflows does not exist/);
   });
@@ -1725,7 +1725,7 @@ describe('assert-release-provenance — the floors ABOVE the job parse', () => {
     // Pins `if (wfFiles.length === 0)` — the directory is there, the files are
     // not, which is a different failure from the one above and gets its own say.
     const { code, out } = run(tree({ workflowDir: 'empty' }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /contains no workflow files/);
   });
@@ -1736,7 +1736,7 @@ describe('assert-release-provenance — the floors ABOVE the job parse', () => {
     // without this every limb is vacuously true.
     const jobless = 'name: N\non:\n  push:\n';
     const { code, out } = run(tree({ build: jobless, deploy: jobless, submit: jobless }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /found ZERO jobs/);
   });

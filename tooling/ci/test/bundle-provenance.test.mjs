@@ -140,7 +140,7 @@ describe('assert-bundle-provenance.mjs — no entitlement without a verified rec
 
   test('BP3 — a tree with no services/ at all is COVERAGE LOST, never a clean run', () => {
     const r = run(tree(['contracts/entitlement']));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /services\/ does not exist/);
   });
@@ -151,7 +151,7 @@ describe('assert-bundle-provenance.mjs — no entitlement without a verified rec
         rmSync(join(d, ROUTE));
       }),
     );
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /graded zero call sites/);
   });
 
@@ -161,7 +161,7 @@ describe('assert-bundle-provenance.mjs — no entitlement without a verified rec
         editText(d, CONTRACT, (s) => s.replace('export const BUNDLE_SOURCES = [', 'export const BUNDLE_SOURCES_RENAMED = [')),
       ),
     );
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /parsed to ZERO bundle sources/);
   });
 

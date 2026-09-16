@@ -86,13 +86,16 @@
 //   …where <file> is the body of `gh api repos/OWNER/REPO/actions/workflows`.
 //   Without it limbs 1-4 run exactly as before and limb 5 reports NOT CONSULTED.
 // Exit 0 = hardened. 1 = a real defect (a movable reference, a missing or
-// over-broad permissions block, an unbounded job, a single-brace expression) or
-// a lost coverage relationship — including a workflow GitHub holds that this
-// checkout does not.
-// 2 = REFUSED: the scan could not answer the question at all — no
+// over-broad permissions block, an unbounded job, a single-brace expression).
+// 2 = COVERAGE LOST or REFUSED — the repo-wide convention (AGENTS.md; the
+// markerInCode self-check in assert-guard-coverage.mjs holds it). COVERAGE LOST:
+// a lost coverage relationship, including a workflow GitHub holds that this
+// checkout does not (until 2026-09-16 this exited 1). REFUSED: the scan could
+// not answer the question at all — no
 // workflow, no job, a job shape it cannot classify, two independent counts of
 // this tree's job ids that disagree, an unreadable or truncated live list, an
-// unrecognised argument, or limb 5's or limb 6's own canaries failing. Those are
+// unrecognised argument, or limb 5's or limb 6's own canaries failing. The two
+// stops share exit 2 and differ in their printed label. A finding and a stop are
 // deliberately DIFFERENT codes: "I
 // looked and found nothing wrong" and "I could not look" are the same exit
 // status in most guards, and that is precisely how a scan over an empty subject
@@ -207,8 +210,10 @@ const wfDir = join(repoRoot, '.github', 'workflows');
 const MIN_WORKFLOWS_WITHOUT_MANIFEST = 3;
 
 if (!existsSync(wfDir)) {
-  console.error(`✗ no .github/workflows under ${repoRoot}`);
-  process.exit(1);
+  // No subject at all is a refusal (exit 2), per the Usage note — `refuse` is
+  // declared further down, so this one stop spells its exit out.
+  console.error(`✗ REFUSING TO REPORT — no .github/workflows under ${repoRoot}`);
+  process.exit(2);
 }
 
 const files = listDir(wfDir).filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'));
@@ -437,9 +442,10 @@ function printPending() {
   console.error('');
 }
 
-/** Exit 2, and it is a different code from `coverageLost` on purpose — see the
- *  Usage note. A refusal says the SUBJECT could not be read, which is not the
- *  same claim as "a workflow is unhardened" and must not be mistaken for it. */
+/** Exit 2 — the same code as `coverageLost` since 2026-09-16, told apart by its
+ *  printed label — see the Usage note. A refusal says the SUBJECT could not be
+ *  read, which is not the same claim as "a workflow is unhardened" (exit 1) and
+ *  must not be mistaken for it. */
 const refuse = (lines) => {
   printPending();
   console.error(`✗ REFUSING TO REPORT — ${lines[0]}`);
@@ -870,7 +876,9 @@ const coverageLost = (lines) => {
   printPending();
   console.error(`✗ COVERAGE LOST — ${lines[0]}`);
   for (const l of lines.slice(1)) console.error(`  ${l}`);
-  process.exit(1);
+  // ⏱ 2026-09-16 — exit 2, not 1: COVERAGE LOST is "did not check enough to be evidence", never a
+  // finding (AGENTS.md exit-code convention; O-EXIT2-CONVENTION-GAP). This helper exited 1 until today.
+  process.exit(2);
 };
 
 // (1) SCAN vs MANIFEST. `git ls-files` is the committed truth about which
@@ -1177,9 +1185,10 @@ function readLiveList(label, raw) {
 
 /** THE TWO STOPS `liveVerdict` MAY ASK FOR, BY NAME, so the choice between them
  *  is data a canary can read rather than a branch nothing in the committed tree
- *  reaches. `refuse` exits 2 (the subject could not be read); `coverageLost`
- *  exits 1 (the subject was read and something is missing from it) — the
- *  distinction the Usage note at the top of this file turns on. */
+ *  reaches. `refuse` (the subject could not be read) and `coverageLost` (the
+ *  subject was read and something is missing from it) both exit 2 since
+ *  2026-09-16 and differ in their printed label — REFUSING TO REPORT vs
+ *  COVERAGE LOST — which is what a canary reads. */
 const LIVE_STOPS = { refuse, coverageLost };
 
 /** PURE, AND SPLIT OUT OF THE CALLER 2026-08-21 IN A THIRD PASS, FOR THE ONE

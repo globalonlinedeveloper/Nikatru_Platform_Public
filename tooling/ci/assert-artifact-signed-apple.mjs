@@ -67,6 +67,7 @@
 // Env in: APPLE_SIGNING_POSTURE (required — exported by
 //         tooling/ci/apple-signing.mjs; the guard refuses to run without it)
 // Exit 0 = the bundle is signed by the identity this lane intended. 1 = it is not.
+//      2 = COVERAGE LOST — the question could not be asked.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
@@ -337,7 +338,9 @@ function coverageLost(lines) {
   console.error(`FAIL COVERAGE LOST — ${lines[0]}`);
   for (const l of lines.slice(1)) console.error(`     ${l}`);
   console.error('\nassert-artifact-signed-apple: FAILED');
-  process.exit(1);
+  // ⏱ 2026-09-16 — exit 2, not 1: COVERAGE LOST is "did not check enough to be evidence", never a
+  // finding (AGENTS.md exit-code convention; O-EXIT2-CONVENTION-GAP). This helper exited 1 until today.
+  process.exit(2);
 }
 
 function main() {

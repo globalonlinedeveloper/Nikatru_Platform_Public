@@ -294,7 +294,7 @@ describe('assert-prod-provenance — the gate limb', () => {
         mkdirSync(join(root, MIGRATIONS), { recursive: true });
       },
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /COVERAGE LOST/);
         assert.match(r.stderr, /not one \.sql file was read/);
       },
@@ -323,7 +323,7 @@ describe('assert-prod-provenance — the gate limb', () => {
         writeRegister(root, reg);
       },
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /COVERAGE LOST.*declares no `resolvers`/s);
       },
     );

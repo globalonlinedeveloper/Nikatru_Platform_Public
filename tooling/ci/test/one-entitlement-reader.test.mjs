@@ -169,7 +169,7 @@ export default app;`,
 
   test('COVERAGE LOST — the reader file deleted', () => {
     const r = run(tree((d) => rmSync(join(d, READER))));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST — services\/_shared\/src\/entitlement-read\.ts does not exist/);
   });
 
@@ -177,7 +177,7 @@ export default app;`,
     const dir = join(TMP, `t${seq++}`);
     mkdirSync(dir, { recursive: true });
     const r = run(dir);
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST — services\/ does not exist/);
   });
 

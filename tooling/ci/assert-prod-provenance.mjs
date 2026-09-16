@@ -65,7 +65,7 @@
 //
 // Usage:  node tooling/ci/assert-prod-provenance.mjs [repoRoot]
 // Exit 0 = every table declares how its rows are attributed, and the reader that
-//          can actually look is wired. 1 = it is not.
+//          can actually look is wired. 1 = it is not. 2 = COVERAGE LOST.
 // ─────────────────────────────────────────────────────────────────────────────
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -106,7 +106,9 @@ const problems = [];
 const coverageLost = (lines) => {
   console.error(`✗ COVERAGE LOST — ${lines[0]}`);
   for (const l of lines.slice(1)) console.error(`  ${l}`);
-  process.exit(1);
+  // ⏱ 2026-09-16 — exit 2, not 1: COVERAGE LOST is "did not check enough to be evidence", never a
+  // finding (AGENTS.md exit-code convention; O-EXIT2-CONVENTION-GAP). This helper exited 1 until today.
+  process.exit(2);
 };
 
 // ── the register ────────────────────────────────────────────────────────────

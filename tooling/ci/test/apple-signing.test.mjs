@@ -1439,19 +1439,19 @@ describe('apple-signing — a secret that is not what it claims to be', () => {
 describe('apple-signing — coverage self-checks', () => {
   test('COVERAGE LOST when the register is gone — the decision would default to "proof is fine"', () => {
     const { r } = runPrepare(makeRoot({ register: false }), {});
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /COVERAGE LOST/);
   });
 
   test('COVERAGE LOST when the ios-appstore row is gone', () => {
     const { r } = runPrepare(makeRoot({ channelIds: ['macos-appstore'] }), {});
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /declares no "ios-appstore" channel/);
   });
 
   test('COVERAGE LOST when the macos-appstore row is gone', () => {
     const { r } = runPrepare(makeRoot({ channelIds: ['ios-appstore'] }), {});
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /declares no "macos-appstore" channel/);
   });
 
@@ -1461,7 +1461,7 @@ describe('apple-signing — coverage self-checks', () => {
     delete reg.channels[0].signing.ciSecrets;
     writeFileSync(join(root, 'tooling', 'channel-register.json'), JSON.stringify(reg));
     const { r } = runPrepare(root, {});
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /declares no `signing\.ciSecrets\.names`/);
   });
 
@@ -1470,7 +1470,7 @@ describe('apple-signing — coverage self-checks', () => {
     // reading the four names it knows and report a complete set forever.
     const renamed = WANTED.map((n) => (n === 'APPLE_TEAM_ID' ? 'APPLE_TEAM_IDENTIFIER' : n));
     const { r } = runPrepare(makeRoot({ names: renamed }), {});
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /disagree about which secrets sign an Apple build/);
     assert.match(out(r), /APPLE_TEAM_IDENTIFIER/);
   });
@@ -1491,7 +1491,7 @@ describe('apple-signing — coverage self-checks', () => {
     // what must be absent is a REGISTER DECLARATION, not the string.)
     // The installer certificate has its own two cases below.
     const { r } = runPrepare(makeRoot({ names: [...WANTED, 'APPLE_NOTARY_PASSWORD_BASE64'] }), {});
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /APPLE_NOTARY_PASSWORD_BASE64/);
   });
 
@@ -1520,7 +1520,7 @@ describe('apple-signing — coverage self-checks', () => {
       makeRoot({ namesFor: { 'ios-appstore': [...WANTED, ROLE_ENV.installerP12] } }),
       {},
     );
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /ios-appstore row and this script disagree/);
     assert.match(out(r), /IS known here — but only on the macos-appstore row/);
   });
@@ -1530,14 +1530,14 @@ describe('apple-signing — coverage self-checks', () => {
     // rather than a permissive one: the register silently losing the name must
     // be as loud as the register gaining one.
     const { r } = runPrepare(makeRoot({ namesFor: { 'macos-appstore': [...WANTED] } }), {});
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /macos-appstore row and this script disagree/);
     assert.match(out(r), /expected here and not declared in the register: APPLE_INSTALLER_CERT_P12_BASE64/);
   });
 
   test('COVERAGE LOST when apps.json is missing', () => {
     const { r } = runPrepare(makeRoot({ apps: null }), {});
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /COVERAGE LOST/);
   });
 

@@ -362,7 +362,7 @@ describe('an empty scan is COVERAGE LOST, never a pass', () => {
     );
     rmSync(join(root, `${TESTS}/width_notifications_test.dart`));
     const { code, out } = run(root);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST — `apps\/subscriptiontracker` has only 18 responsive surface\(s\).*floor is 19/s);
     // Proof the equality really did stay quiet — the thing this floor exists
     // for. If an UNCOVERED or DEAD line appears here the mutation stopped being
@@ -398,7 +398,7 @@ describe('the domain is DERIVED, and a root that stops being derived FAILS', () 
     const root = treeWithNewRoots();
     renameSync(join(root, BRICK), join(root, 'tooling/bricks/app/__brick__/apps/renamed_away'));
     const { code, out } = run(root);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST — tooling\/bricks\/app\/brick\.yaml exists, so this tree DECLARES a brick/);
   });
 
@@ -406,7 +406,7 @@ describe('the domain is DERIVED, and a root that stops being derived FAILS', () 
     const root = treeWithNewRoots();
     edit(root, WORKSPACE_MANIFEST, '\n  - packages/design_system', '');
     const { code, out } = run(root);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /DECLARED root\(s\) were not among the 3 this run derived/);
     assert.match(out, /`packages\/design_system`/);
     // The reason the limb exists, asserted: nothing else could see it, because
@@ -418,7 +418,7 @@ describe('the domain is DERIVED, and a root that stops being derived FAILS', () 
     const root = treeWithNewRoots();
     edit(root, `${DS}/pubspec.yaml`, '\n  flutter_test:', '');
     const { code, out } = run(root);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /DECLARED root\(s\) were not among the 3 this run derived/);
     assert.match(out, /`packages\/design_system`/);
   });
@@ -427,7 +427,7 @@ describe('the domain is DERIVED, and a root that stops being derived FAILS', () 
     const root = treeWithNewRoots();
     edit(root, WORKSPACE_MANIFEST, '\n  - apps/subscriptiontracker', '');
     const { code, out } = run(root);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /DECLARED root\(s\) were not among the 3 this run derived/);
     assert.match(out, /`apps\/subscriptiontracker`/);
   });
@@ -441,7 +441,7 @@ describe('a report-mode root can get better, never quietly worse', () => {
     const root = treeWithNewRoots();
     rmSync(join(root, `${BRICK}/test/responsive_width_test.dart`));
     const { code, out } = run(root);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     // 🔴 THE BACKSTOP THAT FIRES HERE IS THE CORPUS FLOOR, AND SAYING SO IS THE
     // POINT. Until [ADR 067] phase 2 the brick's own suite measured six surfaces
     // that no longer live in the brick, so deleting it dropped `measured` from 9
@@ -463,7 +463,7 @@ describe('a report-mode root can get better, never quietly worse', () => {
     const root = treeWithNewRoots();
     rmSync(join(root, `${DS}/test/two_pane_test.dart`));
     const { code, out } = run(root);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(
       out,
       /COVERAGE LOST — `packages\/design_system` has 10 measured surface\(s\) and its measured floor is 12/s,
@@ -492,7 +492,7 @@ describe('a report-mode root can get better, never quietly worse', () => {
     const root = treeWithNewRoots();
     rmSync(join(root, `${DS}/lib/src/widgets/two_pane.dart`));
     const { code, out } = run(root);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST — `packages\/design_system` has only 18 responsive surface\(s\).*floor is 20/s);
   });
 
@@ -643,7 +643,7 @@ describe('a screen that DELEGATES into the chassis is measured where it now live
   // Same mutation seen from the other side: the delegation resolves to nothing.
   test('R-D3 · COVERAGE LOST when the delegation resolves to nothing on disk', () => {
     const { code, out } = run(treeWithChassis({ widgetOnDisk: false }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST — .*settings_screen\.dart` delegates to/);
     assert.match(out, /that file is not on disk/);
   });
@@ -652,7 +652,7 @@ describe('a screen that DELEGATES into the chassis is measured where it now live
   // width decision would be measured by nothing and the run would still be green.
   test('R-D4 · COVERAGE LOST when the chassis is not a DERIVED ROOT of the scan', () => {
     const { code, out } = run(treeWithChassis({ inWorkspace: false }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /is NOT among the \d+ root\(s\) this scan derived/);
     assert.match(out, /never arrived anywhere this guard looks/);
   });
@@ -715,7 +715,7 @@ describe('the chassis_screens floors are floors, not report lines', () => {
     writeIn(root, rel, src.replace('class ConsentPromptCard', 'class _ConsentPromptCard'));
 
     const { code, out } = run(root);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     // The DOMAIN floor — the one set equality cannot see, because the surface
     // and its measurement left together and the two sets stayed equal.
     assert.match(

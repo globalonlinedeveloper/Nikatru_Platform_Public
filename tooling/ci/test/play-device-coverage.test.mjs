@@ -429,7 +429,7 @@ describe('assert-play-device-coverage', () => {
   test('R9 COVERAGE LOST when a declared limit cannot be read as a number', () => {
     const dir = tree((reg) => { cov(reg).sets.tablet.minSide = '1080'; }, { extra: tabletSet() });
     const { code, out } = run(dir, ['--for-submission']);
-    assert.equal(code, 1, 'a limit that grades nothing must not read as a limit that passed');
+    assert.equal(code, 2, 'a limit that grades nothing must not read as a limit that passed');
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /\.minSide is "1080", not a positive integer/);
   });
@@ -437,7 +437,7 @@ describe('assert-play-device-coverage', () => {
   test('R9b COVERAGE LOST when the declared aspect is not "W:H"', () => {
     const dir = tree((reg) => { cov(reg).sets.tablet.portraitAspect = '9x16'; }, { extra: tabletSet() });
     const { code, out } = run(dir, ['--for-submission']);
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /portraitAspect is "9x16", not "W:H"/);
   });
@@ -445,7 +445,7 @@ describe('assert-play-device-coverage', () => {
   test('R10 COVERAGE LOST when a set declares a rule with no citation', () => {
     const dir = tree((reg) => { delete cov(reg).sets.tablet.source; }, { extra: tabletSet() });
     const { code, out } = run(dir, ['--for-submission']);
-    assert.equal(code, 1, 'an uncited per-set limit must not be enforced');
+    assert.equal(code, 2, 'an uncited per-set limit must not be enforced');
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /declares a dimension rule with no `source`/);
   });
@@ -563,7 +563,7 @@ describe('assert-play-device-coverage', () => {
   test('M7 COVERAGE LOST when the minimum arrives with no citation', () => {
     const dir = tree((reg) => { delete cov(reg).source; });
     const { code, out } = run(dir);
-    assert.equal(code, 1, 'an uncited limit must not be enforced');
+    assert.equal(code, 2, 'an uncited limit must not be enforced');
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /with no `source`/);
   });
@@ -571,7 +571,7 @@ describe('assert-play-device-coverage', () => {
   test('COVERAGE LOST when no channel declares a deviceTypeCoverage block', () => {
     const dir = tree((reg) => { delete reg.storeMetadataContract.perChannel['android-play'].graphicAssets.screenshots.deviceTypeCoverage; });
     const { code, out } = run(dir);
-    assert.equal(code, 1, 'zero declarations must not read as "every listing is covered"');
+    assert.equal(code, 2, 'zero declarations must not read as "every listing is covered"');
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /declares a `screenshots\.deviceTypeCoverage` block/);
   });
@@ -579,7 +579,7 @@ describe('assert-play-device-coverage', () => {
   test('COVERAGE LOST when the set map is emptied', () => {
     const dir = tree((reg) => { cov(reg).sets = {}; });
     const { code, out } = run(dir);
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /\.sets is empty or is not an object/);
   });
@@ -587,7 +587,7 @@ describe('assert-play-device-coverage', () => {
   test('COVERAGE LOST when minDistinctTypes is not a positive integer', () => {
     const dir = tree((reg) => { cov(reg).minDistinctTypes = 'two'; });
     const { code, out } = run(dir);
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /not a positive integer/);
   });
@@ -596,7 +596,7 @@ describe('assert-play-device-coverage', () => {
     const dir = join(TMP, `r${seq++}`);
     mkdirSync(dir, { recursive: true });
     const { code, out } = run(dir);
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /channel-register\.json does not exist/);
   });
@@ -605,7 +605,7 @@ describe('assert-play-device-coverage', () => {
     const dir = tree();
     rmSync(join(dir, 'apps'), { recursive: true, force: true });
     const { code, out } = run(dir);
-    assert.equal(code, 1, 'zero trees must not read as "all trees are fine"');
+    assert.equal(code, 2, 'zero trees must not read as "all trees are fine"');
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /ZERO metadata trees to read/);
   });
@@ -747,7 +747,7 @@ describe('assert-play-device-coverage', () => {
 
   test('B5 a brick with no store tree for the channel is COVERAGE LOST, never "nothing to check"', () => {
     const { code, out } = run(tree(() => {}, { extra: tabletSet(), brick: { omitTree: true } }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /checked on registered apps ONLY/);
     assert.match(out, /A root that is never DERIVED must not read/);
@@ -790,7 +790,7 @@ describe('assert-play-device-coverage', () => {
     // walk. The floor is counted by the row validator and the walk counts
     // itself, so a walk that quietly skips a row cannot also lower its own bar.
     const { code, out } = run(tree((reg) => { cov(reg).sets.tablet.dir = ''; }, { brick: {} }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /declares 2 device-type set row\(s\) and the brick limb examined 1/);
   });

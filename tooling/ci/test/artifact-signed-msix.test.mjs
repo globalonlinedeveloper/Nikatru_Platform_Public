@@ -379,7 +379,7 @@ describe('assert-artifact-signed-msix — the ZIP64 package MakeAppx actually wr
     raw.writeUInt32LE(0x07064b51, raw.indexOf(Buffer.from([0x50, 0x4b, 0x06, 0x07])));
     writeFileSync(p, raw);
     const { code, out } = run(root);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /NOT ONE opened as a zip/);
     assert.doesNotMatch(out, /ERR_OUT_OF_RANGE/);
@@ -402,20 +402,20 @@ describe('assert-artifact-signed-msix — the ZIP64 package MakeAppx actually wr
 describe('assert-artifact-signed-msix — a question that could not be asked is never a pass', () => {
   test('no package path at all — the empty set is refused', () => {
     const { code, out } = run(fixture(), []);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /certify the empty set/);
   });
 
   test('a path that does not exist', () => {
     const { code, out } = run(fixture(), ['pkg/absent.msix']);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /no such file/);
   });
 
   test('a file that is not a zip is a FAILURE, not a skip', () => {
     const { code, out } = run(fixture({ raw: Buffer.from('this is not a zip at all') }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /NOT ONE opened as a zip/);
   });
@@ -429,14 +429,14 @@ describe('assert-artifact-signed-msix — a question that could not be asked is 
 
   test('no register', () => {
     const { code, out } = run(fixture({ register: null }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /does not exist/);
   });
 
   test('an unparseable register', () => {
     const { code, out } = run(fixture({ register: '{ not json' }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /not valid JSON/);
   });
@@ -445,7 +445,7 @@ describe('assert-artifact-signed-msix — a question that could not be asked is 
   // would pass by having nothing to disagree with.
   test('a register row with NO packageIdentity', () => {
     const { code, out } = run(fixture({ register: { channels: [{ id: 'windows-store' }] } }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /declares no `packageIdentity`/);
   });
@@ -454,14 +454,14 @@ describe('assert-artifact-signed-msix — a question that could not be asked is 
     const reg = JSON.parse(JSON.stringify(REGISTER));
     reg.channels[0].packageIdentity.publisher = '';
     const { code, out } = run(fixture({ register: reg }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /a hole, not a placeholder/);
   });
 
   test('the register naming no windows-store channel', () => {
     const { code, out } = run(fixture({ register: { channels: [{ id: 'web' }] } }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /declares no channel "windows-store"/);
   });
@@ -542,7 +542,7 @@ describe('assert-artifact-signed-msix — the path CI actually passes is not dis
   test('a lone positional and NO --repo-root is NOT reported as the empty set', () => {
     const missing = join(TMP, `absent${seq++}.msix`);
     const { code, out } = runBare(missing);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.doesNotMatch(out, /no \.msix path was given/);
     assert.match(out, /no such file/);
     assert.match(out, /NOT ONE opened as a zip/);
@@ -585,7 +585,7 @@ describe('assert-artifact-signed-msix — the path CI actually passes is not dis
   // What is observable here is argv, so argv is what it must print.
   test('the empty-set message prints the argv and blames no step it cannot see', () => {
     const { code, out } = runBare('--verbose');
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /no \.msix path was given/);
     assert.match(out, /1 argument\(s\) this process received were: "--verbose"/);
     assert.doesNotMatch(out, /produced no path to hand over/);
@@ -594,7 +594,7 @@ describe('assert-artifact-signed-msix — the path CI actually passes is not dis
 
   test('a wholly empty argv says so rather than printing an empty list', () => {
     const { code, out } = runBare();
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /0 argument\(s\) this process received were: \(none\)/);
   });
 
@@ -603,7 +603,7 @@ describe('assert-artifact-signed-msix — the path CI actually passes is not dis
   // answering about a different one is a verdict about the wrong repository.
   test('--repo-root with no value refuses instead of falling back', () => {
     const { code, out } = runBare('--repo-root');
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /`--repo-root` was given with no path after it/);
   });

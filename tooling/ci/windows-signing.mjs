@@ -115,6 +115,7 @@
 // Env out (via $GITHUB_ENV): WINDOWS_CODESIGN_PFX_PATH, the declared passthrough
 //          names, and WINDOWS_SIGNING_POSTURE.
 // Exit 0 = the posture is decided and legal for this lane. 1 = it is not.
+//      2 = COVERAGE LOST — the question could not be asked (register, row or input missing).
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, writeFileSync, existsSync, appendFileSync, mkdirSync, statSync, mkdtempSync } from 'node:fs';
 import { join, resolve, dirname, isAbsolute } from 'node:path';
@@ -507,7 +508,9 @@ function coverageLost(lines) {
   console.error(`FAIL COVERAGE LOST — ${lines[0]}`);
   for (const l of lines.slice(1)) console.error(`     ${l}`);
   console.error('\nwindows-signing: FAILED');
-  process.exit(1);
+  // ⏱ 2026-09-16 — exit 2, not 1: COVERAGE LOST is "did not check enough to be evidence", never a
+  // finding (AGENTS.md exit-code convention; O-EXIT2-CONVENTION-GAP). This helper exited 1 until today.
+  process.exit(2);
 }
 
 function die(lines) {

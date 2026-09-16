@@ -485,7 +485,7 @@ describe('assert-publish-records — SUBMITTED is not LIVE', () => {
 describe('assert-publish-records — the floor cannot range over zero', () => {
   test('COVERAGE LOST when the register declares no served channel', () => {
     const { code, out } = run(fixture({ channels: [storeRow()], workflows: { 'submit-play.yml': submitWorkflow('      - run: node tooling/release/submit-play.mjs --dry-run --app subscriptiontracker') } }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /REQUIRED_COVERAGE\.servedRows is 0/);
   });
@@ -497,14 +497,14 @@ describe('assert-publish-records — the floor cannot range over zero', () => {
     // the deploy limb, print ok, and cover no submission lane at all — the same
     // shape, one layer up. So it refuses instead of passing.
     const { code, out } = run(fixture({ channels: [WEB_ROW], workflows: { 'deploy-web.yml': DEPLOY_WEB_OK } }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /REQUIRED_COVERAGE\.submittableRows is 0/);
   });
 
   test('COVERAGE LOST when the register is empty in both directions', () => {
     const { code, out } = run(fixture({ channels: [], workflows: {} }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /REQUIRED_COVERAGE\.servedRows is 0/);
   });
 
@@ -512,7 +512,7 @@ describe('assert-publish-records — the floor cannot range over zero', () => {
     const root = served({ 'deploy-web.yml': DEPLOY_WEB_OK });
     writeFileSync(join(root, 'catalog/apps.json'), JSON.stringify([{ slug: 'subscriptiontracker', platforms: ['ios'] }]));
     const { code, out } = run(root);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /REQUIRED_COVERAGE\.requiredEnvironments is 0/);
   });
 
@@ -523,14 +523,14 @@ describe('assert-publish-records — the floor cannot range over zero', () => {
         workflows: { 'deploy-web.yml': DEPLOY_WEB_OK, 'submit-play.yml': submitWorkflow('      - run: echo nothing here') },
       }),
     );
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /and no step there runs it/);
   });
 
   test('COVERAGE LOST when a declared workflow file is missing', () => {
     const { code, out } = run(fixture({ channels: [WEB_ROW, storeRow()], workflows: { 'submit-play.yml': REHEARSAL_WF } }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /that file does not exist/);
   });
@@ -539,7 +539,7 @@ describe('assert-publish-records — the floor cannot range over zero', () => {
     const { code, out } = run(
       served({ 'deploy-web.yml': DEPLOY_WEB_OK.replace('  deploy-web:', '  renamed:') }),
     );
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /that job is not there/);
   });
 });
@@ -661,7 +661,7 @@ jobs:
     const { code, out } = run(
       fixture({ channels: [WEB_ROW, storeRow()], workflows: { 'deploy-web.yml': DEPLOY_WEB_OK, 'submit-play.yml': wf } }),
     );
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /inside a job this census never reached/);
     assert.match(out, /job "submit"/);

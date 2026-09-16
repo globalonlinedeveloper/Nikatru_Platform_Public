@@ -213,6 +213,7 @@
 //
 // Usage:  node tooling/ci/assert-release-provenance.mjs [repoRoot]
 // Exit 0 = every release build is gated and every publish is recorded.
+// Exit 1 = a finding. 2 = COVERAGE LOST (EXIT 1 in the dated measurements below, before 2026-09-16).
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
@@ -251,7 +252,9 @@ function coverageLost(lines) {
   console.error(`FAIL COVERAGE LOST — ${lines[0]}`);
   for (const l of lines.slice(1)) console.error(`     ${l}`);
   console.error('\nassert-release-provenance: FAILED');
-  process.exit(1);
+  // ⏱ 2026-09-16 — exit 2, not 1: COVERAGE LOST is "did not check enough to be evidence", never a
+  // finding (AGENTS.md exit-code convention; O-EXIT2-CONVENTION-GAP). This helper exited 1 until today.
+  process.exit(2);
 }
 
 /**

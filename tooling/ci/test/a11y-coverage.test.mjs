@@ -497,7 +497,7 @@ describe('the domain is DERIVED, and a root that stops being derived FAILS', () 
     const root = treeWithNewRoots();
     renameSync(join(root, BRICK), join(root, 'tooling/bricks/app/__brick__/apps/renamed_away'));
     const { code, out } = run(root);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST — tooling\/bricks\/app\/brick\.yaml exists, so this tree DECLARES a brick/);
   });
 
@@ -505,7 +505,7 @@ describe('the domain is DERIVED, and a root that stops being derived FAILS', () 
     const root = treeWithNewRoots();
     edit(root, WORKSPACE_MANIFEST, '\n  - packages/design_system', '');
     const { code, out } = run(root);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /DECLARED root\(s\) were not among the 3 this run derived/);
     assert.match(out, /`packages\/design_system`/);
     // 🔴 THE REASON THIS LIMB EXISTS, ASSERTED. Nothing else can see it: the
@@ -517,7 +517,7 @@ describe('the domain is DERIVED, and a root that stops being derived FAILS', () 
     const root = treeWithNewRoots();
     edit(root, `${DS}/pubspec.yaml`, '\n  flutter_test:', '');
     const { code, out } = run(root);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /DECLARED root\(s\) were not among the 3 this run derived/);
     assert.match(out, /`packages\/design_system`/);
   });
@@ -526,7 +526,7 @@ describe('the domain is DERIVED, and a root that stops being derived FAILS', () 
     const root = treeWithNewRoots();
     edit(root, WORKSPACE_MANIFEST, '\n  - apps/subscriptiontracker', '');
     const { code, out } = run(root);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /DECLARED root\(s\) were not among the 3 this run derived/);
     assert.match(out, /`apps\/subscriptiontracker`/);
   });
@@ -542,7 +542,7 @@ describe('the domain is DERIVED, and a root that stops being derived FAILS', () 
     writeIn(root, rel, src.slice(0, open) + src.slice(close));
 
     const { code, out } = run(root);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(
       out,
       /COVERAGE LOST — `tooling\/bricks\/app\/__brick__\/apps\/\{\{app_id\}\}` has only 11 reachable surface\(s\).*floor is 12/s,
@@ -562,7 +562,7 @@ describe('the domain is DERIVED, and a root that stops being derived FAILS', () 
     const root = treeWithNewRoots();
     rmSync(join(root, `${DS}/lib/src/widgets/two_pane.dart`));
     const { code, out } = run(root);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST — `packages\/design_system` has only 18 reachable surface\(s\).*floor is 20/s);
   });
 
@@ -767,7 +767,7 @@ describe('the chassis floors, which were zero until its first sweeps landed', ()
     const root = treeWithNewRoots();
     rmSync(join(root, CHASSIS_SHELL));
     const { code, out } = run(root);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(
       out,
       /COVERAGE LOST — `packages\/chassis_screens` yielded 2 file\(s\) matching `a11y_\*_test\.dart`.*floor is 3/s,
@@ -791,7 +791,7 @@ describe('the chassis floors, which were zero until its first sweeps landed', ()
     writeIn(root, CHASSIS_AUTH, src);
 
     const { code, out } = run(root);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(
       out,
       /COVERAGE LOST — only 47 a11y case\(s\) were found across 3 file\(s\) under `packages\/chassis_screens`, and the checked-in floor is 51/,
@@ -939,7 +939,7 @@ describe('an empty scan is COVERAGE LOST, never a pass', () => {
     const root = tree();
     renameSync(join(root, SUITE), join(root, `${APP}/test/semantics_of_a11y_test.dart`));
     const { code, out } = run(root);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST — `apps\/subscriptiontracker` yielded 0 file\(s\) matching `a11y_\*_test\.dart`.*floor is 1/s);
   });
 
@@ -962,7 +962,7 @@ describe('an empty scan is COVERAGE LOST, never a pass', () => {
     );
     writeIn(root, SUITE, src);
     const { code, out } = run(root);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST — 110 a11y case\(s\) were parsed .* and NOT ONE of them calls a sweep/s);
     // Proof the mutation reached the limb it names rather than a neighbouring
     // one: with NO family running, nothing is attributed at all.
@@ -1017,7 +1017,7 @@ describe('an empty scan is COVERAGE LOST, never a pass', () => {
       edit(root, SUITE, title, `x${title}`);
     }
     const { code, out } = run(root);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST — only 106 a11y case\(s\) .* the checked-in floor is 110/s);
     // Every set above is byte-identical — which is the point of the floor, and
     // it is also what catches a mutation that disabled the WRONG block.
@@ -1220,7 +1220,7 @@ describe('a screen that DELEGATES into the chassis is judged where it now lives'
   // MUTATION 1 — the screen was emptied into a package that does not carry it.
   test('COVERAGE LOST when the delegation resolves to nothing on disk', () => {
     const { code, out } = run(treeWithChassis({ widgetOnDisk: false }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /FAIL COVERAGE LOST — .*settings_screen\.dart` delegates to/);
     assert.match(out, /that file is not on disk/);
     assert.match(out, /asserted NOWHERE by anything/);
@@ -1231,7 +1231,7 @@ describe('a screen that DELEGATES into the chassis is judged where it now lives'
   // obligation vanishes with it.
   test('COVERAGE LOST when the chassis is not a DERIVED ROOT of the scan', () => {
     const { code, out } = run(treeWithChassis({ inWorkspace: false }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /FAIL COVERAGE LOST — `SettingsScreen`.*delegates its surface to/);
     assert.match(out, /is NOT among the \d+ root\(s\) this scan derived/);
     assert.match(out, /it left this root by moving house and it never arrived anywhere this guard looks/);
@@ -1254,7 +1254,7 @@ describe('a screen that DELEGATES into the chassis is judged where it now lives'
         "import 'package:nikatru_chassis_screens/other_body.dart';",
     );
     const { code, out } = run(root);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /FAIL COVERAGE LOST — .*imports 2 different `package:nikatru_chassis_screens` paths/);
     assert.match(out, /will not guess between two of them/);
   });

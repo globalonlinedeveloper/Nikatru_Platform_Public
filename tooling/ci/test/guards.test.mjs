@@ -1115,10 +1115,19 @@ describe('assert-workflow-hardening', () => {
     assert.equal(code, 0, out);
   });
 
+  test('REFUSES with exit 2 when the root has no .github/workflows at all — no subject is not a finding', () => {
+    // O-EXIT2-CONVENTION-GAP: this stop exited 1 until 2026-09-16, which read as
+    // "a workflow is unhardened" over a tree that holds no workflow.
+    const dir = fixture('wh-nowf', { 'README.md': 'no workflows here\n' });
+    const { code, out } = run('assert-workflow-hardening.mjs', { args: [dir] });
+    assert.equal(code, 2, out);
+    assert.match(out, /REFUSING TO REPORT — no \.github\/workflows/);
+  });
+
   test('FAILS its own coverage check when the scan finds almost nothing', () => {
     const dir = fixture('wh-cov', { '.github/workflows/a.yml': wf([`actions/x@${SHA}`]) });
     const { code, out } = run('assert-workflow-hardening.mjs', { args: [dir] });
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
   });
 
@@ -1160,7 +1169,7 @@ describe('assert-workflow-hardening', () => {
       const dir = gitFixture('wh-git-thin', three());
       rmSync(join(dir, '.github', 'workflows', 'c.yml'));
       const { code, out } = run('assert-workflow-hardening.mjs', { args: [dir] });
-      assert.equal(code, 1);
+      assert.equal(code, 2);
       assert.match(out, /COVERAGE LOST — git tracks 3 workflow\(s\) and this scan opened 2; it never saw: c\.yml/);
     });
 
@@ -1175,7 +1184,7 @@ describe('assert-workflow-hardening', () => {
         `      - uses : actions/act0@${SHA}\n`,
       );
       const { code, out } = run('assert-workflow-hardening.mjs', { args: [fixture('wh-uses-acct', files)] });
-      assert.equal(code, 1);
+      assert.equal(code, 2);
       assert.match(out, /COVERAGE LOST — 12 `uses:` line\(s\) are present but only 11 were accounted for/);
     });
 
@@ -1197,7 +1206,7 @@ describe('assert-workflow-hardening', () => {
           'name: X\non: push\npermissions:\n  contents: read\njobs:\n  j:\n    runs-on: ubuntu-24.04\n    timeout-minutes: 5\n    steps:\n      - run: echo hi\n';
       }
       const { code, out } = run('assert-workflow-hardening.mjs', { args: [fixture('wh-uses-none', files)] });
-      assert.equal(code, 1);
+      assert.equal(code, 2);
       assert.match(out, /COVERAGE LOST — not one `uses:` reference in 3 workflow\(s\)/);
     });
   });
@@ -1493,7 +1502,7 @@ describe('assert-workflow-hardening', () => {
         `      - uses : actions/act0@${SHA}\n`,
       );
       const { code, out } = run('assert-workflow-hardening.mjs', { args: [fixture('wh-stop-coverage', files)] });
-      assert.equal(code, 1);
+      assert.equal(code, 2);
       assert.match(out, /ALREADY established before this stop/);
       assert.match(out, /`actions\/checkout@v4` is a movable reference/);
       assert.match(out, /COVERAGE LOST — 12 `uses:` line\(s\) are present but only 11 were accounted for/);
@@ -1566,7 +1575,7 @@ describe('assert-workflow-hardening', () => {
         workflows: [...THREE, { id: 320102035, name: 'media-probe (throwaway)', path: '.github/workflows/media-probe.yml', state: 'active' }],
       });
       const { code, out } = run('assert-workflow-hardening.mjs', { args: [dir, `--live-workflows=${at}`] });
-      assert.equal(code, 1, out);
+      assert.equal(code, 2, out);
       assert.match(out, /COVERAGE LOST/);
       assert.match(out, /media-probe\.yml \(id 320102035, "media-probe \(throwaway\)", state `active`\)/);
     });
@@ -1608,7 +1617,7 @@ describe('assert-workflow-hardening', () => {
     test('treats NO positional root as the real repository, where the manifest must be readable', () => {
       const dir = build('wh-noroot');
       const { code, out } = run('assert-workflow-hardening.mjs', { cwd: dir, args: [] });
-      assert.equal(code, 1, out);
+      assert.equal(code, 2, out);
       assert.match(out, /returned no tracked workflow/);
     });
 
@@ -1787,7 +1796,7 @@ describe('assert-workflow-hardening', () => {
       const control = exec(copy('wh-expr-cov-control', src));
       assert.equal(control.code, 0, control.out);
       const broken = exec(copy('wh-expr-cov-off', cut('exprWorkflowsScanned++;', ';')));
-      assert.equal(broken.code, 1, broken.out);
+      assert.equal(broken.code, 2, broken.out);
       assert.match(broken.out, /COVERAGE LOST — limb 6 judged \d+ line\(s\) across 0 of 3 workflow\(s\) — it reached nothing/);
     });
 
@@ -7836,7 +7845,7 @@ describe('assert-responsive-coverage', () => {
     // Without this limb an unreadable harness makes every surface pass the
     // width check by default, which prints as a clean run.
     const { code, out } = run('assert-responsive-coverage.mjs', { cwd: build('rc-noharness', { [HARNESS]: null }) });
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /declares NO .* window class/);
   });

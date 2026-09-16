@@ -183,6 +183,122 @@ const COVERAGE_MARKER = 'COVERAGE LOST';
  */
 const markerInCode = (source) => stripSourceComments(source, '.mjs').includes(COVERAGE_MARKER);
 
+/**
+ * 🔴 CARRYING THE MARKER IS NOT ENOUGH — THE STOP IT PRINTS MUST EXIT 2.
+ * ⏱ 2026-09-16, O-EXIT2-CONVENTION-GAP. AGENTS.md: 0 = green, 1 = a finding,
+ * 2 = COVERAGE LOST. `markerInCode` above only asks whether a guard SAYS
+ * "COVERAGE LOST"; until today roughly a hundred guards said it and then exited
+ * 1, so a red ci-gate read mechanically as "a defect was found" when the truth
+ * was "this guard could not look". Batches of conversions landed between
+ * 2026-09-15 and today (Public PRs #756 #757 #766 #767 #768 #783 and this one);
+ * this limb is what stops the tree drifting back.
+ *
+ * WHY BY HELPER NAME, AND NOT BY THE PHRASE. Two earlier counts that started
+ * from the phrase failed and were refused (a character window after it; a walk
+ * back to its enclosing function). The phrase usually sits in an ARGUMENT to a
+ * helper — `coverageLost([`...`])` — so walking back from it lands on the
+ * caller, never on the function that owns the exit. The tractable question is
+ * the inverse: find each file's coverage helper BY NAME and read the exit in
+ * ITS body. The names are the tree's own idiom: `coverageLost`, `refuse`,
+ * `lost`.
+ *
+ * WHAT COUNTS AS REACHING EXIT 2, read from the helper body with comments
+ * stripped (so a dated "this exited 1 until today" note cannot fail it):
+ *   · `process.exit(2)` · `process.exitCode = 2` · `throw new GuardExit(2)` —
+ *     the three shapes the tree uses (assert-ops-register throws GuardExit);
+ *   · the same with a top-level `const NAME = 2` in place of the literal
+ *     (assert-publish-steps-guarded's EXIT_COVERAGE_LOST).
+ * The same shapes with 1 are a FAILURE of this limb, whatever else the body does.
+ *
+ * AN ACCUMULATING HELPER is an expression-bodied arrow that pushes the marker
+ * into the problem list — `const coverageLost = (m) => problems.push(...)` — so
+ * its body holds no exit at all; the exit is decided at the summary. It passes
+ * only when the file's code carries the ONE summary idiom that picks 2 for a
+ * run whose every problem is a COVERAGE LOST (a proven finding keeps exit 1):
+ *   process.exit(problems.every((p) => p.startsWith('COVERAGE LOST')) ? 2 : 1)
+ * An expression-bodied helper that does not carry the marker is not a coverage
+ * stop (assert-platform-proof-fresh's local `lost` builds a verdict object) and
+ * is skipped.
+ *
+ * ⚠️ WHAT THIS DOES NOT SEE, said out loud: a guard that prints the marker
+ * INLINE, with no helper by one of those names, cannot be classified this way —
+ * the stop and its exit are wherever the author put them. Those guards are
+ * NAMED on every passing run (⬜ below), never silently counted as converted.
+ * Any named helper whose exit this reading cannot find — it delegates, throws a
+ * plain Error, calls a differently-named stop — fails unless its guard is in
+ * COVERAGE_EXIT_UNREADABLE with a reason.
+ */
+const COVERAGE_HELPER_DECL =
+  /\bfunction\s+(coverageLost|refuse|lost)\s*\(|\b(?:const|let|var)\s+(coverageLost|refuse|lost)\s*=\s*(?:async\s*)?(?:function\b[^(]*\(|\([^()]*\)\s*=>|[A-Za-z_$][\w$]*\s*=>)/g;
+const ACCUMULATOR_SUMMARY_EXIT =
+  /process\.exit\(\s*problems\.every\(\s*\(\s*(\w+)\s*\)\s*=>\s*\1\.startsWith\(\s*'COVERAGE LOST'\s*\)\s*\)\s*\?\s*2\s*:\s*1\s*\)/;
+const exitShapes = (code, consts, n) => {
+  const lit = new RegExp(String.raw`process\.exit\(\s*${n}\s*\)|process\.exitCode\s*=\s*${n}(?!\d)|new\s+GuardExit\(\s*${n}\s*\)`);
+  if (lit.test(code)) return true;
+  for (const m of code.matchAll(/process\.exit\(\s*([A-Z_][A-Z0-9_]*)\s*\)|process\.exitCode\s*=\s*([A-Z_][A-Z0-9_]*)\b|new\s+GuardExit\(\s*([A-Z_][A-Z0-9_]*)\s*\)/g)) {
+    if (consts.get(m[1] ?? m[2] ?? m[3]) === n) return true;
+  }
+  return false;
+};
+/** Every coverage helper declared in `source`, by name, with what its body reaches:
+ *  'exit2' · 'exit1' · 'unread'. Line numbers are 1-based, for the message. */
+const coverageHelperExits = (source) => {
+  const mask = codeMask(source);
+  const isCode = (i) => mask[i] !== NON_CODE;
+  const fileCode = stripSourceComments(source, '.mjs');
+  const consts = new Map(
+    [...fileCode.matchAll(/^(?:export\s+)?const\s+([A-Z_][A-Z0-9_]*)\s*=\s*(\d+)\s*;/gm)].map((m) => [m[1], Number(m[2])]),
+  );
+  const out = [];
+  for (const m of source.matchAll(COVERAGE_HELPER_DECL)) {
+    if (!isCode(m.index)) continue;
+    const name = m[1] ?? m[2];
+    const line = source.slice(0, m.index).split('\n').length;
+    let i = m.index + m[0].length;
+    if (m[0].endsWith('=>')) {
+      while (/\s/.test(source[i] ?? '')) i++;
+      if (source[i] !== '{') {
+        // expression body — one statement, to the end of its line
+        const eol = source.indexOf('\n', i);
+        const body = stripSourceComments(source.slice(i, eol === -1 ? source.length : eol), '.mjs');
+        if (!body.includes(COVERAGE_MARKER)) continue;
+        const verdict = exitShapes(body, consts, 1)
+          ? 'exit1'
+          : exitShapes(body, consts, 2) || ACCUMULATOR_SUMMARY_EXIT.test(fileCode)
+            ? 'exit2'
+            : 'unread';
+        out.push({ name, line, verdict });
+        continue;
+      }
+    } else {
+      // past the parameter list: the match ends just inside its `(`
+      for (let depth = 1; i < source.length && depth > 0; i++) {
+        if (!isCode(i)) continue;
+        if (source[i] === '(') depth++;
+        else if (source[i] === ')') depth--;
+      }
+    }
+    while (i < source.length && !(source[i] === '{' && isCode(i))) i++;
+    const start = i;
+    for (let depth = 0; i < source.length; i++) {
+      if (!isCode(i)) continue;
+      if (source[i] === '{') depth++;
+      else if (source[i] === '}' && --depth === 0) break;
+    }
+    const body = stripSourceComments(source.slice(start, i + 1), '.mjs');
+    const verdict = exitShapes(body, consts, 1) ? 'exit1' : exitShapes(body, consts, 2) ? 'exit2' : 'unread';
+    out.push({ name, line, verdict });
+  }
+  return out;
+};
+
+/** Guards whose named coverage helper reaches its exit by a route the reading
+ *  above cannot follow, with the reason. EMPTY on 2026-09-16: every named helper
+ *  in tooling/ci resolved to exit 2 once the last batch landed. An entry here is
+ *  a claim that the helper DOES exit 2 by a path this file cannot read; the
+ *  contradiction check below removes it the day the reading can. */
+const COVERAGE_EXIT_UNREADABLE = new Map([]);
+
 /** Files under tooling/ci that do not scan a tree, with the reason. NOT a waiver
  *  list — each entry is a claim that the coverage question does not apply, and
  *  the reason has to survive being read aloud. (Two shapes qualify: a guard that
@@ -518,6 +634,36 @@ if (markerInCode(CANARY_COMMENT_ONLY) || !markerInCode(CANARY_IN_CODE)) {
   ]);
 }
 
+// ── the exit-2 reading's OWN negative test, on every invocation ─────────────
+// Same reason as the canary above: if `coverageHelperExits` regressed — a body
+// scan that stops at the first brace of a template substitution, a comment no
+// longer stripped, the accumulator idiom no longer matched — every guard would
+// read as 'unread' or, worse, as 'exit2', and the limb would print a clean run.
+// Five synthetic sources, each with a known answer.
+const EXIT_CANARIES = [
+  ['a helper that exits 2, with a dated comment naming exit(1)',
+    "function coverageLost(lines) {\n  console.error(`COVERAGE LOST — ${lines[0]}`);\n  // process.exit(1) until today\n  process.exit(2);\n}\n", 'exit2'],
+  ['a helper that exits 1',
+    "const coverageLost = (lines) => {\n  console.error(`COVERAGE LOST — ${lines.join(' ')}`);\n  process.exit(1);\n};\n", 'exit1'],
+  ['a helper exiting through a named constant',
+    "const EXIT_COVERAGE_LOST = 2;\nfunction refuse(why) {\n  console.error('REFUSING — ' + why);\n  process.exit(EXIT_COVERAGE_LOST);\n}\n", 'exit2'],
+  ['an accumulator with the summary idiom',
+    "const coverageLost = (m) => problems.push(`COVERAGE LOST — ${m}`);\nif (problems.length) process.exit(problems.every((p) => p.startsWith('COVERAGE LOST')) ? 2 : 1);\n", 'exit2'],
+  ['an accumulator WITHOUT the summary idiom',
+    "const coverageLost = (m) => problems.push(`COVERAGE LOST — ${m}`);\nif (problems.length) process.exit(1);\n", 'unread'],
+];
+const canaryMisreads = EXIT_CANARIES.map(([what, src, want]) => {
+  const got = coverageHelperExits(src).map((h) => h.verdict).join(',');
+  return got === want ? null : `${what}: read as "${got}", must be "${want}"`;
+}).filter(Boolean);
+if (canaryMisreads.length) {
+  coverageLost([
+    'the COVERAGE LOST exit-2 reader no longer reads a helper body correctly:',
+    ...canaryMisreads,
+    'Until this holds, every "its COVERAGE LOST exits 2" verdict below is unfounded.',
+  ]);
+}
+
 const guards = listDir(CI).filter((f) => f.endsWith('.mjs')).sort();
 const testFiles = listDir(TESTS).filter((f) => f.endsWith('.test.mjs')).sort();
 
@@ -544,7 +690,8 @@ if (strayMjs.length) {
   for (const s of strayMjs) console.error(`    tooling/ci/${s}`);
   console.error('  A guard moved into a subfolder leaves BOTH checks (negative test + self-check) silently.');
   console.error('  Move it back to tooling/ci/, or teach this guard the new layout in the same change.');
-  process.exit(1);
+  // ⏱ 2026-09-16 — exit 2, not 1: the scan no longer reaches those guards (O-EXIT2-CONVENTION-GAP).
+  process.exit(2);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1125,6 +1272,8 @@ const totalCases = [...perFile.values()].reduce((a, b) => a + b, 0);
 
 let scanners = 0;
 let exempt = 0;
+/** Guards that carry the marker but no helper by name — limb 2b cannot read their exit. Printed, never hidden. */
+const noNamedHelper = [];
 for (const guard of guards) {
   // 1. a recorded failing case
   if (!testCorpus.includes(guard)) {
@@ -1156,6 +1305,39 @@ for (const guard of guards) {
       `${guard} — listed in NOT_A_SCANNER but now contains a "${COVERAGE_MARKER}" check. ` +
         'It scans something after all; remove the exemption.',
     );
+  }
+
+  // 2b. the COVERAGE LOST stop exits 2 — read from the helper, by name
+  if (!hasMarker) continue;
+  const helpers = coverageHelperExits(source);
+  const unreadableWhy = COVERAGE_EXIT_UNREADABLE.get(guard);
+  if (helpers.length === 0) noNamedHelper.push(guard);
+  for (const h of helpers) {
+    if (h.verdict === 'exit1') {
+      problems.push(
+        `${guard}:${h.line} — its ${h.name}() COVERAGE LOST stop exits 1. Exit 1 is a FINDING; a guard that could ` +
+          'not look must exit 2 (AGENTS.md exit-code convention, O-EXIT2-CONVENTION-GAP). Change it to ' +
+          'process.exit(2) and give its suite a case that asserts exit 2 on a forced COVERAGE LOST.',
+      );
+    } else if (h.verdict === 'unread' && !unreadableWhy) {
+      problems.push(
+        `${guard}:${h.line} — its ${h.name}() COVERAGE LOST stop reaches no exit this check can read ` +
+          '(process.exit(2), process.exitCode = 2, throw new GuardExit(2), a const equal to 2, or — for an ' +
+          'accumulating helper — the summary idiom documented beside coverageHelperExits). Make it one of ' +
+          'those, or add the guard to COVERAGE_EXIT_UNREADABLE with a reason.',
+      );
+    }
+  }
+  if (unreadableWhy && !helpers.some((h) => h.verdict === 'unread')) {
+    problems.push(
+      `${guard} — listed in COVERAGE_EXIT_UNREADABLE but every named helper now reads as exit 2 or exit 1. ` +
+        'The exemption covers nothing; remove it.',
+    );
+  }
+}
+for (const g of COVERAGE_EXIT_UNREADABLE.keys()) {
+  if (scanningRealRepo && !guards.includes(g)) {
+    problems.push(`${g} is listed in COVERAGE_EXIT_UNREADABLE and is not in tooling/ci. Remove the entry.`);
   }
 }
 
@@ -1495,13 +1677,21 @@ if (notes.length) {
   console.log('⬜ notes:');
   for (const n of notes) console.log(`    ${n}`);
 }
+if (noNamedHelper.length) {
+  console.log(
+    `⬜ ${noNamedHelper.length} scanner(s) print "${COVERAGE_MARKER}" with no coverageLost/refuse/lost helper, so ` +
+      'whether that stop exits 2 is NOT read by this guard (O-EXIT2-CONVENTION-GAP) — printed, not hidden:',
+  );
+  console.log(`    ${noNamedHelper.join(', ')}`);
+}
 
 console.log(
   `ok  guard coverage — ${guards.length} file(s) in tooling/ci, all accounted for: ${invokedGuards.size} invoked by ` +
     `${workflowFiles.length} workflow(s), ${reached.size - invokedGuards.size} imported by one that is, and ` +
     `${notCiRunnable.size} recorded not CI-runnable and re-verified refusing ` +
     '(identity holds, no floor involved); all named in ' +
-    `${testFiles.length} test file(s); ${scanners} carry a coverage self-check, ${exempt} exempt with a ` +
+    `${testFiles.length} test file(s); ${scanners} carry a coverage self-check ` +
+    `(${scanners - noNamedHelper.length} with a named stop read as exit 2), ${exempt} exempt with a ` +
     `recorded reason; ${covered} workflow-invoked script(s) outside tooling/ci also covered, ` +
     `${scriptExempt.length} excused; ratchet holds at ${totalCases} test case(s) across ${testFiles.length} file(s)`,
 );

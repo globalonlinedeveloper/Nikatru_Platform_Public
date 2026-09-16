@@ -303,32 +303,32 @@ describe('assert-artifact-signed — coverage self-checks', () => {
       encoding: 'utf8',
       env: { ...process.env, ANDROID_SIGNING_POSTURE: '' },
     });
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /COVERAGE LOST/);
     assert.match(out(r), /does not know what the lane intended/);
   });
 
   test('COVERAGE LOST on an unrecognised posture — it is never resolved to a default', () => {
     const r = runGuard(makeRoot({ pin: null }), [join(TMP, 'release-signed.aab')], 'probably-fine');
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /COVERAGE LOST/);
   });
 
   test('COVERAGE LOST when no artifact path is given at all', () => {
     const r = runGuard(makeRoot({ pin: null }), [], 'release-signed');
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /evaluated nothing/);
   });
 
   test('COVERAGE LOST when the register is missing', () => {
     const r = runGuard(makeRoot({ register: false }), [join(TMP, 'release-signed.aab')], 'release-signed');
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /COVERAGE LOST/);
   });
 
   test('COVERAGE LOST when the register has no android-play row', () => {
     const r = runGuard(makeRoot({ pin: null, channelId: 'something-else' }), [join(TMP, 'release-signed.aab')], 'release-signed');
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /declares no "android-play" channel/);
   });
 
@@ -445,13 +445,13 @@ describe('android-signing — a release lane is DERIVED, not declared in YAML', 
 
   test('COVERAGE LOST when the register is gone — the decision would default to "proof is fine"', () => {
     const { r } = runPrepare(makeRoot({ register: false }), {});
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /COVERAGE LOST/);
   });
 
   test('COVERAGE LOST when the android-play row is gone', () => {
     const { r } = runPrepare(makeRoot({ channelId: 'elsewhere' }), {});
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /declares no "android-play" channel/);
   });
 
@@ -626,26 +626,26 @@ describe('android-signing — a secret that is not what it claims to be', () => 
 describe('android-signing — coverage self-checks', () => {
   test('COVERAGE LOST when the Gradle file is gone', () => {
     const { r } = runPrepare(makeRoot({ gradle: null }), FULL());
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /COVERAGE LOST/);
   });
 
   test('COVERAGE LOST when the Gradle signing env map is deleted — the names come from there', () => {
     const { r } = runPrepare(makeRoot({ gradle: 'android { defaultConfig { applicationId = "com.nikatru.subscriptiontracker" } }' }), FULL());
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /declares no release-signing environment map/);
   });
 
   test('COVERAGE LOST when the map has no storeFile key — nothing would point at the keystore', () => {
     const gradle = 'val releaseSigningEnv = mapOf(\n "storePassword" to "ANDROID_KEYSTORE_PASSWORD",\n)\n';
     const { r } = runPrepare(makeRoot({ gradle }), FULL());
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /no "storeFile" key/);
   });
 
   test('COVERAGE LOST when apps.json is missing', () => {
     const { r } = runPrepare(makeRoot({ apps: null }), FULL());
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /COVERAGE LOST/);
   });
 

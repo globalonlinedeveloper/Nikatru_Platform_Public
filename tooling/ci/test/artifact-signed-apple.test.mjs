@@ -350,20 +350,20 @@ const out = (r) => `${r.stdout}${r.stderr}`;
 describe('assert-artifact-signed-apple — coverage self-checks, run as a process', () => {
   test('COVERAGE LOST when APPLE_SIGNING_POSTURE is absent', () => {
     const r = runGuard(makeRoot(), ['Subly.app'], '');
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /COVERAGE LOST/);
     assert.match(out(r), /does not know what the lane intended/);
   });
 
   test('COVERAGE LOST on an unrecognised posture — it is never resolved to a default', () => {
     const r = runGuard(makeRoot(), ['Subly.app'], 'probably-fine');
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /neither "release-signed" nor "unsigned-build-proof"/);
   });
 
   test('COVERAGE LOST when no bundle path is given at all', () => {
     const r = runGuard(makeRoot(), [], RELEASE_SIGNED);
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /evaluated nothing/);
   });
 
@@ -373,7 +373,7 @@ describe('assert-artifact-signed-apple — coverage self-checks, run as a proces
       // On a Mac it proceeds to read the (absent) bundle instead.
       assert.doesNotMatch(out(r), /does not exist on "darwin"/);
     } else {
-      assert.equal(r.status, 1, out(r));
+      assert.equal(r.status, 2, out(r));
       assert.match(out(r), new RegExp(`does not exist on "${process.platform}"`));
       assert.match(out(r), /COVERAGE/);
     }

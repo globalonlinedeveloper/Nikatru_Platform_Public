@@ -310,13 +310,13 @@ ${literalLane(APP_PATH)}`);
 
   test('COVERAGE LOST when the workspace holds no app at all', () => {
     const r = run(fixture({ workspace: ['packages/core'], workflows: { 'build-platforms.yml': platforms(literalLane(APP_PATH)), 'e2e.yml': E2E } }));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST.*no `workspace:` entry under apps\//s);
   });
 
   test('COVERAGE LOST when neither R-1 lane is present', () => {
     const r = run(fixture({ workflows: {} }));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST/);
   });
 });

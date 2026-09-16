@@ -131,7 +131,10 @@ function done() {
     console.error('');
     console.error('  G7 — no entitlement without a verified receipt. A bundle grant is access to everything');
     console.error('  this portfolio sells, and on iOS and Android the resulting unlock cannot be reversed.');
-    process.exit(1);
+    // ⏱ 2026-09-16 — O-EXIT2-CONVENTION-GAP. Exit 2 when EVERY problem is a COVERAGE LOST: the run did
+    // not check enough to be evidence. Exit 1 when any is a finding — a proven defect outranks a blind
+    // limb. This exited 1 for both until today. assert-guard-coverage.mjs reads this exact idiom.
+    process.exit(problems.every((p) => p.startsWith('COVERAGE LOST')) ? 2 : 1);
   }
   console.log(
     `✓ assert-bundle-provenance: every writer into ${GRANT_TABLE} is downstream of a server-side ` +
