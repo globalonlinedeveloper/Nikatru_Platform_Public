@@ -645,25 +645,25 @@ describe('appimage-signing · the secret is never printed and never half-written
 describe('appimage-signing · coverage self-checks', () => {
   test('COVERAGE LOST when the register is gone', () => {
     const { r } = runPrepare(makeRoot({ register: false }), {});
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /COVERAGE LOST/);
   });
 
   test('COVERAGE LOST when the linux-appimage row is gone', () => {
     const { r } = runPrepare(makeRoot({ channelId: 'elsewhere' }), {});
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), new RegExp(`declares no "${CHANNEL_ID}" channel`));
   });
 
   test('COVERAGE LOST when the row declares no ciSecrets.names', () => {
     const { r } = runPrepare(makeRoot({ names: null }), {});
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /is not a non-empty list of secret names/);
   });
 
   test('🔴 COVERAGE LOST when the register stops declaring the key transport name', () => {
     const { r } = runPrepare(makeRoot({ names: ['SOMETHING_ELSE_B64'] }), {});
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), new RegExp(`does NOT declare ${B64_ENV}`));
   });
 
@@ -671,14 +671,14 @@ describe('appimage-signing · coverage self-checks', () => {
     // The alternative — reading the bytes as an Ed25519 seed anyway — would
     // silently produce a key nobody chose.
     const { r } = runPrepare(makeRoot({ algorithm: 'ed448', pin: KEY.publicB64 }), { [B64_ENV]: KEY.seedB64 });
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /COVERAGE LOST/);
     assert.match(out(r), /"ed448"/);
   });
 
   test('COVERAGE LOST when apps.json is missing', () => {
     const { r } = runPrepare(makeRoot({ apps: null }), {});
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /COVERAGE LOST/);
   });
 

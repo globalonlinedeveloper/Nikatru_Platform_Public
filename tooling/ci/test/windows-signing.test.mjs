@@ -727,19 +727,19 @@ describe('windows-signing · a secret that is not what it claims to be', () => {
 describe('windows-signing · coverage self-checks', () => {
   test('COVERAGE LOST when the register is gone — the decision would default to "a proof is fine"', () => {
     const { r } = runPrepare(makeRoot({ register: false }), {});
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /COVERAGE LOST/);
   });
 
   test('COVERAGE LOST when the windows-direct row is gone', () => {
     const { r } = runPrepare(makeRoot({ channelId: 'somewhere-else' }), {});
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), new RegExp(`declares no "${CHANNEL_ID}" channel`));
   });
 
   test('COVERAGE LOST when the row declares no ciSecrets.names', () => {
     const { r } = runPrepare(makeRoot({ names: null }), {});
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /is not a non-empty list of secret names/);
   });
 
@@ -748,7 +748,7 @@ describe('windows-signing · coverage self-checks', () => {
     // and this constant does not follow, a decoded certificate would have nothing
     // pointing at it and the build would silently produce an unsigned binary.
     const { r } = runPrepare(makeRoot({ names: ['SOMETHING_ELSE_B64', PW_ENV] }), {});
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), new RegExp(`does NOT declare ${B64_ENV}`));
   });
 
@@ -764,7 +764,7 @@ describe('windows-signing · coverage self-checks', () => {
 
   test('COVERAGE LOST when apps.json is missing', () => {
     const { r } = runPrepare(makeRoot({ apps: null }), {});
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /COVERAGE LOST/);
   });
 

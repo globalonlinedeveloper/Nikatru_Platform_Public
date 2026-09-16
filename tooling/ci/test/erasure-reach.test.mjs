@@ -331,7 +331,7 @@ describe('LIMB 3 — the erasure route must not be reachable through the shared 
             .join('\n'),
         ),
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /COVERAGE LOST/);
         assert.match(r.stderr, /no top-level declaration was parsed/);
       },
@@ -450,7 +450,7 @@ describe("the guard's own reachability walk", () => {
     withMutatedGuard(
       (s) => s.replace('/^(?:export\\s+)?(?:const|let|async\\s+function|function)', '/(?:export\\s+)?(?:const|let|async\\s+function|function)'),
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /COVERAGE LOST/);
       },
     );
@@ -463,7 +463,7 @@ describe("the guard's own reachability walk", () => {
     withMutatedGuard(
       (s) => s.replace('new RegExp(`(?<![\\\\w$])${escapeRe(other)}(?![\\\\w$])`).test(code)', 'false'),
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /COVERAGE LOST/);
         assert.match(r.stderr, /did not follow `outer` . `inner`/);
       },
@@ -474,7 +474,7 @@ describe("the guard's own reachability walk", () => {
     withMutatedGuard(
       (s) => s.replace('if (readsEnvName(body, needle, seeds)) return true;', 'return true;'),
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /COVERAGE LOST/);
         assert.match(r.stderr, /a needle that is in no declaration/);
       },
@@ -554,7 +554,7 @@ describe('LIMB 1 — a table with a user_id may not declare itself unreachable',
         rmSync(join(root, PLATFORM, 'migrations'), { recursive: true, force: true });
       },
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /COVERAGE LOST/);
       },
     );
@@ -596,7 +596,7 @@ describe('LIMB 4 — the ONE erasure call the client makes must reach every app'
     withTree(
       (root) => edit(root, `${SUBLY}/wrangler.jsonc`, (s) => s.replace('"migrations_dir": "migrations"', '"unused": ""')),
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /COVERAGE LOST/);
         assert.match(r.stderr, /service\(s\) own a database/);
       },
@@ -803,7 +803,7 @@ describe('the template root', () => {
     withTemplateTree(
       (root) => edit(root, BRICK_WRANGLER, (s) => s.replace('"migrations_dir": "migrations"', '"unused": ""')),
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /COVERAGE LOST/);
         assert.match(r.stderr, /no wrangler config under tooling\/bricks\/ declares a `migrations_dir`/);
       },
@@ -814,7 +814,7 @@ describe('the template root', () => {
     withTemplateTree(
       (root) => edit(root, BRICK_MIGRATION, (s) => s.replaceAll('user_id', 'owner_ref')),
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /COVERAGE LOST/);
         assert.match(r.stderr, /NOT ONE user-owned table was found/);
       },
@@ -839,7 +839,7 @@ describe('the roots are DERIVED, so a Worker in neither is not a silent skip', (
         );
       },
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /COVERAGE LOST/);
         assert.match(r.stderr, /belong to neither root: packages\/stray-worker\/wrangler\.jsonc/);
       },
@@ -862,7 +862,7 @@ describe('the roots are DERIVED, so a Worker in neither is not a silent skip', (
         );
       },
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /COVERAGE LOST/);
         assert.match(r.stderr, /never opened: services\/group\/nested\/wrangler\.jsonc/);
       },

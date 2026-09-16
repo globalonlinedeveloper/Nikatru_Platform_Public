@@ -484,7 +484,7 @@ describe('assert-guard-coverage', () => {
       mkdirSync(sub, { recursive: true });
       writeFileSync(join(sub, 'assert-hidden.mjs'), 'if (x) throw new Error("COVERAGE LOST");\n');
       const r = run(root);
-      assert.equal(r.status, 1);
+      assert.equal(r.status, 2);
       assert.match(r.stderr, /COVERAGE LOST/);
       assert.match(r.stderr, /tooling\/ci\/guards\/assert-hidden\.mjs/);
     });
@@ -959,6 +959,72 @@ describe('assert-guard-coverage', () => {
       );
       assert.equal(r.status, 1, r.stdout);
       assert.match(r.stderr, /assert-jsdoc\.mjs — no "COVERAGE LOST" self-check/);
+    });
+
+    // ── the COVERAGE LOST stop must EXIT 2 (O-EXIT2-CONVENTION-GAP, 2026-09-16) ──
+    // Read from the helper BY NAME. Exit 1 is a finding; a guard that could not
+    // look must say so with exit 2, or a red gate reads as a defect it never found.
+    test('a coverageLost() helper that exits 1 is a problem, named with its line', () => {
+      const r = run(
+        repo(
+          compliant({
+            'assert-exit-one.mjs':
+              "function coverageLost(lines) {\n  console.error(`✗ COVERAGE LOST — ${lines[0]}`);\n  process.exit(1);\n}\nif (!x) coverageLost(['nothing']);\n",
+          }),
+        ),
+      );
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stderr, /assert-exit-one\.mjs:1 — its coverageLost\(\) COVERAGE LOST stop exits 1/);
+    });
+
+    test('the same helper exiting 2 passes — and a dated comment naming exit(1) does not fail it', () => {
+      const r = run(
+        repo(
+          compliant({
+            'assert-exit-two.mjs':
+              "const coverageLost = (lines) => {\n  console.error(`✗ COVERAGE LOST — ${lines[0]}`);\n  // process.exit(1) until 2026-09-16\n  process.exit(2);\n};\nif (!x) coverageLost(['nothing']);\n",
+          }),
+        ),
+      );
+      assert.equal(r.status, 0, r.stderr);
+      assert.match(r.stdout, /1 with a named stop read as exit 2/);
+    });
+
+    test('refuse() through process.exitCode = 1 is a problem too', () => {
+      const r = run(
+        repo(
+          compliant({
+            'assert-refuse-one.mjs': "function refuse(why) {\n  console.error('✗ COVERAGE LOST — ' + why);\n  process.exitCode = 1;\n}\n",
+          }),
+        ),
+      );
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stderr, /assert-refuse-one\.mjs:1 — its refuse\(\) COVERAGE LOST stop exits 1/);
+    });
+
+    test('an ACCUMULATING helper passes only with the summary idiom that picks 2', () => {
+      const helper = "const coverageLost = (m) => problems.push(`COVERAGE LOST — ${m}`);\n";
+      const without = run(
+        repo(compliant({ 'assert-accum.mjs': `const problems = [];\n${helper}if (problems.length) process.exit(1);\n` })),
+      );
+      assert.equal(without.status, 1, without.stdout);
+      assert.match(without.stderr, /assert-accum\.mjs:2 — its coverageLost\(\) COVERAGE LOST stop reaches no exit this check can read/);
+      const withIdiom = run(
+        repo(
+          compliant({
+            'assert-accum.mjs':
+              `const problems = [];\n${helper}if (problems.length) process.exit(problems.every((p) => p.startsWith('COVERAGE LOST')) ? 2 : 1);\n`,
+          }),
+        ),
+      );
+      assert.equal(withIdiom.status, 0, withIdiom.stderr);
+    });
+
+    test('a scanner with NO named helper is not failed, and is NAMED rather than counted as converted', () => {
+      const r = run(repo(compliant()));
+      assert.equal(r.status, 0, r.stderr);
+      assert.match(r.stdout, /4 scanner\(s\) print "COVERAGE LOST" with no coverageLost\/refuse\/lost helper/);
+      assert.match(r.stdout, /assert-thing-0\.mjs, assert-thing-1\.mjs/);
     });
 
     test('a named non-scanner is exempt, and the exemption is counted out loud', () => {

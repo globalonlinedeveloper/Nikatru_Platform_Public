@@ -254,26 +254,26 @@ describe('assert-config-registry — COVERAGE', () => {
   ]) {
     test(`a missing ${rel} is COVERAGE LOST, not a pass`, () => {
       const r = run(tree({ omit: rel }));
-      assert.equal(r.code, 1, r.out);
+      assert.equal(r.code, 2, r.out);
       assert.match(r.out, /COVERAGE LOST/);
     });
   }
 
   test('an EMPTY catalogue is COVERAGE LOST — every limb would range over nothing', () => {
     const r = run(tree({ catalogue: [] }));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST/);
   });
 
   test('an unparseable value document is COVERAGE LOST, not "no apps configured"', () => {
     const r = run(tree({ data: '{not json' }));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST/);
   });
 
   test('APP_ID_PATTERN unreadable from config.ts is COVERAGE LOST', () => {
     const r = run(tree({ configTs: CONFIG_TS.replace(/export const APP_ID_PATTERN.*\n/, '') }));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST[\s\S]*APP_ID_PATTERN/);
   });
 });
@@ -387,7 +387,7 @@ describe('assert-config-registry — the seven observations', () => {
 
   test('7c · an unparseable brick literal is COVERAGE LOST, not agreement', () => {
     const r = run(tree({ hook: "void run() { vars['api_base_url'] = someFunction(); }\n" }));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST[\s\S]*pre_gen/);
   });
 });
@@ -445,7 +445,7 @@ describe('assert-config-registry — 8 · a served feature key nobody reads', ()
     const dart = { ...DART };
     delete dart['apps/subscriptiontracker/lib/state/providers.dart'];
     const r = run(tree({ dart }));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST[\s\S]*cannot resolve the key read by/);
   });
 
@@ -489,13 +489,13 @@ describe('assert-config-registry — 8 · a served feature key nobody reads', ()
 
   test('8j · COVERAGE — FEATURE_NAMES unparseable is not "the site reads nothing"', () => {
     const r = run(tree({ discovery: "export const RAIL_CONFIG = 'x';\n" }));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST[\s\S]*FEATURE_NAMES could not be parsed/);
   });
 
   test('8k · COVERAGE — an EMPTY FEATURE_NAMES map is COVERAGE LOST', () => {
     const r = run(tree({ discovery: 'const FEATURE_NAMES = new Map([]);\n' }));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST[\s\S]*parsed to ZERO keys/);
   });
 
@@ -503,7 +503,7 @@ describe('assert-config-registry — 8 · a served feature key nobody reads', ()
     const dart = { ...DART };
     delete dart['apps/subscriptiontracker/lib/features/home/home_screen.dart'];
     const r = run(tree({ dart }));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST[\s\S]*ZERO `feature\(` call sites/);
   });
 
@@ -529,7 +529,7 @@ describe('assert-config-registry — 8 · a served feature key nobody reads', ()
         },
       }),
     );
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST[\s\S]*ZERO `feature\(` call sites/);
   });
 });
@@ -1004,7 +1004,7 @@ describe('assert-config-registry — 10 · a copy override never falls back to t
     delete bare[BRICK];
     bare[HOME] = 'Widget build() {\n  final core.AppConfig? cfg = ref.watch(appConfigProvider).valueOrNull;\n  final bool on = cfg?.feature(kPromoCardFeature) ?? false;\n  return on ? card() : empty();\n}\n';
     const r = run(tree({ dart: bare }));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST[\s\S]*no shipped Dart reads the `copy` map at all/);
   });
 

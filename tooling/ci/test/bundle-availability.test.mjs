@@ -174,13 +174,13 @@ describe('assert-bundle-availability — the coming-soon gate is derived', () =>
   test('an absent register is COVERAGE LOST, never a clean run', () => {
     const empty = mkdtempSync(join(TMP, 'empty-'));
     const r = run(empty);
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST/);
   });
 
   test('a register that is present but unparseable refuses rather than reading false', () => {
     const r = run(tree((d) => writeFileSync(join(d, 'catalog/apps.json'), '{not json')));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST/);
   });
 });

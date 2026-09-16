@@ -177,14 +177,14 @@ describe('assert-catalog-contract.mjs — the coverage floor', () => {
     // The cheapest way for this guard to stop checking: `[]` is valid JSON, is
     // an array, and satisfies every per-row assertion vacuously.
     const { code, out } = run(tree([]));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /zero rows/);
   });
 
   test('an ABSENT catalogue refuses as COVERAGE LOST', () => {
     const { code, out } = run(tree(null));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /no catalogue/);
   });
@@ -198,14 +198,14 @@ describe('assert-catalog-contract.mjs — the coverage floor', () => {
 
   test('an absent channel register refuses rather than checking against an empty vocabulary', () => {
     const { code, out } = run(tree([ROW()], { register: 'absent' }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /channel-register/);
   });
 
   test('a register with no channels refuses — an empty vocabulary accepts anything', () => {
     const { code, out } = run(tree([ROW()], { register: { channels: [] } }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
   });
 });
@@ -443,7 +443,7 @@ describe('assert-catalog-contract.mjs — `listings` [ADR 055]', () => {
     const channels = JSON.parse(JSON.stringify(REGISTER_CHANNELS));
     delete channels.find((c) => c.id === 'android-play').storefrontKey;
     const { code, out } = run(tree([ROW()], { register: { channels } }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /storefrontKey/);
   });
@@ -452,7 +452,7 @@ describe('assert-catalog-contract.mjs — `listings` [ADR 055]', () => {
     const channels = JSON.parse(JSON.stringify(REGISTER_CHANNELS));
     for (const c of channels) c.storefrontKey = null;
     const { code, out } = run(tree([ROW()], { register: { channels } }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /no storefront keys/);
   });

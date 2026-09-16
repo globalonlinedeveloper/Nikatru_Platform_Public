@@ -230,7 +230,8 @@
 // Usage:  node tooling/ci/assert-play-declarations.mjs [repoRoot]
 // Exit 0 = EVERY app's declarations still describe its own tree, and the
 //          template has not started collecting on all of their behalf.
-//      1 = they do not, or a root stopped delivering a subject to check.
+//      1 = they do not.
+//      2 = COVERAGE LOST — a root stopped delivering a subject to check.
 // ─────────────────────────────────────────────────────────────────────────────
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve, dirname, posix } from 'node:path';
@@ -291,7 +292,9 @@ function coverageLost(lines) {
   console.error(`FAIL COVERAGE LOST${CURRENT_ROOT ? ` [${CURRENT_ROOT}]` : ''} — ${lines[0]}`);
   for (const l of lines.slice(1)) console.error(`     ${l}`);
   console.error('\nassert-play-declarations: FAILED');
-  process.exit(1);
+  // ⏱ 2026-09-16 — exit 2, not 1: COVERAGE LOST is "did not check enough to be evidence", never a
+  // finding (AGENTS.md exit-code convention; O-EXIT2-CONVENTION-GAP). This helper exited 1 until today.
+  process.exit(2);
 }
 
 /** The RESOLVED package versions out of a pubspec.lock.

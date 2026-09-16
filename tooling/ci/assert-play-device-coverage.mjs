@@ -134,7 +134,8 @@
 //          that is not served yet and said so; AND the brick offers a directory
 //          for every declared set, each empty of pixels and carrying its README.
 // Exit 1 = a served or submitting channel is short, the brick cannot emit a
-//          declared set or ships placeholder pixels, or a scan reached nothing.
+//          declared set or ships placeholder pixels.
+// Exit 2 = COVERAGE LOST — a scan reached nothing, or a declaration is unreadable.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { resolve, join, dirname } from 'node:path';
@@ -179,7 +180,9 @@ function coverageLost(lines) {
   console.error(`FAIL COVERAGE LOST — ${lines[0]}`);
   for (const l of lines.slice(1)) console.error(`     ${l}`);
   console.error('\nassert-play-device-coverage: FAILED');
-  process.exit(1);
+  // ⏱ 2026-09-16 — exit 2, not 1: COVERAGE LOST is "did not check enough to be evidence", never a
+  // finding (AGENTS.md exit-code convention; O-EXIT2-CONVENTION-GAP). This helper exited 1 until today.
+  process.exit(2);
 }
 
 const readJson = (rel) => {

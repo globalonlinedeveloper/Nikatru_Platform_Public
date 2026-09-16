@@ -645,46 +645,46 @@ describe('assert-play-declarations — COVERAGE LOST rather than a quiet pass', 
     const root = makeRoot();
     rmSync(join(root, 'apps/subscriptiontracker/store/android-play/data-safety.json'));
     const r = run(root);
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /COVERAGE LOST/);
   });
 
   test('dropping the file from the register contract is COVERAGE LOST — two guards, one relationship', () => {
     const r = run(makeRoot({ register: (x) => { x.storeMetadataContract.perChannel['android-play'].additionalFiles = ['content-rating.json']; } }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /additionalFiles does not list "data-safety\.json"/);
   });
 
   test('an empty vocabulary is COVERAGE LOST — otherwise zero answers would pass', () => {
     const r = run(makeRoot({ ds: (x) => { x.vocabulary.categories = {}; } }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /COVERAGE LOST/);
     assert.match(out(r), /vocabulary\.categories/);
   });
 
   test('no answers at all is COVERAGE LOST', () => {
     const r = run(makeRoot({ ds: (x) => { x.answers = []; } }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /COVERAGE LOST/);
   });
 
   test('a build command that no longer matches the lane is COVERAGE LOST, not a silent skip', () => {
     const r = run(makeRoot({ ds: (x) => { x.buildPosture.buildCommandContains = 'flutter build aab-v2'; } }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /COVERAGE LOST/);
     assert.match(out(r), /flutter build aab-v2/);
   });
 
   test('an inventory with no personal-data row is COVERAGE LOST', () => {
     const r = run(makeRoot({ inv: (x) => { x.stores[0].personalData = false; } }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /COVERAGE LOST/);
     assert.match(out(r), /personalData/);
   });
 
   test('every tell disappearing is COVERAGE LOST — the limb that makes this checkable', () => {
     const r = run(makeRoot({ ds: (x) => { for (const a of x.answers) a.tells = { androidPermissions: [], dartPackages: [], iosUsageDescriptionKeys: [] }; } }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /NOT ONE tell was evaluated/);
   });
 });
@@ -818,20 +818,20 @@ describe('assert-play-declarations — the iOS usage-key haystack, floored on th
 
   test('the required iOS Runner Info.plist going missing is COVERAGE LOST, not "no keys"', () => {
     const r = run(makeRoot({ files: (f) => { f['apps/subscriptiontracker/ios/Runner/Info.plist'] = null; } }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /apps\/subscriptiontracker\/ios\/Runner\/Info\.plist is REQUIRED_COVERAGE for the iOS usage-key haystack/);
     assert.doesNotMatch(out(r), /assert-play-declarations: ok/);
   });
 
   test('the required macOS Runner Info.plist going missing is COVERAGE LOST too', () => {
     const r = run(makeRoot({ files: (f) => { f['apps/subscriptiontracker/macos/Runner/Info.plist'] = null; } }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /apps\/subscriptiontracker\/macos\/Runner\/Info\.plist is REQUIRED_COVERAGE/);
   });
 
   test('the walk reaching NO Info.plist at all is COVERAGE LOST — the walk() regression', () => {
     const r = run(makeRoot({ files: (f) => { f['apps/subscriptiontracker/ios/Runner/Info.plist'] = null; f['apps/subscriptiontracker/macos/Runner/Info.plist'] = null; } }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /found NO Info\.plist at all/);
     assert.match(out(r), /An absence that is indistinguishable from a broken reading is/);
   });
@@ -841,7 +841,7 @@ describe('assert-play-declarations — the iOS usage-key haystack, floored on th
     // inside <!-- --> is found, is parsed, and yields nothing — the exact shape
     // of "the instrument stopped working" that a file-count check would miss.
     const r = run(makeRoot({ files: (f) => { f['apps/subscriptiontracker/ios/Runner/Info.plist'] = '<plist><dict><!--<key>CFBundleName</key><string>subscriptiontracker</string>--></dict></plist>\n'; } }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /apps\/subscriptiontracker\/ios\/Runner\/Info\.plist was found but yielded ZERO <key> elements after stripInert\(\)/);
   });
 
@@ -1241,7 +1241,7 @@ describe('assert-play-declarations — clientAbsence: the claim that survives co
 
   test('COVERAGE LOST when a clientAbsence block is kept but emptied of every tell', () => {
     const r = run(makeRoot({ ds: (x) => { findAnswer(x, 'Email address').clientAbsence.androidPermissions = []; } }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /COVERAGE LOST/);
     assert.match(out(r), /declares `clientAbsence` with ZERO tells in it/);
   });
@@ -1260,7 +1260,7 @@ describe('assert-play-declarations — clientAbsence: the claim that survives co
 
   test('COVERAGE LOST when the REQUIRED_COVERAGE list itself is emptied', () => {
     const r = run(makeRoot({ ds: (x) => { x.clientAbsenceRequiredFor.types = []; } }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /clientAbsenceRequiredFor\.types is missing or empty/);
   });
 
@@ -1298,13 +1298,13 @@ describe('assert-play-declarations — the crash-SDK version pin', () => {
 
   test('COVERAGE LOST when the pin list is emptied', () => {
     const r = run(makeRoot({ ds: (x) => { x.crashSdkSurface.pinned = {}; } }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /crashSdkSurface\.pinned is missing or empty/);
   });
 
   test('COVERAGE LOST when the lockfile is gone', () => {
     const r = run(makeRoot({ files: (f) => { f['pubspec.lock'] = null; } }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /COVERAGE LOST/);
     // ⚠️ THIS ASSERTED crashSdkSurface's MESSAGE UNTIL LIMB 7a WAS WRITTEN.
     // Both limbs pin against the same lock and both COVERAGE LOST when it is
@@ -1549,21 +1549,21 @@ describe('assert-play-declarations — limb 7a: the merged manifest, as measured
   // ── COVERAGE: a limb that ranges over nothing must never certify anything ──
   test('COVERAGE LOST when the whole `merged` block is deleted', () => {
     const r = run(makeRoot({ ds: (x) => { delete x.androidPermissions.merged; } }));
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /COVERAGE LOST/);
     assert.match(out(r), /androidPermissions carries no `merged` block/);
   });
 
   test('COVERAGE LOST when merged.permissions is emptied — not "no permissions merged"', () => {
     const r = run(makeRoot({ ds: (x) => { x.androidPermissions.merged.permissions = []; } }));
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /COVERAGE LOST/);
     assert.match(out(r), /androidPermissions\.merged\.permissions is empty or not an array/);
   });
 
   test('COVERAGE LOST when merged.pinned is emptied — the pin is the anti-rot, not decoration', () => {
     const r = run(makeRoot({ ds: (x) => { x.androidPermissions.merged.pinned = {}; } }));
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /COVERAGE LOST/);
     assert.match(out(r), /androidPermissions\.merged\.pinned is missing or empty/);
   });
@@ -1573,7 +1573,7 @@ describe('assert-play-declarations — limb 7a: the merged manifest, as measured
     // parseLockVersions() anchor matches nothing. A subset check would read that
     // as "no pin drifted" and pass.
     const r = run(makeRoot({ files: (f) => { f['pubspec.lock'] = LOCK.replace(/^ {2}(\S)/gm, '$1'); } }));
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /COVERAGE LOST/);
     assert.match(out(r), /parsed to ZERO resolved package versions/);
   });
@@ -1697,21 +1697,21 @@ describe('assert-play-declarations — the domain is DERIVED, and floored', () =
 
   test('no root pubspec at all is COVERAGE LOST — the domain, not a limb', () => {
     const r = run(makeRoot({ files: (f) => { f['pubspec.yaml'] = null; } }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /COVERAGE LOST/);
     assert.match(out(r), /root pubspec\.yaml does not exist/);
   });
 
   test('a pubspec with no `workspace:` block is COVERAGE LOST, not a scan of zero apps', () => {
     const r = run(makeRoot({ files: (f) => { f['pubspec.yaml'] = 'name: nikatru_workspace\n'; } }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /COVERAGE LOST/);
     assert.match(out(r), /no readable `workspace:` block/);
   });
 
   test('a workspace list naming no apps/ member is COVERAGE LOST — an empty domain prints ok', () => {
     const r = run(makeRoot({ files: (f) => { f['pubspec.yaml'] = 'name: w\nworkspace:\n  - packages/core\n'; } }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /COVERAGE LOST/);
     assert.match(out(r), /names no apps\/ member/);
   });
@@ -1744,7 +1744,7 @@ describe('assert-play-declarations — the domain is DERIVED, and floored', () =
 
   test("app #2's own COVERAGE LOST names app #2 — a lost domain must not send the reader to the wrong tree", () => {
     const r = run(makeTwoAppRoot({ files: (f) => { f['apps/app2/android/app/src/main/AndroidManifest.xml'] = null; } }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /COVERAGE LOST \[apps\/app2\]/);
   });
 
@@ -1764,7 +1764,7 @@ describe('assert-play-declarations — the domain is DERIVED, and floored', () =
     // here" and "this subject collapsed". Both halves are asserted so the
     // sentinel branch itself cannot silently invert.
     const r = run(makeRoot({ fullCheckout: true }));
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /COVERAGE LOST/);
     assert.match(out(r), /root-level floor\(s\) were not met/);
     assert.match(out(r), /shape-checked only 3 answer\(s\), below its floor of 20/);
@@ -1785,28 +1785,28 @@ describe('assert-play-declarations — THE FACTORY: the brick is a root of a dif
         for (const k of Object.keys(f)) if (k.startsWith(BRICK)) f[k] = null;
       },
     }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /COVERAGE LOST/);
     assert.match(out(r), /is not a directory under/);
   });
 
   test("the brick's data-safety.json missing is COVERAGE LOST — the root is not empty and must not become so", () => {
     const r = run(makeRoot({ files: (f) => { f[`${BRICK}/store/android-play/data-safety.json`] = null; } }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /COVERAGE LOST \[tooling\/bricks/);
     assert.match(out(r), /data-safety\.json does not exist/);
   });
 
   test("the brick's pubspec missing is COVERAGE LOST — the sweep's haystack", () => {
     const r = run(makeRoot({ files: (f) => { f[`${BRICK}/pubspec.yaml`] = null; } }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /COVERAGE LOST/);
     assert.match(out(r), /pubspec\.yaml does not exist/);
   });
 
   test('a brick pubspec with no dependencies block is COVERAGE LOST, not an empty sweep reporting clean', () => {
     const r = run(makeRoot({ files: (f) => { f[`${BRICK}/pubspec.yaml`] = 'name: x\ndev_dependencies:\n  flutter_test:\n    sdk: flutter\n'; } }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /COVERAGE LOST/);
     assert.match(out(r), /no top-level `dependencies:` block/);
   });
@@ -1820,7 +1820,7 @@ describe('assert-play-declarations — THE FACTORY: the brick is a root of a dif
     // and still yielded nothing — and it is the one that looks most like a
     // working sweep over a clean template.
     const r = run(makeRoot({ files: (f) => { f[`${BRICK}/pubspec.yaml`] = 'name: x\ndependencies:\ndev_dependencies:\n  flutter_test:\n    sdk: flutter\n'; } }));
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /COVERAGE LOST/);
     assert.match(out(r), /parsed to ZERO entries/);
   });

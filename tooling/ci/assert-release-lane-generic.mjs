@@ -123,6 +123,7 @@
 // Usage:  node tooling/ci/assert-release-lane-generic.mjs [repoRoot]
 //         node tooling/ci/assert-release-lane-generic.mjs --emit-apps [repoRoot]
 // Exit 0 = every R-1 lane covers the whole workspace and no guard hides a lane.
+// Exit 1 = a finding (or `--emit-apps` refusing an empty or nested matrix). 2 = COVERAGE LOST.
 //
 // `--emit-apps` prints the workspace app IDS as a JSON array (`["subscriptiontracker"]`) and
 // exits. THIS IS NOT A CONVENIENCE. `build-platforms.yml` and `e2e.yml` build
@@ -181,7 +182,9 @@ function coverageLost(lines) {
   console.error(`FAIL COVERAGE LOST — ${lines[0]}`);
   for (const l of lines.slice(1)) console.error(`     ${l}`);
   console.error('\nassert-release-lane-generic: FAILED');
-  process.exit(1);
+  // ⏱ 2026-09-16 — exit 2, not 1: COVERAGE LOST is "did not check enough to be evidence", never a
+  // finding (AGENTS.md exit-code convention; O-EXIT2-CONVENTION-GAP). This helper exited 1 until today.
+  process.exit(2);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

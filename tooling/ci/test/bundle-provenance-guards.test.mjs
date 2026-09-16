@@ -144,7 +144,7 @@ describe('assert-no-null-entitlement-key — the trap SQLite will not close', ()
 
   test('a tree with no migrations is COVERAGE LOST, never a clean run', () => {
     const r = run(NULL_KEY_GUARD, mkdtempSync(join(TMP, 'empty-')));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST/);
   });
 });
@@ -198,7 +198,7 @@ describe('assert-no-store-bundle-copy — no promise of what cannot be delivered
       STORE_COPY_GUARD,
       tree(STORE_DIRS.filter((d) => !d.startsWith('apps/'))),
     );
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST/);
   });
 
@@ -232,7 +232,7 @@ describe('assert-no-store-bundle-copy — no promise of what cannot be delivered
       STORE_COPY_GUARD,
       tree(STORE_DIRS, (d) => writeFileSync(join(d, APPS), '{not json')),
     );
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST/);
   });
 });

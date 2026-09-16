@@ -105,7 +105,10 @@ function done() {
   if (problems.length) {
     console.error(`\n✗ assert-bundle-availability: ${problems.length} problem(s)`);
     for (const p of problems) console.error(`  · ${p}`);
-    process.exit(1);
+    // ⏱ 2026-09-16 — O-EXIT2-CONVENTION-GAP. Exit 2 when EVERY problem is a COVERAGE LOST: the run did
+    // not check enough to be evidence. Exit 1 when any is a finding — a proven defect outranks a blind
+    // limb. This exited 1 for both until today. assert-guard-coverage.mjs reads this exact idiom.
+    process.exit(problems.every((p) => p.startsWith('COVERAGE LOST')) ? 2 : 1);
   }
   console.log('✓ assert-bundle-availability: the coming-soon gate is derived, and it moves in both directions.');
   process.exit(0);

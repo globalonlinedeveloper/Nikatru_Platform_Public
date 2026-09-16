@@ -371,7 +371,7 @@ test('COVERAGE LOST · an empty register refuses rather than reporting clean', (
   writeJson(d, 'tooling/channel-register.json', { ...REGISTER, channels: [] });
   const r = run(d);
   rmSync(d, { recursive: true, force: true });
-  assert.equal(r.code, 1);
+  assert.equal(r.code, 2);
   assert.match(r.out, /COVERAGE LOST/);
 });
 
@@ -393,6 +393,6 @@ test('COVERAGE LOST · a site with no HTML refuses', () => {
   mkdirSync(join(d, 'sites/nikatru'), { recursive: true });
   const r = run(d);
   rmSync(d, { recursive: true, force: true });
-  assert.equal(r.code, 1);
+  assert.equal(r.code, 2);
   assert.match(r.out, /COVERAGE LOST/);
 });

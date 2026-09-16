@@ -229,7 +229,7 @@ describe('the real repository', () => {
     // very next run is green again.
     withTree(
       (root) => rmSync(join(root, 'services'), { recursive: true, force: true }),
-      (r) => assert.equal(r.status, 1),
+      (r) => assert.equal(r.status, 2),
     );
     assert.equal(runStatic(sharedTree()).status, 0, 'the tree did not come back');
   });
@@ -398,7 +398,7 @@ describe('R2 — required coverage, both directions', () => {
     withTree(
       (root) => rmSync(join(root, 'services'), { recursive: true, force: true }),
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /COVERAGE LOST[\s\S]*migrations_dir/);
       },
     );
@@ -410,7 +410,7 @@ describe('R2 — required coverage, both directions', () => {
         for (const d of ['e2e', 'ops', 'scripts', 'ci']) rmSync(join(root, 'tooling', d), { recursive: true, force: true });
       },
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /COVERAGE LOST[\s\S]*not one source file was found under/);
       },
     );
@@ -429,7 +429,7 @@ describe('R2 — required coverage, both directions', () => {
         rmSync(join(root, 'tooling', 'ops', 'check-d1-accepts-live-sql.mjs'), { force: true });
       },
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /COVERAGE LOST[\s\S]*negative-control fixture lives nowhere/);
       },
     );
@@ -553,7 +553,7 @@ describe('the detector\'s own controls', () => {
     const empty = mkdtempSync(join(tmpdir(), 'nikatru-d1-empty-'));
     try {
       const r = runStatic(empty);
-      assert.equal(r.status, 1);
+      assert.equal(r.status, 2);
       assert.doesNotMatch(r.stderr, /the prohibition does not flag its own fixture/);
       assert.match(r.stderr, /COVERAGE LOST/);
     } finally {

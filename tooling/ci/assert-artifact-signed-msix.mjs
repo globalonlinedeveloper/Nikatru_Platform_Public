@@ -73,7 +73,8 @@
 // Usage:
 //   node tooling/ci/assert-artifact-signed-msix.mjs [--repo-root <path>] <pkg.msix>…
 // Exit 0 = every package carries the declared identity and no signature.
-//      1 = one does not, or the question could not be asked.
+//      1 = one does not.
+//      2 = COVERAGE LOST — the question could not be asked.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
@@ -168,7 +169,9 @@ function coverageLost(first, ...more) {
   for (const m of more) console.error(`    ${m}`);
   console.error('  A package nobody opened is not a package anybody checked.');
   console.error('assert-artifact-signed-msix: FAILED');
-  process.exit(1);
+  // ⏱ 2026-09-16 — exit 2, not 1: COVERAGE LOST is "did not check enough to be evidence", never a
+  // finding (AGENTS.md exit-code convention; O-EXIT2-CONVENTION-GAP). This helper exited 1 until today.
+  process.exit(2);
 }
 
 function main() {

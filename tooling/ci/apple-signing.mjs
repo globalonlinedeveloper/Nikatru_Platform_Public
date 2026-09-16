@@ -130,6 +130,7 @@
 // Env out (via $GITHUB_ENV): APPLE_SIGNING_POSTURE and, when signing was
 //          arranged, the keychain / plist / team paths the export steps read.
 // Exit 0 = the posture is decided and legal for this lane. 1 = it is not.
+//      2 = COVERAGE LOST — the question could not be asked (register, row or input missing).
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, writeFileSync, existsSync, appendFileSync, mkdirSync, mkdtempSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
@@ -163,7 +164,7 @@ export const UNSIGNED_PROOF = 'unsigned-build-proof';
  * `APPLE_INSTALLER_CERT_P12_BASE64` — to the macos-appstore row ALONE, and the
  * comparison had no way to say "this row, not that one", so it read a correct
  * declaration as drift. Measured on a clean tree 2026-08-21:
- * `node tooling/ci/apple-signing.mjs --app subscriptiontracker` → EXIT 1, "FAIL COVERAGE LOST
+ * `node tooling/ci/apple-signing.mjs --app subscriptiontracker` → EXIT 1 (2 since 2026-09-16), "FAIL COVERAGE LOST
  * — …macos-appstore row and this script disagree… declared in the register and
  * unknown here: APPLE_INSTALLER_CERT_P12_BASE64". The `apple` job's only
  * invocation of this script — search `build-platforms.yml` for the line
@@ -1156,7 +1157,9 @@ function coverageLost(lines) {
   console.error(`FAIL COVERAGE LOST — ${lines[0]}`);
   for (const l of lines.slice(1)) console.error(`     ${l}`);
   console.error('\napple-signing: FAILED');
-  process.exit(1);
+  // ⏱ 2026-09-16 — exit 2, not 1: COVERAGE LOST is "did not check enough to be evidence", never a
+  // finding (AGENTS.md exit-code convention; O-EXIT2-CONVENTION-GAP). This helper exited 1 until today.
+  process.exit(2);
 }
 
 function die(lines) {

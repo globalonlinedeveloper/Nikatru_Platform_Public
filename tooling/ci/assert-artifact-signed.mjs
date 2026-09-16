@@ -83,6 +83,7 @@
 // Env in: ANDROID_SIGNING_POSTURE (required — exported by
 //         tooling/ci/android-signing.mjs; the guard refuses to run without it)
 // Exit 0 = the artifact is signed by the key this lane intended. 1 = it is not.
+//      2 = COVERAGE LOST — no posture, no artifact path, or no register row to compare against.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
@@ -126,7 +127,9 @@ function coverageLost(lines) {
   console.error(`FAIL COVERAGE LOST — ${lines[0]}`);
   for (const l of lines.slice(1)) console.error(`     ${l}`);
   console.error('\nassert-artifact-signed: FAILED');
-  process.exit(1);
+  // ⏱ 2026-09-16 — exit 2, not 1: COVERAGE LOST is "did not check enough to be evidence", never a
+  // finding (AGENTS.md exit-code convention; O-EXIT2-CONVENTION-GAP). This helper exited 1 until today.
+  process.exit(2);
 }
 
 // ── the posture this lane INTENDED ───────────────────────────────────────────
@@ -375,13 +378,24 @@ for (const rel of artifacts) {
 // set; exiting on the coverage check alone replaced "this file carries no
 // signature" with "nothing was evaluated", which is true, useless, and reads as
 // a broken guard rather than a broken artifact.
+//
+// ⚠️ A PROVEN DEFECT OUTRANKS COVERAGE LOST (exit 1, not 2). Every `continue` in
+// the loop above records a problem first — missing, zero bytes, no signer — so an
+// empty evaluation with problems is a finding about the ARTIFACT, and exit 2 would
+// read it as a blind guard. Only an empty evaluation with nothing proven is exit 2.
 if (evaluated === 0) {
   for (const p of problems) console.error(`FAIL ${p}`);
-  coverageLost([
+  const nothing = [
     `${artifacts.length} artifact path(s) were given and NOT ONE yielded a readable signature.`,
     'Every assertion above ranged over an empty set. Either the build produced nothing, or the paths are',
     'wrong, or keytool has stopped reading these files — and all three look identical to a clean run.',
-  ]);
+  ];
+  if (problems.length === 0) coverageLost(nothing);
+  console.error('');
+  console.error(`FAIL NOTHING EVALUATED — ${nothing[0]}`);
+  for (const l of nothing.slice(1)) console.error(`     ${l}`);
+  console.error('\nassert-artifact-signed: FAILED');
+  process.exit(1);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

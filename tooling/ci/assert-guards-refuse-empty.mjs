@@ -464,7 +464,7 @@ const importsFrom = (rel, src) => {
   ]) {
     for (const m of code.matchAll(re)) {
       // The FIRST BYTE of the match, the idiom this repo already uses at
-      // assert-guard-coverage.mjs:1247 — a match that STARTS inside a literal is
+      // assert-guard-coverage.mjs:1429 — a match that STARTS inside a literal is
       // a shape being quoted, not one being imported.
       if (!isCode(m.index)) continue;
       if (!/\.(mjs|js)$/.test(m[1])) continue;
