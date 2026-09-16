@@ -189,6 +189,16 @@ jobs:
       # the half that was false on 2026-09-09 and is knowable from the tree.
       - name: One GlitchTip project, spelled out, at every call site
         run: node tooling/ci/assert-glitchtip-project.mjs
+      # OFFLINE by design — no --live, no token, for the same standing reason as
+      # the step above. What the offline limbs assert is knowable from the tree:
+      # the SDK's default-PII flag is off, no client or Worker source names an
+      # IP-bearing field or reads a client-IP header, and the free-text IPv4/IPv6
+      # rules are both declared AND applied. The live half — spoofed headers
+      # through the public edge and the event read back — is a laptop/runbook
+      # step (`--live`), never merge-blocking, because it depends on the
+      # GlitchTip box. Owner ruling 2026-09-15, register O-CRASH-EVENT-IP-DROP.
+      - name: No crash event carries an IP address, truncated or not
+        run: node tooling/ci/assert-glitchtip-no-ip.mjs
       - name: Every failure has a detector, a response and a cadence
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

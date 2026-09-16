@@ -19,10 +19,10 @@ app-factory platform hardening; additive, no live impact).
   Empty DSN returns a `NoOpTelemetryClient` (telemetry fully off; the
   `appRunner` still runs).
 - `PiiScrubber` - pure-Dart, deterministic redaction of PAN, Aadhaar,
-  emails, Indian phone numbers and long digit runs, applied to every
-  outgoing event via Sentry's `beforeSend` hook. Group separators are
-  format-tolerant: `1234-5678-9012` and `98765 43210` redact exactly like
-  their unseparated forms.
+  emails, Indian phone numbers, IPv4/IPv6 literals and long digit runs,
+  applied to every outgoing event via Sentry's `beforeSend` hook. Group
+  separators are format-tolerant: `1234-5678-9012` and `98765 43210` redact
+  exactly like their unseparated forms.
 
 ## What "every outgoing event" means
 
@@ -38,6 +38,23 @@ The scrubber is deliberately **fail-closed**: a 12-digit order id is redacted
 even though it is not an Aadhaar. One unreadable field in a crash report beats
 leaking a government identifier. Ordinary log numerics - short ids, ISO dates,
 durations, build numbers - are unaffected and pinned by tests.
+
+### No IP address, anywhere, in any form
+
+Owner ruling 2026-09-15 (O-CRASH-EVENT-IP-DROP): a crash report carries **no IP
+address at all**, truncated or not. `sendDefaultPii = false` keeps the SDK from
+attaching the structured `user.ip_address`, and the self-hosted ingest is
+starved of every client-IP header so it cannot infer one either - but both of
+those match on a FIELD, and an address typed into an exception value or a log
+line is free text. Rules 5 and 6 of the scrubber close that half:
+`198.18.7.9`, `2001:db8::1` and `::1` are redacted wherever they appear in the
+text of an event.
+
+The same fail-closed trade applies and both directions are pinned by tests: a
+four-part dotted version `1.2.3.4` **is** redacted (accepted - nothing here
+numbers a release in four parts), while a wall-clock `12:30:45` is **not** - the
+IPv6 rule matches only the full 8-group form or a `::`-compressed one, precisely
+so it cannot eat every timestamp in the log.
 
 ## Isolation rule
 

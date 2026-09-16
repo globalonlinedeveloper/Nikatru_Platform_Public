@@ -83,6 +83,7 @@
   "generate-apps-data.test.mjs": 8,
   "github-matrix.test.mjs": 34,
   "github-rate-limit.test.mjs": 34,
+  "glitchtip-no-ip.test.mjs": 17,
   "glitchtip-project.test.mjs": 20,
   "green-means-ran.test.mjs": 25,
   "guard-coverage.test.mjs": 62,
