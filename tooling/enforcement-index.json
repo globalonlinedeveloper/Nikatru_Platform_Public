@@ -40,6 +40,16 @@
   },
   {
     "claims": [
+      "ADR 088"
+    ],
+    "invokedBy": [],
+    "kind": "guard",
+    "ref": "tooling/ci/apple-provisioning.mjs",
+    "references": [],
+    "state": "LIBRARY"
+  },
+  {
+    "claims": [
       "C-6",
       "D-10",
       "R-3"
@@ -231,6 +241,19 @@
     "references": [
       "D-5"
     ],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "ADR 082",
+      "ADR 088"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-store"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-apple-entitlements.mjs",
+    "references": [],
     "state": "WIRED"
   },
   {

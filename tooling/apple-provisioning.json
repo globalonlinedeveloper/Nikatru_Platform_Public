@@ -1,0 +1,72 @@
+{
+  "_readme": [
+    "THE APPLE PROVISIONING REGISTER — the ONE declared capability list per app, and what each capability",
+    "means on the Apple side. O-STAMP-APPLE-PROVISIONING-MANUAL; the structure it keeps is [ADR 088].",
+    "",
+    "READ BY:",
+    "  tooling/ci/assert-apple-entitlements.mjs  (ci.yml, no credentials) — every app's",
+    "      ios/Runner/Runner.entitlements carries EXACTLY the keys this file derives for it, and the",
+    "      Xcode project points at that file.",
+    "  tooling/ops/provision-apple.mjs  (a laptop command, the vault's ASC key) — provisions the",
+    "      API-WRITABLE part of an app's App ID from this list, REFUSES on the part the API cannot write,",
+    "      mints the App Store profiles after the capabilities settle, and with --check compares the",
+    "      LIVE profile's entitlements against this list and against Runner.entitlements.",
+    "Both go through tooling/ci/apple-provisioning.mjs, so the two cannot disagree about what a",
+    "declared capability requires.",
+    "",
+    "THE API BOUNDARY IS MEASURED, NOT ASSUMED (2026-09-16, against the live account, see ADR 088 §6):",
+    "`apiWritable: true` means POST /v1/bundleIdCapabilities was observed to accept this capability for",
+    "an APP. `false` means it was refused, OR it is accepted only in a shape that is WRONG for an app —",
+    "APPLE_ID_AUTH is writable solely as PRIMARY_APP_CONSENT, which would make the app its own consent",
+    "anchor and silently hand every shared user a second identity. So for an app, Sign in with Apple is",
+    "the portal grouping step, and this file says so.",
+    "",
+    "`profileKey` is the entitlement Apple writes into an App Store profile when the App ID carries the",
+    "capability — READ BACK from profiles JWVU72A2N6 and 26RV2N2Y4L on 2026-09-16. IN_APP_PURCHASE",
+    "writes none. `entitlementKey` is what the app's own Runner.entitlements must carry; it is null for",
+    "APPLE_ID_AUTH because every target signs in through the OAuth redirect and the one Services ID",
+    "(packages/auth_supabase/lib/src/supabase_auth_repository.dart, ADR 088 §4): the capability is on the",
+    "App ID for the consent GROUP, not for a native API the app calls. An app that adopts the native",
+    "AuthenticationServices flow changes this row, and the guard then demands the key."
+  ],
+  "anchor": {
+    "identifier": "com.nikatru.platform",
+    "resourceId": "D4GCNS78PP",
+    "why": "The Sign in with Apple consent anchor. Ships no app. Every app's App ID is grouped under it (ADR 088 §2). The ONLY App ID in the team allowed to read back PRIMARY_APP_CONSENT — which is how a RELATED_APP_CONSENT read-back is known to point here: the API does not say which primary an App ID is related to, so the script also asserts the team has exactly one primary and that it is this one."
+  },
+  "protected": {
+    "why": "Live, hand-grouped, or baked into the APPLE_PROVISIONING_PROFILES_BASE64 secret. provision-apple.mjs refuses to delete, re-create, re-group or re-mint any of these even with --apply, and says what it would have done instead. Re-minting a protected profile breaks the release lane until the secret is re-set, which is an owner step.",
+    "bundleIds": ["com.nikatru.platform", "com.nikatru.subscriptiontracker"],
+    "profiles": ["JWVU72A2N6", "26RV2N2Y4L"],
+    "certificates": ["ND3WDZ2B5K", "RDYD44LRCZ"]
+  },
+  "capabilities": {
+    "IN_APP_PURCHASE": {
+      "apiWritable": true,
+      "profileKey": null,
+      "entitlementKey": null,
+      "portalStep": null
+    },
+    "APPLE_ID_AUTH": {
+      "apiWritable": false,
+      "readBack": "RELATED_APP_CONSENT",
+      "profileKey": "com.apple.developer.applesignin",
+      "entitlementKey": null,
+      "portalStep": "developer.apple.com → Certificates, Identifiers & Profiles → Identifiers → {identifier} → tick Sign In with Apple → Edit → choose 'Group with an existing primary App ID' → com.nikatru.platform → Save → Confirm. The API refuses RELATED_APP_CONSENT on write (ADR 088 §6); writing PRIMARY_APP_CONSENT instead would split every shared user's identity."
+    },
+    "DECLARED_AGE_RANGE": {
+      "apiWritable": false,
+      "profileKey": "com.apple.developer.declared-age-range",
+      "entitlementKey": "com.apple.developer.declared-age-range",
+      "entitlementValue": true,
+      "portalStep": "developer.apple.com → Certificates, Identifiers & Profiles → Identifiers → {identifier} → Capabilities → tick Declared Age Range → Save → Confirm. The API refuses DECLARED_AGE_RANGE as a capabilityType on write (ADR 088 §6)."
+    }
+  },
+  "apps": {
+    "subscriptiontracker": {
+      "bundleId": "com.nikatru.subscriptiontracker",
+      "resourceId": "5Y2628ZNU7",
+      "capabilities": ["IN_APP_PURCHASE", "APPLE_ID_AUTH", "DECLARED_AGE_RANGE"]
+    }
+  }
+}

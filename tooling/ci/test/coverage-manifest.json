@@ -16,6 +16,7 @@
   "app-yaml.test.mjs": 71,
   "appimage-signing.test.mjs": 74,
   "apple-privacy-manifest.test.mjs": 43,
+  "apple-provisioning.test.mjs": 50,
   "apple-signing-2026-09-09.test.mjs": 22,
   "apple-signing.test.mjs": 117,
   "appstore-submission.test.mjs": 37,
