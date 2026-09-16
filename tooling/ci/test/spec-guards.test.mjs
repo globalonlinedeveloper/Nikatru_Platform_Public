@@ -105,6 +105,38 @@ test('the runner names the guard by a corpus-relative path that a locate() candi
   assert.doesNotMatch(mutant, /rel:\s*\[\s*'requirements\/tooling\/assert-platform-state\.mjs'/, 'the mutant still matches — the pattern is not reading the rel list');
 });
 
+/* ADDED 2026-09-16. The corpus's six generators joined the table, and each is only a
+   check when it is invoked with `--check` — without the flag four of them WRITE their
+   target. So the row must exist, be fast and private, name the corpus-relative
+   generator, and carry `args: ['--check']`. Measured the day they were added:
+   gen-start-here --check exited 1 on the committed corpus while this runner exited 0. */
+const PRIVATE_GENERATORS = ['gen-adr-frontmatter', 'gen-index', 'gen-picture-stamp', 'gen-register-index', 'gen-start-here', 'gen-traps'];
+
+function generatorRowOk(src, name) {
+  const table = guardsTable(src);
+  const row = rowsOf(table).find((r) => r.name === name);
+  if (!row || row.speed !== 'fast' || row.needsPrivate !== true) return false;
+  const at = table.indexOf(`{ name: '${name}'`);
+  const next = table.indexOf('{ name:', at + 1);
+  const entry = table.slice(at, next === -1 ? undefined : next);
+  return new RegExp(`rel:\\s*\\[\\s*'requirements/tooling/${name}\\.mjs'\\s*\\]`).test(entry)
+    && /args:\s*\[\s*'--check'\s*\]/.test(entry);
+}
+
+test('every private generator runs in the hook, as --check, from its corpus-relative path', () => {
+  for (const name of PRIVATE_GENERATORS) {
+    assert.ok(generatorRowOk(SOURCE, name), `${name} is missing from the GUARDS table, or is not fast/needsPrivate, or does not run as \`--check\` from requirements/tooling/${name}.mjs`);
+
+    // MUTANT 1 — the row deleted.
+    assert.equal(generatorRowOk(withoutRow(SOURCE, name), name), false, `deleting the ${name} row still passes — the predicate cannot fail`);
+    // MUTANT 2 — the row kept, the flag dropped: the generator would WRITE its target.
+    const at = SOURCE.indexOf(`{ name: '${name}'`);
+    const flagAt = SOURCE.indexOf("args: ['--check']", at);
+    const dropped = SOURCE.slice(0, flagAt) + 'args: []' + SOURCE.slice(flagAt + "args: ['--check']".length);
+    assert.equal(generatorRowOk(dropped, name), false, `dropping --check from ${name} still passes — a writing generator would read as a check`);
+  }
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ADDED 2026-09-07 — `tooling/scripts/repo-git.mjs`, and the defect it closes.
 //

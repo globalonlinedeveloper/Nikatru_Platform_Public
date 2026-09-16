@@ -428,6 +428,12 @@ jobs:
         run: git diff --exit-code -- catalog/extensions.json
       - name: The catalogue describes something real
         run: node scripts/check-catalog.mjs
+      # ADDED 2026-09-16. gen-catalog.mjs's own usage line says `--check` is for CI,
+      # and no workflow ran it: the README catalog table could drift from the
+      # tool.json files with every lane green. Found by the sweep that wired the
+      # private generators' --check into the repo's pre-commit runner (spec-guards).
+      - name: The README catalog table is what the tool.json files generate
+        run: node scripts/gen-catalog.mjs --check
 
   core:
     if: github.event_name != 'schedule' && !startsWith(github.ref, 'refs/tags/') && github.event.action != 'labeled' && (github.event_name != 'workflow_dispatch' || inputs.lane == 'ci')

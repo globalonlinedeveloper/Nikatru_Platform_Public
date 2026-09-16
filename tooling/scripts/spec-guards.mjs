@@ -631,6 +631,75 @@ const GUARDS = [
     rel: ['requirements/tooling/check-agent-docs.mjs'],
     args: ['--index'],
     what: 'the corpus’s agent-facing docs stay under their byte and line caps' },
+  /* ADDED 2026-09-16. THE CORPUS'S SIX GENERATORS, EACH RUN AS `--check`, AND UNTIL
+     TODAY NOTHING IN THIS HOOK RAN ANY OF THEM.
+     `O-GEN-CHECK-IS-A-NO-OP` (closed 2026-09-13) gave all six one shared `--check`
+     (`requirements/tooling/gen-check.mjs`: generate into memory, compare, exit 1 on a
+     diff, WRITE NOTHING) and put them in the run-guards SWEEP. The sweep is run by a
+     session that remembers to; this runner is run by `git commit`. So the property
+     "a drifted generated page is caught" held only when somebody swept, which is the
+     `assert-platform-state` failure above, a third time.
+
+     🔴 MEASURED 2026-09-16, BOTH HALVES, on the private corpus as committed:
+       node requirements/tooling/gen-start-here.mjs --check      → EXIT 1
+       node tooling/scripts/spec-guards.mjs --fast               → EXIT 0
+     The stale page was committed through this hook and the hook said nothing. A few
+     hours later, with other commits between, the same generator was red on
+     START-HERE.md — the entry card every cold session reads first.
+
+     ONE ROW PER GENERATOR, not one row running all six, so a red names the page that
+     drifted and a deleted generator trips the coverage floor by name.
+     `args: ['--check']` is the whole point: without it four of the six WRITE their
+     target, and a hook that rewrites the corpus while claiming to inspect it is the
+     no-op that row was filed over, with a side effect added.
+
+     ⚠️ TWO READ THE GIT INDEX. `gen-index` and `gen-picture-stamp` derive their
+     page from `git ls-files --cached` by design, so a commit that adds or removes a
+     corpus file is red until README.md and the stamp are regenerated IN THE SAME
+     COMMIT. That is the drift they were built to catch, not a false positive. The
+     other four read the working tree, as every row here except the two `--index`
+     guards does. No generator reads a
+     clock into the compared bytes: `gen-traps`' `asOf` and the stamp's
+     `commit`/`branch` are declared `volatile` in gen-check.mjs and printed, and
+     `gen-start-here` interpolates only register values.
+
+     ⏱ MEASURED 2026-09-16 on this machine, three samples each, warm, cwd = the
+     public worktree (all six anchor ROOT from `import.meta.url`):
+       gen-adr-frontmatter   193 / 157 / 167 ms
+       gen-index             230 / 210 / 204 ms
+       gen-picture-stamp    1047 /1064 /1023 ms   (one `git ls-files` over the corpus)
+       gen-register-index    155 / 154 / 160 ms
+       gen-start-here        154 / 167 / 162 ms
+       gen-traps             137 / 141 / 147 ms
+       the fast set before  18118 ms in-runner (assert-public-citations 10716 of it)
+     So +~1.9 s, ~10 %. None is slow by this file's own yardstick — `assert-links`
+     (3.6-4.7 s) and `assert-public-citations` (4.5-10.7 s) are the entries a split
+     would be argued from — so all six are `fast`. One corpus-relative `rel` each,
+     for the reason given on `assert-platform-state`: no earlier layout had them. */
+  { name: 'gen-adr-frontmatter', speed: 'fast', needsPrivate: true,
+    rel: ['requirements/tooling/gen-adr-frontmatter.mjs'],
+    args: ['--check'],
+    what: 'every live ADR carries the header decisions/index.json generates' },
+  { name: 'gen-index', speed: 'fast', needsPrivate: true,
+    rel: ['requirements/tooling/gen-index.mjs'],
+    args: ['--check'],
+    what: 'README.md, the corpus index, is what `git ls-files --cached` derives' },
+  { name: 'gen-picture-stamp', speed: 'fast', needsPrivate: true,
+    rel: ['requirements/tooling/gen-picture-stamp.mjs'],
+    args: ['--check'],
+    what: 'docs/PICTURE.stamp.json counts and fingerprint match the git index' },
+  { name: 'gen-register-index', speed: 'fast', needsPrivate: true,
+    rel: ['requirements/tooling/gen-register-index.mjs'],
+    args: ['--check'],
+    what: 'the generated register pages are byte-identical to their registers' },
+  { name: 'gen-start-here', speed: 'fast', needsPrivate: true,
+    rel: ['requirements/tooling/gen-start-here.mjs'],
+    args: ['--check'],
+    what: 'START-HERE.md and platform-state/brief.md are what the registers generate' },
+  { name: 'gen-traps', speed: 'fast', needsPrivate: true,
+    rel: ['requirements/tooling/gen-traps.mjs'],
+    args: ['--check'],
+    what: 'platform-state/traps.json is what TRAPS.md generates' },
   /* ADDED 2026-09-09. THE FIRST ENTRY IN THIS ARRAY WHOSE SUBJECT IS PUBLIC, and
      `needsPrivate: false` is that fact declared rather than assumed: every other
      row here guards a file under the corpus, which is why the hook is their only
