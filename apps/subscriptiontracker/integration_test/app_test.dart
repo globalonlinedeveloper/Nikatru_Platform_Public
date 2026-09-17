@@ -1807,10 +1807,15 @@ void main() {
           'above does not. It is the SERVER that refused when it reads '
           '`HTTP 501` (unconfigured / no APP_ERASURE_ENDPOINTS) or `HTTP 502` '
           '(the subscriptiontracker-api relay or the identity delete failed) — only then are '
-          'the services/platform Worker logs the place to look. Anything else '
-          '— `HTTP 0`, an unmodelled status, or a Dart exception such as '
-          'CircularDependencyError — is a CLIENT defect and the Worker logs '
-          'will show no request at all. [ADR 027]',
+          'the services/platform Worker logs the place to look. `HTTP 0` is '
+          'NOT proof that no request arrived: on web the Dio connectTimeout '
+          'is a deadline for the FIRST RESPONSE HEADER, so a server slower '
+          'than 15 s reads as `HTTP 0` while it goes on to finish. Read the '
+          'platform Worker wall time for DELETE /v1/account in Cloudflare '
+          'observability before blaming the client '
+          '(O-ERASURE-WALK-ROUND-TRIPS, 2026-09-18). An unmodelled status or '
+          'a Dart exception such as CircularDependencyError is a CLIENT '
+          'defect, and the Worker logs will show no request. [ADR 027]',
     );
 
     // …and the user really is signed out, on the login screen, and STAYS there.
