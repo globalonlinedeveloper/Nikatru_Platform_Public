@@ -334,7 +334,35 @@ function replayWorld(fixture, register) {
     glitchtip[id] = [beat, 3600, 1, 0];
     derived.push(id);
   }
-  return { world: { ...fixture, glitchtip }, derived };
+  // ⏱ 2026-09-16 · O-D1-HEARTBEAT-REPLAY-HAND-LIST. The same split for D1. The
+  // fixture's `d1.jobs` / `d1.targets` answer ONLY what run 34546423386 read
+  // (`d1JobsAtFreeze` / `d1TargetsAtFreeze`); every other job or target the
+  // register's cloudflare-d1-heartbeat reads name — a cron row's `watchedJobs`, a
+  // narrowed read's `job`, a timer limb's `target` — gets one clean beat at `now`.
+  // MEASURED before this: a throwaway timer target read `holds NO SUCCESSFUL RUN
+  // AT ALL` and turned INV1 and INV2 red; a throwaway watched job stayed green
+  // only because the unnarrowed read never names a job that has no row
+  // (erasure_retry and boxb_reachability were already in that state).
+  const d1 = { jobs: { ...(fixture.d1?.jobs ?? {}) }, targets: { ...(fixture.d1?.targets ?? {}) } };
+  const derivedD1 = { jobs: [], targets: [] };
+  const d1AtFreeze = { jobs: new Set(fixture.d1JobsAtFreeze ?? []), targets: new Set(fixture.d1TargetsAtFreeze ?? []) };
+  const answerD1 = (kind, key) => {
+    if (key === undefined) return;
+    const k = String(key);
+    if (d1AtFreeze[kind].has(k) || Object.hasOwn(d1[kind], k)) return;
+    d1[kind][k] = beat;
+    derivedD1[kind].push(k);
+  };
+  for (const row of register.rows ?? []) {
+    const q = row?.mechanism?.recordQuery;
+    for (const limb of [q, q?.timer]) {
+      if (limb?.reader !== 'cloudflare-d1-heartbeat') continue;
+      answerD1('jobs', limb.job);
+      answerD1('targets', limb.target);
+      if (limb === q) for (const job of Object.keys(row.watchedJobs ?? {})) answerD1('jobs', job);
+    }
+  }
+  return { world: { ...fixture, glitchtip, d1 }, derived, derivedD1 };
 }
 
 /** Writes `replayWorld(fixture, register)` to a file a spawned guard can read.
@@ -5218,6 +5246,59 @@ describe('the 2026-09-11 freeze, replayed — INV1..INV6 against the exact answe
     assert.equal(has(clean.problems, /GlitchTip has no monitor 19 /), false, 'green control: the clean world answers monitor 19');
     assert.equal(missing.code, 1, missing.out.slice(-3000));
     assert.ok(has(missing.problems, /GlitchTip has no monitor 19 /), `the dropped answer must be a PROBLEM:\n${missing.problems.join('\n')}`);
+  });
+
+  test('O-D1-HEARTBEAT-REPLAY-HAND-LIST · the fixture answers EXACTLY the D1 jobs and targets the grading run read', () => {
+    const f = JSON.parse(readFileSync(FIXTURE, 'utf8'));
+    assert.deepEqual(Object.keys(f.d1.jobs).sort(), [...f.d1JobsAtFreeze].sort(), 'a D1 job answer the freeze never read is a hand list again; the register derives those');
+    assert.deepEqual(Object.keys(f.d1.targets).sort(), [...f.d1TargetsAtFreeze].sort(), 'a D1 target answer the freeze never read is a hand list again');
+    assert.equal(f.d1JobsAtFreeze.includes('erasure_retry'), false, 'erasure_retry joined watchedJobs after the freeze (PR #762), so the freeze cannot have read it');
+  });
+
+  test('O-D1-HEARTBEAT-REPLAY-HAND-LIST · every D1 job and target the register names is answered, and a throwaway of each is DERIVED with no original answer moving', () => {
+    const f = JSON.parse(readFileSync(FIXTURE, 'utf8'));
+    const register = JSON.parse(readFileSync(REPLAY_REGISTER, 'utf8'));
+    const cron = register.rows.find((r) => r?.mechanism?.recordQuery?.reader === 'cloudflare-d1-heartbeat' && r.watchedJobs);
+    assert.ok(cron, 'the register has no cloudflare-d1-heartbeat row with watchedJobs — this case reads nothing');
+    const timed = register.rows.find((r) => r?.mechanism?.recordQuery?.timer?.target);
+    assert.ok(timed, 'the register has no timer limb with a target — this case reads nothing');
+
+    const before = replayWorld(f, register);
+    for (const job of Object.keys(cron.watchedJobs)) assert.ok(Object.hasOwn(before.world.d1.jobs, job), `watched job ${job} has no answer`);
+    assert.ok(Object.hasOwn(before.world.d1.targets, timed.mechanism.recordQuery.timer.target));
+
+    const withJob = structuredClone(register);
+    withJob.rows.find((r) => r.id === cron.id).watchedJobs.replay_throwaway_job = ['0 6 * * *'];
+    const throwawayTimer = structuredClone(timed);
+    throwawayTimer.id = 'duty.replay-throwaway-timer';
+    throwawayTimer.mechanism.recordQuery.timer.target = 'Nikatru_Platform_Public/replay-throwaway.yml';
+    withJob.rows.push(throwawayTimer);
+    const after = replayWorld(f, withJob);
+    const beat = new Date(Date.parse(f.now)).toISOString();
+    assert.deepEqual(after.derivedD1.jobs, [...before.derivedD1.jobs, 'replay_throwaway_job']);
+    assert.deepEqual(after.derivedD1.targets, [...before.derivedD1.targets, 'Nikatru_Platform_Public/replay-throwaway.yml']);
+    assert.equal(after.world.d1.jobs.replay_throwaway_job, beat, 'one clean beat at the replayed instant');
+    assert.equal(after.world.d1.targets['Nikatru_Platform_Public/replay-throwaway.yml'], beat);
+    for (const job of f.d1JobsAtFreeze) assert.equal(after.world.d1.jobs[job], f.d1.jobs[job], `job ${job} still carries what run 34546423386 received`);
+    for (const t of f.d1TargetsAtFreeze) assert.equal(after.world.d1.targets[t], f.d1.targets[t], `target ${t} still carries what run 34546423386 received`);
+  });
+
+  test('O-D1-HEARTBEAT-REPLAY-HAND-LIST · RED CONTROL — a MISSING answer for a target the freeze read is NOT filled in, and the replay goes red on it', () => {
+    const f = JSON.parse(readFileSync(FIXTURE, 'utf8'));
+    const register = JSON.parse(readFileSync(REPLAY_REGISTER, 'utf8'));
+    const T = 'Nikatru_Platform_Public/e2e.yml';
+    const J = 'renewals';
+    const { [T]: _t, ...targets } = f.d1.targets;
+    const { [J]: _j, ...jobs } = f.d1.jobs;
+    const pure = replayWorld({ ...f, d1: { jobs, targets } }, register);
+    assert.equal(Object.hasOwn(pure.world.d1.targets, T), false, 'the derivation must never answer a target the freeze read');
+    assert.equal(Object.hasOwn(pure.world.d1.jobs, J), false, 'the derivation must never answer a job the freeze read');
+    const missing = replay(HOST.OPS, { OPS_REPLAY_FILE: replayWorldFile(FIXTURE, (w) => { delete w.d1.targets[T]; }) });
+    const TIMER_GONE = /^duty\.workflow\.e2e\.yml — .*holds no row with ok = 1/;
+    const clean = replay(HOST.OPS);
+    assert.equal(has(clean.problems, TIMER_GONE), false, `green control: the clean world answers ${T}`);
+    assert.equal(missing.code, 1, missing.out.slice(-3000));
+    assert.ok(has(missing.problems, TIMER_GONE), `the dropped answer must be a PROBLEM:\n${missing.problems.join('\n')}`);
   });
 
   test('INV1 · GREEN CONTROL — ci.yml on pull_request exits 0 on today\'s state, and all four TRUE verdicts still PRINT with their remedy', () => {
