@@ -21,43 +21,34 @@
 // after the first attempt actually landed (the response was lost) must not read
 // as a failure, or the ledger would retry it forever.
 // ─────────────────────────────────────────────────────────────────────────────
-import { userOwnedTables, userReferencingColumns } from '../../../_shared/src/erasure';
+import { erasureTargets, eraseTargets, type ErasureTargets } from '../../../_shared/src/erasure';
 
 export type EraseSubjectResult =
   | { ok: true; scope: 'subscriptiontracker_db'; deleted: Record<string, number>; unlinked: Record<string, number> }
   | { ok: false; error: 'account_deletion_failed'; reason: string };
 
+// ⏱ 2026-09-18 · O-ERASURE-WALK-ROUND-TRIPS: the walk is `erasureTargets` (two
+// round trips) and the write is `eraseTargets` (one batch, one transaction), both
+// from the shared home. This file keeps its envelope, its refusals and its words.
 export async function eraseSubjectRows(db: D1Database, userId: string): Promise<EraseSubjectResult> {
   if (typeof userId !== 'string' || userId.length === 0) {
     return { ok: false, error: 'account_deletion_failed', reason: 'no subject to erase' };
   }
-  let tables: string[];
-  let references: Array<{ table: string; column: string }>;
+  let targets: ErasureTargets;
   try {
-    tables = await userOwnedTables(db);
-    references = await userReferencingColumns(db);
+    targets = await erasureTargets(db);
   } catch (err) {
     return { ok: false, error: 'account_deletion_failed', reason: `schema read failed: ${String(err)}` };
   }
   // Refusing an EMPTY derivation is the property the route has always had: a
   // walk that found no user-owned table would report success while erasing nothing.
-  if (tables.length === 0) {
+  if (targets.tables.length === 0) {
     return {
       ok: false,
       error: 'account_deletion_failed',
       reason: 'no user-owned table was found in subscriptiontracker_db, so this erasure would report success while erasing nothing',
     };
   }
-  const deleted: Record<string, number> = {};
-  const unlinked: Record<string, number> = {};
-  for (const table of tables) {
-    // Identifier from the schema walk (PLAIN_IDENTIFIER-checked), value bound.
-    const res = await db.prepare(`DELETE FROM ${table} WHERE user_id = ?`).bind(userId).run();
-    deleted[table] = res.meta.changes ?? 0;
-  }
-  for (const { table, column } of references) {
-    const res = await db.prepare(`UPDATE ${table} SET ${column} = NULL WHERE ${column} = ?`).bind(userId).run();
-    unlinked[`${table}.${column}`] = res.meta.changes ?? 0;
-  }
+  const { deleted, unlinked } = await eraseTargets(db, userId, targets);
   return { ok: true, scope: 'subscriptiontracker_db', deleted, unlinked };
 }

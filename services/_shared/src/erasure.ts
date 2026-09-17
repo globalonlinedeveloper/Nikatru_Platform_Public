@@ -32,7 +32,7 @@
 // ⚠️ NO BARE IMPORT HERE. See the header of health.ts for the measurement behind
 // that rule; this module imports one sibling, by relative path, and nothing else.
 // ─────────────────────────────────────────────────────────────────────────────
-import { allRows } from './d1';
+import { allRows, withD1Retry } from './d1';
 
 /** Tables SQLite/D1 own, which must never be a delete target even if some future
  *  column there were named `user_id`. */
@@ -64,11 +64,26 @@ const PLAIN_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_$]*$/;
  * SQLITE_AUTH rejection is DETERMINISTIC, so `isTransientD1Error` refuses it and
  * the second attempt `allRows` allows is never spent re-asking a question D1 has
  * already answered.
+ *
+ * ⏱ 2026-09-18 · O-ERASURE-WALK-ROUND-TRIPS. "ASK EACH ONE" NOW MEANS ONE CALL,
+ * NOT ONE CALL PER TABLE. The walk above issued `1 + N` sequential round trips,
+ * and `userOwnedTables` + `userReferencingColumns` each ran it, so erasing a
+ * person from platform_db (18 tables) cost 38 schema reads before a row moved.
+ * At D1's ~100-300 ms that is the ten seconds that pushed DELETE /v1/account past
+ * the app's 15 s client timeout on 09-16 and 09-17 (17291 and 16800 ms, both
+ * measured in Workers observability) while the server went on to finish.
+ * MEASURED against both production databases before this shape was chosen:
+ *   · ONE `UNION ALL` over every `pragma_table_info` — the obvious fix — is
+ *     REFUSED at 18 terms: `too many terms in compound SELECT` (SQLITE_ERROR,
+ *     not SQLITE_AUTH). D1 accepted at most 5. Chunking it would still grow with
+ *     the table count, so it was not built.
+ *   · ONE call carrying 18 SEPARATE pragma statements — the `db.batch()` shape —
+ *     is accepted: 18 result sets, 146 columns on platform_db.
+ * So the table list is read once and every table is asked in ONE batch: two
+ * round trips, whatever the table count. The SQLITE_AUTH rule is per STATEMENT,
+ * and no batched statement names sqlite_master.
  */
-export async function columnsMatching(
-  db: D1Database,
-  match: (column: string) => boolean,
-): Promise<Array<{ table: string; column: string }>> {
+async function everyColumn(db: D1Database): Promise<Array<{ table: string; column: string }>> {
   const listed = await allRows<{ name: string }>(
     db.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name`),
   );
@@ -76,20 +91,41 @@ export async function columnsMatching(
   const tables = listed
     .map((r) => r.name)
     .filter((n) => typeof n === 'string' && !RESERVED.test(n) && PLAIN_IDENTIFIER.test(n));
+  if (tables.length === 0) return [];
 
-  const hits: Array<{ table: string; column: string }> = [];
-  for (const table of tables) {
-    // eslint-disable-next-line no-await-in-loop
-    const cols = await allRows<{ name: string }>(
-      db.prepare(`SELECT name FROM pragma_table_info('${table}')`),
+  // A read, so a transient reset is retried exactly as `allRows` retries one.
+  const sets = await withD1Retry(() =>
+    db.batch<{ name: string }>(tables.map((table) => db.prepare(`SELECT name FROM pragma_table_info('${table}')`))),
+  );
+  // 🔴 FAIL CLOSED ON A SHORT ANSWER. Columns are attributed to a table BY
+  // POSITION, so a batch that returned fewer sets than it was sent would pin
+  // every column after the gap on the wrong table — and a DELETE aimed at the
+  // wrong table is the one failure this file cannot let through quietly.
+  if (!Array.isArray(sets) || sets.length !== tables.length) {
+    throw new Error(
+      `schema batch answered ${Array.isArray(sets) ? sets.length : 'nothing'} result set(s) for ${tables.length} table(s)`,
     );
-    for (const row of cols) {
-      if (typeof row.name === 'string' && match(row.name)) {
-        hits.push({ table, column: row.name });
-      }
-    }
   }
-  return hits;
+
+  const out: Array<{ table: string; column: string }> = [];
+  sets.forEach((set, i) => {
+    for (const row of set.results ?? []) {
+      if (typeof row.name === 'string') out.push({ table: tables[i], column: row.name });
+    }
+  });
+  return out;
+}
+
+/** The two rules, each written ONCE so the reads and the writes cannot disagree. */
+const OWNS = (column: string): boolean => column === 'user_id';
+const REFERENCES = (column: string): boolean =>
+  column.endsWith('_user_id') && column.length > '_user_id'.length && PLAIN_IDENTIFIER.test(column);
+
+export async function columnsMatching(
+  db: D1Database,
+  match: (column: string) => boolean,
+): Promise<Array<{ table: string; column: string }>> {
+  return (await everyColumn(db)).filter((hit) => match(hit.column));
 }
 
 /**
@@ -97,7 +133,7 @@ export async function columnsMatching(
  * that ARE this person's, and must be deleted.
  */
 export async function userOwnedTables(db: D1Database): Promise<string[]> {
-  const hits = await columnsMatching(db, (col) => col === 'user_id');
+  const hits = await columnsMatching(db, OWNS);
   return hits.map((h) => h.table);
 }
 
@@ -112,9 +148,92 @@ export async function userOwnedTables(db: D1Database): Promise<string[]> {
 export async function userReferencingColumns(
   db: D1Database,
 ): Promise<Array<{ table: string; column: string }>> {
-  const hits = await columnsMatching(
-    db,
-    (col) => col.endsWith('_user_id') && col.length > '_user_id'.length,
-  );
-  return hits.filter((h) => PLAIN_IDENTIFIER.test(h.column));
+  return columnsMatching(db, REFERENCES);
+}
+
+export type ErasureTargets = {
+  /** Tables whose rows ARE the person's — DELETE. */
+  tables: string[];
+  /** Columns that merely NAME the person — NULL. */
+  references: Array<{ table: string; column: string }>;
+};
+
+/**
+ * ⏱ 2026-09-18 · O-ERASURE-WALK-ROUND-TRIPS. BOTH SETS FROM ONE SCHEMA READ.
+ *
+ * `userOwnedTables` and `userReferencingColumns` are the same walk filtered two
+ * ways, and every erasure called both — so it paid for the walk twice. This reads
+ * it once (two round trips) and classifies it with the same two rules. The
+ * deletion path calls THIS; the two single-set functions stay for their other
+ * readers.
+ */
+export async function erasureTargets(db: D1Database): Promise<ErasureTargets> {
+  const all = await everyColumn(db);
+  return {
+    tables: all.filter((hit) => OWNS(hit.column)).map((hit) => hit.table),
+    references: all.filter((hit) => REFERENCES(hit.column)),
+  };
+}
+
+/**
+ * ⏱ 2026-09-18 · O-ERASURE-WALK-ROUND-TRIPS. EVERY DELETE AND EVERY UPDATE IN
+ * ONE `db.batch()` — ONE ROUND TRIP, AND ONE TRANSACTION.
+ *
+ * The three copies of this loop (platform, the app Worker, the app brick) issued
+ * one call per table and one per column, and had already DRIFTED: the brick
+ * wrapped each write in `run()`, both live Workers did not. So the write lives
+ * here, once.
+ *
+ * 🔴 ALL-OR-NOTHING IS NEW AND IT IS THE POINT. D1 runs a batch as a single
+ * transaction, so a failure on the fourth table now rolls back the first three
+ * instead of leaving a half-erased person whose identity still logs in.
+ *
+ * ⚠️ WHY A PLAIN `withD1Retry` IS SAFE HERE, stated as a property of the
+ * statements rather than hoped: the batch holds only `DELETE … WHERE user_id = ?`
+ * and `UPDATE … SET col = NULL WHERE col = ?`. A reset BEFORE the commit rolls
+ * the whole batch back, so the retry is a first attempt. A reset AFTER it re-runs
+ * statements whose rows are already gone — zero changes, no error. There is no
+ * INSERT, so the UNIQUE ambiguity `run()` exists for cannot arise. On that second
+ * path the counts read 0, which is the honest number for a call that changed
+ * nothing (the same reasoning as `run()`'s synthesized meta).
+ *
+ * 🔴 AN EMPTY TABLE SET IS REFUSED HERE TOO. Every caller already refuses it in
+ * its own words; this is the line a future caller that forgets cannot get past.
+ */
+export async function eraseTargets(
+  db: D1Database,
+  userId: string,
+  targets: ErasureTargets,
+): Promise<{ deleted: Record<string, number>; unlinked: Record<string, number> }> {
+  if (targets.tables.length === 0) {
+    throw new Error('no user-owned table to erase from; refusing to report an erasure that erased nothing');
+  }
+  // The identifiers came from `everyColumn`, but they are interpolated HERE, so
+  // they are checked here — a hand-built `targets` gets no pass.
+  for (const name of [...targets.tables, ...targets.references.flatMap((r) => [r.table, r.column])]) {
+    if (!PLAIN_IDENTIFIER.test(name)) throw new Error(`refusing to interpolate a non-identifier: ${JSON.stringify(name)}`);
+  }
+
+  const statements = [
+    ...targets.tables.map((table) => db.prepare(`DELETE FROM ${table} WHERE user_id = ?`).bind(userId)),
+    ...targets.references.map(({ table, column }) =>
+      db.prepare(`UPDATE ${table} SET ${column} = NULL WHERE ${column} = ?`).bind(userId),
+    ),
+  ];
+  const results = await withD1Retry(() => db.batch(statements));
+  if (!Array.isArray(results) || results.length !== statements.length) {
+    throw new Error(
+      `erasure batch answered ${Array.isArray(results) ? results.length : 'nothing'} result(s) for ${statements.length} statement(s)`,
+    );
+  }
+
+  const deleted: Record<string, number> = {};
+  const unlinked: Record<string, number> = {};
+  targets.tables.forEach((table, i) => {
+    deleted[table] = results[i]?.meta?.changes ?? 0;
+  });
+  targets.references.forEach(({ table, column }, j) => {
+    unlinked[`${table}.${column}`] = results[targets.tables.length + j]?.meta?.changes ?? 0;
+  });
+  return { deleted, unlinked };
 }

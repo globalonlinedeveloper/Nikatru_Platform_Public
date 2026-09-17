@@ -76,8 +76,12 @@ describe('this Worker takes its shared modules from the one home', () => {
     // regression — and it is invisible until somebody asks to be deleted.
     // ⏱ 2026-09-15 · [ADR 081]: the walk moved to src/lib/erase-subject.ts (the
     // route and the Service Binding entrypoint both call it), so it is read there.
+    // ⏱ 2026-09-18 · O-ERASURE-WALK-ROUND-TRIPS: the derivation is now ONE call,
+    // `erasureTargets`, which reads the schema once for both sets instead of
+    // `userOwnedTables` + `userReferencingColumns` walking it twice. Same rule,
+    // same home; this line names the call that now carries it.
     const body = code(read('src/lib/erase-subject.ts'));
-    expect(body).toMatch(/userOwnedTables\s*\(/);
+    expect(body).toMatch(/erasureTargets\s*\(/);
     expect(code(read('src/routes/account.ts'))).not.toMatch(/const\s+appTables\s*=\s*\[/);
     expect(body).not.toMatch(/const\s+appTables\s*=\s*\[/);
   });

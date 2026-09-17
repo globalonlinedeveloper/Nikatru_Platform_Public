@@ -15,47 +15,35 @@
 // two sets are disjoint by construction. Idempotent: a second erasure of an
 // erased person deletes nothing and is success.
 // ─────────────────────────────────────────────────────────────────────────────
-import { run } from './d1';
-import { userOwnedTables, userReferencingColumns } from '../../../_shared/src/erasure';
+import { erasureTargets, eraseTargets, type ErasureTargets } from '../../../_shared/src/erasure';
 
 export type EraseSubjectResult =
   | { ok: true; deleted: Record<string, number>; unlinked: Record<string, number> }
   | { ok: false; error: 'account_deletion_failed'; reason: string };
 
+// ⏱ 2026-09-18 · O-ERASURE-WALK-ROUND-TRIPS: the walk is `erasureTargets` (two
+// round trips) and the write is `eraseTargets` (one batch, one transaction, with
+// the transient retry every copy now shares — this brick had it and the live
+// Workers did not). This file keeps its envelope, its refusals and its words.
 export async function eraseSubjectRows(db: D1Database, userId: string): Promise<EraseSubjectResult> {
   if (typeof userId !== 'string' || userId.length === 0) {
     return { ok: false, error: 'account_deletion_failed', reason: 'no subject to erase' };
   }
-  let tables: string[];
-  let references: Array<{ table: string; column: string }>;
+  let targets: ErasureTargets;
   try {
-    tables = await userOwnedTables(db);
-    references = await userReferencingColumns(db);
+    targets = await erasureTargets(db);
   } catch (err) {
     return { ok: false, error: 'account_deletion_failed', reason: `schema read failed: ${String(err)}` };
   }
   // 🔴 AN EMPTY SET IS A FAILURE, NOT A FAST PATH: a walk that found no table
   // would delete NOTHING and report ok, and the identity would then be deleted.
-  if (tables.length === 0) {
+  if (targets.tables.length === 0) {
     return {
       ok: false,
       error: 'account_deletion_failed',
       reason: 'no user-owned table was found, so this request cannot prove it erased anything',
     };
   }
-  const deleted: Record<string, number> = {};
-  const unlinked: Record<string, number> = {};
-  for (const table of tables) {
-    // Through `run`: D1 lives in a Durable Object that is occasionally reset, and
-    // a DELETE is idempotent by its own shape. The name comes from sqlite_master.
-    // eslint-disable-next-line no-await-in-loop
-    const res = await run(db.prepare(`DELETE FROM ${table} WHERE user_id = ?`).bind(userId));
-    deleted[table] = res.meta.changes ?? 0;
-  }
-  for (const ref of references) {
-    // eslint-disable-next-line no-await-in-loop
-    const res = await run(db.prepare(`UPDATE ${ref.table} SET ${ref.column} = NULL WHERE ${ref.column} = ?`).bind(userId));
-    unlinked[`${ref.table}.${ref.column}`] = res.meta.changes ?? 0;
-  }
+  const { deleted, unlinked } = await eraseTargets(db, userId, targets);
   return { ok: true, deleted, unlinked };
 }
