@@ -151,3 +151,10 @@ listings:
 legal:
   privacyPolicyUrl: https://nikatru.com/privacy
   supportUrl: https://nikatru.com/contact
+
+# O-PLAY-AI-CONTENT-REPORTING. Required of every app, false included. This app
+# tracks subscriptions and generates nothing with AI; assert-app-yaml limb 7
+# holds that answer to the content-rating `generates-ai-content` claim, whose
+# tells fail the day an AI package becomes a dependency.
+ai:
+  generatesContent: false

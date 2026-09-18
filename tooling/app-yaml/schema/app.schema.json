@@ -5,7 +5,7 @@
   "description": "apps/<id>/app.yaml — the ONE place an app's identity, hosts, platforms, storefront listings and legal URLs are written. catalog/apps.json and every apps/<id>/store/<channel>/{title,short-description,category,privacy-policy-url,support-url}.txt are RENDERED from it by tooling/app-yaml/render.mjs; none of them is authored. [ADR 067] decision 2.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["id", "name", "tagline", "category", "status", "hosts", "platforms", "listings", "legal"],
+  "required": ["id", "name", "tagline", "category", "status", "hosts", "platforms", "listings", "legal", "ai"],
   "properties": {
     "id": {
       "description": "The app id, and the catalogue `slug`. Same shape assert-catalog-contract.mjs grades and the same string the directory is named.",
@@ -138,6 +138,18 @@
       "description": "The declared audience. Optional in the same way as `markets`. ADR 068 sets the floor at 18 for every NIKATRU product, so nothing here may describe a child audience.",
       "type": "string",
       "minLength": 2
+    },
+    "ai": {
+      "description": "REQUIRED of every app, `false` included: a claim with neither a derivation nor an owner fails, and an absent key would read as 'no' while nobody said so. O-PLAY-AI-CONTENT-REPORTING. Google Play's AI-Generated Content policy (answer/13985936, read 2026-09-18) requires an in-app report control in any app that generates content with AI. tooling/ci/assert-app-yaml.mjs limb 7 holds the consequences both ways: true requires AppConfig.generatesAiContent, the wired ReportContentDialog, and a Data safety answer for table:platform_db.content_reports; false requires the content-rating `generates-ai-content` dependency-tells claim, which fails the day a direct AI package arrives.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["generatesContent"],
+      "properties": {
+        "generatesContent": {
+          "description": "Whether the app generates content with AI at runtime — text, images, voice or video a model produces for the user. Out of Play's scope: an app that only hosts AI content, summarises non-AI content, or uses AI to improve an existing productivity feature (answer/14094294).",
+          "type": "boolean"
+        }
+      }
     }
   }
 }

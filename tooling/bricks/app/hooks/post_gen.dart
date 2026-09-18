@@ -497,7 +497,14 @@ bool _writeAppDeclaration(
     ..writeln()
     ..writeln('legal:')
     ..writeln('  privacyPolicyUrl: ${urls.privacyUrl}')
-    ..writeln('  supportUrl: ${urls.supportUrl}');
+    ..writeln('  supportUrl: ${urls.supportUrl}')
+    // O-PLAY-AI-CONTENT-REPORTING. Required of every app and FALSE at the stamp,
+    // matching `AppConfig.generatesAiContent` in the template: a fresh app
+    // generates nothing until somebody builds the feature that does, and then
+    // both flip together — assert-app-yaml limb 7 refuses them apart.
+    ..writeln()
+    ..writeln('ai:')
+    ..writeln('  generatesContent: false');
   if (markets.isNotEmpty) {
     buffer
       ..writeln()

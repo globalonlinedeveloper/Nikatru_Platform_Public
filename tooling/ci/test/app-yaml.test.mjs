@@ -1098,3 +1098,118 @@ describe('ADR 085 A — the RevenueCat app-id map is rendered from the declarati
     } finally { kill(root); }
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+describe('limb 7 — AI content is declared, and its consequences hold, both ways', () => {
+  // O-PLAY-AI-CONTENT-REPORTING. Every case mutates the REAL declaration tree.
+  const CR = 'apps/subscriptiontracker/store/android-play/content-rating.json';
+  const DS = 'apps/subscriptiontracker/store/android-play/data-safety.json';
+  const CFG = 'apps/subscriptiontracker/lib/core/app_config.dart';
+  const TABLE = 'table:platform_db.content_reports';
+  const flipTrue = (root) =>
+    put(root, APP_YAML, get(root, APP_YAML).replace('  generatesContent: false', '  generatesContent: true'));
+  const writeLib = (root, rel, text) => {
+    mkdirSync(join(root, dirname(rel)), { recursive: true });
+    put(root, rel, text);
+  };
+
+  test('POSITIVE CONTROL — the shipped tree answers false and carries the claim', () => {
+    const root = tree();
+    try {
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 0, `expected a clean tree, got ${code}:\n${out}`);
+      assert.match(out, /limb 7 — NO app declares `ai\.generatesContent: true`/);
+    } finally { kill(root); }
+  });
+
+  test('a declaration that does not answer at all fails the schema', () => {
+    const root = tree();
+    try {
+      const text = get(root, APP_YAML);
+      assert.ok(text.includes('ai:\n  generatesContent: false\n'), 'fixture anchor');
+      put(root, APP_YAML, text.replace('ai:\n  generatesContent: false\n', ''));
+      const { code, out } = spawn(GUARD, [root]);
+      assert.notEqual(code, 0, out);
+      assert.match(out, /ai/);
+    } finally { kill(root); }
+  });
+
+  test('false with the claim gone fails', () => {
+    const root = tree();
+    try {
+      const cr = JSON.parse(get(root, CR));
+      cr.claims = cr.claims.filter((c) => c.id !== 'generates-ai-content');
+      putJson(root, CR, cr);
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.match(out, /generates-ai-content` claim is absent/);
+    } finally { kill(root); }
+  });
+
+  test('false with a floor tell dropped fails, naming it', () => {
+    const root = tree();
+    try {
+      const cr = JSON.parse(get(root, CR));
+      const claim = cr.claims.find((c) => c.id === 'generates-ai-content');
+      claim.tells.dartPackages = claim.tells.dartPackages.filter((p) => p !== 'firebase_ai');
+      putJson(root, CR, cr);
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.match(out, /missing the tell\(s\) firebase_ai/);
+    } finally { kill(root); }
+  });
+
+  test('false while the app constant says true fails', () => {
+    const root = tree();
+    try {
+      writeLib(root, CFG, 'class AppConfig {\n  static const bool generatesAiContent = true;\n}\n');
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.match(out, /says `generatesAiContent = true` and .* declares `ai\.generatesContent: false`/);
+    } finally { kill(root); }
+  });
+
+  test('true with nothing behind it fails three ways', () => {
+    const root = tree();
+    try {
+      flipTrue(root);
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.match(out, /declares no `generatesAiContent` constant/);
+      assert.match(out, /nothing under apps\/subscriptiontracker\/lib opens the report dialog/);
+      assert.match(out, /still EXCLUDES table:platform_db\.content_reports/);
+    } finally { kill(root); }
+  });
+
+  test('a wiring that exists only in a comment is not a wiring', () => {
+    const root = tree();
+    try {
+      flipTrue(root);
+      writeLib(root, CFG, 'class AppConfig {\n  static const bool generatesAiContent = true;\n}\n');
+      writeLib(root, 'apps/subscriptiontracker/lib/x.dart', '// showReportContentDialog(context, ref)\n');
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.match(out, /opens the report dialog/);
+    } finally { kill(root); }
+  });
+
+  test('true with the constant, the control and the Data safety answer passes', () => {
+    const root = tree();
+    try {
+      flipTrue(root);
+      writeLib(root, CFG, 'class AppConfig {\n  static const bool generatesAiContent = true;\n}\n');
+      writeLib(root, 'apps/subscriptiontracker/lib/x.dart', 'void f() { showReportContentDialog(context, ref); }\n');
+      const ds = JSON.parse(get(root, DS));
+      assert.ok(TABLE in ds.inventory.notFromThisApp, 'fixture anchor');
+      delete ds.inventory.notFromThisApp[TABLE];
+      ds.answers[0].inventoryRows = [...(ds.answers[0].inventoryRows ?? []), TABLE];
+      putJson(root, DS, ds);
+      const cr = JSON.parse(get(root, CR));
+      cr.claims.find((c) => c.id === 'generates-ai-content').answer = true;
+      putJson(root, CR, cr);
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 0, out);
+      assert.match(out, /limb 7 — 1 of 1 app\(s\) generate AI content/);
+    } finally { kill(root); }
+  });
+});

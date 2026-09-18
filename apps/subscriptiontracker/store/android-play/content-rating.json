@@ -101,6 +101,17 @@
       "basis": "No ads SDK, no attribution SDK, no advertising-ID permission. The app's own analytics code states the rule positively — analytics_providers.dart:81, 'Never a device ad-ID' — and the consent prompt tells the user 'No name, no email, no advertising ID and no IP address.' The tells make it a build failure rather than a promise. ⚠️ THE TELLS ARE NOT THE WHOLE ANSWER: they are package-keyed, and the Play question is format-keyed. See `formatCrossCheck` — that half is derived from the widget tree and the served config, and it is what a house ad would trip."
     },
     {
+      "id": "generates-ai-content",
+      "claim": "The app does not generate content with AI: no text, image, voice or video is produced by a model for the user.",
+      "answer": false,
+      "derivation": "dependency-tells",
+      "tells": {
+        "dartPackages": ["google_generative_ai", "firebase_ai", "firebase_vertexai", "dart_openai", "openai_dart", "anthropic_sdk_dart", "langchain_openai", "langchain_google", "mistralai_dart", "ollama_dart"]
+      },
+      "evidence": ["apps/subscriptiontracker/pubspec.yaml", "apps/subscriptiontracker/app.yaml"],
+      "basis": "⏱ 2026-09-18 · O-PLAY-AI-CONTENT-REPORTING. Google Play's AI-Generated Content policy (support.google.com/googleplay/android-developer/answer/13985936, read 2026-09-18) requires an in-app report control in every app that generates content with AI. This app tracks subscriptions and generates nothing, and app.yaml says so (`ai.generatesContent: false`); tooling/ci/assert-app-yaml.mjs limb 7 requires this claim whenever that declaration is false. The tells are the client SDKs a Flutter app would take to call a model directly, so adding one fails this claim before the declaration can go stale. ⚠️ THE TELLS CANNOT SEE A MODEL CALLED THROUGH OUR OWN BACKEND — that is plain HTTP and adds no package. That path is covered at the declaration instead: an app that ships generation must flip app.yaml, and limb 7 then requires the wired ReportContentDialog and a Data safety answer for table:platform_db.content_reports."
+    },
+    {
       "id": "gambling",
       "claim": "The app contains no gambling, simulated gambling, loot boxes, or real-money wagering.",
       "answer": false,
