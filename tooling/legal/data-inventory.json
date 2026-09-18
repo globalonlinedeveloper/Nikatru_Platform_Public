@@ -286,6 +286,33 @@
       }
     },
     {
+      "id": "table:platform_db.content_reports",
+      "kind": "d1-table",
+      "name": "content_reports",
+      "personalData": true,
+      "holds": "One row per in-app report of AI-generated content (O-PLAY-AI-CONTENT-REPORTING; Google Play AI-Generated Content policy, support.google.com/googleplay/android-developer/answer/13985936). It holds WHO reported (the Supabase `sub`, from the verified JWT), for which app, a reason from a closed set, a reference to and/or an excerpt of the generated content (≤2000 chars), and an optional note the user typed (≤1000 chars) — plus `status` for moderation and `notified_at` for the support notice. It holds no name and no email address. The note is free text a person wrote, so it is treated as personal data in full. No app writes to it today: only an app that generates content with AI shows the report control.",
+      "retention": {
+        "kind": "swept",
+        "periodDays": 400,
+        "sweptBy": "services/platform/src/scheduled.ts",
+        "reason": "400 days from `created_at`, enforced by the platform Worker's nightly `retentionSweep` (CONTENT_REPORTS_RETENTION_DAYS) — the platform's period for personal data, clearing the DPDP Rules 2025 Rule 8(3) one-year floor that 365 misses across a 29 February ([ADR 045] §9). Kept that long so repeated reports against the same generated content can be seen and acted on, which is what Play asks developers to use reports for. `swept`, not `ttl`: D1 has no expiry."
+      },
+      "erasure": {
+        "kind": "purge",
+        "route": "services/platform/src/routes/account.ts",
+        "reason": "A report is a record about the person who filed it, and the note is their words; it goes when they do. The column is spelled `user_id` ON PURPOSE (0013_content_reports.sql): the shared erasure walk DELETES the row rather than NULLing a `*_user_id` reference and keeping the text. Verified rather than assumed — adding the table turned services/platform/test/auth.test.ts's empty-derivation fixture and erasure-derivation.test.ts's pinned set red."
+      },
+      "writtenBy": [
+        "services/platform/migrations/0013_content_reports.sql",
+        "services/platform/src/routes/report.ts",
+        "services/platform/src/lib/report-notify.ts"
+      ],
+      "disclosure": {
+        "page": "privacy.html",
+        "quote": "when you contact support, send feedback, or (in apps that offer accounts) create an account"
+      }
+    },
+    {
       "id": "table:platform_db.pending_erasures",
       "kind": "d1-table",
       "name": "pending_erasures",

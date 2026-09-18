@@ -43,6 +43,7 @@ import {
   PROVIDER_NOTIFICATIONS_RETENTION_DAYS,
   RETENTION_SWEEP_JOB,
   SIGNUPS_RETENTION_DAYS,
+  CONTENT_REPORTS_RETENTION_DAYS,
   retentionCutoff,
   retentionSweep,
 } from '../src/scheduled';
@@ -121,7 +122,7 @@ const heartbeat = (db: RealDb) =>
 /** Every SQL string the sweep asked the DB to prepare that is a DELETE. */
 const deletesPrepared = (db: RealDb) => db.sql.filter((s) => /^\s*DELETE\b/i.test(s));
 
-const NONE: RetentionPeriods = { events: null, events_daily: null, provider_notifications: null, signups: null };
+const NONE: RetentionPeriods = { events: null, events_daily: null, provider_notifications: null, signups: null, content_reports: null };
 
 // ─────────────────────────────────────────────────────────────────────────────
 describe('retentionCutoff — the pure half', () => {
@@ -164,7 +165,7 @@ describe('DORMANT — with no declared period the sweep touches nothing', () => 
 
   it('a period of 0 or a negative is treated as undeclared, not as "delete everything"', async () => {
     const db = seeded();
-    await retentionSweep(envOf(db), { events: 0, events_daily: null, provider_notifications: -1, signups: null }, NOW);
+    await retentionSweep(envOf(db), { events: 0, events_daily: null, provider_notifications: -1, signups: null, content_reports: null }, NOW);
     expect(db.count('events')).toBe(3);
     expect(db.count('provider_notifications')).toBe(3);
     expect(deletesPrepared(db)).toEqual([]);
@@ -193,7 +194,7 @@ describe('DORMANT — with no declared period the sweep touches nothing', () => 
 
 // ─────────────────────────────────────────────────────────────────────────────
 describe('ACTIVATED — one value turns the same job into a bounded deletion', () => {
-  const THIRTY: RetentionPeriods = { events: 30, events_daily: null, provider_notifications: 30, signups: null };
+  const THIRTY: RetentionPeriods = { events: 30, events_daily: null, provider_notifications: 30, signups: null, content_reports: null };
 
   it('deletes EXACTLY the rows past the period, and nothing newer', async () => {
     const db = seeded();
@@ -313,7 +314,7 @@ describe('ACTIVATED — one value turns the same job into a bounded deletion', (
 
   it('one store declared and one not is a MIXED run, not an all-or-nothing one', async () => {
     const db = seeded();
-    await retentionSweep(envOf(db), { events: 30, events_daily: null, provider_notifications: null, signups: null }, NOW);
+    await retentionSweep(envOf(db), { events: 30, events_daily: null, provider_notifications: null, signups: null, content_reports: null }, NOW);
     expect(db.count('events')).toBe(1);
     expect(db.count('provider_notifications')).toBe(3);
     expect(deletesPrepared(db)).toHaveLength(1);
@@ -340,14 +341,14 @@ describe('BOUNDED — the sweep is a catch-up job, never one unbounded DELETE', 
     expect(db.count('events')).toBe(overflow + 1);
     caughtUp(db);
 
-    await retentionSweep(envOf(db), { events: 30, events_daily: null, provider_notifications: null, signups: null }, NOW);
+    await retentionSweep(envOf(db), { events: 30, events_daily: null, provider_notifications: null, signups: null, content_reports: null }, NOW);
     expect(db.count('events')).toBe(overflow + 1 - MAX_ROWS_PER_SWEEP);
     const first = String(heartbeat(db)[0].detail);
     expect(first).toContain('capped=1');
     expect(first).toContain(`events=30d:${MAX_ROWS_PER_SWEEP}`);
 
     // The next night finishes the backlog and stops reporting capped.
-    await retentionSweep(envOf(db), { events: 30, events_daily: null, provider_notifications: null, signups: null }, NOW);
+    await retentionSweep(envOf(db), { events: 30, events_daily: null, provider_notifications: null, signups: null, content_reports: null }, NOW);
     expect(db.rows('SELECT event_id FROM events')).toEqual([{ event_id: 'keep-me' }]);
     expect(String(heartbeat(db)[1].detail)).toContain('capped=0');
   });
@@ -358,7 +359,7 @@ describe('a failing DELETE is recorded as ok=0, never as "nothing to do"', () =>
   it('records the failure instead of swallowing it', async () => {
     const db = seeded();
     db.throwOnWrite = true;
-    await retentionSweep(envOf(db), { events: 30, events_daily: null, provider_notifications: 30, signups: null }, NOW);
+    await retentionSweep(envOf(db), { events: 30, events_daily: null, provider_notifications: 30, signups: null, content_reports: null }, NOW);
     // The heartbeat write itself is best-effort and shares the same flag, so the
     // observable contract here is that the cron does not throw out of the sweep.
     db.throwOnWrite = false;
@@ -382,7 +383,7 @@ describe('signups — the nikatru.com launch list is swept on its original signu
   it('deletes exactly the signups older than the period; the one AT the cutoff and the fresh one survive', async () => {
     const db = realPlatformDb();
     seedSignups(db);
-    await retentionSweep(envOf(db), { events: null, events_daily: null, provider_notifications: null, signups: 30 }, NOW);
+    await retentionSweep(envOf(db), { events: null, events_daily: null, provider_notifications: null, signups: 30, content_reports: null }, NOW);
     expect(db.rows('SELECT email FROM signups ORDER BY email')).toEqual([
       { email: 'edge@example.com' },
       { email: 'fresh@example.com' },
@@ -424,6 +425,7 @@ describe('the shipped constants and tooling/ops/register.json agree', () => {
     events_daily: EVENTS_DAILY_RETENTION_DAYS,
     provider_notifications: PROVIDER_NOTIFICATIONS_RETENTION_DAYS,
     signups: SIGNUPS_RETENTION_DAYS,
+    content_reports: CONTENT_REPORTS_RETENTION_DAYS,
   };
 
   const register = JSON.parse(registerRaw) as {

@@ -205,6 +205,8 @@ describe('platform_db migrations re-apply cleanly', () => {
       'bundle_sources',
       'cancellation_requests',
       'consent_artifacts',
+      // ⏱ 2026-09-18 · migration 0013, the in-app AI content report.
+      'content_reports',
       'cron_heartbeat',
       'entitlements',
       'events',

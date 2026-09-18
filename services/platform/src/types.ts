@@ -323,6 +323,17 @@ export interface Env {
    */
   GLITCHTIP_DSN?: string;
   /**
+   * ⏱ 2026-09-18 · O-PLAY-AI-CONTENT-REPORTING. The Resend key the support notice
+   * for a content report is sent with (lib/report-notify.ts) — the auth+alerts
+   * container's key ([ADR 041]), the same credential as the vault's SMTP_PASS, so
+   * it ROTATES TOGETHER with Supabase smtp_pass and Box A's EMAIL_URL. Set with
+   * `wrangler secret put RESEND_API_KEY`.
+   *
+   * ABSENT ⇒ the report is still stored and `notified_at` stays NULL. Nothing the
+   * user sees changes; the notice is a convenience, the row is the record.
+   */
+  RESEND_API_KEY?: string;
+  /**
    * The commit this Worker was deployed from — `--var RELEASE:<sha>` in
    * deploy-workers.yml. NOT `API_VERSION`: that is the literal "v1" and has
    * never changed, so it groups every error the factory will ever report into

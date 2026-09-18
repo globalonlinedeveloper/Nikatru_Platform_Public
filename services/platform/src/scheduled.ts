@@ -1295,7 +1295,12 @@ export const RETENTION_SWEEP_JOB = 'retention_sweep';
 
 /** The platform_db stores whose retention is a PERIOD rather than a reasoned
  *  `keep`. Each name is also the store suffix of its register row id. */
-export type RetentionStore = 'events' | 'events_daily' | 'provider_notifications' | 'signups';
+export type RetentionStore =
+  | 'events'
+  | 'events_daily'
+  | 'provider_notifications'
+  | 'signups'
+  | 'content_reports';
 
 /** Days-to-keep per store. `null` is UNDECLARED, and undeclared is INERT. */
 export type RetentionPeriods = Record<RetentionStore, number | null>;
@@ -1408,6 +1413,18 @@ export const PROVIDER_NOTIFICATIONS_RETENTION_DAYS = 730;
 // had an expiry are bounded here for the first time.
 // @ceiling none — a RETENTION PERIOD is a policy number, not a platform resource; nothing in tooling/ceilings.json bounds how long rows may be kept.
 export const SIGNUPS_RETENTION_DAYS = 400;
+
+// 🔒 DECLARED — 400 DAYS FROM THE REPORT. O-PLAY-AI-CONTENT-REPORTING. Register
+// row: retention.d1.platform_db.content_reports. The platform's period for
+// personal data, for the same reason as `signups` above: it clears the DPDP
+// Rules 2025 Rule 8(3) one-year floor with margin, where 365 misses it in a
+// leap year. A report is kept that long so a pattern of reports against the
+// same generated content can be seen and acted on (Play: "Developers should
+// utilize user reports to inform content filtering and moderation"). On AGE
+// ALONE — nothing is derived from this table. And sooner with the account:
+// `user_id` puts every row in the erasure walk (0013_content_reports.sql).
+// @ceiling none — a RETENTION PERIOD is a policy number, not a platform resource; nothing in tooling/ceilings.json bounds how long rows may be kept.
+export const CONTENT_REPORTS_RETENTION_DAYS = 400;
 
 // The per-store, per-run delete bound. A sweep is a CATCH-UP job, not a one
 // shot: hitting the bound leaves the remainder for tomorrow and says `capped=1`
@@ -1697,6 +1714,11 @@ async function deleteOlderThan(env: Env, store: RetentionStore, cutoff: string):
             // derived from this table and nothing downstream consumes it.
             'DELETE FROM signups WHERE rowid IN (SELECT rowid FROM signups WHERE signed_up_at < ? ORDER BY signed_up_at LIMIT ?)',
           )
+      : store === 'content_reports'
+        ? env.PLATFORM_DB.prepare(
+            // O-PLAY-AI-CONTENT-REPORTING. On AGE ALONE, from `created_at`.
+            'DELETE FROM content_reports WHERE rowid IN (SELECT rowid FROM content_reports WHERE created_at < ? ORDER BY created_at LIMIT ?)',
+          )
       : store === 'events_daily'
         ? env.PLATFORM_DB.prepare(
             // Deletes on AGE ALONE, and that asymmetry with `events` is
@@ -1775,10 +1797,11 @@ export async function retentionSweep(
     events_daily: EVENTS_DAILY_RETENTION_DAYS,
     provider_notifications: PROVIDER_NOTIFICATIONS_RETENTION_DAYS,
     signups: SIGNUPS_RETENTION_DAYS,
+    content_reports: CONTENT_REPORTS_RETENTION_DAYS,
   },
   nowMs: number = Date.now(),
 ): Promise<void> {
-  const stores: RetentionStore[] = ['events', 'events_daily', 'provider_notifications', 'signups'];
+  const stores: RetentionStore[] = ['events', 'events_daily', 'provider_notifications', 'signups', 'content_reports'];
   const n_stores = stores.length;
   let declared = 0;
   let deleted = 0;
