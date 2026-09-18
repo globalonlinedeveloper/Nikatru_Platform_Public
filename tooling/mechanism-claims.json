@@ -1177,34 +1177,257 @@
       "anchor": "It is written the same way so the two cases cannot drift",
       "status": "demoted",
       "reason": "A note on why two test cases share a shape; it asserts nothing about a mechanism a test could grade. judged 2026-09-18."
+    },
+    {
+      "file": ".github/workflows/build-platforms.yml",
+      "anchor": "# why: DERIVED, NOT LISTED. A hand-written app list here is a second copy of the",
+      "status": "demoted",
+      "reason": "Rationale for the `prepare` step directly below, which runs `assert-release-lane-generic.mjs --emit-apps`. Nothing grades that the matrix is DERIVED: limb A passes a hand-written matrix that happens to equal today's workspace ('a matrix over both apps is the CORRECT generic shape and passes' in tooling/ci/test/release-lane-generic.test.mjs) and catches only the rot, a second app no lane covers. The guard's own header calls this link \"a shared implementation, not an assertion\". Judged 2026-09-19."
+    },
+    {
+      "file": ".github/workflows/deploy-web.yml",
+      "anchor": "# why: DERIVED, NOT LISTED. A hand-written app list here is a second copy of the",
+      "status": "demoted",
+      "reason": "Rationale for the `prepare` step directly below, which runs `assert-release-lane-generic.mjs --emit-apps`. Nothing grades that the matrix is DERIVED: limb A passes a hand-written matrix that happens to equal today's workspace ('a matrix over both apps is the CORRECT generic shape and passes' in tooling/ci/test/release-lane-generic.test.mjs) and catches only the rot, a second app no lane covers; limb D reads `paths:`, `working-directory`, `run:` and `with:`, never `strategy.matrix`. The guard's own header calls this link \"a shared implementation, not an assertion\". Judged 2026-09-19."
+    },
+    {
+      "file": ".github/workflows/e2e.yml",
+      "anchor": "# why: DERIVED, NOT LISTED. A hand-written app list here is a second copy of the",
+      "status": "demoted",
+      "reason": "Rationale for the `prepare` step directly below, which runs `assert-release-lane-generic.mjs --emit-apps`. Nothing grades that the matrix is DERIVED: limb A passes a hand-written matrix that happens to equal today's workspace ('a matrix over both apps is the CORRECT generic shape and passes' in tooling/ci/test/release-lane-generic.test.mjs) and catches only the rot, a second app no lane covers. The guard's own header calls this link \"a shared implementation, not an assertion\". Judged 2026-09-19."
+    },
+    {
+      "file": ".github/workflows/e2e.yml",
+      "anchor": "shape that cannot drift — there is no list of exempt runs to maintain",
+      "status": "demoted",
+      "reason": "A design argument comparing two shapes (refuse at the ref vs an exempt-run list), not a property of the step below. No test executes the rehearsal preflight step. Judged 2026-09-19."
+    },
+    {
+      "file": ".github/workflows/extensions.yml",
+      "anchor": "# DERIVED, NOT LISTED. The set is read out of the workflow files, so it",
+      "status": "demoted",
+      "reason": "A comment inside an inline `run:` bash block. No test executes this step (no case in tooling/ci/test or extensions/scripts/test reads it); the `find`/`grep` the sentence describes sits directly beneath it and is the mechanism, run on every CI pass. Nothing a node:test case could grade without re-implementing the step. Judged 2026-09-19."
+    },
+    {
+      "file": ".github/workflows/extensions.yml",
+      "anchor": "# DERIVED, NOT LISTED — the same rule the gate inventory above follows,",
+      "status": "demoted",
+      "reason": "A comment inside an inline `run:` bash block. No test executes this step (no case in tooling/ci/test or extensions/scripts/test reads it); the `find`/`grep` the sentence describes sits directly beneath it and is the mechanism, run on every CI pass. Nothing a node:test case could grade without re-implementing the step. Judged 2026-09-19."
+    },
+    {
+      "file": ".github/workflows/extensions.yml",
+      "anchor": "# DERIVED, NOT LISTED — the same rule the gate inventory at the top of",
+      "status": "demoted",
+      "reason": "A comment inside an inline `run:` bash block. No test executes this step (no case in tooling/ci/test or extensions/scripts/test reads it); the `find`/`grep` the sentence describes sits directly beneath it and is the mechanism, run on every CI pass. Nothing a node:test case could grade without re-implementing the step. Judged 2026-09-19."
+    },
+    {
+      "file": ".github/workflows/extensions.yml",
+      "anchor": "- name: Run every suite in test/e2e (derived, not listed)",
+      "status": "demoted",
+      "reason": "A step NAME, shown on the checks list. The derivation is the inline bash below it, which no test executes. Judged 2026-09-19."
+    },
+    {
+      "file": "README.md",
+      "anchor": "so they cannot drift. It asserts **completeness, not greenness**",
+      "status": "proven",
+      "test": "tooling/ci/test/guard-sweep-invocations.test.mjs",
+      "case": "🔴 arguments folded onto a `run: >` continuation line are recorded",
+      "proves": "Derives every folded guard invocation from the REAL workflows and requires `guard-sweep.mjs --invocations` to have recorded the argument the YAML passes. A sweep whose arguments stopped being read from the YAML (typed, or a one-line reader) records them empty and this case goes red."
+    },
+    {
+      "file": "catalog/store-matrix.json",
+      "anchor": "precisely so the two blocks cannot drift into each thinking the other declared it",
+      "status": "demoted",
+      "reason": "A data note in the registry. The limb it names exists (assert-store-matrix.mjs, the `infrastructure` repo with NO github.outOfMatrix line), but no case in store-matrix.test.mjs or github-matrix.test.mjs plants an infrastructure entry without its outOfMatrix line, so no named test fails if that limb goes. Coverage gap, recorded. Judged 2026-09-19."
+    },
+    {
+      "file": "docs/ci/README.md",
+      "anchor": "cannot drift apart. It **refuses the whole run (exit 2) and writes nothing**",
+      "status": "proven",
+      "test": "tooling/ci/test/propagate-versions.test.mjs",
+      "case": "--write moves the three melos sites and the drift guard then passes",
+      "proves": "Runs the propagator with --write and then the guard it claims to share a rule table with; the guard must pass. A propagator carrying its own copy of the rules that disagreed with the guard would leave a site the guard reads unwritten, and this case goes red."
+    },
+    {
+      "file": "docs/ci/build-platforms.md",
+      "anchor": "matrix iterates. One function, one file: a lane cannot drift from the",
+      "status": "demoted",
+      "reason": "Prose mirror of the build-platforms.yml `prepare` step, judged demoted there: nothing grades that the lane calls the emitter (a hand-written matrix equal to today's workspace passes limb A). assert-release-lane-generic.mjs names this link \"a shared implementation, not an assertion\". Judged 2026-09-19."
+    },
+    {
+      "file": "docs/ci/deploy-web.md",
+      "anchor": "GRADES this lane. One function, one file: this lane cannot drift from the",
+      "status": "demoted",
+      "reason": "Prose mirror of the deploy-web.yml `prepare` step, judged demoted there: nothing grades that the lane calls the emitter, and limb D does not read `strategy.matrix`. assert-release-lane-generic.mjs names this link \"a shared implementation, not an assertion\". Judged 2026-09-19."
+    },
+    {
+      "file": "docs/ci/deploy-web.md",
+      "anchor": "debug id cannot drift from what the SDK reports",
+      "status": "demoted",
+      "reason": "A property of GlitchTip's and the SDK's debug-id format (derived from the bundle bytes by glitchtip-cli), external to this repository. Nothing here could grade it. Judged 2026-09-19."
+    },
+    {
+      "file": "docs/ci/extensions.md",
+      "anchor": "scripts/schema/tool.schema.json so it cannot drift into a fourth list.",
+      "status": "demoted",
+      "reason": "Exercised, but not citable: extensions/scripts/test/selftest.node.js expect('a store set that disagrees with the schema vocabulary is caught') plants the drift against check-store-metadata.mjs. That harness is expect(), not a test/describe title this register can name (the same limit claims[] records for check-version.mjs). Weak by construction, not untested. Judged 2026-09-19."
+    },
+    {
+      "file": "docs/ci/extensions.md",
+      "anchor": "here cannot drift into a claim about a submission",
+      "status": "proven",
+      "test": "tooling/ci/test/deployment-record.test.mjs",
+      "case": "a SUBMITTABLE store row REFUSES the origin state — it is not the easy way past naming a submission",
+      "proves": "Runs record-deployment.mjs on a submittable store row with `--state pending_manual_publish` and requires the refusal before the API. If the script accepted the origin state on a row this factory can submit through, the flag could stand in for a submission and this case goes red. Its sibling 'a NON-submittable store row REFUSES `in_review`' pins the other half."
+    },
+    {
+      "file": "docs/ci/extensions.md",
+      "anchor": "Derived, not listed — the same rule as the CI matrix. A tool joins the",
+      "status": "demoted",
+      "reason": "Prose mirror of the extensions.yml e2e `set` step, an inline bash block no test executes. Judged 2026-09-19."
+    },
+    {
+      "file": "docs/ci/extensions.md",
+      "anchor": "### before step **Run every suite in test/e2e (derived, not listed)**",
+      "status": "demoted",
+      "reason": "A heading that quotes the extensions.yml step name. Judged 2026-09-19."
+    },
+    {
+      "file": "docs/ci/extensions.md",
+      "anchor": "DERIVED, NOT LISTED — the rule the discover job already follows. A",
+      "status": "demoted",
+      "reason": "Prose mirror of the extensions.yml e2e suite/library split, an inline bash block no test executes. Judged 2026-09-19."
+    },
+    {
+      "file": "docs/ci/ops-watch.md",
+      "anchor": "**And no second copy in `assert-platform-proof-fresh.mjs`.**",
+      "status": "demoted",
+      "reason": "Records a design decision NOT to add a second copy of the ops-watch rule, and why. It describes the absence of an edit, not a mechanism a test could flip. Judged 2026-09-19."
+    },
+    {
+      "file": "services/_shared/src/entitlement-read.ts",
+      "anchor": "the unparseable-date rule are not re-implemented here and cannot drift.",
+      "status": "proven",
+      "test": "services/platform/test/bundle-entitlements.test.ts",
+      "case": "G11 — sandbox money grants no production unlock, on the bundle branch too",
+      "proves": "Drives the bundle branch with grants from the other money world and with NO environment, and requires a denial, then the same world and requires a grant. A bundle branch that decided on its own copy of the rule and dropped the environment limb goes red here. WEAK: it grades the environment limb only (lifetime and grace dates are pinned by sibling cases in the same file), and a re-implementation that happened to agree would pass."
+    },
+    {
+      "file": "services/platform/test/checkout.test.ts",
+      "anchor": "describe('REQUIRED_COVERAGE — the price map and the served offerings cannot drift apart'",
+      "status": "proven",
+      "test": "services/platform/test/checkout.test.ts",
+      "case": "every SERVED offering is either priced by the rail or DECLARED pending, and every price id has a served offering",
+      "proves": "Compares PADDLE_PRICE_IDS and RAIL_PRICE_PENDING against the served offerings in BOTH directions. A price id with no served offering, or a served offering with neither a price nor a pending reason, turns it red."
+    },
+    {
+      "file": "services/platform/test/github-dispatch.test.ts",
+      "anchor": "// cannot drift from either.",
+      "status": "proven",
+      "test": "services/platform/test/github-dispatch.test.ts",
+      "case": "🔴 a dispatched workflow whose duty rows still read `event=schedule` MUST keep its own schedule",
+      "proves": "The comment sits inside this case; it imports tooling/ops/register.json with ?raw and reads the real workflows, so the case grades the committed files rather than a copy of them."
+    },
+    {
+      "file": "services/platform/test/twinned-worker-modules.test.ts",
+      "anchor": "services/_shared/src/${d.module}. Every carrier re-exports it, so there is no second copy for this ",
+      "status": "demoted",
+      "reason": "Text of a failure message the anti-rot limb prints when an exception row outlives its twin. It describes the finding it reports; the limb is 'no exception row has outlived what it excuses'. Judged 2026-09-19."
+    },
+    {
+      "file": "services/platform/test/twinned-worker-modules.test.ts",
+      "anchor": "file cannot drift from itself, which is strictly stronger than holding copies",
+      "status": "proven",
+      "test": "services/platform/test/twinned-worker-modules.test.ts",
+      "case": "every carrier of a shared-home module is EXACTLY a re-export of it",
+      "proves": "Requires every carrier of a module with a home under services/_shared/src to be exactly a re-export. A carrier that forks a copy back is two files, not one, and this case goes red."
+    },
+    {
+      "file": "services/platform/test/twinned-worker-modules.test.ts",
+      "anchor": "// THE SUBJECT SET IS DERIVED, NOT LISTED. Every `services/*/src/lib/*.ts`",
+      "status": "proven",
+      "test": "services/platform/test/twinned-worker-modules.test.ts",
+      "case": "the derived subject set still finds both Workers and both twinned modules",
+      "proves": "Floors the derived Worker and twin sets, and each group separately, so a rename that empties the derivation goes red instead of iterating nothing. WEAK: it proves the floor half of the sentence; a typed list that met the floors would also pass."
+    },
+    {
+      "file": "services/subscriptiontracker-api/src/middleware/auth.ts",
+      "anchor": "the two cannot drift into a weaker one an attacker reaches by making the",
+      "status": "demoted",
+      "reason": "Gradeable and NOT graded, recorded as a gap: no case in services/subscriptiontracker-api/test/auth.test.ts sends a wrong-issuer or wrong-audience ES256 token down the cache-fallback path. 'the fallback does NOT widen — a FOREIGN ES256 key is still 401 against the cache' pins the KEY, not the verify options, so a fallback called with weaker `opts` would stay green. Judged 2026-09-19."
+    },
+    {
+      "file": "services/subscriptiontracker-api/test/entitlements.test.ts",
+      "anchor": "// against src/types.ts's `Entitlement` in entitlements.test.ts so it cannot",
+      "status": "demoted",
+      "reason": "Quotes the harness comment of PR #94 as HISTORY, to say the guard it promised did not exist. The quote asserts nothing about the file as it stands. Judged 2026-09-19."
+    },
+    {
+      "file": "sites/nikatru/functions/api/subscribe.js",
+      "anchor": "// promise and the code cannot drift apart quietly.",
+      "status": "proven",
+      "test": "tooling/ci/test/site-integrity.test.mjs",
+      "case": "FAILS the moment the copy changes underneath it",
+      "proves": "Plants a Function quoting a SITE PROMISE and a page whose copy no longer carries that sentence verbatim; check-site-integrity.mjs must exit 1. If the marker stopped being checked against the deploy root, the copy could move quietly and this case goes red."
+    },
+    {
+      "file": "sites/nikatru/subscriptiontracker/privacy.html",
+      "anchor": "so it cannot drift from what the code does without a build failing.",
+      "status": "proven",
+      "test": "tooling/ci/test/app-yaml.test.mjs",
+      "case": "MUTATION: a hand edit to the per-app notice page is caught",
+      "proves": "Hand-edits this page in a copy of the real tree and requires `render-privacy.mjs --check` to exit 1 naming it. A page that stopped being compared with what privacy.yaml renders turns this red. WEAK on the last hop: declaration-vs-code is graded by other limbs (the live-sink case in the same file), not by this case."
+    },
+    {
+      "file": "tooling/ci/assert-adapter-capabilities.mjs",
+      "anchor": "Derived, not typed — the same\n//    derivation C-5 limb (c) uses, so the two cannot drift apart.",
+      "status": "demoted",
+      "reason": "FALSE AS WRITTEN, recorded rather than hidden: the derivation below is a second COPY (its own LINT_ONLY and pubspec walk) of assert-package-boundaries.mjs:187-199, not a shared one, and nothing holds the two equal. \"Derived, not typed\" is true (the loop reads each pubspec). Reword owed in the file's owning change: import one reader, or drop \"cannot drift\". Judged 2026-09-19."
+    },
+    {
+      "file": "tooling/ci/assert-deploy-triggers-deploy.mjs",
+      "anchor": "//      DERIVED, NOT LISTED. For every glob of the shape `X/**`, the tree at `X`",
+      "status": "demoted",
+      "reason": "Gradeable and NOT graded, recorded as a gap: `judgeImports` (limb 3) has no case in tooling/ci/test/assert-deploy-triggers-deploy.test.mjs; the real-tree case calls `judge` (limbs 1-2) only. Judged 2026-09-19."
+    },
+    {
+      "file": "tooling/ci/assert-no-store-bundle-copy.mjs",
+      "anchor": "// Derived, not listed: every `store/` directory under `apps/` and `extensions/`,",
+      "status": "demoted",
+      "reason": "Gradeable and NOT graded: every case in bundle-provenance-guards.test.mjs runs over the existing store dirs; none adds a new store/ directory and requires it read, so a typed list of today's trees passes. Judged 2026-09-19."
+    },
+    {
+      "file": "tooling/ci/assert-ops-register.mjs",
+      "anchor": "that script's own source so the two cannot drift.",
+      "status": "demoted",
+      "reason": "Weakly graded, recorded as a gap: ops-register.test.mjs asserts `gateCheckName(REPO_ROOT) === 'ci-gate'` on the real tree only; no case plants a different `const GATE`, so a hard-coded 'ci-gate' would pass. The comment beneath names the three-reader debt itself. Judged 2026-09-19."
+    },
+    {
+      "file": "tooling/ci/assert-ops-register.mjs",
+      "anchor": "// ── [14]O-7 · the deploy-job domain, DERIVED from the recorded claims",
+      "status": "demoted",
+      "reason": "Gradeable and NOT graded: the O-7 cases inject `deployJobs` into `evaluate` directly; the derivation from the workflows in main() is reached only by the real-tree run, which asserts no count. Judged 2026-09-19."
+    },
+    {
+      "file": "tooling/ci/assert-provider-graph-acyclic.mjs",
+      "anchor": "// DERIVED, not listed: every `apps/*/lib` plus the brick template's own. A",
+      "status": "proven",
+      "test": "tooling/ci/test/provider-graph-acyclic.test.mjs",
+      "case": "(a) the #258 pair — read into a provider that watches the reader",
+      "proves": "The fixture app is `apps/demo`, a name no list in the guard holds; the case requires the cycle there to be found. A typed app list would never open apps/demo and the case goes red."
+    },
+    {
+      "file": "tooling/ci/assert-publish-gate.mjs",
+      "anchor": "required artifacts DERIVED not listed; ",
+      "status": "demoted",
+      "reason": "A runtime pass message, printed after the checks above it; it describes the run, and the header limb is the mechanism. Judged 2026-09-19."
+    },
+    {
+      "file": "tooling/ci/assert-release-provenance.mjs",
+      "anchor": "// tooling/release/submit-play.mjs:375, so the two checks cannot drift.",
+      "status": "demoted",
+      "reason": "The comment itself says the receiver is a naming choice that cannot change a verdict on well-formed YAML; nothing compares the two spellings. The predicate it feeds is pinned by 'FAILS when the submit job declares no environment:'. Judged 2026-09-19."
     }
   ],
-  "backlog": {
-    ".github/workflows/build-platforms.yml": 1,
-    ".github/workflows/deploy-web.yml": 1,
-    ".github/workflows/e2e.yml": 2,
-    ".github/workflows/extensions.yml": 4,
-    "README.md": 1,
-    "catalog/store-matrix.json": 1,
-    "docs/ci/README.md": 1,
-    "docs/ci/build-platforms.md": 1,
-    "docs/ci/deploy-web.md": 2,
-    "docs/ci/extensions.md": 5,
-    "docs/ci/ops-watch.md": 1,
-    "services/_shared/src/entitlement-read.ts": 1,
-    "services/platform/test/checkout.test.ts": 1,
-    "services/platform/test/github-dispatch.test.ts": 1,
-    "services/platform/test/twinned-worker-modules.test.ts": 3,
-    "services/subscriptiontracker-api/src/middleware/auth.ts": 1,
-    "services/subscriptiontracker-api/test/entitlements.test.ts": 1,
-    "sites/nikatru/functions/api/subscribe.js": 1,
-    "sites/nikatru/subscriptiontracker/privacy.html": 1,
-    "tooling/ci/assert-adapter-capabilities.mjs": 2,
-    "tooling/ci/assert-deploy-triggers-deploy.mjs": 1,
-    "tooling/ci/assert-no-store-bundle-copy.mjs": 1,
-    "tooling/ci/assert-ops-register.mjs": 2,
-    "tooling/ci/assert-provider-graph-acyclic.mjs": 1,
-    "tooling/ci/assert-publish-gate.mjs": 1,
-    "tooling/ci/assert-release-provenance.mjs": 1
-  }
+  "backlog": {}
 }
