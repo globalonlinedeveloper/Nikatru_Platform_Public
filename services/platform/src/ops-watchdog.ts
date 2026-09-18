@@ -197,7 +197,9 @@ export async function checkMainConclusions(env: Env): Promise<HeartbeatRow[]> {
 /** (c) GlitchTip monitor status, when a token exists. */
 export async function checkGlitchtipMonitors(env: Env): Promise<HeartbeatRow[]> {
   const token = env.GLITCHTIP_TOKEN;
-  const base = (env.GLITCHTIP_URL ?? 'https://glitchtip.nikatru.com').trim().replace(/\/+$/, '');
+  // Trailing slashes trimmed with a loop, not /\/+$/ — CodeQL js/polynomial-redos.
+  let base = (env.GLITCHTIP_URL ?? 'https://glitchtip.nikatru.com').trim();
+  while (base.endsWith('/')) base = base.slice(0, -1);
   const rows: HeartbeatRow[] = [];
   for (const id of OPS_GLITCHTIP_MONITORS) {
     const target = `glitchtip-monitor-${id}`;
