@@ -333,7 +333,7 @@ describe('the guard knows when it is not looking', () => {
     writeFileSync(join(root, 'tooling/capability-register.json'),
       JSON.stringify({ consumerRoots: ['apps/app1'], capabilities: [{ id: 'x', owner: 'packages/core', seams: [] }] }));
     const { code, out } = run(root);
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
   });
 
@@ -341,7 +341,7 @@ describe('the guard knows when it is not looking', () => {
     const root = tree();
     rmSync(join(root, 'tooling/capability-register.json'));
     const { code, out } = run(root);
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST — no capability register/);
   });
 });
@@ -438,14 +438,14 @@ describe('coverage is per ROOT — a pooled floor is satisfied by one root alone
     // The old `< 10` floor was satisfied three hundred times over. This is the
     // defect, and it is red only because the floor is now per root.
     const { code, out } = run(checkout(tree(), { apps: 0, packages: 300, bricks: 16 }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST — 1 of the 3 declared root\(s\)/);
     assert.match(out, /`apps` yielded only 15 file\(s\) to classify, below its floor of 37/);
   });
 
   test('🔴 packages/ below its floor fails — with nothing homed, no fork can be a fork', () => {
     const { code, out } = run(checkout(tree(), { packages: 89 }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /`packages` yielded only 89 file\(s\) to classify, below its floor of 90/);
     assert.match(out, /every fork is reclassified "homeless"/);
   });
@@ -455,14 +455,14 @@ describe('coverage is per ROOT — a pooled floor is satisfied by one root alone
     assert.equal(green.code, 0, green.out);
     assert.match(green.out, /apps=37\/floor 37/);
     const red = run(checkout(tree(), { apps: 36 }));
-    assert.equal(red.code, 1, red.out);
+    assert.equal(red.code, 2, red.out);
     assert.match(red.out, /below its floor of 37/);
   });
 
   test('two roots lost are reported TOGETHER, not one at a time', () => {
     // Naming only the first sends the reader to fix half of it.
     const { code, out } = run(checkout(tree(), { apps: 20, packages: 50 }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST — 2 of the 3 declared root\(s\)/);
     assert.match(out, /`apps` yielded only 20/);
     assert.match(out, /`packages` yielded only 50/);
@@ -489,7 +489,7 @@ describe('coverage is per ROOT — a pooled floor is satisfied by one root alone
       writeFileSync(p, '// double\n');
     }
     const { code, out } = run(root);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /`apps` yielded only 15 file\(s\) to classify/);
   });
 });
@@ -500,7 +500,7 @@ describe('a declared root that delivers NOTHING is COVERAGE LOST, checkout or no
       const root = tree();
       rmSync(join(root, dir), { recursive: true, force: true });
       const { code, out } = run(root);
-      assert.equal(code, 1, out);
+      assert.equal(code, 2, out);
       assert.match(out, new RegExp(`\`${dir.replace('/', '\\/')}\` is not a directory under this root`));
     });
   }
@@ -514,7 +514,7 @@ describe('a declared root that delivers NOTHING is COVERAGE LOST, checkout or no
       writeFileSync(p, '// double\n');
     }
     const { code, out } = run(root);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /all 5 \.dart file\(s\) under `apps` sit in a test\/, integration_test\/ or live_probe\//);
   });
 });
@@ -534,7 +534,7 @@ describe('the floors are measurements of ONE tree and say so when they are not a
     const root = tree();
     rmSync(join(root, 'packages'), { recursive: true, force: true });
     const { code, out } = run(root);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /`packages` is not a directory under this root/);
   });
 });
@@ -694,7 +694,7 @@ describe('the parity limb knows when it is not looking', () => {
     const root = tree();
     rmSync(join(root, CHASSIS));
     const { code, out } = run(root);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST — the accepted-fork parity limb reached nothing/);
     assert.match(out, /sign_in_screen\.dart — the file is not there/);
   });
@@ -703,7 +703,7 @@ describe('the parity limb knows when it is not looking', () => {
     const root = tree();
     rmSync(join(root, FORK));
     const { code, out } = run(root);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /login_screen\.dart — the file is not there/);
   });
 
@@ -717,7 +717,7 @@ describe('the parity limb knows when it is not looking', () => {
         [CHASSIS]: 'class SignInScreen {\n  Widget build(BuildContext context) {\n    return const Empty();\n  }\n}\n',
       },
     }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /0 `caps\.<field>` read\(s\) found/);
     assert.match(out, /cannot fail and is therefore worse than none/);
   });
@@ -781,7 +781,7 @@ describe('the ARRIVE limb — a pair that appears on disk in NEITHER list', () =
     const root = tree();
     rmSync(join(root, BRICK_F), { recursive: true, force: true });
     const { code, out } = run(root);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /produced NO \.dart file\(s\)/);
   });
 });
@@ -873,7 +873,7 @@ describe('the watch — the eleven pairs this guard does NOT cover, and says so'
     const root = tree();
     rmSync(join(root, `${SUBLY_F}/monetization/paywall_screen.dart`));
     const { code, out } = run(root);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST — the watch lost sight of 1 path\(s\)/);
     assert.match(out, /paywall_screen\.dart — the file is not there/);
   });
@@ -894,7 +894,7 @@ describe('the watch — the eleven pairs this guard does NOT cover, and says so'
     const root = tree();
     rmSync(join(root, `${SUBLY_LIB}/app.dart`));
     const { code, out } = run(root);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST — the watch lost sight of 1 path\(s\)/);
     assert.match(out, /apps\/subscriptiontracker\/lib\/app\.dart — the file is not there/);
   });
@@ -903,7 +903,7 @@ describe('the watch — the eleven pairs this guard does NOT cover, and says so'
     const root = tree();
     rmSync(join(root, `${BRICK_LIB}/main.dart`));
     const { code, out } = run(root);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /tooling\/bricks\/app\/__brick__\/apps\/\{\{app_id\}\}\/lib\/main\.dart — the file is not there/);
   });
 
@@ -1038,7 +1038,7 @@ describe('a caps gate that moved into the chassis is still compared', () => {
   // tripwire's subject is whether THIS FILE still gates on anything.
   test('D3 · the adapter gating on NOTHING still fails, even though the package gates', () => {
     const { code, out } = run(delegating({ gateInAdapter: false }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /sign_in_screen\.dart — 0 `caps\.<field>` read\(s\) found IN THE ADAPTER ITSELF/);
     assert.match(out, /the tripwire is about whether this file still gates on anything/);
     assert.match(out, /the subset test cannot fail and is therefore worse than none/);
@@ -1046,14 +1046,14 @@ describe('a caps gate that moved into the chassis is still compared', () => {
 
   test('D4 · COVERAGE LOST when the delegation resolves to nothing on disk', () => {
     const { code, out } = run(delegating({ packageOnDisk: false }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /delegates to `package:nikatru_chassis_screens\/sign_in_body\.dart`/);
     assert.match(out, /that file is not on disk/);
   });
 
   test('D5 · two chassis imports in one adapter is refused, not guessed', () => {
     const { code, out } = run(delegating({ secondImport: true }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /imports 2 different `package:nikatru_chassis_screens` paths/);
     assert.match(out, /will not guess between two of them/);
   });
@@ -1069,7 +1069,7 @@ describe('a caps gate that moved into the chassis is still compared', () => {
     const root = delegating();
     rmSync(join(root, CHASSIS));
     const { code, out } = run(root);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /the file is not there/);
   });
 
@@ -1088,14 +1088,14 @@ describe('a caps gate that moved into the chassis is still compared', () => {
   // ─────────────────────────────────────────────────────────────────────────
   test('D7 · 🔴 the fork drops its gate and adds an UNUSED chassis import — still EXIT 1', () => {
     const { code, out } = run(delegating({ forkReads: false, forkUnusedImport: true }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /never references anything it declares \(SignInBody\)/);
     assert.match(out, /a reference is evidence/);
   });
 
   test('D8 · 🔴 the ADAPTER imports the package and never uses it — refused, not followed', () => {
     const { code, out } = run(delegating({ adapterUsesBody: false }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /never references anything it declares \(SignInBody\)/);
     assert.match(out, /dead code wearing a delegation's costume/);
   });
@@ -1146,7 +1146,7 @@ describe('the landed-behaviour limb', () => {
 
   test('a row whose file is missing is COVERAGE LOST, never a pass', () => {
     const r = run(tree({ omit: [LANDED_PROVIDERS_FORK] }));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST — the landed-behaviour limb/);
   });
 });

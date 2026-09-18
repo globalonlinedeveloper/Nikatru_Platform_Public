@@ -3241,7 +3241,7 @@ Future<void> main() async {
     const { code, out } = run('assert-seams-wired.mjs', {
       cwd: build('seams-lane-dropped', { register: JSON.stringify(shrunk, null, 2) }),
     });
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /only 3 channel row\(s\) declare a `lane\.workflow` \+ `lane\.job`/);
   });
 
@@ -3251,7 +3251,7 @@ Future<void> main() async {
     const { code, out } = run('assert-seams-wired.mjs', {
       cwd: build('seams-lane-job-gone', { register: JSON.stringify(renamed, null, 2) }),
     });
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /names job `windows_build` .* and this scan could not find that job/);
   });
 
@@ -3283,7 +3283,7 @@ Future<void> main() async {
     const { code, out } = run('assert-seams-wired.mjs', {
       cwd: build('seams-bootstrap-gone', { bootstrap: null }),
     });
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST — .*telemetry_bootstrap\.dart is gone/s);
   });
 
@@ -3291,7 +3291,7 @@ Future<void> main() async {
     const { code, out } = run('assert-seams-wired.mjs', {
       cwd: build('seams-register-broken', { register: '{ not json' }),
     });
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /channel-register\.json could not be read/);
   });
 
@@ -3637,7 +3637,7 @@ Future<void> main() async {
     const { code, out } = run('assert-seams-wired.mjs', {
       cwd: build('seams-coverage', { fillerCount: 0 }),
     });
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
   });
 });
@@ -8028,7 +8028,7 @@ describe('per-root coverage — a root that contributes nothing is named', () =>
 
     test(`🔴 ${short} — COVERAGE LOST names apps/subscriptiontracker when it contributes nothing`, () => {
       const { code, out } = run(guard, { args: [tree(`proot-quiet-${short}`, { appDart: false })] });
-      assert.equal(code, 1, out);
+      assert.equal(code, 2, out);
       assert.match(out, /COVERAGE LOST — apps\/subscriptiontracker contributed ZERO/);
       // The union floor stayed green throughout: that is the defect, not a
       // second symptom of it.
@@ -8060,7 +8060,7 @@ describe('per-root coverage — a root that contributes nothing is named', () =>
     rmSync(join(dir, 'services', 'platform', 'src'), { recursive: true, force: true });
     mkdirSync(join(dir, 'services', 'platform', 'src'), { recursive: true });
     const { code, out } = run('assert-pseudonymity-firewall.mjs', { args: [dir] });
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST — services\/platform contributed ZERO/);
   });
 });

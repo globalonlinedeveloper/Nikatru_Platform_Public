@@ -330,7 +330,7 @@ describe('the shared widget cannot be asked to pre-tick', () => {
     withTree(
       (root) => rmSync(join(root, CHASSIS_FIELDS)),
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /COVERAGE LOST/);
         assert.match(r.stderr, /legal_consent_fields/);
       },
@@ -399,7 +399,7 @@ describe('a surface that moved into the chassis is judged where it now lives', (
     withTree(
       (root) => delegateSignUp(root, { body: CHASSIS_BODY_OK, writePackage: false }),
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /COVERAGE LOST/);
         assert.match(r.stderr, /not on disk|asserted NOWHERE/);
       },
@@ -410,7 +410,7 @@ describe('a surface that moved into the chassis is judged where it now lives', (
     withTree(
       (root) => delegateSignUp(root, { body: CHASSIS_BODY_OK, used: false }),
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /COVERAGE LOST/);
         assert.match(r.stderr, /never references anything it declares|ALSO DECLARES/);
       },
@@ -423,7 +423,7 @@ describe('the guard knows when it is not looking', () => {
     withTree(
       (root) => rmSync(join(root, BRICK_SIGNUP)),
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /COVERAGE LOST/);
       },
     );

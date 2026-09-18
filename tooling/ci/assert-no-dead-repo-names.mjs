@@ -70,31 +70,37 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(process.argv.slice(2).find((a) => !a.startsWith('--')) ?? join(HERE, '..', '..'));
 const DECL_REL = 'tooling/dead-repos.json';
 
-const die = (code, lines) => { for (const l of lines) console.error(l); process.exit(code); };
+// Every stop in this file is a COVERAGE LOST stop, and each exits 2 here, by name — the
+// shape assert-guard-coverage's limb 2b reads (O-EXIT2-CONVENTION-GAP). A finding is the
+// single exit 1 at the verdict below.
+function coverageLost(lines) {
+  for (const l of lines) console.error(l);
+  process.exit(2);
+}
 
 // ── 1. the declaration ───────────────────────────────────────────────────────
 const declPath = join(ROOT, DECL_REL);
 if (!existsSync(declPath)) {
-  die(2, [`✗ COVERAGE LOST — ${DECL_REL} does not exist. This guard is a reader of that file; without it there is no list of dead names and a green run would mean nothing.`]);
+  coverageLost([`✗ COVERAGE LOST — ${DECL_REL} does not exist. This guard is a reader of that file; without it there is no list of dead names and a green run would mean nothing.`]);
 }
 let decl;
 try {
   decl = JSON.parse(readFileSync(declPath, 'utf8'));
 } catch (e) {
-  die(2, [`✗ COVERAGE LOST — ${DECL_REL} is not readable JSON: ${e.message}`]);
+  coverageLost([`✗ COVERAGE LOST — ${DECL_REL} is not readable JSON: ${e.message}`]);
 }
 
 const repos = Array.isArray(decl.repos) ? decl.repos : null;
-if (!repos) die(2, [`✗ COVERAGE LOST — ${DECL_REL} has no \`repos\` ARRAY.`]);
+if (!repos) coverageLost([`✗ COVERAGE LOST — ${DECL_REL} has no \`repos\` ARRAY.`]);
 for (const [i, r] of repos.entries()) {
   for (const k of ['name', 'died', 'wentTo']) {
     if (typeof r?.[k] !== 'string' || !r[k].trim()) {
-      die(2, [`✗ COVERAGE LOST — repos[${i}]: \`${k}\` is missing or empty. A dead name without a date and a destination is a complaint, not a declaration: the guard could refuse a reference without being able to say what to write instead.`]);
+      coverageLost([`✗ COVERAGE LOST — repos[${i}]: \`${k}\` is missing or empty. A dead name without a date and a destination is a complaint, not a declaration: the guard could refuse a reference without being able to say what to write instead.`]);
     }
   }
 }
 const globs = Array.isArray(decl.scan?.globs) ? decl.scan.globs : null;
-if (!globs || globs.length === 0) die(2, [`✗ COVERAGE LOST — ${DECL_REL} declares no \`scan.globs\`. An empty scan set is a guard with no subject.`]);
+if (!globs || globs.length === 0) coverageLost([`✗ COVERAGE LOST — ${DECL_REL} declares no \`scan.globs\`. An empty scan set is a guard with no subject.`]);
 
 const excluded = Array.isArray(decl.excludedPaths) ? decl.excludedPaths : [];
 const allowedSuffixes = Array.isArray(decl.allowedSuffixes) ? decl.allowedSuffixes : [];
@@ -230,7 +236,7 @@ const codeMentions = new Map((decl.codeMentions ?? []).map((m) => [m.path, m]));
 for (const m of decl.codeMentions ?? []) {
   if (typeof m.path !== 'string' || !Number.isInteger(m.count) || m.count < 1
       || typeof m.kind !== 'string' || typeof m.why !== 'string' || m.why.length < 40) {
-    die(2, [
+    coverageLost([
       '✗ COVERAGE LOST — a codeMentions row is not usable:',
       `    ${JSON.stringify(m)}`,
       '  Every row needs a path, a kind, an integer count of at least 1, and a reason long enough to',
@@ -296,7 +302,7 @@ const staleMentions = [...mentionSeen.entries()]
   .filter(([path, seen]) => seen < codeMentions.get(path).count)
   .map(([path, seen]) => `${path}: declares ${codeMentions.get(path).count}, found ${seen}`);
 if (staleMentions.length) {
-  die(2, [
+  coverageLost([
     '✗ COVERAGE LOST — a codeMentions row excuses more than the tree contains:',
     ...staleMentions.map((m) => `    ${m}`),
     '  Fewer occurrences than declared means the reason has expired. Retire the row in the same',
@@ -310,7 +316,7 @@ const floorFailures = [];
 if (files.length < FLOOR_FILES) floorFailures.push(`${files.length} file(s) scanned, floor ${FLOOR_FILES}`);
 if (repos.length < FLOOR_REPOS) floorFailures.push(`${repos.length} dead repo name(s) declared, floor ${FLOOR_REPOS}`);
 if (floorFailures.length) {
-  die(2, [
+  coverageLost([
     '✗ COVERAGE LOST — the scan did not prove it still scanned:',
     ...floorFailures.map((f) => `    ${f}`),
     '  A walk that matches nothing because it walked nothing reads exactly like a pass.',

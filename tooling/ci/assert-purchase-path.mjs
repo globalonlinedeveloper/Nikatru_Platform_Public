@@ -46,6 +46,7 @@ import { partitionByFlutterApp, undeclaredSurfaceLine } from './channel-surface.
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const problems = [];
+const coverageLost = (m) => problems.push(`COVERAGE LOST — ${m}`); // exit 2 only if EVERY problem is one (summary below)
 const ok = (m) => console.log(`ok   ${m}`);
 
 const CAPS = 'packages/purchases/lib/src/purchase_capabilities.dart';
@@ -171,9 +172,9 @@ let registerChannels = []; // the register's channel rows, whole
   const capsRaw = read(CAPS);
   const chRaw = read(CHANNELS);
   if (capsRaw === null) {
-    problems.push(`COVERAGE LOST — ${CAPS} does not exist, so no platform declaration could be checked at all.`);
+    coverageLost(`${CAPS} does not exist, so no platform declaration could be checked at all.`);
   } else if (chRaw === null) {
-    problems.push(`COVERAGE LOST — ${CHANNELS} does not exist, so the channel set the matrix must equal is unknown.`);
+    coverageLost(`${CHANNELS} does not exist, so the channel set the matrix must equal is unknown.`);
   } else {
     const caps = code(capsRaw);
     capsCode = caps;
@@ -225,7 +226,7 @@ let registerChannels = []; // the register's channel rows, whole
       registerChannels = (chRegister.channels ?? []).filter((c) => c && typeof c.id === 'string');
       const split = partitionByFlutterApp(chRegister, registerChannels);
       for (const c of split.undeclared) {
-        problems.push(`COVERAGE LOST — ${undeclaredSurfaceLine(c, 'whether it belongs in the PurchaseChannel (Dart) matrix')}`);
+        coverageLost(`${undeclaredSurfaceLine(c, 'whether it belongs in the PurchaseChannel (Dart) matrix')}`);
       }
       const dartChannels = split.flutter;
       const notDart = split.other.map((c) => c.id);
@@ -240,7 +241,7 @@ let registerChannels = []; // the register's channel rows, whole
       }
       registered = dartChannels.map((c) => c.id).filter(Boolean);
     } catch (e) {
-      problems.push(`COVERAGE LOST — ${CHANNELS} did not parse (${e.message}).`);
+      coverageLost(`${CHANNELS} did not parse (${e.message}).`);
     }
 
     // The enum's registerId strings, parsed structurally.
@@ -251,8 +252,8 @@ let registerChannels = []; // the register's channel rows, whole
 
     const MIN_CHANNELS = 6;
     if (registered.length < MIN_CHANNELS) {
-      problems.push(
-        `COVERAGE LOST — the channel register yields only ${registered.length} channel(s), expected >= ${MIN_CHANNELS}. A matrix compared against an empty set is a matrix that asserts nothing.`,
+      coverageLost(
+        `the channel register yields only ${registered.length} channel(s), expected >= ${MIN_CHANNELS}. A matrix compared against an empty set is a matrix that asserts nothing.`,
       );
     }
 
@@ -360,7 +361,7 @@ let registerChannels = []; // the register's channel rows, whole
   const cacheRaw = read(CACHE);
   const cfgRaw = read(SERVER_CONFIG);
   if (cacheRaw === null || cfgRaw === null) {
-    problems.push(`COVERAGE LOST — ${CACHE} or ${SERVER_CONFIG} is missing, so the staleness ceiling was compared against nothing.`);
+    coverageLost(`${CACHE} or ${SERVER_CONFIG} is missing, so the staleness ceiling was compared against nothing.`);
   } else {
     const m = code(cacheRaw).match(/kEntitlementStalenessCeiling\s*=\s*Duration\(days:\s*(\d+)\)/);
     if (!m) {
@@ -373,13 +374,13 @@ let registerChannels = []; // the register's channel rows, whole
       try {
         railOfferings = railFromData(JSON.parse(cfgRaw)).offerings;
       } catch (e) {
-        problems.push(`COVERAGE LOST — ${SERVER_CONFIG} does not parse (${e.message}); the rail's terms could not be read.`);
+        coverageLost(`${SERVER_CONFIG} does not parse (${e.message}); the rail's terms could not be read.`);
       }
       const trials = railOfferings.map((o) => o.trialDays);
       const terms = railOfferings.map((o) => o.term).filter((t) => t !== null);
       if (trials.length === 0 || terms.length === 0) {
-        problems.push(
-          `COVERAGE LOST — no \`trial_days\` / \`term\` found in ${SERVER_CONFIG}'s rail config, so the ceiling was compared against nothing. The two facts M-8's bound is relative to have to come from the config, not from this file.`,
+        coverageLost(
+          `no \`trial_days\` / \`term\` found in ${SERVER_CONFIG}'s rail config, so the ceiling was compared against nothing. The two facts M-8's bound is relative to have to come from the config, not from this file.`,
         );
       } else {
         const shortestTrial = Math.min(...trials);
@@ -435,8 +436,8 @@ let registerChannels = []; // the register's channel rows, whole
     const readValidBody =
       new RegExp(String.raw`Future<Entitlements>\s+readValid\([\s\S]{0,900}?\n  \}`).exec(code(cacheRaw))?.[0] ?? '';
     if (readValidBody === '') {
-      problems.push(
-        `COVERAGE LOST — ${CACHE} has no readable \`readValid\` body, so the staleness ceiling was checked against nothing.`,
+      coverageLost(
+        `${CACHE} has no readable \`readValid\` body, so the staleness ceiling was checked against nothing.`,
       );
     } else if (!/isStaleAt\s*\(/.test(readValidBody)) {
       problems.push(
@@ -461,7 +462,7 @@ let registerChannels = []; // the register's channel rows, whole
 {
   const raw = read(CONVERGENCE);
   if (raw === null) {
-    problems.push(`COVERAGE LOST — ${CONVERGENCE} is missing; nothing bounds the post-checkout wait.`);
+    coverageLost(`${CONVERGENCE} is missing; nothing bounds the post-checkout wait.`);
   } else {
     const list = code(raw).match(/kCheckoutConvergenceDelays\s*=\s*<Duration>\[([\s\S]*?)\]/);
     const n = list ? (list[1].match(/Duration\(/g) ?? []).length : 0;
@@ -500,13 +501,13 @@ let registerChannels = []; // the register's channel rows, whole
 {
   const routerRaw = read(ROUTER);
   if (routerRaw === null) {
-    problems.push(`COVERAGE LOST — ${ROUTER} is missing, so no step count could be derived.`);
+    coverageLost(`${ROUTER} is missing, so no step count could be derived.`);
   } else {
     const router = code(routerRaw);
     const routes = [...router.matchAll(/path:\s*'([^']+)'/g)].map((m) => m[1]);
     const MIN_ROUTES = 5;
     if (routes.length < MIN_ROUTES) {
-      problems.push(`COVERAGE LOST — the router declares only ${routes.length} route(s), expected >= ${MIN_ROUTES}.`);
+      coverageLost(`the router declares only ${routes.length} route(s), expected >= ${MIN_ROUTES}.`);
     }
 
     // The navigation graph: every `context.go('X')` anywhere in the stamped
@@ -543,8 +544,8 @@ let registerChannels = []; // the register's channel rows, whole
     for (const f of [...files]) {
       const dg = delegationOf(f);
       if (dg && dg.lost) {
-        problems.push(
-          `COVERAGE LOST — ${f.slice(ROOT.length + 1).replace(/\\/g, '/')} ${dg.lost}. §E's step count is ` +
+        coverageLost(
+          `${f.slice(ROOT.length + 1).replace(/\\/g, '/')} ${dg.lost}. §E's step count is ` +
             'built from the `context.go` edges in these files, and an edge in a file this walk cannot ' +
             'reach is not a shorter path — it is an invisible one.',
         );
@@ -641,7 +642,7 @@ let registerChannels = []; // the register's channel rows, whole
     // cancel entry being moved to a screen a user has to know exists.
     const settingsSrc = files.find((f) => f.endsWith(join('settings', 'settings_screen.dart')));
     if (!settingsSrc) {
-      problems.push('COVERAGE LOST — the settings screen was not found, so the "same surface" check ranged over nothing.');
+      coverageLost('the settings screen was not found, so the "same surface" check ranged over nothing.');
     } else {
       const s = code(readFileSync(settingsSrc, 'utf8'));
       const hasBuy = /context\.go\('\/paywall'\)/.test(s);
@@ -728,7 +729,7 @@ let registerChannels = []; // the register's channel rows, whole
     // do a server read rather than consult the cache.
     const manage = files.find((f) => f.endsWith(join('monetization', 'manage_plan_screen.dart')));
     if (!manage) {
-      problems.push(`COVERAGE LOST — the manage-plan screen is missing, so restore ([5]M-10) could not be checked.`);
+      coverageLost(`the manage-plan screen is missing, so restore ([5]M-10) could not be checked.`);
     } else {
       const s = code(readFileSync(manage, 'utf8'));
       // 🔴 SCOPED TO `_restore`, NOT TO THE FILE: a file-level match would be
@@ -779,8 +780,8 @@ let registerChannels = []; // the register's channel rows, whole
   const cfgRaw = read(SERVER_CONFIG);
   const typesRaw = read(SERVER_TYPES);
   if (cfgRaw === null || typesRaw === null) {
-    problems.push(
-      `COVERAGE LOST — ${SERVER_CONFIG} or ${SERVER_TYPES} is missing, so the qualifying-SKU domain was computed over nothing. An empty domain reads exactly like a compliant one.`,
+    coverageLost(
+      `${SERVER_CONFIG} or ${SERVER_TYPES} is missing, so the qualifying-SKU domain was computed over nothing. An empty domain reads exactly like a compliant one.`,
     );
   } else {
     // Parsed per offering, never by two independent greps: `[...trial_days]` and
@@ -793,11 +794,11 @@ let registerChannels = []; // the register's channel rows, whole
     try {
       ({ offerings, paywallLive } = railFromData(JSON.parse(cfgRaw)));
     } catch (e) {
-      problems.push(`COVERAGE LOST — ${SERVER_CONFIG} does not parse (${e.message}); T-11's SKU domain is empty for a reason that is not "no products".`);
+      coverageLost(`${SERVER_CONFIG} does not parse (${e.message}); T-11's SKU domain is empty for a reason that is not "no products".`);
     }
     if (offerings.length === 0) {
-      problems.push(
-        `COVERAGE LOST — no offering could be parsed out of ${SERVER_CONFIG}'s rail config. T-11's domain is the declared SKU set; with nothing parsed the tripwire below is satisfied by having no products, which is not the same as having compliant ones.`,
+      coverageLost(
+        `no offering could be parsed out of ${SERVER_CONFIG}'s rail config. T-11's domain is the declared SKU set; with nothing parsed the tripwire below is satisfied by having no products, which is not the same as having compliant ones.`,
       );
     } else {
       // Qualifying = it renews by itself, or it starts free and then charges.
@@ -988,8 +989,8 @@ const flat = (v) =>
     const found = [...new Set(impls)].sort();
     if (declared.join(',') !== found.join(',')) {
       premiseHolds = false;
-      problems.push(
-        `COVERAGE LOST — §G reasons from a DECLARED set of PurchaseRail implementations [${declared.join(', ')}], and ${PURCHASES_LIB} implements [${found.join(', ') || 'none'}]. ` +
+      coverageLost(
+        `§G reasons from a DECLARED set of PurchaseRail implementations [${declared.join(', ')}], and ${PURCHASES_LIB} implements [${found.join(', ') || 'none'}]. ` +
           `Limb (d) compares the capability matrix's two booleans against the register on the premise that they answer for the HOSTED rail alone, and limb (e) compares the rail NAME for the store rails. ` +
           `A rail this section has never heard of belongs to neither comparison. Add it to RAIL_IMPLS with the rail vocabulary it serves, and say which limb grades it, before re-greening — a comparison whose left-hand side changed meaning is not a weaker check, it is a check of something else.`,
       );
@@ -1001,21 +1002,21 @@ const flat = (v) =>
       const iapRaw = read(IAP_RAIL_FILE);
       if (iapRaw === null) {
         premiseHolds = false;
-        problems.push(
-          `COVERAGE LOST — ${IAP_RAIL_FILE} is missing, and RAIL_IMPLS names IapRail as the store-rail implementation. §G's split between the capability matrix (limb d) and the rail name (limb e) rests on that file existing and being readable.`,
+        coverageLost(
+          `${IAP_RAIL_FILE} is missing, and RAIL_IMPLS names IapRail as the store-rail implementation. §G's split between the capability matrix (limb d) and the rail name (limb e) rests on that file existing and being readable.`,
         );
       } else if (/\bchannelPermitted\b/.test(code(iapRaw))) {
         premiseHolds = false;
-        problems.push(
-          `COVERAGE LOST — ${IAP_RAIL_FILE} reads \`channelPermitted\`, the HOSTED rail's store-policy field. §G assumes the two rails consult DIFFERENT vocabularies — the matrix for Paddle, PurchaseRailKind for the store rails — and limb (d) would now be answering for both at once. Decide which vocabulary the store rail speaks, then re-state this premise.`,
+        coverageLost(
+          `${IAP_RAIL_FILE} reads \`channelPermitted\`, the HOSTED rail's store-policy field. §G assumes the two rails consult DIFFERENT vocabularies — the matrix for Paddle, PurchaseRailKind for the store rails — and limb (d) would now be answering for both at once. Decide which vocabulary the store rail speaks, then re-state this premise.`,
         );
       }
     }
     for (const f of [RAIL_CLIENT_IMPL, RAIL_SERVER_IMPL]) {
       if (!existsSync(join(ROOT, f))) {
         premiseHolds = false;
-        problems.push(
-          `COVERAGE LOST — the \`paddle\` rail id is supposed to resolve to real code, and ${f} is missing. A rail id that names nothing is a label, and §G would be comparing the register against a word.`,
+        coverageLost(
+          `the \`paddle\` rail id is supposed to resolve to real code, and ${f} is missing. A rail id that names nothing is a label, and §G would be comparing the register against a word.`,
         );
       }
     }
@@ -1028,8 +1029,8 @@ const flat = (v) =>
   // and the usual one is a 15% store fee or an app removal depending on which
   // way the reader guesses.
   if (registerChannels.length === 0) {
-    problems.push(
-      `COVERAGE LOST — no channel row could be read out of ${CHANNELS}, so every rail limb below ranged over nothing. An empty domain reads exactly like a compliant one.`,
+    coverageLost(
+      `no channel row could be read out of ${CHANNELS}, so every rail limb below ranged over nothing. An empty domain reads exactly like a compliant one.`,
     );
   }
 
@@ -1048,8 +1049,8 @@ const flat = (v) =>
     }
     const dict = block && typeof block.rails === 'object' && !Array.isArray(block.rails) ? block.rails : null;
     if (!dict) {
-      problems.push(
-        `COVERAGE LOST — ${CHANNELS} declares no \`purchaseRails.rails\` dictionary, so every rail value below was checked against a vocabulary this guard invented. The register is the source of truth for the rail set; a guard carrying its own copy stops covering the file the day the file changes.`,
+      coverageLost(
+        `${CHANNELS} declares no \`purchaseRails.rails\` dictionary, so every rail value below was checked against a vocabulary this guard invented. The register is the source of truth for the rail set; a guard carrying its own copy stops covering the file the day the file changes.`,
       );
       vocabulary = [...LOCKED_RAILS];
     } else {
@@ -1087,8 +1088,8 @@ const flat = (v) =>
    */
   const checkRailBlock = (label, pr) => {
     if (!pr || typeof pr !== 'object' || Array.isArray(pr)) {
-      problems.push(
-        `COVERAGE LOST — ${label} declares no \`purchaseRail\` in ${CHANNELS}. [ADR 039] assigns a rail to every channel (${LOCKED_RAILS.join(' | ')}); a row that answers "which rail?" with silence is how "APK and iOS = own store, everything else Paddle" survives — the reader supplies the answer, and on APK the owner supplied the wrong one.`,
+      coverageLost(
+        `${label} declares no \`purchaseRail\` in ${CHANNELS}. [ADR 039] assigns a rail to every channel (${LOCKED_RAILS.join(' | ')}); a row that answers "which rail?" with silence is how "APK and iOS = own store, everything else Paddle" survives — the reader supplies the answer, and on APK the owner supplied the wrong one.`,
       );
       return null;
     }
@@ -1258,8 +1259,8 @@ const flat = (v) =>
         if (id) platformPick.set(m[1], id);
       }
       if (platformPick.size === 0) {
-        problems.push(
-          `COVERAGE LOST — no \`case TargetPlatform.X: return forChannel(PurchaseChannel.Y);\` could be parsed out of ${CAPS}, so the platform→channel collapse was checked over nothing. That map is where a build with no knowledge of its own channel gets an answer, and it is the exact place the APK/Play confusion lands.`,
+        coverageLost(
+          `no \`case TargetPlatform.X: return forChannel(PurchaseChannel.Y);\` could be parsed out of ${CAPS}, so the platform→channel collapse was checked over nothing. That map is where a build with no knowledge of its own channel gets an answer, and it is the exact place the APK/Play confusion lands.`,
         );
       }
       for (const [tp, chosenId] of platformPick) {
@@ -1328,8 +1329,8 @@ const flat = (v) =>
       const KIND = 'packages/purchases/lib/src/purchase_rail_kind.dart';
       const kindRaw = read(KIND);
       if (kindRaw === null) {
-        problems.push(
-          `COVERAGE LOST — ${KIND} does not exist, so the rail the client picks per channel was compared ` +
+        coverageLost(
+          `${KIND} does not exist, so the rail the client picks per channel was compared ` +
             'against nothing. `ChassisBilling.railFor` reads that map; the register is the decision it is ' +
             'supposed to mirror.',
         );
@@ -1409,8 +1410,8 @@ const flat = (v) =>
           }
         }
         if (railsCompared === 0) {
-          problems.push(
-            `COVERAGE LOST — not one channel's rail could be compared between ${CHANNELS} and ${KIND}. ` +
+          coverageLost(
+            `not one channel's rail could be compared between ${CHANNELS} and ${KIND}. ` +
               'The mirror is unchecked, which is the state that makes it a second decision rather than a copy.',
           );
         } else if (problems.length === problemsBeforeE) {
@@ -1419,8 +1420,8 @@ const flat = (v) =>
       }
     }
   } else if (premiseHolds && registerChannels.length > 0 && capById.size === 0) {
-    problems.push(
-      `COVERAGE LOST — no capability row could be parsed out of ${CAPS}, so limb (d) compared the register against nothing. A register-versus-register check is a decoration; it cannot fail for the reason it exists.`,
+    coverageLost(
+      `no capability row could be parsed out of ${CAPS}, so limb (d) compared the register against nothing. A register-versus-register check is a decoration; it cannot fail for the reason it exists.`,
     );
   }
 }
@@ -1523,12 +1524,12 @@ const flat = (v) =>
   for (const d of CTOR_SCAN_DIRS) walkCtor(join(ROOT, d));
 
   if (dartScanned === 0) {
-    problems.push(
-      `COVERAGE LOST — §H swept [${CTOR_SCAN_DIRS.join(', ')}] for Dart and read ZERO files, so nobody was found constructing \`HostedCheckoutRail\` by hand and nobody was found NOT doing it either. A census over an empty tree is unanimous.`,
+    coverageLost(
+      `§H swept [${CTOR_SCAN_DIRS.join(', ')}] for Dart and read ZERO files, so nobody was found constructing \`HostedCheckoutRail\` by hand and nobody was found NOT doing it either. A census over an empty tree is unanimous.`,
     );
   } else if (sites.size === 0) {
-    problems.push(
-      `COVERAGE LOST — §H read ${dartScanned} Dart file(s) and found no direct \`HostedCheckoutRail(\` construction at all, not even in ${FACADE}, which builds one itself. The facade's own site is the proof the scan can see a construction; finding none means the scan stopped matching, and a scan that matches nothing agrees with every tree.`,
+    coverageLost(
+      `§H read ${dartScanned} Dart file(s) and found no direct \`HostedCheckoutRail(\` construction at all, not even in ${FACADE}, which builds one itself. The facade's own site is the proof the scan can see a construction; finding none means the scan stopped matching, and a scan that matches nothing agrees with every tree.`,
     );
   } else {
     const declaredFiles = DECLARED_CTOR_SITES.map((s) => s.file);
@@ -1557,7 +1558,7 @@ if (problems.length) {
   console.error('');
   for (const p of problems) console.error(`FAIL ${p}`);
   console.error('\nassert-purchase-path: FAILED');
-  process.exitCode = 1;
+  process.exit(problems.every((p) => p.startsWith('COVERAGE LOST')) ? 2 : 1); // 2 = could not look (every problem is COVERAGE LOST); 1 = a finding
 } else {
   console.log('\nassert-purchase-path: ok');
 }

@@ -67,9 +67,18 @@ function fail(lines) {
   process.exit(1);
 }
 
+/** A COVERAGE LOST stop: the guard could not look, which is not a finding — exit 2
+ *  (AGENTS.md exit-code convention, O-EXIT2-CONVENTION-GAP). Named `refuse` because
+ *  `coverageLost` is already the per-root list below. The EXIT 1 COVERAGE LOST rows in
+ *  the 2026-09-05 mutation table are the measurement as taken then; they exit 2 now. */
+function refuse(lines) {
+  for (const l of lines) console.error(l);
+  process.exit(2);
+}
+
 // ── the register supplies the contracts ──────────────────────────────────────
 if (!existsSync(REGISTER)) {
-  fail([`✗ COVERAGE LOST — no capability register at ${REGISTER}. [C-1] must land before this can run.`]);
+  refuse([`✗ COVERAGE LOST — no capability register at ${REGISTER}. [C-1] must land before this can run.`]);
 }
 let register;
 try {
@@ -83,7 +92,7 @@ for (const cap of register.capabilities ?? []) {
   for (const s of cap.seams ?? []) if (s.symbol) contracts.add(s.symbol);
 }
 if (contracts.size < MIN_CONTRACTS) {
-  fail([
+  refuse([
     `✗ COVERAGE LOST — the register yields ${contracts.size} contract(s), expected at least ${MIN_CONTRACTS}.`,
     '  A fork checker with no contracts to check reports a clean tree forever.',
   ]);
@@ -291,7 +300,7 @@ for (const r of REQUIRED_COVERAGE) {
   }
 }
 if (coverageLost.length) {
-  fail([
+  refuse([
     `✗ COVERAGE LOST — ${coverageLost.length} of the ${REQUIRED_COVERAGE.length} declared root(s) did not deliver a subject:`,
     ...coverageLost.map((l) => `    · ${l}`),
     '',
@@ -783,7 +792,7 @@ const parityGaps = [];
 const parityOk = [];
 
 if (PARITY_PAIRS.length < MIN_PARITY_PAIRS) {
-  fail([
+  refuse([
     `✗ COVERAGE LOST — ${PARITY_PAIRS.length} accepted-fork parity pair(s), expected at least ${MIN_PARITY_PAIRS}.`,
     '  [ADR 042] pays for an accepted fork with this obligation. With no pair to check, the limb',
     '  quantifies over nothing and reports a clean tree forever.',
@@ -791,7 +800,7 @@ if (PARITY_PAIRS.length < MIN_PARITY_PAIRS) {
 }
 
 if (PARITY_PAIRS.length + WATCHED_PAIRS.length < MIN_ACCOUNTED_PAIRS) {
-  fail([
+  refuse([
     `✗ COVERAGE LOST — ${PARITY_PAIRS.length + WATCHED_PAIRS.length} chassis/fork screen pair(s) accounted ` +
       `for, expected at least ${MIN_ACCOUNTED_PAIRS}.`,
     '  Every brick screen with a Subly counterpart belongs to exactly one of PARITY_PAIRS (decidable,',
@@ -852,7 +861,7 @@ const brickFeatureFiles = featureFiles(BRICK_FEATURES);
 // one condition they cannot see: an empty or absent universe, which would make
 // `arrived` trivially empty and this whole limb an assertion that cannot fail.
 if (brickFeatureFiles === null || brickFeatureFiles.length === 0) {
-  fail([
+  refuse([
     `✗ COVERAGE LOST — the brick features root produced NO .dart file(s) at ${BRICK_FEATURES}.`,
     '  The arrive limb derives its universe from this directory. With an empty universe it would compare',
     '  nothing against the lists and report a clean tree forever.',
@@ -968,7 +977,7 @@ for (const pair of WATCHED_PAIRS) {
 }
 
 if (watchLost.length) {
-  fail([
+  refuse([
     `✗ COVERAGE LOST — the watch lost sight of ${watchLost.length} path(s):`,
     ...watchLost,
     '',
@@ -1001,7 +1010,7 @@ if (watchPromotable.length) {
 }
 
 if (parityLost.length) {
-  fail([
+  refuse([
     `✗ COVERAGE LOST — the accepted-fork parity limb reached nothing in ${parityLost.length} place(s):`,
     ...parityLost,
     '',
@@ -1093,7 +1102,7 @@ const LANDED_PAIRS = [
 const MIN_LANDED_PAIRS = 3;
 
 if (LANDED_PAIRS.length < MIN_LANDED_PAIRS) {
-  fail([
+  refuse([
     `✗ COVERAGE LOST — ${LANDED_PAIRS.length} landed-behaviour row(s), expected at least ${MIN_LANDED_PAIRS}.`,
     '  A row is removed only with the behaviour it names, from BOTH trees, in the same change.',
   ]);
@@ -1121,7 +1130,7 @@ for (const row of LANDED_PAIRS) {
 }
 
 if (landedLost.length) {
-  fail([
+  refuse([
     `✗ COVERAGE LOST — the landed-behaviour limb reached nothing in ${landedLost.length} place(s):`,
     ...landedLost,
     '',

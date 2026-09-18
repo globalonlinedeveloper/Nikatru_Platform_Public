@@ -23,8 +23,9 @@ import { delegationOf as resolveChassisDelegation } from './chassis-delegation.m
 import { partitionByFlutterApp, undeclaredSurfaceLine } from './channel-surface.mjs';
 
 const repo = process.cwd();
-let failed = false;
-const fail = (m) => { console.error(`FAIL ${m}`); failed = true; };
+const problems = [];
+const fail = (m) => { console.error(`FAIL ${m}`); problems.push(m); };
+const coverageLost = (m) => fail(`COVERAGE LOST — ${m}`); // exit 2 only if EVERY problem is one (summary below)
 const ok = (m) => console.log(`ok   ${m}`);
 
 // ── the scan ────────────────────────────────────────────────────────────────
@@ -66,7 +67,7 @@ const files = SCAN_ROOTS.flatMap((r) => walk(join(repo, r))).filter(
 // "a check that stopped checking" failure this repo keeps hitting (F-10).
 const MIN_FILES = 12;
 if (files.length < MIN_FILES) {
-  fail(`COVERAGE LOST — scanned only ${files.length} dart file(s) under ${SCAN_ROOTS.join(', ')}, expected >= ${MIN_FILES}. The scan is broken, not the tree.`);
+  coverageLost(`scanned only ${files.length} dart file(s) under ${SCAN_ROOTS.join(', ')}, expected >= ${MIN_FILES}. The scan is broken, not the tree.`);
 } else {
   ok(`scan reaches ${files.length} non-test dart file(s)`);
 }
@@ -204,8 +205,8 @@ const delegatedFrom = new Map();
     }
   }
   for (const why of lost) {
-    fail(
-      `COVERAGE LOST — a chassis delegation could not be followed: ${why} Every seam below is answered ` +
+    coverageLost(
+      `a chassis delegation could not be followed: ${why} Every seam below is answered ` +
         'by WHICH FILES this scan reads, so a delegation it cannot follow is a caller it cannot see — and ' +
         'a seam with no visible caller reads exactly like a dead one.',
     );
@@ -640,8 +641,8 @@ for (const seam of REQUIRED_COVERAGE) {
   }
   liveSeams++;
   if ((seam.needs?.length ?? 0) < MIN_NEEDS) {
-    fail(
-      `COVERAGE LOST — seam \`${seam.id}\` is marked wired but declares ${seam.needs?.length ?? 0} need(s), fewer than ${MIN_NEEDS}. A wired seam with no needs iterates zero assertions and certifies itself live, which is strictly worse than an honest \`wired: false\`.`,
+    coverageLost(
+      `seam \`${seam.id}\` is marked wired but declares ${seam.needs?.length ?? 0} need(s), fewer than ${MIN_NEEDS}. A wired seam with no needs iterates zero assertions and certifies itself live, which is strictly worse than an honest \`wired: false\`.`,
     );
     continue;
   }
@@ -656,7 +657,7 @@ for (const seam of REQUIRED_COVERAGE) {
 }
 
 if (liveSeams === 0) {
-  fail('COVERAGE LOST — no seam in REQUIRED_COVERAGE is marked wired, so this guard asserted nothing.');
+  coverageLost('no seam in REQUIRED_COVERAGE is marked wired, so this guard asserted nothing.');
 }
 
 // ── [pipeline 12]W-7b · SOME SEAMS MAY HAVE EXACTLY ONE CALLER ───────────────
@@ -1127,7 +1128,7 @@ try {
     if (checked === POLICY_CONSTS.length && checked > 0) {
       ok(`policy version pinned — ${checked} file(s) and the published policy all '${published}'`);
     } else if (POLICY_CONSTS.length === 0) {
-      fail('COVERAGE LOST — no file is checked against the published policy version.');
+      coverageLost('no file is checked against the published policy version.');
     }
   }
 } catch (e) {
@@ -1226,7 +1227,7 @@ function jobBody(yaml, jobName) {
     // `--dart-define` it may have nowhere to put (O-EXT-SURFACE-AXIS).
     const split = partitionByFlutterApp(register, allLanes);
     for (const c of split.undeclared) {
-      fail(`COVERAGE LOST — ${undeclaredSurfaceLine(c, 'whether its lane must --dart-define GLITCHTIP_DSN')}`);
+      coverageLost(`${undeclaredSurfaceLine(c, 'whether its lane must --dart-define GLITCHTIP_DSN')}`);
     }
     const notFlutter = split.other;
     lanes = split.flutter.map((c) => ({ id: c.id, workflow: c.lane.workflow.split('/').pop(), job: c.lane.job }));
@@ -1238,16 +1239,16 @@ function jobBody(yaml, jobName) {
       );
     }
   } catch (e) {
-    fail(`COVERAGE LOST — tooling/channel-register.json could not be read (${e.message}), so the set of artifact lanes that must supply GLITCHTIP_DSN is empty and this check asserts nothing.`);
+    coverageLost(`tooling/channel-register.json could not be read (${e.message}), so the set of artifact lanes that must supply GLITCHTIP_DSN is empty and this check asserts nothing.`);
   }
 
   if (lanes.length < MIN_LANES) {
-    fail(
-      `COVERAGE LOST — only ${lanes.length} channel row(s) declare a \`lane.workflow\` + \`lane.job\`, fewer than the ${MIN_LANES} that exist today. ` +
+    coverageLost(
+      `only ${lanes.length} channel row(s) declare a \`lane.workflow\` + \`lane.job\`, fewer than the ${MIN_LANES} that exist today. ` +
         'The crash-sink check quantifies over that set; a shrunken one certifies the remaining lanes and says nothing about the rest.',
     );
   } else if (!existsSync(entry)) {
-    fail('COVERAGE LOST — apps/subscriptiontracker/lib/main.dart is gone; the consumer half of the crash-sink check cannot be verified.');
+    coverageLost('apps/subscriptiontracker/lib/main.dart is gone; the consumer half of the crash-sink check cannot be verified.');
   } else {
     // BOTH ENDS are asserted on purpose. Checking only the workflow would keep
     // passing if main.dart stopped reading the value, and checking only
@@ -1261,13 +1262,13 @@ function jobBody(yaml, jobName) {
     for (const lane of lanes) {
       const wfPath = join(repo, '.github', 'workflows', lane.workflow);
       if (!existsSync(wfPath)) {
-        fail(`COVERAGE LOST — channel \`${lane.id}\` names lane workflow ${lane.workflow}, which does not exist, so its crash-sink obligation is unenforceable.`);
+        coverageLost(`channel \`${lane.id}\` names lane workflow ${lane.workflow}, which does not exist, so its crash-sink obligation is unenforceable.`);
         continue;
       }
       const wf = readFileSync(wfPath, 'utf8');
       const body = jobBody(wf, lane.job);
       if (body === null) {
-        fail(`COVERAGE LOST — channel \`${lane.id}\` names job \`${lane.job}\` in ${lane.workflow} and this scan could not find that job, so the define could be anywhere or nowhere.`);
+        coverageLost(`channel \`${lane.id}\` names job \`${lane.job}\` in ${lane.workflow} and this scan could not find that job, so the define could be anywhere or nowhere.`);
         continue;
       }
       // 🔴 NO `#` BEFORE THE MATCH (2026-08-01 full-corpus review). This tested
@@ -1310,7 +1311,7 @@ function jobBody(yaml, jobName) {
   const BOOTSTRAP = 'packages/telemetry/lib/src/telemetry_bootstrap.dart';
   const bootstrapPath = join(repo, ...BOOTSTRAP.split('/'));
   if (!existsSync(bootstrapPath)) {
-    fail(`COVERAGE LOST — ${BOOTSTRAP} is gone, so the session-tracking check is watching a file that no longer exists.`);
+    coverageLost(`${BOOTSTRAP} is gone, so the session-tracking check is watching a file that no longer exists.`);
   } else {
     // Comments stripped: this file's own prose explains the setting at length,
     // and a raw-text match would be satisfied by the explanation.
@@ -1329,9 +1330,9 @@ function jobBody(yaml, jobName) {
   }
 }
 
-if (failed) {
+if (problems.length) {
   console.error('\nassert-seams-wired: FAILED');
-  process.exitCode = 1;
+  process.exit(problems.every((p) => p.startsWith('COVERAGE LOST')) ? 2 : 1); // 2 = could not look (every problem is COVERAGE LOST); 1 = a finding
 } else {
   console.log('\nassert-seams-wired: ok');
 }

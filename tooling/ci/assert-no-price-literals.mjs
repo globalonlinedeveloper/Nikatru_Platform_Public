@@ -37,6 +37,7 @@ import { delegationOfAbs as delegationOf } from './chassis-delegation.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const problems = [];
+const coverageLost = (m) => problems.push(`COVERAGE LOST — ${m}`); // exit 2 only if EVERY problem is one (summary below)
 const notes = [];
 const ok = (m) => console.log(`ok   ${m}`);
 
@@ -86,8 +87,8 @@ const NOT_PRICES = [
   const missed = CANARY.filter((c) => !PRICE.test(c));
   const falsePositives = NOT_PRICES.filter((c) => PRICE.test(c));
   if (missed.length) {
-    problems.push(
-      `COVERAGE LOST — the price matcher no longer matches ${missed.join(', ')}. Every clean result below would be a result from a matcher that matches nothing.`,
+    coverageLost(
+      `the price matcher no longer matches ${missed.join(', ')}. Every clean result below would be a result from a matcher that matches nothing.`,
     );
   } else if (falsePositives.length) {
     problems.push(
@@ -147,8 +148,8 @@ const rel = (f) => f.replace(ROOT + sep, '').replaceAll('\\', '/');
 
 const MIN_FILES = 40;
 if (files.length < MIN_FILES) {
-  problems.push(
-    `COVERAGE LOST — scanned only ${files.length} dart file(s) under ${SCAN_ROOTS.join(', ')}, expected >= ${MIN_FILES}. The scan is broken, not the tree.`,
+  coverageLost(
+    `scanned only ${files.length} dart file(s) under ${SCAN_ROOTS.join(', ')}, expected >= ${MIN_FILES}. The scan is broken, not the tree.`,
   );
 } else {
   ok(`scan reaches ${files.length} non-test dart file(s)`);
@@ -228,12 +229,12 @@ function derivedRoots() {
   }
   const quiet = roots.filter((r) => contributed.get(r) === 0 && !NO_DART.has(r));
   if (quiet.length) {
-    problems.push(
-      `COVERAGE LOST — ${quiet.join(', ')} contributed ZERO non-test dart file(s) to the scan. The ${MIN_FILES}-file floor above is a UNION and stayed green because a sibling root covered for it; nothing under the named root(s) was scanned, and "no price literals" below is a claim about a tree that no longer includes them.`,
+    coverageLost(
+      `${quiet.join(', ')} contributed ZERO non-test dart file(s) to the scan. The ${MIN_FILES}-file floor above is a UNION and stayed green because a sibling root covered for it; nothing under the named root(s) was scanned, and "no price literals" below is a claim about a tree that no longer includes them.`,
     );
   } else if (roots.length === 0) {
-    problems.push(
-      `COVERAGE LOST — no scan root could be derived from \`pubspec.yaml\`'s \`workspace:\` block or from the directories under ${SCAN_ROOTS.join(', ')}, so the per-root check ranged over nothing.`,
+    coverageLost(
+      `no scan root could be derived from \`pubspec.yaml\`'s \`workspace:\` block or from the directories under ${SCAN_ROOTS.join(', ')}, so the per-root check ranged over nothing.`,
     );
   } else {
     const scanned = roots.filter((r) => !NO_DART.has(r));
@@ -345,7 +346,7 @@ for (const a of ALLOW) {
     'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/monetization/paywall_screen.dart';
   const p = join(ROOT, PAYWALL);
   if (!existsSync(p)) {
-    problems.push(`COVERAGE LOST — ${PAYWALL} does not exist, so limb A's clean result proves only that a tree with no paywall has no prices in it.`);
+    coverageLost(`${PAYWALL} does not exist, so limb A's clean result proves only that a tree with no paywall has no prices in it.`);
   } else {
     const strip = (t) => t.replace(/^\s*\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
     let src = strip(readFileSync(p, 'utf8'));
@@ -354,8 +355,8 @@ for (const a of ALLOW) {
     // text, so a paywall that really shows no price still fails.
     const dg = delegationOf(p, ROOT);
     if (dg && dg.lost) {
-      problems.push(
-        `COVERAGE LOST — ${PAYWALL} ${dg.lost}. The positive limb reads the paywall PLUS what it ` +
+      coverageLost(
+        `${PAYWALL} ${dg.lost}. The positive limb reads the paywall PLUS what it ` +
           'delegates to, and a delegation it cannot follow is a price it cannot see.',
       );
     }
@@ -400,7 +401,7 @@ if (problems.length) {
   console.error('');
   for (const p of problems) console.error(`FAIL ${p}`);
   console.error('\nassert-no-price-literals: FAILED');
-  process.exitCode = 1;
+  process.exit(problems.every((p) => p.startsWith('COVERAGE LOST')) ? 2 : 1); // 2 = could not look (every problem is COVERAGE LOST); 1 = a finding
 } else {
   console.log('\nassert-no-price-literals: ok');
 }

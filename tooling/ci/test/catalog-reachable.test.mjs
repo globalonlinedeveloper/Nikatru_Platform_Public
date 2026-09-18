@@ -10,7 +10,7 @@
 //      PRINTED "1 entry(ies) not probed" (the shrink must be visible)
 //   N3 the catalogue emptied                                    -> COVERAGE LOST
 //   N4 the only entry given an off-wildcard bogus host          -> COVERAGE LOST
-//      Exits 1, which is right, but with N=1 the guard genuinely cannot tell
+//      Exits non-zero (2 since O-EXIT2-CONVENTION-GAP), which is right, but with N=1 the guard genuinely cannot tell
 //      "no network" from "the one host is bogus" — so it now says exactly that
 //      instead of asserting a cause it cannot observe.
 //
@@ -183,7 +183,9 @@ describe('assert-catalog-reachable', () => {
   // ── anti-vacuity ──────────────────────────────────────────────────────────
   test('COVERAGE LOST on an empty catalogue', async () => {
     const { code, out } = await run(tree([]));
-    assert.equal(code, 1);
+    // Exit 2, not 1: the guard could not look, which is not a finding
+    // (AGENTS.md exit-code convention, O-EXIT2-CONVENTION-GAP).
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST — the catalogue is empty/);
   });
 
@@ -191,19 +193,21 @@ describe('assert-catalog-reachable', () => {
     const root = join(TMP, `r${seq++}`);
     mkdirSync(root, { recursive: true });
     const { code, out } = await run(root);
-    assert.equal(code, 1);
+    // Exit 2, not 1: the guard could not look, which is not a finding
+    // (AGENTS.md exit-code convention, O-EXIT2-CONVENTION-GAP).
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST — no catalogue/);
   });
 
   // 🔴 N4 — the honesty case. Every live entry fails at the transport layer, so
   // the guard cannot know whether the network died or every host is bogus. It
-  // must exit 1 and must NOT claim a cause it cannot observe.
+  // must fail — exit 2, COVERAGE LOST — and must NOT claim a cause it cannot observe.
   test('COVERAGE LOST — and no invented cause — when every entry fails transport', NET, async () => {
     const { code, out } = await run(tree([
       { slug: 'a', url: dead('/x'), status: 'live' },
       { slug: 'b', url: dead('/y'), status: 'live' },
     ]));
-    assert.equal(code, 1);
+    assert.equal(code, 2, out);
     assert.match(out, /CANNOT TELL YOU WHICH OF TWO THINGS HAPPENED/);
   });
 

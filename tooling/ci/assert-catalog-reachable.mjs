@@ -122,7 +122,9 @@
 //         node tooling/ci/assert-catalog-reachable.mjs --emit-url <slug> [repoRoot]
 //         node tooling/ci/assert-catalog-reachable.mjs --emit-base-href <slug> [repoRoot]
 // Exit 0 = every advertised app answered and the hub returned 200. 1 = one of those
-// did not (or the scan broke). Limb 2 (the wildcard state) is reported, never gating.
+// did not (or the scan broke). 2 = COVERAGE LOST only: no catalogue, an empty one, or
+// NOTHING in the run answered (offline runner and all-dark hosts cannot be told apart
+// from here, so neither is claimed). Limb 2 (the wildcard state) is reported, never gating.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname, sep } from 'node:path';
@@ -282,11 +284,23 @@ function fail(lines) {
   process.exit(1);
 }
 
-/** Same as fail(), but for the post-fetch paths — see the note beside `done`. */
-let softFailed = false;
-function failSoft(lines) {
+/** A COVERAGE LOST stop BEFORE any fetch: the guard could not look, which is not a
+ *  finding — exit 2 (AGENTS.md exit-code convention, O-EXIT2-CONVENTION-GAP). */
+function coverageLost(lines) {
   for (const l of lines) console.error(l);
-  softFailed = true;
+  process.exit(2);
+}
+
+/** Set when limb 1's all-transport COVERAGE LOST fired, so limb 1's per-entry
+ *  report does not list every entry a second time. */
+let softFailed = false;
+
+/** A COVERAGE LOST stop AFTER a fetch: exit 2 via exitCode (never process.exit —
+ *  see `done`), and never over a finding: once anything set 1, 1 stands, because
+ *  a proven failure beside a limb that could not look is still a failure. */
+function lost(lines) {
+  for (const l of lines) console.error(l);
+  if (process.exitCode !== 1) process.exitCode = 2;
 }
 
 // ── the run ───────────────────────────────────────────────────────────────
@@ -299,7 +313,7 @@ function failSoft(lines) {
 // nothing and exit 0, and every one of them would fail.
 if (isMain) {
   if (!existsSync(CATALOG)) {
-    fail([
+    coverageLost([
       `✗ COVERAGE LOST — no catalogue at ${CATALOG}.`,
       '  [S-7] the stamp writes this file; without it there is nothing to check and nothing to trust.',
     ]);
@@ -313,7 +327,7 @@ if (isMain) {
   }
   if (!Array.isArray(entries)) fail(['✗ catalogue is not a JSON array.']);
   if (entries.length === 0) {
-    fail([
+    coverageLost([
       '✗ COVERAGE LOST — the catalogue is empty.',
       '  Every check below would range over nothing and report success.',
     ]);
@@ -522,20 +536,20 @@ if (isMain) {
   // failure was a transport error — a single unreachable host among answering
   // ones is that host's problem, not the runner's.
   if (live.length > 0 && transportFailures.length === live.length) {
-    failSoft([
+    softFailed = true;
+    lost([
       `✗ COVERAGE LOST — all ${live.length} live entry(ies) failed at the transport layer, none returned`,
       '  any HTTP status.',
       '',
       '  ⚠️ THIS GUARD CANNOT TELL YOU WHICH OF TWO THINGS HAPPENED, and says so rather than picking one:',
       '     · the runner has no network — nothing is wrong with the catalogue; or',
       '     · every advertised host is genuinely unreachable — everything is wrong with it.',
-      '  Both are failures, so this exits 1 either way. It is stated as COVERAGE LOST because the check',
-      '  did not get to run, and claiming a specific cause it cannot observe would be the more expensive',
+      '  Either way the run fails: exit 2, COVERAGE LOST, because the check did not get to run (a finding',
+      '  elsewhere in the run still makes it 1). Claiming a specific cause it cannot observe would be the more expensive',
       `  mistake. (Note: any \`*.${WILDCARD_APEX}\` name RESOLVES under the wildcard and answers 522, so a real`,
       '  catalogue entry reaches the HTTP branch above — a transport error here points off-wildcard.)',
       ...transportFailures.map((r) => `    ${r.slug} → ${r.url} — ${r.verdict.transport}`),
     ]);
-    done(1);
   }
 
   // Skipped entirely when the transport branch already fired: every entry would
@@ -597,8 +611,13 @@ if (isMain) {
       console.log(v.line);
       continue;
     }
+    const trailer = '  [pipeline 10]D-11 — the catalogue\'s per-app URLs all stand on these two.';
+    if (v.coverageLost) {
+      lost([...v.lines, trailer]); // nothing in the run answered: could not look, exit 2
+      continue;
+    }
     for (const l of v.lines) console.error(l);
-    console.error('  [pipeline 10]D-11 — the catalogue\'s per-app URLs all stand on these two.');
+    console.error(trailer);
     done(1);
   }
 }

@@ -359,7 +359,7 @@ jobs:
 
   test('FAILS COVERAGE LOST when the vars file yields no app_id to anchor to', () => {
     const { code, out } = run(tree({ vars: JSON.stringify({ display_name: 'Probe' }) }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /yields no `app_id`/);
   });
@@ -447,7 +447,7 @@ jobs:
   // ── and the two coverage failures: a scan that reaches nothing must be LOUD.
   test('FAILS COVERAGE LOST when the template pubspec cannot be read', () => {
     const { code, out } = run(tree({ brickPubspec: null }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /could not be read, so "the stamped app declares/);
   });
@@ -456,7 +456,7 @@ jobs:
     const { code, out } = run(tree({
       rootPubspec: goodRootPubspec.replace('workspace:', 'workspace_disabled:'),
     }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /yielded ZERO `workspace:` members/);
   });

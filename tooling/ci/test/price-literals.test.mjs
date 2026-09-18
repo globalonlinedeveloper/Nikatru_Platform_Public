@@ -172,7 +172,7 @@ describe('assert-no-price-literals — the price comes from the rail', () => {
 
   test('COVERAGE LOST when the scan reaches almost nothing', () => {
     const r = run({ fillerCount: 2 });
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST — scanned only/);
   });
 
@@ -181,7 +181,7 @@ describe('assert-no-price-literals — the price comes from the rail', () => {
     filler(root);
     write(root, 'packages/purchases/lib/src/offering.dart', OFFERING);
     const r = spawnSync(process.execPath, [GUARD, root], { encoding: 'utf8' });
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(`${r.stdout}${r.stderr}`, /COVERAGE LOST/);
   });
 
