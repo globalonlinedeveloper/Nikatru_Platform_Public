@@ -373,8 +373,40 @@ describe('assert-screen-set', () => {
     const { code, out } = run(tree({
       mutate: (r) => ({ screens: r.screens.slice(0, 3) }),
     }));
-    assert.equal(code, 1);
+    assert.equal(code, 2, out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(out, /COVERAGE LOST — the register declares only 3 screen\(s\)/);
+  });
+
+  // ── O-EXIT2-CONVENTION-GAP: the exit code of each kind of stop, pinned ─────
+  test('exit 2 (COVERAGE LOST) when the screen register is MISSING — names the register', () => {
+    const control = run(tree());
+    assert.equal(control.code, 0, control.out); // green control first
+    const root = join(TMP, `r${seq++}`);
+    mkdirSync(root, { recursive: true });
+    const { code, out } = run(root);
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST — tooling\/screen-register\.json could not be read or parsed/);
+  });
+
+  test('exit 2 (COVERAGE LOST) when the screen register does not PARSE', () => {
+    const root = tree();
+    writeFileSync(join(root, 'tooling', 'screen-register.json'), '{ "screens": [ not json');
+    const { code, out } = run(root);
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST — tooling\/screen-register\.json could not be read or parsed/);
+  });
+
+  test('exit 1 when a COVERAGE LOST sits beside a real finding — the finding decides', () => {
+    const { code, out } = run(tree({
+      mutate: (r) => {
+        const screens = r.screens.slice(0, 3);
+        delete screens.find((s) => s.id === 'system.offline').reachable;
+        return { screens };
+      },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /COVERAGE LOST — the register declares only 3 screen\(s\)/);
+    assert.match(out, /`system\.offline` is PRESENT but names no `reachable`/);
   });
 
   // ── `reachable` IS MANDATORY (2026-08-06) ────────────────────────────────
@@ -476,7 +508,7 @@ describe('assert-screen-set', () => {
         ),
       }),
     }));
-    assert.equal(code, 1);
+    assert.equal(code, 2, out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(out, /COVERAGE LOST — only 3 screen\(s\) are PRESENT, expected >= 25/);
   });
 
@@ -491,7 +523,7 @@ describe('assert-screen-set', () => {
         ),
       }),
     }));
-    assert.equal(code, 1);
+    assert.equal(code, 2, out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(out, /not one screen is marked present/);
   });
 });
@@ -711,7 +743,7 @@ describe('a reachability pattern that moved into the chassis is found there', ()
 
   test('S-R3 · a delegation that cannot be followed is COVERAGE LOST, never a pass', () => {
     const { code, out } = run(delegatingRouter({ packageOnDisk: false }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(out, /COVERAGE LOST — `system\.offline`/);
   });
 });
@@ -759,7 +791,7 @@ describe('a callback handed across a delegation must reach a control', () => {
         '  Widget build(BuildContext context) => const SizedBox.shrink();\n}\n',
     );
     const { code, out } = run(root);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(out, /only 0 delegated callback\(s\) were checked/);
     assert.match(out, /both read as green here and neither is/);
   });

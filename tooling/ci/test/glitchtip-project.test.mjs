@@ -164,25 +164,25 @@ describe('a variable whose step never reads the declaration is refused', () => {
 });
 
 describe('no call sites is COVERAGE LOST, never a pass', () => {
-  test('R2 — the flag renamed away: exit 1', () => {
+  test('R2 — the flag renamed away: exit 2 (COVERAGE LOST)', () => {
     const dir = stage('renamed-flag', (f, body) => body.replaceAll('--project ', '--gtproject '));
     const r = run(dir);
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(r.out, /ZERO GlitchTip --project call sites/);
     assert.match(r.out, /COVERAGE LOST/);
   });
 
-  test('an empty directory is also exit 1, not a silent pass', () => {
+  test('an empty directory is also exit 2, not a silent pass', () => {
     const dir = join(TMP, 'empty');
     mkdirSync(dir, { recursive: true });
     const r = run(dir);
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(r.out, /ZERO GlitchTip --project call sites/);
   });
 });
 
 describe('the declaration itself is graded', () => {
-  test('R5 — a repo with no declaration file: exit 1, naming the file', () => {
+  test('R5 — a repo with no declaration file: exit 2 (COVERAGE LOST), naming the file', () => {
     // A whole shadow repo, so the guard resolves its own REPO root to a tree
     // that genuinely lacks the declaration rather than to this one.
     const shadow = join(TMP, 'shadow');
@@ -195,8 +195,8 @@ describe('the declaration itself is graded', () => {
       [join(shadow, 'tooling', 'ci', 'assert-glitchtip-project.mjs'), '--workflows', WORKFLOWS],
       { encoding: 'utf8' },
     );
-    assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
-    assert.match(`${r.stdout}${r.stderr}`, /does not exist/);
+    assert.equal(r.status, 2, `${r.stdout}${r.stderr}`); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
+    assert.match(`${r.stdout}${r.stderr}`, /COVERAGE LOST — tooling\/ops\/glitchtip-project\.json does not exist/);
   });
 
   test('a declaration with no project is refused', () => {
@@ -298,12 +298,128 @@ describe('the boundary against Cloudflare Pages is deliberate', () => {
 });
 
 describe('--live refuses to report a pass it did not make', () => {
-  test('with no GLITCHTIP_TOKEN, --live is exit 1 and names the secret', () => {
+  test('with no GLITCHTIP_TOKEN, --live is exit 2 (COVERAGE LOST) and names the secret', () => {
     const env = { ...process.env };
     delete env.GLITCHTIP_TOKEN;
     const r = spawnSync(process.execPath, [GUARD, '--live'], { encoding: 'utf8', env });
-    assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
+    assert.equal(r.status, 2, `${r.stdout}${r.stderr}`);
     assert.match(`${r.stdout}${r.stderr}`, /GLITCHTIP_TOKEN/);
+  });
+});
+
+// ── O-EXIT2-CONVENTION-GAP: --live against a STUBBED instance, never the real one ────────────────
+// GLITCHTIP_URL points the one GET at a server in THIS process (an operator's per-run choice the
+// guard already honours), so every answer the network can give is produced on demand. What could
+// not be ASKED is exit 2; what the instance ANSWERED no to (404) is exit 1; 200 is 0.
+describe('--live: could-not-ask is exit 2, an answered no is exit 1', () => {
+  /** spawn, not spawnSync: the stub server lives in THIS process and must answer while the guard runs. */
+  function liveAgainst(baseUrl, token = 'stub-token') {
+    const env = { ...process.env, GLITCHTIP_URL: baseUrl };
+    if (token === null) delete env.GLITCHTIP_TOKEN;
+    else env.GLITCHTIP_TOKEN = token;
+    return new Promise((done) => {
+      const child = spawn(process.execPath, [GUARD, '--live'], { env });
+      let out = '';
+      child.stdout.on('data', (d) => (out += d));
+      child.stderr.on('data', (d) => (out += d));
+      child.on('close', (code) => done({ code, out }));
+    });
+  }
+  async function withStub(status, body, fn) {
+    const server = createServer((req, res) => {
+      res.writeHead(status, { 'content-type': 'application/json' });
+      res.end(body);
+    });
+    await new Promise((ready) => server.listen(0, '127.0.0.1', ready));
+    try {
+      return await fn(`http://127.0.0.1:${server.address().port}`);
+    } finally {
+      server.close();
+    }
+  }
+
+  test('green control: the stub answers 200 with the project — exit 0', async () => {
+    const r = await withStub(200, JSON.stringify({ slug: DECLARED, id: 1 }), (u) => liveAgainst(u));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /live check OK/);
+  });
+
+  test('401 — the credential is refused: exit 2 COVERAGE LOST, never a finding', async () => {
+    const r = await withStub(401, '{"detail":"Invalid token."}', (u) => liveAgainst(u));
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /COVERAGE LOST — the live instance answers 401: it refused the credential/);
+  });
+
+  test('403 — the credential cannot see the project: exit 2 COVERAGE LOST', async () => {
+    const r = await withStub(403, '{}', (u) => liveAgainst(u));
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /COVERAGE LOST — the live instance answers 403/);
+  });
+
+  test('503 — the instance could not answer: exit 2 COVERAGE LOST', async () => {
+    const r = await withStub(503, 'down', (u) => liveAgainst(u));
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /COVERAGE LOST — the live instance answers 503: it could not answer/);
+  });
+
+  test('200 with a body that is not JSON: exit 2 COVERAGE LOST, not a crash', async () => {
+    const r = await withStub(200, '<html>login</html>', (u) => liveAgainst(u));
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /COVERAGE LOST — the live instance answered 200 with a body that is not JSON/);
+  });
+
+  test('404 — the instance ANSWERED that the project does not exist: exit 1, a finding', async () => {
+    const r = await withStub(404, '{"detail":"Not found."}', (u) => liveAgainst(u));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /the live instance answers 404/);
+  });
+
+  test('an UNREACHABLE instance (nothing listening) is exit 2 COVERAGE LOST, naming the host', async () => {
+    const server = createServer();
+    await new Promise((ready) => server.listen(0, '127.0.0.1', ready));
+    const port = server.address().port;
+    await new Promise((closed) => server.close(closed));
+    const r = await liveAgainst(`http://127.0.0.1:${port}`);
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, new RegExp(`COVERAGE LOST — could not reach http://127\\.0\\.0\\.1:${port}`));
+  });
+
+  test('an EMPTY GLITCHTIP_TOKEN is the same as none — exit 2, and nothing is sent', async () => {
+    let asked = 0;
+    const server = createServer((req, res) => { asked++; res.writeHead(200); res.end('{}'); });
+    await new Promise((ready) => server.listen(0, '127.0.0.1', ready));
+    try {
+      const r = await liveAgainst(`http://127.0.0.1:${server.address().port}`, '');
+      assert.equal(r.code, 2, r.out);
+      assert.match(r.out, /COVERAGE LOST — --live needs GLITCHTIP_TOKEN/);
+      assert.equal(asked, 0);
+    } finally {
+      server.close();
+    }
+  });
+});
+
+describe('the offline inputs: could-not-read is exit 2', () => {
+  test('a workflow directory that does not exist: exit 2, naming it', () => {
+    const r = run(join(TMP, 'no-such-workflows-dir'));
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /COVERAGE LOST — no workflow directory at .*no-such-workflows-dir/);
+  });
+
+  test('a declaration that is not JSON: exit 2, naming the file', () => {
+    const shadow = join(TMP, 'shadow-badjson');
+    mkdirSync(join(shadow, 'tooling', 'ci'), { recursive: true });
+    mkdirSync(join(shadow, 'tooling', 'ops'), { recursive: true });
+    cpSync(GUARD, join(shadow, 'tooling', 'ci', 'assert-glitchtip-project.mjs'));
+    cpSync(join(REPO, 'tooling', 'ci', 'tree-walk.mjs'), join(shadow, 'tooling', 'ci', 'tree-walk.mjs'));
+    writeFileSync(join(shadow, 'tooling', 'ops', 'glitchtip-project.json'), '{ "org": ');
+    const r = spawnSync(
+      process.execPath,
+      [join(shadow, 'tooling', 'ci', 'assert-glitchtip-project.mjs'), '--workflows', WORKFLOWS],
+      { encoding: 'utf8' },
+    );
+    assert.equal(r.status, 2, `${r.stdout}${r.stderr}`);
+    assert.match(`${r.stdout}${r.stderr}`, /COVERAGE LOST — tooling\/ops\/glitchtip-project\.json is not valid JSON/);
   });
 });
 

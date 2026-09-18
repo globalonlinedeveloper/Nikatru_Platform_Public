@@ -5453,7 +5453,7 @@ onTap: () => _openUrl(AppConfig.refundUrl),
     const { code, out } = run('assert-stamp-properties.mjs', {
       cwd: build('sp-d8-noreg', { platformCatalogue: '[]' }),
     });
-    assert.equal(code, 1);
+    assert.equal(code, 2, out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(out, /parsed 0 app\(s\) out of catalog\/apps\.json/);
   });
 
@@ -5467,7 +5467,7 @@ onTap: () => _openUrl(AppConfig.refundUrl),
         platformConfigData: JSON.stringify({ sharedApiBaseUrl: 'x', apps: { subscriptiontracker: {} } }),
       }),
     });
-    assert.equal(code, 1);
+    assert.equal(code, 2, out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(out, /has no `defaults`/);
   });
 
@@ -5489,7 +5489,7 @@ onTap: () => _openUrl(AppConfig.refundUrl),
         appConfig: goodAppConfig.replace("'UPDATE_URL',", "'UPDATE_URL_V2',"),
       }),
     });
-    assert.equal(code, 1);
+    assert.equal(code, 2, out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(out, /could not parse the compile-time default/);
   });
 
@@ -5809,7 +5809,7 @@ onTap: () => _openUrl(AppConfig.refundUrl),
         permissionProbe: goodPermissionProbe.replace(/requestPermissions?/g, 'askTheUserNicely'),
       }),
     });
-    assert.equal(code, 1);
+    assert.equal(code, 2, out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(out, /the \[13\]T-4 permission pattern no longer matches any call/);
   });
 
@@ -5923,13 +5923,13 @@ onTap: () => _openUrl(AppConfig.refundUrl),
     const { code, out } = run('assert-stamp-properties.mjs', {
       cwd: build('sp-t4-unparseable-main', { subscriptiontrackerMain: '// everything commented out\n' }),
     });
-    assert.equal(code, 1);
+    assert.equal(code, 2, out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(out, /no `main\(\)` DECLARATION could be parsed/);
   });
 
   test('FAILS when the inherited property test is deleted', () => {
     const { code, out } = run('assert-stamp-properties.mjs', { cwd: build('sp-missing', { omitProp: true }) });
-    assert.equal(code, 1);
+    assert.equal(code, 2, out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(out, /is MISSING/);
   });
 
@@ -6154,7 +6154,7 @@ onTap: () => _openUrl(AppConfig.refundUrl),
     const { code, out } = run('assert-stamp-properties.mjs', {
       cwd: build('sp-no-workspace', { workspace: 'name: nikatru_workspace\n' }),
     });
-    assert.equal(code, 1);
+    assert.equal(code, 2, out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(out, /COVERAGE LOST — the root pubspec\.yaml has no readable `workspace:` block/);
   });
 
@@ -7533,7 +7533,7 @@ onTap: () => _openUrl(AppConfig.refundUrl),
             'const PAGES_LEGAL = [];\n',
         }),
       });
-      assert.equal(code, 1);
+      assert.equal(code, 2, out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
       assert.match(out, /COVERAGE LOST — could not parse LEGAL_PAGES/);
     });
 
@@ -7541,7 +7541,7 @@ onTap: () => _openUrl(AppConfig.refundUrl),
       const { code, out } = run('assert-stamp-properties.mjs', {
         cwd: build('legal-empty', { siteIntegrity: legalPages([]) }),
       });
-      assert.equal(code, 1);
+      assert.equal(code, 2, out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
       assert.match(out, /LEGAL_PAGES parsed as EMPTY/);
     });
 
@@ -7557,7 +7557,7 @@ onTap: () => _openUrl(AppConfig.refundUrl),
           appConfig: 'class AppConfig {\n  static const String companyUrl = 1;\n}\n',
         }),
       });
-      assert.equal(code, 1);
+      assert.equal(code, 2, out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
       assert.match(out, /every published legal page is on the link-exemption list/);
     });
 
@@ -7576,7 +7576,7 @@ onTap: () => _openUrl(AppConfig.refundUrl),
             .replace("nikatru.com/refund'", "nikatru.com/refund.html'"),
         }),
       });
-      assert.equal(code, 1);
+      assert.equal(code, 2, out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
       assert.match(out, /the in-app half of the set equality below is EMPTY/);
     });
 
@@ -7584,7 +7584,7 @@ onTap: () => _openUrl(AppConfig.refundUrl),
       const files = build('legal-gone');
       rmSync(join(files, SITE_INTEGRITY), { force: true });
       const { code, out } = run('assert-stamp-properties.mjs', { cwd: files });
-      assert.equal(code, 1);
+      assert.equal(code, 2, out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
       assert.match(out, /COVERAGE LOST — tooling\/ci\/check-site-integrity\.mjs unreadable/);
     });
   });

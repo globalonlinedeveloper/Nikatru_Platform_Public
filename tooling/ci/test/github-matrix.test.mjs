@@ -42,8 +42,8 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, copyFileSync } from 'node:fs';
-import { join, dirname, resolve } from 'node:path';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, copyFileSync, chmodSync } from 'node:fs';
+import { join, dirname, resolve, delimiter } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 // 2026-08-21: the LIMB 1b cases below assert on the guard's CODE, not on its prose — this file's
@@ -389,6 +389,79 @@ describe('assert-github-matrix', () => {
       );
       assert.notEqual(r.status, 0, r.stdout);
       assert.match(`${r.stdout}${r.stderr}`, /NOT ONE was compared against a checkout on disk/);
+    });
+  });
+
+  // ── O-EXIT2-CONVENTION-GAP: THE NETWORK LIMB WITH NO FIXTURE, AGAINST A STUBBED `gh` ─────────────
+  // Every case above is --offline or --gh-fixture, so the no-flag path — the only one that can exit 0
+  // — was never run under test. These put a FAKE `gh` first on PATH: a copy of this node binary that a
+  // NODE_OPTIONS preload turns into a stub (it acts only when the process is NAMED gh, so the guard's
+  // own node ignores it). No network, no credential: `cleanEnv()` has already removed GH_*/GITHUB_*.
+  // An unreachable or unauthenticated GitHub must be exit 2 COVERAGE LOST — never 0, never 1.
+  describe('the network limb against a stubbed gh: could-not-look is exit 2', () => {
+    let BIN;
+    let PRELOAD;
+    before(() => {
+      BIN = join(TMP, 'fake-gh-bin');
+      mkdirSync(BIN, { recursive: true });
+      const exe = join(BIN, process.platform === 'win32' ? 'gh.exe' : 'gh');
+      copyFileSync(process.execPath, exe);
+      chmodSync(exe, 0o755);
+      PRELOAD = join(TMP, 'fake-gh-preload.cjs');
+      writeFileSync(PRELOAD, [
+        "const { basename } = require('node:path');",
+        'const me = basename(process.execPath).toLowerCase();',
+        "if (me === 'gh' || me === 'gh.exe') {",
+        '  const mode = process.env.FAKE_GH_MODE;',
+        "  if (mode === 'unauthenticated') {",
+        "    console.error('To get started with GitHub CLI, please run:  gh auth login');",
+        '    process.exit(4);',
+        '  }',
+        "  if (mode === 'hang') Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 30000);",
+        "  process.stdout.write(require('node:fs').readFileSync(process.env.FAKE_GH_LISTING, 'utf8'));",
+        '  process.exit(0);',
+        '}',
+        '',
+      ].join('\n'));
+    });
+    const runStubbed = (mode, listing, extraEnv = {}) => {
+      const env = cleanEnv();
+      const pathKey = Object.keys(env).find((k) => k.toUpperCase() === 'PATH') ?? 'PATH';
+      env[pathKey] = `${BIN}${delimiter}${env[pathKey] ?? ''}`;
+      env.NODE_OPTIONS = `--require "${PRELOAD.replace(/\\/g, '/')}"`;
+      env.FAKE_GH_MODE = mode;
+      env.FAKE_GH_LISTING = fixture(listing);
+      Object.assign(env, extraEnv);
+      return spawnSync(process.execPath, [GUARD, '--projects', ANCHOR], { encoding: 'utf8', env });
+    };
+
+    test('gh that answers but is NOT AUTHENTICATED is exit 2 COVERAGE LOST, naming gh repo list', () => {
+      const r = runStubbed('unauthenticated', []);
+      assert.equal(r.status, 2, `${r.stdout}${r.stderr}`);
+      assert.match(r.stderr, /COVERAGE LOST — `gh repo list` could not look at GitHub/);
+      assert.match(r.stderr, /gh auth login/);
+    });
+
+    test('gh that NEVER ANSWERS is killed at GH_LIST_TIMEOUT_MS and is exit 2, not a hang and not a finding', () => {
+      const r = runStubbed('hang', [], { GH_LIST_TIMEOUT_MS: '1500' });
+      assert.equal(r.status, 2, `${r.stdout}${r.stderr}`);
+      assert.match(r.stderr, /COVERAGE LOST — `gh repo list` could not look at GitHub/);
+      assert.match(r.stderr, /did not answer within/);
+    });
+
+    test('🔴 a CLEAN org listing with the local half comparing NOTHING is exit 2, not 0 (the overwritten exitCode)', () => {
+      // Until 2026-09-19 the ✗ below set exitCode = 1 and the final process.exit(0) overwrote it.
+      const r = runStubbed('list', cleanListing());
+      assert.equal(r.status, 2, `${r.stdout}${r.stderr}`);
+      assert.match(r.stderr, /NOT ONE was compared against a checkout on disk/);
+      assert.match(r.stderr, /COVERAGE LOST — the local limb compared NONE of the \d+ declared boundRemote side\(s\)/);
+      assert.doesNotMatch(r.stdout, /ok — registry and org reconcile/);
+    });
+
+    test('a finding beside the local COVERAGE LOST is exit 1 — findings dominate', () => {
+      const r = runStubbed('list', [...cleanListing(), { name: 'nikatru-undeclared-thing', visibility: 'PRIVATE', isArchived: false }]);
+      assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
+      assert.match(r.stderr, /ORPHAN/);
     });
   });
 
