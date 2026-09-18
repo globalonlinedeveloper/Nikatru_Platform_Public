@@ -684,12 +684,22 @@ describe('the template root', () => {
     withTemplateTree(
       (root) => {
         edit(root, BRICK_MIGRATION, (s) => `${s}\nCREATE TABLE notes (id TEXT PRIMARY KEY, user_id TEXT NOT NULL);\n`);
-        edit(root, BRICK_ERASE_SUBJECT, (s) =>
-          s.replace(
-            "import { userOwnedTables, userReferencingColumns } from '../../../_shared/src/erasure';",
-            "const userOwnedTables = async (_d: unknown) => ['records']; const userReferencingColumns = async (_d: unknown) => [];",
-          ),
-        );
+        // ⏱ 2026-09-18 · O-ERASURE-WALK-ROUND-TRIPS: the module now imports ONE
+        // derivation (`erasureTargets`) and ONE batched write (`eraseTargets`).
+        // The old target line no longer existed, so `replace` became a no-op, the
+        // "mutant" was the original, and this case went red on a green guard —
+        // correctly. It now REFUSES to run if its target moves again, so a future
+        // rename fails here by name instead of as a confusing guard verdict.
+        edit(root, BRICK_ERASE_SUBJECT, (s) => {
+          const target = "import { erasureTargets, eraseTargets, type ErasureTargets } from '../../../_shared/src/erasure';";
+          assert.ok(s.includes(target), `T1's mutation target is gone from ${BRICK_ERASE_SUBJECT} - re-point it, or this case mutates nothing`);
+          return s.replace(
+            target,
+            "type ErasureTargets = { tables: string[]; references: Array<{ table: string; column: string }> };" +
+              " const erasureTargets = async (_d: unknown): Promise<ErasureTargets> => ({ tables: ['records'], references: [] });" +
+              " const eraseTargets = async (_d: unknown, _u: string, _t: ErasureTargets) => ({ deleted: {}, unlinked: {} });",
+          );
+        });
       },
       (r) => {
         assert.equal(r.status, 1, r.stderr);

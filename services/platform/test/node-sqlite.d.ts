@@ -14,6 +14,11 @@ declare module 'node:sqlite' {
     all(...params: SQLValue[]): Array<Record<string, unknown>>;
     get(...params: SQLValue[]): Record<string, unknown> | undefined;
     run(...params: SQLValue[]): { changes: number; lastInsertRowid: number | bigint };
+    /** ⏱ 2026-09-18: the result columns a statement WOULD return — empty for a
+     *  write. Node added it in v23.11.0; CI installs the major in
+     *  tooling/versions.json (24), so it exists wherever these tests run. The
+     *  harness's `batchResult` reads it to answer a batched SELECT with its rows. */
+    columns(): Array<{ name: string; column: string | null; table: string | null; database: string | null; type: string | null }>;
   }
   export class DatabaseSync {
     constructor(path: string);
