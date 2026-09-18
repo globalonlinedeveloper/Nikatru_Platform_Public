@@ -82,6 +82,9 @@ describe('the delete set is derived from the real platform schema', () => {
       // route, and this fixture is the only thing that had to move.
       'bundle_grants',
       'cancellation_requests',
+      // ⏱ 2026-09-18 · 0013. Spelt `user_id` ON PURPOSE: a reporter who deletes
+      // their account takes their reports (and the note they typed) with them.
+      'content_reports',
       'entitlements',
       'identity',
       'provider_accounts',

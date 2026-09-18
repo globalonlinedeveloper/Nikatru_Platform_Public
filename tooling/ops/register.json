@@ -3946,6 +3946,30 @@
       "source": "verified"
     },
     {
+      "id": "retention.d1.platform_db.content_reports",
+      "kind": "retention",
+      "store": "d1:platform_db:content_reports",
+      "what": "⏱ 2026-09-18 · O-PLAY-AI-CONTENT-REPORTING. One row per in-app report of AI-generated content: the reporter (Supabase `sub`), the app, a reason from a closed set, a reference and/or excerpt of the content, an optional note, `status` and `notified_at`. Written only by POST /v1/report (services/platform/src/routes/report.ts), behind platformAuth.",
+      "rule": "period",
+      "periodDays": 400,
+      "declaredBy": "the platform's period for personal data ([ADR 045] §9: 400 clears the DPDP Rules 2025 Rule 8(3) one-year floor that 365 misses across a 29 February); the value lives in services/platform/src/scheduled.ts `CONTENT_REPORTS_RETENTION_DAYS`, and this row and that constant are cross-checked by services/platform/test/retention-sweep.test.ts",
+      "detector": "tooling/ci/assert-retention-coverage.mjs — the store set is ENUMERATED from migrations, so a store cannot leave the domain by having no rule.",
+      "response": "n/a — the nightly sweep deletes a report 400 days after its `created_at`. Erasure: DELETE /v1/account empties the table for the account, because the column is spelled `user_id` (tooling/legal/data-inventory.json `table:platform_db.content_reports`, erasure `purge`).",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/platform/migrations/0013_content_reports.sql",
+        "record": "the table itself",
+        "failingValue": "a row whose `created_at` is older than 400 days",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs (coverage half); the deletion half is `deletingJob`"
+      },
+      "deletingJob": "retention_sweep — the nightly Cloudflare cron limb `retentionSweep` in services/platform/src/scheduled.ts, watched by duty.platform-cron.watchedJobs and read by tooling/ops/check-heartbeats.mjs. The `content_reports` limb deletes rows whose `created_at` is older than CONTENT_REPORTS_RETENTION_DAYS, at most 1000 per run (MAX_ROWS_PER_SWEEP), on age alone because nothing is derived from the table. Held by services/platform/test/report.test.ts.",
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
       "id": "retention.d1.subscriptiontracker_db.subscriptions",
       "kind": "retention",
       "store": "d1:subscriptiontracker_db:subscriptions",

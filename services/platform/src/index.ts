@@ -6,6 +6,7 @@
 //   PUBLIC  POST   /v1/consent  — the DPDP consent artifact.
 //   AUTHED  DELETE /v1/account  — erasure ([4]B-5). ES256/JWKS only.
 //   AUTHED  POST   /v1/plan/cancel — the ROSCA cancel path ([5]M-9).
+//   AUTHED  POST   /v1/report   — flag AI-generated content, in-app (G-39).
 //   AUTHED  POST   /v1/checkout — the Paddle create-transaction half ([ADR 044]
 //                                  rung 2). Dormant: 403 while the paywall is off.
 //   AUTHED  POST   /v1/receipts/:store — the STORE RECEIPT pull (design 3.2).
@@ -36,6 +37,7 @@ import config from './routes/config';
 import entitlements from './routes/entitlements';
 import events from './routes/events';
 import cancellation from './routes/cancellation';
+import report from './routes/report';
 import checkout from './routes/checkout';
 import money from './routes/money';
 import receipts from './routes/receipts';
@@ -225,6 +227,14 @@ app.route('/v1', entitlements);
 // named "cancel" the moment somebody reordered the file.
 app.use('/v1/plan/*', platformAuth);
 app.route('/v1', cancellation);
+
+// AUTHENTICATED: the in-app AI-content report (O-PLAY-AI-CONTENT-REPORTING, G-39).
+// Google Play requires a content app to let users flag offensive AI output to
+// the developer WITHOUT LEAVING THE APP; routes/report.ts is where that lands.
+// The reporter is the verified JWT subject — attributable, capped per person,
+// and erased with the account. An exact path, so the bare form covers it.
+app.use('/v1/report', platformAuth);
+app.route('/v1', report);
 
 // AUTHENTICATED: the Paddle create-transaction half ([ADR 044] rung 2).
 //

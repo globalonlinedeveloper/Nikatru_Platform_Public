@@ -643,12 +643,17 @@ describe('DELETE /v1/account — three limbs, executed against a real engine', (
     // thing that moved. The list below is the WHOLE user-owned set, so a table
     // added later without being dropped here leaves the derivation non-empty and
     // this test goes red instead of passing over a 503 that never happened.
+    //
+    // ⚠️ AND A FIFTH TIME, 2026-09-18, with 0013's `content_reports.user_id` — the
+    // in-app AI content report (O-PLAY-AI-CONTENT-REPORTING). This case went red
+    // exactly as the paragraph above promised, naming the new table by its 200.
     const db = realPlatformDb();
     db.db.exec('DROP TABLE entitlements;');
     db.db.exec('DROP TABLE provider_accounts;');
     db.db.exec('DROP TABLE cancellation_requests;');
     db.db.exec('DROP TABLE provider_notifications;');
     db.db.exec('DROP TABLE bundle_grants;');
+    db.db.exec('DROP TABLE content_reports;');
     const res = await harness({ db }).del('/v1/account', `Bearer ${await token({ sub: 'user-a' })}`);
     expect(res.status).toBe(503);
     expect(identityCalls).toHaveLength(0);

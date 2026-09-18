@@ -47,6 +47,7 @@ import bundleGrants0009 from '../migrations/0009_bundle_grants.sql?raw';
 import pendingErasures0010 from '../migrations/0010_pending_erasures.sql?raw';
 import signups0011 from '../migrations/0011_signups.sql?raw';
 import appleTokens0012 from '../migrations/0012_apple_provider_tokens.sql?raw';
+import contentReports0013 from '../migrations/0013_content_reports.sql?raw';
 
 type SQLValue = string | number | bigint | null | Uint8Array;
 
@@ -77,6 +78,8 @@ export const PLATFORM_MIGRATIONS: readonly string[] = [
   // ⏱ 2026-09-16 · O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE: the Apple token a deletion
   // has to revoke with.
   appleTokens0012,
+  // ⏱ 2026-09-18 · O-PLAY-AI-CONTENT-REPORTING — the in-app AI content report.
+  contentReports0013,
 ];
 
 /**
@@ -115,6 +118,8 @@ export const REPLAY_SAFE_MIGRATIONS: readonly string[] = [
   signups0011,
   // 0012 is one CREATE TABLE IF NOT EXISTS — it replays.
   appleTokens0012,
+  // 0013 is CREATE TABLE / CREATE INDEX IF NOT EXISTS only — it replays.
+  contentReports0013,
 ];
 
 // `node:sqlite` is fetched through `process.getBuiltinModule` rather than a
