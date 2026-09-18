@@ -490,6 +490,16 @@ const WIRE_CONTRACTS = [
      *  pinned, and exactly when nobody would think to come back here. */
     absentFromDart: '/v1/checkout',
   },
+  {
+    id: 'report',
+    kind: 'gap',
+    reason:
+      '⏱ 2026-09-18 · O-PLAY-AI-CONTENT-REPORTING. NO CLIENT IN THIS REPO YET, AND IT IS A STATE: POST /v1/report is the Worker half of the in-app AI content report Google Play requires of an app that generates content with AI, and no app does yet. The chassis control and its api_client transport are the second half of the same row, due before the first content app\x27s Play listing. There is therefore no released client to break. What stands in for a pin meanwhile is services/platform/test/report.test.ts, which drives the real route over the real-SQL harness and asserts the request keys it accepts (app_id, reason, content_ref, content_excerpt, note), the 202 { ok, id } answer and every refusal code.',
+    /** THE CLAIM IS CHECKED, NOT ASSERTED. The day the chassis transport builds
+     *  this path there IS a released client, this gap becomes false and fails —
+     *  which is exactly when the second PR must replace it with a real `body` pin. */
+    absentFromDart: '/v1/report',
+  },
 ];
 
 /** Where limb 5's "no Dart client" claims are checked. Roots rather than the

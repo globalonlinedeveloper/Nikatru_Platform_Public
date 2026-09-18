@@ -592,7 +592,7 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
   // The numbers are PINNED rather than derived on purpose — a derived count
   // agrees with any register, including one that quietly stopped enumerating —
   // so they move in the same change as the routes that moved them.
-  test('PASSES on the real tree: 12 routes, 8 pinned, 4 printed gaps', () => {
+  test('PASSES on the real tree: 13 routes, 8 pinned, 5 printed gaps', () => {
     const r = run(makeRepo());
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /wire health — deploy-smoke fields/);
@@ -611,7 +611,7 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
     // …and the fourth, added with the receipt route. Its gap is a STATE too: the
     // day a Dart client builds /v1/receipts the guard fails and demands a pin.
     assert.match(r.out, /GAP {2}wire receipts/);
-    assert.match(r.out, /12 shared route\(s\) from tooling\/platform-register\.json: 8 pinned, 4 printed gap/);
+    assert.match(r.out, /13 shared route\(s\) from tooling\/platform-register\.json: 8 pinned, 5 printed gap/); // ⏱ 2026-09-18: +1 route, +1 printed gap — POST /v1/report (O-PLAY-AI-CONTENT-REPORTING), no Dart client yet.
     // [4]B-14's last clause: the config route's client half resolves in the
     // BRICK, so the count above is about apps that do not exist yet too.
     assert.match(r.out, /wire config — .*client half INHERITED by every stamped app: 10 key\(s\) in tooling\/bricks\//);
@@ -957,7 +957,7 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
     // and the route stops counting as pinned — the number moves, honestly.
     // ⏱ 4 gaps since 2026-09-09 — TWO routes joined that day, not one; see the
     // re-measurement note on the real-tree case.
-    assert.match(r.out, /7 pinned, 4 printed gap/);
+    assert.match(r.out, /7 pinned, 5 printed gap/); // ⏱ 2026-09-18: +1 route, +1 printed gap — POST /v1/report (O-PLAY-AI-CONTENT-REPORTING), no Dart client yet.
   });
 
   test('FAILS when the brick drops a key the server still requires', () => {
