@@ -34,6 +34,7 @@ import {
 } from './lib/erasure-ledger';
 import { deleteIdentity, erasePlatformRows, purgeVerifiedSignups } from './lib/platform-erasure';
 import { dropAppleToken, revokeAppleToken } from './lib/apple-revoke';
+import { runOpsWatchdogChecks, type HeartbeatRow } from './ops-watchdog';
 
 /** The job name recorded in `cron_heartbeat`. */
 export const KEEPALIVE_JOB = 'supabase_keepalive';
@@ -179,7 +180,46 @@ export function boxbTargets(env: Env): string[] {
 }
 
 export async function boxbReachability(env: Env): Promise<void> {
-  const targets = boxbTargets(env);
+  await recordHeartbeat(env, await probeReachability(boxbTargets(env)), BOXB_REACH_JOB);
+}
+
+/**
+ * [O-LAPTOP-ROUTINES-DIE-OVERNIGHT] BOX A, OVER HTTP, FROM THE SAME PLACE BOX B IS
+ * WATCHED. The laptop ops-check reached Box A by SSH; SSH is not portable to a
+ * Worker, so what moves here is the REACHABILITY half only, graded exactly as
+ * Box B's (any HTTP answer is up; transport failure or a Cloudflare 52x/53x is
+ * down). Per-service health behind SSH stays on the laptop.
+ *
+ * 🔴 NO DEFAULT LIST, AND THAT IS THE DIFFERENCE FROM BOX B. No Box A hostname is
+ * declared anywhere in this repository, and inventing one would probe a guess.
+ * So an absent or empty BOXA_REACH_URLS writes ONE ok=0 row saying "not
+ * configured" — the keep-alive's zero-target rule — never a silent pass.
+ */
+export const BOXA_REACH_JOB = 'boxa_reachability';
+
+/** Box A URLs from BOXA_REACH_URLS, parsed like boxbTargets. Empty when unset. */
+export function boxaTargets(env: Env): string[] {
+  const raw = (env.BOXA_REACH_URLS ?? '').split(',');
+  return [...new Set(raw.map((x) => x.trim()).filter((x) => x.length > 0))];
+}
+
+export async function boxaReachability(env: Env): Promise<void> {
+  const targets = boxaTargets(env);
+  if (targets.length === 0) {
+    console.log('[cron] box A reachability: BOXA_REACH_URLS NOT CONFIGURED');
+    await recordHeartbeat(
+      env,
+      [{ target: '(none)', ok: false, detail: 'not configured: BOXA_REACH_URLS is not set on this Worker' }],
+      BOXA_REACH_JOB,
+    );
+    return;
+  }
+  await recordHeartbeat(env, await probeReachability(targets), BOXA_REACH_JOB);
+}
+
+/** One GET per URL; any HTTP answer is reachable, a 52x/53x or no answer is not.
+ *  Shared by Box A and Box B so the two are graded by one rule. */
+async function probeReachability(targets: string[]): Promise<{ target: string; ok: boolean; detail: string }[]> {
   const rows: { target: string; ok: boolean; detail: string }[] = [];
   for (const url of targets) {
     try {
@@ -203,7 +243,7 @@ export async function boxbReachability(env: Env): Promise<void> {
       rows.push({ target: url, ok: false, detail: `no answer: ${String(err).slice(0, 120)}` });
     }
   }
-  await recordHeartbeat(env, rows, BOXB_REACH_JOB);
+  return rows;
 }
 
 /**
@@ -2246,22 +2286,73 @@ export const BACKUP_CRON = '30 2 * * *';
  * the same way. The URL is NEVER logged: its path is the credential.
  */
 export async function platformCronBeat(env: Env): Promise<'beat' | 'skipped' | 'failed'> {
-  const url = (env.PLATFORM_CRON_HEARTBEAT_URL ?? '').trim();
+  return sendHeartbeat(env.PLATFORM_CRON_HEARTBEAT_URL, 'PLATFORM_CRON_HEARTBEAT_URL');
+}
+
+/** One bodyless POST to a GlitchTip Heartbeat URL held in the secret `name`.
+ *  Absent = logged no-op; non-2xx or transport failure = logged 'failed'; never
+ *  throws, and never logs the URL, whose path is the credential. */
+async function sendHeartbeat(raw: string | undefined, name: string): Promise<'beat' | 'skipped' | 'failed'> {
+  const url = (raw ?? '').trim();
   if (url.length === 0) {
-    console.log('[cron] PLATFORM_CRON_HEARTBEAT_URL is not set - no off-Cloudflare heartbeat sent');
+    console.log(`[cron] ${name} is not set - no off-Cloudflare heartbeat sent`);
     return 'skipped';
   }
   try {
     const res = await fetch(url, { method: 'POST', signal: AbortSignal.timeout(10_000) });
     if (res.status < 200 || res.status > 299) {
-      console.log(`[cron] off-Cloudflare heartbeat refused: HTTP ${res.status}`);
+      console.log(`[cron] off-Cloudflare heartbeat (${name}) refused: HTTP ${res.status}`);
       return 'failed';
     }
     return 'beat';
   } catch (err) {
-    console.log(`[cron] off-Cloudflare heartbeat not delivered: ${String(err).slice(0, 120)}`);
+    console.log(`[cron] off-Cloudflare heartbeat (${name}) not delivered: ${String(err).slice(0, 120)}`);
     return 'failed';
   }
+}
+
+/**
+ * [O-LAPTOP-ROUTINES-DIE-OVERNIGHT] The laptop watchdog's portable work — see
+ * src/ops-watchdog.ts for what it checks and why `ok` means "the check ran".
+ *
+ * 🔴 IT KEEPS THE DISPATCHER'S GRID (every firing except the 02:30 backup), NOT A
+ * NEW TRIGGER. The laptop routine was hourly; an hourly Worker cron would need
+ * 24 literal expressions, because tooling/ops/check-heartbeats.mjs refuses
+ * `0 * * * *` (see wrangler.jsonc), and widening that parser is a change to the
+ * thing every freshness verdict rests on. Six-hourly is a real loss of
+ * resolution against hourly, stated here rather than hidden; what it buys is a
+ * watchdog that runs with the lid shut, which the hourly one never did (monitor
+ * 30's measured worst gap was 4.98h anyway).
+ */
+export const OPS_WATCHDOG_JOB = 'ops_watchdog';
+
+/**
+ * Run the checks, record their rows, and ONLY THEN beat OPS_WATCHDOG_HEARTBEAT_URL.
+ *
+ * ⚠️ THE BEAT CLAIMS "THE CHECKS RAN TO THE END", the platformCronBeat contract.
+ * Not-configured and unreadable limbs are recorded (ok=0) and still beat —
+ * they completed and said so. If the checks THROW, one ok=0 row records it and
+ * the beat is withheld: the missed beat is the alarm.
+ */
+export async function opsWatchdogJob(
+  env: Env,
+  checks: (env: Env) => Promise<HeartbeatRow[]> = runOpsWatchdogChecks,
+): Promise<'beat' | 'skipped' | 'failed' | 'withheld'> {
+  let rows: HeartbeatRow[];
+  try {
+    rows = await checks(env);
+  } catch (err) {
+    console.log(`[cron] ops watchdog threw - heartbeat WITHHELD: ${String(err).slice(0, 120)}`);
+    await recordHeartbeat(
+      env,
+      [{ target: '(watchdog)', ok: false, detail: `checks threw, heartbeat withheld: ${String(err)}`.slice(0, 200) }],
+      OPS_WATCHDOG_JOB,
+    );
+    return 'withheld';
+  }
+  rows.push({ target: '(watchdog)', ok: true, detail: `completed: ${rows.length} check row(s), ${rows.filter((r) => !r.ok).length} not ok` });
+  await recordHeartbeat(env, rows, OPS_WATCHDOG_JOB);
+  return sendHeartbeat(env.OPS_WATCHDOG_HEARTBEAT_URL, 'OPS_WATCHDOG_HEARTBEAT_URL');
 }
 
 export const scheduled: ExportedHandlerScheduledHandler<Env> = async (event, env, ctx) => {
@@ -2287,17 +2378,21 @@ async function runFiring(event: ScheduledController | undefined, env: Env): Prom
   // — see NIGHTLY_CRON for why that is the safe direction.
   if (typeof event?.cron === 'string' && event.cron !== NIGHTLY_CRON) {
     await dispatchGithubWorkflows(env);
+    // Read-only (cancel only behind the owner's flag), bounded by 10s per call.
+    await opsWatchdogJob(env);
     return;
   }
   await keepAliveSupabase(env);
   await analyticsLiveness(env);
   await boxbReachability(env);
+  await boxaReachability(env);
   // [research/76 §C] Phase 1 of the GitHub-scheduler replacement. Placed
   // here rather than last because it is bounded (10s per target) and writes
   // nothing destructive; the sweep stays last for its own stated reason. It
   // fires Renovate, which nothing gates a merge on - the deliberately cheap
   // proving ground for the rail ops-watch will eventually move to.
   await dispatchGithubWorkflows(env);
+  await opsWatchdogJob(env);
   await renewalsFanOut(env);
   // Re-derives stored money notifications that never concluded. Its position
   // is not a safety property either: it writes through the one entitlement

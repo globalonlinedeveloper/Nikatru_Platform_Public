@@ -408,6 +408,10 @@ describe('the census is actually wired into the nightly cron', () => {
     const jobs = db.rows('SELECT DISTINCT job FROM cron_heartbeat ORDER BY job').map((r) => r.job);
     expect(jobs).toEqual([
       'analytics_liveness',
+      // Added 2026-09-18 (O-LAPTOP-ROUTINES-DIE-OVERNIGHT): Box A reachability over
+      // HTTP, beside Box B's. No BOXA_REACH_URLS in this env, so its row is the
+      // honest not-configured ok=0 - which still makes it a written job.
+      'boxa_reachability',
       // Added 2026-09-12 (O-BOXB-OUTAGE-INVISIBLE-TO-GLITCHTIP): Box B probed from
       // Cloudflare, because the GlitchTip monitors that watch Box B RUN ON BOX B and
       // an outage that takes the prober with it leaves a GAP, not an alarm. Same
@@ -429,6 +433,9 @@ describe('the census is actually wired into the nightly cron', () => {
       // whose derivation never concluded (test/money-rederive.test.ts). Same
       // reason as the line above — this is where a newly wired job is checkable.
       'money_rederive',
+      // Added 2026-09-18 (O-LAPTOP-ROUTINES-DIE-OVERNIGHT): the ops watchdog, run
+      // right after the dispatcher on every non-backup firing.
+      'ops_watchdog',
       'renewals',
       'retention_sweep',
       'supabase_keepalive',
