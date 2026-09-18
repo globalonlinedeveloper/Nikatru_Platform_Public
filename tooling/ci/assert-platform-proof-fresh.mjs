@@ -144,6 +144,7 @@ import { fileURLToPath } from 'node:url';
 import { parseWorkflow, shellSegments, WORKFLOW_DIR } from './workflow-scan.mjs';
 import { cronExpressions } from './assert-e2e-proof-fresh.mjs';
 import { flutterAppChannel, undeclaredSurfaceLine } from './channel-surface.mjs';
+import { judgeRunPage, needsCrossRead, crossReadTerm } from './run-page-anchor.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const WORKFLOW = 'build-platforms.yml';
@@ -862,7 +863,43 @@ async function fetchRuns() {
   });
   if (!res.ok) throw new Error(`GitHub API returned ${res.status} for ${WORKFLOW} runs`);
   const body = await res.json();
-  return body.workflow_runs;
+  // 🔴 THE STALE PAGE, ANCHORED (2026-09-18, coverage unit `stale-run-page`).
+  // PR #806's CI read this very URL and was answered with a page whose newest
+  // scheduled green was run 32003607931 of 2026-08-17 — 32.3 days — while run
+  // 35215254802 of 2026-09-17 existed; the rerun passed. One read cannot see
+  // that it is behind, so a page old enough to move the verdict is cross-read
+  // by creation date (a different cache key and filter path), and a newer run
+  // on the cross-read makes the history UNREADABLE: thrown here, reported by
+  // main() as COVERAGE LOST, never as "not fresh". See run-page-anchor.mjs.
+  return anchoredRuns(repo, url, body?.workflow_runs, token, Date.now());
+}
+
+/** Applies the cross-read anchor to one page. Returns the runs or THROWS
+ *  `stale page — …`. Exported so the measured stale page is a test case with
+ *  no network: `crossRead(url)` is injectable. */
+export async function anchoredRuns(repo, url, runs, token, nowMs, crossRead = null) {
+  if (!Array.isArray(runs)) throw new Error(`the ${WORKFLOW} run list came back without a workflow_runs array`);
+  const term = needsCrossRead(runs, nowMs) ? crossReadTerm(runs) : null;
+  if (!term) return runs;
+  const crossUrl = url.replace(/per_page=\d+/, `${term}&per_page=10`);
+  const read =
+    crossRead ??
+    (async (u) => {
+      const r = await fetch(u, {
+        headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', 'user-agent': 'nikatru-ci' },
+      });
+      if (!r.ok) throw new Error(`GitHub API returned ${r.status} for the ${WORKFLOW} cross-read`);
+      return r.json();
+    });
+  const cross = await read(crossUrl);
+  if (!Array.isArray(cross?.workflow_runs)) throw new Error(`the ${WORKFLOW} cross-read came back without a workflow_runs array`);
+  const verdict = judgeRunPage(runs, {
+    what: `the successful-run history of ${WORKFLOW} in ${repo}`,
+    cross: { runs: cross.workflow_runs, why: 'a cross-read of the same question by creation date' },
+    nowMs,
+  });
+  if (!verdict.ok) throw new Error(verdict.why);
+  return runs;
 }
 
 async function main() {

@@ -2637,7 +2637,7 @@ function branchPage(repo, workflow, branch, cache) {
             }
           }
         }
-        return { runs, pageFull: wide.workflow_runs.length >= RUN_PAGE_WIDE };
+        return anchoredBranchPage(repo, workflow, branch, runs, wide.workflow_runs.length >= RUN_PAGE_WIDE); // stale-run-page anchor, see file end
       })(),
     );
   }
@@ -5389,6 +5389,90 @@ async function main() {
     `ok  operations register — ${stats.rows} rows; ${workflows.length} workflow(s) and ${cronConfigs.length} cron config(s) all classified; ` +
       `${requiredIds.length} external ids present; ${customDomains.length} custom domain(s) delegated to ${delegated} (${hostCount} hosts) [pipeline O-1]`,
   );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔴 THE STALE PAGE BOTH READS AGREE ON — the anchor. Added 2026-09-18,
+// coverage unit `stale-run-page` (the same unit reconcileRunReads opened).
+//
+// reconcileRunReads above refuses when the two widths DISAGREE. On 2026-09-18
+// ops-watch run 35369631763 was served the SAME stale page at both widths —
+// ops-watch.yml's newest scheduled success read as run 33228655039 of
+// 2026-08-29 while three newer ones existed — so both reads agreed, the page
+// was believed, and three step-level duties read "NO SUCCESSFUL RUN AT ALL".
+// Agreement between two reads of one replica is not evidence. So every shared
+// branch page must now also satisfy an ANCHOR it cannot satisfy when stale —
+// the self-run, branch-head and cross-read anchors in run-page-anchor.mjs,
+// which carries the measurements and the one named residue. A violated anchor
+// THROWS, and a throw here is `unreadable` at every call site, exactly as a
+// disagreement already was: printed, never a pass, never a red.
+//
+// It is appended at the end of the file ON PURPOSE: branchPage above changed
+// by exactly one line, so every `assert-ops-register.mjs:NNN` citation in the
+// corpus still lands where it did.
+// ─────────────────────────────────────────────────────────────────────────────
+import { judgeRunPage, selfRunFloor, headAnchor, pushTriggersBranch, needsCrossRead } from './run-page-anchor.mjs';
+
+/** Per-process caches — ONE branch HEAD read and ONE repository-wide run page
+ *  per branch per guard run, whatever the number of workflows. */
+const BRANCH_HEADS = new Map();
+const REPO_RUN_PAGES = new Map();
+
+/** The real I/O the anchor needs; a test hands in its own. */
+function anchorIo() {
+  return {
+    env: process.env,
+    nowMs: Date.now(),
+    readWorkflow: (file) => {
+      const p = join(ROOT, '.github', 'workflows', file);
+      return existsSync(p) ? readFileSync(p, 'utf8') : null;
+    },
+    branchHead: (repo, branch) => {
+      const key = `${repo}|${branch}`;
+      if (!BRANCH_HEADS.has(key)) BRANCH_HEADS.set(key, ghJson(`/repos/${repo}/commits/${encodeURIComponent(branch)}`));
+      return BRANCH_HEADS.get(key);
+    },
+    repoRunsPage: (repo, branch) => {
+      const key = `${repo}|${branch ?? ''}`;
+      if (!REPO_RUN_PAGES.has(key)) {
+        const br = branch ? `branch=${encodeURIComponent(branch)}&` : '';
+        REPO_RUN_PAGES.set(key, ghJson(`/repos/${repo}/actions/runs?${br}per_page=100`));
+      }
+      return REPO_RUN_PAGES.get(key);
+    },
+  };
+}
+
+/** Applies the anchors to one cross-checked branch page. Returns the page
+ *  unchanged when every anchor that applies holds; THROWS `stale page — …`
+ *  when one does not. Exported so the measured stale page is a test case. */
+export async function anchoredBranchPage(repo, workflow, branch, runs, pageFull, io = anchorIo()) {
+  const what = `the run history of ${workflow}${branch ? ` on ${branch}` : ''}`;
+  const floor = selfRunFloor(io.env, { repo, workflow, branch });
+  let head = null;
+  if (branch && pushTriggersBranch(io.readWorkflow(workflow), branch)) {
+    head = headAnchor(await io.branchHead(repo, branch), io.nowMs, branch);
+  }
+  let cross = null;
+  // THE CROSS-READ, AT REPOSITORY GRAIN. It is the weakest anchor, so it is
+  // spent only on a page no stronger anchor holds — and it is ONE request per
+  // branch for the whole guard run, not one per workflow: the repository-wide
+  // run list (a different endpoint from the per-workflow one, so a different
+  // cache key and index), filtered here by `path`. Measured on the 2026-09-11
+  // replay, a per-workflow cross-read cost 7 requests and broke this guard's
+  // request ceiling; this costs 1. Its window is the newest 100 runs on the
+  // branch (~33h on main, measured 2026-09-18), which is ample for the pages
+  // it exists for — a page days or weeks behind. One-way, like every cross-read:
+  // a run it does not hold can never make a page stale.
+  if (!floor && !head && needsCrossRead(runs, io.nowMs)) {
+    const body = await io.repoRunsPage(repo, branch);
+    if (!Array.isArray(body?.workflow_runs)) throw new Error(`the repository-wide run list${branch ? ` on ${branch}` : ''} came back without a workflow_runs array`);
+    const path = `.github/workflows/${workflow}`;
+    cross = { runs: body.workflow_runs.filter((r) => r?.path === path), why: `the repository-wide run list${branch ? ` on ${branch}` : ''}` };
+  }
+  const verdict = judgeRunPage(runs, { what, floor, head, cross, nowMs: io.nowMs });
+  if (!verdict.ok) throw new Error(verdict.why);
+  return { runs, pageFull };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {

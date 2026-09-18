@@ -214,6 +214,7 @@ function replayStub(readFileSync, writeFileSync) {
   Date.now = () => NOW_MS;
   const ghStatus = Number(process.env.OPS_REPLAY_GITHUB_STATUS || 200);
   const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+  const replaySha = (id) => String(id).padStart(40, '0');
   // ⏱ 2026-09-11 — EVERY REQUEST THE GUARD MAKES IS COUNTED, by provider, and
   // written on exit when OPS_REPLAY_COUNT_FILE names a file. The quota a CI run
   // spends is a number, so the change that cuts it is proven by a number.
@@ -235,13 +236,41 @@ function replayStub(readFileSync, writeFileSync) {
         const wf = decodeURIComponent(parts[wfAt + 1]);
         const sp = url.searchParams;
         const want = sp.get('status');
-        const rows = (F.runs[wf] ?? [])
-          .map(([id, event, conclusion, updatedAt]) => ({ id, event, conclusion, status: 'completed', updated_at: updatedAt, created_at: updatedAt, head_branch: 'main' }))
+        // ⏱ 2026-09-18 — THE RUN THAT IS READING IS ON THE PAGE, as it is live: a
+        // guard inside run GITHUB_RUN_ID of this workflow on main sees that run,
+        // in progress, in an unfiltered history of it (the self-run anchor in
+        // run-page-anchor.mjs depends on exactly that). It has no conclusion, so
+        // it answers no success/failure/completed question.
+        const selfRef = String(process.env.GITHUB_WORKFLOW_REF ?? '');
+        const self = process.env.GITHUB_RUN_ID && selfRef.split('@')[0].endsWith(`/.github/workflows/${wf}`) && process.env.GITHUB_REF === 'refs/heads/main'
+          ? [[Number(process.env.GITHUB_RUN_ID), process.env.GITHUB_EVENT_NAME ?? 'schedule', null, F.now, 'in_progress']]
+          : [];
+        const rows = [...(F.runs[wf] ?? []), ...self.filter(([id]) => !(F.runs[wf] ?? []).some((r) => r[0] === id))]
+          .map(([id, event, conclusion, updatedAt, status = 'completed']) => ({ id, event, conclusion, status, updated_at: updatedAt, created_at: updatedAt, head_branch: 'main', head_sha: replaySha(id) }))
           .filter((r) => !sp.get('branch') || r.head_branch === sp.get('branch'))
+          .filter((r) => !sp.get('created') || !sp.get('created').startsWith('>=') || r.created_at >= sp.get('created').slice(2))
           .filter((r) => !sp.get('event') || r.event === sp.get('event'))
           .filter((r) => !want || want === 'completed' || r.conclusion === want)
           .sort((a, b) => b.updated_at.localeCompare(a.updated_at));
         return json({ total_count: rows.length, workflow_runs: rows.slice(0, Number(sp.get('per_page') || 30)) });
+      }
+      // ⏱ 2026-09-18 — the branch-head anchor (run-page-anchor.mjs). Every run
+      // carries a replay sha derived from its id, and main HEAD is the newest
+      // ci.yml run's commit, dated when that run finished — the shape a live
+      // push-triggered history has, so the anchor is exercised, not bypassed.
+      if (parts[3] === 'commits' && parts.length === 5) {
+        const ci = (F.runs['ci.yml'] ?? []).slice().sort((a, b) => b[0] - a[0])[0];
+        return json({ sha: replaySha(ci ? ci[0] : 0), commit: { message: 'replay', committer: { date: ci ? ci[3] : F.now } } });
+      }
+      // ⏱ 2026-09-18 — the repository-wide run list, the stale-page cross-read
+      // (assert-ops-register.mjs anchoredBranchPage): every workflow's runs, each
+      // carrying its `path`, newest first.
+      if (parts.length === 5 && parts[3] === 'actions' && parts[4] === 'runs') {
+        const rows = Object.entries(F.runs ?? {})
+          .flatMap(([wf, list]) => list.map(([id, event, conclusion, updatedAt]) => ({ id, event, conclusion, status: 'completed', updated_at: updatedAt, created_at: updatedAt, head_branch: 'main', head_sha: replaySha(id), path: `.github/workflows/${wf}` })))
+          .filter((r) => !url.searchParams.get('branch') || r.head_branch === url.searchParams.get('branch'))
+          .sort((a, b) => b.id - a.id);
+        return json({ total_count: rows.length, workflow_runs: rows.slice(0, Number(url.searchParams.get('per_page') || 30)) });
       }
       const runAt = parts.indexOf('runs');
       if (runAt !== -1 && parts[runAt + 2] === 'jobs') {

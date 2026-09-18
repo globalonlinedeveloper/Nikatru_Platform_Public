@@ -15,7 +15,16 @@ import {
   OPS_MAIN_WORKFLOWS,
   OPS_GLITCHTIP_MONITORS,
   OPS_WATCHDOG_MAX_SUBREQUESTS,
+  OPS_MAIN_READ_ATTEMPTS,
+  OPS_MAIN_PAGE_SIZE,
+  OPS_PUSH_TRIGGERED_ON_MAIN,
+  OPS_HEAD_RUN_GRACE_MS,
+  OPS_ANCHOR_RACE_MS,
+  judgeMainPage,
+  mainHeadAnchor,
 } from '../src/ops-watchdog';
+import ciYml from '../../../.github/workflows/ci.yml?raw';
+import opsWatchYml from '../../../.github/workflows/ops-watch.yml?raw';
 import type { Env } from '../src/types';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -56,11 +65,15 @@ const json = (body: unknown, status = 200) =>
 
 const minutesAgo = (m: number) => new Date(NOW - m * 60_000).toISOString();
 
+/** main HEAD in the double — every fresh page holds a run of it. */
+const HEAD_SHA = 'a'.repeat(40);
+
 /** A GitHub + GlitchTip double. `runs` are served under in_progress; queued is empty. */
 function apiDouble(opts: {
   runs?: { id: number; status: string; run_started_at?: string; created_at?: string }[];
   cancelStatus?: number;
   conclusion?: string;
+  stale?: boolean;
   isUp?: boolean;
   events?: string[];
 }) {
@@ -74,7 +87,14 @@ function apiDouble(opts: {
     if (url.includes('/actions/runs?status=in_progress')) return json({ total_count: opts.runs?.length ?? 0, workflow_runs: opts.runs ?? [] });
     if (url.includes('/actions/runs?status=queued')) return json({ total_count: 0, workflow_runs: [] });
     if (url.endsWith('/cancel')) return new Response('', { status: opts.cancelStatus ?? 202 });
-    if (url.includes('/actions/workflows/')) return json({ workflow_runs: [{ id: 99, conclusion: opts.conclusion ?? 'success', updated_at: minutesAgo(30) }] });
+    if (url.endsWith('/commits/main')) return json({ sha: HEAD_SHA, commit: { message: 'm', committer: { date: minutesAgo(600) } } });
+    if (url.includes('/actions/workflows/') && opts.stale) {
+      // A page three days behind that never mentions HEAD, and a cross-read that knows a newer run.
+      const old = minutesAgo(3 * 24 * 60);
+      if (url.includes('created=')) return json({ workflow_runs: [{ id: 60, status: 'completed', conclusion: 'success', created_at: old, updated_at: old }] });
+      return json({ workflow_runs: [{ id: 50, head_sha: 'f'.repeat(40), status: 'completed', conclusion: 'success', created_at: old, updated_at: old }] });
+    }
+    if (url.includes('/actions/workflows/')) return json({ workflow_runs: [{ id: 99, head_sha: HEAD_SHA, status: 'completed', conclusion: opts.conclusion ?? 'success', created_at: minutesAgo(30), updated_at: minutesAgo(30) }] });
     if (url.includes('/monitors/')) return json({ name: 'm', isUp: opts.isUp ?? true, lastChange: minutesAgo(60) });
     return new Response('', { status: 404 });
   });
@@ -292,14 +312,121 @@ describe('opsWatchdogJob — beat only after the work, never when it throws', ()
   });
 
   it('@ceiling — the declared subrequest budget is the sum of its parts, and the worst case stays inside it', async () => {
-    expect(OPS_WATCHDOG_MAX_SUBREQUESTS).toBe(2 + OPS_MAX_CANCELS_PER_RUN + OPS_MAIN_WORKFLOWS.length + OPS_GLITCHTIP_MONITORS.length + 1);
+    expect(OPS_WATCHDOG_MAX_SUBREQUESTS).toBe(
+      2 + OPS_MAX_CANCELS_PER_RUN + 1 + OPS_MAIN_WORKFLOWS.length * OPS_MAIN_READ_ATTEMPTS * 2 + OPS_GLITCHTIP_MONITORS.length + 1,
+    );
+    // Worst case: every cancel, AND every main page stale on every attempt, so each spends its retry and its cross-reads.
     const runs = Array.from({ length: 20 }, (_, i) => ({ id: i + 1, status: 'in_progress', run_started_at: minutesAgo(9999) }));
-    const { f } = apiDouble({ runs });
+    const { f } = apiDouble({ runs, stale: true });
     vi.spyOn(console, 'log').mockImplementation(() => {});
     const { e } = env({
       GITHUB_DISPATCH_TOKEN: TOKEN, GLITCHTIP_TOKEN: GT_TOKEN, OPS_WATCHDOG_HEARTBEAT_URL: BEAT, OPS_WATCHDOG_CANCEL_STUCK: 'true',
     });
     await opsWatchdogJob(e);
     expect(f.mock.calls.length).toBe(OPS_WATCHDOG_MAX_SUBREQUESTS);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔴 THE STALE PAGE — measured 2026-09-18 at this job's 12:00Z firing: ci.yml's
+// newest completed run on main read as 35117703012 (2026-09-16, head 8f2af054)
+// while 35340873024 (11:41:25Z, head 553e814a = main HEAD, committed 11:41:23Z)
+// existed. The real ids and times are the fixture. GREEN CONTROL first.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('checkMainConclusions — a stale page is UNREADABLE, never a verdict', () => {
+  const HEAD_553 = '553e814a395420fecf637c95816b751aafcff1d3';
+  const STALE_RUN = { id: 35117703012, head_sha: '8f2af054ee7473f09c1c997fb9981ebae7e23c34', status: 'completed', conclusion: 'success', created_at: '2026-09-16T15:47:32Z', updated_at: '2026-09-16T15:54:47Z' };
+  const FRESH_RUN = { id: 35340873024, head_sha: HEAD_553, status: 'completed', conclusion: 'success', created_at: '2026-09-18T11:41:25Z', updated_at: '2026-09-18T11:48:02Z' };
+  const OPS_WATCH_RUN = { id: 35338000000, head_sha: 'b'.repeat(40), status: 'completed', conclusion: 'success', created_at: '2026-09-18T11:30:00Z', updated_at: '2026-09-18T11:40:00Z' };
+
+  function measured(ciPage: unknown[], crossPage: unknown[] = []) {
+    const urls: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      urls.push(url);
+      if (url.endsWith('/commits/main')) return json({ sha: HEAD_553, commit: { message: 'feat(platform): ops watchdog (#802)', committer: { date: '2026-09-18T11:41:23Z' } } });
+      if (url.includes('/workflows/ci.yml/') && url.includes('created=')) return json({ workflow_runs: crossPage });
+      if (url.includes('/workflows/ci.yml/')) return json({ workflow_runs: ciPage });
+      if (url.includes('/workflows/ops-watch.yml/')) return json({ workflow_runs: [OPS_WATCH_RUN] });
+      return new Response('', { status: 404 });
+    }));
+    return urls;
+  }
+
+  it('GREEN CONTROL — the current page (holds main HEAD\'s run) is believed and graded', async () => {
+    measured([FRESH_RUN, STALE_RUN]);
+    const rows = await checkMainConclusions(env({ GITHUB_DISPATCH_TOKEN: TOKEN }).e, NOW);
+    expect(rows[0]).toEqual({ target: 'main:ci.yml', ok: true, detail: 'ci.yml on main: success (run 35340873024, 2026-09-18T11:48:02Z)' });
+    expect(rows[1].ok).toBe(true);
+  });
+
+  it('🔴 THE MEASURED PAGE — ends at 35117703012, no run of HEAD 553e814a: ok=0 "unreadable: stale page", retried once', async () => {
+    const urls = measured([STALE_RUN], [FRESH_RUN]);
+    const rows = await checkMainConclusions(env({ GITHUB_DISPATCH_TOKEN: TOKEN }).e, NOW);
+    expect(rows[0].ok).toBe(false);
+    expect(rows[0].detail).toMatch(/^unreadable: stale page: the page ends at run 35117703012 and holds no run of main HEAD 553e814a/);
+    expect(rows[0].detail).not.toMatch(/FINDING/);
+    const pages = urls.filter((u) => u.includes('/workflows/ci.yml/') && !u.includes('created='));
+    expect(pages.map((u) => new URL(u).searchParams.get('per_page'))).toEqual(
+      Array.from({ length: OPS_MAIN_READ_ATTEMPTS }, (_, i) => String(OPS_MAIN_PAGE_SIZE + i)),
+    );
+    expect(urls.filter((u) => u.endsWith('/commits/main'))).toHaveLength(1);
+    expect(rows[1].ok).toBe(true); // one stale workflow does not poison the other row
+  });
+
+  it('a stale first read and a current retry is believed — the retry is the recovery, not a second opinion', async () => {
+    let n = 0;
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/commits/main')) return json({ sha: HEAD_553, commit: { message: 'm', committer: { date: '2026-09-18T11:41:23Z' } } });
+      if (url.includes('created=')) return json({ workflow_runs: [FRESH_RUN] });
+      if (url.includes('/workflows/ci.yml/')) return json({ workflow_runs: n++ === 0 ? [STALE_RUN] : [FRESH_RUN] });
+      return json({ workflow_runs: [OPS_WATCH_RUN] });
+    }));
+    const rows = await checkMainConclusions(env({ GITHUB_DISPATCH_TOKEN: TOKEN }).e, NOW);
+    expect(rows[0].ok).toBe(true);
+    expect(rows[0].detail).toMatch(/run 35340873024/);
+  });
+
+  it('🔴 an unreadable main HEAD is an unreadable row, never a silently unanchored page', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/commits/main')) return new Response('', { status: 502 });
+      return json({ workflow_runs: [FRESH_RUN] });
+    }));
+    const rows = await checkMainConclusions(env({ GITHUB_DISPATCH_TOKEN: TOKEN }).e, NOW);
+    expect(rows[0].ok).toBe(false);
+    expect(rows[0].detail).toMatch(/^unreadable: .*HTTP 502/);
+  });
+
+  it('judgeMainPage — the cross-read anchor refuses a newer run outside the race window and accepts one inside it', () => {
+    const page = [STALE_RUN];
+    expect(judgeMainPage(page, { cross: [STALE_RUN], nowMs: NOW })).toEqual({ ok: true });
+    const r = judgeMainPage(page, { cross: [FRESH_RUN], nowMs: NOW });
+    expect(r.ok).toBe(false);
+    expect(!r.ok && r.why).toMatch(/stale page: the page ends at run 35117703012 but a cross-read by creation date answered run 35340873024/);
+    const justNow = { ...FRESH_RUN, updated_at: new Date(NOW - OPS_ANCHOR_RACE_MS).toISOString() };
+    expect(judgeMainPage(page, { cross: [justNow], nowMs: NOW })).toEqual({ ok: true });
+    const overEdge = { ...FRESH_RUN, updated_at: new Date(NOW - OPS_ANCHOR_RACE_MS - 1).toISOString() };
+    expect(judgeMainPage(page, { cross: [overEdge], nowMs: NOW }).ok).toBe(false);
+  });
+
+  it('mainHeadAnchor — a HEAD younger than the grace, or carrying a skip marker, anchors nothing; a malformed one throws', () => {
+    const at = (ms: number) => new Date(NOW - ms).toISOString();
+    const body = (date: string, message = 'm') => ({ sha: HEAD_553, commit: { message, committer: { date } } });
+    expect(mainHeadAnchor(body(at(OPS_HEAD_RUN_GRACE_MS)), NOW)).toBe(HEAD_553);
+    expect(mainHeadAnchor(body(at(OPS_HEAD_RUN_GRACE_MS - 1)), NOW)).toBeNull();
+    expect(mainHeadAnchor(body(at(OPS_HEAD_RUN_GRACE_MS * 10), 'docs: x [skip ci]'), NOW)).toBeNull();
+    expect(() => mainHeadAnchor({ sha: 'nope', commit: {} }, NOW)).toThrow(/40-hex sha/);
+  });
+
+  it('OPS_PUSH_TRIGGERED_ON_MAIN matches the workflows: ci.yml runs on every push to main, ops-watch.yml on none', () => {
+    const pushOnMain = (yml: string) => /\n {2}push:[^\n]*\n {4}branches: \[[^\]]*\bmain\b/.test(yml) && !/\n {4}paths(?:-ignore)?:/.test(yml);
+    const onBlock = (yml: string) => yml.slice(yml.search(/^on:/m)).split(/\n(?=\S)/)[0];
+    expect(pushOnMain(onBlock(ciYml))).toBe(true);
+    expect(pushOnMain(onBlock(opsWatchYml))).toBe(false);
+    expect([...OPS_PUSH_TRIGGERED_ON_MAIN].sort()).toEqual(
+      OPS_MAIN_WORKFLOWS.filter((w) => pushOnMain(onBlock(w === 'ci.yml' ? ciYml : opsWatchYml))).sort(),
+    );
   });
 });
