@@ -4802,6 +4802,8 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
 final Provider<RailConfig> railConfigProvider = X();
 final Provider<core.EntitlementTransport> entitlementTransportProvider = X();
 final Provider<core.CancellationTransport> cancellationTransportProvider = X();
+// ⏱ 2026-09-18 · O-PLAY-AI-CONTENT-REPORTING: lives in providers.dart on the real tree; the domain scan reads both files.
+final Provider<core.ContentReportTransport> contentReportTransportProvider = X();
 final Provider<PurchaseRail> purchaseRailProvider = X();
 final Provider<EntitlementConvergence> entitlementConvergenceProvider = X();
 // [pipeline 11]E-6 The funnel rides the SAME recorder as every other event. A
@@ -6834,7 +6836,9 @@ onTap: () => _openUrl(AppConfig.refundUrl),
       // classified under `store-age-gate-refuses`, so the gap count does not move.
       // 61 since 2026-09-16: `appleTokenKeeperProvider`, classified under
       // `apple-token-kept`, so the gap count does not move.
-      assert.match(out, /tracked domain: 61 chassis behaviour\(s\)/);
+      // 62 since 2026-09-18: `contentReportTransportProvider`, an ADMITTED gap, so the
+      // gap count below moves too (10 → 11).
+      assert.match(out, /tracked domain: 62 chassis behaviour\(s\)/);
       // The admitted gaps must PRINT. An inventory nobody sees is a list that
       // quietly grows; this is the same reasoning as the owner-gated residual.
       // 9, not 10: [pipeline C-13] moved notificationServiceProvider out of the
@@ -6866,7 +6870,7 @@ onTap: () => _openUrl(AppConfig.refundUrl),
       // them as covered because a test somewhere touches them is exactly the
       // inflation the two moves above were corrections FOR. The third addition,
       // `promoObjectedProvider`, is genuinely driven and does not appear here.
-      assert.match(out, /10 chassis behaviour\(s\) a stamped app does NOT prove/);
+      assert.match(out, /11 chassis behaviour\(s\) a stamped app does NOT prove/);
       // A gap that is STILL a gap, named — so this assertion cannot be
       // satisfied by the list going empty.
       assert.match(out, /featureFlagsProvider/);
@@ -6921,7 +6925,8 @@ onTap: () => _openUrl(AppConfig.refundUrl),
       // 2026-09-15: 58 → 59, the same three-file act for `ageSignalSourceProvider`
       // ([ADR 082] §5); MIN_DOMAIN went 59 → 60 in the same commit.
       // 2026-09-16: 59 → 60 for `appleTokenKeeperProvider`; MIN_DOMAIN went 60 → 61.
-      assert.match(out, /COVERAGE LOST — the domain parse found 60/);
+      // 2026-09-18: 60 → 61 for `contentReportTransportProvider`; MIN_DOMAIN went 61 → 62.
+      assert.match(out, /COVERAGE LOST — the domain parse found 61/);
     });
 
     // The scanner-stopped-scanning case, which is how this repo has been bitten

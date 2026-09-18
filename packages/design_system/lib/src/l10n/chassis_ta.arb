@@ -152,5 +152,22 @@
   "promoStopOffers": "சலுகைகளைக் காட்டுவதை நிறுத்து",
   "promoResumeOffers": "சலுகைகளை மீண்டும் காட்டு",
   "promoOffersOff": "சலுகைகள் அணைக்கப்பட்டுள்ளன",
-  "promoLabel": "விளம்பரம்"
+  "promoLabel": "விளம்பரம்",
+  "reportContent": "உருவாக்கப்பட்ட உள்ளடக்கத்தைப் புகாரளி",
+  "reportContentBody": "இந்த ஆப் உருவாக்கிய புண்படுத்தும் அல்லது தீங்கான ஒன்றைப் பற்றி எங்களிடம் சொல்லுங்கள். ஒவ்வொரு புகாரையும் நாங்கள் பரிசீலிக்கிறோம்.",
+  "reportReasonLabel": "காரணம்",
+  "reportReasonOffensive": "புண்படுத்துவது",
+  "reportReasonSexual": "பாலியல் உள்ளடக்கம்",
+  "reportReasonViolence": "வன்முறை",
+  "reportReasonHate": "வெறுப்பு அல்லது துன்புறுத்தல்",
+  "reportReasonSelfHarm": "சுய-தீங்கு",
+  "reportReasonDangerous": "ஆபத்தானது அல்லது சட்டவிரோதமானது",
+  "reportReasonMisinformation": "தவறானது அல்லது தவறாக வழிநடத்துவது",
+  "reportReasonOther": "வேறு ஏதாவது",
+  "reportExcerptLabel": "ஆப் என்ன உருவாக்கியது?",
+  "reportNoteLabel": "வேறு ஏதேனும் (விருப்பத்தேர்வு)",
+  "reportSubmit": "புகாரை அனுப்பு",
+  "reportSent": "நன்றி, உங்கள் புகார் அனுப்பப்பட்டது. ஒவ்வொரு புகாரையும் நாங்கள் பரிசீலிக்கிறோம்.",
+  "reportFailed": "உங்கள் புகார் அனுப்பப்படவில்லை. இணைப்பைச் சரிபார்த்து, பிறகு மீண்டும் முயலவும்.",
+  "reportDone": "முடிந்தது"
 }

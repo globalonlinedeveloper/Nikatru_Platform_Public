@@ -352,6 +352,23 @@
       }
     },
     {
+      "id": "settings.report-content",
+      "what": "Report AI-generated content to us from inside the app: a reason, what was generated, an optional note, and a result that says sent or not sent.",
+      "status": "present",
+      "declaredOn": "2026-09-18",
+      "detail": "O-PLAY-AI-CONTENT-REPORTING. Google Play, AI-Generated Content (answer/13985936, read 2026-09-18): an app that generates content with AI \"must contain in-app user reporting or flagging features that allow users to report or flag offensive content to developers without needing to exit the app\" — so a mailto: link or a web form does not satisfy it. The dialog posts to POST /v1/report on the platform Worker through core ContentReportTransport / api_client DioContentReportTransport; the result is a second phase of the dialog, like DestructiveConfirmDialog, because \"sent\" and \"not sent\" are different facts.",
+      "anchor": {
+        "file": "packages/chassis_screens/lib/settings/report_content_dialog.dart",
+        "symbol": "ReportContentDialog",
+        "kind": "class"
+      },
+      "reachable": {
+        "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/settings/settings_screen.dart",
+        "pattern": "? () => showReportContentDialog(context, ref)",
+        "why": "GATED, LIKE monetization.promo-card, AND THE GATE IS A DECLARATION RATHER THAN A FLAG. The Settings tile is passed only when AppConfig.generatesAiContent is true, and that constant is false in every stamped app until the app builds a feature that generates content — so the tile is mounted in the wiring and absent from the screen today, which is the correct state for an app that generates nothing. The pattern matches the WIRING in the stamped adapter, the only place a Riverpod-backed send can live; the chassis test report_content_dialog_test.dart proves both halves of the tile (absent with no callback, present and reaching it with one) and the dialog's own send and result phases."
+      }
+    },
+    {
       "id": "settings.language",
       "what": "Language picker, with \"follow the device\" as a real option.",
       "status": "present",

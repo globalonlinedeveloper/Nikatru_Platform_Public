@@ -197,7 +197,7 @@ describe('the guard says YES on the tree as it is', () => {
     // line, and it is PINNED here for the same reason the root line is: the root
     // staying at reachable == measured is the property, and "17 reachable, 12
     // measured" would print as a cheerful report-mode line if it ever slipped.
-    assert.match(out, /packages\/chassis_screens: 17 surface\(s\) reachable, 17 measured — the two sets are EQUAL/);
+    assert.match(out, /packages\/chassis_screens: 18 surface\(s\) reachable, 18 measured — the two sets are EQUAL/);
 
     assert.match(out, /apps\/subscriptiontracker: 19 surface\(s\) reachable, 19 measured — the two sets are EQUAL/);
     assert.match(
@@ -688,10 +688,10 @@ describe('the chassis_screens floors are floors, not report lines', () => {
   // GREEN CONTROL, FIRST. Without this half, R14a and R14b are equally
   // consistent with a fixture that fails for some unrelated reason — which is
   // exactly how a floor that never held reads as a floor that fires.
-  test('R14-control · GREEN CONTROL — the same fixture, unmutated, is 17/17 and passes', () => {
+  test('R14-control · GREEN CONTROL — the same fixture, unmutated, is 18/18 and passes', () => {
     const { code, out } = run(treeWithNewRoots());
     assert.equal(code, 0, out);
-    assert.match(out, /packages\/chassis_screens: 17 surface\(s\) reachable, 17 measured/);
+    assert.match(out, /packages\/chassis_screens: 18 surface\(s\) reachable, 18 measured/);
   });
 
   // ── R14a · A SURFACE LEAVES ────────────────────────────────────────────────
@@ -720,13 +720,13 @@ describe('the chassis_screens floors are floors, not report lines', () => {
     // and its measurement left together and the two sets stayed equal.
     assert.match(
       out,
-      /COVERAGE LOST — `packages\/chassis_screens` has only 16 responsive surface\(s\).*floor is 17/s,
+      /COVERAGE LOST — `packages\/chassis_screens` has only 17 responsive surface\(s\).*floor is 18/s,
     );
     // AND the ratchet on what was measured, which fires in the same run. Both
     // numbers moved 7 → 17 in the landing and both are load-bearing.
     assert.match(
       out,
-      /COVERAGE LOST — `packages\/chassis_screens` has 16 measured surface\(s\) and its measured floor is 17/s,
+      /COVERAGE LOST — `packages\/chassis_screens` has 17 measured surface\(s\) and its measured floor is 18/s,
     );
   });
 
@@ -754,7 +754,7 @@ describe('the chassis_screens floors are floors, not report lines', () => {
     assert.equal(code, 1, out);
     assert.match(
       out,
-      /COVERAGE LOST — `packages\/chassis_screens` yielded only 17 width test file\(s\).*checked-in floor is 18/s,
+      /COVERAGE LOST — `packages\/chassis_screens` yielded only 18 width test file\(s\).*checked-in floor is 19/s,
     );
     // This root ENFORCES, so the surface the deleted file measured is a FAIL and
     // not a print — the half R12 pins for apps/subscriptiontracker, here for the new root.

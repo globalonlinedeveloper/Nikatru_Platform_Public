@@ -478,6 +478,20 @@ const String kPlatformBaseUrl = String.fromEnvironment(
   defaultValue: 'https://platform.nikatru.com',
 );
 
+/// The in-app AI content report — `POST /v1/report` on the SHARED platform
+/// host. O-PLAY-AI-CONTENT-REPORTING.
+///
+/// Discards to [core.UnavailableContentReportTransport] when the backend is not
+/// live, like the cancel call: a demo build and every widget test are hermetic,
+/// and the dialog then says "not sent" rather than pretending it went.
+final Provider<core.ContentReportTransport> contentReportTransportProvider =
+    Provider<core.ContentReportTransport>((ref) {
+      if (!AppConfig.isBackendLive) {
+        return const core.UnavailableContentReportTransport();
+      }
+      return DioContentReportTransport(platformBaseUrl: kPlatformBaseUrl);
+    });
+
 /// The marketing version stamped on BOTH events and consent artifacts.
 ///
 /// Injected at BUILD time rather than read from `package_info_plus`, and that is

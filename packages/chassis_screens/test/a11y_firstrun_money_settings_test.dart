@@ -4,15 +4,18 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_chassis_screens/firstrun/onboarding_screen.dart';
 import 'package:nikatru_chassis_screens/monetization/manage_plan_screen.dart';
 import 'package:nikatru_chassis_screens/monetization/paywall_screen.dart';
+import 'package:nikatru_chassis_screens/settings/report_content_dialog.dart';
 import 'package:nikatru_chassis_screens/settings/settings_screen.dart';
+import 'package:nikatru_core/nikatru_core.dart';
 
 import 'support/a11y_harness.dart';
 import 'support/width_harness.dart';
 
 /// A11Y — FIRST RUN, THE MONEY SCREENS AND SETTINGS.
 ///
-/// The five surfaces this file sweeps — `OnboardingView`, `ManagePlanView`,
-/// `PaywallView`, `SettingsView` and `EditProfileDialog` — are the ones a
+/// The six surfaces this file sweeps — `OnboardingView`, `ManagePlanView`,
+/// `PaywallView`, `SettingsView`, `EditProfileDialog` and `ReportContentDialog`
+/// — are the ones a
 /// stamped app renders for the two decisions that cost the user something: the
 /// purchase and the account. See `a11y_auth_test.dart`'s header for what each
 /// case asserts and why; the same three `flutter_test` guidelines and the same
@@ -706,6 +709,87 @@ void main() {
           'edit-profile (kDesktop)',
           tappable: 3,
           labelled: 4,
+        );
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+      } finally {
+        handle.dispose();
+      }
+    });
+  });
+
+  // ── ReportContentDialog ───────────────────────────────────────────────────
+  // O-PLAY-AI-CONTENT-REPORTING. Swept in its FORM phase, the one with every
+  // control: eight reason rows, two fields and two buttons.
+  group('a11y: report-content', () {
+    testWidgets('light, kPhone', (WidgetTester tester) async {
+      final SemanticsHandle handle = tester.ensureSemantics();
+      try {
+        await pumpForA11y(
+          tester,
+          kPhone,
+          ReportContentDialog(
+            onSubmit: (ContentReport _) async =>
+                const Result<ContentReportReceipt>.err(Failure('unused')),
+          ),
+        );
+        expectSweepHadSubjects(
+          tester,
+          'report-content (light, kPhone)',
+          tappable: 11,
+          labelled: 17,
+        );
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+      } finally {
+        handle.dispose();
+      }
+    });
+
+    testWidgets('dark, kPhone', (WidgetTester tester) async {
+      final SemanticsHandle handle = tester.ensureSemantics();
+      try {
+        await pumpForA11y(
+          tester,
+          kPhone,
+          ReportContentDialog(
+            onSubmit: (ContentReport _) async =>
+                const Result<ContentReportReceipt>.err(Failure('unused')),
+          ),
+          brightness: Brightness.dark,
+        );
+        expectSweepHadSubjects(
+          tester,
+          'report-content (dark, kPhone)',
+          tappable: 11,
+          labelled: 17,
+        );
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+      } finally {
+        handle.dispose();
+      }
+    });
+
+    testWidgets('light, kDesktop', (WidgetTester tester) async {
+      final SemanticsHandle handle = tester.ensureSemantics();
+      try {
+        await pumpForA11y(
+          tester,
+          kDesktop,
+          ReportContentDialog(
+            onSubmit: (ContentReport _) async =>
+                const Result<ContentReportReceipt>.err(Failure('unused')),
+          ),
+        );
+        expectSweepHadSubjects(
+          tester,
+          'report-content (light, kDesktop)',
+          tappable: 11,
+          labelled: 17,
         );
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
         await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));

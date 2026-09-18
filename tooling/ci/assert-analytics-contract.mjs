@@ -491,14 +491,27 @@ const WIRE_CONTRACTS = [
     absentFromDart: '/v1/checkout',
   },
   {
+    // ⏱ 2026-09-18 · O-PLAY-AI-CONTENT-REPORTING, chassis half. This was a `gap`
+    // whose `absentFromDart` tripwire fired the moment the api_client transport
+    // began building '/v1/report' — which is exactly when this pin had to exist.
     id: 'report',
-    kind: 'gap',
-    reason:
-      '⏱ 2026-09-18 · O-PLAY-AI-CONTENT-REPORTING. NO CLIENT IN THIS REPO YET, AND IT IS A STATE: POST /v1/report is the Worker half of the in-app AI content report Google Play requires of an app that generates content with AI, and no app does yet. The chassis control and its api_client transport are the second half of the same row, due before the first content app\x27s Play listing. There is therefore no released client to break. What stands in for a pin meanwhile is services/platform/test/report.test.ts, which drives the real route over the real-SQL harness and asserts the request keys it accepts (app_id, reason, content_ref, content_excerpt, note), the 202 { ok, id } answer and every refusal code.',
-    /** THE CLAIM IS CHECKED, NOT ASSERTED. The day the chassis transport builds
-     *  this path there IS a released client, this gap becomes false and fails —
-     *  which is exactly when the second PR must replace it with a real `body` pin. */
-    absentFromDart: '/v1/report',
+    kind: 'body',
+    server: 'services/platform/src/routes/report.ts',
+    client: {
+      file: 'packages/core/lib/src/content_report_transport.dart',
+      member: 'static ContentReportReceipt? fromJson(',
+      reader: 'j',
+    },
+    requiredBoth: ['ok', 'id'],
+    clientOnly: {},
+    serverOnly: {},
+    /** The REQUEST half. The reporter is the session's subject, never a body
+     *  field, so these five are the whole wire; a rename on either side is a 400
+     *  for every report from every released build. */
+    request: {
+      client: { file: 'packages/api_client/lib/src/dio_content_report_transport.dart', marker: 'data: <String, Object?>' },
+      keys: ['app_id', 'reason', 'content_ref', 'content_excerpt', 'note'],
+    },
   },
 ];
 
