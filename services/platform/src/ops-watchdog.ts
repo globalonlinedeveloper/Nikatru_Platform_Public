@@ -75,15 +75,17 @@ export const OPS_FETCH_TIMEOUT_MS = 10_000;
  * THE EXTERNAL SUBREQUESTS ONE WATCHDOG PASS CAN SPEND, COUNTED, not estimated:
  *   2  run lists (status=in_progress, status=queued)
  * + 3  cancels at most (OPS_MAX_CANCELS_PER_RUN)
- * + 2  main conclusions (OPS_MAIN_WORKFLOWS)
+ * + 1  main's HEAD commit (the branch-head anchor, read once per pass)
+ * + 8  main conclusions: per OPS_MAIN_WORKFLOWS entry, OPS_MAIN_READ_ATTEMPTS
+ *      attempts of (one page + one cross-read) — see "THE STALE PAGE" below
  * + 2  GlitchTip monitor reads (OPS_GLITCHTIP_MONITORS)
  * + 1  the watchdog's own heartbeat POST (scheduled.ts, opsWatchdogJob)
- * = 10. test/ops-watchdog.test.ts recomputes this from the arrays above.
+ * = 17. test/ops-watchdog.test.ts recomputes this from the arrays above.
  * On the 06:00 firing it sits beside keep-alive (1+), Box B (3), Box A (N),
  * the dispatcher (≤3) and the cron beat (1): far inside 50 (Free) and 10,000 (Paid).
  * @ceiling workers.externalSubrequests lte
  */
-export const OPS_WATCHDOG_MAX_SUBREQUESTS = 10;
+export const OPS_WATCHDOG_MAX_SUBREQUESTS = 17;
 
 function githubHeaders(token: string): Record<string, string> {
   return {
@@ -167,22 +169,153 @@ export async function checkStuckRuns(env: Env, nowMs: number = Date.now()): Prom
   };
 }
 
-/** (b) main's latest COMPLETED run per declared workflow. */
-export async function checkMainConclusions(env: Env): Promise<HeartbeatRow[]> {
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔴 THE STALE PAGE — (b) is ANCHORED, not believed. Added 2026-09-18.
+//
+// MEASURED: this job's 12:00Z firing on 2026-09-18 read ci.yml's newest
+// completed run on main as 35117703012 (2026-09-16) while 35340873024 of 11:41Z
+// existed. GitHub's runs-list sometimes answers from a replica days behind, and
+// a second read of the same URL can be served the same old page. So a page is
+// believed only when it satisfies an anchor a stale page cannot:
+//   · BRANCH HEAD — for a workflow every push to main runs
+//     (OPS_PUSH_TRIGGERED_ON_MAIN), main's HEAD, read from the COMMITS endpoint
+//     (git storage, not the Actions replica), must have a run on the page once
+//     it is older than OPS_HEAD_RUN_GRACE_MS. Measured 2026-09-18: all 60
+//     newest main commits carry a ci.yml push run.
+//   · CROSS-READ — a page whose newest run is older than OPS_CROSS_READ_AFTER_MS
+//     is asked again by creation date (`created=>=<its newest>`): a different
+//     cache key and filter path. A newer run there, outside the race window,
+//     proves the page behind. One-way: a staler cross-read cannot fail a fresh page.
+// A violated anchor is retried ONCE at a different page size (a real parameter,
+// so a different cache key), and then the row is ok=0 "unreadable: stale page"
+// — the check could not read its subject, which is exactly what ok=0 means
+// here; it is never a FINDING. The node guards share the same three anchors
+// through tooling/ci/run-page-anchor.mjs; this is the Worker's copy of the two
+// that apply off-runner (the self-run anchor needs GITHUB_RUN_ID).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Workflows EVERY push to main runs — `on.push.branches: [main]`, no path
+ *  filter. ops-watch.yml is schedule/dispatch only, so it is not here.
+ *  test/ops-watchdog.test.ts re-derives this from .github/workflows. */
+export const OPS_PUSH_TRIGGERED_ON_MAIN: readonly string[] = ['ci.yml'];
+
+/** @ceiling none — a GitHub API PAGE SIZE, not a platform resource. The retry
+ *  asks for one more, which is a different cache key for the same question. */
+export const OPS_MAIN_PAGE_SIZE = 20;
+
+/** @ceiling none — attempts per workflow; each attempt is a page and a cross-read. */
+export const OPS_MAIN_READ_ATTEMPTS = 2;
+
+/** @ceiling none — how long a fresh main HEAD may lack its push run (ms). */
+export const OPS_HEAD_RUN_GRACE_MS = 10 * 60_000;
+
+/** @ceiling none — a run this recent (ms) may have landed between two reads. */
+export const OPS_ANCHOR_RACE_MS = 120_000;
+
+/** @ceiling none — a page whose newest run is younger than this (ms) is not cross-read. */
+export const OPS_CROSS_READ_AFTER_MS = 3 * 3_600_000;
+
+type MainRun = {
+  id: number;
+  head_sha?: string;
+  status?: string;
+  conclusion?: string | null;
+  created_at?: string;
+  updated_at?: string;
+};
+
+const isRunId = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) > 0;
+
+function newestRun(runs: MainRun[]): MainRun | null {
+  let best: MainRun | null = null;
+  for (const r of runs) if (isRunId(r?.id) && (!best || r.id > best.id)) best = r;
+  return best;
+}
+
+/** PURE. The anchor verdict for one page of main's history. */
+export function judgeMainPage(
+  runs: MainRun[],
+  opts: { headSha?: string | null; cross?: MainRun[] | null; nowMs: number },
+): { ok: true } | { ok: false; why: string } {
+  const top = newestRun(runs);
+  const ends = top ? `ends at run ${top.id}` : 'holds no run';
+  if (opts.headSha && !runs.some((r) => r?.head_sha === opts.headSha)) {
+    return { ok: false, why: `stale page: the page ${ends} and holds no run of main HEAD ${opts.headSha.slice(0, 8)}` };
+  }
+  for (const c of opts.cross ?? []) {
+    if (!isRunId(c?.id) || (top && c.id <= top.id)) continue;
+    const at = Date.parse(c.updated_at ?? c.created_at ?? '');
+    if (!Number.isNaN(at) && opts.nowMs - at <= OPS_ANCHOR_RACE_MS) continue;
+    return { ok: false, why: `stale page: the page ${ends} but a cross-read by creation date answered run ${c.id}` };
+  }
+  return { ok: true };
+}
+
+/** PURE. The HEAD sha a page must hold, or null when the anchor does not apply
+ *  yet (HEAD younger than the grace, or carrying a GitHub skip marker). THROWS
+ *  on a body without a 40-hex sha and a date — an unread anchor is not absent. */
+export function mainHeadAnchor(body: unknown, nowMs: number): string | null {
+  const c = body as { sha?: string; commit?: { message?: string; committer?: { date?: string } } } | null;
+  const sha = String(c?.sha ?? '');
+  const at = Date.parse(c?.commit?.committer?.date ?? '');
+  if (!/^[0-9a-f]{40}$/.test(sha) || Number.isNaN(at)) throw new Error('main HEAD came back without a 40-hex sha and a committer date');
+  if (/\[(?:skip ci|ci skip|no ci|skip actions|actions skip)\]/i.test(String(c?.commit?.message ?? ''))) return null;
+  return nowMs - at < OPS_HEAD_RUN_GRACE_MS ? null : sha;
+}
+
+async function githubGet(token: string, path: string): Promise<unknown> {
+  const res = await fetch(`https://api.github.com/repos/${OPS_REPO.owner}/${OPS_REPO.repo}${path}`, {
+    headers: githubHeaders(token),
+    signal: AbortSignal.timeout(OPS_FETCH_TIMEOUT_MS),
+  });
+  if (res.status !== 200) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+/** One anchored read of a workflow's history on main: the page, or an
+ *  `unreadable: …` reason. Never a verdict about the workflow itself. */
+async function readMainPage(
+  token: string,
+  wf: string,
+  head: () => Promise<string | null>,
+  nowMs: number,
+): Promise<{ runs: MainRun[] } | { unreadable: string }> {
+  let last = '';
+  for (let attempt = 0; attempt < OPS_MAIN_READ_ATTEMPTS; attempt++) {
+    const base = `/actions/workflows/${wf}/runs?branch=main`;
+    const body = (await githubGet(token, `${base}&per_page=${OPS_MAIN_PAGE_SIZE + attempt}`)) as { workflow_runs?: MainRun[] };
+    const runs = Array.isArray(body?.workflow_runs) ? body.workflow_runs : [];
+    const headSha = OPS_PUSH_TRIGGERED_ON_MAIN.includes(wf) ? await head() : null;
+    let cross: MainRun[] | null = null;
+    const top = newestRun(runs);
+    const topAt = Date.parse(top?.updated_at ?? top?.created_at ?? '');
+    if (top?.created_at && (Number.isNaN(topAt) || nowMs - topAt > OPS_CROSS_READ_AFTER_MS)) {
+      const c = (await githubGet(token, `${base}&created=${encodeURIComponent(`>=${top.created_at}`)}&per_page=5`)) as { workflow_runs?: MainRun[] };
+      cross = Array.isArray(c?.workflow_runs) ? c.workflow_runs : [];
+    }
+    const verdict = judgeMainPage(runs, { headSha, cross, nowMs });
+    if (verdict.ok) return { runs };
+    last = verdict.why;
+  }
+  return { unreadable: `${last} (after ${OPS_MAIN_READ_ATTEMPTS} reads)` };
+}
+
+/** (b) main's latest COMPLETED run per declared workflow, from an ANCHORED page. */
+export async function checkMainConclusions(env: Env, nowMs: number = Date.now()): Promise<HeartbeatRow[]> {
   const token = env.GITHUB_DISPATCH_TOKEN;
   const rows: HeartbeatRow[] = [];
+  let headRead: Promise<string | null> | null = null;
+  const head = () => (headRead ??= githubGet(token ?? '', '/commits/main').then((b) => mainHeadAnchor(b, nowMs)));
   for (const wf of OPS_MAIN_WORKFLOWS) {
     const target = `main:${wf}`;
     if (!token) { rows.push({ target, ok: false, detail: 'not configured: GITHUB_DISPATCH_TOKEN is not set on this Worker' }); continue; }
     try {
-      const res = await fetch(
-        `https://api.github.com/repos/${OPS_REPO.owner}/${OPS_REPO.repo}/actions/workflows/${wf}/runs?branch=main&status=completed&per_page=1`,
-        { headers: githubHeaders(token), signal: AbortSignal.timeout(OPS_FETCH_TIMEOUT_MS) },
-      );
-      if (res.status !== 200) { rows.push({ target, ok: false, detail: `unreadable: HTTP ${res.status}` }); continue; }
-      const body = (await res.json()) as { workflow_runs?: { id: number; conclusion?: string | null; updated_at?: string }[] };
-      const run = body.workflow_runs?.[0];
-      if (!run) { rows.push({ target, ok: false, detail: `unreadable: no completed ${wf} run on main` }); continue; }
+      const page = await readMainPage(token, wf, head, nowMs);
+      if ('unreadable' in page) { rows.push({ target, ok: false, detail: `unreadable: ${page.unreadable}`.slice(0, 300) }); continue; }
+      const run = page.runs
+        .filter((r) => isRunId(r?.id) && r.status === 'completed')
+        .sort((a, b) => b.id - a.id)[0];
+      if (!run) { rows.push({ target, ok: false, detail: `unreadable: no completed ${wf} run on main in the newest ${OPS_MAIN_PAGE_SIZE}` }); continue; }
       const conclusion = run.conclusion ?? 'null';
       const tag = conclusion === 'success' ? '' : 'FINDING: ';
       rows.push({ target, ok: true, detail: `${tag}${wf} on main: ${conclusion} (run ${run.id}, ${run.updated_at ?? '?'})` });

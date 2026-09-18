@@ -2543,6 +2543,14 @@
     "state": "LIBRARY"
   },
   {
+    "claims": [],
+    "invokedBy": [],
+    "kind": "guard",
+    "ref": "tooling/ci/run-page-anchor.mjs",
+    "references": [],
+    "state": "LIBRARY"
+  },
+  {
     "claims": [
       "ADR 004",
       "F-10",

@@ -165,6 +165,7 @@
   "retired-names-live.test.mjs": 16,
   "retired-names.test.mjs": 4,
   "rollup-lossless.test.mjs": 52,
+  "run-page-anchor.test.mjs": 21,
   "runner-budget.test.mjs": 24,
   "safe-rerun.test.mjs": 77,
   "scan-workflows.test.mjs": 12,
