@@ -4569,11 +4569,44 @@ describe('assert-ops-register — [14]O-3b · RED SINCE: a failed run is graded,
     assert.match(noWhy.errors[0] ?? '', /must say why/);
   });
 
-  test('PAGE-ONLY - the committed register scopes exactly the pipeline driver, and it holds', () => {
+  // ⏱ 2026-09-18 (later) — PIN MOVED DELIBERATELY from [DRIVER] to the three laptop
+  // routines. #802 moved the PORTABLE half of nikatru-ops-check and nikatru-watchdog
+  // onto the platform Worker cron (duty.platform-ops-watchdog-beat, GlitchTip monitor
+  // 40); the owner chose that what stays on the laptop (backup-task poll, Drive-bundle
+  // tags, dirty local trees, corpus live-assert) pages and does not block deploys.
+  // The set is pinned EXACTLY, so a fourth scoped row, or one of these losing its
+  // scope, is a deliberate edit here and never a silent drift.
+  const LAPTOP_PAGE_ONLY = ['duty.laptop.nikatru-ops-check', 'duty.laptop.nikatru-watchdog', DRIVER];
+  test('PAGE-ONLY - the committed register scopes exactly the three laptop routines, and it holds', () => {
     const reg = JSON.parse(readFileSync(resolve(CI_DIR, '..', 'ops', 'register.json'), 'utf8'));
     const scoped = reg.rows.filter((r) => r.liveVerdictScope !== undefined).map((r) => r.id);
-    assert.deepEqual(scoped, [DRIVER]);
+    assert.deepEqual(scoped, LAPTOP_PAGE_ONLY);
     assert.deepEqual(checkLiveVerdictScopes(reg, OWN_TOPO()).errors, []);
+    const byId = new Map(reg.rows.map((r) => [r.id, r]));
+    for (const id of LAPTOP_PAGE_ONLY) assert.equal(byId.get(id).liveVerdictScope.page, 'ops-watch.yml', `${id} pages in ops-watch.yml`);
+    for (const id of LAPTOP_PAGE_ONLY.slice(0, 2)) assert.match(byId.get(id).liveVerdictScope.why, /#802/, `${id} must say its portable half moved to the Worker`);
+  });
+
+  // ⏱ 2026-09-18 — the Worker half of the watchdog is its OWN watched duty, shaped
+  // exactly like duty.platform-cron-beat (the model), reading monitor 40.
+  test('the Worker ops watchdog beat is a watched duty shaped like duty.platform-cron-beat, on monitor 40', () => {
+    const reg = JSON.parse(readFileSync(resolve(CI_DIR, '..', 'ops', 'register.json'), 'utf8'));
+    const byId = new Map(reg.rows.map((r) => [r.id, r]));
+    const model = byId.get('duty.platform-cron-beat');
+    const beat = byId.get('duty.platform-ops-watchdog-beat');
+    assert.ok(beat, 'duty.platform-ops-watchdog-beat must exist');
+    assert.deepEqual(Object.keys(beat), Object.keys(model));
+    assert.deepEqual(Object.keys(beat.mechanism), Object.keys(model.mechanism));
+    assert.deepEqual(Object.keys(beat.mechanism.recordQuery), Object.keys(model.mechanism.recordQuery));
+    assert.equal(beat.kind, 'duty');
+    assert.equal(beat.cadence, '6h');
+    assert.equal(beat.mechanism.substrate, model.mechanism.substrate);
+    assert.equal(beat.mechanism.anchor, 'services/platform/src/ops-watchdog.ts');
+    assert.equal(beat.mechanism.recordQuery.reader, 'glitchtip-heartbeat');
+    assert.equal(beat.mechanism.recordQuery.monitor, 40);
+    assert.equal(beat.absenceWatcher.substrate, 'glitchtip-heartbeat');
+    const chains = JSON.parse(readFileSync(resolve(CI_DIR, '..', 'ops', 'alarm-chains.json'), 'utf8'));
+    assert.ok(chains.expectedMonitors.some((m) => m.id === 40), 'monitor 40 must be declared in alarm-chains.json expectedMonitors');
   });
 
   test('the OWN HOST edge is ONE row, never the domain - a red SIBLING still blocks on the host run', () => {

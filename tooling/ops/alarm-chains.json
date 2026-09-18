@@ -267,6 +267,10 @@
     {
       "id": 37,
       "name": "Platform Worker cron"
+    },
+    {
+      "id": 40,
+      "name": "Platform Worker ops watchdog"
     }
   ],
   "chainsObserved": {
