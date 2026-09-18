@@ -93,9 +93,9 @@ let reg;
 try {
   reg = JSON.parse(readFileSync(join(ROOT, REGISTER), 'utf8'));
 } catch (e) {
-  console.error(`FAIL ${REGISTER} could not be read or parsed (${e.message}). The screen set is undeclared, so nothing can be checked.`);
+  console.error(`FAIL COVERAGE LOST — ${REGISTER} could not be read or parsed (${e.message}). The screen set is undeclared, so nothing can be checked.`);
   console.error('\nassert-screen-set: FAILED');
-  process.exit(1);
+  coverageLost();
 }
 
 const screens = reg.screens ?? [];
@@ -698,10 +698,19 @@ if (problems.length) {
   console.error('');
   for (const p of problems) console.error(`FAIL ${p}`);
   console.error('\nassert-screen-set: FAILED');
-  process.exitCode = 1;
+  process.exitCode = problems.every((p) => p.startsWith('COVERAGE LOST')) ? 2 : 1; // could-not-look alone = 2, any finding = 1
 } else {
   console.log(
     `\nassert-screen-set: ok — ${present} present (${reachableChecked} reachability-proven, ${reachableExempt.length} exempt), ` +
       `${blocked.length} blocked, ${todo.length} to build, ${notBuilding.length} deliberately not built`,
   );
+}
+
+/** The hard COVERAGE LOST stop (the screen register could not be read, so nothing could be
+ *  checked): exit 2 — never 1, which would read as a finding (AGENTS.md exit-code convention,
+ *  O-EXIT2-CONVENTION-GAP). The accumulated limbs reach the same answer at the summary: exit 2
+ *  only when EVERY problem is a COVERAGE LOST. Declared LAST (hoisted) so every
+ *  `assert-screen-set.mjs:NNN` citation above keeps pointing at the line it names. */
+function coverageLost() {
+  process.exit(2);
 }

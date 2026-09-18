@@ -755,7 +755,7 @@ describe('assert-entitlement-contract — the money rail schema is complete befo
     const r = run({ m0004: null, m0001: '' });
     // An empty 0001 still leaves a file, so blank it AND remove 0004: the
     // entitlements table then parses out of nothing.
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2, r.out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(r.out, /COVERAGE LOST/);
   });
 
@@ -766,7 +766,7 @@ describe('assert-entitlement-contract — the money rail schema is complete befo
     // columns — and every assertion passed over a table the migration set never
     // creates. A column list assembled purely from ALTERs describes nothing.
     const r = run({ m0001: '-- nothing here but a comment about entitlements\n' });
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(r.out, /COVERAGE LOST — no CREATE TABLE for `entitlements`/);
     assert.match(r.out, /ALTER … ADD COLUMN alone does not count/);
   });
@@ -776,8 +776,34 @@ describe('assert-entitlement-contract — the money rail schema is complete befo
       m0001: 'CREATE TABLE IF NOT EXISTS entitlements (\n  user_id TEXT,\n  app_id TEXT\n);\n',
       columns: [],
     });
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2, r.out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(r.out, /COVERAGE LOST — parsed only \d+ column\(s\)/);
+  });
+
+  // ── O-EXIT2-CONVENTION-GAP: the exit code of each kind of stop, pinned ──────
+  test('exit 2 (COVERAGE LOST) when the migrations directory itself is gone — names the directory', () => {
+    const control = run();
+    assert.equal(control.code, 0, control.out); // green control first
+    const root = join(TMP, `case-${(seq += 1)}`);
+    mkdirSync(root, { recursive: true });
+    const r = spawnSync(process.execPath, [GUARD, root], { encoding: 'utf8' });
+    const out = `${r.stdout ?? ''}${r.stderr ?? ''}`;
+    assert.equal(r.status, 2, out);
+    assert.match(out, /COVERAGE LOST — services\/platform\/migrations does not exist/);
+  });
+
+  test('exit 2 when EVERY accumulated problem is a COVERAGE LOST (a missing contract copy, nothing else)', () => {
+    const r = run({ json: null });
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /COVERAGE LOST — contracts\/entitlement\/contract\.json does not exist/);
+    assert.doesNotMatch(r.out, /— MISSING\./);
+  });
+
+  test('exit 1 when a COVERAGE LOST sits beside a real finding — the finding decides', () => {
+    const r = run({ json: null, columns: ALL_COLUMNS.filter((c) => c !== 'occurred_at') });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /COVERAGE LOST — contracts\/entitlement\/contract\.json does not exist/);
+    assert.match(r.out, /entitlements\.occurred_at — MISSING/);
   });
 
   test('FAILS when contract.ts stops importing the shared contract', () => {
@@ -803,7 +829,7 @@ describe('assert-entitlement-contract — the money rail schema is complete befo
 
   test('COVERAGE LOST when contract.ts does not exist — one half of a two-place set checks nothing', () => {
     const r = run({ contract: null });
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2, r.out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(r.out, /COVERAGE LOST — services\/platform\/src\/lib\/mor\/contract\.ts does not exist/);
   });
 
@@ -835,10 +861,10 @@ describe('assert-entitlement-contract limb 4 — every runtime copy of the vocab
   const flip = ALL_REASONS.map(([r, v]) => (r === 'chargeback_reversed' ? [r, 0] : [r, v]));
 
   const COPIES = [
-    { name: 'contracts/entitlement/contract.js', reasons: 'jsReasons', absent: 'js', junk: 'export const NOTHING = [];\n' },
-    { name: 'contracts/entitlement/contract.json', reasons: 'jsonReasons', absent: 'json', junk: '{ "moneyEnvironments": ["live"] }\n' },
-    { name: 'extensions/core/v1/entitlement-contract.js', reasons: 'vendoredReasons', absent: 'vendored', junk: 'export const NOTHING = [];\n' },
-    { name: 'packages/purchases/lib/src/generated/entitlement_contract.g.dart', reasons: 'dartReasons', absent: 'dart', junk: '// nothing generated\n' },
+    { name: 'contracts/entitlement/contract.js', reasons: 'jsReasons', absent: 'js', junk: 'export const NOTHING = [];\n', junkExit: 1 },
+    { name: 'contracts/entitlement/contract.json', reasons: 'jsonReasons', absent: 'json', junk: '{ "moneyEnvironments": ["live"] }\n', junkExit: 2 },
+    { name: 'extensions/core/v1/entitlement-contract.js', reasons: 'vendoredReasons', absent: 'vendored', junk: 'export const NOTHING = [];\n', junkExit: 1 },
+    { name: 'packages/purchases/lib/src/generated/entitlement_contract.g.dart', reasons: 'dartReasons', absent: 'dart', junk: '// nothing generated\n', junkExit: 2 },
   ];
 
   for (const copy of COPIES) {
@@ -851,7 +877,7 @@ describe('assert-entitlement-contract limb 4 — every runtime copy of the vocab
 
     test(`COVERAGE LOST when ${copy.name} is missing`, () => {
       const r = run({ [copy.absent]: null });
-      assert.equal(r.code, 1, r.out);
+      assert.equal(r.code, 2, r.out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
       assert.match(r.out, /COVERAGE LOST/);
       assert.ok(r.out.includes(copy.name), `the failure did not name ${copy.name}:\n${r.out}`);
     });
@@ -859,8 +885,10 @@ describe('assert-entitlement-contract limb 4 — every runtime copy of the vocab
     test(`COVERAGE LOST when ${copy.name} parses to zero reasons`, () => {
       // An empty right-hand side agrees with any left-hand side. This is the
       // shape that prints ok while checking nothing.
+      // junkExit (O-EXIT2-CONVENTION-GAP): the two .js copies are also a byte-identical PAIR, so
+      // junk in one is ALSO a real finding and the run is 1; the other two are COVERAGE LOST alone, 2.
       const r = run({ [copy.absent]: copy.junk });
-      assert.equal(r.code, 1, r.out);
+      assert.equal(r.code, copy.junkExit, r.out);
       assert.match(r.out, /parsed zero revocation reasons out of/);
       assert.ok(r.out.includes(copy.name), `the failure did not name ${copy.name}:\n${r.out}`);
     });
@@ -890,13 +918,13 @@ describe('assert-entitlement-contract limb 4 — every runtime copy of the vocab
 
   test('COVERAGE LOST when the byte-comparison source is missing', () => {
     const r = run({ js: null });
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(r.out, /byte-compared to nothing/);
   });
 
   test('COVERAGE LOST when EVERY copy is missing — the limb says it compared none', () => {
     const r = run({ js: null, json: null, vendored: null, dart: null });
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(r.out, /compared the seed against ZERO of its 4 copies/);
   });
 
@@ -958,7 +986,7 @@ describe('assert-entitlement-contract limb 5 — every writer of the shared row 
 
   test('COVERAGE LOST when a required writer loses its ON CONFLICT entirely', () => {
     const r = run({ storeUpsert: false });
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(r.out, /COVERAGE LOST — no conditional UPSERT into `entitlements` was parsed out of services\/platform\/src\/lib\/mor\/store\.ts/);
   });
 
@@ -1045,13 +1073,13 @@ describe('assert-entitlement-contract limb 5 — every writer of the shared row 
 
   test('COVERAGE LOST when a canonicaliser is renamed', () => {
     const r = run({ morFnName: 'toIsoInstant' });
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(r.out, /COVERAGE LOST — no `export function normalizeInstant` in services\/platform\/src\/lib\/mor\/contract\.ts/);
   });
 
   test('COVERAGE LOST when a canonicaliser file is gone', () => {
     const r = run({ contract: null });
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(r.out, /COVERAGE LOST — services\/platform\/src\/lib\/mor\/contract\.ts does not exist, so `normalizeInstant`/);
   });
 
@@ -1397,7 +1425,7 @@ describe('assert-entitlement-contract limb 7 — the one runtime that already re
 
   test('COVERAGE LOST when the Worker sets cannot be parsed and it imports nothing either', () => {
     const r = run({ workerSets: null });
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(r.out, /COVERAGE LOST — limb 7 parsed ZERO event names/);
     assert.match(r.out, /An empty right-hand side agrees with any left-hand side/);
   });
@@ -1407,7 +1435,7 @@ describe('assert-entitlement-contract limb 7 — the one runtime that already re
   // back. The message must say the import is THERE and name the sets it measured.
   test('COVERAGE LOST names a PARTIAL transcription beside a present import, not a missing import', () => {
     const r = run({ workerActive: [], workerInactive: [], workerImportsContract: true });
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(r.out, /parsed event names out of GRACE_TYPES \(2\) and ZERO out of ACTIVE_TYPES, INACTIVE_TYPES/);
     assert.match(r.out, /that file DOES import contracts\/entitlement\/contract\.js/);
     assert.doesNotMatch(r.out, /does not import contracts\/entitlement\/contract\.js either/);
@@ -1415,14 +1443,14 @@ describe('assert-entitlement-contract limb 7 — the one runtime that already re
 
   test('a PARTIAL transcription with NO import says both halves — what parsed, and that the import is absent', () => {
     const r = run({ workerActive: [], workerInactive: [] });
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(r.out, /parsed event names out of GRACE_TYPES \(2\) and ZERO out of ACTIVE_TYPES, INACTIVE_TYPES/);
     assert.match(r.out, /does not import contracts\/entitlement\/contract\.js either/);
   });
 
   test('COVERAGE LOST when that runtime file is gone entirely', () => {
     const r = run({ rcRuntime: null });
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(r.out, /COVERAGE LOST — services\/platform\/src\/lib\/mor\/revenuecat\.ts does not exist/);
   });
 
@@ -1509,7 +1537,7 @@ describe('assert-entitlement-contract limb 7b — the SWEEP, so a THIRD copy is 
     // The half limb 5 puts on its own sweep. A sweep that matched nothing reads
     // exactly like a tree with no duplication left in it.
     const r = run({ rcRuntime: 'export const nothing = 1;\n' });
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(r.out, /did not recognise services\/platform\/src\/lib\/mor\/revenuecat\.ts as a\s+RevenueCat transcription/);
   });
 });
@@ -1540,7 +1568,7 @@ describe('assert-entitlement-contract limbs 8-9 — their own coverage checks', 
 
   test('a bundle contract copy that is ABSENT is COVERAGE LOST, never a silent agreement', () => {
     const r = run({ bundleJs: null });
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(r.out, /COVERAGE LOST — contracts\/entitlement\/bundle\.js does not exist/);
   });
 

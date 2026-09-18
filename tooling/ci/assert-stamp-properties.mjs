@@ -83,8 +83,8 @@ import { join } from 'node:path';
 const repo = process.cwd();
 /** Declared, dated limbs of a property that this guard cannot assert. */
 const propertyGaps = new Set();
-let failed = false;
-const fail = (m) => { console.error(`FAIL ${m}`); failed = true; };
+let failed = false; let findings = false; // findings: a fail() that is NOT a COVERAGE LOST — exit 1; coverage alone is exit 2
+const fail = (m) => { console.error(`FAIL ${m}`); failed = true; if (!String(m).startsWith('COVERAGE LOST')) findings = true; };
 const ok = (m) => console.log(`ok   ${m}`);
 
 const BRICK = 'tooling/bricks/app/__brick__/apps/{{app_id}}';
@@ -2311,7 +2311,7 @@ if (!existsSync(join(repo, BRICK, PROP_TEST))) {
       'this guard has no template to compare an app against.',
   );
   console.error('\nassert-stamp-properties: FAILED');
-  process.exit(1);
+  if (findings) process.exit(1); else coverageLost(); // a finding already printed above decides 1
 }
 
 /** Resolve a source anchor: shared trees are repo-absolute, everything else is
@@ -3257,7 +3257,7 @@ for (const g of propertyGaps) console.log(`   · ${g}`);
 
 if (failed) {
   console.error('\nassert-stamp-properties: FAILED');
-  process.exitCode = 1;
+  process.exitCode = findings ? 1 : 2; // every fail() a COVERAGE LOST = 2 (could not look), any finding = 1
 } else {
   // The skipped count is INSIDE the ok line, not beside it. Before 2026-08-25
   // this sentence ended at the root list, and a reader could take "ok" for
@@ -3267,4 +3267,14 @@ if (failed) {
       `${rootsAudited} root(s): ${roots.join(', ')} — and ${EXEMPT_APPS.size} app root(s) NOT GRADED ` +
       `(EXEMPT_APPS: ${[...EXEMPT_APPS.keys()].join(', ')})`,
   );
+}
+
+/** The hard COVERAGE LOST stop (the brick's property test is missing, so there is no template to
+ *  audit): the run exits 2 — never 1, which would read as a finding (AGENTS.md exit-code convention,
+ *  O-EXIT2-CONVENTION-GAP). A finding already printed above keeps 1 at the call site, and the
+ *  summary reaches the same answer: exit 2 only when EVERY fail() was a COVERAGE LOST. Declared
+ *  LAST (hoisted) so every `assert-stamp-properties.mjs:NNN` citation above keeps pointing at the
+ *  line it names. */
+function coverageLost() {
+  process.exit(2);
 }

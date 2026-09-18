@@ -79,6 +79,11 @@ import { listDir } from './tree-walk.mjs';
 // verbatim); keeping both would have left TWO shared strippers to drift apart, which is the
 // duplication this repository names as its cardinal defect. Same properties, one home.
 import { stripSourceComments } from './text-reductions.mjs';
+// 🔴 2026-09-19 — MISSING SINCE #695 (c886f24e), which bounded the `gh repo list` call below and
+// never imported the bound. Every NO-FLAG run died `ReferenceError: boundedSpawn is not defined`
+// — exit 1, a FINDING's number, for a guard that had looked at nothing. Unseen because every case
+// in its suite was --offline or --gh-fixture; the stubbed-gh cases now run the no-flag path.
+import { boundedSpawn, timeoutFromEnv } from './bounded-spawn.mjs';
 
 const SELF = fileURLToPath(import.meta.url);
 const NAME = 'assert-github-matrix';
@@ -866,7 +871,7 @@ if (declaredSides > 0 && localCompared === 0) {
       'half proved nothing. That is the state this guard was in from the 2026-08-19 flattening until 2026-08-20, ' +
       'while printing ok.',
   );
-  process.exitCode = 1;
+  process.exitCode = 2; // read at the exit line below: a COVERAGE LOST (2), not a finding — findings still dominate
 }
 console.log(`  github limb ${ranGitHub ? 'RAN' : 'DID NOT RUN'}`);
 console.log('');
@@ -903,8 +908,23 @@ if (findings.length) {
   console.error(`${NAME}: --offline. The GitHub limb did not run, so this run verified NOTHING about the org.`);
   console.error('  Exiting 3 — NON-ZERO ON PURPOSE, so an offline run can never be read as a clean one.');
   exit = 3;
+} else if (process.exitCode === 2) {
+  // 🔴 UNTIL 2026-09-19 THE ✗ ABOVE SET exitCode = 1 AND process.exit(exit) BELOW OVERWROTE IT: the
+  // local half comparing nothing still exited 0. A fixture (4) or --offline (3) run already cannot pass.
+  coverageLost(`the local limb compared NONE of the ${declaredSides} declared boundRemote side(s) — see ✗ above.`);
 } else {
   console.log(`${NAME}: ok — registry and org reconcile. ${actions.length} owner action(s) outstanding and printed above.`);
   exit = 0;
 }
 process.exit(exit);
+
+/** The COVERAGE LOST stop for a limb that could not look: prints what was not seen and exits 2 —
+ *  never 1, which would read as a finding, and never 0 (AGENTS.md exit-code convention,
+ *  O-EXIT2-CONVENTION-GAP). `die` above is the same verdict for the resolve/network stops (anchor,
+ *  registry, `gh repo list` unreachable or vacuous); this is the one the summary reaches.
+ *  Declared LAST (hoisted) so no line above moves. */
+function coverageLost(msg) {
+  console.error(`${NAME}: COVERAGE LOST — ${msg}`);
+  console.error('  Nothing this run printed as reconciled is evidence. Exiting 2: could not look, not a finding.');
+  process.exit(2);
+}

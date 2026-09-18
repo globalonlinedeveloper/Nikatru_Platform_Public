@@ -383,3 +383,56 @@ describe('an anchor whose line moved into the chassis is judged there', () => {
     }
   });
 });
+
+// ── O-EXIT2-CONVENTION-GAP: the exit code of each kind of stop, pinned ────────
+// 0 green · 1 a finding · 2 COVERAGE LOST (could not look). Until 2026-09-19 both the hard stop
+// (the brick's property test missing) and a run whose every FAIL was a COVERAGE LOST exited 1.
+describe('assert-stamp-properties — COVERAGE LOST is exit 2, a finding is exit 1', () => {
+  const SITE = 'tooling/ci/check-site-integrity.mjs';
+  // The describe above ends each case with restoreApp(), which DELETES packages/chassis_screens
+  // from the shared fixture (it was the real package, copied in before()). Put it back, or the
+  // exempt app's count jumps (23 vs the floor 10) and the green control goes red for a reason
+  // that is not this block's — measured in the full-suite run, 2026-09-19.
+  before(() => {
+    const filter = (src) => !src.split(sep).some((p) => SKIP_DIRS.has(p));
+    cpSync(join(REPO, 'packages', 'chassis_screens'), join(BASE, 'packages', 'chassis_screens'), { recursive: true, filter });
+  });
+
+  test('green control: the floor tree exits 0', () => {
+    const { code, out } = run({ missingGroups: FLOOR });
+    assert.equal(code, 0, out);
+  });
+
+  test('exit 2 when the BRICK property test is missing — the hard stop names the file', () => {
+    rmSync(join(BASE, BRICK, PROP_TEST), { force: true });
+    try {
+      const { code, out } = run({ missingGroups: FLOOR });
+      assert.equal(code, 2, out);
+      assert.match(out, /COVERAGE LOST — tooling\/bricks\/app\/__brick__\/apps\/\{\{app_id\}\}\/test\/chassis_properties_test\.dart is MISSING/);
+    } finally {
+      writeFileSync(join(BASE, BRICK, PROP_TEST), PRISTINE_PROP);
+    }
+  });
+
+  test('exit 2 when the ONLY failure is an unreadable input (the legal-page source is gone)', () => {
+    rmSync(join(BASE, SITE), { force: true });
+    try {
+      const { code, out } = run({ missingGroups: FLOOR });
+      assert.equal(code, 2, out);
+      assert.match(out, /COVERAGE LOST — tooling\/ci\/check-site-integrity\.mjs unreadable/);
+    } finally {
+      cpSync(join(REPO, SITE), join(BASE, SITE));
+    }
+  });
+
+  test('exit 1 when a COVERAGE LOST sits beside a real finding — the finding decides', () => {
+    rmSync(join(BASE, SITE), { force: true });
+    try {
+      const { code, out } = run({ missingGroups: FLOOR + 1 });
+      assert.equal(code, 1, out);
+      assert.match(out, /COVERAGE LOST — tooling\/ci\/check-site-integrity\.mjs unreadable/);
+    } finally {
+      cpSync(join(REPO, SITE), join(BASE, SITE));
+    }
+  });
+});

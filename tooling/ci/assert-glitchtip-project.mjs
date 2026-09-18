@@ -46,7 +46,9 @@
 // Usage:
 //   node tooling/ci/assert-glitchtip-project.mjs [--workflows <dir>] [--live]
 // Exit 0 = one declared project, reached the same way everywhere.
-// Exit 1 = it is not, and why. Exit 2 = a flag this guard does not know.
+// Exit 1 = it is not, and why. Exit 2 = a flag this guard does not know, or COVERAGE LOST: the
+// declaration or the workflow tree could not be read, ZERO call sites, or --live could not ask
+// (no GLITCHTIP_TOKEN, host unreachable, credential refused 401/403, server error). A 404 is a finding.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
@@ -87,8 +89,8 @@ const fail = (lines) => {
 
 const declPath = join(REPO, ...DECL_REL.split('/'));
 if (!existsSync(declPath)) {
-  fail([
-    `${DECL_REL} does not exist.`,
+  coverageLost([
+    `COVERAGE LOST — ${DECL_REL} does not exist.`,
     'It is the one place the crash sink\'s project is written. Without it every call',
     'site below is an independent claim, which is the state that produced the 404.',
   ]);
@@ -97,7 +99,7 @@ let decl;
 try {
   decl = JSON.parse(readFileSync(declPath, 'utf8'));
 } catch (e) {
-  fail([`${DECL_REL} is not valid JSON — ${e.message}`]);
+  coverageLost([`COVERAGE LOST — ${DECL_REL} is not valid JSON — ${e.message}`]);
 }
 const DECLARED = decl.project;
 const DECLARED_ORG = decl.org;
@@ -130,8 +132,8 @@ if (decl.instance !== undefined) {
 }
 
 if (!existsSync(WORKFLOWS)) {
-  console.error(`${NAME}: no workflow directory at ${WORKFLOWS}`);
-  process.exit(1);
+  console.error(`${NAME}: COVERAGE LOST — no workflow directory at ${WORKFLOWS}`);
+  coverageLost([]);
 }
 
 // A GlitchTip call site is `--project <x>` on a line that also carries
@@ -176,8 +178,8 @@ for (const f of listDir(WORKFLOWS).filter((n) => /\.ya?ml$/.test(n)).sort()) {
 }
 
 if (sites.length === 0) {
-  fail([
-    'found ZERO GlitchTip --project call sites in .github/workflows.',
+  coverageLost([
+    'COVERAGE LOST — found ZERO GlitchTip --project call sites in .github/workflows.',
     'On 2026-09-09 there were twelve. Zero means either every symbol and source-map',
     'upload has been deleted, or the flag was renamed and this guard has stopped',
     'guarding. Both are COVERAGE LOST, and neither is a pass.',
@@ -229,8 +231,8 @@ for (const s of sites) console.log(`  ${s.file}:${s.line}${isVariable(s.arg) ? '
 if (LIVE) {
   const token = process.env.GLITCHTIP_TOKEN;
   if (!token) {
-    console.error(`${NAME}: --live needs GLITCHTIP_TOKEN in the environment. Refusing to report a pass it did not make.`);
-    process.exit(1);
+    console.error(`${NAME}: COVERAGE LOST — --live needs GLITCHTIP_TOKEN in the environment. Refusing to report a pass it did not make.`);
+    coverageLost([]);
   }
   const base = (process.env.GLITCHTIP_URL ?? `https://${GLITCHTIP_HOST}`).replace(/\/+$/, '');
   const url = `${base}/api/0/projects/${DECLARED_ORG}/${DECLARED}/`;
@@ -238,8 +240,14 @@ if (LIVE) {
   try {
     res = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
   } catch (e) {
-    console.error(`${NAME}: could not reach ${base} — ${e.message}`);
-    process.exit(1);
+    console.error(`${NAME}: COVERAGE LOST — could not reach ${base} — ${e.message}`);
+    coverageLost([]);
+  }
+  if (res.status === 401 || res.status === 403 || res.status >= 500) {
+    coverageLost([
+      `COVERAGE LOST — the live instance answers ${res.status}: it ${res.status >= 500 ? "could not answer" : "refused the credential"}, so whether project "${DECLARED}" exists was never asked.`,
+      `GET ${url}`,
+    ]);
   }
   if (res.status !== 200) {
     fail([
@@ -250,6 +258,21 @@ if (LIVE) {
       'which of the two is behind.',
     ]);
   }
-  const body = await res.json();
+  let body;
+  try {
+    body = await res.json();
+  } catch (e) {
+    coverageLost([`COVERAGE LOST — the live instance answered 200 with a body that is not JSON (${e.message}).`]);
+  }
   console.log(`${NAME}: live check OK — "${body.slug}" (id ${body.id}) exists on ${base}.`);
+}
+
+/** The COVERAGE LOST stop: this run could not see what it must judge — the declaration, the
+ *  workflow tree, any call site at all, or (--live) the instance itself, for want of a token, a
+ *  route or a credential it accepts. Exit 2, never 1, which would read as a finding, and never 0
+ *  (AGENTS.md exit-code convention, O-EXIT2-CONVENTION-GAP). Hoisted, so it is callable above. */
+function coverageLost(lines) {
+  if (lines.length) console.error(`${NAME}: ${lines[0]}`);
+  for (const l of lines.slice(1)) console.error(`  ${l}`);
+  process.exit(2);
 }

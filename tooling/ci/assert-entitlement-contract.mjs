@@ -567,12 +567,12 @@ for (const { dir, label } of REQUIRED_COVERAGE) {
   const abs = join(ROOT, dir);
   if (!existsSync(abs)) {
     console.error(`✗ COVERAGE LOST — ${dir} does not exist (${label}). The files did not become correct; the guard stopped looking at them.`);
-    process.exit(1);
+    coverageLost();
   }
   const found = listDir(abs).filter((f) => f.endsWith('.sql')).sort();
   if (found.length === 0) {
     console.error(`✗ COVERAGE LOST — no .sql files under ${dir} (${label}).`);
-    process.exit(1);
+    coverageLost();
   }
   for (const f of found) files.push({ rel: `${dir}/${f}`, raw: readFileSync(join(abs, f), 'utf8') });
 }
@@ -608,14 +608,14 @@ if (!ent || !createdTables.has('entitlements')) {
   console.error('✗ COVERAGE LOST — no CREATE TABLE for `entitlements` was parsed out of the migration set.');
   console.error('  The parser found nothing, so every column assertion below would pass over an empty set.');
   console.error('  (ALTER … ADD COLUMN alone does not count: it describes a table nothing creates.)');
-  process.exit(1);
+  coverageLost();
 }
 // A parser liveness floor, not a coverage number: 0001 declares eight columns,
 // so a parse that produced fewer has broken rather than the schema having shrunk
 // (schema-evolution.md forbids removing one).
 if (ent.size < 8) {
   console.error(`✗ COVERAGE LOST — parsed only ${ent.size} column(s) for \`entitlements\`; 0001 alone declares 8. The parser is broken, not the tree.`);
-  process.exit(1);
+  coverageLost();
 }
 for (const [col, why] of REQUIRED_ENTITLEMENT_COLUMNS) {
   if (!ent.has(col)) {
@@ -1790,7 +1790,7 @@ if (problems.length) {
   // conditional DO UPDATE is [5]M-2's ordering defence"). M-8 is the neighbouring rule about NOT revoking
   // on cancel-at-period-end and is a different requirement.
   console.error("  [5]M-2 Ordering is the provider's clock, and it is the SAME clause in both writers.");
-  process.exit(1);
+  process.exit(problems.every((p) => p.startsWith('COVERAGE LOST')) ? 2 : 1); // every problem a could-not-look = 2, any finding = 1
 }
 
 
@@ -1815,3 +1815,13 @@ console.log(
     'transcription(s) of that vocabulary, each of which either IS the declared runtime above or imports ' +
     'the contract instead of restating it',
 );
+
+/** The one COVERAGE LOST stop for the migration-set reads above: each could-not-look branch prints
+ *  its own reason and ends here, so the run exits 2 — never 1, which would read as a finding
+ *  (AGENTS.md exit-code convention, O-EXIT2-CONVENTION-GAP). The accumulated limbs reach the same
+ *  answer at the summary: exit 2 only when EVERY problem is a COVERAGE LOST. Declared LAST
+ *  (hoisted) so every `assert-entitlement-contract.mjs:NNN` citation above keeps pointing at the
+ *  line it names. */
+function coverageLost() {
+  process.exit(2);
+}
