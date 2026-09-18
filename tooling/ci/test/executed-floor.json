@@ -1,0 +1,7 @@
+{
+  "_header": "Per-suite EXECUTED case counts, measured on the Linux ubuntu-24.04 guard-meta runner. Read by tooling/ci/assert-case-count-honest.mjs --executed-floor (executed >= floor; a floored suite absent from junit is COVERAGE LOST; rises never fail). Written ONLY by tooling/scripts/refresh-executed-floor.mjs from the guard-tests-junit artifact of a GREEN ci.yml run on main; never written from a local run. filledFrom null + suites {} = not yet filled.",
+  "platform": "ubuntu-24.04",
+  "filledFrom": null,
+  "lowered": [],
+  "suites": {}
+}

@@ -39,7 +39,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -51,6 +51,10 @@ import {
   tallyByBasename,
   compareFloors,
   parseArgs,
+  readExecutedFloor,
+  compareExecutedFloor,
+  serializeExecutedFloor,
+  isWindowsPath,
 } from '../assert-case-count-honest.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -503,12 +507,14 @@ describe('assert-case-count-honest — the verdict, as a pure function', () => {
   });
 
   test('parseArgs takes both `--k v` and `--k=v`, and collects the rest', () => {
-    assert.deepEqual(parseArgs(['--junit', 'a.xml']), { junit: 'a.xml', manifest: null, unknown: [] });
-    assert.deepEqual(parseArgs(['--junit=a.xml', '--manifest=m.json']), {
+    assert.deepEqual(parseArgs(['--junit', 'a.xml']), { junit: 'a.xml', manifest: null, executedFloor: null, unknown: [] });
+    assert.deepEqual(parseArgs(['--junit=a.xml', '--manifest=m.json', '--executed-floor', 'f.json']), {
       junit: 'a.xml',
       manifest: 'm.json',
+      executedFloor: 'f.json',
       unknown: [],
     });
+    assert.equal(parseArgs(['--executed-floor']).executedFloor, '');
     assert.deepEqual(parseArgs(['--nope']).unknown, ['--nope']);
   });
 });
@@ -540,5 +546,201 @@ describe('assert-case-count-honest — the real tree', () => {
     assert.equal(r.status, 2);
     assert.match(out, /arbitrated by NOTHING/);
     assert.match(out, /a11y-coverage\.test\.mjs — recorded/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE EXECUTED FLOOR (O-COVERAGE-MANIFEST-LOOP-CASES, option 1). The declared
+// floor cannot see a case generated inside a loop; this limb compares what ran
+// against what ran BEFORE, on the same Linux runner.
+
+/** A junit for ONE suite whose cases come from a named table — the shape a
+ *  `for (const row of TABLE) test(row, …)` suite reports. */
+function junitFromTable(file, rows) {
+  const cases = rows.map((r) => `\t\t<testcase name="${xmlEscape(r)}" time="0.0001" classname="test" file="${xmlEscape(file)}"/>`);
+  return (
+    '<?xml version="1.0" encoding="utf-8"?>\n<testsuites>\n' +
+    `\t<testsuite name="table" tests="${rows.length}" failures="0" skipped="0">\n${cases.join('\n')}\n\t</testsuite>\n</testsuites>\n`
+  );
+}
+
+/** A table like hostname-depth's: one declared test(...) inside a loop, eight rows run. */
+const HOST_TABLE = ['api', 'www', 'subly', 'status', 'mail', 'cdn', 'auth', 'docs'].map((h) => `${h}.nikatru.com is one label deep`);
+const HOST_SUITE = 'hostname-depth.test.mjs';
+const FILLED = { run: 1, sha: 'a'.repeat(40), at: '2026-09-19T00:00:00Z' };
+
+function floorFile(doc) {
+  const dir = join(TMP, `ef${seq++}`);
+  mkdirSync(dir, { recursive: true });
+  const p = join(dir, 'executed-floor.json');
+  if (doc !== null) writeFileSync(p, typeof doc === 'string' ? doc : serializeExecutedFloor(doc));
+  return p;
+}
+
+describe('assert-case-count-honest — the executed floor', () => {
+  // 🔴 THE MUTATION THE LIMB EXISTS FOR. The declared floor (3) is satisfied by
+  // both runs; only the executed floor (8) sees the deleted row.
+  test('deleting ONE loop-generated case drops executed below the floor and EXITS 1', () => {
+    const mutated = HOST_TABLE.filter((r) => !r.startsWith('mail.'));
+    const { junitPath, manifestPath } = fixture({
+      xml: junitFromTable(`${LINUX_DIR}/${HOST_SUITE}`, mutated),
+      manifest: { [HOST_SUITE]: 3 },
+    });
+    const floor = floorFile({ filledFrom: FILLED, suites: { [HOST_SUITE]: HOST_TABLE.length } });
+    const r = run(['--junit', junitPath, '--manifest', manifestPath, '--executed-floor', floor]);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /^ok {2}case-count honesty/m); // the declared floor is BLIND to it
+    assert.match(r.out, /hostname-depth\.test\.mjs — executed floor 8, executed 7\. 1 case\(s\) gone/);
+  });
+
+  test('the SAME table unmutated is the green control — EXITS 0', () => {
+    const { junitPath, manifestPath } = fixture({
+      xml: junitFromTable(`${LINUX_DIR}/${HOST_SUITE}`, HOST_TABLE),
+      manifest: { [HOST_SUITE]: 3 },
+    });
+    const floor = floorFile({ filledFrom: FILLED, suites: { [HOST_SUITE]: HOST_TABLE.length } });
+    const r = run(['--junit', junitPath, '--manifest', manifestPath, '--executed-floor', floor]);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /^ok {2}executed floor — 1 suite\(s\)/m);
+  });
+
+  test('a RISE never fails — a new row is not churn', () => {
+    const { junitPath, manifestPath } = fixture({
+      xml: junitFromTable(`${LINUX_DIR}/${HOST_SUITE}`, [...HOST_TABLE, 'shop.nikatru.com is one label deep']),
+      manifest: { [HOST_SUITE]: 3 },
+    });
+    const floor = floorFile({ filledFrom: FILLED, suites: { [HOST_SUITE]: HOST_TABLE.length } });
+    const r = run(['--junit', junitPath, '--manifest', manifestPath, '--executed-floor', floor]);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /1 rose \(never a failure/);
+  });
+
+  test('a floored suite ABSENT from the junit is COVERAGE LOST — EXITS 2', () => {
+    const { junitPath, manifestPath } = fixture({
+      xml: junit([[`${LINUX_DIR}/guards.test.mjs`, 398]]),
+      manifest: { 'guards.test.mjs': 383 },
+    });
+    const floor = floorFile({ filledFrom: FILLED, suites: { 'guards.test.mjs': 398, [HOST_SUITE]: 8 } });
+    const r = run(['--junit', junitPath, '--manifest', manifestPath, '--executed-floor', floor]);
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /COVERAGE LOST/);
+    assert.match(r.out, /hostname-depth\.test\.mjs — floor 8, absent from the report/);
+  });
+
+  test('WITHOUT the flag it says it did not measure — exit 0 with the printed reason, never silent', () => {
+    const { junitPath, manifestPath } = fixture({
+      xml: junitFromTable(`${LINUX_DIR}/${HOST_SUITE}`, HOST_TABLE.slice(1)),
+      manifest: { [HOST_SUITE]: 3 },
+    });
+    const r = run(['--junit', junitPath, '--manifest', manifestPath]);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /executed floor: not measured here \(Linux CI only\)/);
+  });
+
+  test('the UNFILLED floor (filledFrom null, suites {}) passes with its reason printed', () => {
+    const { junitPath, manifestPath } = fixture({
+      xml: junitFromTable(`${LINUX_DIR}/${HOST_SUITE}`, HOST_TABLE),
+      manifest: { [HOST_SUITE]: 3 },
+    });
+    const r = run(['--junit', junitPath, '--manifest', manifestPath, '--executed-floor', floorFile({})]);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /executed floor: not yet filled/);
+  });
+
+  test('a MISSING floor file is COVERAGE LOST, not the unfilled state', () => {
+    const { junitPath, manifestPath } = fixture({
+      xml: junitFromTable(`${LINUX_DIR}/${HOST_SUITE}`, HOST_TABLE),
+      manifest: { [HOST_SUITE]: 3 },
+    });
+    const r = run(['--junit', junitPath, '--manifest', manifestPath, '--executed-floor', floorFile(null)]);
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /does not exist/);
+  });
+
+  test('an EMPTIED floor that records a fill is COVERAGE LOST', () => {
+    const { junitPath, manifestPath } = fixture({
+      xml: junitFromTable(`${LINUX_DIR}/${HOST_SUITE}`, HOST_TABLE),
+      manifest: { [HOST_SUITE]: 3 },
+    });
+    const r = run(['--junit', junitPath, '--manifest', manifestPath, '--executed-floor', floorFile({ filledFrom: FILLED, suites: {} })]);
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /an emptied floor is the floor removed/);
+  });
+
+  test('a WINDOWS-written junit is refused against the Linux floor — EXITS 2', () => {
+    const { junitPath, manifestPath } = fixture({
+      xml: junitFromTable(`${WINDOWS_DIR}\\${HOST_SUITE}`, HOST_TABLE),
+      manifest: { [HOST_SUITE]: 3 },
+    });
+    const floor = floorFile({ filledFrom: FILLED, suites: { [HOST_SUITE]: 8 } });
+    const r = run(['--junit', junitPath, '--manifest', manifestPath, '--executed-floor', floor]);
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /WINDOWS host/);
+  });
+
+  test('--executed-floor with no path is COVERAGE LOST', () => {
+    const { junitPath, manifestPath } = fixture({ xml: junit([[`${LINUX_DIR}/guards.test.mjs`, 398]]), manifest: { 'guards.test.mjs': 383 } });
+    const r = run(['--junit', junitPath, '--manifest', manifestPath, '--executed-floor']);
+    assert.equal(r.code, 2, r.out);
+  });
+
+  test('readExecutedFloor refuses every half-state and a non-integer floor', () => {
+    assert.equal(readExecutedFloor({ filledFrom: null, suites: {} }).state, 'unfilled');
+    assert.equal(readExecutedFloor({ filledFrom: FILLED, suites: { 'a.test.mjs': 2 } }).state, 'filled');
+    assert.equal(readExecutedFloor({ filledFrom: null, suites: { 'a.test.mjs': 2 } }).state, 'invalid');
+    assert.equal(readExecutedFloor({ filledFrom: FILLED, suites: {} }).state, 'invalid');
+    assert.equal(readExecutedFloor({ filledFrom: FILLED, suites: { 'a.test.mjs': 2.5 } }).state, 'invalid');
+    assert.equal(readExecutedFloor({ filledFrom: FILLED, suites: { 'a.test.mjs': -1 } }).state, 'invalid');
+    assert.equal(readExecutedFloor([]).state, 'invalid');
+    assert.equal(readExecutedFloor({ filledFrom: null }).state, 'invalid');
+  });
+
+  test('compareExecutedFloor separates drops, lost, rises and unfloored', () => {
+    const v = compareExecutedFloor(
+      { 'a.test.mjs': 5, 'b.test.mjs': 5, 'c.test.mjs': 5, 'd.test.mjs': 5 },
+      new Map([['a.test.mjs', 4], ['b.test.mjs', 5], ['c.test.mjs', 6], ['e.test.mjs', 1]]),
+    );
+    assert.deepEqual(v.drops, [{ suite: 'a.test.mjs', floor: 5, executed: 4 }]);
+    assert.deepEqual(v.lost, ['d.test.mjs']);
+    assert.deepEqual(v.rises, [{ suite: 'c.test.mjs', floor: 5, executed: 6 }]);
+    assert.deepEqual(v.unfloored, ['e.test.mjs']);
+    assert.equal(v.held, 2);
+  });
+
+  test('serializeExecutedFloor is byte-deterministic and sorts suites', () => {
+    const a = serializeExecutedFloor({ filledFrom: FILLED, suites: { 'z.test.mjs': 1, 'a.test.mjs': 2 } });
+    const b = serializeExecutedFloor({ filledFrom: FILLED, suites: { 'a.test.mjs': 2, 'z.test.mjs': 1 } });
+    assert.equal(a, b);
+    assert.ok(a.endsWith('}\n') && !a.includes('\r'));
+    assert.ok(a.indexOf('"a.test.mjs"') < a.indexOf('"z.test.mjs"'));
+  });
+
+  test('isWindowsPath tells a drive letter and a UNC root from a Linux path', () => {
+    assert.equal(isWindowsPath('C:\\Users\\x\\a.test.mjs'), true);
+    assert.equal(isWindowsPath('\\\\server\\share\\a.test.mjs'), true);
+    assert.equal(isWindowsPath(`${LINUX_DIR}/a.test.mjs`), false);
+  });
+});
+
+describe('assert-case-count-honest — the executed floor in the real tree', () => {
+  const ROOT = resolve(HERE, '..', '..', '..');
+
+  test('the committed executed-floor.json is a valid floor (unfilled or filled, never a half-state)', () => {
+    const doc = JSON.parse(readFileSync(join(ROOT, 'tooling/ci/test/executed-floor.json'), 'utf8'));
+    assert.notEqual(readExecutedFloor(doc).state, 'invalid');
+    assert.equal(doc.platform, 'ubuntu-24.04');
+  });
+
+  test('the committed floor is byte-identical to its serialisation — only the refresh script writes it', () => {
+    const text = readFileSync(join(ROOT, 'tooling/ci/test/executed-floor.json'), 'utf8');
+    const doc = JSON.parse(text);
+    assert.equal(text, serializeExecutedFloor(doc));
+  });
+
+  test('ci.yml uploads the junit and passes --executed-floor to the guard', () => {
+    const ci = readFileSync(join(ROOT, '.github/workflows/ci.yml'), 'utf8');
+    assert.match(ci, /name: guard-tests-junit/);
+    assert.match(ci, /path: \$\{\{ runner\.temp \}\}\/guard-tests\.junit\.xml/);
+    assert.match(ci, /assert-case-count-honest\.mjs --junit "\$\{\{ runner\.temp \}\}\/guard-tests\.junit\.xml" --executed-floor tooling\/ci\/test\/executed-floor\.json/);
   });
 });

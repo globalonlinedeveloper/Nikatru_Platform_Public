@@ -89,6 +89,17 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: node --test --test-reporter=spec  --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination="${{ runner.temp }}/guard-tests.junit.xml" "tooling/ci/test/*.test.mjs"
+      # The per-suite EXECUTED counts are the only Linux measurement of what ran.
+      # tooling/scripts/refresh-executed-floor.mjs reads this artifact from a green
+      # main run to raise tooling/ci/test/executed-floor.json; nothing local writes it.
+      - name: Keep the executed counts for the executed-floor refresh
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: guard-tests-junit
+          path: ${{ runner.temp }}/guard-tests.junit.xml
+          if-no-files-found: error
+          retention-days: 30
       - name: Every guard is tested and self-checking
         run: node tooling/ci/assert-guard-coverage.mjs
       # 🔴 THE RATCHET IS STATE, AND UNTIL TODAY NOTHING IN CI READ IT BACK.
@@ -115,7 +126,7 @@ jobs:
           fi
           echo "ok  coverage-manifest.json is byte-identical to what this run derived"
       - name: The recorded floor must not exceed what actually ran
-        run: node tooling/ci/assert-case-count-honest.mjs --junit "${{ runner.temp }}/guard-tests.junit.xml"
+        run: node tooling/ci/assert-case-count-honest.mjs --junit "${{ runner.temp }}/guard-tests.junit.xml" --executed-floor tooling/ci/test/executed-floor.json
       - name: Guard tree walks cannot leave the tree
         run: node tooling/ci/assert-walks-bounded.mjs
       - name: A local script reads a workflow through workflow-scan, or refuses when blind
