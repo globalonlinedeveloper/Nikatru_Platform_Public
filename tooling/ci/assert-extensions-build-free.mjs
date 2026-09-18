@@ -132,21 +132,31 @@ function walk(absDir, rel) {
   }
 }
 
+/** The walk could not look at its subject, so this run is not evidence either
+ *  way — exit 2, never 1, which would read as a finding (AGENTS.md exit-code
+ *  convention). */
+function coverageLost(lines) {
+  for (const l of lines) console.error(l);
+  process.exit(2);
+}
+
 if (!existsSync(SUBTREE_ABS) || !statSync(SUBTREE_ABS).isDirectory()) {
-  console.error(`✗ COVERAGE LOST — ${SUBTREE}/ is not a directory under ${ROOT}.`);
-  console.error('  This guard has no subject, and "no findings" over no subject is not a pass.');
-  process.exit(1);
+  coverageLost([
+    `✗ COVERAGE LOST — ${SUBTREE}/ is not a directory under ${ROOT}.`,
+    '  This guard has no subject, and "no findings" over no subject is not a pass.',
+  ]);
 }
 walk(SUBTREE_ABS, '');
 
 // ── 0 COVERAGE ───────────────────────────────────────────────────────────────
 const tools = files.filter((f) => /^Extension\/[^/]+\/tool\.json$/.test(f));
 if (tools.length === 0) {
-  console.error(`✗ COVERAGE LOST — the walk of ${SUBTREE}/ found no Extension/<tool>/tool.json.`);
-  console.error(`  ${files.length} file(s) were enumerated, so the walk ran; it is the SUBJECT that is`);
-  console.error('  missing. A build-free assertion over zero extensions passes vacuously and reads');
-  console.error('  exactly like a clean tree.');
-  process.exit(1);
+  coverageLost([
+    `✗ COVERAGE LOST — the walk of ${SUBTREE}/ found no Extension/<tool>/tool.json.`,
+    `  ${files.length} file(s) were enumerated, so the walk ran; it is the SUBJECT that is`,
+    '  missing. A build-free assertion over zero extensions passes vacuously and reads',
+    '  exactly like a clean tree.',
+  ]);
 }
 
 

@@ -32,7 +32,7 @@
 // 2026-08-15; the id still resolves against an `origin` field there.)
 //
 // Usage:  node tooling/ci/assert-workspace-coverage.mjs
-// Exit 0 = clean, 1 = a package is ungated (or a member is missing).
+// Exit 0 = clean, 1 = a package is ungated (or a member is missing), 2 = COVERAGE LOST.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join, posix } from 'node:path';
@@ -120,7 +120,7 @@ for (const root of SCAN_ROOTS) {
 
 // ── 3. coverage self-check, BEFORE reporting anything as clean ───────────────
 if (onDisk.length < MIN_EXPECTED_PACKAGES) {
-  fail([
+  coverageLost([
     `✗ COVERAGE LOST — found only ${onDisk.length} dart package(s) under ${SCAN_ROOTS.join('/, ')}/,`,
     `  expected at least ${MIN_EXPECTED_PACKAGES}. The scan is broken, not the tree.`,
     `  repo root used: ${repoRoot}`,
@@ -153,7 +153,7 @@ if (onDisk.length < MIN_EXPECTED_PACKAGES) {
 {
   const quiet = [...perRoot].filter(([, n]) => n === 0).map(([root]) => root);
   if (quiet.length) {
-    fail([
+    coverageLost([
       `✗ COVERAGE LOST — ${quiet.map((r) => `${r}/`).join(', ')} exist(s) but yielded ZERO dart package(s).`,
       `  ${onDisk.length} package(s) were found in the other root(s), which is why the ${MIN_EXPECTED_PACKAGES}-package`,
       '  floor above stayed green — it counts the union, so it can never report a root that went silent.',
@@ -189,3 +189,12 @@ if (stale.length) {
 if (problems.length) fail(problems);
 
 console.log(`ok  workspace coverage — ${onDisk.length} dart package(s) on disk, all gated`);
+
+/** The scan could not look, so this run is not evidence either way — exit 2,
+ *  never 1, which would read as a finding (AGENTS.md exit-code convention).
+ *  Declared LAST (hoisted) so every `assert-workspace-coverage.mjs:NNN`
+ *  citation above keeps pointing at the line it names. */
+function coverageLost(lines) {
+  for (const l of lines) console.error(l);
+  process.exit(2);
+}

@@ -109,7 +109,7 @@ describe('assert-workspace-coverage', () => {
   test('FAILS its own coverage check when the scan finds almost nothing', () => {
     const two = ['packages/a', 'packages/b'];
     const { code, out } = run('assert-workspace-coverage.mjs', { args: [build('wc-cov', two, two)] });
-    assert.equal(code, 1);
+    assert.equal(code, 2, out); // COVERAGE LOST is exit 2, never a finding's 1
     assert.match(out, /COVERAGE LOST/);
   });
 });

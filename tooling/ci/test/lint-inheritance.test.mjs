@@ -253,7 +253,23 @@ describe('assert-lint-inheritance', () => {
     }
     spawnSync('git', ['add', '-A'], { cwd: root });
     const { code, out } = run(root);
-    assert.equal(code, 1);
+    // Exit 2, not 1: the guard could not look, which is not a finding
+    // (AGENTS.md exit-code convention, O-EXIT2-CONVENTION-GAP).
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST — found only \d+ analysis_options\.yaml/);
+  });
+
+  // A real finding beside a COVERAGE LOST stop is still a finding: exit 2 is
+  // only for a run whose EVERY problem is coverage lost.
+  test('a real finding alongside COVERAGE LOST still exits 1', () => {
+    const root = tree({ overrides: { [BRICK]: 'include: package:flutter_lints/flutter.yaml\n' } });
+    for (const m of ['apps/subscriptiontracker', 'packages/api_client', 'packages/core']) {
+      rmSync(join(root, m, 'analysis_options.yaml'));
+    }
+    spawnSync('git', ['add', '-A'], { cwd: root });
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /COVERAGE LOST — found only \d+ analysis_options\.yaml/);
+    assert.match(out, /does not include `package:nikatru_lints/);
   });
 });

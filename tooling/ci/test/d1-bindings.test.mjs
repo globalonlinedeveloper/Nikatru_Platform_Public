@@ -136,8 +136,17 @@ describe('assert-d1-bindings', () => {
     const root = join(TMP, `r${seq++}`);
     mkdirSync(root, { recursive: true });
     const { code, out } = run(root);
-    assert.equal(code, 1);
+    // Exit 2, not 1: the scan could not look (O-EXIT2-CONVENTION-GAP).
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST — no services\//);
+  });
+
+  test('COVERAGE LOST when services/ holds no service at all', () => {
+    const root = join(TMP, `r${seq++}`);
+    mkdirSync(join(root, 'services'), { recursive: true });
+    const { code, out } = run(root);
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST — found 0 service\(s\) under services\//);
   });
 
   test('COVERAGE LOST when no service declares a d1 binding', () => {
@@ -145,7 +154,17 @@ describe('assert-d1-bindings', () => {
     mkdirSync(join(root, 'services', 'empty'), { recursive: true });
     writeFileSync(join(root, 'services', 'empty', 'wrangler.jsonc'), '{ "name": "empty" }');
     const { code, out } = run(root);
-    assert.equal(code, 1, 'zero bindings must not read as "all bindings are fine"');
+    assert.equal(code, 2, 'zero bindings must not read as "all bindings are fine" — nor as a finding');
     assert.match(out, /COVERAGE LOST/);
+  });
+
+  // The split must not swallow findings: an unparseable config is a finding.
+  test('an unparseable wrangler config is still a finding — exit 1', () => {
+    const root = join(TMP, `r${seq++}`);
+    mkdirSync(join(root, 'services', 'broken'), { recursive: true });
+    writeFileSync(join(root, 'services', 'broken', 'wrangler.jsonc'), '{ "name": ');
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /could not be parsed after stripping comments/);
   });
 });
