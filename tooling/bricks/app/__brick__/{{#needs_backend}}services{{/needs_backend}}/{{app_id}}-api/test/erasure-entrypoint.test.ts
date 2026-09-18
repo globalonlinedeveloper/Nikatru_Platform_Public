@@ -15,9 +15,17 @@ const nodeProcess = (
 ).process;
 const read = (rel: string) => nodeProcess.getBuiltinModule('node:fs').readFileSync(`${nodeProcess.cwd()}/${rel}`, 'utf8');
 
-/** One table, `records (id, user_id)`, answering exactly the statements the shared walk sends. */
+/** One table, `records (id, user_id)`, answering exactly the statements the shared walk sends.
+ *
+ *  ⏱ 2026-09-18 · O-ERASURE-WALK-ROUND-TRIPS: the shared walk now sends its pragma
+ *  reads and its writes as `db.batch()`, and this double had no `batch` — every case
+ *  below refused with "db.batch is not a function" the first time CI stamped it. It
+ *  answers as workerd's D1 does (measured through getPlatformProxy, 2026-09-18): one
+ *  result per statement IN ORDER, a read carrying its rows and a write its `changes`,
+ *  and a batch that throws part-way leaves `rows` exactly as it found them. */
 function fakeDb(rows: Array<{ id: string; user_id: string }>) {
   const stmt = (sql: string, args: unknown[] = []) => ({
+    sql,
     bind: (...a: unknown[]) => stmt(sql, a),
     all: async () => {
       if (/FROM sqlite_master/i.test(sql)) return { results: [{ name: 'records' }] };
@@ -33,7 +41,22 @@ function fakeDb(rows: Array<{ id: string; user_id: string }>) {
       return { meta: { changes: 0 } };
     },
   });
-  return { prepare: (sql: string) => stmt(sql) } as unknown as D1Database;
+  type Stmt = ReturnType<typeof stmt>;
+  const batch = async (statements: Stmt[]) => {
+    const snapshot = rows.map((r) => ({ ...r }));
+    try {
+      const out: Array<{ results: unknown[]; meta: { changes: number } }> = [];
+      for (const s of statements) {
+        if (/^\s*SELECT\b/i.test(s.sql)) out.push({ results: (await s.all()).results, meta: { changes: 0 } });
+        else out.push({ results: [], meta: (await s.run()).meta });
+      }
+      return out;
+    } catch (err) {
+      rows.splice(0, rows.length, ...snapshot);
+      throw err;
+    }
+  };
+  return { prepare: (sql: string) => stmt(sql), batch } as unknown as D1Database;
 }
 
 describe('ErasureEntrypoint — the retry door erases exactly one subject, idempotently', () => {
