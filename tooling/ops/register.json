@@ -990,7 +990,13 @@
         "notifications whose derivation never concluded (refused, or threw) — the backstop behind the",
         "money route's 503-so-the-rail-re-delivers path, for whatever outlives Paddle's 3-day retry",
         "window. Bounded by age (30 d) and count (200/run); every outcome is printed in its heartbeat",
-        "detail, and a candidate that is refused again is a printed count, not a red row."
+        "detail, and a candidate that is refused again is a printed count, not a red row.",
+        "",
+        "🔴 `ops_watchdog` KEEPS THE DISPATCHER GRID and `boxa_reachability` the nightly cron, added 2026-09-18",
+        "(O-LAPTOP-ROUTINES-DIE-OVERNIGHT): the laptop watchdog and ops-check portable work, moved onto this Worker.",
+        "An ops_watchdog row is ok=1 when the check READ its subject; findings (a red main, a stuck run, a monitor",
+        "down) travel in detail, never as ok=0, or a red main would freeze the queue that must merge its fix.",
+        "Not-configured limbs (no GLITCHTIP_TOKEN / BOXA_REACH_URLS) ARE ok=0: set them before this deploys."
       ],
       "watchedJobs": {
         "supabase_keepalive": [
@@ -1028,6 +1034,15 @@
         ],
         "boxb_reachability": [
           "0 6 * * *"
+        ],
+        "boxa_reachability": [
+          "0 6 * * *"
+        ],
+        "ops_watchdog": [
+          "0 0 * * *",
+          "0 6 * * *",
+          "0 12 * * *",
+          "0 18 * * *"
         ]
       },
       "watchedJobsDeclaredAt": {
@@ -1041,7 +1056,9 @@
         "money_rederive": "2026-09-10T02:54:53Z",
         "erasure_retry": "2026-09-15T09:00:35Z",
         "github_dispatch": "2026-09-03T06:50:37Z",
-        "boxb_reachability": "2026-09-12T11:22:49Z"
+        "boxb_reachability": "2026-09-12T11:22:49Z",
+        "boxa_reachability": "2026-09-18T11:22:08Z",
+        "ops_watchdog": "2026-09-18T11:22:08Z"
       },
       "_watchedJobsDeclaredAtWhy": [
         "⏱ 2026-09-11 — WHEN THE REGISTER BEGAN WATCHING EACH JOB, so a job with NO heartbeat row at all is NOT YET DUE until the",

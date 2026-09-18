@@ -179,6 +179,27 @@ export interface Env {
   /** Comma-separated Box B hostnames probed by boxbReachability. Absent, the
    *  three live ones are used - see BOXB_REACH_JOB for why this runs here. */
   BOXB_REACH_URLS?: string;
+  /** [O-LAPTOP-ROUTINES-DIE-OVERNIGHT] Comma-separated Box A URLs probed by
+   *  boxaReachability over HTTP. NO DEFAULT, unlike Box B: no Box A hostname is
+   *  declared anywhere in this repository, so absent ⇒ one ok=0 row saying
+   *  "not configured", never a silent pass. A var or a secret both work. */
+  BOXA_REACH_URLS?: string;
+  /** [O-LAPTOP-ROUTINES-DIE-OVERNIGHT] Read-only GlitchTip API token for the ops
+   *  watchdog's monitor reads — the SAME name tooling/ci/assert-ops-register.mjs
+   *  and the workflows already use. Absent ⇒ the monitor limb records
+   *  not-configured (ok=0). Set with `wrangler secret put GLITCHTIP_TOKEN`. */
+  GLITCHTIP_TOKEN?: string;
+  /** Optional GlitchTip base URL; defaults to https://glitchtip.nikatru.com,
+   *  the same default assert-ops-register.mjs uses. */
+  GLITCHTIP_URL?: string;
+  /** [O-LAPTOP-ROUTINES-DIE-OVERNIGHT] GlitchTip Heartbeat URL the ops watchdog
+   *  POSTs ONLY after its checks returned. Absent ⇒ a logged no-op. Set with
+   *  `wrangler secret put OPS_WATCHDOG_HEARTBEAT_URL`: the path is the credential. */
+  OPS_WATCHDOG_HEARTBEAT_URL?: string;
+  /** Exactly the string "true" lets the ops watchdog CANCEL a stuck Actions run.
+   *  Anything else, absent included, means flag-only. Default OFF until the
+   *  owner widens GITHUB_DISPATCH_TOKEN to `actions:write` on the repo. */
+  OPS_WATCHDOG_CANCEL_STUCK?: string;
 
   /**
    * Supabase publishable ("anon") key, used ONLY to make the keep-alive a real
