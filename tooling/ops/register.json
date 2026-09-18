@@ -707,7 +707,6 @@
       "duty.renovate",
       "expiring.domain.nikatru.com",
       "expiring.domain.rajasekarselvam.com",
-      "expiring.cert.origin-ca",
       "expiring.drive-oauth-app",
       "expiring.drive-refresh-token-non-use",
       "expiring.keystore.android-upload",
@@ -920,6 +919,38 @@
           "ownerGap": "🔴 THE KEYS WRITTEN BEFORE 2026-08-09 STILL HAVE NO EXPIRY, AND NO CODE PATH WILL GIVE THEM ONE. Workers KV fixes a key's expiry at WRITE time, so the declared period (~~365~~ 400 days since 2026-08-13) reaches subsequent writes only — ageing out the existing `sub:` keys is an OPERATOR action against the namespace (re-put or delete by key), which is why this row stays owner-gated after the period was declared. Until that is done this store still holds contactable addresses with no bound, and it remains — with Supabase auth — one of the two stores that determine the notifiable population in a breach (docs/runbooks/breach-response.md step 2); the D1 tables are pseudonymous and notifiable only by public notice. ✅ THE PERIOD ITSELF IS DECIDED AND UNDER A GUARD: owner, 2026-08-09, ~~365 days~~ — raised by an agent to 400 on 2026-08-13 to clear the DPDP Rule 8(3) one-year floor, which 365 misses by one day across a leap year. 👤 A SECOND OWNER LINE IS NOW OWED HERE, AND IT IS ONE WORD: keep 400, or name another value >= 366. The engineering half needs nothing either way — this row's `mechanism.ttlSource` and sites/nikatru/functions/api/subscribe.js move together or the build goes red.",
           "source": "verified"
         }
+      },
+      {
+        "id": "expiring.cert.origin-ca",
+        "row": {
+          "id": "expiring.cert.origin-ca",
+          "kind": "expiring",
+          "what": "The Cloudflare Origin CA certificate for `*.nikatru.com` + `nikatru.com` (origin-rsa; the only Origin CA certificate on any of the account's four zones), issued for Box A's (Oracle) public nginx :443 when GlitchTip ran there. ⏱ 2026-09-16 — CORRECTED BY LIVE MEASUREMENT: it is no longer in front of glitchtip.nikatru.com. That record is a proxied CNAME to Box B's tunnel `e4be0b04-….cfargotunnel.com` (last modified 2026-09-02T10:19:37Z, the move), Box B's nginx binds 127.0.0.1:8080 with no TLS and no certificate (Private/runbooks/boxes/hostinger.md, 'no origin cert on this box, and none to renew'), and every other proxied A/AAAA/CNAME record on the zone targets a tunnel, a Pages project or a Worker — so no live hostname reaches a listener that presents this certificate. `curl -sI https://glitchtip.nikatru.com` -> HTTP 200, Server: cloudflare. Zone SSL mode: strict. THE PRIOR TEXT, true until 2026-09-02: The Cloudflare Origin CA certificate on the Oracle box, in front of glitchtip.nikatru.com.",
+          "detector": "This row.",
+          "response": "Read the issued certificate's `expires_on` from the Cloudflare API (see expiryKnownAt) and write it into `expires`; never a remembered validity period. If a copy is still installed on Box A, `openssl x509 -enddate` against that file says whether it is this certificate. THE PRIOR TEXT, until 2026-09-16: 🟡 READ THE CERTIFICATE, never a remembered validity period: `openssl x509 -enddate` against the INSTALLED cert is the only source that cannot drift.",
+          "cadence": "180d",
+          "expires": "2041-07-16",
+          "leadDays": 30,
+          "mechanism": {
+            "substrate": "oci",
+            "anchor": "Private/runbooks/glitchtip.md",
+            "record": "the Cloudflare API's `expires_on` for the zone's Origin CA certificate (and, on Box A, the installed file's own notAfter)",
+            "failingValue": "expires_on inside the lead window",
+            "readBy": "nothing yet — the date is reachable with the repository's Cloudflare API token (read by hand 2026-09-16) but no script or duty reads it. THE PRIOR TEXT, until 2026-09-16: nothing yet — the cert is on a host this repo cannot reach"
+          },
+          "accessProviders": [
+            "oci",
+            "cloudflare"
+          ],
+          "ownerGated": true,
+          "ownerGap": "⏱ 2026-09-16 — THE DATE IS READ; AN OWNER DECISION REMAINS. `expires` 2041-07-16 was read from the Cloudflare API, so the lead-window arithmetic now runs on this row. What is still open: since 2026-09-02 this certificate protects no live hostname (see `what`), and whether it is still installed on Box A (`/etc/ssl/glitchtip/`) was not read. Owner: decide whether to keep it as Box A's rollback certificate or revoke it (Cloudflare dashboard -> nikatru.com -> SSL/TLS -> Origin Server). Revoking is a Cloudflare write this repository does not make. Cloudflare still sends no expiry notice for Origin CA certificates. THE PRIOR TEXT, until 2026-09-16: 🔴 Cloudflare states it sends NO expiry notification for Origin CA certificates, so a lapse takes out the very channel that would have told you. Owner: run openssl on the box and record notAfter.",
+          "source": "verified",
+          "expiryKnownAt": "`GET https://api.cloudflare.com/client/v4/certificates?zone_id=<nikatru.com zone id>` with the repository's CLOUDFLARE_API_TOKEN -> `result[].expires_on` = 2041-07-16 16:44:00 +0000 UTC, `hostnames` [*.nikatru.com, nikatru.com], `request_type` origin-rsa; read 2026-09-16, one certificate on that zone and none on the other three. That is the ISSUED certificate's notAfter; an installed copy is the same certificate only if `openssl x509 -enddate -noout -in <file>` on Box A agrees. THE PRIOR TEXT, until 2026-09-16: `openssl x509 -enddate -noout -in <the installed cert>` on the Oracle box. The INSTALLED certificate's own notAfter is the only source that cannot drift; a remembered 15-year validity is not this field."
+        },
+        "retiredOn": "2026-09-18",
+        "retiredWhy": "THE CERTIFICATE NO LONGER EXISTS. The owner answered O-ORIGIN-CA-KEEP-OR-REVOKE \"revoke, after you check\" on 2026-09-18, and it was revoked that day. It had protected no live hostname since GlitchTip moved to Box B on 2026-09-02 (Box B nginx binds 127.0.0.1:8080 with no TLS; every proxied record targets a tunnel, a Pages project or a Worker). A row tracking the expiry of a revoked certificate asks the register to watch a date that can no longer matter.",
+        "evidence": "Read-only scans first, issuer read with openssl on every .pem/.crt/.cer outside the system CA store: Box A (Oracle, ubuntu-ampere) 2,624 files, 2,311 issuers readable, 0 \"CloudFlare Origin\" (control: ISRG Root X1 read correctly; /etc/ssl/glitchtip/ absent); Box B (Hostinger) 1,154 files, 1,056 readable, 0 hits. Then with the repo CLOUDFLARE_API_TOKEN: GET /client/v4/certificates?zone_id=<nikatru.com ef7d36e6…> -> 1 certificate (id 5550142505…, *.nikatru.com + nikatru.com, expires 2041-07-16); DELETE /client/v4/certificates/<id> -> success:true; READ-BACK GET -> 0 certificates. After: https://nikatru.com/, /subscriptiontracker/, platform and subscriptiontracker-api /v1/health all HTTP 200.",
+        "whatTheRetirementCosts": "NOTHING. No script or duty read this row (its mechanism.readBy was \"nothing yet\"), no live hostname presented the certificate, and the zone SSL mode (strict) is satisfied by the edge certificates and the tunnels. If an origin certificate is ever needed again, mint a new one and give it a new row."
       }
     ]
   },
@@ -3060,31 +3091,6 @@
       "ownerGap": "⏱ 2026-09-14 — HALF CLOSED, AND THE OPEN HALF IS WHY THIS STAYS GATED. The DATE was measured live that day from public RDAP (https://rdap.verisign.com/com/v1/domain/rajasekarselvam.com -> expiration 2027-07-22T04:11:50Z) and recorded in the business brain (nikatru commit bc0868e, nikatru/vendors/hostinger.md, Obligations table); `expires` is 2027-07-22, so the leadDays-30 arithmetic now RUNS on this row. AUTO-RENEW IS NOT READ: Hostinger shows it only in hPanel, which is an owner console, so whether the registration renews itself is still unknown here. Owner: confirm auto-renew in hPanel. THE PRIOR TEXT, kept because it was true until 2026-09-14: Two registrars, two behaviours, both unchecked since ~17 July. Owner action.",
       "source": "verified",
       "expiryKnownAt": "The date: public RDAP https://rdap.verisign.com/com/v1/domain/rajasekarselvam.com (`events[eventAction=expiration]`), read 2026-09-14. Auto-renew: hPanel only. THE PRIOR TEXT, true until 2026-09-14: Hostinger hPanel -> Domains -> rajasekarselvam.com -> expiry date + auto-renew. A SECOND registrar with different renewal behaviour; do not infer it from the Cloudflare one."
-    },
-    {
-      "id": "expiring.cert.origin-ca",
-      "kind": "expiring",
-      "what": "The Cloudflare Origin CA certificate for `*.nikatru.com` + `nikatru.com` (origin-rsa; the only Origin CA certificate on any of the account's four zones), issued for Box A's (Oracle) public nginx :443 when GlitchTip ran there. ⏱ 2026-09-16 — CORRECTED BY LIVE MEASUREMENT: it is no longer in front of glitchtip.nikatru.com. That record is a proxied CNAME to Box B's tunnel `e4be0b04-….cfargotunnel.com` (last modified 2026-09-02T10:19:37Z, the move), Box B's nginx binds 127.0.0.1:8080 with no TLS and no certificate (Private/runbooks/boxes/hostinger.md, 'no origin cert on this box, and none to renew'), and every other proxied A/AAAA/CNAME record on the zone targets a tunnel, a Pages project or a Worker — so no live hostname reaches a listener that presents this certificate. `curl -sI https://glitchtip.nikatru.com` -> HTTP 200, Server: cloudflare. Zone SSL mode: strict. THE PRIOR TEXT, true until 2026-09-02: The Cloudflare Origin CA certificate on the Oracle box, in front of glitchtip.nikatru.com.",
-      "detector": "This row.",
-      "response": "Read the issued certificate's `expires_on` from the Cloudflare API (see expiryKnownAt) and write it into `expires`; never a remembered validity period. If a copy is still installed on Box A, `openssl x509 -enddate` against that file says whether it is this certificate. THE PRIOR TEXT, until 2026-09-16: 🟡 READ THE CERTIFICATE, never a remembered validity period: `openssl x509 -enddate` against the INSTALLED cert is the only source that cannot drift.",
-      "cadence": "180d",
-      "expires": "2041-07-16",
-      "leadDays": 30,
-      "mechanism": {
-        "substrate": "oci",
-        "anchor": "Private/runbooks/glitchtip.md",
-        "record": "the Cloudflare API's `expires_on` for the zone's Origin CA certificate (and, on Box A, the installed file's own notAfter)",
-        "failingValue": "expires_on inside the lead window",
-        "readBy": "nothing yet — the date is reachable with the repository's Cloudflare API token (read by hand 2026-09-16) but no script or duty reads it. THE PRIOR TEXT, until 2026-09-16: nothing yet — the cert is on a host this repo cannot reach"
-      },
-      "accessProviders": [
-        "oci",
-        "cloudflare"
-      ],
-      "ownerGated": true,
-      "ownerGap": "⏱ 2026-09-16 — THE DATE IS READ; AN OWNER DECISION REMAINS. `expires` 2041-07-16 was read from the Cloudflare API, so the lead-window arithmetic now runs on this row. What is still open: since 2026-09-02 this certificate protects no live hostname (see `what`), and whether it is still installed on Box A (`/etc/ssl/glitchtip/`) was not read. Owner: decide whether to keep it as Box A's rollback certificate or revoke it (Cloudflare dashboard -> nikatru.com -> SSL/TLS -> Origin Server). Revoking is a Cloudflare write this repository does not make. Cloudflare still sends no expiry notice for Origin CA certificates. THE PRIOR TEXT, until 2026-09-16: 🔴 Cloudflare states it sends NO expiry notification for Origin CA certificates, so a lapse takes out the very channel that would have told you. Owner: run openssl on the box and record notAfter.",
-      "source": "verified",
-      "expiryKnownAt": "`GET https://api.cloudflare.com/client/v4/certificates?zone_id=<nikatru.com zone id>` with the repository's CLOUDFLARE_API_TOKEN -> `result[].expires_on` = 2041-07-16 16:44:00 +0000 UTC, `hostnames` [*.nikatru.com, nikatru.com], `request_type` origin-rsa; read 2026-09-16, one certificate on that zone and none on the other three. That is the ISSUED certificate's notAfter; an installed copy is the same certificate only if `openssl x509 -enddate -noout -in <file>` on Box A agrees. THE PRIOR TEXT, until 2026-09-16: `openssl x509 -enddate -noout -in <the installed cert>` on the Oracle box. The INSTALLED certificate's own notAfter is the only source that cannot drift; a remembered 15-year validity is not this field."
     },
     {
       "id": "expiring.drive-oauth-app",

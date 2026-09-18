@@ -178,13 +178,13 @@
       "file": "tooling/ops/register.json",
       "anchor": "the INSTALLED cert is the only source that cannot drift.",
       "status": "demoted",
-      "reason": "Quoted as THE PRIOR TEXT of expiring.cert.origin-ca's `response`, kept as history on 2026-09-16 when the row was corrected by a live Cloudflare API read. The live `response` before it no longer makes the claim; the quote asserts nothing about the row as it stands."
+      "reason": "Quoted as THE PRIOR TEXT of expiring.cert.origin-ca's `response`, kept as history on 2026-09-16 when the row was corrected by a live Cloudflare API read. The live `response` before it no longer makes the claim; the quote asserts nothing about the row as it stands. ⏱ 2026-09-18: the row itself is now RETIRED (certificate revoked, O-ORIGIN-CA-KEEP-OR-REVOKE); the sentence survives verbatim inside _retiredRows.rows[].row, as history."
     },
     {
       "file": "tooling/ops/register.json",
       "anchor": "The INSTALLED certificate's own notAfter is the only source that cannot drift;",
       "status": "demoted",
-      "reason": "Quoted as THE PRIOR TEXT of expiring.cert.origin-ca's `expiryKnownAt`, kept as history on 2026-09-16. The live text before it names the Cloudflare API read and says an installed copy matches only if openssl agrees; the quote asserts nothing about the row as it stands."
+      "reason": "Quoted as THE PRIOR TEXT of expiring.cert.origin-ca's `expiryKnownAt`, kept as history on 2026-09-16. The live text before it names the Cloudflare API read and says an installed copy matches only if openssl agrees; the quote asserts nothing about the row as it stands. ⏱ 2026-09-18: the row itself is now RETIRED (certificate revoked, O-ORIGIN-CA-KEEP-OR-REVOKE); the sentence survives verbatim inside _retiredRows.rows[].row, as history."
     }
   ],
   "backlog": {
