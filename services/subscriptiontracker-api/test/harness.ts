@@ -81,6 +81,24 @@ class SqliteStatement {
     const r = this.db.prepare(this.sql).run(...this.args());
     return { meta: { changes: r.changes } };
   }
+
+  /**
+   * What ONE statement contributes to a `batch()` answer — D1's shape.
+   *
+   * ⏱ 2026-09-18 · O-ERASURE-WALK-ROUND-TRIPS. `batch` used to push `run()`,
+   * which carries `meta` and NO `results`, because every batch here was a write.
+   * The erasure walk now batches its schema reads. MEASURED against workerd's own
+   * D1 (getPlatformProxy over the Worker's wrangler.jsonc binding), 2026-09-18: a
+   * batched SELECT answers its rows, in order; a write answers `results: []` with
+   * `meta.changes`. `columns()` decides which, so no SQL is pattern-matched. Same
+   * change as services/platform/test/harness.ts.
+   */
+  batchResult(): { results: unknown[]; meta: { changes: number } } {
+    const stmt = this.db.prepare(this.sql);
+    if (stmt.columns().length > 0) return { results: stmt.all(...this.args()), meta: { changes: 0 } };
+    const r = stmt.run(...this.args());
+    return { results: [], meta: { changes: Number(r.changes) } };
+  }
 }
 
 /** D1Database over node:sqlite. `batch` is ONE transaction, as D1's is. */
@@ -100,7 +118,7 @@ export class SqliteD1 {
     this.db.exec('BEGIN');
     try {
       const out: unknown[] = [];
-      for (const s of statements) out.push(await s.run());
+      for (const s of statements) out.push(s.batchResult());
       this.db.exec('COMMIT');
       return out;
     } catch (err) {

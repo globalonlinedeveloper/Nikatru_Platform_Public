@@ -164,10 +164,32 @@ class SqliteStatement {
     });
   }
 
-  /** Runs against the real engine. Kept internal so `batch` can reuse it. */
+  /** Runs against the real engine. Kept internal so `run` can reuse it. */
   exec(): { meta: { changes: number } } {
     const r = this.owner.db.prepare(this.sql).run(...this.args());
     return { meta: { changes: r.changes } };
+  }
+
+  /**
+   * What ONE statement contributes to a `batch()` answer — D1's shape, not a
+   * convenient subset of it.
+   *
+   * ⏱ 2026-09-18 · O-ERASURE-WALK-ROUND-TRIPS. `batch` used to push `exec()`,
+   * which carries `meta` and NO `results`, because every batch this harness had
+   * seen was a write. The erasure walk now sends its schema reads as a batch, and
+   * against the old shape every read came back empty — 44 tests red on a harness
+   * that was lying, not on the code. MEASURED against workerd's own D1 through
+   * this Worker's wrangler.jsonc binding (getPlatformProxy), 2026-09-18: a batch
+   * of SELECTs answers one result per statement, IN ORDER, each carrying its
+   * rows; a write answers `results: []` with `meta.changes`. So a row-returning
+   * statement returns its rows here, and a write returns `[]` beside its count.
+   * `columns()` decides which, so no SQL is pattern-matched.
+   */
+  batchResult(): { results: unknown[]; meta: { changes: number } } {
+    const stmt = this.owner.db.prepare(this.sql);
+    if (stmt.columns().length > 0) return { results: stmt.all(...this.args()), meta: { changes: 0 } };
+    const r = stmt.run(...this.args());
+    return { results: [], meta: { changes: Number(r.changes) } };
   }
 
   async all<T = Record<string, unknown>>(): Promise<{ results: T[] }> {
@@ -221,7 +243,7 @@ export class RealDb {
     this.db.exec('BEGIN');
     try {
       const out: unknown[] = [];
-      for (const s of statements) out.push(s.exec());
+      for (const s of statements) out.push(s.batchResult());
       this.db.exec('COMMIT');
       return out;
     } catch (err) {
