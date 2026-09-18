@@ -301,7 +301,7 @@ describe('assert-input-contract', () => {
 
   test('FAILS when the parser stops seeing the vars block', () => {
     const { code, out } = run(tree({ yaml: goodYaml(VARS.slice(0, 3)) }));
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST — parsed only 3 var\(s\)/);
   });
 
@@ -400,7 +400,7 @@ describe('assert-input-contract', () => {
 
   test('COVERAGE LOST when post_gen prints no checklist at all', () => {
     const { code, out } = run(tree({ post: goodPostGen.replace(/Owner checklist:/g, 'Next:') }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /prints no "Owner checklist:" at all/);
   });
@@ -467,7 +467,7 @@ describe('assert-input-contract', () => {
     // all. A missing subject must be loud, never absent.
     test('COVERAGE LOST when a required backend file is gone', () => {
       const { code, out } = run(tree({ omit: [`${BACKEND}/wrangler.jsonc`] }));
-      assert.equal(code, 1);
+      assert.equal(code, 2);
       assert.match(out, /is REQUIRED_COVERAGE for the S-12 hand-edit rule and could not be read/);
       assert.match(out, /read 1 of 2 required file\(s\)/);
     });
@@ -549,7 +549,7 @@ describe('assert-input-contract', () => {
         '..success(r"""Stamped x (CLIENT-ONLY). Owner checklist:""")',
       ),
     }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /recovered 1 of 2 "Owner checklist:" header\(s\)/);
   });
 });

@@ -714,7 +714,7 @@ describe('assert-no-hardcoded-strings', () => {
 
     test('FAILS when the enforced Subly tree is gone — a domain that can vanish is not a domain', () => {
       const { code, out } = run(tree({ subscriptiontracker: null, allowlisted: null }));
-      assert.equal(code, 1);
+      assert.equal(code, 2);
       assert.match(out, new RegExp(`COVERAGE LOST — ${SUBLY} does not exist`));
     });
   });
@@ -740,7 +740,7 @@ describe('assert-no-hardcoded-strings', () => {
 
     test('FAILS when the waived literal is gone — a waiver for nothing reads like a live exemption', () => {
       const { code, out } = run(tree({ allowlisted: '// the debug notice was removed\n' }));
-      assert.equal(code, 1);
+      assert.equal(code, 2);
       assert.match(out, /COVERAGE LOST — the allowlist entry for "debug: \$detail"/);
       assert.match(out, /matched NOTHING/);
     });
@@ -918,7 +918,7 @@ const b = Text('Hardcoded right after a URL');
   describe('the matchers are proven to still match', () => {
     test('FAILS when the fixture canary stops looking dirty', () => {
       const { code, out } = run(tree({ fixture: '// all the fixture strings were removed\n' }));
-      assert.equal(code, 1);
+      assert.equal(code, 2);
       assert.match(out, new RegExp(`COVERAGE LOST — the matchers found only 0 hardcoded string\\(s\\) in ${FIXTURE}/dirty`));
       // …and the enforcement half still said "clean", which is the point.
       assert.match(out, new RegExp(`${reEscape(BRICK)} shows no hardcoded user-facing strings`));
@@ -926,7 +926,7 @@ const b = Text('Hardcoded right after a URL');
 
     test('FAILS when the fixture canary is deleted outright', () => {
       const { code, out } = run(tree({ fixture: null }));
-      assert.equal(code, 1);
+      assert.equal(code, 2);
       assert.match(out, new RegExp(`COVERAGE LOST — the canary tree ${FIXTURE}/dirty does not exist`));
     });
 
@@ -954,7 +954,7 @@ const b = Text('Hardcoded right after a URL');
 
     test('FAILS when the brick tree it protects is gone', () => {
       const { code, out } = run(tree({ omitBrick: true }));
-      assert.equal(code, 1);
+      assert.equal(code, 2);
       assert.match(out, /COVERAGE LOST/);
     });
 
@@ -965,7 +965,7 @@ const b = Text('Hardcoded right after a URL');
     // ones — which is precisely the shape a total count calls healthy.
     test('FAILS when one matcher family has no evidence, though the total is high', () => {
       const { code, out } = run(tree({ fixture: dirtyTree(30, 0) }));
-      assert.equal(code, 1, 'a 30-hit total hid a family that matched nothing');
+      assert.equal(code, 2, 'a 30-hit total hid a family that matched nothing');
       assert.match(out, /COVERAGE LOST — the "a labelling parameter" matcher found NOTHING/);
       // …and the enforcement half still said "clean", which is the point.
       assert.match(out, new RegExp(`${reEscape(BRICK)} shows no hardcoded user-facing strings`));
@@ -1001,19 +1001,19 @@ const b = Text('Hardcoded right after a URL');
   describe('the matcher list is held against a declaration outside it', () => {
     test('FAILS when the declaration is missing', () => {
       const { code, out } = run(tree({ families: null }));
-      assert.equal(code, 1);
+      assert.equal(code, 2);
       assert.match(out, new RegExp(`COVERAGE LOST — ${FIXTURE}/expected-families.txt does not exist`));
     });
 
     test('FAILS when the declaration is emptied rather than deleted', () => {
       const { code, out } = run(tree({ families: '# everything below was removed\n' }));
-      assert.equal(code, 1, 'an empty declaration is satisfied by any matcher list at all');
+      assert.equal(code, 2, 'an empty declaration is satisfied by any matcher list at all');
       assert.match(out, /declares no families/);
     });
 
     test('FAILS when the declaration names a family no matcher provides', () => {
       const { code, out } = run(tree({ families: `${FAMILIES}a family nobody implements\n` }));
-      assert.equal(code, 1);
+      assert.equal(code, 2);
       assert.match(out, /declares evidence for the "a family nobody implements" family and NO MATCHER PROVIDES IT/);
     });
 
@@ -1032,7 +1032,7 @@ const b = Text('Hardcoded right after a URL');
     // exited 1 on the declaration identity.
     test('FAILS on the REAL repo when a matcher family is deleted from the guard', () => {
       const { code, out } = run(REPO, guardCopy(deleteLabellingMatcher));
-      assert.equal(code, 1, 'a deleted matcher family passed against the real tree');
+      assert.equal(code, 2, 'a deleted matcher family passed against the real tree');
       assert.match(out, /declares evidence for the "a labelling parameter" family and NO MATCHER PROVIDES IT/);
       // The floor did NOT catch it — that is the whole point, so it is asserted
       // rather than left as a claim in a comment. The canary still cleared
@@ -1055,13 +1055,13 @@ const b = Text('Hardcoded right after a URL');
   describe('the NOT_USER_FACING exemptions are proven, not assumed', () => {
     test('FAILS when the quiet fixture is missing', () => {
       const { code, out } = run(tree({ quiet: null }));
-      assert.equal(code, 1);
+      assert.equal(code, 2);
       assert.match(out, new RegExp(`COVERAGE LOST — ${FIXTURE}/quiet does not exist`));
     });
 
     test('FAILS when the quiet fixture holds nothing the matchers even look at', () => {
       const { code, out } = run(tree({ quiet: 'const x = 1;\n' }));
-      assert.equal(code, 1, '"zero enforced hits" is also true of an empty tree');
+      assert.equal(code, 2, '"zero enforced hits" is also true of an empty tree');
       assert.match(out, /holds no literal in any position the matchers look at/);
     });
 
@@ -1083,7 +1083,7 @@ const b = Text('Hardcoded right after a URL');
         const quiet = QUIET.replace(line, '');
         assert.notEqual(quiet, QUIET, 'the near-miss line moved; re-point this case');
         const { code, out } = run(tree({ quiet }));
-        assert.equal(code, 1, `${what} exemption had no input reaching it and nothing said so`);
+        assert.equal(code, 2, `${what} exemption had no input reaching it and nothing said so`);
         assert.match(out, /has no near miss in/);
       });
     }
@@ -1645,7 +1645,7 @@ const b = Text('Hardcoded right after a URL');
     describe('a scan that reached nothing says so instead of printing a clean zero', () => {
       test('FAILS when an enforced tree has no app_en.arb', () => {
         const { code, out } = run(tree({ brickArb: null }));
-        assert.equal(code, 1, 'the reverse limb read no keys and called the tree clean');
+        assert.equal(code, 2, 'the reverse limb read no keys and called the tree clean');
         assert.match(out, new RegExp(`COVERAGE LOST — ${reEscape(BRICK)}/l10n/app_en.arb does not exist`));
       });
 
@@ -1661,7 +1661,7 @@ const b = Text('Hardcoded right after a URL');
       // the domain and this case would have stopped reaching the branch it names.
       test('FAILS when NO enforced tree has a template arb, and prints no clean zero', () => {
         const { code, out } = run(tree({ brickArb: null, subscriptiontrackerArb: null, shelfArb: null }));
-        assert.equal(code, 1, 'the reverse direction read no keys at all and still called the tree clean');
+        assert.equal(code, 2, 'the reverse direction read no keys at all and still called the tree clean');
         assert.equal(
           (out.match(/does not exist, so the reverse direction read no keys/g) ?? []).length,
           3,
@@ -1673,13 +1673,13 @@ const b = Text('Hardcoded right after a URL');
 
       test('FAILS when the arb does not parse as JSON', () => {
         const { code, out } = run(tree({ brickArb: '{ "appTitle": "Demo",,, }\n' }));
-        assert.equal(code, 1, 'an unparseable arb made every key it holds invisible');
+        assert.equal(code, 2, 'an unparseable arb made every key it holds invisible');
         assert.match(out, /did not parse as JSON/);
       });
 
       test('FAILS when the arb holds only metadata and no message keys', () => {
         const { code, out } = run(tree({ brickArb: { '@@locale': 'en' } }));
-        assert.equal(code, 1, '"no unrendered keys" was a statement about an empty file');
+        assert.equal(code, 2, '"no unrendered keys" was a statement about an empty file');
         assert.match(out, /declares no message keys/);
       });
 
@@ -1692,7 +1692,7 @@ const b = Text('Hardcoded right after a URL');
       // falsify it is an assertion the next reader is free to delete.
       test('FAILS when the arb declares a key that is not a Dart identifier', () => {
         const { code, out } = run(tree({ brickArb: { ...BRICK_ARB, 'not-an-identifier': 'x' } }));
-        assert.equal(code, 1, 'a key this limb cannot build a regex for was silently skipped');
+        assert.equal(code, 2, 'a key this limb cannot build a regex for was silently skipped');
         assert.match(out, /declares 1 key\(s\) that are not Dart identifiers \(not-an-identifier\)/);
         assert.match(out, /They were SKIPPED rather than checked/);
         // …and the message is TRUE: the key really is outside the count below,
@@ -1737,7 +1737,7 @@ const b = Text('Hardcoded right after a URL');
         const { code, out } = run(
           tree({ brick: null, subscriptiontracker: null, allowlisted: null, shelf: null, shelfAllowlisted: null }),
         );
-        assert.equal(code, 1, 'every key would read as unrendered, which is a broken scan');
+        assert.equal(code, 2, 'every key would read as unrendered, which is a broken scan');
         assert.match(out, /ZERO non-test \.dart file\(s\) to look for accessors in/);
       });
 
@@ -1748,7 +1748,7 @@ const b = Text('Hardcoded right after a URL');
       // something outside the render trees was actually read.
       test('FAILS when the non-render sweep had no files to sweep', () => {
         const { code, out } = run(tree({ consumers: null }));
-        assert.equal(code, 1, '"nothing else reads it" was a statement about an empty sweep');
+        assert.equal(code, 2, '"nothing else reads it" was a statement about an empty sweep');
         assert.match(out, /found no .+ file\(s\) outside the enforced trees/);
       });
     });
@@ -1847,7 +1847,7 @@ const b = Text('Hardcoded right after a URL');
       // happily print forever.
       test('FAILS on the REAL repo when the accessor matcher stops matching', () => {
         const { code, out } = run(REPO, guardCopy(breakAccessorMatcher));
-        assert.equal(code, 1, 'a broken accessor matcher printed a 309-key owner gap and passed');
+        assert.equal(code, 2, 'a broken accessor matcher printed a 309-key owner gap and passed');
         assert.match(out, /COVERAGE LOST — \d+ of \d+ declared key\(s\) reached no accessor/);
         assert.match(out, /the accessor matcher has stopped matching/);
         // …and the owner print was suppressed rather than drowned in noise.
@@ -1942,7 +1942,7 @@ const b = Text('Hardcoded right after a URL');
           l10nYaml: { pkg: SHELF_PKG, body: 'output-localization-file: chassis_localizations.dart\n' },
         }),
       );
-      assert.equal(code, 1, 'a half-read config is a scan that narrowed without saying so');
+      assert.equal(code, 2, 'a half-read config is a scan that narrowed without saying so');
       assert.match(out, /declares no `arb-dir`/);
       assert.match(out, /a guard that guesses instead of reading it/);
     });
@@ -2006,7 +2006,7 @@ const b = Text('Hardcoded right after a URL');
     // the resolver's three answers stay three.
     test('COVERAGE LOST when the delegation cannot be followed', () => {
       const { code, out } = run(tree({ extra: { [ADAPTER]: adapter('missing.dart') } }));
-      assert.equal(code, 1, 'an unfollowable delegation was read as "no delegation"');
+      assert.equal(code, 2, 'an unfollowable delegation was read as "no delegation"');
       assert.match(out, /COVERAGE LOST — /);
       assert.match(out, /the adapter is empty and the package it points at was not read/);
     });
@@ -2072,7 +2072,7 @@ const b = Text('Hardcoded right after a URL');
     // is the exact two-line mutation that refuted the previous PR.
     test('FAILS when output-localization-file is not named after its own output-class', () => {
       const { code, out } = run(shelfTree('system.dart', { [SCREENS]: LITERAL }));
-      assert.equal(code, 1, 'the yaml line decided how much of the tree the guard could see');
+      assert.equal(code, 2, 'the yaml line decided how much of the tree the guard could see');
       assert.match(
         out,
         /COVERAGE LOST — packages\/design_system\/l10n\.yaml sets `output-localization-file: system\.dart`/,
@@ -2102,7 +2102,7 @@ const b = Text('Hardcoded right after a URL');
             "class Helpers {\n  Widget build(BuildContext c) => Text('A hand written sentence');\n}\n",
         }),
       );
-      assert.equal(code, 1, 'a hand-written file wearing the generated name was skipped in silence');
+      assert.equal(code, 2, 'a hand-written file wearing the generated name was skipped in silence');
       assert.match(out, /chassis_localizations_helpers\.dart was SKIPPED as generated localisations/);
       assert.doesNotMatch(out, /ok — 3 enforced tree\(s\) are clean/);
     });
@@ -2135,7 +2135,7 @@ const b = Text('Hardcoded right after a URL');
           extra: { [CHASSIS_ARB]: arb({ '@@locale': 'en', shelfNotice: 'A shared notice' }) },
         }),
       );
-      assert.equal(code, 1, out);
+      assert.equal(code, 2, out);
       assert.match(out, /declares no `output-class`/);
     });
   });
@@ -2152,7 +2152,7 @@ const b = Text('Hardcoded right after a URL');
       const root = tree();
       rmSync(join(root, SHELF, '_fill'), { recursive: true, force: true });
       const { code, out } = run(root);
-      assert.equal(code, 1, 'a shrinking render set printed as a clean one');
+      assert.equal(code, 2, 'a shrinking render set printed as a clean one');
       assert.match(
         out,
         /COVERAGE LOST — only \d+ \.dart file\(s\) under packages\/design_system\/lib reached the matchers, expected >= 12/,
@@ -2261,19 +2261,19 @@ const b = Text('Hardcoded right after a URL');
           shelfArb: { '@@locale': 'de', shelfNotice: 'Ein Hinweis' },
         }),
       );
-      assert.equal(code, 1, 'the limb compared nothing and said nothing');
+      assert.equal(code, 2, 'the limb compared nothing and said nothing');
       assert.match(out, /COVERAGE LOST — no two enforced trees declare arbs for the same locale/);
     });
 
     test('COVERAGE LOST when a locale arb does not parse', () => {
       const { code, out } = run(tree({ extra: { [SUBLY_TA]: '{ not json\n' } }));
-      assert.equal(code, 1, out);
+      assert.equal(code, 2, out);
       assert.match(out, /COVERAGE LOST — apps\/subscriptiontracker\/lib\/l10n\/app_ta\.arb did not parse as JSON/);
     });
 
     test('COVERAGE LOST when a locale arb declares no @@locale', () => {
       const { code, out } = run(tree({ extra: { [SUBLY_TA]: arb({ homeTitle: 'Sans locale' }) } }));
-      assert.equal(code, 1, out);
+      assert.equal(code, 2, out);
       assert.match(out, /declares no @@locale/);
     });
   });

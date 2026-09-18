@@ -139,7 +139,7 @@ describe('assert-pseudonymity-firewall — revenue measured without a join', () 
 
   test('COVERAGE LOST when the dart scan reaches almost nothing', () => {
     const r = run({ dartFiller: 2 });
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST — scanned only/);
   });
 
@@ -227,7 +227,7 @@ describe('assert-pseudonymity-firewall — revenue measured without a join', () 
 
   test('COVERAGE LOST when the pairing scan misses the Workers entirely', () => {
     const r = run({ tsFiller: 1, dartFiller: 60 });
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST — the pairing scan reaches only/);
   });
 
@@ -245,7 +245,7 @@ describe('assert-pseudonymity-firewall — revenue measured without a join', () 
     filler(root);
     write(root, PAYWALL_REL, PAYWALL);
     const r = spawnSync(process.execPath, [GUARD, root], { encoding: 'utf8' });
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(`${r.stdout}${r.stderr}`, /COVERAGE LOST/);
   });
 });

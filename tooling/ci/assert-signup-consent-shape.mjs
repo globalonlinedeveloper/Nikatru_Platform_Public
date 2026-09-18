@@ -47,7 +47,7 @@
 // greps prose reports the opposite of the truth exactly when the code is right.
 //
 // Usage:  node tooling/ci/assert-signup-consent-shape.mjs [repoRoot]
-// Exit 0 = every sign-up surface is compliant; 1 = it is not.
+// Exit 0 = every sign-up surface is compliant; 1 = it is not; 2 = COVERAGE LOST only (it could not look).
 // ─────────────────────────────────────────────────────────────────────────────
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -194,6 +194,7 @@ const WIDGETS = [
 const MIN_SURFACES = 6;
 
 const problems = [];
+const coverageLost = (m) => problems.push(`COVERAGE LOST — ${m}`); // exit 2 only if EVERY problem is one (summary below)
 const notes = [];
 const ok = (m) => console.log(`ok   ${m}`);
 
@@ -245,8 +246,8 @@ let blocking = 0;
 
 for (const s of SURFACES) {
   if (!existsSync(join(ROOT, s.file))) {
-    problems.push(
-      `COVERAGE LOST — ${s.file} is in the surface list and does not exist. A sign-up surface that ` +
+    coverageLost(
+      `${s.file} is in the surface list and does not exist. A sign-up surface that ` +
         'moved without this list moving is a surface nothing checks; re-point the entry or remove it ' +
         'deliberately.',
     );
@@ -254,8 +255,8 @@ for (const s of SURFACES) {
   }
   const scan = readWithDelegation(s.file);
   if (scan.lost) {
-    problems.push(
-      `COVERAGE LOST — ${s.file} ${scan.lost} Limbs 1-3 read the surface PLUS whatever it delegates ` +
+    coverageLost(
+      `${s.file} ${scan.lost} Limbs 1-3 read the surface PLUS whatever it delegates ` +
         'to, so a delegation this scan cannot follow is a consent flag it cannot see.',
     );
     continue;
@@ -336,13 +337,13 @@ for (const s of SURFACES) {
 // cannot follow is COVERAGE LOST rather than silence.
 for (const rel of WIDGETS) {
   if (!existsSync(join(ROOT, rel))) {
-    problems.push(`COVERAGE LOST — ${rel} does not exist; the shared consent widget is the thing limb 1 relies on.`);
+    coverageLost(`${rel} does not exist; the shared consent widget is the thing limb 1 relies on.`);
     continue;
   }
   const widgetScan = readWithDelegation(rel);
   if (widgetScan.lost) {
-    problems.push(
-      `COVERAGE LOST — ${rel} ${widgetScan.lost} The pre-tick check reads the widget PLUS whatever it ` +
+    coverageLost(
+      `${rel} ${widgetScan.lost} The pre-tick check reads the widget PLUS whatever it ` +
         'delegates to, so a delegation this scan cannot follow is a constructor it cannot see — and the ' +
         'adapter it CAN see could never carry the parameter this limb forbids.',
     );
@@ -367,12 +368,12 @@ let appleDoors = 0;
 const doorFiles = new Set();
 for (const d of APPLE_DOORS) {
   if (!existsSync(join(ROOT, d.file))) {
-    problems.push(`COVERAGE LOST — ${d.file} is an Apple door on the list and does not exist.`);
+    coverageLost(`${d.file} is an Apple door on the list and does not exist.`);
     continue;
   }
   const scan = readWithDelegation(d.file);
   if (scan.lost) {
-    problems.push(`COVERAGE LOST — ${d.file} ${scan.lost} Limb 4 reads the door PLUS what it delegates to.`);
+    coverageLost(`${d.file} ${scan.lost} Limb 4 reads the door PLUS what it delegates to.`);
     continue;
   }
   doorFiles.add(d.file);
@@ -441,8 +442,8 @@ for (const root of APPLE_SCAN_ROOTS) {
   }
 }
 if (appleCallFiles.length === 0) {
-  problems.push(
-    'COVERAGE LOST — limb 4 found NO Sign in with Apple call site under ' +
+  coverageLost(
+    'limb 4 found NO Sign in with Apple call site under ' +
       `${APPLE_SCAN_ROOTS.join(', ')}. Either the provider is gone everywhere (remove the limb deliberately) ` +
       'or this scan has stopped seeing it.',
   );
@@ -458,8 +459,8 @@ for (const f of appleCallFiles) {
 
 // ── coverage self-checks ─────────────────────────────────────────────────────
 if (scanned < MIN_SURFACES) {
-  problems.push(
-    `COVERAGE LOST — scanned ${scanned} sign-up surface(s), expected at least ${MIN_SURFACES}. ` +
+  coverageLost(
+    `scanned ${scanned} sign-up surface(s), expected at least ${MIN_SURFACES}. ` +
       'Every limb above is satisfied by an empty set, so a broken scan reports a compliant tree.',
   );
 }
@@ -472,7 +473,7 @@ for (const n of notes) console.log(`⚠  ${n}`);
 if (problems.length) {
   for (const p of problems) console.error(`✗ ${p}`);
   console.error('\nassert-signup-consent-shape: FAILED');
-  process.exit(1);
+  process.exit(problems.every((p) => p.startsWith('COVERAGE LOST')) ? 2 : 1); // 2 = could not look (every problem is COVERAGE LOST); 1 = a finding
 }
 
 ok(

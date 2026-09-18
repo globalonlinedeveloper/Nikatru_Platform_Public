@@ -30,6 +30,7 @@ const POST_GEN = 'tooling/bricks/app/hooks/post_gen.dart';
 const CI = '.github/workflows/ci.yml';
 const PROBE_VARS = 'tooling/bricks/app/_probe_vars.json';
 const problems = [];
+const coverageLost = (m) => problems.push(`COVERAGE LOST — ${m}`); // exit 2 only if EVERY problem is one (summary below)
 const ok = (m) => console.log(`ok   ${m}`);
 
 const read = (p) => (existsSync(join(ROOT, p)) ? readFileSync(join(ROOT, p), 'utf8') : null);
@@ -178,8 +179,8 @@ if (probeVars !== null) {
   } catch { /* reported immediately below */ }
 }
 if (stampDir === null) {
-  problems.push(
-    `COVERAGE LOST — ${PROBE_VARS} yields no \`app_id\`, so there is no directory to anchor "CI builds the STAMPED app" to. Without it the build check credits \`flutter build\` run against any app in the tree, including one that was never stamped.`,
+  coverageLost(
+    `${PROBE_VARS} yields no \`app_id\`, so there is no directory to anchor "CI builds the STAMPED app" to. Without it the build check credits \`flutter build\` run against any app in the tree, including one that was never stamped.`,
   );
 }
 
@@ -255,16 +256,16 @@ if (postGen !== null && ci !== null) {
   const rawSteps = (ciRaw.match(/^\s*-\s+(name|run):/gm) ?? []).length;
   const ciSteps = (ci.match(/^\s*-\s+(name|run):/gm) ?? []).length;
   if (rawSteps > 0 && ciSteps === 0) {
-    problems.push(
-      `COVERAGE LOST — ${CI} has ${rawSteps} step(s), and none survived comment stripping. The stripper has eaten the file, so every check about what CI runs is being asked of an empty string.`,
+    coverageLost(
+      `${CI} has ${rawSteps} step(s), and none survived comment stripping. The stripper has eaten the file, so every check about what CI runs is being asked of an empty string.`,
     );
   } else if (ciSteps > 0) {
     ok(`${ciSteps} of ${rawSteps} CI step(s) survived comment stripping`);
   } else {
     // rawSteps === 0: the workflow parser found no steps AT ALL, which is its
     // own coverage failure — a ci.yml with zero steps builds nothing.
-    problems.push(
-      `COVERAGE LOST — ${CI} contains ZERO recognisable steps. Either the file was emptied or this scan's step pattern no longer matches real workflow syntax.`,
+    coverageLost(
+      `${CI} contains ZERO recognisable steps. Either the file was emptied or this scan's step pattern no longer matches real workflow syntax.`,
     );
   }
 
@@ -373,8 +374,8 @@ if (postGen !== null && ci !== null) {
   // ── direction 1: the TEMPLATE must declare it ──────────────────────────────
   const tmpl = read(BRICK_PUBSPEC);
   if (tmpl === null) {
-    problems.push(
-      `COVERAGE LOST — ${BRICK_PUBSPEC} could not be read, so "the stamped app declares \`resolution: workspace\`" was asked of nothing. A stamped app that omits it kills root resolution for the ENTIRE repository, so this must be a failure and never a skip.`,
+    coverageLost(
+      `${BRICK_PUBSPEC} could not be read, so "the stamped app declares \`resolution: workspace\`" was asked of nothing. A stamped app that omits it kills root resolution for the ENTIRE repository, so this must be a failure and never a skip.`,
     );
   } else if (!declaresWorkspaceResolution(tmpl)) {
     problems.push(
@@ -405,12 +406,12 @@ if (postGen !== null && ci !== null) {
     }
   }
   if (rootRaw === null) {
-    problems.push(
-      `COVERAGE LOST — ${ROOT_PUBSPEC} could not be read, so the reciprocal workspace check ranged over nothing. That file IS the workspace; without it there is no list to verify the stamp against.`,
+    coverageLost(
+      `${ROOT_PUBSPEC} could not be read, so the reciprocal workspace check ranged over nothing. That file IS the workspace; without it there is no list to verify the stamp against.`,
     );
   } else if (members.length === 0) {
-    problems.push(
-      `COVERAGE LOST — ${ROOT_PUBSPEC} yielded ZERO \`workspace:\` members. Either the block is gone (in which case the stamper's registration writes into nothing) or this parse no longer matches the format \`_registerInWorkspace\` writes. A reciprocal check over an empty list passes by examining nothing.`,
+    coverageLost(
+      `${ROOT_PUBSPEC} yielded ZERO \`workspace:\` members. Either the block is gone (in which case the stamper's registration writes into nothing) or this parse no longer matches the format \`_registerInWorkspace\` writes. A reciprocal check over an empty list passes by examining nothing.`,
     );
   } else {
     const bad = [];
@@ -442,7 +443,7 @@ if (problems.length) {
   console.error('');
   for (const p of problems) console.error(`FAIL ${p}`);
   console.error('\nassert-stamp-platforms: FAILED');
-  process.exitCode = 1;
+  process.exit(problems.every((p) => p.startsWith('COVERAGE LOST')) ? 2 : 1); // 2 = could not look (every problem is COVERAGE LOST); 1 = a finding
 } else {
   console.log('\nassert-stamp-platforms: ok');
 }

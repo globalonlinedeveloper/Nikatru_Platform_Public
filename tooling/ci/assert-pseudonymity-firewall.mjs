@@ -32,6 +32,7 @@ import { listDir } from './tree-walk.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const problems = [];
+const coverageLost = (m) => problems.push(`COVERAGE LOST — ${m}`); // exit 2 only if EVERY problem is one (summary below)
 const ok = (m) => console.log(`ok   ${m}`);
 
 const SKIP_DIR = new Set(['build', '.dart_tool', 'node_modules', 'dist', '.wrangler']);
@@ -138,8 +139,8 @@ const dartFiles = DART_PARENTS
 
 const MIN_DART = 40;
 if (dartFiles.length < MIN_DART) {
-  problems.push(
-    `COVERAGE LOST — scanned only ${dartFiles.length} dart file(s), expected >= ${MIN_DART}. Every clean result below would come from a scan that reaches nothing.`,
+  coverageLost(
+    `scanned only ${dartFiles.length} dart file(s), expected >= ${MIN_DART}. Every clean result below would come from a scan that reaches nothing.`,
   );
 } else {
   ok(`scan reaches ${dartFiles.length} dart file(s)`);
@@ -226,12 +227,12 @@ function assertPerRoot(label, parents, scanned, floorName) {
   }
   const quiet = roots.filter((r) => contributed.get(r) === 0 && !NO_SOURCE.has(r));
   if (quiet.length) {
-    problems.push(
-      `COVERAGE LOST — ${quiet.join(', ')} contributed ZERO file(s) to the ${label}. The ${floorName} floor above is a UNION and stayed green because a sibling root covered for it; nothing under the named root(s) was read, and every clean result below is a claim about a tree that no longer includes them.`,
+    coverageLost(
+      `${quiet.join(', ')} contributed ZERO file(s) to the ${label}. The ${floorName} floor above is a UNION and stayed green because a sibling root covered for it; nothing under the named root(s) was read, and every clean result below is a claim about a tree that no longer includes them.`,
     );
   } else if (roots.length === 0) {
-    problems.push(
-      `COVERAGE LOST — no root could be derived for the ${label} from \`pubspec.yaml\`'s \`workspace:\` block or from the directories under ${parents.join(', ')}, so the per-root check ranged over nothing.`,
+    coverageLost(
+      `no root could be derived for the ${label} from \`pubspec.yaml\`'s \`workspace:\` block or from the directories under ${parents.join(', ')}, so the per-root check ranged over nothing.`,
     );
   } else {
     const seen = roots.filter((r) => !NO_SOURCE.has(r));
@@ -351,8 +352,8 @@ const srcFiles = [
 ];
 const MIN_SRC = 80;
 if (srcFiles.length < MIN_SRC) {
-  problems.push(
-    `COVERAGE LOST — the pairing scan reaches only ${srcFiles.length} file(s), expected >= ${MIN_SRC}. It must cover Dart, the Workers' TypeScript AND their migrations: the events store is moving to its own D1, so the risk is migrating out of SQL and into application code.`,
+  coverageLost(
+    `the pairing scan reaches only ${srcFiles.length} file(s), expected >= ${MIN_SRC}. It must cover Dart, the Workers' TypeScript AND their migrations: the events store is moving to its own D1, so the risk is migrating out of SQL and into application code.`,
   );
 } else {
   ok(`pairing scan reaches ${srcFiles.length} dart/ts/sql file(s)`);
@@ -390,8 +391,8 @@ assertPerRoot('pairing scan', [...DART_PARENTS, 'services'], srcFiles, `${MIN_SR
   const missed = CANARY.filter((c) => pairingsIn(codeWithStrings(c)).length === 0);
   const fp = CLEAN.filter((c) => pairingsIn(codeWithStrings(c)).length > 0);
   if (missed.length) {
-    problems.push(
-      `COVERAGE LOST — the pairing matcher no longer sees ${missed.length} constructed pairing(s), e.g. ${JSON.stringify(missed[0])}. The tree is clean; without this canary a broken matcher and a clean tree print identically.`,
+    coverageLost(
+      `the pairing matcher no longer sees ${missed.length} constructed pairing(s), e.g. ${JSON.stringify(missed[0])}. The tree is clean; without this canary a broken matcher and a clean tree print identically.`,
     );
   } else if (fp.length) {
     problems.push(`the pairing matcher fires on ${JSON.stringify(fp[0])}, which pairs nothing.`);
@@ -437,7 +438,7 @@ if (pairings.length === 0) ok('no paid/pseudonymous identifier pairing in dart, 
   const FUNNEL = 'packages/purchases/lib/src/money_funnel.dart';
   const p = join(ROOT, FUNNEL);
   if (!existsSync(p)) {
-    problems.push(`COVERAGE LOST — ${FUNNEL} is missing, so part A resolved four symbols that belong to nothing.`);
+    coverageLost(`${FUNNEL} is missing, so part A resolved four symbols that belong to nothing.`);
   } else {
     const src = code(readFileSync(p, 'utf8'));
     const bad = ['userId', 'user_id', 'anonId', 'email'].filter((t) => src.includes(t));
@@ -455,7 +456,7 @@ if (problems.length) {
   console.error('');
   for (const p of problems) console.error(`FAIL ${p}`);
   console.error('\nassert-pseudonymity-firewall: FAILED');
-  process.exitCode = 1;
+  process.exit(problems.every((p) => p.startsWith('COVERAGE LOST')) ? 2 : 1); // 2 = could not look (every problem is COVERAGE LOST); 1 = a finding
 } else {
   console.log('\nassert-pseudonymity-firewall: ok');
 }

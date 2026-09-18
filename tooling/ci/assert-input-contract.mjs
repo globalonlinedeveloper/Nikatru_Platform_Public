@@ -160,6 +160,7 @@ const BRICK = 'tooling/bricks/app';
 const YAML = `${BRICK}/brick.yaml`;
 const PRE_GEN = `${BRICK}/hooks/pre_gen.dart`;
 const problems = [];
+const coverageLost = (m) => problems.push(`COVERAGE LOST — ${m}`); // exit 2 only if EVERY problem is one (summary below)
 const ok = (m) => console.log(`ok   ${m}`);
 
 /** Where — and how deep — section 2 looks before calling a named file a phantom.
@@ -204,8 +205,8 @@ if (brickYaml !== null && preGen !== null) {
   // parser that silently matches fewer is this repo's most-repeated failure.
   const MIN_VARS = 8;
   if (declared.length < MIN_VARS) {
-    problems.push(
-      `COVERAGE LOST — parsed only ${declared.length} var(s) from ${YAML}, expected >= ${MIN_VARS}. Either vars were deleted, or this parser has stopped seeing them.`,
+    coverageLost(
+      `parsed only ${declared.length} var(s) from ${YAML}, expected >= ${MIN_VARS}. Either vars were deleted, or this parser has stopped seeing them.`,
     );
   } else {
     ok(`${declared.length} declared var(s) in brick.yaml`);
@@ -303,8 +304,8 @@ if (brickYaml !== null && preGen !== null) {
   // zero conditions over a hook that clearly rejects is worth naming rather than
   // leaving to be inferred from a wall of per-var failures.
   if (declared.length && conditions.length === 0) {
-    problems.push(
-      `COVERAGE LOST — parsed 0 rejection conditions out of ${PRE_GEN}. Either the hook stopped guarding its \`problems.add(\` calls with \`if\`, or this walker has stopped understanding its shape.`,
+    coverageLost(
+      `parsed 0 rejection conditions out of ${PRE_GEN}. Either the hook stopped guarding its \`problems.add(\` calls with \`if\`, or this walker has stopped understanding its shape.`,
     );
   }
 
@@ -358,7 +359,7 @@ for (const rel of SCAN) {
   }
 }
 if (scanned === 0) {
-  problems.push('COVERAGE LOST — scanned 0 brick files for phantom filenames.');
+  coverageLost('scanned 0 brick files for phantom filenames.');
 } else if (phantoms.length) {
   for (const p of phantoms) {
     problems.push(
@@ -417,8 +418,8 @@ const RETIRED_INSTRUCTIONS = [
 const POST_GEN_PATH = `${BRICK}/hooks/post_gen.dart`;
 const postGenSrc = read(POST_GEN_PATH);
 if (postGenSrc === null) {
-  problems.push(
-    `COVERAGE LOST — ${POST_GEN_PATH} could not be read, so the printed checklist was never examined. That file IS the owner-facing instruction; not reading it is not the same as it being correct.`,
+  coverageLost(
+    `${POST_GEN_PATH} could not be read, so the printed checklist was never examined. That file IS the owner-facing instruction; not reading it is not the same as it being correct.`,
   );
 } else {
   // Comments stripped, string literals KEPT: the checklist IS a set of literals,
@@ -437,12 +438,12 @@ if (postGenSrc === null) {
   const rawHeaders = (postGenSrc.match(/Owner checklist:/g) ?? []).length;
   const seenHeaders = printed.filter((t) => t.includes('Owner checklist:')).length;
   if (rawHeaders === 0) {
-    problems.push(
-      `COVERAGE LOST — ${POST_GEN_PATH} prints no "Owner checklist:" at all. Either the stamp stopped telling its owner anything, or this scan no longer recognises the checklist it is supposed to police.`,
+    coverageLost(
+      `${POST_GEN_PATH} prints no "Owner checklist:" at all. Either the stamp stopped telling its owner anything, or this scan no longer recognises the checklist it is supposed to police.`,
     );
   } else if (seenHeaders < rawHeaders) {
-    problems.push(
-      `COVERAGE LOST — the checklist scan recovered ${seenHeaders} of ${rawHeaders} "Owner checklist:" header(s) from ${POST_GEN_PATH}. The extractor has stopped seeing printed text, so every "no retired instruction" result below is about the part it can still read.`,
+    coverageLost(
+      `the checklist scan recovered ${seenHeaders} of ${rawHeaders} "Owner checklist:" header(s) from ${POST_GEN_PATH}. The extractor has stopped seeing printed text, so every "no retired instruction" result below is about the part it can still read.`,
     );
   } else {
     const retired = [];
@@ -532,8 +533,8 @@ const handEdits = [];
 for (const rel of HAND_EDIT_SCAN) {
   const src = read(rel);
   if (src === null) {
-    problems.push(
-      `COVERAGE LOST — ${rel} is REQUIRED_COVERAGE for the S-12 hand-edit rule and could not be read. `
+    coverageLost(
+      `${rel} is REQUIRED_COVERAGE for the S-12 hand-edit rule and could not be read. `
         + 'This limb read zero files and reported nothing for a week; a missing file must be loud, not absent.',
     );
     continue;
@@ -559,8 +560,8 @@ for (const rel of HAND_EDIT_SCAN) {
 }
 for (const h of handEdits) problems.push(h);
 if (handEditScanned < HAND_EDIT_SCAN.length) {
-  problems.push(
-    `COVERAGE LOST — the S-12 hand-edit rule read ${handEditScanned} of ${HAND_EDIT_SCAN.length} required file(s).`,
+  coverageLost(
+    `the S-12 hand-edit rule read ${handEditScanned} of ${HAND_EDIT_SCAN.length} required file(s).`,
   );
 } else if (!handEdits.length) {
   ok(`the ${handEditScanned} stamped backend file(s) name the provisioner and ask for no hand-edit`);
@@ -637,7 +638,7 @@ if (problems.length) {
   console.error('');
   for (const p of problems) console.error(`FAIL ${p}`);
   console.error('\nassert-input-contract: FAILED');
-  process.exitCode = 1;
+  process.exit(problems.every((p) => p.startsWith('COVERAGE LOST')) ? 2 : 1); // 2 = could not look (every problem is COVERAGE LOST); 1 = a finding
 } else {
   console.log('\nassert-input-contract: ok');
 }

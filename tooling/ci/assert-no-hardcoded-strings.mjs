@@ -99,6 +99,7 @@ import { delegationsUnder } from './chassis-delegation.mjs';
 
 const ROOT = process.cwd();
 const problems = [];
+const coverageLost = (m) => problems.push(`COVERAGE LOST — ${m}`); // exit 2 only if EVERY problem is one (summary below)
 
 /**
  * WHAT gen-l10n IS CONFIGURED TO DO IN EACH ENFORCED TREE — READ FROM THAT
@@ -270,8 +271,8 @@ const L10N = new Map(
       ['output-class', cfg.outputClass],
     ]) {
       if (!value) {
-        problems.push(
-          `COVERAGE LOST — ${cfg.rel} declares no \`${name}\`, so this guard cannot derive where ${r.root}'s ` +
+        coverageLost(
+          `${cfg.rel} declares no \`${name}\`, so this guard cannot derive where ${r.root}'s ` +
             'declared keys live or what its generated accessors are called. gen-l10n reads that file; a guard ' +
             'that guesses instead of reading it is asserting about a tree it has not located.',
         );
@@ -307,8 +308,8 @@ const L10N = new Map(
     if (cfg.outputClass) {
       const expected = snakeOf(cfg.outputClass);
       if (!/_localizations$/.test(stem) || stem !== expected) {
-        problems.push(
-          `COVERAGE LOST — ${cfg.rel} sets \`output-localization-file: ${cfg.outputFile}\`, whose stem \`${stem}\` is ` +
+        coverageLost(
+          `${cfg.rel} sets \`output-localization-file: ${cfg.outputFile}\`, whose stem \`${stem}\` is ` +
             `not \`${expected}\` (the snake_case of its own \`output-class: ${cfg.outputClass}\`) ending in ` +
             '`_localizations`. This guard SKIPS files matching that stem as generated output, so an unconstrained ' +
             `value decides how much of ${r.root} it is allowed to see: pointed at an ordinary source name it stops ` +
@@ -341,8 +342,8 @@ const L10N = new Map(
  *  that `system_screens.dart` fell inside a stem of `system`. */
 const GENERATED_STEMS = [...new Set([...L10N.values()].map((v) => v.stem))];
 if (GENERATED_STEMS.length === 0) {
-  problems.push(
-    'COVERAGE LOST — no generated-localisations name-shape could be derived from any enforced tree, so gen-l10n ' +
+  coverageLost(
+    'no generated-localisations name-shape could be derived from any enforced tree, so gen-l10n ' +
       'output would be scanned as though a human had written it: every generated getter would read as an accessor ' +
       'and the reverse direction would report a fully-rendered corpus over files nobody sees.',
   );
@@ -654,13 +655,13 @@ const MIN_RENDER_FILES_PER_ROOT = 12;
 const waived = new Set();
 for (const { root, why, remedy } of ENFORCED_ROOTS) {
   if (!existsSync(join(ROOT, root))) {
-    problems.push(`COVERAGE LOST — ${root} does not exist, so this guard scanned a tree it exists to protect and found nothing to protect. (${why})`);
+    coverageLost(`${root} does not exist, so this guard scanned a tree it exists to protect and found nothing to protect. (${why})`);
     continue;
   }
   const reached = readDartTree(root);
   if (reached.length < MIN_RENDER_FILES_PER_ROOT) {
-    problems.push(
-      `COVERAGE LOST — only ${reached.length} .dart file(s) under ${root} reached the matchers, expected >= ` +
+    coverageLost(
+      `only ${reached.length} .dart file(s) under ${root} reached the matchers, expected >= ` +
         `${MIN_RENDER_FILES_PER_ROOT}. The tree still exists, so every assertion below still runs and still passes; ` +
         'what changed is how much of it the walk handed over. A shrinking render set and a clean render set are the ' +
         `same silence from this guard, and "clean" is only evidence about the files it actually opened. (${why})`,
@@ -695,8 +696,8 @@ for (const { root, why, remedy } of ENFORCED_ROOTS) {
   // by the caller — never a quiet nothing.
   const delegated = delegationsUnder(ROOT, root);
   for (const lost of delegated.lost) {
-    problems.push(
-      `COVERAGE LOST — ${lost} This limb reads the chassis file a screen delegates to, so a delegation it ` +
+    coverageLost(
+      `${lost} This limb reads the chassis file a screen delegates to, so a delegation it ` +
         'cannot follow is a set of user-facing literals nothing looked at: the adapter is empty and the ' +
         'package it points at was not read.',
     );
@@ -725,8 +726,8 @@ for (const { root, why, remedy } of ENFORCED_ROOTS) {
 // while filtering nothing.
 for (const a of ALLOWED) {
   if (!waived.has(a)) {
-    problems.push(
-      `COVERAGE LOST — the allowlist entry for "${a.literal}" in ${a.file} matched NOTHING. Either the literal was fixed — in which case delete the entry in the same change — or it moved, and the waiver is now covering nothing while reading like a live exemption.`,
+    coverageLost(
+      `the allowlist entry for "${a.literal}" in ${a.file} matched NOTHING. Either the literal was fixed — in which case delete the entry in the same change — or it moved, and the waiver is now covering nothing while reading like a live exemption.`,
     );
   }
 }
@@ -762,15 +763,15 @@ const MIN_CANARY = 20;
 
 for (const { root, why } of CANARY_ROOTS) {
   if (!existsSync(join(ROOT, root))) {
-    problems.push(
-      `COVERAGE LOST — the canary tree ${root} does not exist, so the matchers were proven against nothing there and the brick's clean result above is worth less than it looks. (${why})`,
+    coverageLost(
+      `the canary tree ${root} does not exist, so the matchers were proven against nothing there and the brick's clean result above is worth less than it looks. (${why})`,
     );
     continue;
   }
   const canary = scan(root);
   if (canary.length < MIN_CANARY) {
-    problems.push(
-      `COVERAGE LOST — the matchers found only ${canary.length} hardcoded string(s) in ${root}, expected >= ${MIN_CANARY}. That tree is known to be full of them, so a low count means these patterns have stopped matching and the brick's clean result above proves nothing.`,
+    coverageLost(
+      `the matchers found only ${canary.length} hardcoded string(s) in ${root}, expected >= ${MIN_CANARY}. That tree is known to be full of them, so a low count means these patterns have stopped matching and the brick's clean result above proves nothing.`,
     );
     continue;
   }
@@ -790,8 +791,8 @@ for (const { root, why } of CANARY_ROOTS) {
   // family must show its own evidence, in every canary, that it still matches.
   for (const { what } of SHOWN_TO_A_PERSON) {
     if (!canary.some((h) => h.what === what)) {
-      problems.push(
-        `COVERAGE LOST — the "${what}" matcher found NOTHING in ${root}, a tree known to be dirty in exactly that way. One matcher family has stopped matching while the others carry the total over the floor, so the brick's clean result proves nothing about ${what}.`,
+      coverageLost(
+        `the "${what}" matcher found NOTHING in ${root}, a tree known to be dirty in exactly that way. One matcher family has stopped matching while the others carry the total over the floor, so the brick's clean result proves nothing about ${what}.`,
       );
     }
   }
@@ -814,8 +815,8 @@ for (const { root, why } of CANARY_ROOTS) {
 // committed manifest rather than inside assert-guard-coverage.mjs.)
 const familiesPath = join(ROOT, FIXTURE_FAMILIES);
 if (!existsSync(familiesPath)) {
-  problems.push(
-    `COVERAGE LOST — ${FIXTURE_FAMILIES} does not exist, so nothing outside this file records which matcher families are supposed to be here and a deleted matcher would pass unremarked.`,
+  coverageLost(
+    `${FIXTURE_FAMILIES} does not exist, so nothing outside this file records which matcher families are supposed to be here and a deleted matcher would pass unremarked.`,
   );
 } else {
   const declared = readFileSync(familiesPath, 'utf8')
@@ -824,21 +825,21 @@ if (!existsSync(familiesPath)) {
     .filter((l) => l !== '' && !l.startsWith('#'));
   const matchers = SHOWN_TO_A_PERSON.map((m) => m.what);
   if (declared.length === 0) {
-    problems.push(
-      `COVERAGE LOST — ${FIXTURE_FAMILIES} declares no families. An empty declaration is satisfied by any matcher list at all, including none, so emptying it deletes this check rather than resetting it.`,
+    coverageLost(
+      `${FIXTURE_FAMILIES} declares no families. An empty declaration is satisfied by any matcher list at all, including none, so emptying it deletes this check rather than resetting it.`,
     );
   }
   for (const d of declared) {
     if (!matchers.includes(d)) {
-      problems.push(
-        `COVERAGE LOST — ${FIXTURE_FAMILIES} declares evidence for the "${d}" family and NO MATCHER PROVIDES IT. A matcher family was deleted from this guard: the per-family check cannot see that, because it iterates over the list that shrank. Restore the matcher, or — if the family is genuinely retired — remove its evidence from the fixture and its line from the declaration in the same change.`,
+      coverageLost(
+        `${FIXTURE_FAMILIES} declares evidence for the "${d}" family and NO MATCHER PROVIDES IT. A matcher family was deleted from this guard: the per-family check cannot see that, because it iterates over the list that shrank. Restore the matcher, or — if the family is genuinely retired — remove its evidence from the fixture and its line from the declaration in the same change.`,
       );
     }
   }
   for (const m of matchers) {
     if (!declared.includes(m)) {
-      problems.push(
-        `COVERAGE LOST — the "${m}" matcher is not declared in ${FIXTURE_FAMILIES}. A new matcher family must earn its own evidence in the fixture, exactly like the two that are already there; otherwise it is enforced on the brick while nothing proves it still matches anything.`,
+      coverageLost(
+        `the "${m}" matcher is not declared in ${FIXTURE_FAMILIES}. A new matcher family must earn its own evidence in the fixture, exactly like the two that are already there; otherwise it is enforced on the brick while nothing proves it still matches anything.`,
       );
     }
   }
@@ -864,15 +865,15 @@ if (!existsSync(familiesPath)) {
 // The raw scan is checked non-empty first, because "zero enforced hits" is also
 // true of an empty directory.
 if (!existsSync(join(ROOT, FIXTURE_QUIET))) {
-  problems.push(
-    `COVERAGE LOST — ${FIXTURE_QUIET} does not exist, so nothing proves the NOT_USER_FACING exemptions still exempt anything, nor that they have stopped exempting prose.`,
+  coverageLost(
+    `${FIXTURE_QUIET} does not exist, so nothing proves the NOT_USER_FACING exemptions still exempt anything, nor that they have stopped exempting prose.`,
   );
 } else {
   const raw = scanRaw(FIXTURE_QUIET);
   const enforced = scan(FIXTURE_QUIET);
   if (raw.length === 0) {
-    problems.push(
-      `COVERAGE LOST — ${FIXTURE_QUIET} holds no literal in any position the matchers look at, so "zero enforced hits" there is a statement about an empty tree and every exemption below is unproven.`,
+    coverageLost(
+      `${FIXTURE_QUIET} holds no literal in any position the matchers look at, so "zero enforced hits" there is a statement about an empty tree and every exemption below is unproven.`,
     );
   } else {
     for (const h of enforced) {
@@ -882,8 +883,8 @@ if (!existsSync(join(ROOT, FIXTURE_QUIET))) {
     }
     for (const { re, why } of NOT_USER_FACING) {
       if (!raw.some((h) => re.test(h.literal))) {
-        problems.push(
-          `COVERAGE LOST — the exemption for ${why} (${re}) has no near miss in ${FIXTURE_QUIET}: nothing there reaches it, so it could be silently wrong, or silently dead, and no test would notice. Add the literal it is meant to exempt.`,
+        coverageLost(
+          `the exemption for ${why} (${re}) has no near miss in ${FIXTURE_QUIET}: nothing there reaches it, so it could be silently wrong, or silently dead, and no test would notice. Add the literal it is meant to exempt.`,
         );
       }
     }
@@ -1136,8 +1137,8 @@ const ALREADY_PRINTED_ELSEWHERE = [
       continue;
     }
     if (!existsSync(abs)) {
-      problems.push(
-        `COVERAGE LOST — ${arbRel} does not exist, so the reverse direction read no keys for this tree. "No unrendered keys" and "the file the keys live in has moved" are the same silence from a scanner and completely different facts.`,
+      coverageLost(
+        `${arbRel} does not exist, so the reverse direction read no keys for this tree. "No unrendered keys" and "the file the keys live in has moved" are the same silence from a scanner and completely different facts.`,
       );
       continue;
     }
@@ -1145,15 +1146,15 @@ const ALREADY_PRINTED_ELSEWHERE = [
     try {
       parsed = JSON.parse(readFileSync(abs, 'utf8'));
     } catch (e) {
-      problems.push(
-        `COVERAGE LOST — ${arbRel} did not parse as JSON (${e.message}), so every key it declares was invisible to the reverse direction rather than checked.`,
+      coverageLost(
+        `${arbRel} did not parse as JSON (${e.message}), so every key it declares was invisible to the reverse direction rather than checked.`,
       );
       continue;
     }
     const keys = Object.keys(parsed).filter((k) => !k.startsWith('@'));
     if (keys.length === 0) {
-      problems.push(
-        `COVERAGE LOST — ${arbRel} declares no message keys, so the reverse direction ranged over nothing there and its clean result is a statement about an empty file.`,
+      coverageLost(
+        `${arbRel} declares no message keys, so the reverse direction ranged over nothing there and its clean result is a statement about an empty file.`,
       );
       continue;
     }
@@ -1167,8 +1168,8 @@ const ALREADY_PRINTED_ELSEWHERE = [
     // is `FAILS when the arb declares a key that is not a Dart identifier`.
     const odd = keys.filter((k) => !ARB_KEY_SHAPE.test(k));
     if (odd.length > 0) {
-      problems.push(
-        `COVERAGE LOST — ${arbRel} declares ${odd.length} key(s) that are not Dart identifiers (${odd.slice(0, 3).join(', ')}), and this limb builds a regex per key. They were SKIPPED rather than checked, so the count below does not cover them.`,
+      coverageLost(
+        `${arbRel} declares ${odd.length} key(s) that are not Dart identifiers (${odd.slice(0, 3).join(', ')}), and this limb builds a regex per key. They were SKIPPED rather than checked, so the count below does not cover them.`,
       );
     }
     arbsRead++;
@@ -1279,20 +1280,20 @@ const ALREADY_PRINTED_ELSEWHERE = [
   if (arbsRead === 0) {
     // Already reported above, per root. Nothing further can be said.
   } else if (renderFiles.length === 0) {
-    problems.push(
-      `COVERAGE LOST — the reverse direction found ${declaredIn.size} declared key(s) and ZERO non-test .dart file(s) to look for accessors in, across ${ENFORCED_ROOTS.length} enforced tree(s). Every key would read as unrendered, which is a broken scan wearing the costume of a finding.`,
+    coverageLost(
+      `the reverse direction found ${declaredIn.size} declared key(s) and ZERO non-test .dart file(s) to look for accessors in, across ${ENFORCED_ROOTS.length} enforced tree(s). Every key would read as unrendered, which is a broken scan wearing the costume of a finding.`,
     );
   } else if (consumerFiles.length === 0) {
-    problems.push(
-      `COVERAGE LOST — the reverse direction found no ${CONSUMER_EXTS.join('/')} file(s) outside the enforced trees, so "nothing else reads this key" below would be a statement about an empty sweep. That is the sweep the generate-discovery.mjs incident was about.`,
+    coverageLost(
+      `the reverse direction found no ${CONSUMER_EXTS.join('/')} file(s) outside the enforced trees, so "nothing else reads this key" below would be a statement about an empty sweep. That is the sweep the generate-discovery.mjs incident was about.`,
     );
   } else {
     const renderBody = renderFiles.map((f) => f.body).join('\n');
     const unread = [...declaredIn.keys()].filter((k) => !ACCESSOR_OF(k).test(renderBody));
 
     if (unread.length > declaredIn.size * MAX_UNREAD_SHARE) {
-      problems.push(
-        `COVERAGE LOST — ${unread.length} of ${declaredIn.size} declared key(s) reached no accessor across ${renderFiles.length} non-test .dart file(s). That is over ${Math.round(MAX_UNREAD_SHARE * 100)}% of a reviewed, translated corpus, which is not an owner backlog: the accessor matcher has stopped matching. The owner gap this limb exists to print has been SUPPRESSED rather than printed, because a list that long is noise.`,
+      coverageLost(
+        `${unread.length} of ${declaredIn.size} declared key(s) reached no accessor across ${renderFiles.length} non-test .dart file(s). That is over ${Math.round(MAX_UNREAD_SHARE * 100)}% of a reviewed, translated corpus, which is not an owner backlog: the accessor matcher has stopped matching. The owner gap this limb exists to print has been SUPPRESSED rather than printed, because a list that long is noise.`,
       );
     } else {
       // The de-duplication, applied only while the crediting guard still names
@@ -1505,8 +1506,8 @@ const ALREADY_PRINTED_ELSEWHERE = [
   }));
   for (const t of declaring) {
     for (const u of t.unreadable) {
-      problems.push(
-        `COVERAGE LOST — ${u}, so the shared-key comparison could not read ${t.root}'s copy of the translated ` +
+      coverageLost(
+        `${u}, so the shared-key comparison could not read ${t.root}'s copy of the translated ` +
           'corpus. Two trees that were not both read are two trees nothing compared, which is the state [ADR 065] ' +
           'was written about.',
       );
@@ -1549,8 +1550,8 @@ const ALREADY_PRINTED_ELSEWHERE = [
   // renamed, or stops declaring `@@locale`, and then the silence is a broken
   // scan rather than a clean corpus.
   if (overlaps === 0) {
-    problems.push(
-      'COVERAGE LOST — no two enforced trees declare arbs for the same locale, so this limb compared NOTHING and ' +
+    coverageLost(
+      'no two enforced trees declare arbs for the same locale, so this limb compared NOTHING and ' +
         'its silence says only that it ran. Two trees that were never lined up are two trees nothing compared, ' +
         'which is the state [ADR 065] was written about; a zero here means an arb moved, was renamed, or stopped ' +
         'declaring `@@locale`.',
@@ -1590,8 +1591,8 @@ const ALREADY_PRINTED_ELSEWHERE = [
 // as COVERAGE LOST too, because "I could not check what I hid" is the same
 // answer as "I hid something I should not have".
 if (GENERATED_CLASS_RE === null) {
-  problems.push(
-    'COVERAGE LOST — no `output-class` could be read from any enforced tree, so nothing distinguishes gen-l10n ' +
+  coverageLost(
+    'no `output-class` could be read from any enforced tree, so nothing distinguishes gen-l10n ' +
       'output from a hand-written file with the same name and the generated-file skip cannot be checked at all.',
   );
 } else {
@@ -1600,15 +1601,15 @@ if (GENERATED_CLASS_RE === null) {
     try {
       body = readFileSync(abs, 'utf8');
     } catch (e) {
-      problems.push(
-        `COVERAGE LOST — ${rel} was skipped as generated localisations and then could not be read back (${e.message}), ` +
+      coverageLost(
+        `${rel} was skipped as generated localisations and then could not be read back (${e.message}), ` +
           'so nothing confirms the skip removed the generator\'s output rather than a screen.',
       );
       continue;
     }
     if (!GENERATED_CLASS_RE.test(body)) {
-      problems.push(
-        `COVERAGE LOST — ${rel} was SKIPPED as generated localisations and declares none of the configured ` +
+      coverageLost(
+        `${rel} was SKIPPED as generated localisations and declares none of the configured ` +
           `output class(es) (${GENERATED_CLASSES.join(', ')}). The name-shape derived from \`l10n.yaml\` is ` +
           'therefore hiding a hand-written source file: its literals are outside the forward limb and its ' +
           'accessors are outside the reverse one, and the guard would still print "clean". Rename the generated ' +
@@ -1627,7 +1628,7 @@ if (problems.length) {
   console.error('');
   for (const p of problems) console.error(`FAIL ${p}`);
   console.error('\nassert-no-hardcoded-strings: FAILED');
-  process.exitCode = 1;
+  process.exit(problems.every((p) => p.startsWith('COVERAGE LOST')) ? 2 : 1); // 2 = could not look (every problem is COVERAGE LOST); 1 = a finding
 } else {
   console.log(
     `\nassert-no-hardcoded-strings: ok — ${ENFORCED_ROOTS.length} enforced tree(s) are clean, and the matchers are proven to still match`,

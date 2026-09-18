@@ -623,7 +623,7 @@ describe('assert-purchase-path — the client money rail', () => {
     // The limb is scoped to readValid's body; a rename must REFUSE, not pass by
     // measuring an empty string.
     const r = run({ cache: CACHE.replace('readValid(', 'readSomethingElse(') });
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST — .*no readable `readValid` body/);
   });
 
@@ -635,7 +635,7 @@ describe('assert-purchase-path — the client money rail', () => {
 
   test('COVERAGE LOST when the rail config declares no trial or term to compare against', () => {
     const r = run({ serverConfig: railData({ offerings: [] }) });
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST — no `trial_days`/);
   });
 
@@ -777,13 +777,13 @@ describe('assert-purchase-path — the client money rail', () => {
 
   test('COVERAGE LOST when the config contract itself is missing', () => {
     const r = run({ serverTypes: null });
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /the qualifying-SKU domain was computed over nothing/);
   });
 
   test('COVERAGE LOST when no offering can be parsed at all', () => {
     const r = run({ serverConfig: railData({ offerings: [] }) });
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /no offering could be parsed/);
   });
 
@@ -1003,7 +1003,7 @@ describe('assert-purchase-path — §G the rail follows the CHANNEL', () => {
     const rows = channelRows();
     delete rows.find((c) => c.id === 'linux-snap').purchaseRail;
     const r = run({ channels: registerDoc({ channels: rows }) });
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST — channel `linux-snap` declares no `purchaseRail`/);
   });
 
@@ -1018,7 +1018,7 @@ describe('assert-purchase-path — §G the rail follows the CHANNEL', () => {
       caps: capsWithSideload(),
       railTest: railTestWithSideload(),
     });
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST — channel `android-sideload` declares no `purchaseRail`/);
   });
 
@@ -1074,7 +1074,7 @@ describe('assert-purchase-path — §G the rail follows the CHANNEL', () => {
     // Without it the guard would be checking every value against a list it
     // carries itself — which stops covering the file the day the file changes.
     const r = run({ channels: registerDoc({ noRailsDict: true }) });
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /declares no `purchaseRails.rails` dictionary/);
   });
 
@@ -1192,7 +1192,7 @@ describe('assert-purchase-path — §G the rail follows the CHANNEL', () => {
         'case TargetPlatform.$1:\n        return _resolve($2);',
       ),
     });
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /no `case TargetPlatform.X: return forChannel\(PurchaseChannel.Y\);` could be parsed/);
   });
 
@@ -1205,7 +1205,7 @@ describe('assert-purchase-path — §G the rail follows the CHANNEL', () => {
     // the set does NOT name, or it would be asserting that today's tree is
     // broken.
     const r = run({ extraRailImpl: 'class AmazonAppstoreRail implements PurchaseRail {\n  const AmazonAppstoreRail();\n}\n' });
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST — §G reasons from a DECLARED set of PurchaseRail implementations/);
     assert.match(r.out, /implements \[AmazonAppstoreRail, HostedCheckoutRail, IapRail\]/);
   });
@@ -1217,7 +1217,7 @@ describe('assert-purchase-path — §G the rail follows the CHANNEL', () => {
     const r = run({
       iapRail: 'class IapRail implements PurchaseRail {\n  const IapRail();\n  bool get ok => caps.channelPermitted;\n}\n',
     });
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /reads .channelPermitted., the HOSTED rail's store-policy field/);
   });
 
@@ -1266,19 +1266,19 @@ describe('assert-purchase-path — §G the rail follows the CHANNEL', () => {
 
   test('COVERAGE LOST when the rail-kind map is gone entirely', () => {
     const r = run({ railKind: null });
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /purchase_rail_kind\.dart does not exist/);
   });
 
   test('COVERAGE LOST when the `paddle` rail id resolves to no code', () => {
     const r = run({ morPaddle: null });
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /the `paddle` rail id is supposed to resolve to real code/);
   });
 
   test('COVERAGE LOST when the client rail implementation is gone', () => {
     const r = run({ hostedRail: null });
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST — §G reasons from/);
   });
 
@@ -1378,7 +1378,7 @@ describe('assert-purchase-path — an extension row is outside §A and INSIDE §
   test('a THIRD surface nobody declared is refused, not demanded as a PurchaseChannel member', () => {
     const cli = { ...extensionRow(), id: 'cli-store', surface: 'script', platforms: ['node'] };
     const r = run({ channels: registerDoc({ channels: [...channelRows(), cli] }) });
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST — channel "cli-store" is on surface "script", which tooling\/channel-register\.json `surfaces` does not declare/);
     assert.doesNotMatch(r.out, /PurchaseChannel does not cover cli-store/);
   });
@@ -1396,7 +1396,7 @@ describe('assert-purchase-path — an extension row is outside §A and INSIDE §
     const row = extensionRow();
     delete row.purchaseRail;
     const r = run({ channels: registerDoc({ channels: [...channelRows(), row] }) });
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /channel `chrome-webstore` declares no `purchaseRail`/);
   });
 
@@ -1454,7 +1454,7 @@ describe('assert-purchase-path — a screen whose body moved into the chassis', 
 
   test('UP2 · 🔴 a delegation to a file that is not on disk is COVERAGE LOST', () => {
     const r = run({ home: adapter(true) });
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /that file is not on disk/);
   });
@@ -1462,7 +1462,7 @@ describe('assert-purchase-path — a screen whose body moved into the chassis', 
   // 🔴 THE EXPLOIT: an import alone is not evidence that a screen went anywhere.
   test('UP3 · 🔴 an import the adapter never uses is refused, not followed', () => {
     const r = run({ home: adapter(false), extraFiles: { [CHASSIS_REL]: packageBody } });
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /never references anything it declares \(HomeBody\)/);
   });
 });
@@ -1504,7 +1504,7 @@ describe('assert-purchase-path §H — who still builds the hosted rail by hand'
 
   test('COVERAGE LOST when nothing constructs the rail anywhere, not even the facade', () => {
     const r = run({ facadeCtor: FACADE_ONLY, subscriptiontrackerMoney: VIA_FACADE, brickMoney: VIA_FACADE });
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST — §H read \d+ Dart file\(s\) and found no direct/);
   });
 });

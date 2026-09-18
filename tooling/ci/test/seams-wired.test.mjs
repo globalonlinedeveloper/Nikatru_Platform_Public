@@ -495,7 +495,7 @@ const String kPrivacyPolicyVersion = '2026-07-26';
     // COVERAGE LOST, which is what EXIT 0 was standing in for.
     test('DL3 · 🔴 an UNRESOLVABLE delegation is COVERAGE LOST, not silence', () => {
       const { code, out } = run(delegating({ onDisk: false }));
-      assert.equal(code, 1, out);
+      assert.equal(code, 2, out);
       assert.match(out, /a chassis delegation could not be followed/);
       assert.match(out, /that file is not on disk/);
     });
@@ -503,7 +503,7 @@ const String kPrivacyPolicyVersion = '2026-07-26';
     // An import alone is not evidence that behaviour went anywhere.
     test('DL4 · 🔴 an import the adapter never uses is refused, not followed', () => {
       const { code, out } = run(delegating({ used: false }));
-      assert.equal(code, 1, out);
+      assert.equal(code, 2, out);
       assert.match(out, /never references anything it declares \(SettingsBody\)/);
       assert.match(out, /a reference is evidence/);
     });
