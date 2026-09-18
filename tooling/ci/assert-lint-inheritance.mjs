@@ -40,7 +40,7 @@ const SHARED = 'packages/analysis/lib/analysis_options.yaml';
 const INCLUDE = 'package:nikatru_lints/analysis_options.yaml';
 const problems = [];
 const ok = (m) => console.log(`ok   ${m}`);
-
+const coverageLost = (m) => problems.push(`COVERAGE LOST — ${m}`); // exit 2 only if EVERY problem is one (summary below)
 // The shared set itself, and the package's own self-apply, are the two files
 // that legitimately do NOT carry the package include: one IS the set, the other
 // reaches it by relative path (which resolves with no pub get — deliberate, so
@@ -58,14 +58,14 @@ try {
     .filter(Boolean)
     .map((f) => f.replace(/\\/g, '/'));
 } catch {
-  problems.push('COVERAGE LOST — could not list analysis_options.yaml files via git, so this guard checked nothing at all.');
+  coverageLost('could not list analysis_options.yaml files via git, so this guard checked nothing at all.');
 }
 
 // A floor, not a `> 0`: the tree has held 10 since the packages settled, and a
 // scan that quietly finds three would read exactly like a clean pass.
 const MIN_FILES = 10;
 if (files.length < MIN_FILES) {
-  problems.push(`COVERAGE LOST — found only ${files.length} analysis_options.yaml file(s), expected >= ${MIN_FILES}. Either convention files were deleted, or this scan has stopped seeing them and the packages it can no longer see are inheriting nothing.`);
+  coverageLost(`found only ${files.length} analysis_options.yaml file(s), expected >= ${MIN_FILES}. Either convention files were deleted, or this scan has stopped seeing them and the packages it can no longer see are inheriting nothing.`);
 } else {
   ok(`${files.length} analysis_options.yaml file(s) found`);
 }
@@ -184,7 +184,7 @@ if (problems.length) {
   console.error('');
   for (const p of problems) console.error(`FAIL ${p}`);
   console.error('\nassert-lint-inheritance: FAILED');
-  process.exitCode = 1;
+  process.exit(problems.every((p) => p.startsWith('COVERAGE LOST')) ? 2 : 1);
 } else {
   console.log(`\nassert-lint-inheritance: ok — one convention set, inherited by ${inheriting} file(s), and it can fail a build`);
 }

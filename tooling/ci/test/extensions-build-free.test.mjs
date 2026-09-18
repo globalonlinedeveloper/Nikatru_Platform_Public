@@ -189,15 +189,16 @@ describe('assert-extensions-build-free', () => {
     mkdirSync(join(root, 'extensions', 'docs'), { recursive: true });
     writeFileSync(join(root, 'extensions', 'docs', 'README.md'), '# nothing here\n', 'utf8');
     const { code, out } = run(root);
-    assert.equal(code, 1, out);
-    assert.match(out, /COVERAGE LOST/);
+    // Exit 2 — not a pass, and not a finding either (O-EXIT2-CONVENTION-GAP).
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST — the walk of extensions\/ found no Extension/);
   });
 
   test('no extensions/ at all is COVERAGE LOST, not a pass', () => {
     const root = join(TMP, `none${++seq}`);
     mkdirSync(root, { recursive: true });
     const { code, out } = run(root);
-    assert.equal(code, 1, out);
-    assert.match(out, /COVERAGE LOST/);
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST — extensions\/ is not a directory/);
   });
 });

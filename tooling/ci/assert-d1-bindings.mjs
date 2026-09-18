@@ -76,8 +76,15 @@ function fail(lines) {
   process.exit(1);
 }
 
+/** The scan could not look, so this run is not evidence either way — exit 2,
+ *  never 1, which would read as a finding (AGENTS.md exit-code convention). */
+function coverageLost(lines) {
+  for (const l of lines) console.error(l);
+  process.exit(2);
+}
+
 if (!existsSync(SERVICES)) {
-  fail([`✗ COVERAGE LOST — no services/ directory at ${SERVICES}. The scan is broken, not the tree.`]);
+  coverageLost([`✗ COVERAGE LOST — no services/ directory at ${SERVICES}. The scan is broken, not the tree.`]);
 }
 
 /** JSONC → JSON. Comments are STRIPPED before parsing, never scanned: this repo
@@ -120,7 +127,7 @@ const services = listDir(SERVICES, { withFileTypes: true })
   .sort();
 
 if (services.length < MIN_SERVICES) {
-  fail([`✗ COVERAGE LOST — found ${services.length} service(s) under services/, expected at least ${MIN_SERVICES}.`]);
+  coverageLost([`✗ COVERAGE LOST — found ${services.length} service(s) under services/, expected at least ${MIN_SERVICES}.`]);
 }
 
 const problems = [];
@@ -167,7 +174,7 @@ for (const svc of services) {
 }
 
 if (configCount === 0 || bindingCount === 0) {
-  fail([
+  coverageLost([
     `✗ COVERAGE LOST — scanned ${services.length} service(s) and found ${configCount} wrangler config(s)`,
     `  with ${bindingCount} d1 binding(s). Every check below would range over nothing and report success.`,
   ]);

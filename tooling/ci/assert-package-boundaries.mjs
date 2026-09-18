@@ -41,7 +41,7 @@ const ROOT = process.cwd();
 const problems = [];
 const notes = [];
 const ok = (m) => console.log(`ok   ${m}`);
-
+const coverageLost = (m) => problems.push(`COVERAGE LOST — ${m}`); // exit 2 only if EVERY problem is one (summary below)
 // ── pubspec reading. Line-based on purpose: this repo has no YAML dependency
 //    in tooling/, and the shapes we need (a top-level block of `name:` keys) are
 //    unambiguous. Comments are stripped BEFORE matching — a commented-out
@@ -138,7 +138,7 @@ if (!coreDeps) {
 
 const coreImports = packageImports('packages/core/lib');
 if (coreImports.size === 0) {
-  problems.push('COVERAGE LOST — no `package:` imports found anywhere under packages/core/lib. Core imports crypto and cryptography, so finding none means this scanner has stopped scanning.');
+  coverageLost('no `package:` imports found anywhere under packages/core/lib. Core imports crypto and cryptography, so finding none means this scanner has stopped scanning.');
 }
 for (const [name, files] of coreImports) {
   if (name === 'flutter' || name === 'flutter_test') {
@@ -164,7 +164,7 @@ if (!dsDeps) {
 
 const dsImports = packageImports('packages/design_system/lib');
 if (dsImports.size === 0) {
-  problems.push('COVERAGE LOST — no `package:` imports found under packages/design_system/lib. It imports Flutter, so finding none means this scanner has stopped scanning.');
+  coverageLost('no `package:` imports found under packages/design_system/lib. It imports Flutter, so finding none means this scanner has stopped scanning.');
 }
 for (const [name, files] of dsImports) {
   if (name.startsWith('nikatru_')) {
@@ -212,8 +212,8 @@ if (existsSync(pkgRoot)) {
 // into a blocker, while losing two is still caught.
 const MIN_WRAPPED = 8;
 if (WRAPPED.size < MIN_WRAPPED) {
-  problems.push(
-    `COVERAGE LOST — derived only ${WRAPPED.size} wrapped vendor(s) from the adapter packages, expected >= ${MIN_WRAPPED}. Limb (c) would range over an almost-empty set and pass everything. Either the adapters stopped declaring their SDKs, or this derivation has stopped working.`,
+  coverageLost(
+    `derived only ${WRAPPED.size} wrapped vendor(s) from the adapter packages, expected >= ${MIN_WRAPPED}. Limb (c) would range over an almost-empty set and pass everything. Either the adapters stopped declaring their SDKs, or this derivation has stopped working.`,
   );
 } else {
   ok(`derived ${WRAPPED.size} wrapped vendor(s) from ${adapterNames.length} adapter(s): ${[...WRAPPED.keys()].sort().join(', ')}`);
@@ -282,7 +282,7 @@ const BRICK_LIB = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib';
 if (existsSync(join(ROOT, BRICK_LIB))) appRoots.push(BRICK_LIB);
 
 if (appRoots.length === 0) {
-  problems.push('COVERAGE LOST — no app or brick lib/ directory found to scan. Limb (c) has nothing to range over.');
+  coverageLost('no app or brick lib/ directory found to scan. Limb (c) has nothing to range over.');
 } else {
   ok(`limb (c) scans ${appRoots.length} app/brick root(s): ${appRoots.join(', ')}`);
 }
@@ -304,7 +304,7 @@ for (const root of appRoots) {
 // A grandfathered entry for a bypass that no longer happens is a stale claim,
 // and stale claims inflate apparent debt exactly as badly as they hide it.
 for (const key of Object.keys(KNOWN_BYPASSES)) {
-  if (!seen.has(key)) {
+  if (!seen.has(key) && appRoots.length > 0 && WRAPPED.size >= MIN_WRAPPED) { // a limb (c) that could not look proves nothing stale — its COVERAGE LOST (exit 2) already stands
     problems.push(`KNOWN_BYPASSES still lists \`${key}\`, but that import no longer exists. It was fixed — delete the entry so the list keeps meaning something.`);
   }
 }
@@ -322,7 +322,7 @@ if (problems.length) {
   console.error('');
   for (const p of problems) console.error(`FAIL ${p}`);
   console.error('\nassert-package-boundaries: FAILED');
-  process.exitCode = 1;
+  process.exit(problems.every((p) => p.startsWith('COVERAGE LOST')) ? 2 : 1);
 } else {
   console.log('\nassert-package-boundaries: ok — core is pure, the design system is domain-free, and no NEW adapter bypass exists');
 }

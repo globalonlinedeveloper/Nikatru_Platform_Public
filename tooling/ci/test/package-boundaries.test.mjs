@@ -251,8 +251,20 @@ describe('assert-package-boundaries', () => {
 
     test('FAILS rather than reporting clean when core has no imports at all', () => {
       const { code, out } = run(tree({ coreImports: '// nothing here\n' }));
-      assert.equal(code, 1);
+      // Exit 2, not 1: the scan could not look (O-EXIT2-CONVENTION-GAP).
+      assert.equal(code, 2, out);
       assert.match(out, /COVERAGE LOST — no `package:` imports found anywhere under packages\/core\/lib/);
+    });
+
+    // Exit 2 is only for a run whose EVERY problem is coverage lost.
+    test('a real finding alongside COVERAGE LOST still exits 1', () => {
+      const { code, out } = run(tree({
+        coreImports: '// nothing here\n',
+        dsImports: "import 'package:flutter/material.dart';\nimport 'package:nikatru_core/nikatru_core.dart';\n",
+      }));
+      assert.equal(code, 1, out);
+      assert.match(out, /COVERAGE LOST — no `package:` imports found anywhere under packages\/core\/lib/);
+      assert.match(out, /design_system IMPORTS `package:nikatru_core`/);
     });
   });
 
@@ -305,7 +317,7 @@ describe('assert-package-boundaries', () => {
     // An adapter that stops declaring its SDK is exactly how it would.
     test('FAILS rather than passing everything when the vendor set shrinks', () => {
       const { code, out } = run(tree({ apiClientDeps: '  nikatru_core:\n    path: ../core\n' }));
-      assert.equal(code, 1);
+      assert.equal(code, 2, out);
       assert.match(out, /COVERAGE LOST — derived only 7 wrapped vendor\(s\)/);
       assert.match(out, /would range over an almost-empty set and pass everything/);
     });
@@ -324,7 +336,7 @@ describe('assert-package-boundaries', () => {
       rmSync(join(root, 'apps'), { recursive: true, force: true });
       rmSync(join(root, 'tooling'), { recursive: true, force: true });
       const { code, out } = run(root);
-      assert.equal(code, 1);
+      assert.equal(code, 2, out);
       assert.match(out, /COVERAGE LOST — no app or brick lib\/ directory found/);
     });
   });

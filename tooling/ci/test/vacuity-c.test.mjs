@@ -274,7 +274,7 @@ describe('vacuity-c — per-root coverage floors', () => {
     emptyRoot(dir, 'apps');
     undeclare(dir, 'apps');
     const { code, out } = run(WORKSPACE, dir);
-    assert.equal(code, 1, `expected a refusal, got exit ${code}:\n${out}`);
+    assert.equal(code, 2, `expected a refusal, got exit ${code}:\n${out}`);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /apps\/ exist\(s\) but yielded ZERO dart package\(s\)/);
     // 🔴 THE UNION FLOOR MUST NOT BE WHAT FIRED. Nine packages are still there,
@@ -292,7 +292,7 @@ describe('vacuity-c — per-root coverage floors', () => {
     emptyRoot(dir, 'packages');
     undeclare(dir, 'packages');
     const { code, out } = run(WORKSPACE, dir);
-    assert.equal(code, 1, `expected a refusal, got exit ${code}:\n${out}`);
+    assert.equal(code, 2, `expected a refusal, got exit ${code}:\n${out}`);
     assert.match(out, /COVERAGE LOST/);
     // Named deliberately: `apps/` holds ONE member, so emptying packages/ drags
     // the sum under 5 and the union floor fires first. Asserting which one fires
