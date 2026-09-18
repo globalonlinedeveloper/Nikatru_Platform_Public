@@ -99,7 +99,8 @@
       "checkout",
       "subject",
       "receipts",
-      "apple-token"
+      "apple-token",
+      "report"
     ],
     "_subject": [
       "🟢 `subject` ADDED 2026-09-09, AND THIS LIMB CAUGHT IT AGAIN. GET /v1/entitlements/subject is the",
