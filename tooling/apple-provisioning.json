@@ -6,7 +6,9 @@
     "READ BY:",
     "  tooling/ci/assert-apple-entitlements.mjs  (ci.yml, no credentials) — every app's",
     "      ios/Runner/Runner.entitlements carries EXACTLY the keys this file derives for it, and the",
-    "      Xcode project points at that file.",
+    "      Xcode project points at that file. ⏱ 2026-09-18: and every macOS entitlements file named in",
+    "      `macosEntitlementFiles` carries EXACTLY its base sandbox keys plus the macOS keys the",
+    "      capability list derives, and the macOS Xcode project names exactly that set of files.",
     "  tooling/ops/provision-apple.mjs  (a laptop command, the vault's ASC key) — provisions the",
     "      API-WRITABLE part of an app's App ID from this list, REFUSES on the part the API cannot write,",
     "      mints the App Store profiles after the capabilities settle, and with --check compares the",
@@ -27,7 +29,15 @@
     "APPLE_ID_AUTH because every target signs in through the OAuth redirect and the one Services ID",
     "(packages/auth_supabase/lib/src/supabase_auth_repository.dart, ADR 088 §4): the capability is on the",
     "App ID for the consent GROUP, not for a native API the app calls. An app that adopts the native",
-    "AuthenticationServices flow changes this row, and the guard then demands the key."
+    "AuthenticationServices flow changes this row, and the guard then demands the key.",
+    "",
+    "⏱ 2026-09-18 · O-STAMP-APPLE-MACOS-ENTITLEMENTS. `entitlementKey` takes the same three shapes",
+    "`profileKey` does: null, a STRING meaning the same key on iOS AND macOS, or `{ ios, macos }` with",
+    "either side null. DECLARED_AGE_RANGE is the reason the object form exists: its only consumer,",
+    "packages/platform_storage/ios/nikatru_platform_storage/Sources/nikatru_platform_storage/",
+    "AgeSignalsPlugin.swift, is iOS-only (there is no macos/ twin), so the macOS files must NOT",
+    "carry it. Left a plain string, the key would now be demanded on macOS too — which is why that row",
+    "moved to the object form in the same change as this paragraph."
   ],
   "anchor": {
     "identifier": "com.nikatru.platform",
@@ -57,9 +67,41 @@
     "DECLARED_AGE_RANGE": {
       "apiWritable": false,
       "profileKey": "com.apple.developer.declared-age-range",
-      "entitlementKey": "com.apple.developer.declared-age-range",
+      "entitlementKey": { "ios": "com.apple.developer.declared-age-range", "macos": null },
       "entitlementValue": true,
       "portalStep": "developer.apple.com → Certificates, Identifiers & Profiles → Identifiers → {identifier} → Capabilities → tick Declared Age Range → Save → Confirm. The API refuses DECLARED_AGE_RANGE as a capabilityType on write (ADR 088 §6)."
+    }
+  },
+  "macosEntitlementFiles": {
+    "_why": [
+      "⏱ 2026-09-18 · O-STAMP-APPLE-MACOS-ENTITLEMENTS. The BASE App Sandbox keys of each macOS",
+      "entitlements file, keyed by the path the macOS Xcode project's CODE_SIGN_ENTITLEMENTS names. Every",
+      "app shares Flutter's sandbox base, so this block is global; an app's DECLARED capabilities add their",
+      "macOS keys on top (the `macos` side of each `entitlementKey`). These are App Sandbox keys, NOT App ID",
+      "capabilities: nothing here needs a portal step, and nothing here touches a profile.",
+      "",
+      "WHY EACH KEY IS HERE — the history both files carried as comments, kept because the files may now be",
+      "rewritten from this block and a rewrite would drop a comment:",
+      "  · com.apple.security.network.client is REQUIRED FOR THE APP TO WORK AT ALL ON macOS, and it was",
+      "    missing from BOTH files until 2026-08-17. Under App Sandbox an outbound socket needs it explicitly;",
+      "    without it every request to Supabase and to the Workers fails at the OS layer, in a RELEASE build",
+      "    only, on the one platform this repo cannot build locally to notice. Both files had been stock",
+      "    `flutter create` output. https://docs.flutter.dev/platform-integration/macos/building#setting-up-entitlements",
+      "  · com.apple.security.network.server (DebugProfile only) is Flutter's debug VM service listening",
+      "    locally. It does NOT grant outbound calls — its presence is why the missing network.client went",
+      "    unnoticed in debug for so long.",
+      "  · com.apple.security.cs.allow-jit (DebugProfile only) is the Dart VM's JIT in a debug build.",
+      "  · com.apple.security.app-sandbox is the Mac App Store's requirement for every app."
+    ],
+    "Runner/DebugProfile.entitlements": {
+      "com.apple.security.app-sandbox": true,
+      "com.apple.security.cs.allow-jit": true,
+      "com.apple.security.network.server": true,
+      "com.apple.security.network.client": true
+    },
+    "Runner/Release.entitlements": {
+      "com.apple.security.app-sandbox": true,
+      "com.apple.security.network.client": true
     }
   },
   "apps": {

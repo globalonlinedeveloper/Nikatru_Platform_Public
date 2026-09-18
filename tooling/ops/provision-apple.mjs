@@ -8,6 +8,10 @@
 //   node tooling/ops/provision-apple.mjs --app <slug> --apply    mutate the account
 //   … --profiles-zip <path outside the repo>                     build + validate the
 //                                                                profile-set container
+//   … --files-only [--apply]                                     ⏱ 2026-09-18: step 5's
+//        TREE half only — the iOS and macOS entitlements files against the register.
+//        It returns before the credentials are even read, so it makes NO App Store
+//        Connect request of any kind and cannot touch a protected resource.
 //
 // From the app's DECLARED capability list (tooling/apple-provisioning.json) it:
 //   1. creates the App ID `com.nikatru.<slug>` if absent            (API-writable)
@@ -25,7 +29,11 @@
 //      normal new-app flow is TWO runs around the one owner click.
 //   5. compares the LIVE profile's entitlements with the declared list and with
 //      ios/Runner/Runner.entitlements, and (with --apply) writes that file from
-//      the list when it disagrees. The tree-only half of this comparison is
+//      the list when it disagrees. ⏱ 2026-09-18: the macOS entitlements files
+//      named in the register's `macosEntitlementFiles` are written the same way,
+//      from their base sandbox keys plus the declared macOS keys. A file is
+//      rewritten ONLY when its KEYS differ, so a hand comment in a file that
+//      already agrees survives. The tree-only half of this comparison is
 //      tooling/ci/assert-apple-entitlements.mjs, in ci.yml.
 //   6. with --profiles-zip, builds the zip APPLE_PROVISIONING_PROFILES_BASE64
 //      carries — every declared app's ACTIVE profiles — and re-reads it with
@@ -66,6 +74,8 @@ import {
   BUNDLE_PLATFORM,
   validateRegister,
   expectedEntitlements,
+  expectedMacosEntitlements,
+  macosEntitlementFileNames,
   parseFlatDict,
   renderEntitlements,
   compareFileToDeclared,
@@ -179,19 +189,84 @@ function credentials() {
   return { issuerId, keyId, privateKey };
 }
 
+// ── the tree · ⏱ 2026-09-18 · O-STAMP-APPLE-MACOS-ENTITLEMENTS ────────────────
+
+/**
+ * ONE entitlements file brought to its derived set. Compared first and written
+ * ONLY on a real KEY difference, so a hand comment in a file whose keys already
+ * agree survives — the iOS file's [ADR 082] note and the macOS files'
+ * network.client history both live in comments. Returns the entries the file
+ * carries after the call, or null when it could not be read (never rewritten
+ * over: an unread file is not known to be wrong). The iOS messages are the ones
+ * step 5 printed before this was extracted, word for word.
+ */
+export function syncEntitlementsFile({ abs, label, expected, apply, pending, findings, written = [], log = console.log }) {
+  const keys = `[${[...expected.keys()].join(', ')}]`;
+  const short = label.split('/').pop();
+  const text = readOrNull(abs);
+  let entries;
+  let diff;
+  if (text !== null) {
+    const parsed = parseFlatDict(text);
+    if (!parsed.ok) {
+      findings.push(`${label} is unreadable (${parsed.reason}) — not rewritten over`);
+      return null;
+    }
+    entries = parsed.entries;
+    diff = compareFileToDeclared(parsed.entries, expected);
+  } else {
+    entries = new Map();
+    diff = expected.size ? [`does not exist and must carry ${keys}`] : [];
+  }
+  if (diff.length === 0) {
+    log(`  ok   ${short} carries exactly ${keys} — not rewritten`);
+    return entries;
+  }
+  if (!apply) {
+    for (const d of diff) pending.push(`would write ${short}: it ${d}`);
+    return entries;
+  }
+  writeFileSync(abs, renderEntitlements(expected));
+  written.push(label);
+  log(`  wrote ${label} ${keys} — review and commit it`);
+  return expected;
+}
+
+/** Every macOS entitlements file the register names, for one app. */
+export function syncMacosEntitlementFiles({ reg, slug, appDir, apply, pending, findings, written = [], log = console.log }) {
+  if (!existsSync(join(appDir, 'macos', 'Runner'))) {
+    pending.push(`apps/${slug}/macos/Runner does not exist — run the platform create step first; macOS entitlements not written`);
+    return;
+  }
+  for (const f of macosEntitlementFileNames(reg)) {
+    syncEntitlementsFile({
+      abs: join(appDir, 'macos', ...f.split('/')),
+      label: `apps/${slug}/macos/${f}`,
+      expected: expectedMacosEntitlements(reg, slug, f),
+      apply,
+      pending,
+      findings,
+      written,
+      log,
+    });
+  }
+}
+
 // ── arguments ───────────────────────────────────────────────────────────────
 
 function parseArgs(argv) {
-  const a = { apply: false };
+  const a = { apply: false, filesOnly: false };
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i];
     if (k === '--apply') a.apply = true;
+    else if (k === '--files-only') a.filesOnly = true;
     else if (k === '--app') a.app = argv[++i];
     else if (k === '--profiles-zip') a.zip = argv[++i];
     else if (k === '--register') a.register = argv[++i];
     else throw new CoverageLost(`unknown argument ${k}`);
   }
-  if (!a.app) throw new CoverageLost('usage: provision-apple.mjs --app <slug> [--apply] [--profiles-zip <path>]');
+  if (!a.app) throw new CoverageLost('usage: provision-apple.mjs --app <slug> [--apply] [--profiles-zip <path>] [--files-only]');
+  if (a.filesOnly && a.zip) throw new CoverageLost('--files-only reads no profile, so it cannot build --profiles-zip');
   return a;
 }
 
@@ -220,6 +295,46 @@ async function main() {
     console.error(`✗ ${REGISTER} declares no app "${slug}". Declare its capability list first.`);
     return 1;
   }
+
+  // ⏱ 2026-09-18 · --files-only: step 5's TREE half and nothing else. It returns
+  // HERE, before `credentials()` is called, so no App Store Connect request can be
+  // built, let alone sent — the safe way to write the entitlements files for an app
+  // whose App ID and profiles are protected.
+  if (args.filesOnly) {
+    const pending = [];
+    const findings = [];
+    const written = [];
+    const appDir = join(ROOT, 'apps', slug);
+    console.log(`provision-apple --files-only — ${slug}: the entitlements files against ${REGISTER}. No App Store Connect request is made.`);
+    if (!existsSync(join(appDir, 'ios', 'Runner'))) {
+      pending.push(`apps/${slug}/ios/Runner does not exist — run the platform create step first; Runner.entitlements not written`);
+    } else {
+      syncEntitlementsFile({
+        abs: join(appDir, 'ios', 'Runner', 'Runner.entitlements'),
+        label: `apps/${slug}/ios/Runner/Runner.entitlements`,
+        expected: expectedEntitlements(reg, slug),
+        apply: args.apply,
+        pending,
+        findings,
+        written,
+      });
+    }
+    syncMacosEntitlementFiles({ reg, slug, appDir, apply: args.apply, pending, findings, written });
+    for (const p of pending) console.log(`  pending  ${p}`);
+    for (const f of findings) console.error(`✗ ${f}`);
+    if (findings.length) return 1;
+    if (pending.length) {
+      console.log(`\nprovision-apple --files-only — ${pending.length} file change(s) pending for ${slug}. ${args.apply ? '' : 'Re-run with --apply to write them.'}`);
+      return 1;
+    }
+    if (written.length) {
+      console.log(`\nprovision-apple --files-only — ${slug}: wrote ${written.length} file(s) from the declared list; each now agrees. Review and commit them.`);
+      return 0;
+    }
+    console.log(`\nprovision-apple --files-only — ${slug}: every entitlements file agrees with the declared list. No change.`);
+    return 0;
+  }
+
   const name = appName(reg, slug);
   const nameProblem = bundleIdNameProblem(name);
   if (nameProblem) {
@@ -374,37 +489,22 @@ async function main() {
   if (!existsSync(join(appDir, 'ios', 'Runner'))) {
     pending.push(`apps/${slug}/ios/Runner does not exist — run the platform create step first; Runner.entitlements not written`);
   } else {
-    const keys = `[${[...expected.keys()].join(', ')}]`;
-    let readable = true;
-    let diff;
-    const entText = readOrNull(entFile);
-    if (entText !== null) {
-      const parsed = parseFlatDict(entText);
-      if (!parsed.ok) {
-        readable = false;
-        findings.push(`apps/${slug}/ios/Runner/Runner.entitlements is unreadable (${parsed.reason}) — not rewritten over`);
-      } else {
-        fileEntries = parsed.entries;
-        diff = compareFileToDeclared(parsed.entries, expected);
-      }
-    } else {
-      fileEntries = new Map();
-      diff = expected.size ? [`does not exist and must carry ${keys}`] : [];
-    }
-    if (readable && diff.length === 0) {
-      console.log(`  ok   Runner.entitlements carries exactly ${keys} — not rewritten`);
-    } else if (readable && !args.apply) {
-      for (const d of diff) pending.push(`would write Runner.entitlements: it ${d}`);
-    } else if (readable) {
-      writeFileSync(entFile, renderEntitlements(expected));
-      fileEntries = expected;
-      console.log(`  wrote apps/${slug}/ios/Runner/Runner.entitlements ${keys} — review and commit it`);
-    }
+    // Extracted 2026-09-18 into `syncEntitlementsFile`, messages unchanged, so the
+    // macOS files and --files-only go through the same compare-then-write.
+    fileEntries = syncEntitlementsFile({
+      abs: entFile,
+      label: `apps/${slug}/ios/Runner/Runner.entitlements`,
+      expected,
+      apply: args.apply,
+      pending,
+      findings,
+    });
     const pbx = join(appDir, 'ios', 'Runner.xcodeproj', 'project.pbxproj');
     if (expected.size && !(readOrNull(pbx) ?? '').includes('CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;')) {
       findings.push(`apps/${slug}/ios/Runner.xcodeproj never sets CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements — the file is inert until it does`);
     }
   }
+  syncMacosEntitlementFiles({ reg, slug, appDir, apply: args.apply, pending, findings });
   for (const step of plan.filter((x) => x.action === 'keep')) {
     const prof = profiles.find((x) => x.id === step.id);
     // Runner.entitlements is the iOS target's file; the macOS profile is held
@@ -434,7 +534,7 @@ async function main() {
     console.log(`\nprovision-apple — ${pending.length} change(s) pending for ${slug}. ${args.apply ? '' : 'Re-run with --apply to make the API-writable ones.'}`);
     return 1;
   }
-  console.log(`\nprovision-apple — ${slug}: the App ID, its profiles and Runner.entitlements agree with the declared list. No change.`);
+  console.log(`\nprovision-apple — ${slug}: the App ID, its profiles and every entitlements file agree with the declared list. No change.`);
   return 0;
 }
 
