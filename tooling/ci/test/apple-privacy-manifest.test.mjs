@@ -306,6 +306,21 @@ describe('assert-apple-privacy-manifest.mjs — the positive controls', () => {
     assert.match(out, /CANNOT SEE — THE BUILT BUNDLE/);
     assert.match(out, /UNRESOLVED U-1/);
     assert.match(out, /objc_msgSend/);
+
+    // …and the words are READ from the audit, not restated in the guard: an item
+    // that exists only in this copy of the audit must print. A guard carrying its
+    // own text would print the sentences above and never this one
+    // (O-UNGRADED-MECHANISM-CLAIMS, tooling/mechanism-claims.json).
+    const planted = 'PLANTED ITEM THAT EXISTS ONLY IN THIS FIXTURE AUDIT';
+    const t = tree((root) =>
+      editAuditAndRegenerate(root, (audit) => {
+        assert.ok(Array.isArray(audit.cannotSee?.items), 'the real audit carries cannotSee.items');
+        audit.cannotSee.items.push(planted);
+      }),
+    );
+    const edited = run(t);
+    assert.equal(edited.code, 0, edited.out);
+    assert.match(edited.out, new RegExp(`CANNOT SEE — ${planted}`));
   });
 
   test('it WARNS, and does not fail, on constants whose witness is `knowledge`', () => {

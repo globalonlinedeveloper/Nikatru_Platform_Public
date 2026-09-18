@@ -185,6 +185,262 @@
       "anchor": "The INSTALLED certificate's own notAfter is the only source that cannot drift;",
       "status": "demoted",
       "reason": "Quoted as THE PRIOR TEXT of expiring.cert.origin-ca's `expiryKnownAt`, kept as history on 2026-09-16. The live text before it names the Cloudflare API read and says an installed copy matches only if openssl agrees; the quote asserts nothing about the row as it stands. ⏱ 2026-09-18: the row itself is now RETIRED (certificate revoked, O-ORIGIN-CA-KEEP-OR-REVOKE); the sentence survives verbatim inside _retiredRows.rows[].row, as history."
+    },
+    {
+      "file": "tooling/ci/appimage-signing.mjs",
+      "anchor": "against the register's declared names, so the two cannot drift silently.",
+      "status": "proven",
+      "test": "tooling/ci/test/appimage-signing.test.mjs",
+      "case": "🔴 COVERAGE LOST when the register stops declaring the key transport name",
+      "proves": "The fixture register declares only SOMETHING_ELSE_B64; the run must exit 2 naming B64_ENV. Delete the cross-check and the constant drifts from the register silently, and the case goes red. Mutation-verified 2026-09-18: removing the `!declared.includes(B64_ENV)` refusal turns it red."
+    },
+    {
+      "file": "tooling/ci/apple-signing.mjs",
+      "anchor": "cannot drift silently. Renaming a secret in the register without",
+      "status": "proven",
+      "test": "tooling/ci/test/apple-signing.test.mjs",
+      "case": "a name declared and unknown here comes out as `extra`",
+      "proves": "registerDrift is the comparison the sentence names; a register name the role map does not know must come back as `extra`, which the main path turns into COVERAGE LOST. Its sibling 'a name expected here and dropped there comes out as `absent`' covers the other direction."
+    },
+    {
+      "file": "tooling/ci/assert-a11y-coverage.mjs",
+      "anchor": "is DERIVED from the domain minus the sweeps, so it cannot drift from",
+      "status": "proven",
+      "test": "tooling/ci/test/a11y-coverage.test.mjs",
+      "case": "an unswept surface PRINTS and does not fail the build — a NEW sheet nobody has swept",
+      "proves": "Adds a sheet nobody listed anywhere and requires it to appear in the printed unswept list. A hand-kept deferral list would not name it."
+    },
+    {
+      "file": "tooling/ci/assert-adapter-capabilities.mjs",
+      "anchor": "The DOMAIN is derived, not typed: a descriptor that declares a",
+      "status": "proven",
+      "test": "tooling/ci/test/adapter-capabilities.test.mjs",
+      "case": "FAILS when a canSchedule descriptor declares no scheduleContract",
+      "proves": "A descriptor that declares canSchedule with no scheduleContract must fail: the obligation follows from the declaration, not from a typed list of adapters."
+    },
+    {
+      "file": "tooling/ci/assert-app-address-shape.mjs",
+      "anchor": "address and the identity cannot drift apart.",
+      "status": "proven",
+      "test": "tooling/ci/test/app-address-shape.test.mjs",
+      "case": "the apex host with the wrong path",
+      "proves": "A row whose url path is not \"/\" + its slug must exit 1 with \"but its slug is\". Drop limb 2 and the address and the identity can differ, and the case goes red."
+    },
+    {
+      "file": "tooling/ci/assert-app-naming.mjs",
+      "anchor": "written once, HERE, and read from the schema — so the two cannot drift.",
+      "status": "proven",
+      "test": "tooling/ci/test/app-naming.test.mjs",
+      "case": "the cap VANISHING from the schema is COVERAGE LOST, not \"no cap to check\"",
+      "proves": "Deletes maxLength from the fixture schema and requires exit 2. A cap typed into the guard would keep checking and exit 0. Mutation-verified 2026-09-18: a hardcoded cap of 30 turns it red."
+    },
+    {
+      "file": "tooling/ci/assert-apple-privacy-manifest.mjs",
+      "anchor": "`unresolved` blocks rather than being restated here, so the two cannot drift:",
+      "status": "proven",
+      "test": "tooling/ci/test/apple-privacy-manifest.test.mjs",
+      "case": "it PRINTS what it cannot see on every run, in the audit's own words",
+      "proves": "Added 2026-09-18: the case plants a cannotSee item that exists only in the fixture audit and requires it to print. A guard carrying its own copy of the text would print the real sentences and never the planted one. Mutation-verified 2026-09-18: capping the printed items at the three the real audit holds turns it red."
+    },
+    {
+      "file": "tooling/ci/assert-captcha-gated-call-sites.mjs",
+      "anchor": "note the gated set is DERIVED, not written:",
+      "status": "proven",
+      "test": "tooling/ci/test/captcha-gated-call-sites.test.mjs",
+      "case": "an interface with no captchaToken parameter is COVERAGE LOST, not a clean tree",
+      "proves": "Strips captchaToken from the interface and requires exit 2. A written method list would still hold four names and run clean."
+    },
+    {
+      "file": "tooling/ci/assert-ceiling-budget.mjs",
+      "anchor": "THE DOMAIN IS DERIVED, NOT TYPED. A hand-written list of",
+      "status": "proven",
+      "test": "tooling/ci/test/ceiling-budget.test.mjs",
+      "case": "THE DOMAIN IS DERIVED: a ceiling a configCeilings check COUNTS needs no location",
+      "proves": "The same ceiling row turns from green to red when only the configCeilings check that counts it is removed. A typed list would give the same answer both times. Mutation-verified 2026-09-18."
+    },
+    {
+      "file": "tooling/ci/assert-channel-claims.mjs",
+      "anchor": "it binds to that one so the two cannot drift.",
+      "status": "proven",
+      "test": "tooling/ci/test/channel-claims.test.mjs",
+      "case": "tracks the sibling UPWARD — raising MIN_SITES raises this floor too",
+      "proves": "Raises MIN_SITES in the fixture sibling only; this guard must then demand 3. A local floor would not move and the case goes red. Mutation-verified 2026-09-18."
+    },
+    {
+      "file": "tooling/ci/assert-channel-register.mjs",
+      "anchor": "tool.json's own `storeMetadata.stores` so the two cannot drift apart.",
+      "status": "proven",
+      "test": "tooling/ci/test/channel-register.test.mjs",
+      "case": "FAILS when the tool.json does not declare the store the row names",
+      "proves": "The row names a store the fixture tool.json does not declare; the run must exit 1 naming it."
+    },
+    {
+      "file": "tooling/ci/assert-channel-register.mjs",
+      "anchor": "two cannot drift. The register did repeat them, and nothing compared the copy",
+      "status": "proven",
+      "test": "tooling/ci/test/android-signing.test.mjs",
+      "case": "the env-var names really are read from Gradle, not hard-coded here",
+      "proves": "The sentence says android-signing.mjs parses its names from build.gradle.kts. The case renames every variable in the fixture Gradle file and requires the script to ask for the renamed ones. It does not cover tooling/release/submit-play.mjs, which the same sentence also names; section 9 itself is graded by 'FAILS when the BUILD FILE renames a value and the register does not' in channel-register.test.mjs."
+    },
+    {
+      "file": "tooling/ci/assert-channel-register.mjs",
+      "anchor": "SUBJECT SET, DERIVED NOT LISTED:",
+      "status": "proven",
+      "test": "tooling/ci/test/channel-register.test.mjs",
+      "case": "FAILS a pin block declaring a sentinel and NO value field",
+      "proves": "Plants a new pin block on windows-store that carries only a sentinel; it acquires the checks by declaring it and must fail. Its sibling 'ignores a signing block that declares no sentinel' covers the other side."
+    },
+    {
+      "file": "tooling/ci/assert-chassis-ledger.mjs",
+      "anchor": "THE DECLARED TOTALS ARE RECOMPUTED from the rows, so the summary cannot",
+      "status": "proven",
+      "test": "tooling/ci/test/chassis-ledger.test.mjs",
+      "case": "totals.lines drifting from the rows FAILS",
+      "proves": "Adds 100 to totals.lines alone and requires exit 1 naming it; siblings do the same for totals.files and totals.unclassified. Mutation-verified 2026-09-18: deleting the totals.lines comparison turns it red."
+    },
+    {
+      "file": "tooling/ci/assert-clone-contract.mjs",
+      "anchor": "THE COVERAGE FLOOR IS DERIVED, NOT TYPED.",
+      "status": "proven",
+      "test": "tooling/ci/test/clone-contract.test.mjs",
+      "case": "COVERAGE LOST when a DEPLOYED Worker carries no wrangler.jsonc",
+      "proves": "A new Worker directory with an entry point and no config must be COVERAGE LOST. A typed \"at least N configs\" floor would pass it. Note the rule is now \"every directory with an entry point\" (services/_shared/ has none); the sentence below the anchor still says \"every directory\"."
+    },
+    {
+      "file": "tooling/ci/assert-discovery-surface.mjs",
+      "anchor": "the generated discovery surfaces cannot drift",
+      "status": "proven",
+      "test": "tooling/ci/test/discovery-surface.test.mjs",
+      "case": "a registry entry added and never regenerated FAILS",
+      "proves": "Adds a registry entry after generation; the guard must name the missing landing page."
+    },
+    {
+      "file": "tooling/ci/assert-erasure-reach.mjs",
+      "anchor": "columns at all and is not in this guard's domain — the distinction is derived,",
+      "status": "proven",
+      "test": "tooling/ci/test/erasure-reach.test.mjs",
+      "case": "FAILS when a user-owned table has no register row at all",
+      "proves": "Removes the register row for a table that has a user_id column; the guard must find the table from the migrations and fail. A listed domain would not see it."
+    },
+    {
+      "file": "tooling/ci/assert-listing-assets.mjs",
+      "anchor": "capture geometry cannot drift from the declared contract without one",
+      "status": "proven",
+      "test": "tooling/ci/test/listing-assets.test.mjs",
+      "case": "a recorded size that contradicts the register fails",
+      "proves": "CAPTURE.json records 720x1280 against a register recommending 1080x1920; the run must exit 1 naming both."
+    },
+    {
+      "file": "tooling/ci/assert-ops-register.mjs",
+      "anchor": "Re-derives `_maxUnreadable` from the rows, so the constant cannot drift",
+      "status": "proven",
+      "test": "tooling/ci/test/ops-register.test.mjs",
+      "case": "🔴 a ceiling ABOVE the derivation FAILS — that is the weakening direction",
+      "proves": "Sets the committed constant one above deriveUnreadableCeiling and requires an error. The sibling cases pin equality and the stricter direction."
+    },
+    {
+      "file": "tooling/ci/assert-palette-consistent.mjs",
+      "anchor": "the reason tokens.css cannot drift out of the subject unnoticed.",
+      "status": "proven",
+      "test": "tooling/ci/test/palette-consistent.test.mjs",
+      "case": "a named source that declares no :root at all is COVERAGE LOST",
+      "proves": "Rewrites tokens.css so it declares no :root and requires exit 2 naming tokens.css. The sibling 'losing a NAMED source gives the named message, not the count one' covers the file leaving the subject."
+    },
+    {
+      "file": "tooling/ci/assert-release-lane-generic.mjs",
+      "anchor": "cannot drift from the workspace without this guard's own reading drifting",
+      "status": "proven",
+      "test": "tooling/ci/test/release-lane-generic.test.mjs",
+      "case": "the emitter and the grader read ONE workspace — the ids round-trip to the paths limb A expects",
+      "proves": "Every id --emit-apps prints must appear in the grader's output for the same fixture workspace. Two readers that disagreed would fail it."
+    },
+    {
+      "file": "tooling/ci/assert-retention-coverage.mjs",
+      "anchor": "to the retention ids, so the two lists cannot drift apart.",
+      "status": "proven",
+      "test": "tooling/ci/test/retention-coverage.test.mjs",
+      "case": "a required external id with no row FAILS",
+      "proves": "Removes the row for an id _requiredCoverage names; the run must exit 1 naming it."
+    },
+    {
+      "file": "tooling/ci/build-enforcement-index.mjs",
+      "anchor": "register, so the two documents cannot drift.",
+      "status": "proven",
+      "test": "tooling/ci/test/enforcement-index.test.mjs",
+      "case": "COVERAGE LOST when tooling/dod-register.json is absent",
+      "proves": "Deletes dod-register.json from the fixture and requires exit 2. A copy of the lane and human rows inside the generator would still produce an index."
+    },
+    {
+      "file": "tooling/ci/channel-arming.mjs",
+      "anchor": "cannot drift from the register by carrying a copy of it.",
+      "status": "proven",
+      "test": "tooling/ci/test/channel-arming.test.mjs",
+      "case": "🔴 the derivation never reads the channel ID — rename the row and the answer is identical",
+      "proves": "Renames every real row and requires the same verdict. A module carrying a copy of the register keyed on channel ids would change its answer."
+    },
+    {
+      "file": "tooling/ci/windows-signing.mjs",
+      "anchor": "register's list, so the two cannot drift apart silently either.",
+      "status": "proven",
+      "test": "tooling/ci/test/windows-signing.test.mjs",
+      "case": "🔴 COVERAGE LOST when the register stops declaring the base64 transport name",
+      "proves": "The fixture register drops WINDOWS_CODESIGN_PFX_BASE64; the run must exit 2 naming it. Mutation-verified 2026-09-18: removing the refusal turns it red."
+    },
+    {
+      "file": "tooling/ci/windows-signing.mjs",
+      "anchor": "against the register's declared names below, so it cannot drift silently.",
+      "status": "proven",
+      "test": "tooling/ci/test/windows-signing.test.mjs",
+      "case": "🔴 COVERAGE LOST when the register stops declaring the base64 transport name",
+      "proves": "The docblock on B64_ENV restating the header claim at :61; the same case grades it."
+    },
+    {
+      "file": "tooling/ci/assert-app-yaml.mjs",
+      "anchor": "only way two readers of one contract cannot drift is for there to be one",
+      "status": "demoted",
+      "reason": "Design rationale for importing the renderer's `plan` instead of re-deriving it. The claim is the import statement directly below; a shared reader and an identical copy produce the same output, so no test can fail on the difference."
+    },
+    {
+      "file": "tooling/ci/assert-copy-parity.mjs",
+      "anchor": "because there was no second copy.",
+      "status": "demoted",
+      "reason": "A runtime failure message describing the matrix (no second live copy of the product exists to compare). It says nothing about how this guard is built, so the shape matched a false positive."
+    },
+    {
+      "file": "tooling/ci/assert-copy-parity.mjs",
+      "anchor": "so there is no second COPY —",
+      "status": "demoted",
+      "reason": "A runtime failure message describing the matrix (no slot besides the origin carries the product). It says nothing about how this guard is built, so the shape matched a false positive."
+    },
+    {
+      "file": "tooling/ci/assert-discovery-surface.mjs",
+      "anchor": "below cannot drift from the file it is about.",
+      "status": "demoted",
+      "reason": "Describes how the code is organised: one named constant or function that several call sites share. A shared definition and two copies that happen to agree behave identically, so no test can fail on the difference; the structure is checked by reading the definition, which sits directly under the sentence."
+    },
+    {
+      "file": "tooling/ci/assert-input-contract.mjs",
+      "anchor": "Named here rather than inlined so the failure text and the walk cannot drift",
+      "status": "demoted",
+      "reason": "Describes how the code is organised: one named constant or function that several call sites share. A shared definition and two copies that happen to agree behave identically, so no test can fail on the difference; the structure is checked by reading the definition, which sits directly under the sentence."
+    },
+    {
+      "file": "tooling/ci/assert-store-matrix.mjs",
+      "anchor": "of the message cannot drift apart between limbs.",
+      "status": "demoted",
+      "reason": "Describes how the code is organised: one named constant or function that several call sites share. A shared definition and two copies that happen to agree behave identically, so no test can fail on the difference; the structure is checked by reading the definition, which sits directly under the sentence."
+    },
+    {
+      "file": "tooling/ci/assert-web-cache-policy.mjs",
+      "anchor": "entry-point limb, the shipped-file limb and the class-probe limb cannot",
+      "status": "demoted",
+      "reason": "Describes how the code is organised: one named constant or function that several call sites share. A shared definition and two copies that happen to agree behave identically, so no test can fail on the difference; the structure is checked by reading the definition, which sits directly under the sentence."
+    },
+    {
+      "file": "tooling/ci/assert-submission-safety.mjs",
+      "anchor": "now NAMES the constant, so there is one string and prose cannot drift from",
+      "status": "demoted",
+      "reason": "History inside a dated incident note: a header comment once quoted a value and now names the constant instead. It is about the wording of a comment, which no test executes."
     }
   ],
   "backlog": {
@@ -265,39 +521,13 @@
     "tooling/capability-register.json": 1,
     "tooling/ceilings.json": 2,
     "tooling/channel-register.json": 1,
-    "tooling/ci/appimage-signing.mjs": 1,
-    "tooling/ci/apple-signing.mjs": 1,
-    "tooling/ci/assert-a11y-coverage.mjs": 1,
-    "tooling/ci/assert-adapter-capabilities.mjs": 3,
-    "tooling/ci/assert-app-address-shape.mjs": 1,
-    "tooling/ci/assert-app-naming.mjs": 1,
-    "tooling/ci/assert-app-yaml.mjs": 1,
-    "tooling/ci/assert-apple-privacy-manifest.mjs": 1,
-    "tooling/ci/assert-captcha-gated-call-sites.mjs": 1,
-    "tooling/ci/assert-ceiling-budget.mjs": 1,
-    "tooling/ci/assert-channel-claims.mjs": 1,
-    "tooling/ci/assert-channel-register.mjs": 3,
-    "tooling/ci/assert-chassis-ledger.mjs": 1,
-    "tooling/ci/assert-clone-contract.mjs": 1,
-    "tooling/ci/assert-copy-parity.mjs": 2,
+    "tooling/ci/assert-adapter-capabilities.mjs": 2,
     "tooling/ci/assert-deploy-triggers-deploy.mjs": 1,
-    "tooling/ci/assert-discovery-surface.mjs": 2,
-    "tooling/ci/assert-erasure-reach.mjs": 1,
-    "tooling/ci/assert-input-contract.mjs": 1,
-    "tooling/ci/assert-listing-assets.mjs": 1,
     "tooling/ci/assert-no-store-bundle-copy.mjs": 1,
-    "tooling/ci/assert-ops-register.mjs": 3,
-    "tooling/ci/assert-palette-consistent.mjs": 1,
+    "tooling/ci/assert-ops-register.mjs": 2,
     "tooling/ci/assert-provider-graph-acyclic.mjs": 1,
     "tooling/ci/assert-publish-gate.mjs": 1,
-    "tooling/ci/assert-release-lane-generic.mjs": 1,
     "tooling/ci/assert-release-provenance.mjs": 1,
-    "tooling/ci/assert-retention-coverage.mjs": 1,
-    "tooling/ci/assert-store-matrix.mjs": 1,
-    "tooling/ci/assert-submission-safety.mjs": 1,
-    "tooling/ci/assert-web-cache-policy.mjs": 1,
-    "tooling/ci/build-enforcement-index.mjs": 1,
-    "tooling/ci/channel-arming.mjs": 1,
     "tooling/ci/test/app-versioning.test.mjs": 2,
     "tooling/ci/test/chrome-splice.test.mjs": 1,
     "tooling/ci/test/content-qa-checks.test.mjs": 1,
@@ -315,7 +545,6 @@
     "tooling/ci/test/release-durable.test.mjs": 1,
     "tooling/ci/test/render-payload.test.mjs": 1,
     "tooling/ci/test/sworn-store-files.test.mjs": 1,
-    "tooling/ci/windows-signing.mjs": 2,
     "tooling/content_pipeline/examples/lingo-phrases/gates/licence-clearance.json": 1,
     "tooling/dod-register.json": 1,
     "tooling/legal/data-inventory.json": 1,
