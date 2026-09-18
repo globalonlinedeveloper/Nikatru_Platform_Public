@@ -575,6 +575,190 @@
       "anchor": "// …and the channel README, which limb 9 resolves. Derived, not listed: the",
       "status": "demoted",
       "reason": "Describes how this test file builds its own fixture, and the derivation sits on the lines under it. No case can fail because the harness became hand-typed: a typed copy passes on the day it is typed and only breaks on the next change to the real tree, which is the hazard the sentence warns about, not something a test here grades."
+    },
+    {
+      "file": "tooling/app-yaml/render-privacy.mjs",
+      "anchor": "so it cannot drift from what the code does without a build failing.",
+      "status": "proven",
+      "test": "tooling/ci/test/app-yaml.test.mjs",
+      "case": "MUTATION: a hand edit to the per-app notice page is caught",
+      "proves": "The page is a rendering of privacy.yaml. The case hand-edits the rendered notice page and requires render-privacy --check to exit 1 naming the page, so a page that drifts from its declaration fails a build. The declaration-to-code half is graded separately by limb 4 of the same file (privacy.yaml against the sworn store declarations)."
+    },
+    {
+      "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/core/app_config.dart",
+      "anchor": "Composed from the two consts above so it cannot drift from either",
+      "status": "proven",
+      "test": "tooling/ci/test/stamp-text-fidelity.test.mjs",
+      "case": "a literal release with the RIGHT id but a frozen version still fails",
+      "proves": "assert-stamp-text-fidelity resolves the TelemetryConfig release through the stamped app_config.dart consts (evalDartString over `consts`). A release that is a literal rather than `$appId@$appVersion` resolves to a frozen version half and exits 1, which is this case; its sibling \"a literal release naming ANOTHER app fails\" covers the id half."
+    },
+    {
+      "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/main.dart",
+      "anchor": "the same object and cannot drift apart.",
+      "status": "proven",
+      "test": "tooling/ci/test/guards.test.mjs",
+      "case": "FAILS when main.dart drops the single-instance override",
+      "proves": "assert-stamp-properties (notification-tap-observed) requires `notificationServiceProvider.overrideWithValue(notifications)` in the brick main.dart. The case deletes that one override, which is what makes the tap source and the schedule target two objects, and the guard exits 1."
+    },
+    {
+      "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/state/providers.dart",
+      "anchor": "ONE READ for the two states that mean it, so the gate cannot drift from the",
+      "status": "proven",
+      "test": "tooling/bricks/app/__brick__/apps/{{app_id}}/test/chassis_properties_test.dart",
+      "case": "a reset link that CANNOT be exchanged lands on the explanation",
+      "proves": "Driven through the real router and the real ResetPasswordScreen with nothing navigating by hand. If the router gate stopped reading the arrival limb (holding on `recovering` only), a failed exchange would never reach the screen and this widget case goes red; the sibling \"a recovery arrival lands on the reset screen, unprompted\" covers the recovering limb. Runs in the stamped-app lane, not the node suite."
+    },
+    {
+      "file": "tooling/bricks/app/hooks/pre_gen.dart",
+      "anchor": "there is no other list, deliberately",
+      "status": "demoted",
+      "reason": "True by inspection today: `vocabulary` is computed from the duty-matrix rows. But pre_gen.dart runs only inside a mason stamp, and no test in tooling/ci/test or the stamp lanes adds a market to the matrix and asserts the hook accepts it, or adds a typed list and goes red. Nothing grades the sentence; judged 2026-09-18."
+    },
+    {
+      "file": "tooling/capability-register.json",
+      "anchor": "rather than stored as prose, so the register cannot drift from the",
+      "status": "proven",
+      "test": "tooling/ci/test/capability-register.test.mjs",
+      "case": "no demand and no module is the LEGAL state, and it says so, dated",
+      "proves": "The case requires the printed line `no consumer declares the habit module.` for a gate row whose id is `habit`. MUTATION-VERIFIED 2026-09-18: the print in assert-capability-register.mjs changed from `${m.id}` to a fixed word (the line no longer derived from the id) turned this case red; restored byte-exact (sha256 checked)."
+    },
+    {
+      "file": "tooling/ceilings.json",
+      "anchor": "THE DOMAIN IS DERIVED, NOT TYPED. The guard does not read a count from here.",
+      "status": "proven",
+      "test": "tooling/ci/test/ceiling-budget.test.mjs",
+      "case": "THE DOMAIN IS DERIVED: a ceiling a configCeilings check COUNTS needs no location",
+      "proves": "The same per-account ceiling row with the same absent read location is green while the d1Databases configCeilings check counts it, and becomes a failure when only that check is removed. A typed domain would not move when the check does."
+    },
+    {
+      "file": "tooling/ceilings.json",
+      "anchor": "so the printed reminder cannot drift away from the limit it is about.",
+      "status": "proven",
+      "test": "tooling/ci/test/ceiling-budget.test.mjs",
+      "case": "the passing shape PRINTS every read location [limb 8 green]",
+      "proves": "The case requires the printed reminder to carry `it must stay under 100000 reads (per-account-per-day)`, a figure the fixture holds only on the kv.readsPerDay ceiling row and never in the read location. If the guard stopped reading the limit off the ceiling row, the print loses it and the case goes red."
+    },
+    {
+      "file": "tooling/channel-register.json",
+      "anchor": "IT IS DECLARED ON ios-appstore ONLY, AND macos-appstore CARRIES NO SECOND COPY.",
+      "status": "demoted",
+      "reason": "A recorded design choice about the register's own contents, true today (privacy-manifest.json appears once, in storeMetadataContract.perChannel.ios-appstore.additionalFiles; read 2026-09-18). No guard refuses a second copy on macos-appstore, and the consequence it names (a second required file on disk) is a counterfactual no test states."
+    },
+    {
+      "file": "tooling/content_pipeline/examples/lingo-phrases/gates/licence-clearance.json",
+      "anchor": "so this file cannot drift into a claim nobody re-checks.",
+      "status": "demoted",
+      "reason": "The re-check exists (assert-content-licences.mjs, the gate-artifact block after the recipe loop), but no test mutates this artifact against the register. The only NOT CLEARED case in content-pipeline.test.mjs is satisfied by the recipe limb alone, so it stays green if the artifact comparison is deleted. Untested rather than proven; judged 2026-09-18."
+    },
+    {
+      "file": "tooling/dod-register.json",
+      "anchor": "so the row and its measurement cannot drift apart in silence.",
+      "status": "demoted",
+      "reason": "No guard reads `insideTheClaim` or its `measuredBy` (grep of tooling/ci and tooling/scripts, 2026-09-18), and the register says in the next sentence that check-dod-sync.mjs does not read this list. Naming the measuring file is a convention; nothing fails when the row and that file part."
+    },
+    {
+      "file": "tooling/legal/data-inventory.json",
+      "anchor": "DERIVED, NOT LISTED. The right-hand side is computed from the tree on every run:",
+      "status": "proven",
+      "test": "tooling/ci/test/data-inventory.test.mjs",
+      "case": "a new table with no row FAILS",
+      "proves": "A CREATE TABLE added to a migration with no register row fails assert-data-inventory. That is only possible if the store set is computed from the migrations; a listed set would not contain the new table."
+    },
+    {
+      "file": "tooling/monitor-register.json",
+      "anchor": "THE HOSTNAME LIST IS DERIVED, NOT TYPED.",
+      "status": "proven",
+      "test": "tooling/ci/test/monitor-coverage.test.mjs",
+      "case": "FAILS when a Worker gains a custom domain nothing declares",
+      "proves": "A custom domain added to a wrangler config, with no register row, fails assert-monitor-coverage. Only a deployed set computed from the tree can see a host nobody typed."
+    },
+    {
+      "file": "tooling/ops/post-deploy-smoke.mjs",
+      "anchor": "one declaration of that format — so this probe cannot drift from the file the",
+      "status": "proven",
+      "test": "tooling/ci/test/post-deploy-smoke.test.mjs",
+      "case": "an EMPTY manifest is COVERAGE LOST, never a pass, and waiting cannot help",
+      "proves": "An empty manifest must produce COVERAGE LOST, which only happens if the expected set comes from the manifest. MUTATION-VERIFIED 2026-09-18: judgeReleaseAssets's `parseManifest(manifestText)` replaced by a list typed in the file turned this case red; restored byte-exact (sha256 checked)."
+    },
+    {
+      "file": "tooling/ops/register.json",
+      "anchor": "so the constants in the guard and the declaration here cannot drift apart.",
+      "status": "proven",
+      "test": "tooling/ci/test/e2e-proof-fresh.test.mjs",
+      "case": "MUTATION — the register renaming the target is COVERAGE LOST, not a silent pass",
+      "proves": "assertTimerRecordDeclared re-reads duty.workflow.e2e.yml's recordQuery.timer from this register and compares it to the guard's constants. The case renames the target in a copy of the real register and requires COVERAGE LOST."
+    },
+    {
+      "file": "tooling/ops/upload-web-sourcemaps.mjs",
+      "anchor": "unlike the release name it cannot drift from what the SDK reports.",
+      "status": "proven",
+      "test": "tooling/ci/test/web-sourcemaps.test.mjs",
+      "case": "🔴 the uploaded blob is a REAL ZIP whose root holds a manifest naming this org and release",
+      "proves": "The case requires the uploaded manifest to carry, for both the script and its map, the `debug-id` read from the `//# debugId=` line in the built source. That line is the one the SDK reports from. If the uploader took the key from anywhere else, this case goes red. The SDK side of the sentence is outside this repo."
+    },
+    {
+      "file": "tooling/platform-register.json",
+      "anchor": "THE WORKER LIST ITSELF IS DERIVED, NOT LISTED:",
+      "status": "proven",
+      "test": "tooling/ci/test/platform-register.test.mjs",
+      "case": "🔴 FAILS on a Worker that declares `main` on disk and is in NO register entry (tree → register)",
+      "proves": "With `appWorkers` deleted, the Worker config declaring `main` is the only problem reported. A listed Worker set would have nothing to compare against; its sibling \"(register → tree)\" case covers the other direction."
+    },
+    {
+      "file": "tooling/release/generate-snapcraft.mjs",
+      "anchor": "freedesktop entry, so Name, Comment and Categories cannot drift between the two",
+      "status": "proven",
+      "test": "tooling/ci/test/snapcraft-generable.test.mjs",
+      "case": "REFUSES a store category with no freedesktop equivalent rather than passing it through",
+      "proves": "The refusal text `has no freedesktop equivalent recorded` exists only in deriveDesktopEntry (tooling/store/render-linux-icons.mjs). The case goes red if the snap launcher stops being built from that function, which is the sentence's claim."
+    },
+    {
+      "file": "tooling/scripts/check-dod-sync.mjs",
+      "anchor": "THE SIBLING'S NAME IS DERIVED, NOT TYPED. The line below",
+      "status": "demoted",
+      "reason": "True by inspection: PRIVATE_SIBLING_NAME is computed from basename(ROOT). No test exercises it. dod-sync.test.mjs builds its corpus as an in-tree `Private/`, the second candidate, so a typed sibling name would pass every case. Judged 2026-09-18."
+    },
+    {
+      "file": "tooling/scripts/check-selection-record.mjs",
+      "anchor": "THE SIBLING'S NAME IS DERIVED, NOT TYPED. The line below",
+      "status": "demoted",
+      "reason": "True by inspection: PRIVATE_SIBLING_NAME is computed from basename(ROOT). No test exercises it. selection-record.test.mjs builds its corpus as an in-tree `Private/`, the second candidate, so a typed sibling name would pass every case. Judged 2026-09-18."
+    },
+    {
+      "file": "tooling/scripts/guard-sweep.mjs",
+      "anchor": "workflow YAML so they cannot drift from CI",
+      "status": "proven",
+      "test": "tooling/ci/test/guard-sweep-invocations.test.mjs",
+      "case": "🔴 arguments folded onto a `run: >` continuation line are recorded",
+      "proves": "The case derives the guard invocations from the real workflows and requires `--invocations` to record the argument CI passes on the folded line. MUTATION-VERIFIED 2026-09-18: the recorded argument string forced to empty (arguments no longer taken from the YAML) turned this case red; restored byte-exact (sha256 checked)."
+    },
+    {
+      "file": "tooling/scripts/spec-guards.mjs",
+      "anchor": "What replaces them is anchor-derived and cannot drift.",
+      "status": "demoted",
+      "reason": "A claim about future layouts. CANDIDATE_ROOTS is built from the walked-up workspace anchor, but no test moves the repo to another depth and shows that a depth-counted root would fail. spec-guards-worktree.test.mjs grades the worktree/main-checkout resolution, a different property. Judged 2026-09-18."
+    },
+    {
+      "file": "tooling/sites/generate-well-known.mjs",
+      "anchor": "two halves of this generator cannot drift into two different definitions of",
+      "status": "proven",
+      "test": "tooling/ci/test/well-known-shape.test.mjs",
+      "case": "GREEN CONTROL: generated files pass every limb",
+      "proves": "The generator and assert-well-known-shape both import SURFACES and mobilePresence from this file. The green control requires the generator's output to pass the guard over a populated tree, so two different definitions of \"has a mobile presence\" fail it."
+    },
+    {
+      "file": "tooling/store/render-play-graphics.mjs",
+      "anchor": "graphic and the app's icon cannot drift apart:",
+      "status": "demoted",
+      "reason": "The re-render comparison (`render-play-graphics.mjs --check`) needs a browser and runs only in that lane. No node test re-colours the brand SVGs and asserts the listing graphic follows. listing-assets.test.mjs grades dimensions, alpha and presence, not provenance. Judged 2026-09-18."
+    },
+    {
+      "file": "tooling/store/render-splash.mjs",
+      "anchor": "declared size and this table cannot drift apart silently.",
+      "status": "proven",
+      "test": "tooling/ci/test/launcher-icons.test.mjs",
+      "case": "FAILS when the storyboard declares a size the imageset does not have",
+      "proves": "assert-launcher-icons imports this table and exits 1 when the storyboard declares LaunchImage at a size the imageset does not carry. The sibling \"FAILS when the imageset catalogue no longer names the files\" covers Contents.json."
     }
   ],
   "backlog": {
@@ -647,36 +831,12 @@
     "services/subscriptiontracker-api/test/entitlements.test.ts": 1,
     "sites/nikatru/functions/api/subscribe.js": 1,
     "sites/nikatru/subscriptiontracker/privacy.html": 1,
-    "tooling/app-yaml/render-privacy.mjs": 1,
-    "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/core/app_config.dart": 1,
-    "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/main.dart": 1,
-    "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/state/providers.dart": 1,
-    "tooling/bricks/app/hooks/pre_gen.dart": 1,
-    "tooling/capability-register.json": 1,
-    "tooling/ceilings.json": 2,
-    "tooling/channel-register.json": 1,
     "tooling/ci/assert-adapter-capabilities.mjs": 2,
     "tooling/ci/assert-deploy-triggers-deploy.mjs": 1,
     "tooling/ci/assert-no-store-bundle-copy.mjs": 1,
     "tooling/ci/assert-ops-register.mjs": 2,
     "tooling/ci/assert-provider-graph-acyclic.mjs": 1,
     "tooling/ci/assert-publish-gate.mjs": 1,
-    "tooling/ci/assert-release-provenance.mjs": 1,
-    "tooling/content_pipeline/examples/lingo-phrases/gates/licence-clearance.json": 1,
-    "tooling/dod-register.json": 1,
-    "tooling/legal/data-inventory.json": 1,
-    "tooling/monitor-register.json": 1,
-    "tooling/ops/post-deploy-smoke.mjs": 1,
-    "tooling/ops/register.json": 1,
-    "tooling/ops/upload-web-sourcemaps.mjs": 1,
-    "tooling/platform-register.json": 1,
-    "tooling/release/generate-snapcraft.mjs": 1,
-    "tooling/scripts/check-dod-sync.mjs": 1,
-    "tooling/scripts/check-selection-record.mjs": 1,
-    "tooling/scripts/guard-sweep.mjs": 1,
-    "tooling/scripts/spec-guards.mjs": 1,
-    "tooling/sites/generate-well-known.mjs": 1,
-    "tooling/store/render-play-graphics.mjs": 1,
-    "tooling/store/render-splash.mjs": 1
+    "tooling/ci/assert-release-provenance.mjs": 1
   }
 }
