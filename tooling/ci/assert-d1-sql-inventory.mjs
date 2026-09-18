@@ -300,10 +300,16 @@ const FINGERPRINTS = [
   // call it), subscriptiontracker-api -> src/lib/erase-subject.ts (the route and
   // ErasureEntrypoint both call it). The rows used to name routes/account.ts in
   // both services; left pointing there, this floor went red naming the move.
-  ['services/platform/src/lib/platform-erasure.ts', 'dynamic-identifier', /^DELETE FROM /i, 'the shared erasure walk empties a user-owned table'],
-  ['services/platform/src/lib/platform-erasure.ts', 'dynamic-identifier', /^UPDATE .* SET /i, 'the shared erasure walk unlinks a *_user_id reference'],
-  ['services/subscriptiontracker-api/src/lib/erase-subject.ts', 'dynamic-identifier', /^DELETE FROM /i, "Subly's erasure walk empties a user-owned table"],
-  ['services/subscriptiontracker-api/src/lib/erase-subject.ts', 'dynamic-identifier', /^UPDATE .* SET /i, "Subly's erasure walk unlinks a *_user_id reference"],
+  // ⏱ 2026-09-18 · O-ERASURE-WALK-ROUND-TRIPS: AND THEY FOLLOWED THEM AGAIN, INTO
+  // THE ONE HOME. The DELETE and UPDATE now run as ONE `db.batch()` inside
+  // services/_shared/src/erasure.ts `eraseTargets`, which platform-erasure.ts, the
+  // app Worker's erase-subject.ts AND the brick's all call - so four rows (two per
+  // Worker copy) became two, for the same reason the introspective pair did on
+  // 09-12: there is now one copy of each statement in the tree. This floor went red
+  // naming exactly those four files on the first CI run of the change, which is it
+  // working. Deleting either statement from erasure.ts still removes a row here.
+  ['services/_shared/src/erasure.ts', 'dynamic-identifier', /^DELETE FROM /i, 'the one erasure write empties a user-owned table'],
+  ['services/_shared/src/erasure.ts', 'dynamic-identifier', /^UPDATE .* SET /i, 'the one erasure write unlinks a *_user_id reference'],
   ['services/subscriptiontracker-api/src/routes/subscriptions.ts', 'dynamic-identifier', /^UPDATE subscriptions SET /i, 'the allowlisted-column subscription PATCH'],
 ];
 for (const [file, kind, pattern, what] of FINGERPRINTS) {

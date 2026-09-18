@@ -210,7 +210,10 @@ describe('the real repository', () => {
     const r = spawnSync(process.execPath, [STATIC_GUARD], { cwd: REPO, encoding: 'utf8' });
     assert.equal(r.status, 0, r.stderr);
     assert.match(r.stdout, /none names sqlite_master and calls a pragma_\* function in one/);
-    assert.match(r.stdout, /2 database-owning service\(s\) each introspect their own schema, all 7 named/);
+    // ⏱ 2026-09-18 · O-ERASURE-WALK-ROUND-TRIPS: 7 -> 5. The four erasure-write
+    // rows (DELETE + UPDATE in each Worker's copy) became two when the write moved
+    // into services/_shared/src/erasure.ts — one copy of each statement in the tree.
+    assert.match(r.stdout, /2 database-owning service\(s\) each introspect their own schema, all 5 named/);
     assert.match(r.stdout, /cause sentence is pinned in all 2 places/);
     // The skip set is DERIVED and printed. An empty one is a COVERAGE LOST, and
     // a growing one is visible rather than quiet.
@@ -449,7 +452,10 @@ describe('R3 — interpolated identifiers are constrained', () => {
         ),
       (r) => {
         assert.equal(r.status, 1);
-        assert.match(r.stderr, /\[R3\] services\/platform\/src\/lib\/platform-erasure\.ts[\s\S]*DELETE FROM/);
+        // ⏱ 2026-09-18 · O-ERASURE-WALK-ROUND-TRIPS: the DELETE now lives IN the
+        // file whose regex this drops, so R3 names erasure.ts itself rather than
+        // the wrapper that used to borrow its constraint one hop away.
+        assert.match(r.stderr, /\[R3\] services\/_shared\/src\/erasure\.ts:\d+[^\n]*DELETE FROM/);
       },
     );
   });
@@ -874,7 +880,10 @@ describe('check-d1-accepts-live-sql.mjs — the exit contract', () => {
       // skipping the statement would be the loosening this file refuses.
       assert.match(r.stdout, /step 1 — services\/platform\/src\/renewals\.ts:\d+ accepted, 6 row\(s\)/);
       // …and both erasure statements ran against a REAL table.
-      assert.match(r.stdout, /step 2 — services\/platform\/src\/lib\/platform-erasure\.ts:\d+ executed on subscriptions, changes=0/);
+      // ⏱ 2026-09-18 · O-ERASURE-WALK-ROUND-TRIPS: the statement moved into the
+      // shared home and is STILL EXECUTED against a real table — the path is what
+      // changed, not whether the live half runs it.
+      assert.match(r.stdout, /step 2 — services\/_shared\/src\/erasure\.ts:\d+ executed on subscriptions, changes=0/);
       // 4, not 3, since 2026-09-05: the nightly export's catalogue read in
       // services/platform/src/backup/dump.ts is a fourth introspective statement
       // this Worker deploys, so it is a fourth one the live half must execute.
