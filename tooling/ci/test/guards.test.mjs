@@ -212,7 +212,7 @@ describe('check-migrations', () => {
   test('FAILS its own coverage check when a required migration set is absent', () => {
     const dir = fixture('mig-cov', { 'services/platform/migrations/0001_init.sql': ADDITIVE });
     const { code, out } = run('check-migrations.mjs', { cwd: dir });
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/i);
   });
 
@@ -229,7 +229,7 @@ describe('check-migrations', () => {
       'tooling/bricks/app/__brick__/svc/migrations/0001_init.sql': ADDITIVE,
     });
     const { code, out } = run('check-migrations.mjs', { cwd: dir });
-    assert.equal(code, 1, 'the files did not become safe; the guard stopped looking at them');
+    assert.equal(code, 2, 'the files did not become safe; the guard stopped looking at them');
     assert.match(out, /COVERAGE LOST/i);
     assert.match(out, /services\/subscriptiontracker-api/);
   });
@@ -249,7 +249,7 @@ describe('check-migrations', () => {
       'services/probe-api/migrations/0001_init.sql': ADDITIVE,
     });
     const { code, out } = run('check-migrations.mjs', { cwd: dir });
-    assert.equal(code, 1, 'a schema wrangler will apply that this scanner has never read');
+    assert.equal(code, 2, 'a schema wrangler will apply that this scanner has never read');
     assert.match(out, /COVERAGE LOST/i);
     assert.match(out, /services\/probe-api/);
   });
@@ -274,7 +274,7 @@ describe('check-migrations', () => {
       'services/probe-api/wrangler.jsonc': '{ this is not json',
     });
     const { code, out } = run('check-migrations.mjs', { cwd: dir });
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/i);
     assert.match(out, /could not be parsed/);
   });
@@ -289,7 +289,7 @@ describe('check-migrations', () => {
       'tooling/bricks/app/__brick__/svc/migrations/0001_init.sql': ADDITIVE,
     });
     const { code, out } = run('check-migrations.mjs', { cwd: dir });
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /ranges over NOTHING/);
   });
 
@@ -695,7 +695,7 @@ describe('assert-lane-coverage', () => {
   test('FAILS its own coverage check when the scan finds almost nothing', () => {
     const dir = build('lc-cov', { dart: ['packages/only'], declared: ['packages/only'] });
     const { code, out } = run('assert-lane-coverage.mjs', { args: [dir] });
-    assert.equal(code, 1);
+    assert.equal(code, 2, out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(out, /COVERAGE LOST/);
   });
 
@@ -813,13 +813,13 @@ describe('check-site-integrity', () => {
 
   test('FAILS its own coverage check when a deploy root disappears', () => {
     const { code, out } = run('check-site-integrity.mjs', { args: [build('si-onesite', { sites: ['a'] })] });
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
   });
 
   test('FAILS its own coverage check when server-side code stops being found', () => {
     const { code, out } = run('check-site-integrity.mjs', { args: [build('si-nofn', { fnCount: 0 })] });
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
   });
 
@@ -840,7 +840,7 @@ describe('check-site-integrity', () => {
   test('FAILS when a claimed root is not a deploy root at all', () => {
     const dir = build('si-claim-ghost');
     const { code, out } = run('check-site-integrity.mjs', { args: [dir, 'sites/a', 'sites/ghost'] });
-    assert.equal(code, 1, 'the caller promises coverage the scan does not deliver');
+    assert.equal(code, 2, 'the caller promises coverage the scan does not deliver');
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /sites\/ghost/);
   });
@@ -851,7 +851,7 @@ describe('check-site-integrity', () => {
   test('FAILS when a claimed directory survives but stops being a deploy root', () => {
     const dir = build('si-claim-noindex', { omit: { site: 'b', file: 'index.html' } });
     const { code, out } = run('check-site-integrity.mjs', { args: [dir, 'sites/a', 'sites/b'] });
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /sites\/b/);
   });
@@ -931,7 +931,7 @@ describe('assert-lockfile-discipline', () => {
 
   test('FAILS its own coverage check when the scan finds almost nothing', () => {
     const { code, out } = run('assert-lockfile-discipline.mjs', { args: [build('ld-cov', { units: ['services/only'] })] });
-    assert.equal(code, 1);
+    assert.equal(code, 2, out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(out, /COVERAGE LOST/);
   });
 
@@ -2472,7 +2472,7 @@ if (__isRepo) {
     // that repository clean.
     const { repo, stub } = build('ss-empty-scan', EMPTY_SCAN);
     const { code, out } = run('scan-secrets.mjs', { args: [repo, '--gitleaks', stub] });
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     // The self-tests must have PASSED — otherwise this is testing a blind
     // scanner, which the next test already covers, and the coverage limb would
     // never be reached.
@@ -2490,7 +2490,7 @@ if (__isRepo) {
     const { repo, stub, root } = build('ss-wrong-root', HONEST);
     void repo;
     const { code, out } = run('scan-secrets.mjs', { args: [join(root, 'bin'), '--gitleaks', stub] });
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /The scan is broken, not the tree/);
   });
@@ -2532,7 +2532,7 @@ if (__isRepo) {
   test('the positional repoRoot is honoured with NO --gitleaks flag', () => {
     const { root } = build('ss-argbare', HONEST);
     const { code, out } = run('scan-secrets.mjs', { args: [join(root, 'bin')] });
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /bin" is missing/, out);
   });
@@ -8062,5 +8062,23 @@ describe('per-root coverage — a root that contributes nothing is named', () =>
     const { code, out } = run('assert-pseudonymity-firewall.mjs', { args: [dir] });
     assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST — services\/platform contributed ZERO/);
+  });
+});
+
+// ── O-EXIT2-CONVENTION-GAP batch 4: a COVERAGE LOST stop with a finding beside it ──
+// Appended, not inserted, so no `guards.test.mjs:NNN` citation shifts. 2 means
+// "could not look"; a run that ALSO proved a finding keeps 1, because the finding
+// is evidence and a 2 would read as "nothing is known".
+describe('assert-lockfile-discipline — a limb-1 finding beside a limb-2 COVERAGE LOST keeps exit 1', () => {
+  test('no workflow read AND a unit with no lockfile → 1, and both are printed', () => {
+    const files = {};
+    for (const u of ['services/w1', 'services/w2', 'packages/n1']) {
+      files[`${u}/package.json`] = '{"name":"x"}\n';
+      if (u !== 'services/w2') files[`${u}/package-lock.json`] = '{"lockfileVersion":3}\n';
+    }
+    const { code, out } = run('assert-lockfile-discipline.mjs', { args: [fixture('ld-blind-and-unlocked', files)] });
+    assert.equal(code, 1, out);
+    assert.match(out, /COVERAGE LOST — read 0 workflow file\(s\)/);
+    assert.match(out, /\(also\) .*services\/w2/);
   });
 });

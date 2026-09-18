@@ -153,7 +153,7 @@ const workflowTexts = existsSync(wfDir)
 if (workflowTexts.length === 0) {
   console.error(`✗ COVERAGE LOST — read ZERO workflow files under ${wfDir}, so no unit could be claimed by any lane.`);
   console.error('  Every unit would be reported unclaimed; that is a statement about this scan, not about the tree.');
-  process.exit(2);
+  coverageLost();
 }
 const workflowText = workflowTexts.join('\n');
 
@@ -211,7 +211,7 @@ if (existsSync(extCatalog)) {
     console.error(`✗ COVERAGE LOST — ${'extensions/catalog/extensions.json'} did not parse.`);
     console.error('  Every extension unit would then read as unclaimed for the wrong reason, or — worse — the');
     console.error('  cross-check below would pass over an empty set. Fix the JSON before reading this guard.');
-    process.exit(1);
+    coverageLost();
   }
 }
 
@@ -243,7 +243,7 @@ function isClaimed(unit) {
 if (units.length < MIN_UNITS) {
   console.error(`✗ COVERAGE LOST — found only ${units.length} deployable unit(s), expected at least ${MIN_UNITS}.`);
   console.error(`  The scan is broken, not the tree. repo root used: ${repoRoot}`);
-  process.exit(1);
+  coverageLost();
 }
 
 // 🔴 THE SCAN ROOTS ARE THEMSELVES CHECKED, against a manifest this guard does
@@ -277,7 +277,7 @@ if (existsSync(pnpmWorkspace)) {
     for (const m of unseen) console.error(`    ${m}`);
     console.error('  A member that is not a UNIT here cannot be reported unclaimed, so removing a scan root looks');
     console.error('  exactly like a smaller tree. Add the scan root back, or remove the member in the same change.');
-    process.exit(1);
+    coverageLost();
   }
 }
 
@@ -299,7 +299,7 @@ if (catalogSlugs.size) {
     console.error('  An extension that is not a UNIT here cannot be reported unclaimed, so removing the');
     console.error('  extensions scan root looks exactly like a smaller tree. Add the scan root back, or');
     console.error('  remove the catalogue row in the same change.');
-    process.exit(1);
+    coverageLost();
   }
 }
 
@@ -324,3 +324,11 @@ const summary = Object.entries(byType)
   .map(([t, n]) => `${n} ${t}`)
   .join(', ');
 console.log(`ok  lane coverage — ${units.length} deployable unit(s) (${summary}), all claimed`);
+
+/** The one COVERAGE LOST stop: each could-not-look branch above prints its own reason and ends
+ *  here, so the run exits 2 — never 1, which would read as a finding (AGENTS.md exit-code
+ *  convention, O-EXIT2-CONVENTION-GAP). Declared LAST (hoisted) so every `assert-lane-coverage.mjs:NNN`
+ *  citation above keeps pointing at the line it names. */
+function coverageLost() {
+  process.exit(2);
+}

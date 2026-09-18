@@ -156,7 +156,7 @@ const occursInATest = (code, spans, re) =>
 
 const ROOT = process.cwd();
 const REGISTER = 'tooling/capability-register.json';
-const problems = [];
+const problems = []; const coverageLost = (m) => problems.push(`COVERAGE LOST — ${m}`); // exit 2 only if EVERY problem is one (summary below)
 const notes = [];
 const ok = (m) => console.log(`ok   ${m}`);
 
@@ -212,8 +212,8 @@ if (existsSync(pkgRoot)) {
 // adapter is compliant".
 const MIN_ADAPTERS = 6;
 if (adapters.length < MIN_ADAPTERS) {
-  problems.push(
-    `COVERAGE LOST — derived only ${adapters.length} adapter(s), expected >= ${MIN_ADAPTERS}. Either adapters were deleted or this derivation has stopped working, and the checks below would range over almost nothing.`,
+  coverageLost(
+    `derived only ${adapters.length} adapter(s), expected >= ${MIN_ADAPTERS}. Either adapters were deleted or this derivation has stopped working, and the checks below would range over almost nothing.`,
   );
 } else {
   ok(`${adapters.length} adapter(s) derived from the tree: ${adapters.map((a) => a.split('/')[1]).join(', ')}`);
@@ -440,8 +440,8 @@ const declaredOnAdapters = (reg.capabilities ?? []).filter(
   (c) => c.owner && adapters.includes(c.owner) && c.capabilityMatrix,
 );
 if (matrixJobs.length < declaredOnAdapters.length) {
-  problems.push(
-    `COVERAGE LOST — the register declares ${declaredOnAdapters.length} capability matrix/matrices on adapter packages, but only ${matrixJobs.length} reached the checks. A matrix that is declared and never examined reports as covered.`,
+  coverageLost(
+    `the register declares ${declaredOnAdapters.length} capability matrix/matrices on adapter packages, but only ${matrixJobs.length} reached the checks. A matrix that is declared and never examined reports as covered.`,
   );
 }
 
@@ -450,19 +450,19 @@ if (matrixJobs.length < declaredOnAdapters.length) {
 // `canSchedule` and no adapter is in scope; keep the field and empty
 // `requires` and the contract asserts nothing. Both print `ok` without this.
 if (scheduleDescriptors === 0) {
-  problems.push(
-    'COVERAGE LOST — no capability descriptor declares a `canSchedule` field, so the OS-scheduling-rules limb ranged over nothing. `NotificationCapabilities` declares one; if it was renamed, re-point this derivation rather than deleting it.',
+  coverageLost(
+    'no capability descriptor declares a `canSchedule` field, so the OS-scheduling-rules limb ranged over nothing. `NotificationCapabilities` declares one; if it was renamed, re-point this derivation rather than deleting it.',
   );
 } else if (scheduleClauses === 0) {
-  problems.push(
-    `COVERAGE LOST — ${scheduleDescriptors} scheduling descriptor(s) in scope and ZERO scheduleContract clause(s) checked. A contract that pins no argument reports the same "ok" as one that pins the right ones.`,
+  coverageLost(
+    `${scheduleDescriptors} scheduling descriptor(s) in scope and ZERO scheduleContract clause(s) checked. A contract that pins no argument reports the same "ok" as one that pins the right ones.`,
   );
 } else {
   ok(`${scheduleClauses} OS scheduling rule(s) pinned across ${scheduleDescriptors} scheduling adapter(s)`);
 }
 
 if (adapters.length > 0 && checked === 0) {
-  problems.push('COVERAGE LOST — not one adapter matrix is exercised by a test that calls forPlatform. Every check above would then be asserting the existence of documentation.');
+  coverageLost('not one adapter matrix is exercised by a test that calls forPlatform. Every check above would then be asserting the existence of documentation.');
 } else if (checked > 0) {
   ok(`${checked} adapter matrix/matrices exercised per-platform by their own tests`);
 }
@@ -534,8 +534,8 @@ if (adapters.length > 0 && checked === 0) {
 
   const extraChannels = [...channelIds].filter((id) => id !== REMINDER_CHANNEL);
   if (channelIds.size === 0) {
-    problems.push(
-      'COVERAGE LOST — no notification channel declaration was found in any non-test Dart source, so the ' +
+    coverageLost(
+      'no notification channel declaration was found in any non-test Dart source, so the ' +
         `[13]T-6 promo tripwire ranged over nothing. The adapter declares \`${REMINDER_CHANNEL}\`; if that ` +
         'moved, re-point this scan rather than deleting it.',
     );
@@ -578,7 +578,7 @@ if (problems.length) {
   console.error('');
   for (const p of problems) console.error(`FAIL ${p}`);
   console.error('\nassert-adapter-capabilities: FAILED');
-  process.exitCode = 1;
+  process.exit(problems.every((p) => p.startsWith('COVERAGE LOST')) ? 2 : 1); // 2 = could not look (every problem is COVERAGE LOST); 1 = a finding
 } else {
   console.log(`\nassert-adapter-capabilities: ok — ${adapters.length} adapter(s), each declaring all six platforms and proving it`);
 }

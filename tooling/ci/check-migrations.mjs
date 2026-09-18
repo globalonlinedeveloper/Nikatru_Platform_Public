@@ -234,7 +234,7 @@ files.sort();
 
 if (files.length === 0) {
   console.error('check-migrations: no migration files matched — is the guard pointed at the right paths?');
-  process.exit(1);
+  coverageLost();
 }
 
 // Coverage check BEFORE the content scan, so a moved directory fails loudly
@@ -250,7 +250,7 @@ for (const { fragment, label } of REQUIRED_COVERAGE) {
     coverageMissing++;
   }
 }
-if (coverageMissing > 0) process.exit(1);
+if (coverageMissing > 0) coverageLost();
 
 // ─────────────────────────────────────────────────────────────────────────────
 // [pipeline B-8] THE OTHER HALF OF COVERAGE, AND IT SELF-EXTENDS.
@@ -306,7 +306,7 @@ if (configs.length === 0) {
     'check-migrations: COVERAGE LOST — no wrangler config matched, so the "a new migration set arrived"\n' +
       '    limb ranges over NOTHING and cannot fail. Fix CONFIG_PATTERNS.',
   );
-  process.exit(1);
+  coverageLost();
 }
 
 const declaring = [];
@@ -319,7 +319,7 @@ for (const cfgPath of configs) {
     // a config whose `migrations_dir` it cannot see, which is indistinguishable
     // from one that has none — and that reads as green.
     console.error(`check-migrations: COVERAGE LOST — ${cfgPath} could not be parsed (${e.message}).`);
-    process.exit(1);
+    coverageLost();
   }
   const dirs = (cfg.d1_databases ?? []).filter((d) => d?.migrations_dir);
   if (dirs.length > 0) declaring.push(cfgPath.replaceAll('\\', '/'));
@@ -337,7 +337,7 @@ if (unlisted.length > 0) {
     '    Wrangler will apply that schema to a real database and this scanner has never read it.\n' +
       '    Add a REQUIRED_COVERAGE entry (and make sure PATTERNS actually matches its .sql files).',
   );
-  process.exit(1);
+  coverageLost();
 }
 console.log(
   `check-migrations: ${declaring.length} wrangler config(s) declare a migrations_dir, all named by REQUIRED_COVERAGE ` +
@@ -394,3 +394,11 @@ if (violations > 0) {
 }
 
 console.log(`check-migrations: ${files.length} migration file(s) clean — additive-only holds.`);
+
+/** The one COVERAGE LOST stop: each could-not-look branch above prints its own reason and ends
+ *  here, so the run exits 2 — never 1, which would read as a finding (AGENTS.md exit-code
+ *  convention, O-EXIT2-CONVENTION-GAP). Declared LAST (hoisted) so every `check-migrations.mjs:NNN`
+ *  citation above keeps pointing at the line it names. */
+function coverageLost() {
+  process.exit(2);
+}

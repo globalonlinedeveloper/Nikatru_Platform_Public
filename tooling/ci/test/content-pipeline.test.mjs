@@ -406,7 +406,7 @@ describe('assert-lane-coverage — INC-0, the lane that claims tooling/content_p
   it('COVERAGE LOST when the tooling/ scan root is removed — the unit would just stop existing', () => {
     const t = tree();
     edit(t, 'tooling/ci/assert-lane-coverage.mjs', (s) => s.replace(/for \(const d of dirs\('tooling'\)\) \{[\s\S]*?\n\}\n/, ''));
-    assertRefused(run(t, 'assert-lane-coverage.mjs'), /tooling\/content_pipeline/, 'scan root removed');
+    assertCoverageLost(run(t, 'assert-lane-coverage.mjs'), /tooling\/content_pipeline/, 'scan root removed');
   });
 });
 

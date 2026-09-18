@@ -466,7 +466,7 @@ if (register !== null) {
 // undeclared one, and it is the reason a new native release lane cannot arrive
 // unversioned and silent.
 const laneWorkflows = new Set(RELEASE_LANES.map((l) => l.workflow));
-for (const f of wfFiles) {
+for (const f of RELEASE_LANES.length ? wfFiles : []) { // no lane resolved = a COVERAGE LOST above already, and "undeclared" against an empty set is derivative of it
   const text = stripAll(readFileSync(join(wfDir, f), 'utf8')).join('\n');
   const ships = DEPLOY_MARKERS.test(text) && /\bflutter build\b/.test(text);
   if (ships && !laneWorkflows.has(f) && !SHIPS_NOTHING.has(f)) {
@@ -491,7 +491,7 @@ if (lostCoverage.length) {
   console.error('✗ COVERAGE LOST — the scan no longer reaches what it claims to cover:');
   for (const p of lostCoverage) console.error(`    ${p}`);
   console.error('  The scan is broken, or a new lane needs declaring. Either way this is not "clean".');
-  process.exit(1);
+  if (problems.length === 0 && lostCoverage.every((p) => p.startsWith('COVERAGE LOST'))) coverageLost(); process.exit(1); // 2 only when every entry is a could-not-look; an unversioned lane or a finding beside it keeps 1
 }
 
 // ── the per-lane checks ──────────────────────────────────────────────────────
@@ -717,3 +717,11 @@ console.log(
     ` ${buildsChecked} build command(s), ${appsChecked} app pubspec(s);` +
     ' version derived from pubspec + github.run_number',
 );
+
+/** The one COVERAGE LOST stop: each could-not-look branch above prints its own reason and ends
+ *  here, so the run exits 2 — never 1, which would read as a finding (AGENTS.md exit-code
+ *  convention, O-EXIT2-CONVENTION-GAP). Declared LAST (hoisted) so every `assert-app-versioning.mjs:NNN`
+ *  citation above keeps pointing at the line it names. */
+function coverageLost() {
+  process.exit(2);
+}

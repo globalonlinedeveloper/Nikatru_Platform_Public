@@ -479,15 +479,15 @@ describe('assert-no-clone-tells refuses a subject that emptied under it', () => 
     provesRefusal(G, () => rm('packages'), [
       /packages — 0 \.dart scanned, floor \d+/,
       /The union floor \(MIN_SCANNED=\d+\) was SATISFIED here/,
-    ]);
+    ], 2); // COVERAGE LOST is exit 2 (O-EXIT2-CONVENTION-GAP)
   });
 
   test('packages/ thinned below its floor with the tree still present', () => {
-    provesRefusal(G, () => keepOnlyPackages(['core']), [/packages — \d+ \.dart scanned, floor \d+/]);
+    provesRefusal(G, () => keepOnlyPackages(['core']), [/packages — \d+ \.dart scanned, floor \d+/], 2);
   });
 
   test('the brick deleted while packages/ alone clears the union floor', () => {
-    provesRefusal(G, () => rm('tooling/bricks'), [/tooling\/bricks — 0 \.dart scanned, floor \d+/]);
+    provesRefusal(G, () => rm('tooling/bricks'), [/tooling\/bricks — 0 \.dart scanned, floor \d+/], 2);
   });
 
   test('THE CONTROL: dropping packages/design_system clears the floor and stays green', () => {

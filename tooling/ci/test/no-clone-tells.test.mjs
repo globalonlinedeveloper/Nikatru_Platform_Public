@@ -208,14 +208,14 @@ describe('🔴 comments are exempt — the choice the guard lives or dies by', (
 describe('the guard knows when it is not looking', () => {
   test('COVERAGE LOST when the domain list is empty — it would pass everything', () => {
     const { code, out } = run(tree({ nouns: [] }));
-    assert.equal(code, 1);
+    assert.equal(code, 2, out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /cannot fail is worse than none/);
   });
 
   test('COVERAGE LOST when cloneTells is absent entirely', () => {
     const { code, out } = run(tree({ omitTells: true }));
-    assert.equal(code, 1);
+    assert.equal(code, 2, out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(out, /no non-empty `cloneTells.domainNouns`/);
   });
 
@@ -223,7 +223,7 @@ describe('the guard knows when it is not looking', () => {
     const root = tree();
     for (let i = 0; i < 12; i++) rmSync(join(root, `packages/core/lib/clean${i}.dart`));
     const { code, out } = run(root);
-    assert.equal(code, 1);
+    assert.equal(code, 2, out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(out, /COVERAGE LOST/);
   });
 });

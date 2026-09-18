@@ -448,7 +448,7 @@ function main() {
   if (files.length === 0) {
     console.error(`✗ COVERAGE LOST: no workflow files under ${WORKFLOW_DIR}.`);
     console.error('  This guard cannot verify what it cannot read, and that is a failure, not a skip.');
-    process.exit(1);
+    coverageLost();
   }
 
   const problems = [];
@@ -488,7 +488,7 @@ function main() {
     );
     console.error('  Either the detection stopped matching, or the shape moved. Both are failures — a scan');
     console.error("  over nothing prints ok, which is this repository's single most repeated failure.");
-    process.exit(1);
+    if (problems.every((p) => p.includes('COVERAGE LOST'))) coverageLost(); // with a finding beside it, the report below prints it and exits 1
   }
 
   if (scannedSources < MIN_SCANNED_SOURCES) {
@@ -499,7 +499,7 @@ function main() {
     console.error('  It decides "does this filter claim what its tree imports" by reading those files. With');
     console.error('  none read, every filter is judged to import nothing and the limb certifies a clean tree');
     console.error('  it never looked at — the vacuous pass this repository refuses.');
-    process.exit(1);
+    if (problems.every((p) => p.includes('COVERAGE LOST'))) coverageLost(); // with a finding beside it, the report below prints it and exits 1
   }
 
   if (problems.length) {
@@ -508,7 +508,7 @@ function main() {
     console.error('  Measured 2026-08-04: run 30933229005 pushed #155 — whose subject was repairing the');
     console.error('  deploy job — skipped both deploy jobs and reported SUCCESS, leaving the live platform');
     console.error('  Worker on `build: null` with its crash sink dark for six hours.');
-    process.exit(1);
+    if (problems.every((p) => p.includes('COVERAGE LOST'))) coverageLost(); process.exit(1); // 2 only when nothing but could-not-look stops; a finding keeps 1
   }
 
   const summary = checked
@@ -529,4 +529,12 @@ function main() {
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
   main();
+}
+
+/** The one COVERAGE LOST stop: each could-not-look branch above prints its own reason and ends
+ *  here, so the run exits 2 — never 1, which would read as a finding (AGENTS.md exit-code
+ *  convention, O-EXIT2-CONVENTION-GAP). Declared LAST (hoisted) so every `assert-deploy-triggers-deploy.mjs:NNN`
+ *  citation above keeps pointing at the line it names. */
+function coverageLost() {
+  process.exit(2);
 }

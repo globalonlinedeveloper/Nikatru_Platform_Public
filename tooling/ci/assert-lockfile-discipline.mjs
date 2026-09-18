@@ -118,7 +118,7 @@ const nodeUnits = [
 if (existsSync(join(repoRoot, 'package.json')) && !nodeUnits.includes('.')) {
   console.error('✗ COVERAGE LOST — a package.json exists at the repo root and the unit scan did not include it.');
   console.error('  That omission IS the defect this guard was extended to close; it must never come back quietly.');
-  process.exit(1);
+  coverageLost();
 }
 
 if (nodeUnits.length < MIN_NODE_UNITS) {
@@ -126,7 +126,7 @@ if (nodeUnits.length < MIN_NODE_UNITS) {
     `✗ COVERAGE LOST — found ${nodeUnits.length} node unit(s), expected at least ${MIN_NODE_UNITS}.`,
   );
   console.error(`  The scan is broken, not the tree. repo root used: ${repoRoot}`);
-  process.exit(1);
+  coverageLost();
 }
 
 /** Tracked-ness is what makes a lockfile real; an ignored one never reaches CI. */
@@ -215,7 +215,7 @@ if (workflows.length === 0 || installLines === 0) {
       'command(s) in them, so "every workflow install is reproducible" was asked of nothing.',
   );
   for (const p of problems) console.error(`    (also) ${p}`);
-  process.exit(2);
+  if (problems.length === 0) coverageLost(); process.exit(1); // a limb-1 finding printed "(also)" above keeps 1
 }
 
 if (problems.length) {
@@ -233,3 +233,11 @@ console.log(
   `ok  lockfile discipline — ${nodeUnits.length} node unit(s) locked (${Object.entries(byManager).map(([m, n]) => `${n} ${m}`).join(', ')}), ` +
     `repo root included, every workflow install is reproducible`,
 );
+
+/** The one COVERAGE LOST stop: each could-not-look branch above prints its own reason and ends
+ *  here, so the run exits 2 — never 1, which would read as a finding (AGENTS.md exit-code
+ *  convention, O-EXIT2-CONVENTION-GAP). Declared LAST (hoisted) so every `assert-lockfile-discipline.mjs:NNN`
+ *  citation above keeps pointing at the line it names. */
+function coverageLost() {
+  process.exit(2);
+}

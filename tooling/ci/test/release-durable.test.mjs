@@ -1794,7 +1794,7 @@ describe('release-manifest.mjs — `--verify --expect-formats` (the G3 half)', (
     });
     const d = staged(['subscriptiontracker-v1-app-release.apk']);
     const r = cli(['--verify', d, '--expect-formats', '--repo-root', root]);
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out); // COVERAGE LOST is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /collapsed to the declared extras alone/);
   });
@@ -1824,7 +1824,7 @@ describe('release-manifest.mjs — `--verify --expect-formats` (the G3 half)', (
     // that reads as completeness and asserts nothing.
     const d = staged(BUILD_PLATFORMS);
     const r = cli(['--verify', d, '--expect-formats', '--for-workflow', 'nope.yml']);
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out); // COVERAGE LOST is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /nope\.yml names no lane in the register/);
   });
@@ -1835,7 +1835,7 @@ describe('release-manifest.mjs — `--verify --expect-formats` (the G3 half)', (
     // must not certify a release. This is the case that makes the rail non-theoretical.
     const d = staged(BUILD_PLATFORMS);
     const r = cli(['--verify', d, '--expect-formats', '--for-workflow', 'deploy-web.yml']);
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out); // COVERAGE LOST is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(r.out, /COVERAGE LOST/);
   });
 
@@ -1943,7 +1943,7 @@ describe('release-manifest.mjs — the CLI refuses rather than producing a hollo
     writeFileSync(join(from, 'subscriptiontracker-web', 'index.html'), '<html>');
     const out = join(TMP, `o${seq++}`);
     const r = cli(['--stage', from, '--out', out, '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-v1']);
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out); // COVERAGE LOST is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(r.out, /no installable artifact found/);
     assert.match(r.out, /A release with no installer is a release of nothing/);
   });
@@ -2298,7 +2298,7 @@ describe('release-manifest.mjs — the SURFACE of the release, not just of the r
     mkdirSync(d, { recursive: true });
     writeFileSync(join(d, 'subscriptiontracker-1.0.0.zip'), 'z');
     const r = cli(['--emit-environments', d, '--app', 'nosuchthing', '--repo-root', root]);
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out); // COVERAGE LOST is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /this tree holds no such product/);
   });
@@ -2310,7 +2310,7 @@ describe('release-manifest.mjs — the SURFACE of the release, not just of the r
     writeFileSync(join(from, 'subscriptiontracker-1.0.0.zip'), 'z');
     const out = join(TMP, `o${seq++}`);
     const r = cli(['--stage', from, '--out', out, '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-v1.0.0', '--repo-root', root]);
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out); // COVERAGE LOST is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(r.out, /no installable artifact found/);
     assert.match(r.out, /surface "app"/);
     assert.doesNotMatch(r.out, /Looked for:[^\n]*\.zip/, 'the .zip must not appear in the app surface expectation at all');
@@ -2351,7 +2351,7 @@ describe('release-manifest.mjs — the SURFACE of the release, not just of the r
     writeFileSync(join(from, 'subscriptiontracker-1.0.0.html'), 'h');
     const out = join(TMP, `o${seq++}`);
     const r = cli(['--stage', from, '--out', out, '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-v1.0.0', '--repo-root', root]);
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out); // COVERAGE LOST is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(r.out, /no installable artifact found/);
     assert.match(r.out, /surface "app"/);
     assert.doesNotMatch(r.out, /Looked for:[^\n]*\.html/, 'a site channel\'s format is not part of the app surface expectation');

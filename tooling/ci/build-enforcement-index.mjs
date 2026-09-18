@@ -20,7 +20,7 @@
 //
 // Usage:  node tooling/ci/build-enforcement-index.mjs [repoRoot] [--write]
 // Exit 0 = an index was produced over a non-empty enforcer set.
-//      1 = COVERAGE LOST, or a problem that makes the index untrustworthy.
+//      1 = a problem that makes the index untrustworthy · 2 = COVERAGE LOST.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { resolve, join, dirname } from 'node:path';
@@ -629,8 +629,16 @@ if (isMain) {
     if (e instanceof CoverageLost) {
       console.error(`✗ COVERAGE LOST — ${e.lines[0]}`);
       for (const l of e.lines.slice(1)) console.error(`  ${l}`);
-      process.exit(1);
+      coverageLost();
     }
     throw e;
   }
+}
+
+/** The one COVERAGE LOST stop: each could-not-look branch above prints its own reason and ends
+ *  here, so the run exits 2 — never 1, which would read as a finding (AGENTS.md exit-code
+ *  convention, O-EXIT2-CONVENTION-GAP). Declared LAST (hoisted) so every `build-enforcement-index.mjs:NNN`
+ *  citation above keeps pointing at the line it names. */
+function coverageLost() {
+  process.exit(2);
 }

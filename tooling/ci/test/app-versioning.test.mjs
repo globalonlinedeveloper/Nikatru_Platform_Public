@@ -345,7 +345,7 @@ describe('assert-app-versioning — coverage self-check', () => {
   test('FAILS when apps/ contains no pubspec at all', () => {
     const dir = fixture('cov-noapps', { '.github/workflows/deploy-web.yml': workflow() });
     const { code, out } = run({ args: [dir] });
-    assert.equal(code, 1);
+    assert.equal(code, 2, 'COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)');
     assert.match(out, /COVERAGE LOST/);
   });
 
@@ -443,21 +443,21 @@ describe('assert-app-versioning — the lane set is derived from the channel reg
       extra: { 'tooling/channel-register.json': registerJson([{ id: 'web', served: true }]) },
     });
     const { code, out } = run({ args: [dir] });
-    assert.equal(code, 1);
+    assert.equal(code, 2, out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(out, /NONE resolved to a lane/);
   });
 
   test('COVERAGE LOST when the register declares no channels at all', () => {
     const dir = lane('reg-empty', { extra: { 'tooling/channel-register.json': registerJson([]) } });
     const { code, out } = run({ args: [dir] });
-    assert.equal(code, 1);
+    assert.equal(code, 2, out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(out, /declares no `channels`/);
   });
 
   test('COVERAGE LOST when the register is not there', () => {
     const dir = lane('reg-gone', { extra: { 'tooling/channel-register.json': null } });
     const { code, out } = run({ args: [dir] });
-    assert.equal(code, 1);
+    assert.equal(code, 2, out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(out, /does not exist, so the lane set is derived from nothing/);
   });
 

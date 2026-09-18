@@ -329,7 +329,7 @@ describe('assert-vendor-portability', () => {
     // which is computed from the tree and therefore cannot sit below it.
     test('FAILS when ONE service contributes no wrangler surface, though the other clears the old floor', () => {
       const { code, out } = run(tree({ apiWranglerName: 'wrangler.json' }));
-      assert.equal(code, 1);
+      assert.equal(code, 2, out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
       // ⏱ RE-ANCHORED 2026-09-06 — `service(s)` → `deployed Worker(s)`. The
       // guard still fires on exactly this mutation and still names the service;
       // what changed is which set the "1 of 2" counts, because a directory under

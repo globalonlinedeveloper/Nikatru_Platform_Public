@@ -220,7 +220,7 @@ describe('assert-package-earned', () => {
           return r;
         },
       }));
-      assert.equal(code, 1);
+      assert.equal(code, 2, out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
       assert.match(out, /not one package substantiated a structural reason/);
     });
   });
@@ -316,7 +316,7 @@ describe('assert-package-earned', () => {
       const opts = withChassis([]);
       delete opts.ledger;
       const { code, out } = run(tree(opts));
-      assert.equal(code, 1);
+      assert.equal(code, 2, out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
       assert.match(out, /COVERAGE LOST/);
       assert.match(out, /not the same as passing/);
     });

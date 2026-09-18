@@ -151,13 +151,13 @@ const CANARY = [
 const wfDir = join(repoRoot, '.github', 'workflows');
 if (!existsSync(wfDir)) {
   console.error(`✗ COVERAGE LOST — ${wfDir} does not exist. zizmor would scan nothing and exit 0.`);
-  process.exit(1);
+  coverageLost();
 }
 const workflows = listDir(wfDir).filter((f) => /\.ya?ml$/.test(f));
 if (workflows.length < MIN_WORKFLOWS) {
   console.error(`✗ COVERAGE LOST — found ${workflows.length} workflow(s), expected at least ${MIN_WORKFLOWS}.`);
   console.error('  The scan is broken, not the tree. An empty scan reports clean.');
-  process.exit(1);
+  coverageLost();
 }
 
 // ── 1. the scanner must exist at all ─────────────────────────────────────────
@@ -256,3 +256,11 @@ console.error('  These are CI\'s own workflows, which hold CLOUDFLARE_API_TOKEN 
 console.error('  SUPABASE_SERVICE_ROLE_KEY. Fix them, or justify a `# zizmor: ignore[rule]`');
 console.error('  comment in the workflow itself so the exception is visible where it applies.');
 process.exit(1);
+
+/** The one COVERAGE LOST stop: each could-not-look branch above prints its own reason and ends
+ *  here, so the run exits 2 — never 1, which would read as a finding (AGENTS.md exit-code
+ *  convention, O-EXIT2-CONVENTION-GAP). Declared LAST (hoisted) so every `scan-workflows.mjs:NNN`
+ *  citation above keeps pointing at the line it names. */
+function coverageLost() {
+  process.exit(2);
+}

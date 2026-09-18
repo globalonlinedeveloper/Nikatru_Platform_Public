@@ -222,7 +222,7 @@ function walk(dir, out = []) {
 
 if (!existsSync(SITES)) {
   console.error(`✗ no sites/ directory under ${repoRoot}`);
-  process.exit(1);
+  coverageLost();
 }
 
 const siteRoots = listDir(SITES, { withFileTypes: true })
@@ -564,7 +564,7 @@ if (isGitRepo(repoRoot) && isShallowRepo(repoRoot)) {
   console.error('    In a depth-1 checkout `git log -1 -- <path>` answers with the single root commit for EVERY');
   console.error('    file, so a sitemap giving every URL the same date would pass the [12]W-3a lastmod limb');
   console.error('    forever. The lane that runs this guard must check out with `fetch-depth: 0`.');
-  process.exit(1);
+  findingsFirst(); coverageLost();
 }
 
 for (const root of siteRoots) {
@@ -1261,7 +1261,7 @@ try {
       `✗ COVERAGE LOST — the caller claims ${dangling.join(', ')} as scanned deploy root(s), but the scan found no such root.`,
     );
     console.error('  The CI lane is promising coverage this script does not deliver.');
-    process.exit(1);
+    findingsFirst(); coverageLost();
   }
 }
 if (siteRoots.length < MIN_SITES) {
@@ -1269,14 +1269,14 @@ if (siteRoots.length < MIN_SITES) {
     `✗ COVERAGE LOST — found ${siteRoots.length} deploy root(s) under sites/, expected at least ${MIN_SITES}.`,
   );
   console.error('  The scan is broken, not the tree.');
-  process.exit(1);
+  findingsFirst(); coverageLost();
 }
 if (functionFiles.length < MIN_FUNCTIONS) {
   console.error(
     `✗ COVERAGE LOST — found ${functionFiles.length} Pages Function(s), expected at least ${MIN_FUNCTIONS}.`,
   );
   console.error('  Server-side site code exists and is no longer being parsed.');
-  process.exit(1);
+  findingsFirst(); coverageLost();
 }
 // A named root that stops being scanned is the failure this whole file exists to
 // prevent: "0 app-facing sites, all legal pages present" is what a deleted
@@ -1289,7 +1289,7 @@ if (SCANNING_OWN_REPO) {
       `✗ COVERAGE LOST — ${lost.map((n) => `sites/${n}`).join(', ')} is no longer scanned for legal pages.`,
     );
     console.error('  The store requirement did not go away; the guard stopped looking.');
-    process.exit(1);
+    findingsFirst(); coverageLost();
   }
 }
 
@@ -1358,7 +1358,7 @@ if (SCANNING_OWN_REPO) {
   if (lost.length) {
     console.error(`✗ COVERAGE LOST — ${lost.length} check(s) below ran over an empty set and would report clean forever:`);
     for (const l of lost) console.error(`    ${l}`);
-    process.exit(1);
+    findingsFirst(); coverageLost();
   }
 }
 
@@ -1599,7 +1599,7 @@ if (SCANNING_OWN_REPO && routerRoots > 0 && routerDocsChecked === 0 && problems.
     `✗ COVERAGE LOST — the apex-router limb loaded ${routerRoots} router(s) and graded ZERO app-path documents. sites/nikatru carries ` +
       'a per-app notice under an app path today; a limb that graded none would print ok over the exact defect it was written for.',
   );
-  process.exit(1);
+  coverageLost();
 }
 
 // ── [12]W-3a · THE RELATIONSHIP FLOOR, ON EVERY TREE AND NOT JUST THIS ONE ───
@@ -1624,7 +1624,7 @@ if (SCANNING_OWN_REPO && routerRoots > 0 && routerDocsChecked === 0 && problems.
           'entries stopped matching a canonical URL — and a date nothing checks is a date a hand edit owns.',
       );
     }
-    process.exit(1);
+    findingsFirst(); coverageLost();
   }
 }
 
@@ -1671,4 +1671,23 @@ if (prints.length) {
   console.log('');
   console.log('   ── printed, not failed (the resolution is an OWNER decision; a gap nobody sees becomes permanent) ──');
   for (const p of prints) console.log(`   ⬜ ${p}`);
+}
+
+/** The one COVERAGE LOST stop: each could-not-look branch above prints its own reason and ends
+ *  here, so the run exits 2 — never 1, which would read as a finding (AGENTS.md exit-code
+ *  convention, O-EXIT2-CONVENTION-GAP). Declared LAST (hoisted) so every `check-site-integrity.mjs:NNN`
+ *  citation above keeps pointing at the line it names. */
+function coverageLost() {
+  process.exit(2);
+}
+
+/** A COVERAGE LOST stop reached with a finding already in hand: print the findings
+ *  and exit 1, because a proven finding outranks a could-not-look (the stop's own
+ *  reason is already printed above it). A no-op when there is none, so the
+ *  coverageLost() beside it exits 2. Declared LAST for the same citation reason. */
+function findingsFirst() {
+  if (problems.length === 0) return;
+  console.error(`✗ ${problems.length} site problem(s) found before the scan stopped:`);
+  for (const p of problems) console.error(`    ${p}`);
+  process.exit(1);
 }

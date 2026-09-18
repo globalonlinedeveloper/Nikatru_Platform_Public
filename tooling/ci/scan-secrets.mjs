@@ -251,7 +251,7 @@ if (absent.length) {
   console.error(`✗ COVERAGE LOST — "${repoRoot}" is missing: ${absent.join(', ')}`);
   console.error('  The scan is broken, not the tree. gitleaks over the wrong directory');
   console.error('  exits 0 with no findings, which is indistinguishable from a clean repo.');
-  process.exit(1);
+  coverageLost();
 }
 
 // ── 1. the scanner must exist at all ─────────────────────────────────────────
@@ -278,7 +278,7 @@ if (!existsSync(CONFIG)) {
   console.error(`✗ COVERAGE LOST — ${CONFIG} is missing. gitleaks would fall back to default rules,`);
   console.error('  which match GitHub tokens and private keys but NOT Cloudflare or Supabase.');
   console.error('  The scan would report clean while blind to two of three vendors.');
-  process.exit(1);
+  coverageLost();
 }
 
 // ── 3. SELF-TEST: prove the scanner detects EVERY shape we care about ────────
@@ -291,7 +291,7 @@ if (CUSTOM_CANARIES !== RULES_IN_CONFIG) {
     `✗ COVERAGE LOST — ${CONFIG} declares ${RULES_IN_CONFIG} rule(s) but ${CUSTOM_CANARIES} ` +
       'canary/canaries are planted. A rule with no canary is never proven to fire.',
   );
-  process.exit(1);
+  coverageLost();
 }
 for (const c of CANARIES) {
   const expectedRuleId = c.id ?? c.rule; // every custom rule's `rule` IS its id
@@ -471,7 +471,7 @@ for (const [line, expected] of VOLUME_CANARIES) {
     console.error(`  A line validated against gitleaks ${VALIDATED_AGAINST} parsed to ${got}, expected ${expected}.`);
     console.error('  Until this holds, the volume floor below is not a floor: an unreadable line returns null,');
     console.error('  which is PRINTED and passed, so the coverage claim would go missing without failing.');
-    process.exit(1);
+    coverageLost();
   }
 }
 
@@ -488,7 +488,7 @@ if (scannedBytes === 0) {
   console.error('  scanned, so it can only RAISE this number. Do not go looking for one.');
   console.error('  Every self-test above still passed, because those prove the SCANNER detects; they');
   console.error('  cannot prove the SCAN arrived. Fix the scope before trusting a clean result.');
-  process.exit(1);
+  coverageLost();
 }
 
 // An unreadable volume is a could-not-establish, PRINTED not hidden, and
@@ -527,3 +527,11 @@ console.log(
   `ok  secret scan — no findings in the working tree (${volume} under ${repoRoot}; ` +
     `${CANARIES.length} planted shape(s) detected, ${NEGATIVE_CANARIES.length} real tracked line(s) left quiet)`,
 );
+
+/** The one COVERAGE LOST stop: each could-not-look branch above prints its own reason and ends
+ *  here, so the run exits 2 — never 1, which would read as a finding (AGENTS.md exit-code
+ *  convention, O-EXIT2-CONVENTION-GAP). Declared LAST (hoisted) so every `scan-secrets.mjs:NNN`
+ *  citation above keeps pointing at the line it names. */
+function coverageLost() {
+  process.exit(2);
+}

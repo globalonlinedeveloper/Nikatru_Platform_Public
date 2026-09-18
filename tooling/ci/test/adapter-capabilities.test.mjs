@@ -468,7 +468,7 @@ describe('assert-adapter-capabilities', () => {
         return r;
       },
     }));
-    assert.equal(code, 1);
+    assert.equal(code, 2, 'COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)');
     assert.match(out, /COVERAGE LOST — no capability descriptor declares a `canSchedule` field/);
   });
 
@@ -530,7 +530,7 @@ describe('assert-adapter-capabilities', () => {
 
   test('FAILS with COVERAGE LOST when no channel declaration is found at all', () => {
     const { code, out } = run(tree({ schedImpl: schedImplSrc({ noChannel: true }) }));
-    assert.equal(code, 1);
+    assert.equal(code, 2, 'COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)');
     assert.match(out, /COVERAGE LOST — no notification channel declaration/);
   });
 
@@ -542,7 +542,7 @@ describe('assert-adapter-capabilities', () => {
       rmSync(join(root, 'packages', a), { recursive: true, force: true });
     }
     const { code, out } = run(root);
-    assert.equal(code, 1);
+    assert.equal(code, 2, 'COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)');
     assert.match(out, /COVERAGE LOST — derived only \d+ adapter\(s\)/);
   });
 });
