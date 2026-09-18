@@ -176,6 +176,7 @@ import {
   decideUnitFreshness,
   decideUnitRedSince,
   checkRunUnits,
+  checkLiveVerdictScopes,
   githubDarkness,
   LIVE_READS_NOT_MADE,
   localImportClosure,
@@ -4531,6 +4532,50 @@ describe('assert-ops-register — [14]O-3b · RED SINCE: a failed run is graded,
     assert.equal(off.blocking.length, 1, 'off Actions no host resolves, so nothing is exempt');
   });
 
+  // ⏱ 2026-09-18 · O-LAPTOP-ROUTINES-DIE-OVERNIGHT — PAGE-ONLY rows (owner decision).
+  const DRIVER = 'duty.laptop.nikatru-pipeline-driver';
+  const WHY = 'laptop-bound work: writes the remote-less Private repo, so a closed lid pages but must not freeze deploys';
+  const laptopRow = (scope) => ({ id: DRIVER, kind: 'duty', cadence: '1d', ...(scope === undefined ? {} : { liveVerdictScope: scope }) });
+  const PAGE_ONLY = () => ({ blocks: 'page-only', page: 'ops-watch.yml', why: WHY });
+  const RED_DRIVER = () => [{ id: DRIVER, line: `${DRIVER} — no heartbeat for 9.4 h`, code: 1 }];
+
+  test('PAGE-ONLY - a red laptop verdict PRINTS on main\'s ci.yml push, and still BLOCKS in the page (ops-watch)', () => {
+    const reg = regOf(laptopRow(PAGE_ONLY()));
+    const push = routeLiveVerdicts(RED_DRIVER(), policyIn('ci.yml', 'push'), OWN_TOPO(), reg, parsedRepo().byFile);
+    assert.deepEqual(push.blocking, [], 'the deploy gate must not freeze on a closed laptop lid');
+    assert.equal(push.printed.length, 1, 'and it is PRINTED, never dropped');
+    assert.match(push.printed[0].why, /PAGE-ONLY/);
+    const page = routeLiveVerdicts(RED_DRIVER(), policyIn('ops-watch.yml', 'schedule'), OWN_TOPO(), reg, parsedRepo().byFile);
+    assert.equal(page.blocking.length, 1, 'the page still goes red - the miss is not hidden');
+  });
+
+  test('PAGE-ONLY MUTATION CONTROL - the SAME red row WITHOUT the scope still blocks main\'s ci.yml push', () => {
+    const push = routeLiveVerdicts(RED_DRIVER(), policyIn('ci.yml', 'push'), OWN_TOPO(), regOf(laptopRow()), parsedRepo().byFile);
+    assert.equal(push.blocking.length, 1);
+  });
+
+  test('PAGE-ONLY is refused STRUCTURALLY off duty.laptop.*, with another scope, a page that never runs the guard, or no reason', () => {
+    const topo = OWN_TOPO();
+    const ok = checkLiveVerdictScopes(regOf(laptopRow(PAGE_ONLY())), topo);
+    assert.deepEqual(ok.errors, []);
+    assert.match(ok.prints[0], /PAGE-ONLY · duty\.laptop\.nikatru-pipeline-driver/);
+    const notLaptop = checkLiveVerdictScopes(regOf({ ...laptopRow(PAGE_ONLY()), id: 'duty.workflow.ci.yml' }), topo);
+    assert.match(notLaptop.errors[0] ?? '', /not a duty\.laptop\.\* row/);
+    const wrongScope = checkLiveVerdictScopes(regOf(laptopRow({ ...PAGE_ONLY(), blocks: 'nowhere' })), topo);
+    assert.match(wrongScope.errors[0] ?? '', /the only scope is "page-only"/);
+    const deadPage = checkLiveVerdictScopes(regOf(laptopRow({ ...PAGE_ONLY(), page: 'deploy-web.yml' })), topo);
+    assert.match(deadPage.errors[0] ?? '', /block NOWHERE/);
+    const noWhy = checkLiveVerdictScopes(regOf(laptopRow({ ...PAGE_ONLY(), why: 'because' })), topo);
+    assert.match(noWhy.errors[0] ?? '', /must say why/);
+  });
+
+  test('PAGE-ONLY - the committed register scopes exactly the pipeline driver, and it holds', () => {
+    const reg = JSON.parse(readFileSync(resolve(CI_DIR, '..', 'ops', 'register.json'), 'utf8'));
+    const scoped = reg.rows.filter((r) => r.liveVerdictScope !== undefined).map((r) => r.id);
+    assert.deepEqual(scoped, [DRIVER]);
+    assert.deepEqual(checkLiveVerdictScopes(reg, OWN_TOPO()).errors, []);
+  });
+
   test('the OWN HOST edge is ONE row, never the domain - a red SIBLING still blocks on the host run', () => {
     const sibling = wfDuty('duty.workflow.extensions.yml');
     sibling.mechanism.recordQuery.workflow = 'extensions.yml';
@@ -5314,7 +5359,15 @@ describe('the 2026-09-11 freeze, replayed — INV1..INV6 against the exact answe
   test('INV2 · the SAME state on push to main — the ci-gate every deploy lane polls — still REFUSES, and says why', () => {
     const r = replay(HOST.PUSH);
     assert.equal(r.code, 1, r.out.slice(-3000));
-    for (const re of [E2E_STALE, PIPELINE, E2E_RED]) assert.ok(has(r.problems, re), `${re} must BLOCK the commit deploys poll:\n${r.problems.join('\n')}`);
+    for (const re of [E2E_STALE, E2E_RED]) assert.ok(has(r.problems, re), `${re} must BLOCK the commit deploys poll:\n${r.problems.join('\n')}`);
+    // ⏱ 2026-09-18 — the pipeline driver is PAGE-ONLY by owner decision
+    // (O-LAPTOP-ROUTINES-DIE-OVERNIGHT, checkLiveVerdictScopes): a closed laptop
+    // lid pages in ops-watch (next test) but no longer holds the deploy gate. It
+    // must PRINT here, never vanish.
+    assert.equal(has(r.problems, PIPELINE), false, 'the laptop-bound driver must not block the deploy gate (page-only)');
+    const drv = r.printed.find((p) => PIPELINE.test(p.line));
+    assert.ok(drv, 'and it must PRINT, not vanish');
+    assert.match(drv.why, /PAGE-ONLY/);
     assert.equal(has(r.problems, BP_RED), false, 'build-platforms.yml is self-gated on this very check: blocking here is the 2026-09-09 livelock');
     const bp = r.printed.find((p) => BP_RED.test(p.line));
     assert.ok(bp, 'and it must PRINT, not vanish');
