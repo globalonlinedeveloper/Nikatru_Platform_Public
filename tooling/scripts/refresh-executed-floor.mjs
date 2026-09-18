@@ -35,7 +35,7 @@
 // merge was refused.  2 = COVERAGE LOST (bad arguments, missing/empty/Windows artifact).
 // ─────────────────────────────────────────────────────────────────────────────
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -185,8 +185,12 @@ function main() {
   try {
     gh(['run', 'download', String(args.runId), '-n', ARTIFACT_NAME, '-D', tmp], ROOT);
     const junitPath = join(tmp, JUNIT_FILE);
-    if (existsSync(junitPath)) xml = readFileSync(junitPath, 'utf8');
-    else failure = [`the ${ARTIFACT_NAME} artifact holds ${JSON.stringify(readdirSync(tmp))}, not ${JUNIT_FILE}.`];
+    try {
+      xml = readFileSync(junitPath, 'utf8');
+    } catch (e) {
+      if (!(e && e.code === 'ENOENT')) throw e;
+      failure = [`the ${ARTIFACT_NAME} artifact holds ${JSON.stringify(readdirSync(tmp))}, not ${JUNIT_FILE}.`];
+    }
   } catch (e) {
     failure = [
       `run ${args.runId} has no downloadable ${ARTIFACT_NAME} artifact (${String(e.message).split('\n')[0]}).`,
@@ -206,10 +210,17 @@ function main() {
   if (collided.length) die(2, `suite basename(s) contributed by more than one directory: ${collided.join(', ')}.`);
 
   let current = { filledFrom: null, lowered: [], suites: {} };
-  if (existsSync(FLOOR)) {
+  // One read, not existsSync then readFileSync: CodeQL js/file-system-race (same fix as render-privacy.mjs readIf).
+  let floorText = null;
+  try {
+    floorText = readFileSync(FLOOR, 'utf8');
+  } catch (e) {
+    if (!(e && e.code === 'ENOENT')) throw e;
+  }
+  if (floorText !== null) {
     let doc;
     try {
-      doc = JSON.parse(readFileSync(FLOOR, 'utf8'));
+      doc = JSON.parse(floorText);
     } catch (e) {
       die(2, `${EXECUTED_FLOOR_REL} could not be parsed (${e.message}).`);
     }
