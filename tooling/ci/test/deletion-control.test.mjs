@@ -263,7 +263,9 @@ describe('the confirmation must not be one tap away', () => {
         assert.match(r.stderr, /NOT ONE of them is the deletion's own undismissable confirmation/);
         // And it says how many it DID find, so the reader can see that the
         // screen still has dialogs and that having them is not the point.
-        assert.match(r.stderr, /2 `showDialog` call\(s\)/);
+        // ⏱ 3 since 2026-09-18: the brick settings adapter gained showReportContentDialog
+        // (O-PLAY-AI-CONTENT-REPORTING) — also barrierDismissible: false, and still not the deletion's.
+        assert.match(r.stderr, /3 `showDialog` call\(s\)/);
       },
     );
   });

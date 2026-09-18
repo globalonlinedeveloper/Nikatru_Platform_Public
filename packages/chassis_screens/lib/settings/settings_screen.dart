@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
+// One import per adapter: `assert-screen-set`'s delegation resolver follows a
+// brick file to exactly ONE chassis path, so the report dialog the settings
+// adapter opens is re-exported here rather than imported beside this file.
+export 'report_content_dialog.dart';
+
 /// [pipeline C-13] The display-name editor. No confirmation step and no reauth,
 /// deliberately: renaming yourself is reversible in one tap, and guarding a
 /// harmless action trains people to click through the guards on the dangerous
@@ -118,6 +123,7 @@ class SettingsView extends StatelessWidget {
     required this.applicationVersion,
     this.profile,
     this.onEditProfile,
+    this.onReportContent,
     super.key,
   });
 
@@ -128,6 +134,7 @@ class SettingsView extends StatelessWidget {
   static const Key managePlanTile = Key('settingsManagePlan');
   static const Key deleteAccountTile = Key('settingsDeleteAccount');
   static const Key contactSupportTile = Key('settingsContactSupport');
+  static const Key reportContentTile = Key('settingsReportContent');
   // 🔴 THESE FOUR KEYS WERE ADDED 2026-09-06 SO THE CONTROLS COULD BE TAPPED IN
   // A TEST, and that is not tidying — it is the second half of a defect a review
   // measured on this branch. Before the settings body moved here, each of these
@@ -150,6 +157,12 @@ class SettingsView extends StatelessWidget {
   /// reason the deletion entry is gated further down.
   final SettingsProfile? profile;
   final VoidCallback? onEditProfile;
+
+  /// O-PLAY-AI-CONTENT-REPORTING. Null in an app that generates no AI content,
+  /// and then there is no tile. The adapter passes it when the app's
+  /// `AppConfig.generatesAiContent` is true; Google Play requires an in-app
+  /// report control in every app that generates content with AI.
+  final VoidCallback? onReportContent;
 
   final ThemeMode themeMode;
   final ValueChanged<ThemeMode> onThemeModeChanged;
@@ -446,6 +459,13 @@ class SettingsView extends StatelessWidget {
               trailing: const Icon(Icons.open_in_new, size: 18),
               onTap: onContactSupport,
             ),
+            if (onReportContent != null)
+              ListTile(
+                key: reportContentTile,
+                leading: const Icon(Icons.flag_outlined),
+                title: Text(l10n.reportContent),
+                onTap: onReportContent,
+              ),
             // Sign out sits ABOVE delete: it is the action a user wants
             // hundreds of times more often, and putting the irreversible one
             // first invites a misfire.

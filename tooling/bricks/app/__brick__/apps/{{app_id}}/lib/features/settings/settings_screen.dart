@@ -118,6 +118,10 @@ class SettingsScreen extends ConsumerWidget {
       onOpenRefundPolicy: () => _openUrl(AppConfig.refundUrl),
       supportEmail: AppConfig.supportEmail,
       onContactSupport: _contactSupport,
+      // O-PLAY-AI-CONTENT-REPORTING: only in an app that generates AI content.
+      onReportContent: AppConfig.generatesAiContent
+          ? () => showReportContentDialog(context, ref)
+          : null,
       onSignOut: () => _signOut(context, ref, context.chassisL10n),
       onDeleteAccount: () => _confirmDelete(context, ref, context.chassisL10n),
       applicationName: AppConfig.appName,
@@ -646,4 +650,38 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
       onConfirm: () async => _report(await widget.onConfirm()),
     );
   }
+}
+
+/// Opens the in-app AI content report — O-PLAY-AI-CONTENT-REPORTING.
+///
+/// Settings calls it with nothing attached; a screen that shows a generated
+/// item should call it with that item's [contentRef] (and may pass the text as
+/// [excerpt]), so the person can flag the thing in front of them without
+/// leaving it. The dialog is [ReportContentDialog] in the chassis package; the
+/// send stays here, because it needs the provider and the session.
+Future<void> showReportContentDialog(
+  BuildContext context,
+  WidgetRef ref, {
+  String? contentRef,
+  String? excerpt,
+}) {
+  return showDialog<void>(
+    context: context,
+    // Dismissal mid-send is refused by the dialog itself; the barrier is kept
+    // off so a stray tap cannot read as a cancelled report either.
+    barrierDismissible: false,
+    builder: (BuildContext _) => ReportContentDialog(
+      contentRef: contentRef,
+      initialExcerpt: excerpt,
+      onSubmit: (core.ContentReport report) async => ref
+          .read(contentReportTransportProvider)
+          .submit(
+            appId: AppConfig.appId,
+            accessToken: await ref
+                .read(authRepositoryProvider)
+                .currentAccessToken(),
+            report: report,
+          ),
+    ),
+  );
 }

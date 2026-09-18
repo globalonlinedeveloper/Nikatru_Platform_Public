@@ -484,7 +484,11 @@
       "auth": "required",
       "owningFile": "services/platform/src/routes/report.ts",
       "purpose": "O-PLAY-AI-CONTENT-REPORTING (MASTER_PLAN G-39) — the in-app report of AI-generated content that Google Play requires of any app that generates content with AI (\"report or flag offensive content to developers without needing to exit the app\", answer/13985936). Mounted behind app.use('/v1/report', platformAuth): the reporter is the verified JWT subject, never a body field. Validates app_id against the catalogue and reason against a closed set, caps each person at 10 reports an hour (a D1 read, not a binding), stores a content_reports row (migration 0013), answers 202, and sends a capped, content-free support notice under waitUntil.",
-      "unconsumedReason": "No app generates content with AI yet, so no Dart transport calls this route. The chassis control and its api_client transport are the second half of O-PLAY-AI-CONTENT-REPORTING, due before the first content app's Play listing; this row gains a `client` then."
+      "client": {
+        "file": "packages/api_client/lib/src/dio_content_report_transport.dart",
+        "expression": "'$_base/v1/report'",
+        "note": "The URL the transport builds at the post() call site. O-PLAY-AI-CONTENT-REPORTING chassis half: the brick opens it from Settings when AppConfig.generatesAiContent is true, and from a generated item through showReportContentDialog."
+      }
     },
     {
       "id": "money-webhook",

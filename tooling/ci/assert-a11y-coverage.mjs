@@ -750,9 +750,13 @@ const REQUIRED_COVERAGE = [
     // TIMES IN ONE DAY because a membership set was raised and the count was
     // not. Raising the sweeps here without re-reading the `case(s)` figure on
     // this line reproduces exactly that.
-    surfaces: 17,
+    // ⏱ RAISED 17 → 18 surfaces and 51 → 54 cases ON 2026-09-18
+    // (O-PLAY-AI-CONTENT-REPORTING): `ReportContentDialog` joined, swept in
+    // `a11y_firstrun_money_settings_test.dart` (+3 cases). Read off this guard's
+    // per-root line: `18 of 18 … from 3 a11y test file(s) across 54 case(s)`.
+    surfaces: 18,
     a11yFiles: 3,
-    cases: 51,
+    cases: 54,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens plus the ' +
       'money/settings bodies and the app shell, mounted by every stamped app, all seventeen swept',
@@ -953,6 +957,7 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
         'firstrun/onboarding_screen.dart#OnboardingView',
         'monetization/manage_plan_screen.dart#ManagePlanView',
         'monetization/paywall_screen.dart#PaywallView',
+        'settings/report_content_dialog.dart#ReportContentDialog',
         'settings/settings_screen.dart#EditProfileDialog',
         'settings/settings_screen.dart#SettingsView',
         'shell/app_shell.dart#AppLifecycleFlush',

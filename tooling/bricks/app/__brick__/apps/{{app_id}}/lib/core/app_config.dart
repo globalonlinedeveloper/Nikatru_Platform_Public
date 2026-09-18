@@ -9,6 +9,17 @@ class AppConfig {
   static const String appName = '{{{display_name_dart}}}';
   static const String category = '{{category}}';
 
+  /// Whether this app GENERATES content with AI — text, images, voice or video
+  /// a model produced for the user. O-PLAY-AI-CONTENT-REPORTING.
+  ///
+  /// It must equal `ai.generatesContent` in this app's `app.yaml`. When it is
+  /// true, Settings offers the in-app report Google Play requires of every such
+  /// app ("without needing to exit the app", answer/13985936), and a generated
+  /// item can open the same dialog with its own reference through
+  /// `showReportContentDialog`. False by default: a stamped app generates
+  /// nothing until somebody builds the feature that does.
+  static const bool generatesAiContent = false;
+
   /// Marketing version of THIS build. Injected at build time
   /// (`--dart-define=APP_VERSION`) rather than read from `package_info_plus`,
   /// so it also resolves on the web build and inside `flutter test`, neither of

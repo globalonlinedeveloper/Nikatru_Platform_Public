@@ -1603,7 +1603,11 @@ const DOMAIN_RE = /^final\s+[\w<>,?\s.()]*?\b(\w+Provider)\s*=/gm;
 // the Sign in with Apple refresh token the deletion revokes with). Classified under
 // `apple-token-kept`, which DRIVES it — the property reads the provider and counts
 // the subscription it makes — in the same commit as the provider.
-const MIN_DOMAIN = 61;
+// 2026-09-18: 61 → 62 with `contentReportTransportProvider` (O-PLAY-AI-CONTENT-REPORTING,
+// POST /v1/report). NOT classified under a property: it is an admitted, dated gap in
+// UNASSERTED, because every stamp is `generatesAiContent = false` and a stamped-app
+// property needs one that is true. Same commit as the provider.
+const MIN_DOMAIN = 62;
 
 // Each key names the property that actually exercises it — the property test
 // must drive this provider, not merely construct it.
@@ -1861,6 +1865,7 @@ const UNASSERTED = {
   // The money rail's remaining gaps. Each is exercised in packages/purchases'
   // own suite; what is missing is a STAMPED-APP assertion, which is a different
   // and stronger claim.
+  contentReportTransportProvider: '2026-09-18 · O-PLAY-AI-CONTENT-REPORTING. The wire is driven in packages/api_client/test/dio_content_report_transport_test.dart and against a real SQL engine in services/platform/test/report.test.ts; the dialog and the Settings tile in packages/chassis_screens/test/report_content_dialog_test.dart. A stamped-app property needs a stamp with AppConfig.generatesAiContent = true, and every stamp is false until an app generates content',
   cancellationTransportProvider: '2026-08-01 · the ROSCA cancel call. Driven end-to-end in packages/purchases/test/hosted_checkout_rail_test.dart and against a real SQL engine in services/platform/test/cancellation.test.ts; a stamped-app property would need the manage screen pumped with a fake host, which is a widget test worth writing and is not written',
   // [pipeline 2]C-13 wired `OfflineNotice` in 2026-08-06 — it had ZERO consumers
   // before that, a dead feature reporting healthy. Its reachability anchor proves

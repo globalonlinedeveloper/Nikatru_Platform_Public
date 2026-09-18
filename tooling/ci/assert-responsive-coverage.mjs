@@ -582,9 +582,13 @@ const REQUIRED_COVERAGE = [
     // ⏱ RAISED 17 → 18 ON 2026-09-15 ([ADR 082] §5 Part A) for exactly that reason:
     // `test/age_gate_view_test.dart` joined the corpus (the store age gate on
     // SignUpView and SignInView). Read off the per-root line, `— 18 file(s)`.
-    surfaces: 17,
-    widthTestFiles: 18,
-    coveredSurfaces: 17,
+    // ⏱ RAISED 17 → 18 surfaces / 18 → 19 files / 17 → 18 covered ON 2026-09-18
+    // (O-PLAY-AI-CONTENT-REPORTING): `ReportContentDialog` and its suite
+    // `test/report_content_dialog_test.dart`, pumped at all three classes. Read off
+    // the per-root lines: `18 surface(s) reachable, 18 measured` and `— 19 file(s)`.
+    surfaces: 18,
+    widthTestFiles: 19,
+    coveredSurfaces: 18,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens every stamped ' +
       'app inherits, each measured at all three window classes',

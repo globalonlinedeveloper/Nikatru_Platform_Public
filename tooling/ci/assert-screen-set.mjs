@@ -104,10 +104,11 @@ const screens = reg.screens ?? [];
 // 24 since 2026-08-10: research/44 §7 rung 3 added `monetization.promo-card`.
 // 25 since 2026-08-11: `auth.password-reset` split out of `auth.callbacks` when
 // the reset link finally had somewhere to land.
+// 26 since 2026-09-18: `settings.report-content` (O-PLAY-AI-CONTENT-REPORTING).
 // RAISED WITH THE TREE ON PURPOSE — left at 23, deleting a screen would leave
 // exactly 23 and this floor would stop catching the deletion it exists to
 // catch. A ratchet that does not follow the thing it measures has stopped.
-const MIN_SCREENS = 25;
+const MIN_SCREENS = 26;
 if (screens.length < MIN_SCREENS) {
   problems.push(
     `COVERAGE LOST — the register declares only ${screens.length} screen(s), expected >= ${MIN_SCREENS}. DoD §4-A names the full set; a register somebody has trimmed asserts less while looking identical.`,
@@ -649,7 +650,7 @@ if (screens.length > 0 && present === 0) {
 // MEASURED 2026-08-25: `present` is 24, so this floor sits EXACTLY on the tree —
 // demote or delete one screen and it bites. Not raised, because nothing landed;
 // not lowered, because a floor lowered to match prose has stopped being a floor.
-const MIN_PRESENT = 24;
+const MIN_PRESENT = 25;
 const REQUIRED_COVERAGE = { reachableExempt: 0 };
 if (present > 0 && present < MIN_PRESENT) {
   problems.push(

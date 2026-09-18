@@ -145,7 +145,10 @@ function tree({ mutate = (r) => r, widgets = null, router = null, unwire = null 
   // two-file act this repo keeps paying for — the guard is right and the
   // fixture is short, and FOUR cases in this file went red for a reason that
   // had nothing to do with what any of them was testing.
-  const padding = Array.from({ length: 21 }, (_, i) => ({
+  //
+  // 22 since 2026-09-18: MIN_PRESENT moved 24 → 25 when `settings.report-content`
+  // landed `present` (O-PLAY-AI-CONTENT-REPORTING).
+  const padding = Array.from({ length: 22 }, (_, i) => ({
     id: `settings.pad${i}`,
     what: 'a present, anchored, reachability-proven screen',
     status: 'present',
@@ -246,8 +249,8 @@ describe('assert-screen-set', () => {
   test('passes when every declared screen is present and reachable', () => {
     const { code, out } = run(tree());
     assert.equal(code, 0);
-    assert.match(out, /29 screen\(s\) declared/);
-    assert.match(out, /24 screen\(s\) present and anchored; 24 proven reachable/);
+    assert.match(out, /30 screen\(s\) declared/);
+    assert.match(out, /25 screen\(s\) present and anchored; 25 proven reachable/);
     // Blocked and todo must PRINT — a gap nobody sees is a gap that grows.
     assert.match(out, /2 BLOCKED/);
     assert.match(out, /2 TODO/);
@@ -410,7 +413,7 @@ describe('assert-screen-set', () => {
       }));
       assert.equal(code, 1);
       // 22 still ANCHORED — presence is untouched…
-      assert.match(out, /24 screen\(s\) present and anchored/);
+      assert.match(out, /25 screen\(s\) present and anchored/);
       // …and the offline entry is the one that lost its reachability proof.
       assert.match(out, /`system\.offline` EXISTS but nothing reaches it/);
     });
@@ -474,7 +477,7 @@ describe('assert-screen-set', () => {
       }),
     }));
     assert.equal(code, 1);
-    assert.match(out, /COVERAGE LOST — only 3 screen\(s\) are PRESENT, expected >= 24/);
+    assert.match(out, /COVERAGE LOST — only 3 screen\(s\) are PRESENT, expected >= 25/);
   });
 
   // A register of nothing-but-todo passes every anchor check by having none.
@@ -551,7 +554,7 @@ describe('an anchor whose screen moved into the chassis is judged there', () => 
   test('S-D1 · the anchor resolves through the delegation, and says where it landed', () => {
     const { code, out } = run(delegating());
     assert.equal(code, 0, out);
-    assert.match(out, /24 screen\(s\) present and anchored/);
+    assert.match(out, /25 screen\(s\) present and anchored/);
     assert.match(out, /`NotFoundScreen` is DECLARED IN `packages\/chassis_screens\/lib\/system_screens\.dart`/);
     assert.match(out, /The anchor stays on the brick file because that is what still routes it/);
   });

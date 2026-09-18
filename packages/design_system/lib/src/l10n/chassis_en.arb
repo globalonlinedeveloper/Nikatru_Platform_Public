@@ -656,5 +656,73 @@
   "promoLabel": "Promotion",
   "@promoLabel": {
     "description": "THE ONE STRING THE STORES ACTUALLY MANDATE. It is the visible label on PromoSurface, and one word satisfies Apple 2.5.18 ('must clearly indicate that they are an ad'), Microsoft 10.10.4 ('clearly distinguishable from other content'), Play's native-ads trigger and India's Disguised Advertisement dark pattern at once. It exists here with no consumer yet BECAUSE the first promotional card is the caller: PromoSurface's English default would otherwise ship untranslated, and a Tamil user would meet the one word a reviewer checks for in English."
+  },
+  "reportContent": "Report generated content",
+  "@reportContent": {
+    "description": "Settings entry and dialog title for reporting AI-generated content to the developer from inside the app. Google Play requires this control in any app that generates content with AI (O-PLAY-AI-CONTENT-REPORTING)."
+  },
+  "reportContentBody": "Tell us about something this app generated that is offensive or harmful. We review every report.",
+  "@reportContentBody": {
+    "description": "The dialog body. Says a person reads it, because a report form that looks like a void is one nobody uses."
+  },
+  "reportReasonLabel": "Reason",
+  "@reportReasonLabel": {
+    "description": "Heading above the list of report reasons."
+  },
+  "reportReasonOffensive": "Offensive",
+  "@reportReasonOffensive": {
+    "description": "Report reason."
+  },
+  "reportReasonSexual": "Sexual content",
+  "@reportReasonSexual": {
+    "description": "Report reason."
+  },
+  "reportReasonViolence": "Violence",
+  "@reportReasonViolence": {
+    "description": "Report reason."
+  },
+  "reportReasonHate": "Hate or harassment",
+  "@reportReasonHate": {
+    "description": "Report reason."
+  },
+  "reportReasonSelfHarm": "Self-harm",
+  "@reportReasonSelfHarm": {
+    "description": "Report reason."
+  },
+  "reportReasonDangerous": "Dangerous or illegal",
+  "@reportReasonDangerous": {
+    "description": "Report reason."
+  },
+  "reportReasonMisinformation": "False or misleading",
+  "@reportReasonMisinformation": {
+    "description": "Report reason."
+  },
+  "reportReasonOther": "Something else",
+  "@reportReasonOther": {
+    "description": "Report reason."
+  },
+  "reportExcerptLabel": "What did the app generate?",
+  "@reportExcerptLabel": {
+    "description": "Field for the generated text, or a description of it. Required when the app did not attach the item itself: the server refuses a report that names nothing."
+  },
+  "reportNoteLabel": "Anything else (optional)",
+  "@reportNoteLabel": {
+    "description": "Optional free-text field."
+  },
+  "reportSubmit": "Send report",
+  "@reportSubmit": {
+    "description": "Sends the report."
+  },
+  "reportSent": "Thanks, your report was sent. We review every report.",
+  "@reportSent": {
+    "description": "Result after the server accepted the report (202). Says received, not acted on: nothing has been reviewed yet."
+  },
+  "reportFailed": "Your report was not sent. Check your connection and try again later.",
+  "@reportFailed": {
+    "description": "Result when the report did not reach us, including the per-hour cap. Must say plainly that it was NOT sent."
+  },
+  "reportDone": "Done",
+  "@reportDone": {
+    "description": "Closes the report dialog after the result is shown."
   }
 }
