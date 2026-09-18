@@ -959,6 +959,224 @@
       "anchor": "'so they cannot drift from the product.'",
       "status": "demoted",
       "reason": "The closing console line of the same template script. It is a promise about a process (regenerate on every release), not a mechanism any test executes: no case captures a screenshot, changes the product and asserts the shot follows. Judged 2026-09-18."
+    },
+    {
+      "file": "apps/subscriptiontracker/integration_test/app_test.dart",
+      "anchor": "both out of AppLocalizations means this assertion cannot drift from the",
+      "status": "demoted",
+      "reason": "Describes how this integration test builds its own expectation (from AppLocalizations, not a literal), which the lines under it show. No test grades how another test computes its expected value, and the integration lane runs against a live target, not in CI's unit suites. judged 2026-09-18."
+    },
+    {
+      "file": "apps/subscriptiontracker/lib/core/app_config.dart",
+      "anchor": "Composed from the two consts above so it cannot drift from either",
+      "status": "demoted",
+      "reason": "True by inspection: `telemetryRelease = '$appId@$appVersion'`. The brick's copy of this sentence is proven by stamp-text-fidelity, but that guard runs only on the probe stamp (ci.yml --vars _probe_vars.json); nothing reads this app's app_config.dart and no test in apps/subscriptiontracker/test pins telemetryRelease. Note: the \"NOT WIRED YET\" paragraph under it is stale, main.dart:70 already passes AppConfig.telemetryRelease. judged 2026-09-18."
+    },
+    {
+      "file": "apps/subscriptiontracker/lib/features/add/add_subscription_sheet.dart",
+      "anchor": "merely resembling it — the two cannot drift when one of them is edited.",
+      "status": "demoted",
+      "reason": "True by construction today (the renewal InputDecorator wears _fieldDecoration). No test compares the renewal field's decoration with the text fields'; dark_group_sheets_test.dart pins radii of BoxDecorations, not the InputDecoration they share. A hand-rolled replacement that looked the same would stay green. judged 2026-09-18."
+    },
+    {
+      "file": "apps/subscriptiontracker/lib/features/add/add_subscription_sheet.dart",
+      "anchor": "and the category dropdown all wear it, so the four cannot drift apart.",
+      "status": "demoted",
+      "reason": "Same judgement as the renewal-field sentence above: _fieldDecoration is shared by construction, and no widget test asserts the four fields resolve to one decoration. judged 2026-09-18."
+    },
+    {
+      "file": "apps/subscriptiontracker/lib/features/home/home_screen.dart",
+      "anchor": "that arithmetic rather than as a literal 1261 so it cannot drift from",
+      "status": "demoted",
+      "reason": "width_home_test.dart pins BOTH the constants (form 420, dividerWidth 1, expanded 840) and HomeScreen.asideMinBodyWidth == 1261 as separate literals. A literal 1261 in place of the arithmetic passes that test unchanged, so nothing grades the \"expressed as arithmetic\" half of the sentence. judged 2026-09-18."
+    },
+    {
+      "file": "apps/subscriptiontracker/lib/features/monetization/manage_plan_screen.dart",
+      "anchor": "navigation source as the purchase count, so the two cannot drift apart by",
+      "status": "demoted",
+      "reason": "assert-purchase-path.mjs §E walks the BRICK lib (BRICK_LIB) and the chassis files it delegates to; it never reads apps/subscriptiontracker/lib, so this app's router does not feed either count. The sentence is proven for packages/chassis_screens (see that entry), not for this copy. judged 2026-09-18."
+    },
+    {
+      "file": "apps/subscriptiontracker/lib/l10n/app_en.arb",
+      "anchor": "so the sentence cannot drift from the chart.",
+      "status": "proven",
+      "test": "apps/subscriptiontracker/test/a11y_semantics_test.dart",
+      "case": "[en] the chart announces the total AND every category",
+      "proves": "The expected label (expectedDonutLabel) is built from SubMath.categoryTotals over the same seeded providers, one a11yCategoryShare per category, joined. If the screen composed {breakdown} from anything but the painter's category list (a category dropped, reordered or restated), the announced sentence no longer contains the expected one and this case goes red."
+    },
+    {
+      "file": "apps/subscriptiontracker/lib/state/providers/auth.dart",
+      "anchor": "ONE READ for the two states that mean it, so the gate cannot drift from the",
+      "status": "proven",
+      "test": "apps/subscriptiontracker/test/password_reset_test.dart",
+      "case": "an EXPIRED link ROUTES here by itself, and says which failure it was",
+      "proves": "Driven through the real router with no navigation by hand. If shouldHoldForPasswordReset stopped reading the arrival limb (holding on `recovering` only), an expired link settles on /sign-in and this case goes red; its sibling \"a recovery arrival moves the app to /reset-password with NO navigation\" covers the recovering limb. Same shape as the brick entry for this sentence."
+    },
+    {
+      "file": "apps/subscriptiontracker/lib/state/providers/config.dart",
+      "anchor": "consumer instead, and because it is the same object the two names cannot",
+      "status": "demoted",
+      "reason": "True by construction: `const kSublyDefaultConfig = kAppDefaultConfig`. config_default_test.dart pins the alias's VALUES against the server contract, but nothing asserts identical(kSublyDefaultConfig, kAppDefaultConfig); a copied const with equal values passes. judged 2026-09-18."
+    },
+    {
+      "file": "apps/subscriptiontracker/store/ios-appstore/README.md",
+      "anchor": "file, which is why `macos-appstore/` carries no second copy",
+      "status": "proven",
+      "test": "tooling/ci/test/apple-privacy-manifest.test.mjs",
+      "case": "limb 1 — a hand-edited macOS manifest is caught too, not just iOS",
+      "proves": "assert-apple-privacy-manifest renders the macOS PrivacyInfo.xcprivacy from this ios-appstore audit and compares byte for byte; this case edits the macOS manifest alone and the guard exits non-zero, so the macOS side has no source of its own. WEAK on the literal \"no second copy\": a stray macos-appstore/privacy-manifest.json would be ignored, not caught."
+    },
+    {
+      "file": "apps/subscriptiontracker/store/ios-appstore/privacy-manifest.json",
+      "anchor": "The plugin set is DERIVED, not listed by hand.",
+      "status": "proven",
+      "test": "tooling/ci/test/apple-privacy-manifest.test.mjs",
+      "case": "limb 4 — a NEW plugin with no inventory row: \"nobody said what required-reason APIs this uses\"",
+      "proves": "The case adds a plugin to .flutter-plugins-dependencies (what the build links) without an inventory row, and the guard fails naming it. That is the equality limb the sentence says derivation buys; its sibling \"limb 4 — EQUALITY, not subset\" covers the reverse direction."
+    },
+    {
+      "file": "apps/subscriptiontracker/test/a11y/keyboard_sweep_test.dart",
+      "anchor": "cannot drift from what the app shows: re-point `/budget` at a different",
+      "status": "demoted",
+      "reason": "Describes this test rig's own construction (it evaluates route.builder rather than naming a screen class), visible in the code under it. No test grades how another test chooses its subject. judged 2026-09-18."
+    },
+    {
+      "file": "apps/subscriptiontracker/test/a11y_semantics_test.dart",
+      "anchor": "SAME providers the screen read, so the assertion cannot drift from the data",
+      "status": "demoted",
+      "reason": "Describes how this test file builds its expected labels (from the pumped container), visible in expectedDonutLabel and its siblings. A statement about a test's own construction; nothing grades it. judged 2026-09-18."
+    },
+    {
+      "file": "apps/subscriptiontracker/test/a11y_semantics_test.dart",
+      "anchor": "cannot drift from the state the row was painted from.",
+      "status": "demoted",
+      "reason": "Describes the expectation's source in the lines directly below (c.read(analyticsConsentProvider)). A test's own construction; nothing grades it. judged 2026-09-18."
+    },
+    {
+      "file": "apps/subscriptiontracker/test/a11y_semantics_test.dart",
+      "anchor": "expectation cannot drift from the currency the sheet formatted.",
+      "status": "demoted",
+      "reason": "Describes the expectation's source in the lines directly below (MoneyFormatter over l10n.localeName). A test's own construction; nothing grades it. judged 2026-09-18."
+    },
+    {
+      "file": "apps/subscriptiontracker/test/l10n_group_home_test.dart",
+      "anchor": "and the surface it opens cannot drift into two words for one action.",
+      "status": "proven",
+      "test": "apps/subscriptiontracker/test/l10n_group_home_test.dart",
+      "case": "the shell reads its chrome from the arb",
+      "proves": "The group's \"[$code] five tab labels, the demo banner and the FAB\" cases assert the FAB Tooltip message == l.addSubscriptionTitle in en and ta; giving the FAB any other key turns them red (mutation-verified 2026-09-18: message -> l10n.navHome, red in both locales). The sheet half (its heading reads addSubscriptionTitle) is pinned by dark_group_sheets_test.dart."
+    },
+    {
+      "file": "packages/chassis_screens/lib/monetization/manage_plan_screen.dart",
+      "anchor": "navigation source as the purchase count, so the two cannot drift apart by",
+      "status": "proven",
+      "test": "tooling/ci/test/purchase-path.test.mjs",
+      "case": "🔴 FAILS when there is NO cancel path — the `0 <= 0` case that used to pass",
+      "proves": "assert-purchase-path §E counts both paths with one hops() BFS over the context.go edges of the brick lib plus the chassis files it delegates to (this file among them, printed on every run). Deleting the settings -> /manage-plan edge makes the cancel count infinite and the guard exits 1; the sibling \"FAILS when there is no PURCHASE path either\" removes the /paywall edge from the same graph."
+    },
+    {
+      "file": "packages/core/lib/src/content/pack_verifier.dart",
+      "anchor": "`cryptography` package this file verifies with, so the encoding cannot drift",
+      "status": "demoted",
+      "reason": "The production key was generated once on the owner's machine by tool/gen_pack_keypair.dart; nothing re-runs it. assert-pack-roundtrip.mjs says so in its header: CI uses a TEST keypair and cannot go red on a seed that no longer matches pinned k1 (owner-run canary only). judged 2026-09-18."
+    },
+    {
+      "file": "packages/core/lib/src/promo/promo_gate.dart",
+      "anchor": "The state is bundled with the verdict so the two cannot drift apart.",
+      "status": "proven",
+      "test": "packages/core/test/promo_gate_test.dart",
+      "case": "the returned state is what stops it showing twice",
+      "proves": "Feeds the first decision's own .state into a second decide and expects shownTooRecently. If the decision stopped carrying the incremented state (returned the input, or left the count to the caller), the second call would say show again and this case goes red."
+    },
+    {
+      "file": "packages/core/lib/src/storage/key_value_store.dart",
+      "anchor": "and containsKey routes through here; there is no second copy of this",
+      "status": "demoted",
+      "reason": "storage_test.dart proves qualify() namespaces correctly, but no guard or test searches the chassis for a second `'$appId$separator'`-style concatenation; a second, correct copy elsewhere would pass everything. judged 2026-09-18."
+    },
+    {
+      "file": "packages/design_system/lib/src/tokens/app_text.dart",
+      "anchor": "cannot drift: a future edit that rebuilds light through `copyWith` would",
+      "status": "proven",
+      "test": "packages/design_system/test/app_text_test.dart",
+      "case": "every style is the SAME OBJECT as the const it replaces",
+      "proves": "Asserts `same(AppText.x)` for all six light styles. A light branch rebuilt through copyWith would compare equal but not identical, and this case goes red, which is exactly the drift the sentence rules out."
+    },
+    {
+      "file": "packages/design_system/lib/src/tokens/app_text.dart",
+      "anchor": "already makes for its `muted` token, so the two cannot drift apart.",
+      "status": "proven",
+      "test": "packages/design_system/test/app_text_test.dart",
+      "case": "secondary styles become onSurfaceVariant",
+      "proves": "Asserts the dark muted style colour equals theme.extension<AppThemeX>()!.muted as well as scheme.onSurfaceVariant. If either AppText.resolve or AppThemeX.fromScheme moved muted to another slot alone, the two stop matching and this case goes red."
+    },
+    {
+      "file": "packages/design_system/lib/src/widgets/content_pane.dart",
+      "anchor": "widget cannot drift apart either.",
+      "status": "proven",
+      "test": "packages/design_system/test/content_pane_test.dart",
+      "case": ".form caps at AppBreakpoints.form",
+      "proves": "Measures the rendered width against AppBreakpoints.form at a 1280 surface. A widget cap typed as its own number drifts from the constant and goes red (mutation-verified 2026-09-18: ContentPane.form maxWidth -> 400, Expected 420.0 Actual 400.0); the .pane and .reading siblings cover the other two."
+    },
+    {
+      "file": "packages/design_system/lib/src/widgets/two_pane.dart",
+      "anchor": "pinned in `two_pane_test.dart` so the arithmetic cannot drift",
+      "status": "proven",
+      "test": "packages/design_system/test/two_pane_test.dart",
+      "case": "the documented table",
+      "proves": "Asserts TwoPaneSplit.forWidth at 840, 1141, 1280 and 1400 against the list/detail columns of the doc table. Changing the split arithmetic without the prose (or the reverse) makes a row disagree and the case goes red. The 839 single-column row is covered by \"null below 840, a split at and above it\"."
+    },
+    {
+      "file": "packages/design_system/lib/src/widgets/two_pane.dart",
+      "anchor": "subtracted, so the drawn gap and the reserved gap cannot drift.",
+      "status": "proven",
+      "test": "packages/design_system/test/two_pane_test.dart",
+      "case": "the columns tile the width exactly, left to right",
+      "proves": "At 840 it asserts the drawn VerticalDivider width == TwoPaneSplit.dividerWidth, the divider at x=420 and the detail starting at 421 and ending at 840. A divider drawn at a width other than the one the arithmetic subtracted moves or overflows the detail and this case goes red."
+    },
+    {
+      "file": "packages/design_system/test/app_text_test.dart",
+      "anchor": "free to drift tomorrow. Identity cannot drift.",
+      "status": "proven",
+      "test": "packages/design_system/test/app_text_test.dart",
+      "case": "every style is the SAME OBJECT as the const it replaces",
+      "proves": "The sentence explains the enclosing case's own `same(...)` matchers. Those fail on a copyWith-rebuilt style that `equals` would accept, so the case itself is what goes red when light stops being the const objects."
+    },
+    {
+      "file": "packages/design_system/test/app_text_test.dart",
+      "anchor": "// so the two cannot drift apart.\n      expect(s.muted.color, scheme.onSurfaceVariant);",
+      "status": "proven",
+      "test": "packages/design_system/test/app_text_test.dart",
+      "case": "secondary styles become onSurfaceVariant",
+      "proves": "The enclosing case asserts s.muted.color == theme.extension<AppThemeX>()!.muted, so AppText and AppThemeX choosing different slots turns it red. Same proof as the app_text.dart sentence it restates."
+    },
+    {
+      "file": "packages/platform_storage/lib/src/prefs_key_value_store.dart",
+      "anchor": "[NamespacedKeyValueStore] — one implementation, no second copy",
+      "status": "demoted",
+      "reason": "prefs_key_value_store_test.dart proves the RAW prefs keys carry the app id, but a second, correct prefixing implementation here would pass it; nothing asserts the delegate is core's NamespacedKeyValueStore or that no other concatenation exists. judged 2026-09-18."
+    },
+    {
+      "file": "packages/purchases/lib/src/offering.dart",
+      "anchor": "a matrix of currencies, so the two cannot drift.",
+      "status": "proven",
+      "test": "packages/purchases/test/offering_test.dart",
+      "case": "the offering and the portfolio money type CANNOT DRIFT",
+      "proves": "The group asserts formattedPrice == price.plainFormat() over USD, INR, EUR, JPY, KWD and an unknown code. Changing either rendering alone turns it red (mutation-verified 2026-09-18: the unknown-code branch `'$currencyCode $major'` -> no space, red on ZZZ and KWD)."
+    },
+    {
+      "file": "packages/purchases/test/offering_test.dart",
+      "anchor": "group('the offering and the portfolio money type CANNOT DRIFT'",
+      "status": "proven",
+      "test": "packages/purchases/test/offering_test.dart",
+      "case": "the offering and the portfolio money type CANNOT DRIFT",
+      "proves": "The group title is the claim and the group is its proof: every matrix case compares the two renderings directly, so they cannot diverge while it is green. Mutation-verified with the offering.dart entry."
+    },
+    {
+      "file": "packages/telemetry/test/telemetry_bootstrap_test.dart",
+      "anchor": "It is written the same way so the two cases cannot drift",
+      "status": "demoted",
+      "reason": "A note on why two test cases share a shape; it asserts nothing about a mechanism a test could grade. judged 2026-09-18."
     }
   ],
   "backlog": {
@@ -967,37 +1185,12 @@
     ".github/workflows/e2e.yml": 2,
     ".github/workflows/extensions.yml": 4,
     "README.md": 1,
-    "apps/subscriptiontracker/integration_test/app_test.dart": 1,
-    "apps/subscriptiontracker/lib/core/app_config.dart": 1,
-    "apps/subscriptiontracker/lib/features/add/add_subscription_sheet.dart": 2,
-    "apps/subscriptiontracker/lib/features/home/home_screen.dart": 1,
-    "apps/subscriptiontracker/lib/features/monetization/manage_plan_screen.dart": 1,
-    "apps/subscriptiontracker/lib/l10n/app_en.arb": 1,
-    "apps/subscriptiontracker/lib/state/providers/auth.dart": 1,
-    "apps/subscriptiontracker/lib/state/providers/config.dart": 1,
-    "apps/subscriptiontracker/store/ios-appstore/README.md": 1,
-    "apps/subscriptiontracker/store/ios-appstore/privacy-manifest.json": 1,
-    "apps/subscriptiontracker/test/a11y/keyboard_sweep_test.dart": 1,
-    "apps/subscriptiontracker/test/a11y_semantics_test.dart": 3,
-    "apps/subscriptiontracker/test/l10n_group_home_test.dart": 1,
     "catalog/store-matrix.json": 1,
     "docs/ci/README.md": 1,
     "docs/ci/build-platforms.md": 1,
     "docs/ci/deploy-web.md": 2,
     "docs/ci/extensions.md": 5,
     "docs/ci/ops-watch.md": 1,
-    "packages/chassis_screens/lib/monetization/manage_plan_screen.dart": 1,
-    "packages/core/lib/src/content/pack_verifier.dart": 1,
-    "packages/core/lib/src/promo/promo_gate.dart": 1,
-    "packages/core/lib/src/storage/key_value_store.dart": 1,
-    "packages/design_system/lib/src/tokens/app_text.dart": 2,
-    "packages/design_system/lib/src/widgets/content_pane.dart": 1,
-    "packages/design_system/lib/src/widgets/two_pane.dart": 2,
-    "packages/design_system/test/app_text_test.dart": 2,
-    "packages/platform_storage/lib/src/prefs_key_value_store.dart": 1,
-    "packages/purchases/lib/src/offering.dart": 1,
-    "packages/purchases/test/offering_test.dart": 1,
-    "packages/telemetry/test/telemetry_bootstrap_test.dart": 1,
     "services/_shared/src/entitlement-read.ts": 1,
     "services/platform/test/checkout.test.ts": 1,
     "services/platform/test/github-dispatch.test.ts": 1,
