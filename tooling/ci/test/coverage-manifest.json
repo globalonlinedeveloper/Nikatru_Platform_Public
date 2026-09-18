@@ -127,7 +127,7 @@
   "no-tls-pinning.test.mjs": 13,
   "obfuscation-coupled.test.mjs": 34,
   "one-entitlement-reader.test.mjs": 13,
-  "ops-register.test.mjs": 365,
+  "ops-register.test.mjs": 369,
   "ops-status.test.mjs": 46,
   "ops-verifiers.test.mjs": 18,
   "package-boundaries.test.mjs": 18,

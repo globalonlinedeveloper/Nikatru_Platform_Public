@@ -2935,6 +2935,48 @@ export function decideUnitRedSince(q, entries, pageFull) {
   return { success: null, failure };
 }
 
+/** ⏱ 2026-09-18 · O-LAPTOP-ROUTINES-DIE-OVERNIGHT. PURE. A `duty.laptop.*` row may
+ *  carry `liveVerdictScope: { blocks: 'page-only', page: '<workflow>.yml', why }`:
+ *  its RED live verdict then BLOCKS only in that page host and PRINTS everywhere
+ *  else. The owner chose it (2026-09-18) for work that is laptop-bound by
+ *  construction — a Claude desktop routine that writes the remote-less Private
+ *  repo — so a closed lid pages (ops-watch goes red) but stops freezing main's
+ *  `ci-gate` and every deploy lane that polls it.
+ *
+ *  The exemption is NARROW BY STRUCTURE, and each refusal here blocks in every
+ *  host: only `duty.laptop.*` rows; `blocks` must be exactly `page-only`; the
+ *  page must be a workflow this guard actually runs in (`topology.guardHosts`) —
+ *  otherwise the verdict would block NOWHERE, which is deletion by another name;
+ *  and `why` must say why. Every scoped row is PRINTED on every run.
+ *  Returns `{ errors, prints }`. */
+export function checkLiveVerdictScopes(reg, topology) {
+  const errors = [];
+  const prints = [];
+  for (const r of reg?.rows ?? []) {
+    const sc = r?.liveVerdictScope;
+    if (sc === undefined) continue;
+    const id = String(r?.id ?? '<no id>');
+    if (!id.startsWith('duty.laptop.')) {
+      errors.push(`${id}: carries \`liveVerdictScope\` and is not a duty.laptop.* row. The page-only scope exists for work that only a sleeping laptop can do; on any other row it would quietly stop a live verdict from gating deploys.`);
+      continue;
+    }
+    if (sc?.blocks !== 'page-only') {
+      errors.push(`${id}: \`liveVerdictScope.blocks\` is ${JSON.stringify(sc?.blocks)}; the only scope is "page-only".`);
+      continue;
+    }
+    if (!nonEmpty(sc?.page) || !(topology?.guardHosts instanceof Set) || !topology.guardHosts.has(sc.page)) {
+      errors.push(`${id}: \`liveVerdictScope.page\` is ${JSON.stringify(sc?.page ?? null)}, which is not a workflow that runs this guard (${[...(topology?.guardHosts ?? [])].sort().join(', ') || 'none derived'}). A page that never runs the guard would make this verdict block NOWHERE.`);
+      continue;
+    }
+    if (!nonEmpty(sc?.why) || String(sc.why).trim().length < 40) {
+      errors.push(`${id}: \`liveVerdictScope.why\` is missing or too short. An exemption from the deploy gate must say why, in words a later reader can check.`);
+      continue;
+    }
+    prints.push(`PAGE-ONLY · ${id} — a red live verdict blocks only in ${sc.page} and PRINTS in every other host. ${sc.why}`);
+  }
+  return { errors, prints };
+}
+
 /** PURE. INV3 + INV4 in the register: every run-history row names a unit, the
  *  unit exists in the workflow file, no unit contains this guard's own verdict,
  *  units of rows sharing a workflow do not overlap, and every job of a shared
@@ -3901,7 +3943,22 @@ export function routeLiveVerdicts(live, policy, topology, reg, parsedByFile) {
     return { blocking, printed, notes };
   }
   const rows = new Map((reg?.rows ?? []).map((r) => [r.id, r]));
-  const redIds = [...new Set(verdicts.map((v) => v.id))];
+  // ⏱ 2026-09-18 — page-only rows (checkLiveVerdictScopes). Structure is refused
+  // in every host by that check, so here only a well-formed scope is honoured.
+  const scoped = [];
+  const rest = [];
+  for (const v of verdicts) {
+    const sc = rows.get(v.id)?.liveVerdictScope;
+    const ok = String(v.id).startsWith('duty.laptop.') && sc?.blocks === 'page-only' && topology.guardHosts?.has(sc?.page);
+    if (ok && sc.page !== host) scoped.push(v);
+    else rest.push(v);
+  }
+  for (const v of scoped) {
+    printed.push({ ...v, why: `PAGE-ONLY (owner, 2026-09-18) — ${v.id} blocks only in ${rows.get(v.id).liveVerdictScope.page}; in ${host} it PRINTS.` });
+  }
+  return routeRest(rest);
+  function routeRest(verdictsLeft) {
+  const redIds = [...new Set(verdictsLeft.map((v) => v.id))];
   const needs = new Map(redIds.map((id) => [id, unitNeedsHosts(rows.get(id), topology, parsedByFile)]));
   const enforcingHosts = new Set(topology.guardHosts ?? []);
   const pathTo = (start) => {
@@ -3922,12 +3979,13 @@ export function routeLiveVerdicts(live, policy, topology, reg, parsedByFile) {
     }
     return null;
   };
-  for (const v of verdicts) {
+  for (const v of verdictsLeft) {
     const path = pathTo(v.id);
     if (!path) blocking.push(v);
     else printed.push({ ...v, why: path.length === 1 ? path[0] : `CYCLE of ${path.length} edges back to ${host} — ${path.join(' ⇒ ')}` });
   }
   return { blocking, printed, notes };
+  }
 }
 
 /** The rows this limb grades. TWO admissions, and they are graded for the SAME
@@ -5201,6 +5259,9 @@ async function main() {
   const units = checkRunUnits(reg, parsedByFile, topology);
   errors.push(...units.errors);
   prints.push(...units.prints);
+  const scopes = checkLiveVerdictScopes(reg, topology);
+  errors.push(...scopes.errors);
+  prints.push(...scopes.prints);
   // [INV1] [INV2] [INV5] — the host and the event come from the environment
   // GitHub sets, and the event is believed only from a host whose file declares it.
   const policy = hostPolicy(process.env, topology, workflowEventsByFile(allWorkflows));
