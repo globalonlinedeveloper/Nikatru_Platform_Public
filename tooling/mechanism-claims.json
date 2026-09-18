@@ -759,6 +759,206 @@
       "test": "tooling/ci/test/launcher-icons.test.mjs",
       "case": "FAILS when the storyboard declares a size the imageset does not have",
       "proves": "assert-launcher-icons imports this table and exits 1 when the storyboard declares LaunchImage at a size the imageset does not carry. The sibling \"FAILS when the imageset catalogue no longer names the files\" covers Contents.json."
+    },
+    {
+      "file": "extensions/Extension/Full_Screen_Shot/background.js",
+      "anchor": "in), and it is graded against the message file, so the two cannot drift.",
+      "status": "demoted",
+      "reason": "True and graded: extensions/Extension/Full_Screen_Shot/test/background-sim.node.js check(\"every sentence the worker can say is word-for-word the English message file's\") fails when the two sides disagree, and extensions.yml's sims job runs it for this tool. That harness is a check()/expect() runner, not node:test: it declares no test/it/describe title, so the register has no case to name. Enforced, but not provable in this register's terms; recorded as demoted rather than claimed proven. Judged 2026-09-18."
+    },
+    {
+      "file": "extensions/Extension/Full_Screen_Shot/pages/common.js",
+      "anchor": "two agree, so the copy cannot drift.",
+      "status": "demoted",
+      "reason": "True and graded: extensions/Extension/Full_Screen_Shot/test/i18n-sim.node.js check(\"the shipped plural suffix table matches i18n/plurals.mjs exactly\") fails when the two sides disagree, and extensions.yml's sims job runs it for this tool. That harness is a check()/expect() runner, not node:test: it declares no test/it/describe title, so the register has no case to name. Enforced, but not provable in this register's terms; recorded as demoted rather than claimed proven. Judged 2026-09-18."
+    },
+    {
+      "file": "extensions/Extension/Full_Screen_Shot/pages/db.js",
+      "anchor": "two cannot drift. */",
+      "status": "demoted",
+      "reason": "True and graded: extensions/Extension/Full_Screen_Shot/test/background-sim.node.js check(\"every store the database creates is on the list the wipe and the sweep walk\") fails when the two sides disagree, and extensions.yml's sims job runs it for this tool. That harness is a check()/expect() runner, not node:test: it declares no test/it/describe title, so the register has no case to name. Enforced, but not provable in this register's terms; recorded as demoted rather than claimed proven. Judged 2026-09-18."
+    },
+    {
+      "file": "extensions/Extension/Full_Screen_Shot/publish/COMPLIANCE-CHECKLIST.md",
+      "anchor": "not restate `version`, `description` or the permissions and therefore *cannot* drift from the",
+      "status": "demoted",
+      "reason": "Publishing-doc prose recording a dated run of check-version.mjs and quoting its overlay limb. The mechanism is real: publish/manifest.firefox.json is an RFC 7386 merge patch with no `version` key, and check-version.mjs limb 4 fails when an overlay states a version that disagrees with manifest.json. But no case plants a `version` in an overlay (scripts/test/selftest.node.js has no overlay expect(), and no node:test file reaches check-version), so nothing a register can name fails when the sentence goes false. Judged 2026-09-18."
+    },
+    {
+      "file": "extensions/Extension/Full_Screen_Shot/publish/COMPLIANCE-CHECKLIST.md",
+      "anchor": "that: `publish/manifest.firefox.json is an overlay — it does not restate the version, so it cannot",
+      "status": "demoted",
+      "reason": "Publishing-doc prose recording a dated run of check-version.mjs and quoting its overlay limb. The mechanism is real: publish/manifest.firefox.json is an RFC 7386 merge patch with no `version` key, and check-version.mjs limb 4 fails when an overlay states a version that disagrees with manifest.json. But no case plants a `version` in an overlay (scripts/test/selftest.node.js has no overlay expect(), and no node:test file reaches check-version), so nothing a register can name fails when the sentence goes false. Judged 2026-09-18."
+    },
+    {
+      "file": "extensions/Extension/Full_Screen_Shot/publish/COMPLIANCE-CHECKLIST.md",
+      "anchor": "Written down so the summary and the table cannot drift apart again",
+      "status": "demoted",
+      "reason": "Editorial intent in a compliance document: the CSP summary line and the table under it are two pieces of prose kept in step by the writer. No script reads either, so nothing fails when they disagree. Judged 2026-09-18."
+    },
+    {
+      "file": "extensions/Extension/Full_Screen_Shot/publish/CROSS-BROWSER-PUBLISHING.md",
+      "anchor": "it states no version at all (so it cannot drift)",
+      "status": "demoted",
+      "reason": "Publishing-doc prose recording a dated run of check-version.mjs and quoting its overlay limb. The mechanism is real: publish/manifest.firefox.json is an RFC 7386 merge patch with no `version` key, and check-version.mjs limb 4 fails when an overlay states a version that disagrees with manifest.json. But no case plants a `version` in an overlay (scripts/test/selftest.node.js has no overlay expect(), and no node:test file reaches check-version), so nothing a register can name fails when the sentence goes false. Judged 2026-09-18."
+    },
+    {
+      "file": "extensions/Extension/Full_Screen_Shot/publish/CROSS-BROWSER-PUBLISHING.md",
+      "anchor": "`3 passed` — `CHANGELOG top entry is [1.10.2]`",
+      "status": "demoted",
+      "reason": "Publishing-doc prose recording a dated run of check-version.mjs and quoting its overlay limb. The mechanism is real: publish/manifest.firefox.json is an RFC 7386 merge patch with no `version` key, and check-version.mjs limb 4 fails when an overlay states a version that disagrees with manifest.json. But no case plants a `version` in an overlay (scripts/test/selftest.node.js has no overlay expect(), and no node:test file reaches check-version), so nothing a register can name fails when the sentence goes false. Judged 2026-09-18."
+    },
+    {
+      "file": "extensions/Extension/Full_Screen_Shot/publish/CROSS-BROWSER-PUBLISHING.md",
+      "anchor": "so there is nothing to bump and the two **cannot** drift",
+      "status": "demoted",
+      "reason": "Publishing-doc prose recording a dated run of check-version.mjs and quoting its overlay limb. The mechanism is real: publish/manifest.firefox.json is an RFC 7386 merge patch with no `version` key, and check-version.mjs limb 4 fails when an overlay states a version that disagrees with manifest.json. But no case plants a `version` in an overlay (scripts/test/selftest.node.js has no overlay expect(), and no node:test file reaches check-version), so nothing a register can name fails when the sentence goes false. Judged 2026-09-18."
+    },
+    {
+      "file": "extensions/Extension/Full_Screen_Shot/publish/SUBMISSION-PACKET.md",
+      "anchor": "an overlay that restates no version, so the two cannot drift.",
+      "status": "demoted",
+      "reason": "Publishing-doc prose recording a dated run of check-version.mjs and quoting its overlay limb. The mechanism is real: publish/manifest.firefox.json is an RFC 7386 merge patch with no `version` key, and check-version.mjs limb 4 fails when an overlay states a version that disagrees with manifest.json. But no case plants a `version` in an overlay (scripts/test/selftest.node.js has no overlay expect(), and no node:test file reaches check-version), so nothing a register can name fails when the sentence goes false. Judged 2026-09-18."
+    },
+    {
+      "file": "extensions/Extension/Full_Screen_Shot/publish/SUBMISSION-PACKET.md",
+      "anchor": "so the two *cannot* drift and `check-version` says so by name",
+      "status": "demoted",
+      "reason": "Publishing-doc prose recording a dated run of check-version.mjs and quoting its overlay limb. The mechanism is real: publish/manifest.firefox.json is an RFC 7386 merge patch with no `version` key, and check-version.mjs limb 4 fails when an overlay states a version that disagrees with manifest.json. But no case plants a `version` in an overlay (scripts/test/selftest.node.js has no overlay expect(), and no node:test file reaches check-version), so nothing a register can name fails when the sentence goes false. Judged 2026-09-18."
+    },
+    {
+      "file": "extensions/Extension/Full_Screen_Shot/publish/package.node.js",
+      "anchor": "deliberately, so that a version bump cannot drift between the two engines.",
+      "status": "demoted",
+      "reason": "Design rationale for the overlay's shape, above the merge code. The shape (no `version` in publish/manifest.firefox.json) is what check-version.mjs limb 4 inspects, but no case plants a version in an overlay and asserts a failure (scripts/test/selftest.node.js has no overlay expect(), and it is not node:test). Judged 2026-09-18."
+    },
+    {
+      "file": "extensions/Extension/Full_Screen_Shot/test/aihandoff-sim.node.js",
+      "anchor": "cannot drift apart in a later edit to one of them.",
+      "status": "demoted",
+      "reason": "Describes how the record under test is built (count and leaf tally written by one expression), inside the sim that checks it. A single expression and two that agree today read the same to every check; the structure is visible in the producer. Judged 2026-09-18."
+    },
+    {
+      "file": "extensions/Extension/Full_Screen_Shot/test/pixel-sim/history-harness.js",
+      "anchor": "the extension ships cannot drift apart without a hard error.",
+      "status": "demoted",
+      "reason": "Describes how this harness builds its own fixture: idsInHtml() reads pages/history.html on the lines under it. No case can fail because the harness became hand-typed; a typed copy passes on the day it is typed. Judged 2026-09-18."
+    },
+    {
+      "file": "extensions/Extension/Full_Screen_Shot/tool.json",
+      "anchor": "two rows naming one target cannot drift into two builds",
+      "status": "proven",
+      "test": "tooling/ci/test/channel-register.test.mjs",
+      "case": "FAILS when tool.json`s two declarations of which stores a target reaches disagree — the forward half is wrong",
+      "proves": "assert-channel-register derives the pack-target map from BOTH declarations in tool.json (targets.chromium.stores and each storeMetadata.stores row's target) and exits 1 when they disagree, so a store row that moves to another target (a second build) is refused. Mutation-verified on the real tree 2026-09-18: storeMetadata.stores.edge.target chromium -> firefox took the guard from 0 to 1 with this case's message; restored byte-exact by sha256. The sibling REVERSE-half case covers the other direction."
+    },
+    {
+      "file": "extensions/Extension/Full_Screen_Shot/tool.json",
+      "anchor": "so a bump can no longer be right-in-one-file-and-wrong-in-the-other",
+      "status": "demoted",
+      "reason": "Publishing-doc prose recording a dated run of check-version.mjs and quoting its overlay limb. The mechanism is real: publish/manifest.firefox.json is an RFC 7386 merge patch with no `version` key, and check-version.mjs limb 4 fails when an overlay states a version that disagrees with manifest.json. But no case plants a `version` in an overlay (scripts/test/selftest.node.js has no overlay expect(), and no node:test file reaches check-version), so nothing a register can name fails when the sentence goes false. Judged 2026-09-18."
+    },
+    {
+      "file": "extensions/core/test/coverage.node.js",
+      "anchor": "the rule cannot drift away from the data it is about:",
+      "status": "demoted",
+      "reason": "Describes how this coverage sim builds its expectation (read from core/core.json, not typed). No case can fail because the rule became hand-typed; a typed list passes on the day it is typed and breaks only on the next core change. Judged 2026-09-18."
+    },
+    {
+      "file": "extensions/core/test/settings.node.js",
+      "anchor": "one code path, so the two cannot drift",
+      "status": "demoted",
+      "reason": "The sentence is the label of the check that grades it: S.skInitSettings.toString() must contain skMigrateSettings, so an init that stops delegating fails. extensions.yml's core job runs core/test/*.node.js. That harness is a check()/expect() runner, not node:test: it declares no test/it/describe title, so the register has no case to name. Enforced, but not provable in this register's terms; recorded as demoted rather than claimed proven. Judged 2026-09-18."
+    },
+    {
+      "file": "extensions/docs/ARCHITECTURE.md",
+      "anchor": "restate the version, so it cannot drift from it`.",
+      "status": "demoted",
+      "reason": "Publishing-doc prose recording a dated run of check-version.mjs and quoting its overlay limb. The mechanism is real: publish/manifest.firefox.json is an RFC 7386 merge patch with no `version` key, and check-version.mjs limb 4 fails when an overlay states a version that disagrees with manifest.json. But no case plants a `version` in an overlay (scripts/test/selftest.node.js has no overlay expect(), and no node:test file reaches check-version), so nothing a register can name fails when the sentence goes false. Judged 2026-09-18."
+    },
+    {
+      "file": "extensions/docs/RELEASING.md",
+      "anchor": "`templates/tool/publish/manifest.firefox.json` **is** a full manifest carrying",
+      "status": "demoted",
+      "reason": "Publishing-doc prose recording a dated run of check-version.mjs and quoting its overlay limb. The mechanism is real: publish/manifest.firefox.json is an RFC 7386 merge patch with no `version` key, and check-version.mjs limb 4 fails when an overlay states a version that disagrees with manifest.json. But no case plants a `version` in an overlay (scripts/test/selftest.node.js has no overlay expect(), and no node:test file reaches check-version), so nothing a register can name fails when the sentence goes false. Judged 2026-09-18."
+    },
+    {
+      "file": "extensions/scripts/assert-e2e-proof-fresh.mjs",
+      "anchor": "THE EXPECTED SET IS DERIVED, NOT TYPED",
+      "status": "demoted",
+      "reason": "True by inspection: EXPECT_DIRS is filled by walking <Category>/<Tool>/test/e2e on the lines below. scripts/test/selftest.node.js grades this gate with expect() cases (legs=0/1, stale proof), which the register cannot name, and tooling/ci/test/e2e-proof-fresh.test.mjs grades a different file (tooling/ci/assert-e2e-proof-fresh.mjs). No nameable case adds a tool directory and asserts the expected set grows. Judged 2026-09-18."
+    },
+    {
+      "file": "extensions/scripts/changelog-section.mjs",
+      "anchor": "cannot drift because it is derived from the file, not written down beside it.",
+      "status": "demoted",
+      "reason": "Design rationale for a floor of one. scripts/test/selftest.node.js records changelog-section.mjs as an OPEN GAP (no case), so nothing fails if the floor became a typed number. Judged 2026-09-18."
+    },
+    {
+      "file": "extensions/scripts/changelog-section.mjs",
+      "anchor": "so the two readers of this file cannot drift on what a version heading looks",
+      "status": "demoted",
+      "reason": "WEAK AS WORDED: RE_VERSION_HEADING is a COPY of the regex inside toolinfo.mjs changelogTop(), not an import, so the two can drift, and no test compares them (selftest records this script as an OPEN GAP). Recorded as demoted; the fix is to export the pattern from toolinfo.mjs, or reword to \"must match\". Judged 2026-09-18."
+    },
+    {
+      "file": "extensions/scripts/check-version.mjs",
+      "anchor": "'it does not restate the version, so it cannot drift from it'",
+      "status": "demoted",
+      "reason": "A runtime pass message, printed when the overlay has no `version` key. It describes the subject it just inspected, and the fail branch above it is the mechanism; no case plants a version in an overlay (selftest has no overlay expect(), and it is not node:test). Judged 2026-09-18."
+    },
+    {
+      "file": "extensions/scripts/lib/toolinfo.mjs",
+      "anchor": "emits, so the two sides of the comparison above cannot drift on spelling.",
+      "status": "demoted",
+      "reason": "Describes why RE_LOCALE_CATALOGUE is spelled to match localeMessageFiles' output. A shared definition and two copies that happen to agree behave identically today, so no test can fail on the difference; the structure is checked by reading the definition. Judged 2026-09-18."
+    },
+    {
+      "file": "extensions/scripts/pack.mjs",
+      "anchor": "and this one cannot drift on it.",
+      "status": "demoted",
+      "reason": "WEAK AS WORDED: DOS_TIME/DOS_DATE is a literal COPY of templates/tool/publish/pack.mjs (and Full_Screen_Shot/publish/package.node.js), not a shared import, and nothing compares the three. The determinism check builds twice with ONE packer. Recorded as demoted; fix by importing one constant or rewording to \"must match\". Judged 2026-09-18."
+    },
+    {
+      "file": "extensions/scripts/policy-check.mjs",
+      "anchor": "API, so generator and gate cannot drift apart.",
+      "status": "demoted",
+      "reason": "Design rationale: generator and gate both read the plural categories from Intl.PluralRules at run time. Two readers of one runtime API agree by construction and no test can fail on the difference; selftest grades policy-check with expect() cases the register cannot name. Judged 2026-09-18."
+    },
+    {
+      "file": "extensions/scripts/publish-catalog.mjs",
+      "anchor": "Named once so the --check failure and the rewrite notice cannot drift apart.",
+      "status": "demoted",
+      "reason": "Describes code organisation: BOM_WHY is one constant used by two messages. A shared definition and two copies that happen to agree behave identically today, so no test can fail on the difference; the structure is checked by reading the definition. Judged 2026-09-18."
+    },
+    {
+      "file": "extensions/scripts/publish-cws-token.mjs",
+      "anchor": "workflow, the preflight and both callers cannot drift apart on it.",
+      "status": "demoted",
+      "reason": "PARTLY WEAK: the JS callers import CWS_SA_ENV, but extensions.yml cannot import a constant and spells CWS_SERVICE_ACCOUNT_JSON literally. selftest expect(\"the Chrome preflight NAMES CWS_SERVICE_ACCOUNT_JSON when only the publisher id is set\") pins the literal on the script side, and no check ties the workflow's spelling to the constant. That harness is a check()/expect() runner, not node:test: it declares no test/it/describe title, so the register has no case to name. Enforced, but not provable in this register's terms; recorded as demoted rather than claimed proven. Judged 2026-09-18."
+    },
+    {
+      "file": "extensions/scripts/schema/tool.schema.json",
+      "anchor": "so a fourth list of store names cannot drift.",
+      "status": "demoted",
+      "reason": "A schema description, graded by scripts/check-store-metadata.mjs and exercised by scripts/test/selftest.node.js expect(\"a store set that disagrees with the schema vocabulary is caught\"). That harness is a check()/expect() runner, not node:test: it declares no test/it/describe title, so the register has no case to name. Enforced, but not provable in this register's terms; recorded as demoted rather than claimed proven. Judged 2026-09-18."
+    },
+    {
+      "file": "extensions/templates/tool/publish/preflight.mjs",
+      "anchor": "from the real browser, so it cannot drift from the product",
+      "status": "demoted",
+      "reason": "A remediation hint in a template preflight, printed when publish/store/ holds no screenshot. It is a promise about a process (regenerate on every release), not a mechanism any test executes: no case captures a screenshot, changes the product and asserts the shot follows. Judged 2026-09-18."
+    },
+    {
+      "file": "extensions/templates/tool/publish/shots.mjs",
+      "anchor": "free on every release, so it cannot drift from the product.",
+      "status": "demoted",
+      "reason": "Header rationale for generated screenshots, in a template script that needs a real browser. It is a promise about a process (regenerate on every release), not a mechanism any test executes: no case captures a screenshot, changes the product and asserts the shot follows. Judged 2026-09-18."
+    },
+    {
+      "file": "extensions/templates/tool/publish/shots.mjs",
+      "anchor": "'so they cannot drift from the product.'",
+      "status": "demoted",
+      "reason": "The closing console line of the same template script. It is a promise about a process (regenerate on every release), not a mechanism any test executes: no case captures a screenshot, changes the product and asserts the shot follows. Judged 2026-09-18."
     }
   ],
   "backlog": {
@@ -786,31 +986,6 @@
     "docs/ci/deploy-web.md": 2,
     "docs/ci/extensions.md": 5,
     "docs/ci/ops-watch.md": 1,
-    "extensions/Extension/Full_Screen_Shot/background.js": 1,
-    "extensions/Extension/Full_Screen_Shot/pages/common.js": 1,
-    "extensions/Extension/Full_Screen_Shot/pages/db.js": 1,
-    "extensions/Extension/Full_Screen_Shot/publish/COMPLIANCE-CHECKLIST.md": 3,
-    "extensions/Extension/Full_Screen_Shot/publish/CROSS-BROWSER-PUBLISHING.md": 3,
-    "extensions/Extension/Full_Screen_Shot/publish/SUBMISSION-PACKET.md": 2,
-    "extensions/Extension/Full_Screen_Shot/publish/package.node.js": 1,
-    "extensions/Extension/Full_Screen_Shot/test/aihandoff-sim.node.js": 1,
-    "extensions/Extension/Full_Screen_Shot/test/pixel-sim/history-harness.js": 1,
-    "extensions/Extension/Full_Screen_Shot/tool.json": 2,
-    "extensions/core/test/coverage.node.js": 1,
-    "extensions/core/test/settings.node.js": 1,
-    "extensions/docs/ARCHITECTURE.md": 1,
-    "extensions/docs/RELEASING.md": 1,
-    "extensions/scripts/assert-e2e-proof-fresh.mjs": 1,
-    "extensions/scripts/changelog-section.mjs": 2,
-    "extensions/scripts/check-version.mjs": 1,
-    "extensions/scripts/lib/toolinfo.mjs": 1,
-    "extensions/scripts/pack.mjs": 1,
-    "extensions/scripts/policy-check.mjs": 1,
-    "extensions/scripts/publish-catalog.mjs": 1,
-    "extensions/scripts/publish-cws-token.mjs": 1,
-    "extensions/scripts/schema/tool.schema.json": 1,
-    "extensions/templates/tool/publish/preflight.mjs": 1,
-    "extensions/templates/tool/publish/shots.mjs": 2,
     "packages/chassis_screens/lib/monetization/manage_plan_screen.dart": 1,
     "packages/core/lib/src/content/pack_verifier.dart": 1,
     "packages/core/lib/src/promo/promo_gate.dart": 1,
