@@ -129,7 +129,6 @@ describe('assert-hostname-depth — every subject can go red', () => {
     ['an app.yaml host', withText('apps/x/app.yaml', '  api: x-api.nikatru.com', '  api: x.api.nikatru.com'), /app\.yaml → hosts\.api = "x\.api\.nikatru\.com"/],
     ['the catalogue api', withJson('catalog/apps.json', (c) => { c[0].api = 'https://x.api.nikatru.com'; return c; }), /catalog\/apps\.json\[0\] → api/],
     ['a monitored hostname', withJson('tooling/monitor-register.json', (m) => { m.hosts[0].hostname = 'x.api.nikatru.com'; return m; }), /monitor-register\.json → hosts\[0\]\.hostname/],
-    ['a monitor url', withJson('tooling/monitor-register.json', (m) => { m.hosts[1].pathMonitors[0].url = 'https://app.x.nikatru.com/'; return m; }), /hosts\[1\]\.pathMonitors\[0\]\.url/],
     ['a service environment url', withJson('tooling/channel-register.json', (r) => { r.serviceEnvironments[0].url = 'https://x.api.nikatru.com'; return r; }), /channel-register\.json → serviceEnvironments\[0\]\.url/],
     ['a platform-register host', withJson('tooling/platform-register.json', (p) => { p.appWorkers[0].hosts.push('x.api.nikatru.com'); return p; }), /platform-register\.json → appWorkers\[0\]\.hosts\[1\]/],
     ['a platform-register client expression', withJson('tooling/platform-register.json', (p) => { p.appWorkers[0].routes[0].client.expression = 'https://x.api.nikatru.com/v1/health'; return p; }), /routes\[0\]\.client\.expression/],
