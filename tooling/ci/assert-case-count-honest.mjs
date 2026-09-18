@@ -101,9 +101,41 @@
 // committed the rewritten manifest — one run late, which for a ratchet is
 // permanently, because the inflated value is what the next drop-check compares to.
 //
+// ── THE SECOND LIMB: THE EXECUTED FLOOR (O-COVERAGE-MANIFEST-LOOP-CASES, option 1)
+// The first limb compares the DECLARED floor to what ran. It cannot see a case
+// generated inside a loop: delete one row of a `for (const x of TABLE) test(…)`
+// table and the declared count does not move, while `executed` drops by one and
+// is still >= the declared floor. Nothing read that drop — the executed counts
+// were compared only against the static floor, never against their own past.
+//
+// `--executed-floor <path>` (tooling/ci/test/executed-floor.json) adds:
+//
+//     for every suite in the floor:   executed >= executedFloor
+//
+//   · executed below its floor         → a finding, exit 1 (a case was deleted)
+//   · a floored suite absent from junit → COVERAGE LOST, exit 2
+//   · executed ABOVE its floor          → never a failure (no churn per new test);
+//                                         the floor rises only by the refresh script
+//
+// The floor is a LINUX (ubuntu-24.04, guard-meta) measurement and is written
+// ONLY by tooling/scripts/refresh-executed-floor.mjs from a green main run's
+// junit artifact. So: only ci.yml's guard-meta step passes the flag; locally
+// the limb prints `executed floor: not measured here (Linux CI only)` — a
+// named skip, never a silent pass — and a junit whose file= paths are Windows-
+// shaped is REFUSED against the floor (COVERAGE LOST), because 36 suites ran
+// fewer cases on Windows than on the runner and the comparison would lie.
+//
+// First fill: the file ships with `"filledFrom": null` and `"suites": {}`, which
+// reads as `not yet filled` (exit 0, reason printed). Any OTHER half-state —
+// suites with no provenance, provenance with no suites, a missing file — is
+// COVERAGE LOST: deleting or emptying the floor must never read as a pass.
+//
 // Usage:  node tooling/ci/assert-case-count-honest.mjs --junit <path> [--manifest <path>]
-// Exit 0 = every recorded floor is <= the cases that file actually ran.
-//      1 = a floor exceeds what ran, or the question could not be asked.
+//                                                      [--executed-floor <path>]
+// Exit 0 = every recorded floor is <= the cases that file actually ran (and, with
+//          --executed-floor, every floored suite ran at least its floor).
+//      1 = a floor exceeds what ran, or a suite ran fewer cases than its executed floor.
+//      2 = COVERAGE LOST — the question could not be asked.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
@@ -255,6 +287,85 @@ export function compareFloors(manifest, counts, dirs = new Map()) {
   return { violations, unarbitrated, arbitrated, collisions };
 }
 
+export const EXECUTED_FLOOR_REL = 'tooling/ci/test/executed-floor.json';
+export const EXECUTED_FLOOR_HEADER =
+  'Per-suite EXECUTED case counts, measured on the Linux ubuntu-24.04 guard-meta runner. Read by ' +
+  'tooling/ci/assert-case-count-honest.mjs --executed-floor (executed >= floor; a floored suite absent ' +
+  'from junit is COVERAGE LOST; rises never fail). Written ONLY by tooling/scripts/refresh-executed-floor.mjs ' +
+  'from the guard-tests-junit artifact of a GREEN ci.yml run on main; never written from a local run. ' +
+  'filledFrom null + suites {} = not yet filled.';
+
+/** A junit file= path spelled by a Windows host: a drive letter or a UNC root. */
+export function isWindowsPath(p) {
+  return typeof p === 'string' && (/^[A-Za-z]:[\\/]/.test(p) || p.startsWith('\\\\'));
+}
+
+/**
+ * Validates a parsed executed-floor document. Pure. Returns
+ *   { state: 'unfilled' } | { state: 'filled', suites } | { state: 'invalid', reason }.
+ * Every half-state is `invalid`, so an emptied or hand-written floor never reads as a pass.
+ */
+export function readExecutedFloor(doc) {
+  if (typeof doc !== 'object' || doc === null || Array.isArray(doc)) {
+    return { state: 'invalid', reason: 'it is not a JSON object' };
+  }
+  const { suites, filledFrom } = doc;
+  if (typeof suites !== 'object' || suites === null || Array.isArray(suites)) {
+    return { state: 'invalid', reason: 'it has no "suites" object of "<suite>.test.mjs": <count>' };
+  }
+  for (const [k, v] of Object.entries(suites)) {
+    if (!Number.isInteger(v) || v < 0) {
+      return { state: 'invalid', reason: `suite ${JSON.stringify(k)} has floor ${JSON.stringify(v)}, not a non-negative integer` };
+    }
+  }
+  const n = Object.keys(suites).length;
+  const hasSource = typeof filledFrom === 'object' && filledFrom !== null && Number.isInteger(filledFrom.run);
+  if (filledFrom === null && n === 0) return { state: 'unfilled' };
+  if (!hasSource) {
+    return {
+      state: 'invalid',
+      reason: `it has ${n} suite floor(s) but no "filledFrom" run — only refresh-executed-floor.mjs writes it, and it always records the run`,
+    };
+  }
+  if (n === 0) {
+    return { state: 'invalid', reason: `it records a fill from run ${filledFrom.run} but carries NO suite floors — an emptied floor is the floor removed` };
+  }
+  return { state: 'filled', suites };
+}
+
+/**
+ * The executed-floor verdict. Pure.
+ *   drops    — executed < floor. A case that used to run no longer does.
+ *   lost     — a floored suite the junit never mentions.
+ *   rises    — executed > floor. Reported, never a failure.
+ *   unfloored— suites in the junit with no floor yet; they join at the next refresh.
+ */
+export function compareExecutedFloor(suites, counts) {
+  const drops = [];
+  const lost = [];
+  const rises = [];
+  let held = 0;
+  for (const [suite, floor] of Object.entries(suites)) {
+    const executed = counts.get(suite);
+    if (executed === undefined) lost.push(suite);
+    else if (executed < floor) drops.push({ suite, floor, executed });
+    else {
+      held++;
+      if (executed > floor) rises.push({ suite, floor, executed });
+    }
+  }
+  const unfloored = [...counts.keys()].filter((s) => !Object.hasOwn(suites, s)).sort();
+  return { drops, lost, rises, unfloored, held };
+}
+
+/** The floor file, byte-deterministic: fixed key order, suites sorted, 2-space, LF, trailing newline. */
+export function serializeExecutedFloor({ filledFrom = null, lowered = [], suites = {} }) {
+  const sorted = {};
+  for (const k of Object.keys(suites).sort()) sorted[k] = suites[k];
+  const doc = { _header: EXECUTED_FLOOR_HEADER, platform: 'ubuntu-24.04', filledFrom, lowered, suites: sorted };
+  return `${JSON.stringify(doc, null, 2)}\n`;
+}
+
 function coverageLost(first, ...more) {
   console.error(`✗ COVERAGE LOST — ${first}`);
   for (const m of more) console.error(`    ${m}`);
@@ -265,9 +376,9 @@ function coverageLost(first, ...more) {
   process.exit(2);
 }
 
-/** `--junit <path>` / `--manifest <path>`, both `--k v` and `--k=v`. */
+/** `--junit <path>` / `--manifest <path>` / `--executed-floor <path>`, both `--k v` and `--k=v`. */
 export function parseArgs(argv) {
-  const out = { junit: null, manifest: null, unknown: [] };
+  const out = { junit: null, manifest: null, executedFloor: null, unknown: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const eq = a.indexOf('=');
@@ -275,6 +386,7 @@ export function parseArgs(argv) {
     const inline = eq > 0 ? a.slice(eq + 1) : null;
     if (key === '--junit') out.junit = inline ?? argv[++i] ?? null;
     else if (key === '--manifest') out.manifest = inline ?? argv[++i] ?? null;
+    else if (key === '--executed-floor') out.executedFloor = inline ?? argv[++i] ?? '';
     else out.unknown.push(a);
   }
   return out;
@@ -287,8 +399,11 @@ function main() {
   if (args.unknown.length) {
     coverageLost(
       `unrecognised argument(s): ${args.unknown.join(' ')}.`,
-      'A typo in a workflow flag must not be read as "no work to do". This guard takes --junit and --manifest.',
+      'A typo in a workflow flag must not be read as "no work to do". This guard takes --junit, --manifest and --executed-floor.',
     );
+  }
+  if (args.executedFloor === '') {
+    coverageLost('--executed-floor was given with no path, so the executed floor it names cannot be read.');
   }
   if (!args.junit) {
     coverageLost(
@@ -417,18 +532,107 @@ function main() {
     console.error('  declares 383 and runs 398). The reverse cannot happen honestly — it means the counter credited');
     console.error('  something that is not a running test, which is how 431 came to be recorded for a file that runs 398.');
     console.error('assert-case-count-honest: FAILED');
-    process.exit(1);
+    // The executed-floor limb still runs below, so one red names every finding; the exit stays 1 (or 2).
+  } else {
+    const total = [...counts.values()].reduce((a, b) => a + b, 0);
+    const slack = arbitrated.reduce((a, f) => a + (counts.get(f) - manifest[f]), 0);
+    console.log(
+      `ok  case-count honesty — ${arbitrated.length} recorded floor(s) in ${manifestLabel} were each compared against ` +
+        `the cases node REPORTED running in ${args.junit} (${total} case(s) across ${counts.size} file(s)), and every ` +
+        `one satisfies floor <= executed. Total slack ${slack} case(s) — cases that RUN without being DECLARED, which ` +
+        'is the loop-generated shape countCases cannot see and is the reason this is a floor and not an equality. ' +
+        'The floor is no longer graded by the counter that produced it [pipeline F-10]',
+    );
   }
 
-  const total = [...counts.values()].reduce((a, b) => a + b, 0);
-  const slack = arbitrated.reduce((a, f) => a + (counts.get(f) - manifest[f]), 0);
+  const executedCode = executedFloorLimb(args, cases, counts, dirs);
+  process.exit(violations.length ? 1 : executedCode);
+}
+
+/** The second limb. Returns 0 or 1; COVERAGE LOST exits 2 directly. */
+function executedFloorLimb(args, cases, counts, dirs) {
+  if (args.executedFloor === null) {
+    console.log(
+      'executed floor: not measured here (Linux CI only) — the per-suite executed floor in ' +
+        `${EXECUTED_FLOOR_REL} is a Linux ubuntu-24.04 measurement and only ci.yml's guard-meta step passes ` +
+        '--executed-floor. This run checked the declared floor ONLY; a deleted loop-generated case is NOT caught here.',
+    );
+    return 0;
+  }
+  const label = args.executedFloor;
+  const abs = resolve(label);
+  if (!existsSync(abs)) {
+    coverageLost(
+      `${label} does not exist, so the executed floor it names cannot be read.`,
+      'Its absence is the floor being removed. The unfilled state is a COMMITTED file with "filledFrom": null and',
+      '"suites": {} — not a missing one.',
+    );
+  }
+  let doc;
+  try {
+    doc = JSON.parse(readFileSync(abs, 'utf8'));
+  } catch (e) {
+    coverageLost(`${label} could not be parsed (${e.message}), so every executed floor is unreadable at once.`);
+  }
+  const floor = readExecutedFloor(doc);
+  if (floor.state === 'invalid') {
+    coverageLost(`${label} is not a valid executed floor: ${floor.reason}.`);
+  }
+  if (floor.state === 'unfilled') {
+    console.log(
+      `executed floor: not yet filled — ${label} carries "filledFrom": null and no suite floors. The first fill is ` +
+        'written by `node tooling/scripts/refresh-executed-floor.mjs <run-id>` from the guard-tests-junit artifact ' +
+        'of the first GREEN ci.yml run on main after the upload step landed. Until then a deleted loop-generated ' +
+        'case is NOT caught by this limb.',
+    );
+    return 0;
+  }
+  const windows = cases.filter((c) => isWindowsPath(c.file));
+  if (windows.length) {
+    coverageLost(
+      `${windows.length} case(s) in ${args.junit} were run on a WINDOWS host (e.g. ${JSON.stringify(windows[0].file)}).`,
+      `The floor in ${label} is a Linux ubuntu-24.04 measurement, and suites run fewer cases on Windows (platform`,
+      'skips), so the comparison would red on correct code or, worse, teach someone to lower the floor. Drop',
+      '--executed-floor locally; only guard-meta passes it.',
+    );
+  }
+  const collided = Object.keys(floor.suites).filter((s) => (dirs.get(s) ?? []).length > 1);
+  if (collided.length) {
+    coverageLost(
+      `${collided.length} floored suite(s) were contributed by MORE THAN ONE directory in ${args.junit}:`,
+      ...collided.map((s) => `${s} — seen under ${dirs.get(s).map((d) => JSON.stringify(d)).join(' and ')}`),
+      'Their counts would ADD and hide a drop below the executed floor.',
+    );
+  }
+  const { drops, lost, rises, unfloored, held } = compareExecutedFloor(floor.suites, counts);
+  if (lost.length) {
+    coverageLost(
+      `${lost.length} suite(s) with an executed floor in ${label} ran NOTHING in ${args.junit}:`,
+      ...lost.slice(0, 12).map((s) => `${s} — floor ${floor.suites[s]}, absent from the report`),
+      ...(lost.length > 12 ? [`… and ${lost.length - 12} more`] : []),
+      'A suite that vanished lost every case it ran. If it was deliberately retired or renamed, lower it with',
+      '`refresh-executed-floor.mjs <run-id> --lower <suite> --reason "…"` in its own commit.',
+    );
+  }
+  if (drops.length) {
+    console.error(`✗ ${drops.length} suite(s) ran FEWER cases than their executed floor — a case that ran before no longer runs:`);
+    for (const d of drops) {
+      console.error(`    ${d.suite} — executed floor ${d.floor}, executed ${d.executed}. ${d.floor - d.executed} case(s) gone.`);
+    }
+    console.error('');
+    console.error('  This is the loop-generated case the declared floor cannot see: a row deleted from a table that a');
+    console.error('  `for` loop turns into test(...) calls. Restore it, or — if the removal is deliberate — lower the floor');
+    console.error('  ALONE, in its own commit: refresh-executed-floor.mjs <run-id> --lower <suite> --reason "…".');
+    console.error('assert-case-count-honest: FAILED (executed floor)');
+    return 1;
+  }
   console.log(
-    `ok  case-count honesty — ${arbitrated.length} recorded floor(s) in ${manifestLabel} were each compared against ` +
-      `the cases node REPORTED running in ${args.junit} (${total} case(s) across ${counts.size} file(s)), and every ` +
-      `one satisfies floor <= executed. Total slack ${slack} case(s) — cases that RUN without being DECLARED, which ` +
-      'is the loop-generated shape countCases cannot see and is the reason this is a floor and not an equality. ' +
-      'The floor is no longer graded by the counter that produced it [pipeline F-10]',
+    `ok  executed floor — ${held} suite(s) in ${label} (filled from run ${doc.filledFrom.run}) each ran at least ` +
+      `their Linux executed floor; ${rises.length} rose (never a failure; the floor rises only by the refresh ` +
+      `script), ${unfloored.length} suite(s) in the report are not floored yet and join at the next refresh ` +
+      '[O-COVERAGE-MANIFEST-LOOP-CASES]',
   );
+  return 0;
 }
 
 const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
