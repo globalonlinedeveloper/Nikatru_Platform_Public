@@ -415,20 +415,20 @@ describe('assert-cors-allowlist', () => {
   // ── anti-vacuity [pipeline F-10] ──────────────────────────────────────────
   test('COVERAGE LOST on an empty catalogue', () => {
     const { code, out } = run(tree({ apps: [] }));
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST — the catalogue yielded 0 origin\(s\)/);
     assert.match(out, /passes forever/);
   });
 
   test('COVERAGE LOST when the catalogue file is absent', () => {
     const { code, out } = run(tree({ apps: null }));
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST — no catalogue at catalog\/apps\.json/);
   });
 
   test('COVERAGE LOST when fewer than two Worker configs are found', () => {
     const { code, out } = run(tree({ workers: { platform: REAL.platform } }));
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST — found 1 Worker config\(s\)/);
   });
 

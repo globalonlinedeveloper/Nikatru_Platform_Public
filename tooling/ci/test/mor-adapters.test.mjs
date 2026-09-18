@@ -532,7 +532,7 @@ describe('assert-mor-adapters — one verifier between a provider and the entitl
 
   test('COVERAGE LOST when the legal provider register is gone', () => {
     const r = run({ legalRegister: null });
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST — tooling\/legal\/provider-register\.json does not exist/);
   });
 
@@ -544,7 +544,7 @@ describe('assert-mor-adapters — one verifier between a provider and the entitl
 
   test('COVERAGE LOST when the provider registry is empty', () => {
     const r = run({ registry: REGISTRY_TS.replace('[paddleVerifier]', '[]') });
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST — .* registers ZERO verifiers/);
   });
 
@@ -688,7 +688,7 @@ describe('the money writer writes a DECIDABLE row — the world column [2026-08-
       'the blind statement must carry NO column list, or this case is the previous one',
     );
     const r = run({ store: two });
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(
       r.out,
       /COVERAGE LOST — services\/platform\/src\/lib\/mor\/store\.ts carries 2 `INSERT INTO entitlements` statement\(s\) and this check could read the column list of only 1/,
@@ -703,7 +703,7 @@ describe('the money writer writes a DECIDABLE row — the world column [2026-08-
     assert.doesNotMatch(blind, /INSERT INTO entitlements\s*\(/, 'the columnless fixture did not build');
     assert.match(blind, /INSERT INTO entitlements/);
     const r = run({ store: blind });
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(
       r.out,
       /COVERAGE LOST — services\/platform\/src\/lib\/mor\/store\.ts carries 1 `INSERT INTO entitlements` statement\(s\) and this check could read the column list of only 0/,
@@ -720,7 +720,7 @@ describe('the money writer writes a DECIDABLE row — the world column [2026-08-
     );
     assert.doesNotMatch(upd, /INSERT INTO entitlements/, 'the no-insert fixture did not build');
     const r = run({ store: upd });
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(
       r.out,
       /COVERAGE LOST — services\/platform\/src\/lib\/mor\/store\.ts is declared with a `provider_environment` column requirement/,

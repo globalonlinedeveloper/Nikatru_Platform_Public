@@ -143,7 +143,7 @@ export function collectTargets(repoRoot) {
     console.error(`✗ COVERAGE LOST — read ZERO workflow files under ${wfDir}.`);
     console.error('  The CI runner, SDK and tool pins live in those files; without them this scan compares the');
     console.error('  remaining targets with each other and still prints "ok".');
-    process.exit(1);
+    coverageLost();
   }
   // 🔴 REQUIRED, NEVER existsSync-GATED — and this is the BRICK_PKG lesson below
   // being paid for a second time. Both of these landed `if (existsSync)` on
@@ -165,7 +165,7 @@ export function collectTargets(repoRoot) {
       console.error(`✗ COVERAGE LOST — required target ${rel} is missing under ${repoRoot}.`);
       console.error('  It is deliberately not existsSync-gated: a target that can vanish silently shrinks');
       console.error('  this scan while it still prints "ok". If the file moved, fix the path in the same change.');
-      process.exit(1);
+      coverageLost();
     }
     TARGETS.push(rel);
   }
@@ -186,7 +186,7 @@ export function collectTargets(repoRoot) {
       console.error('  `gitleaks` pin. With the file gone this guard no longer compares the two copies at all,');
       console.error('  while Renovate keeps advancing the one in tooling/versions.json. If the scanner moved,');
       console.error('  fix this path, the rule and the REQUIRED_YIELD entry in the same change.');
-      process.exit(1);
+      coverageLost();
     }
     TARGETS.push(rel);
   }
@@ -226,7 +226,7 @@ export function collectTargets(repoRoot) {
     console.error(`  Looked under ${appsDir}. The Gradle and Kotlin java rules now scan NOTHING, so what the`);
     console.error('  Android build EMITS is unchecked while the workflow `java-version:` input still agrees');
     console.error('  with versions.json. If the module moved, update this discovery in the same change.');
-    process.exit(1);
+    coverageLost();
   }
   // 🔴 THE BRICK'S STAMPED SERVICE, added 2026-07-31 after it took `main` red.
   // Every real service here has a COMMITTED package-lock.json and is therefore
@@ -249,7 +249,7 @@ export function collectTargets(repoRoot) {
     console.error('  The "Wrangler (brick dep)" rule now scans NOTHING, and the global MIN_OCCURRENCES floor');
     console.error('  is satisfied by the workflows alone — the caret this rule exists to block would come back');
     console.error('  unseen. If the brick moved, update this path in the same change.');
-    process.exit(1);
+    coverageLost();
   }
   TARGETS.push(BRICK_PKG);
 
@@ -420,13 +420,13 @@ function main() {
   // module proved it by passing at 85 references across 14 files with the file
   // hidden. A guard's comment overstating the guard is worse than the hole,
   // because the next reader stops checking.
-  const coverageLost = [];
+  const lostBlocks = [];
   for (const rel of TARGETS) {
     for (const req of REQUIRED_YIELD) {
       if (!req.where.test(rel)) continue;
       const n = yields.get(rel)?.get(req.key) ?? 0;
       if (n < req.min) {
-        coverageLost.push([
+        lostBlocks.push([
           `✗ COVERAGE LOST — ${rel} yielded ${n} \`${req.key}\` reference(s), expected at least ${req.min}.`,
           `  Expected there: ${req.what}.`,
           '  The rule stopped matching this file; the file did not stop declaring a version.',
@@ -437,14 +437,14 @@ function main() {
 
   // ── coverage self-check, BEFORE reporting clean ──────────────────────────────
   if (found < MIN_OCCURRENCES) {
-    coverageLost.push([
+    lostBlocks.push([
       `✗ COVERAGE LOST — matched ${found} version reference(s), expected at least ${MIN_OCCURRENCES}.`,
       '  The scan is broken, not the tree.',
     ]);
   }
 
   // ── ONE report, then one exit ────────────────────────────────────────────────
-  for (const block of coverageLost) for (const line of block) console.error(line);
+  for (const block of lostBlocks) for (const line of block) console.error(line);
   if (problems.length) {
     console.error(`✗ ${problems.length} version drift problem(s):`);
     for (const p of problems) console.error(`    ${p}`);
@@ -455,10 +455,18 @@ function main() {
     console.error('  REFUSES (exit 2, writing nothing) at any site that cannot hold the declared value —');
     console.error('  the `java`/`node` floor class renovate.json describes, which stays a hand decision.');
   }
-  if (coverageLost.length || problems.length) process.exit(1);
+  if (problems.length) process.exit(1); else if (lostBlocks.length) coverageLost(); // a drift is a finding (1); only COVERAGE LOST is could-not-look (2)
 
   console.log(`ok  version consistency — ${found} reference(s) across ${TARGETS.length} file(s), all match versions.json`);
 }
 
 const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
 if (isMain) main();
+
+/** The one COVERAGE LOST stop: each could-not-look branch above prints its own reason and ends
+ *  here, so the run exits 2 — never 1, which would read as a finding (AGENTS.md exit-code
+ *  convention, O-EXIT2-CONVENTION-GAP). Declared LAST (hoisted) so every `assert-version-consistency.mjs:NNN`
+ *  citation above keeps pointing at the line it names. */
+function coverageLost() {
+  process.exit(2);
+}

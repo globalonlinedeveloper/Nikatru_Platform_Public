@@ -523,7 +523,7 @@ describe('[13]T-1a a stamped app carries no push rail', () => {
   test('COVERAGE LOST when the dependency parse stops finding what the file plainly declares', () => {
     const root = tree('demo', { pubspec: stampedPubspec('demo', { block: 'xdependencies' }) });
     const r = run(root, '--client', 'demo');
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(r.stderr, /COVERAGE LOST — the dependency parse/);
   });
 
@@ -620,7 +620,7 @@ describe('[S-6] cron triggers are portfolio-wide, so they live in ONE Worker', (
       },
     });
     const r = run(root, '--client', 'demo');
-    assert.equal(r.status, 1, r.stdout);
+    assert.equal(r.status, 2, r.stdout);
     assert.match(r.stderr, /COVERAGE LOST/);
     assert.match(r.stderr, /services\/other-api\/wrangler\.jsonc — the directory exists but carries no wrangler\.jsonc/);
   });
@@ -649,13 +649,13 @@ describe('[S-6] cron triggers are portfolio-wide, so they live in ONE Worker', (
 
   test('COVERAGE LOST when the exempt home services/platform was never read', () => {
     const r = run(tree('demo', { platform: null, mutate: (t) => t.write('services/other-api/wrangler.jsonc', '{}') }), '--client', 'demo');
-    assert.equal(r.status, 1, r.stdout);
+    assert.equal(r.status, 2, r.stdout);
     assert.match(r.stderr, /never read services\/platform\/wrangler\.jsonc/);
   });
 
   test('COVERAGE LOST when there is no services/ tree at all', () => {
     const r = run(tree('demo', { platform: null }), '--client', 'demo');
-    assert.equal(r.status, 1, r.stdout);
+    assert.equal(r.status, 2, r.stdout);
     assert.match(r.stderr, /found no service directories under services\//);
   });
 
@@ -664,7 +664,7 @@ describe('[S-6] cron triggers are portfolio-wide, so they live in ONE Worker', (
       mutate: (t) => t.write('services/other-api/wrangler.jsonc', '{ this is not json'),
     });
     const r = run(root, '--client', 'demo');
-    assert.equal(r.status, 1, r.stdout);
+    assert.equal(r.status, 2, r.stdout);
     assert.match(r.stderr, /is not parseable JSONC/);
   });
 });

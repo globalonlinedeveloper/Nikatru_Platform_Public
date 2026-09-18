@@ -452,7 +452,7 @@ if (coverage.length) {
   for (const c of coverage) console.error(`    ${c}`);
   console.error('');
   console.error('  A scan over nothing prints "ok". See the header of tooling/ci/assert-no-do-alarms.mjs.');
-  process.exit(1);
+  if (problems.length === 0) coverageLost(); // with a finding beside it, the report below prints it and exits 1
 }
 
 if (problems.length) {
@@ -476,3 +476,11 @@ console.log(
     `${perRoot.filter((p) => !p.skipped).length} Worker root(s) ` +
     `[${perRoot.map((p) => `${p.config}=${p.skipped ? 'config-only' : p.files}`).join(', ')}]`,
 );
+
+/** The one COVERAGE LOST stop: each could-not-look branch above prints its own reason and ends
+ *  here, so the run exits 2 — never 1, which would read as a finding (AGENTS.md exit-code
+ *  convention, O-EXIT2-CONVENTION-GAP). Declared LAST (hoisted) so every `assert-no-do-alarms.mjs:NNN`
+ *  citation above keeps pointing at the line it names. */
+function coverageLost() {
+  process.exit(2);
+}

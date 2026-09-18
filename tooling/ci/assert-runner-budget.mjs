@@ -165,6 +165,16 @@ const usd = (n) => `$${n.toFixed(2)}`;
 /** The one shape of "I could not look". Never 0, never 1. */
 export class CouldNotLook extends Error {}
 
+/** The one "could not look" STOP: prints FAIL, sets exit 2 (AGENTS.md: 2 = COVERAGE LOST, never a
+ *  finding) and returns it for main(). Every could-not-look path below returns through this, so the
+ *  exit is named in one body assert-guard-coverage limb 2b can read (O-EXIT2-CONVENTION-GAP). */
+function coverageLost(first, ...rest) {
+  console.error(`FAIL  ${first}`);
+  for (const l of rest) console.error(`      ${l}`);
+  process.exitCode = EXIT_COULD_NOT_LOOK;
+  return EXIT_COULD_NOT_LOOK;
+}
+
 /** `YYYY-MM` of an instant, in UTC. The ledger stamps every row at the first of
  *  its month in UTC, so the comparison has to be made in the same zone or a
  *  run in the first hours of a month reads the previous one as current. */
@@ -350,8 +360,7 @@ async function main() {
 
   const nowMs = nowFlag ? Date.parse(nowFlag) : Date.now();
   if (Number.isNaN(nowMs)) {
-    console.error(`FAIL  --now is not a parseable date: ${nowFlag}`);
-    return EXIT_COULD_NOT_LOOK;
+    return coverageLost(`--now is not a parseable date: ${nowFlag}`);
   }
 
   const token = process.env.GH_BILLING_TOKEN || process.env.GITHUB_TOKEN || process.env.GH_TOKEN || null;
@@ -362,8 +371,7 @@ async function main() {
     try {
       body = readFixture(usageFile, 'usage');
     } catch (e) {
-      console.error(`FAIL  ${e.message}`);
-      return EXIT_COULD_NOT_LOOK;
+      return coverageLost(e.message);
     }
   } else if (token === null) {
     // ── the dated tripwire ──────────────────────────────────────────────────
@@ -391,9 +399,10 @@ async function main() {
     try {
       body = await fetchUsage(owner, token);
     } catch (e) {
-      console.error(`FAIL  could not read the Actions usage ledger — ${e.message}`);
-      console.error('      Exit 2, deliberately: "I could not look" must never read as "I looked and it was fine".');
-      return EXIT_COULD_NOT_LOOK;
+      return coverageLost(
+        `could not read the Actions usage ledger — ${e.message}`,
+        'Exit 2, deliberately: "I could not look" must never read as "I looked and it was fine".',
+      );
     }
   }
 
@@ -402,8 +411,7 @@ async function main() {
     verdict = evaluateUsage(body, nowMs);
   } catch (e) {
     if (!(e instanceof CouldNotLook)) throw e;
-    console.error(`FAIL  the Actions usage ledger could not be counted — ${e.message}`);
-    return EXIT_COULD_NOT_LOOK;
+    return coverageLost(`the Actions usage ledger could not be counted — ${e.message}`);
   }
 
   // ── consumption, printed on every run ───────────────────────────────────────

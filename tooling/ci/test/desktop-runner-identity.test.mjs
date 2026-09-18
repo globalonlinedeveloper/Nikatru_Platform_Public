@@ -258,7 +258,7 @@ describe('coverage — an empty evaluation set is never green', () => {
         edit(root, GRADLE, stripGradleId);
       },
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /COVERAGE LOST/);
       },
     );
@@ -280,7 +280,7 @@ describe('coverage — an empty evaluation set is never green', () => {
         rmSync(join(root, APP, 'macos'), { recursive: true, force: true });
       },
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /COVERAGE LOST: no app under apps\//);
       },
     );
@@ -290,7 +290,7 @@ describe('coverage — an empty evaluation set is never green', () => {
     withTree(
       (root) => rmSync(join(root, 'apps'), { recursive: true, force: true }),
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /COVERAGE LOST/);
       },
     );

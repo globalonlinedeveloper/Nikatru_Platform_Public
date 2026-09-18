@@ -66,8 +66,8 @@ const argOf = (flag) => {
 const clientApp = argOf('--client');
 const backendApp = argOf('--backend');
 
-const failures = [];
-const fail = (msg) => failures.push(msg);
+const problems = [];
+const fail = (msg) => problems.push(msg); const coverageLost = (m) => problems.push(`COVERAGE LOST — ${m}`); // exit 2 only if EVERY problem is one (summary below)
 const ok = (msg) => console.log(`  ok  ${msg}`);
 
 /** Strip // and block comments from JSONC, drop trailing commas, then parse.
@@ -203,8 +203,8 @@ function assertNoPushDependency(appId) {
   const parsed = new Set(deps.map((d) => d.name));
   const missed = rawShared.filter((n) => !parsed.has(n));
   if (deps.length === 0 || missed.length) {
-    fail(
-      `COVERAGE LOST — the dependency parse of apps/${appId}/pubspec.yaml found ${deps.length} entry(ies) ` +
+    coverageLost(
+      `the dependency parse of apps/${appId}/pubspec.yaml found ${deps.length} entry(ies) ` +
         `and missed ${missed.length} shared package(s) the file plainly declares (${missed.join(', ') || 'none'}). ` +
         'A stamp that declares nothing reads identically to a stamp that declares no push rail.',
     );
@@ -284,8 +284,8 @@ if (clientApp) {
     // repo's most repeated failure, so the scan now proves it reached the tree
     // before its result is believed.
     if (scanned.length < MIN_CLIENT_SOURCES) {
-      fail(
-        `COVERAGE LOST — the banned-name scan read only ${scanned.length} source file(s) under ` +
+      coverageLost(
+        `the banned-name scan read only ${scanned.length} source file(s) under ` +
           `${appDir} (expected at least ${MIN_CLIENT_SOURCES}). The scan is broken, not the tree: ` +
           'a scan that reaches nothing reports clean.',
       );
@@ -494,8 +494,8 @@ const CRON_HOME = 'platform';
     // COVERAGE ASSERTION. "No configs found → ok" is the shape this whole repo
     // keeps re-learning; a cron scan that reaches nothing reports a clean
     // portfolio.
-    fail(
-      'COVERAGE LOST — the cron scan found no service directories under services/. ' +
+    coverageLost(
+      'the cron scan found no service directories under services/. ' +
         'A scan over an empty set proves no cron exists anywhere, which is how a guard ' +
         'reports healthy while enforcing nothing.',
     );
@@ -543,11 +543,11 @@ const CRON_HOME = 'platform';
     }
 
     for (const u of unreadable) {
-      fail(`COVERAGE LOST — ${u}. The cron limb did not examine it, so its result is unknown, not clean.`);
+      coverageLost(`${u}. The cron limb did not examine it, so its result is unknown, not clean.`);
     }
     if (!parsed.includes(CRON_HOME)) {
-      fail(
-        `COVERAGE LOST — the cron scan never read services/${CRON_HOME}/wrangler.jsonc, which is the ` +
+      coverageLost(
+        `the cron scan never read services/${CRON_HOME}/wrangler.jsonc, which is the ` +
           'one directory the rule exempts. Without it the scan is not looking at this repo\'s ' +
           'services/ tree at all, and every "no cron here" result below is about some other tree.',
       );
@@ -568,10 +568,10 @@ if (!clientApp && !backendApp) {
   process.exit(1);
 }
 
-if (failures.length) {
+if (problems.length) {
   console.error('\nCLONE CONTRACT VIOLATED:');
-  for (const f of failures) console.error(`  ✗ ${f}`);
+  for (const f of problems) console.error(`  ✗ ${f}`);
   console.error('\nSee Private/decisions/020-brick-clone-contract.md.');
-  process.exit(1);
+  process.exit(problems.every((p) => p.startsWith('COVERAGE LOST')) ? 2 : 1); // 2 = could not look (every problem is COVERAGE LOST); 1 = a finding
 }
 console.log('clone contract holds.');

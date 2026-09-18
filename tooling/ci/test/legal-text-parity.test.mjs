@@ -209,32 +209,32 @@ describe('assert-legal-text-parity — a document published twice says the same 
 
   test('COVERAGE LOST when one published copy is missing', () => {
     const r = run({ ext: null });
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST — extensions\/Extension\/Full_Screen_Shot\/publish\/PRIVACY-POLICY\.html does not exist/);
   });
 
   test('COVERAGE LOST when BOTH published copies are missing — one copy is not parity', () => {
     const r = run({ ext: null, site: null });
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /only 0 readable published copy\/copies/);
   });
 
   test('COVERAGE LOST when the Markdown source is missing', () => {
     const r = run({ md: null });
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST — contracts\/legal\/fullshot-privacy\.md does not exist/);
   });
 
   test('COVERAGE LOST when the source is below the character floor', () => {
     // Two nearly-empty documents agree with each other and with anything else.
     const r = run({ md: '# Tiny\n\nnothing much.\n' });
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /below the 2000 floor/);
   });
 
   test('COVERAGE LOST when a published copy has no <body>', () => {
     const r = run({ ext: '<html><head><title>x</title></head></html>\n' });
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /has no <body>/);
   });
 
@@ -437,7 +437,7 @@ describe('assert-legal-text-parity — assertion 3: the published BYTES are the 
     writeFileSync(join(r.root, REAL.renderer), 'process.exit(3);\n');
     const again = spawnSync(process.execPath, [GUARD, r.root], { encoding: 'utf8' });
     const out = `${again.stdout ?? ''}${again.stderr ?? ''}`;
-    assert.equal(again.status, 1, out);
+    assert.equal(again.status, 2, out);
     assert.match(out, /COVERAGE LOST — contracts\/legal\/render-fullshot-privacy\.mjs exited 3/);
   });
 });

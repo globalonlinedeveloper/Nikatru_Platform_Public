@@ -233,19 +233,19 @@ for (const slug of appsDir) {
 // file formats changed under the parser and it is now matching nothing.
 if (!existsSync(APPS)) {
   console.error(`COVERAGE LOST: ${APPS} does not exist. If apps/ moved, re-point this guard. Do not delete it.`);
-  process.exit(1);
+  coverageLost();
 }
 if (appsWithDesktop === 0) {
   console.error('COVERAGE LOST: no app under apps/ has a windows/ or macos/ runner.');
   console.error('  Every desktop identity field in the factory is unchecked. If desktop was dropped,');
   console.error('  retire this guard deliberately; do not let it report green over an empty set.');
-  process.exit(1);
+  coverageLost();
 }
 if (fieldsChecked === 0) {
   console.error('COVERAGE LOST: desktop runners exist but zero identity fields were read.');
   console.error('  The Runner.rc / AppInfo.xcconfig format changed and the parsers now match nothing —');
   console.error('  which looks exactly like every field being correct.');
-  process.exit(1);
+  coverageLost();
 }
 
 prints.push(`${appsWithDesktop} app(s) with a desktop runner · ${fieldsChecked} identity field(s) read`);
@@ -264,3 +264,11 @@ if (problems.length) {
 
 console.log('assert-desktop-runner-identity: OK');
 for (const p of prints) console.log(`  · ${p}`);
+
+/** The one COVERAGE LOST stop: each could-not-look branch above prints its own reason and ends
+ *  here, so the run exits 2 — never 1, which would read as a finding (AGENTS.md exit-code
+ *  convention, O-EXIT2-CONVENTION-GAP). Declared LAST (hoisted) so every `assert-desktop-runner-identity.mjs:NNN`
+ *  citation above keeps pointing at the line it names. */
+function coverageLost() {
+  process.exit(2);
+}

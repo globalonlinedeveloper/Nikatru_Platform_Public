@@ -321,7 +321,7 @@ describe('assert-no-do-alarms — the enumeration reaches outside services/', ()
 describe('assert-no-do-alarms — COVERAGE LOST rather than a vacuous pass', () => {
   test('zero wrangler configs fails', () => {
     const { code, out } = run({ 'README.md': 'no workers here\n' });
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /found ZERO wrangler configs/);
   });
@@ -331,14 +331,14 @@ describe('assert-no-do-alarms — COVERAGE LOST rather than a vacuous pass', () 
       'services/subscriptiontracker-api/wrangler.jsonc': config(),
       'services/subscriptiontracker-api/src/index.ts': 'export default {};\n',
     });
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /never reached services\/platform\/wrangler\.jsonc/);
   });
 
   test('a Worker that declares `main` but yields no source file fails', () => {
     const { code, out } = withAnchor({ 'services/a-api/wrangler.jsonc': config() });
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /declares `main`/);
   });
@@ -348,7 +348,7 @@ describe('assert-no-do-alarms — COVERAGE LOST rather than a vacuous pass', () 
       'services/a-api/wrangler.jsonc': '{ "name": "a-api", oops }\n',
       'services/a-api/src/index.ts': 'export default {};\n',
     });
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /not parseable/);
   });
@@ -358,7 +358,7 @@ describe('assert-no-do-alarms — COVERAGE LOST rather than a vacuous pass', () 
       'services/a-api/wrangler.jsonc': config('  "durable_objects": "see the dashboard"'),
       'services/a-api/src/index.ts': 'export default {};\n',
     });
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /is not an array/);
   });

@@ -116,7 +116,7 @@ const MIN_COPIES_PER_DOCUMENT = 2;
 const SPAN = '\uE000';
 
 const problems = [];
-const fail = (m) => problems.push(m);
+const fail = (m) => problems.push(m); const coverageLost = (m) => problems.push(`COVERAGE LOST — ${m}`); // exit 2 only if EVERY problem is one (summary below)
 const prints = [];
 
 /** Is this run grading the repository this guard lives in? A synthetic tree
@@ -206,7 +206,7 @@ const publishedForm = (text) =>
 function htmlBody(html, file) {
   const m = /<body[^>]*>([\s\S]*?)<\/body\s*>/i.exec(html);
   if (!m) {
-    fail(`COVERAGE LOST — ${file} has no <body>…</body>, so there is no published text to compare.`);
+    coverageLost(`${file} has no <body>…</body>, so there is no published text to compare.`);
     return null;
   }
   return m[1];
@@ -229,14 +229,14 @@ function firstDifference(a, b) {
 // ── COVERAGE, FIRST ─────────────────────────────────────────────────────────
 if (DOCUMENTS.length === 0) {
   console.error('✗ COVERAGE LOST — the DOCUMENTS table is empty, so this guard compared nothing.');
-  process.exit(1);
+  process.exit(2); // COVERAGE LOST: could not look, not a finding
 }
 
 const legalAbs = join(ROOT, LEGAL_DIR);
 if (!existsSync(legalAbs)) {
   console.error(`✗ COVERAGE LOST — ${LEGAL_DIR}/ does not exist under ${ROOT}, so the sweep read nothing.`);
   console.error('  A parity guard whose subject directory is gone reports a clean run over an empty set.');
-  process.exit(1);
+  process.exit(2); // COVERAGE LOST: could not look, not a finding
 }
 
 // A .md in contracts/legal that no row covers is UNGRADED, and an ungraded legal
@@ -254,7 +254,7 @@ for (const f of onDisk) {
   }
 }
 if (onDisk.length === 0) {
-  fail(`COVERAGE LOST — no .md found under ${LEGAL_DIR}/, so the sweep that proves this table is complete read nothing.`);
+  coverageLost(`no .md found under ${LEGAL_DIR}/, so the sweep that proves this table is complete read nothing.`);
 }
 
 // ── the two assertions ──────────────────────────────────────────────────────
@@ -264,13 +264,13 @@ let copiesChecked = 0;
 for (const doc of DOCUMENTS) {
   const sourceAbs = join(ROOT, doc.source);
   if (!existsSync(sourceAbs)) {
-    fail(`COVERAGE LOST — ${doc.source} does not exist, so its ${doc.copies.length} published copy/copies are compared to nothing.`);
+    coverageLost(`${doc.source} does not exist, so its ${doc.copies.length} published copy/copies are compared to nothing.`);
     continue;
   }
   const sourceText = markdownVisibleText(readFileSync(sourceAbs, 'utf8'));
   if (sourceText.length < MIN_CHARACTERS) {
-    fail(
-      `COVERAGE LOST — ${doc.source} reduced to ${sourceText.length} character(s), below the ${MIN_CHARACTERS} floor. ` +
+    coverageLost(
+      `${doc.source} reduced to ${sourceText.length} character(s), below the ${MIN_CHARACTERS} floor. ` +
         'Two nearly-empty documents agree with each other and with anything else.',
     );
     continue;
@@ -280,15 +280,15 @@ for (const doc of DOCUMENTS) {
   for (const copy of doc.copies) {
     const abs = join(ROOT, copy.file);
     if (!existsSync(abs)) {
-      fail(`COVERAGE LOST — ${copy.file} does not exist. It is ${copy.what}, and it was compared to nothing.`);
+      coverageLost(`${copy.file} does not exist. It is ${copy.what}, and it was compared to nothing.`);
       continue;
     }
     const bodyHtml = htmlBody(readFileSync(abs, 'utf8'), copy.file);
     if (bodyHtml === null) continue;
     const text = publishedForm(visibleText(bodyHtml));
     if (text.length < MIN_CHARACTERS) {
-      fail(
-        `COVERAGE LOST — ${copy.file} reduced to ${text.length} character(s) of visible text, below the ` +
+      coverageLost(
+        `${copy.file} reduced to ${text.length} character(s) of visible text, below the ` +
           `${MIN_CHARACTERS} floor. An empty page matches an empty page.`,
       );
       continue;
@@ -298,8 +298,8 @@ for (const doc of DOCUMENTS) {
   }
 
   if (read.length < MIN_COPIES_PER_DOCUMENT) {
-    fail(
-      `COVERAGE LOST — only ${read.length} readable published copy/copies of ${doc.source}, and parity needs ` +
+    coverageLost(
+      `only ${read.length} readable published copy/copies of ${doc.source}, and parity needs ` +
         `${MIN_COPIES_PER_DOCUMENT}. "Compared nothing, found nothing wrong" is not a pass.`,
     );
     continue;
@@ -340,12 +340,12 @@ for (const doc of DOCUMENTS) {
 let byteComparisons = 0;
 for (const doc of DOCUMENTS) {
   if (typeof doc.renderer !== 'string' || doc.renderer === '') {
-    fail(`COVERAGE LOST — ${doc.source} names no \`renderer\`, so its published BYTES are compared to nothing.`);
+    coverageLost(`${doc.source} names no \`renderer\`, so its published BYTES are compared to nothing.`);
     continue;
   }
   if (!existsSync(join(ROOT, doc.renderer))) {
     if (SCANNING_OWN_REPO) {
-      fail(`COVERAGE LOST — ${doc.renderer} does not exist, so no published copy of ${doc.source} is compared to what renders.`);
+      coverageLost(`${doc.renderer} does not exist, so no published copy of ${doc.source} is compared to what renders.`);
     }
     continue; // a synthetic tree without the renderer is exercising assertions 1 and 2
   }
@@ -359,7 +359,7 @@ for (const doc of DOCUMENTS) {
     const r = spawnSync(process.execPath, [join(scratch, doc.renderer)], { cwd: scratch, encoding: 'utf8', timeout: 60_000 });
     if (r.status !== 0) {
       const tail = `${r.stdout ?? ''}${r.stderr ?? ''}`.trim().split(/\r?\n/).slice(-6).join(' ⏎ ');
-      fail(`COVERAGE LOST — ${doc.renderer} exited ${r.status ?? r.error?.code} rendering ${doc.source} into a scratch tree, so no byte comparison ran: ${tail}`);
+      coverageLost(`${doc.renderer} exited ${r.status ?? r.error?.code} rendering ${doc.source} into a scratch tree, so no byte comparison ran: ${tail}`);
       continue;
     }
     for (const copy of doc.copies) {
@@ -367,7 +367,7 @@ for (const doc of DOCUMENTS) {
       if (!existsSync(servedAbs)) continue; // already COVERAGE LOST in assertion 1
       const renderedAbs = join(scratch, copy.file);
       if (!existsSync(renderedAbs)) {
-        fail(`COVERAGE LOST — ${doc.renderer} ran and wrote no ${copy.file}. The copy this guard grades is not one the renderer produces.`);
+        coverageLost(`${doc.renderer} ran and wrote no ${copy.file}. The copy this guard grades is not one the renderer produces.`);
         continue;
       }
       // ⏱ 2026-09-11 — THE MARKERS ARE SET ASIDE ON BOTH SIDES. The renderer now
@@ -403,11 +403,11 @@ for (const doc of DOCUMENTS) {
   }
 }
 if (SCANNING_OWN_REPO && byteComparisons === 0 && problems.length === 0) {
-  fail('COVERAGE LOST — assertion 3 compared ZERO published copies to their renderer on the repository itself.');
+  coverageLost('assertion 3 compared ZERO published copies to their renderer on the repository itself.');
 }
 
 if (comparisons === 0) {
-  fail('COVERAGE LOST — not one text comparison was performed, so every limb above is dark.');
+  coverageLost('not one text comparison was performed, so every limb above is dark.');
 }
 
 if (problems.length) {
@@ -416,7 +416,7 @@ if (problems.length) {
   console.error('');
   console.error('  A published legal document that says two different things in two places is a');
   console.error('  misstatement in whichever one is wrong, and nothing tells you which.');
-  process.exit(1);
+  process.exit(problems.every((p) => p.startsWith('COVERAGE LOST')) ? 2 : 1); // 2 = could not look (every problem is COVERAGE LOST); 1 = a finding
 }
 
 console.log(

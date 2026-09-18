@@ -268,14 +268,14 @@ describe('the guard knows when it is not looking', () => {
     rmSync(join(root, 'packages', 'telemetry'), { recursive: true, force: true });
     rmSync(join(root, 'packages', 'storage'), { recursive: true, force: true });
     const { code, out } = run(root);
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /The scan is broken, not the tree/);
   });
 
   test('COVERAGE LOST when the register file is absent', () => {
     const { code, out } = run(tree({ omitRegister: true }));
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST — no capability register/);
   });
 
@@ -547,7 +547,7 @@ describe('check 5 — the fork scan knows which per-app roots it does not read',
         },
       }),
     );
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST — `tooling\/bricks\/app2\/__brick__\/apps\/\{\{app_id\}\}` is a per-app consumerRoot/);
     assert.match(out, /no entry in FORK_SCAN_DELEGATED hands to another guard/);
   });
@@ -559,7 +559,7 @@ describe('check 5 — the fork scan knows which per-app roots it does not read',
     const { code, out } = run(
       tree({ mutate: (reg, files, r) => addConsumerRoot(reg, files, r, BRICK_ROOT) }),
     );
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /is delegated to `tooling\/ci\/assert-no-seam-forks\.mjs`, which does not exist/);
   });
 
@@ -578,7 +578,7 @@ describe('check 5 — the fork scan knows which per-app roots it does not read',
         },
       }),
     );
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /holds no `\.dart` file at all/);
     assert.match(out, /the delegation now covers an empty set/i);
   });

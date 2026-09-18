@@ -213,7 +213,7 @@ describe('assert-repo-posture', () => {
   // ── COVERAGE — a scan that stopped reaching must say so, not report clean ──
   test('COVERAGE: a missing brick app_config is COVERAGE LOST, not a pass', () => {
     const r = run(repo({ brickConfig: false }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(r.stderr, /COVERAGE LOST — cannot read/);
     assert.match(r.stderr, /where the support address is DECIDED/);
   });
@@ -225,20 +225,20 @@ describe('assert-repo-posture', () => {
       'class AppConfig {\n  static const String appId = "x";\n}\n',
     );
     const r = run(root);
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(r.stderr, /declares no AppConfig\.supportEmail/);
   });
 
   test('COVERAGE: zero app configs is COVERAGE LOST — an empty domain is vacuously true', () => {
     const r = run(repo({ appEmails: [] }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(r.stderr, /COVERAGE LOST — no apps/);
     assert.match(r.stderr, /ranged over nothing/);
   });
 
   test('COVERAGE: a missing contact page is COVERAGE LOST, not a silent skip', () => {
     const r = run(repo({ contactPage: false }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(r.stderr, /COVERAGE LOST — cannot read sites\/nikatru\/contact\.html/);
   });
 });
