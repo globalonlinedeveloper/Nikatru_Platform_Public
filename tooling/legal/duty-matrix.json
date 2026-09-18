@@ -383,10 +383,16 @@
       "id": "play-ai-content-declaration",
       "requirement": "K-13",
       "duty": "Google Play's declaration requirement for apps that generate AI content, and the date it takes effect.",
-      "status": "watching",
-      "trigger": "The day an app generates content at runtime (as opposed to shipping content generated once and banked), or the day a Play submission is prepared.",
-      "verification": "COULD-NOT-ESTABLISH",
-      "wouldNeed": "Google Play's own policy page on support.google.com for the AI-generated-content declaration and its effective date. The effective date could not be read here."
+      "status": "implemented",
+      "artefact": "tooling/ci/assert-app-yaml.mjs",
+      "trigger": "The day an app generates content at runtime (as opposed to shipping content generated once and banked). Every app answers `ai.generatesContent` in its app.yaml (REQUIRED by the schema, false included); assert-app-yaml limb 7 then requires, for true, AppConfig.generatesAiContent, the wired chassis ReportContentDialog (POST /v1/report) and a Data safety answer for table:platform_db.content_reports, and for false, the content-rating generates-ai-content dependency-tells claim that fails when a model SDK arrives.",
+      "verification": "primary-source",
+      "source": {
+        "url": "https://support.google.com/googleplay/android-developer/answer/13985936",
+        "fetched": "2026-09-18",
+        "quote": "AI-Generated Content: apps that generate content using AI must contain in-app user reporting or flagging features, without needing to exit the app. Scope per answer/14094294: text, image, voice and video generation; not apps that only host AI content."
+      },
+      "note": "O-PLAY-AI-CONTENT-REPORTING. The Worker half (POST /v1/report, #795) and the chassis half (transport, dialog, declaration, limb 7) are both in the tree. Residue owed per app, not here: a content app's own privacy notice must name AI-content reports before its Play listing."
     },
     {
       "id": "store-evidence-of-rights-on-demand",
