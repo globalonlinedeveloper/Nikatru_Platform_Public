@@ -154,3 +154,54 @@ describe('assert-deploy-triggers-deploy — against the REAL workflow tree', () 
     assert.ok(asserted >= MIN_FILTERED_WORKFLOWS, `asserted over ${asserted} workflow(s) — the loop ran dry`);
   });
 });
+
+// ── the EXIT CODE, spawned (O-EXIT2-CONVENTION-GAP) ──────────────────────────
+// 0 green · 1 a finding · 2 COVERAGE LOST. The guard resolves its root from its
+// own location, so it is COPIED into a temp tree rather than run with a cwd —
+// spawning the repository's copy would grade the repository.
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, mkdirSync, cpSync, writeFileSync as writeFixture } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join as joinPath, dirname as dirOf } from 'node:path';
+import { fileURLToPath as toPath } from 'node:url';
+
+const CI_SRC = resolve(dirOf(toPath(import.meta.url)), '..');
+const spawnIn = (workflows) => {
+  const root = mkdtempSync(joinPath(tmpdir(), 'dtd-exit-'));
+  mkdirSync(joinPath(root, 'tooling', 'ci'), { recursive: true });
+  for (const f of ['assert-deploy-triggers-deploy.mjs', 'tree-walk.mjs']) cpSync(joinPath(CI_SRC, f), joinPath(root, 'tooling', 'ci', f));
+  mkdirSync(joinPath(root, '.github', 'workflows'), { recursive: true });
+  for (const [name, text] of Object.entries(workflows)) writeFixture(joinPath(root, '.github', 'workflows', name), text);
+  const r = spawnSync(process.execPath, [joinPath(root, 'tooling', 'ci', 'assert-deploy-triggers-deploy.mjs')], { encoding: 'utf8' });
+  return { code: r.status, out: `${r.stdout}${r.stderr}` };
+};
+
+describe('assert-deploy-triggers-deploy — exit codes', () => {
+  test('🔴 a workflow directory with nothing in it is COVERAGE LOST — exit 2, not a finding', () => {
+    const { code, out } = spawnIn({});
+    assert.match(out, /COVERAGE LOST: no workflow files/);
+    assert.equal(code, 2, out);
+  });
+
+  test('a real finding keeps exit 1 even with a COVERAGE LOST stop beside it', () => {
+    const wf = [
+      'on:',
+      '  push:',
+      '    paths:',
+      "      - 'services/a/**'",
+      "      - '.github/workflows/d.yml'",
+      'jobs:',
+      '  changes:',
+      '    steps:',
+      '      - uses: dorny/paths-filter@v3',
+      '        with:',
+      '          filters: |',
+      '            a:',
+      "              - 'services/a/**'",
+      '',
+    ].join('\n');
+    const { code, out } = spawnIn({ 'd.yml': wf });
+    assert.match(out, /does not include `\.github\/workflows\/d\.yml`|NO filter/);
+    assert.equal(code, 1, out);
+  });
+});

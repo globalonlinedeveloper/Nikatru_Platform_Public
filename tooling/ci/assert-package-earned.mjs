@@ -78,7 +78,7 @@ import { listDir } from './tree-walk.mjs';
 const ROOT = process.cwd();
 const REGISTER = 'tooling/capability-register.json';
 const LEDGER = 'tooling/chassis-ledger.json';
-const problems = [];
+const problems = []; const coverageLost = (m) => problems.push(`COVERAGE LOST — ${m}`); // exit 2 only if EVERY problem is one (summary below)
 const notes = [];
 const ok = (m) => console.log(`ok   ${m}`);
 
@@ -121,8 +121,8 @@ const onDisk = existsSync(pkgRoot)
 // like "every package is justified", and that failure has shipped here before.
 const MIN_PACKAGES = 8;
 if (onDisk.length < MIN_PACKAGES) {
-  problems.push(
-    `COVERAGE LOST — found only ${onDisk.length} package dir(s) under packages/, expected >= ${MIN_PACKAGES}. Either packages were deleted, or this scan has stopped seeing them and every remaining package is going unchecked.`,
+  coverageLost(
+    `found only ${onDisk.length} package dir(s) under packages/, expected >= ${MIN_PACKAGES}. Either packages were deleted, or this scan has stopped seeing them and every remaining package is going unchecked.`,
   );
 } else {
   ok(`${onDisk.length} package(s) on disk, each must be earned or dated`);
@@ -234,8 +234,8 @@ for (const pkg of onDisk) {
       }
       const moves = shrinkingMoves();
       if (moves === null) {
-        problems.push(
-          `COVERAGE LOST — \`${pkg}\` claims \`chassis\` via \`${ev.ledgerTarget}\`, but ${LEDGER} could not be read as a ledger with a \`files\` array. The claim was not checked against anything, which is not the same as passing.`,
+        coverageLost(
+          `\`${pkg}\` claims \`chassis\` via \`${ev.ledgerTarget}\`, but ${LEDGER} could not be read as a ledger with a \`files\` array. The claim was not checked against anything, which is not the same as passing.`,
         );
         break;
       }
@@ -294,8 +294,8 @@ for (const pkg of Object.keys(declared)) {
 // packages substantiate a reason today; if that reaches zero, every remaining
 // package is grandfathered and this guard has quietly become decorative.
 if (substantiated === 0 && onDisk.length > 0) {
-  problems.push(
-    'COVERAGE LOST — not one package substantiated a structural reason. Either every package is now grandfathered (in which case the rule is enforcing nothing) or the substantiation checks have stopped running.',
+  coverageLost(
+    'not one package substantiated a structural reason. Either every package is now grandfathered (in which case the rule is enforcing nothing) or the substantiation checks have stopped running.',
   );
 } else if (substantiated > 0) {
   ok(`${substantiated} package(s) substantiate a structural reason against the tree`);
@@ -316,7 +316,7 @@ if (problems.length) {
   console.error('');
   for (const p of problems) console.error(`FAIL ${p}`);
   console.error('\nassert-package-earned: FAILED');
-  process.exitCode = 1;
+  process.exit(problems.every((p) => p.startsWith('COVERAGE LOST')) ? 2 : 1); // 2 = could not look (every problem is COVERAGE LOST); 1 = a finding
 } else {
   console.log(`\nassert-package-earned: ok — ${onDisk.length} package(s), ${substantiated} substantiated, ${grandfathered.length} dated`);
 }

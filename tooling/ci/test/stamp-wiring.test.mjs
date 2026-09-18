@@ -253,13 +253,13 @@ describe('assert-stamp-wiring', () => {
   // ── the anti-vacuity family: a scan that stopped scanning ──────────────────
   test('COVERAGE LOST when the brick consumerRoot does not resolve', () => {
     const { code, out } = run(tree({ consumerRoots: ['apps/subscriptiontracker', `${BRICK}_BROKEN`] }));
-    assert.equal(code, 1);
+    assert.equal(code, 2, out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(out, /COVERAGE LOST/);
   });
 
   test('COVERAGE LOST when no consumerRoot names the brick at all', () => {
     const { code, out } = run(tree({ consumerRoots: ['apps/subscriptiontracker'] }));
-    assert.equal(code, 1);
+    assert.equal(code, 2, out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(out, /expected exactly ONE consumerRoot/);
   });
 
@@ -268,13 +268,13 @@ describe('assert-stamp-wiring', () => {
     const { code, out } = run(tree({
       caps: CAPS.map((c) => ({ ...c, consumers: ['apps/subscriptiontracker'] })),
     }));
-    assert.equal(code, 1, 'an empty set makes "every capability is wired" vacuously true');
+    assert.equal(code, 2, 'COVERAGE LOST (exit 2): an empty set makes "every capability is wired" vacuously true');
     assert.match(out, /no capability lists the brick as a consumer/);
   });
 
   test('COVERAGE LOST when the stamped pubspec declares no nikatru package', () => {
     const { code, out } = run(tree({ pubspec: 'name: probe\ndependencies:\n  flutter:\n' }));
-    assert.equal(code, 1);
+    assert.equal(code, 2, out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(out, /COVERAGE LOST/);
   });
 

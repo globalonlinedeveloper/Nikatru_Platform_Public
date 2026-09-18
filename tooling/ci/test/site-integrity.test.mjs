@@ -431,7 +431,7 @@ describe('check-site-integrity · legal pages', () => {
       // Without the name list it would have printed "ok — 0 roots enforced".
       const dir = build('lp-cov-lost');
       const { code, out } = run(dir, { from: selfHosted(dir) });
-      assert.equal(code, 1);
+      assert.equal(code, 2, out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
       assert.match(out, /COVERAGE LOST/);
       assert.match(out, /sites\/nikatru/);
     });
@@ -1339,7 +1339,7 @@ describe('check-site-integrity · the new limbs cannot go vacuously quiet', () =
         'const MUST_NAME_SELLER = [];',
       ),
     );
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2, r.out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(r.out, /NO app-facing page was in scope for the seller's legal name/);
   });
 
@@ -1398,14 +1398,14 @@ describe('check-site-integrity · the new limbs cannot go vacuously quiet', () =
 
   test('COVERAGE LOST when no root declares a homepage canonical', () => {
     const r = afterEdit('cf-nocanon', (d) => patch(d, 'sites/nikatru/index.html', 'rel="canonical"', 'rel="alternate"'));
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2, r.out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /ZERO deploy roots declared a homepage canonical/);
   });
 
   test('COVERAGE LOST when the policy-version attribute is gone', () => {
     const r = afterEdit('cf-nover', (d) => patch(d, 'sites/nikatru/index.html', ` data-policy-version="${FIXTURE_VERSION}"`, ''));
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2, r.out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(r.out, /NO page carries a `data-policy-version`/);
   });
 
@@ -1413,7 +1413,7 @@ describe('check-site-integrity · the new limbs cannot go vacuously quiet', () =
     const r = afterEdit('cf-nostore', (d) =>
       patch(d, 'apps/demo/store/fixture-store/privacy-policy-url.txt', FIXTURE_ORIGIN, 'https://elsewhere.test/privacy.html'),
     );
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2, r.out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(r.out, /NO apps\/\*\/store\/\*\/\*-url\.txt resolved to a host this repo deploys/);
   });
 
@@ -1425,7 +1425,7 @@ describe('check-site-integrity · the new limbs cannot go vacuously quiet', () =
     const r = afterEdit('cf-noapps', (d) =>
       patch(d, 'sites/nikatru/index.html', '<!-- APPS-GRID -->', '<!-- APPS-LIST -->'),
     );
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2, r.out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(r.out, /`<!-- APPS-GRID -->` … `<!-- \/APPS-GRID -->` pair was not found/);
   });
 
@@ -1433,7 +1433,7 @@ describe('check-site-integrity · the new limbs cannot go vacuously quiet', () =
     const r = afterEdit('cf-noip', (d) =>
       patch(d, 'sites/nikatru/functions/api/probe.js', 'cf-connecting-ip', 'x-forwarded-for'),
     );
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2, r.out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(r.out, /NO Pages Function reads the cf-connecting-ip header/);
   });
 
@@ -1453,7 +1453,7 @@ describe('check-site-integrity · the new limbs cannot go vacuously quiet', () =
         'request.headers.get("x-forwarded-for") /* was cf-connecting-ip */',
       ),
     );
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2, r.out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(r.out, /NO Pages Function reads the cf-connecting-ip header/);
   });
 
@@ -1473,7 +1473,7 @@ describe('check-site-integrity · the new limbs cannot go vacuously quiet', () =
     const r = afterEdit('cf-nopromise', (d) =>
       patch(d, 'sites/nikatru/functions/api/probe.js', `// SITE PROMISE: "${FIXTURE_PROMISE}"`, '// (no promise)'),
     );
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2, r.out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(r.out, /NO Pages Function carries a `SITE PROMISE/);
   });
 
@@ -1483,7 +1483,7 @@ describe('check-site-integrity · the new limbs cannot go vacuously quiet', () =
     // it must hear about THAT, not about a policy-version attribute.
     const dir = build('cf-order', { sites: ['a', 'b'] });
     const r = run(dir, { from: selfHosted(dir, { root: 'a' }) });
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2, r.out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(r.out, /sites\/nikatru is no longer scanned for legal pages/);
   });
 });

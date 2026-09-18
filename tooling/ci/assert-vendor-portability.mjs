@@ -112,7 +112,7 @@ import { stripSourceComments } from './text-reductions.mjs';
 
 const ROOT = process.cwd();
 const REGISTER = 'tooling/capability-register.json';
-const problems = [];
+const problems = []; const coverageLost = (m) => problems.push(`COVERAGE LOST — ${m}`); // exit 2 only if EVERY problem is one (summary below)
 const notes = [];
 const ok = (m) => console.log(`ok   ${m}`);
 
@@ -124,8 +124,8 @@ const ok = (m) => console.log(`ok   ${m}`);
 // mistaken for a malformed file in the tree.
 for (const ext of ['.dart', '.ts', '.jsonc']) {
   if (stripSourceComments('x // c', ext) === 'x // c') {
-    problems.push(
-      `COVERAGE LOST — \`stripSourceComments\` left a \`${ext}\` sample containing a comment completely unchanged. ` +
+    coverageLost(
+      `\`stripSourceComments\` left a \`${ext}\` sample containing a comment completely unchanged. ` +
         'tooling/ci/text-reductions.mjs returns an unknown extension VERBATIM, so this guard would read prose as surface.',
     );
   }
@@ -161,7 +161,7 @@ let dartFiles = [];
 try {
   dartFiles = execSync('git ls-files "*.dart"', { cwd: ROOT, encoding: 'utf8' }).trim().split('\n').filter(Boolean);
 } catch {
-  problems.push('COVERAGE LOST — could not list tracked .dart files, so source (a) contributed nothing. Every compile-time define in the app would go unreviewed.');
+  coverageLost('could not list tracked .dart files, so source (a) contributed nothing. Every compile-time define in the app would go unreviewed.');
 }
 let dartHits = 0;
 for (const f of dartFiles) {
@@ -289,13 +289,13 @@ for (const s of services) {
 // of claim this sweep exists to remove.
 const FLOORS = { 'dart-define': 10, 'worker-env': 15 };
 if (dartHits < FLOORS['dart-define']) {
-  problems.push(`COVERAGE LOST — source (a) found only ${dartHits} compile-time define(s), expected >= ${FLOORS['dart-define']}. A LINE-BASED scan finds 13 here (measured 2026-08-21, was 2 when this tripwire was written 2026-07-28); if this number collapsed toward 13, the multiline match has broken and most defines including UPDATE_URL are invisible again.`);
+  coverageLost(`source (a) found only ${dartHits} compile-time define(s), expected >= ${FLOORS['dart-define']}. A LINE-BASED scan finds 13 here (measured 2026-08-21, was 2 when this tripwire was written 2026-07-28); if this number collapsed toward 13, the multiline match has broken and most defines including UPDATE_URL are invisible again.`);
 }
 if (envHits < FLOORS['worker-env']) {
   // ⏱ 2026-09-16 — the floor is UNCHANGED (15) and so is its reason; only the
   // example moved. The measured count that day was 41 (42 before the legacy
   // RevenueCat secret left services/subscriptiontracker-api/src/types.ts).
-  problems.push(`COVERAGE LOST — source (b) found only ${envHits} Worker Env key(s), expected >= ${FLOORS['worker-env']}. Paddle, GitHub and Apple are claimed ONLY through Worker Env keys (measured 2026-09-16), so losing this source hides whole vendors.`);
+  coverageLost(`source (b) found only ${envHits} Worker Env key(s), expected >= ${FLOORS['worker-env']}. Paddle, GitHub and Apple are claimed ONLY through Worker Env keys (measured 2026-09-16), so losing this source hides whole vendors.`);
 }
 
 // ── source (c)/(d) IS A RELATIONSHIP, NOT A NUMBER ───────────────────────────
@@ -342,10 +342,10 @@ const MIN_DEPLOYED_WORKERS = 2;
 const deployedWorkers = services.filter((s) => existsSync(join(svcRoot, s, 'src', 'index.ts')));
 
 if (services.length === 0) {
-  problems.push(`COVERAGE LOST — no service directories under \`services/\`, so source (c)/(d) ranged over nothing. Every wrangler binding, ratelimit name and cron schedule in the repo would be invisible and this guard would still print ok.`);
+  coverageLost(`no service directories under \`services/\`, so source (c)/(d) ranged over nothing. Every wrangler binding, ratelimit name and cron schedule in the repo would be invisible and this guard would still print ok.`);
 } else if (deployedWorkers.length < MIN_DEPLOYED_WORKERS) {
-  problems.push(
-    `COVERAGE LOST — ${deployedWorkers.length} of ${services.length} directory(ies) under \`services/\` carry a ` +
+  coverageLost(
+    `${deployedWorkers.length} of ${services.length} directory(ies) under \`services/\` carry a ` +
       `\`src/index.ts\`, fewer than the ${MIN_DEPLOYED_WORKERS} deployed Workers that exist today. The wrangler ` +
       'relationship below ranges over exactly that set, so an emptied one would certify every vendor claim ' +
       'against no Worker at all.',
@@ -353,8 +353,8 @@ if (services.length === 0) {
 } else {
   const blind = deployedWorkers.filter((s) => (wranglerPerService.get(s) ?? 0) === 0);
   if (blind.length) {
-    problems.push(
-      `COVERAGE LOST — source (c)/(d) read ZERO wrangler surfaces from ${blind.length} of ${deployedWorkers.length} deployed Worker(s): ${blind.map((s) => `services/${s}`).join(', ')}. ` +
+    coverageLost(
+      `source (c)/(d) read ZERO wrangler surfaces from ${blind.length} of ${deployedWorkers.length} deployed Worker(s): ${blind.map((s) => `services/${s}`).join(', ')}. ` +
         `Each directory under \`services/\` that carries a \`src/index.ts\` is a deployed Worker and must contribute at least one binding, \`ratelimits[].name\` or cron. ` +
         `This scan reads exactly one filename — \`${WRANGLER}\` — so a config renamed, moved or deleted takes that Worker's whole external surface with it while the remaining service carries the total. ` +
         `If the layout genuinely changed, teach this scan the new one in the SAME change; do not let the count speak for it.`,
@@ -491,7 +491,7 @@ for (const [id, v] of Object.entries(vendors)) {
   }
 }
 if (vendorCount === 0) {
-  problems.push('COVERAGE LOST — the register declares no vendors at all, so every checklist assertion below ranges over nothing and this guard passes by vacancy.');
+  coverageLost('the register declares no vendors at all, so every checklist assertion below ranges over nothing and this guard passes by vacancy.');
 } else {
   ok(`${vendorCount} vendor(s) carry all six checklist parts; ${CHECKED.length} checked against the tree, ${PRINTED.length} printed`);
 }
@@ -499,8 +499,8 @@ if (vendorCount === 0) {
 // If EVERY export path were private, part 5 would be recorded everywhere and
 // verified nowhere — present, and decorative. At least one has to be real.
 if (vendorCount > 0 && checkableExports === 0) {
-  problems.push(
-    'COVERAGE LOST — not one export path points at something this guard can open. Part 5 would then be recorded for every vendor and checked for none, which is the "assertion that cannot fail" shape. At least one vendor must cite public, checkable evidence.',
+  coverageLost(
+    'not one export path points at something this guard can open. Part 5 would then be recorded for every vendor and checked for none, which is the "assertion that cannot fail" shape. At least one vendor must cite public, checkable evidence.',
   );
 }
 if (unverifiableExports.length) {
@@ -568,7 +568,7 @@ if (problems.length) {
   console.error('');
   for (const p of problems) console.error(`FAIL ${p}`);
   console.error('\nassert-vendor-portability: FAILED');
-  process.exitCode = 1;
+  process.exit(problems.every((p) => p.startsWith('COVERAGE LOST')) ? 2 : 1); // 2 = could not look (every problem is COVERAGE LOST); 1 = a finding
 } else {
   console.log(`\nassert-vendor-portability: ok — ${derived.size} surface(s) all claimed, ${vendorCount} vendor(s) complete on all six parts`);
 }

@@ -355,7 +355,7 @@ if (isMain) {
     console.error(`✗ COVERAGE LOST — assert-app-naming graded nothing it could stand behind:`);
     for (const l of lost) console.error(`    ${l}`);
     console.error('    A run over an empty set satisfies every limb without checking one name.');
-    process.exit(2);
+    coverageLost();
   }
 
   for (const n of notes) console.log(`note ${n}`);
@@ -371,4 +371,12 @@ if (isMain) {
     `assert-app-naming: ok — ${graded.length} app(s) graded on five limbs (store cap, not generic, icon label ` +
       `present + capped + sharing a word, unique across apps/*, no banned token): ${shorts}`,
   );
+}
+
+/** The one COVERAGE LOST stop: each could-not-look branch above prints its own reason and ends
+ *  here, so the run exits 2 — never 1, which would read as a finding (AGENTS.md exit-code
+ *  convention, O-EXIT2-CONVENTION-GAP). Declared LAST (hoisted) so every `assert-app-naming.mjs:NNN`
+ *  citation above keeps pointing at the line it names. */
+function coverageLost() {
+  process.exit(2);
 }

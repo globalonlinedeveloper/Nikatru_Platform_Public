@@ -959,7 +959,7 @@ export function productSurfaces(root, id) {
 function requireSurface(root, id, mode) {
   const found = productSurfaces(root, id);
   if (found.length === 0) {
-    die(
+    coverageLost(
       `COVERAGE LOST — ${mode} was given --app "${id}" and this tree holds no such product.`,
       `Looked for ${APPS_ROOT}/${id}/ and an ${EXT_TOOL_ROOT}/*/tool.json declaring id "${id}".`,
       'The surface decides which channels are origins and which formats are installable, so continuing',
@@ -981,7 +981,7 @@ function loadRegister() {
   const root = resolve(flag('repo-root') ?? DEFAULT_ROOT);
   const abs = join(root, REGISTER_REL);
   if (!existsSync(abs)) {
-    die(
+    coverageLost(
       `COVERAGE LOST — ${REGISTER_REL} does not exist under ${root}.`,
       'The installable-format set and the origin-channel set are both DERIVED from it. Refusing to fall',
       'back on a list typed in this file — that copy is the one that drifts, and the drift prints ok.',
@@ -1092,7 +1092,7 @@ function main() {
     walk(from);
 
     if (staged.length === 0) {
-      die(
+      coverageLost(
         `COVERAGE LOST — no installable artifact found under ${from}.`,
         `Looked for: ${[...exts].sort().join(', ')} (derived from ${REGISTER_REL}, surface "${stageSurface}").`,
         'A release with no installer is a release of nothing, and publishing one would satisfy every',
@@ -1175,7 +1175,7 @@ function main() {
       // asserts nothing. Same rail, so it cannot be reached by a typo either.
       const fromRegister = [...expected].filter((e) => !EXTRA_INSTALLABLE.has(e));
       if (fromRegister.length === 0) {
-        die(
+        coverageLost(
           `COVERAGE LOST — no channel row in ${REGISTER_REL} with a declared \`lane\`${forWorkflow === null ? '' : ` for ${forWorkflow}`} contributes an installable format.`,
           `The expectation collapsed to the declared extras alone (${[...expected].sort().join(', ') || 'nothing'}), so this mode would certify`,
           'a release that carries none of the artifacts the factory actually ships. Either every row lost its lane, the',
@@ -1308,4 +1308,15 @@ function main() {
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
   main();
+}
+
+/** die()'s COVERAGE LOST twin: the same framing, but exit 2 — the run could not
+ *  look, so it is not evidence either way, and exit 1 would read as a finding
+ *  (AGENTS.md exit-code convention, O-EXIT2-CONVENTION-GAP). die() keeps exit 1
+ *  for usage errors and real findings. Declared LAST (hoisted) so every
+ *  `release-manifest.mjs:NNN` citation above keeps pointing at the line it names. */
+function coverageLost(msg, ...more) {
+  console.error(`✗ ${msg}`);
+  for (const m of more) console.error(`  ${m}`);
+  process.exit(2);
 }

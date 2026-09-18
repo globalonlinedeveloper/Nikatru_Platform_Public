@@ -519,7 +519,7 @@ describe('assert-enforcement-index — the index is regenerated and compared, ne
     writeFileSync(mutant, capped);
 
     const r = spawnSync(process.execPath, [mutant, root], { encoding: 'utf8' });
-    assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
+    assert.equal(r.status, 2, `${r.stdout}${r.stderr}`);
     assert.match(`${r.stdout}${r.stderr}`, /COVERAGE LOST/);
     assert.match(`${r.stdout}${r.stderr}`, /a line cap is back/);
   });

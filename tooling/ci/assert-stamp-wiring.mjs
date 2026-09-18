@@ -225,7 +225,7 @@ const RESERVED = new Set([
 
 // ── 0. the register ──────────────────────────────────────────────────────────
 if (!existsSync(REGISTER)) {
-  fail([`✗ COVERAGE LOST — no capability register at ${REGISTER}.`]);
+  coverageLost([`✗ COVERAGE LOST — no capability register at ${REGISTER}.`]);
 }
 let register;
 try {
@@ -239,7 +239,7 @@ const consumerRoots = Array.isArray(register.consumerRoots) ? register.consumerR
 // ── 1. locate the brick, derived rather than hardcoded ───────────────────────
 const brickRoots = consumerRoots.filter((r) => r.includes('__brick__'));
 if (brickRoots.length !== 1) {
-  fail([
+  coverageLost([
     `✗ COVERAGE LOST — expected exactly ONE consumerRoot under \`__brick__\`, found ${brickRoots.length}.`,
     `  consumerRoots: ${JSON.stringify(consumerRoots)}`,
     '  Without the brick root this guard would range over an empty set and pass while wiring nothing —',
@@ -250,13 +250,13 @@ const BRICK = brickRoots[0];
 const BRICK_ABS = join(ROOT, BRICK);
 const BRICK_LIB = join(BRICK_ABS, 'lib');
 if (!existsSync(BRICK_LIB)) {
-  fail([`✗ COVERAGE LOST — the brick's lib/ is not at ${BRICK_LIB}. The scan is broken, not the tree.`]);
+  coverageLost([`✗ COVERAGE LOST — the brick's lib/ is not at ${BRICK_LIB}. The scan is broken, not the tree.`]);
 }
 
 // ── 2. the derived set: capabilities the register says the stamp consumes ────
 const wanted = capabilities.filter((c) => (c.consumers ?? []).includes(BRICK));
 if (wanted.length === 0) {
-  fail([
+  coverageLost([
     '✗ COVERAGE LOST — no capability lists the brick as a consumer.',
     `  brick root: ${BRICK}`,
     '  An empty set makes "every capability is wired" vacuously true. Refusing to pass on it.',
@@ -266,7 +266,7 @@ if (wanted.length === 0) {
 // ── 3. the brick's own source, with comments, strings and imports removed ────
 const brickFiles = dartFilesUnder(BRICK_LIB);
 if (brickFiles.length === 0) {
-  fail([`✗ COVERAGE LOST — no .dart files under ${BRICK_LIB}.`]);
+  coverageLost([`✗ COVERAGE LOST — no .dart files under ${BRICK_LIB}.`]);
 }
 const brickRaw = brickFiles.map((f) => readFileSync(f, 'utf8')).join('\n');
 const brickCode = stripDirectives(stripCommentsAndStrings(brickRaw));
@@ -457,7 +457,7 @@ if (existsSync(pubspecPath)) {
   }
 }
 if (declaredPkgs.size === 0) {
-  fail([
+  (problems.length ? (lines) => problems.push(...lines) : coverageLost)([ // with a finding already found, both print in the report below and it exits 1
     `✗ COVERAGE LOST — the stamped pubspec at ${BRICK}/pubspec.yaml declares no \`nikatru_*\` package.`,
     '  Either the stamp has no chassis at all, or this scan stopped scanning. Both are failures.',
   ]);
@@ -529,3 +529,12 @@ console.log(
     `call site, ${wanted.length - dartChecked} by non-Dart payload; ${declaredPkgs.size} declared ` +
     `nikatru package(s) all accounted for; ${brickFiles.length} stamped lib file(s) scanned`,
 );
+
+/** The scan could not look, so this run is not evidence either way — exit 2,
+ *  never 1, which would read as a finding (AGENTS.md exit-code convention,
+ *  O-EXIT2-CONVENTION-GAP). Declared LAST (hoisted) so every `assert-stamp-wiring.mjs:NNN`
+ *  citation above keeps pointing at the line it names. */
+function coverageLost(lines) {
+  for (const l of lines) console.error(l);
+  process.exit(2);
+}

@@ -111,7 +111,7 @@ describe('scan-workflows wrapper', () => {
     // indistinguishable from a clean repo. This is the assertion that tells them
     // apart. [pipeline F-10]
     const r = run(fakeRepo('thin', 2), stub('thin.mjs'));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(r.stderr, /COVERAGE LOST — found 2 workflow\(s\)/);
   });
 
@@ -119,7 +119,7 @@ describe('scan-workflows wrapper', () => {
     const root = join(TMP, 'nowf');
     mkdirSync(root, { recursive: true });
     const r = run(root, stub('nowf.mjs'));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(r.stderr, /COVERAGE LOST/);
   });
 
@@ -155,7 +155,7 @@ describe('scan-workflows wrapper', () => {
     const root = fakeRepo('argbare', 2);
     const r = spawnSync(process.execPath, [GUARD, root], { encoding: 'utf8' });
     const out = `${r.stdout ?? ''}${r.stderr ?? ''}`;
-    assert.equal(r.status, 1, out);
+    assert.equal(r.status, 2, out);
     assert.match(out, /COVERAGE LOST — found 2 workflow\(s\)/, out);
   });
 

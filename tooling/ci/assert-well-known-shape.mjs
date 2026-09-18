@@ -411,7 +411,7 @@ if (isMain) {
     for (const l of lost) console.error(`    ${l}`);
     console.error('    One AASA and one assetlinks.json serve every app on this origin; a run over an empty catalogue');
     console.error('    satisfies every limb below without reading one app.');
-    process.exit(2);
+    coverageLost();
   }
 
   for (const n of notes) console.log(`note ${n}`);
@@ -432,4 +432,12 @@ if (isMain) {
     `assert-well-known-shape: ok — ${measured.apps} catalogue app(s), ${measured.presence} mobile presence claim(s), ` +
       `${measured.comparisons} comparison(s). ${shape}`,
   );
+}
+
+/** The one COVERAGE LOST stop: each could-not-look branch above prints its own reason and ends
+ *  here, so the run exits 2 — never 1, which would read as a finding (AGENTS.md exit-code
+ *  convention, O-EXIT2-CONVENTION-GAP). Declared LAST (hoisted) so every `assert-well-known-shape.mjs:NNN`
+ *  citation above keeps pointing at the line it names. */
+function coverageLost() {
+  process.exit(2);
 }
