@@ -27,6 +27,8 @@ import { generateKeyPairSync, createVerify } from 'node:crypto';
 import {
   validateRegister,
   expectedEntitlements,
+  expectedMacosEntitlements,
+  entitlementKeyFor,
   expectedProfileKeys,
   parseFlatDict,
   profileEntitlements,
@@ -362,7 +364,15 @@ describe('assert-apple-entitlements — the tree guard, against a copied tree', 
     const root = join(TMP, `t${seq++}`);
     mkdirSync(join(root, 'tooling'), { recursive: true });
     cpSync(join(REPO, 'tooling', 'apple-provisioning.json'), join(root, 'tooling', 'apple-provisioning.json'));
-    for (const f of ['ios/Runner/Runner.entitlements', 'ios/Runner.xcodeproj/project.pbxproj']) {
+    for (const f of [
+      'ios/Runner/Runner.entitlements',
+      'ios/Runner.xcodeproj/project.pbxproj',
+      // ⏱ 2026-09-18: the macOS limb reads these; without them the copied tree
+      // would be COVERAGE LOST, not green.
+      'macos/Runner/DebugProfile.entitlements',
+      'macos/Runner/Release.entitlements',
+      'macos/Runner.xcodeproj/project.pbxproj',
+    ]) {
       mkdirSync(dirname(join(root, APP, f)), { recursive: true });
       cpSync(join(REPO, APP, f), join(root, APP, f));
     }
@@ -375,7 +385,7 @@ describe('assert-apple-entitlements — the tree guard, against a copied tree', 
   test('the copied real tree is green — the control', () => {
     const r = run(tree());
     assert.equal(r.status, 0, r.stderr);
-    assert.match(r.stdout, /1 iOS tree\(s\) agree/);
+    assert.match(r.stdout, /1 iOS tree\(s\) and 1 macOS tree\(s\) agree/);
   });
   test('the declared key removed from Runner.entitlements fails', () => {
     const r = run(tree({ mutate: (t) => edit(t, `${APP}/ios/Runner/Runner.entitlements`, (s) => s.replace(`<key>${DAR}</key>`, '<key>other</key>')) }));
@@ -415,5 +425,121 @@ describe('assert-apple-entitlements — the tree guard, against a copied tree', 
   test('an unreadable register is COVERAGE LOST (2)', () => {
     const r = run(tree({ mutate: (t) => writeFileSync(join(t, 'tooling', 'apple-provisioning.json'), '{') }));
     assert.equal(r.status, 2);
+  });
+
+  // ── ⏱ 2026-09-18 · O-STAMP-APPLE-MACOS-ENTITLEMENTS — the macOS limb ──────
+  const REL = `${APP}/macos/Runner/Release.entitlements`;
+  const DBG = `${APP}/macos/Runner/DebugProfile.entitlements`;
+  const MAC_PBX = `${APP}/macos/Runner.xcodeproj/project.pbxproj`;
+  /** Refuses to "mutate" a file that does not hold its target — a no-op mutant is the original. */
+  const must = (s, target) => {
+    assert.ok(s.includes(target), `mutation target not found: ${target}`);
+    return s;
+  };
+
+  test('macOS · network.client dropped from Release fails — the key that lets the app reach its backend at all', () => {
+    const k = '<key>com.apple.security.network.client</key>';
+    const r = run(tree({ mutate: (t) => edit(t, REL, (s) => must(s, k).replace(k, '<key>com.apple.security.dropped</key>')) }));
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /Release\.entitlements declares no com\.apple\.security\.network\.client/);
+  });
+  test('macOS · Declared Age Range in a macOS file fails — its only consumer is iOS-only', () => {
+    const k = '<key>com.apple.security.app-sandbox</key>';
+    const r = run(tree({ mutate: (t) => edit(t, REL, (s) => must(s, k).replace(k, `<key>${DAR}</key>\n\t<true/>\n\t${k}`)) }));
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /Release\.entitlements carries com\.apple\.developer\.declared-age-range, which no declared capability requires/);
+  });
+  test('macOS · the project naming a third entitlements file fails, and the one it stopped naming is inert', () => {
+    const k = 'CODE_SIGN_ENTITLEMENTS = Runner/Release.entitlements;';
+    const r = run(tree({ mutate: (t) => edit(t, MAC_PBX, (s) => must(s, k).replace(k, 'CODE_SIGN_ENTITLEMENTS = Runner/Other.entitlements;')) }));
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /names Runner\/Other\.entitlements — a second entitlements file nothing compares/);
+    assert.match(r.stderr, /never names Runner\/Release\.entitlements — that file is inert/);
+  });
+  test('macOS · DebugProfile is named TWICE by the project and that is one file, not a finding', () => {
+    const text = readFileSync(join(REPO, MAC_PBX), 'utf8');
+    assert.equal(text.match(/CODE_SIGN_ENTITLEMENTS = Runner\/DebugProfile\.entitlements;/g)?.length, 2, 'the real project changed shape — re-read it');
+    assert.equal(run(tree()).status, 0);
+  });
+  test('macOS · a plain-string entitlementKey is demanded on BOTH platforms, so Declared Age Range as a string fails both macOS files', () => {
+    const k = '{ "ios": "com.apple.developer.declared-age-range", "macos": null }';
+    const r = run(tree({ mutate: (t) => edit(t, 'tooling/apple-provisioning.json', (s) => must(s, k).replace(k, `"${DAR}"`)) }));
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /DebugProfile\.entitlements declares no com\.apple\.developer\.declared-age-range/);
+    assert.match(r.stderr, /Release\.entitlements declares no com\.apple\.developer\.declared-age-range/);
+  });
+  test('macOS · a register-named file missing from the tree fails', () => {
+    const r = run(tree({ mutate: (t) => rmSync(join(t, DBG)) }));
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /DebugProfile\.entitlements does not exist, and the register requires/);
+  });
+  test('macOS · no macOS tree anywhere is COVERAGE LOST (2) — every app ships macOS, so a limb that read nothing is not a pass', () => {
+    const r = run(tree({ mutate: (t) => rmSync(join(t, APP, 'macos'), { recursive: true, force: true }) }));
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /no apps\/<slug>\/macos\/Runner tree was found/);
+  });
+});
+
+describe('macOS entitlements — the register and the derivation (O-STAMP-APPLE-MACOS-ENTITLEMENTS)', () => {
+  test('the real derivation: each macOS file carries its base sandbox keys and NOT Declared Age Range', () => {
+    const rel = expectedMacosEntitlements(REAL, 'subscriptiontracker', 'Runner/Release.entitlements');
+    assert.deepEqual([...rel.keys()], ['com.apple.security.app-sandbox', 'com.apple.security.network.client']);
+    const dbg = expectedMacosEntitlements(REAL, 'subscriptiontracker', 'Runner/DebugProfile.entitlements');
+    assert.equal(dbg.has(DAR), false);
+    assert.equal(dbg.has('com.apple.security.cs.allow-jit'), true);
+    // …while the iOS derivation is exactly what it was.
+    assert.deepEqual([...expectedEntitlements(REAL, 'subscriptiontracker').keys()], [DAR]);
+  });
+  test('entitlementKeyFor reads all three shapes', () => {
+    assert.equal(entitlementKeyFor({ entitlementKey: null }, 'macos'), null);
+    assert.equal(entitlementKeyFor({ entitlementKey: 'k' }, 'ios'), 'k');
+    assert.equal(entitlementKeyFor({ entitlementKey: 'k' }, 'macos'), 'k');
+    assert.equal(entitlementKeyFor({ entitlementKey: { ios: 'k', macos: null } }, 'macos'), null);
+    assert.equal(entitlementKeyFor({ entitlementKey: { ios: null, macos: 'm' } }, 'macos'), 'm');
+  });
+  test('an entitlementKey object naming no key, an unknown platform, or an empty key is refused', () => {
+    for (const bad of [{ ios: null, macos: null }, { ios: DAR, macos: null, tvos: null }, { ios: '', macos: null }, { ios: DAR }]) {
+      const reg = clone(REAL);
+      reg.capabilities.DECLARED_AGE_RANGE.entitlementKey = bad;
+      assert.ok(validateRegister(reg).some((p) => /entitlementKey must be null, a string, or \{ ios, macos \}/.test(p)), JSON.stringify(bad));
+    }
+  });
+  test('a missing macosEntitlementFiles block, a badly named file, and an empty file are refused', () => {
+    const none = clone(REAL);
+    delete none.macosEntitlementFiles;
+    assert.ok(validateRegister(none).some((p) => /macosEntitlementFiles is missing/.test(p)));
+    const named = clone(REAL);
+    named.macosEntitlementFiles['Release.entitlements'] = { 'com.apple.security.app-sandbox': true };
+    assert.ok(validateRegister(named).some((p) => /is not a Runner\/<Name>\.entitlements path/.test(p)));
+    const empty = clone(REAL);
+    empty.macosEntitlementFiles['Runner/Release.entitlements'] = {};
+    assert.ok(validateRegister(empty).some((p) => /must be a non-empty dict of base keys/.test(p)));
+  });
+  test('a key owned by BOTH a base file and a capability is refused — one key, two owners', () => {
+    const reg = clone(REAL);
+    reg.capabilities.DECLARED_AGE_RANGE.entitlementKey = { ios: DAR, macos: 'com.apple.security.network.client' };
+    assert.ok(validateRegister(reg).some((p) => /one key, two owners/.test(p)));
+  });
+});
+
+describe('provision-apple --files-only — the tree half, with no App Store Connect request', () => {
+  const env = { ...process.env };
+  for (const k of ['APPLE_ASC_ISSUER_ID', 'APPLE_ASC_KEY_ID', 'APPLE_ASC_KEY_FILE']) delete env[k];
+
+  test('a dry run reads every entitlements file and exits 0 without ever reaching the credentials', () => {
+    // Without credentials the full script is COVERAGE LOST (2) — the case above.
+    // --files-only returns BEFORE credentials() is called, so it answers 0 here.
+    const r = spawnSync(process.execPath, [OPS_SCRIPT, '--app', 'subscriptiontracker', '--files-only'], { env, encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stderr + r.stdout);
+    assert.match(r.stdout, /No App Store Connect request is made/);
+    assert.match(r.stdout, /Release\.entitlements carries exactly/);
+    assert.match(r.stdout, /DebugProfile\.entitlements carries exactly/);
+    assert.match(r.stdout, /Runner\.entitlements carries exactly/);
+    assert.doesNotMatch(r.stdout, /requests: /, 'the request counter belongs to the ASC path, which --files-only never enters');
+  });
+  test('--files-only cannot be combined with --profiles-zip, which needs the live profiles', () => {
+    const r = spawnSync(process.execPath, [OPS_SCRIPT, '--app', 'subscriptiontracker', '--files-only', '--profiles-zip', join(tmpdir(), 'x.zip')], { env, encoding: 'utf8' });
+    assert.equal(r.status, 2);
+    assert.match(r.stderr + r.stdout, /--files-only reads no profile/);
   });
 });

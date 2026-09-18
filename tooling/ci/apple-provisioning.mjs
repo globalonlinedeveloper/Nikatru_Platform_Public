@@ -42,6 +42,21 @@ export const BUNDLE_PLATFORM = 'UNIVERSAL';
 
 const CAP_OPTION_SETTING = 'APPLE_ID_AUTH_APP_CONSENT';
 
+/** ⏱ 2026-09-18 · O-STAMP-APPLE-MACOS-ENTITLEMENTS. The platforms an
+ *  `entitlementKey` object names. Each side is a key or null. */
+export const ENTITLEMENT_PLATFORMS = Object.freeze(['ios', 'macos']);
+
+/** A macOS entitlements file as the macOS Xcode project's CODE_SIGN_ENTITLEMENTS
+ *  names it: `Runner/<Name>.entitlements`, relative to apps/<slug>/macos. */
+export const MACOS_ENTITLEMENTS_FILE = /^Runner\/[A-Za-z0-9_-]+\.entitlements$/;
+
+/** A value a flat entitlements dict may carry — the same set `parseFlatDict` reads. */
+const isEntitlementValue = (v) =>
+  typeof v === 'boolean' ||
+  typeof v === 'string' ||
+  Number.isInteger(v) ||
+  (Array.isArray(v) && v.every((s) => typeof s === 'string'));
+
 /** Apple refuses a bundle-id name with special characters (measured). */
 export function bundleIdNameProblem(name) {
   if (typeof name !== 'string' || name.trim() === '') return 'the App ID name is empty';
@@ -74,8 +89,20 @@ export function validateRegister(reg) {
   } else {
     for (const [name, c] of Object.entries(caps)) {
       if (typeof c.apiWritable !== 'boolean') p.push(`capabilities.${name}.apiWritable must be a boolean`);
-      if (!(c.entitlementKey === null || (typeof c.entitlementKey === 'string' && c.entitlementKey))) {
-        p.push(`capabilities.${name}.entitlementKey must be a string or null`);
+      // ⏱ 2026-09-18: null, a string (the SAME key on iOS and macOS), or one
+      // key-or-null per platform. An object naming no key at all is refused —
+      // that is `null` spelt the long way, and two spellings of "none" is how a
+      // reader starts treating one of them as "some".
+      const ek = c.entitlementKey;
+      const ekOk =
+        ek === null ||
+        (typeof ek === 'string' && ek) ||
+        (ek && typeof ek === 'object' && !Array.isArray(ek) &&
+          Object.keys(ek).length === ENTITLEMENT_PLATFORMS.length &&
+          ENTITLEMENT_PLATFORMS.every((pl) => ek[pl] === null || (typeof ek[pl] === 'string' && ek[pl])) &&
+          ENTITLEMENT_PLATFORMS.some((pl) => typeof ek[pl] === 'string'));
+      if (!ekOk) {
+        p.push(`capabilities.${name}.entitlementKey must be null, a string, or { ios, macos } each a key or null (not both null)`);
       }
       const pk = c.profileKey;
       const pkOk =
@@ -92,6 +119,36 @@ export function validateRegister(reg) {
       }
     }
   }
+  // ⏱ 2026-09-18 · O-STAMP-APPLE-MACOS-ENTITLEMENTS: the base sandbox keys of
+  // each macOS entitlements file. At least one file, each named as the macOS
+  // project names it, each a non-empty flat dict. A capability's macOS key may
+  // not also be a BASE key: the two would be one key with two owners, and the
+  // derivation would have to pick a winner nobody declared.
+  const mef = reg.macosEntitlementFiles;
+  if (!mef || typeof mef !== 'object' || Array.isArray(mef)) {
+    p.push('macosEntitlementFiles is missing — the macOS entitlements files have nothing to be derived from');
+  } else {
+    const files = Object.keys(mef).filter((k) => !k.startsWith('_'));
+    if (files.length === 0) p.push('macosEntitlementFiles names no file');
+    const capMacKeys = new Set(
+      Object.values(caps ?? {})
+        .map((c) => entitlementKeyFor(c, 'macos'))
+        .filter(Boolean),
+    );
+    for (const f of files) {
+      if (!MACOS_ENTITLEMENTS_FILE.test(f)) p.push(`macosEntitlementFiles."${f}" is not a Runner/<Name>.entitlements path`);
+      const base = mef[f];
+      if (!base || typeof base !== 'object' || Array.isArray(base) || Object.keys(base).length === 0) {
+        p.push(`macosEntitlementFiles."${f}" must be a non-empty dict of base keys`);
+        continue;
+      }
+      for (const [k, v] of Object.entries(base)) {
+        if (!isEntitlementValue(v)) p.push(`macosEntitlementFiles."${f}".${k} is not a value an entitlements dict can carry`);
+        if (capMacKeys.has(k)) p.push(`macosEntitlementFiles."${f}".${k} is also a capability's macOS key — one key, two owners`);
+      }
+    }
+  }
+
   const apps = reg.apps;
   if (!apps || typeof apps !== 'object') {
     p.push('apps is missing');
@@ -116,12 +173,46 @@ export function validateRegister(reg) {
   return p;
 }
 
+/** The entitlement key a capability puts into the app's OWN entitlements file on
+ *  `platform` ('ios' | 'macos'), or null. A string is the same key on both; an
+ *  object names one per platform — ⏱ 2026-09-18, because DECLARED_AGE_RANGE's
+ *  only consumer is iOS-only and macOS must not carry the key. Mirrors
+ *  `profileKeyFor`, which already did this for profile types. */
+export function entitlementKeyFor(vocab, platform) {
+  const ek = vocab?.entitlementKey;
+  if (!ek) return null;
+  return typeof ek === 'string' ? ek : ek[platform] ?? null;
+}
+
 /** The keys an app's ios/Runner/Runner.entitlements must carry, derived. */
 export function expectedEntitlements(reg, slug) {
   const out = new Map();
   for (const c of reg.apps[slug].capabilities) {
     const v = reg.capabilities[c];
-    if (v.entitlementKey) out.set(v.entitlementKey, v.entitlementValue);
+    const key = entitlementKeyFor(v, 'ios');
+    if (key) out.set(key, v.entitlementValue);
+  }
+  return out;
+}
+
+/** The macOS entitlements files the register governs, as the macOS Xcode
+ *  project names them (`Runner/<Name>.entitlements`), in declared order. */
+export function macosEntitlementFileNames(reg) {
+  return Object.keys(reg.macosEntitlementFiles ?? {}).filter((k) => !k.startsWith('_'));
+}
+
+/** ⏱ 2026-09-18 · O-STAMP-APPLE-MACOS-ENTITLEMENTS. The keys one macOS
+ *  entitlements file must carry: its declared BASE sandbox keys, in order, then
+ *  the macOS key of every capability the app declares. `validateRegister`
+ *  refuses a key owned by both, so the union never has to pick a winner. */
+export function expectedMacosEntitlements(reg, slug, file) {
+  const base = reg.macosEntitlementFiles?.[file];
+  if (!base) throw new Error(`macosEntitlementFiles declares no "${file}"`);
+  const out = new Map(Object.entries(base));
+  for (const c of reg.apps[slug].capabilities) {
+    const v = reg.capabilities[c];
+    const key = entitlementKeyFor(v, 'macos');
+    if (key) out.set(key, v.entitlementValue);
   }
   return out;
 }
