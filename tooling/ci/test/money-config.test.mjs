@@ -360,7 +360,7 @@ describe('assert-money-config — sandbox money cannot grant a production unlock
       subscriptiontrackerSrc: SUBLY_DOOR_TS,
       // no subscriptiontrackerTest: services/subscriptiontracker-api/test does not exist in this fixture
     });
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST — no test files under services\/subscriptiontracker-api\/test/);
   });
 
@@ -436,7 +436,7 @@ describe('assert-money-config — sandbox money cannot grant a production unlock
 
   test('COVERAGE LOST when the adapter registry is empty — "exactly one secret" over zero rails', () => {
     const r = run({ registry: REGISTRY_TS.replace('[paddleVerifier]', '[]') });
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST — derived ZERO money destination secrets/);
   });
 
@@ -498,7 +498,7 @@ describe('assert-money-config — sandbox money cannot grant a production unlock
     // A path literal for that mustache directory would rot silently by matching
     // nothing, and matching nothing reads as "the template is clean".
     const r = run({ brickWrangler: null });
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST — found ZERO wrangler configs under tooling\/bricks\/app\/__brick__/);
   });
 
@@ -510,13 +510,13 @@ describe('assert-money-config — sandbox money cannot grant a production unlock
     write(root, `${BRICK_DIR}/src/routes/account.ts`, BRICK_ACCOUNT_TS);
     write(root, 'services/subscriptiontracker-api/wrangler.jsonc', SUBLY_WRANGLER);
     const r = spawnSync(process.execPath, [GUARD, root], { encoding: 'utf8' });
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(`${r.stdout}${r.stderr}`, /COVERAGE LOST — no deployed config for services\/platform/);
   });
 
   test('COVERAGE LOST when the route file is gone', () => {
     const r = run({ route: null });
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST — services\/platform\/src\/routes\/money\.ts does not exist/);
   });
 

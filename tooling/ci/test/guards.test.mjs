@@ -574,7 +574,7 @@ describe('assert-cors-allowlist', () => {
       'services/platform/wrangler.jsonc': config(PLATFORM),
     });
     const { code, out } = run('assert-cors-allowlist.mjs', { cwd: dir });
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
   });
 
@@ -1946,7 +1946,7 @@ describe('assert-version-consistency', () => {
     const dir = build('vc-blind');
     rmSync(join(dir, '.github'), { recursive: true, force: true });
     const { code, out } = run('assert-version-consistency.mjs', { args: [dir] });
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST — read ZERO workflow files under/);
     assert.doesNotMatch(out, /all match versions\.json/);
   });
@@ -2011,7 +2011,7 @@ describe('assert-version-consistency', () => {
       [SCAN_SECRETS]: scanSecrets(),
     });
     const { code, out } = run('assert-version-consistency.mjs', { args: [dir] });
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST — matched 7 version reference\(s\), expected at least 10/);
   });
 
@@ -2042,7 +2042,7 @@ describe('assert-version-consistency', () => {
     // so a renamed brick path deleted the rule's only target and the guard
     // printed "ok" behind the workflows' 40+ other matches.
     const { code, out } = run('assert-version-consistency.mjs', { args: [build('vc-brick-gone', { brick: false })] });
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST — the brick's stamped-service package\.json is gone/);
   });
 
@@ -2104,20 +2104,20 @@ describe('assert-version-consistency', () => {
     // exactly like agreement, and is what REQUIRED_YIELD exists for.
     const dir = build('vc-melos-renamed', { manifestBody: rootManifest().replace('melos: 8.2.2', 'melos: "8.2.2"') });
     const { code, out } = run('assert-version-consistency.mjs', { args: [dir] });
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST — pubspec\.yaml yielded 0 `melos` reference\(s\), expected at least 1/);
   });
 
   test("COVERAGE LOST when melos moves out of the root manifest's dev_dependencies entirely", () => {
     const dir = build('vc-melos-moved', { manifestBody: 'name: ws\nworkspace:\n  - packages/core\n' });
     const { code, out } = run('assert-version-consistency.mjs', { args: [dir] });
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST — pubspec\.yaml yielded 0 `melos`/);
   });
 
   test('REFUSES when the root pubspec.yaml is missing — a required target may not vanish quietly', () => {
     const { code, out } = run('assert-version-consistency.mjs', { args: [build('vc-nopubspec', { manifestBody: null })] });
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST — required target pubspec\.yaml is missing/);
   });
 
@@ -2153,13 +2153,13 @@ describe('assert-version-consistency', () => {
       scanBody: 'const PARTS = [8, 30, 1];\nconst VALIDATED_AGAINST = PARTS.join(String.fromCharCode(46));\nexport default VALIDATED_AGAINST;\n',
     });
     const { code, out } = run('assert-version-consistency.mjs', { args: [dir] });
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST — tooling[\\/]ci[\\/]scan-secrets\.mjs yielded 0 `gitleaks` reference\(s\), expected at least 1/);
   });
 
   test('REFUSES when scan-secrets.mjs is missing — the comparison may not vanish quietly', () => {
     const { code, out } = run('assert-version-consistency.mjs', { args: [build('vc-noscanner', { scanBody: null })] });
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST — required target tooling[\\/]ci[\\/]scan-secrets\.mjs is missing/);
   });
 
@@ -2173,13 +2173,13 @@ describe('assert-version-consistency', () => {
   test('COVERAGE LOST when README stops carrying an activate line at all', () => {
     const dir = build('vc-readme-quiet', { readmeBody: '# ws\n\nBuild it however you like.\n' });
     const { code, out } = run('assert-version-consistency.mjs', { args: [dir] });
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST — README\.md yielded 0 `melos` reference\(s\), expected at least 1/);
   });
 
   test('REFUSES when README.md is missing', () => {
     const { code, out } = run('assert-version-consistency.mjs', { args: [build('vc-noreadme', { readmeBody: null })] });
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST — required target README\.md is missing/);
   });
 
@@ -2240,7 +2240,7 @@ describe('assert-version-consistency', () => {
     });
     assert.equal(run('assert-version-consistency.mjs', { args: [dir] }).code, 0);
     const { code, out } = run('assert-version-consistency.mjs', { args: [alt] });
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST — .*build\.gradle\.kts yielded 0 `java` reference\(s\), expected at least 3/);
   });
 
@@ -2252,7 +2252,7 @@ describe('assert-version-consistency', () => {
     // checked LESS. MIN_OCCURRENCES could not see it: that floor is GLOBAL and
     // the workflows clear it alone.
     const { code, out } = run('assert-version-consistency.mjs', { args: [build('vc-noandroid', { android: false })] });
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST — not one apps\/\*\/android\/app\/build\.gradle\.kts was found/);
   });
 

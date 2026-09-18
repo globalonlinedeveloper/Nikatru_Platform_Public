@@ -558,6 +558,13 @@ for (const app of appDirs) {
 const seam = crossAssertLicenceRegisters(repoRoot, { side: 'asset' });
 problems.push(...seam.problems);
 prints.push(...seam.prints);
+// The seam module never exits; its could-not-look stops come back in `lost`. When they are ALL
+// this run has, the run could not look and exits 2 — with a finding beside them it stays 1.
+const seamLost = seam.lost.map((l) => `CROSS-ASSERT COVERAGE LOST — ${l}`);
+if (seamLost.length && problems.length === 0) {
+  coverageLost(`the licence-register seam was not checked (${seamLost.length} stop(s)):`, ...seamLost);
+}
+problems.push(...seamLost);
 
 // ── report ──────────────────────────────────────────────────────────────────
 if (problems.length) {

@@ -350,7 +350,7 @@ function mountedRoutes(fileRel, prefix, seen = new Set()) {
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   // ── 0. the register ──────────────────────────────────────────────────────────
   if (!existsSync(REGISTER)) {
-    fail([
+    coverageLost([
       `✗ COVERAGE LOST — no platform register at ${REGISTER}.`,
       '  [pipeline B-1] requires a machine-readable register of every shared-server capability.',
     ]);
@@ -402,7 +402,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   // ─────────────────────────────────────────────────────────────────────────────
   const onDiskConfigs = wranglerConfigsOnDisk();
   if (onDiskConfigs.length === 0) {
-    fail([
+    coverageLost([
       '✗ COVERAGE LOST — found ZERO wrangler configs on disk. The scan is broken, not the tree.',
       `  looked under ${SERVICES_DIR} and ${BRICK_SERVICES_GLOB}`,
     ]);
@@ -496,7 +496,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     // ── LIMB 1 · route set == what the entrypoint mounts, both directions ──────
     const entrypoint = rel(String(w.spec?.entrypoint ?? ''));
     if (!entrypoint || !existsSync(join(ROOT, entrypoint))) {
-      fail([
+      coverageLost([
         `✗ COVERAGE LOST — servingWorker.entrypoint \`${entrypoint}\` (${w.field}) does not exist.`,
         '  The register names a Worker this scan cannot read; every route claim below would pass over nothing.',
       ]);
@@ -524,7 +524,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     // This is the ONLY integer in the guard and it is a parser liveness floor, not a
     // coverage number — the coverage floor is the set equality immediately below.
     if (mounted.length === 0) {
-      fail([
+      coverageLost([
         `✗ COVERAGE LOST — parsed ${entrypoint} and found ZERO mounted routes.`,
         '  The parser is broken, not the Worker. Notes:',
         ...parseNotes.map((n) => `    · ${n}`),
@@ -534,7 +534,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     // is only seeing the routes declared inline in the entrypoint. Today that would
     // silently drop three of four.
     if (!mounted.some((r) => r.owningFile !== entrypoint)) {
-      fail([
+      coverageLost([
         `✗ COVERAGE LOST — every route the parser found is declared inline in ${entrypoint};`,
         '  it followed no \`app.route(prefix, subRouter)\` into a sub-router file. Notes:',
         ...parseNotes.map((n) => `    · ${n}`),
@@ -825,7 +825,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     }
   }
   if (hostBearing === 0) {
-    fail([
+    coverageLost([
       `✗ COVERAGE LOST — parsed ${onDiskConfigs.length} wrangler config(s) and NOT ONE declares \`main\`.`,
       '  The host limb ranges over zero Workers and cannot fail.',
     ]);
@@ -846,7 +846,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     }
   }
   if (declaredBindings.size === 0) {
-    fail([
+    coverageLost([
       `✗ COVERAGE LOST — parsed ${onDiskConfigs.length} wrangler config(s) and found ZERO bindings.`,
       `  Sections scanned: ${BINDING_KEYS.map(([s]) => s).join(', ')}.`,
     ]);
@@ -960,7 +960,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   const sharedBlock = register.sharedValues ?? null;
   const sharedValues = Array.isArray(sharedBlock?.values) ? sharedBlock.values : null;
   if (!sharedValues || sharedValues.length === 0) {
-    fail([
+    coverageLost([
       '✗ COVERAGE LOST — the register declares no `sharedValues.values`.',
       '  Limb 5 is the only thing comparing the values hand-copied into every wrangler config;',
       '  with an empty list it ranges over nothing and reports agreement it never checked.',
@@ -1041,7 +1041,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     for (const { cfgRel, cfg } of parsedConfigs) {
       const got = resolveAt(cfg, at);
       if (got === null) {
-        fail([
+        coverageLost([
           `✗ COVERAGE LOST — \`sharedValues\` entry \`${at}\` is not addressable by this limb's grammar.`,
           '  Expected `vars.<NAME>` or `<section>[<BINDING>].<field>`.',
           '  An address the guard cannot read is a value the guard is not checking, and it would otherwise',
@@ -1080,7 +1080,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
       }
     }
     if (resolvedIn === 0) {
-      fail([
+      coverageLost([
         `✗ COVERAGE LOST — \`${at}\` resolved in ZERO of the ${parsedConfigs.length} wrangler config(s).`,
         '  Either the key was renamed everywhere or the address is stale. Both leave this entry comparing',
         '  nothing while the run still prints ok.',
@@ -1088,7 +1088,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     }
   }
   if (sharedComparisons === 0) {
-    fail([
+    coverageLost([
       '✗ COVERAGE LOST — limb 5 made ZERO comparisons.',
       '  Every shared value is exempt, unaddressable or absent, so the limb cannot fail.',
     ]);
@@ -1119,4 +1119,13 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
       `each with a resolved reader; ${sharedValues.length} shared value(s) compared ${sharedComparisons} ` +
       `time(s) across those configs, all agreeing; ${printed.length} declared gap(s) printed above`,
   );
+}
+
+/** The scan could not look, so this run is not evidence either way — exit 2,
+ *  never 1, which would read as a finding (AGENTS.md exit-code convention,
+ *  O-EXIT2-CONVENTION-GAP). Declared LAST (hoisted) so every `assert-platform-register.mjs:NNN`
+ *  citation above keeps pointing at the line it names. */
+function coverageLost(lines) {
+  for (const l of lines) console.error(l);
+  process.exit(2);
 }

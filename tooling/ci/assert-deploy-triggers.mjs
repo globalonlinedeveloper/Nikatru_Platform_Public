@@ -106,7 +106,7 @@ const REQUIRED_COVERAGE = ['deploy-web.yml'];
 
 if (!existsSync(WF_DIR)) {
   console.error(`✗ COVERAGE LOST — no .github/workflows under ${ROOT}, so this scan read nothing.`);
-  process.exit(1);
+  coverageLost();
 }
 
 /** Strip YAML comments. A `#` that starts a line or follows whitespace begins a
@@ -211,7 +211,7 @@ for (const name of files) {
     console.error(`✗ COVERAGE LOST — ${name} declares a push path filter this scan parsed as EMPTY.`);
     console.error('  Only block-style `- entry` lists are understood. An unparsed filter reads exactly');
     console.error('  like an unfiltered lane, which is the one thing this guard must never assume.');
-    process.exit(1);
+    coverageLost();
   }
   // No filter at all = runs on every push. Nothing to under-reach.
   if (paths.length === 0 && ignored.length === 0) continue;
@@ -241,7 +241,7 @@ if (graded.length === 0) {
   console.error(`✗ COVERAGE LOST — no path-filtered Flutter deploy lane found under ${WF_DIR}.`);
   console.error('  This guard graded nothing. Either the lane was renamed/retired and this scan');
   console.error('  was not taught, or the trigger shape changed out from under the parser.');
-  process.exit(1);
+  coverageLost();
 }
 // Deliberately NOT gated on scanningRealRepo: a self-check that cannot fire
 // against a fixture is a self-check with no recorded failing case.
@@ -251,7 +251,7 @@ if (graded.length === 0) {
     console.error(`✗ COVERAGE LOST — named lane(s) no longer graded: ${dropped.join(', ')}`);
     console.error('  They are the reason this guard exists. Point REQUIRED_COVERAGE at their new');
     console.error('  names in the same change that renames them — never delete the entry.');
-    process.exit(1);
+    coverageLost();
   }
 }
 // The comparison is only meaningful against files that exist. On a fixture root
@@ -261,7 +261,7 @@ if (scanningRealRepo) {
   if (missing.length) {
     console.error(`✗ COVERAGE LOST — required input(s) do not exist at ${ROOT}: ${missing.join(', ')}`);
     console.error('  A trigger checked against a phantom file passes for the wrong reason.');
-    process.exit(1);
+    coverageLost();
   }
 }
 
@@ -278,3 +278,11 @@ console.log(
   `ok  deploy triggers — ${graded.length} path-filtered Flutter lane(s) (${graded.join(', ')}), ` +
     `${checks} build input(s) all reachable`,
 );
+
+/** The one COVERAGE LOST stop: each could-not-look branch above prints its own reason and ends
+ *  here, so the run exits 2 — never 1, which would read as a finding (AGENTS.md exit-code
+ *  convention, O-EXIT2-CONVENTION-GAP). Declared LAST (hoisted) so every `assert-deploy-triggers.mjs:NNN`
+ *  citation above keeps pointing at the line it names. */
+function coverageLost() {
+  process.exit(2);
+}

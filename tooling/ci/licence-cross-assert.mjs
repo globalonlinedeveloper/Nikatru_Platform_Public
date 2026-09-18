@@ -186,10 +186,15 @@ const readJson = (abs) => {
  *   to phrase the report. The CHECKS are identical from both sides on purpose:
  *   a seam check that says different things depending on who runs it is two
  *   checks wearing one name.
- * @returns {{ problems: string[], prints: string[], compared: number, linked: number }}
+ * @returns {{ problems: string[], lost: string[], prints: string[], compared: number, linked: number }}
+ *   `problems` are FINDINGS (exit 1). `lost` are the seam's could-not-look stops, returned as bare
+ *   reasons with no exit of their own: this module never exits, so the CALLER prefixes each with
+ *   "CROSS-ASSERT COVERAGE LOST" and exits 2 when they are all it has (AGENTS.md exit-code
+ *   convention, O-EXIT2-CONVENTION-GAP) — the chassis-delegation `{ lost }` channel, same reason.
  */
 export function crossAssertLicenceRegisters(repoRoot, { side } = {}) {
   const problems = [];
+  const lost = [];
   const prints = [];
   const other = side === 'asset' ? CONTENT_REGISTER_REL : ASSET_REGISTER_REL;
 
@@ -204,12 +209,12 @@ export function crossAssertLicenceRegisters(repoRoot, { side } = {}) {
     [ASSET_REGISTER_REL, assetAbs],
   ]) {
     if (!existsSync(abs)) {
-      problems.push(
-        `CROSS-ASSERT COVERAGE LOST — ${rel} does not exist, so the seam between the two licence registers ` +
+      lost.push(
+        `${rel} does not exist, so the seam between the two licence registers ` +
           `was not checked at all. Running only ${other === rel ? 'one side' : 'the near side'} of a two-register ` +
           'boundary is how a family ends up cleared in one file and unmentioned in the other.',
       );
-      return { problems, prints, compared: 0, linked: 0 };
+      return { problems, lost, prints, compared: 0, linked: 0 };
     }
   }
   const c = readJson(contentAbs);
@@ -219,19 +224,19 @@ export function crossAssertLicenceRegisters(repoRoot, { side } = {}) {
     [ASSET_REGISTER_REL, a],
   ]) {
     if (r.error) {
-      problems.push(`CROSS-ASSERT COVERAGE LOST — ${rel} is not valid JSON (${r.error}); the seam was not checked.`);
-      return { problems, prints, compared: 0, linked: 0 };
+      lost.push(`${rel} is not valid JSON (${r.error}); the seam was not checked.`);
+      return { problems, lost, prints, compared: 0, linked: 0 };
     }
   }
   const families = Array.isArray(c.doc.families) ? c.doc.families : [];
   const assets = Array.isArray(a.doc.assets) ? a.doc.assets : [];
   if (families.length === 0 || assets.length === 0) {
-    problems.push(
-      `CROSS-ASSERT COVERAGE LOST — ${CONTENT_REGISTER_REL} has ${families.length} family row(s) and ` +
+    lost.push(
+      `${CONTENT_REGISTER_REL} has ${families.length} family row(s) and ` +
         `${ASSET_REGISTER_REL} has ${assets.length} asset row(s). With either side empty every comparison ` +
         'below ranges over nothing and reports agreement.',
     );
-    return { problems, prints, compared: 0, linked: 0 };
+    return { problems, lost, prints, compared: 0, linked: 0 };
   }
 
   // ── the canonical boundary sentence still says what the corpus quotes ─────
@@ -249,15 +254,15 @@ export function crossAssertLicenceRegisters(repoRoot, { side } = {}) {
   // to undefined and agree perfectly, forever.
   for (const pair of FIELD_PAIRS) {
     if (!families.some((f) => pair.content.read(f) !== undefined)) {
-      problems.push(
-        `CROSS-ASSERT COVERAGE LOST — not one row in ${CONTENT_REGISTER_REL} produces a value for ` +
+      lost.push(
+        `not one row in ${CONTENT_REGISTER_REL} produces a value for ` +
           `"${pair.content.field}" (${pair.what}). The field was renamed or removed; re-point this pair rather ` +
           'than leaving it comparing nothing to nothing.',
       );
     }
     if (!assets.some((r) => pair.asset.read(r) !== undefined)) {
-      problems.push(
-        `CROSS-ASSERT COVERAGE LOST — not one row in ${ASSET_REGISTER_REL} produces a value for ` +
+      lost.push(
+        `not one row in ${ASSET_REGISTER_REL} produces a value for ` +
           `"${pair.asset.field}" (${pair.what}). The field was renamed or removed; re-point this pair rather ` +
           'than leaving it comparing nothing to nothing.',
       );
@@ -342,5 +347,5 @@ export function crossAssertLicenceRegisters(repoRoot, { side } = {}) {
     );
   }
 
-  return { problems, prints, compared, linked: links.length };
+  return { problems, lost, prints, compared, linked: links.length };
 }

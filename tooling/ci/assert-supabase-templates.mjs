@@ -68,7 +68,7 @@ if (!existsSync(DIR)) {
   console.error(`COVERAGE LOST: ${DIR} does not exist.`);
   console.error('  These files are the only recovery path for the live auth email templates.');
   console.error('  If they moved, re-point this guard. Do not delete it.');
-  process.exit(1);
+  coverageLost();
 }
 
 const present = listDir(DIR).filter((f) => f.endsWith('.html')).sort();
@@ -76,7 +76,7 @@ const present = listDir(DIR).filter((f) => f.endsWith('.html')).sort();
 // COVERAGE LOST, not "pass": a guard that evaluates nothing must never be green.
 if (present.length === 0) {
   console.error(`COVERAGE LOST: no .html templates found in ${DIR}.`);
-  process.exit(1);
+  coverageLost();
 }
 
 let checked = 0;
@@ -131,7 +131,7 @@ if (!existsSync(README)) {
 // A guard that checked nothing is a guard that cannot fail.
 if (checked === 0) {
   console.error('COVERAGE LOST: zero templates were evaluated.');
-  process.exit(1);
+  coverageLost();
 }
 
 prints.push(`checked ${checked}/${Object.keys(REQUIRED).length} DR templates in docs/platform/supabase/email-templates/`);
@@ -148,3 +148,11 @@ if (problems.length) {
 
 console.log('assert-supabase-templates: OK');
 for (const p of prints) console.log(`  · ${p}`);
+
+/** The one COVERAGE LOST stop: each could-not-look branch above prints its own reason and ends
+ *  here, so the run exits 2 — never 1, which would read as a finding (AGENTS.md exit-code
+ *  convention, O-EXIT2-CONVENTION-GAP). Declared LAST (hoisted) so every `assert-supabase-templates.mjs:NNN`
+ *  citation above keeps pointing at the line it names. */
+function coverageLost() {
+  process.exit(2);
+}

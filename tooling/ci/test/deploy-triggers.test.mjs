@@ -323,7 +323,7 @@ jobs:
 `,
       }),
     );
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /deploy-drift\.yml/);
   });
@@ -332,14 +332,14 @@ jobs:
   // read as clean.
   test('COVERAGE LOST when the named lane is no longer graded', () => {
     const r = run(fixture({ 'deploy-anything-else.yml': lane(ALL_PATHS) }));
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /deploy-web\.yml/);
   });
 
   test('COVERAGE LOST when no path-filtered Flutter lane exists', () => {
     const r = run(fixture({ 'deploy-web.yml': lane('', { dispatchOnly: true }) }));
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST/);
   });
 
@@ -347,7 +347,7 @@ jobs:
     const root = join(TMP, `f${seq++}`);
     mkdirSync(root, { recursive: true });
     const r = run(root);
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST/);
   });
 });

@@ -117,14 +117,14 @@ if (brickSrc === null) {
   console.error(`✗ COVERAGE LOST — cannot read ${rel(BRICK_APP_CONFIG)}.`);
   console.error('  That file is where the support address is DECIDED; without it every equality below');
   console.error('  compares two copies of nothing. The brick moved, or this guard was not told.');
-  process.exit(1);
+  coverageLost();
 }
 const canonical = brickSrc.match(/supportEmail\s*=\s*'([^']+)'/)?.[1];
 if (!canonical) {
   console.error(`✗ COVERAGE LOST — ${rel(BRICK_APP_CONFIG)} declares no AppConfig.supportEmail.`);
   console.error('  Every app the factory stamps would ship with no support address, and the SECURITY.md');
   console.error('  equality below would have nothing to be equal to.');
-  process.exit(1);
+  coverageLost();
 }
 
 const securitySrc = read(SECURITY_MD);
@@ -152,7 +152,7 @@ if (securitySrc !== null) {
 const contactSrc = read(CONTACT_PAGE);
 if (contactSrc === null) {
   console.error(`✗ COVERAGE LOST — cannot read ${rel(CONTACT_PAGE)}, so "the address is published" was never checked.`);
-  process.exit(1);
+  coverageLost();
 }
 if (!visibleText(contactSrc).includes(canonical)) {
   problems.push(
@@ -190,7 +190,7 @@ if (existsSync(appsDir)) {
 if (appConfigs.length === 0) {
   console.error('✗ COVERAGE LOST — no apps/*/**/app_config.dart was found, so "every app carries the address" ranged over nothing.');
   console.error('  Either the apps tree moved or this walk broke; an empty domain makes the check vacuously true.');
-  process.exit(1);
+  coverageLost();
 }
 for (const cfg of appConfigs) {
   const claimed = read(cfg)?.match(/supportEmail\s*=\s*'([^']+)'/)?.[1];
@@ -226,7 +226,7 @@ try {
   rootEntries = listDir(repoRoot, { withFileTypes: true });
 } catch {
   console.error(`✗ COVERAGE LOST — cannot list ${repoRoot}, so the no-LICENSE check ran over nothing.`);
-  process.exit(1);
+  coverageLost();
 }
 const licences = rootEntries
   .filter((e) => !e.isDirectory() && LICENCE_NAMES.includes(e.name.toLowerCase()))
@@ -255,3 +255,11 @@ console.log(
   `ok  repo posture — SECURITY.md, NOTICE.md and ${appConfigs.length} app config(s) all name ${canonical}; ` +
     `both posture tokens present; no LICENCE grant at the root (${rootEntries.length} root entries scanned)`,
 );
+
+/** The one COVERAGE LOST stop: each could-not-look branch above prints its own reason and ends
+ *  here, so the run exits 2 — never 1, which would read as a finding (AGENTS.md exit-code
+ *  convention, O-EXIT2-CONVENTION-GAP). Declared LAST (hoisted) so every `assert-repo-posture.mjs:NNN`
+ *  citation above keeps pointing at the line it names. */
+function coverageLost() {
+  process.exit(2);
+}

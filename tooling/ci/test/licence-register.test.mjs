@@ -686,14 +686,14 @@ describe('[7]P-5 ↔ [8]K-10 — the seam between the two licence registers', ()
   test('a tree with only ONE register is CROSS-ASSERT COVERAGE LOST — half a seam is not a seam', () => {
     // The shape every baseline in this file silently had until 2026-08-13.
     const r = run(fixture({ withContentRegister: false }));
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r)); // only the seam could not look: exit 2, not a finding
     assert.match(out(r), /CROSS-ASSERT COVERAGE LOST/);
     assert.match(out(r), /tooling\/legal\/content-licence-register\.json does not exist/);
   });
 
   test('a content register with NO family rows is COVERAGE LOST, not agreement', () => {
     const r = run(fixture({ contentFamilies: [] }));
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r)); // only the seam could not look: exit 2, not a finding
     assert.match(out(r), /CROSS-ASSERT COVERAGE LOST/);
     assert.match(out(r), /0 family row\(s\)/);
   });
@@ -756,7 +756,7 @@ describe('[7]P-5 ↔ [8]K-10 — the seam between the two licence registers', ()
   test('renaming the content-side field is COVERAGE LOST — not undefined agreeing with undefined forever', () => {
     const contentFamilies = structuredClone(DEFAULT_CONTENT_FAMILIES).map(({ licence_id, ...rest }) => ({ ...rest, licenceId: licence_id }));
     const r = run(fixture({ contentFamilies }));
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r)); // only the seam could not look: exit 2, not a finding
     assert.match(out(r), /CROSS-ASSERT COVERAGE LOST — not one row in tooling\/legal\/content-licence-register\.json produces a value for "licence_id"/);
   });
 
@@ -846,5 +846,13 @@ describe('[7]P-5 ↔ [8]K-10 — the seam between the two licence registers', ()
     const after = contentGuard(root);
     assert.equal(after.status, 1, out(after));
     assert.match(out(after), /SEAM DISAGREEMENT on licence identity for family "noto-fonts"/);
+
+    // …and the seam that could not be READ from this side is exit 2, not a finding: the module
+    // returns its stops in `lost` and this guard's own coverageLost owns the exit
+    // (O-EXIT2-CONVENTION-GAP). With the asset register gone there is nothing else wrong.
+    rmSync(reg);
+    const unread = contentGuard(root);
+    assert.equal(unread.status, 2, out(unread));
+    assert.match(out(unread), /CROSS-ASSERT COVERAGE LOST — tooling\/legal\/asset-register\.json does not exist/);
   });
 });

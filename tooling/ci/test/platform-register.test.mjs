@@ -530,7 +530,7 @@ describe('assert-platform-register', () => {
     // nothing and cannot fail.
     const cfg = PLATFORM_CFG.replace('"main": "src/index.ts",', '');
     const { code, out } = run(tree({ files: { 'services/platform/wrangler.jsonc': cfg } }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /NOT ONE declares `main`/);
   });
 
@@ -643,7 +643,7 @@ describe('assert-platform-register', () => {
     const reg = baseRegister();
     reg.servingWorker.entrypoint = 'services/platform/src/nowhere.ts';
     const { code, out } = run(tree({ register: reg }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST — servingWorker\.entrypoint/);
   });
 
@@ -651,7 +651,7 @@ describe('assert-platform-register', () => {
     const { code, out } = run(
       tree({ files: { 'services/platform/src/index.ts': 'export default { fetch: () => new Response() };\n' } }),
     );
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
   });
 
@@ -665,7 +665,7 @@ describe('assert-platform-register', () => {
     const reg = baseRegister();
     reg.routes = reg.routes.filter((r) => r.id === 'health');
     const { code, out } = run(tree({ register: reg, files: { 'services/platform/src/index.ts': inlineOnly } }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST — every route the parser found is declared inline/);
   });
 
@@ -681,7 +681,7 @@ describe('assert-platform-register', () => {
     const root = join(TMP, `r${seq++}`);
     mkdirSync(root, { recursive: true });
     const { code, out } = run(root);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST — no platform register/);
   });
 
@@ -754,7 +754,7 @@ describe('assert-platform-register', () => {
     const reg = baseRegister();
     reg.sharedValues.values.find((v) => v.at === 'vars.API_VERSION').at = 'vars->API_VERSION';
     const { code, out } = run(tree({ register: reg }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST — `sharedValues` entry `vars->API_VERSION` is not addressable/);
   });
 
@@ -762,7 +762,7 @@ describe('assert-platform-register', () => {
     const reg = baseRegister();
     reg.sharedValues.values.find((v) => v.at === 'vars.API_VERSION').at = 'vars.RENAMED_AWAY';
     const { code, out } = run(tree({ register: reg }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST — `vars\.RENAMED_AWAY` resolved in ZERO/);
   });
 
@@ -772,7 +772,7 @@ describe('assert-platform-register', () => {
     const reg = baseRegister();
     reg.sharedValues.values = [];
     const { code, out } = run(tree({ register: reg }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST — the register declares no `sharedValues\.values`/);
   });
 
@@ -1293,7 +1293,7 @@ describe('assert-platform-register — every deployable Worker is the subject [6
         register: appRegister((r) => { r.appWorkers[0].entrypoint = 'services/subscriptiontracker-api/src/nowhere.ts'; }),
       }),
     );
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(
       out,
       /COVERAGE LOST — servingWorker\.entrypoint `services\/subscriptiontracker-api\/src\/nowhere\.ts` \(appWorkers\[0\]\) does not exist/,
@@ -1304,7 +1304,7 @@ describe('assert-platform-register — every deployable Worker is the subject [6
     const { code, out } = run(
       appTree({ files: { 'services/subscriptiontracker-api/src/index.ts': 'export default { fetch: () => new Response() };\n' } }),
     );
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST — parsed services\/subscriptiontracker-api\/src\/index\.ts and found ZERO mounted routes/);
   });
 
@@ -1322,7 +1322,7 @@ describe('assert-platform-register — every deployable Worker is the subject [6
         },
       }),
     );
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(
       out,
       /COVERAGE LOST — every route the parser found is declared inline in services\/subscriptiontracker-api\/src\/index\.ts/,

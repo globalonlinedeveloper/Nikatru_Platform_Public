@@ -140,7 +140,7 @@ if (!existsSync(SERVICES)) {
     `assert-cors-allowlist: COVERAGE LOST — services/ does not exist under ${ROOT}.\n` +
       '    The scan is broken, not the tree.',
   );
-  process.exit(1);
+  coverageLost();
 }
 
 if (!existsSync(CATALOGUE)) {
@@ -150,7 +150,7 @@ if (!existsSync(CATALOGUE)) {
       '    has nothing to require, and would wave through an allowlist that had\n' +
       '    dropped every live app.',
   );
-  process.exit(1);
+  coverageLost();
 }
 
 let catalogue;
@@ -158,11 +158,11 @@ try {
   catalogue = JSON.parse(readFileSync(CATALOGUE, 'utf8'));
 } catch (e) {
   console.error(`assert-cors-allowlist: COVERAGE LOST — apps.json is not parseable JSON: ${e.message}`);
-  process.exit(1);
+  coverageLost();
 }
 if (!Array.isArray(catalogue)) {
   console.error('assert-cors-allowlist: COVERAGE LOST — apps.json is not an array.');
-  process.exit(1);
+  coverageLost();
 }
 
 // ── derive the origins ───────────────────────────────────────────────────────
@@ -193,7 +193,7 @@ if (catalogueOrigins.length < MIN_CATALOGUE_ORIGINS) {
       '    passes forever — including over a config that had been emptied.',
   );
   for (const b of badRows) console.error(`    ${b}`);
-  process.exit(1);
+  if (badRows.length) process.exit(1); else coverageLost(); // a malformed row printed above is a finding (1); none, and the scan could not look (2)
 }
 
 // 🔴 DECLARED, NOT DISCOVERED: EVERY CATALOGUE ORIGIN IS THE APEX [ADR 075].
@@ -248,7 +248,7 @@ if (configs.length < MIN_SERVICES) {
       '    A rename or a moved directory silently shrinks this scan; a scan over\n' +
       '    nothing reports a clean allowlist for every Worker in the tree.',
   );
-  process.exit(1);
+  coverageLost();
 }
 
 const problems = [...badRows];
@@ -431,7 +431,7 @@ if (problems.length > 0) {
       'An exact allowlist fails closed and silently: the affected surface simply\n' +
       'stops working in the browser, with nothing logged server side.',
   );
-  process.exit(1);
+  process.exit(problems.every((p) => p.startsWith('✗ COVERAGE LOST')) ? 2 : 1); // 2 = could not look; 1 = a finding
 }
 
 // The EXTRAS count is printed, not buried: every one is a standing exception to
@@ -442,3 +442,11 @@ console.log(
     `catalogue origin(s) from ${apps.length} app(s); ${originsSeen} derived requirement(s) ` +
     `+ ${extrasSeen} declared EXTRAS all present, no unjustified origins.`,
 );
+
+/** The one COVERAGE LOST stop: each could-not-look branch above prints its own reason and ends
+ *  here, so the run exits 2 — never 1, which would read as a finding (AGENTS.md exit-code
+ *  convention, O-EXIT2-CONVENTION-GAP). Declared LAST (hoisted) so every `assert-cors-allowlist.mjs:NNN`
+ *  citation above keeps pointing at the line it names. */
+function coverageLost() {
+  process.exit(2);
+}

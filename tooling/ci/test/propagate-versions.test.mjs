@@ -278,7 +278,7 @@ describe('propagate-versions', () => {
     const dir = build('pv-no-readme', { decl: { melos: '8.6.0' }, omit: ['README.md'] });
     const before = snapshot(dir);
     const { code, out } = propagate(dir, ['--write']);
-    assert.equal(code, 1, 'collectTargets refuses with the guard’s own exit code and wording');
+    assert.equal(code, 2, 'collectTargets refuses with the guard’s own exit code and wording');
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /README\.md/);
     assert.equal(snapshot(dir), before);

@@ -158,7 +158,7 @@ function fail(lines) {
 
 // ── 0. the register ──────────────────────────────────────────────────────────
 if (!existsSync(REGISTER)) {
-  fail([
+  coverageLost([
     `✗ COVERAGE LOST — no capability register at ${REGISTER}.`,
     '  [pipeline C-1] requires a machine-readable register of every shared capability.',
   ]);
@@ -185,7 +185,7 @@ if (existsSync(PACKAGES_DIR) && statSync(PACKAGES_DIR).isDirectory()) {
     .sort();
 }
 if (onDisk.length < MIN_EXPECTED_PACKAGES) {
-  fail([
+  coverageLost([
     `✗ COVERAGE LOST — found only ${onDisk.length} package dir(s) under packages/,`,
     `  expected at least ${MIN_EXPECTED_PACKAGES}. The scan is broken, not the tree.`,
     `  repo root used: ${ROOT}`,
@@ -1296,7 +1296,7 @@ if (problems.length) {
   console.error('  [C-1] one declared home per capability · [C-2] no capability without a consumer ·');
   console.error('  [C-3] no register-assigned capability implemented in an app.');
   console.error('  Register: tooling/capability-register.json');
-  process.exit(1);
+  process.exit(problems.every((p) => p.startsWith('COVERAGE LOST')) ? 2 : 1); // 2 = could not look (every problem is COVERAGE LOST); 1 = a finding
 }
 
 // ── the gaps print whether or not the build passes ───────────────────────────
@@ -1371,3 +1371,12 @@ console.log(
   `    ${(gatedModules ?? []).length} demand-gated module(s) evaluated over ${demandRoots.length} app root(s) ` +
     `and ${allDartFiles().length} Dart file(s); ${DEMAND_GATES_OWED.length} row(s) may not be deleted`,
 );
+
+/** The scan could not look, so this run is not evidence either way — exit 2,
+ *  never 1, which would read as a finding (AGENTS.md exit-code convention,
+ *  O-EXIT2-CONVENTION-GAP). Declared LAST (hoisted) so every `assert-capability-register.mjs:NNN`
+ *  citation above keeps pointing at the line it names. */
+function coverageLost(lines) {
+  for (const l of lines) console.error(l);
+  process.exit(2);
+}

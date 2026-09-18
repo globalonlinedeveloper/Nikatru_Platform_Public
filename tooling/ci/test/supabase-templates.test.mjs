@@ -169,13 +169,13 @@ describe('assert-supabase-templates — coverage self-checks', () => {
     mkdirSync(join(root, 'docs', 'platform', 'supabase'), { recursive: true });
     writeFileSync(join(root, 'docs', 'platform', 'supabase', 'README.md'), GOOD_README);
     const r = run(root);
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /COVERAGE LOST/);
   });
 
   test('COVERAGE LOST when the directory exists but holds no .html at all', () => {
     const r = run(makeRoot({ files: {} }));
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /COVERAGE LOST: no \.html templates/);
   });
 

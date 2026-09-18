@@ -115,7 +115,7 @@ import { stripSourceComments } from './text-reductions.mjs';
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 
 const problems = [];
-const fail = (m) => problems.push(m);
+const fail = (m) => problems.push(m); const coverageLost = (m) => problems.push(`COVERAGE LOST — ${m}`); // exit 2 only if EVERY problem is one (summary below)
 
 const SERVICES = join(ROOT, 'services');
 const REGISTRY = 'services/platform/src/lib/mor/registry.ts';
@@ -171,7 +171,7 @@ function parseJsonc(text, where) {
   try {
     return JSON.parse(out);
   } catch (err) {
-    fail(`COVERAGE LOST — ${where} could not be parsed after stripping comments: ${err.message}. An unparseable config is scanned by nothing.`);
+    coverageLost(`${where} could not be parsed after stripping comments: ${err.message}. An unparseable config is scanned by nothing.`);
     return null;
   }
 }
@@ -216,7 +216,7 @@ function parseJsonc(text, where) {
 const configs = [];
 if (!existsSync(SERVICES)) {
   console.error('✗ COVERAGE LOST — no services/ directory. Every limb would range over nothing.');
-  process.exit(1);
+  process.exit(2); // COVERAGE LOST: could not look, not a finding
 }
 for (const e of listDir(SERVICES, { withFileTypes: true })) {
   if (!e.isDirectory() || e.name.startsWith('.')) continue;
@@ -273,24 +273,24 @@ if (templateConfigs.length === 0) {
     '\n  Limb 1 must range over the template every future backend is stamped from; a walk that finds',
     '\n  nothing there certifies the deployed Workers and says nothing about the generator.',
   );
-  process.exit(1);
+  process.exit(2); // COVERAGE LOST: could not look, not a finding
 }
 for (const c of templateConfigs) configs.push(c);
 
 if (configs.length === 0) {
   console.error('✗ COVERAGE LOST — found ZERO wrangler configs. The scan is broken, not the tree.');
-  process.exit(1);
+  process.exit(2); // COVERAGE LOST: could not look, not a finding
 }
 /** The DEPLOYED subset — limbs 3, 4 and 5's subject, for the reasons above. */
 const deployedConfigs = configs.filter((c) => c.deployed);
 if (deployedConfigs.length === 0) {
   console.error('✗ COVERAGE LOST — found ZERO deployed wrangler configs. The scan is broken, not the tree.');
-  process.exit(1);
+  process.exit(2); // COVERAGE LOST: could not look, not a finding
 }
 if (!configs.some((c) => c.service === MONEY_WORKER)) {
   console.error(`✗ COVERAGE LOST — no deployed config for services/${MONEY_WORKER}, the Worker that owns the money rail.`);
   console.error('  Every limb below is about that config; without it this guard grades the wrong Workers and prints ok.');
-  process.exit(1);
+  process.exit(2); // COVERAGE LOST: could not look, not a finding
 }
 
 // ── LIMB 1 · the declaring set IS the money-door set, and every value is live ─
@@ -330,8 +330,8 @@ if (doorConfigs.filter((c) => c.deployed).length === 0) {
   // that ALSO lost its route file reports both findings rather than the first.
   // Scoped to DEPLOYED doors on purpose: the template legitimately has none, so
   // counting it here would let a tree that lost both real doors read as ok.
-  fail(
-    'COVERAGE LOST — no deployed source refuses with `money_rail_not_configured`, so the money-door set is empty; ' +
+  coverageLost(
+    'no deployed source refuses with `money_rail_not_configured`, so the money-door set is empty; ' +
       'limb 1 has nothing to compare and limb 5 nothing to exercise. The scan is broken, not the tree.',
   );
 }
@@ -431,7 +431,7 @@ for (const c of configs) {
 const registryPath = join(ROOT, REGISTRY);
 let secretVars = [];
 if (!existsSync(registryPath)) {
-  fail(`COVERAGE LOST — ${REGISTRY} does not exist, so the money-secret set is empty and limb 3 asserts nothing.`);
+  coverageLost(`${REGISTRY} does not exist, so the money-secret set is empty and limb 3 asserts nothing.`);
 } else {
   // ⚠️ BOTH READS IN THIS LIMB ARE COMMENT-STRIPPED, and both take the FIRST
   // match, which is the whole reason. A doc comment sitting ABOVE either
@@ -477,8 +477,8 @@ if (!existsSync(registryPath)) {
     secretVars.push(m[1]);
   }
   if (secretVars.length === 0) {
-    fail(
-      `COVERAGE LOST — derived ZERO money destination secrets from ${REGISTRY}. "Exactly one secret exists" over an ` +
+    coverageLost(
+      `derived ZERO money destination secrets from ${REGISTRY}. "Exactly one secret exists" over an ` +
         'empty set is a check that cannot fail.',
     );
   }
@@ -503,7 +503,7 @@ for (const c of configs) {
 // ── LIMB 4 · the route fails closed on an absent/unknown environment ─────────
 const routePath = join(ROOT, ROUTE);
 if (!existsSync(routePath)) {
-  fail(`COVERAGE LOST — ${ROUTE} does not exist, so limb 4 has no route to grade.`);
+  coverageLost(`${ROUTE} does not exist, so limb 4 has no route to grade.`);
 } else {
   const route = readFileSync(routePath, 'utf8')
     .split('\n')
@@ -577,7 +577,7 @@ for (const svc of doorConfigs.filter((c) => c.deployed).map((c) => c.service)) {
   const testDir = join(ROOT, 'services', svc, 'test');
   const files = existsSync(testDir) ? listDir(testDir).filter((f) => f.endsWith('.test.ts')) : [];
   if (files.length === 0) {
-    fail(`COVERAGE LOST — no test files under services/${svc}/test, so nothing exercises that money door's fail-closed branch.`);
+    coverageLost(`no test files under services/${svc}/test, so nothing exercises that money door's fail-closed branch.`);
     continue;
   }
   const blocks = [];
@@ -650,7 +650,7 @@ if (problems.length) {
   console.error('');
   console.error('  [5]M-12 Sandbox money can never grant a production unlock. Enforced at the CONFIG layer,');
   console.error('  because the original criterion asked for an input that cannot be constructed.');
-  process.exit(1);
+  process.exit(problems.every((p) => p.startsWith('COVERAGE LOST')) ? 2 : 1); // 2 = could not look (every problem is COVERAGE LOST); 1 = a finding
 }
 
 console.log(

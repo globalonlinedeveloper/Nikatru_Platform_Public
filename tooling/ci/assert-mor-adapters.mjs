@@ -60,7 +60,7 @@ const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.u
 
 const problems = [];
 const printed = [];
-const fail = (m) => problems.push(m);
+const fail = (m) => problems.push(m); const coverageLost = (m) => problems.push(`COVERAGE LOST — ${m}`); // exit 2 only if EVERY problem is one (summary below)
 
 /** Roots the entitlement-write scan MUST reach. A missing one is coverage lost,
  *  never a clean run — see the header. */
@@ -265,19 +265,19 @@ const scanned = [];
 for (const { dir, label } of REQUIRED_COVERAGE) {
   const abs = join(ROOT, dir);
   if (!existsSync(abs)) {
-    fail(`COVERAGE LOST — ${dir} does not exist (${label}). The scan cannot reach it, so any entitlement write inside it is invisible and this guard would still print ok.`);
+    coverageLost(`${dir} does not exist (${label}). The scan cannot reach it, so any entitlement write inside it is invisible and this guard would still print ok.`);
     continue;
   }
   const files = walk(abs);
   if (files.length === 0) {
-    fail(`COVERAGE LOST — no .ts files found under ${dir} (${label}). The scan is broken, not the tree.`);
+    coverageLost(`no .ts files found under ${dir} (${label}). The scan is broken, not the tree.`);
     continue;
   }
   for (const f of files) scanned.push({ rel: rel(f), abs, dir });
 }
 if (scanned.length === 0) {
   console.error('✗ COVERAGE LOST — the entitlement-write scan reached ZERO files. Every limb below would pass over nothing.');
-  process.exit(1);
+  process.exit(2); // COVERAGE LOST: could not look, not a finding
 }
 
 /** SQL that WRITES the shared entitlements table. */
@@ -344,8 +344,8 @@ for (const w of DECLARED_WRITERS) {
     const allInserts = code.match(/\bINSERT\s+INTO\s+entitlements\b/gi) ?? [];
     const inserts = [...code.matchAll(/\bINSERT\s+INTO\s+entitlements\s*\(([^)]*)\)/gi)];
     if (allInserts.length > inserts.length) {
-      fail(
-        `COVERAGE LOST — ${w.file} carries ${allInserts.length} \`INSERT INTO entitlements\` statement(s) and ` +
+      coverageLost(
+        `${w.file} carries ${allInserts.length} \`INSERT INTO entitlements\` statement(s) and ` +
           `this check could read the column list of only ${inserts.length}. The remaining ` +
           `${allInserts.length - inserts.length} name no columns (\`INSERT INTO entitlements VALUES (…)\`) or are ` +
           `written in a shape this check cannot parse, so it cannot tell whether \`${w.worldColumn}\` is written. ` +
@@ -355,8 +355,8 @@ for (const w of DECLARED_WRITERS) {
       continue;
     }
     if (inserts.length === 0) {
-      fail(
-        `COVERAGE LOST — ${w.file} is declared with a \`${w.worldColumn}\` column requirement and the scan found ` +
+      coverageLost(
+        `${w.file} is declared with a \`${w.worldColumn}\` column requirement and the scan found ` +
           'NO `INSERT INTO entitlements (…)` in it at all. Either the write moved to a shape this check cannot ' +
           'read, in which case the check is asserting nothing, or the declaration is stale. Both are fixed here, ' +
           'in the row, not by loosening the pattern.',
@@ -384,15 +384,15 @@ for (const w of DECLARED_WRITERS) {
 const registryPath = join(ROOT, REGISTRY);
 let providers = [];
 if (!existsSync(registryPath)) {
-  fail(`COVERAGE LOST — ${REGISTRY} does not exist, so the provider set is empty and limb 2 asserts nothing.`);
+  coverageLost(`${REGISTRY} does not exist, so the provider set is empty and limb 2 asserts nothing.`);
 } else {
   const registry = stripComments(readFileSync(registryPath, 'utf8'));
   const arr = /MOR_VERIFIERS\s*:\s*readonly\s+MoRWebhookVerifier\[\]\s*=\s*\[([^\]]*)\]/.exec(registry);
   const idents = arr ? [...arr[1].matchAll(/([A-Za-z_$][\w$]*)Verifier/g)].map((m) => m[1]) : [];
   providers = [...new Set(idents)];
   if (providers.length === 0) {
-    fail(
-      `COVERAGE LOST — ${REGISTRY} registers ZERO verifiers. [5]M-1's "a test per registered provider" over an ` +
+    coverageLost(
+      `${REGISTRY} registers ZERO verifiers. [5]M-1's "a test per registered provider" over an ` +
         'empty provider set is a check that cannot fail, which is how the original acceptance criterion passed on ' +
         'a repo with no rail at all.',
     );
@@ -406,7 +406,7 @@ const testCorpus = new Map(
   testFiles.map((f) => [f, stripComments(readFileSync(join(ROOT, TEST_DIR, f), 'utf8'))]),
 );
 if (testCorpus.size === 0) {
-  fail(`COVERAGE LOST — no test files under ${TEST_DIR}, so "every registered provider has a passing tampered-body test" ranges over nothing.`);
+  coverageLost(`no test files under ${TEST_DIR}, so "every registered provider has a passing tampered-body test" ranges over nothing.`);
 }
 
 // ── LIMB 2b · every registered rail has a LEGAL row ─────────────────────────
@@ -426,8 +426,8 @@ const LEGAL_REGISTER = 'tooling/legal/provider-register.json';
 {
   const legalPath = join(ROOT, LEGAL_REGISTER);
   if (!existsSync(legalPath)) {
-    fail(
-      `COVERAGE LOST — ${LEGAL_REGISTER} does not exist, so "every registered rail has a legal row" ranges over ` +
+    coverageLost(
+      `${LEGAL_REGISTER} does not exist, so "every registered rail has a legal row" ranges over ` +
         'nothing. The disclosure obligation for a merchant of record would be enforced by neither guard.',
     );
   } else {
@@ -435,12 +435,12 @@ const LEGAL_REGISTER = 'tooling/legal/provider-register.json';
     try {
       legal = JSON.parse(readFileSync(legalPath, 'utf8'));
     } catch (err) {
-      fail(`COVERAGE LOST — ${LEGAL_REGISTER} is not valid JSON (${err.message}), so no row could be matched.`);
+      coverageLost(`${LEGAL_REGISTER} is not valid JSON (${err.message}), so no row could be matched.`);
       legal = { providers: [] };
     }
     const rows = Array.isArray(legal.providers) ? legal.providers : [];
     if (rows.length === 0 && providers.length > 0) {
-      fail(`COVERAGE LOST — ${LEGAL_REGISTER} declares zero providers, so every membership check below passes over an empty set.`);
+      coverageLost(`${LEGAL_REGISTER} declares zero providers, so every membership check below passes over an empty set.`);
     }
     const known = new Set();
     for (const row of rows) {
@@ -735,7 +735,7 @@ if (problems.length) {
   console.error('  [5]M-1 one verifier between a provider and the entitlement table ·');
   console.error('  [5]M-14 the rail is green with no provider account, WITHOUT certifying an empty rail ·');
   console.error('  [ADR 004] provider-agnostic behind MoRWebhookVerifier · [ADR 020]:18 no webhook in a per-app Worker.');
-  process.exit(1);
+  process.exit(problems.every((p) => p.startsWith('COVERAGE LOST')) ? 2 : 1); // 2 = could not look (every problem is COVERAGE LOST); 1 = a finding
 }
 
 for (const line of printed) console.log(line);
