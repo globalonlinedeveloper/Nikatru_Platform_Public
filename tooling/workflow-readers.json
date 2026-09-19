@@ -248,6 +248,11 @@
       "reads": "the workflow directory handed to zizmor, with a minimum count"
     },
     {
+      "path": "tooling/ops/check-pages-deployments.mjs",
+      "property": "workflow-scan",
+      "reads": "deploy-web.yml on.push.paths and each job's timeout-minutes, to derive a direct-upload Pages project's expected commit and deploy-lane window"
+    },
+    {
       "path": "tooling/ops/safe-rerun.mjs",
       "property": "refuses-blind",
       "evidence": "workflow file(s) parsed and NOT ONE declares a top-level",

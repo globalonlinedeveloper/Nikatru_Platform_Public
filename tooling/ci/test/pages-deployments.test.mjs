@@ -24,6 +24,11 @@
 //     graded by its AGE (created_on vs now): young is ⏳ and the landed build
 //     behind it is graded; past the ceiling is a STUCK build; failure and
 //     canceled stay red. ops-watch run 35422355154 went red on the difference.
+//   · A DIRECT UPLOAD THAT CARRIES A COMMIT IS GRADED ON IT (2026-09-19, row
+//     O-PAGES-DIRECT-UPLOAD-COMMIT-UNGRADED). Its expected commit comes from
+//     deploy-web.yml's own `on.push.paths`, its in-flight window from that
+//     workflow's job timeouts; a stale served commit past the window is RED,
+//     and UNGRADED is left only for a row with no commit_hash at all.
 //
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
@@ -43,7 +48,15 @@ import {
   classifyStage,
   IN_FLIGHT_CEILING_MS,
   DEPLOYMENTS_PER_PAGE,
+  toPathspec,
+  jobTimeouts,
+  deployLaneInputs,
+  commitTimeOf,
+  DEPLOY_WEB_REL,
+  DEPLOY_LANE_RUNS,
 } from '../../ops/check-pages-deployments.mjs';
+import { parseTriggerPaths } from '../assert-deploy-triggers-deploy.mjs';
+import { parseWorkflow } from '../workflow-scan.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = resolve(CI_DIR, '..', '..');
@@ -261,6 +274,7 @@ describe('judgeProject — the green control, then each way it goes red', () => 
     });
     assert.equal(v.code, 0);
     assert.match(v.line, /UNGRADED/, 'an ungraded limb must be printed, never silently skipped');
+    assert.equal(v.ungraded, true, 'the sweep counts ungraded rows off this flag, so a row without it is counted as graded');
   });
 
   test('…and a direct-upload project whose stage FAILED is still red', () => {
@@ -436,6 +450,213 @@ describe('judgeProject — a build IN FLIGHT is graded by its age, not called re
     });
     assert.equal(v.code, 0);
     assert.match(v.line, /^⏳ .*UNGRADED/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// A DIRECT UPLOAD THAT CARRIES A COMMIT IS GRADED ON IT. Measured 2026-09-19:
+// every `subscriptiontracker` production row is `ad_hoc` AND carries
+// metadata.commit_hash (0b3409b5 → ac22b935, 5b862e8b → 30b4ef06), so the
+// UNGRADED declaration rested on a false premise.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('judgeProject — a direct upload carrying a commit_hash is graded on it', () => {
+  const NOW = Date.parse('2026-09-19T09:00:00Z');
+  const CEILING = 80 * 60 * 1000;
+  const base = {
+    project: 'subscriptiontracker',
+    kind: 'direct',
+    sourceDir: `${DEPLOY_WEB_REL} on.push.paths`,
+    expectedCommit: SHA_NEW,
+    now: NOW,
+    laneCeilingMs: CEILING,
+    expectedAt: NOW - 3 * 60 * 60 * 1000,
+  };
+  const adHoc = (sha, over = {}) =>
+    deployment({ deployment_trigger: { type: 'ad_hoc', metadata: { branch: 'main', commit_hash: sha, commit_dirty: true } }, ...over });
+
+  test('GREEN CONTROL — the served commit IS the newest one the deploy lane deploys for', () => {
+    const v = judgeProject({ ...base, deployments: [adHoc(SHA_NEW)] });
+    assert.equal(v.code, 0);
+    assert.match(v.line, /^ok .*serving bbbbbbb, the newest `main` commit touching \.github\/workflows\/deploy-web\.yml on\.push\.paths/);
+    assert.notEqual(v.ungraded, true, 'a row that carries a hash and was graded must not be counted as ungraded');
+  });
+
+  test('🔴 RED — a STALE served commit past the deploy-lane ceiling is exit 1', () => {
+    const v = judgeProject({ ...base, deployments: [adHoc(SHA_OLD)], isAncestor: () => false });
+    assert.equal(v.code, 1, 'a direct upload serving an older build than main names must not read as healthy');
+    assert.match(v.line, /serving commit aaaaaaa, which does NOT carry bbbbbbb/);
+    assert.match(v.line, /landed 180 min ago, past the 80-minute deploy-lane ceiling/);
+  });
+
+  test('a served DESCENDANT of the expected commit is green, asked as isAncestor(expected, served)', () => {
+    const C = 'c'.repeat(40);
+    const seen = [];
+    const v = judgeProject({ ...base, deployments: [adHoc(C)], isAncestor: (a, b) => (seen.push([a, b]), true) });
+    assert.equal(v.code, 0);
+    assert.match(v.line, /AHEAD of bbbbbbb/);
+    assert.deepEqual(seen, [[SHA_NEW, C]]);
+  });
+
+  test('🔴 THE DEPLOY-LANE WINDOW — stale served, expected commit 9 min old: exit 0, ⏳, not red', () => {
+    const v = judgeProject({ ...base, expectedAt: NOW - 9 * 60 * 1000, deployments: [adHoc(SHA_OLD)], isAncestor: () => false });
+    assert.equal(v.code, 0, 'Cloudflare shows no in-flight row for a direct upload; the lane window stands in for it');
+    assert.match(v.line, /^⏳ /);
+    assert.match(v.line, /landed 9 min ago, inside the 80-minute deploy-lane ceiling/);
+    assert.equal(v.inflight, true, 'the summary must count it as not-yet-landed');
+  });
+
+  test('the window boundary is strict — AT the ceiling is inside, one ms past is RED', () => {
+    const at = judgeProject({ ...base, expectedAt: NOW - CEILING, deployments: [adHoc(SHA_OLD)], isAncestor: () => false });
+    assert.equal(at.code, 0);
+    const past = judgeProject({ ...base, expectedAt: NOW - CEILING - 1, deployments: [adHoc(SHA_OLD)], isAncestor: () => false });
+    assert.equal(past.code, 1);
+  });
+
+  test('🔴 stale served with an UNREADABLE commit time or ceiling is exit 2 — the window is the question', () => {
+    for (const over of [{ expectedAt: null }, { expectedAt: NaN }, { laneCeilingMs: null }, { laneCeilingMs: 0 }]) {
+      const v = judgeProject({ ...base, ...over, deployments: [adHoc(SHA_OLD)], isAncestor: () => false });
+      assert.equal(v.code, 2, `${JSON.stringify(over)} must be neither ⏳ nor red`);
+      assert.match(v.line, /NOTHING was judged/);
+    }
+  });
+
+  test('an unreadable ancestry on a direct row is exit 2, as for a git-connected one', () => {
+    const v = judgeProject({ ...base, deployments: [adHoc('c'.repeat(40))], isAncestor: () => null });
+    assert.equal(v.code, 2);
+  });
+
+  test('🔴 a row that CARRIES a hash with no expected commit supplied is exit 2, never UNGRADED', () => {
+    const v = judgeProject({ ...base, expectedCommit: null, deployments: [adHoc(SHA_NEW)] });
+    assert.equal(v.code, 2, 'UNGRADED is reserved for a row with no hash; anything else answering ok is the old blind limb');
+    assert.notEqual(v.ungraded, true);
+  });
+
+  test('UNGRADED stays for a row that truly carries no commit_hash — and is flagged for the count', () => {
+    for (const metadata of [{}, { commit_hash: '' }, { commit_hash: null }]) {
+      const v = judgeProject({ ...base, deployments: [deployment({ deployment_trigger: { type: 'ad_hoc', metadata } })] });
+      assert.equal(v.code, 0);
+      assert.match(v.line, /UNGRADED/);
+      assert.equal(v.ungraded, true);
+    }
+  });
+
+  test('in flight: the landed direct row behind a building one is graded on its commit', () => {
+    const building = (sha) =>
+      adHoc(sha, { id: 'dep-building', created_on: new Date(NOW - 20_000).toISOString(), latest_stage: { name: 'deploy', status: 'active' } });
+    const green = judgeProject({ ...base, deployments: [building(SHA_NEW), adHoc(SHA_NEW, { id: 'dep-landed' })] });
+    assert.equal(green.code, 0);
+    assert.match(green.line, /^⏳ .*Serving now: .*dep-landed/);
+    const red = judgeProject({ ...base, deployments: [building('d'.repeat(40)), adHoc(SHA_OLD, { id: 'dep-landed' })], isAncestor: () => false });
+    assert.equal(red.code, 1, 'past the lane ceiling, a building row that does not carry main either cannot excuse the stale one');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+describe('deployLaneInputs — the expected commit and the window come FROM deploy-web.yml', () => {
+  test('toPathspec — the three exact shapes translate, everything else is null', () => {
+    assert.equal(toPathspec('apps/**'), ':(literal)apps');
+    assert.equal(toPathspec('tooling/web/**'), ':(literal)tooling/web');
+    assert.equal(toPathspec('pubspec.lock'), ':(literal)pubspec.lock');
+    assert.equal(toPathspec('.github/workflows/deploy-web.yml'), ':(literal).github/workflows/deploy-web.yml');
+    assert.equal(toPathspec('tooling/ci/*.mjs'), ':(glob)tooling/ci/*.mjs');
+    assert.equal(toPathspec('tooling/ci/*'), ':(glob)tooling/ci/*');
+    for (const g of ['!apps/**', '!pubspec.lock', 'apps/!x/**', 'apps/**/lib/*.dart', 'apps/?/x', 'apps/[ab]/x', 'a+b/**', '**', '', null]) {
+      assert.equal(toPathspec(g), null, `${JSON.stringify(g)} must not be translated by a guess`);
+    }
+  });
+
+  test('jobTimeouts — job-level only; a job without one is a problem, not 360', () => {
+    const wf = [
+      'on: push',
+      'jobs:',
+      '  a:',
+      '    runs-on: x',
+      '    timeout-minutes: 5',
+      '    steps:',
+      '      - run: y',
+      '        timeout-minutes: 99',
+      '  b:',
+      '    timeout-minutes: 35 # why',
+      '',
+    ].join('\n');
+    const parse = (name, text) => {
+      const root = join(TMP, name);
+      mkdirSync(join(root, '.github', 'workflows'), { recursive: true });
+      writeFileSync(join(root, '.github', 'workflows', 'w.yml'), text);
+      return parseWorkflow(root, '.github/workflows/w.yml');
+    };
+    const ok = jobTimeouts(parse('jt-ok', wf));
+    assert.deepEqual(ok.minutes, { a: 5, b: 35 }, 'a step-level timeout is not a job ceiling');
+    assert.deepEqual(ok.problems, []);
+    const missing = jobTimeouts(parse('jt-missing', wf.replace('    timeout-minutes: 35 # why\n', '')));
+    assert.equal(missing.problems.length, 1);
+    assert.match(missing.problems[0], /job `b` declares no job-level `timeout-minutes`/);
+    const commented = jobTimeouts(parse('jt-commented', wf.replace('    timeout-minutes: 35 # why\n', '    # timeout-minutes: 35\n')));
+    assert.equal(commented.problems.length, 1, 'a commented-out timeout is not a ceiling');
+    assert.equal(jobTimeouts(parse('jt-nojobs', 'on: push\n')).problems.length, 1);
+    assert.equal(jobTimeouts(null).problems.length, 1);
+  });
+
+  test('🔴 THE REAL deploy-web.yml — every filter entry translates, and the ceiling is derived from its jobs', () => {
+    const lane = deployLaneInputs(REPO);
+    assert.deepEqual(lane.problems, []);
+    const text = readFileSync(join(REPO, DEPLOY_WEB_REL), 'utf8');
+    const globs = parseTriggerPaths(text);
+    assert.ok(globs.length > 0);
+    assert.deepEqual(lane.pathspecs, globs.map(toPathspec), 'one pathspec per filter entry, none dropped');
+    for (const need of [':(literal)apps', ':(literal)packages', ':(literal)pubspec.lock', `:(literal)${DEPLOY_WEB_REL}`]) {
+      assert.ok(lane.pathspecs.includes(need), `${need} — a web build input the lane redeploys on`);
+    }
+    const sum = Object.values(jobTimeouts(parseWorkflow(REPO, DEPLOY_WEB_REL)).minutes).reduce((s, m) => s + m, 0);
+    assert.ok(sum > 0);
+    assert.equal(lane.ceilingMs, DEPLOY_LANE_RUNS * sum * 60 * 1000);
+    assert.equal(DEPLOY_LANE_RUNS, 2, 'one run in progress ahead plus its own: the concurrency group never cancels on main');
+  });
+
+  test('RED CONTROL — a filter entry with an untranslatable shape is a problem, not a narrower set', () => {
+    const root = join(TMP, 'lane-negation');
+    mkdirSync(join(root, '.github', 'workflows'), { recursive: true });
+    writeFileSync(
+      join(root, ...DEPLOY_WEB_REL.split('/')),
+      "on:\n  push:\n    paths:\n      - 'apps/**'\n      - '!apps/**/*.md'\njobs:\n  a:\n    timeout-minutes: 5\n",
+    );
+    const lane = deployLaneInputs(root);
+    assert.equal(lane.problems.length, 1);
+    assert.match(lane.problems[0], /cannot translate exactly/);
+  });
+
+  test('RED CONTROL — no workflow, or one with no push paths, is a problem', () => {
+    assert.match(deployLaneInputs(join(TMP, 'no-such-root')).problems[0], /does not exist/);
+    const root = join(TMP, 'lane-nopaths');
+    mkdirSync(join(root, '.github', 'workflows'), { recursive: true });
+    writeFileSync(join(root, ...DEPLOY_WEB_REL.split('/')), 'on:\n  workflow_dispatch:\njobs:\n  a:\n    timeout-minutes: 5\n');
+    const lane = deployLaneInputs(root);
+    assert.ok(lane.problems.some((p) => /no readable `on.push.paths`/.test(p)));
+  });
+
+  test('newestCommitTouching passes EVERY pathspec after `--`', () => {
+    let seen = null;
+    newestCommitTouching('/root', [':(literal)apps', ':(literal)pubspec.lock'], (cmd, args) => {
+      seen = args;
+      return { status: 0, stdout: `${SHA_NEW}\n` };
+    });
+    assert.deepEqual(seen.slice(seen.indexOf('--')), ['--', ':(literal)apps', ':(literal)pubspec.lock']);
+    assert.equal(newestCommitTouching('/root', [], () => ({ status: 0, stdout: `${SHA_NEW}\n` })), null, 'no pathspec means all history, not the lane');
+  });
+
+  test('commitTimeOf — the COMMITTER time, and anything unreadable is null', () => {
+    let seen = null;
+    const t = commitTimeOf('/root', SHA_NEW, (cmd, args) => {
+      seen = args;
+      return { status: 0, stdout: '2026-09-19T13:13:15+05:30\n' };
+    });
+    assert.equal(t, Date.parse('2026-09-19T07:43:15Z'));
+    assert.ok(seen.includes('--format=%cI'), 'committer time, which a squash merge sets to the merge');
+    assert.equal(commitTimeOf('/root', SHA_NEW, () => ({ status: 128, stdout: '' })), null);
+    assert.equal(commitTimeOf('/root', SHA_NEW, () => ({ status: 0, stdout: 'garbage\n' })), null);
+    let called = 0;
+    assert.equal(commitTimeOf('/root', 'nope', () => (called += 1, { status: 0 })), null);
+    assert.equal(called, 0);
   });
 });
 
