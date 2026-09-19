@@ -8,7 +8,8 @@
     "test:corpus": "node reduction-corpus.mjs",
     "test:review": "node review-keyboard.mjs",
     "test:batch": "node batch-artifact.mjs",
-    "test:giveup": "node giveup-verify.mjs"
+    "test:giveup": "node giveup-verify.mjs",
+    "test:adv": "node adversarial-claim.mjs"
   },
   "devDependencies": {
     "playwright": "^1.49.0"

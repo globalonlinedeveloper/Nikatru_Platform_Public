@@ -69,6 +69,27 @@ so the test covers it.)
 
 ## The redaction-claim suite (`npm run test:claim`) — QUARANTINED, RED
 
+> ⏱ **2026-09-19 — REWRITTEN AND WIRED; everything below this note is the record of what it
+> replaced.** `redaction-claim.mjs` and `adversarial-claim.mjs` are new files under the old
+> names, written from the **current** `REDACTION-CLAIM-SPEC.md` through one shared kit,
+> `acts-lib.mjs` (a library; the workflow never runs it alone). Each grades the record (§2.1
+> keys, §0.1 Rule 2, §2.2's removals at any depth, the match-unit chain, §3.3's marks read
+> back out of the delivered image), the payload through the shipped producer (§3.5's gate,
+> §5's verdict scan, §2.3's line with the record's own counts), and the ledger against the
+> picture in both directions — plus what the spec says about each shape.
+> `redaction-claim.mjs` runs the three `fixtures/` shapes nothing else graded
+> (`clipped-ancestor`, `input-values`, `svg-text`) with `control-pii` as its positive control;
+> `adversarial-claim.mjs` runs the seven `fixtures-adv/` shapes nothing else graded. Both came
+> off the quarantine in `.github/workflows/extensions.yml`, and so did `review-keyboard.mjs`,
+> which re-measured green. Measured on 2026-09-19, each alone: `redaction-claim.mjs` exit 0,
+> 109 pass / 0 fail / 2 open; `adversarial-claim.mjs` exit 0, 184 pass / 0 fail / 0 open;
+> `review-keyboard.mjs` exit 0, 35 pass / 0 fail. The two OPENs are places the spec is silent
+> (a block painted where hidden text was laid out, on `clipped-ancestor`; `<option>` text read
+> although §1 says it is not, on `input-values`) — printed with evidence, never graded, and
+> the argument is in `acts-lib.mjs` beside `reportOverMask` and in `redaction-claim.mjs`'s
+> header. The fixture-coverage guard now reads **42 of 42** shapes graded; see the guarded
+> block further down.
+
 > **This suite does not run in CI and does not pass locally.** Measured
 > 2026-08-25 and re-measured 2026-08-26 on the same tree, alone: **exit 1,
 > 151 pass / 199 fail / 30 open**, unmoved between the two runs. It grades the
@@ -403,25 +424,25 @@ Every record above scopes the question to one directory. Asked of the whole dire
 > count, which the workflow derives on every run and prints on its `fixture-coverage` line.
 
 <!-- ungraded-baseline:begin Extension/Full_Screen_Shot -->
-**12 shapes reach no graded suite.** `review-keyboard.mjs` is the only suite that runs two of
-them. The other ten are `redaction-claim.mjs`'s three and `adversarial-claim.mjs`'s seven. All
-three suites are still quarantined:
-
-| shape | only suite that runs it | state | what would close it |
-|---|---|---|---|
-| `fixtures/review-tall.html` | `review-keyboard.mjs` | quarantined | **WIREABLE** — quarantined on a live disagreement (P0 wants ≥2 marks past the tiling floor, gets 0), which somebody has to answer either way |
-| `fixtures/review-tall-clean.html` | `review-keyboard.mjs` | quarantined | **WIREABLE** — same suite, so wiring it closes both at once |
-| `fixtures/clipped-ancestor.html` | `redaction-claim.mjs` | quarantined, unrepairable | **GRADEABLE** — needs a `reduction-corpus.mjs` row; its own suite grades deleted fields |
-| `fixtures/input-values.html` | `redaction-claim.mjs` | quarantined, unrepairable | **GRADEABLE** — same |
-| `fixtures/svg-text.html` | `redaction-claim.mjs` | quarantined, unrepairable | **GRADEABLE** — same |
-| `fixtures-adv/honest-pii.html` | `adversarial-claim.mjs` | quarantined, unrepairable | **GRADEABLE, and the most valuable of the seven** — see below |
-| `fixtures-adv/honest-article.html` | `adversarial-claim.mjs` | quarantined, unrepairable | **GRADEABLE** — a clean-article control; the row mirrors `control-clean` |
-| `fixtures-adv/canvas-combo.html` | `adversarial-claim.mjs` | quarantined, unrepairable | **GRADEABLE** — `canvas-pii` already establishes the pattern |
-| `fixtures-adv/shadow-closed-frame.html` | `adversarial-claim.mjs` | quarantined, unrepairable | **GRADEABLE** — `shadow-closed` and `iframe-host` exist separately; this is the combination |
-| `fixtures-adv/late-frame.html` | `adversarial-claim.mjs` | quarantined, unrepairable | **GRADEABLE** — `late-inject` establishes the pattern |
-| `fixtures-adv/cv-tabs.html` | `adversarial-claim.mjs` | quarantined, unrepairable | **NOT YET — the fixture must be repaired first.** It measures 10 rows of block colour in a plain browser with no extension loaded, which breaks the colour-tolerance rule this README states. A grading row written today would encode the fixture's own defect |
-| `fixtures-adv/late-swap.html` | `adversarial-claim.mjs` | quarantined, unrepairable | **NOT YET — it does not reproduce reliably.** On the run above its own setup check came back `L3 inconclusive run — not graded  — setup=false legible=true`, i.e. the swap did not fire. A shape that does not reproduce cannot be graded by anybody; making the trigger deterministic comes first |
+**0 shapes reach no graded suite.** Since 2026-09-19 every one of the 42 shapes in this
+directory reaches a wired suite, and `UNGRADED_BASELINE` holds no row for it. The twelve that
+stood here came off by WIRING, not by editing the list: the review pair
+(`fixtures/review-tall.html`, `fixtures/review-tall-clean.html`) when `review-keyboard.mjs`
+re-measured green and came off the quarantine; `fixtures/clipped-ancestor.html`,
+`input-values.html` and `svg-text.html` when `redaction-claim.mjs` was rewritten against the
+current spec; and the seven `fixtures-adv/` shapes (`canvas-combo`, `cv-tabs`,
+`honest-article`, `honest-pii`, `late-frame`, `late-swap`, `shadow-closed-frame`) when
+`adversarial-claim.mjs` was. The two marked NOT YET were repaired first: `cv-tabs.html`'s tab
+labels no longer sit inside the block colour's tolerance (the suite re-measures the
+no-extension control, `X1`, on every run), and `_late.js` fires on an event that only
+happens after the scan instead of on a wall clock. The table as it stood is in git history
+at `1c22eb95`.
 <!-- ungraded-baseline:end -->
+
+> ⏱ **2026-09-19 — done, in `adversarial-claim.mjs` rather than as the `reduction-corpus.mjs`
+> row sketched below.** It grades `honest-pii` against §3.4: 3 matched, 3 painted, 3 read back
+> opaque, all three marker colours gone from the delivered image, the decoy left alone, and
+> every stored mark probed as a uniform solid region.
 
 **`honest-pii` is the one to do first.** It is the only shape in either corpus that produces
 a *verified-opaque* block, so it is the only shape that exercises §3.3's mark persistence at
@@ -649,9 +670,9 @@ one machine — with one deliberate collision, recorded below.
 | suite | port | `PORT=` override |
 |---|---|---|
 | `run.mjs` | 8907 | no |
-| `redaction-claim.mjs` | 8911 | no |
+| `redaction-claim.mjs` | 8911 | **yes** (since 2026-09-19) |
 | `claim-reduction.mjs` | 8913 | **no** |
-| `adversarial-claim.mjs` | 8913 | **yes** |
+| `adversarial-claim.mjs` | **8919** (8913 until 2026-09-19) | **yes** |
 | `review-keyboard.mjs` | 8915 | no |
 | `reduction-corpus.mjs` | 8917 | no |
 | `batch-artifact.mjs` | 8921 | no |
@@ -660,7 +681,8 @@ one machine — with one deliberate collision, recorded below.
 | `v3acts-probe.mjs` | 8145 | **yes** |
 
 `claim-reduction.mjs` and `adversarial-claim.mjs` share **8913**, so those two can never be
-in flight at the same moment. That collision is one of the reasons `.github/workflows/e2e.yml`
+in flight at the same moment. *(2026-09-19: no longer — `adversarial-claim.mjs` defaults to
+8919 since its rewrite, and the table above says so. The sentence stays as the record.)* That collision is one of the reasons `.github/workflows/e2e.yml`
 runs this directory in **one step, sequentially**, rather than as a matrix leg per suite.
 
 **But the collision is not the failure you will actually hit — an orphan of the suite's own

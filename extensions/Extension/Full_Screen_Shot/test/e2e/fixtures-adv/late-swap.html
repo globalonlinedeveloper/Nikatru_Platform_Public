@@ -19,6 +19,13 @@
 
   <!-- THE TRIGGER.
 
+       ⏱ REPLACED 2026-09-19 — everything below stands as the record of the
+       timed trigger, which did not reproduce (adversarial-claim recorded
+       `setup=false`: the swap never fired). _late.js now fires by default on a
+       DOM event that only happens AFTER the scan — the capture writing
+       `visibility:hidden` onto a position:fixed element the harness owns —
+       and `?trigger=timed` restores what is described here. See its header.
+
        First attempt was an own-property accessor on `textContent`, fired by the
        scan's own `fsOwnLeafText` read — deterministic by construction. It never
        fired, and the reason is worth writing down because it will catch the

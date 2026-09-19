@@ -22,7 +22,10 @@
        deterministic from the page side), different payload: the DOOR itself
        arrives after the scan. §5.4's frame counters are written during the
        walk, so a frame that does not exist during the walk is not a door that
-       was left shut — it is a door the ledger does not know about. -->
+       was left shut — it is a door the ledger does not know about.
+       ⏱ 2026-09-19: "cannot be deterministic from the page side" above is no
+       longer true — _late.js now fires on the capture hiding a fixed element
+       the harness owns, which only happens after the scan. See its header. -->
   <div class="sentinel" id="sentinel">Console ready.</div>
 
   <p class="filler">Widgets are mounted lazily as the console is read.</p>

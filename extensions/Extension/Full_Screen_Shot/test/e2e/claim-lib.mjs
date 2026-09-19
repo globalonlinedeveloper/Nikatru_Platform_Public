@@ -165,6 +165,7 @@ const SETTINGS_SEED_WAIT_MS = 3000;   // phase 1, advisory
 const SETTINGS_POLL_MS = 60;
 const SETTINGS_STABLE_POLLS = 5;      // ≈300 ms of agreement, re-set on any dissent
 const SETTINGS_MAX_WRITES = 12;       // sync-quota guard; see above
+const SETTINGS_STALL_CAP_MS = 45000;  // past the deadline, only while every read agrees (phase 2)
 
 export async function setSettings(sw, patch, opts = {}) {
   const cfg = {
@@ -173,9 +174,10 @@ export async function setSettings(sw, patch, opts = {}) {
     seedWaitMs: opts.seedWaitMs != null ? opts.seedWaitMs : SETTINGS_SEED_WAIT_MS,
     pollMs: opts.pollMs || SETTINGS_POLL_MS,
     stablePolls: opts.stablePolls || SETTINGS_STABLE_POLLS,
-    maxWrites: opts.maxWrites || SETTINGS_MAX_WRITES
+    maxWrites: opts.maxWrites || SETTINGS_MAX_WRITES,
+    stallCapMs: opts.stallCapMs || SETTINGS_STALL_CAP_MS
   };
-  const outcome = await sw.evaluate(async ({ p, deadlineMs, seedWaitMs, pollMs, stablePolls, maxWrites }) => {
+  const outcome = await sw.evaluate(async ({ p, deadlineMs, seedWaitMs, pollMs, stablePolls, maxWrites, stallCapMs }) => {
     const keys = Object.keys(p);
     const sleep = ms => new Promise(r => setTimeout(r, ms));
     const same = (a, b) => JSON.stringify(a === undefined ? null : a) ===
@@ -190,9 +192,22 @@ export async function setSettings(sw, patch, opts = {}) {
       await sleep(pollMs);
     }
 
-    /* phase 2 — write until it sticks, and stays stuck */
+    /* phase 2 — write until it sticks, and stays stuck.
+       THE DEADLINE IS A DEADLINE ON DISAGREEMENT, not on reads — amended
+       2026-09-19. It used to be a flat wall clock, and on a loaded host the
+       worker stalls for seconds between two reads: measured twice that day,
+       "never stuck after 15407ms (1 writes, 1 reads) … wanted
+       {redactPII:true}, storage held {redactPII:true}" — the value was right
+       at the only read taken, and the run died reporting that it had not
+       stuck. privacy-verify.mjs's quarantine note recorded the same message on
+       2026-08-27 and named this function as its owner. So past the deadline
+       the loop keeps polling ONLY while every read still agrees (stable > 0),
+       up to stallCapMs; the first disagreement past the deadline stops it and
+       it throws exactly as before. A writer that clobbers the key is caught the
+       same way it always was; a slow worker is no longer mistaken for one. */
     let stable = 0, writes = 0, reads = 0, last = null, writeErr = null;
-    while (Date.now() - t0 < deadlineMs) {
+    while (Date.now() - t0 < stallCapMs &&
+           (Date.now() - t0 < deadlineMs || stable > 0)) {
       if (stable === 0 && writes < maxWrites) {
         writes++;
         try { await chrome.storage.sync.set(p); }
