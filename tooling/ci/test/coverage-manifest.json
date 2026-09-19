@@ -146,6 +146,7 @@
   "policy-claims.test.mjs": 43,
   "post-deploy-smoke.test.mjs": 146,
   "precommit-pii.test.mjs": 3,
+  "preflight-sweep-regression.test.mjs": 15,
   "price-literals.test.mjs": 15,
   "privacy-manifest.test.mjs": 20,
   "prod-provenance.test.mjs": 61,
