@@ -257,6 +257,28 @@ describe('the real tree', () => {
     assert.match(wf.lines.map((l) => l.text).join('\n'), /PROBE_SOURCE: live_probe\/symbolication_crash_probe\.dart/);
     assert.match(text, /tooling\/ops\/symbolication-proof\.mjs verdict/);
   });
+  // Run 35458257697: only "SYMPROBE|SENT" reached logcat. sentry_flutter 9.26.0's
+  // DebugPrintIntegration replaces `debugPrint` with a breadcrumb-only sink in
+  // release builds and restores it on Sentry.close(), so every line before
+  // close vanished.
+  test('the probe emits through Zone.root.print, never debugPrint (Sentry swallows it in release)', () => {
+    const src = readFileSync(join(ROOT, PROBE), 'utf8').split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+    assert.match(src, /void _emit\(String line\) => Zone\.root\.print\(/);
+    assert.doesNotMatch(src, /\bdebugPrint\s*\(/, 'debugPrint is replaced by sentry_flutter in release builds');
+  });
+  test('the run step asserts each sub-phase in order and prints a logcat slice on failure', () => {
+    const raw = readFileSync(join(ROOT, WORKFLOW), 'utf8');
+    const step = raw.slice(raw.indexOf('- name: Boot an emulator'), raw.indexOf('- name: Ground truth'));
+    const order = ['pm path "$pkg"', 'no $pkg process is running', 'wait_for "BEGIN', 'wait_for "TRACE', 'wait_for "SENT'];
+    let at = -1;
+    for (const needle of order) {
+      const i = step.indexOf(needle);
+      assert.ok(i > at, `sub-phase "${needle}" is missing or out of order`);
+      at = i;
+    }
+    assert.match(step, /probe_why\(\) \{[\s\S]*?grep -E " flutter \*:\|AndroidRuntime\|FATAL\|SYMPROBE/, 'a failed phase does not print the logcat slice');
+    assert.doesNotMatch(step, /::warning title=Probe::no SENT line/, 'a missing SENT must fail the step, not warn');
+  });
   // Run 35451496350: avdmanager and the emulator disagreed on where AVDs live,
   // the emulator exited ("Unknown AVD name [probe]"), and a bare
   // `timeout 300 adb wait-for-device` died 124 printing nothing.

@@ -211,24 +211,53 @@ jobs:
             sleep 5
           done
           echo "emulator booted at ${SECONDS}s"
+          pkg=com.nikatru.subscriptiontracker
+          # Each sub-phase is ASSERTED, in order, and a failure prints the logcat
+          # slice that says why (run 35458257697 reached SENT and nothing before
+          # it, and the next step could only say "the probe did not run").
+          probe_why() {
+            "$adb" logcat -d > "${RUNNER_TEMP}/logcat.txt" 2>/dev/null || true
+            echo "::error title=Probe::$1"
+            echo "── logcat: flutter, crashes, and the app's own pid (tail) ──"
+            pid="$("$adb" shell pidof "$pkg" 2>/dev/null | tr -d '\r' || true)"
+            grep -E " flutter *:|AndroidRuntime|FATAL|SYMPROBE|${pid:-NO_PID} " "${RUNNER_TEMP}/logcat.txt" | tail -n 120 || true
+            exit 1
+          }
           timeout 120 "$adb" install -r apps/subscriptiontracker/build/app/outputs/flutter-apk/app-release.apk
+          "$adb" shell pm path "$pkg" | grep -q '^package:' || probe_why "INSTALLED: pm has no path for $pkg after install"
+          echo "phase ok: installed"
           "$adb" logcat -c
-          timeout 120 "$adb" shell am start -W -n com.nikatru.subscriptiontracker/.MainActivity
-          deadline=$((SECONDS + 180))
-          # Not `logcat | grep -q`: under pipefail an early grep exit SIGPIPEs logcat
-          # and the match reads as a miss.
-          until "$adb" logcat -d -s flutter > "${RUNNER_TEMP}/logcat-poll.txt" \
-            && grep -qF "SYMPROBE|SENT " "${RUNNER_TEMP}/logcat-poll.txt"; do
-            if [ "$SECONDS" -gt "$deadline" ]; then
-              echo "::warning title=Probe::no SENT line within 180s; the next two steps say what is missing"
-              break
-            fi
-            sleep 5
-          done
+          timeout 120 "$adb" shell am start -W -n "$pkg/.MainActivity"
+          # Poll the whole log to a file, never `logcat | grep -q`: under pipefail
+          # an early grep exit SIGPIPEs logcat and a match reads as a miss.
+          poll() { "$adb" logcat -d -s flutter:I > "${RUNNER_TEMP}/logcat-poll.txt" 2>/dev/null || true; }
+          wait_for() {
+            local what="$1" needle="$2" ceiling="$3" until_s=$((SECONDS + $3))
+            while :; do
+              poll
+              if grep -qF "$needle" "${RUNNER_TEMP}/logcat-poll.txt"; then
+                echo "phase ok: ${what} (${SECONDS}s)"
+                return 0
+              fi
+              if [ -z "$("$adb" shell pidof "$pkg" 2>/dev/null | tr -d '\r' || true)" ]; then
+                poll
+                grep -qF "$needle" "${RUNNER_TEMP}/logcat-poll.txt" && { echo "phase ok: ${what} (${SECONDS}s)"; return 0; }
+                probe_why "${what}: the app process is gone before \"${needle}\" appeared"
+              fi
+              [ "$SECONDS" -gt "$until_s" ] && probe_why "${what}: \"${needle}\" not in logcat within ${ceiling}s"
+              sleep 3
+            done
+          }
+          [ -n "$("$adb" shell pidof "$pkg" 2>/dev/null | tr -d '\r' || true)" ] \
+            || probe_why "LAUNCHED: am start returned but no $pkg process is running"
+          echo "phase ok: launched"
+          wait_for "BEGIN (probe main ran)" "SYMPROBE|BEGIN " 60
+          wait_for "TRACE (the throw was caught and printed)" "SYMPROBE|TRACE-END" 60
+          wait_for "SENT (captureException + close returned)" "SYMPROBE|SENT " 120
           # The native transport sends the envelope it was handed asynchronously.
           sleep 20
           "$adb" logcat -d > "${RUNNER_TEMP}/logcat.txt"
-          grep -F 'SYMPROBE|' "${RUNNER_TEMP}/logcat.txt" || true
+          grep -F 'SYMPROBE|' "${RUNNER_TEMP}/logcat.txt"
 
       - name: Ground truth — symbolize the raw trace offline against the build's own symbols
         working-directory: apps/subscriptiontracker
