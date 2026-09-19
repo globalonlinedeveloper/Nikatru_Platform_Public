@@ -2630,6 +2630,71 @@ describe('assert-ops-register — HOSTNAMES ARE DELEGATED, and the delegation ca
     assert.match(r.out, /is not among the 1 host\(s\)/);
   });
 
+  // ── [14]O-7 · the deploy-job domain, DERIVED in main() — through the real guard ──
+  // The O-7 cases in the pure suite inject `deployJobs` into `evaluate` directly,
+  // and the real-tree run asserts no count, so the derivation from the workflow
+  // tree was graded by nothing. These plant a deploy workflow the guard has never
+  // seen into the green fixture root and require main() to have FOUND it.
+  const DEPLOY_WF = (recordArg, { smoke }) => [
+    'name: Deploy fixture',
+    'on:',
+    '  workflow_dispatch:',
+    'jobs:',
+    '  ship:',
+    '    runs-on: ubuntu-24.04',
+    '    steps:',
+    '      - run: echo upload',
+    ...(smoke ? ['      - run: node tooling/ops/post-deploy-smoke.mjs https://example.test'] : []),
+    `      - run: node tooling/ops/record-deployment.mjs ${recordArg}`,
+    '',
+  ].join('\n');
+  /** Plants the workflow AND the duty row every workflow must carry, so the only
+   *  thing a case below can be red about is the O-7 verdict it names. */
+  const plantDeploy = (s, root, text) => {
+    writeFileSync(join(root, '.github/workflows/zz-deploy.yml'), text);
+    s.reg.rows.push({
+      id: 'duty.workflow.zz-deploy.yml',
+      kind: 'duty',
+      what: 'a fixture deploy lane',
+      detector: 'a red run',
+      response: 'redeploy',
+      cadence: 'on-demand',
+      why: 'dispatched by hand in the fixture; it has no clock to miss',
+      mechanism: { substrate: 'github-actions', anchor: '.github/workflows/zz-deploy.yml', record: 'run history', failingValue: 'conclusion = failure', readBy: 'branch protection' },
+      accessProviders: ['github'],
+      source: 'verified',
+    });
+  };
+
+  test('[14]O-7 CONTROL — a planted deploy job that probes what it ships is DERIVED, counted, and green', () => {
+    const r = runRoot(fixtureRoot((s, root) => {
+      plantDeploy(s, root, DEPLOY_WF('zz-planted-env', { smoke: true }));
+    }));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /\[14\]O-7 — 1 deploy job\(s\) derived from record-deployment calls; 1 probe the surface they ship/);
+  });
+
+  test('🔴 [14]O-7 — a planted deploy job that records and never probes is FOUND by main() and named', () => {
+    const r = runRoot(fixtureRoot((s, root) => {
+      plantDeploy(s, root, DEPLOY_WF('zz-planted-env', { smoke: false }));
+    }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /zz-deploy\.yml:ship records a deployment for `zz-planted-env` and never probes it/);
+    assert.match(r.out, /✗ tooling\/ops\/register\.json — 1 problem\(s\):/, 'the O-7 finding must be the ONLY problem, or this case could be red for another reason');
+  });
+
+  test('🔴 [14]O-7 — a MATRIX-LEG environment is expanded over catalog/apps.json, and each leg is named', () => {
+    const r = runRoot(fixtureRoot((s, root) => {
+      mkdirSync(join(root, 'catalog'), { recursive: true });
+      writeFileSync(join(root, 'catalog/apps.json'), JSON.stringify([{ slug: 'zz-app-one' }, { slug: 'zz-app-two' }]));
+      plantDeploy(s, root, DEPLOY_WF('${{ matrix.app }}-web', { smoke: false }));
+    }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /records a deployment for `zz-app-one-web` and never probes it/);
+    assert.match(r.out, /records a deployment for `zz-app-two-web` and never probes it/);
+    assert.match(r.out, /✗ tooling\/ops\/register\.json — 2 problem\(s\):/, 'one finding per expanded leg, and nothing else');
+  });
+
   // ── ⏱ 2026-09-11 · THE LIVE READS ARE NOT MADE WHERE THEIR VERDICT CANNOT BLOCK ──
   // Measured the same day: 56 GitHub requests per run of this guard, in every CI
   // run, on a token allowed 1,000 an hour. On a pull_request host every live
@@ -5017,6 +5082,23 @@ describe('assert-ops-register — [14]O-3b · RED SINCE: a failed run is graded,
       assert.equal(workflowRunsScript(quoted, GATE_SCRIPT_REL), true, 'extensions.yml writes it this way');
       assert.equal(workflowRunsScript({ lines: [] }, GATE_SCRIPT_REL), false);
       assert.equal(workflowRunsScript(null, GATE_SCRIPT_REL), false);
+    });
+
+    test('🔴 the gate name is READ from the gate script\'s own `const GATE` — a planted different name comes back, a moved one is null', () => {
+      // The GREEN CONTROL above asserts 'ci-gate' on the real tree only, which a
+      // hard-coded 'ci-gate' would also satisfy. This plants a gate script under
+      // a name nothing in this guard spells, and requires that name back.
+      const root = join(TMP, `gate-name-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+      const abs = join(root, ...GATE_SCRIPT_REL.split('/'));
+      mkdirSync(dirname(abs), { recursive: true });
+      writeFileSync(abs, "#!/usr/bin/env node\n// const GATE = 'a-comment-is-not-the-constant';\nconst GATE = 'zz-planted-gate';\n");
+      assert.equal(gateCheckName(root), 'zz-planted-gate');
+      // The constant moved out of the shape the reader reads: `null`, which exempts nothing.
+      writeFileSync(abs, "#!/usr/bin/env node\nlet GATE = 'zz-planted-gate';\n");
+      assert.equal(gateCheckName(root), null);
+      // The file gone: `null` again, never a default.
+      rmSync(abs);
+      assert.equal(gateCheckName(root), null);
     });
 
     test('the CONTEXT comes from the environment — `feedsTheGate` needs the gate producer AND a guard host', () => {

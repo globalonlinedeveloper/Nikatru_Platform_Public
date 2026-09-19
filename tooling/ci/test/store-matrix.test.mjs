@@ -508,3 +508,40 @@ describe('assert-store-matrix — the two absences are answered by two different
     assert.match(out, /tree limb: NOT RUN/);
   });
 });
+
+// ── 7. infrastructure — the directories that are NOT slots, declared ─────────
+// catalog/store-matrix.json says an infrastructure repo keeps its OWN
+// github.outOfMatrix line, so that neither block can come to rely on the other
+// having declared it. No case above plants an `infrastructure`
+// block at all (the guard's own header says every fixture is in the ABSENT
+// state), so the limb that enforces that sentence was graded by nothing.
+const INFRA_DIR = 'Nikatru_Probe_Infra_Public';
+const withInfra = ({ outOfMatrix, onDisk = true }) =>
+  tree(ROWS(), ({ projects, reg, write }) => {
+    if (onDisk) mkdirSync(join(projects, INFRA_DIR), { recursive: true });
+    reg.infrastructure = {
+      repos: [{ id: 'probe-infra', dir: INFRA_DIR, repo: 'probe-infra-repo', why: 'fixture', measured: 'fixture' }],
+    };
+    if (outOfMatrix) reg.github = { org: 'fixture-org', outOfMatrix };
+    write();
+  });
+
+describe('assert-store-matrix — infrastructure is declared, and declared in BOTH blocks', () => {
+  test('I1 GREEN CONTROL — an infrastructure dir with its outOfMatrix line is exempted BY DECLARATION', () => {
+    const r = run(withInfra({ outOfMatrix: [{ repo: 'probe-infra-repo', why: 'fixture' }] }));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /exempted BY DECLARATION, not skipped — Nikatru_Probe_Infra_Public/);
+  });
+
+  test('I2 an infrastructure repo with NO github.outOfMatrix line is named — neither block may lean on the other', () => {
+    const r = run(withInfra({ outOfMatrix: [{ repo: 'some-other-repo', why: 'fixture' }] }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /repo "probe-infra-repo" has NO github\.outOfMatrix line/);
+  });
+
+  test('I3 an infrastructure line whose directory is gone is named — a stale exemption is a finding', () => {
+    const r = run(withInfra({ outOfMatrix: [{ repo: 'probe-infra-repo', why: 'fixture' }], onDisk: false }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /infrastructure declares "Nikatru_Probe_Infra_Public" \(probe-infra\) and it is NOT on disk/);
+  });
+});

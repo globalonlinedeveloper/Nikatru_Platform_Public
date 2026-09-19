@@ -205,3 +205,91 @@ describe('assert-deploy-triggers-deploy — exit codes', () => {
     assert.equal(code, 1, out);
   });
 });
+
+// ── LIMB 3 · judgeImports, on a planted tree ─────────────────────────────────
+// The header says limb 3 reads its subject off the tree: the tree under every `X/**`
+// glob is READ, and each relative import resolving OUTSIDE `X` must be claimed
+// by that same filter AND by `on.push.paths`. Nothing above reached it — the
+// real-tree case calls `judge` (limbs 1-2) only. These cases plant a tree the
+// guard has never seen, so a typed list of today's imports cannot pass them.
+import { judgeImports } from '../assert-deploy-triggers-deploy.mjs';
+
+const plantTree = (files) => {
+  const root = mkdtempSync(joinPath(tmpdir(), 'dtd-imports-'));
+  for (const [rel, text] of Object.entries(files)) {
+    const abs = joinPath(root, ...rel.split('/'));
+    mkdirSync(dirOf(abs), { recursive: true });
+    writeFixture(abs, text);
+  }
+  return root;
+};
+
+// One carrier that reaches a shared file by a bare relative import, one that
+// reaches nothing. The shared file's name exists nowhere in the guard.
+const PLANTED = {
+  'svc/alpha/src/index.ts': "import { chassis } from '../../shared/chassis-zq.ts';\nexport default chassis;\n",
+  'svc/beta/src/index.ts': "export default 1;\n",
+  'svc/shared/chassis-zq.ts': 'export const chassis = 1;\n',
+};
+
+describe('assert-deploy-triggers-deploy — limb 3 (judgeImports) on a planted tree', () => {
+  test('🔴 an import escaping a claimed tree, claimed by NEITHER the filter nor on.push.paths, is TWO findings', () => {
+    const root = plantTree(PLANTED);
+    const r = judgeImports(root, ['svc/alpha/**', 'svc/beta/**'], {
+      alpha: ['svc/alpha/**'],
+      beta: ['svc/beta/**'],
+    });
+    assert.ok(r.scanned >= 2, `the walk read ${r.scanned} file(s) — it must read the planted tree`);
+    assert.deepEqual(
+      r.external.map((e) => [e.name, e.from, e.target]),
+      [['alpha', 'svc/alpha/src/index.ts', 'svc/shared/chassis-zq.ts']],
+    );
+    assert.equal(r.problems.length, 2, r.problems.join('\n'));
+    assert.ok(r.problems.some((p) => p.includes('filter `alpha`') && p.includes('svc/shared/chassis-zq.ts')));
+    assert.ok(r.problems.some((p) => p.includes('`on.push.paths` claims it') && p.includes('svc/shared/chassis-zq.ts')));
+  });
+
+  test('claimed by the filter but NOT by on.push.paths is still a finding — both limbs are required', () => {
+    const root = plantTree(PLANTED);
+    const r = judgeImports(root, ['svc/alpha/**', 'svc/beta/**'], {
+      alpha: ['svc/alpha/**', 'svc/shared/chassis-zq.ts'],
+      beta: ['svc/beta/**'],
+    });
+    assert.equal(r.problems.length, 1, r.problems.join('\n'));
+    assert.match(r.problems[0], /NO path in `on\.push\.paths`/);
+  });
+
+  test('the asymmetry is DERIVED: the carrier that imports nothing external is not asked to claim the shared file', () => {
+    const root = plantTree(PLANTED);
+    const r = judgeImports(root, ['svc/alpha/**', 'svc/beta/**', 'svc/shared/*.ts'], {
+      alpha: ['svc/alpha/**', 'svc/shared/*.ts'],
+      beta: ['svc/beta/**'],
+    });
+    assert.deepEqual(r.problems, []);
+    assert.equal(r.external.length, 1);
+  });
+
+  test('an escape from a test/ directory, and a specifier that resolves to nothing, demand nothing', () => {
+    const root = plantTree({
+      ...PLANTED,
+      'svc/beta/test/x.test.ts': "import '../../shared/chassis-zq.ts';\n",
+      'svc/beta/src/ghost.ts': "import { g } from '../../nowhere/ghost.ts';\n",
+    });
+    const r = judgeImports(root, ['svc/alpha/**', 'svc/beta/**', 'svc/shared/**'], {
+      alpha: ['svc/alpha/**', 'svc/shared/**'],
+      beta: ['svc/beta/**'],
+    });
+    assert.deepEqual(r.problems, []);
+    assert.deepEqual(r.external.map((e) => e.name), ['alpha']);
+  });
+
+  test('a glob shape the reader cannot decide is COVERAGE LOST, never a silent "not claimed"', () => {
+    const root = plantTree(PLANTED);
+    const r = judgeImports(root, ['svc/alpha/**', 'svc/beta/**', 'svc/sha?ed/*.ts'], {
+      alpha: ['svc/alpha/**', 'svc/sha?ed/*.ts'],
+      beta: ['svc/beta/**'],
+    });
+    assert.ok(r.problems.length >= 1);
+    assert.ok(r.problems.every((p) => p.startsWith('COVERAGE LOST')), r.problems.join('\n'));
+  });
+});
