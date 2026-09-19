@@ -109,7 +109,7 @@
   "listing-assets.test.mjs": 63,
   "mail-transport-claims.test.mjs": 47,
   "mechanism-claims.test.mjs": 45,
-  "modal-detection.test.mjs": 42,
+  "modal-detection.test.mjs": 44,
   "money-config.test.mjs": 37,
   "money-dry-run.test.mjs": 16,
   "monitor-coverage.test.mjs": 30,

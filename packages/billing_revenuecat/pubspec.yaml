@@ -1,0 +1,52 @@
+name: nikatru_billing_revenuecat
+description: >-
+  The RevenueCat implementation of nikatru_purchases' IapBridge seam — the store
+  billing half of the money rail ([ADR 067] decision 7, [ADR 039] D5). It ships
+  the native IAP payload and NOTHING else: no rail, no paywall, no entitlement
+  opinion. The unlock still comes from GET /v1/entitlements, converged on by
+  nikatru_purchases, because a store SDK is a payment mechanism and not an
+  authority on entitlement.
+version: 0.1.0
+publish_to: none
+resolution: workspace
+repository: https://github.com/globalonlinedeveloper/Nikatru_Platform_Public
+
+environment:
+  sdk: ">=3.5.0 <4.0.0"
+  flutter: ">=3.24.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  nikatru_purchases:
+    path: ../purchases
+
+  # 🔴 THE REASON THIS PACKAGE EXISTS, AND WHY IT IS NOT A DEPENDENCY OF
+  # packages/purchases. This is a NATIVE payload: StoreKit on iOS/macOS and the
+  # Play Billing Library on Android, behind one Dart call. Declared HERE rather
+  # than in nikatru_purchases because Subly and every stamped app depend on that
+  # package — so an IAP SDK there would be linked into every app in the
+  # portfolio, and `assert-play-declarations` limb D (dependency-set EQUALITY)
+  # plus the Apple binaryInventory would then demand a sworn purchase-history row
+  # from apps that have not opted in YET. [ADR 078] (LOCKED 2026-09-11) makes
+  # Android, iOS and the Mac App Store sell in-app at v1, so this is no longer
+  # "mobile is free" — it is "an app that has not opted in must not link the IAP
+  # payload or swear a purchase-history row until it does". An app opts IN by
+  # depending on this package and declaring `billing.mobileIap` in its app.yaml.
+  #
+  # Pinned to 10.x: RevenueCatCapabilities is tied to that major and must be
+  # re-reviewed on a bump, exactly as PurchaseCapabilities is tied to
+  # url_launcher 6.x. ^10.13.1 (published 2026-09-17), not the ^10.11.0 this
+  # package first carried: the Dart API the bridge and its tests touch —
+  # purchases_flutter.dart, the configuration, params, error, customer-info,
+  # entitlement and offering wrappers — is byte-identical between the two
+  # (diffed 2026-09-19), and the lock pins exactly 10.13.1.
+  purchases_flutter: ^10.13.1
+
+dev_dependencies:
+  # [pipeline C-12] resolves the shared ruleset in analysis_options.yaml.
+  nikatru_lints:
+    path: ../analysis
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
