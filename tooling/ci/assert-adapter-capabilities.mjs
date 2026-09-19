@@ -29,6 +29,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { listDir } from './tree-walk.mjs';
+import { deriveAdapters } from './adapter-set.mjs';
 
 /**
  * Blank Dart comments and string literals, preserving offsets and newlines.
@@ -169,43 +170,14 @@ try {
   process.exit(1);
 }
 
-// ── The DOMAIN: which packages are adapters. Derived, not typed — the same
-//    derivation C-5 limb (c) uses, so the two cannot drift apart. An adapter is
-//    a package under packages/ that is not core, not design_system, and
-//    declares at least one third-party dependency (a lint ruleset is config,
-//    not a wrapped SDK). ──────────────────────────────────────────────────────
-const LINT_ONLY = /(?:^|_)lints$/;
-function thirdPartyDeps(pkgDir) {
-  const p = join(ROOT, pkgDir, 'pubspec.yaml');
-  if (!existsSync(p)) return [];
-  const out = [];
-  let inBlock = false;
-  let current = null;
-  let sdkOrPath = false;
-  const flush = () => {
-    if (current && !sdkOrPath && !current.startsWith('nikatru_') && !LINT_ONLY.test(current)) out.push(current);
-  };
-  for (const raw of readFileSync(p, 'utf8').split('\n')) {
-    const line = raw.replace(/#.*$/, '').replace(/\s+$/, '');
-    if (!line.trim()) continue;
-    if (/^[a-z_]+:/i.test(line)) { flush(); current = null; inBlock = line.startsWith('dependencies:'); continue; }
-    if (!inBlock) continue;
-    const m = line.match(/^  ([a-z0-9_]+)\s*:/i);
-    if (m) { flush(); current = m[1]; sdkOrPath = false; continue; }
-    if (current && /^\s+(sdk|path):/.test(line)) sdkOrPath = true;
-  }
-  flush();
-  return out;
-}
-
-const pkgRoot = join(ROOT, 'packages');
-const adapters = [];
-if (existsSync(pkgRoot)) {
-  for (const name of listDir(pkgRoot)) {
-    if (name === 'core' || name === 'design_system') continue;
-    if (thirdPartyDeps(`packages/${name}`).length > 0) adapters.push(`packages/${name}`);
-  }
-}
+// ── The DOMAIN: which packages are adapters. Derived, not typed, by
+//    adapter-set.mjs's deriveAdapters() — imported, and the SAME function
+//    assert-package-boundaries.mjs (C-5 limb c) calls, so the two guards range
+//    over one adapter set. An adapter is a package under packages/ that is not
+//    core, not design_system, and declares at least one third-party dependency
+//    (a lint ruleset is config, not a wrapped SDK). test/adapter-set.test.mjs
+//    runs both guards over one tree and requires the same set from each. ─────
+const adapters = deriveAdapters(ROOT).map((a) => a.dir);
 
 // Coverage self-check. SIX adapters since 2026-08-01 (packages/purchases joined
 // on url_launcher); a scan that finds one or two reads exactly like "every

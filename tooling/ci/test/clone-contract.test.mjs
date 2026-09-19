@@ -241,6 +241,37 @@ describe('the default stamp is CLIENT-ONLY [ADR 020]', () => {
     assert.match(r.stderr, /no _phApiBase/);
   });
 
+  // ⏱ 2026-09-19. The guard read "the first LINE with `_phApiBase` and `=`",
+  // so a COMMENT could be the line it graded. Here the only assignment of the
+  // right host is commented out and the code assigns nothing: the comment must
+  // not satisfy the contract. The line reader passed this tree.
+  test('a COMMENTED-OUT assignment of the shared host does not satisfy _phApiBase', () => {
+    const root = tree('demo', {
+      mutate: (t) =>
+        t.setConfig(
+          "// static const String _phApiBase = 'https://platform.nikatru.com/v1';\n" +
+            "/* _phApiBase = 'https://platform.nikatru.com'; */\n" +
+            "static const String apiBaseUrl = String.fromEnvironment('API_BASE_URL');\n",
+        ),
+    });
+    const r = run(root, '--client', 'demo');
+    assert.equal(r.status, 1, r.stdout);
+    assert.match(r.stderr, /no _phApiBase assignment in code/);
+  });
+
+  test('a second assignment in code FAILS — one declaration is the contract', () => {
+    const root = tree('demo', {
+      mutate: (t) =>
+        t.setConfig(
+          "const String _phApiBase = 'https://platform.nikatru.com/v1';\n" +
+            "void f() { _phApiBase = 'https://demo-api.nikatru.com'; }\n",
+        ),
+    });
+    const r = run(root, '--client', 'demo');
+    assert.equal(r.status, 1, r.stdout);
+    assert.match(r.stderr, /assigns _phApiBase 2 times in code/);
+  });
+
   test('an app that was never stamped FAILS', () => {
     const root = mkdtempSync(join(TMP, 'empty-'));
     const r = run(root, '--client', 'demo');
@@ -345,6 +376,37 @@ describe('the OPT-IN backend stamp [ADR 020]', () => {
     const r = run(root, '--backend', 'svc');
     assert.equal(r.status, 1);
     assert.match(r.stderr, /rendered the client-only branch|not this app's own API host/);
+  });
+
+  // ⏱ 2026-09-19. The shape of apps/subscriptiontracker's real app_config.dart:
+  // a sentinel note whose prose contains `_phApiBase` and `=` sits ABOVE the
+  // declaration, and the literal is on the line AFTER the `=`. The line reader
+  // graded the comment and failed a correct app; the code reader must pass it.
+  test('a COMMENT mentioning _phApiBase above a two-line declaration does not decide the verdict', () => {
+    const root = tree('svc', {
+      backend: true,
+      mutate: (t) =>
+        t.setConfig(
+          '  // [isApiConfigured] is `apiBaseUrl != _phApiBase`, so making the constant\n' +
+            "  // equal the live host = a production defect. Never write _phApiBase = 'https://platform.nikatru.com'.\n" +
+            '  static const String _phApiBase =\n' +
+            "      'https://svc-api.YOUR_SUBDOMAIN.workers.dev';\n" +
+            '  static bool get isApiConfigured => apiBaseUrl != _phApiBase;\n',
+        ),
+    });
+    const r = run(root, '--backend', 'svc');
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /_phApiBase points at its own API host/);
+  });
+
+  test('`<app>-api` only in the PATH of another host is not this app\'s own API host', () => {
+    const root = tree('svc', {
+      backend: true,
+      mutate: (t) => t.setConfig("const String _phApiBase = 'https://other-api.nikatru.com/svc-api';\n"),
+    });
+    const r = run(root, '--backend', 'svc');
+    assert.equal(r.status, 1, r.stdout);
+    assert.match(r.stderr, /not this app's own API host/);
   });
 });
 

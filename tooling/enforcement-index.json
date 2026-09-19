@@ -12,6 +12,14 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [],
+    "kind": "guard",
+    "ref": "tooling/ci/adapter-set.mjs",
+    "references": [],
+    "state": "LIBRARY"
+  },
+  {
     "claims": [
       "D-10"
     ],
@@ -508,6 +516,7 @@
       "ADR 020",
       "ADR 057",
       "ADR 067",
+      "ADR 080",
       "F-10",
       "S-6",
       "T-1a"

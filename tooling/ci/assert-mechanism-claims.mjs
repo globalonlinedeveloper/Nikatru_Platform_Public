@@ -31,6 +31,10 @@
 //       was reworded away; remove the entry), or a site two entries cover.
 //   M6  a `proven` entry whose `test` file does not exist, or which declares no
 //       test / describe / group titled exactly `case`, or which has no `proves`.
+//       With `"harness": "check"` or `"expect"` the case is instead the label
+//       of a `check('…')` / `expect('…')` call — the extensions' own runners —
+//       in a file that defines that function or destructures it from a
+//       require/import. Comments are blanked before either lookup.
 //   M7  a `demoted` entry with no `reason`, or an entry of any other status.
 //
 // An entry COVERS the candidate sites that start on a line inside its anchor.
@@ -59,6 +63,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { extname, join, resolve, sep } from 'node:path';
 import { listDir } from './tree-walk.mjs';
+import { stripSourceComments } from './text-reductions.mjs';
 
 const args = process.argv.slice(2);
 const MEASURE = args.includes('--measure');
@@ -218,11 +223,34 @@ const covered = new Map(); // "file:offset" → claim index
 let proven = 0;
 let demoted = 0;
 
-/** Titles of test / it / describe / group / testWidgets calls whose first
- *  argument is a plain string literal, unescaped. */
-function declaredTitles(text) {
+/** The callee names a `proven` entry's `case` is looked up under. Absent
+ *  `harness` is the test runners (node:test, flutter_test). `check` and
+ *  `expect` are the extensions' own runners — extensions/core/test/harness.js,
+ *  each Extension/<Tool>/test/*-sim.node.js and extensions/scripts/test/
+ *  selftest.node.js call `check('<label>', ok)` / `expect('<label>', {...})`,
+ *  and a false case there fails the run the way a failed test does. */
+const RUNNER_CALLEES = ['test', 'it', 'describe', 'group', 'testWidgets'];
+const HARNESS_CALLEES = new Set(['check', 'expect']);
+
+/** True when a harness file BINDS `name` itself: declares it as a function
+ *  (`function check(`, `const check = (`/`function`) or destructures it from a
+ *  require/import (`const { check } = require(`, `import { check } from`). A
+ *  file that only CALLS a `check` it never binds is not that harness — the
+ *  call could be anything, and a case title in it proves nothing. */
+function bindsHarness(text, name) {
+  const decl = new RegExp(`(?:^|[^\\w$.])(?:function\\s+${name}\\s*\\(|(?:const|let|var)\\s+${name}\\s*=\\s*(?:async\\s*)?(?:function\\b|\\())`, 'm');
+  if (decl.test(text)) return true;
+  const destructured = new RegExp(`(?:const|let|var)\\s*\\{[^}]*\\b${name}\\b[^}]*\\}\\s*=\\s*(?:require\\s*\\(|[\\w$]+\\s*;)`, 'm');
+  const imported = new RegExp(`import\\s*\\{[^}]*\\b${name}\\b[^}]*\\}\\s*from\\s*['"]`, 'm');
+  return destructured.test(text) || imported.test(text);
+}
+
+/** Titles of calls to `callees` whose first argument is a plain string
+ *  literal, unescaped. */
+function declaredTitles(text, callees = RUNNER_CALLEES) {
   const out = new Set();
-  for (const m of text.matchAll(/(?:^|[^\w$.])(?:test|it|describe|group|testWidgets)\s*\(\s*(['"`])/g)) {
+  const re = new RegExp(`(?:^|[^\\w$.])(?:${callees.join('|')})\\s*\\(\\s*(['"\`])`, 'g');
+  for (const m of text.matchAll(re)) {
     const q = m[1];
     let i = m.index + m[0].length;
     let v = '';
@@ -280,7 +308,23 @@ reg.claims.forEach((c, idx) => {
       problems.push(`M6 ${where} names ${c.test} as its proof, and that file does not exist.`);
       return;
     }
-    if (!declaredTitles(t).has(c.case)) {
+    // Comments blanked first: a commented-out `test('x'` or `check('x'` is
+    // not a case that runs.
+    const code = stripSourceComments(t, extname(c.test));
+    if (c.harness !== undefined) {
+      if (!HARNESS_CALLEES.has(c.harness)) {
+        problems.push(`M6 ${where} names the harness ${JSON.stringify(c.harness)}; a harness is one of ${[...HARNESS_CALLEES].map((h) => `"${h}"`).join(', ')}, or omit it for test / it / describe / group / testWidgets.`);
+        return;
+      }
+      if (!bindsHarness(code, c.harness)) {
+        problems.push(`M6 ${where} cites a \`${c.harness}(...)\` case in ${c.test}, and that file neither defines \`${c.harness}\` nor destructures it from a require/import. A call to a name the file never binds is not that harness.`);
+        return;
+      }
+      if (!declaredTitles(code, [c.harness]).has(c.case)) {
+        problems.push(`M6 ${where} names the case ${JSON.stringify(c.case)} in ${c.test}, and that file makes no \`${c.harness}(...)\` call labelled exactly that.`);
+        return;
+      }
+    } else if (!declaredTitles(code).has(c.case)) {
       problems.push(`M6 ${where} names the case ${JSON.stringify(c.case)} in ${c.test}, and that file declares no test titled exactly that.`);
       return;
     }
