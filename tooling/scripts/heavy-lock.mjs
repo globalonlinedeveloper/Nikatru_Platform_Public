@@ -182,30 +182,29 @@ export function tryCreate(path, record) {
 /** Remove a stale lock, but only the stale one that was judged. */
 function reclaim(path, judged, log) {
   const marker = `${path}.reclaim`;
-  {
-    // Age read through a descriptor, not a path stat (CodeQL js/file-system-race).
+  // CREATE FIRST, inspect only on failure: the O_EXCL create is the atomic step, and
+  // no check precedes it (CodeQL js/file-system-race, 2026-09-20).
+  let fd;
+  try {
+    fd = openSync(marker, 'wx');
+  } catch (e) {
+    if (e?.code !== 'EEXIST') throw e;
+    // Another waiter holds the marker — or one died holding it. Age read through a
+    // descriptor; a dead reclaimer's marker is cleared and the NEXT poll retries.
     let mfd;
     try {
       mfd = openSync(marker, 'r');
       const ageMs = Date.now() - fstatSync(mfd).mtimeMs;
-      closeSync(mfd);
-      mfd = undefined;
       if (ageMs > RECLAIM_GRACE_MS) {
         log(`⚠️ heavy-run lock: removing a reclaim marker ${mins(ageMs)} old — its reclaimer died mid-step`);
         try { unlinkSync(marker); } catch {}
       }
     } catch {
-      // absent or unreadable: nothing to clear
+      // vanished or unreadable: the next poll decides
     } finally {
       if (mfd !== undefined) { try { closeSync(mfd); } catch {} }
     }
-  }
-  let fd;
-  try {
-    fd = openSync(marker, 'wx');
-  } catch (e) {
-    if (e?.code === 'EEXIST') return false; // another waiter is reclaiming; poll again
-    throw e;
+    return false; // poll again
   }
   closeSync(fd);
   try {
