@@ -1036,6 +1036,11 @@ v3acts-probe.mjs already did), so the collision — and an orphaned
 listener from a killed run, which is the same symptom — is escapable
 without editing a suite. claim-reduction.mjs still hard-codes it.
 
+2026-09-19 — the "8913 twice" is no longer true of the defaults either:
+adversarial-claim.mjs, rewritten against the current spec, defaults to its
+own port 8919 (still overridable by `PORT`). 8913 is claim-reduction.mjs's
+alone.
+
 EVERY SUITE RUNS EVEN AFTER ONE FAILS, AND THE JOB STILL GOES RED. The
 step collects failures and exits non-zero at the end. That is the
 opposite of `continue-on-error`: stopping at the first red would hide

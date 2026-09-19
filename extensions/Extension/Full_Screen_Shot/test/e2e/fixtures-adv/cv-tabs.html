@@ -6,7 +6,13 @@
 <link rel="stylesheet" href="_kit.css">
 <style>
   .tabs { display: flex; gap: 6px; margin: 0 0 10px; }
-  .tabs button { font: inherit; padding: 7px 14px; border: 1px solid #d9dde6; background: #eef1f6; border-radius: 6px 6px 0 0; }
+  /* `color` REPAIRED 2026-09-19. The labels were the browser default black,
+     inside the block colour's tolerance (test/e2e/README.md: no text colour may
+     sit within tolerance of rgb(17,17,17)), and they left 10 rows of "block
+     colour" in a plain browser with NO extension loaded. #2a2a2a is the kit's
+     body colour; its darkest channel is 42, outside the tolerance of 20.
+     adversarial-claim.mjs X1 re-measures this on every run. */
+  .tabs button { font: inherit; color: #2a2a2a; padding: 7px 14px; border: 1px solid #d9dde6; background: #eef1f6; border-radius: 6px 6px 0 0; }
   .tabs button[aria-selected="true"] { background: #fff; border-bottom-color: #fff; font-weight: 600; }
   .stack { position: relative; height: 190px; }
   .panel {

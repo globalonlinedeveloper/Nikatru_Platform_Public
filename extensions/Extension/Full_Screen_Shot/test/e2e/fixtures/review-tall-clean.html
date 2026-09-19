@@ -33,6 +33,10 @@
   .quiet { background: rgb(246, 246, 250); padding: 18px 22px; border-radius: 8px;
            font: 17px/1.7 system-ui, sans-serif; }
   #bottom { height: 152px; background: rgb(0, 136, 255); }
+  /* 2026-09-19: the height floor is PINNED, not left to font metrics. review-keyboard
+     grades h > 3136 (the tiling floor); on ubuntu-24.04, which has no Georgia, this
+     page flowed to 3063px and C0 went red on a fixture fact, not a product fact. */
+  body { min-height: 3400px; }
 </style>
 </head>
 <body>

@@ -113,6 +113,12 @@ describe('assert-ungraded-baseline-doc — the happy path', () => {
     const r = run(fixture({ wf: workflow({ baseline: '' }), doc: readme({ count: '**0 shapes reach no graded suite.**', rows: [] }) }));
     assert.equal(r.code, 0, r.out);
   });
+
+  test('a dir emptied of BOTH arrays still has its block read, and passes when it says 0', () => {
+    const r = run(fixture({ wf: workflow({ baseline: '', quarantine: '' }), doc: readme({ count: '**0 shapes reach no graded suite.**', rows: [] }) }));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /0 baseline row\(s\) over 0 dir\(s\), 0 quarantined suite\(s\); 1 README block\(s\) read/);
+  });
 });
 
 describe('assert-ungraded-baseline-doc — the limbs fail', () => {
@@ -193,6 +199,16 @@ describe('assert-ungraded-baseline-doc — the limbs fail', () => {
     assert.match(r.out, /U0 .* is a block for "Extension\/Other", but the README sits in Extension\/Tool/);
   });
 
+  test('U3/U1: a dir emptied of BOTH arrays whose block still says 2 and lists 2 rows is red (read, not skipped)', () => {
+    // The 2026-09-19 vacuity: both loops were keyed on the arrays, so a dir with no
+    // baseline rows and no quarantine entries was never visited and its stale block
+    // passed as "0 README block(s) read".
+    const r = run(fixture({ wf: workflow({ baseline: '', quarantine: '' }) }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /U3 .* says 2 shapes reach no graded suite; UNGRADED_BASELINE holds 0/);
+    assert.match(r.out, /U1 .* lists fixtures\/a\.html, which is NOT on UNGRADED_BASELINE/);
+  });
+
   test('U0: a block with no end marker is red', () => {
     const r = run(fixture({ doc: readme({ end: false }) }));
     assert.equal(r.code, 1, r.out);
@@ -247,19 +263,24 @@ describe('assert-ungraded-baseline-doc — the REAL tree', () => {
     assert.match(r.out, /1 README block\(s\) read/);
   });
 
+  // Since 2026-09-19 the real block is EMPTY (0 rows; both arrays are empty for the dir), so
+  // the stale shapes below are put back as a table after its count line.
+  const putBack = (count, rows) => (s) => s.replace(/\*\*\d+ shapes reach no graded suite\.\*\*/,
+    `**${count} shapes reach no graded suite.**\n\n| shape | only suite that runs it | state | what would close it |\n|---|---|---|---|\n${rows.join('\n')}\n`);
+
   test('the real README with the pre-2026-09-16 privacy-verify row put back is red on U1, U2 and U3', () => {
-    const r = run(realRoot((s) => s
-      .replace(/\*\*\d+ shapes reach no graded suite\.\*\*/, '**15 shapes reach no graded suite.**')
-      .replace('|---|---|---|---|\n', '|---|---|---|---|\n| `fixtures-verify/race-pii.html` | `privacy-verify.mjs` | quarantined | **WIREABLE** |\n')));
+    const r = run(realRoot(putBack(15, ['| `fixtures-verify/race-pii.html` | `privacy-verify.mjs` | quarantined | **WIREABLE** |'])));
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /U1 .* lists fixtures-verify\/race-pii\.html/);
     assert.match(r.out, /U2 .* names privacy-verify\.mjs, which is NOT on QUARANTINE/);
     assert.match(r.out, /U3 .* says 15 shapes/);
   });
 
-  test('the real README with one real row deleted is red', () => {
-    const r = run(realRoot((s) => s.replace(/^\| `fixtures-adv\/honest-pii\.html` .*\n/m, '')));
+  test('the real README with a pre-2026-09-19 row put back (a shape that got wired) is red on U1, U2 and U3', () => {
+    const r = run(realRoot(putBack(12, ['| `fixtures-adv/honest-pii.html` | `adversarial-claim.mjs` | quarantined, unrepairable | **GRADEABLE** |'])));
     assert.equal(r.code, 1, r.out);
-    assert.match(r.out, /U1 .* does not list fixtures-adv\/honest-pii\.html/);
+    assert.match(r.out, /U1 .* lists fixtures-adv\/honest-pii\.html, which is NOT on UNGRADED_BASELINE/);
+    assert.match(r.out, /U2 .* names adversarial-claim\.mjs, which is NOT on QUARANTINE/);
+    assert.match(r.out, /U3 .* says 12 shapes reach no graded suite; UNGRADED_BASELINE holds 0/);
   });
 });

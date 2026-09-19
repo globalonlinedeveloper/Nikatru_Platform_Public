@@ -42,6 +42,7 @@
 // Exit 0 = clean. Exit 1 = a finding. Exit 2 = COVERAGE LOST.
 // ─────────────────────────────────────────────────────────────────────────────
 import { existsSync, readFileSync } from 'node:fs';
+import { listDir } from './tree-walk.mjs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseWorkflow, WORKFLOW_DIR } from './workflow-scan.mjs';
@@ -146,6 +147,7 @@ function checkReadme(dir) {
       continue;
     }
     blocksRead++;
+    readReadmes.push(rel);
     checkBlock(rel, line, dir, after.slice(0, end));
   }
 }
@@ -194,6 +196,19 @@ function checkBlock(rel, line, dir, block) {
 for (const dir of dirs) checkReadme(dir);
 // A block in a README whose dir has no baseline rows is still checked: it must say 0.
 for (const q of quarantine.keys()) checkReadme(q);
+// ...and so is a block whose dir has NEITHER. Added 2026-09-19, when the Full Screen Shot
+// rows and quarantine entries all went to zero in one commit: the two loops above are keyed
+// on the arrays, so an emptied dir dropped out of both and its README block went unread —
+// "0 README block(s) read", exit 0, over a block that could have gone on saying 12. Every
+// extensions/<Category>/<Tool>/test/e2e/README.md is therefore visited; one without a block
+// and without baseline rows is not a finding (checkReadme returns quietly), one WITH a block
+// is held to the arrays like any other.
+for (const cat of listDir(extRoot, { withFileTypes: true })) {
+  if (!cat.isDirectory()) continue;
+  for (const tool of listDir(join(extRoot, cat.name), { withFileTypes: true })) {
+    if (tool.isDirectory()) checkReadme(`${cat.name}/${tool.name}`);
+  }
+}
 
 if (dirs.size > 0 && blocksRead === 0) {
   if (findings.length === 0) coverageLost([`UNGRADED_BASELINE names ${dirs.size} dir(s) and no block was read.`]);
