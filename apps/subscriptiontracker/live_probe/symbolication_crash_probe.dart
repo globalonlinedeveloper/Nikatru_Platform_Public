@@ -14,6 +14,8 @@
 // line by the THROW-SITE marker below; nothing hard-codes a line number.
 //
 // Row: O-GLITCHTIP-FLUTTER-SYMBOLICATION-UNPROVEN. docs/ci/symbolication-proof.md.
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 import 'package:nikatru_telemetry/nikatru_telemetry.dart';
 
@@ -34,9 +36,15 @@ void probeThrowSite(String marker) {
   throw SymbolicationProbeError(marker); // SYMBOLICATION-PROBE-THROW-SITE
 }
 
-/// debugPrint, not print: it reaches logcat (tag `flutter`) in a release build
-/// too, keeps line order, and wraps nothing when no wrapWidth is given.
-void _emit(String line) => debugPrint('$kLinePrefix$line');
+/// 🔴 NOT debugPrint, and run 35458257697 is why. In a release build
+/// sentry_flutter's DebugPrintIntegration (9.26.0,
+/// lib/src/integrations/debug_print_integration.dart) REPLACES `debugPrint`
+/// with a function that only adds a breadcrumb, and restores it on
+/// `Sentry.close()`. So BEGIN and the whole trace never reached logcat, and
+/// only SENT (printed after close) did. `Zone.root.print` goes straight to the
+/// engine's print hook, which logs under tag `flutter`, past every
+/// debugPrint swap and every zone print override.
+void _emit(String line) => Zone.root.print('$kLinePrefix$line');
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
