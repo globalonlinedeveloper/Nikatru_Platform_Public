@@ -62,7 +62,7 @@
 // tooling/scripts/heavy.mjs, which own the exit codes. It never ends the process
 // itself — the caller hands in its `exit` function.
 // ─────────────────────────────────────────────────────────────────────────────
-import { openSync, writeSync, closeSync, readFileSync, unlinkSync, mkdirSync, statSync } from 'node:fs';
+import { openSync, writeSync, closeSync, readFileSync, unlinkSync, mkdirSync, fstatSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { homedir, hostname } from 'node:os';
@@ -117,12 +117,19 @@ export function pidAlive(pid) {
 export function readHolder(path) {
   let text;
   let mtimeMs;
+  let fd;
   try {
-    mtimeMs = statSync(path).mtimeMs;
-    text = readFileSync(path, 'utf8');
+    // ONE open, then fstat + read through that descriptor: the age and the bytes
+    // are of the same file even if another process replaces the path meanwhile
+    // (CodeQL js/file-system-race, 2026-09-20).
+    fd = openSync(path, 'r');
+    mtimeMs = fstatSync(fd).mtimeMs;
+    text = readFileSync(fd, 'utf8');
   } catch (e) {
     if (e?.code === 'ENOENT') return { absent: true };
     return { torn: `unreadable (${e?.code ?? e?.message})`, ageMs: mtimeMs === undefined ? 0 : Date.now() - mtimeMs };
+  } finally {
+    if (fd !== undefined) { try { closeSync(fd); } catch {} }
   }
   try {
     const h = JSON.parse(text);
@@ -175,13 +182,24 @@ export function tryCreate(path, record) {
 /** Remove a stale lock, but only the stale one that was judged. */
 function reclaim(path, judged, log) {
   const marker = `${path}.reclaim`;
-  try {
-    const m = statSync(marker);
-    if (Date.now() - m.mtimeMs > RECLAIM_GRACE_MS) {
-      log(`⚠️ heavy-run lock: removing a reclaim marker ${mins(Date.now() - m.mtimeMs)} old — its reclaimer died mid-step`);
-      try { unlinkSync(marker); } catch {}
+  {
+    // Age read through a descriptor, not a path stat (CodeQL js/file-system-race).
+    let mfd;
+    try {
+      mfd = openSync(marker, 'r');
+      const ageMs = Date.now() - fstatSync(mfd).mtimeMs;
+      closeSync(mfd);
+      mfd = undefined;
+      if (ageMs > RECLAIM_GRACE_MS) {
+        log(`⚠️ heavy-run lock: removing a reclaim marker ${mins(ageMs)} old — its reclaimer died mid-step`);
+        try { unlinkSync(marker); } catch {}
+      }
+    } catch {
+      // absent or unreadable: nothing to clear
+    } finally {
+      if (mfd !== undefined) { try { closeSync(mfd); } catch {} }
     }
-  } catch {}
+  }
   let fd;
   try {
     fd = openSync(marker, 'wx');
