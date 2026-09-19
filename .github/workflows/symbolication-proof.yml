@@ -1,0 +1,230 @@
+name: Symbolication proof
+
+run-name: "Symbolication proof by @${{ github.actor }}"
+
+# The measurements, the source reading and the expected verdict behind this file
+# are in docs/ci/symbolication-proof.md. Only `# why:` lines live here, and
+# docs/ci/README.md carries the rules every workflow has to obey.
+
+on:
+  # why: dispatch ONLY. It sends a real event to the production crash sink and
+  # boots an emulator (~25 runner-minutes); it answers one question per GlitchTip
+  # release, not one per commit. Row O-GLITCHTIP-FLUTTER-SYMBOLICATION-UNPROVEN.
+  workflow_dispatch:
+
+concurrency:
+  group: symbolication-proof
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  checks: read
+
+jobs:
+  gate:
+    name: Require ci-gate to have passed
+    runs-on: ubuntu-24.04
+    # why: 25, not 10. assert-gate-passed.mjs polls for up to its own 1200 s default,
+    # so any bound at or under 20 kills it mid-poll and replaces "timed out waiting
+    # for ci-gate" with an opaque cancellation. Byte-identical in all five gate jobs.
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Require ci-gate to have passed for this commit
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node tooling/ci/assert-gate-passed.mjs ${{ github.sha }}
+
+  prove:
+    name: An obfuscated Android crash, symbolicated by GlitchTip, against its known line
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    needs: gate
+    permissions:
+      contents: read
+    env:
+      PROBE_SOURCE: live_probe/symbolication_crash_probe.dart
+      SYMBOLS_DIR: build/symbols/probe-android-x64
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      # why: FAILS CLOSED. Without the DSN the probe builds a NoOp client and
+      # sends nothing; without the token nothing can be uploaded or read back.
+      - name: Preflight — the two GlitchTip secrets must be present
+        env:
+          GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
+          GLITCHTIP_TOKEN: ${{ secrets.GLITCHTIP_TOKEN }}
+        run: |
+          missing=""
+          [ -z "$GLITCHTIP_DSN" ] && missing="$missing GLITCHTIP_DSN"
+          [ -z "$GLITCHTIP_TOKEN" ] && missing="$missing GLITCHTIP_TOKEN"
+          if [ -n "$missing" ]; then
+            echo "::error title=Symbolication proof cannot run::Missing secret(s):$missing. This is a failed run, not a skipped one."
+            exit 1
+          fi
+
+      - uses: ./.github/actions/setup-node
+
+      - uses: ./.github/actions/setup-flutter
+
+      - name: Resolve the workspace
+        run: flutter pub get --enforce-lockfile
+
+      - name: The expected crash site, read from the probe source
+        working-directory: apps/subscriptiontracker
+        run: node ../../tooling/ops/symbolication-proof.mjs expect --source "$PROBE_SOURCE"
+
+      # why: x64 only, because that is what the emulator executes; the flags are
+      # the release lanes' flags, so the frame under test is shaped exactly as a
+      # shipped build's. No upload key: this APK is debug-signed and ships nowhere.
+      - name: Build the crash probe (obfuscated release apk)
+        working-directory: apps/subscriptiontracker
+        env:
+          GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
+        run: >
+          flutter build apk --release
+          --obfuscate --split-debug-info="$SYMBOLS_DIR"
+          --target-platform android-x64
+          -t "$PROBE_SOURCE"
+          --dart-define=GLITCHTIP_DSN="$GLITCHTIP_DSN"
+
+      # why: before any network call, for the reason build-platforms.yml gives:
+      # a later failure must not take the only mapping of this build with it.
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: symbols-symbolication-probe-android-x64
+          path: apps/subscriptiontracker/build/symbols/probe-android-x64
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Install glitchtip-cli (pinned by version AND by digest)
+        run: |
+          set -euo pipefail
+          ver="$(node -p "require('./tooling/versions.json').glitchtip_cli")"
+          sum="$(node -p "require('./tooling/versions.json').glitchtip_cli_sha256")"
+          url="https://gitlab.com/glitchtip/glitchtip-cli/-/jobs/artifacts/v${ver}/raw/artifacts/glitchtip-cli-linux-x86_64?job=build-linux-x86_64"
+          curl --fail --silent --show-error --location --retry 3 --retry-all-errors \
+            --output "${RUNNER_TEMP}/glitchtip-cli" "$url"
+          printf '%s  %s\n' "$sum" "${RUNNER_TEMP}/glitchtip-cli" | sha256sum --check --strict -
+          chmod +x "${RUNNER_TEMP}/glitchtip-cli"
+          got="$("${RUNNER_TEMP}/glitchtip-cli" --version)"
+          if [ "$got" != "glitchtip-cli ${ver}" ]; then
+            echo "::error title=glitchtip-cli::the pinned binary reports \"${got}\", not \"glitchtip-cli ${ver}\""
+            exit 1
+          fi
+          echo "$got"
+
+      # why: symbolication happens at INGEST, so the debug files must be stored
+      # before the probe's event arrives. The wrapper fails closed on the token.
+      - name: Upload the probe's native debug symbols to GlitchTip
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.GLITCHTIP_TOKEN }}
+          GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
+        run: |
+          set -euo pipefail
+          gt_org="$(node -p "require('./tooling/ops/glitchtip-project.json').org")"
+          gt_project="$(node -p "require('./tooling/ops/glitchtip-project.json').project")"
+          node tooling/ops/upload-native-symbols.mjs \
+            --cli "${RUNNER_TEMP}/glitchtip-cli" \
+            --dir "apps/subscriptiontracker/${SYMBOLS_DIR}" \
+            --org "$gt_org" --project "$gt_project"
+
+      # why: a plain script over the runner's preinstalled Android SDK, not
+      # reactivecircus/android-emulator-runner: the repository allows only
+      # `selected` actions and that one is not on the list. Every wait has a
+      # `timeout` ceiling; the emulator is killed in the last step.
+      - name: Boot an emulator, run the probe, capture logcat
+        env:
+          API_LEVEL: '34'
+        run: |
+          set -euo pipefail
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          sdk="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          image="system-images;android-${API_LEVEL};google_apis;x86_64"
+          yes | "$sdk/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          timeout 600 "$sdk/cmdline-tools/latest/bin/sdkmanager" --install emulator platform-tools "$image" > /dev/null
+          echo no | "$sdk/cmdline-tools/latest/bin/avdmanager" create avd --force -n probe -k "$image" --device pixel_6
+          nohup "$sdk/emulator/emulator" -avd probe -no-window -no-audio -no-boot-anim -no-snapshot \
+            -gpu swiftshader_indirect > "${RUNNER_TEMP}/emulator.log" 2>&1 &
+          adb="$sdk/platform-tools/adb"
+          timeout 300 "$adb" wait-for-device
+          deadline=$((SECONDS + 300))
+          until [ "$("$adb" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; do
+            if [ "$SECONDS" -gt "$deadline" ]; then
+              echo "::error title=Emulator::did not finish booting within 300s"
+              exit 1
+            fi
+            sleep 5
+          done
+          timeout 120 "$adb" install -r apps/subscriptiontracker/build/app/outputs/flutter-apk/app-release.apk
+          "$adb" logcat -c
+          timeout 120 "$adb" shell am start -W -n com.nikatru.subscriptiontracker/.MainActivity
+          deadline=$((SECONDS + 180))
+          # Not `logcat | grep -q`: under pipefail an early grep exit SIGPIPEs logcat
+          # and the match reads as a miss.
+          until "$adb" logcat -d -s flutter > "${RUNNER_TEMP}/logcat-poll.txt" \
+            && grep -qF "SYMPROBE|SENT " "${RUNNER_TEMP}/logcat-poll.txt"; do
+            if [ "$SECONDS" -gt "$deadline" ]; then
+              echo "::warning title=Probe::no SENT line within 180s; the next two steps say what is missing"
+              break
+            fi
+            sleep 5
+          done
+          # The native transport sends the envelope it was handed asynchronously.
+          sleep 20
+          "$adb" logcat -d > "${RUNNER_TEMP}/logcat.txt"
+          grep -F 'SYMPROBE|' "${RUNNER_TEMP}/logcat.txt" || true
+
+      - name: Ground truth — symbolize the raw trace offline against the build's own symbols
+        working-directory: apps/subscriptiontracker
+        run: |
+          set -euo pipefail
+          node ../../tooling/ops/symbolication-proof.mjs extract-trace \
+            --logcat "${RUNNER_TEMP}/logcat.txt" --out "${RUNNER_TEMP}/trace.txt" \
+            --marker-out "${RUNNER_TEMP}/marker.txt"
+          flutter symbolize -i "${RUNNER_TEMP}/trace.txt" \
+            -d "${SYMBOLS_DIR}/app.android-x64.symbols" -o "${RUNNER_TEMP}/symbolized.txt"
+          cat "${RUNNER_TEMP}/symbolized.txt"
+
+      # why: exit 1 is the FINDING this workflow exists to surface: GlitchTip put
+      # the crash on another line. Exit 2 is coverage lost. Neither is retried.
+      - name: Verdict — the GlitchTip frame against the known line
+        working-directory: apps/subscriptiontracker
+        env:
+          GLITCHTIP_TOKEN: ${{ secrets.GLITCHTIP_TOKEN }}
+        run: >
+          node ../../tooling/ops/symbolication-proof.mjs verdict
+          --source "$PROBE_SOURCE"
+          --trace "${RUNNER_TEMP}/trace.txt"
+          --symbolized "${RUNNER_TEMP}/symbolized.txt"
+          --marker "$(cat "${RUNNER_TEMP}/marker.txt")"
+          --report "${RUNNER_TEMP}/symbolication-report.json"
+          --wait-seconds 300
+
+      - name: Keep the evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: symbolication-proof-evidence
+          path: |
+            ${{ runner.temp }}/logcat.txt
+            ${{ runner.temp }}/trace.txt
+            ${{ runner.temp }}/symbolized.txt
+            ${{ runner.temp }}/symbolication-report.json
+            ${{ runner.temp }}/marker.txt
+            ${{ runner.temp }}/emulator.log
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Stop the emulator
+        if: always()
+        run: |
+          adb="${ANDROID_HOME:-$ANDROID_SDK_ROOT}/platform-tools/adb"
+          [ -x "$adb" ] && timeout 30 "$adb" emu kill || true

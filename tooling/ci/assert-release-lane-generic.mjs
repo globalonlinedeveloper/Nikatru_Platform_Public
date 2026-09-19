@@ -356,6 +356,15 @@ const CLASSIFIED_ELSEWHERE = new Map([
   ],
   ['submit-snap.yml', 'same as submit-appstore.yml — [10]D-10 owns it, `served: false`, script already `--app`-parameterised.'],
   ['submit-windows-store.yml', 'same as submit-appstore.yml — [10]D-10 owns it, `served: false`, script already `--app`-parameterised.'],
+  [
+    'symbolication-proof.yml',
+    'a dispatch-only PROOF, not a release lane: it builds a crash probe (live_probe/, never lib/main.dart), ' +
+      'debug-signed, for one emulator ABI, ships it nowhere and publishes nothing. [9]R-7 owns it (the ' +
+      'native symbol limb: does the crash sink turn the kept symbols back into the right line). It names ' +
+      'subscriptiontracker because the probe is a file IN that app and uses its telemetry chassis; grading it ' +
+      'against the workspace app set would compare a proof harness against the release set. Row ' +
+      'O-GLITCHTIP-FLUTTER-SYMBOLICATION-UNPROVEN.',
+  ],
 ]);
 
 // ── the workflow set, anchored to what git tracks ────────────────────────────

@@ -525,6 +525,7 @@ naming the job it belonged to and the line it sat above.
 | [`submit-play.md`](submit-play.md) | `.github/workflows/submit-play.yml` | the only lane in the tree that uploads to a public store |
 | [`submit-snap.md`](submit-snap.md) | `.github/workflows/submit-snap.yml` | the Snap upload, and the read-after-upload it cannot have |
 | [`submit-windows-store.md`](submit-windows-store.md) | `.github/workflows/submit-windows-store.yml` | the Microsoft Store path, dispatch-only while `served: false` |
+| [`symbolication-proof.md`](symbolication-proof.md) | `.github/workflows/symbolication-proof.yml` | dispatch-only: an obfuscated Android crash, read back from GlitchTip and from `flutter symbolize` against its known line |
 
 **The parsed YAML did not change.** Each of the twelve was loaded before and
 after with a duplicate-key-rejecting loader and the two documents compared: all
