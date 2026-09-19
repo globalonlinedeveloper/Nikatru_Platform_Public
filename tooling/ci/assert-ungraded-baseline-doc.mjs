@@ -41,7 +41,8 @@
 // Usage:  node tooling/ci/assert-ungraded-baseline-doc.mjs [repoRoot]
 // Exit 0 = clean. Exit 1 = a finding. Exit 2 = COVERAGE LOST.
 // ─────────────────────────────────────────────────────────────────────────────
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { listDir } from './tree-walk.mjs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseWorkflow, WORKFLOW_DIR } from './workflow-scan.mjs';
@@ -202,9 +203,9 @@ for (const q of quarantine.keys()) checkReadme(q);
 // extensions/<Category>/<Tool>/test/e2e/README.md is therefore visited; one without a block
 // and without baseline rows is not a finding (checkReadme returns quietly), one WITH a block
 // is held to the arrays like any other.
-for (const cat of readdirSync(extRoot, { withFileTypes: true })) {
+for (const cat of listDir(extRoot, { withFileTypes: true })) {
   if (!cat.isDirectory()) continue;
-  for (const tool of readdirSync(join(extRoot, cat.name), { withFileTypes: true })) {
+  for (const tool of listDir(join(extRoot, cat.name), { withFileTypes: true })) {
     if (tool.isDirectory()) checkReadme(`${cat.name}/${tool.name}`);
   }
 }
