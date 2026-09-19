@@ -1588,6 +1588,14 @@ if (agg === null || typeof agg !== 'object' || typeof agg.workflow !== 'string' 
         'no artifact leaves the job and no channel ever receives it. It compiles in `dev` and so sells nothing, which ' +
         'is the correct answer for a binary nobody ships.',
     },
+    {
+      workflow: '.github/workflows/symbolication-proof.yml',
+      job: 'prove',
+      why:
+        'the CRASH PROBE apk (live_probe/symbolication_crash_probe.dart, dispatch-only) is built to throw at a known ' +
+        'line on an emulator and is deleted with the runner — it never reaches a store and never shows a paywall. ' +
+        'It compiles in `dev` and so sells nothing, which is correct for a binary nobody ships.',
+    },
   ];
   const BUILD = /flutter\s+build\s+(?!web-server\b)(\S+)/;
   const NOT_RELEASE = /--(?:debug|profile)(?=\s|$)/;

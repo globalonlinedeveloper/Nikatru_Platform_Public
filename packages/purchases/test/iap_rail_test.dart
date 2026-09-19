@@ -479,7 +479,7 @@ void main() {
         (start as CheckoutRefused).reason,
         CheckoutRefusal.railNotConfigured,
       );
-      expect((start as CheckoutRefused).detail, contains('credited to another'));
+      expect(start.detail, contains('credited to another'));
       expect(bridge.purchased, isEmpty);
 
       // It recovers once the store accepts the switch — checked on the money
