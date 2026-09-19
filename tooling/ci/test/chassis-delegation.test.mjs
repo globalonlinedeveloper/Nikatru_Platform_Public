@@ -24,7 +24,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
-import { join, dirname, resolve } from 'node:path';
+import { join, dirname, resolve, relative, sep } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
@@ -717,7 +717,11 @@ describe('the walk, and what the caller owns', () => {
   });
 
   test('W3 · this module lives FLAT in tooling/ci, where the stray-.mjs check requires it', () => {
-    assert.equal(join(CI_DIR, 'chassis-delegation.mjs').includes('test'), false);
+    // Judged on the path RELATIVE to the repo root, never the absolute one:
+    // 2026-09-19 this read the absolute path and went red in a worktree named
+    // .worktrees/selftest-note — a folder name, not where the module lives.
+    const rel = relative(resolve(CI_DIR, '..', '..'), join(CI_DIR, 'chassis-delegation.mjs')).split(sep);
+    assert.deepEqual(rel, ['tooling', 'ci', 'chassis-delegation.mjs']);
   });
 
   // The absolute-path face shipped as THREE byte-identical copies in
