@@ -80,8 +80,28 @@ the tool. These feed `notCovered` (§2) and the copy in §3 and §7:
   markup on the web. Any character count derived from it understates the page by
   an unknown factor — which is why §2 removes the character count rather than
   printing it.
-- Attributes and form state are never read: `value`, `placeholder`, a chosen
-  `<option>`, `::before` content.
+- Attributes and form state are never read: `value`, `placeholder`, `::before`
+  content.
+- **`<option>` text IS read, and is never painted over.** Every `<option>` of a
+  `<select>` — the chosen one and the unchosen ones alike — is a childless
+  element whose own text `fsOwnLeafText` returns, and neither the walk nor the
+  detector special-cases `<select>` or `<option>`. While the select is closed
+  each `<option>`'s own box is 0x0 (clause 2, `degenerate`), so a match there
+  produces no block: it is counted in `matched` and in neither `painted` nor
+  `verifiedOpaque`, and `kinds` and `marks` stay empty. The error runs the safe
+  way twice: the chosen value the `<select>` draws stays legible in the picture
+  and is stated as not covered, and an unchosen option that is not in the
+  picture at all is still counted as an uncovered match — an over-count, never
+  an over-claim.
+
+  > **Corrected 2026-09-19 (O-FULLSHOT-SPEC-OPTION-TEXT).** The first bullet
+  > above used to read: "Attributes and form state are never read: `value`,
+  > `placeholder`, a chosen `<option>`, `::before` content." The `<option>` limb
+  > was false and the product was not changed: on
+  > `test/e2e/fixtures/input-values.html` (one chosen and one unchosen card
+  > number, both in `<option>` text) the record reads `2 / 0 / 0`, `kinds` `{}`,
+  > `marks` `[]` — both options matched, neither painted. Graded by
+  > `test/e2e/redaction-claim.mjs` F4, which was an OPEN until this correction.
 - A number split across `<span>`s or `<tspan>`s is never seen whole.
 - Text drawn as pixels — canvas, video, images, PDF viewers — is never read.
 

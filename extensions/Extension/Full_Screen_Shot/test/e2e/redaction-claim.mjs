@@ -32,18 +32,18 @@
 
    A disagreement between the product and the spec is a FAILURE here and is
    reported as a finding. Where the spec is SILENT the result is an OPEN with
-   its evidence and never a red, and there are two, both said out loud because
-   both were written as graded checks first and went red on the first run:
+   its evidence and never a red, and there is one, said out loud because it
+   was written as a graded check first and went red on the first run:
      clipped-ancestor O1  the product paints a block (and keeps a mark) where
                           the hidden text was laid out — on the visible prose
                           beside it. The acts are true and §3.3 lets a solid
                           region travel; the spec says nothing about where a
                           block may land. acts-lib.mjs reportOverMask carries
                           the full argument. A finding for capture.js + the spec.
-     input-values F4      §1 says "a chosen <option>" is never read; the product
-                          reads <option> text and says the matches are
-                          uncovered. The safe direction — a sentence of §1 that
-                          no longer describes the instrument.
+   There used to be a second, input-values F4: §1 said "a chosen <option>" is
+   never read, and the product reads the text of every <option>. §1 was
+   corrected on 2026-09-19 (O-FULLSHOT-SPEC-OPTION-TEXT) to say what the product
+   does, and F4 is now a GRADED check of the corrected sentence.
 
    Run:  cd test/e2e && node redaction-claim.mjs
          HEADFUL=1 node redaction-claim.mjs
@@ -51,7 +51,7 @@
          PORT=8331 node redaction-claim.mjs
    ========================================================================== */
 import fs from 'node:fs';
-import { EXT_DIR, OUT_DIR, serve, prepareTestExtension, begin, check, open, note, results } from './claim-lib.mjs';
+import { EXT_DIR, OUT_DIR, serve, prepareTestExtension, begin, check, note, results } from './claim-lib.mjs';
 import { launch, capture, readRecord, colourRows, saveFirstSegment, gradeUniversal,
          gradePayload, gradePicture, reportOverMask, BLOCK, isInt } from './acts-lib.mjs';
 
@@ -98,8 +98,9 @@ const SHAPES = [
     } },
 
   /* §1, standing limits: "Attributes and form state are never read: value,
-     placeholder, a chosen <option>". A human reads an email, a phone and a card
-     straight off the image; FullShot reads none of them. The markers on this
+     placeholder, ::before content" and, as corrected 2026-09-19, "<option>
+     text IS read, and is never painted over". A human reads an email, a phone
+     and a card straight off the image; FullShot covers none of them. The markers on this
      fixture are FIELD BACKGROUNDS, not glyph bands, so they say the fields are
      in the picture and nothing about their text — the ledger is what is graded.
      THE FIXTURE'S ONLY TEXT NODES ARE ITS TWO <option>s (both card numbers; the
@@ -120,16 +121,22 @@ const SHAPES = [
       check('F3 nothing on this page can be placed, so nothing is painted and nothing is claimed covered (§2.1, §3.3)',
         !!a && a.painted === 0 && a.verifiedOpaque === 0 && marks.length === 0,
         a && 'painted ' + a.painted + ' verified ' + a.verifiedOpaque + ' marks ' + marks.length);
-      if (a && a.matched > 0) {
-        /* §1 lists "a chosen <option>" as never read. The product reads the
-           text of every <option> — including the unchosen one, which is not in
-           the picture — and states the shortfall. The direction is the safe
-           one (it warns, it does not reassure), so this is a sentence of §1
-           that no longer describes the instrument, not a red. */
-        open('F4 §1 says a chosen <option> is never read; the product matched ' + a.matched +
-          ' in <option> text and reports them uncovered — §1 should say what is read',
-          'acts ' + [a.matched, a.painted, a.verifiedOpaque].join('/') + ' kinds=' + JSON.stringify(kinds));
-      }
+      /* §1, corrected 2026-09-19: "<option> text IS read, and is never painted
+         over" — every <option>, chosen and unchosen alike, is matched; none of
+         them produces a block; the matches are stated as uncovered with a
+         WHOLE count. Graded EXACTLY, not as a bound: F2's `<= 2` would stay
+         green if the product stopped reading <option> text, or read only the
+         chosen one, and either of those would make §1's corrected sentence
+         false. Two card numbers are the fixture's only text leaves, so
+         matched === 2 is "both options, and nothing else". Was an OPEN until
+         the §1 correction (O-FULLSHOT-SPEC-OPTION-TEXT). */
+      const noKinds = !!kinds && Object.keys(kinds).every(k => !kinds[k]);
+      check('F4 every <option> is read — the chosen AND the unchosen — and none is painted: matched 2, ' +
+            'painted 0, verifiedOpaque 0, no kinds, no marks, whole count (§1 as corrected 2026-09-19)',
+        !!a && a.matched === 2 && a.painted === 0 && a.verifiedOpaque === 0 &&
+          a.matchedComplete === true && noKinds && marks.length === 0,
+        a && 'acts ' + [a.matched, a.painted, a.verifiedOpaque].join('/') + ' matchedComplete=' +
+          a.matchedComplete + ' kinds=' + JSON.stringify(kinds) + ' marks=' + marks.length);
     } },
 
   /* Two SVG texts. A: a <text> whose only child is a text node — a childless
