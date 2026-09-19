@@ -3808,8 +3808,9 @@ void main() {
       // 499 + USD, DERIVED. There is no price literal anywhere in the chassis;
       // `assert-no-price-literals.mjs` fails the build if one appears.
       expect(rail.offerings.single.formattedPrice, r'$4.99');
-      // …and NOT sellable, because no checkout template is configured. That is
-      // the honest state today (OWNER_QUEUE A-1) and the paywall says so.
+      // …and NOT sellable: no checkout template is configured, and a test build
+      // declares no RELEASE_CHANNEL, so the rail is the one that sells nothing
+      // (R10). The paywall says so either way.
       expect(rail.canStartCheckout, isFalse);
     });
 
@@ -4683,7 +4684,8 @@ void main() {
     }
 
     // 🔴 A BUILD WHOSE RAIL CANNOT SELL QUOTES NO PRICE. The real rail refuses
-    // under flutter_test's Android default (the android-play row), so with the
+    // in a test build (no RELEASE_CHANNEL, so the undeclared `dev` channel —
+    // R10: it sells nothing, never guessed as web), so with the
     // flag ON the card must still not render: a price for what the build
     // cannot sell in-app is steering. Mirrors the app's promo_card_surface_test.
     testWidgets('the flag ON but a rail that CANNOT sell ⇒ no promo card', (

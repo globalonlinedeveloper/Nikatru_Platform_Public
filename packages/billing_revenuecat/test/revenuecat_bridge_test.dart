@@ -132,6 +132,93 @@ void main() {
     });
   });
 
+  // ── [ADR 085] B — the SDK follows the signed-in account after configure ───
+  // The method names and argument key are the plugin's own
+  // (`Purchases.logIn` invokes 'logIn' with {'appUserID': …}; `logOut`
+  // invokes 'logOut'), read out of purchases_flutter's source.
+  group('identify and logOut re-identify the SDK after configure', () {
+    /// The smallest CustomerInfo JSON `CustomerInfo.fromJson` accepts, so the
+    /// plugin's own parsing of the channel answer succeeds.
+    Map<String, Object?> customerInfoJson(String appUserId) => <String, Object?>{
+          'entitlements': <String, Object?>{
+            'all': <String, Object?>{},
+            'active': <String, Object?>{},
+            'verification': 'NOT_REQUESTED',
+          },
+          'allPurchaseDates': <String, Object?>{},
+          'activeSubscriptions': <Object?>[],
+          'allPurchasedProductIdentifiers': <Object?>[],
+          'nonSubscriptionTransactions': <Object?>[],
+          'firstSeen': '2026-09-19T00:00:00Z',
+          'originalAppUserId': appUserId,
+          'allExpirationDates': <String, Object?>{},
+          'requestDate': '2026-09-19T00:00:00Z',
+        };
+
+    test('identify calls logIn with the NEW app user id', () async {
+      final List<MethodCall> calls = <MethodCall>[];
+      mock((MethodCall call) {
+        calls.add(call);
+        if (call.method == 'logIn') {
+          return <String, Object?>{
+            'customerInfo': customerInfoJson('user-456'),
+            'created': false,
+          };
+        }
+        return null;
+      });
+      final RevenueCatBridge bridge = RevenueCatBridge(capabilities: _canSell);
+      addTearDown(bridge.dispose);
+
+      expect(await bridge.identify('user-456'), isTrue);
+      final MethodCall logIn =
+          calls.singleWhere((MethodCall c) => c.method == 'logIn');
+      expect(
+        (logIn.arguments as Map<Object?, Object?>)['appUserID'],
+        'user-456',
+      );
+    });
+
+    test('logOut calls the SDK logOut', () async {
+      final List<String> calls = <String>[];
+      mock((MethodCall call) {
+        calls.add(call.method);
+        return call.method == 'logOut' ? customerInfoJson('anon') : null;
+      });
+      final RevenueCatBridge bridge = RevenueCatBridge(capabilities: _canSell);
+      addTearDown(bridge.dispose);
+
+      expect(await bridge.logOut(), isTrue);
+      expect(calls, contains('logOut'));
+    });
+
+    test('a refusal from the SDK is false, never a throw', () async {
+      mock((MethodCall call) {
+        throw PlatformException(code: '0', message: 'nope');
+      });
+      final RevenueCatBridge bridge = RevenueCatBridge(capabilities: _canSell);
+      addTearDown(bridge.dispose);
+
+      expect(await bridge.identify('user-456'), isFalse);
+      expect(await bridge.logOut(), isFalse);
+    });
+
+    test('a platform that cannot sell never reaches the SDK', () async {
+      final List<String> calls = <String>[];
+      mock((MethodCall call) {
+        calls.add(call.method);
+        return null;
+      });
+      final RevenueCatBridge bridge =
+          RevenueCatBridge(capabilities: _cannotSell);
+      addTearDown(bridge.dispose);
+
+      expect(await bridge.identify('user-456'), isFalse);
+      expect(await bridge.logOut(), isFalse);
+      expect(calls, isEmpty);
+    });
+  });
+
   group('the mappings, which are where a mistranslation would live', () {
     test('a user cancel is cancelledByUser, never a failure', () {
       // RevenueCat reports a dismissed sheet as a PlatformException whose code

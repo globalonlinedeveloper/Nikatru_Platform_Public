@@ -33,6 +33,15 @@ class IapBridgeConfig {
   final String? appUserId;
 
   bool get isUsable => publicApiKey.isNotEmpty && entitlementId.isNotEmpty;
+
+  /// The same configuration for a different account — what [IapRail] hands
+  /// [IapBridge.configure] when the signed-in user changed before the first
+  /// configure ([ADR 085] B).
+  IapBridgeConfig withAppUserId(String? appUserId) => IapBridgeConfig(
+        publicApiKey: publicApiKey,
+        entitlementId: entitlementId,
+        appUserId: appUserId,
+      );
 }
 
 /// How a store purchase attempt ended, from the STORE's point of view.
@@ -134,6 +143,27 @@ abstract interface class IapBridge {
   /// platform has no store; [IapRail] then refuses with a stated reason instead
   /// of drawing a button that cannot work.
   Future<bool> configure(IapBridgeConfig config);
+
+  /// Re-identify the store SDK's user as [appUserId] AFTER [configure] ran —
+  /// a sign-in or an account switch ([ADR 085] B).
+  ///
+  /// 🔴 WHY THIS IS ON THE SEAM AND NOT A RE-CONFIGURE. The platform's signed
+  /// RevenueCat webhook links an event to a NIKATRU user by the app user id the
+  /// SDK was identified with, and refuses `$RCAnonymousID:`. [configure] sets it
+  /// once; a user who signs in, or switches account, after that would otherwise
+  /// keep the FIRST id, and their purchase would be linked to the previous
+  /// account or refused. A store SDK is configured once per process, so the
+  /// change is a separate call (RevenueCat: `Purchases.logIn`).
+  ///
+  /// Answers whether the SDK is now identified as [appUserId]. Must not throw.
+  Future<bool> identify(String appUserId);
+
+  /// Forget the identified user — a sign-out ([ADR 085] B). The SDK falls back
+  /// to an anonymous id, which the webhook refuses and [IapRail] never sells to
+  /// (it refuses `notSignedIn` first). RevenueCat: `Purchases.logOut`.
+  ///
+  /// Answers whether the SDK no longer holds the previous user. Must not throw.
+  Future<bool> logOut();
 
   /// The store product ids this build can actually sell right now.
   ///

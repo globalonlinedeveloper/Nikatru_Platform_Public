@@ -34,7 +34,17 @@ import 'rail_config.dart';
 ///   The record is written FIRST: if the page fails to open we still hold the
 ///   evidence that they asked, which is what a support conversation and a
 ///   regulator both read.
-class IapRail implements PurchaseRail {
+///
+/// ## Who is buying can change after the first configure — [ADR 085] B
+/// The rail is built once per app process, usually before anybody signs in,
+/// and the store SDK is configured once. The signed-in user is then told to it
+/// through [IdentifiesBuyer.identifyBuyer], which the app calls from its
+/// auth-state change path: a sign-in or account switch re-identifies the SDK
+/// ([IapBridge.identify]) and a sign-out logs it out ([IapBridge.logOut]).
+/// [startCheckout] and [restorePurchases] re-check the SDK's identity BEFORE
+/// any money moves and refuse if it cannot be brought in line — a purchase
+/// linked to the previous account is worse than no purchase.
+class IapRail implements PurchaseRail, IdentifiesBuyer {
   IapRail({
     required IapBridge bridge,
     required IapBridgeConfig bridgeConfig,
@@ -56,7 +66,8 @@ class IapRail implements PurchaseRail {
         // Injectable ONLY so a test can drive the refusal path for a rail this
         // channel does not take. The default is the register's answer, resolved
         // — never a value a caller happens to pass.
-        _railKind = railKind ?? PurchaseRailKind.forChannel(channel);
+        _railKind = railKind ?? PurchaseRailKind.forChannel(channel),
+        _appUserId = bridgeConfig.appUserId;
 
   final IapBridge _bridge;
   final IapBridgeConfig _bridgeConfig;
@@ -70,6 +81,18 @@ class IapRail implements PurchaseRail {
 
   bool _configured = false;
   bool _configureAttempted = false;
+
+  /// The account the APP says is signed in now.
+  String? _appUserId;
+
+  /// The account the store SDK is identified as. Meaningful only once
+  /// [_configured]; differs from [_appUserId] after a sign-in, sign-out or
+  /// account switch until [_syncIdentity] has brought the SDK in line.
+  String? _identifiedAs;
+
+  /// Identity changes run one at a time, in order: a sign-out racing the
+  /// sign-in after it must not leave the SDK logged out.
+  Future<void> _identityTail = Future<void>.value();
 
   /// The rail this channel sells through, as the register decides it.
   PurchaseRailKind get railKind => _railKind;
@@ -98,15 +121,60 @@ class IapRail implements PurchaseRail {
     if (_configureAttempted) return false;
     _configureAttempted = true;
     if (!_bridgeConfig.isUsable) return false;
+    // Configured as whoever is signed in NOW, not whoever was signed in when
+    // the rail was built — the two differ for every user who signs in after
+    // launch.
+    final String? configuringAs = _appUserId;
     try {
-      _configured = await _bridge.configure(_bridgeConfig);
+      _configured =
+          await _bridge.configure(_bridgeConfig.withAppUserId(configuringAs));
     } catch (e) {
       // A store SDK that throws on a cold start must not take a paywall with
       // it. The refusal below is a sentence the user can read.
       debugPrint('[purchases] IAP bridge configure failed: $e');
       _configured = false;
     }
+    if (_configured) _identifiedAs = configuringAs;
     return _configured;
+  }
+
+  /// Tell the rail who is signed in now — [ADR 085] B. Called by the app from
+  /// its auth-state change path with the NIKATRU user id, or null on sign-out.
+  ///
+  /// Before the first configure this only records the id: [IapBridge.configure]
+  /// will carry it. After it, the SDK is re-identified straight away, so the
+  /// store's customer state and a restore both describe the right account.
+  /// Answers whether the SDK is now in line with [appUserId].
+  @override
+  Future<bool> identifyBuyer(String? appUserId) {
+    final String? id =
+        (appUserId == null || appUserId.isEmpty) ? null : appUserId;
+    _appUserId = id;
+    return _serially(_syncIdentity);
+  }
+
+  Future<T> _serially<T>(Future<T> Function() op) {
+    final Future<T> next = _identityTail.then((_) => op());
+    _identityTail = next.then((_) {}, onError: (Object _) {});
+    return next;
+  }
+
+  /// Bring the SDK's identity in line with [_appUserId]. True when it already
+  /// is, or when the bridge confirmed the change; false when the bridge
+  /// refused or threw — and the caller then refuses to take money.
+  Future<bool> _syncIdentity() async {
+    if (!_configured) return true;
+    final String? want = _appUserId;
+    if (_identifiedAs == want) return true;
+    try {
+      final bool done =
+          want == null ? await _bridge.logOut() : await _bridge.identify(want);
+      if (done) _identifiedAs = want;
+      return done;
+    } catch (e) {
+      debugPrint('[purchases] IAP bridge re-identify failed: $e');
+      return false;
+    }
   }
 
   @override
@@ -134,7 +202,7 @@ class IapRail implements PurchaseRail {
     // account is buying BEFORE the sheet opens, so the provider's webhook
     // resolves to a person. Without it the payment arrives unclaimed, and an
     // unclaimed IN-APP purchase is a defect, not a supported state.
-    final String? account = _bridgeConfig.appUserId;
+    final String? account = _appUserId;
     if (account == null || account.isEmpty) {
       return const CheckoutRefused(
         CheckoutRefusal.notSignedIn,
@@ -146,6 +214,19 @@ class IapRail implements PurchaseRail {
       return const CheckoutRefused(
         CheckoutRefusal.railNotConfigured,
         detail: 'The store billing SDK could not be configured on this device.',
+      );
+    }
+
+    // 🔒 [ADR 085] B — THE SDK MUST BE THE BUYER BEFORE THE SHEET OPENS. If the
+    // user changed since the last configure and the re-identify did not land
+    // (or the app never called identifyBuyer), the webhook would link this
+    // payment to the PREVIOUS account. Checked here, on the money path, so a
+    // missed auth event cannot become a misattributed purchase.
+    if (!await _serially(_syncIdentity)) {
+      return const CheckoutRefused(
+        CheckoutRefusal.railNotConfigured,
+        detail: 'The store billing SDK could not be switched to the signed-in '
+            'account, so a purchase now would be credited to another one.',
       );
     }
 
@@ -185,6 +266,16 @@ class IapRail implements PurchaseRail {
       return const IapPurchaseResult(
         IapPurchaseOutcome.unavailable,
         detail: 'The store billing SDK could not be configured on this device.',
+      );
+    }
+    // A restore under the wrong identity moves the store's purchases onto the
+    // wrong account on the provider's side — the same [ADR 085] B rule as a
+    // purchase.
+    if (!await _serially(_syncIdentity)) {
+      return const IapPurchaseResult(
+        IapPurchaseOutcome.unavailable,
+        detail: 'The store billing SDK could not be switched to the signed-in '
+            'account.',
       );
     }
     return _bridge.restore();
@@ -239,4 +330,18 @@ class IapRail implements PurchaseRail {
     if (url == null) return false;
     return _launcher.open(url);
   }
+}
+
+/// A rail that has to be told who is signed in — [ADR 085] B.
+///
+/// Only a store rail needs it: [HostedCheckoutRail] reads the account id
+/// lazily at checkout time, so it can never hold a stale one, while a store SDK
+/// is configured once and keeps the id it was given. The app's auth-state
+/// change path asks `rail is IdentifiesBuyer` and forwards the signed-in user
+/// id, or null on sign-out, so the one wiring works for whichever rail
+/// `ChassisBilling` built.
+abstract interface class IdentifiesBuyer {
+  /// [appUserId] is the NIKATRU user id now signed in, or null after sign-out.
+  /// Answers whether the store SDK is now identified accordingly. Never throws.
+  Future<bool> identifyBuyer(String? appUserId);
 }

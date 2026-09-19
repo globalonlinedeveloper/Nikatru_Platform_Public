@@ -18,10 +18,28 @@ class _FakeBridge implements IapBridge {
   final List<String> purchased = <String>[];
   int restoreCalls = 0;
 
+  /// Every identity the bridge was told, in order: `configure:<id>`,
+  /// `identify:<id>`, `logOut`. [ADR 085] B's subject is exactly this list.
+  final List<String> identities = <String>[];
+  bool identifyAnswer = true;
+
   @override
   Future<bool> configure(IapBridgeConfig config) async {
     configureCalls++;
+    identities.add('configure:${config.appUserId}');
     return configureAnswer;
+  }
+
+  @override
+  Future<bool> identify(String appUserId) async {
+    identities.add('identify:$appUserId');
+    return identifyAnswer;
+  }
+
+  @override
+  Future<bool> logOut() async {
+    identities.add('logOut');
+    return identifyAnswer;
   }
 
   @override
@@ -361,6 +379,114 @@ void main() {
       );
       expect(await rail.requestCancellation(), CancellationOutcome.noActivePlan);
       expect(launcher.opened, isEmpty);
+    });
+  });
+
+  // ── [ADR 085] B — THE SDK FOLLOWS THE SIGNED-IN ACCOUNT ───────────────────
+  // The platform's RevenueCat webhook links an event to the NIKATRU user the
+  // SDK was identified as. The rail configures once, so a user who signs in,
+  // switches account or signs out AFTER that has to be forwarded — or the next
+  // purchase is credited to the previous account.
+  group('re-identification after the first configure', () {
+    test('a sign-in AFTER configure calls identify with the new app user id',
+        () async {
+      final _FakeBridge bridge = _FakeBridge();
+      final IapRail rail = _rail(
+        channel: PurchaseChannel.androidPlay,
+        bridge: bridge,
+        config: const IapBridgeConfig(
+          publicApiKey: 'public_test_key',
+          entitlementId: 'pro',
+          appUserId: null,
+        ),
+      );
+      // Configure happens signed-out (a restore before sign-in does it).
+      await rail.restorePurchases();
+      expect(bridge.identities, <String>['configure:null']);
+
+      expect(await rail.identifyBuyer('user-456'), isTrue);
+      expect(bridge.identities, <String>['configure:null', 'identify:user-456']);
+
+      // And the purchase that follows goes through as that account.
+      final CheckoutStart start = await rail.startCheckout(_monthly);
+      expect(start, isA<CheckoutSubmitted>());
+      expect(bridge.identities.last, 'identify:user-456');
+    });
+
+    test('an account SWITCH re-identifies; the same id again is a no-op',
+        () async {
+      final _FakeBridge bridge = _FakeBridge();
+      final IapRail rail = _rail(
+        channel: PurchaseChannel.androidPlay,
+        bridge: bridge,
+      );
+      await rail.startCheckout(_monthly);
+      expect(bridge.identities, <String>['configure:user-123']);
+
+      await rail.identifyBuyer('user-123');
+      await rail.identifyBuyer('user-789');
+      expect(
+        bridge.identities,
+        <String>['configure:user-123', 'identify:user-789'],
+      );
+    });
+
+    test('a sign-out calls logOut, and the next purchase is refused signed-out',
+        () async {
+      final _FakeBridge bridge = _FakeBridge();
+      final IapRail rail = _rail(
+        channel: PurchaseChannel.androidPlay,
+        bridge: bridge,
+      );
+      await rail.startCheckout(_monthly);
+
+      expect(await rail.identifyBuyer(null), isTrue);
+      expect(bridge.identities, <String>['configure:user-123', 'logOut']);
+
+      final CheckoutStart start = await rail.startCheckout(_monthly);
+      expect((start as CheckoutRefused).reason, CheckoutRefusal.notSignedIn);
+    });
+
+    test('a user change BEFORE configure is carried by configure itself',
+        () async {
+      final _FakeBridge bridge = _FakeBridge();
+      final IapRail rail = _rail(
+        channel: PurchaseChannel.androidPlay,
+        bridge: bridge,
+      );
+      await rail.identifyBuyer('user-456');
+      expect(bridge.identities, isEmpty);
+
+      await rail.startCheckout(_monthly);
+      expect(bridge.identities, <String>['configure:user-456']);
+    });
+
+    test('a FAILED re-identify refuses the purchase instead of crediting the '
+        'previous account', () async {
+      final _FakeBridge bridge = _FakeBridge();
+      final IapRail rail = _rail(
+        channel: PurchaseChannel.androidPlay,
+        bridge: bridge,
+      );
+      await rail.startCheckout(_monthly);
+      bridge.purchased.clear();
+
+      bridge.identifyAnswer = false;
+      expect(await rail.identifyBuyer('user-789'), isFalse);
+
+      final CheckoutStart start = await rail.startCheckout(_monthly);
+      expect(
+        (start as CheckoutRefused).reason,
+        CheckoutRefusal.railNotConfigured,
+      );
+      expect((start as CheckoutRefused).detail, contains('credited to another'));
+      expect(bridge.purchased, isEmpty);
+
+      // It recovers once the store accepts the switch — checked on the money
+      // path itself, so a missed auth event cannot stick.
+      bridge.identifyAnswer = true;
+      expect(await rail.startCheckout(_monthly), isA<CheckoutSubmitted>());
+      expect(bridge.identities.last, 'identify:user-789');
     });
   });
 }

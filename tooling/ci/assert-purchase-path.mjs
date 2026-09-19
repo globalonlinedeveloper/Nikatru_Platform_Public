@@ -963,7 +963,18 @@ const flat = (v) =>
   // The second half of that sentence is asserted below rather than promised: if
   // `IapRail` ever consulted `channelPermitted`, the two vocabularies would have
   // merged and limb (d) would silently be answering for both rails again.
-  const RAIL_IMPLS = { HostedCheckoutRail: 'paddle', IapRail: 'store' };
+  //
+  //   UnavailablePurchaseRail → `none`   — ADDED 2026-09-19 (R10). What
+  //                                          `ChassisBilling` hands a UI when it
+  //                                          built NO rail (a store channel with
+  //                                          no IAP bridge, `rail: none`, an
+  //                                          undeclared channel). It reads
+  //                                          neither vocabulary because it sells
+  //                                          nothing; asserted below as a LITERAL
+  //                                          `false` from `canStartCheckout` and
+  //                                          no launcher, so it cannot quietly
+  //                                          start selling.
+  const RAIL_IMPLS = { HostedCheckoutRail: 'paddle', IapRail: 'store', UnavailablePurchaseRail: 'none' };
   const IAP_RAIL_FILE = 'packages/purchases/lib/src/iap_rail.dart';
   let premiseHolds = true;
   {
@@ -994,6 +1005,38 @@ const flat = (v) =>
           `Limb (d) compares the capability matrix's two booleans against the register on the premise that they answer for the HOSTED rail alone, and limb (e) compares the rail NAME for the store rails. ` +
           `A rail this section has never heard of belongs to neither comparison. Add it to RAIL_IMPLS with the rail vocabulary it serves, and say which limb grades it, before re-greening — a comparison whose left-hand side changed meaning is not a weaker check, it is a check of something else.`,
       );
+    }
+    // The `none` rail sells nothing BY CONSTRUCTION, not by configuration: its
+    // `canStartCheckout` is the literal `false` and its body names no launcher,
+    // no checkout URL and no store bridge. Otherwise it is a third selling rail
+    // that neither limb (d) nor limb (e) grades.
+    {
+      const NONE_RAIL_FILE = 'packages/purchases/lib/src/chassis_billing.dart';
+      const noneRaw = read(NONE_RAIL_FILE);
+      const src = noneRaw === null ? '' : code(noneRaw);
+      const at = src.search(/class\s+UnavailablePurchaseRail\s+implements\s+PurchaseRail\b/);
+      if (at === -1) {
+        if (found.includes('UnavailablePurchaseRail')) {
+          premiseHolds = false;
+          coverageLost(
+            `RAIL_IMPLS names UnavailablePurchaseRail and ${NONE_RAIL_FILE} does not declare it — the "sells nothing" rail moved out from under this check.`,
+          );
+        }
+      } else {
+        const rest = src.slice(at + 1);
+        const next = rest.search(/\n(?:abstract\s+|final\s+|sealed\s+)*class\s/);
+        const body = next === -1 ? rest : rest.slice(0, next);
+        if (!/bool\s+get\s+canStartCheckout\s*=>\s*false\s*;/.test(body)) {
+          problems.push(
+            `UnavailablePurchaseRail (${NONE_RAIL_FILE}) no longer answers "canStartCheckout => false;" literally. It is the rail a build gets when NO rail could be built — a store channel with no bridge, rail none, an undeclared channel — and anything but a constant refusal lets that build draw a buy button neither limb (d) nor limb (e) grades.`,
+          );
+        }
+        if (/\b(?:CheckoutLauncher|_launcher|launchUrl|checkoutUrl|IapBridge)\b/.test(body)) {
+          problems.push(
+            `UnavailablePurchaseRail (${NONE_RAIL_FILE}) names a launcher, a checkout URL or a store bridge. The rail that exists because nothing may be sold must hold no way to sell.`,
+          );
+        }
+      }
     }
     // The store rail must not read the HOSTED rail's permission field. If it
     // did, limb (d)'s booleans would be answering for both rails at once and
@@ -1474,14 +1517,11 @@ const flat = (v) =>
       file: FACADE,
       why: 'the facade itself — the ONE site that is SUPPOSED to construct the hosted rail, because railFor is what decides that a Paddle channel gets it',
     },
-    {
-      file: 'apps/subscriptiontracker/lib/state/money_providers.dart',
-      why: "R10 — `purchaseRailProvider` predates the facade and still hand-builds the rail. Repair belongs to the unit that owns apps/subscriptiontracker/lib/**, and needs the app's CHANNEL declared because ChassisBilling.railFor refuses to guess it",
-    },
-    {
-      file: 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/state/money_providers.dart',
-      why: 'R10 — the same line in the BRICK, which is the one that matters: every app stamped from it gets the pre-facade construction. The stamp traps (flutter-01/02/04/05/07) and the app-shell-owned assert-stamp-text-fidelity make that edit a unit of its own',
-    },
+    // ⏱ 2026-09-19 — the two R10 rows (apps/subscriptiontracker and the
+    // brick's money_providers.dart) were DELETED in the commit that moved both
+    // `purchaseRailProvider`s to `ChassisBilling.railForDeclared(
+    // AppConfig.releaseChannel, …)` (O-BILLING-REVENUECAT-LANDING part 2). The
+    // facade is now the only site, and any other is undeclared.
   ];
   const isTestPath = (rel) =>
     rel.includes('/test/') || rel.includes('/integration_test/') || rel.endsWith('_test.dart');
@@ -1548,7 +1588,7 @@ const flat = (v) =>
     if (undeclared.length === 0 && stale.length === 0) {
       const bypass = [...sites].filter((f) => f !== FACADE).sort();
       ok(
-        `${dartScanned} Dart file(s) swept: ${sites.size} direct HostedCheckoutRail construction site(s), all declared — ${bypass.length} of them still bypass ChassisBilling.railFor (${bypass.join(', ') || 'none'}), which is R10 / O-BILLING-REVENUECAT-LANDING and is now graded rather than remembered`,
+        `${dartScanned} Dart file(s) swept: ${sites.size} direct HostedCheckoutRail construction site(s), all declared — ${bypass.length} of them bypass ChassisBilling.railFor (${bypass.join(', ') || 'none'})`,
       );
     }
   }

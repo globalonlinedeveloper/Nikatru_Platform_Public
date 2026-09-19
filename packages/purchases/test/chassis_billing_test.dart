@@ -17,6 +17,12 @@ class _FakeBridge implements IapBridge {
   Future<bool> configure(IapBridgeConfig config) async => true;
 
   @override
+  Future<bool> identify(String appUserId) async => true;
+
+  @override
+  Future<bool> logOut() async => true;
+
+  @override
   Future<Set<String>> purchasableProductIds() async => <String>{'pro_monthly'};
 
   @override
@@ -185,6 +191,97 @@ void main() {
       final HostedCheckoutRail rail = ready.rail as HostedCheckoutRail;
       expect(rail.capabilities.why,
           PurchaseCapabilities.forChannel(PurchaseChannel.windowsDirect).why);
+    });
+  });
+
+  // ── R10 · THE CHANNEL A BUILD DECLARES, AS TEXT ───────────────────────────
+  // The app hands in its compile-time RELEASE_CHANNEL. An undeclared one — the
+  // `'dev'` default — is NOT guessed: a build that does not know its channel
+  // does not know its rail, so it sells nothing (architecture decision
+  // 2026-09-19; every release lane passes the define).
+  group('ChassisBilling.railForDeclared', () {
+    test('every registered channel id resolves to its channel', () {
+      for (final PurchaseChannel c in PurchaseChannel.values) {
+        expect(ChassisBilling.channelNamed(c.registerId), c);
+      }
+    });
+
+    for (final String undeclared in <String>['dev', '', 'webb', 'WEB']) {
+      test('"$undeclared" sells nothing, and says why', () async {
+        final BillingRailResult r =
+            ChassisBilling.railForDeclared(undeclared, _config());
+        expect(r, isA<BillingRailUnavailable>());
+        expect(
+          (r as BillingRailUnavailable).reason,
+          BillingRailRefusal.channelUndeclared,
+        );
+        expect(r.detail, contains('RELEASE_CHANNEL'));
+
+        final PurchaseRail rail = r.orUnavailableRail(_config());
+        expect(rail, isA<UnavailablePurchaseRail>());
+        expect(rail.canStartCheckout, isFalse);
+        final CheckoutStart start = await rail.startCheckout(_monthly);
+        expect(
+          (start as CheckoutRefused).reason,
+          CheckoutRefusal.channelNotPermitted,
+        );
+      });
+    }
+
+    test('a declared paddle channel gets the hosted rail, unchanged', () {
+      final PurchaseRail rail = ChassisBilling.railForDeclared(
+        'windows-store',
+        _config(),
+      ).orUnavailableRail(_config());
+      expect(rail, isA<HostedCheckoutRail>());
+      expect(rail.canStartCheckout, isTrue);
+    });
+
+    test('a store channel with no bridge is a rail that sells nothing — and '
+        'still CANCELS', () async {
+      // ROSCA does not depend on this build's rail: a web subscriber opening
+      // the Play build must still be able to cancel ([pipeline 5]M-9).
+      final _FakeCancellations cancellations = _FakeCancellations(
+        const core.Result<core.CancellationReceipt>.ok(
+          core.CancellationReceipt(
+            hasActivePlan: true,
+            recorded: true,
+            executed: false,
+          ),
+        ),
+      );
+      final ChassisBillingConfig config =
+          _config(cancellations: cancellations);
+      final PurchaseRail rail = ChassisBilling.railForDeclared(
+        'android-play',
+        config,
+      ).orUnavailableRail(config);
+      expect(rail, isA<UnavailablePurchaseRail>());
+      expect(
+        (rail as UnavailablePurchaseRail).refusal.reason,
+        BillingRailRefusal.iapBridgeMissing,
+      );
+      expect(rail.canStartCheckout, isFalse);
+      // The plans are still described; a surface quotes no PRICE because
+      // canStartCheckout is false.
+      expect(rail.offerings, hasLength(1));
+      expect(
+        ((await rail.startCheckout(_monthly)) as CheckoutRefused).reason,
+        CheckoutRefusal.railNotConfigured,
+      );
+      expect(await rail.requestCancellation(), CancellationOutcome.recorded);
+      expect(cancellations.calls, 1);
+    });
+
+    test('a `rail: none` channel is a rail that sells nothing', () {
+      final PurchaseRail rail = ChassisBilling.railForDeclared(
+        'apps-gov-in',
+        _config(bridge: _FakeBridge(), bridgeConfig: _bridgeConfig),
+      ).orUnavailableRail(_config());
+      expect(
+        (rail as UnavailablePurchaseRail).refusal.reason,
+        BillingRailRefusal.channelSellsNothing,
+      );
     });
   });
 

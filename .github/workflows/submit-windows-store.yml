@@ -66,6 +66,7 @@ jobs:
           --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
           --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
           --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
+          --dart-define=RELEASE_CHANNEL=windows-store
           --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
       # ⏱ MOVED AND CORRECTED 2026-09-07 (unit `symbols-everywhere`) — THIS STEP
       # USED TO BE THE LAST ONE IN THE JOB, behind `dart run msix:create` and the
@@ -228,6 +229,7 @@ jobs:
           --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
           --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
           --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
+          --dart-define=RELEASE_CHANNEL=windows-store
           --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
       # ⏱ MOVED AND CORRECTED 2026-09-07 (unit `symbols-everywhere`) — this step
       # was already "BEFORE the submission, not after" and is now earlier still,

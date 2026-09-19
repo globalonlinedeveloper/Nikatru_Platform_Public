@@ -77,6 +77,45 @@ class RevenueCatBridge implements IapBridge {
     }
   }
 
+  /// [ADR 085] B — a sign-in or account switch after [configure].
+  /// `Purchases.logIn` re-identifies the SDK, so the next webhook event carries
+  /// the NIKATRU user id the platform links on. Its `LogInResult` is DISCARDED
+  /// for the same reason [purchase]'s is: the store's `CustomerInfo` is not an
+  /// entitlement.
+  @override
+  Future<bool> identify(String appUserId) async {
+    if (!_capabilities.canPurchase && !_capabilities.canRestore) return false;
+    if (appUserId.isEmpty) return false;
+    try {
+      await rc.Purchases.logIn(appUserId);
+      return true;
+    } on PlatformException catch (e) {
+      debugPrint('[billing_revenuecat] logIn refused: ${e.code}');
+      return false;
+    } catch (e) {
+      debugPrint('[billing_revenuecat] logIn failed: $e');
+      return false;
+    }
+  }
+
+  /// [ADR 085] B — a sign-out. `Purchases.logOut` drops the identified user
+  /// and the SDK mints an anonymous id, which the platform webhook refuses and
+  /// `IapRail` never sells to (it refuses `notSignedIn` first).
+  @override
+  Future<bool> logOut() async {
+    if (!_capabilities.canPurchase && !_capabilities.canRestore) return false;
+    try {
+      await rc.Purchases.logOut();
+      return true;
+    } on PlatformException catch (e) {
+      debugPrint('[billing_revenuecat] logOut refused: ${e.code}');
+      return false;
+    } catch (e) {
+      debugPrint('[billing_revenuecat] logOut failed: $e');
+      return false;
+    }
+  }
+
   void _onCustomerInfo(rc.CustomerInfo info) {
     if (_states.isClosed) return;
     _states.add(customerStateFrom(info));

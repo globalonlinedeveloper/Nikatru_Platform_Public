@@ -84,6 +84,7 @@ jobs:
           --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
           --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
           --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
+          --dart-define=RELEASE_CHANNEL=android-play
           --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
       # ⏱ MOVED 2026-09-07 (unit `symbols-everywhere`) — THIS STEP USED TO BE THE
       # LAST ONE IN THE JOB, behind the Play dry run. That is the ordering
@@ -234,6 +235,7 @@ jobs:
           --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
           --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
           --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
+          --dart-define=RELEASE_CHANNEL=android-play
           --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
       - name: The .aab must be signed by the upload key, not the debug key
         run: >
