@@ -50,10 +50,31 @@
 //                  keystore — so running one locally is an outward-facing act,
 //                  not a check. Derived from which workflow file names it.
 //
-// Usage:  node tooling/scripts/guard-sweep.mjs [--verbose]
+// ── 2026-09-19 — `--json <path>`, BECAUSE "REPORTED, NOT AN EXIT 1" LET A REAL
+//    REGRESSION THROUGH PREFLIGHT ─────────────────────────────────────────────
+// PR #818 went red in CI on "Guards — the guards can still fail": ci.yml runs
+// `node tooling/ci/assert-walks-bounded.mjs` bare, and it exited 1 on a new
+// `readdirSync` in assert-ungraded-baseline-doc.mjs. Locally this sweep had
+// printed `✗ assert-walks-bounded.mjs RED(1) no invocation passes here` — and
+// exited 0, as designed above — and preflight.mjs read only that exit code, so it
+// closed with "CI should agree". A deterministic, tree-only regression looked
+// exactly like the environmental reds (assert-ops-register, assert-store-matrix
+// --registry-only, the assert-stamp-* guards that need a stamped app).
+//
+// The fix is NOT to make this sweep exit 1 on a red: that would conflate the two
+// again, and the environmental reds would make it red on every run. It is to hand
+// the per-guard verdicts to a reader that can tell the two apart. `--json <path>`
+// writes every row with its verdict, its exit status and EVERY invocation tried
+// (script arguments, node flags, status, first and last output line), plus the
+// full output of a red. preflight.mjs re-runs each RED against a clean checkout
+// of the merge-base with origin/main and fails only on a red that main does not
+// have. This file's exit code is unchanged: completeness, never greenness.
+//
+// Usage:  node tooling/scripts/guard-sweep.mjs [--verbose] [--scan-only] [--json <path>]
 // Exit:   0 = every file run or explained · 1 = a file the sweep could not reach
+//         2 = a usage error (`--json` without a path)
 // ─────────────────────────────────────────────────────────────────────────────
-import { readdirSync, readFileSync, existsSync, mkdtempSync, mkdirSync, rmSync } from 'node:fs';
+import { readdirSync, readFileSync, existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -72,6 +93,23 @@ const VERBOSE = process.argv.includes('--verbose');
  *  so test/guard-sweep-invocations.test.mjs can assert that classification against
  *  the REAL workflows in about a second instead of executing 148 guards. */
 const SCAN_ONLY = process.argv.includes('--scan-only');
+/** `--json <path>`: also write the rows, machine-readable. A flag that takes a
+ *  value REFUSES a missing one, or one that looks like the next flag (trap
+ *  shell-13: a hand-rolled argv loop that silently eats the next argument). */
+const JSON_OUT = (() => {
+  const i = process.argv.indexOf('--json');
+  if (i === -1) return null;
+  const v = process.argv[i + 1];
+  if (v === undefined || v.startsWith('-')) {
+    console.error('✗ --json needs a file path after it (got ' + (v === undefined ? 'nothing' : `\`${v}\``) + ').');
+    process.exit(2);
+  }
+  return resolve(v);
+})();
+/** Keep at most this much of a RED guard's output in the JSON — enough for a
+ *  reader to compare it with the same guard's output on another tree. */
+const OUT_CAP = 64 * 1024;
+const nonEmptyLines = (s) => s.split(/\r?\n/).map((l) => l.trimEnd()).filter((l) => l.trim());
 
 /** Lanes that write outside the repository. Membership is a property of the
  *  workflow, so a new publishing lane inherits this without an edit here. */
@@ -427,9 +465,10 @@ for (const name of files) {
   // finding. "No invocation of this guard passes here" is the honest red.
   let last = null;
   let passed = null;
+  const tried = [];
   for (const call of runnable.slice().sort((a, b) => a.raw.length - b.raw.length)) {
-    const argv = call.raw.length ? call.raw.split(/\s+/) : [];
-    if (scanRoot) argv.unshift(scanRoot);
+    const scriptArgs = call.raw.length ? call.raw.split(/\s+/) : [];
+    const argv = scanRoot ? [scanRoot, ...scriptArgs] : [...scriptArgs];
     // The node flags CI starts this guard with go BEFORE the script path, exactly
     // where CI puts them. Four guards are invoked `--single-threaded` because they
     // deadlock at exit without it (nodejs/node#54918); running them here without
@@ -441,7 +480,12 @@ for (const name of files) {
     });
     ran++;
     const out = `${r.stdout ?? ''}${r.stderr ?? ''}`;
-    last = { status: r.status, argv, tail: out.trim().split(/\r?\n/).filter(Boolean).slice(-1)[0] ?? '' };
+    const ol = nonEmptyLines(out);
+    last = { status: r.status, argv, tail: out.trim().split(/\r?\n/).filter(Boolean).slice(-1)[0] ?? '', full: out };
+    // `args` is the SCRIPT arguments only — never the throwaway archive path,
+    // which is gone by the time anybody reads this. `treeScanner` says a tree
+    // root was put in front of them, so a re-run elsewhere can supply its own.
+    tried.push({ args: scriptArgs, flags: call.flags, status: r.status, head: ol[0] ?? '', tail: ol[ol.length - 1] ?? '' });
     if (r.status === 0) { passed = last; break; }
   }
   if (scanRoot) { try { rmSync(scanRoot, { recursive: true, force: true }); } catch {} }
@@ -453,6 +497,9 @@ for (const name of files) {
       note: (passed.argv.length ? `args: ${passed.argv.join(' ')}` : '') +
         (usedFallback ? ' [bare fallback — CI passes a runner-env tool path this machine resolves from PATH]' : ''),
       out: passed.tail,
+      status: 0,
+      tried,
+      treeScanner: Boolean(scanRoot),
     });
   } else {
     red++;
@@ -462,6 +509,10 @@ for (const name of files) {
       note: `no invocation passes here (${runnable.length} tried, last: ${last.argv.join(' ') || '(no args)'})`,
       out: last.tail,
       showOut: true,
+      status: last.status,
+      tried,
+      treeScanner: Boolean(scanRoot),
+      fullOut: last.full.length > OUT_CAP ? last.full.slice(0, OUT_CAP) : last.full,
     });
   }
 }
@@ -490,6 +541,38 @@ console.log(
   '   This asserts COMPLETENESS, not greenness. A RED above is a guard reporting a finding — read it. ' +
     'Exit 1 here means a file was neither run nor explained, which is the failure a name-pattern sweep produced silently.',
 );
+
+// ── the machine-readable copy (2026-09-19, see the header) ──────────────────
+// Written BEFORE the exit decision and never able to change it. A write that
+// fails is said out loud; preflight.mjs names a path in a FRESH temp directory
+// and refuses when nothing is there, so neither a stale copy nor an absent one
+// can stand in for this run.
+if (JSON_OUT) {
+  const doc = {
+    schema: 'guard-sweep/1',
+    root: ROOT,
+    scanOnly: SCAN_ONLY,
+    files: files.length,
+    executed: ran,
+    unreached,
+    counts,
+    rows: rows.map((r) => ({
+      name: r.name,
+      verdict: r.verdict,
+      red: r.verdict.startsWith('RED'),
+      status: r.status ?? null,
+      note: r.note,
+      treeScanner: r.treeScanner ?? false,
+      tried: r.tried ?? [],
+      ...(r.fullOut !== undefined ? { out: r.fullOut } : {}),
+    })),
+  };
+  try {
+    writeFileSync(JSON_OUT, JSON.stringify(doc, null, 2) + '\n', 'utf8');
+  } catch (e) {
+    console.error(`✗ --json: could not write ${JSON_OUT} (${e?.code ?? e?.message ?? e}). The sweep verdict above stands; no machine-readable copy exists.`);
+  }
+}
 
 if (unreached > 0) {
   console.error(`\n✗ ${unreached} runnable file(s) in tooling/ci are invoked by no workflow — the sweep cannot reach them and neither can CI.`);
