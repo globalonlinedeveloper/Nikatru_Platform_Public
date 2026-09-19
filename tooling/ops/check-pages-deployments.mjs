@@ -39,6 +39,22 @@
 //     PREVIOUS one, which is precisely the state that looks healthy from
 //     outside: the site answers 200, with last week's bytes.
 //
+//   · 🔴 IN FLIGHT IS NOT FAILED. Until 2026-09-19 any newest deployment short
+//     of `deploy`/`success` was RED, and a build that was simply STILL RUNNING
+//     met that test. ops-watch run 35422355154 (schedule, 04:50:14Z) read
+//     `rajasekarselvam` at ~04:50:34Z: PR #816 had merged at 04:50:11Z,
+//     Cloudflare created the build for 77a8495b at 04:50:13Z, and its deploy
+//     stage ended `success` at 04:50:41Z — seven seconds after the verdict. A
+//     red ops-watch reddens ci-gate on `main` and freezes every merge, so the
+//     race fired on ANY merge that landed near a slot. The stage is now read as
+//     one of four things (classifyStage): DONE, FAILED (`failure`/`canceled`),
+//     IN FLIGHT (`active`/`idle`, or a non-final stage that has passed) or a
+//     status outside Cloudflare's published enum, which is exit 2. An in-flight
+//     newest build younger than IN_FLIGHT_CEILING_MS is NOT graded; the newest
+//     COMPLETED production deployment behind it is, with every limb below, and
+//     the line says ⏳ and names the build the next slot will grade. Past the
+//     ceiling it is RED as a STUCK build.
+//
 //   · `deployment_trigger.metadata.commit_hash`, for GIT-CONNECTED projects
 //     only, against the newest commit on `main` that touched the project's
 //     source directory. The test is CONTAINMENT, not equality: the served
@@ -76,10 +92,17 @@
 // ── THREE-VALUED, AND 2 IS NOT A PASS ───────────────────────────────────────
 //   0  every derived project's newest production deployment succeeded, and every
 //      git-connected one is at the commit `main` says it should be.
-//   1  a project is stale or red — its newest production build failed, or the
-//      commit it serves does not CARRY the newest `main` commit for its source.
+//      A newest build still IN FLIGHT and younger than the ceiling is also 0,
+//      printed ⏳, when the completed deployment behind it passes (or, for the
+//      commit limb only, when the building one carries the commit `main` names).
+//   1  a project is stale or red — its newest production build failed or was
+//      canceled, has been in flight past the ceiling, or the commit it serves
+//      does not CARRY the newest `main` commit for its source.
 //   2  COULD NOT LOOK — no credential, a non-200, unparseable JSON, an
-//      `environment` that came back something other than `production`, or a
+//      `environment` that came back something other than `production`, a stage
+//      status outside Cloudflare's enum, an in-flight build whose `created_on`
+//      does not parse (its age is the whole question), no COMPLETED deployment
+//      within the rows read behind an in-flight one, or a
 //      project list that derived to EMPTY. An empty sweep prints the same `ok`
 //      as a complete one, which is the defect this portfolio keeps re-finding.
 //
@@ -191,8 +214,21 @@ export function derivePagesProjects(root) {
  *  with no git. It is consulted ONLY when the served commit differs from
  *  `expectedCommit`; when they are equal the question is already answered.
  *
+ *  `now` (epoch ms) and `ceilingMs` are injected for the same reason: the
+ *  in-flight branch turns on a build's AGE, and a test must be able to stand on
+ *  either side of the ceiling without waiting for it.
+ *
  *  Returns `{ code, line }`. `code` is 0, 1 or 2 with the file-level meaning. */
-export function judgeProject({ project, kind, sourceDir, deployments, expectedCommit, isAncestor = null }) {
+export function judgeProject({
+  project,
+  kind,
+  sourceDir,
+  deployments,
+  expectedCommit,
+  isAncestor = null,
+  now = Date.now(),
+  ceilingMs = IN_FLIGHT_CEILING_MS,
+}) {
   const at = `${project} (${kind})`;
 
   if (!Array.isArray(deployments)) {
@@ -223,17 +259,28 @@ export function judgeProject({ project, kind, sourceDir, deployments, expectedCo
 
   const newest = deployments[0];
   const stage = newest?.latest_stage;
-  if (!stage || typeof stage.name !== 'string' || typeof stage.status !== 'string') {
+  const cls = classifyStage(stage);
+  const id = newest?.id ?? '(no id)';
+  const ctx = { at, sourceDir, expectedCommit, isAncestor };
+
+  if (cls === 'unreadable') {
     return {
       code: 2,
       line: `?   ${at} — the newest production deployment carries no readable \`latest_stage\`, so NOTHING was judged.`,
     };
   }
 
-  const short = (h) => (typeof h === 'string' ? h.slice(0, 7) : String(h));
-  const id = newest.id ?? '(no id)';
+  if (cls === 'unknown') {
+    return {
+      code: 2,
+      line:
+        `?   ${at} — the newest production deployment ${id} reports stage \`${stage.name}\` with status ` +
+        `\`${stage.status}\`, which is outside Cloudflare's published enum (${[...STAGE_KNOWN].join(', ')}). ` +
+        `Whether that is running, landed or failed is not known here, so NOTHING was judged.`,
+    };
+  }
 
-  if (stage.name !== 'deploy' || stage.status !== 'success') {
+  if (cls === 'failed') {
     return {
       code: 1,
       line:
@@ -244,7 +291,173 @@ export function judgeProject({ project, kind, sourceDir, deployments, expectedCo
     };
   }
 
-  const trigger = newest.deployment_trigger ?? {};
+  if (cls === 'inflight') return judgeInFlight(deployments, ctx, { now, ceilingMs });
+
+  return gradeCompleted(newest, ctx);
+}
+
+/** THE CEILING ON "STILL BUILDING". Measured 2026-09-19 over the 50 newest
+ *  production deployments of the two git-connected projects (`nikatru`,
+ *  `rajasekarselvam`): created_on → deploy-stage end took 14–45 s, of which
+ *  the `queued` stage alone was up to 32 s. Thirty minutes is ~40× the slowest
+ *  build seen, so a build still running at that age is STUCK, not slow; and it
+ *  is well inside the gap between two ops-watch slots, so a build this run
+ *  excuses as young is past the ceiling — graded, or red as stuck — at the
+ *  next slot at the latest. It is a named constant, not a literal in a branch,
+ *  so the test pins it and a change to it is a reviewed diff. */
+export const IN_FLIGHT_CEILING_MS = 30 * 60 * 1000;
+
+/** How many production rows one read asks for. The in-flight branch needs the
+ *  newest COMPLETED deployment behind the running one, which is row 1 unless
+ *  several pushes landed inside one build window; ten covers a burst of nine.
+ *  No completed row among them is exit 2, never a pass. */
+export const DEPLOYMENTS_PER_PAGE = 10;
+
+/** Cloudflare's published `latest_stage.status` enum (API reference, Pages
+ *  deployments, read 2026-09-19): success, idle, active, failure, canceled.
+ *  Stage names: queued, initialize, clone_repo, build, deploy. */
+const STAGE_FAILED = new Set(['failure', 'canceled']);
+const STAGE_RUNNING = new Set(['active', 'idle']);
+const STAGE_KNOWN = new Set(['success', ...STAGE_RUNNING, ...STAGE_FAILED]);
+
+/** PURE. One `latest_stage` read as one of five things:
+ *    'done'       `deploy` / `success` — the build landed.
+ *    'failed'     `failure` or `canceled` at ANY stage — terminal, and red.
+ *    'inflight'   `active` / `idle` at any stage, OR `success` at a stage that
+ *                 is not `deploy` — a stage passed and the next has not been
+ *                 reported yet, which is still a build in progress.
+ *    'unknown'    a status outside the enum — exit 2, not a guess either way.
+ *    'unreadable' no stage, or a name/status that is not a string — exit 2. */
+export function classifyStage(stage) {
+  if (!stage || typeof stage.name !== 'string' || typeof stage.status !== 'string') return 'unreadable';
+  if (STAGE_FAILED.has(stage.status)) return 'failed';
+  if (stage.status === 'success') return stage.name === 'deploy' ? 'done' : 'inflight';
+  if (STAGE_RUNNING.has(stage.status)) return 'inflight';
+  return 'unknown';
+}
+
+const short = (h) => (typeof h === 'string' ? h.slice(0, 7) : String(h));
+
+/** The newest production deployment is still building. Its AGE decides what
+ *  that means, and age comes from Cloudflare's own `created_on` against the
+ *  clock — never from "it was running when I looked", which is true of every
+ *  build for some seconds and of a stuck one forever.
+ *
+ *  Young: the newest COMPLETED production deployment behind it is graded with
+ *  every limb `gradeCompleted` has, because that is what production serves
+ *  right now. One case needs the building row: the completed deployment may
+ *  legitimately PREDATE the newest commit touching the site directory, because
+ *  the build for that commit is the one running. That is ⏳ and exit 0 only
+ *  when the building commit itself carries the expected one; a running build
+ *  that ALSO does not carry it means the build for that commit never started. */
+function judgeInFlight(deployments, ctx, { now, ceilingMs }) {
+  const { at, expectedCommit, isAncestor } = ctx;
+  const building = deployments[0];
+  const bid = building.id ?? '(no id)';
+  const bstage = building.latest_stage;
+  const bcommit = building.deployment_trigger?.metadata?.commit_hash ?? null;
+
+  const created = typeof building.created_on === 'string' ? Date.parse(building.created_on) : NaN;
+  if (!Number.isFinite(created) || !Number.isFinite(now)) {
+    return {
+      code: 2,
+      line:
+        `?   ${at} — the newest production deployment ${bid} is IN FLIGHT (stage \`${bstage.name}\` ` +
+        `\`${bstage.status}\`) but its \`created_on\` ${JSON.stringify(building.created_on ?? null)} does not ` +
+        `parse, so whether it is building or STUCK cannot be told. NOTHING was judged.`,
+    };
+  }
+  const ageMs = Math.max(0, now - created);
+  const age = `${Math.round(ageMs / 1000)} s`;
+  const what = `deployment ${bid} (commit ${short(bcommit)}, ${age} old, stage \`${bstage.name}\` \`${bstage.status}\`)`;
+
+  if (ageMs > ceilingMs) {
+    return {
+      code: 1,
+      line:
+        `✗   ${at} — STUCK BUILD: ${what} is still in flight past the ${Math.round(ceilingMs / 60000)}-minute ` +
+        `ceiling. Builds of this project take well under a minute, so this one is not slow, it is not going to ` +
+        `land, and production is serving the PREVIOUS build.`,
+    };
+  }
+
+  const i = deployments.findIndex((d, k) => k > 0 && classifyStage(d?.latest_stage) !== 'inflight');
+  if (i === -1) {
+    return {
+      code: 2,
+      line:
+        `?   ${at} — ${what} is IN FLIGHT, and none of the ${deployments.length - 1} older production row(s) ` +
+        `read is COMPLETED, so there is no landed build to grade. NOTHING was judged.`,
+    };
+  }
+
+  const prev = deployments[i];
+  const pcls = classifyStage(prev.latest_stage);
+  const pid = prev.id ?? '(no id)';
+  if (pcls === 'failed') {
+    return {
+      code: 1,
+      line:
+        `✗   ${at} — ${what} is in flight, but the newest COMPLETED production deployment ${pid} stopped at ` +
+        `stage \`${prev.latest_stage.name}\` with status \`${prev.latest_stage.status}\`. Production is serving ` +
+        `an OLDER build still, and a new build starting does not excuse the one that failed.`,
+    };
+  }
+  if (pcls !== 'done') {
+    return {
+      code: 2,
+      line:
+        `?   ${at} — ${what} is in flight, and the completed deployment behind it (${pid}) carries a ` +
+        `\`latest_stage\` this reader cannot classify (${JSON.stringify(prev.latest_stage ?? null)}). NOTHING was judged.`,
+    };
+  }
+
+  const g = gradeCompleted(prev, ctx);
+  const tail = `the next ops-watch slot grades ${bid}.`;
+
+  if (g.code === 0) {
+    return { code: 0, inflight: true, line: `⏳  ${at} — ${what} is IN FLIGHT; ${tail} Serving now: ${g.line.replace(/^ok\s+/, '')}` };
+  }
+
+  if (g.behind) {
+    // The completed build predates the expected commit. Legitimate ONLY when the
+    // running build is the one carrying it.
+    const carries =
+      bcommit === expectedCommit
+        ? true
+        : typeof bcommit === 'string' && typeof isAncestor === 'function'
+          ? isAncestor(expectedCommit, bcommit)
+          : null;
+    if (carries === true) {
+      return {
+        code: 0,
+        inflight: true,
+        line:
+          `⏳  ${at} — ${what} is IN FLIGHT and carries ${short(expectedCommit)}, the newest \`main\` commit ` +
+          `touching ${ctx.sourceDir}; production still serves ${pid} at ${short(g.served)}, which predates it. ` +
+          `That is the build window, not a missed build — ${tail}`,
+      };
+    }
+    if (carries === null) {
+      return {
+        code: 2,
+        line:
+          `?   ${at} — ${what} is in flight and the completed ${pid} does not carry ${short(expectedCommit)}; ` +
+          `whether the BUILDING commit carries it could not be read, so NOTHING was judged.`,
+      };
+    }
+    return { code: 1, line: `${g.line} The build in flight (${bid}, commit ${short(bcommit)}) does not carry it either.` };
+  }
+
+  return { code: g.code, line: `${g.line} (Graded behind ${what}, which is in flight.)` };
+}
+
+/** One deployment already known to be DONE (`deploy` / `success`), graded on
+ *  its commit limb. `behind: true` marks the one red an in-flight build can
+ *  legitimately explain; `served` is carried out for that caller's line. */
+function gradeCompleted(dep, { at, sourceDir, expectedCommit, isAncestor }) {
+  const id = dep.id ?? '(no id)';
+  const trigger = dep.deployment_trigger ?? {};
   const served = trigger?.metadata?.commit_hash ?? null;
 
   if (expectedCommit === null) {
@@ -301,6 +514,8 @@ export function judgeProject({ project, kind, sourceDir, deployments, expectedCo
     if (carries === false) {
       return {
         code: 1,
+        behind: true,
+        served,
         line:
           `✗   ${at} — deployment ${id} succeeded, but it is serving commit ${short(served)}, which does NOT ` +
           `carry ${short(expectedCommit)} — the newest commit on \`main\` touching ${sourceDir}. The Cloudflare ` +
@@ -352,7 +567,8 @@ export function foldVerdicts(results, { projectsSwept, ungraded }) {
   const lines = results.map((r) => r.line);
   const reds = results.filter((r) => r.code === 1).length;
   const unknowns = results.filter((r) => r.code === 2).length;
-  return { code, lines, reds, unknowns, projectsSwept, ungraded };
+  const inflight = results.filter((r) => r.code === 0 && r.inflight === true).length;
+  return { code, lines, reds, unknowns, inflight, projectsSwept, ungraded };
 }
 
 /** The newest commit on `main` that touched a path. `null` when the history is
@@ -379,7 +595,7 @@ async function readDeployments(project) {
   if (!token || !account) {
     throw new CouldNotLook('CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID are not both in the environment');
   }
-  const url = `${CF_API}/accounts/${account}/pages/projects/${encodeURIComponent(project)}/deployments?env=production&per_page=1`;
+  const url = `${CF_API}/accounts/${account}/pages/projects/${encodeURIComponent(project)}/deployments?env=production&per_page=${DEPLOYMENTS_PER_PAGE}`;
   const res = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
   const text = await res.text();
   if (!res.ok) {
@@ -455,7 +671,12 @@ async function main() {
   for (const line of verdict.lines) console.log(`    ${line}`);
 
   if (verdict.code === 0) {
-    console.log(`ok  every derived Pages project's newest PRODUCTION deployment succeeded and is at the commit main names.`);
+    console.log(
+      verdict.inflight === 0
+        ? `ok  every derived Pages project's newest PRODUCTION deployment succeeded and is at the commit main names.`
+        : `ok  every derived Pages project's served PRODUCTION deployment passed; ${verdict.inflight} newer build(s) still ` +
+            `IN FLIGHT inside the ceiling, each named ⏳ above, which the next slot grades.`,
+    );
   } else {
     console.error('');
     console.error(
