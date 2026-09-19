@@ -851,7 +851,8 @@
       ".github/workflows/submit-appstore.yml#gate",
       ".github/workflows/submit-play.yml#gate",
       ".github/workflows/submit-snap.yml#gate",
-      ".github/workflows/submit-windows-store.yml#gate"
+      ".github/workflows/submit-windows-store.yml#gate",
+      ".github/workflows/symbolication-proof.yml#gate"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-gate-passed.mjs",
@@ -2907,6 +2908,16 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/symbolication-proof.yml#prove"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/symbolication-proof.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "ADR 067",
       "R-7"
@@ -2921,7 +2932,8 @@
       ".github/workflows/submit-snap.yml#dry-run",
       ".github/workflows/submit-snap.yml#submit",
       ".github/workflows/submit-windows-store.yml#dry-run",
-      ".github/workflows/submit-windows-store.yml#submit"
+      ".github/workflows/submit-windows-store.yml#submit",
+      ".github/workflows/symbolication-proof.yml#prove"
     ],
     "kind": "script",
     "ref": "tooling/ops/upload-native-symbols.mjs",
