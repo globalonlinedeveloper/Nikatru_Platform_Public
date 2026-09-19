@@ -1592,7 +1592,8 @@ describe('assert-channel-register — every release build declares its channel (
   test('the DECLARED exemption holds for the probe stamp build, and is counted', () => {
     const { code, out } = run(tree({ extraFiles: { [CI]: ciWorkflow('flutter build web --pwa-strategy=none') } }));
     assert.equal(code, 0, out);
-    assert.match(out, /1 declared exempt \(\.github\/workflows\/ci\.yml#app-brick\)/);
+    // The count is what this fixture exempts; the list names every DECLARED key.
+    assert.match(out, /1 declared exempt \([^)]*\.github\/workflows\/ci\.yml#app-brick[,)]/);
   });
 
   test('a STALE exemption FAILS — the exempted job stamps now', () => {
