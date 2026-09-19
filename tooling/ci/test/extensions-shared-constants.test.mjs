@@ -2,8 +2,8 @@
 // extensions-shared-constants.test.mjs — three facts in extensions/scripts that
 // several readers must agree on, each now held in ONE place and graded here.
 //
-// Until 2026-09-19 each was a copy with a comment beside it saying the copies
-// "cannot drift", and nothing compared them (tooling/mechanism-claims.json,
+// Until 2026-09-19 each was a copy with a comment beside it claiming the copies
+// stayed in step, and nothing compared them (tooling/mechanism-claims.json,
 // O-UNGRADED-MECHANISM-CLAIMS). The copies were replaced by imports; these
 // cases are what fails if a reader goes back to its own copy and disagrees.
 //
