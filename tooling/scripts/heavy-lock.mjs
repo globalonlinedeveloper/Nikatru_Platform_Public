@@ -26,10 +26,13 @@
 //     we may not signal, which still means alive), or the lock is older than the
 //     age ceiling (a Windows pid can be reused by an unrelated process, and then it
 //     looks alive forever). A stale lock is reclaimed LOUDLY, naming the holder.
-//   · Reclaim goes through a second O_EXCL file (`<lock>.reclaim`), re-reads the
-//     lock under it and removes it only if it still carries the SAME stale token.
-//     Without that, waiter A could reclaim and re-create, and waiter B — who read
-//     the stale content a moment earlier — would delete A's fresh lock.
+//   · Reclaim is an ATOMIC RENAME of the lock to a name only the reclaimer knows:
+//     of any number of waiters exactly one gets it, and only then is its token
+//     compared with the stale one that was judged. If it turns out to be a FRESH
+//     lock (someone acquired between the judgement and the rename), it is handed
+//     back with linkSync, which cannot clobber a newer lock. (2026-09-20: this
+//     replaced a `<lock>.reclaim` marker whose stale-marker cleanup deleted by path
+//     after reading its age — a real, if tiny, race CodeQL js/file-system-race named.)
 //   · RE-ENTRANT for descendants: the holder puts its token in the environment
 //     (NIKATRU_HEAVY_LOCK_TOKEN). A child that finds its inherited token in the
 //     lock file is running UNDER the holder and proceeds; otherwise a preflight
@@ -62,7 +65,7 @@
 // tooling/scripts/heavy.mjs, which own the exit codes. It never ends the process
 // itself — the caller hands in its `exit` function.
 // ─────────────────────────────────────────────────────────────────────────────
-import { openSync, writeSync, closeSync, readFileSync, unlinkSync, mkdirSync, fstatSync } from 'node:fs';
+import { openSync, writeSync, closeSync, readFileSync, unlinkSync, mkdirSync, fstatSync, renameSync, linkSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { homedir, hostname } from 'node:os';
@@ -83,8 +86,6 @@ export const DEFAULT_MAX_AGE_MIN = 240;
 /** A lock file that is unreadable is being written right now — or was left
  *  half-written by a crash. Past this many seconds it is the second. */
 const TORN_GRACE_MS = 30_000;
-/** A reclaim marker older than this belongs to a reclaimer that died mid-step. */
-const RECLAIM_GRACE_MS = 60_000;
 const BACKUP_POLL_MS = 120_000;
 const BACKUP_QUERY_TIMEOUT_MS = 30_000;
 
@@ -180,42 +181,33 @@ export function tryCreate(path, record) {
 }
 
 /** Remove a stale lock, but only the stale one that was judged. */
-function reclaim(path, judged, log) {
-  const marker = `${path}.reclaim`;
-  // CREATE FIRST, inspect only on failure: the O_EXCL create is the atomic step, and
-  // no check precedes it (CodeQL js/file-system-race, 2026-09-20).
-  let fd;
+export function reclaim(path, judged, log) {
+  // ATOMIC TAKE, then judge what was taken (CodeQL js/file-system-race, 2026-09-20).
+  // renameSync moves the lock to a name only THIS process knows, in one system call:
+  // of any number of waiters, exactly one gets it and the rest see ENOENT. There is
+  // no check-then-delete on a shared path left anywhere in this function.
+  const grabbed = `${path}.reclaim-${process.pid}-${randomUUID()}`;
   try {
-    fd = openSync(marker, 'wx');
+    renameSync(path, grabbed);
   } catch (e) {
-    if (e?.code !== 'EEXIST') throw e;
-    // Another waiter holds the marker — or one died holding it. Age read through a
-    // descriptor; a dead reclaimer's marker is cleared and the NEXT poll retries.
-    let mfd;
-    try {
-      mfd = openSync(marker, 'r');
-      const ageMs = Date.now() - fstatSync(mfd).mtimeMs;
-      if (ageMs > RECLAIM_GRACE_MS) {
-        log(`⚠️ heavy-run lock: removing a reclaim marker ${mins(ageMs)} old — its reclaimer died mid-step`);
-        try { unlinkSync(marker); } catch {}
-      }
-    } catch {
-      // vanished or unreadable: the next poll decides
-    } finally {
-      if (mfd !== undefined) { try { closeSync(mfd); } catch {} }
-    }
-    return false; // poll again
+    if (e?.code === 'ENOENT' || e?.code === 'EPERM' || e?.code === 'EBUSY' || e?.code === 'EACCES') return false; // gone or in use: poll again
+    throw e;
   }
-  closeSync(fd);
-  try {
-    const again = readHolder(path);
-    const same = judged.torn ? Boolean(again.torn) : again.holder?.token === judged.holder?.token;
-    if (!same) return false;
-    try { unlinkSync(path); } catch (e) { if (e?.code !== 'ENOENT') throw e; }
+  const got = readHolder(grabbed);
+  const same = judged.torn ? Boolean(got.torn) : got.holder?.token === judged.holder?.token;
+  if (same) {
+    try { unlinkSync(grabbed); } catch (e) { if (e?.code !== 'ENOENT') throw e; }
     return true;
-  } finally {
-    try { unlinkSync(marker); } catch {}
   }
+  // We took a FRESH lock that someone acquired between our judgement and the rename.
+  // Hand it back WITHOUT clobbering: linkSync fails EEXIST if a newer lock exists.
+  try {
+    linkSync(grabbed, path);
+  } catch (e) {
+    log(`⚠️ heavy-run lock: took a fresh lock by mistake and could not hand it back (${e?.code ?? e?.message}); its holder runs unlocked until it exits`);
+  }
+  try { unlinkSync(grabbed); } catch {}
+  return false;
 }
 
 /**

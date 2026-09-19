@@ -22,7 +22,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
-  acquireHeavyLock, releaseHeavyLock, staleReason, readHolder, pidAlive, waitForBackup, queryBackupState,
+  acquireHeavyLock, releaseHeavyLock, reclaim, staleReason, readHolder, pidAlive, waitForBackup, queryBackupState,
   machineFree, defaultLockPath, TOKEN_ENV, LOCK_PATH_ENV,
 } from '../../scripts/heavy-lock.mjs';
 
@@ -282,6 +282,31 @@ describe('release on crash, and CI mode', () => {
     releaseHeavyLock(mine, { log: (l) => lines.push(l) });
     assert.equal(readHolder(lock).holder.token, theirs.token);
     assert.match(lines.join('\n'), /no longer ours/);
+  });
+});
+
+describe('reclaim takes atomically and never destroys a fresh lock', () => {
+  const rec = (token, pid = 999999) => JSON.stringify({ pid, argv: ['x'], startedAt: new Date().toISOString(), host: 'h', token });
+
+  test('the stale lock that was judged is removed, and nothing is left behind', () => {
+    const lock = freshLock();
+    mkdirSync(dirname(lock), { recursive: true });
+    writeFileSync(lock, rec('stale-token'));
+    const judged = readHolder(lock);
+    assert.equal(reclaim(lock, judged, () => {}), true);
+    assert.equal(existsSync(lock), false);
+  });
+
+  test('a FRESH lock taken between the judgement and the rename is handed back intact', () => {
+    const lock = freshLock();
+    mkdirSync(dirname(lock), { recursive: true });
+    writeFileSync(lock, rec('stale-token'));
+    const judged = readHolder(lock);
+    writeFileSync(lock, rec('fresh-token', process.pid)); // another waiter reclaimed and re-acquired
+    const logs = [];
+    assert.equal(reclaim(lock, judged, (l) => logs.push(l)), false);
+    assert.equal(readHolder(lock).holder?.token, 'fresh-token', 'the fresh holder lost its lock record');
+    assert.deepEqual(logs, []);
   });
 });
 
