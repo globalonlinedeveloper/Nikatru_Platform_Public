@@ -94,6 +94,29 @@ describe('the CHANGELOG version heading is ONE pattern', () => {
   });
 });
 
+describe('changelog-section.mjs never hands release.yml an empty release note', () => {
+  // selftest.node.js's NO_CASE_RECORDED held this gate as an OPEN GAP ("a release
+  // note that silently comes out empty is caught by nobody"). The gate is right —
+  // measured 2026-09-19 — and these cases are what fails if it stops being right.
+  test('a version heading with nothing under it exits 1 and prints nothing', () => {
+    const r = section(toolTree('# Changelog\n\n## [2.0.0] - 2026-09-19\n\n## [1.0.0] - 2026-08-14\n\n- first\n'), '2.0.0');
+    assert.equal(r.status, 1, `an EMPTY section must be refused, got exit ${r.status}\n${r.stderr}`);
+    assert.equal(r.stdout, '', 'a refused section must print no release body');
+  });
+
+  test('a version the CHANGELOG does not carry exits 1 and prints nothing', () => {
+    const r = section(toolTree('# Changelog\n\n## [1.0.0] - 2026-08-14\n\n- first\n'), '2.0.0');
+    assert.equal(r.status, 1, `a MISSING section must be refused, got exit ${r.status}\n${r.stderr}`);
+    assert.equal(r.stdout, '');
+  });
+
+  test('a CHANGELOG with no heading the reader recognises exits 2, not 0', () => {
+    const r = section(toolTree('# Changelog\n\n### [2.0.0]\n\n- notes\n'), '2.0.0');
+    assert.equal(r.status, 2, `an unreadable CHANGELOG is COVERAGE LOST, got exit ${r.status}\n${r.stderr}`);
+    assert.equal(r.stdout, '');
+  });
+});
+
 // ── 2 ───────────────────────────────────────────────────────────────────────
 /** The value of `const NAME = <expr>` in a file's comment-free code, when the
  *  expression is integer arithmetic only. */
