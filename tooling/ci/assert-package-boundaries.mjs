@@ -36,43 +36,19 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { listDir } from './tree-walk.mjs';
+import { deriveAdapters, pubspecDeps } from './adapter-set.mjs';
 
 const ROOT = process.cwd();
 const problems = [];
 const notes = [];
 const ok = (m) => console.log(`ok   ${m}`);
 const coverageLost = (m) => problems.push(`COVERAGE LOST — ${m}`); // exit 2 only if EVERY problem is one (summary below)
-// ── pubspec reading. Line-based on purpose: this repo has no YAML dependency
-//    in tooling/, and the shapes we need (a top-level block of `name:` keys) are
-//    unambiguous. Comments are stripped BEFORE matching — a commented-out
+// ── pubspec reading lives in adapter-set.mjs, shared with
+//    assert-adapter-capabilities.mjs so the two guards read one pubspec the same
+//    way. Comments are stripped BEFORE matching there — a commented-out
 //    dependency is not a dependency, and grepping prose is how a sibling guard
 //    once matched the template comment explaining why a thing was absent.
-function depsOf(pkgDir, block = 'dependencies') {
-  const p = join(ROOT, pkgDir, 'pubspec.yaml');
-  if (!existsSync(p)) return null;
-  const out = new Map(); // name -> 'sdk' | 'path' | 'hosted'
-  let inBlock = false;
-  let current = null;
-  for (const raw of readFileSync(p, 'utf8').split('\n')) {
-    const line = raw.replace(/#.*$/, '').replace(/\s+$/, '');
-    if (!line.trim()) continue;
-    if (/^[a-z_]+:/i.test(line)) {
-      inBlock = line.startsWith(`${block}:`);
-      current = null;
-      continue;
-    }
-    if (!inBlock) continue;
-    const m = line.match(/^  ([a-z0-9_]+)\s*:(.*)$/i);
-    if (m) {
-      current = m[1];
-      out.set(current, m[2].trim() ? 'hosted' : 'pending');
-      continue;
-    }
-    if (current && /^\s+sdk:\s*flutter/.test(line)) out.set(current, 'sdk');
-    else if (current && /^\s+path:/.test(line)) out.set(current, 'path');
-  }
-  return out;
-}
+const depsOf = (pkgDir, block = 'dependencies') => pubspecDeps(ROOT, pkgDir, block);
 
 // Every `package:<name>` referenced from the .dart files under a directory,
 // with the files each name appears in.
@@ -184,24 +160,15 @@ if (dsImports.size > 0) ok(`design_system's ${dsImports.size} imported package(s
 // and declares at least one third-party dependency. Its third-party deps are
 // the vendors it wraps — the SDKs an app is supposed to reach only through the
 // seam.
-const LINT_ONLY = /(?:^|_)lints$/; // a lint ruleset is config, not a wrapped SDK
+//
+// The derivation is adapter-set.mjs's deriveAdapters(), the SAME function
+// assert-adapter-capabilities.mjs calls for its domain, so the two guards
+// range over one adapter set by import rather than by two copies agreeing.
 const WRAPPED = new Map(); // vendor -> adapter package that wraps it
-const pkgRoot = join(ROOT, 'packages');
 const adapterNames = [];
-if (existsSync(pkgRoot)) {
-  for (const name of listDir(pkgRoot)) {
-    if (name === 'core' || name === 'design_system') continue;
-    const deps = depsOf(`packages/${name}`);
-    if (!deps) continue;
-    let wrapsSomething = false;
-    for (const [dep, kind] of deps) {
-      if (kind === 'sdk' || kind === 'path') continue;
-      if (dep.startsWith('nikatru_') || LINT_ONLY.test(dep)) continue;
-      WRAPPED.set(dep, name);
-      wrapsSomething = true;
-    }
-    if (wrapsSomething) adapterNames.push(name);
-  }
+for (const { name, vendors } of deriveAdapters(ROOT)) {
+  for (const v of vendors) WRAPPED.set(v, name);
+  adapterNames.push(name);
 }
 
 // The coverage self-check the lock demands, stated as a floor rather than a
@@ -216,7 +183,7 @@ if (WRAPPED.size < MIN_WRAPPED) {
     `derived only ${WRAPPED.size} wrapped vendor(s) from the adapter packages, expected >= ${MIN_WRAPPED}. Limb (c) would range over an almost-empty set and pass everything. Either the adapters stopped declaring their SDKs, or this derivation has stopped working.`,
   );
 } else {
-  ok(`derived ${WRAPPED.size} wrapped vendor(s) from ${adapterNames.length} adapter(s): ${[...WRAPPED.keys()].sort().join(', ')}`);
+  ok(`derived ${WRAPPED.size} wrapped vendor(s) from ${adapterNames.length} adapter(s) [${adapterNames.join(', ')}]: ${[...WRAPPED.keys()].sort().join(', ')}`);
 }
 
 // ── Grandfathered bypasses. Dated, reasoned, and PRINTED on every run. ───────

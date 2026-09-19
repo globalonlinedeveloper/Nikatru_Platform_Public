@@ -101,6 +101,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { Report, parseArgs, die } from './lib/report.mjs';
+import { DOS_TIME, DOS_DATE } from './lib/zip-time.mjs';
 import { repoRoot, resolveTool, packagedFiles, readJson, listToolPaths, versionProblem } from './lib/toolinfo.mjs';
 
 /* ================= the zip primitives ==================================
@@ -127,10 +128,11 @@ function crc32(buf) {
    "Determinism check (zip is byte-reproducible)" step is the check that proves
    it: build twice, compare sha256. (Cited by step name since 2026-08-22; it
    used to read ci.yml:352-360, which is now a comment about the store axis.)
-   Same constant as
-   templates/tool/publish/pack.mjs (1 Jan 2026, 00:00) so a tool's own packager
-   and this one cannot drift on it. */
-const DOS_TIME = 0x0000, DOS_DATE = ((2026 - 1980) << 9) | (1 << 5) | 1;
+   The value (1 Jan 2026, 00:00) is imported from lib/zip-time.mjs, the module
+   templates/tool/publish/pack.mjs imports too, so a tool's own packager and
+   this one cannot drift on it. Full_Screen_Shot's CommonJS packager keeps a
+   copy, compared by value with the shared one in
+   tooling/ci/test/extensions-shared-constants.test.mjs. */
 
 function writeZip(dest, list) {
   const locals = [], central = [];

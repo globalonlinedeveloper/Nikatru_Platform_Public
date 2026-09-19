@@ -251,9 +251,14 @@ export function versionProblem(v) {
    heading above it is skipped rather than rejected — it is the format's own
    convention and refusing it would push people to stop using the format. Any of
    -, en dash or em dash is accepted as the separator: which dash a heading uses
-   is not a fact worth failing a release over. */
+   is not a fact worth failing a release over.
+
+   RE_CHANGELOG_VERSION_HEADING is the ONE spelling of "a version heading", per
+   line and without flags. changelogTop() below and changelog-section.mjs both
+   read it from here. */
+export const RE_CHANGELOG_VERSION_HEADING = /^##\s*\[([^\]]+)\]/;
 export function changelogTop(text) {
-  const re = /^##\s*\[([^\]]+)\]/gm;
+  const re = new RegExp(RE_CHANGELOG_VERSION_HEADING.source, 'gm');
   let m;
   while ((m = re.exec(text)) !== null) {
     const label = m[1].trim();
