@@ -94,6 +94,7 @@
   "guards-refuse-empty.test.mjs": 17,
   "guards.test.mjs": 398,
   "heartbeats.test.mjs": 69,
+  "heavy-lock.test.mjs": 28,
   "hostname-depth.test.mjs": 7,
   "hyperdrive-cap.test.mjs": 13,
   "inappwebview-waivers.test.mjs": 11,
