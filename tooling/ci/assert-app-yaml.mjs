@@ -11,7 +11,8 @@
 // from a file's first 60 lines, so a claim made at line 447 is a claim the
 // register cannot record. Limb 6 (the optional `billing.mobileIap` opt-in)
 // enforces both — an app declares a STORE billing rail, or it does not have
-// one, because [ADR 059] shape A makes mobile FREE-ONLY at v1 and the sworn
+// one, because an app that has not opted in must not link a store SDK ([ADR 078],
+// 2026-09-11, replaced [ADR 059] shape A's FREE-ONLY rule) and the sworn
 // files [ADR 037] governs must agree with the pubspec either way.
 //
 // ── THE DEFECT IT CLOSES, IN THE OTHER GUARD'S OWN WORDS ─────────────────────
@@ -592,8 +593,8 @@ if (problems.length === problemsBeforeIap) {
     // ⬜ PRINTED, NOT FAILED, and the distinction is real rather than lenient.
     // The direction that actually protects a reader — a dependency arriving with
     // no declaration — is ARMED over all `iapChecked` apps and would fail today.
-    // What is empty is the forward direction, because [ADR 059] shape A makes
-    // mobile FREE-ONLY at v1 and no app has opted in. Saying so on every run is
+    // What is empty is the forward direction, because no app has opted in yet
+    // ([ADR 078] allows mobile IAP; opting in waits on O-REVENUECAT-ACCOUNT). Saying so on every run is
     // this repository's rule for a limb whose domain is empty: an ok line that
     // did not distinguish the two would read as "the sworn IAP rows were
     // checked" when nothing had any.

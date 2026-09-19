@@ -118,8 +118,9 @@ class IapCustomerState {
 /// `assert-play-declarations` limb D holds the dependency set EQUAL to the sworn
 /// data-safety declaration, and the Apple `binaryInventory` does the same for
 /// the privacy manifest — so the SDK would then demand purchase-history rows
-/// from apps that sell nothing on mobile. [ADR 059] shape A makes mobile
-/// FREE-ONLY at v1, which is most of them.
+/// from apps that sell nothing on mobile. Most apps have not opted in: [ADR 078]
+/// (2026-09-11) replaced [ADR 059] shape A's FREE-ONLY rule, so mobile MAY sell
+/// in-app, but only an app that declares it links the store SDK.
 ///
 /// So an app OPTS IN by depending on the bridge package and declaring
 /// `billing.mobileIap` in its `app.yaml`; `assert-app-yaml` holds those two

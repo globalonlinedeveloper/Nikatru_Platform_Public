@@ -239,7 +239,8 @@
     "claims": [
       "ADR 037",
       "ADR 059",
-      "ADR 067"
+      "ADR 067",
+      "ADR 078"
     ],
     "invokedBy": [
       ".github/workflows/ci.yml#guards-store"

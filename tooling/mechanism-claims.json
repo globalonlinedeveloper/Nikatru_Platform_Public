@@ -1453,6 +1453,14 @@
       "proves": "publish-cws.mjs, publish-cws-keepalive.mjs and publish-arming.mjs import CWS_SA_ENV. The case requires the Chrome preflight (LANES['chrome-webstore'].secrets, imported) to name CWS_SA_ENV and requires extensions.yml's secrets.CWS_* set, read from comment-blanked workflow lines, to equal the preflight's set with each mapped to an env var of the same name. Mutation-verified 2026-09-19: renaming CWS_SA_ENV without the workflow turned it red. Judged 2026-09-19.",
       "status": "proven",
       "test": "tooling/ci/test/extensions-shared-constants.test.mjs"
+    },
+    {
+      "file": "tooling/ci/test/modal-detection.test.mjs",
+      "anchor": "DERIVED, NOT WRITTEN DOWN. This line was",
+      "status": "proven",
+      "test": "tooling/ci/test/modal-detection.test.mjs",
+      "case": "a package whose suites use flutter_test but whose pubspec stopped saying so is caught by the oracle",
+      "proves": "The expected root count is derived from the copied tree by a second reading (workspace members whose suites import package:flutter_test/), not written down. The case plants a package the guard does not derive (no flutter_test: in its pubspec) while its suite imports flutter_test, and asserts the root-count check THROWS. Measured 2026-09-19: with the equality neutered (`if (false) assert.equal`) the case goes red, exit 1; restored byte-exact, green. The sibling case \"a NEW package root is counted, not refused\" plants a declared package and stays green, which the old literal /in 9 root(s)/ could not."
     }
   ],
   "backlog": {}

@@ -770,17 +770,78 @@ describe('assert-modal-detection · the shared chassis is inside the domain [ADR
     writeFileSync(p, kept.join('\n'));
   };
 
-  test('the full checkout passes, reads all nine roots, and prints the per-root split', () => {
+  /** The roots the copied tree SHOULD yield, derived by a DIFFERENT reading than
+   *  the guard's, so the check below is not the guard asserting it equals itself.
+   *  The guard asks each `packages/` member's PUBSPEC whether it declares
+   *  `flutter_test:`; this asks the member's SUITES whether any of them imports
+   *  `package:flutter_test/` — the library `find.byType` actually comes from. The
+   *  two must agree on a real checkout, and they part company exactly when a
+   *  package's pubspec and its suites stop telling the same story. (It cannot
+   *  be "any .dart under test/": packages/core and packages/api_client carry
+   *  pure-Dart `package:test` suites, measured 28 and 5 files on 2026-09-19, and
+   *  are rightly not roots.) The brick and every `apps/` member are taken as the
+   *  guard takes them, unconditionally — their cases live elsewhere in this file. */
+  const expectedRoots = (root) => {
+    const lines = readFileSync(join(root, 'pubspec.yaml'), 'utf8').replace(/^\s*#.*$/gm, '').split('\n');
+    const at = lines.findIndex((l) => /^workspace:\s*$/.test(l));
+    assert.notEqual(at, -1, 'the copied pubspec has no workspace block — the oracle has nothing to read');
+    const members = [];
+    for (const line of lines.slice(at + 1)) {
+      if (/^\S/.test(line)) break;
+      const m = line.match(/^\s*-\s*(\S+)\s*$/);
+      if (m) members.push(m[1]);
+    }
+    const importsFlutterTest = (dir) => {
+      if (!existsSync(dir)) return false;
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        const p = join(dir, e.name);
+        if (e.isDirectory()) {
+          if (importsFlutterTest(p)) return true;
+        } else if (e.name.endsWith('.dart') && /^import\s+['"]package:flutter_test\//m.test(readFileSync(p, 'utf8'))) {
+          return true;
+        }
+      }
+      return false;
+    };
+    const want = existsSync(join(root, BRICK)) ? [BRICK] : [];
+    for (const rel of members) {
+      if (rel.startsWith('apps/')) want.push(rel);
+      else if (rel.startsWith('packages/') &&
+        ['test', 'integration_test'].some((d) => importsFlutterTest(join(root, rel, d)))) want.push(rel);
+    }
+    return want;
+  };
+
+  /** The guard's printed root count and per-root split, held against the oracle. */
+  const assertRootsMatchTree = (r, root) => {
+    const want = expectedRoots(root);
+    const m = r.out.match(/in (\d+) root\(s\)/);
+    assert.ok(m, `the passing line no longer reports its root count:\n${r.out}`);
+    assert.equal(Number(m[1]), want.length,
+      `the guard derived ${m[1]} root(s), the tree holds ${want.length}: ${want.join(', ')}`);
+    // The floor that catches a SHRINKING tree even if the oracle shrank with it:
+    // nine is what REQUIRED_COVERAGE declares, and the guard holds those too.
+    assert.ok(want.length >= 9, `only ${want.length} root(s) — fewer than the nine REQUIRED_COVERAGE declares`);
+    const split = r.out.match(/note per root: (.*)/);
+    assert.ok(split, `the per-root split is no longer printed:\n${r.out}`);
+    const printed = split[1].split(', ').map((s) => s.replace(/=\d+(?:\/floor \d+)?$/, ''));
+    assert.deepEqual([...printed].sort(), [...want].sort(), 'the per-root split names a different set of roots');
+  };
+
+  test('the full checkout passes, reads every derived root, and prints the per-root split', () => {
     withTree(
       () => {},
       (r, root) => {
         assert.equal(r.status, 0, r.out);
         assert.match(r.out, /assert-modal-detection: ok/);
-        // NINE since [ADR 071] added `packages/chassis_screens`. The number is
-        // the point of the assertion — a root that stops being derived is
-        // exactly how `- apps/subscriptiontracker` once left in silence — so it moves only in
-        // the change that adds or removes a root, and it moved here with one.
-        assert.match(r.out, /in 9 root\(s\)/, 'the seven chassis package roots are not being derived');
+        // 🔴 DERIVED, NOT WRITTEN DOWN. This line was `/in 9 root\(s\)/` until
+        // 2026-09-19, and it turned the FIRST new Flutter package red for no
+        // reason but its existence (packages/billing_revenuecat, run
+        // 34069733059, 2026-09-07). The number was never the point; the point
+        // is that a root which stops being derived — how `- apps/subscriptiontracker`
+        // once left in silence — is caught. The oracle above does that for any
+        // tree, and the `>= 9` floor inside it still catches a shrinking one.
+        assertRootsMatchTree(r, root);
         assert.match(r.out, /packages\/chassis_screens=\d+\/floor 4/);
         // The split, not only the total: a total is still true of a tree that
         // lost a root, which is exactly how `- apps/subscriptiontracker` left in silence.
@@ -794,6 +855,55 @@ describe('assert-modal-detection · the shared chassis is inside the domain [ADR
       },
       { full: true },
     );
+  });
+
+  /** A NEW workspace package with a widget suite, planted into the copied tree —
+   *  the shape every future Flutter package arrives in. `declares` decides
+   *  whether its pubspec carries the `flutter_test:` dev-dependency. */
+  const PROBE_PKG = 'packages/zz_root_probe';
+  const plantPackage = (root, { declares }) => {
+    const ws = join(root, 'pubspec.yaml');
+    const src = readFileSync(ws, 'utf8');
+    const anchor = '\n  - packages/telemetry\n';
+    assert.ok(src.includes(anchor), 'the workspace list no longer carries packages/telemetry to plant after');
+    writeFileSync(ws, src.replace(anchor, `${anchor}  - ${PROBE_PKG}\n`));
+    mkdirSync(join(root, PROBE_PKG, 'test'), { recursive: true });
+    writeFileSync(
+      join(root, PROBE_PKG, 'pubspec.yaml'),
+      'name: zz_root_probe\nresolution: workspace\n\ndev_dependencies:\n' +
+        (declares ? '  flutter_test:\n    sdk: flutter\n' : '  test: ^1.25.0\n'),
+    );
+    writeFileSync(
+      join(root, PROBE_PKG, 'test', 'probe_test.dart'),
+      "import 'package:flutter/material.dart';\nimport 'package:flutter_test/flutter_test.dart';\n\n" +
+        'void main() {\n' +
+        "  testWidgets('probe', (WidgetTester tester) async {\n" +
+        "    await tester.pumpWidget(const Text('x', textDirection: TextDirection.ltr));\n" +
+        '    expect(find.byType(Text), findsOneWidget);\n' +
+        '  });\n}\n',
+    );
+  };
+
+  test('a NEW package root is counted, not refused — the change that reddened this file in 2026-09', () => {
+    withTree((root) => plantPackage(root, { declares: true }), (r, root) => {
+      assert.equal(r.status, 0, r.out);
+      assert.match(r.out, new RegExp(`${PROBE_PKG.replace('/', '\\/')}=1(?:,|$|\\s)`, 'm'));
+      assertRootsMatchTree(r, root);
+    }, { full: true });
+  });
+
+  test('a package whose suites use flutter_test but whose pubspec stopped saying so is caught by the oracle', () => {
+    // 🔴 THE ORACLE'S TEETH, AS A PERMANENT CASE. The guard derives a package
+    // root from its pubspec, so this package is simply not scanned — and since
+    // it is not one of the nine REQUIRED_COVERAGE declares, the guard itself
+    // exits 0. Only the second reading (the suites' own imports) sees a widget
+    // suite that left the domain. If this ever stops throwing, the root-count
+    // check above has become the guard agreeing with itself.
+    withTree((root) => plantPackage(root, { declares: false }), (r, root) => {
+      assert.equal(r.status, 0, r.out);
+      assert.doesNotMatch(r.out, /zz_root_probe=/);
+      assert.throws(() => assertRootsMatchTree(r, root), /the guard derived \d+ root\(s\), the tree holds \d+/);
+    }, { full: true });
   });
 
   test('the 2026-08-26 detector, planted in a chassis suite, is caught there', () => {
