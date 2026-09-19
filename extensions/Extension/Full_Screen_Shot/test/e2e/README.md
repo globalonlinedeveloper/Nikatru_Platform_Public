@@ -89,6 +89,11 @@ so the test covers it.)
 > the argument is in `acts-lib.mjs` beside `reportOverMask` and in `redaction-claim.mjs`'s
 > header. The fixture-coverage guard now reads **42 of 42** shapes graded; see the guarded
 > block further down.
+>
+> 2026-09-19, later the same day: the `input-values` OPEN is now GRADED. The spec was what was
+> wrong — §1 now says every `<option>`'s text is read and never painted over — and
+> `redaction-claim.mjs` F4 grades exactly that (matched 2 / painted 0 / verified 0). Re-measured:
+> `redaction-claim.mjs` exit 0, 110 pass / 0 fail / 1 open; the one OPEN left is `clipped-ancestor`.
 
 > **This suite does not run in CI and does not pass locally.** Measured
 > 2026-08-25 and re-measured 2026-08-26 on the same tree, alone: **exit 1,
