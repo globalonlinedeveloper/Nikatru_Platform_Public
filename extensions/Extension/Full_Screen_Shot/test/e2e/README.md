@@ -94,6 +94,19 @@ so the test covers it.)
 > wrong — §1 now says every `<option>`'s text is read and never painted over — and
 > `redaction-claim.mjs` F4 grades exactly that (matched 2 / painted 0 / verified 0). Re-measured:
 > `redaction-claim.mjs` exit 0, 110 pass / 0 fail / 1 open; the one OPEN left is `clipped-ancestor`.
+>
+> 2026-09-19, later again: the `clipped-ancestor` OPEN is now GRADED too
+> (O-FULLSHOT-CLIPPED-ANCESTOR-OVERMASK). `REDACTION-CLAIM-SPEC.md` §1.1 now says where a block
+> may land — only on the part of a match's rect that is in the picture — and `content/capture.js`
+> paints to that rule, re-reading any match that was out of the picture at the scan just before
+> each frame. `acts-lib.mjs` `reportOverMask` became `gradeOverMask` (O1), and a fifth shape,
+> `fixtures/clipped-partial.html`, grades the other direction: a match cut through by a clip is
+> covered on its visible part, a wholly clipped one leaves the visible prose it was laid out over
+> untouched, and an absolutely positioned match that escapes a static clipping parent is covered.
+> The suite now has no OPEN at all, and neither does `adversarial-claim.mjs`, whose `cv-tabs`
+> O1 is graded by the same function. Measured on Windows, chromium-1228, each alone:
+> `redaction-claim.mjs` exit 0, 142 pass / 0 fail / 0 open; `adversarial-claim.mjs` exit 0,
+> 185 pass / 0 fail / 0 open.
 
 > **This suite does not run in CI and does not pass locally.** Measured
 > 2026-08-25 and re-measured 2026-08-26 on the same tree, alone: **exit 1,

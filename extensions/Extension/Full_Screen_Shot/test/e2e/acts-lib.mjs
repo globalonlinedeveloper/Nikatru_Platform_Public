@@ -411,18 +411,54 @@ export function gradePicture(shape, rows, a) {
    ancestor-clip and ancestor-opacity clauses (5 and 6) deliberately do not
    ("over-masking is safe"). That is a disagreement inside the implementation
    and a silence in the spec, so it is an OPEN with its evidence, and a finding
-   for whoever owns capture.js and the spec — not a red this suite can justify. */
-export function reportOverMask(rows, marks, a, why) {
+   for whoever owns capture.js and the spec — not a red this suite can justify.
+
+   GRADED FROM 2026-09-19 — the paragraph above stands as why this was an OPEN;
+   the silence it names is closed. REDACTION-CLAIM-SPEC.md §1.1 now says where a
+   block may land: only on the part of a match's rect that is in the picture,
+   nothing where an ancestor clips all of it or where the chain's opacity is 0,
+   and such a match stays COUNTED as not covered. capture.js clauses 5 and 6 now
+   agree with clause 3b about placement (O-FULLSHOT-CLIPPED-ANCESTOR-OVERMASK),
+   so the disagreement inside the implementation is gone and this is a check:
+   on a shape whose every match is out of the picture, the delivered image
+   carries no block colour at all and the record keeps no mark. */
+export function gradeOverMask(rows, marks, a, why) {
   const blockRows = rows.block || 0;
-  if (blockRows === 0 && marks.length === 0) {
-    note('over-mask: none — no block and no mark where the matched text is not in the picture (' + why + ')');
-    return;
-  }
-  open('O1 a block is painted, and a mark kept, where the matched text is not in the picture (' + why +
-    '); the spec is silent on block placement',
+  check('O1 no block is painted, and no mark kept, where the matched text is not in the picture (' + why +
+    ') — §1.1 as amended 2026-09-19',
+    blockRows === 0 && marks.length === 0,
     blockRows + ' rows of block colour, ' + marks.length + ' mark(s) ' +
     JSON.stringify(marks).slice(0, 120) + ', acts ' +
     (a ? [a.matched, a.painted, a.verifiedOpaque].join('/') : '-'));
 }
+
+/* Rows of the delivered image, inside [y0, y1) in FULL-IMAGE coordinates, in
+   which a colour occurs. The region form of colourRows, for a check that is
+   about WHERE a colour landed rather than whether it survived anywhere. */
+export const colourRowsIn = (result, colour, y0, y1, tol = 18) => result.evaluate(async ({ c, y0, y1, tol }) => {
+  const id = new URLSearchParams(location.search).get('id');
+  const shot = await FSDB.get('shots', id);
+  let rows = 0, top = 0;
+  for (const seg of shot.segments) {
+    const bmp = await createImageBitmap(seg.blob);
+    const a = Math.max(0, Math.floor(y0) - top), b = Math.min(bmp.height, Math.ceil(y1) - top);
+    if (b > a) {
+      const cv = new OffscreenCanvas(bmp.width, bmp.height);
+      const cx = cv.getContext('2d', { willReadFrequently: true });
+      cx.drawImage(bmp, 0, 0);
+      const d = cx.getImageData(0, a, bmp.width, b - a).data;
+      for (let y = 0; y < b - a; y++) {
+        for (let x = 0; x < bmp.width; x++) {
+          const o = (y * bmp.width + x) * 4;
+          if (Math.abs(d[o] - c[0]) <= tol && Math.abs(d[o + 1] - c[1]) <= tol &&
+              Math.abs(d[o + 2] - c[2]) <= tol) { rows++; break; }
+        }
+      }
+    }
+    top += bmp.height;
+    bmp.close();
+  }
+  return rows;
+}, { c: colour, y0, y1, tol });
 
 export { open, note };

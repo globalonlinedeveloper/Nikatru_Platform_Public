@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>claim-e2e — a match PARTLY clipped, a match wholly clipped over visible prose, and one that escapes the clip</title>
+<!-- REDACTION-CLAIM-SPEC.md §1.1 (added 2026-09-19, O-FULLSHOT-CLIPPED-ANCESTOR-OVERMASK).
+     The companion of clipped-ancestor.html, which proves a block does not land
+     where NOTHING of a match is in the picture. This page grades the three
+     shapes that design can get wrong in the other direction:
+
+       1. .win is a 44px window with overflow:hidden over three 30px lines.
+          Line 2 holds an email in the RED marker colour and is cut through the
+          middle of its glyphs: its top part IS in the picture. It must be
+          covered there — a design that drops any clipped rect under-masks it.
+       2. Line 3 holds a phone in the GREEN marker colour and is wholly below
+          the window. Its layout box lies ON the visible .prose band that
+          follows (rows 16-46 of the band). No block may land on that band:
+          that is the defect the old always-paint rule produced.
+       3. .esc is position:absolute inside .shut, a STATIC height:0
+          overflow:hidden box, inside .gap, which is position:relative. Its
+          containing block is .gap, so .shut does NOT clip it and its email, in
+          the BLUE marker colour, is in the picture. Reading the parent chain
+          naively would leave it unpainted. It must be covered.
+
+     Each marker-coloured line holds the token and nothing else, so a row count
+     measures the token and not a word beside it (a first draft wrote
+     "escaped jane.esc@…" in blue and the uncovered word read as 18 rows). The
+     prose is purple and no text colour here is within tolerance of the block
+     colour (test/e2e/README.md). -->
+<style>
+  html, body { margin: 0; background: #fff; font: 18px/1.6 system-ui, sans-serif; }
+  .visible { padding: 26px 24px; background: rgb(244, 246, 252); color: #223; }
+  .win { height: 44px; overflow: hidden; padding: 0 24px; background: rgb(236, 240, 250);
+         font: 20px/30px monospace; color: #223; }
+  .line { height: 30px; white-space: nowrap; }
+  .tok { color: rgb(255, 90, 90); }
+  .hid { color: rgb(90, 200, 120); }
+  .prose { height: 90px; padding: 0 24px; background: rgb(250, 238, 214);
+           font: 20px/30px monospace; color: rgb(150, 60, 160); }
+  .gap { position: relative; height: 120px; background: rgb(232, 236, 246); }
+  .shut { height: 0; overflow: hidden; }
+  .esc { position: absolute; left: 24px; top: 40px; font: 20px/30px monospace;
+         color: rgb(90, 130, 255); white-space: nowrap; }
+  .band { height: 280px; background: rgb(232, 236, 246); }
+  #bottom { height: 152px; background: rgb(0, 136, 255); }
+</style>
+</head>
+<body>
+  <div class="visible">Quarterly operations summary. Throughput held steady across all three regions and no incidents were escalated beyond the duty desk.</div>
+
+  <div class="win">
+    <div class="line">Ordinary first line of the window</div>
+    <div class="line tok">jane.roe@example.com</div>
+    <div class="line hid">+1 (555) 123-4567</div>
+  </div>
+  <div class="prose">Visible prose that holds no PII at all,<br>laid out exactly where the third line<br>of the window above would have been.</div>
+
+  <div class="gap">
+    <div class="shut">
+      <div class="esc">jane.esc@example.com</div>
+    </div>
+  </div>
+
+  <div class="band"></div>
+  <div class="visible">The remainder of this page is ordinary visible prose.</div>
+  <div class="band"></div>
+  <div id="bottom"></div>
+</body>
+</html>

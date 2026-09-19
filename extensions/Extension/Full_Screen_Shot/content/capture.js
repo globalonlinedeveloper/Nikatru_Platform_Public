@@ -1057,6 +1057,10 @@
   const FS_PII_MAX_BOXES = 2000;     // the box ceiling, named so the ledger can cite it
   const FS_PII_MAX_LEAF = 4000;      // per-leaf character cap
   const FS_PII_MAX_DEFER = 4000;     // spans held for the §2.3 re-measure
+  /* Matches held for the frame-time re-check (collectPIIBoxes `watch`). Each is
+     re-read at every frame, so this bounds the per-frame cost; past it a match
+     is painted whole at scan time, which is the behaviour before the watch. */
+  const FS_PII_MAX_WATCH = 256;
 
   /* ---- clauses 5 and 6: what the ancestors do to a box ----------------------
      A leaf's own getBoundingClientRect IGNORES ancestor clipping, and its own
@@ -1088,42 +1092,176 @@
       right: Math.min(a.right, b.left + b.width), bottom: Math.min(a.bottom, b.top + b.height)
     };
   }
+  /* ---- 2026-09-19: the chain is now also a GEOMETRY, not only a verdict ----
+     Until 2026-09-19 this chain answered one question — is a leaf placed — and
+     the answer only moved a ledger counter: every box was painted WHOLE
+     whatever the chain said ("over-masking is safe"). Now the same chain
+     decides WHICH PART of a match's rect is painted (REDACTION-CLAIM-SPEC.md
+     §1.1, O-FULLSHOT-CLIPPED-ANCESTOR-OVERMASK), and a clip that is too SMALL
+     now leaves visible PII unpainted. So every rule below is written to err in
+     exactly one direction: when this code cannot state a clip exactly it
+     states a LARGER one, or none at all, which paints more — the old
+     behaviour — and never less.
+
+       · AXES ARE SEPARATE. `overflow-x: clip; overflow-y: visible` clips x
+         only; the old test clipped both on either.
+       · `overflow: clip` honours `overflow-clip-margin`, which paints PAST the
+         box. An axis that can paint past its box is not a clip this function
+         can state, so it is left out.
+       · OVERFLOW APPLIES ONLY TO BOXES THAT HAVE IT. A `display: contents`
+         element has no box, so neither its overflow nor its OPACITY applies to
+         anything (its children stay visible), and a non-replaced inline, a
+         table part or an SVG/MathML element is never read as a clip at all.
+       · `clip: rect(...)` is read only when it is EMPTY (the sr-only spelling,
+         `rect(0,0,0,0)` / `rect(1px,1px,1px,1px)`). A non-empty one is in the
+         element's local coordinates, which a transform anywhere in the chain
+         makes unreadable from here, so it is dropped; empty stays empty under
+         any transform.
+       · AN OUT-OF-FLOW BOX ESCAPES THE CLIPS BETWEEN IT AND ITS CONTAINING
+         BLOCK. `position: absolute` inside a static `overflow: hidden` parent
+         is drawn outside it — the one shape in which reading the parent chain
+         naively would under-mask. An absolute box takes the clip of its
+         nearest POSITIONED ancestor (a transformed ancestor that is its real
+         containing block sits lower, clips more, and is therefore safe to
+         miss); a fixed box takes no ancestor clip at all.
+       · THE TOP LAYER (a modal <dialog>, an open popover, a fullscreen
+         element) is drawn above the document, outside every ancestor's clip
+         and opacity, so the chain restarts there.
+       · `clip-path`, `mask`, `contain: paint` and `filter` are not read. Each
+         only ever removes pixels, so ignoring one paints the whole rect — the
+         over-mask this change removes for overflow and opacity, kept, and
+         stated, for these. */
+  const FS_CHAIN_ROOT = { clip: null, op: 1, ok: true };
+  const FS_CLIP_BOXES = { 'block': 1, 'inline-block': 1, 'flow-root': 1, 'flex': 1, 'inline-flex': 1,
+    'grid': 1, 'inline-grid': 1, 'list-item': 1, 'table-cell': 1, 'table-caption': 1,
+    '-webkit-box': 1, '-webkit-inline-box': 1 };
+  function fsIsHtml(node) {
+    const ns = node && node.namespaceURI;
+    return ns == null || ns === 'http://www.w3.org/1999/xhtml';
+  }
+  function fsTopLayer(node) {
+    if (!node || typeof node.matches !== 'function') return false;
+    for (const sel of [':modal', ':popover-open', ':fullscreen']) {
+      /* An engine that does not know a pseudo-class throws; it also has no
+         such top-layer element, so the answer is honestly "no". */
+      try { if (node.matches(sel)) return true; } catch (_) {}
+    }
+    return false;
+  }
+  /* The clip `node` imposes on its own in-flow content, as a rect, or null
+     when it imposes none this code can state. `ok:false` = a rect it needed
+     could not be read. */
+  function fsOwnClip(node, cs) {
+    if (!fsIsHtml(node)) return { rect: null, ok: true };
+    const disp = String(cs.display || 'block');
+    const pos = String(cs.position || 'static');
+    const ox = String(cs.overflowX || 'visible'), oy = String(cs.overflowY || 'visible');
+    const m = cs.overflowClipMargin == null ? 0 : parseFloat(cs.overflowClipMargin);
+    const marginOk = m === 0;
+    const boxOk = FS_CLIP_BOXES[disp] === 1;
+    const cx = boxOk && ox !== 'visible' && (ox !== 'clip' || marginOk);
+    const cy = boxOk && oy !== 'visible' && (oy !== 'clip' || marginOk);
+    let empty = false;
+    const cp = String(cs.clip || 'auto');
+    if ((pos === 'absolute' || pos === 'fixed') && /^rect\(/i.test(cp)) {
+      const v = cp.slice(5).split(/[\s,]+/).map(s => s.replace(')', '')).filter(Boolean);
+      if (v.length === 4) {
+        const n = (s, dflt) => s === 'auto' ? dflt : parseFloat(s);
+        const t = n(v[0], 0), rr = n(v[1], Infinity), b = n(v[2], Infinity), l = n(v[3], 0);
+        if ([t, rr, b, l].every(x => !isNaN(x)) && (rr - l <= 0 || b - t <= 0)) empty = true;
+      }
+    }
+    if (!cx && !cy && !empty) return { rect: null, ok: true };
+    let r;
+    try { r = node.getBoundingClientRect(); } catch (_) { r = null; }
+    if (!r) return { rect: null, ok: false };
+    if (empty) return { rect: { left: r.left, top: r.top, width: 0, height: 0 }, ok: true };
+    return { rect: {
+      left: cx ? r.left : -1e9, width: cx ? r.width : 2e9,
+      top: cy ? r.top : -1e9, height: cy ? r.height : 2e9 }, ok: true };
+  }
+  /* What the ANCESTORS impose on `node` itself: the clip and the opacity
+     product that reach its box, honouring the out-of-flow and top-layer
+     escapes above. Not memoised — it is one step on top of fsChainInfo, which
+     is. */
+  function fsInherited(node, cs, scope, cache) {
+    const up = fsChainInfo(composedParent(node), scope, cache);
+    if (!up.ok) return up;
+    if (fsTopLayer(node)) return FS_CHAIN_ROOT;
+    const pos = String((cs && cs.position) || 'static');
+    if (pos === 'fixed') return { clip: null, op: up.op, ok: true };
+    if (pos === 'absolute') {
+      for (let n = composedParent(node); n && n !== scope; n = composedParent(n)) {
+        let ncs;
+        try { ncs = getComputedStyle(n); } catch (_) { ncs = null; }
+        if (!ncs) return { clip: null, op: up.op, ok: false };
+        if (String(ncs.position || 'static') !== 'static') {
+          return { clip: fsChainInfo(n, scope, cache).clip, op: up.op, ok: true };
+        }
+      }
+      return { clip: null, op: up.op, ok: true };
+    }
+    return up;
+  }
+  /* The clip and opacity that apply to `node`'s in-flow CONTENT — its
+     inherited state narrowed by its own box. Memoised per element: the chain
+     is ten to twenty deep and repeats for every sibling. */
   function fsChainInfo(node, scope, cache) {
-    if (!node || node === scope) return { clip: null, op: 1, ok: true };
+    if (!node || node === scope) return FS_CHAIN_ROOT;
     const hit = cache.get(node);
     if (hit) return hit;
-    const up = fsChainInfo(composedParent(node), scope, cache);
+    let cs;
+    try { cs = getComputedStyle(node); } catch (_) { cs = null; }
     let out;
-    if (!up.ok) {
-      out = up;
+    if (!cs) {
+      out = { clip: null, op: 1, ok: false };
     } else {
-      let cs;
-      try { cs = getComputedStyle(node); } catch (_) { cs = null; }
-      if (!cs) {
-        out = { clip: up.clip, op: up.op, ok: false };
+      const inh = fsInherited(node, cs, scope, cache);
+      const o = parseFloat(cs.opacity);
+      if (!inh.ok || !isFinite(o)) {
+        /* An unreadable style is a FAILURE TO MEASURE, never a measurement.
+           Routing it to `ok:false` — and from there to declined.unmeasurable —
+           is what stops an engine that answers nothing from producing a
+           confident negative that looks exactly like a reading. */
+        out = { clip: inh.clip, op: inh.op, ok: false };
+      } else if (String(cs.display || 'block') === 'contents') {
+        out = inh;                       // no box: no clip, and no opacity either
       } else {
-        const o = parseFloat(cs.opacity);
-        if (!isFinite(o)) {
-          /* An unreadable style is a FAILURE TO MEASURE, never a measurement.
-             Routing it to `ok:false` — and from there to declined.unmeasurable —
-             is what stops an engine that answers nothing from producing a
-             confident negative that looks exactly like a reading. */
-          out = { clip: up.clip, op: up.op, ok: false };
-        } else {
-          let clip = up.clip;
-          let bad = false;
-          if (String(cs.overflowX || 'visible') !== 'visible' ||
-              String(cs.overflowY || 'visible') !== 'visible') {
-            let r;
-            try { r = node.getBoundingClientRect(); } catch (_) { r = null; }
-            if (!r) bad = true; else clip = fsIsect(clip, r);
-          }
-          out = { clip, op: up.op * o, ok: !bad };
-        }
+        const own = fsOwnClip(node, cs);
+        out = { clip: own.rect ? fsIsect(inh.clip, own.rect) : inh.clip,
+                op: inh.op * o, ok: own.ok };
       }
     }
     cache.set(node, out);
     return out;
+  }
+  /* Is a leaf drawn at all, and through which clip? `null` = could not read,
+     which callers answer by painting the WHOLE rect — a paint state that
+     cannot be determined must not become an omission. */
+  function fsDrawState(el, cs, scope, cache) {
+    const vis = String(cs.visibility || 'visible');
+    if (vis === 'hidden' || vis === 'collapse') return { drawn: false, clip: null };
+    const chain = fsInherited(el, cs, scope, cache);
+    if (!chain.ok) return null;
+    const selfOp = parseFloat(cs.opacity);
+    if (!isFinite(selfOp)) return null;
+    if (chain.op * selfOp <= 0) return { drawn: false, clip: null };
+    const own = fsOwnClip(el, cs);
+    if (!own.ok) return null;
+    return { drawn: true, clip: own.rect ? fsIsect(chain.clip, own.rect) : chain.clip };
+  }
+  /* The part of client rect `r` that is in the picture: `r` itself, a smaller
+     rect, or null for none. A sliver under a pixel is none — nothing legible
+     fits in it. */
+  function fsVisiblePart(r, ds) {
+    if (!ds) return r;
+    if (!ds.drawn) return null;
+    if (!ds.clip) return r;
+    const c = fsIsect(ds.clip, r);
+    const w = c.right - c.left, h = c.bottom - c.top;
+    if (w < 1 || h < 1) return null;
+    if (c.left === r.left && c.top === r.top && w === r.width && h === r.height) return r;
+    return { left: c.left, top: c.top, width: w, height: h };
   }
   /* v1.9.6 -- all PII matches in a string as {start,end,kind} char spans, so
      result.js can cover the token itself, not the whole leaf. Overlapping spans
@@ -1168,7 +1306,7 @@
       return rects && rects.length ? rects : null;
     } catch (_) { return null; }
   }
-  /* Returns { boxes, scan, remeasure } — a LEDGER, not a list, and every number
+  /* Returns { boxes, scan, remeasure, watch } — a LEDGER, not a list, and every number
      in it is written by the line of code that performed the act it counts
      (REDACTION-CLAIM-SPEC.md §1, §2.1).
 
@@ -1255,6 +1393,26 @@
          and there was nothing to draw" and "we drew nothing" are different
          facts, and only a counter can tell them apart afterwards. */
       rectsSkipped: { degenerate: 0, offRegion: 0 },
+      /* WHERE A BLOCK MAY LAND (2026-09-19, REDACTION-CLAIM-SPEC.md §1.1). A
+         match's rect is painted only on the part of it that is in the picture:
+         its ancestors' clip and its own, and nothing where the chain's opacity
+         is 0 or the leaf is visibility:hidden. Every consequence is counted
+         here, at the line that causes it, in the unit its name carries:
+           trimmed          BLOCKS painted on their visible part only
+           notDrawn         rects with NO visible part at scan time, not painted
+           matchesNotDrawn  MATCHES none of whose rects is in the picture — a
+                            subset of matchedNoBox, so `matched` still counts
+                            them and they read as not covered (§3.4): the
+                            clip is DOM-derived inference, and if it is ever
+                            wrong the shortfall line is what a person sees
+           watched          matches held for the frame-time re-check (watch)
+           overWatch        rects painted WHOLE because the watch list was full
+           lateDrawn        BLOCKS emitted at frame time: the text became
+                            visible after the scan (a scroll-reveal, a toggle)
+           watchFailed      matches whose re-check could not be read, painted
+                            whole at their scan-time rects — the old behaviour */
+      clip: { trimmed: 0, notDrawn: 0, matchesNotDrawn: 0, watched: 0, overWatch: 0,
+              lateDrawn: 0, watchFailed: 0 },
       lateTextPlaced: 0, lateChars: 0, lateMatched: 0,
       declined: { tooLong: 0, ceiling: 0, unmeasurable: 0, other: 0, total: 0 },
       declinedChars: 0,
@@ -1300,6 +1458,18 @@
        rectangle with a name on it. */
     const later = { matched: [], deferred: [] };
     const chainCache = new Map();
+    /* THE WATCH LIST (2026-09-19). A match any of whose rects was wholly or
+       partly out of the picture WHEN THE SCAN RAN. The scan runs once, before the
+       frames; a page can make that text visible in between — a scroll-reveal
+       that fades in when the frame loop scrolls to it, a class toggled by an
+       IntersectionObserver. Painting nothing there on the strength of a
+       reading taken earlier would be exactly the under-mask the old
+       always-paint rule (clauses 5 and 6) was guarding against, so each such
+       match is re-read at every frame, just before the frame is grabbed, and
+       whatever part of it is visible THEN is painted. Bounded: past the cap a
+       match is painted whole at scan time, as before. Element references, so
+       they never leave this function either. */
+    const watchList = [];
 
     // Doc captures: page space (r + window scroll). App-shell PANE captures
     // (v1.9.4): PANE-CONTENT space (r - rootRect + pane scroll). Side RAILS
@@ -1347,7 +1517,17 @@
          to carry a claim. Withholding the rect here would silently drop the
          box, which is the safe direction for the image and the WRONG direction
          for the ledger: the counter that stops `blocks-painted` is
-         boxesFromUnplaced, and a box that is never emitted cannot increment it. */
+         boxesFromUnplaced, and a box that is never emitted cannot increment it.
+
+         AMENDED 2026-09-19 — the paragraph above stands as the reason the rect
+         still travels; what it no longer decides is WHERE the block lands. The
+         clauses below still only grade the span. The geometry of each block is
+         now the part of its rect that is in the picture (fsDrawState /
+         fsVisiblePart, in `scan`), because on clipped-ancestor the whole-rect
+         block landed on visible prose that held no PII and labelled it "email"
+         (O-FULLSHOT-CLIPPED-ANCESTOR-OVERMASK) — the same harm clause 3b names,
+         by a different mechanism. Where the visible part cannot be read the
+         whole rect is still painted, so the safe direction above survives. */
       // 1 — does the rect intersect the region this capture will actually show?
       if (y + r.height < 0 || y > lim || x > totalW || x + r.width < 0) return { why: 'offRegion', rect: r };
       // 2 — is there a box at all?
@@ -1431,8 +1611,10 @@
       const fsz = parseFloat(cs.fontSize);
       if (!isFinite(fsz) || fsz <= 0) return null;
       if (r.height < fsz) return { why: 'fontMismatch', rect: r };
-      // 5 — does the box survive its ancestors' clipping?
-      const chain = fsChainInfo(composedParent(el), scope, chainCache);
+      // 5 — does the box survive its ancestors' clipping? (fsInherited, not the
+      // parent's chain: an out-of-flow leaf escapes the clips below its
+      // containing block, and a top-layer leaf escapes all of them.)
+      const chain = fsInherited(el, cs, scope, chainCache);
       if (!chain.ok) return null;
       if (chain.clip) {
         const c = fsIsect(chain.clip, r);
@@ -1561,6 +1743,9 @@
       const matchBase = L.matched;
       L.matched += matches.length;
       const mine = [];
+      /* Read once per leaf, lazily — only a leaf with a match pays for it. */
+      let ds;
+      let watchedHere = false;
       for (let mx = 0; mx < matches.length; mx++) {
         const mt = matches[mx];
         const matchId = matchBase + mx;
@@ -1581,22 +1766,76 @@
            called the match covered. The rule was right; its input was silently
            partial. Counting the production first is what makes the loss a
            number instead of an absence. */
+        /* WHERE THE BLOCK LANDS (2026-09-19). Each rect is cut down to the
+           part of it that is in the picture before anything else is asked of
+           it. A rect with NO visible part is not a block this match produced —
+           the same standing as a rect outside the captured region, which was
+           never counted as produced either — so a match hidden whole by a
+           collapsed accordion or an opacity:0 subtree produces none, is
+           `matchedNoBox`, and stays in `matched` as not covered. Those rects
+           are handed to the watch below rather than forgotten. */
         const kept = [];
+        const unseen = [];
         for (const r of rects) {
           if (!r || r.width < 1 || r.height < 1) { L.rectsSkipped.degenerate++; continue; }
-          const x = r.left - ox + sx, y = r.top - oy + sy;
-          if (y + r.height < 0 || y > (maxY != null ? maxY : totalH) || x > totalW) {
+          if (ds === undefined) ds = fsDrawState(el, cs, scope, chainCache);
+          const v = fsVisiblePart(r, ds);
+          if (!v) { unseen.push(r); continue; }
+          const x = v.left - ox + sx, y = v.top - oy + sy;
+          if (y + v.height < 0 || y > (maxY != null ? maxY : totalH) || x > totalW) {
             L.rectsSkipped.offRegion++; continue;
           }
-          kept.push({ x, y, r });
+          kept.push({ x, y, r: v, orig: r, trimmed: v !== r });
+        }
+        let watched = null;
+        if (unseen.length || kept.some(k => k.trimmed)) {
+          /* Every rect of this match at its WHOLE scan-time geometry: what a
+             re-read that fails paints, and what a full watch list paints now. */
+          const whole = unseen.concat(kept.map(k => k.orig));
+          const full = whole.map(r => ({ x: r.left - ox + sx, y: r.top - oy + sy, w: r.width, h: r.height }));
+          if (watchList.length < FS_PII_MAX_WATCH) {
+            L.clip.notDrawn += unseen.length;
+            watched = { el, start: mt.start, end: mt.end, kind: mt.kind, tag, maxY, scope,
+                        boxes: mine, seen: [], full, mref: null, unplaced: !!pl.why,
+                        noBox: false, lost: false, done: false };
+          } else {
+            /* The list is full: this match is painted WHOLE, now, at its
+               scan-time geometry — the behaviour before this clause existed. */
+            for (const k of kept) {
+              if (!k.trimmed) continue;
+              k.x = k.orig.left - ox + sx; k.y = k.orig.top - oy + sy; k.r = k.orig; k.trimmed = false;
+              L.clip.overWatch++;
+            }
+            for (const r of unseen) {
+              const x = r.left - ox + sx, y = r.top - oy + sy;
+              if (y + r.height < 0 || y > (maxY != null ? maxY : totalH) || x > totalW) {
+                L.rectsSkipped.offRegion++; continue;
+              }
+              kept.push({ x, y, r, orig: r, trimmed: false });
+              L.clip.overWatch++;
+            }
+          }
         }
         const produced = kept.length;
+        /* ONE match-identity object per match, SHARED by its boxes, so a block
+           the watch adds at frame time raises `blocks` for every block of the
+           same match — the roll-up then grades the match against everything
+           it produced, late blocks included. */
+        const mref = { id: matchId, blocks: produced };
+        if (watched) {
+          watched.mref = mref; watched.noBox = !produced;
+          watchList.push(watched); L.clip.watched++; watchedHere = true;
+        }
         /* A match that produced no rectangle at all. FullShot positively knows
            there is PII here and positively knows nothing was drawn over it —
            the same news as bake.unplaced, arriving from the other end. Counted
            PER MATCH: it used to be one per leaf, which made it the one counter
            in this ledger that could not be compared with `matched`. */
-        if (!produced) { L.matchedNoBox++; continue; }
+        if (!produced) {
+          L.matchedNoBox++;
+          if (watched) L.clip.matchesNotDrawn++;
+          continue;
+        }
         let emitted = 0;
         for (const k of kept) {
           if (out.length >= FS_PII_MAX_BOXES) break;
@@ -1612,9 +1851,10 @@
              rect it sits on, and it dies with cap.meta exactly as the rects do. */
           const box = { x: Math.round(k.x), y: Math.round(k.y),
                         w: Math.round(k.r.width), h: Math.round(k.r.height),
-                        kind: mt.kind, match: { id: matchId, blocks: produced } };
+                        kind: mt.kind, match: mref };
           if (tag) Object.assign(box, tag);
           out.push(box); L.boxes++; mine.push(box); emitted++;
+          if (k.trimmed) L.clip.trimmed++;
           /* OVER-MASKING IS SAFE; OVER-CLAIMING IS NOT. The box is still emitted
              and still painted — covering a 1x1 rect costs nothing. What must not
              happen is the claim, so the fact that this match came from a span
@@ -1630,9 +1870,10 @@
           L.blocksLost += produced - emitted;
           L.matchesTruncated++;
           L.truncated.ceiling = true;
+          if (watched) watched.lost = true;
         }
       }
-      if (mine.length) later.matched.push({ el, tag, boxes: mine });
+      if (mine.length || watchedHere) later.matched.push({ el, tag, boxes: mine });
     };
 
     /* One walk per surface, each with its own scope for clauses 5-6 and each
@@ -1689,6 +1930,110 @@
       }
     }
 
+    /* The coordinate frame a tag's boxes live in, read NOW — shared by the
+       frame-time watch and the §2.3 re-measure. */
+    const frameOf = (tag) => {
+      if (tag && tag.pane != null && sideJobs && sideJobs[tag.pane]) {
+        const j = sideJobs[tag.pane];
+        return { ox: j.rect.x, oy: j.rect.y, sx: j.el.scrollLeft || 0, sy: j.el.scrollTop || 0, scope: j.el };
+      }
+      if (tag && tag.inline != null && inlineJobs && inlineJobs[tag.inline]) {
+        const j = inlineJobs[tag.inline];
+        let r;
+        try { r = j.el.getBoundingClientRect(); } catch (_) { return null; }
+        return { ox: r.x != null ? r.x : r.left, oy: r.y != null ? r.y : r.top,
+                 sx: j.el.scrollLeft || 0, sy: j.el.scrollTop || 0, scope: j.el };
+      }
+      if (isDoc) return { ox: 0, oy: 0, sx: window.scrollX || 0, sy: window.scrollY || 0, scope: start };
+      let rr;
+      try { rr = root.el.getBoundingClientRect(); } catch (_) { return null; }
+      return { ox: rr.x != null ? rr.x : rr.left, oy: rr.y != null ? rr.y : rr.top,
+               sx: root.el.scrollLeft || 0, sy: root.el.scrollTop || 0, scope: root.el };
+    };
+
+    /* ---- the frame-time watch (2026-09-19) ---------------------------------
+       Called by the capture loop just before EVERY frame is grabbed — main
+       grid, side rails, inline lists. For each watched match it asks the same
+       two questions the scan asked (is the leaf drawn; through which clip) of
+       the page AS IT IS NOW, and paints whatever part of the match is visible
+       now and is not already under one of this leaf's blocks. A block added
+       here is a block this match PRODUCED: `mref.blocks` rises with it, so
+       the roll-up grades the match against it, and a block the ceiling
+       refuses is lost exactly as a scan-time one is.
+
+       WHEN THE RE-READ FAILS — a style or a rect that will not answer, a
+       coordinate frame that cannot be read — the match is painted WHOLE at
+       its scan-time rects and retired. A paint state that cannot be
+       determined must not become an omission (clause 3b's rule, applied to
+       the opposite error). */
+    const contained = (x, y, w, h, list) => {
+      for (const b of list) {
+        if (x >= b.x - 2 && y >= b.y - 2 && x + w <= b.x + b.w + 2 && y + h <= b.y + b.h + 2) return true;
+      }
+      return false;
+    };
+    const emitLate = (wt, x, y, w, h, lim) => {
+      if (y + h < 0 || y > lim || x > totalW) return;
+      if (contained(x, y, w, h, wt.boxes) || contained(x, y, w, h, wt.seen)) return;
+      wt.mref.blocks++;
+      if (out.length >= FS_PII_MAX_BOXES) {
+        /* Refused by the ceiling: produced and not kept. The seal has already
+           been written, so the completeness it carries is corrected HERE, at
+           the refusal, in the same direction the seal would have taken. */
+        wt.seen.push({ x, y, w, h });
+        L.blocksLost++;
+        if (!wt.lost) { wt.lost = true; L.matchesTruncated++; }
+        L.truncated.ceiling = true;
+        L.matchedComplete = false;
+        return;
+      }
+      const box = { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h),
+                    kind: wt.kind, match: wt.mref };
+      if (wt.tag) Object.assign(box, wt.tag);
+      out.push(box); L.boxes++; wt.boxes.push(box); L.clip.lateDrawn++;
+      if (wt.unplaced) L.boxesFromUnplaced++;
+      if (wt.noBox) { wt.noBox = false; L.matchedNoBox--; L.clip.matchesNotDrawn--; }
+    };
+    const watchFallback = (wt) => {
+      wt.done = true; L.clip.watchFailed++;
+      const lim = wt.maxY != null ? wt.maxY : totalH;
+      for (const f of wt.full) emitLate(wt, f.x, f.y, f.w, f.h, lim);
+    };
+    const watch = () => {
+      if (!watchList.length) return;
+      const cache = new Map();             // styles may have changed since the scan
+      for (const wt of watchList) {
+        if (wt.done) continue;
+        try {
+          if (wt.el.isConnected === false) { wt.done = true; continue; }   // detached: not drawn
+          const f = frameOf(wt.tag);
+          if (!f) { watchFallback(wt); continue; }
+          let cs;
+          try { cs = getComputedStyle(wt.el); } catch (_) { cs = null; }
+          if (!cs) { watchFallback(wt); continue; }
+          const ds = fsDrawState(wt.el, cs, f.scope, cache);
+          if (!ds) { watchFallback(wt); continue; }
+          if (!ds.drawn) continue;
+          /* The same match, or none: text that changed under the span is not
+             the match that was counted, and "the PII left" leaves nothing to
+             paint (§2.3(a) takes the same view). */
+          const now = fsPiiMatches(fsOwnLeafText(wt.el));
+          if (!now.some(m => m.start === wt.start && m.end === wt.end && m.kind === wt.kind)) {
+            wt.done = true; continue;
+          }
+          let rects = fsTokenRects(wt.el, wt.start, wt.end);
+          if (!rects) { const lr = wt.el.getBoundingClientRect(); rects = lr ? [lr] : []; }
+          const lim = wt.maxY != null ? wt.maxY : totalH;
+          for (const r of rects) {
+            if (!r || r.width < 1 || r.height < 1) continue;
+            const v = fsVisiblePart(r, ds);
+            if (!v) continue;
+            emitLate(wt, v.left - f.ox + f.sx, v.top - f.oy + f.sy, v.width, v.height, lim);
+          }
+        } catch (_) { watchFallback(wt); }
+      }
+    };
+
     /* ---- the second measurement (§2.3) -------------------------------------
        This pass runs BEFORE the scroll loop. Between it and the last frame the
        page lazy-loads, reflows and realises deferred sections. A block painted
@@ -1702,24 +2047,7 @@
        broken. Two bounded sets, both act-derived: a second reading, not a model
        of what might have happened. */
     const remeasure = () => {
-      const frameOf = (tag) => {
-        if (tag && tag.pane != null && sideJobs && sideJobs[tag.pane]) {
-          const j = sideJobs[tag.pane];
-          return { ox: j.rect.x, oy: j.rect.y, sx: j.el.scrollLeft || 0, sy: j.el.scrollTop || 0, scope: j.el };
-        }
-        if (tag && tag.inline != null && inlineJobs && inlineJobs[tag.inline]) {
-          const j = inlineJobs[tag.inline];
-          let r;
-          try { r = j.el.getBoundingClientRect(); } catch (_) { return null; }
-          return { ox: r.x != null ? r.x : r.left, oy: r.y != null ? r.y : r.top,
-                   sx: j.el.scrollLeft || 0, sy: j.el.scrollTop || 0, scope: j.el };
-        }
-        if (isDoc) return { ox: 0, oy: 0, sx: window.scrollX || 0, sy: window.scrollY || 0, scope: start };
-        let rr;
-        try { rr = root.el.getBoundingClientRect(); } catch (_) { return null; }
-        return { ox: rr.x != null ? rr.x : rr.left, oy: rr.y != null ? rr.y : rr.top,
-                 sx: root.el.scrollLeft || 0, sy: root.el.scrollTop || 0, scope: root.el };
-      };
+      const driftCache = new Map();
       /* (a) DRIFT. The test is CONTAINMENT, not equality, and against the rect
          that was actually PAINTED — the emitted box grown by the bake's own
          padding. Exact equality would fire on a web font swapping in, on a
@@ -1734,19 +2062,25 @@
         try { txt = fsOwnLeafText(ent.el); } catch (_) {}
         const now = fsPiiMatches(txt);
         if (!now.length) continue;             // the PII left; the block covers whatever is there
+        /* Measured against the VISIBLE part of each rect, as the blocks were
+           cut (2026-09-19): a trimmed block does not contain the whole rect it
+           was cut from, and reading that as movement would fire on every
+           ellipsised line on the web. */
+        let dsNow = null;
+        try {
+          const csNow = getComputedStyle(ent.el);
+          dsNow = csNow ? fsDrawState(ent.el, csNow, f.scope, driftCache) : null;
+        } catch (_) { dsNow = null; }
         let escaped = false;
         for (const mt of now) {
           const rects = fsTokenRects(ent.el, mt.start, mt.end);
           if (!rects) continue;
-          for (const r of rects) {
-            if (!r || r.width < 1 || r.height < 1) continue;
+          for (const r0 of rects) {
+            if (!r0 || r0.width < 1 || r0.height < 1) continue;
+            const r = fsVisiblePart(r0, dsNow);
+            if (!r) continue;                   // not in the picture now either
             const x = r.left - f.ox + f.sx, y = r.top - f.oy + f.sy;
-            let covered = false;
-            for (const b of ent.boxes) {
-              if (x >= b.x - 2 && y >= b.y - 2 &&
-                  x + r.width <= b.x + b.w + 2 && y + r.height <= b.y + b.h + 2) { covered = true; break; }
-            }
-            if (!covered) escaped = true;
+            if (!contained(x, y, r.width, r.height, ent.boxes)) escaped = true;
           }
         }
         if (escaped) L.movedUncovered++;
@@ -1834,7 +2168,7 @@
        a throw anywhere above must leave this false, because "the pass reached
        its own last line" is the one thing a `finally` cannot honestly say. */
     L.sealed = true;
-    return { boxes: out, scan: L, remeasure };
+    return { boxes: out, scan: L, remeasure, watch };
   }
 
   function getScroll(root) {
@@ -2289,6 +2623,16 @@
         ? collectPIIBoxes(root, rootRect, totalH, totalW, sideJobs, inlineJobs,
                           settings.redactWalkMs) : null;
       const piiBoxes = piiScan ? piiScan.boxes : null;
+      /* THE FRAME-TIME WATCH (2026-09-19), called immediately before each
+         FS_FRAME below so the page it reads is the page that frame grabs. A
+         match the scan found out of the picture is re-read here and painted
+         if it has come into it (collectPIIBoxes `watch`). Its own entries fail
+         to whole-rect paint; a throw out of the call itself is recorded. */
+      const piiWatch = () => {
+        if (!piiScan) return;
+        try { piiScan.watch(); }
+        catch (_) { try { piiScan.scan.clip.watchThrew = true; } catch (_e) {} }
+      };
 
       // Build scroll positions: rows top→bottom, columns left→right.
       const ys = [];
@@ -2340,6 +2684,7 @@
         }
 
         const actual = getScroll(root);
+        piiWatch();
         const resp = await chrome.runtime.sendMessage({
           type: 'FS_FRAME',
           index: i,
@@ -2386,6 +2731,7 @@
             await sleep(baseDelay);
             if (captureImgs) await settleImages(captureImgs, 250, 40);   // v1.6.7: rails too
             const actual = job.el.scrollTop;
+            piiWatch();
             const resp = await chrome.runtime.sendMessage({
               type: 'FS_FRAME', index: frameIdx, total, x: 0, y: actual, pane: j
             });
@@ -2461,6 +2807,7 @@
             await sleep(baseDelay);   // adaptive wait: let the render window realize its rows
             if (captureImgs) await settleImages(captureImgs, 250, 40);   // v1.6.7: virtual lists too
             const actual = job.el.scrollTop;
+            piiWatch();
             const resp = await chrome.runtime.sendMessage({
               type: 'FS_FRAME', index: inlineIdx, total, x: 0, y: actual, inline: j
             });

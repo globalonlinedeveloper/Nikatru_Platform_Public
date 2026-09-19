@@ -105,6 +105,74 @@ the tool. These feed `notCovered` (§2) and the copy in §3 and §7:
 - A number split across `<span>`s or `<tspan>`s is never seen whole.
 - Text drawn as pixels — canvas, video, images, PDF viewers — is never read.
 
+### 1.1 Where a block may land
+
+> **Added 2026-09-19 (O-FULLSHOT-CLIPPED-ANCESTOR-OVERMASK).** Until this
+> section existed the spec said nothing about where a block may land relative
+> to the text it was measured from, and `content/capture.js` disagreed with
+> itself: clause 3b withheld the block for a subtree the renderer skipped,
+> while clauses 5 (ancestor clip) and 6 (ancestor opacity) painted the whole
+> rect anyway, on the rule *"over-masking is safe; over-claiming is not."* On
+> `test/e2e/fixtures/clipped-ancestor.html` that rule painted 2 blocks and kept
+> 2 marks on **visible prose that held no PII**, and the review list labelled
+> it "email" and "phone" (acts `2 / 2 / 2`). The rule is kept below for what it
+> is still right about, and narrowed where it was wrong.
+
+**A block covers only pixels the match can occupy in the picture.** Each client
+rect of a match is cut down to the part of it that is drawn — intersected with
+the clip of its ancestors (`overflow` other than `visible`, per axis) and its
+own box's clip — and dropped when the leaf is `visibility: hidden` or the
+product of its ancestors' `opacity` and its own is `0`. A match cut through by a
+clip is covered **on its visible part**; covering less than that is the one
+error this product must never make.
+
+**A match none of whose rects is in the picture is painted nowhere and still
+counted.** It stays in `matched`, produces no block, and is therefore neither
+`painted` nor `verifiedOpaque`: `matched − covered` includes it and §3.4's
+shortfall line states it as not covered. That is an over-count, never an
+over-claim — the same standing `<option>` text has in §1 — and it is chosen on
+purpose: the clip is inferred from the DOM, not asked of the renderer, so a
+wrong inference must surface as a sentence a person reads rather than vanish.
+Clause 3b is the contrast and stays as it is: `checkVisibility()` is the
+renderer's own answer, so a skipped subtree is not handed to the detector at
+all.
+
+**Where the visible part cannot be stated exactly, the whole rect is painted**
+— the old rule, kept as the fallback in every case below, each of which errs
+toward covering more:
+
+- `clip-path`, `mask`, `filter`, `contain: paint` are not read (each only
+  removes pixels, so ignoring one paints more);
+- `clip: rect(…)` is read only when it is empty (the sr-only spelling); a
+  non-empty one is local-coordinate and a transform makes it unreadable;
+- `overflow: clip` with a non-zero `overflow-clip-margin` is not read on that
+  axis (it paints past the box);
+- `overflow` is read only on boxes it applies to — not on `display: contents`
+  (which also has no opacity of its own), a non-replaced inline, a table part,
+  or an SVG/MathML element;
+- a style or rect that cannot be read paints the whole rect.
+
+**An out-of-flow box escapes the clips between it and its containing block**,
+and this is the case that turns a naive reading into an under-mask: an
+absolutely positioned match inside a *static* `overflow: hidden` parent is in
+the picture. `position: absolute` takes the clip of its nearest positioned
+ancestor; `position: fixed` and the top layer (modal `<dialog>`, open popover,
+fullscreen) take none.
+
+**The reading is repeated at every frame.** The scan runs once, before the
+frames; a scroll-reveal can make hidden text visible between the two. Every
+match with a rect wholly or partly out of the picture at scan time is re-read
+just before each frame is grabbed, and any part of it visible then is painted then, as a block
+that match produced. More than 256 such matches, or a re-read that cannot be
+made, fall back to the whole scan-time rect.
+
+What is graded: `test/e2e/redaction-claim.mjs` O1 and H3 on `clipped-ancestor`
+(no block, no mark, `2 / 0 / 0`), Q1-Q5 plus L1/L2 on `clipped-partial` (a
+partly clipped match covered, a wholly clipped one leaving the prose it was laid
+out over untouched, an escaping absolute match covered, `3 / 2 / 2`), and
+`test/pixel-sim` `clipredact`, `clippartial`, `cliplate` for the ledger and the
+frame-time re-read.
+
 ---
 
 ## 2. HALF ONE — the bundle states acts, never verdicts
@@ -751,6 +819,13 @@ honest.
   counter is the verdict again, computed out of a person's scrolling.
 - **`matched` counts what the detector was handed**, and §1's limits say how
   much of a page that is not.
+- **§1.1's clip is read at the scan and just before each frame, not during
+  it.** Text that is visible in a frame yet hidden both at the scan and at every
+  frame-time re-read — shown and hidden again between two reads — is not
+  painted. Transitions are forced to `0s` and animations paused for the whole
+  capture, which is what keeps that window narrow; it is not closed. Past 256
+  re-read matches the rest are painted whole at the scan, so the window closes
+  there by over-masking instead. (Added 2026-09-19.)
 - **OCR of the delivered image** is the only mechanism that would let FullShot
   read the picture rather than the DOM. It stays blocked (Tesseract WASM plus an
   owner CSP decision). If it ever lands, it measures coverage for the first time
