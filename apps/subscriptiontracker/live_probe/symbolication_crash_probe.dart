@@ -50,7 +50,8 @@ Future<void> main() async {
   // Minted here, not passed in as a dart-define, so nothing new is compiled into
   // the artifact. Printed first; the workflow reads it back from logcat and
   // finds the GlitchTip event by it.
-  final String marker = 'symprobe-${DateTime.now().toUtc().microsecondsSinceEpoch}';
+  final String marker =
+      'symprobe-${DateTime.now().toUtc().microsecondsSinceEpoch}';
   _emit('BEGIN $marker');
   try {
     probeThrowSite(marker);
