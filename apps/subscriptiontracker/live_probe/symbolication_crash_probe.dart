@@ -58,8 +58,17 @@ Future<void> main() async {
   // Minted here, not passed in as a dart-define, so nothing new is compiled into
   // the artifact. Printed first; the workflow reads it back from logcat and
   // finds the GlitchTip event by it.
+  //
+  // 🔴 LETTERS ONLY, and run 35467695649 is why. Its event DID arrive (issue 38,
+  // environment symbolication-probe) but read `symprobe-[REDACTED]`: the
+  // telemetry chassis's PiiScrubber (_longDigitRun, `\d{10,}`) redacted the
+  // 16-digit timestamp, so no event carried the marker and the verdict lost
+  // coverage. Each digit is mapped to a..j: no digit, no uppercase, no `@`, no
+  // `:` — nothing any scrubber rule can match. tooling/ci/test/
+  // symbolication-proof.test.mjs runs the real scrubber patterns against it.
+  final String stamp = DateTime.now().toUtc().microsecondsSinceEpoch.toString();
   final String marker =
-      'symprobe-${DateTime.now().toUtc().microsecondsSinceEpoch}';
+      'symprobe-${String.fromCharCodes(stamp.codeUnits.map((int c) => c + 49))}';
   _emit('BEGIN $marker');
   try {
     probeThrowSite(marker);
