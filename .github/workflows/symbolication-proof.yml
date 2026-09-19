@@ -220,7 +220,7 @@ jobs:
             echo "::error title=Probe::$1"
             echo "── logcat: flutter, crashes, and the app's own pid (tail) ──"
             pid="$("$adb" shell pidof "$pkg" 2>/dev/null | tr -d '\r' || true)"
-            grep -E " flutter *:|AndroidRuntime|FATAL|SYMPROBE|${pid:-NO_PID} " "${RUNNER_TEMP}/logcat.txt" | tail -n 120 || true
+            grep -E " flutter *:|AndroidRuntime|FATAL|SYMPROBE| Sentry|sentry|${pid:-NO_PID} " "${RUNNER_TEMP}/logcat.txt" | tail -n 120 || true
             exit 1
           }
           timeout 120 "$adb" install -r apps/subscriptiontracker/build/app/outputs/flutter-apk/app-release.apk
@@ -258,6 +258,14 @@ jobs:
           sleep 20
           "$adb" logcat -d > "${RUNNER_TEMP}/logcat.txt"
           grep -F 'SYMPROBE|' "${RUNNER_TEMP}/logcat.txt"
+          # The SDK's own transport lines, and the app's sockets, printed on every
+          # run so a send that never lands is diagnosable from this log alone.
+          # Release builds log little here (the SDK's debug flag is off, as in
+          # every shipped app); what does appear is kept.
+          echo "── SDK / network lines from ${pkg} ──"
+          app_pid="$(grep -m1 -F 'SYMPROBE|BEGIN ' "${RUNNER_TEMP}/logcat.txt" | awk '{print $3}')"
+          grep -E "^[0-9-]+ [0-9:.]+ +${app_pid:-NO_PID} .*(Sentry|sentry|TrafficStats|okhttp|SSL|Unknown[Hh]ost|[Cc]onnect)" \
+            "${RUNNER_TEMP}/logcat.txt" | tail -n 40 || echo "(none)"
 
       - name: Extract the raw trace and this run's marker from logcat
         id: extract

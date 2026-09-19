@@ -109,6 +109,26 @@ export function parseSymbolized(text) {
   return frames;
 }
 
+/** Exception values of the newest events the probe sent (value starts "symbolication-probe"). */
+export function probeEventValues(events, limit = 3) {
+  if (!Array.isArray(events)) return [];
+  return events
+    .flatMap((e) => exceptionValues(e).map((v) => v.value))
+    .filter((v) => typeof v === 'string' && v.startsWith('symbolication-probe'))
+    .slice(0, limit);
+}
+
+/** Every frame of the first exception, reduced to what triage reads. */
+export function allFrames(event) {
+  const frames = exceptionValues(event)[0]?.stacktrace?.frames ?? [];
+  return frames.map((f) => ({
+    function: f.function ?? null,
+    file: f.filename ?? f.absPath ?? null,
+    line: f.lineNo ?? f.lineno ?? null,
+    instructionAddr: f.instructionAddr ?? f.instruction_addr ?? null,
+  }));
+}
+
 /** The newest event whose exception value or message carries `marker`. */
 export function findEvent(events, marker) {
   if (!Array.isArray(events)) return null;
@@ -269,10 +289,22 @@ if (RUN_DIRECTLY) {
     const gt = JSON.parse(readFileSync(join(here, 'glitchtip-project.json'), 'utf8'));
     const deadline = Date.now() + Number(a['wait-seconds'] ?? 300) * 1000;
     let event = null;
+    let seen = [];
     while (event === null) {
-      event = findEvent(await fetchProjectEvents({ ...gt, token }), a.marker);
+      seen = await fetchProjectEvents({ ...gt, token });
+      event = findEvent(seen, a.marker);
       if (event !== null) break;
-      if (Date.now() > deadline) lost(`no GlitchTip event carries ${a.marker} after ${a['wait-seconds'] ?? 300}s`);
+      if (Date.now() > deadline) {
+        // Name what DID arrive: run 35467695649's event was there all along,
+        // with its marker redacted, and "no event" hid that for a whole run.
+        const probes = probeEventValues(seen);
+        lost(
+          `no GlitchTip event carries ${a.marker} after ${a['wait-seconds'] ?? 300}s` +
+            (probes.length
+              ? `; probe event(s) that DID arrive carry: ${probes.map((v) => JSON.stringify(v)).join(', ')}`
+              : '; no symbolication-probe event arrived at all'),
+        );
+      }
       await new Promise((r) => setTimeout(r, 15000));
     }
     const frame = crashFrame(event, addr);
@@ -283,6 +315,8 @@ if (RUN_DIRECTLY) {
       expected: exp,
       groundTruth: { ...truth, frame: truthFrames[0] ?? null },
       sink: { ...sink, frame, eventID: event.eventID ?? event.event_id ?? null, groupID: event.groupID ?? event.group_id ?? null },
+      // Every frame as the sink returned it, oldest first, for triage.
+      sinkFrames: allFrames(event),
     };
     writeFileSync(a.report, `${JSON.stringify(report, null, 2)}\n`);
     const word = (ok) => (ok === null ? 'UNAVAILABLE' : ok ? 'MATCH' : 'MISMATCH');

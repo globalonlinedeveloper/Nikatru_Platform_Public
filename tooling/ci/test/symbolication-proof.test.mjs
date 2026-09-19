@@ -37,6 +37,8 @@ import {
   parseSymbolized,
   sameSite,
   verdictExit,
+  allFrames,
+  probeEventValues,
 } from '../../ops/symbolication-proof.mjs';
 import { parseWorkflow, workflowEvents } from '../workflow-scan.mjs';
 
@@ -182,6 +184,106 @@ describe('the single-text-section snapshot layout (Flutter 3.47.4, run 354637866
   });
   test('a symbol that is neither app layout is not an app frame', () => {
     assert.equal(firstIsolateAddr('    #00 abs 00007f84ce976c3e virt 0 _kDartSnapshotData+0x10'), null);
+  });
+});
+
+// Run 35467695649's event, as GlitchTip 6.2.6 returned it (issue 38), trimmed to
+// the exception entry. The marker was redacted by the client-side PiiScrubber,
+// the throw-site frame (0x7eb7fbb06c3e, the trace's first app frame) came back
+// UNSYMBOLICATED, and the caller frame resolved to an unrelated SDK function.
+const RUN_35467695649_EVENT = {
+  eventID: 'bb67a1047e9b8a84bf144cb1524b',
+  groupID: '38',
+  platform: 'other',
+  entries: [
+    {
+      type: 'exception',
+      data: {
+        values: [
+          {
+            type: 'Dv',
+            value: 'symbolication-probe symprobe-[REDACTED]',
+            stacktrace: {
+              frames: [
+                {
+                  filename: 'third_party/dart/sdk/lib/_internal/vm/lib/typed_data_patch.dart',
+                  function: 'new Uint32List',
+                  platform: 'native',
+                  instruction_addr: '0x00007eb7fbb4c32f',
+                  absPath: 'third_party/dart/sdk/lib/_internal/vm/lib/typed_data_patch.dart',
+                  lineNo: 0,
+                },
+                { platform: 'native', instruction_addr: '0x00007eb7fbb06c3e' },
+              ],
+            },
+          },
+        ],
+      },
+    },
+  ],
+};
+
+describe('run 35467695649 — the event that arrived with its marker redacted', () => {
+  test('the redacted event is NOT found by its marker, and is NAMED by probeEventValues', () => {
+    assert.equal(findEvent([RUN_35467695649_EVENT], 'symprobe-1789850523270811'), null);
+    assert.deepEqual(probeEventValues([RUN_35467695649_EVENT]), ['symbolication-probe symprobe-[REDACTED]']);
+  });
+  test('its throw-site frame, matched by address, is UNSYMBOLICATED: a MISMATCH', () => {
+    const f = crashFrame(RUN_35467695649_EVENT, 0x7eb7fbb06c3en);
+    assert.equal(f.matchedBy, 'address');
+    const v = sameSite({ file: 'symbolication_crash_probe.dart', line: 36, function: 'probeThrowSite' }, f);
+    assert.equal(v.ok, false);
+    assert.match(v.why, /UNSYMBOLICATED/);
+  });
+  test('allFrames keeps every frame, snake_case address included, for the report', () => {
+    const all = allFrames(RUN_35467695649_EVENT);
+    assert.equal(all.length, 2);
+    assert.equal(all[0].function, 'new Uint32List');
+    assert.equal(all[1].instructionAddr, '0x00007eb7fbb06c3e');
+  });
+});
+
+// The markers must survive the REAL scrubber. Its patterns are read out of
+// packages/telemetry/lib/src/pii_scrubber.dart (every `RegExp(r'…' r'…')`), so
+// a new rule there is tested here the day it lands.
+function scrubberPatterns() {
+  const src = readFileSync(join(ROOT, 'packages', 'telemetry', 'lib', 'src', 'pii_scrubber.dart'), 'utf8');
+  const out = [];
+  for (const m of src.matchAll(/RegExp\(\s*((?:r'[^']*'\s*)+)/g)) {
+    out.push(new RegExp([...m[1].matchAll(/r'([^']*)'/g)].map((x) => x[1]).join('')));
+  }
+  return out;
+}
+const lettersMarker = (stamp) => `symprobe-${String.fromCharCode(...[...stamp].map((c) => c.charCodeAt(0) + 49))}`;
+
+describe('the probe marker survives the client-side PII scrubber', () => {
+  test('the scrubber patterns are read (control: the OLD digit marker IS redacted)', () => {
+    const pats = scrubberPatterns();
+    assert.ok(pats.length >= 7, `read only ${pats.length} scrubber pattern(s)`);
+    assert.ok(pats.some((re) => re.test('symprobe-1789850523270811')), 'no scrubber rule caught the digit marker — the parse is broken');
+  });
+  test('a letters-only marker matches NO scrubber rule', () => {
+    const pats = scrubberPatterns();
+    for (const stamp of ['1789850523270811', '9999999999999999', '1000000000000000', '6000000000']) {
+      const m = lettersMarker(stamp);
+      assert.match(m, /^symprobe-[a-j]+$/);
+      for (const re of pats) assert.equal(re.test(m), false, `${re} redacts ${m}`);
+    }
+  });
+  test('the probe mints its marker letters-only (digit + 49 -> a..j)', () => {
+    const src = readFileSync(join(ROOT, PROBE), 'utf8').split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+    assert.match(src, /String\.fromCharCodes\(stamp\.codeUnits\.map\(\(int c\) => c \+ 49\)\)/);
+    assert.doesNotMatch(src, /'symprobe-\$\{DateTime/);
+  });
+  test('the run step prints the SDK / network lines of the app on every run and on failure', () => {
+    const raw = readFileSync(join(ROOT, WORKFLOW), 'utf8');
+    const step = raw.slice(raw.indexOf('- name: Boot an emulator'), raw.indexOf('- name: Extract the raw trace'));
+    assert.match(step, /\(Sentry\|sentry\|TrafficStats\|okhttp\|SSL\|Unknown\[Hh\]ost\|\[Cc\]onnect\)/);
+    assert.match(step, /probe_why\(\) \{[\s\S]*? Sentry\|sentry\|/);
+  });
+  test('extractTrace reads a letters-only marker back', () => {
+    const m = lettersMarker('1789850523270811');
+    assert.equal(extractTrace(logcat(RAW_TRACE, m)).marker, m);
   });
 });
 
