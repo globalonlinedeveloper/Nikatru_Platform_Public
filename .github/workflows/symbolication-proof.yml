@@ -253,26 +253,45 @@ jobs:
           echo "phase ok: launched"
           wait_for "BEGIN (probe main ran)" "SYMPROBE|BEGIN " 60
           wait_for "TRACE (the throw was caught and printed)" "SYMPROBE|TRACE-END" 60
-          wait_for "SENT (captureException + close returned)" "SYMPROBE|SENT " 120
+          wait_for "SENT (captureException returned)" "SYMPROBE|SENT " 120
           # The native transport sends the envelope it was handed asynchronously.
           sleep 20
           "$adb" logcat -d > "${RUNNER_TEMP}/logcat.txt"
           grep -F 'SYMPROBE|' "${RUNNER_TEMP}/logcat.txt"
 
-      - name: Ground truth — symbolize the raw trace offline against the build's own symbols
+      - name: Extract the raw trace and this run's marker from logcat
+        id: extract
+        working-directory: apps/subscriptiontracker
+        run: >
+          node ../../tooling/ops/symbolication-proof.mjs extract-trace
+          --logcat "${RUNNER_TEMP}/logcat.txt" --out "${RUNNER_TEMP}/trace.txt"
+          --marker-out "${RUNNER_TEMP}/marker.txt"
+
+      # why: NOT `flutter symbolize`. Flutter 3.47.4's tool pins
+      # native_stack_traces 0.6.1, which predates the VM-isolate removal, and the
+      # 3.47.4 engine already writes `_kDartSnapshotText` frames with
+      # `vm_dso_base: 0`: run 35463786607 died "Cannot locate isolate
+      # instructions section in snapshot" on a trace whose header and build_id
+      # were intact and matched the symbols file. The decoder version has one
+      # home, tooling/versions.json `native_stack_traces`.
+      - name: Ground truth — decode the raw trace offline against the build's own symbols
+        id: truth
         working-directory: apps/subscriptiontracker
         run: |
           set -euo pipefail
-          node ../../tooling/ops/symbolication-proof.mjs extract-trace \
-            --logcat "${RUNNER_TEMP}/logcat.txt" --out "${RUNNER_TEMP}/trace.txt" \
-            --marker-out "${RUNNER_TEMP}/marker.txt"
-          flutter symbolize -i "${RUNNER_TEMP}/trace.txt" \
-            -d "${SYMBOLS_DIR}/app.android-x64.symbols" -o "${RUNNER_TEMP}/symbolized.txt"
+          nst="$(node -p "require('../../tooling/versions.json').native_stack_traces")"
+          dart pub global activate native_stack_traces "$nst"
+          dart pub global run native_stack_traces:decode translate \
+            -d "${SYMBOLS_DIR}/app.android-x64.symbols" \
+            -i "${RUNNER_TEMP}/trace.txt" -o "${RUNNER_TEMP}/symbolized.txt"
           cat "${RUNNER_TEMP}/symbolized.txt"
 
-      # why: exit 1 is the FINDING this workflow exists to surface: GlitchTip put
-      # the crash on another line. Exit 2 is coverage lost. Neither is retried.
+      # why: always(), once the marker exists. The SINK is what the row asks, so a
+      # failed ground truth must not hide it; the script reads the sink anyway and
+      # exits 1 on either MISMATCH, 2 when the ground truth is UNAVAILABLE (never
+      # 0), so the job still fails whenever either half does. Neither is retried.
       - name: Verdict — the GlitchTip frame against the known line
+        if: ${{ always() && steps.extract.outcome == 'success' }}
         working-directory: apps/subscriptiontracker
         env:
           GLITCHTIP_TOKEN: ${{ secrets.GLITCHTIP_TOKEN }}

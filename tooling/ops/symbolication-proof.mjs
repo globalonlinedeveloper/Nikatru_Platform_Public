@@ -8,7 +8,7 @@
 // obfuscated release APK, uploads its debug files, runs it on an emulator, and
 // hands this script three things. Two independent verdicts come out:
 //
-//   GROUND TRUTH  `flutter symbolize` of the raw trace the probe printed to
+//   GROUND TRUTH  native_stack_traces' decoder over the raw trace the probe printed to
 //                 logcat, against the build's own .symbols file. Its crashing
 //                 frame must be the THROW-SITE line of the probe source. This
 //                 is also the offline recovery path, proven on every run.
@@ -34,7 +34,7 @@
 //   verdict        --source <dart file> --trace <file> --symbolized <file> --marker <m>
 //                  --report <json out> [--wait-seconds N]   (needs GLITCHTIP_TOKEN)
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -63,7 +63,7 @@ export function expectedSite(sourceText, sourceName) {
 /**
  * The raw trace between TRACE-BEGIN and TRACE-END that follows `BEGIN <marker>`.
  * A logcat line is `<date> <time> <pid> <tid> I flutter : SYMPROBE|<text>`; only
- * what follows the prefix is kept, verbatim, so `flutter symbolize` sees the
+ * what follows the prefix is kept, verbatim, so the decoder sees the
  * trace the VM printed.
  *
  * The probe MINTS its marker at run time (no dart-define, so nothing new is
@@ -95,7 +95,8 @@ export function extractTrace(logcatText, marker = null) {
 }
 
 /**
- * Frames from `flutter symbolize` output, in printed order (innermost first).
+ * Frames from the decoder's output (native_stack_traces `decode translate`, the
+ * format `flutter symbolize` also prints), in printed order (innermost first).
  * A frame line reads `#0      probeThrowSite (file:///.../x.dart:36:3)`; a
  * line without a parsable location is skipped, not guessed at.
  */
@@ -127,14 +128,25 @@ function exceptionValues(event) {
 }
 
 /**
- * The absolute address of the first frame in the ISOLATE's instructions: the
- * frame that threw. A frame in the VM's own instructions (a stub) is skipped,
+ * The symbol an app frame is printed against. TWO snapshot layouts exist and
+ * the tree has met both: the old one splits VM and isolate instructions
+ * (`_kDartIsolateSnapshotInstructions`, with VM stubs under
+ * `_kDartVmSnapshotInstructions`), and the one Flutter 3.47.4's engine writes
+ * has ONE text section, `_kDartSnapshotText`, with `vm_dso_base: 0` (the VM
+ * isolate was removed; native_stack_traces 0.7.0). Run 35463786607's trace was
+ * the new layout, and a matcher that knew only the old one found no frame.
+ */
+export const APP_TEXT_SYMBOLS = ['_kDartSnapshotText', '_kDartIsolateSnapshotInstructions'];
+
+/**
+ * The absolute address of the first frame in the app's instructions: the frame
+ * that threw. A frame in the old layout's VM instructions (a stub) is skipped,
  * because the app's debug file cannot describe it on either side.
  */
 export function firstIsolateAddr(traceText) {
   for (const l of traceText.split(/\r?\n/)) {
-    const m = /^\s*#\d+\s+abs\s+([0-9a-f]+)\b.*_kDartIsolateSnapshotInstructions/i.exec(l);
-    if (m) return BigInt(`0x${m[1]}`);
+    const m = /^\s*#\d+\s+abs\s+([0-9a-f]+)\b.*\s(_kDart\w+)\+0x[0-9a-f]+\s*$/i.exec(l);
+    if (m && APP_TEXT_SYMBOLS.includes(m[2])) return BigInt(`0x${m[1]}`);
   }
   return null;
 }
@@ -166,6 +178,16 @@ export function crashFrame(event, addr = null) {
     frameCount: frames.length,
     matchedBy: byAddr ? 'address' : 'last-frame',
   };
+}
+
+/**
+ * One exit for the two verdicts. A MISMATCH on either side is the finding (1).
+ * Otherwise an UNAVAILABLE ground truth (null) is coverage lost (2), never 0.
+ */
+export function verdictExit(truthOk, sinkOk) {
+  if (truthOk === false || sinkOk === false) return 1;
+  if (truthOk === null || sinkOk === null) return 2;
+  return 0;
 }
 
 /** Same file (by basename) and same line. The function is reported, not required. */
@@ -229,12 +251,17 @@ if (RUN_DIRECTLY) {
   } else if (cmd === 'verdict') {
     need('source', 'trace', 'symbolized', 'marker', 'report');
     const addr = firstIsolateAddr(readFileSync(a.trace, 'utf8'));
-    if (addr === null) lost('the raw trace has no _kDartIsolateSnapshotInstructions frame');
+    if (addr === null) lost(`the raw trace has no frame in ${APP_TEXT_SYMBOLS.join(' or ')}`);
     const exp = expectedSite(readFileSync(a.source, 'utf8'), a.source);
     if (exp.error) lost(exp.error);
-    const truthFrames = parseSymbolized(readFileSync(a.symbolized, 'utf8'));
-    if (truthFrames.length === 0) lost('flutter symbolize printed no frame with a file:line');
-    const truth = sameSite(exp, truthFrames[0]);
+    // The SINK is what the row asks, so it is read and reported even when the
+    // offline decode failed or never ran. An unavailable ground truth is never
+    // a pass: it makes a sink MATCH exit 2, and a sink MISMATCH still exits 1.
+    const truthFrames = existsSync(a.symbolized) ? parseSymbolized(readFileSync(a.symbolized, 'utf8')) : [];
+    const truth =
+      truthFrames.length === 0
+        ? { ok: null, why: `UNAVAILABLE — ${a.symbolized} holds no decoded frame (see the ground-truth step)` }
+        : sameSite(exp, truthFrames[0]);
 
     const token = process.env.GLITCHTIP_TOKEN;
     if (!token) lost('GLITCHTIP_TOKEN is not set; the sink was not read');
@@ -254,13 +281,14 @@ if (RUN_DIRECTLY) {
     const report = {
       marker: a.marker,
       expected: exp,
-      groundTruth: { ...truth, frame: truthFrames[0] },
+      groundTruth: { ...truth, frame: truthFrames[0] ?? null },
       sink: { ...sink, frame, eventID: event.eventID ?? event.event_id ?? null, groupID: event.groupID ?? event.group_id ?? null },
     };
     writeFileSync(a.report, `${JSON.stringify(report, null, 2)}\n`);
-    console.log(`GROUND TRUTH (flutter symbolize): ${truth.ok ? 'MATCH' : 'MISMATCH'} — ${truth.why}`);
-    console.log(`SINK (GlitchTip event ${report.sink.eventID}): ${sink.ok ? 'MATCH' : 'MISMATCH'} — ${sink.why}`);
-    if (!truth.ok || !sink.ok) process.exit(1);
+    const word = (ok) => (ok === null ? 'UNAVAILABLE' : ok ? 'MATCH' : 'MISMATCH');
+    console.log(`GROUND TRUTH (offline decode): ${word(truth.ok)} — ${truth.why}`);
+    console.log(`SINK (GlitchTip event ${report.sink.eventID}): ${word(sink.ok)} — ${sink.why}`);
+    process.exit(verdictExit(truth.ok, sink.ok));
   } else {
     lost(`unknown subcommand "${cmd}" (expect | extract-trace | verdict)`);
   }
