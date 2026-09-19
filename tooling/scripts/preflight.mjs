@@ -57,10 +57,35 @@
 // is unfounded, and passing it is the defect above in a politer voice. Only the
 // red guards re-run, so the cost is a worktree checkout plus a handful of guards.
 //
-// Usage:  node tooling/scripts/preflight.mjs [--fast] [--sweep-only] [--base <ref>]
+// 🔴 2026-09-19, AGAIN — PREFLIGHT RAN OVER A TREE CI WOULD NEVER SEE. Twice in
+// one day a helper ran `preflight --fast` while its NEW files were still
+// untracked, and preflight went green on them:
+//   PR #819        assert-mechanism-claims reads `git ls-files`, so it never saw
+//                  a new test file's claim sentence. CI committed the file, read
+//                  the sentence, and failed.
+//   PR #824, #825  `gen-start-here.mjs --check` counts tracked files, guards and
+//                  test files from `git ls-files --cached`. Locally it matched;
+//                  CI run 35449581752 failed "START-HERE.md differs from what the
+//                  tree generates" because the new package, workflow and tests
+//                  were untracked when preflight ran and committed when CI did.
+// The closing line "CI should agree" cannot be true while the two trees differ:
+// every index-reading guard and generator judged the LAST commit, not this one
+// (TRAPS vacuous-10). So the FIRST leg now lists untracked, non-ignored files
+// and refuses naming them, with the one-line fix: `git add -N <paths>` —
+// intent-to-add puts the path in the index with no content staged, and both
+// readers above count it — or commit them. It stops the run: every later leg's
+// verdict would be about a tree CI does not have, and the full suite is ten
+// minutes of laptop the backup shares. `.worktrees/` is skipped by name because
+// it is NOT gitignored (measured 2026-09-19: the main checkout lists each
+// worktree as an untracked directory) and holds other checkouts, not this one.
+//
+// Usage:  node tooling/scripts/preflight.mjs [--fast] [--sweep-only] [--untracked-only] [--base <ref>]
 //         --fast skips the stamped-app leg (mason + flutter analyze), which is
 //         the slow one, for iterating on a guard-only change.
-//         --sweep-only runs the guard-sweep leg alone (with its base re-run).
+//         --sweep-only runs the untracked-files leg, then the guard-sweep leg
+//         (with its base re-run). The untracked leg is a single `git ls-files`
+//         and the sweep's guards read the index too, so it is not optional there.
+//         --untracked-only runs the untracked-files leg alone.
 //         --base <ref> compares the sweep's reds against merge-base(HEAD, <ref>)
 //         instead of origin/main. No fetch happens: the local ref is used as is.
 // Exit:   0 = safe to push · 1 = CI would have failed, here is what
@@ -75,7 +100,9 @@ import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const FAST = process.argv.includes('--fast');
 const SWEEP_ONLY = process.argv.includes('--sweep-only');
+const UNTRACKED_ONLY = process.argv.includes('--untracked-only');
 const SWEEP_LEG = 'guard sweep (every guard run or explained; reds judged against main)';
+const UNTRACKED_LEG = 'no untracked files (the index CI commits is the index the guards read)';
 /** Imported by tooling/ci/test/preflight-sweep-regression.test.mjs for its
  *  exports; only a direct `node preflight.mjs` runs the legs. */
 const IS_MAIN = (() => {
@@ -316,11 +343,57 @@ export function sweepLeg({ root = ROOT, baseRef = 'origin/main', sweep } = {}) {
   }
 }
 
+// ── the untracked files, refused before anything runs (2026-09-19, header) ──
+
+/** Untracked, non-ignored paths under `root`, minus `.worktrees/` (other
+ *  checkouts, and not gitignored — see the header). A path ending in `/` is an
+ *  embedded git repository: git lists it as one entry and will not descend.
+ *  Returns { files } or { error } — never throws, never an empty list for a
+ *  git that did not answer. */
+export function untrackedFiles({ root = ROOT } = {}) {
+  const r = exec('git', ['ls-files', '--others', '--exclude-standard', '-z'], { cwd: root });
+  if (r.status !== 0 || r.error) {
+    return { error: `\`git ls-files --others --exclude-standard\` failed (${firstLine(r.out) || r.error?.code || `exit ${r.status}`})` };
+  }
+  const files = r.out.split('\0').filter(Boolean).filter((f) => !/^\.worktrees(\/|$)/.test(f)).sort();
+  return { files };
+}
+
+/** Leg 0's body. Fails on any untracked file, naming each and the fix; fails
+ *  as COVERAGE LOST when git could not list them — "I could not look" must
+ *  not read as "there were none". */
+export function untrackedLeg({ root = ROOT } = {}) {
+  const u = untrackedFiles({ root });
+  if (u.error) {
+    return { code: 1, out: `🔴 COVERAGE LOST — ${u.error}. Without the list, this run cannot tell whether it judges the tree CI will build.` };
+  }
+  if (u.files.length === 0) return { code: 0, out: 'no untracked, non-ignored file — the index the guards read is the tree' };
+  const repos = u.files.filter((f) => f.endsWith('/'));
+  const plain = u.files.filter((f) => !f.endsWith('/'));
+  const quote = (f) => (/[\s"'$`]/.test(f) ? `"${f}"` : f);
+  const lines = [
+    `✗ ${u.files.length} untracked file(s). CI builds the COMMITTED tree; the guards and generators that read`,
+    '  `git ls-files` (assert-mechanism-claims, gen-start-here --check, …) do not see these here, so a green',
+    '  run now is evidence about the last commit, not this one (PR #819, #824, #825 — 2026-09-19):',
+    ...u.files.map((f) => `   · ${f}${f.endsWith('/') ? '   (an embedded git repository — do NOT add it; gitignore or move it)' : ''}`),
+  ];
+  if (plain.length) {
+    lines.push('  Fix: make them visible to the index without staging their content, then re-run:');
+    lines.push(`     git add -N ${plain.map(quote).join(' ')}`);
+    lines.push('  (intent-to-add; `git reset -- <path>` undoes it) — or commit them. A file that must never be');
+    lines.push('  committed belongs in .gitignore, not in the tree preflight judges.');
+  }
+  if (repos.length && !plain.length) lines.push('  Fix: gitignore or move the embedded repository, then re-run.');
+  return { code: 1, out: lines.join('\n') };
+}
+
 const results = [];
 function step(name, why, fn) {
-  // Imported for its exports (the test suite), or --sweep-only for another leg:
-  // run nothing.
-  if (!IS_MAIN || (SWEEP_ONLY && name !== SWEEP_LEG)) return;
+  // Imported for its exports (the test suite), or --sweep-only / --untracked-only
+  // for another leg: run nothing. The untracked leg runs under --sweep-only too.
+  if (!IS_MAIN) return;
+  if (UNTRACKED_ONLY && name !== UNTRACKED_LEG) return;
+  if (SWEEP_ONLY && name !== SWEEP_LEG && name !== UNTRACKED_LEG) return;
   process.stdout.write(`… ${name}\n`);
   const { code, out } = fn();
   results.push({ name, why, code, out });
@@ -331,6 +404,24 @@ function step(name, why, fn) {
   if (code === 0 && /(^|\n)(⬜|COULD NOT LOOK)/.test(out)) {
     process.stdout.write(out.split(/\r?\n/).map((l) => `     ${l}`).join('\n') + '\n');
   }
+}
+
+// ── 0 · no untracked files: CI judges the index, so must this run ──────────
+// FIRST, and it STOPS the run on failure — see the header's second 2026-09-19
+// block. Every later leg would report on a tree CI never builds.
+step(
+  UNTRACKED_LEG,
+  'CI commits the tree and the index-reading guards (assert-mechanism-claims, gen-start-here --check) count only what `git ls-files` lists. Untracked here means unseen here and seen in CI: PR #819, #824 and #825 went red in CI after a green preflight on 2026-09-19.',
+  () => untrackedLeg(),
+);
+if (IS_MAIN && results.length && results[results.length - 1].code !== 0) {
+  const f = results[results.length - 1];
+  console.log('\n' + '─'.repeat(78));
+  console.log(`\nFAIL  ${f.name}`);
+  console.log(`      WHY THIS LEG EXISTS: ${f.why}`);
+  console.log(f.out.split(/\r?\n/).map((l) => `      ${l}`).join('\n'));
+  console.log('\npreflight: STOPPED at the first leg — no other leg ran, because each would judge a tree CI does not have. Fix the above and re-run.');
+  process.exit(1);
 }
 
 // ── 1 · the guard test suite, THE WHOLE GLOB ────────────────────────────────
@@ -554,8 +645,10 @@ if (IS_MAIN) {
   console.log('\n' + '─'.repeat(78));
   if (failed.length === 0) {
     // --sweep-only proved one leg; it must not borrow the whole run's sentence.
-    console.log(SWEEP_ONLY
-      ? 'preflight --sweep-only: ok — the guard-sweep leg is green. The other legs did not run; this is not "CI should agree".'
+    console.log(UNTRACKED_ONLY
+      ? 'preflight --untracked-only: ok — no untracked file. The other legs did not run; this is not "CI should agree".'
+      : SWEEP_ONLY
+      ? 'preflight --sweep-only: ok — the untracked-files and guard-sweep legs are green. The other legs did not run; this is not "CI should agree".'
       : `preflight: ok — ${results.length} leg(s) green${FAST ? ' (--fast: stamped-app leg skipped)' : ''}. CI should agree.`);
     process.exit(0);
   }

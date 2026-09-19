@@ -225,3 +225,8 @@ apps/*/l10n-untranslated.json
 # packages/design_system/test/chassis_l10n_parity_test.dart.
 packages/design_system/lib/src/l10n/chassis_localizations*.dart
 packages/design_system/chassis-l10n-untranslated.json
+
+# Agent worktrees (git worktree add .worktrees/<lane>). Each is a separate checkout;
+# without this line every one shows as an untracked directory in the main checkout,
+# and preflight's untracked-files leg had to skip it by name (2026-09-19).
+.worktrees/
