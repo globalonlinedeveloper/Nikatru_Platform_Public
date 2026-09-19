@@ -295,6 +295,18 @@
     },
     {
       "customType": "regex",
+      "description": "tooling/versions.json - native_stack_traces (symbolication-proof.yml ground truth)",
+      "matchStrings": [
+        "\"native_stack_traces\":\\s*\"(?<currentValue>[^\"]+)\""
+      ],
+      "depNameTemplate": "native_stack_traces",
+      "datasourceTemplate": "dart",
+      "managerFilePatterns": [
+        "/^tooling\\/versions\\.json$/"
+      ]
+    },
+    {
+      "customType": "regex",
       "description": [
         "tooling/versions.json - gitleaks [pipeline F-2, 14]O-9",
         "ADDED 2026-09-06 in the same change that moved the pin out of ci.yml's `env:` block, so",

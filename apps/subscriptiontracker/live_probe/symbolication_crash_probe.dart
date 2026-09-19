@@ -71,7 +71,13 @@ Future<void> main() async {
     _emit('TRACE-END');
     await client.captureException(error, stackTrace: stackTrace);
   }
-  await client.close();
+  // 🔴 NO client.close() HERE, and runs 35458257697 and 35463786607 are why.
+  // Both printed SENT and NEITHER event ever reached GlitchTip (the project's
+  // newest event on 2026-09-20 was still 2026-09-16). On Android the Dart SDK
+  // hands the envelope to the native SDK, which sends it asynchronously; closing
+  // straight after gives that send only the native shutdown timeout, and what
+  // does not finish is cached for a NEXT launch that never comes. The process
+  // stays up (runApp below) while the workflow polls GlitchTip for the event.
   _emit('SENT $marker');
   runApp(const SizedBox.shrink());
 }
