@@ -9,7 +9,7 @@
 // apex — which since [ADR 075] is the app's PUBLIC ADDRESS and the router that
 // proxies it — is serving last week's bytes.
 //
-// The four properties worth having, each with a failing case below:
+// The five properties worth having, each with a failing case below:
 //
 //   · THE PROJECT SET IS DERIVED. `sites/*` minus `_shared` for the
 //     git-connected half, `catalog/apps.json` slugs for the direct-upload half.
@@ -20,6 +20,10 @@
 //   · `?env=production` IS A REQUEST, AND THE ANSWER IS CHECKED. A preview row
 //     coming back must withhold the verdict, not grade a branch build as the apex.
 //   · EXIT 2 IS NOT EXIT 1, AND IT OUTRANKS IT in the fold.
+//   · IN FLIGHT IS NOT FAILED. A build still running when the slot reads it is
+//     graded by its AGE (created_on vs now): young is ⏳ and the landed build
+//     behind it is graded; past the ceiling is a STUCK build; failure and
+//     canceled stay red. ops-watch run 35422355154 went red on the difference.
 //
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
@@ -36,6 +40,9 @@ import {
   foldVerdicts,
   newestCommitTouching,
   isAncestorOf,
+  classifyStage,
+  IN_FLIGHT_CEILING_MS,
+  DEPLOYMENTS_PER_PAGE,
 } from '../../ops/check-pages-deployments.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -204,9 +211,16 @@ describe('judgeProject — the green control, then each way it goes red', () => 
     assert.match(v.line, /PREVIOUS build/);
   });
 
-  test('a deploy stage still in flight is RED, not green — `success` is the only pass', () => {
-    const v = judgeProject({ ...base, deployments: [deployment({ latest_stage: { name: 'deploy', status: 'active' } })] });
+  test('a CANCELED build is RED, like a failed one — it is terminal and nothing will land', () => {
+    const v = judgeProject({ ...base, deployments: [deployment({ latest_stage: { name: 'build', status: 'canceled' } })] });
     assert.equal(v.code, 1);
+    assert.match(v.line, /stopped at stage `build` with status `canceled`/);
+  });
+
+  test('a FAILED deploy stage is RED — `failure` at the last stage is not "in flight"', () => {
+    const v = judgeProject({ ...base, deployments: [deployment({ latest_stage: { name: 'deploy', status: 'failure' } })] });
+    assert.equal(v.code, 1);
+    assert.match(v.line, /PREVIOUS build/);
   });
 
   test('no production deployment at all is RED', () => {
@@ -262,6 +276,170 @@ describe('judgeProject — the green control, then each way it goes red', () => 
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// IN FLIGHT IS NOT FAILED. ops-watch run 35422355154 (2026-09-19, 04:50:14Z)
+// went RED on `rajasekarselvam` because the build for 77a8495b — created
+// 04:50:13Z, deploy stage `success` at 04:50:41Z — was still RUNNING when the
+// reader looked at ~04:50:34Z. A red ops-watch reddens ci-gate on main. Each
+// case below stands on one side of one branch of that distinction.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('judgeProject — a build IN FLIGHT is graded by its age, not called red', () => {
+  const base = { project: 'rajasekarselvam', kind: 'git', sourceDir: 'sites/rajasekarselvam', expectedCommit: SHA_NEW };
+  const NOW = Date.parse('2026-09-19T04:50:34Z');
+  const YOUNG = '2026-09-19T04:50:13.024253Z'; // 21 s before NOW, the measured case
+  const OLD = '2026-09-19T04:10:00Z'; // 40 min 34 s before NOW, past the 30-min ceiling
+
+  const building = (over = {}) =>
+    deployment({
+      id: 'dep-building',
+      created_on: YOUNG,
+      latest_stage: { name: 'build', status: 'active' },
+      deployment_trigger: { type: 'github:push', metadata: { commit_hash: SHA_NEW } },
+      ...over,
+    });
+  const landed = (over = {}) => deployment({ id: 'dep-landed', created_on: '2026-09-18T23:42:40Z', ...over });
+
+  test('the ceiling is 30 minutes and one read asks for more than one row', () => {
+    assert.equal(IN_FLIGHT_CEILING_MS, 30 * 60 * 1000);
+    assert.ok(DEPLOYMENTS_PER_PAGE > 1, 'with per_page=1 there is no completed row behind an in-flight one to grade');
+    const src = readFileSync(join(REPO, READER_REL), 'utf8');
+    assert.ok(
+      src.includes('per_page=${DEPLOYMENTS_PER_PAGE}'),
+      'readDeployments must ask for DEPLOYMENTS_PER_PAGE rows, not a literal that drifts from the constant',
+    );
+  });
+
+  test('classifyStage — Cloudflare\'s enum, read four ways, and anything else is unknown', () => {
+    assert.equal(classifyStage({ name: 'deploy', status: 'success' }), 'done');
+    assert.equal(classifyStage({ name: 'build', status: 'success' }), 'inflight', 'a passed non-final stage is mid-build');
+    assert.equal(classifyStage({ name: 'deploy', status: 'active' }), 'inflight');
+    assert.equal(classifyStage({ name: 'queued', status: 'idle' }), 'inflight');
+    assert.equal(classifyStage({ name: 'build', status: 'failure' }), 'failed');
+    assert.equal(classifyStage({ name: 'queued', status: 'canceled' }), 'failed');
+    assert.equal(classifyStage({ name: 'deploy', status: 'skipped' }), 'unknown');
+    assert.equal(classifyStage(null), 'unreadable');
+  });
+
+  test('🔴 THE MEASURED RACE — young, in flight, the landed build behind it predates main: exit 0, ⏳', () => {
+    const seen = [];
+    const v = judgeProject({
+      ...base,
+      now: NOW,
+      // the landed row serves the OLD commit; the building row carries SHA_NEW itself.
+      deployments: [building(), landed({ deployment_trigger: { type: 'github:push', metadata: { commit_hash: SHA_OLD } } })],
+      isAncestor: (a, b) => {
+        seen.push([a, b]);
+        return false;
+      },
+    });
+    assert.equal(v.code, 0, 'a build 21 s old that carries the commit main names is the build window, not a missed build');
+    assert.match(v.line, /^⏳ /);
+    assert.match(v.line, /dep-building \(commit bbbbbbb, 21 s old/);
+    assert.match(v.line, /next ops-watch slot grades dep-building/);
+    assert.equal(v.inflight, true);
+    assert.deepEqual(seen, [[SHA_NEW, SHA_OLD]], 'the landed build is asked first, and found behind');
+  });
+
+  test('young, in flight, the landed build behind it is current: exit 0, ⏳, graded on the landed one', () => {
+    const v = judgeProject({ ...base, now: NOW, deployments: [building(), landed()] });
+    assert.equal(v.code, 0);
+    assert.match(v.line, /^⏳ /);
+    assert.match(v.line, /Serving now: .*dep-landed succeeded at stage `deploy`/);
+  });
+
+  test('RED CONTROL — young, in flight, but NEITHER the landed nor the building commit carries main: exit 1', () => {
+    const SHA_OTHER = 'd'.repeat(40);
+    const v = judgeProject({
+      ...base,
+      now: NOW,
+      deployments: [
+        building({ deployment_trigger: { type: 'github:push', metadata: { commit_hash: SHA_OTHER } } }),
+        landed({ deployment_trigger: { type: 'github:push', metadata: { commit_hash: SHA_OLD } } }),
+      ],
+      isAncestor: () => false,
+    });
+    assert.equal(v.code, 1, 'a running build that does not carry the commit either cannot excuse the missing one');
+    assert.match(v.line, /does not carry it either/);
+  });
+
+  test('young, in flight, the building commit\'s ancestry cannot be read: exit 2', () => {
+    const SHA_OTHER = 'd'.repeat(40);
+    const v = judgeProject({
+      ...base,
+      now: NOW,
+      deployments: [
+        building({ deployment_trigger: { type: 'github:push', metadata: { commit_hash: SHA_OTHER } } }),
+        landed({ deployment_trigger: { type: 'github:push', metadata: { commit_hash: SHA_OLD } } }),
+      ],
+      isAncestor: (a, b) => (b === SHA_OLD ? false : null),
+    });
+    assert.equal(v.code, 2);
+  });
+
+  test('🔴 RED CONTROL — in flight PAST the ceiling is a STUCK build: exit 1', () => {
+    const v = judgeProject({ ...base, now: NOW, deployments: [building({ created_on: OLD }), landed()] });
+    assert.equal(v.code, 1, 'a build running for 40 minutes on a project that builds in under one is not going to land');
+    assert.match(v.line, /STUCK BUILD/);
+    assert.match(v.line, /30-minute ceiling/);
+  });
+
+  test('the ceiling is injectable, and the boundary is strict — AT the ceiling is still young', () => {
+    const at = judgeProject({ ...base, now: NOW, ceilingMs: 21_000, deployments: [building({ created_on: '2026-09-19T04:50:13Z' }), landed()] });
+    assert.equal(at.code, 0);
+    const past = judgeProject({ ...base, now: NOW, ceilingMs: 20_999, deployments: [building({ created_on: '2026-09-19T04:50:13Z' }), landed()] });
+    assert.equal(past.code, 1);
+  });
+
+  test('🔴 an in-flight build with an UNPARSEABLE created_on is exit 2 — its age is the whole question', () => {
+    for (const created_on of ['not a date', undefined, null, 1726721413]) {
+      const v = judgeProject({ ...base, now: NOW, deployments: [building({ created_on }), landed()] });
+      assert.equal(v.code, 2, `created_on ${JSON.stringify(created_on)} must not be read as young OR as stuck`);
+      assert.match(v.line, /does not parse/);
+    }
+  });
+
+  test('🔴 RED CONTROL — in flight, but the newest COMPLETED deployment behind it FAILED: exit 1', () => {
+    const v = judgeProject({
+      ...base,
+      now: NOW,
+      deployments: [building(), landed({ id: 'dep-failed', latest_stage: { name: 'build', status: 'failure' } })],
+    });
+    assert.equal(v.code, 1, 'a new build starting does not excuse the one that failed');
+    assert.match(v.line, /newest COMPLETED production deployment dep-failed stopped at stage `build` with status `failure`/);
+  });
+
+  test('in flight with only more in-flight rows behind it — no landed build to grade: exit 2', () => {
+    const v = judgeProject({ ...base, now: NOW, deployments: [building(), building({ id: 'dep-building-2' })] });
+    assert.equal(v.code, 2);
+    assert.match(v.line, /none of the 1 older production row/);
+  });
+
+  test('the landed row BEHIND an in-flight one is found past other in-flight rows', () => {
+    const v = judgeProject({ ...base, now: NOW, deployments: [building(), building({ id: 'dep-building-2' }), landed()] });
+    assert.equal(v.code, 0);
+    assert.match(v.line, /dep-landed/);
+  });
+
+  test('a stage status outside the enum is exit 2, neither red nor a pass', () => {
+    const v = judgeProject({ ...base, now: NOW, deployments: [deployment({ latest_stage: { name: 'deploy', status: 'skipped' } })] });
+    assert.equal(v.code, 2);
+    assert.match(v.line, /outside Cloudflare's published enum/);
+  });
+
+  test('a direct-upload project in flight grades its landed build and stays ungraded on commit', () => {
+    const v = judgeProject({
+      project: 'subscriptiontracker',
+      kind: 'direct',
+      sourceDir: 'apps/subscriptiontracker',
+      expectedCommit: null,
+      now: NOW,
+      deployments: [building({ deployment_trigger: { type: 'ad_hoc', metadata: {} } }), landed({ deployment_trigger: { type: 'ad_hoc', metadata: {} } })],
+    });
+    assert.equal(v.code, 0);
+    assert.match(v.line, /^⏳ .*UNGRADED/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 describe('foldVerdicts — 2 outranks 1, because an unjudged half could hold anything', () => {
   const meta = { projectsSwept: 2, ungraded: 0 };
 
@@ -278,6 +456,12 @@ describe('foldVerdicts — 2 outranks 1, because an unjudged half could hold any
     assert.equal(v.code, 2);
     assert.equal(v.reds, 1);
     assert.equal(v.unknowns, 1);
+  });
+
+  test('an in-flight green is counted, so the summary line cannot claim every build landed', () => {
+    const v = foldVerdicts([{ code: 0, line: 'a' }, { code: 0, inflight: true, line: 'b' }], meta);
+    assert.equal(v.code, 0);
+    assert.equal(v.inflight, 1);
   });
 });
 
