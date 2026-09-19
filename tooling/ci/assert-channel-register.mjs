@@ -1577,9 +1577,9 @@ if (agg === null || typeof agg !== 'object' || typeof agg.workflow !== 'string' 
 //
 // DECLARED EXEMPTIONS, graded in BOTH directions: an entry whose job has no
 // unstamped release build is a stale excuse and FAILS.
-// LANE-BOUND: symbolication-proof.yml — ONLY as one declared exemption from limb 6b-ii,
-// not as the subject set: every workflow's release builds are derived by parseAllWorkflows,
-// and this entry names the one job whose apk is a crash probe that never ships.
+// LANE-BOUND: symbolication-proof.yml — named ONLY as one declared 6b-ii exemption (a crash-probe apk that never ships), never as the subject set
+// Every workflow's release builds are derived by parseAllWorkflows; this entry is the one
+// job whose apk is thrown away with the runner.
 {
   /** @type {{workflow: string, job: string, why: string}[]} */
   const RELEASE_CHANNEL_EXEMPT = [
