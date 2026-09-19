@@ -137,7 +137,16 @@ jobs:
       # why: a plain script over the runner's preinstalled Android SDK, not
       # reactivecircus/android-emulator-runner: the repository allows only
       # `selected` actions and that one is not on the list. Every wait has a
-      # `timeout` ceiling; the emulator is killed in the last step.
+      # ceiling and every failure prints WHY (the emulator's own log tail).
+      #
+      # 🔴 ANDROID_AVD_HOME IS PINNED, AND THAT IS THE FIX FOR RUN 35451496350.
+      # avdmanager wrote the AVD in one place and the emulator looked in another:
+      # the kept emulator.log read "Unknown AVD name [probe] ... there is no file
+      # probe.ini in $HOME/.android/avd", the emulator exited at once, and
+      # `timeout 300 adb wait-for-device` then waited on a device that no longer
+      # existed and died 124 with nothing printed. Both tools honour
+      # ANDROID_AVD_HOME, so it is set once for both, and the AVD is listed back
+      # from the emulator's side before anything waits on it.
       - name: Boot an emulator, run the probe, capture logcat
         env:
           API_LEVEL: '34'
@@ -146,23 +155,62 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+          if [ ! -r /dev/kvm ] || [ ! -w /dev/kvm ]; then
+            ls -l /dev/kvm || true
+            echo "::error title=Emulator::/dev/kvm is not usable by this user; an x86_64 emulator without KVM does not boot inside the ceiling"
+            exit 1
+          fi
           sdk="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          export ANDROID_AVD_HOME="${RUNNER_TEMP}/avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          emu_log="${RUNNER_TEMP}/emulator.log"
           image="system-images;android-${API_LEVEL};google_apis;x86_64"
+          why() {
+            echo "::error title=Emulator::$1"
+            echo "── emulator.log (tail) ──"
+            tail -n 60 "$emu_log" 2>/dev/null || echo "(no emulator.log)"
+            echo "── AVDs the emulator can see ──"
+            "$sdk/emulator/emulator" -list-avds 2>&1 || true
+            exit 1
+          }
           yes | "$sdk/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
           timeout 600 "$sdk/cmdline-tools/latest/bin/sdkmanager" --install emulator platform-tools "$image" > /dev/null
           echo no | "$sdk/cmdline-tools/latest/bin/avdmanager" create avd --force -n probe -k "$image" --device pixel_6
+          if ! "$sdk/emulator/emulator" -list-avds | grep -qx probe; then
+            ls -la "$ANDROID_AVD_HOME" "$HOME/.android/avd" "${XDG_CONFIG_HOME:-$HOME/.config}/.android/avd" 2>&1 || true
+            why "avdmanager created no AVD the emulator can see in ANDROID_AVD_HOME=${ANDROID_AVD_HOME}"
+          fi
           nohup "$sdk/emulator/emulator" -avd probe -no-window -no-audio -no-boot-anim -no-snapshot \
-            -gpu swiftshader_indirect > "${RUNNER_TEMP}/emulator.log" 2>&1 &
+            -gpu swiftshader_indirect -accel on > "$emu_log" 2>&1 &
+          emu_pid=$!
           adb="$sdk/platform-tools/adb"
-          timeout 300 "$adb" wait-for-device
-          deadline=$((SECONDS + 300))
-          until [ "$("$adb" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; do
+          "$adb" start-server
+          # One loop for both phases (device visible, then boot_completed), 420 s in
+          # all, polling every 5 s, a progress line every 30 s, and the emulator's
+          # PID checked on every pass so a dead emulator is named at once.
+          deadline=$((SECONDS + 420))
+          next_note=$((SECONDS + 30))
+          phase="waiting for the device to appear"
+          while :; do
+            if ! kill -0 "$emu_pid" 2>/dev/null; then
+              why "the emulator process exited during: ${phase}"
+            fi
+            state="$("$adb" get-state 2>/dev/null | tr -d '\r' || true)"
+            if [ "$state" = "device" ]; then
+              phase="waiting for sys.boot_completed"
+              booted="$("$adb" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
+              [ "$booted" = "1" ] && break
+            fi
             if [ "$SECONDS" -gt "$deadline" ]; then
-              echo "::error title=Emulator::did not finish booting within 300s"
-              exit 1
+              why "not booted within 420 s (last phase: ${phase}; adb state: ${state:-none})"
+            fi
+            if [ "$SECONDS" -ge "$next_note" ]; then
+              echo "… ${SECONDS}s: ${phase} (adb state: ${state:-none})"
+              next_note=$((SECONDS + 30))
             fi
             sleep 5
           done
+          echo "emulator booted at ${SECONDS}s"
           timeout 120 "$adb" install -r apps/subscriptiontracker/build/app/outputs/flutter-apk/app-release.apk
           "$adb" logcat -c
           timeout 120 "$adb" shell am start -W -n com.nikatru.subscriptiontracker/.MainActivity

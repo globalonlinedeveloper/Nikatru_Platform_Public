@@ -257,4 +257,18 @@ describe('the real tree', () => {
     assert.match(wf.lines.map((l) => l.text).join('\n'), /PROBE_SOURCE: live_probe\/symbolication_crash_probe\.dart/);
     assert.match(text, /tooling\/ops\/symbolication-proof\.mjs verdict/);
   });
+  // Run 35451496350: avdmanager and the emulator disagreed on where AVDs live,
+  // the emulator exited ("Unknown AVD name [probe]"), and a bare
+  // `timeout 300 adb wait-for-device` died 124 printing nothing.
+  test('the boot step pins ANDROID_AVD_HOME for BOTH tools and never waits blind', () => {
+    const raw = readFileSync(join(ROOT, WORKFLOW), 'utf8');
+    const step = raw.slice(raw.indexOf('- name: Boot an emulator'), raw.indexOf('- name: Ground truth'));
+    const home = step.indexOf('export ANDROID_AVD_HOME=');
+    assert.ok(home > 0, 'ANDROID_AVD_HOME is not exported in the boot step');
+    assert.ok(home < step.indexOf('avdmanager" create avd'), 'ANDROID_AVD_HOME must be set BEFORE avdmanager runs');
+    assert.match(step, /emulator" -list-avds \| grep -qx probe/, 'the AVD is not listed back from the emulator side');
+    assert.match(step, /kill -0 "\$emu_pid"/, 'a dead emulator is not detected in the wait loop');
+    assert.match(step, /tail -n \d+ "\$emu_log"/, 'a failure does not print the emulator log');
+    assert.doesNotMatch(step, /^\s*timeout \d+ "\$adb" wait-for-device/m, 'a bare wait-for-device timeout says nothing on failure');
+  });
 });
