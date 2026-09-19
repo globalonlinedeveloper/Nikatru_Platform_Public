@@ -16,9 +16,23 @@ Row `O-GLITCHTIP-FLUTTER-SYMBOLICATION-UNPROVEN`. Dispatch-only. Script:
    allows `selected` actions only), runs the probe, and captures logcat. The probe initialises the
    real `TelemetryBootstrap`, throws at the line marked `SYMBOLICATION-PROBE-THROW-SITE`, reports it,
    and prints the raw non-symbolic trace between `SYMPROBE|` sentinels.
-4. **Ground truth:** `flutter symbolize` of that raw trace against the build's own `.symbols` file.
+4. **Ground truth:** `native_stack_traces`' `decode translate` over that raw trace against the
+   build's own `.symbols` file (version: `tooling/versions.json` `native_stack_traces`). NOT
+   `flutter symbolize`: Flutter 3.47.4's tool pins native_stack_traces 0.6.1, which cannot read the
+   single-text-section snapshot (`_kDartSnapshotText`, `vm_dso_base: 0`) its own engine writes
+   (run 35463786607: "Cannot locate isolate instructions section in snapshot").
 5. **Sink:** the GlitchTip event carrying this run's marker, read back through the API; the frame at
-   the throw's address is compared with the marked line.
+   the throw's address is compared with the marked line. This step runs even when step 4 failed
+   (`always()`, once the marker was extracted): a sink MISMATCH exits 1, and a sink MATCH with no
+   ground truth exits 2, never 0.
+
+## Run history
+
+| run | outcome | cause, from the kept evidence |
+|---|---|---|
+| 35451496350 | boot timed out (124) | `emulator.log`: `Unknown AVD name [probe]` — avdmanager and the emulator used different AVD homes. Fixed by pinning `ANDROID_AVD_HOME`. |
+| 35458257697 | no BEGIN line | sentry_flutter's `DebugPrintIntegration` replaces `debugPrint` with a breadcrumb sink in release builds. Fixed by printing through `Zone.root.print`. |
+| 35463786607 | ground truth exit 1; no event in GlitchTip | `flutter symbolize` too old for the 3.47.4 snapshot (above). The trace's `build_id` `bf7ded9a01540a5738031d8d50b5dd60` equals the kept `app.android-x64.symbols` note, arch x64 on both; the 0.7.0 decoder, run offline on the kept files, gives `probeThrowSite (…/symbolication_crash_probe.dart:36:3)` — the marked line. Separately, neither this run's event nor the previous one ever reached GlitchTip: the probe called `close()` right after `captureException`, cutting off the native SDK's asynchronous send. The probe no longer closes. |
 
 Exit 0: both match. Exit 1: a mismatch (the finding). Exit 2: coverage lost (no trace, no event, no
 token). Evidence is uploaded as `symbolication-proof-evidence` either way.
@@ -47,7 +61,9 @@ wrongly yet; none has been checked either.
 ## When to dispatch it
 
 After every GlitchTip upgrade and every `sentry_flutter` bump. Until the sink half is green, triage a
-native Flutter crash from the kept `symbols-*` artefact with `flutter symbolize`, not from the
+native Flutter crash from the kept `symbols-*` artefact with
+`dart pub global run native_stack_traces:decode translate -d <app.android-*.symbols> -i <trace>`
+(the pinned version; `flutter symbolize` on Flutter 3.47.4 cannot read the trace), not from the
 GlitchTip frame. Step 4 of this workflow proves that path on every run.
 
 ```

@@ -36,6 +36,7 @@ import {
   firstIsolateAddr,
   parseSymbolized,
   sameSite,
+  verdictExit,
 } from '../../ops/symbolication-proof.mjs';
 import { parseWorkflow, workflowEvents } from '../workflow-scan.mjs';
 
@@ -149,6 +150,48 @@ describe('extractTrace — only this run\'s trace, verbatim, and only an AOT one
   });
 });
 
+// Run 35463786607, verbatim: the layout the Flutter 3.47.4 engine writes. One
+// text section (`_kDartSnapshotText`), `vm_dso_base: 0`. The decoded lines are
+// what native_stack_traces 0.7.0 `decode translate` printed for this exact
+// trace against that run's kept app.android-x64.symbols (build_id equal).
+const RUN_35463786607_TRACE = [
+  '*** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***',
+  'pid: 2721, tid: 140221772285176, name 1.ui',
+  'os: android arch: x64 comp: yes sim: no',
+  "build_id: 'bf7ded9a01540a5738031d8d50b5dd60'",
+  'isolate_dso_base: 7f84ce759000, vm_dso_base: 0',
+  'isolate_instructions: 7f84ce809000, vm_instructions: 0',
+  '    #00 abs 00007f84ce976c3e virt 000000000021dc3e _kDartSnapshotText+0x16dc3e',
+  '    #01 abs 00007f84ce9bc44b virt 000000000026344b _kDartSnapshotText+0x1b344b',
+  '<asynchronous suspension>',
+].join('\n');
+const RUN_35463786607_DECODED = [
+  '#0      probeThrowSite (/home/runner/work/Nikatru_Platform_Public/Nikatru_Platform_Public/apps/subscriptiontracker/live_probe/symbolication_crash_probe.dart:36:3)',
+  '#1      main (/home/runner/work/Nikatru_Platform_Public/Nikatru_Platform_Public/apps/subscriptiontracker/live_probe/symbolication_crash_probe.dart:65:5)',
+  '<asynchronous suspension>',
+].join('\n');
+
+describe('the single-text-section snapshot layout (Flutter 3.47.4, run 35463786607)', () => {
+  test('the throw address is found in a `_kDartSnapshotText` frame', () => {
+    assert.equal(firstIsolateAddr(RUN_35463786607_TRACE), 0x7f84ce976c3en);
+  });
+  test('the decoder\'s absolute-path output parses to the throw site', () => {
+    const f = parseSymbolized(RUN_35463786607_DECODED);
+    assert.deepEqual({ function: f[0].function, line: f[0].line }, { function: 'probeThrowSite', line: 36 });
+    assert.equal(sameSite({ ...EXPECTED, line: 36 }, f[0]).ok, true);
+  });
+  test('a symbol that is neither app layout is not an app frame', () => {
+    assert.equal(firstIsolateAddr('    #00 abs 00007f84ce976c3e virt 0 _kDartSnapshotData+0x10'), null);
+  });
+});
+
+describe('verdictExit — the sink is always reported, and an unavailable half is never a pass', () => {
+  test('both MATCH is the only 0', () => assert.equal(verdictExit(true, true), 0));
+  test('a sink MISMATCH is 1 even with no ground truth', () => assert.equal(verdictExit(null, false), 1));
+  test('a ground-truth MISMATCH is 1', () => assert.equal(verdictExit(false, true), 1));
+  test('a sink MATCH with no ground truth is 2, not 0', () => assert.equal(verdictExit(null, true), 2));
+});
+
 describe('the raw trace and the symbolized output', () => {
   test('the throw address is the first ISOLATE frame, not a VM stub', () => {
     assert.equal(firstIsolateAddr(RAW_TRACE.join('\n')), 0x7a1c2e7826d7n);
@@ -256,6 +299,33 @@ describe('the real tree', () => {
     assert.match(text, /-t "\$PROBE_SOURCE"/);
     assert.match(wf.lines.map((l) => l.text).join('\n'), /PROBE_SOURCE: live_probe\/symbolication_crash_probe\.dart/);
     assert.match(text, /tooling\/ops\/symbolication-proof\.mjs verdict/);
+  });
+  // Run 35463786607: `flutter symbolize` (native_stack_traces 0.6.1 inside the
+  // 3.47.4 tool) could not read the 3.47.4 engine's snapshot layout.
+  test('ground truth decodes with the pinned native_stack_traces, not `flutter symbolize`', () => {
+    const raw = readFileSync(join(ROOT, WORKFLOW), 'utf8');
+    const code = raw.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+    assert.doesNotMatch(code, /flutter symbolize/);
+    assert.match(code, /require\('\.\.\/\.\.\/tooling\/versions\.json'\)\.native_stack_traces/);
+    assert.match(code, /dart pub global activate native_stack_traces "\$nst"/);
+    assert.match(code, /native_stack_traces:decode translate/);
+    const pin = JSON.parse(readFileSync(join(ROOT, 'tooling', 'versions.json'), 'utf8')).native_stack_traces;
+    assert.match(String(pin), /^\d+\.\d+\.\d+$/, 'tooling/versions.json native_stack_traces must be an exact version');
+  });
+  test('the verdict runs even when the ground truth failed, once a marker exists', () => {
+    const wf = parseWorkflow(ROOT, WORKFLOW);
+    const text = wf.lines.map((l) => l.text).join('\n');
+    const at = text.indexOf('- name: Verdict');
+    assert.ok(at > 0);
+    const block = text.slice(at, text.indexOf('- name:', at + 10));
+    assert.match(block, /if: \$\{\{ always\(\) && steps\.extract\.outcome == 'success' \}\}/);
+    assert.match(text, /id: extract/);
+  });
+  // Runs 35458257697 and 35463786607: SENT printed, no event ever arrived.
+  test('the probe never closes the SDK after capturing (it cut off the native send)', () => {
+    const src = readFileSync(join(ROOT, PROBE), 'utf8').split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+    assert.match(src, /captureException\(/);
+    assert.doesNotMatch(src, /\.close\(\)/);
   });
   // Run 35458257697: only "SYMPROBE|SENT" reached logcat. sentry_flutter 9.26.0's
   // DebugPrintIntegration replaces `debugPrint` with a breadcrumb-only sink in
