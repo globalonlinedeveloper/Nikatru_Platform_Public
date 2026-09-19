@@ -79,7 +79,22 @@
 // it is NOT gitignored (measured 2026-09-19: the main checkout lists each
 // worktree as an untracked directory) and holds other checkouts, not this one.
 //
-// Usage:  node tooling/scripts/preflight.mjs [--fast] [--sweep-only] [--untracked-only] [--base <ref>]
+// 🔴 2026-09-19, A THIRD TIME — "ONE HEAVY RUN AT A TIME" WAS A SENTENCE. Every
+// helper brief said: check the backup task is not Running and no other preflight
+// is running, then start. Check-then-start is not atomic: at 21:11-21:12 three
+// lanes each checked, saw nothing, and started the full suite and this script at
+// once, and each took ~1 h instead of ~25 min. Earlier that day the same kind of
+// fan-out CPU-starved the offsite backup until it was killed at its 2 h limit,
+// missed its heartbeat, and turned ops-watch and main CI red. So once the
+// untracked leg is green (it is one `git ls-files`, and stays lock-free, as does
+// --untracked-only), this script takes the machine-wide heavy-run lock
+// (tooling/scripts/heavy-lock.mjs: an O_EXCL lock file, stale-pid and age
+// reclaim, released on exit) and then waits while the 'NIKATRU daily backup'
+// task is Running — both inside one --lock-wait ceiling, past which it exits 2
+// naming the holder. With CI set, both are skipped: a hosted runner has neither.
+// Anything else heavy runs under the same lock through tooling/scripts/heavy.mjs.
+//
+// Usage:  node tooling/scripts/preflight.mjs [--fast] [--sweep-only] [--untracked-only] [--base <ref>] [--lock-wait <min>]
 //         --fast skips the stamped-app leg (mason + flutter analyze), which is
 //         the slow one, for iterating on a guard-only change.
 //         --sweep-only runs the untracked-files leg, then the guard-sweep leg
@@ -88,8 +103,11 @@
 //         --untracked-only runs the untracked-files leg alone.
 //         --base <ref> compares the sweep's reds against merge-base(HEAD, <ref>)
 //         instead of origin/main. No fetch happens: the local ref is used as is.
+//         --lock-wait <min> is the ceiling on waiting for the heavy-run lock and
+//         the backup task together (default 90).
 // Exit:   0 = safe to push · 1 = CI would have failed, here is what
-//         2 = a usage error
+//         2 = a usage error, or COVERAGE LOST: the heavy-run lock or the backup
+//             did not free up within --lock-wait, and no heavy leg ran
 // ─────────────────────────────────────────────────────────────────────────────
 import { spawnSync } from 'node:child_process';
 import { existsSync, rmSync, readFileSync, mkdtempSync } from 'node:fs';
@@ -118,6 +136,18 @@ const BASE_REF = (() => {
   if (!IS_MAIN) return 'origin/main';
   if (v === undefined || v.startsWith('-')) {
     console.error('✗ --base needs a git ref after it (got ' + (v === undefined ? 'nothing' : `\`${v}\``) + ').');
+    process.exit(2);
+  }
+  return v;
+})();
+/** Minutes to wait for the heavy-run lock and the backup, together. Read only
+ *  when run directly, like --base; an import never parses the argv. */
+const LOCK_WAIT_MIN = (() => {
+  const i = process.argv.indexOf('--lock-wait');
+  if (i === -1 || !IS_MAIN) return undefined;
+  const v = Number(process.argv[i + 1]);
+  if (!Number.isFinite(v) || v < 0) {
+    console.error(`✗ --lock-wait needs a number of minutes after it (got ${process.argv[i + 1] === undefined ? 'nothing' : `\`${process.argv[i + 1]}\``}).`);
     process.exit(2);
   }
   return v;
@@ -422,6 +452,23 @@ if (IS_MAIN && results.length && results[results.length - 1].code !== 0) {
   console.log(f.out.split(/\r?\n/).map((l) => `      ${l}`).join('\n'));
   console.log('\npreflight: STOPPED at the first leg — no other leg ran, because each would judge a tree CI does not have. Fix the above and re-run.');
   process.exit(1);
+}
+
+// ── the machine: one heavy run at a time, and the backup first (header) ─────
+// After the cheap untracked leg, before the first heavy one. Imported lazily so
+// --untracked-only and an import for the exports never load it.
+if (IS_MAIN && !UNTRACKED_ONLY) {
+  const { machineFree, releaseOnExit } = await import('./heavy-lock.mjs');
+  const free = machineFree({
+    ...(LOCK_WAIT_MIN === undefined ? {} : { waitMin: LOCK_WAIT_MIN }),
+    argv: ['preflight.mjs', ...process.argv.slice(2)],
+  });
+  if (!free.ok) {
+    console.log(`\n${free.message}`);
+    console.log('preflight: STOPPED before the first heavy leg — exit 2, COVERAGE LOST: nothing was judged.');
+    process.exit(2);
+  }
+  releaseOnExit(free.lock, (code) => process.exit(code));
 }
 
 // ── 1 · the guard test suite, THE WHOLE GLOB ────────────────────────────────
