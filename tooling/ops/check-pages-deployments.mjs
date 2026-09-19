@@ -55,8 +55,9 @@
 //     the line says ⏳ and names the build the next slot will grade. Past the
 //     ceiling it is RED as a STUCK build.
 //
-//   · `deployment_trigger.metadata.commit_hash`, for GIT-CONNECTED projects
-//     only, against the newest commit on `main` that touched the project's
+//   · `deployment_trigger.metadata.commit_hash` (for GIT-CONNECTED projects,
+//     and since 2026-09-19 for DIRECT-UPLOAD rows that carry one — below)
+//     against the newest commit on `main` that touched the project's
 //     source directory. The test is CONTAINMENT, not equality: the served
 //     commit passes if it IS that commit or is a DESCENDANT of it. BEHIND —
 //     a served commit that does not carry it — means the build for that commit
@@ -81,24 +82,60 @@
 //   withheld (exit 2), the same reason classifyRunHistoryAnswer in
 //   assert-ops-register.mjs re-reads `head_branch` off the response.
 //
-//   ⚠️ DIRECT-UPLOAD PROJECTS CARRY NO COMMIT. `wrangler pages deploy` produces
-//   `deployment_trigger.type: "ad_hoc"` with no `metadata.commit_hash`, so
-//   asserting a hash there would fail for the wrong reason on a good deploy and
-//   be "fixed" by deleting the assertion. Their stage is graded; their commit
-//   limb is declared UNGRADED and counted, so the number of ungraded projects is
-//   printed rather than hidden. Their commit witness is `record-deployment.mjs`,
-//   which is a different rail, read by tooling/ops/check-prod-provenance.mjs (pipeline B-17).
+//   ⚠️ DIRECT-UPLOAD PROJECTS CARRY NO COMMIT — the sentence this paragraph read
+//   until 2026-09-19, kept here because it is what the code did: `wrangler pages
+//   deploy` produces `deployment_trigger.type: "ad_hoc"` with no
+//   `metadata.commit_hash`, so the commit limb was declared UNGRADED.
+//
+//   🔴 THAT PREMISE WAS FALSE, AND ONE OF THREE PROJECTS HAD ITS FRESHNESS LIMB
+//   OFF BECAUSE OF IT. Measured 2026-09-19 (row O-PAGES-DIRECT-UPLOAD-COMMIT-
+//   UNGRADED): all ten newest production rows of `subscriptiontracker` are
+//   `ad_hoc` AND carry `metadata.commit_hash`, `branch: main`, `commit_dirty:
+//   true` — 0b3409b5 serves ac22b935 (#819), 5b862e8b serves 30b4ef06 (#810).
+//   deploy-web.yml passes no `--commit-hash`: wrangler reads HEAD of the
+//   Actions checkout itself (dirty because `build/` is in the tree), so the
+//   hash is the SHA the deploy-web run was triggered for. Each of those ten
+//   equals the `head_sha` of the successful deploy-web run that published it —
+//   nine `push` runs (35430092698 → ac22b935 … 35089676466 → 9698fdce) and one
+//   `workflow_dispatch` re-run (35081373399 → 9b3b7b0b, after push run
+//   35079844913 for the same SHA failed).
+//
+//   So the limb is now GRADED for a direct-upload row that carries a hash, with
+//   the same CONTAINMENT test as a git-connected one, against the newest commit
+//   on `main` that `deploy-web.yml` itself would deploy for: its own
+//   `on.push.paths` filter, PARSED from the workflow (deployLaneInputs), never a
+//   hand list — `apps/<slug>` alone is too narrow (a `packages/**` or
+//   `pubspec.lock` change redeploys every app) and any list here would rot away
+//   from the workflow's. It is UNGRADED, and counted, only for a row that truly
+//   carries no hash.
+//
+//   🔴 THE DEPLOY LANE IS THE IN-FLIGHT WINDOW, AND CLOUDFLARE CANNOT SEE IT.
+//   A direct upload has no `active` row while it builds: the row appears only
+//   when wrangler uploads, ~9 minutes after the merge (deploy-web run created
+//   07:43:18Z, Cloudflare row 07:51:53Z on 2026-09-19). A served commit that
+//   does not carry the expected one is therefore ⏳ (exit 0) while the expected
+//   commit's committer time is younger than the DEPLOY-LANE CEILING, and RED
+//   past it. The ceiling is DERIVED from deploy-web.yml too: every job's
+//   `timeout-minutes`, summed, times DEPLOY_LANE_RUNS (2) — the workflow's
+//   concurrency group on `main` does not cancel in progress, so the run for the
+//   newest commit can wait behind one full run before starting its own. A job
+//   with no `timeout-minutes` (GitHub's default is 360) is exit 2, not a guess.
+//   `record-deployment.mjs` / check-prod-provenance.mjs (pipeline B-17) remain
+//   the second, independent commit witness.
 //
 // ── THREE-VALUED, AND 2 IS NOT A PASS ───────────────────────────────────────
 //   0  every derived project's newest production deployment succeeded, and every
-//      git-connected one is at the commit `main` says it should be.
+//      one carrying a commit_hash is at the commit `main` says it should be (a
+//      direct upload may also be ⏳ inside the deploy-lane ceiling).
 //      A newest build still IN FLIGHT and younger than the ceiling is also 0,
 //      printed ⏳, when the completed deployment behind it passes (or, for the
 //      commit limb only, when the building one carries the commit `main` names).
 //   1  a project is stale or red — its newest production build failed or was
 //      canceled, has been in flight past the ceiling, or the commit it serves
-//      does not CARRY the newest `main` commit for its source.
+//      does not CARRY the newest `main` commit for its source (for a direct
+//      upload: past the deploy-lane ceiling).
 //   2  COULD NOT LOOK — no credential, a non-200, unparseable JSON, an
+//      unreadable deploy-web.yml filter or job timeout, an
 //      `environment` that came back something other than `production`, a stage
 //      status outside Cloudflare's enum, an in-flight build whose `created_on`
 //      does not parse (its age is the whole question), no COMPLETED deployment
@@ -117,6 +154,8 @@ import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { parseTriggerPaths } from '../ci/assert-deploy-triggers-deploy.mjs';
+import { parseWorkflow } from '../ci/workflow-scan.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -192,12 +231,102 @@ export function derivePagesProjects(root) {
           problems.push(`catalog/apps.json holds a row with no \`slug\`: ${JSON.stringify(r)}`);
           continue;
         }
-        projects.push({ project: r.slug, kind: 'direct', sourceDir: `apps/${r.slug}` });
+        projects.push({ project: r.slug, kind: 'direct', sourceDir: DEPLOY_WEB_FILTER_LABEL });
       }
     }
   }
 
   return { projects, problems };
+}
+
+/** The workflow that direct-uploads every catalogue app. Named once: its
+ *  `on.push.paths` IS the source set of a direct-upload project, and its job
+ *  timeouts ARE the window in which a newer commit may not be served yet. */
+export const DEPLOY_WEB_REL = '.github/workflows/deploy-web.yml';
+const DEPLOY_WEB_FILTER_LABEL = `${DEPLOY_WEB_REL} on.push.paths`;
+
+/** How many full deploy-web runs the newest commit can wait through before it
+ *  is served: its own, plus ONE in progress ahead of it. deploy-web.yml's
+ *  concurrency group has `cancel-in-progress: false` on main, and GitHub keeps
+ *  at most one PENDING run per group (a newer pending run replaces it), so no
+ *  commit ever waits behind more than one running build. */
+export const DEPLOY_LANE_RUNS = 2;
+
+/** PURE. One GitHub `paths` glob as a git pathspec with the SAME meaning, or
+ *  null when this reader cannot be sure it means the same thing. The shapes
+ *  are the three `globClaims` in assert-deploy-triggers-deploy.mjs answers
+ *  exactly — `X/**` (the tree), `X/*` / `X/*.ext` (files directly in X) and a
+ *  literal path. Anything else — a `!` negation, `+`, `?`, a bracket, a `**`
+ *  mid-pattern — is null, which the caller turns into exit 2: a pathspec that
+ *  silently means something narrower is a freshness limb that silently grades
+ *  against an OLDER commit. */
+export function toPathspec(glob) {
+  if (typeof glob !== 'string' || glob === '') return null;
+  const tree = /^([^*?[\]!+]+)\/\*\*$/.exec(glob);
+  if (tree) return `:(literal)${tree[1]}`;
+  const files = /^([^*?[\]!+]+)\/\*(\.[A-Za-z0-9.]+)?$/.exec(glob);
+  if (files) return `:(glob)${files[1]}/*${files[2] ?? ''}`;
+  if (!/[*?[\]!+]/.test(glob)) return `:(literal)${glob}`;
+  return null;
+}
+
+/** Every job's `timeout-minutes`, read off ONE parse of the workflow —
+ *  `parseWorkflow` in tooling/ci/workflow-scan.mjs, whose job map already
+ *  knows where a job starts and ends and has comments blanked — as
+ *  `{ minutes: {job: n}, problems }`. A job without one runs for GitHub's
+ *  default 360 minutes, which is not a ceiling anyone chose: a problem, not a
+ *  number. Job keys sit at exactly four spaces (steps at six and deeper), so a
+ *  STEP's `timeout-minutes` is never mistaken for the job's. */
+export function jobTimeouts(parsed) {
+  const minutes = {};
+  const problems = [];
+  if (!parsed || !(parsed.jobs instanceof Map)) return { minutes, problems: ['the workflow did not parse'] };
+  if (parsed.jobs.size === 0) problems.push('the `jobs:` block holds no job');
+  for (const [name, job] of parsed.jobs) {
+    minutes[name] = null;
+    for (const l of job.lines) {
+      const t = /^ {4}timeout-minutes:\s*(\d+)\s*$/.exec(l.text);
+      if (t) minutes[name] = Number(t[1]);
+    }
+    if (!Number.isInteger(minutes[name]) || minutes[name] <= 0) {
+      problems.push(`job \`${name}\` declares no job-level \`timeout-minutes\` (GitHub's default is 360), so the lane has no chosen ceiling`);
+    }
+  }
+  return { minutes, problems };
+}
+
+/** What a direct-upload project's commit limb is graded against, read from
+ *  deploy-web.yml itself: `{ pathspecs, ceilingMs, problems }`. A non-empty
+ *  `problems` is exit 2 for every direct-upload project — never a pass, and
+ *  never a fallback to `apps/<slug>`, which is narrower than what the lane
+ *  deploys for and would grade against an OLDER commit. The workflow is read
+ *  ONCE, through workflow-scan.mjs (O-LOCAL-SCRIPTS-PARSE-MOVED-WORKFLOWS), and
+ *  every "cannot see it" case REFUSES out loud. */
+export function deployLaneInputs(root) {
+  const problems = [];
+  const parsed = parseWorkflow(root, DEPLOY_WEB_REL);
+  if (parsed === null) {
+    return { pathspecs: [], ceilingMs: null, problems: [`${DEPLOY_WEB_REL} does not exist`] };
+  }
+
+  const globs = parseTriggerPaths(parsed.lines.map((l) => l.text).join('\n'));
+  const pathspecs = [];
+  if (!Array.isArray(globs) || globs.length === 0) {
+    problems.push(`${DEPLOY_WEB_REL} has no readable \`on.push.paths\`, so the set of commits it deploys for is unknown`);
+  } else {
+    for (const g of globs) {
+      const spec = toPathspec(g);
+      if (spec === null) problems.push(`${DEPLOY_WEB_REL} on.push.paths entry ${JSON.stringify(g)} has a shape this reader cannot translate exactly`);
+      else pathspecs.push(spec);
+    }
+  }
+
+  const t = jobTimeouts(parsed);
+  for (const p of t.problems) problems.push(`${DEPLOY_WEB_REL}: ${p}`);
+  const total = Object.values(t.minutes).reduce((s, m) => s + (Number.isInteger(m) ? m : 0), 0);
+  const ceilingMs = t.problems.length === 0 ? DEPLOY_LANE_RUNS * total * 60 * 1000 : null;
+
+  return { pathspecs, ceilingMs, problems };
 }
 
 /** PURE. ONE project's answer turned into a verdict, so every branch is
@@ -218,7 +347,13 @@ export function derivePagesProjects(root) {
  *  in-flight branch turns on a build's AGE, and a test must be able to stand on
  *  either side of the ceiling without waiting for it.
  *
- *  Returns `{ code, line }`. `code` is 0, 1 or 2 with the file-level meaning. */
+ *  `expectedAt` (epoch ms, the expected commit's committer time) and
+ *  `laneCeilingMs` are read for DIRECT-UPLOAD projects only: a served commit
+ *  that does not carry `expectedCommit` is ⏳ while the deploy lane may still
+ *  be publishing it, and red past that. Either unreadable is exit 2 there.
+ *
+ *  Returns `{ code, line }`, plus `ungraded: true` on a row whose commit limb
+ *  was not graded. `code` is 0, 1 or 2 with the file-level meaning. */
 export function judgeProject({
   project,
   kind,
@@ -228,6 +363,8 @@ export function judgeProject({
   isAncestor = null,
   now = Date.now(),
   ceilingMs = IN_FLIGHT_CEILING_MS,
+  expectedAt = null,
+  laneCeilingMs = null,
 }) {
   const at = `${project} (${kind})`;
 
@@ -261,7 +398,7 @@ export function judgeProject({
   const stage = newest?.latest_stage;
   const cls = classifyStage(stage);
   const id = newest?.id ?? '(no id)';
-  const ctx = { at, sourceDir, expectedCommit, isAncestor };
+  const ctx = { at, kind, sourceDir, expectedCommit, isAncestor, now, expectedAt, laneCeilingMs };
 
   if (cls === 'unreadable') {
     return {
@@ -416,7 +553,12 @@ function judgeInFlight(deployments, ctx, { now, ceilingMs }) {
   const tail = `the next ops-watch slot grades ${bid}.`;
 
   if (g.code === 0) {
-    return { code: 0, inflight: true, line: `⏳  ${at} — ${what} is IN FLIGHT; ${tail} Serving now: ${g.line.replace(/^ok\s+/, '')}` };
+    return {
+      code: 0,
+      inflight: true,
+      ...(g.ungraded ? { ungraded: true } : {}),
+      line: `⏳  ${at} — ${what} is IN FLIGHT; ${tail} Serving now: ${g.line.replace(/^(ok|⏳)\s+/u, '')}`,
+    };
   }
 
   if (g.behind) {
@@ -455,22 +597,36 @@ function judgeInFlight(deployments, ctx, { now, ceilingMs }) {
 /** One deployment already known to be DONE (`deploy` / `success`), graded on
  *  its commit limb. `behind: true` marks the one red an in-flight build can
  *  legitimately explain; `served` is carried out for that caller's line. */
-function gradeCompleted(dep, { at, sourceDir, expectedCommit, isAncestor }) {
+function gradeCompleted(dep, { at, kind, sourceDir, expectedCommit, isAncestor, now, expectedAt, laneCeilingMs }) {
   const id = dep.id ?? '(no id)';
   const trigger = dep.deployment_trigger ?? {};
   const served = trigger?.metadata?.commit_hash ?? null;
+  const hasHash = typeof served === 'string' && served !== '';
 
-  if (expectedCommit === null) {
+  // UNGRADED only where it is TRUE: a direct upload whose row carries no hash.
+  // A row that does carry one is graded below exactly like a git-connected one
+  // (measured 2026-09-19: every `subscriptiontracker` row carries one).
+  if (kind === 'direct' && !hasHash) {
     return {
       code: 0,
+      ungraded: true,
       line:
         `ok  ${at} — deployment ${id} succeeded at stage \`deploy\`; commit limb UNGRADED ` +
-        `(trigger \`${trigger.type ?? 'unknown'}\` carries no commit_hash, which is correct for a direct upload; ` +
+        `(trigger \`${trigger.type ?? 'unknown'}\` carries no commit_hash on THIS row; ` +
         `its commit witness is record-deployment.mjs, read by check-prod-provenance.mjs on the pipeline B-17 rail).`,
     };
   }
 
-  if (typeof served !== 'string' || served === '') {
+  if (typeof expectedCommit !== 'string' || expectedCommit === '') {
+    return {
+      code: 2,
+      line:
+        `?   ${at} — deployment ${id} succeeded serving ${short(served)}, but no expected commit for ` +
+        `${sourceDir} was supplied, so the freshness question is unanswered rather than answered "fine".`,
+    };
+  }
+
+  if (!hasHash) {
     return {
       code: 2,
       line:
@@ -511,6 +667,8 @@ function gradeCompleted(dep, { at, sourceDir, expectedCommit, isAncestor }) {
       };
     }
 
+    if (carries === false && kind === 'direct') return gradeDirectBehind({ at, id, served, sourceDir, expectedCommit, now, expectedAt, laneCeilingMs });
+
     if (carries === false) {
       return {
         code: 1,
@@ -535,6 +693,47 @@ function gradeCompleted(dep, { at, sourceDir, expectedCommit, isAncestor }) {
   return {
     code: 0,
     line: `ok  ${at} — deployment ${id} succeeded at stage \`deploy\`, serving ${short(served)}, the newest \`main\` commit touching ${sourceDir}.`,
+  };
+}
+
+/** A DIRECT-UPLOAD row serving a commit that does not carry the one `main`
+ *  names. Cloudflare shows no in-flight row for a direct upload — the row is
+ *  created when wrangler uploads, minutes after the merge — so the deploy
+ *  lane's own window stands in for `created_on`: the expected commit's
+ *  committer time (a squash merge's is the merge) against the ceiling derived
+ *  from deploy-web.yml. Inside it is ⏳, past it is RED, unreadable is exit 2. */
+function gradeDirectBehind({ at, id, served, sourceDir, expectedCommit, now, expectedAt, laneCeilingMs }) {
+  if (!Number.isFinite(expectedAt) || !Number.isFinite(laneCeilingMs) || laneCeilingMs <= 0 || !Number.isFinite(now)) {
+    return {
+      code: 2,
+      line:
+        `?   ${at} — deployment ${id} serves ${short(served)}, which does not carry ${short(expectedCommit)}, the ` +
+        `newest \`main\` commit touching ${sourceDir}; whether the deploy lane is still inside its window cannot be ` +
+        `told (commit time ${JSON.stringify(expectedAt)}, ceiling ${JSON.stringify(laneCeilingMs)}). NOTHING was judged.`,
+    };
+  }
+  const ageMs = Math.max(0, now - expectedAt);
+  const age = `${Math.round(ageMs / 60000)} min`;
+  const ceiling = `${Math.round(laneCeilingMs / 60000)}-minute`;
+  if (ageMs <= laneCeilingMs) {
+    return {
+      code: 0,
+      inflight: true,
+      line:
+        `⏳  ${at} — deployment ${id} serves ${short(served)}; ${short(expectedCommit)}, the newest \`main\` commit ` +
+        `touching ${sourceDir}, landed ${age} ago, inside the ${ceiling} deploy-lane ceiling. That is the ` +
+        `deploy-web window, not a missed deploy — the next ops-watch slot grades it.`,
+    };
+  }
+  return {
+    code: 1,
+    behind: true,
+    served,
+    line:
+      `✗   ${at} — deployment ${id} succeeded, but it is serving commit ${short(served)}, which does NOT carry ` +
+      `${short(expectedCommit)} — the newest commit on \`main\` touching ${sourceDir}, landed ${age} ago, past the ` +
+      `${ceiling} deploy-lane ceiling. The deploy-web run for ${short(expectedCommit)} never ran, failed, or did not ` +
+      `publish, and production is serving an older build of this app.`,
   };
 }
 
@@ -578,13 +777,26 @@ export function foldVerdicts(results, { projectsSwept, ungraded }) {
  *  main, but a dispatched run from a branch would otherwise compare Cloudflare's
  *  production build against a branch tip and report a false red. */
 export function newestCommitTouching(root, path, run = spawnSync) {
-  const r = run('git', ['log', '-1', '--format=%H', 'origin/main', '--', path], {
+  const specs = Array.isArray(path) ? path : [path];
+  if (specs.length === 0) return null;
+  const r = run('git', ['log', '-1', '--format=%H', 'origin/main', '--', ...specs], {
     cwd: root,
     encoding: 'utf8',
   });
   if (r.error || r.status !== 0) return null;
   const sha = (r.stdout ?? '').trim();
   return /^[0-9a-f]{40}$/.test(sha) ? sha : null;
+}
+
+/** A commit's COMMITTER time as epoch ms, or null when unreadable. For a squash
+ *  merge on GitHub the committer time is the merge, which is when deploy-web's
+ *  push run is created — the start of the deploy-lane window. */
+export function commitTimeOf(root, sha, run = spawnSync) {
+  if (typeof sha !== 'string' || !/^[0-9a-f]{40}$/.test(sha)) return null;
+  const r = run('git', ['log', '-1', '--format=%cI', sha], { cwd: root, encoding: 'utf8' });
+  if (r.error || r.status !== 0) return null;
+  const t = Date.parse((r.stdout ?? '').trim());
+  return Number.isFinite(t) ? t : null;
 }
 
 const CF_API = 'https://api.cloudflare.com/client/v4';
@@ -625,23 +837,34 @@ async function main() {
   }
 
   const results = [];
-  let ungraded = 0;
+  const lane = projects.some((p) => p.kind === 'direct') ? deployLaneInputs(ROOT) : null;
 
   for (const p of projects) {
     let expectedCommit = null;
+    let expectedAt = null;
     if (p.kind === 'git') {
       expectedCommit = newestCommitTouching(ROOT, p.sourceDir, spawnSync);
-      if (expectedCommit === null) {
+    } else {
+      if (lane.problems.length > 0) {
         results.push({
           code: 2,
           line:
-            `?   ${p.project} (git) — \`git log origin/main -- ${p.sourceDir}\` produced no commit. The history is ` +
-            `unreadable here (a shallow clone has no origin/main), so the freshness limb was NOT executed.`,
+            `?   ${p.project} (direct) — the deploy lane's inputs did not read, so the commit limb has nothing to ` +
+            `grade against: ${lane.problems.join('; ')}.`,
         });
         continue;
       }
-    } else {
-      ungraded += 1;
+      expectedCommit = newestCommitTouching(ROOT, lane.pathspecs, spawnSync);
+      expectedAt = expectedCommit === null ? null : commitTimeOf(ROOT, expectedCommit, spawnSync);
+    }
+    if (expectedCommit === null) {
+      results.push({
+        code: 2,
+        line:
+          `?   ${p.project} (${p.kind}) — \`git log origin/main -- <${p.sourceDir}>\` produced no commit. The history is ` +
+          `unreadable here (a shallow clone has no origin/main), so the freshness limb was NOT executed.`,
+      });
+      continue;
     }
 
     try {
@@ -652,6 +875,8 @@ async function main() {
           deployments,
           expectedCommit,
           isAncestor: (a, b) => isAncestorOf(ROOT, a, b, spawnSync),
+          expectedAt,
+          laneCeilingMs: lane?.ceilingMs ?? null,
         }),
       );
     } catch (e) {
@@ -662,11 +887,12 @@ async function main() {
     }
   }
 
+  const ungraded = results.filter((r) => r.ungraded === true).length;
   const verdict = foldVerdicts(results, { projectsSwept: projects.length, ungraded });
 
   console.log(
     `⬜  MONITOR · Cloudflare Pages production deployments · ${verdict.projectsSwept} project(s) DERIVED ` +
-      `(${verdict.projectsSwept - verdict.ungraded} commit-graded, ${verdict.ungraded} direct-upload with the commit limb ungraded)`,
+      `(${verdict.ungraded} with the commit limb UNGRADED because the served row carries no commit_hash)`,
   );
   for (const line of verdict.lines) console.log(`    ${line}`);
 
