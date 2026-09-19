@@ -1308,6 +1308,12 @@ jobs:
                never read. Both are findings for the spec and capture.js, not
                for this list. WIRED, and those three shapes leave
                UNGRADED_BASELINE in this commit.
+               2026-09-19, later: BOTH OPENs are now GRADED. input-values by
+               the spec section 1 correction (Public #821); clipped-ancestor
+               by capture.js painting only the visible part of a match and
+               counting a wholly clipped one as not covered (spec section 1.1,
+               O-FULLSHOT-CLIPPED-ANCESTOR-OVERMASK). redaction-claim.mjs now
+               has no OPEN.
 
                ── VERBATIM, AS COMMITTED AT 1c22eb95 ──
               { dir: "Extension/Full_Screen_Shot", file: "adversarial-claim.mjs",

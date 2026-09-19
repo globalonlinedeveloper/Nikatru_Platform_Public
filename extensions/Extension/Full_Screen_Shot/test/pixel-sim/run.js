@@ -2611,11 +2611,102 @@ function expectClipRedact(seg, state, segs, out) {
      the boxes are emitted anyway and painted anyway, because covering a rect
      the page says is invisible costs nothing and the opposite mistake costs the
      user their data. What has changed is that this no longer produces a
-     verdict about it — 2 / 2 / 2, and the person looks at the picture. */
-  check('clip: a match inside a refused span is still covered, and still not a claim',
-    q(rec,'redaction.acts.matched') === 2 && q(rec,'redaction.acts.painted') === 2 &&
-    q(scan,'boxesFromUnplaced') === 2 && q(rec,'redaction.acts.ledger') === 'present',
-    JSON.stringify(q(rec,'redaction.acts')));
+     verdict about it — 2 / 2 / 2, and the person looks at the picture.
+
+     SUPERSEDED 2026-09-19 (REDACTION-CLAIM-SPEC.md §1.1,
+     O-FULLSHOT-CLIPPED-ANCESTOR-OVERMASK) — the paragraph above stands as what
+     this scenario used to grade. The whole-rect block landed on whatever the
+     page DID draw at those coordinates, which on a real page is visible prose
+     that held no PII, and then labelled it. A block now lands only on the part
+     of a rect that is in the picture, and neither leaf here has one: nothing
+     is painted, both matches stay COUNTED as not covered (2 / 0 / 0 — the
+     shortfall line fires, the safe direction if the clip reading is ever
+     wrong), and both are held for the frame-time watch. */
+  check('clip: nothing is painted where nothing is in the picture, and both matches still count as not covered',
+    q(rec,'redaction.acts.matched') === 2 && q(rec,'redaction.acts.painted') === 0 &&
+    q(rec,'redaction.acts.verifiedOpaque') === 0 && q(scan,'boxes') === 0 &&
+    q(scan,'boxesFromUnplaced') === 0 && q(rec,'redaction.acts.ledger') === 'present',
+    JSON.stringify({ acts: q(rec,'redaction.acts'), boxes: q(scan,'boxes') }));
+  check('clip: the ledger books both, at the line that decided it — rects not drawn, matches not drawn, watched',
+    q(scan,'matchedNoBox') === 2 && q(scan,'clip.notDrawn') === 2 &&
+    q(scan,'clip.matchesNotDrawn') === 2 && q(scan,'clip.watched') === 2 &&
+    q(scan,'clip.lateDrawn') === 0 && q(scan,'clip.watchFailed') === 0,
+    JSON.stringify({ noBox: q(scan,'matchedNoBox'), clip: q(scan,'clip') }));
+  check('clip: no mark points at a region that never held a match',
+    Array.isArray(q(rec,'redaction.marks')) && q(rec,'redaction.marks').length === 0,
+    JSON.stringify(q(rec,'redaction.marks')));
+}
+
+/* (2b) 2026-09-19 — PARTIAL clipping, and the one clip that must NOT be read.
+   A window 20px tall over a 40px leaf: the match is painted on its visible 20px
+   and nowhere else. A `position:absolute` leaf inside a STATIC `height:0;
+   overflow:hidden` parent: its containing block is above that parent, so the
+   parent does not clip it and it is in the picture — reading the parent chain
+   naively would leave it unpainted, which is the under-mask this design must
+   never make. */
+function buildClipPartial() {
+  const s = ledgerBase(1400);
+  ledgerLeaf(s.body, s.doc, s.win, 200, 'Quarterly summary for the north region');
+  const win = s.body.appendChild(new El('div', s.doc, { clientH: 20, clientW: 600 }));
+  win.setAttribute('style', 'height:20px;overflow:hidden');
+  win._rect = () => ({ left: 40, top: 400 - s.win.scrollY, width: 600, height: 20 });
+  ledgerLeaf(win, s.doc, s.win, 400, 'Billing jane.doe@example.com');
+  const shut = s.body.appendChild(new El('div', s.doc, { clientH: 0, clientW: 600 }));
+  shut.setAttribute('style', 'height:0px;overflow:hidden');
+  shut._rect = () => ({ left: 40, top: 600 - s.win.scrollY, width: 600, height: 0 });
+  ledgerLeaf(shut, s.doc, s.win, 700, 'Escaped +1 (555) 123-4567 today', 'position:absolute');
+  return Object.assign(s, { name: 'clippartial' });
+}
+function expectClipPartial(seg, state, segs, out) {
+  const scan = state.meta.piiScan, rec = (out && out.record) || {};
+  const boxes = (state.meta.piiBoxes || []);
+  gradeScanLedger('clippartial', scan);
+  gradeRequested('clippartial', rec, true);
+  gradeActs('clippartial', rec, 2, scan, segs);
+  const email = boxes.find(b => b.kind === 'email');
+  const phone = boxes.find(b => b.kind === 'phone');
+  check('clippartial: the partly clipped match is painted on its visible part only (y 400, h 20)',
+    !!email && email.y === 400 && email.h === 20, JSON.stringify(email));
+  check('clippartial: the absolutely positioned leaf escapes its static parent\'s clip and is painted whole',
+    !!phone && phone.y === 700 && phone.h === 40, JSON.stringify(phone));
+  check('clippartial: the ledger counts exactly one trimmed block, nothing held back, and the trimmed match watched',
+    q(scan,'clip.trimmed') === 1 && q(scan,'clip.notDrawn') === 0 && q(scan,'clip.watched') === 1 &&
+    q(scan,'clip.lateDrawn') === 0,
+    JSON.stringify(q(scan,'clip')));
+}
+
+/* (2c) 2026-09-19 — THE FRAME-TIME WATCH. A leaf inside an opacity:0 wrapper
+   when the scan runs, faded in before the second frame is grabbed — the
+   scroll-reveal shape. The scan paints nothing (nothing is in the picture
+   then); the watch, re-reading the page just before each frame, finds it
+   visible and paints it. Without the watch this is PII in the picture with no
+   block over it, which the always-paint rule used to prevent by accident. */
+function buildClipLate() {
+  const s = ledgerBase(1400);
+  ledgerLeaf(s.body, s.doc, s.win, 200, 'Quarterly summary for the north region');
+  const reveal = s.body.appendChild(new El('div', s.doc, { clientH: 40, clientW: 600 }));
+  reveal._rect = () => ({ left: 40, top: 900 - s.win.scrollY, width: 600, height: 40 });
+  ledgerLeaf(reveal, s.doc, s.win, 900, 'Revealed jane.doe@example.com');
+  /* The computed opacity is 0 until the first frame has been grabbed, then 1 —
+     keyed off the frame count as latetextredact is, and read through the
+     computed style rather than written into the style ATTRIBUTE, because every
+     scenario asserts the page's style attributes come back byte-identical. */
+  s.refs.frames = 0;
+  const baseSv = reveal._sv.bind(reveal);
+  reveal._sv = (k) => k === 'opacity' ? (s.refs.frames >= 1 ? '1' : '0') : baseSv(k);
+  const baseRender = s.render;
+  s.render = () => { s.refs.frames++; return baseRender(); };
+  return Object.assign(s, { name: 'cliplate' });
+}
+function expectClipLate(seg, state, segs, out) {
+  const scan = state.meta.piiScan, rec = (out && out.record) || {};
+  gradeScanLedger('cliplate', scan);
+  gradeRequested('cliplate', rec, true);
+  check('cliplate: the scan held the faded match back and the watch painted it once it was visible',
+    q(scan,'clip.watched') === 1 && q(scan,'clip.lateDrawn') === 1 &&
+    q(scan,'clip.matchesNotDrawn') === 0 && q(scan,'matchedNoBox') === 0,
+    JSON.stringify({ clip: q(scan,'clip'), noBox: q(scan,'matchedNoBox') }));
+  gradeActs('cliplate', rec, 1, scan, segs);
 }
 
 /* (3) the over-long leaf — §4.5's text/plain document, in the only form a fake
@@ -5459,6 +5550,8 @@ function expectRailInlineSplit(seg, state, segs, out) {
      buildSrOnlyRedact for what a fake DOM can and cannot say about layout. */
   await runScenario('sronlyredact', buildSrOnlyRedact(), expectSrOnlyRedact, { settings: { redactPII: true } });
   await runScenario('clipredact', buildClipRedact(), expectClipRedact, { settings: { redactPII: true } });
+  await runScenario('clippartial', buildClipPartial(), expectClipPartial, { settings: { redactPII: true } });
+  await runScenario('cliplate', buildClipLate(), expectClipLate, { settings: { redactPII: true } });
   await runScenario('declineredact', buildDeclineRedact(), expectDeclineRedact, { settings: { redactPII: true } });
   await runScenario('frameredact', buildFrameRedact(), expectFrameRedact, { settings: { redactPII: true } });
   await runScenario('latetextredact', buildLateTextRedact(), expectLateTextRedact, { settings: { redactPII: true } });

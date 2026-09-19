@@ -40,6 +40,16 @@
                           region travel; the spec says nothing about where a
                           block may land. acts-lib.mjs reportOverMask carries
                           the full argument. A finding for capture.js + the spec.
+   GRADED FROM 2026-09-19 (O-FULLSHOT-CLIPPED-ANCESTOR-OVERMASK). The paragraph
+   above stands as what this file said when it was written; O1 is no longer an
+   OPEN. REDACTION-CLAIM-SPEC.md §1.1 now says where a block may land — only on
+   the part of a match's rect that is in the picture — capture.js clauses 5 and
+   6 were brought into line with clause 3b, and O1 is a graded check
+   (acts-lib.mjs gradeOverMask). Its other half is a new shape, clipped-partial:
+   a match cut through by a clip IS covered on its visible part, a match wholly
+   below a clip leaves the visible prose it was laid out over untouched, and an
+   absolutely positioned match that escapes a static clipping parent is
+   covered. So this file now grades FIVE fixtures/ shapes, not four.
    There used to be a second, input-values F4: §1 said "a chosen <option>" is
    never read, and the product reads the text of every <option>. §1 was
    corrected on 2026-09-19 (O-FULLSHOT-SPEC-OPTION-TEXT) to say what the product
@@ -53,7 +63,7 @@
 import fs from 'node:fs';
 import { EXT_DIR, OUT_DIR, serve, prepareTestExtension, begin, check, note, results } from './claim-lib.mjs';
 import { launch, capture, readRecord, colourRows, saveFirstSegment, gradeUniversal,
-         gradePayload, gradePicture, reportOverMask, BLOCK, isInt } from './acts-lib.mjs';
+         gradePayload, gradePicture, gradeOverMask, colourRowsIn, BLOCK, isInt } from './acts-lib.mjs';
 
 const PORT = Number(process.env.PORT || 8911);
 const FIX = 'http://localhost:' + PORT + '/test/e2e/fixtures/';
@@ -61,7 +71,8 @@ const ONLY = (process.env.ONLY || '').split(',').map(s => s.trim()).filter(Boole
 fs.mkdirSync(OUT_DIR, { recursive: true });
 
 /* Marker colours, shared with the fixtures. */
-const C = { email: [255, 90, 90], phone: [90, 200, 120], card: [90, 130, 255], decoy: [245, 205, 45] };
+const C = { email: [255, 90, 90], phone: [90, 200, 120], card: [90, 130, 255], decoy: [245, 205, 45],
+            prose: [150, 60, 160] };
 
 const SHAPES = [
   /* THE POSITIVE CONTROL. §3.4's honest common case: three matches, three
@@ -85,7 +96,10 @@ const SHAPES = [
      matched counts what the detector was handed — so matched is not pinned.
      Nothing PII is in the picture, so no L-check has a token to count; what is
      graded is the universal arithmetic and the payload, and where the paint
-     went is RECORDED (acts-lib.mjs reportOverMask says why it is not graded). */
+     went is RECORDED (acts-lib.mjs reportOverMask says why it is not graded).
+     GRADED FROM 2026-09-19 (§1.1): nothing of either match is in the picture,
+     so nothing is painted and nothing is marked (O1), and both matches stay
+     COUNTED as not covered — matched 2, painted 0, verifiedOpaque 0 (H3). */
   { name: 'clipped-ancestor', url: FIX + 'clipped-ancestor.html', spec: '§1 height:0 / opacity:0 ancestors',
     colours: { hiddenEmailBand: C.email, hiddenPhoneBand: C.phone },
     fn({ a, rows, marks }) {
@@ -94,7 +108,52 @@ const SHAPES = [
       check('H2 the ledger is complete on a page this small: matchedComplete and walkComplete (§2.1.1)',
         !!a && a.matchedComplete === true && a.walkComplete === true && a.truncatedBy === null,
         a && JSON.stringify({ matchedComplete: a.matchedComplete, walkComplete: a.walkComplete, truncatedBy: a.truncatedBy }));
-      reportOverMask(rows, marks, a, 'height:0 and opacity:0 ancestors');
+      gradeOverMask(rows, marks, a, 'height:0 and opacity:0 ancestors');
+      check('H3 both hidden matches are still counted, and counted as not covered: 2 / 0 / 0 (§1.1, §3.4)',
+        !!a && a.matched === 2 && a.painted === 0 && a.verifiedOpaque === 0,
+        a && [a.matched, a.painted, a.verifiedOpaque].join('/'));
+    } },
+
+  /* §1.1 (2026-09-19) — the other direction. clipped-ancestor proves no block
+     lands where NOTHING of a match is in the picture; this proves the design
+     does not buy that by under-masking. fixtures/clipped-partial.html says
+     which element is which. */
+  { name: 'clipped-partial', url: FIX + 'clipped-partial.html', spec: '§1.1 where a block may land',
+    gone: { cutEmail: C.email, escapedEmail: C.card },
+    goneWhy: 'the visible part of a clipped match, and a match that escapes a static clipping parent, are painted (§1.1)',
+    kept: { prose: C.prose }, keptWhy: 'visible prose holding no PII (§1.1)',
+    colours: { hiddenPhone: C.phone },
+    allTokens: true,
+    async fn({ a, rows, marks, kinds, rec, page, result }) {
+      check('Q1 the wholly clipped phone is not in the picture (fixture precondition)',
+        rows.hiddenPhone === 0, JSON.stringify(rows));
+      check('Q2 three matches, two painted and read back opaque — the wholly clipped one counted as not covered (§1.1, §3.4)',
+        !!a && a.matched === 3 && a.painted === 2 && a.verifiedOpaque === 2,
+        a && [a.matched, a.painted, a.verifiedOpaque].join('/'));
+      check('Q3 kinds counts the two painted emails and no phone (§2.1)',
+        !!kinds && kinds.email === 2 && !kinds.phone, JSON.stringify(kinds));
+      const band = await page.evaluate(() => {
+        const r = document.querySelector('.prose').getBoundingClientRect();
+        return { top: r.top + scrollY, bottom: r.bottom + scrollY, w: document.documentElement.clientWidth };
+      });
+      /* BAKE_PAD: pages/result.js grows every block by 2px on each side when it
+         fills it, so the cut email's block — whose visible part ends exactly
+         where the prose begins — reaches 2 rows into it. That halo is the
+         bake's fixed antialias margin around a block that IS in the right
+         place, not a block landing on the prose, so those rows are excluded;
+         the wholly clipped phone's layout box starts 16 rows into the band,
+         far past it. A mark is that PAINTED rect, bleed included
+         (pages/result.js mark()), so Q5 takes the bleed off it the same way. */
+      const BAKE_PAD = 2;
+      const from = Math.ceil(band.top) + BAKE_PAD;
+      const blockInBand = await colourRowsIn(result, BLOCK, from, band.bottom);
+      check('Q4 no block lands on the visible prose the wholly clipped phone was laid out over (§1.1)',
+        rec.w === band.w && blockInBand === 0,
+        'band y ' + Math.round(band.top) + '-' + Math.round(band.bottom) + ' (first ' + BAKE_PAD +
+        ' rows = bake halo), ' + blockInBand + ' row(s) of block colour in it, image ' + rec.w +
+        ' vs page ' + band.w);
+      const hit = marks.filter(m => m.y + BAKE_PAD < band.bottom && m.y + m.h - BAKE_PAD > Math.ceil(band.top));
+      check('Q5 and no mark points into that prose', hit.length === 0, JSON.stringify(hit));
     } },
 
   /* §1, standing limits: "Attributes and form state are never read: value,
@@ -171,7 +230,7 @@ async function runShape(ctx, sw, S) {
     const rows = await colourRows(result, colours);
     note('image ' + rec.w + 'x' + rec.h + ' · colour rows ' + JSON.stringify(rows));
     gradePicture(S, rows, a);
-    S.fn({ a, rows, marks, kinds: rec.redaction && rec.redaction.kinds, rec });
+    await S.fn({ a, rows, marks, kinds: rec.redaction && rec.redaction.kinds, rec, page, result });
     await saveFirstSegment(result, 'claim-' + S.name + '.png');
   } catch (e) {
     check('assertions ran to completion', false, String((e && e.stack) || e));

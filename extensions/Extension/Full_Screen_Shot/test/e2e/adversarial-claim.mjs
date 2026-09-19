@@ -36,6 +36,10 @@
    and a finding. Where the spec is SILENT the result is an OPEN with its
    evidence, never a red: acts-lib.mjs reportOverMask is the one such place,
    and it says why.
+   2026-09-19: no longer. REDACTION-CLAIM-SPEC.md §1.1 now says where a block
+   may land, so reportOverMask became acts-lib.mjs gradeOverMask — a graded
+   check — and cv-tabs' O1 is graded with it (it already measured no block and
+   no mark here, through clause 3b). This suite has no OPEN left.
 
    Run:  cd test/e2e && node adversarial-claim.mjs
          HEADFUL=1 node adversarial-claim.mjs
@@ -47,7 +51,7 @@ import { chromium } from 'playwright';
 import { decodePng } from './png.mjs';
 import { EXT_DIR, OUT_DIR, serve, prepareTestExtension, begin, check, open, note, results } from './claim-lib.mjs';
 import { launch, capture, readRecord, colourRows, saveFirstSegment, gradeUniversal,
-         gradePayload, gradePicture, reportOverMask, BLOCK } from './acts-lib.mjs';
+         gradePayload, gradePicture, gradeOverMask, BLOCK } from './acts-lib.mjs';
 
 /* Its own port. 8913 was shared with claim-reduction.mjs until 2026-09-19. */
 const PORT = Number(process.env.PORT || 8919);
@@ -122,7 +126,7 @@ const SHAPES = [
         !!a && a.matchedComplete === true && a.walkComplete === true, a && JSON.stringify(
           { matchedComplete: a.matchedComplete, walkComplete: a.walkComplete }));
       note('the visible panel\'s own (non-PII) line: ' + rows.visibleLine + ' marker rows');
-      reportOverMask(rows, marks, a, 'content-visibility:hidden tab panel');
+      gradeOverMask(rows, marks, a, 'content-visibility:hidden tab panel');
     } },
 
   /* §9: "`matched` counts what the detector was handed." Content that arrives
