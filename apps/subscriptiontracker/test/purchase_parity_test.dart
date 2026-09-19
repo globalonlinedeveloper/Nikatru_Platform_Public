@@ -1,17 +1,27 @@
 // 🔴 THE PURCHASE PARITY ROW, RENDERED: every target either sells or says it
 // does not — and a target that does not sell shows NO price and NO button.
 //
-// Driven through the REAL `PaywallScreen` and the app's REAL
-// `purchaseRailProvider` (a `HostedCheckoutRail` resolving its capabilities
-// from the platform), with a config that DOES carry an offering and a checkout
-// template — so the only thing that can refuse is the per-target matrix in
-// `packages/purchases/lib/src/purchase_capabilities.dart`.
+// Driven through the REAL `PaywallScreen` and the app's REAL rail wiring —
+// `purchaseRailFor`, the body of `purchaseRailProvider`, which asks
+// `ChassisBilling.railForDeclared` with the channel the build DECLARES — with a
+// config that DOES carry an offering and a checkout template, so the only
+// things that can refuse are the channel's register rail and its capability
+// row in `packages/purchases/lib/src/purchase_capabilities.dart`.
+//
+// ⏱ RE-POINTED 2026-09-19 (R10). The rail used to be a `HostedCheckoutRail`
+// resolving its capabilities from the PLATFORM. It now follows the CHANNEL, a
+// compile-time `RELEASE_CHANNEL` a widget test cannot rebuild per case — so
+// each case overrides the provider with the same `purchaseRailFor` and the
+// channel id its lane stamps. The platform override stays, so the paywall is
+// still laid out as that target.
 //
 // What this proves and what it does not:
-//   · PROVEN: on Android, iOS and macOS the paywall offers nothing — no price,
-//     no buy button, no link — and says purchases are not available; on Windows
-//     and Linux (the positive control) the same config renders the price and
-//     the buy button.
+//   · PROVEN: on the android-play, ios-appstore and macos-appstore channels
+//     the paywall offers nothing — no price, no buy button, no link — and says
+//     purchases are not available (no IAP bridge ships yet); so does a build
+//     that declares NO channel (the `dev` default). On windows-store and
+//     linux-appimage (the positive control) the same config renders the price
+//     and the buy button.
 //   · NOT PROVEN HERE: web (`kIsWeb` is a compile-time constant a widget test
 //     cannot flip — its row is covered in packages/purchases'
 //     purchase_capabilities_test), and apps.gov.in, which an installed build
@@ -32,6 +42,7 @@ import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:subscriptiontracker/core/app_config.dart';
 import 'package:subscriptiontracker/features/monetization/paywall_screen.dart';
 import 'package:subscriptiontracker/l10n/app_localizations.dart';
+import 'package:subscriptiontracker/state/money_providers.dart';
 import 'package:subscriptiontracker/state/providers.dart';
 
 import 'support/width_harness.dart';
@@ -73,7 +84,11 @@ final core.AppConfig _selling = core.AppConfig(
   minSupportedVersion: '1.0.0',
 );
 
-Future<void> _pumpOn(WidgetTester tester, TargetPlatform platform) async {
+Future<void> _pumpOn(
+  WidgetTester tester,
+  TargetPlatform platform,
+  String releaseChannel,
+) async {
   await tester.binding.setSurfaceSize(const Size(800, 1600));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   final ProviderContainer c = ProviderContainer(
@@ -81,6 +96,9 @@ Future<void> _pumpOn(WidgetTester tester, TargetPlatform platform) async {
       ...defaultWidthOverrides(),
       secureStoreProvider.overrideWithValue(_MemSecureStore()),
       appConfigProvider.overrideWith((_) async => _selling),
+      purchaseRailProvider.overrideWith(
+        (ref) => purchaseRailFor(ref, releaseChannel),
+      ),
     ],
   );
   addTearDown(c.dispose);
@@ -118,15 +136,19 @@ Future<void> _onPlatform(TargetPlatform p, Future<void> Function() body) async {
 void main() {
   final AppLocalizations en = lookupAppLocalizations(const Locale('en'));
 
-  for (final TargetPlatform p in <TargetPlatform>[
-    TargetPlatform.android,
-    TargetPlatform.iOS,
-    TargetPlatform.macOS,
+  for (final (TargetPlatform p, String channel) in <(TargetPlatform, String)>[
+    (TargetPlatform.android, 'android-play'),
+    (TargetPlatform.iOS, 'ios-appstore'),
+    (TargetPlatform.macOS, 'macos-appstore'),
+    // 🔴 THE UNDECLARED CHANNEL. A build without --dart-define=RELEASE_CHANNEL
+    // compiles in 'dev', and 'dev' is NOT guessed as web: on a target that
+    // would otherwise sell, it still sells nothing.
+    (TargetPlatform.windows, 'dev'),
   ]) {
-    testWidgets('🔴 ${p.name}: declared unavailable — no price, no button, '
-        'no link', (WidgetTester tester) async {
+    testWidgets('🔴 ${p.name} / $channel: declared unavailable — no price, '
+        'no button, no link', (WidgetTester tester) async {
       await _onPlatform(p, () async {
-        await _pumpOn(tester, p);
+        await _pumpOn(tester, p, channel);
         expect(find.text(en.paywallUnavailable), findsOneWidget);
         expect(find.textContaining(r'$4.99'), findsNothing);
         expect(
@@ -140,15 +162,14 @@ void main() {
     });
   }
 
-  for (final TargetPlatform p in <TargetPlatform>[
-    TargetPlatform.windows,
-    TargetPlatform.linux,
+  for (final (TargetPlatform p, String channel) in <(TargetPlatform, String)>[
+    (TargetPlatform.windows, 'windows-store'),
+    (TargetPlatform.linux, 'linux-appimage'),
   ]) {
-    testWidgets('${p.name}: the same config SELLS — the positive control', (
-      WidgetTester tester,
-    ) async {
+    testWidgets('${p.name} / $channel: the same config SELLS — the positive '
+        'control', (WidgetTester tester) async {
       await _onPlatform(p, () async {
-        await _pumpOn(tester, p);
+        await _pumpOn(tester, p, channel);
         expect(find.text(r'$4.99'), findsOneWidget);
         expect(
           find.widgetWithText(FilledButton, en.paywallUpgrade),

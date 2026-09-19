@@ -65,6 +65,7 @@ jobs:
           --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
           --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
           --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
+          --dart-define=RELEASE_CHANNEL=ios-appstore
           --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
       # Same correction as the iOS step above: unsigned BY CHOICE, not for want
       # of a certificate. A Mac Installer Distribution certificate exists too.
@@ -76,6 +77,7 @@ jobs:
           --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
           --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
           --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
+          --dart-define=RELEASE_CHANNEL=macos-appstore
           --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
       # ⏱ CORRECTED 2026-09-07 (unit `symbols-everywhere`) — this comment used to
       # end "Retained rather than sent to the crash sink because

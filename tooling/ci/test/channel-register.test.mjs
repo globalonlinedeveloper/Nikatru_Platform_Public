@@ -79,7 +79,7 @@ jobs:
     steps:
       - run: node tooling/ci/scan-secrets.mjs .
 ${laneSecrets.map((n) => `      - run: echo "\${{ secrets.${n} }}"`).join('\n')}${laneSecrets.length ? '\n' : ''}      - run: >
-          ${laneBuilds ? 'flutter build web --release' : 'echo deploy'}${releaseChannel === null ? '' : `
+          ${typeof laneBuilds === 'string' ? laneBuilds : laneBuilds ? 'flutter build web --release' : 'echo deploy'}${releaseChannel === null ? '' : `
           --dart-define=RELEASE_CHANNEL=${releaseChannel}`}
 `;
 
@@ -1272,7 +1272,7 @@ describe('assert-channel-register — the lane\'s output vs the formats its chan
   // The .aab-vs-.apk shape: deferred, so it PRINTS. Failing here would block all
   // CI on owner-gated store work ([pipeline C-6]); silence would make it permanent.
   test('PRINTS rather than fails when a DEFERRED row\'s platform is built in another format', () => {
-    const { code, out } = run(tree({ windowsRun: 'flutter build windows --release' }));
+    const { code, out } = run(tree({ windowsRun: 'flutter build windows --release --dart-define=RELEASE_CHANNEL=windows-store' }));
     assert.equal(code, 0, out);
     assert.match(out, /FORMAT GAP \(deferred\): channel "windows-store" accepts "\.msix"/);
     assert.match(out, /builds "\.exe" for "windows"/);
@@ -1292,7 +1292,7 @@ describe('assert-channel-register — the lane\'s output vs the formats its chan
   test('a DEFERRED row prints NO format gap once its lane emits the accepted format', () => {
     const withGap = run(
       tree({
-        windowsRun: 'flutter build apk --release',
+        windowsRun: 'flutter build apk --release --dart-define=RELEASE_CHANNEL=windows-store',
         mutate: (r) => { r.channels[1].platforms = ['android']; r.channels[1].artifactFormats = ['.aab']; },
       }),
     );
@@ -1301,7 +1301,9 @@ describe('assert-channel-register — the lane\'s output vs the formats its chan
 
     const closed = run(
       tree({
-        windowsRun: 'flutter build apk --release\n      - run: flutter build appbundle --release',
+        windowsRun:
+          'flutter build apk --release --dart-define=RELEASE_CHANNEL=windows-store\n' +
+          '      - run: flutter build appbundle --release --dart-define=RELEASE_CHANNEL=windows-store',
         mutate: (r) => { r.channels[1].platforms = ['android']; r.channels[1].artifactFormats = ['.aab']; },
       }),
     );
@@ -1447,7 +1449,7 @@ describe('assert-channel-register — the lane\'s output vs the formats its chan
   });
 
   test('PRINTS an unmapped `flutter build` target rather than comparing against nothing', () => {
-    const { code, out } = run(tree({ windowsRun: 'flutter build fuchsia --release' }));
+    const { code, out } = run(tree({ windowsRun: 'flutter build fuchsia --release --dart-define=RELEASE_CHANNEL=windows-store' }));
     assert.equal(code, 0, out);
     assert.match(out, /UNMAPPED BUILD TARGET\(S\): "fuchsia"/);
   });
@@ -1518,8 +1520,12 @@ describe('assert-channel-register — the RELEASE_CHANNEL stamp resolves to a ro
     assert.equal(code, 0, out);
   });
 
-  test('no stamp anywhere PRINTS the gap rather than failing', () => {
-    const { code, out } = run(tree({ releaseChannel: null }));
+  test('no stamp anywhere, and no RELEASE build either, PRINTS the gap rather than failing', () => {
+    // ⏱ CHANGED 2026-09-19 — this case used to build with no stamp and PRINT.
+    // Since R10 the channel IS the rail, and a release build with no stamp is
+    // limb 6b-ii's FAILURE (its own suite below). What still only prints is
+    // 6b's attribution gap over a tree whose only build is --profile.
+    const { code, out } = run(tree({ releaseChannel: null, laneBuilds: 'flutter build web --profile' }));
     assert.equal(code, 0, out);
     assert.match(out, /NO RELEASE_CHANNEL STAMP/);
     assert.match(out, /reports the compiled-in default/);
@@ -1532,6 +1538,83 @@ describe('assert-channel-register — the RELEASE_CHANNEL stamp resolves to a ro
     const { code, out } = run(tree());
     assert.equal(code, 0, out);
     assert.doesNotMatch(out, /ghost-channel/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Limb 6b-ii (2026-09-19, R10) — every RELEASE `flutter build` passes a
+// RELEASE_CHANNEL at all. The app asks ChassisBilling.railForDeclared with the
+// compiled-in channel, and an undeclared one ('dev') sells nothing — right for a
+// dev build, a silently switched-off paywall for a store artifact. The domain is
+// derived through workflow-scan.mjs, so these cases drive its two block forms.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-channel-register — every release build declares its channel (6b-ii)', () => {
+  const CI = '.github/workflows/ci.yml';
+  const ciWorkflow = (run) =>
+    ['name: CI', 'on:', '  push:', 'jobs:', '  app-brick:', '    runs-on: ubuntu-24.04', '    steps:', `      - run: ${run}`, ''].join('\n');
+
+  test('POSITIVE CONTROL — the stamped lane is counted, on a folded continuation line', () => {
+    // laneWorkflow folds `flutter build web --release` and its define over two
+    // lines of a `run: >` block; one logical command, so it IS stamped.
+    const { code, out } = run(tree());
+    assert.equal(code, 0, out);
+    assert.match(out, /1 release `flutter build` command\(s\) across \d+ workflow\(s\): 1 declare RELEASE_CHANNEL, 0 declared exempt/);
+  });
+
+  test('FAILS a release build that passes no RELEASE_CHANNEL, naming the line and job', () => {
+    const { code, out } = run(tree({ windowsRun: 'flutter build windows --release' }));
+    assert.equal(code, 1, out);
+    assert.match(out, /build-platforms\.yml:\d+ \(job "windows"\) builds "windows" and passes no --dart-define=RELEASE_CHANNEL/);
+    assert.match(out, /paywall silently off/);
+  });
+
+  test('FAILS when the lane build loses its stamp — release is the DEFAULT mode, --release or not', () => {
+    const { code, out } = run(tree({ releaseChannel: null }));
+    assert.equal(code, 1, out);
+    assert.match(out, /deploy-web\.yml:\d+ \(job "deploy-web"\) builds "web" and passes no --dart-define=RELEASE_CHANNEL/);
+  });
+
+  test('a stamp on the NEXT line of a `run: |` block is another command and does not count', () => {
+    const { code, out } = run(
+      tree({ windowsRun: '|\n          flutter build windows\n          echo --dart-define=RELEASE_CHANNEL=windows-store' }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /\(job "windows"\) builds "windows" and passes no --dart-define=RELEASE_CHANNEL/);
+  });
+
+  test('an explicit --debug / --profile build and a web-server are outside the domain', () => {
+    for (const cmd of ['flutter build apk --debug', 'flutter build windows --profile', 'flutter build web-server']) {
+      const { code, out } = run(tree({ windowsRun: cmd }));
+      assert.equal(code, 0, `${cmd}\n${out}`);
+    }
+  });
+
+  test('the DECLARED exemption holds for the probe stamp build, and is counted', () => {
+    const { code, out } = run(tree({ extraFiles: { [CI]: ciWorkflow('flutter build web --pwa-strategy=none') } }));
+    assert.equal(code, 0, out);
+    // The count is what this fixture exempts; the list names every DECLARED key.
+    assert.match(out, /1 declared exempt \([^)]*\.github\/workflows\/ci\.yml#app-brick[,)]/);
+  });
+
+  test('a STALE exemption FAILS — the exempted job stamps now', () => {
+    const { code, out } = run(
+      tree({ extraFiles: { [CI]: ciWorkflow('flutter build web --dart-define=RELEASE_CHANNEL=web') } }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /RELEASE_CHANNEL_EXEMPT declares \.github\/workflows\/ci\.yml job "app-brick"[^\n]*outlived its subject/);
+  });
+
+  test('a STALE exemption FAILS — the exempted job builds nothing', () => {
+    const { code, out } = run(tree({ extraFiles: { [CI]: ciWorkflow('echo no build here') } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /outlived its subject/);
+  });
+
+  test('the exemption is scoped to its JOB — the same build in another job of ci.yml FAILS', () => {
+    const body = ['name: CI', 'on:', '  push:', 'jobs:', '  other:', '    runs-on: ubuntu-24.04', '    steps:', '      - run: flutter build web', ''].join('\n');
+    const { code, out } = run(tree({ extraFiles: { [CI]: body } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /ci\.yml:\d+ \(job "other"\) builds "web" and passes no/);
   });
 });
 
@@ -2632,7 +2715,7 @@ describe('assert-channel-register — §10 artifactBuild and the signing seams',
 
     const after = run(
       tree({
-        windowsRun: 'flutter build windows --release',
+        windowsRun: 'flutter build windows --release --dart-define=RELEASE_CHANNEL=windows-store',
         mutate: (r) => { r.channels[1].artifactFormats = ['.exe']; },
       }),
     );

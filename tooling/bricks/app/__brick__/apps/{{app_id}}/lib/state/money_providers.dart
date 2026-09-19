@@ -72,11 +72,29 @@ const String kCheckoutReturnUrl = String.fromEnvironment(
 );
 
 /// The purchase path itself. One object the UI programs against.
-final Provider<PurchaseRail> purchaseRailProvider = Provider<PurchaseRail>((
-  ref,
-) {
-  return HostedCheckoutRail(
-    config: ref.watch(railConfigProvider),
+///
+/// 🔴 [ADR 067] decision 7 / R10 — THE CHANNEL PICKS THE RAIL, NOT THIS FILE.
+/// Built by [purchaseRailFor] from the channel this binary was BUILT for
+/// (`AppConfig.releaseChannel`, the compile-time `RELEASE_CHANNEL`). A store
+/// channel with no IAP bridge, a `rail: none` channel and an undeclared channel
+/// all answer a rail that sells nothing and says why.
+final Provider<PurchaseRail> purchaseRailProvider = Provider<PurchaseRail>(
+  (ref) => purchaseRailFor(ref, AppConfig.releaseChannel),
+);
+
+/// The body of [purchaseRailProvider], with the channel as a PARAMETER.
+///
+/// A parameter because `RELEASE_CHANNEL` is a compile-time constant: a widget
+/// test cannot rebuild the app per channel, so it overrides the provider with
+/// this same function and another channel id — the real wiring, driven.
+///
+/// ARCHITECTURE DECISION (2026-09-19, recorded in the PR body): an undeclared
+/// channel — the `'dev'` default — SELLS NOTHING rather than being guessed as
+/// `web`. Every release lane passes `--dart-define=RELEASE_CHANNEL`, and
+/// `assert-channel-register` limb 6b-ii fails a release build that does not.
+PurchaseRail purchaseRailFor(Ref<PurchaseRail> ref, String releaseChannel) {
+  final ChassisBillingConfig config = ChassisBillingConfig(
+    railConfig: ref.watch(railConfigProvider),
     appId: AppConfig.appId,
     returnUrl: kCheckoutReturnUrl,
     // 🔒 [5]M-7 — the buyer's account id rides in the checkout URL so the
@@ -85,8 +103,34 @@ final Provider<PurchaseRail> purchaseRailProvider = Provider<PurchaseRail>((
     accountId: () async => ref.read(authRepositoryProvider).currentUser?.id,
     accessToken: () => ref.read(authRepositoryProvider).currentAccessToken(),
     cancellationTransport: ref.watch(cancellationTransportProvider),
+    // No app has opted in to `billing.mobileIap` (O-REVENUECAT-ACCOUNT), so no
+    // store bridge ships and a store channel answers `iapBridgeMissing`.
+    // `assert-app-yaml` limb 6 holds the dependency and the declaration
+    // together; the opt-in increment passes a `RevenueCatBridge` here.
+    iapBridge: null,
+    iapBridgeConfig: null,
   );
-});
+  final PurchaseRail rail = ChassisBilling.railForDeclared(
+    releaseChannel,
+    config,
+  ).orUnavailableRail(config);
+
+  // 🔒 [ADR 085] B — THE AUTH-STATE CHANGE PATH. A store SDK is configured
+  // once and keeps the account it was given; a sign-in, sign-out or account
+  // switch after that is forwarded here, or the store webhook links the next
+  // purchase to the previous account. Only a rail that needs telling is told
+  // (the hosted rail reads the account at checkout time).
+  if (rail case final IdentifiesBuyer buyer) {
+    void forward(Object? _, AsyncValue<core.AuthUser?> next) {
+      // Loading is not a sign-out: only a settled answer moves the identity.
+      if (!next.hasValue) return;
+      buyer.identifyBuyer(next.valueOrNull?.id).ignore();
+    }
+
+    ref.listen(authUserProvider, forward, fireImmediately: true);
+  }
+  return rail;
+}
 
 /// The offline cache, with the [pipeline 5]M-8 staleness ceiling applied by
 /// [core.EntitlementCache] itself.

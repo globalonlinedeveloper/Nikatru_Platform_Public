@@ -100,6 +100,7 @@ jobs:
         working-directory: apps/${{ matrix.app }}
         run: >
           flutter build web --release
+          --dart-define=RELEASE_CHANNEL=web
           --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
       # why: --obfuscate and --split-debug-info are ONE flag, and the directory
       # they write is the ONLY thing that turns a crash report from this build
@@ -568,6 +569,7 @@ jobs:
           --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
           --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
           --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
+          --dart-define=RELEASE_CHANNEL=macos-appstore
           --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
       - name: The macOS bundle is signed by the identity this lane intended
         run: >
@@ -597,6 +599,7 @@ jobs:
           --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
           --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
           --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
+          --dart-define=RELEASE_CHANNEL=ios-appstore
           --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
       - name: Build ios (no codesign — unsigned build proof)
         if: env.APPLE_SIGNING_POSTURE != 'release-signed'
@@ -607,6 +610,7 @@ jobs:
           --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
           --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
           --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
+          --dart-define=RELEASE_CHANNEL=ios-appstore
           --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
       # ⏱ MOVED 2026-09-07 (fix pass) — THIS STEP USED TO BE THE LAST ONE IN THE
       # JOB, and that lost the mapping it exists to keep. This unit states the
