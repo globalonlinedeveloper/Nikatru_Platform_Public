@@ -53,6 +53,7 @@ import zlib from 'node:zlib';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
 import { assertLocalesInPackage } from '../_locales/package-guard.mjs';
+import { DOS_TIME, DOS_DATE } from '../../../scripts/lib/zip-time.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = process.env.SK_ROOT ? path.resolve(process.env.SK_ROOT) : path.join(HERE, '..');
@@ -186,8 +187,11 @@ function crc32(buf) {
 }
 
 /* A fixed timestamp keeps the build reproducible: same inputs, same bytes, so a
-   rebuild that changes the file is a change in the CODE and can be diffed. */
-const DOS_TIME = 0x0000, DOS_DATE = ((2026 - 1980) << 9) | (1 << 5) | 1;
+   rebuild that changes the file is a change in the CODE and can be diffed.
+   DOS_TIME / DOS_DATE are imported from scripts/lib/zip-time.mjs (above), the
+   one definition the repository packer scripts/pack.mjs also imports. The path
+   is three levels up from <Category>/<Tool>/publish/, which is where
+   new-tool.mjs stamps this file, and from templates/tool/publish/ alike. */
 
 export function writeZip(dest, entries) {
   const locals = [], central = [];

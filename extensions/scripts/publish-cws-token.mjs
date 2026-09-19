@@ -47,8 +47,13 @@ export const CWS_API_DOC = 'https://developer.chrome.com/docs/webstore/using-api
 export const CWS_SA_DOC = 'https://developer.chrome.com/docs/webstore/service-accounts';
 export const CWS_SCOPE = 'https://www.googleapis.com/auth/chromewebstore';
 
-/** The env var carrying the service-account key JSON. Named once, here, so the
- *  workflow, the preflight and both callers cannot drift apart on it. */
+/** The env var carrying the service-account key JSON. Named once, here:
+ *  publish-cws.mjs, publish-cws-keepalive.mjs and publish-arming.mjs's Chrome
+ *  preflight import it, so the preflight and both callers cannot drift apart
+ *  on it. .github/workflows/extensions.yml cannot import a constant and spells
+ *  the name; tooling/ci/test/extensions-shared-constants.test.mjs requires the
+ *  workflow's CWS_* secret names to equal the preflight's, so a rename here
+ *  that the workflow does not follow goes red. */
 export const CWS_SA_ENV = 'CWS_SERVICE_ACCOUNT_JSON';
 
 /** The fields a Google service-account key JSON must carry for the JWT-bearer

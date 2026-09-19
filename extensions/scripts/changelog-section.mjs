@@ -66,7 +66,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseArgs, die, EXIT_OK, EXIT_FAIL } from './lib/report.mjs';
-import { repoRoot, resolveTool, readText, versionProblem, changelogTop } from './lib/toolinfo.mjs';
+import { repoRoot, resolveTool, readText, versionProblem, changelogTop, RE_CHANGELOG_VERSION_HEADING } from './lib/toolinfo.mjs';
 
 /* Report's shape (report.mjs:57-70), on stderr. `die()` already goes to stderr
    and exits 2, so it is used unchanged. */
@@ -164,11 +164,13 @@ if (unterminated) {
     'invisible to this script, and to any other markdown reader.');
 }
 
-/* The heading shape is changelogTop()'s, character for character (toolinfo.mjs:256),
-   so the two readers of this file cannot drift on what a version heading looks
-   like. `##(?!#)` is the section terminator: `### Added` belongs to the section,
+/* The heading shape is changelogTop()'s own pattern, imported from lib/toolinfo.mjs
+   (RE_CHANGELOG_VERSION_HEADING), so the two readers of this file cannot drift
+   on what a version heading looks like. They differ on one thing on purpose:
+   this one skips headings inside code fences.
+   `##(?!#)` is the section terminator: `### Added` belongs to the section,
    a second `##` of any kind ends it. */
-const RE_VERSION_HEADING = /^##\s*\[([^\]]+)\]/;
+const RE_VERSION_HEADING = RE_CHANGELOG_VERSION_HEADING;
 const RE_ANY_H2 = /^##(?!#)/;
 
 const headings = [];

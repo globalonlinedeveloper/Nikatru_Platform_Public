@@ -37,6 +37,7 @@ import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { armingOf, armingOfTool } from '../../tooling/ci/channel-arming.mjs';
+import { CWS_SA_ENV, CWS_SA_DOC } from './publish-cws-token.mjs';
 
 /** The repository root, resolved from THIS file rather than from the working
  *  directory: `extensions.yml` runs its steps with `working-directory: extensions`
@@ -352,7 +353,6 @@ export function readSubmittablePackage(zipPath) {
 // ─────────────────────────────────────────────────────────────────────────────
 const AMO_DOC = 'https://extensionworkshop.com/documentation/develop/web-ext-command-reference/';
 const CWS_DOC = 'https://developer.chrome.com/docs/webstore/using-api';
-const CWS_SA_DOC = 'https://developer.chrome.com/docs/webstore/service-accounts';
 const EDGE_DOC = 'https://learn.microsoft.com/en-us/microsoft-edge/extensions/update/api/using-addons-api';
 const EXT_RUNBOOK = 'Private/runbooks/store-submission-extensions.md';
 
@@ -380,7 +380,7 @@ export const LANES = Object.freeze({
       // second way of authenticating to Google beside the Play lane's.
       // 🔴 A PREFLIGHT THAT STILL DEMANDED THE THREE WOULD BE A FALSE BLOCKER:
       // it would refuse a fully credentialled lane over names no file reads.
-      { name: 'CWS_SERVICE_ACCOUNT_JSON', why: `the Google service-account key JSON, whose email is added to the publisher in the Developer Dashboard under Account (${CWS_SA_DOC}); the same shape the Play lane's PLAY_SERVICE_ACCOUNT_JSON uses` },
+      { name: CWS_SA_ENV, why: `the Google service-account key JSON, whose email is added to the publisher in the Developer Dashboard under Account (${CWS_SA_DOC}); the same shape the Play lane's PLAY_SERVICE_ACCOUNT_JSON uses` },
       { name: 'CWS_PUBLISHER_ID', why: `the publisher id shown in the Developer Dashboard under Publisher → Settings; the v2 API path carries it and the older v1.1 path did not (${CWS_DOC})` },
     ],
     ownerStep:

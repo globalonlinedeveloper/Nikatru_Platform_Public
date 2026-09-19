@@ -61,10 +61,10 @@ Future<void> main() async {
   // and a frozen 0.1.0, which every stamped app then reported to the ONE shared
   // GlitchTip project as though the crash were the probe's.
   //
-  // It used to interpolate `'subly@${AppConfig.appVersion}'` here. The emitted
-  // STRING is identical (AppConfig.appId == 'subscriptiontracker'); what the composed constant
-  // buys is that it can no longer drift from the id when this app is re-stamped
-  // or cloned.
+  // It used to interpolate `'subly@${AppConfig.appVersion}'` here, which is NOT
+  // the same string: AppConfig.appId is 'subscriptiontracker', so the release
+  // now reads `subscriptiontracker@<version>`. What the composed constant buys
+  // is that it follows the id when this app is re-stamped or cloned.
   const TelemetryConfig telemetry = TelemetryConfig(
     dsn: String.fromEnvironment('GLITCHTIP_DSN'),
     release: AppConfig.telemetryRelease,

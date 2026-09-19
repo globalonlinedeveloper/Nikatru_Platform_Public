@@ -57,6 +57,7 @@
 import { existsSync, readFileSync, lstatSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import { listDir } from './tree-walk.mjs';
+import { stripDartComments } from './dart-source.mjs';
 
 const args = process.argv.slice(2);
 const argOf = (flag) => {
@@ -226,28 +227,61 @@ function assertNoPushDependency(appId) {
   }
 }
 
-/** The `_phApiBase = ...` line of a stamped app_config.dart, or null. */
-function apiBaseLine(appId) {
+/**
+ * What `_phApiBase` is ASSIGNED in a stamped app_config.dart, read from the
+ * file's CODE: comments are blanked first by dart-source.mjs (the one reading
+ * of which bytes of a .dart file are code), and the string literal may sit on
+ * the line after the `=`.
+ *
+ * ⏱ 2026-09-19. Until today this read "the first LINE containing `_phApiBase`
+ * and `=`", and that line could be a comment. apps/subscriptiontracker's
+ * app_config.dart carries a sentinel note whose prose reads
+ * "[isApiConfigured] is `apiBaseUrl != _phApiBase`" above the declaration,
+ * and the declaration puts its literal on the NEXT line. So
+ * `--backend subscriptiontracker` graded a sentence of prose and failed on it.
+ * CI never saw it: CI runs only against the stamped probes, whose template
+ * declares on one line with no comment above.
+ *
+ * @returns {{ found: 'none' } | { found: 'many', count: number }
+ *   | { found: 'one', value: string | null, text: string }}
+ *   `value` is null when the assignment is not a plain string literal.
+ */
+function apiBaseAssignment(appId) {
   const cfg = join('apps', appId, 'lib', 'core', 'app_config.dart');
-  if (!existsSync(cfg)) return null;
-  return (
-    readFileSync(cfg, 'utf8')
-      .split('\n')
-      .find((l) => l.includes('_phApiBase') && l.includes('=')) ?? null
-  );
+  if (!existsSync(cfg)) return { found: 'none' };
+  const code = stripDartComments(readFileSync(cfg, 'utf8'));
+  // `=` not followed by `=` is an assignment. `!= _phApiBase` and
+  // `== _phApiBase` put the name AFTER the operator, so they never match.
+  const hits = [...code.matchAll(/\b_phApiBase\s*=(?!=)\s*/g)];
+  if (hits.length === 0) return { found: 'none' };
+  if (hits.length > 1) return { found: 'many', count: hits.length };
+  const at = hits[0].index + hits[0][0].length;
+  const lit = /^(['"])([^'"\n]*)\1/.exec(code.slice(at));
+  const text = code
+    .slice(hits[0].index, at + (lit ? lit[0].length : 40))
+    .replace(/\s+/g, ' ')
+    .trim();
+  return { found: 'one', value: lit ? lit[2] : null, text };
 }
 
-/** The host `_phApiBase` is ASSIGNED, read from the string literal on its line.
- *  CodeQL #11: "the host name appears on the line" was also satisfied by a
- *  trailing comment, and by a lookalike such as platform.nikatru.com.evil.test. */
-function apiBaseHost(line) {
-  const m = /_phApiBase\s*=\s*(['"])([^'"]*)\1/.exec(line);
-  if (!m) return null;
+/** The hostname of an assigned URL, or null. CodeQL #11: "the host name
+ *  appears on the line" was also satisfied by a trailing comment, and by a
+ *  lookalike such as platform.nikatru.com.evil.test. */
+function hostOf(value) {
+  if (value === null) return null;
   try {
-    return new URL(m[2]).hostname;
+    return new URL(value).hostname;
   } catch {
     return null;
   }
+}
+
+/** The failure for an assignment that cannot be graded at all, or null. */
+function ungradable(appId, a) {
+  if (a.found === 'none') return `apps/${appId}/lib/core/app_config.dart missing or has no _phApiBase assignment in code`;
+  if (a.found === 'many') return `apps/${appId}/lib/core/app_config.dart assigns _phApiBase ${a.count} times in code; one declaration is the contract`;
+  if (a.value === null) return `_phApiBase is not assigned a plain string literal: ${a.text}`;
+  return null;
 }
 
 // ── The DEFAULT stamp: client-only ──────────────────────────────────────────
@@ -298,13 +332,14 @@ if (clientApp) {
     // Assert the ACTUAL assignment, not "the string appears in the file" — a
     // doc-comment mentioning the host must not satisfy this while _phApiBase
     // silently reverted to the per-app default.
-    const line = apiBaseLine(clientApp);
-    if (line === null) {
-      fail(`apps/${clientApp}/lib/core/app_config.dart missing or has no _phApiBase`);
-    } else if (apiBaseHost(line) !== 'platform.nikatru.com') {
-      fail(`_phApiBase is not the shared platform Worker: ${line.trim()}`);
-    } else if (line.includes(`${clientApp}-api`)) {
-      fail(`_phApiBase still carries a per-app API host: ${line.trim()}`);
+    const a = apiBaseAssignment(clientApp);
+    const bad = ungradable(clientApp, a);
+    if (bad) {
+      fail(bad);
+    } else if (hostOf(a.value) !== 'platform.nikatru.com') {
+      fail(`_phApiBase is not the shared platform Worker: ${a.text}`);
+    } else if (a.value.includes(`${clientApp}-api`)) {
+      fail(`_phApiBase still carries a per-app API host: ${a.text}`);
     } else {
       ok('_phApiBase points at the shared platform Worker');
     }
@@ -355,13 +390,20 @@ if (backendApp) {
 
   // The mirror of the client-only assertion. Without this, a bug that made the
   // {{#needs_backend}} section render the WRONG branch would pass clean.
-  const line = apiBaseLine(backendApp);
-  if (line === null) {
-    fail(`apps/${backendApp}/lib/core/app_config.dart missing or has no _phApiBase`);
-  } else if (!line.includes(`${backendApp}-api`)) {
-    fail(`_phApiBase is not this app's own API host: ${line.trim()}`);
-  } else if (line.includes('platform.nikatru.com')) {
-    fail(`_phApiBase rendered the client-only branch: ${line.trim()}`);
+  // Graded on the HOST, not on "the text contains <app>-api": its first label
+  // must be `<app>-api` ([ADR 080] §3). The stamp's `https://<app>-api.nikatru.com`
+  // and subscriptiontracker's sentinel
+  // `https://subscriptiontracker-api.YOUR_SUBDOMAIN.workers.dev` both pass; the
+  // shared Worker, another app's host, and `<app>-api` in a path do not.
+  const a = apiBaseAssignment(backendApp);
+  const bad = ungradable(backendApp, a);
+  const host = bad ? null : hostOf(a.value);
+  if (bad) {
+    fail(bad);
+  } else if (host === 'platform.nikatru.com') {
+    fail(`_phApiBase rendered the client-only branch: ${a.text}`);
+  } else if (host === null || host.split('.')[0] !== `${backendApp}-api`) {
+    fail(`_phApiBase is not this app's own API host: ${a.text}`);
   } else {
     ok('_phApiBase points at its own API host');
   }

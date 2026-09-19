@@ -90,10 +90,9 @@ class AppConfig {
   /// Composed from the two consts above so it cannot drift from either: the id
   /// is stamped once, and the version moves with every release.
   ///
-  /// ⚠️ NOT WIRED YET. `main.dart` still passes the equivalent literal
-  /// `'subly@${AppConfig.appVersion}'`; swapping it for this const is a P2.6a
-  /// line, deliberately not folded into P2.5 (the values are identical today,
-  /// so the swap is a readability change with no behaviour to verify here).
+  /// Wired: `main.dart` passes this const as `TelemetryConfig.release`. It
+  /// replaced the literal `'subly@${AppConfig.appVersion}'`, which named the
+  /// app's retired short id rather than [appId].
   static const String telemetryRelease = '$appId@$appVersion';
 
   // ── Supabase (shared across ALL apps in the portfolio) ────────────────────

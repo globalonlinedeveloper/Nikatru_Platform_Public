@@ -227,6 +227,12 @@ describe('assert-mechanism-claims — the limbs fail', () => {
     assert.match(out, /M6 [^\n]*is `proven` and has no `proves`/);
   });
 
+  test('M6: a case title that appears only in a COMMENTED-OUT test call is not a declared test', () => {
+    const { code, out } = run(fixture({ patch: ({ files }) => { files['tooling/ci/test/guard.test.mjs'] = "import { test } from 'node:test';\n// test('the list is read from the record', () => {});\n"; } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /M6 [^\n]*declares no test titled exactly that/);
+  });
+
   test('M7: a demoted claim with no reason fails', () => {
     const { code, out } = run(fixture({ patch: ({ register }) => { register.claims[0] = { file: 'tooling/ci/guard.mjs', anchor: `so there is ${SECOND} here`, status: 'demoted' }; } }));
     assert.equal(code, 1, out);
@@ -304,6 +310,99 @@ describe('assert-mechanism-claims — COVERAGE LOST', () => {
     const { code, out } = run(root);
     assert.equal(code, 2, out);
     assert.match(out, /no text file under .* besides tooling\/mechanism-claims\.json/);
+  });
+});
+
+// ⏱ 2026-09-19. The extensions' own runners are `check('<label>', ok)` and
+// `expect('<label>', {...})`, not node:test, so five claims they enforce could
+// only be demoted. A `harness` field makes such a label citable, but only in a
+// file that BINDS that function: a bare `check(` call proves nothing about
+// which runner it belongs to.
+describe('assert-mechanism-claims — M6 with the extensions harness', () => {
+  const LABEL = 'the list is read from the record';
+  const SIM = `let FAILS = 0;\nfunction check(label, ok) { if (!ok) FAILS++; }\ncheck('${LABEL}', true);\nprocess.exit(FAILS ? 1 : 0);\n`;
+  const withHarness = (body, harness = 'check') => ({ files, register }) => {
+    files['tooling/ci/test/guard.test.mjs'] = body;
+    register.claims[0].harness = harness;
+  };
+
+  test('a check() label in a file that DEFINES check is a citable case', () => {
+    const { code, out } = run(fixture({ patch: withHarness(SIM) }));
+    assert.equal(code, 0, out);
+  });
+
+  test('a check() label in a file that DESTRUCTURES check from a require is a citable case', () => {
+    const body = `const H = require('./harness.js');\nconst { check, section } = H;\ncheck('${LABEL}', true);\n`;
+    assert.equal(run(fixture({ patch: withHarness(body) })).code, 0);
+    const direct = `const { section, check } = require('./harness.js');\ncheck('${LABEL}', true);\n`;
+    assert.equal(run(fixture({ patch: withHarness(direct) })).code, 0);
+  });
+
+  test('an expect() label in a file that defines expect is a citable case', () => {
+    const body = `function expect(label, opts) { return opts; }\nexpect('${LABEL}', { code: 1 });\n`;
+    const { code, out } = run(fixture({ patch: withHarness(body, 'expect') }));
+    assert.equal(code, 0, out);
+  });
+
+  test('M6: a check() call in a file that never binds check is refused', () => {
+    const body = `import { run } from './lib.mjs';\ncheck('${LABEL}', true);\n`;
+    const { code, out } = run(fixture({ patch: withHarness(body) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /M6 [^\n]*neither defines `check` nor destructures it/);
+  });
+
+  test('M6: a WRONG label is refused — the citation must name a real check', () => {
+    const { code, out } = run(fixture({ patch: ({ files, register }) => { withHarness(SIM)({ files, register }); register.claims[0].case = `${LABEL} twice`; } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /M6 [^\n]*makes no `check\(\.\.\.\)` call labelled exactly that/);
+  });
+
+  test('M6: the label under a DIFFERENT callee than the harness named is refused', () => {
+    const body = `function check(label, ok) {}\nfunction expect(label, o) {}\nexpect('${LABEL}', {});\n`;
+    const { code, out } = run(fixture({ patch: withHarness(body, 'check') }));
+    assert.equal(code, 1, out);
+    assert.match(out, /M6 [^\n]*makes no `check\(\.\.\.\)` call labelled exactly that/);
+  });
+
+  test('M6: a commented-out check() is not a case', () => {
+    const body = `function check(label, ok) {}\n// check('${LABEL}', true);\n`;
+    const { code, out } = run(fixture({ patch: withHarness(body) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /M6 [^\n]*makes no `check\(\.\.\.\)` call labelled exactly that/);
+  });
+
+  test('M6: a check() label is NOT citable without the harness field — the default stays test / it / describe', () => {
+    const { code, out } = run(fixture({ patch: ({ files }) => { files['tooling/ci/test/guard.test.mjs'] = SIM; } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /M6 [^\n]*declares no test titled exactly that/);
+  });
+
+  test('M6: an unknown harness name is refused', () => {
+    const { code, out } = run(fixture({ patch: withHarness(SIM, 'assertThat') }));
+    assert.equal(code, 1, out);
+    assert.match(out, /M6 [^\n]*names the harness "assertThat"/);
+  });
+
+  test('REAL FILE: extensions/core/test/settings.node.js is citable with its harness, and only with it', () => {
+    // The real sim and its real register entry, cut down to that one file. Its
+    // `check` is destructured from core/test/harness.js (`const { check, ... } = H;`).
+    const SUBJECT = 'extensions/core/test/settings.node.js';
+    const real = JSON.parse(readFileSync(join(REPO, 'tooling', 'mechanism-claims.json'), 'utf8'));
+    const own = real.claims.filter((c) => c.file === SUBJECT);
+    assert.ok(own.some((c) => c.status === 'proven' && c.harness === 'check'), `the real register no longer cites ${SUBJECT} through its harness; this control lost its subject`);
+    const files = { [SUBJECT]: readFileSync(join(REPO, ...SUBJECT.split('/')), 'utf8') };
+    const register = (claims) => ({ shapes: real.shapes, backlog: {}, claims });
+
+    const green = run(fixture({ files: { ...files }, register: register(own) }));
+    assert.equal(green.code, 0, green.out);
+
+    const noHarness = run(fixture({ files: { ...files }, register: register(own.map(({ harness, ...c }) => c)) }));
+    assert.equal(noHarness.code, 1, noHarness.out);
+    assert.match(noHarness.out, /M6 [^\n]*declares no test titled exactly that/);
+
+    const wrongLabel = run(fixture({ files: { ...files }, register: register(own.map((c) => ({ ...c, case: `${c.case}.` }))) }));
+    assert.equal(wrongLabel.code, 1, wrongLabel.out);
+    assert.match(wrongLabel.out, /M6 [^\n]*makes no `check\(\.\.\.\)` call labelled exactly that/);
   });
 });
 
