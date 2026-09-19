@@ -229,13 +229,20 @@ describe('the JWKS outage does NOT downgrade this boundary to a shared secret', 
     return (authz: string) => a.request('/me', { headers: { Authorization: authz } }, env);
   }
 
-  const es256 = (url: string, { signer = null as KeyLike | null } = {}) =>
+  const es256 = (
+    url: string,
+    {
+      signer = null as KeyLike | null,
+      issuer = null as string | null,
+      audience = 'authenticated',
+    } = {},
+  ) =>
     new SignJWT({ sub: 'user-a' })
       .setProtectedHeader({ alg: 'ES256', kid: 'sub-key-1' })
       .setIssuedAt()
       .setExpirationTime('1h')
-      .setIssuer(`${url}/auth/v1`)
-      .setAudience('authenticated')
+      .setIssuer(issuer ?? `${url}/auth/v1`)
+      .setAudience(audience)
       .sign(signer ?? signingKey);
 
   it('UNREACHABLE + a populated cache => 200 AND STILL asymmetric — the downgrade does not happen', async () => {
@@ -332,6 +339,52 @@ describe('the JWKS outage does NOT downgrade this boundary to a shared secret', 
     const res = await api({ kv: cachedKv({ keys: [publicJwk] }), url, secret: null })(
       `Bearer ${await es256(url, { signer: foreignKey })}`,
     );
+    expect(res.status).toBe(401);
+  });
+
+  // The case above pins the KEY. These two pin the VERIFY OPTIONS on the same
+  // cache-fallback path: the token is signed by the GENUINE cached key, so only
+  // `issuer` / `audience` in the fallback's `jwtVerify` options can refuse it.
+  // A fallback handed a weaker options object (alg only) returns 200 here.
+  // `secret: null` so HS256 cannot be what answers; `erasureAuth` too, so the
+  // strict boundary's fallback is graded, not just the permissive one. Each
+  // case is declared literally (no loop), so the declared count is the run count.
+  const viaCacheFallback = async (
+    url: string,
+    middleware: typeof supabaseAuth,
+    claims: { issuer?: string; audience?: string },
+  ) => {
+    mode = 'down';
+    return api({ kv: cachedKv({ keys: [publicJwk] }), url, secret: null, middleware })(
+      `Bearer ${await es256(url, claims)}`,
+    );
+  };
+
+  it('the cache fallback keeps the ISSUER pin — a genuine-key token from ANOTHER project is 401 (supabaseAuth)', async () => {
+    const res = await viaCacheFallback('https://outage-wrong-iss-a.test', supabaseAuth, {
+      issuer: `${OTHER_URL}/auth/v1`,
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it('the cache fallback keeps the ISSUER pin — a genuine-key token from ANOTHER project is 401 (erasureAuth)', async () => {
+    const res = await viaCacheFallback('https://outage-wrong-iss-e.test', erasureAuth, {
+      issuer: `${OTHER_URL}/auth/v1`,
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("the cache fallback keeps the AUDIENCE pin — a genuine-key 'anon' token is 401 (supabaseAuth)", async () => {
+    const res = await viaCacheFallback('https://outage-wrong-aud-a.test', supabaseAuth, {
+      audience: 'anon',
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("the cache fallback keeps the AUDIENCE pin — a genuine-key 'anon' token is 401 (erasureAuth)", async () => {
+    const res = await viaCacheFallback('https://outage-wrong-aud-e.test', erasureAuth, {
+      audience: 'anon',
+    });
     expect(res.status).toBe(401);
   });
 

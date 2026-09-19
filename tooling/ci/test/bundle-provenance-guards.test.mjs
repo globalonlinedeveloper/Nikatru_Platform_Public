@@ -227,6 +227,47 @@ describe('assert-no-store-bundle-copy — no promise of what cannot be delivered
     assert.match(r.out, /the ban does not apply — the bundle can be bought/);
   });
 
+  // The guard's header says it finds every `store/` directory under `apps/`
+  // and `extensions/` by walking them. Every case above runs over the
+  // ONE store tree that exists today, so a typed list of today's tree passes
+  // them all. These plant store/ directories under names the guard has never
+  // seen — one per product root — and require each to be READ.
+  test('SB5 — a NEW store/ directory under apps/ is read without any edit to the guard', () => {
+    const planted = 'apps/zz-planted-app/store/android-play/long-description.txt';
+    const r = run(
+      STORE_COPY_GUARD,
+      tree(STORE_DIRS, (d) => {
+        mkdirSync(join(d, dirname(planted)), { recursive: true });
+        writeFileSync(join(d, planted), 'An all-access pass to every Nikatru app.\n');
+      }),
+    );
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /zz-planted-app\/store\/android-play\/long-description\.txt contains/);
+  });
+
+  test('SB6 — a NEW store/ directory under extensions/ is read too, and the tree count says so', () => {
+    const planted = 'extensions/zz-planted-ext/store/chrome/description.txt';
+    const clean = run(
+      STORE_COPY_GUARD,
+      tree(STORE_DIRS, (d) => {
+        mkdirSync(join(d, dirname(planted)), { recursive: true });
+        writeFileSync(join(d, planted), 'A plain listing with nothing to promise.\n');
+      }),
+    );
+    assert.equal(clean.code, 0, clean.out);
+    assert.match(clean.out, /textual file\(s\) across 2 store tree\(s\)/);
+
+    const dirty = run(
+      STORE_COPY_GUARD,
+      tree(STORE_DIRS, (d) => {
+        mkdirSync(join(d, dirname(planted)), { recursive: true });
+        writeFileSync(join(d, planted), 'Included in the Nikatru bundle.\n');
+      }),
+    );
+    assert.equal(dirty.code, 1, dirty.out);
+    assert.match(dirty.out, /zz-planted-ext\/store\/chrome\/description\.txt contains/);
+  });
+
   test('an unreadable register is COVERAGE LOST — never "assume banned", never "assume allowed"', () => {
     const r = run(
       STORE_COPY_GUARD,

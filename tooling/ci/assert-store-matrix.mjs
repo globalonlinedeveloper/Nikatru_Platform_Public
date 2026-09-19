@@ -409,8 +409,8 @@ for (const [v, n] of seenVocab) {
 // code only enforces that the argument was made.
 //
 // ABSENT IS FINE, MALFORMED IS NOT. A registry with no `infrastructure` key
-// exempts nothing and reports nothing — the state every fixture in
-// tooling/ci/test/store-matrix.test.mjs is in. A key that is PRESENT and
+// exempts nothing and reports nothing — the state of most fixtures in
+// tooling/ci/test/store-matrix.test.mjs (I1-I3 declare one). A key that is PRESENT and
 // unreadable is a finding rather than a silent skip: a declaration surface
 // nobody can parse exempts nothing while looking like it exempts something.
 const infraDirs = new Map(); // relative dir under Projects/ -> id
