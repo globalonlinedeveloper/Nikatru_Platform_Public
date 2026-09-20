@@ -37,17 +37,71 @@
 // DEFERRED row PRINTS on every run — a known gap nobody sees becomes permanent.
 //
 //   tree missing, row served      -> FAIL  (a live store listing nobody can diff)
-//   tree missing, row deferred    -> PRINT (owner-gated; the whole set today)
+//   tree missing, row deferred, DATED deferral not yet expired -> PRINT
+//   tree missing, row deferred, no dated deferral / expired    -> FAIL
 //   tree PRESENT but incomplete   -> FAIL  (this is the case that matters)
 //   tree present, field emptied   -> FAIL
 //   tree present, field forked from its spec source -> FAIL
 //   a tree with no register row   -> FAIL  (a channel renamed out from under it)
 //   EVERY expected tree gone      -> COVERAGE LOST
 //
-// 🔴 THE THIRD LINE IS THE POINT. A guard that only printed would let anyone
+// 🔴 THE `tree PRESENT but incomplete` LINE IS THE POINT — named, not numbered,
+// because two lines were inserted above it in 2026-09-20 and a "third line"
+// citation would now be pointing at a different rule entirely.
+// A guard that only printed would let anyone
 // delete apps/subscriptiontracker/store/windows-store/title.txt and stay green — "PRINT
 // everything" is how an owner-gated exemption eats the check it was meant to
 // scope. What is owner-gated is CREATING a tree, not KEEPING one.
+//
+// ── ⏳ AND THE SECOND LINE USED TO BE UNCONDITIONAL, WHICH IS HOW A CHANNEL ON
+// ──    A CLOCK STAYED GREEN WITH NO LISTING AT ALL ──────────────────────────
+// MEASURED 2026-09-20: apps/subscriptiontracker/store/apps-gov-in/ DID NOT
+// EXIST. The brick has carried an `apps-gov-in` template the whole time, so a
+// stamped app got the slot and the one real app — which predates the brick —
+// did not. This guard exited 0 printing `NO TREE (deferred)` on every run,
+// because the row is `served: false`. Meanwhile that channel's publisher
+// account is VERIFIED and EXPIRES: an individual developer profile is suspended
+// if no app is uploaded within two months of approval (approved 2026-08-31 →
+// about 2026-10-31, `accountStatus.note`). A print that repeats an expected line
+// is wallpaper — the android-play row's own `accountStatus._why` records the
+// same defect from the other side, where a gap-printer correctly printed a gap
+// that had already closed, for two days, in a public repo.
+//
+// 🔴 "DEFERRED" IS NOT A STATE, IT IS A PROMISE WITH A DATE, AND A PROMISE WITH
+// NO DATE IS A PERMANENT EXEMPTION WEARING A TEMPORARY WORD. So the deferred
+// branch now costs the register something it must keep current:
+//
+//   deferral.treeDeferredUntil — `YYYY-MM-DD`, a REAL calendar date, in the future
+//   deferral.treeDeferredWhy   — why THIS TREE cannot exist yet, in prose
+//
+// Both, or the missing tree FAILS. And they are deliberately NOT `deferral
+// .reason`, which every row already carries: those reasons are about the
+// PUBLISH — "the first publish is manual and owner-gated", "native Linux is
+// deferred until there is revenue" — and not one of them is a reason a LISTING
+// TREE cannot exist in a repository. Reusing that field would have let the
+// publish deferral discharge the tree duty, which is the exact confusion that
+// produced the hole: creating a PUBLISHER ACCOUNT is owner work, writing eight
+// text files is not, and the old print conflated them by quoting `ownerQueue`
+// as if it explained the absent directory.
+//
+// ⚠️ Neither quoted reason is cited by its ADR id on purpose: an `ADR NNN`
+// token in this header is scraped into tooling/enforcement-index.json as a
+// CLAIM that this guard ENFORCES that decision, and quoting another row's
+// deferral reason is not enforcing the decision behind it. Measured 2026-09-20,
+// by assert-enforcement-index.mjs going red on exactly that.
+//
+// ⚠️ THE DATE IS COMPARED IN UTC and the owner is in IST (UTC+5:30), so an
+// expiry can bite up to one day "early" in local terms. Named rather than
+// corrected: CI runs in UTC, a deferral date is a deadline and not a timestamp,
+// and a guard that quietly extended one by a timezone would be doing the thing
+// this limb exists to stop. There is also no environment override for "today" —
+// a seam for faking the clock is a seam for waiving the rule.
+//
+// ⬜ NO ROW CARRIES THE PAIR TODAY, on purpose: all six app-surface store rows
+// now have trees, so this is an escape hatch for the next channel declared
+// before its listing is written, not an exemption anybody is using. Both
+// directions are proven in tooling/ci/test/store-metadata.test.mjs and against
+// the real tree.
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // ── AND EVERY WORD ABOVE WAS ABOUT ONE HAND-MADE DIRECTORY ──────────────────
@@ -397,6 +451,50 @@ const charCount = (text) => [...text.trim()].length;
 let limitsChecked = 0;
 let limitProblems = 0;
 
+/** Today in UTC, `YYYY-MM-DD`. Deliberately no environment override: a seam for
+ *  faking the clock is a seam for waiving the rule, and every other date in this
+ *  register is an owner-asserted `asOf` nobody can fake either. */
+const TODAY_UTC = new Date().toISOString().slice(0, 10);
+
+/** A REAL calendar date in `YYYY-MM-DD`. Round-tripped through Date rather than
+ *  matched with a regex alone, because `2026-02-31` and `2026-13-01` satisfy the
+ *  shape and are not dates — and a deferral whose expiry is not a date is one
+ *  that can never expire, which is the failure mode this whole limb is about. */
+function isRealIsoDate(s) {
+  if (typeof s !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const d = new Date(`${s}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
+}
+
+/** `null` when a missing tree is legitimately deferred — the row carries a real
+ *  future date AND a written reason for THE TREE. Otherwise the diagnosis, which
+ *  the caller pastes into a FAIL.
+ *
+ *  🔴 THE COMPARISON IS `<`, SO THE NAMED DAY IS STILL COVERED and the guard
+ *  reds the day after. "Deferred until 2026-10-31" reading as "already expired
+ *  on the 31st" would make every deferral one day shorter than its author wrote,
+ *  which is a guard editing a decision rather than enforcing one. */
+function treeDeferralFault(deferral) {
+  if (deferral === null || typeof deferral !== 'object' || Array.isArray(deferral)) {
+    return 'and the row declares no `deferral` block at all, so nothing anywhere says when this tree is due, or why it cannot exist yet.';
+  }
+  const until = deferral.treeDeferredUntil;
+  const why = deferral.treeDeferredWhy;
+  if (until === undefined || until === null) {
+    return 'and its `deferral` block carries no `treeDeferredUntil`. A deferral with no date never expires, so this gap prints on every run forever and no build ever notices — which is an exemption, not a deferral.';
+  }
+  if (!isRealIsoDate(until)) {
+    return `and its \`deferral.treeDeferredUntil\` is ${JSON.stringify(until)}, which is not a real calendar date in YYYY-MM-DD. A date nothing can parse cannot pass, so it is a permanent exemption spelled like a deadline.`;
+  }
+  if (typeof why !== 'string' || why.trim() === '') {
+    return `and its \`deferral.treeDeferredWhy\` is missing or empty. A date with no reason cannot be reviewed: nobody reading it later can tell whether ${until} is a considered deadline or a number typed to get a green build.`;
+  }
+  if (until < TODAY_UTC) {
+    return `and its \`deferral.treeDeferredUntil\` was ${until}, which has PASSED — today is ${TODAY_UTC} in UTC. The deferral ran out and the tree still does not exist. The reason it was deferred for: ${why.trim()}`;
+  }
+  return null;
+}
+
 for (const { row, app, dir } of expected) {
   const extraFiles = (contract.perChannel?.[row.id]?.additionalFiles ?? []).filter((f) => typeof f === 'string');
   const maxLines = contract.perChannel?.[row.id]?.maxLines ?? {};
@@ -408,9 +506,16 @@ for (const { row, app, dir } of expected) {
         `channel "${row.id}" is SERVED and app "${app.slug}" carries no metadata tree at ${dir}. A live store listing whose only copy is in the console cannot be regenerated, audited, localized or diffed — [10]D-5 exists for exactly that.`,
       );
     } else {
-      prints.push(
-        `NO TREE (deferred): ${dir} — channel "${row.id}" is served: false and blocked on OWNER_QUEUE ${row.ownerQueue ?? '(unnamed)'}. Creating a publisher account is owner work, so this prints rather than blocking every build on it.`,
-      );
+      const fault = treeDeferralFault(row.deferral);
+      if (fault === null) {
+        prints.push(
+          `NO TREE (deferred until ${row.deferral.treeDeferredUntil}): ${dir} — channel "${row.id}" is served: false and carries a dated tree deferral: ${String(row.deferral.treeDeferredWhy).trim()} AFTER ${row.deferral.treeDeferredUntil} — that day is still covered — this print becomes a FAIL, which is the whole difference between a deferral and an exemption.`,
+        );
+      } else {
+        problems.push(
+          `channel "${row.id}" is deferred and app "${app.slug}" carries no metadata tree at ${dir} — ${fault} A listing tree is eight text files this repository can write today; what is owner-gated is creating a PUBLISHER ACCOUNT, not writing a listing, and ${REGISTER} \`ownerQueue: ${JSON.stringify(row.ownerQueue ?? null)}\` does not say a directory cannot exist. MEASURED 2026-09-20: this limb printed instead of failing for "apps-gov-in", whose account is VERIFIED and lapses about 2026-10-31 if nothing is uploaded — a green build on a channel with no listing and a deadline. To defer a tree, the row's \`deferral\` must carry BOTH \`treeDeferredUntil\` (YYYY-MM-DD, a real date, still in the future, compared in UTC) and \`treeDeferredWhy\` (why THIS TREE cannot exist yet — not why the PUBLISH is deferred, which \`deferral.reason\` already says and which no tree needs). Otherwise: create the tree from tooling/bricks/app/__brick__/apps/{{app_id}}/store/${row.id}/.`,
+        );
+      }
     }
     continue;
   }
