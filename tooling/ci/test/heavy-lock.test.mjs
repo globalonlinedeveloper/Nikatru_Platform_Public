@@ -107,7 +107,33 @@ describe('heavy.mjs — mutual exclusion between real processes', () => {
     const lock = freshLock();
     const log = join(dirname(lock), 'sections.log');
     mkdirSync(dirname(lock), { recursive: true });
-    const first = nodeAsync([HEAVY, '--', process.execPath, '-e', section(log, 'first', 1500)], childEnv(lock));
+    // ⏱ 6000, not 1500, and the reason is a REAL RED on 2026-09-20.
+    //
+    // 🔴 THE `after waiting` SUFFIX HAS A ONE-SECOND FLOOR. heavy-lock.mjs:244
+    // appends it only when `waited > 1000`, so this assertion is not about
+    // waiting at all — it is about waiting for MORE THAN A SECOND, and nothing
+    // in the shape below guaranteed that. `waitFor` returns the moment the first
+    // holder's section BEGINS, and the second acquirer is only spawned after
+    // that: its wait is the hold MINUS however long waitFor took to notice the
+    // file and Node took to start another process. At 1500ms that margin is
+    // about a second, and on a loaded laptop spawning a child costs more than
+    // that — so the run exited 0, printed `🔒 heavy-run lock taken` with NO
+    // suffix, and the case failed on a machine, not on a change:
+    //
+    //     actual:   🔒 heavy-run lock taken — …\case-3\heavy-run.lock
+    //     expected: /heavy-run lock taken .*after waiting/
+    //
+    // The busy line it printed in the same run said `for 0 min … Waited 0 min`,
+    // which is the same sub-minute wait seen from the other side. It reddened a
+    // lane whose change touched only the ops register.
+    //
+    // 6000 leaves ~5s of margin over the one-second floor instead of ~1s, on a
+    // machine that also runs the backup and several parallel lanes. That is a
+    // bigger margin, not a proof — so the two assertions BELOW carry the
+    // property on their own: the busy line proves the second acquirer saw the
+    // first holding, and the strict ordering of the sections log proves it ran
+    // only after the first released. Neither depends on a clock.
+    const first = nodeAsync([HEAVY, '--', process.execPath, '-e', section(log, 'first', 6000)], childEnv(lock));
     assert.ok(await waitFor(() => existsSync(log)), 'the first holder never started its section');
     const second = await nodeAsync([HEAVY, '--', process.execPath, '-e', section(log, 'second', 10)], childEnv(lock));
     const firstDone = await first;
