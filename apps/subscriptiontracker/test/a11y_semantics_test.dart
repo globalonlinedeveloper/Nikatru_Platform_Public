@@ -1159,11 +1159,24 @@ String expectedDonutLabel(ProviderContainer c, AppLocalizations l10n) {
     isNotEmpty,
     reason: 'the donut is drawn in the user currency — SubMath.chartWeight',
   );
+  // 🔴 ONE BREAKDOWN, NOT A TOTAL AND A LIST. This re-derived the centre from
+  // `SubMath.totalMonthly` and each share from `cat.value`, independently —
+  // which is exactly the shape that let the screen announce a total its own
+  // legend contradicted (O-INSIGHTS-DONUT-TOTAL-DISAGREES-WITH-ITS-LEGEND). It
+  // is still an INDEPENDENT derivation from the providers the screen read —
+  // `SubMath.categoryTotals` over the container's own subscriptions — so this
+  // file still grades the SENTENCE. That the two figures agree is graded where
+  // it belongs, on the rendered strings, in
+  // `rounded_breakdown_surfaces_test.dart`.
+  final ({List<String> parts, String total}) figures = money
+      .formatBreakdownRounded(<MoneyBag>[
+        for (final CategoryTotal cat in cats) cat.value,
+      ]);
   return l10n.a11yCategoryDonut(
-    money.formatBagRounded(SubMath.totalMonthly(subs)),
+    figures.total,
     <String>[
-      for (final CategoryTotal cat in cats)
-        l10n.a11yCategoryShare(cat.name, money.formatBagRounded(cat.value)),
+      for (int i = 0; i < cats.length; i++)
+        l10n.a11yCategoryShare(cats[i].name, figures.parts[i]),
     ].join(', '),
   );
 }

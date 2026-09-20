@@ -134,4 +134,167 @@ void main() {
       expect(f.formatBagRounded(bag), r'$40 + ₹499');
     });
   });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // A BREAKDOWN: THE PARTS A READER ADDS UP GIVE THE TOTAL THEY ARE SHOWN.
+  //
+  // 🔴 EVERY ASSERTION BELOW IS ON THE RENDERED STRINGS, PARSED BACK, and that
+  // is the point rather than fussiness. The minor units always summed exactly —
+  // there was never an arithmetic error to catch — so a test that compares
+  // `Money` values passes against the defect. The contradiction only exists in
+  // what a reader can see, so only what a reader can see can falsify it.
+  // Source: the Play listing capture of 2026-09-20, an insights donut reading
+  // $93 in the centre beside a legend reading 39 + 20 + 16 + 11 + 5 + 3.
+  // ───────────────────────────────────────────────────────────────────────────
+  group('formatBreakdownRounded — the column adds up to the centre', () {
+    const MoneyFormatter f = MoneyFormatter('en_US');
+
+    /// Six categories whose per-part rounding is EACH a rounding DOWN, so the
+    /// fractions they throw away add up to three whole dollars. Naively
+    /// rendered these print 39 + 20 + 16 + 11 + 5 + 3 = 94 against a whole that
+    /// prints 97 — the defect, three dollars wide so no assertion can pass by
+    /// accident on a one-cent tolerance.
+    final List<MoneyBag> lossy = <MoneyBag>[
+      for (final int cents in <int>[3949, 2020, 1649, 1149, 549, 349])
+        MoneyBag.sum(<Money>[Money(cents, 'USD')]),
+    ];
+
+    test('the naive rendering really does disagree — the control', () {
+      // Without this, every assertion below could be true of an input that was
+      // never broken, and the whole group would be measuring nothing.
+      final int naive = lossy
+          .map((MoneyBag b) => unitsOf(f.formatBagRounded(b))[r'$']!)
+          .reduce((int a, int b) => a + b);
+      final MoneyBag fold = MoneyBag.sum(<Money>[
+        for (final MoneyBag b in lossy) ...b.amounts,
+      ]);
+      expect(naive, 94);
+      expect(unitsOf(f.formatBagRounded(fold))[r'$'], 97);
+    });
+
+    test('the apportioned parts sum to the total, as rendered', () {
+      final ({List<String> parts, String total}) shown = f
+          .formatBreakdownRounded(lossy);
+      final int summed = shown.parts
+          .map((String s) => unitsOf(s)[r'$']!)
+          .reduce((int a, int b) => a + b);
+      expect(
+        summed,
+        unitsOf(shown.total)[r'$'],
+        reason:
+            'a reader who adds ${shown.parts} must get ${shown.total} — this is '
+            'the whole property',
+      );
+      // Largest remainder, ties by position: the three spare dollars go to the
+      // three earliest parts that lost .49, not to the one that lost .20.
+      expect(shown.parts, <String>[
+        r'$40',
+        r'$20',
+        r'$17',
+        r'$12',
+        r'$5',
+        r'$3',
+      ]);
+      expect(shown.total, r'$97');
+    });
+
+    test('the WHOLE does not move — only the parts do', () {
+      // The fix must not change a figure the app is trusted on today. It does
+      // not, because Money.wholeUnits and intl agree on half away from zero.
+      final MoneyBag fold = MoneyBag.sum(<Money>[
+        for (final MoneyBag b in lossy) ...b.amounts,
+      ]);
+      expect(f.formatBreakdownRounded(lossy).total, f.formatBagRounded(fold));
+    });
+
+    test('no part moves by a whole unit from its own exact value', () {
+      final ({List<String> parts, String total}) shown = f
+          .formatBreakdownRounded(lossy);
+      for (int i = 0; i < lossy.length; i++) {
+        final int exact = lossy[i].single.minorUnits;
+        final int shownCents = unitsOf(shown.parts[i])[r'$']! * 100;
+        expect(
+          (shownCents - exact).abs(),
+          lessThan(100),
+          reason:
+              'apportioning may settle a remainder, never restate a category as '
+              'a different amount of money',
+        );
+      }
+    });
+
+    test(
+      'MIXED CURRENCIES are apportioned separately, and nothing converts',
+      () {
+        // 🔴 THE TRAP. A remainder in paise settled with a cent would be a rate
+        // table by the back door. Each currency is apportioned against its own
+        // total: the dollars are short a unit, the rupees are not.
+        final List<MoneyBag> parts = <MoneyBag>[
+          MoneyBag.sum(const <Money>[Money(1060, 'USD'), Money(50050, 'INR')]),
+          MoneyBag.sum(const <Money>[Money(1060, 'USD')]),
+          MoneyBag.sum(const <Money>[Money(49900, 'INR')]),
+        ];
+        final ({List<String> parts, String total}) shown = f
+            .formatBreakdownRounded(parts);
+        expect(shown.total, r'$21 + ₹1,000');
+        // 10.60 + 10.60 = 21.20 -> $21, so one of the two 11s comes back to 10.
+        expect(shown.parts, <String>[r'$11 + ₹501', r'$10', '₹499']);
+        int dollars = 0;
+        int rupees = 0;
+        for (final String part in shown.parts) {
+          dollars += unitsOf(part)[r'$'] ?? 0;
+          rupees += unitsOf(part)['₹'] ?? 0;
+        }
+        expect(dollars, unitsOf(shown.total)[r'$']);
+        expect(rupees, unitsOf(shown.total)['₹']);
+      },
+    );
+
+    test('a part holding no amount in a currency does not gain a zero', () {
+      // `$10` must not become `$10 + ₹0`: a bag's currency set is a statement
+      // about what the user holds, and apportioning is not allowed to add to it.
+      final ({List<String> parts, String total}) shown = f
+          .formatBreakdownRounded(<MoneyBag>[
+            MoneyBag.sum(const <Money>[Money(1000, 'USD')]),
+            MoneyBag.sum(const <Money>[Money(49900, 'INR')]),
+          ]);
+      expect(shown.parts, <String>[r'$10', '₹499']);
+    });
+
+    test('a ZERO-DECIMAL currency has no remainder to settle', () {
+      // The yen's minor unit IS the yen, so every part is already whole and
+      // apportionment must be a no-op rather than a rounding of something.
+      final ({List<String> parts, String total}) shown = f
+          .formatBreakdownRounded(<MoneyBag>[
+            MoneyBag.sum(const <Money>[Money(980, 'JPY')]),
+            MoneyBag.sum(const <Money>[Money(1450, 'JPY')]),
+          ]);
+      expect(shown.parts, <String>['¥980', '¥1,450']);
+      expect(shown.total, '¥2,430');
+    });
+
+    test('NO parts reads as an empty total, in the named currency', () {
+      final ({List<String> parts, String total}) shown = const MoneyFormatter(
+        'en_US',
+        emptyCurrencyCode: 'INR',
+      ).formatBreakdownRounded(const <MoneyBag>[]);
+      expect(shown.parts, isEmpty);
+      expect(shown.total, '₹0');
+    });
+  });
+}
+
+/// The whole-unit number in each subtotal of a rendered figure, keyed by the
+/// symbol it was printed under. `$40 + ₹499` → `{'$': 40, '₹': 499}`.
+///
+/// Parsing the OUTPUT back is deliberate: the property under test is about what
+/// a reader can add up, and a reader adds up glyphs.
+Map<String, int> unitsOf(String figure) {
+  final Map<String, int> out = <String, int>{};
+  for (final String piece in figure.split(MoneyFormatter.mixedJoiner)) {
+    final String digits = piece.replaceAll(RegExp('[^0-9]'), '');
+    final String symbol = plain(piece).replaceAll(RegExp('[-0-9,. ]'), '');
+    out[symbol] = int.parse(digits) * (piece.startsWith('-') ? -1 : 1);
+  }
+  return out;
 }

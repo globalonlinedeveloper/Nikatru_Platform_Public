@@ -260,7 +260,11 @@ class InsightsScreen extends ConsumerWidget {
       emptyTitle: l10n.dataEmptyTitle,
       emptyBody: l10n.dataEmptyBody,
       builder: (List<Subscription> subs) {
-        final MoneyBag total = SubMath.totalMonthly(subs);
+        // 🔴 NO SECOND FOLD. `SubMath.totalMonthly(subs)` stood here and was
+        // handed to `_categoryCard` beside `cats`, so the card rendered a
+        // centre and a legend from two independent numbers. They agreed in
+        // minor units and disagreed on screen — see `_categoryCard`. The card
+        // now derives its own total from the very categories it paints.
         final List<CategoryTotal> cats = SubMath.categoryTotals(subs);
         final List<Subscription> unused = SubMath.unused(subs);
         final MoneyBag savings = SubMath.savings(subs);
@@ -270,7 +274,7 @@ class InsightsScreen extends ConsumerWidget {
         // a responsive branch rots is that one arm gains a card and the other does
         // not, and nothing goes red because both arms still render something.
         final List<Widget> cards = <Widget>[
-          _categoryCard(context, l10n, money, currencyCode, cats, total),
+          _categoryCard(context, l10n, money, currencyCode, cats),
           // 🔴 THE SAVINGS CARD IS GATED ON THERE BEING SOMETHING TO SAVE.
           // `SubMath.savings` sums rows carrying `unused == true`, and NOTHING in
           // this app ever sets `unused` — the add sheet constructs every draft
@@ -423,9 +427,26 @@ class InsightsScreen extends ConsumerWidget {
     MoneyFormatter money,
     String currencyCode,
     List<CategoryTotal> cats,
-    MoneyBag total,
   ) {
     final ({Color ink, Color muted, Color line}) neutral = neutrals(context);
+    // 🔴 ONE ROUNDING DECISION FOR THE WHOLE CARD, AND THAT IS THE FIX.
+    // The centre used to be `formatBagRounded(total)` and each legend row
+    // `formatBagRounded(c.value)`, computed independently — so the centre
+    // showed ROUNDED-SUM and the column showed SUM-OF-ROUNDED, which differ
+    // whenever the discarded fractions add past a unit. The Play listing
+    // captured on 2026-09-20 read $93 in the ring with a legend summing to $94,
+    // on the same six subscriptions: no arithmetic was wrong and the product
+    // still contradicted itself in front of a store reviewer.
+    //
+    // `formatBreakdownRounded` folds the total from these very categories and
+    // apportions the rows against it (largest remainder, per currency), so the
+    // column adds up to the centre by construction. It is the same argument
+    // `segments` below already rests on: a figure derived from `cats` cannot
+    // drift from the `cats` beside it, and a second source could.
+    final ({List<String> parts, String total}) figures = money
+        .formatBreakdownRounded(<MoneyBag>[
+          for (final CategoryTotal c in cats) c.value,
+        ]);
     final List<MapEntry<double, Color>> segments = <MapEntry<double, Color>>[
       for (int i = 0; i < cats.length; i++)
         MapEntry<double, Color>(
@@ -496,13 +517,10 @@ class InsightsScreen extends ConsumerWidget {
                 child: Semantics(
                   container: true,
                   label: l10n.a11yCategoryDonut(
-                    money.formatBagRounded(total),
+                    figures.total,
                     <String>[
-                      for (final CategoryTotal c in cats)
-                        l10n.a11yCategoryShare(
-                          c.name,
-                          money.formatBagRounded(c.value),
-                        ),
+                      for (int i = 0; i < cats.length; i++)
+                        l10n.a11yCategoryShare(cats[i].name, figures.parts[i]),
                     ].join(', '),
                   ),
                   excludeSemantics: true,
@@ -513,7 +531,14 @@ class InsightsScreen extends ConsumerWidget {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: <Widget>[
                           Text(
-                            money.formatBagRounded(total),
+                            // Keyed, with the legend figures below, so a test
+                            // can read the two STRINGS back and add the column
+                            // up. That is the only way this property is
+                            // falsifiable: the minor units behind them always
+                            // summed exactly, so an assertion on `Money` values
+                            // passes against the very defect it is for.
+                            key: const Key('insights.donut.total'),
+                            figures.total,
                             style: AppText.fig.copyWith(
                               fontSize: 18,
                               color: neutral.ink,
@@ -562,7 +587,8 @@ class InsightsScreen extends ConsumerWidget {
                               ),
                             ),
                             Text(
-                              money.formatBagRounded(cats[i].value),
+                              key: Key('insights.legend.figure.$i'),
+                              figures.parts[i],
                               style: AppText.fig.copyWith(
                                 fontSize: 12,
                                 color: neutral.muted,

@@ -119,6 +119,50 @@ class MoneyFormatter {
       ? formatRounded(Money.zero(emptyCurrencyCode))
       : bag.amounts.map(formatRounded).join(mixedJoiner);
 
+  /// A set of PARTS and the WHOLE they make up, rendered at whole-unit
+  /// precision so THE PARTS A READER ADDS UP GIVE THE TOTAL THE READER IS
+  /// SHOWN.
+  ///
+  /// ## 🔴 Rendering the two independently is the defect
+  /// [formatBagRounded] per row shows sum-of-rounded; [formatBagRounded] on the
+  /// fold shows rounded-sum. The minor units always summed exactly — there was
+  /// never an arithmetic error — but those two renderings differ whenever the
+  /// discarded fractions add past a unit, and a card that puts them side by
+  /// side is a card that contradicts itself. Measured on the Play listing
+  /// capture of 2026-09-20: an insights donut reading `$93` in its centre
+  /// beside six legend rows reading 39 + 20 + 16 + 11 + 5 + 3. The apportioning
+  /// rule, and the two approaches rejected, are on
+  /// [MoneyBag.apportionRounded].
+  ///
+  /// ## 🔴 The total is DERIVED from [parts] and is deliberately not an argument
+  /// A caller that could pass its own fold could pass a different one, and this
+  /// method would become a second place for the two to disagree rather than the
+  /// one place they cannot. Both callers already hold a partition of the same
+  /// list — `SubMath.categoryTotals` over the subscriptions whose
+  /// `SubMath.totalMonthly` the same screen prints — so nothing is lost by
+  /// folding it here, and the screen stops computing a second fold that could
+  /// drift from the first.
+  ///
+  /// ## ⚠️ The WHOLE does not move; only the parts do
+  /// `total` is byte-identical to `formatBagRounded` of the exact fold:
+  /// [Money.wholeUnits] rounds half away from zero and so, measured, does
+  /// `intl` at zero fraction digits. So this changes no figure the app is
+  /// trusted on today — it moves individual rows by less than one unit each so
+  /// that the column adds up.
+  ({List<String> parts, String total}) formatBreakdownRounded(
+    Iterable<MoneyBag> parts,
+  ) {
+    final List<MoneyBag> shares = MoneyBag.apportionRounded(parts);
+    return (
+      parts: <String>[for (final MoneyBag bag in shares) formatBagRounded(bag)],
+      total: formatBagRounded(
+        MoneyBag.sum(<Money>[
+          for (final MoneyBag bag in shares) ...bag.amounts,
+        ]),
+      ),
+    );
+  }
+
   NumberFormat _formatterFor(String currencyCode, int decimalDigits) {
     final String key = '$localeName|$currencyCode|$decimalDigits';
     final NumberFormat? cached = _cache[key];
