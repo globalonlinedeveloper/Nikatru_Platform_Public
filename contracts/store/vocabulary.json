@@ -229,7 +229,7 @@
       "name": "icon-128.png",
       "kind": "image",
       "app": null,
-      "extension": "shared",
+      "extension": "shared-additional",
       "rendered": false
     }
   ],

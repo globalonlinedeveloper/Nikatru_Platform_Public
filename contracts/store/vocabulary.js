@@ -80,7 +80,7 @@
  *   `'additional'` — some channels carry it; WHICH channels is a per-row fact
  *   and stays in the register's `perChannel.<id>.additionalFiles`.
  *   `null` — not an application listing field at all.
- * @property {'per-store'|'per-store-additional'|'shared'|null} extension
+ * @property {'per-store'|'per-store-additional'|'shared'|'shared-additional'|null} extension
  *   `'per-store'` — one copy per store directory (store/chrome, store/edge,
  *   store/firefox), REQUIRED in every one, because the text genuinely differs
  *   per store.
@@ -94,7 +94,17 @@
  *   logo from Chrome and both from Firefox, four failures measured — or to leave
  *   them out of the contract, which makes this guard refuse them as undeclared.
  *   Neither is the truth, and the truth is the whole point of the table.
- *   `'shared'` — one copy in store/_shared/, because it does not differ.
+ *   `'shared'` — one copy in store/_shared/, REQUIRED of every tool, because it
+ *   does not differ between stores.
+ *   `'shared-additional'` — one copy in store/_shared/, but only SOME TOOLS have
+ *   it. Added 2026-09-20 in the same breath as the value above and for the
+ *   mirror-image reason: `icon-128.png` declared `'shared'` became a REQUIRED
+ *   shared file, and `check-store-metadata.mjs` then demanded it of every tool —
+ *   including the gate self-test's synthetic `Good_Tool` fixture, which has no
+ *   icon and is not supposed to. That reddened `a complete three-store layer
+ *   passes`, a case about metadata, over a graphic. The listing graphics are
+ *   governed by `extensions/scripts/store-graphics.json` and graded by
+ *   `check-listing-assets.mjs`; they are not required metadata, on either axis.
  *   `null` — not an extension listing field.
  * @property {boolean} rendered
  *   Whether `tooling/app-yaml/render.mjs` writes this file from `app.yaml`.
@@ -277,7 +287,7 @@ export const LISTING_FIELDS = /** @type {const} */ ([
   // is why `firefox/` holds no image at all and that is not a gap.
   { name: 'promo-tile-440x280.png', kind: 'image', app: null, extension: 'per-store-additional', rendered: false },
   { name: 'logo-300x300.png', kind: 'image', app: null, extension: 'per-store-additional', rendered: false },
-  { name: 'icon-128.png', kind: 'image', app: null, extension: 'shared', rendered: false },
+  { name: 'icon-128.png', kind: 'image', app: null, extension: 'shared-additional', rendered: false },
 ]);
 
 /**
@@ -379,6 +389,24 @@ export const extensionSharedListingFiles = () =>
  */
 export const extensionAdditionalListingFiles = () =>
   LISTING_FIELDS.filter((f) => f.extension === 'per-store-additional').map((f) => f.name);
+
+/**
+ * The extension listing fields that live in `store/_shared/` but that only SOME
+ * TOOLS have — today the 128px icon.
+ *
+ * 🔴 NOT A SUBSET OF {@link extensionSharedListingFiles}, for the same reason
+ * its per-store twin is not a subset of the required per-store array, and the
+ * failure that proved it was the mirror image: declared `'shared'`, the icon
+ * became a REQUIRED shared file and `check-store-metadata.mjs` demanded it of
+ * every tool — including the gate self-test's synthetic `Good_Tool`, which has
+ * no icon and should not need one. A case about store METADATA went red over a
+ * GRAPHIC. The graphics are declared in `extensions/scripts/store-graphics.json`
+ * and graded by `check-listing-assets.mjs`; this array exists so a reader can
+ * say "may be here" without any reader being made to say "must be here".
+ * @returns {string[]}
+ */
+export const extensionSharedAdditionalListingFiles = () =>
+  LISTING_FIELDS.filter((f) => f.extension === 'shared-additional').map((f) => f.name);
 
 /**
  * `tooling/app-yaml/render.mjs` RENDERED_LISTING_FILES — the listing files the

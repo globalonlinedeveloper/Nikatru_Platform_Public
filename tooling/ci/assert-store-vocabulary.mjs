@@ -365,7 +365,10 @@ const extPerStore = new Set([
   ...contract.extensionPerStoreListingFiles(),
   ...contract.extensionAdditionalListingFiles(),
 ]);
-const extShared = new Set(contract.extensionSharedListingFiles());
+const extShared = new Set([
+  ...contract.extensionSharedListingFiles(),
+  ...contract.extensionSharedAdditionalListingFiles(),
+]);
 
 /** Every `<something>/store/` directory under extensions/, found by walking. */
 function extensionStoreRoots(absDir, relDir, out = []) {
