@@ -18,7 +18,33 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
 process.env.NIKATRU_LOCAL_CHROMEDRIVER_IMPORT_ONLY = '1';
-const { isPlainVersion, pickBuild } = await import('../../store/local-chromedriver.mjs');
+const { isPlainVersion, versionPath, pickBuild } = await import('../../store/local-chromedriver.mjs');
+
+describe('versionPath — the name is rebuilt from numbers, not sliced from their string', () => {
+  test('a real version round-trips unchanged', () => {
+    for (const v of ['153.0.8010.52', '153.0.8010', '153.0', '153']) {
+      assert.equal(versionPath(v), v);
+    }
+  });
+
+  test('🔴 leading zeros are NORMALISED, which proves the output is rebuilt', () => {
+    // If the original string were being passed through, this would come back
+    // as "153.00.08010.052". It does not, because each group went through
+    // Number() and the name is joined from what THIS process produced — the
+    // property that makes the path safe without trusting a regex.
+    assert.equal(versionPath('153.00.08010.052'), '153.0.8010.52');
+  });
+
+  test('a traversal or any non-digit group THROWS rather than returning a usable name', () => {
+    for (const v of ['../../etc', '153.0/../..', '..\\..\\Windows', '153.x', '153.0.8010.52.1', '']) {
+      assert.throws(() => versionPath(v), /not a version/, `${JSON.stringify(v)} must throw`);
+    }
+  });
+
+  test('the output can only contain digits and dots, whatever went in', () => {
+    assert.match(versionPath('153.0.8010.52'), /^[0-9.]+$/);
+  });
+});
 
 describe('isPlainVersion — only a version may become a path', () => {
   test('the shapes Chrome-for-Testing really publishes are accepted', () => {

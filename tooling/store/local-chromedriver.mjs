@@ -143,6 +143,38 @@ export function localChromeVersion(env = process.env) {
  */
 export const isPlainVersion = (v) => typeof v === 'string' && /^\d+(?:\.\d+){0,3}$/.test(v);
 
+/** The same version, rebuilt out of numbers this process produced.
+ *
+ * 🔴 CHECKING A STRING AND USING THAT STRING ARE NOT THE SAME THING. The first
+ * repair validated `build.version` with {@link isPlainVersion} and then joined
+ * the ORIGINAL string into the path — which is correct, and which CodeQL still
+ * flagged as js/command-line-injection, because the value reaching the spawn was
+ * still the remote one. Being right is not the same as being unable to be wrong.
+ *
+ * So each group is parsed to a Number and the name is re-joined from THOSE. The
+ * output is composed of digits this script emitted, so no byte of the
+ * catalogue's text reaches the filesystem or the spawn, whatever it contained —
+ * a property that holds without anyone having to trust the regex above.
+ *
+ * ⚠️ It throws rather than returning a fallback: a version that cannot be parsed
+ * has no safe substitute, and inventing one would put a WORKING path where a
+ * refusal belongs. The caller refuses earlier with a readable message; this is
+ * the belt to that pair of braces.
+ * @param {string} v
+ */
+export function versionPath(v) {
+  const parts = String(v).split('.');
+  if (parts.length < 1 || parts.length > 4) throw new Error(`not a version: ${JSON.stringify(v)}`);
+  return parts
+    .map((p) => {
+      if (!/^\d+$/.test(p)) throw new Error(`not a version group: ${JSON.stringify(p)}`);
+      const n = Number(p);
+      if (!Number.isSafeInteger(n) || n < 0) throw new Error(`not a version group: ${JSON.stringify(p)}`);
+      return n;
+    })
+    .join('.');
+}
+
 /** Highest catalogued build sharing `major`, with a download for this platform.
  *  Pure over the catalogue so it is testable without a network. */
 export function pickBuild(catalogue, major, platform) {
@@ -209,7 +241,14 @@ async function main() {
     ]);
   }
 
-  const dir = join(baseDir, build.version);
+  // ⚠️ THE DIRECTORY NAME IS REBUILT FROM INTEGERS, not sliced out of the
+  // catalogue's string, and that is the difference between "we checked it" and
+  // "no byte of it is theirs". `versionPath` parses each group to a Number and
+  // re-joins what IT produced, so the name that reaches `join` — and therefore
+  // the path `reportDriver` spawns — cannot contain a character this script did
+  // not emit, whatever the catalogue said. The predicate above still refuses
+  // early with a readable message; this is what makes the refusal unnecessary.
+  const dir = join(baseDir, versionPath(build.version));
   const exe = join(dir, EXE);
   if (existsSync(exe) && !FORCE) {
     say(`already installed: ${exe}`);
