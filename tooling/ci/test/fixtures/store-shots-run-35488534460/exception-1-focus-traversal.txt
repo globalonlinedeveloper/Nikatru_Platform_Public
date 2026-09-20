@@ -1,0 +1,80 @@
+Exception caught by widgets library
+   The following assertion was thrown while dispatching
+   notifications for WidgetsBindingObserver.didChangeViewFocus:
+   Cannot get renderObject of inactive element.
+   In order for an element to have a valid renderObject, it must be
+   active, which means it is part of the tree.
+   Instead, this element is in the _ElementLifecycle.inactive state.
+   If you called this method from a State object, consider guarding
+   it with State.mounted.
+   The findRenderObject() method was called for the following
+   element:
+     Focus
+
+   When the exception was thrown, this was the stack:
+   dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/errors.dart 274:3       throw_
+   package:flutter/src/widgets/framework.dart 4912:9                                 <fn>
+   package:flutter/src/widgets/framework.dart 4924:14                                findRenderObject
+   package:flutter/src/widgets/focus_manager.dart 868:33                             get rect
+   package:flutter/src/widgets/focus_traversal.dart 1399:18                          new
+   package:flutter/src/widgets/focus_traversal.dart 1580:43                          <fn>
+   package:flutter/src/widgets/focus_traversal.dart 1579:41                          sort
+   package:flutter/src/widgets/focus_traversal.dart 1709:7                           sortDescendants
+   package:flutter/src/widgets/focus_traversal.dart 514:55                           _sortAllDescendants
+   package:flutter/src/widgets/focus_traversal.dart 338:9                            [_findInitialFocus]
+   package:flutter/src/widgets/focus_traversal.dart 299:12                           findFirstFocus
+   package:flutter/src/widgets/view.dart 254:33                                      didChangeViewFocus
+   package:flutter/src/widgets/binding.dart 1355:17                                  handleViewFocusChanged
+   dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear
+   package:flutter_test/src/window.dart 232:25                                       [_handleViewFocusChanged]
+   dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear
+   lib/_engine/engine/platform_dispatcher.dart 1748:5                                invoke1
+   lib/_engine/engine/platform_dispatcher.dart 206:5                                 invokeOnViewFocusChange
+   dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear
+   lib/_engine/engine/platform_dispatcher/view_focus_binding.dart 109:23             [_handleFocusChange]
+   lib/_engine/engine/platform_dispatcher/view_focus_binding.dart 54:5               <fn>
+   dart-sdk/lib/async/zone_root.dart 56:13                                           _rootRunUnary
+   dart-sdk/lib/async/zone.dart 1035:12                                              runUnary
+   dart-sdk/lib/async/zone.dart 989:26                                               <fn>
+   dart-sdk/lib/_internal/js_dev_runtime/patch/js_allow_interop_patch.dart 218:27    _callDartFunctionFast1
+   dart-sdk/lib/_internal/js_dev_runtime/patch/js_allow_interop_patch.dart 78:15     ret
+   lib/_engine/engine/dom.dart 518:8                                                 DomElement.focusWithoutScroll
+   lib/_engine/engine/semantics/focusable.dart 47:19                                 focusAsRouteDefault
+   lib/_engine/engine/semantics/scrollable.dart 285:44                               focusAsRouteDefault
+   lib/_engine/engine/semantics/route.dart 45:37                                     <fn>
+   lib/_engine/engine/semantics/semantics.dart 2594:49                               [_visitDepthFirstInTraversalOrder]
+   lib/_engine/engine/semantics/semantics.dart 2616:17                               [_visitDepthFirstInTraversalOrder]
+   lib/_engine/engine/semantics/semantics.dart 2616:17                               [_visitDepthFirstInTraversalOrder]
+   lib/_engine/engine/semantics/semantics.dart 2616:17                               [_visitDepthFirstInTraversalOrder]
+   lib/_engine/engine/semantics/semantics.dart 2616:17                               [_visitDepthFirstInTraversalOrder]
+   lib/_engine/engine/semantics/semantics.dart 2590:5                                visitDepthFirstInTraversalOrder
+   lib/_engine/engine/semantics/route.dart 37:5                                      [_setDefaultFocus]
+   lib/_engine/engine/semantics/route.dart 32:7                                      <fn>
+   lib/_engine/engine/semantics/semantics.dart 3157:11                               [_finalizeTree]
+   lib/_engine/engine/semantics/semantics.dart 3270:5                                updateSemantics
+   lib/_engine/engine/window.dart 109:5                                              updateSemantics
+   package:flutter_test/src/window.dart 1276:5                                       updateSemantics
+   package:flutter/src/rendering/view.dart 384:5                                     updateSemantics
+   package:flutter/src/rendering/binding.dart 268:48                                 <fn>
+   package:flutter/src/semantics/semantics.dart 5078:22                              sendSemanticsUpdate
+   package:flutter/src/rendering/object.dart 1651:7                                  flushSemantics
+   package:flutter/src/rendering/object.dart 1653:14                                 flushSemantics
+   package:flutter/src/rendering/binding.dart 699:7                                  drawFrame
+   package:flutter/src/widgets/binding.dart 1573:13                                  drawFrame
+   package:flutter/src/rendering/binding.dart 558:5                                  [_handlePersistentFrameCallback]
+   dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear
+   package:flutter/src/scheduler/binding.dart 1430:7                                 [_invokeFrameCallback]
+   package:flutter/src/scheduler/binding.dart 1345:9                                 handleDrawFrame
+   package:flutter_test/src/binding.dart 2812:13                                     handleDrawFrame
+   package:flutter/src/scheduler/binding.dart 1198:5                                 [_handleDrawFrame]
+   dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear
+   lib/_engine/engine/platform_dispatcher.dart 1733:5                                invoke
+   lib/_engine/engine/platform_dispatcher.dart 268:5                                 invokeOnDrawFrame
+   lib/_engine/engine/frame_service.dart 209:32                                      [_renderFrame]
+   lib/_engine/engine/frame_service.dart 117:9                                       <fn>
+   dart-sdk/lib/async/zone_root.dart 56:13                                           _rootRunUnary
+   dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear
+   dart-sdk/lib/async/zone.dart 816:35                                               runUnary
+   dart-sdk/lib/async/zone.dart 731:26                                               <fn>
+   dart-sdk/lib/_internal/js_dev_runtime/patch/js_allow_interop_patch.dart 218:27    _callDartFunctionFast1
+   dart-sdk/lib/_internal/js_dev_runtime/patch/js_allow_interop_patch.dart 78:15     ret

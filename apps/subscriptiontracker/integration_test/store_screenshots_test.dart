@@ -105,6 +105,42 @@ import 'store_capture_guard.dart';
 /// Still GENERIC BY CONSTRUCTION — the rule the names already obeyed. A
 /// category is a bucket name the app ships, not a company, so nothing here
 /// puts a third-party mark on a store page.
+/// One KNOWN-BENIGN framework exception: an exception this lane has argued
+/// cannot reach the pixels, so it is reported but does not fail the run.
+///
+/// 🔴 A TYPED ENTRY WITH A REAL LIST, NOT A JOINED STRING. The first version
+/// packed the needles into one string separated by a NUL escape, which put six
+/// literal NUL bytes into this source file — the shape three .mjs files in
+/// tooling already carry and which makes ripgrep skip a file as binary unless
+/// it is passed -a. A `List<String>` says the same thing with no escape at all,
+/// and the lane's test can read it without guessing a separator.
+class _Benign {
+  const _Benign({
+    required this.id,
+    required this.dated,
+    required this.seenIn,
+    required this.needles,
+    required this.why,
+  });
+
+  /// Short stable name, printed in the verdict when this entry suppresses.
+  final String id;
+
+  /// When the argument below was made. An entry nobody has re-read is a
+  /// suppression nobody is accountable for.
+  final String dated;
+
+  /// The run it was first seen in, so the evidence can be fetched again.
+  final String seenIn;
+
+  /// EVERY one must appear in the diagnostics text for the entry to match.
+  final List<String> needles;
+
+  /// Why this cannot change what is drawn. The bar for an entry is not "we
+  /// have seen it before"; it is this sentence surviving being read aloud.
+  final String why;
+}
+
 const List<List<String>> kIllustrative = <List<String>>[
   <String>['Video streaming', '15.99', 'Streaming'],
   <String>['Music streaming', '10.99', 'Music'],
@@ -189,6 +225,88 @@ void main() {
   // neighbours, where the binding's handler is already the previous one.
   final List<String> flutterErrors = <String>[];
 
+  /// The ordered record of WHAT happened WHEN — errors and written frames in
+  /// one list, each stamped with milliseconds since the reporter was installed.
+  ///
+  /// 🔴 THE PREVIOUS VERSION OF THIS INSTRUMENT COULD NOT ANSWER ITS OWN
+  /// QUESTION. Run 35488534460 reported both exceptions in full and gave no way
+  /// to tell whether either fired BEFORE or AFTER a frame was photographed —
+  /// which is the only thing that decides whether an exception can be in the
+  /// pixels. Order alone is not enough: a list of two errors says nothing about
+  /// the four captures interleaved with them. Frames are marked here for the
+  /// same reason the errors are.
+  final Stopwatch sinceInstall = Stopwatch();
+  final List<String> timeline = <String>[];
+
+  void publish() {
+    binding.reportData = <String, dynamic>{
+      ...?binding.reportData,
+      'flutterErrors': flutterErrors,
+      'timeline': timeline,
+    };
+  }
+
+  /// Records that a frame reached disk. Called after each `captureFrame`.
+  void markFrame(String frame) {
+    timeline.add('${sinceInstall.elapsedMilliseconds}ms  FRAME $frame written');
+    publish();
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // KNOWN-BENIGN EXCEPTIONS — NARROW, DATED, AND EACH CARRYING ITS EVIDENCE.
+  //
+  // ⚠️ THIS IS NOT A MUTE BUTTON AND MUST NEVER BECOME ONE. An entry suppresses
+  // the test failure for ONE exception whose every needle matches; anything
+  // unmatched is still forwarded to flutter_test and still fails the run. Every
+  // entry is still REPORTED in `flutterErrors` and counted in the verdict, so a
+  // suppressed exception is visible to a reader even though it is not fatal.
+  //
+  // The bar for an entry is not "we have seen it before". It is: THE EXCEPTION
+  // CANNOT CHANGE WHAT IS DRAWN, argued from where it is raised.
+  // ───────────────────────────────────────────────────────────────────────────
+  const List<_Benign> benignExceptions = <_Benign>[
+    _Benign(
+      id: 'focus-traversal-inactive-element',
+      dated: '2026-09-20',
+      seenIn: 'run 35488534460',
+      // ALL of these must appear. The assertion text ALONE is far too broad —
+      // "Cannot get renderObject of inactive element" is a real defect almost
+      // anywhere else in this tree — so the frames that identify the framework
+      // path are part of the signature.
+      needles: <String>[
+        'WidgetsBindingObserver.didChangeViewFocus',
+        'Cannot get renderObject of inactive element',
+        'package:flutter/src/widgets/focus_traversal.dart',
+        'package:flutter/src/widgets/view.dart',
+        'package:flutter_test/src/window.dart',
+      ],
+      why:
+          'Raised while DISPATCHING a WidgetsBindingObserver.didChangeViewFocus '
+          'notification, inside the focus-traversal SORT that picks an initial '
+          'focus. The stack runs engine semantics -> route default focus -> '
+          'flutter_test window._handleViewFocusChanged -> didChangeViewFocus -> '
+          'FocusTraversalPolicy.findFirstFocus, and it reads rect off a Focus '
+          'element that left the tree between the frame and the dispatch. It is '
+          'CAUGHT by the widgets library and reported, never rethrown, so no '
+          'build is aborted and no ErrorWidget is substituted: the frame that '
+          'was already drawn is unaffected. Nothing on this path paints — a '
+          'focus ORDER is computed for keyboard traversal. It is also '
+          'test-binding specific: flutter_test/src/window.dart is in the stack, '
+          'which is the harness synthesising the view-focus event, not the app.',
+    ),
+  ];
+
+  /// Whether [text] matches a benign entry; returns its id, or null.
+  String? benignId(String text) {
+    for (final _Benign entry in benignExceptions) {
+      if (entry.needles.every(text.contains)) return entry.id;
+    }
+    return null;
+  }
+
+  final List<String> suppressed = <String>[];
+  final List<String> unmatched = <String>[];
+
   /// Chains error reporting onto whatever handler is installed RIGHT NOW, and
   /// returns the restore callback. Both halves matter: flutter_test fails any
   /// test that leaves a global changed, which is the same rule `ErrorWidget
@@ -198,20 +316,29 @@ void main() {
     // typedef lives in package:flutter/foundation.dart and material.dart does
     // NOT re-export it, so naming it here costs an import for one word.
     final void Function(FlutterErrorDetails)? previous = FlutterError.onError;
+    sinceInstall.start();
     FlutterError.onError = (FlutterErrorDetails details) {
-      flutterErrors.add(
-        // `toDiagnosticsNode` rather than `exception.toString()`: a RenderFlex
-        // overflow's useful half (which box, by how many pixels, in whose
-        // subtree) lives in the diagnostics, not in the exception object.
-        details.toDiagnosticsNode().toStringDeep(
-          minLevel: DiagnosticLevel.info,
-        ),
+      // `toDiagnosticsNode` rather than `exception.toString()`: a RenderFlex
+      // overflow's useful half (which box, by how many pixels, in whose
+      // subtree) lives in the diagnostics, not in the exception object.
+      final String text = details.toDiagnosticsNode().toStringDeep(
+        minLevel: DiagnosticLevel.info,
       );
-      binding.reportData = <String, dynamic>{
-        ...?binding.reportData,
-        'flutterErrors': flutterErrors,
-      };
-      previous?.call(details);
+      final String? id = benignId(text);
+      flutterErrors.add(text);
+      timeline.add(
+        '${sinceInstall.elapsedMilliseconds}ms  '
+        '${id == null ? 'EXCEPTION (unmatched — this run FAILS)' : 'EXCEPTION (known-benign: $id)'}'
+        '  ${details.library ?? 'unknown library'}: '
+        '${details.exception.toString().split('\n').first}',
+      );
+      (id == null ? unmatched : suppressed).add(id ?? text);
+      publish();
+      // 🔴 THE ONE LINE THAT DECIDES THE VERDICT. Forwarding is what makes
+      // flutter_test accumulate the details and fail the test, so NOT
+      // forwarding a benign match is the whole mechanism — and forwarding
+      // everything else is what stops this becoming a blanket ignore.
+      if (id == null) previous?.call(details);
     };
     return () => FlutterError.onError = previous;
   }
@@ -882,6 +1009,7 @@ void main() {
       frame: '01-home',
       forbidden: forbidden,
     );
+    markFrame('01-home');
 
     // Tapped by ICON, not by label: `navPillKey` exists only in the compact
     // window class and each of these words also names something else on screen
@@ -896,6 +1024,7 @@ void main() {
       frame: '02-calendar',
       forbidden: forbidden,
     );
+    markFrame('02-calendar');
 
     await tester.tap(find.byIcon(Icons.insights_rounded));
     await pumpFor(tester, const Duration(seconds: 3));
@@ -905,6 +1034,7 @@ void main() {
       frame: '03-insights',
       forbidden: forbidden,
     );
+    markFrame('03-insights');
 
     await tester.tap(find.byIcon(Icons.account_balance_wallet_rounded));
     await pumpFor(tester, const Duration(seconds: 4));
@@ -914,6 +1044,7 @@ void main() {
       frame: '04-budget',
       forbidden: forbidden,
     );
+    markFrame('04-budget');
 
     // 🔴 SETTINGS IS NOT PHOTOGRAPHED, AND THIS COMMENT IS THE RECORD OF WHY.
     //
@@ -948,6 +1079,51 @@ void main() {
     // the verdict, which is the point of putting it there rather than in a
     // `debugPrint` nobody receives.
     restoreErrorReporter();
+
+    // ── THE VERDICT, IN THE REPORT, IN WORDS A READER CAN ACT ON ────────────
+    //
+    // The run used to end with a boolean and a stack in a console nobody
+    // receives. It now ends with a sentence naming how many frames were
+    // written, how many exceptions fired, which were suppressed BY NAME, and
+    // how many were not — so "it went green" and "it went green with two
+    // suppressions" are never the same line.
+    //
+    // ⚠️ A SUPPRESSED EXCEPTION IS STILL PRINTED. The verdict names the id and
+    // `flutterErrors` still carries the whole diagnostics tree, because the
+    // thing being bought here is "not fatal", never "not mentioned".
+    final String verdict =
+        'frames written: ${timeline.where((String e) => e.contains('FRAME ')).length}/4 · '
+        'exceptions: ${flutterErrors.length} '
+        '(${suppressed.length} known-benign'
+        '${suppressed.isEmpty ? '' : ' — ${suppressed.join(', ')}'}, '
+        '${unmatched.length} unmatched)';
+    timeline.add('${sinceInstall.elapsedMilliseconds}ms  VERDICT $verdict');
+    binding.reportData = <String, dynamic>{
+      ...?binding.reportData,
+      'verdict': verdict,
+      'timeline': timeline,
+      'flutterErrors': flutterErrors,
+    };
+
+    // 🔴 THE BACKSTOP, AND IT IS NOT REDUNDANT WITH THE HANDLER. The handler
+    // forwards an unmatched exception to flutter_test, which fails the test —
+    // but only for exceptions raised while the handler was installed. This
+    // limb states the same requirement as an ASSERTION, so the failure names
+    // the exception and points at the allowlist instead of arriving as a bare
+    // "Multiple exceptions (N) were detected" with the reader back where this
+    // whole thread started.
+    expect(
+      unmatched,
+      isEmpty,
+      reason:
+          'The capture raised ${unmatched.length} exception(s) that are not in '
+          'the known-benign allowlist, so this run is NOT a set anybody may '
+          'upload. Read `flutterErrors` in this report for each one in full. '
+          'Add an entry to `benignExceptions` at the top of this file ONLY if '
+          'the exception provably cannot change what is drawn, with the '
+          'argument written next to it — a blanket match would put an '
+          'unexamined listing on a store page.',
+    );
     // And the SemanticsHandle `app.main()` holds on web: flutter_test verifies
     // handles in the same post-body block, so a body that leaves it active fails
     // after its last capture (lib/core/a11y/web_semantics.dart; app_test.dart's

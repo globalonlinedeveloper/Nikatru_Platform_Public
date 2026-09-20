@@ -544,6 +544,50 @@ const pass = (k) => {
   if (process.env[k]) defines.push('--dart-define', `${k}=${process.env[k]}`);
 };
 for (const k of need) pass(k);
+
+// 🔴 THE CAPTCHA SITE KEY, BECAUSE A LIVE WEB BUILD WITHOUT IT IS AN ERROR —
+// AND RUN 35488534460 RAISED EXACTLY THAT ERROR, AS THE SECOND OF ITS TWO.
+//
+//   Exception caught by turnstile_gate
+//   Bad state: TURNSTILE_SITE_KEY is empty in a WEB build with a live backend.
+//   The identity provider refuses sign-in, sign-up, recover and resend without
+//   a captcha token, so this build cannot authenticate anyone. (ADR 084)
+//
+// `TurnstileGate.postureFor` calls that state `misconfigured`, and
+// `_TurnstileGateState.initState` reports it through FlutterError on mount.
+//
+// ⚠️ IT IS A REPOSITORY *VARIABLE*, NOT A SECRET, and that is the whole reason
+// this is a fix rather than a waiver: a Turnstile SITE key is public by
+// construction — it ships inside every web bundle — and only the secret half
+// lives on the auth box. `deploy-web.yml` passes `vars.TURNSTILE_SITE_KEY` to
+// the shipping web build and `e2e.yml` passes the same one to the nightly
+// drive, where it FAILS CLOSED if unset, for this stated reason: "an empty
+// vars.TURNSTILE_SITE_KEY makes TurnstileGate render nothing, and this run
+// would prove the suite passes WITHOUT the captcha gate".
+//
+// This lane omitted it, so the capture was the one lane driving the app through
+// an auth posture the shipping build does not have. The nightly is the evidence
+// that a driven browser signs in WITH the gate rendered, so passing it here
+// moves this lane onto the posture every other lane already uses.
+if (process.env.TURNSTILE_SITE_KEY) pass('TURNSTILE_SITE_KEY');
+else if (!PROOF) {
+  fail([
+    'a live capture needs TURNSTILE_SITE_KEY and it is not set.',
+    '',
+    'Without it AppConfig.isTurnstileConfigured is false, TurnstileGate.posture is `misconfigured`,',
+    'and the gate reports a StateError through FlutterError the moment it mounts — which is the',
+    'second of the two exceptions run 35488534460 failed on. It also means this capture drives the',
+    'app through an auth path the shipping web build does not have.',
+    '',
+    'It is a repository VARIABLE, not a secret (a Turnstile SITE key is public — it ships inside the',
+    'web bundle). deploy-web.yml and e2e.yml both already pass `vars.TURNSTILE_SITE_KEY`, and e2e.yml',
+    'fails closed on it exactly like this. If it is unset in the repository, set it the way that',
+    "workflow's error message describes; do not paste a value here.",
+    '',
+    '`--proof` does not need it: a demo build is not backend-live, so the posture is',
+    '`notOnThisChannel` and the gate is inert by design.',
+  ]);
+}
 if (PROOF) defines.push('--dart-define', 'STORE_CAPTURE_ALLOW_DEMO=true');
 
 // 🔴 THE APP MUST NOT ANNOUNCE ITSELF OFFLINE ON A STORE PAGE. Every frame

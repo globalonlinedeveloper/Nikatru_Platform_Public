@@ -1,0 +1,7 @@
+Exception caught by turnstile_gate
+   The following StateError was thrown:
+   Bad state: TURNSTILE_SITE_KEY is empty in a WEB build with a live
+   backend. The identity provider refuses sign-in, sign-up, recover
+   and resend without a captcha token, so this build cannot
+   authenticate anyone. Pass --dart-define=TURNSTILE_SITE_KEY=<key>
+   to the web build (ADR 084).
