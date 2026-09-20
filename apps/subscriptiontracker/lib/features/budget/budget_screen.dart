@@ -218,6 +218,20 @@ class BudgetScreen extends ConsumerWidget {
       for (final BudgetCap c in budget.categories) c.name: c.cap,
     };
     final List<CategoryTotal> cats = SubMath.categoryTotals(subs);
+    // 🔴 THE BARS ARE PARTS OF `spent`, WHICH THIS PAGE PRINTS ONE CARD UP, so
+    // they carry the same defect the insights donut did: each bar rounded on
+    // its own shows SUM-OF-ROUNDED, and a reader adding the column gets a
+    // figure the "Spent" stat does not confirm. Apportioned here once (largest
+    // remainder, per currency) so the column sums to the whole-unit reading of
+    // the very total beside it — see `MoneyFormatter.formatBreakdownRounded`.
+    //
+    // ⚠️ IT MOVES THE PRINTED FIGURE ONLY. `over`, `frac` and `_softCap` all
+    // read `SubMath.chartWeight`, i.e. exact minor units, so no bar changes
+    // length or colour and no category crosses its cap because of this.
+    final ({List<String> parts, String total}) catFigures = money
+        .formatBreakdownRounded(<MoneyBag>[
+          for (final CategoryTotal c in cats) c.value,
+        ]);
 
     // The ring card and the category bars are built ONCE and then laid out in
     // one column or two. Building each element once is the whole trick: the
@@ -382,6 +396,7 @@ class BudgetScreen extends ConsumerWidget {
           // The bars measure in the BUDGET's currency, as the ring does.
           budget.currencyCode,
           cats[i],
+          catFigures.parts[i],
           capMap[cats[i].name] ?? _softCap(cats[i], budget.currencyCode),
           i,
         ),
@@ -585,6 +600,11 @@ class BudgetScreen extends ConsumerWidget {
     MoneyFormatter money,
     String currencyCode,
     CategoryTotal cat,
+    // This category's spend, ALREADY RENDERED — apportioned against the page's
+    // own total in `build` so the column of bars adds up to it. Passed in
+    // rather than formatted here, because a share only exists relative to the
+    // other shares and this method can see exactly one of them.
+    String spentText,
     Money cap,
     int i,
   ) {
@@ -620,8 +640,13 @@ class BudgetScreen extends ConsumerWidget {
                 ),
               ),
               Text.rich(
+                // Keyed for the same reason the insights donut's centre is: the
+                // property is that a reader can add this COLUMN of strings up
+                // and get the total printed one card above, and only the
+                // rendered strings can falsify that.
+                key: Key('budget.bar.figure.$i'),
                 TextSpan(
-                  text: money.formatBagRounded(cat.value),
+                  text: spentText,
                   style: AppText.fig.copyWith(
                     fontSize: 13,
                     color: over ? AppColors.danger : neutral.ink,

@@ -221,4 +221,36 @@ void main() {
       expect(year.byCurrency['INR'], const Money(598800, 'INR'));
     });
   });
+
+  group('Money — whole major units, the unit a compact figure is printed in', () {
+    test('rounds half AWAY FROM ZERO, which is what intl prints', () {
+      // Measured against `NumberFormat.currency(decimalDigits: 0)` under en_US
+      // on 2026-09-20: 92.50 -> $93, 0.50 -> $1, 2.50 -> $3, -92.50 -> -$93.
+      // The last two are the ones a half-to-even rule would have got wrong, and
+      // they are here because `MoneyBag.apportionRounded` picks a total with
+      // this rule and the formatter then has to agree with it.
+      expect(const Money(9250, 'USD').wholeUnits, 93);
+      expect(const Money(9249, 'USD').wholeUnits, 92);
+      expect(const Money(50, 'USD').wholeUnits, 1);
+      expect(const Money(250, 'USD').wholeUnits, 3);
+      expect(const Money(-9250, 'USD').wholeUnits, -93);
+      expect(const Money(-9350, 'USD').wholeUnits, -94);
+    });
+
+    test('follows the CURRENCY, not a hardcoded hundred', () {
+      // The yen's minor unit is the yen, so its whole-unit count is itself; a
+      // division by 100 here would misprice a yen plan by a factor of a hundred.
+      expect(const Money(2430, 'JPY').wholeUnits, 2430);
+      expect(const Money(2500, 'KWD').wholeUnits, 3);
+    });
+
+    test('fromWholeUnits is the inverse and carries no fraction', () {
+      expect(Money.fromWholeUnits(93, 'USD'), const Money(9300, 'USD'));
+      expect(Money.fromWholeUnits(2430, 'JPY'), const Money(2430, 'JPY'));
+      expect(Money.fromWholeUnits(-94, 'USD').wholeUnits, -94);
+      // The property the apportioning rests on: a value built this way is
+      // already whole, so displaying it makes no second rounding decision.
+      expect(Money.fromWholeUnits(41, 'USD').minorUnits % 100, 0);
+    });
+  });
 }

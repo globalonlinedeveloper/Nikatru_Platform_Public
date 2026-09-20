@@ -1461,6 +1461,14 @@
       "test": "tooling/ci/test/modal-detection.test.mjs",
       "case": "a package whose suites use flutter_test but whose pubspec stopped saying so is caught by the oracle",
       "proves": "The expected root count is derived from the copied tree by a second reading (workspace members whose suites import package:flutter_test/), not written down. The case plants a package the guard does not derive (no flutter_test: in its pubspec) while its suite imports flutter_test, and asserts the root-count check THROWS. Measured 2026-09-19: with the equality neutered (`if (false) assert.equal`) the case goes red, exit 1; restored byte-exact, green. The sibling case \"a NEW package root is counted, not refused\" plants a declared package and stays green, which the old literal /in 9 root(s)/ could not."
+    },
+    {
+      "file": "apps/subscriptiontracker/lib/features/insights/insights_screen.dart",
+      "anchor": "a figure derived from `cats` cannot",
+      "status": "proven",
+      "test": "apps/subscriptiontracker/test/rounded_breakdown_surfaces_test.dart",
+      "case": "INSIGHTS — the legend adds up to the number in the ring",
+      "proves": "The sentence claims the donut centre and its legend cannot disagree because both are derived from the same `cats`. The case pumps the screen over six categories whose naive per-row rounding sums to 94 against a whole of 97, reads the rendered centre and the six rendered legend Texts back out of the tree, and asserts the column sums to the centre. Mutation 2026-09-20: putting the legend back on its own `money.formatBagRounded(cats[i].value)` — a second rounding decision — turns it red at 94 != 97. judged 2026-09-20."
     }
   ],
   "backlog": {}

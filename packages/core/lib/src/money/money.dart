@@ -208,6 +208,27 @@ class Money implements Comparable<Money> {
   /// remaining-budget figure must not read as a negative amount.
   Money clampAtZero() => minorUnits < 0 ? Money.zero(currencyCode) : this;
 
+  /// This amount as a COUNT OF WHOLE MAJOR UNITS — 93 dollars, not 9350 cents.
+  ///
+  /// 🔴 IT ROUNDS THE WAY THE APP ALREADY PRINTS, AND THAT WAS MEASURED RATHER
+  /// THAN ASSUMED. [dividedBy] rounds half away from zero, and so does `intl`
+  /// at zero fraction digits: `NumberFormat.currency(decimalDigits: 0)` renders
+  /// 92.50 as `$93`, 0.50 as `$1`, 2.50 as `$3` and -92.50 as `-$93` — measured
+  /// under `en_US` on 2026-09-20, which rules out the half-to-even rule those
+  /// last two would have exposed. The two agreeing is what lets
+  /// `MoneyBag.apportionRounded` fix a breakdown's PARTS without moving any
+  /// WHOLE the app shows today.
+  int get wholeUnits => dividedBy(pow10(minorUnitDigits)).minorUnits;
+
+  /// [units] whole major units in [currencyCode] — the inverse of [wholeUnits].
+  ///
+  /// The result carries no fraction at all, so rendering it at zero decimal
+  /// places is exact and there is no SECOND rounding decision for a formatter
+  /// to make differently. That is the property an apportioned breakdown rests
+  /// on: once the shares are chosen they are displayed, not re-rounded.
+  static Money fromWholeUnits(int units, String currencyCode) =>
+      Money(units * pow10(minorUnitDigitsFor(currencyCode)), currencyCode);
+
   /// A last-resort rendering: the symbol glued to a fixed-decimal number, with
   /// NO thousands grouping and NO locale.
   ///
