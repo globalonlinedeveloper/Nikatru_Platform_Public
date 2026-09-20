@@ -194,3 +194,102 @@ describe('store-screenshots.yml captures through the runner', () => {
     assert.doesNotMatch(steps, /flutter\s+drive/);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE CAPTURE SUITE'S OWN CONTRACT — run 35483690951 (2026-09-20).
+//
+// That run captured all four phone frames and created all six subscriptions,
+// then failed with "Multiple exceptions (2) were detected" and NOT ONE WORD of
+// either exception in the 601-line step log. The cause is the channel gap the
+// suite documents three times: FlutterError dumps through `debugPrint`, which
+// under `flutter drive -d web-server` is the BROWSER's console. `reportData` is
+// the one channel that reaches the host, so these limbs hold the suite to
+// using it — and to chaining rather than swallowing, because a handler that
+// ate the errors would turn that red run GREEN.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('store_screenshots_test.dart reports its framework errors to the host', () => {
+  const SUITE = join(
+    REPO, 'apps', 'subscriptiontracker', 'integration_test', 'store_screenshots_test.dart',
+  );
+  const dart = stripSourceComments(readFileSync(SUITE, 'utf8'), '.dart');
+
+  test('collects FlutterError details into binding.reportData', () => {
+    assert.match(dart, /FlutterError\.onError\s*=/);
+    assert.match(dart, /binding\.reportData\s*=/);
+    assert.match(dart, /'flutterErrors'/);
+  });
+
+  test('CHAINS to the previous handler instead of swallowing the error', () => {
+    // Without this call flutter_test never accumulates the details, the test
+    // passes, and an unexamined set reaches a store listing.
+    assert.match(dart, /previous\?\.call\(details\)/);
+  });
+
+  test('installs the reporter inside the test body, not in main()', () => {
+    // TestWidgetsFlutterBinding.runTest ASSIGNS FlutterError.onError when the
+    // test starts, so a handler installed in main() is overwritten before the
+    // first widget builds and would report an empty list on a run with two
+    // exceptions in it.
+    const install = dart.indexOf('installErrorReporter()');
+    const appMain = dart.indexOf('await app.main()');
+    assert.ok(install !== -1, 'the suite never installs the error reporter');
+    assert.ok(appMain !== -1, 'the suite never calls app.main()');
+    assert.ok(install < appMain, 'the reporter is installed after app.main()');
+  });
+
+  test('restores the handler, as flutter_test requires of any changed global', () => {
+    assert.match(dart, /restoreErrorReporter\(\)/);
+  });
+});
+
+describe('store_screenshots_test.dart seeds a category per subscription', () => {
+  const SUITE = join(
+    REPO, 'apps', 'subscriptiontracker', 'integration_test', 'store_screenshots_test.dart',
+  );
+  const src = readFileSync(SUITE, 'utf8');
+  const dart = stripSourceComments(src, '.dart');
+
+  /** The seed table, parsed out of the source rather than grepped for: the
+   *  category names also appear in the prose above it. */
+  const rows = [...dart.matchAll(/<String>\[([^\]]*)\]/g)]
+    .map((m) => m[1].split(',').map((s) => s.trim().replace(/^'|'$/g, '')))
+    .filter((r) => r.length === 3 && /^\d+\.\d{2}$/.test(r[1]));
+
+  test('every illustrative row carries a name, a price and a category', () => {
+    assert.equal(rows.length, 6);
+    for (const [name, price, category] of rows) {
+      assert.ok(name.length > 0, `row ${name} has no name`);
+      assert.ok(Number(price) > 0, `row ${name} has no price`);
+      assert.ok(category.length > 0, `row ${name} has no category`);
+    }
+  });
+
+  test('no row is left in the Other bucket the old listing showed', () => {
+    // Insights rendered one slice reading "Other $93" on every published frame
+    // because all six rows fell through to the sheet's _uncategorised fallback.
+    for (const [name, , category] of rows) {
+      assert.notEqual(category, 'Other', `${name} would still group as Other`);
+    }
+    assert.equal(new Set(rows.map((r) => r[2])).size, 6, 'categories are not distinct');
+  });
+
+  test('every category exists in the sheet vocabulary, which is DERIVED from the budget caps', () => {
+    // add_subscription_sheet.dart builds its dropdown from
+    // DemoData.budget().categories — so a cap rename silently removes a value
+    // the suite still asks for, and the run fails at the dropdown.
+    const demo = readFileSync(
+      join(REPO, 'apps', 'subscriptiontracker', 'lib', 'data', 'seed', 'demo_data.dart'), 'utf8',
+    );
+    const vocabulary = [...demo.matchAll(/BudgetCap\('([^']+)'/g)].map((m) => m[1]);
+    assert.ok(vocabulary.length >= 10, `read only ${vocabulary.length} budget caps`);
+    for (const [name, , category] of rows) {
+      assert.ok(vocabulary.includes(category), `"${category}" (${name}) is not an offered category`);
+    }
+  });
+
+  test('the suite actually chooses the category in the sheet, with a reachability limb', () => {
+    assert.match(dart, /DropdownButtonFormField<String>/);
+    assert.match(dart, /find\.text\(row\[2\]\)\.hitTestable\(\)/);
+    assert.match(dart, /ensureVisible\(categoryField\)/);
+  });
+});
