@@ -457,8 +457,30 @@ if (IS_MAIN && results.length && results[results.length - 1].code !== 0) {
 // ── the machine: one heavy run at a time, and the backup first (header) ─────
 // After the cheap untracked leg, before the first heavy one. Imported lazily so
 // --untracked-only and an import for the exports never load it.
+/** Free the machine-wide lock the moment the WORK is over.
+ *
+ * 🔴 `releaseOnExit` ALONE IS NOT ENOUGH, AND THAT COST HOURS ON 2026-09-20.
+ * It hangs the release off `process.on('exit')`, so the lock comes back only
+ * when node actually exits — and node does not always get there. A heavy run
+ * that has printed its verdict can hang at exit (nodejs#54918, already recorded
+ * against the guards in TRAPS), and then the lock is held by a process doing
+ * NOTHING until the 240-minute stale ceiling reclaims it.
+ *
+ * Measured three times that day: pid 19820 for ~2 h on 0.84 s of CPU, pid 24176
+ * for 85.8 min with both its children already exited and its CPU flat across a
+ * 25-second sample, pid 21644 the same. `pidAlive` cannot see it — a hung
+ * process is alive — so the liveness test passes forever and three preflights
+ * plus a capture rehearsal queue behind a run that has finished.
+ *
+ * So the release is called HERE, explicitly, after the last leg and before the
+ * verdict is even printed. `releaseHeavyLock` is idempotent (`lock.released`),
+ * so the exit handler still fires and still does the right thing; this just
+ * stops the lock depending on an exit that may never come.
+ */
+let releaseWorkLock = () => {};
+
 if (IS_MAIN && !UNTRACKED_ONLY) {
-  const { machineFree, releaseOnExit } = await import('./heavy-lock.mjs');
+  const { machineFree, releaseOnExit, releaseHeavyLock } = await import('./heavy-lock.mjs');
   const free = machineFree({
     ...(LOCK_WAIT_MIN === undefined ? {} : { waitMin: LOCK_WAIT_MIN }),
     argv: ['preflight.mjs', ...process.argv.slice(2)],
@@ -469,6 +491,7 @@ if (IS_MAIN && !UNTRACKED_ONLY) {
     process.exit(2);
   }
   releaseOnExit(free.lock, (code) => process.exit(code));
+  releaseWorkLock = () => releaseHeavyLock(free.lock);
 }
 
 // ── 1 · the guard test suite, THE WHOLE GLOB ────────────────────────────────
@@ -688,6 +711,13 @@ step(
 
 // ── verdict ─────────────────────────────────────────────────────────────────
 if (IS_MAIN) {
+  // ⚠️ BEFORE THE VERDICT IS PRINTED, not after. Every leg has run, so the
+  // machine is free whatever happens next — including this process hanging at
+  // exit, which is what kept the lock for 85 minutes on 2026-09-20 while three
+  // other lanes waited. Printing is not work, and no other lane should queue
+  // behind it.
+  releaseWorkLock();
+
   const failed = results.filter((r) => r.code !== 0);
   console.log('\n' + '─'.repeat(78));
   if (failed.length === 0) {
