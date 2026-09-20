@@ -46,6 +46,21 @@ jobs:
           fi
           echo "All four secrets present — the build will be LIVE."
 
+      # why: a VARIABLE, not a secret — a Turnstile site key is public, it ships
+      # inside the web bundle. Checked in its own step because `vars` and
+      # `secrets` fail differently and a joint message would name the wrong one.
+      # Run 35488534460 raised `Bad state: TURNSTILE_SITE_KEY is empty in a WEB
+      # build with a live backend` (ADR 084) as one of its two exceptions.
+      - name: Preflight — the captcha site key the live build needs
+        env:
+          TURNSTILE_SITE_KEY: ${{ vars.TURNSTILE_SITE_KEY }}
+        run: |
+          if [ -z "$TURNSTILE_SITE_KEY" ]; then
+            echo "::error title=Capture cannot run::the repository VARIABLE TURNSTILE_SITE_KEY is unset, so --dart-define=TURNSTILE_SITE_KEY would arrive empty, TurnstileGate.posture would be \`misconfigured\`, and this capture would photograph an app driven through an auth posture the shipping web build does not have. e2e.yml fails closed on the same variable for the same reason. OWNER STEP: Settings → Secrets and variables → Actions → Variables → New repository variable, name TURNSTILE_SITE_KEY, value = the PUBLIC Turnstile sitekey from runbooks/auth-cutover.md section 4 row 5 (a sitekey is public: it ships inside the web bundle; the secret half never leaves the auth box)."
+            exit 1
+          fi
+          echo "TURNSTILE_SITE_KEY is set — the gated screens will render a real widget, as they do in production."
+
       - uses: ./.github/actions/setup-node
 
       - uses: ./.github/actions/setup-flutter
@@ -69,6 +84,9 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          # why: same variable deploy-web.yml ships and e2e.yml drives with. The
+          # runner refuses a live capture without it; see its `pass()` block.
+          TURNSTILE_SITE_KEY: ${{ vars.TURNSTILE_SITE_KEY }}
           E2E_EMAIL: ${{ steps.user.outputs.email }}
           E2E_PASSWORD: ${{ steps.user.outputs.password }}
         run: |
@@ -89,6 +107,31 @@ jobs:
       # in the same commit, because a ratchet that outlives its gap is a lie.
       - name: The captured set satisfies the listing-asset guard
         run: node --single-threaded tooling/ci/assert-listing-assets.mjs
+
+      # why: A FAILED RUN THREW ITS PIXELS AWAY, TWICE. Runs 35483690951 and
+      # 35488534460 both captured all four phone frames, failed afterwards on an
+      # exception, and uploaded nothing — the upload below only runs on success,
+      # so `gh api .../artifacts` returns an empty list for both and the frames
+      # exist nowhere. The question "did the categories actually land?" was then
+      # unanswerable from anything but PNG byte counts in a log.
+      #
+      # 🔴 A DELIBERATELY DIFFERENT ARTIFACT NAME, AND `if: failure()` NOT
+      # `always()`. These bytes did NOT pass the listing-asset guard and must
+      # never be mistaken for the set: the name says so, and the success upload
+      # below keeps its own name so nothing downstream that looks for
+      # `play-screenshots-subscriptiontracker` can ever receive these.
+      # if-no-files-found: ignore, because a run that failed BEFORE the drive
+      # (a missing secret, no chromedriver) has no frames and must still report
+      # its real failure rather than a second one about an empty upload.
+      - name: Keep the frames of a FAILED run, for diagnosis only
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: FAILED-not-a-listing-set-${{ github.run_id }}
+          if-no-files-found: ignore
+          path: |
+            apps/subscriptiontracker/store/android-play/screenshots/
+            apps/subscriptiontracker/store/android-play/screenshots-tablet/
 
       - name: Upload the screenshot set
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

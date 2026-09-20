@@ -230,3 +230,20 @@ packages/design_system/chassis-l10n-untranslated.json
 # without this line every one shows as an untracked directory in the main checkout,
 # and preflight's untracked-files leg had to skip it by name (2026-09-19).
 .worktrees/
+
+# The Play-screenshot capture stages the engine's text fallback fonts into
+# apps/<id>/web/fallback-fonts/ for the duration of a `flutter drive -d web-server`
+# run, because that is the only path the dev server will serve them from and the
+# bootstrap's `fontFallbackBaseUrl` points there (tooling/store/capture-fallback-fonts.mjs).
+# ~23 MB of byte-pinned upstream files, removed again when the capture finishes —
+# this line is what keeps a crashed run from leaving them as untracked tree dirt.
+apps/*/web/fallback-fonts/
+
+# Per-lane scratch output. The helper briefs tell every lane to write its runs to
+# scratchpad/<lane>/, and `*.log` above already covers the logs — but an exit-code
+# or status file with no .log suffix was untracked tree dirt, and preflight's first
+# leg REFUSES to judge a tree CI does not have. That cost two preflight runs on
+# 2026-09-20 (~40 min of the machine-wide heavy lock) on a file written by the
+# verification harness itself. The leg is right; the scratch directory just has no
+# business being in the tree it judges.
+scratchpad/

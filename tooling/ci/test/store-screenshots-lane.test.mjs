@@ -293,3 +293,220 @@ describe('store_screenshots_test.dart seeds a category per subscription', () => 
     assert.match(dart, /ensureVisible\(categoryField\)/);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE VERDICT, AND THE ALLOWLIST THAT MUST NEVER BECOME A MUTE BUTTON.
+//
+// Run 35488534460 raised two exceptions and the reporter printed both. One is
+// harness-side (a focus-traversal sort reading `rect` off an inactive Focus
+// element during a flutter_test-synthesised didChangeViewFocus dispatch); the
+// other was a REAL lane defect — TURNSTILE_SITE_KEY absent from a live web
+// build (ADR 084) — and is fixed at the cause rather than allowlisted.
+//
+// These limbs hold the allowlist narrow: every entry carries a date, a why, and
+// MORE THAN the assertion text, because "Cannot get renderObject of inactive
+// element" is a real defect almost anywhere else in the tree.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('store_screenshots_test.dart classifies exceptions instead of ignoring them', () => {
+  const SUITE = join(
+    REPO, 'apps', 'subscriptiontracker', 'integration_test', 'store_screenshots_test.dart',
+  );
+  const raw = readFileSync(SUITE, 'utf8');
+  const dart = stripSourceComments(raw, '.dart');
+
+  /** The allowlist, parsed out of the source as entries rather than grepped:
+   *  every id and needle also appears in the prose that justifies it. */
+  /** Every allowlist entry, read out of the typed `_Benign` list. Sliced by
+   *  index rather than matched across fields: `stripSourceComments` blanks the
+   *  long `why` comments between them, and a regex spanning that failed to
+   *  match text that reads fine by eye. */
+  const entryIds = [...dart.matchAll(/id: '([^']+)'/g)].map((m) => m[1]);
+  const fieldAfter = (id, field) => {
+    const at = dart.indexOf(`id: '${id}'`);
+    const m = new RegExp(`${field}: '([^']*)'`).exec(dart.slice(at));
+    return m ? m[1] : null;
+  };
+  const needlesOfEntry = (id) => {
+    const at = dart.indexOf(`id: '${id}'`);
+    const from = dart.indexOf('needles: <String>[', at);
+    const to = dart.indexOf(']', from);
+    if (from === -1 || to === -1) return [];
+    return [...dart.slice(from, to).matchAll(/'([^']*)'/g)].map((m) => m[1]);
+  };
+  const entries = entryIds.map((id) => ({
+    id,
+    dated: fieldAfter(id, 'dated'),
+    seenIn: fieldAfter(id, 'seenIn'),
+    needles: needlesOfEntry(id),
+  }));
+
+  test('the allowlist is small and every entry is dated to a real run', () => {
+    assert.ok(entries.length >= 1, 'the allowlist parsed as empty — the regex or the shape moved');
+    assert.ok(entries.length <= 3, `${entries.length} benign entries is no longer an allowlist`);
+    for (const e of entries) {
+      assert.match(e.dated, /^\d{4}-\d{2}-\d{2}$/, `${e.id} has no ISO date`);
+      assert.match(e.seenIn, /run \d+/, `${e.id} does not name the run it was seen in`);
+    }
+  });
+
+  test('no entry matches on the assertion text alone', () => {
+    // A signature of one sentence would suppress that sentence everywhere. Each
+    // entry must also pin the framework PATH that makes it benign.
+    for (const e of entries) {
+      assert.ok(e.needles.length >= 3, `${e.id} has only ${e.needles.length} needle(s)`);
+      assert.ok(
+        e.needles.some((n) => n.includes('package:flutter')),
+        `${e.id} pins no framework frame, so it would match the same words raised anywhere`,
+      );
+    }
+  });
+
+  test('the focus-traversal entry pins the harness frame that makes it harness-side', () => {
+    const focus = entries.find((e) => e.id === 'focus-traversal-inactive-element');
+    assert.ok(focus, 'the entry for run 35488534460 exception 1 is gone');
+    // flutter_test/src/window.dart in the stack IS the claim: the view-focus
+    // event is synthesised by the test binding, not by the app.
+    assert.ok(focus.needles.includes('package:flutter_test/src/window.dart'));
+    assert.ok(focus.needles.includes('WidgetsBindingObserver.didChangeViewFocus'));
+    assert.ok(focus.needles.includes('Cannot get renderObject of inactive element'));
+  });
+
+  test('an UNMATCHED exception is still forwarded, and still fails the run', () => {
+    // The forward is the whole verdict mechanism; a blanket suppression would
+    // be this line without the condition.
+    assert.match(dart, /if\s*\(id == null\)\s*previous\?\.call\(details\)/);
+    assert.match(dart, /expect\(\s*unmatched,\s*isEmpty/);
+  });
+
+  test('a benign match is recorded and reported, never merely dropped', () => {
+    assert.match(dart, /flutterErrors\.add\(text\)/);
+    assert.match(dart, /'verdict'/);
+  });
+
+  test('the timeline marks every captured frame, so WHEN an error fired is readable', () => {
+    // Order alone cannot say whether an exception preceded a capture; that is
+    // the question run 35488534460's report could not answer about itself.
+    assert.equal((dart.match(/markFrame\('/g) ?? []).length, 4);
+    assert.match(dart, /FRAME \$frame written/);
+  });
+});
+
+describe('the capture lane passes the captcha site key ADR 084 requires', () => {
+  const runner = stripSourceComments(
+    readFileSync(join(REPO, 'tooling', 'store', 'capture-play-screenshots.mjs'), 'utf8'), '.mjs',
+  );
+  const yml = readFileSync(
+    join(REPO, '.github', 'workflows', 'store-screenshots.yml'), 'utf8',
+  ).split(/\r?\n/).filter((l) => !/^\s*#/.test(l)).join('\n');
+
+  test('the runner refuses a LIVE capture with no TURNSTILE_SITE_KEY', () => {
+    assert.match(runner, /pass\('TURNSTILE_SITE_KEY'\)/);
+    assert.match(runner, /else if \(!PROOF\)/);
+  });
+
+  test('--proof is exempt, because a demo build has no captcha posture to get wrong', () => {
+    // TurnstileGate.postureFor: not backend-live => notOnThisChannel, inert.
+    assert.match(runner, /if \(process\.env\.TURNSTILE_SITE_KEY\) pass\('TURNSTILE_SITE_KEY'\)/);
+  });
+
+  test('the workflow supplies it as a VARIABLE and fails closed, like e2e.yml', () => {
+    // 🔴 BOTH OCCURRENCES, COUNTED — AND A MUTATION PROVED WHY. The first
+    // version of this limb was `assert.match(...)`, which passes on ANY one
+    // hit. The variable is referenced twice on purpose: once by the preflight
+    // step that fails closed, and once by the `Capture the set` step whose env
+    // actually reaches the build. Blanking only the second leaves a run whose
+    // preflight says the key is present and whose build never receives it —
+    // exactly the state this whole increment exists to remove — and the
+    // `match` form went GREEN on that mutation.
+    const refs = yml.match(/TURNSTILE_SITE_KEY: \$\{\{ vars\.TURNSTILE_SITE_KEY \}\}/g) ?? [];
+    assert.equal(refs.length, 2, `expected the preflight and capture steps to reference it; found ${refs.length}`);
+    assert.match(yml, /if \[ -z "\$TURNSTILE_SITE_KEY" \]; then/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE SIGNATURE, RUN AGAINST THE REAL BYTES IT WAS WRITTEN FROM.
+//
+// The limbs above assert the allowlist's SHAPE. These run its actual needles
+// over the two exceptions run 35488534460 really raised, captured verbatim from
+// that run's `flutterErrors` into fixtures/. That is the difference between "the
+// entry has enough needles" and "the entry matches the thing it names and
+// nothing else" — and it is the closest a Node test can get to the Dart
+// classifier without driving a browser.
+//
+// ⚠️ WHAT IT STILL CANNOT PROVE: that the handler FORWARDS the unmatched one at
+// runtime. That limb is structural (`if (id == null) previous?.call(details)`)
+// and its real proof is the next capture run.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('the benign signature separates the two exceptions run 35488534460 raised', () => {
+  const SUITE = join(
+    REPO, 'apps', 'subscriptiontracker', 'integration_test', 'store_screenshots_test.dart',
+  );
+  const dart = stripSourceComments(readFileSync(SUITE, 'utf8'), '.dart');
+  const FIX = join(REPO, 'tooling', 'ci', 'test', 'fixtures', 'store-shots-run-35488534460');
+  const focusText = readFileSync(join(FIX, 'exception-1-focus-traversal.txt'), 'utf8');
+  const turnstileText = readFileSync(join(FIX, 'exception-2-turnstile.txt'), 'utf8');
+
+  /** The classifier, in the one form a Node test can apply: every needle must
+   *  appear. Mirrors `benignId` in the suite. */
+  const needlesOf = (id) => {
+    const at = dart.indexOf(`id: '${id}'`);
+    assert.notEqual(at, -1, `no allowlist entry with id ${id}`);
+    const from = dart.indexOf('needles: <String>[', at);
+    const to = dart.indexOf(']', from);
+    assert.ok(from !== -1 && to !== -1, `entry ${id} has no needles list`);
+    return [...dart.slice(from, to).matchAll(/'([^']*)'/g)].map((m) => m[1]);
+  };
+  const matches = (needles, text) => needles.every((n) => text.includes(n));
+
+  test('it MATCHES the focus-traversal exception it was written for', () => {
+    assert.equal(matches(needlesOf('focus-traversal-inactive-element'), focusText), true);
+  });
+
+  test('it does NOT match the turnstile exception — that one was fixed at the cause', () => {
+    // ADR 084's misconfiguration is a real lane defect, not framework noise:
+    // the fix is passing vars.TURNSTILE_SITE_KEY, not an allowlist entry.
+    assert.equal(matches(needlesOf('focus-traversal-inactive-element'), turnstileText), false);
+  });
+
+  test('the fixture really is the harness path, not an app path', () => {
+    // The two frames that carry the whole "cannot reach the pixels" argument.
+    assert.match(focusText, /flutter_test\/src\/window\.dart .* \[_handleViewFocusChanged\]/);
+    assert.match(focusText, /focus_traversal\.dart .* findFirstFocus/);
+    // And it is reported, not rethrown: the widgets library caught it.
+    assert.match(focusText, /^Exception caught by widgets library/);
+  });
+
+  test('no allowlist entry matches the turnstile exception at all', () => {
+    const ids = [...dart.matchAll(/id: '([^']+)'/g)].map((m) => m[1]);
+    for (const id of ids) {
+      assert.equal(
+        matches(needlesOf(id), turnstileText), false,
+        `entry ${id} would suppress the ADR 084 misconfiguration, which is a real defect`,
+      );
+    }
+  });
+});
+
+describe('a failed capture keeps its frames for diagnosis', () => {
+  const yml = readFileSync(
+    join(REPO, '.github', 'workflows', 'store-screenshots.yml'), 'utf8',
+  );
+  const steps = yml.split(/\r?\n/).filter((l) => !/^\s*#/.test(l)).join('\n');
+
+  test('failure() uploads the frames under a name that cannot be mistaken for the set', () => {
+    assert.match(steps, /if: failure\(\)/);
+    assert.match(steps, /name: FAILED-not-a-listing-set-/);
+    // The success artifact keeps its own name, so nothing downstream that
+    // looks for the real set can ever be handed unvetted bytes.
+    assert.match(steps, /name: play-screenshots-subscriptiontracker/);
+  });
+
+  test('the diagnostic upload never masks an earlier failure with its own', () => {
+    // A run that died before the drive has no frames; `error` there would
+    // replace the real cause with "no files found".
+    assert.match(steps, /if-no-files-found: ignore/);
+    // The real set still fails closed when it is empty.
+    assert.match(steps, /if-no-files-found: error/);
+  });
+});

@@ -394,3 +394,226 @@ credential — the CLOUDFLARE_API_TOKEN above is what authorises
 anything — and purge.mjs `need()`s it, so omitting it turns the
 cleanup into a hard failure AFTER the rows exist.
 
+## How to rehearse locally
+
+🔴 **ADDED 2026-09-20, ON AN OWNER RULING, AND THE RULING IS THE POINT.** This lane failed three
+dispatches in a row — 35483690951, 35488534460 and one before — on causes that were only visible in
+CI. Each fix cost a dispatch to test. The ruling: **a change must pass LOCALLY TWICE before it is
+pushed, and a lane that cannot run locally must not be dispatched once per fix.**
+
+So what was fixed on 2026-09-20 is not another capture bug. It is the **absence of a local
+rehearsal**, which had three causes, none of them about the capture:
+
+| blocker | why it stopped the run | what closed it |
+|---|---|---|
+| no `chromedriver` | the capture's own probe refuses before it destroys anything; CI installs it with `nanasess/setup-chromedriver`, which is **Linux-only** | `tooling/store/local-chromedriver.mjs` |
+| no `SUPABASE_SERVICE_ROLE_KEY` in the vault | `tooling/e2e/provision_user.mjs` cannot create the throwaway confirmed account, so there is nothing to sign in as | read from the Supabase **management API** with the `SUPABASE_PAT` the vault already held, and written to the vault under **the name CI uses** |
+| the laptop's Flutter was **not the pin** | `pub get --enforce-lockfile` refuses under it, and dropping the flag writes the OLD pins into `pubspec.lock` | the pinned SDK, installed **isolated**; `rehearse-capture-locally.mjs` version-checks it and refuses otherwise |
+
+### 🔴 The SDK gap, because it was the one that could have damaged the tree
+
+Measured 2026-09-20: `tooling/versions.json` pins Flutter **3.47.4** and `pubspec.lock` was resolved
+on that pin, while the laptop's own `flutter` was **3.44.9**. Under it:
+
+```
+Would change 7 dependencies …
+Unable to satisfy `..\..\pubspec.yaml` using `..\..\pubspec.lock`
+```
+
+— the seven SDK-constrained packages `versions.json` names (`intl`, `matcher`, `meta`, `test`,
+`test_api`, `test_core`, `vector_math`). **Dropping `--enforce-lockfile` is not the workaround**: a
+plain `pub get` on the older SDK writes the OLD pins back, and twelve release lanes enforce that
+lock on merge, on tag and on every store submission — so the damage would surface on a RELEASE lane,
+not on the PR that caused it. A rehearsal on the wrong SDK therefore either cannot start or breaks
+the tree; neither is a rehearsal, and the runner refuses rather than choosing between them.
+
+Install it beside the chromedriver, **never over the machine's own Flutter** — other lanes drive that
+one at the same time. The SDK archive's `sha256` is published in Google's own
+`releases_windows.json` next to the `archive` path; verify against it, extract to
+`%LOCALAPPDATA%\nikatru\flutter\<pin>\`, and the runner finds it. `NIKATRU_FLUTTER` overrides the
+lookup with an explicit path.
+
+⚠️ **Every `pub get` on 3.47 rewrites every `analysis_options.yaml` in the workspace** (an
+`analyzer: exclude:` block) — **nine** of them when measured on 2026-09-20, where
+`tooling/versions.json` recorded seven in 2026-08: the count is the workspace's, so it moves, and
+nothing should assert it. Committing the rewrite fails `assert-no-gate-weakening.mjs`. CI never notices because its pub get
+and that guard run in different jobs on different runners; locally they are one tree, so
+`rehearse-capture-locally.mjs` reverts exactly those files after each pub get — including the
+implicit one inside `flutter drive`.
+
+### Where the two local tools live
+
+Both are per-version directories under `%LOCALAPPDATA%\nikatru\` — beside the heavy-run lock, and
+**never on `PATH`**, so nothing else on the machine changes. As installed on 2026-09-20:
+
+- `…\nikatru\chromedriver\<chromedriver version>\chromedriver.exe`, from
+  `https://storage.googleapis.com/chrome-for-testing-public/<version>/win64/chromedriver-win64.zip`,
+  verified against the **size and MD5 the Cloud Storage JSON API publishes for that object** — the
+  Chrome-for-Testing catalogue itself carries urls and no hashes. That check detects a truncated or
+  corrupted download; it is not a signature, and the script says so rather than implying more.
+- `…\nikatru\flutter\<pin>\flutter\bin\flutter.bat`, from Google's `releases_windows.json`, verified
+  against the **`sha256` that file publishes beside the archive path**.
+
+### The two commands
+
+Once, to prove the machine is ready — it resolves every input, prints each credential as a **name,
+a length and a short sha256**, and runs nothing:
+
+```
+node tooling/store/rehearse-capture-locally.mjs --print-plan
+code=$?
+echo "EXIT"
+echo "$code"
+```
+
+Then the rehearsal itself:
+
+```
+node tooling/scripts/heavy.mjs -- node tooling/store/rehearse-capture-locally.mjs
+code=$?
+echo "EXIT"
+echo "$code"
+```
+
+and then **the same command again**. `--keep-user` skips the purge for diagnosis and says so loudly.
+
+`heavy.mjs` is not optional here: this drives a browser on the same laptop that runs the offsite
+backup, and an unwrapped heavy run has already starved a backup into being killed.
+
+⚠️ **A FAILED RUN LEAVES THE COMMITTED SET DELETED, AND THAT IS BY DESIGN.** The capture empties each
+device-type directory of `*.png` before it drives, so that a stale frame of a screen the app no
+longer has cannot survive into a set the guard then certifies. A run that fails *before* the first
+`captureFrame` — which is what a sign-in failure is — therefore leaves those directories empty in the
+working tree. Nothing is lost (the frames are in git), but **restore them before you read
+`git status`**:
+
+```
+git checkout -- apps/subscriptiontracker/store/android-play/screenshots apps/subscriptiontracker/store/android-play/screenshots-tablet
+```
+
+### What "twice, green" means, exactly
+
+**Two separate invocations of the command, each exiting 0, one after the other, with no edit
+between them.** It is deliberately not a `--twice` flag: each invocation provisions its **own**
+throwaway account and purges it in a `finally`, so two invocations are two independent runs against
+two accounts — which is the property being proven. One process looping twice would share a
+chromedriver, a resolved pub cache and a warm browser profile, and would prove less while looking
+like more.
+
+A run that exits **2** is not a failed capture — it is a rehearsal that could not be **set up** (no
+vault, no repository variable, no chromedriver, an SDK that is not the pin). That distinction is the same one
+`verify-monitors.mjs` draws, and for the same reason: *"I could not look"* must never be readable as
+*"I looked and it was fine"*.
+
+### The credential NAMES, and where each legitimately comes from
+
+⚠️ **Names only. Never a value — not in a commit, not in a transcript, not in a log.** Compute a
+length and a short sha256 instead; `rehearse-capture-locally.mjs` prints exactly that for every
+input it resolves, which is enough to tell two keys apart and not enough to use one.
+
+🔴 **`::add-mask::` MASKS NOTHING ON A LAPTOP, AND THAT IS A LEAK, NOT A COSMETIC DIFFERENCE.**
+`tooling/e2e/provision_user.mjs` prints two of those lines — the generated password and the
+single-use magic-link token. Inside GitHub Actions the runner reads them and redacts the values from
+every later log line. **Nothing reads them locally**, so on this machine the line *is* the secret, in
+clear, in whatever file the run was redirected to. Measured on the first local rehearsal,
+2026-09-20. The provisioner is CI's script and its behaviour there is correct, so the fix is on the
+caller's side: `rehearse-capture-locally.mjs` pipes that one step, honours the directive itself and
+redacts those values from everything it prints. **If you run `provision_user.mjs` by hand, redirect
+it somewhere you will scrub.**
+
+| name | CI reads it from | the rehearsal reads it from |
+|---|---|---|
+| `SUPABASE_URL` | `secrets.` | `.claude/secrets.env` — already held |
+| `SUPABASE_ANON_KEY` | `secrets.` | `.claude/secrets.env` — **added 2026-09-20**, the legacy `anon` JWT from `GET /v1/projects/{ref}/api-keys` |
+| `SUPABASE_SERVICE_ROLE_KEY` | `secrets.` | `.claude/secrets.env` — **added 2026-09-20**, the legacy `service_role` JWT from the same call |
+| `API_BASE_URL` | `secrets.` | `.claude/secrets.env` — **added 2026-09-20**; a public Worker hostname, the value the repo's own `apps/subscriptiontracker/config/defaults.example.json` declares |
+| `TURNSTILE_SITE_KEY` | `vars.` | **the repository variable itself**, via `gh variable get` — not a vault copy |
+| `CHROMEDRIVER` | `nanasess/setup-chromedriver` | `tooling/store/local-chromedriver.mjs` |
+| the Flutter SDK | `./.github/actions/setup-flutter`, at the `tooling/versions.json` pin | the same pin, installed isolated; `NIKATRU_FLUTTER` overrides |
+
+**Why the management API is the honest route for the two keys.** The vault already held
+`SUPABASE_PAT`, a Supabase **management** personal access token, and
+`GET /v1/projects/{ref}/api-keys` returns that project's keys to the holder of it. Nothing was
+weakened, nothing new was granted, and no key was rotated or created: the same key CI holds was read
+from the project that issues it, by a token that was already authorised to read it. The vault also
+held `SUPABASE_PUBLISHABLE_KEY` and `SUPABASE_Secret_key` — the **modern** key pair for the same
+project — but those are different strings under different names, and a rehearsal that fed the app a
+different key from the one CI feeds it would be proving something about a configuration nobody
+ships.
+
+**Why `TURNSTILE_SITE_KEY` is read from the repository and not copied into the vault.** It is a
+repository **variable**, not a secret, because a Turnstile *site* key is public by construction — it
+ships inside every web bundle, and only the secret half lives on the auth box. Reading the variable
+is reading the single declaration `deploy-web.yml` ships and `e2e.yml` drives with; a second copy in
+the vault would be a second declaration, free to drift from what production actually renders.
+
+### What is still NOT the same as CI
+
+Stated rather than talked away, because a rehearsal that oversells itself is worse than none:
+
+- **Host and browser.** CI is `ubuntu-24.04` with a Linux Chrome; this is Windows with the
+  laptop's own Chrome. `local-chromedriver.mjs` matches the **major** version, which is all
+  chromedriver enforces — Chrome-for-Testing does not publish a build per Chrome patch, so the
+  patch levels differ and the script prints both rather than implying they match.
+- **The steps after the capture.** `assert-listing-assets.mjs`, the artifact upload and the
+  `gh pr create` proposal are not rehearsed here; run the guard by hand
+  (`node --single-threaded tooling/ci/assert-listing-assets.mjs`) and read
+  *"🔴 `gh pr create` CAN BE REFUSED"* in the workflow for the rest.
+- **The SDK patch, if the pin has moved.** The runner refuses anything that is not the pin, so this
+  difference cannot be silent — but it can make the rehearsal unavailable until the new pin is
+  installed, which is the honest trade for never running on the wrong one.
+- **`CI` is never set locally**, and nothing here should set it.
+
+### 🔴 WHAT THE FIRST REHEARSAL FOUND, BEFORE ANY DISPATCH — 2026-09-20
+
+The rehearsal paid for itself on its first run, and the finding is worth recording because it is the
+exact shape the owner's ruling exists to stop: **a failure that the fix for the PREVIOUS failure
+created.**
+
+Supplying `TURNSTILE_SITE_KEY` was right (ADR 084, and the workflow now fails closed without it).
+But `TurnstileGate.build` returns `SizedBox.shrink()` when no site key is compiled in, and when one
+is, a `CloudflareTurnstile` at `TurnstileSize.flexible` — **height 65**, per the comment citing
+Cloudflare — inside a `Padding(bottom: 16)`: **81 px** that was not there before. And
+`login_screen.dart` puts it *directly above* the submit button, under the comment "Renders NOTHING
+when no site key is compiled in, which is every build today". That sentence stopped being true the
+moment this lane started passing the key.
+
+At the phone viewport the form no longer fits. Measured identically on two consecutive local runs:
+
+```
+A call to tap() with finder "… [<'e2e_login_submit'>] …"
+derived an Offset (Offset(180.0, 644.0)) that would not hit test on the specified widget.
+Indeed, Offset(180.0, 644.0) is outside the bounds of the root of the render tree, Size(360.0, 640.0).
+  at store_screenshots_test.dart 572:17
+```
+
+The button's centre lands **4 px below a 640 px viewport**; subtract the gate's 81 px and it sits at
+563, comfortably inside — which is where it was on every earlier run. The run therefore now dies at
+**sign-in**, *earlier* than the two failed dispatches did: 35483690951 and 35488534460 both got four
+phone frames out before failing, and a local run gets **zero**, because nothing is photographed
+before login completes.
+
+⚠️ **THE BENIGN CLASSIFIER IS WORKING, AND THIS IS THE PROOF.** The run's own timeline separates the
+two exceptions exactly as intended:
+
+```
+ 4235ms  EXCEPTION (known-benign: focus-traversal-inactive-element)  widgets library: …
+ 9804ms  EXCEPTION (unmatched — this run FAILS)  Flutter test framework: Finder specifies a widget …
+```
+
+**The fix is not in this lane.** `tester.tap` does not scroll, the form *is* inside a
+`SingleChildScrollView` (login_screen.dart:360), and the suite already uses `ensureVisible` before
+the add-sheet submit for precisely this reason — so the shape of the repair is known and it belongs
+to `integration_test/store_screenshots_test.dart`, not to `tooling/store/`. Recorded here, not
+patched here.
+
+### The guard this wants, PROPOSED not invented
+
+The thing that can rot is the **table above**: a name added to the workflow's env that nobody adds
+to the rehearsal makes the rehearsal quietly prove less, and it will still print ok. A guard could
+parse `.github/workflows/store-screenshots.yml`'s `capture` step env block and
+`rehearse-capture-locally.mjs`'s `baseEnv`, and fail on a name present in one and absent from the
+other. That is a real, mechanical, non-vacuous check — but a guard lands with its register and its
+mutation proof, in its own increment, and inventing one inside a documentation change is how a
+repository acquires a check nobody can defend. **Filed as a proposal here; not written.**
+
