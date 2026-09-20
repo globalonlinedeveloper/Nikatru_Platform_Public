@@ -210,6 +210,27 @@
       "app": "additional",
       "extension": null,
       "rendered": false
+    },
+    {
+      "name": "promo-tile-440x280.png",
+      "kind": "image",
+      "app": null,
+      "extension": "per-store-additional",
+      "rendered": false
+    },
+    {
+      "name": "logo-300x300.png",
+      "kind": "image",
+      "app": null,
+      "extension": "per-store-additional",
+      "rendered": false
+    },
+    {
+      "name": "icon-128.png",
+      "kind": "image",
+      "app": null,
+      "extension": "shared",
+      "rendered": false
     }
   ],
   "listingCategories": {

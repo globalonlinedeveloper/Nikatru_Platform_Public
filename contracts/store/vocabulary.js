@@ -80,10 +80,21 @@
  *   `'additional'` — some channels carry it; WHICH channels is a per-row fact
  *   and stays in the register's `perChannel.<id>.additionalFiles`.
  *   `null` — not an application listing field at all.
- * @property {'per-store'|'shared'|null} extension
+ * @property {'per-store'|'per-store-additional'|'shared'|null} extension
  *   `'per-store'` — one copy per store directory (store/chrome, store/edge,
- *   store/firefox), because the text genuinely differs per store.
- *   `'shared'` — one copy in store/_shared/, because it does not.
+ *   store/firefox), REQUIRED in every one, because the text genuinely differs
+ *   per store.
+ *   `'per-store-additional'` — lives in a store directory, but only SOME stores
+ *   take it; WHICH stores is a per-row fact and stays in
+ *   `extensions/scripts/store-graphics.json`, exactly as the `app` column's
+ *   `'additional'` leaves its per-channel fact in the register. Added 2026-09-20
+ *   for the listing graphics: Chrome takes a 440x280 promotional tile, Edge a
+ *   300x300 logo, AMO neither. Without this value the only honest choices were
+ *   to call them `'per-store'` — which made check-store-metadata demand Edge's
+ *   logo from Chrome and both from Firefox, four failures measured — or to leave
+ *   them out of the contract, which makes this guard refuse them as undeclared.
+ *   Neither is the truth, and the truth is the whole point of the table.
+ *   `'shared'` — one copy in store/_shared/, because it does not differ.
  *   `null` — not an extension listing field.
  * @property {boolean} rendered
  *   Whether `tooling/app-yaml/render.mjs` writes this file from `app.yaml`.
@@ -245,6 +256,28 @@ export const LISTING_FIELDS = /** @type {const} */ ([
   { name: 'ads-declaration.json', kind: 'json', app: 'additional', extension: null, rendered: false },
   { name: 'feature-graphic.png', kind: 'image', app: 'additional', extension: null, rendered: false },
   { name: 'store-icon-512.png', kind: 'image', app: 'additional', extension: null, rendered: false },
+
+  // ── THE EXTENSION LISTING GRAPHICS. Added 2026-09-20, when Public #844 put
+  //    the first real ones on disk and this guard refused all three by name —
+  //    on a rebase, before the push, which is the loop working rather than a
+  //    third round of it in CI.
+  //
+  // ⚠️ THE SIZE IS IN THE FILENAME BECAUSE THE STORE PUBLISHES IT, and each
+  // store publishes a DIFFERENT one for the same role: Chrome's promotional
+  // tile is 440x280, Edge's store logo is 300x300. They are two fields, not one
+  // field with a per-store size, because a file is what a listing tree holds
+  // and `check-listing-assets.mjs` decodes each PNG's own IHDR to grade it.
+  // Nothing here asserts those dimensions — the name records them, the guard
+  // in extensions/scripts measures them, and `extensions/scripts/
+  // store-graphics.json` is where they are declared once and rendered from.
+  //
+  // `icon-128.png` is SHARED for the reason every shared field is: all three
+  // stores take the same 128px icon, so a per-store copy would be three files
+  // that must never differ. AMO takes neither of the per-store graphics, which
+  // is why `firefox/` holds no image at all and that is not a gap.
+  { name: 'promo-tile-440x280.png', kind: 'image', app: null, extension: 'per-store-additional', rendered: false },
+  { name: 'logo-300x300.png', kind: 'image', app: null, extension: 'per-store-additional', rendered: false },
+  { name: 'icon-128.png', kind: 'image', app: null, extension: 'shared', rendered: false },
 ]);
 
 /**
@@ -324,6 +357,28 @@ export const extensionPerStoreListingFiles = () =>
  */
 export const extensionSharedListingFiles = () =>
   LISTING_FIELDS.filter((f) => f.extension === 'shared').map((f) => f.name);
+
+/**
+ * The extension listing fields that live in a store directory but that only
+ * SOME stores take — today the listing graphics, whose sizes each store
+ * publishes for itself.
+ *
+ * 🔴 NOT A SUBSET OF {@link extensionPerStoreListingFiles} AND NOT ADDED TO IT.
+ * `check-store-metadata.mjs` reads that array as REQUIRED_PER_STORE and demands
+ * every name in it from every store directory, so folding these in made it ask
+ * Chrome for Edge's logo and Firefox for both — four failures, measured
+ * 2026-09-20 before this value existed. A reader that wants "may this file be
+ * here?" takes the union; a reader that wants "must this file be here?" takes
+ * the required array alone. Those are different questions and this file now
+ * lets a consumer ask either one.
+ *
+ * WHICH store takes which graphic is not here, for the same reason the app
+ * column's per-channel fact is not here: it is a row, and it lives in
+ * `extensions/scripts/store-graphics.json`, which is also what renders them.
+ * @returns {string[]}
+ */
+export const extensionAdditionalListingFiles = () =>
+  LISTING_FIELDS.filter((f) => f.extension === 'per-store-additional').map((f) => f.name);
 
 /**
  * `tooling/app-yaml/render.mjs` RENDERED_LISTING_FILES — the listing files the

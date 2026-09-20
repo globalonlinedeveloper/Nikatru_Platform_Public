@@ -353,7 +353,18 @@ for (const app of dirsIn(join(ROOT, APPS_DIR))) {
 }
 
 // ── 4b. THE EXTENSION TREES ──────────────────────────────────────────────────
-const extPerStore = new Set(contract.extensionPerStoreListingFiles());
+// ⚠️ "MAY THIS FILE BE HERE?" IS NOT "MUST IT BE HERE?", and this limb asks the
+// first one. A store directory legitimately holds its REQUIRED fields plus the
+// additional ones that store happens to take — Chrome's promotional tile is not
+// required of Edge, but it is not tree dirt in Chrome either. So the set this
+// limb grades against is the UNION, while check-store-metadata.mjs keeps reading
+// the required array alone and keeps demanding every name in it from every
+// store. Folding the two together instead made it ask Chrome for Edge's logo and
+// Firefox for both: four failures, measured 2026-09-20.
+const extPerStore = new Set([
+  ...contract.extensionPerStoreListingFiles(),
+  ...contract.extensionAdditionalListingFiles(),
+]);
 const extShared = new Set(contract.extensionSharedListingFiles());
 
 /** Every `<something>/store/` directory under extensions/, found by walking. */
