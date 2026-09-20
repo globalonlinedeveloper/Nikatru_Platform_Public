@@ -36,9 +36,12 @@ import {
   firstIsolateAddr,
   parseSymbolized,
   sameSite,
-  verdictExit,
   allFrames,
   probeEventValues,
+  EXPECTATION_FILE,
+  expectationVerdict,
+  parseExpectation,
+  readingWord,
 } from '../../ops/symbolication-proof.mjs';
 import { parseWorkflow, workflowEvents } from '../workflow-scan.mjs';
 
@@ -287,11 +290,242 @@ describe('the probe marker survives the client-side PII scrubber', () => {
   });
 });
 
-describe('verdictExit — the sink is always reported, and an unavailable half is never a pass', () => {
-  test('both MATCH is the only 0', () => assert.equal(verdictExit(true, true), 0));
-  test('a sink MISMATCH is 1 even with no ground truth', () => assert.equal(verdictExit(null, false), 1));
-  test('a ground-truth MISMATCH is 1', () => assert.equal(verdictExit(false, true), 1));
-  test('a sink MATCH with no ground truth is 2, not 0', () => assert.equal(verdictExit(null, true), 2));
+// ─────────────────────────────────────────────────────────────────────────────
+// Run 35470727346 (main d8a02fb4), from its kept symbolication-proof-evidence
+// artifact, verbatim: trace.txt, the frame lines of symbolized.txt, and the
+// GlitchTip event rebuilt from symbolication-report.json's `sinkFrames`. This is
+// the run [ADR 090] records, so it is the run the register must classify as
+// AS RECORDED — and the fixtures every verdict path below is driven from.
+// ─────────────────────────────────────────────────────────────────────────────
+const RUN_35470727346 = {
+  marker: 'symprobe-bhijifebdibjccbe',
+  expected: { file: 'symbolication_crash_probe.dart', line: 36, function: 'probeThrowSite' },
+  throwAddr: 0x735b1e693c3en,
+  trace: [
+    '*** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***',
+    'pid: 2841, tid: 126849022539000, name 2.ui',
+    'os: android arch: x64 comp: yes sim: no',
+    "build_id: '815b5608b740ba03b5ea83b48e1d50a8'",
+    'isolate_dso_base: 735b1e476000, vm_dso_base: 0',
+    'isolate_instructions: 735b1e526000, vm_instructions: 0',
+    '    #00 abs 0000735b1e693c3e virt 000000000021dc3e _kDartSnapshotText+0x16dc3e',
+    '    #01 abs 0000735b1e6d940c virt 000000000026340c _kDartSnapshotText+0x1b340c',
+    '<asynchronous suspension>',
+  ].join('\n'),
+  decoded: [
+    '#0      probeThrowSite (/home/runner/work/Nikatru_Platform_Public/Nikatru_Platform_Public/apps/subscriptiontracker/live_probe/symbolication_crash_probe.dart:36:3)',
+    '#1      main (/home/runner/work/Nikatru_Platform_Public/Nikatru_Platform_Public/apps/subscriptiontracker/live_probe/symbolication_crash_probe.dart:74:5)',
+    '<asynchronous suspension>',
+  ].join('\n'),
+  event: {
+    eventID: 'ce8754f619d1408c93e01a371a4938ea',
+    groupID: '39',
+    platform: 'other',
+    entries: [
+      {
+        type: 'exception',
+        data: {
+          values: [
+            {
+              type: 'Dv',
+              value: 'symbolication-probe symprobe-bhijifebdibjccbe',
+              stacktrace: {
+                frames: [
+                  {
+                    filename: 'third_party/dart/sdk/lib/_internal/vm/lib/typed_data_patch.dart',
+                    function: 'new Uint32List',
+                    platform: 'native',
+                    instruction_addr: '0x0000735b1e6d940c',
+                    lineNo: 0,
+                  },
+                  { platform: 'native', instruction_addr: '0x0000735b1e693c3e' },
+                ],
+              },
+            },
+          ],
+        },
+      },
+    ],
+  },
+};
+
+/** The two readings run 35470727346 produced, from those fixtures, not typed. */
+function run35470727346Readings() {
+  const exp = RUN_35470727346.expected;
+  const addr = firstIsolateAddr(RUN_35470727346.trace);
+  const truth = sameSite(exp, parseSymbolized(RUN_35470727346.decoded)[0]);
+  const sink = sameSite(exp, crashFrame(RUN_35470727346.event, addr));
+  return { truthOk: truth.ok, sinkOk: sink.ok, addr };
+}
+
+describe('run 35470727346 — the run ADR 090 records', () => {
+  test('the throw address is the first `_kDartSnapshotText` frame of the real trace', () => {
+    assert.equal(firstIsolateAddr(RUN_35470727346.trace), RUN_35470727346.throwAddr);
+  });
+  test('GROUND TRUTH: the offline decode names the marked line — a MATCH', () => {
+    const { truthOk } = run35470727346Readings();
+    assert.equal(truthOk, true);
+  });
+  test('SINK: the frame at that address came back UNSYMBOLICATED — a MISMATCH', () => {
+    const f = crashFrame(RUN_35470727346.event, RUN_35470727346.throwAddr);
+    assert.equal(f.matchedBy, 'address');
+    const v = sameSite(RUN_35470727346.expected, f);
+    assert.equal(v.ok, false);
+    assert.match(v.why, /UNSYMBOLICATED/);
+  });
+  test('its marker is letters-only, so no scrubber rule redacts it', () => {
+    for (const re of scrubberPatterns()) assert.equal(re.test(RUN_35470727346.marker), false, `${re} redacts the marker`);
+  });
+});
+
+// The recorded state, shaped exactly as the register holds it. The REAL register
+// is read from disk further down; this copy is what the branch cases are driven
+// from, so a branch case cannot be quietly rewritten by editing the register.
+const RECORD = {
+  groundTruth: 'match',
+  sink: 'mismatch',
+  recordedBy: 'ADR 090',
+  row: 'O-GLITCHTIP-UPGRADE-SYMBOLICATION',
+  broken: 'the throw-site frame comes back with function=null, file=null, line=null',
+  until: 'a GlitchTip release containing upstream MR !2474 is installed',
+  triageInstead: 'decode the kept symbols-* artifact with the pinned native_stack_traces',
+  evidence: { run: '35470727346', event: 'ce8754f619d1408c93e01a371a4938ea', glitchtipVersion: '6.2.6' },
+};
+const said = (v) => v.lines.join('\n');
+const held = (o) => expectationVerdict({ expectation: RECORD, liveVersion: '6.2.6', ...o });
+
+describe('expectationVerdict — reality against the RECORD, never against an ideal', () => {
+  test('readingWord: an absent reading is "unavailable", never "mismatch"', () => {
+    assert.deepEqual([readingWord(true), readingWord(false), readingWord(null)], ['match', 'mismatch', 'unavailable']);
+  });
+
+  test('AS RECORDED (run 35470727346 exactly) is exit 0', () => {
+    const { truthOk, sinkOk } = run35470727346Readings();
+    const v = held({ truthOk, sinkOk });
+    assert.equal(v.exit, 0, said(v));
+    assert.equal(v.asRecorded, true);
+    assert.deepEqual(v.got, { groundTruth: 'match', sink: 'mismatch' });
+  });
+  test('…and that green says WHAT is broken, WHY it is green, and WHICH row ends it', () => {
+    const { truthOk, sinkOk } = run35470727346Readings();
+    const text = said(held({ truthOk, sinkOk }));
+    assert.match(text, /STILL BROKEN: the throw-site frame comes back with function=null/);
+    assert.match(text, /WHY THIS RUN IS GREEN: that is recorded in ADR 090/);
+    assert.match(text, /WHAT ENDS IT: a GlitchTip release containing upstream MR !2474 is installed — row O-GLITCHTIP-UPGRADE-SYMBOLICATION/);
+    assert.match(text, /UNTIL THEN: decode the kept symbols-\* artifact/);
+    assert.match(text, /run 35470727346, event ce8754f619d1408c93e01a371a4938ea/);
+  });
+  test('…and it can never be read as "symbolication works"', () => {
+    const { truthOk, sinkOk } = run35470727346Readings();
+    const text = said(held({ truthOk, sinkOk }));
+    assert.match(text, /🔴 THIS GREEN DOES NOT MEAN GLITCHTIP SYMBOLICATES FLUTTER ANDROID FRAMES\./);
+    assert.doesNotMatch(text, /AS RECORDED — both readings MATCH/);
+  });
+
+  test('THE SINK NOW MATCHES is exit 1, and says to close the row and amend the ADR', () => {
+    const v = held({ truthOk: true, sinkOk: true });
+    assert.equal(v.exit, 1);
+    assert.equal(v.asRecorded, false);
+    const text = said(v);
+    assert.match(text, /SINK \(GlitchTip\): recorded MISMATCH, this run MATCH/);
+    assert.match(text, /GOOD NEWS/);
+    assert.match(text, /close row O-GLITCHTIP-UPGRADE-SYMBOLICATION, amend ADR 090 with this run id/);
+    assert.match(text, /"sink": "match" in symbolication-expectation\.json/);
+    assert.doesNotMatch(text, /REGRESSION/);
+  });
+  test('THE GROUND TRUTH BROKE is exit 1, named as OURS and not GlitchTip\'s', () => {
+    const v = held({ truthOk: false, sinkOk: false });
+    assert.equal(v.exit, 1);
+    const text = said(v);
+    assert.match(text, /GROUND TRUTH \(our symbols \+ decoder\): recorded MATCH, this run MISMATCH/);
+    assert.match(text, /A REAL REGRESSION, AND IT IS OURS, NOT GLITCHTIP'S/);
+    assert.match(text, /native_stack_traces/);
+    assert.doesNotMatch(text, /GOOD NEWS/);
+  });
+  test('both sides changing names BOTH, never just the first', () => {
+    const text = said(held({ truthOk: false, sinkOk: true }));
+    assert.match(text, /GROUND TRUTH \(our symbols \+ decoder\): recorded MATCH, this run MISMATCH/);
+    assert.match(text, /SINK \(GlitchTip\): recorded MISMATCH, this run MATCH/);
+  });
+
+  test('VERSION DRIFT is exit 2 COVERAGE LOST, not a pass and not a finding', () => {
+    const { truthOk, sinkOk } = run35470727346Readings();
+    const v = held({ truthOk, sinkOk, liveVersion: '6.3.0' });
+    assert.equal(v.exit, 2);
+    const text = said(v);
+    assert.match(text, /^COVERAGE LOST — THE EXPECTATION IS STALE\./);
+    assert.match(text, /records GlitchTip 6\.2\.6; the instance now reports 6\.3\.0/);
+    assert.match(text, /RE-MEASURE and update the register/);
+  });
+  test('version drift is 2 even when the sink now MATCHES: an unheld reading is not a verdict', () => {
+    assert.equal(held({ truthOk: true, sinkOk: true, liveVersion: '6.3.0' }).exit, 2);
+  });
+  test('a version that could not be read at all is exit 2, and says why', () => {
+    const v = held({ truthOk: true, sinkOk: false, liveVersion: null, versionError: 'GET /api/settings/ -> 502' });
+    assert.equal(v.exit, 2);
+    assert.match(said(v), /could not be read \(GET \/api\/settings\/ -> 502\)/);
+  });
+  test('an UNAVAILABLE ground truth is exit 2, never the recorded 0', () => {
+    const v = held({ truthOk: null, sinkOk: false });
+    assert.equal(v.exit, 2);
+    assert.match(said(v), /GROUND TRUTH reading is UNAVAILABLE/);
+  });
+  test('an UNAVAILABLE sink is exit 2', () => {
+    assert.equal(held({ truthOk: true, sinkOk: null }).exit, 2);
+  });
+
+  test('once the record says both MATCH, a green run DOES mean symbolication works', () => {
+    const fixed = { ...RECORD, sink: 'match', evidence: { ...RECORD.evidence, glitchtipVersion: '6.3.0' } };
+    const v = expectationVerdict({ expectation: fixed, truthOk: true, sinkOk: true, liveVersion: '6.3.0' });
+    assert.equal(v.exit, 0);
+    assert.match(said(v), /AS RECORDED — both readings MATCH/);
+    assert.doesNotMatch(said(v), /STILL BROKEN/);
+  });
+  test('…and the sink breaking again is then exit 1, not a silent return to the old normal', () => {
+    const fixed = { ...RECORD, sink: 'match' };
+    const v = expectationVerdict({ expectation: fixed, truthOk: true, sinkOk: false, liveVersion: '6.2.6' });
+    assert.equal(v.exit, 1);
+    assert.match(said(v), /recorded MATCH, this run MISMATCH/);
+    assert.doesNotMatch(said(v), /GOOD NEWS/);
+  });
+});
+
+describe('parseExpectation — a register nobody can read back is COVERAGE LOST, not a default', () => {
+  const ok = JSON.stringify(RECORD);
+  test('the well-formed record parses', () => {
+    assert.deepEqual(parseExpectation(ok).expectation.row, RECORD.row);
+  });
+  test('text that is not JSON is refused', () => {
+    assert.match(parseExpectation('{ nope').error, /not JSON/);
+  });
+  test('an array, or null, is not a register', () => {
+    assert.match(parseExpectation('[]').error, /not a JSON object/);
+    assert.match(parseExpectation('null').error, /not a JSON object/);
+  });
+  test('a reading outside {match, mismatch} is refused, including "unavailable"', () => {
+    for (const bad of ['unavailable', true, null, undefined, 'MATCH']) {
+      const r = parseExpectation(JSON.stringify({ ...RECORD, sink: bad }));
+      assert.match(r.error, /"sink"/, `${JSON.stringify(bad)} was accepted`);
+    }
+  });
+  test('an empty `broken` is refused: the banner it prints is load-bearing text', () => {
+    assert.match(parseExpectation(JSON.stringify({ ...RECORD, broken: '   ' })).error, /"broken" is missing or empty/);
+  });
+  test('each printed field is required, so a stripped register cannot pass', () => {
+    for (const k of ['recordedBy', 'row', 'broken', 'until']) {
+      const cut = { ...RECORD };
+      delete cut[k];
+      assert.match(parseExpectation(JSON.stringify(cut)).error, new RegExp(`"${k}"`));
+    }
+  });
+  test('the evidence, and the version the record was measured on, are required', () => {
+    assert.match(parseExpectation(JSON.stringify({ ...RECORD, evidence: undefined })).error, /no "evidence" object/);
+    for (const k of ['run', 'event', 'glitchtipVersion']) {
+      const ev = { ...RECORD.evidence };
+      delete ev[k];
+      assert.match(parseExpectation(JSON.stringify({ ...RECORD, evidence: ev })).error, new RegExp(`evidence\\.${k}`));
+    }
+  });
 });
 
 describe('the raw trace and the symbolized output', () => {
@@ -380,9 +614,83 @@ describe('the CLI refuses rather than passes', () => {
   test('a flag given no value is refused by the parser, not bound to the next flag', () => {
     assert.notEqual(run(['expect', '--source']).code, 0);
   });
+  // The register is validated BEFORE the token is looked at, so these two limbs
+  // also prove the REAL sibling register parses: the test above reaches the
+  // token message only because the real file was read and accepted first.
+  test('a MALFORMED register is COVERAGE LOST (2), named, and writes no report', () => {
+    const exp = expectedSite(readFileSync(join(ROOT, PROBE), 'utf8'), PROBE);
+    const d = mkdtempSync(join(tmpdir(), 'symprobe-'));
+    try {
+      writeFileSync(join(d, 'trace.txt'), RAW_TRACE.join('\n'));
+      writeFileSync(join(d, 'sym.txt'), `#0      probeThrowSite (file:///x/symbolication_crash_probe.dart:${exp.line}:3)\n`);
+      writeFileSync(join(d, 'bad.json'), '{ "groundTruth": "match" }');
+      const r = run([
+        'verdict', '--source', join(ROOT, PROBE), '--trace', join(d, 'trace.txt'),
+        '--symbolized', join(d, 'sym.txt'), '--marker', 'm', '--report', join(d, 'r.json'),
+        '--expectation', join(d, 'bad.json'),
+      ], { GLITCHTIP_TOKEN: 'never-used' });
+      assert.equal(r.code, 2, r.out);
+      assert.match(r.out, /COVERAGE LOST/);
+      assert.match(r.out, /"sink"/);
+      assert.equal(existsSync(join(d, 'r.json')), false);
+    } finally {
+      rmSync(d, { recursive: true, force: true });
+    }
+  });
+  test('a MISSING register is COVERAGE LOST (2), not "no expectation, therefore fine"', () => {
+    const exp = expectedSite(readFileSync(join(ROOT, PROBE), 'utf8'), PROBE);
+    const d = mkdtempSync(join(tmpdir(), 'symprobe-'));
+    try {
+      writeFileSync(join(d, 'trace.txt'), RAW_TRACE.join('\n'));
+      writeFileSync(join(d, 'sym.txt'), `#0      probeThrowSite (file:///x/symbolication_crash_probe.dart:${exp.line}:3)\n`);
+      const r = run([
+        'verdict', '--source', join(ROOT, PROBE), '--trace', join(d, 'trace.txt'),
+        '--symbolized', join(d, 'sym.txt'), '--marker', 'm', '--report', join(d, 'r.json'),
+        '--expectation', join(d, 'gone.json'),
+      ], { GLITCHTIP_TOKEN: 'never-used' });
+      assert.equal(r.code, 2, r.out);
+      assert.match(r.out, /is missing; there is no recorded state/);
+    } finally {
+      rmSync(d, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('the real tree', () => {
+  const register = () => parseExpectation(readFileSync(join(ROOT, 'tooling', 'ops', EXPECTATION_FILE), 'utf8'));
+
+  test('the register exists, parses, and records the state ADR 090 recorded', () => {
+    const r = register();
+    assert.equal(r.error, undefined, r.error);
+    const e = r.expectation;
+    assert.equal(e.groundTruth, 'match');
+    assert.equal(e.sink, 'mismatch');
+    assert.equal(e.recordedBy, 'ADR 090');
+    assert.equal(e.row, 'O-GLITCHTIP-UPGRADE-SYMBOLICATION');
+    assert.equal(e.evidence.run, '35470727346');
+    assert.equal(e.evidence.event, 'ce8754f619d1408c93e01a371a4938ea');
+    assert.equal(e.evidence.glitchtipVersion, '6.2.6');
+    assert.match(e.until, /!2474/);
+  });
+  // The mutation-sensitive limb: the REAL register against the REAL readings of
+  // the run it names. Flip either field in the register, or make the script
+  // ignore the register, and this goes red.
+  test('the REAL register classifies run 35470727346\'s own readings as AS RECORDED (0)', () => {
+    const { truthOk, sinkOk } = run35470727346Readings();
+    const v = expectationVerdict({
+      expectation: register().expectation,
+      truthOk,
+      sinkOk,
+      liveVersion: register().expectation.evidence.glitchtipVersion,
+    });
+    assert.equal(v.exit, 0, said(v));
+    assert.equal(v.asRecorded, true);
+    assert.match(said(v), /DOES NOT MEAN GLITCHTIP SYMBOLICATES/);
+  });
+  test('the workflow passes no --expectation, so CI reads the register beside the script', () => {
+    const raw = readFileSync(join(ROOT, WORKFLOW), 'utf8');
+    assert.doesNotMatch(raw, /--expectation/, 'an overridden register path in CI is a register nobody grades');
+  });
   test('the probe source carries exactly one marked throw site', () => {
     const exp = expectedSite(readFileSync(join(ROOT, PROBE), 'utf8'), PROBE);
     assert.equal(exp.error, undefined, exp.error);
