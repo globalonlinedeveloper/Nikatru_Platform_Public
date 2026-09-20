@@ -13,8 +13,18 @@
 //   --timeout    ceiling on the command itself (default 240); past it the
 //                command's process tree is killed
 //   The command is spawned WITHOUT a shell, so its arguments arrive exactly as
-//   written (a quoted glob stays one argument for node --test to expand). A
-//   .cmd/.bat needs its interpreter named: `-- cmd /c flutter build web`.
+//   written (a quoted glob stays one argument for node --test to expand).
+//
+//   🔴 NAME THE .cmd/.bat DIRECTLY — `-- flutter.bat build web`. Do NOT write
+//   `-- cmd /c flutter …`: from the Bash tool on Windows, MSYS rewrites the bare
+//   `/c` into the PATH `C:/` before node is even started, so cmd receives a path
+//   where its switch should be, opens INTERACTIVELY, reads EOF and exits 0 —
+//   having run nothing. Measured 2026-09-20 with the code captured on its own
+//   line: `cmd /c "exit 7"` answered 0 and `cmd //c "exit 7"` answered 7. This
+//   header used to recommend the broken form, and a lane's full app suite
+//   "passed" in four seconds because of it. A .bat target is now wrapped here,
+//   inside node, where nothing can rewrite the switch; the mangled form is
+//   REFUSED rather than run.
 //
 // Exit:   the command's own exit code, passed through ·
 //         2 = COVERAGE LOST: the lock or the backup did not free up within
@@ -24,8 +34,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { spawn, spawnSync } from 'node:child_process';
 import { machineFree, releaseOnExit, releaseHeavyLock, DEFAULT_WAIT_MIN } from './heavy-lock.mjs';
+import { windowsCommand } from './windows-command.mjs';
 
 const DEFAULT_TIMEOUT_MIN = 240;
+
 const argv = process.argv.slice(2);
 const sep = argv.indexOf('--');
 const usage = (why) => {
@@ -50,6 +62,16 @@ for (let i = 0; i < own.length; i += 2) if (!known.has(own[i])) usage(`unknown o
 const waitMin = minutes('--lock-wait', DEFAULT_WAIT_MIN);
 const timeoutMin = minutes('--timeout', DEFAULT_TIMEOUT_MIN);
 
+// ⚠️ REFUSED BEFORE THE LOCK IS TAKEN, not after. A malformed invocation must
+// not occupy the machine-wide lock while every other lane queues behind it —
+// and it cannot be graded either way, so it is COVERAGE LOST rather than a
+// failure of the command.
+const spawnable = windowsCommand(command);
+if (spawnable.refuse) {
+  console.error(`🔴 COVERAGE LOST — ${spawnable.refuse}`);
+  process.exit(2);
+}
+
 const free = machineFree({ waitMin, argv: ['heavy.mjs', ...command] });
 if (!free.ok) {
   console.error(free.message);
@@ -66,7 +88,7 @@ const killTree = () => {
 };
 releaseOnExit(free.lock, (code) => process.exit(code), { beforeSignalExit: killTree });
 
-child = spawn(command[0], command.slice(1), { stdio: 'inherit', env: process.env, windowsHide: true });
+child = spawn(spawnable.file, spawnable.args, { stdio: 'inherit', env: process.env, windowsHide: true });
 let timedOut = false;
 const timer = setTimeout(() => {
   timedOut = true;
@@ -75,7 +97,7 @@ const timer = setTimeout(() => {
 }, timeoutMin * 60_000);
 child.on('error', (e) => {
   clearTimeout(timer);
-  const hint = e.code === 'ENOENT' && process.platform === 'win32' ? ' (a .cmd/.bat needs its interpreter: `-- cmd /c <name> …`)' : '';
+  const hint = e.code === 'ENOENT' && process.platform === 'win32' ? ' (name a .cmd/.bat directly — `-- flutter.bat test` — it is wrapped for you; never `-- cmd /c …`, which MSYS mangles into a run of nothing)' : '';
   console.error(`🔴 COVERAGE LOST — could not start \`${command[0]}\`: ${e.code ?? e.message}${hint}`);
   releaseHeavyLock(free.lock);
   process.exit(2);
