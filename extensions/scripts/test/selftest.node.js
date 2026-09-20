@@ -2526,7 +2526,11 @@ const NO_CASE_RECORDED = [
   { gate: 'scripts/test/contracts-sync.test.mjs',
     why: 'PERMANENT. It is a suite, not a gate — the same reason scripts/test/selftest.node.js is in this list. It appears in the invoked set only because extensions.yml runs it by path.' },
   { gate: 'Extension/Full_Screen_Shot/publish/verify-firefox-package.node.js',
-    why: 'OPEN GAP, recorded 2026-08-25. It lives in a tool\'s publish/, not in scripts/, and the run() helper here resolves against SCRIPTS and appends --repo-root, which this gate does not take — it takes --zip. It needs its own runner before it can have a case.' }
+    why: 'OPEN GAP, recorded 2026-08-25. It lives in a tool\'s publish/, not in scripts/, and the run() helper here resolves against SCRIPTS and appends --repo-root, which this gate does not take — it takes --zip. It needs its own runner before it can have a case.' },
+  { gate: 'scripts/check-listing-assets.mjs',
+    why: 'COVERED, ELSEWHERE AND IN CI, recorded 2026-09-20 — this is not an open gap. Its ten cases are in scripts/test/listing-assets.test.mjs and every one of them SPAWNS this gate (`spawnSync(process.execPath, [GUARD, \'fullshot\', \'--repo-root\', root])`), not a re-implementation of it: a GREEN CONTROL that also asserts the run graded something, then eight reds — a deleted required asset, one at the WRONG SIZE by a single pixel, the 128x128 icon stripped of its alpha channel, a file that is not a PNG at all, ZERO screenshots, SIX screenshots (Chrome takes five), a screenshot at a size only one of the three stores accepts, and a tool with no listing tree at all proven to be a NOTE rather than a failure — and a final RESTORED case proving the same tree is green again, so the reds above moved it and the green is not vacuous. extensions.yml runs that suite in the same job that runs the gate. They are not in THIS file for the same reason as check-contracts-sync: every case here mutates one tree through --repo-root, while these need a synthetic listing tree with real PNG bytes whose IHDR the gate decodes.' },
+  { gate: 'scripts/test/listing-assets.test.mjs',
+    why: 'PERMANENT, recorded 2026-09-20. It is a suite, not a gate — the same reason scripts/test/selftest.node.js and scripts/test/contracts-sync.test.mjs are in this list. It appears in the invoked set only because extensions.yml runs it by path, which is deliberate: the negative suite has to run in CI or the gate above is covered only on somebody\'s laptop.' }
 ];
 
 /* The evaluation, as a pure function, so it can be pointed at synthetic sets
