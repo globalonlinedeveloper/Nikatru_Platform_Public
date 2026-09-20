@@ -40,6 +40,7 @@ single repository. The failure this directory prevents has happened here once.
 | `entitlement/` | the revocation-reason set, the money environments, and the JSON Schema that grades them | `services/platform` imports `contract.js` directly; `extensions/core/v1/entitlement-contract.js` is a byte-identical copy on the extensions' vendored surface; `packages/purchases` exports generated Dart |
 | `tokens/` | the DTCG brand-token source in `tokens/dtcg/` — see `tokens/README.md` | `sites/**` (generated CSS), the Flutter apps (generated Dart), `extensions/**` (generated JSON) |
 | `legal/` | the shared text of a published legal document | `sites/nikatru/fullshot/privacy.html` and `extensions/Extension/Full_Screen_Shot/publish/PRIVACY-POLICY.html`, both RENDERED from it |
+| `store/` | the store VOCABULARY — the closed sets of words the store pipeline spells, including the one listing-field table four arrays used to be typed from. Words, never rows: the channel rows stay in `tooling/channel-register.json`. See `store/README.md` | `tooling/app-yaml/render.mjs` and `extensions/scripts/check-store-metadata.mjs` import it; `vocabulary.json` is generated for readers that cannot import JavaScript |
 
 ## Who reads what, and what stops it drifting
 
@@ -53,6 +54,8 @@ single repository. The failure this directory prevents has happened here once.
 | `contract.js` ↔ the generated Dart | `entitlement/generate-dart.mjs --check` | `extensions.yml` · job `contracts` |
 | `tokens/dtcg/*.json` ↔ the three generated outputs | `tooling/ci/assert-palette-consistent.mjs`, plus `ci.yml`'s `site-tokens` lane which deletes all three and re-derives them | `ci.yml` |
 | `legal/fullshot-privacy.md` ↔ both published HTML copies | `tooling/ci/assert-legal-text-parity.mjs` — two assertions, a 2,000-character floor, a printed count | `ci.yml` · guards-legal |
+| `store/vocabulary.js` ↔ `tooling/channel-register.json` ↔ every listing tree ↔ the two re-pointed consumers | `tooling/ci/assert-store-vocabulary.mjs` — both directions on every axis, and a restated array literal is a failure | `ci.yml`'s `node --test "tooling/ci/test/*.test.mjs"` step, whose green control runs the guard against the REAL tree. ⚠️ **not yet its own named step in `ci.yml`** — see `store/README.md` |
+| `store/vocabulary.js` ↔ `store/vocabulary.json` | `store/generate.mjs --check`, asserted by the same suite | same |
 
 **The platform Worker redeploys when the contract changes.** `contract.ts`
 imports `contract.js`, esbuild inlines it, so the bundle changes with no file
@@ -79,8 +82,19 @@ from DTCG JSON.
 
 ## What is still open
 
-- 🟡 **Store vocabulary is not here yet.** [ADR 067] decision 1 names it; the
-  channel and store rows still live in `tooling/channel-register.json`.
+- ✅ **DONE 2026-09-20 — store vocabulary is here.** `store/vocabulary.js` is the
+  one declaration of the words the store pipeline spells: channel ids, surfaces,
+  kinds, platforms, storefront and extension-store keys, artifact formats,
+  screenshot device classes, the listing-field table and the listing categories.
+  The channel ROWS stay in `tooling/channel-register.json` and always will — see
+  `store/README.md`, "Words, not rows". `tooling/ci/assert-store-vocabulary.mjs`
+  holds the two together in both directions.
+- 🟡 **Most consumers still type the vocabulary.** Two are re-pointed
+  (`tooling/app-yaml/render.mjs`, `extensions/scripts/check-store-metadata.mjs`);
+  the rest are listed with their citations at the bottom of `store/README.md`,
+  the largest being `packages/purchases`'s Dart `PurchaseChannel` enum, which
+  needs a generated-Dart emitter, and the `submit-*.yml` lanes, which need the
+  generated JSON rather than the module.
 
 ## Order of work — what was done, and what is left
 

@@ -201,6 +201,7 @@
   "store-matrix.test.mjs": 24,
   "store-metadata.test.mjs": 81,
   "store-screenshots-lane.test.mjs": 21,
+  "store-vocabulary.test.mjs": 22,
   "submission-safety.test.mjs": 22,
   "supabase-templates.test.mjs": 17,
   "sworn-store-files.test.mjs": 72,

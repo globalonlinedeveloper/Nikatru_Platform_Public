@@ -1,0 +1,242 @@
+{
+  "$schema": "./vocabulary.schema.json",
+  "channelIds": [
+    "web",
+    "android-play",
+    "ios-appstore",
+    "macos-appstore",
+    "windows-store",
+    "windows-direct",
+    "linux-snap",
+    "linux-appimage",
+    "apps-gov-in",
+    "chrome-webstore",
+    "edge-addons",
+    "amo"
+  ],
+  "surfaces": [
+    "app",
+    "extension"
+  ],
+  "channelKinds": [
+    "web",
+    "store",
+    "direct"
+  ],
+  "platforms": [
+    "web",
+    "android",
+    "ios",
+    "macos",
+    "windows",
+    "linux",
+    "chrome",
+    "edge",
+    "firefox"
+  ],
+  "storefrontKeys": [
+    "web",
+    "play",
+    "appstore",
+    "mac",
+    "microsoft",
+    "linux"
+  ],
+  "extensionStoreKeys": [
+    "chrome",
+    "edge",
+    "firefox"
+  ],
+  "artifactFormats": [
+    ".zip",
+    "static-bundle",
+    ".aab",
+    ".apk",
+    ".ipa",
+    ".pkg",
+    ".msix",
+    ".exe",
+    ".snap",
+    ".AppImage"
+  ],
+  "deviceClasses": [
+    "phone",
+    "tablet"
+  ],
+  "listingFields": [
+    {
+      "name": "README.md",
+      "kind": "doc",
+      "app": "required",
+      "extension": null,
+      "rendered": false
+    },
+    {
+      "name": "title.txt",
+      "kind": "text",
+      "app": "required",
+      "extension": "per-store",
+      "rendered": true
+    },
+    {
+      "name": "short-description.txt",
+      "kind": "text",
+      "app": "required",
+      "extension": "per-store",
+      "rendered": true
+    },
+    {
+      "name": "long-description.txt",
+      "kind": "text",
+      "app": "required",
+      "extension": "per-store",
+      "rendered": false
+    },
+    {
+      "name": "category.txt",
+      "kind": "text",
+      "app": "required",
+      "extension": "per-store",
+      "rendered": true
+    },
+    {
+      "name": "privacy-policy-url.txt",
+      "kind": "url",
+      "app": "required",
+      "extension": "shared",
+      "rendered": true
+    },
+    {
+      "name": "support-url.txt",
+      "kind": "url",
+      "app": "required",
+      "extension": "shared",
+      "rendered": true
+    },
+    {
+      "name": "screenshots/README.md",
+      "kind": "doc",
+      "app": "required",
+      "extension": "shared",
+      "rendered": false
+    },
+    {
+      "name": "subtitle.txt",
+      "kind": "text",
+      "app": "additional",
+      "extension": null,
+      "rendered": false
+    },
+    {
+      "name": "keywords.txt",
+      "kind": "text",
+      "app": "additional",
+      "extension": null,
+      "rendered": false
+    },
+    {
+      "name": "promotional-text.txt",
+      "kind": "text",
+      "app": "additional",
+      "extension": null,
+      "rendered": false
+    },
+    {
+      "name": "search-terms.txt",
+      "kind": "text",
+      "app": "additional",
+      "extension": null,
+      "rendered": false
+    },
+    {
+      "name": "snap-name.txt",
+      "kind": "text",
+      "app": "additional",
+      "extension": null,
+      "rendered": false
+    },
+    {
+      "name": "license.txt",
+      "kind": "text",
+      "app": "additional",
+      "extension": null,
+      "rendered": false
+    },
+    {
+      "name": "privacy-manifest.json",
+      "kind": "json",
+      "app": "additional",
+      "extension": null,
+      "rendered": false
+    },
+    {
+      "name": "age-rating.json",
+      "kind": "json",
+      "app": "additional",
+      "extension": null,
+      "rendered": false
+    },
+    {
+      "name": "data-safety.json",
+      "kind": "json",
+      "app": "additional",
+      "extension": null,
+      "rendered": false
+    },
+    {
+      "name": "content-rating.json",
+      "kind": "json",
+      "app": "additional",
+      "extension": null,
+      "rendered": false
+    },
+    {
+      "name": "ads-declaration.json",
+      "kind": "json",
+      "app": "additional",
+      "extension": null,
+      "rendered": false
+    },
+    {
+      "name": "feature-graphic.png",
+      "kind": "image",
+      "app": "additional",
+      "extension": null,
+      "rendered": false
+    },
+    {
+      "name": "store-icon-512.png",
+      "kind": "image",
+      "app": "additional",
+      "extension": null,
+      "rendered": false
+    }
+  ],
+  "listingCategories": {
+    "android-play": [
+      "Productivity"
+    ],
+    "ios-appstore": [
+      "Productivity"
+    ],
+    "macos-appstore": [
+      "Productivity"
+    ],
+    "windows-store": [
+      "Productivity"
+    ],
+    "linux-snap": [
+      "Productivity"
+    ],
+    "chrome-webstore": [
+      "Productivity"
+    ],
+    "edge-addons": [
+      "Productivity"
+    ],
+    "amo": [
+      "Photos, Music & Videos",
+      "Privacy & Security"
+    ]
+  }
+}

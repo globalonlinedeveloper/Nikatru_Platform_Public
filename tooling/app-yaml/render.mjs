@@ -82,6 +82,7 @@ import { fileURLToPath } from 'node:url';
 import { parseYaml, YamlError } from './yaml.mjs';
 import { validate } from './schema-validate.mjs';
 import { publicAppUrl } from '../sites/apex.mjs';
+import { renderedListingFiles } from '../../contracts/store/vocabulary.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -91,8 +92,18 @@ export const REGISTER = 'tooling/channel-register.json';
 export const APP_SCHEMA_PATH = join(HERE, 'schema', 'app.schema.json');
 
 /** The listing files this script owns. Everything else under a channel tree is
- *  sworn or editorial — see the header. */
-export const RENDERED_LISTING_FILES = ['title.txt', 'short-description.txt', 'category.txt', 'privacy-policy-url.txt', 'support-url.txt'];
+ *  sworn or editorial — see the header.
+ *
+ *  🔴 DERIVED FROM contracts/store/vocabulary.js, NOT TYPED HERE. Until
+ *  2026-09-20 this was a hand-typed array of five names, and it was the THIRD
+ *  independent spelling of one listing vocabulary in this repository — beside
+ *  tooling/channel-register.json's `storeMetadataContract.requiredFiles` and
+ *  extensions/scripts/check-store-metadata.mjs's REQUIRED_PER_STORE. The three
+ *  already disagreed about whether `README.md` is a listing file. The contract
+ *  is now the one declaration and the `rendered` column of its table is what
+ *  this array is; tooling/ci/assert-store-vocabulary.mjs compares them BY VALUE
+ *  and fails on a restated literal. */
+export const RENDERED_LISTING_FILES = renderedListingFiles();
 
 /** [ADR 085] A: where the RevenueCat routing map is rendered, and the module. */
 export const REVENUECAT_APP_IDS_DIR = 'services/platform/src/lib/mor';

@@ -1,0 +1,77 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nikatru.com/schemas/contracts/store/vocabulary.schema.json",
+  "title": "Store vocabulary",
+  "description": "The closed sets of words the store pipeline spells. GENERATED from contracts/store/vocabulary.js by contracts/store/generate.mjs — do not hand-edit vocabulary.json. This schema grades the SHAPE; tooling/ci/assert-store-vocabulary.mjs grades the CONTENT against the consumers, in both directions.",
+  "type": "object",
+  "required": [
+    "channelIds",
+    "surfaces",
+    "channelKinds",
+    "platforms",
+    "storefrontKeys",
+    "extensionStoreKeys",
+    "artifactFormats",
+    "deviceClasses",
+    "listingFields",
+    "listingCategories"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "channelIds": { "$ref": "#/definitions/wordSet" },
+    "surfaces": { "$ref": "#/definitions/wordSet" },
+    "channelKinds": { "$ref": "#/definitions/wordSet" },
+    "platforms": { "$ref": "#/definitions/wordSet" },
+    "storefrontKeys": { "$ref": "#/definitions/wordSet" },
+    "extensionStoreKeys": { "$ref": "#/definitions/wordSet" },
+    "artifactFormats": { "$ref": "#/definitions/wordSet" },
+    "deviceClasses": { "$ref": "#/definitions/wordSet" },
+    "listingFields": {
+      "type": "array",
+      "minItems": 1,
+      "description": "The ONE listing-field table. Four hand-typed arrays used to be filtered out of nothing; they are now filtered out of this.",
+      "items": {
+        "type": "object",
+        "required": ["name", "kind", "app", "extension", "rendered"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "kind": { "enum": ["doc", "text", "url", "json", "image"] },
+          "app": {
+            "description": "'required' on every application listing tree; 'additional' on some channels only (which channels is a per-row fact in tooling/channel-register.json); null = not an application listing field.",
+            "enum": ["required", "additional", null]
+          },
+          "extension": {
+            "description": "'per-store' = one copy per store directory; 'shared' = one copy in store/_shared/; null = not an extension listing field.",
+            "enum": ["per-store", "shared", null]
+          },
+          "rendered": {
+            "type": "boolean",
+            "description": "Whether tooling/app-yaml/render.mjs writes this file from app.yaml."
+          }
+        }
+      }
+    },
+    "listingCategories": {
+      "type": "object",
+      "minProperties": 1,
+      "description": "Per channel id, the category strings this portfolio declares. NOT the store's own closed set — no store category list has been fetched from a primary source, and an invented one would fire on correct input.",
+      "propertyNames": { "type": "string", "minLength": 1 },
+      "additionalProperties": {
+        "type": "array",
+        "minItems": 1,
+        "items": { "type": "string", "minLength": 1 }
+      }
+    }
+  },
+  "definitions": {
+    "wordSet": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "A closed set of words. minItems 1 because an empty axis satisfies every 'is this value declared?' check vacuously.",
+      "items": { "type": "string", "minLength": 1 }
+    }
+  }
+}
