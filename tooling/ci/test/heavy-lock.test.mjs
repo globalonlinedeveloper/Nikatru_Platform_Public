@@ -433,6 +433,32 @@ describe('preflight takes the lock after the untracked leg, and only then', () =
     assert.equal(existsSync(lock), false, 'preflight left the lock behind');
   });
 
+  test('the lock is released ONCE and cleanly, though two paths release it', () => {
+    // ⏱ 2026-09-20. preflight now releases at the END OF THE WORK — before the
+    // verdict is printed — so the lock no longer depends on an exit that may
+    // never arrive: three preflights were found that day hung AFTER their
+    // verdict, holding the machine-wide lock (pid 24176 for 85.8 min with both
+    // children exited and its CPU flat across a 25-second sample). `pidAlive`
+    // cannot see that, so the stale ceiling was the only backstop.
+    //
+    // 🔴 WHAT THIS CASE ACTUALLY PROVES is the part that is observable from
+    // outside: the explicit release and the `process.on('exit')` handler BOTH
+    // run, and the second one is a clean no-op. If it were not idempotent, the
+    // second would find the lock gone and print `at release the lock was no
+    // longer ours … someone reclaimed it as stale` — a warning that would send
+    // the next reader hunting a reclaim that never happened.
+    const lock = freshLock();
+    const r = cli(lock, '--sweep-only', '--lock-wait', '0.03');
+    assert.doesNotMatch(
+      r.out,
+      /no longer ours/,
+      'the double release must be silent; a warning here means releaseHeavyLock stopped being idempotent',
+    );
+    assert.equal(existsSync(lock), false);
+    // Exactly one "lock taken" line: the release must not make it re-acquire.
+    assert.equal((r.out.match(/heavy-run lock taken/g) ?? []).length, 1, r.out);
+  });
+
   test('--lock-wait with no number is a usage error (exit 2)', () => {
     const r = cli(freshLock(), '--lock-wait', 'soon');
     assert.equal(r.status, 2, r.out);
