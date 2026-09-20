@@ -109,6 +109,26 @@ import {
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const ROOT = resolve(join(HERE, '..', '..'));
 
+/** The file's bytes, or `null` if it is not there.
+ *
+ * 🔴 IT EXISTS SO NOTHING HERE ASKS `existsSync` AND THEN READS. That pair is a
+ * time-of-check/time-of-use race — CodeQL js/file-system-race, raised against
+ * this module on 2026-09-20 — and the repair is not a tighter check, it is not
+ * asking a question whose answer has expired by the time it is used.
+ *
+ * ⚠️ ONLY `ENOENT` BECOMES `null`. Every other error is rethrown, because a
+ * permission failure or a bad disk read must not be quietly reported as "not
+ * cached" — that would turn an unreadable cache into a silent re-download, and
+ * an unreadable DESTINATION into a font this module believes it staged. */
+function tryRead(path) {
+  try {
+    return readFileSync(path);
+  } catch (err) {
+    if (err && err.code === 'ENOENT') return null;
+    throw err;
+  }
+}
+
 /** COVERAGE LOST — the module cannot say anything about this app, so it must not
  *  say "fine". Separate from a plain defect on purpose (exit 2, not 1). */
 export class CoverageLost extends Error {}
@@ -217,16 +237,19 @@ export async function stageFallbackFonts({ appDir, lockPath = DEFAULT_LOCK, log 
   await pool(paths, 8, async (p) => {
     const want = files[p];
     const out = join(dest, p);
-    if (existsSync(out) && readFileSync(out).length === want.bytes) return;
+    // ⚠️ READ AND HANDLE THE MISS, NEVER `existsSync` THEN READ. The pair is a
+    // TOCTOU — the file can go between the two calls — which is CodeQL
+    // js/file-system-race, and the honest repair is to stop asking a question
+    // whose answer expires. `tryRead` returns null for a file that is not there;
+    // any other error still throws, because "the disk refused" must not be
+    // silently read as "not cached".
+    if (tryRead(out)?.length === want.bytes) return;
     const cached = join(cache, want.sha256);
-    let buf;
-    if (existsSync(cached)) {
-      buf = readFileSync(cached);
-      // A cache entry is re-verified, never trusted for being present: it lives
-      // outside the repo where nothing else guards it.
-      if (buf.length !== want.bytes || sha256(buf) !== want.sha256) buf = null;
-      else fromCache++;
-    }
+    // A cache entry is re-verified, never trusted for being present: it lives
+    // outside the repo where nothing else guards it.
+    let buf = tryRead(cached);
+    if (buf && (buf.length !== want.bytes || sha256(buf) !== want.sha256)) buf = null;
+    else if (buf) fromCache++;
     if (!buf) {
       buf = await fetchPinned(p, want);
       mkdirSync(cache, { recursive: true });

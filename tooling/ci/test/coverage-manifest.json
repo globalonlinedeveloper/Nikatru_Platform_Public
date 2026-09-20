@@ -109,6 +109,7 @@
   "licence-register.test.mjs": 57,
   "lint-inheritance.test.mjs": 13,
   "listing-assets.test.mjs": 63,
+  "local-chromedriver.test.mjs": 8,
   "mail-transport-claims.test.mjs": 47,
   "mechanism-claims.test.mjs": 45,
   "modal-detection.test.mjs": 44,

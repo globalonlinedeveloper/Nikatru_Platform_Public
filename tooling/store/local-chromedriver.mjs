@@ -55,11 +55,11 @@
 // Exit 0 = a chromedriver matching this machine's Chrome major is installed.
 // Exit 1 = it is not, and the reason is on the first line.
 // ─────────────────────────────────────────────────────────────────────────────
-import { existsSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir, tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash } from 'node:crypto';
 
 const KNOWN_GOOD =
   'https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json';
@@ -124,6 +124,25 @@ export function localChromeVersion(env = process.env) {
   return null;
 }
 
+/** Is this string a version, and therefore safe to make part of a path?
+ *
+ * 🔴 THE CALLER JOINS IT INTO A DIRECTORY THIS SCRIPT LATER SPAWNS. `build.version`
+ * is read out of the Chrome-for-Testing JSON — remote data — and `reportDriver`
+ * executes the binary under the directory built from it. A catalogue entry (or
+ * anything able to sit in front of it) spelling `..\..\..\Windows\System32\calc`
+ * would be normalised by `join` and RUN, and the "already installed" branch
+ * reaches that spawn with no download and no checksum in the way at all, so the
+ * zip's md5 does not help there. CodeQL js/command-line-injection raised this as
+ * CRITICAL on 2026-09-20 and was right.
+ *
+ * ⚠️ AN ALLOWLIST, NOT AN ESCAPE. Digits and dots, at most four groups, anchored
+ * both ends — so no separator, no `..`, no drive letter, no NUL, nothing to
+ * escape wrongly. Sanitising this input would be the weaker repair: the only
+ * thing a version may look like is a version.
+ * @param {unknown} v
+ */
+export const isPlainVersion = (v) => typeof v === 'string' && /^\d+(?:\.\d+){0,3}$/.test(v);
+
 /** Highest catalogued build sharing `major`, with a download for this platform.
  *  Pure over the catalogue so it is testable without a network. */
 export function pickBuild(catalogue, major, platform) {
@@ -167,6 +186,26 @@ async function main() {
       `Chrome-for-Testing publishes no ${CFT_PLATFORM} chromedriver for major ${major}.`,
       'That is a real gap, not a transient one: either this Chrome is newer than the catalogue (wait, or',
       'pin an older Chrome) or the platform name above is wrong.',
+    ]);
+  }
+
+  // 🔴 THE VERSION IS REMOTE DATA AND IT BECOMES A PATH WE LATER EXECUTE.
+  // `build.version` is read out of the Chrome-for-Testing JSON fetched above, and
+  // everything below joins it into `dir` — which `reportDriver` then SPAWNS. A
+  // catalogue entry (or anything able to sit in front of it) spelling
+  // `..\..\..\Windows\System32\calc` would be normalised by `join` and run, and
+  // the "already installed" branch reaches that spawn with NO download and NO
+  // checksum in the way at all. The zip's md5 does not help there.
+  //
+  // So the version is constrained to what a version is before it is allowed to
+  // be a path: digits and dots, four groups at most, nothing else — no
+  // separators, no traversal, no drive letter. CodeQL js/command-line-injection
+  // flagged this as critical on 2026-09-20 and it was right.
+  if (!isPlainVersion(build.version)) {
+    die([
+      `the Chrome-for-Testing catalogue answered with a version this script will not turn into a path: ${JSON.stringify(build.version)}`,
+      'A version is digits and dots. Anything else reaches a spawn, so it is refused here rather than sanitised.',
+      KNOWN_GOOD,
     ]);
   }
 
@@ -217,7 +256,15 @@ async function main() {
   say(`verified against the bucket's published record: ${bytes.length} bytes, md5 ${expectMd5}`);
 
   mkdirSync(dir, { recursive: true });
-  const zipPath = join(tmpdir(), `nk-chromedriver-${randomBytes(4).toString('hex')}.zip`);
+  // ⚠️ `mkdtempSync`, NOT a random NAME in the shared temp directory. The old
+  // form (`nk-chromedriver-<4 random bytes>.zip` under tmpdir()) is what CodeQL
+  // js/insecure-temporary-file names: on a multi-user box every account can
+  // write there, so the guarantee wanted — "nothing else can put a file at this
+  // path between my choosing it and my writing it" — is not one a name can give,
+  // however random. `mkdtempSync` CREATES the directory atomically and owns it,
+  // and the archive goes inside.
+  const zipDir = mkdtempSync(join(tmpdir(), 'nk-chromedriver-'));
+  const zipPath = join(zipDir, 'chromedriver.zip');
   writeFileSync(zipPath, bytes);
   try {
     // bsdtar ships in System32 on Windows 10+ and reads zip; `--strip-components=1`
@@ -240,7 +287,7 @@ async function main() {
       ]);
     }
   } finally {
-    rmSync(zipPath, { force: true });
+    rmSync(zipDir, { recursive: true, force: true });
   }
 
   if (!existsSync(exe)) {
