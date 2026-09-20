@@ -156,6 +156,7 @@ import { randomBytes } from 'node:crypto';
 import { pngHeader, flattenToOpaque, RasterUnavailable } from './chrome-raster.mjs';
 import { decodeRgba, PngUnreadable } from './png-codec.mjs';
 import { scanCaptureSuite, selfTestAccountAddressDetector } from './capture-suite-scan.mjs';
+import { stageFallbackFonts, unstageFallbackFonts } from './capture-fallback-fonts.mjs';
 import {
   launchDefineArgs,
   scanTopBand,
@@ -599,6 +600,21 @@ if (PROOF) defines.push('--dart-define', 'STORE_CAPTURE_ALLOW_DEMO=true');
 // own, documented for exactly this caller and wired to nothing until now.
 defines.push(...launchDefineArgs());
 
+// 🔴 THE APP MUST HAVE A FONT TO DRAW TEXT WITH, AND SINCE 2026-09-12 IT HAD
+// NONE. `web/flutter_bootstrap.js` sends the engine's fallback fonts — ROBOTO
+// included, and this app declares no fonts of its own — to the relative path
+// `fallback-fonts/`, which only `deploy-web.yml` ever fills, on a `build/web`
+// this lane never produces. The dev server answers that path with `index.html`
+// (200 text/html, not a 404), so the engine got HTML where a woff2 should be and
+// drew nothing: every frame captured since is textless while the ICONS, which
+// are a real bundled asset under `assets/`, render fine. The full diagnosis, the
+// byte sizes and the dev-server branch that does it are in capture-fallback-fonts.mjs.
+//
+// Staging is a hard requirement, not best-effort: the failure it prevents is
+// SILENT, so a font that could not be placed must stop the run rather than
+// produce a listing asset with no text on it.
+await stageFallbackFonts({ appDir, log: (m) => console.log(m) });
+
 /** ONE chromedriver, one drive PER VIEWPORT. The browser dimension is a launch
  *  argument, so a second size is a second drive — there is no mid-run resize
  *  that `binding.takeScreenshot` would honour. The driver process is started
@@ -716,6 +732,10 @@ try {
   }
 } finally {
   cd.kill();
+  // The staged fonts are ~23 MB of upstream bytes inside a tracked app
+  // directory. They exist only for the drives above, so they are removed
+  // whether those succeeded or not — a crashed capture must not leave them.
+  unstageFallbackFonts(appDir);
 }
 
 // ── flatten and verify, per device type ─────────────────────────────────────

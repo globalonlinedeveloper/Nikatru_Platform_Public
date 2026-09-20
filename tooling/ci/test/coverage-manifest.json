@@ -36,6 +36,7 @@
   "capability-register-seams.test.mjs": 27,
   "capability-register.test.mjs": 40,
   "captcha-gated-call-sites.test.mjs": 16,
+  "capture-fallback-fonts.test.mjs": 12,
   "case-count-honest.test.mjs": 57,
   "catalog-contract.test.mjs": 39,
   "catalog-reachable.test.mjs": 22,
