@@ -1,0 +1,58 @@
+{
+  "_why": [
+    "NOT A CAPTURE RECORD — A COPY RECORD, AND THE DIFFERENCE IS THE POINT. The android-play",
+    "CAPTURE.json says which BUILD was photographed. This file cannot say that, because nothing",
+    "photographed anything for this channel: these four PNGs are byte-identical copies of the Play",
+    "phone set. So it records the copy instead — source path, SHA-256, and the posture of the run",
+    "that produced the original — and deliberately does NOT claim `capturedBy`, which would assert",
+    "that tooling/store/capture-play-screenshots.mjs wrote into this directory. It did not.",
+    "",
+    "WHY A COPY IS LEGITIMATE HERE AND NOWHERE ELSE IN THIS TREE: this channel distributes the",
+    "SAME .apk the android-play lane produces. Same build, same platform, same four screens. The",
+    "desktop channels forbid borrowing because they ship different builds; that reason does not",
+    "apply to this one.",
+    "",
+    "THE HASHES ARE THE MECHANISM. If android-play's set is re-captured and this one is not, the",
+    "sha256 values below stop matching the files they name, and `copiedFrom` names exactly where to",
+    "look. A copy that has quietly stopped being one is the failure this file exists to make visible."
+  ],
+  "posture": "live",
+  "_postureWhy": "Inherited from the source set's CAPTURE.json, not re-measured. The Play phone set was captured against a LIVE build — not a demo build, whose every screen carries a \"Demo data\" banner and whose board is twelve third-party trademarks. A demo capture may not be copied here either.",
+  "copiedFrom": "apps/subscriptiontracker/store/android-play/screenshots",
+  "copiedOn": "2026-09-20",
+  "deviceType": "phone",
+  "pixels": "1080x1920",
+  "count": 4,
+  "files": [
+    {
+      "name": "01-home.png",
+      "sha256": "519d7a80d402d6685cf7eb140f1475b9fec3ec032373790ac54b631572404767",
+      "bytes": 459549
+    },
+    {
+      "name": "02-calendar.png",
+      "sha256": "67d65f736ce5263de1b98337271474d3ceb6a492d765632a4a0b35e31b09ea6e",
+      "bytes": 157296
+    },
+    {
+      "name": "03-insights.png",
+      "sha256": "2e93467947ced610a924b5baf6e29166931ea96e8c13e1c33f3fdf252ff71464",
+      "bytes": 129114
+    },
+    {
+      "name": "04-budget.png",
+      "sha256": "d761326f63a250a7b8d3ddfd18563d8650320fbf988841baf7f762ac09cde867",
+      "bytes": 153442
+    }
+  ],
+  "requirements": {
+    "dimensions": "NOT SPECIFIED",
+    "count": "NOT SPECIFIED",
+    "formats": "NOT SPECIFIED",
+    "fileSizeCap": "NOT SPECIFIED",
+    "_why": "THE STORE PUBLISHES NO ASSET SPECIFICATION AT ALL. The NeGD App Hosting & Security Guidelines PDF (18 pages, read in full 2026-09-20) mentions listing media exactly once, in §4.1: \"Listing Confirmation: Developers verify store details (screenshots, feature graphic, T&C).\" No pixels, no counts, no formats, no caps. The real spec, if one exists, is behind the authenticated SPA at apps.gov.in/Developer, which agents never log in to. NOT SPECIFIED is the measured answer; an invented limit fires on correct input.",
+    "source": "https://apps.gov.in/assets/SOP/App-Hosting-&-Security-Guidelines.pdf",
+    "fetched": "2026-09-20",
+    "fetchedBy": "Private/research/session-2026-09-19b/store-shots/REQUIREMENTS.md §11 — the read-only store-asset research lane. This lane cites that reading rather than re-fetching."
+  }
+}

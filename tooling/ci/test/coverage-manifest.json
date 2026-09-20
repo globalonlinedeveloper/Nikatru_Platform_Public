@@ -199,7 +199,7 @@
   "store-build-config.test.mjs": 31,
   "store-identity.test.mjs": 45,
   "store-matrix.test.mjs": 24,
-  "store-metadata.test.mjs": 74,
+  "store-metadata.test.mjs": 81,
   "store-screenshots-lane.test.mjs": 13,
   "submission-safety.test.mjs": 22,
   "supabase-templates.test.mjs": 17,

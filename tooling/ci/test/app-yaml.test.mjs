@@ -18,10 +18,16 @@
 // The tree each case runs against is the REAL repository's declaration, register
 // and store trees, copied file by file. So the POSITIVE CONTROL below is the
 // strongest statement available: the bytes a human wrote by hand into
-// `catalog/apps.json` and into twenty-five listing files are EXACTLY what
+// `catalog/apps.json` and into every listing file — one per rendered field per
+// DECLARED store tree, which is a product and not a constant — are EXACTLY what
 // `apps/subscriptiontracker/app.yaml` renders to. If that ever stops holding, the declaration
 // and the tree have parted company and every negative case below is about a
 // tree nobody ships.
+//
+// ⚠️ THIS SENTENCE USED TO SAY "twenty-five listing files" AND WAS WRONG THE DAY
+// a sixth store tree landed (apps-gov-in, 2026-09-20) — the same stale-constant
+// defect that turned two cases below red while the renderer was correct. The
+// count is derived now, in prose as well as in code.
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
@@ -129,6 +135,54 @@ const put = (root, rel, text) => writeFileSync(join(root, rel), text);
 const get = (root, rel) => readFileSync(join(root, rel), 'utf8');
 const kill = (root) => rmSync(root, { recursive: true, force: true });
 
+/** Every store listing directory `render.mjs --check` will grade, DERIVED from
+ *  the two authorities the renderer itself reads: the register's `kind: "store"`
+ *  rows with a `{app}` template, filtered to the ones that exist on disk. The
+ *  renderer skips a declared channel with no tree on purpose — creating one is
+ *  owner-gated — so "exists" is half the derivation and not an optimisation.
+ *
+ *  🔴 IT IS DERIVED BECAUSE THE HAND-WRITTEN NUMBER WENT STALE, MEASURED. Two
+ *  cases below asserted `=== 5`, "five channels, one short-description each".
+ *  On 2026-09-20 `apps/subscriptiontracker/store/apps-gov-in/` was created —
+ *  the sixth declared channel finally getting the listing tree the brick had
+ *  templated all along — and both cases went red at `got 6` while the renderer
+ *  was behaving perfectly: it named all six, the new one included. A constant
+ *  that turns a CORRECT renderer red is the same defect as one that lets a
+ *  broken one through, and it is the reason assert-store-metadata.mjs computes
+ *  REQUIRED_COVERAGE as a RELATIONSHIP rather than a number.
+ *
+ *  🔴 AND IT IS NOT `plan(root)`. Deriving the expectation by running the
+ *  renderer's own planner would make these cases assert the renderer against
+ *  itself: delete the listing half of `plan` and the expected set would empty
+ *  with the actual one, and both cases would pass over nothing. The register and
+ *  the filesystem are read here independently, which is the whole point.
+ *
+ *  The floor below is what stops the derivation going vacuous: a register that
+ *  parsed to zero store rows would make "names every stale file" true by naming
+ *  none. */
+function listingDirs(root, appId = 'subscriptiontracker') {
+  const register = JSON.parse(get(root, 'tooling/channel-register.json'));
+  const dirs = (Array.isArray(register.channels) ? register.channels : [])
+    .filter((c) => c && c.kind === 'store' && typeof c.storeMetadataDir === 'string' && c.storeMetadataDir.includes('{app}'))
+    .map((c) => c.storeMetadataDir.replace('{app}', appId))
+    .filter((d) => existsSync(join(root, d)));
+  assert.ok(dirs.length >= 2, `the fixture must carry at least two store listing trees or this assertion is vacuous; derived ${dirs.length}`);
+  return dirs;
+}
+
+/** `--check`'s stale list must name EXACTLY the derived set for `file`: every
+ *  directory, and no phantom. Both halves bite — dropping one is the drift the
+ *  case exists to catch, and inventing one is a renderer writing where no
+ *  channel is declared. */
+function assertNamesEveryListing(out, root, file) {
+  const dirs = listingDirs(root);
+  for (const d of dirs) {
+    assert.ok(out.includes(`${d}/${file}`), `--check did not name ${d}/${file}:\n${out}`);
+  }
+  const named = [...out.matchAll(new RegExp(file.replace('.', '\\.'), 'g'))].length;
+  assert.equal(named, dirs.length, `expected ${file} named once per declared listing tree (${dirs.length}), got ${named}:\n${out}`);
+}
+
 describe('assert-app-yaml — the declaration and its renderings', () => {
   test('POSITIVE CONTROL: the real tree is valid and every rendering is fresh', () => {
     const root = tree();
@@ -169,10 +223,10 @@ describe('assert-app-yaml — the declaration and its renderings', () => {
       const { code, out } = spawn(RENDER, [root, '--check']);
       assert.equal(code, 1, out);
       assert.match(out, /catalog\/apps\.json/);
-      // Five channels, one short-description each. A drift check that named only
-      // the catalogue would leave the listing copy silently forked.
-      const named = [...out.matchAll(/short-description\.txt/g)].length;
-      assert.equal(named, 5, `expected all five channels named, got ${named}:\n${out}`);
+      // One short-description per DECLARED listing tree, derived from the
+      // register. A drift check that named only the catalogue would leave the
+      // listing copy silently forked.
+      assertNamesEveryListing(out, root, 'short-description.txt');
       assert.equal(spawn(GUARD, [root]).code, 1);
     } finally { kill(root); }
   });
@@ -183,7 +237,7 @@ describe('assert-app-yaml — the declaration and its renderings', () => {
       put(root, APP_YAML, get(root, APP_YAML).replace(/^name: .*$/m, 'name: Subly Pro'));
       const { code, out } = spawn(RENDER, [root, '--check']);
       assert.equal(code, 1, out);
-      assert.equal([...out.matchAll(/title\.txt/g)].length, 5, out);
+      assertNamesEveryListing(out, root, 'title.txt');
     } finally { kill(root); }
   });
 

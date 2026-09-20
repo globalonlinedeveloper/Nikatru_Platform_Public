@@ -70,6 +70,23 @@ const FIELD = {
   'search-terms.txt': 'a\nb\nc\n',
 };
 
+/** `YYYY-MM-DD`, `n` days from now in UTC — the same clock the guard reads.
+ *  Computed rather than hard-coded: a literal future date in a fixture is a test
+ *  that passes until it silently stops, and this file would then be asserting
+ *  the EXPIRED branch while claiming to assert the live one. */
+const isoDaysFromNow = (n) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+
+/** A deferral that legitimately covers a missing tree: a real future date AND a
+ *  written reason for THE TREE. `reason` is carried too, exactly as every real
+ *  row carries one, to prove the guard does NOT accept it in place of the pair —
+ *  that conflation is the hole this pair closes. */
+const datedTreeDeferral = (over = {}) => ({
+  reason: 'the first publish is manual and owner-gated.',
+  treeDeferredUntil: isoDaysFromNow(30),
+  treeDeferredWhy: 'no publisher account exists for this channel yet and the listing copy is not written.',
+  ...over,
+});
+
 const storeRow = (over = {}) => ({
   id: 'windows-store',
   name: 'Microsoft Store',
@@ -378,15 +395,73 @@ describe('assert-store-metadata — the listing exists, is complete, and is deri
   });
 
   // ── REQUIRED_COVERAGE is a RELATIONSHIP: it grows with the register ────────
-  test('PRINTS, and does not fail, when a DEFERRED store row has no tree', () => {
-    const { code, out } = run(
-      tree({
-        mutateRegister: (r) => r.channels.push(storeRow({ id: 'linux-snap', platforms: ['linux'], storeMetadataDir: 'apps/{app}/store/linux-snap', ownerQueue: 'A-6', packageIdentity: undefined })),
-      }),
-    );
+  // ⏳ AND A DEFERRED ROW WITH NO TREE IS A PROMISE WITH A DATE ON IT. The five
+  // cases below are one limb: the print is available only while the row carries
+  // `deferral.treeDeferredUntil` (a real future date) AND `treeDeferredWhy`.
+  // MEASURED 2026-09-20: without that pair this branch printed unconditionally,
+  // and apps/subscriptiontracker/store/apps-gov-in/ did not exist at all while
+  // that channel's verified publisher profile was expiring.
+  const deferredNoTree = (over = {}) =>
+    storeRow({ id: 'linux-snap', platforms: ['linux'], storeMetadataDir: 'apps/{app}/store/linux-snap', ownerQueue: 'A-6', packageIdentity: undefined, ...over });
+
+  test('PRINTS, and does not fail, when a DEFERRED store row with a DATED tree deferral has no tree', () => {
+    const { code, out } = run(tree({ mutateRegister: (r) => r.channels.push(deferredNoTree({ deferral: datedTreeDeferral() })) }));
     assert.equal(code, 0, out);
-    assert.match(out, /NO TREE \(deferred\): apps\/subscriptiontracker\/store\/linux-snap/);
+    assert.match(out, /NO TREE \(deferred until \d{4}-\d{2}-\d{2}\): apps\/subscriptiontracker\/store\/linux-snap/);
+    assert.match(out, /no publisher account exists for this channel yet/);
     assert.match(out, /= 2 expected tree\(s\)/);
+  });
+
+  test('FAILS when a DEFERRED store row has no tree and no `deferral` block at all', () => {
+    const { code, out } = run(tree({ mutateRegister: (r) => r.channels.push(deferredNoTree()) }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /apps\/subscriptiontracker\/store\/linux-snap — and the row declares no `deferral` block at all/);
+  });
+
+  // 🔴 THE CONFLATION THE PAIR EXISTS TO STOP. Every real row already carries a
+  // `deferral.reason`, and every one of them is about the PUBLISH. A publish
+  // deferral is not a reason eight text files cannot exist in a repository.
+  test('FAILS when the row carries only `deferral.reason` — a publish deferral is not a tree deferral', () => {
+    const { code, out } = run(
+      tree({ mutateRegister: (r) => r.channels.push(deferredNoTree({ deferral: { reason: '[ADR 015] §2 — native Linux is deferred until there is revenue.', alsoBlockedBy: null } })) }),
+    );
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /carries no `treeDeferredUntil`/);
+  });
+
+  test('FAILS when the deferral is dated but carries no reason for the TREE', () => {
+    const { code, out } = run(tree({ mutateRegister: (r) => r.channels.push(deferredNoTree({ deferral: datedTreeDeferral({ treeDeferredWhy: '  ' }) })) }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /`deferral\.treeDeferredWhy` is missing or empty/);
+  });
+
+  test('FAILS when the tree deferral date has PASSED — the deferral ran out and the tree never arrived', () => {
+    const { code, out } = run(tree({ mutateRegister: (r) => r.channels.push(deferredNoTree({ deferral: datedTreeDeferral({ treeDeferredUntil: isoDaysFromNow(-1) }) })) }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /which has PASSED/);
+  });
+
+  // A shape that is not a date cannot expire, so it is an exemption spelled
+  // like a deadline. `2026-02-31` matches YYYY-MM-DD and is not a day.
+  test('FAILS when `treeDeferredUntil` matches the shape but is not a real calendar date', () => {
+    const { code, out } = run(tree({ mutateRegister: (r) => r.channels.push(deferredNoTree({ deferral: datedTreeDeferral({ treeDeferredUntil: '2026-02-31' }) })) }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /is not a real calendar date/);
+  });
+
+  // The boundary, asserted rather than left to a reader: the named day is still
+  // covered and the guard reds the day AFTER. Reading "until X" as "expired on
+  // X" would shorten every deferral by a day — the guard editing a decision
+  // instead of enforcing one.
+  test('PRINTS on the LAST day the deferral covers — the date itself is not yet expired', () => {
+    const { code, out } = run(tree({ mutateRegister: (r) => r.channels.push(deferredNoTree({ deferral: datedTreeDeferral({ treeDeferredUntil: isoDaysFromNow(0) }) })) }));
+    assert.equal(code, 0, out);
+    assert.match(out, /NO TREE \(deferred until \d{4}-\d{2}-\d{2}\)/);
   });
 
   test('FAILS when a SERVED store row has no tree', () => {
@@ -583,6 +658,12 @@ describe('assert-store-metadata — the listing exists, is complete, and is deri
   // stamped-app case D-5 still owes brick work for, and prints.
   test('PRINTS for a stamped app with no tree and no msix_config, while the real app stays checked', () => {
     const root = tree({
+      // The stamped app has no tree for this channel, so the row must carry a
+      // DATED tree deferral or the missing tree is a FAIL — see the deferral
+      // cases above. The msix_config print is what this case is about.
+      mutateRegister: (r) => {
+        r.channels.find((c) => c.id === 'windows-store').deferral = datedTreeDeferral();
+      },
       apps: [
         { slug: 'subscriptiontracker', name: 'Subly', tagline: 'Track every subscription in one place', platforms: ['web'] },
       ],
@@ -600,7 +681,7 @@ describe('assert-store-metadata — the listing exists, is complete, and is deri
     const { code, out } = run(root);
     assert.equal(code, 0, out);
     assert.match(out, /NO msix_config: apps\/probe\/pubspec\.yaml/);
-    assert.match(out, /NO TREE \(deferred\): apps\/probe\/store\/windows-store/);
+    assert.match(out, /NO TREE \(deferred until \d{4}-\d{2}-\d{2}\): apps\/probe\/store\/windows-store/);
   });
 });
 
@@ -811,11 +892,28 @@ describe('assert-store-metadata — android-play (Google Play)', () => {
 
   // 🔴 THE ASYMMETRY, BOTH HALVES. Creating a tree is owner-gated; KEEPING one
   // is not. "PRINT everything" is how an owner-gated exemption eats the check.
-  test('PRINTS, and does not fail, when the deferred row has NO tree at all', () => {
-    const { code, out } = run(tree({ withPlay: true, omitPlayTree: true }));
+  // ⏳ AND THE PRINT HALF IS ITSELF DATED NOW: `ownerQueue` is a pointer into a
+  // repository CI cannot open, so quoting it never said when the tree was due.
+  test('PRINTS, and does not fail, when the deferred row has NO tree and a DATED tree deferral', () => {
+    const { code, out } = run(
+      tree({
+        withPlay: true,
+        omitPlayTree: true,
+        mutateRegister: (r) => {
+          r.channels.find((c) => c.id === 'android-play').deferral = datedTreeDeferral();
+        },
+      }),
+    );
     assert.equal(code, 0, out);
-    assert.match(out, /NO TREE \(deferred\): apps\/subscriptiontracker\/store\/android-play/);
-    assert.match(out, /OWNER_QUEUE A-3/);
+    assert.match(out, /NO TREE \(deferred until \d{4}-\d{2}-\d{2}\): apps\/subscriptiontracker\/store\/android-play/);
+    assert.match(out, /this print becomes a FAIL/);
+  });
+
+  test('FAILS when the deferred android-play row has NO tree and no dated deferral', () => {
+    const { code, out } = run(tree({ withPlay: true, omitPlayTree: true }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /channel "android-play" is deferred and app "subscriptiontracker" carries no metadata tree/);
   });
 
   test('FAILS when a file is deleted from the android-play tree that EXISTS', () => {
