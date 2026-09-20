@@ -27,7 +27,27 @@ const SUPABASE_URL = 'https://signups.supabase.co';
 const ISSUER = `${SUPABASE_URL}/auth/v1`;
 const APP_ORIGIN = 'https://api.test';
 const SUBJECT = 'signup-subject-41d2';
-const NOW_MS = Date.parse('2026-09-20T06:00:00.000Z');
+/// ⏱ THE NIGHT AFTER THE REQUEST, DERIVED — never a literal. Fixed 2026-09-20.
+///
+/// 🔴 THIS FILE MIXES TWO CLOCKS AND ONLY ONE OF THEM IS PINNABLE. `deleteAccount`
+/// below drives the REAL route, which stamps `created_at` and `next_attempt_at`
+/// from `Date.now()`; the retry it then calls takes an explicit `nowMs`. The
+/// pinned literal this replaced — `Date.parse('2026-09-20T06:00:00.000Z')` —
+/// was therefore only ever correct while the wall clock stood BEFORE it, and
+/// `dueOrders` returned the order because 06:00Z was still in the future.
+///
+/// At 06:00Z on 2026-09-20 the clock reached it and the order stopped being
+/// due, so the signup purge never ran and `person@example.com` survived a test
+/// asserting it had been erased. It failed on `main`, in a file no branch had
+/// touched, and it would have reddened ci-gate for EVERY open PR until somebody
+/// read it — which is how a pinned fixture froze the merge queue once already
+/// (the replay-drill dates, #838).
+///
+/// ⚠️ DO NOT "FIX" THIS BY MOVING THE LITERAL FORWARD. A later date is the same
+/// defect with a longer fuse. The retry models the NIGHT AFTER the request, so
+/// it is derived from the same clock the route used, and the relationship holds
+/// on every future day without anybody re-dating anything.
+const NOW_MS = Date.now() + 24 * 60 * 60 * 1000;
 
 let signingKey: KeyLike;
 let publicJwk: JWK;
