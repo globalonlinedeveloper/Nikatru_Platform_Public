@@ -244,6 +244,105 @@ retry/backoff and the `qs` DoS fix.
 The same throwaway, pre-confirmed user the nightly e2e provisions, and
 purged again below whatever happens. Prod is left as it was found.
 
+## 🔴 THE CAPTURED APP WAS TELLING USERS IT WAS OFFLINE — found 2026-09-20
+
+Every frame this lane had produced up to 2026-09-20 carries a full-width
+`#ffdad6` band across the top reading **"Could not reach the network. Some
+things may be out of date."** with a `Retry` button. All EIGHT committed frames
+— four phone, four tablet, from run `34202461387` (PR #542, merged 2026-09-09)
+and its predecessor `#393` — measured with `tooling/store/png-codec.mjs`:
+
+| file | pixels | top colour | solid rows | max row fraction | max `warn` row |
+| --- | --- | --- | --- | --- | --- |
+| `screenshots/01-home.png` | 1080×1920 | `#ffdad6` | 70 | 1.000 | 0.000 |
+| `screenshots/02-calendar.png` | 1080×1920 | `#ffdad6` | 70 | 1.000 | 0.000 |
+| `screenshots/03-insights.png` | 1080×1920 | `#ffdad6` | 70 | 1.000 | 0.000 |
+| `screenshots/04-budget.png` | 1080×1920 | `#ffdad6` | 70 | 1.000 | 0.000 |
+| `screenshots-tablet/01-home.png` | 1800×3200 | `#ffdad6` | 63 | 1.000 | 0.003 |
+| `screenshots-tablet/02-calendar.png` | 1800×3200 | `#ffdad6` | 63 | 1.000 | 0.000 |
+| `screenshots-tablet/03-insights.png` | 1800×3200 | `#ffdad6` | 63 | 1.000 | 0.000 |
+| `screenshots-tablet/04-budget.png` | 1800×3200 | `#ffdad6` | 63 | 1.000 | 0.000 |
+
+### ⚠️ IT IS NOT AN ANDROID STATUS BAR, AND THE OBVIOUS FIX IS THE WRONG ONE
+
+Read as "the phone had no signal", the remedy looks like Android's SystemUI demo
+mode (`adb shell settings put global sysui_demo_allowed 1`, then
+`am broadcast -a com.android.systemui.demo …`) and the emulator flags
+`-netdelay none -netspeed full`. **None of it applies.** This lane runs no
+emulator and no Android image at all: `capture-play-screenshots.mjs` drives
+`flutter drive -d web-server --browser-name=chrome`, so the frames are a
+headless Chrome viewport. There is no system status bar in them — row 0 of every
+frame above is the app's own first pixel — so there is no clock, battery or
+signal to pin, and no radio to bring up.
+
+### The cause: a cross-origin config fetch that cannot succeed
+
+The banner is driven by a **failed request**, never by a connectivity plugin.
+`NetworkReachabilityController` starts `false` and flips only when one really
+fails, and the app makes exactly one at launch:
+`GET {CONFIG_BASE_URL}/config/subscriptiontracker` against
+`https://config.nikatru.com`, the `platform` Worker.
+
+`flutter drive -d web-server` serves the app from `http://localhost:<RANDOM
+PORT>`, so that fetch is cross-origin. `tooling/ci/assert-cors-allowlist.mjs`
+already records why the two Workers behave differently here:
+
+- `subscriptiontracker-api` "allows localhost by regex (a recorded trade — the
+  `flutter drive -d web-server` harness picks a random port)" → the API calls
+  succeed, which is why the frames are **populated** ($93.47/mo, 6 active,
+  "Video streaming") rather than empty.
+- `platform` "has NO localhost regex, so the origin must be listed explicitly",
+  and the only explicit entry is `http://localhost:3000` → the config fetch is
+  refused on every run, because a random port can never be 3000.
+
+So the app was online, signed in and populated, and was told by its own launch
+fetch that the network was unreachable. **The banner was right about what it
+observed and wrong about the product.**
+
+### The fix: do not make the doomed request
+
+`apps/subscriptiontracker/lib/core/app_config.dart` already carried the lever
+and already described this exact situation — "`--dart-define=SKIP_REMOTE_CONFIG=
+true`, which an `integration_test` run wants: it supplies identity defines but
+has no reason to reach the config host". Measured 2026-09-20: **nothing passed
+it.** The define was designed for this caller and wired to nothing.
+
+`tooling/store/capture-network-posture.mjs` now declares it and
+`capture-play-screenshots.mjs` pushes it onto every drive. Config then resolves
+to `kAppDefaultConfig`, which `apps/subscriptiontracker/test/config_default_test.dart`
+pins **against the server's own values** — so the captured app renders the
+configuration it would have fetched. Nothing is staged or masked: this removes a
+false statement from the frame, it does not hide a true one.
+
+⚠️ **Widening the `platform` Worker's CORS allowlist was considered and
+rejected.** It would clear the banner by loosening a *production* allowlist for
+a screenshot lane, and against a random port it could only be done with a regex.
+Not making a request is strictly narrower than permitting one.
+
+### Why no guard caught it
+
+`tooling/ci/assert-listing-assets.mjs` decoded all eight frames and passed them.
+Its banner limb hunts a full-width band of `AppColors.warn` (`#f59e0b`) — the
+*demo* banner — and this band is `ColorScheme.fromSeed(...).errorContainer`
+(`#ffdad6`). The measured `warn` fraction is `0.000` on seven of eight frames.
+The limb was working exactly as written and was aimed at one banner out of two.
+
+The new detector is aimed at the **property** instead of a hex: a full-width
+band (≥60% of a row) in the top tenth whose red channel leads the others by ≥16.
+Measured `r − max(g, b)`: offline `+37`, demo `+87`, danger `+32`, app
+background `−4`, white `0`, hero card `−21`. It cannot be pinned to a colour,
+because `errorContainer` is a Material 3 tonal-palette computation in Dart that
+no Node guard can recompute — a pinned hex would stop matching the day the seed
+moved.
+
+🔴 **THE COMMITTED FRAMES ARE STILL THE BAD ONES.** They can only be replaced by
+a run of this workflow: the live capture needs `SUPABASE_SERVICE_ROLE_KEY`, a
+CI-only secret. So the refusal lives at **capture time**, where it stops a bad
+set being produced; a guard over the committed bytes has to land in the same
+change as the re-captured bytes, which is this repo's standing rule for a floor
+and its subject. Wiring the same detector into `assert-listing-assets.mjs` is
+the follow-up that belongs in that commit.
+
 ### before step **The captured set satisfies the listing-asset guard**
 
 The capture script already checks Play's rules on what it produced; this
