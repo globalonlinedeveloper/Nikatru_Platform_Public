@@ -31,6 +31,15 @@
 // over apps/subscriptiontracker's left the guard AT HEAD printing ok / exit 0, and the
 // repaired guard exits 1.
 //
+// 🔴 M8, 2026-09-21 — THE GUARD GRADED THE FOLDER, NOT AN APP, AND HAD DONE SO
+// IN EVERY WORKTREE SINCE IT WAS WRITTEN. `basename(appDir)` as the app id plus
+// `appDir/../../catalog/apps.json` as the catalogue: run with no argument, which
+// is how guard-sweep.mjs's bare-invocation fallback runs it, both guesses were
+// wrong at once — it looked up the WORKTREE'S folder name in the MAIN
+// checkout's catalogue. Observed by two independent lanes on 2026-09-20
+// (`.worktrees/donut`, `.worktrees/replay-fixture`). Six cases at the end of
+// this file pin the repair; the mutation is in their comment.
+//
 // These fixtures now supply a FAKE `flutter` executable (FLUTTER_ROOT is
 // injected) which copies out a reference app, because the guard now establishes
 // stock bytes by RUNNING `flutter create`. There is no template layout left for
@@ -124,8 +133,20 @@ function world({
   platforms = ['web'],
   emptyStock = false,
   noStockIcons = false,
+  // ── the three options that exist for O-STAMP-GUARD-READS-THE-DIRECTORY-NAME-AS-AN-APP-ID ──
+  // `worktreeName` puts the whole checkout at `<base>/.worktrees/<name>`, which
+  // is the real shape the defect was observed in: a lane's branch workspace,
+  // whose directory name is not an app and never will be.
+  worktreeName = null,
+  // An enclosing checkout ABOVE that worktree, with a catalogue of its OWN.
+  // `appDir/../../catalog/apps.json` reached it, so the guard graded one tree
+  // out of another tree's facts.
+  enclosingCatalogue = false,
+  // No catalogue anywhere: nothing can say which directories are apps.
+  omitCatalogue = false,
 } = {}) {
-  const root = join(TMP, `r${seq++}`);
+  const base = join(TMP, `r${seq++}`);
+  const root = worktreeName ? join(base, '.worktrees', worktreeName) : base;
   const appDir = join(root, 'apps', 'probe');
 
   // ── the SDK: a FAKE `flutter` that emits a reference app ──────────────────
@@ -168,12 +189,23 @@ function world({
     writeFileSync(p, useStock.includes(rel) ? png(8, STOCK_COLOUR) : png(8, appColour));
   }
 
-  mkdirSync(join(root, 'catalog'), { recursive: true });
-  writeFileSync(
-    join(root, 'catalog', 'apps.json'),
-    JSON.stringify([{ slug: 'probe', url: 'https://probe.nikatru.com', platforms, status: 'preview' }]),
-  );
-  return { root, appDir, sdkRoot: join(root, 'sdk') };
+  if (!omitCatalogue) {
+    mkdirSync(join(root, 'catalog'), { recursive: true });
+    writeFileSync(
+      join(root, 'catalog', 'apps.json'),
+      JSON.stringify([{ slug: 'probe', url: 'https://probe.nikatru.com', platforms, status: 'preview' }]),
+    );
+  }
+  if (enclosingCatalogue) {
+    // A DIFFERENT app set, so a guard reading this one instead is caught by the
+    // slug it names rather than by an accident of both being identical.
+    mkdirSync(join(base, 'catalog'), { recursive: true });
+    writeFileSync(
+      join(base, 'catalog', 'apps.json'),
+      JSON.stringify([{ slug: 'outerapp', url: 'https://outerapp.nikatru.com', platforms: ['web'], status: 'live' }]),
+    );
+  }
+  return { base, root, appDir, sdkRoot: join(root, 'sdk') };
 }
 
 // BOUNDED, so a guard that hangs at exit (nodejs/node#54918, reproduced on this
@@ -183,8 +215,12 @@ function world({
 // The guard's own `flutter create` is bounded and group-killed inside
 // flutter-stock-assets.mjs; this is the backstop for the guard process itself.
 const RUN_TIMEOUT_MS = 120_000;
-const run = ({ appDir, sdkRoot }, seed = '6459F5', env = {}) => {
-  const r = spawnSync(process.execPath, [GUARD, appDir, '--seed', seed], {
+/** The one spawn. `argv` is what the guard is given and `cwd` where it is given
+ *  it — the two things the app-id defect turned on, so neither is hidden inside
+ *  a helper that only ever passes an app directory. */
+const spawnGuard = (argv, { sdkRoot, cwd, env = {} }) => {
+  const r = spawnSync(process.execPath, [GUARD, ...argv], {
+    cwd,
     encoding: 'utf8',
     env: { ...process.env, ...fixtureTemp(), FLUTTER_ROOT: sdkRoot, ...env },
     timeout: RUN_TIMEOUT_MS,
@@ -197,6 +233,8 @@ const run = ({ appDir, sdkRoot }, seed = '6459F5', env = {}) => {
       : '';
   return { code: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}${died}` };
 };
+const run = ({ appDir, sdkRoot }, seed = '6459F5', env = {}) =>
+  spawnGuard([appDir, '--seed', seed], { sdkRoot, env });
 
 describe('assert-stamp-brand-assets', () => {
   test('passes when every asset is present, valid, non-stock and on-seed', () => {
@@ -310,5 +348,85 @@ describe('assert-stamp-brand-assets', () => {
     const { code, out } = run(world({ platforms: ['windows'] }));
     assert.equal(code, 1, 'a native claim must not pass on the web asset list');
     assert.match(out, /claims \[windows\] and NOT web/);
+  });
+
+  // ── the app id comes from the CATALOGUE, never from a directory name ───────
+  // O-STAMP-GUARD-READS-THE-DIRECTORY-NAME-AS-AN-APP-ID, observed 2026-09-20 by
+  // two independent lanes: `basename(appDir)` made the guard grade the FOLDER a
+  // lane happened to be standing in.
+  //
+  //   .worktrees/donut           ✗ COVERAGE LOST — no platform claim found for "donut"
+  //   .worktrees/replay-fixture  ✗ COVERAGE LOST — … for "replay-fixture"
+  //
+  // 🔬 THE MUTATION THAT PINS THIS CASE: restore `const appId = basename(appDir)`
+  // with `join(appDir, '..', '..', 'catalog', 'apps.json')` and it goes RED on
+  // the exact sentence below, naming "donut".
+
+  // 🔴 THE CASE THE ROW ASKS FOR: a path named after no app, required to grade the
+  // REAL apps rather than report COVERAGE LOST. The enclosing catalogue is there
+  // on purpose — `../..` from the checkout root walks OUT of the worktree and
+  // reads the MAIN checkout's catalogue, so a guard that still does it grades one
+  // tree out of another tree's facts, and names `outerapp` or `donut`, not `probe`.
+  test('grades the catalogued apps when run from a checkout whose directory is named after no app', () => {
+    const w = world({ worktreeName: 'donut', enclosingCatalogue: true });
+    const { code, out } = spawnGuard([], { sdkRoot: w.sdkRoot, cwd: w.root });
+    assert.equal(code, 0, out);
+    assert.match(out, /5\/5 asset\(s\) present/);
+    assert.match(out, /\[probe\]/, 'the catalogue of the tree being graded names `probe`');
+    // NOT `doesNotMatch(/donut/)` — the ok line names the checkout it graded, and
+    // that path legitimately contains the worktree's name. What must never appear
+    // is `donut` standing in for an APP: these two are the verbatim shapes the
+    // defect produced.
+    assert.doesNotMatch(out, /no platform claim found for "donut"/, 'a worktree folder is not an app');
+    assert.doesNotMatch(out, /\[donut\]/, 'a worktree folder must never be graded as an app');
+    assert.doesNotMatch(out, /outerapp/, 'the ENCLOSING checkout\'s catalogue is not this tree\'s catalogue');
+  });
+
+  // The same resolution, from a lane whose folder is named after a fixture rather
+  // than a dessert — the second independent observation, same shape.
+  test('grades the catalogued apps from a checkout named `replay-fixture` too', () => {
+    const w = world({ worktreeName: 'replay-fixture' });
+    const { code, out } = spawnGuard([], { sdkRoot: w.sdkRoot, cwd: w.root });
+    assert.equal(code, 0, out);
+    assert.match(out, /\[probe\]/);
+    assert.doesNotMatch(out, /no platform claim found for "replay-fixture"/);
+  });
+
+  // ⚠️ ANTI-VACUITY FOR THE NEW BRANCH. "Grade everything in the checkout" must
+  // not become "grade nothing, quietly": a checkout whose catalogue lists apps
+  // that have no directory is a broken tree, not a clean one.
+  test('COVERAGE LOST when the checkout root holds no catalogued app directory', () => {
+    const w = world();
+    rmSync(join(w.root, 'apps'), { recursive: true, force: true });
+    const { code, out } = spawnGuard([], { sdkRoot: w.sdkRoot, cwd: w.root });
+    assert.equal(code, 2, out);
+    assert.match(out, /NOT ONE has a directory under/);
+  });
+
+  // Pointed somewhere that is neither an app nor a checkout root, the honest
+  // answer is "I cannot tell what you meant" — not a guess off the folder name.
+  test('COVERAGE LOST when pointed at a directory that is neither a catalogued app nor the checkout root', () => {
+    const w = world();
+    const { code, out } = spawnGuard([join(w.root, 'apps')], { sdkRoot: w.sdkRoot });
+    assert.equal(code, 2, out);
+    assert.match(out, /is neither a catalogued app directory of/);
+    assert.match(out, /knows 1 app\(s\): probe/);
+  });
+
+  test('COVERAGE LOST when no catalog/apps.json exists at or above the target', () => {
+    const w = world({ omitCatalogue: true });
+    const { code, out } = spawnGuard([w.appDir], { sdkRoot: w.sdkRoot });
+    assert.equal(code, 2, out);
+    assert.match(out, /no catalog\/apps\.json at or above/);
+  });
+
+  // shell-13, in this guard's own argv: the flag that carries a value was not
+  // declared, so the SEED was taken as the directory to grade whenever it came
+  // first — and `6459f5` resolved to a path that is not an app.
+  test('reads --seed before the path as a seed, not as the app directory', () => {
+    const w = world();
+    const { code, out } = spawnGuard(['--seed', '6459F5', w.appDir], { sdkRoot: w.sdkRoot });
+    assert.equal(code, 0, out);
+    assert.match(out, /5 carry seed #6459f5/);
   });
 });
