@@ -29,6 +29,12 @@
 //     deploy-web.yml's own `on.push.paths`, its in-flight window from that
 //     workflow's job timeouts; a stale served commit past the window is RED,
 //     and UNGRADED is left only for a row with no commit_hash at all.
+//   · ONE DROPPED CONNECTION IS NOT AN OUTAGE, AND AN OUTAGE IS NOT A PASS
+//     (2026-09-21, row O-PAGES-FETCH-TRANSIENT-NOT-RETRIED). Each Cloudflare
+//     read is attempted up to READ_ATTEMPTS times on a doubling gap; a
+//     transient failure followed by a success reads as ok, and a failure that
+//     outlives the plan is still exit 2. Both directions below, with `sleep`
+//     injected so the bound is proved without being waited.
 //
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
@@ -54,6 +60,16 @@ import {
   commitTimeOf,
   DEPLOY_WEB_REL,
   DEPLOY_LANE_RUNS,
+  CouldNotLook,
+  transientLook,
+  isTransientLook,
+  backoffPlan,
+  readWithBoundedRetry,
+  readDeployments,
+  readFailureResult,
+  READ_ATTEMPTS,
+  RETRY_BASE_MS,
+  RETRY_CEILING_MS,
 } from '../../ops/check-pages-deployments.mjs';
 import { parseTriggerPaths } from '../assert-deploy-triggers-deploy.mjs';
 import { parseWorkflow } from '../workflow-scan.mjs';
@@ -782,5 +798,224 @@ describe('the duty is WIRED — ops-watch.yml actually runs this reader', () => 
       /fetch-depth:\s*0/,
       'a shallow checkout has no origin/main, so newestCommitTouching returns null and every git project reports exit 2',
     );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔴 ONE DROPPED CONNECTION MUST NOT REDDEN THE RUN, AND AN OUTAGE MUST STILL
+// BE COVERAGE LOST. Row O-PAGES-FETCH-TRANSIENT-NOT-RETRIED: ops-watch run
+// 35478397730 (schedule, 2026-09-20T00:17:52Z) read `✗ nikatru (git) —
+// TypeError: fetch failed` and exited 2 on a SINGLE un-retried fetch, while the
+// other two projects read fine in the same run and a dispatch sixteen minutes
+// later was green. A red ops-watch reddens ci-gate on main, so that blip froze
+// the merge queue.
+//
+// BOTH directions are asserted, because a retry proven only in the first one is
+// indistinguishable from swallowing the error:
+//   · a transient failure FOLLOWED BY A SUCCESS reads as ok (verdict 0);
+//   · a failure that PERSISTS across every attempt is still COVERAGE LOST (2).
+// Every case injects `sleep`, so the suite proves the bound without waiting it.
+describe('the bounded retry — a blip is not an outage, and an outage is not a pass', () => {
+  const base = { project: 'nikatru', kind: 'git', sourceDir: 'sites/nikatru', expectedCommit: SHA_NEW };
+  const rows = [deployment()];
+  const DROPPED = 'GET pages/projects/nikatru/deployments did not complete at all — TypeError: fetch failed';
+
+  /** Records what the loop WOULD have slept, and returns at once. */
+  function spySleep() {
+    const slept = [];
+    return { slept, sleep: async (ms) => void slept.push(ms) };
+  }
+
+  test('backoffPlan is `attempts - 1` DOUBLING gaps — nothing is waited after the last attempt', () => {
+    assert.deepEqual(backoffPlan(3, 1000), [1000, 2000]);
+    assert.deepEqual(backoffPlan(1, 1000), [], 'one attempt is no retry, so there is no gap to wait');
+    assert.deepEqual(backoffPlan(READ_ATTEMPTS, RETRY_BASE_MS), [1000, 2000]);
+  });
+
+  test('the ceiling is SUMMED from the plan, not written down twice', () => {
+    assert.equal(RETRY_CEILING_MS, backoffPlan().reduce((a, b) => a + b, 0));
+    assert.equal(RETRY_CEILING_MS, 3000, '3 attempts at 1s doubling is 3s of waiting per project — the stated ceiling');
+    assert.equal(READ_ATTEMPTS, 3, 'the attempt count is judgement, pinned here so a change to it is a reviewed diff');
+  });
+
+  test('GREEN CONTROL — a read that answers first time is returned, and nothing sleeps', async () => {
+    const { slept, sleep } = spySleep();
+    let calls = 0;
+    const got = await readWithBoundedRetry(
+      async () => {
+        calls += 1;
+        return rows;
+      },
+      { sleep },
+    );
+    assert.deepEqual(got, rows);
+    assert.equal(calls, 1, 'a healthy read must not be asked twice');
+    assert.deepEqual(slept, []);
+  });
+
+  test('🔴 THE DEFECT — a TRANSIENT failure followed by a success reads as ok', async () => {
+    const { slept, sleep } = spySleep();
+    let calls = 0;
+    const got = await readWithBoundedRetry(
+      async () => {
+        calls += 1;
+        if (calls === 1) throw transientLook(DROPPED);
+        return rows;
+      },
+      { sleep },
+    );
+    assert.equal(calls, 2, 'the dropped connection must be re-asked — that is the whole fix');
+    assert.deepEqual(slept, [1000], 'exactly the first gap of the bounded plan');
+
+    const v = judgeProject({ ...base, deployments: got });
+    assert.equal(v.code, 0, 'a project that answered on the second attempt is healthy, not NOT JUDGED');
+    assert.match(v.line, /^ok /);
+    assert.equal(foldVerdicts([v], { projectsSwept: 1, ungraded: 0 }).code, 0);
+  });
+
+  test('🔴 THE OTHER DIRECTION — a PERSISTENT failure is still COVERAGE LOST, never a pass', async () => {
+    const { slept, sleep } = spySleep();
+    let calls = 0;
+    let thrown = null;
+    try {
+      await readWithBoundedRetry(
+        async () => {
+          calls += 1;
+          throw transientLook(DROPPED);
+        },
+        { sleep },
+      );
+    } catch (e) {
+      thrown = e;
+    }
+    assert.ok(thrown instanceof CouldNotLook, 'an outage must still raise the "nothing was judged" error');
+    assert.equal(isTransientLook(thrown), false, 'the exhausted error must not still look retryable to a caller');
+    assert.equal(calls, READ_ATTEMPTS, 'the retry is BOUNDED — it must not ask for ever');
+    assert.deepEqual(slept, backoffPlan(), 'and it must not sleep past its stated ceiling');
+    assert.match(thrown.message, /all 3 attempt/);
+    assert.match(thrown.message, /over 3s/);
+
+    const v = readFailureResult('nikatru', 'git', thrown);
+    assert.equal(v.code, 2, 'a failure that outlived the retry is exit 2 — swallowing it would hide a real outage');
+    assert.match(v.line, /^\? /);
+    assert.equal(
+      foldVerdicts([v], { projectsSwept: 1, ungraded: 0 }).code,
+      2,
+      'and 2 must survive the fold, because COULD NOT LOOK is not a pass',
+    );
+  });
+
+  test('a FINAL failure is not re-asked at all — a revoked token does not improve in two seconds', async () => {
+    const { slept, sleep } = spySleep();
+    let calls = 0;
+    await assert.rejects(
+      readWithBoundedRetry(
+        async () => {
+          calls += 1;
+          throw new CouldNotLook('answered HTTP 403: Authentication error');
+        },
+        { sleep },
+      ),
+      /403/,
+    );
+    assert.equal(calls, 1, 'three identical 403s in the log is not evidence, it is noise');
+    assert.deepEqual(slept, []);
+  });
+
+  test('a non-CouldNotLook error escapes at once — a bug in this reader is not a network blip', async () => {
+    let calls = 0;
+    await assert.rejects(
+      readWithBoundedRetry(async () => {
+        calls += 1;
+        throw new TypeError('x.map is not a function');
+      }),
+      TypeError,
+    );
+    assert.equal(calls, 1);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WHICH failures are transient is decided AT THE THROW SITE, so it is asserted
+// there too — with `fetch` injected, so not one of these cases touches the
+// network or needs a credential.
+describe('readDeployments — the transport failing is transient, an ANSWER is final', () => {
+  const env = { CLOUDFLARE_API_TOKEN: 'stub-value-not-a-credential', CLOUDFLARE_ACCOUNT_ID: 'stub-account' };
+  const answer = (status, body) => async () => ({ ok: status >= 200 && status < 300, status, text: async () => body });
+
+  const caught = async (fetchImpl, over = {}) => {
+    try {
+      await readDeployments('nikatru', { fetchImpl, env, ...over });
+      return null;
+    } catch (e) {
+      return e;
+    }
+  };
+
+  test('GREEN CONTROL — a 200 carrying success:true yields the rows', async () => {
+    const got = await readDeployments('nikatru', {
+      fetchImpl: answer(200, JSON.stringify({ success: true, result: [deployment()] })),
+      env,
+    });
+    assert.equal(got.length, 1);
+    assert.equal(got[0].id, 'dep-1');
+  });
+
+  test('🔴 `TypeError: fetch failed` — the measured failure — is TRANSIENT', async () => {
+    const e = await caught(async () => {
+      throw new TypeError('fetch failed');
+    });
+    assert.ok(e instanceof CouldNotLook);
+    assert.equal(isTransientLook(e), true, 'this is the exact throw that froze the merge queue on 2026-09-20');
+    assert.match(e.message, /did not complete at all/);
+  });
+
+  test('a body that dies mid-read is transient too — the connection dropped either way', async () => {
+    const e = await caught(async () => ({
+      ok: true,
+      status: 200,
+      text: async () => {
+        throw new TypeError('terminated');
+      },
+    }));
+    assert.equal(isTransientLook(e), true);
+  });
+
+  test('HTTP 5xx and HTTP 429 are transient — the API said "not now", not "no"', async () => {
+    assert.equal(isTransientLook(await caught(answer(500, 'upstream'))), true);
+    assert.equal(isTransientLook(await caught(answer(503, 'unavailable'))), true);
+    assert.equal(isTransientLook(await caught(answer(429, 'rate limited'))), true);
+  });
+
+  test('🔴 RED CONTROL — HTTP 403 is an ANSWER and must NOT be retried', async () => {
+    const e = await caught(answer(403, '{"errors":[{"code":10000}]}'));
+    assert.ok(e instanceof CouldNotLook);
+    assert.equal(isTransientLook(e), false, 'retrying a revoked token only makes the run slower and the log longer');
+  });
+
+  test('RED CONTROL — a 200 that does not parse is final, not a blip to re-ask', async () => {
+    const e = await caught(answer(200, '<html>not json'));
+    assert.equal(isTransientLook(e), false);
+    assert.match(e.message, /unparseable JSON/);
+  });
+
+  test('RED CONTROL — success:false is final', async () => {
+    const e = await caught(answer(200, JSON.stringify({ success: false, errors: [{ code: 8000000 }] })));
+    assert.equal(isTransientLook(e), false);
+    assert.match(e.message, /success=false/);
+  });
+
+  test('no credential is final, and `fetch` is never called for it', async () => {
+    let calls = 0;
+    const e = await caught(
+      async () => {
+        calls += 1;
+        return { ok: true, status: 200, text: async () => '{}' };
+      },
+      { env: {} },
+    );
+    assert.ok(e instanceof CouldNotLook);
+    assert.equal(isTransientLook(e), false, 'a missing token is not going to appear on the second attempt');
+    assert.equal(calls, 0, 'the credential is checked BEFORE the network, so a blank environment costs no request');
   });
 });

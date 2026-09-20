@@ -137,7 +137,7 @@
   "ops-verifiers.test.mjs": 18,
   "package-boundaries.test.mjs": 19,
   "package-earned.test.mjs": 25,
-  "pages-deployments.test.mjs": 67,
+  "pages-deployments.test.mjs": 82,
   "palette-consistent.test.mjs": 56,
   "password-reset-revokes.test.mjs": 9,
   "platform-proof-fresh.test.mjs": 86,
