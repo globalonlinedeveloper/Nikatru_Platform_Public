@@ -85,13 +85,33 @@ import 'store_capture_guard.dart';
 /// listing carries no third-party trademark — the rule Google states on its
 /// preview-asset page and [ADR 019] states for every generated asset. The
 /// prices are round illustrative figures, not any real company's tariff.
+///
+/// ── THE THIRD COLUMN IS THE CATEGORY, ADDED 2026-09-20 ──────────────────────
+///
+/// 🔴 IT IS THERE BECAUSE THE LISTING SHOWED THE PRODUCT NOT WORKING. Every
+/// frame this lane has ever published put all six rows in ONE bucket: Insights
+/// rendered a single-slice donut reading `Other $93`, and Budget rendered one
+/// `Other` bar. The rows carried no category, so `SubMath.categoryTotals`
+/// grouped them under `add_subscription_sheet.dart`'s `_uncategorised`
+/// fallback — correct behaviour, photographed as the product's capability.
+///
+/// ⚠️ EVERY VALUE BELOW MUST EXIST IN THAT SHEET'S OWN VOCABULARY, which is
+/// DERIVED from the budget caps (`DemoData.budget().categories`) rather than
+/// declared: Streaming, Music, AI tools, Creative, Fitness, Developer,
+/// Productivity, Cloud, News, Security, plus `Other`. A value off that list
+/// cannot be chosen in the dropdown at all, so the loop below asserts the
+/// menu item is reachable rather than trusting the string.
+///
+/// Still GENERIC BY CONSTRUCTION — the rule the names already obeyed. A
+/// category is a bucket name the app ships, not a company, so nothing here
+/// puts a third-party mark on a store page.
 const List<List<String>> kIllustrative = <List<String>>[
-  <String>['Video streaming', '15.99'],
-  <String>['Music streaming', '10.99'],
-  <String>['Cloud storage', '2.99'],
-  <String>['AI assistant', '20.00'],
-  <String>['Fitness club', '39.00'],
-  <String>['News digest', '4.50'],
+  <String>['Video streaming', '15.99', 'Streaming'],
+  <String>['Music streaming', '10.99', 'Music'],
+  <String>['Cloud storage', '2.99', 'Cloud'],
+  <String>['AI assistant', '20.00', 'AI tools'],
+  <String>['Fitness club', '39.00', 'Fitness'],
+  <String>['News digest', '4.50', 'News'],
 ];
 
 void main() {
@@ -125,6 +145,76 @@ void main() {
   // file registers one `testWidgets` and there is no other suite in the
   // process to surprise.
   WidgetController.hitTestWarningShouldBeFatal = true;
+
+  // ── 🔴 EVERY FRAMEWORK ERROR GOES INTO `reportData`, WHICH THE STEP LOG
+  //       PRINTS. THIS FILE HAS NOW PAID FOR THAT CHANNEL GAP THREE TIMES. ────
+  //
+  // Run 35483690951 (2026-09-20) failed with the whole diagnosis withheld:
+  //
+  //     Multiple exceptions (2) were detected during the running of the
+  //     current test, and at least one was unexpected.
+  //
+  // and NOT ONE WORD of either exception anywhere in the 601-line step log —
+  // while the run had in fact captured all four phone frames (`captured …
+  // 01-home.png (380700 bytes)` and three more) and created all six
+  // subscriptions (`purged subscriptions: 6 row(s)`). So the lane produced a
+  // complete set, failed, and could not say why.
+  //
+  // The cause is the one this file already documents twice, at the seeding loop
+  // and at the `--proof` notice: `FlutterError.dumpErrorToConsole` routes
+  // through `debugPrint`, which under `flutter drive -d web-server` is the
+  // BROWSER's console, not the terminal the step log captures. The summary line
+  // above is the driver's; the two details were written somewhere nobody reads.
+  //
+  // `binding.reportData` is the one channel that DOES reach the host: the
+  // driver's `result {...}` line already carries `data.screenshots`, so
+  // anything put here is printed verbatim beside it.
+  //
+  // ⚠️ IT CHAINS RATHER THAN REPLACES, and that is load-bearing. `onError` is
+  // what flutter_test uses to accumulate `_pendingExceptionDetails` and fail the
+  // test; swallowing it would turn a red run GREEN and put an unexamined set on
+  // a store listing — strictly worse than the silence being fixed. The previous
+  // handler is called for every error, so the verdict is unchanged and only the
+  // REPORTING is added.
+  //
+  // 🔴 AND IT IS INSTALLED INSIDE THE TEST BODY, NOT HERE IN `main()`, WHICH IS
+  // THE DIFFERENCE BETWEEN THIS WORKING AND LOOKING LIKE IT WORKS.
+  // `TestWidgetsFlutterBinding.runTest` ASSIGNS `FlutterError.onError` its own
+  // handler when the test starts — that handler IS the one accumulating the
+  // details flutter_test later counts. A handler installed out here is
+  // overwritten before the first widget builds, would capture nothing, and
+  // would report an empty `flutterErrors` list on a run with two exceptions in
+  // it: a reporting channel that is silent for the same reason as the one it
+  // replaced. `installErrorReporter` below is called after `app.main()`'s
+  // neighbours, where the binding's handler is already the previous one.
+  final List<String> flutterErrors = <String>[];
+
+  /// Chains error reporting onto whatever handler is installed RIGHT NOW, and
+  /// returns the restore callback. Both halves matter: flutter_test fails any
+  /// test that leaves a global changed, which is the same rule `ErrorWidget
+  /// .builder` is restored for on the last line of the body.
+  VoidCallback installErrorReporter() {
+    // The function type spelled out rather than `FlutterExceptionHandler`: that
+    // typedef lives in package:flutter/foundation.dart and material.dart does
+    // NOT re-export it, so naming it here costs an import for one word.
+    final void Function(FlutterErrorDetails)? previous = FlutterError.onError;
+    FlutterError.onError = (FlutterErrorDetails details) {
+      flutterErrors.add(
+        // `toDiagnosticsNode` rather than `exception.toString()`: a RenderFlex
+        // overflow's useful half (which box, by how many pixels, in whose
+        // subtree) lives in the diagnostics, not in the exception object.
+        details.toDiagnosticsNode().toStringDeep(
+          minLevel: DiagnosticLevel.info,
+        ),
+      );
+      binding.reportData = <String, dynamic>{
+        ...?binding.reportData,
+        'flutterErrors': flutterErrors,
+      };
+      previous?.call(details);
+    };
+    return () => FlutterError.onError = previous;
+  }
 
   const String email = String.fromEnvironment('E2E_EMAIL');
   const String password = String.fromEnvironment('E2E_PASSWORD');
@@ -231,6 +321,11 @@ void main() {
     // that leaves that global changed, so the last line of this body puts it
     // back — the shape `launchApp` already uses at app_test.dart:586.
     final ErrorWidgetBuilder builderBeforeTest = ErrorWidget.builder;
+    // Installed BEFORE app.main(), so an error thrown by the very first build
+    // is reported too — that is the half a handler installed after the first
+    // pump would miss, and "the app failed to start" is exactly the failure
+    // worth reading.
+    final VoidCallback restoreErrorReporter = installErrorReporter();
     await app.main();
     await pumpFor(tester, const Duration(seconds: 3));
 
@@ -495,6 +590,87 @@ void main() {
         await tester.enterText(find.byKey(E2EKeys.addName), row[0]);
         await tester.enterText(find.byKey(E2EKeys.addPrice), row[1]);
         await pumpFor(tester, const Duration(milliseconds: 400));
+
+        // ── THE CATEGORY, CHOSEN IN THE SHEET'S OWN DROPDOWN ────────────────
+        //
+        // 🔴 THE SHEET HAS NO `E2EKeys` ENTRY FOR THIS FIELD, so it is found by
+        // TYPE. `add_subscription_sheet.dart`'s `_categoryField()` builds
+        // exactly one `DropdownButtonFormField<String>` and the sheet is the
+        // only thing on screen that builds one at all, so the type is unique
+        // here — but it is a weaker handle than a key, and the `findsOneWidget`
+        // below is what turns "the sheet changed shape" into a named failure
+        // instead of a tap on whatever else matched first. Adding the key is an
+        // `apps/subscriptiontracker/lib/` change this increment does not own.
+        //
+        // ⚠️ IT IS `ensureVisible`d FOR THE SAME REASON THE SUBMIT BUTTON IS,
+        // and the reason is measured two blocks below: at 360x640 this sheet
+        // lays its lower controls out past the bottom of the screen. The
+        // dropdown sits BELOW both text fields, so it is in that region.
+        final Finder categoryField = find.byType(
+          DropdownButtonFormField<String>,
+        );
+        expect(
+          categoryField,
+          findsOneWidget,
+          reason:
+              'The add sheet built no category dropdown, so "${row[0]}" would '
+              'be created as Other — which is the exact defect this column was '
+              'added to fix, and it would be photographed rather than raised. '
+              'On screen: ${onScreen(tester)}',
+        );
+        await tester.ensureVisible(categoryField);
+        await pumpFor(tester, const Duration(milliseconds: 400));
+        expect(
+          categoryField.hitTestable(),
+          findsOneWidget,
+          reason:
+              'The category dropdown is in the tree but a finger could not '
+              'reach it at 360x640, even after ensureVisible. On screen: '
+              '${onScreen(tester)}',
+        );
+        await tester.tap(categoryField);
+        // The menu is an overlay ROUTE with its own entrance animation; a
+        // shorter wait taps the half-built list.
+        await pumpFor(tester, const Duration(milliseconds: 900));
+
+        // 🔴 `.hitTestable()` IS DOING REAL WORK HERE, NOT DECORATION.
+        // `DropdownButtonFormField` builds EVERY item a second time inside the
+        // button itself (an `IndexedStack`, so the unselected ones are laid out
+        // and invisible). So `find.text('Streaming')` matches TWICE once the
+        // menu is open — the hidden copy in the button and the real item in the
+        // overlay — and a plain `.last` would be betting on build order.
+        // Only one of the two can be hit: the one in the menu.
+        final Finder menuItem = find.text(row[2]).hitTestable();
+        expect(
+          menuItem,
+          findsOneWidget,
+          reason:
+              'The category "${row[2]}" is not a reachable item in the open '
+              'dropdown. Either it is absent from the sheet\'s vocabulary — '
+              'which is DERIVED from DemoData.budget().categories, so a cap '
+              'rename silently removes a value this loop still asks for — or '
+              'the menu opened scrolled past it at 360x640. On screen: '
+              '${onScreen(tester)}',
+        );
+        await tester.tap(menuItem);
+        await pumpFor(tester, const Duration(milliseconds: 600));
+
+        // The receipt: the closed field must now read the chosen category.
+        // Without this a menu that opened, ate the tap and closed unchanged
+        // would leave the row uncategorised and say nothing — the same
+        // silent-miss shape as the submit button below.
+        expect(
+          find.descendant(
+            of: categoryField,
+            matching: find.text(row[2]),
+            matchRoot: true,
+          ),
+          findsWidgets,
+          reason:
+              'The dropdown closed without taking "${row[2]}" for "${row[0]}", '
+              'so this row would be created as Other. On screen: '
+              '${onScreen(tester)}',
+        );
 
         // 🔴 THE SHIP-BLOCKER, AND IT IS THE CONSENT-SCRIM CLASS AGAIN: A TAP
         // THAT MISSES WITHOUT FAILING. Run 32961461714 (2026-08-26) failed
@@ -766,6 +942,12 @@ void main() {
     // screen its `find.byType` names and fails if that source reads `.email`.
 
     ErrorWidget.builder = builderBeforeTest;
+    // Same rule as the line above: flutter_test fails a test that leaves a
+    // global changed. The collected text is already in `binding.reportData`, so
+    // restoring the handler loses nothing — the driver prints the list whatever
+    // the verdict, which is the point of putting it there rather than in a
+    // `debugPrint` nobody receives.
+    restoreErrorReporter();
     // And the SemanticsHandle `app.main()` holds on web: flutter_test verifies
     // handles in the same post-body block, so a body that leaves it active fails
     // after its last capture (lib/core/a11y/web_semantics.dart; app_test.dart's
