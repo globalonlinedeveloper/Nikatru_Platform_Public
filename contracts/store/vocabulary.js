@@ -273,6 +273,11 @@ export const LISTING_CATEGORIES = /** @type {const} */ ({
   'chrome-webstore': ['Productivity'],
   'edge-addons': ['Productivity'],
   amo: ['Photos, Music & Videos', 'Privacy & Security'],
+  // apps-gov-in: added 2026-09-20 when Public #836 created that listing tree. The
+  // store publishes no category list of its own (its 18-page guidelines name none),
+  // so this is what the tree spells, UNVERIFIED against a store-published set like
+  // every other row here.
+  'apps-gov-in': ['Productivity'],
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
