@@ -380,7 +380,7 @@ void main() {
   /// matching frame can be satisfied by a state the app is merely passing
   /// THROUGH — the shape that let the nightly E2E pass on a transiting login
   /// screen for weeks (`test/sign_out_destination_test.dart`, and the note at
-  /// `settings_screen.dart:896`). Every destination assertion below is made
+  /// `settings_screen.dart:981`). Every destination assertion below is made
   /// after this returns AND after a further fixed settle, never on first sight.
   Future<bool> waitGone(
     WidgetTester tester,
@@ -444,9 +444,9 @@ void main() {
     );
 
     // `app.main()` installs AppErrorScreen as `ErrorWidget.builder`
-    // (main.dart:78 → system_screens.dart:72) and flutter_test fails any test
+    // (main.dart:100 → system_screens.dart:72) and flutter_test fails any test
     // that leaves that global changed, so the last line of this body puts it
-    // back — the shape `launchApp` already uses at app_test.dart:586.
+    // back — the shape `launchApp` already uses at app_test.dart:638.
     final ErrorWidgetBuilder builderBeforeTest = ErrorWidget.builder;
     // Installed BEFORE app.main(), so an error thrown by the very first build
     // is reported too — that is the half a handler installed after the first
@@ -555,7 +555,7 @@ void main() {
       findsOneWidget,
       reason:
           'Skip did not settle on the login form. The string is not missing — '
-          '`welcomeBack` renders at login_screen.dart:371 whenever LoginScreen '
+          '`welcomeBack` renders at login_screen.dart:412 whenever LoginScreen '
           'is mounted — so the app is somewhere else. On screen: '
           '${onScreen(tester)}',
     );
@@ -569,6 +569,41 @@ void main() {
       password.isEmpty ? 'demo-password' : password,
     );
     await pumpFor(tester, const Duration(milliseconds: 500));
+
+    // ── the submit button moves 81px down the moment a site key exists ───────
+    //
+    // 🔴 THE TURNSTILE GATE IS INVISIBLE UNTIL IT IS CONFIGURED, and this lane
+    // is the only one small enough to notice. `TurnstileGate` renders
+    // `SizedBox.shrink()` with no `TURNSTILE_SITE_KEY` and a
+    // `CloudflareTurnstile` at `flexible` (height 65) inside
+    // `Padding(bottom: 16)` with one — 81px inserted directly above this
+    // button. At 360x640 that lands `e2e_login_submit` at y 644, four pixels
+    // below the bottom of the viewport:
+    //
+    //     tap() … derived an Offset (Offset(180.0, 644.0)) … outside the
+    //     bounds of the root of the render tree, Size(360.0, 640.0).
+    //
+    // 644 − 81 = 563, which is where it sat on every run before the key was
+    // supplied — so the capture's three CI failures and the two local
+    // rehearsals of 2026-09-20 are the SAME geometry, not a flake. The form is
+    // already inside a `SingleChildScrollView` (login_screen.dart:360, with
+    // the gate at :527 immediately above the button at :532), so
+    // `ensureVisible` is the whole fix; the assertion after it is the guard,
+    // written the way the add-sheet one below is, for the same reason — a
+    // re-layout must red HERE, naming the geometry, not eleven lines later as
+    // "sign-in failed".
+    await tester.ensureVisible(find.byKey(E2EKeys.loginSubmit));
+    await pumpFor(tester, const Duration(milliseconds: 400));
+    expect(
+      find.byKey(E2EKeys.loginSubmit).hitTestable(),
+      findsOneWidget,
+      reason:
+          'The login submit button is in the tree but a finger could not reach '
+          'it, so the capture would stop at the login form and produce no '
+          'frames at all — which is exactly what runs 35488534460 and the two '
+          'local rehearsals did. The Turnstile widget above it is 81px tall '
+          'once TURNSTILE_SITE_KEY is set. On screen: ${onScreen(tester)}',
+    );
     await tester.tap(find.byKey(E2EKeys.loginSubmit));
     await pumpFor(tester, const Duration(seconds: 10));
 
