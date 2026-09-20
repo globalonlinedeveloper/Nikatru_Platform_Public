@@ -65,10 +65,12 @@
 //      it the APP's brand rather than merely "not Flutter's". A guard that only
 //      says "different from stock" is satisfied by a blank square.
 //
-// Usage:  node tooling/ci/assert-stamp-brand-assets.mjs <appDir> [--seed RRGGBB]
+// Usage:  node tooling/ci/assert-stamp-brand-assets.mjs [appDir] [--seed RRGGBB]
+//         appDir  an app directory, or the checkout root to grade every
+//                 catalogued app in it. Defaults to the working directory.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync } from 'node:fs';
-import { join, resolve, basename } from 'node:path';
+import { join, resolve, dirname } from 'node:path';
 import { inflateSync } from 'node:zlib';
 // ⚠️ NO `listDir` IMPORT ANY MORE, and that is deliberate rather than a
 // leftover. This guard used to enumerate the SDK template directories itself;
@@ -100,9 +102,15 @@ const relaunched = relaunchSingleThreaded(import.meta.url, process.argv.slice(2)
 if (relaunched !== null) process.exit(relaunched);
 
 const args = process.argv.slice(2);
-const appDir = resolve(args.find((a) => !a.startsWith('--')) ?? '.');
 const seedIdx = args.indexOf('--seed');
 const seedArg = seedIdx > -1 ? (args[seedIdx + 1] ?? '').replace('#', '').toLowerCase() : null;
+// ⚠️ THE SEED'S VALUE IS NOT A POSITIONAL ARGUMENT. `args.find(a => !a.startsWith('--'))`
+// took the first non-flag token, so `--seed 6459f5 apps/probe` resolved `6459f5`
+// as the directory to grade — shell-13, a hand-rolled argv loop that does not
+// know which flags carry a value. The one flag that does is excluded by index.
+const positional = args.filter((a, i) => !a.startsWith('--') && !(seedIdx > -1 && i === seedIdx + 1));
+/** The path this guard was pointed at: an app directory, or a checkout root. */
+const target = resolve(positional[0] ?? '.');
 
 /** The web asset set — the stamped path, which is ALSO the key
  *  `readStockAssets` returns for the SDK's counterpart. Deliberately explicit
@@ -163,32 +171,137 @@ if (stock.size === 0) {
   ]);
 }
 
-// ── read the stamp's claimed platforms from the catalogue it wrote ──────────
+// ── which tree is being graded, and which of its directories are APPS ───────
+// 🔴 AN APP ID IS NOT A DIRECTORY NAME, AND THE FILESYSTEM CANNOT ANSWER THE
+// QUESTION. Until 2026-09-21 this read `basename(appDir)` and
+// `appDir/../../catalog/apps.json` — two guesses about where the checkout sits,
+// in place of one question put to the checkout. Run with NO argument from a git
+// worktree, which is exactly how `tooling/scripts/guard-sweep.mjs` runs it (its
+// only ci.yml invocation carries `apps/probe` and `--seed "$SEED"`; the probe
+// does not exist outside the app_brick job and `$SEED` is a runner variable, so
+// every invocation is refused and the bare-invocation fallback runs it from the
+// repo root), it graded THE FOLDER THE LANE WAS SITTING IN:
+//
+//     .worktrees/donut           ✗ COVERAGE LOST — no platform claim found for "donut"
+//     .worktrees/replay-fixture  ✗ COVERAGE LOST — … for "replay-fixture"
+//
+// observed 2026-09-20 by two independent lanes. Those are branch workspaces, not
+// apps; no catalogue entry for them exists or ever should. The `../..` walked
+// OUT of the worktree in the same step and read the MAIN checkout's catalogue —
+// so the guard answered a question about one tree out of another tree's facts.
+//
+// 🔴 THE COST WAS NEVER THE RED. `preflight.mjs` files it ENVIRONMENTAL because
+// the merge-base reproduces it, so it blocks nothing — and a guard that cannot
+// run where the work happens has a PERMANENT coverage loss that every lane is
+// trained to scroll past. That is precisely how a real [S-14] finding — a
+// shipped app wearing Flutter's icon — would be waved through.
+//
+// So the catalogue decides, and the catalogue is the one belonging to the tree
+// we were pointed at: the nearest ancestor holding `catalog/apps.json`, itself
+// included, which inside a worktree IS the worktree. Pointed at an app
+// directory, grade that app. Pointed at the checkout root — the no-argument
+// case — grade every catalogued app that exists in it. Pointed at anything
+// else, say so and refuse: a branch that quietly grades nothing is the failure
+// this whole file is made of.
+//
+// ⚠️ Adding the worktree names to `catalog/apps.json` was considered and is
+// WRONG (O-STAMP-GUARD-READS-THE-DIRECTORY-NAME-AS-AN-APP-ID's own note). A
+// directory name is not an app and never will be.
+
+/** The nearest ancestor of `from`, itself included, that holds `catalog/apps.json`.
+ *  Bounded twice — by the filesystem root and by a step limit — so a mount loop
+ *  cannot spin. `existsSync` only: no directory is ENUMERATED here, which is why
+ *  this file still imports no `listDir` (assert-walks-bounded R3). */
+function checkoutRootFor(from) {
+  let dir = from;
+  for (let i = 0; i < 64; i++) {
+    if (existsSync(join(dir, 'catalog', 'apps.json'))) return dir;
+    const up = dirname(dir);
+    if (up === dir) return null;
+    dir = up;
+  }
+  return null;
+}
+
+/** Windows compares paths case-insensitively and POSIX does not; comparing raw
+ *  strings would miss `C:\…\Apps\probe` against `C:\…\apps\probe`. */
+const samePath = (a, b) =>
+  process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b;
+
+const repoRoot = checkoutRootFor(target);
+if (repoRoot === null) {
+  coverageLost([
+    `✗ COVERAGE LOST — no catalog/apps.json at or above ${target}, so nothing here can say which directories are apps.`,
+    '  The asset set is derived from a platform claim and the claim lives in the catalogue. Point this guard at',
+    '  an app directory inside a checkout, or run it from the checkout root.',
+  ]);
+}
+const catalogue = join(repoRoot, 'catalog', 'apps.json');
+let entries;
+try {
+  const parsed = JSON.parse(readFileSync(catalogue, 'utf8'));
+  if (!Array.isArray(parsed)) throw new Error('the catalogue is not a JSON array');
+  entries = parsed.filter((e) => e && typeof e.slug === 'string');
+} catch (e) {
+  // NOT a silent fall-through to "no platform claim", which is what this did
+  // until 2026-09-21: a BROKEN CATALOGUE and a MISSING CLAIM are two different
+  // repairs, and one sentence for both sends the reader to the wrong file.
+  coverageLost([
+    `✗ COVERAGE LOST — ${catalogue} is not a readable catalogue (${e.message}).`,
+    '  Every platform claim below would be read out of it, so nothing can be required and nothing checked.',
+  ]);
+}
+
+/** The catalogue carries a `slug` and the tree carries `apps/<slug>` — one
+ *  convention, held by assert-catalog-contract.mjs, not re-derived here. */
+const appDirFor = (slug) => join(repoRoot, 'apps', slug);
+
+const pointedAt = entries.find((e) => samePath(appDirFor(e.slug), target));
+let graded;
+if (pointedAt) {
+  graded = [pointedAt];
+} else if (samePath(target, repoRoot)) {
+  graded = entries.filter((e) => existsSync(appDirFor(e.slug)));
+  if (graded.length === 0) {
+    coverageLost([
+      `✗ COVERAGE LOST — ${catalogue} lists ${entries.length} app(s) and NOT ONE has a directory under ${join(repoRoot, 'apps')}.`,
+      '  Every check below would range over nothing, which is indistinguishable from every asset being correct.',
+    ]);
+  }
+} else {
+  coverageLost([
+    `✗ COVERAGE LOST — ${target} is neither a catalogued app directory of ${repoRoot} nor that checkout's own root.`,
+    `  ${catalogue} knows ${entries.length} app(s): ${entries.map((e) => e.slug).join(', ') || '(none)'}.`,
+    '  A directory name is not an app id. Name an app directory, or the checkout root to grade every app in it.',
+  ]);
+}
+
+if (seedArg && graded.length > 1) {
+  fail([
+    `✗ --seed names ONE app's brand and ${graded.length} apps were selected (${graded.map((e) => e.slug).join(', ')}).`,
+    '  A single seed asserted across several apps would pass whichever one happens to share it and fail the rest.',
+    '  Name the app directory whose seed this is.',
+  ]);
+}
+
+// ── the claimed platforms, per app, from the catalogue the app wrote ────────
 // Claim-driven, exactly as [3]S-3 is: the guard checks what the app SAYS it
 // ships, so it scales when a native platform is added without being reworded.
-const appId = basename(appDir);
-let claimed = null;
-const catalogue = join(appDir, '..', '..', 'catalog', 'apps.json');
-if (existsSync(catalogue)) {
-  try {
-    const entry = JSON.parse(readFileSync(catalogue, 'utf8')).find((e) => e && e.slug === appId);
-    if (entry && Array.isArray(entry.platforms)) claimed = entry.platforms;
-  } catch {
-    /* fall through to the default below */
+for (const entry of graded) {
+  const claimed = Array.isArray(entry.platforms) ? entry.platforms : null;
+  if (!claimed || claimed.length === 0) {
+    coverageLost([
+      `✗ COVERAGE LOST — no platform claim found for "${entry.slug}" in ${catalogue}.`,
+      '  The asset set is derived from the claim; with no claim there is nothing to require, and an',
+      '  empty requirement passes. [pipeline S-3] owns the claim itself.',
+    ]);
   }
-}
-if (!claimed || claimed.length === 0) {
-  coverageLost([
-    `✗ COVERAGE LOST — no platform claim found for "${appId}" in ${catalogue}.`,
-    '  The asset set is derived from the claim; with no claim there is nothing to require, and an',
-    '  empty requirement passes. [pipeline S-3] owns the claim itself.',
-  ]);
-}
-if (!claimed.includes('web')) {
-  fail([
-    `✗ "${appId}" claims [${claimed.join(', ')}] and NOT web, which this guard is the whole of today.`,
-    '  If a native platform claim landed, this guard needs its asset list before the claim ships.',
-  ]);
+  if (!claimed.includes('web')) {
+    fail([
+      `✗ "${entry.slug}" claims [${claimed.join(', ')}] and NOT web, which this guard is the whole of today.`,
+      '  If a native platform claim landed, this guard needs its asset list before the claim ships.',
+    ]);
+  }
 }
 
 // ── PNG reading, enough to prove it is one and to find its dominant colour ──
@@ -257,43 +370,51 @@ const notes = [];
 let checked = 0;
 let colourChecked = 0;
 
-for (const rel of WEB_ASSETS) {
-  const p = join(appDir, rel);
-  if (!existsSync(p)) {
-    problems.push(`${rel} — MISSING. The stamp claims web and a PWA needs this asset.`);
-    continue;
-  }
-  const bytes = readFileSync(p);
-  const png = readPng(bytes);
-  if (!png) {
-    problems.push(`${rel} — is not a readable PNG (${bytes.length} bytes). Present is not the same as valid.`);
-    continue;
-  }
-  checked++;
+const expected = WEB_ASSETS.length * graded.length;
 
-  const stockBytes = stock.get(rel);
-  if (!stockBytes) {
-    notes.push(`${rel} — no stock counterpart in this SDK; identity check skipped for it.`);
-  } else if (stockBytes.length === bytes.length && stockBytes.equals(bytes)) {
-    problems.push(
-      `${rel} — is BYTE-IDENTICAL to Flutter's stock asset. [S-14] This is the default icon, ` +
-        'shipped under the app\'s name. In the template it is not one app with the wrong icon, it is ' +
-        'every app the factory stamps.',
-    );
-    continue;
-  }
+for (const entry of graded) {
+  const appDir = appDirFor(entry.slug);
+  for (const rel of WEB_ASSETS) {
+    // The app is named on every line: with more than one graded, `Icon-192.png —
+    // MISSING` on its own does not say whose.
+    const where = `${entry.slug}: ${rel}`;
+    const p = join(appDir, rel);
+    if (!existsSync(p)) {
+      problems.push(`${where} — MISSING. The stamp claims web and a PWA needs this asset.`);
+      continue;
+    }
+    const bytes = readFileSync(p);
+    const png = readPng(bytes);
+    if (!png) {
+      problems.push(`${where} — is not a readable PNG (${bytes.length} bytes). Present is not the same as valid.`);
+      continue;
+    }
+    checked++;
 
-  if (seedArg) {
-    const dom = dominantColour(png);
-    if (dom === null) {
-      notes.push(`${rel} — dominant colour unreadable (not 8-bit truecolour/filter-0); colour limb skipped.`);
-    } else {
-      colourChecked++;
-      if (dom !== seedArg) {
-        problems.push(
-          `${rel} — dominant colour is #${dom}, but the spec's seed is #${seedArg}. "Not Flutter's" is ` +
-            'not the same as "the app\'s": a blank square would pass the identity check alone.',
-        );
+    const stockBytes = stock.get(rel);
+    if (!stockBytes) {
+      notes.push(`${where} — no stock counterpart in this SDK; identity check skipped for it.`);
+    } else if (stockBytes.length === bytes.length && stockBytes.equals(bytes)) {
+      problems.push(
+        `${where} — is BYTE-IDENTICAL to Flutter's stock asset. [S-14] This is the default icon, ` +
+          'shipped under the app\'s name. In the template it is not one app with the wrong icon, it is ' +
+          'every app the factory stamps.',
+      );
+      continue;
+    }
+
+    if (seedArg) {
+      const dom = dominantColour(png);
+      if (dom === null) {
+        notes.push(`${where} — dominant colour unreadable (not 8-bit truecolour/filter-0); colour limb skipped.`);
+      } else {
+        colourChecked++;
+        if (dom !== seedArg) {
+          problems.push(
+            `${where} — dominant colour is #${dom}, but the spec's seed is #${seedArg}. "Not Flutter's" is ` +
+              'not the same as "the app\'s": a blank square would pass the identity check alone.',
+          );
+        }
       }
     }
   }
@@ -301,7 +422,8 @@ for (const rel of WEB_ASSETS) {
 
 if (checked === 0) {
   coverageLost([
-    `✗ COVERAGE LOST — none of the ${WEB_ASSETS.length} expected web assets was readable under ${appDir}.`,
+    `✗ COVERAGE LOST — none of the ${expected} expected web assets was readable under ` +
+      `${graded.map((e) => appDirFor(e.slug)).join(', ')}.`,
     '  Every check below ranged over nothing.',
   ]);
 }
@@ -316,8 +438,9 @@ if (problems.length) {
 
 for (const n of notes) console.log(`⚠  ${n}`);
 console.log(
-  `ok  stamp brand assets — ${checked}/${WEB_ASSETS.length} asset(s) present, valid PNG, and none ` +
-    `identical to the SDK's stock (${stock.size} stock asset(s) compared)` +
+  `ok  stamp brand assets — ${checked}/${expected} asset(s) present, valid PNG, and none ` +
+    `identical to the SDK's stock (${stock.size} stock asset(s) compared) across ${graded.length} ` +
+    `catalogued app(s) [${graded.map((e) => e.slug).join(', ')}] in ${repoRoot}` +
     (seedArg ? `; ${colourChecked} carry seed #${seedArg}` : '; colour limb not requested'),
 );
 // Read from this process's own start-up flags: remove the relaunch above and this

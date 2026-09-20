@@ -191,7 +191,7 @@
   "snapcraft-generable.test.mjs": 66,
   "spec-guards-worktree.test.mjs": 11,
   "spec-guards.test.mjs": 9,
-  "stamp-brand-assets.test.mjs": 13,
+  "stamp-brand-assets.test.mjs": 19,
   "stamp-platforms.test.mjs": 28,
   "stamp-properties.test.mjs": 18,
   "stamp-text-fidelity.test.mjs": 41,
