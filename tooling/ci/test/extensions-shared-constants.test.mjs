@@ -12,8 +12,15 @@
 //      BEHAVIOUR: each heading spelling is fed to both readers, and they must
 //      agree on every one.
 //   2. the zip DOS timestamp — lib/zip-time.mjs; scripts/pack.mjs and
-//      templates/tool/publish/pack.mjs import it. Full_Screen_Shot's CommonJS
-//      packager keeps a copy, whose VALUE is compared here.
+//      templates/tool/publish/pack.mjs import it, and since 2026-09-20
+//      Full_Screen_Shot's CommonJS packager `require()`s it too, so there is no
+//      longer a value to compare. The three cases below grade the three things
+//      that replaced the comparison: the packager reads that module and defines
+//      neither constant itself; the BYTES its writeZip stamps into a real
+//      archive are the module's values; and the node majors extensions.yml runs
+//      the sims on are all high enough for a CommonJS file to require an ES
+//      module at all (22.12.0 and up), because that is what the first two rest
+//      on and it is written in a workflow matrix nothing else reads.
 //   3. the Chrome Web Store service-account env var — publish-cws-token.mjs's
 //      CWS_SA_ENV, imported by the callers and the preflight. extensions.yml
 //      cannot import it, so the workflow's CWS_* secret names must equal the
@@ -28,6 +35,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'nod
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { createRequire } from 'node:module';
 import { stripSourceComments } from '../text-reductions.mjs';
 import { parseWorkflow } from '../workflow-scan.mjs';
 
@@ -118,15 +126,8 @@ describe('changelog-section.mjs never hands release.yml an empty release note', 
 });
 
 // ── 2 ───────────────────────────────────────────────────────────────────────
-/** The value of `const NAME = <expr>` in a file's comment-free code, when the
- *  expression is integer arithmetic only. */
-function constValue(code, name) {
-  const m = new RegExp(`\\b${name}\\s*=\\s*([^,;]+)`).exec(code);
-  assert.ok(m, `no \`${name} =\` in code`);
-  const expr = m[1].trim();
-  assert.match(expr, /^[\s\d()xXa-fA-F<>|&+\-*]+$/, `\`${name}\` is not a plain integer expression: ${expr}`);
-  return Function(`"use strict"; return (${expr});`)();
-}
+const ZIP_TIME = join(EXT, 'scripts', 'lib', 'zip-time.mjs');
+const FULLSHOT_PKG = 'Extension/Full_Screen_Shot/publish/package.node.js';
 
 describe('the zip timestamp is ONE constant', () => {
   const IMPORTERS = ['scripts/pack.mjs', 'templates/tool/publish/pack.mjs'];
@@ -136,7 +137,7 @@ describe('the zip timestamp is ONE constant', () => {
       const code = stripSourceComments(readFileSync(join(EXT, rel), 'utf8'), '.mjs');
       const imp = /import\s*\{([^}]*)\}\s*from\s*['"]([^'"]*zip-time\.mjs)['"]/.exec(code);
       assert.ok(imp, `${rel} does not import from zip-time.mjs`);
-      assert.equal(resolve(dirname(join(EXT, rel)), imp[2]), join(EXT, 'scripts', 'lib', 'zip-time.mjs'), `${rel} imports a different zip-time.mjs`);
+      assert.equal(resolve(dirname(join(EXT, rel)), imp[2]), ZIP_TIME, `${rel} imports a different zip-time.mjs`);
       for (const n of ['DOS_TIME', 'DOS_DATE']) {
         assert.match(imp[1], new RegExp(`\\b${n}\\b`), `${rel} does not import ${n}`);
         assert.doesNotMatch(code, new RegExp(`(?:const|let|var)\\s[^;]*\\b${n}\\s*=`), `${rel} defines its own ${n}`);
@@ -144,12 +145,72 @@ describe('the zip timestamp is ONE constant', () => {
     }
   });
 
-  test('Full_Screen_Shot\'s CommonJS packager carries the same VALUE as lib/zip-time.mjs', async () => {
+  test('Full_Screen_Shot\'s CommonJS packager requires DOS_TIME/DOS_DATE from lib/zip-time.mjs and defines neither', () => {
+    const code = stripSourceComments(readFileSync(join(EXT, FULLSHOT_PKG), 'utf8'), '.js');
+    const req = /(?:const|let|var)\s*\{([^}]*)\}\s*=\s*require\(\s*['"]([^'"]*zip-time\.mjs)['"]\s*\)/.exec(code);
+    assert.ok(req, `${FULLSHOT_PKG} does not require zip-time.mjs`);
+    assert.equal(resolve(dirname(join(EXT, FULLSHOT_PKG)), req[2]), ZIP_TIME, `${FULLSHOT_PKG} requires a different zip-time.mjs`);
+    for (const n of ['DOS_TIME', 'DOS_DATE']) {
+      assert.match(req[1], new RegExp(`\\b${n}\\b`), `${FULLSHOT_PKG} does not destructure ${n} from zip-time.mjs`);
+    }
+    // The destructure above spells both names with a `,` or a `}` after them, so
+    // ANY `DOS_TIME =` / `DOS_DATE =` left in comment-free code is a second
+    // definition — which is how this constant came to be written three times.
+    assert.doesNotMatch(code, /\bDOS_(?:TIME|DATE)\s*=/, `${FULLSHOT_PKG} assigns DOS_TIME/DOS_DATE itself`);
+  });
+
+  test('the bytes Full_Screen_Shot\'s writeZip stamps ARE lib/zip-time.mjs\'s values', async () => {
+    // The case above is about the source text; this one opens an archive the
+    // packager just wrote and reads the two header fields out of it. A literal
+    // spliced back into writeZip, or a zip-time.mjs value that no longer
+    // reaches the writer, fails HERE even if the require line still reads right.
     const { DOS_TIME, DOS_DATE } = await mod('scripts/lib/zip-time.mjs');
-    const rel = 'Extension/Full_Screen_Shot/publish/package.node.js';
-    const code = stripSourceComments(readFileSync(join(EXT, rel), 'utf8'), '.js');
-    assert.equal(constValue(code, 'DOS_TIME'), DOS_TIME, `${rel} DOS_TIME differs from lib/zip-time.mjs`);
-    assert.equal(constValue(code, 'DOS_DATE'), DOS_DATE, `${rel} DOS_DATE differs from lib/zip-time.mjs`);
+    const PKG = createRequire(import.meta.url)(join(EXT, FULLSHOT_PKG));
+    assert.equal(typeof PKG.writeZip, 'function', `${FULLSHOT_PKG} no longer exports writeZip`);
+
+    const zip = join(TMP, `ziptime${seq++}.zip`);
+    // One tiny entry: deflate would not pay, so the writer takes its `store`
+    // branch and the archive is small enough to read field by field. Both
+    // branches write the same two timestamp fields, so either would do.
+    PKG.writeZip(zip, [{ name: 'a.txt', data: Buffer.from('x') }]);
+    const buf = readFileSync(zip);
+
+    assert.equal(buf.readUInt32LE(0), 0x04034b50, 'the first record is not a zip local header');
+    assert.equal(buf.readUInt16LE(10), DOS_TIME, 'the local header carries a different DOS time');
+    assert.equal(buf.readUInt16LE(12), DOS_DATE, 'the local header carries a different DOS date');
+
+    const cd = buf.indexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02]));
+    assert.ok(cd > 0, 'no central-directory record in the archive');
+    assert.equal(buf.readUInt16LE(cd + 12), DOS_TIME, 'the central directory carries a different DOS time');
+    assert.equal(buf.readUInt16LE(cd + 14), DOS_DATE, 'the central directory carries a different DOS date');
+  });
+
+  test('extensions.yml runs the Full_Screen_Shot sims only on node majors that can require() an ES module', () => {
+    // THE FLOOR THE TWO CASES ABOVE REST ON. `require()` of an .mjs is enabled
+    // by default from node 22.12.0; below it the packager — and therefore
+    // test/i18n-sim.node.js, which requires it — throws ERR_REQUIRE_ESM at load.
+    // The majors are written in ONE place, the sims matrix, and no other guard
+    // reads them: tooling/ci/assert-version-consistency.mjs's Node rule matches
+    // `node-version:` literals, and that step installs `${{ matrix.node }}`.
+    // A bare major is safe because setup-node resolves it to the newest release
+    // of that line, which for 22 can never again be below 22.12.
+    const MIN_MAJOR = 22;
+    const wf = parseWorkflow(REPO, '.github/workflows/extensions.yml');
+    assert.ok(wf, 'extensions.yml could not be read');
+    const sims = wf.jobs.get('sims');
+    assert.ok(sims, 'extensions.yml has no `sims` job — the sims moved and this floor is now unguarded');
+
+    const lines = sims.lines.map((l) => l.text);
+    const matrix = lines.find((t) => /^\s+node:\s*\[/.test(t));
+    assert.ok(matrix, 'the `sims` job no longer carries a `node:` matrix list');
+    const majors = [...matrix.matchAll(/'([0-9]+)(?:\.[0-9.]+)?'/g)].map((m) => Number(m[1]));
+    assert.ok(majors.length >= 2, `the sims matrix names ${majors.length} node version(s): ${matrix.trim()}`);
+    for (const m of majors) {
+      assert.ok(m >= MIN_MAJOR, `the sims run on node ${m}; Extension/Full_Screen_Shot/publish/package.node.js requires an ES module and needs ${MIN_MAJOR}.12 or newer`);
+    }
+    // ...and the matrix is what gets installed, or the majors above are decoration.
+    assert.ok(lines.some((t) => /node-version:\s*'\$\{\{\s*matrix\.node\s*\}\}'/.test(t)),
+      'the sims job no longer installs `${{ matrix.node }}`, so its matrix is not the node the sims run on');
   });
 });
 
