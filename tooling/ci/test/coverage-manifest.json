@@ -204,7 +204,7 @@
   "submission-safety.test.mjs": 22,
   "supabase-templates.test.mjs": 17,
   "sworn-store-files.test.mjs": 72,
-  "symbolication-proof.test.mjs": 47,
+  "symbolication-proof.test.mjs": 73,
   "text-reductions.test.mjs": 46,
   "triage-failed-runs.test.mjs": 56,
   "turnstile-hosts.test.mjs": 14,

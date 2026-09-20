@@ -17,11 +17,27 @@
 //                 trace; the LAST frame if no frame carries that address) must
 //                 name the same file and line.
 //
-// Exit 0 both match. Exit 1 a FINDING: the sink names another line (or the
-// ground truth does). Exit 2 COVERAGE LOST: no trace, no event, no token, no
-// frame to compare. Never a pass by absence.
+// 🔴 THE TWO READINGS ARE COMPARED AGAINST THE RECORDED STATE, NOT AN IDEAL ONE.
+// symbolication-expectation.json, beside this file, holds what [ADR 090] records
+// as true today: ground truth MATCH, sink MISMATCH, on GlitchTip 6.2.6. The
+// first five dispatches were all red — four for defects in the proof itself, the
+// last (35470727346) for its real finding — and a check that stays red forever
+// for a fact already decided trains its reader to ignore red, which is the class
+// docs/verification-discipline.md exists to prevent.
 //
-// Why this is expected to be RED on GlitchTip 6.2.6 (read, not run, at tag
+// Exit 0 reality EQUALS the record — and when the record still says something is
+//        broken, the verdict prints an unmissable banner naming what is broken,
+//        why the run is green and which row/ADR ends it. A green run here does
+//        NOT mean symbolication works.
+// Exit 1 reality DIFFERS from the record, naming which side changed: the sink now
+//        MATCHES (good news — close the row, amend the ADR, set "sink": "match"),
+//        or the ground truth broke (a regression in our own symbols/decoder).
+// Exit 2 COVERAGE LOST: no trace, no event, no token, no frame; a missing or
+//        malformed register; or the live instance is no longer the version the
+//        record was measured against, which makes the record stale. Never a pass
+//        by absence.
+//
+// Why the sink is recorded as MISMATCH on GlitchTip 6.2.6 (read, not run, at tag
 // v6.2.6): apps/difs/stacktrace_processor.py never reads debug_meta's
 // image_addr, and sentry_flutter 9.26.0 sends Dart AOT frames with an absolute
 // instruction_addr and no per-frame image_addr, so the image base is ESTIMATED
@@ -32,7 +48,8 @@
 //   expect         --source <dart file>
 //   extract-trace  --logcat <file> --out <file> --marker-out <file> [--marker <m>]
 //   verdict        --source <dart file> --trace <file> --symbolized <file> --marker <m>
-//                  --report <json out> [--wait-seconds N]   (needs GLITCHTIP_TOKEN)
+//                  --report <json out> [--wait-seconds N] [--expectation <json>]
+//                  (needs GLITCHTIP_TOKEN)
 // ─────────────────────────────────────────────────────────────────────────────
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
@@ -200,14 +217,126 @@ export function crashFrame(event, addr = null) {
   };
 }
 
+/** The name for one reading. `null` is UNAVAILABLE, which is never a pass. */
+export function readingWord(ok) {
+  return ok === null ? 'unavailable' : ok ? 'match' : 'mismatch';
+}
+
+/** Where the recorded state lives: beside this file, read on every verdict. */
+export const EXPECTATION_FILE = 'symbolication-expectation.json';
+const RECORDED = new Set(['match', 'mismatch']);
+const TEXT_FIELDS = ['recordedBy', 'row', 'broken', 'until'];
+
 /**
- * One exit for the two verdicts. A MISMATCH on either side is the finding (1).
- * Otherwise an UNAVAILABLE ground truth (null) is coverage lost (2), never 0.
+ * The recorded state, validated. Every field the verdict PRINTS is required, so
+ * a register cannot be stripped to `{}` and keep passing: an expectation nobody
+ * can read back is coverage lost, not a default.
  */
-export function verdictExit(truthOk, sinkOk) {
-  if (truthOk === false || sinkOk === false) return 1;
-  if (truthOk === null || sinkOk === null) return 2;
-  return 0;
+export function parseExpectation(text) {
+  let raw;
+  try {
+    raw = JSON.parse(text);
+  } catch (e) {
+    return { error: `the register is not JSON: ${e.message}` };
+  }
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return { error: 'the register is not a JSON object' };
+  for (const side of ['groundTruth', 'sink']) {
+    if (!RECORDED.has(raw[side])) {
+      return { error: `the register's "${side}" is ${JSON.stringify(raw[side])}; it must be "match" or "mismatch"` };
+    }
+  }
+  for (const k of TEXT_FIELDS) {
+    if (typeof raw[k] !== 'string' || raw[k].trim() === '') return { error: `the register's "${k}" is missing or empty` };
+  }
+  const ev = raw.evidence;
+  if (ev === null || typeof ev !== 'object' || Array.isArray(ev)) return { error: 'the register has no "evidence" object' };
+  for (const k of ['run', 'event', 'glitchtipVersion']) {
+    if (typeof ev[k] !== 'string' || ev[k].trim() === '') return { error: `the register's "evidence.${k}" is missing or empty` };
+  }
+  return { expectation: raw };
+}
+
+const RULE = '═'.repeat(78);
+
+/**
+ * The one verdict. It answers "does reality still equal the record?", never
+ * "is symbolication correct?" — the second question is what the record holds.
+ *
+ * 2  the register is unreadable, a reading is UNAVAILABLE, or the live instance
+ *    is not the version the record was measured against (the record is stale).
+ * 1  a side changed — named, with what to do about it, in both directions.
+ * 0  reality equals the record; the banner says what is still broken and why
+ *    this green is not the capability working.
+ */
+export function expectationVerdict({ expectation, truthOk, sinkOk, liveVersion, versionError = null }) {
+  const got = { groundTruth: readingWord(truthOk), sink: readingWord(sinkOk) };
+  const lines = [];
+  const lost = (why) => ({ exit: 2, asRecorded: false, got, lines: [`COVERAGE LOST — ${why}`] });
+
+  const recordedVersion = expectation.evidence.glitchtipVersion;
+  if (typeof liveVersion !== 'string' || liveVersion.trim() === '') {
+    return lost(
+      `the live GlitchTip version could not be read${versionError ? ` (${versionError})` : ''}, so this run cannot be` +
+        ` held against a record measured on ${recordedVersion}. The readings were groundTruth=${got.groundTruth}, sink=${got.sink}.`,
+    );
+  }
+  if (liveVersion !== recordedVersion) {
+    return lost(
+      `THE EXPECTATION IS STALE. ${EXPECTATION_FILE} records GlitchTip ${recordedVersion}; the instance now reports` +
+        ` ${liveVersion}. This run read groundTruth=${got.groundTruth}, sink=${got.sink} — RE-MEASURE and update the register` +
+        ` (evidence.run, evidence.event, evidence.glitchtipVersion, and "sink" if it now matches), then dispatch again.` +
+        ` If the sink now matches, that is ${expectation.until} landing: close ${expectation.row} and amend ${expectation.recordedBy}.`,
+    );
+  }
+  for (const side of ['groundTruth', 'sink']) {
+    if (got[side] === 'unavailable') return lost(`the ${side === 'sink' ? 'SINK' : 'GROUND TRUTH'} reading is UNAVAILABLE, so nothing was compared`);
+  }
+
+  const changed = ['groundTruth', 'sink'].filter((s) => got[s] !== expectation[s]);
+  if (changed.length === 0) {
+    const stillBroken = ['groundTruth', 'sink'].filter((s) => expectation[s] === 'mismatch');
+    lines.push(RULE);
+    if (stillBroken.length === 0) {
+      lines.push(`AS RECORDED — both readings MATCH, which is what ${EXPECTATION_FILE} records.`);
+      lines.push(`  GlitchTip ${liveVersion} symbolicates this obfuscated Flutter Android frame onto its known line.`);
+    } else {
+      lines.push('GREEN — AND SYMBOLICATION IS STILL BROKEN. This run matched the RECORDED state, nothing more.');
+      lines.push(`  STILL BROKEN: ${expectation.broken}`);
+      lines.push(`  WHY THIS RUN IS GREEN: that is recorded in ${expectation.recordedBy} (register: ${EXPECTATION_FILE}).`);
+      lines.push('    This proof asserts the RECORDED state, not an ideal one, so it does not stay red for a decided fact.');
+      lines.push(`  WHAT ENDS IT: ${expectation.until} — row ${expectation.row}.`);
+      if (expectation.triageInstead) lines.push(`  UNTIL THEN: ${expectation.triageInstead}.`);
+      lines.push('  🔴 THIS GREEN DOES NOT MEAN GLITCHTIP SYMBOLICATES FLUTTER ANDROID FRAMES.');
+    }
+    lines.push(`  Recorded on GlitchTip ${recordedVersion} by run ${expectation.evidence.run}, event ${expectation.evidence.event}.`);
+    lines.push(RULE);
+    return { exit: 0, asRecorded: true, got, lines };
+  }
+
+  lines.push(RULE);
+  lines.push(`REALITY HAS MOVED AWAY FROM THE RECORD (${EXPECTATION_FILE}, ${expectation.recordedBy}).`);
+  for (const side of changed) {
+    const label = side === 'sink' ? 'SINK (GlitchTip)' : 'GROUND TRUTH (our symbols + decoder)';
+    lines.push(`  ${label}: recorded ${expectation[side].toUpperCase()}, this run ${got[side].toUpperCase()}.`);
+    if (side === 'sink' && got.sink === 'match') {
+      lines.push(`    GOOD NEWS — GlitchTip ${liveVersion} now names the right line. Nothing is broken here.`);
+      lines.push(`    DO THIS: close row ${expectation.row}, amend ${expectation.recordedBy} with this run id, and set`);
+      lines.push(`    "sink": "match" in ${EXPECTATION_FILE} (with this run in "evidence"). The next run is then green for real.`);
+    } else if (side === 'sink') {
+      lines.push('    The sink was recorded as MATCH and no longer is: GlitchTip regressed, or the upload of the');
+      lines.push('    debug files did. Read the kept symbolication-proof-evidence artifact before re-recording anything.');
+    } else if (got.groundTruth === 'mismatch') {
+      lines.push('    A REAL REGRESSION, AND IT IS OURS, NOT GLITCHTIP\'S: the offline decode of our own build against its');
+      lines.push('    own .symbols file no longer lands on the marked line. That is the triage path ADR 090 tells everyone');
+      lines.push('    to use, so it is the more serious of the two. Suspect the decoder pin (tooling/versions.json');
+      lines.push('    native_stack_traces), the snapshot layout, or a moved THROW-SITE marker.');
+    } else {
+      lines.push('    The ground truth was recorded as MISMATCH and now matches: re-record it before anything relies on it.');
+    }
+  }
+  lines.push('  A change — in either direction — is recorded before the check is allowed to call it normal.');
+  lines.push(RULE);
+  return { exit: 1, asRecorded: false, got, lines };
 }
 
 /** Same file (by basename) and same line. The function is reported, not required. */
@@ -230,6 +359,21 @@ async function fetchProjectEvents({ instance, org, project, token }) {
   return r.json();
 }
 
+/**
+ * The instance's own version string, live. `GET /api/settings/` answers
+ * unauthenticated on our instance (measured 2026-09-20: `"version":"6.2.6"`),
+ * but the token is sent anyway so a future instance that requires one still
+ * answers. The token is never printed, here or anywhere.
+ */
+async function fetchInstanceVersion({ instance, token }) {
+  const url = `${instance}/api/settings/`;
+  const r = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  if (!r.ok) throw new Error(`GET ${instance}/api/settings/ -> ${r.status}`);
+  const j = await r.json();
+  if (typeof j?.version !== 'string' || j.version.trim() === '') throw new Error(`${url} answered without a "version" string`);
+  return j.version;
+}
+
 const RUN_DIRECTLY =
   process.argv[1] !== undefined && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
 
@@ -248,6 +392,7 @@ if (RUN_DIRECTLY) {
       trace: { type: 'string' },
       report: { type: 'string' },
       'wait-seconds': { type: 'string' },
+      expectation: { type: 'string' },
     },
   });
   const lost = (msg) => {
@@ -275,17 +420,26 @@ if (RUN_DIRECTLY) {
     const exp = expectedSite(readFileSync(a.source, 'utf8'), a.source);
     if (exp.error) lost(exp.error);
     // The SINK is what the row asks, so it is read and reported even when the
-    // offline decode failed or never ran. An unavailable ground truth is never
-    // a pass: it makes a sink MATCH exit 2, and a sink MISMATCH still exits 1.
+    // offline decode failed or never ran. An UNAVAILABLE reading on either side
+    // is exit 2 whatever the other side says: nothing was compared, so there is
+    // no verdict to give, and "could not look" is never a pass.
     const truthFrames = existsSync(a.symbolized) ? parseSymbolized(readFileSync(a.symbolized, 'utf8')) : [];
     const truth =
       truthFrames.length === 0
         ? { ok: null, why: `UNAVAILABLE — ${a.symbolized} holds no decoded frame (see the ground-truth step)` }
         : sameSite(exp, truthFrames[0]);
 
+    const here = dirname(fileURLToPath(import.meta.url));
+    // The record is read and validated BEFORE anything is fetched: a run held
+    // against nothing is coverage lost, and finding that out costs no network.
+    const expectationPath = a.expectation ?? join(here, EXPECTATION_FILE);
+    if (!existsSync(expectationPath)) lost(`${expectationPath} is missing; there is no recorded state to hold this run against`);
+    const parsed = parseExpectation(readFileSync(expectationPath, 'utf8'));
+    if (parsed.error) lost(`${expectationPath}: ${parsed.error}`);
+    const expectation = parsed.expectation;
+
     const token = process.env.GLITCHTIP_TOKEN;
     if (!token) lost('GLITCHTIP_TOKEN is not set; the sink was not read');
-    const here = dirname(fileURLToPath(import.meta.url));
     const gt = JSON.parse(readFileSync(join(here, 'glitchtip-project.json'), 'utf8'));
     const deadline = Date.now() + Number(a['wait-seconds'] ?? 300) * 1000;
     let event = null;
@@ -310,6 +464,19 @@ if (RUN_DIRECTLY) {
     const frame = crashFrame(event, addr);
     if (!frame) lost(`event ${event.eventID ?? event.id} carries no exception frames`);
     const sink = sameSite(exp, frame);
+
+    // Read LIVE, never assumed: a record measured on one GlitchTip version says
+    // nothing about another, and a stale expectation that kept passing would be
+    // a green check asserting a fact about software no longer installed.
+    let liveVersion = null;
+    let versionError = null;
+    try {
+      liveVersion = await fetchInstanceVersion({ instance: gt.instance, token });
+    } catch (e) {
+      versionError = e.message;
+    }
+
+    const v = expectationVerdict({ expectation, truthOk: truth.ok, sinkOk: sink.ok, liveVersion, versionError });
     const report = {
       marker: a.marker,
       expected: exp,
@@ -317,12 +484,18 @@ if (RUN_DIRECTLY) {
       sink: { ...sink, frame, eventID: event.eventID ?? event.event_id ?? null, groupID: event.groupID ?? event.group_id ?? null },
       // Every frame as the sink returned it, oldest first, for triage.
       sinkFrames: allFrames(event),
+      // What this run was held against, and how it came out.
+      expectation: { file: EXPECTATION_FILE, recorded: expectation, read: v.got },
+      glitchtip: { version: liveVersion, versionError, recordedVersion: expectation.evidence.glitchtipVersion },
+      verdict: { exit: v.exit, asRecorded: v.asRecorded, lines: v.lines },
     };
     writeFileSync(a.report, `${JSON.stringify(report, null, 2)}\n`);
     const word = (ok) => (ok === null ? 'UNAVAILABLE' : ok ? 'MATCH' : 'MISMATCH');
     console.log(`GROUND TRUTH (offline decode): ${word(truth.ok)} — ${truth.why}`);
-    console.log(`SINK (GlitchTip event ${report.sink.eventID}): ${word(sink.ok)} — ${sink.why}`);
-    process.exit(verdictExit(truth.ok, sink.ok));
+    console.log(`SINK (GlitchTip ${liveVersion ?? 'version unread'}, event ${report.sink.eventID}): ${word(sink.ok)} — ${sink.why}`);
+    console.log(`RECORDED (${EXPECTATION_FILE}, ${expectation.recordedBy}): groundTruth=${expectation.groundTruth}, sink=${expectation.sink}, on GlitchTip ${expectation.evidence.glitchtipVersion}`);
+    for (const l of v.lines) (v.exit === 0 ? console.log : console.error)(l);
+    process.exit(v.exit);
   } else {
     lost(`unknown subcommand "${cmd}" (expect | extract-trace | verdict)`);
   }

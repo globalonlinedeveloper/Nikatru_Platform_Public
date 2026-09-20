@@ -2908,7 +2908,9 @@
     "state": "WIRED"
   },
   {
-    "claims": [],
+    "claims": [
+      "ADR 090"
+    ],
     "invokedBy": [
       ".github/workflows/symbolication-proof.yml#prove"
     ],
