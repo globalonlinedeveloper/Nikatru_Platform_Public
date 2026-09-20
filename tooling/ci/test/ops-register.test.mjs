@@ -208,10 +208,23 @@ after(() => { rmSync(TMP, { recursive: true, force: true }); });
 // against here is the same `fetch` a CI runner gives it. It is serialised from a
 // real function, so it is parsed with the rest of this file.
 // ─────────────────────────────────────────────────────────────────────────────
-function replayStub(readFileSync, writeFileSync) {
+function replayStub(readFileSync, writeFileSync, fs) {
   const F = JSON.parse(readFileSync(process.env.OPS_REPLAY_FILE, 'utf8'));
   const NOW_MS = Date.parse(F.now);
   Date.now = () => NOW_MS;
+  // ⏱ 2026-09-20 · O-DRILL-DATE-BREAKS-REPLAY-FIXTURE — the THIRD face of the
+  // past-world/present-register split, and the first one that is a dated RECORD
+  // rather than a missing ANSWER, so there is no `fetch` answer to supply: the
+  // register the guard opens is itself the later world. `OPS_REPLAY_REGISTER_FILE`
+  // names the copy this replay serves in its place (built by `replayRegisterFile`
+  // below, out of the committed register — the real file is never written). One
+  // path, exactly `tooling/ops/register.json`, and nothing else is intercepted.
+  const REG_FILE = process.env.OPS_REPLAY_REGISTER_FILE;
+  if (REG_FILE) {
+    const realRead = fs.readFileSync;
+    const isRegister = (p) => typeof p === 'string' && /[\\/]tooling[\\/]ops[\\/]register\.json$/.test(p);
+    fs.readFileSync = (p, ...rest) => realRead(isRegister(p) ? REG_FILE : p, ...rest);
+  }
   const ghStatus = Number(process.env.OPS_REPLAY_GITHUB_STATUS || 200);
   const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
   const replaySha = (id) => String(id).padStart(40, '0');
@@ -323,7 +336,20 @@ let replayStubHref = null;
 function replayStubUrl() {
   if (replayStubHref === null) {
     const p = join(TMP, 'ops-replay-stub.mjs');
-    writeFileSync(p, `import { readFileSync, writeFileSync } from 'node:fs';\n(${replayStub.toString()})(readFileSync, writeFileSync);\n`);
+    // ⏱ 2026-09-20 — `node:fs` is reached through `createRequire` and NEVER through
+    // `import { readFileSync } from 'node:fs'` here, and that is load-bearing, not
+    // style. An ESM named import of a builtin instantiates that builtin's ESM
+    // facade and SYNCS its bindings there and then; a later write to the CJS
+    // export object is not re-synced, so the register substitution below would be
+    // invisible to the guard's own `import { readFileSync }`. MEASURED on Node
+    // v24.18.0: wrapper imports fs as ESM -> the spawned module reads the REAL
+    // file; wrapper takes it by `createRequire` only -> it reads the substitute.
+    // The stub keeps the ORIGINAL functions as parameters, so its own reads and
+    // its exit-time count write are never routed through its own patch.
+    writeFileSync(
+      p,
+      `import { createRequire } from 'node:module';\nconst fs = createRequire(import.meta.url)('node:fs');\n(${replayStub.toString()})(fs.readFileSync, fs.writeFileSync, fs);\n`,
+    );
     replayStubHref = pathToFileURL(p).href;
   }
   return replayStubHref;
@@ -406,6 +432,82 @@ function replayWorldFile(fixturePath, mutate = null) {
   writeFileSync(p, JSON.stringify(world));
   return p;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-20 · O-DRILL-DATE-BREAKS-REPLAY-FIXTURE — the SAME split, applied to
+// the register's own DATED RECORDS. #765 and #791 split the fixture's ANSWERS by
+// provenance; a record has no answer to split, so the split is on the DATE:
+//   · a record dated AT OR BEFORE the freeze is what run 34546423386 graded, and
+//     it is handed to the guard byte for byte.
+//   · a record dated AFTER the freeze happened in the world that has since gone
+//     past, and the past world cannot judge it: to a clock pinned at
+//     2026-09-11T00:26:07Z it reads `is in the FUTURE`, which is a verdict about
+//     the FIXTURE's age and never about the register. It is normalised to the
+//     fixture's own day, the freshest thing this world can say — "it had
+//     happened by now" — so the record's SHAPE (how, evidence, durable id) is
+//     still graded in full and only its anachronism is removed.
+//   · a record dated past the REAL clock is normalised by NOTHING. That is the
+//     defect the FUTURE limb exists for — the live guard reds on it — so the
+//     replay must red on it too, and the two cases below hold that line.
+// Only the fields the guard itself refuses for being in the future are touched:
+// `absenceWatcher.downTransitionDrill.date` and the per-kind HUMAN_DATED field
+// (assert-ops-register.mjs:296). `drillDue`, `degradedUntil` and `expires` are
+// dated tripwires that are SUPPOSED to be in the future and are never rewritten.
+// Pure, and in the TEST, never in the guard (INV5).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The guard's HUMAN_DATED map (assert-ops-register.mjs:296): the kinds whose
+ *  "when was this last done" is a hand-written date rather than a machine record. */
+const REPLAY_HUMAN_DATED = new Map([
+  ['recovery-path', 'lastDrill'],
+  ['revert', 'lastDone'],
+  ['failure-mode', 'lastDone'],
+]);
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+/** The register a replay serves: the committed one, with every past-tense date
+ *  that the freeze cannot have seen — and that the REAL clock has — moved to the
+ *  fixture's own day. Returns the rewrites it made, so a test can assert them. */
+function replayRegister(register, fixtureNow, realNowMs) {
+  const fixtureMs = Date.parse(fixtureNow);
+  const day = String(fixtureNow).slice(0, 10);
+  const normalised = [];
+  const later = (date) => {
+    if (typeof date !== 'string' || !ISO_DAY.test(date)) return false;
+    const t = Date.parse(`${date}T00:00:00Z`);
+    return t > fixtureMs && t <= realNowMs;
+  };
+  const rows = (register.rows ?? []).map((row) => {
+    let out = row;
+    const drill = row?.absenceWatcher?.downTransitionDrill;
+    if (drill && typeof drill === 'object' && later(drill.date)) {
+      normalised.push(`${row.id} · absenceWatcher.downTransitionDrill.date ${drill.date} -> ${day}`);
+      out = { ...out, absenceWatcher: { ...out.absenceWatcher, downTransitionDrill: { ...drill, date: day } } };
+    }
+    const field = REPLAY_HUMAN_DATED.get(row?.kind);
+    if (field && later(row[field])) {
+      normalised.push(`${row.id} · ${field} ${row[field]} -> ${day}`);
+      out = { ...out, [field]: day };
+    }
+    return out;
+  });
+  return { register: { ...register, rows }, normalised };
+}
+
+/** Writes `replayRegister(committed, fixture.now, Date.now())` to a file the
+ *  stub serves in place of `tooling/ops/register.json`. `mutate(register)` edits
+ *  the committed copy FIRST — that is how a lane's unlanded records, and the
+ *  red controls, are replayed without ever writing the real register. */
+function replayRegisterFile(fixturePath, { mutate = null, realNowMs = Date.now(), normalise = replayRegister } = {}) {
+  const fixture = JSON.parse(readFileSync(fixturePath, 'utf8'));
+  const register = JSON.parse(readFileSync(REPLAY_REGISTER, 'utf8'));
+  if (mutate) mutate(register);
+  const { register: served } = normalise(register, fixture.now, realNowMs);
+  const p = join(TMP, `replay-register-${seq++}.json`);
+  writeFileSync(p, JSON.stringify(served));
+  return p;
+}
+
 /** A child environment with every inherited GitHub, GlitchTip, Cloudflare and
  *  replay variable removed — a guard-meta job runs this suite INSIDE a
  *  pull_request run, and a spawned guard must not inherit that host by accident. */
@@ -2120,6 +2222,12 @@ describe('assert-ops-register — end to end, against the real repository', () =
     const countFile = join(TMP, `real-guard-count-${seq++}.json`);
     const env = scrubbedEnv({
       OPS_REPLAY_FILE: replayWorldFile(REPLAY_FIXTURE),
+      // ⏱ 2026-09-20 — the committed register, with any record dated after the
+      // freeze normalised to the freeze's own day (O-DRILL-DATE-BREAKS-REPLAY-
+      // FIXTURE). On a register whose dates are all at or before the freeze this
+      // is byte-for-byte the committed file, so what this test grades is
+      // unchanged; it is what stops a LATER correct record reading as a break.
+      OPS_REPLAY_REGISTER_FILE: replayRegisterFile(REPLAY_FIXTURE),
       OPS_REPLAY_COUNT_FILE: countFile,
       GITHUB_TOKEN: 'replay',
       GLITCHTIP_TOKEN: 'replay',
@@ -5343,10 +5451,13 @@ describe('the 2026-09-11 freeze, replayed — INV1..INV6 against the exact answe
   };
   const LIVE_PRINT = '⬜  [LIVE] 🔴 FAILING, NOT BLOCKING IN THIS HOST — ';
   let worldFile = null;
+  let registerFile = null;
   const replay = (host, extra = {}) => {
     worldFile ??= replayWorldFile(FIXTURE);
+    registerFile ??= replayRegisterFile(FIXTURE);
     const env = scrubbedEnv({
       OPS_REPLAY_FILE: worldFile,
+      OPS_REPLAY_REGISTER_FILE: registerFile,
       GITHUB_TOKEN: 'replay',
       GLITCHTIP_TOKEN: 'replay',
       CLOUDFLARE_API_TOKEN: 'replay',
@@ -5488,6 +5599,113 @@ describe('the 2026-09-11 freeze, replayed — INV1..INV6 against the exact answe
     assert.equal(has(clean.problems, TIMER_GONE), false, `green control: the clean world answers ${T}`);
     assert.equal(missing.code, 1, missing.out.slice(-3000));
     assert.ok(has(missing.problems, TIMER_GONE), `the dropped answer must be a PROBLEM:\n${missing.problems.join('\n')}`);
+  });
+
+  // ── ⏱ 2026-09-20 · O-DRILL-DATE-BREAKS-REPLAY-FIXTURE ─────────────────────
+  // The third instance of the class, and the first that is a dated RECORD rather
+  // than a missing ANSWER. MEASURED by the alarm-drill lane on 2026-09-20: with
+  // its three `absenceWatcher.downTransitionDrill` records in the register this
+  // file went from exit 0 / zero failures to exit 1 / three failures — `the
+  // committed register is STRUCTURALLY sound` (a FUTURE-date problem matches
+  // neither DUTY_IS_FAILING nor either carve-out), INV1's exit-0 floor, and
+  // INV2's `off.problems.length` 7 against 4 — all three about the fixture's age
+  // and none about the records. The three below carry that lane's dates and the
+  // delivery ids it read, so what replays here is the change, not a shape.
+  const LANE_DRILLS = {
+    'duty.laptop.nikatru-ops-check': {
+      date: '2026-09-17',
+      how: 'observed, not forced: no POST reached monitor 29 inside its 50400 s window and the monitor transitioned Down on its own',
+      evidence: 'GlitchTip Down check 17:01:23 UTC; alert email 1a0b050ef3dac88a internalDate 1789664487000; ntfy nikatru-page 1aP2i4heTNt1',
+    },
+    'duty.laptop.nikatru-watchdog': {
+      date: '2026-09-17',
+      how: 'observed, not forced: six consecutive failing checks against monitor 30 from 10:57:41Z, then recovery',
+      evidence: 'GlitchTip Down check 10:57:41 UTC; alert email 1a0af03f37fcab28 internalDate 1789642665000; ntfy nikatru-page f7dG9ua3o1Iy',
+    },
+    'duty.laptop.nikatru-pipeline-driver': {
+      date: '2026-09-20',
+      how: 'forced: full-replace PUT took monitor 33 to interval 60 / confirmationThreshold 1, then restored both after 56 s out of configuration',
+      evidence: 'GlitchTip Down check 00:13:36 UTC; alert email 1a0bc295a6c9656d internalDate 1789863220000; ntfy nikatru-page ycYxHbG3raex',
+    },
+  };
+  /** Puts those records into a COPY of the committed register — the real file is
+   *  never written — so a lane's unlanded change can be replayed before it lands. */
+  const withLaneDrills = (over = {}) => (register) => {
+    for (const [id, drill] of Object.entries({ ...LANE_DRILLS, ...over })) {
+      const row = (register.rows ?? []).find((r) => r.id === id);
+      assert.ok(row?.absenceWatcher, `${id} must be a row that declares an absenceWatcher`);
+      row.absenceWatcher.downTransitionDrill = drill;
+    }
+  };
+  /** Pinned, because the rule below turns on the REAL clock and a test whose
+   *  verdict changes with the hour it runs at is not a test. */
+  const REAL_NOW = Date.parse('2026-09-20T23:59:59Z');
+
+  test('O-DRILL-DATE-BREAKS-REPLAY-FIXTURE · a record the freeze CANNOT have seen is dated at the freeze; one it did see, and every dated tripwire, is untouched', () => {
+    const f = JSON.parse(readFileSync(FIXTURE, 'utf8'));
+    const input = {
+      rows: [
+        { id: 'later', absenceWatcher: { downTransitionDrill: { date: '2026-09-17', how: 'forced', evidence: 'run 34546423386' } } },
+        { id: 'atFreeze', absenceWatcher: { downTransitionDrill: { date: '2026-08-05', how: 'forced', evidence: 'run 34546423386' } } },
+        { id: 'humanLater', kind: 'recovery-path', lastDrill: '2026-09-18' },
+        { id: 'humanBefore', kind: 'revert', lastDone: '2026-07-26' },
+        { id: 'tripwire', absenceWatcher: { drillDue: '2026-10-09', drillLeadDays: 14 }, kind: 'duty', expires: '2027-01-01', degradedUntil: '2026-12-01' },
+      ],
+    };
+    const { register, normalised } = replayRegister(input, f.now, REAL_NOW);
+    const row = (id) => register.rows.find((r) => r.id === id);
+    assert.equal(row('later').absenceWatcher.downTransitionDrill.date, '2026-09-11', 'a later record is dated at the fixture\'s own day');
+    assert.equal(row('later').absenceWatcher.downTransitionDrill.how, 'forced', 'and NOTHING else about it moves — the shape is still graded in full');
+    assert.equal(row('atFreeze').absenceWatcher.downTransitionDrill.date, '2026-08-05', 'a record run 34546423386 graded is handed over as it is');
+    assert.equal(row('humanLater').lastDrill, '2026-09-11');
+    assert.equal(row('humanBefore').lastDone, '2026-07-26');
+    const t = row('tripwire');
+    assert.deepEqual(
+      [t.absenceWatcher.drillDue, t.expires, t.degradedUntil],
+      ['2026-10-09', '2027-01-01', '2026-12-01'],
+      'a dated TRIPWIRE is SUPPOSED to be in the future: rewriting one would make an armed deadline read as passed',
+    );
+    assert.equal(normalised.length, 2, normalised.join(' | '));
+    assert.equal(input.rows[0].absenceWatcher.downTransitionDrill.date, '2026-09-17', 'the committed register the caller holds is never mutated');
+  });
+
+  test('O-DRILL-DATE-BREAKS-REPLAY-FIXTURE · a date the REAL clock has NOT reached is normalised by NOTHING — the replay cannot hide the defect the FUTURE limb exists for', () => {
+    const f = JSON.parse(readFileSync(FIXTURE, 'utf8'));
+    const input = { rows: [{ id: 'defect', kind: 'recovery-path', lastDrill: '2099-01-01', absenceWatcher: { downTransitionDrill: { date: '2099-01-01', how: 'forced', evidence: 'run 34546423386' } } }] };
+    const { register, normalised } = replayRegister(input, f.now, REAL_NOW);
+    assert.deepEqual(normalised, [], 'nothing past the real clock is a "later world" record — it is a claim about a thing that has not happened');
+    assert.equal(register.rows[0].absenceWatcher.downTransitionDrill.date, '2099-01-01');
+    assert.equal(register.rows[0].lastDrill, '2099-01-01');
+  });
+
+  test('O-DRILL-DATE-BREAKS-REPLAY-FIXTURE · the three drills dated 2026-09-17 and 2026-09-20 replay GREEN, and the guard READS each one as an observed down-transition', () => {
+    const clean = replay(HOST.PR);
+    assert.equal(clean.code, 0, `green control: today's register replays clean\n${clean.problems.join('\n')}`);
+    const r = replay(HOST.PR, { OPS_REPLAY_REGISTER_FILE: replayRegisterFile(FIXTURE, { mutate: withLaneDrills(), realNowMs: REAL_NOW }) });
+    assert.equal(r.code, 0, `a record written after the freeze must not read as a break:\n${r.problems.join('\n')}\n${r.out.slice(-3000)}`);
+    assert.deepEqual(r.problems, []);
+    // …and NOT vacuously: each drill is read, graded and PRINTED. Without the
+    // substitution reaching the guard these three lines say `UNDRILLED`, which is
+    // what the committed register still says on all three rows.
+    for (const id of Object.keys(LANE_DRILLS)) {
+      assert.match(
+        r.out,
+        new RegExp(`\\[14\\]O-4 — ${reEscape(id)}: .*down-transition observed 2026-09-11 \\(0d ago\\)`),
+        `${id} must be read as observed:\n${r.out.split('\n').filter((l) => l.includes(id)).join('\n')}`,
+      );
+    }
+  });
+
+  test('O-DRILL-DATE-BREAKS-REPLAY-FIXTURE · RED CONTROL — a drill dated past the REAL clock is NOT normalised and the spawned replay goes red on it', () => {
+    const over = { 'duty.laptop.nikatru-pipeline-driver': { ...LANE_DRILLS['duty.laptop.nikatru-pipeline-driver'], date: '2099-01-01' } };
+    const r = replay(HOST.PR, { OPS_REPLAY_REGISTER_FILE: replayRegisterFile(FIXTURE, { mutate: withLaneDrills(over), realNowMs: REAL_NOW }) });
+    assert.equal(r.code, 1, `a date nothing has reached must still BLOCK:\n${r.out.slice(-3000)}`);
+    assert.equal(r.problems.length, 1, `the other two records — later than the freeze, earlier than the clock — must still be clean:\n${r.problems.join('\n')}`);
+    assert.match(
+      r.problems[0],
+      /^duty\.laptop\.nikatru-pipeline-driver — `downTransitionDrill\.date` is in the FUTURE \(2099-01-01\)/,
+      'the FUTURE limb must be the finding',
+    );
   });
 
   test('INV1 · GREEN CONTROL — ci.yml on pull_request exits 0 on today\'s state, and all four TRUE verdicts still PRINT with their remedy', () => {
