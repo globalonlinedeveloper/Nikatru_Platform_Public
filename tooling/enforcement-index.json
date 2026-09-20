@@ -2133,6 +2133,18 @@
   },
   {
     "claims": [
+      "ADR 067"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-store"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-store-vocabulary.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
       "ADR 067",
       "D-10",
       "D-6"

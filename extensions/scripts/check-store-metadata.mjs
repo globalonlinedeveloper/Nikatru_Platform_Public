@@ -72,6 +72,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Report, parseArgs, die } from './lib/report.mjs';
 import { repoRoot, resolveTool, loadAllTools, readText } from './lib/toolinfo.mjs';
+import {
+  extensionPerStoreListingFiles,
+  extensionSharedListingFiles,
+} from '../../contracts/store/vocabulary.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SCHEMA_REL = 'scripts/schema/tool.schema.json';
@@ -79,11 +83,29 @@ const SCHEMA_REL = 'scripts/schema/tool.schema.json';
 /* Files every store listing needs, whatever the store. The NAMES are shared on
    purpose even where the stores' own vocabulary differs (AMO calls the short one
    a "summary"): what differs between stores is the LIMITS, not which fields
-   exist, and one vocabulary is what lets a reader diff two listings. */
-const REQUIRED_PER_STORE = ['title.txt', 'short-description.txt', 'long-description.txt', 'category.txt'];
+   exist, and one vocabulary is what lets a reader diff two listings.
+
+   🔴 DERIVED FROM contracts/store/vocabulary.js SINCE 2026-09-20, NOT TYPED
+   HERE. Both arrays were hand-typed, and they were the SECOND independent
+   spelling of the listing vocabulary that tooling/channel-register.json's
+   `storeMetadataContract` already declared — seven of the same eight names,
+   re-derived from scratch for the extension surface. The two differ over
+   `README.md` and over whether `screenshots/README.md` is per-store or shared —
+   both differences are correct, and nothing recorded that they were deliberate.
+   The contract's LISTING_FIELDS table now carries the `extension` column those
+   two facts are, and
+   tooling/ci/assert-store-vocabulary.mjs fails on a restated literal here.
+
+   ⚠️ THIS IMPORT REACHES OUTSIDE extensions/ AND THAT IS ALLOWED AND CHECKED.
+   scripts/ is repository tooling, not shipped bytes — nothing under it is
+   packed into a submitted zip — and scripts/publish-arming.mjs already imports
+   ../../tooling/ci/channel-arming.mjs by the same route. The contract is plain
+   ES-module JavaScript with no build step, which is the property
+   tooling/ci/assert-extensions-build-free.mjs exists to protect. */
+const REQUIRED_PER_STORE = extensionPerStoreListingFiles();
 /* Material all three stores accept, kept once. 1280x800 is the only screenshot
    size Chrome, Edge and AMO all take — measured from their own docs. */
-const REQUIRED_SHARED = ['privacy-policy-url.txt', 'support-url.txt', 'screenshots/README.md'];
+const REQUIRED_SHARED = extensionSharedListingFiles();
 
 const args = parseArgs(process.argv.slice(2));
 args.rejectUnknown(['all', 'repo-root']);

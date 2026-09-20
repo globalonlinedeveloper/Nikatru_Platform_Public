@@ -447,6 +447,12 @@ jobs:
         run: node tooling/ci/assert-store-build-config.mjs
       - name: An app that pulls flutter_inappwebview carries its native build waivers
         run: node tooling/ci/assert-inappwebview-waivers.mjs
+      # why: [ADR 067] decision 1's fourth artefact. Appended at the END of this
+      # job on purpose — an insertion shifts every `ci.yml:NNNN` citation below
+      # it, and the private corpus holds ~1,647 of them, so a new step goes where
+      # it moves the fewest.
+      - name: The store vocabulary has one home, and every word in it is used
+        run: node tooling/ci/assert-store-vocabulary.mjs
 
   guards-chassis:
     name: Guards — chassis, app surface and packages
