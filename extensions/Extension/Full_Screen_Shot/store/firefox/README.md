@@ -21,3 +21,18 @@ AMO takes a **different build** from Chrome and Edge — the firefox target, wit
 
 ⚠️ **The 50-character name limit is NOT enforced** — MDN only, same caveat as Edge.
 extensionworkshop states no name limit.
+
+## No graphic of its own, and that is measured rather than assumed
+
+AMO asks for no asset at a size nothing else asks for, so this directory holds copy only.
+
+- **Screenshots** — `../_shared/screenshots/`, 1280x800, the size AMO names as its maximum
+  display size. AMO is the one store of the three that does **not** document screenshots as
+  required; the set exists because Chrome does.
+- **Icon** — `../_shared/icon-128.png`. ⚠️ **Two current Mozilla pages give different numbers and
+  both are current.** The listing guidance (fetched 2026-09-20) says *"You can load icons at two
+  resolutions—32x32 and 64x64—in either PNG or JPEG format"*; `mozilla.github.io/addons-server`
+  recommends a 128x128 upload that AMO resizes itself. A 128x128 upload satisfies both readings,
+  so AMO takes the same file Chrome requires and no second slot is created for a number two pages
+  cannot agree on.
+- **Promo tiles** — AMO has no equivalent asset. Nothing is owed.

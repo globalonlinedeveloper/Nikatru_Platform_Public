@@ -479,6 +479,8 @@ jobs:
       # nobody executes.
       - name: ...and that gate can still fail
         run: node --test scripts/test/contracts-sync.test.mjs
+      - name: The listing-asset guard can still fail
+        run: node --test scripts/test/listing-assets.test.mjs
 
   gates:
     name: gates · ${{ matrix.tool }}
@@ -513,6 +515,10 @@ jobs:
           -- node scripts/check-store-packages.mjs ${{ matrix.tool }}
       - name: One listing per store, and the store axis has not drifted
         run: node scripts/check-store-metadata.mjs ${{ matrix.tool }}
+      # why: the store states the pixels; scripts/store-graphics.json records each number
+      # with the URL it was read from, and this grades the committed pictures against it.
+      - name: Listing pictures are the size, format and count the stores state
+        run: node scripts/check-listing-assets.mjs ${{ matrix.tool }}
       - name: The tool's own AMO submission gate (FullShot)
         if: matrix.tool == 'fullshot'
         run: node Extension/Full_Screen_Shot/publish/verify-firefox-package.node.js
