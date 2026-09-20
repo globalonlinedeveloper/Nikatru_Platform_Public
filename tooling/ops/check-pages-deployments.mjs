@@ -134,7 +134,8 @@
 //      canceled, has been in flight past the ceiling, or the commit it serves
 //      does not CARRY the newest `main` commit for its source (for a direct
 //      upload: past the deploy-lane ceiling).
-//   2  COULD NOT LOOK — no credential, a non-200, unparseable JSON, an
+//   2  COULD NOT LOOK — no credential, a non-200 that survived the retry below,
+//      unparseable JSON, an
 //      unreadable deploy-web.yml filter or job timeout, an
 //      `environment` that came back something other than `production`, a stage
 //      status outside Cloudflare's enum, an in-flight build whose `created_on`
@@ -142,6 +143,50 @@
 //      within the rows read behind an in-flight one, or a
 //      project list that derived to EMPTY. An empty sweep prints the same `ok`
 //      as a complete one, which is the defect this portfolio keeps re-finding.
+//
+// ── ONE DROPPED CONNECTION IS NOT AN OUTAGE — THE BOUNDED RETRY ─────────────
+// 🔴 A SINGLE UN-RETRIED `fetch` TURNED THE WHOLE RUN RED (row
+// O-PAGES-FETCH-TRANSIENT-NOT-RETRIED). ops-watch run 35478397730 (schedule,
+// 2026-09-20T00:17:52Z) read `✗ nikatru (git) — TypeError: fetch failed`: 0 RED,
+// 1 NOT JUDGED, exit 2. The other two projects read fine in the SAME run and a
+// dispatch sixteen minutes later was green, so the endpoint was healthy either
+// side of it — one dropped TCP connection. A red ops-watch reddens `ci-gate` on
+// `main`, so that blip froze the merge queue until somebody re-ran it, and it
+// teaches every reader to shrug at an ops-watch red, which is how a genuinely
+// red one (eight missed heartbeats) sat unnoticed for eight hours on the same
+// day.
+//
+// So each Cloudflare read is attempted up to READ_ATTEMPTS times with a
+// doubling gap. Both numbers are JUDGEMENT, recorded as judgement — neither is
+// a vendor SLA and neither may be cited as one:
+//
+//   READ_ATTEMPTS = 3, RETRY_BASE_MS = 1000  →  gaps of 1 s then 2 s, a
+//   RETRY_CEILING_MS of 3 s of waiting per project. The defect is a dropped
+//   connection, which needs ONE more try and not six; three projects derive
+//   today, so a TOTAL outage adds ~9 s to a job whose `timeout-minutes` is 10.
+//   The ceiling is SUMMED from the plan (`backoffPlan`), never written twice.
+//
+// ⚠️ THE RETRY TELLS A BLIP FROM AN OUTAGE; IT HIDES NEITHER. A failure that
+// survives every attempt is still COULD NOT LOOK — exit 2, with the attempt
+// count in the line. Swallowing it into a pass would turn a real Cloudflare
+// outage into a green sweep, which is strictly worse than the false red this
+// section exists to remove. And only a TRANSIENT shape is retried at all
+// (`transientLook`): the transport failing outright, HTTP 429, or HTTP 5xx. A
+// 401/403 is an ANSWER — a revoked token does not improve in two seconds — and
+// re-asking it three times only makes the run slower and the log longer.
+//
+// ⚠️ THIS IS THE FOURTH PRIVATE COPY OF THE LOOP IN THIS TREE, AND THE TREE HAS
+// NO SHARED ONE. Swept 2026-09-21: post-deploy-smoke.mjs inlines it five times
+// (ATTEMPTS/GAP_MS), verify-free-api-scope.mjs has a module-local
+// `fetchWithRetry`, and record-deployment.mjs exports the POLICY primitives
+// (`RETRY_ATTEMPTS`, `isRetryable`, `retryDelayMs`) but no wrapper — and its
+// policy is GitHub-shaped: it deliberately excludes 429, which for the
+// Cloudflare API is exactly the "ask again" case. So this file does not import
+// it, and its own predicate is named `isTransientLook` rather than shadowing
+// that export with a different signature. Eleven more ops-watch readers still
+// turn ONE dropped connection into a run-level verdict; the class sweep is
+// recorded with row O-PAGES-FETCH-TRANSIENT-NOT-RETRIED, and a shared
+// `tooling/ops/` retry module is the right home for all of them.
 //
 // 🔴 `process.exit()` IS BANNED IN THIS FILE, for the reason recorded in
 // check-analytics-liveness.mjs: an undici keep-alive socket is still open and
@@ -168,6 +213,84 @@ const ROOT = resolve(flag('--root') ?? join(HERE, '..', '..'));
 
 /** Raised where the answer is "nothing was judged", never "it is fine". */
 export class CouldNotLook extends Error {}
+
+/** A `CouldNotLook` that is worth ASKING AGAIN: the transport failed, or the API
+ *  answered with a shape that says "not now" rather than "no". Marked at the
+ *  throw site, never inferred from a message, so a future branch has to decide
+ *  deliberately which of the two it is. */
+export function transientLook(message) {
+  const e = new CouldNotLook(message);
+  e.retryable = true;
+  return e;
+}
+
+/** PURE. Only a failure MARKED transient is re-asked. Anything else — a missing
+ *  credential, a 403, a body that is not JSON, and every programming error this
+ *  reader could throw — is final: re-asking it cannot change the answer, and
+ *  three identical lines in the log is not evidence of anything. */
+export function isTransientLook(err) {
+  return err instanceof CouldNotLook && err.retryable === true;
+}
+
+/** How many times one Cloudflare read is attempted, and the first gap. Both are
+ *  JUDGEMENT (header, "ONE DROPPED CONNECTION IS NOT AN OUTAGE") — named
+ *  constants rather than literals in a branch, so a test pins them and a change
+ *  to either is a reviewed diff. */
+export const READ_ATTEMPTS = 3;
+export const RETRY_BASE_MS = 1000;
+
+/** PURE. The gaps BETWEEN attempts, doubling: 3 attempts at 1000 ms give
+ *  [1000, 2000]. `attempts - 1` gaps, because nothing is waited for after the
+ *  last attempt — a run that sleeps after its final failure has bought nothing
+ *  and spent the time. */
+export function backoffPlan(attempts = READ_ATTEMPTS, baseMs = RETRY_BASE_MS) {
+  if (!Number.isInteger(attempts) || attempts < 1) return [];
+  if (!Number.isFinite(baseMs) || baseMs < 0) return [];
+  return Array.from({ length: attempts - 1 }, (_, i) => baseMs * 2 ** i);
+}
+
+/** The most wall-clock one read may spend WAITING. SUMMED from the plan, never
+ *  written down a second time: a hand-copied ceiling is the number that drifts
+ *  away from the loop it claims to describe. */
+export const RETRY_CEILING_MS = backoffPlan().reduce((a, b) => a + b, 0);
+
+const nap = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** Run `read` until it succeeds or the bounded plan is exhausted.
+ *
+ *  `sleep` is injected so a test can prove BOTH directions — a transient
+ *  failure followed by a success, and a failure that persists — without
+ *  waiting for a real second; `note` is where the retry is said out loud, so a
+ *  run that needed one is visible in the log rather than silently clean.
+ *
+ *  🔴 A PERSISTENT FAILURE STILL THROWS `CouldNotLook`, so it is still exit 2.
+ *  The caller cannot tell it from the un-retried version except by the attempt
+ *  count in the message, which is the point: this distinguishes a blip from an
+ *  outage, it does not forgive the outage. */
+export async function readWithBoundedRetry(
+  read,
+  { attempts = READ_ATTEMPTS, baseMs = RETRY_BASE_MS, sleep = nap, note = () => {} } = {},
+) {
+  const gaps = backoffPlan(attempts, baseMs);
+  let last = null;
+  for (let i = 0; i < Math.max(1, attempts); i += 1) {
+    try {
+      return await read(i + 1);
+    } catch (e) {
+      if (!isTransientLook(e)) throw e;
+      last = e;
+      if (i < gaps.length) {
+        note(`attempt ${i + 1}/${attempts} failed (${e.message}); re-asking in ${gaps[i] / 1000}s`);
+        await sleep(gaps[i]);
+      }
+    }
+  }
+  const total = gaps.reduce((a, b) => a + b, 0);
+  throw new CouldNotLook(
+    `${last.message} — and the same on all ${attempts} attempt(s) over ${total / 1000}s. A failure that ` +
+      `outlives the retry is an OUTAGE, not a blip, so this is COULD NOT LOOK and not a pass.`,
+  );
+}
 
 /** The directory under `sites/` that is not a site. Named once. */
 const SITES_SHARED = '_shared';
@@ -799,19 +922,51 @@ export function commitTimeOf(root, sha, run = spawnSync) {
   return Number.isFinite(t) ? t : null;
 }
 
+/** PURE. A read that never produced an answer, as one project's verdict. It is
+ *  exit 2 and it is exit 2 AFTER the retry too: the bounded retry decides
+ *  whether we ask again, never whether a failure counts. Extracted from `main`
+ *  so a test can stand on the whole chain — persistent transient failure →
+ *  `readWithBoundedRetry` → here → `foldVerdicts` — with no network. */
+export function readFailureResult(project, kind, err) {
+  const how = err instanceof CouldNotLook ? err.message : `${err?.name ?? 'Error'}: ${err?.message ?? String(err)}`;
+  return { code: 2, line: `?   ${project} (${kind}) — ${how}` };
+}
+
 const CF_API = 'https://api.cloudflare.com/client/v4';
 
-async function readDeployments(project) {
-  const token = process.env.CLOUDFLARE_API_TOKEN;
-  const account = process.env.CLOUDFLARE_ACCOUNT_ID;
+/** HTTP statuses that mean "ask again", not "no". 429 is the rate limiter and
+ *  every 5xx is the API's own side failing; both are the same class of event as
+ *  a dropped connection. Every other non-200 is an ANSWER and is final. */
+const RETRYABLE_STATUS = (status) => status === 429 || (status >= 500 && status <= 599);
+
+/** ONE read of one project's production deployments. `fetchImpl` and `env` are
+ *  injected so every branch — including the transport failing, which is the one
+ *  that went red in production — is reachable from a test with NO network. */
+export async function readDeployments(project, { fetchImpl = fetch, env = process.env } = {}) {
+  const token = env.CLOUDFLARE_API_TOKEN;
+  const account = env.CLOUDFLARE_ACCOUNT_ID;
   if (!token || !account) {
     throw new CouldNotLook('CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID are not both in the environment');
   }
   const url = `${CF_API}/accounts/${account}/pages/projects/${encodeURIComponent(project)}/deployments?env=production&per_page=${DEPLOYMENTS_PER_PAGE}`;
-  const res = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
-  const text = await res.text();
+
+  // 🔴 THE THROW THAT FROZE THE MERGE QUEUE. `fetch` rejects — `TypeError: fetch
+  // failed` — when the connection never completed, which says NOTHING about
+  // Cloudflare and everything about one TCP socket. It is the transient shape.
+  let res;
+  let text;
+  try {
+    res = await fetchImpl(url, { headers: { authorization: `Bearer ${token}` } });
+    text = await res.text();
+  } catch (e) {
+    throw transientLook(
+      `GET pages/projects/${project}/deployments did not complete at all — ${e?.name ?? 'Error'}: ${e?.message ?? String(e)}`,
+    );
+  }
+
   if (!res.ok) {
-    throw new CouldNotLook(`GET pages/projects/${project}/deployments answered HTTP ${res.status}: ${text.slice(0, 400)}`);
+    const line = `GET pages/projects/${project}/deployments answered HTTP ${res.status}: ${text.slice(0, 400)}`;
+    throw RETRYABLE_STATUS(res.status) ? transientLook(line) : new CouldNotLook(line);
   }
   let body;
   try {
@@ -868,7 +1023,9 @@ async function main() {
     }
 
     try {
-      const deployments = await readDeployments(p.project);
+      const deployments = await readWithBoundedRetry(() => readDeployments(p.project), {
+        note: (m) => console.log(`    ⟳   ${p.project} (${p.kind}) — ${m}`),
+      });
       results.push(
         judgeProject({
           ...p,
@@ -880,10 +1037,7 @@ async function main() {
         }),
       );
     } catch (e) {
-      results.push({
-        code: 2,
-        line: `?   ${p.project} (${p.kind}) — ${e instanceof CouldNotLook ? e.message : `${e.name}: ${e.message}`}`,
-      });
+      results.push(readFailureResult(p.project, p.kind, e));
     }
   }
 
