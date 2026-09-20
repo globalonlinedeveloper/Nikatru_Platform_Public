@@ -25,8 +25,15 @@ node scripts/lint.mjs        fullshot        # node --check every shipped .js/.m
 node scripts/policy-check.mjs fullshot       # privacy · permissions · store limits
 node scripts/check-version.mjs fullshot      # manifest == CHANGELOG top == tag
 node scripts/check-core-sync.mjs fullshot    # vendor/core matches core/
+node scripts/check-listing-assets.mjs fullshot        # listing PICTURES: size, format, count
+node scripts/render-extension-graphics.mjs fullshot   # write the store icon and the two tiles
 node scripts/test/selftest.node.js           # do the gates above actually bite?
 ```
+
+The last two are one pair: `store-graphics.json` holds every store's sourced pixel requirement,
+the renderer produces assets FROM it, and the guard grades them AGAINST it — so a renderer cannot
+emit a size its own guard refuses. `node --test scripts/test/listing-assets.test.mjs` is the
+guard's negative test.
 
 ## Conventions every script here follows
 

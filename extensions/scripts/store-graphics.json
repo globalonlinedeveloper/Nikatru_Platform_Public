@@ -1,0 +1,113 @@
+{
+  "README": [
+    "THE LISTING-GRAPHIC SPECIFICATION, ONE ROW PER ASSET, EVERY NUMBER WITH THE URL IT WAS READ FROM AND THE DATE IT WAS READ.",
+    "",
+    "It belongs to the TOOLCHAIN and not to any tool, for the reason check-store-metadata.mjs already states about scripts/schema/tool.schema.json: the store vocabulary is the vocabulary of the stores, and resolving it against the tree being graded would let a fixture supply its own idea of what a store requires. `check-listing-assets.mjs` grades a tool against this file; `render-extension-graphics.mjs` renders the tool's assets FROM this file. One declaration, two readers -- the renderer cannot produce a size the guard does not expect, and the guard cannot demand a size the renderer does not know how to make.",
+    "",
+    "A LIMIT WITH NO `source` IS REFUSED, NOT ENFORCED. Same rule as tool.json storeMetadata, same reason: an invented limit fires on CORRECT input. check-listing-assets.mjs fails on any row whose `source` is not an https URL or whose `fetched` is not a date, BEFORE it looks at a single pixel.",
+    "",
+    "WHAT IS DELIBERATELY ABSENT. No maximum FILE SIZE for any of the three extension stores: developer.chrome.com/docs/webstore/images, learn.microsoft.com/microsoft-edge/extensions/publish/publish-extension and extensionworkshop.com's listing page were all fetched on 2026-09-20 and none of them states one. The only image-adjacent size limit found anywhere on AMO is the 200 MB add-on PACKAGE limit, which is about the .xpi and not about a picture. A byte ceiling is therefore not written here and not enforced.",
+    "",
+    "No SCREENSHOT COLOUR TYPE either. Chrome's page states 'Square corners, no padding (full bleed)' and gives the two accepted pixel sizes; it does NOT state a bit depth or an alpha rule for screenshots, and neither does Edge's or AMO's. The extension tree's own screenshots/README.md used to assert '24-bit PNG, no alpha' with no URL beside it -- correct-sounding, unsourceable, and exactly the shape this file exists to stop. The icon's transparency IS sourced, and is enforced; the screenshots' is not, and is not."
+  ],
+
+  "screenshots": {
+    "dirUnderShared": "screenshots",
+    "_dirWhy": "ONE capture set, in the shared directory, because 1280x800 is the only size all three stores accept -- so three copies would be three chances to update two of them. tool.json storeMetadata.sharedDir names where that directory lives; this key names its name inside it.",
+    "effective": {
+      "sizes": [[1280, 800]],
+      "min": 1,
+      "max": 5,
+      "_why": "DERIVED FROM THE THREE `perStore` BLOCKS BELOW, and the derivation is stated rather than left to a reader: sizes is their INTERSECTION (Chrome takes 1280x800 or 640x400, Edge takes 1280x800 or 640x480, AMO recommends 1280x800 -- one size is common to all three); min is the largest of the required minimums (Chrome 1, the only store that requires any); max is the smallest of the stated maximums (Chrome 5, against Edge 6 and AMO's 'no practical limit'). check-listing-assets.mjs recomputes this from perStore and FAILS if this block disagrees with it -- two declarations of one fact, held to each other rather than trusted."
+    },
+    "perStore": {
+      "chrome": {
+        "required": true,
+        "sizes": [[1280, 800], [640, 400]],
+        "min": 1,
+        "max": 5,
+        "source": "https://developer.chrome.com/docs/webstore/images",
+        "fetched": "2026-09-20",
+        "verbatim": "at least 1-and preferably the maximum allowed 5-screenshots | 1280x800 or 640x400 pixels | Square corners, no padding (full bleed)"
+      },
+      "edge": {
+        "required": false,
+        "sizes": [[1280, 800], [640, 480]],
+        "min": 0,
+        "max": 6,
+        "source": "https://learn.microsoft.com/en-us/microsoft-edge/extensions/publish/publish-extension",
+        "fetched": "2026-09-20",
+        "verbatim": "Screenshots | Optional | You can submit a maximum of 6 screenshots describing the functionality of the extension in detail. The size of the screenshots must be either 640 x 480 pixels or 1280 x 800 pixels.",
+        "_note": "EDGE'S SMALL SIZE IS 640x480 AND CHROME'S IS 640x400. One digit apart, in adjacent cells, and the reason only 1280x800 is captured."
+      },
+      "firefox": {
+        "required": false,
+        "sizes": [[1280, 800]],
+        "min": 0,
+        "max": null,
+        "source": "https://extensionworkshop.com/documentation/develop/create-an-appealing-listing/",
+        "fetched": "2026-09-20",
+        "verbatim": "capture images that are 1280x800px (the maximum image display size) | There isn't a practical limit to the number of screenshots you can include",
+        "_note": "AMO documents a RECOMMENDATION, not a requirement: no page fetched on 2026-09-20 says a listing is refused without a screenshot. `required: false` records that, and it is why the effective minimum comes from Chrome alone."
+      }
+    }
+  },
+
+  "assets": [
+    {
+      "id": "store-icon-128",
+      "path": "_shared/icon-128.png",
+      "scope": "shared",
+      "width": 128,
+      "height": 128,
+      "colorTypes": [6],
+      "_colorTypeWhy": "COLOUR TYPE 6 IS THE SOURCED REQUIREMENT AND NOT A PREFERENCE. Chrome asks for the artwork to occupy 96x96 with 'an additional 16 pixels per side ... transparent padding'; padding that is transparent cannot exist in colour type 2. artworkBox below is that 96, and the renderer centres the mark in it.",
+      "artworkBox": 96,
+      "requiredBy": ["chrome"],
+      "recommendedBy": ["firefox"],
+      "source": "https://developer.chrome.com/docs/webstore/images",
+      "fetched": "2026-09-20",
+      "verbatim": "128x128-pixel extension icon image | The actual icon size should be 96x96 (for square icons); an additional 16 pixels per side should be transparent padding | The image must be in PNG format",
+      "_firefoxWhy": "AMO IS RECOMMENDED, NOT REQUIRED, AND ITS TWO CURRENT PAGES DISAGREE ABOUT THE NUMBER. extensionworkshop.com's listing guidance (fetched 2026-09-20) says 'You can load icons at two resolutions-32x32 and 64x64-in either PNG or JPEG format'; mozilla.github.io/addons-server's API reference recommends a 128x128 upload that AMO resizes itself. A 128x128 upload satisfies both readings, so the file Chrome requires is the file AMO gets, and no second slot is created for a number two pages cannot agree on."
+    },
+    {
+      "id": "chrome-small-promo-tile",
+      "path": "chrome/promo-tile-440x280.png",
+      "scope": "store",
+      "store": "chrome",
+      "width": 440,
+      "height": 280,
+      "colorTypes": [2, 6],
+      "_colorTypeWhy": "NO ALPHA RULE IS STATED FOR THIS ASSET ANYWHERE ON THE PAGE, so none is invented: both 8-bit colour types are accepted here and the renderer picks 2 because the tile is a filled rectangle with nothing behind it. Chrome's page lists PNG and JPEG as the accepted formats for a promotional image; this factory emits PNG because every other asset it emits is PNG.",
+      "requiredBy": ["chrome"],
+      "recommendedBy": [],
+      "source": "https://developer.chrome.com/docs/webstore/images",
+      "fetched": "2026-09-20",
+      "verbatim": "Small: 440x280 pixels (required)",
+      "_why": "THIS IS THE ASSET THAT MAKES CAPTURING SCREENSHOTS INSUFFICIENT. A Chrome Web Store submission without it is refused at upload, and until 2026-09-20 no slot for it existed anywhere in the extension tree -- so a lane that captured five perfect screenshots would have bought a listing that still could not be submitted."
+    },
+    {
+      "id": "edge-logo-300",
+      "path": "edge/logo-300x300.png",
+      "scope": "store",
+      "store": "edge",
+      "width": 300,
+      "height": 300,
+      "colorTypes": [2, 6],
+      "requiredBy": ["edge"],
+      "recommendedBy": [],
+      "source": "https://learn.microsoft.com/en-us/microsoft-edge/extensions/publish/publish-extension",
+      "fetched": "2026-09-20",
+      "verbatim": "Extension logo | Required for each language | An image (one per language) that represents your company or extension logo, with an aspect ratio of 1:1 and a recommended size of 300 x 300 pixels, with a minimum size of 128 x 128 pixels.",
+      "_perLanguageWhy": "'REQUIRED FOR EACH LANGUAGE' IS A DASHBOARD FACT, NOT A FILE FACT. The same page's Step 7 says the logo is copied across languages from Partner Center itself -- 'click the Duplicate option ... For example, click Duplicate this logo for all languages'. One file in the tree therefore serves every language the package declares, and the per-language duty is discharged by one click in the dashboard rather than by N identical PNGs in git. Recorded here so nobody adds _locales-shaped copies later.",
+      "_minimumWhy": "The page states a MINIMUM of 128x128 and a RECOMMENDED 300x300. The recommended size is what is rendered and what is enforced: a guard that accepted anything at or above the minimum would pass a 128x128 logo that Edge would then upscale, which is a quality loss nothing downstream could see."
+    }
+  ],
+
+  "unverified": [
+    "CHROME MARQUEE PROMOTIONAL TILE (1400x560) -- optional on the page fetched 2026-09-20 ('You can provide one of each of the following'), so no slot is created and none is required. Without it the extension cannot be featured in the marquee, which is a discovery consequence and not a submission blocker.",
+    "EDGE SMALL (440x280) AND LARGE (1400x560) PROMOTIONAL TILES -- both stated Optional on the same page. The 440x280 file Chrome requires would satisfy Edge's optional small tile byte-for-byte; it is not declared for Edge because declaring an optional asset as required is how a guard starts failing on correct input.",
+    "SCREENSHOT MAXIMUM FILE SIZE, ALL THREE STORES -- not documented on any page fetched 2026-09-20. Not written, not enforced.",
+    "SCREENSHOT COLOUR TYPE / BIT DEPTH, ALL THREE STORES -- not documented. The tree's previous '24-bit PNG, no alpha' line carried no URL and is not reproduced here."
+  ]
+}

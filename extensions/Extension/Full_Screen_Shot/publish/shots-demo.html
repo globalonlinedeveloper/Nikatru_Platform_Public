@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<!-- THE PAGE THE LISTING SCREENSHOTS PHOTOGRAPH FULLSHOT CAPTURING.
+
+     BUILD-TIME FIXTURE. NEVER SHIPPED. It lives under publish/, which tool.json
+     puts on the packaging never-list (`exclude: ["publish/**", ...]`), so no
+     byte of it can reach a store package.
+
+     WHY A FIXTURE OF OUR OWN RATHER THAN A REAL WEBSITE. A store screenshot is
+     a sworn filing and it is published. Photographing somebody else's site puts
+     their trademark, their copy and their layout in our listing; photographing
+     the owner's inbox or dashboard puts real personal data in it. Both are the
+     kind of mistake that is permanent once a listing is live. Everything below
+     is written here, by us, and contains:
+
+       · no logo, wordmark, product name or trademark belonging to anyone else;
+       · no real person, no real address and no real account. The email domain
+         is example.com, which RFC 2606 §3 reserves for documentation, and the
+         telephone number is in the +1 555-01xx block reserved for fiction;
+       · no date, time, clock or hostname that could move between two runs. The
+         two dates below are literal text, not a `new Date()`.
+
+     WHY IT IS THIS LONG. FullShot's single purpose is capturing a page TALLER
+     THAN THE WINDOW. A fixture that fits in the viewport would produce a
+     screenshot in which the product's whole point is invisible, so this runs to
+     roughly three screens at the 1280x800 the stores want.
+
+     THE TWO REDACTABLE TOKENS ARE DELIBERATE. `content/capture.js` detects
+     email and telephone shapes; the contact card below carries one of each so
+     the redaction screenshots show the feature doing something real rather than
+     a page with nothing to find. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- The result page's summary line renders the CAPTURED page's own title, and
+     falls back to its URL only when there is no title. A title here is
+     therefore what keeps `localhost:<port>` out of the listing screenshots. -->
+<title>Sample page — FullShot demo</title>
+<style>
+  :root {
+    --ink: #1c1c28; --mute: #5c5c70; --line: #e4e4ec; --bg: #ffffff;
+    --panel: #f7f7fb; --accent: #4f46e5; --accent-soft: #eeeefa;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.65 system-ui, sans-serif;
+  }
+  .bar {
+    position: sticky; top: 0; z-index: 2;
+    display: flex; align-items: center; gap: 14px;
+    padding: 14px 40px; background: var(--bg);
+    border-bottom: 1px solid var(--line);
+  }
+  .bar .dot { width: 22px; height: 22px; border-radius: 7px; background: var(--accent); }
+  .bar b { font-size: 15px; letter-spacing: .2px; }
+  .bar nav { margin-left: auto; display: flex; gap: 22px; color: var(--mute); font-size: 14px; }
+  main { max-width: 860px; margin: 0 auto; padding: 44px 40px 72px; }
+  h1 { font-size: 30px; line-height: 1.25; margin: 0 0 10px; letter-spacing: -.3px; }
+  h2 { font-size: 19px; margin: 40px 0 10px; letter-spacing: -.1px; }
+  p { margin: 0 0 14px; }
+  .lede { font-size: 17px; color: var(--mute); margin-bottom: 30px; }
+  .card {
+    border: 1px solid var(--line); border-radius: 12px; background: var(--panel);
+    padding: 18px 20px; margin: 22px 0;
+  }
+  .card h3 { margin: 0 0 10px; font-size: 14px; letter-spacing: .6px;
+             text-transform: uppercase; color: var(--mute); }
+  .kv { display: grid; grid-template-columns: 148px 1fr; gap: 7px 18px; font-size: 15px; }
+  .kv span { color: var(--mute); }
+  table { width: 100%; border-collapse: collapse; margin: 18px 0 8px; font-size: 14.5px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+  th { color: var(--mute); font-weight: 600; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 999px;
+          background: var(--accent-soft); color: var(--accent); font-size: 13px; }
+  .band { background: var(--panel); border-top: 1px solid var(--line);
+          border-bottom: 1px solid var(--line); padding: 34px 40px; margin: 40px 0; }
+  .band .inner { max-width: 860px; margin: 0 auto; }
+  ul { margin: 0 0 14px; padding-left: 22px; }
+  li { margin: 0 0 7px; }
+  footer { color: var(--mute); font-size: 13.5px; padding: 26px 40px 40px;
+           border-top: 1px solid var(--line); text-align: center; }
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <div class="dot" aria-hidden="true"></div>
+  <b>Sample page</b>
+  <nav><span>Overview</span><span>Notes</span><span>Figures</span><span>Contact</span></nav>
+</div>
+
+<main>
+  <h1>A long document, so the part below the fold is the part worth showing</h1>
+  <p class="lede">This page exists to be captured. It is taller than the window on purpose:
+     everything past the first screen is what a visible-area screenshot loses and a
+     full-page capture keeps.</p>
+
+  <h2>Overview</h2>
+  <p>A window shows one screen at a time. A document is rarely one screen long, so a picture of
+     a document is either several pictures stitched together or a picture of its first third.
+     Stitching by hand means scrolling a fixed number of pixels, pressing a key, and hoping the
+     sticky header did not print itself four times down the middle of the result.</p>
+  <p>The interesting failures are not the long pages. They are the pages with a toolbar that
+     follows the scroll, a panel that scrolls inside the page, a list that only renders the rows
+     you can see, and a frame inside the frame. Each one looks fine on screen and each one comes
+     out wrong if the capture is naive about it.</p>
+
+  <div class="card">
+    <h3>Contact</h3>
+    <div class="kv">
+      <span>Prepared by</span><div>Sample Author</div>
+      <span>Reply to</span><div>sample.author@example.com</div>
+      <span>Telephone</span><div>+1 555-0142</div>
+      <span>Reference</span><div>SP-2026-0417</div>
+    </div>
+  </div>
+
+  <h2>Notes</h2>
+  <ul>
+    <li>A sticky element should appear once, where it was, and not once per stitched band.</li>
+    <li>A panel that scrolls inside the page is a second document; it is either unrolled or
+        it is captured as it was seen, and either way the picture should say which.</li>
+    <li>A list that renders only visible rows has no pixels for the rest. Something has to ask
+        it to render them before there is anything to photograph.</li>
+    <li>An image that has not finished decoding photographs as a black rectangle, which is the
+        kind of defect nobody notices until the picture is already in a document.</li>
+  </ul>
+  <p>None of this is visible in a screenshot of the top of the page, which is why the top of the
+     page is a poor place to stop.</p>
+
+  <h2>Figures</h2>
+  <table>
+    <thead><tr><th>Section</th><th>Kind</th><th class="num">Rows</th><th class="num">Height</th></tr></thead>
+    <tbody>
+      <tr><td>Header</td><td><span class="pill">sticky</span></td><td class="num">1</td><td class="num">52</td></tr>
+      <tr><td>Overview</td><td>flow</td><td class="num">12</td><td class="num">318</td></tr>
+      <tr><td>Contact</td><td>card</td><td class="num">4</td><td class="num">164</td></tr>
+      <tr><td>Notes</td><td>list</td><td class="num">4</td><td class="num">206</td></tr>
+      <tr><td>Figures</td><td>table</td><td class="num">7</td><td class="num">288</td></tr>
+      <tr><td>Method</td><td>flow</td><td class="num">9</td><td class="num">241</td></tr>
+      <tr><td>Appendix</td><td>flow</td><td class="num">11</td><td class="num">297</td></tr>
+    </tbody>
+  </table>
+  <p>Totals are illustrative. The numbers are written into this file and do not move between
+     runs, which is the whole reason a fixture is used instead of a live page.</p>
+</main>
+
+<div class="band">
+  <div class="inner">
+    <h2 style="margin-top:0">Method</h2>
+    <p>Scroll to a position. Wait for the page to settle. Take the visible area. Move down by
+       slightly less than a screen, so the bands overlap and nothing falls between them. Repeat
+       until the bottom stops moving, then align the overlaps and keep one copy of anything that
+       followed the scroll.</p>
+    <p>The last step is the one that separates a stitched image from a usable one: a toolbar that
+       was pinned to the top of the window belongs at the top of the picture, once.</p>
+  </div>
+</div>
+
+<main style="padding-top:0">
+  <h2>Appendix</h2>
+  <p>Two dates, written as text: opened 12 March 2026, revised 17 April 2026. Neither is read
+     from a clock, so this paragraph is identical in every capture of this page — which is what
+     makes a screenshot of it reproducible rather than merely repeatable.</p>
+  <p>The contact block above carries one address and one telephone number. Both are reserved for
+     documentation and belong to nobody: example.com is reserved by RFC 2606, and the 555-01xx
+     range is the one kept aside for fiction. They are here so that a redaction pass has
+     something genuine to find, and so that what it finds harms no one.</p>
+  <p>Everything below this line is padding with a purpose: it puts the end of the document well
+     past the end of the window, so a capture that quietly stopped at the fold would be obvious
+     rather than plausible.</p>
+  <p>A picture of the first screen of a document is a picture of a decision somebody has not
+     made yet. A picture of the whole document is the document.</p>
+  <p>The end of the page is below. If it is in the picture, the capture reached it.</p>
+</main>
+
+<footer>End of sample page — every value on it is written into the file.</footer>
+
+</body>
+</html>
