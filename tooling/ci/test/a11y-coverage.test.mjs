@@ -116,10 +116,32 @@ const SUITE = `${APP}/test/a11y_semantics_test.dart`;
 const WORKSPACE_MANIFEST = 'pubspec.yaml';
 const APP_MANIFEST = `${APP}/pubspec.yaml`;
 
+// ⏱ 2026-09-20 · THE CHASSIS IS PART OF THE SUBJECT FOR THE APP ROOT TOO
+// ([ADR 086]). The comment on the brick's roots below says why the BRICK
+// fixtures need it; `apps/subscriptiontracker` has now started down the same
+// road — `reaccept_terms_screen.dart` is an ADAPTER over
+// `package:nikatru_chassis_screens/auth/…`, and this guard resolves that import
+// and refuses, correctly, when the target is not there. A fixture that copied
+// the app without it stopped being a copy of the real tree the moment the first
+// screen was adopted: measured 2026-09-20, every case in this suite failed as
+// COVERAGE LOST for a reason none of them is about.
+//
+// 🔴 THE WHOLE PACKAGE, NOT JUST ITS `lib`, AND THE GUARD IS WHY. Copying only
+// `lib` resolves the import and still FAILS: this guard refuses a delegation
+// whose target package is not itself a DERIVED ROOT of the same scan — "it left
+// this root by moving house and it never arrived anywhere this guard looks" —
+// and a root is derived from the workspace list AND the member's own
+// `pubspec.yaml` declaring a suite runner. That refusal is the guard working,
+// and it is the reason the app fixtures now read TWO roots rather than one.
+// Measured 2026-09-20 in both directions: with no chassis at all the adapter
+// read COVERAGE LOST on the unresolved import, and with `lib` alone it read
+// COVERAGE LOST on the missing root. Only the whole package is green.
+const CHASSIS = 'packages/chassis_screens';
+
 // The things the guard reads for the subscriptiontracker root. Copied whole; copying only
 // what is read keeps a fixture from accidentally depending on a part of the
 // repo this guard never opens.
-const SUBJECT = [WORKSPACE_MANIFEST, APP_MANIFEST, ROUTER, ROUTER_DIR, FEATURES, SUITE];
+const SUBJECT = [WORKSPACE_MANIFEST, APP_MANIFEST, ROUTER, ROUTER_DIR, FEATURES, SUITE, CHASSIS];
 
 // The two roots the 2026-09-05 widening added. Copied only by the fixtures that
 // measure them, so every mutation above them keeps its one-root reading.
@@ -133,8 +155,14 @@ const DS = 'packages/design_system';
 // copied the brick without it was not a copy of the real tree: every case below
 // failed as COVERAGE LOST for a reason none of them is about. It is also the
 // FOURTH derived root, which is why the root counts in this file read 4.
-const CHASSIS = 'packages/chassis_screens';
-const NEW_ROOT_SUBJECT = [BRICK, BRICK_MANIFEST, DS, CHASSIS];
+//
+// ⏱ 2026-09-20 · `CHASSIS` IS DEFINED ABOVE, BESIDE `SUBJECT`, AND IS NO LONGER
+// ONE OF THE ROOTS THIS LIST ADDS. `apps/subscriptiontracker` began adopting the
+// same package ([ADR 086]), so the BASE subject already carries it and every
+// fixture in this file derives it — which is why the app fixtures read 2 roots
+// and `NEW_ROOT_SUBJECT` now adds only two more, for 4. The paragraph above is
+// left exactly as written; this supersedes its last sentence.
+const NEW_ROOT_SUBJECT = [BRICK, BRICK_MANIFEST, DS];
 
 // MEASURED by running the guard against the working tree of 2026-08-13. Named
 // individually rather than counted: a count with no names is the "unmet clause
@@ -230,10 +258,28 @@ function run(root) {
   return { code: r.status, out: `${r.stdout}${r.stderr}` };
 }
 
-/** The ✅ block — the surfaces the guard says carry a sweep. */
-function sweptList(out) {
-  return out
-    .split('\n')
+/** The ✅ block of ONE root — the surfaces the guard says carry a sweep there.
+ *
+ *  ⏱ 2026-09-20 · SCOPED TO A ROOT, AND IT HAD TO BE. This read the whole
+ *  report, which was the same thing while every fixture here derived exactly
+ *  one root. `apps/subscriptiontracker` began adopting
+ *  `packages/chassis_screens` ([ADR 086]) and the guard refuses a delegation
+ *  whose target is not itself a derived root, so the base fixture now carries
+ *  that package and derives TWO — at which point an unscoped read returned 37
+ *  names and every `deepEqual(…, ALL_19_SWEPT)` below was comparing two roots
+ *  against one root's list. Scoping keeps each assertion meaning what it was
+ *  written to mean: the APP's ✅ list, by name.
+ *
+ *  ⚠️ The default is [APP] on purpose. Every call site below is about the app
+ *  root; the chassis root has its own pinned readings in the M13 group, which
+ *  match on the report text directly. */
+function sweptList(out, root = APP) {
+  const lines = out.split('\n');
+  const start = lines.findIndex((l) => l.startsWith(`── ${root} `));
+  if (start === -1) return [];
+  const rest = lines.slice(start + 1);
+  const end = rest.findIndex((l) => l.startsWith('── ') || l.startsWith('assert-a11y-coverage:'));
+  return (end === -1 ? rest : rest.slice(0, end))
     .filter((l) => /^ {3}· .+ — .*(naked-controls|tap-target|contrast)/.test(l))
     .map((l) => l.trim().split(' ')[1]);
 }
@@ -383,12 +429,36 @@ describe('the guard says YES on the tree as it is', () => {
     assert.match(out, /sweep families used: naked-controls ×24, tap-target ×19, contrast ×24/);
   });
 
-  test('the copied subject tree reproduces the subscriptiontracker reading exactly — and derives ONE root', () => {
+  test('the copied subject tree reproduces the subscriptiontracker reading exactly — and derives TWO roots', () => {
+    // ⏱ 2026-09-20 · TWO, NOT ONE, AND THE APP READING IS STILL EXACTLY THE SAME
+    // ([ADR 086]). `apps/subscriptiontracker` adopted `packages/chassis_screens`
+    // in `reaccept_terms_screen.dart`, and this guard refuses a delegation whose
+    // target package is not itself a DERIVED root of the same scan — so the
+    // fixture carries the package and derives it. The line that matters below is
+    // the PER-ROOT one:
+    // `19 of 19`, from 1 file across 110 cases, unchanged from before the
+    // adoption. Asserting only the aggregate would have let the app's own
+    // reading move under cover of a second root arriving.
     const { code, out } = run(tree());
     assert.equal(code, 0, out);
-    assert.match(out, /1 root\(s\) DERIVED, never listed — apps\/subscriptiontracker \(workspace app member\)/);
+    assert.match(
+      out,
+      /2 root\(s\) DERIVED, never listed — packages\/chassis_screens \(workspace package member: declares flutter_test AND a public widget\) · apps\/subscriptiontracker \(workspace app member\)/,
+    );
     assert.match(out, /PARTIAL TREE: the declared-root-must-exist clause is SKIPPED/);
-    assert.match(out, /19 reachable surface\(s\); 19 swept by 1 a11y test file\(s\) across 110 case\(s\)/);
+    assert.match(
+      out,
+      /apps\/subscriptiontracker: 19 of 19 reachable surface\(s\) carry an a11y sweep, from 1 a11y test file\(s\) across 110 case\(s\)/,
+    );
+    assert.match(out, /37 reachable surface\(s\); 37 swept by 4 a11y test file\(s\) across 164 case\(s\)/);
+    // The adapter is PRINTED as judged elsewhere rather than silently dropped —
+    // which is the whole reason the guard carries that list. ONE today
+    // (`ReacceptTermsScreen`); this number rises as the parity debt is paid, and
+    // it rising is the thing to notice rather than to gloss.
+    assert.match(
+      out,
+      /⬜ 1 reachable surface\(s\) in apps\/subscriptiontracker DELEGATE into `packages\/chassis_screens` and are judged there/,
+    );
     assert.deepEqual(sweptList(out).sort(), ALL_19_SWEPT);
     assert.equal(printedUnswept(out).length, 0);
   });
@@ -415,7 +485,10 @@ describe('the guard says YES on the tree as it is', () => {
     // AND NOT FAILED. This is the half that would be lost if the test went.
     assert.equal(code, 0, out);
     assert.doesNotMatch(out, /FAIL /);
-    assert.match(out, /20 reachable surface\(s\); 19 swept by 1 a11y test file\(s\) across 110 case\(s\)/);
+    // ⏱ 2026-09-20 · the aggregate spans TWO roots since the app adopted the
+    // chassis ([ADR 086]); the app's own half is pinned by the `1 of 20` line
+    // above, which is what this case is actually about.
+    assert.match(out, /38 reachable surface\(s\); 37 swept by 4 a11y test file\(s\) across 164 case\(s\)/);
     assert.match(out, /1 unswept and PRINTED/);
   });
 
@@ -445,7 +518,14 @@ describe('the guard says YES on the tree as it is', () => {
     );
     assert.deepEqual(sweptList(out).sort(), [...ALL_19_SWEPT, NEW_SHEET_SYMBOL].sort());
     assert.equal(printedUnswept(out).length, 0);
-    assert.match(out, /20 swept by 1 a11y test file\(s\) across 111 case\(s\)/);
+    // ⏱ 2026-09-20 · re-derived over the two roots the fixture now carries
+    // ([ADR 086]); the app's own contribution is still `20 of 20 … from 1 a11y
+    // test file(s) across 111 case(s)`, which is the half this case measures.
+    assert.match(
+      out,
+      /apps\/subscriptiontracker: 20 of 20 reachable surface\(s\) carry an a11y sweep, from 1 a11y test file\(s\) across 111 case\(s\)/,
+    );
+    assert.match(out, /38 swept by 4 a11y test file\(s\) across 165 case\(s\)/);
     assert.match(out, /0 unswept and PRINTED/);
   });
 });
