@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
+import 'package:nikatru_design_system/nikatru_design_system.dart'
+    show ChassisLocalizations;
 import 'package:subscriptiontracker/features/auth/reaccept_terms_screen.dart';
 import 'package:subscriptiontracker/features/auth/verify_email_screen.dart';
 import 'package:subscriptiontracker/features/settings/settings_screen.dart';
@@ -160,7 +162,10 @@ Future<void> _pumpSettings(
     UncontrolledProviderScope(
       container: container,
       child: const MaterialApp(
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        localizationsDelegates: <LocalizationsDelegate<dynamic>>[
+          ...AppLocalizations.localizationsDelegates,
+          ChassisLocalizations.delegate,
+        ],
         supportedLocales: AppLocalizations.supportedLocales,
         home: Scaffold(body: SettingsScreen()),
       ),
@@ -351,7 +356,10 @@ void main() {
         UncontrolledProviderScope(
           container: h.container,
           child: MaterialApp(
-            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            localizationsDelegates: <LocalizationsDelegate<dynamic>>[
+              ...AppLocalizations.localizationsDelegates,
+              ChassisLocalizations.delegate,
+            ],
             supportedLocales: AppLocalizations.supportedLocales,
             home: c.screen,
           ),

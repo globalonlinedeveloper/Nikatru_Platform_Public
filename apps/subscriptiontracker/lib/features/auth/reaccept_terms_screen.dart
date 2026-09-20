@@ -1,179 +1,103 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:nikatru_chassis_screens/auth/reaccept_terms_screen.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
-import 'package:nikatru_design_system/nikatru_design_system.dart'
-    show ContentPane;
 
 import '../../l10n/app_localizations.dart';
 import '../../state/providers.dart';
 import 'legal_consent_fields.dart';
 
-/// The MATERIAL-CHANGE re-acceptance interstitial (research/43, adopted as an
-/// auth-increment rider by the owner on 2026-08-09 night).
+/// The MATERIAL-CHANGE re-acceptance interstitial — the ADAPTER half.
 ///
-/// Shown when `kTermsVersion` / `kPrivacyPolicyVersion` have moved past the
-/// stamp the user accepted. The router puts them here and nothing else is
-/// reachable until they accept — which is why the screen is deliberately small:
-/// it states what changed, links the live documents, takes one affirmative act,
-/// and offers a way out that is not "agree".
+/// 🏗️ THE BODY IS IN `package:nikatru_chassis_screens` ([ADR 067] decision 2 /
+/// [ADR 071]), and the consent flag went with the box it belongs to:
+/// `assert-signup-consent-shape.mjs` reads this surface as its own code UNIONED
+/// with the chassis file it delegates to, so the unticked `_accepted`
+/// initialiser is still asserted — where it now lives.
 ///
-/// 🔴 RE-ACCEPTANCE IS NOT A VERSION BUMP. Both constants are hand-edited and
-/// moving either one puts this screen in front of every signed-in user in the
-/// world. That is the mechanism working; it is also why a wording tidy-up must
-/// not touch them.
+/// ⚠️ AND THE DECLARATION IS DELIBERATELY NOT QUOTED VERBATIM ABOVE. Naming it
+/// in prose here would leave the exact bytes
+/// `tooling/ci/test/signup-consent-shape.test.mjs` mutates sitting in a comment
+/// the guard strips before matching — so a mutation aimed at the flag would
+/// land in this doc, change nothing the guard reads, and report the guard as
+/// broken when it is not. That decoy cost a false red on 2026-09-20; the
+/// land-check in that file's `edit` helper is what caught it, and the case now
+/// mutates the chassis file where the flag actually lives.
 ///
-/// 🔴 THE TICK ARRIVES UNTICKED HERE TOO. Carrying the previous acceptance
-/// forward as a pre-ticked box would make the "acceptance" a re-render of a
-/// decision taken against a document that no longer exists — the same
-/// Planet49/EDPB objection as any other pre-ticked consent, and the whole
-/// reason this screen is being shown at all.
+/// ⏱ 2026-09-20 · [ADR 086] ONE PIECE AT A TIME — the first whole SCREEN of
+/// `tooling/chassis-parity.json`'s smallest-first plan for this app to be
+/// adopted (the plan's smaller first entry, check_inbox, was built, measured and
+/// then DEFERRED; that row says why, and it is a guard-test reason rather than a
+/// screen one). The measured before/after is in that row's `adopted` entry, not
+/// here, because a line count written in prose is a measurement that stopped
+/// being taken. The
+/// strings are the same strings (`reacceptTermsTitle` / `reacceptTermsBody` /
+/// `reacceptTermsAccept` are byte-identical in `chassis_en.arb` /
+/// `chassis_ta.arb` and `app_en.arb` / `app_ta.arb`), all three key constants
+/// forward to the same literals, and the app's own [LegalConsentFields] stays
+/// MOUNTED, so the published URLs and the `url_launcher` call still live here.
 ///
-/// ⚠️ THE MARKETING BOX IS ABSENT ON PURPOSE (`showMarketing: false`). Asking
-/// for a marketing opt-in on a screen the user cannot leave is exactly the
-/// conditionality research/43 declined; their existing `marketing-email`
-/// artifact stands untouched, whichever way it went.
-class ReacceptTermsScreen extends ConsumerStatefulWidget {
+/// 🔴 THE DECLINE PATH GOES THROUGH [signOutAndForgetUser], AND THAT IS WHY IT
+/// STAYED HERE. This was `ref.read(authRepositoryProvider).signOut()`, so the
+/// entitlement cache and the notification schedule survived it — and this is
+/// the sign-out a PAYING user is most likely to reach, because a `kTermsVersion`
+/// bump puts this interstitial in front of every signed-in account in the world
+/// and Decline is the only way past it that is not "agree".
+///
+/// ⚠️ THE UNKNOWN-ERROR FALLBACK IS RE-RAISED HERE RATHER THAN LOST. The chassis
+/// view renders `'$e'` for a non-[core.AuthFailure] throw, because the chassis
+/// owns no generic auth string; this app has one (`authUnknownError`) and
+/// rendered it before this move. Wrapping the throw as a [core.AuthFailure]
+/// with that message lands it on the view's `on core.AuthFailure` branch, so the
+/// inline notice reads exactly what it read before — a behaviour PRESERVED, not
+/// a behaviour the delegation quietly dropped.
+class ReacceptTermsScreen extends ConsumerWidget {
   const ReacceptTermsScreen({super.key});
 
-  static const Key acceptButton = Key('reacceptTermsAccept');
-  static const Key signOutButton = Key('reacceptTermsSignOut');
-  static const Key statusLine = Key('reacceptTermsStatus');
+  static const Key acceptButton = ReacceptTermsView.acceptButton;
+  static const Key signOutButton = ReacceptTermsView.signOutButton;
+  static const Key statusLine = ReacceptTermsView.statusLine;
 
   @override
-  ConsumerState<ReacceptTermsScreen> createState() =>
-      _ReacceptTermsScreenState();
-}
-
-class _ReacceptTermsScreenState extends ConsumerState<ReacceptTermsScreen> {
-  /// 🔴 FALSE, ALWAYS, AND `assert-signup-consent-shape.mjs` FAILS THE BUILD IF
-  /// THIS LINE EVER SAYS OTHERWISE. A pre-ticked clickwrap is not consent in any
-  /// market this ships to.
-  bool _accepted = false;
-  bool _busy = false;
-  String? _notice;
-
-  /// 🔴 THE DECLINE PATH IS AWAITED, HOLDS THE BUSY FLAG, AND SHOWS ITS OWN
-  /// FAILURE — it used to be `onPressed: () => auth.signOut()` and none of the
-  /// three. On a screen whose entire premise is that there is no other way out,
-  /// a sign-out that throws became an unhandled async error and the user was
-  /// left looking at a button that had visibly done nothing. `VerifyEmailScreen`
-  /// routes the identical call through its `_run` for exactly this reason; this
-  /// is the same treatment, kept local because this screen has one such action.
-  ///
-  /// Inline notice rather than a SnackBar, for the same reason as everywhere
-  /// else in this flow: a SUCCESSFUL sign-out replaces this page via the
-  /// router's gate, and a SnackBar riding on a page being torn down is a message
-  /// nobody reads ([ADR 027]).
-  ///
-  /// 🔴 IT GOES THROUGH [signOutAndForgetUser], AND THAT IS THE FIX RATHER THAN
-  /// A TIDY-UP. This was `ref.read(authRepositoryProvider).signOut()`, so the
-  /// entitlement cache and the notification schedule survived it — and this is
-  /// the sign-out a PAYING user is most likely to reach, because a `kTermsVersion`
-  /// bump puts this interstitial in front of every signed-in account in the
-  /// world and Decline is the only way past it that is not "agree". The
-  /// inherited-Pro defect reproduced through this button unchanged while the
-  /// settings control was already fixed.
-  Future<void> _signOut() async {
-    if (_busy) return;
-    setState(() {
-      _busy = true;
-      _notice = null;
-    });
-    try {
-      await signOutAndForgetUser(ref);
-    } on core.AuthFailure catch (e) {
-      if (mounted) setState(() => _notice = e.message);
-    } catch (_) {
-      if (mounted) {
-        setState(() => _notice = AppLocalizations.of(context).authUnknownError);
+  Widget build(BuildContext context, WidgetRef ref) => ReacceptTermsView(
+    // `acceptTermsOnly`, never `accept(marketingEmail: false)`: this screen
+    // shows no marketing box, so it must not speak for that decision.
+    // Recording a fresh `granted: false` marketing artifact would silently
+    // unsubscribe somebody for accepting a terms change.
+    onAccept: () =>
+        ref.read(legalAcceptanceProvider.notifier).acceptTermsOnly(),
+    onSignOut: () async {
+      // Read BEFORE the await, never across it. `flutter_lints`' `flutter.yaml`
+      // — which `packages/analysis` includes, so every app and every stamp
+      // inherits it — carries `use_build_context_synchronously`, and a context
+      // read in the catch arm is exactly the gap it names.
+      final String unknown = AppLocalizations.of(context).authUnknownError;
+      try {
+        await signOutAndForgetUser(ref);
+      } on core.AuthFailure {
+        rethrow;
+      } catch (_) {
+        throw core.AuthFailure(unknown);
       }
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  Future<void> _accept() async {
-    if (_busy || !_accepted) return;
-    setState(() => _busy = true);
-    try {
-      // `marketingEmail: false` here does NOT withdraw an existing opt-in: this
-      // screen never shows that box, so it must not speak for it. Recording a
-      // fresh `granted: false` marketing artifact would silently unsubscribe
-      // somebody for accepting a terms change — see the note on
-      // [applyLegalAcceptance] about why the two decisions are separate
-      // artifacts in the first place.
-      await ref.read(legalAcceptanceProvider.notifier).acceptTermsOnly();
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-    // No `context.go` — the router's gate is what moves the user, and it re-runs
-    // because `routerRefreshProvider` listens to the acceptance provider. A
-    // navigation here would race that gate and could land on a screen the gate
-    // is about to redirect away from.
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final AppLocalizations l10n = AppLocalizations.of(context);
-
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(l10n.reacceptTermsTitle),
-        // No back button: there is nowhere behind this. The router put the user
-        // here from wherever they were, and popping would return to a route the
-        // gate immediately redirects out of.
-        automaticallyImplyLeading: false,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: ContentPane.form(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              Text(
-                l10n.reacceptTermsBody,
-                style: Theme.of(context).textTheme.bodyLarge,
-              ),
-              const SizedBox(height: 20),
-              LegalConsentFields(
-                termsAccepted: _accepted,
-                marketingAccepted: false,
-                enabled: !_busy,
-                showMarketing: false,
-                onTermsChanged: (bool v) => setState(() => _accepted = v),
-                onMarketingChanged: (_) {},
-              ),
-              if (_notice != null) ...<Widget>[
-                const SizedBox(height: 12),
-                Text(
-                  _notice!,
-                  key: ReacceptTermsScreen.statusLine,
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-              ],
-              const SizedBox(height: 20),
-              // 🔴 DISABLED UNTIL TICKED. The tick is the affirmative act; a
-              // button that works without it makes the box decorative, which is
-              // the difference between a clickwrap and a notice.
-              FilledButton(
-                key: ReacceptTermsScreen.acceptButton,
-                onPressed: (_busy || !_accepted) ? null : _accept,
-                child: Text(l10n.reacceptTermsAccept),
-              ),
-              const SizedBox(height: 12),
-              // Declining has to be possible, and it is signing out — not a
-              // silent dismissal that leaves them using the product under terms
-              // they refused.
-              TextButton(
-                key: ReacceptTermsScreen.signOutButton,
-                onPressed: _busy ? null : _signOut,
-                child: Text(l10n.signOut),
-              ),
-            ],
-          ),
+    },
+    // This app's own consent widget, still MOUNTED — it owns the published URLs
+    // and the platform call that opens them, and the chassis view owns the
+    // flag. `showMarketing: false`: this screen re-takes the TERMS and nothing
+    // else, so it must not speak for a marketing decision.
+    consentFields:
+        ({
+          required bool termsAccepted,
+          required bool marketingAccepted,
+          required bool enabled,
+          required ValueChanged<bool> onTermsChanged,
+          required ValueChanged<bool> onMarketingChanged,
+        }) => LegalConsentFields(
+          termsAccepted: termsAccepted,
+          marketingAccepted: marketingAccepted,
+          enabled: enabled,
+          showMarketing: false,
+          onTermsChanged: onTermsChanged,
+          onMarketingChanged: onMarketingChanged,
         ),
-      ),
-    );
-  }
+  );
 }

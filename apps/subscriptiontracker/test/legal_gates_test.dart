@@ -34,6 +34,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
     show InMemoryAuthRepository;
 import 'package:nikatru_core/nikatru_core.dart' as core;
+import 'package:nikatru_design_system/nikatru_design_system.dart'
+    show ChassisLocalizations;
 import 'package:subscriptiontracker/core/e2e_keys.dart';
 import 'package:subscriptiontracker/core/router.dart';
 import 'package:subscriptiontracker/features/auth/legal_consent_fields.dart';
@@ -142,7 +144,10 @@ Future<String> _settleAt(
     UncontrolledProviderScope(
       container: c,
       child: MaterialApp.router(
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        localizationsDelegates: <LocalizationsDelegate<dynamic>>[
+          ...AppLocalizations.localizationsDelegates,
+          ChassisLocalizations.delegate,
+        ],
         supportedLocales: AppLocalizations.supportedLocales,
         routerConfig: c.read(routerProvider),
       ),
@@ -161,7 +166,10 @@ Future<void> _pumpScreen(WidgetTester tester, Widget child) async {
         keyValueStoreProvider.overrideWith((ref) async => _MemStore()),
       ],
       child: MaterialApp(
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        localizationsDelegates: <LocalizationsDelegate<dynamic>>[
+          ...AppLocalizations.localizationsDelegates,
+          ChassisLocalizations.delegate,
+        ],
         supportedLocales: AppLocalizations.supportedLocales,
         home: child,
       ),
@@ -279,7 +287,10 @@ void main() {
             keyValueStoreProvider.overrideWith((ref) async => _MemStore()),
           ],
           child: MaterialApp(
-            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            localizationsDelegates: <LocalizationsDelegate<dynamic>>[
+              ...AppLocalizations.localizationsDelegates,
+              ChassisLocalizations.delegate,
+            ],
             supportedLocales: AppLocalizations.supportedLocales,
             home: const VerifyEmailScreen(),
           ),
@@ -463,7 +474,10 @@ void main() {
         UncontrolledProviderScope(
           container: c,
           child: MaterialApp(
-            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            localizationsDelegates: <LocalizationsDelegate<dynamic>>[
+              ...AppLocalizations.localizationsDelegates,
+              ChassisLocalizations.delegate,
+            ],
             supportedLocales: AppLocalizations.supportedLocales,
             home: const SignUpScreen(),
           ),
