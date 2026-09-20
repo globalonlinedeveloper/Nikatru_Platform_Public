@@ -154,7 +154,14 @@ import { tmpdir } from 'node:os';
 import { spawn, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { pngHeader, flattenToOpaque, RasterUnavailable } from './chrome-raster.mjs';
+import { decodeRgba, PngUnreadable } from './png-codec.mjs';
 import { scanCaptureSuite, selfTestAccountAddressDetector } from './capture-suite-scan.mjs';
+import {
+  launchDefineArgs,
+  scanTopBand,
+  selfTestOfflineBannerDetector,
+  BAND_ROW_FRACTION,
+} from './capture-network-posture.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(join(HERE, '..', '..'));
@@ -384,6 +391,30 @@ if (!existsSync(join(appDir, 'integration_test', 'store_screenshots_test.dart'))
   );
 }
 
+// ── 🔴 THE OFFLINE-BANNER DETECTOR PROVES ITSELF BEFORE THE BROWSER STARTS ──
+// Same placement and same reason as the account-address self-test above: a
+// detector that can no longer tell a banded frame from a clean one would clear
+// every captured frame for that reason, silently, and the whole run would be
+// wasted producing a set nobody may upload. Refusing here costs milliseconds.
+{
+  const t = selfTestOfflineBannerDetector();
+  if (!t.ok) {
+    fail([
+      'the offline-banner detector failed its own self-test, so no frame would have been examined for it.',
+      `a synthetic frame carrying a full-width errorContainer band measured ${t.withBanner.fraction.toFixed(3)} of a ` +
+        `row with a red lead of ${t.withBanner.redLead} (banner=${t.withBanner.banner}, needs true), and a clean ` +
+        `frame measured ${t.without.fraction.toFixed(3)} of a row with a red lead of ${t.without.redLead} ` +
+        `(banner=${t.without.banner}, needs false).`,
+      'Either the decoder, the row threshold or the red-lead threshold changed such that this limb can no',
+      'longer separate the two — which is the state every frame committed before 2026-09-20 was captured in.',
+    ]);
+  }
+  console.log(
+    `   offline-banner detector: banded ${t.withBanner.fraction.toFixed(3)}/red+${t.withBanner.redLead}, ` +
+      `clean ${t.without.fraction.toFixed(3)}/red${t.without.redLead}, threshold ${BAND_ROW_FRACTION}`,
+  );
+}
+
 // ── 🔴 WHERE EACH DEVICE TYPE'S SET LIVES IS THE REGISTER'S TO SAY ──────────
 // Not this file's. `assert-play-device-coverage.mjs` counts the directories the
 // register names; if this script named its own, the two would be a pair of
@@ -514,6 +545,15 @@ const pass = (k) => {
 };
 for (const k of need) pass(k);
 if (PROOF) defines.push('--dart-define', 'STORE_CAPTURE_ALLOW_DEMO=true');
+
+// 🔴 THE APP MUST NOT ANNOUNCE ITSELF OFFLINE ON A STORE PAGE. Every frame
+// captured before 2026-09-20 carries a full-width "Could not reach the network"
+// band, because the launch-time config fetch is cross-origin from the random
+// localhost port this harness serves on and the platform Worker has no
+// localhost regex. The whole diagnosis, the measurements and the rejected
+// alternative are in capture-network-posture.mjs; the lever is app_config.dart's
+// own, documented for exactly this caller and wired to nothing until now.
+defines.push(...launchDefineArgs());
 
 /** ONE chromedriver, one drive PER VIEWPORT. The browser dimension is a launch
  *  argument, so a second size is a second drive — there is no mid-run resize
@@ -711,7 +751,39 @@ for (const cap of CAPTURES) {
           `exactly on that ratio, so a frame off it means the drive did not honour the dimension.`,
       );
     }
-    console.log(`   ${rel}${name} — ${h.width}x${h.height}, colour type ${h.colourType}, ${h.bytes} bytes`);
+    // ── 🔴 NO ALARM BANNER ACROSS THE TOP OF THE FRAME ────────────────────
+    // Measured in the PIXELS, after the flatten, so no CAPTURE.json and no
+    // define can talk it away — and deliberately NOT a check that the define
+    // above was passed. The define is the cause-side fix and this is the
+    // effect-side one; a future banner from some other source would walk past
+    // a check that only asked about the flag.
+    let band = null;
+    try {
+      band = scanTopBand(decodeRgba(readFileSync(file)));
+    } catch (e) {
+      if (e instanceof PngUnreadable) {
+        problems.push(
+          `${rel}${name} could not be decoded, so it was never examined for an offline banner: ${e.lines?.[0] ?? e.message}. ` +
+            'A frame this capture cannot look at must not be reported as one it looked at.',
+        );
+      } else throw e;
+    }
+    if (band?.banner) {
+      problems.push(
+        `${rel}${name} carries a FULL-WIDTH ${band.colour} BAND across the top of the frame ` +
+          `(${(band.fraction * 100).toFixed(1)}% of a row, red lead ${band.redLead}, threshold ` +
+          `${(BAND_ROW_FRACTION * 100).toFixed(0)}%). That is an ALARM surface on a store listing. The one this ` +
+          'lane has produced since it began is `OfflineNotice` reading "Could not reach the network. Some ' +
+          'things may be out of date." — the app telling a prospective customer the product does not work, in ' +
+          'the first thing their eye lands on. Its cause and the lever that removes it are in ' +
+          'tooling/store/capture-network-posture.mjs; a band of a DIFFERENT colour is a different banner and ' +
+          'needs reading before it is dismissed.',
+      );
+    }
+    console.log(
+      `   ${rel}${name} — ${h.width}x${h.height}, colour type ${h.colourType}, ${h.bytes} bytes` +
+        (band ? `, top band ${band.colour} ${(band.fraction * 100).toFixed(1)}%/red${band.redLead >= 0 ? '+' : ''}${band.redLead}` : ''),
+    );
   }
 
   if (sizes.size > 1) {
