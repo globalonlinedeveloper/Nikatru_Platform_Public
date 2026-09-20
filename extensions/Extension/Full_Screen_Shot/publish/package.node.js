@@ -1,4 +1,6 @@
-/* FullShot store packaging. No browser, no dependencies, no build step.
+/* FullShot store packaging. No browser, no npm dependency, no build step.
+   (It does `require()` ONE module out of the monorepo — the shared zip
+   timestamp; the note above that line says what that costs and what holds it.)
    Builds both submission packages from the working tree and then GRADES what it
    built — a zip is only useful if every reference inside it resolves inside it.
 
@@ -166,10 +168,15 @@ function readJson(p) {
 /* LIFTED VERBATIM from scripts/pack.mjs — the monorepo packer that applies the
    same overlay to the same tree. Two merges that must agree is a defect waiting
    to happen, so this copy is not maintained: it is COMPARED. `mergePatchDrift()`
-   below reads pack.mjs's own source and fails the build if the two ever differ,
-   which is the closest a dependency-free CommonJS script can get to importing an
-   ESM function. package.node.js deliberately has no build step and no imports,
-   and `require()` cannot load a .mjs at all. */
+   below reads pack.mjs's own source and fails the build if the two ever differ.
+
+   IT STAYS A COMPARISON EVEN NOW THAT THIS FILE REQUIRES AN ESM MODULE (the zip
+   timestamp, further down). The two cases are not alike. zip-time.mjs is two
+   constants and a comment, and it exports them. scripts/pack.mjs exports
+   NOTHING — `grep -n export scripts/pack.mjs` returns no lines, measured
+   2026-09-20 — and it is a script that packs a tool when it is loaded, so there
+   is no mergePatch to require and requiring the file would run the builder
+   inside the tool that grades what the builder produced. */
 
 /* RFC 7386 §2, all of it: a null member DELETES, an object member merges
    recursively, anything else replaces. Arrays replace wholesale — which is what
@@ -376,8 +383,31 @@ function crc32(buf) {
   return (c ^ -1) >>> 0;
 }
 
-/* A fixed timestamp keeps the build reproducible: same inputs, same bytes. */
-const DOS_TIME = 0x0000, DOS_DATE = ((2026 - 1980) << 9) | (1 << 5) | 1;
+/* A fixed timestamp keeps the build reproducible: same inputs, same bytes.
+
+   THE VALUE IS READ FROM extensions/scripts/lib/zip-time.mjs, the module
+   scripts/pack.mjs and templates/tool/publish/pack.mjs already import. It used
+   to be restated here, under a comment promising the three sites agreed while
+   nothing compared them; then the comparison was written and this file still
+   held the second definition. One definition is the end of that, and a
+   `require()` of the .mjs is how a CommonJS file reaches it.
+
+   THE NODE FLOOR IT COSTS, WRITTEN DOWN BECAUSE IT IS LOAD-BEARING. Node
+   enabled require() of an ES module by default in 22.12.0 and has kept it
+   unflagged since; below that this line throws ERR_REQUIRE_ESM at load. The
+   only automated caller of this file is test/i18n-sim.node.js, which requires
+   it as a library, and .github/workflows/extensions.yml runs the sims on node
+   '22' and '24' — bare majors, which setup-node always resolves to the newest
+   release of that line, so the 22 leg cannot land below 22.12 (it measured
+   v22.23.2 on 2026-09-19). tooling/ci/test/extensions-shared-constants.test.mjs
+   fails if that matrix is ever lowered past the floor, and grades the bytes
+   writeZip stamps rather than the text of this line.
+
+   Throwing at load on an ancient node, or when extensions/scripts/ is not
+   beside the tool, is the same refuse-rather-than-degrade choice the
+   localisation gate and the Firefox background guard above make: a packager
+   that cannot prove which timestamp it is stamping must not write a zip. */
+const { DOS_TIME, DOS_DATE } = require('../../../scripts/lib/zip-time.mjs');
 
 function writeZip(dest, entries) {
   const locals = [], central = [];
@@ -781,6 +811,7 @@ function verifyPackage(zipPath, kind) {
 if (require.main !== module) {
   module.exports = {
     ROOT, ALLOW, NEVER, MAX_DEPTH,
+    DOS_TIME, DOS_DATE, writeZip,
     collect, localeMessageFiles, localesViaAllowRules, localeProblems, readManifests, readZip,
     mergePatch, mergePatchDrift, firefoxManifest, firefoxManifestBytes, patchProblems,
     chromeKeepsImportScripts
