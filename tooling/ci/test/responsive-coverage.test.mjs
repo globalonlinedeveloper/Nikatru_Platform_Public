@@ -79,19 +79,36 @@ const RESET_PW = `${TESTS}/width_reset_password_test.dart`;
 const WORKSPACE_MANIFEST = 'pubspec.yaml';
 const APP_MANIFEST = `${APP}/pubspec.yaml`;
 
-const SUBJECT = [WORKSPACE_MANIFEST, APP_MANIFEST, ROUTER, ROUTER_DIR, FEATURES, TESTS];
+// 🔴 THE CHASSIS PACKAGE IS PART OF THE SUBJECT SINCE [ADR 071]. Six of the
+// brick's twelve routed screens are ADAPTERS importing
+// `package:nikatru_chassis_screens/auth/…`; this guard resolves that import and
+// refuses when the target is not on disk, so a fixture that copied the brick
+// without it failed as COVERAGE LOST for a reason no case here is about. It is
+// also a DERIVED root, and the one root in the tree that ENFORCES.
+//
+// ⏱ 2026-09-20 · IT IS NOW PART OF THE **BASE** SUBJECT, NOT ONLY OF
+// `NEW_ROOT_SUBJECT` ([ADR 086]). `apps/subscriptiontracker` has started down
+// the same road the brick took: `features/auth/reaccept_terms_screen.dart` is
+// an ADAPTER over `package:nikatru_chassis_screens/auth/…`, so an app fixture
+// without the package stopped being a copy of the real tree the moment that
+// screen was adopted — measured 2026-09-20, four cases in this file failed as
+// `COVERAGE LOST — … that file is not on disk`, which is a reason none of them
+// is about. The app fixtures therefore derive TWO roots now, and
+// `NEW_ROOT_SUBJECT` adds the remaining two rather than three.
+//
+// ⚠️ THE WHOLE PACKAGE, NOT JUST ITS `lib`. A root is DERIVED from the
+// workspace list AND the member's own `pubspec.yaml`, and this guard refuses a
+// delegation whose target root it never derived — so copying `lib` alone trades
+// one COVERAGE LOST for another. Measured in both directions before this line
+// was written.
+const CHASSIS = 'packages/chassis_screens';
+
+const SUBJECT = [WORKSPACE_MANIFEST, APP_MANIFEST, ROUTER, ROUTER_DIR, FEATURES, TESTS, CHASSIS];
 
 const BRICK = 'tooling/bricks/app/__brick__/apps/{{app_id}}';
 const BRICK_MANIFEST = 'tooling/bricks/app/brick.yaml';
 const DS = 'packages/design_system';
-// 🔴 THE CHASSIS PACKAGE IS PART OF THE SUBJECT SINCE [ADR 071]. Six of the
-// brick's twelve routed screens are now ADAPTERS importing
-// `package:nikatru_chassis_screens/auth/…`; this guard resolves that import and
-// refuses when the target is not on disk, so a fixture that copied the brick
-// without it failed as COVERAGE LOST for a reason no case here is about. It is
-// also the fourth DERIVED root, and the one root in the tree that ENFORCES.
-const CHASSIS = 'packages/chassis_screens';
-const NEW_ROOT_SUBJECT = [BRICK, BRICK_MANIFEST, DS, CHASSIS];
+const NEW_ROOT_SUBJECT = [BRICK, BRICK_MANIFEST, DS];
 
 let TMP;
 let seq = 0;
@@ -209,12 +226,34 @@ describe('the guard says YES on the tree as it is', () => {
     assert.match(out, /packages\/design_system: 12 of 20 surface\(s\) measured — 8 PRINTED and not failed/);
   });
 
-  test('the copied subject tree reproduces the subscriptiontracker reading exactly — and derives ONE root', () => {
+  test('the copied subject tree reproduces the subscriptiontracker reading exactly — and derives TWO roots', () => {
+    // ⏱ 2026-09-20 · TWO, NOT ONE, AND THE APP READING IS BYTE-FOR-BYTE WHAT IT
+    // WAS ([ADR 086]). `apps/subscriptiontracker` adopted `ReacceptTermsView`,
+    // so its adapter delegates into `packages/chassis_screens`; this guard
+    // resolves that import and refuses when the target is not on disk, so the
+    // fixture carries the package and therefore derives it as a second root.
+    //
+    // 🔴 THE PER-ROOT LINE IS THE CLAIM, NOT THE AGGREGATE. `19 reachable, 19
+    // measured — EQUAL` is what this case has always been about, and it did not
+    // move: the app still pumps `ReacceptTermsScreen` at all three widths from
+    // its own `width_legal_gates_test.dart`, which is why the aggregate reports
+    // `0 measured where they delegate to` rather than one. Asserting only the
+    // 37-surface total would let the app's own equality break under cover of a
+    // second root arriving, which is the exact silent-stop shape this file is
+    // built against.
     const { code, out } = run(tree());
     assert.equal(code, 0, out);
-    assert.match(out, /1 root\(s\) DERIVED, never listed — apps\/subscriptiontracker \(workspace app member\)/);
+    assert.match(
+      out,
+      /2 root\(s\) DERIVED, never listed — packages\/chassis_screens \(workspace package member: declares flutter_test AND a public widget\) · apps\/subscriptiontracker \(workspace app member\)/,
+    );
     assert.match(out, /PARTIAL TREE: the declared-root-must-exist clause is SKIPPED/);
     assert.match(out, /apps\/subscriptiontracker: 19 surface\(s\) reachable, 19 measured — the two sets are EQUAL/);
+    assert.match(out, /packages\/chassis_screens: 18 surface\(s\) reachable, 18 measured — the two sets are EQUAL/);
+    assert.match(
+      out,
+      /37 reachable surface\(s\), 37 measured by 36 test file\(s\); 0 measured where they delegate to/,
+    );
     assert.equal(fails(out).length, 0, out);
   });
 });

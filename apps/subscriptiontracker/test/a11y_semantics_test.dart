@@ -65,7 +65,7 @@ import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
     show InMemoryAuthRepository;
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart'
-    show buildAppTheme;
+    show ChassisLocalizations, buildAppTheme;
 import 'package:nikatru_purchases/nikatru_purchases.dart';
 import 'package:subscriptiontracker/core/app_config.dart';
 import 'package:subscriptiontracker/core/e2e_keys.dart';
@@ -1014,7 +1014,10 @@ Future<ProviderContainer> pumpScreen(
         // `null` is `MaterialApp`'s own default, so every pre-existing caller
         // pumps the byte-identical tree it pumped before this argument existed.
         theme: theme,
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        localizationsDelegates: <LocalizationsDelegate<dynamic>>[
+          ...AppLocalizations.localizationsDelegates,
+          ChassisLocalizations.delegate,
+        ],
         supportedLocales: AppLocalizations.supportedLocales,
         home: paintBackground
             ? ColoredBox(
@@ -1094,7 +1097,10 @@ Future<void> pumpShell(WidgetTester tester, {ThemeData? theme}) async {
       container: c,
       child: MaterialApp.router(
         theme: theme,
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        localizationsDelegates: <LocalizationsDelegate<dynamic>>[
+          ...AppLocalizations.localizationsDelegates,
+          ChassisLocalizations.delegate,
+        ],
         supportedLocales: AppLocalizations.supportedLocales,
         routerConfig: c.read(routerProvider),
       ),
@@ -2134,7 +2140,10 @@ void main() {
           UncontrolledProviderScope(
             container: c,
             child: MaterialApp(
-              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              localizationsDelegates: <LocalizationsDelegate<dynamic>>[
+                ...AppLocalizations.localizationsDelegates,
+                ChassisLocalizations.delegate,
+              ],
               supportedLocales: AppLocalizations.supportedLocales,
               home: const ResetPasswordScreen(),
             ),
@@ -3484,7 +3493,10 @@ void main() {
           UncontrolledProviderScope(
             container: c,
             child: MaterialApp(
-              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              localizationsDelegates: <LocalizationsDelegate<dynamic>>[
+                ...AppLocalizations.localizationsDelegates,
+                ChassisLocalizations.delegate,
+              ],
               supportedLocales: AppLocalizations.supportedLocales,
               home: const ResetPasswordScreen(),
             ),
@@ -4425,7 +4437,10 @@ void main() {
             container: c,
             child: MaterialApp(
               theme: appTheme(),
-              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              localizationsDelegates: <LocalizationsDelegate<dynamic>>[
+                ...AppLocalizations.localizationsDelegates,
+                ChassisLocalizations.delegate,
+              ],
               supportedLocales: AppLocalizations.supportedLocales,
               home: const ResetPasswordScreen(),
             ),

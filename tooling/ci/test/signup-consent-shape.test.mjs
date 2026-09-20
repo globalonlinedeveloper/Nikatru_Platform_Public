@@ -136,10 +136,17 @@ describe('the real tree', () => {
     // the package, the flags would be in neither file this guard reads and
     // every delegation case below would be measuring a tree that is no longer
     // the one that ships.
+    //
+    // ⏱ 2026-09-20 · SUBLY_REACCEPT JOINS THE LIST ([ADR 086]). The app adopted
+    // `ReacceptTermsView`, so its interstitial is now judged through the same
+    // delegation as the brick's, and the case above that mutates the chassis
+    // flag expects the APP to be named in the failure. Drop the app's import and
+    // that expectation becomes untrue silently — unless this asserts it.
     for (const [adapter, target] of [
       [BRICK_SIGNUP, 'auth/sign_up_screen.dart'],
       [`${BRICK}/lib/features/auth/reaccept_terms_screen.dart`, 'auth/reaccept_terms_screen.dart'],
       [BRICK_FIELDS, 'auth/legal_consent_fields.dart'],
+      [SUBLY_REACCEPT, 'auth/reaccept_terms_screen.dart'],
     ]) {
       const src = readFileSync(join(REPO, adapter), 'utf8');
       assert.ok(
@@ -187,12 +194,33 @@ describe('limb 1 — no box is born ticked', () => {
     );
   });
 
-  test('the interstitial is covered too — it takes a fresh act, not a carried-forward one', () => {
+  test('the interstitial is covered too — and Subly now takes it through its delegation', () => {
+    // ⏱ 2026-09-20 · THE POST-ADOPTION RE-RUN OF THIS MUTATION, the same move the
+    // BRICK case below made at [ADR 071]. `apps/subscriptiontracker` adopted
+    // `ReacceptTermsView` ([ADR 086]; the measured row is in
+    // `tooling/chassis-parity.json`), so the flag no longer lives in
+    // SUBLY_REACCEPT and the mutation follows it into the chassis file.
+    //
+    // 🔴 AND THIS CASE FAILED FIRST, WHICH IS THE POINT OF THE LAND-CHECK ABOVE.
+    // Left pointing at SUBLY_REACCEPT, `edit` still "landed": the adapter's own
+    // doc comment quoted the declaration verbatim, so the rewrite hit PROSE the
+    // guard strips before matching, the tree it was meant to break was still
+    // correct, and the case reported a guard defect that was not there. The
+    // decoy is gone from that doc and the mutation is aimed at the code.
+    //
+    // ⚠️ IT IS NOT A DUPLICATE OF THE BRICK CASE BELOW, and the ASSERTION is what
+    // keeps them apart: one guard run names EVERY surface that reads the broken
+    // flag, so this case fails unless the APP is one of them. Point the app's
+    // adapter somewhere else and this reds while the brick case stays green.
     withTree(
-      (root) => edit(root, SUBLY_REACCEPT, (s) => s.replace('bool _accepted = false;', 'bool _accepted = true;')),
+      (root) =>
+        edit(root, CHASSIS_REACCEPT, (s) =>
+          s.replace('bool _accepted = false;', 'bool _accepted = true;'),
+        ),
       (r) => {
         assert.equal(r.status, 1);
-        assert.match(r.stderr, /reaccept_terms_screen/);
+        assert.match(r.stderr, /PRE-TICKED CONSENT/);
+        assert.match(r.stderr, /apps\/subscriptiontracker\/lib\/features\/auth\/reaccept_terms_screen/);
       },
     );
   });

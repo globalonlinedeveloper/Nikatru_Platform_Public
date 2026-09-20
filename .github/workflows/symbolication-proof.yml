@@ -9,7 +9,17 @@ run-name: "Symbolication proof by @${{ github.actor }}"
 on:
   # why: dispatch ONLY. It sends a real event to the production crash sink and
   # boots an emulator (~25 runner-minutes); it answers one question per GlitchTip
-  # release, not one per commit. Row O-GLITCHTIP-FLUTTER-SYMBOLICATION-UNPROVEN.
+  # release, not one per commit. Rows O-GLITCHTIP-FLUTTER-SYMBOLICATION-UNPROVEN
+  # and O-GLITCHTIP-UPGRADE-SYMBOLICATION.
+  #
+  # 🔴 WHAT A GREEN RUN OF THIS LANE MEANS, because it is not the obvious thing.
+  # The verdict compares both readings against the RECORDED state in
+  # tooling/ops/symbolication-expectation.json (ADR 090), not against an ideal
+  # one. While that register says `"sink": "mismatch"`, exit 0 means only
+  # "reality still equals the record" and the verdict prints an unmissable
+  # banner saying what is still broken. It does NOT mean GlitchTip symbolicates
+  # Flutter Android frames. Exit 1 means a side CHANGED — including the good
+  # direction. docs/ci/symbolication-proof.md has the whole table.
   workflow_dispatch:
 
 concurrency:
@@ -296,9 +306,16 @@ jobs:
 
       # why: always(), once the marker exists. The SINK is what the row asks, so a
       # failed ground truth must not hide it; the script reads the sink anyway and
-      # exits 1 on either MISMATCH, 2 when the ground truth is UNAVAILABLE (never
-      # 0), so the job still fails whenever either half does. Neither is retried.
-      - name: Verdict — the GlitchTip frame against the known line
+      # exits 2 when either reading is UNAVAILABLE (never 0). Neither is retried.
+      #
+      # The two readings are then held against tooling/ops/symbolication-expectation.json
+      # — the state ADR 090 recorded from run 35470727346 — so this lane is red
+      # only when something CHANGED, never for the finding it already carries.
+      # The register is read from beside the script; no path is spelled here, so
+      # moving it cannot silently turn into "no expectation, therefore fine".
+      # The script also reads the instance's live version and exits 2 if it is no
+      # longer the one the record was measured on.
+      - name: Verdict — both readings against the RECORDED state (ADR 090)
         if: ${{ always() && steps.extract.outcome == 'success' }}
         working-directory: apps/subscriptiontracker
         env:
