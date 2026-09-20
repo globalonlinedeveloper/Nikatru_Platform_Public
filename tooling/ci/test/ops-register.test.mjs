@@ -4811,6 +4811,45 @@ describe('assert-ops-register — [14]O-3b · RED SINCE: a failed run is graded,
     assert.ok(chains.expectedMonitors.some((m) => m.id === 40), 'monitor 40 must be declared in alarm-chains.json expectedMonitors');
   });
 
+  // ⏱ 2026-09-20 — THE THIRD BACKUP COPY IS A WATCHED DUTY. It shipped the same day with no alarm
+  // at all: /opt/backup/06-oci-third-copy.sh wrote a status file and nothing read it. This is the
+  // reader that makes the row an obligation rather than a paragraph — it is shaped off
+  // duty.restic-snapshot (the leg it copies) key for key, so a row that drifts out of that shape,
+  // loses its monitor, or loses its declaration in the alarm ledger is RED here.
+  //
+  // 🔴 IT ASSERTS THE MONITOR ID AND THE LEDGER ENTRY TOGETHER, on purpose. Creating the monitor
+  // and declaring it are ONE change: a monitor missing from `expectedMonitors` is invisible to
+  // verify-alarm-chains.mjs's canary, which is the same "declared but unwatched" half-state
+  // monitor 6 spent nine days in.
+  test('the third backup copy is a watched duty shaped like duty.restic-snapshot, on monitor 41', () => {
+    const reg = JSON.parse(readFileSync(resolve(CI_DIR, '..', 'ops', 'register.json'), 'utf8'));
+    const byId = new Map(reg.rows.map((r) => [r.id, r]));
+    const model = byId.get('duty.restic-snapshot');
+    const third = byId.get('duty.restic-third-copy');
+    assert.ok(third, 'duty.restic-third-copy must exist');
+    assert.deepEqual(Object.keys(third), Object.keys(model));
+    assert.deepEqual(Object.keys(third.mechanism), Object.keys(model.mechanism));
+    assert.deepEqual(Object.keys(third.mechanism.recordQuery), Object.keys(model.mechanism.recordQuery));
+    assert.equal(third.kind, 'duty');
+    assert.equal(third.cadence, '1d');
+    // the same crontab as the leg it copies — a substrate names a ROLE, never a box
+    assert.equal(third.mechanism.substrate, model.mechanism.substrate);
+    assert.equal(third.mechanism.recordQuery.reader, 'glitchtip-heartbeat');
+    assert.equal(third.mechanism.recordQuery.monitor, 41);
+    assert.equal(third.absenceWatcher.substrate, 'glitchtip-heartbeat');
+    // a DECLARED watcher is not a proven one: this row carries a forced, dated transition
+    assert.equal(third.absenceWatcher.downTransitionDrill.date, '2026-09-20');
+    for (const id of ['9PS2DLnF3Kmv', 'vOztqaOIjl0Y']) {
+      assert.ok(
+        third.absenceWatcher.downTransitionDrill.evidence.includes(id),
+        `the drill record must name ntfy message id ${id} — the delivery record, not the word "verified"`,
+      );
+    }
+    assert.ok(reg._requiredCoverage.ids.includes('duty.restic-third-copy'), 'the row must be in _requiredCoverage.ids so it cannot be silently dropped');
+    const chains = JSON.parse(readFileSync(resolve(CI_DIR, '..', 'ops', 'alarm-chains.json'), 'utf8'));
+    assert.ok(chains.expectedMonitors.some((m) => m.id === 41), 'monitor 41 must be declared in alarm-chains.json expectedMonitors');
+  });
+
   test('the OWN HOST edge is ONE row, never the domain - a red SIBLING still blocks on the host run', () => {
     const sibling = wfDuty('duty.workflow.extensions.yml');
     sibling.mechanism.recordQuery.workflow = 'extensions.yml';
