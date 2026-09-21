@@ -203,7 +203,7 @@ const MAX_BYTES = 16 * 1024 * 1024;
    it rather than assumed. The nine CONTENT_RE alternatives are, one for one, the
    nine CONTENT_RULES below, and both of the live scanners that DO run cover them:
      · this file, `node scripts/secret-scan.mjs .`, at extensions.yml:390 and :1925
-     · `tooling/ci/scan-secrets.mjs . --gitleaks …`, at ci.yml:423, repo-wide
+     · `tooling/ci/scan-secrets.mjs . --gitleaks …`, at ci.yml:598, repo-wide
    The retired hook is readable at
    `ref/pre-prune-2026-09-08:extensions/.githooks/pre-commit`.
 

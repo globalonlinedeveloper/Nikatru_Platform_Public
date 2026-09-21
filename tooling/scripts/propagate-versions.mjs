@@ -77,7 +77,7 @@ import { RULES, collectTargets, stripComments } from '../ci/assert-version-consi
  *  thing in the file, so it is kept to claims that survive being read aloud —
  *  and it is CHECKED against RULES at startup, below, so an entry naming a rule
  *  that no longer exists is a refusal rather than a silent no-op. */
-const HAND_ONLY = new Map([
+export const HAND_ONLY = new Map([
   [
     'gitleaks (scan-secrets VALIDATED_AGAINST)',
     'tooling/ci/scan-secrets.mjs names the gitleaks release its `scanned ~N bytes` parser was ' +

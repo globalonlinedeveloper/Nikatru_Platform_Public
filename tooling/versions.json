@@ -527,7 +527,7 @@
   "$updateExemptions": [
     {
       "key": "runner_ubuntu",
-      "why": "A GitHub Actions RUNNER IMAGE LABEL, not a package. No datasource in this repo's Renovate config resolves runner labels, and whether Renovate ships a manager that would is UNVERIFIED — no primary page was read for this entry, so do not restate it as a fact anywhere else. It is also not a version in the usual sense: see $runners_comment above, where windows-latest AND windows-2025 both migrated to a new Visual Studio under an unchanged pin. A bot bumping the label would not have caught that either. Advanced by the owner when an image family is retired, which fails loudly rather than silently."
+      "why": "A GitHub Actions RUNNER IMAGE LABEL, not a package. Renovate's built-in github-actions manager DOES propose runner labels: Dependency Dashboard #417, read 2026-09-21, listed ubuntu 24.04 -> 26.04 under it. That proposal rewrites `runs-on:` and never this key, so it is red by construction; renovate.json disables it for the github-actions manager, and this key stays an owner decision. It is also not a version in the usual sense: see $runners_comment above, where windows-latest AND windows-2025 both migrated to a new Visual Studio under an unchanged pin. A bot bumping the label would not have caught that either. Advanced by the owner when an image family is retired, which fails loudly rather than silently."
     },
     {
       "key": "runner_windows",

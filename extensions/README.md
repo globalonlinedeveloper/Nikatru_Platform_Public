@@ -95,7 +95,7 @@ first line selects the ROOT `.githooks/`, not this subtree's, because git honour
 was removed; it is at `ref/pre-prune-2026-09-08:extensions/.githooks/pre-commit`. The root hook takes no
 `--self-test`, so the second line would have failed. The credential patterns it carried are run
 by two live gates instead: `node scripts/secret-scan.mjs .` here (extensions.yml:390, :1925) and
-`tooling/ci/scan-secrets.mjs` repo-wide (ci.yml:423).
+`tooling/ci/scan-secrets.mjs` repo-wide (ci.yml:598).
 
 ⏱ 2026-09-08 — `extensions/.github/` AND `extensions/renovate.json` ARE GONE, and every one of
 them was inert from the day the subtree was merged. GitHub reads `.github/` at the repository ROOT

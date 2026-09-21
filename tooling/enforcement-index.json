@@ -1797,6 +1797,16 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-store"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-renovate-reach.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "K-12"
     ],

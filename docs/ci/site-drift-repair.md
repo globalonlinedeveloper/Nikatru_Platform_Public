@@ -16,7 +16,7 @@ tooling/sites/lastmod.mjs derives that value from the page's GIT DATE
 CORRECT value for a page a pull request changes is THE DATE THAT PULL REQUEST
 MERGES — a date that does not exist while the pull request is open. Every
 pre-merge lane is therefore structurally unable to hold this invariant:
-ci.yml:701 runs check-site-integrity.mjs against a ref whose merge date is
+ci.yml:892 runs check-site-integrity.mjs against a ref whose merge date is
 still in the future, and it is right every time until the merge makes it wrong.
 
 MEASURED IN THIS TREE, 2026-08-25:
@@ -253,8 +253,8 @@ for that single command.
 🔴 MANDATORY, NOT AN OPTIMISATION. lastmod.mjs's isShallowRepo()
 (that file:82-85) makes check-site-integrity.mjs report COVERAGE LOST
 on a shallow clone, because `git log` cannot answer a question about
-history that was never fetched. ci.yml:699 carries this line for the
-same reason and says so.
+history that was never fetched. ci.yml:890 (job `sites`) carries this
+line for the same reason.
 
 ### before step **Regenerate the discovery surface**
 
