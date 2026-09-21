@@ -44,6 +44,67 @@ class AppShell extends StatelessWidget {
   static const Key navStripKey = Key('shell-nav-strip');
   static const Key navPillKey = Key('shell-nav-pill');
 
+  /// The side of the floating "+" button this shell supplies, in logical
+  /// pixels. Named rather than left as two literals on the `Container` below
+  /// because [fabReservedHeight] — and through it every branch's page inset —
+  /// is derived from it, and a FAB that grew while the insets did not is
+  /// exactly the defect recorded below.
+  static const double fabSize = 56;
+
+  /// The band the FAB occupies above the BODY's bottom edge: its own height
+  /// plus the margin `FloatingActionButtonLocation.endFloat` floats it on.
+  ///
+  /// `kFloatingActionButtonMargin` rather than a literal 16: the margin is
+  /// Flutter's number, not ours, and copying it here would be a second copy
+  /// that agrees today.
+  static const double fabReservedHeight = fabSize + kFloatingActionButtonMargin;
+
+  /// The page inset EVERY scrollable branch of this shell uses.
+  ///
+  /// 🔴 THE BOTTOM IS NOT `AppSpacing.xl`, AND THE DIFFERENCE IS A LIVE DEFECT
+  /// THIS CLOSES. Four branches carried
+  /// `fromLTRB(gutterCompact, gutterCompact, gutterCompact, xl)` — a 24 px
+  /// bottom — and each one says in its own comment why: the live inset was
+  /// `fromLTRB(18, 58, 18, 108)` and the chassis docking argued that "108
+  /// cleared `AppShell`'s floating pill bar plus its FAB … so both insets are
+  /// now paid twice."
+  ///
+  /// HALF OF THAT IS TRUE. The PILL is `compactNavigationBar`, i.e. the
+  /// `Scaffold`'s `bottomNavigationBar`, and a bottom bar does reserve its own
+  /// height out of the body — so paying for it again was genuinely double.
+  /// The FAB is the `Scaffold`'s `floatingActionButton`, and a floating action
+  /// button reserves NOTHING: it is laid out OVER the body, at
+  /// `contentBottom - kFloatingActionButtonMargin - fabSize`. So the FAB's 72 px
+  /// was not double-paid, it was dropped, and with a 24 px inset the last row
+  /// of every branch is drawn under the button. Measured on the store frames
+  /// merged as `9f548515`: `01-home.png` shows the "+" over the "per month"
+  /// line of a price row, `04-budget.png` over a category amount.
+  ///
+  /// ⚠️ IT LIVES HERE BECAUSE THE FAB DOES. The button belongs to the shell,
+  /// not to any screen, so every tab that scrolls to its own end has the same
+  /// exposure and padding the two branches that happened to be photographed
+  /// would leave the class open. One number, five consumers, and
+  /// `test/width_shell_fab_test.dart` measures the RECTS on every branch
+  /// rather than trusting this constant to be adopted.
+  static const EdgeInsets pageInset = EdgeInsets.fromLTRB(
+    AppSpacing.gutterCompact,
+    AppSpacing.gutterCompact,
+    AppSpacing.gutterCompact,
+    AppSpacing.xl + fabReservedHeight,
+  );
+
+  /// The FAB band a screen must leave free at its bottom: [fabReservedHeight]
+  /// when it is rendered UNDER this shell, zero when it is not.
+  ///
+  /// For the one screen that is both: `SubscriptionDetailScreen` is pushed
+  /// over the shell at `/sub/:id` (no FAB above it) and also embedded as
+  /// home's detail pane at wide widths (the shell's FAB floats over its last
+  /// row). A constant would pay 72 px on the route that has no button.
+  static double fabClearanceOf(BuildContext context) =>
+      context.findAncestorWidgetOfExactType<AppShell>() == null
+      ? 0
+      : fabReservedHeight;
+
   /// ⚠️ STRUCTURAL CHANGE, NAMED BECAUSE IT IS THE ONE THING IN THIS FILE A
   /// REVIEWER CANNOT SEE FROM THE DIFF ALONE: this was
   /// `static const List<_TabSpec> _tabs`, a compile-time constant carrying five
@@ -170,8 +231,8 @@ class AppShell extends StatelessWidget {
               borderRadius: BorderRadius.circular(18),
               onTap: () => showAddSubscriptionSheet(context),
               child: Container(
-                width: 56,
-                height: 56,
+                width: fabSize,
+                height: fabSize,
                 decoration: BoxDecoration(
                   gradient: AppColors.brandGradient,
                   borderRadius: BorderRadius.circular(18),

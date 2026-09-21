@@ -10,7 +10,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/date_symbols.dart' show DateSymbols;
 import 'package:intl/intl.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart'
-    show AppSpacing, ContentPane, TwoPane;
+    show ContentPane, TwoPane;
 
 import '../../core/format/money_format.dart';
 import '../../core/theme/app_colors.dart';
@@ -24,6 +24,7 @@ import '../shared/due.dart';
 import '../shared/async_gate.dart';
 import '../shared/neutrals.dart';
 import '../shared/widgets.dart';
+import '../shell/app_shell.dart';
 
 /// 📌 THE PRIVATE `_neutrals(BuildContext)` THAT STOOD HERE IS HOISTED
 /// (2026-08-25) into `features/shared/neutrals.dart` as `neutrals(context)`,
@@ -55,12 +56,16 @@ import '../shared/widgets.dart';
 /// column is a second scroll view one divider away from the first, and two page
 /// insets that agree today and drift tomorrow would read as a step in the seam
 /// between them.
-const EdgeInsets _pageInset = EdgeInsets.fromLTRB(
-  AppSpacing.gutterCompact,
-  AppSpacing.gutterCompact,
-  AppSpacing.gutterCompact,
-  AppSpacing.xl,
-);
+///
+/// ⚠️ AND THE SENTENCE ABOVE IS HALF WRONG, CORRECTED RATHER THAN DELETED. The
+/// pill is `bottomNavigationBar` and was genuinely double-paid; the FAB is
+/// `floatingActionButton`, which reserves NOTHING and is laid out over both of
+/// these columns. Its 72 px was dropped rather than double-paid, so the last
+/// renewal of a scrolled month is drawn under the "+". The number now comes
+/// from [AppShell.pageInset], which states that arithmetic once for all five
+/// branches — and this file keeps its own name for it because two panes read
+/// it.
+const EdgeInsets _pageInset = AppShell.pageInset;
 
 /// 🔴 STATEFUL SINCE THE `TwoPane` ADOPTION, AND THE STATE IS EXACTLY ONE INT.
 /// The detail column needs a selected day and nothing else: the month, the

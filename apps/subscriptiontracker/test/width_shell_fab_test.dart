@@ -1,0 +1,484 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// THE SHELL'S FLOATING "+" MAY NOT BE DRAWN OVER A ROW — ON ANY BRANCH.
+//
+// ── THE DEFECT THIS MEASURES ────────────────────────────────────────────────
+// `AppScaffold._compact()` puts the nav pill in `bottomNavigationBar`, which
+// RESERVES its own height out of the body, and the "+" in
+// `floatingActionButton`, which reserves NOTHING: `FloatingActionButtonLocation
+// .endFloat` lays it out OVER the body at
+// `contentBottom - kFloatingActionButtonMargin - fabSize`. The chassis docking
+// collapsed those two into one sentence — "both insets are now paid twice" —
+// and took the branches' bottom inset from 108 to `AppSpacing.xl`, i.e. 24. The
+// pill's share really was double-paid. The FAB's 72 px was simply dropped, and
+// the last row of a scrolled list has been drawn under the button ever since:
+// `01-home.png` of the frames merged as `9f548515` shows the "+" across the
+// "per month" line of a price row, `04-budget.png` across a category amount.
+//
+// ── WHY THE SWEEP IS OVER EVERY BRANCH, AT EVERY SHELL LAYOUT ───────────────
+// The FAB belongs to `AppShell`, not to any screen. It is in the tree on all
+// five branches, in the bottom-nav layout AND the rail layout, so the exposure
+// is a property of the SHELL. Padding the two frames somebody happened to
+// capture would leave the rest open with nothing red to say so — which is
+// exactly how the 108 was lost in the first place. The sweep therefore visits
+// every branch at phone, tablet and desktop, and ALSO home's detail pane: at
+// ≥ 840 px of body `SubscriptionDetailScreen` is embedded UNDER the shell, so
+// the "+" floats over ITS last row too, although it is not a branch.
+//
+// ── WHAT IS MEASURED, AND WHAT MAKES IT ABLE TO FAIL ────────────────────────
+// Every vertical, page-level `ListView` the FAB is drawn over (horizontally
+// under the button, and running down into its band) gets two assertions:
+//
+//   1. THE RESERVATION — the list's bottom padding puts the end of its content
+//      at or above the FAB's top, measured against the RECTS the framework
+//      laid out (`viewport.bottom - padding.bottom <= fab.top`). This holds
+//      for every such list, scrolling or not: that is the closes clause
+//      ("the scrollable list reserves the FAB's height plus its margin"), and
+//      a list that is short today is one seed row away from reaching the band.
+//   2. THE PIXEL — for a list that scrolls, it is scrolled to its TRUE end and
+//      its last laid-out child must end at or above the FAB's top.
+//
+// ⚠️ "TRUE END" IS A LOOP, NOT ONE `jumpTo`. `ListView(children:)` ESTIMATES
+// its extent from the children built so far; a single
+// `jumpTo(maxScrollExtent)` lands on the estimate, lays more children out,
+// and the maximum grows under it. Measured on the first cut of this file: one
+// jump left home's last row 30 px short of its end, and the rect compared was
+// not the last row at all. [_scrollToEnd] jumps until `pixels` IS the max.
+//
+// ⚠️ AND NOTHING HERE MAY PASS BY MEASURING NOTHING. [_mustReachTheBand] names
+// every (layout, branch) where a list is drawn under the FAB against the seed
+// data — each one is required to be found — and [_mustScroll] the ones whose
+// list must actually reach its own end, so "it passed because the list moved
+// sideways / got shorter" cannot become the reason this file is green.
+// ─────────────────────────────────────────────────────────────────────────────
+import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:nikatru_core/nikatru_core.dart' as core;
+import 'package:nikatru_design_system/nikatru_design_system.dart';
+import 'package:subscriptiontracker/core/e2e_keys.dart';
+import 'package:subscriptiontracker/core/router.dart';
+import 'package:subscriptiontracker/data/models/subscription.dart';
+import 'package:subscriptiontracker/features/detail/subscription_detail_screen.dart';
+import 'package:subscriptiontracker/features/shared/widgets.dart';
+import 'package:subscriptiontracker/features/shell/app_shell.dart';
+import 'package:subscriptiontracker/l10n/app_localizations.dart';
+import 'package:subscriptiontracker/state/providers.dart';
+import 'package:subscriptiontracker/state/subscriptions_controller.dart';
+
+import 'support/width_harness.dart';
+
+/// The five branches, by the path `shell.dart` declares each one at.
+///
+/// Opened through the router and not by tapping the pill: the pill exists
+/// only in the bottom-nav layout, and the rail layouts are half of this sweep.
+const List<(String, String)> _branches = <(String, String)>[
+  ('/home', 'home'),
+  ('/calendar', 'calendar'),
+  ('/insights', 'insights'),
+  ('/budget', 'budget'),
+  ('/settings', 'settings'),
+];
+
+/// The three shell layouts: bottom nav + pill (phone), rail (tablet), rail with
+/// home split in two (desktop).
+const List<(Size, String)> _layouts = <(Size, String)>[
+  (kPhone, 'phone'),
+  (kTablet, 'tablet'),
+  (kDesktop, 'desktop'),
+];
+
+/// Every (layout, branch) where, against the seed data, a page-level list runs
+/// down under the FAB — each is REQUIRED to be found, so a list cannot pass
+/// this file by moving out of the button's way.
+///
+/// MEASURED 2026-09-22, not assumed. The four absent pairs are absent because
+/// nothing is under the button there, not because nobody looked:
+///   · desktop/insights, desktop/budget, desktop/settings — the page is one
+///     column capped at 720 and centred in the 1163 px body, so the list ends
+///     at x = 1058.5 and the FAB's column starts at 1208.
+///   · desktop/home — home splits in two; the list pane ends at x = 559 and
+///     the right pane is the placeholder until a row is selected. The case
+///     "desktop/home detail pane" below selects one and measures THAT list.
+const Set<String> _mustReachTheBand = <String>{
+  'phone/home',
+  'phone/calendar',
+  'phone/insights',
+  'phone/budget',
+  'phone/settings',
+  'tablet/home',
+  'tablet/calendar',
+  'tablet/insights',
+  'tablet/budget',
+  'tablet/settings',
+  'desktop/calendar',
+};
+
+/// The (layout, branch) pairs whose list under the FAB must SCROLL against the
+/// seed data, so assertion 2 — the drawn pixel — is exercised and not skipped.
+/// Measured 2026-09-22: every pair that scrolls today. Calendar at all three
+/// layouts, tablet/insights and the desktop detail pane fit without scrolling,
+/// and for those assertion 1 (the reservation) is the whole check.
+const Set<String> _mustScroll = <String>{
+  'phone/home',
+  'phone/insights',
+  'phone/budget',
+  'phone/settings',
+  'tablet/home',
+  'tablet/budget',
+  'tablet/settings',
+};
+
+class _OnboardingSeen extends OnboardingSeenController {
+  @override
+  bool? build() => true;
+}
+
+class _SignedInAuth extends core.AuthRepository {
+  @override
+  core.AuthUser? get currentUser => const core.AuthUser(
+    id: 'fab',
+    email: 'fab@test.dev',
+    emailVerified: true,
+  );
+
+  @override
+  Stream<core.AuthUser?> authStateChanges() =>
+      const Stream<core.AuthUser?>.empty();
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// The WHOLE APP through its real router, pinned to [size].
+///
+/// Not optional: a `StatefulNavigationShell` cannot be constructed standalone,
+/// so the FAB under test is reachable ONLY through the router. Same rig, and
+/// the same overrides, as `a11y_semantics_test.dart`'s `pumpShell`.
+Future<ProviderContainer> _pumpShell(WidgetTester tester, Size size) async {
+  await setSurface(tester, size);
+  final ProviderContainer c = ProviderContainer(
+    overrides: <Override>[
+      ...defaultWidthOverrides(),
+      onboardingSeenProvider.overrideWith(_OnboardingSeen.new),
+      legalReacceptanceNeededProvider.overrideWithValue(false),
+      authRepositoryProvider.overrideWithValue(_SignedInAuth()),
+      analyticsConsentProvider.overrideWithValue(core.ConsentStatus.denied),
+    ],
+  );
+  addTearDown(c.dispose);
+  await tester.pumpWidget(
+    UncontrolledProviderScope(
+      container: c,
+      child: MaterialApp.router(
+        localizationsDelegates: <LocalizationsDelegate<dynamic>>[
+          ...AppLocalizations.localizationsDelegates,
+          ChassisLocalizations.delegate,
+        ],
+        supportedLocales: AppLocalizations.supportedLocales,
+        routerConfig: c.read(routerProvider),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+  expect(
+    find.byType(AppShell),
+    findsOneWidget,
+    reason:
+        'the router did not land on the shell, so there is no FAB to measure '
+        '— check the redirect overrides, not the layout',
+  );
+  return c;
+}
+
+Future<void> _open(
+  WidgetTester tester,
+  ProviderContainer c,
+  String path,
+) async {
+  c.read(routerProvider).go(path);
+  await tester.pumpAndSettle();
+  expect(
+    c.read(routerProvider).routeInformationProvider.value.uri.path,
+    path,
+    reason: 'the router did not open $path, so the wrong screen is measured',
+  );
+}
+
+Rect _fab(WidgetTester tester) => tester.getRect(find.byKey(E2EKeys.fabAdd));
+
+Finder _exactly(Element e) =>
+    find.byElementPredicate((Element x) => identical(x, e));
+
+/// Every vertical `ListView` the FAB is drawn over, as ELEMENTS (so scrolling
+/// one list cannot shift which widget an index-based finder resolves to).
+///
+/// Page-level only: a list inside another vertical scrollable is part of that
+/// scrollable's content, and the OUTER list's reservation is what clears it.
+List<Element> _listsUnderTheFab(WidgetTester tester, Rect fab) {
+  final List<Element> out = <Element>[];
+  for (final Element e in find.byType(ListView).evaluate()) {
+    if ((e.widget as ListView).scrollDirection != Axis.vertical) continue;
+    bool nested = false;
+    e.visitAncestorElements((Element a) {
+      final Widget w = a.widget;
+      if (w is Scrollable && w.axis == Axis.vertical) {
+        nested = true;
+        return false;
+      }
+      return true;
+    });
+    if (nested) continue;
+    final Rect r = tester.getRect(_exactly(e));
+    if (r.right <= fab.left || r.left >= fab.right) continue;
+    if (r.bottom <= fab.top) continue;
+    out.add(e);
+  }
+  return out;
+}
+
+ScrollableState _scrollerOf(WidgetTester tester, Finder list) =>
+    tester.state<ScrollableState>(
+      find.descendant(of: list, matching: find.byType(Scrollable)).first,
+    );
+
+/// Scrolls to the list's TRUE end — see the header for why one jump is not it.
+Future<void> _scrollToEnd(WidgetTester tester, ScrollableState s) async {
+  for (int i = 0; i < 40; i++) {
+    final ScrollPosition p = s.position;
+    if (p.pixels >= p.maxScrollExtent) return;
+    p.jumpTo(p.maxScrollExtent);
+    await tester.pumpAndSettle();
+  }
+  fail('the list never reached its own end in 40 jumps');
+}
+
+/// The bottom edge, in global coordinates, of the list's last laid-out child.
+double _lastChildBottom(WidgetTester tester, Finder list) {
+  final RenderSliverMultiBoxAdaptor sliver = tester
+      .renderObject<RenderSliverMultiBoxAdaptor>(
+        find
+            .descendant(
+              of: list,
+              matching: find.byWidgetPredicate(
+                (Widget w) => w is SliverMultiBoxAdaptorWidget,
+              ),
+            )
+            .first,
+      );
+  final RenderBox last = sliver.lastChild!;
+  return last.localToGlobal(Offset(0, last.size.height)).dy;
+}
+
+/// Asserts both halves of the rule on every list the FAB is drawn over, and
+/// returns how many lists that was, and how many of them scrolled.
+Future<({int lists, int scrolled})> _assertClears(
+  WidgetTester tester,
+  String where,
+) async {
+  final Rect fab = _fab(tester);
+  final List<Element> lists = _listsUnderTheFab(tester, fab);
+  int scrolled = 0;
+  for (final Element e in lists) {
+    final Finder list = _exactly(e);
+    final EdgeInsets pad = ((e.widget as ListView).padding ?? EdgeInsets.zero)
+        .resolve(TextDirection.ltr);
+    final Rect viewport = tester.getRect(list);
+    expect(
+      viewport.bottom - pad.bottom,
+      lessThanOrEqualTo(fab.top),
+      reason:
+          '$where: a list under the FAB does not reserve its band. The FAB '
+          'occupies ${fab.top}..${fab.bottom}; the list ($viewport) ends its '
+          'content at ${viewport.bottom - pad.bottom} with a bottom inset of '
+          '${pad.bottom}. It needs AppShell.fabReservedHeight '
+          '(${AppShell.fabReservedHeight}) of room below the last row',
+    );
+
+    final ScrollableState s = _scrollerOf(tester, list);
+    if (s.position.maxScrollExtent <= 0) continue;
+    scrolled++;
+    await _scrollToEnd(tester, s);
+    final double end = _lastChildBottom(tester, list);
+    expect(
+      end,
+      lessThanOrEqualTo(_fab(tester).top),
+      reason:
+          '$where: scrolled to its end, the list\'s last row is drawn down to '
+          '$end, inside the FAB band that starts at ${_fab(tester).top}',
+    );
+  }
+  return (lists: lists.length, scrolled: scrolled);
+}
+
+/// The lowest rect among [rows] — the row a FAB at the bottom would cover.
+Rect _lowest(WidgetTester tester, Finder rows) {
+  Rect lowest = tester.getRect(rows.first);
+  for (int i = 1; i < rows.evaluate().length; i++) {
+    final Rect r = tester.getRect(rows.at(i));
+    if (r.bottom > lowest.bottom) lowest = r;
+  }
+  return lowest;
+}
+
+void main() {
+  group('the shell FAB clears every list it floats over', () {
+    for (final (Size size, String layout) in _layouts) {
+      for (final (String path, String name) in _branches) {
+        final String where = '$layout/$name';
+        testWidgets('$where reserves the FAB band', (
+          WidgetTester tester,
+        ) async {
+          final ProviderContainer c = await _pumpShell(tester, size);
+          await _open(tester, c, path);
+
+          final ({int lists, int scrolled}) seen = await _assertClears(
+            tester,
+            where,
+          );
+          if (_mustReachTheBand.contains(where)) {
+            expect(
+              seen.lists,
+              greaterThan(0),
+              reason:
+                  '$where found no list under the FAB, so the clearance was '
+                  'asserted over nothing. If the layout really moved the list '
+                  'out of the button\'s column, take it out of '
+                  '_mustReachTheBand on purpose',
+            );
+          }
+          if (_mustScroll.contains(where)) {
+            expect(
+              seen.scrolled,
+              greaterThan(0),
+              reason:
+                  '$where no longer scrolls against the seed data, so the '
+                  'drawn-pixel half was never exercised — fix the fixture, do '
+                  'not delete the case',
+            );
+          }
+        });
+      }
+    }
+
+    // HOME'S DETAIL PANE IS NOT A BRANCH, AND IS STILL UNDER THE BUTTON. At
+    // desktop home splits in two and the selected subscription renders as
+    // `SubscriptionDetailScreen` INSIDE the branch, so the shell's "+" floats
+    // over the right-hand pane — whose list padded 24 at its foot, with no
+    // band. Pushed at `/sub/:id` the same screen sits above the shell and must
+    // NOT pay the band; `AppShell.fabClearanceOf` is what tells the two apart.
+    testWidgets('desktop/home detail pane reserves the FAB band', (
+      WidgetTester tester,
+    ) async {
+      final ProviderContainer c = await _pumpShell(tester, kDesktop);
+      await _open(tester, c, '/home');
+      final List<Subscription> subs = c
+          .read(subscriptionsControllerProvider)
+          .requireValue;
+      expect(subs, isNotEmpty, reason: 'no seed rows to select');
+      await tester.tap(
+        find
+            .descendant(
+              of: find.byKey(const Key('home-list-pane')),
+              matching: find.widgetWithText(RowCard, subs.first.name),
+            )
+            .first,
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byType(SubscriptionDetailScreen),
+        findsOneWidget,
+        reason: 'the detail pane did not render beside the list',
+      );
+
+      final Finder pane = find.byKey(const Key('detail-body-pane'));
+      final Element detailList = find
+          .descendant(of: pane, matching: find.byType(ListView))
+          .evaluate()
+          .first;
+      expect(
+        _listsUnderTheFab(tester, _fab(tester)),
+        contains(detailList),
+        reason:
+            'the detail pane\'s list is not under the FAB at desktop, so this '
+            'case measures nothing — the layout changed',
+      );
+      await _assertClears(tester, 'desktop/home+detail');
+    });
+
+    // THE INSTANCES, MEASURED THE WAY THE FRAMES SHOW THEM: a real row at the
+    // very bottom, the button's rect, and no overlap. The sweep states the
+    // rule; these state the pixels `01-home.png` and `04-budget.png` caught.
+    testWidgets('phone/home: the last row does not intersect the FAB', (
+      WidgetTester tester,
+    ) async {
+      final ProviderContainer c = await _pumpShell(tester, kPhone);
+      await _open(tester, c, '/home');
+      final Finder list = find.byType(ListView).first;
+      final ScrollableState s = _scrollerOf(tester, list);
+      expect(
+        s.position.maxScrollExtent,
+        greaterThan(0),
+        reason: 'home does not scroll against the seed data at phone size',
+      );
+      await _scrollToEnd(tester, s);
+
+      final Finder rows = find.byType(RowCard);
+      expect(
+        rows,
+        findsWidgets,
+        reason:
+            'home rendered no RowCard at all, so this case is measuring '
+            'nothing — the seed data or the list changed',
+      );
+      final Rect lowest = _lowest(tester, rows);
+      final Rect fab = _fab(tester);
+      expect(
+        fab.overlaps(lowest),
+        isFalse,
+        reason:
+            'the FAB ($fab) is drawn across the bottom row ($lowest) — the '
+            'defect 01-home.png photographed, where the "+" covers the '
+            '"per month" line of a price',
+      );
+    });
+
+    testWidgets('phone/budget: the last category card does not intersect '
+        'the FAB', (WidgetTester tester) async {
+      final ProviderContainer c = await _pumpShell(tester, kPhone);
+      await _open(tester, c, '/budget');
+      final Finder list = find.byType(ListView).first;
+      final ScrollableState s = _scrollerOf(tester, list);
+      expect(
+        s.position.maxScrollExtent,
+        greaterThan(0),
+        reason: 'budget does not scroll against the seed data at phone size',
+      );
+      await _scrollToEnd(tester, s);
+
+      final RegExp barKey = RegExp(r'^budget\.bar\.\d+$');
+      final Finder bars = find.byWidgetPredicate(
+        (Widget w) =>
+            w.key is ValueKey<String> &&
+            barKey.hasMatch((w.key! as ValueKey<String>).value),
+      );
+      expect(
+        bars,
+        findsWidgets,
+        reason:
+            'budget rendered no category card, so this case is measuring '
+            'nothing — the seed caps or the list changed',
+      );
+      final Rect lowest = _lowest(tester, bars);
+      final Rect fab = _fab(tester);
+      expect(
+        fab.overlaps(lowest),
+        isFalse,
+        reason:
+            'the FAB ($fab) is drawn across the last category card ($lowest) '
+            '— the defect 04-budget.png photographed, where the "+" covers a '
+            'category amount',
+      );
+    });
+  });
+}

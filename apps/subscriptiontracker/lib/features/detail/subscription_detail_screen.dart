@@ -14,6 +14,7 @@ import '../cancel/cancel_sheet.dart';
 import '../shared/async_gate.dart';
 import '../shared/due.dart';
 import '../shared/widgets.dart';
+import '../shell/app_shell.dart';
 
 /// 🔴 THE BRIGHTNESS RULE FOR THIS FILE, stated once so the three sites below
 /// do not each have to argue it. `apps/subscriptiontracker` is the frozen legacy rail-prover
@@ -331,11 +332,21 @@ class SubscriptionDetailScreen extends ConsumerWidget {
           // pane: a scroll view's padding scrolls with the content and supplies
           // the bottom run-off, and moving it out would clip rows at the inset
           // edge instead.
+          //
+          // The bottom adds the shell's FAB band ONLY where there is one: this
+          // screen is also home's detail pane at wide widths, embedded UNDER
+          // `AppShell`, whose floating "+" is laid out over this list's last
+          // row. Pushed at `/sub/:id` it is above the shell and the band is 0.
           Expanded(
             child: ContentPane.reading(
               key: const Key('detail-body-pane'),
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(18, 16, 18, 24),
+                padding: EdgeInsets.fromLTRB(
+                  18,
+                  16,
+                  18,
+                  AppSpacing.xl + AppShell.fabClearanceOf(context),
+                ),
                 children: <Widget>[
                   Row(
                     children: <Widget>[

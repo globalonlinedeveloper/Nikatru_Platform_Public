@@ -26,6 +26,7 @@ import '../shared/async_gate.dart';
 import '../shared/neutrals.dart';
 import '../shared/painters.dart';
 import '../shared/widgets.dart';
+import '../shell/app_shell.dart';
 
 /// 📌 THE PRIVATE `_neutrals(BuildContext)` THAT STOOD HERE IS HOISTED
 /// (2026-08-25) into `features/shared/neutrals.dart` as `neutrals(context)`,
@@ -318,12 +319,15 @@ class InsightsScreen extends ConsumerWidget {
                 // and puts navigation in `bottomNavigationBar`, so both insets
                 // would now be paid twice. 18 is `AppSpacing.gutterCompact`, the
                 // chassis's own page gutter.
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.gutterCompact,
-                  AppSpacing.gutterCompact,
-                  AppSpacing.gutterCompact,
-                  AppSpacing.xl,
-                ),
+                //
+                // ⚠️ HALF OF THAT WAS WRONG AND IS CORRECTED HERE RATHER THAN
+                // DELETED. The pill is `bottomNavigationBar` and WAS
+                // double-paid; the FAB is `floatingActionButton`, which
+                // reserves nothing and floats over this list, so its 72 px was
+                // dropped instead. [AppShell.pageInset] carries the arithmetic
+                // for all five branches — and this surface matters twice over,
+                // because [ADR 077] §A moves the budget card here.
+                padding: AppShell.pageInset,
                 children: <Widget>[
                   // The heading stays FULL WIDTH in both layouts. It is the page's
                   // one label, not a card, and splitting a title across a column
