@@ -26,6 +26,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
+  boardFileFor,
   boardOf,
   boardParityProblems,
   boardProvenance,
@@ -99,6 +100,33 @@ describe('the two-viewport board comparison', () => {
     assert.match(joined, /USD 9347/);
     assert.match(joined, /USD 18694/);
     assert.match(joined, /seeding loop running a second time/);
+  });
+
+  // ⚠️ THE MESSAGE NAMES A CAUSE ONLY WHEN THE NUMBERS ARE THAT CAUSE. Until
+  // 2026-09-22 it said "N === M * 2 is that, exactly" for ANY mismatch, so a
+  // 6-against-7 board would have sent the reader to the seeding loop — the one
+  // place already fixed — with an equation printed beside it that was false.
+  test('names the seeding loop for an exact doubling in either order, and for nothing else', () => {
+    const seven = {
+      board: {
+        ...phoneRecord.board,
+        activeCount: 7,
+        names: [...phoneRecord.board.names, 'Parking permit'].sort(),
+      },
+    };
+    const drift = boardParityProblems([
+      { type: 'phone', record: phoneRecord },
+      { type: 'tablet', record: seven },
+    ]).join('\n');
+    assert.match(drift, /"tablet" viewport photographed 7/);
+    assert.match(drift, /7 is not 6 doubled, so this is not the known cause/);
+    assert.doesNotMatch(drift, /seeding loop running a second time/);
+
+    const tabletFirst = boardParityProblems([
+      { type: 'tablet', record: tabletRecordDoubled },
+      { type: 'phone', record: phoneRecord },
+    ]).join('\n');
+    assert.match(tabletFirst, /12 is 6 doubled exactly, which is the known cause/);
   });
 
   test('FAILS same-count boards that hold different rows', () => {
@@ -242,11 +270,145 @@ describe('what a committed set records about what was on screen', () => {
   // dispatch, and this suite does not pretend otherwise.
   test('the runner feeds the parity verdict into the array that exits 1', () => {
     const src = readFileSync(join(ROOT, 'tooling', 'store', 'capture-play-screenshots.mjs'), 'utf8');
-    assert.match(src, /problems\.push\(\.\.\.boardParityProblems\(/);
+    const push = src.indexOf(
+      'problems.push(...boardParityProblems(measured.map((m) => ({ type: m.cap.type, record: m.record }))));',
+    );
+    assert.notEqual(push, -1, 'the runner no longer pushes the parity verdict for every measured viewport');
     // The same `problems` array the rest of the verification pushes into, and
     // the one whose non-emptiness exits 1 before any CAPTURE.json is written.
-    assert.match(src, /if \(problems\.length\) \{[\s\S]*process\.exit\(1\)/);
-    // And each drive is told where to leave its record, per viewport.
-    assert.match(src, /STORE_BOARD_FILE: boardFileFor\(cap\)/);
+    // EXACT STATEMENTS, NOT `[\s\S]*`: until 2026-09-22 this was one regex that
+    // let any amount of code — another exit, a `return`, a reset of `problems`
+    // — sit between the test and the exit, and it did not check that the push
+    // happens BEFORE the test at all. A push after the exit decision is a push
+    // nobody reads.
+    const gate = src.indexOf('\nif (problems.length) {\n');
+    assert.notEqual(gate, -1, 'the top-level `if (problems.length) {` gate is gone');
+    assert.ok(push < gate, 'the parity verdict is pushed AFTER the gate that exits on it, so it is never read');
+    const block = src.slice(gate, src.indexOf('\n}\n', gate) + 3);
+    assert.match(block, /\n {2}process\.exit\(1\);\n\}\n$/, 'the gate block no longer ends in process.exit(1)');
+    assert.doesNotMatch(block, /\breturn\b|problems\.length = 0|problems = \[\]/);
+    // And each drive is told where to leave its record, per viewport, through
+    // the ONE function the suite below proves is distinct per viewport — not a
+    // local copy of it.
+    assert.match(src, /\n {8}STORE_BOARD_FILE: boardFileFor\(boardDir, cap\)\.replace\(\/\\\\\/g, '\/'\),\n/);
+    assert.match(src, /\n {2}const boardFile = boardFileFor\(boardDir, cap\);\n/);
+    assert.match(src, /^import \{ boardFileFor, [^}]*\} from '\.\/capture-board-parity\.mjs';$/m);
+    assert.doesNotMatch(src, /(const|let|var|function)\s+boardFileFor\b/);
+  });
+});
+
+// 🔴 MUTATION (c) OF THE 2026-09-21 PLAN: `boardFileFor` returning ONE path for
+// both viewports. The second drive then overwrites the first drive's record, the
+// runner reads the same file twice, and `boardParityProblems` compares a board
+// with ITSELF — green by construction, on exactly the run it exists to refuse.
+// Until 2026-09-22 the function was an arrow inside the runner, which cannot be
+// run here, and the only test was a regex over its CALL site.
+describe('where each viewport leaves its board record', () => {
+  test('phone and tablet get DISTINCT files, both inside the run directory', () => {
+    const dir = join('run-dir', 'nk-shot-board-0000');
+    const phone = boardFileFor(dir, { type: 'phone' });
+    const tablet = boardFileFor(dir, { type: 'tablet' });
+    assert.notEqual(phone, tablet);
+    assert.equal(dirname(phone), dir);
+    assert.equal(dirname(tablet), dir);
+    assert.equal(phone, join(dir, 'phone.json'));
+    assert.equal(tablet, join(dir, 'tablet.json'));
+  });
+
+  test('two runs never share a file: the directory is part of the path', () => {
+    const a = boardFileFor(join('run-dir', 'a'), { type: 'phone' });
+    const b = boardFileFor(join('run-dir', 'b'), { type: 'phone' });
+    assert.notEqual(a, b);
+  });
+});
+
+/** A Dart source with its whole-line comments removed. A comment that MENTIONS
+ *  a forbidden loop must not red the suite, and a commented-out call must not
+ *  green it. */
+const dartCode = (src) =>
+  src
+    .split('\n')
+    .filter((line) => !/^\s*\/\//.test(line))
+    .join('\n');
+
+// 🔴 MUTATION (a) OF THE 2026-09-21 PLAN: the suite's seeding block reverted to
+// `for (final List<String> row in kIllustrative)`. `test/store_seed_idempotence_test.dart`
+// drives `seedMissingRows` and `waitForLoadedBoard` in both directions, and
+// proves nothing about a suite that stops calling them — the suite itself runs
+// only in a live `flutter drive`, which needs CI-only secrets. So this reads the
+// suite's SOURCE and refuses every way of seeding that bypasses them. A static
+// check, labelled as one: the behavioural half is the widget test plus the live
+// dispatch.
+describe('the capture suite seeds through the tested functions and nothing else', () => {
+  const suite = dartCode(
+    readFileSync(
+      join(ROOT, 'apps', 'subscriptiontracker', 'integration_test', 'store_screenshots_test.dart'),
+      'utf8',
+    ),
+  );
+
+  test('the seeding pass is `seedMissingRows`, over the real sheet, for the illustrative set', () => {
+    assert.match(suite, /^import 'store_board_census\.dart';$/m);
+    const calls = suite.match(/\bseedMissingRows\(/g) ?? [];
+    assert.equal(calls.length, 1, `the suite calls seedMissingRows ${calls.length} time(s); it must call it once`);
+    assert.match(
+      suite,
+      /final SeedPass pass = await seedMissingRows\(\n\s*loadBoard: loadedBoard,\n\s*addRow: addThroughSheet,\n\s*wanted: kIllustrative,\n/,
+    );
+  });
+
+  test('the board is read through `waitForLoadedBoard`, never snatched', () => {
+    assert.match(suite, /Future<List<Subscription>> loadedBoard\(\) => waitForLoadedBoard\(\n/);
+    assert.doesNotMatch(suite, /valueOrNull/);
+  });
+
+  test('no loop over kIllustrative, and the sheet is driven from nowhere else', () => {
+    assert.doesNotMatch(suite, /\bfor\s*\([^)]*\bin\s+kIllustrative\b/);
+    assert.doesNotMatch(suite, /\bkIllustrative\s*\.\s*(forEach|map|expand)\s*\(/);
+    // `addThroughSheet(` appears ONCE — its declaration. Every other mention is
+    // the bare reference handed to `seedMissingRows`, so any second call site,
+    // in any loop shape, is a seed that did not ask what the board holds.
+    const sheetCalls = suite.match(/\baddThroughSheet\(/g) ?? [];
+    assert.equal(sheetCalls.length, 1, `addThroughSheet( appears ${sheetCalls.length} times; only its declaration may`);
+    assert.match(suite, /Future<void> addThroughSheet\(List<String> row\) async \{/);
+  });
+
+  // A local function of the same name would take the call away from the
+  // tested one without changing the call site. Each name appears ONCE in the
+  // suite's code — the call above — so a declaration beside it is a second
+  // occurrence; and the decision functions the pass is built from are not
+  // called here at all, so the suite cannot assemble its own order out of them.
+  test('the suite does not shadow the tested functions or rebuild the order from their parts', () => {
+    for (const name of ['seedMissingRows', 'waitForLoadedBoard']) {
+      const n = (suite.match(new RegExp(`\\b${name}\\b`, 'g')) ?? []).length;
+      assert.equal(n, 1, `${name} appears ${n} times in the suite's code; only the one call may`);
+    }
+    for (const name of ['rowsMissingFrom', 'censusOf', 'boardComplaints']) {
+      assert.doesNotMatch(suite, new RegExp(`\\b${name}\\b`), `the suite calls ${name} itself`);
+    }
+  });
+});
+
+// MUTATION (e) OF THE 2026-09-21 PLAN: the driver's `responseDataCallback` or
+// `writeResponseOnFailure` removed. Without the callback no record reaches the
+// host and the runner reports "absent record" for every viewport — caught, but
+// only at runtime, after a full live capture. Without `writeResponseOnFailure`
+// a FAILED drive leaves no record, and the reader of that failure loses the one
+// line that says what the board held when it failed. The driver needs a device
+// and a browser, so this is a static check, labelled as one.
+describe('the driver hands each drive record to the host', () => {
+  const driver = dartCode(
+    readFileSync(join(ROOT, 'apps', 'subscriptiontracker', 'test_driver', 'store_screenshots.dart'), 'utf8'),
+  );
+
+  test('responseDataCallback writes the record to STORE_BOARD_FILE', () => {
+    assert.match(driver, /\n {4}responseDataCallback: \(Map<String, dynamic>\? data\) async \{\n/);
+    assert.match(driver, /final String\? boardPath = Platform\.environment\['STORE_BOARD_FILE'\];/);
+    assert.match(driver, /final File file = File\(boardPath\);/);
+    assert.match(driver, /await file\.writeAsString\('\$\{jsonEncode\(data \?\? <String, dynamic>\{\}\)\}\\n'\);/);
+  });
+
+  test('a failed drive still writes its record', () => {
+    assert.match(driver, /\n {4}writeResponseOnFailure: true,\n/);
   });
 });

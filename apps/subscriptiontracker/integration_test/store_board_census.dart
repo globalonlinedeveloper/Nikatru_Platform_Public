@@ -28,10 +28,31 @@
 // only be exercised by a live capture, which needs CI-only secrets, a
 // provisioned Supabase user and a browser. A rule that lived only inside the
 // seeding loop would ship having never once been run against a board that was
-// already seeded — which is the exact state it exists for. Everything here is
-// pure, takes the board as data, and is driven in both directions by a widget
+// already seeded — which is the exact state it exists for. The decisions here
+// are pure and take the board as data, the order below takes its two side
+// effects as callbacks, and all of it is driven in both directions by a widget
 // test that runs the seed TWICE.
+//
+// ── AND THE ORCHESTRATION LIVES HERE TOO, ADDED 2026-09-22 ─────────────────
+// The first cut moved only the DECISION (`rowsMissingFrom`) out of the suite
+// and left the ORDER — wait for the board, take the census, create what is
+// missing, read the board back — inline in the suite's `testWidgets` body. The
+// widget test then drove its OWN copy of that order, so reverting the suite's
+// loop to `for (… in kIllustrative)` left every case in `test/` green: the
+// test proved the copy, and the copy was not what the capture ran.
+//
+// So the order is two functions, [waitForLoadedBoard] and [seedMissingRows],
+// parameterised by callbacks for the only two things that differ between a
+// live capture and a widget test — how to let time pass, and how to create
+// one row (through the real sheet on screen, or through the controller the
+// sheet calls). Both callers call THESE, and nothing else decides what to
+// seed. `tooling/ci/test/store-capture-board-parity.test.mjs` reads the
+// suite's source and refuses a seeding loop over `kIllustrative` that
+// bypasses them.
 // ─────────────────────────────────────────────────────────────────────────────
+
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:subscriptiontracker/data/models/subscription.dart';
 
 /// How many rows on the board carry each name.
 ///
@@ -100,4 +121,134 @@ List<String> boardComplaints(
     }
   }
   return out;
+}
+
+/// The board could not be read, so nothing may be concluded about it.
+///
+/// Its own type rather than a `StateError`, so a caller that wants to say
+/// "the board never arrived" can catch exactly that and nothing wider.
+class BoardNotReadable implements Exception {
+  BoardNotReadable(this.message);
+
+  final String message;
+
+  @override
+  String toString() => 'BoardNotReadable: $message';
+}
+
+/// The board the app holds, WAITED FOR rather than snatched.
+///
+/// [read] returns the provider's current state (the suite reads
+/// `subscriptionsControllerProvider` out of the running `ProviderScope`);
+/// [pause] lets time pass between reads (a real-clock pump on a live drive, a
+/// fake-clock `tester.pump` in `test/`); [polls] bounds the wait by a COUNT of
+/// reads, because a widget test runs on a fake clock and a `Stopwatch`
+/// deadline would never expire there; [onScreen] says what the app was showing
+/// when the wait gave up.
+///
+/// 🔴 AN UNFINISHED FETCH IS A FAILURE, NEVER AN EMPTY LIST, AND THAT LIMB IS
+/// THE WHOLE FIX ALL OVER AGAIN IF IT IS DROPPED. `SubscriptionsController
+/// .build()` is async: on the SECOND drive the app signs in and asks the Worker
+/// for the board it already holds, and until that answers the provider is
+/// `AsyncLoading` with NO value. A reader that took `valueOrNull ?? []` would
+/// see an EMPTY board, conclude every illustrative row is missing, and seed a
+/// second copy of all six — the exact defect this file exists to close,
+/// arriving through the instrument written to close it.
+/// `test/store_seed_idempotence_test.dart` drives exactly that state: a fresh
+/// scope over a board that already holds the set, whose fetch has not answered
+/// at the first read.
+Future<List<Subscription>> waitForLoadedBoard({
+  required AsyncValue<List<Subscription>> Function() read,
+  required Future<void> Function() pause,
+  required int polls,
+  required String Function() onScreen,
+}) async {
+  AsyncValue<List<Subscription>> latest = read();
+  for (int i = 0; i < polls; i++) {
+    latest = read();
+    if (latest.hasError) {
+      throw BoardNotReadable(
+        'The subscriptions the app holds are in an ERROR state '
+        '(${latest.error}), so this capture cannot say what board it is about '
+        'to photograph. On screen: ${onScreen()}',
+      );
+    }
+    if (latest.hasValue && !latest.isLoading) return latest.requireValue;
+    await pause();
+  }
+  throw BoardNotReadable(
+    'The subscriptions the app holds never finished loading '
+    '(${latest.runtimeType}) after $polls reads. This is NOT an empty board and '
+    'must never be read as one: on the second viewport the board already holds '
+    'the illustrative rows, and treating "not arrived" as "not there" seeds a '
+    'SECOND copy of all six — which is the defect this reader exists to '
+    'prevent. On screen: ${onScreen()}',
+  );
+}
+
+/// What one pass of the seed found, did, and left behind.
+class SeedPass {
+  const SeedPass({
+    required this.onArrival,
+    required this.seeded,
+    required this.board,
+    required this.complaints,
+  });
+
+  /// The board as the pass found it, before it created anything.
+  final List<Subscription> onArrival;
+
+  /// The rows this pass created, in the order it created them.
+  final List<List<String>> seeded;
+
+  /// The board as the pass left it, read back through [waitForLoadedBoard].
+  final List<Subscription> board;
+
+  /// [boardComplaints] over [board]. The caller asserts it is EMPTY.
+  final List<String> complaints;
+}
+
+/// One pass of the capture's seed: wait for the board, create exactly the rows
+/// of [wanted] it does not already hold, and read the board back.
+///
+/// [loadBoard] is the caller's [waitForLoadedBoard]; [addRow] creates ONE row
+/// (the suite drives the real "Add subscription" sheet, the widget test calls
+/// the `addSubscription` the sheet awaits); [onPlan], when given, is told what
+/// the pass found and is about to create, before it creates anything.
+///
+/// 🔴 IT ITERATES [rowsMissingFrom]'s ANSWER, NEVER [wanted]. On the first
+/// viewport the two are the same list; on the second the answer is EMPTY, and
+/// that difference is the entire fix for the doubled tablet board.
+///
+/// ⚠️ IT RETURNS THE COMPLAINTS RATHER THAN THROWING ON THEM. Seeding
+/// idempotently and photographing the right board are two claims: a board that
+/// arrived already doubled is not repaired by creating nothing, and the caller
+/// is the one that knows how to refuse it — with `expect(..., isEmpty)` and the
+/// frame it was about to take.
+Future<SeedPass> seedMissingRows({
+  required Future<List<Subscription>> Function() loadBoard,
+  required Future<void> Function(List<String> row) addRow,
+  required List<List<String>> wanted,
+  void Function(List<Subscription> onArrival, List<List<String>> toSeed)?
+  onPlan,
+}) async {
+  final List<Subscription> onArrival = await loadBoard();
+  final List<List<String>> toSeed = rowsMissingFrom(
+    censusOf(onArrival.map((Subscription s) => s.name)),
+    wanted,
+  );
+  onPlan?.call(onArrival, toSeed);
+  for (final List<String> row in toSeed) {
+    await addRow(row);
+  }
+  final List<Subscription> board = await loadBoard();
+  return SeedPass(
+    onArrival: onArrival,
+    seeded: toSeed,
+    board: board,
+    complaints: boardComplaints(
+      censusOf(board.map((Subscription s) => s.name)),
+      wanted,
+    ),
+  );
 }

@@ -42,6 +42,23 @@
 // it is not.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { join } from 'node:path';
+
+/** WHERE ONE VIEWPORT'S DRIVE LEAVES ITS BOARD RECORD: one file per device
+ *  type, inside [dir].
+ *
+ *  🔴 DISTINCT PER VIEWPORT, OR THE PARITY CHECK BELOW IS VACUOUS. If every
+ *  viewport were handed the same path, the second drive would overwrite the
+ *  first drive's record and `boardParityProblems` would compare one board with
+ *  ITSELF — agreement by construction, on exactly the run it exists to refuse.
+ *  That is why this is a named, exported function rather than an arrow inside
+ *  the runner: `store-capture-board-parity.test.mjs` asserts the phone and
+ *  tablet paths differ, and a runner that cannot be executed outside CI could
+ *  never have shown it. */
+export function boardFileFor(dir, cap) {
+  return join(dir, `${cap.type}.json`);
+}
+
 /** Pull the `board` object out of one drive's `reportData` record.
  *
  *  Returns `null` for a record that carries no board — which is a REAL state,
@@ -139,12 +156,23 @@ export function boardParityProblems(entries) {
   const [first, ...rest] = summaries;
   for (const other of rest) {
     if (other.count !== first.count) {
+      // ⚠️ THE CAUSE IS NAMED ONLY WHEN THE NUMBERS SAY IT. One board exactly
+      // twice the other is the #854 signature, in either order. Any other
+      // mismatch is a different defect, and a message that blamed the seeding
+      // loop for 6 against 7 would send the reader to the one place already
+      // fixed.
+      const lo = Math.min(first.count, other.count);
+      const hi = Math.max(first.count, other.count);
+      const doubled = lo > 0 && hi === lo * 2;
       problems.push(
         `the "${first.type}" viewport photographed a board of ${first.count} subscription(s) and the ` +
           `"${other.type}" viewport photographed ${other.count}. Both sets go on the SAME listing, so a ` +
-          `reader sees "${first.count} active" on one frame and "${other.count} active" on another. The ` +
-          `known cause is the seeding loop running a second time against the same account: ` +
-          `${other.count} === ${first.count} * 2 is that, exactly.`,
+          `reader sees "${first.count} active" on one frame and "${other.count} active" on another. ` +
+          (doubled
+            ? `${hi} is ${lo} doubled exactly, which is the known cause: the seeding loop running a second ` +
+              `time against the same account.`
+            : `${hi} is not ${lo} doubled, so this is not the known cause; open both sets and read what ` +
+              `differs.`),
       );
     }
     if (other.money !== first.money) {

@@ -26,11 +26,19 @@
 // ── ⚠️ WHAT THIS DRIVES, AND WHAT IT DOES NOT ───────────────────────────────
 // It drives the REAL `SubscriptionsController.addSubscription` — the method
 // `_AddSheetState._save` awaits — over a repository that really STORES, and it
-// asks the REAL decision: `rowsMissingFrom` is imported from
-// `integration_test/store_board_census.dart`, the same symbol the capture
-// suite's loop iterates over. So the thing under test is the capture's own
-// decision and the app's own board, not a copy of either. A change to that
-// function is seen here on the next push.
+// runs the capture's REAL ORCHESTRATION: `seedMissingRows` and
+// `waitForLoadedBoard` are imported from `integration_test/store_board_census.dart`,
+// and they are the two functions the capture suite itself calls. So the thing
+// under test is the capture's own wait, decision and order, and the app's own
+// board — not a copy of any of them. A change to either function is seen here
+// on the next push.
+//
+// 🔴 UNTIL 2026-09-22 THIS FILE HELD ITS OWN `board()` AND `seedOnce()`, and
+// that was a hole with a measured shape: reverting the suite's loop to
+// `for (… in kIllustrative)` left every case here green, because the cases
+// proved the copy and the copy was not what the capture ran. Both are gone;
+// the helpers below only say how a widget test lets time pass and creates one
+// row, which are the two things that genuinely differ from a live drive.
 //
 // What is NOT driven is the SHEET — opening it, typing, choosing a category,
 // reaching the submit button. That is a question about LAYOUT at one viewport,
@@ -40,6 +48,8 @@
 // the seed is IDEMPOTENT and does not prove the seed still works at the phone
 // viewport. The live dispatch is the only answer to the second question.
 // ─────────────────────────────────────────────────────────────────────────────
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -68,8 +78,22 @@ class _StoringRepository implements SubscriptionRepository {
   final List<Subscription> rows = <Subscription>[];
   int adds = 0;
 
+  /// How long `fetchAll` takes to answer. Zero for the one-scope cases; the
+  /// SECOND-DRIVE case sets it so the app's first read of the board is
+  /// `AsyncLoading`, which is the state a live second drive signs in to.
+  Duration fetchDelay = Duration.zero;
+
+  /// When set, `fetchAll` answers with THIS instead of the rows — a fetch that
+  /// never answers, or one that fails.
+  Future<List<Subscription>> Function()? fetchOverride;
+
   @override
-  Future<List<Subscription>> fetchAll() async => List<Subscription>.of(rows);
+  Future<List<Subscription>> fetchAll() async {
+    final Future<List<Subscription>> Function()? override = fetchOverride;
+    if (override != null) return override();
+    if (fetchDelay > Duration.zero) await Future<void>.delayed(fetchDelay);
+    return List<Subscription>.of(rows);
+  }
 
   @override
   Future<Subscription> add(Subscription draft) async {
@@ -174,24 +198,20 @@ void main() {
         listen: false,
       );
 
-  /// The board the app holds, waited for rather than snatched — the same rule
-  /// the capture suite's `loadedBoard()` states, and for the same reason: an
-  /// `AsyncLoading` provider read as an empty list is what makes an idempotent
-  /// seed seed everything again.
-  Future<List<Subscription>> board(WidgetTester tester) async {
-    final ProviderContainer c = containerOf(tester);
-    for (int i = 0; i < 40; i++) {
-      final AsyncValue<List<Subscription>> s = c.read(
-        subscriptionsControllerProvider,
-      );
-      if (s.hasValue && !s.isLoading) return s.requireValue;
-      await tester.pump(const Duration(milliseconds: 50));
-    }
-    fail('the subscriptions provider never left AsyncLoading');
-  }
+  /// The board the app holds, through the capture's OWN wait —
+  /// `waitForLoadedBoard`, the function the suite's `loadedBoard()` calls. Only
+  /// how time passes differs: a fake-clock `pump` here, a real-clock one on a
+  /// live drive.
+  Future<List<Subscription>> loaded(WidgetTester tester) => waitForLoadedBoard(
+    read: () => containerOf(tester).read(subscriptionsControllerProvider),
+    pause: () => tester.pump(const Duration(milliseconds: 50)),
+    polls: 40,
+    onScreen: () => 'the widget-test host (no screen under test)',
+  );
 
-  /// One pass of the capture's seed: ask the SUITE'S OWN decision which rows
-  /// are missing, and create exactly those through the app's own create path.
+  /// Creates ONE row through the app's own create path — this file's stand-in
+  /// for the suite's `addThroughSheet`, and the only seeding step that is not
+  /// the capture's own code.
   ///
   /// 🔴 `addSubscription` IS WHAT THE SHEET CALLS, not a shortcut past it.
   /// `_AddSheetState._save` builds exactly this `Subscription` draft — id '',
@@ -209,29 +229,37 @@ void main() {
   /// This file's subject is the DECISION and the BOARD: how many rows exist
   /// after the seed has run more than once. Mixing the two would mean a red
   /// here could be either, which is the reading that makes a failure useless.
-  Future<int> seedOnce(WidgetTester tester) async {
-    final List<Subscription> now = await board(tester);
-    final List<List<String>> toSeed = rowsMissingFrom(
-      censusOf(now.map((Subscription s) => s.name)),
-      kIllustrative,
-    );
-    final ProviderContainer c = containerOf(tester);
-    for (final List<String> row in toSeed) {
-      await c
-          .read(subscriptionsControllerProvider.notifier)
-          .addSubscription(
-            Subscription(
-              id: '',
-              name: row[0],
-              category: row[2],
-              price: Money.fromMajorUnits(num.parse(row[1]), 'USD'),
-              cycle: BillingCycle.monthly,
-              nextRenewal: DateTime.now().add(const Duration(days: 30)),
-            ),
-          );
-      await tester.pumpAndSettle();
+  Future<void> addLikeTheSheet(WidgetTester tester, List<String> row) async {
+    await containerOf(tester)
+        .read(subscriptionsControllerProvider.notifier)
+        .addSubscription(
+          Subscription(
+            id: '',
+            name: row[0],
+            category: row[2],
+            price: Money.fromMajorUnits(num.parse(row[1]), 'USD'),
+            cycle: BillingCycle.monthly,
+            nextRenewal: DateTime.now().add(const Duration(days: 30)),
+          ),
+        );
+    await tester.pumpAndSettle();
+  }
+
+  /// One pass of the capture's seed: `seedMissingRows`, the function the
+  /// suite calls, over the suite's own `kIllustrative`.
+  Future<SeedPass> seed(WidgetTester tester) => seedMissingRows(
+    loadBoard: () => loaded(tester),
+    addRow: (List<String> row) => addLikeTheSheet(tester, row),
+    wanted: kIllustrative,
+  );
+
+  /// What [pending] threw, or the board it returned if it did not throw.
+  Future<Object?> refusalOf(Future<List<Subscription>> pending) async {
+    try {
+      return await pending;
+    } on BoardNotReadable catch (e) {
+      return e;
     }
-    return toSeed.length;
   }
 
   setUp(() => repo = _StoringRepository());
@@ -242,11 +270,108 @@ void main() {
     await tester.pumpWidget(host());
     await tester.pumpAndSettle();
 
-    final int created = await seedOnce(tester);
+    final SeedPass first = await seed(tester);
 
-    expect(created, kIllustrative.length);
+    expect(first.onArrival, isEmpty);
+    expect(first.seeded.length, kIllustrative.length);
     expect(repo.adds, kIllustrative.length);
-    expect((await board(tester)).length, kIllustrative.length);
+    expect(first.board.length, kIllustrative.length);
+    expect(first.complaints, isEmpty);
+  });
+
+  // ── 🔴 THE SECOND DRIVE, AS A SECOND DRIVE ACTUALLY STARTS ────────────────
+  //
+  // Every other case here runs its passes inside ONE `ProviderScope`, where the
+  // board is already loaded when the second pass asks for it. A live second
+  // drive is not that: it is a NEW launch, signing in to an account that
+  // already holds the set, and at the first read its provider is
+  // `AsyncLoading` with no value because the Worker has not answered yet. A
+  // wait that read "not answered" as "empty" passes every one-scope case and
+  // seeds all six again on the tablet — the #854 board, arriving through the
+  // instrument written to prevent it. So this case builds exactly that state.
+  testWidgets(
+    'a SECOND drive — a fresh app over a board that already holds the set, '
+    'whose fetch has not answered at the first read — creates nothing',
+    (WidgetTester tester) async {
+      // Drive one.
+      await tester.pumpWidget(host());
+      await tester.pumpAndSettle();
+      expect((await seed(tester)).seeded.length, kIllustrative.length);
+
+      // Between the drives the app is torn down; a new `ProviderScope` is a new
+      // launch with nothing cached. The fetch now takes 300 ms, so the board
+      // has NOT arrived when the seed first asks for it.
+      await tester.pumpWidget(const SizedBox.shrink());
+      repo.fetchDelay = const Duration(milliseconds: 300);
+      await tester.pumpWidget(host());
+      expect(
+        containerOf(tester).read(subscriptionsControllerProvider).isLoading,
+        isTrue,
+        reason:
+            'the precondition of this case: the second drive\'s first read of '
+            'the board must find it still loading, or this case proves nothing '
+            'a one-scope case does not',
+      );
+
+      final SeedPass second = await seed(tester);
+
+      expect(
+        second.seeded,
+        isEmpty,
+        reason:
+            'the second drive created ${second.seeded.length} row(s) over a '
+            'board that already held the set. Its first read found the board '
+            'still loading; a wait that took that as EMPTY seeds every row '
+            'again, which is the #854 tablet board (`12 active`, `\$186.94`).',
+      );
+      expect(second.onArrival.length, kIllustrative.length);
+      expect(repo.adds, kIllustrative.length);
+      expect(second.board.length, kIllustrative.length);
+      expect(second.complaints, isEmpty);
+    },
+  );
+
+  // The wait's two refusals, each named. A board that never arrives, and one
+  // that arrives as an error, are both statements about the APP, and neither
+  // may be read as an empty board.
+  testWidgets('a board that never arrives is a failure, not an empty board', (
+    WidgetTester tester,
+  ) async {
+    repo.fetchOverride = () => Completer<List<Subscription>>().future;
+    await tester.pumpWidget(host());
+
+    // Caught by hand rather than with `expectLater(..., throwsA(...))`: the
+    // wait pumps the tester, and `expectLater` is itself a guarded test API,
+    // so the two would collide ("Guarded function conflict").
+    final Object? caught = await refusalOf(loaded(tester));
+    expect(
+      caught,
+      isA<BoardNotReadable>(),
+      reason: 'the wait returned: $caught',
+    );
+    expect(
+      (caught! as BoardNotReadable).message,
+      contains('never finished loading'),
+    );
+    expect(repo.adds, 0);
+  });
+
+  testWidgets('a board that arrives as an ERROR is refused by name', (
+    WidgetTester tester,
+  ) async {
+    repo.fetchOverride = () async => throw StateError('the Worker said 500');
+    await tester.pumpWidget(host());
+
+    final Object? caught = await refusalOf(loaded(tester));
+    expect(
+      caught,
+      isA<BoardNotReadable>(),
+      reason: 'the wait returned: $caught',
+    );
+    expect(
+      (caught! as BoardNotReadable).message,
+      allOf(contains('ERROR state'), contains('the Worker said 500')),
+    );
   });
 
   // 🔴 THE CASE THE ROW ASKS FOR. Run the seed twice against ONE board — which
@@ -258,8 +383,8 @@ void main() {
     await tester.pumpWidget(host());
     await tester.pumpAndSettle();
 
-    final int first = await seedOnce(tester);
-    final int second = await seedOnce(tester);
+    final int first = (await seed(tester)).seeded.length;
+    final int second = (await seed(tester)).seeded.length;
 
     expect(first, kIllustrative.length, reason: 'the first pass seeds the set');
     expect(
@@ -273,7 +398,7 @@ void main() {
           'the phone frames\' `6 active` / `\$93.47`.',
     );
 
-    final List<Subscription> after = await board(tester);
+    final List<Subscription> after = await loaded(tester);
     expect(
       after.length,
       kIllustrative.length,
@@ -302,9 +427,9 @@ void main() {
   ) async {
     await tester.pumpWidget(host());
     await tester.pumpAndSettle();
-    await seedOnce(tester);
-    await seedOnce(tester);
-    expect(await seedOnce(tester), 0);
+    await seed(tester);
+    await seed(tester);
+    expect((await seed(tester)).seeded.length, 0);
     expect(repo.adds, kIllustrative.length);
   });
 
@@ -325,7 +450,7 @@ void main() {
   ) async {
     await tester.pumpWidget(host());
     await tester.pumpAndSettle();
-    await seedOnce(tester);
+    await seed(tester);
 
     // The #854 board: every illustrative row present twice.
     final List<String> doubled = <String>[
@@ -348,7 +473,7 @@ void main() {
     // built, so a complaint list that is never empty cannot pass as a detector.
     expect(
       boardComplaints(
-        censusOf((await board(tester)).map((Subscription s) => s.name)),
+        censusOf((await loaded(tester)).map((Subscription s) => s.name)),
         kIllustrative,
       ),
       isEmpty,
@@ -408,17 +533,17 @@ void main() {
     // `build()` against `fetchAll()`: assigning the notifier's `state` from a
     // test would be reaching past the protected member and would prove the
     // rule against a state no fetch can produce.
-    await seedOnce(tester);
+    await seed(tester);
     final ProviderContainer c = containerOf(tester);
-    final List<Subscription> keep = (await board(tester)).sublist(0, 4);
+    final List<Subscription> keep = (await loaded(tester)).sublist(0, 4);
     repo.rows
       ..clear()
       ..addAll(keep);
     c.invalidate(subscriptionsControllerProvider);
     await tester.pumpAndSettle();
-    expect((await board(tester)).length, 4);
+    expect((await loaded(tester)).length, 4);
 
-    expect(await seedOnce(tester), 2);
-    expect((await board(tester)).length, kIllustrative.length);
+    expect((await seed(tester)).seeded.length, 2);
+    expect((await loaded(tester)).length, kIllustrative.length);
   });
 }

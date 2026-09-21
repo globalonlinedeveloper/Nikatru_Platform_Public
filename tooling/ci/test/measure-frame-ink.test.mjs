@@ -91,6 +91,36 @@ describe('removing the glyphs from a frame', () => {
     assert.equal(inkFraction(textlessFrame(frame)), inkFraction(textlessFrame(frame)));
   });
 
+  // 🔴 MUTATION (d) OF THE 2026-09-21 PLAN: the tie-break `count > bestCount`
+  // changed to `>=`. The determinism case above cannot see it — `>=` is just as
+  // deterministic, it picks the value that reached the tie LAST instead of
+  // FIRST — so the recorded controls would silently change meaning under a
+  // one-character edit. This pins the rule with an exact tie: a 9x9 frame whose
+  // centre pixel's window is the whole frame, 40 pixels of one value, then 40 of
+  // another, then one odd pixel, in row-major scan order. The centre must take
+  // the value that reached 40 FIRST, whichever of the two values that is.
+  test('an exact tie in the 9x9 window goes to the value that reached it first in scan order', () => {
+    const tieFrame = (firstValue, secondValue) => {
+      const rgba = Buffer.alloc(9 * 9 * 4);
+      for (let i = 0; i < 81; i++) {
+        const v = i < 40 ? firstValue : i < 80 ? secondValue : 90;
+        rgba[i * 4] = v;
+        rgba[i * 4 + 1] = v;
+        rgba[i * 4 + 2] = v;
+        rgba[i * 4 + 3] = 255;
+      }
+      return { width: 9, height: 9, rgba };
+    };
+    const centre = (img) => {
+      const at = (4 * 9 + 4) * 4;
+      return [...img.rgba.subarray(at, at + 4)];
+    };
+    // Both orders, so a rule of "the smaller value" or "the larger value"
+    // cannot pass by coincidence with one of them.
+    assert.deepEqual(centre(textlessFrame(tieFrame(10, 200))), [10, 10, 10, 255]);
+    assert.deepEqual(centre(textlessFrame(tieFrame(200, 10))), [200, 200, 200, 255]);
+  });
+
   test('the window is the register\'s 9', () => {
     assert.equal(TEXTLESS_WINDOW, 9);
   });

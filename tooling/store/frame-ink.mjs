@@ -246,7 +246,9 @@ export function selfTestInkMetric(minFraction) {
 // unzipped `play-screenshots-subscriptiontracker` artifact and it prints a
 // paste-ready `inkFloor.frames` block for both device-type directories.
 //
-//   node tooling/store/measure-frame-ink.mjs //     apps/subscriptiontracker/store/android-play/screenshots //     apps/subscriptiontracker/store/android-play/screenshots-tablet
+//   node tooling/store/measure-frame-ink.mjs
+//     apps/subscriptiontracker/store/android-play/screenshots
+//     apps/subscriptiontracker/store/android-play/screenshots-tablet
 //
 // It prints and never writes: the register is a sworn store contract, and a
 // tool that edited it would let a recapture lower its own floor on the way

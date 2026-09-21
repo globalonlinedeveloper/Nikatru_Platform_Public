@@ -157,7 +157,7 @@ import { pngHeader, flattenToOpaque, RasterUnavailable } from './chrome-raster.m
 import { decodeRgba, PngUnreadable } from './png-codec.mjs';
 import { scanCaptureSuite, selfTestAccountAddressDetector } from './capture-suite-scan.mjs';
 import { stageFallbackFonts, unstageFallbackFonts } from './capture-fallback-fonts.mjs';
-import { boardOf, boardParityProblems, boardProvenance } from './capture-board-parity.mjs';
+import { boardFileFor, boardOf, boardParityProblems, boardProvenance } from './capture-board-parity.mjs';
 import {
   launchDefineArgs,
   scanTopBand,
@@ -526,9 +526,10 @@ for (const cap of CAPTURES) {
 // fixed path (a record left by yesterday's run must not be read as today's —
 // which is the same class of mistake as the stale-PNG one the clean above
 // exists for, in a file the clean cannot see because it is not a `.png`).
+// The file NAME inside it is `boardFileFor` in capture-board-parity.mjs, which
+// the parity suite proves is distinct per viewport.
 const boardDir = join(tmpdir(), `nk-shot-board-${randomBytes(4).toString('hex')}`);
 mkdirSync(boardDir, { recursive: true });
-const boardFileFor = (cap) => join(boardDir, `${cap.type}.json`);
 
 const cd = spawn(driver, ['--port=4444', '--silent'], { stdio: 'pipe' });
 let cdErr = '';
@@ -720,7 +721,7 @@ try {
         // clean above deletes `*.png` from it and nothing else, so a stale
         // record would survive a run that produced none and be read as that
         // run's. See capture-board-parity.mjs.
-        STORE_BOARD_FILE: boardFileFor(cap).replace(/\\/g, '/'),
+        STORE_BOARD_FILE: boardFileFor(boardDir, cap).replace(/\\/g, '/'),
       },
     });
     const exitCode = run.status ?? 1;
@@ -901,7 +902,7 @@ for (const cap of CAPTURES) {
   // "the drive wrote no record" must never reduce to "the board was empty",
   // which is a sentence about the app that nothing here observed.
   let record = null;
-  const boardFile = boardFileFor(cap);
+  const boardFile = boardFileFor(boardDir, cap);
   if (existsSync(boardFile)) {
     try {
       record = JSON.parse(readFileSync(boardFile, 'utf8'));

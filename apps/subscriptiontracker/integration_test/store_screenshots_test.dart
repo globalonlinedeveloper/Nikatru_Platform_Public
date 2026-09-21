@@ -744,83 +744,25 @@ void main() {
     /// out, at this viewport, today. The provider answers the question the
     /// frame is actually about.
     ///
-    /// 🔴 IT WAITS FOR THE FETCH, AND THAT LIMB IS THE WHOLE FIX ALL OVER
-    /// AGAIN IF IT IS DROPPED. `SubscriptionsController.build()` is async: on
-    /// the SECOND drive the app signs in and asks the Worker for the board it
-    /// already holds, and until that answers the provider is `AsyncLoading`
-    /// with NO value. A reader that took `valueOrNull ?? []` would see an EMPTY
-    /// board, conclude every illustrative row is missing, and seed a second
-    /// copy of all six — the exact defect being closed, arriving through the
-    /// instrument written to close it.
-    ///
-    /// So an unfinished fetch is a FAILURE here rather than an empty list. The
-    /// deadline is generous (20 s against a create path the suite already
-    /// allows 6 s per row) and the failure names the state it gave up in,
-    /// because "the board is empty" and "the board has not arrived" are
-    /// different sentences and only one of them is about the app.
-    Future<List<Subscription>> loadedBoard() async {
-      final Stopwatch waited = Stopwatch()..start();
-      AsyncValue<List<Subscription>> latest = container.read(
-        subscriptionsControllerProvider,
-      );
-      while (waited.elapsed < const Duration(seconds: 20)) {
-        latest = container.read(subscriptionsControllerProvider);
-        if (latest.hasError) {
-          fail(
-            'The subscriptions the app holds are in an ERROR state '
-            '(${latest.error}), so this capture cannot say what board it is '
-            'about to photograph. On screen: ${onScreen(tester)}',
-          );
-        }
-        if (latest.hasValue && !latest.isLoading) return latest.requireValue;
-        await pumpFor(tester, const Duration(milliseconds: 500));
-      }
-      fail(
-        'The subscriptions the app holds never finished loading '
-        '(${latest.runtimeType}) after 20s. This is NOT an empty board and '
-        'must never be read as one: on the second viewport the board already '
-        'holds the illustrative rows, and treating "not arrived" as "not '
-        'there" seeds a SECOND copy of all six — which is the defect this '
-        'reader exists to prevent. On screen: ${onScreen(tester)}',
-      );
-    }
+    /// 🔴 IT WAITS FOR THE FETCH, AND AN UNFINISHED FETCH IS A FAILURE RATHER
+    /// THAN AN EMPTY LIST. The rule and its reason live on
+    /// `waitForLoadedBoard` in `store_board_census.dart`, which is also what
+    /// `test/store_seed_idempotence_test.dart` calls — so the wait the capture
+    /// runs is the wait the widget test proves, not a copy of it. 40 reads of
+    /// 500 ms each is the 20 s this reader has always allowed, against a create
+    /// path the suite already allows 6 s per row.
+    Future<List<Subscription>> loadedBoard() => waitForLoadedBoard(
+      read: () => container.read(subscriptionsControllerProvider),
+      pause: () => pumpFor(tester, const Duration(milliseconds: 500)),
+      polls: 40,
+      onScreen: () => onScreen(tester),
+    );
 
     if (AppConfig.isBackendLive) {
-      // ── 🔴 SEED WHAT IS MISSING, NOT WHAT IS WANTED ───────────────────────
-      //
-      // THE DEFECT: `capture-play-screenshots.mjs` runs `flutter drive` ONCE
-      // PER VIEWPORT against ONE account the workflow provisions once, and
-      // nothing deletes the first drive's rows between the two. This block used
-      // to create all six rows unconditionally on every drive, so the tablet
-      // drive added a SECOND copy of each: `12 active`, `$186.94`, and every
-      // name printed twice under "All subscriptions 12" on four published
-      // tablet frames (merged as 9f548515, #854).
-      //
-      // ⚠️ THE FIX IS NOT "CAPTURE THE TABLET FIRST". That moves the doubling
-      // onto the phone set. The phone set was only ever right because it
-      // happened to run first, and nothing asserted it.
-      //
-      // ⚠️ NOR IS IT THE WORKFLOW'S TEARDOWN. `tooling/e2e/purge.mjs` runs ONCE,
-      // after both drives (`if: always()`), and it deletes the Supabase identity
-      // as well as the D1 rows — so calling it between viewports would leave the
-      // second drive with nobody to sign in as. A clean account per viewport is
-      // the other branch of this fix and it needs D1 credentials this capture
-      // job does not carry; this branch needs neither a new secret nor a
-      // workflow change, and it is the branch that can be PROVEN by running the
-      // seed twice.
-      final List<Subscription> onArrival = await loadedBoard();
-      final Map<String, int> before = censusOf(
-        onArrival.map((Subscription s) => s.name),
-      );
-      final List<List<String>> toSeed = rowsMissingFrom(before, kIllustrative);
-      timeline.add(
-        '${sinceInstall.elapsedMilliseconds}ms  BOARD on arrival: '
-        '${onArrival.length} row(s) — seeding ${toSeed.length} of '
-        '${kIllustrative.length}',
-      );
-      publish();
-
-      for (final List<String> row in toSeed) {
+      /// Creates ONE row through the app's own "Add subscription" sheet. It is
+      /// `seedMissingRows`'s `addRow` below, and it is only ever called for a
+      /// row that pass found MISSING — never directly over `kIllustrative`.
+      Future<void> addThroughSheet(List<String> row) async {
         // The FAB, asked the REACHABILITY question rather than the presence
         // one — the rule this file already states for `Skip` 200 lines up, now
         // applied to every control the seeding loop touches. A row whose save
@@ -1091,6 +1033,50 @@ void main() {
               'is too short. On screen: ${onScreen(tester)}',
         );
       }
+
+      // ── 🔴 SEED WHAT IS MISSING, NOT WHAT IS WANTED ───────────────────────
+      //
+      // THE DEFECT: `capture-play-screenshots.mjs` runs `flutter drive` ONCE
+      // PER VIEWPORT against ONE account the workflow provisions once, and
+      // nothing deletes the first drive's rows between the two. This block used
+      // to create all six rows unconditionally on every drive, so the tablet
+      // drive added a SECOND copy of each: `12 active`, `$186.94`, and every
+      // name printed twice under "All subscriptions 12" on four published
+      // tablet frames (merged as 9f548515, #854).
+      //
+      // ⚠️ THE FIX IS NOT "CAPTURE THE TABLET FIRST". That moves the doubling
+      // onto the phone set. The phone set was only ever right because it
+      // happened to run first, and nothing asserted it.
+      //
+      // ⚠️ NOR IS IT THE WORKFLOW'S TEARDOWN. `tooling/e2e/purge.mjs` runs ONCE,
+      // after both drives (`if: always()`), and it deletes the Supabase identity
+      // as well as the D1 rows — so calling it between viewports would leave the
+      // second drive with nobody to sign in as. A clean account per viewport is
+      // the other branch of this fix and it needs D1 credentials this capture
+      // job does not carry; this branch needs neither a new secret nor a
+      // workflow change, and it is the branch that can be PROVEN by running the
+      // seed twice.
+      //
+      // 🔴 THE ORDER IS `seedMissingRows`, NOT A LOOP WRITTEN HERE. Wait for
+      // the board, take its census, create only what is missing, read it back:
+      // that sequence lives in `store_board_census.dart`, and
+      // `test/store_seed_idempotence_test.dart` runs the SAME function twice
+      // over one board. A loop written here over `kIllustrative` would be the
+      // #854 defect again, and `store-capture-board-parity.test.mjs` refuses it.
+      final SeedPass pass = await seedMissingRows(
+        loadBoard: loadedBoard,
+        addRow: addThroughSheet,
+        wanted: kIllustrative,
+        onPlan: (List<Subscription> onArrival, List<List<String>> toSeed) {
+          timeline.add(
+            '${sinceInstall.elapsedMilliseconds}ms  BOARD on arrival: '
+            '${onArrival.length} row(s) — seeding ${toSeed.length} of '
+            '${kIllustrative.length}',
+          );
+          publish();
+        },
+      );
+
       // ⚠️ ASSERTED WHERE IT LIES, NOT AFTER A SCROLL, AND THE DIFFERENCE FROM
       // `app_test.dart` IS DELIBERATE. That suite scrolls before its read-back
       // and is right to — it reads back a row it created at an arbitrary price
@@ -1136,12 +1122,10 @@ void main() {
       // This fires on BOTH viewports, which is the half `kIllustrative.first`
       // above cannot do: that limb asks whether one name is somewhere on
       // screen, and `findsWidgets` passes just as happily on a board holding
-      // that name twice.
-      final List<Subscription> board = await loadedBoard();
-      final List<String> complaints = boardComplaints(
-        censusOf(board.map((Subscription s) => s.name)),
-        kIllustrative,
-      );
+      // that name twice. `pass.board` is the board read back AFTER the seed,
+      // through the same wait as the census before it.
+      final List<Subscription> board = pass.board;
+      final List<String> complaints = pass.complaints;
       expect(
         complaints,
         isEmpty,
@@ -1188,8 +1172,8 @@ void main() {
               e.key: e.value.minorUnits,
           },
           'names': (board.map((Subscription s) => s.name).toList()..sort()),
-          'seededThisDrive': toSeed.length,
-          'alreadyPresent': kIllustrative.length - toSeed.length,
+          'seededThisDrive': pass.seeded.length,
+          'alreadyPresent': kIllustrative.length - pass.seeded.length,
         },
       };
     }
