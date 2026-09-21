@@ -2188,6 +2188,16 @@
   {
     "claims": [],
     "invokedBy": [
+      ".github/workflows/ci.yml#guards-platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-test-clock-mix.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
       ".github/workflows/ci.yml#guard-meta"
     ],
     "kind": "guard",
