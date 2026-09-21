@@ -282,7 +282,7 @@
     "assert-version-consistency.mjs does not read either lockfile, so nothing would have",
     "told you: `npm ci` in services/*/ is the check, and it exits 0 on both."
   ],
-  "wrangler": "4.129.0",
+  "wrangler": "4.135.0",
 
   "$glitchtip_cli_comment": [
     "ADDED 2026-09-03. THE TOOL THAT MAKES A WEB CRASH READABLE, and until this key existed there was",
