@@ -175,18 +175,22 @@
 // 401/403 is an ANSWER — a revoked token does not improve in two seconds — and
 // re-asking it three times only makes the run slower and the log longer.
 //
-// ⚠️ THIS IS THE FOURTH PRIVATE COPY OF THE LOOP IN THIS TREE, AND THE TREE HAS
-// NO SHARED ONE. Swept 2026-09-21: post-deploy-smoke.mjs inlines it five times
-// (ATTEMPTS/GAP_MS), verify-free-api-scope.mjs has a module-local
+// ⚠️ IT WAS THE FOURTH PRIVATE COPY OF THE LOOP, AND THE TREE HAD NO SHARED
+// ONE. Swept 2026-09-21: post-deploy-smoke.mjs inlines it five times
+// (ATTEMPTS/GAP_MS), verify-free-api-scope.mjs had a module-local
 // `fetchWithRetry`, and record-deployment.mjs exports the POLICY primitives
 // (`RETRY_ATTEMPTS`, `isRetryable`, `retryDelayMs`) but no wrapper — and its
 // policy is GitHub-shaped: it deliberately excludes 429, which for the
-// Cloudflare API is exactly the "ask again" case. So this file does not import
-// it, and its own predicate is named `isTransientLook` rather than shadowing
-// that export with a different signature. Eleven more ops-watch readers still
-// turn ONE dropped connection into a run-level verdict; the class sweep is
-// recorded with row O-PAGES-FETCH-TRANSIENT-NOT-RETRIED, and a shared
-// `tooling/ops/` retry module is the right home for all of them.
+// Cloudflare API is exactly the "ask again" case. So this file still does not
+// import it, and its own predicate is named `isTransientLook` rather than
+// shadowing that export with a different signature.
+//
+// ⏱ 2026-09-21 — THE LOOP ITSELF NO LONGER LIVES HERE. The class sweep this
+// row also asks for found ELEVEN more ops-watch readers turning one dropped
+// connection into a run-level verdict, so the primitives MOVED, unchanged, to
+// tooling/ops/bounded-retry.mjs and are re-exported below. `status.mjs` was the
+// worst shaped of them and its defect was the VERDICT rather than the retry: a
+// DNS blip there reported exit 1 — "I looked, it is broken" — rather than 2.
 //
 // 🔴 `process.exit()` IS BANNED IN THIS FILE, for the reason recorded in
 // check-analytics-liveness.mjs: an undici keep-alive socket is still open and
@@ -201,6 +205,16 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { parseTriggerPaths } from '../ci/assert-deploy-triggers-deploy.mjs';
 import { parseWorkflow } from '../ci/workflow-scan.mjs';
+import {
+  CouldNotLook,
+  transientLook,
+  isTransientLook,
+  READ_ATTEMPTS,
+  RETRY_BASE_MS,
+  backoffPlan,
+  RETRY_CEILING_MS,
+  readWithBoundedRetry,
+} from './bounded-retry.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -211,86 +225,28 @@ const flag = (name) => {
 
 const ROOT = resolve(flag('--root') ?? join(HERE, '..', '..'));
 
-/** Raised where the answer is "nothing was judged", never "it is fine". */
-export class CouldNotLook extends Error {}
-
-/** A `CouldNotLook` that is worth ASKING AGAIN: the transport failed, or the API
- *  answered with a shape that says "not now" rather than "no". Marked at the
- *  throw site, never inferred from a message, so a future branch has to decide
- *  deliberately which of the two it is. */
-export function transientLook(message) {
-  const e = new CouldNotLook(message);
-  e.retryable = true;
-  return e;
-}
-
-/** PURE. Only a failure MARKED transient is re-asked. Anything else — a missing
- *  credential, a 403, a body that is not JSON, and every programming error this
- *  reader could throw — is final: re-asking it cannot change the answer, and
- *  three identical lines in the log is not evidence of anything. */
-export function isTransientLook(err) {
-  return err instanceof CouldNotLook && err.retryable === true;
-}
-
-/** How many times one Cloudflare read is attempted, and the first gap. Both are
- *  JUDGEMENT (header, "ONE DROPPED CONNECTION IS NOT AN OUTAGE") — named
- *  constants rather than literals in a branch, so a test pins them and a change
- *  to either is a reviewed diff. */
-export const READ_ATTEMPTS = 3;
-export const RETRY_BASE_MS = 1000;
-
-/** PURE. The gaps BETWEEN attempts, doubling: 3 attempts at 1000 ms give
- *  [1000, 2000]. `attempts - 1` gaps, because nothing is waited for after the
- *  last attempt — a run that sleeps after its final failure has bought nothing
- *  and spent the time. */
-export function backoffPlan(attempts = READ_ATTEMPTS, baseMs = RETRY_BASE_MS) {
-  if (!Number.isInteger(attempts) || attempts < 1) return [];
-  if (!Number.isFinite(baseMs) || baseMs < 0) return [];
-  return Array.from({ length: attempts - 1 }, (_, i) => baseMs * 2 ** i);
-}
-
-/** The most wall-clock one read may spend WAITING. SUMMED from the plan, never
- *  written down a second time: a hand-copied ceiling is the number that drifts
- *  away from the loop it claims to describe. */
-export const RETRY_CEILING_MS = backoffPlan().reduce((a, b) => a + b, 0);
-
-const nap = (ms) => new Promise((r) => setTimeout(r, ms));
-
-/** Run `read` until it succeeds or the bounded plan is exhausted.
- *
- *  `sleep` is injected so a test can prove BOTH directions — a transient
- *  failure followed by a success, and a failure that persists — without
- *  waiting for a real second; `note` is where the retry is said out loud, so a
- *  run that needed one is visible in the log rather than silently clean.
- *
- *  🔴 A PERSISTENT FAILURE STILL THROWS `CouldNotLook`, so it is still exit 2.
- *  The caller cannot tell it from the un-retried version except by the attempt
- *  count in the message, which is the point: this distinguishes a blip from an
- *  outage, it does not forgive the outage. */
-export async function readWithBoundedRetry(
-  read,
-  { attempts = READ_ATTEMPTS, baseMs = RETRY_BASE_MS, sleep = nap, note = () => {} } = {},
-) {
-  const gaps = backoffPlan(attempts, baseMs);
-  let last = null;
-  for (let i = 0; i < Math.max(1, attempts); i += 1) {
-    try {
-      return await read(i + 1);
-    } catch (e) {
-      if (!isTransientLook(e)) throw e;
-      last = e;
-      if (i < gaps.length) {
-        note(`attempt ${i + 1}/${attempts} failed (${e.message}); re-asking in ${gaps[i] / 1000}s`);
-        await sleep(gaps[i]);
-      }
-    }
-  }
-  const total = gaps.reduce((a, b) => a + b, 0);
-  throw new CouldNotLook(
-    `${last.message} — and the same on all ${attempts} attempt(s) over ${total / 1000}s. A failure that ` +
-      `outlives the retry is an OUTAGE, not a blip, so this is COULD NOT LOOK and not a pass.`,
-  );
-}
+// ── THE RETRY PRIMITIVES NOW LIVE IN tooling/ops/bounded-retry.mjs ──────────
+// They were declared here by #852 and MOVED on 2026-09-21, unchanged, when the
+// class sweep this row also asks for made eleven more readers need them. They
+// are re-exported under their original names so this file's existing 82 cases
+// keep importing them from here: that suite is the GREEN CONTROL for the move,
+// because MOVED CODE SILENCES GUARDS and a refactor that nothing re-proves is
+// evidence of nothing.
+//
+// 🔴 `isTransientLook` IS STILL NOT NAMED `isRetryable`. record-deployment.mjs
+// exports a function by that name with a GitHub-shaped policy that deliberately
+// excludes 429; two readings of "is this transient?" under one name is how they
+// come to disagree silently.
+export {
+  CouldNotLook,
+  transientLook,
+  isTransientLook,
+  READ_ATTEMPTS,
+  RETRY_BASE_MS,
+  backoffPlan,
+  RETRY_CEILING_MS,
+  readWithBoundedRetry,
+} from './bounded-retry.mjs';
 
 /** The directory under `sites/` that is not a site. Named once. */
 const SITES_SHARED = '_shared';

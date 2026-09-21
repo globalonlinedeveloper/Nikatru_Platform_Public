@@ -51,6 +51,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { fetchWithBoundedRetry } from './bounded-retry.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const DECL = join(
@@ -183,9 +184,18 @@ async function main() {
 
   let body;
   try {
-    const res = await fetch(`${url.replace(/\/$/, '')}/auth/v1/settings`, {
-      headers: { apikey: key, Authorization: `Bearer ${key}` },
-    });
+    // ⏱ 2026-09-21 — BOUNDED RETRY (tooling/ops/bounded-retry.mjs). Un-retried
+    // until today, so one dropped connection to Supabase read as "I could not
+    // look" and reddened ops-watch, which reddens ci-gate on `main` — row
+    // O-PAGES-FETCH-TRANSIENT-NOT-RETRIED, sweep clause. A failure that outlives
+    // the plan is STILL exit 2 below: the retry tells a blip from an outage.
+    const res = await fetchWithBoundedRetry(
+      () =>
+        fetch(`${url.replace(/\/$/, '')}/auth/v1/settings`, {
+          headers: { apikey: key, Authorization: `Bearer ${key}` },
+        }),
+      { describe: (why) => `GET /auth/v1/settings: ${why}` },
+    );
     if (!res.ok) {
       console.error(
         `verify-auth-providers: GET /auth/v1/settings returned HTTP ${res.status}. The live answer ` +

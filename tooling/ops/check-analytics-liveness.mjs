@@ -87,6 +87,7 @@ import { fileURLToPath } from 'node:url';
 // `cron_heartbeat`, and it refuses when any of those has drifted. A second copy
 // would be a second thing to keep in step, and the drift would be invisible.
 import { deriveWatchedJobs } from './check-heartbeats.mjs';
+import { CouldNotLook, classifyThrown, transientLook, isTransientStatus, retryAfterMs, readWithBoundedRetry } from './bounded-retry.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REGISTER_REL = 'tooling/ops/register.json';
@@ -102,8 +103,11 @@ function flag(name) {
 
 const ROOT = resolve(flag('--root') ?? join(HERE, '..', '..'));
 
-/** Exit 2, distinct from exit 1, and the distinction is the whole point. */
-export class CouldNotLook extends Error {}
+// ⏱ 2026-09-21 — exit 2 is still distinct from exit 1 and the distinction is
+// still the whole point; the CLASS just lives in one place now, so a throw here
+// and a catch in a caller mean the same object. Re-exported, so every existing
+// importer of this module is unmoved.
+export { CouldNotLook } from './bounded-retry.mjs';
 
 /**
  * The row the aggregate lives on. PINNED to the writer rather than hoped for:
@@ -319,27 +323,47 @@ async function queryD1(databaseId, job) {
     throw new CouldNotLook('CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID are not both in the environment');
   }
   const url = `https://api.cloudflare.com/client/v4/accounts/${account}/d1/database/${databaseId}/query`;
-  // NO `CF-Connecting-IP` HEADER, EVER — Cloudflare's edge rejects any client
-  // request carrying one with error 1000 before the origin is reached.
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-    body: JSON.stringify({
-      sql: 'SELECT job, target, ok, detail, ran_at FROM cron_heartbeat WHERE job = ? ORDER BY ran_at DESC LIMIT 20',
-      params: [job],
-    }),
+  // ⏱ 2026-09-21 — attempted up to READ_ATTEMPTS times on the shared bounded plan
+  // (tooling/ops/bounded-retry.mjs). Un-retried until today, so one dropped TCP
+  // connection was a run-level verdict — row O-PAGES-FETCH-TRANSIENT-NOT-RETRIED,
+  // sweep clause. The exit code is unmoved: a read that outlives the plan is still
+  // COULD NOT LOOK, still exit 2, never a pass.
+  //
+  // 🔴 THIS IS A POST AND IT IS STILL A READ. `isSafeMethod` would call it unsafe
+  // on the verb alone; the D1 HTTP API takes SELECTs by POST and re-sending one
+  // changes nothing, so the decision is recorded HERE, at the call site, rather
+  // than guessed by the helper.
+  return readWithBoundedRetry(async () => {
+    // NO `CF-Connecting-IP` HEADER, EVER — Cloudflare's edge rejects any client
+    // request carrying one with error 1000 before the origin is reached.
+    let res;
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          sql: 'SELECT job, target, ok, detail, ran_at FROM cron_heartbeat WHERE job = ? ORDER BY ran_at DESC LIMIT 20',
+          params: [job],
+        }),
+      });
+    } catch (e) {
+      throw classifyThrown(e, `the D1 API did not answer for job ${job} (${e?.name ?? 'error'}: ${e?.message ?? e})`);
+    }
+    if (!res.ok) {
+      const line = `the D1 API returned ${res.status} for job ${job}`;
+      throw isTransientStatus(res.status) ? transientLook(line, { retryAfterMs: retryAfterMs(res) }) : new CouldNotLook(line);
+    }
+    let body;
+    try {
+      body = await res.json();
+    } catch (e) {
+      throw classifyThrown(e, `the D1 API response for job ${job} was not JSON (${e.message})`);
+    }
+    if (body?.success !== true) throw new CouldNotLook(`the D1 API reported failure for job ${job}: ${JSON.stringify(body?.errors ?? body).slice(0, 300)}`);
+    const rows = body?.result?.[0]?.results;
+    if (!Array.isArray(rows)) throw new CouldNotLook(`the D1 API response for job ${job} carried no results array`);
+    return rows;
   });
-  if (!res.ok) throw new CouldNotLook(`the D1 API returned ${res.status} for job ${job}`);
-  let body;
-  try {
-    body = await res.json();
-  } catch (e) {
-    throw new CouldNotLook(`the D1 API response for job ${job} was not JSON (${e.message})`);
-  }
-  if (body?.success !== true) throw new CouldNotLook(`the D1 API reported failure for job ${job}: ${JSON.stringify(body?.errors ?? body).slice(0, 300)}`);
-  const rows = body?.result?.[0]?.results;
-  if (!Array.isArray(rows)) throw new CouldNotLook(`the D1 API response for job ${job} carried no results array`);
-  return rows;
 }
 
 async function main() {

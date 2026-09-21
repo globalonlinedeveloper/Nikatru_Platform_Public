@@ -63,6 +63,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { createSign } from 'node:crypto';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { classifyThrown, transientLook, isTransientStatus, retryAfterMs, readWithBoundedRetry, RETRY_BASE_MS } from './bounded-retry.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const KEY_PATH = join(ROOT, '.claude', 'nikatru-platform-dd65a2de381c.json');
@@ -92,23 +93,49 @@ const EXPECT_CLIENT_EMAIL =
 /// that job passed. So a request that throws, or answers 5xx or 429, is retried, and one
 /// that stays unreachable is "could not look" (exit 2), never a finding (exit 1).
 /// A 403, a success and any other 4xx are answers and are never retried.
-const ATTEMPTS = 3;
-const RETRY_DELAY_MS = Number(process.env.VERIFY_FREE_API_SCOPE_RETRY_MS ?? 2000);
-const transientStatus = (status) => status === 429 || status >= 500;
+/// ⏱ 2026-09-21 — THE PRIVATE LOOP THAT USED TO STAND HERE IS GONE. It was the
+/// only CORRECT retry on this lane and it was still a FORK: its own `ATTEMPTS`,
+/// its own LINEAR gap, its own `transientStatus`, and no reading of
+/// `Retry-After`. Two readings of "is this transient?" eventually disagree
+/// silently, which is the argument capture-suite-scan.mjs makes for being
+/// imported by both its callers. The plan, the classification and the ceiling now
+/// come from tooling/ops/bounded-retry.mjs (row
+/// O-PAGES-FETCH-TRANSIENT-NOT-RETRIED, sweep clause).
+///
+/// 🔴 NOTHING ABOUT THE EXIT CONTRACT MOVES, AND THE SHAPE OF THE RETURN VALUE IS
+/// KEPT ON PURPOSE: both call sites below read `{ res, err, attempts }` and turn
+/// `err` into exit 2. A read that outlives the plan is still "could not look",
+/// never a finding and never a pass.
+///
+/// ⚠️ VERIFY_FREE_API_SCOPE_RETRY_MS IS STILL HONOURED, because the test suite
+/// sets it to collapse the gaps; it now overrides the shared BASE rather than a
+/// private delay, so what it shortens is the documented plan.
+const RETRY_BASE_OVERRIDE_MS = Number(process.env.VERIFY_FREE_API_SCOPE_RETRY_MS ?? RETRY_BASE_MS);
 async function fetchWithRetry(url, init) {
-  let err = null;
-  for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
-    try {
-      const res = await fetch(url, init);
-      if (!transientStatus(res.status) || attempt === ATTEMPTS) return { res, err: null, attempts: attempt };
-      err = null;
-    } catch (e) {
-      err = e;
-      if (attempt === ATTEMPTS) return { res: null, err, attempts: attempt };
-    }
-    await new Promise((r) => setTimeout(r, RETRY_DELAY_MS * attempt));
+  let attempts = 0;
+  try {
+    const res = await readWithBoundedRetry(
+      async (attempt) => {
+        attempts = attempt;
+        let r;
+        try {
+          r = await fetch(url, init);
+        } catch (e) {
+          throw classifyThrown(e, e?.message ?? String(e));
+        }
+        if (isTransientStatus(r.status)) {
+          throw transientLook(`HTTP ${r.status}`, { retryAfterMs: retryAfterMs(r) });
+        }
+        return r;
+      },
+      { baseMs: RETRY_BASE_OVERRIDE_MS },
+    );
+    return { res, err: null, attempts };
+  } catch (err) {
+    // The LAST response is not kept: every caller below treats an exhausted read
+    // as exit 2, and a 5xx that survived the plan is not an answer worth grading.
+    return { res: null, err, attempts };
   }
-  return { res: null, err, attempts: ATTEMPTS };
 }
 
 // 🔴 NO `process.exit()` ANYWHERE BELOW, AND THAT IS A BUG FIX, NOT A STYLE
@@ -216,7 +243,12 @@ const problems = [];
 const unreachable = [];
 for (const [label, url] of PROBES) {
   const { res, err, attempts } = await fetchWithRetry(url, { headers: { Authorization: `Bearer ${token}` } });
-  if (err || transientStatus(res.status)) {
+  // ⏱ 2026-09-21 — `err` alone. A transient STATUS can no longer survive
+  // `fetchWithRetry`: it is re-asked inside the plan and, if it persists, comes
+  // back as `err`. The second limb was the old loop's "returned the last response
+  // anyway" escape hatch, and re-reading it here would have been the second
+  // reading of "is this transient?" this change exists to delete.
+  if (err) {
     unreachable.push(
       `${label} — could not be reached after ${attempts} attempt(s) (${err ? err.message : `HTTP ${res.status}`}); ` +
         'this check cannot conclude.',

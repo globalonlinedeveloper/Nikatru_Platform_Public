@@ -79,6 +79,7 @@
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { CouldNotLook, classifyThrown, transientLook, isTransientStatus, retryAfterMs, readWithBoundedRetry } from './bounded-retry.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REGISTER_REL = 'tooling/ops/register.json';
@@ -671,28 +672,47 @@ export async function queryD1(databaseId, job, target = null) {
   }
   const narrowed = typeof target === 'string' && target.length > 0;
   const url = `https://api.cloudflare.com/client/v4/accounts/${account}/d1/database/${databaseId}/query`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-    body: JSON.stringify({
-      sql: narrowed
-        ? 'SELECT job, target, ok, detail, ran_at FROM cron_heartbeat WHERE job = ? AND target = ? ORDER BY ran_at DESC LIMIT 20'
-        : 'SELECT job, target, ok, detail, ran_at FROM cron_heartbeat WHERE job = ? ORDER BY ran_at DESC LIMIT 20',
-      params: narrowed ? [job, target] : [job],
-    }),
-  });
   const what = narrowed ? `job ${job} target ${target}` : `job ${job}`;
-  if (!res.ok) throw new Error(`the D1 API returned ${res.status} for ${what}`);
-  let body;
-  try {
-    body = await res.json();
-  } catch (e) {
-    throw new Error(`the D1 API response for ${what} was not JSON (${e.message})`);
-  }
-  if (body?.success !== true) throw new Error(`the D1 API reported failure for ${what}: ${JSON.stringify(body?.errors ?? body).slice(0, 300)}`);
-  const rows = body?.result?.[0]?.results;
-  if (!Array.isArray(rows)) throw new Error(`the D1 API response for ${what} carried no results array`);
-  return rows;
+  // ⏱ 2026-09-21 — attempted up to READ_ATTEMPTS times on the shared bounded plan
+  // (tooling/ops/bounded-retry.mjs). Un-retried until today, so one dropped TCP
+  // connection made a healthy duty read as COVERAGE LOST and reddened ops-watch,
+  // which reddens ci-gate on main — row O-PAGES-FETCH-TRANSIENT-NOT-RETRIED, sweep
+  // clause. Nothing about the exit code moves: a duty whose read outlives the plan
+  // is still `unreadable` below, still exit 2, and still NOT "not reporting healthy".
+  //
+  // 🔴 A POST THAT IS A READ. The D1 HTTP API takes SELECTs by POST; re-sending one
+  // changes nothing, and the decision is recorded here rather than guessed by verb.
+  return readWithBoundedRetry(async () => {
+    let res;
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          sql: narrowed
+            ? 'SELECT job, target, ok, detail, ran_at FROM cron_heartbeat WHERE job = ? AND target = ? ORDER BY ran_at DESC LIMIT 20'
+            : 'SELECT job, target, ok, detail, ran_at FROM cron_heartbeat WHERE job = ? ORDER BY ran_at DESC LIMIT 20',
+          params: narrowed ? [job, target] : [job],
+        }),
+      });
+    } catch (e) {
+      throw classifyThrown(e, `the D1 API did not answer for ${what} (${e?.name ?? 'error'}: ${e?.message ?? e})`);
+    }
+    if (!res.ok) {
+      const line = `the D1 API returned ${res.status} for ${what}`;
+      throw isTransientStatus(res.status) ? transientLook(line, { retryAfterMs: retryAfterMs(res) }) : new CouldNotLook(line);
+    }
+    let body;
+    try {
+      body = await res.json();
+    } catch (e) {
+      throw classifyThrown(e, `the D1 API response for ${what} was not JSON (${e.message})`);
+    }
+    if (body?.success !== true) throw new CouldNotLook(`the D1 API reported failure for ${what}: ${JSON.stringify(body?.errors ?? body).slice(0, 300)}`);
+    const rows = body?.result?.[0]?.results;
+    if (!Array.isArray(rows)) throw new CouldNotLook(`the D1 API response for ${what} carried no results array`);
+    return rows;
+  });
 }
 
 // ⚠️ `process.exitCode` and return, NEVER `process.exit()`: exiting while a fetch

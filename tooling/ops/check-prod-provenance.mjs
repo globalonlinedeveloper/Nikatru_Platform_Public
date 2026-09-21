@@ -107,6 +107,7 @@ import { fileURLToPath } from 'node:url';
 
 import { enumerateMigrationTables } from '../ci/migration-tables.mjs';
 import { stripSourceComments } from '../ci/text-reductions.mjs';
+import { CouldNotLook, classifyThrown, transientLook, isTransientStatus, retryAfterMs, readWithBoundedRetry, fetchWithBoundedRetry } from './bounded-retry.mjs';
 // The product kinds a bundle may span, imported rather than retyped: the same
 // file tooling/bundle-availability.mjs and the Worker twin read, so `script`
 // becoming real is one edit and not three.
@@ -127,8 +128,13 @@ const ROOT = resolve(flag('--root') ?? join(HERE, '..', '..'));
 /** `// comment` and trailing commas — wrangler.jsonc is JSONC. */
 const parseJsonc = (text) => JSON.parse(stripSourceComments(text, '.ts').replace(/,(\s*[}\]])/g, '$1'));
 
-/** The one shape of "I could not look". Never 0, never 1. */
-class CouldNotLook extends Error {}
+// ⏱ 2026-09-21 — THE ONE SHAPE OF "I COULD NOT LOOK" NOW COMES FROM
+// tooling/ops/bounded-retry.mjs. It was declared here, which meant `e instanceof
+// CouldNotLook` in the tail below was true only for throws from THIS file — fine
+// while every throw and catch sat in one file, and wrong the moment a shared
+// helper started raising it. Still never 0 and never 1. Re-exported at the
+// bottom of this file exactly as before, so test/prod-provenance.test.mjs is
+// unmoved and is the green control for the change.
 
 const readJson = (rel) => {
   const p = join(ROOT, rel);
@@ -314,17 +320,37 @@ export async function attestationDeployments(res, environment, sha7) {
 // Named `ghJson` rather than `gh` because the manual-deploys block below
 // declares its own local `gh`; two helpers with one name in one file is how a
 // later edit ends up calling the wrong one.
-const ghJson = async (repo, token, path, what) => {
-  const res = await fetch(`https://api.github.com/repos/${repo}${path}`, {
-    headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', 'user-agent': 'nikatru-prod-provenance' },
+// ⏱ 2026-09-21 — attempted up to READ_ATTEMPTS times on the shared bounded plan
+// (tooling/ops/bounded-retry.mjs). Un-retried until today, so one dropped TCP
+// connection anywhere in a multi-page provenance walk discarded every read before
+// it — row O-PAGES-FETCH-TRANSIENT-NOT-RETRIED, sweep clause. The exit code is
+// unmoved: a read that outlives the plan is still COULD NOT LOOK, still exit 2.
+//
+// 🔴 429 IS RE-ASKED HERE AND THAT IS DELIBERATE. record-deployment.mjs's own
+// `isRetryable` EXCLUDES 429 because GitHub's secondary rate limit wants a longer
+// wait than a deploy step can spend; this is a READER on ops-watch, where a
+// `Retry-After` the API supplies is honoured (clamped) and a persistent 429 still
+// ends as COVERAGE LOST rather than a pass.
+const ghJson = async (repo, token, path, what) =>
+  readWithBoundedRetry(async () => {
+    let res;
+    try {
+      res = await fetch(`https://api.github.com/repos/${repo}${path}`, {
+        headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', 'user-agent': 'nikatru-prod-provenance' },
+      });
+    } catch (e) {
+      throw classifyThrown(e, `the GitHub API did not answer ${what} (${e?.name ?? 'error'}: ${e?.message ?? e})`);
+    }
+    if (!res.ok) {
+      const line = `the GitHub API returned ${res.status} ${what}`;
+      throw isTransientStatus(res.status) ? transientLook(line, { retryAfterMs: retryAfterMs(res) }) : new CouldNotLook(line);
+    }
+    try {
+      return await res.json();
+    } catch (e) {
+      throw classifyThrown(e, `the GitHub API response ${what} was not JSON (${e.message})`);
+    }
   });
-  if (!res.ok) throw new CouldNotLook(`the GitHub API returned ${res.status} ${what}`);
-  try {
-    return await res.json();
-  } catch (e) {
-    throw new CouldNotLook(`the GitHub API response ${what} was not JSON (${e.message})`);
-  }
-};
 
 function githubCredentials() {
   const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
@@ -561,22 +587,35 @@ async function queryD1(dbId, sql) {
   if (!token || !account) {
     throw new CouldNotLook('CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID are not both in the environment');
   }
-  const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${account}/d1/database/${dbId}/query`, {
-    method: 'POST',
-    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ sql }),
+  // ⏱ 2026-09-21 — bounded retry, shared plan. A POST that is a READ: the D1 HTTP
+  // API takes SELECTs by POST and re-sending one changes nothing, so the decision
+  // is recorded at this call site rather than guessed from the verb.
+  return readWithBoundedRetry(async () => {
+    let res;
+    try {
+      res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${account}/d1/database/${dbId}/query`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ sql }),
+      });
+    } catch (e) {
+      throw classifyThrown(e, `the D1 API did not answer (${e?.name ?? 'error'}: ${e?.message ?? e})`);
+    }
+    if (!res.ok) {
+      const line = `the D1 API returned ${res.status}`;
+      throw isTransientStatus(res.status) ? transientLook(line, { retryAfterMs: retryAfterMs(res) }) : new CouldNotLook(line);
+    }
+    let body;
+    try {
+      body = await res.json();
+    } catch (e) {
+      throw classifyThrown(e, `the D1 API response was not JSON (${e.message})`);
+    }
+    if (body?.success !== true) throw new CouldNotLook(`the D1 API reported failure: ${JSON.stringify(body?.errors ?? body).slice(0, 300)}`);
+    const rows = body?.result?.[0]?.results;
+    if (!Array.isArray(rows)) throw new CouldNotLook('the D1 API response carried no results array');
+    return rows;
   });
-  if (!res.ok) throw new CouldNotLook(`the D1 API returned ${res.status}`);
-  let body;
-  try {
-    body = await res.json();
-  } catch (e) {
-    throw new CouldNotLook(`the D1 API response was not JSON (${e.message})`);
-  }
-  if (body?.success !== true) throw new CouldNotLook(`the D1 API reported failure: ${JSON.stringify(body?.errors ?? body).slice(0, 300)}`);
-  const rows = body?.result?.[0]?.results;
-  if (!Array.isArray(rows)) throw new CouldNotLook('the D1 API response carried no results array');
-  return rows;
 }
 
 /**
@@ -721,9 +760,19 @@ async function main() {
         if (!String(d.sha ?? '').toLowerCase().startsWith(m[4].toLowerCase())) {
           attViolations.push(`manual-deploys.json: \`${d.version}\` build metadata does not match its own sha field`); continue;
         }
-        const gh = (path) => fetch(`https://api.github.com/repos/${ghRepo}${path}`, {
-          headers: { Authorization: `Bearer ${ghToken}`, 'User-Agent': 'check-prod-provenance' },
-        });
+        // ⏱ 2026-09-21 — bounded retry (tooling/ops/bounded-retry.mjs). This helper
+        // returns the RESPONSE, because its two callers below grade the status
+        // themselves (a 404 here means "not a commit", which is an ANSWER). Only the
+        // wire dropping, 429 and 5xx are re-asked; a persistent one still raises
+        // CouldNotLook and is still exit 2.
+        const gh = (path) =>
+          fetchWithBoundedRetry(
+            () =>
+              fetch(`https://api.github.com/repos/${ghRepo}${path}`, {
+                headers: { Authorization: `Bearer ${ghToken}`, 'User-Agent': 'check-prod-provenance' },
+              }),
+            { describe: (why) => `GET ${path}: ${why}` },
+          );
         const sha7 = String(d.sha).slice(0, 7);
         const commit = await gh(`/commits/${d.sha}`);
         // ⏱ 2026-09-11 — a refused read throws CouldNotLook (exit 2); see attestationCommitRead.

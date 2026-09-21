@@ -516,10 +516,22 @@ describe('verify-supabase-templates — the owner-gated branch ops-watch.yml dep
     assert.doesNotMatch(out(r), /: DRIFT/);
   });
 
-  test('exit 2 — a request that throws is UNKNOWN, not drift', () => {
+  // ⏱ 2026-09-21 — TIGHTENED, NOT LOOSENED, and the EXIT CODE IS UNMOVED. The
+  // read is now attempted three times on the shared bounded plan
+  // (tooling/ops/bounded-retry.mjs, row O-PAGES-FETCH-TRANSIENT-NOT-RETRIED), so
+  // this stub's throw is re-asked and the line carries the whole story rather
+  // than the bare cause: which request, what the wire said, how many attempts it
+  // survived, and why an outage is still not a pass. All four are asserted —
+  // `fetch failed` on its own would now also match the FIRST attempt's text and
+  // would no longer prove the plan ran.
+  test('exit 2 — a request that throws is UNKNOWN, not drift, and is re-asked first', () => {
     const r = withFetch(makeRoot(), "globalThis.fetch = async () => { throw new TypeError('fetch failed'); };\n");
     assert.equal(r.status, 2, out(r));
-    assert.match(out(r), /request failed \(fetch failed\)/);
+    assert.match(out(r), /request failed \(/);
+    assert.match(out(r), /TypeError: fetch failed/);
+    assert.match(out(r), /the same on all 3 attempt\(s\)/);
+    assert.match(out(r), /is an OUTAGE, not a blip, so this is COULD NOT LOOK and not a pass/);
+    assert.doesNotMatch(out(r), /: DRIFT/);
   });
 
   test('exit 2 — a 200 whose body is not JSON is UNKNOWN, not drift', () => {

@@ -99,7 +99,12 @@ describe('verify-free-api-scope — a network blip is not a verdict', () => {
   test('a read that throws on every attempt is exit 2, "could not look", never a finding', () => {
     const { code, out } = run({ 'iam.googleapis': ['throw'] });
     assert.equal(code, 2, out);
-    assert.match(out, /⬜ iam — list service accounts — could not be reached after 3 attempt\(s\) \(fetch failed\)/);
+    // ⏱ 2026-09-21 — TIGHTENED, NOT LOOSENED. The shared helper
+    // (tooling/ops/bounded-retry.mjs) now appends WHY an exhausted plan is still
+    // COULD NOT LOOK, so the line carries the cause AND the sentence that stops the
+    // next hand turning it into a pass. Both are asserted.
+    assert.match(out, /⬜ iam — list service accounts — could not be reached after 3 attempt\(s\) \(fetch failed — and the same on all 3 attempt\(s\)/);
+    assert.match(out, /is an OUTAGE, not a blip, so this is COULD NOT LOOK and not a pass/);
     assert.doesNotMatch(out, /✗ /);
     assert.equal(calls(out, 'iam.googleapis'), 3, out);
   });
@@ -107,7 +112,7 @@ describe('verify-free-api-scope — a network blip is not a verdict', () => {
   test('a read that answers 503 on every attempt is exit 2', () => {
     const { code, out } = run({ 'iam.googleapis': [503] });
     assert.equal(code, 2, out);
-    assert.match(out, /could not be reached after 3 attempt\(s\) \(HTTP 503\)/);
+    assert.match(out, /could not be reached after 3 attempt\(s\) \(HTTP 503 — and the same on all 3 attempt\(s\)/);
   });
 
   test('a 429 then 403 is retried and passes', () => {

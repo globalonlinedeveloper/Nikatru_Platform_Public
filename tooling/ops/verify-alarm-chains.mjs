@@ -76,6 +76,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { classifyThrown, transientLook, isTransientStatus, isSafeMethod, retryAfterMs, readWithBoundedRetry } from './bounded-retry.mjs';
 
 // 🔴 `process.exit()` IS BANNED IN THIS FILE, AND IT IS A BUG FIX. Calling it
 // while an undici (fetch) keep-alive handle is still open CRASHES libuv on
@@ -108,24 +109,54 @@ if (!TOKEN) {
 const ledger = () => JSON.parse(readFileSync(LEDGER, 'utf8'));
 const ORG = ledger().org;
 
-async function api(path, init = {}) {
-  // NO `CF-Connecting-IP` HEADER, EVER — Cloudflare's edge rejects any client
-  // request carrying one with error 1000, before the origin is reached.
-  const res = await fetch(`${BASE}/api/0/${path}`, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${TOKEN}`,
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-      ...(init.headers ?? {}),
+/**
+ * ⏱ 2026-09-21 — one GlitchTip call, with a BOUNDED RETRY on the reads
+ * (tooling/ops/bounded-retry.mjs). Un-retried until today, so a single dropped
+ * connection to the Oracle box exited 2 and reddened ops-watch, which reddens
+ * ci-gate on `main` — row O-PAGES-FETCH-TRANSIENT-NOT-RETRIED, sweep clause. The
+ * exit code is unmoved: a read that outlives the plan is still UNREADABLE_CODE.
+ *
+ * 🔴 ONLY SAFE METHODS ARE RE-ASKED, AND THAT MATTERS HERE MORE THAN ANYWHERE
+ * ELSE ON THIS LANE. This one helper serves both the GET reads in `check()` AND
+ * the PUTs `--self-test` uses to BREAK and then RESTORE a live alert. Re-sending
+ * a write whose response was lost is a different decision from re-asking a read,
+ * and it is not a shared helper's to make silently — so a non-GET is attempted
+ * exactly once, exactly as before.
+ */
+async function api(path, init = {}, { sleep, note } = {}) {
+  const method = (init.method ?? 'GET').toUpperCase();
+  // `isSafeMethod` rather than `method === 'GET'` spelled here: the shared module
+  // already owns the reading of "may a lost response be re-sent", and a second
+  // copy of it in this file is the fork this whole change exists to delete.
+  const attempts = isSafeMethod(method) ? undefined : 1;
+  return readWithBoundedRetry(
+    async () => {
+      // NO `CF-Connecting-IP` HEADER, EVER — Cloudflare's edge rejects any client
+      // request carrying one with error 1000, before the origin is reached.
+      let res;
+      try {
+        res = await fetch(`${BASE}/api/0/${path}`, {
+          ...init,
+          headers: {
+            Authorization: `Bearer ${TOKEN}`,
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+            ...(init.headers ?? {}),
+          },
+        });
+      } catch (err) {
+        throw classifyThrown(err, `${method} /${path} did not answer (${err?.name ?? 'error'}: ${err?.message ?? err})`);
+      }
+      if (!res.ok) {
+        // Swallowing a 5xx and carrying on with an empty list is how a guard reports
+        // clean during an outage.
+        const line = `${method} /${path} → HTTP ${res.status} ${res.statusText}`;
+        throw isTransientStatus(res.status) ? transientLook(line, { retryAfterMs: retryAfterMs(res) }) : new Error(line);
+      }
+      return res.status === 204 ? null : res.json();
     },
-  });
-  if (!res.ok) {
-    // Swallowing a 5xx and carrying on with an empty list is how a guard reports
-    // clean during an outage.
-    throw new Error(`${init.method ?? 'GET'} /${path} → HTTP ${res.status} ${res.statusText}`);
-  }
-  return res.status === 204 ? null : res.json();
+    { attempts, sleep, note },
+  );
 }
 
 /** ⏱ 2026-09-11 — the exit code for "I could not read GlitchTip". It was 1 on

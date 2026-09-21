@@ -38,12 +38,18 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { RETIRED_REGISTER_REL, retiredIn, tokensFrom } from '../ci/retired-identity.mjs';
+import { CouldNotLook, classifyThrown, transientLook, isTransientStatus, retryAfterMs, readWithBoundedRetry } from './bounded-retry.mjs';
 
 export const CF_API = 'https://api.cloudflare.com/client/v4';
 export const REQUEST_TIMEOUT_MS = 20_000;
 
-/** The account could not be read. Never the same thing as a clean account. */
-export class CouldNotLook extends Error {}
+// ⏱ 2026-09-21 — `CouldNotLook` IS NO LONGER DECLARED HERE. Every reader under
+// tooling/ops/ declared its own, so `err instanceof CouldNotLook` was only ever
+// true inside the file that threw — survivable while every throw and catch sat
+// in one file, and the first thing to break when the bounded retry moved out of
+// one. One class for the lane, re-exported so every existing importer of THIS
+// module is unmoved (row O-PAGES-FETCH-TRANSIENT-NOT-RETRIED, sweep clause).
+export { CouldNotLook } from './bounded-retry.mjs';
 
 /**
  * Every named resource kind, and where its NAME lives in the API's answer.
@@ -105,28 +111,55 @@ export function judge({ tokens, inventory }) {
   };
 }
 
-async function cf(path, token) {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
-  let res;
-  try {
-    res = await fetch(`${CF_API}${path}`, { headers: { Authorization: `Bearer ${token}` }, signal: ctrl.signal });
-  } catch (err) {
-    throw new CouldNotLook(`the Cloudflare API could not be reached (${err.message})`);
-  } finally {
-    clearTimeout(timer);
-  }
-  if (!res.ok) throw new CouldNotLook(`the Cloudflare API answered HTTP ${res.status} for ${path}`);
-  let body;
-  try {
-    body = await res.json();
-  } catch (err) {
-    throw new CouldNotLook(`the Cloudflare API answer for ${path} was not JSON (${err.message})`);
-  }
-  if (body?.success !== true) {
-    throw new CouldNotLook(`the Cloudflare API refused ${path}: ${JSON.stringify(body?.errors ?? []).slice(0, 200)}`);
-  }
-  return body.result;
+/**
+ * ONE Cloudflare read, attempted up to READ_ATTEMPTS times on the shared bounded
+ * plan (tooling/ops/bounded-retry.mjs).
+ *
+ * 🔴 THIS FILE READS FIVE RESOURCE KINDS AND STOPS AT THE FIRST ONE IT CANNOT
+ * READ, on purpose — so before 2026-09-21 a single dropped connection on the
+ * FIFTH kind discarded four complete reads and exited 2. That is the defect row
+ * O-PAGES-FETCH-TRANSIENT-NOT-RETRIED measured on check-pages-deployments.mjs,
+ * and this file is one of the eleven its sweep clause names. Nothing about the
+ * exit code moves: a kind that outlives the plan is still COULD NOT LOOK.
+ *
+ * ⚠️ THE `AbortController` IS BUILT INSIDE THE ATTEMPT. An aborted signal stays
+ * aborted, so a controller hoisted above the loop would make every retry after a
+ * timeout fail instantly on the first attempt's abort.
+ */
+// 🔴 `doFetch` IS A TEST SEAM AND IT IS LOAD-BEARING. Without it the retry here can
+// only be proven by the fact that the module is imported — and a mutation that put
+// a bare `new CouldNotLook` back at the throw site was measured on 2026-09-21 to
+// pass every import-shaped assertion while quietly re-asking nothing.
+export async function cf(path, token, { sleep, note, doFetch = fetch } = {}) {
+  return readWithBoundedRetry(
+    async () => {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
+      let res;
+      try {
+        res = await doFetch(`${CF_API}${path}`, { headers: { Authorization: `Bearer ${token}` }, signal: ctrl.signal });
+      } catch (err) {
+        throw classifyThrown(err, `the Cloudflare API could not be reached (${err.message})`);
+      } finally {
+        clearTimeout(timer);
+      }
+      if (!res.ok) {
+        const line = `the Cloudflare API answered HTTP ${res.status} for ${path}`;
+        throw isTransientStatus(res.status) ? transientLook(line, { retryAfterMs: retryAfterMs(res) }) : new CouldNotLook(line);
+      }
+      let body;
+      try {
+        body = await res.json();
+      } catch (err) {
+        throw classifyThrown(err, `the Cloudflare API answer for ${path} was not JSON (${err.message})`);
+      }
+      if (body?.success !== true) {
+        throw new CouldNotLook(`the Cloudflare API refused ${path}: ${JSON.stringify(body?.errors ?? []).slice(0, 200)}`);
+      }
+      return body.result;
+    },
+    { sleep, note },
+  );
 }
 
 /**

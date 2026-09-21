@@ -107,6 +107,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readWithBoundedRetry, classifyThrown, READ_ATTEMPTS } from './bounded-retry.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -312,6 +313,18 @@ export function evaluateSurface(surface, probe) {
       reason: `${at}: NO probe result at all. The surface was never contacted, so nothing is known about it — and "unknown" is red here, never a skip.`,
     };
   }
+  // 🔴 UNREACHED IS NOT UNHEALTHY. `probeLive` returns this only after the shared
+  // bounded plan is exhausted (tooling/ops/bounded-retry.mjs): the wire never
+  // produced an answer on any attempt. "I never reached it" and "I reached it and
+  // it is broken" are different claims about the world and main() gives them
+  // different exit codes. It stays `ok: false` — it is not a skip and never a pass.
+  if (probe.unreached) {
+    return {
+      ok: false,
+      kind: 'unreached',
+      reason: `${at}: NOTHING ANSWERED — ${probe.unreached}. Nothing is known about this surface from this run.`,
+    };
+  }
   if (probe.error) {
     return {
       ok: false,
@@ -387,27 +400,69 @@ export function evaluateSurface(surface, probe) {
   return { ok: true, kind: 'ok', reason: `${at}: answered ${probe.status} with a non-vacuous body` };
 }
 
-/** The transport. Every failure becomes `{ error }`, which evaluateSurface reds. */
-async function probeLive(surface) {
+/**
+ * The transport. An answer of ANY status becomes `{ status, body }`; a wire that never
+ * produced one becomes `{ unreached }`, which is a different claim and now carries a
+ * different exit code.
+ *
+ * 🔴 UNTIL 2026-09-21 EVERY FAILURE BECAME `{ error }` AND `evaluateSurface` RED IT, SO A
+ * DNS BLIP ON THE RUNNER EXITED 1 — "I LOOKED, IT IS BROKEN" — ABOUT A HEALTHY
+ * SURFACE (row O-PAGES-FETCH-TRANSIENT-NOT-RETRIED, sweep clause). That is a
+ * WRONG VERDICT and not merely a missing retry: this file spends a whole exit
+ * code on the difference between not reaching a thing and the thing being
+ * broken, and then threw the distinction away at the one place it is made.
+ *
+ * Two things changed, and they are separable on purpose:
+ *   · the read is attempted up to READ_ATTEMPTS times on the shared bounded
+ *     plan (tooling/ops/bounded-retry.mjs), so one dropped connection is not a
+ *     verdict about anything;
+ *   · a failure that OUTLIVES the plan returns `unreached`, which main() buckets as
+ *     COVERAGE LOST (exit 2) rather than UNHEALTHY (exit 1).
+ *
+ * ⚠️ ONLY THE TRANSPORT IS RE-ASKED. A 502 IS AN ANSWER, and it is precisely
+ * the symptom this reader exists to grade — re-asking it would only delay the
+ * red by three seconds and teach nobody anything. Every status the surface
+ * actually produced is graded on the first sight of it, exactly as before.
+ *
+ * `doFetch`, `sleep` and `note` are injected so the bound is PROVEN rather than
+ * waited: a test that needed a real second, or a real socket, is a test that
+ * fails on the very blip this change exists to absorb.
+ */
+export async function probeLive(surface, { doFetch = fetch, sleep, note } = {}) {
   try {
-    // NO `CF-Connecting-IP` HEADER, EVER — Cloudflare's edge rejects any client
-    // request carrying one with error 1000 BEFORE the origin is reached, so a
-    // probe that sent it would report every surface down and be believed.
-    const res = await fetch(surface.url, {
-      method: 'GET',
-      redirect: 'follow',
-      headers: { accept: '*/*' },
-      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
-    });
-    // Always drained: an unread body holds the socket open, and this runs in a
-    // loop over every surface.
-    const body = await res.text();
-    return { status: res.status, body };
+    return await readWithBoundedRetry(
+      async () => {
+        let res;
+        try {
+          // NO `CF-Connecting-IP` HEADER, EVER — Cloudflare's edge rejects any client
+          // request carrying one with error 1000 BEFORE the origin is reached, so a
+          // probe that sent it would report every surface down and be believed.
+          res = await doFetch(surface.url, {
+            method: 'GET',
+            redirect: 'follow',
+            headers: { accept: '*/*' },
+            signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+          });
+        } catch (e) {
+          throw classifyThrown(e, e?.message ?? String(e));
+        }
+        // Always drained: an unread body holds the socket open, and this runs in a
+        // loop over every surface. A body that dies MID-READ is the wire dropping
+        // too, so it is classified by the same rule rather than read as an empty one.
+        let body;
+        try {
+          body = await res.text();
+        } catch (e) {
+          throw classifyThrown(e, e?.message ?? String(e));
+        }
+        return { status: res.status, body };
+      },
+      { sleep, note },
+    );
   } catch (e) {
-    return { error: e?.message ?? String(e) };
+    return { unreached: e?.message ?? String(e) };
   }
 }
-
 function printUsage() {
   console.log('Usage: node tooling/ops/status.mjs [--root <repoRoot>] [--probes-file <json>]');
   console.log('');
@@ -415,7 +470,7 @@ function printUsage() {
   console.log(`  ${DELEGATE_REL} — [11]E-9's register, which owns the hostname set.`);
   console.log('');
   console.log('  --root <dir>          read the delegate register from this tree instead of the repo.');
-  console.log('  --probes-file <json>  { "<hostname>": { "status": 200, "body": "…" } | { "error": "…" } }');
+  console.log('  --probes-file <json>  { "<hostname>": { "status": 200, "body": "…" } | { "error": "…" } | { "unreached": "…" } }');
   console.log('                        OFFLINE: nothing is contacted. Announces itself loudly.');
   console.log('');
   console.log(`  exit ${EXIT_OK} = every probed surface answered as declared`);
@@ -453,11 +508,13 @@ async function main() {
   }
 
   const failures = [];
+  const lost = [];
   const healthy = [];
   for (const s of surfaces) {
-    const probe = fixture ? fixture[s.hostname] : await probeLive(s);
+    const probe = fixture ? fixture[s.hostname] : await probeLive(s, { note: (m) => console.log(`⏳  ${s.hostname}: ${m}`) });
     const verdict = evaluateSurface(s, probe);
     if (verdict.ok) healthy.push(verdict.reason);
+    else if (verdict.kind === 'unreached') lost.push(verdict.reason);
     else failures.push(verdict.reason);
   }
 
@@ -488,9 +545,28 @@ async function main() {
   console.log('    answer {"ok":true} while events and consent_artifacts hold ZERO rows. That limb is a row count,');
   console.log('    it is not in this command, and this exit code must never be read as covering it.');
 
+  // 🔴 BOTH BLOCKS PRINT, ALWAYS, AND COVERAGE LOST WINS THE CODE. Same rule and
+  // same reason as check-heartbeats.mjs, the other ops-watch reader that buckets a
+  // probed SET: a finding beside an unread surface is still printed and still
+  // actionable, but the run's headline cannot be "I looked" when part of the set was
+  // never reached. One convention inside ops-watch is worth more than a preference.
+  if (lost.length) {
+    console.error(`✗ COVERAGE LOST — ${lost.length} of ${surfaces.length} probed surface(s) NEVER ANSWERED, on any of the ${READ_ATTEMPTS} attempts:`);
+    for (const l of lost) console.error(`    ${l}`);
+  }
   if (failures.length) {
     console.error(`✗ ${failures.length} of ${surfaces.length} probed surface(s) are NOT healthy:`);
     for (const f of failures) console.error(`    ${f}`);
+  }
+  if (lost.length) {
+    console.error('');
+    console.error(`    Exit ${EXIT_CANNOT_LOOK} — I COULD NOT LOOK. A surface that never answered after a bounded retry is not`);
+    console.error('    evidence that it is down, and it is certainly not evidence that it is up. Until 2026-09-21');
+    console.error(`    this exited ${EXIT_UNHEALTHY}, which accused a healthy surface of being broken every time the runner's`);
+    console.error('    own network blipped (row O-PAGES-FETCH-TRANSIENT-NOT-RETRIED, sweep clause).');
+    return EXIT_CANNOT_LOOK;
+  }
+  if (failures.length) {
     console.error('');
     console.error(`    Exit ${EXIT_UNHEALTHY} — I looked, and it is broken. [pipeline O-2]`);
     return EXIT_UNHEALTHY;

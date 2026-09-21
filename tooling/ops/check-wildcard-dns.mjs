@@ -53,6 +53,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { WILDCARD_APEX } from '../ci/assert-catalog-reachable.mjs';
+import { CouldNotLook, classifyThrown, transientLook, isTransientStatus, retryAfterMs, readWithBoundedRetry } from './bounded-retry.mjs';
 
 export const CF_API = 'https://api.cloudflare.com/client/v4';
 /** One request may not hang a scheduled job. */
@@ -63,7 +64,13 @@ export const REQUEST_TIMEOUT_MS = 20_000;
 export const MAX_PAGES = 10;
 export const PAGE_SIZE = 100;
 
-export class CouldNotLook extends Error {}
+// ⏱ 2026-09-21 — `CouldNotLook` IS NO LONGER DECLARED HERE. Every reader under
+// tooling/ops/ declared its own, so `err instanceof CouldNotLook` was only ever
+// true inside the file that threw — survivable while every throw and catch sat
+// in one file, and the first thing to break when the bounded retry moved out of
+// one. One class for the lane, re-exported so every existing importer of THIS
+// module is unmoved (row O-PAGES-FETCH-TRANSIENT-NOT-RETRIED, sweep clause).
+export { CouldNotLook } from './bounded-retry.mjs';
 
 /** PURE. Which records on a page are wildcards, whatever their type.
  *
@@ -119,28 +126,63 @@ export function judge({ apex, records }) {
   };
 }
 
-async function cf(path, token) {
-  let res;
-  try {
-    res = await fetch(`${CF_API}${path}`, {
-      headers: { authorization: `Bearer ${token}`, accept: 'application/json' },
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    });
-  } catch (e) {
-    throw new CouldNotLook(`GET ${path} did not answer (${e?.name ?? 'error'}: ${e?.message ?? e})`);
-  }
-  const text = await res.text();
-  if (!res.ok) throw new CouldNotLook(`GET ${path} answered HTTP ${res.status}: ${text.slice(0, 300)}`);
-  let body;
-  try {
-    body = JSON.parse(text);
-  } catch {
-    throw new CouldNotLook(`GET ${path} answered unparseable JSON: ${text.slice(0, 200)}`);
-  }
-  if (body?.success !== true) {
-    throw new CouldNotLook(`Cloudflare reported success=false for ${path}: ${JSON.stringify(body?.errors ?? null).slice(0, 300)}`);
-  }
-  return body;
+/**
+ * ONE Cloudflare read, attempted up to READ_ATTEMPTS times on the shared bounded
+ * plan (tooling/ops/bounded-retry.mjs).
+ *
+ * 🔴 IT WAS UN-RETRIED UNTIL 2026-09-21 AND ONE DROPPED TCP CONNECTION WAS A
+ * RUN-LEVEL VERDICT. That is the defect row O-PAGES-FETCH-TRANSIENT-NOT-RETRIED
+ * measured on check-pages-deployments.mjs; this file is one of the eleven the
+ * same row's sweep clause names. Nothing about the EXIT CODE moves — a read that
+ * outlives the plan is still COULD NOT LOOK, still exit 2, never a pass.
+ *
+ * ⚠️ ONLY A TRANSIENT SHAPE IS RE-ASKED. The wire dropping, HTTP 429 and HTTP
+ * 5xx are "not now"; a 401/403, unparseable JSON and `success:false` are
+ * ANSWERS and fail on first sight, because re-asking them cannot change them.
+ *
+ * `sleep` and `note` are injected so the bound is PROVEN rather than waited.
+ */
+// 🔴 `doFetch` IS A TEST SEAM AND IT IS LOAD-BEARING. Without it the retry here can
+// only be proven by the fact that the module is imported — and a mutation that put
+// a bare `new CouldNotLook` back at the throw site was measured on 2026-09-21 to
+// pass every import-shaped assertion while quietly re-asking nothing.
+export async function cf(path, token, { sleep, note, doFetch = fetch } = {}) {
+  return readWithBoundedRetry(
+    async () => {
+      let res;
+      try {
+        res = await doFetch(`${CF_API}${path}`, {
+          headers: { authorization: `Bearer ${token}`, accept: 'application/json' },
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        });
+      } catch (e) {
+        throw classifyThrown(e, `GET ${path} did not answer (${e?.name ?? 'error'}: ${e?.message ?? e})`);
+      }
+      // A body that dies MID-READ is the wire dropping too, so it is classified by
+      // the same rule rather than read as an empty answer.
+      let text;
+      try {
+        text = await res.text();
+      } catch (e) {
+        throw classifyThrown(e, `GET ${path} answered HTTP ${res.status} and then dropped mid-body (${e?.message ?? e})`);
+      }
+      if (!res.ok) {
+        const line = `GET ${path} answered HTTP ${res.status}: ${text.slice(0, 300)}`;
+        throw isTransientStatus(res.status) ? transientLook(line, { retryAfterMs: retryAfterMs(res) }) : new CouldNotLook(line);
+      }
+      let body;
+      try {
+        body = JSON.parse(text);
+      } catch {
+        throw new CouldNotLook(`GET ${path} answered unparseable JSON: ${text.slice(0, 200)}`);
+      }
+      if (body?.success !== true) {
+        throw new CouldNotLook(`Cloudflare reported success=false for ${path}: ${JSON.stringify(body?.errors ?? null).slice(0, 300)}`);
+      }
+      return body;
+    },
+    { sleep, note },
+  );
 }
 
 /** IMPURE. Every DNS record of the zone named `apex`, paged to the end. */

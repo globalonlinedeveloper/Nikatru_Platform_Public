@@ -84,6 +84,7 @@
 import { readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
+import { classifyThrown, transientLook, isTransientStatus, retryAfterMs, readWithBoundedRetry } from './bounded-retry.mjs';
 
 import {
   REJECTED_FIXTURE,
@@ -172,8 +173,9 @@ const KEY = `d1guard-${randomUUID()}`;
  * Returns `{ body }` for ANY answer D1 itself produced — including a refusal,
  * which arrives as HTTP 400 with `success: false` and is a RESULT, not a
  * transport failure — or `{ blind, why }` when nothing interpretable came back.
- * One retry on a network-level throw, because a single dropped socket must not
- * read as a schema finding.
+ * Attempted up to READ_ATTEMPTS times on the shared bounded plan, because a
+ * single dropped socket must not read as a schema finding — and neither must a
+ * 429, which the private one-shot loop this replaced treated as final.
  */
 async function d1(dbId, sql, params = []) {
   if (fixture) {
@@ -191,15 +193,33 @@ async function d1(dbId, sql, params = []) {
       },
       body: JSON.stringify({ sql, params }),
     });
+  // ⏱ 2026-09-21 — THE PRIVATE ONE-SHOT RETRY ABOVE THIS LINE IS GONE; this is now
+  // the shared bounded plan (tooling/ops/bounded-retry.mjs). The old loop was two
+  // attempts with NO GAP between them — a second try microseconds after the first
+  // is the same second, so it absorbed nothing a keep-alive reset would not have
+  // absorbed anyway — and it re-asked ONLY a transport throw, so an HTTP 429 from
+  // Cloudflare (transient BY DEFINITION) was final. Row
+  // O-PAGES-FETCH-TRANSIENT-NOT-RETRIED, sweep clause.
+  //
+  // 🔴 NOTHING ABOUT `blind` MOVES. A failure that outlives the plan is still
+  // `{ blind }`, which is still exit 2, and a schema REFUSAL — HTTP 400 with
+  // `success:false`, which is a RESULT — is still returned as a body and graded.
   let res;
   try {
-    res = await send();
-  } catch (first) {
-    try {
-      res = await send();
-    } catch (second) {
-      return { blind: true, why: `the D1 HTTP API was unreachable twice (${first.message}; ${second.message})` };
-    }
+    res = await readWithBoundedRetry(async () => {
+      let r;
+      try {
+        r = await send();
+      } catch (e) {
+        throw classifyThrown(e, `the D1 HTTP API was unreachable (${e?.name ?? 'error'}: ${e?.message ?? e})`);
+      }
+      if (isTransientStatus(r.status)) {
+        throw transientLook(`the D1 HTTP API answered HTTP ${r.status}`, { retryAfterMs: retryAfterMs(r) });
+      }
+      return r;
+    });
+  } catch (e) {
+    return { blind: true, why: e.message };
   }
   let body;
   try {

@@ -55,6 +55,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+import { fetchWithBoundedRetry } from './bounded-retry.mjs';
 
 export const THROW_SITE_MARKER = 'SYMBOLICATION-PROBE-THROW-SITE';
 export const LINE_PREFIX = 'SYMPROBE|';
@@ -352,9 +353,26 @@ export function sameSite(expected, frame) {
   return { ok: true, why: `names ${file}:${frame.line} (${frame.function})` };
 }
 
+/**
+ * ⏱ 2026-09-21 — BOUNDED RETRY (tooling/ops/bounded-retry.mjs), row
+ * O-PAGES-FETCH-TRANSIENT-NOT-RETRIED, sweep clause.
+ *
+ * 🔴 THE POLL LOOP BELOW LOOKED LIKE A RETRY AND IS NOT ONE. `verdict` calls this
+ * every 15 s for up to 300 s waiting for an event to ARRIVE — but a THROWN fetch
+ * escapes that loop entirely and lands in the outer `catch`, so ONE dropped TCP
+ * connection at any point in a five-minute wait discarded the whole proof run and
+ * exited 2. Waiting longer for a thing to appear and asking again after the wire
+ * dropped are different questions; only the first was answered here.
+ *
+ * Nothing about the exit code moves: a read that outlives the plan still throws
+ * and is still the caller's COULD NOT LOOK. A 404/403 is an ANSWER and is not
+ * re-asked.
+ */
 async function fetchProjectEvents({ instance, org, project, token }) {
   const url = `${instance}/api/0/projects/${org}/${project}/events/?limit=50`;
-  const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  const r = await fetchWithBoundedRetry(() => fetch(url, { headers: { Authorization: `Bearer ${token}` } }), {
+    describe: (why) => `GET ${url}: ${why}`,
+  });
   if (!r.ok) throw new Error(`GET ${url} -> ${r.status}`);
   return r.json();
 }
@@ -367,7 +385,14 @@ async function fetchProjectEvents({ instance, org, project, token }) {
  */
 async function fetchInstanceVersion({ instance, token }) {
   const url = `${instance}/api/settings/`;
-  const r = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  // ⏱ 2026-09-21 — bounded retry, same plan and same reason as fetchProjectEvents.
+  // This one's failure is captured into `versionError` and folded into the verdict
+  // rather than thrown, so an un-retried blip did not fail the run — it silently
+  // degraded the limb that proves the expectation was measured against the
+  // GlitchTip version actually installed, which is worse than a red.
+  const r = await fetchWithBoundedRetry(() => fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} }), {
+    describe: (why) => `GET ${url}: ${why}`,
+  });
   if (!r.ok) throw new Error(`GET ${instance}/api/settings/ -> ${r.status}`);
   const j = await r.json();
   if (typeof j?.version !== 'string' || j.version.trim() === '') throw new Error(`${url} answered without a "version" string`);
