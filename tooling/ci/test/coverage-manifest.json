@@ -108,6 +108,7 @@
   "legal-tripwires.test.mjs": 26,
   "licence-register.test.mjs": 57,
   "lint-inheritance.test.mjs": 13,
+  "listing-assets-ink.test.mjs": 18,
   "listing-assets.test.mjs": 63,
   "local-chromedriver.test.mjs": 12,
   "mail-transport-claims.test.mjs": 47,
