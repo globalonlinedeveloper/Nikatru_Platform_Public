@@ -186,3 +186,149 @@ export function selfTestInkMetric(minFraction) {
     ok: withText > 0 && textless < floor && withText >= floor,
   };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔴 THE TEXTLESS CONTROL HAD NO PRODUCER IN THE TREE, AND THE ROWS DEPEND ON IT.
+//
+// `channel-register.json …inkFloor.source` says `textlessControl` is "the same
+// frame with its glyphs removed by a 9x9 mode filter". That sentence is the
+// whole justification for every floor: `assert-listing-assets.mjs` REFUSES a
+// floor at or below its own frame's textless reading, on the stated grounds
+// that such a floor could not have caught the set that shipped. Until now
+// nothing in this repository computed it — the eight numbers were produced by a
+// script that was never committed.
+//
+// So the rows could be READ and could not be RE-TAKEN. The first recapture that
+// moves a frame's ink by more than 30% — which the register itself says is the
+// intended maintenance cost — would arrive with a `measured` anybody can
+// reproduce and a `textlessControl` nobody can, and the honest options would be
+// to keep a control that describes a DIFFERENT frame or to invent one. This
+// repository already refuses "a dimension that arrives WITHOUT a source"; a
+// control that cannot be re-derived is the same defect one step further back.
+//
+// ── 🔴 AND WHAT THE RE-DERIVATION MEASURED, WHICH IS A FINDING RATHER THAN A
+//       CONFIRMATION. Run 2026-09-21 over the same eight frames at 9f548515,
+//       `measured` and `textlessControl` side by side with the recorded rows:
+//
+//   frame                            measured  recorded    textless  recorded
+//   screenshots/01-home              0.025445  0.025445    0.017809  0.013069
+//   screenshots/02-calendar          0.017765  0.017765    0.006943  0.006713
+//   screenshots/03-insights          0.016806  0.016806    0.007232  0.007159
+//   screenshots/04-budget            0.016896  0.016896    0.008001  0.007669
+//   screenshots-tablet/01-home       0.016420  0.016420    0.006433  0.005209
+//   screenshots-tablet/02-calendar   0.005503  0.005503    0.001146  0.001039
+//   screenshots-tablet/03-insights   0.005301  0.005301    0.001377  0.001305
+//   screenshots-tablet/04-budget     0.008408  0.008408    0.003466  0.003374
+//
+// `measured` reproduces to the last recorded digit on all eight, so
+// `inkFraction` IS the committed half and this harness reads the same frames
+// the register does. `textlessControl` does NOT reproduce: every reading here
+// is HIGHER than the recorded one, by 3% on the phone calendar and by 36% on
+// the phone home. Whatever produced the recorded column removed more than a
+// per-channel 9x9 mode does, and the register's one sentence about it is not
+// enough to say what.
+//
+// ⚠️ SO THE RECORDED COLUMN IS LEFT EXACTLY AS IT IS. Those numbers belong to
+// the frames #856 measured; overwriting them from here would be re-deriving a
+// committed row with a different instrument and calling it maintenance. What
+// this function is for is the NEXT set, where both halves are taken with one
+// tool, on one day, from the same bytes.
+//
+// 🔴 AND THE DIRECTION OF THE DISAGREEMENT IS THE SAFE ONE, WHICH IS WHY THIS
+// SHIPS RATHER THAN WAITING FOR THE OTHER SCRIPT TO BE FOUND. The guard refuses
+// a floor at or below its frame's textless control, so a HIGHER control is a
+// STRICTER bound: a row taken with this tool can only be harder to justify than
+// one taken with whatever produced the recorded column, never easier. A control
+// that is too permissive would be the dangerous error, and this is not it.
+//
+// ── HOW A ROW IS RE-TAKEN ───────────────────────────────────────────────────
+// `tooling/store/measure-frame-ink.mjs` is the entry point: point it at an
+// unzipped `play-screenshots-subscriptiontracker` artifact and it prints a
+// paste-ready `inkFloor.frames` block for both device-type directories.
+//
+//   node tooling/store/measure-frame-ink.mjs //     apps/subscriptiontracker/store/android-play/screenshots //     apps/subscriptiontracker/store/android-play/screenshots-tablet
+//
+// It prints and never writes: the register is a sworn store contract, and a
+// tool that edited it would let a recapture lower its own floor on the way
+// past. Its own cases are in tooling/ci/test/measure-frame-ink.test.mjs.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The neighbourhood the mode is taken over. 9 is the register's number, and it
+ *  is the size at which a 4px stem at this DPR is outvoted by the card it sits
+ *  on while a card EDGE — a boundary between two large flat regions — survives,
+ *  which is what makes the result "the same frame with its glyphs removed"
+ *  rather than a blur of everything. */
+export const TEXTLESS_WINDOW = 9;
+
+/**
+ * [img] with its glyphs removed: each channel replaced by the most common value
+ * in the [TEXTLESS_WINDOW]×[TEXTLESS_WINDOW] neighbourhood around it.
+ *
+ * ⚠️ A MODE FILTER, NOT A BLUR, AND THE DIFFERENCE IS THE POINT. A mean or a
+ * Gaussian SMOOTHS an edge, which lowers the ink of the cards and the icons as
+ * well as of the text — so a blurred control would be below a real frame for
+ * reasons that have nothing to do with glyphs, and the floor derived from it
+ * would be measuring the blur. The mode picks a value that is actually present
+ * in the neighbourhood, so a flat card stays exactly its own colour, a card edge
+ * stays a step, and only marks too small to win their own neighbourhood — which
+ * is what body text is — are voted away.
+ *
+ * Alpha is carried through untouched: the frames are opaque by the time
+ * anything here reads them, and averaging a constant would only invite the
+ * question.
+ */
+export function textlessFrame(img) {
+  const { width: w, height: h, rgba } = img;
+  const out = Buffer.from(rgba);
+  const r = (TEXTLESS_WINDOW - 1) / 2;
+  // One scratch histogram, reused. Only the bins this pixel touched are zeroed
+  // again, so the per-pixel cost is the window and not 256.
+  const bins = new Int32Array(256);
+  const touched = new Int32Array(TEXTLESS_WINDOW * TEXTLESS_WINDOW);
+  for (let y = 0; y < h; y++) {
+    const y0 = Math.max(0, y - r);
+    const y1 = Math.min(h - 1, y + r);
+    for (let x = 0; x < w; x++) {
+      const x0 = Math.max(0, x - r);
+      const x1 = Math.min(w - 1, x + r);
+      for (let c = 0; c < 3; c++) {
+        let n = 0;
+        let best = -1;
+        let bestCount = 0;
+        for (let yy = y0; yy <= y1; yy++) {
+          const rowBase = yy * w * 4 + c;
+          for (let xx = x0; xx <= x1; xx++) {
+            const v = rgba[rowBase + xx * 4];
+            const count = ++bins[v];
+            touched[n++] = v;
+            // ⚠️ STRICTLY GREATER, so a tie is broken by the value that reached
+            // the count FIRST — i.e. by scan order, which is deterministic.
+            // `>=` would make the result depend on which of two equally common
+            // values happened to be visited last, and two runs over the same
+            // bytes must give the same number.
+            if (count > bestCount) {
+              bestCount = count;
+              best = v;
+            }
+          }
+        }
+        out[(y * w + x) * 4 + c] = best;
+        for (let i = 0; i < n; i++) bins[touched[i]] = 0;
+      }
+    }
+  }
+  return { width: w, height: h, rgba: out };
+}
+
+/** The pair the register records for one frame: what it measures, and what the
+ *  same frame measures with its glyphs voted away.
+ *
+ *  Returned together rather than separately because a row carrying one without
+ *  the other is a floor whose ability to fire nobody checked — which is exactly
+ *  what `assert-listing-assets.mjs` refuses. */
+export function measureFrameInk(img) {
+  return {
+    measured: Number(inkFraction(img).toFixed(6)),
+    textlessControl: Number(inkFraction(textlessFrame(img)).toFixed(6)),
+  };
+}

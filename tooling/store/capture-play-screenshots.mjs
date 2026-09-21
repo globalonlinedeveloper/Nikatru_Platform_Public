@@ -157,6 +157,7 @@ import { pngHeader, flattenToOpaque, RasterUnavailable } from './chrome-raster.m
 import { decodeRgba, PngUnreadable } from './png-codec.mjs';
 import { scanCaptureSuite, selfTestAccountAddressDetector } from './capture-suite-scan.mjs';
 import { stageFallbackFonts, unstageFallbackFonts } from './capture-fallback-fonts.mjs';
+import { boardOf, boardParityProblems, boardProvenance } from './capture-board-parity.mjs';
 import {
   launchDefineArgs,
   scanTopBand,
@@ -519,6 +520,16 @@ for (const cap of CAPTURES) {
   for (const f of readdirSync(dir).filter((f) => f.endsWith('.png'))) unlinkSync(join(dir, f));
 }
 
+// ── WHERE EACH DRIVE LEAVES ITS BOARD RECORD ────────────────────────────────
+// A throwaway directory, one file per device type, created fresh for THIS
+// process. Not the listing directory (the driver's header says why), and not a
+// fixed path (a record left by yesterday's run must not be read as today's —
+// which is the same class of mistake as the stale-PNG one the clean above
+// exists for, in a file the clean cannot see because it is not a `.png`).
+const boardDir = join(tmpdir(), `nk-shot-board-${randomBytes(4).toString('hex')}`);
+mkdirSync(boardDir, { recursive: true });
+const boardFileFor = (cap) => join(boardDir, `${cap.type}.json`);
+
 const cd = spawn(driver, ['--port=4444', '--silent'], { stdio: 'pipe' });
 let cdErr = '';
 cd.stderr.on('data', (d) => (cdErr += d.toString()));
@@ -698,7 +709,19 @@ try {
       cwd: appDir,
       stdio: 'inherit',
       shell: process.platform === 'win32',
-      env: { ...process.env, STORE_SHOT_DIR: dir.replace(/\\/g, '/') },
+      env: {
+        ...process.env,
+        STORE_SHOT_DIR: dir.replace(/\\/g, '/'),
+        // 🔴 ONE PATH PER VIEWPORT, AND NOT INSIDE THE LISTING DIRECTORY. The
+        // driver's default writes ONE build/integration_response_data.json,
+        // which the second drive overwrites — two viewports sharing one output
+        // file, the exact shape of the bug this record was added to catch. And
+        // the listing directory is wrong for a second reason: the pre-drive
+        // clean above deletes `*.png` from it and nothing else, so a stale
+        // record would survive a run that produced none and be read as that
+        // run's. See capture-board-parity.mjs.
+        STORE_BOARD_FILE: boardFileFor(cap).replace(/\\/g, '/'),
+      },
     });
     const exitCode = run.status ?? 1;
     // Stop at the FIRST failing viewport. Continuing would leave a half-captured
@@ -872,7 +895,51 @@ for (const cap of CAPTURES) {
     problems.push(`${rel} holds ${shots.length} screenshots; Play accepts "up to 8 screenshots for each supported device type"`);
   }
 
-  measured.push({ cap, dir, rel, shots, pixels: sizes.size === 1 ? [...sizes][0] : null });
+  // WHAT WAS ON SCREEN, read back from the file this viewport's driver wrote.
+  // A record that is absent or unparseable is recorded as `null` and NOT as an
+  // empty board: `boardParityProblems` names absence as its own problem, and
+  // "the drive wrote no record" must never reduce to "the board was empty",
+  // which is a sentence about the app that nothing here observed.
+  let record = null;
+  const boardFile = boardFileFor(cap);
+  if (existsSync(boardFile)) {
+    try {
+      record = JSON.parse(readFileSync(boardFile, 'utf8'));
+    } catch (e) {
+      problems.push(`the "${cap.type}" viewport's board record at ${boardFile} is not readable JSON: ${e.message}`);
+    }
+  }
+
+  measured.push({ cap, dir, rel, shots, pixels: sizes.size === 1 ? [...sizes][0] : null, record });
+}
+
+// ── 🔴 THE TWO VIEWPORTS PHOTOGRAPHED THE SAME BOARD ────────────────────────
+//
+// THE CHECK THAT CATCHES THE CLASS, AND THE ONE THIS LANE DID NOT HAVE.
+// Every frame merged as 9f548515 (#854) satisfied every check above and below:
+// four per set, right size, right aspect, 24-bit, no demo band, enough ink. And
+// the tablet set showed `12 active` and `$186.94` against the phone set's
+// `6 active` and `$93.47` — the same six illustrative rows, seeded a second
+// time because each viewport is its own `flutter drive` against one account and
+// nothing cleared the board between them.
+//
+// It was caught by a human opening the PNGs. It could not have been caught here:
+// no guard in this tree reads TEXT out of an image, and CAPTURE.json recorded
+// nothing about what was on the screen. Re-capturing fixes the instance; this
+// limb is what fails the NEXT divergence without anybody counting rows.
+//
+// ⬜ SKIPPED ON `--proof`, AND SAID RATHER THAN LEFT TO BE DEDUCED. A proof run
+// is a demo build, so the suite's seeding block — and the board record it
+// publishes at the end of it — never execute. Comparing two absent boards would
+// red the mechanism lane forever over a record that cannot exist, and a check
+// that blocks correct work is a check somebody deletes.
+if (PROOF) {
+  console.log('');
+  console.log('⬜ COVERAGE LOST (--proof): the demo build publishes no board record, so the two-viewport');
+  console.log('   board-parity check did not run. A proof run cannot tell you whether the phone and tablet');
+  console.log('   sets photograph the same board — that is the live lane\'s answer and only the live lane\'s.');
+} else {
+  problems.push(...boardParityProblems(measured.map((m) => ({ type: m.cap.type, record: m.record }))));
 }
 
 // ── 🔴 THE CHECK THE OLD ONE-VIEWPORT SCRIPT COULD NOT MAKE ─────────────────
@@ -931,6 +998,19 @@ if (!PROOF) {
           // reports the pixels puts it in front of the next reader.
           pixels: m.pixels,
           count: m.shots.length,
+          // 🔴 WHAT WAS ON THE SCREEN, WHICH THIS RECORD DID NOT SAY UNTIL
+          // TODAY. Every field above is about the BYTES — how many, how big,
+          // built by what. Two records could describe two completely different
+          // boards and agree in all of them, and on 9f548515 two of them did:
+          // the phone set's `6 active` / `$93.47` and the tablet set's
+          // `12 active` / `$186.94` produced identical CAPTURE.json bodies but
+          // for the device type and the viewport.
+          //
+          // The parity check above has already refused a run whose viewports
+          // disagree, so this is provenance rather than a gate — it is here so
+          // the next reader can ask what a COMMITTED set shows without opening
+          // a PNG and counting rows, which is the only way #854 was ever found.
+          board: boardProvenance(boardOf(m.record)),
           requirements: { source: m.cap.rules.source, fetched: m.cap.rules.fetched },
         },
         null,
@@ -944,6 +1024,22 @@ if (!PROOF) {
 console.log('');
 for (const m of measured) {
   console.log(`   ${m.cap.type}: ${m.shots.length} screenshot(s) at ${m.pixels ?? '(mixed)'} in ${m.dir.replace(ROOT, '.')}`);
+  // Printed per viewport rather than once, because the two lines standing
+  // beside each other is the whole point: on the run that produced #854 they
+  // would have read `6 active` and `12 active`, in the step log, at the moment
+  // of capture.
+  const b = boardOf(m.record);
+  if (b) {
+    const money = Object.entries(b.monthlyTotalMinorUnits ?? {})
+      .map(([code, units]) => `${code} ${units} minor units`)
+      .join(' + ');
+    console.log(
+      `      board: ${b.activeCount} subscription(s), ${money || '(no total recorded)'}` +
+        ` — ${b.seededThisDrive} seeded by this drive, ${b.alreadyPresent} already present`,
+    );
+  } else {
+    console.log('      board: (no record — the drive wrote none, which is normal only on --proof)');
+  }
 }
 console.log(`   device types covered: ${typesWithPixels.length}${MIN_DISTINCT_TYPES !== null ? ` of the ${MIN_DISTINCT_TYPES} Play requires across different device types` : ''}`);
 console.log(`   posture: ${PROOF ? 'DEMO — MECHANISM PROOF ONLY, these bytes must not be uploaded' : 'LIVE'}`);

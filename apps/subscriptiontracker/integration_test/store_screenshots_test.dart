@@ -64,7 +64,9 @@ import 'package:subscriptiontracker/core/a11y/web_semantics.dart'
     show releaseWebSemantics;
 import 'package:subscriptiontracker/core/app_config.dart';
 import 'package:subscriptiontracker/core/e2e_keys.dart';
+import 'package:subscriptiontracker/core/format/sub_math.dart';
 import 'package:subscriptiontracker/data/auth/auth_models.dart';
+import 'package:subscriptiontracker/data/models/subscription.dart';
 import 'package:subscriptiontracker/features/auth/legal_consent_fields.dart';
 import 'package:subscriptiontracker/features/auth/reaccept_terms_screen.dart';
 import 'package:subscriptiontracker/features/budget/budget_screen.dart';
@@ -74,7 +76,9 @@ import 'package:subscriptiontracker/features/insights/insights_screen.dart';
 import 'package:subscriptiontracker/features/shell/app_shell.dart';
 import 'package:subscriptiontracker/main.dart' as app;
 import 'package:subscriptiontracker/state/providers.dart';
+import 'package:subscriptiontracker/state/subscriptions_controller.dart';
 
+import 'store_board_census.dart';
 import 'store_capture_guard.dart';
 
 /// Illustrative subscriptions created through the app's OWN "Add subscription"
@@ -721,8 +725,102 @@ void main() {
     // log anyway (the reason run 32961461714's missed tap went unread; see the
     // seeding loop). The runner's stdout is the only channel that reaches a
     // reader here.
+    /// The board the APP holds, read out of the running `ProviderScope` rather
+    /// than scraped off the screen.
+    ///
+    /// 🔴 THE SAME LIST `HomeScreen` RENDERS, WHICH IS WHY IT IS THE RIGHT
+    /// INSTRUMENT FOR THIS DEFECT. `home_screen.dart` watches this provider and
+    /// passes `data.length` to `_heroCard`'s `count` (the `N active` pill) and
+    /// `SubMath.totalMonthly(data)` to its `total` (the monthly figure). So
+    /// `12 active` and `$186.94` on the tablet frame are statements about THIS
+    /// list, not about the tablet layout — which is what rules out "the wide
+    /// window renders each row twice" as the cause. A layout that drew a row
+    /// twice could not change `data.length`.
+    ///
+    /// ⚠️ `find.text(...)` COULD NOT HAVE BEEN THE INSTRUMENT. Home lazily
+    /// builds its list, renders the four soonest rows a SECOND time in the
+    /// `upcoming` block, and — above the split — builds the detail pane beside
+    /// it, so a text count over the tree answers a question about what is laid
+    /// out, at this viewport, today. The provider answers the question the
+    /// frame is actually about.
+    ///
+    /// 🔴 IT WAITS FOR THE FETCH, AND THAT LIMB IS THE WHOLE FIX ALL OVER
+    /// AGAIN IF IT IS DROPPED. `SubscriptionsController.build()` is async: on
+    /// the SECOND drive the app signs in and asks the Worker for the board it
+    /// already holds, and until that answers the provider is `AsyncLoading`
+    /// with NO value. A reader that took `valueOrNull ?? []` would see an EMPTY
+    /// board, conclude every illustrative row is missing, and seed a second
+    /// copy of all six — the exact defect being closed, arriving through the
+    /// instrument written to close it.
+    ///
+    /// So an unfinished fetch is a FAILURE here rather than an empty list. The
+    /// deadline is generous (20 s against a create path the suite already
+    /// allows 6 s per row) and the failure names the state it gave up in,
+    /// because "the board is empty" and "the board has not arrived" are
+    /// different sentences and only one of them is about the app.
+    Future<List<Subscription>> loadedBoard() async {
+      final Stopwatch waited = Stopwatch()..start();
+      AsyncValue<List<Subscription>> latest = container.read(
+        subscriptionsControllerProvider,
+      );
+      while (waited.elapsed < const Duration(seconds: 20)) {
+        latest = container.read(subscriptionsControllerProvider);
+        if (latest.hasError) {
+          fail(
+            'The subscriptions the app holds are in an ERROR state '
+            '(${latest.error}), so this capture cannot say what board it is '
+            'about to photograph. On screen: ${onScreen(tester)}',
+          );
+        }
+        if (latest.hasValue && !latest.isLoading) return latest.requireValue;
+        await pumpFor(tester, const Duration(milliseconds: 500));
+      }
+      fail(
+        'The subscriptions the app holds never finished loading '
+        '(${latest.runtimeType}) after 20s. This is NOT an empty board and '
+        'must never be read as one: on the second viewport the board already '
+        'holds the illustrative rows, and treating "not arrived" as "not '
+        'there" seeds a SECOND copy of all six — which is the defect this '
+        'reader exists to prevent. On screen: ${onScreen(tester)}',
+      );
+    }
+
     if (AppConfig.isBackendLive) {
-      for (final List<String> row in kIllustrative) {
+      // ── 🔴 SEED WHAT IS MISSING, NOT WHAT IS WANTED ───────────────────────
+      //
+      // THE DEFECT: `capture-play-screenshots.mjs` runs `flutter drive` ONCE
+      // PER VIEWPORT against ONE account the workflow provisions once, and
+      // nothing deletes the first drive's rows between the two. This block used
+      // to create all six rows unconditionally on every drive, so the tablet
+      // drive added a SECOND copy of each: `12 active`, `$186.94`, and every
+      // name printed twice under "All subscriptions 12" on four published
+      // tablet frames (merged as 9f548515, #854).
+      //
+      // ⚠️ THE FIX IS NOT "CAPTURE THE TABLET FIRST". That moves the doubling
+      // onto the phone set. The phone set was only ever right because it
+      // happened to run first, and nothing asserted it.
+      //
+      // ⚠️ NOR IS IT THE WORKFLOW'S TEARDOWN. `tooling/e2e/purge.mjs` runs ONCE,
+      // after both drives (`if: always()`), and it deletes the Supabase identity
+      // as well as the D1 rows — so calling it between viewports would leave the
+      // second drive with nobody to sign in as. A clean account per viewport is
+      // the other branch of this fix and it needs D1 credentials this capture
+      // job does not carry; this branch needs neither a new secret nor a
+      // workflow change, and it is the branch that can be PROVEN by running the
+      // seed twice.
+      final List<Subscription> onArrival = await loadedBoard();
+      final Map<String, int> before = censusOf(
+        onArrival.map((Subscription s) => s.name),
+      );
+      final List<List<String>> toSeed = rowsMissingFrom(before, kIllustrative);
+      timeline.add(
+        '${sinceInstall.elapsedMilliseconds}ms  BOARD on arrival: '
+        '${onArrival.length} row(s) — seeding ${toSeed.length} of '
+        '${kIllustrative.length}',
+      );
+      publish();
+
+      for (final List<String> row in toSeed) {
         // The FAB, asked the REACHABILITY question rather than the presence
         // one — the rule this file already states for `Skip` 200 lines up, now
         // applied to every control the seeding loop touches. A row whose save
@@ -1020,10 +1118,80 @@ void main() {
         reason:
             'The illustrative rows did not round-trip to Home, so the capture '
             'would photograph an empty board and call it the product. Every '
-            'row above was receipted individually, so reaching this line means '
-            'the sheets closed and the board still does not show them. On '
+            'row seeded above was receipted individually, so reaching this line '
+            'means the sheets closed and the board still does not show them. On '
             'screen: ${onScreen(tester)}',
       );
+
+      // ── 🔴 THE BOARD IS EXACTLY THE ILLUSTRATIVE SET, ASSERTED ────────────
+      //
+      // Seeding idempotently and PHOTOGRAPHING THE RIGHT BOARD are two claims,
+      // and only the second one is what a listing needs. A board that arrived
+      // at this drive already holding twelve rows — a previous run that died
+      // before its teardown, an account re-used across runs — is not repaired
+      // by creating nothing: the skip would be silent and the doubled frames
+      // would be published exactly as they were in #854. So the run REFUSES a
+      // board it did not mean to photograph, rather than photographing it.
+      //
+      // This fires on BOTH viewports, which is the half `kIllustrative.first`
+      // above cannot do: that limb asks whether one name is somewhere on
+      // screen, and `findsWidgets` passes just as happily on a board holding
+      // that name twice.
+      final List<Subscription> board = await loadedBoard();
+      final List<String> complaints = boardComplaints(
+        censusOf(board.map((Subscription s) => s.name)),
+        kIllustrative,
+      );
+      expect(
+        complaints,
+        isEmpty,
+        reason:
+            'The board this viewport is about to be photographed with is not '
+            'the illustrative set: ${complaints.join('; ')}. It holds '
+            '${board.length} row(s) and the set has ${kIllustrative.length}. '
+            'A DOUBLED board is the defect fixed on 2026-09-21 (every tablet '
+            'frame merged as 9f548515 read `12 active` and `\$186.94`, which is '
+            '`6 active` and `\$93.47` seeded twice) — if it is back, the seed '
+            'skip above did not see rows that are really there. On screen: '
+            '${onScreen(tester)}',
+      );
+
+      // ── 🔴 THE BOARD, RECORDED WHERE THE HOST CAN READ IT ─────────────────
+      //
+      // The CLASS check, not the instance fix. Until today NOTHING about the
+      // board reached the host: `CAPTURE.json` recorded `capturedBy`, `posture`,
+      // `deviceType`, `viewport`, `pixels`, `count` and the requirements source
+      // — size and provenance, and not one field about what was ON the screen.
+      // So the only thing that could ever have caught `12 active` against
+      // `6 active` was a human opening two PNGs and counting rows, which is how
+      // #854 was caught and is not a check.
+      //
+      // These numbers are the ones the frame shows: `home_screen.dart` passes
+      // `data.length` as the `N active` pill and `SubMath.totalMonthly(data)` as
+      // the monthly figure. `capture-play-screenshots.mjs` folds this record
+      // into each set's CAPTURE.json and FAILS THE RUN when the two viewports
+      // disagree — before the guard, before the artifact, before the PR.
+      //
+      // ⚠️ MINOR UNITS AND A CURRENCY CODE, NEVER A FORMATTED STRING. `$93.47`
+      // is a `MoneyFormatter` output over a locale; comparing two viewports'
+      // formatted strings would compare their locales as well as their boards,
+      // and would go quiet on the day one of them rounds differently. An
+      // integer count of cents is the same number in both frames or it is not.
+      binding.reportData = <String, dynamic>{
+        ...?binding.reportData,
+        'board': <String, dynamic>{
+          'activeCount': board.length,
+          'monthlyTotalMinorUnits': <String, int>{
+            for (final MapEntry<String, Money> e in SubMath.totalMonthly(
+              board,
+            ).byCurrency.entries)
+              e.key: e.value.minorUnits,
+          },
+          'names': (board.map((Subscription s) => s.name).toList()..sort()),
+          'seededThisDrive': toSeed.length,
+          'alreadyPresent': kIllustrative.length - toSeed.length,
+        },
+      };
     }
 
     // ── the set, in listing order ────────────────────────────────────────────
