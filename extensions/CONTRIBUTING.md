@@ -161,7 +161,7 @@ mechanism rather than by decree:
   which is neither cloned nor pushed — so somebody still has to type that once per clone.
 - **"A CI scan is not a pre-commit hook."** Still exactly right, and now there are two nets rather
   than one: `node scripts/secret-scan.mjs .` here (`extensions.yml:390` and `:1925`) and
-  `tooling/ci/scan-secrets.mjs . --gitleaks …` repo-wide (`ci.yml:423`). The nine content patterns
+  `tooling/ci/scan-secrets.mjs . --gitleaks …` repo-wide (`ci.yml:598`). The nine content patterns
   the removed hook carried are, one for one, the nine `CONTENT_RULES` in `scripts/secret-scan.mjs`,
   which is why removing it took no rule out of the tree — checked before it was deleted, not after.
 

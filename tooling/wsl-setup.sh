@@ -27,7 +27,12 @@
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
-FLUTTER_VERSION="3.47.4"   # keep in lockstep with .github/workflows/*.yml
+# Read at run time from the one declaration, never copied: Renovate advances tooling/versions.json
+# and nothing else, so a literal here is a site no bump can reach (O-RENOVATE-BUMP-CANNOT-REACH-A-PINNED-COPY).
+# sed, not node: this script runs on a fresh WSL install before any toolchain exists.
+VERSIONS_JSON="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/versions.json"
+FLUTTER_VERSION="$(sed -n 's/^[[:space:]]*"flutter":[[:space:]]*"\([^"]*\)".*/\1/p' "$VERSIONS_JSON")"
+[ -n "$FLUTTER_VERSION" ] || { echo "no \"flutter\" pin in $VERSIONS_JSON" >&2; exit 1; }
 JDK="/usr/lib/jvm/java-17-openjdk-amd64"
 SDK="$HOME/Android/sdk"
 APT_SDK="/usr/lib/android-sdk"

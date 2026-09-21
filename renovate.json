@@ -183,6 +183,66 @@
         "dev_dependencies"
       ],
       "groupName": "dev tooling"
+    },
+    {
+      "description": [
+        "melos: ONE branch for every manager that writes a melos copy (O-RENOVATE-BUMP-CANNOT-REACH-A-PINNED-COPY).",
+        "The pub manager writes pubspec.yaml's dev_dependency and would otherwise land on the dev tooling branch",
+        "while the regex managers land on chore/renovate-melos-*, and each branch is red without the other.",
+        "Must stay AFTER the dev tooling rule: a later groupName wins. assert-renovate-reach.mjs checks the order."
+      ],
+      "matchDepNames": [
+        "melos"
+      ],
+      "groupName": "melos"
+    },
+    {
+      "description": [
+        "wrangler: ONE branch for every manager that writes a wrangler copy. github-actions writes each",
+        "wranglerVersion input (github actions group), npm writes the app brick's package.json (dev tooling),",
+        "the regex manager writes tooling/versions.json - three branches, each red alone. Must stay LAST among",
+        "rules that set groupName for wrangler."
+      ],
+      "matchDepNames": [
+        "wrangler"
+      ],
+      "groupName": "wrangler"
+    },
+    {
+      "description": [
+        "gitleaks is a HAND DECISION, declared here as well as in propagate-versions.mjs HAND_ONLY:",
+        "tooling/ci/scan-secrets.mjs VALIDATED_AGAINST names the release its output parser was checked",
+        "against, and only a human re-running that check may move it. A bump therefore lands red at",
+        "scan-secrets.mjs by design; this label says so on the PR. matchDepNames because the depName",
+        "is the versions.json key. assert-renovate-reach.mjs cross-checks this rule against HAND_ONLY."
+      ],
+      "matchDepNames": [
+        "gitleaks"
+      ],
+      "labels": [
+        "dependencies",
+        "needs-manual-check"
+      ],
+      "automerge": false
+    },
+    {
+      "description": [
+        "The built-in github-actions manager must not propose runner labels or setup-java / setup-node",
+        "versions: those inputs are copies of tooling/versions.json keys (runner_ubuntu, java, node), and a",
+        "proposal that rewrites the copy and not the declaration is red by construction and poisons the",
+        "github actions (major) group it travels in. Observed on Dependency Dashboard #417, read 2026-09-21:",
+        "ubuntu 24.04 -> 26.04 and the setup-java major, both under the github-actions manager. The",
+        "versions.json customManagers still propose java and node majors; runner_ubuntu is an owner decision."
+      ],
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchDatasources": [
+        "github-runners",
+        "java-version",
+        "node-version"
+      ],
+      "enabled": false
     }
   ],
   "customManagers": [
@@ -233,6 +293,23 @@
       "datasourceTemplate": "dart",
       "managerFilePatterns": [
         "/^tooling\\/versions\\.json$/"
+      ]
+    },
+    {
+      "customType": "regex",
+      "description": [
+        "Second and third copies of the melos pin: the ci.yml workspace-gate install line and the README install",
+        "line (O-RENOVATE-BUMP-CANNOT-REACH-A-PINNED-COPY). SAME depNameTemplate as the versions.json manager above",
+        "on purpose, so all copies share one branch; the pubspec.yaml copy joins it through the melos group rule."
+      ],
+      "matchStrings": [
+        "dart pub global activate melos (?<currentValue>[0-9][^\\s'\"#`]*)"
+      ],
+      "depNameTemplate": "melos",
+      "datasourceTemplate": "dart",
+      "managerFilePatterns": [
+        "/^\\.github\\/workflows\\/ci\\.yml$/",
+        "/^README\\.md$/"
       ]
     },
     {
@@ -291,6 +368,22 @@
       "datasourceTemplate": "dart",
       "managerFilePatterns": [
         "/^tooling\\/versions\\.json$/"
+      ]
+    },
+    {
+      "customType": "regex",
+      "description": [
+        "Second copy of the mason_cli pin: the ci.yml app-brick install line (O-RENOVATE-BUMP-CANNOT-REACH-A-PINNED-COPY).",
+        "SAME depNameTemplate as the tooling/versions.json manager above ON PURPOSE: Renovate puts upgrades with one",
+        "branch name on one branch, so both copies move in one PR. tooling/ci/assert-renovate-reach.mjs proves it."
+      ],
+      "matchStrings": [
+        "dart pub global activate mason_cli (?<currentValue>[0-9][^\\s'\"#]*)"
+      ],
+      "depNameTemplate": "mason_cli",
+      "datasourceTemplate": "dart",
+      "managerFilePatterns": [
+        "/^\\.github\\/workflows\\/ci\\.yml$/"
       ]
     },
     {

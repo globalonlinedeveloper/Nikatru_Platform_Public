@@ -371,6 +371,8 @@ jobs:
       - uses: ./.github/actions/setup-node
       - name: Build versions all match versions.json
         run: node tooling/ci/assert-version-consistency.mjs
+      - name: Every Renovate bump reaches every copy the version guard reads
+        run: node tooling/ci/assert-renovate-reach.mjs
       - name: The app version is derived and monotonic
         run: node tooling/ci/assert-app-versioning.mjs
       - name: Every claimed channel is a served channel

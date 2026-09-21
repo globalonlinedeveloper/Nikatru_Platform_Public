@@ -47,7 +47,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, copyFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -354,12 +354,27 @@ describe('assert-update-coverage — the security scanners stay reachable by Ren
   const PINNED_SCANNERS = [...SCANNERS, ...CONTAINER_SCANNERS];
 
   /** The real renovate.json + the real tooling/versions.json, copied into a
-   *  scratch root so a mutation never touches the worktree. */
+   *  scratch root so a mutation never touches the worktree — PLUS every file a
+   *  customManager that does NOT target versions.json reads (the second-copy
+   *  managers of O-RENOVATE-BUMP-CANNOT-REACH-A-PINNED-COPY: ci.yml, README.md).
+   *  Without them the guard rightly reports those managers' patterns as matching
+   *  NO file in the tree, and every control below goes red for a reason that is
+   *  not the one it tests. The set is DERIVED from renovate.json, never listed here. */
   function realPairIn(dir) {
     mkdirSync(join(dir, 'tooling'), { recursive: true });
     const versions = readFileSync(join(REPO, 'tooling/versions.json'), 'utf8');
-    writeFileSync(join(dir, 'renovate.json'), readFileSync(join(REPO, 'renovate.json'), 'utf8'));
+    const renovate = readFileSync(join(REPO, 'renovate.json'), 'utf8');
+    writeFileSync(join(dir, 'renovate.json'), renovate);
     writeFileSync(join(dir, 'tooling/versions.json'), versions);
+    const patterns = JSON.parse(renovate).customManagers
+      .flatMap((m) => m.managerFilePatterns ?? [])
+      .filter((p) => !matchesPath(p, 'tooling/versions.json'));
+    for (const rel of candidatePaths(REPO)) {
+      if (rel === 'renovate.json' || rel === 'tooling/versions.json') continue;
+      if (!patterns.some((p) => matchesPath(p, rel))) continue;
+      mkdirSync(dirname(join(dir, rel)), { recursive: true });
+      copyFileSync(join(REPO, rel), join(dir, rel));
+    }
     return versions;
   }
 
@@ -398,10 +413,13 @@ describe('assert-update-coverage — the security scanners stay reachable by Ren
     const reached = reachedCount(r.stdout);
     const managers = JSON.parse(readFileSync(join(REPO, 'renovate.json'), 'utf8')).customManagers;
     assert.ok(Array.isArray(managers) && managers.length > 0, 'renovate.json declares no customManagers');
+    // The guard keys coverage on depNameTemplate, so a second-copy manager that shares a depName with
+    // its versions.json manager (O-RENOVATE-BUMP-CANNOT-REACH-A-PINNED-COPY) is ONE reached pin, not two.
+    const pins = new Set(managers.map((m) => m.depNameTemplate)).size;
     assert.equal(
       reached,
-      managers.length,
-      `${managers.length} customManager(s) are declared but only ${reached} reached a pin — one of them captures nothing`,
+      pins,
+      `${pins} distinct pin(s) are declared across ${managers.length} customManager(s) but only ${reached} reached — one of them captures nothing`,
     );
   });
 
