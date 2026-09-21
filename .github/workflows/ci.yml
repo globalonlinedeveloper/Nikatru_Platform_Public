@@ -176,6 +176,8 @@ jobs:
         run: node tooling/ci/assert-config-registry.mjs
       - name: A Worker's unhandled error reaches a sink, not just the log
         run: node tooling/ci/assert-worker-error-sink.mjs
+      - name: No Worker test mixes a pinned clock with the wall clock
+        run: node tooling/ci/assert-test-clock-mix.mjs
       - name: Every hard cap derives from a sourced free-tier ceiling
         run: node tooling/ci/assert-ceiling-budget.mjs
       - name: CORS allowlist is derived from the app catalogue
