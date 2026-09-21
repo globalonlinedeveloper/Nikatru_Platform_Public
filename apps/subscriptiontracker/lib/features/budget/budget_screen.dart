@@ -17,6 +17,7 @@ import '../shared/async_gate.dart';
 import '../shared/neutrals.dart';
 import '../shared/painters.dart';
 import '../shared/widgets.dart';
+import '../shell/app_shell.dart';
 
 final FutureProvider<BudgetInfo> budgetProvider = FutureProvider<BudgetInfo>(
   (ref) => ref.watch(subscriptionRepositoryProvider).budget(),
@@ -212,7 +213,37 @@ class BudgetScreen extends ConsumerWidget {
     final BudgetUsage usage = budget.usageOf(spent);
     final Money spentHere = usage.spentHere;
     final Money budgetVal = budget.monthlyBudget;
-    final bool over = usage.over;
+    // 🔴 "NO BUDGET" IS NOT "A BUDGET OF ZERO", AND THIS CARD SPENT ITS WHOLE
+    // LIFE SAYING IT WAS. `/budget` returns `monthly_budget: 0` for a user who
+    // has never set one — which is every user, because THERE IS NO CONTROL IN
+    // THIS APP THAT SETS A BUDGET. Measured 2026-09-21: this file contains no
+    // `onTap`, `onPressed`, `onChanged`, `TextField`, `Slider`,
+    // `GestureDetector`, `InkWell` or `showDialog`, and `ApiClient.updateBudget`
+    // has no caller anywhere outside `lib/data/`. The write path exists; nothing
+    // reaches it.
+    //
+    // Against a zero budget `BudgetInfo.usageOf` is exactly right and the CARD
+    // was exactly wrong: `ratio` is 0 (it refuses to divide by zero) while
+    // `over` is `spend > 0`, so a real $93.47 of spending rendered as a
+    // DANGER-red "0% over budget" over "$0 Budget" and "$0 Left" — three
+    // statements of a comparison this surface has no second operand for. Both
+    // store frames merged as `9f548515` photographed it.
+    //
+    // ⚠️ THE CATEGORY BARS BELOW ARE NOT EVIDENCE OF A BUDGET EITHER, which is
+    // worth stating because they look like one. `capMap` is empty for the same
+    // reason `budgetVal` is zero, so every bar falls to `_softCap` — the
+    // category's OWN spend × 1.2. The six "caps" on those frames are derived
+    // per render, not set by anybody: 40 → 48, 78 → 94.
+    //
+    // 🔑 SO THE FIX IS THE SECOND BRANCH, NOT THE FIRST. Adding the control
+    // would be a product increment on a destination [ADR 077] §A deletes —
+    // "the same ring, spent/left stats, donut and per-category caps" move to
+    // /insights — so it would be built here to be moved next. What the surface
+    // owes today is to stop asserting a comparison it cannot make: no red
+    // verdict, no "$0 Budget", no "$0 Left". The ring stays and states the one
+    // figure that IS measured.
+    final bool hasBudget = budgetVal.minorUnits > 0;
+    final bool over = hasBudget && usage.over;
     final double pct = usage.ratio;
     final Map<String, Money> capMap = <String, Money>{
       for (final BudgetCap c in budget.categories) c.name: c.cap,
@@ -279,9 +310,21 @@ class BudgetScreen extends ConsumerWidget {
             // records against its donut: an absorbed annotation glues the
             // ring's sentence to the three stat boxes below it and the
             // chart stops being something a reader can land on.
+            //
+            // 🔴 AND WITH NO BUDGET THERE IS NO SENTENCE TO SUBSTITUTE INTO.
+            // Both arms name `{budget}` and a percentage OF it, so either one
+            // read aloud against an unset budget announces the same false
+            // comparison the pixels used to show. The label is dropped rather
+            // than filled with a zero, and `excludeSemantics` goes with it —
+            // the two `Text`s in the middle of the ring then announce
+            // themselves, which is the honest reading: a figure and the word
+            // for what it is. No new arb key, so no locale can drift out of
+            // step with a sentence only one of them has.
             child: Semantics(
               container: true,
-              label: over
+              label: !hasBudget
+                  ? null
+                  : over
                   ? l10n.a11yBudgetRingOver(
                       money.formatBag(spent),
                       money.formatRounded(budgetVal),
@@ -292,7 +335,7 @@ class BudgetScreen extends ConsumerWidget {
                       money.formatRounded(budgetVal),
                       NumberFormat.percentPattern(l10n.localeName).format(pct),
                     ),
-              excludeSemantics: true,
+              excludeSemantics: hasBudget,
               child: CustomPaint(
                 painter: RingPainter(
                   progress: pct,
@@ -318,67 +361,113 @@ class BudgetScreen extends ConsumerWidget {
                 child: Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
-                    children: <Widget>[
-                      Text(
-                        // NOT an arb key — a NUMBER. `NumberFormat`
-                        // .percentPattern carries the locale's own
-                        // convention, including where the sign goes (some
-                        // locales lead with it) and which digits are used;
-                        // `'${…}%'` hardcoded the English answer to both.
-                        // The pattern is `#,##0%`, i.e. zero fraction
-                        // digits, so `en` still renders "83%".
-                        NumberFormat.percentPattern(
-                          l10n.localeName,
-                        ).format(pct),
-                        style: AppText.fig.copyWith(
-                          fontSize: 34,
-                          color: over ? AppColors.danger : neutral.ink,
-                        ),
-                      ),
-                      Text(
-                        over ? l10n.overBudget : l10n.ofBudget,
-                        style: AppText.muted.copyWith(
-                          fontSize: 10,
-                          color: neutral.muted,
-                        ),
-                      ),
-                    ],
+                    children: !hasBudget
+                        // WITH NO BUDGET THE RING HOLDS THE ONE FIGURE THIS
+                        // SCREEN ACTUALLY KNOWS. `pct` is 0, so the arc is
+                        // empty and reads as "nothing measured" rather than as
+                        // "nothing spent" — the spend is right there in the
+                        // middle of it. Both strings are keys this surface
+                        // already renders, so the no-budget state invents no
+                        // copy: `statSpent` is the label under the stat this
+                        // replaces.
+                        //
+                        // `FittedBox` because a `MoneyBag` can print more than
+                        // one subtotal and the ring is a fixed 168 px; scaling
+                        // down is the only failure mode that is not an
+                        // overflow stripe.
+                        ? <Widget>[
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 18,
+                              ),
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  money.formatBag(spent),
+                                  maxLines: 1,
+                                  style: AppText.fig.copyWith(
+                                    fontSize: 28,
+                                    color: neutral.ink,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            Text(
+                              l10n.statSpent,
+                              style: AppText.muted.copyWith(
+                                fontSize: 10,
+                                color: neutral.muted,
+                              ),
+                            ),
+                          ]
+                        : <Widget>[
+                            Text(
+                              // NOT an arb key — a NUMBER. `NumberFormat`
+                              // .percentPattern carries the locale's own
+                              // convention, including where the sign goes (some
+                              // locales lead with it) and which digits are used;
+                              // `'${…}%'` hardcoded the English answer to both.
+                              // The pattern is `#,##0%`, i.e. zero fraction
+                              // digits, so `en` still renders "83%".
+                              NumberFormat.percentPattern(
+                                l10n.localeName,
+                              ).format(pct),
+                              style: AppText.fig.copyWith(
+                                fontSize: 34,
+                                color: over ? AppColors.danger : neutral.ink,
+                              ),
+                            ),
+                            Text(
+                              over ? l10n.overBudget : l10n.ofBudget,
+                              style: AppText.muted.copyWith(
+                                fontSize: 10,
+                                color: neutral.muted,
+                              ),
+                            ),
+                          ],
                   ),
                 ),
               ),
             ),
           ),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: <Widget>[
-              _stat(
-                label: l10n.statSpent,
-                value: money.formatBag(spent),
-                valueColor: neutral.ink,
-                labelColor: neutral.muted,
-              ),
-              _stat(
-                label: l10n.statLeft,
-                value: money.formatRounded(
-                  (budgetVal - spentHere).clampAtZero(),
+          // 🔴 THE WHOLE ROW GOES WITH THE BUDGET, NOT JUST TWO OF ITS THREE
+          // STATS. "Left" is `budget - spent` and "Budget" is the budget: both
+          // are the comparison this surface cannot make, and the frames printed
+          // them as "$0 Left" and "$0 Budget". "Spent" survives — it moved into
+          // the ring above, where it is the only figure left to state. A row of
+          // one stat under a ring holding the same number would say it twice.
+          if (hasBudget) const SizedBox(height: 16),
+          if (hasBudget)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: <Widget>[
+                _stat(
+                  label: l10n.statSpent,
+                  value: money.formatBag(spent),
+                  valueColor: neutral.ink,
+                  labelColor: neutral.muted,
                 ),
-                // `positive` is a STATUS colour, not a neutral: green
-                // means "money left" in either brightness, so it stays
-                // the literal token deliberately — the same reason
-                // `AppThemeX.fromScheme` refuses to re-hue it from the
-                // seed.
-                valueColor: AppColors.positive,
-                labelColor: neutral.muted,
-              ),
-              _stat(
-                label: l10n.statBudget,
-                value: money.formatRounded(budgetVal),
-                valueColor: neutral.ink,
-                labelColor: neutral.muted,
-              ),
-            ],
-          ),
+                _stat(
+                  label: l10n.statLeft,
+                  value: money.formatRounded(
+                    (budgetVal - spentHere).clampAtZero(),
+                  ),
+                  // `positive` is a STATUS colour, not a neutral: green
+                  // means "money left" in either brightness, so it stays
+                  // the literal token deliberately — the same reason
+                  // `AppThemeX.fromScheme` refuses to re-hue it from the
+                  // seed.
+                  valueColor: AppColors.positive,
+                  labelColor: neutral.muted,
+                ),
+                _stat(
+                  label: l10n.statBudget,
+                  value: money.formatRounded(budgetVal),
+                  valueColor: neutral.ink,
+                  labelColor: neutral.muted,
+                ),
+              ],
+            ),
         ],
       ),
     );
@@ -426,12 +515,15 @@ class BudgetScreen extends ConsumerWidget {
             // a `SafeArea` and puts the navigation in `bottomNavigationBar`, so
             // both insets are now paid twice. 18 is `AppSpacing.gutterCompact`,
             // the chassis's page gutter.
-            padding: const EdgeInsets.fromLTRB(
-              AppSpacing.gutterCompact,
-              AppSpacing.gutterCompact,
-              AppSpacing.gutterCompact,
-              AppSpacing.xl,
-            ),
+            //
+            // ⚠️ HALF OF THAT WAS WRONG AND IS CORRECTED RATHER THAN DELETED.
+            // The pill is `bottomNavigationBar` and WAS double-paid; the FAB is
+            // `floatingActionButton`, which reserves nothing and floats over
+            // this list, so its 72 px was dropped instead — visible in
+            // `04-budget.png` of the frames merged as `9f548515`, where the "+"
+            // covers the AI tools amount. [AppShell.pageInsetOf] states the
+            // arithmetic once for all five branches.
+            padding: AppShell.pageInsetOf(context),
             children: <Widget>[
               // The heading stays FULL WIDTH in both layouts. It is the page's
               // one label, not a card, and splitting a title across a column
@@ -623,6 +715,7 @@ class BudgetScreen extends ConsumerWidget {
     final ({Color ink, Color muted, Color line}) neutral = neutrals(context);
 
     return Container(
+      key: Key('budget.bar.$i'),
       padding: const EdgeInsets.all(15),
       decoration: cardDecoration(context, radius: 18),
       child: Column(

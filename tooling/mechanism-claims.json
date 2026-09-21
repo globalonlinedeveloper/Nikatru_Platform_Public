@@ -1469,6 +1469,14 @@
       "test": "apps/subscriptiontracker/test/rounded_breakdown_surfaces_test.dart",
       "case": "INSIGHTS — the legend adds up to the number in the ring",
       "proves": "The sentence claims the donut centre and its legend cannot disagree because both are derived from the same `cats`. The case pumps the screen over six categories whose naive per-row rounding sums to 94 against a whole of 97, reads the rendered centre and the six rendered legend Texts back out of the tree, and asserts the column sums to the centre. Mutation 2026-09-20: putting the legend back on its own `money.formatBagRounded(cats[i].value)` — a second rounding decision — turns it red at 94 != 97. judged 2026-09-20."
+    },
+    {
+      "file": "apps/subscriptiontracker/test/width_shell_fab_test.dart",
+      "anchor": "first case of the group pins the copy to the source text, so the two cannot",
+      "status": "proven",
+      "test": "apps/subscriptiontracker/test/width_shell_fab_test.dart",
+      "case": "the six rows are the store suite's own",
+      "proves": "The at-rest group seeds a COPY of kIllustrative (the store suite is an integration binding, not an importable library). The case parses the kIllustrative block out of integration_test/store_screenshots_test.dart and asserts the parsed rows equal the copy, in order, so an edited, added, dropped or reordered row on either side fails here. Mutations 2026-09-22, each restored byte-exact and green again: the copy's 'Video streaming' price 15.99 -> 15.98 turns it red (at location [0][1] is '15.99' instead of '15.98'); a seventh row added to the source's kIllustrative turns it red (at location [6]). judged 2026-09-22."
     }
   ],
   "backlog": {}

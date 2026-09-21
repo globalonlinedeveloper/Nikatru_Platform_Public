@@ -10,7 +10,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/date_symbols.dart' show DateSymbols;
 import 'package:intl/intl.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart'
-    show AppSpacing, ContentPane, TwoPane;
+    show ContentPane, TwoPane;
 
 import '../../core/format/money_format.dart';
 import '../../core/theme/app_colors.dart';
@@ -24,6 +24,7 @@ import '../shared/due.dart';
 import '../shared/async_gate.dart';
 import '../shared/neutrals.dart';
 import '../shared/widgets.dart';
+import '../shell/app_shell.dart';
 
 /// 📌 THE PRIVATE `_neutrals(BuildContext)` THAT STOOD HERE IS HOISTED
 /// (2026-08-25) into `features/shared/neutrals.dart` as `neutrals(context)`,
@@ -51,16 +52,20 @@ import '../shared/widgets.dart';
 /// in `bottomNavigationBar`, so both insets are now paid twice. 18 is
 /// `AppSpacing.gutterCompact`, the chassis's own page gutter.
 ///
-/// ⚠️ A CONST RATHER THAN TWO LITERALS since the two-pane split: the detail
+/// ⚠️ ONE NAME RATHER THAN TWO LITERALS since the two-pane split: the detail
 /// column is a second scroll view one divider away from the first, and two page
 /// insets that agree today and drift tomorrow would read as a step in the seam
 /// between them.
-const EdgeInsets _pageInset = EdgeInsets.fromLTRB(
-  AppSpacing.gutterCompact,
-  AppSpacing.gutterCompact,
-  AppSpacing.gutterCompact,
-  AppSpacing.xl,
-);
+///
+/// ⚠️ AND THE SENTENCE ABOVE IS HALF WRONG, CORRECTED RATHER THAN DELETED. The
+/// pill is `bottomNavigationBar` and was genuinely double-paid; the FAB is
+/// `floatingActionButton`, which reserves NOTHING and is laid out over both of
+/// these columns. Its 72 px was dropped rather than double-paid, so the last
+/// renewal of a scrolled month is drawn under the "+". The number now comes
+/// from [AppShell.pageInsetOf], which states that arithmetic once for all five
+/// branches — per window class, so it needs the [context] — and this file
+/// keeps its own name for it because two panes read it.
+EdgeInsets _pageInset(BuildContext context) => AppShell.pageInsetOf(context);
 
 /// 🔴 STATEFUL SINCE THE `TwoPane` ADOPTION, AND THE STATE IS EXACTLY ONE INT.
 /// The detail column needs a selected day and nothing else: the month, the
@@ -329,7 +334,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
               // false. From 840 up this column is offered `TwoPaneSplit`'s list
               // width — 420 at the boundary, 480 from 1201 on — and the 720 cap
               // never binds again. The test now measures both regimes.
-              padding: _pageInset,
+              padding: _pageInset(context),
               children: <Widget>[
                 Text(
                   l10n.calendarTitle,
@@ -691,7 +696,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
       detail: ContentPane.reading(
         key: const Key('calendar-day-pane'),
         child: ListView(
-          padding: _pageInset,
+          padding: _pageInset(context),
           children: _renewals(
             context,
             l10n,
