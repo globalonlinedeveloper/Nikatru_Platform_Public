@@ -250,9 +250,15 @@ describe('the guard says YES on the tree as it is', () => {
     assert.match(out, /PARTIAL TREE: the declared-root-must-exist clause is SKIPPED/);
     assert.match(out, /apps\/subscriptiontracker: 19 surface\(s\) reachable, 19 measured — the two sets are EQUAL/);
     assert.match(out, /packages\/chassis_screens: 18 surface\(s\) reachable, 18 measured — the two sets are EQUAL/);
+    // ⏱ 2026-09-22 · 36 → 37 TEST FILES, SURFACES UNCHANGED. The app gained
+    // `width_shell_fab_test.dart`, which pumps the five shell branches at all
+    // three widths to prove the FAB clears each list's last row. It measures
+    // surfaces that were already measured, so both per-root equalities above
+    // are untouched and only the file count moves — re-derived from the
+    // guard's own output, as the 36 was.
     assert.match(
       out,
-      /37 reachable surface\(s\), 37 measured by 36 test file\(s\); 0 measured where they delegate to/,
+      /37 reachable surface\(s\), 37 measured by 37 test file\(s\); 0 measured where they delegate to/,
     );
     assert.equal(fails(out).length, 0, out);
   });
