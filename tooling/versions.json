@@ -148,7 +148,7 @@
   "node": "24",
   "java": "17",
   "melos": "8.7.0",
-  "mason_cli": "0.1.3",
+  "mason_cli": "0.1.4",
   "$native_stack_traces_comment": [
     "The DECODER behind the symbolication proof's ground truth (.github/workflows/symbolication-proof.yml).",
     "NOT `flutter symbolize`: Flutter 3.47.4's tool pins native_stack_traces 0.6.1, which predates the",
