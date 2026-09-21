@@ -37,6 +37,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { fetchWithBoundedRetry } from './bounded-retry.mjs';
 
 const repoRoot = resolve(process.argv.slice(2).find((a) => !a.startsWith('--')) ?? process.cwd());
 const DIR = join(repoRoot, 'docs', 'platform', 'supabase', 'email-templates');
@@ -98,9 +99,19 @@ const unreadable = (why) => {
 };
 let res;
 try {
-  res = await fetch(`https://api.supabase.com/v1/projects/${ref}/config/auth`, {
-    headers: { Authorization: `Bearer ${pat}` },
-  });
+  // ⏱ 2026-09-21 — BOUNDED RETRY (tooling/ops/bounded-retry.mjs). Un-retried until
+  // today, so one dropped connection — or the single 504 gateway page that made
+  // run 34511747076 print "Supabase auth config has DRIFTED" — was a run-level
+  // verdict. Row O-PAGES-FETCH-TRANSIENT-NOT-RETRIED, sweep clause. A failure that
+  // outlives the plan still reaches `unreadable()` and is still exit 2, and a 504
+  // that persists is still not drift.
+  res = await fetchWithBoundedRetry(
+    () =>
+      fetch(`https://api.supabase.com/v1/projects/${ref}/config/auth`, {
+        headers: { Authorization: `Bearer ${pat}` },
+      }),
+    { describe: (why) => `GET /v1/projects/<ref>/config/auth: ${why}` },
+  );
 } catch (e) {
   unreadable(`the request failed (${e?.message ?? e}).`);
 }

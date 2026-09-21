@@ -435,6 +435,20 @@ describe('assert-mechanism-claims — the REAL tree', () => {
 
     const red = run(fixture({ files: { ...files }, register: { ...base, claims: [...proofOwn] } }));
     assert.equal(red.code, 1, red.out);
-    assert.match(red.out, /M1 tooling\/ops\/verify-supabase-templates\.mjs has 1 unjudged mechanism claim\(s\) \(no-second-list at :139\)/);
+    // ⏱ 2026-09-21 — :139 → :150. THE LINE MOVED; THE CLAIM DID NOT. The bounded
+    // retry (row O-PAGES-FETCH-TRANSIENT-NOT-RETRIED, sweep clause) added eleven
+    // comment lines ABOVE this sentence in verify-supabase-templates.mjs.
+    //
+    // ⚠️ THIS IS THE ONLY ASSERTION IN THE SUITE THAT PINS A REAL FILE'S LINE
+    // NUMBER (measured 2026-09-21 across all 233 test files: ten `at :N` pins, and
+    // the other nine are into fixtures the test writes itself, where the number is
+    // stable by construction). The REGISTER anchors on the sentence TEXT, which is
+    // why assert-mechanism-claims.mjs stayed green on the real tree throughout —
+    // only this control is positional, so ANY edit anywhere above the sentence
+    // reds a control that is otherwise about content.
+    assert.match(
+      red.out,
+      /M1 tooling\/ops\/verify-supabase-templates\.mjs has 1 unjudged mechanism claim\(s\) \(no-second-list at :150\)/,
+    );
   });
 });

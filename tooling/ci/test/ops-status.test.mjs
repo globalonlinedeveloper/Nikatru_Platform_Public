@@ -466,7 +466,13 @@ describe('status — through the CLI: exit codes, the printed count, and the liv
   });
 
   // ── L2: the LIVE transport, for real, with no network dependency ──────────
-  test('LIVE — a surface that cannot be reached exits 1 through the real fetch path', () => {
+  // 🔴 THIS CASE ASSERTED EXIT 1 UNTIL 2026-09-21, AND EXIT 1 WAS THE BUG.
+  // A host that resolves nowhere is the same evidence a DNS blip on the runner
+  // produces, and this reader called both "I looked, it is broken". It is now
+  // COVERAGE LOST, after the bounded plan is exhausted — which is also why this
+  // case now takes ~3 s: it is the ceiling being spent, measured rather than
+  // asserted in prose (row O-PAGES-FETCH-TRANSIENT-NOT-RETRIED, sweep clause).
+  test('LIVE — a surface that never answers exits 2, not 1, through the real fetch path', () => {
     // `.invalid` is reserved by RFC 2606 and resolves nowhere, so this is a
     // genuine transport failure rather than a fixture describing one. No
     // --probes-file: the real prober runs.
@@ -480,8 +486,9 @@ describe('status — through the CLI: exit codes, the printed count, and the liv
       }),
     );
     const r = run(['--root', root]);
-    assert.equal(r.status, EXIT_UNHEALTHY, `${r.stdout}\n${r.stderr}`);
-    assert.match(r.stderr, /COULD NOT RUN/);
+    assert.equal(r.status, EXIT_CANNOT_LOOK, `${r.stdout}\n${r.stderr}`);
+    assert.match(r.stderr, /COVERAGE LOST/);
+    assert.match(r.stderr, /NOTHING ANSWERED/);
     assert.doesNotMatch(r.stdout, /OFFLINE FIXTURE MODE/);
   });
 });

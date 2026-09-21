@@ -92,6 +92,7 @@ import { fileURLToPath } from 'node:url';
 // a fifth that spelled `nikatru.com` or `/<id>/` by hand would be the second
 // spelling of a fact, which is how a register comes to disagree with the tree.
 import { APEX_HOST, publicAppUrl, appBaseHref } from '../sites/apex.mjs';
+import { fetchWithBoundedRetry } from './bounded-retry.mjs';
 
 // 🔴 `process.exit()` IS BANNED IN THIS FILE, AND IT IS A BUG FIX. Calling it
 // while an undici (fetch) keep-alive handle is still open CRASHES libuv on
@@ -371,12 +372,23 @@ if (!TOKEN) {
 await (async () => {
 let live;
 try {
+  // ⏱ 2026-09-21 — BOUNDED RETRY (tooling/ops/bounded-retry.mjs). Un-retried until
+  // today, so one dropped connection to the Oracle box exited 2 and reddened
+  // ops-watch, which reddens ci-gate on `main` — row
+  // O-PAGES-FETCH-TRANSIENT-NOT-RETRIED, sweep clause. Every branch below still
+  // exits 2 and none of them becomes a pass: the retry tells a blip from an
+  // outage, it forgives neither.
+  //
   // NO `CF-Connecting-IP` HEADER, EVER — Cloudflare's edge rejects any client
   // request carrying one with error 1000 before the origin is reached. Recorded
   // here because this is a hand-rolled request and the mistake is cheap to make.
-  const res = await fetch(`${BASE}/api/0/organizations/${ORG}/monitors/`, {
-    headers: { Authorization: `Bearer ${TOKEN}`, Accept: 'application/json' },
-  });
+  const res = await fetchWithBoundedRetry(
+    () =>
+      fetch(`${BASE}/api/0/organizations/${ORG}/monitors/`, {
+        headers: { Authorization: `Bearer ${TOKEN}`, Accept: 'application/json' },
+      }),
+    { describe: (why) => `the monitor list: ${why}` },
+  );
   // ⏱ 2026-09-11 — EVERY BRANCH BELOW IS "I COULD NOT LOOK", SO EVERY ONE IS EXIT 2.
   // All three used to set exit 1, the code this file gives "the register and the
   // live monitors DISAGREE". An expired token, a 5xx from the Oracle box, a DNS
