@@ -36,6 +36,11 @@
 //   screenshots present without provenance        -> FAIL
 //   an asset the metadata contract does not name  -> FAIL
 //   a declared limit with no `source`             -> FAIL
+//   a frame under the ink floor recorded for IT   -> FAIL
+//   a committed frame with no ink floor recorded  -> FAIL
+//   an ink floor at or under its textless control -> FAIL   ← it could not fire
+//   frames committed and no `inkFloor` declared   -> COVERAGE LOST
+//   ink floors recorded and NO frame found        -> COVERAGE LOST  ← see below
 //   NOTHING evaluated                             -> COVERAGE LOST
 //
 // 🔴 THE SECOND LINE IS DELIBERATE AND IT IS WHERE THIS GUARD DIFFERS FROM ITS
@@ -106,18 +111,45 @@
 //   · ANYTHING ELSE IN THE PIXELS. One band of one colour is decoded, plus the
 //     header. Third-party marks inside the frame, a broken layout or an empty
 //     board would all pass.
-//   · ANY TEXT AT ALL, IN ANY FRAME. This is not a gap to close later, and the
-//     day it mattered is recorded: on 2026-08-05 `05-settings.png` carried the
-//     end-to-end account's address, `subscriptiontracker-e2e+…@nikatru.com`, and every check
-//     here passed it — right size, right format, live posture, top band 0.009.
-//     A human found it by opening the file. Glyphs are not a band of one colour,
-//     and a text detector that reads some fonts and not others would report
-//     "clean" for the frames it cannot read, which is worse than saying this.
-//     🔴 SO THE QUESTION IS ANSWERED UPSTREAM OF THE PIXELS INSTEAD — see THE
-//     CAPTURE limb near the end of this file, which reads the capture suite
-//     rather than its output, and `apps/subscriptiontracker/integration_test/
-//     store_capture_guard.dart`, which refuses the shutter while the session's
-//     own identity is anywhere in the widget tree.
+//   · 🔴 ANY TEXT AT ALL, IN ANY FRAME — AMENDED 2026-09-21, AND THE HALF THAT
+//     WENT FALSE IS KEPT HERE RATHER THAN DELETED, because a reader who only
+//     saw the correction would not know what this guard used to certify.
+//
+//     WHAT IT SAID, VERBATIM, AND WHY IT WAS WRITTEN: "ANY TEXT AT ALL, IN ANY
+//     FRAME. This is not a gap to close later" — because "a text detector that
+//     reads some fonts and not others would report 'clean' for the frames it
+//     cannot read, which is worse than saying this". The day it mattered is
+//     recorded: on 2026-08-05 `05-settings.png` carried the end-to-end
+//     account's address, `subscriptiontracker-e2e+…@nikatru.com`, and every
+//     check here passed it — right size, right format, live posture, top band
+//     0.009. A human found it by opening the file.
+//
+//     WHAT IS STILL TRUE, AND IS THE WHOLE OF THAT ARGUMENT: nothing here READS
+//     A WORD. No OCR, no font, no glyph, no script. An address, a wrong label
+//     or a truncated headline in a frame is invisible to this guard, and the
+//     redirection below is still where that question is answered.
+//
+//     WHAT STOPPED BEING TRUE ON 2026-09-21, and the cost of leaving it
+//     standing: from #567 to #854 this listing carried four frames with NO
+//     GLYPHS IN THEM AT ALL. The capture fetched its fallback fonts at run
+//     time, CI never received them, and Flutter drew none — while the layout,
+//     the cards, the bundled icons and the colours all came out correct. Every
+//     check in this file passed them. The sentence above had turned a real
+//     limitation into a standing exemption, which is the same move this header
+//     already records itself making once before ("No static guard can read a
+//     banner out of a PNG"), and the correction is the same shape: the property
+//     that actually changes is measured, without reading anything. See THE INK
+//     limb near the end of this file — a frame whose ink coverage collapses
+//     against the floor recorded for THAT FRAME in the register fails, and the
+//     metric self-tests on every run, exactly as the banner detector does.
+//
+//     🔴 AND THE REDIRECTION BELOW IS NOT THE ANSWER TO THIS ONE, WHICH IS HOW
+//     THE GAP SURVIVED. THE CAPTURE limb near the end of this file reads the
+//     capture suite rather than its output, and
+//     `apps/subscriptiontracker/integration_test/store_capture_guard.dart`
+//     refuses the shutter while the session's own identity is anywhere in the
+//     widget tree. Both answer "does a frame leak the signed-in account". A
+//     textless set leaks nothing, so both pass it — as they did, for six weeks.
 //   · WHETHER THE COMMITTED GRAPHIC IS STILL WHAT ITS GENERATOR RENDERS. That
 //     needs Chrome, so it is a separate step —
 //     `node tooling/store/render-play-graphics.mjs --check` — which runs in the
@@ -144,6 +176,13 @@ import { decodeRgba, encodeRgba, PngUnreadable } from '../store/png-codec.mjs';
 // two readings of "does this capture leak the account" would eventually differ,
 // and the disagreement would be silent.
 import { scanCaptureSuite, selfTestAccountAddressDetector, SUITE_FILE } from '../store/capture-suite-scan.mjs';
+// 🔴 THE THING THE HEADER USED TO SAY COULD NOT BE SEEN — see THE INK limb at
+// the end of this file, and that module's header for the measurement table that
+// chose its threshold. It is a module for the same reason png-codec.mjs is one:
+// the guard and its tests must hold ONE reading of "there is text on this
+// screen", or the fixture ends up encoding a different definition from the
+// check it is meant to exercise.
+import { METRIC_ID as INK_METRIC, INK_DELTA, inkFraction, selfTestInkMetric } from '../store/frame-ink.mjs';
 // The ONE relaunch with V8 background tasks off — see that module's header.
 import { backgroundTasksNote, relaunchSingleThreaded } from './single-threaded-relaunch.mjs';
 
@@ -887,6 +926,258 @@ let debugBannerBrickChecked = false;
   }
 }
 
+// ── 🔴 THE INK: A FRAME OF A TEXT-BEARING SCREEN WITH NO TEXT IN IT ────────
+//
+// Added 2026-09-21, for row O-STORE-FRAMES-CARRY-NO-TEXT, after the second
+// defect this guard's own header said it could not see. Between #567 and #854
+// the four committed frames carried NO GLYPHS AT ALL — the capture fetched its
+// fallback fonts at run time and CI never received them — while the layout, the
+// cards, the bundled icons and the colours were all correct. Every limb above
+// passed them: right size, right colour type, posture "live", worst top band
+// 0.009. #847 bundled the fonts and closed the cause. The blindness is what let
+// it run for six weeks, and fixing only the instance would leave the next one
+// equally invisible.
+//
+// ⚠️ THIS STILL DOES NOT READ A WORD, AND THE HEADER'S ARGUMENT AGAINST AN OCR
+// PASS IS NOT BEING WAVED AWAY. A detector that reads some fonts and not others
+// reports "clean" for the frames it cannot read. Nothing here asks what was
+// drawn: `inkFraction` counts the pixels standing in local contrast to the
+// pixel right of them or below them, and glyphs are thousands of such
+// transitions where a card, a flat background and a gradient are none. When the
+// glyphs go and the icons stay, the number collapses — in any script.
+//
+// 🔴 THE FLOOR IS THE REGISTER'S, PER NAMED FRAME, AND IT CARRIES ITS OWN
+// DISPROOF. Each row records what the committed frame measured and what the
+// TEXTLESS control of that same frame measured, so a floor that would sit at or
+// under its own control is refused here rather than enforced: such a floor
+// could not have caught the set that actually shipped, which is the one thing
+// this limb has to be able to do. A per-class floor was measured first and does
+// not separate — the textless 01-home frame reads 0.0131, above the
+// text-bearing 03-insights frame at 0.0168 × 0.7 — and that measurement is in
+// the register's `_why` beside the numbers.
+//
+// A frame with no floor row FAILS. Committing a frame nobody measured is
+// exactly how the set that shipped got here, and a silent skip would let the
+// next rename take a frame out of this limb's reach with nothing going red.
+let inkBlocksRead = 0;
+let inkFramesMeasured = 0;
+let inkSelfTest = null;
+let tightestInk = null;
+{
+  for (const row of withGraphics) {
+    const g = contract.perChannel[row.id].graphicAssets;
+    const s = g?.screenshots;
+    if (!s || typeof s !== 'object') continue;
+    const template = row.storeMetadataDir;
+    // Already reported by the scan above; repeating it would be one fault with
+    // two verdicts.
+    if (typeof template !== 'string' || !template.includes('{app}')) continue;
+
+    // WHERE THE FRAMES ARE. The screenshot directory plus every device-type set
+    // the register declares, taken from the register itself: the phone set and
+    // the tablet set are the same pixels captured at two viewports, and a limb
+    // that read only `screenshots.dir` would judge four frames of the eight
+    // while printing a healthy-looking count.
+    const dirs = [s.dir ?? 'screenshots'];
+    const sets = s.deviceTypeCoverage?.sets;
+    if (sets !== null && typeof sets === 'object') {
+      for (const [name, spec] of Object.entries(sets)) {
+        if (name === '_why') continue;
+        if (spec && typeof spec.dir === 'string' && !dirs.includes(spec.dir)) dirs.push(spec.dir);
+      }
+    }
+
+    /** Every committed frame, keyed the way the register keys a floor: the path
+     *  INSIDE the metadata tree, so one map covers both device types. */
+    const frames = [];
+    for (const app of apps) {
+      if (typeof app.slug !== 'string' || app.slug === '') continue;
+      const dir = template.replace('{app}', app.slug);
+      if (!isDir(dir)) continue;
+      for (const sub of dirs) {
+        const shotDir = posix.join(dir, sub);
+        if (!isDir(shotDir)) continue;
+        for (const f of listDir(abs(shotDir))
+          .filter((x) => x.toLowerCase().endsWith('.png'))
+          .sort()) {
+          frames.push({ key: posix.join(sub, f), rel: posix.join(shotDir, f) });
+        }
+      }
+    }
+
+    const floors = s.inkFloor;
+    if (floors === null || typeof floors !== 'object' || Array.isArray(floors)) {
+      // 🔴 FRAMES COMMITTED AND NO FLOOR DECLARED IS THE STATE THIS LISTING WAS
+      // IN FROM #567 TO #854, so on the real repository it is COVERAGE LOST. A
+      // caller pointing this at a FIXTURE root is the weaker situation named at
+      // the top of this file — most fixtures model a listing tree written before
+      // this limb existed — and it says so out loud rather than failing every
+      // fixture, the same split the capture limb and the brick limb already make.
+      if (frames.length > 0 && scanningRealRepo) {
+        coverageLost([
+          `channel "${row.id}" has ${frames.length} committed screenshot(s) and ${REGISTER} declares no \`graphicAssets.screenshots.inkFloor\`.`,
+          'That block IS the right-hand side of "these frames carry text". Without it this limb ranges over',
+          'nothing and every frame is certified by never being measured — which is the state the listing was',
+          'in from #567 to #854, when four frames with no glyphs in them passed every other check here.',
+        ]);
+      }
+      prints.push(
+        frames.length > 0
+          ? `NO INK FLOOR (fixture root, NOT JUDGED): channel "${row.id}" has ${frames.length} committed frame(s) and declares no \`graphicAssets.screenshots.inkFloor\`. On the real repository this is COVERAGE LOST, not this line.`
+          : `NO INK FLOOR: channel "${row.id}" declares no \`graphicAssets.screenshots.inkFloor\`, and no frame is committed for it either, so nothing could be measured. The floor arrives with the frames.`,
+      );
+      continue;
+    }
+    if (typeof floors.source !== 'string' || floors.source.trim() === '') {
+      problems.push(unsourced(`storeMetadataContract.perChannel["${row.id}"].graphicAssets.screenshots.inkFloor`));
+      continue;
+    }
+    // 🔴 A FLOOR RECORDED AGAINST A DIFFERENT METRIC IS A NUMBER WHOSE MEANING
+    // CHANGED UNDERNEATH IT. Comparing today's reading to a threshold measured
+    // by another definition is worse than not comparing: it looks like a check.
+    if (floors.metric !== INK_METRIC) {
+      coverageLost([
+        `${REGISTER} records ink floors against metric ${JSON.stringify(floors.metric ?? null)} and this guard computes "${INK_METRIC}".`,
+        'Each floor is a number MEASURED by one definition of ink. Enforcing it with another compares two',
+        'different quantities and reports a verdict about neither. Re-measure the set with the metric this',
+        'guard computes, or restore the one those numbers were taken with.',
+      ]);
+    }
+    const fraction = floors.minFractionOfMeasured;
+    if (!Number.isFinite(fraction) || fraction <= 0 || fraction >= 1) {
+      coverageLost([
+        `${REGISTER} …inkFloor.minFractionOfMeasured is ${JSON.stringify(fraction ?? null)}, which is not a fraction strictly between 0 and 1.`,
+        'At 0 or below, every floor is 0 and every frame clears it — including a blank one. At 1 or above,',
+        'every floor sits at or over the reading it was taken from and fires on the frame that defined it.',
+        'Either way the comparison below stops being a comparison, which is the failure this limb exists to',
+        'remove rather than to become.',
+      ]);
+    }
+    const rows = floors.frames;
+    if (rows === null || typeof rows !== 'object' || Array.isArray(rows) || Object.keys(rows).filter((k) => k !== '_why').length === 0) {
+      coverageLost([
+        `${REGISTER} …inkFloor declares an EMPTY \`frames\` map.`,
+        'The loop below iterates it. Empty, no committed frame has a floor, every frame is reported as',
+        'carrying no recorded floor, and a set that was never measured reads exactly like a set that was.',
+      ]);
+    }
+    inkBlocksRead++;
+
+    // 🔴 THE METRIC PROVES ITSELF BEFORE A SINGLE REAL FRAME IS READ, for the
+    // reason the banner detector does and the account-address matcher does: the
+    // failure that costs everything is not the threshold being slightly wrong,
+    // it is `inkFraction` being edited into something that returns a constant,
+    // at which point every frame clears every floor forever and this limb prints
+    // ok having measured nothing. See that module's `selfTestInkMetric`.
+    const st = selfTestInkMetric(fraction);
+    inkSelfTest = st;
+    if (!st.ok) {
+      coverageLost([
+        'the ink metric FAILED ITS OWN SELF-TEST and no frame was measured.',
+        `a synthetic frame carrying glyph-shaped strokes measured ${st.withText.toFixed(5)} (needs >= ${st.floor.toFixed(5)}),`,
+        `and the same layout with the strokes removed measured ${st.textless.toFixed(5)} (needs < ${st.floor.toFixed(5)}).`,
+        `The floor in that pair is ${fraction} of the text-bearing reading — the same relationship every row`,
+        'in the register encodes. The metric can no longer tell a frame with text from one without, so it',
+        'would pass every real frame for the same reason, silently.',
+      ]);
+    }
+
+    // A floor row matching no committed frame describes a set that is not here.
+    // Only asked when frames exist: a channel whose screenshots have not landed
+    // yet is the gap the limb above already PRINTS, not a stale register.
+    if (frames.length > 0) {
+      const present = new Set(frames.map((f) => f.key));
+      for (const k of Object.keys(rows)) {
+        if (k === '_why') continue;
+        if (!present.has(k)) {
+          problems.push(
+            `${REGISTER} records an ink floor for "${k}" and no such frame is committed for channel "${row.id}". The measurement describes a frame that is not there, so it holds nothing — and the frame that replaced it is measured against a floor nobody took from it.`,
+          );
+        }
+      }
+    }
+
+    for (const fr of frames) {
+      const spec = rows[fr.key];
+      if (spec === undefined || spec === null || typeof spec !== 'object') {
+        problems.push(
+          `${fr.rel} is committed and ${REGISTER} records NO ink floor for "${fr.key}". A frame nobody measured is a frame this limb cannot judge, and passing it would certify it by never looking — which is how four frames with no glyphs in them stayed in this listing from #567 to #854. Measure it and add the row with its date and the command.`,
+        );
+        continue;
+      }
+      const measured = spec.measured;
+      const control = spec.textlessControl;
+      if (!Number.isFinite(measured) || !Number.isFinite(control)) {
+        problems.push(
+          `${REGISTER} …inkFloor.frames["${fr.key}"] declares ${JSON.stringify({ measured: measured ?? null, textlessControl: control ?? null })}, and both must be numbers. The floor is ${fraction} of \`measured\`, and \`textlessControl\` is the reading that proves such a floor can fire at all; a row missing either enforces a limit nobody took.`,
+        );
+        continue;
+      }
+      const floor = measured * fraction;
+      // 🔴 THE ROW CARRIES ITS OWN DISPROOF, AND IT IS CHECKED. A floor at or
+      // under the textless reading of the same frame is a floor that would have
+      // passed the set that shipped — an assertion that cannot fail, wearing the
+      // appearance of one that can.
+      if (!(control < floor)) {
+        problems.push(
+          `${REGISTER} …inkFloor.frames["${fr.key}"] puts the floor at ${floor.toFixed(5)} (${fraction} of ${measured}) and records its own TEXTLESS control at ${control}. A floor at or below the textless reading of the same frame could not have caught the frames this listing carried from #567 to #854, which is the one thing it exists to do.`,
+        );
+        continue;
+      }
+      const buf = read(fr.rel);
+      if (buf === null) {
+        problems.push(`${fr.rel} was listed in the tree and could not be read back, so its ink was never measured.`);
+        continue;
+      }
+      let img;
+      try {
+        img = decodeRgba(buf);
+      } catch (e) {
+        if (!(e instanceof PngUnreadable)) throw e;
+        problems.push(
+          `${fr.rel} could not be decoded, so its ink was never measured: ${e.lines[0]}. A frame this guard cannot look at must not be reported as one it looked at.`,
+        );
+        continue;
+      }
+      const ink = inkFraction(img);
+      inkFramesMeasured++;
+      const ratio = ink / floor;
+      if (tightestInk === null || ratio < tightestInk.ratio) tightestInk = { rel: fr.rel, ink, floor, ratio };
+      if (ink < floor) {
+        problems.push(
+          `${fr.rel} measures ${ink.toFixed(5)} ink and the floor recorded for it is ${floor.toFixed(5)} (${fraction} of the ${measured} this frame measured when it was captured with its text). The textless control for the same frame reads ${control}, so this frame is ${ink < control * 1.2 ? 'at the level of a capture with no glyphs at all' : 'well down towards one'}. Between #567 and #854 this listing carried four frames whose fonts never loaded: correct layout, correct icons, correct colours, no title, label, amount or nav caption anywhere. Open the frame before assuming a false alarm; if the screen legitimately changed, re-measure it and update the row with the date.`,
+        );
+      }
+    }
+  }
+
+  // 🔴 "NOTHING TO MEASURE" IS NOT A PASS ON THE REAL TREE. A fixture root with
+  // no screenshots is the weaker situation `scanningRealRepo` names elsewhere in
+  // this file and it prints; the repository CI runs against has eight committed
+  // frames, and a run of it that measured none of them has lost the limb, not
+  // found it satisfied.
+  if (scanningRealRepo && inkBlocksRead === 0) {
+    coverageLost([
+      `no channel in ${REGISTER} declares \`graphicAssets.screenshots.inkFloor\`, so no frame's ink was measured.`,
+      'That block is the only declaration of what a frame carrying text looks like. Without it a textless set',
+      'passes every remaining check in this file, exactly as one did from #567 to #854.',
+    ]);
+  }
+  if (scanningRealRepo && inkFramesMeasured === 0) {
+    coverageLost([
+      `${inkBlocksRead} ink floor block(s) were read and ZERO frames were measured against them.`,
+      'Either the frames moved out of the directories the register declares, or every one of them failed to',
+      'decode. Both report every committed frame full of text by never reading one.',
+      '',
+      '⚠️ THIS IS STRICTER THAN THE "screenshots absent, row deferred -> PRINT" LINE ABOVE, DELIBERATELY.',
+      'That line is about a set that has never been captured, which is owner- and secret-gated work. A',
+      'register that RECORDS a floor for eight named frames is a register describing a set somebody did',
+      'capture, and finding none of them is a different fact. If the set is being withdrawn on purpose,',
+      'withdraw its floors in the same change and this limb goes quiet with it.',
+    ]);
+  }
+}
+
 // ── the scan must still be reaching the tree ────────────────────────────────
 if (treesSeen === 0) {
   coverageLost([
@@ -957,10 +1248,32 @@ if (problems.length) {
     console.log('   ⬜ …and 0 frames resolved is not a pass. The suite captures nothing this scan can name;');
     console.log('      see the FAIL above, because a capture nobody can name is a frame nobody can vet.');
   }
+  if (inkSelfTest !== null) {
+    console.log(
+      `ok   THE INK — metric "${INK_METRIC}" (per-channel delta ${INK_DELTA}) SELF-TESTED this run: a synthetic frame ` +
+        `carrying glyph-shaped strokes measured ${inkSelfTest.withText.toFixed(5)}, the same layout with none measured ` +
+        `${inkSelfTest.textless.toFixed(5)}, floor ${inkSelfTest.floor.toFixed(5)}. ${inkFramesMeasured} committed frame(s) ` +
+        'measured against the floor recorded for THAT frame in the register.',
+    );
+    if (tightestInk !== null) {
+      console.log(
+        `     tightest margin: ${tightestInk.rel} at ${tightestInk.ink.toFixed(5)} against a floor of ` +
+          `${tightestInk.floor.toFixed(5)} — ${tightestInk.ratio.toFixed(2)}x. Nothing here READS a word; it measures ` +
+          'how much of the frame stands in local contrast, which is what collapses when glyphs vanish and icons stay.',
+      );
+    }
+  } else {
+    console.log('   ⬜ THE INK — no `inkFloor` block was read, so the metric never self-tested and no frame was');
+    console.log('      measured; the printed line above names the channel. On the real repository, frames with no');
+    console.log('      floor declared for them are COVERAGE LOST rather than this line.');
+  }
   console.log('   ⚠️ CANNOT SEE: whether a screenshot is REPRESENTATIVE of the app, or whether the feature');
-  console.log('      graphic is any good. Size, format, count, recorded posture and the ABSENCE OF THE DEMO');
-  console.log('      BANNER are what this proves. "Demonstrates the actual in-app experience" is a human call,');
-  console.log('      which is why the capture workflow opens a pull request rather than committing directly.');
+  console.log('      graphic is any good. Size, format, count, recorded posture, the ABSENCE OF THE DEMO BANNER');
+  console.log('      and the PRESENCE OF INK are what this proves. "Demonstrates the actual in-app experience"');
+  console.log('      is a human call, which is why the capture workflow opens a pull request, not a commit.');
+  console.log('   ⚠️ CANNOT SEE: WHAT THE WORDS SAY. The ink limb measures how much of a frame stands in local');
+  console.log('      contrast — it never reads a glyph, a font or a script. A frame whose labels are present and');
+  console.log('      WRONG, truncated, or in the wrong language measures exactly like a correct one.');
   console.log('   ⚠️ CANNOT SEE: whether a committed graphic is still what its generator renders. That needs');
   console.log('      a browser: `node tooling/store/render-play-graphics.mjs --check`, in the lane that has one.');
   // Read from this process's own start-up flags: remove the relaunch above and
