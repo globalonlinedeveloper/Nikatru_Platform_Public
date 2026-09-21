@@ -521,9 +521,9 @@ class BudgetScreen extends ConsumerWidget {
             // `floatingActionButton`, which reserves nothing and floats over
             // this list, so its 72 px was dropped instead — visible in
             // `04-budget.png` of the frames merged as `9f548515`, where the "+"
-            // covers the AI tools amount. [AppShell.pageInset] states the
+            // covers the AI tools amount. [AppShell.pageInsetOf] states the
             // arithmetic once for all five branches.
-            padding: AppShell.pageInset,
+            padding: AppShell.pageInsetOf(context),
             children: <Widget>[
               // The heading stays FULL WIDTH in both layouts. It is the page's
               // one label, not a card, and splitting a title across a column

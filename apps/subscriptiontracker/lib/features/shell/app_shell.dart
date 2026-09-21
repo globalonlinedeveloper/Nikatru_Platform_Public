@@ -59,10 +59,11 @@ class AppShell extends StatelessWidget {
   /// that agrees today.
   static const double fabReservedHeight = fabSize + kFloatingActionButtonMargin;
 
-  /// The page inset EVERY scrollable branch of this shell uses.
+  /// The page inset EVERY scrollable branch of this shell uses, for the
+  /// window class [context] is laid out in.
   ///
-  /// 🔴 THE BOTTOM IS NOT `AppSpacing.xl`, AND THE DIFFERENCE IS A LIVE DEFECT
-  /// THIS CLOSES. Four branches carried
+  /// 🔴 THE BOTTOM IS NOT ALWAYS `AppSpacing.xl`, AND THE DIFFERENCE IS A LIVE
+  /// DEFECT THIS CLOSES. Four branches carried
   /// `fromLTRB(gutterCompact, gutterCompact, gutterCompact, xl)` — a 24 px
   /// bottom — and each one says in its own comment why: the live inset was
   /// `fromLTRB(18, 58, 18, 108)` and the chassis docking argued that "108
@@ -85,25 +86,37 @@ class AppShell extends StatelessWidget {
   /// exposure and padding the two branches that happened to be photographed
   /// would leave the class open. One number, five consumers, and
   /// `test/width_shell_fab_test.dart` measures the RECTS on every branch
-  /// rather than trusting this constant to be adopted.
-  static const EdgeInsets pageInset = EdgeInsets.fromLTRB(
+  /// rather than trusting this to be adopted.
+  ///
+  /// ⏱ 2026-09-22 · PER WINDOW CLASS, BECAUSE AN INSET ONLY MOVES WHERE A LIST
+  /// ENDS. The store photographs every tab at scroll offset 0, and at rest on a
+  /// phone the "+" still floated over a row in the MIDDLE of the page — the
+  /// frame #854 shipped. So at COMPACT the shell insets its BODY by the band
+  /// (see `build`) and nothing is ever laid out under the button; a list there
+  /// would pay the band twice if it also padded for it, so this returns the
+  /// plain `AppSpacing.xl`. In the rail classes the FAB still floats over the
+  /// body and the band stays in the list's padding. [fabClearanceOf] is the
+  /// switch.
+  static EdgeInsets pageInsetOf(BuildContext context) => EdgeInsets.fromLTRB(
     AppSpacing.gutterCompact,
     AppSpacing.gutterCompact,
     AppSpacing.gutterCompact,
-    AppSpacing.xl + fabReservedHeight,
+    AppSpacing.xl + fabClearanceOf(context),
   );
 
-  /// The FAB band a screen must leave free at its bottom: [fabReservedHeight]
-  /// when it is rendered UNDER this shell, zero when it is not.
+  /// The FAB band a screen must leave free at its own bottom:
+  /// [fabReservedHeight] where this shell's FAB floats over its body, zero
+  /// where it does not.
   ///
-  /// For the one screen that is both: `SubscriptionDetailScreen` is pushed
-  /// over the shell at `/sub/:id` (no FAB above it) and also embedded as
-  /// home's detail pane at wide widths (the shell's FAB floats over its last
-  /// row). A constant would pay 72 px on the route that has no button.
+  /// Zero in two places, for two reasons:
+  ///   · NOT UNDER THE SHELL. `SubscriptionDetailScreen` is pushed over the
+  ///     shell at `/sub/:id` (no FAB above it) and also embedded as home's
+  ///     detail pane at wide widths (the FAB floats over its last row). A
+  ///     constant would pay 72 px on the route that has no button.
+  ///   · COMPACT. The shell has already taken the band out of the body, so a
+  ///     screen that padded for it too would pay it twice.
   static double fabClearanceOf(BuildContext context) =>
-      context.findAncestorWidgetOfExactType<AppShell>() == null
-      ? 0
-      : fabReservedHeight;
+      context.dependOnInheritedWidgetOfExactType<_FabBand>()?.clearance ?? 0;
 
   /// ⚠️ STRUCTURAL CHANGE, NAMED BECAUSE IT IS THE ONE THING IN THIS FILE A
   /// REVIEWER CANNOT SEE FROM THE DIFF ALONE: this was
@@ -129,6 +142,20 @@ class AppShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // The window class is read the way the chassis reads it: `AppScaffold`
+    // switches on `windowClassFor(constraints.maxWidth)` of ITS constraints,
+    // and it is this widget's only child, so these are the same constraints.
+    // Not `MediaQuery`: a window is not always the size of the screen, and
+    // the width harness pins layout without moving `MediaQuery` at all.
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) => _build(
+        context,
+        compact: windowClassFor(constraints.maxWidth) == WindowClass.compact,
+      ),
+    );
+  }
+
+  Widget _build(BuildContext context, {required bool compact}) {
     final AppLocalizations l10n = AppLocalizations.of(context);
     final List<_TabSpec> tabs = _tabs(l10n);
     final ThemeData theme = Theme.of(context);
@@ -146,7 +173,29 @@ class AppShell extends StatelessWidget {
       ),
       body: Stack(
         children: <Widget>[
-          Positioned.fill(child: navigationShell),
+          // 🔴 AT COMPACT THE BODY STOPS ABOVE THE "+". The FAB is laid out
+          // over the body and reserves nothing, so a page inset can only clear
+          // it where a list ENDS; at rest the button floated over whatever row
+          // sat at that height — the store frame #854 shipped, the "+" across a
+          // price. Taking the band out of the body means nothing is ever laid
+          // out under the button on a phone, scrolled or not, on every branch.
+          // The cost is a 72 px strip of page ground above the pill, with the
+          // button sitting in it (docking the "+" into the pill is ADR 077
+          // §5.3's, not this). The rail classes keep the band in each list's
+          // padding, as before: a full-width strip there would take 72 px
+          // from every column of a wide body, including the ones the button
+          // is nowhere near (home's list pane, the 720-capped desktop pages).
+          // [_FabBand] tells the screens which regime they are in, so neither
+          // pays twice.
+          Positioned.fill(
+            child: Padding(
+              padding: EdgeInsets.only(bottom: compact ? fabReservedHeight : 0),
+              child: _FabBand(
+                clearance: compact ? 0 : fabReservedHeight,
+                child: navigationShell,
+              ),
+            ),
+          ),
           // DEMO-DATA MARKER. Without a backend configured the app serves
           // SeedApiClient - Netflix, Spotify, ChatGPT Plus and friends - and until
           // 2026-07-27 that was indistinguishable from the user's own data. Paired
@@ -417,4 +466,19 @@ class _TabSpec {
   const _TabSpec(this.icon, this.label);
   final IconData icon;
   final String label;
+}
+
+/// How much of the FAB band the screens under this shell must still leave
+/// free at their own bottom: the whole band in the rail classes, zero at
+/// compact (the body is already inset). Read through
+/// [AppShell.fabClearanceOf]; absent — so zero — on a route pushed above the
+/// shell.
+class _FabBand extends InheritedWidget {
+  const _FabBand({required this.clearance, required super.child});
+
+  final double clearance;
+
+  @override
+  bool updateShouldNotify(_FabBand oldWidget) =>
+      clearance != oldWidget.clearance;
 }

@@ -25,15 +25,20 @@
 // the "+" floats over ITS last row too, although it is not a branch.
 //
 // ── WHAT IS MEASURED, AND WHAT MAKES IT ABLE TO FAIL ────────────────────────
-// Every vertical, page-level `ListView` the FAB is drawn over (horizontally
-// under the button, and running down into its band) gets two assertions:
+// Every vertical, page-level `ListView` in the FAB's column (horizontally
+// under the button) gets two assertions:
 //
-//   1. THE RESERVATION — the list's bottom padding puts the end of its content
-//      at or above the FAB's top, measured against the RECTS the framework
-//      laid out (`viewport.bottom - padding.bottom <= fab.top`). This holds
-//      for every such list, scrolling or not: that is the closes clause
-//      ("the scrollable list reserves the FAB's height plus its margin"), and
-//      a list that is short today is one seed row away from reaching the band.
+//   1. THE RESERVATION — the list's viewport and its bottom padding together
+//      put the end of its content at or above the FAB's top, measured against
+//      the RECTS the framework laid out
+//      (`viewport.bottom - padding.bottom <= fab.top`). This holds for every
+//      such list, scrolling or not: that is the closes clause ("the scrollable
+//      list reserves the FAB's height plus its margin"), and a list that is
+//      short today is one seed row away from reaching the band. WHICH of the
+//      two pays depends on the window class: at compact the shell insets its
+//      BODY by the band, so the viewport ends at the FAB's top; in the rail
+//      classes the band is in the list's padding. The rect sum is the same
+//      rule either way, and removing either payment turns it red.
 //   2. THE PIXEL — for a list that scrolls, it is scrolled to its TRUE end and
 //      its last laid-out child must end at or above the FAB's top.
 //
@@ -45,11 +50,14 @@
 // not the last row at all. [_scrollToEnd] jumps until `pixels` IS the max.
 //
 // ⚠️ AND NOTHING HERE MAY PASS BY MEASURING NOTHING. [_mustReachTheBand] names
-// every (layout, branch) where a list is drawn under the FAB against the seed
+// every (layout, branch) where a list is in the FAB's column against the seed
 // data — each one is required to be found — and [_mustScroll] the ones whose
 // list must actually reach its own end, so "it passed because the list moved
 // sideways / got shorter" cannot become the reason this file is green.
 // ─────────────────────────────────────────────────────────────────────────────
+import 'dart:io';
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -58,7 +66,9 @@ import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'package:subscriptiontracker/core/e2e_keys.dart';
 import 'package:subscriptiontracker/core/router.dart';
+import 'package:subscriptiontracker/data/models/budget_info.dart';
 import 'package:subscriptiontracker/data/models/subscription.dart';
+import 'package:subscriptiontracker/data/subscriptions/subscription_repository.dart';
 import 'package:subscriptiontracker/features/detail/subscription_detail_screen.dart';
 import 'package:subscriptiontracker/features/shared/widgets.dart';
 import 'package:subscriptiontracker/features/shell/app_shell.dart';
@@ -88,9 +98,9 @@ const List<(Size, String)> _layouts = <(Size, String)>[
   (kDesktop, 'desktop'),
 ];
 
-/// Every (layout, branch) where, against the seed data, a page-level list runs
-/// down under the FAB — each is REQUIRED to be found, so a list cannot pass
-/// this file by moving out of the button's way.
+/// Every (layout, branch) where, against the seed data, a page-level list is in
+/// the FAB's column — each is REQUIRED to be found, so a list cannot pass this
+/// file by moving out of the button's way.
 ///
 /// MEASURED 2026-09-22, not assumed. The four absent pairs are absent because
 /// nothing is under the button there, not because nobody looked:
@@ -114,7 +124,7 @@ const Set<String> _mustReachTheBand = <String>{
   'desktop/calendar',
 };
 
-/// The (layout, branch) pairs whose list under the FAB must SCROLL against the
+/// The (layout, branch) pairs whose list in the FAB's column must SCROLL on the
 /// seed data, so assertion 2 — the drawn pixel — is exercised and not skipped.
 /// Measured 2026-09-22: every pair that scrolls today. Calendar at all three
 /// layouts, tablet/insights and the desktop detail pane fit without scrolling,
@@ -154,8 +164,13 @@ class _SignedInAuth extends core.AuthRepository {
 ///
 /// Not optional: a `StatefulNavigationShell` cannot be constructed standalone,
 /// so the FAB under test is reachable ONLY through the router. Same rig, and
-/// the same overrides, as `a11y_semantics_test.dart`'s `pumpShell`.
-Future<ProviderContainer> _pumpShell(WidgetTester tester, Size size) async {
+/// the same overrides, as `a11y_semantics_test.dart`'s `pumpShell`. [overrides]
+/// are appended last, so on riverpod 2.6.1 they win (see `pumpAt`).
+Future<ProviderContainer> _pumpShell(
+  WidgetTester tester,
+  Size size, {
+  List<Override> overrides = const <Override>[],
+}) async {
   await setSurface(tester, size);
   final ProviderContainer c = ProviderContainer(
     overrides: <Override>[
@@ -164,6 +179,7 @@ Future<ProviderContainer> _pumpShell(WidgetTester tester, Size size) async {
       legalReacceptanceNeededProvider.overrideWithValue(false),
       authRepositoryProvider.overrideWithValue(_SignedInAuth()),
       analyticsConsentProvider.overrideWithValue(core.ConsentStatus.denied),
+      ...overrides,
     ],
   );
   addTearDown(c.dispose);
@@ -210,12 +226,17 @@ Rect _fab(WidgetTester tester) => tester.getRect(find.byKey(E2EKeys.fabAdd));
 Finder _exactly(Element e) =>
     find.byElementPredicate((Element x) => identical(x, e));
 
-/// Every vertical `ListView` the FAB is drawn over, as ELEMENTS (so scrolling
-/// one list cannot shift which widget an index-based finder resolves to).
+/// Every vertical `ListView` in the FAB's column, as ELEMENTS (so scrolling one
+/// list cannot shift which widget an index-based finder resolves to).
 ///
 /// Page-level only: a list inside another vertical scrollable is part of that
 /// scrollable's content, and the OUTER list's reservation is what clears it.
-List<Element> _listsUnderTheFab(WidgetTester tester, Rect fab) {
+///
+/// ⚠️ THE COLUMN, NOT "RUNS DOWN INTO THE BAND". The first cut also required
+/// `bottom > fab.top`; the compact body now stops exactly AT the FAB's top, so
+/// that filter would drop every phone list and the phone half of the sweep
+/// would pass over nothing.
+List<Element> _listsInTheFabColumn(WidgetTester tester, Rect fab) {
   final List<Element> out = <Element>[];
   for (final Element e in find.byType(ListView).evaluate()) {
     if ((e.widget as ListView).scrollDirection != Axis.vertical) continue;
@@ -231,7 +252,6 @@ List<Element> _listsUnderTheFab(WidgetTester tester, Rect fab) {
     if (nested) continue;
     final Rect r = tester.getRect(_exactly(e));
     if (r.right <= fab.left || r.left >= fab.right) continue;
-    if (r.bottom <= fab.top) continue;
     out.add(e);
   }
   return out;
@@ -277,7 +297,7 @@ Future<({int lists, int scrolled})> _assertClears(
   String where,
 ) async {
   final Rect fab = _fab(tester);
-  final List<Element> lists = _listsUnderTheFab(tester, fab);
+  final List<Element> lists = _listsInTheFabColumn(tester, fab);
   int scrolled = 0;
   for (final Element e in lists) {
     final Finder list = _exactly(e);
@@ -288,11 +308,12 @@ Future<({int lists, int scrolled})> _assertClears(
       viewport.bottom - pad.bottom,
       lessThanOrEqualTo(fab.top),
       reason:
-          '$where: a list under the FAB does not reserve its band. The FAB '
-          'occupies ${fab.top}..${fab.bottom}; the list ($viewport) ends its '
-          'content at ${viewport.bottom - pad.bottom} with a bottom inset of '
-          '${pad.bottom}. It needs AppShell.fabReservedHeight '
-          '(${AppShell.fabReservedHeight}) of room below the last row',
+          '$where: a list in the FAB\'s column does not reserve its band. The '
+          'FAB occupies ${fab.top}..${fab.bottom}; the list ($viewport) ends '
+          'its content at ${viewport.bottom - pad.bottom} with a bottom inset '
+          'of ${pad.bottom}. It needs AppShell.fabReservedHeight '
+          '(${AppShell.fabReservedHeight}) of room below the last row — out '
+          'of the body at compact, in the list\'s padding otherwise',
     );
 
     final ScrollableState s = _scrollerOf(tester, list);
@@ -321,6 +342,122 @@ Rect _lowest(WidgetTester tester, Finder rows) {
   return lowest;
 }
 
+// ── AT REST: THE FRAME THE STORE ACTUALLY PHOTOGRAPHS ───────────────────────
+// Everything above scrolls a list to its END. The store suite never does: it
+// photographs each tab at scroll offset 0 (`store_screenshots_test.dart`, the
+// "asserted where it lies, not after a scroll" note before `01-home`). A page
+// inset only moves where a list ENDS, so on a phone the "+" can still float
+// over a row in the middle of the page at rest — which is the frame #854
+// shipped: the "per month" line of the Video streaming row under the button.
+
+/// The phone the store photographs: `CAPTURES` in
+/// `tooling/store/capture-play-screenshots.mjs`, 360×640 logical at dpr 3.
+const Size _capturePhone = Size(360, 640);
+
+/// The six rows the store suite seeds, as `kIllustrative` in
+/// `integration_test/store_screenshots_test.dart` declares them. Copied rather
+/// than imported (that file is an integration binding, not a library); the
+/// first case of the group pins the copy to the source text, so the two cannot
+/// drift apart silently.
+const List<List<String>> _illustrative = <List<String>>[
+  <String>['Video streaming', '15.99', 'Streaming'],
+  <String>['Music streaming', '10.99', 'Music'],
+  <String>['Cloud storage', '2.99', 'Cloud'],
+  <String>['AI assistant', '20.00', 'AI tools'],
+  <String>['Fitness club', '39.00', 'Fitness'],
+  <String>['News digest', '4.50', 'News'],
+];
+
+/// The account the store photographs: the six rows, each renewing one monthly
+/// cycle from today (the add sheet's default, which is how the suite seeds
+/// them), and the bare-zero budget `/budget` returns to a user who never set
+/// one.
+class _IllustrativeRepo implements SubscriptionRepository {
+  @override
+  Future<List<Subscription>> fetchAll() async {
+    final DateTime today = DateTime.now();
+    final int lastDay = DateTime(today.year, today.month + 2, 0).day;
+    final DateTime renews = DateTime(
+      today.year,
+      today.month + 1,
+      math.min(today.day, lastDay),
+    );
+    return <Subscription>[
+      for (final List<String> row in _illustrative)
+        Subscription(
+          id: row[0],
+          name: row[0],
+          category: row[2],
+          price: Money((double.parse(row[1]) * 100).round(), 'USD'),
+          cycle: BillingCycle.monthly,
+          nextRenewal: renews,
+        ),
+    ];
+  }
+
+  @override
+  Future<BudgetInfo> budget() async => BudgetInfo.fromJson(<String, dynamic>{});
+
+  @override
+  dynamic noSuchMethod(Invocation i) =>
+      throw UnimplementedError('${i.memberName} is not under test');
+}
+
+/// Every text glyph box a viewer can SEE that the FAB's rect covers, plus how
+/// many visible boxes in the FAB's column were measured at all.
+///
+/// ⚠️ NOT `find.byType(Text).hitTestable()`, AND THE REASON IS THE DEFECT.
+/// `hitTestable()` keeps a widget only if a hit test at its centre reaches it,
+/// and the `Scaffold` hit-tests its FAB before its body — so a line whose
+/// centre is under the "+" is exactly the line `hitTestable()` drops. The
+/// filter would hide the very overlap this group exists to catch. What is
+/// measured instead is what the camera sees:
+///   · onstage only (the finder's default skips the four offstage branches);
+///   · the GLYPHS, via `getBoxesForSelection`, not the paragraph's box — a
+///     label in an `Expanded` has a box far wider than its words;
+///   · clipped to every enclosing `Scrollable`, so a row laid out in the
+///     cache extent below the viewport is not "under" anything;
+///   · the FAB's own icon excluded (it is a `RichText` too).
+({List<String> covered, int inColumn}) _visibleTextUnder(
+  WidgetTester tester,
+  Rect fab,
+) {
+  final Element button = find.byKey(E2EKeys.fabAdd).evaluate().single;
+  final List<String> covered = <String>[];
+  int inColumn = 0;
+  for (final Element e in find.byType(RichText).evaluate()) {
+    bool inButton = false;
+    Rect clip = Rect.largest;
+    e.visitAncestorElements((Element a) {
+      if (identical(a, button)) {
+        inButton = true;
+        return false;
+      }
+      if (a.widget is Scrollable) {
+        clip = clip.intersect(tester.getRect(_exactly(a)));
+      }
+      return true;
+    });
+    if (inButton) continue;
+    final RenderParagraph p = e.renderObject! as RenderParagraph;
+    final String text = p.text.toPlainText();
+    if (text.isEmpty) continue;
+    for (final TextBox b in p.getBoxesForSelection(
+      TextSelection(baseOffset: 0, extentOffset: text.length),
+    )) {
+      final Rect local = b.toRect();
+      final Rect seen = Rect.fromPoints(
+        p.localToGlobal(local.topLeft),
+        p.localToGlobal(local.bottomRight),
+      ).intersect(clip);
+      if (seen.width <= 0 || seen.height <= 0) continue;
+      if (seen.right > fab.left && seen.left < fab.right) inColumn++;
+      if (seen.overlaps(fab)) covered.add('"$text" at $seen');
+    }
+  }
+  return (covered: covered, inColumn: inColumn);
+}
+
 void main() {
   group('the shell FAB clears every list it floats over', () {
     for (final (Size size, String layout) in _layouts) {
@@ -341,9 +478,9 @@ void main() {
               seen.lists,
               greaterThan(0),
               reason:
-                  '$where found no list under the FAB, so the clearance was '
-                  'asserted over nothing. If the layout really moved the list '
-                  'out of the button\'s column, take it out of '
+                  '$where found no list in the FAB\'s column, so the '
+                  'clearance was asserted over nothing. If the layout really '
+                  'moved the list out of the button\'s column, take it out of '
                   '_mustReachTheBand on purpose',
             );
           }
@@ -397,7 +534,7 @@ void main() {
           .evaluate()
           .first;
       expect(
-        _listsUnderTheFab(tester, _fab(tester)),
+        _listsInTheFabColumn(tester, _fab(tester)),
         contains(detailList),
         reason:
             'the detail pane\'s list is not under the FAB at desktop, so this '
@@ -480,5 +617,98 @@ void main() {
             'category amount',
       );
     });
+  });
+
+  group('at rest, the frame the store photographs', () {
+    test('the six rows are the store suite\'s own', () {
+      final String source = File(
+        'integration_test/store_screenshots_test.dart',
+      ).readAsStringSync();
+      final RegExpMatch? block = RegExp(
+        r'kIllustrative = <List<String>>\[(.*?)\n\];',
+        dotAll: true,
+      ).firstMatch(source);
+      expect(
+        block,
+        isNotNull,
+        reason: 'kIllustrative is no longer declared where this pin reads it',
+      );
+      // Both directions: a row edited on either side, a row added to or
+      // dropped from the source, or the order changed all fail here.
+      final List<List<String>> seeded =
+          RegExp(
+            r"<String>\['([^']*)', '([^']*)', '([^']*)'\]",
+          ).allMatches(block!.group(1)!).map((RegExpMatch m) {
+            return <String>[m.group(1)!, m.group(2)!, m.group(3)!];
+          }).toList();
+      expect(
+        seeded,
+        _illustrative,
+        reason:
+            'kIllustrative no longer seeds these rows, so this group '
+            'photographs an account the store suite does not — re-copy them',
+      );
+    });
+
+    for (final (String path, String name) in _branches) {
+      // Settings is not one of the store's frames.
+      if (name == 'settings') continue;
+      testWidgets('phone/$name at scroll offset 0: no visible text under the '
+          'FAB', (WidgetTester tester) async {
+        // The true 360×640 frame: `setSurface` pins layout but leaves
+        // MediaQuery at the test default (see `width_harness.dart`).
+        tester.view.physicalSize = const Size(1080, 1920);
+        tester.view.devicePixelRatio = 3;
+        addTearDown(tester.view.reset);
+        final ProviderContainer c = await _pumpShell(
+          tester,
+          _capturePhone,
+          overrides: <Override>[
+            subscriptionRepositoryProvider.overrideWithValue(
+              _IllustrativeRepo(),
+            ),
+          ],
+        );
+        await _open(tester, c, path);
+        expect(
+          c
+              .read(subscriptionsControllerProvider)
+              .requireValue
+              .map((Subscription s) => s.name),
+          unorderedEquals(_illustrative.map((List<String> r) => r[0])),
+          reason: 'the fake account did not reach the controller',
+        );
+        for (final ScrollableState s in tester.stateList<ScrollableState>(
+          find.byType(Scrollable),
+        )) {
+          expect(
+            s.position.pixels,
+            0,
+            reason: 'phone/$name is not at rest, so this is not the frame',
+          );
+        }
+
+        final Rect fab = _fab(tester);
+        final ({List<String> covered, int inColumn}) seen = _visibleTextUnder(
+          tester,
+          fab,
+        );
+        expect(
+          seen.inColumn,
+          greaterThan(0),
+          reason:
+              'phone/$name shows no text at all in the FAB\'s column, so '
+              '"nothing is under the button" was asserted over nothing',
+        );
+        expect(
+          seen.covered,
+          isEmpty,
+          reason:
+              'phone/$name at rest: the FAB ($fab) is drawn over visible '
+              'text — the frame the store photographs. Covered: '
+              '${seen.covered.join('; ')}',
+        );
+      });
+    }
   });
 }

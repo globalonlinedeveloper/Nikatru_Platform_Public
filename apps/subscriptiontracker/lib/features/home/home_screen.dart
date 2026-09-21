@@ -48,7 +48,7 @@ import '../detail/subscription_detail_screen.dart';
 import '../shared/due.dart';
 import '../shared/widgets.dart';
 // The shell this screen is a BRANCH of, imported for one number:
-// [AppShell.pageInset]. The FAB that inset reserves room for belongs to the
+// [AppShell.pageInsetOf]. The FAB that inset reserves room for belongs to the
 // shell, so the arithmetic does too — see the constant's own doc.
 import '../shell/app_shell.dart';
 
@@ -503,9 +503,9 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
         // OVER this list. Its 72 px was dropped, not double-paid, and the "+"
         // has been drawn across the last price row ever since — visible in
         // `01-home.png` of the frames merged as `9f548515`. The bottom now
-        // comes from [AppShell.pageInset], which states that arithmetic once
+        // comes from [AppShell.pageInsetOf], which states that arithmetic once
         // for all five branches.
-        padding: AppShell.pageInset,
+        padding: AppShell.pageInsetOf(context),
         children: <Widget>[
           _header(context, l10n, user),
           const SizedBox(height: 18),
@@ -579,7 +579,7 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
       // able to reach the bottom of the hero — and a scroller that can reach
       // its own end under a FAB that floats at every width needs the same
       // bottom reservation the list column takes.
-      padding: AppShell.pageInset,
+      padding: AppShell.pageInsetOf(context),
       children: <Widget>[
         if (data != null)
           _heroCard(

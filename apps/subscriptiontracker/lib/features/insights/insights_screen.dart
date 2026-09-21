@@ -324,10 +324,10 @@ class InsightsScreen extends ConsumerWidget {
                 // DELETED. The pill is `bottomNavigationBar` and WAS
                 // double-paid; the FAB is `floatingActionButton`, which
                 // reserves nothing and floats over this list, so its 72 px was
-                // dropped instead. [AppShell.pageInset] carries the arithmetic
-                // for all five branches — and this surface matters twice over,
-                // because [ADR 077] §A moves the budget card here.
-                padding: AppShell.pageInset,
+                // dropped instead. [AppShell.pageInsetOf] carries the
+                // arithmetic for all five branches — and this surface matters
+                // twice over, because [ADR 077] §A moves the budget card here.
+                padding: AppShell.pageInsetOf(context),
                 children: <Widget>[
                   // The heading stays FULL WIDTH in both layouts. It is the page's
                   // one label, not a card, and splitting a title across a column
