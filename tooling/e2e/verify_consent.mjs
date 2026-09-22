@@ -64,13 +64,26 @@
 // each other. Set `process.exitCode` and RETURN. Everything above the first
 // request may exit directly, and only that.
 //
+// ── TARGET-AWARE since 2026-09-22, AND THE ANSWER IS "THE SAME" ─────────────
+// E2E_AUTH_TARGET is decided before any request (tooling/e2e/
+// auth_target_expectation.mjs). On boxa this step expects EXACTLY what it
+// expects on hosted, and that is derived, not assumed: the consent route is
+// PUBLIC — services/platform/src/index.ts mounts it with the analytics ingest
+// and puts no platformAuth in front of either — and app_test.dart answers the
+// consent prompt and exports its anon_id
+// BEFORE it signs in, on both targets. The issuer the Worker trusts never enters
+// the write, so the Box A run's refusal after sign-in cannot touch it. An unset
+// or unknown target is exit 2, "could not decide what to expect", never hosted.
+//
 // Env: E2E_APP_ID, CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN,
 //      PLATFORM_D1_DATABASE_ID, and ONE OF E2E_RESPONSE_DATA / E2E_DRIVE_LOG
-//      (both, normally — see tooling/e2e/consent_anon_id.mjs for the order).
+//      (both, normally — see tooling/e2e/consent_anon_id.mjs for the order),
+//      E2E_AUTH_TARGET (written to $GITHUB_ENV by e2e.yml's preflight).
 // Argv: --response-data <path> --drive-log <path> override the two env paths.
 // NOTE: CLOUDFLARE_API_TOKEN needs D1 READ access for this account.
 // ─────────────────────────────────────────────────────────────────────────────
 import { resolveConsentAnonId } from './consent_anon_id.mjs';
+import { decideAuthTarget, expectationLine } from './auth_target_expectation.mjs';
 
 /** The route whose EFFECT this file audits. Named as a VALUE rather than in
  *  prose because tooling/ci/assert-e2e-legs.mjs reads this harness
@@ -93,6 +106,13 @@ const appId = need('E2E_APP_ID');
 const acct = need('CLOUDFLARE_ACCOUNT_ID');
 const dbId = need('PLATFORM_D1_DATABASE_ID');
 const token = need('CLOUDFLARE_API_TOKEN');
+
+const auth = decideAuthTarget(process.env.E2E_AUTH_TARGET);
+if (!auth.target) {
+  console.error(`COULD NOT LOOK: ${auth.why}`);
+  process.exit(2); // safe: this runs BEFORE any request, so no undici handle is open
+}
+console.log(expectationLine('verify_consent', auth.target));
 
 const { id: anonId, source, notes } = resolveConsentAnonId({
   responsePath: flag('--response-data') ?? process.env.E2E_RESPONSE_DATA,
