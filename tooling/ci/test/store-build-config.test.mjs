@@ -62,10 +62,15 @@ const APP_CONFIG_PATHS = [
   'apps/{app}/lib/core/app_config.dart',
 ];
 
-const buildStep = (target, defines) => `      - name: Build ${target}
+/** ⏱ 2026-09-22 — `channel` IS NOW PART OF EVERY FIXTURE BUILD. The guard's domain
+ *  is no longer "a job a row declares" but the RELEASE_CHANNEL each build stamps into
+ *  itself (workflow-scan.mjs `flutterReleaseBuilds`), so a fixture step with no stamp is
+ *  a build the census cannot place — a real state, which now has its own test below
+ *  instead of being the accidental shape of every other one. */
+const buildStep = (target, defines, channel = 'android-play') => `      - name: Build ${target}
         run: >
           flutter build ${target} --release
-${defines.map((d) => `          --dart-define=${d}=\${{ secrets.${d} }}`).join('\n')}
+${channel === null ? '' : `          --dart-define=RELEASE_CHANNEL=${channel}\n`}${defines.map((d) => `          --dart-define=${d}=\${{ secrets.${d} }}`).join('\n')}
 `;
 
 function makeRoot({
@@ -76,6 +81,10 @@ function makeRoot({
   target = 'appbundle',
   platforms = ['android'],
   kind = 'store',
+  channelId = 'android-play',
+  channel = 'android-play',
+  exemptions = [],
+  extraRows = [],
   lane = { workflow: '.github/workflows/build.yml', job: 'android' },
   submission = null,
   extraJob = '',
@@ -96,16 +105,16 @@ function makeRoot({
     writeFileSync(join(root, rel), config);
   }
 
-  const row = { id: 'android-play', kind, platforms, artifactFormats: ['.aab'] };
+  const row = { id: channelId, kind, platforms, artifactFormats: ['.aab'], surface: 'app' };
   if (lane) row.lane = lane;
   if (submission) row.submission = submission;
-  const channels = [row];
+  const channels = [row, ...extraRows];
   // [ADR 084] fixtures: a `web` row whose lane builds web, and a captcha import.
   if (web) {
-    channels.push({ id: 'web', kind: 'web', platforms: ['web'], lane: { workflow: '.github/workflows/web.yml', job: 'deploy-web' } });
+    channels.push({ id: 'web', kind: 'web', platforms: ['web'], surface: 'app', lane: { workflow: '.github/workflows/web.yml', job: 'deploy-web' } });
     writeFileSync(
       join(root, '.github', 'workflows', 'web.yml'),
-      `name: web\non:\n  push:\npermissions:\n  contents: read\njobs:\n  deploy-web:\n    runs-on: ubuntu-24.04\n    steps:\n${buildStep('web', web.defines)}`,
+      `name: web\non:\n  push:\npermissions:\n  contents: read\njobs:\n  deploy-web:\n    runs-on: ubuntu-24.04\n    steps:\n${buildStep('web', web.defines, 'web')}`,
     );
   }
   if (extraLib) {
@@ -120,11 +129,15 @@ function makeRoot({
   writeFileSync(join(root, 'tooling', 'channel-register.json'), JSON.stringify({
     channels,
     storeMetadataContract: { appConfigPaths },
+    // `surfaces` is what partitionByFlutterApp reads. A row whose surface the register
+    // does not declare is COVERAGE LOST, never a quiet exclusion.
+    surfaces: { app: { flutterApp: true }, extension: { flutterApp: false } },
+    releaseBuildsNeverShipped: { entries: exemptions },
   }));
 
   writeFileSync(
     join(root, '.github', 'workflows', 'build.yml'),
-    `name: build\non:\n  push:\npermissions:\n  contents: read\njobs:\n  android:\n    runs-on: ubuntu-24.04\n    steps:\n${buildStep(target, defines)}${extraJob}`,
+    `name: build\non:\n  push:\npermissions:\n  contents: read\njobs:\n  android:\n    runs-on: ubuntu-24.04\n    steps:\n${buildStep(target, defines, channel)}${extraJob}`,
   );
   return root;
 }
@@ -136,7 +149,7 @@ describe('assert-store-build-config — the happy path really passes', () => {
   test('a store lane passing all three defines is clean', () => {
     const r = run(makeRoot());
     assert.equal(r.status, 0, out(r));
-    assert.match(out(r), /1 store build step\(s\)/);
+    assert.match(out(r), /1 of 1 release build step\(s\)/);
   });
 
   test('the summary NAMES the derived set and the getter chain it came from', () => {
@@ -186,34 +199,66 @@ describe('assert-store-build-config — every derived define is load-bearing', (
   });
 });
 
-describe('assert-store-build-config — the subject set is derived from the register', () => {
-  test('a NON-store row is not graded — the six-platform proof is not a store lane', () => {
-    const r = run(makeRoot({ kind: 'direct', defines: [] }));
+describe('assert-store-build-config — the subject set is the census, placed by the register', () => {
+  test('a kind: direct row IS graded — the build a direct download ships from is not a proof build', () => {
+    // ⏱ 2026-09-22, O-DIRECT-DOWNLOADS-NEVER-GRADED. This case is the whole defect:
+    // linux-appimage declares no lane at all, so the OLD domain never reached it and
+    // the Linux build stamped for it carried no backend defines — a demo build the
+    // day the row is served (latent: served:false at 097e1f6e).
+    const r = run(makeRoot({ kind: 'direct', channelId: 'linux-appimage', channel: 'linux-appimage', platforms: ['linux'], target: 'linux', lane: null, defines: [] }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /channel "linux-appimage"/);
+    for (const d of ALL) assert.match(out(r), new RegExp(`does not pass[^\\n]*${d}`));
+  });
+
+  test('a job NO row declares is graded — the submission job is not exempt for being unnamed', () => {
+    // ⏱ 2026-09-22, O-STORE-BUILD-GUARD-GRADES-DECLARED-JOBS-ONLY. Measured at f88912e5:
+    // deleting SUPABASE_URL from submit-play.yml's `submit` job left the guard exiting 0.
+    const r = run(makeRoot({ lane: null, submission: null, defines: [] }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /job "android"/);
+  });
+
+  test('a row of a kind that ships nothing leaves the domain empty — and that is COVERAGE LOST', () => {
+    const r = run(makeRoot({ kind: 'web', defines: [] }));
     assert.equal(r.status, 2, out(r));
-    // Not a define failure: with no store rows at all the guard must refuse to
-    // report clean rather than sweep an empty set.
     assert.match(out(r), /COVERAGE LOST/);
-    assert.match(out(r), /no `kind: "store"` channel/);
+    assert.match(out(r), /no `kind: "store"` or `kind: "direct"` channel/);
   });
 
-  test('a build for ANOTHER platform in the same job is not this row\'s artifact', () => {
-    // `flutter build web` inside the android row's lane must not be graded
-    // against the android row — build-platforms.yml really is shaped this way.
-    const root = makeRoot({
+  test('a build the census cannot place is PRINTED, never graded and never silently dropped', () => {
+    // `flutter build web` with no RELEASE_CHANNEL beside the stamped android build:
+    // build-platforms.yml really is shaped this way. It is assert-channel-register 6b's
+    // finding, not this guard's, so this guard names it and grades on.
+    const r = run(makeRoot({
       extraJob: '      - name: Build web\n        run: flutter build web --release\n',
-    });
-    const r = run(root);
+    }));
     assert.equal(r.status, 0, out(r));
-    assert.match(out(r), /1 store build step\(s\)/);
+    assert.match(out(r), /1 of 2 release build step\(s\)/);
+    assert.match(out(r), /could not be placed against a channel row/);
+    assert.match(out(r), /unstamped/);
   });
 
-  test('a DEBUG build is not a store artifact', () => {
-    const root = makeRoot({
+  test('a build stamped for a row whose platforms exclude it is not that row\'s artifact', () => {
+    const r = run(makeRoot({ platforms: ['ios'], defines: ALL }));
+    assert.equal(r.status, 2, out(r));
+    assert.match(out(r), /android-play/);
+    assert.match(out(r), /platform-mismatch/);
+  });
+
+  test('an EXEMPT build is not graded, and its reason is printed every run', () => {
+    const r = run(makeRoot({
       defines: [],
-      extraJob: '',
-      target: 'appbundle',
-    });
-    // rewrite the single step to a debug build
+      exemptions: [{ workflow: '.github/workflows/build.yml', job: 'android', why: 'a compile proof whose output is discarded.' }],
+    }));
+    // Nothing left to grade -> COVERAGE LOST rather than a quiet pass, and the
+    // exemption is named so an excuse nobody reads cannot masquerade as coverage.
+    assert.equal(r.status, 2, out(r));
+    assert.match(out(r), /a compile proof whose output is discarded/);
+  });
+
+  test('a DEBUG build is not a release build — e2e compiles, it does not ship', () => {
+    const root = makeRoot({ defines: [], extraJob: '', target: 'appbundle' });
     const wf = join(root, '.github', 'workflows', 'build.yml');
     writeFileSync(
       wf,
@@ -221,37 +266,40 @@ describe('assert-store-build-config — the subject set is derived from the regi
     );
     const r = run(root);
     assert.equal(r.status, 2, out(r));
-    // Nothing graded -> COVERAGE LOST, never a quiet pass.
-    assert.match(out(r), /ZERO graded build steps/);
+    assert.match(out(r), /NOT ONE release `flutter build` was found/);
   });
 
-  test('a SUBMISSION job is graded as well as a lane — both ship an artifact', () => {
-    const r = run(makeRoot({
-      lane: null,
-      submission: { workflow: '.github/workflows/build.yml', job: 'android' },
-      defines: [],
-    }));
-    assert.equal(r.status, 1, out(r));
-    assert.match(out(r), /submission job "android"/);
+  test('a row whose id nothing stamps PRINTS rather than fails', () => {
+    // linux-snap ingests a prebuilt artifact ([ADR 015] §3) and windows-direct
+    // declares a `.exe` nothing packages: both are real, neither is a failure.
+    const r = run(makeRoot({ extraRows: [{ id: 'windows-direct', kind: 'direct', platforms: ['windows'], surface: 'app' }] }));
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /channel "windows-direct" \[direct\] — NOT ONE release `flutter build`/);
   });
 
-  test('a row whose declared job builds nothing for its platform PRINTS rather than fails', () => {
-    const r = run(makeRoot({ platforms: ['ios'], defines: ALL }));
+  test('an EXTENSION-surface row is outside the rule by construction, and says so', () => {
+    const r = run(makeRoot({ extraRows: [{ id: 'amo', kind: 'store', platforms: ['firefox'], surface: 'extension' }] }));
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /not a Flutter-app surface/);
+    assert.doesNotMatch(out(r), /channel "amo" \[store\] — NOT ONE/);
+  });
+
+  test('a row whose surface the register does not declare is COVERAGE LOST, not a quiet skip', () => {
+    const r = run(makeRoot({ extraRows: [{ id: 'mystery', kind: 'store', platforms: ['android'] }] }));
     assert.equal(r.status, 2, out(r));
-    // No graded steps at all -> COVERAGE LOST, and the row is named.
-    assert.match(out(r), /android-play/);
+    assert.match(out(r), /declare no surface this scan can resolve/);
   });
 
-  test('a declared job that does not exist is a failure, not a silent skip', () => {
+  test('a declared lane pointing at a job that does not exist is a failure, not a silent skip', () => {
     const r = run(makeRoot({ lane: { workflow: '.github/workflows/build.yml', job: 'ghost' } }));
-    assert.equal(r.status, 2, out(r));
+    assert.equal(r.status, 1, out(r));
     assert.match(out(r), /declares lane job "ghost"/);
   });
 
-  test('a declared workflow that does not exist is a failure, not a silent skip', () => {
+  test('a declared lane pointing at a workflow that does not exist is a failure', () => {
     const r = run(makeRoot({ lane: { workflow: '.github/workflows/nope.yml', job: 'android' } }));
-    assert.equal(r.status, 2, out(r));
-    assert.match(out(r), /which this scan did not parse/);
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /nope\.yml/);
   });
 });
 
@@ -300,14 +348,17 @@ describe('assert-store-build-config — coverage self-checks', () => {
     assert.match(out(r), /COVERAGE LOST/);
   });
 
-  test('COVERAGE LOST when no store row declares a lane or a submission', () => {
-    const r = run(makeRoot({ lane: null, submission: null }));
+  test('COVERAGE LOST when no release build in the tree stamps a channel that exists', () => {
+    const r = run(makeRoot({ channel: 'a-channel-no-row-declares' }));
     assert.equal(r.status, 2, out(r));
-    assert.match(out(r), /NOT ONE declares a `lane` or `submission`/);
+    assert.match(out(r), /COVERAGE LOST/);
+    assert.match(out(r), /NOT ONE was placed against a `store` or `direct` channel row/);
   });
 
   test('an empty evaluation set is never reported as a pass', () => {
-    const r = run(makeRoot({ lane: null, submission: null }));
+    // A build that stamps NO channel is a build the census cannot place, so the
+    // domain is empty — which must never read as "everything checked out".
+    const r = run(makeRoot({ channel: null }));
     assert.doesNotMatch(out(r), /assert-store-build-config: OK/);
   });
 });

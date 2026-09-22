@@ -533,6 +533,27 @@ function tree({
       },
     ],
     nonChannelSigningIdentities: [],
+    // ⏱ 2026-09-22 — the 6b-ii exemptions live in the REGISTER now (they were a
+    // `const` in the guard). Both real entries are carried; a fixture root that
+    // does not contain the named workflow skips its staleness check, so only the
+    // 6b-ii cases that write ci.yml exercise it.
+    releaseBuildsNeverShipped: {
+      _why: ['builds whose output is thrown away — fixture copy of the real key'],
+      entries: [
+        {
+          workflow: '.github/workflows/ci.yml',
+          job: 'app-brick',
+          target: 'web',
+          why: 'the BRICK smoke build — proves a freshly stamped app compiles; the output is discarded in the same job.',
+        },
+        {
+          workflow: '.github/workflows/symbolication-proof.yml',
+          job: 'prove',
+          target: 'apk',
+          why: 'the crash-probe apk — built to prove symbolication end to end and thrown away with the runner.',
+        },
+      ],
+    },
   };
   if (withSubmission) {
     register.channels[1].submission = {
@@ -1449,9 +1470,15 @@ describe('assert-channel-register — the lane\'s output vs the formats its chan
   });
 
   test('PRINTS an unmapped `flutter build` target rather than comparing against nothing', () => {
+    // ⏱ 2026-09-22 — this limb still only PRINTS (the line asserted below), but
+    // the run now exits 1: 6b-ii fails a stamped build whose target the census in
+    // workflow-scan.mjs cannot place on a platform, because every census reader
+    // (store-build-config, seams-wired) skips such a build and it would be graded
+    // by nobody. The print is this limb's; the failure is 6b-ii's.
     const { code, out } = run(tree({ windowsRun: 'flutter build fuchsia --release --dart-define=RELEASE_CHANNEL=windows-store' }));
-    assert.equal(code, 0, out);
+    assert.equal(code, 1, out);
     assert.match(out, /UNMAPPED BUILD TARGET\(S\): "fuchsia"/);
+    assert.match(out, /FAIL [^\n]*\(job "windows", `flutter build fuchsia`\) builds target "fuchsia", which this census cannot map to a platform/);
   });
 });
 
@@ -1516,8 +1543,21 @@ describe('assert-channel-register — the RELEASE_CHANNEL stamp resolves to a ro
   });
 
   test('a DEFERRED row id is a legal stamp — a build proof is still built for a channel', () => {
-    const { code, out } = run(tree({ releaseChannel: 'windows-store' }));
+    // ⏱ 2026-09-22 — this case used to stamp `windows-store` onto the lane's WEB
+    // build. That resolves (6b) but is a platform mismatch, which 6b-ii now fails
+    // (the case below), so the deferred stamp is carried by a windows build.
+    const { code, out } = run(tree({ windowsRun: 'flutter build windows --release --dart-define=RELEASE_CHANNEL=windows-store' }));
     assert.equal(code, 0, out);
+  });
+
+  test('FAILS a stamp that resolves to a row whose platforms exclude the build (6b-ii, census)', () => {
+    // A web build stamped for the windows row: 6b is satisfied (the id exists),
+    // and every census reader skips it as unplaceable — so it is graded by
+    // nobody unless THIS limb fails it.
+    const { code, out } = run(tree({ releaseChannel: 'windows-store' }));
+    assert.equal(code, 1, out);
+    assert.match(out, /deploy-web\.yml:\d+ \(job "deploy-web", `flutter build web`\) stamps RELEASE_CHANNEL=windows-store, whose `platforms` is \[windows\] and does not include "web"/);
+    assert.match(out, /checked by nobody/);
   });
 
   test('no stamp anywhere, and no RELEASE build either, PRINTS the gap rather than failing', () => {
@@ -1596,18 +1636,60 @@ describe('assert-channel-register — every release build declares its channel (
     assert.match(out, /1 declared exempt \([^)]*\.github\/workflows\/ci\.yml#app-brick[,)]/);
   });
 
-  test('a STALE exemption FAILS — the exempted job stamps now', () => {
+  test('an exemption still HOLDS when its thrown-away build also stamps — the key excuses the output, not the stamp', () => {
+    // ⏱ 2026-09-22 — this case used to be "a STALE exemption FAILS — the exempted
+    // job stamps now". The exemptions moved from a `const` here to the register key
+    // `releaseBuildsNeverShipped`, which assert-store-build-config reads too, and
+    // there a stamped crash fixture would be graded for production keys unless it
+    // stays excused. Stale now means "matches no release build at all" (below).
     const { code, out } = run(
       tree({ extraFiles: { [CI]: ciWorkflow('flutter build web --dart-define=RELEASE_CHANNEL=web') } }),
     );
-    assert.equal(code, 1, out);
-    assert.match(out, /RELEASE_CHANNEL_EXEMPT declares \.github\/workflows\/ci\.yml job "app-brick"[^\n]*outlived its subject/);
+    assert.equal(code, 0, out);
+    assert.match(out, /1 declared exempt \([^)]*\.github\/workflows\/ci\.yml#app-brick[,)]/);
   });
 
   test('a STALE exemption FAILS — the exempted job builds nothing', () => {
     const { code, out } = run(tree({ extraFiles: { [CI]: ciWorkflow('echo no build here') } }));
     assert.equal(code, 1, out);
+    assert.match(out, /`releaseBuildsNeverShipped` declares \.github\/workflows\/ci\.yml job "app-brick" target "web"[^\n]*outlived its subject/);
+  });
+
+  test('a STALE exemption FAILS — the exempted job builds only ANOTHER target', () => {
+    // The entry names target "web"; an apk in the same job is not what it excuses,
+    // so the apk fails for its missing stamp AND the entry is stale.
+    const { code, out } = run(tree({ extraFiles: { [CI]: ciWorkflow('flutter build apk') } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /ci\.yml:\d+ \(job "app-brick"\) builds "apk" and passes no --dart-define=RELEASE_CHANNEL/);
     assert.match(out, /outlived its subject/);
+  });
+
+  test('the exemptions are the REGISTER\'s — delete the key and the probe build FAILS', () => {
+    const { code, out } = run(
+      tree({
+        mutate: (r) => { delete r.releaseBuildsNeverShipped; },
+        extraFiles: { [CI]: ciWorkflow('flutter build web --pwa-strategy=none') },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /ci\.yml:\d+ \(job "app-brick"\) builds "web" and passes no --dart-define=RELEASE_CHANNEL/);
+  });
+
+  test('an exemption with no written why FAILS', () => {
+    const { code, out } = run(
+      tree({
+        mutate: (r) => { r.releaseBuildsNeverShipped.entries[0].why = 'short'; },
+        extraFiles: { [CI]: ciWorkflow('flutter build web --pwa-strategy=none') },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /releaseBuildsNeverShipped \.github\/workflows\/ci\.yml#app-brick \(web\) carries no written `why`/);
+  });
+
+  test('a malformed exemption key is refused, never read as empty', () => {
+    const { code, out } = run(tree({ mutate: (r) => { r.releaseBuildsNeverShipped = ['not', 'the', 'shape']; } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /`releaseBuildsNeverShipped` is not `\{_why, entries: \[\.\.\.\]\}`/);
   });
 
   test('the exemption is scoped to its JOB — the same build in another job of ci.yml FAILS', () => {
