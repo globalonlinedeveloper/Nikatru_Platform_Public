@@ -1692,42 +1692,72 @@ describe('sites/nikatru/functions/_middleware.js — a static document under an 
 const SECURITY_HEADER_NAMES = ['x-content-type-options', 'x-frame-options', 'referrer-policy', 'strict-transport-security', 'content-security-policy'];
 
 describe('sites/nikatru/functions/_middleware.js — the apex serves no Markdown', () => {
-  const REFUSED = [
-    ['/README.md', 'GET'],
-    ['/legal/README.md', 'GET'],
-    ['/any/deep/file.md', 'GET'],
-    ['/README.MD', 'GET'],
-    ['/README%2Emd', 'GET'],
-    ['/README.md', 'HEAD'],
-    ['/.well-known/notes.md', 'GET'],
-  ];
-  for (const [pathname, method] of REFUSED) {
-    test(`${method} ${pathname} → 404, the file is never read, and the 404 carries the security floor`, async () => {
-      const router = await loadRouter();
-      const { res, calls } = await drive(router, pathname, { method, assets: { [pathname]: { body: '# a maintainer note' } } });
-      assert.equal(res.status, 404);
-      assert.deepEqual([calls.next, calls.fetch], [0, 0]);
-      for (const name of SECURITY_HEADER_NAMES) assert.ok(res.headers.get(name), `${name} missing on the refusal`);
-      assert.equal(res.headers.get('cache-control'), 'no-store');
-    });
-  }
+  // One `test(` per path, never a table in a loop: a case a loop generates is ONE
+  // declaration to coverage-manifest.json however many rows it iterates, so deleting a
+  // row would delete a case the ratchet cannot see (assert-no-loop-cases.mjs).
+  const refuses = async (pathname, method = 'GET') => {
+    const router = await loadRouter();
+    const { res, calls } = await drive(router, pathname, { method, assets: { [pathname]: { body: '# a maintainer note' } } });
+    assert.equal(res.status, 404);
+    assert.deepEqual([calls.next, calls.fetch], [0, 0]);
+    for (const name of SECURITY_HEADER_NAMES) assert.ok(res.headers.get(name), `${name} missing on the refusal`);
+    assert.equal(res.headers.get('cache-control'), 'no-store');
+  };
+  const unchanged = async (pathname, body) => {
+    const router = await loadRouter();
+    const { res, text, calls } = await drive(router, pathname, { assets: { [pathname]: { body } } });
+    assert.equal(res.status, 200);
+    assert.equal(text, body);
+    assert.deepEqual([calls.next, calls.fetch], [1, 0]);
+  };
 
-  const UNCHANGED = [
-    ['/', '<!doctype html><title>Nikatru</title>'],
-    ['/legal/2026-09-05/en/privacy.html', '<!doctype html><title>Privacy</title>'],
-    ['/llms.txt', '# Nikatru'],
-    ['/sitemap.xml', '<urlset></urlset>'],
-    ['/apps/subscriptiontracker', '<!doctype html><title>Subscription Tracker</title>'],
-  ];
-  for (const [pathname, body] of UNCHANGED) {
-    test(`${pathname} is the static site's own answer, byte for byte`, async () => {
-      const router = await loadRouter();
-      const { res, text, calls } = await drive(router, pathname, { assets: { [pathname]: { body } } });
-      assert.equal(res.status, 200);
-      assert.equal(text, body);
-      assert.deepEqual([calls.next, calls.fetch], [1, 0]);
-    });
-  }
+  test('GET /README.md → 404, the file is never read, and the 404 carries the security floor', async () => {
+    await refuses('/README.md');
+  });
+
+  test('GET /legal/README.md → 404, the file is never read, and the 404 carries the security floor', async () => {
+    await refuses('/legal/README.md');
+  });
+
+  test('GET /any/deep/file.md → 404, the file is never read, and the 404 carries the security floor', async () => {
+    await refuses('/any/deep/file.md');
+  });
+
+  test('GET /README.MD (upper case) → 404, the file is never read, and the 404 carries the security floor', async () => {
+    await refuses('/README.MD');
+  });
+
+  test('GET /README%2Emd (percent-encoded dot) → 404, the file is never read, and the 404 carries the security floor', async () => {
+    await refuses('/README%2Emd');
+  });
+
+  test('HEAD /README.md → 404, the file is never read, and the 404 carries the security floor', async () => {
+    await refuses('/README.md', 'HEAD');
+  });
+
+  test('GET /.well-known/notes.md → 404, the file is never read, and the 404 carries the security floor', async () => {
+    await refuses('/.well-known/notes.md');
+  });
+
+  test("/ is the static site's own answer, byte for byte", async () => {
+    await unchanged('/', '<!doctype html><title>Nikatru</title>');
+  });
+
+  test("/legal/2026-09-05/en/privacy.html is the static site's own answer, byte for byte", async () => {
+    await unchanged('/legal/2026-09-05/en/privacy.html', '<!doctype html><title>Privacy</title>');
+  });
+
+  test("/llms.txt is the static site's own answer, byte for byte", async () => {
+    await unchanged('/llms.txt', '# Nikatru');
+  });
+
+  test("/sitemap.xml is the static site's own answer, byte for byte", async () => {
+    await unchanged('/sitemap.xml', '<urlset></urlset>');
+  });
+
+  test("/apps/subscriptiontracker is the static site's own answer, byte for byte", async () => {
+    await unchanged('/apps/subscriptiontracker', '<!doctype html><title>Subscription Tracker</title>');
+  });
 
   test("a `.md` path under an APP is still the app's — proxied, not refused", async () => {
     const router = await loadRouter();

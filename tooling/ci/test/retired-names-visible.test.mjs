@@ -85,6 +85,25 @@ const withText = (rel, from, to) => (f) => {
   return f;
 };
 
+// Each row below is its own `test(`, never a table in a loop: a case a loop generates
+// is ONE declaration to coverage-manifest.json however many rows it iterates, so
+// deleting a row would delete a case the ratchet cannot see (assert-no-loop-cases.mjs).
+const red = (mutate, names) => {
+  const { code, out } = run(tree(mutate));
+  assert.equal(code, 1, out);
+  assert.match(out, names);
+};
+const green = (mutate) => {
+  const { code, out } = run(tree(mutate));
+  assert.equal(code, 0, out);
+};
+const lost = (mutate, says) => {
+  const { code, out } = run(tree(mutate));
+  assert.equal(code, 2, out);
+  assert.match(out, /COVERAGE LOST/);
+  assert.match(out, says);
+};
+
 describe('assert-retired-names-visible — the control', () => {
   test('a clean tree passes, prints what it read, and prints every exemption with its reason', () => {
     const { code, out } = run(tree());
@@ -97,69 +116,126 @@ describe('assert-retired-names-visible — the control', () => {
 });
 
 describe('assert-retired-names-visible — every surface can go red', () => {
-  const RED = [
-    ['THE RED CONTROL: "Subly" on a served page', withText('sites/nikatru/pricing.html', 'Subscriptions, one price.', 'Subly, one price.'), /sites\/nikatru\/pricing\.html:3 → "Subly"/],
-    ['a served file whose NAME is the retired product', withFile('sites/nikatru/apps/shots/subly-1-v1.webp', 'RIFF'), /sites\/nikatru\/apps\/shots\/subly-1-v1\.webp → the file NAME/],
-    ['the retired host in an app web shell', withText('apps/x/web/index.html', '<base href="/x/">', '<link rel="canonical" href="https://subly.nikatru.com/">'), /apps\/x\/web\/index\.html:3 → "subly\.nikatru\.com"/],
-    ['an .arb VALUE', withFile('apps/x/lib/l10n/app_en.arb', JSON.stringify({ appTitle: 'Open Subly' }, null, 2)), /app_en\.arb:2 \(appTitle\) → "Subly"/],
-    ['a store title', withFile('apps/x/store/android-play/title.txt', 'Subly Pro\n'), /title\.txt:1 → "Subly"/],
-    ['an issue form', withText('.github/ISSUE_TEMPLATE/bug.yml', 'Subscriptions 1.4.0', 'Subly 1.4.0'), /bug\.yml:5 → "Subly"/],
-    ['an upper-case spelling', withText('sites/nikatru/pricing.html', 'one price.', 'one SUBLY price.'), /"SUBLY"/],
-    ['a separator-split spelling', withText('sites/nikatru/pricing.html', 'one price.', 'one sub-ly price.'), /"sub-ly"/],
-    ['a dated snapshot at a path NOT listed', withFile('sites/nikatru/legal/2026-10-01/en/privacy.html', '<p>Subly</p>\n'), /legal\/2026-10-01\/en\/privacy\.html:1 → "Subly"/],
-    ['a listed snapshot that no longer exists (a stale exemption)', without(SNAPSHOTS[0]), /2026-07-26\/en\/privacy\.html is listed in LEGAL_SNAPSHOTS_EXEMPT and is not a served file/],
-    // text is decided by CONTENT: no extension list stands between a served file and the scan
-    ['a served text file with no extension', withFile('sites/nikatru/humans', 'Built as Subly\n'), /sites\/nikatru\/humans:1 → "Subly"/],
-    ['a served text type no list names', withFile('sites/nikatru/renewals.ics', 'BEGIN:VCALENDAR\nSUMMARY:Subly renewal\n'), /renewals\.ics:2 → "Subly"/],
-    ['a served text file in an app web shell with no extension', withFile('apps/x/web/NOTICE', 'Subly\n'), /apps\/x\/web\/NOTICE:1 → "Subly"/],
-  ];
-  for (const [what, mutate, names] of RED) {
-    test(`${what} exits 1 and names it`, () => {
-      const { code, out } = run(tree(mutate));
-      assert.equal(code, 1, out);
-      assert.match(out, names);
-    });
-  }
+  test('THE RED CONTROL: "Subly" on a served page exits 1 and names it', () => {
+    red(withText('sites/nikatru/pricing.html', 'Subscriptions, one price.', 'Subly, one price.'), /sites\/nikatru\/pricing\.html:3 → "Subly"/);
+  });
+
+  test('a served file whose NAME is the retired product exits 1 and names it', () => {
+    red(withFile('sites/nikatru/apps/shots/subly-1-v1.webp', 'RIFF'), /sites\/nikatru\/apps\/shots\/subly-1-v1\.webp → the file NAME/);
+  });
+
+  test('the retired host in an app web shell exits 1 and names it', () => {
+    red(withText('apps/x/web/index.html', '<base href="/x/">', '<link rel="canonical" href="https://subly.nikatru.com/">'), /apps\/x\/web\/index\.html:3 → "subly\.nikatru\.com"/);
+  });
+
+  test('an .arb VALUE exits 1 and names it', () => {
+    red(withFile('apps/x/lib/l10n/app_en.arb', JSON.stringify({ appTitle: 'Open Subly' }, null, 2)), /app_en\.arb:2 \(appTitle\) → "Subly"/);
+  });
+
+  test('a store title exits 1 and names it', () => {
+    red(withFile('apps/x/store/android-play/title.txt', 'Subly Pro\n'), /title\.txt:1 → "Subly"/);
+  });
+
+  test('an issue form exits 1 and names it', () => {
+    red(withText('.github/ISSUE_TEMPLATE/bug.yml', 'Subscriptions 1.4.0', 'Subly 1.4.0'), /bug\.yml:5 → "Subly"/);
+  });
+
+  test('an upper-case spelling exits 1 and names it', () => {
+    red(withText('sites/nikatru/pricing.html', 'one price.', 'one SUBLY price.'), /"SUBLY"/);
+  });
+
+  test('a separator-split spelling exits 1 and names it', () => {
+    red(withText('sites/nikatru/pricing.html', 'one price.', 'one sub-ly price.'), /"sub-ly"/);
+  });
+
+  test('a dated snapshot at a path NOT listed exits 1 and names it', () => {
+    red(withFile('sites/nikatru/legal/2026-10-01/en/privacy.html', '<p>Subly</p>\n'), /legal\/2026-10-01\/en\/privacy\.html:1 → "Subly"/);
+  });
+
+  test('a listed snapshot that no longer exists (a stale exemption) exits 1 and names it', () => {
+    red(without(SNAPSHOTS[0]), /2026-07-26\/en\/privacy\.html is listed in LEGAL_SNAPSHOTS_EXEMPT and is not a served file/);
+  });
+
+  // text is decided by CONTENT: no extension list stands between a served file and the scan
+  test('a served text file with no extension exits 1 and names it', () => {
+    red(withFile('sites/nikatru/humans', 'Built as Subly\n'), /sites\/nikatru\/humans:1 → "Subly"/);
+  });
+
+  test('a served text type no list names exits 1 and names it', () => {
+    red(withFile('sites/nikatru/renewals.ics', 'BEGIN:VCALENDAR\nSUMMARY:Subly renewal\n'), /renewals\.ics:2 → "Subly"/);
+  });
+
+  test('a served text file in an app web shell with no extension exits 1 and names it', () => {
+    red(withFile('apps/x/web/NOTICE', 'Subly\n'), /apps\/x\/web\/NOTICE:1 → "Subly"/);
+  });
 });
 
 describe('assert-retired-names-visible — not read, stays green', () => {
-  const GREEN = [
-    ['an @description naming the old product', withFile('apps/x/lib/l10n/app_en.arb', JSON.stringify({ appTitle: 'Subscriptions', '@appTitle': { description: 'Was "Subly".' } }, null, 2))],
-    ['the apex _headers', withFile('sites/nikatru/_headers', '# the Subly subdomain\n/*\n  X-Frame-Options: DENY\n')],
-    ['the apex _redirects', withFile('sites/nikatru/_redirects', '# /subly moved\n/old /new 301\n')],
-    ['the apex router source', withFile('sites/nikatru/functions/_middleware.js', '// subly-9cp.pages.dev\nexport const onRequest = (c) => c.next();\n')],
-    ['a Markdown file on the apex (the router answers 404 for it)', withFile('sites/nikatru/README.md', 'subly.nikatru.com\n')],
-    ['an app web _headers', withFile('apps/x/web/_headers', '# subly\n/*\n  X-Frame-Options: DENY\n')],
-    ['a binary file (a NUL byte) whose bytes spell the old name', withFile('sites/nikatru/apps/shots/x-1-v1.webp', Buffer.from('RIFF\0\0\0\0WEBPVP8 Subly', 'latin1'))],
-    ['a listed dated snapshot', withFile(SNAPSHOTS[3], '<p>Subly</p>\n')],
-    ['another site in the monorepo', withFile('sites/rajasekarselvam/x.html', '<p>Subly</p>\n')],
-  ];
-  for (const [what, mutate] of GREEN) {
-    test(`${what} is not a subject — exits 0`, () => {
-      const { code, out } = run(tree(mutate));
-      assert.equal(code, 0, out);
-    });
-  }
+  test('an @description naming the old product is not a subject — exits 0', () => {
+    green(withFile('apps/x/lib/l10n/app_en.arb', JSON.stringify({ appTitle: 'Subscriptions', '@appTitle': { description: 'Was "Subly".' } }, null, 2)));
+  });
+
+  test('the apex _headers is not a subject — exits 0', () => {
+    green(withFile('sites/nikatru/_headers', '# the Subly subdomain\n/*\n  X-Frame-Options: DENY\n'));
+  });
+
+  test('the apex _redirects is not a subject — exits 0', () => {
+    green(withFile('sites/nikatru/_redirects', '# /subly moved\n/old /new 301\n'));
+  });
+
+  test('the apex router source is not a subject — exits 0', () => {
+    green(withFile('sites/nikatru/functions/_middleware.js', '// subly-9cp.pages.dev\nexport const onRequest = (c) => c.next();\n'));
+  });
+
+  test('a Markdown file on the apex (the router answers 404 for it) is not a subject — exits 0', () => {
+    green(withFile('sites/nikatru/README.md', 'subly.nikatru.com\n'));
+  });
+
+  test('an app web _headers is not a subject — exits 0', () => {
+    green(withFile('apps/x/web/_headers', '# subly\n/*\n  X-Frame-Options: DENY\n'));
+  });
+
+  test('a binary file (a NUL byte) whose bytes spell the old name is not a subject — exits 0', () => {
+    green(withFile('sites/nikatru/apps/shots/x-1-v1.webp', Buffer.from('RIFF\0\0\0\0WEBPVP8 Subly', 'latin1')));
+  });
+
+  test('a listed dated snapshot is not a subject — exits 0', () => {
+    green(withFile(SNAPSHOTS[3], '<p>Subly</p>\n'));
+  });
+
+  test('another site in the monorepo is not a subject — exits 0', () => {
+    green(withFile('sites/rajasekarselvam/x.html', '<p>Subly</p>\n'));
+  });
 });
 
 describe('assert-retired-names-visible — COVERAGE LOST, never a pass', () => {
-  const EMPTY = [
-    ['an empty tree', () => ({}), /does not exist/],
-    ['an empty token list', withFile('tooling/channel-register.json', { retiredIdentityTokens: { tokens: [] } }), /declares no `retiredIdentityTokens\.tokens`/],
-    ['no sites/nikatru/index.html', without('sites/nikatru/index.html'), /sites\/nikatru\/index\.html was not read/],
-    ['no app web index.html', without('apps/x/web/index.html'), /no apps\/\*\/web\/index\.html was read/],
-    ['no .arb value', withFile('apps/x/lib/l10n/app_en.arb', JSON.stringify({ '@@locale': 'en' })), /no \.arb value was read/],
-    ['no store title.txt', without('apps/x/store/android-play/title.txt'), /no apps\/\*\/store\/\*\/title\.txt was read/],
-    ['an empty ISSUE_TEMPLATE', without('.github/ISSUE_TEMPLATE/bug.yml'), /no \.github\/ISSUE_TEMPLATE\/\* file was read/],
-  ];
-  for (const [what, mutate, says] of EMPTY) {
-    test(`${what} exits 2`, () => {
-      const { code, out } = run(tree(mutate));
-      assert.equal(code, 2, out);
-      assert.match(out, /COVERAGE LOST/);
-      assert.match(out, says);
-    });
-  }
+  test('an empty tree exits 2', () => {
+    lost(() => ({}), /does not exist/);
+  });
+
+  test('an empty token list exits 2', () => {
+    lost(withFile('tooling/channel-register.json', { retiredIdentityTokens: { tokens: [] } }), /declares no `retiredIdentityTokens\.tokens`/);
+  });
+
+  test('no sites/nikatru/index.html exits 2', () => {
+    lost(without('sites/nikatru/index.html'), /sites\/nikatru\/index\.html was not read/);
+  });
+
+  test('no app web index.html exits 2', () => {
+    lost(without('apps/x/web/index.html'), /no apps\/\*\/web\/index\.html was read/);
+  });
+
+  test('no .arb value exits 2', () => {
+    lost(withFile('apps/x/lib/l10n/app_en.arb', JSON.stringify({ '@@locale': 'en' })), /no \.arb value was read/);
+  });
+
+  test('no store title.txt exits 2', () => {
+    lost(without('apps/x/store/android-play/title.txt'), /no apps\/\*\/store\/\*\/title\.txt was read/);
+  });
+
+  test('an empty ISSUE_TEMPLATE exits 2', () => {
+    lost(without('.github/ISSUE_TEMPLATE/bug.yml'), /no \.github\/ISSUE_TEMPLATE\/\* file was read/);
+  });
 });
 
 describe('assert-retired-names-visible — the real repository', () => {
