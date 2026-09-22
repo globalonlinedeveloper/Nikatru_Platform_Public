@@ -46,6 +46,9 @@
 //   6b-ii. every RELEASE `flutter build` in every workflow passes
 //      --dart-define=RELEASE_CHANNEL (derived via workflow-scan.mjs; declared
 //      exemptions graded both ways) — the channel is the rail since R10.
+//      ⏱ 2026-09-22: the exemptions are the register key
+//      `releaseBuildsNeverShipped`, shared with the census's other readers; a
+//      stamp whose row's `platforms` lacks the build's target also fails here.
 //   7. disqualified channels name a LOCKED ADR that exists on disk
 //   6d. a `signing.*` block carrying a `notYetConfiguredSentinel` — a pinned
 //      certificate fingerprint or public key — is complete, dated and sourced.
@@ -103,7 +106,7 @@ import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
 import { stripSourceComments, stripStringLiterals } from './text-reductions.mjs';
 import { FLUTTER_APP_FIELD, flutterAppChannel } from './channel-surface.mjs';
-import { parseAllWorkflows, shellSegments } from './workflow-scan.mjs';
+import { parseAllWorkflows, flutterReleaseBuilds, gradeDomain, buildAt } from './workflow-scan.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 /** No argument means CI's own invocation against the real repository, where the
@@ -1577,59 +1580,50 @@ if (agg === null || typeof agg !== 'object' || typeof agg.workflow !== 'string' 
 //
 // DECLARED EXEMPTIONS, graded in BOTH directions: an entry whose job has no
 // unstamped release build is a stale excuse and FAILS.
-// LANE-BOUND: symbolication-proof.yml — named ONLY as one declared 6b-ii exemption (a crash-probe apk that never ships), never as the subject set
-// Every workflow's release builds are derived by parseAllWorkflows; this entry is the one
-// job whose apk is thrown away with the runner.
+// ⏱ 2026-09-22 — CORRECTION APPENDED, the two lines above left as written: the
+// exemptions are NO LONGER A `const` HERE. They moved to the register key
+// `releaseBuildsNeverShipped` (tooling/channel-register.json), which three
+// readers now share — this limb, assert-store-build-config and the census in
+// workflow-scan.mjs (`gradeDomain`). A `const` only this limb could see was a
+// second answer to "which builds does nobody ship", and the other two readers
+// had their own (the store-build guard's was "whatever no row declares", which
+// is how submit-play.yml#submit went ungraded). The staleness rule changed with
+// the owner: an entry is stale when it matches NO release build at all — not
+// when its build stamps. The key excuses a build whose OUTPUT IS THROWN AWAY,
+// and that stays true of a thrown-away build that also stamps a channel; the
+// store-build guard would otherwise grade a crash fixture for production keys.
+//
+// ⏱ 2026-09-22 — THIS LIMB ALSO FAILS WHAT THE CENSUS CANNOT PLACE. A build
+// stamped for a row whose `platforms` does not list its target (an apk stamped
+// `windows-store`), or a `flutter build <target>` the census has no platform
+// for, is graded by NO guard that reads the census: store-build-config and the
+// crash-sink limb both skip what they cannot place, and say so by pointing
+// HERE. 6b checks only that a stamp resolves; before the census, a mis-stamped
+// store build was still graded by the job it sat in. A stamp naming no row at
+// all stays 6b's failure alone — one defect, one failing line.
+// ⏱ 2026-09-22 — the lane-bound declaration for symbolication-proof.yml that stood
+// here is REMOVED, because this limb no longer names that workflow: its one mention
+// was the `const` exemption, which now lives in the register key above, so the code
+// is generic again (assert-release-lane-generic fails a declaration the code has
+// outgrown). Every workflow's release builds are derived by parseAllWorkflows.
 {
-  /** @type {{workflow: string, job: string, why: string}[]} */
-  const RELEASE_CHANNEL_EXEMPT = [
-    {
-      workflow: '.github/workflows/ci.yml',
-      job: 'app-brick',
-      why:
-        'the PROBE stamp\'s web build is a compile proof of a freshly stamped app that is deleted with the runner — ' +
-        'no artifact leaves the job and no channel ever receives it. It compiles in `dev` and so sells nothing, which ' +
-        'is the correct answer for a binary nobody ships.',
-    },
-    {
-      workflow: '.github/workflows/symbolication-proof.yml',
-      job: 'prove',
-      why:
-        'the CRASH PROBE apk (live_probe/symbolication_crash_probe.dart, dispatch-only) is built to throw at a known ' +
-        'line on an emulator and is deleted with the runner — it never reaches a store and never shows a paywall. ' +
-        'It compiles in `dev` and so sells nothing, which is correct for a binary nobody ships.',
-    },
-  ];
-  const BUILD = /flutter\s+build\s+(?!web-server\b)(\S+)/;
-  const NOT_RELEASE = /--(?:debug|profile)(?=\s|$)/;
-  const STAMP = /--dart-define(?:=|\s+)RELEASE_CHANNEL=\S+/;
+  const EXEMPT_KEY = 'releaseBuildsNeverShipped';
+  const declaredExempt = register[EXEMPT_KEY];
+  // `{_why, entries[]}` — absent means "nothing is exempt", which is the SAFE
+  // reading: every unstamped build then fails below. Present but malformed is a
+  // register nobody can read, and is refused rather than read as empty.
+  if (declaredExempt !== undefined && !Array.isArray(declaredExempt?.entries)) {
+    problems.push(`${REGISTER} \`${EXEMPT_KEY}\` is not \`{_why, entries: [...]}\`. Every reader of the census would read it as "nothing is exempt" — or crash — so it is refused here, where the register is owned.`);
+  }
   const workflows = parseAllWorkflows(ROOT);
   if (workflows.length === 0) {
     coverageLost([
       'workflow-scan parsed no workflow under .github/workflows, so "every release build declares its channel" ranged over nothing.',
     ]);
   }
-  let releaseBuilds = 0;
-  let stamped = 0;
-  const unstampedByJob = new Map();
-  for (const wf of workflows) {
-    for (const job of wf.jobs.values()) {
-      for (const l of job.logical) {
-        for (const seg of shellSegments(l.text)) {
-          const m = BUILD.exec(seg);
-          if (!m || NOT_RELEASE.test(seg)) continue;
-          releaseBuilds++;
-          if (STAMP.test(seg)) {
-            stamped++;
-            continue;
-          }
-          const key = `${wf.rel}#${job.name}`;
-          if (!unstampedByJob.has(key)) unstampedByJob.set(key, []);
-          unstampedByJob.get(key).push(`${wf.rel}:${l.n} (job "${job.name}") builds "${m[1].replace(/^['"]|['"]$/g, '')}"`);
-        }
-      }
-    }
-  }
+  const census = flutterReleaseBuilds(ROOT, workflows);
+  const releaseBuilds = census.length;
+  const stamped = census.filter((b) => b.stamp !== null).length;
   if (workflows.length > 0 && releaseBuilds === 0 && scanningRealRepo) {
     coverageLost([
       `workflow-scan read ${workflows.length} workflow(s) and found no release \`flutter build\` at all.`,
@@ -1637,36 +1631,46 @@ if (agg === null || typeof agg !== 'object' || typeof agg.workflow !== 'string' 
       'census that matches nothing agrees with every tree.',
     ]);
   }
-  const exemptKeys = new Set(RELEASE_CHANNEL_EXEMPT.map((e) => `${e.workflow}#${e.job}`));
-  let exempted = 0;
-  for (const [key, sites] of unstampedByJob) {
-    if (exemptKeys.has(key)) {
-      exempted += sites.length;
+  const domain = gradeDomain(census, register);
+  for (const f of domain.findings) {
+    const at = buildAt(f.build);
+    if (f.kind === 'unstamped') {
+      problems.push(
+        `${f.build.workflow}:${f.build.runLine} (job "${f.build.job}") builds "${f.build.target}" and passes no --dart-define=RELEASE_CHANNEL. The binary then compiles in 'dev', and ChassisBilling.railForDeclared answers 'dev' with "sells nothing" — so a release artifact from this lane would ship with its paywall silently off, and report no channel to the crash sink either. Pass the ${REGISTER} row id this build is for. If it really is a build nobody ships, declare it in ${REGISTER} \`${EXEMPT_KEY}\` with its reason.`,
+      );
+    } else if (f.kind === 'platform-mismatch' || f.kind === 'unknown-target') {
+      problems.push(
+        `${at} ${f.why} No census reader can grade it (assert-store-build-config and assert-seams-wired place a build by its stamp and its platform), so its backend and crash-sink defines are checked by nobody. Stamp the row this binary is really for${f.kind === 'unknown-target' ? ', or teach workflow-scan.mjs BUILD_TARGET_PLATFORM the target' : ''}.`,
+      );
+    }
+    // 'unknown-channel' is 6b's failure, printed above with the line it sits on.
+  }
+  const entries = domain.exemptions;
+  for (const e of entries) {
+    const name = `${EXEMPT_KEY} ${e?.workflow}#${e?.job}${e?.target ? ` (${e.target})` : ''}`;
+    if (typeof e?.workflow !== 'string' || typeof e?.job !== 'string') {
+      problems.push(`${REGISTER} ${name} names no {workflow, job}, so it matches no build and excuses nothing it can be held to.`);
       continue;
     }
-    for (const at of sites) {
-      problems.push(
-        `${at} and passes no --dart-define=RELEASE_CHANNEL. The binary then compiles in 'dev', and ChassisBilling.railForDeclared answers 'dev' with "sells nothing" — so a release artifact from this lane would ship with its paywall silently off, and report no channel to the crash sink either. Pass the ${REGISTER} row id this build is for. If it really is a build nobody ships, declare it in RELEASE_CHANNEL_EXEMPT with its reason.`,
-      );
+    if (e.target !== undefined && e.target !== null && typeof e.target !== 'string') {
+      problems.push(`${REGISTER} ${name} carries a non-string \`target\`.`);
+    }
+    if (typeof e.why !== 'string' || e.why.length < 40) {
+      problems.push(`${REGISTER} ${name} carries no written \`why\`. An unexplained exemption is indistinguishable from an omission.`);
     }
   }
-  for (const e of RELEASE_CHANNEL_EXEMPT) {
-    if (typeof e.why !== 'string' || e.why.length < 40) {
-      problems.push(`RELEASE_CHANNEL_EXEMPT ${e.workflow}#${e.job} carries no written \`why\`. An unexplained exemption is indistinguishable from an omission.`);
-    }
+  for (const e of domain.staleExemptions) {
     // A FIXTURE root that does not carry the exempted workflow at all has
     // nothing to be stale against; the REAL repository always does, so there
-    // a missing file is as stale as a job that stamps.
-    const wfPresent = workflows.some((w) => w.rel === e.workflow);
+    // a missing file is as stale as a job that builds nothing.
+    const wfPresent = workflows.some((w) => w.rel === e?.workflow);
     if (!scanningRealRepo && !wfPresent) continue;
-    if (!unstampedByJob.has(`${e.workflow}#${e.job}`)) {
-      problems.push(
-        `RELEASE_CHANNEL_EXEMPT declares ${e.workflow} job "${e.job}" as an unstamped release build, and it has none (it stamps, or builds nothing). The excuse outlived its subject — delete the row in the same commit.`,
-      );
-    }
+    problems.push(
+      `${REGISTER} \`${EXEMPT_KEY}\` declares ${e?.workflow} job "${e?.job}"${e?.target ? ` target "${e.target}"` : ''} as a release build nobody ships, and that job has no such release build. The excuse outlived its subject — delete the entry in the same commit.`,
+    );
   }
   ok(
-    `${releaseBuilds} release \`flutter build\` command(s) across ${workflows.length} workflow(s): ${stamped} declare RELEASE_CHANNEL, ${exempted} declared exempt (${RELEASE_CHANNEL_EXEMPT.map((e) => `${e.workflow}#${e.job}`).join(', ') || 'none'})`,
+    `${releaseBuilds} release \`flutter build\` command(s) across ${workflows.length} workflow(s): ${stamped} declare RELEASE_CHANNEL, ${domain.exempt.length} declared exempt (${entries.map((e) => `${e?.workflow}#${e?.job}`).join(', ') || 'none'}) by ${REGISTER} \`${EXEMPT_KEY}\``,
   );
 }
 

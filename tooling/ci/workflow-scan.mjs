@@ -451,3 +451,186 @@ export function expandMatrixEnvironment(raw, appSlugs) {
   if (!m) return [raw];
   return (appSlugs ?? []).map((s) => `${s}${m[1]}`);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE RELEASE-BUILD CENSUS — one reading of "which binaries does this factory
+// actually produce", ⏱ ADDED 2026-09-22 (O-STORE-BUILD-GUARD-GRADES-DECLARED-
+// JOBS-ONLY, O-SEAMS-WIRED-GRADES-DECLARED-LANES-ONLY, O-DIRECT-DOWNLOADS-
+// NEVER-GRADED — three rows, one defect).
+//
+// 🔴 THREE GUARDS TOOK THEIR SUBJECT FROM THE JOB A REGISTER ROW NAMED, and the
+// register's own `_why` says that field "NAMES THE DRY RUN AND IS A FLOOR, NOT A
+// CENSUS". So each of them graded a floor and printed a census:
+//   · assert-store-build-config walked `row.lane` and `row.submission`, so the
+//     `submit` jobs of submit-play, submit-snap and submit-windows-store — the
+//     jobs that build and UPLOAD the bundle a store receives — were graded by
+//     nobody. Measured on a scratch extract: deleting SUPABASE_URL from
+//     submit-play.yml#submit left it green.
+//   · assert-seams-wired read `lane` ONLY, so every submission job was outside
+//     its domain too, and it matched the define anywhere in the job BODY, so a
+//     sibling step's define exonerated a build that carried none.
+//   · assert-channel-register 6b-ii had a third, raw line scan of its own.
+// A census keyed on what each BUILD declares — its RELEASE_CHANNEL stamp — has
+// no floor to mistake for a domain: a job nobody names is graded exactly like a
+// declared one, and a build that must not be graded has to be written down.
+//
+// ⚠️ IT IS STILL NOT A GUARD. `gradeDomain` returns the split; whether an empty
+// `graded` set is COVERAGE LOST, and what a finding costs, belongs to each
+// caller — as does the floor on how much it expected to see.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** `flutter build <target>` — a release build unless it says otherwise.
+ *  `web-server` is a dev server, not an artifact. */
+export const RELEASE_BUILD = /flutter\s+build\s+(?!web-server\b)(\S+)/;
+
+/** Flutter builds RELEASE by default, so only an explicit flag takes a build out
+ *  of the domain. Lifted from assert-channel-register.mjs 6b-ii, which is now one
+ *  of this census's readers rather than its own third scan. */
+export const NOT_RELEASE_BUILD = /--(?:debug|profile)(?=\s|$)/;
+
+/** The channel a build compiles into itself. It is a fact ABOUT the binary. */
+export const RELEASE_CHANNEL_STAMP = /--dart-define(?:=|\s+)RELEASE_CHANNEL=(\S+)/;
+
+/** `flutter build <target>` → the platform it produces for. Lifted from
+ *  assert-store-build-config.mjs's TARGET_PLATFORM so that "which platform is
+ *  this" has one answer and not one per guard. */
+export const BUILD_TARGET_PLATFORM = new Map([
+  ['web', 'web'],
+  ['apk', 'android'],
+  ['appbundle', 'android'],
+  ['ios', 'ios'],
+  ['ipa', 'ios'],
+  ['macos', 'macos'],
+  ['windows', 'windows'],
+  ['linux', 'linux'],
+]);
+
+// `unquote` is the module's one (above, beside tagItems): a PAIRED quote is
+// stripped, a stray one is kept. A second definition here was a SyntaxError the
+// day tag-owner's reader landed beside it — two helpers, one name, one module.
+
+/** Every `--dart-define=NAME=` NAME in one shell segment, as a Set.
+ *
+ *  🔴 NO `#` BEFORE THE MATCH. A define behind a comment marker is prose, not a
+ *  flag — and inside a folded `run: >` block that `#` is a SHELL comment that
+ *  swallows the rest of the command. assert-seams-wired carries the scar: its
+ *  raw-text match counted a commented-out define as supplied, and the shipped
+ *  build initialised the no-op crash client with the guard printing ok. The
+ *  segment is cut at the first `#` before the names are read. */
+export function definesIn(segment) {
+  const live = String(segment ?? '').split('#')[0];
+  const out = new Set();
+  for (const m of live.matchAll(/--dart-define(?:=|\s+)([A-Za-z_][A-Za-z0-9_]*)=/g)) out.add(m[1]);
+  return out;
+}
+
+/**
+ * EVERY RELEASE `flutter build` IN EVERY WORKFLOW, one record per shell SEGMENT.
+ *
+ * ⚠️ PER SEGMENT, NOT PER LOGICAL LINE, and that is the point. A `run: |` block
+ * is joined with ` ; `, so two builds can share one logical line; a reader that
+ * tests the whole line lets the first build's defines answer for the second.
+ * Measured at f88912e5: deleting SUPABASE_URL from the aab step of
+ * build-platforms.yml left assert-store-build-config green, because the apk step
+ * beside it still carried one.
+ *
+ * `parsed` is accepted so a caller that already holds `parseAllWorkflows(root)`
+ * does not pay for a second parse — two parses of one tree are two answers
+ * waiting to disagree, which is this module's whole reason for existing.
+ *
+ * @returns {{workflow: string, job: string, runLine: number, segment: string,
+ *            target: string, platform: string|null, stamp: string|null,
+ *            defines: Set<string>}[]}
+ */
+export function flutterReleaseBuilds(root, parsed = null) {
+  const workflows = parsed ?? parseAllWorkflows(root);
+  const out = [];
+  for (const wf of workflows) {
+    for (const job of wf.jobs.values()) {
+      for (const l of job.logical) {
+        for (const seg of shellSegments(l.text)) {
+          const m = RELEASE_BUILD.exec(seg);
+          if (!m || NOT_RELEASE_BUILD.test(seg)) continue;
+          const target = unquote(m[1]);
+          const stamp = RELEASE_CHANNEL_STAMP.exec(seg);
+          out.push({
+            workflow: wf.rel,
+            job: job.name,
+            runLine: l.n,
+            segment: seg,
+            target,
+            platform: BUILD_TARGET_PLATFORM.get(target) ?? null,
+            stamp: stamp === null ? null : unquote(stamp[1]),
+            defines: definesIn(seg),
+          });
+        }
+      }
+    }
+  }
+  return out;
+}
+
+/** Where a build is, written the one way every reader prints it. */
+export const buildAt = (b) => `${b.workflow}:${b.runLine} (job "${b.job}", \`flutter build ${b.target}\`)`;
+
+/**
+ * SPLIT THE CENSUS INTO {graded, exempt, findings} AGAINST THE REGISTER.
+ *
+ * · **exempt** — the build matches an entry of the register key
+ *   `releaseBuildsNeverShipped` `{workflow, job, target?, why}`. Nothing else
+ *   removes a build from the domain, and each entry's `why` is printed on every
+ *   run: an exemption nobody reads is indistinguishable from an omission.
+ * · **finding** — the build carries no RELEASE_CHANNEL stamp, or its stamp names
+ *   no row, or `flutter build <target>` is a target this census cannot place, or
+ *   the row's `platforms` does not list that platform. A stamp that RESOLVES is
+ *   all 6b ever checked; a windows row stamped onto an apk resolved fine.
+ * · **graded** — everything else, WHETHER OR NOT ANY ROW DECLARES ITS JOB.
+ *
+ * `staleExemptions` closes the excuse in the other direction: an entry that
+ * matches no release build at all has outlived its subject.
+ *
+ * It grades nothing itself — each caller asks its own question of `graded`.
+ */
+export function gradeDomain(builds, register) {
+  const rows = new Map((register?.channels ?? []).map((c) => [c?.id, c]));
+  // `{_why, entries}` — the shape every explained block in the register uses, so the
+  // reason travels with the list instead of in a comment beside a reader.
+  const declaredExempt = register?.releaseBuildsNeverShipped?.entries;
+  const exemptions = Array.isArray(declaredExempt) ? declaredExempt : [];
+  const matches = (e, b) =>
+    e?.workflow === b.workflow &&
+    e?.job === b.job &&
+    (e?.target === undefined || e?.target === null || e.target === b.target);
+  const graded = [];
+  const exempt = [];
+  const findings = [];
+  const used = new Set();
+  for (const b of builds) {
+    const i = exemptions.findIndex((e) => matches(e, b));
+    if (i !== -1) {
+      used.add(i);
+      exempt.push({ ...b, why: exemptions[i].why });
+      continue;
+    }
+    if (b.stamp === null) {
+      findings.push({ build: b, kind: 'unstamped', why: 'passes no --dart-define=RELEASE_CHANNEL, so nothing says which channel this binary is for.' });
+      continue;
+    }
+    const row = rows.get(b.stamp);
+    if (row === undefined) {
+      findings.push({ build: b, kind: 'unknown-channel', why: `stamps RELEASE_CHANNEL=${b.stamp}, which names no register row.` });
+      continue;
+    }
+    if (b.platform === null) {
+      findings.push({ build: b, kind: 'unknown-target', why: `builds target "${b.target}", which this census cannot map to a platform, so no row's \`platforms\` can be checked against it.` });
+      continue;
+    }
+    if (!(row.platforms ?? []).includes(b.platform)) {
+      findings.push({ build: b, kind: 'platform-mismatch', row, why: `stamps RELEASE_CHANNEL=${b.stamp}, whose \`platforms\` is [${(row.platforms ?? []).join(', ')}] and does not include "${b.platform}".` });
+      continue;
+    }
+    graded.push({ ...b, row });
+  }
+  const staleExemptions = exemptions.filter((_, i) => !used.has(i));
+  return { graded, exempt, findings, exemptions, staleExemptions };
+}

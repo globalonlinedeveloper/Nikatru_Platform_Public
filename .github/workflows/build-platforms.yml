@@ -127,6 +127,9 @@ jobs:
           flutter build linux --release
           --obfuscate --split-debug-info=build/symbols/linux
           --build-name=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
+          --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+          --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+          --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
           --dart-define=APP_VERSION=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}+${{ needs.prepare.outputs.GITHUB_SHA_SHORT }}
           --dart-define=RELEASE_CHANNEL=linux-appimage
           --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
