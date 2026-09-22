@@ -1,8 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import { Hono } from 'hono';
 import { corsMiddleware } from '../src/middleware/cors';
+import { app } from '../src/index';
 import type { AppEnv } from '../src/types';
 import raw from '../wrangler.jsonc?raw';
+import {
+  mountedEndpoints,
+  refusedPreflights,
+  unansweredMethods,
+  type RequestThroughApp,
+} from '../../_shared/test/preflight';
 
 /** A minimal app wired exactly like index.ts, with a settable ALLOWED_ORIGINS. */
 function appWith(allowedOrigins: string) {
@@ -110,20 +117,49 @@ describe('the fixture below IS the deployed allowlist', () => {
   });
 });
 
-describe('platform CORS (shared Worker — ADR 020, exact allowlist)', () => {
-  it('allows the write methods the shared endpoints need', async () => {
-    // Regression guard: while this was a config-read-only host the list was
-    // `GET, OPTIONS`, which preflight-blocks DELETE /v1/account from every web
-    // build — a failure that presents as a browser bug, not a config bug.
-    const res = await appWith(SHIPPED)('OPTIONS', 'https://nikatru.com');
-    expect(res.status).toBe(204);
-    const methods = res.headers.get('Access-Control-Allow-Methods') ?? '';
-    for (const m of ['GET', 'POST', 'DELETE', 'OPTIONS']) {
-      expect(methods, `missing ${m}`).toContain(m);
-    }
-    expect(res.headers.get('Access-Control-Allow-Headers')).toContain('Authorization');
+describe('preflight allows every method a MOUNTED route answers — derived, not listed', () => {
+  // 🔴 ⏱ 2026-09-22. THIS USED TO BE A HAND-TYPED LOOP over
+  // ['GET', 'POST', 'DELETE', 'OPTIONS'], and it was green the whole time
+  // `PUT /v1/account/apple-token` was live and refused at preflight in every
+  // browser: it checked the list the author remembered, not the list the routes
+  // needed. (Before that, `GET, OPTIONS` alone had blocked DELETE /v1/account the
+  // same way.) Now the methods come from the REAL app's route table — see
+  // services/_shared/test/preflight.ts for that seam and why it was chosen — and each
+  // mounted route is preflighted on its own path with its own method, through the
+  // real middleware stack, with the deployed allowlist.
+  const endpoints = mountedEndpoints(app.routes);
+  const origin = SHIPPED.split(',')[0]!.trim();
+  const env = { ALLOWED_ORIGINS: SHIPPED } as AppEnv['Bindings'];
+  const through: RequestThroughApp = (path, init) => app.request(path, init, env);
+
+  it('reads a real route table — including the route that was refused in production', () => {
+    // Not a tautology: an empty or middleware-only table would make the next
+    // test pass vacuously, and a table missing this route would mean the seam
+    // stopped seeing sub-apps merged in by `app.route`.
+    expect(endpoints).toContainEqual({ method: 'PUT', path: '/v1/account/apple-token' });
+    expect(endpoints).toContainEqual({ method: 'DELETE', path: '/v1/account' });
+    expect(endpoints.length).toBeGreaterThan(5);
   });
 
+  it('every mounted route is preflight-approved for its own method, from a listed origin', async () => {
+    expect(await refusedPreflights(through, endpoints, origin)).toEqual([]);
+  });
+
+  it('offers no method that no mounted route answers — the list is what the routes need', async () => {
+    // Why exact rather than "at least": this host serves every app's web build,
+    // so a method it advertises is an invitation to every listed origin. PATCH
+    // is not offered because nothing here answers PATCH; mount a PATCH route and
+    // this test is what tells you to add it.
+    const res = await through('/v1/health', {
+      method: 'OPTIONS',
+      headers: { Origin: origin, 'Access-Control-Request-Method': 'GET' },
+    });
+    expect(unansweredMethods(res.headers.get('Access-Control-Allow-Methods'), endpoints)).toEqual([]);
+    expect(res.headers.get('Access-Control-Allow-Headers')).toContain('Authorization');
+  });
+});
+
+describe('platform CORS (shared Worker — ADR 020, exact allowlist)', () => {
   it('reflects an origin that is on the list, exactly', async () => {
     const call = appWith(SHIPPED);
     for (const origin of SHIPPED.split(',')) {

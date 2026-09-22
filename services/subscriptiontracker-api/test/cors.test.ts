@@ -15,7 +15,14 @@
 import { describe, it, expect } from 'vitest';
 import { Hono } from 'hono';
 import { corsMiddleware, resolveOrigin, allowlist } from '../src/middleware/cors';
+import { app } from '../src/index';
 import type { AppEnv } from '../src/types';
+import {
+  mountedEndpoints,
+  refusedPreflights,
+  unansweredMethods,
+  type RequestThroughApp,
+} from '../../_shared/test/preflight';
 
 /** An app wired exactly like index.ts, with a settable ALLOWED_ORIGINS. */
 function appWith(allowedOrigins: string | undefined) {
@@ -140,13 +147,39 @@ describe('the localhost exception is a RECORDED per-app trade', () => {
   });
 });
 
-describe('preflight covers every method the routes actually expose', () => {
-  it('includes PUT — `PUT /v1/budget` is live and was preflight-blocked without it', async () => {
-    const res = await appWith(SHIPPED)('OPTIONS', 'https://nikatru.com');
-    const methods = res.headers.get('Access-Control-Allow-Methods') ?? '';
-    for (const m of ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']) {
-      expect(methods, `missing ${m}`).toContain(m);
-    }
+describe('preflight covers every method the routes actually expose — derived, not listed', () => {
+  // 🔴 ⏱ 2026-09-22. THIS WAS A HAND-TYPED LOOP over six methods, written after
+  // `PUT /v1/budget` shipped preflight-blocked. It pinned the fix for that one
+  // route and nothing else: the shared platform Worker carried the identical
+  // defect for `PUT /v1/account/apple-token` behind an identical green loop. The
+  // methods now come from the REAL app's route table (see
+  // services/_shared/test/preflight.ts for that seam and why it was chosen), and each
+  // mounted route is preflighted on its own path with its own method, through
+  // the real middleware stack.
+  const endpoints = mountedEndpoints(app.routes);
+  const origin = 'https://nikatru.com';
+  const env = { ALLOWED_ORIGINS: SHIPPED } as AppEnv['Bindings'];
+  const through: RequestThroughApp = (path, init) => app.request(path, init, env);
+
+  it('reads a real route table — including the route that was once refused', () => {
+    // Not a tautology: an empty or middleware-only table would make the next
+    // test pass vacuously, and a table missing these would mean the seam stopped
+    // seeing the `api` sub-app merged in by `app.route('/v1', api)`.
+    expect(endpoints).toContainEqual({ method: 'PUT', path: '/v1/budget' });
+    expect(endpoints).toContainEqual({ method: 'PATCH', path: '/v1/subscriptions/:id' });
+    expect(endpoints.length).toBeGreaterThan(5);
+  });
+
+  it('every mounted route is preflight-approved for its own method, from a listed origin', async () => {
+    expect(await refusedPreflights(through, endpoints, origin)).toEqual([]);
+  });
+
+  it('offers no method that no mounted route answers', async () => {
+    const res = await through('/v1/health', {
+      method: 'OPTIONS',
+      headers: { Origin: origin, 'Access-Control-Request-Method': 'GET' },
+    });
+    expect(unansweredMethods(res.headers.get('Access-Control-Allow-Methods'), endpoints)).toEqual([]);
     expect(res.headers.get('Access-Control-Allow-Headers')).toContain('Authorization');
   });
 

@@ -318,3 +318,12 @@ app.onError((err, c) => {
 });
 
 export default { fetch: app.fetch, scheduled };
+
+// ⏱ 2026-09-22 — THE ROUTE TABLE, FOR THE TEST THAT MUST NOT DRIFT FROM IT.
+// test/cors.test.ts reads `app.routes` and preflights every mounted route with
+// its own method, so the CORS method list is checked against what this file
+// actually mounts — not against a second hand-kept list that can go stale the
+// way `GET, POST, DELETE, OPTIONS` did while `PUT /v1/account/apple-token` was
+// live. The default export above is still the only thing the runtime serves;
+// a bundle with this export was loaded in workerd and answered its preflight.
+export { app };
