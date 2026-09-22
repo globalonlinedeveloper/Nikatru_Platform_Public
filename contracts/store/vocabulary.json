@@ -306,7 +306,7 @@
         "Travel",
         "Weather"
       ],
-      "categoryFallback": "Others",
+      "listingCategory": "Others",
       "supportPhoneMaxChars": 12,
       "screenshots": {
         "dir": "screenshots",

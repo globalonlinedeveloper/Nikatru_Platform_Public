@@ -45,12 +45,24 @@ anything here.
   a truthful description of what the chassis gives every app; replace it with
   what THIS app does as soon as it does it.
 
-## ⚠️ UNVERIFIED — the field list itself
+## The form, read on 2026-09-22
 
-No listing character limit, and no listing FIELD LIST, has been fetched from a
-primary source for this store: the upload form is behind an authenticated login
-and nobody has read it (`O-APPS-GOV-IN-SBOM`). So no limit is declared in
-`tooling/channel-register.json` and none is enforced, and this tree carries the
-portfolio's standard eight files rather than a set derived from the real form.
-The runbook has an empty section waiting for that reading; fill both from the
-same sitting.
+The upload form was read on 2026-09-22, from its own script. Its rules are in
+`contracts/store/vocabulary.js` `STORE_FORM_RULES["apps-gov-in"]`, and its text
+limits are in `tooling/channel-register.json`
+`storeMetadataContract.perChannel["apps-gov-in"].maxChars`.
+`tooling/ci/assert-store-metadata.mjs` applies both to every app and to this
+template.
+
+- `category.txt` is `Others` for every app. The form's 23 categories have no
+  "Productivity", and "Finance" asks for an authorisation letter.
+  `tooling/app-yaml/render.mjs` writes the same value, from `listingCategory`.
+- `developed-by.txt` is the form's "Developed By" field, 3 to 50 characters.
+- `form-answers.json` holds the answer to every question on the form, each with
+  its evidence. It is stamped with the answers that are true of the chassis. Re-read
+  step 3 whenever the app gains a feature: CI fails the built `.apk` if it
+  requests a device permission this file answers No to.
+- `store-icon-512.png` is written by the stamp as a placeholder, and replaced by
+  `node tooling/ci/assert-apps-gov-in-media.mjs --write --app {{app_id}}` with a
+  copy of the Play store icon.
+- `screenshots/` explains how the 155x290 set is derived.

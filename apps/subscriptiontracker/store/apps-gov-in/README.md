@@ -30,9 +30,12 @@ shape and nothing was dropped from it.
 | `short-description.txt` | `catalog/apps.json` → `tagline` | same |
 | `privacy-policy-url.txt` | `channel-register.json` → `storeMetadataContract.portfolioUrls.privacyUrl` | same |
 | `support-url.txt` | same block, `supportUrl` | same |
-| `category.txt` | editorial — the same answer as the other five trees | nothing; it is one word and the stores' taxonomies differ |
+| `category.txt` | `Others`: the portal's 23-value list has no "Productivity", and "Finance" brings up an authorisation-letter upload meant for financial institutions. `tooling/app-yaml/render.mjs` writes `Others` for every app on this channel, from `contracts/store/vocabulary.js` `STORE_FORM_RULES["apps-gov-in"].listingCategory` | `assert-store-metadata.mjs`: the value must be one of the 23 |
+| `developed-by.txt` | editorial: the name the portal prints as the developer (3 to 50 characters) | `assert-store-metadata.mjs` `maxChars` |
+| `form-answers.json` | every answer for the portal's three steps, each one citing its evidence | `assert-store-metadata.mjs` (its structure), `assert-apps-gov-in-apk.mjs` (the answers the built `.apk` can contradict) |
+| `store-icon-512.png` | a byte copy of `../android-play/store-icon-512.png` | `assert-apps-gov-in-media.mjs`, `assert-listing-assets.mjs` |
 | `long-description.txt` | **byte-identical to `../android-play/long-description.txt`** | ⚠️ nothing — see below |
-| `screenshots/` | **byte-identical copies of the `android-play` phone set** | `screenshots/CAPTURE.json` records it; see that file |
+| `screenshots/` | **derived at 155x290 from the `android-play` phone set** | `screenshots/CAPTURE.json` records it; `assert-apps-gov-in-media.mjs` re-derives it |
 
 ⚠️ **`long-description.txt` is a COPY and nothing holds the two together.** It is
 android-play's copy rather than the other four channels' shared copy for one
@@ -66,35 +69,33 @@ the profile is suspended, so the `verified` status lapses about **2026-10-31** b
 the store's own rule rather than by going stale. It is the only expiry in
 [ADR 067]. The owner's upload sitting is that date.
 
-## ⚠️ UNVERIFIED — the field list itself, and what "unread" precisely means
+## The form, read on 2026-09-22
 
-No listing character limit and no listing **field list** has been read from the
-form that will actually be filled in. The upload form is behind an authenticated
-JavaScript SPA at `apps.gov.in/Developer`; `apps.gov.in/Developer/hosting_req`
-returns an empty shell to a non-JS fetch. So no limit is declared in
-`tooling/channel-register.json` for this channel, none is enforced, and this tree
-carries the portfolio's standard eight files rather than a set derived from the
-real form. **An agent never logs in.**
+The upload form's rules were read from its own script (`/Developer/chunk-ZVEOEZCZ.js`)
+on 2026-09-22. They are recorded in the Private runbook
+`runbooks/store-submission-apps-gov-in.md`, and in this repository in
+`contracts/store/vocabulary.js` `STORE_FORM_RULES["apps-gov-in"]` and
+`tooling/channel-register.json` `storeMetadataContract.perChannel["apps-gov-in"]`.
+`tooling/ci/assert-store-metadata.mjs` enforces them:
 
-⚠️ **"Nobody has read it" is too strong, and the distinction matters.** The
-portal's public JavaScript bundles *were* searched case-insensitively
-(2026-09-08): no SBOM field, no bill-of-materials field, no audit-certificate
-field, no request for source code. That is what closed `O-APPS-GOV-IN-SBOM` as
-DEFER-CONFIRMED on 2026-09-08 — **that row is `done`, and anything still citing
-it as the open unread-form blocker is stale**, including
-`tooling/bricks/app/__brick__/apps/{{app_id}}/store/apps-gov-in/`, which this
-tree's shape came from. What remains unseen is the **authenticated** form, so
-the reading above is confirmed rather than assumed; that residue rides with
-`O-APPS-GOV-IN-SUSPENSION-CLOCK`, the upload sitting itself. The runbook —
-`Private/runbooks/store-submission-apps-gov-in.md` — has a section waiting for
-it; fill that, this tree's screenshot table, and the register's
-`storeMetadataContract.perChannel["apps-gov-in"]` from the one sitting.
+- the category comes from the form's 23 values;
+- screenshots: 4 to 8, exactly 155x290, png or jpg, at most 1,048,576 bytes each;
+- the icon: 512x512, under 204,800 bytes;
+- field lengths: app name 2 to 80, developed-by 3 to 50, description 10 to 4000,
+  support phone at most 12.
+
+`form-answers.json` holds the answer to every question on the form, each with its
+evidence. The owner fills only the support email and the support phone, which are
+marked `OWNER FILLS`. The file to upload is the CI artifact
+`apps-gov-in-<app>-apk`, produced by the Android job of
+`.github/workflows/build-platforms.yml`.
 
 ## Changing the copy
 
-- A **derived** field (title, short description, the two URLs): change the
-  source, not this file. The guard compares them on every run and a fork fails
-  the build.
-- An **editorial** field (`long-description.txt`, `category.txt`): edit it here —
-  and, for the description, edit `../android-play/long-description.txt` in the
-  same change or the two disagree about the same `.apk`.
+- A **derived** field (title, short description, category, the two URLs):
+  change the source, not this file. The guard compares them on every run and a
+  fork fails the build. The category's source is `listingCategory`, not the
+  app's own `app.yaml` category.
+- An **editorial** field (`long-description.txt`, `developed-by.txt`): edit it
+  here. For the description, edit `../android-play/long-description.txt` in the
+  same change, or the two disagree about the same `.apk`.

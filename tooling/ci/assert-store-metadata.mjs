@@ -152,6 +152,7 @@ import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join, resolve, dirname, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
+import { STORE_FORM_RULES } from '../../contracts/store/vocabulary.js';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER = 'tooling/channel-register.json';
@@ -847,6 +848,195 @@ if (generatedGraphics.size > 0) {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ── A STORE'S OWN FORM RULES: the listing must be one the portal ACCEPTS ─────
+// ─────────────────────────────────────────────────────────────────────────────
+// Everything above checks that a listing is complete and derived. It cannot say
+// whether the store's upload form would take it, because until 2026-09-22 no
+// store's form had been read. apps.gov.in's has (contracts/store/vocabulary.js
+// STORE_FORM_RULES, read out of the form's own script), and each rule there is
+// a validator the portal runs on the day the owner uploads. A listing that
+// breaks one is refused at the sitting, with the suspension clock running, so
+// each is checked here on every PR (O-APPS-GOV-IN-CHANNEL-APK).
+//
+// The screenshots are photographs of a build, so a stamp cannot make them. On
+// an app the catalogue calls `live`, zero screenshots FAILS; on any other app
+// (a fresh stamp is `preview`) it PRINTS. A wrong count, size, format or byte
+// size FAILS on every app. The brick is held to the two things it DOES stamp:
+// the category (the literal the renderer writes) and form-answers.json.
+let formRuleChecks = 0;
+
+/** Pixel size from the file's own header: PNG IHDR, or a JPEG start-of-frame. */
+function imageSize(buf) {
+  if (buf.length >= 24 && buf.readUInt32BE(0) === 0x89504e47 && buf.toString('latin1', 12, 16) === 'IHDR') {
+    return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20), format: 'png' };
+  }
+  if (buf.length >= 4 && buf[0] === 0xff && buf[1] === 0xd8) {
+    let i = 2;
+    while (i + 9 < buf.length) {
+      if (buf[i] !== 0xff) return null;
+      const marker = buf[i + 1];
+      const len = buf.readUInt16BE(i + 2);
+      const sof = marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc;
+      if (sof) return { width: buf.readUInt16BE(i + 7), height: buf.readUInt16BE(i + 5), format: 'jpg' };
+      i += 2 + len;
+    }
+  }
+  return null;
+}
+
+/** Every `{ from: "<name>" }` in the form answers, with the key path it sits at. */
+function fromRefs(node, path, out = []) {
+  if (node && typeof node === 'object' && !Array.isArray(node)) {
+    if (typeof node.from === 'string') out.push({ path, from: node.from });
+    for (const [k, v] of Object.entries(node)) fromRefs(v, `${path}.${k}`, out);
+  }
+  return out;
+}
+
+const OWNER_FILLS = 'OWNER FILLS';
+const STEP3_COUNT = 11;
+
+/** form-answers.json, on an app tree and on the brick alike. On the brick, a
+ *  `from` naming a PNG the stamp generates (post_gen, see above) is not a file yet.
+ *  It is REQUIRED here rather than through the register's `additionalFiles`: a
+ *  .json listed there is a sworn declaration to assert-sworn-store-files.mjs,
+ *  whose template must stamp null answers, and these answers are chassis facts
+ *  that assert-apps-gov-in-apk.mjs re-proves against the built .apk. */
+function checkFormAnswers(dir, row, rules, onBrick = false) {
+  const p = posix.join(dir, 'form-answers.json');
+  const text = read(p);
+  if (text === null) {
+    problems.push(`${p} is missing. It is the answer to every field of the ${row.id} upload form, which the owner types from; without it the form is filled from memory.`);
+    return;
+  }
+  let fa;
+  try {
+    fa = JSON.parse(text);
+  } catch (e) {
+    problems.push(`${p} does not parse (${e.message}). It is what the owner types the ${row.id} upload form from.`);
+    return;
+  }
+  formRuleChecks++;
+  if (fa.channel !== row.id) problems.push(`${p} says channel ${JSON.stringify(fa.channel ?? null)}; it sits in the "${row.id}" tree.`);
+  const s1 = fa.step1 ?? {};
+  const s2 = fa.step2 ?? {};
+  const mp = s1.minimumPlatform ?? {};
+  const label = rules.minPlatformLabels[mp.sdk];
+  if (!Number.isInteger(mp.sdk) || label === undefined) {
+    problems.push(`${p} step1.minimumPlatform.sdk is ${JSON.stringify(mp.sdk ?? null)}; the form's list names only SDK ${Object.keys(rules.minPlatformLabels).join(', ')}.`);
+  } else if (mp.label !== label) {
+    problems.push(`${p} step1.minimumPlatform says SDK ${mp.sdk} is ${JSON.stringify(mp.label ?? null)}; the form lists SDK ${mp.sdk} as ${JSON.stringify(label)}. The owner picks the label, so the label is what must be right.`);
+  }
+  if (typeof s1.stateUt?.answer !== 'string' || s1.stateUt.answer.trim() === '') {
+    problems.push(`${p} step1.stateUt.answer is missing. The form requires a state or union territory.`);
+  }
+  for (const field of ['supportEmail', 'supportPhone']) {
+    if (s1[field] !== OWNER_FILLS) {
+      const len = typeof s1[field] === 'string' ? [...s1[field]].length : 0;
+      const cap = field === 'supportPhone' && len > rules.supportPhoneMaxChars ? ` It is also ${len} characters, and the form takes at most ${rules.supportPhoneMaxChars}.` : '';
+      problems.push(`${p} step1.${field} must read "${OWNER_FILLS}". The value is shown on the store, and the owner's contact details are never written into this repository.${cap}`);
+    }
+  }
+  for (const { path, from } of fromRefs({ step1: s1, step2: s2 }, 'form-answers')) {
+    if (onBrick && generatedGraphics.has(from)) continue;
+    if (!existsSync(abs(posix.join(dir, from)))) {
+      problems.push(`${p} ${path.replace(/^form-answers\./, '')} is filled from "${from}", and ${posix.join(dir, from)} does not exist.`);
+    }
+  }
+  const s3 = Array.isArray(fa.step3) ? fa.step3 : [];
+  if (s3.length !== STEP3_COUNT) problems.push(`${p} step3 holds ${s3.length} answer(s); the form's step 3 asks ${STEP3_COUNT} questions.`);
+  const ids = new Set();
+  s3.forEach((a, i) => {
+    if (a?.q !== i + 1) problems.push(`${p} step3[${i}] is question ${JSON.stringify(a?.q ?? null)}; the list is in the form's order, 1 to ${STEP3_COUNT}.`);
+    if (typeof a?.id !== 'string' || ids.has(a.id)) problems.push(`${p} step3[${i}] has a missing or repeated id ${JSON.stringify(a?.id ?? null)}.`);
+    else ids.add(a.id);
+    if (a?.answer !== 'Yes' && a?.answer !== 'No') problems.push(`${p} step3 "${a?.id}" answers ${JSON.stringify(a?.answer ?? null)}; the form takes Yes or No.`);
+    if (typeof a?.evidence !== 'string' || a.evidence.trim() === '') problems.push(`${p} step3 "${a?.id}" gives no evidence. An answer with no evidence is an answer from memory.`);
+  });
+}
+
+for (const { row, app, dir } of present) {
+  const rules = STORE_FORM_RULES[row.id];
+  if (!rules) continue;
+  const live = app.status === 'live';
+
+  // category: one of the store's own closed list
+  const category = (read(posix.join(dir, 'category.txt')) ?? '').trim();
+  formRuleChecks++;
+  if (category !== '' && !rules.categories.includes(category)) {
+    problems.push(`${dir}/category.txt reads ${JSON.stringify(category)}, which is not one of the ${rules.categories.length} categories the ${row.id} form offers (${rules.categories.join(', ')}). Source: ${rules.source}`);
+  }
+
+  // screenshots: count, format, exact pixel size, byte size
+  const shots = rules.screenshots;
+  const shotsDir = posix.join(dir, shots.dir);
+  const names = isDir(shotsDir) ? listDir(abs(shotsDir)).filter((n) => n !== 'README.md' && n !== 'CAPTURE.json').sort() : [];
+  if (names.length === 0) {
+    const why = `${shotsDir} holds no screenshots; the ${row.id} form refuses an upload with fewer than ${shots.min}.`;
+    if (live) problems.push(`${why} App "${app.slug}" is live in the catalogue, so its listing must be uploadable today.`);
+    else prints.push(`NO SCREENSHOTS YET — ${why} App "${app.slug}" is ${JSON.stringify(app.status ?? null)}, so this prints.`);
+  } else if (names.length < shots.min || names.length > shots.max) {
+    problems.push(`${shotsDir} holds ${names.length} screenshot(s); the ${row.id} form takes ${shots.min} to ${shots.max}.`);
+  }
+  for (const n of names) {
+    const p = posix.join(shotsDir, n);
+    const ext = n.includes('.') ? n.slice(n.lastIndexOf('.') + 1).toLowerCase() : '';
+    if (!shots.formats.includes(ext)) {
+      problems.push(`${p} is not a ${shots.formats.join(' or ')} file; the ${row.id} form takes no other screenshot format.`);
+      continue;
+    }
+    const buf = readFileSync(abs(p));
+    const size = imageSize(buf);
+    formRuleChecks++;
+    if (!size) problems.push(`${p} has no readable PNG or JPEG header.`);
+    else if (size.width !== shots.width || size.height !== shots.height) {
+      problems.push(`${p} is ${size.width}x${size.height}; the ${row.id} form refuses any screenshot that is not exactly ${shots.width}x${shots.height}.`);
+    }
+    if (buf.length > shots.maxBytes) problems.push(`${p} is ${buf.length} bytes; the ${row.id} form takes at most ${shots.maxBytes} per screenshot.`);
+  }
+
+  // the icon: exact size, under the byte cap
+  const icon = rules.icon;
+  const iconRel = posix.join(dir, icon.file);
+  if (existsSync(abs(iconRel))) {
+    const buf = readFileSync(abs(iconRel));
+    const size = imageSize(buf);
+    formRuleChecks++;
+    if (!size || size.format !== 'png') problems.push(`${iconRel} is not a readable PNG.`);
+    else if (size.width !== icon.width || size.height !== icon.height) problems.push(`${iconRel} is ${size.width}x${size.height}; the ${row.id} form takes exactly ${icon.width}x${icon.height}.`);
+    if (buf.length >= icon.maxBytesExclusive) problems.push(`${iconRel} is ${buf.length} bytes; the ${row.id} form takes an icon under ${icon.maxBytesExclusive}.`);
+  } else {
+    problems.push(`${iconRel} is missing; the ${row.id} form requires an app icon.`);
+  }
+
+  checkFormAnswers(dir, row, rules);
+}
+
+for (const row of storeRows) {
+  const rules = STORE_FORM_RULES[row.id];
+  if (!rules || typeof row.storeMetadataDir !== 'string') continue;
+  // The register's icon declaration is what post_gen writes a stamped app's icon
+  // from, so it must say what the form says.
+  const decl = contract.perChannel?.[row.id]?.graphicAssets?.assets?.[rules.icon.file];
+  formRuleChecks++;
+  if (!decl || decl.width !== rules.icon.width || decl.height !== rules.icon.height || decl.maxBytes !== rules.icon.maxBytesExclusive - 1) {
+    problems.push(
+      `${REGISTER} storeMetadataContract.perChannel["${row.id}"].graphicAssets.assets["${rules.icon.file}"] must declare ${rules.icon.width}x${rules.icon.height} and maxBytes ${rules.icon.maxBytesExclusive - 1}, the form's own icon rule (contracts/store/vocabulary.js STORE_FORM_RULES). post_gen writes every stamped app's icon from that declaration; it reads ${JSON.stringify(decl ? { width: decl.width, height: decl.height, maxBytes: decl.maxBytes } : null)}.`,
+    );
+  }
+  const dir = brickPath(row.storeMetadataDir);
+  if (!isDir(dir)) continue; // the factory limb already failed it
+  const category = (read(posix.join(dir, 'category.txt')) ?? '').trim();
+  formRuleChecks++;
+  if (category !== rules.listingCategory) {
+    problems.push(
+      `${dir}/category.txt stamps ${JSON.stringify(category)}; it must stamp exactly ${JSON.stringify(rules.listingCategory)}, the \`listingCategory\` tooling/app-yaml/render.mjs writes for "${row.id}". A mustache template cannot test membership of the form's ${rules.categories.length} categories, so anything else is refused by the portal for some app, or disagrees with the app's first render.`,
+    );
+  }
+  checkFormAnswers(dir, row, rules, true);
+}
+
 // ── ⚠️ AND THERE IS DELIBERATELY NO `COVERAGE LOST` FOR THIS LIMB ───────────
 // Every other scan in this file needs one because its domain can silently
 // become empty. This one's cannot: a store row with no brick tree is a FAIL by
@@ -1020,6 +1210,7 @@ if (problems.length) {
     `REQUIRED_COVERAGE — ${storeRows.length} store channel(s) × ${apps.length} app(s) = ${expected.length} expected tree(s); ` +
       `${treesChecked} present and complete, ${expected.length - treesChecked} printed as owner-gated gaps`,
   );
+  ok(`${formRuleChecks} store form rule(s) checked against the store's own upload form (contracts/store/vocabulary.js STORE_FORM_RULES)`);
   ok(`${filesChecked} listing field(s) non-empty, ${derivedChecked} of them compared to their spec source, ${limitsChecked} measured against a SOURCED store limit, ${identitiesChecked} package-identity field(s) agree`);
   ok(
     `REQUIRED_COVERAGE (THE FACTORY) — ${storeRows.length} store channel(s) → ${brickTreesChecked} brick template tree(s) under ${BRICK}, ` +

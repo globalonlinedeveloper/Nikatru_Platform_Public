@@ -106,15 +106,16 @@ export const APP_SCHEMA_PATH = join(HERE, 'schema', 'app.schema.json');
 export const RENDERED_LISTING_FILES = renderedListingFiles();
 
 /** The category a channel's category.txt carries. The app's own app.yaml
- *  `category`, unless the channel's store publishes a CLOSED list (contracts/store/
- *  vocabulary.js STORE_FORM_RULES) that lacks it — then the store's declared
- *  fallback. Added 2026-09-22 for apps.gov.in, whose form has no
- *  "Productivity" (O-APPS-GOV-IN-CHANNEL-APK). A channel with no closed list
+ *  `category`, unless the channel's store has its own form rules (contracts/store/
+ *  vocabulary.js STORE_FORM_RULES), which name the one `listingCategory` every
+ *  app lists under there. Added 2026-09-22 for apps.gov.in, whose form has no
+ *  "Productivity" (O-APPS-GOV-IN-CHANNEL-APK); why it ignores the app's own
+ *  category is written beside `listingCategory`. The app brick stamps the same
+ *  literal, so a stamp and its first render agree. A channel with no form rules
  *  is unchanged: the app's value, verbatim. */
 export function channelCategory(channelId, category) {
   const rules = STORE_FORM_RULES[channelId];
-  if (!rules) return category;
-  return rules.categories.includes(category) ? category : rules.categoryFallback;
+  return rules ? rules.listingCategory : category;
 }
 
 /** [ADR 085] A: where the RevenueCat routing map is rendered, and the module. */

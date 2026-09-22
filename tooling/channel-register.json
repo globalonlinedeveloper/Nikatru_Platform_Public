@@ -407,16 +407,18 @@
           "runbooks/store-submission-apps-gov-in.md ('Step 1'). Each is a validator the portal runs at upload.",
           "",
           "`additionalFiles`: `developed-by.txt` is the form's 'Developed By' field (shown on the store);",
-          "`store-icon-512.png` is the form's app icon, the same 512x512 render the Play listing uses;",
-          "`form-answers.json` is the answer to every field of the form's three steps, beside the listing",
-          "it is filled from. The image rules (4-8 screenshots at exactly 155x290, the icon at exactly",
+          "`store-icon-512.png` is the form's app icon, the same 512x512 render the Play listing uses.",
+          "`form-answers.json` (the answer to every field of the form's three steps, beside the listing it is",
+          "filled from) is deliberately NOT listed here: a .json in `additionalFiles` is a sworn declaration to",
+          "assert-sworn-store-files.mjs, whose template must stamp null answers. This file's answers are",
+          "chassis facts CI re-proves against the built .apk (assert-apps-gov-in-apk.mjs), and",
+          "assert-store-metadata.mjs requires it on every tree of a channel with STORE_FORM_RULES. The image rules (4-8 screenshots at exactly 155x290, the icon at exactly",
           "512x512) and the portal's 23 categories are the STORE's closed sets and live in",
           "contracts/store/vocabulary.js STORE_FORM_RULES; assert-store-metadata.mjs reads both."
         ],
         "additionalFiles": [
           "developed-by.txt",
-          "store-icon-512.png",
-          "form-answers.json"
+          "store-icon-512.png"
         ],
         "maxChars": {
           "title.txt": {
@@ -433,6 +435,30 @@
             "min": 10,
             "max": 4000,
             "source": "apps.gov.in upload form, Step 1 'Description' validator, 10-4000 characters (form script /Developer/chunk-ZVEOEZCZ.js, read 2026-09-22; Private runbooks/store-submission-apps-gov-in.md 'Step 1')"
+          }
+        },
+        "graphicAssets": {
+          "_why": [
+            "The icon is DECLARED here, not only in `additionalFiles`, for the reason the Play block gives: this is",
+            "what makes the brick's post_gen hook write a placeholder into every stamped app's apps-gov-in tree",
+            "(it is generic over every store row that declares `graphicAssets.assets`), and what makes",
+            "assert-listing-assets.mjs measure it. The subscriptiontracker file is a byte copy of the Play store",
+            "icon, which render-play-graphics.mjs derives 2:1 from the launcher-icon master; the copy is checked by",
+            "tooling/ci/assert-apps-gov-in-media.mjs. No `alpha` is declared: the portal's script checks the pixel",
+            "size and the byte size and nothing else, and an unsourced colour-type rule would fire on correct input.",
+            "No `screenshots` block either: the portal's screenshot rules (exactly 155x290) are not Play's, and",
+            "they live in contracts/store/vocabulary.js STORE_FORM_RULES, which assert-store-metadata.mjs applies."
+          ],
+          "assets": {
+            "store-icon-512.png": {
+              "required": true,
+              "width": 512,
+              "height": 512,
+              "format": "png",
+              "maxBytes": 204799,
+              "generatedBy": "tooling/ci/assert-apps-gov-in-media.mjs",
+              "source": "apps.gov.in upload form, Step 2 app icon validator, verbatim from the form script /Developer/chunk-ZVEOEZCZ.js (read 2026-09-22): \"r.width!==512||r.height!==512\", and a size cap of under 200 KB (204,800 bytes, so at most 204,799). Private runbooks/store-submission-apps-gov-in.md 'Step 2'"
+            }
           }
         }
       },

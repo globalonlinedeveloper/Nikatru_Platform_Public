@@ -1,37 +1,45 @@
 # Screenshots — {{{short_name}}} · `apps-gov-in`
 
-**This directory is stamped EMPTY on purpose, and that is not the same as
-forgotten.** Every other field in this tree is derived from the app spec by
-`tooling/bricks/app`. Screenshots are the one listing input that cannot be:
-they are photographs of a build that does not exist at stamp time.
+**This directory is stamped EMPTY on purpose.** Every other field in this tree
+is derived from the app spec by `tooling/bricks/app`. Screenshots cannot be:
+they are pictures of a build that does not exist at stamp time.
 
-The Mobile Seva AppStore's upload form is behind an authenticated login and
-nobody has read it, so **how many screenshots it asks for, and at what
-dimensions, is UNVERIFIED** (`O-APPS-GOV-IN-SBOM` — the same unread form). No
-dimension is declared in `tooling/channel-register.json` for this channel and
-none is enforced. Do not guess one: an invented limit fires on correct input.
+## What the portal accepts
+
+These rules come from the upload form's own script (`/Developer/chunk-ZVEOEZCZ.js`),
+read on 2026-09-22, and are recorded in `contracts/store/vocabulary.js`
+`STORE_FORM_RULES["apps-gov-in"]`.
+
+| field | rule |
+|---|---|
+| screenshot pixel size | **exactly 155x290**: any other size is refused |
+| screenshot count | 4 to 8 |
+| screenshot format | png or jpg |
+| screenshot file size | at most 1,048,576 bytes each |
+| icon (`../store-icon-512.png`) | 512x512, under 204,800 bytes |
+
+`tooling/ci/assert-store-metadata.mjs` applies every rule in that table. While
+the app is `preview` in the catalogue, an empty directory here is printed; once
+it is `live`, an empty directory fails the build.
 
 ## How to fill it
 
-1. Build and run the app for Android. This channel takes the same `.apk` the
-   `android-play` lane already produces — see
-   `Private/runbooks/store-submission-apps-gov-in.md`.
-2. Capture the frames. `tooling/store/capture-play-screenshots.mjs` does it for
-   Play against a live build and writes `CAPTURE.json` recording which build was
-   photographed — a screenshot with no provenance is evidence about nothing. The
-   Play captures are the right starting set here; whether the portal accepts
-   them is part of the unread form.
-3. Commit the PNGs here.
+Do not capture at 155x290. Derive this set from the app's `android-play` phone
+screenshots, which must be a LIVE capture (their `CAPTURE.json` says posture
+`live`):
+
+```
+node tooling/ci/assert-apps-gov-in-media.mjs --write --app {{app_id}}
+```
+
+That pads each Play screenshot to the portal's shape, shrinks it to 155x290,
+copies the Play store icon beside this directory, and writes `CAPTURE.json`
+recording where every file came from. The same script, run with no arguments in
+CI, fails when a Play screenshot changes and this set was not re-derived, or
+when a file here was edited by hand.
 
 ## What must NOT be captured
 
-A DEMO build. A demo build is a different app on screen — seeded sample data,
+A DEMO build. A demo build is a different app on screen: seeded sample data,
 and in this chassis a banner saying so. A listing built from one advertises a
 product nobody can install.
-
-## ⏳ And this is the channel with a deadline
-
-The developer profile is suspended if no app is uploaded within two months of
-approval (approved 2026-08-31 → about 2026-10-31). Screenshots are the standing
-blocker under every store in this portfolio (`O-STORE-SCREENSHOTS`), and this is
-the one store where that blocker has a date attached to it.

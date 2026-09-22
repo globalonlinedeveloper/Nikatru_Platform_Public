@@ -34,7 +34,7 @@ export interface StoreFormRules {
   readonly source: string;
   readonly asOf: string;
   readonly categories: readonly string[];
-  readonly categoryFallback: string;
+  readonly listingCategory: string;
   readonly supportPhoneMaxChars: number;
   readonly screenshots: {
     readonly dir: string;

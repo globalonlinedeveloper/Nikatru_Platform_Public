@@ -344,11 +344,16 @@ export const LISTING_CATEGORIES = /** @type {const} */ ({
  * them on every PR and tooling/ci/assert-apps-gov-in-apk.mjs checks the one that
  * needs the BUILT .apk (the minimum platform).
  *
- * ⚠️ `categoryFallback` IS A RENDERING RULE, NOT A STORE FACT. The portal has no
- * "Productivity", and "Finance" asks for an authorisation letter; an app whose
- * app.yaml `category` is not in the portal's list renders `Others` into this
- * channel's category.txt (tooling/app-yaml/render.mjs), and one whose category
- * IS in the list renders it unchanged.
+ * ⚠️ `listingCategory` IS A RENDERING RULE, NOT A STORE FACT: every app lists
+ * under it on this portal, whatever its app.yaml `category` says, and
+ * tooling/app-yaml/render.mjs writes it into this channel's category.txt. Three
+ * reasons it does not depend on the app. The portal has no "Productivity".
+ * "Finance" makes the form ask for an authorisation letter, and no other
+ * category's extra questions have been read. And the app brick stamps
+ * category.txt as a literal: a mustache template cannot test membership of the
+ * 23, so a rule that depended on the category would make the stamp and the
+ * renderer disagree on the first render. Listing a given app under a specific
+ * category is an owner decision; `categories` is the closed set that grades it.
  *
  * ⚠️ `minPlatformLabels` STOPS AT 30 BECAUSE THE PORTAL'S LIST DOES. An .apk whose
  * minSdkVersion has no label here cannot be described truthfully on the form, and
@@ -364,7 +369,7 @@ export const STORE_FORM_RULES = /** @type {const} */ ({
       'Identity', 'Indian Post', 'Judiciary', 'Language', 'm-Learning', 'Municipal corporation', 'News',
       'Others', 'Shopping', 'Social', 'Social Welfare', 'Sports', 'Transport', 'Travel', 'Weather',
     ],
-    categoryFallback: 'Others',
+    listingCategory: 'Others',
     // The TEXT limits (name 2-80, developed-by 3-50, description 10-4000) are
     // NOT here: they live in tooling/channel-register.json
     // storeMetadataContract.perChannel['apps-gov-in'].maxChars, the mechanism
