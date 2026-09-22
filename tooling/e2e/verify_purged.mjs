@@ -55,10 +55,31 @@
 // the top run before any request, so `process.exit(2)` is safe there and only
 // there — exactly the shape `verify_row.mjs` terminates with.
 //
+// ── TARGET-AWARE since 2026-09-22 ───────────────────────────────────────────
+// What "fine" means depends on the auth target (E2E_AUTH_TARGET), and the
+// expectation and every verdict line live in tooling/e2e/auth_target_expectation.mjs:
+//   hosted → the identity GONE (404) and 0 rows, exactly as before.
+//   boxa   → the identity STILL RESOLVES on Box A (2xx naming this user) and 0
+//            rows. Until the Phase 5 cutover the Worker refuses a Box A session,
+//            so the delete leg stops at that refusal and never reaches the
+//            erasure route. A 404 or a row is exit 1: something erased or wrote
+//            what the Worker should have refused.
+//   unset or anything else → exit 2, "could not decide what to expect", before
+//            any request. Never defaulted: the targets expect opposite answers.
+//
 // Env: E2E_DELETE_USER_ID, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY,
-//      CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN, SUBSCRIPTIONTRACKER_D1_DATABASE_ID
+//      CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN, SUBSCRIPTIONTRACKER_D1_DATABASE_ID,
+//      E2E_AUTH_TARGET (written to $GITHUB_ENV by e2e.yml's preflight)
 // NOTE: CLOUDFLARE_API_TOKEN needs D1 READ access for this account.
 // ─────────────────────────────────────────────────────────────────────────────
+import {
+  decideAuthTarget,
+  expectationLine,
+  identityVerdict,
+  rowsVerdict,
+  purgedSummary,
+  say,
+} from './auth_target_expectation.mjs';
 
 /** The route whose EFFECT this file audits — the in-app "Delete account" tap
  *  reaches the shared platform Worker's `DELETE /v1/account`, which sweeps
@@ -79,10 +100,17 @@ const acct = need('CLOUDFLARE_ACCOUNT_ID');
 const dbId = need('SUBSCRIPTIONTRACKER_D1_DATABASE_ID');
 const token = need('CLOUDFLARE_API_TOKEN');
 
+const auth = decideAuthTarget(process.env.E2E_AUTH_TARGET);
+if (!auth.target) {
+  console.error(`COULD NOT LOOK: ${auth.why}`);
+  process.exit(2); // safe: this runs BEFORE any fetch, so no undici handle is open
+}
+
 console.log(
   `Auditing the effect of DELETE ${ERASURE_ROUTE} for user ${userId} — ` +
     'the identity record and every user-owned row in subscriptiontracker_db.',
 );
+console.log(expectationLine('verify_purged', auth.target));
 
 // TWO INDEPENDENT FINDINGS, RESOLVED AT THE END — not one number raised as it
 // goes. `Math.max` would order the codes 0 < 1 < 2 and report "could not look"
@@ -98,10 +126,11 @@ const worse = (code) => {
 };
 
 // ── A · THE IDENTITY ────────────────────────────────────────────────────────
-// 404 is the goal state. 200 is the failure the user cannot see. Anything else
-// is "could not look" — a 401 here says the key is wrong, not that the account
-// survived, and reporting that as a survivor would send somebody hunting a
-// deletion bug that is not there.
+// On hosted, 404 is the goal state and 200 is the failure the user cannot see.
+// On boxa it is the other way round (see the header). On both, anything else is
+// "could not look" — a 401 here says the key is wrong, not that the account
+// survived or vanished, and reporting it as either would send somebody hunting a
+// bug that is not there.
 let identity;
 try {
   identity = await fetch(
@@ -114,23 +143,19 @@ try {
   worse(2);
 }
 
-if (identity && identity.status === 404) {
-  console.log('PASS: the identity record is gone (GoTrue admin read → 404).');
-} else if (identity && identity.ok) {
-  console.error(
-    `FAIL: the auth user ${userId} STILL RESOLVES (HTTP ${identity.status}) after the in-app ` +
-      'deletion reported success. The same email and password can still sign in — this is the ' +
-      'exact "your data is gone and your login is not" outcome the platform route reports as 502, ' +
-      'and the app told the user their account was deleted.',
-  );
-  worse(1);
-} else if (identity) {
-  console.error(
-    `COULD NOT LOOK: the GoTrue admin read answered HTTP ${identity.status}, which is neither ` +
-      '404 (gone) nor 2xx (still there). Check SUPABASE_SERVICE_ROLE_KEY before reading this as ' +
-      'a deletion failure.',
-  );
-  worse(2);
+if (identity) {
+  // The body is read only to NAME the account that answered: boxa's pass is a
+  // resolving identity, and it counts only if it is THIS user. Hosted's verdict
+  // never looks at it.
+  let bodyId;
+  if (identity.ok) {
+    try {
+      bodyId = (await identity.json())?.id;
+    } catch {
+      bodyId = undefined;
+    }
+  }
+  worse(say(identityVerdict(auth.target, { status: identity.status, ok: identity.ok, bodyId, userId })));
 }
 
 // ── B · THE APP'S ROWS, over a schema-derived table set ─────────────────────
@@ -160,40 +185,13 @@ if (tables === null) {
       worse(2);
       continue;
     }
-    if (rows > 0) {
-      console.error(
-        `FAIL: ${table} still holds ${rows} row(s) for the deleted user. The in-app deletion ` +
-          'reported success and this data survived it.',
-      );
-      worse(1);
-    } else {
-      console.log(`ok  ${table}: 0 row(s)`);
-    }
+    // Zero is the pass on both targets; what a row MEANS differs, and so does
+    // whether an unreadable count may stand for zero — the verdict decides.
+    worse(say(rowsVerdict(auth.target, table, rows)));
   }
 }
 
-if (survived) {
-  console.error(
-    "The golden path's delete leg is BROKEN against production: the app told a user their account " +
-      'was deleted, and the stores disagree.',
-  );
-  if (blind) {
-    console.error(
-      '  (Another limb of this audit also could not be read, so the damage above may be the ' +
-        'smaller half of it.)',
-    );
-  }
-} else if (blind) {
-  console.error(
-    'This audit COULD NOT COMPLETE, so nothing above may be read as proof that the deletion ' +
-      'worked. Exit 2 is deliberately not 1: fix the access, then re-run.',
-  );
-} else {
-  console.log(
-    'PASS: the in-app account deletion really erased this user — the identity is unresolvable and ' +
-      'every user-owned table in subscriptiontracker_db is empty for it. [pipeline N-6 leg 6]',
-  );
-}
+say(purgedSummary(auth.target, { survived, blind }));
 
 // `exitCode`, not `exit()` — see the header. Undici keep-alives are open by now.
 process.exitCode = survived ? 1 : blind ? 2 : 0;
@@ -262,7 +260,9 @@ async function userOwnedTables() {
   return owned;
 }
 
-/** Surviving rows for the deleted user in one table. `null` = the read failed.
+/** Surviving rows for the deleted user in one table, AS D1 ANSWERED — not yet
+ *  a number, because whether a missing count may stand for 0 is the verdict's
+ *  call (hosted: yes, as it always was; boxa: never). `null` = the read failed.
  *
  *  The table name is interpolated because D1 cannot bind an identifier — it
  *  comes from sqlite_master, never from an argument, and RESERVED has already
@@ -274,7 +274,9 @@ async function countFor(table) {
   }
   const result = await d1(`SELECT COUNT(*) AS n FROM ${table} WHERE user_id = ?`, [userId]);
   if (result === null) return null;
-  return Number(result?.[0]?.results?.[0]?.n ?? 0);
+  // `?? undefined`: a JSON null count must not collide with the `null` that
+  // means "the read failed" — it is an unread count, like a missing one.
+  return result?.[0]?.results?.[0]?.n ?? undefined;
 }
 
 /** One D1 HTTP query. Returns `json.result`, or `null` after printing why —
