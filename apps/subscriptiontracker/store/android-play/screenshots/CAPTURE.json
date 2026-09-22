@@ -5,6 +5,22 @@
   "viewport": "360x640@3",
   "pixels": "1080x1920",
   "count": 4,
+  "board": {
+    "activeCount": 6,
+    "monthlyTotalMinorUnits": {
+      "USD": 9347
+    },
+    "names": [
+      "AI assistant",
+      "Cloud storage",
+      "Fitness club",
+      "Music streaming",
+      "News digest",
+      "Video streaming"
+    ],
+    "seededThisDrive": 6,
+    "alreadyPresent": 0
+  },
   "requirements": {
     "source": "https://support.google.com/googleplay/android-developer/answer/9866151",
     "fetched": "2026-08-04"
