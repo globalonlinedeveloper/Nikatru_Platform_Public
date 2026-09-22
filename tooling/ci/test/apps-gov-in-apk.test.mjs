@@ -26,6 +26,9 @@ import { fileURLToPath } from 'node:url';
 import {
   toPinForm,
   parseApksignerCerts,
+  distinctSignerKeys,
+  signerShape,
+  toolOutputLines,
   parseBadging,
   portalLabel,
   decideArtifact,
@@ -55,6 +58,42 @@ const apksignerText = (dn, hex) => [
   'Signer #1 certificate MD5 digest: 00112233445566778899001122334455',
   '',
 ].join('\n');
+
+// ── the shapes apksigner prints, each with its provenance ───────────────────
+// (a) PROVENANCE: REAL apksigner output, verbatim, CRLF included. apksigner 0.9
+// (build-tools 36.0.0) on the Windows laptop, 2026-09-22, `verify --print-certs`
+// over a probe .apk that aapt2 built and the Android DEBUG key signed (the debug
+// certificate is public). Copy of record: Private
+// research/session-2026-09-21/apksigner-0.9-print-certs-debugkey-probe.txt (311 bytes).
+const PROBE_HEX = 'fee7290d944c4f88553d11af8068051afdeaac5e6c3751e58a0419e9dd4d86e1';
+const PROBE_CRLF = [
+  'Signer #1 certificate DN: C=US, O=Android, CN=Android Debug',
+  `Signer #1 certificate SHA-256 digest: ${PROBE_HEX}`,
+  'Signer #1 certificate SHA-1 digest: 9c06dccf3ac3f0345df625d316b8eed2f77c9619',
+  'Signer #1 certificate MD5 digest: 44ec582aee38bd6fce6f1c95ee9dc64f',
+  '',
+].join('\r\n');
+
+// (b)-(f) PROVENANCE: the labels apksig's ApkSignerTool.verify() passes to
+// printCertificate(), read at android.googlesource.com/platform/tools/apksig
+// (main) on 2026-09-22. With a v3.1 block it prints each v3.1 signer, then each
+// v3.0 signer, under "Signer (minSdkVersion=" + min + (rotationTargetsDevRelease
+// ? " (dev release=true)" : "") + ", maxSdkVersion=" + max + ")"; a source stamp
+// prints last under "Source Stamp Signer". printCertificate() writes DN, SHA-256,
+// SHA-1 and MD5, in that order. No .apk on hand prints these; the text is built
+// from those format strings.
+const V31_LABEL = 'Signer (minSdkVersion=33, maxSdkVersion=2147483647)';
+const V31_DEV_LABEL = 'Signer (minSdkVersion=33 (dev release=true), maxSdkVersion=2147483647)';
+const V30_LABEL = 'Signer (minSdkVersion=24, maxSdkVersion=32)';
+const certBlock = (label, dn, hex) => [
+  `${label} certificate DN: ${dn}`,
+  `${label} certificate SHA-256 digest: ${hex}`,
+  `${label} certificate SHA-1 digest: 0011223344556677889900112233445566778899`,
+  `${label} certificate MD5 digest: 00112233445566778899001122334455`,
+];
+const printCerts = (...blocks) => `${blocks.flat().join('\n')}\n`;
+const V31_ONE_KEY = printCerts(certBlock(V31_LABEL, DEBUG_SIGNER.dn, DEBUG_HEX), certBlock(V30_LABEL, DEBUG_SIGNER.dn, DEBUG_HEX));
+const V31_TWO_KEYS = printCerts(certBlock(V31_DEV_LABEL, OWN_SIGNER.dn, OWN_HEX), certBlock(V30_LABEL, 'CN=Nikatru Old, O=Nikatru, C=IN', DEBUG_HEX));
 
 const badgingText = ({ sdk = 24, perms = ['android.permission.INTERNET', 'android.permission.POST_NOTIFICATIONS'] } = {}) => [
   "package: name='com.nikatru.demo' versionCode='7' versionName='1.0.7' platformBuildVersionName='16' platformBuildVersionCode='36'",
@@ -113,6 +152,61 @@ describe('parsers', () => {
     assert.equal(mdCell('C:\\keys'), 'C:\\\\keys');
     assert.equal(mdCell('x|y'), 'x\\|y');
     assert.equal(mdCell(24), '24');
+  });
+});
+
+describe('parseApksignerCerts — both shapes apksigner prints, keyed by label', () => {
+  test('(a) the REAL apksigner 0.9 output, CRLF as captured, then LF as CI prints it: one "Signer #N" signer', () => {
+    for (const text of [PROBE_CRLF, PROBE_CRLF.replace(/\r\n/g, '\n')]) {
+      const got = parseApksignerCerts(text);
+      assert.equal(got.length, 1);
+      assert.deepEqual({ ...got[0] }, { index: 1, label: 'Signer #1', dn: 'C=US, O=Android, CN=Android Debug', sha256: toPinForm(PROBE_HEX) });
+      assert.equal(signerShape(got[0].label), 'Signer #N');
+      assert.equal(got.sourceStamp, null);
+      assert.deepEqual(got.unknown, []);
+    }
+  });
+
+  test('(b) the v3.1 shape, ONE key printed in a v3.1 and a v3.0 block, is ONE signer', () => {
+    const got = parseApksignerCerts(V31_ONE_KEY);
+    assert.deepEqual(got.map((s) => s.label), [V31_LABEL, V30_LABEL], 'entries in print order');
+    assert.deepEqual(got.map((s) => s.index), [1, 2]);
+    assert.ok(got.every((s) => signerShape(s.label) === 'Signer (minSdkVersion=…)'));
+    assert.equal(got[0].dn, DEBUG_SIGNER.dn);
+    assert.deepEqual(distinctSignerKeys(got), [toPinForm(DEBUG_HEX)]);
+    assert.deepEqual(got.unknown, []);
+  });
+
+  test('(c) the v3.1 shape with TWO keys (one "(dev release=true)") reads two distinct keys: a rotation', () => {
+    const got = parseApksignerCerts(V31_TWO_KEYS);
+    assert.deepEqual(got.map((s) => s.label), [V31_DEV_LABEL, V30_LABEL]);
+    assert.deepEqual(distinctSignerKeys(got), [OWN_PIN, toPinForm(DEBUG_HEX)]);
+    assert.deepEqual(got.unknown, []);
+  });
+
+  test('(d) "Signer #1" plus "Source Stamp Signer": one signer, and the stamp read apart, never counted', () => {
+    const got = parseApksignerCerts(printCerts(certBlock('Signer #1', DEBUG_SIGNER.dn, DEBUG_HEX), certBlock('Source Stamp Signer', 'CN=Stamp, O=Example', OWN_HEX)));
+    assert.equal(got.length, 1);
+    assert.equal(got[0].sha256, toPinForm(DEBUG_HEX));
+    assert.ok(got.sourceStamp, 'the source stamp is read');
+    assert.equal(got.sourceStamp.dn, 'CN=Stamp, O=Example');
+    assert.equal(got.sourceStamp.sha256, OWN_PIN);
+    assert.deepEqual(distinctSignerKeys(got), [toPinForm(DEBUG_HEX)]);
+  });
+
+  test('(e) a certificate line under an unknown label is kept verbatim in `unknown`, never skipped', () => {
+    const got = parseApksignerCerts(`${apksignerText(DEBUG_SIGNER.dn, DEBUG_HEX)}Signer [x] certificate DN: CN=x\n`);
+    assert.deepEqual(got.unknown, ['Signer [x] certificate DN: CN=x']);
+    assert.equal(signerShape('Signer [x]'), null);
+  });
+
+  test('toolOutputLines prefixes each line, escapes control characters and stops at 20', () => {
+    assert.deepEqual(toolOutputLines('stdout', 'a\r\nb\tc\x1b[0m\n'), ['stdout: 2 line(s), 11 bytes', 'stdout| a\\r', 'stdout| b\\tc\\x1b[0m']);
+    assert.deepEqual(toolOutputLines('stderr', ''), ['stderr: (empty, 0 bytes)']);
+    const many = toolOutputLines('stdout', Array.from({ length: 25 }, (_, i) => `l${i}`).join('\n'));
+    assert.equal(many.length, 21);
+    assert.match(many[0], /25 line\(s\), .*first 20 shown/);
+    assert.equal(many[20], 'stdout| l19');
   });
 });
 
@@ -209,12 +303,14 @@ let seq = 0;
 before(() => { TMP = mkdtempSync(join(tmpdir(), 'nikatru-agi-apk-')); });
 after(() => { rmSync(TMP, { recursive: true, force: true }); });
 
+// `--version` answers `fake-<name> 0.0`, so a guard that prints the tool's
+// version on COVERAGE LOST shows a line a test can anchor on.
 function fakeTool(dir, name, envOut, envCode) {
   if (process.platform === 'win32') {
-    writeFileSync(join(dir, `${name}.bat`), `@type "%${envOut}%"\r\n@exit /b %${envCode}%\r\n`);
+    writeFileSync(join(dir, `${name}.bat`), `@if "%~1"=="--version" (echo fake-${name} 0.0& exit /b 0)\r\n@type "%${envOut}%"\r\n@exit /b %${envCode}%\r\n`);
   } else {
     const p = join(dir, name);
-    writeFileSync(p, `#!/bin/sh\ncat "$${envOut}"\nexit "$${envCode}"\n`);
+    writeFileSync(p, `#!/bin/sh\nif [ "$1" = "--version" ]; then echo "fake-${name} 0.0"; exit 0; fi\ncat "$${envOut}"\nexit "$${envCode}"\n`);
     chmodSync(p, 0o755);
   }
 }
@@ -293,10 +389,46 @@ describe('the CLI', () => {
     assert.match(out, /COVERAGE LOST — .* lacks apksigner and aapt2/);
   });
 
-  test('apksigner printing no signer is COVERAGE LOST: the format moved, the signer is unread', () => {
-    const { code, out } = run(fixture({ apksigner: 'Verifies\n' }));
+  test('apksigner printing no signer is COVERAGE LOST, and it PRINTS what apksigner returned', () => {
+    const fx = fixture({ apksigner: 'Verifies\n' });
+    const { code, out } = run(fx);
     assert.equal(code, 2, out);
-    assert.match(out, /COVERAGE LOST — apksigner exited 0 and printed no "Signer #1 certificate" lines/);
+    assert.match(out, /COVERAGE LOST — apksigner exited 0 and printed no signer certificate line in either shape/);
+    // Run 35720583079 printed only the two lines above, so the real format stayed unread.
+    assert.ok(out.includes(`apksigner: ${join(fx.bt, process.platform === 'win32' ? 'apksigner.bat' : 'apksigner')}`), out);
+    assert.match(out, /^\s*apksigner --version: fake-apksigner 0\.0 \(exit 0\)$/m);
+    assert.match(out, /^\s*stdout: 1 line\(s\), 9 bytes$/m);
+    assert.match(out, /^\s*stdout\| Verifies$/m);
+    assert.match(out, /^\s*stderr: \(empty, 0 bytes\)$/m);
+  });
+
+  test('(a) CLI: the REAL apksigner 0.9 output (CRLF) exits 0 in debug posture and names the shape it read', () => {
+    const { code, out, output } = run(fixture({ apksigner: PROBE_CRLF }));
+    assert.equal(code, 0, out);
+    assert.match(output, /^artifact_name=apps-gov-in-demo-apk-NOT-FOR-UPLOAD-debug-signed-build-proof$/m);
+    assert.match(out, /apksigner read: shape "Signer #N", 1 distinct signer key\(s\) over 1 signer entry — .*fake-apksigner 0\.0/);
+    assert.match(out, /^\s*stdout\| Signer #1 certificate DN: C=US, O=Android, CN=Android Debug\\r$/m);
+  });
+
+  test('(f) CLI: the v3.1 shape, one key, exits 0 in debug posture with the NOT-FOR-UPLOAD name', () => {
+    const { code, out, output } = run(fixture({ apksigner: V31_ONE_KEY }));
+    assert.equal(code, 0, out);
+    assert.match(output, /^artifact_name=apps-gov-in-demo-apk-NOT-FOR-UPLOAD-debug-signed-build-proof$/m);
+    assert.match(out, /apksigner read: shape "Signer \(minSdkVersion=…\)", 1 distinct signer key\(s\) over 2 signer entries/);
+  });
+
+  test('(c) CLI: the v3.1 shape with two keys exits 1 on the rotation and writes no artifact name', () => {
+    const { code, out, output } = run(fixture({ apksigner: V31_TWO_KEYS }), [], 'release');
+    assert.equal(code, 1, out);
+    assert.match(out, /FAIL the \.apk carries a key rotation \(2 distinct signer keys\); an apps\.gov\.in upload carries exactly one key/);
+    assert.doesNotMatch(output, /artifact_name=/);
+  });
+
+  test('(e) CLI: a certificate line under an unknown label is COVERAGE LOST naming the line, with what apksigner returned', () => {
+    const { code, out } = run(fixture({ apksigner: `${apksignerText(DEBUG_SIGNER.dn, DEBUG_HEX)}Signer [x] certificate DN: CN=x\n` }));
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST — apksigner printed a certificate line whose label is neither .*: "Signer \[x\] certificate DN: CN=x"/);
+    assert.match(out, /^\s*stdout\| Signer \[x\] certificate DN: CN=x$/m);
   });
 
   test('debug-signed with the pin null exits 0, writes the NOT-FOR-UPLOAD name to $GITHUB_OUTPUT and says why in capitals', () => {
