@@ -65,7 +65,7 @@ body:
     id: env
     attributes:
       label: Browser or device + version, OS, and the version of the thing that broke
-      placeholder: "Firefox 143 · macOS 15 · FullShot 1.10.1   (or: Pixel 8 · Android 15 · Subly 1.4.0)"
+      placeholder: "Firefox 143 · macOS 15 · FullShot 1.10.1   (or: Pixel 8 · Android 15 · Subscriptions 1.4.0)"
     validations: { required: true }
 
   - type: textarea

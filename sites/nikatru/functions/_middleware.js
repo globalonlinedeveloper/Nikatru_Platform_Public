@@ -5,7 +5,8 @@
 //   browser → nikatru.com/subscriptiontracker/…
 //                │
 //                ├─ first path segment in app-routes.json?
-//                │     no  → next()                    → sites/nikatru asset
+//                │     no  → a `*.md` path?  yes → 404          [since 2026-09-22]
+//                │                           no  → next()      → sites/nikatru asset
 //                │     yes → a document the static site HAS at this path?
 //                │             yes → that file (a per-app notice)   [since 2026-09-11]
 //                │             no  → fetch(row.origin + rest)  → that app's own Pages project
@@ -64,7 +65,7 @@
 // the loop is impossible by construction rather than exempted by a header some
 // future rule edit could stop matching. `row.origin` comes from
 // `hosts.pagesOrigin` in app.yaml, which is declared because Cloudflare appended
-// a suffix when the project name was taken (`subly-9cp.pages.dev`), so
+// a suffix when the project name was taken (`subscriptiontracker-7qg.pages.dev`), so
 // `<id>.pages.dev` is wrong for exactly the app this repository has.
 //
 // ── WHAT THIS FILE DOES NOT OWN ──────────────────────────────────────────────
@@ -80,6 +81,7 @@
 // NO declared CSP ship with none. See that file.
 // ─────────────────────────────────────────────────────────────────────────────
 import table from '../app-routes.json';
+import { refusedByRouter } from '../../../tooling/sites/served.mjs';
 
 /** Paths the router must never claim, whatever the table says.
  *
@@ -142,6 +144,39 @@ const SECURITY_HEADERS = {
     "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'",
 };
 
+/** Every response this function BUILDS goes through here, so each one carries the
+ *  floor above. `_headers` never reaches a response this function returns itself
+ *  (the header of this file), and that is as true of the Markdown 404 below as it
+ *  is of a proxied app response. One constructor, so the set cannot be applied to
+ *  one of them and forgotten on the other. */
+function floored(body, init) {
+  const out = new Response(body, init);
+  for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
+    if (!out.headers.has(name)) out.headers.set(name, value);
+  }
+  return out;
+}
+
+/** 🔴 THE APEX SERVES NO MARKDOWN.
+ *
+ *  ⏱ 2026-09-22 — MEASURED against https://nikatru.com: `/README.md` and
+ *  `/legal/README.md` answered 200. They are a maintainer's notes about the site,
+ *  committed beside the pages because that is where a maintainer reads them, and
+ *  Pages publishes every committed file under the root. The owner's answer the
+ *  same day: nikatru.com serves no Markdown.
+ *
+ *  So a path the STATIC SITE would answer is refused here when its last segment
+ *  ends `.md` (`refusedByRouter` in tooling/sites/served.mjs — the same rule the
+ *  customer-visible retired-name guard reads, so that guard skips exactly the
+ *  files this refuses and no others). Refused BEFORE `next()`: the file is never
+ *  read, whatever it holds. An app path is not touched — the app's own origin
+ *  answers for everything under it.
+ *
+ *  The import is resolved at BUILD time, like the route table: a bundle that
+ *  cannot reach tooling/sites/served.mjs fails the Pages build, and the previous
+ *  deployment goes on serving. */
+const MARKDOWN_REFUSED = { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' } };
+
 /** 🔴 A STATIC DOCUMENT UNDER AN APP PATH IS SERVED BEFORE THE APP IS ASKED.
  *
  *  ⏱ 2026-09-11 — REVIEW-stores-2026-09-10 #4. tooling/app-yaml/render-privacy.mjs
@@ -187,13 +222,10 @@ export async function onRequest(context) {
   try {
     const url = new URL(request.url);
 
-    for (const prefix of NEVER_PROXY) {
-      if (url.pathname === prefix.slice(0, -1) || url.pathname.startsWith(prefix)) return next();
-    }
-
+    const neverProxy = NEVER_PROXY.some((prefix) => url.pathname === prefix.slice(0, -1) || url.pathname.startsWith(prefix));
     const segment = `/${url.pathname.split('/')[1] ?? ''}`;
-    const row = routes.find((r) => r.path === segment);
-    if (!row) return next();
+    const row = neverProxy ? null : routes.find((r) => r.path === segment);
+    if (!row) return refusedByRouter(url.pathname) ? floored('Not found\n', MARKDOWN_REFUSED) : next();
 
     // `/subscriptiontracker` → `/subscriptiontracker/`. The build is compiled with `--base-href /<id>/`, so
     // every asset URL in the document is relative to the TRAILING SLASH. Serving
@@ -228,11 +260,7 @@ export async function onRequest(context) {
     const upstream = await fetch(new Request(target, request), { redirect: 'manual' });
     // The static 404 that was asked for is not the answer; release its body.
     local?.body?.cancel().catch(() => {});
-    const out = new Response(upstream.body, upstream);
-    for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
-      if (!out.headers.has(name)) out.headers.set(name, value);
-    }
-    return out;
+    return floored(upstream.body, upstream);
   } catch {
     // Every failure is the static site, never a 500 on the apex — and when the
     // static site was already asked, its answer IS that fallback.

@@ -1374,7 +1374,9 @@ if (SCANNING_OWN_REPO) {
 // So this limb does not reason about the router; it RUNS it. For every deploy root
 // carrying functions/_middleware.js:
 //   · the router module is loaded with its table — the JSON import swapped for the
-//     parsed app-routes.json, the only edit, and a changed import line is a FAILURE;
+//     parsed app-routes.json, and a changed import line is a FAILURE. Its other
+//     relative imports (tooling/sites/served.mjs, since 2026-09-22) are re-pointed
+//     at the files they name, because the copy runs from a scratch directory;
 //   · `next()` is a model of the Pages asset stage over THIS root: the exact file,
 //     `<path>.html`, `<dir>/index.html`, `.html` → 308, and for an unknown path
 //     404.html with 404 when the root has one — else index.html with 200, Pages'
@@ -1391,7 +1393,8 @@ let routerRoots = 0;
 let routerDocsChecked = 0;
 {
   const ROUTER_IMPORT = /^import\s+table\s+from\s+['"]\.\.\/app-routes\.json['"];?[ \t]*$/m;
-  const SHELL = 'APP-SHELL-SENTINEL: this request was proxied to the app origin';
+  const RELATIVE_IMPORT = /^(import\s[^'"]*?\bfrom\s+['"])(\.\.?\/[^'"]+)(['"])/gm;
+  const SHELL ='APP-SHELL-SENTINEL: this request was proxied to the app origin';
   for (const root of siteRoots) {
     const mwAbs = join(root, 'functions', '_middleware.js');
     if (!existsSync(mwAbs)) continue;
@@ -1432,7 +1435,12 @@ let routerDocsChecked = 0;
     let router;
     try {
       const modAbs = join(scratch, 'router.mjs');
-      writeFileSync(modAbs, src.replace(ROUTER_IMPORT, `const table = ${JSON.stringify(table)};`));
+      writeFileSync(
+        modAbs,
+        src
+          .replace(ROUTER_IMPORT, `const table = ${JSON.stringify(table)};`)
+          .replace(RELATIVE_IMPORT, (_, head, spec, tail) => head + pathToFileURL(resolve(dirname(mwAbs), spec)).href + tail),
+      );
       router = await import(pathToFileURL(modAbs).href);
     } catch (err) {
       problems.push(`${where}/functions/_middleware.js could not be loaded for simulation (${err.message}).`);

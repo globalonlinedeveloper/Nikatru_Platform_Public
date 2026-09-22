@@ -128,6 +128,9 @@ import { createHash } from 'node:crypto';
 import { resolve, join, dirname, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
+// Pages' own control files, which it never serves as assets — one set, shared
+// with the apex router and assert-retired-names-visible.
+import { PAGES_CONTROL_FILES } from '../sites/served.mjs';
 
 const args = process.argv.slice(2);
 const ROOT = resolve(args[0] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
@@ -164,9 +167,6 @@ const CLASS_PROBES = {
  *  enough — it governs what happens once a response is STALE, and with a long
  *  `max-age` it never becomes stale inside the window that matters. */
 const REVALIDATES = /(^|[,\s])max-age\s*=\s*0(\b|$)|no-cache|no-store/i;
-
-/** Cloudflare Pages does not serve its own control files as assets. */
-const NOT_SERVED = new Set(['_headers', '_redirects', '_routes.json', '_worker.js']);
 
 const problems = [];
 const prints = [];
@@ -378,7 +378,7 @@ function shippedPaths(absDir) {
     for (const e of entries) {
       if (e.name.startsWith('.')) continue;
       if (e.isDirectory()) walk(join(dir, e.name), `${rel}${e.name}/`);
-      else if (!NOT_SERVED.has(e.name)) out.push(`/${rel}${e.name}`);
+      else if (!PAGES_CONTROL_FILES.has(e.name)) out.push(`/${rel}${e.name}`);
     }
   };
   walk(absDir, '');

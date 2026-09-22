@@ -39,7 +39,7 @@
 # edge-caches .css and .js by extension, so anything of those types this zone
 # served was stamped `max-age=14400` whatever the origin declared. The override
 # is now off (the zone is on "Respect Existing Headers"), which fixed a real
-# bug on subly.nikatru.com — /flutter_bootstrap.js and /main.dart.js were being
+# bug on the app's former subdomain — /flutter_bootstrap.js and /main.dart.js were being
 # given a four-hour browser cache against a declared `max-age=0`, so a
 # returning visitor ran the PREVIOUS build and reported its version honestly,
 # invisible to exactly the force-update kill switch that exists for it. Turning
@@ -67,7 +67,7 @@
 # name moves when its bytes do. `immutable` on a stable name means a CSS fix
 # never reaches anyone who has already visited — for a year, and without even a
 # revalidation on an explicit reload. This takes the same one-round-trip
-# bargain apps/subly/web/_headers takes for its entry points.
+# bargain apps/subscriptiontracker/web/_headers takes for its entry points.
 #
 # Declared at ANY DEPTH (`/*.css`, not `/assets/*.css`) on purpose: the gap
 # being closed is a file arriving somewhere nobody wrote a rule for, and a
@@ -121,7 +121,7 @@
 #     outcomes: the icon 404s on three published policy pages, or a consent
 #     record is edited to keep a favicon working. Neither is available, and no
 #     amount of care makes it available.
-#   · TWO are GENERATED — apps/subly.html and apps/index.html, written by
+#   · TWO are GENERATED — apps/subscriptiontracker.html and apps/index.html, written by
 #     tooling/sites/generate-discovery.mjs and diffed in CI.
 #   · ONE is apps/_template.html, which no pass here owns.
 # THE RENAME IS THEREFORE DEAD, NOT DEFERRED AND NOT OWNER-GATED. Do not
@@ -143,7 +143,7 @@
 # THE COST, stated so it is weighed and not discovered later: a returning
 # visitor now spends ONE conditional request per icon instead of zero, and the
 # bytes still come from the local cache on the 304. That is the identical
-# bargain /*.css and /*.js take above, and the one apps/subly/web/_headers takes
+# bargain /*.css and /*.js take above, and the one apps/subscriptiontracker/web/_headers takes
 # for its entry points.
 #
 # ⚠️ `og-image.png` IS COVERED BY THIS RULE TOO, and deliberately. A RENAME was

@@ -1503,7 +1503,9 @@ const NOTICE = '<!doctype html><html><head><meta name="robots" content="noindex"
 const routerFiles = ({ middleware = readFileSync(MIDDLEWARE, 'utf8'), docs = { 'sites/a/demo/notice.html': NOTICE }, links = ['/demo/notice'] } = {}) => ({
   'sites/a/functions/_middleware.js': middleware,
   'sites/a/app-routes.json': JSON.stringify(ROUTES),
-  'sites/a/support.html': `<html><head><meta name="robots" content="noindex"></head><body>${links.map((l) => `<a href="${l}">x</a>`).join('')}</body></html>\n`,
+  // the router imports what the apex serves from here (since 2026-09-22)
+  'tooling/sites/served.mjs': readFileSync(resolve(CI_DIR, '..', 'sites', 'served.mjs'), 'utf8'),
+  'sites/a/support.html':`<html><head><meta name="robots" content="noindex"></head><body>${links.map((l) => `<a href="${l}">x</a>`).join('')}</body></html>\n`,
   ...docs,
 });
 
@@ -1563,11 +1565,17 @@ describe('check-site-integrity · the apex router never answers a published docu
   });
 });
 
-/** Load the REAL router with a table, the same one-line swap the guard makes. */
+/** Every other relative import, re-pointed at the file it names — the guard does the same. */
+const RELATIVE_IMPORT = /^(import\s[^'"]*?\bfrom\s+['"])(\.\.?\/[^'"]+)(['"])/gm;
+
+/** Load the REAL router with a table, the same swap the guard makes. */
 async function loadRouter(table = ROUTES) {
   const dir = mkdtempSync(join(ROOT, 'router-module-'));
   const file = join(dir, 'router.mjs');
-  writeFileSync(file, readFileSync(MIDDLEWARE, 'utf8').replace(ROUTER_IMPORT, `const table = ${JSON.stringify(table)};`));
+  const src = readFileSync(MIDDLEWARE, 'utf8')
+    .replace(ROUTER_IMPORT, `const table = ${JSON.stringify(table)};`)
+    .replace(RELATIVE_IMPORT, (_, head, spec, tail) => head + pathToFileURL(resolve(dirname(MIDDLEWARE), spec)).href + tail);
+  writeFileSync(file, src);
   return import(pathToFileURL(file).href);
 }
 
@@ -1671,6 +1679,68 @@ describe('sites/nikatru/functions/_middleware.js — a static document under an 
     const router = await loadRouter();
     const { text, calls } = await drive(router, '/pricing');
     assert.equal(text, 'NOT FOUND PAGE');
+    assert.deepEqual([calls.next, calls.fetch], [1, 0]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-22 — THE APEX SERVES NO MARKDOWN. https://nikatru.com/README.md and
+// /legal/README.md answered 200 — a maintainer's notes, published because Pages
+// serves every committed file under the root. The owner's answer: the apex serves no
+// Markdown. The rule is `refusedByRouter` in tooling/sites/served.mjs; these rows
+// drive the REAL router over it.
+const SECURITY_HEADER_NAMES = ['x-content-type-options', 'x-frame-options', 'referrer-policy', 'strict-transport-security', 'content-security-policy'];
+
+describe('sites/nikatru/functions/_middleware.js — the apex serves no Markdown', () => {
+  const REFUSED = [
+    ['/README.md', 'GET'],
+    ['/legal/README.md', 'GET'],
+    ['/any/deep/file.md', 'GET'],
+    ['/README.MD', 'GET'],
+    ['/README%2Emd', 'GET'],
+    ['/README.md', 'HEAD'],
+    ['/.well-known/notes.md', 'GET'],
+  ];
+  for (const [pathname, method] of REFUSED) {
+    test(`${method} ${pathname} → 404, the file is never read, and the 404 carries the security floor`, async () => {
+      const router = await loadRouter();
+      const { res, calls } = await drive(router, pathname, { method, assets: { [pathname]: { body: '# a maintainer note' } } });
+      assert.equal(res.status, 404);
+      assert.deepEqual([calls.next, calls.fetch], [0, 0]);
+      for (const name of SECURITY_HEADER_NAMES) assert.ok(res.headers.get(name), `${name} missing on the refusal`);
+      assert.equal(res.headers.get('cache-control'), 'no-store');
+    });
+  }
+
+  const UNCHANGED = [
+    ['/', '<!doctype html><title>Nikatru</title>'],
+    ['/legal/2026-09-05/en/privacy.html', '<!doctype html><title>Privacy</title>'],
+    ['/llms.txt', '# Nikatru'],
+    ['/sitemap.xml', '<urlset></urlset>'],
+    ['/apps/subscriptiontracker', '<!doctype html><title>Subscription Tracker</title>'],
+  ];
+  for (const [pathname, body] of UNCHANGED) {
+    test(`${pathname} is the static site's own answer, byte for byte`, async () => {
+      const router = await loadRouter();
+      const { res, text, calls } = await drive(router, pathname, { assets: { [pathname]: { body } } });
+      assert.equal(res.status, 200);
+      assert.equal(text, body);
+      assert.deepEqual([calls.next, calls.fetch], [1, 0]);
+    });
+  }
+
+  test("a `.md` path under an APP is still the app's — proxied, not refused", async () => {
+    const router = await loadRouter();
+    const { res, text, calls } = await drive(router, '/demo/notes.md');
+    assert.equal(res.status, 200);
+    assert.equal(text, 'APP SHELL');
+    assert.deepEqual([calls.next, calls.fetch], [0, 1]);
+  });
+
+  test('a name that only CONTAINS `.md` is not refused', async () => {
+    const router = await loadRouter();
+    const { res, calls } = await drive(router, '/guide.md.html', { assets: { '/guide.md.html': { body: 'PAGE' } } });
+    assert.equal(res.status, 200);
     assert.deepEqual([calls.next, calls.fetch], [1, 0]);
   });
 });
