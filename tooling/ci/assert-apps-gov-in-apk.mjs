@@ -55,6 +55,22 @@
 // first. An absent tool is COVERAGE LOST (exit 2), never a pass and never a
 // mismatch — the two failure modes print differently.
 //
+// ── THE TWO SHAPES `apksigner verify --print-certs` PRINTS ───────────────────
+// apksig's ApkSignerTool.verify() labels each certificate it prints, and the
+// label is the only thing that differs between its two shapes:
+//   · no v3.1 block  → `Signer #N certificate DN: …` / `… SHA-256 digest: …`
+//   · a v3.1 block   → `Signer (minSdkVersion=A[ (dev release=true)], maxSdkVersion=B) certificate …`,
+//                      the v3.1 signers first, then the v3.0 signers
+//   · either, plus   → `Source Stamp Signer certificate …`, which is NOT a signer
+// The parser keys each entry by its label. A signer is counted by its DISTINCT
+// SHA-256: one key printed in a v3.1 and a v3.0 block is one signer; two keys
+// is a rotation and FAILS. A certificate line under any other label is
+// COVERAGE LOST, named verbatim — an unknown shape is unread, never skipped.
+// Every COVERAGE LOST on apksigner's output prints what apksigner returned
+// (its path, `--version`, the first 20 lines of stdout and of stderr), and a
+// successful read prints the shape it read (row O-APPS-GOV-IN-APK-SIGNER-UNREAD:
+// the first real run, 35720583079, printed neither, so the format stayed unread).
+//
 // Usage:  node tooling/ci/assert-apps-gov-in-apk.mjs --apk <file.apk> --app <app-id>
 //           --posture <release|debug> [--repo-root <dir>] [--build-tools <dir>]
 // Writes `artifact_name=` and `verdict=` to $GITHUB_OUTPUT and a table to
@@ -96,16 +112,74 @@ export function toPinForm(hex) {
   return h.match(/.{2}/g).join(':');
 }
 
-/** `apksigner verify --print-certs` stdout → [{ index, dn, sha256 }]. */
+// The labels apksig prints before ` certificate DN: ` (see the header).
+const SIGNER_N = /^Signer #(\d+)$/;
+const SIGNER_V31 = /^Signer \(minSdkVersion=(\d+)( \(dev release=true\))?, maxSdkVersion=(\d+)\)$/;
+const SOURCE_STAMP = 'Source Stamp Signer';
+export const SHAPE_N = 'Signer #N';
+export const SHAPE_V31 = 'Signer (minSdkVersion=…)';
+
+/** A certificate label → the shape it belongs to, or null for a label apksig does not print. */
+export function signerShape(label) {
+  if (SIGNER_N.test(label)) return SHAPE_N;
+  if (SIGNER_V31.test(label)) return SHAPE_V31;
+  return null;
+}
+
+/**
+ * `apksigner verify --print-certs` stdout → the SIGNER entries in print order,
+ * [{ index, label, dn, sha256 }], keyed by label (both shapes in the header).
+ * `index` is N for `Signer #N` and the print position for the v3.1 shape.
+ * The array also carries:
+ *   · `sourceStamp` — the `Source Stamp Signer` entry, or null. Never a signer.
+ *   · `unknown`     — every certificate line whose label is neither shape, verbatim.
+ */
 export function parseApksignerCerts(text) {
-  const byIndex = new Map();
+  const signers = [];
+  const unknown = [];
+  let sourceStamp = null;
+  const open = new Map(); // label → the entry its last DN line opened
   for (const line of String(text).split(/\r?\n/)) {
-    const dn = /^Signer #(\d+) certificate DN: (.+)$/.exec(line);
-    if (dn) byIndex.set(dn[1], { ...(byIndex.get(dn[1]) ?? {}), index: Number(dn[1]), dn: dn[2].trim() });
-    const sha = /^Signer #(\d+) certificate SHA-256 digest: ([0-9a-fA-F:]+)\s*$/.exec(line);
-    if (sha) byIndex.set(sha[1], { ...(byIndex.get(sha[1]) ?? {}), index: Number(sha[1]), sha256: toPinForm(sha[2]) });
+    const cert = /^(.+?) certificate (DN|SHA-256 digest): (.*)$/.exec(line);
+    if (!cert) continue;
+    const [, label, field, value] = cert;
+    const isStamp = label === SOURCE_STAMP;
+    if (!isStamp && !signerShape(label)) {
+      unknown.push(line);
+      continue;
+    }
+    let entry = open.get(label);
+    // printCertificate() prints DN first, then the digests: a DN line opens an
+    // entry, and a digest with no open entry (or a second one) opens its own.
+    if (field === 'DN' || !entry || entry.sha256 !== undefined) {
+      const n = SIGNER_N.exec(label);
+      entry = { index: n ? Number(n[1]) : signers.length + 1, label, dn: null };
+      open.set(label, entry);
+      if (isStamp) sourceStamp = entry;
+      else signers.push(entry);
+    }
+    if (field === 'DN') entry.dn = value.trim();
+    else entry.sha256 = toPinForm(value.trim());
   }
-  return [...byIndex.values()].sort((a, b) => a.index - b.index);
+  for (const e of [...signers, ...(sourceStamp ? [sourceStamp] : [])]) if (e.sha256 === undefined) e.sha256 = null;
+  return Object.assign(signers, { sourceStamp, unknown });
+}
+
+/** The distinct SHA-256 keys among the signer entries (a v3.1 and a v3.0 block of one key is ONE). */
+export function distinctSignerKeys(signers) {
+  return [...new Set(signers.map((s) => s.sha256).filter(Boolean))];
+}
+
+/** One stream of a tool's output → at most `max` lines, each prefixed `<name>| `, control characters escaped. */
+export function toolOutputLines(name, text, max = 20) {
+  const s = String(text ?? '');
+  if (s === '') return [`${name}: (empty, 0 bytes)`];
+  const lines = s.split('\n');
+  if (lines[lines.length - 1] === '') lines.pop();
+  const esc = (l) => l.replace(/[\x00-\x1f\x7f]/g, (c) => ({ '\r': '\\r', '\t': '\\t' })[c] ?? `\\x${c.charCodeAt(0).toString(16).padStart(2, '0')}`);
+  const out = [`${name}: ${lines.length} line(s), ${Buffer.byteLength(s)} bytes${lines.length > max ? `, first ${max} shown` : ''}`];
+  for (const l of lines.slice(0, max)) out.push(`${name}| ${esc(l)}`);
+  return out;
 }
 
 /** `aapt2 dump badging` stdout → the fields this guard and the summary use. */
@@ -291,10 +365,48 @@ function main() {
   const problems = [];
   if (sig.status !== 0) problems.push(`apksigner verify exited ${sig.status}: the .apk's signature does not verify.\n     ${(sig.stderr || sig.stdout).trim().split('\n').slice(0, 6).join('\n     ')}`);
   const signers = parseApksignerCerts(sig.stdout);
-  if (sig.status === 0 && signers.length === 0) coverageLost(['apksigner exited 0 and printed no "Signer #1 certificate" lines.', 'The output format moved; the signer is unread, not absent.']);
-  if (signers.length > 1) problems.push(`the .apk carries ${signers.length} signers; an apps.gov.in upload carries exactly one.`);
+  // What apksigner returned, for every COVERAGE LOST on its output: the next red names the format.
+  const apksignerVersion = () => {
+    const v = run(apksigner, ['--version']);
+    if (v.error || v.status === null) return `did not finish (${v.error?.message ?? `signal ${v.signal}`})`;
+    return `${(v.stdout || v.stderr || '').trim().split(/\r?\n/)[0] || '(printed nothing)'} (exit ${v.status})`;
+  };
+  const whatApksignerReturned = () => [
+    `apksigner: ${apksigner}`,
+    `apksigner --version: ${apksignerVersion()}`,
+    `apksigner verify --print-certs exited ${sig.status}`,
+    ...toolOutputLines('stdout', sig.stdout),
+    ...toolOutputLines('stderr', sig.stderr),
+  ];
+  if (sig.status === 0 && signers.unknown.length) {
+    coverageLost([
+      `apksigner printed a certificate line whose label is neither "${SHAPE_N}" nor "${SHAPE_V31}" nor "${SOURCE_STAMP}": ${JSON.stringify(signers.unknown[0])}.`,
+      'An unknown shape is unread, never skipped: the signer it names could be the one that matters.',
+      ...whatApksignerReturned(),
+    ]);
+  }
+  if (sig.status === 0 && signers.length === 0) {
+    coverageLost([
+      `apksigner exited 0 and printed no signer certificate line in either shape ("${SHAPE_N} certificate DN:" or "${SHAPE_V31} certificate DN:").`,
+      'The output format moved; the signer is unread, not absent.',
+      ...whatApksignerReturned(),
+    ]);
+  }
+  const unhashed = signers.find((s) => !s.sha256);
+  if (sig.status === 0 && unhashed) coverageLost([`apksigner printed the signer "${unhashed.label}" with no parsable SHA-256 digest.`, ...whatApksignerReturned()]);
+  const keys = distinctSignerKeys(signers);
+  const shapes = [...new Set(signers.map((s) => signerShape(s.label)))];
+  if (keys.length > 1) {
+    problems.push(shapes.includes(SHAPE_V31)
+      ? `the .apk carries a key rotation (${keys.length} distinct signer keys); an apps.gov.in upload carries exactly one key.`
+      : `the .apk carries ${keys.length} distinct signer keys (${signers.map((s) => s.label).join(', ')}); an apps.gov.in upload carries exactly one key.`);
+  }
+  if (sig.status === 0) {
+    const stamp = signers.sourceStamp ? `; plus a source stamp (${signers.sourceStamp.dn}), not counted` : '';
+    console.log(`   · apksigner read: shape ${shapes.map((s) => `"${s}"`).join(' + ')}, ${keys.length} distinct signer key(s) over ${signers.length} signer entr${signers.length === 1 ? 'y' : 'ies'}${stamp} — ${apksigner}, ${apksignerVersion()}`);
+    for (const l of toolOutputLines('stdout', sig.stdout)) console.log(`     ${l}`);
+  }
   const signer = signers[0] ?? { dn: null, sha256: null };
-  if (sig.status === 0 && !signer.sha256) coverageLost(['apksigner printed a signer with no parsable SHA-256 digest.']);
 
   const badge = run(aapt2, ['dump', 'badging', apkPath]);
   if (badge.error || badge.status !== 0) coverageLost([`aapt2 dump badging failed (${badge.error?.message ?? `exit ${badge.status}`}).`, (badge.stderr || '').trim().split('\n')[0] ?? '']);
