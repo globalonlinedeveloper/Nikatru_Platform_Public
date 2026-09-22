@@ -1509,6 +1509,21 @@ ever been published from one, so nothing but reading would ever have told
 anyone this grader was wrong; the built-in cases below run on every
 execution, the rehearsal included.
 
+🔴 AND THE WORKFLOW IT ASKED WAS THE WRONG ONE (fixed 2026-09-22,
+O-EXTENSION-RELEASE-GRADES-THE-WRONG-WORKFLOW). "ci.yml" in the
+paragraphs above is the extension repository's own ci.yml, which became
+the ci lane of THIS file when the repositories merged. The step kept
+asking `actions/workflows/ci.yml/runs`, which in the merged repository is
+the platform's ci.yml: it defines no `gates · <id>`, `sims · <id>` or
+`package · <id>` job, so no run it found could ever grade, and every real
+tag would have been refused. It now asks extensions.yml, at this commit
+and at the head of every merged PR GitHub associates with it — a push to
+main does not run extensions.yml, the PR that merged the commit did — and
+the job gains `pull-requests: read` for that one lookup.
+`tooling/ci/test/release-grades-legs.test.mjs` holds the queried workflow
+to the job names grade() reads; pointing the query back at ci.yml turns
+it red.
+
 ### before step **Gates (manifest == CHANGELOG == tag, policy, core sync, lint, store metadata, catalogue)**
 
 🔴 A RELEASE USED TO RUN FEWER GATES THAN A PULL REQUEST. Measured
