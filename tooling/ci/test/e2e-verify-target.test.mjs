@@ -352,11 +352,20 @@ const wiringProblems = (name, source) => {
 const verifierSource = (name) => readFileSync(join(REPO, 'tooling', 'e2e', `${name}.mjs`), 'utf8');
 
 describe('each verifier is wired to the helper, before its first request', () => {
-  for (const { name } of VERIFIERS) {
-    test(`GREEN CONTROL · ${name}.mjs decides, refuses an undecided target with exit 2, and grades through the helper`, () => {
-      assert.deepEqual(wiringProblems(name, verifierSource(name)), []);
-    });
-  }
+  // One `test(` per verifier, never a loop: assert-no-loop-cases.mjs counts a
+  // looped case as ONE declaration, so a verifier dropped from a list would
+  // take its case with it where the coverage ratchet cannot see.
+  test('GREEN CONTROL · verify_row.mjs decides, refuses an undecided target with exit 2, and grades through the helper', () => {
+    assert.deepEqual(wiringProblems('verify_row', verifierSource('verify_row')), []);
+  });
+
+  test('GREEN CONTROL · verify_purged.mjs decides, refuses an undecided target with exit 2, and grades through the helper', () => {
+    assert.deepEqual(wiringProblems('verify_purged', verifierSource('verify_purged')), []);
+  });
+
+  test('GREEN CONTROL · verify_consent.mjs decides, refuses an undecided target with exit 2, and grades through the helper', () => {
+    assert.deepEqual(wiringProblems('verify_consent', verifierSource('verify_consent')), []);
+  });
 
   test('e2e.yml writes E2E_AUTH_TARGET to $GITHUB_ENV before any verifier runs, and never runs the helper', () => {
     const code = stripSourceComments(WORKFLOW, '.yml');
