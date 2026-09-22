@@ -61,7 +61,7 @@ repositories, which is the third merge-queue freeze waiting to happen. Daily
 gives the same window ~10 chances. It is the pattern this portfolio already
 runs on its heartbeats: a 3h monitor against an hourly post.
 ⚠️ IT DOES NOT MAKE RENOVATE ACT DAILY. Each repository's renovate.json
-carries `schedule: ["before 6am on monday"]`, so six runs a week start,
+carries `schedule: ["on monday"]`, so six runs a week start,
 find themselves outside their own window and exit in about a minute. The
 extra cost is Actions minutes; the thing bought is an evidence trail that
 does not depend on one cron delivery a week.
