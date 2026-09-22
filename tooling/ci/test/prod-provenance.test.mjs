@@ -27,7 +27,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { enumerateMigrationTables, sqlLiteral } from '../migration-tables.mjs';
-import { attestationCommitRead, attestationDeployments, CouldNotLook, reservedAddressCensusSql } from '../../ops/check-prod-provenance.mjs';
+import { attestationCommitRead, attestationDeployments, CouldNotLook, collectPaged, reservedAddressCensusSql } from '../../ops/check-prod-provenance.mjs';
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const GATE = join(REPO, 'tooling', 'ci', 'assert-prod-provenance.mjs');
@@ -829,5 +829,105 @@ describe('check-prod-provenance — manual-deploys attestation: a refused read i
   test('🔴 a deployment answer that is not JSON is COULD NOT LOOK', async () => {
     const notJson = { status: 200, json: async () => { throw new SyntaxError('Unexpected token <'); } };
     await assert.rejects(attestationDeployments(notJson, ENV, SHA7), (e) => e instanceof CouldNotLook && /other than JSON/.test(e.message));
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// collectPaged — the paged-listing walker behind githubRuns/githubDeployments.
+//
+// 🔴 WHY THESE EXIST. Until 2026-09-22 both walkers were `out.push(...rows)`
+// followed by `if (rows.length < 100) break;`: no de-duplication, no comparison
+// against the API's OWN `total_count`, and a silent stop at the page cap. Each
+// of the three turns an INCOMPLETE read into one that returns like a complete
+// one, and this reader's whole contract is that "I could not look" (exit 2)
+// must never read as "I looked and it was fine" (exit 0).
+//
+// The cases marked RED CONTROL are the proof the new refusals can fire at all;
+// the cases around them are the proof they stay quiet on honest answers —
+// including the EMPTY answer a Cloudflare Pages environment gives, which is a
+// true reading of the GitHub ledger and must stay a clean pass.
+// ──────────────────────────────────────────────────────────────────────────────
+describe('collectPaged — a paged GitHub listing is read whole, or refused', () => {
+  /** `n` rows whose ids start at `from` — the identity de-duplication rests on. */
+  const rows = (n, from = 1) => Array.from({ length: n }, (_, i) => ({ id: from + i }));
+  const idOf = (r) => r.id;
+  const ids = (n, from = 1) => rows(n, from).map(idOf);
+  /** A walk over canned pages. Small perPage/pageCap so a case is readable. */
+  const walk = (pages) =>
+    collectPaged({
+      what: 'listing runs of ci.yml',
+      idOf,
+      perPage: 10,
+      pageCap: 3,
+      fetchPage: async (page) => pages[page - 1] ?? { rows: [] },
+    });
+
+  test('an honest single short page returns every row', async () => {
+    assert.deepEqual((await walk([{ rows: rows(4), totalCount: 4 }])).map(idOf), ids(4));
+  });
+
+  test('an honest two-page listing returns both pages, in the order served', async () => {
+    const got = await walk([{ rows: rows(10), totalCount: 13 }, { rows: rows(3, 11), totalCount: 13 }]);
+    assert.deepEqual(got.map(idOf), ids(13));
+  });
+
+  test('zero rows is a COMPLETE READ, not a refusal — a Cloudflare Pages environment answers []', async () => {
+    assert.deepEqual(await walk([{ rows: [] }]), []);
+  });
+
+  test('a listing that carries no total_count at all — the /deployments shape — is still read and returned', async () => {
+    const got = await walk([{ rows: rows(10) }, { rows: rows(2, 11) }]);
+    assert.deepEqual(got.map(idOf), ids(12));
+  });
+
+  test('a row re-served across pages is returned ONCE, not twice', async () => {
+    const got = await walk([{ rows: rows(10) }, { rows: [{ id: 10 }, { id: 11 }] }]);
+    assert.deepEqual(got.map(idOf), ids(11));
+  });
+
+  test('🔴 RED CONTROL: the API claims more rows than it served → COVERAGE LOST', async () => {
+    await assert.rejects(
+      walk([{ rows: rows(4), totalCount: 9 }]),
+      (e) => e instanceof CouldNotLook && /said it had 9 row\(s\) and served 4 distinct one\(s\)/.test(e.message),
+    );
+  });
+
+  test('🔴 RED CONTROL: a duplicate masking a row that fell off the end → COVERAGE LOST', async () => {
+    // The exact shape a run completing mid-walk produces: 13 claimed, page 2
+    // re-serves id 10, so 12 distinct rows arrive and one row is never served
+    // at all. The pre-2026-09-22 walker returned 13 rows here — the right
+    // LENGTH, the wrong CONTENT — and called the read complete.
+    await assert.rejects(
+      walk([{ rows: rows(10), totalCount: 13 }, { rows: [{ id: 10 }, { id: 11 }, { id: 12 }], totalCount: 13 }]),
+      (e) => e instanceof CouldNotLook && /served 12 distinct one\(s\)/.test(e.message),
+    );
+  });
+
+  test('🔴 RED CONTROL: every page full to the cap → the walk stopped short → COVERAGE LOST', async () => {
+    await assert.rejects(
+      walk([{ rows: rows(10) }, { rows: rows(10, 11) }, { rows: rows(10, 21) }]),
+      (e) => e instanceof CouldNotLook && /all 3 pages of 10 came back full/.test(e.message),
+    );
+  });
+
+  test('a total_count that GROWS under a live walk does not redden: the smallest claim is the one compared', async () => {
+    // Growth is not loss. A check that cries wolf on a list getting longer
+    // while it is read gets muted, and a muted check is no check.
+    const got = await walk([{ rows: rows(10), totalCount: 11 }, { rows: rows(3, 11), totalCount: 14 }]);
+    assert.deepEqual(got.map(idOf), ids(13));
+  });
+
+  test('a claim larger than the cap can reach refuses for TRUNCATION, not for arithmetic', async () => {
+    await assert.rejects(
+      walk([{ rows: rows(10), totalCount: 500 }, { rows: rows(10, 11), totalCount: 500 }, { rows: rows(10, 21), totalCount: 500 }]),
+      (e) => e instanceof CouldNotLook && /came back full/.test(e.message),
+    );
+  });
+
+  test('a page that is not a list of rows is COULD NOT LOOK, never an empty read', async () => {
+    await assert.rejects(
+      walk([{ rows: null }]),
+      (e) => e instanceof CouldNotLook && /a page of the listing was not an array of rows/.test(e.message),
+    );
   });
 });

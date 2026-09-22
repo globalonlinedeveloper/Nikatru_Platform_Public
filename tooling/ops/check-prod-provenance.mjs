@@ -360,37 +360,122 @@ function githubCredentials() {
   return { token, repo };
 }
 
+/**
+ * ONE PAGED GITHUB LISTING, READ WHOLE OR REFUSED. `fetchPage(page)` answers
+ * `{ rows, totalCount }` — `totalCount` being the endpoint's OWN claim about
+ * how many rows it holds, or absent where the endpoint makes no claim — and
+ * `idOf(row)` is the row's stable identity. Returns the rows de-duplicated by
+ * that identity, in the order first served.
+ *
+ * 🔴 THE DEFECT THIS REPLACES, found 2026-09-22. Both walkers below were
+ * `out.push(...rows); if (rows.length < 100) break;`, which is three separate
+ * ways to read less than there is and return it as a complete read:
+ *
+ *   · NO DE-DUPLICATION. Each page is a fresh snapshot. A run completing
+ *     between page 1 and page 2 shifts every later row one place down, so
+ *     page 2 re-serves a row page 1 already gave — and the row pushed past the
+ *     window is never served at all. The duplicate MASKED the loss: the total
+ *     length still looked right.
+ *   · THE API'S OWN COUNT WAS NEVER ASKED FOR. The workflow-runs endpoint
+ *     answers in an envelope carrying `total_count`. Nothing compared it to
+ *     what actually arrived, so a short page — the shape a truncated or
+ *     throttled read takes — ended the walk as a clean, silent break.
+ *   · THE PAGE CAP WAS SILENT. Ten pages all full means "there is more and I
+ *     stopped asking", which is COVERAGE LOST. It returned 1000 rows instead
+ *     and said nothing.
+ *
+ * Every refusal here is `CouldNotLook` — exit 2, never 0 and never 1 — because
+ * this reader's whole contract is that "I could not look" must not read as
+ * "I looked and it was fine".
+ *
+ * ZERO ROWS IS NOT A REFUSAL, and must never be made into one. `/deployments`
+ * answers `[]` for an environment served by Cloudflare Pages, because a Pages
+ * deploy is not a GitHub Deployment; the canonical record there is Cloudflare's
+ * own `canonical_deployment`. An empty answer is a TRUE reading of the GitHub
+ * ledger and stays a clean pass.
+ */
+async function collectPaged({ fetchPage, idOf, what, perPage = 100, pageCap = 10 }) {
+  const byId = new Map();
+  let claimed = null;
+  let pagesRead = 0;
+  let lastPageLength = 0;
+  for (let page = 1; page <= pageCap; page++) {
+    const { rows, totalCount = null } = await fetchPage(page);
+    if (!Array.isArray(rows)) throw new CouldNotLook(`${what}: a page of the listing was not an array of rows`);
+    pagesRead = page;
+    lastPageLength = rows.length;
+    // The SMALLEST claim any page made. `total_count` rises under a live walk
+    // as new runs complete, and growth is not loss: comparing against the
+    // smallest claim is the only comparison that cannot go red merely because
+    // the list got longer while it was being read. A check that cries wolf
+    // gets muted, and a muted check is no check.
+    if (typeof totalCount === 'number' && Number.isFinite(totalCount)) {
+      claimed = claimed === null ? totalCount : Math.min(claimed, totalCount);
+    }
+    for (const row of rows) byId.set(idOf(row), row);
+    if (rows.length < perPage) break;
+  }
+  if (pagesRead === pageCap && lastPageLength === perPage) {
+    throw new CouldNotLook(
+      `${what}: all ${pageCap} pages of ${perPage} came back full, so rows exist that this reader never asked ` +
+        'for — a walk that stopped at its own cap is COVERAGE LOST, not a complete read',
+    );
+  }
+  // Capped by what the cap could physically reach, so a listing far larger than
+  // the window refuses for TRUNCATION above and not for arithmetic here.
+  if (claimed !== null && byId.size < Math.min(claimed, pageCap * perPage)) {
+    throw new CouldNotLook(
+      `${what}: the GitHub API said it had ${claimed} row(s) and served ${byId.size} distinct one(s). Rows it ` +
+        'claims and did not serve are rows this reader cannot see, so this is COVERAGE LOST, not a complete read',
+    );
+  }
+  return [...byId.values()];
+}
+
 /** EVERY COMPLETED RUN of a served release lane, not only the successful ones —
  *  a run that failed after its deploy step succeeded is the case witness (b)
  *  exists for, and filtering it out here would put it beyond reach. */
 async function githubRuns(workflowFile) {
   const { token, repo } = githubCredentials();
-  const out = [];
-  for (let page = 1; page <= 10; page++) {
-    const body = await ghJson(
-      repo,
-      token,
-      `/actions/workflows/${workflowFile}/runs?status=completed&per_page=100&page=${page}`,
-      `listing runs of ${workflowFile}`,
-    );
-    const runs = body?.workflow_runs;
-    if (!Array.isArray(runs)) throw new CouldNotLook(`the GitHub API response for ${workflowFile} carried no workflow_runs array`);
-    // A run with no `conclusion` would silently take the resolver's benefit-of-
-    // the-doubt default below, which is the one direction that weakens without
-    // announcing itself. Live data always carries one; a shape change must be
-    // "could not look", never "looked and it was fine".
-    for (const r of runs) {
-      if (typeof r?.conclusion !== 'string') {
-        throw new CouldNotLook(
-          `run ${r?.run_number ?? '?'} of ${workflowFile} carries no \`conclusion\`, so this reader cannot tell a ` +
-            'successful lane run from a failed one and would treat both as released',
-        );
+  const what = `listing runs of ${workflowFile}`;
+  return collectPaged({
+    what,
+    idOf: (r) => r.id,
+    fetchPage: async (page) => {
+      const body = await ghJson(
+        repo,
+        token,
+        `/actions/workflows/${workflowFile}/runs?status=completed&per_page=100&page=${page}`,
+        what,
+      );
+      const runs = body?.workflow_runs;
+      if (!Array.isArray(runs)) throw new CouldNotLook(`the GitHub API response for ${workflowFile} carried no workflow_runs array`);
+      // A run with no `conclusion` would silently take the resolver's benefit-of-
+      // the-doubt default below, which is the one direction that weakens without
+      // announcing itself. Live data always carries one; a shape change must be
+      // "could not look", never "looked and it was fine".
+      for (const r of runs) {
+        if (typeof r?.conclusion !== 'string') {
+          throw new CouldNotLook(
+            `run ${r?.run_number ?? '?'} of ${workflowFile} carries no \`conclusion\`, so this reader cannot tell a ` +
+              'successful lane run from a failed one and would treat both as released',
+          );
+        }
+        // Without an id there is nothing to tell two runs apart from ONE run
+        // served twice, which is the whole basis of the de-duplication above.
+        if (typeof r.id !== 'number' && typeof r.id !== 'string') {
+          throw new CouldNotLook(
+            `run ${r?.run_number ?? '?'} of ${workflowFile} carries no \`id\`, so this reader cannot tell two runs ` +
+              'apart from one run served twice across pages',
+          );
+        }
       }
-    }
-    out.push(...runs);
-    if (runs.length < 100) break;
-  }
-  return out;
+      // `total_count` is this endpoint's own claim about how many completed
+      // runs it holds. Handing it over is what turns a short read into a
+      // refusal instead of a silent, confident undercount.
+      return { rows: runs, totalCount: body?.total_count };
+    },
+  });
 }
 
 /** Every commit that has a GitHub Deployment on a served environment — the
@@ -399,17 +484,38 @@ async function githubDeployments(environments) {
   const { token, repo } = githubCredentials();
   const shas = new Set();
   for (const environment of environments) {
-    for (let page = 1; page <= 10; page++) {
-      const body = await ghJson(
-        repo,
-        token,
-        `/deployments?environment=${encodeURIComponent(environment)}&per_page=100&page=${page}`,
-        `listing deployments of ${environment}`,
-      );
-      if (!Array.isArray(body)) throw new CouldNotLook(`the GitHub API response listing deployments of ${environment} was not an array`);
-      for (const d of body) if (typeof d?.sha === 'string') shas.add(d.sha.toLowerCase());
-      if (body.length < 100) break;
-    }
+    const what = `listing deployments of ${environment}`;
+    const deployments = await collectPaged({
+      what,
+      idOf: (d) => d.id,
+      fetchPage: async (page) => {
+        const body = await ghJson(
+          repo,
+          token,
+          `/deployments?environment=${encodeURIComponent(environment)}&per_page=100&page=${page}`,
+          what,
+        );
+        if (!Array.isArray(body)) throw new CouldNotLook(`the GitHub API response listing deployments of ${environment} was not an array`);
+        for (const d of body) {
+          if (typeof d?.id !== 'number' && typeof d?.id !== 'string') {
+            throw new CouldNotLook(
+              `a deployment of ${environment} carries no \`id\`, so this reader cannot tell two deployments apart ` +
+                'from one deployment served twice across pages',
+            );
+          }
+        }
+        // 🔴 NO `totalCount` HERE, AND THAT IS NOT AN OVERSIGHT. `/deployments`
+        // answers with a BARE ARRAY — no envelope, no `total_count`, nothing
+        // that states how many rows exist; the `Array.isArray(body)` check
+        // above IS that shape. There is no claim to compare a count against,
+        // so this walker gets the de-duplication and the page-cap refusal and
+        // structurally cannot get the third check. Inventing a claim — say,
+        // asserting that rows must exist — would break the Cloudflare Pages
+        // case, where `[]` is the true and expected answer.
+        return { rows: body };
+      },
+    });
+    for (const d of deployments) if (typeof d?.sha === 'string') shas.add(d.sha.toLowerCase());
   }
   return shas;
 }
@@ -1008,4 +1114,4 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import
   }
 }
 
-export { makeReleasedBuildResolver, releaseLines, CouldNotLook };
+export { makeReleasedBuildResolver, releaseLines, CouldNotLook, collectPaged };
