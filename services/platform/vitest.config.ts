@@ -44,9 +44,17 @@ import { defineConfig } from 'vitest/config';
 // 44 failures on vite 7. `resolve` is kept for the client-side/optimizer path
 // and so a downgrade to vite 5 is not silently unprotected.
 // ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-22 · O-WORKER-TEST-REACHES-LIVE-HOSTS: `setupFiles` makes the
+// network unreachable from every test file here — global `fetch` REJECTS any
+// request the test did not stub, and the test that made it fails naming the
+// URL. The cancellation-drain handler test had been probing the three live Box B
+// hosts and timing out CI on PRs that touched no services/ file. See
+// ../_shared/test/no-network.ts.
+// ─────────────────────────────────────────────────────────────────────────────
 export default defineConfig({
   test: {
     include: ["test/**/*.test.ts", "../_shared/test/**/*.test.ts"],
+    setupFiles: ["../_shared/test/no-network.ts"],
   },
   resolve: {
     conditions: ['workerd', 'browser', 'import', 'default'],

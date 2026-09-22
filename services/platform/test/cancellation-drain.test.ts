@@ -26,12 +26,29 @@
 // (test/harness.ts), so "counted the right rows" is a query rather than an
 // inference from which methods the code happened to call.
 // ─────────────────────────────────────────────────────────────────────────────
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { cancellationDrainCensus, CANCELLATION_DRAIN_JOB, scheduled } from '../src/scheduled';
 import { realPlatformDb, type RealDb } from './harness';
 import type { Env } from '../src/types';
 
-const envWith = (db: unknown) => ({ PLATFORM_DB: db }) as unknown as Env;
+// ⏱ 2026-09-22 · O-WORKER-TEST-REACHES-LIVE-HOSTS: THE ENV NAMES STUB
+// REACHABILITY ORIGINS. Until this date it held PLATFORM_DB alone, so when the
+// handler case below ran the real `scheduled`, `boxbTargets` fell back to its
+// production defaults and the test GET the three live Box B hosts — 10 s timeout
+// apiece inside a 5 s test limit. It was green only while Box B answered fast,
+// and PR #870 (no services/ file touched) went red twice on it. The `.test` TLD
+// is reserved (RFC 2606) and never resolves. The census cases never reach either
+// limb; the handler case stubs exactly these origins and asserts the reachability
+// rows came from that stub. The production defaults in `boxbTargets` are
+// untouched — probing the real hosts is the job's whole point, in production.
+const BOXB_STUB_ORIGINS = ['https://boxb-stub-1.test/', 'https://boxb-stub-2.test/'];
+const BOXA_STUB_ORIGINS = ['https://boxa-stub.test/'];
+const envWith = (db: unknown) =>
+  ({
+    PLATFORM_DB: db,
+    BOXB_REACH_URLS: BOXB_STUB_ORIGINS.join(','),
+    BOXA_REACH_URLS: BOXA_STUB_ORIGINS.join(','),
+  }) as unknown as Env;
 
 /** ISO timestamp `n` hours ago — relative, never a hardcoded calendar date, so
  *  the assertions do not quietly change meaning as the wall clock moves past a
@@ -364,9 +381,47 @@ describe('the census is actually wired into the nightly cron', () => {
       waitUntil: (p: Promise<unknown>) => pending.push(p),
       passThroughOnException: () => {},
     };
-    await scheduled({} as never, envWith(db), ctx as never);
-    expect(pending).toHaveLength(1);
-    await Promise.all(pending);
+
+    // ⏱ 2026-09-22 · O-WORKER-TEST-REACHES-LIVE-HOSTS: THE HANDLER'S HTTP IS
+    // STUBBED, ORIGIN BY ORIGIN. Each stub origin answers a status no other
+    // origin gives, so the rows asserted after the run can only have come from
+    // this stub. Anything else is handed to the fetch underneath — the no-network
+    // guard (services/_shared/test/no-network.ts) — which refuses it and fails
+    // this test naming the URL. So a limb that starts reaching a live host is a
+    // red test in well under a second, never a timeout.
+    const underneath = globalThis.fetch;
+    const STUB_STATUS: Record<string, number> = {
+      [BOXB_STUB_ORIGINS[0]]: 401,
+      [BOXB_STUB_ORIGINS[1]]: 418,
+      [BOXA_STUB_ORIGINS[0]]: 204,
+    };
+    const answered: string[] = [];
+    vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const status = STUB_STATUS[url];
+      if (status === undefined) return underneath(input, init);
+      answered.push(url);
+      return Promise.resolve(new Response(null, { status }));
+    });
+    try {
+      await scheduled({} as never, envWith(db), ctx as never);
+      expect(pending).toHaveLength(1);
+      await Promise.all(pending);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    // The reachability rows came from the stub: its targets, its statuses.
+    const reach = (job: string) =>
+      db
+        .rows('SELECT target, ok, detail FROM cron_heartbeat WHERE job = ? ORDER BY target', job)
+        .map((r) => ({ target: r.target, ok: Number(r.ok), detail: r.detail }));
+    expect(reach('boxb_reachability')).toEqual([
+      { target: 'https://boxb-stub-1.test/', ok: 1, detail: 'HTTP 401' },
+      { target: 'https://boxb-stub-2.test/', ok: 1, detail: 'HTTP 418' },
+    ]);
+    expect(reach('boxa_reachability')).toEqual([{ target: 'https://boxa-stub.test/', ok: 1, detail: 'HTTP 204' }]);
+    expect(answered).toEqual([...BOXB_STUB_ORIGINS, ...BOXA_STUB_ORIGINS]);
 
     const mine = beats(db);
     expect(mine).toHaveLength(1);
@@ -411,6 +466,10 @@ describe('the census is actually wired into the nightly cron', () => {
       // Added 2026-09-18 (O-LAPTOP-ROUTINES-DIE-OVERNIGHT): Box A reachability over
       // HTTP, beside Box B's. No BOXA_REACH_URLS in this env, so its row is the
       // honest not-configured ok=0 - which still makes it a written job.
+      // ⏱ 2026-09-22 (O-WORKER-TEST-REACHES-LIVE-HOSTS): the sentence above no
+      // longer holds - envWith now sets BOXA_REACH_URLS to a stub origin, so this
+      // row is the stub's HTTP 204, asserted above. The not-configured branch is
+      // pinned in test/ops-watchdog.test.ts ("not configured.*BOXA_REACH_URLS").
       'boxa_reachability',
       // Added 2026-09-12 (O-BOXB-OUTAGE-INVISIBLE-TO-GLITCHTIP): Box B probed from
       // Cloudflare, because the GlitchTip monitors that watch Box B RUN ON BOX B and
