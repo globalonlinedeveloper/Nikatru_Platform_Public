@@ -172,6 +172,7 @@
   "release-durable.test.mjs": 131,
   "release-lane-generic.test.mjs": 33,
   "release-provenance.test.mjs": 115,
+  "release-tag-lanes.test.mjs": 15,
   "render-payload.test.mjs": 50,
   "renovate-reach.test.mjs": 18,
   "repo-posture.test.mjs": 19,

@@ -141,7 +141,7 @@ import { spawnSync } from 'node:child_process';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
-import { parseWorkflow, WORKFLOW_DIR, shellSegments } from './workflow-scan.mjs';
+import { parseWorkflow, WORKFLOW_DIR, shellSegments, releaseTriggerLine } from './workflow-scan.mjs';
 
 // Flags are filtered out of the positional scan BEFORE the root is taken, or
 // `--fail-on-mixed-upload-paths` would be resolved as a repository path and every
@@ -636,30 +636,9 @@ function durableIn(step) {
   return null;
 }
 
-/**
- * The line of the `tags:` filter under `on: push:`, or null. Parsed by INDENT
- * rather than matched with one regex over the whole header: `on:` legitimately
- * holds `workflow_dispatch`, `schedule` and blanked comment lines between the
- * `push:` key and its `tags:` child (build-platforms.yml has all three), and a
- * single regex either tolerates that by being loose enough to match a `tags:`
- * belonging to some other trigger, or is strict enough to miss the real one.
- * `tags-ignore:` is deliberately NOT a release trigger — it is an exclusion.
- */
-export function releaseTriggerLine(wf) {
-  const lines = wf.lines.slice(0, wf.jobsAt ?? wf.lines.length);
-  for (let i = 0; i < lines.length; i++) {
-    const m = lines[i].text.match(/^(\s*)push:\s*$/);
-    if (!m) continue;
-    const indent = m[1].length;
-    for (let j = i + 1; j < lines.length; j++) {
-      const t = lines[j].text;
-      if (t.trim() === '') continue;
-      if (t.match(/^ */)[0].length <= indent) break;
-      if (/^\s*tags:/.test(t)) return lines[j].n;
-    }
-  }
-  return null;
-}
+// `releaseTriggerLine` — the line of the `tags:` filter under `on: push:` —
+// lives in workflow-scan.mjs since 2026-09-22, beside the pattern reader
+// tooling/ci/tag-owner.mjs shares with it (one reading of the trigger, not two).
 
 // ── classify every job ───────────────────────────────────────────────────────
 let installableUploads = 0;

@@ -863,8 +863,9 @@ Three parts are load-bearing, and none is decoration:
 - **`-f tag=fullshot-v1.10.2`** — required, and it must be the *current* version: `check-version.mjs`
   compares it against `manifest.json` (**1.10.2** today) and the top CHANGELOG entry, so a stale value
   fails in a gate rather than at the input. `Parse tag` rejects anything not matching
-  `^[a-z0-9][a-z0-9-]*-v[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$`, and rejects `core-v*` by name, *before* the
-  value is interpolated into any later step.
+  `^[a-z0-9][a-z0-9-]*-v[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$` *before* the value is interpolated into any
+  later step; the next step, `This lane owns the tag` (`tooling/ci/tag-owner.mjs`), then refuses any tag
+  no product register names — `core-v*` among them.
 - **`-f dry_run=true`** — required. Unchecking it does not select a second, publishing mode; it makes
   the run **refuse**. See A.8.3.
 

@@ -224,6 +224,148 @@ export function workflowEvents(parsed) {
   return events;
 }
 
+/**
+ * The `tags:` filter under `on: push:`, or null: `{ line, items }`, where `line`
+ * is the 1-based line of the `tags:` key and `items` is every pattern it lists,
+ * in file order, as `{ n, pattern }` with the YAML quotes removed. All three YAML
+ * forms are read: flow (`tags: ['a', 'b']`), scalar (`tags: a`) and block (one
+ * `- a` per line below the key).
+ *
+ * Parsed by INDENT rather than matched with one regex over the whole header:
+ * `on:` legitimately holds `workflow_dispatch`, `schedule` and blanked comment
+ * lines between the `push:` key and its `tags:` child (build-platforms.yml has
+ * all three), and a single regex either tolerates that by being loose enough to
+ * match a `tags:` belonging to some other trigger, or is strict enough to miss
+ * the real one. `tags-ignore:` is deliberately NOT a release trigger — it is an
+ * exclusion.
+ *
+ * ⏱ MOVED HERE 2026-09-22 from assert-release-durable.mjs (it was that guard's
+ * `releaseTriggerLine`, returning the line only), because tooling/ci/tag-owner.mjs
+ * needs the same reading AND the patterns, and a second reader of the same
+ * three lines is the drift this module exists to prevent. The guard imports
+ * `releaseTriggerLine` below, which is this function's `line`.
+ */
+export function releaseTrigger(wf) {
+  const lines = wf.lines.slice(0, wf.jobsAt ?? wf.lines.length);
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].text.match(/^(\s*)push:\s*$/);
+    if (!m) continue;
+    const indent = m[1].length;
+    for (let j = i + 1; j < lines.length; j++) {
+      const t = lines[j].text;
+      if (t.trim() === '') continue;
+      if (t.match(/^ */)[0].length <= indent) break;
+      const k = t.match(/^(\s*)tags:(.*)$/);
+      if (!k) continue;
+      return { line: lines[j].n, items: tagItems(lines, j, k[1].length, k[2].trim()) };
+    }
+  }
+  return null;
+}
+
+/** The line of the `tags:` filter under `on: push:`, or null. See releaseTrigger. */
+export function releaseTriggerLine(wf) {
+  const t = releaseTrigger(wf);
+  return t === null ? null : t.line;
+}
+
+const unquote = (s) => {
+  const v = s.trim();
+  const q = v.match(/^'(.*)'$/) ?? v.match(/^"(.*)"$/);
+  return q ? q[1] : v;
+};
+
+function tagItems(lines, at, keyIndent, rest) {
+  const n = lines[at].n;
+  if (rest.startsWith('[')) {
+    const body = rest.replace(/^\[/, '').replace(/\]\s*$/, '');
+    return body.split(',').map((s) => unquote(s)).filter((s) => s !== '').map((pattern) => ({ n, pattern }));
+  }
+  if (rest !== '') return [{ n, pattern: unquote(rest) }];
+  const items = [];
+  for (let j = at + 1; j < lines.length; j++) {
+    const t = lines[j].text;
+    if (t.trim() === '') continue;
+    if (t.match(/^ */)[0].length <= keyIndent) break;
+    const m = t.match(/^\s*-\s+(.*)$/);
+    if (!m) break;
+    items.push({ n: lines[j].n, pattern: unquote(m[1]) });
+  }
+  return items;
+}
+
+/**
+ * ONE reading of a GitHub branch/tag filter pattern, as an anchored RegExp.
+ * The leading `!` of a negative pattern is NOT part of the body: pass the
+ * pattern whole to refFilterMatches, which applies the ordering rule.
+ *
+ *   `*`   zero or more characters, never `/`
+ *   `**`  zero or more of any character
+ *   `?`   zero or one of the PRECEDING character (or bracket class)
+ *   `+`   one or more of the PRECEDING character (or bracket class)
+ *   `[]`  one character listed in the brackets, ranges a-z / A-Z / 0-9 only
+ *   `\`   the next character is literal
+ * Every other character, `.` included, is itself.
+ *
+ * 🔴 NOT `globToRe` in assert-deploy-triggers.mjs. That one is a path glob: it
+ * escapes `+` and `[`, so `[0-9]+` — the shape the extension lane's tag filter
+ * is written in — matches nothing, and it reads `?` as "any one character",
+ * which is the shell's meaning and not GitHub's. A pattern this cannot read is
+ * THROWN, never guessed: a matcher that quietly reads an unknown shape as a
+ * literal is how a filter that fires on everything reads as one that fires on
+ * nothing.
+ */
+export function refFilterToRegExp(pattern) {
+  const src = String(pattern).replace(/^!/, '');
+  if (src === '') throw new Error(`ref filter "${pattern}" is empty`);
+  const atoms = [];
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    if (c === '*') {
+      if (src[i + 1] === '*') {
+        atoms.push('.*');
+        i++;
+      } else {
+        atoms.push('[^/]*');
+      }
+    } else if (c === '?' || c === '+') {
+      if (atoms.length === 0) throw new Error(`ref filter "${pattern}" starts with "${c}", which quantifies nothing`);
+      atoms[atoms.length - 1] = `(?:${atoms[atoms.length - 1]})${c}`;
+    } else if (c === '[') {
+      const end = src.indexOf(']', i + 1);
+      if (end === -1) throw new Error(`ref filter "${pattern}" opens "[" at ${i} and never closes it`);
+      const body = src.slice(i + 1, end);
+      if (!/^(?:[a-z]-[a-z]|[A-Z]-[A-Z]|[0-9]-[0-9]|[A-Za-z0-9])+$/.test(body)) {
+        throw new Error(`ref filter "${pattern}" has the class "[${body}]", which is not alphanumerics and a-z / A-Z / 0-9 ranges`);
+      }
+      atoms.push(`[${body}]`);
+      i = end;
+    } else if (c === '\\') {
+      if (i + 1 >= src.length) throw new Error(`ref filter "${pattern}" ends in an escape that escapes nothing`);
+      atoms.push(src[i + 1].replace(/[.*+?^${}()|[\]\\/-]/g, '\\$&'));
+      i++;
+    } else {
+      atoms.push(c.replace(/[.*+?^${}()|[\]\\/-]/g, '\\$&'));
+    }
+  }
+  return new RegExp(`^${atoms.join('')}$`);
+}
+
+/**
+ * Does a filter LIST select `name`? GitHub's ordering rule: the patterns are
+ * read in order, a positive match selects, a later `!pattern` match deselects,
+ * and a later positive match selects again. A list of negatives alone selects
+ * nothing.
+ */
+export function refFilterMatches(patterns, name) {
+  let selected = false;
+  for (const p of patterns) {
+    const negative = String(p).startsWith('!');
+    if (refFilterToRegExp(p).test(name)) selected = !negative;
+  }
+  return selected;
+}
+
 /** Every workflow under `.github/workflows`, parsed, sorted by filename. */
 export function parseAllWorkflows(root) {
   const dir = join(root, WORKFLOW_DIR);

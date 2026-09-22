@@ -258,9 +258,10 @@ if (tagFlag.value !== null) {
   // 🔴 A CASEFOLD SEAM, CLOSED ON PURPOSE. `apps/${slug}` handed to existsSync
   // resolves case-INSENSITIVELY on this Windows host, so `SUBLY-v1.0.0` passes
   // here and ENOENTs on a case-sensitive filesystem. The leaf is matched EXACTLY
-  // against the directory listing instead. It also closes the trap the `push:
-  // tags: ['*-v*']` comment names in build-platforms.yml — a tag for a missing
-  // app. Split on '/': basename reads the OS.
+  // against the directory listing instead. It also closes the trap a wide tag
+  // filter left open in build-platforms.yml — a tag for a missing app (the list
+  // is generated per app by tag-owner.mjs since 2026-09-22; this check stays,
+  // because a dispatch never meets the filter). Split on '/': basename reads the OS.
   const appPath = appFlag.value ?? `apps/${slug}`;
   const segs = appPath.split('/').filter((s) => s !== '');
   const appLeaf = segs.length ? segs[segs.length - 1] : appPath;
