@@ -2722,7 +2722,7 @@
               "APPSGOVIN_KEY_ALIAS": "ANDROID_KEY_ALIAS",
               "APPSGOVIN_KEY_PASSWORD": "ANDROID_KEY_PASSWORD"
             },
-            "mapsOntoWhy": "One Gradle module, one `releaseSigningEnv` map, two keys: build-platforms.yml sets these three variables from the APPSGOVIN_* secrets in the apps-gov-in build step's own command, never in $GITHUB_ENV, so the Play upload key's values stay in force for every other step of the job"
+            "mapsOntoWhy": "One Gradle module, one `releaseSigningEnv` map, two keys: build-platforms.yml sets these three variables from the APPSGOVIN_* secrets in the apps-gov-in build step's own `env:`, never in $GITHUB_ENV, so the Play upload key's values stay in force for every other step of the job"
           }
         },
         "restoreDrill": {

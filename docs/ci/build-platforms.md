@@ -185,8 +185,8 @@ untraceable the day one of these rows flips to `served: true`.
 `--tag` compares the version the tag NAMES against the build name
 apps/<slug>/pubspec.yaml DECLARES. Here that is an EARLY FAIL and nothing
 more: a tag naming a version the app does not carry stops in the FIRST
-job after `gate`, instead of after three build jobs each declaring
-`timeout-minutes: 30`. The AUTHORITATIVE copy is in `release`, on the
+job after `gate`, instead of after three build jobs declaring
+`timeout-minutes` of 30 to 45. The AUTHORITATIVE copy is in `release`, on the
 exact string that renames the installers.
 
 ⚠️ NO `--app` ON PURPOSE. Without it the guard derives `apps/<slug>` from
@@ -1223,6 +1223,115 @@ a widening of it.
 Nothing is hardcoded, so an AppImage lane joins this loop by being given a
 register row, not by anybody editing this file.
 
+
+## apps-gov-in — the no-checkout .apk for apps.gov.in (Mobile Seva)
+
+*Added 2026-09-22 · register row O-APPS-GOV-IN-CHANNEL-APK · `tooling/channel-register.json`
+`apps-gov-in`.* Every `§apps-gov-in` pointer in `build-platforms.yml` lands here.
+
+### What the job builds, and where it goes
+
+`linux_web_android` builds a FOURTH Android artifact, after the Play .apk and .aab: an .apk built
+with `--dart-define=RELEASE_CHANNEL=apps-gov-in`. That channel's `purchaseRail` is `none`, and a
+`none` rail sells nothing and opens no checkout
+(`packages/purchases/test/chassis_billing_test.dart`, *"a `rail: none` channel is a rail that sells
+nothing"*). The file is `<app>-apps-gov-in-<release_line>.<run_number>.apk`. It is uploaded as its
+own artifact, retained 90 days, `if-no-files-found: error`. Its name starts `apps-gov-in-`, so the
+release job's `<app>-*` download never matches it: a store-side build is never a public release
+asset. The owner downloads it from the run page and uploads it to the portal by hand. Nothing in CI
+uploads to apps.gov.in.
+
+Its symbols are obfuscated like every other release build (`--split-debug-info=build/symbols/android-apk-apps-gov-in`).
+They ride in the same `symbols-*` artifact as the Play ones, and GlitchTip gets them through the
+same loop (lane `android-apk-apps-gov-in`).
+
+### Why it has its own key, and how that key reaches only one step
+
+The portal takes a SELF-SIGNED .apk. Its form asks for a key store only when the file is an AAB.
+Nothing re-signs the upload, so whichever key signs it is the key that every install from that store
+is bound to. On 2026-09-22 the owner decided that this key is its own, alias `nikatru-appsgovin`,
+and never the Play upload key `nikatru-upload`. The register records that as `keyKind:
+app-signing-key`.
+
+The route, step by step:
+
+1. **Prepare the apps.gov.in signing key.** `tooling/ci/android-signing.mjs` (the script the Play
+   key already uses) runs with the four `APPSGOVIN_*` secrets mapped onto its input names. It gets
+   its own `--out` directory (`$RUNNER_TEMP/apps-gov-in-key`) and a scratch `--github-env` file,
+   which the step reads and then deletes. So it keeps every check it makes for Play: all four
+   values or none, base64 that round-trips, and bytes that really are a keystore. What changes is
+   that nothing it writes lands in `$GITHUB_ENV`.
+   - Why that matters: the Play upload key is in `$GITHUB_ENV` for every later step, and the Play
+     artifact's name reads `ANDROID_SIGNING_POSTURE` from there.
+   - Only two values leave the step, as step outputs: the keystore path and the posture (`release`
+     or `debug`).
+   - `GITHUB_REF` and `GITHUB_WORKFLOW_REF` are dropped for this one call. They are how the script
+     recognises a PLAY release lane (a tag push). If the apps.gov.in key is absent on a tag push,
+     the result is the labelled build described below, not a failed release.
+   - The script names the keystore file `<app>-upload.keystore` even here. That name is the
+     script's own, and the file sits in its own directory, apart from the Play keystore.
+2. **Set the Play .apk aside.** Flutter writes every .apk to one path, `flutter-apk/app-release.apk`.
+3. **Build android (apk — apps.gov.in).** The four Gradle variables (`ANDROID_KEYSTORE_PATH`,
+   `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`) are set in this step's
+   own `env:`, which beats `$GITHUB_ENV`. Blank values count as "not supplied" to
+   `build.gradle.kts`, so when the secrets are absent this build gets the debug signer.
+   `gradleContract.mapsOnto` in the register records this mapping, and `assert-channel-register.mjs`
+   §9 compares it to the Gradle file.
+4. **Take the apps.gov.in .apk out, and put the Play .apk back.** The apps.gov.in file moves to
+   `apps/<app>/build/apps-gov-in/`, outside `flutter-apk/`. The step fails if the restored Play .apk
+   is byte-identical to the new one.
+
+Why these are three steps and not one: `tooling/ci/workflow-scan.mjs` joins a literal `run: |`
+block's lines with ` ; `, so a backslash-continued `flutter build` inside one reads as several
+commands. `assert-obfuscation-coupled.mjs` and `assert-channel-register.mjs` then find no
+`--obfuscate` and no `RELEASE_CHANNEL`. Every `flutter build` in this workflow is a folded
+`run: >` for that reason. This one is too.
+
+### The artifact name comes from the signer the job READS
+
+`tooling/ci/assert-apps-gov-in-apk.mjs` runs `apksigner verify --print-certs` against the built .apk
+and compares the signer with `signing.signingCertificate.sha256` for `apps-gov-in` in the register.
+That is the pin, and it is null until the key is minted.
+
+| what CI finds | artifact name | job |
+|---|---|---|
+| the pin is null; secrets absent; debug signer | `apps-gov-in-<app>-apk-NOT-FOR-UPLOAD-debug-signed-build-proof` | green; the summary says why IN CAPITALS |
+| the pin is null; secrets present; our own signer | `apps-gov-in-<app>-apk-NOT-FOR-UPLOAD-release-signed-unpinned` | green; the summary says why IN CAPITALS |
+| the pin is set and the signer matches it | `apps-gov-in-<app>-apk` (the ONLY name the owner may upload) | green |
+| the pin is set and the signer does not match it | none | **FAILS** |
+| the signer is the Play upload key (whatever the pin) | none | **FAILS** |
+| the signer contradicts the posture from the prepare step | none | **FAILS** |
+
+The same guard reads `aapt2 dump badging`. It prints the .apk's `minSdkVersion` (with the portal's
+label for it, `24 = Nougat 7.0`) and its `versionName` into the step summary. It then grades
+`store/apps-gov-in/form-answers.json` against both, and against the permissions the .apk requests.
+
+**The weekly keyless proof stays green.** The scheduled run has no `APPSGOVIN_*` secrets and the
+pin is null, so the first row applies: the build is labelled, and nothing fails. When the owner
+mints the key, pastes the four secrets and records the fingerprint in the register, the pin-set
+rows apply with no change to the workflow.
+
+### The read-back steps are last in the job
+
+The apps.gov.in VAPT check, the media check, the signer/minSdk check and the upload all sit AFTER
+every Play artifact and the GlitchTip symbol upload. A finding there fails the job, but it cannot
+cost the artifacts above it.
+
+- **VAPT.** `assert-android-vapt-manifest.mjs` runs on the apps.gov.in .apk as well as the Play
+  one: MobSF is run over the file the owner uploads.
+- **Media.** `assert-apps-gov-in-media.mjs` checks that the 155x290 screenshots and the 512 icon
+  are still the derivation of the Play set, and that nobody edited one by hand. Its `--write` mode
+  re-derives them.
+
+### Two changes the new steps forced on the Play half of the job
+
+- **`if: ${{ !cancelled() }}` on the symbols upload.** The apps.gov.in prepare and build steps now
+  sit between the Play builds and that upload. Without the condition, one failure there (half the
+  secrets set, say) would lose the linux, apk and aab mappings as well. A lane directory that was
+  never written is skipped. Zero files across all of them is still an error.
+- **`timeout-minutes: 45` (was 30).** A fourth Android build adds several minutes. A timeout
+  CANCELS the job, and a cancelled job skips even the `!cancelled()` step, so the ceiling has to
+  fit the whole job.
 
 ## Obfuscation and native symbols
 
