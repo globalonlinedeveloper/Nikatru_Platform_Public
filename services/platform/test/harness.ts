@@ -80,6 +80,9 @@ export const PLATFORM_MIGRATIONS: readonly string[] = [
   appleTokens0012,
   // ⏱ 2026-09-18 · O-PLAY-AI-CONTENT-REPORTING — the in-app AI content report.
   contentReports0013,
+  // 0014 is the consent_artifacts app_id rename (owner 2026-09-22, pre-launch) —
+  // an UPDATE-only data migration over rows this harness never seeds, so, like
+  // 0008, it is not in the schema set.
 ];
 
 /**

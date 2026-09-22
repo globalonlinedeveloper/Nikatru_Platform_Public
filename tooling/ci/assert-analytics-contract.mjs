@@ -69,9 +69,9 @@
 //       what was consented to, so a withdrawal is a NEW row with granted=0.
 //       `check-migrations.mjs` cannot cover this: it reads migrations only, and
 //       it exempts any statement carrying a WHERE — correctly, because a
-//       filtered backfill is legitimate there. A filtered
-//       `DELETE FROM consent_artifacts WHERE consent_id=?` is still not
-//       append-only, so this limb grants NO such exemption.
+//       filtered backfill is legitimate there. A filtered DELETE or UPDATE is
+//       still not append-only. ONE owner exemption (2026-09-22, pre-launch) is
+//       pinned to ONE file and ONE exact statement: see CONSENT_EXEMPTION.
 //   5 · THE WIRE CONTRACT OF EVERY SHARED ROUTE. [4]B-14. Its domain is
 //       `tooling/platform-register.json`'s `routes[]`, and the FLOOR is a
 //       relationship, not an integer: the contract ids here must EQUAL the
@@ -858,6 +858,32 @@ if (ipHits === 0) {
 // ── 4 · append-only consent ─────────────────────────────────────────────────
 // The WHOLE of services/, code and migrations. No WHERE exemption: a filtered
 // DELETE from an audit trail is still a deleted audit trail.
+//
+// ⏱ 2026-09-22 · ONE EXEMPTION, AND IT IS PINNED TO A FILE *AND* A STATEMENT.
+// The owner decided, before launch, that the consent rows 0008 left under the
+// retired slug move to the new one (0008 :76-96 records why they were left, and
+// what that cost: idx_consent_lookup filters on app_id, so they were hidden from
+// their own app). The exemption is as narrow as this limb can make it:
+//   · ONE file, by exact path. The same statement in any other file is red.
+//   · ONE statement, compared on the comment-stripped text WITH its literals
+//     intact (the value and the predicate ARE the exemption), whitespace-
+//     normalised and case-exact. A different SET value or WHERE is red.
+//   · Used ONCE. A second statement on consent_artifacts in the same file —
+//     including a second copy of this one — is red.
+//   · A STALE exemption is red: the file missing, or present without the exact
+//     statement, fails rather than leaving a dormant hole to be reused.
+//   · It PRINTS on every green run, with the owner's words and the date.
+// After launch there is no such thing as an edited consent row; this constant is
+// a record of the one pre-launch correction, not a mechanism to extend.
+const CONSENT_EXEMPTION = Object.freeze({
+  file: `${MIGRATIONS_DIR}/0014_consent_artifacts_app_id_rename.sql`,
+  statement: "UPDATE consent_artifacts SET app_id = 'subscriptiontracker' WHERE app_id = 'subly';",
+  why:
+    'owner decision 2026-09-22, one-time, PRE-LAUNCH: "Past consent records tagged subly - we are not in live ' +
+    'yet, so you can remove and update new name" (C-CONSENT-PER-PURPOSE exception)',
+});
+const normaliseSql = (s) => s.replace(/\s+/g, ' ').trim();
+
 const SCANNABLE = new Set(['.ts', '.tsx', '.js', '.mjs', '.sql']);
 const SKIP_DIR = new Set(['node_modules', 'dist', '.wrangler', 'build', 'coverage']);
 
@@ -894,32 +920,68 @@ const DML = [
   { name: 'UPDATE', re: /\bUPDATE\s+(?:OR\s+\w+\s+)?["'`[]?consent_artifacts\b/gi },
 ];
 let dmlHits = 0;
+let exemptUsed = 0;
+const exemptStatement = normaliseSql(CONSENT_EXEMPTION.statement);
 for (const rel of serviceFiles) {
   const ext = extname(rel);
   // SQL: comments AND string literals go, because a column name inside a quoted
   // string is not a statement. TypeScript: comments only — the SQL LIVES in
   // string literals there, so blanking them would blank the subject.
   const raw = read(rel);
-  const text = ext === '.sql'
-    ? stripStringLiterals(stripSourceComments(raw, ext))
-    : stripSourceComments(raw, ext);
+  // Both reductions are LENGTH-PRESERVING, so an offset found in `text` indexes
+  // the same byte in `withLiterals` — which is what the exemption compares.
+  const withLiterals = stripSourceComments(raw, ext);
+  const text = ext === '.sql' ? stripStringLiterals(withLiterals) : withLiterals;
   for (const { name, re } of DML) {
     re.lastIndex = 0;
     let m;
     while ((m = re.exec(text)) !== null) {
-      dmlHits++;
       const line = text.slice(0, m.index).split('\n').length;
+      if (rel === CONSENT_EXEMPTION.file && name === 'UPDATE' && exemptUsed === 0) {
+        // The statement runs to the first `;` in the LITERAL-BLANKED text, so a
+        // `;` inside a quoted value cannot end it early; it is then read back out
+        // of the text that still carries its literals.
+        const end = text.indexOf(';', m.index);
+        const statement = normaliseSql(withLiterals.slice(m.index, end === -1 ? text.length : end + 1));
+        if (statement === exemptStatement) {
+          exemptUsed++;
+          continue;
+        }
+      }
+      dmlHits++;
       fail(
         `${rel}:${line} ${name} on \`consent_artifacts\` — the consent trail is APPEND-ONLY. ` +
           'DPDP §6(3) requires a withdrawal to reference what was consented to, so a withdrawal is a NEW row with ' +
           'granted=0. A WHERE clause does not make this acceptable: check-migrations.mjs exempts filtered statements ' +
-          'because a backfill is legitimate THERE; nothing narrows an edit to an audit record enough to be one.',
+          'because a backfill is legitimate THERE; nothing narrows an edit to an audit record enough to be one.' +
+          (rel === CONSENT_EXEMPTION.file
+            ? ` The one owner exemption covers ${CONSENT_EXEMPTION.file} ONLY for exactly \`${CONSENT_EXEMPTION.statement}\`, ` +
+              'and only once; this statement is not that.'
+            : ''),
       );
     }
   }
 }
+if (!has(CONSENT_EXEMPTION.file)) {
+  fail(
+    `${CONSENT_EXEMPTION.file} is named by the one append-only exemption and does not exist. A STALE exemption is ` +
+      'red: a dormant hole with a pre-written path is exactly what the next edit to an audit record would reuse. ' +
+      'Restore the file, or remove CONSENT_EXEMPTION in the same change that removed it.',
+  );
+} else if (exemptUsed === 0) {
+  fail(
+    `${CONSENT_EXEMPTION.file} no longer carries the exempt statement \`${CONSENT_EXEMPTION.statement}\` ` +
+      '(compared comment-stripped, literals intact, whitespace-normalised). The exemption is pinned to that exact ' +
+      'text; an edited value or predicate is a different edit to the consent trail and was never approved.',
+  );
+} else {
+  ok(`1 exempt statement: ${CONSENT_EXEMPTION.file} — \`${CONSENT_EXEMPTION.statement}\` — ${CONSENT_EXEMPTION.why}`);
+}
 if (dmlHits === 0) {
-  ok(`append-only holds — ${serviceFiles.length} file(s) under ${SERVICES}/ carry no UPDATE or DELETE on consent_artifacts`);
+  ok(
+    `append-only holds — ${serviceFiles.length} file(s) under ${SERVICES}/ carry no UPDATE or DELETE on consent_artifacts` +
+      ` beyond the ${exemptUsed} owner-exempt statement(s) printed above`,
+  );
 }
 
 // ── 5 · the shared server's wire contract ───────────────────────────────────
@@ -1886,6 +1948,7 @@ if (failed) {
 }
 console.log(
   `\nassert-analytics-contract: ok — ${TABLES.length} table(s) parsed from ${migrationFiles.length} migration(s), ` +
-    `route parity + arity, ${clientKeys.size} client key(s), no address column, append-only across ${serviceFiles.length} service file(s), ` +
+    `route parity + arity, ${clientKeys.size} client key(s), no address column, append-only across ${serviceFiles.length} service file(s) ` +
+    `(+${exemptUsed} owner-exempt statement, 2026-09-22), ` +
     `${wirePinned}/${WIRE_CONTRACTS.length} shared route wire contract(s) pinned + ${wireGaps} printed`,
 );

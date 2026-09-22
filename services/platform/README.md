@@ -93,10 +93,14 @@ because a caller can get them wrong in ways the others do not offer.)
   `0006_erasure_reach`, `0007_events_rollup` and
   `services/platform/migrations/0008_app_id_slug_rename.sql` (the 2026-09-09 `subly` -> `subscriptiontracker`
   slug move: a WHERE-scoped backfill of every `app_id` column EXCEPT
-  `consent_artifacts`, which is append-only and keeps the identifier it was
-  granted against), then `0009_bundle_grants`, `0010_pending_erasures`,
-  `0011_signups`, `0012_apple_provider_tokens` and `0013_content_reports` (the
-  in-app AI content report, O-PLAY-AI-CONTENT-REPORTING). Additive-only, enforced
+  `consent_artifacts`, which is append-only and kept the identifier it was
+  granted against — until `0014` moved those rows too, by owner decision
+  2026-09-22, pre-launch), then `0009_bundle_grants`, `0010_pending_erasures`,
+  `0011_signups`, `0012_apple_provider_tokens`, `0013_content_reports` (the
+  in-app AI content report, O-PLAY-AI-CONTENT-REPORTING) and
+  `0014_consent_artifacts_app_id_rename` (that one-time consent-row rename — the
+  single exemption `tooling/ci/assert-analytics-contract.mjs` grants the
+  append-only rule, pinned to that file and its one statement). Additive-only, enforced
   by `tooling/ci/check-migrations.mjs`. (This list had stopped at 0008 until
   2026-09-18; nothing guards it, so the directory is the authority.)
 - **`subscriptiontracker_db`** (binding `SUBSCRIPTIONTRACKER_DB`) — bound read/write for the renewals fan-out
