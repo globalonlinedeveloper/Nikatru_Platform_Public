@@ -2428,6 +2428,63 @@ for (const c of channels) {
     continue;
   }
 
+  // ── `mapsOnto`: a SECOND identity fed through the SAME four Gradle variables ──
+  // 🔴 ADDED 2026-09-22 FOR apps-gov-in (O-APPS-GOV-IN-CHANNEL-APK). That channel's
+  // .apk is SELF-SIGNED with its own key, and the key reaches Gradle through the
+  // very variables the Play upload key uses — build-platforms.yml sets them for
+  // ONE step from APPSGOVIN_* secrets, so the Play key is never overwritten. The
+  // comparison below would otherwise read APPSGOVIN_KEY_ALIAS as "a name Gradle
+  // never reads" and fail a correct register. So a row may TRANSLATE a declared
+  // secret onto the variable it is fed into — and the translation costs what the
+  // transport exemption costs: every source must be declared, no target may be
+  // fed twice, the transport cannot be translated (it is the one name that is NOT
+  // a variable), and a written reason. The set comparison then runs on the
+  // translated names, so a rename on either side still goes red.
+  const mapsOnto = contract.mapsOnto;
+  /** declared secret → the Gradle variable the lane feeds it into. */
+  const translate = new Map();
+  if (mapsOnto !== undefined) {
+    const bad = [];
+    if (mapsOnto === null || typeof mapsOnto !== 'object' || Array.isArray(mapsOnto) || Object.keys(mapsOnto).length === 0) {
+      bad.push('`mapsOnto` must be a non-empty object of declared secret → the Gradle variable the lane feeds it into');
+    } else {
+      const fedBy = new Map();
+      for (const [from, to] of Object.entries(mapsOnto)) {
+        if (from.startsWith('_')) continue; // prose namespace, as in `why`
+        if (typeof to !== 'string' || !/^[A-Za-z_]\w*$/.test(to)) {
+          bad.push(`\`mapsOnto["${from}"]\` is not a variable name`);
+          continue;
+        }
+        if (!names.includes(from)) {
+          bad.push(`\`mapsOnto\` translates "${from}", which \`names\` does not declare. A translation for a secret the row does not carry is a waiver for nothing`);
+        }
+        if (from === transportName) {
+          bad.push(`\`mapsOnto\` translates the transport "${from}". The transport is the one declared name that is NOT a Gradle variable, so it cannot be fed into one`);
+        }
+        if (names.includes(to)) {
+          bad.push(`\`mapsOnto["${from}"]\` targets "${to}", which this row ALSO declares directly — one Gradle variable fed from two declared secrets`);
+        }
+        if (fedBy.has(to)) {
+          bad.push(`\`mapsOnto\` feeds both "${fedBy.get(to)}" and "${from}" into "${to}". Gradle reads one value per variable, so one of the two secrets is silently ignored`);
+        }
+        fedBy.set(to, from);
+        translate.set(from, to);
+      }
+      if (translate.size === 0) bad.push('`mapsOnto` translates nothing');
+    }
+    const mapsOntoWhy = typeof contract.mapsOntoWhy === 'string' ? contract.mapsOntoWhy.trim() : '';
+    if (mapsOntoWhy.length < 20) {
+      bad.push('`mapsOnto` carries no `mapsOntoWhy`. A translation with no reason recorded is an exemption anybody can add to silence the comparison below — the same cost `transport.why` pays');
+    }
+    if (bad.length) {
+      for (const s of bad) problems.push(`${label}'s \`signing.ciSecrets.gradleContract\`: ${s}.`);
+      continue;
+    }
+  }
+  /** How a translated name reads in a message: its declared name, then where it goes. */
+  const origOf = new Map([...translate].map(([from, to]) => [to, from]));
+  const shown = (n) => (origOf.has(n) ? `${origOf.get(n)}" (fed into "${n}")` : `${n}"`);
+
   const tried = [];
   let readForThisRow = 0;
   for (const a of apps) {
@@ -2531,7 +2588,7 @@ for (const c of channels) {
      *  declared secret that is not one of Gradle's variables. */
     const expected = new Map([[transportName, `the declared transport for Gradle's "${substitutes}" (${transportWhy})`]]);
     for (const [k, v] of pairs) if (k !== substitutes) expected.set(v, `Gradle's "${k}"`);
-    const declared = new Set(names);
+    const declared = new Set(names.map((n) => translate.get(n) ?? n));
 
     for (const [n, why] of expected) {
       if (declared.has(n)) continue;
@@ -2543,8 +2600,8 @@ for (const c of channels) {
       if (expected.has(n)) continue;
       problems.push(
         n === substituted[1]
-          ? `${label} declares "${n}" in \`signing.ciSecrets.names\`, and ${rel} reads it as Gradle's "${substitutes}" — the value the register's own \`transport\` says is PRODUCED at run time (${transportWhy}) rather than supplied as a repository secret. Declaring it as a secret invites somebody to create one, and tooling/ci/android-signing.mjs overwrites it on every run.`
-          : `${label} declares "${n}" in \`signing.ciSecrets.names\` and ${rel} never reads it. Either the build was renamed and the register was not, or the register names a secret that carries no signing identity — and an authority that over-declares accepts names nothing uses, which is the empty-authority failure limb 2 closes from the other side.`,
+          ? `${label} declares "${shown(n)} in \`signing.ciSecrets.names\`, and ${rel} reads it as Gradle's "${substitutes}" — the value the register's own \`transport\` says is PRODUCED at run time (${transportWhy}) rather than supplied as a repository secret. Declaring it as a secret invites somebody to create one, and tooling/ci/android-signing.mjs overwrites it on every run.`
+          : `${label} declares "${shown(n)} in \`signing.ciSecrets.names\` and ${rel} never reads it. Either the build was renamed and the register was not, or the register names a secret that carries no signing identity — and an authority that over-declares accepts names nothing uses, which is the empty-authority failure limb 2 closes from the other side.`,
       );
     }
     gradleNamesAgreed += [...expected.keys()].filter((n) => declared.has(n)).length;

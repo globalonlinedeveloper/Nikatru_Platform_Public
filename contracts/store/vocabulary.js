@@ -266,6 +266,11 @@ export const LISTING_FIELDS = /** @type {const} */ ([
   { name: 'ads-declaration.json', kind: 'json', app: 'additional', extension: null, rendered: false },
   { name: 'feature-graphic.png', kind: 'image', app: 'additional', extension: null, rendered: false },
   { name: 'store-icon-512.png', kind: 'image', app: 'additional', extension: null, rendered: false },
+  // apps-gov-in, 2026-09-22: the upload form's "Developed By" field (3–50
+  // characters, shown on the store), and the answers to all three steps of that
+  // form, beside the listing they are filled from. See STORE_FORM_RULES.
+  { name: 'developed-by.txt', kind: 'text', app: 'additional', extension: null, rendered: false },
+  { name: 'form-answers.json', kind: 'json', app: 'additional', extension: null, rendered: false },
 
   // ── THE EXTENSION LISTING GRAPHICS. Added 2026-09-20, when Public #844 put
   //    the first real ones on disk and this guard refused all three by name —
@@ -316,11 +321,70 @@ export const LISTING_CATEGORIES = /** @type {const} */ ({
   'chrome-webstore': ['Productivity'],
   'edge-addons': ['Productivity'],
   amo: ['Photos, Music & Videos', 'Privacy & Security'],
-  // apps-gov-in: added 2026-09-20 when Public #836 created that listing tree. The
-  // store publishes no category list of its own (its 18-page guidelines name none),
-  // so this is what the tree spells, UNVERIFIED against a store-published set like
-  // every other row here.
-  'apps-gov-in': ['Productivity'],
+  // apps-gov-in: added 2026-09-20 when Public #836 created that listing tree, as
+  // 'Productivity' — a value the portal does not offer. ⏱ 2026-09-22: the form's
+  // own list was read (see STORE_FORM_RULES below), it has no "Productivity", and
+  // this became 'Others'. THIS ROW IS NOW GRADED AGAINST A STORE-PUBLISHED SET —
+  // the first one here — by assert-store-metadata.mjs's apps-gov-in limb.
+  'apps-gov-in': ['Others'],
+});
+
+/**
+ * 🔴 A STORE'S OWN FORM RULES, READ FROM THE FORM — the first axis in this file
+ * that is the STORE's closed set rather than the portfolio's. Keyed by channel
+ * id; today one channel.
+ *
+ * apps.gov.in publishes no developer documentation for its upload form. These
+ * values were read out of the form's own JavaScript (`/Developer/chunk-ZVEOEZCZ.js`,
+ * 2026-09-22) and the on-screen lists, and recorded in the private runbook
+ * `runbooks/store-submission-apps-gov-in.md` ("Step 1", and the section appended
+ * 2026-09-22 "CORRECTIONS FROM THE FORM'S RAW SCRIPT"). Each one is a validator
+ * the portal runs at upload, so a listing that breaks one is refused on the day
+ * the owner sits down to upload — which is why assert-store-metadata.mjs checks
+ * them on every PR and tooling/ci/assert-apps-gov-in-apk.mjs checks the one that
+ * needs the BUILT .apk (the minimum platform).
+ *
+ * ⚠️ `categoryFallback` IS A RENDERING RULE, NOT A STORE FACT. The portal has no
+ * "Productivity", and "Finance" asks for an authorisation letter; an app whose
+ * app.yaml `category` is not in the portal's list renders `Others` into this
+ * channel's category.txt (tooling/app-yaml/render.mjs), and one whose category
+ * IS in the list renders it unchanged.
+ *
+ * ⚠️ `minPlatformLabels` STOPS AT 30 BECAUSE THE PORTAL'S LIST DOES. An .apk whose
+ * minSdkVersion has no label here cannot be described truthfully on the form, and
+ * the .apk guard fails it rather than letting the owner pick the nearest one.
+ */
+export const STORE_FORM_RULES = /** @type {const} */ ({
+  'apps-gov-in': {
+    source:
+      "apps.gov.in developer upload form, script /Developer/chunk-ZVEOEZCZ.js and the on-screen lists, read 2026-09-22; recorded in Private runbooks/store-submission-apps-gov-in.md, 'Step 1' and the section appended 2026-09-22 'CORRECTIONS FROM THE FORM'S RAW SCRIPT'",
+    asOf: '2026-09-22',
+    categories: [
+      'Agriculture', 'Education', 'Electoral', 'Energy', 'Entertainment', 'Finance', 'Food', 'Health',
+      'Identity', 'Indian Post', 'Judiciary', 'Language', 'm-Learning', 'Municipal corporation', 'News',
+      'Others', 'Shopping', 'Social', 'Social Welfare', 'Sports', 'Transport', 'Travel', 'Weather',
+    ],
+    categoryFallback: 'Others',
+    // The TEXT limits (name 2-80, developed-by 3-50, description 10-4000) are
+    // NOT here: they live in tooling/channel-register.json
+    // storeMetadataContract.perChannel['apps-gov-in'].maxChars, the mechanism
+    // every other channel's text limits already use. One fact, one home.
+    supportPhoneMaxChars: 12,
+    screenshots: { dir: 'screenshots', min: 4, max: 8, width: 155, height: 290, maxBytes: 1048576, formats: ['png', 'jpg'] },
+    icon: { file: 'store-icon-512.png', width: 512, height: 512, maxBytesExclusive: 204800 },
+    minPlatformLabels: {
+      21: 'Lollipop 5.0',
+      22: 'Lollipop 5.1',
+      23: 'Marshmallow',
+      24: 'Nougat 7.0',
+      25: 'Nougat 7.1',
+      26: 'Oreo 8.0',
+      27: 'Oreo 8.1',
+      28: 'Pie',
+      29: 'Android 10',
+      30: 'Android 11',
+    },
+  },
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -437,6 +501,7 @@ export const STORE_VOCABULARY = {
   deviceClasses: DEVICE_CLASSES,
   listingFields: LISTING_FIELDS,
   listingCategories: LISTING_CATEGORIES,
+  storeFormRules: STORE_FORM_RULES,
 };
 
 /** The axis names, so a reader can enumerate them without hardcoding a list. */
@@ -451,4 +516,5 @@ export const VOCABULARY_AXES = /** @type {const} */ ([
   'deviceClasses',
   'listingFields',
   'listingCategories',
+  'storeFormRules',
 ]);

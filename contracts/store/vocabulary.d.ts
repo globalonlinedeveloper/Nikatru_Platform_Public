@@ -30,6 +30,26 @@ export const DEVICE_CLASSES: readonly string[];
 export const LISTING_FIELDS: readonly ListingField[];
 export const LISTING_CATEGORIES: Readonly<Record<string, readonly string[]>>;
 
+export interface StoreFormRules {
+  readonly source: string;
+  readonly asOf: string;
+  readonly categories: readonly string[];
+  readonly categoryFallback: string;
+  readonly supportPhoneMaxChars: number;
+  readonly screenshots: {
+    readonly dir: string;
+    readonly min: number;
+    readonly max: number;
+    readonly width: number;
+    readonly height: number;
+    readonly maxBytes: number;
+    readonly formats: readonly string[];
+  };
+  readonly icon: { readonly file: string; readonly width: number; readonly height: number; readonly maxBytesExclusive: number };
+  readonly minPlatformLabels: Readonly<Record<number, string>>;
+}
+export const STORE_FORM_RULES: Readonly<Record<string, StoreFormRules>>;
+
 export function appRequiredListingFiles(): string[];
 export function appAdditionalListingFiles(): string[];
 export function urlListingFiles(): string[];
@@ -49,6 +69,7 @@ export interface StoreVocabulary {
   readonly deviceClasses: readonly string[];
   readonly listingFields: readonly ListingField[];
   readonly listingCategories: Readonly<Record<string, readonly string[]>>;
+  readonly storeFormRules: Readonly<Record<string, StoreFormRules>>;
 }
 
 export const STORE_VOCABULARY: StoreVocabulary;

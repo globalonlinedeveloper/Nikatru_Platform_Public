@@ -82,7 +82,7 @@ import { fileURLToPath } from 'node:url';
 import { parseYaml, YamlError } from './yaml.mjs';
 import { validate } from './schema-validate.mjs';
 import { publicAppUrl } from '../sites/apex.mjs';
-import { renderedListingFiles } from '../../contracts/store/vocabulary.js';
+import { renderedListingFiles, STORE_FORM_RULES } from '../../contracts/store/vocabulary.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -104,6 +104,18 @@ export const APP_SCHEMA_PATH = join(HERE, 'schema', 'app.schema.json');
  *  this array is; tooling/ci/assert-store-vocabulary.mjs compares them BY VALUE
  *  and fails on a restated literal. */
 export const RENDERED_LISTING_FILES = renderedListingFiles();
+
+/** The category a channel's category.txt carries. The app's own app.yaml
+ *  `category`, unless the channel's store publishes a CLOSED list (contracts/store/
+ *  vocabulary.js STORE_FORM_RULES) that lacks it — then the store's declared
+ *  fallback. Added 2026-09-22 for apps.gov.in, whose form has no
+ *  "Productivity" (O-APPS-GOV-IN-CHANNEL-APK). A channel with no closed list
+ *  is unchanged: the app's value, verbatim. */
+export function channelCategory(channelId, category) {
+  const rules = STORE_FORM_RULES[channelId];
+  if (!rules) return category;
+  return rules.categories.includes(category) ? category : rules.categoryFallback;
+}
 
 /** [ADR 085] A: where the RevenueCat routing map is rendered, and the module. */
 export const REVENUECAT_APP_IDS_DIR = 'services/platform/src/lib/mor';
@@ -414,7 +426,7 @@ export function plan(root) {
       const values = {
         'title.txt': doc.name,
         'short-description.txt': doc.tagline,
-        'category.txt': doc.category,
+        'category.txt': channelCategory(c.id, doc.category),
         'privacy-policy-url.txt': doc.legal.privacyPolicyUrl,
         'support-url.txt': doc.legal.supportUrl,
       };
