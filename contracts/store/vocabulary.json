@@ -221,7 +221,7 @@
     {
       "name": "form-answers.json",
       "kind": "json",
-      "app": "additional",
+      "app": "form-rule",
       "extension": null,
       "rendered": false
     },
@@ -308,6 +308,7 @@
       ],
       "listingCategory": "Others",
       "supportPhoneMaxChars": 12,
+      "answersFile": "form-answers.json",
       "screenshots": {
         "dir": "screenshots",
         "min": 4,

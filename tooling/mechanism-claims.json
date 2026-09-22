@@ -1501,6 +1501,14 @@
       "test": "services/subscriptiontracker-api/test/cors.test.ts",
       "case": "every mounted route is preflight-approved for its own method, from a listed origin",
       "proves": "The describe title is the claim; this case, inside it, reads its endpoints from `mountedEndpoints(app.routes)` and nothing else. Mutation 2026-09-22: PUT removed from `allowMethods` in src/middleware/cors.ts turns it red with `PUT /v1/budget -> 204, allow-origin=https://nikatru.com, allow-methods=GET,POST,PATCH,DELETE,OPTIONS`. Restored byte-exact (sha256 01e8e91934e9424a), green again. judged 2026-09-22."
+    },
+    {
+      "file": "tooling/ci/assert-apps-gov-in-media.mjs",
+      "anchor": "and it cannot drift from them without this guard saying so.",
+      "status": "proven",
+      "test": "tooling/ci/test/apps-gov-in-media.test.mjs",
+      "case": "NEGATIVE: a re-captured Play original makes the derived file STALE, naming the command",
+      "proves": "The case re-captures one Play original after the derivation and asserts the guard names the derived file STALE with the --write command; it passes only while the guard re-derives from the committed originals. The hand-edited-output and tampered-record cases are the other two drift directions."
     }
   ],
   "backlog": {}

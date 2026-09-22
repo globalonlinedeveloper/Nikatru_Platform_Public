@@ -243,6 +243,15 @@ axisAgrees('artifactFormats', STORE_VOCABULARY.artifactFormats, Object.keys(regi
 axisAgrees('artifactFormats(rows)', STORE_VOCABULARY.artifactFormats, channels.flatMap((c) => c.artifactFormats ?? []), `${REGISTER_REL} channels[].artifactFormats`);
 axisAgrees('deviceClasses', STORE_VOCABULARY.deviceClasses, Object.keys(deviceSets), `${REGISTER_REL} deviceTypeCoverage.sets`);
 axisAgrees('listingFields(additional)', contract.appAdditionalListingFiles(), registerAdditional, `${REGISTER_REL} perChannel[].additionalFiles`);
+// A store form's answers file is required through STORE_FORM_RULES, never
+// through `additionalFiles` (a .json there is a sworn declaration), so its
+// consumer is the rules row that names it.
+axisAgrees(
+  'listingFields(form-rule)',
+  contract.appFormRuleListingFiles(),
+  Object.values(contract.STORE_FORM_RULES ?? {}).map((r) => r.answersFile).filter((x) => typeof x === 'string'),
+  `${CONTRACT_JS_REL} STORE_FORM_RULES[].answersFile`,
+);
 
 // The two ORDERED comparisons. These are arrays a consumer uses verbatim, so
 // membership is not enough — a reordering changes what every reader renders.

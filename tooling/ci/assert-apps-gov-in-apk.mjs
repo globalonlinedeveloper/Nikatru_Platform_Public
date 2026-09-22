@@ -202,6 +202,13 @@ export function checkFormAnswers(answers, badging, rules = STORE_FORM_RULES[CHAN
   return problems;
 }
 
+/** One markdown table cell. The backslash is escaped FIRST, so a `\|` in the
+ *  input (a signer DN can carry one) cannot turn the added escape back into a
+ *  cell break. */
+export function mdCell(value) {
+  return String(value).replace(/\\/g, '\\\\').replace(/\|/g, '\\|');
+}
+
 /** A build-tools directory: the flag, else the SDK's highest numeric version. */
 export function resolveBuildTools(flag, env = process.env) {
   if (flag) return resolve(flag);
@@ -327,7 +334,7 @@ function main() {
     ['artifact', problems.length ? '(none)' : decision.artifactName],
   ];
   if (process.env.GITHUB_STEP_SUMMARY) {
-    const md = [`### apps.gov.in .apk — ${APP}`, '', '| | |', '|---|---|', ...rows.map(([k, v]) => `| ${k} | ${String(v).replace(/\|/g, '\\|')} |`), ''];
+    const md = [`### apps.gov.in .apk — ${APP}`, '', '| | |', '|---|---|', ...rows.map(([k, v]) => `| ${k} | ${mdCell(v)} |`), ''];
     if (!problems.length) md.push(`**${decision.reason}**`, '');
     for (const p of problems) md.push(`- ❌ ${p.replace(/\n\s*/g, ' ')}`);
     appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${md.join('\n')}\n`);

@@ -74,11 +74,16 @@
  * @typedef {object} ListingField
  * @property {string} name        the file name inside a listing tree
  * @property {'doc'|'text'|'url'|'json'|'image'} kind what the file holds
- * @property {'required'|'additional'|null} app
+ * @property {'required'|'additional'|'form-rule'|null} app
  *   `'required'` — every application listing tree carries it, whatever the
  *   channel (this is `storeMetadataContract.requiredFiles`).
  *   `'additional'` — some channels carry it; WHICH channels is a per-row fact
  *   and stays in the register's `perChannel.<id>.additionalFiles`.
+ *   `'form-rule'` — a channel with STORE_FORM_RULES carries it, and that
+ *   channel's `answersFile` names it. Added 2026-09-22 for `form-answers.json`,
+ *   which cannot be `'additional'`: a .json in `additionalFiles` is a sworn
+ *   declaration to assert-sworn-store-files.mjs, whose template must stamp null
+ *   answers, and these answers are chassis facts the built .apk re-proves.
  *   `null` — not an application listing field at all.
  * @property {'per-store'|'per-store-additional'|'shared'|'shared-additional'|null} extension
  *   `'per-store'` — one copy per store directory (store/chrome, store/edge,
@@ -270,7 +275,7 @@ export const LISTING_FIELDS = /** @type {const} */ ([
   // characters, shown on the store), and the answers to all three steps of that
   // form, beside the listing they are filled from. See STORE_FORM_RULES.
   { name: 'developed-by.txt', kind: 'text', app: 'additional', extension: null, rendered: false },
-  { name: 'form-answers.json', kind: 'json', app: 'additional', extension: null, rendered: false },
+  { name: 'form-answers.json', kind: 'json', app: 'form-rule', extension: null, rendered: false },
 
   // ── THE EXTENSION LISTING GRAPHICS. Added 2026-09-20, when Public #844 put
   //    the first real ones on disk and this guard refused all three by name —
@@ -375,6 +380,9 @@ export const STORE_FORM_RULES = /** @type {const} */ ({
     // storeMetadataContract.perChannel['apps-gov-in'].maxChars, the mechanism
     // every other channel's text limits already use. One fact, one home.
     supportPhoneMaxChars: 12,
+    // The listing file that holds the answer to every field of this form, one
+    // per app tree; assert-store-metadata.mjs requires it by this name.
+    answersFile: 'form-answers.json',
     screenshots: { dir: 'screenshots', min: 4, max: 8, width: 155, height: 290, maxBytes: 1048576, formats: ['png', 'jpg'] },
     icon: { file: 'store-icon-512.png', width: 512, height: 512, maxBytesExclusive: 204800 },
     minPlatformLabels: {
@@ -413,6 +421,14 @@ export const appRequiredListingFiles = () =>
  */
 export const appAdditionalListingFiles = () =>
   LISTING_FIELDS.filter((f) => f.app === 'additional').map((f) => f.name);
+
+/**
+ * The application listing fields a store's own form requires. Each is some
+ * STORE_FORM_RULES row's `answersFile`.
+ * @returns {string[]}
+ */
+export const appFormRuleListingFiles = () =>
+  LISTING_FIELDS.filter((f) => f.app === 'form-rule').map((f) => f.name);
 
 /**
  * `storeMetadataContract.urlFiles` — the listing fields whose content is a URL,

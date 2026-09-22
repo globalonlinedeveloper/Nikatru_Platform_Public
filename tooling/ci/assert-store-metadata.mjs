@@ -904,7 +904,7 @@ const STEP3_COUNT = 11;
  *  whose template must stamp null answers, and these answers are chassis facts
  *  that assert-apps-gov-in-apk.mjs re-proves against the built .apk. */
 function checkFormAnswers(dir, row, rules, onBrick = false) {
-  const p = posix.join(dir, 'form-answers.json');
+  const p = posix.join(dir, rules.answersFile);
   const text = read(p);
   if (text === null) {
     problems.push(`${p} is missing. It is the answer to every field of the ${row.id} upload form, which the owner types from; without it the form is filled from memory.`);

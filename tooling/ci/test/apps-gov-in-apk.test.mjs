@@ -30,6 +30,7 @@ import {
   portalLabel,
   decideArtifact,
   checkFormAnswers,
+  mdCell,
 } from '../assert-apps-gov-in-apk.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -102,6 +103,16 @@ describe('parsers', () => {
     assert.equal(portalLabel(24), 'Nougat 7.0');
     assert.equal(portalLabel(30), 'Android 11');
     assert.equal(portalLabel(31), null);
+  });
+
+  test('mdCell escapes the backslash BEFORE the pipe, so an input `\\|` stays inside its cell', () => {
+    // CodeQL js/incomplete-sanitization (PR #870): escaping only the pipe turns
+    // the input `a\|b` into `a\\|b`, where `\\` is a literal backslash and the
+    // pipe is live again. Backslash first gives `a\\\|b`: both escaped.
+    assert.equal(mdCell('CN=a\\|b'), 'CN=a\\\\\\|b');
+    assert.equal(mdCell('C:\\keys'), 'C:\\\\keys');
+    assert.equal(mdCell('x|y'), 'x\\|y');
+    assert.equal(mdCell(24), '24');
   });
 });
 

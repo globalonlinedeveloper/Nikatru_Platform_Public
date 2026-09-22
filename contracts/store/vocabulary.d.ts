@@ -8,7 +8,7 @@
 export type Surface = 'app' | 'extension';
 export type ChannelKind = 'web' | 'store' | 'direct';
 export type ListingFieldKind = 'doc' | 'text' | 'url' | 'json' | 'image';
-export type AppListingScope = 'required' | 'additional' | null;
+export type AppListingScope = 'required' | 'additional' | 'form-rule' | null;
 export type ExtensionListingScope = 'per-store' | 'shared' | null;
 
 export interface ListingField {
@@ -36,6 +36,7 @@ export interface StoreFormRules {
   readonly categories: readonly string[];
   readonly listingCategory: string;
   readonly supportPhoneMaxChars: number;
+  readonly answersFile: string;
   readonly screenshots: {
     readonly dir: string;
     readonly min: number;
@@ -52,6 +53,7 @@ export const STORE_FORM_RULES: Readonly<Record<string, StoreFormRules>>;
 
 export function appRequiredListingFiles(): string[];
 export function appAdditionalListingFiles(): string[];
+export function appFormRuleListingFiles(): string[];
 export function urlListingFiles(): string[];
 export function extensionPerStoreListingFiles(): string[];
 export function extensionSharedListingFiles(): string[];
