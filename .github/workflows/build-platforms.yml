@@ -70,7 +70,8 @@ jobs:
   linux_web_android:
     name: Linux + Web + Android
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    # why 45: a fourth Android build (apps.gov.in) since 2026-09-22 — docs/ci/build-platforms.md §apps-gov-in.
+    timeout-minutes: 45
     needs: prepare
     strategy:
       fail-fast: false
@@ -167,6 +168,90 @@ jobs:
           --dart-define=APP_VERSION=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}+${{ needs.prepare.outputs.GITHUB_SHA_SHORT }}
           --dart-define=RELEASE_CHANNEL=android-play
           --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
+      # why: apps.gov.in's .apk is self-signed with its OWN key, which never reaches $GITHUB_ENV (the Play key stays there) — docs/ci/build-platforms.md §apps-gov-in.
+      - name: Prepare the apps.gov.in signing key (its own key, never the upload key)
+        id: agi_key
+        env:
+          APP: ${{ matrix.app }}
+          APPSGOVIN_KEYSTORE_BASE64: ${{ secrets.APPSGOVIN_KEYSTORE_BASE64 }}
+          APPSGOVIN_KEYSTORE_PASSWORD: ${{ secrets.APPSGOVIN_KEYSTORE_PASSWORD }}
+          APPSGOVIN_KEY_ALIAS: ${{ secrets.APPSGOVIN_KEY_ALIAS }}
+          APPSGOVIN_KEY_PASSWORD: ${{ secrets.APPSGOVIN_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          scratch="${RUNNER_TEMP}/apps-gov-in-signing.env"
+          : > "$scratch"
+          env -u GITHUB_REF -u GITHUB_WORKFLOW_REF -u GITHUB_ENV \
+            ANDROID_KEYSTORE_BASE64="$APPSGOVIN_KEYSTORE_BASE64" \
+            ANDROID_KEYSTORE_PASSWORD="$APPSGOVIN_KEYSTORE_PASSWORD" \
+            ANDROID_KEY_ALIAS="$APPSGOVIN_KEY_ALIAS" \
+            ANDROID_KEY_PASSWORD="$APPSGOVIN_KEY_PASSWORD" \
+            node tooling/ci/android-signing.mjs --app "$APP" \
+              --out "${RUNNER_TEMP}/apps-gov-in-key" --github-env "$scratch"
+          posture="$(sed -n 's/^ANDROID_SIGNING_POSTURE=//p' "$scratch")"
+          keystore="$(sed -n 's/^ANDROID_KEYSTORE_PATH=//p' "$scratch")"
+          rm -f "$scratch"
+          case "$posture" in
+            release-signed)
+              if [ -z "$keystore" ]; then
+                echo "::error title=apps.gov.in key::posture release-signed but no ANDROID_KEYSTORE_PATH was exported"
+                exit 1
+              fi
+              echo "posture=release" >> "$GITHUB_OUTPUT" ;;
+            debug-signed-build-proof)
+              echo "### apps.gov.in signing: THE APPSGOVIN_* SECRETS ARE NOT SET. THE .apk BELOW IS DEBUG-SIGNED AND NAMED NOT-FOR-UPLOAD." >> "$GITHUB_STEP_SUMMARY"
+              echo "posture=debug" >> "$GITHUB_OUTPUT" ;;
+            *)
+              echo "::error title=apps.gov.in key::android-signing.mjs exported no posture (got \"${posture}\")"
+              exit 1 ;;
+          esac
+          echo "keystore_path=${keystore}" >> "$GITHUB_OUTPUT"
+      # why: Flutter writes every .apk to one path, so the Play .apk is set aside and put back — §apps-gov-in.
+      - name: Set the Play .apk aside (Flutter writes every .apk to one path)
+        working-directory: apps/${{ matrix.app }}
+        run: |
+          set -euo pipefail
+          rm -rf build/android-play-apk-aside
+          mkdir -p build/android-play-apk-aside
+          mv build/app/outputs/flutter-apk/app-release.apk build/android-play-apk-aside/
+          if [ -f build/app/outputs/flutter-apk/app-release.apk.sha1 ]; then mv build/app/outputs/flutter-apk/app-release.apk.sha1 build/android-play-apk-aside/; fi
+      # why: a step's env beats $GITHUB_ENV, so the apps.gov.in key signs THIS build only; RELEASE_CHANNEL=apps-gov-in sells nothing — §apps-gov-in.
+      - name: Build android (apk — apps.gov.in, its own key, sells nothing)
+        working-directory: apps/${{ matrix.app }}
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ steps.agi_key.outputs.keystore_path }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.APPSGOVIN_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.APPSGOVIN_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.APPSGOVIN_KEY_PASSWORD }}
+        run: >
+          flutter build apk --release
+          --obfuscate --split-debug-info=build/symbols/android-apk-apps-gov-in
+          --build-name=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
+          --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+          --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+          --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
+          --dart-define=APP_VERSION=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}+${{ needs.prepare.outputs.GITHUB_SHA_SHORT }}
+          --dart-define=RELEASE_CHANNEL=apps-gov-in
+          --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
+      - name: Take the apps.gov.in .apk out, and put the Play .apk back
+        id: agi_apk
+        working-directory: apps/${{ matrix.app }}
+        env:
+          APP: ${{ matrix.app }}
+          BUILD_NAME: ${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          file="${APP}-apps-gov-in-${BUILD_NAME}.apk"
+          mkdir -p build/apps-gov-in
+          mv build/app/outputs/flutter-apk/app-release.apk "build/apps-gov-in/${file}"
+          rm -f build/app/outputs/flutter-apk/app-release.apk.sha1
+          mv build/android-play-apk-aside/* build/app/outputs/flutter-apk/
+          rmdir build/android-play-apk-aside
+          if cmp -s build/app/outputs/flutter-apk/app-release.apk "build/apps-gov-in/${file}"; then
+            echo "::error title=apps.gov.in apk::the restored Play .apk is byte-identical to the apps.gov.in one"
+            exit 1
+          fi
+          echo "apk=apps/${APP}/build/apps-gov-in/${file}" >> "$GITHUB_OUTPUT"
       # ⏱ MOVED 2026-09-07 (fix pass) — THIS STEP USED TO BE THE LAST ONE IN THE
       # JOB, and that lost the mapping it exists to keep. This unit states the
       # rule in the store lanes ("BEFORE the upload, not after -- a step placed
@@ -183,13 +268,16 @@ jobs:
       # `release` job downloads `<app>-*` and publishes it, and an obfuscation
       # mapping attached to a public GitHub Release un-obfuscates the build for
       # everyone. 90 days matches the installable artifacts beside it.
+      # why `!cancelled()`: a failed apps.gov.in step above must not cost the Play mappings — §apps-gov-in.
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: ${{ !cancelled() }}
         with:
           name: symbols-${{ matrix.app }}-linux-android
           path: |
             apps/${{ matrix.app }}/build/symbols/linux
             apps/${{ matrix.app }}/build/symbols/android-apk
             apps/${{ matrix.app }}/build/symbols/android-aab
+            apps/${{ matrix.app }}/build/symbols/android-apk-apps-gov-in
           retention-days: 90
           if-no-files-found: error
       - name: The .aab must be signed by the upload key, not the debug key
@@ -266,7 +354,7 @@ jobs:
           set -euo pipefail
           gt_org="$(node -p "require('./tooling/ops/glitchtip-project.json').org")"
           gt_project="$(node -p "require('./tooling/ops/glitchtip-project.json').project")"
-          for lane in linux android-apk android-aab; do
+          for lane in linux android-apk android-aab android-apk-apps-gov-in; do
             node tooling/ops/upload-native-symbols.mjs \
               --cli "${RUNNER_TEMP}/glitchtip-cli" \
               --dir "apps/${APP}/build/symbols/${lane}" \
@@ -279,6 +367,30 @@ jobs:
             apps/${{ matrix.app }}/build/app/outputs/flutter-apk/*.apk
             apps/${{ matrix.app }}/build/app/outputs/bundle/release/*.aab
             apps/${{ matrix.app }}/build/linux/x64/release/bundle
+          retention-days: 90
+          if-no-files-found: error
+      # why last in the job: an apps.gov.in finding must not cost the Play artifacts or symbols — §apps-gov-in.
+      - name: The apps.gov.in .apk passes the static apps.gov.in VAPT items
+        run: >
+          node tooling/ci/assert-android-vapt-manifest.mjs
+          ${{ steps.agi_apk.outputs.apk }}
+          --app ${{ matrix.app }}
+      # why: the listing media is derived from the Play set, never hand-edited — §apps-gov-in.
+      - name: The apps.gov.in listing media is still the derivation of the Play set
+        run: node tooling/ci/assert-apps-gov-in-media.mjs
+      # why: the artifact is named from the signer this reads, against the pin — §apps-gov-in.
+      - name: The apps.gov.in .apk — its signer against the pin, its minSdk against the form
+        id: agi_verify
+        run: >
+          node tooling/ci/assert-apps-gov-in-apk.mjs
+          --apk ${{ steps.agi_apk.outputs.apk }}
+          --app ${{ matrix.app }}
+          --posture ${{ steps.agi_key.outputs.posture }}
+      # why its own artifact: `apps-gov-in-*` never matches the release job's `<app>-*` download.
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ steps.agi_verify.outputs.artifact_name }}
+          path: ${{ steps.agi_apk.outputs.apk }}
           retention-days: 90
           if-no-files-found: error
 

@@ -212,6 +212,20 @@
       "rendered": false
     },
     {
+      "name": "developed-by.txt",
+      "kind": "text",
+      "app": "additional",
+      "extension": null,
+      "rendered": false
+    },
+    {
+      "name": "form-answers.json",
+      "kind": "json",
+      "app": "form-rule",
+      "extension": null,
+      "rendered": false
+    },
+    {
       "name": "promo-tile-440x280.png",
       "kind": "image",
       "app": null,
@@ -260,7 +274,71 @@
       "Privacy & Security"
     ],
     "apps-gov-in": [
-      "Productivity"
+      "Others"
     ]
+  },
+  "storeFormRules": {
+    "apps-gov-in": {
+      "source": "apps.gov.in developer upload form, script /Developer/chunk-ZVEOEZCZ.js and the on-screen lists, read 2026-09-22; recorded in Private runbooks/store-submission-apps-gov-in.md, 'Step 1' and the section appended 2026-09-22 'CORRECTIONS FROM THE FORM'S RAW SCRIPT'",
+      "asOf": "2026-09-22",
+      "categories": [
+        "Agriculture",
+        "Education",
+        "Electoral",
+        "Energy",
+        "Entertainment",
+        "Finance",
+        "Food",
+        "Health",
+        "Identity",
+        "Indian Post",
+        "Judiciary",
+        "Language",
+        "m-Learning",
+        "Municipal corporation",
+        "News",
+        "Others",
+        "Shopping",
+        "Social",
+        "Social Welfare",
+        "Sports",
+        "Transport",
+        "Travel",
+        "Weather"
+      ],
+      "listingCategory": "Others",
+      "supportPhoneMaxChars": 12,
+      "answersFile": "form-answers.json",
+      "screenshots": {
+        "dir": "screenshots",
+        "min": 4,
+        "max": 8,
+        "width": 155,
+        "height": 290,
+        "maxBytes": 1048576,
+        "formats": [
+          "png",
+          "jpg"
+        ]
+      },
+      "icon": {
+        "file": "store-icon-512.png",
+        "width": 512,
+        "height": 512,
+        "maxBytesExclusive": 204800
+      },
+      "minPlatformLabels": {
+        "21": "Lollipop 5.0",
+        "22": "Lollipop 5.1",
+        "23": "Marshmallow",
+        "24": "Nougat 7.0",
+        "25": "Nougat 7.1",
+        "26": "Oreo 8.0",
+        "27": "Oreo 8.1",
+        "28": "Pie",
+        "29": "Android 10",
+        "30": "Android 11"
+      }
+    }
   }
 }

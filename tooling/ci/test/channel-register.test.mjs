@@ -2286,6 +2286,73 @@ describe('assert-channel-register — [9]R-3: the register agrees with the real 
     assert.equal(code, 1, out);
     assert.match(out, /must be a path TEMPLATE containing `\{app\}`/);
   });
+
+  // ── `mapsOnto`: a SECOND identity through the SAME four Gradle variables ────
+  // Added 2026-09-22 for apps-gov-in (O-APPS-GOV-IN-CHANNEL-APK): that row
+  // declares APPSGOVIN_* and build-platforms.yml feeds each into Gradle's
+  // ANDROID_* variable for ONE step. The translation must pay what the
+  // transport exemption pays, and a rename on either side must still go red.
+  const AGI = ['APPSGOVIN_KEYSTORE_BASE64', 'APPSGOVIN_KEYSTORE_PASSWORD', 'APPSGOVIN_KEY_ALIAS', 'APPSGOVIN_KEY_PASSWORD'];
+  const AGI_MAP = { APPSGOVIN_KEYSTORE_PASSWORD: 'ANDROID_KEYSTORE_PASSWORD', APPSGOVIN_KEY_ALIAS: 'ANDROID_KEY_ALIAS', APPSGOVIN_KEY_PASSWORD: 'ANDROID_KEY_PASSWORD' };
+  const AGI_WHY = 'the lane feeds each APPSGOVIN_* value into the same Gradle variable, for the apps-gov-in build step only';
+  const asAppsGovIn = (r, { mapsOnto = AGI_MAP, mapsOntoWhy = AGI_WHY } = {}) => {
+    secrets(r).names = [...AGI];
+    secrets(r).why = Object.fromEntries(AGI.map((n) => [n, `${n} carries the apps-gov-in signing identity into CI`]));
+    contract(r).transport.name = 'APPSGOVIN_KEYSTORE_BASE64';
+    if (mapsOnto !== null) contract(r).mapsOnto = mapsOnto;
+    if (mapsOntoWhy !== null) contract(r).mapsOntoWhy = mapsOntoWhy;
+  };
+
+  test('PASSES when `mapsOnto` translates every declared secret onto the variable Gradle reads', () => {
+    const { code, out } = run(tree({ withAndroid: true, mutate: (r) => asAppsGovIn(r) }));
+    assert.equal(code, 0, out);
+    assert.match(out, /1 Android build file\(s\) cross-checked against the register — 4 signing value name\(s\) agree/);
+  });
+
+  test('FAILS the same names with NO `mapsOnto`: Gradle never reads APPSGOVIN_*', () => {
+    const { code, out } = run(tree({ withAndroid: true, mutate: (r) => asAppsGovIn(r, { mapsOnto: null, mapsOntoWhy: null }) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /declares "APPSGOVIN_KEY_ALIAS" in `signing\.ciSecrets\.names` and .* never reads it/);
+  });
+
+  test('FAILS a translation onto a variable the build file does not read, and names both spellings', () => {
+    const { code, out } = run(
+      tree({ withAndroid: true, mutate: (r) => asAppsGovIn(r, { mapsOnto: { ...AGI_MAP, APPSGOVIN_KEY_ALIAS: 'ANDROID_KEY_ALIAS_V2' } }) }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /carries the signing identity in ANDROID_KEY_ALIAS \(Gradle's "keyAlias"\)/);
+    assert.match(out, /declares "APPSGOVIN_KEY_ALIAS" \(fed into "ANDROID_KEY_ALIAS_V2"\) in `signing\.ciSecrets\.names` and .* never reads it/);
+  });
+
+  test('FAILS a translation of a secret the row does not declare — a waiver for nothing', () => {
+    const { code, out } = run(
+      tree({ withAndroid: true, mutate: (r) => asAppsGovIn(r, { mapsOnto: { ...AGI_MAP, APPSGOVIN_SPARE: 'ANDROID_SPARE' } }) }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /`mapsOnto` translates "APPSGOVIN_SPARE", which `names` does not declare/);
+  });
+
+  test('FAILS a translation of the transport, which is not a Gradle variable', () => {
+    const { code, out } = run(
+      tree({ withAndroid: true, mutate: (r) => asAppsGovIn(r, { mapsOnto: { ...AGI_MAP, APPSGOVIN_KEYSTORE_BASE64: 'ANDROID_KEYSTORE_PATH' } }) }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /`mapsOnto` translates the transport "APPSGOVIN_KEYSTORE_BASE64"/);
+  });
+
+  test('FAILS two declared secrets fed into ONE Gradle variable', () => {
+    const { code, out } = run(
+      tree({ withAndroid: true, mutate: (r) => asAppsGovIn(r, { mapsOnto: { ...AGI_MAP, APPSGOVIN_KEY_PASSWORD: 'ANDROID_KEY_ALIAS' } }) }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /`mapsOnto` feeds both "APPSGOVIN_KEY_ALIAS" and "APPSGOVIN_KEY_PASSWORD" into "ANDROID_KEY_ALIAS"/);
+  });
+
+  test('FAILS a `mapsOnto` with no written `mapsOntoWhy` — an exemption anybody can add', () => {
+    const { code, out } = run(tree({ withAndroid: true, mutate: (r) => asAppsGovIn(r, { mapsOntoWhy: 'x' }) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /`mapsOnto` carries no `mapsOntoWhy`/);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

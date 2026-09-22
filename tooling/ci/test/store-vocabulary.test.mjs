@@ -302,6 +302,26 @@ describe('assert-store-vocabulary — a value the contract carries that no consu
     assert.match(out, /UNUSED-VALUE limb/);
   });
 
+  test('a form-rule listing field no STORE_FORM_RULES row names as its answersFile', async () => {
+    const root = makeRoot('unnamed-form-rule-field', {
+      contractEdit: (s) => s.replace("    answersFile: 'form-answers.json',\n", ''),
+    });
+    await materialiseTrees(root);
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /listingFields\(form-rule\): the contract carries 1 value\(s\).*does not spell: form-answers\.json/s);
+  });
+
+  test('an answersFile no form-rule listing field carries', async () => {
+    const root = makeRoot('stray-answers-file', {
+      contractEdit: (s) => s.replace("    answersFile: 'form-answers.json',", "    answersFile: 'answers.json',"),
+    });
+    await materialiseTrees(root);
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /listingFields\(form-rule\): .*spells 1 value\(s\) the contract does not carry: answers\.json/);
+  });
+
   test('a declared category no listing tree uses', async () => {
     const root = makeRoot('unused-category', {
       contractEdit: (s) => s.replace("  'android-play': ['Productivity'],", "  'android-play': ['Productivity', 'Finance'],"),

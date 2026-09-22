@@ -1,0 +1,79 @@
+{
+  "_why": [
+    "EVERY ANSWER FOR THE apps.gov.in UPLOAD FORM, EACH WITH ITS EVIDENCE, so the owner types from this file",
+    "and never from memory. Text fields are never copied here: a `from` names the listing file beside this",
+    "one, which is the single copy (the guards hold those files to the form's limits).",
+    "",
+    "STAMPED by tooling/bricks/app with the answers that are true of the CHASSIS, which is exactly what a",
+    "freshly stamped app is. Re-read every step-3 answer when the app adds a feature: an app that starts",
+    "using the camera, location, contacts, the microphone or storage must say Yes there, and CI fails the",
+    "built .apk if it requests one of those permissions while this file says No",
+    "(tooling/ci/assert-apps-gov-in-apk.mjs). tooling/ci/assert-store-metadata.mjs checks the shape.",
+    "",
+    "The owner fills exactly two fields at the sitting, supportEmail and supportPhone. Both are shown on the",
+    "store, and neither is written into this repository."
+  ],
+  "channel": "apps-gov-in",
+  "asOf": "2026-09-22",
+  "portalSource": "apps.gov.in developer upload form, script /Developer/chunk-ZVEOEZCZ.js and the on-screen lists, read 2026-09-22. Private runbooks/store-submission-apps-gov-in.md 'Step 1' to 'Step 3'.",
+  "step1": {
+    "appName": { "from": "title.txt" },
+    "minimumPlatform": {
+      "sdk": 24,
+      "label": "Nougat 7.0",
+      "source": "the built .apk's minSdk (Flutter's default flutter.minSdkVersion, 24, which the chassis does not override), read in CI from `aapt2 dump badging` by tooling/ci/assert-apps-gov-in-apk.mjs, which fails if this sdk or label disagrees with the .apk. The label is the form's own name for SDK 24 (contracts/store/vocabulary.js STORE_FORM_RULES['apps-gov-in'].minPlatformLabels)."
+    },
+    "stateUt": {
+      "answer": "All State",
+      "why": "A Nikatru app is not specific to one state or union territory. The form lists an app under the one chosen."
+    },
+    "category": { "from": "category.txt" },
+    "developedBy": { "from": "developed-by.txt" },
+    "supportEmail": "OWNER FILLS",
+    "supportPhone": "OWNER FILLS",
+    "_supportWhy": "Both are shown on the store. The phone field takes at most 12 characters. Neither is written into this repository.",
+    "description": { "from": "long-description.txt" },
+    "authorizationLetter": {
+      "answer": "not asked",
+      "why": "The letter's control (financeDocument) is tied to the Finance category. category.txt is Others, so the control does not appear."
+    }
+  },
+  "step2": {
+    "applicationType": {
+      "answer": "Dynamic Application",
+      "why": "The chassis talks to its backend when signed in, and has sign-in (step 3 question 11 is Yes)."
+    },
+    "paymentGateway": {
+      "answer": "No",
+      "why": "This channel's purchaseRail is `none` (tooling/channel-register.json apps-gov-in). A build with RELEASE_CHANNEL=apps-gov-in resolves the rail that sells nothing: packages/purchases/test/chassis_billing_test.dart, 'a `rail: none` channel is a rail that sells nothing'."
+    },
+    "fileFormat": {
+      "answer": "APK",
+      "why": "The form takes APK or AAB. With an APK the form asks no key-store question, and the .apk is signed with our own apps.gov.in key."
+    },
+    "appFile": {
+      "artifact": "apps-gov-in-{{app_id}}-apk",
+      "file": "{{app_id}}-apps-gov-in-<release_line>.<run_number>.apk",
+      "why": "Built by the Android job of .github/workflows/build-platforms.yml. That artifact name exists only when the signer matches the pin recorded in tooling/channel-register.json apps-gov-in.signing.signingCertificate.sha256. Any other build is named ...-NOT-FOR-UPLOAD-<reason> and must never be uploaded (docs/ci/build-platforms.md)."
+    },
+    "appIcon": { "from": "store-icon-512.png" },
+    "screenshots": { "from": "screenshots" },
+    "keyStore": {
+      "answer": "not asked for APK",
+      "why": "The form's script requires the key-store field only when File format is AAB. The .apk is signed in CI with alias nikatru-appsgovin (tooling/channel-register.json apps-gov-in.signing)."
+    }
+  },
+  "step3": [
+    { "q": 1, "id": "developed-in-india", "question": "Is the app developed in India?", "answer": "Yes", "evidence": "The developer profile is an Indian individual developer, approved 2026-08-31 (Private platform-state/identity.json storeAccounts.apps-gov-in)." },
+    { "q": 2, "id": "personal-data", "question": "Does the app use personal data?", "answer": "Yes", "evidence": "The chassis's signed-in account holds an email address and a user id. Answer apps/{{app_id}}/store/android-play/data-safety.json too; the two must agree." },
+    { "q": 3, "id": "ad-services", "question": "Does the app use ad services?", "answer": "No", "evidence": "The chassis carries no ad SDK and no house ads. Answer apps/{{app_id}}/store/android-play/ads-declaration.json containsAds too; the two must agree." },
+    { "q": 4, "id": "financial-transactions", "question": "Any functionality associated with financial activities (i.e. invoking financial transaction through the app)?", "answer": "No", "evidence": "The apps-gov-in build sells nothing and opens no checkout: purchaseRail `none`, packages/purchases/test/chassis_billing_test.dart 'a `rail: none` channel is a rail that sells nothing'." },
+    { "q": 5, "id": "suitable-for-children", "question": "Is the app suitable for children?", "answer": "No", "evidence": "No Nikatru app targets children; the age floor is 18 (ADR 068)." },
+    { "q": 6, "id": "location", "question": "Does the app access location?", "answer": "No", "evidence": "The chassis requests no ACCESS_FINE_LOCATION, ACCESS_COARSE_LOCATION or ACCESS_BACKGROUND_LOCATION. CI re-checks this against the built .apk (tooling/ci/assert-apps-gov-in-apk.mjs)." },
+    { "q": 7, "id": "camera", "question": "Does the app access the camera?", "answer": "No", "evidence": "The chassis requests no CAMERA. CI re-checks this against the built .apk." },
+    { "q": 8, "id": "contacts-call-logs", "question": "Does the app access contacts or call logs?", "answer": "No", "evidence": "The chassis requests no READ_CONTACTS, WRITE_CONTACTS, READ_CALL_LOG, WRITE_CALL_LOG or PROCESS_OUTGOING_CALLS. CI re-checks this against the built .apk." },
+    { "q": 9, "id": "microphone", "question": "Does the app access the microphone?", "answer": "No", "evidence": "The chassis requests no RECORD_AUDIO. CI re-checks this against the built .apk." },
+    { "q": 10, "id": "storage", "question": "Does the app access storage?", "answer": "No", "evidence": "The chassis requests no READ_EXTERNAL_STORAGE, WRITE_EXTERNAL_STORAGE, MANAGE_EXTERNAL_STORAGE or READ_MEDIA_*. CI re-checks this against the built .apk." },
+    { "q": 11, "id": "user-authentication", "question": "Does the app have user authentication?", "answer": "Yes", "evidence": "The chassis's email sign-in: apps/{{app_id}}/lib/features/auth/sign_in_screen.dart." }
+  ]
+}

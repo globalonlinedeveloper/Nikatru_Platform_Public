@@ -29,6 +29,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { encodeRgba } from '../../store/png-codec.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const GUARD = join(CI_DIR, 'assert-store-metadata.mjs');
@@ -1253,5 +1254,393 @@ describe('assert-store-metadata — THE FACTORY: a stamped app gets a listing no
     assert.equal(code, 1, out);
     assertComplained(out);
     assert.match(out, /which this guard cannot resolve/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// A STORE'S OWN FORM RULES — apps.gov.in (contracts/store/vocabulary.js
+// STORE_FORM_RULES, read out of the upload form's script on 2026-09-22).
+// Every case below breaks exactly ONE rule of a listing the portal would accept,
+// on the app tree or on the brick, and asserts the complaint that names it.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const AGI = 'apps-gov-in';
+
+/** A real PNG of the given size (the guard reads the IHDR); `padTo` appends bytes
+ *  after IEND, which changes the byte size and nothing the header says. */
+const png = (width, height, padTo = 0) => {
+  const buf = encodeRgba({ width, height, rgba: Buffer.alloc(width * height * 4, 0xff) }, { opaque: true });
+  return padTo > buf.length ? Buffer.concat([buf, Buffer.alloc(padTo - buf.length)]) : buf;
+};
+
+/** The smallest JPEG header the guard can measure: SOI, then a baseline SOF0. */
+const jpegHeader = (width, height) =>
+  Buffer.from([0xff, 0xd8, 0xff, 0xc0, 0x00, 0x11, 0x08, height >> 8, height & 0xff, width >> 8, width & 0xff, 0x03, 0, 0, 0, 0, 0, 0, 0, 0]);
+
+const agiRow = () => ({
+  id: AGI,
+  name: 'apps.gov.in',
+  platforms: ['android'],
+  kind: 'store',
+  surface: 'app',
+  served: false,
+  submittable: true,
+  artifactFormats: ['.apk'],
+  storeMetadataDir: 'apps/{app}/store/apps-gov-in',
+  ownerQueue: 'A-9',
+});
+
+const agiIconDecl = (over = {}) => ({ required: true, width: 512, height: 512, format: 'png', maxBytes: 204799, source: 'the form script', ...over });
+
+const STEP3_IDS = [
+  'developed-in-india',
+  'personal-data',
+  'ad-services',
+  'financial-transactions',
+  'suitable-for-children',
+  'location',
+  'camera',
+  'contacts-call-logs',
+  'microphone',
+  'storage',
+  'user-authentication',
+];
+
+/** A form-answers.json the guard accepts. `mutate(fa)` breaks one thing. */
+const formAnswers = (mutate = null) => {
+  const fa = {
+    channel: AGI,
+    step1: {
+      appName: { from: 'title.txt' },
+      minimumPlatform: { sdk: 24, label: 'Nougat 7.0' },
+      stateUt: { answer: 'All State' },
+      category: { from: 'category.txt' },
+      developedBy: { from: 'developed-by.txt' },
+      supportEmail: 'OWNER FILLS',
+      supportPhone: 'OWNER FILLS',
+      description: { from: 'long-description.txt' },
+    },
+    step2: { appIcon: { from: 'store-icon-512.png' }, screenshots: { from: 'screenshots' } },
+    step3: STEP3_IDS.map((id, i) => ({ q: i + 1, id, question: `question ${i + 1}`, answer: i === 1 ? 'Yes' : 'No', evidence: 'the file that shows it' })),
+  };
+  if (mutate) mutate(fa);
+  return `${JSON.stringify(fa, null, 2)}\n`;
+};
+
+const FOUR_SHOTS = () => ({ '01-a.png': png(155, 290), '02-b.png': png(155, 290), '03-c.png': png(155, 290), '04-d.png': png(155, 290) });
+
+/**
+ * The base fixture plus an apps-gov-in row, its brick tree (icon omitted, as the
+ * real brick omits it: post_gen writes it) and a complete apps-gov-in app tree.
+ */
+function agiTree({
+  status = 'live',
+  shots = FOUR_SHOTS(),
+  icon = png(512, 512),
+  category = 'Others\n',
+  answers = formAnswers(),
+  brickCategory = 'Others\n',
+  brickAnswers = formAnswers(),
+  iconDecl = agiIconDecl(),
+} = {}) {
+  const root = tree({
+    apps: [{ slug: 'subscriptiontracker', name: 'Subly', tagline: 'Track every subscription in one place', platforms: ['web'], status }],
+    // form-answers.json is NOT in additionalFiles, as in the real register: a
+    // .json there is a sworn declaration to assert-sworn-store-files.mjs.
+    mutateRegister: (r) => {
+      r.channels.push(agiRow());
+      r.storeMetadataContract.perChannel[AGI] = {
+        additionalFiles: ['developed-by.txt', 'store-icon-512.png'],
+        graphicAssets: { assets: { 'store-icon-512.png': iconDecl } },
+      };
+    },
+    brickFields: { [`${AGI}/category.txt`]: brickCategory, [`${AGI}/developed-by.txt`]: 'Nikatru\n' },
+    omitBrickFiles: [`${AGI}/store-icon-512.png`],
+  });
+  if (brickAnswers !== null) writeFileSync(join(root, 'tooling/bricks/app/__brick__/apps/{{app_id}}/store', AGI, 'form-answers.json'), brickAnswers);
+  const dir = join(root, 'apps/subscriptiontracker/store', AGI);
+  const put = (rel, body) => {
+    const p = join(dir, rel);
+    mkdirSync(dirname(p), { recursive: true });
+    writeFileSync(p, body);
+  };
+  for (const rel of REQUIRED) put(rel, rel === 'category.txt' ? category : FIELD[rel]);
+  put('developed-by.txt', 'Nikatru\n');
+  if (answers !== null) put('form-answers.json', answers);
+  if (icon) put('store-icon-512.png', icon);
+  for (const [name, body] of Object.entries(shots)) put(`screenshots/${name}`, body);
+  return root;
+}
+
+describe("a store's own form rules — apps.gov.in", () => {
+  test('a listing the portal accepts passes, and the form rules are counted', () => {
+    const { code, out } = run(agiTree());
+    assert.equal(code, 0, out);
+    assert.match(out, /\d+ store form rule\(s\) checked against the store's own upload form/);
+  });
+
+  test('a jpg screenshot is measured from its own start-of-frame header', () => {
+    const shots = FOUR_SHOTS();
+    delete shots['04-d.png'];
+    shots['04-d.jpg'] = jpegHeader(155, 290);
+    const { code, out } = run(agiTree({ shots }));
+    assert.equal(code, 0, out);
+  });
+
+  test('FAILS a category that is not one of the form’s 23', () => {
+    const { code, out } = run(agiTree({ category: 'Productivity\n' }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /apps-gov-in\/category\.txt reads "Productivity", which is not one of the 23 categories/);
+  });
+
+  test('FAILS three screenshots — the form takes 4 to 8', () => {
+    const shots = FOUR_SHOTS();
+    delete shots['04-d.png'];
+    const { code, out } = run(agiTree({ shots }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /holds 3 screenshot\(s\); the apps-gov-in form takes 4 to 8/);
+  });
+
+  test('FAILS nine screenshots — the form takes 4 to 8', () => {
+    const shots = FOUR_SHOTS();
+    for (const n of ['05-e', '06-f', '07-g', '08-h', '09-i']) shots[`${n}.png`] = png(155, 290);
+    const { code, out } = run(agiTree({ shots }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /holds 9 screenshot\(s\); the apps-gov-in form takes 4 to 8/);
+  });
+
+  test('FAILS a screenshot one pixel off the exact 155x290', () => {
+    const shots = FOUR_SHOTS();
+    shots['02-b.png'] = png(156, 290);
+    const { code, out } = run(agiTree({ shots }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /02-b\.png is 156x290; the apps-gov-in form refuses any screenshot that is not exactly 155x290/);
+  });
+
+  test('FAILS a screenshot over 1,048,576 bytes', () => {
+    const shots = FOUR_SHOTS();
+    shots['03-c.png'] = png(155, 290, 1048577);
+    const { code, out } = run(agiTree({ shots }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /03-c\.png is 1048577 bytes; the apps-gov-in form takes at most 1048576 per screenshot/);
+  });
+
+  test('FAILS a screenshot in a format the form does not take', () => {
+    const shots = FOUR_SHOTS();
+    delete shots['04-d.png'];
+    shots['04-d.webp'] = png(155, 290);
+    const { code, out } = run(agiTree({ shots }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /04-d\.webp is not a png or jpg file/);
+  });
+
+  test('FAILS a screenshot whose header cannot be read', () => {
+    const shots = FOUR_SHOTS();
+    shots['01-a.png'] = Buffer.from('not an image at all, only text\n');
+    const { code, out } = run(agiTree({ shots }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /01-a\.png has no readable PNG or JPEG header/);
+  });
+
+  test('FAILS zero screenshots on a LIVE app', () => {
+    const { code, out } = run(agiTree({ shots: {} }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /holds no screenshots; the apps-gov-in form refuses an upload with fewer than 4\. App "subscriptiontracker" is live/);
+  });
+
+  test('PRINTS zero screenshots on a PREVIEW app, which is what a fresh stamp is', () => {
+    const { code, out } = run(agiTree({ shots: {}, status: 'preview' }));
+    assert.equal(code, 0, out);
+    assert.match(out, /NO SCREENSHOTS YET/);
+  });
+
+  test('FAILS a missing store-icon-512.png', () => {
+    const { code, out } = run(agiTree({ icon: null }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /store-icon-512\.png is missing; the apps-gov-in form requires an app icon/);
+  });
+
+  test('FAILS an icon that is not exactly 512x512', () => {
+    const { code, out } = run(agiTree({ icon: png(500, 500) }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /store-icon-512\.png is 500x500; the apps-gov-in form takes exactly 512x512/);
+  });
+
+  test('FAILS an icon of 204,800 bytes — the form takes one UNDER that', () => {
+    const { code, out } = run(agiTree({ icon: png(512, 512, 204800) }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /store-icon-512\.png is 204800 bytes; the apps-gov-in form takes an icon under 204800/);
+  });
+
+  test('FAILS a register icon declaration that disagrees with the form', () => {
+    const { code, out } = run(agiTree({ iconDecl: agiIconDecl({ maxBytes: 204800 }) }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /graphicAssets\.assets\["store-icon-512\.png"\] must declare 512x512 and maxBytes 204799/);
+  });
+
+  test('FAILS a missing form-answers.json on the app', () => {
+    const { code, out } = run(agiTree({ answers: null }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /apps\/subscriptiontracker\/store\/apps-gov-in\/form-answers\.json is missing/);
+  });
+
+  test('BRICK: FAILS a missing stamped form-answers.json', () => {
+    const { code, out } = run(agiTree({ brickAnswers: null }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /__brick__\/apps\/\{\{app_id\}\}\/store\/apps-gov-in\/form-answers\.json is missing/);
+  });
+
+  test('FAILS a form-answers.json that does not parse', () => {
+    const { code, out } = run(agiTree({ answers: '{ "channel": "apps-gov-in", \n' }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /apps\/subscriptiontracker\/store\/apps-gov-in\/form-answers\.json does not parse/);
+  });
+
+  test('FAILS form answers that name another channel', () => {
+    const { code, out } = run(agiTree({ answers: formAnswers((fa) => (fa.channel = 'android-play')) }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /says channel "android-play"; it sits in the "apps-gov-in" tree/);
+  });
+
+  test('FAILS a minimum platform whose label is not the form’s label for that SDK', () => {
+    const { code, out } = run(agiTree({ answers: formAnswers((fa) => (fa.step1.minimumPlatform.label = 'Nougat 7.1')) }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /says SDK 24 is "Nougat 7\.1"; the form lists SDK 24 as "Nougat 7\.0"/);
+  });
+
+  test('FAILS a minimum platform SDK the form does not list', () => {
+    const { code, out } = run(agiTree({ answers: formAnswers((fa) => (fa.step1.minimumPlatform = { sdk: 31, label: 'Android 12' })) }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /minimumPlatform\.sdk is 31; the form's list names only SDK 21, 22/);
+  });
+
+  test('FAILS a missing state / union territory answer', () => {
+    const { code, out } = run(agiTree({ answers: formAnswers((fa) => delete fa.step1.stateUt) }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /step1\.stateUt\.answer is missing/);
+  });
+
+  test('FAILS a support phone written into the repo, and names the 12-character cap', () => {
+    const { code, out } = run(agiTree({ answers: formAnswers((fa) => (fa.step1.supportPhone = '+91 00000 00000')) }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /step1\.supportPhone must read "OWNER FILLS".*It is also 15 characters, and the form takes at most 12/);
+  });
+
+  test('FAILS a support email written into the repo', () => {
+    const { code, out } = run(agiTree({ answers: formAnswers((fa) => (fa.step1.supportEmail = 'someone@example.com')) }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /step1\.supportEmail must read "OWNER FILLS"/);
+  });
+
+  test('FAILS an answer filled from a listing file that does not exist', () => {
+    const { code, out } = run(agiTree({ answers: formAnswers((fa) => (fa.step1.developedBy.from = 'developer.txt')) }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /step1\.developedBy is filled from "developer\.txt", and .*apps-gov-in\/developer\.txt does not exist/);
+  });
+
+  test('FAILS a step 3 with ten answers — the form asks eleven', () => {
+    const { code, out } = run(agiTree({ answers: formAnswers((fa) => fa.step3.pop()) }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /step3 holds 10 answer\(s\); the form's step 3 asks 11 questions/);
+  });
+
+  test('FAILS a step 3 out of the form’s order', () => {
+    const { code, out } = run(agiTree({ answers: formAnswers((fa) => ([fa.step3[0].q, fa.step3[1].q] = [2, 1])) }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /step3\[0\] is question 2; the list is in the form's order, 1 to 11/);
+  });
+
+  test('FAILS a step 3 id given twice', () => {
+    const { code, out } = run(agiTree({ answers: formAnswers((fa) => (fa.step3[2].id = fa.step3[1].id)) }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /step3\[2\] has a missing or repeated id "personal-data"/);
+  });
+
+  test('FAILS a step 3 answer that is not Yes or No', () => {
+    const { code, out } = run(agiTree({ answers: formAnswers((fa) => (fa.step3[6].answer = 'Maybe')) }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /step3 "camera" answers "Maybe"; the form takes Yes or No/);
+  });
+
+  test('FAILS a step 3 answer with no evidence', () => {
+    const { code, out } = run(agiTree({ answers: formAnswers((fa) => (fa.step3[9].evidence = '  ')) }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /step3 "storage" gives no evidence/);
+  });
+
+  test('BRICK: FAILS a category.txt that is not the listingCategory the renderer writes', () => {
+    const { code, out } = run(agiTree({ brickCategory: 'Productivity\n' }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /__brick__\/apps\/\{\{app_id\}\}\/store\/apps-gov-in\/category\.txt stamps "Productivity"; it must stamp exactly "Others"/);
+  });
+
+  test('BRICK: FAILS a category.txt that is a mustache variable', () => {
+    const { code, out } = run(agiTree({ brickCategory: '{{category}}\n' }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /category\.txt stamps "\{\{category\}\}"; it must stamp exactly "Others"/);
+  });
+
+  test('BRICK: FAILS a stamped form-answers.json that does not parse', () => {
+    const { code, out } = run(agiTree({ brickAnswers: 'stamped\n' }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /__brick__\/apps\/\{\{app_id\}\}\/store\/apps-gov-in\/form-answers\.json does not parse/);
+  });
+
+  test('BRICK: FAILS a stamped support phone', () => {
+    const { code, out } = run(agiTree({ brickAnswers: formAnswers((fa) => (fa.step1.supportPhone = '0000000000')) }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /__brick__\/.*form-answers\.json step1\.supportPhone must read "OWNER FILLS"/);
+  });
+
+  test('BRICK: FAILS a stamped answer filled from a file the brick does not stamp', () => {
+    const { code, out } = run(agiTree({ brickAnswers: formAnswers((fa) => (fa.step1.developedBy.from = 'developer.txt')) }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /__brick__\/.*form-answers\.json step1\.developedBy is filled from "developer\.txt"/);
+  });
+
+  test('BRICK: FAILS a stamped step 3 with a wrong answer count', () => {
+    const { code, out } = run(agiTree({ brickAnswers: formAnswers((fa) => fa.step3.pop()) }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /__brick__\/.*form-answers\.json step3 holds 10 answer\(s\)/);
+  });
+
+  test('BRICK: FAILS a stamped minimum platform label that is not the form’s', () => {
+    const { code, out } = run(agiTree({ brickAnswers: formAnswers((fa) => (fa.step1.minimumPlatform.label = 'Nougat')) }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /__brick__\/.*form-answers\.json step1\.minimumPlatform says SDK 24 is "Nougat"/);
   });
 });

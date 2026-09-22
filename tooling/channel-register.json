@@ -399,6 +399,69 @@
           "license.txt"
         ]
       },
+      "apps-gov-in": {
+        "_why": [
+          "Added 2026-09-22 (O-APPS-GOV-IN-CHANNEL-APK). apps.gov.in publishes no developer documentation for",
+          "its upload form, so every number here was read out of the FORM ITSELF — its script",
+          "/Developer/chunk-ZVEOEZCZ.js and its on-screen lists, 2026-09-22, recorded in the private runbook",
+          "runbooks/store-submission-apps-gov-in.md ('Step 1'). Each is a validator the portal runs at upload.",
+          "",
+          "`additionalFiles`: `developed-by.txt` is the form's 'Developed By' field (shown on the store);",
+          "`store-icon-512.png` is the form's app icon, the same 512x512 render the Play listing uses.",
+          "`form-answers.json` (the answer to every field of the form's three steps, beside the listing it is",
+          "filled from) is deliberately NOT listed here: a .json in `additionalFiles` is a sworn declaration to",
+          "assert-sworn-store-files.mjs, whose template must stamp null answers. This file's answers are",
+          "chassis facts CI re-proves against the built .apk (assert-apps-gov-in-apk.mjs), and",
+          "assert-store-metadata.mjs requires it on every tree of a channel with STORE_FORM_RULES. The image rules (4-8 screenshots at exactly 155x290, the icon at exactly",
+          "512x512) and the portal's 23 categories are the STORE's closed sets and live in",
+          "contracts/store/vocabulary.js STORE_FORM_RULES; assert-store-metadata.mjs reads both."
+        ],
+        "additionalFiles": [
+          "developed-by.txt",
+          "store-icon-512.png"
+        ],
+        "maxChars": {
+          "title.txt": {
+            "min": 2,
+            "max": 80,
+            "source": "apps.gov.in upload form, Step 1 'App Name' validator, 2-80 characters (form script /Developer/chunk-ZVEOEZCZ.js, read 2026-09-22; Private runbooks/store-submission-apps-gov-in.md 'Step 1')"
+          },
+          "developed-by.txt": {
+            "min": 3,
+            "max": 50,
+            "source": "apps.gov.in upload form, Step 1 'Developed By' validator, 3-50 characters (form script /Developer/chunk-ZVEOEZCZ.js, read 2026-09-22; Private runbooks/store-submission-apps-gov-in.md 'Step 1')"
+          },
+          "long-description.txt": {
+            "min": 10,
+            "max": 4000,
+            "source": "apps.gov.in upload form, Step 1 'Description' validator, 10-4000 characters (form script /Developer/chunk-ZVEOEZCZ.js, read 2026-09-22; Private runbooks/store-submission-apps-gov-in.md 'Step 1')"
+          }
+        },
+        "graphicAssets": {
+          "_why": [
+            "The icon is DECLARED here, not only in `additionalFiles`, for the reason the Play block gives: this is",
+            "what makes the brick's post_gen hook write a placeholder into every stamped app's apps-gov-in tree",
+            "(it is generic over every store row that declares `graphicAssets.assets`), and what makes",
+            "assert-listing-assets.mjs measure it. The subscriptiontracker file is a byte copy of the Play store",
+            "icon, which render-play-graphics.mjs derives 2:1 from the launcher-icon master; the copy is checked by",
+            "tooling/ci/assert-apps-gov-in-media.mjs. No `alpha` is declared: the portal's script checks the pixel",
+            "size and the byte size and nothing else, and an unsourced colour-type rule would fire on correct input.",
+            "No `screenshots` block either: the portal's screenshot rules (exactly 155x290) are not Play's, and",
+            "they live in contracts/store/vocabulary.js STORE_FORM_RULES, which assert-store-metadata.mjs applies."
+          ],
+          "assets": {
+            "store-icon-512.png": {
+              "required": true,
+              "width": 512,
+              "height": 512,
+              "format": "png",
+              "maxBytes": 204799,
+              "generatedBy": "tooling/ci/assert-apps-gov-in-media.mjs",
+              "source": "apps.gov.in upload form, Step 2 app icon validator, verbatim from the form script /Developer/chunk-ZVEOEZCZ.js (read 2026-09-22): \"r.width!==512||r.height!==512\", and a size cap of under 200 KB (204,800 bytes, so at most 204,799). Private runbooks/store-submission-apps-gov-in.md 'Step 2'"
+            }
+          }
+        }
+      },
       "android-play": {
         "_why": [
           "Google Play publishes its three listing limits plainly, which is why this row carries numbers",
@@ -2581,26 +2644,98 @@
           "`keyKinds` exists to record. Losing this key means no user of this store can ever take an",
           "update.",
           "",
-          "⬜ NO SUCH KEY HAS BEEN MINTED. `nikatru-upload` is the Play UPLOAD key and reusing it here",
-          "would silently promote an upload key into an app signing key — a different custody regime,",
-          "with a different drill, for a key whose loss is unrecoverable. Which key signs this channel is",
-          "an open decision that belongs with the first upload, and the runbook carries it as a step",
-          "rather than this register carrying an answer nobody made."
+          "✅ THE KEY IS DECIDED, NOT YET MINTED (owner, 2026-09-22): its own self-signed key, alias",
+          "`nikatru-appsgovin`, NEVER the Play upload key `nikatru-upload`. Reusing the upload key would",
+          "silently promote an upload key into an app signing key — a different custody regime, with a",
+          "different drill, for a key whose loss is unrecoverable. The owner mints it and pastes the four",
+          "APPSGOVIN_* secrets; until then `signingCertificate.sha256` is null and every CI build of this",
+          "channel is uploaded under a name that says NOT-FOR-UPLOAD.",
+          "",
+          "🔴 THE ROUTE (build-platforms.yml, `linux_web_android`, after the Play .apk and .aab): the",
+          "APPSGOVIN_* secrets are handed to tooling/ci/android-signing.mjs for ONE step, with its output",
+          "written to a scratch file rather than $GITHUB_ENV, and fed to Gradle's four variables on the",
+          "apps-gov-in build step only — so the Play key's variables are never overwritten for the rest of",
+          "the job. tooling/ci/assert-apps-gov-in-apk.mjs then reads the real signer out of the .apk with",
+          "`apksigner verify --print-certs` and names the artifact from what it found."
         ],
         "keyKind": "app-signing-key",
         "identity": null,
-        "custody": "does not exist — no key has been minted for this channel, and the decision of which key signs it is part of the first manual upload (Private/runbooks/store-submission-apps-gov-in.md).",
+        "custody": "does not exist yet — the owner mints the `nikatru-appsgovin` key (decided 2026-09-22) and records its custody in the private SSoT; this public register will then say THAT custody is recorded, never where.",
+        "signingCertificate": {
+          "_why": [
+            "🔴 THE PIN, SHAPED LIKE android-play's `uploadCertificate` AND READ THE SAME WAY: the SHA-256 of",
+            "the PUBLIC certificate that signs the apps.gov.in .apk, colon-separated uppercase hex. It is",
+            "not a secret — every device that installs the .apk can read it. tooling/ci/assert-apps-gov-in-apk.mjs",
+            "compares `apksigner verify --print-certs` against it:",
+            "  · null (the key is not minted) → the .apk is uploaded as",
+            "    `apps-gov-in-<app>-apk-NOT-FOR-UPLOAD-<posture>`, and the step summary says why in capitals;",
+            "  · a value that MATCHES → the .apk is uploaded as `apps-gov-in-<app>-apk`, the only name the",
+            "    owner may take to the portal;",
+            "  · a value that does NOT match → the job FAILS. So does a signer equal to the Play upload pin,",
+            "    whatever this field says.",
+            "",
+            "⏭ FILLED ON THE INCREMENT THAT MINTS THE KEY: `keytool -list -v -alias nikatru-appsgovin` on",
+            "the owner's machine prints this value; paste it with the date."
+          ],
+          "sha256": null,
+          "alias": "nikatru-appsgovin",
+          "asOf": "2026-09-22",
+          "source": "owner decision 2026-09-22 (Private open.json O-APPS-GOV-IN-CHANNEL-APK): a self-signed key of its own, alias nikatru-appsgovin; not yet minted, so no fingerprint exists to pin"
+        },
+        "ciSecrets": {
+          "_why": [
+            "The four repository secrets that carry this channel's OWN key into CI. They MAY NOT EXIST — the",
+            "key is not minted — and both states are correct and loud: with none of them the apps-gov-in",
+            "build is debug-signed and uploaded as NOT-FOR-UPLOAD; with all four it is release-signed and",
+            "compared to `signingCertificate`; with some of them android-signing.mjs FAILS the job.",
+            "",
+            "`gradleContract.mapsOnto` is why these names differ from android-play's and still agree with",
+            "the build file: the lane feeds each of them into the SAME Gradle variable the Play key uses,",
+            "for the apps-gov-in build step only. assert-channel-register.mjs §9 compares the translated",
+            "set against apps/{app}/android/app/build.gradle.kts exactly as it compares android-play's."
+          ],
+          "names": [
+            "APPSGOVIN_KEYSTORE_BASE64",
+            "APPSGOVIN_KEYSTORE_PASSWORD",
+            "APPSGOVIN_KEY_ALIAS",
+            "APPSGOVIN_KEY_PASSWORD"
+          ],
+          "why": {
+            "APPSGOVIN_KEYSTORE_BASE64": "The apps.gov.in keystore's BYTES, base64-encoded — the transport: Gradle's `storeFile` wants a PATH, so tooling/ci/android-signing.mjs materialises the file into $RUNNER_TEMP/apps-gov-in-key and the apps-gov-in build step alone points Gradle at it.",
+            "APPSGOVIN_KEYSTORE_PASSWORD": "The apps.gov.in keystore container's passphrase, fed into ANDROID_KEYSTORE_PASSWORD for the apps-gov-in build step only. An app-signing key: losing it means no user of this store can ever take an update.",
+            "APPSGOVIN_KEY_ALIAS": "Which entry inside the apps.gov.in keystore signs — `nikatru-appsgovin` (owner, 2026-09-22), never `nikatru-upload`. Fed into ANDROID_KEY_ALIAS for the apps-gov-in build step only.",
+            "APPSGOVIN_KEY_PASSWORD": "The passphrase on the apps.gov.in key entry itself, fed into ANDROID_KEY_PASSWORD for the apps-gov-in build step only. Three of the four values is a partial set, and android-signing.mjs FAILS on it rather than falling back to debug."
+          },
+          "gradleContract": {
+            "_why": "The same build file, map and signing config as android-play — one Gradle module signs both .apks — with `mapsOnto` recording which of this row's secrets the lane feeds into which of Gradle's variables.",
+            "declaredIn": "apps/{app}/android/app/build.gradle.kts",
+            "envMap": "releaseSigningEnv",
+            "signingConfig": "release",
+            "buildType": "release",
+            "transport": {
+              "name": "APPSGOVIN_KEYSTORE_BASE64",
+              "substitutes": "storeFile",
+              "why": "Gradle wants a filesystem path and a path cannot travel through a repository secret, so the apps.gov.in keystore travels as base64 bytes and tooling/ci/android-signing.mjs materialises it into $RUNNER_TEMP; the apps-gov-in build step alone sets Gradle's path variable to it"
+            },
+            "mapsOnto": {
+              "APPSGOVIN_KEYSTORE_PASSWORD": "ANDROID_KEYSTORE_PASSWORD",
+              "APPSGOVIN_KEY_ALIAS": "ANDROID_KEY_ALIAS",
+              "APPSGOVIN_KEY_PASSWORD": "ANDROID_KEY_PASSWORD"
+            },
+            "mapsOntoWhy": "One Gradle module, one `releaseSigningEnv` map, two keys: build-platforms.yml sets these three variables from the APPSGOVIN_* secrets in the apps-gov-in build step's own `env:`, never in $GITHUB_ENV, so the Play upload key's values stay in force for every other step of the job"
+          }
+        },
         "restoreDrill": {
           "date": null,
           "required": true,
           "note": "Nothing to drill until a key exists. The moment one does, this channel needs a DATED drill before it can ever be served: an app-signing key is the kind whose loss is unrecoverable."
         },
         "seam": {
-          "_why": "Same pair every kind:\"store\" row carries: `prepare` arranges a credential and `verify` reads the result back out of the artifact. Both are null here, and the reason is neither of the two reasons already in this file.",
-          "prepare": null,
-          "verify": null,
-          "artifactGlob": "apps/*/build/app/outputs/flutter-apk/*.apk",
-          "why": "🔴 BOTH NULL BECAUSE THE KEY DOES NOT EXIST YET, WHICH IS NOT THE CHROME ROW'S NULL. There the nulls are permanent — the store signs the artifact and nothing of ours is in it. Here the .apk is SELF-SIGNED, so a verify step matters more on this channel than on any other, not less: the signature a user's device binds the install to is ours. Pointing this row at tooling/ci/android-signing.mjs and tooling/ci/assert-artifact-signed.mjs would be worse than the nulls — those arrange and read back the PLAY UPLOAD key and compare against the SHA-256 pinned on the android-play row, so naming them here would claim this channel is covered by a credential that is not its own. Both fields become real on the increment that mints this channel's key; the runbook carries that as a step."
+          "_why": "Same pair every kind:\"store\" row carries: `prepare` arranges a credential and `verify` reads the result back out of the artifact. Here the pair is android-signing.mjs run on this channel's OWN secrets, and a verifier that compares against this row's pin — never the Play pair, which reads the upload key against android-play's pin.",
+          "prepare": "tooling/ci/android-signing.mjs",
+          "verify": "tooling/ci/assert-apps-gov-in-apk.mjs",
+          "artifactGlob": "apps/*/build/apps-gov-in/*.apk",
+          "why": "🔴 THE .apk IS SELF-SIGNED, SO THIS VERIFY MATTERS MORE HERE THAN ON ANY OTHER ROW: the signature a user's device binds the install to is ours, and no store re-signs it. `prepare` is the same script android-play uses, handed the APPSGOVIN_* secrets for one step with its output kept out of $GITHUB_ENV; `verify` reads the signer with apksigner and compares it to `signingCertificate.sha256` — a mismatch FAILS, a null pin names the artifact NOT-FOR-UPLOAD. The .apk lands in apps/<app>/build/apps-gov-in/, apart from the Play .apk, so neither upload glob can take the other's."
         }
       },
       "minimumToolchain": [

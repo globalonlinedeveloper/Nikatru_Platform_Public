@@ -14,7 +14,8 @@
     "artifactFormats",
     "deviceClasses",
     "listingFields",
-    "listingCategories"
+    "listingCategories",
+    "storeFormRules"
   ],
   "additionalProperties": false,
   "properties": {
@@ -39,8 +40,8 @@
           "name": { "type": "string", "minLength": 1 },
           "kind": { "enum": ["doc", "text", "url", "json", "image"] },
           "app": {
-            "description": "'required' on every application listing tree; 'additional' on some channels only (which channels is a per-row fact in tooling/channel-register.json); null = not an application listing field.",
-            "enum": ["required", "additional", null]
+            "description": "'required' on every application listing tree; 'additional' on some channels only (which channels is a per-row fact in tooling/channel-register.json); 'form-rule' = required on the trees of a channel whose storeFormRules row names it as answersFile (never in additionalFiles: a .json there is a sworn declaration); null = not an application listing field.",
+            "enum": ["required", "additional", "form-rule", null]
           },
           "extension": {
             "description": "'per-store' = one copy in EVERY store directory; 'per-store-additional' = lives in a store directory but only some stores take it, and WHICH stores is a per-row fact in extensions/scripts/store-graphics.json; 'shared' = one copy in store/_shared/, required of every tool; 'shared-additional' = one copy in store/_shared/ but only some tools have it; null = not an extension listing field.",
@@ -62,6 +63,56 @@
         "type": "array",
         "minItems": 1,
         "items": { "type": "string", "minLength": 1 }
+      }
+    },
+    "storeFormRules": {
+      "type": "object",
+      "minProperties": 1,
+      "description": "Per channel id, the STORE's own upload-form validators, read from the form itself and cited. Unlike listingCategories, these are the store's closed sets.",
+      "propertyNames": { "type": "string", "minLength": 1 },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["source", "asOf", "categories", "listingCategory", "supportPhoneMaxChars", "answersFile", "screenshots", "icon", "minPlatformLabels"],
+        "additionalProperties": false,
+        "properties": {
+          "source": { "type": "string", "minLength": 20 },
+          "asOf": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+          "categories": { "$ref": "#/definitions/wordSet" },
+          "listingCategory": { "type": "string", "minLength": 1 },
+          "supportPhoneMaxChars": { "type": "integer", "minimum": 1 },
+          "answersFile": { "type": "string", "pattern": "^[a-z0-9-]+\\.json$" },
+          "screenshots": {
+            "type": "object",
+            "required": ["dir", "min", "max", "width", "height", "maxBytes", "formats"],
+            "additionalProperties": false,
+            "properties": {
+              "dir": { "type": "string", "minLength": 1 },
+              "min": { "type": "integer", "minimum": 1 },
+              "max": { "type": "integer", "minimum": 1 },
+              "width": { "type": "integer", "minimum": 1 },
+              "height": { "type": "integer", "minimum": 1 },
+              "maxBytes": { "type": "integer", "minimum": 1 },
+              "formats": { "$ref": "#/definitions/wordSet" }
+            }
+          },
+          "icon": {
+            "type": "object",
+            "required": ["file", "width", "height", "maxBytesExclusive"],
+            "additionalProperties": false,
+            "properties": {
+              "file": { "type": "string", "minLength": 1 },
+              "width": { "type": "integer", "minimum": 1 },
+              "height": { "type": "integer", "minimum": 1 },
+              "maxBytesExclusive": { "type": "integer", "minimum": 1 }
+            }
+          },
+          "minPlatformLabels": {
+            "type": "object",
+            "minProperties": 1,
+            "propertyNames": { "pattern": "^[0-9]+$" },
+            "additionalProperties": { "type": "string", "minLength": 1 }
+          }
+        }
       }
     }
   },

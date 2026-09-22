@@ -1,58 +1,73 @@
 {
   "_why": [
-    "NOT A CAPTURE RECORD — A COPY RECORD, AND THE DIFFERENCE IS THE POINT. The android-play",
-    "CAPTURE.json says which BUILD was photographed. This file cannot say that, because nothing",
-    "photographed anything for this channel: these four PNGs are byte-identical copies of the Play",
-    "phone set. So it records the copy instead — source path, SHA-256, and the posture of the run",
-    "that produced the original — and deliberately does NOT claim `capturedBy`, which would assert",
-    "that tooling/store/capture-play-screenshots.mjs wrote into this directory. It did not.",
-    "",
-    "WHY A COPY IS LEGITIMATE HERE AND NOWHERE ELSE IN THIS TREE: this channel distributes the",
-    "SAME .apk the android-play lane produces. Same build, same platform, same four screens. The",
-    "desktop channels forbid borrowing because they ship different builds; that reason does not",
-    "apply to this one.",
-    "",
-    "THE HASHES ARE THE MECHANISM. If android-play's set is re-captured and this one is not, the",
-    "sha256 values below stop matching the files they name, and `copiedFrom` names exactly where to",
-    "look. A copy that has quietly stopped being one is the failure this file exists to make visible."
+    "A DERIVATION RECORD. Nothing photographed anything for this channel: each image below is the",
+    "android-play phone screenshot it names, padded to the portal's aspect ratio by repeating its edge",
+    "rows and shrunk by an exact area average to the only size the apps.gov.in form accepts. The",
+    "recorded source hashes are the mechanism: when the Play set is re-captured they stop matching, and",
+    "tooling/ci/assert-apps-gov-in-media.mjs fails naming the command that re-derives. That guard also",
+    "re-derives every file and compares pixels, so a hand-edited image fails too."
   ],
   "posture": "live",
-  "_postureWhy": "Inherited from the source set's CAPTURE.json, not re-measured. The Play phone set was captured against a LIVE build — not a demo build, whose every screen carries a \"Demo data\" banner and whose board is twelve third-party trademarks. A demo capture may not be copied here either.",
-  "copiedFrom": "apps/subscriptiontracker/store/android-play/screenshots",
-  "copiedOn": "2026-09-20",
+  "_postureWhy": "Inherited from the Play set's CAPTURE.json, which the derivation refuses unless it says \"live\".",
+  "derivation": {
+    "method": "pad-to-aspect-then-area-average",
+    "command": "node tooling/ci/assert-apps-gov-in-media.mjs --write --app subscriptiontracker",
+    "steps": [
+      "decode the Play original (tooling/store/png-codec.mjs)",
+      "pad to 155:290 by repeating edge rows (50 before, 51 after)",
+      "area-average down to 155x290, rounded",
+      "encode as 24-bit PNG, no alpha channel"
+    ]
+  },
   "deviceType": "phone",
-  "pixels": "1080x1920",
+  "pixels": "155x290",
   "count": 4,
   "files": [
     {
       "name": "01-home.png",
-      "sha256": "519d7a80d402d6685cf7eb140f1475b9fec3ec032373790ac54b631572404767",
-      "bytes": 459549
+      "from": "apps/subscriptiontracker/store/android-play/screenshots/01-home.png",
+      "sourceSha256": "964a8bba25049c47a3cdeeb45742955022d3f9f7b45c49b3f159809a0317edcb",
+      "sourcePixels": "1080x1920",
+      "sha256": "eb6882cc324d66184857f530251d48d6b0c4b4d28c9a972db4b7902c8ff7e845",
+      "bytes": 23657
     },
     {
       "name": "02-calendar.png",
-      "sha256": "67d65f736ce5263de1b98337271474d3ceb6a492d765632a4a0b35e31b09ea6e",
-      "bytes": 157296
+      "from": "apps/subscriptiontracker/store/android-play/screenshots/02-calendar.png",
+      "sourceSha256": "d4034001c70b01ea036efad89ec3ec61a6ed5da5aeb62088659e2f42a5872527",
+      "sourcePixels": "1080x1920",
+      "sha256": "dd0becbec156b1ecfdaa88abdca57279821cafcfee399d4b5e7f3a4e722e3f9e",
+      "bytes": 12472
     },
     {
       "name": "03-insights.png",
-      "sha256": "2e93467947ced610a924b5baf6e29166931ea96e8c13e1c33f3fdf252ff71464",
-      "bytes": 129114
+      "from": "apps/subscriptiontracker/store/android-play/screenshots/03-insights.png",
+      "sourceSha256": "b87620942a048745b1ff2a0038e8bfb98f10869758b2901ccfc8653e082a2189",
+      "sourcePixels": "1080x1920",
+      "sha256": "492abb786ce511d1703c01e9095daed55c4a1ca78612dc54d1acf3b7bd4b79e4",
+      "bytes": 12262
     },
     {
       "name": "04-budget.png",
-      "sha256": "d761326f63a250a7b8d3ddfd18563d8650320fbf988841baf7f762ac09cde867",
-      "bytes": 153442
+      "from": "apps/subscriptiontracker/store/android-play/screenshots/04-budget.png",
+      "sourceSha256": "65dbb4e6cb6b1685c8297444cb853e9ded7247b97c0ca5cee1a35f3ffbc0c9ba",
+      "sourcePixels": "1080x1920",
+      "sha256": "539efbf7d634024ed5733c502b4ebdab36e87f9b462d762585e265a1a4e60212",
+      "bytes": 12680
     }
   ],
+  "icon": {
+    "name": "store-icon-512.png",
+    "from": "apps/subscriptiontracker/store/android-play/store-icon-512.png",
+    "derivedBy": "node tooling/store/render-play-graphics.mjs --app subscriptiontracker (2:1 from apps/subscriptiontracker/assets/icon/app_icon_1024.png, the launcher-icon master), then copied byte for byte by the command above",
+    "sha256": "e97a537fee076f39254c7892444d68b86807ad9a5ba5f97dca34fc4fc9e5dad1",
+    "bytes": 62762,
+    "pixels": "512x512"
+  },
   "requirements": {
-    "dimensions": "NOT SPECIFIED",
-    "count": "NOT SPECIFIED",
-    "formats": "NOT SPECIFIED",
-    "fileSizeCap": "NOT SPECIFIED",
-    "_why": "THE STORE PUBLISHES NO ASSET SPECIFICATION AT ALL. The NeGD App Hosting & Security Guidelines PDF (18 pages, read in full 2026-09-20) mentions listing media exactly once, in §4.1: \"Listing Confirmation: Developers verify store details (screenshots, feature graphic, T&C).\" No pixels, no counts, no formats, no caps. The real spec, if one exists, is behind the authenticated SPA at apps.gov.in/Developer, which agents never log in to. NOT SPECIFIED is the measured answer; an invented limit fires on correct input.",
-    "source": "https://apps.gov.in/assets/SOP/App-Hosting-&-Security-Guidelines.pdf",
-    "fetched": "2026-09-20",
-    "fetchedBy": "Private/research/session-2026-09-19b/store-shots/REQUIREMENTS.md §11 — the read-only store-asset research lane. This lane cites that reading rather than re-fetching."
+    "screenshots": "4 to 8 files, exactly 155x290, png or jpg, at most 1048576 bytes each",
+    "icon": "512x512, under 204800 bytes",
+    "source": "apps.gov.in developer upload form, script /Developer/chunk-ZVEOEZCZ.js and the on-screen lists, read 2026-09-22; recorded in Private runbooks/store-submission-apps-gov-in.md, 'Step 1' and the section appended 2026-09-22 'CORRECTIONS FROM THE FORM'S RAW SCRIPT'",
+    "asOf": "2026-09-22"
   }
 }
