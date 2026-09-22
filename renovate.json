@@ -22,7 +22,24 @@
     "The prose that used to live here as a key called _scheduleWhy - which is not a",
     "Renovate option, so Renovate refused the WHOLE config and opened no pull request",
     "from 2026-09-03 - is now docs/ci/README.md section 8. `description` is a real",
-    "option and is the only place prose belongs in this file."
+    "option and is the only place prose belongs in this file.",
+    "",
+    "THROUGHPUT (O-RENOVATE-BACKLOG-OUTRUNS-ITS-LIMITS), measured 2026-09-22. The queue under",
+    "Awaiting Schedule on #417 grew from 16 entries (2026-09-03) to 21: 12 new branches in 19.0 days,",
+    "about 4.4 a week, read from the issue's edit history. Renovate opens PRs only inside the Monday",
+    "window, and exactly TWO runs land in it each week: the platform Worker's dispatch near 06:00Z",
+    "and this repository's daily cron, delivered 07:43-08:24Z. The old prHourlyLimit 2 therefore",
+    "capped the week at 4 PRs - the PRs actually opened were 4, 3 and 4 on the Mondays of 7, 14",
+    "and 21 September - against 4.4 arriving: the queue could only grow. THE BOTTLENECK IS",
+    "prHourlyLimit x the two runs per window; prConcurrentLimit 3 bound once (14 September).",
+    "New limits: drain the 21 over three Mondays (7 a week) on top of 4.4 arriving = 11.4 a week,",
+    "over two runs = prHourlyLimit 6. prConcurrentLimit is hourly x runs = 12, so majors the first",
+    "run opens and that wait for a hand merge never starve the second run.",
+    "The schedule stays `on monday`: one review window a week is the S-2 design, and the limits,",
+    "not the window, were what fell short. These limits assume BOTH runs: if the Worker target",
+    "(services/platform/src/scheduled.ts, workflow renovate.yml) is removed, Monday capacity halves",
+    "and the limits must be re-derived. A reader of #417 that goes red when the queue outruns them",
+    "is the second half of O-RENOVATE-BACKLOG-OUTRUNS-ITS-LIMITS and lands separately."
   ],
   "extends": [
     "config:recommended",
@@ -37,8 +54,8 @@
   "labels": [
     "dependencies"
   ],
-  "prConcurrentLimit": 3,
-  "prHourlyLimit": 2,
+  "prConcurrentLimit": 12,
+  "prHourlyLimit": 6,
   "branchPrefix": "chore/renovate-",
   "vulnerabilityAlerts": {
     "description": "Security fixes bypass the weekly window entirely.",
@@ -241,6 +258,24 @@
         "github-runners",
         "java-version",
         "node-version"
+      ],
+      "enabled": false
+    },
+    {
+      "description": [
+        "dev.flutter.flutter-plugin-loader is not a Maven or Gradle Plugin Portal artifact: the Flutter SDK",
+        "serves it through pluginManagement includeBuild(\"$flutterSdkPath/packages/flutter_tools/gradle\") in",
+        "apps/subscriptiontracker/android/settings.gradle.kts, so the code that runs is whatever the Flutter",
+        "SDK pin (tooling/versions.json key flutter) ships, and no registry holds a newer version to propose.",
+        "Renovate's gradle manager looked it up anyway and #417 carried the failure under Repository",
+        "Problems (maven lookup, no-result; read 2026-09-22). Disabled here with that named reason: a",
+        "Flutter SDK bump is what advances it."
+      ],
+      "matchManagers": [
+        "gradle"
+      ],
+      "matchDepNames": [
+        "dev.flutter.flutter-plugin-loader"
       ],
       "enabled": false
     }
