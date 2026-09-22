@@ -1,0 +1,65 @@
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 0014_consent_artifacts_app_id_rename.sql — THE CONSENT ROWS FOLLOW THE SLUG TOO.
+--
+-- Applies to the SHARED platform_db (services/platform is the sole applier):
+--   wrangler d1 migrations apply PLATFORM_DB --local    (or --remote)
+--
+-- 🔴 WHAT THIS IS. ONE statement, below. It moves the consent artifacts still
+-- tagged with the retired slug `subly` to `subscriptiontracker`, the slug every
+-- other platform_db table moved to in 0008. ONLY `app_id` changes. `consent_id`,
+-- `anon_id`, `purpose`, `granted`, `policy_version`, `app_version`, `platform`,
+-- `client_ts` and `server_ts` are untouched, so every row still says who (a
+-- pseudonymous install), what, which answer, under which policy, from which
+-- build and when — only the app label it is filed under is corrected.
+--
+-- ── THE MEASUREMENT THIS IS SIZED AGAINST ────────────────────────────────────
+-- Read-only against production platform_db, 2026-09-22 (last read 10:22:57Z):
+--
+--   consent_artifacts WHERE app_id = 'subly'   22 row(s), 13 distinct anon_id
+--   server_ts range                            2026-08-03T05:12:25Z → 2026-09-09T11:48:58Z
+--   every other app-keyed table                 0 row(s) with 'subly' (0008 moved them)
+--
+-- ⚠️ THE COUNT IS EVIDENCE, NOT A CONDITION, exactly as in 0008. The predicate
+-- is right whatever the true count is, and on a database where the slug never
+-- existed (every --local database, the test harness) it matches nothing and
+-- the migration is a no-op. `idx_consent_id` (0002:89), the only UNIQUE index on
+-- this table, is on `consent_id`, which this statement does not touch — so no
+-- collision is possible.
+--
+-- ── WHY THIS REVERSES 0008 :76-96, AND WHY THAT IS ALLOWED EXACTLY ONCE ──────
+-- 0008 deliberately left these rows under `subly`: the consent trail is
+-- append-only (DPDP §6(3) — a withdrawal is a NEW row with granted=0), and
+-- rewriting the identifier edits the record of an agreement nobody re-took. It
+-- recorded the cost instead of solving it: `idx_consent_lookup` (0002:91) is
+-- (app_id, anon_id, purpose, server_ts), so a consent lookup by the app's CURRENT
+-- slug cannot see these rows — they are hidden from the app they belong to — and
+-- it filed the missing read as owed.
+--
+-- The owner decided it on 2026-09-22, BEFORE LAUNCH, in these words:
+--
+--   "Past consent records tagged subly - we are not in live yet, so you can
+--    remove and update new name"
+--
+-- Rename was chosen over delete: it keeps every artifact and changes the label
+-- alone. Moving the rows closes the read 0008 filed as owed — there is no
+-- previous-identifier lookup to build, because nothing is filed under the
+-- previous identifier any more. Every row predates launch; the owner's premise
+-- — not live yet — is the whole reason this is permissible.
+--
+-- ── WHAT DID NOT CHANGE ──────────────────────────────────────────────────────
+-- Append-only still holds for every other statement in services/.
+-- tooling/ci/assert-analytics-contract.mjs grants ONE exemption, pinned to THIS
+-- file AND this exact statement: the same statement in any other file, a
+-- different value, a different predicate, a second statement on the table in
+-- this file, or this file going missing is red. After launch the exception does
+-- not exist — a real person's consent row is never edited.
+--
+-- ── WHY `UPDATE`, AND WHY THAT IS ADDITIVE-ONLY ──────────────────────────────
+-- tooling/ci/check-migrations.mjs bans an unfiltered update and permits a
+-- WHERE-scoped backfill; the statement is scoped to the one departing value and
+-- touches no other app's rows, the same shape as every statement in 0008.
+-- It is NOT in services/platform/test/harness.ts's PLATFORM_MIGRATIONS, for
+-- 0008's reason: an update-only data migration over rows the harness never seeds.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+UPDATE consent_artifacts SET app_id = 'subscriptiontracker' WHERE app_id = 'subly';

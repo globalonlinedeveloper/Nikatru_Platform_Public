@@ -250,6 +250,14 @@ const LIMB5_FILES = [
 const realFiles = () =>
   Object.fromEntries(LIMB5_FILES.map((rel) => [rel, readFileSync(join(REPO, ...rel.split('/')), 'utf8')]));
 
+// ⏱ 2026-09-22 · limb 4's ONE exemption is pinned to this file and its exact
+// statement, and a MISSING exempt file is red — so every fixture carries the REAL
+// file, copied, exactly as limb 5's inputs are. A hand-written copy would encode
+// what this test's author believed the statement to be.
+const EXEMPT_REL = 'services/platform/migrations/0014_consent_artifacts_app_id_rename.sql';
+const EXEMPT_STATEMENT = "UPDATE consent_artifacts SET app_id = 'subscriptiontracker' WHERE app_id = 'subly';";
+const exemptFile = () => readFileSync(join(REPO, ...EXEMPT_REL.split('/')), 'utf8');
+
 /** Replace `from` with `to` in one fixture file, REFUSING if `from` is not there.
  *  A mutation helper that silently no-ops produces a test asserting the guard is
  *  red about an unchanged tree — which it would not be, so the test would fail
@@ -271,6 +279,7 @@ function makeRepo(edit = (f) => f) {
     'packages/api_client/lib/src/dio_event_transport.dart': TRANSPORT_DART,
     'apps/subscriptiontracker/lib/state/analytics_providers.dart': APP_PROVIDERS,
     [BRICK_REL.replaceAll('\\', '/')]: BRICK_PROVIDERS,
+    [EXEMPT_REL]: exemptFile(),
     ...realFiles(),
   });
   for (const [rel, body] of Object.entries(files)) {
@@ -434,6 +443,75 @@ describe('assert-analytics-contract — the consent trail is append-only', () =>
   });
 });
 
+// ── limb 4's ONE exemption — owner 2026-09-22, pre-launch ───────────────────
+// Real-tree control, 2026-09-22, before these tests existed: the statement in
+// 0014 with its value changed to 'x' -> exit 1 ("no longer carries the exempt
+// statement" + "0014_…sql:65 UPDATE on `consent_artifacts`"); restored
+// byte-identical (cmp) and back to exit 0.
+describe('assert-analytics-contract — the one pinned exemption', () => {
+  const EX_UPDATE = new RegExp(`${EXEMPT_REL.replaceAll('.', '\\.')}:\\d+ UPDATE on \`consent_artifacts\``);
+
+  test('(1) the exact file + exact statement -> exit 0, and the exemption is PRINTED', () => {
+    const r = run(makeRepo());
+    assert.equal(r.code, 0, r.out);
+    assert.ok(
+      r.out.includes(`ok   1 exempt statement: ${EXEMPT_REL} — \`${EXEMPT_STATEMENT}\``),
+      `the exemption must print on every green run:\n${r.out}`,
+    );
+    assert.match(r.out, /owner decision 2026-09-22, one-time, PRE-LAUNCH/);
+    assert.doesNotMatch(r.out, /APPEND-ONLY/);
+  });
+
+  test('(2) the SAME statement in another migration file -> exit 1', () => {
+    const r = run(makeRepo((f) => ({
+      ...f,
+      'services/platform/migrations/0015_again.sql': `${EXEMPT_STATEMENT}\n`,
+    })));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /0015_again\.sql:1 UPDATE on `consent_artifacts` — the consent trail is APPEND-ONLY/);
+    // The exempt file itself still held; only the copy is red.
+    assert.doesNotMatch(r.out, /no longer carries the exempt statement/);
+  });
+
+  test('(3) a different SET value in the exempt file -> exit 1', () => {
+    const r = run(makeRepo((f) =>
+      mutate(f, EXEMPT_REL, "SET app_id = 'subscriptiontracker' WHERE", "SET app_id = 'x' WHERE")));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, EX_UPDATE);
+    assert.match(r.out, /no longer carries the exempt statement/);
+  });
+
+  test('(4) a different WHERE in the exempt file -> exit 1', () => {
+    const r = run(makeRepo((f) =>
+      mutate(f, EXEMPT_REL, "WHERE app_id = 'subly';", "WHERE app_id = 'subly' OR granted = 1;")));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, EX_UPDATE);
+    assert.match(r.out, /no longer carries the exempt statement/);
+  });
+
+  test('(5) the exempt file PLUS a DELETE on consent_artifacts -> exit 1', () => {
+    const r = run(makeRepo((f) => ({
+      ...f,
+      [EXEMPT_REL]: `${f[EXEMPT_REL]}DELETE FROM consent_artifacts WHERE app_id = 'subly';\n`,
+    })));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, new RegExp(`${EXEMPT_REL.replaceAll('.', '\\.')}:\\d+ DELETE on \`consent_artifacts\``));
+    assert.match(r.out, /The one owner exemption covers .* ONLY for exactly/);
+  });
+
+  test('(5b) a SECOND copy of the exact statement in the exempt file -> exit 1 (used once)', () => {
+    const r = run(makeRepo((f) => ({ ...f, [EXEMPT_REL]: `${f[EXEMPT_REL]}${EXEMPT_STATEMENT}\n` })));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, EX_UPDATE);
+  });
+
+  test('(6) the exempt file MISSING -> exit 1, a stale exemption is red', () => {
+    const r = run(makeRepo((f) => ({ ...f, [EXEMPT_REL]: null })));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /is named by the one append-only exemption and does not exist/);
+  });
+});
+
 describe('assert-analytics-contract — the client half', () => {
   test('FAILS when the client sends a key `events` has no column for', () => {
     const r = run(makeRepo((f) => ({
@@ -534,7 +612,12 @@ describe('assert-analytics-contract — coverage self-checks', () => {
   });
 
   test('COVERAGE LOST when the migrations directory holds no .sql at all', () => {
-    const r = run(makeRepo((f) => ({ ...f, 'services/platform/migrations/0002_analytics.sql': null })));
+    const r = run(makeRepo((f) => ({
+      ...f,
+      'services/platform/migrations/0002_analytics.sql': null,
+      // The exempt 0014 is .sql too; the title says "no .sql at all".
+      [EXEMPT_REL]: null,
+    })));
     assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST/);
   });

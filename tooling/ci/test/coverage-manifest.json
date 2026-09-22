@@ -5,7 +5,7 @@
   "ads-declarations.test.mjs": 62,
   "agent-docs.test.mjs": 12,
   "alert-disposition.test.mjs": 29,
-  "analytics-contract.test.mjs": 56,
+  "analytics-contract.test.mjs": 63,
   "analytics-liveness.test.mjs": 28,
   "android-signing.test.mjs": 52,
   "android-target-sdk.test.mjs": 34,
