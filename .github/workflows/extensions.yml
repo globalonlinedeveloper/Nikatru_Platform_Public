@@ -1869,6 +1869,7 @@ jobs:
     permissions:
       contents: write        # the only write in the repo: creating the release
       actions: read          # read-only, and it buys the ci-conclusion check
+      pull-requests: read    # read-only: the merged PR's head SHA, where the per-tool legs ran
       deployments: write     # the [10]D-9 ledger row is written by the step below.
     steps:
       # why: the owner's word is checked BEFORE anything is built, so a dispatch that cannot
@@ -2068,14 +2069,32 @@ jobs:
           echo
 
           # ── AND NOW, THIS COMMIT ────────────────────────────────────────────
-          if ! runs=$(gh api --paginate \
-                "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$GITHUB_SHA&per_page=100" \
-                --jq '.workflow_runs[] | select(.conclusion == "success") | .id'); then
-            echo "::error::could not ask GitHub which ci.yml runs exist for $GITHUB_SHA. This step is the only thing between a tag and a gate result nobody produced, so it fails closed rather than assuming."
+          # The per-tool legs are jobs of THIS workflow's ci lane; ci.yml defines
+          # none of them, so asking ci.yml (as this step did until 2026-09-22)
+          # could never find one. tooling/ci/test/release-grades-legs.test.mjs
+          # holds the query target to the job names grade() reads. A push to
+          # main does not run extensions.yml; the PR that merged this commit did,
+          # at the PR's head. So the SHAs asked about are this commit and the head
+          # of every merged PR GitHub associates with it.
+          if ! prs=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" \
+                --jq '.[] | select(.merged_at != null and .base.ref == "main") | .head.sha'); then
+            echo "::error::could not ask GitHub which merged PR carried $GITHUB_SHA. This step is the only thing between a tag and a gate result nobody produced, so it fails closed rather than assuming."
             exit 1
           fi
-          if [ -z "$runs" ]; then
-            echo "::error::ci.yml has no successful run for $GITHUB_SHA, so selftest.node.js never graded these gates on these bytes. Push the commit to main, let ci finish green on it, then tag."
+          shas=$(printf '%s\n%s\n' "$GITHUB_SHA" "$prs" | awk 'NF && !seen[$0]++')
+          runs=''
+          for sha in $shas; do
+            if ! r=$(gh api --paginate \
+                  "repos/$GITHUB_REPOSITORY/actions/workflows/extensions.yml/runs?head_sha=$sha&per_page=100" \
+                  --jq '.workflow_runs[] | select(.conclusion == "success") | .id'); then
+              echo "::error::could not ask GitHub which extensions.yml runs exist for $sha. This step is the only thing between a tag and a gate result nobody produced, so it fails closed rather than assuming."
+              exit 1
+            fi
+            echo "  extensions.yml at $sha: successful run(s) [$(printf '%s' "$r" | tr '\n' ' ')]"
+            runs="$runs $r"
+          done
+          if [ -z "${runs// /}" ]; then
+            echo "::error::extensions.yml has no successful run at $GITHUB_SHA or at the head of the PR that merged it, so no per-tool leg was graded on these bytes. Merge the change through a PR, let extensions.yml finish green on it, then tag."
             exit 1
           fi
 
@@ -2084,23 +2103,23 @@ jobs:
             if ! jobs=$(gh api --paginate \
                   "repos/$GITHUB_REPOSITORY/actions/runs/$run/jobs?per_page=100" \
                   --jq '.jobs[] | ((.conclusion // "null") + " " + .name)'); then
-              echo "::error::could not read the jobs of ci.yml run $run. Its conclusion alone does not say whether the per-tool legs ran, so this fails closed rather than falling back to it."
+              echo "::error::could not read the jobs of extensions.yml run $run. Its conclusion alone does not say whether the per-tool legs ran, so this fails closed rather than falling back to it."
               exit 1
             fi
             if [ -z "$jobs" ]; then
-              echo "::error::ci.yml run $run reported NO jobs. An empty list grades as zero not-successes, which is the one answer this step must never read as a pass."
+              echo "::error::extensions.yml run $run reported NO jobs. An empty list grades as zero not-successes, which is the one answer this step must never read as a pass."
               exit 1
             fi
-            echo "  ci.yml run $run:"
+            echo "  extensions.yml run $run:"
             if grade "$ID" <<< "$jobs"; then good=$run ; break ; fi
           done
 
           if [ -n "$good" ]; then
-            echo "ci.yml run $good graded $GITHUB_SHA: the gates, sims and package legs for '$ID' all RAN and passed, windows-2022 pack leg included."
+            echo "extensions.yml run $good graded $GITHUB_SHA: the gates, sims and package legs for '$ID' all RAN and passed, windows-2022 pack leg included."
             exit 0
           fi
 
-          why="no successful ci.yml run at $GITHUB_SHA actually ran the per-tool legs for '$ID'. A run whose discover selected zero tools concludes success with gates/sims/package SKIPPED — ci-required licenses that, and it clears nothing about these bytes. Push a commit ci discovers as touching '$ID', let it finish green, then tag."
+          why="no successful extensions.yml run at $GITHUB_SHA or at its merged PR's head actually ran the per-tool legs for '$ID'. A run whose discover selected zero tools concludes success with gates/sims/package SKIPPED — ci-required licenses that, and it clears nothing about these bytes. Merge a change discover selects '$ID' for, let extensions.yml finish green on it, then tag."
           if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] && [ "$GITHUB_REF_NAME" = main ] && [ "${DRY_RUN:-}" = true ]; then
             echo "::notice::$why  This is a dry_run rehearsal dispatched from main, where a zero-matrix head is ordinary, so the rehearsal continues. On the push that publishes, all three of those conditions are false and this is a refusal."
             exit 0

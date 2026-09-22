@@ -170,6 +170,7 @@
   "purchase-path.test.mjs": 93,
   "refresh-executed-floor.test.mjs": 11,
   "release-durable.test.mjs": 131,
+  "release-grades-legs.test.mjs": 5,
   "release-lane-generic.test.mjs": 33,
   "release-provenance.test.mjs": 115,
   "release-tag-lanes.test.mjs": 15,
