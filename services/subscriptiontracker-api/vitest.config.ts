@@ -52,9 +52,16 @@ import { defineConfig } from 'vitest/config';
 // method's body is `eraseSubjectForOrder`, which the tests also drive directly.
 const WORKERS_STUB = fileURLToPath(new URL('./test/stubs/cloudflare-workers.ts', import.meta.url));
 
+// ⏱ 2026-09-22 · O-WORKER-TEST-REACHES-LIVE-HOSTS: `setupFiles` makes the
+// network unreachable from every test file here — global `fetch` REJECTS any
+// request the test did not stub, and the test that made it fails naming the
+// URL. Found in services/platform, whose handler test probed live Box B hosts;
+// the same file runs in both Workers so neither can grow the defect. See
+// ../_shared/test/no-network.ts.
 export default defineConfig({
   test: {
     include: ["test/**/*.test.ts", "../_shared/test/**/*.test.ts"],
+    setupFiles: ["../_shared/test/no-network.ts"],
   },
   resolve: {
     conditions: ['workerd', 'browser', 'import', 'default'],

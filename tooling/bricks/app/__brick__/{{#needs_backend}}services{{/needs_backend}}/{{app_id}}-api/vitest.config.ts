@@ -37,10 +37,17 @@ const WORKERS_STUB = fileURLToPath(new URL('./test/stubs/cloudflare-workers.ts',
 // this template until 2026-09-12 — a stamped backend shipped with no way to run a
 // test at all. Found by the factory-vs-app drift audit,
 // research/factory-drift-2026-09-12/.
+//
+// ── WHY `setupFiles` NAMES `../_shared/test/no-network.ts` ───────────────────
+// ⏱ 2026-09-22 · O-WORKER-TEST-REACHES-LIVE-HOSTS. Global `fetch` REJECTS any
+// request the test did not stub, and the test that made it fails naming the
+// URL — so a unit test cannot quietly depend on a live host and time out CI
+// when that host is slow, which services/platform's handler test did.
 // ─────────────────────────────────────────────────────────────────────────────
 export default defineConfig({
   test: {
     include: ['test/**/*.test.ts', '../_shared/test/**/*.test.ts'],
+    setupFiles: ['../_shared/test/no-network.ts'],
   },
   resolve: {
     conditions: ['workerd', 'browser', 'import', 'default'],
