@@ -411,4 +411,21 @@ describe('the driver hands each drive record to the host', () => {
   test('a failed drive still writes its record', () => {
     assert.match(driver, /\n {4}writeResponseOnFailure: true,\n/);
   });
+
+  // A callback that is present, reads the right variable and still returns
+  // before its write is the same missing record as no callback at all, and it
+  // only shows on a live drive. So the one exit allowed before the write is the
+  // named "STORE_BOARD_FILE is not set" branch, exactly as written.
+  test('the only way out before the write is the named STORE_BOARD_FILE-unset branch', () => {
+    const open = driver.indexOf('    responseDataCallback: (Map<String, dynamic>? data) async {\n');
+    const write = driver.indexOf('await file.writeAsString(', open);
+    assert.ok(open !== -1 && write > open, 'the callback and its write are both present, in that order');
+    const unset =
+      /\n {6}if \(boardPath == null \|\| boardPath\.trim\(\)\.isEmpty\) \{\n[\s\S]*?\n {8}return;\n {6}\}\n/;
+    const span = driver.slice(open, write);
+    assert.match(span, unset, 'the STORE_BOARD_FILE-unset branch is still the guard it was');
+    const rest = span.replace(unset, '\n');
+    assert.doesNotMatch(rest, /\breturn\b/, 'nothing else returns before the record is written');
+    assert.doesNotMatch(rest, /\bthrow\b/, 'nothing throws before the record is written');
+  });
 });

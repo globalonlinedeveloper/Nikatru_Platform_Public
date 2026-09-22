@@ -204,7 +204,7 @@
   "start-here.test.mjs": 7,
   "store-bijection.test.mjs": 26,
   "store-build-config.test.mjs": 31,
-  "store-capture-board-parity.test.mjs": 24,
+  "store-capture-board-parity.test.mjs": 25,
   "store-identity.test.mjs": 45,
   "store-matrix.test.mjs": 24,
   "store-metadata.test.mjs": 81,
