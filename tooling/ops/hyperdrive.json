@@ -17,21 +17,24 @@
     "returned zero files before this file and its guard landed, so `configs` is empty on purpose, and the guard passes",
     "over zero bindings while printing that count. The first binding reddens CI until it has a row here.",
     "",
-    "⚠️ THE ORIGIN NUMBERS ARE COPIED FROM THE REGISTER ROW, NOT RE-MEASURED. Box A is not touched from this repository:",
-    "C-BOXA-SUPABASE-ONLY, the agent documents and the owner executes. The row O-HYPERDRIVE-COLLISION records",
-    "max_connections 100, 3 reserved (superuser_reserved_connections), 25 in use. Re-measure with",
-    "`SHOW max_connections; SHOW superuser_reserved_connections; SELECT count(*) FROM pg_stat_activity;` on Box A before",
-    "the first configuration's cap is chosen, and update `origin` with the date. Raising max_connections is a Postgres",
-    "restart in the owner's window."
+    "⏱ 2026-09-22 — THE ORIGIN NUMBERS ARE MEASURED ON BOX A, AND `inUse` IS A CEILING, NOT A SAMPLE. They were read after",
+    "the owner-delegated Postgres restart that raised max_connections from the built-in default: `pg_settings` reports",
+    "`max_connections` with source `command line` (a `-c` in the db service's compose override, which beats every conf",
+    "file), and superuser_reserved_connections is unchanged. `inUse` is how many connections the Supabase services on",
+    "Box A are ALLOWED to open, with GoTrue's pool capped by GOTRUE_DB_MAX_POOL_SIZE (read back from its startup log), not",
+    "how many they held at the moment of reading. A sample lets the caps below grow into slots Supabase's own pools may",
+    "still take. The old `verify` counted every pg_stat_activity row, background processes that hold no slot included;",
+    "the new one counts client backends. Raising `budget` further is another Postgres restart in the owner's window,",
+    "with the tracked copy of the override in Private runbooks/config/ edited to match."
   ],
   "origin": {
     "host": "Box A Postgres (self-hosted Supabase)",
-    "maxConnections": 100,
+    "maxConnections": 200,
     "reserved": 3,
-    "inUse": 25,
-    "budget": 72,
-    "asOf": "copied 2026-09-14 from Private platform-state/open.json O-HYPERDRIVE-COLLISION; not re-measured",
-    "verify": "on Box A: SHOW max_connections; SHOW superuser_reserved_connections; SELECT count(*) FROM pg_stat_activity;"
+    "inUse": 110,
+    "budget": 87,
+    "asOf": "measured 2026-09-22 03:26Z on Box A after the max_connections change; inUse is the CEILING the Supabase services may open (18 held at measurement), not a sample",
+    "verify": "on Box A: SELECT setting, source FROM pg_settings WHERE name IN ('max_connections','superuser_reserved_connections'); SELECT count(*) FROM pg_stat_activity WHERE backend_type='client backend';"
   },
   "configs": []
 }
