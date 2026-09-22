@@ -1292,6 +1292,11 @@ commands. `assert-obfuscation-coupled.mjs` and `assert-channel-register.mjs` the
 `tooling/ci/assert-apps-gov-in-apk.mjs` runs `apksigner verify --print-certs` against the built .apk
 and compares the signer with `signing.signingCertificate.sha256` for `apps-gov-in` in the register.
 That is the pin, and it is null until the key is minted.
+2026-09-22: the guard reads the three shapes apksigner is known to print (`Signer #N`, `Signer
+(minSdkVersion=…)`, and the `V2 Signer:` that build-tools 37.0.0 prints under the same `--version`
+0.9), and any other label is COVERAGE LOST. It prints the shape it
+read or, on COVERAGE LOST, the path, `--version` and the first 20 lines of stdout and stderr, and was
+proven on dispatch run 35737416404.
 
 | what CI finds | artifact name | job |
 |---|---|---|
