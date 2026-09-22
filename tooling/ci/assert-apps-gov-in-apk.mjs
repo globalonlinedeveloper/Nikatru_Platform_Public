@@ -55,15 +55,19 @@
 // first. An absent tool is COVERAGE LOST (exit 2), never a pass and never a
 // mismatch — the two failure modes print differently.
 //
-// ── THE TWO SHAPES `apksigner verify --print-certs` PRINTS ───────────────────
-// apksig's ApkSignerTool.verify() labels each certificate it prints, and the
-// label is the only thing that differs between its two shapes:
+// ── THE THREE SHAPES `apksigner verify --print-certs` PRINTS ─────────────────
+// apksigner labels each certificate it prints, and the label is the only thing
+// that differs between its shapes:
 //   · no v3.1 block  → `Signer #N certificate DN: …` / `… SHA-256 digest: …`
+//                      (build-tools 36.0.0, `--version` 0.9)
 //   · a v3.1 block   → `Signer (minSdkVersion=A[ (dev release=true)], maxSdkVersion=B) certificate …`,
-//                      the v3.1 signers first, then the v3.0 signers
-//   · either, plus   → `Source Stamp Signer certificate …`, which is NOT a signer
+//                      the v3.1 signers first, then the v3.0 signers (AOSP apksig)
+//   · per scheme     → `V2 Signer: certificate DN: …` / `V2 Signer: certificate SHA-256 digest: …`
+//                      (build-tools 37.0.0 on the ubuntu runner, `--version` ALSO 0.9:
+//                      the version string does not name the shape; run 35734304054)
+//   · any, plus      → `Source Stamp Signer certificate …`, which is NOT a signer
 // The parser keys each entry by its label. A signer is counted by its DISTINCT
-// SHA-256: one key printed in a v3.1 and a v3.0 block is one signer; two keys
+// SHA-256: one key printed in two blocks or two schemes is one signer; two keys
 // is a rotation and FAILS. A certificate line under any other label is
 // COVERAGE LOST, named verbatim — an unknown shape is unread, never skipped.
 // Every COVERAGE LOST on apksigner's output prints what apksigner returned
@@ -115,24 +119,27 @@ export function toPinForm(hex) {
 // The labels apksig prints before ` certificate DN: ` (see the header).
 const SIGNER_N = /^Signer #(\d+)$/;
 const SIGNER_V31 = /^Signer \(minSdkVersion=(\d+)( \(dev release=true\))?, maxSdkVersion=(\d+)\)$/;
+const SIGNER_SCHEME = /^V(\d+(?:\.\d+)?) Signer:$/;
 const SOURCE_STAMP = 'Source Stamp Signer';
 export const SHAPE_N = 'Signer #N';
 export const SHAPE_V31 = 'Signer (minSdkVersion=…)';
+export const SHAPE_SCHEME = 'V<n> Signer:';
 
 /** A certificate label → the shape it belongs to, or null for a label apksig does not print. */
 export function signerShape(label) {
   if (SIGNER_N.test(label)) return SHAPE_N;
   if (SIGNER_V31.test(label)) return SHAPE_V31;
+  if (SIGNER_SCHEME.test(label)) return SHAPE_SCHEME;
   return null;
 }
 
 /**
  * `apksigner verify --print-certs` stdout → the SIGNER entries in print order,
- * [{ index, label, dn, sha256 }], keyed by label (both shapes in the header).
- * `index` is N for `Signer #N` and the print position for the v3.1 shape.
+ * [{ index, label, dn, sha256 }], keyed by label (the three shapes in the header).
+ * `index` is N for `Signer #N` and the print position for the other shapes.
  * The array also carries:
  *   · `sourceStamp` — the `Source Stamp Signer` entry, or null. Never a signer.
- *   · `unknown`     — every certificate line whose label is neither shape, verbatim.
+ *   · `unknown`     — every certificate line whose label is no shape, verbatim.
  */
 export function parseApksignerCerts(text) {
   const signers = [];
@@ -165,7 +172,7 @@ export function parseApksignerCerts(text) {
   return Object.assign(signers, { sourceStamp, unknown });
 }
 
-/** The distinct SHA-256 keys among the signer entries (a v3.1 and a v3.0 block of one key is ONE). */
+/** The distinct SHA-256 keys among the signer entries (one key printed in two blocks or two schemes is ONE). */
 export function distinctSignerKeys(signers) {
   return [...new Set(signers.map((s) => s.sha256).filter(Boolean))];
 }
@@ -380,14 +387,14 @@ function main() {
   ];
   if (sig.status === 0 && signers.unknown.length) {
     coverageLost([
-      `apksigner printed a certificate line whose label is neither "${SHAPE_N}" nor "${SHAPE_V31}" nor "${SOURCE_STAMP}": ${JSON.stringify(signers.unknown[0])}.`,
+      `apksigner printed a certificate line whose label is none of "${SHAPE_N}", "${SHAPE_V31}", "${SHAPE_SCHEME}" or "${SOURCE_STAMP}": ${JSON.stringify(signers.unknown[0])}.`,
       'An unknown shape is unread, never skipped: the signer it names could be the one that matters.',
       ...whatApksignerReturned(),
     ]);
   }
   if (sig.status === 0 && signers.length === 0) {
     coverageLost([
-      `apksigner exited 0 and printed no signer certificate line in either shape ("${SHAPE_N} certificate DN:" or "${SHAPE_V31} certificate DN:").`,
+      `apksigner exited 0 and printed no signer certificate line in any shape ("${SHAPE_N} certificate DN:", "${SHAPE_V31} certificate DN:" or "${SHAPE_SCHEME} certificate DN:").`,
       'The output format moved; the signer is unread, not absent.',
       ...whatApksignerReturned(),
     ]);
@@ -409,9 +416,16 @@ function main() {
   const signer = signers[0] ?? { dn: null, sha256: null };
 
   const badge = run(aapt2, ['dump', 'badging', apkPath]);
-  if (badge.error || badge.status !== 0) coverageLost([`aapt2 dump badging failed (${badge.error?.message ?? `exit ${badge.status}`}).`, (badge.stderr || '').trim().split('\n')[0] ?? '']);
+  // What aapt2 returned, for every COVERAGE LOST on its output (the same rule as apksigner's).
+  const whatAapt2Returned = () => [
+    `aapt2: ${aapt2}`,
+    `aapt2 dump badging exited ${badge.status}`,
+    ...toolOutputLines('stdout', badge.stdout),
+    ...toolOutputLines('stderr', badge.stderr),
+  ];
+  if (badge.error || badge.status !== 0) coverageLost([`aapt2 dump badging failed (${badge.error?.message ?? `exit ${badge.status}`}).`, ...whatAapt2Returned()]);
   const badging = parseBadging(badge.stdout);
-  if (badging.sdkVersion === null) coverageLost(['aapt2 badging printed no sdkVersion line; the minimum platform is unread, not absent.']);
+  if (badging.sdkVersion === null) coverageLost(['aapt2 badging printed no sdkVersion or minSdkVersion line; the minimum platform is unread, not absent.', ...whatAapt2Returned()]);
 
   const decision = signer.sha256 ? decideArtifact({ app: APP, posture: POSTURE, signer, pin, playPin }) : { problems: [], artifactName: null, verdict: null, reason: null };
   problems.push(...decision.problems);

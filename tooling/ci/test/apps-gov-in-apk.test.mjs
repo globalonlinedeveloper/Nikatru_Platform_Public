@@ -11,8 +11,9 @@
 // ⚠️ THE CLI CASES RUN FAKE BUILD-TOOLS. `apksigner` and `aapt2` are replaced
 // by two-line scripts that print a fixture file, so the guard's own process —
 // argument parsing, register reading, $GITHUB_OUTPUT and the summary — runs for
-// real without an Android SDK on the test host. The fixture text is the shape
-// build-tools 36 prints; the pure-function cases pin the parsers to it.
+// real without an Android SDK on the test host. The fixture text is each shape
+// apksigner prints, (a) and (g) REAL runs; the pure-function cases pin the
+// parsers to it.
 //
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
@@ -95,6 +96,41 @@ const printCerts = (...blocks) => `${blocks.flat().join('\n')}\n`;
 const V31_ONE_KEY = printCerts(certBlock(V31_LABEL, DEBUG_SIGNER.dn, DEBUG_HEX), certBlock(V30_LABEL, DEBUG_SIGNER.dn, DEBUG_HEX));
 const V31_TWO_KEYS = printCerts(certBlock(V31_DEV_LABEL, OWN_SIGNER.dn, OWN_HEX), certBlock(V30_LABEL, 'CN=Nikatru Old, O=Nikatru, C=IN', DEBUG_HEX));
 
+// (g) PROVENANCE: REAL apksigner output, verbatim, from CI. Build apps dispatch
+// run 35734304054, job 106767608635 ("Linux + Web + Android (subscriptiontracker)"),
+// 2026-09-22T13:50:53Z: /usr/local/lib/android/sdk/build-tools/37.0.0/apksigner,
+// `--version` 0.9, `verify --print-certs` over the debug-signed apps.gov.in .apk.
+// The guard's COVERAGE LOST dump printed these 4 lines, "4 line(s), 311 bytes",
+// and an empty stderr. Same `--version` as (a), a different shape: the version
+// string does not name the shape.
+const CI37_HEX = 'd104989e5c22b0658db819055f6f0654d1887f2a9e29ffe32682bddb23359eff';
+const CI37_LF = [
+  'V2 Signer: certificate DN: C=US, O=Android, CN=Android Debug',
+  `V2 Signer: certificate SHA-256 digest: ${CI37_HEX}`,
+  'V2 Signer: certificate SHA-1 digest: 7f04807f1620253aec8762258205cf9abf9fcf82',
+  'V2 Signer: certificate MD5 digest: 3f129238c424b27aa554fac71fe6eeac',
+  '',
+].join('\n');
+
+// (h) PROVENANCE: REAL aapt2 output, verbatim, CRLF included. aapt2 36.0.0 on
+// the Windows laptop, 2026-09-22, `dump badging` over the probe .apk of (a). It
+// spells the floor `minSdkVersion:'24'`, where the hand-written badgingText()
+// below spells it `sdkVersion:'24'`.
+const AAPT2_36_CRLF = [
+  "package: name='com.example.probe' versionCode='1' versionName='1.0' platformBuildVersionName='15' platformBuildVersionCode='35' compileSdkVersion='35' compileSdkVersionCodename='15'",
+  "minSdkVersion:'24'",
+  "targetSdkVersion:'35'",
+  "application: label='probe' icon=''",
+  "feature-group: label=''",
+  "  uses-feature: name='android.hardware.faketouch'",
+  "  uses-implied-feature: name='android.hardware.faketouch' reason='default feature for all apps'",
+  "supports-screens: 'small' 'normal' 'large' 'xlarge'",
+  "supports-any-density: 'true'",
+  'locales:',
+  'densities:',
+  '',
+].join('\r\n');
+
 const badgingText = ({ sdk = 24, perms = ['android.permission.INTERNET', 'android.permission.POST_NOTIFICATIONS'] } = {}) => [
   "package: name='com.nikatru.demo' versionCode='7' versionName='1.0.7' platformBuildVersionName='16' platformBuildVersionCode='36'",
   `sdkVersion:'${sdk}'`,
@@ -137,6 +173,12 @@ describe('parsers', () => {
     assert.deepEqual(b.permissions, ['android.permission.INTERNET', 'android.permission.CAMERA']);
   });
 
+  test('(h) parseBadging reads the REAL aapt2 36.0.0 output (CRLF, `minSdkVersion:` spelling)', () => {
+    assert.equal(Buffer.byteLength(AAPT2_36_CRLF), 540, 'byte-equal to the captured output');
+    const b = parseBadging(AAPT2_36_CRLF);
+    assert.deepEqual(b, { packageName: 'com.example.probe', versionCode: '1', versionName: '1.0', sdkVersion: 24, targetSdkVersion: 35, permissions: [] });
+  });
+
   test('portalLabel is the form\'s own list: 21 Lollipop 5.0, 24 Nougat 7.0, 30 Android 11, and nothing past 30', () => {
     assert.equal(portalLabel(21), 'Lollipop 5.0');
     assert.equal(portalLabel(24), 'Nougat 7.0');
@@ -155,7 +197,7 @@ describe('parsers', () => {
   });
 });
 
-describe('parseApksignerCerts — both shapes apksigner prints, keyed by label', () => {
+describe('parseApksignerCerts — the three shapes apksigner prints, keyed by label', () => {
   test('(a) the REAL apksigner 0.9 output, CRLF as captured, then LF as CI prints it: one "Signer #N" signer', () => {
     for (const text of [PROBE_CRLF, PROBE_CRLF.replace(/\r\n/g, '\n')]) {
       const got = parseApksignerCerts(text);
@@ -198,6 +240,28 @@ describe('parseApksignerCerts — both shapes apksigner prints, keyed by label',
     const got = parseApksignerCerts(`${apksignerText(DEBUG_SIGNER.dn, DEBUG_HEX)}Signer [x] certificate DN: CN=x\n`);
     assert.deepEqual(got.unknown, ['Signer [x] certificate DN: CN=x']);
     assert.equal(signerShape('Signer [x]'), null);
+  });
+
+  test('(g) the REAL build-tools 37.0.0 output from CI (run 35734304054): one "V<n> Signer:" signer', () => {
+    assert.equal(Buffer.byteLength(CI37_LF), 311, 'byte-equal to the "4 line(s), 311 bytes" CI printed');
+    const got = parseApksignerCerts(CI37_LF);
+    assert.equal(got.length, 1);
+    assert.deepEqual({ ...got[0] }, { index: 1, label: 'V2 Signer:', dn: 'C=US, O=Android, CN=Android Debug', sha256: toPinForm(CI37_HEX) });
+    assert.equal(signerShape(got[0].label), 'V<n> Signer:');
+    assert.equal(got.sourceStamp, null);
+    assert.deepEqual(got.unknown, []);
+  });
+
+  test('(g) the scheme shape counts by SHA-256: one key under V2 and V3 is ONE signer, two keys are two', () => {
+    // The V3 label is (g)'s format with the scheme number changed; CI printed V2 only.
+    const scheme = (v, dn, hex) => certBlock(`V${v} Signer:`, dn, hex);
+    const one = parseApksignerCerts(printCerts(scheme(2, DEBUG_SIGNER.dn, DEBUG_HEX), scheme(3, DEBUG_SIGNER.dn, DEBUG_HEX)));
+    assert.deepEqual(one.map((s) => s.label), ['V2 Signer:', 'V3 Signer:']);
+    assert.deepEqual(distinctSignerKeys(one), [toPinForm(DEBUG_HEX)]);
+    const two = parseApksignerCerts(printCerts(scheme(2, DEBUG_SIGNER.dn, DEBUG_HEX), scheme(3, OWN_SIGNER.dn, OWN_HEX)));
+    assert.deepEqual(distinctSignerKeys(two), [toPinForm(DEBUG_HEX), OWN_PIN]);
+    assert.equal(signerShape('V3.1 Signer:'), 'V<n> Signer:');
+    assert.equal(signerShape('V2 Signer'), null, 'no colon is not the shape');
   });
 
   test('toolOutputLines prefixes each line, escapes control characters and stops at 20', () => {
@@ -393,7 +457,7 @@ describe('the CLI', () => {
     const fx = fixture({ apksigner: 'Verifies\n' });
     const { code, out } = run(fx);
     assert.equal(code, 2, out);
-    assert.match(out, /COVERAGE LOST — apksigner exited 0 and printed no signer certificate line in either shape/);
+    assert.match(out, /COVERAGE LOST — apksigner exited 0 and printed no signer certificate line in any shape/);
     // Run 35720583079 printed only the two lines above, so the real format stayed unread.
     assert.ok(out.includes(`apksigner: ${join(fx.bt, process.platform === 'win32' ? 'apksigner.bat' : 'apksigner')}`), out);
     assert.match(out, /^\s*apksigner --version: fake-apksigner 0\.0 \(exit 0\)$/m);
@@ -427,8 +491,26 @@ describe('the CLI', () => {
   test('(e) CLI: a certificate line under an unknown label is COVERAGE LOST naming the line, with what apksigner returned', () => {
     const { code, out } = run(fixture({ apksigner: `${apksignerText(DEBUG_SIGNER.dn, DEBUG_HEX)}Signer [x] certificate DN: CN=x\n` }));
     assert.equal(code, 2, out);
-    assert.match(out, /COVERAGE LOST — apksigner printed a certificate line whose label is neither .*: "Signer \[x\] certificate DN: CN=x"/);
+    assert.match(out, /COVERAGE LOST — apksigner printed a certificate line whose label is none of .*: "Signer \[x\] certificate DN: CN=x"/);
     assert.match(out, /^\s*stdout\| Signer \[x\] certificate DN: CN=x$/m);
+  });
+
+  test('aapt2 printing no minSdk line is COVERAGE LOST, and it PRINTS what aapt2 returned', () => {
+    const fx = fixture({ apksigner: CI37_LF, badging: "package: name='com.nikatru.demo'\n" });
+    const { code, out } = run(fx);
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST — aapt2 badging printed no sdkVersion or minSdkVersion line/);
+    assert.ok(out.includes(`aapt2: ${join(fx.bt, process.platform === 'win32' ? 'aapt2.bat' : 'aapt2')}`), out);
+    assert.match(out, /^\s*aapt2 dump badging exited 0$/m);
+    assert.match(out, /^\s*stdout\| package: name='com\.nikatru\.demo'$/m);
+  });
+
+  test('(g) CLI: the REAL build-tools 37.0.0 output from CI exits 0 in debug posture with the NOT-FOR-UPLOAD name', () => {
+    const { code, out, output } = run(fixture({ apksigner: CI37_LF }));
+    assert.equal(code, 0, out);
+    assert.match(output, /^artifact_name=apps-gov-in-demo-apk-NOT-FOR-UPLOAD-debug-signed-build-proof$/m);
+    assert.match(out, /apksigner read: shape "V<n> Signer:", 1 distinct signer key\(s\) over 1 signer entry — /);
+    assert.match(out, /^\s*stdout\| V2 Signer: certificate SHA-256 digest: d104989e5c22b0658db819055f6f0654d1887f2a9e29ffe32682bddb23359eff$/m);
   });
 
   test('debug-signed with the pin null exits 0, writes the NOT-FOR-UPLOAD name to $GITHUB_OUTPUT and says why in capitals', () => {
