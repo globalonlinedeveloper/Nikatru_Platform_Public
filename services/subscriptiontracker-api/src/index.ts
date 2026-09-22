@@ -224,3 +224,10 @@ export default { fetch: app.fetch };
 // reachable only by a binding that names `entrypoint: "ErasureEntrypoint"`
 // (services/platform/wrangler.jsonc) and never through `fetch` above.
 export { ErasureEntrypoint } from './erasure-entrypoint';
+
+// ⏱ 2026-09-22 — THE ROUTE TABLE, FOR THE TEST THAT MUST NOT DRIFT FROM IT.
+// test/cors.test.ts reads `app.routes` and preflights every mounted route with
+// its own method, so the CORS method list is checked against what this file
+// mounts rather than a hand-kept copy. The default export is still the only
+// thing the runtime serves; a bundle with this export was loaded in workerd.
+export { app };

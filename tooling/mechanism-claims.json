@@ -1477,6 +1477,30 @@
       "test": "apps/subscriptiontracker/test/width_shell_fab_test.dart",
       "case": "the six rows are the store suite's own",
       "proves": "The at-rest group seeds a COPY of kIllustrative (the store suite is an integration binding, not an importable library). The case parses the kIllustrative block out of integration_test/store_screenshots_test.dart and asserts the parsed rows equal the copy, in order, so an edited, added, dropped or reordered row on either side fails here. Mutations 2026-09-22, each restored byte-exact and green again: the copy's 'Video streaming' price 15.99 -> 15.98 turns it red (at location [0][1] is '15.99' instead of '15.98'); a seventh row added to the source's kIllustrative turns it red (at location [6]). judged 2026-09-22."
+    },
+    {
+      "file": "services/_shared/test/preflight.ts",
+      "anchor": "THE SEAM, AND WHY IT CANNOT DRIFT.",
+      "status": "proven",
+      "test": "services/platform/test/cors.test.ts",
+      "case": "every mounted route is preflight-approved for its own method, from a listed origin",
+      "proves": "The sentence claims the methods checked are the Worker's mounting itself (Hono `app.routes`, sub-apps merged), not a second list kept in step. The case preflights every entry of the real app's route table with that route's own method. Mutation 2026-09-22: services/platform/src/middleware/cors.ts back to `GET, POST, DELETE, OPTIONS` (the shipped defect) turns it red with `PUT /v1/account/apple-token -> 204, allow-origin=https://nikatru.com, allow-methods=GET, POST, DELETE, OPTIONS` — a route no hand-typed list in the old test named, reached only because it is read from the mounting. Restored byte-exact, green again. judged 2026-09-22."
+    },
+    {
+      "file": "services/platform/test/cors.test.ts",
+      "anchor": "preflight allows every method a MOUNTED route answers — derived, not listed",
+      "status": "proven",
+      "test": "services/platform/test/cors.test.ts",
+      "case": "every mounted route is preflight-approved for its own method, from a listed origin",
+      "proves": "The describe title is the claim; this case, inside it, reads its endpoints from `mountedEndpoints(app.routes)` and nothing else. Mutation 2026-09-22: PUT removed from the platform Allow-Methods turns it red naming `PUT /v1/account/apple-token`, which the hand-typed ['GET', 'POST', 'DELETE', 'OPTIONS'] loop it replaced stayed green through. Restored byte-exact (sha256 d608e4eb0f0d16ec), green again. judged 2026-09-22."
+    },
+    {
+      "file": "services/subscriptiontracker-api/test/cors.test.ts",
+      "anchor": "preflight covers every method the routes actually expose — derived, not listed",
+      "status": "proven",
+      "test": "services/subscriptiontracker-api/test/cors.test.ts",
+      "case": "every mounted route is preflight-approved for its own method, from a listed origin",
+      "proves": "The describe title is the claim; this case, inside it, reads its endpoints from `mountedEndpoints(app.routes)` and nothing else. Mutation 2026-09-22: PUT removed from `allowMethods` in src/middleware/cors.ts turns it red with `PUT /v1/budget -> 204, allow-origin=https://nikatru.com, allow-methods=GET,POST,PATCH,DELETE,OPTIONS`. Restored byte-exact (sha256 01e8e91934e9424a), green again. judged 2026-09-22."
     }
   ],
   "backlog": {}

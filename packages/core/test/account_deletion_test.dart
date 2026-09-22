@@ -429,11 +429,148 @@ void main() {
         auth: auth,
         send: (String _) async => throw StateError('server refused'),
         onError: errors.add,
+        retryDelays: const <Duration>[],
       );
       addTearDown(sub.cancel);
       auth.users.add(const AuthUser(id: 'u1', email: 'a@b.test'));
       await Future<void>.delayed(Duration.zero);
       expect(errors, hasLength(1));
+      expect(errors.single, isA<AppleTokenNotKept>());
+    });
+
+    // ⏱ 2026-09-22 — THE SEND THAT NEVER LANDED WAS RECORDED AS SENT. The shared
+    // Worker's CORS list left out PUT, so every web send was refused at
+    // preflight; the keeper had already written the token down as delivered, so
+    // it never tried again and nothing reported it. These pin the three halves
+    // of the fix: a refused send is retried, retrying STOPS, and giving up says so.
+    //
+    // RED CONTROL (recorded 2026-09-22): moving `lastSent = token;` back above
+    // `await send(token);` in apple_token_keeper.dart turns the first two red —
+    // the retry re-reads the session, finds the token already "sent", and stops.
+    group('delivery is retried, bounded, and reported', () {
+      const List<Duration> quick = <Duration>[Duration.zero, Duration.zero];
+      const AuthUser u = AuthUser(id: 'u1', email: 'a@b.test');
+
+      // Enough event-loop turns for every zero-length retry timer to fire.
+      Future<void> settle() async {
+        for (int i = 0; i < 20; i++) {
+          await Future<void>.delayed(Duration.zero);
+        }
+      }
+
+      _ProviderAuth signedInWithApple() => _ProviderAuth()
+        ..session = const AuthSession(
+          accessToken: 'a',
+          providerRefreshToken: 'apple-refresh-1',
+        );
+
+      test('🔴 a send that fails once and then succeeds is retried, and lands',
+          () async {
+        int attempts = 0;
+        final List<String> landed = <String>[];
+        final List<Object> errors = <Object>[];
+        final _ProviderAuth auth = signedInWithApple();
+        final StreamSubscription<AuthUser?> sub = keepAppleRefreshToken(
+          auth: auth,
+          send: (String t) async {
+            attempts++;
+            if (attempts == 1) throw StateError('preflight refused');
+            landed.add(t);
+          },
+          onError: errors.add,
+          retryDelays: quick,
+        );
+        addTearDown(sub.cancel);
+        auth.users.add(u);
+        await settle();
+        expect(attempts, 2, reason: 'the refused send must be tried again');
+        expect(landed, <String>['apple-refresh-1']);
+        expect(errors, isEmpty, reason: 'a round that landed reports nothing');
+
+        // Landed means recorded: the same token is not posted again.
+        auth.users.add(u);
+        await settle();
+        expect(attempts, 2);
+      });
+
+      test('🔴 a send that always fails stops at the bound and reports once',
+          () async {
+        int attempts = 0;
+        final List<Object> errors = <Object>[];
+        final _ProviderAuth auth = signedInWithApple();
+        final StreamSubscription<AuthUser?> sub = keepAppleRefreshToken(
+          auth: auth,
+          send: (String t) async {
+            attempts++;
+            // The failure QUOTES the token, as a careless server might: the
+            // report must not carry it onward.
+            throw StateError('refused $t');
+          },
+          onError: errors.add,
+          retryDelays: quick,
+        );
+        addTearDown(sub.cancel);
+        auth.users.add(u);
+        await settle();
+        expect(attempts, 3, reason: 'one attempt, then one per retry delay');
+        expect(errors, hasLength(1));
+        final AppleTokenNotKept report = errors.single as AppleTokenNotKept;
+        expect(report.attempts, 3);
+        expect(report.toString(), isNot(contains('apple-refresh-1')));
+        expect(report.toString(), contains('refused'));
+
+        await settle();
+        expect(attempts, 3, reason: 'retrying must stop at the bound');
+
+        // …and the next auth-state change starts a fresh bounded round,
+        // because the token was never recorded as delivered.
+        auth.users.add(u);
+        await settle();
+        expect(attempts, 6);
+        expect(errors, hasLength(2));
+      });
+
+      test('a sign-out abandons a pending retry', () async {
+        int attempts = 0;
+        final _ProviderAuth auth = signedInWithApple();
+        final StreamSubscription<AuthUser?> sub = keepAppleRefreshToken(
+          auth: auth,
+          send: (String _) async {
+            attempts++;
+            throw StateError('refused');
+          },
+          retryDelays: const <Duration>[Duration(milliseconds: 30)],
+        );
+        addTearDown(sub.cancel);
+        auth.users.add(u);
+        await Future<void>.delayed(Duration.zero);
+        expect(attempts, 1);
+        auth.users.add(null);
+        await Future<void>.delayed(const Duration(milliseconds: 80));
+        expect(attempts, 1, reason: 'no retry may fire after the sign-out');
+      });
+
+      test('cancelling the keeper cancels a pending retry', () async {
+        int attempts = 0;
+        final List<Object> errors = <Object>[];
+        final _ProviderAuth auth = signedInWithApple();
+        final StreamSubscription<AuthUser?> sub = keepAppleRefreshToken(
+          auth: auth,
+          send: (String _) async {
+            attempts++;
+            throw StateError('refused');
+          },
+          onError: errors.add,
+          retryDelays: const <Duration>[Duration(milliseconds: 30)],
+        );
+        auth.users.add(u);
+        await Future<void>.delayed(Duration.zero);
+        expect(attempts, 1);
+        await sub.cancel();
+        await Future<void>.delayed(const Duration(milliseconds: 80));
+        expect(attempts, 1, reason: 'a timer must not outlive its listener');
+        expect(errors, isEmpty);
+      });
     });
   });
 }

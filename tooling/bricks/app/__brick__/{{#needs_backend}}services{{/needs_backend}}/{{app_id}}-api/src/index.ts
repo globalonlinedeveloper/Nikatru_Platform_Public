@@ -183,3 +183,10 @@ export default { fetch: app.fetch };
 // ⏱ 2026-09-15 · [ADR 081]: the Service Binding retry door. A NAMED export, reached
 // only by a binding that names `entrypoint: "ErasureEntrypoint"`, never by `fetch`.
 export { ErasureEntrypoint } from './erasure-entrypoint';
+
+// ⏱ 2026-09-22 — THE ROUTE TABLE, FOR THE TEST THAT MUST NOT DRIFT FROM IT.
+// test/cors.test.ts reads `app.routes` and preflights every route this app
+// mounts with its own method, so a route added with a method the CORS list does
+// not offer is red in this app's own suite, not refused in a browser. The
+// default export is still the only thing the runtime serves.
+export { app };

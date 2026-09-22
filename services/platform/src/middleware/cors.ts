@@ -9,6 +9,15 @@ import type { AppEnv } from '../types';
 // `DELETE /v1/account` from every web build, and the failure would look like a
 // browser bug rather than a config bug.
 //
+// ⏱ 2026-09-22 — IT HAPPENED AGAIN, ONE METHOD OVER. `PUT /v1/account/apple-token`
+// was live while this list read `GET, POST, DELETE, OPTIONS`, so every web sign-in
+// with Apple had its token refused at preflight and the revoke-on-delete path never
+// had anything to revoke. The list is what the MOUNTED routes answer — GET, POST,
+// PUT, DELETE; no platform route answers PATCH, so PATCH is not offered. It is no
+// longer a hand-kept promise: test/cors.test.ts reads the real app's route table
+// and preflights every mounted route with its own method, so a route mounted with
+// a method missing here is red in CI before it is refused in a browser.
+//
 // ── ORIGIN POLICY: an EXACT allowlist (owner decision 2026-07-25) ────────────
 // `ALLOWED_ORIGINS` is a comma-separated list of exact origins. Nothing is
 // pattern-matched and nothing is inferred: an origin is either on the list or it
@@ -52,7 +61,7 @@ export const corsMiddleware: MiddlewareHandler<AppEnv> = async (c, next) => {
     c.header('Access-Control-Allow-Origin', allowed);
     c.header('Vary', 'Origin');
     c.header('Access-Control-Allow-Headers', 'Authorization, Content-Type, x-request-id');
-    c.header('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+    c.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   }
   if (c.req.method === 'OPTIONS') {
     return c.body(null, 204);
