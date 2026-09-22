@@ -33,13 +33,16 @@ entry in the root `pubspec.yaml`'s `workspace:` list and the `slug` in
 | Example | Verdict |
 | --- | --- |
 | `subscriptiontracker-v1.0.0` | ✅ triggers the lane |
-| `subscriptiontracker-v1.0.0-rc.1` | ✅ matches the glob (`*-v*`); the Release is created with that literal name |
+| `subscriptiontracker-v1.0.0-rc.1` | ⚠️ matches the trigger (`subscriptiontracker-v*`), then `prepare` refuses it: `assert-app-versioning.mjs --tag` takes `X.Y.Z` only |
 | `v1.0.0` | ❌ **no `<unit>-` prefix → matches nothing → NOTHING HAPPENS, and there is no error.** A tag that matches no filter is simply not a trigger. |
 | `subscriptiontracker-1.0.0` | ❌ no `-v`, same silent nothing |
 
-The trigger glob is `push: tags: ['*-v*']` (`build-platforms.yml`). It names **no app**,
-which is what keeps the lane generic over the factory — adding an app adds matrix legs,
-not workflow lines.
+The trigger is `push: tags:` in `build-platforms.yml`: one `<app>-v*` line per app,
+**generated** from the product registers by `node tooling/ci/tag-owner.mjs --write`, and
+`node tooling/ci/tag-owner.mjs` goes red while it is stale. Adding an app adds a register
+row and a regenerated line, never a hand-written glob. An extension tag (`fullshot-v1.10.1`)
+matches nothing here: it belongs to `extensions.yml`. The same script is the lane's first
+gate in `prepare`, so a dispatch on another product's tag stops there too.
 
 > 🔴 **Tag a commit that is already on `main` and has already gone green.**
 > `ci.yml` triggers on `branches: [main, feat/**, fix/**, chore/**]` and **not on tags**,

@@ -248,6 +248,10 @@
       "reads": "the workflow directory handed to zizmor, with a minimum count"
     },
     {
+      "path": "tooling/ci/tag-owner.mjs",
+      "property": "workflow-scan"
+    },
+    {
       "path": "tooling/ops/check-pages-deployments.mjs",
       "property": "workflow-scan",
       "reads": "deploy-web.yml on.push.paths and each job's timeout-minutes, to derive a direct-upload Pages project's expected commit and deploy-lane window"

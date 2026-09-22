@@ -2671,6 +2671,17 @@
     "state": "LIBRARY"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/build-platforms.yml#prepare",
+      ".github/workflows/extensions.yml#release"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/tag-owner.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "K-3"
     ],

@@ -1037,10 +1037,13 @@ and no single artefact carries all three:
                    artifact origin for every installer/APK"). A release asset
                    has no retention clock; an upload-artifact has a 7-day one.
   · ADDRESSABLE  — the git TAG this workflow ALREADY triggers on
-                   (`push: tags: ['*-v*']`, above). One trigger now does two
+                   (`push: tags:`, above). One trigger now does two
                    jobs: it demands the six-platform proof AND names the
-                   release. Nothing app-specific is added — the glob names no
-                   app and neither does anything below.
+                   release. Nothing app-specific is hand-written — the tag
+                   list is one `<app>-v*` line per app, GENERATED from the
+                   product registers by tooling/ci/tag-owner.mjs --write
+                   (since 2026-09-22; before it was `*-v*`, which also
+                   caught every extension tag), and nothing below names an app.
   · INTEGRITY    — SHA256SUMS, written and re-verified by
                    tooling/ci/release-manifest.mjs, carrying the GATED
                    COMMIT SHA in its own header. `sha256sum -c` skips
