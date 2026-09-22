@@ -48,7 +48,7 @@ export function retiredIn(tokens, value) {
  * The non-empty retired tokens a parsed channel-register declares.
  *
  * Returns `[]` rather than throwing: each caller decides what an empty list
- * means for it. Both of today's callers treat it as COVERAGE LOST, because a
+ * means for it. Every caller treats it as COVERAGE LOST, because a
  * check with no tokens refuses nothing and reads exactly like a clean world.
  */
 export function tokensFrom(register) {

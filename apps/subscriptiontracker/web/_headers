@@ -103,7 +103,7 @@
 #    it was never verified — it was inherited from how a webpack-style build
 #    behaves.
 #
-# MEASURED against the live channel (https://subly.nikatru.com), not reasoned:
+# MEASURED against the live channel (the app's former subdomain), not reasoned:
 #
 #   · `flutter_bootstrap.js` names its dependencies `main.dart.js`,
 #     `canvaskit.js` and `canvaskit.wasm` — plain, unhashed. A scan of the

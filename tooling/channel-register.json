@@ -3159,7 +3159,7 @@
       "id": "subscriptiontracker-api",
       "deploymentEnvironment": "subscriptiontracker-api",
       "kind": "service",
-      "name": "Subly backend Worker",
+      "name": "Subscription Tracker backend Worker",
       "url": "https://subscriptiontracker-api.nikatru.com",
       "source": "services/subscriptiontracker-api",
       "notes": "App-scoped Worker. Deployed by .github/workflows/deploy-workers.yml."

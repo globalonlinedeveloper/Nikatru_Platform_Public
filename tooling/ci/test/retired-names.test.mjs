@@ -35,7 +35,7 @@ function baseFiles() {
   return {
     'tooling/channel-register.json': {
       retiredIdentityTokens: { _why: ['`subly` was the working name.'], tokens: ['subly'] },
-      serviceEnvironments: [{ id: 'x-api', deploymentEnvironment: 'x-api', url: 'https://x.api.example.com' }],
+      serviceEnvironments: [{ id: 'x-api', deploymentEnvironment: 'x-api', url: 'https://x.api.example.com', name: 'X backend Worker' }],
     },
     'services/x-api/wrangler.jsonc': [
       '{',
@@ -129,6 +129,7 @@ describe('assert-retired-names — every subject can go red', () => {
     ['a monitor name', withJson('tooling/monitor-register.json', (m) => { m.hosts[1].pathMonitors[0].name = 'Subly web'; return m; }), /monitor name = "Subly web"/],
     ['a platform-register Worker name', withJson('tooling/platform-register.json', (p) => { p.appWorkers[0].name = 'subly-api'; return p; }), /platform-register\.json Worker .* name = "subly-api"/],
     ['a service environment url', withJson('tooling/channel-register.json', (r) => { r.serviceEnvironments[0].url = 'https://subly.example.com'; return r; }), /serviceEnvironments\[0\] → url/],
+    ['a service environment name', withJson('tooling/channel-register.json', (r) => { r.serviceEnvironments[0].name = 'Subly backend Worker'; return r; }), /serviceEnvironments\[0\] → name/],
     ['a workflow env name', withText('.github/workflows/e2e.yml', '      X_D1_DATABASE_ID: abc', '      SUBLY_D1_DATABASE_ID: abc'), /env name = "SUBLY_D1_DATABASE_ID"/],
     ['a workflow secret reference', withText('.github/workflows/e2e.yml', 'secrets.X_TOKEN', 'secrets.SUBLY_TOKEN'), /secret\/var\/env reference = "SUBLY_TOKEN"/],
     ['a path redirect', withText('sites/site/_redirects', '/old /new 301', '/subly /subscriptiontracker/ 308'), /rule source = "\/subly"/],

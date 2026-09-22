@@ -29,7 +29,7 @@
 //   5. tooling/platform-register.json — every Worker `name` and `hosts[]`, every
 //      `bindings[].binding`.
 //   6. tooling/channel-register.json `serviceEnvironments[]` — `id`,
-//      `deploymentEnvironment`, `url`.
+//      `deploymentEnvironment`, `url`, `name`.
 //   7. .github/workflows/*.yml — every environment-variable NAME (an
 //      UPPER_SNAKE key) and every `secrets.` / `vars.` / `env.` reference.
 //   8. sites/*/_redirects — the source and target of every rule.
@@ -209,7 +209,7 @@ for (const [i, b] of (Array.isArray(platform?.bindings) ? platform.bindings : []
 // ── 6 · service environments ─────────────────────────────────────────────────
 for (const [i, s] of (Array.isArray(register?.serviceEnvironments) ? register.serviceEnvironments : []).entries()) {
   const where = `${REGISTER_REL} serviceEnvironments[${i}]`;
-  for (const f of ['id', 'deploymentEnvironment', 'url']) check('services', where, f, s?.[f]);
+  for (const f of ['id', 'deploymentEnvironment', 'url', 'name']) check('services', where, f, s?.[f]);
 }
 
 // ── 7 · workflow environment names ───────────────────────────────────────────

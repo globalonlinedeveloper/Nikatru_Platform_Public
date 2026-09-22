@@ -439,6 +439,8 @@ jobs:
         run: node tooling/ci/assert-apple-entitlements.mjs
       - name: No live resource carries a retired name [ADR 079]
         run: node tooling/ci/assert-retired-names.mjs
+      - name: No customer-visible surface names a retired product [ADR 074]
+        run: node tooling/ci/assert-retired-names-visible.mjs
       - name: Every NIKATRU hostname is the apex or one label deep [ADR 080]
         run: node tooling/ci/assert-hostname-depth.mjs
       - name: No submission endangers the store identity

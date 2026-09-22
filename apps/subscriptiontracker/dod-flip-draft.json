@@ -176,12 +176,12 @@
       "field": "selection.gates.g1a",
       "asks": "Apple 4.3(a) — multiple Bundle IDs / duplicate submissions. A PORTFOLIO property, not a per-app judgment: a 4.3(a) finding does not reject one app, it can take the developer account every app ships through",
       "measured": [
-        "apps/ holds exactly one app. Subly is the only app this identity has ever built, and no second stamped app has been submitted anywhere.",
+        "apps/ holds exactly one app. Nikatru Subscription Tracker is the only app this identity has ever built, and no second stamped app has been submitted anywhere.",
         "06-app-build.md N-9: '50 apps from one template is the literal pattern this clause describes' — and it is 'absent from all 14 stages until now'.",
         "⚠️ UNVERIFIED — '4.3(a)' is carried from 00-STAGE-3-14-RESEARCH.md and could not be read from developer.apple.com in this environment (the same host and the same failure recorded at [3]S-16). Do not restate it as settled.",
         "master-requirements §1.3: 'Never create multiple accounts/shell entities to evade volume limits' — the portfolio ships through ONE store identity on purpose, which is exactly why this clause is the expensive one."
       ],
-      "draft": "PASS at n=1, and this answer is inherited by no other app. Subly is the only app this developer identity has built or submitted: one Bundle ID, one binary, no duplicate or near-duplicate submission exists to compare it with. The clause bites at app #2 and #3, when a shared chassis starts producing siblings, and the answer then must be re-argued per app on its own content and category — a template is a framework, and what must differ is the product. ⚠️ The clause number is carried from 00-STAGE-3-14-RESEARCH.md and was NOT read from developer.apple.com; re-read it from a machine that can open the host before acting on it. Recorded here because its failure mode is the loss of the single store identity the whole portfolio depends on, which is unwindable in no way at all.",
+      "draft": "PASS at n=1, and this answer is inherited by no other app. Nikatru Subscription Tracker is the only app this developer identity has built or submitted: one Bundle ID, one binary, no duplicate or near-duplicate submission exists to compare it with. The clause bites at app #2 and #3, when a shared chassis starts producing siblings, and the answer then must be re-argued per app on its own content and category — a template is a framework, and what must differ is the product. ⚠️ The clause number is carried from 00-STAGE-3-14-RESEARCH.md and was NOT read from developer.apple.com; re-read it from a machine that can open the host before acting on it. Recorded here because its failure mode is the loss of the single store identity the whole portfolio depends on, which is unwindable in no way at all.",
       "signingThisMeans": "You are answering for the PORTFOLIO as it stands at one app, not certifying a policy reading. This string is the one that must be re-answered — not copied — into every later app's selection record."
     },
     {
@@ -190,14 +190,14 @@
       "field": "selection.gates.g1b",
       "asks": "Apple 4.3(b), the market/differentiation test — 'must have a one-sentence \"meaningfully different from the top 5 incumbents\" answer' (master-requirements §2.1)",
       "measured": [
-        "🔴 THE DIFFERENTIATOR THAT IS TRUE OF THE BUILD: Subly asks for no bank login and no mailbox access. scan_screen.dart:22-33 records it in the source — 'there is no bank or mail integration anywhere in the dependency graph', and the step labels were rewritten on 2026-07-27 for exactly that reason ('Reading bank statements' etc. were false claims about access to financial data).",
+        "🔴 THE DIFFERENTIATOR THAT IS TRUE OF THE BUILD: Nikatru Subscription Tracker asks for no bank login and no mailbox access. scan_screen.dart:22-33 records it in the source — 'there is no bank or mail integration anywhere in the dependency graph', and the step labels were rewritten on 2026-07-27 for exactly that reason ('Reading bank statements' etc. were false claims about access to financial data).",
         "The incumbent category is built on account aggregation. Nothing in this app reads a financial account; the user's own entries are the data.",
         "It ships on six platforms from one codebase (web · Windows · macOS · Linux · Android · iOS), which the incumbents' mobile-only aggregator apps do not.",
-        "⚠️ DO NOT WRITE A CLAIM ABOUT NAMED COMPETITORS INTO THIS FIELD unless you have checked it. The sentence below is about what Subly does, not about what anybody else fails to do — and this sentence is later SUBMITTED as store metadata (stage 10), where an unchecked comparative claim is a different kind of problem.",
+        "⚠️ DO NOT WRITE A CLAIM ABOUT NAMED COMPETITORS INTO THIS FIELD unless you have checked it. The sentence below is about what Nikatru Subscription Tracker does, not about what anybody else fails to do — and this sentence is later SUBMITTED as store metadata (stage 10), where an unchecked comparative claim is a different kind of problem.",
         "⚠️ '4.3(b)' is carried from 00-STAGE-3-14-RESEARCH.md, not read from developer.apple.com."
       ],
-      "draft": "Subly tracks subscription renewals, spend and cancellations WITHOUT asking for a bank login, a card, or mailbox access — the category's incumbents are built on account aggregation, and this app reads no financial account at all: the user's own entries are the data, held on one cross-platform account that works the same on web, desktop and mobile. ⚠️ The clause number 4.3(b) is carried from 00-STAGE-3-14-RESEARCH.md and was not read from developer.apple.com.",
-      "signingThisMeans": "This sentence is later submitted as store metadata (stage 10 owns the wording AT LISTING TIME). Say it as a positive claim about Subly, which is checkable against the build, rather than as a claim about competitors, which is not."
+      "draft": "Nikatru Subscription Tracker tracks subscription renewals, spend and cancellations WITHOUT asking for a bank login, a card, or mailbox access — the category's incumbents are built on account aggregation, and this app reads no financial account at all: the user's own entries are the data, held on one cross-platform account that works the same on web, desktop and mobile. ⚠️ The clause number 4.3(b) is carried from 00-STAGE-3-14-RESEARCH.md and was not read from developer.apple.com.",
+      "signingThisMeans": "This sentence is later submitted as store metadata (stage 10 owns the wording AT LISTING TIME). Say it as a positive claim about Nikatru Subscription Tracker, which is checkable against the build, rather than as a claim about competitors, which is not."
     },
     {
       "n": 11,
@@ -205,11 +205,11 @@
       "field": "selection.gates.g1c",
       "asks": "Apple 4.2.6 — content-provider / template attestation",
       "measured": [
-        "Subly is first-party: built, owned and published by the same sole proprietorship, for no client and to no commission. There is no third-party content provider anywhere in it.",
+        "Nikatru Subscription Tracker is first-party: built, owned and published by the same sole proprietorship, for no client and to no commission. There is no third-party content provider anywhere in it.",
         "🔴 06-app-build.md's own gate table marks G1c 'UNVERIFIED — its non-applicability to us is A READING OF THE GUIDELINE, NOT AN APPLE DETERMINATION (00-STAGE-3-14-RESEARCH.md §1.3 #12). Do not restate as settled.'",
         "39-CHASSIS §4 cut 1: apps/subscriptiontracker predates the brick and was never stamped from it, so at the moment of this record it is not even a template output."
       ],
-      "draft": "PASS on the facts, UNVERIFIED on the reading. Subly is a first-party app: NIKATRU built it, owns it and publishes it on its own account, for no client and under no commission, and there is no third-party content provider in it — so 4.2.6's subject, an app built by a provider on behalf of someone else, does not describe this. ⚠️ That non-applicability is a reading of the guideline and NOT an Apple determination (00-STAGE-3-14-RESEARCH.md §1.3 #12, and developer.apple.com could not be read from this environment). It is recorded as a reading and must be re-read before it is relied on for a template-stamped app, where the question is genuinely closer.",
+      "draft": "PASS on the facts, UNVERIFIED on the reading. Nikatru Subscription Tracker is a first-party app: NIKATRU built it, owns it and publishes it on its own account, for no client and under no commission, and there is no third-party content provider in it — so 4.2.6's subject, an app built by a provider on behalf of someone else, does not describe this. ⚠️ That non-applicability is a reading of the guideline and NOT an Apple determination (00-STAGE-3-14-RESEARCH.md §1.3 #12, and developer.apple.com could not be read from this environment). It is recorded as a reading and must be re-read before it is relied on for a template-stamped app, where the question is genuinely closer.",
       "signingThisMeans": "You are signing the FACT (first-party, uncommissioned), which is checkable, and explicitly not signing the guideline reading, which is not. Keeping those two apart in one string is the whole point of the caveat."
     },
     {
@@ -218,12 +218,12 @@
       "field": "selection.gates.g2",
       "asks": "Zero-freshness — 'content stays valid ≥12 months (no prices, news, tax rates) or generate-once breaks' (master-requirements §2.1)",
       "measured": [
-        "Subly ships NO pre-generated content pack. There is no packs directory, no bundled corpus, and no R2-served content in the app — its data is the user's own subscription entries, created at runtime.",
+        "Nikatru Subscription Tracker ships NO pre-generated content pack. There is no packs directory, no bundled corpus, and no R2-served content in the app — its data is the user's own subscription entries, created at runtime.",
         "The gate exists to protect the margin thesis (§1.1: generate once, COGS ≈ $0). An app with nothing generated has nothing that can go stale.",
         "What DOES age is the surrounding copy, not content: currency formatting, the store listing and the legal pages. None of those is what G2 measures, and each has its own owner (stage 10, the legal tripwires).",
-        "⚠️ Subly is the rail-prover, not a catalogue app. When the first content-pack app (Lingo, Tales, Decks) reaches this gate, this answer will NOT transfer and must be argued from the pack's own shelf life."
+        "⚠️ Nikatru Subscription Tracker is the rail-prover, not a catalogue app. When the first content-pack app (Lingo, Tales, Decks) reaches this gate, this answer will NOT transfer and must be argued from the pack's own shelf life."
       ],
-      "draft": "PASS, and trivially so, for the reason that makes it uninformative for every later app: Subly ships no pre-generated content at all. There is no content pack, no bundled corpus and no R2-served data — the subscriptions are the user's own entries, created at runtime — so there is nothing that can be twelve months stale. The user-visible copy (currency formatting, store listing, legal pages) does age, but that is not what this gate measures and each of those has its own owner. This answer is worth nothing to the first content-pack app and must be argued there from that pack's shelf life.",
+      "draft": "PASS, and trivially so, for the reason that makes it uninformative for every later app: Nikatru Subscription Tracker ships no pre-generated content at all. There is no content pack, no bundled corpus and no R2-served data — the subscriptions are the user's own entries, created at runtime — so there is nothing that can be twelve months stale. The user-visible copy (currency formatting, store listing, legal pages) does age, but that is not what this gate measures and each of those has its own owner. This answer is worth nothing to the first content-pack app and must be argued there from that pack's shelf life.",
       "signingThisMeans": "Recording a trivially-passed gate as trivially passed, rather than as a pass. A gate that reads 'PASS' with no reason attached is the shape that gets copied into an app where it is false."
     },
     {
@@ -261,7 +261,7 @@
     },
     "artifact": {
       "appliesTo": "all four humanReview rows",
-      "draft": "255265b — https://subly.nikatru.com (the build reviewed)",
+      "draft": "255265b — https://nikatru.com/subscriptiontracker (the build reviewed)",
       "note": "N-8's replacement acceptance #2: 'a commit SHA or a screenshot path. A verdict with no artifact is a memory.' Replace 255265b with the sha you actually looked at, and if you reviewed screenshots rather than the live site, name the paths instead. The four rows may legitimately carry different artifacts — the polish row is the one most likely to want screenshots (splash and loading states), since those are the limbs it fails on."
     }
   },

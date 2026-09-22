@@ -44,7 +44,7 @@ Neither conditions anything on a path. One apex approval, held once, covers app 
 ### 🔄 SUPERSEDED — the rule this section used to state, kept because the reversal is the useful part
 
 Until 2026-09-09 this file said, under the heading *"TWO ADDRESSES, ONE PRODUCT"*, that
-`nikatru.com/subscriptiontracker` and `subly.nikatru.com` were **"both permanent and they are not the same
+`nikatru.com/subscriptiontracker` and the app's old subdomain were **"both permanent and they are not the same
 thing"**, that **"neither redirects to the other"**, and that the path served marketing while the
 subdomain served the application. It also recorded, correctly for what was known then, that whether
 Paddle's approval extended to the subdomain was **NOT ESTABLISHED**.
