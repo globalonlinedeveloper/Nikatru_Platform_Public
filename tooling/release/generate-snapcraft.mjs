@@ -191,6 +191,20 @@ export const DESKTOP_PLUGS = Object.freeze([
 ]);
 
 /**
+ * ⏱ 2026-09-23 · THE ONE SLOT: the app's own D-Bus name, on the session bus.
+ *
+ * The Linux runner is a UNIQUE GApplication (apps/<id>/linux/runner/
+ * my_application.cc), so a second launch — which is what the browser opening the
+ * auth-callback URL is — forwards its command line to the running instance over
+ * the session bus under APPLICATION_ID. Strict confinement lets a snap own a
+ * well-known bus name only through a `dbus` slot naming it; without the slot
+ * g_application_register() is refused and the runner falls back to NON_UNIQUE
+ * (the exchange still completes, in a second window). The name is the Linux
+ * identity's APPLICATION_ID, read from CMake like every other identity field.
+ */
+export const DBUS_SLOT = 'dbus-application-id';
+
+/**
  * RUNNER LABEL → snapcraft `base`.
  *
  * ✅ SOURCED, fetched 2026-08-08:
@@ -711,6 +725,8 @@ export function deriveSnapcraftFacts({ root, app, bundle, out, version }) {
     grade: GRADE,
     confinement: CONFINEMENT,
     plugs: [...DESKTOP_PLUGS],
+    dbusSlot: DBUS_SLOT,
+    busName: identity.applicationId,
     stagePackages: lane.packages,
     command: identity.binaryName,
     applicationId: identity.applicationId,
@@ -745,7 +761,9 @@ export function deriveSnapcraftFacts({ root, app, bundle, out, version }) {
  *   · `Exec` — freedesktop runs the binary by name off PATH. In a snap the
  *     command is the one snapd exposes, which for an app named after its snap is
  *     the SNAP NAME. The recipe names the app `f.name` a few lines below, so this
- *     is that same string by construction rather than by agreeing today.
+ *     is that same string by construction rather than by agreeing today. Only the
+ *     PROGRAM is rewritten: the field codes after it stay, because `%u` is where
+ *     the desktop puts the com.nikatru.<id>://auth-callback URL (2026-09-23).
  *
  * ⚠️ THE `Icon` LINE IS DROPPED, NOT DEFAULTED, WHEN THE BUNDLE PRIMED NO ICON.
  * A path to a file that will not be in meta/gui is worse than no line at all: the
@@ -757,7 +775,7 @@ export function snapGuiFiles(f) {
     .replace(/\r\n?/g, '\n')
     .split('\n')
     .map((l) => {
-      if (/^Exec=/.test(l)) return `Exec=${f.name}`;
+      if (/^Exec=/.test(l)) return l.replace(/^Exec=\S+/, `Exec=${f.name}`);
       if (/^Icon=/.test(l)) return f.iconRel === null ? null : `Icon=\${SNAP}/meta/gui/${f.name}.png`;
       return l;
     })
@@ -815,6 +833,15 @@ export function renderSnapcraftYaml(f) {
   L.push(`grade: ${f.grade}`);
   L.push(`confinement: ${f.confinement}`);
   L.push('');
+  L.push('# The runner is a unique GApplication: a second launch (the browser opening the');
+  L.push('# auth-callback URL) hands its command line to the running app over the session');
+  L.push('# bus, under the Linux APPLICATION_ID. This slot is what lets the snap own that name.');
+  L.push('slots:');
+  L.push(`  ${f.dbusSlot}:`);
+  L.push('    interface: dbus');
+  L.push('    bus: session');
+  L.push(`    name: ${f.busName}`);
+  L.push('');
   L.push('apps:');
   L.push(`  ${f.name}:`);
   L.push(`    command: ${f.command}`);
@@ -828,6 +855,8 @@ export function renderSnapcraftYaml(f) {
   L.push(`    # The launcher lives in ${GUI_DIR}/, not here — see the generator's snapGuiFiles.`);
   L.push('    plugs:');
   for (const p of f.plugs) L.push(`      - ${p}`);
+  L.push('    slots:');
+  L.push(`      - ${f.dbusSlot}`);
   L.push('');
   L.push('parts:');
   L.push(`  ${f.name}:`);

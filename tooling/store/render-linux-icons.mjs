@@ -58,7 +58,8 @@
 // Its text is NOT typed here. `Comment` and `Categories` come from the app's own
 // `store/linux-snap/*.txt` — the same files the Snap listing is built from — and
 // `Exec`/`Icon` come from `linux/CMakeLists.txt`'s `BINARY_NAME` and
-// `APPLICATION_ID`. [pipeline D-5]'s rule, applied to the one listing-adjacent
+// `APPLICATION_ID`, and `MimeType` from the app id (see authCallbackSchemeOf).
+// [pipeline D-5]'s rule, applied to the one listing-adjacent
 // file that also ships inside the package: a second hand-typed copy of the app's
 // name is the copy that goes stale.
 //
@@ -71,7 +72,7 @@
 // other five OS-level label fields.
 //
 // 🔴 ONE FIELD, ONE SOURCE, TWO GENERATORS — deliberately not one generator. This
-// file owns the WHOLE .desktop entry (nine lines, every one derived) and
+// file owns the WHOLE .desktop entry (ten lines, every one derived) and
 // assert-launcher-icons.mjs limb 7 re-derives it. A second writer patching one
 // line inside it would be two owners of one file, which is the failure this
 // header's own last sentence names. So render.mjs stops at the five files it
@@ -86,7 +87,7 @@
 //   node tooling/store/render-linux-icons.mjs --app subscriptiontracker --check    # verify
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
-import { join, resolve, dirname } from 'node:path';
+import { basename, join, resolve, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 // THE ONE PNG DECODER. Not a local copy: two readers with two ideas of what a
 // PNG is is precisely how assert-stamp-brand-assets.mjs spent weeks comparing
@@ -286,9 +287,16 @@ export function deriveDesktopEntry(appDir) {
       'https://specifications.freedesktop.org/menu-spec/latest/apa.html',
     ]);
   }
+  const scheme = authCallbackSchemeOf(appDir);
   // Field order is fixed so the derivation is a single string comparison.
   // `Icon` is a bare NAME: the spec resolves it through the icon theme, which is
   // what makes one entry serve every size and every packaging layer.
+  //
+  // ⏱ 2026-09-23 · THE AUTH CALLBACK. `MimeType=x-scheme-handler/<scheme>;` is
+  // what makes a browser hand com.nikatru.<id>://auth-callback?… to this app at
+  // all, and `%u` in `Exec` is where the desktop puts that URL on the command
+  // line (Desktop Entry spec, "The Exec key": %u is a single URL). The runner
+  // forwards it to the running instance; app_links gives it to supabase_flutter.
   return (
     [
       '[Desktop Entry]',
@@ -296,12 +304,46 @@ export function deriveDesktopEntry(appDir) {
       'Type=Application',
       `Name=${name}`,
       `Comment=${comment}`,
-      `Exec=${binaryName}`,
+      `Exec=${binaryName} %u`,
       `Icon=${applicationId}`,
       'Terminal=false',
       `Categories=${categories};`,
+      `MimeType=x-scheme-handler/${scheme};`,
     ].join('\n') + '\n'
   );
+}
+
+/**
+ * The app's auth-callback URL scheme: `com.nikatru.<app id>`.
+ *
+ * 🔴 THE SAME DERIVATION AS `authCallbackScheme()` in
+ * packages/auth_supabase/lib/src/auth_redirect.dart, which is what the app puts in
+ * every redirect it sends; tooling/ci/assert-auth-callbacks.mjs holds the two
+ * together. The id is the app declaration's `id` (app.yaml), else the app
+ * directory's name — `apps/<id>/` is how the brick lays an app out. An id outside
+ * `^[a-z][a-z0-9]*$` is REFUSED rather than mangled: a URL scheme may not carry
+ * `_`, and a scheme quietly rewritten here would be one the app never sends.
+ */
+export function authCallbackSchemeOf(appDir) {
+  const p = join(appDir, 'app.yaml');
+  let id = null;
+  if (existsSync(p)) {
+    let doc;
+    try {
+      doc = parseYaml(readFileSync(p, 'utf8'));
+    } catch (e) {
+      throw new LinuxBrandUnavailable([`${p} does not parse (${e.message}), so the app id the auth-callback scheme is derived from cannot be read.`]);
+    }
+    if (doc && typeof doc.id === 'string' && doc.id.trim() !== '') id = doc.id.trim();
+  }
+  if (id === null) id = basename(resolve(appDir));
+  if (!/^[a-z][a-z0-9]*$/.test(id)) {
+    throw new LinuxBrandUnavailable([
+      `the app id "${id}" is not ^[a-z][a-z0-9]*$, so com.nikatru.${id} is not a URL scheme the desktop can register.`,
+      'authCallbackScheme() refuses the same id; the fix is the id, not a rewritten scheme.',
+    ]);
+  }
+  return `com.nikatru.${id}`;
 }
 
 /** Every artefact this generator owns for one app: relative path → bytes. */

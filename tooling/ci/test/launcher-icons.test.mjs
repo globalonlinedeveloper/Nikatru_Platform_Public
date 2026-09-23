@@ -1041,7 +1041,7 @@ describe('flutter-stock-assets', () => {
 //
 // It reads the app declaration's `shortName` — the SAME field
 // tooling/app-yaml/render.mjs renders into the other five OS-level labels. Two
-// generators, one source: this file owns the whole nine-line .desktop entry and
+// generators, one source: this file owns the whole ten-line .desktop entry and
 // render.mjs owns the five files it alone owns, so neither patches the other's.
 //
 // The FALLBACK case is the one that keeps the move honest. An app that has not
@@ -1050,7 +1050,11 @@ describe('flutter-stock-assets', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 describe('the desktop entry Name is the icon label', () => {
   const label = (extra) => {
-    const root = mkdtempSync(join(tmpdir(), 'desktop-name-'));
+    // Under a directory named for the app: with no app.yaml, the auth-callback
+    // scheme's id is the app directory's name (authCallbackSchemeOf), and a
+    // mkdtemp suffix is not an id.
+    const parent = mkdtempSync(join(tmpdir(), 'desktop-name-'));
+    const root = join(parent, 'demo');
     const listing = join(root, 'store', 'linux-snap');
     mkdirSync(listing, { recursive: true });
     writeFileSync(join(listing, 'title.txt'), 'Demo Store Title\n');
@@ -1065,7 +1069,7 @@ describe('the desktop entry Name is the icon label', () => {
     try {
       return deriveDesktopEntry(root).match(/^Name=(.*)$/m)[1];
     } finally {
-      rmSync(root, { recursive: true, force: true });
+      rmSync(parent, { recursive: true, force: true });
     }
   };
 
@@ -1096,6 +1100,18 @@ describe('the desktop entry Name is the icon label', () => {
     const title = readFileSync(join(appDir, 'store', 'linux-snap', 'title.txt'), 'utf8').trim();
     assert.equal(name, declared);
     assert.notEqual(name, title, 'the two are the same string here, so this case cannot tell which one was read');
+  });
+
+  // ⏱ 2026-09-23 · the auth callback. The entry registers com.nikatru.<id> and
+  // takes the URL as %u — the scheme authCallbackScheme() puts in every redirect.
+  test('the real tree: the entry registers the auth-callback scheme and takes the URL as %u', () => {
+    const text = deriveDesktopEntry(join(REPO, 'apps', 'subscriptiontracker'));
+    assert.match(text, /^Exec=subscription-tracker %u$/m);
+    assert.match(text, /^MimeType=x-scheme-handler\/com\.nikatru\.subscriptiontracker;$/m);
+  });
+
+  test('an app id that is not a URL scheme is REFUSED, never rewritten', () => {
+    assert.throws(() => label('id: demo_app\nname: Demo Store Title\n'), /not \^\[a-z\]\[a-z0-9\]\*\$/);
   });
 });
 

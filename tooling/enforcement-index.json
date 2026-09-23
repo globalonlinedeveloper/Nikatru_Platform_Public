@@ -356,6 +356,16 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-chassis"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-auth-callbacks.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "D-1"
     ],

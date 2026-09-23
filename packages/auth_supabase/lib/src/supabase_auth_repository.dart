@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 
+import 'auth_redirect.dart';
+
 /// Supabase (GoTrue) implementation of core's [core.AuthRepository].
 ///
 /// [pipeline C-15] THE ONLY PLACE THE SUPABASE SDK IS IMPORTED. Everything above
@@ -19,7 +21,7 @@ class SupabaseAuthRepository implements core.AuthRepository {
     sb.GoTrueClient? client,
     Future<void> Function()? requestServerDeletion,
     DateTime Function()? clock,
-    this.passwordResetRedirectTo,
+    this.redirects = AuthRedirects.none,
     this.refreshSkew = const Duration(seconds: 30),
   })  : _injected = client,
         _requestServerDeletion = requestServerDeletion,
@@ -27,27 +29,35 @@ class SupabaseAuthRepository implements core.AuthRepository {
 
   final sb.GoTrueClient? _injected;
 
-  /// Where the emailed password-reset link sends the user back to.
+  /// Where each mail or browser hop this adapter starts sends the user back to
+  /// — one answer per [AuthFlow], asked at the call that starts the flow.
   ///
-  /// 🔴 NULL MEANS "THE PROJECT'S SITE URL", WHICH IS A REAL DESTINATION AND
-  /// USUALLY THE WRONG ONE. gotrue substitutes `site_url` when no `redirect_to`
-  /// is given, and this project's Site URL is app #1's web home — so with this
-  /// left null, app #2's reset mail sends its users into app #1. Nothing about
-  /// that is visible from inside app #2: the mail sends, the link works, and the
-  /// person lands somewhere else entirely.
+  /// 🔴 A NULL ANSWER MEANS "THE PROJECT'S SITE URL", WHICH IS A REAL
+  /// DESTINATION AND USUALLY THE WRONG ONE. gotrue substitutes `site_url` when
+  /// no `redirect_to` is given, and this project's Site URL is app #1's web
+  /// home — so app #2's confirmation, reset and OAuth hops would all send its
+  /// users into app #1, and every NATIVE build's hop would land on a web page
+  /// that does not hold the PKCE verifier. Nothing about that is visible from
+  /// inside app #2: the mail sends, the link works, and the person lands
+  /// somewhere else entirely.
+  ///
+  /// ⏱ 2026-09-23 — this was `passwordResetRedirectTo`, ONE URL for ONE flow.
+  /// `signUp`, `resend`, `signInWithOAuth` and `linkIdentity` passed nothing.
+  /// `tooling/ci/assert-auth-callbacks.mjs` now fails the build on any
+  /// link-sending GoTrue call in this package that does not pass
+  /// `redirects(AuthFlow.<flow>)`.
   ///
   /// Injected rather than computed here because the answer is a property of the
   /// BUILD, not of this class: on web it is the origin this binary was served
-  /// from (see `passwordResetRedirectUrl`), and on a native target it is a
-  /// custom scheme that must be registered with the OS and added to the
-  /// project's redirect allow-list before it resolves at all. Neither is
-  /// knowable from inside the adapter.
+  /// from, and on a native target it is the `com.nikatru.<app id>` scheme that
+  /// target registers with its OS (see `authRedirectUrl`). Neither is knowable
+  /// from inside the adapter. [AuthRedirects.none], the default, sends nothing.
   ///
-  /// ⚠️ THE VALUE MUST BE ON THE PROJECT'S REDIRECT ALLOW-LIST. gotrue does not
-  /// error on a URL that is not: it silently falls back to the Site URL, which
-  /// is the same observable behaviour as passing null. A misconfigured
+  /// ⚠️ EVERY VALUE MUST BE ON THE PROJECT'S REDIRECT ALLOW-LIST. gotrue does
+  /// not error on a URL that is not: it silently falls back to the Site URL,
+  /// which is the same observable behaviour as passing null. A misconfigured
   /// allow-list therefore looks exactly like a working one.
-  final String? passwordResetRedirectTo;
+  final AuthRedirects redirects;
 
   /// How far AHEAD of the real expiry a token counts as expired.
   ///
@@ -226,6 +236,9 @@ class SupabaseAuthRepository implements core.AuthRepository {
       email: email,
       password: password,
       captchaToken: captchaToken,
+      // The confirmation mail's link. Without it the user confirms into the
+      // project's Site URL — app #1's web home — whichever app they signed up in.
+      emailRedirectTo: redirects(AuthFlow.signUpConfirm),
     );
     final core.AuthUser? u = _map(res.user);
     if (u == null) throw core.AuthFailure('Sign-up failed');
@@ -246,6 +259,9 @@ class SupabaseAuthRepository implements core.AuthRepository {
     // there is no continuation to return to.
     await _auth.signInWithOAuth(
       sb.OAuthProvider.apple,
+      // On native this is the scheme the OS hands back to THIS installation,
+      // which is the only one holding the PKCE verifier the exchange needs.
+      redirectTo: redirects(AuthFlow.oauth),
       authScreenLaunchMode: kIsWeb
           ? sb.LaunchMode.platformDefault
           : sb.LaunchMode.externalApplication,
@@ -254,7 +270,7 @@ class SupabaseAuthRepository implements core.AuthRepository {
 
   /// 🔴 `redirectTo:` IS THE ARGUMENT THAT WAS MISSING, and without it the link
   /// resolves to the PROJECT's Site URL — one URL shared by every app in the
-  /// portfolio. See [passwordResetRedirectTo] for why the value is injected.
+  /// portfolio. See [redirects] for why the value is injected.
   ///
   /// ⚠️ THIS CALL MINTS A PKCE VERIFIER AND KEEPS IT HERE. gotrue generates a
   /// code challenge inside `resetPasswordForEmail` and stores the verifier in
@@ -269,7 +285,7 @@ class SupabaseAuthRepository implements core.AuthRepository {
   Future<void> sendPasswordReset(String email, {String? captchaToken}) =>
       _auth.resetPasswordForEmail(
         email,
-        redirectTo: passwordResetRedirectTo,
+        redirectTo: redirects(AuthFlow.reset),
         captchaToken: captchaToken,
       );
 
@@ -325,6 +341,9 @@ class SupabaseAuthRepository implements core.AuthRepository {
       type: sb.OtpType.signup,
       email: email,
       captchaToken: captchaToken,
+      // The same destination as the first confirmation mail — a resend that
+      // pointed somewhere else would confirm the user into a different app.
+      emailRedirectTo: redirects(AuthFlow.signUpConfirm),
     );
   }
 
@@ -371,6 +390,7 @@ class SupabaseAuthRepository implements core.AuthRepository {
     // outright in embedded webviews and standalone PWAs [G-43].
     await _auth.linkIdentity(
       sb.OAuthProvider.apple,
+      redirectTo: redirects(AuthFlow.linkIdentity),
       authScreenLaunchMode: kIsWeb
           ? sb.LaunchMode.platformDefault
           : sb.LaunchMode.externalApplication,

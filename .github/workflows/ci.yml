@@ -527,6 +527,13 @@ jobs:
         run: node tooling/ci/assert-adapter-capabilities.mjs
       - name: The inherited screen set is declared, present and reachable
         run: node tooling/ci/assert-screen-set.mjs
+      # why its own step when assert-screen-set above already imports it: that
+      # import only asks "has it shipped?" to judge a blocker, and a `present`
+      # row never asks again. This step holds the callback itself — every native
+      # target registers com.nikatru.<id>://auth-callback, the allow list admits
+      # every flow, every link-sending call passes its redirect — on every push.
+      - name: Every native target registers the app's auth callback, and every link-sending call passes its redirect
+        run: node tooling/ci/assert-auth-callbacks.mjs
       - name: Every reachable surface has a width measurement, and every measurement a surface
         run: node tooling/ci/assert-responsive-coverage.mjs
       - name: Every reachable surface has an accessibility sweep, and every sweep a surface

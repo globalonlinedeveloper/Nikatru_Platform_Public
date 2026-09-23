@@ -1517,6 +1517,14 @@
       "test": "tooling/ci/test/store-metadata.test.mjs",
       "case": "FAILS \"No\" on the payment gateway when the row declares a rail that sells",
       "proves": "The paymentGateway and financial-transactions answers are read off channel-register purchaseRail.rail (ADR 094 item 5). The case flips the row to a selling rail under a typed \"No\"; it exits 1 only if the answer is derived from the row. Added 2026-09-23 with the apps-gov-in-apk-1 lane."
+    },
+    {
+      "file": "tooling/ci/assert-auth-callbacks.mjs",
+      "anchor": "off `enum AuthFlow` so the allow-list limb cannot drift from it",
+      "status": "proven",
+      "test": "tooling/ci/test/auth-callbacks.test.mjs",
+      "case": "FAILS when enum AuthFlow gains a marker the allow list does not admit",
+      "proves": "The case adds magicLink('magic-link') to enum AuthFlow in a fixture copy and requires exit 1 naming the missing `?nk_auth=magic-link` allow-list entry; it passes only while the allow-list limb reads its markers off the enum. Mutation 2026-09-23: the enum read at assert-auth-callbacks.mjs:238 replaced with a typed list of the five markers turns it red; restored byte-exact (sha256 0534ce7cefa16d55), green again. Added with the native-auth-callback lane (sign-in audit PR A)."
     }
   ],
   "backlog": {}

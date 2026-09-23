@@ -43,6 +43,7 @@ const ATTR_IDS = {
   debuggable: 0x0101000f, exported: 0x01010010, value: 0x01010024, resource: 0x01010025,
   minSdkVersion: 0x0101020c, targetSdkVersion: 0x01010270, allowBackup: 0x01010280,
   usesCleartextTraffic: 0x010104ec, networkSecurityConfig: 0x01010527, label: 0x01010001, icon: 0x01010002, scheme: 0x01010027,
+  host: 0x01010028, pathPattern: 0x0101002c,
 };
 
 const A = (name, value) => ({ android: true, name, value });
@@ -342,6 +343,61 @@ describe('assert-android-vapt-manifest', () => {
       el('data', [A('scheme', 'demo')]),
     ]);
     const { code, out } = run(fixture({ manifest: baseManifest({ activityFilters: [launcherFilter(), deepLink] }) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /FAIL V5 exported — <activity android:name="com\.example\.demo\.MainActivity">/);
+  });
+
+  // ⏱ 2026-09-23 · the ONE recorded deep link: this app's auth callback, exact.
+  const authFilter = ({ datas = [el('data', [A('scheme', 'com.nikatru.demo'), A('host', 'auth-callback')])], cats = ['DEFAULT', 'BROWSABLE'], action = 'VIEW' } = {}) =>
+    el('intent-filter', [], [
+      el('action', [A('name', `android.intent.action.${action}`)]),
+      ...cats.map((c) => el('category', [A('name', `android.intent.category.${c}`)])),
+      ...datas,
+    ]);
+
+  test('V5: the launcher keeps its exemption with the exact auth callback beside it, and names it', () => {
+    const { code, out } = run(fixture({ manifest: baseManifest({ activityFilters: [launcherFilter(), authFilter()] }) }));
+    assert.equal(code, 0, out);
+    assert.match(out, /exported: activity com\.example\.demo\.MainActivity — launcher entry point \+ auth callback com\.nikatru\.demo:\/\/auth-callback/);
+  });
+
+  test('V5: the auth callback split over two <data> elements is still exact, and passes', () => {
+    const datas = [el('data', [A('scheme', 'com.nikatru.demo')]), el('data', [A('host', 'auth-callback')])];
+    const { code, out } = run(fixture({ manifest: baseManifest({ activityFilters: [launcherFilter(), authFilter({ datas })] }) }));
+    assert.equal(code, 0, out);
+  });
+
+  // Each near-miss is its own `test(` (assert-no-loop-cases): a row deleted from
+  // a loop would delete a case coverage-manifest.json cannot see.
+  const notTheRecordedOne = (opts) => () => {
+    const { code, out } = run(fixture({ manifest: baseManifest({ activityFilters: [launcherFilter(), authFilter(opts)] }) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /FAIL V5 exported — <activity android:name="com\.example\.demo\.MainActivity">/);
+  };
+
+  test('V5: an auth-callback filter with another app\'s scheme is NOT the recorded one, and fails',
+    notTheRecordedOne({ datas: [el('data', [A('scheme', 'com.nikatru.other'), A('host', 'auth-callback')])] }));
+
+  test('V5: an auth-callback filter with another host is NOT the recorded one, and fails',
+    notTheRecordedOne({ datas: [el('data', [A('scheme', 'com.nikatru.demo'), A('host', 'anything')])] }));
+
+  test('V5: an auth-callback filter with no host at all (any host would match) is NOT the recorded one, and fails',
+    notTheRecordedOne({ datas: [el('data', [A('scheme', 'com.nikatru.demo')])] }));
+
+  test('V5: an auth-callback filter with an https scheme riding beside it (schemes combine) is NOT the recorded one, and fails',
+    notTheRecordedOne({ datas: [el('data', [A('scheme', 'com.nikatru.demo'), A('host', 'auth-callback')]), el('data', [A('scheme', 'https')])] }));
+
+  test('V5: an auth-callback filter with a path pattern on it is NOT the recorded one, and fails',
+    notTheRecordedOne({ datas: [el('data', [A('scheme', 'com.nikatru.demo'), A('host', 'auth-callback'), A('pathPattern', '.*')])] }));
+
+  test('V5: an auth-callback filter with another action (SEND for VIEW) is NOT the recorded one, and fails',
+    notTheRecordedOne({ action: 'SEND' }));
+
+  test('V5: an auth-callback filter with no BROWSABLE category is NOT the recorded one, and fails',
+    notTheRecordedOne({ cats: ['DEFAULT'] }));
+
+  test('V5: the exact auth callback on an activity WITHOUT the launcher filter fails — it rides the launcher exemption, it is not one', () => {
+    const { code, out } = run(fixture({ manifest: baseManifest({ activityFilters: [authFilter()] }) }));
     assert.equal(code, 1, out);
     assert.match(out, /FAIL V5 exported — <activity android:name="com\.example\.demo\.MainActivity">/);
   });

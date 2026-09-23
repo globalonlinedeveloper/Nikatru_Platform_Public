@@ -26,8 +26,8 @@ import 'auth_error_text.dart';
 /// and this screen's address is `…/#/reset-password` — the route lives in the
 /// fragment, where the `?code=` gotrue appends would be invisible to the SDK.
 /// So the link points at the app ROOT with the route in the fragment and a
-/// marker in the QUERY (`passwordResetRedirectUrl`), the SDK exchanges the code
-/// off the query, and:
+/// marker in the QUERY (`authRedirectUrl` with `AuthFlow.reset`), the SDK
+/// exchanges the code off the query, and:
 ///
 ///   · ON SUCCESS, `AuthEventKind.passwordRecovery` says why the app was opened
 ///     — the only thing that can, since a recovery session is byte-for-byte an

@@ -22,8 +22,33 @@
 	<string>$(FLUTTER_BUILD_NAME)</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
+	<!-- ⏱ 2026-09-23 · THE AUTH CALLBACK. gotrue ends sign-up confirmation,
+	     OAuth, identity linking and password reset at
+	     com.nikatru.subscriptiontracker://auth-callback?nk_auth=<flow>&amp;code=…;
+	     this registration brings it back here, where supabase_flutter's
+	     app_links listener exchanges the PKCE code. One source for the scheme:
+	     authCallbackScheme() in packages/auth_supabase/lib/src/auth_redirect.dart;
+	     tooling/ci/assert-auth-callbacks.mjs fails the build if this drifts. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>CFBundleURLName</key>
+			<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.nikatru.subscriptiontracker</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<!-- The callback is for the SDK, not the router: with Flutter's own deep
+	     linking on, the engine would also push /?nk_auth=…&amp;code=… to
+	     go_router as a route. app_links' own example turns it off the same way. -->
+	<key>FlutterDeepLinkingEnabled</key>
+	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>

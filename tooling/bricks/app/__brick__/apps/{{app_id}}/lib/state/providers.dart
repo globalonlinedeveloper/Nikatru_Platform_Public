@@ -1062,20 +1062,22 @@ authRepositoryProvider = Provider<core.AuthRepository>((ref) {
   return SupabaseAuthRepository(
     requestServerDeletion: () =>
         requestAccountDeletion(ref.read(restClientProvider)),
-    // 🔴 WITHOUT THIS THE RESET MAIL POINTS AT THE PROJECT'S SITE URL, which
+    // 🔴 WITHOUT THIS EVERY AUTH MAIL POINTS AT THE PROJECT'S SITE URL, which
     // is ONE URL for the whole portfolio — so a stamped app's users would
-    // follow their reset link into a DIFFERENT app. Nothing inside this app
-    // could see it: the mail sends, the link resolves, the page loads.
+    // confirm, reset and return from OAuth into a DIFFERENT app. Nothing
+    // inside this app could see it: the mail sends, the link resolves, the
+    // page loads.
     //
-    // Resolved from the running origin rather than compiled in, so a preview
-    // deployment and a local run each send their own users back to
-    // themselves. Off web it is null — no native target here registers a URI
-    // scheme yet — and null means "fall back to the Site URL", which for a
-    // native build is at least a page that exists.
-    passwordResetRedirectTo: passwordResetRedirectUrl(
-      isWeb: kIsWeb,
-      base: Uri.base,
-    ),
+    // ⏱ 2026-09-23 — one derivation for all five link-sending calls. On web it
+    // is resolved from the running origin rather than compiled in, so a
+    // preview deployment and a local run each send their own users back to
+    // themselves. Off web it is `com.nikatru.<appId>://auth-callback` — which
+    // a stamped app does NOT register yet: the brick stamps web only
+    // (O-BRICK-STAMPS-WEB-ONLY), so no native manifest here carries the
+    // scheme, gotrue replaces the unlisted redirect with the Site URL, and
+    // `authCapabilitiesProvider` below keeps the OAuth door closed off web.
+    // Stamping the native registrations is that row's work, not this line's.
+    redirects: AuthRedirects.current(appId: AppConfig.appId),
   );
 });
 
@@ -1487,6 +1489,11 @@ Future<void> signOutAndForgetUser(WidgetRef ref) async {
 
 /// What identity can actually do on THIS platform — declared, not assumed.
 /// Ask before promising the user something the platform cannot deliver.
+///
+/// ⏱ 2026-09-23 — NO registered callback targets, and that is the truth: the
+/// brick stamps web only (O-BRICK-STAMPS-WEB-ONLY), so no native manifest of a
+/// stamped app registers `com.nikatru.<appId>`, and every native row reports
+/// `oauthRedirect: false`. Web needs no registration — the page is the callback.
 final Provider<AuthCapabilities> authCapabilitiesProvider =
     Provider<AuthCapabilities>((ref) => AuthCapabilities.current());
 
@@ -1494,11 +1501,10 @@ final Provider<AuthCapabilities> authCapabilitiesProvider =
 /// question [authCapabilitiesProvider] answers, and the half that was missing.
 ///
 /// A provider rather than a bare constant read at the call site so a test can
-/// override it and drive BOTH arms of the gate. That is not ceremony: every
-/// row of `AuthCapabilities.forPlatform` except fuchsia says `oauthRedirect:
-/// true`, so with the platform axis alone the "button is hidden" case is
-/// unreachable on anything this portfolio ships, and an assertion that cannot
-/// fail is worse than none.
+/// override it and drive BOTH arms of the gate. That is not ceremony: a stamped
+/// app ships web, where `oauthRedirect` is always true, so with the platform
+/// axis alone the "button is hidden" case is unreachable on anything it ships,
+/// and an assertion that cannot fail is worse than none.
 final Provider<AuthProviders> authProvidersProvider = Provider<AuthProviders>(
   (ref) => AuthProviders.configured,
 );

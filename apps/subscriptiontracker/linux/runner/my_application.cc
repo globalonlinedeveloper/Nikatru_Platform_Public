@@ -22,6 +22,19 @@ static void first_frame_cb(MyApplication* self, FlView* view) {
 // Implements GApplication::activate.
 static void my_application_activate(GApplication* application) {
   MyApplication* self = MY_APPLICATION(application);
+
+  // ⏱ 2026-09-23 · ONE WINDOW. A second launch — which is what opening
+  // com.nikatru.subscriptiontracker://auth-callback?… from the browser is —
+  // reaches THIS process as a remote activate; it raises the window that is
+  // already running, and the link itself follows as a remote command line (see
+  // my_application_local_command_line). Checked BEFORE a window is created,
+  // or the new window would always be the one found.
+  GList* windows = gtk_application_get_windows(GTK_APPLICATION(application));
+  if (windows != nullptr) {
+    gtk_window_present(GTK_WINDOW(windows->data));
+    return;
+  }
+
   GtkWindow* window =
       GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(application)));
 
@@ -106,15 +119,36 @@ static gboolean my_application_local_command_line(GApplication* application,
 
   g_autoptr(GError) error = nullptr;
   if (!g_application_register(application, nullptr, &error)) {
-    g_warning("Failed to register: %s", error->message);
-    *exit_status = 1;
-    return TRUE;
+    // The session bus refused the name — a sandbox with no D-Bus slot for it.
+    // Run as the unique-less app `flutter create` made, rather than not at all:
+    // the callback link then opens a second copy, which still completes the
+    // exchange (same storage, same PKCE verifier), just in a new window.
+    g_warning("Could not register as the single instance (%s); running "
+              "NON_UNIQUE, so an auth callback opens a second window.",
+              error->message);
+    g_clear_error(&error);
+    g_application_set_flags(
+        application, static_cast<GApplicationFlags>(
+                         G_APPLICATION_NON_UNIQUE |
+                         G_APPLICATION_HANDLES_COMMAND_LINE |
+                         G_APPLICATION_HANDLES_OPEN));
+    if (!g_application_register(application, nullptr, &error)) {
+      g_warning("Failed to register: %s", error->message);
+      *exit_status = 1;
+      return TRUE;
+    }
   }
 
   g_application_activate(application);
   *exit_status = 0;
 
-  return TRUE;
+  // ⏱ 2026-09-23 · FALSE, NOT TRUE: hand the command line on. GApplication
+  // then emits "command-line" — in THIS process when it is the first, or in
+  // the running one over D-Bus when it is a second launch — and the gtk
+  // plugin's handler passes the arguments to app_links, which is how
+  // supabase_flutter receives com.nikatru.subscriptiontracker://auth-callback?…
+  // Returning TRUE (the template's choice) handled it here and dropped it.
+  return FALSE;
 }
 
 // Implements GApplication::startup.
@@ -160,7 +194,18 @@ MyApplication* my_application_new() {
   // the application to be recognized beyond its binary name.
   g_set_prgname(APPLICATION_ID);
 
-  return MY_APPLICATION(g_object_new(my_application_get_type(),
-                                     "application-id", APPLICATION_ID, "flags",
-                                     G_APPLICATION_NON_UNIQUE, nullptr));
+  // ⏱ 2026-09-23 · UNIQUE, and it takes the command line. Was
+  // G_APPLICATION_NON_UNIQUE: every launch its own process, so the browser's
+  // com.nikatru.subscriptiontracker://auth-callback?… started a SECOND app
+  // beside the one waiting for it. Now the first launch owns APPLICATION_ID on
+  // the session bus and later launches forward their arguments to it (the
+  // shape the gtk plugin documents). The .desktop entry's `Exec=… %u` and
+  // `MimeType=x-scheme-handler/com.nikatru.subscriptiontracker;` are what make
+  // the browser launch this binary with the URL at all; the snap declares the
+  // bus name as a dbus slot. tooling/ci/assert-auth-callbacks.mjs reads all
+  // three.
+  return MY_APPLICATION(g_object_new(
+      my_application_get_type(), "application-id", APPLICATION_ID, "flags",
+      G_APPLICATION_HANDLES_COMMAND_LINE | G_APPLICATION_HANDLES_OPEN,
+      nullptr));
 }
