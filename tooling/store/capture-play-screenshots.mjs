@@ -159,6 +159,7 @@ import { foldsOf, foldFor, foldLineProblems, selfTestFoldLineDetector, FOLD_ROWS
 import { scanCaptureSuite, selfTestAccountAddressDetector } from './capture-suite-scan.mjs';
 import { stageFallbackFonts, unstageFallbackFonts } from './capture-fallback-fonts.mjs';
 import { boardFileFor, boardOf, boardParityProblems, boardProvenance } from './capture-board-parity.mjs';
+import { appVersionDefine, StampRefused } from '../e2e/app-version-stamp.mjs';
 import {
   launchDefineArgs,
   scanTopBand,
@@ -630,6 +631,59 @@ function deviceTypeSets() {
 
 const { dirs: SET_DIRS, minDistinct: MIN_DISTINCT_TYPES, coverageSource: COVERAGE_SOURCE } = deviceTypeSets();
 
+// ── 🔴 THE STAMP AND THE CONSENT LEDGER (pipeline B-17, 2026-09-23) ──────────
+// A live drive answers the consent prompt, and the app uploads that answer to
+// production platform_db `consent_artifacts` stamped with the build's
+// APP_VERSION. Before this limb the capture passed no APP_VERSION, so the build
+// fell back to `dev`, and the Linux job of run 35818960378 left two `dev`
+// consent rows in production: no provenance resolver can attribute `dev`, and
+// the purge after the capture had no id to delete them by.
+//
+// So a live run needs two things, and REFUSES here without either — below the
+// checks that read only the tree, above chromedriver, the PNG clean, the board
+// directory and the font staging, so a refused run has touched nothing:
+//   · APP_VERSION — `appVersionDefine` in tooling/e2e/app-version-stamp.mjs.
+//     Inside store-screenshots.yml it is DERIVED from the Actions default env
+//     (cap-<GITHUB_RUN_NUMBER>-<GITHUB_SHA::7>), which the monitor's
+//     `store-capture` resolver witnesses against that workflow's runs. Outside
+//     Actions only STORE_CAPTURE_APP_VERSION=rehearsal-<10-digit epoch> is
+//     accepted, and the monitor refuses that shape on purpose.
+//   · E2E_CONSENT_LEDGER — the file this run records each drive's consent
+//     answer and install id in, which tooling/e2e/purge.mjs reads afterwards
+//     (`resolveCaptureConsentIds` in tooling/e2e/consent_anon_id.mjs).
+// `--proof` is a demo build that writes nothing to production and needs neither.
+let STAMP_DEFINE = [];
+try {
+  STAMP_DEFINE = appVersionDefine({ lane: 'store-capture', live: !PROOF });
+} catch (e) {
+  if (!(e instanceof StampRefused)) throw e;
+  fail([
+    'a live capture needs an APP_VERSION stamp and none can be derived.',
+    e.message,
+    '',
+    'Without it the build stamps APP_VERSION=dev on every consent row it uploads to production, and',
+    'tooling/ops/check-prod-provenance.mjs can attribute no `dev` row to any run.',
+  ]);
+}
+const STAMP = STAMP_DEFINE.length ? STAMP_DEFINE[1].slice('APP_VERSION='.length) : null;
+const LEDGER = PROOF ? null : process.env.E2E_CONSENT_LEDGER || null;
+if (!PROOF && !LEDGER) {
+  fail([
+    'a live capture needs E2E_CONSENT_LEDGER and it is not set.',
+    '',
+    'Each drive answers the consent prompt and uploads a row to production platform_db. The ledger is',
+    'where this run records the install id each row is keyed by, and tooling/e2e/purge.mjs deletes by',
+    "it after the capture (the purge step's env names the same path). Without it the rows stay behind.",
+  ]);
+}
+/** The ledger is rewritten WHOLE and SYNCHRONOUSLY at every change, so a job
+ *  cancelled mid-drive still leaves a readable file naming the board record to
+ *  read the id from. */
+const ledger = { stamp: STAMP, drives: [] };
+const writeLedger = () => {
+  if (LEDGER) writeFileSync(LEDGER, `${JSON.stringify(ledger, null, 2)}\n`);
+};
+
 // 🔴 CHROMEDRIVER IS RESOLVED BEFORE ANY BYTES ARE DELETED. It used to be
 // resolved after, which meant a machine without chromedriver — the owner's, as
 // measured 2026-08-21: not on PATH, CHROMEDRIVER unset — EMPTIED THE PUBLISHED
@@ -690,6 +744,8 @@ const pass = (k) => {
   if (process.env[k]) defines.push('--dart-define', `${k}=${process.env[k]}`);
 };
 for (const k of need) pass(k);
+// The stamp resolved above ([] on `--proof`). See "THE STAMP AND THE CONSENT LEDGER".
+defines.push(...STAMP_DEFINE);
 
 // 🔴 THE CAPTCHA SITE KEY, BECAUSE A LIVE WEB BUILD WITHOUT IT IS AN ERROR —
 // AND RUN 35488534460 RAISED EXACTLY THAT ERROR, AS THE SECOND OF ITS TWO.
@@ -781,6 +837,7 @@ try {
   if (!NATIVE && !(await waitForDriver())) {
     fail([`chromedriver did not become ready on port 4444.`, cdErr.trim() || '(no stderr)']);
   }
+  writeLedger();
   for (const cap of CAPTURES) {
     const dir = join(baseDir, SET_DIRS[cap.type]);
     // ⚠️ THE DIMENSION LEVER IS NOT THE SAME LEVER ON A NATIVE DRIVE, and that
@@ -857,12 +914,22 @@ try {
     // indistinguishable here from `web-server`. Nothing in `args` is built that
     // way; a future one must be redacted where it is added, not here.
     // `true`/`false` values are left visible so STORE_CAPTURE_ALLOW_DEMO reads.
+    // APP_VERSION is left visible too: the stamp is not a secret, and this line
+    // is where a reader of the log sees what the drive's rows are stamped with.
     const redactDefine = (a) => {
       const m = /^(--dart-define=)?([A-Za-z_][A-Za-z0-9_]*)=([\s\S]*)$/.exec(a);
       if (!m) return a;
-      return m[3] === 'true' || m[3] === 'false' ? a : `${m[1] ?? ''}${m[2]}=<redacted>`;
+      return m[2] === 'APP_VERSION' || m[3] === 'true' || m[3] === 'false' ? a : `${m[1] ?? ''}${m[2]}=<redacted>`;
     };
     console.log(`flutter ${args.map(redactDefine).join(' ')}`);
+    // Recorded BEFORE the drive: if the job is cancelled mid-drive, the ledger
+    // still names the board record the purge must read the install id from.
+    const record = boardFileFor(boardDir, cap);
+    const drive = { viewport: cap.type, record, state: 'driving' };
+    if (LEDGER) {
+      ledger.drives.push(drive);
+      writeLedger();
+    }
     // `shell: true` on Windows is REQUIRED, not sloppiness, and Node prints a
     // deprecation warning about it that invites exactly the wrong fix. `flutter`
     // on Windows is `flutter.bat`, and Node has refused to spawn `.bat`/`.cmd`
@@ -887,6 +954,24 @@ try {
         STORE_BOARD_FILE: boardFileFor(boardDir, cap).replace(/\\/g, '/'),
       },
     });
+    // BEFORE the status check below, which `fail()`s out at the first failing
+    // viewport: a failed drive may still have answered the prompt, and its
+    // board record (written on failure too) is the only copy of the id.
+    if (LEDGER) {
+      let rec = null;
+      try {
+        rec = JSON.parse(readFileSync(record, 'utf8'));
+      } catch {
+        rec = null;
+      }
+      Object.assign(drive, {
+        state: 'done',
+        exit: run.status,
+        consent_prompt: rec?.consent_prompt ?? null,
+        consent_anon_id: rec?.consent_anon_id ?? null,
+      });
+      writeLedger();
+    }
     const exitCode = run.status ?? 1;
     // Stop at the FIRST failing viewport. Continuing would leave a half-captured
     // listing whose later sets look complete, and the failure below names the

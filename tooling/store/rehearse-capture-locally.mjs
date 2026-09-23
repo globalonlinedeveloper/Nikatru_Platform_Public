@@ -512,6 +512,17 @@ const scratch = mkdtempSync(join(tmpdir(), 'nk-rehearse-'));
 const outFile = join(scratch, 'github-output.txt');
 writeFileSync(outFile, '', 'utf8');
 
+// [pipeline B-17, 2026-09-23] THE STAMP AND THE CONSENT LEDGER. The capture
+// writes consent rows to PRODUCTION platform_db, and it REFUSES a live run that
+// carries neither an APP_VERSION stamp nor a ledger for the purge to read.
+// Outside Actions the only stamp tooling/e2e/app-version-stamp.mjs accepts is
+// `rehearsal-<10-digit epoch>`: unique per invocation, and deliberately one the
+// production provenance monitor refuses, so a rehearsal row the purge below
+// misses stays red instead of passing as a CI run's. The ledger lives in
+// `scratch`, which is removed only after the purge has read it.
+const rehearsalStamp = `rehearsal-${Math.floor(Date.now() / 1000)}`;
+const consentLedger = join(scratch, 'store-capture-consent.json');
+
 let provisioned = null;
 let captureCode = 1;
 try {
@@ -560,7 +571,13 @@ try {
     'capture the set',
     process.execPath,
     [join(ROOT, 'tooling', 'store', 'capture-play-screenshots.mjs'), '--app', APP],
-    { ...baseEnv, E2E_EMAIL: provisioned.email, E2E_PASSWORD: provisioned.password },
+    {
+      ...baseEnv,
+      E2E_EMAIL: provisioned.email,
+      E2E_PASSWORD: provisioned.password,
+      STORE_CAPTURE_APP_VERSION: rehearsalStamp,
+      E2E_CONSENT_LEDGER: consentLedger,
+    },
   );
   captureCode = cc;
   // `flutter drive` runs its own implicit pub get, so the analysis_options
@@ -588,6 +605,13 @@ try {
       // The same literal the workflow's purge step carries. A database id is not
       // a credential; it is in the workflow in clear for the same reason.
       SUBSCRIPTIONTRACKER_D1_DATABASE_ID: '0a36d6a0-c909-40aa-853e-970de3482321',
+      // The capture's consent rows live in platform_db, not the app's own D1:
+      // the same literal store-screenshots.yml's purge steps carry. With the
+      // ledger the capture wrote, purge.mjs deletes by every drive's install id
+      // and by the rehearsal stamp.
+      PLATFORM_D1_DATABASE_ID: '9d1c5c63-97fe-4f82-bc7d-f3fd22e9b351',
+      E2E_APP_ID: APP,
+      E2E_CONSENT_LEDGER: consentLedger,
     });
     if (code !== 0) {
       console.error('');

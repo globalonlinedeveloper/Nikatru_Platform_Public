@@ -26,7 +26,7 @@
 // it in assert-guard-coverage.mjs's set of workflow-invoked executables, which
 // is a claim about a script CI runs directly.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
 /** The token the DRIVER prints on the host. The app prints the same string into
  *  the browser console, where nothing reads it — see the note in
@@ -101,6 +101,78 @@ function fromResponseData(path, name, notes) {
   }
   notes.push(`${name}: ${path} → ${value}`);
   return value;
+}
+
+/** Every consent anon_id a STORE CAPTURE's drives reported, read from the
+ *  ledger tooling/store/capture-play-screenshots.mjs writes (born 2026-09-23).
+ *
+ *  A capture runs one drive per viewport, and each drive answers the DPDP
+ *  prompt in a fresh profile, so one run can leave several consent rows — not
+ *  the one row the nightly's `resolveConsentAnonId` looks for. The runner writes
+ *  the ledger `{ stamp, drives: [{ viewport, record, state, exit?,
+ *  consent_prompt?, consent_anon_id? }] }` synchronously: a drive is entered as
+ *  `state: 'driving'` BEFORE it starts, so a job cancelled mid-drive still names
+ *  the board record to read the id from.
+ *
+ *  Returns `{ stamp, ids, unresolved, notes }`:
+ *    · `ids` — deduped, ANON_ID_SHAPE-checked; the purge deletes by each;
+ *    · `unresolved` — a drive that may have written a row whose id is unknown.
+ *      NON-EMPTY IS A FAILURE for the caller, never "nothing to do";
+ *    · `notes` — what each drive and each source answered, for the log.
+ *
+ *  An ABSENT ledger is not a failure: the runner writes it before its first
+ *  drive, so no ledger means no drive ran. An UNREADABLE one is. */
+export function resolveCaptureConsentIds(ledgerPath) {
+  const out = { stamp: null, ids: [], unresolved: [], notes: [] };
+  if (!ledgerPath || !existsSync(ledgerPath)) {
+    out.notes.push(`no ledger${ledgerPath ? ` at ${ledgerPath}` : ''}: the runner refused or never reached a drive, so no drive wrote a consent row`);
+    return out;
+  }
+  let ledger;
+  try {
+    ledger = JSON.parse(readFileSync(ledgerPath, 'utf8'));
+  } catch (e) {
+    out.unresolved.push(`ledger unreadable: ${ledgerPath} is not JSON (${e.message}), so which drives ran is unknown`);
+    return out;
+  }
+  if (!ledger || typeof ledger !== 'object' || !Array.isArray(ledger.drives)) {
+    out.unresolved.push(`ledger unreadable: ${ledgerPath} is not {stamp, drives[]}, so which drives ran is unknown`);
+    return out;
+  }
+  out.stamp = typeof ledger.stamp === 'string' ? ledger.stamp : null;
+  for (const [i, drive] of ledger.drives.entries()) {
+    const label = `drive ${i + 1} (${drive?.viewport ?? 'viewport unknown'}, state ${drive?.state ?? 'unknown'})`;
+    let record = null;
+    if (typeof drive?.record === 'string' && drive.record.length > 0) {
+      if (existsSync(drive.record)) {
+        try {
+          record = JSON.parse(readFileSync(drive.record, 'utf8'));
+        } catch (e) {
+          out.notes.push(`${label}: board record ${drive.record} is not JSON (${e.message})`);
+        }
+      } else {
+        out.notes.push(`${label}: board record ${drive.record} does not exist`);
+      }
+    }
+    const id = drive?.consent_anon_id ?? record?.consent_anon_id;
+    const prompt = drive?.consent_prompt ?? record?.consent_prompt ?? null;
+    if (typeof id === 'string' && id.length > 0) {
+      if (ANON_ID_SHAPE.test(id)) {
+        if (!out.ids.includes(id)) out.ids.push(id);
+        out.notes.push(`${label}: ${id}`);
+      } else {
+        // The id WAS there: a truncated or placeholder value must never be bound into a DELETE.
+        out.unresolved.push(`${label}: \`consent_anon_id\` ${JSON.stringify(id)} was reported but is not the 32-hex install-id shape`);
+      }
+    } else if (prompt === 'absent') {
+      out.notes.push(`${label}: the consent prompt never appeared, so no consent row was written`);
+    } else {
+      out.unresolved.push(
+        `${label}: prompt ${prompt ?? 'unknown'} and no \`consent_anon_id\` — a consent row may exist that no id names`,
+      );
+    }
+  }
+  return out;
 }
 
 /** The LAST token in the log. A re-run inside one job appends to the same file,

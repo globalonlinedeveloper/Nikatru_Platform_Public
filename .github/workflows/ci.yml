@@ -272,6 +272,8 @@ jobs:
         run: node tooling/ci/assert-d1-sql-inventory.mjs
       - name: Every shared table declares how its rows are attributed
         run: node tooling/ci/assert-prod-provenance.mjs
+      - name: Every live drive stamps a resolvable APP_VERSION and hands its purge the consent settings
+        run: node --single-threaded tooling/ci/assert-live-writer-provenance.mjs
       - name: No provider reads a provider that already watches it
         run: node tooling/ci/assert-provider-graph-acyclic.mjs
       - name: Selection records resolve (N-9)

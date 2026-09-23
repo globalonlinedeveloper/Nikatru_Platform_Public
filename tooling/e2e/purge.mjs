@@ -53,6 +53,12 @@
 //      E2E_APP_VERSION is OPTIONAL and is read for its message only — it is the
 //      `e2e-<run_number>-<sha7>` stamp e2e.yml derives once into $GITHUB_ENV, and
 //      it is what the failure below can point a human at.
+//      E2E_CONSENT_LEDGER (added 2026-09-23) is the STORE CAPTURE's consent
+//      source: the ledger tooling/store/capture-play-screenshots.mjs writes, one
+//      entry per drive, read by resolveCaptureConsentIds. It is MUTUALLY EXCLUSIVE
+//      with E2E_RESPONSE_DATA / E2E_DRIVE_LOG (the nightly's single-drive
+//      sources), and it requires PLATFORM_D1_DATABASE_ID: either mix is a wiring
+//      defect and is refused before any request is made.
 //
 // 🔴 PLATFORM_D1_DATABASE_ID IS THE SWITCH THAT SAYS "THIS INVOCATION OWNS THE
 // CONSENT ARTIFACT", and it decides whether an unresolved anon_id is a failure
@@ -60,26 +66,59 @@
 // exactly one of them; see the branch at the bottom for why that asymmetry is
 // the only thing keeping the hard failure off a green run.
 // NOTE: CLOUDFLARE_API_TOKEN must have D1 WRITE access for this account.
-import { resolveConsentAnonId } from './consent_anon_id.mjs';
+import { resolveConsentAnonId, resolveCaptureConsentIds } from './consent_anon_id.mjs';
+import { stampDeletable } from './app-version-stamp.mjs';
 
 const userId = process.env.E2E_USER_ID;
 
-// The build identity .github/workflows/e2e.yml derives ONCE into $GITHUB_ENV and
-// stamps into every row this lane writes (`e2e-<run_number>-<sha7>`, added
-// 2026-08-28). Nothing here looks a row up by it and nothing deletes by it — it
-// is the WHERE-TO-LOOK the failure below hands a human, and it is unique to one
-// run, which `dev` never was.
-const stamp = process.env.E2E_APP_VERSION ?? null;
+// The store capture's consent source (see the env header). Both refusals below
+// run before the first request, so `process.exit()` is still safe here.
+const ledgerPath = process.env.E2E_CONSENT_LEDGER || null;
+if (ledgerPath && (process.env.E2E_RESPONSE_DATA || process.env.E2E_DRIVE_LOG)) {
+  console.error(
+    "REFUSED: E2E_CONSENT_LEDGER (the store capture's consent source) is set together with " +
+      "E2E_RESPONSE_DATA / E2E_DRIVE_LOG (the e2e nightly's). The two describe different drives, and a " +
+      'purge that read both could delete by one and report on the other. This is a wiring defect in the ' +
+      'calling step; nothing was purged.',
+  );
+  process.exit(1);
+}
+if (ledgerPath && !process.env.PLATFORM_D1_DATABASE_ID) {
+  console.error(
+    'REFUSED: E2E_CONSENT_LEDGER is set but PLATFORM_D1_DATABASE_ID is not. A ledger exists only to purge ' +
+      'the consent rows a capture wrote into platform_db, so this step would skip the very purge it was ' +
+      'wired for and still pass. Nothing was purged.',
+  );
+  process.exit(1);
+}
 
 // Resolved BEFORE the early exit below, because the two are independent: the
 // consent artifact belongs to the browser PROFILE, not to either throwaway user,
 // so a run that never provisioned one can still have written it.
-const consent = process.env.PLATFORM_D1_DATABASE_ID
-  ? resolveConsentAnonId({
-      responsePath: process.env.E2E_RESPONSE_DATA,
-      logPath: process.env.E2E_DRIVE_LOG,
-    })
-  : { id: null, source: null, notes: ['PLATFORM_D1_DATABASE_ID unset — this step does not purge consent'] };
+const capture = process.env.PLATFORM_D1_DATABASE_ID && ledgerPath ? resolveCaptureConsentIds(ledgerPath) : null;
+const consent = capture
+  ? { id: null, source: null, notes: [] }
+  : process.env.PLATFORM_D1_DATABASE_ID
+    ? resolveConsentAnonId({
+        responsePath: process.env.E2E_RESPONSE_DATA,
+        logPath: process.env.E2E_DRIVE_LOG,
+      })
+    : { id: null, source: null, notes: ['PLATFORM_D1_DATABASE_ID unset — this step does not purge consent'] };
+
+// The build identity the run stamped into every row it wrote: e2e.yml's
+// `e2e-<run_number>-<sha7>` (derived ONCE into $GITHUB_ENV, added 2026-08-28),
+// or the capture's `cap-<run_number>-<sha7>` as its ledger records it (added
+// 2026-09-23). For e2e it is still message-only — nothing looks a row up by it
+// and nothing deletes by it; it is the WHERE-TO-LOOK the failure below hands a
+// human, and it is unique to one run, which `dev` never was. For a CAPTURE the
+// stamp delete further down DOES delete by it; the comment there says why that
+// is safe for `cap-*` and never for `e2e-*`.
+const stamp = process.env.E2E_APP_VERSION ?? capture?.stamp ?? null;
+
+// Every anon_id this invocation deletes by: each drive's id for a capture, the
+// one resolved id for the nightly.
+const ids = capture ? capture.ids : consent.id ? [consent.id] : [];
+const idSource = capture ? `capture ledger ${ledgerPath}` : consent.source;
 
 // ⚠️ THE `!PLATFORM_D1_DATABASE_ID` CONJUNCT IS LOAD-BEARING AND WAS ADDED WITH
 // THE HARD FAILURE BELOW (2026-08-28). Without it this early exit is a hole
@@ -107,7 +146,8 @@ const token = need('CLOUDFLARE_API_TOKEN');
 const dbId = userId ? need('SUBSCRIPTIONTRACKER_D1_DATABASE_ID') : null;
 const supaUrl = userId ? need('SUPABASE_URL').replace(/\/+$/, '') : null;
 const serviceKey = userId ? need('SUPABASE_SERVICE_ROLE_KEY') : null;
-const appId = consent.id ? need('E2E_APP_ID') : null;
+// A capture needs it even with zero ids: the stamp delete below binds it too.
+const appId = ids.length > 0 || capture ? need('E2E_APP_ID') : null;
 
 let failures = 0;
 
@@ -141,20 +181,88 @@ if (userId) {
   console.log('E2E_USER_ID unset (user was never provisioned) — no subscriptiontracker_db rows or identity to purge.');
 }
 
-if (consent.id) {
+for (const id of ids) {
   try {
     const result = await d1(
       process.env.PLATFORM_D1_DATABASE_ID,
       'DELETE FROM consent_artifacts WHERE app_id = ? AND anon_id = ?',
-      [appId, consent.id],
+      [appId, id],
     );
     const changes = result?.[0]?.meta?.changes ?? 0;
-    console.log(`purged consent_artifacts for install ${consent.id} (${consent.source}): ${changes} row(s)`);
+    console.log(`purged consent_artifacts for install ${id} (${idSource}): ${changes} row(s)`);
   } catch (e) {
     failures++;
-    console.error(`WARN: failed to purge the consent artifact for install ${consent.id}: ${e.message}`);
+    console.error(`WARN: failed to purge the consent artifact for install ${id}: ${e.message}`);
   }
-} else if (process.env.PLATFORM_D1_DATABASE_ID) {
+}
+
+if (capture) {
+  // 🔴 THE STAMP DELETE — A CAPTURE ONLY, AND THE ASYMMETRY IS THE POINT (added
+  // 2026-09-23). A `cap-<run_number>-<sha7>` stamp is unique to ONE
+  // store-screenshots.yml run; every row carrying it was written by that run's
+  // own drives in throwaway profiles; all four jobs of the run are residue by
+  // construction; and nothing reads these rows back to verify them. So deleting
+  // by (app_id, app_version) removes exactly this run's rows — including those
+  // whose anon_id no drive lived long enough to report — and nobody else's.
+  // `stampDeletable` admits only `cap-*` and `rehearsal-*`, never `dev`.
+  //
+  // It is NEVER done for e2e, and `stampDeletable` refuses `e2e-*` to keep it
+  // that way (consent-anon-id.test.mjs pins the refusal). The nightly's matrix
+  // legs share one stamp, and
+  // tooling/e2e/verify_consent.mjs reads the row back, so a stamp delete there
+  // would race another leg's audit and delete the row that leg is about to prove.
+  let removed = 0;
+  if (stampDeletable(capture.stamp)) {
+    try {
+      const result = await d1(
+        process.env.PLATFORM_D1_DATABASE_ID,
+        'DELETE FROM consent_artifacts WHERE app_id = ? AND app_version = ?',
+        [appId, capture.stamp],
+      );
+      const changes = result?.[0]?.meta?.changes ?? 0;
+      removed += changes;
+      console.log(`purged consent_artifacts stamped app_version = '${capture.stamp}': ${changes} row(s)`);
+    } catch (e) {
+      failures++;
+      console.error(`WARN: failed to purge consent_artifacts stamped '${capture.stamp}': ${e.message}`);
+    }
+    try {
+      const result = await d1(
+        process.env.PLATFORM_D1_DATABASE_ID,
+        'DELETE FROM events WHERE app_id = ? AND app_version = ?',
+        [appId, capture.stamp],
+      );
+      const changes = result?.[0]?.meta?.changes ?? 0;
+      removed += changes;
+      console.log(`purged events stamped app_version = '${capture.stamp}': ${changes} row(s)`);
+    } catch (e) {
+      failures++;
+      console.error(`WARN: failed to purge events stamped '${capture.stamp}': ${e.message}`);
+    }
+  } else {
+    console.log(
+      `no stamp delete: the ledger's stamp ${JSON.stringify(capture.stamp)} is not a capture stamp ` +
+        '(only cap-* and rehearsal-* are ever deleted by app_version)',
+    );
+  }
+  for (const n of capture.notes) console.log(`  capture ledger — ${n}`);
+  if (capture.unresolved.length > 0) {
+    // Still RED after the stamp delete has run: the residue it could reach is
+    // gone, but a drive whose id is unknown is exactly the state in which
+    // removal is not PROVEN — the same rule as the nightly's hard failure below.
+    failures++;
+    console.error(
+      `WARN: ${capture.unresolved.length} capture drive(s) left no usable consent anon_id, so this teardown ` +
+        'cannot show production is pristine. ' +
+        (stampDeletable(capture.stamp)
+          ? `The stamp delete DID run and removed ${removed} row(s) stamped '${capture.stamp}'; a row it ` +
+            'could not reach was written under some other stamp.'
+          : `The stamp delete did NOT run (stamp ${JSON.stringify(capture.stamp)}), so look for ` +
+            `app_id = '${appId}' rows from this run by hand.`),
+    );
+    for (const u of capture.unresolved) console.error(`  unresolved — ${u}`);
+  }
+} else if (!consent.id && process.env.PLATFORM_D1_DATABASE_ID) {
   // 🔴 A HARD FAILURE SINCE 2026-08-28. IT WAS A PRINTED LINE THAT PASSED, AND
   // THAT IS WHAT LET SIX ROWS SIT IN PRODUCTION FOR A DAY.
   // Two scheduled runs re-run on 2026-08-27 replayed their own OLD commit, which
@@ -211,7 +319,7 @@ if (consent.id) {
         : ' — and note that E2E_APP_VERSION is UNSET for this run, so any row it wrote carries the compile-time default `dev` and cannot be told apart from another run\'s. Bound any deletion by `consent_id` literals, never by `app_version`.'),
   );
   for (const n of consent.notes) console.error(`  anon_id lookup — ${n}`);
-} else {
+} else if (!consent.id) {
   // PRINTED, not silent, and NOT a failure. This is case (a) above: no
   // PLATFORM_D1_DATABASE_ID means this invocation was never handed the consent
   // env, which is the delete-leg teardown's every-run state.

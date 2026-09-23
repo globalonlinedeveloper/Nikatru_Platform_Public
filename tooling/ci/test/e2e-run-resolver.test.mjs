@@ -81,7 +81,9 @@ describe('the register and the implementation name the same thing', () => {
     // strongest marker in the schema for a shape check on the one table this
     // repository has already had residue in.
     assert.equal(register.tables.consent_artifacts.resolver, 'released-build');
-    assert.deepEqual(register.tables.consent_artifacts.alsoResolves, ['e2e-run']);
+    // ⏱ 2026-09-23 · `store-capture` joined it: the store capture's own narrow resolver
+    // (tooling/ci/test/store-capture-resolver.test.mjs holds its refusals).
+    assert.deepEqual(register.tables.consent_artifacts.alsoResolves, ['e2e-run', 'store-capture']);
   });
 
   test('NOTHING ELSE carries alsoResolves — the addition stays narrow', () => {
@@ -304,5 +306,20 @@ describe('alsoResolves refuses to be half-applied', () => {
     assert.equal(r.status, 2, r.stdout + r.stderr);
     assert.match(r.stderr, /COULD NOT LOOK/);
     assert.match(r.stderr, /no-such-resolver/);
+  });
+});
+
+// ⏱ ADDED 2026-09-23 — the stamp shapes have ONE home, tooling/e2e/app-version-stamp.mjs,
+// which the capture runner and assert-live-writer-provenance.mjs import too. A shape
+// re-declared in the monitor would be a second answer to "what does a nightly stamp
+// look like", and the writer and the reader could then disagree without either
+// test noticing.
+describe('the monitor reads the stamp shapes from the one stamp module', () => {
+  test('the comment-stripped monitor imports ../e2e/app-version-stamp.mjs and declares no /^e2e- or /^cap- literal of its own', async () => {
+    const { stripSourceComments } = await import('../text-reductions.mjs');
+    const code = stripSourceComments(readFileSync(MONITOR, 'utf8'), '.mjs');
+    assert.match(code, /from\s+'\.\.\/e2e\/app-version-stamp\.mjs'/);
+    assert.doesNotMatch(code, /\/\^e2e-/);
+    assert.doesNotMatch(code, /\/\^cap-/);
   });
 });

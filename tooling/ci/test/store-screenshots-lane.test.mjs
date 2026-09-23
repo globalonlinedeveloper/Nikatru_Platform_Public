@@ -20,9 +20,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
 
 import { stripSourceComments } from '../text-reductions.mjs';
 import { decodeRgba, encodeRgba } from '../../store/png-codec.mjs';
@@ -225,6 +227,244 @@ describe('store-screenshots.yml captures through the runner', () => {
   test('invokes capture-play-screenshots.mjs rather than flutter drive directly', () => {
     assert.match(steps, /node tooling\/store\/capture-play-screenshots\.mjs/);
     assert.doesNotMatch(steps, /flutter\s+drive/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE CAPTURE'S CONSENT ROWS ARE STAMPED AND PURGED (pipeline B-17, 2026-09-23).
+//
+// Every live drive answers the consent prompt, and the app uploads that answer
+// to production platform_db `consent_artifacts`. Run 35818960378's Linux job
+// left two such rows stamped `dev`: the capture passed no APP_VERSION, and its
+// purge step carried no platform_db id and no install id to delete by. The
+// runner now stamps cap-<run>-<sha7> (tooling/e2e/app-version-stamp.mjs) and
+// records each drive's install id in E2E_CONSENT_LEDGER; the purge step reads
+// the same ledger. These limbs hold each job's two steps to that contract.
+//
+// The checker below is a line reader over the workflow, not a YAML library:
+// a job is a two-space key under `jobs:`, a step starts at `      - `, and a
+// step's env is the block under its `env:` key. Full-line comments are dropped
+// first, because this workflow's prose names every variable it sets (grep-02).
+// ─────────────────────────────────────────────────────────────────────────────
+const CAPTURE_INVOCATION = /\bnode tooling\/store\/capture-play-screenshots\.mjs\b/;
+const PURGE_INVOCATION = /\bnode tooling\/e2e\/purge\.mjs\b/;
+
+/** jobs → steps, each step with its first line, its env map and its env lines. */
+function workflowJobs(text) {
+  const jobs = [];
+  let inJobs = false;
+  let job = null;
+  let step = null;
+  let inEnv = false;
+  text.split(/\r?\n/).forEach((raw, i) => {
+    if (/^\s*#/.test(raw)) return;
+    if (/^jobs:\s*$/.test(raw)) {
+      inJobs = true;
+      return;
+    }
+    if (!inJobs) return;
+    const jm = /^ {2}([A-Za-z0-9_-]+):\s*$/.exec(raw);
+    if (jm) {
+      job = { name: jm[1], line: i + 1, steps: [] };
+      jobs.push(job);
+      step = null;
+      inEnv = false;
+      return;
+    }
+    if (!job) return;
+    if (/^ {6}- /.test(raw)) {
+      step = { line: i + 1, env: {}, envLine: {}, text: '' };
+      job.steps.push(step);
+      inEnv = false;
+    } else if (/^ {0,5}\S/.test(raw)) {
+      // Back out to a job key (`runs-on:`, `steps:`): no step owns this line.
+      step = null;
+      inEnv = false;
+    }
+    if (!step) return;
+    step.text += `${raw}\n`;
+    const key = /^ {6}(?:- | {2})([A-Za-z_-]+):/.exec(raw);
+    if (key) {
+      inEnv = key[1] === 'env';
+      return;
+    }
+    const em = inEnv ? /^ {10}([A-Z][A-Z0-9_]*):\s*(.*?)\s*$/.exec(raw) : null;
+    if (em) {
+      step.env[em[1]] = em[2];
+      step.envLine[em[1]] = i + 1;
+    }
+  });
+  return jobs;
+}
+
+/** The capture/purge contract, per job that runs the capture. Pure. */
+function checkCaptureConsentWiring(text, platformDbId) {
+  const findings = [];
+  const spawners = [];
+  for (const job of workflowJobs(text)) {
+    const capture = job.steps.find((s) => CAPTURE_INVOCATION.test(s.text));
+    if (!capture) continue;
+    spawners.push(job.name);
+    const app = /--app\s+(\S+)/.exec(capture.text)?.[1] ?? null;
+    const ledger = capture.env.E2E_CONSENT_LEDGER ?? null;
+    if (!ledger) {
+      findings.push({ rule: 'capture-ledger', job: job.name, line: capture.line, msg: `job ${job.name}: the capture step at :${capture.line} carries no E2E_CONSENT_LEDGER` });
+    }
+    const purge = job.steps.find((s) => PURGE_INVOCATION.test(s.text));
+    if (!purge) {
+      findings.push({ rule: 'purge-step', job: job.name, line: capture.line, msg: `job ${job.name}: runs the capture at :${capture.line} and has no purge step` });
+      continue;
+    }
+    if (!/^ {8}if: always\(\)\s*$/m.test(purge.text)) {
+      findings.push({ rule: 'purge-always', job: job.name, line: purge.line, msg: `job ${job.name}: the purge step at :${purge.line} is not \`if: always()\`` });
+    }
+    if (purge.env.PLATFORM_D1_DATABASE_ID !== platformDbId) {
+      findings.push({
+        rule: 'purge-platform-db',
+        job: job.name,
+        line: purge.line,
+        msg: `job ${job.name}: the purge step at :${purge.line} carries PLATFORM_D1_DATABASE_ID=${purge.env.PLATFORM_D1_DATABASE_ID ?? '(unset)'}, not platform_db's ${platformDbId}`,
+      });
+    }
+    if (!app || purge.env.E2E_APP_ID !== app) {
+      findings.push({ rule: 'purge-app-id', job: job.name, line: purge.line, msg: `job ${job.name}: the purge step at :${purge.line} carries E2E_APP_ID=${purge.env.E2E_APP_ID ?? '(unset)'}, not the captured --app ${app ?? '(none)'}` });
+    }
+    if (!ledger || purge.env.E2E_CONSENT_LEDGER !== ledger) {
+      findings.push({ rule: 'purge-ledger', job: job.name, line: purge.line, msg: `job ${job.name}: the purge step at :${purge.line} carries E2E_CONSENT_LEDGER=${purge.env.E2E_CONSENT_LEDGER ?? '(unset)'}, not its capture step's ${ledger ?? '(unset)'}` });
+    }
+  }
+  return { spawners, findings };
+}
+
+describe('store-screenshots.yml purges the consent rows its capture writes', () => {
+  const WORKFLOW = join(REPO, '.github', 'workflows', 'store-screenshots.yml');
+  const yml = readFileSync(WORKFLOW, 'utf8');
+  const PLATFORM_DB_ID =
+    /"database_name":\s*"platform_db",\s*"database_id":\s*"([0-9a-f-]{36})"/.exec(
+      readFileSync(join(REPO, 'services', 'platform', 'wrangler.jsonc'), 'utf8'),
+    )?.[1] ?? null;
+  const real = checkCaptureConsentWiring(yml, PLATFORM_DB_ID);
+  const of = (rule) => real.findings.filter((f) => f.rule === rule).map((f) => f.msg);
+
+  test('every capture job has an always() purge carrying platform_db\'s id', () => {
+    assert.ok(PLATFORM_DB_ID, 'services/platform/wrangler.jsonc declares no platform_db database_id');
+    // Pinned by NAME: a job that stopped matching the capture invocation would
+    // otherwise shrink the census and pass every rule below over less.
+    assert.deepEqual(real.spawners, ['capture', 'capture-linux', 'capture-desktop-native', 'capture-ios']);
+    assert.deepEqual([...of('purge-step'), ...of('purge-always'), ...of('purge-platform-db')], []);
+  });
+
+  test('…and E2E_APP_ID names the app the capture drives', () => {
+    assert.deepEqual(of('purge-app-id'), []);
+    assert.match(yml, /^ {10}E2E_APP_ID: subscriptiontracker$/m);
+  });
+
+  test('…and the purge reads the E2E_CONSENT_LEDGER its capture step writes', () => {
+    assert.deepEqual([...of('capture-ledger'), ...of('purge-ledger')], []);
+    assert.equal(real.findings.length, 0, real.findings.map((f) => f.msg).join('\n'));
+  });
+
+  test('🔴 a purge without PLATFORM_D1_DATABASE_ID is named, with its job and line', () => {
+    const lines = yml.split(/\r?\n/);
+    const linux = workflowJobs(yml).find((j) => j.name === 'capture-linux');
+    const purge = linux.steps.find((s) => PURGE_INVOCATION.test(s.text));
+    const at = purge.envLine.PLATFORM_D1_DATABASE_ID;
+    assert.ok(at, 'capture-linux purge carries no PLATFORM_D1_DATABASE_ID to remove');
+    const mutated = lines.filter((_, i) => i !== at - 1).join('\n');
+    const { findings } = checkCaptureConsentWiring(mutated, PLATFORM_DB_ID);
+    assert.deepEqual(
+      findings.map((f) => `${f.rule} ${f.job} :${f.line}`),
+      [`purge-platform-db capture-linux :${purge.line}`],
+    );
+    assert.match(findings[0].msg, /PLATFORM_D1_DATABASE_ID=\(unset\)/);
+  });
+
+  test('🔴 a capture step without E2E_CONSENT_LEDGER is named, and so is its purge', () => {
+    const lines = yml.split(/\r?\n/);
+    const linux = workflowJobs(yml).find((j) => j.name === 'capture-linux');
+    const capture = linux.steps.find((s) => CAPTURE_INVOCATION.test(s.text));
+    const at = capture.envLine.E2E_CONSENT_LEDGER;
+    assert.ok(at, 'capture-linux capture step carries no E2E_CONSENT_LEDGER to remove');
+    const mutated = lines.filter((_, i) => i !== at - 1).join('\n');
+    const { findings } = checkCaptureConsentWiring(mutated, PLATFORM_DB_ID);
+    assert.deepEqual(
+      findings.map((f) => `${f.rule} ${f.job}`),
+      ['capture-ledger capture-linux', 'purge-ledger capture-linux'],
+    );
+    assert.equal(findings[0].line, capture.line);
+  });
+});
+
+describe('capture-play-screenshots.mjs stamps its drive and refuses without a ledger', () => {
+  const code = stripSourceComments(readFileSync(RUNNER, 'utf8'), '.mjs');
+
+  test('imports the one stamp module and pushes the store-capture stamp onto the drive', () => {
+    assert.match(code, /from\s+'\.\.\/e2e\/app-version-stamp\.mjs'/);
+    assert.match(code, /appVersionDefine\(\s*\{\s*lane:\s*'store-capture',\s*live:\s*!PROOF\s*\}\s*\)/);
+    assert.match(code, /defines\.push\(\s*\.\.\.STAMP_DEFINE\s*\)/);
+    // One source for the value: the runner never spells its own APP_VERSION.
+    assert.doesNotMatch(code, /['`]APP_VERSION=(?:cap|dev|rehearsal)/);
+  });
+
+  test('the logged drive command leaves APP_VERSION readable', () => {
+    assert.match(code, /m\[2\] === 'APP_VERSION' \|\|/);
+  });
+
+  /** A bare env: only what node needs to start, the five posture-gate vars
+   *  dummied past that gate, and nothing that looks like Actions. PATH is node's
+   *  own directory, so neither chromedriver nor flutter can be found even if a
+   *  refusal under test were missing; `--out` is a throwaway directory, so no
+   *  pre-drive clean can reach the committed listing. */
+  const bareRun = (extra) => {
+    const out = mkdtempSync(join(tmpdir(), 'nk-lane-stamp-'));
+    try {
+      const env = { PATH: dirname(process.execPath) };
+      for (const k of ['SystemRoot', 'TEMP', 'TMP']) if (process.env[k]) env[k] = process.env[k];
+      for (const k of ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'API_BASE_URL', 'E2E_EMAIL', 'E2E_PASSWORD']) env[k] = 'x';
+      Object.assign(env, extra);
+      const r = spawnSync(process.execPath, [RUNNER, '--app', 'subscriptiontracker', '--out', out], {
+        encoding: 'utf8',
+        env,
+        timeout: 120_000,
+      });
+      return { code: r.status, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
+    } finally {
+      rmSync(out, { recursive: true, force: true });
+    }
+  };
+
+  test('🔴 a live run with no stamp source REFUSES before chromedriver, naming APP_VERSION', () => {
+    const r = bareRun({});
+    assert.equal(r.code, 1, `stdout:\n${r.stdout}\nstderr:\n${r.stderr}`);
+    assert.match(r.stderr, /needs an APP_VERSION stamp/);
+    assert.match(r.stderr, /GITHUB_RUN_NUMBER/);
+    assert.match(r.stderr, /STORE_CAPTURE_APP_VERSION/);
+    assert.doesNotMatch(r.stdout, /^chromedriver:/m);
+    assert.doesNotMatch(r.stdout, /^flutter /m);
+  });
+
+  test('🔴 a live run with a stamp but no E2E_CONSENT_LEDGER REFUSES, naming it', () => {
+    const r = bareRun({ STORE_CAPTURE_APP_VERSION: 'rehearsal-1790000000' });
+    assert.equal(r.code, 1, `stdout:\n${r.stdout}\nstderr:\n${r.stderr}`);
+    assert.match(r.stderr, /needs E2E_CONSENT_LEDGER and it is not set/);
+    assert.doesNotMatch(r.stdout, /^chromedriver:/m);
+    assert.doesNotMatch(r.stdout, /^flutter /m);
+  });
+
+  test('the local rehearsal supplies both, and hands its purge the same ledger', () => {
+    const reh = stripSourceComments(
+      readFileSync(join(REPO, 'tooling', 'store', 'rehearse-capture-locally.mjs'), 'utf8'),
+      '.mjs',
+    );
+    assert.match(reh, /const rehearsalStamp = `rehearsal-\$\{Math\.floor\(Date\.now\(\) \/ 1000\)\}`;/);
+    assert.match(reh, /const consentLedger = join\(scratch, 'store-capture-consent\.json'\);/);
+    assert.match(reh, /STORE_CAPTURE_APP_VERSION: rehearsalStamp,/);
+    // The capture env and the purge env: the ledger twice, nothing else writes it.
+    assert.equal((reh.match(/E2E_CONSENT_LEDGER: consentLedger,/g) ?? []).length, 2);
+    assert.match(reh, /PLATFORM_D1_DATABASE_ID: '9d1c5c63-97fe-4f82-bc7d-f3fd22e9b351',/);
+    assert.match(reh, /E2E_APP_ID: APP,/);
+    // The purge is still the one in `finally`, after the capture.
+    assert.ok(reh.indexOf('STORE_CAPTURE_APP_VERSION: rehearsalStamp') < reh.indexOf("'purge the throwaway user'"));
   });
 });
 

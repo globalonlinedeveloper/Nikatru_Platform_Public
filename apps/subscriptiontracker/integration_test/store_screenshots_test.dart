@@ -82,6 +82,7 @@ import 'package:subscriptiontracker/main.dart' as app;
 import 'package:subscriptiontracker/state/providers.dart';
 import 'package:subscriptiontracker/state/subscriptions_controller.dart';
 
+import 'consent.dart';
 import 'store_board_census.dart';
 import 'store_capture_guard.dart';
 import 'store_frame_fold.dart';
@@ -579,6 +580,13 @@ void main() {
             'not also offer "Allow" — that is not the consent prompt, and this '
             'suite only knows how to answer that one.',
       );
+      // 🔴 RECORDED BEFORE THE TAP, NOT AFTER IT. The tap is what uploads a
+      // consent row to production platform_db (under this drive's
+      // `APP_VERSION` stamp), so from here on a row may exist. A drive that
+      // dies between the tap and the id below must still tell the runner that
+      // — the runner's purge treats "answered, no id" as a row it cannot name
+      // and fails loudly rather than reading silence as "nothing was written".
+      publishConsent(binding, prompt: 'answered');
       await tester.tap(consentDecline.first);
       await pumpFor(tester, const Duration(seconds: 2));
       expect(
@@ -590,6 +598,30 @@ void main() {
             'so until it goes every tap beneath it is swallowed silently and '
             'every frame below would photograph it.',
       );
+      // The install id the answer above was recorded under — the ONLY key
+      // `consent_artifacts` can be found by. It rides out in the board record
+      // (test_driver/store_screenshots.dart writes the whole reportData), the
+      // runner copies it into its consent ledger, and tooling/e2e/purge.mjs
+      // deletes by it. It never reaches a committed file: `boardProvenance`
+      // allow-lists what CAPTURE.json keeps.
+      final String? consentId = await pollInstallId(
+        pump: () => pumpFor(tester, const Duration(milliseconds: 200)),
+      );
+      publishConsent(binding, id: consentId);
+      expect(
+        consentId,
+        isNotNull,
+        reason:
+            'The consent prompt was answered but no install id was persisted '
+            'within 10s. That id is the anon_id the consent row this drive just '
+            'uploaded is keyed by, so without it the purge after this capture '
+            'has nothing to delete the row by and it stays in production.',
+      );
+    } else {
+      // The prompt never came, so this drive answered nothing and uploaded no
+      // consent row. Said out loud, because "no id" alone would read the same
+      // as a drive that answered and then died.
+      publishConsent(binding, prompt: 'absent');
     }
 
     // ── onboarding → login → scan → dashboard ────────────────────────────────

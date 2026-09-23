@@ -28,7 +28,10 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { parseWorkflow, parseAllWorkflows, joinBlockScalars, shellSegments, workflowEvents, dispatchInputs, stepShell } from '../workflow-scan.mjs';
+import {
+  parseWorkflow, parseAllWorkflows, joinBlockScalars, shellSegments, workflowEvents, dispatchInputs, stepShell,
+  stepItemAround, workflowSteps, jobEnv, githubEnvWrites, joinShellContinuations, commandAt, flutterDrives,
+} from '../workflow-scan.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 assert.ok(CI_DIR.endsWith(join('tooling', 'ci')), 'the module under test must be the real one');
@@ -608,5 +611,117 @@ jobs:
       assert.equal(sh.shell, null);
       assert.match(sh.why, /is in no job/);
     });
+  });
+});
+
+// ⏱ ADDED 2026-09-23 — the step readers assert-live-writer-provenance.mjs reads the
+// tree through. Each case is a way a step reader could hand that guard the wrong
+// step, the wrong env or the wrong drive, and so a clean verdict over a wrong fact.
+describe('workflow-scan: the step readers and the live-drive census', () => {
+  const STEPS_YML = `name: A
+env:
+  TOP: 1
+jobs:
+  drive:
+    runs-on: ubuntu-24.04
+    env:
+      E2E_APP_ID: subscriptiontracker
+      QUOTED: "x y"
+    steps:
+      - name: Stamp
+        id: stamp
+        run: echo "E2E_APP_VERSION=e2e-\${{ github.run_number }}-\${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+      - name: Maybe
+        if: failure()
+        run: |
+          echo "LATE=1" >> "$GITHUB_ENV"
+          echo "OUT=1" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          token: abc
+          FAKE_ENV: no
+      - name: Drive
+        env:
+          E2E_DRIVE_LOG: \${{ runner.temp }}/drive.log
+        run: |
+          flutter drive \\
+            --driver=test_driver/integration_test.dart \\
+            --dart-define=APP_VERSION="$E2E_APP_VERSION" \\
+            -d web-server 2>&1 | tee "$E2E_DRIVE_LOG"
+  bare:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: flutter drive --driver=test_driver/integration_test.dart -d web-server
+`;
+  const jobOf = (name) => parseWorkflow(fixture({ 'a.yml': STEPS_YML }), '.github/workflows/a.yml').jobs.get(name);
+  const lineOf = (needle) => STEPS_YML.split('\n').findIndex((l) => l.includes(needle)) + 1;
+
+  test('stepItemAround finds the `- ` item holding a nested line, and null outside every item', () => {
+    const job = jobOf('drive');
+    const at = job.lines.findIndex((l) => l.text.includes('token: abc'));
+    const item = stepItemAround(job.lines, at);
+    assert.equal(job.lines[item.start].n, lineOf('- uses: actions/checkout@v4'));
+    assert.equal(job.lines[item.end].n, lineOf('- name: Drive'));
+    assert.equal(stepItemAround(job.lines, job.lines.findIndex((l) => l.text.includes('runs-on:'))), null);
+    assert.equal(stepItemAround(job.lines, job.lines.length), null);
+  });
+
+  test('workflowSteps reads each step\'s id, name, if: and run: at the lines the file has them', () => {
+    const steps = workflowSteps(jobOf('drive'));
+    assert.equal(steps.length, 4);
+    assert.deepEqual(steps.map((s) => s.index), [0, 1, 2, 3]);
+    assert.equal(steps[0].id, 'stamp');
+    assert.equal(steps[0].name, 'Stamp');
+    assert.equal(steps[0].cond, null);
+    assert.equal(steps[0].first, lineOf('- name: Stamp'));
+    assert.equal(steps[0].run.n, lineOf('run: echo "E2E_APP_VERSION'));
+    assert.equal(steps[1].cond, 'failure()');
+    assert.equal(steps[3].first, lineOf('- name: Drive'));
+    assert.equal(steps[3].last, lineOf('-d web-server'));
+    assert.match(steps[3].run.text, /flutter drive .* ; .*--dart-define=APP_VERSION/);
+  });
+
+  test('workflowSteps takes a step\'s env: and never its with: — a with: key is not an environment variable', () => {
+    const steps = workflowSteps(jobOf('drive'));
+    assert.equal(steps[2].env.size, 0);
+    assert.equal(steps[2].run, null);
+    assert.deepEqual([...steps[3].env.keys()], ['E2E_DRIVE_LOG']);
+    assert.deepEqual(steps[3].env.get('E2E_DRIVE_LOG'), { n: lineOf('E2E_DRIVE_LOG: ${{'), value: '${{ runner.temp }}/drive.log' });
+  });
+
+  test('jobEnv reads the job\'s own env: with quotes removed, and neither the workflow\'s nor a step\'s', () => {
+    const env = jobEnv(jobOf('drive'));
+    assert.deepEqual([...env.keys()], ['E2E_APP_ID', 'QUOTED']);
+    assert.equal(env.get('QUOTED').value, 'x y');
+    assert.equal(jobEnv(jobOf('bare')).size, 0);
+  });
+
+  test('githubEnvWrites takes every `>> "$GITHUB_ENV"` echo with its step and if:, and no $GITHUB_OUTPUT write', () => {
+    const writes = githubEnvWrites(jobOf('drive'));
+    assert.deepEqual(writes.map((w) => [w.name, w.expr, w.stepIndex, w.cond]), [
+      ['E2E_APP_VERSION', 'e2e-${{ github.run_number }}-${GITHUB_SHA::7}', 0, null],
+      ['LATE', '1', 1, 'failure()'],
+    ]);
+  });
+
+  test('joinShellContinuations rejoins a `\\` continuation; commandAt reads command position through xvfb-run and assignments, never inside echo', () => {
+    assert.equal(joinShellContinuations('flutter drive \\ ; --driver=x.dart \\ ; -d chrome'), 'flutter drive --driver=x.dart -d chrome');
+    const cmd = 'node\\s+tooling/x\\.mjs';
+    assert.equal(commandAt('xvfb-run -a -s "-screen 0 2560x1600x24" node tooling/x.mjs --app a', cmd), true);
+    assert.equal(commandAt('FOO=1 BAR=2 node tooling/x.mjs', cmd), true);
+    assert.equal(commandAt('echo "then run node tooling/x.mjs"', cmd), false);
+  });
+
+  test('flutterDrives reads a continued drive\'s defines, APP_VERSION and tee target, and a bare drive as null for both', () => {
+    const root = fixture({ 'a.yml': STEPS_YML });
+    const drives = flutterDrives(root);
+    assert.equal(drives.length, 2);
+    const [d, bare] = drives;
+    assert.deepEqual([d.workflow, d.job, d.stepIndex, d.runLine], ['.github/workflows/a.yml', 'drive', 3, lineOf('- name: Drive') + 3]);
+    assert.deepEqual([...d.defines], ['APP_VERSION']);
+    assert.equal(d.appVersionExpr, '$E2E_APP_VERSION');
+    assert.equal(d.teeTarget, '$E2E_DRIVE_LOG');
+    assert.deepEqual([bare.job, bare.appVersionExpr, bare.teeTarget], ['bare', null, null]);
+    assert.equal(bare.defines.size, 0);
   });
 });

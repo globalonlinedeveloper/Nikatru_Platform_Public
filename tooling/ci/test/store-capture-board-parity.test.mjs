@@ -261,6 +261,28 @@ describe('what a committed set records about what was on screen', () => {
     });
   });
 
+  // 🔴 THE INSTALL ID NEVER REACHES CAPTURE.json (pipeline B-17, 2026-09-23).
+  // The capture suite now publishes `consent_anon_id` in the same reportData
+  // that carries the board, so the runner's ledger can hand it to the purge.
+  // CAPTURE.json is COMMITTED; the id keys a production consent row. The five
+  // fields are named, never spread, so neither a record-level id nor one a
+  // future suite writes inside `board` can ride into the committed file.
+  test('🔴 boardProvenance of a record carrying consent_anon_id carries no such key', () => {
+    const id = '0123456789abcdef0123456789abcdef';
+    const record = { ...phoneRecord, consent_prompt: 'answered', consent_anon_id: id };
+    const fromRecord = boardProvenance(boardOf(record));
+    assert.equal(Object.hasOwn(fromRecord, 'consent_anon_id'), false);
+    const fromBoard = boardProvenance({ ...phoneRecord.board, consent_anon_id: id, consent_prompt: 'answered' });
+    assert.deepEqual(Object.keys(fromBoard), [
+      'activeCount',
+      'monthlyTotalMinorUnits',
+      'names',
+      'seededThisDrive',
+      'alreadyPresent',
+    ]);
+    assert.doesNotMatch(JSON.stringify([fromRecord, fromBoard]), new RegExp(id));
+  });
+
   // ⚠️ A WIRING CHECK, AND LABELLED AS ONE. The cases above prove the
   // comparison DOES the right thing; this one only proves the runner asks it.
   // It is here because a correct comparison nobody calls is the same listing as
