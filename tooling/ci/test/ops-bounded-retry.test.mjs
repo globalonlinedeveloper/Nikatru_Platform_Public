@@ -750,7 +750,7 @@ describe('B8 — ADOPTION: the class imports it, and no rival reading exists', (
     const code = blankComments(src);
     const aliases = new Set(['fetch', 'doFetch']);
     for (const m of code.matchAll(/(?<![\w$.])([A-Za-z_$][\w$]*)\s*=\s*(?:globalThis\.)?fetch\b(?![\w$.])/g)) aliases.add(m[1]);
-    const names = [...aliases].map((a) => a.replace(/\$/g, '\\$')).join('|');
+    const names = [...aliases].map((a) => a.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')).join('|');
     const call = new RegExp(`(?<![\\w$])(?<!function\\s)(${names})\\s*\\(`, 'g');
     return [...code.matchAll(call)].map((m) => {
       const open = m.index + m[0].length - 1;

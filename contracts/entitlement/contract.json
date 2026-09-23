@@ -98,6 +98,18 @@
       "reason": null,
       "dateDerived": false,
       "why": "NOT A REVOCATION — auto-renew was turned back on before the period ended, so there is nothing to take away."
+    },
+    {
+      "event": "TRANSFER",
+      "reason": null,
+      "dateDerived": false,
+      "why": "NOT A GRANT AND NOT A REVOCATION — AN OWNERSHIP NOTICE, DECIDED 2026-09-22 BY [ADR 092] §4.3 (LOCKED). RevenueCat's event reference (revenuecat.com/docs/integrations/webhooks/event-types-and-fields, read 2026-09-22T15:31:55Z) sends it when the restore behaviour moves purchases between App User IDs: `transferred_from` names the old owner(s), `transferred_to` the new, both String[] marked Always, and the vendor warns that an Always key is present but its value may be null. \"The webhook is sent only for the destination user\". The body carries NO app_user_id, product_id, original_transaction_id or expiration_at_ms, so it cannot say what access anyone has. revenueCatAccessRuling answers 'transfer' for it, checked BEFORE the grant rule this row's shape (no reason, not date-derived) would otherwise fall into: a TRANSFER read as a grant would give access to an id whose purchase this rail has never seen. services/platform/src/lib/mor/revenuecat.ts refuses it by name when an id list is null or empty, when an id on either side is anonymous, when more than one destination is named, or when `environment` (Sometimes on this event) is absent; store.ts refuses it as transfer_from_live_owner while a source user still holds a live RevenueCat row for the app, and otherwise concludes it with NO write — the ledger's owner of a purchase moves later, on the next newer signed money event (ADR 092 §4.4)."
+    },
+    {
+      "event": "TEMPORARY_ENTITLEMENT_GRANT",
+      "reason": null,
+      "dateDerived": false,
+      "why": "NOT A GRANT — [ADR 092] §4.6, 2026-09-22. RevenueCat's event reference (revenuecat.com/docs/integrations/webhooks/event-types-and-fields, read 2026-09-22T15:31:55Z) sends it during a store outage: a provisional grant of at most 24 hours, carrying only `app_user_id` and (Sometimes) `store` — no `environment`, so its money world cannot be told, and no transaction, so it could never be linked. The purchase it stands for arrives later as INITIAL_PURCHASE when validation succeeds, or as EXPIRATION when it fails. It is in NOT_A_GRANT beside SUBSCRIPTION_PAUSED, so revenueCatAccessRuling answers null and a reader acks it and changes nothing."
     }
   ]
 }

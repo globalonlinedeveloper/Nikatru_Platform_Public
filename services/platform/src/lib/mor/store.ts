@@ -294,8 +294,7 @@ async function resolveAccount(
     appIdKnown && fromMetadata.userId !== null && fromMetadata.appId !== null && subscriptionId !== null;
   const linkMoves = n.provider === REVENUECAT_PROVIDER;
   if (linkAttempted) {
-    await deps.db
-      .prepare(linkMoves ? REVENUECAT_LINK_UPSERT : FIRST_LINK_WINS_INSERT)
+    await (linkMoves ? revenuecatLinkUpsert(deps.db) : firstLinkWinsInsert(deps.db))
       .bind(n.provider, subscriptionId, fromMetadata.appId, fromMetadata.userId, nowIso(), n.eventId, n.occurredAt)
       .run();
     // Read back rather than trusting the insert: if a link ALREADY existed for
@@ -329,10 +328,11 @@ async function resolveAccount(
 }
 
 /** Paddle and Razorpay: the FIRST link wins, forever. Their bodies carry the checkout's metadata. */
-const FIRST_LINK_WINS_INSERT = `INSERT INTO provider_accounts
+const firstLinkWinsInsert = (db: D1Database): D1PreparedStatement =>
+  db.prepare(`INSERT INTO provider_accounts
      (provider, provider_subscription_id, app_id, user_id, linked_at, linked_from_event_id, linked_occurred_at)
    VALUES (?,?,?,?,?,?,?)
-   ON CONFLICT (provider, provider_subscription_id) DO NOTHING`;
+   ON CONFLICT (provider, provider_subscription_id) DO NOTHING`);
 
 /**
  * ⏱ 2026-09-22 · [ADR 092] §4.4 — RevenueCat ONLY: a purchase's owner can change
@@ -346,7 +346,8 @@ const FIRST_LINK_WINS_INSERT = `INSERT INTO provider_accounts
  *     event's time. A live owner is never displaced by a notice; the caller
  *     refuses that case as `owner_change_on_live_subscription`.
  */
-const REVENUECAT_LINK_UPSERT = `INSERT INTO provider_accounts
+const revenuecatLinkUpsert = (db: D1Database): D1PreparedStatement =>
+  db.prepare(`INSERT INTO provider_accounts
      (provider, provider_subscription_id, app_id, user_id, linked_at, linked_from_event_id, linked_occurred_at)
    VALUES (?,?,?,?,?,?,?)
    ON CONFLICT (provider, provider_subscription_id) DO UPDATE SET
@@ -363,7 +364,7 @@ const REVENUECAT_LINK_UPSERT = `INSERT INTO provider_accounts
           AND e.provider = provider_accounts.provider
           AND e.provider_subscription_id = provider_accounts.provider_subscription_id
           AND e.is_active = 1
-          AND (e.expires_at IS NULL OR e.expires_at > excluded.linked_occurred_at))`;
+          AND (e.expires_at IS NULL OR e.expires_at > excluded.linked_occurred_at))`);
 
 /** Record a payment nobody could be found for, so it is resolvable later. */
 async function recordUnclaimed(
@@ -530,13 +531,14 @@ async function derive(deps: MoneyStoreDeps, n: NormalizedNotification): Promise<
 const REVENUECAT_PROVIDER = 'revenuecat';
 
 /**
- * The most source ids one TRANSFER tripwire checks in a single statement.
+ * The most source ids one TRANSFER tripwire checks.
  *
- * @ceiling d1.maxBoundParametersPerQuery lte
+ * @ceiling none — bounds the shape of one webhook body, not a platform resource
  *
- * The statement binds the provider, the app, the event time and every source id,
- * so this leaves room for those three under the recorded limit. The vendor's own
- * sample names ONE source; a body naming more than this is refused by name.
+ * The source ids travel as ONE bound JSON array read through `json_each(?)`, so
+ * the statement binds four parameters however many sources there are and its text
+ * never changes. The vendor's own sample names ONE source; a body naming more than
+ * this is anomalous and is refused by name rather than checked.
  */
 const MAX_TRANSFER_SOURCES = 64;
 
@@ -577,12 +579,12 @@ async function applyTransfer(
     .prepare(
       `SELECT user_id FROM entitlements
         WHERE provider = ? AND app_id = ?
-          AND user_id IN (${t.from.map(() => '?').join(',')})
+          AND user_id IN (SELECT value FROM json_each(?))
           AND is_active = 1
           AND (expires_at IS NULL OR expires_at > ?)
         LIMIT 1`,
     )
-    .bind(REVENUECAT_PROVIDER, t.appId, ...t.from, n.occurredAt)
+    .bind(REVENUECAT_PROVIDER, t.appId, JSON.stringify(t.from), n.occurredAt)
     .first<{ user_id: string }>();
   if (live !== null) {
     return {
