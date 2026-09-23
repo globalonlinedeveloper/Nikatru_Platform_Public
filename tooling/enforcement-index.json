@@ -2974,6 +2974,16 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/redeploy-stranded.yml#recover"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/redeploy-stranded.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "E-9",
       "O-2"
