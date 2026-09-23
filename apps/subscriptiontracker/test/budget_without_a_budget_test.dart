@@ -31,6 +31,15 @@
 // MUTATION PROOF: restore `final bool over = usage.over;` and the no-budget
 // group's ring case goes red on the danger colour; drop the `if (hasBudget)`
 // from the stats row and its stats case goes red on the "$0" it prints.
+//
+// ── ADDED 2026-09-22: THE CATEGORY CARDS (gap b) ────────────────────────────
+// The paragraph above describes `_softCap` as the tree held it. It is gone: a
+// category with no cap of its own renders its spend ALONE, with no " / cap"
+// figure and no progress bar. The last group pins both arms, green control
+// first. Mutations to record (the writer runs each, restores byte-exact):
+// restore `capMap[..] ?? _softCap(..)` and the no-cap case goes red on the
+// " / " span; drop the `hasBudget` guard on the bar and it goes red on the
+// progress bar; keep the bar with `value: null` and it goes red the same way.
 // ─────────────────────────────────────────────────────────────────────────────
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -86,6 +95,19 @@ class _Repo implements SubscriptionRepository {
   dynamic noSuchMethod(Invocation i) =>
       throw UnimplementedError('${i.memberName} is not under test');
 }
+
+/// The first category card's figure, as the reader sees it: the spend, and
+/// after it whatever the card compares the spend to.
+String _firstBarFigure(WidgetTester tester) => tester
+    .widget<Text>(find.byKey(const Key('budget.bar.figure.0')))
+    .textSpan!
+    .toPlainText();
+
+/// The first category card's progress bars.
+Finder _firstBarProgress() => find.descendant(
+  of: find.byKey(const Key('budget.bar.0')),
+  matching: find.byType(LinearProgressIndicator),
+);
 
 /// The screen, tall enough that nothing is off-stage — a `findsNothing` over a
 /// surface that clipped the row it is looking for is not a measurement.
@@ -256,6 +278,53 @@ void main() {
           ).format(const Money(29999, 'USD')),
         ),
         findsOneWidget,
+      );
+    });
+  });
+
+  group('a category card compares only against a cap somebody SET', () {
+    testWidgets('GREEN CONTROL — a set cap is printed and drawn', (
+      WidgetTester tester,
+    ) async {
+      await _pumpBudget(tester, _set);
+      final String figure = _firstBarFigure(tester);
+      final String cap = MoneyFormatter(
+        _l10n(tester).localeName,
+        emptyCurrencyCode: _readerCurrency(tester),
+      ).formatRounded(const Money(6000, 'USD'));
+      expect(figure, endsWith(' / $cap'));
+      expect(_firstBarProgress(), findsOneWidget);
+    });
+
+    testWidgets('🔴 no cap: the spend alone, no " / " and no bar', (
+      WidgetTester tester,
+    ) async {
+      await _pumpBudget(tester, _unset);
+      expect(
+        find.byKey(const Key('budget.bar.0')),
+        findsOneWidget,
+        reason: 'NOT VACUOUS: the category card itself must still be there',
+      );
+      final String figure = _firstBarFigure(tester);
+      expect(
+        figure,
+        isNot(contains(' / ')),
+        reason:
+            'the card compares the spend to a cap nobody set — the frames '
+            'read "/ 48" beside a spend of 40, every bar at 83%',
+      );
+      expect(
+        _firstBarProgress(),
+        findsNothing,
+        reason: 'a progress bar is a comparison; there is no second operand',
+      );
+      // The root text is still the spend, which is what
+      // rounded_breakdown_surfaces_test.dart reads off the same key.
+      expect(
+        tester
+            .widget<Text>(find.byKey(const Key('budget.bar.figure.0')))
+            .textSpan!,
+        isA<TextSpan>().having((TextSpan t) => t.text, 'text', figure),
       );
     });
   });

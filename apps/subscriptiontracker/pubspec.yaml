@@ -76,8 +76,21 @@ dependencies:
   # money surfaces (P2.6a); the paywall flip is Phase 4. The Play data-safety
   # Purchase-history row moved WITH this line in the same commit — its tells
   # name this package, by design (assert-play-declarations).
+  # ⏱ CORRECTED 2026-09-22 (O-IAP-BRIDGE-NOT-WIRED-IN-THE-APP): "no billing SDK
+  # ever enters this codebase" held for the WEB rail only. [ADR 078] lets the
+  # store channels sell in-app, and this app opts in (app.yaml
+  # `billing.mobileIap`): the android-play, ios-appstore and macos-appstore
+  # builds execute the purchase through the store, via the dependency below.
+  # Every other channel still checks out on the apex web page ([ADR 038]).
   nikatru_purchases:
     path: ../../packages/purchases
+  # The STORE half of the money rail — the RevenueCat implementation of the
+  # IapBridge seam, linked ONLY because this app declares `billing.mobileIap`
+  # (`assert-app-yaml` limb 6 holds the two together). It brings the native
+  # store SDK (purchases_flutter) with it, which is why the Play data-safety
+  # and the Apple privacy manifest name it.
+  nikatru_billing_revenuecat:
+    path: ../../packages/billing_revenuecat
 
   # State management
   flutter_riverpod: ^2.5.0
@@ -142,6 +155,13 @@ dependencies:
   # (`nikatru_purchases`, declared above) is now a dependency; checkout remains
   # off-device on the apex web page ([ADR 038]), which is the opposite of what
   # the RevenueCat line would have meant.
+  # ⏱ CORRECTED 2026-09-22 (O-IAP-BRIDGE-NOT-WIRED-IN-THE-APP): RevenueCat is
+  # BACK, and not as the line that sat here. [ADR 078] (2026-09-11) replaced the
+  # free-only mobile rule, so the store channels sell through Play Billing and
+  # StoreKit, with RevenueCat as the glue ([ADR 039] D5). It enters through
+  # `nikatru_billing_revenuecat` (declared beside nikatru_purchases above), never
+  # as a direct `purchases_flutter` line here, so the SDK stays behind the
+  # IapBridge seam and an app that does not opt in never links it.
 
 dev_dependencies:
   # [pipeline C-12] resolves the shared ruleset in analysis_options.yaml.

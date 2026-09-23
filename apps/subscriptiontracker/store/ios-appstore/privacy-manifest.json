@@ -96,7 +96,7 @@
       "kind": "local",
       "path": "<PUB_CACHE>/hosted/pub.dev/<package>-<version>/**/PrivacyInfo.xcprivacy",
       "read": "2026-08-31",
-      "note": "Every row of `binaryInventory` whose `manifest` is `ships-own` was opened and its NSPrivacyAccessedAPITypes read. The two rows that say `none` were searched for `*.xcprivacy` and none exists."
+      "note": "Every row of `binaryInventory` whose `manifest` is `ships-own` was opened and its NSPrivacyAccessedAPITypes read. The two rows that say `none` were searched for `*.xcprivacy` and none exists. ⏱ 2026-09-22 (O-IAP-BRIDGE-NOT-WIRED-IN-THE-APP): a FOURTH value now appears — `unread`, on the two purchases_flutter rows. It means exactly what it says: that binary's manifest has NOT been opened, so its `accessedApis` is empty by DEFAULT and not by measurement. It exists so the gap is visible in the inventory rather than hidden behind a `ships-own` this audit did not earn; the row's basis names the file to open and what to do with it. No `unread` row may reach an App Store upload."
     },
     "sdkList": {
       "kind": "remote",
@@ -304,6 +304,12 @@
         "manifest": "ships-own",
         "accessedApis": [],
         "basis": "Read from the plugin's OWN PrivacyInfo.xcprivacy in the pub cache (flutter_inappwebview_ios-1.1.2/ios/Resources/PrivacyInfo.xcprivacy) rather than inferred from what a webview might do. All four keys are present and EMPTY: NSPrivacyTracking false, NSPrivacyTrackingDomains [], NSPrivacyAccessedAPITypes [], NSPrivacyCollectedDataTypes []. So the plugin answers Apple itself and declares no Required Reason API use. It is linked because cloudflare_turnstile depends on flutter_inappwebview: Turnstile needs a DOM, and a native app has none, so the challenge is rendered in an embedded web view. ⚠️ WHAT THIS ROW DOES NOT COVER: the WKWebView content itself. This says what the PLUGIN's binary declares, not what a page loaded inside it does - and the page here is Cloudflare's challenge, served from challenges.cloudflare.com. That is a network destination, not a Required Reason API, so it belongs to the App Privacy questionnaire (U-2) rather than to this manifest."
+      },
+      {
+        "binary": "purchases_flutter 10.13.1",
+        "manifest": "unread",
+        "accessedApis": [],
+        "basis": "⏱ ADDED 2026-09-22 (O-IAP-BRIDGE-NOT-WIRED-IN-THE-APP). The RevenueCat Flutter SDK, linked into the build because apps/subscriptiontracker depends on the first-party bridge package nikatru_billing_revenuecat, which depends on purchases_flutter ^10.13.1 (packages/billing_revenuecat/pubspec.yaml). On this platform it drives StoreKit, and it is what makes an in-app purchase possible at all on the ios-appstore and macos-appstore channels. ⚠️ ITS OWN PrivacyInfo.xcprivacy WAS NOT READ, AND THAT IS WHY `accessedApis` IS THE EMPTY LIST BY DEFAULT RATHER THAN BY MEASUREMENT — the one thing this file exists to refuse. The pub cache was out of scope for the change that added this row (a draft lane with no `pub get`), so the reading is owed: open <pub cache>/purchases_flutter-<resolved version>/ios/Resources/PrivacyInfo.xcprivacy (and the macos twin), copy its NSPrivacyAccessedAPITypes reasons into `accessedApis` in the vocabulary spelling, pin the resolved version from pubspec.lock in `binary`, and re-run the generator. RevenueCat also publishes a privacy manifest and a signature for the native SDK it vendors; that claim is theirs, and it has not been verified here either."
       }
     ],
     "macos": [
@@ -394,6 +400,12 @@
         "manifest": "ships-own",
         "accessedApis": [],
         "basis": "Read from the plugin's OWN PrivacyInfo.xcprivacy in the pub cache (flutter_inappwebview_macos-1.1.2/macos/Resources/PrivacyInfo.xcprivacy) rather than inferred from what a webview might do. All four keys are present and EMPTY: NSPrivacyTracking false, NSPrivacyTrackingDomains [], NSPrivacyAccessedAPITypes [], NSPrivacyCollectedDataTypes []. So the plugin answers Apple itself and declares no Required Reason API use. It is linked because cloudflare_turnstile depends on flutter_inappwebview: Turnstile needs a DOM, and a native app has none, so the challenge is rendered in an embedded web view. ⚠️ WHAT THIS ROW DOES NOT COVER: the WKWebView content itself. This says what the PLUGIN's binary declares, not what a page loaded inside it does - and the page here is Cloudflare's challenge, served from challenges.cloudflare.com. That is a network destination, not a Required Reason API, so it belongs to the App Privacy questionnaire (U-2) rather than to this manifest."
+      },
+      {
+        "binary": "purchases_flutter 10.13.1",
+        "manifest": "unread",
+        "accessedApis": [],
+        "basis": "⏱ ADDED 2026-09-22 (O-IAP-BRIDGE-NOT-WIRED-IN-THE-APP). The RevenueCat Flutter SDK, linked into the build because apps/subscriptiontracker depends on the first-party bridge package nikatru_billing_revenuecat, which depends on purchases_flutter ^10.13.1 (packages/billing_revenuecat/pubspec.yaml). On this platform it drives StoreKit, and it is what makes an in-app purchase possible at all on the ios-appstore and macos-appstore channels. ⚠️ ITS OWN PrivacyInfo.xcprivacy WAS NOT READ, AND THAT IS WHY `accessedApis` IS THE EMPTY LIST BY DEFAULT RATHER THAN BY MEASUREMENT — the one thing this file exists to refuse. The pub cache was out of scope for the change that added this row (a draft lane with no `pub get`), so the reading is owed: open <pub cache>/purchases_flutter-<resolved version>/ios/Resources/PrivacyInfo.xcprivacy (and the macos twin), copy its NSPrivacyAccessedAPITypes reasons into `accessedApis` in the vocabulary spelling, pin the resolved version from pubspec.lock in `binary`, and re-run the generator. RevenueCat also publishes a privacy manifest and a signature for the native SDK it vendors; that claim is theirs, and it has not been verified here either."
       }
     ]
   },
@@ -450,6 +462,15 @@
       "No ATT prompt, no NSUserTrackingUsageDescription key, and no advertising SDK in the tree —",
       "the RevenueCat line is gone by [ADR 026]/[ADR 039] and AdMob has never been a dependency of",
       "this app (tooling/ci/assert-ads-declarations.mjs is the standing check on that claim).",
+      "⏱ CORRECTED 2026-09-22 (O-IAP-BRIDGE-NOT-WIRED-IN-THE-APP): THE REVENUECAT LINE IS BACK, as",
+      "packages/billing_revenuecat wrapping purchases_flutter, and this answer does NOT change. Apple",
+      "defines tracking as linking this app's data to data from OTHER companies' apps or websites, or",
+      "sharing it with a data broker. RevenueCat receives a purchase keyed to the NIKATRU user id in",
+      "order to resolve an entitlement; that is a service provider processing for us, there is still",
+      "no ATT prompt, no IDFA read, no NSUserTrackingUsageDescription key and no ad SDK, and nothing",
+      "is combined across companies or sold. NSPrivacyTracking therefore stays false and the domain",
+      "list stays empty. ⚠️ THE PAIR IS LOAD-BEARING: if RevenueCat's SDK is ever configured with an",
+      "attribution or ad-network integration, both fields move together and this basis is void.",
       "Nothing this app collects is combined with data from other companies' apps or websites, and",
       "nothing is sold to a data broker — which is Apple's definition of tracking.",
       "🔴 NSPrivacyTrackingDomains MUST STAY EMPTY WHILE NSPrivacyTracking IS FALSE. Apple's rule is",
@@ -518,7 +539,7 @@
         "purposes": [
           "NSPrivacyCollectedDataTypePurposeAppFunctionality"
         ],
-        "linkedBasis": "Entitlement state is read back per account. NOTE this is ENTITLEMENT, not a transaction record: checkout is the apex web page ([ADR 038]) and no billing SDK or payment instrument enters this codebase."
+        "linkedBasis": "Entitlement state is read back per account. ⏱ CORRECTED 2026-09-22 (O-IAP-BRIDGE-NOT-WIRED-IN-THE-APP): the rest of the old sentence — 'NOTE this is ENTITLEMENT, not a transaction record: checkout is the apex web page ([ADR 038]) and no billing SDK or payment instrument enters this codebase' — is no longer true of the App Store channels. A billing SDK IS in the bundle (purchases_flutter, see binaryInventory) and the purchase happens in StoreKit's own sheet, so this row now covers a real transaction as well as the entitlement read. What did NOT change: no payment instrument enters the app — the card lives in the Apple ID — and the entitlement still comes from the platform Worker rather than from a client claim. ⚠️ OPEN AND OWNER-GATED: whether this row must also answer for data shared with a third party (RevenueCat as the receipt processor) is NOT re-graded in this change; it is the same open question the Play form's Purchase-history clientAbsence carries, and the two answers must move together."
       },
       {
         "type": "NSPrivacyCollectedDataTypeOtherFinancialInfo",

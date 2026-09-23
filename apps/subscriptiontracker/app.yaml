@@ -142,6 +142,22 @@ hosts:
 platforms:
   - web
 
+# The store builds (android-play, ios-appstore, macos-appstore) sell in-app
+# through RevenueCat. The ids are RevenueCat's own app ids — the Play Store app
+# and the App Store app; the App Store app also serves macOS (one App Store
+# Connect record, universal purchase), which is why there is no macos key.
+# The PUBLIC SDK key is not here: the store lanes compile it in as
+# `--dart-define=REVENUECAT_KEY` (tooling/channel-register.json
+# `purchaseRails.storeKeyDefine`). `assert-app-yaml` limb 6 holds this block,
+# the nikatru_billing_revenuecat dependency and the store declarations together.
+billing:
+  mobileIap:
+    provider: revenuecat
+    entitlementId: pro
+    revenuecatAppIds:
+      android: appa553a1e2c6
+      ios: app805d73cd44
+
 # Keyed by tooling/channel-register.json's `storefrontKey`. `web` is derived
 # from hosts.web and is refused here. Every other key is absent until a store
 # issues a real listing URL — the renderer writes null, because a plausible

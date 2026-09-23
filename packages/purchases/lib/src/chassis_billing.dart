@@ -287,8 +287,20 @@ class UnavailablePurchaseRail implements PurchaseRail {
   /// The configured plans, so a surface can still describe the product. A
   /// surface quotes a PRICE only when [canStartCheckout] is true: a price for
   /// something this build cannot sell is steering.
+  ///
+  /// 🔴 EXCEPT ON A STORE CHANNEL WITH NO BRIDGE: NOTHING. The config's book is
+  /// the WEB price book, and on android-play, ios-appstore or macos-appstore
+  /// the only honest description of a plan is the STORE's. A store build whose
+  /// key was not compiled in ([BillingRailRefusal.iapBridgeMissing]) has no
+  /// store to ask, so it describes nothing — it must never fall back to the
+  /// web's amounts, even behind a `canStartCheckout` that every surface is
+  /// trusted to read first. Every other refusal keeps the config's list: those
+  /// channels' book IS the config's.
   @override
-  List<Offering> get offerings => _config.offerings;
+  List<Offering> get offerings =>
+      refusal.reason == BillingRailRefusal.iapBridgeMissing
+          ? const <Offering>[]
+          : _config.offerings;
 
   @override
   bool get canStartCheckout => false;

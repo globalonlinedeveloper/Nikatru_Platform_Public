@@ -242,7 +242,9 @@
   },
   {
     "claims": [
+      "ADR 026",
       "ADR 037",
+      "ADR 039",
       "ADR 059",
       "ADR 067",
       "ADR 078"
@@ -493,6 +495,7 @@
     "claims": [
       "ADR 015",
       "ADR 022",
+      "ADR 039",
       "ADR 054",
       "C-6",
       "D-10",
@@ -980,6 +983,16 @@
       ".github/workflows/ci.yml#guards-store"
     ],
     "kind": "guard",
+    "ref": "tooling/ci/assert-iap-review-screenshots.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-store"
+    ],
+    "kind": "guard",
     "ref": "tooling/ci/assert-inappwebview-waivers.mjs",
     "references": [],
     "state": "WIRED"
@@ -1104,7 +1117,10 @@
     ],
     "invokedBy": [
       ".github/workflows/ci.yml#guards-store",
-      ".github/workflows/store-screenshots.yml#capture"
+      ".github/workflows/store-screenshots.yml#capture",
+      ".github/workflows/store-screenshots.yml#capture-desktop-native",
+      ".github/workflows/store-screenshots.yml#capture-ios",
+      ".github/workflows/store-screenshots.yml#capture-linux"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-listing-assets.mjs",
@@ -1580,6 +1596,9 @@
     ],
     "invokedBy": [
       ".github/workflows/ci.yml#guards-store",
+      ".github/workflows/store-screenshots.yml#capture-desktop-native",
+      ".github/workflows/store-screenshots.yml#capture-ios",
+      ".github/workflows/store-screenshots.yml#capture-linux",
       ".github/workflows/submit-play.yml#dry-run",
       ".github/workflows/submit-play.yml#submit"
     ],
@@ -2824,7 +2843,10 @@
     "claims": [],
     "invokedBy": [
       ".github/workflows/e2e.yml#e2e",
-      ".github/workflows/store-screenshots.yml#capture"
+      ".github/workflows/store-screenshots.yml#capture",
+      ".github/workflows/store-screenshots.yml#capture-desktop-native",
+      ".github/workflows/store-screenshots.yml#capture-ios",
+      ".github/workflows/store-screenshots.yml#capture-linux"
     ],
     "kind": "script",
     "ref": "tooling/e2e/provision_user.mjs",
@@ -2838,7 +2860,10 @@
     ],
     "invokedBy": [
       ".github/workflows/e2e.yml#e2e",
-      ".github/workflows/store-screenshots.yml#capture"
+      ".github/workflows/store-screenshots.yml#capture",
+      ".github/workflows/store-screenshots.yml#capture-desktop-native",
+      ".github/workflows/store-screenshots.yml#capture-ios",
+      ".github/workflows/store-screenshots.yml#capture-linux"
     ],
     "kind": "script",
     "ref": "tooling/e2e/purge.mjs",
@@ -3366,7 +3391,10 @@
   {
     "claims": [],
     "invokedBy": [
-      ".github/workflows/store-screenshots.yml#capture"
+      ".github/workflows/store-screenshots.yml#capture",
+      ".github/workflows/store-screenshots.yml#capture-desktop-native",
+      ".github/workflows/store-screenshots.yml#capture-ios",
+      ".github/workflows/store-screenshots.yml#capture-linux"
     ],
     "kind": "script",
     "ref": "tooling/store/capture-play-screenshots.mjs",

@@ -20,7 +20,7 @@
     "🔴 THE ANSWER DEPENDS ON WHICH ARTEFACT SHIPS, AND THAT IS DERIVED, NOT ASSUMED. See",
     "`buildPosture`. The .aab lane in .github/workflows/build-platforms.yml passes ONE dart-define",
     "(GLITCHTIP_DSN). AppConfig.isSupabaseConfigured / isApiConfigured / isBackendLive are COMPILE-TIME",
-    "constants over those defines (apps/subscriptiontracker/lib/core/app_config.dart:294-321), so the bundle",
+    "constants over those defines (apps/subscriptiontracker/lib/core/app_config.dart:302-329), so the bundle",
     "Play would receive today runs MockAuthRepository, SeedApiClient and NoOpAnalytics, shows no",
     "consent prompt, and makes exactly one kind of outbound request: a crash report. Every answer is",
     "therefore recorded TWICE — once per posture — and the guard reads the workflow to decide which",
@@ -246,7 +246,7 @@
       "🔴 THIS BLOCK IS WHY THE GUARD CAN BITE AT ALL. Every answer below is a claim about an ARTEFACT,",
       "and which artefact Play receives is decided by one line in one workflow.",
       "",
-      "apps/subscriptiontracker/lib/core/app_config.dart:294-321 gates the whole app on compile-time constants:",
+      "apps/subscriptiontracker/lib/core/app_config.dart:302-329 gates the whole app on compile-time constants:",
       "  isSupabaseConfigured := SUPABASE_URL != placeholder && SUPABASE_ANON_KEY != ''",
       "  isApiConfigured      := API_BASE_URL   != placeholder",
       "  isBackendLive        := isSupabaseConfigured && isApiConfigured",
@@ -328,8 +328,10 @@
       "API_BASE_URL",
       "GLITCHTIP_DSN",
       "APP_VERSION",
-      "RELEASE_CHANNEL"
+      "RELEASE_CHANNEL",
+      "REVENUECAT_KEY"
     ],
+    "_definesNote2026_09_22": "REVENUECAT_KEY added with O-IAP-BRIDGE-NOT-WIRED-IN-THE-APP, when the Play lanes began passing the RevenueCat PUBLIC SDK key (secret REVENUECAT_PUBLIC_KEY_GOOGLE) to every android-play artefact. Checked against every answer in this form before declaring, the same way APP_VERSION and RELEASE_CHANNEL were. It is a publishable client key, not a credential: it identifies the RevenueCat app, and a build without it sells nothing at all (the rail refuses `iapBridgeMissing` — no price, no button, and never the web rail instead). ⚠️ IT DOES CHANGE A dataSecurity ANSWER, and that is said here rather than left to be discovered: with the key present a Play build can EXECUTE a purchase on the device, so Financial info > Purchase history gains a third party (RevenueCat, and Google as the biller). The re-grade of that row's `shared` answer is an OWNER decision and is NOT made in this change; the row's clientAbsence carries the same warning. The apps.gov.in artefact is built by the same workflow and is deliberately KEYLESS — its rail is `none`.",
     "_definesNote2026_08_08": "APP_VERSION and RELEASE_CHANNEL added when build-platforms.yml began threading the release line into store artefacts ([9]R-2 residual). Checked against every answer in this form before declaring: APP_VERSION is the app's own version string compiled in for crash/release attribution — the same define the web lane has shipped since deploy-web.yml existed, no data-category change. RELEASE_CHANNEL selects which first-party update-source config key the app reads ([9]R-10, owner decision #19) — no new collection, no new sharing, no third party. Neither define alters any dataSecurity answer above.",
     "identityDefines": [
       "SUPABASE_URL",
@@ -684,7 +686,7 @@
       },
       "evidence": [],
       "inventoryRows": [],
-      "basis": "🔴 NO CARD, BANK OR ACCOUNT NUMBER IS STORED ANYWHERE, and that is already an asserted claim rather than a belief: tooling/legal/policy-claims.json carries it and assert-policy-claims.mjs checks it against every migration in the tree. subscriptiontracker_db.payment_history holds a date and an amount the USER recorded against their own subscription — a record OF payments, not a payment instrument. Since P2.4b (2026-08-08) Subly DOES carry the first-party client rail (nikatru_purchases — see the Purchase-history row below, flipped in the same commit), but that changes nothing in THIS row: the rail reads entitlement state and contains no checkout — payment happens on the apex web page ([ADR 038]) in a browser, so no payment instrument ever enters or transits the app. The RevenueCat tombstone (apps/subscriptiontracker/pubspec.yaml:123-131, updated with the same commit) records why no billing aggregator will reintroduce one."
+      "basis": "🔴 NO CARD, BANK OR ACCOUNT NUMBER IS STORED ANYWHERE, and that is already an asserted claim rather than a belief: tooling/legal/policy-claims.json carries it and assert-policy-claims.mjs checks it against every migration in the tree. subscriptiontracker_db.payment_history holds a date and an amount the USER recorded against their own subscription — a record OF payments, not a payment instrument. Since P2.4b (2026-08-08) Subly DOES carry the first-party client rail (nikatru_purchases — see the Purchase-history row below, flipped in the same commit), but that changes nothing in THIS row: the rail reads entitlement state and contains no checkout — payment happens on the apex web page ([ADR 038]) in a browser, so no payment instrument ever enters or transits the app. The RevenueCat tombstone (apps/subscriptiontracker/pubspec.yaml:123-131, updated with the same commit) records why no billing aggregator will reintroduce one. ⏱ CORRECTED 2026-09-22 (O-IAP-BRIDGE-NOT-WIRED-IN-THE-APP): the tombstone expired — RevenueCat IS back, as the first-party bridge package nikatru_billing_revenuecat, and a Play build with its key can open the store's purchase sheet. THIS ROW DOES NOT MOVE, and the reason is the one that was load-bearing all along rather than the one about the web page: the card, the wallet and the billing address are entered in GOOGLE'S sheet against the Google account. No card, bank or account number enters, transits or is stored by this app in either posture — see the Purchase-history row's corrected clientAbsence, which carries the `shared` re-grade this change deliberately leaves open."
     },
     {
       "category": "Financial info",
@@ -703,13 +705,10 @@
         "App functionality"
       ],
       "clientAbsence": {
-        "claim": "Purchase EXECUTION never happens on the device. There is no Play Billing, no billing SDK and no payment form in this codebase — checkout is the apex web page ([ADR 038]) in a browser, and what the app itself does is READ entitlement state (the subscription this account holds) from the platform Worker via nikatru_purchases over the declared api_client transports. If any tell below appeared, that sentence would be false: collection would become on-device purchase execution, `shared` would need rework (a billing SDK is a third party), and the User-payment-info row above would very likely flip too.",
-        "androidPermissions": [
-          "com.android.vending.BILLING"
-        ],
+        "claim": "⏱ CORRECTED 2026-09-22 (O-IAP-BRIDGE-NOT-WIRED-IN-THE-APP) — THE OLD CLAIM IS NOW FALSE AND IS QUOTED HERE RATHER THAN DELETED: \"Purchase EXECUTION never happens on the device. There is no Play Billing, no billing SDK and no payment form in this codebase — checkout is the apex web page ([ADR 038]) in a browser.\" A Play build now CAN execute a purchase on the device: the app depends on nikatru_billing_revenuecat (purchases_flutter, which drives Play Billing), and on the android-play channel, with REVENUECAT_KEY compiled in, the store's own purchase sheet opens in the app. WHAT SURVIVES, and is what the tells below now protect: NO PAYMENT INSTRUMENT EVER ENTERS THIS APP. The card, the wallet and the billing address live in Google's sheet and in the Google account; this app sees a product id, the store's price and an entitlement keyed to the NIKATRU user id. There is no payment form, no card field, no PSP SDK and no tokenized instrument in this codebase, and any tell below appearing would make that sentence false too — the User-payment-info row above rests on the same one. ⚠️ TWO CONSEQUENCES ARE OPEN AND OWNER-GATED, STATED HERE SO THE SUBMISSION CANNOT PASS THEM SILENTLY: (1) this row's `shared` answer for backend-live — a purchase is now reported to RevenueCat, a third party, and to Google as the biller — is NOT re-graded in this change; (2) `merged` below was measured from an aab built before the billing plugin was in the graph, so com.android.vending.BILLING (contributed by the plugin's own manifest, never hand-declared in this repository) will appear in the next build's merged manifest and that measurement has to be re-taken against it.",
+        "androidPermissions": [],
         "dartPackages": [
           "in_app_purchase",
-          "purchases_flutter",
           "flutter_stripe",
           "razorpay_flutter",
           "square_in_app_payments"
@@ -1868,6 +1867,13 @@
       "nikatru_purchases": {
         "introduces": [],
         "why": "First-party client rail (packages/purchases) for the money rail: offerings, entitlement state and convergence ([5]M-8), fetched over the api_client/dio transports already declared above and keyed to the authenticated account — so its data categories (User IDs, the entitlement read now declared under Financial info > Purchase history) are carried by entries and answer rows, not new here, hence introduces []. It contains NO checkout: purchase execution happens on the apex web page ([ADR 038]) in a browser, and no billing SDK or payment instrument exists in this codebase (see the Purchase-history row's clientAbsence). Zero call sites at the time of writing — the first caller lands with the chassis money surfaces (P2.6a) and the paywall flip is Phase 4. Added 2026-08-08 with productization P2.4b under [ADR 037]; the Purchase-history answer row moved in the same commit because that row's tells named this package in advance, exactly so the two could never move separately."
+      },
+      "nikatru_billing_revenuecat": {
+        "introduces": [
+          "Purchase history",
+          "User IDs"
+        ],
+        "why": "⏱ ADDED 2026-09-22 (O-IAP-BRIDGE-NOT-WIRED-IN-THE-APP). First-party bridge package (packages/billing_revenuecat) wrapping `purchases_flutter` ^10.13.1 — the RevenueCat SDK, which on Android drives GOOGLE PLAY BILLING. It is a dependency of the app, but it is linked into a SELLING binary only in the sense that any dependency is: the app hands it to the rail only on a store channel and only when the build carries its public key (`--dart-define=REVENUECAT_KEY`), and the Play lanes pass REVENUECAT_PUBLIC_KEY_GOOGLE. What it does on the device: asks the store what it sells (product ids, the STORE's own prices), opens the store's purchase sheet, and identifies the buyer to RevenueCat by the NIKATRU user id ([ADR 085] B) so an entitlement resolves to an account. INTRODUCES, stated rather than implied: a purchase made in the app is reported to a THIRD PARTY (RevenueCat, and Google as the biller), keyed to that user id — which is why this entry names Purchase history and User IDs rather than []. No name, no email and no payment instrument reaches it: the card is entered in Google's own sheet, not in this app. ⚠️ THE CONSOLE FORM'S `shared` ANSWER FOR Financial info > Purchase history IS NOT RE-GRADED IN THIS CHANGE and must be before the next Play submission — see that row's clientAbsence correction. The SDK's own data collection is NOT read from prose here: the inventory row and the version live in store/ios-appstore/privacy-manifest.json, and assert-app-yaml limb 6 holds this entry and the `billing.mobileIap` declaration together."
       },
       "flutter_localizations": {
         "introduces": [],

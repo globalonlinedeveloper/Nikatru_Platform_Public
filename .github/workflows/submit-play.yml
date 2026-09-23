@@ -95,6 +95,7 @@ jobs:
           --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
           --dart-define=APP_VERSION=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}+${GITHUB_SHA::7}
           --dart-define=RELEASE_CHANNEL=android-play
+          --dart-define=REVENUECAT_KEY=${{ secrets.REVENUECAT_PUBLIC_KEY_GOOGLE }}
           --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
       # ⏱ MOVED 2026-09-07 (unit `symbols-everywhere`) — THIS STEP USED TO BE THE
       # LAST ONE IN THE JOB, behind the Play dry run. That is the ordering
@@ -158,7 +159,7 @@ jobs:
           node tooling/ci/assert-artifact-signed.mjs
           apps/subscriptiontracker/build/app/outputs/bundle/release/app-release.aab
       - name: The Play screenshot set spans enough device types
-        run: node tooling/ci/assert-play-device-coverage.mjs --for-submission
+        run: node tooling/ci/assert-play-device-coverage.mjs --for-submission=android-play
       - name: Every native library is aligned for a 16 KB memory page
         run: >
           node --single-threaded tooling/ci/assert-elf-page-alignment.mjs
@@ -255,13 +256,14 @@ jobs:
           --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
           --dart-define=APP_VERSION=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}+${GITHUB_SHA::7}
           --dart-define=RELEASE_CHANNEL=android-play
+          --dart-define=REVENUECAT_KEY=${{ secrets.REVENUECAT_PUBLIC_KEY_GOOGLE }}
           --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
       - name: The .aab must be signed by the upload key, not the debug key
         run: >
           node tooling/ci/assert-artifact-signed.mjs
           apps/subscriptiontracker/build/app/outputs/bundle/release/app-release.aab
       - name: The Play screenshot set spans enough device types
-        run: node tooling/ci/assert-play-device-coverage.mjs --for-submission
+        run: node tooling/ci/assert-play-device-coverage.mjs --for-submission=android-play
       - name: Every native library is aligned for a 16 KB memory page
         run: >
           node --single-threaded tooling/ci/assert-elf-page-alignment.mjs

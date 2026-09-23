@@ -7,4 +7,6 @@
 // are NIKATRU app ids. An empty map means no app has declared mobile IAP yet, so
 // every RevenueCat event is refused on decision A.
 export const REVENUECAT_APP_IDS: Readonly<Record<string, string>> = {
+  "app805d73cd44": "subscriptiontracker",
+  "appa553a1e2c6": "subscriptiontracker",
 };

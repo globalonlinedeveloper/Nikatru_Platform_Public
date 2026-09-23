@@ -95,6 +95,28 @@ describe('run()/captureSync(): the wait ends when the CHILD exits, not at pipe E
     assert.equal(r.out, 'OUT\nERR\n');
     assert.equal(r.timeout, LEG_TIMEOUT_MS);
   }, { timeout: 30_000 });
+
+  // ⏱ ADDED 2026-09-23 (O-PREFLIGHT-HANGS-HOLDING-THE-MACHINE-LOCK). "Never
+  // throw" covered the spawn, not the capture directory: with an unusable temp
+  // directory mkdtempSync threw, and run() at module load (TREE_AT_START) took
+  // preflight down as an uncaught crash before any leg could be graded.
+  test('captureSync NEVER throws: an unusable temp directory is a null status with the reason, and nothing is run', () => {
+    const keys = ['TEMP', 'TMP', 'TMPDIR'];
+    const saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+    const gone = join(TMP, 'no-such-temp-dir');
+    const marker = join(TMP, 'ran-anyway.txt');
+    for (const k of keys) process.env[k] = gone;
+    let r;
+    try {
+      r = captureSync(process.execPath, ['-e', `require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'x')`]);
+    } finally {
+      for (const k of keys) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; }
+    }
+    assert.equal(r.status, null);
+    assert.equal(r.timedOut, false);
+    assert.match(r.out, /COULD NOT CAPTURE — no capture file under .*no-such-temp-dir .*was NOT run/);
+    assert.equal(existsSync(marker), false, 'the command ran with nowhere to capture its output');
+  }, { timeout: 30_000 });
 });
 
 // ── the closes clause, end to end ────────────────────────────────────────────

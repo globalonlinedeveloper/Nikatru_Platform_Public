@@ -1139,3 +1139,185 @@ describe('assert-listing-assets.mjs — COVERAGE LOST, not a pass', () => {
     assert.match(r.out, /COVERAGE LOST.*carries no app entries/s);
   });
 });
+
+// ── store-screenshots lane 1: the rule kinds Play does not use ──────────────
+// Apple states a short list of EXACT pixel sizes per device set, Microsoft a
+// minimum width and height, Snap a byte ceiling and an aspect RANGE. None of
+// them asks for a feature graphic or an icon in this block, so their
+// `graphicAssets` carries `screenshots` and no `assets` key at all.
+//
+// 🔬 PREDICTIONS WRITTEN FIRST (2026-09-22), each case below names its own:
+//   S1 a screenshots-only block with a compliant frame           -> exit 0
+//   S2 iOS 1284x2777 against Apple's 6.9" list                   -> exit 1
+//   S3 Mac 2560x1440 against Apple's Mac list                    -> exit 1
+//   S4 Windows 1365x768 against minWidth 1366                    -> exit 1
+//   S5 Snap frame of 2.1 MB against maxBytes 2 MB                -> exit 1
+//   S6 Snap 1000x2100 outside aspectRange 1:2..2:1               -> exit 1
+//   S7 an iOS frame WITH alpha                                   -> exit 1, not worded as Play
+//   S8 `assets: {}` on a screenshots-only channel                -> exit 2 (COVERAGE LOST kept)
+//   S9 a block with neither `assets` nor `screenshots`           -> exit 2
+//   S10 Play's `assets` deleted while additionalFiles names PNGs -> exit 1, never a quiet pass
+//   S11 an unreadable rule kind                                  -> exit 2
+//   S12 Play's own messages are unchanged                        -> "Play requires at least 2"
+// Fixture frames are GENERATED here; a 2 MB file is never committed.
+const APPLE = 'https://developer.apple.com/help/app-store-connect/reference/screenshot-specifications (fetched 2026-09-20) — fixture';
+const IPHONE_69 = ['1260x2736', '1290x2796', '1320x2868'];
+const MAC = ['1280x800', '1440x900', '2560x1600', '2880x1800'];
+
+/** Add a screenshots-only store channel and one live frame per `frames` entry. */
+function shotsOnly(s, { id, name, rules, frames = [], extraFiles = {} }) {
+  s.register.channels.push({ id, name, kind: 'store', served: false, ownerQueue: 'X-1', storeMetadataDir: `apps/{app}/store/${id}` });
+  s.register.storeMetadataContract.perChannel[id] = {
+    additionalFiles: [],
+    graphicAssets: { screenshots: { dir: 'screenshots', provenanceFile: 'CAPTURE.json', alpha: false, minCount: 1, maxCount: 10, source: APPLE, ...rules } },
+  };
+  const base = `apps/subscriptiontracker/store/${id}/screenshots`;
+  s.files[`${base}/README.md`] = Buffer.from('# slot\n');
+  frames.forEach((buf, i) => {
+    s.files[`${base}/0${i + 1}.png`] = buf;
+  });
+  if (frames.length) s.files[`${base}/CAPTURE.json`] = Buffer.from(JSON.stringify({ posture: 'live' }));
+  Object.assign(s.files, extraFiles);
+}
+
+/** A real, opaque, decodable frame padded to `bytes` with a private ancillary
+ *  chunk. The decoder skips unknown ancillary chunks, so the pixels still read. */
+function paddedTo(buf, bytes) {
+  const iend = buf.length - 12;
+  const need = bytes - buf.length - 12;
+  const data = Buffer.alloc(Math.max(0, need));
+  const len = Buffer.alloc(4);
+  len.writeUInt32BE(data.length);
+  const body = Buffer.concat([Buffer.from('zpAd', 'ascii'), data]);
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(crc32(body) >>> 0);
+  return Buffer.concat([buf.subarray(0, iend), len, body, crc, buf.subarray(iend)]);
+}
+
+describe('assert-listing-assets.mjs — non-Play rule kinds (store-screenshots lane 1)', () => {
+  test('S1 a screenshots-only block with a compliant iPhone frame passes', () => {
+    const r = run(build((s) => shotsOnly(s, { id: 'ios-appstore', name: 'Apple App Store (iOS)', rules: { acceptedSizes: IPHONE_69 }, frames: [shotAt(1290, 2796)] })));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /2 channel\(s\) declaring graphic requirements/);
+    assert.match(r.out, /2 fixed-size asset\(s\) measured, 1 screenshot\(s\) measured/);
+  });
+
+  test('S2 iOS 1284x2777 is not on Apple\'s 6.9" list', () => {
+    const r = run(build((s) => shotsOnly(s, { id: 'ios-appstore', name: 'Apple App Store (iOS)', rules: { acceptedSizes: IPHONE_69 }, frames: [shotAt(1284, 2777)] })));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /01\.png is 1284x2777, which is not one of the 3 size\(s\) Apple App Store \(iOS\) accepts for this set \(1260x2736, 1290x2796, 1320x2868\)/);
+    assert.doesNotMatch(r.out, /01\.png[^\n]*Play/);
+  });
+
+  test('S3 Mac 2560x1440 is 16:9 and Apple lists only 16:10 sizes', () => {
+    const r = run(build((s) => shotsOnly(s, { id: 'macos-appstore', name: 'Apple App Store (macOS)', rules: { acceptedSizes: MAC }, frames: [shotAt(2560, 1440)] })));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /01\.png is 2560x1440, which is not one of the 4 size\(s\) Apple App Store \(macOS\) accepts/);
+  });
+
+  test('S4 Windows 1365x768 is one pixel under "1366 x 768 pixels or larger"', () => {
+    const r = run(build((s) => shotsOnly(s, { id: 'windows-store', name: 'Microsoft Store', rules: { minWidth: 1366, minHeight: 768 }, frames: [shotAt(1365, 768)] })));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /01\.png is 1365x768; Microsoft Store requires a width of at least 1366px/);
+    assert.doesNotMatch(r.out, /requires a height of at least/);
+  });
+
+  test('S4b Windows 1366x768 passes the same rule', () => {
+    const r = run(build((s) => shotsOnly(s, { id: 'windows-store', name: 'Microsoft Store', rules: { minWidth: 1366, minHeight: 768 }, frames: [shotAt(1366, 768)] })));
+    assert.equal(r.code, 0, r.out);
+  });
+
+  test('S5 a 2.1 MB Snap frame is over the 2 MB ceiling', () => {
+    const big = paddedTo(shotAt(1280, 800), Math.round(2.1 * 1024 * 1024));
+    const r = run(build((s) => shotsOnly(s, { id: 'linux-snap', name: 'Snap Store', rules: { maxBytes: 2 * 1024 * 1024, aspectRange: { min: '1:2', max: '2:1' } }, frames: [big] })));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /01\.png is 2202010 bytes and Snap Store accepts at most 2097152 per screenshot/);
+  });
+
+  test('S5b the same frame unpadded passes, so S5 is the byte rule and nothing else', () => {
+    const r = run(build((s) => shotsOnly(s, { id: 'linux-snap', name: 'Snap Store', rules: { maxBytes: 2 * 1024 * 1024, aspectRange: { min: '1:2', max: '2:1' } }, frames: [shotAt(1280, 800)] })));
+    assert.equal(r.code, 0, r.out);
+  });
+
+  test('S6 a Snap frame taller than 1:2 is outside the aspect range', () => {
+    const r = run(build((s) => shotsOnly(s, { id: 'linux-snap', name: 'Snap Store', rules: { aspectRange: { min: '1:2', max: '2:1' } }, frames: [shotAt(500, 1100)] })));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /01\.png is 500x1100 — width:height 0\.455 — outside the 1:2 to 2:1 range Snap Store accepts/);
+  });
+
+  test('S7 an iOS frame with alpha fails, worded for Apple and not for Play', () => {
+    const rgba = Buffer.alloc(1290 * 2796 * 4, 0xff);
+    const withAlpha = encodeRgba({ width: 1290, height: 2796, rgba });
+    const r = run(build((s) => shotsOnly(s, { id: 'ios-appstore', name: 'Apple App Store (iOS)', rules: { acceptedSizes: IPHONE_69 }, frames: [withAlpha] })));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /01\.png HAS an alpha channel \(PNG colour type 6\) and Apple App Store \(iOS\)'s rule for this set is no alpha/);
+    assert.doesNotMatch(r.out, /ios-appstore[^\n]*24-bit PNG/);
+  });
+
+  test('S8 `assets: {}` on a screenshots-only channel is still COVERAGE LOST', () => {
+    const r = run(build((s) => {
+      shotsOnly(s, { id: 'ios-appstore', name: 'Apple App Store (iOS)', rules: { acceptedSizes: IPHONE_69 } });
+      s.register.storeMetadataContract.perChannel['ios-appstore'].graphicAssets.assets = {};
+    }));
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /COVERAGE LOST — channel "ios-appstore" declares a `graphicAssets` block with an EMPTY `assets` map/);
+  });
+
+  test('S9 a block with neither assets nor screenshots is COVERAGE LOST', () => {
+    const r = run(build((s) => {
+      shotsOnly(s, { id: 'ios-appstore', name: 'Apple App Store (iOS)', rules: {} });
+      delete s.register.storeMetadataContract.perChannel['ios-appstore'].graphicAssets.screenshots;
+    }));
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /COVERAGE LOST — channel "ios-appstore" declares a `graphicAssets` block with NEITHER an `assets` map NOR a `screenshots` set/);
+  });
+
+  test('S10 deleting Play\'s `assets` key while its listing still requires the PNGs FAILS', () => {
+    const r = run(build((s) => {
+      delete s.register.storeMetadataContract.perChannel['android-play'].graphicAssets.assets;
+    }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /additionalFiles names feature-graphic\.png, and graphicAssets\.assets declares no size for it/);
+    assert.match(r.out, /additionalFiles names store-icon-512\.png, and graphicAssets\.assets declares no size for it/);
+  });
+
+  // One declaration per case, never a loop: assert-no-loop-cases.mjs counts a
+  // loop-wrapped `test(` as one case however many rows it runs.
+  const unreadable = (rules, pattern) => {
+    const r = run(build((s) => shotsOnly(s, { id: 'ios-appstore', name: 'Apple App Store (iOS)', rules, frames: [shotAt(1290, 2796)] })));
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /COVERAGE LOST/);
+    assert.match(r.out, pattern);
+  };
+
+  test('S11 acceptedSizes not "WxH" is COVERAGE LOST, never a rule that grades nothing', () => {
+    unreadable({ acceptedSizes: ['1290 x 2796'] }, /\.acceptedSizes is \["1290 x 2796"\], not a non-empty list of "WxH" strings/);
+  });
+
+  test('S11 an empty acceptedSizes is COVERAGE LOST, never a rule that grades nothing', () => {
+    unreadable({ acceptedSizes: [] }, /\.acceptedSizes is \[\], not a non-empty list/);
+  });
+
+  test('S11 minWidth as a string is COVERAGE LOST, never a rule that grades nothing', () => {
+    unreadable({ minWidth: '1366' }, /\.minWidth is "1366", not a positive integer/);
+  });
+
+  test('S11 maxBytes of zero is COVERAGE LOST, never a rule that grades nothing', () => {
+    unreadable({ maxBytes: 0 }, /\.maxBytes is 0, not a positive integer/);
+  });
+
+  test('S11 an inverted aspectRange is COVERAGE LOST, never a rule that grades nothing', () => {
+    unreadable({ aspectRange: { min: '2:1', max: '1:2' } }, /\.aspectRange is .*with min <= max/);
+  });
+
+  test('S12 Play\'s own wording is unchanged when a non-Play channel sits beside it', () => {
+    const r = run(build((s) => {
+      s.files['apps/subscriptiontracker/store/android-play/screenshots/01.png'] = shotAt(1080, 1920);
+      s.files['apps/subscriptiontracker/store/android-play/screenshots/CAPTURE.json'] = Buffer.from(JSON.stringify({ posture: 'live' }));
+      shotsOnly(s, { id: 'ios-appstore', name: 'Apple App Store (iOS)', rules: { acceptedSizes: IPHONE_69 }, frames: [shotAt(1290, 2796)] });
+    }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /holds 1 screenshot\(s\) and Play requires at least 2\. Source: https:\/\/support\.google\.com/);
+    assert.doesNotMatch(r.out, /ios-appstore[^\n]*Play/);
+  });
+});

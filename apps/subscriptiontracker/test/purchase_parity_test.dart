@@ -29,6 +29,14 @@
 //     android-play row here, which also refuses).
 //   · NOT BUILT: a store billing rail for Android/iOS/macOS. No store-billing
 //     plugin exists in this repository's dependency graph — see the PR.
+//     ⏱ CORRECTED 2026-09-22 (O-IAP-BRIDGE-NOT-WIRED-IN-THE-APP): it is built
+//     now. This app opts in to `billing.mobileIap`, so a store build that
+//     carries its RevenueCat key sells through the store — proven in
+//     test/iap_opt_in_test.dart with a fake bridge. THIS file pins the KEYLESS
+//     half: every case passes `revenueCatKey: ''` explicitly, which is what a
+//     store build compiled without its key (a fork PR, a missing secret) runs,
+//     and that build must still offer nothing — no price, no button, no web
+//     book — rather than fall back to the web rail.
 //
 // MUTATION PROOF (run and recorded in the PR): set `channelPermitted: true` on
 // the `iosAppStore` row of purchase_capabilities.dart and the iOS case goes red.
@@ -97,7 +105,7 @@ Future<void> _pumpOn(
       secureStoreProvider.overrideWithValue(_MemSecureStore()),
       appConfigProvider.overrideWith((_) async => _selling),
       purchaseRailProvider.overrideWith(
-        (ref) => purchaseRailFor(ref, releaseChannel),
+        (ref) => purchaseRailFor(ref, releaseChannel, revenueCatKey: ''),
       ),
     ],
   );

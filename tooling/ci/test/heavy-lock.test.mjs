@@ -80,6 +80,77 @@ const section = (log, id, ms = 250) =>
   `Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,${ms});` +
   `fs.appendFileSync(${JSON.stringify(log)},'E ${id}\\n');`;
 
+/** A preload that reproduces the 2026-09-20 hang: the work is done, then the
+ *  process never exits and runs NO exit handler — process.exit and an uncaught
+ *  error both write a marker and block forever at 0 % CPU (pid 24176: 85.8 min,
+ *  CPU flat, children gone). Passed with --import on the process under test only;
+ *  NODE_OPTIONS would carry it into the command heavy.mjs runs. */
+const HANG_AT_EXIT = (() => {
+  const file = join(TMP, 'hang-at-exit.mjs');
+  writeFileSync(file, [
+    `import { writeFileSync } from 'node:fs';`,
+    `const hang = (why) => { writeFileSync(process.env.HANG_MARKER, why); Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0); };`,
+    `process.exit = (code) => hang('exit ' + code);`,
+    `process.on('uncaughtException', (e) => hang('uncaught ' + (e && e.message)));`,
+  ].join('\n'));
+  return pathToFileURL(file).href;
+})();
+/** Run `args` under HANG_AT_EXIT; once it hangs, record whether it is alive and
+ *  whether the lock exists, then kill it. */
+const hungRun = async (args, env, { cwd, lock }) => {
+  const marker = join(dirname(lock), `hung-${++n}.marker`);
+  mkdirSync(dirname(lock), { recursive: true });
+  const c = spawn(process.execPath, ['--import', HANG_AT_EXIT, ...args], { env: { ...env, HANG_MARKER: marker }, cwd });
+  let out = '';
+  c.stdout.on('data', (d) => { out += d; });
+  c.stderr.on('data', (d) => { out += d; });
+  const closed = new Promise((settle) => c.on('close', settle));
+  const hung = await waitFor(() => existsSync(marker) || c.exitCode !== null, 30_000);
+  const state = {
+    marker: existsSync(marker) ? readFileSync(marker, 'utf8') : null,
+    alive: c.exitCode === null && c.signalCode === null,
+    lockHeld: existsSync(lock),
+  };
+  c.kill('SIGKILL');
+  await closed;
+  return { ...state, hung, out };
+};
+
+describe('a process HUNG after its work holds no lock (O-PREFLIGHT-HANGS-HOLDING-THE-MACHINE-LOCK)', () => {
+  test('control: releasing only in the exit handler KEEPS the lock while hung — the harness sees the 2026-09-20 shape', async () => {
+    const lock = freshLock();
+    const script = join(dirname(lock), 'exit-handler-only.mjs');
+    mkdirSync(dirname(lock), { recursive: true });
+    writeFileSync(script, [
+      `import { machineFree, releaseOnExit } from ${JSON.stringify(pathToFileURL(LOCK_MODULE).href)};`,
+      `const f = machineFree({ argv: ['exit-handler-only'] });`,
+      `releaseOnExit(f.lock, (c) => process.exit(c));`,
+      `process.exit(0);`,
+    ].join('\n'));
+    const r = await hungRun([script], childEnv(lock), { lock });
+    assert.equal(r.marker, 'exit 0', r.out);
+    assert.ok(r.alive);
+    assert.equal(r.lockHeld, true, 'if this goes false the preload no longer simulates a hang and every case below is vacuous');
+  });
+
+  test('heavy.mjs: the command finished, heavy.mjs hangs at exit — the lock is already free, and the code was 3', async () => {
+    const lock = freshLock();
+    const r = await hungRun([HEAVY, '--', process.execPath, '-e', 'process.exit(3)'], childEnv(lock), { lock });
+    assert.equal(r.marker, 'exit 3', r.out);
+    assert.ok(r.alive);
+    assert.equal(r.lockHeld, false, `heavy.mjs hung at exit still HOLDS the machine lock\n${r.out}`);
+  });
+
+  test('heavy.mjs: a command that cannot start, then a hang — COVERAGE LOST and the lock free', async () => {
+    const lock = freshLock();
+    const r = await hungRun([HEAVY, '--', 'no-such-command-nikatru-heavy-test'], childEnv(lock), { lock });
+    assert.equal(r.marker, 'exit 2', r.out);
+    assert.match(r.out, /COVERAGE LOST — could not start/);
+    assert.ok(r.alive);
+    assert.equal(r.lockHeld, false, r.out);
+  });
+});
+
 describe('heavy.mjs — mutual exclusion between real processes', () => {
   test('control: a free lock is taken, the command runs, and the lock is gone afterwards', () => {
     const lock = freshLock();
@@ -457,6 +528,49 @@ describe('preflight takes the lock after the untracked leg, and only then', () =
     assert.equal(existsSync(lock), false);
     // Exactly one "lock taken" line: the release must not make it re-acquire.
     assert.equal((r.out.match(/heavy-run lock taken/g) ?? []).length, 1, r.out);
+  });
+
+  test('🔴 a preflight HUNG after its work holds NO lock — observed while the process is still alive', async () => {
+    // The closes clause of O-PREFLIGHT-HANGS-HOLDING-THE-MACHINE-LOCK, literally:
+    // "a test proving the lock is free while a deliberately hung process still
+    // runs". The hang is injected at process.exit (see hangAtExit), so no exit
+    // handler can have released it: only the release at the end of the WORK can.
+    const lock = freshLock();
+    const r = await hungRun([join(root, 'tooling', 'scripts', 'preflight.mjs'), '--sweep-only', '--lock-wait', '0.03'], childEnv(lock), { cwd: root, lock });
+    assert.equal(r.marker, 'exit 1', `preflight must reach its verdict and then hang in exit\n${r.out}`);
+    assert.ok(r.alive, 'the process must still be running when the lock is inspected, or this proves nothing');
+    assert.match(r.out, /heavy-run lock taken/);
+    assert.equal(r.lockHeld, false, `a finished preflight hung at exit still HOLDS the machine lock\n${r.out}`);
+  });
+
+  test('🔴 a leg that THROWS is graded FAIL and the lock is still freed before a hang', async () => {
+    // A leg's throw used to escape step(), skip the release at the verdict and
+    // leave the lock to the exit handler — the path a hung process never runs.
+    // Injected: a preload makes the sweep leg's own mkdtempSync throw, AFTER the
+    // lock is taken. ⏱ 2026-09-23 — an unusable temp directory was the first
+    // injection; since every command's output goes through a capture FILE
+    // (captureSync), that stops the untracked leg before the lock and never
+    // reaches the sweep leg, so the throw is aimed at the one call instead.
+    const lock = freshLock();
+    mkdirSync(dirname(lock), { recursive: true });
+    const preload = join(dirname(lock), 'sweep-leg-throws.mjs');
+    writeFileSync(preload, [
+      `import fs from 'node:fs';`,
+      `import { syncBuiltinESMExports } from 'node:module';`,
+      `const real = fs.mkdtempSync;`,
+      `fs.mkdtempSync = (prefix, ...rest) => {`,
+      `  if (String(prefix).includes('nikatru-preflight-')) throw new Error('injected: the sweep leg cannot make its temp dir');`,
+      `  return real(prefix, ...rest);`,
+      `};`,
+      `syncBuiltinESMExports();`,
+    ].join('\n'));
+    const env = childEnv(lock);
+    const r = await hungRun(['--import', pathToFileURL(preload).href, join(root, 'tooling', 'scripts', 'preflight.mjs'), '--sweep-only', '--lock-wait', '0.03'], env, { cwd: root, lock });
+    assert.ok(r.alive, 'the process must still be running when the lock is inspected');
+    assert.equal(r.lockHeld, false, `a leg that threw left the lock to an exit that never came (${r.marker})\n${r.out}`);
+    assert.equal(r.marker, 'exit 1', `the throw must become a FAIL leg and a verdict, not an uncaught crash\n${r.out}`);
+    assert.match(r.out, /THE LEG THREW/);
+    assert.match(r.out, /injected: the sweep leg cannot make its temp dir/, 'the leg must have thrown the INJECTED error, not some other');
   });
 
   test('--lock-wait with no number is a usage error (exit 2)', () => {

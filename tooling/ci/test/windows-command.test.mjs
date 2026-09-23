@@ -16,7 +16,12 @@
 // these assertions run — and fail — on the runner. A suite that quietly skipped
 // itself off Windows would be exactly the vacuous green this module exists to
 // stop.
-import { test, describe } from 'node:test';
+import { test, describe, after } from 'node:test';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, writeFileSync, existsSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { windowsCommand } from '../../scripts/windows-command.mjs';
 
@@ -131,5 +136,47 @@ describe('windowsCommand — off Windows none of this applies', () => {
       assert.equal(r.file, cmd[0]);
       assert.deepEqual(r.args, cmd.slice(1));
     }
+  });
+});
+
+// ── END TO END, THROUGH THE CLI — the closes clause's "mutation-proven: a
+// command that must fail, run through the fixed path, must FAIL". Every case
+// above calls windowsCommand directly, so none of them would notice heavy.mjs
+// no longer CALLING it: spawn the raw argv again and the mangled form is back to
+// a four-second green, with all of the above still passing. These two go red on
+// exactly that. They need a real cmd.exe, so off Windows they are a NAMED skip.
+const WIN = process.platform === 'win32';
+const OFF_WIN = WIN ? false : 'spawns a real cmd.exe; the platform-injected cases above carry the rule on every OS';
+const HEAVY = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'scripts', 'heavy.mjs');
+const E2E = mkdtempSync(join(tmpdir(), 'windows-command-e2e-'));
+after(() => { try { rmSync(E2E, { recursive: true, force: true }); } catch {} });
+let k = 0;
+/** heavy.mjs against a temp lock, no backup wait, not CI, stdin at EOF (the
+ *  condition under which an interactive cmd exits 0 having run nothing). */
+const heavy = (...cmd) => {
+  const lock = join(E2E, `case-${++k}`, 'heavy-run.lock');
+  const env = { ...process.env, NIKATRU_HEAVY_LOCK: lock, NIKATRU_HEAVY_BACKUP_TASK: '', NIKATRU_HEAVY_LOCK_POLL_MS: '100', CI: '' };
+  delete env.NIKATRU_HEAVY_LOCK_TOKEN;
+  const r = spawnSync(process.execPath, [HEAVY, '--lock-wait', '0.05', '--', ...cmd], { encoding: 'utf8', env, input: '', timeout: 60_000 });
+  return { status: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}`, lock };
+};
+
+describe('heavy.mjs end to end — a command that must fail, FAILS', () => {
+  test('a .bat named directly that exits 7 answers 7 through heavy.mjs (wrapped inside node)', { skip: OFF_WIN }, () => {
+    const bat = join(E2E, 'must-fail.bat');
+    writeFileSync(bat, '@echo off\r\necho ran-the-bat\r\nexit /b 7\r\n');
+    const r = heavy(bat);
+    assert.equal(r.status, 7, `a .bat that exits 7 must make heavy.mjs exit 7\n${r.out}`);
+    assert.match(r.out, /ran-the-bat/);
+    assert.equal(existsSync(r.lock), false, 'the lock must be released');
+  });
+
+  test('🔴 the argv MSYS makes of `cmd /c "exit 7"` is REFUSED — exit 2, and the lock is never taken', { skip: OFF_WIN }, () => {
+    // Exactly what node receives after MSYS rewrote the switch: 'C:/' where /c was.
+    const r = heavy('cmd', 'C:/', 'exit 7');
+    assert.equal(r.status, 2, `the mangled cmd invocation must be COVERAGE LOST, never 0\n${r.out}`);
+    assert.match(r.out, /COVERAGE LOST/);
+    assert.doesNotMatch(r.out, /heavy-run lock taken/);
+    assert.equal(existsSync(r.lock), false);
   });
 });

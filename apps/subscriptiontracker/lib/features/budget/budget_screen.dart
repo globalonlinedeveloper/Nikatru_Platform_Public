@@ -235,6 +235,13 @@ class BudgetScreen extends ConsumerWidget {
     // category's OWN spend × 1.2. The six "caps" on those frames are derived
     // per render, not set by anybody: 40 → 48, 78 → 94.
     //
+    // ✅ CORRECTED 2026-09-22 (O-BUDGET-SURFACE-HAS-NO-WAY-TO-SET-A-BUDGET, gap
+    // b): the paragraph above describes the tree before this change. `_softCap`
+    // is gone. A category with no cap of its own now renders its SPEND ALONE —
+    // no " / cap" figure and no progress bar — because a bar is a comparison
+    // and a cap nobody set is not a second operand. `_categoryBar` carries the
+    // guard; `test/budget_without_a_budget_test.dart` pins both arms.
+    //
     // 🔑 SO THE FIX IS THE SECOND BRANCH, NOT THE FIRST. Adding the control
     // would be a product increment on a destination [ADR 077] §A deletes —
     // "the same ring, spent/left stats, donut and per-category caps" move to
@@ -479,6 +486,10 @@ class BudgetScreen extends ConsumerWidget {
         // and can never read as over budget. That is a product decision, not a
         // bug — recorded here because the number looks like an arbitrary
         // constant at the call site.
+        //
+        // ✅ CORRECTED 2026-09-22: there is no default any more. A category
+        // with no cap passes `null` and its card states the spend alone; the
+        // invented 83% bar was the surface asserting a comparison nobody set.
         _categoryBar(
           context,
           money,
@@ -486,7 +497,7 @@ class BudgetScreen extends ConsumerWidget {
           budget.currencyCode,
           cats[i],
           catFigures.parts[i],
-          capMap[cats[i].name] ?? _softCap(cats[i], budget.currencyCode),
+          capMap[cats[i].name],
           i,
         ),
     ];
@@ -678,15 +689,6 @@ class BudgetScreen extends ConsumerWidget {
     );
   }
 
-  /// The SILENT DEFAULT, carried over unchanged in arithmetic and moved here
-  /// so it can be named: a category with no configured cap gets its own spend
-  /// times 1.2, so its bar always renders at 83% and can never read as over
-  /// budget. That is a product decision, not a bug.
-  static Money _softCap(CategoryTotal cat, String currencyCode) => Money(
-    (SubMath.chartWeight(cat.value, currencyCode) * 1.2).round(),
-    currencyCode,
-  );
-
   Widget _categoryBar(
     BuildContext context,
     MoneyFormatter money,
@@ -697,18 +699,27 @@ class BudgetScreen extends ConsumerWidget {
     // rather than formatted here, because a share only exists relative to the
     // other shares and this method can see exactly one of them.
     String spentText,
-    Money cap,
+    // The cap the user SET for this category, or null. There is no default:
+    // a cap nobody set is not a second operand, so without one the card
+    // states the spend and draws no bar (O-BUDGET-SURFACE-HAS-NO-WAY-TO-SET-
+    // A-BUDGET, gap b). A zero cap is read as unset, as the total is.
+    Money? cap,
     int i,
   ) {
+    final Money? setCap = cap == null || cap.minorUnits <= 0 ? null : cap;
+    final bool hasBudget = setCap != null;
     // The BAR is drawn in the budget's own currency — see [SubMath.chartWeight]
     // for why a proportion cannot span two. The FIGURE beside it prints every
     // subtotal, so a foreign-currency row stays visible even where it cannot be
     // measured against a cap that is not in its units.
     final double spentHere = SubMath.chartWeight(cat.value, currencyCode);
-    final bool over = spentHere > cap.minorUnits;
-    final double frac = cap.minorUnits <= 0
-        ? 1
-        : math.min(spentHere / cap.minorUnits, 1);
+    final bool over = setCap != null && spentHere > setCap.minorUnits;
+    final double frac = setCap == null
+        ? 0
+        : math.min(spentHere / setCap.minorUnits, 1);
+    final String? capText = setCap == null
+        ? null
+        : ' / ${money.formatRounded(setCap)}';
     final Color barColor = over
         ? AppColors.danger
         : AppColors.ramp[i % AppColors.ramp.length];
@@ -747,31 +758,34 @@ class BudgetScreen extends ConsumerWidget {
                   children: <InlineSpan>[
                     // NOT an l10n key: ' / ' is a separator between two
                     // formatted figures, and both figures come from `Currency`.
-                    TextSpan(
-                      text: ' / ${money.formatRounded(cap)}',
-                      style: AppText.muted.copyWith(
-                        fontSize: 13,
-                        color: neutral.muted,
+                    if (hasBudget && capText != null)
+                      TextSpan(
+                        text: capText,
+                        style: AppText.muted.copyWith(
+                          fontSize: 13,
+                          color: neutral.muted,
+                        ),
                       ),
-                    ),
                   ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 9),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: LinearProgressIndicator(
-              value: frac,
-              minHeight: 8,
-              // The UNFILLED half of the bar is a neutral, so it has to move
-              // with the surface: `AppColors.line` (#ECECF2) is a
-              // near-white hairline that reads as a FULL bar on a dark card.
-              backgroundColor: neutral.line,
-              color: barColor,
+          if (hasBudget) ...<Widget>[
+            const SizedBox(height: 9),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: LinearProgressIndicator(
+                value: frac,
+                minHeight: 8,
+                // The UNFILLED half of the bar is a neutral, so it has to move
+                // with the surface: `AppColors.line` (#ECECF2) is a
+                // near-white hairline that reads as a FULL bar on a dark card.
+                backgroundColor: neutral.line,
+                color: barColor,
+              ),
             ),
-          ),
+          ],
         ],
       ),
     );

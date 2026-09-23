@@ -65,10 +65,15 @@ class SubMath {
               CategoryTotal(e.key, MonthlyShare.sum(e.value)),
         )
         .toList();
-    list.sort(
-      (CategoryTotal a, CategoryTotal b) =>
-          _compareDesc(_orderKey(a.value), _orderKey(b.value), _order(s)),
-    );
+    final List<String> order = _order(s);
+    list.sort((CategoryTotal a, CategoryTotal b) {
+      final int byAmount = _compareDesc(
+        _orderKey(a.value),
+        _orderKey(b.value),
+        order,
+      );
+      return byAmount != 0 ? byAmount : _compareNames(a.name, b.name);
+    });
     return list;
   }
 
@@ -81,9 +86,12 @@ class SubMath {
         b.currencyCode,
         order,
       );
-      return byCurrency != 0
-          ? byCurrency
-          : MonthlyShare.descending(a.monthlyShare, b.monthlyShare);
+      if (byCurrency != 0) return byCurrency;
+      final int byAmount = MonthlyShare.descending(
+        a.monthlyShare,
+        b.monthlyShare,
+      );
+      return byAmount != 0 ? byAmount : _tieBreak(a, b);
     });
     return l;
   }
@@ -103,6 +111,28 @@ class SubMath {
       if (!order.contains(x.currencyCode)) order.add(x.currencyCode);
     }
     return order;
+  }
+
+  /// The last word when the figure a list is sorted by is a TIE.
+  ///
+  /// 🔴 A SORT THAT TIES FALLS BACK TO ITS INPUT ORDER, AND THE INPUT ORDER IS
+  /// NOT THE SAME ON EVERY TARGET. The phone list is append order
+  /// (`subscriptions_controller.dart`), the signed-in list is the API's
+  /// `ORDER BY price DESC`, and ids are random uuids. So two rows renewing on
+  /// the same day, or costing the same, used to swap places between the phone
+  /// and the tablet capture of one seed. The key below is total and ignores
+  /// input order: the name as a reader sorts it (case-folded), then the exact
+  /// name so "abc" and "ABC" still order, then the id so two rows with one
+  /// name still order. `test/sub_math_order_test.dart` feeds one set in two
+  /// orders and asserts one output.
+  static int _tieBreak(Subscription a, Subscription b) {
+    final int byName = _compareNames(a.name, b.name);
+    return byName != 0 ? byName : a.id.compareTo(b.id);
+  }
+
+  static int _compareNames(String a, String b) {
+    final int folded = a.toLowerCase().compareTo(b.toLowerCase());
+    return folded != 0 ? folded : a.compareTo(b);
   }
 
   static Money _orderKey(MoneyBag bag) => bag.isEmpty
@@ -151,10 +181,10 @@ class SubMath {
     int take = 4,
   }) {
     final List<Subscription> l = List<Subscription>.of(s);
-    l.sort(
-      (Subscription a, Subscription b) =>
-          a.daysUntil(now).compareTo(b.daysUntil(now)),
-    );
+    l.sort((Subscription a, Subscription b) {
+      final int byDate = a.daysUntil(now).compareTo(b.daysUntil(now));
+      return byDate != 0 ? byDate : _tieBreak(a, b);
+    });
     return l.take(take).toList();
   }
 

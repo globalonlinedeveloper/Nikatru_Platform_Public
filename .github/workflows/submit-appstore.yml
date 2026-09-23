@@ -75,6 +75,7 @@ jobs:
           --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
           --dart-define=APP_VERSION=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}+${GITHUB_SHA::7}
           --dart-define=RELEASE_CHANNEL=ios-appstore
+          --dart-define=REVENUECAT_KEY=${{ secrets.REVENUECAT_PUBLIC_KEY_APPLE }}
           --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
       # Same correction as the iOS step above: unsigned BY CHOICE, not for want
       # of a certificate. A Mac Installer Distribution certificate exists too.
@@ -90,6 +91,7 @@ jobs:
           --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
           --dart-define=APP_VERSION=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}+${GITHUB_SHA::7}
           --dart-define=RELEASE_CHANNEL=macos-appstore
+          --dart-define=REVENUECAT_KEY=${{ secrets.REVENUECAT_PUBLIC_KEY_APPLE }}
           --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
       # ⏱ CORRECTED 2026-09-07 (unit `symbols-everywhere`) — this comment used to
       # end "Retained rather than sent to the crash sink because

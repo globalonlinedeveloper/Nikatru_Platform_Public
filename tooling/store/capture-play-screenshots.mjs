@@ -155,6 +155,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { pngHeader, flattenToOpaque, RasterUnavailable } from './chrome-raster.mjs';
 import { decodeRgba, PngUnreadable } from './png-codec.mjs';
+import { foldsOf, foldFor, foldLineProblems, selfTestFoldLineDetector, FOLD_ROWS, FOLD_TOLERANCE } from './capture-row-edge.mjs';
 import { scanCaptureSuite, selfTestAccountAddressDetector } from './capture-suite-scan.mjs';
 import { stageFallbackFonts, unstageFallbackFonts } from './capture-fallback-fonts.mjs';
 import { boardFileFor, boardOf, boardParityProblems, boardProvenance } from './capture-board-parity.mjs';
@@ -177,8 +178,17 @@ const arg = (name, dflt) => {
 const app = arg('--app', 'subscriptiontracker');
 
 /** The channel whose listing this captures. The register's contract is keyed by
- *  it, and so is the set map every directory below is read from. */
-const CHANNEL = 'android-play';
+ *  it, and so is the set map every directory below is read from.
+ *
+ *  🔴 IT BECAME AN ARGUMENT ON 2026-09-22 (O-STORE-SCREENSHOTS PR 2), and the
+ *  default is the value it was a constant of, so every existing caller, every
+ *  workflow line and every test that imports this file keeps exactly the
+ *  behaviour it had. The alternative was a second copy of this file per store,
+ *  which is how five listings come apart: the Play copy would get the next fix
+ *  and the other four would not, and nothing would say so. What is genuinely
+ *  per-channel — the directory, the sizes, the counts, the viewport geometry —
+ *  is read from the register row below, not written here. */
+const CHANNEL = arg('--channel', 'android-play');
 const REGISTER = join('tooling', 'channel-register.json');
 
 /** Play's screenshot rules that apply to EVERY device type. Sourced, or absent. */
@@ -220,12 +230,110 @@ export const PLAY_TABLET_SCREENSHOTS = {
   minCount: 4,
 };
 
+/** The register row for THIS channel's screenshots, read once. `deviceTypeSets()`
+ *  below reads the same file again for its own refusals; that is deliberate —
+ *  this read is allowed to come back empty (a channel may legitimately not be
+ *  declared yet, and the message for that belongs to the function that refuses),
+ *  whereas the one below must stop the run. */
+function readRegister() {
+  const abs = join(ROOT, REGISTER);
+  if (!existsSync(abs)) return null;
+  try {
+    return JSON.parse(readFileSync(abs, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+const REG = readRegister();
+const SHOTS = REG?.storeMetadataContract?.perChannel?.[CHANNEL]?.graphicAssets?.screenshots ?? null;
+
+/** "2:1" → 2. The register writes an aspect as WIDTH:HEIGHT, the same way
+ *  assert-listing-assets.mjs reads it; a second spelling here is how the two
+ *  files would grade the same frame differently. */
+const ratioOf = (v) => {
+  const m = typeof v === 'string' ? /^(\d+):(\d+)$/.exec(v) : null;
+  return m && +m[1] > 0 && +m[2] > 0 ? +m[1] / +m[2] : null;
+};
+
 /** One entry per DEVICE TYPE. The `type` key must name a set in the register,
- *  and the register is where that set's directory lives — never here. */
-export const CAPTURES = [
+ *  and the register is where that set's directory lives — never here.
+ *
+ *  🔴 PLAY'S TWO VIEWPORTS STAY WRITTEN DOWN, UNCHANGED. 360x640@3 and
+ *  900x1600@2 are the geometry every frame in the live Play listing was
+ *  captured at; moving them into the register would re-derive them through a
+ *  second file on the first run after this change, and a screenshot set that
+ *  silently changes size is the one failure this whole lane exists to prevent.
+ *  So: Play reads from here, and a channel with no such history declares its
+ *  geometry in its own `deviceTypeCoverage.sets[<type>].capture` limb, which
+ *  this file reads. The Play plan is byte-identical before and after. */
+export const PLAY_CAPTURES = [
   { type: 'phone', cssWidth: 360, cssHeight: 640, dpr: 3, rules: PLAY_SCREENSHOTS },
   { type: 'tablet', cssWidth: 900, cssHeight: 1600, dpr: 2, rules: PLAY_TABLET_SCREENSHOTS },
 ];
+
+/** The viewport list for a channel that declares its own capture geometry.
+ *  A set with NO `capture` limb is skipped rather than guessed at, and
+ *  `deviceTypeSets()` then refuses the run by name — a declared set with no
+ *  viewport is a device type the register promises and nothing can produce. */
+function registerCaptures() {
+  const sets = SHOTS?.deviceTypeCoverage?.sets;
+  if (sets === null || typeof sets !== 'object' || Array.isArray(sets)) return [];
+  const out = [];
+  for (const [type, set] of Object.entries(sets)) {
+    const c = set?.capture;
+    if (!c || typeof c !== 'object') continue;
+    out.push({
+      type,
+      cssWidth: c.logicalWidth,
+      cssHeight: c.logicalHeight,
+      dpr: c.dpr,
+      // Present ⇒ this is a NATIVE drive (`flutter drive -d linux|windows|macos|<simulator>`),
+      // absent ⇒ the web harness with chromedriver. See NATIVE below.
+      flutterDevice: c.flutterDevice ?? null,
+      runner: c.runner ?? null,
+      rules: set,
+    });
+  }
+  return out;
+}
+
+export const CAPTURES = CHANNEL === 'android-play' ? PLAY_CAPTURES : registerCaptures();
+
+/** 🔴 NATIVE vs WEB, decided by the register and not by a flag. The Play set is
+ *  captured through `flutter drive -d web-server` with chromedriver, because a
+ *  phone-shaped browser window is the only way this machine can photograph an
+ *  Android listing. A desktop or Apple listing is the opposite case: the real
+ *  platform IS available on its runner, so it drives the real binary and
+ *  chromedriver, the fallback-font staging and the Turnstile site key — all
+ *  three of which are web-build concerns — do not apply and must not be
+ *  required. A channel is native when EVERY one of its viewports names a
+ *  Flutter device; a mixed list would mean one chromedriver shared with a
+ *  native drive, so it is not allowed to arise. */
+const NATIVE = CAPTURES.length > 0 && CAPTURES.every((c) => typeof c.flutterDevice === 'string' && c.flutterDevice);
+
+/** The store this run is captured for, for the messages below. The guards use
+ *  `storeName(row)` against the same register; this is the same answer reached
+ *  from the channel id, because this file has the id and not the row. */
+const STORE_LABEL = CHANNEL === 'android-play' ? 'Play' : (REG?.channels?.[CHANNEL]?.name ?? CHANNEL);
+
+/** The rules that apply to EVERY device type of THIS channel. For Play it IS
+ *  `PLAY_SCREENSHOTS` — the same object, so nothing about a Play run changes.
+ *  For any other channel it is assembled from the register row, in the same
+ *  shape, so every `GENERAL.*` reading below is answered from one place. */
+const GENERAL =
+  CHANNEL === 'android-play'
+    ? PLAY_SCREENSHOTS
+    : {
+        source: SHOTS?.source ?? `${REGISTER} → storeMetadataContract.perChannel["${CHANNEL}"]`,
+        fetched: null,
+        minSide: SHOTS?.minSide ?? 0,
+        maxSide: SHOTS?.maxSide ?? Infinity,
+        maxAspect: ratioOf(SHOTS?.aspectRange?.max) ?? Infinity,
+        minToPublish: SHOTS?.minCount ?? 0,
+        maxPerDeviceType: SHOTS?.maxCount ?? Infinity,
+        recommendedCount: SHOTS?.recommendedCount ?? SHOTS?.minCount ?? 0,
+        alpha: SHOTS?.alpha ?? false,
+      };
 
 const fail = (lines) => {
   console.error(`capture-play-screenshots: REFUSING — ${lines[0]}`);
@@ -417,6 +525,27 @@ if (!existsSync(join(appDir, 'integration_test', 'store_screenshots_test.dart'))
   );
 }
 
+// ── 🔴 THE ROW-EDGE DETECTOR PROVES ITSELF TOO (⏱ 2026-09-22) ──────────────
+// Same placement, same reason. Three synthetic frames through the real codec:
+// a card the fold cuts must read RED, a gap and a faded edge GREEN. The shell
+// below the fold is painted a different colour, so a band that slipped one row
+// down fails here instead of passing every real frame.
+{
+  const t = selfTestFoldLineDetector();
+  if (!t.ok) {
+    fail([
+      'the row-edge detector failed its own self-test, so no frame would have been examined for a card cut by the fold.',
+      `straddling card: edge=${t.straddle.edge} (needs true, ${t.straddle.off} px off); gap: edge=${t.gap.edge} ` +
+        `(needs false, ${t.gap.off} px off); faded: edge=${t.faded.edge} (needs false, ${t.faded.off} px off).`,
+      'See tooling/store/capture-row-edge.mjs and tooling/ci/test/capture-row-edge.test.mjs.',
+    ]);
+  }
+  console.log(
+    `   row-edge detector: straddle ${t.straddle.off} px off, gap ${t.gap.off}, faded ${t.faded.off}, ` +
+      `${FOLD_ROWS} rows, tolerance ${FOLD_TOLERANCE}`,
+  );
+}
+
 // ── 🔴 WHERE EACH DEVICE TYPE'S SET LIVES IS THE REGISTER'S TO SAY ──────────
 // Not this file's. `assert-play-device-coverage.mjs` counts the directories the
 // register names; if this script named its own, the two would be a pair of
@@ -507,8 +636,12 @@ const { dirs: SET_DIRS, minDistinct: MIN_DISTINCT_TYPES, coverageSource: COVERAG
 // LISTING DIRECTORY and then refused. The refusal was correct and the tree was
 // left worse than before it ran. Every check that can be made without
 // destroying anything belongs above the line that destroys something.
-const driver = chromedriverPath();
-console.log(`chromedriver: ${driver}`);
+// A NATIVE channel never asks. chromedriverPath() is a REFUSAL when it cannot
+// resolve, which is right for a web capture and wrong for a Linux, Windows,
+// macOS or simulator drive that has no browser in it at all: it would stop a
+// run that needs nothing from Chrome.
+const driver = NATIVE ? null : chromedriverPath();
+console.log(NATIVE ? `native drive: ${CAPTURES.map((c) => `${c.type} → ${c.flutterDevice}`).join(', ')}` : `chromedriver: ${driver}`);
 
 for (const cap of CAPTURES) {
   const dir = join(baseDir, SET_DIRS[cap.type]);
@@ -531,9 +664,9 @@ for (const cap of CAPTURES) {
 const boardDir = join(tmpdir(), `nk-shot-board-${randomBytes(4).toString('hex')}`);
 mkdirSync(boardDir, { recursive: true });
 
-const cd = spawn(driver, ['--port=4444', '--silent'], { stdio: 'pipe' });
+const cd = NATIVE ? null : spawn(driver, ['--port=4444', '--silent'], { stdio: 'pipe' });
 let cdErr = '';
-cd.stderr.on('data', (d) => (cdErr += d.toString()));
+cd?.stderr.on('data', (d) => (cdErr += d.toString()));
 
 /** chromedriver needs a moment before it answers on 4444; polling its own HTTP
  *  status endpoint is the only signal that it is really ready. Sleeping a fixed
@@ -582,8 +715,15 @@ for (const k of need) pass(k);
 // an auth posture the shipping build does not have. The nightly is the evidence
 // that a driven browser signs in WITH the gate rendered, so passing it here
 // moves this lane onto the posture every other lane already uses.
+//
+// 🔴 AND IT IS A WEB POSTURE, so a native drive is exempt rather than excused.
+// TurnstileGate renders in the WEB build; the desktop and Apple builds sign in
+// without it, so requiring the key there would refuse a run over a gate that
+// build does not have — the mirror image of the defect this limb was added for.
+// The posture claim stays true either way: each capture drives the auth flow
+// its own shipping build has.
 if (process.env.TURNSTILE_SITE_KEY) pass('TURNSTILE_SITE_KEY');
-else if (!PROOF) {
+else if (!PROOF && !NATIVE) {
   fail([
     'a live capture needs TURNSTILE_SITE_KEY and it is not set.',
     '',
@@ -625,7 +765,12 @@ defines.push(...launchDefineArgs());
 // Staging is a hard requirement, not best-effort: the failure it prevents is
 // SILENT, so a font that could not be placed must stop the run rather than
 // produce a listing asset with no text on it.
-await stageFallbackFonts({ appDir, log: (m) => console.log(m) });
+//
+// 🔴 WEB ONLY. The bug is a WEB bug — the engine fetching `fallback-fonts/` from
+// a dev server that answers it with `index.html`. A native build carries its
+// fonts in the bundle and never makes that request, so staging 23 MB into a
+// tracked app directory would be 23 MB of risk bought for nothing.
+if (!NATIVE) await stageFallbackFonts({ appDir, log: (m) => console.log(m) });
 
 /** ONE chromedriver, one drive PER VIEWPORT. The browser dimension is a launch
  *  argument, so a second size is a second drive — there is no mid-run resize
@@ -633,23 +778,41 @@ await stageFallbackFonts({ appDir, log: (m) => console.log(m) });
  *  once and reused, because the handshake is the slow part and a second
  *  chromedriver on the same port would simply fail to bind. */
 try {
-  if (!(await waitForDriver())) {
+  if (!NATIVE && !(await waitForDriver())) {
     fail([`chromedriver did not become ready on port 4444.`, cdErr.trim() || '(no stderr)']);
   }
   for (const cap of CAPTURES) {
     const dir = join(baseDir, SET_DIRS[cap.type]);
-    const args = [
-      'drive',
-      '--driver=test_driver/store_screenshots.dart',
-      '--target=integration_test/store_screenshots_test.dart',
-      '-d', 'web-server',
-      '--browser-name=chrome',
-      // THE DIMENSION LEVER. `flutter drive --help`: "The dimension of the browser
-      // when running a Flutter Web test … This will affect screenshot dimensions".
-      `--browser-dimension=${cap.cssWidth}x${cap.cssHeight}@${cap.dpr}`,
-      '--driver-port=4444',
-      ...defines,
-    ];
+    // ⚠️ THE DIMENSION LEVER IS NOT THE SAME LEVER ON A NATIVE DRIVE, and that
+    // is the one thing this branch must say out loud. On web, the frame size is
+    // an ARGUMENT to this process: `--browser-dimension` sets it and the number
+    // in the register is a prediction this script then verifies. On Linux,
+    // Windows, macOS and a simulator there is no such flag — the frame is
+    // whatever the WINDOW is, so the geometry has to be imposed by the runner
+    // (an Xvfb screen size, a simulator model) and by the suite itself. The
+    // register's `capture` limb therefore records what the runner must be set
+    // to, and `acceptedSizes` on the same set is what makes a wrong window
+    // size a RED run rather than a listing at the wrong size. See the workflow.
+    const args = NATIVE
+      ? [
+          'drive',
+          '--driver=test_driver/store_screenshots.dart',
+          '--target=integration_test/store_screenshots_test.dart',
+          '-d', cap.flutterDevice,
+          ...defines,
+        ]
+      : [
+          'drive',
+          '--driver=test_driver/store_screenshots.dart',
+          '--target=integration_test/store_screenshots_test.dart',
+          '-d', 'web-server',
+          '--browser-name=chrome',
+          // THE DIMENSION LEVER. `flutter drive --help`: "The dimension of the browser
+          // when running a Flutter Web test … This will affect screenshot dimensions".
+          `--browser-dimension=${cap.cssWidth}x${cap.cssHeight}@${cap.dpr}`,
+          '--driver-port=4444',
+          ...defines,
+        ];
     console.log('');
     console.log(`── ${cap.type}: ${cap.cssWidth}x${cap.cssHeight}@${cap.dpr} → ${dir.replace(ROOT, '.')}`);
     // 🔴 THE VALUE IS REDACTED, THE KEY IS NOT — AND THAT USED TO BE THE OTHER
@@ -755,10 +918,12 @@ try {
     }
   }
 } finally {
-  cd.kill();
+  cd?.kill();
   // The staged fonts are ~23 MB of upstream bytes inside a tracked app
   // directory. They exist only for the drives above, so they are removed
   // whether those succeeded or not — a crashed capture must not leave them.
+  // Unconditional even on a native run, where nothing staged them: the whole
+  // point of this limb is that it cleans a directory it did not have to trust.
   unstageFallbackFonts(appDir);
 }
 
@@ -767,6 +932,10 @@ try {
 // capture is re-emitted opaque at its own size before anything checks it.
 const problems = [];
 const measured = [];
+// ⏱ 2026-09-22 · A `--proof` run that could not run a check it should have.
+// Not a failure of the set (exit 1), a hole in what was examined (exit 2), the
+// same split capture-fallback-fonts.mjs makes with its `CoverageLost`.
+const coverageLost = [];
 
 for (const cap of CAPTURES) {
   const dir = join(baseDir, SET_DIRS[cap.type]);
@@ -793,8 +962,8 @@ for (const cap of CAPTURES) {
   // whatever the device type's own paragraph states. `Math.max`/`Math.min`
   // rather than a choice, so a set is inside BOTH readings and this file never
   // has to decide which of two published numbers wins.
-  const minSide = Math.max(PLAY_SCREENSHOTS.minSide, cap.rules.minSide ?? 0);
-  const maxSide = Math.min(PLAY_SCREENSHOTS.maxSide, cap.rules.maxSide ?? Infinity);
+  const minSide = Math.max(GENERAL.minSide, cap.rules.minSide ?? 0);
+  const maxSide = Math.min(GENERAL.maxSide, cap.rules.maxSide ?? Infinity);
   const aspect = cap.rules.portraitAspect ?? null;
 
   /** Every frame in a set is one capture at one viewport, so they must all be
@@ -803,6 +972,34 @@ for (const cap of CAPTURES) {
    *  sizes in it produces a provenance record that is wrong about some of the
    *  bytes it sits next to. */
   const sizes = new Set();
+
+  // WHAT WAS ON SCREEN, read back from the file this viewport's driver wrote.
+  // A record that is absent or unparseable is recorded as `null` and NOT as an
+  // empty board: `boardParityProblems` names absence as its own problem, and
+  // "the drive wrote no record" must never reduce to "the board was empty",
+  // which is a sentence about the app that nothing here observed.
+  //
+  // ⏱ 2026-09-22 · READ BEFORE THE FRAMES, NOT AFTER THEM. The record now also
+  // carries `folds`, the per-frame geometry the row-edge check below needs
+  // inside the loop. Nothing else about the read changed.
+  let record = null;
+  const boardFile = boardFileFor(boardDir, cap);
+  if (existsSync(boardFile)) {
+    try {
+      record = JSON.parse(readFileSync(boardFile, 'utf8'));
+    } catch (e) {
+      problems.push(`the "${cap.type}" viewport's board record at ${boardFile} is not readable JSON: ${e.message}`);
+    }
+  }
+  const folds = foldsOf(record);
+  if (!folds) {
+    const why =
+      `the "${cap.type}" viewport's drive published no fold geometry (\`folds\` in ${boardFile}), so NO frame ` +
+      'of this set was examined for a card cut by the page edge. The suite records it on both postures ' +
+      '(`recordFold` in store_screenshots_test.dart), so its absence is a regression, not a demo-build gap.';
+    if (PROOF) coverageLost.push(why);
+    else problems.push(why);
+  }
 
   for (const name of shots) {
     const file = join(dir, name);
@@ -826,7 +1023,11 @@ for (const cap of CAPTURES) {
     if (h.hasAlpha) problems.push(`${rel}${name} still carries an alpha channel (colour type ${h.colourType}) — Play requires "24-bit PNG (no alpha)"`);
     if (min < minSide) problems.push(`${rel}${name} is ${h.width}x${h.height}; the minimum side for the "${cap.type}" set is ${minSide}px. Source: ${cap.rules.source} (fetched ${cap.rules.fetched})`);
     if (max > maxSide) problems.push(`${rel}${name} is ${h.width}x${h.height}; the maximum side for the "${cap.type}" set is ${maxSide}px. Source: ${cap.rules.source} (fetched ${cap.rules.fetched})`);
-    if (max > min * PLAY_SCREENSHOTS.maxAspect) problems.push(`${rel}${name} is ${h.width}x${h.height}; Play: "The maximum dimension of your screenshot can't be more than twice as long as the minimum dimension"`);
+    if (max > min * GENERAL.maxAspect) problems.push(`${rel}${name} is ${h.width}x${h.height}; ${
+          CHANNEL === 'android-play'
+            ? `Play: "The maximum dimension of your screenshot can't be more than twice as long as the minimum dimension"`
+            : `${STORE_LABEL} accepts a long side at most ${GENERAL.maxAspect}x the short side`
+        }`);
     // An exact ratio is only asserted where the page states one. The viewport is
     // chosen to produce it exactly (900x1600 → 1800x3200 is 9:16), so this fires
     // on a geometry change rather than on rounding — and if `--browser-dimension`
@@ -846,8 +1047,10 @@ for (const cap of CAPTURES) {
     // effect-side one; a future banner from some other source would walk past
     // a check that only asked about the flag.
     let band = null;
+    let img = null;
     try {
-      band = scanTopBand(decodeRgba(readFileSync(file)));
+      img = decodeRgba(readFileSync(file));
+      band = scanTopBand(img);
     } catch (e) {
       if (e instanceof PngUnreadable) {
         problems.push(
@@ -868,9 +1071,28 @@ for (const cap of CAPTURES) {
           'needs reading before it is dismissed.',
       );
     }
+    // ── 🔴 NO CARD CUT BY THE FOLD WITH NOTHING OVER IT (⏱ 2026-09-22) ─────
+    // O-STORE-FRAME-FAB, measured in the flattened pixels like the banner. The
+    // fold comes from the suite's record; a frame the record does not name is
+    // a frame nobody examined, and is said so.
+    let edge = null;
+    if (img && folds) {
+      const fold = foldFor(folds, name);
+      if (!fold) {
+        problems.push(
+          `${rel}${name} has no entry in the drive's fold geometry, so it was NOT examined for a card cut by the ` +
+            'page edge. Every frame written must be followed by `recordFold` in store_screenshots_test.dart.',
+        );
+      } else {
+        const r = foldLineProblems(img, fold, `${rel}${name}`);
+        edge = r.scan;
+        problems.push(...r.problems);
+      }
+    }
     console.log(
       `   ${rel}${name} — ${h.width}x${h.height}, colour type ${h.colourType}, ${h.bytes} bytes` +
-        (band ? `, top band ${band.colour} ${(band.fraction * 100).toFixed(1)}%/red${band.redLead >= 0 ? '+' : ''}${band.redLead}` : ''),
+        (band ? `, top band ${band.colour} ${(band.fraction * 100).toFixed(1)}%/red${band.redLead >= 0 ? '+' : ''}${band.redLead}` : '') +
+        (edge ? `, fold rows ${edge.rows[0]}..${edge.rows[1] - 1} ${edge.off}/${edge.examined} off (worst ${edge.worst})` : ''),
     );
   }
 
@@ -884,7 +1106,7 @@ for (const cap of CAPTURES) {
 
   // Counts are PER DEVICE TYPE: Google's "up to 8 screenshots for each supported
   // device type", and the per-type floor each paragraph states.
-  const floor = Math.max(PLAY_SCREENSHOTS.minToPublish, cap.rules.minCount ?? 0);
+  const floor = Math.max(GENERAL.minToPublish, cap.rules.minCount ?? 0);
   if (shots.length < floor) {
     problems.push(
       `${rel} holds ${shots.length} screenshot(s) and the "${cap.type}" set needs at least ${floor}. ` +
@@ -892,23 +1114,8 @@ for (const cap of CAPTURES) {
         (cap.rules.verbatim ? ` — verbatim: "${cap.rules.verbatim}"` : ''),
     );
   }
-  if (shots.length > PLAY_SCREENSHOTS.maxPerDeviceType) {
+  if (shots.length > GENERAL.maxPerDeviceType) {
     problems.push(`${rel} holds ${shots.length} screenshots; Play accepts "up to 8 screenshots for each supported device type"`);
-  }
-
-  // WHAT WAS ON SCREEN, read back from the file this viewport's driver wrote.
-  // A record that is absent or unparseable is recorded as `null` and NOT as an
-  // empty board: `boardParityProblems` names absence as its own problem, and
-  // "the drive wrote no record" must never reduce to "the board was empty",
-  // which is a sentence about the app that nothing here observed.
-  let record = null;
-  const boardFile = boardFileFor(boardDir, cap);
-  if (existsSync(boardFile)) {
-    try {
-      record = JSON.parse(readFileSync(boardFile, 'utf8'));
-    } catch (e) {
-      problems.push(`the "${cap.type}" viewport's board record at ${boardFile} is not readable JSON: ${e.message}`);
-    }
   }
 
   measured.push({ cap, dir, rel, shots, pixels: sizes.size === 1 ? [...sizes][0] : null, record });
@@ -963,14 +1170,20 @@ if (MIN_DISTINCT_TYPES !== null && typesWithPixels.length < MIN_DISTINCT_TYPES) 
   problems.push(
     `this run produced pixels for ${typesWithPixels.length} device type(s) — ` +
       `${typesWithPixels.map((m) => m.cap.type).join(', ') || 'none'} — and Play requires at least ` +
-      `${MIN_DISTINCT_TYPES}. Source: ${COVERAGE_SOURCE ?? PLAY_SCREENSHOTS.source}`,
+      `${MIN_DISTINCT_TYPES}. Source: ${COVERAGE_SOURCE ?? GENERAL.source}`,
   );
 }
 
 if (problems.length) {
   console.error('');
   for (const p of problems) console.error(`FAIL ${p}`);
-  console.error(`\nSource for every number: ${PLAY_SCREENSHOTS.source} (general, fetched ${PLAY_SCREENSHOTS.fetched}; tablet paragraph re-fetched ${PLAY_TABLET_SCREENSHOTS.fetched})`);
+  console.error(
+    `\nSource for every number: ${GENERAL.source}${
+      CHANNEL === 'android-play'
+        ? ` (general, fetched ${GENERAL.fetched}; tablet paragraph re-fetched ${PLAY_TABLET_SCREENSHOTS.fetched})`
+        : ` (read from ${REGISTER}, which carries its own dated source beside every number)`
+    }`,
+  );
   process.exit(1);
 }
 
@@ -1042,12 +1255,16 @@ for (const m of measured) {
     console.log('      board: (no record — the drive wrote none, which is normal only on --proof)');
   }
 }
-console.log(`   device types covered: ${typesWithPixels.length}${MIN_DISTINCT_TYPES !== null ? ` of the ${MIN_DISTINCT_TYPES} Play requires across different device types` : ''}`);
+console.log(`   device types covered: ${typesWithPixels.length}${MIN_DISTINCT_TYPES !== null ? ` of the ${MIN_DISTINCT_TYPES} ${STORE_LABEL} requires across different device types` : ''}`);
 console.log(`   posture: ${PROOF ? 'DEMO — MECHANISM PROOF ONLY, these bytes must not be uploaded' : 'LIVE'}`);
-console.log(`   Play requirements: ${PLAY_SCREENSHOTS.source} (general fetched ${PLAY_SCREENSHOTS.fetched}, tablet paragraph ${PLAY_TABLET_SCREENSHOTS.fetched})`);
+console.log(`   ${STORE_LABEL} requirements: ${GENERAL.source}${
+    CHANNEL === 'android-play' ? ` (general fetched ${GENERAL.fetched}, tablet paragraph ${PLAY_TABLET_SCREENSHOTS.fetched})` : ''
+  }`);
 for (const m of measured) {
-  if (m.shots.length < PLAY_SCREENSHOTS.recommendedCount) {
-    console.log(`   ⬜ ${m.cap.type}: ${m.shots.length} of the ${PLAY_SCREENSHOTS.recommendedCount} Google recommends for large-format recommendation surfaces`);
+  if (m.shots.length < GENERAL.recommendedCount) {
+    console.log(`   ⬜ ${m.cap.type}: ${m.shots.length} of the ${GENERAL.recommendedCount} ${
+        CHANNEL === 'android-play' ? 'Google recommends for large-format recommendation surfaces' : `recommended for the ${STORE_LABEL} listing`
+      }`);
   }
 }
 console.log('   ⚠️ this script proves SIZE, FORMAT, COUNT and POSTURE. It cannot judge whether the set is');
@@ -1055,4 +1272,9 @@ console.log('      REPRESENTATIVE — that the screens chosen are the ones worth
 console.log('   ⚠️ NOR CAN IT SEE WHICH PHYSICAL DEVICE A VIEWPORT IS. A browser at 900 CSS px lays the app out');
 console.log('      the way a tablet does; nothing in the bytes says it is a tablet, and Play files a screenshot');
 console.log('      by the console slot it is uploaded to. The set is a promise about where a type\'s shots live.');
+if (coverageLost.length) {
+  console.error('');
+  for (const c of coverageLost) console.error(`COVERAGE LOST (--proof): ${c}`);
+  process.exit(2);
+}
 console.log('\ncapture-play-screenshots: ok');

@@ -262,15 +262,53 @@ void main() {
         BillingRailRefusal.iapBridgeMissing,
       );
       expect(rail.canStartCheckout, isFalse);
-      // The plans are still described; a surface quotes no PRICE because
-      // canStartCheckout is false.
-      expect(rail.offerings, hasLength(1));
+      // 🔴 iapBridgeMissing → NO OFFERINGS. The config's book is the WEB
+      // price; a store build with no key has no store to ask, so it describes
+      // nothing rather than the web's amounts (O-IAP-BRIDGE-NOT-WIRED-IN-THE-APP:
+      // "an unset key gives no offerings").
+      expect(rail.offerings, isEmpty);
       expect(
         ((await rail.startCheckout(_monthly)) as CheckoutRefused).reason,
         CheckoutRefusal.railNotConfigured,
       );
       expect(await rail.requestCancellation(), CancellationOutcome.recorded);
       expect(cancellations.calls, 1);
+    });
+
+    for (final String store in <String>[
+      'android-play',
+      'ios-appstore',
+      'macos-appstore',
+    ]) {
+      test('$store, iapBridgeMissing → no offerings, never the config book',
+          () {
+        final PurchaseRail rail = ChassisBilling.railForDeclared(
+          store,
+          _config(),
+        ).orUnavailableRail(_config());
+        expect(
+          (rail as UnavailablePurchaseRail).refusal.reason,
+          BillingRailRefusal.iapBridgeMissing,
+        );
+        expect(rail.offerings, isEmpty);
+        expect(rail.canStartCheckout, isFalse);
+      });
+    }
+
+    test('every OTHER refusal keeps the config book (its book is the config)',
+        () {
+      for (final String channel in <String>['dev', 'apps-gov-in']) {
+        final PurchaseRail rail = ChassisBilling.railForDeclared(
+          channel,
+          _config(),
+        ).orUnavailableRail(_config());
+        expect(
+          (rail as UnavailablePurchaseRail).refusal.reason,
+          isNot(BillingRailRefusal.iapBridgeMissing),
+        );
+        expect(rail.offerings, hasLength(1), reason: channel);
+        expect(rail.canStartCheckout, isFalse, reason: channel);
+      }
     });
 
     test('a `rail: none` channel is a rail that sells nothing', () {

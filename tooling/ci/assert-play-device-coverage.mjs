@@ -103,11 +103,23 @@
 //   be served would be waiting for the rejection. Same reasoning as
 //   `assert-store-metadata.mjs`'s "THE FACTORY" limb, which fails outright.
 //
-// `--for-submission` is what makes this a per-environment gate rather than a
-// note. `.github/workflows/ci.yml` runs it plain, where the gap prints and the
-// build stays green; `.github/workflows/submit-play.yml` runs it with the flag,
-// where the same gap is fatal — because that is the moment it stops being a gap
-// and becomes a rejected upload. Same guard, same numbers, one lane that cares.
+// `--for-submission=<channel id>` is what makes this a per-environment gate
+// rather than a note. `.github/workflows/ci.yml` runs it plain, where the gap
+// prints and the build stays green; `.github/workflows/submit-play.yml` runs it
+// with `--for-submission=android-play`, where the same gap ON THAT CHANNEL is
+// fatal — because that is the moment it stops being a gap and becomes a
+// rejected upload. Same guard, same numbers, one lane that cares.
+//
+// 🔴 THE FLAG NAMES ITS CHANNEL (⏱ 2026-09-23). It was a bare
+// `--for-submission` while Play was the only channel declaring device-type
+// coverage, and "every gap is fatal" meant "Play's gaps are fatal". Once the
+// iOS, macOS, Windows and Snap sets were declared (empty, captured later), the
+// bare flag made an EMPTY iPad set refuse a PLAY upload — a gate on the wrong
+// listing. A submission is to one store, so the gate is scoped to it: that
+// channel's gaps are fatal, every other channel keeps its plain-lane routing
+// (fatal when served, printed when not). A bare flag, or a channel id that
+// declares no coverage, is COVERAGE LOST (exit 2): the lane asked to be gated
+// and named nothing this guard can gate.
 //
 // ── EVERY NUMBER IS THE REGISTER'S ───────────────────────────────────────────
 // `minDistinctTypes` and the directory of each set are read from the register,
@@ -128,7 +140,7 @@
 // counts are measured; what a frame SHOWS — posture, demo banner, which account
 // — is assert-listing-assets.mjs's subject and is measured for no set here.
 //
-// Usage:  node tooling/ci/assert-play-device-coverage.mjs [--for-submission] [repoRoot]
+// Usage:  node tooling/ci/assert-play-device-coverage.mjs [--for-submission=<channel id>] [repoRoot]
 // Exit 0 = every declared channel covers at least its minimum device types and
 //          every set keeps its own declared rule, or falls short on a channel
 //          that is not served yet and said so; AND the brick offers a directory
@@ -156,7 +168,12 @@ const brickPath = (perAppTemplate) => `${BRICK}/__brick__/${perAppTemplate.repla
 const SET_README = 'README.md';
 
 const argv = process.argv.slice(2);
-const FOR_SUBMISSION = argv.includes('--for-submission');
+// ⏱ 2026-09-23 — was `argv.includes('--for-submission')`, a bare switch; see
+// "THE FLAG NAMES ITS CHANNEL" above. `=` and not a separate argv slot, because
+// `positional` below takes the first non-flag argument as the repo root.
+const SUBMIT_ARG = argv.find((a) => a === '--for-submission' || a.startsWith('--for-submission='));
+const FOR_SUBMISSION = SUBMIT_ARG !== undefined;
+const SUBMITTING = FOR_SUBMISSION && SUBMIT_ARG.includes('=') ? SUBMIT_ARG.slice(SUBMIT_ARG.indexOf('=') + 1).trim() : null;
 const positional = argv.filter((a) => !a.startsWith('--'));
 const ROOT = resolve(positional[0] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 
@@ -226,6 +243,16 @@ if (withCoverage.length === 0) {
   ]);
 }
 
+if (FOR_SUBMISSION && !withCoverage.some((r) => r.id === SUBMITTING)) {
+  coverageLost([
+    SUBMITTING
+      ? `--for-submission names channel "${SUBMITTING}", and no \`kind: "store"\` channel of that id declares a \`deviceTypeCoverage\` block.`
+      : '--for-submission was given without a channel: pass --for-submission=<channel id>, e.g. --for-submission=android-play.',
+    `The submission gate makes ONE channel's gaps fatal, so it has to be told which. Channels declaring coverage: ${withCoverage.map((r) => r.id).join(', ')}.`,
+    'Gating every declared channel would let an empty set on one store refuse an upload to another.',
+  ]);
+}
+
 /** A file counts towards a device type only if it is a real PNG. `touch
  *  screenshots-tablet-10/x.png` must not buy coverage — that is the shape of
  *  every placeholder this corpus has had to remove, and the whole value of the
@@ -242,7 +269,11 @@ function screenshotsIn(absDir) {
   return out;
 }
 
-const RULE_KEYS = ['minCount', 'minSide', 'maxSide', 'portraitAspect'];
+// The last five are the store-screenshots lane-1 kinds, the same names and
+// meanings assert-listing-assets.mjs grades at the channel level: an Apple
+// device set is a short list of EXACT sizes (`acceptedSizes`), Microsoft states
+// a minimum width and height, Snap a byte ceiling and a width:height range.
+const RULE_KEYS = ['minCount', 'minSide', 'maxSide', 'portraitAspect', 'acceptedSizes', 'minWidth', 'minHeight', 'maxBytes', 'aspectRange'];
 const ruled = (def) => RULE_KEYS.some((k) => k in def);
 
 const aspect = (v) => {
@@ -250,6 +281,20 @@ const aspect = (v) => {
   const [w, h] = m ? [Number(m[1]), Number(m[2])] : [0, 0];
   return w > 0 && h > 0 ? { w, h } : null;
 };
+
+/** The store a channel's rule belongs to, as a message names it: "Play" for
+ *  android-play, byte-identical to every message before lane 1, and the
+ *  register's `name` for any other channel. */
+const storeName = (row) =>
+  row.id === 'android-play' ? 'Play' : typeof row.name === 'string' && row.name.trim() !== '' ? row.name : row.id;
+
+/** An `aspectRange` that reads: {min:"W:H", max:"W:H"} with min <= max, as width/height numbers. */
+const range = (v) => {
+  const lo = v && typeof v === 'object' ? aspect(v.min) : null;
+  const hi = v && typeof v === 'object' ? aspect(v.max) : null;
+  return lo && hi && lo.w / lo.h <= hi.w / hi.h ? { lo: lo.w / lo.h, hi: hi.w / hi.h } : null;
+};
+const sizesRead = (v) => Array.isArray(v) && v.length > 0 && v.every((s) => typeof s === 'string' && /^[1-9]\d*x[1-9]\d*$/.test(s));
 
 /** A set graded against ITS OWN declared rule. Every number is the register's and
  *  is reprinted with that row's `source`. Short side against minSide, long side
@@ -273,6 +318,22 @@ function ruleGaps(type, def, rel, found) {
     }
     if (ar && h.height > h.width && h.width * ar.h !== h.height * ar.w) {
       out.push(`${at} — portrait — and set "${type}" declares portraitAspect ${def.portraitAspect}.${cite}`);
+    }
+    if (sizesRead(def.acceptedSizes) && !def.acceptedSizes.includes(`${h.width}x${h.height}`)) {
+      out.push(`${at}, and set "${type}" accepts only ${def.acceptedSizes.join(', ')} (exact, orientation included).${cite}`);
+    }
+    if (Number.isInteger(def.minWidth) && h.width < def.minWidth) {
+      out.push(`${at} and set "${type}" declares minWidth ${def.minWidth}px.${cite}`);
+    }
+    if (Number.isInteger(def.minHeight) && h.height < def.minHeight) {
+      out.push(`${at} and set "${type}" declares minHeight ${def.minHeight}px.${cite}`);
+    }
+    if (Number.isInteger(def.maxBytes) && h.bytes > def.maxBytes) {
+      out.push(`${rel}/${name} is ${h.bytes} bytes and set "${type}" declares maxBytes ${def.maxBytes}.${cite}`);
+    }
+    const rr = range(def.aspectRange);
+    if (rr && (h.width / h.height < rr.lo || h.width / h.height > rr.hi)) {
+      out.push(`${at} and set "${type}" declares aspectRange ${def.aspectRange.min} to ${def.aspectRange.max} (width:height).${cite}`);
     }
   }
   return out;
@@ -331,13 +392,19 @@ for (const row of withCoverage) {
         're-checked later, so enforcing it would be this guard grading against somebody\'s memory.',
       ]);
     }
-    for (const k of ['minCount', 'minSide', 'maxSide']) {
+    for (const k of ['minCount', 'minSide', 'maxSide', 'minWidth', 'minHeight', 'maxBytes']) {
       if (k in def && !(Number.isInteger(def[k]) && def[k] > 0)) {
         coverageLost([`${where}.sets["${type}"].${k} is ${JSON.stringify(def[k])}, not a positive integer, so a declared limit would grade nothing.`]);
       }
     }
     if ('portraitAspect' in def && aspect(def.portraitAspect) === null) {
       coverageLost([`${where}.sets["${type}"].portraitAspect is ${JSON.stringify(def.portraitAspect)}, not "W:H" in positive integers, so a declared limit would grade nothing.`]);
+    }
+    if ('acceptedSizes' in def && !sizesRead(def.acceptedSizes)) {
+      coverageLost([`${where}.sets["${type}"].acceptedSizes is ${JSON.stringify(def.acceptedSizes)}, not a non-empty list of "WxH" strings, so a declared limit would grade nothing.`]);
+    }
+    if ('aspectRange' in def && range(def.aspectRange) === null) {
+      coverageLost([`${where}.sets["${type}"].aspectRange is ${JSON.stringify(def.aspectRange)}, not {"min":"W:H","max":"W:H"} with min <= max, so a declared limit would grade nothing.`]);
     }
     if (ruled(def)) ruledSets++;
     // ROOT 2's floor is counted HERE, from the register, and not inside the
@@ -380,10 +447,10 @@ for (const row of withCoverage) {
     // One relationship for every kind of gap this guard finds: printed while the
     // channel is unserved, fatal when it is served or when this is the submit lane.
     const route = (kind, why) => {
-      if (FOR_SUBMISSION) problems.push(`SUBMITTING and ${why}`);
+      if (row.id === SUBMITTING) problems.push(`SUBMITTING to "${row.id}" and ${why}`);
       else if (row.served === true) problems.push(`channel "${row.id}" is SERVED and ${why}`);
       else prints.push(`${kind} (channel not served yet, OWNER_QUEUE ${row.ownerQueue ?? '(unnamed)'}): ${why} ` +
-        'This PRINTS here and is FATAL on the submission lane, which runs this guard with --for-submission.');
+        `This PRINTS here and is FATAL on the submission lane, which runs this guard with --for-submission=${row.id}.`);
     };
 
     const covered = [];
@@ -430,7 +497,7 @@ for (const row of withCoverage) {
     if (covered.length < min) {
       const why =
         `app "${app.slug}" channel "${row.id}" covers ${covered.length} device type(s) — ${covered.join(', ') || 'none'}` +
-        `${empty.length ? `; declared but empty: ${empty.join(', ')}` : ''} — and Play requires at least ${min} ACROSS ` +
+        `${empty.length ? `; declared but empty: ${empty.join(', ')}` : ''} — and ${storeName(row)} requires at least ${min} ACROSS ` +
         `DIFFERENT DEVICE TYPES. Every individual screenshot passes; the set spans too few types. ` +
         `Add a set to \`${where}.sets\` and capture into it. Source: ${cov.source}`;
       route('DEVICE-TYPE SHORTFALL', why);
@@ -464,7 +531,7 @@ for (const row of withCoverage) {
       if (found === null) {
         problems.push(
           `THE BRICK EMITS NO "${type}" SET: ${rel} does not exist, and \`${where}.sets["${type}"]\` declares it. Every app ` +
-            `stamped from this template is therefore born covering fewer than the ${min} device type(s) Play requires — ` +
+            `stamped from this template is therefore born covering fewer than the ${min} device type(s) ${storeName(row)} requires — ` +
             'unpublishable on day one, with nothing to tell anyone until the console rejects the upload. Stamp the ' +
             `directory with a README.md stating the obligation (git cannot commit an empty one). Source: ${cov.source}`,
         );
@@ -551,7 +618,7 @@ if (problems.length) {
 console.log(
   `ok  play device coverage — ROOT 1 (registered apps): ${channelsChecked} (app × channel) listing(s) across ` +
     `${treesSeen} tree(s); ${setsMeasured} declared device-type set(s) measured, ${framesGraded} screenshot(s) graded ` +
-    `against the ${ruledSets} set(s) that declare a rule${FOR_SUBMISSION ? '; --for-submission, so a shortfall would have been fatal' : ''}`,
+    `against the ${ruledSets} set(s) that declare a rule${FOR_SUBMISSION ? `; --for-submission=${SUBMITTING}, so a shortfall on that channel would have been fatal` : ''}`,
 );
 console.log(
   IS_FULL_CHECKOUT

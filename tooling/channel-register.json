@@ -260,6 +260,76 @@
             "max": 7,
             "source": "Microsoft Store Policies v7.19 §10.1.3, verbatim: \"Not exceed seven unique terms or phrases.\""
           }
+        },
+        "graphicAssets": {
+          "_why": [
+            "SCREENSHOTS ONLY, and the absent `assets` key is the claim: this channel owes no",
+            "fixed-size icon or feature graphic that this repository produces. The MSIX carries its",
+            "own tile assets inside the package, which is a BUILD output and not a listing upload, so",
+            "declaring them here would create a second place for the same bytes to be wrong.",
+            "",
+            "🔴 THE NUMBERS BELOW ARE THE PARTNER CENTER SCREENSHOT RULES AS RECORDED IN THIS LANE'S",
+            "BRIEF (Private/research/session-2026-09-21/brief-lane-store-screenshots.md, written",
+            "2026-09-21) AND WERE NOT RE-FETCHED FROM partner.microsoft.com ON 2026-09-22. The `source`",
+            "on each says so. That matters because Partner Center states the minimum as 1366x768 and",
+            "says nothing this brief captured about a maximum side, so `maxSide` is absent rather than",
+            "guessed: an invented ceiling refuses correct input, which is the failure mode this",
+            "register has already produced once at 129 characters against a made-up 120.",
+            "",
+            "PER-LANGUAGE IS A REAL SHAPE THIS ROW DOES NOT MODEL. Partner Center accepts a screenshot",
+            "set per listing LANGUAGE, and the store listing for this app is English-only today. The",
+            "directory below is therefore unqualified rather than `screenshots/en-us/`; the day a",
+            "second language ships, the set map grows a language limb and this comment is the record",
+            "that the single-language shape was a decision and not an oversight."
+          ],
+          "screenshots": {
+            "dir": "screenshots",
+            "capturedBy": "tooling/store/capture-play-screenshots.mjs",
+            "provenanceFile": "CAPTURE.json",
+            "format": "png",
+            "alpha": false,
+            "minCount": 4,
+            "maxCount": 10,
+            "recommendedCount": 4,
+            "minWidth": 1366,
+            "minHeight": 768,
+            "maxBytes": 52428800,
+            "source": "Microsoft Partner Center store-listing requirements as recorded in Private/research/session-2026-09-21/brief-lane-store-screenshots.md (2026-09-21, NOT re-fetched 2026-09-22): PNG, at least 1366x768, at most 50 MB per image, 1 to 10 images per listing language · `minCount: 4` and `alpha: false` are HOUSE RULES (parity with the Play and Snap sets), not the store's · no maximum side is declared because none was fetched",
+            "deviceTypeCoverage": {
+              "_why": [
+                "One device type, for the same reason the Snap row gives: a desktop listing has one form",
+                "factor, and the capture script reads `dir` and the `capture` limb from the set rather",
+                "than from anywhere in this file's prose.",
+                "",
+                "⚠️ THE CAPTURE GEOMETRY IS THIS LANE'S OWN, NOT MICROSOFT'S. 1280x800 logical at a",
+                "device pixel ratio of 2 is 2560x1600, which clears the 1366x768 floor with room. It is",
+                "written into `acceptedSizes` so that a window that opened at the wrong size is a RED",
+                "run rather than a listing at a size nobody chose — the floor alone would accept it."
+              ],
+              "minDistinctTypes": 1,
+              "source": "HOUSE RULE, 2026-09-22 (O-STORE-SCREENSHOTS PR 3): the Microsoft Store publishes no device-type minimum; a desktop listing has one form factor, so one populated set is the floor",
+              "sets": {
+                "desktop": {
+                  "dir": "screenshots",
+                  "acceptedSizes": [
+                    "2560x1600"
+                  ],
+                  "minWidth": 1366,
+                  "minHeight": 768,
+                  "maxBytes": 52428800,
+                  "minCount": 4,
+                  "capture": {
+                    "flutterDevice": "windows",
+                    "logicalWidth": 1280,
+                    "logicalHeight": 800,
+                    "dpr": 2,
+                    "runner": "windows-2025"
+                  },
+                  "source": "`acceptedSizes` is this lane's OWN capture geometry (1280x800 logical at dpr 2), recorded 2026-09-22 with the block above, not a Microsoft list. `minWidth`/`minHeight`/`maxBytes` repeat the store floor from the `source` above so a set is inside BOTH readings"
+                }
+              }
+            }
+          }
         }
       },
       "ios-appstore": {
@@ -326,6 +396,138 @@
             "max": 30,
             "source": "developer.apple.com/help/app-store-connect/reference/app-information/ — fetched 2026-07-29, recorded in Private/requirements/ledger.json entry [10]D-5: \"Apple — subtitle 30\""
           }
+        },
+        "graphicAssets": {
+          "_why": [
+            "SCREENSHOTS ONLY. The absent `assets` key is the claim that this channel owes no",
+            "fixed-size listing graphic this repository produces: the app icon reaches App Store",
+            "Connect inside the .app bundle, which is a BUILD output, not a listing upload.",
+            "",
+            "🔴 NO CHANNEL-LEVEL `acceptedSizes`, AND THAT IS THE CAREFUL PART. The macos-appstore row",
+            "below carries one because Apple's accepted Mac sizes were recorded as a COMPLETE list. For",
+            "iOS this lane's brief recorded only the sizes Apple currently REQUIRES per device size",
+            "class — 6.9-inch iPhone and 13-inch iPad — not the whole set it accepts. An exact list that",
+            "is missing an accepted size REFUSES A CORRECT FRAME, which is precisely the failure this",
+            "file exists to avoid; so the exact sizes live on the SETS below, where they are a claim",
+            "about what THIS REPOSITORY CAPTURES rather than a claim about what Apple takes. Promote",
+            "them to the channel on the day someone fetches the full list, with the URL and the date.",
+            "",
+            "🔴 TWO DEVICE TYPES, TWO DIRECTORIES, ONE RECORD. App Store Connect grades iPhone and iPad",
+            "screenshots as separate required sets on the SAME version record: an iPad listing built",
+            "from up-scaled iPhone frames is the classic rejection. `minDistinctTypes: 2` is what makes",
+            "a submission with only the iPhone set a finding here rather than at Apple.",
+            "",
+            "⚠️ THE TWO SIZES BELOW ARE AS RECORDED IN THIS LANE'S BRIEF",
+            "(Private/research/session-2026-09-21/brief-lane-store-screenshots.md, 2026-09-21) AND WERE",
+            "NOT RE-FETCHED FROM developer.apple.com ON 2026-09-22. Apple's required size classes move",
+            "with the hardware line-up — this is the one row in this contract with a known expiry — so",
+            "re-fetch before submission and record the URL and the date in the same change."
+          ],
+          "screenshots": {
+            "dir": "screenshots",
+            "capturedBy": "tooling/store/capture-play-screenshots.mjs",
+            "provenanceFile": "CAPTURE.json",
+            "format": "png",
+            "alpha": false,
+            "minCount": 4,
+            "maxCount": 10,
+            "recommendedCount": 4,
+            "source": "Apple's per-device-size-class screenshot requirement as recorded in Private/research/session-2026-09-21/brief-lane-store-screenshots.md (2026-09-21, NOT re-fetched 2026-09-22): up to 10 per size class, at least one required · `minCount: 4`, `format: png` and `alpha: false` are HOUSE RULES (parity with the Play, Snap and Mac sets), not Apple's",
+            "deviceTypeCoverage": {
+              "_why": [
+                "Two sets, and the SECOND DIRECTORY IS NOT OPTIONAL. Every other channel in this",
+                "contract captures one directory; iOS is the first that does not, and the workflow job",
+                "that captures it is written for both. `screenshots-ipad/` carries its own README for",
+                "the same reason `screenshots/` does: assert-store-metadata.mjs walks the app tree AND",
+                "the brick, so a directory that exists for Subly and not for the brick is a factory",
+                "that stamps app #2 with one of the two sets missing and nothing saying so."
+              ],
+              "minDistinctTypes": 2,
+              "source": "Apple requires a screenshot set per device size class (Private/research/session-2026-09-21/brief-lane-store-screenshots.md, 2026-09-21); `minCount: 4` per set is a HOUSE RULE",
+              "sets": {
+                "iphone": {
+                  "dir": "screenshots",
+                  "acceptedSizes": [
+                    "1320x2868"
+                  ],
+                  "minCount": 4,
+                  "capture": {
+                    "flutterDevice": "iPhone 16 Pro Max",
+                    "logicalWidth": 440,
+                    "logicalHeight": 956,
+                    "dpr": 3,
+                    "runner": "macos-26"
+                  },
+                  "source": "440x956 logical at dpr 3 = 1320x2868, the 6.9-inch iPhone size recorded in Private/research/session-2026-09-21/brief-lane-store-screenshots.md (2026-09-21, NOT re-fetched 2026-09-22). Recorded 2026-09-22 with the block above"
+                },
+                "ipad": {
+                  "dir": "screenshots-ipad",
+                  "acceptedSizes": [
+                    "2064x2752"
+                  ],
+                  "minCount": 4,
+                  "capture": {
+                    "flutterDevice": "iPad Pro 13-inch (M4)",
+                    "logicalWidth": 1032,
+                    "logicalHeight": 1376,
+                    "dpr": 2,
+                    "runner": "macos-26"
+                  },
+                  "source": "1032x1376 logical at dpr 2 = 2064x2752, the 13-inch iPad size recorded in Private/research/session-2026-09-21/brief-lane-store-screenshots.md (2026-09-21, NOT re-fetched 2026-09-22). Recorded 2026-09-22 with the block above"
+                }
+              }
+            }
+          },
+          "iapReview": {
+            "_why": [
+              "NOT A LISTING IMAGE. This is the REVIEW SCREENSHOT App Store Connect attaches to an",
+              "auto-renewable subscription PRODUCT, and it is the reason a version can be complete and",
+              "still not submittable: a subscription with no review screenshot sits in \"Missing",
+              "Metadata\", and a version referencing it cannot be sent for review. Nothing else in this",
+              "contract grades a per-PRODUCT file, which is why it is its own limb and its own reader",
+              "rather than another row under `screenshots`.",
+              "",
+              "🔴 THE FILE LIST IS DERIVED, NEVER TYPED. There are deliberately no filenames here. The",
+              "products live in services/platform/src/app-config-data.json under",
+              "apps.<app_id>.paywall.offerings[], and `assertedBy` below DERIVES the expected set from",
+              "that list — every offering whose `term` is not `one_time`. Writing `pro_monthly.png` and",
+              "`pro_yearly.png` into this file would make the register a SECOND declaration of the",
+              "product set, and the second declaration is always the one that goes stale: add a third",
+              "term and the obligation appears on its own, which is the whole point.",
+              "",
+              "A `one_time` offering is a non-consumable purchase and Apple asks for no review",
+              "screenshot for one, so the derivation excludes it. That exclusion is load-bearing for a",
+              "second reason: it keeps the name of the one-time product out of every path, artefact and",
+              "CI line this limb produces, and store-facing text may not carry it.",
+              "",
+              "⚠️ THE SIZE BELOW IS THIS REPOSITORY'S, NOT APPLE'S. Apple's own minimum for a review",
+              "screenshot was NOT fetched on 2026-09-22 and is not recorded anywhere in this corpus.",
+              "What IS known is the frame the capture produces, because it is the same simulator and the",
+              "same geometry as the `iphone` listing set above — so the rule states what this repository",
+              "captures and refuses anything else, which is a claim it can actually defend. Replace it",
+              "with Apple's accepted range on the day someone fetches the page, with the URL and date.",
+              "",
+              "⬜ THE CAPTURE ITSELF IS UNBUILT. integration_test/iap_review_screenshot_test.dart does",
+              "not exist yet; it needs a machine with Xcode and a paywall that renders real products,",
+              "and it is blocked upstream on G3. Until it lands the reader below PRINTS the gap (the",
+              "channel is `served: false`) and is FATAL on `--for-submission`, which is the same",
+              "print/fail split every other deferred-channel rule in this contract uses. Uploading the",
+              "files to App Store Connect is an owner action in every case — nothing here uploads."
+            ],
+            "dir": "iap-review",
+            "fileName": "<product_id>.png",
+            "onePerProduct": true,
+            "productsFrom": "services/platform/src/app-config-data.json → apps.<app_id>.paywall.offerings[] where term != \"one_time\"",
+            "capturedBy": "integration_test/iap_review_screenshot_test.dart (UNBUILT as of 2026-09-22)",
+            "provenanceFile": "CAPTURE.json",
+            "format": "png",
+            "alpha": false,
+            "acceptedSizes": [
+              "1320x2868"
+            ],
+            "assertedBy": "tooling/ci/assert-iap-review-screenshots.mjs",
+            "source": "1320x2868 is the frame the `iphone` capture set above produces (440x956 logical at dpr 3 on iPhone 16 Pro Max) — a claim about THIS REPOSITORY's capture, recorded 2026-09-22. Apple's own accepted range for an IAP review screenshot was NOT fetched and is not recorded in this corpus; the obligation itself (an auto-renewable subscription is held in \"Missing Metadata\" without one) is as recorded in Private/research/session-2026-09-21/brief-lane-store-screenshots.md (2026-09-21)"
+          }
         }
       },
       "macos-appstore": {
@@ -333,6 +535,10 @@
           "Identical listing shape to ios-appstore and a SEPARATE App Store Connect record — one",
           "record per platform, one metadata tree, one review outcome, which is why the register",
           "carries two rows rather than one. The limits are the same page and the same fetch.",
+          "⏱ CORRECTED 2026-09-22: ONE App Store Connect record covers iOS and macOS (universal",
+          "purchase, bundle com.nikatru.subscriptiontracker); RevenueCat app805d73cd44 serves both. Each",
+          "platform version is still reviewed on its own, so this row's own listing answer stands; only",
+          "'separate record' was wrong.",
           "",
           "🔴 THE PRIVACY MANIFEST IS THE ONE APPLE ARTEFACT THAT IS NOT PER-PLATFORM, AND THIS ROW",
           "CARRIES NO COPY OF IT ON PURPOSE. apps/subscriptiontracker/macos/Runner/PrivacyInfo.xcprivacy is generated",
@@ -367,6 +573,76 @@
             "max": 30,
             "source": "developer.apple.com/help/app-store-connect/reference/app-information/ — fetched 2026-07-29, recorded in Private/requirements/ledger.json entry [10]D-5: \"Apple — subtitle 30\""
           }
+        },
+        "graphicAssets": {
+          "_why": [
+            "SCREENSHOTS ONLY. The absent `assets` key is the claim that this channel owes no",
+            "fixed-size listing graphic this repository produces: the app icon reaches App Store",
+            "Connect inside the .app bundle, which is a BUILD output, not a listing upload.",
+            "",
+            "🔴 `acceptedSizes` IS AN EXACT LIST AND APPLE'S IS TOO, which is the one thing that makes",
+            "this row different in kind from the Windows and Snap rows above. Apple does not publish a",
+            "floor and a ceiling for macOS screenshots — it publishes a SET of accepted sizes, and a",
+            "frame one pixel off any of them is rejected at upload rather than graded. A `minWidth`",
+            "here would therefore be a weaker check that passes bytes the store refuses.",
+            "",
+            "⚠️ THE FOUR SIZES BELOW ARE AS RECORDED IN THIS LANE'S BRIEF",
+            "(Private/research/session-2026-09-21/brief-lane-store-screenshots.md, 2026-09-21) AND",
+            "WERE NOT RE-FETCHED FROM developer.apple.com ON 2026-09-22. Re-fetch before submission:",
+            "this is the list the upload is graded against, so a stale entry is a rejected filing.",
+            "",
+            "ONE App Store Connect RECORD PER PLATFORM, so this row is separate from ios-appstore and",
+            "so is its directory. A Mac screenshot submitted to the iOS record is the wrong window",
+            "chrome and the wrong aspect, and nothing but this separation prevents it."
+          ],
+          "screenshots": {
+            "dir": "screenshots",
+            "capturedBy": "tooling/store/capture-play-screenshots.mjs",
+            "provenanceFile": "CAPTURE.json",
+            "format": "png",
+            "alpha": false,
+            "minCount": 4,
+            "maxCount": 10,
+            "recommendedCount": 4,
+            "acceptedSizes": [
+              "1280x800",
+              "1440x900",
+              "2560x1600",
+              "2880x1800"
+            ],
+            "source": "Apple's accepted macOS screenshot sizes as recorded in Private/research/session-2026-09-21/brief-lane-store-screenshots.md (2026-09-21, NOT re-fetched 2026-09-22): 1280x800, 1440x900, 2560x1600, 2880x1800 · `minCount: 4`, `format: png` and `alpha: false` are HOUSE RULES (parity with the Play and Snap sets), not Apple's",
+            "deviceTypeCoverage": {
+              "_why": [
+                "One device type. macOS is one form factor for listing purposes, and the capture script",
+                "reads `dir` and the `capture` limb from the set rather than from this file's prose.",
+                "",
+                "The set narrows `acceptedSizes` from Apple's four to the ONE this lane captures. Both",
+                "readings apply — the set's list is a subset of the channel's — so a frame is inside",
+                "Apple's rules AND inside the geometry this repository chose, and a window that opened",
+                "at 1440x900 because a runner default changed is a RED run rather than a quieter",
+                "listing at a size nobody picked."
+              ],
+              "minDistinctTypes": 1,
+              "source": "HOUSE RULE, 2026-09-22 (O-STORE-SCREENSHOTS PR 3): Apple publishes no device-type minimum for the Mac App Store; one populated set is the floor",
+              "sets": {
+                "desktop": {
+                  "dir": "screenshots",
+                  "acceptedSizes": [
+                    "2560x1600"
+                  ],
+                  "minCount": 4,
+                  "capture": {
+                    "flutterDevice": "macos",
+                    "logicalWidth": 1280,
+                    "logicalHeight": 800,
+                    "dpr": 2,
+                    "runner": "macos-26"
+                  },
+                  "source": "1280x800 logical at dpr 2 = 2560x1600, which is one of the four sizes in the channel `source` above. Recorded 2026-09-22 with the block above"
+                }
+              }
+            }
+          }
         }
       },
       "linux-snap": {
@@ -397,7 +673,95 @@
         "additionalFiles": [
           "snap-name.txt",
           "license.txt"
-        ]
+        ],
+        "graphicAssets": {
+          "_why": [
+            "Added 2026-09-22 by the store-screenshots lane (O-STORE-SCREENSHOTS), PR 2. This block declares",
+            "SCREENSHOTS ONLY and carries NO `assets` map, which is a shape assert-listing-assets.mjs learned in",
+            "PR 1 of the same lane: the Snap Store asks for gallery images and an icon that snapcraft carries in",
+            "the recipe, not for a fixed-size feature graphic the way Play does. An `assets: {}` would still be",
+            "COVERAGE LOST — an empty map is a declaration of nothing, not of none — so the key is ABSENT.",
+            "",
+            "⚠️ TWO SOURCES, TWO DATES, AND THEY ARE NOT THE SAME STRENGTH. `maxCount: 5` is from the page",
+            "snapcraft.io/about/listing, read 2026-09-22: \"The gallery can include up to 5 items that can be",
+            "videos, gifs and images\". Every other number — the 480 floor, the 3840 ceiling, the 1:2..2:1 aspect",
+            "band and the 2 MB per-image cap — comes from the Snap Store forum read of 2026-09-20 recorded in",
+            "Private/research/session-2026-09-21/prep-store-shots-four.md as U8, and was NOT re-read on the day",
+            "this block landed. They are cited as that, dated, exactly as the register's own rule demands. RE-READ",
+            "THEM FROM A PAGE THE SNAP STORE PUBLISHES BEFORE THE FIRST SNAP UPLOAD, and re-write the date here",
+            "in the same change.",
+            "",
+            "🔴 `minCount` AND `alpha` AND `format` ARE HOUSE RULES, LABELLED. Nothing fetched states a Snap",
+            "gallery minimum or a colour-type rule; `minCount: 4` is parity with the Play set (the same four",
+            "frames, the same order, the same board) and `alpha: false` + `format: png` is the house rule this",
+            "register applies to every set. A house rule is stricter than the store and can only reject a set",
+            "this project chose not to ship — which is the one direction an unsourced limit is allowed to fire.",
+            "",
+            "🔴 THE SET IS CAPTURED AT 1280x800 LOGICAL, DPR 2 -> 2560x1600, AND IS NEVER RESIZED OR CROPPED.",
+            "If a 2560x1600 frame comes out over the 2 MB cap, the answer is a SMALLER CAPTURE (logical 1280x800",
+            "at dpr 1.5 -> 1920x1200), not a lossy recompression and not a crop: a resized frame is a photograph",
+            "of something the app never drew. Change `capture.dpr` below and re-capture; do not touch the PNGs.",
+            "",
+            "No `inkFloor` rows are declared because the directory holds no frames yet. assert-listing-assets.mjs",
+            "treats COMMITTED frames with no ink floor as exit 2 (COVERAGE LOST), so the ink floor arrives in the",
+            "same change as the first frames — measured with tooling/store/measure-frame-ink.mjs, never typed."
+          ],
+          "screenshots": {
+            "dir": "screenshots",
+            "capturedBy": "tooling/store/capture-play-screenshots.mjs",
+            "provenanceFile": "CAPTURE.json",
+            "format": "png",
+            "alpha": false,
+            "minCount": 4,
+            "maxCount": 5,
+            "recommendedCount": 4,
+            "minSide": 480,
+            "maxSide": 3840,
+            "maxBytes": 2097152,
+            "aspectRange": {
+              "min": "1:2",
+              "max": "2:1"
+            },
+            "source": "https://snapcraft.io/about/listing (read 2026-09-22) — Gallery, verbatim: \"The gallery can include up to 5 items that can be videos, gifs and images\" · the 480-3840px bounds, the 1:2 to 2:1 aspect band and the 2 MB per-image cap are from the Snap Store forum read of 2026-09-20, recorded as U8 in Private/research/session-2026-09-21/prep-store-shots-four.md and NOT re-read on 2026-09-22 · `minCount: 4`, `format: png` and `alpha: false` are HOUSE RULES (parity with the Play set), not the store's",
+            "deviceTypeCoverage": {
+              "_why": [
+                "ONE device type, and it is declared anyway. The map is what tooling/store/capture-play-screenshots.mjs",
+                "reads to learn where a set lives and how to drive it — `dir` plus the `capture` limb below — so a",
+                "channel with a single set still declares it rather than letting the script invent a directory name.",
+                "assert-play-device-coverage.mjs then grades this set by its own rule and names the Snap Store in the",
+                "message (PR 1's `storeName`), never Play.",
+                "",
+                "`minDistinctTypes: 1` is a HOUSE floor, not a Snap rule: nothing fetched states a device-type",
+                "minimum for a desktop store, and one populated set is what a desktop listing can have."
+              ],
+              "minDistinctTypes": 1,
+              "source": "HOUSE RULE, 2026-09-22 (O-STORE-SCREENSHOTS PR 2): the Snap Store publishes no device-type minimum; a desktop listing has one form factor, so one populated set is the floor",
+              "sets": {
+                "desktop": {
+                  "dir": "screenshots",
+                  "acceptedSizes": [
+                    "2560x1600",
+                    "1920x1200"
+                  ],
+                  "maxBytes": 2097152,
+                  "aspectRange": {
+                    "min": "1:2",
+                    "max": "2:1"
+                  },
+                  "minCount": 4,
+                  "capture": {
+                    "flutterDevice": "linux",
+                    "logicalWidth": 1280,
+                    "logicalHeight": 800,
+                    "dpr": 2,
+                    "runner": "ubuntu-24.04"
+                  },
+                  "source": "the two `acceptedSizes` are this lane's OWN capture geometry, not a store list: 1280x800 logical at dpr 2 and at dpr 1.5. Both sit inside the 480-3840 bounds and the 1:2..2:1 band from the 2026-09-20 forum read (U8); the 1920x1200 entry exists because it is the answer if a 2560x1600 frame exceeds the 2 MB cap. Recorded 2026-09-22 with the block above"
+                }
+              }
+            }
+          }
+        }
       },
       "apps-gov-in": {
         "_why": [
@@ -1020,6 +1384,16 @@
         "name": "REVENUECAT_WEBHOOK_SIGNING_SECRET",
         "kind": "service-credential",
         "why": "The RevenueCat webhook SIGNING secret that services/platform's revenuecatVerifier (services/platform/src/lib/mor/revenuecat.ts, `secretEnvVar`) uses to check the X-RevenueCat-Webhook-Signature HMAC on POST /v1/money/revenuecat. It authenticates the VENDOR to our Worker rather than CI to a service, so no kind here fits exactly; service-credential is the nearest (a backend secret that never enters an artifact and signs nothing shipped). DECLARED AHEAD OF ITS LANE, as the BOXA_* rows were: added 2026-09-16 (O-REVENUECAT-VERIFIER leg c), when no workflow names it and no repository secret of this name exists. It is a Worker secret, set with `wrangler secret put` today; the day deploy-workers.yml's platform job lists it under `secrets:` (as it does SUPABASE_ANON_KEY), this row is what keeps that lane green. It is NOT the retired REVENUECAT_WEBHOOK_SECRET, the bearer string the legacy subscriptiontracker-api route compared — RevenueCat issues the signing secret separately and shows it once."
+      },
+      {
+        "name": "REVENUECAT_PUBLIC_KEY_GOOGLE",
+        "kind": "build-config",
+        "why": "RevenueCat's PUBLIC SDK key for the Play Store app (appa553a1e2c6), compiled into the android-play builds as `--dart-define=REVENUECAT_KEY` so the app can configure the store bridge. Public by construction — it ships inside every Play binary — and held as a repository secret only to keep it out of the public tree, which is the definition of build-config. `purchaseRails.storeKeyDefine` maps the `play-billing` rail to this name and assert-channel-register limb 6b-iii holds every Play build segment to it. NOT the webhook signing secret above, which authenticates the vendor to our Worker."
+      },
+      {
+        "name": "REVENUECAT_PUBLIC_KEY_APPLE",
+        "kind": "build-config",
+        "why": "RevenueCat's PUBLIC SDK key for the App Store app (app805d73cd44), compiled into the ios-appstore AND macos-appstore builds as `--dart-define=REVENUECAT_KEY` — one App Store Connect record and one RevenueCat app serve both platforms. Public by construction, held as a repository secret only to keep it out of the public tree. `purchaseRails.storeKeyDefine` maps the `apple-iap` rail to this name and assert-channel-register limb 6b-iii holds every Apple build segment to it."
       }
     ]
   },
@@ -1092,6 +1466,32 @@
       "apple-iap": "Apple StoreKit in-app purchase, 15% under the Small Business Program, integrated through RevenueCat ([ADR 039] D5).",
       "razorpay": "Razorpay, the India payment gateway, added by [ADR 094] (LOCKED 2026-09-22) because Paddle cannot sell the India monthly plan at any price ([ADR 076] §1 and §3: a fixed per-transaction fee takes ~42% of a ₹149 plan, and Paddle sends sellers of sub-$10 products to custom pricing). ⚠️ NIKATRU IS THE SELLER OF RECORD ON THIS RAIL and issues the GST invoice itself ([ADR 076] §10.1) — Razorpay only collects. That is the OPPOSITE of `paddle`, which is merchant of record and absorbs the tax registrations, so a row that takes this rail inherits an obligation the other three rails do not carry. REACHED ONLY THROUGH `regionRails`: no row takes it as its whole-world `rail`, and `apps-gov-in` will not take it until a build actually carries the Razorpay checkout ([ADR 094] §4 item 5).",
       "none": "this channel sells nothing and must open no checkout of any kind. NO ROW CARRIES IT TODAY — it exists so that a channel which must not sell can SAY so, rather than being absent and read as somebody not having got to it. Same reason `keyKinds.none` exists. ⏱ CORRECTED 2026-09-22: `apps-gov-in` carries it today, so the capitalised sentence above is stale. It was true the day it was written and stopped being true when that row landed; it stays, with this correction beside it, because the REASON the value exists is unchanged. The same stale sentence is copied into the `none` doc comment of `packages/purchases/lib/src/purchase_rail_kind.dart`."
+    },
+    "storeKeyDefine": {
+      "_why": [
+        "🔴 THE STORE SDK KEY A STORE BUILD COMPILES IN, DECLARED ONCE, PER RAIL. A store rail",
+        "(`play-billing`, `apple-iap`) is reached through RevenueCat, whose PUBLIC SDK key is read by the",
+        "app from `define` at compile time. A store build without it compiles an empty key and sells",
+        "nothing (the facade answers `iapBridgeMissing`, fail-closed); a NON-store build with it links",
+        "a key for a store it cannot reach. assert-channel-register limb 6b-iii reads THIS map: every",
+        "release `flutter build` segment stamped with a row whose rail is a key of `secretByRail` must",
+        "pass `--dart-define=<define>=${{ secrets.<mapped name> }}` with exactly that name, and every",
+        "other segment — another rail, unstamped, or exempt — must not name `define` at all.",
+        "`define` must also be a surface of `vendors.revenuecat` in tooling/capability-register.json.",
+        "",
+        "⚠️ KEYED BY RAIL, SO IT HOLDS ONE OPTED-IN APP. A RevenueCat public key belongs to ONE RevenueCat",
+        "app, so a second app that declares `billing.mobileIap` would build with the first app's key and",
+        "pass. Limb 6b-iii exits 1 while more than one app.yaml declares `billing.mobileIap` and this map",
+        "is keyed by rail alone; the fix it names is to key the secret names per app.",
+        "",
+        "macos-appstore takes the APPLE key: one App Store Connect record and one RevenueCat app",
+        "(app805d73cd44) serve iOS and macOS (measured 2026-09-22, RevenueCat API v2 apps list)."
+      ],
+      "define": "REVENUECAT_KEY",
+      "secretByRail": {
+        "play-billing": "REVENUECAT_PUBLIC_KEY_GOOGLE",
+        "apple-iap": "REVENUECAT_PUBLIC_KEY_APPLE"
+      }
     },
     "regionRailsRequiredOn": [
       "chrome-webstore",
@@ -1924,7 +2324,7 @@
       "submittable": true,
       "purchaseRail": {
         "rail": "apple-iap",
-        "why": "The same 3.1.1 family as iOS, against a SEPARATE App Store Connect record — one record per platform, one review outcome, and therefore one rail answer of its own rather than an inherited one. 15% under the Small Business Program.",
+        "why": "The same 3.1.1 family as iOS, against a SEPARATE App Store Connect record — one record per platform, one review outcome, and therefore one rail answer of its own rather than an inherited one. 15% under the Small Business Program. ⏱ CORRECTED 2026-09-22: ONE App Store Connect record covers iOS and macOS (universal purchase, bundle com.nikatru.subscriptiontracker); RevenueCat app805d73cd44 serves both. Each platform version is still reviewed on its own, so this row's own rail answer stands; only 'separate record' was wrong.",
         "forbids": [
           "paddle",
           "play-billing"
