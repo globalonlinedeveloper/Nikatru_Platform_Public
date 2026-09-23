@@ -161,7 +161,8 @@
   {
     "claims": [],
     "invokedBy": [
-      ".github/workflows/build-platforms.yml#linux_web_android"
+      ".github/workflows/build-platforms.yml#linux_web_android",
+      ".github/workflows/ci.yml#android-artifacts"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-android-vapt-manifest.mjs",
@@ -225,6 +226,7 @@
       ".github/workflows/build-platforms.yml#prepare",
       ".github/workflows/build-platforms.yml#release",
       ".github/workflows/build-platforms.yml#windows",
+      ".github/workflows/ci.yml#android-artifacts",
       ".github/workflows/ci.yml#guards-store",
       ".github/workflows/deploy-web.yml#deploy-web",
       ".github/workflows/submit-appstore.yml#dry-run",
@@ -287,7 +289,8 @@
   {
     "claims": [],
     "invokedBy": [
-      ".github/workflows/build-platforms.yml#linux_web_android"
+      ".github/workflows/build-platforms.yml#linux_web_android",
+      ".github/workflows/ci.yml#android-artifacts"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-apps-gov-in-apk.mjs",
@@ -310,7 +313,8 @@
     "invokedBy": [
       ".github/workflows/build-platforms.yml#apple",
       ".github/workflows/build-platforms.yml#linux_web_android",
-      ".github/workflows/build-platforms.yml#windows"
+      ".github/workflows/build-platforms.yml#windows",
+      ".github/workflows/ci.yml#android-artifacts"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-artifact-shape.mjs",
@@ -793,6 +797,7 @@
     ],
     "invokedBy": [
       ".github/workflows/build-platforms.yml#linux_web_android",
+      ".github/workflows/ci.yml#android-artifacts",
       ".github/workflows/submit-play.yml#dry-run",
       ".github/workflows/submit-play.yml#submit"
     ],
@@ -1838,6 +1843,7 @@
     ],
     "invokedBy": [
       ".github/workflows/build-platforms.yml#prepare",
+      ".github/workflows/ci.yml#android-apps",
       ".github/workflows/ci.yml#guards-store",
       ".github/workflows/deploy-web.yml#prepare",
       ".github/workflows/e2e.yml#prepare"
