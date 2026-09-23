@@ -280,6 +280,29 @@ describe('assert-store-vocabulary — a value a consumer spells that the contrac
     assert.match(out, /which the contract does not carry as a channel id/);
   });
 
+  // ⏱ 2026-09-23: the directory limb read android-play's sets for EVERY channel,
+  // so the App Store tree's own declared `screenshots-ipad/` and `iap-review/`
+  // failed the real repository. The pair below pins the per-channel shape: a
+  // channel's own declared directories pass, and one channel's set is dirt in
+  // another channel's tree.
+  test('a channel\'s own declared directories pass (ios-appstore: screenshots-ipad, iap-review)', async () => {
+    const root = makeRoot('own-declared-dirs');
+    await materialiseTrees(root);
+    write(join(root, 'apps', 'demo', 'store', 'ios-appstore', 'screenshots-ipad', 'README.md'), '# slot\n');
+    write(join(root, 'apps', 'demo', 'store', 'ios-appstore', 'iap-review', 'README.md'), '# slot\n');
+    const { code, out } = run(root);
+    assert.equal(code, 0, out);
+  });
+
+  test('a set another channel declares is dirt in this one (android-play/screenshots-ipad)', async () => {
+    const root = makeRoot('foreign-declared-dir');
+    await materialiseTrees(root);
+    write(join(root, 'apps', 'demo', 'store', 'android-play', 'screenshots-ipad', 'README.md'), '# slot\n');
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /android-play\/screenshots-ipad\/ is not a directory android-play's register entry declares/);
+  });
+
   test('a category a tree spells that the contract does not declare', async () => {
     const root = makeRoot('stray-category');
     await materialiseTrees(root);

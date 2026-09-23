@@ -318,7 +318,25 @@ axisAgrees(
 // 4. CONTRACT ↔ THE LISTING TREES ON DISK, BOTH DIRECTIONS
 // ═════════════════════════════════════════════════════════════════════════════
 const listingFieldNames = new Set(contract.allListingFiles());
-const deviceDirs = new Set(Object.values(deviceSets).map((s) => s.dir).filter(Boolean));
+// The directories a listing tree may hold are PER CHANNEL: every `dir` that
+// channel's own register entry declares under `graphicAssets` (each screenshot
+// set in its deviceTypeCoverage, and any asset block that names a directory of
+// its own, which is how the App Store's IAP review set is declared), plus the
+// screenshot directory its STORE_FORM_RULES row names. ⏱ 2026-09-23: this was
+// android-play's two sets applied to EVERY channel, so the App Store tree's own
+// declared `screenshots-ipad/` and `iap-review/` read as tree dirt the day they
+// landed, and a Play tree could have held an iPad set with nothing said.
+function declaredDirsOf(channelId) {
+  const dirs = new Set();
+  for (const block of Object.values(smc.perChannel?.[channelId]?.graphicAssets ?? {})) {
+    if (!block || typeof block !== 'object') continue;
+    if (typeof block.dir === 'string') dirs.add(block.dir);
+    for (const s of Object.values(block.deviceTypeCoverage?.sets ?? {})) if (typeof s?.dir === 'string') dirs.add(s.dir);
+  }
+  const formDir = contract.STORE_FORM_RULES?.[channelId]?.screenshots?.dir;
+  if (typeof formDir === 'string') dirs.add(formDir);
+  return dirs;
+}
 const categoriesSpelled = new Map(); // channelId -> Set(values)
 
 let appTreesSeen = 0;
@@ -351,11 +369,12 @@ for (const app of dirsIn(join(ROOT, APPS_DIR))) {
       }
       if (name === 'category.txt') noteCategory(channelDir, join(storeAbs, channelDir, name));
     }
+    const declared = declaredDirsOf(channelDir);
     for (const sub of dirsIn(join(storeAbs, channelDir))) {
-      if (deviceDirs.has(sub)) continue;
+      if (declared.has(sub)) continue;
       fail(
-        `${rel}/${sub}/ is not a screenshot set directory the register's deviceTypeCoverage declares.`,
-        `Declared directories: ${[...deviceDirs].join(', ')}`,
+        `${rel}/${sub}/ is not a directory ${channelDir}'s register entry declares (a graphicAssets set or block \`dir\`, or its STORE_FORM_RULES screenshots).`,
+        `Declared for ${channelDir}: ${[...declared].join(', ') || '(none)'}`,
       );
     }
   }
