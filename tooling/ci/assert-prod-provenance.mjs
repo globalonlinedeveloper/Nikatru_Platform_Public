@@ -213,6 +213,19 @@ for (const [name, rule] of Object.entries(rules)) {
     );
   }
 
+  // ⏱ 2026-09-23 · the SECOND resolvers are held to the same rule. An `alsoResolves` id the register
+  // does not declare was caught only at monitor runtime (a CouldNotLook in ops-watch, a day late and on a
+  // different workflow); here it is caught on the push that introduces it.
+  for (const alt of Array.isArray(rule?.alsoResolves) ? rule.alsoResolves : []) {
+    if (typeof alt !== 'string' || !Object.prototype.hasOwnProperty.call(resolvers, alt)) {
+      problems.push(
+        `\`${name}\` lists ${JSON.stringify(alt)} in \`alsoResolves\`, which ${REGISTER_REL} does not define. ` +
+          `Declared resolvers: ${Object.keys(resolvers).join(', ')}. The monitor would refuse to run the census over a ` +
+          'second resolver it cannot execute.',
+      );
+    }
+  }
+
   // LIMB 5 · anti-downgrade.
   if (t.columns.has('app_version') && resolverId !== 'released-build') {
     problems.push(

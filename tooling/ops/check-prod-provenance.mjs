@@ -27,8 +27,10 @@
 //
 // A table may also declare `alsoResolves` — a list of SECOND resolvers, tried
 // only for a value the primary one has already refused, and every acceptance on
-// that footing PRINTS. One table uses it (`consent_artifacts`, since
-// 2026-08-28); the block above `e2eRunResolver` argues the trade in full.
+// that footing PRINTS. Two tables use it: `consent_artifacts` (`e2e-run` since
+// 2026-08-28, `store-capture` since 2026-09-23 — the blocks above
+// `e2eRunResolver` and `makeStoreCaptureResolver` argue each trade in full) and
+// `pending_erasures` (`erasure-step`, [ADR 087]).
 //
 // The rules are per table because the columns are (tooling/prod-provenance.json
 // carries each marker and the written reason for it), and the table set is
@@ -130,6 +132,12 @@
 //       e.g. `commits/428beef`) to `{status, body}`; a path it does not name
 //       answers 404. WITHOUT that flag a fixture run makes NO point reads and
 //       says so, rather than inventing an answer for a commit it never asked about.
+//       ⏱ 2026-09-23: `--capture-runs-file c.json` supplies the store-capture
+//       witness set in that mode — `[{run_number, head_sha, status?,
+//       conclusion?}]`, runs of store-screenshots.yml of ANY status. It never
+//       enters `--runs-file` (which refuses a workflow that is no release lane),
+//       and WITHOUT it a fixture run's capture set is empty, refusing every
+//       `cap-*` value.
 //   node tooling/ops/check-prod-provenance.mjs --emit-served-environments
 //     → prints the deployment environments witness (b) is read from, one per
 //       line, and exits. Needs no credential, so it is the ONLY way a test can
@@ -163,6 +171,10 @@ import { stripSourceComments } from '../ci/text-reductions.mjs';
 // already read it; a row on a surface that answers nothing is CouldNotLook.
 import { flutterAppChannel, undeclaredSurfaceLine } from '../ci/channel-surface.mjs';
 import { CouldNotLook, classifyThrown, transientLook, isTransientStatus, retryAfterMs, readWithBoundedRetry, fetchWithBoundedRetry, backoffPlan } from './bounded-retry.mjs';
+// ⏱ 2026-09-23 — the non-release stamp shapes live in ONE module, which the
+// store capture's define helper and assert-live-writer-provenance also import,
+// so the shape a drive stamps and the shape this reader accepts cannot drift.
+import { CAPTURE_WORKFLOW, E2E_RUN_SHAPE, STORE_CAPTURE_SHAPE } from '../e2e/app-version-stamp.mjs';
 // The product kinds a bundle may span, imported rather than retyped: the same
 // file tooling/bundle-availability.mjs and the Worker twin read, so `script`
 // becoming real is one edit and not three.
@@ -758,13 +770,17 @@ async function collectPaged({
 /** The floor every LIVE run must stand on, whether it came from a walk or from a
  *  point read — ⏱ 2026-09-23 extracted from githubRuns so that a walked run and
  *  a point-read run are floored by this one function. */
-function floorRuns(runs, workflowFile) {
+function floorRuns(runs, workflowFile, { requireConclusion = true } = {}) {
   // A run with no `conclusion` would silently take the resolver's benefit-of-
   // the-doubt default below, which is the one direction that weakens without
   // announcing itself. Live data always carries one; a shape change must be
   // "could not look", never "looked and it was fine".
+  // ⏱ 2026-09-23 — EXCEPT on the store-capture listing, which reads every
+  // status on purpose: an in-progress capture has no conclusion yet, and its
+  // rows must not red ops-watch while it runs. That witness is existence, not
+  // success, so the conclusion floor is skipped there and ONLY there.
   for (const r of runs) {
-    if (typeof r?.conclusion !== 'string') {
+    if (requireConclusion && typeof r?.conclusion !== 'string') {
       throw new CouldNotLook(
         `run ${r?.run_number ?? '?'} of ${workflowFile} carries no \`conclusion\`, so this reader cannot tell a ` +
           'successful lane run from a failed one and would treat both as released',
@@ -786,10 +802,12 @@ function floorRuns(runs, workflowFile) {
 
 /** EVERY COMPLETED RUN of a served release lane, not only the successful ones —
  *  a run that failed after its deploy step succeeded is the case witness (b)
- *  exists for, and filtering it out here would put it beyond reach. */
-async function githubRuns(workflowFile) {
+ *  exists for, and filtering it out here would put it beyond reach.
+ *  ⏱ 2026-09-23 — `{ status: null }` lists runs of EVERY status (the
+ *  store-capture witness); the default keeps every release-lane call as it was. */
+async function githubRuns(workflowFile, { status = 'completed' } = {}) {
   const { token, repo } = githubCredentials();
-  const what = `listing runs of ${workflowFile}`;
+  const what = status === 'completed' ? `listing runs of ${workflowFile}` : `listing ${status ?? 'all'} runs of ${workflowFile}`;
   return collectPaged({
     what,
     idOf: (r) => r.id,
@@ -797,12 +815,12 @@ async function githubRuns(workflowFile) {
       const body = await ghJson(
         repo,
         token,
-        `/actions/workflows/${workflowFile}/runs?status=completed&per_page=100&page=${page}`,
+        `/actions/workflows/${workflowFile}/runs?${status ? `status=${status}&` : ''}per_page=100&page=${page}`,
         what,
       );
       const runs = body?.workflow_runs;
       if (!Array.isArray(runs)) throw new CouldNotLook(`the GitHub API response for ${workflowFile} carried no workflow_runs array`);
-      floorRuns(runs, workflowFile);
+      floorRuns(runs, workflowFile, { requireConclusion: status === 'completed' });
       // `total_count` is this endpoint's own claim about how many completed
       // runs it holds. Handing it over is what turns a short read into a
       // refusal instead of a silent, confident undercount.
@@ -1180,7 +1198,8 @@ function lookupLines({ made = true, summary = true } = {}) {
 // the total can never exceed 4 + 9 + 1 + 7 = 21 characters — inside the 32 that
 // services/platform/src/routes/events.ts binds with `str(body?.app_version, 32)`
 // and above which a value is stored as NULL rather than truncated.
-const E2E_RUN_SHAPE = /^e2e-\d{1,9}-[0-9a-f]{7}$/;
+// ⏱ 2026-09-23 — E2E_RUN_SHAPE is imported from tooling/e2e/app-version-stamp.mjs
+// (the same anchored shape), no longer declared here.
 
 function e2eRunResolver(value) {
   if (typeof value !== 'string' || value.length === 0) {
@@ -1189,6 +1208,47 @@ function e2eRunResolver(value) {
   return E2E_RUN_SHAPE.test(value)
     ? null
     : `\`${value}\` is not the shape .github/workflows/e2e.yml stamps (e2e-<run_number>-<sha7>)`;
+}
+
+// ── `store-capture` · A STORE CAPTURE'S OWN STAMP, WITNESSED ────────────────
+//
+// `cap-<run_number>-<sha7>` — derived by tooling/e2e/app-version-stamp.mjs
+// `captureStamp` from the Actions default env inside a store-screenshots.yml
+// run; the workflow sets nothing. Born 2026-09-23, after the Linux capture job
+// wrote two `dev` consent rows to production (run 35818960378) that nothing
+// could attribute.
+//
+// STRONGER THAN `e2e-run`: a value is accepted only when a store-screenshots.yml
+// run with that exact number exists AND its head_sha starts with the sha7. That
+// run may be of ANY status — an in-progress capture's rows must not red the
+// ops-watch that happens to read during it, so the listing is all-status and
+// its conclusion floor is off (see floorRuns).
+//
+// 🔴 THE CAPTURE RUN SET IS ITS OWN VARIABLE, NEVER MERGED INTO `runs`. A
+// capture run must never lend its (number, sha) to `released-build`.
+//
+// ⚠️ THE FALSE NEGATIVE IS PAID FOR THE SAME WAY AS `e2e-run`: the capture
+// job's always() purge deletes every drive's consent row by anon_id AND every
+// row carrying the stamp, and hard-fails when a drive's id is unresolved. A
+// `rehearsal-*` stamp (a local rehearsal) is deliberately unwitnessable here.
+//
+// An EMPTY run set refuses every value (fail-closed, like `erasure-step`).
+function makeStoreCaptureResolver(captureRuns, onWitness = () => {}) {
+  const set = Array.isArray(captureRuns) ? captureRuns : [];
+  return (value) => {
+    if (typeof value !== 'string' || value.length === 0) {
+      return 'no app_version at all, so it is not a store capture\'s stamp either';
+    }
+    const m = value.match(STORE_CAPTURE_SHAPE);
+    if (!m) return `\`${value}\` is not the shape ${CAPTURE_WORKFLOW} stamps (cap-<run_number>-<sha7>)`;
+    const [, n, sha7] = m;
+    const run = set.find(
+      (r) => String(r?.run_number) === n && String(r?.head_sha ?? '').toLowerCase().startsWith(sha7),
+    );
+    if (!run) return `no ${CAPTURE_WORKFLOW} run ${n} at ${sha7}, so \`${value}\` is witnessed by nothing`;
+    onWitness(`${value} ← ${CAPTURE_WORKFLOW} run ${n} (${run.status ?? '-'}/${run.conclusion ?? '-'})`);
+    return null;
+  };
 }
 
 // ── the other four resolvers ────────────────────────────────────────────────
@@ -1401,9 +1461,11 @@ async function main() {
   const runsFile = flag('--runs-file');
   const deploymentsFile = flag('--deployments-file');
   const pointReadsFile = flag('--point-reads-file');
-  if (rowsFile || runsFile || deploymentsFile || pointReadsFile) {
+  // ⏱ 2026-09-23 — the store-capture witness set: `[{run_number, head_sha, status?, conclusion?}]`.
+  const captureRunsFile = flag('--capture-runs-file');
+  if (rowsFile || runsFile || deploymentsFile || pointReadsFile || captureRunsFile) {
     console.log(
-      '!!  OFFLINE FIXTURE MODE — --rows-file/--runs-file/--deployments-file/--point-reads-file is set. This must NEVER appear in a real ops-watch log.',
+      '!!  OFFLINE FIXTURE MODE — --rows-file/--runs-file/--deployments-file/--point-reads-file/--capture-runs-file is set. This must NEVER appear in a real ops-watch log.',
     );
   }
 
@@ -1479,8 +1541,20 @@ async function main() {
       : await githubDeployments([...ledger, ...submissionEnvs]);
   const deployedShas =
     deployments === null ? null : new Set(deployments.filter((d) => d.environment === null || ledger.has(d.environment)).map((d) => d.sha));
+  // ⏱ 2026-09-23 — the store-capture witness: runs of EVERY status, in their own
+  // variable and NEVER concatenated into `runs` (a capture run must not lend its
+  // number and sha to `released-build`). The same `file : fixture ? inert : live`
+  // form as `deployments` above: a fixture that names no capture runs gets an
+  // EMPTY set, which refuses every cap value.
+  const captureRuns = captureRunsFile
+    ? JSON.parse(readFileSync(captureRunsFile, 'utf8'))
+    : runsFile
+      ? []
+      : await githubRuns(CAPTURE_WORKFLOW, { status: null });
+  if (!Array.isArray(captureRuns)) throw new CouldNotLook(`${captureRunsFile} is not an array of runs`);
   const witnessed = [];
   const submissionWitnessed = [];
+  const captureWitnessed = [];
 
   // ── attested manual deploys — tooling/ops/manual-deploys.json ─────────────
   // A deploy that shipped outside its lane is attributable ONLY through this
@@ -1560,6 +1634,11 @@ async function main() {
   const resolverFns = {
     'released-build': (v) => releasedBuild(v),
     'e2e-run': e2eRunResolver,
+    // ⏱ 2026-09-23 — WITNESSED by a store-screenshots.yml run of any status; each
+    // acceptance is recorded and printed under its own label.
+    'store-capture': makeStoreCaptureResolver(captureRuns, (note) => {
+      if (!captureWitnessed.includes(note)) captureWitnessed.push(note);
+    }),
     // ⏱ 2026-09-15 · [ADR 087]. A SECOND resolver only (pending_erasures), so an empty
     // set refuses every step value rather than admitting one.
     'erasure-step': ((set) => (v) => (typeof v === 'string' && set.has(v) ? null : `\`${v}\` is not an erasure step declared by \`export const <NAME>_STEP\` in services/platform/src`))(erasureStepNames()),
@@ -1778,6 +1857,11 @@ async function main() {
               ? `${name}: ${n} row(s) with \`${marker}\` = \`${g.marker}\` — refused by \`${rule.resolver}\` and accepted by ` +
                   'the narrower `erasure-step`: a non-app step of an erasure that is still pending ([ADR 087]). The nightly ' +
                   'erasure_retry heartbeat, not this census, is what turns red if it never finishes.'
+              : id === 'store-capture'
+                ? `${name}: ${n} row(s) with \`${marker}\` = \`${g.marker}\` — refused by \`${rule.resolver}\` and accepted by ` +
+                    `the narrower \`store-capture\`: written by ${CAPTURE_WORKFLOW} run ${String(g.marker).match(STORE_CAPTURE_SHAPE)?.[1] ?? '?'}, ` +
+                    'whose purge step owns removing it. A row that survives the purge is residue; this line printing on the ' +
+                    'next ops-watch IS that signal.'
               : `${name}: ${n} row(s) with \`${marker}\` = \`${g.marker}\` — refused by \`${rule.resolver}\` and accepted by ` +
                   `the narrower \`${id}\`. These rows were written by a live verification, which B-17 permits; what B-17 ` +
                   'also requires is that the harness removed them, and THAT is asserted by the harness, not here.',
@@ -1829,6 +1913,8 @@ async function main() {
   // ⏱ 2026-09-23 — and a build accepted on footing (c) says which run and which
   // Deployment carried it, on every run.
   for (const w of submissionWitnessed) console.log(`⬜  submission-witnessed build accepted: ${w}`);
+  // ⏱ 2026-09-23 — and a store-capture stamp says which capture run witnessed it.
+  for (const w of captureWitnessed) console.log(`⬜  store-capture-witnessed stamp accepted: ${w}`);
   for (const a of alsoAccepted) console.log(`⬜  second-resolver acceptance: ${a}`);
   for (const c of census) {
     console.log(`    ${c.bad === 0 ? 'ok ' : '✗  '} ${c.name.padEnd(24)} ${String(c.total).padStart(6)} row(s), ${c.bad} unattributable   [${c.marker} · ${c.resolver}]`);
@@ -1885,6 +1971,7 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import
 
 export {
   makeReleasedBuildResolver,
+  makeStoreCaptureResolver,
   releaseLines,
   CouldNotLook,
   collectPaged,

@@ -328,6 +328,31 @@ describe('assert-prod-provenance — the gate limb', () => {
       },
     );
   });
+
+  // ⏱ 2026-09-23 · the SECOND resolvers are held to the same rule as the first. Before, an
+  // undeclared `alsoResolves` id surfaced only at monitor runtime, in ops-watch.
+  test('an undeclared alsoResolves id is RED, naming the table and the id', () => {
+    withTree(
+      (root) => {
+        const reg = readRegister(root);
+        reg.tables.consent_artifacts.alsoResolves = [...reg.tables.consent_artifacts.alsoResolves, 'no-such-resolver'];
+        writeRegister(root, reg);
+      },
+      (r) => {
+        assert.equal(r.status, 1, r.stdout + r.stderr);
+        assert.match(r.stderr, /`consent_artifacts` lists "no-such-resolver" in `alsoResolves`/);
+      },
+    );
+  });
+
+  test('the real register passes the alsoResolves limb: every second resolver it lists is declared', () => {
+    const r = spawnSync(process.execPath, [GATE, REPO], { cwd: REPO, encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.doesNotMatch(r.stderr, /in `alsoResolves`, which/);
+    const reg = JSON.parse(readFileSync(join(REPO, REGISTER), 'utf8'));
+    assert.deepEqual(reg.tables.consent_artifacts.alsoResolves, ['e2e-run', 'store-capture']);
+    assert.ok(Object.prototype.hasOwnProperty.call(reg.resolvers, 'store-capture'));
+  });
 });
 
 // ── the MONITOR ─────────────────────────────────────────────────────────────

@@ -81,7 +81,9 @@ describe('the register and the implementation name the same thing', () => {
     // strongest marker in the schema for a shape check on the one table this
     // repository has already had residue in.
     assert.equal(register.tables.consent_artifacts.resolver, 'released-build');
-    assert.deepEqual(register.tables.consent_artifacts.alsoResolves, ['e2e-run']);
+    // ⏱ 2026-09-23 · `store-capture` joined it: the store capture's own narrow resolver
+    // (tooling/ci/test/store-capture-resolver.test.mjs holds its refusals).
+    assert.deepEqual(register.tables.consent_artifacts.alsoResolves, ['e2e-run', 'store-capture']);
   });
 
   test('NOTHING ELSE carries alsoResolves — the addition stays narrow', () => {
