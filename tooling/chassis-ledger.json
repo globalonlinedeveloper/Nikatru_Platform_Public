@@ -20,7 +20,7 @@
   "_rootsNote": "TWO roots since 2026-09-07 ([ADR 067] phase 2, unit app-shell). The Worker half of the template - 13 files, 917 lines every stamped backend app inherits - was outside this ledger entirely while `root` was one string, and `git ls-files -- <that one root>` could not see it to complain. assert-chassis-ledger.mjs is the authority on this list and cross-checks it; a row's `root` is optional and defaults to roots[0], which is why the 96 rows written against the single root are unchanged. ⏱ THE FIGURES IN THIS NOTE MOVED ON 2026-09-08 AND ARE CORRECTED RATHER THAN REWRITTEN: the Worker half is now 14 files and 1,021 lines, because the template gained src/lib/error-sink.ts — a stamped backend had NO crash sink at all and failed tooling/ci/assert-worker-error-sink.mjs on limbs 2, 3 and 5 at its first CI run. The guard PRINTS both figures per root on every run, which is the number to read; this sentence is prose and prose rots.",
   "totals": {
     "files": 131,
-    "lines": 18415,
+    "lines": 18414,
     "unclassified": 0,
     "unclassifiedLines": 0
   },
@@ -177,9 +177,9 @@
     },
     {
       "path": "lib/features/monetization/paywall_screen.dart",
-      "lines": 230,
+      "lines": 229,
       "verdict": "MOVES",
-      "why": "[ADR 067] decision 2 — MEASURED 2026-09-06: 297 -> 212 brick lines, 240 package lines, callSiteDelta -85. The RENDERING moved; the phase machine did not. Retained here and each for a named reason: the four `funnel.on*` emissions (stamp-properties `money-funnel-emitted-as-a-set`, and they take a WidgetRef), `PurchaseRail.startCheckout` and `awaitUnlock` (the purchase seam, assert-purchase-path/:287 and assert-seams-wired:473), `.formattedPrice` read where the Offering is still in scope (assert-no-price-literals:371 reads adapter ∪ chassis, so either side satisfies it), and `_PaywallPhase` — now `typedef _PaywallPhase = PaywallPhase;`, an ALIAS of the package enum, because screen-register's reachability limb reads ONE file and does not follow the delegation. One enum, not two. ⏱ RE-MEASURED 2026-09-23 (O-IAP-PAYWALL-SHOWS-WEB-PRICE): 212 -> 230. The paywall now reads each plan's term and trial from the store product rather than the web price table, and passes it to the chassis body; formatted with `dart format --language-version=3.9` before counting (it had 1 unformatted line).",
+      "why": "[ADR 067] decision 2 — MEASURED 2026-09-06: 297 -> 212 brick lines, 240 package lines, callSiteDelta -85. The RENDERING moved; the phase machine did not. Retained here and each for a named reason: the four `funnel.on*` emissions (stamp-properties `money-funnel-emitted-as-a-set`, and they take a WidgetRef), `PurchaseRail.startCheckout` and `awaitUnlock` (the purchase seam, assert-purchase-path/:287 and assert-seams-wired:473), `.formattedPrice` read where the Offering is still in scope (assert-no-price-literals:371 reads adapter ∪ chassis, so either side satisfies it), and `_PaywallPhase` — now `typedef _PaywallPhase = PaywallPhase;`, an ALIAS of the package enum, because screen-register's reachability limb reads ONE file and does not follow the delegation. One enum, not two. ⏱ RE-MEASURED 2026-09-23 (O-IAP-PAYWALL-SHOWS-WEB-PRICE): 212 -> 230. The paywall now reads each plan's term and trial from the store product rather than the web price table, and passes it to the chassis body; formatted with `dart format --language-version=3.9` before counting (it had 1 unformatted line). ⏱ RE-MEASURED 2026-09-23 again: 230 -> 229, after CI's dart format joined the onCheckAgain refresh onto one expression.",
       "target": "packages/chassis_screens/lib/monetization/paywall_screen.dart",
       "callSiteDelta": -85
     },
