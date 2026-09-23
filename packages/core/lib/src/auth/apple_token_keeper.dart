@@ -133,6 +133,13 @@ class AppleTokenNotKept implements Exception {
   AppleTokenNotKept._(this.attempts, Object? lastError, String? token)
       : lastError = _redacted(lastError, token);
 
+  /// The FIXED sentence every app reports. Fixed, and not the failure's own
+  /// words, because it is the search term somebody grepping the error tracker
+  /// for this class of failure will type, and because a server's message is
+  /// not ours to forward: it is the one place a token could still ride out.
+  static const String reason =
+      'Apple refresh token was not delivered to the server';
+
   /// How many times delivery was attempted in the round that gave up.
   final int attempts;
 
@@ -148,6 +155,26 @@ class AppleTokenNotKept implements Exception {
   @override
   String toString() =>
       'AppleTokenNotKept: $attempts attempt(s) failed; last: $lastError';
+}
+
+/// ⏱ 2026-09-22 · O-APPLE-KEEPER-NO-ONERROR — WHAT A CALLER SENDS ITS ERROR
+/// TRACKER, DECIDED ONCE, HERE.
+///
+/// 🔴 EVERY CALLER REPORTS THE SAME TWO THINGS, AND THIS IS WHY IT IS A
+/// FUNCTION. The app and the app TEMPLATE both hand [keepAppleRefreshToken] an
+/// `onError`, and two hand-written report strings a template apart drift: one
+/// app would ship the failure's own text, which is the one string a token can
+/// still be hiding in ([AppleTokenNotKept] redacts the token it KNOWS about,
+/// and a server that echoed it back some other way is not covered). So the
+/// payload is a REASON and a COUNT: [AppleTokenNotKept.reason] verbatim, plus
+/// how many attempts the round made. Nothing else — not the token, not
+/// [AppleTokenNotKept.lastError], not the bearer, not the user.
+///
+/// The count is carried because it is the one number that separates "the
+/// server is down for everybody" from "this one account cannot deliver".
+String appleTokenNotKeptReport(Object error) {
+  final int attempts = error is AppleTokenNotKept ? error.attempts : 0;
+  return '${AppleTokenNotKept.reason} (attempts: $attempts)';
 }
 
 /// One delivery round's cancellable wait.

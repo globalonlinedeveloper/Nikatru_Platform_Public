@@ -4288,7 +4288,7 @@ final Provider<core.AgeSignalSource> ageSignalSourceProvider = X();
 // O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE, 2026-09-16 — the Apple refresh-token keeper.
 // Here for the same both-directions classification reason as the rows above.
 final Provider<void> appleTokenKeeperProvider = X();
-final Provider<void> _appleKeeper = core.keepAppleRefreshToken(auth: X(), send: X());
+final Provider<void> _appleKeeper = core.keepAppleRefreshToken(auth: X(), send: X(), onError: X());
 final Provider<core.ConsentStatus> analyticsConsentProvider = X();
 final Provider<bool> consentDecidedProvider = X();
 // The legal gate's anchors, and all three are load-bearing for the

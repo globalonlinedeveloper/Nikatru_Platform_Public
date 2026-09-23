@@ -1305,6 +1305,56 @@ describe('lastmodFor — the value a URL will carry once this state is committed
     assert.equal(isGitRepo(plain), false);
     assert.equal(lastmodFor(plain, 'page.html'), today());
   });
+
+  test('🔴 ONE timezone on both halves — a 01:00 IST commit renders the same date under TZ=Asia/Kolkata and TZ=UTC', () => {
+    // ⏱ 2026-09-23 — O-LASTMOD-READS-TWO-TIMEZONES. The laptop is IST and the
+    // runner is UTC. The commit below is made at 2026-01-02T01:00+05:30, the
+    // 00:00–05:30 IST window where the two clocks name different days. The
+    // SAME module is evaluated in two child processes that differ ONLY in TZ,
+    // and each reports both halves: the git half (`gitLastmod`, what a
+    // committed page resolves to) and the clock half (`today()` at the very
+    // instant of the commit, what the generator writes for a page it is
+    // changing). Every one of the four values must be the declared-timezone
+    // date — UTC, so 2026-01-01.
+    //
+    // RED CONTROL, run against the pre-fix module on 2026-09-23 and recorded in
+    // the lane notes: the old `--date=short` git half is 2026-01-02 under BOTH
+    // TZ values (it renders the AUTHOR's recorded +05:30, whatever the machine
+    // is), while the old local-clock `today()` is 2026-01-02 under Kolkata and
+    // 2026-01-01 under UTC — so under UTC the two halves named different days
+    // for the same instant, and which date a page carried depended on the
+    // machine that ran the generator.
+    const root = gitRepo();
+    writeFileSync(join(root, 'page.html'), 'v1\n');
+    git(root, 'add', '-A');
+    const AT = '2026-01-02T01:00:00+05:30';
+    const c = spawnSync('git', ['-C', root, 'commit', '--quiet', '-m', 'overnight in IST'], {
+      encoding: 'utf8',
+      env: { ...process.env, GIT_AUTHOR_DATE: AT, GIT_COMMITTER_DATE: AT },
+    });
+    assert.equal(c.status, 0, c.stderr);
+
+    const probe = [
+      "const m = await import(process.env.LASTMOD_URL);",
+      "const root = process.env.FIXTURE_ROOT;",
+      "console.log(JSON.stringify({",
+      "  git: m.gitLastmod(root, 'page.html'),",
+      "  lastmodFor: m.lastmodFor(root, 'page.html'),",
+      "  today: m.today(new Date(process.env.FIXTURE_AT)),",
+      "}));",
+    ].join('\n');
+    const lastmodUrl = new URL('../../sites/lastmod.mjs', import.meta.url).href;
+    const run = (tz) => {
+      const r = spawnSync(process.execPath, ['--input-type=module', '-e', probe], {
+        encoding: 'utf8',
+        env: { ...process.env, TZ: tz, LASTMOD_URL: lastmodUrl, FIXTURE_ROOT: root, FIXTURE_AT: AT },
+      });
+      assert.equal(r.status, 0, `probe under TZ=${tz} failed: ${r.stderr}`);
+      return JSON.parse(r.stdout.trim());
+    };
+    const want = { git: '2026-01-01', lastmodFor: '2026-01-01', today: '2026-01-01' };
+    assert.deepEqual({ kolkata: run('Asia/Kolkata'), utc: run('UTC') }, { kolkata: want, utc: want });
+  });
 });
 
 describe('the drift limb (W-9)', () => {
@@ -2870,7 +2920,7 @@ describe('the page-quality contract reaches the mirror deploy root', () => {
 // here rather than described in a comment.
 // -----------------------------------------------------------------------------
 describe('applyPricing - the price list derives its numbers and REFUSES to skip', () => {
-  const app = (offerings) => ({ slug: 'x', offerings, paywallEnabled: false });
+  const app = (offerings, paywallEnabled = false) => ({ slug: 'x', offerings, paywallEnabled });
   const YEARLY = { id: 'pro_yearly', amount: '$34.99', code: 'USD', trialDays: 30, term: { unit: 'year', heading: 'Yearly', renews: 'Renews every year until you cancel.' } };
   const ONCE = { id: 'pro_lifetime', amount: '$89.00', code: 'USD', trialDays: 0, term: { unit: null, heading: 'One-time', renews: 'A single payment. Nothing renews.' } };
   const PAGE = [
@@ -2884,11 +2934,35 @@ describe('applyPricing - the price list derives its numbers and REFUSES to skip'
     const out = applyPricing(PAGE, app([YEARLY, ONCE]));
     assert.match(out, /\$34\.99/);
     assert.match(out, /\$89\.00/);
-    assert.match(out, /30-DAY TRIAL/);
     // The hand-written prose outside the pairs is untouched.
     assert.match(out, /hand-written argument that must survive byte for byte/);
     // And the yearly plan is the highlighted one, derived from the TERM.
     assert.match(out, /<div class="plan hi">\s*\n\s*<h3>Yearly/);
+  });
+
+  test('🔴 a trial is OFFERED only while the paywall is open — shut, no region of the price list claims one', () => {
+    // Until 2026-09-22 the landing badge was gated on `paywallEnabled` and the
+    // price list was not, so /pricing promised a 30-day trial on every plan while
+    // checkout was closed. Measured red control: un-gating `pricingPlans` alone
+    // turns the SHUT half of this case red.
+    const shut = applyPricing(PAGE, app([YEARLY, ONCE]));
+    assert.doesNotMatch(shut, /-DAY TRIAL/, 'a plan card offers a trial over a shut checkout');
+    assert.doesNotMatch(shut, /day free trial/, 'the meta description offers a trial over a shut checkout');
+    assert.doesNotMatch(pricingTable(app([YEARLY, ONCE])), /\d+ days/, 'the table offers a trial over a shut checkout');
+    // POSITIVE CONTROL: the same offerings with the paywall open DO offer it, so
+    // the shut half is a gate and not a trial that can never render.
+    const open = applyPricing(PAGE, app([YEARLY, ONCE], true));
+    assert.match(open, /30-DAY TRIAL/);
+    assert.match(open, /with a 30-day free trial/);
+    assert.match(pricingTable(app([YEARLY, ONCE], true)), /<td>30 days<\/td>/);
+  });
+
+  test('🔴 THE REAL PAGE offers no trial while the real paywall is shut', () => {
+    const rail = JSON.parse(readFileSync(join(REPO, 'services', 'platform', 'src', 'app-config-data.json'), 'utf8'));
+    const open = Object.values(rail.apps ?? {}).some((a) => a?.paywall?.enabled === true);
+    const page = readFileSync(join(REPO, 'sites', 'nikatru', 'pricing.html'), 'utf8');
+    if (open) return; // the day checkout opens, the trial is an honest offer again
+    assert.doesNotMatch(page, /\d+-DAY TRIAL|\d+-day free trial|<td>\d+ days<\/td>/i, 'pricing.html offers a trial nothing can start');
   });
 
   test('a one-time offering is billed "One-time payment" and shows no renewal claim', () => {

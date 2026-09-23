@@ -210,19 +210,34 @@ const CHECKOUT_LIMITER_VAR = 'CHECKOUT_CEILING_LIMITER';
 const OFFERING_ID_PATTERN = /^[a-z][a-z0-9_]{0,63}$/;
 
 /**
- * OUR offering id → PADDLE's price id, per app. Measured live 2026-08-11 and
- * recorded in [ADR 044] §7:
- *   `pri_01kzew6dqmtv3jg33dy9m23g31` — Pro Monthly, 499 minor units USD / month
- *   `pri_01kzew6e0yec2rfvk561hmzbbz` — Pro Yearly, 1999 minor units USD / year
- * both under product `pro_01kzew6de0nhqncmgxj1qtfg0q`, both `trial_period` 30
- * days with `requires_payment_method: true`.
+ * OUR offering id → PADDLE's price id, per app. Measured live by API on
+ * 2026-09-22 09:20:50Z, under the owner's standing delegation of 2026-09-15:
+ *   `pri_01m346p0fjtaffk6waj5x5vz1c` — Pro Monthly, 599 minor units USD / month
+ *   `pri_01m346p0v8103kqy1zb8zmmj7y` — Pro Yearly, 3499 minor units USD / year
+ * both under product `pro_01kzew6de0nhqncmgxj1qtfg0q`, whose NAME now reads
+ * "Nikatru Subscription Tracker Pro" — the catalogue carries the product name a
+ * buyer sees on the receipt, so it is renamed with everything else.
+ *
+ * 🔄 THESE TWO IDS REPLACED A PAIR MEASURED 2026-08-11 ([ADR 044] §7:
+ * `pri_01kzew6dqmtv3jg33dy9m23g31` at 499/month and `pri_01kzew6e0yec2rfvk561hmzbbz`
+ * at 1999/year). A Paddle price is IMMUTABLE in its amount: moving a price means
+ * creating a new one and archiving the old, which is what happened — the two
+ * 2026-08-11 prices were archived on 2026-09-22, so nothing can transact on them
+ * and the old ids are dead rather than merely unused. They are written out here
+ * because a dead id in a log line is otherwise unidentifiable.
  *
  * 🔴 THE JOIN IS `custom_data.offering_id` ON PADDLE'S OWN PRICE, not a
  * coincidence of naming: both live prices carry `custom_data { app_id: "subscriptiontracker",
- * offering_id: "pro_monthly" | "pro_yearly" }`, which is what makes these two
- * lines checkable against the rail rather than asserted. [ADR 044] §7 records
- * that NO `pri_` id existed anywhere in this repo before now, so the app could
- * not name a Paddle price at all.
+ * offering_id: "pro_monthly" | "pro_yearly", adr093: ... }`, which is what makes
+ * these two lines checkable against the rail rather than asserted. The archived
+ * pair carried the retired product name in that same field, so the custom_data
+ * is also what tells the two generations apart in a webhook.
+ *
+ * ⬜ WHAT IS NOT RECORDED HERE: the `trial_period` on the new prices. The
+ * 2026-08-11 pair carried 30 days with `requires_payment_method: true`; this
+ * file does not claim the same of the new pair, because that was not part of the
+ * 2026-09-22 measurement and a trial is a term a buyer is owed. Read it from
+ * Paddle and record it here before `paywall.enabled` goes true.
  *
  * ⚠️ A CALLER NEVER NAMES A PRICE. The body carries our offering id and the
  * server resolves it here, so no request can create a transaction for an
@@ -239,15 +254,16 @@ const OFFERING_ID_PATTERN = /^[a-z][a-z0-9_]{0,63}$/;
  */
 export const PADDLE_PRICE_IDS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
   subscriptiontracker: {
-    pro_monthly: 'pri_01kzew6dqmtv3jg33dy9m23g31',
-    pro_yearly: 'pri_01kzew6e0yec2rfvk561hmzbbz',
+    pro_monthly: 'pri_01m346p0fjtaffk6waj5x5vz1c',
+    pro_yearly: 'pri_01m346p0v8103kqy1zb8zmmj7y',
   },
 };
 
 /**
  * WHAT EACH MAPPED PRICE ACTUALLY COSTS **ON PADDLE**, in minor units of the
- * currency the Paddle price carries. Measured live 2026-08-11 and recorded in
- * [ADR 044] §7; NOT re-derived from `app-config-data.json`.
+ * currency the Paddle price carries. Measured live by API on 2026-09-22
+ * 09:20:50Z, in the same read that recorded the ids above; NOT re-derived from
+ * `app-config-data.json`.
  *
  * 🔴 IT IS A SECOND COPY OF A PRICE ON PURPOSE, WHICH THIS REPOSITORY OTHERWISE
  * FORBIDS. The rule that a price lives in exactly one place
@@ -266,8 +282,8 @@ export const PADDLE_PRICE_IDS: Readonly<Record<string, Readonly<Record<string, s
  */
 export const RAIL_PRICE_AMOUNTS_MINOR: Readonly<Record<string, Readonly<Record<string, number>>>> = {
   subscriptiontracker: {
-    pro_monthly: 499,
-    pro_yearly: 1999,
+    pro_monthly: 599,
+    pro_yearly: 3499,
   },
 };
 
@@ -284,28 +300,26 @@ export const RAIL_PRICE_AMOUNTS_MINOR: Readonly<Record<string, Readonly<Record<s
  * failure, not the entry.
  *
  * The runtime already refuses safely either way: an offering with no `pri_` id
- * answers **503 `offering_not_available`** at :477 below and logs the drift by
- * name. What this map adds is that the drift is DECLARED rather than discovered.
+ * answers **503 `offering_not_available`** in the `PADDLE_PRICE_IDS` lookup
+ * below and logs the drift by name. What this map adds is that the drift is
+ * DECLARED rather than discovered.
  *
- * ⚠️ CLEARING AN ENTRY IS A VENDOR ACT, NOT A CODE CHANGE — somebody with the
- * Paddle dashboard has to create or re-price the catalogue row and then the two
- * maps above get the measured values. No agent may do it: it is a write to a
- * live merchant account.
+ * ⚠️ CLEARING AN ENTRY IS A CATALOGUE ACT, NOT AN EDIT TO THIS FILE. The
+ * catalogue row has to exist first, and the two maps above then get the values
+ * READ BACK from it. The write itself is the agent's, by API, under the owner's
+ * standing delegation of 2026-09-15 — what is never the agent's is deciding the
+ * number: that is the ADR's, and the owner's.
  */
 export const RAIL_PRICE_PENDING: Readonly<Record<string, Readonly<Record<string, string>>>> = {
   subscriptiontracker: {
-    pro_monthly:
-      'OWNER — Paddle price pri_01kzew6dqmtv3jg33dy9m23g31 still carries 499 USD/month. The owner ' +
-      'moved monthly to 599 on 2026-09-09 (unit-economics 2026-09-09 §4.1: monthly is the decoy that ' +
-      'makes 12 x $5.99 = $71.88 read against $34.99). Re-price or replace the Paddle price.',
-    pro_yearly:
-      'OWNER — Paddle price pri_01kzew6e0yec2rfvk561hmzbbz still carries 1999 USD/year. The owner ' +
-      'moved annual to 3499 on 2026-09-09 (just under the NA median $39.99, just over the global ' +
-      '$34.80; nets $31.23 = 89.2% through Paddle). Re-price or replace the Paddle price.',
     pro_lifetime:
-      'OWNER — no Paddle price exists for a one-time SKU at all. The owner kept lifetime on ' +
-      '2026-09-09 at 8900 USD; it nets $80.27 = 2.57 years of annual net against a ~1.4-year ' +
-      'expected annual life. Create the Paddle price, then record its pri_ id and amount above.',
+      'THE PRICE EXISTS AND THE PATH DOES NOT — Paddle price pri_01m346p14yzeqjjwj153thx8p2 carries ' +
+      'the decided one-time amount, so what is missing is no longer a catalogue row. This Worker ' +
+      'grants an entitlement off a SUBSCRIPTION: the Paddle adapter recognises a sub_ id and has no ' +
+      'branch for a one-time transaction, so mapping the price here would sell a purchase that ' +
+      'reaches no grant. Build the one-time grant path, then move this offering into the two maps ' +
+      'above. The monthly and yearly entries were cleared on 2026-09-22 when their prices were ' +
+      'measured live and recorded above.',
   },
 };
 

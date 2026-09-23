@@ -376,19 +376,28 @@ let registerChannels = []; // the register's channel rows, whole
       } catch (e) {
         coverageLost(`${SERVER_CONFIG} does not parse (${e.message}); the rail's terms could not be read.`);
       }
-      const trials = railOfferings.map((o) => o.trialDays);
+      // A `trial_days` of ZERO IS NOT A SHORT TRIAL, IT IS NO TRIAL, and this
+      // limb read it as one. On 2026-09-22 the one-time offering's trial went
+      // to 0 — a trial delays a first renewal and that offering never renews —
+      // and `Math.min` over the three made the shortest trial 0d, which no
+      // ceiling above zero days can sit under. The bound is a relationship to
+      // trials that EXIST; where none does there is no trial day for a
+      // cancellation to fall on, and only the period half of M-8 has anything
+      // to say. Coverage is still keyed on the OFFERINGS and their terms, so an
+      // empty or unreadable rail is COVERAGE LOST rather than a silent pass.
+      const trials = railOfferings.map((o) => o.trialDays).filter((d) => typeof d === 'number' && d > 0);
       const terms = railOfferings.map((o) => o.term).filter((t) => t !== null);
-      if (trials.length === 0 || terms.length === 0) {
+      if (railOfferings.length === 0 || terms.length === 0) {
         coverageLost(
-          `no \`trial_days\` / \`term\` found in ${SERVER_CONFIG}'s rail config, so the ceiling was compared against nothing. The two facts M-8's bound is relative to have to come from the config, not from this file.`,
+          `no offering with a \`term\` found in ${SERVER_CONFIG}'s rail config, so the ceiling was compared against nothing. The facts M-8's bound is relative to have to come from the config, not from this file.`,
         );
       } else {
-        const shortestTrial = Math.min(...trials);
+        const shortestTrial = trials.length > 0 ? Math.min(...trials) : null;
         // The shortest billing period the rail actually sells. `month` is
         // treated as 28 days: the bound must hold for February too.
         const PERIOD_DAYS = { month: 28, year: 365, one_time: Infinity };
         const shortestPeriod = Math.min(...terms.map((t) => PERIOD_DAYS[t] ?? Infinity));
-        if (ceilingDays > shortestTrial) {
+        if (shortestTrial !== null && ceilingDays > shortestTrial) {
           problems.push(
             `THE BOUND OUTLIVES THE TRIAL — kEntitlementStalenessCeiling is ${ceilingDays}d but the shortest trial is ${shortestTrial}d. A user who cancels on the last trial day would keep honoured access past it.`,
           );
@@ -397,7 +406,11 @@ let registerChannels = []; // the register's channel rows, whole
             `THE BOUND OUTLIVES THE BILLING PERIOD — kEntitlementStalenessCeiling is ${ceilingDays}d but the shortest period the rail sells is ${shortestPeriod}d. A subscriber whose renewal failed keeps a period they did not pay for, and stage 13 cut dunning, so nothing else is coming to catch it.`,
           );
         } else {
-          ok(`revocation bound ${ceilingDays}d <= trial ${shortestTrial}d and <= shortest period ${shortestPeriod}d`);
+          ok(
+            shortestTrial === null
+              ? `revocation bound ${ceilingDays}d <= shortest period ${shortestPeriod}d; no offering grants a trial (${railOfferings.length} offering(s) read)`
+              : `revocation bound ${ceilingDays}d <= trial ${shortestTrial}d and <= shortest period ${shortestPeriod}d`,
+          );
         }
       }
     }
@@ -918,7 +931,21 @@ let registerChannels = []; // the register's channel rows, whole
 // the DICTIONARY still says what [ADR 039] locked, so neither deleting an entry
 // (which would silently make a forbidden rail unnameable) nor adding a fifth one
 // (a rail nobody decided on) can pass as a data edit.
-const LOCKED_RAILS = ['paddle', 'play-billing', 'apple-iap', 'none'];
+//
+// ⏱ A FIFTH RAIL, 2026-09-22 — `razorpay`, BY [ADR 094], AND THE PARAGRAPH
+// ABOVE IS WHY IT COSTS AN EDIT HERE. The "AN UNDECIDED RAIL" limb below fails
+// any id the dictionary declares that this list does not, which is the tripwire
+// working: adding a rail to the register alone WOULD have been a data edit, and
+// a fifth rail is an amendment to an owner-locked decision. [ADR 094] is that
+// amendment ("1 and 2 - Razorpay", owner, 2026-09-22), and it says so in its own
+// §4 item 3 — "Both move with the vocabulary". They move in this commit.
+//
+// ⚠️ `razorpay` HAS NO `RAIL_IMPLS` ENTRY AND NEEDS NONE TODAY. That map grades
+// the CLIENT `PurchaseRail` implementations, and no Dart rail opens a Razorpay
+// checkout; §G4(e) holds the Dart enum as a SUBSET of this vocabulary, not as an
+// equal, exactly so a rail can be decided before a client can take it. The day a
+// client rail exists, §G0 refuses (COVERAGE LOST) until it is named there.
+const LOCKED_RAILS = ['paddle', 'play-billing', 'apple-iap', 'razorpay', 'none'];
 const RAIL_CLIENT_IMPL = 'packages/purchases/lib/src/hosted_checkout_rail.dart';
 const RAIL_SERVER_IMPL = 'services/platform/src/lib/mor/paddle.ts';
 const PURCHASES_LIB = 'packages/purchases/lib';
@@ -1469,6 +1496,238 @@ const flat = (v) =>
   }
 }
 
+
+// ═══════════════════════════════════════════════════════════════════════════
+// I · A REGION TAKES A DIFFERENT RAIL — the India rail, as a claim that can fail
+// ═══════════════════════════════════════════════════════════════════════════
+// [ADR 094] (LOCKED 2026-09-22, owner verbatim "1 and 2 - Razorpay") puts a
+// buyer IN INDIA of any of the three browser extensions on Razorpay and leaves
+// every other buyer on Paddle, because [ADR 076] §3 measured that Paddle cannot
+// sell the India monthly plan at any price — a flat $0.50 on ₹149 is ~42%
+// effective, so an Indian buyer could not buy the monthly plan at all. One
+// `rail` per row cannot say that ([ADR 094] §4 item 2), so the register grew an
+// OPTIONAL `purchaseRail.regionRails` — `{region, rail, why, source}` — and this
+// section is what keeps that field from being prose in a JSON file.
+//
+// 🔴 THE FAILURE THIS SECTION EXISTS FOR IS A CLAIM THE TREE CANNOT SETTLE. A
+// row saying "in IN this channel takes razorpay" is a sentence about MONEY: it
+// tells a reader, a store reviewer and the next increment that an Indian buyer
+// pays through a rail we have. Three ways that sentence is false, none of them
+// visible by reading the row:
+//   · (I1) the rail is not in the register's own `purchaseRails.rails`
+//     dictionary, so it resolves to nothing. §G's `checkRailBlock` never saw
+//     this field — it validates `rail` and `forbids` and stops.
+//   · (I3) `services/platform` cannot verify a webhook from that rail, so money
+//     taken on it could not become an entitlement. This is the limb that would
+//     have fired if the register had named a rail before the adapter existed.
+//   · (I4) `tooling/legal/provider-register.json` says the rail is not named on
+//     any published page, so the buyer paying through it was never told who
+//     collects. A gateway is not the merchant of record, and
+//     assert-policy-claims.mjs §3(c) is scoped to merchants of record — so
+//     NOTHING ELSE IN THIS TREE catches an undisclosed gateway taking money.
+//     That gap is written down in the razorpay row's own notes as a human duty;
+//     this limb is the first thing that fails on it.
+//
+// ⚠️ I0 IS THE DOMAIN, AND IT IS READ OFF THE REGISTER RATHER THAN KEPT HERE.
+// `regionRails` is OPTIONAL — most channels take one rail everywhere — so limbs
+// that validate only what they find agree with a tree in which all three blocks
+// were deleted, and would report that agreement as a pass.
+// `purchaseRails.regionRailsRequiredOn` is the register's own list of channels
+// that must carry one: deleting a rail answer then costs deleting its id from
+// that list, in the same diff, where a reviewer sees it. The list absent, or
+// present and EMPTY, is COVERAGE LOST — this section would range over nothing,
+// and a section that ranges over nothing agrees with every tree.
+//
+// ⬜ `apps-gov-in` IS NOT IN THAT LIST TODAY AND ITS ABSENCE IS THE DECISION,
+// NOT AN OMISSION. [ADR 094] §4 item 1 says the row must take Razorpay; item 5
+// says its `store/apps-gov-in/form-answers.json` answers flip only in a build
+// that actually carries the checkout. The row keeps `rail: none` until then.
+const MOR_REGISTRY = 'services/platform/src/lib/mor/registry.ts';
+const LEGAL_REGISTER = 'tooling/legal/provider-register.json';
+{
+  const before = problems.length;
+  const raw = read(CHANNELS);
+  let block = null;
+  try {
+    block = raw === null ? null : JSON.parse(raw).purchaseRails;
+  } catch {
+    /* §A already reported the parse failure */
+  }
+  const dict = block && typeof block.rails === 'object' && !Array.isArray(block.rails) ? block.rails : null;
+  const required = Array.isArray(block?.regionRailsRequiredOn)
+    ? block.regionRailsRequiredOn.filter((x) => typeof x === 'string')
+    : null;
+
+  if (!dict) {
+    coverageLost(
+      `§I could not read \`purchaseRails.rails\` out of ${CHANNELS}, so a region rail's value had no vocabulary to resolve against. §G reported the same absence; this line records that the region dimension went unchecked too.`,
+    );
+  } else if (required === null) {
+    coverageLost(
+      `${CHANNELS} declares no \`purchaseRails.regionRailsRequiredOn\`, so §I checked only the \`regionRails\` blocks it happened to find — and a tree with every block deleted would have passed it unanimously. The list is the DOMAIN: it is what makes deleting a region rail answer cost an edit a reviewer can see.`,
+    );
+  } else if (required.length === 0) {
+    coverageLost(
+      `${CHANNELS}'s \`purchaseRails.regionRailsRequiredOn\` is EMPTY, so §I ranges over no channel at all. [ADR 094] requires a region rail on chrome-webstore, edge-addons and amo; an empty list is either that decision being unwound as a data edit, or the register having lost the ids. Neither is a pass.`,
+    );
+  } else {
+    const rowById = new Map(registerChannels.map((c) => [c.id, c]));
+    const entriesOf = (row) => (Array.isArray(row?.purchaseRail?.regionRails) ? row.purchaseRail.regionRails : []);
+
+    // ── I0 · EVERY CHANNEL THE REGISTER SAYS MUST CARRY ONE, CARRIES ONE ──
+    for (const id of required) {
+      const row = rowById.get(id);
+      if (!row) {
+        problems.push(
+          `\`purchaseRails.regionRailsRequiredOn\` names \`${id}\`, which is not a \`channels\` row in ${CHANNELS}. A required region rail on a channel that does not exist is a requirement nothing can fail.`,
+        );
+      } else if (entriesOf(row).length === 0) {
+        problems.push(
+          `CHANNEL \`${id}\` MUST CARRY A REGION RAIL AND CARRIES NONE — ${CHANNELS} lists it in \`purchaseRails.regionRailsRequiredOn\` and its \`purchaseRail\` declares only \`${typeof row.purchaseRail?.rail === 'string' ? row.purchaseRail.rail : '(none)'}\`, which then reads as the rail for every buyer everywhere. [ADR 094] routes an India buyer of this channel to Razorpay; with the block gone, the register says they pay through the rail [ADR 076] §3 measured as unable to sell them the monthly plan. If the decision really was unwound, remove the id here in the same edit.`,
+        );
+      }
+    }
+
+    // ── I1 · THE VALUE RESOLVES · I2 · THE ENTRY SAYS SOMETHING ───────────
+    const claims = [];
+    for (const ch of registerChannels) {
+      const own = typeof ch.purchaseRail?.rail === 'string' ? ch.purchaseRail.rail : null;
+      const forbids = Array.isArray(ch.purchaseRail?.forbids) ? ch.purchaseRail.forbids : [];
+      const seen = new Set();
+      const entries = entriesOf(ch);
+      for (let i = 0; i < entries.length; i += 1) {
+        const e = entries[i];
+        const label = `channel \`${ch.id}\` region rail #${i + 1}`;
+        if (!e || typeof e !== 'object' || Array.isArray(e)) {
+          problems.push(`${label} is not an object. A region rail is \`{region, rail, why, source}\`; anything else names no region and no rail.`);
+          continue;
+        }
+        const region = typeof e.region === 'string' ? e.region : null;
+        const rail = typeof e.rail === 'string' ? e.rail : null;
+        const why = flat(e.why).trim();
+        const source = flat(e.source).trim();
+
+        if (region === null || !/^[A-Z]{2}$/.test(region)) {
+          problems.push(
+            `${label} declares \`region\` ${JSON.stringify(e.region ?? null)}, which is not an ISO 3166-1 alpha-2 code. The region is what a routing increment will compare a buyer against; "India", "in" and "IND" are three spellings of one country and only one of them can be the key.`,
+          );
+        } else if (seen.has(region)) {
+          problems.push(
+            `${label} is a SECOND answer for \`${region}\` on the same channel — ${CHANNELS} now gives two rails for one country, and whichever a reader (or a later resolver) reaches first decides the money. Same failure as TWO RAIL ANSWERS above, one dimension down.`,
+          );
+        } else {
+          seen.add(region);
+        }
+
+        if (rail === null) {
+          problems.push(`${label} has no \`rail\` string. The field that names the rail is the field.`);
+        } else if (!Object.keys(dict).includes(rail)) {
+          problems.push(
+            `${label} declares rail \`${rail}\`, which ${CHANNELS}'s own \`purchaseRails.rails\` dictionary does not define (${Object.keys(dict).join(' | ')}). A region rail outside the vocabulary resolves to nothing, and it reads in review exactly like one that resolves.`,
+          );
+        } else if (own !== null && rail === own) {
+          problems.push(
+            `${label} declares \`${rail}\`, WHICH IS THE ROW'S OWN RAIL. The entry records a regional difference that does not exist — the same failure \`railSplitsFrom\` has when a parked split takes its parent's rail, and it ends the same way: the dimension looks exercised and covers nothing.`,
+          );
+        }
+        if (rail !== null && forbids.includes(rail)) {
+          problems.push(
+            `CONTRADICTORY ROW — ${label} sends buyers in ${region ?? '(no region)'} to \`${rail}\`, and the same row's \`forbids\` prohibits \`${rail}\`. The row cancels itself, and the half a reader happens to consult decides whether a build opens a checkout the channel bans.`,
+          );
+        }
+        if (why.replace(/\s+/g, '').length < 20) {
+          problems.push(
+            `${label} declares no substantive \`why\`. Same rule the row's own rail carries: a rail assignment without its ground cannot be reviewed and cannot be RE-decided when the policy or the arithmetic moves — and on this rail the arithmetic is the whole reason ([ADR 076] §3).`,
+          );
+        }
+        if (source.length === 0) {
+          problems.push(`${label} cites no \`source\`. A region rail is an amendment to the row's rail; an uncited one is somebody's recollection of a decision.`);
+        }
+        if (region !== null && rail !== null) claims.push({ channel: ch.id, region, rail });
+      }
+    }
+
+    const distinct = [...new Set(claims.map((c) => c.rail))].sort();
+
+    // ── I3 · THE SERVER CAN VERIFY A WEBHOOK FROM EVERY CLAIMED RAIL ──────
+    // The provider set is DATA, in `MOR_VERIFIERS` — the same parse
+    // tooling/ci/assert-mor-adapters.mjs limb 2 runs, deliberately, so the two
+    // guards cannot disagree about which rails this repo can hear from. The
+    // registered IDENTIFIER is the tell; assert-mor-adapters is the guard that
+    // owns the set itself.
+    if (distinct.length > 0) {
+      const regRaw = read(MOR_REGISTRY);
+      if (regRaw === null) {
+        coverageLost(
+          `${MOR_REGISTRY} does not exist, so "every rail a region claims can be verified" ranges over nothing while ${CHANNELS} claims [${distinct.join(', ')}].`,
+        );
+      } else {
+        const arr = /MOR_VERIFIERS\s*:\s*readonly\s+MoRWebhookVerifier\[\]\s*=\s*\[([^\]]*)\]/.exec(code(regRaw));
+        const idents = arr ? [...new Set([...arr[1].matchAll(/([A-Za-z_$][\w$]*)Verifier/g)].map((m) => m[1].toLowerCase()))] : [];
+        if (idents.length === 0) {
+          coverageLost(
+            `no \`MOR_VERIFIERS\` array could be parsed out of ${MOR_REGISTRY}, so every region rail below was checked against an EMPTY provider set — which is a check that cannot fail. (assert-mor-adapters.mjs limb 2 runs the same parse and reports the same absence.)`,
+          );
+        } else {
+          for (const rail of distinct) {
+            if (!idents.includes(rail.toLowerCase())) {
+              const who = claims.filter((c) => c.rail === rail).map((c) => `${c.channel}/${c.region}`).join(', ');
+              problems.push(
+                `A REGION PAYS THROUGH \`${rail}\` AND THIS REPO CANNOT HEAR FROM IT — ${CHANNELS} routes ${who} to \`${rail}\`, and ${MOR_REGISTRY} registers no \`${rail}Verifier\` (it has ${idents.join(', ')}). A payment taken on a rail whose webhook nobody verifies is money in, entitlement never, and the buyer's only evidence is a receipt from a company this repository has never heard of.`,
+              );
+            }
+          }
+        }
+      }
+
+      // ── I4 · EVERY CLAIMED RAIL IS DISCLOSED IN THE LEGAL REGISTER ──────
+      const legalRaw = read(LEGAL_REGISTER);
+      if (legalRaw === null) {
+        coverageLost(
+          `${LEGAL_REGISTER} does not exist, so "the rail a region pays through is named on a published page" ranges over nothing while ${CHANNELS} claims [${distinct.join(', ')}].`,
+        );
+      } else {
+        let legal = null;
+        try {
+          legal = JSON.parse(legalRaw);
+        } catch (err) {
+          coverageLost(`${LEGAL_REGISTER} is not valid JSON (${err.message}), so no region rail's disclosure could be checked.`);
+        }
+        const rows = Array.isArray(legal?.providers) ? legal.providers : null;
+        if (legal !== null && rows === null) {
+          coverageLost(`${LEGAL_REGISTER} carries no \`providers\` array, so no region rail could be matched to a disclosure row.`);
+        } else if (rows !== null) {
+          const NOT_DISCLOSED = new Set(['not-named-not-wired', 'deferred']);
+          for (const rail of distinct) {
+            const who = claims.filter((c) => c.rail === rail).map((c) => `${c.channel}/${c.region}`).join(', ');
+            const row = rows.find((r) => r && r.id === rail);
+            if (!row) {
+              problems.push(
+                `A REGION PAYS THROUGH \`${rail}\` AND THE LEGAL REGISTER HAS NO ROW FOR IT — ${CHANNELS} routes ${who} to \`${rail}\` and ${LEGAL_REGISTER} does not name it at all. A company that collects our buyers' money and appears in no disclosure register is one nobody decided how to disclose.`,
+              );
+              continue;
+            }
+            if (NOT_DISCLOSED.has(row.status)) {
+              problems.push(
+                `\`${rail}\` COLLECTS IN ${who} AND ITS LEGAL ROW SAYS \`${row.status}\` — ${LEGAL_REGISTER} states the rail is not named on any published page and not reachable from this code, while ${CHANNELS} routes buyers to it. One of the two is wrong, and the expensive way round is the register being right: a buyer paying a processor the site never names. Note that assert-policy-claims.mjs §3(c) is scoped to \`merchant_of_record\`, so on a \`payment_gateway\` row this limb is the only one that fires.`,
+              );
+            } else if (!Array.isArray(row.namedIn) || row.namedIn.length === 0) {
+              problems.push(
+                `\`${rail}\` COLLECTS IN ${who} AND ITS \`namedIn\` IS EMPTY — ${LEGAL_REGISTER} records status \`${row.status}\` and NO published page naming it. Status and naming are two facts with two owners; a rail that is wired and undisclosed is the one a regulator asks about.`,
+              );
+            }
+          }
+        }
+      }
+    }
+
+    if (problems.length === before) {
+      ok(
+        `${claims.length} region rail claim(s) on ${new Set(claims.map((c) => c.channel)).size} channel(s), all required channels covered — ${claims.map((c) => `${c.channel}:${c.region}→${c.rail}`).join(', ')}`,
+      );
+    }
+  }
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // H · WHO STILL BUILDS THE HOSTED RAIL BY HAND — the construction census
