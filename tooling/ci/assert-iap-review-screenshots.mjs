@@ -39,8 +39,9 @@
 // so every way the domain can silently become empty has to be a refusal.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { listDir } from './tree-walk.mjs';
 
 const FOR_SUBMISSION = process.argv.includes('--for-submission');
 const CHANNEL = 'ios-appstore';
@@ -181,7 +182,7 @@ for (const [appId, app] of apps) {
     continue;
   }
 
-  const present = readdirSync(dir).filter((f) => f.toLowerCase().endsWith('.png'));
+  const present = listDir(dir).filter((f) => f.toLowerCase().endsWith('.png'));
 
   // ── unaccounted files: a screenshot for a product nobody sells ────────────
   for (const f of present) {
