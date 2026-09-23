@@ -1020,8 +1020,13 @@ jobs:
       # above.
       - name: gen-l10n overwrote no TRACKED source file under the package
         run: git diff --exit-code -- packages/design_system/lib
+      # why: PR 889 went red here with only "Changed <file>", and the laptop's
+      # Flutter is not the pinned one, so the diff could not be reproduced there.
+      # Formatting in place and asking git prints the exact lines CI wants.
       - name: The shipping app is dart format-clean
-        run: dart format --output=none --set-exit-if-changed apps/subscriptiontracker
+        run: |
+          dart format apps/subscriptiontracker
+          git diff --exit-code -- apps/subscriptiontracker
       - name: The Apple privacy manifests still describe the binaries that ship
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-apple-privacy-manifest.mjs
