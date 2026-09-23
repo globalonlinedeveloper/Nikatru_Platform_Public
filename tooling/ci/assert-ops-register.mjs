@@ -3796,31 +3796,149 @@ export const RUNS_AFTER_FAILURE = /\balways\(\s*\)|\bfailure\(\s*\)|!\s*cancelle
 
 const unquote = (s) => String(s).replace(/^(['"])(.*)\1$/, '$2');
 
-/** PURE, over a job the one parser produced. `[{ name, cond, runsGuard, index }]`.
- *  Step items sit at six spaces (`      - `) and their keys at eight;
- *  `parseWorkflow` has already blanked comments. A step with no `name:` has no
- *  name a unit can cite, and says so by being `null`. */
+/** A step that runs a READER: `node tooling/….mjs`, in an inline `run:` or a
+ *  block one. Comments are already blank, so a commented-out call reads nothing. */
+const READER_CALL = /\bnode\s+(tooling\/[\w./-]+\.mjs)\b/g;
+
+/** PURE, over a job the one parser produced.
+ *  `[{ name, cond, id, index, n, reads, runsGuard }]` — `n` is the step's first
+ *  line, `reads` the reader scripts it runs (empty for a `uses:` step or a step
+ *  that runs none). Step items sit at six spaces (`      - `) and their keys at
+ *  eight; `parseWorkflow` has already blanked comments. A step with no `name:`
+ *  has no name a unit can cite, and says so by being `null`. */
 export function jobSteps(job) {
   const steps = [];
   let cur = null;
+  const field = (k) => (k === 'if' ? 'cond' : k);
   for (const l of job?.lines ?? []) {
     const text = String(l?.text ?? '');
     const start = /^ {6}- (.*)$/.exec(text);
     if (start) {
-      cur = { name: null, cond: null, lines: [], index: steps.length };
+      cur = { name: null, cond: null, id: null, lines: [], index: steps.length };
       steps.push(cur);
-      const inline = /^(name|if):\s*(\S.*?)\s*$/.exec(start[1]);
-      if (inline) cur[inline[1] === 'name' ? 'name' : 'cond'] = unquote(inline[2]);
+      const inline = /^(name|if|id):\s*(\S.*?)\s*$/.exec(start[1]);
+      if (inline) cur[field(inline[1])] = unquote(inline[2]);
       cur.lines.push({ n: l.n, text: `        ${start[1]}` });
       continue;
     }
     if (!cur) continue;
     if (text.trim() !== '' && /^ {0,5}\S/.test(text)) { cur = null; continue; }
-    const key = /^ {8}(name|if):\s*(\S.*?)\s*$/.exec(text);
-    if (key) cur[key[1] === 'name' ? 'name' : 'cond'] = unquote(key[2]);
+    const key = /^ {8}(name|if|id):\s*(\S.*?)\s*$/.exec(text);
+    if (key) cur[field(key[1])] = unquote(key[2]);
     cur.lines.push(l);
   }
-  return steps.map(({ lines, ...s }) => ({ ...s, runsGuard: workflowRunsScript({ lines }, GUARD_SCRIPT_REL) }));
+  return steps.map(({ lines, ...s }) => ({
+    ...s,
+    n: lines[0]?.n ?? null,
+    reads: [...new Set([...lines.map((l) => String(l?.text ?? '')).join('\n').matchAll(READER_CALL)].map((m) => m[1]))],
+    runsGuard: workflowRunsScript({ lines }, GUARD_SCRIPT_REL),
+  }));
+}
+
+// ── ⏱ 2026-09-23 · ONE READER'S RED MAY NEVER SILENCE ANOTHER ───────────────
+// O-OPS-WATCH-HEARTBEAT-READER-SKIPPED. ops-watch.yml's heartbeats job runs
+// THIS guard first and `check-heartbeats.mjs` second, and the second step
+// carried no `if:`. A step with no condition runs only when every step above it
+// succeeded, so every red register run SKIPPED the heartbeat read: 18 ops-watch
+// runs measured that way between 2026-09-21T14:24Z and 2026-09-23, the latest
+// 35843108090 (step 4, the register: failure; step 5: skipped). Its two
+// siblings in the same job already carried `!cancelled()`. One line was
+// missing, and nothing in the tree could say so.
+//
+// THE RULE, over every job of READER_WORKFLOW — each of which is GRADED, because
+// `checkRunUnits` refuses a job there that is the unit of no duty row: every
+// step that runs a reader (`node tooling/….mjs`) AFTER the job's first reader
+// carries a condition under which it runs whatever the readers above it
+// concluded — `!cancelled()`, or `always()` — or names, in its own condition,
+// the earlier step it genuinely needs, as `steps.<id>.…` of a step above it in
+// the same job. The first reader needs nothing: only setup precedes it.
+//
+// ⚠️ A dependency written as a COMMENT was the other shape considered, and it is
+// not accepted: `parseWorkflow` blanks comments (one read of a workflow, one
+// reduction — workflow-scan.mjs's header), so a comment is a claim no guard can
+// check, while `steps.<id>` is a reference GitHub itself evaluates and this
+// check can resolve.
+//
+// ⚠️ `failure()` ALONE IS REFUSED, although RUNS_AFTER_FAILURE accepts it for a
+// job edge: on a reader it inverts the defect, skipping the read on every GREEN
+// run instead of every red one.
+//
+// FLOOR. A READER_WORKFLOW in which no job holds two reader steps makes this
+// range over nothing — READER_CALL stopped matching, or the jobs were split —
+// and that is COVERAGE LOST, never a clean pass. An ABSENT READER_WORKFLOW is
+// not decided here: every row anchored at it already goes COVERAGE LOST in
+// `main`, and a fixture tree without it has no reader to judge.
+//
+// LANE-BOUND: ops-watch.yml — it is the one workflow the register grades job by job and step by step (measured 2026-09-23: every other run-history row's unit is the whole run), and each of its readers is an independent look at the world; in a build or deploy lane a step after a failure is MEANT to be skipped.
+// The generic form, derived rather than named, is "every workflow some duty row
+// judges by a `{ jobs }` or `{ job, step }` unit"; it is not built here because
+// today that set is this one file, and a fixture register with no such row must
+// render no verdict rather than COVERAGE LOST.
+export const READER_WORKFLOW = 'ops-watch.yml';
+
+/** Runs whatever an earlier step concluded (a cancel aside, for `!cancelled()`). */
+export const RUNS_REGARDLESS = /\balways\(\s*\)|!\s*cancelled\(\s*\)/;
+
+/** PURE, over the parsed READER_WORKFLOW (or `null`).
+ *  `{ errors, prints, lost }` — `lost` is COVERAGE LOST's lines, or `null`. */
+export function checkReaderIndependence(wf) {
+  const errors = [];
+  const prints = [];
+  if (!wf) return { errors, prints, lost: null };
+  const rel = wf.rel ?? `.github/workflows/${READER_WORKFLOW}`;
+  let checked = 0;
+  const graded = [];
+  for (const [jobId, job] of wf.jobs ?? []) {
+    const steps = jobSteps(job);
+    const readers = steps.filter((s) => s.reads.length > 0);
+    if (readers.length < 2) continue;
+    graded.push(jobId);
+    const first = readers[0];
+    const firstLabel = first.name ? `"${first.name}"` : `#${first.index + 1}`;
+    for (const s of readers.slice(1)) {
+      checked += 1;
+      const cond = String(s.cond ?? '');
+      if (RUNS_REGARDLESS.test(cond)) continue;
+      const above = new Set(steps.slice(0, s.index).map((p) => p.id).filter(Boolean));
+      const named = [...cond.matchAll(/\bsteps\.([A-Za-z_][A-Za-z0-9_-]*)\./g)].map((m) => m[1]);
+      const unresolved = named.filter((id) => !above.has(id));
+      if (named.length > 0 && unresolved.length === 0) continue;
+      const label = s.name ? `step "${s.name}"` : `step #${s.index + 1}`;
+      const carries =
+        s.cond == null
+          ? 'carries no `if:`'
+          : unresolved.length > 0
+            ? `carries \`if: ${s.cond}\`, which names ${unresolved.map((id) => `steps.${id}`).join(' · ')} — no step above it in this job has that \`id:\``
+            : `carries \`if: ${s.cond}\`, which is neither \`!cancelled()\`/\`always()\` nor a named dependency`;
+      errors.push(
+        `${rel}:${s.n} — job ${jobId}, ${label} runs ${s.reads.join(' · ')} after the reader step ${firstLabel} and ${carries}. ` +
+          "GitHub SKIPS it whenever a step above it fails, so one reader's red silences another " +
+          '(O-OPS-WATCH-HEARTBEAT-READER-SKIPPED: the heartbeat read was skipped in 18 runs this way). ' +
+          "Give it `if: ${{ !cancelled() }}`; if it genuinely needs an earlier step's result, give that step an `id:` " +
+          'and name it in this condition as `steps.<id>.outcome`.',
+      );
+    }
+  }
+  if (checked === 0) {
+    return {
+      errors,
+      prints,
+      lost: [
+        `${rel} parsed to no job with two reader steps, so "one reader's red never silences another" ranged over nothing.`,
+        `Its heartbeats job alone runs several. Either READER_CALL (\`node tooling/….mjs\`) stopped matching how the`,
+        'steps call their readers, or the jobs were restructured; either way this check would print ok about nothing.',
+      ],
+    };
+  }
+  // The census never says "each" about a set it just refused part of.
+  prints.push(
+    `[READERS] ${READER_WORKFLOW} — ${checked} reader step(s) after the first, in ${graded.length} job(s) ` +
+      `(${graded.join(' · ')}), ` +
+      (errors.length === 0
+        ? 'each running whatever the readers above it concluded'
+        : `${errors.length} of them SKIPPED by any red step above (refused below)`),
+  );
+  return { errors, prints, lost: null };
 }
 
 /** PURE. Why this unit's conclusion CONTAINS this guard's own verdict inside its
@@ -5259,6 +5377,12 @@ async function main() {
   const units = checkRunUnits(reg, parsedByFile, topology);
   errors.push(...units.errors);
   prints.push(...units.prints);
+  // ⏱ 2026-09-23 — one reader's red may never silence another (see
+  // `checkReaderIndependence`). STRUCTURAL, so it decides before a socket opens.
+  const readerSteps = checkReaderIndependence(parsedByFile.get(READER_WORKFLOW) ?? null);
+  errors.push(...readerSteps.errors);
+  prints.push(...readerSteps.prints);
+  if (readerSteps.lost) coverageLost(readerSteps.lost);
   const scopes = checkLiveVerdictScopes(reg, topology);
   errors.push(...scopes.errors);
   prints.push(...scopes.prints);

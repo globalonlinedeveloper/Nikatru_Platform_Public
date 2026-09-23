@@ -119,7 +119,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, existsSync
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { parseAllWorkflows } from '../workflow-scan.mjs';
+import { parseAllWorkflows, parseWorkflow } from '../workflow-scan.mjs';
 
 import {
   evaluate,
@@ -4873,8 +4873,23 @@ describe('assert-ops-register — [14]O-3b · RED SINCE: a failed run is graded,
     assert.ok(errsOf({ jobs: ['heartbeats'] }).some((e) => /job heartbeats runs tooling\/ci\/assert-ops-register\.mjs/.test(e)));
     const guardStep = errsOf({ job: 'heartbeats', step: 'The whole ops register — every duty, not just the heartbeat-backed ones' });
     assert.ok(guardStep.some((e) => /IS the step in job heartbeats that runs/.test(e)), guardStep.join('\n'));
-    const skipped = errsOf({ job: 'heartbeats', step: 'Read the heartbeat table from OUTSIDE Cloudflare' });
+    // ⏱ 2026-09-23 — this case used the COMMITTED heartbeat step as its example of
+    // "a step with no !cancelled() after the guard", and that shape was the defect
+    // O-OPS-WATCH-HEARTBEAT-READER-SKIPPED (the heartbeat read skipped in every red
+    // register run). The step now carries `if: ${{ !cancelled() }}`, so the refusal
+    // is held on the committed workflow with that one line removed.
+    const HB_STEP = 'Read the heartbeat table from OUTSIDE Cloudflare';
+    const wfText = readFileSync(resolve(CI_DIR, '..', '..', '.github', 'workflows', 'ops-watch.yml'), 'utf8');
+    const hbIf = new RegExp(`(\\n {6}- name: ${HB_STEP}\\r?\\n) {8}if: \\$\\{\\{ !cancelled\\(\\) \\}\\}\\r?\\n`);
+    assert.match(wfText, hbIf, 'the committed heartbeat step must carry `if: ${{ !cancelled() }}` directly under its name');
+    const mutantRoot = join(TMP, `hb-if-${seq++}`);
+    mkdirSync(join(mutantRoot, '.github', 'workflows'), { recursive: true });
+    writeFileSync(join(mutantRoot, '.github', 'workflows', 'ops-watch.yml'), wfText.replace(hbIf, '$1'));
+    const mutantByFile = new Map(byFile);
+    mutantByFile.set('ops-watch.yml', parseWorkflow(mutantRoot, '.github/workflows/ops-watch.yml'));
+    const skipped = checkRunUnits(regOf(opsRowWith({ job: 'heartbeats', step: HB_STEP })), mutantByFile, topo).errors;
     assert.ok(skipped.some((e) => /SKIPPED whenever this guard fails/.test(e)), 'a step with no !cancelled() after the guard is skipped by its failure: ' + skipped.join('\n'));
+    assert.deepEqual(errsOf({ job: 'heartbeats', step: HB_STEP }), [], 'the committed heartbeat step runs whatever the guard concluded, so it no longer contains its verdict');
     const alert = errsOf({ jobs: ['alert'] });
     assert.deepEqual(alert, [], 'the alert job needs heartbeats but runs on failure(), so its conclusion does not contain the guard');
     // GREEN CONTROL, the shape the committed register uses.
@@ -5983,7 +5998,10 @@ describe('INV3 · a duty is judged by the unit that performs it — the pure hal
       "Judge whether the analytics rail's silence is a FAULT",
     ]);
     assert.deepEqual(named.map((s) => s.runsGuard), [true, false, false, false]);
-    assert.equal(named[1].cond, null, 'the heartbeat reader carries no !cancelled() — which is why it is no duty\'s unit');
+    // ⏱ 2026-09-23 — this pinned `null`, the defect itself: with no condition the
+    // heartbeat read was SKIPPED in every red register run (O-OPS-WATCH-HEARTBEAT-
+    // READER-SKIPPED). It now runs whatever the register concluded.
+    assert.match(named[1].cond, /!cancelled\(\)/, 'O-OPS-WATCH-HEARTBEAT-READER-SKIPPED: the heartbeat reader must carry !cancelled()');
     assert.match(named[2].cond, /!cancelled\(\)/);
     assert.equal(describeUnit({ workflow: 'w.yml', unit: RUN_UNIT }), 'the whole w.yml run');
   });

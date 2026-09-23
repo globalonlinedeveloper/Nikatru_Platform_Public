@@ -1279,20 +1279,34 @@ describe('check-prod-provenance — manual-deploys attestation: a refused read i
 // the cases around them are the proof they stay quiet on honest answers —
 // including the EMPTY answer a Cloudflare Pages environment gives, which is a
 // true reading of the GitHub ledger and must stay a clean pass.
+//
+// ⏱ CHANGED 2026-09-23 (O-PROVENANCE-MIN-CLAIM-PASSES-UNSTABLE-WALK): a walk is
+// complete only when it is INTERNALLY CONSISTENT — one claim, no row served
+// twice, as many distinct rows as claimed — and an inconsistent walk is walked
+// again from page 1. The cases below that used to pass a duplicate or a growing
+// claim now show the re-walk; the new cases, at production numbers, live in the
+// sibling prod-provenance-walk.test.mjs.
 // ──────────────────────────────────────────────────────────────────────────────
 describe('collectPaged — a paged GitHub listing is read whole, or refused', () => {
   /** `n` rows whose ids start at `from` — the identity de-duplication rests on. */
   const rows = (n, from = 1) => Array.from({ length: n }, (_, i) => ({ id: from + i }));
   const idOf = (r) => r.id;
   const ids = (n, from = 1) => rows(n, from).map(idOf);
-  /** A walk over canned pages. Small perPage/pageCap so a case is readable. */
+  /** The attempt count these cases pin, passed explicitly so a case reads alone. */
+  const ATTEMPTS = 3;
+  /** Canned pages, or a function of the attempt number when a re-walk is served differently. */
+  const pageOf = (pages, page, attempt) => (typeof pages === 'function' ? pages(attempt) : pages)[page - 1] ?? { rows: [] };
+  /** A walk over canned pages. Small perPage/pageCap so a case is readable; the
+   *  pause between walks is recorded, never slept. */
   const walk = (pages) =>
     collectPaged({
       what: 'listing runs of ci.yml',
       idOf,
       perPage: 10,
       pageCap: 3,
-      fetchPage: async (page) => pages[page - 1] ?? { rows: [] },
+      attempts: ATTEMPTS,
+      sleep: async () => {},
+      fetchPage: async (page, { attempt } = { attempt: 1 }) => pageOf(pages, page, attempt),
     });
 
   // ⏱ ADDED 2026-09-23 — the row's read-back clause: every walk leaves its numbers
@@ -1304,8 +1318,10 @@ describe('collectPaged — a paged GitHub listing is read whole, or refused', ()
       idOf,
       perPage: 10,
       pageCap: 3,
+      attempts: ATTEMPTS,
+      sleep: async () => {},
       log,
-      fetchPage: async (page) => pages[page - 1] ?? { rows: [] },
+      fetchPage: async (page, { attempt } = { attempt: 1 }) => pageOf(pages, page, attempt),
     });
     return { log, done };
   };
@@ -1313,19 +1329,33 @@ describe('collectPaged — a paged GitHub listing is read whole, or refused', ()
   test('every walk records total_count, fetched, distinct and pages', async () => {
     const { log, done } = walkLogged([{ rows: rows(10), totalCount: 13 }, { rows: rows(3, 11), totalCount: 13 }]);
     await done;
-    assert.deepEqual(log, [{ what: 'listing runs of ci.yml', claimed: 13, fetched: 13, distinct: 13, pages: 2 }]);
+    assert.deepEqual(log, [
+      { what: 'listing runs of ci.yml', attempt: 1, attempts: ATTEMPTS, claimed: 13, claims: [13], fetched: 13, distinct: 13, pages: 2, consistent: true, why: null },
+    ]);
   });
 
-  test('a de-duplicated walk records MORE fetched than distinct — the duplicate is visible', async () => {
+  test('a de-duplicated walk records MORE fetched than distinct — the duplicate is visible, and it is not a complete read', async () => {
+    // ⏱ CHANGED 2026-09-23: this walk used to be returned. A row served twice
+    // is a row some other row was pushed off the page for; with no total_count
+    // to compare against, nothing else would ever notice the one never served.
     const { log, done } = walkLogged([{ rows: rows(10) }, { rows: [{ id: 10 }, { id: 11 }] }]);
-    await done;
-    assert.deepEqual(log, [{ what: 'listing runs of ci.yml', claimed: null, fetched: 12, distinct: 11, pages: 2 }]);
+    await assert.rejects(done, (e) => e instanceof CouldNotLook && /1 row\(s\) were served twice \(fetched 12, distinct 11\)/.test(e.message));
+    assert.equal(log.length, ATTEMPTS, 'walked again from page 1, every time');
+    for (const [i, w] of log.entries()) {
+      assert.deepEqual(
+        { attempt: w.attempt, claimed: w.claimed, fetched: w.fetched, distinct: w.distinct, pages: w.pages, consistent: w.consistent },
+        { attempt: i + 1, claimed: null, fetched: 12, distinct: 11, pages: 2, consistent: false },
+      );
+    }
   });
 
   test('a walk that REFUSES still records its numbers first', async () => {
     const { log, done } = walkLogged([{ rows: rows(4), totalCount: 9 }]);
     await assert.rejects(done, (e) => e instanceof CouldNotLook);
-    assert.deepEqual(log, [{ what: 'listing runs of ci.yml', claimed: 9, fetched: 4, distinct: 4, pages: 1 }]);
+    assert.equal(log.length, ATTEMPTS);
+    for (const w of log) {
+      assert.deepEqual({ claimed: w.claimed, fetched: w.fetched, distinct: w.distinct, pages: w.pages, consistent: w.consistent }, { claimed: 9, fetched: 4, distinct: 4, pages: 1, consistent: false });
+    }
   });
 
   test('an honest single short page returns every row', async () => {
@@ -1346,8 +1376,9 @@ describe('collectPaged — a paged GitHub listing is read whole, or refused', ()
     assert.deepEqual(got.map(idOf), ids(12));
   });
 
-  test('a row re-served across pages is returned ONCE, not twice', async () => {
-    const got = await walk([{ rows: rows(10) }, { rows: [{ id: 10 }, { id: 11 }] }]);
+  test('a row re-served across pages is never returned twice: the walk is read again, and the clean read is returned', async () => {
+    // ⏱ CHANGED 2026-09-23: attempt 1 re-serves id 10; attempt 2 is clean.
+    const got = await walk((attempt) => (attempt === 1 ? [{ rows: rows(10) }, { rows: [{ id: 10 }, { id: 11 }] }] : [{ rows: rows(10) }, { rows: [{ id: 11 }] }]));
     assert.deepEqual(got.map(idOf), ids(11));
   });
 
@@ -1376,11 +1407,19 @@ describe('collectPaged — a paged GitHub listing is read whole, or refused', ()
     );
   });
 
-  test('a total_count that GROWS under a live walk does not redden: the smallest claim is the one compared', async () => {
+  test('a total_count that GROWS under a live walk does not redden: the walk is read again, and the settled listing is returned', async () => {
     // Growth is not loss. A check that cries wolf on a list getting longer
     // while it is read gets muted, and a muted check is no check.
-    const got = await walk([{ rows: rows(10), totalCount: 11 }, { rows: rows(3, 11), totalCount: 14 }]);
-    assert.deepEqual(got.map(idOf), ids(13));
+    // ⏱ CHANGED 2026-09-23: growth used to be let through by comparing the
+    // SMALLEST claim — which is exactly what let the 09:28Z walk (384 claimed,
+    // 439 served, 384 distinct) pass. Growth is now simply re-walked: attempt 1
+    // claims 11 then 14 and is refused as a shifted listing; attempt 2 is whole.
+    const got = await walk((attempt) =>
+      attempt === 1
+        ? [{ rows: rows(10), totalCount: 11 }, { rows: rows(3, 11), totalCount: 14 }]
+        : [{ rows: rows(10), totalCount: 14 }, { rows: rows(4, 11), totalCount: 14 }],
+    );
+    assert.deepEqual(got.map(idOf), ids(14));
   });
 
   test('a claim larger than the cap can reach refuses for TRUNCATION, not for arithmetic', async () => {
