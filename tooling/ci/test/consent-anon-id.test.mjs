@@ -25,8 +25,15 @@ import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 
-import { resolveConsentAnonId, ANON_ID_TOKEN, ANON_ID_SHAPE } from '../../e2e/consent_anon_id.mjs';
+import {
+  resolveConsentAnonId,
+  resolveCaptureConsentIds,
+  ANON_ID_TOKEN,
+  ANON_ID_SHAPE,
+} from '../../e2e/consent_anon_id.mjs';
+import { stampDeletable } from '../../e2e/app-version-stamp.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
@@ -163,6 +170,153 @@ describe('resolveConsentAnonId', () => {
     for (const bad of ['0'.repeat(31), '0'.repeat(33), 'g'.repeat(32), `\n${ID_A}\n`, ` ${ID_A}`]) {
       assert.equal(ANON_ID_SHAPE.test(bad), false, `${JSON.stringify(bad)} should not match`);
     }
+  });
+});
+
+// ── THE STORE CAPTURE'S LEDGER (added 2026-09-23) ────────────────────────────
+//
+// A capture runs one drive per viewport and each drive can write its own consent
+// row, so the capture's purge deletes by EVERY id its ledger names. The stakes
+// are the nightly's, doubled: an id that is wrong deletes somebody else's row,
+// and a drive that is silently skipped leaves one behind while the step passes.
+// So an unreadable ledger and a drive with no id are UNRESOLVED — a failure the
+// purge reports — never "nothing to do".
+describe('resolveCaptureConsentIds', () => {
+  const ledger = (name, value) => write(name, typeof value === 'string' ? value : JSON.stringify(value));
+
+  test('an ABSENT ledger resolves nothing and fails nothing, and says why', () => {
+    const r = resolveCaptureConsentIds(join(TMP, 'never-written-ledger.json'));
+    assert.deepEqual(r.ids, []);
+    assert.deepEqual(r.unresolved, []);
+    assert.equal(r.stamp, null);
+    assert.ok(r.notes.some((n) => /no ledger/.test(n)), r.notes.join('\n'));
+  });
+
+  test('🔴 a ledger that is not JSON is UNRESOLVED, never "nothing to do"', () => {
+    const r = resolveCaptureConsentIds(ledger('garbled-ledger.json', '{"stamp":"cap-57-40c0787","drives":['));
+    assert.deepEqual(r.ids, []);
+    assert.equal(r.unresolved.length, 1);
+    assert.match(r.unresolved[0], /ledger unreadable/);
+  });
+
+  test('two drives with two ids return both, and a repeated id once', () => {
+    const r = resolveCaptureConsentIds(
+      ledger('two-drives.json', {
+        stamp: 'cap-57-40c0787',
+        drives: [
+          { viewport: 'phone', state: 'done', consent_prompt: 'answered', consent_anon_id: ID_A },
+          { viewport: 'tablet-7', state: 'done', consent_prompt: 'answered', consent_anon_id: ID_B },
+          { viewport: 'tablet-10', state: 'done', consent_prompt: 'answered', consent_anon_id: ID_A },
+        ],
+      }),
+    );
+    assert.deepEqual(r.ids, [ID_A, ID_B]);
+    assert.deepEqual(r.unresolved, []);
+    assert.equal(r.stamp, 'cap-57-40c0787');
+  });
+
+  test('🔴 a drive still "driving" with no board record is UNRESOLVED', () => {
+    const r = resolveCaptureConsentIds(
+      ledger('killed-before-record.json', {
+        stamp: 'cap-57-40c0787',
+        drives: [
+          { viewport: 'phone', state: 'done', consent_prompt: 'answered', consent_anon_id: ID_A },
+          { viewport: 'tablet-7', state: 'driving', record: join(TMP, 'no-such-board-record.json') },
+        ],
+      }),
+    );
+    assert.deepEqual(r.ids, [ID_A]);
+    assert.equal(r.unresolved.length, 1);
+    assert.match(r.unresolved[0], /tablet-7/);
+  });
+
+  test('a runner killed after the drive wrote its board record: the id is read from the record', () => {
+    const record = write(
+      'board-tablet-10.json',
+      JSON.stringify({ screenshots: [], consent_prompt: 'answered', consent_anon_id: ID_B }),
+    );
+    const r = resolveCaptureConsentIds(
+      ledger('killed-after-record.json', {
+        stamp: 'cap-57-40c0787',
+        drives: [{ viewport: 'tablet-10', state: 'driving', record }],
+      }),
+    );
+    assert.deepEqual(r.ids, [ID_B]);
+    assert.deepEqual(r.unresolved, []);
+  });
+
+  test('a drive whose consent prompt never appeared is a note, not unresolved', () => {
+    const r = resolveCaptureConsentIds(
+      ledger('prompt-absent.json', {
+        stamp: 'cap-57-40c0787',
+        drives: [{ viewport: 'phone', state: 'done', exit: 0, consent_prompt: 'absent' }],
+      }),
+    );
+    assert.deepEqual(r.ids, []);
+    assert.deepEqual(r.unresolved, []);
+    assert.ok(r.notes.some((n) => /never appeared/.test(n)), r.notes.join('\n'));
+  });
+
+  test('🔴 an answered drive with a MALFORMED id is unresolved, and SAYS the id was there', () => {
+    const r = resolveCaptureConsentIds(
+      ledger('malformed-id.json', {
+        stamp: 'cap-57-40c0787',
+        drives: [{ viewport: 'phone', state: 'done', consent_prompt: 'answered', consent_anon_id: ID_A.slice(0, 20) }],
+      }),
+    );
+    assert.deepEqual(r.ids, [], 'a truncated id must never be bound into a DELETE');
+    assert.equal(r.unresolved.length, 1);
+    assert.match(r.unresolved[0], /was reported but is not the 32-hex/);
+  });
+
+  test('stampDeletable admits only cap-* and rehearsal-*', () => {
+    assert.equal(stampDeletable('cap-57-40c0787'), true);
+    assert.equal(stampDeletable('rehearsal-1790000000'), true);
+    // 🔴 e2e legs share a stamp and verify_consent reads the row; `dev` is every
+    // unstamped build; a released version names real users' rows.
+    for (const refused of ['e2e-1-abcdef0', 'dev', '1.0.101+e138f5b', null, undefined, '']) {
+      assert.equal(stampDeletable(refused), false, `${JSON.stringify(refused)} must never be deleted by app_version`);
+    }
+  });
+});
+
+// ── THE PURGE REFUSES A MIXED CONSENT SOURCE, BEFORE ANY REQUEST ─────────────
+//
+// Spawned with an env that carries NO Cloudflare or Supabase credential at all,
+// so no request can be made whatever the script does. Without the refusal the
+// script would still exit 1 — on the first missing credential — so the
+// assertion is on WHAT stderr names, not on the exit code alone.
+describe('purge.mjs refuses a miswired consent source', () => {
+  const PURGE = join(REPO, 'tooling', 'e2e', 'purge.mjs');
+  const bare = (extra) => ({
+    PATH: process.env.PATH,
+    SystemRoot: process.env.SystemRoot ?? process.env.SYSTEMROOT ?? '',
+    ...extra,
+  });
+
+  test('🔴 E2E_CONSENT_LEDGER mixed with E2E_DRIVE_LOG is refused and named', () => {
+    const r = spawnSync(process.execPath, [PURGE], {
+      encoding: 'utf8',
+      timeout: 60_000,
+      env: bare({
+        E2E_CONSENT_LEDGER: join(TMP, 'mixed-ledger.json'),
+        E2E_DRIVE_LOG: join(TMP, 'mixed-drive.log'),
+        PLATFORM_D1_DATABASE_ID: 'not-a-real-database',
+      }),
+    });
+    assert.equal(r.status, 1, r.stderr);
+    assert.match(r.stderr, /REFUSED: E2E_CONSENT_LEDGER .* E2E_RESPONSE_DATA \/ E2E_DRIVE_LOG/);
+    assert.doesNotMatch(r.stderr, /Missing required env var/);
+  });
+
+  test('🔴 E2E_CONSENT_LEDGER without PLATFORM_D1_DATABASE_ID is refused and named', () => {
+    const r = spawnSync(process.execPath, [PURGE], {
+      encoding: 'utf8',
+      timeout: 60_000,
+      env: bare({ E2E_CONSENT_LEDGER: join(TMP, 'lonely-ledger.json') }),
+    });
+    assert.equal(r.status, 1, r.stderr);
+    assert.match(r.stderr, /REFUSED: E2E_CONSENT_LEDGER is set but PLATFORM_D1_DATABASE_ID is not/);
   });
 });
 
