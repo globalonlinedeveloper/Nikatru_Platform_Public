@@ -152,7 +152,13 @@ describe('capture-play-screenshots.mjs uses the network posture it declares', ()
     // measured the declaration and reported the self-test as late when it is
     // early. An ordering assertion has to name the thing that happens, not the
     // thing that is defined.
-    const browser = code.search(/=\s*chromedriverPath\(\)/);
+    // ⚠️ AND NOT `=\s*chromedriverPath\(\)` EITHER, since 2026-09-22: the call
+    // site became conditional (`NATIVE ? null : chromedriverPath()`) when the
+    // runner learned to drive a native binary, and an assertion tied to the
+    // shape of the assignment reddened on a change that did not move it. The
+    // SEMICOLON is what separates the call from the declaration, which is the
+    // distinction this test was written to make.
+    const browser = code.search(/chromedriverPath\(\);/);
     assert.ok(selfTest !== -1, 'the runner never calls selfTestOfflineBannerDetector');
     assert.ok(browser !== -1, 'the runner never invokes chromedriverPath()');
     // Refusing after the drive costs a browser, a provisioned Supabase user and
@@ -161,9 +167,36 @@ describe('capture-play-screenshots.mjs uses the network posture it declares', ()
   });
 
   test('scans every captured frame and records a banner as a problem', () => {
-    assert.match(code, /scanTopBand\(\s*decodeRgba\(/);
+    // ⏱ 2026-09-22 · WAS /scanTopBand\(\s*decodeRgba\(/ — one expression. The
+    // decoded frame is now HELD, because the row-edge check below reads the
+    // same pixels and decoding a 1080x1920 frame twice per check is the kind
+    // of waste that gets a check removed. Both halves are still pinned: the
+    // frame is decoded, and the banner scan is what reads it.
+    assert.match(code, /img = decodeRgba\(/);
+    assert.match(code, /band = scanTopBand\(img\)/);
     assert.match(code, /band\?\.banner/);
     assert.match(code, /problems\.push\(/);
+  });
+
+  // ⏱ 2026-09-22 (store-frame-followup) · O-STORE-FRAME-FAB's no-human-eye
+  // half. A frame whose fold geometry the drive never published is a frame
+  // nobody examined, which is the failure mode this whole file exists for.
+  test('reads the fold line of every frame, and proves the detector first', () => {
+    const selfTest = code.search(/selfTestFoldLineDetector\(\)/);
+    // ⏱ 2026-09-23 · WAS /=\s*chromedriverPath\(\)/. Rebased onto the store-
+    // screenshots stack, the call site is `NATIVE ? null : chromedriverPath();`,
+    // which that regex never matched (-1), so `selfTest < browser` read false on
+    // an order that had not moved. Same call-site anchor as the offline-banner
+    // limb above: the semicolon separates the call from the declaration.
+    const browser = code.search(/chromedriverPath\(\);/);
+    assert.ok(selfTest !== -1, 'the runner never calls selfTestFoldLineDetector');
+    assert.ok(browser !== -1, 'the runner never invokes chromedriverPath()');
+    assert.ok(selfTest < browser, 'the row-edge self-test runs AFTER chromedriver is resolved');
+    assert.match(code, /foldLineProblems\(img, fold/);
+    // Absent geometry is named, never silently skipped: a problem on a live
+    // run, COVERAGE LOST (exit 2) on --proof.
+    assert.match(code, /coverageLost\.push\(why\)/);
+    assert.match(code, /process\.exit\(2\)/);
   });
 });
 
@@ -251,9 +284,12 @@ describe('store_screenshots_test.dart seeds a category per subscription', () => 
 
   /** The seed table, parsed out of the source rather than grepped for: the
    *  category names also appear in the prose above it. */
+  // ⏱ 2026-09-22 · THREE OR FOUR COLUMNS. The fourth is the renewal offset in
+  // days, added so the six rows stop tying in `SubMath.upcoming`; the filter
+  // takes either shape so this reader could re-base before the column landed.
   const rows = [...dart.matchAll(/<String>\[([^\]]*)\]/g)]
     .map((m) => m[1].split(',').map((s) => s.trim().replace(/^'|'$/g, '')))
-    .filter((r) => r.length === 3 && /^\d+\.\d{2}$/.test(r[1]));
+    .filter((r) => (r.length === 3 || r.length === 4) && /^\d+\.\d{2}$/.test(r[1]));
 
   test('every illustrative row carries a name, a price and a category', () => {
     assert.equal(rows.length, 6);
@@ -271,6 +307,23 @@ describe('store_screenshots_test.dart seeds a category per subscription', () => 
       assert.notEqual(category, 'Other', `${name} would still group as Other`);
     }
     assert.equal(new Set(rows.map((r) => r[2])).size, 6, 'categories are not distinct');
+  });
+
+  test('the renewal offsets are distinct, so the upcoming block never ties', () => {
+    // ⏱ 2026-09-22. Every row used to keep the sheet's default renewal, so all
+    // six tied on `daysUntil` and the order on screen was input order: append
+    // order on phone, the server's order on tablet. The two viewports could
+    // therefore list the same board differently, which is a listing defect no
+    // count or total can see. Distinct offsets are what remove the tie.
+    const offsets = rows.filter((r) => r.length === 4).map((r) => r[3]);
+    assert.equal(offsets.length, 6, 'not every illustrative row carries a renewal offset');
+    for (const o of offsets) assert.match(o, /^\d+$/, `offset "${o}" is not a whole number of days`);
+    const days = offsets.map(Number);
+    assert.equal(new Set(days).size, 6, 'two rows renew on the same day, so they tie in upcoming');
+    // Nothing at 0 or 1: "Due today"/"tomorrow" are states this set does not
+    // mean to photograph, and a 0 would also expire mid-drive.
+    assert.ok(Math.min(...days) >= 2, 'an offset of 0 or 1 puts a Due today/tomorrow label in the frame');
+    assert.ok(Math.min(...days) <= 5, 'no row is inside the accent window, so the frame shows only the muted state');
   });
 
   test('every category exists in the sheet vocabulary, which is DERIVED from the budget caps', () => {
@@ -399,9 +452,15 @@ describe('the capture lane passes the captcha site key ADR 084 requires', () => 
     join(REPO, '.github', 'workflows', 'store-screenshots.yml'), 'utf8',
   ).split(/\r?\n/).filter((l) => !/^\s*#/.test(l)).join('\n');
 
-  test('the runner refuses a LIVE capture with no TURNSTILE_SITE_KEY', () => {
+  test('the runner refuses a LIVE WEB capture with no TURNSTILE_SITE_KEY', () => {
     assert.match(runner, /pass\('TURNSTILE_SITE_KEY'\)/);
-    assert.match(runner, /else if \(!PROOF\)/);
+    // 🔴 `&& !NATIVE` SINCE 2026-09-22, AND THE TEST SAYS SO RATHER THAN
+    // LOOSENING. TurnstileGate renders in the WEB build; the desktop and Apple
+    // builds sign in without it, so requiring the variable on a native drive
+    // would refuse a run over a gate that build does not have — the mirror of
+    // the defect this refusal was added for. Written as the exact condition, so
+    // widening the exemption to, say, every non-Play channel is still red.
+    assert.match(runner, /else if \(!PROOF && !NATIVE\)/);
   });
 
   test('--proof is exempt, because a demo build has no captcha posture to get wrong', () => {

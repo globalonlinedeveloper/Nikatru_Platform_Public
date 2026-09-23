@@ -648,6 +648,7 @@ class _AddSheetState extends ConsumerState<_AddSheet> {
       child: Semantics(
         button: true,
         child: GestureDetector(
+          key: E2EKeys.addRenewal,
           // Opaque, or the ~16 px of padding between the border and the date is
           // dead to touch and the field reads as intermittently broken. The
           // POPULAR tiles avoid this by having a full-bleed child; this one has

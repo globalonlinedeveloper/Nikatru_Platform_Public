@@ -59,6 +59,35 @@ class AppShell extends StatelessWidget {
   /// that agrees today.
   static const double fabReservedHeight = fabSize + kFloatingActionButtonMargin;
 
+  /// The height of the fade the shell lays over the BODY's bottom edge, in
+  /// logical pixels (O-STORE-FRAME-FAB-COVERS-A-PRICE-ROW, 2026-09-22).
+  ///
+  /// 🔴 A LIST CUT BY A HARD EDGE READS AS A BROKEN ROW. The body ends where
+  /// it ends — 72 px above the pill at compact, at the window bottom in the
+  /// rail classes — and a row that straddles that line was sliced mid-card,
+  /// which is what phone 01-home ("Video streaming") and 04-budget ("AI
+  /// tools") showed. Cropping the frame is forbidden and snapping the scroll
+  /// cannot fit both the top and the fold, so the shell GHOSTS the straddling
+  /// row into the page ground instead: a gradient from transparent to the
+  /// exact ground colour, its last [foldFadeSolid] px solid. "Whole" is read
+  /// as "no row is cut by a hard edge"; a row that straddles the fold fades
+  /// out, and the eye reads "more below".
+  ///
+  /// ✅ NO INSET MOVES. It is [AppSpacing.xl] because [pageInsetOf] already
+  /// ends every list [AppSpacing.xl] above the body's edge (plus the band in
+  /// the rail classes), so at scroll end the last row sits exactly above the
+  /// fade and is never touched by it. A taller fade needs a taller inset in
+  /// the same change. `test/width_shell_fab_test.dart` reads the pixels.
+  static const double foldFade = AppSpacing.xl;
+
+  /// The solid tail of [foldFade]: the device rows just above the fold that
+  /// are painted in the page ground outright, so the PNG check in
+  /// `tooling/store/capture-row-edge.mjs` reads ground there and nothing else.
+  static const double foldFadeSolid = 3;
+
+  /// The fade overlay, keyed so a test reads THIS box and not a guess.
+  static const Key foldFadeKey = Key('shell-fold-fade');
+
   /// The page inset EVERY scrollable branch of this shell uses, for the
   /// window class [context] is laid out in.
   ///
@@ -193,6 +222,40 @@ class AppShell extends StatelessWidget {
               child: _FabBand(
                 clearance: compact ? 0 : fabReservedHeight,
                 child: navigationShell,
+              ),
+            ),
+          ),
+          // THE FOLD FADE ([foldFade]). Laid at the BODY's bottom edge in both
+          // regimes: above the band at compact, at the window bottom in the
+          // rail classes. It paints the scaffold's own ground, the colour every
+          // branch draws on, so the fade ends in the page and not in a grey.
+          // IgnorePointer: a row under the fade stays tappable.
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: compact ? fabReservedHeight : 0,
+            height: foldFade,
+            child: IgnorePointer(
+              child: DecoratedBox(
+                key: foldFadeKey,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: <Color>[
+                      // The ground at zero alpha, not `Colors.transparent`:
+                      // interpolating from transparent BLACK greys the middle.
+                      theme.scaffoldBackgroundColor.withAlpha(0),
+                      theme.scaffoldBackgroundColor,
+                      theme.scaffoldBackgroundColor,
+                    ],
+                    stops: const <double>[
+                      0,
+                      (foldFade - foldFadeSolid) / foldFade,
+                      1,
+                    ],
+                  ),
+                ),
               ),
             ),
           ),

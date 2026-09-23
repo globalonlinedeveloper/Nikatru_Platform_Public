@@ -49,6 +49,15 @@
 //      ⏱ 2026-09-22: the exemptions are the register key
 //      `releaseBuildsNeverShipped`, shared with the census's other readers; a
 //      stamp whose row's `platforms` lacks the build's target also fails here.
+//   6b-iii. and the rail carries its KEY: a release build stamped with a row
+//      whose rail is a key of `purchaseRails.storeKeyDefine.secretByRail` passes
+//      `--dart-define=<define>=${{ secrets.<mapped> }}` with exactly the mapped
+//      name; every other release build — another rail, unstamped, exempt — names
+//      the define nowhere. The define must be a `vendors.revenuecat` surface in
+//      the capability register, and while the map is keyed by rail alone at most
+//      ONE app.yaml may declare `billing.mobileIap`. Resolved by STAMP, never by
+//      artifact type: the same .apk is `play-billing` for Play and `none` for
+//      apps.gov.in. Its domain is 6b-ii's census, so the two cannot disagree.
 //   7. disqualified channels name a LOCKED ADR that exists on disk
 //   6d. a `signing.*` block carrying a `notYetConfiguredSentinel` — a pinned
 //      certificate fingerprint or public key — is complete, dated and sourced.
@@ -112,7 +121,10 @@ import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
 import { stripSourceComments, stripStringLiterals } from './text-reductions.mjs';
 import { FLUTTER_APP_FIELD, flutterAppChannel } from './channel-surface.mjs';
-import { parseAllWorkflows, flutterReleaseBuilds, gradeDomain, buildAt } from './workflow-scan.mjs';
+import { parseAllWorkflows, flutterReleaseBuilds, gradeDomain, buildAt, shellSegments } from './workflow-scan.mjs';
+import { parseYaml } from '../app-yaml/yaml.mjs';
+import { lanesOfSurface } from './tag-owner.mjs';
+import { ARTIFACT_FORMATS } from '../../contracts/store/vocabulary.js';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 /** No argument means CI's own invocation against the real repository, where the
@@ -1243,6 +1255,50 @@ const BUILD_TARGETS = new Map([
   ['windows', { platform: 'windows', formats: ['.exe'] }],
   ['linux', { platform: 'linux', formats: [] }],
 ]);
+/**
+ * ⏱ ADDED 2026-09-22 (P1-2 consumer C7). BUILD_TARGETS stays an INDEPENDENT
+ * oracle — that is the whole reason it may be typed here, and re-pointing the
+ * MAPPING at the contract would delete a check rather than move it (the
+ * contract would then be compared against itself). What is not independent is
+ * the format NAMES: a `.abb` typed here is a format no channel can ever accept,
+ * and section 3b would then compare a served row against a name nothing else in
+ * the repository uses and report a FORMAT GAP that is really a typo.
+ *
+ * So the names are held to contracts/store/vocabulary.js's ARTIFACT_FORMATS,
+ * with ONE declared intermediate: `.app`. Flutter's `ios` and `macos` targets
+ * emit an .app bundle, which is what `ipa`/`productbuild` package — it is a step
+ * on the way to an artifact and never an artifact a channel accepts, so the
+ * contract does not name it and must not.
+ */
+const INTERMEDIATE_FORMATS = new Map([
+  ['.app', 'the Flutter ios/macos target output that `flutter build ipa` and `productbuild` package; never uploaded to a channel, so contracts/store/vocabulary.js does not name it'],
+]);
+{
+  const known = new Set(ARTIFACT_FORMATS);
+  for (const [target, t] of BUILD_TARGETS) {
+    for (const f of t.formats) {
+      if (known.has(f) || INTERMEDIATE_FORMATS.has(f)) continue;
+      problems.push(
+        `BUILD_TARGETS maps \`flutter build ${target}\` to the format "${f}", and contracts/store/vocabulary.js's ARTIFACT_FORMATS does not name it (it has: ${[...known].join(', ')}). This oracle is compared against the formats channel rows accept, and those come from the contract — so a format only this table knows is a name no row can ever match, and section 3b reports it as a FORMAT GAP for the life of the typo. Add the word to the contract if it is real, or fix it here; if it is a build intermediate nobody ships, declare it in INTERMEDIATE_FORMATS with its reason.`,
+      );
+    }
+  }
+  for (const [f, why] of INTERMEDIATE_FORMATS) {
+    if (known.has(f)) {
+      problems.push(
+        `INTERMEDIATE_FORMATS declares "${f}" as a build intermediate the store vocabulary does not name, and ARTIFACT_FORMATS now names it. One of the two is wrong, and while they disagree the exemption hides whichever it is — delete the row in the same commit as the contract change.`,
+      );
+    }
+    if (typeof why !== 'string' || why.length < 40) {
+      problems.push(`INTERMEDIATE_FORMATS "${f}" carries no written reason. An unexplained exemption is indistinguishable from an omission.`);
+    }
+    if (![...BUILD_TARGETS.values()].some((t) => t.formats.includes(f))) {
+      problems.push(
+        `INTERMEDIATE_FORMATS declares "${f}", and no BUILD_TARGETS entry emits it. The excuse outlived its subject — delete the row in the same commit.`,
+      );
+    }
+  }
+}
 /** Flutter's output layout, which is how an upload glob names its platform. */
 const PATH_PLATFORM = [
   [/build\/app\/outputs|flutter-apk|build\/app\/intermediates/, 'android'],
@@ -1630,6 +1686,10 @@ if (agg === null || typeof agg !== 'object' || typeof agg.workflow !== 'string' 
   }
 }
 
+/** ⏱ 2026-09-23 — 6b-ii's parse and census, handed on to 6b-iv so the workflows
+ *  are read ONCE: two parses of one tree are two answers waiting to disagree. */
+let releaseCensus = { workflows: [], domain: null };
+
 // ── 6b-ii. every RELEASE build passes a RELEASE_CHANNEL at all ───────────────
 // ⏱ ADDED 2026-09-19 (O-BILLING-REVENUECAT-LANDING part 2, R10). 6b grades the
 // stamps that EXIST; nothing graded a build with NO stamp, and until today that
@@ -1751,6 +1811,416 @@ if (agg === null || typeof agg !== 'object' || typeof agg.workflow !== 'string' 
   ok(
     `${releaseBuilds} release \`flutter build\` command(s) across ${workflows.length} workflow(s): ${stamped} declare RELEASE_CHANNEL, ${domain.exempt.length} declared exempt (${entries.map((e) => `${e?.workflow}#${e?.job}`).join(', ') || 'none'}) by ${REGISTER} \`${EXEMPT_KEY}\``,
   );
+
+  // ── 6b-iii. a STORE-rail build compiles in its store SDK key; nothing else does ──
+  // ⏱ ADDED 2026-09-22 (the mobile IAP opt-in). A store rail (`play-billing`,
+  // `apple-iap`) is reached through RevenueCat, and the app reads RevenueCat's
+  // PUBLIC SDK key from a dart-define at compile time. 6b-ii made the channel the
+  // rail; this limb makes the rail's KEY follow the channel too, because both
+  // directions ship silently:
+  //   · a store build WITHOUT the key compiles an empty one — the facade answers
+  //     `iapBridgeMissing` (fail-closed) and the store artifact sells nothing,
+  //     exactly the switched-off paywall 6b-ii exists to prevent, one step later;
+  //   · a store build with the OTHER store's key configures RevenueCat against an
+  //     app that store's purchases never reach — green build, dead paywall;
+  //   · a NON-store build with the key (web/desktop on `paddle`, `apps-gov-in` on
+  //     `none`) links a store key into an artifact that may not sell through that
+  //     store at all — the SHIPMENT direction `forbids` exists to catch.
+  //
+  // THE DEFINE AND THE SECRET NAMES ARE THE REGISTER'S (`purchaseRails.
+  // storeKeyDefine`), never this file's — the same [pipeline F-2] rule as
+  // `keyKinds` and `surfaces`. The rail is resolved from the segment's STAMP,
+  // never from the artifact type: the same `flutter build apk` is `play-billing`
+  // stamped `android-play` and `none` stamped `apps-gov-in` ([ADR 039] D1 — the
+  // rail follows the CHANNEL). A stamped row with no `purchaseRail` resolves to
+  // no rail here and so may not carry the key; its missing block is
+  // assert-purchase-path.mjs's COVERAGE LOST, not this limb's.
+  //
+  // ⏱ 2026-09-23 (re-cut onto the census): the domain is 6b-ii's own `census`
+  // (workflow-scan.mjs `flutterReleaseBuilds`, one record per shell SEGMENT), so
+  // the two limbs cannot disagree about what a release build is: unstamped and
+  // declared-exempt builds are in it, and may not name the define at all. The
+  // segment is read the way `definesIn` reads it — cut at the first `#` — so a
+  // commented-out key is NOT a key: in a folded `run: >` that `#` is a shell
+  // comment that swallows the rest of the command.
+  {
+    const problemsBefore6biii = problems.length;
+    const SKD = 'purchaseRails.storeKeyDefine';
+    const skd = register.purchaseRails?.storeKeyDefine;
+    const railDict = register.purchaseRails?.rails;
+    const NAME = /^[A-Z][A-Z0-9_]*$/;
+    const skdShape = [];
+    if (skd === null || typeof skd !== 'object' || Array.isArray(skd)) {
+      skdShape.push(`${REGISTER} declares no \`${SKD}\` object.`);
+    } else {
+      if (typeof skd.define !== 'string' || !NAME.test(skd.define)) {
+        skdShape.push(`\`${SKD}.define\` is ${JSON.stringify(skd.define)}, not a dart-define name (${NAME}).`);
+      }
+      const sbr = skd.secretByRail;
+      if (sbr === null || typeof sbr !== 'object' || Array.isArray(sbr) || Object.keys(sbr).length === 0) {
+        skdShape.push(`\`${SKD}.secretByRail\` is not a non-empty { rail: secret name } map.`);
+      } else {
+        const railIds = railDict !== null && typeof railDict === 'object' && !Array.isArray(railDict) ? new Set(Object.keys(railDict)) : null;
+        if (railIds === null) skdShape.push('`purchaseRails.rails` is missing, so no key of `secretByRail` can be resolved to a rail.');
+        for (const [rail, secret] of Object.entries(sbr)) {
+          if (railIds !== null && !railIds.has(rail)) {
+            skdShape.push(`\`${SKD}.secretByRail\` keys rail "${rail}", which \`purchaseRails.rails\` does not declare (${[...railIds].join(', ')}). No row can carry that rail, so its key requirement ranges over nothing.`);
+          }
+          if (typeof secret !== 'string' || !NAME.test(secret)) {
+            skdShape.push(`\`${SKD}.secretByRail.${rail}\` is ${JSON.stringify(secret)}, not a repository secret name (${NAME}).`);
+          }
+        }
+      }
+    }
+    if (skdShape.length) {
+      coverageLost([
+        `${REGISTER} \`${SKD}\` is missing or malformed, so limb 6b-iii has no define to require and no secret to map it to.`,
+        ...skdShape,
+        'Every store build would then pass with no SDK key compiled in (a paywall that sells nothing) and every',
+        'non-store build would pass WITH one. The map is the register\'s, never a second copy in this guard [pipeline F-2].',
+      ]);
+    }
+    const DEFINE = skd.define;
+    const secretByRail = new Map(Object.entries(skd.secretByRail));
+
+    // (5) the define is a RevenueCat SURFACE — the capability register is where a
+    //     vendor's lock-in points are enumerated, and a key the builds compile in
+    //     that the vendor's entry does not list is a surface nobody counted.
+    const CAPS = 'tooling/capability-register.json';
+    const capsRaw = read(CAPS);
+    let rcSurfaces = null;
+    try {
+      rcSurfaces = capsRaw === null ? null : JSON.parse(capsRaw)?.vendors?.revenuecat?.surfaces;
+    } catch {
+      rcSurfaces = null;
+    }
+    if (!Array.isArray(rcSurfaces)) {
+      coverageLost([
+        `${CAPS} is missing, unparseable, or has no \`vendors.revenuecat.surfaces\` array, so limb 6b-iii could not`,
+        `ask whether \`${DEFINE}\` is a declared RevenueCat surface. The cross-check ranged over nothing.`,
+      ]);
+    }
+    if (!rcSurfaces.includes(DEFINE)) {
+      problems.push(
+        `\`${SKD}.define\` is "${DEFINE}", and ${CAPS} \`vendors.revenuecat.surfaces\` does not list it (it lists: ${rcSurfaces.join(', ') || 'nothing'}). The store builds compile this define in; a vendor surface the capability register does not count is lock-in nobody priced. Rename one to match the other.`,
+      );
+    }
+
+    // (6) KEYED BY RAIL HOLDS ONE OPTED-IN APP. A RevenueCat public key belongs to
+    //     ONE RevenueCat app, so a second app declaring `billing.mobileIap` would
+    //     build with the first app's key and pass every check above.
+    const appsAbs = abs('apps');
+    const iapApps = [];
+    let appYamlsRead = 0;
+    if (existsSync(appsAbs)) {
+      for (const id of listDir(appsAbs).filter((x) => existsSync(join(appsAbs, x, 'app.yaml'))).sort()) {
+        appYamlsRead++;
+        let doc;
+        try {
+          doc = parseYaml(readFileSync(join(appsAbs, id, 'app.yaml'), 'utf8'));
+        } catch {
+          // assert-app-yaml owns the parse failure and names the repair.
+          continue;
+        }
+        if (doc?.billing?.mobileIap) iapApps.push(id);
+      }
+    }
+    if (scanningRealRepo && appYamlsRead === 0) {
+      coverageLost([
+        'limb 6b-iii read no apps/*/app.yaml, so "at most one app opts into mobile IAP while the key map is keyed by rail" ranged over nothing.',
+      ]);
+    }
+    if (iapApps.length > 1) {
+      problems.push(
+        `${iapApps.length} apps declare \`billing.mobileIap\` (${iapApps.map((a) => `apps/${a}/app.yaml`).join(', ')}), and \`${SKD}.secretByRail\` is keyed by rail alone. A RevenueCat public key belongs to ONE RevenueCat app, so every store build of the second app would compile in the first app's key and pass. Before a second app opts in, key the secret names per app (in the register, and in this limb).`,
+      );
+    }
+
+    // (3)+(4) every release segment, graded by the rail its STAMP resolves to.
+    const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const MENTION = new RegExp(`(?<![A-Za-z0-9_])${esc(DEFINE)}(?![A-Za-z0-9_])`, 'g');
+    const WELL_FORMED = new RegExp(
+      `--dart-define(?:=|\\s+)${esc(DEFINE)}=\\$\\{\\{\\s*secrets\\.([A-Za-z_][A-Za-z0-9_]*)\\s*\\}\\}`,
+      'g',
+    );
+    const rowById = new Map(channels.map((c) => [c.id, c]));
+    const isExempt = (b) => domain.exempt.some((e) => e.workflow === b.workflow && e.job === b.job && e.runLine === b.runLine && e.segment === b.segment);
+    const carried = new Map([...secretByRail.keys()].map((r) => [r, 0]));
+    let storeSegments = 0;
+    let forbiddenClean = 0;
+    for (const b of census) {
+      const at = buildAt(b);
+      const live = String(b.segment).split('#')[0];
+      const mentions = (live.match(MENTION) ?? []).length;
+      const row = b.stamp === null ? null : rowById.get(b.stamp) ?? null;
+      const rail = typeof row?.purchaseRail?.rail === 'string' ? row.purchaseRail.rail : null;
+      if (rail !== null && secretByRail.has(rail)) {
+        storeSegments++;
+        const expected = secretByRail.get(rail);
+        const want = `--dart-define=${DEFINE}=\${{ secrets.${expected} }}`;
+        const named = [...live.matchAll(WELL_FORMED)].map((x) => x[1]);
+        if (mentions === 0) {
+          problems.push(
+            `${at} for channel "${b.stamp}" (rail "${rail}") passes no ${DEFINE}. Expected: ${want}. Without it the store build compiles an empty RevenueCat key, the facade answers \`iapBridgeMissing\`, and the ${b.stamp} artifact ships with a paywall that sells nothing. The map is ${REGISTER} \`${SKD}\`.`,
+          );
+        } else if (named.length !== 1 || mentions !== 1 || named[0] !== expected) {
+          problems.push(
+            `${at} for channel "${b.stamp}" (rail "${rail}") names ${DEFINE} ${mentions} time(s)${named.length ? ` from secret(s) ${named.join(', ')}` : ', none of them as a `${{ secrets.X }}` define'}. Expected exactly: ${want}. A store build configured with another store's key (or a literal) points RevenueCat at an app that store's purchases never reach — a green build with a dead paywall.`,
+          );
+        } else {
+          carried.set(rail, carried.get(rail) + 1);
+        }
+        continue;
+      }
+      if (mentions === 0) {
+        forbiddenClean++;
+        continue;
+      }
+      const why =
+        b.stamp === null
+          ? isExempt(b)
+            ? `is a declared \`${EXEMPT_KEY}\` build (one nobody ships)`
+            : 'declares no RELEASE_CHANNEL, so it has no rail'
+          : row === null
+            ? `is stamped "${b.stamp}", which resolves to no ${REGISTER} row, so it has no rail`
+            : rail === null
+              ? `is stamped "${b.stamp}", whose row carries no \`purchaseRail.rail\``
+              : `is stamped "${b.stamp}", whose rail is "${rail}" — not a key of \`${SKD}.secretByRail\` (${[...secretByRail.keys()].join(', ')})`;
+      problems.push(
+        `${at} ${why}, and it names ${DEFINE} (the store SDK key define). Expected: no ${DEFINE} at all in this segment. Only a build stamped with a store-rail channel may compile a store key in; anywhere else it links a key for a store the artifact may not sell through.`,
+      );
+    }
+    if (scanningRealRepo && storeSegments === 0) {
+      coverageLost([
+        `limb 6b-iii found no release build stamped with a store-rail channel (${[...secretByRail.keys()].join(', ')}) in ${workflows.length} workflow(s).`,
+        'The real tree builds for Play and the App Store; finding none means the stamp or the rail stopped resolving, and a',
+        'requirement that binds no segment agrees with every tree.',
+      ]);
+    }
+    if (problems.length === problemsBefore6biii) {
+      ok(
+        `6b-iii store SDK key — ${storeSegments} store-rail release segment(s) pass --dart-define=${DEFINE} from the mapped secret (${[...carried].map(([r, v]) => `${r}: ${v}`).join(', ')}); ${forbiddenClean} other release segment(s) name it nowhere; ${iapApps.length} app(s) declare billing.mobileIap; \`${DEFINE}\` is a declared RevenueCat surface`,
+      );
+    }
+  }
+  releaseCensus = { workflows, domain };
+}
+
+// ── 6b-iv. a channel id stamped in a job BELONGS to that job ────────────────
+// ⏱ ADDED 2026-09-22 (P1-2 consumer C6), RE-CUT 2026-09-23 onto the census.
+// 6b grades a stamp for MEMBERSHIP (the value is a register id), and since
+// 2026-09-22 6b-ii grades it for PLATFORM (the row's `platforms` lists what the
+// build produces — an apk stamped `ios-appstore` fails there). Neither can see a
+// valid id on the RIGHT platform in the WRONG lane: `RELEASE_CHANNEL=apps-gov-in`
+// on the Play job's appbundle, or `=web` on a web build that is not the deploy.
+// The artifact then reports a rail, a crash channel and an analytics channel it
+// was never built for, and nothing downstream can tell — the value is compiled
+// in and internally consistent.
+//
+// So the stamp is PAIRED with the register row it names. Three ways, all three
+// DERIVED from the register:
+//   (a) the row's `lane` is this exact workflow#job — the job that emits it;
+//   (b) the row's `submission.workflow` is this workflow, in ANY of its jobs. A
+//       submission workflow is single-channel by construction: it exists to ship
+//       that one row, and its `dry-run` and `submit` jobs are two phases of one
+//       act (submit-play.yml stamps android-play in both). This clause is
+//       deliberately NOT extended to `lane.workflow`, because a BUILD lane is
+//       multi-channel — build-platforms.yml builds six — and widening it there
+//       is exactly what would let a wrong-lane stamp in that workflow pass;
+//   (c) the segment invokes the row's `submission.script`, which is how a
+//       `--channel <id>` argument to submit-appstore.mjs is paired wherever it
+//       runs (ci.yml's dry-run legs).
+// Anything else is a CROSS-LANE stamp and must be declared, with a `why`, in
+// CHANNEL_STAMP_EXEMPT — graded in BOTH directions, so an excuse that outlives
+// its stamp fails instead of accumulating.
+//
+// THE DOMAIN IS 6b-ii's CENSUS, `graded` only: a stamp that names no row is 6b's
+// failure, a platform mismatch is 6b-ii's, and a build in
+// `releaseBuildsNeverShipped` is thrown away — one defect, one failing line.
+// `--channel <id>` is the one form the census does not carry (it is an argument
+// to a release SCRIPT, not to `flutter build`), so it is read here from the same
+// parse, per shell segment; it had no job-level check at all before this limb
+// (tag-owner.mjs grades it per SURFACE, and only inside tag-triggered lanes).
+//
+// A row with NO lane, NO submission workflow and NO submission script has no
+// home in the register to be paired against, so its stamps are PRINTED, not
+// failed: the census has already proved the build is for that row's platform,
+// and the register — not this guard — is where ownership gets declared (give
+// the row a `lane` and the print becomes enforcement with no change here).
+//
+// The lane side of the pairing is read through `lanesOfSurface` from
+// tooling/ci/tag-owner.mjs — the same "lanes of surface K" derivation the tag
+// lanes use — so the two limbs cannot disagree about which workflow owns a
+// surface.
+{
+  /** @type {{workflow: string, job: string, channel: string, why: string}[]} */
+  const CHANNEL_STAMP_EXEMPT = [
+    {
+      workflow: '.github/workflows/build-platforms.yml',
+      job: 'linux_web_android',
+      channel: 'web',
+      why:
+        'the six-platform proof compiles the web bundle in the same job as the Linux and Android ones, and ' +
+        'web SHIPS from deploy-web.yml#deploy-web (its lane). This build is the compile proof, not the deploy, ' +
+        'so the stamp is correct and the job is not the lane.',
+    },
+    // ⏱ 2026-09-23 — the store-screenshot capture jobs (O-STORE-SCREENSHOTS). Each
+    // builds the app FOR a channel only to photograph it: the frames must show that
+    // channel's purchase rail, so the stamp is correct, and the binary is thrown
+    // away with the runner — it is neither the lane's artifact nor a shipped one.
+    {
+      workflow: '.github/workflows/store-screenshots.yml',
+      job: 'capture-linux',
+      channel: 'linux-snap',
+      why:
+        'captures the Snap Store frames from a build stamped linux-snap, so the frames show that rail. The ' +
+        'binary is discarded with the runner; linux-snap ships from submit-snap.yml, its lane.',
+    },
+    {
+      workflow: '.github/workflows/store-screenshots.yml',
+      job: 'capture-ios',
+      channel: 'ios-appstore',
+      why:
+        'captures the App Store iPhone and iPad frames from a build stamped ios-appstore, so the frames show ' +
+        'the apple-iap rail. The binary is discarded with the runner; ios-appstore ships from submit-appstore.yml.',
+    },
+  ];
+  const CHANNEL_ARG = /--channel(?:=|\s+)(\S+)/g;
+  const unquote = (v) => v.replace(/^['"]|['"]$/g, '');
+  const { workflows: pairWorkflows, domain } = releaseCensus;
+  const bySurface = new Map();
+  for (const s of new Set(channels.map((c) => c.surface).filter((x) => typeof x === 'string'))) {
+    bySurface.set(s, lanesOfSurface(register, s));
+  }
+  const rowById = new Map(channels.filter((c) => typeof c.id === 'string').map((c) => [c.id, c]));
+  const laneKey = (row) =>
+    row?.lane && typeof row.lane.workflow === 'string' && typeof row.lane.job === 'string'
+      ? `${row.lane.workflow}#${row.lane.job}`
+      : null;
+  /** @type {{at: string, workflow: string, job: string, channel: string, form: string, seg: string}[]} */
+  const sites = [];
+  for (const b of domain?.graded ?? []) {
+    sites.push({ at: `${b.workflow}:${b.runLine}`, workflow: b.workflow, job: b.job, channel: b.stamp, form: 'RELEASE_CHANNEL', seg: b.segment });
+  }
+  for (const wf of pairWorkflows) {
+    for (const job of wf.jobs.values()) {
+      for (const l of job.logical) {
+        for (const seg of shellSegments(l.text)) {
+          // Cut at the first `#`, as workflow-scan's definesIn does: inside a
+          // folded `run: >` block a `#` is a SHELL comment that swallows the
+          // rest of the command, so an argument behind it is prose.
+          const live = seg.split('#')[0];
+          CHANNEL_ARG.lastIndex = 0;
+          for (const m of live.matchAll(CHANNEL_ARG)) {
+            const channel = unquote(m[1]);
+            // A value GitHub substitutes at run time is not a literal this
+            // guard can pair; 6b's own scan leaves those alone too.
+            if (channel.includes('${{')) continue;
+            // ⏱ 2026-09-23 — nor is a SHELL expansion (`"$CHANNEL"`, `${CHANNEL}`):
+            // the job sets it from `${{ inputs.* }}` / `${{ matrix.* }}`, which the
+            // line above already leaves alone, one indirection later. Read as a
+            // literal it failed as "no channel with id $CHANNEL".
+            if (channel.startsWith('$')) continue;
+            sites.push({ at: `${wf.rel}:${l.n}`, workflow: wf.rel, job: job.name, channel, form: '--channel', seg: live });
+          }
+        }
+      }
+    }
+  }
+  if (pairWorkflows.length > 0 && sites.length === 0 && scanningRealRepo) {
+    coverageLost([
+      `the census over ${pairWorkflows.length} workflow(s) graded no channel stamp at all, and no --channel argument was found.`,
+      'Every release lane in this repository names its channel; finding none means the scan stopped matching,',
+      'and a pairing check with no sites agrees with every tree.',
+    ]);
+  }
+  const exemptKey = (e) => `${e.workflow}#${e.job}#${e.channel}`;
+  const exemptUsed = new Set();
+  const exemptIndex = new Map(CHANNEL_STAMP_EXEMPT.map((e) => [exemptKey(e), e]));
+  let paired = 0;
+  let unanchored = 0;
+  const stampedJobs = new Map();
+  for (const s of sites) {
+    const key = `${s.workflow}#${s.job}`;
+    const row = rowById.get(s.channel);
+    if (!row) {
+      // Only a `--channel` site reaches here: a RELEASE_CHANNEL naming no row
+      // is 6b's failure and never enters the census's `graded` set.
+      problems.push(
+        `${s.at} (job "${s.job}") passes --channel ${s.channel}, and ${REGISTER} declares no channel with that id (it has: ${[...rowById.keys()].join(', ')}). The argument decides which store the step talks to, so a typo here submits nothing, or submits to the wrong listing, with a green run either way.`,
+      );
+      continue;
+    }
+    if (!stampedJobs.has(key)) stampedJobs.set(key, new Set());
+    stampedJobs.get(key).add(s.channel);
+    const lane = laneKey(row);
+    const subWorkflow = typeof row.submission?.workflow === 'string' ? row.submission.workflow : null;
+    const subScript = typeof row.submission?.script === 'string' ? row.submission.script : null;
+    if (lane === key || (subWorkflow && subWorkflow === s.workflow) || (subScript && s.seg.includes(subScript))) {
+      paired++;
+      continue;
+    }
+    const ex = exemptIndex.get(`${s.workflow}#${s.job}#${s.channel}`);
+    if (ex) {
+      exemptUsed.add(exemptKey(ex));
+      continue;
+    }
+    if (!lane && !subWorkflow && !subScript) {
+      unanchored++;
+      prints.push(
+        s.form === 'RELEASE_CHANNEL'
+          ? `UNANCHORED STAMP: ${s.at} (job "${s.job}") stamps "${s.channel}", whose row declares no lane and no submission. The census has placed the build on that row's platform, so the stamp is attributable — but only the row can make it enforceable. Give it a \`lane\` when a job owns it.`
+          : `UNANCHORED STAMP: ${s.at} (job "${s.job}") passes --channel ${s.channel}, whose row declares no lane and no submission, so the register cannot say which job owns the argument. Give the row a \`lane\` once a job owns it, and the site becomes checkable.`,
+      );
+      continue;
+    }
+    const where = lane
+      ? `its lane is ${lane}`
+      : `it declares no lane (\`lane: null\` — no job in this repository emits its format)`;
+    const shipped = subWorkflow ? `, and it ships from ${subWorkflow}` : '';
+    problems.push(
+      `${s.at} (job "${s.job}") stamps channel "${s.channel}", and ${where}${shipped}. A channel id compiled into an artifact by a job that neither builds nor ships that channel is a valid id in the wrong lane: the binary reports a rail, a crash channel and an analytics channel it was never built for, and nothing downstream can tell. Either stamp the id this job's lane serves, or declare this site in CHANNEL_STAMP_EXEMPT with its \`why\`.`,
+    );
+  }
+  for (const e of CHANNEL_STAMP_EXEMPT) {
+    if (typeof e.why !== 'string' || e.why.length < 40) {
+      problems.push(`CHANNEL_STAMP_EXEMPT ${exemptKey(e)} carries no written \`why\`. An unexplained exemption is indistinguishable from an omission.`);
+      continue;
+    }
+    // Staleness is graded against the REAL tree only. Every entry names a real
+    // workflow, a real job and a real row; a fixture reuses some of those PATHS
+    // (its build workflow is `.github/workflows/build-platforms.yml` too) with
+    // none of their content, so grading it there would fail every fixture in
+    // the suite for the excuse being absent from a tree it was never about.
+    if (!scanningRealRepo) continue;
+    if (!exemptUsed.has(exemptKey(e))) {
+      problems.push(
+        `CHANNEL_STAMP_EXEMPT declares ${e.workflow} job "${e.job}" as a cross-lane stamp of "${e.channel}", and there is none (the job does not stamp it, or the register now pairs it). The excuse outlived its subject — delete the row in the same commit.`,
+      );
+    }
+  }
+  // The other direction: a row whose lane job stamps SOMETHING must be stamped
+  // by it. This is what catches a register row re-pointed at the wrong job — the
+  // stamps stay put and the row drifts, which the site-side check cannot see.
+  // A lane job that builds nothing (a fixture, a job that only uploads) stamps
+  // nothing and is not graded here; 6b-ii is the limb that grades a release
+  // build with no stamp at all.
+  for (const [surface, lanes] of bySurface) {
+    for (const lane of lanes) {
+      if (!lane.job) continue;
+      const stamps = stampedJobs.get(`${lane.workflow}#${lane.job}`);
+      if (!stamps || stamps.size === 0) continue;
+      if (stamps.has(lane.channel)) continue;
+      problems.push(
+        `${REGISTER} gives "${lane.channel}" (surface ${surface}) the lane ${lane.workflow}#${lane.job}, and that job stamps ${[...stamps].map((c) => `"${c}"`).join(', ')} — never "${lane.channel}". Either the row names the wrong job, or the job builds an artifact for a channel it does not declare.`,
+      );
+    }
+  }
+  if (sites.length) {
+    ok(
+      `${sites.length} channel stamp(s) across ${pairWorkflows.length} workflow(s): ${paired} paired with the row's lane, submission workflow or submission script, ${exemptUsed.size} declared cross-lane, ${unanchored} printed as unanchored (their row declares no lane and no submission)`,
+    );
+  }
 }
 
 // ── 6c. the channel↔account status, published into the tree ──────────────────

@@ -407,6 +407,15 @@ jobs:
         run: node --single-threaded tooling/ci/assert-listing-assets.mjs
       - name: The Play screenshot set spans enough device types
         run: node tooling/ci/assert-play-device-coverage.mjs
+      # why a reader of its own and not a row in assert-listing-assets: that guard
+      # grades a LISTING, a set of frames the register names outright. This one
+      # grades a RELATION — one file per auto-renewable subscription — and derives
+      # the expected filenames from the paywall offerings, so a new subscription
+      # term creates the obligation without anyone editing a guard. A version
+      # cannot be submitted while a product it references sits in "Missing
+      # Metadata", and this is the cheapest place to find that out.
+      - name: Every auto-renewable subscription has an App Store review screenshot
+        run: node --single-threaded tooling/ci/assert-iap-review-screenshots.mjs
       - name: The Data safety and content-rating declarations still describe the code
         run: node tooling/ci/assert-play-declarations.mjs
       - name: The sworn store declarations have not regressed toward the stamp

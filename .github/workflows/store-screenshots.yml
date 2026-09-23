@@ -6,8 +6,28 @@ run-name: "Store screenshots by @${{ github.actor }}"
 # docs/ci/store-screenshots.md. Only `# why:` lines live here, and
 # docs/ci/README.md carries the rules every workflow has to obey.
 
+# why: ONE INPUT, NOT ONE WORKFLOW PER STORE. Five listings need the same
+# capture pointed at a different register row; five copies of this file is how
+# four of them stop getting the next fix. The default is android-play, so a
+# dispatch with no input does exactly what this workflow did before the input
+# existed. The jobs gate on it rather than sharing a matrix: the Play job drives
+# a BROWSER on a web build and the Linux job drives the REAL binary, and the
+# steps that differ (chromedriver, the captcha variable, the GTK toolchain, the
+# X server) are most of the job.
 on:
   workflow_dispatch:
+    inputs:
+      channel:
+        description: "Which store listing to capture"
+        required: false
+        default: android-play
+        type: choice
+        options:
+          - android-play
+          - linux-snap
+          - windows-store
+          - macos-appstore
+          - ios-appstore
 
 permissions:
   contents: read
@@ -15,6 +35,7 @@ permissions:
 jobs:
   capture:
     name: Capture the Play phone and tablet screenshot sets (live)
+    if: ${{ inputs.channel == '' || inputs.channel == 'android-play' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -223,6 +244,725 @@ jobs:
 
       # why: always(), because this lane provisions a real confirmed user in PRODUCTION
       # Supabase. A failed run that skipped its own cleanup leaves that account behind.
+      - name: Purge the throwaway user
+        if: always()
+        env:
+          E2E_USER_ID: ${{ steps.user.outputs.user_id }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          SUBSCRIPTIONTRACKER_D1_DATABASE_ID: 0a36d6a0-c909-40aa-853e-970de3482321
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node tooling/e2e/purge.mjs
+
+  # ── THE SNAP STORE SET ──────────────────────────────────────────────────────
+  # why: THE REAL BINARY, NOT A BROWSER. The Play set is photographed through
+  # Chrome because this repository cannot run Android; Linux it CAN run, on the
+  # same runner that already builds the Snap. A browser-captured frame of a
+  # desktop app would be a screenshot of a different product — different window
+  # chrome, different text rendering, different scrollbars — and the Snap Store
+  # listing is a sworn filing about the thing the customer installs.
+  capture-linux:
+    name: Capture the Snap Store desktop screenshot set (live)
+    if: ${{ inputs.channel == 'linux-snap' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      # why: the same four, failing closed for the same reason as the Play job —
+      # without them the app builds in DEMO posture and the frames are a "Demo
+      # data" banner over twelve third-party trademarks. TURNSTILE_SITE_KEY is
+      # deliberately NOT here: TurnstileGate renders in the WEB build, and this
+      # job drives the Linux binary, which signs in without it. Requiring it
+      # would refuse a run over a gate this build does not have.
+      - name: Preflight — every secret the live capture needs must be present
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          missing=""
+          for k in SUPABASE_URL SUPABASE_ANON_KEY API_BASE_URL SUPABASE_SERVICE_ROLE_KEY; do
+            eval "v=\$$k"
+            [ -z "$v" ] && missing="$missing $k"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error title=Capture cannot run::Missing secret(s):$missing. Without them the app builds in DEMO posture, whose every screen carries a 'Demo data' banner and whose board is twelve third-party trademarks. This is a failed run, not a skipped one."
+            exit 1
+          fi
+          echo "All four secrets present — the build will be LIVE."
+
+      - uses: ./.github/actions/setup-node
+
+      - uses: ./.github/actions/setup-flutter
+
+      # why: byte-for-byte the list build-platforms.yml installs for its Linux
+      # build. A capture that builds with a DIFFERENT toolchain than the one
+      # that produces the Snap is photographing a different binary. `xvfb` is
+      # this job's only addition, and it is below with its geometry.
+      - name: Linux build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev \
+            libsecret-1-dev libjsoncpp-dev libcurl4-openssl-dev \
+            xvfb
+
+      - name: Enable the Linux desktop target
+        run: flutter config --enable-linux-desktop
+
+      - name: flutter pub get
+        working-directory: apps/subscriptiontracker
+        run: flutter pub get --enforce-lockfile
+
+      # 🔴 ONE SOURCE FOR THE DIRECTORY, AND A REFUSAL IF THE REGISTER GROWS A
+      # SECOND SET. Every path below is derived here rather than typed, because
+      # a directory typed into a workflow and declared in the register is two
+      # facts that drift. The refusal is the interesting half: the upload and
+      # the `git add` below are written for ONE directory, so the day a second
+      # device type is declared for this channel, this step says so instead of
+      # quietly proposing a pull request that is one set short.
+      - name: Where the register says this channel's frames go
+        id: reg
+        run: |
+          set -euo pipefail
+          node -e '
+            const fs = require("fs");
+            const r = JSON.parse(fs.readFileSync("tooling/channel-register.json", "utf8"));
+            const s = r.storeMetadataContract.perChannel["linux-snap"].graphicAssets.screenshots;
+            const dirs = [...new Set(Object.values(s.deviceTypeCoverage.sets).map((v) => v.dir))];
+            if (dirs.length !== 1) {
+              console.error("::error title=This job captures one directory::the register declares " + dirs.length + " distinct set director(ies) for linux-snap (" + dirs.join(", ") + "). The upload and the pull request below are written for one. Extend them in the same change that declares the second set.");
+              process.exit(1);
+            }
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, "dir=apps/subscriptiontracker/store/linux-snap/" + dirs[0] + "\n");
+          '
+
+      - name: Provision throwaway confirmed user
+        id: user
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node tooling/e2e/provision_user.mjs
+
+      # 🔴 THE X SCREEN IS THE DIMENSION LEVER ON LINUX, and it is not the same
+      # lever as the web job's. `--browser-dimension` does not exist for
+      # `-d linux`: the frame is whatever the WINDOW is, so the size has to come
+      # from the display the window opens on. 1280x800 LOGICAL at GDK_SCALE=2 is
+      # 2560x1600 PHYSICAL, which is the size the register's `acceptedSizes`
+      # names — so the X screen must be at least that, and a smaller one silently
+      # produces a smaller frame. That is why the screen below is 2560x1600 and
+      # not the 1920x1080 an earlier draft of this lane proposed: 1920x1080
+      # cannot hold the frame, the run would capture at the smaller size, and
+      # the guard would refuse it — a loud failure, but one CI run late.
+      - name: Capture the set
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          E2E_EMAIL: ${{ steps.user.outputs.email }}
+          E2E_PASSWORD: ${{ steps.user.outputs.password }}
+          GDK_SCALE: '2'
+          GDK_DPI_SCALE: '1'
+        run: |
+          set -euo pipefail
+          xvfb-run -a -s "-screen 0 2560x1600x24" \
+            node tooling/store/capture-play-screenshots.mjs --app subscriptiontracker --channel linux-snap
+
+      - name: The captured set satisfies the listing-asset guard
+        run: node --single-threaded tooling/ci/assert-listing-assets.mjs
+
+      - name: The captured set satisfies the device-coverage guard
+        run: node --single-threaded tooling/ci/assert-play-device-coverage.mjs
+
+      # why: the same retraction the Play job carries — two runs captured every
+      # frame, failed afterwards, uploaded nothing, and the pixels existed
+      # nowhere. A different artifact name and `if: failure()`, so bytes that did
+      # NOT pass the guard can never be mistaken for the set.
+      - name: Keep the frames of a FAILED run, for diagnosis only
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: FAILED-not-a-listing-set-${{ github.run_id }}
+          if-no-files-found: ignore
+          path: ${{ steps.reg.outputs.dir }}/
+
+      - name: Upload the screenshot set
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: snap-screenshots-subscriptiontracker
+          path: ${{ steps.reg.outputs.dir }}/
+          if-no-files-found: error
+
+      # why: PROPOSED, never pushed — the Play job's reason, unchanged. A store
+      # listing is a sworn filing; a machine may capture it and must not commit
+      # it to a protected branch unreviewed.
+      - name: Propose the set for human review (pull request)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHOTS: ${{ steps.reg.outputs.dir }}
+        run: |
+          set -euo pipefail
+          BRANCH="chore/linux-snap-screenshots-${{ github.run_id }}"
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -f "$SHOTS"
+          if git diff --cached --quiet; then
+            echo "::notice title=Nothing to propose::The captured set is byte-identical to what is already committed. The listing already carries this exact capture; no pull request is needed."
+            exit 0
+          fi
+
+          git checkout -b "$BRANCH"
+          git commit -F - <<'MSG'
+          chore(snap): the captured screenshot set, for review
+
+          Captured live by .github/workflows/store-screenshots.yml against the
+          REAL Linux binary with the real backend defines — no "Demo data"
+          banner and none of the twelve third-party trademarks the demo seed
+          carries.
+
+          CAPTURE.json records the posture; tooling/ci/assert-listing-assets.mjs
+          proves size, count, aspect, format and the ABSENCE OF THE DEMO BANNER
+          in pixels, and refuses a set whose provenance nobody wrote down.
+
+          What it cannot prove is whether these are the screens worth showing.
+          That is the reason this arrives as a pull request: look at the images
+          in the diff before merging.
+          MSG
+
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$BRANCH"
+
+          # The same refusal path the Play job documents: "Allow GitHub Actions
+          # to create and approve pull requests" gates every `gh pr create` run
+          # by GITHUB_TOKEN, and was measured OFF on 2026-08-26. A silent refusal
+          # here is a submission that stays blocked with a green tick over it.
+          set +e
+          gh pr create \
+            --base "${GITHUB_REF_NAME}" \
+            --head "$BRANCH" \
+            --title "chore(snap): the captured screenshot set, for review" \
+            --body "Captured by run \`${{ github.run_id }}\` from the real Linux binary. **Look at the images in the Files changed tab** — the guard proves size, count, format, aspect and that no demo banner is present in the pixels; it cannot judge whether these are the screens worth showing. Merging is the human decision this PR exists to ask for." > "${RUNNER_TEMP}/gh-pr-create.log" 2>&1
+          PR_RC=$?
+          set -e
+          cat "${RUNNER_TEMP}/gh-pr-create.log"
+
+          if [ "$PR_RC" -ne 0 ]; then
+            if grep -qiF 'not permitted to create or approve pull requests' "${RUNNER_TEMP}/gh-pr-create.log"; then
+              CAUSE='the repository setting "Allow GitHub Actions to create and approve pull requests" is OFF.'
+              REMEDY='REMEDY (owner work — no workflow can set this for itself): Settings → Actions → General → Workflow permissions → tick "Allow GitHub Actions to create and approve pull requests".'
+            else
+              CAUSE="gh pr create exited ${PR_RC} for a reason this step does not recognise."
+              REMEDY='REMEDY: read the gh output above.'
+            fi
+            echo "::error title=The screenshot set was captured but the pull request could not be opened::${CAUSE} THE CAPTURE IS NOT LOST — branch ${BRANCH} is pushed and the same pixels are already uploaded as this run's snap-screenshots-subscriptiontracker artifact; open the pull request by hand from ${BRANCH} into ${GITHUB_REF_NAME}. ${REMEDY}"
+            exit 1
+          fi
+
+      - name: Purge the throwaway user
+        if: always()
+        env:
+          E2E_USER_ID: ${{ steps.user.outputs.user_id }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          SUBSCRIPTIONTRACKER_D1_DATABASE_ID: 0a36d6a0-c909-40aa-853e-970de3482321
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node tooling/e2e/purge.mjs
+
+  # 🔴 ONE JOB FOR BOTH NATIVE DESKTOP STORES, not two copies of the Linux job.
+  # Windows and macOS differ from Linux here only in the runner label and the
+  # device name; neither needs apt and neither needs an X server. Copying the
+  # job would copy the preflight, the provision, the guards, the artifact and
+  # the pull-request refusal path three times over, and the third copy is where
+  # a fix stops being applied. `runs-on` is the one value that cannot be read
+  # from the register — GitHub resolves it before any step runs — so it is
+  # written here as an expression AND checked against the register below, which
+  # is the only way the two can be kept from drifting silently.
+  capture-desktop-native:
+    name: Capture the native desktop screenshot set (live)
+    if: ${{ inputs.channel == 'windows-store' || inputs.channel == 'macos-appstore' }}
+    runs-on: ${{ inputs.channel == 'windows-store' && 'windows-2025' || 'macos-26' }}
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      pull-requests: write
+    defaults:
+      run:
+        shell: bash
+    env:
+      CHANNEL: ${{ inputs.channel }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      # why: the same four secrets and the same closed failure as the other two
+      # jobs — without them the app builds in DEMO posture and every frame is a
+      # "Demo data" banner over twelve third-party trademarks. TURNSTILE_SITE_KEY
+      # is deliberately absent for the same reason the Linux job gives: the gate
+      # renders in the WEB build, and this job drives a native binary.
+      - name: Preflight — every secret the live capture needs must be present
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          missing=""
+          for k in SUPABASE_URL SUPABASE_ANON_KEY API_BASE_URL SUPABASE_SERVICE_ROLE_KEY; do
+            eval "v=\$$k"
+            [ -z "$v" ] && missing="$missing $k"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error title=Capture cannot run::Missing secret(s):$missing. Without them the app builds in DEMO posture, whose every screen carries a 'Demo data' banner and whose board is twelve third-party trademarks. This is a failed run, not a skipped one."
+            exit 1
+          fi
+          echo "All four secrets present — the build will be LIVE."
+
+      - uses: ./.github/actions/setup-node
+
+      - uses: ./.github/actions/setup-flutter
+
+      # 🔴 THE REGISTER SAYS WHERE, WITH WHAT, AND HOW BIG — and this step
+      # refuses the three ways that can drift from the workflow. (1) more than
+      # one declared set, because the upload and the `git add` below are written
+      # for one directory; (2) a `capture.runner` that is not the label this job
+      # actually runs on, which is the drift the `runs-on` expression above
+      # cannot prevent by itself; (3) a physical frame the runner's screen
+      # cannot hold — on Linux the X screen is a flag this repository sets, but
+      # a hosted Windows or macOS runner arrives with the desktop it arrives
+      # with, so the size is a fact to be CHECKED rather than chosen.
+      - name: What the register says this channel captures
+        id: reg
+        run: |
+          set -euo pipefail
+          node -e '
+            const fs = require("fs");
+            const channel = process.env.CHANNEL;
+            const r = JSON.parse(fs.readFileSync("tooling/channel-register.json", "utf8"));
+            const s = r.storeMetadataContract.perChannel[channel].graphicAssets.screenshots;
+            const sets = Object.entries(s.deviceTypeCoverage.sets);
+            const dirs = [...new Set(sets.map(([, v]) => v.dir))];
+            if (dirs.length !== 1) {
+              console.error("::error title=This job captures one directory::the register declares " + dirs.length + " distinct set director(ies) for " + channel + " (" + dirs.join(", ") + "). The upload and the pull request below are written for one. Extend them in the same change that declares the second set.");
+              process.exit(1);
+            }
+            const caps = sets.map(([, v]) => v.capture).filter(Boolean);
+            if (caps.length !== 1) {
+              console.error("::error title=No capture geometry::the register declares " + caps.length + " `capture` limb(s) for " + channel + ". tooling/store/capture-play-screenshots.mjs reads its viewport from that limb, and with none it has nothing to open a window at.");
+              process.exit(1);
+            }
+            const c = caps[0];
+            const want = String(c.runner || "");
+            const got = String(process.env.RUNNER_LABEL || "");
+            if (want !== got) {
+              console.error("::error title=The runner and the register disagree::the register names `" + want + "` for " + channel + " and this job is running on `" + got + "`. `runs-on` cannot be read from a file — GitHub resolves it before any step runs — so the expression at the top of this job and the register have to be changed together. One of the two is now wrong.");
+              process.exit(1);
+            }
+            const out = [
+              "dir=apps/subscriptiontracker/store/" + channel + "/" + dirs[0],
+              "device=" + c.flutterDevice,
+              "width=" + c.logicalWidth * c.dpr,
+              "height=" + c.logicalHeight * c.dpr,
+            ];
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, out.join("\n") + "\n");
+            console.log(out.join("\n"));
+          '
+        env:
+          RUNNER_LABEL: ${{ inputs.channel == 'windows-store' && 'windows-2025' || 'macos-26' }}
+
+      # why: the desktop target is off by default in this repository's Flutter
+      # config, and the device name IS the target name — `windows`, `macos` —
+      # so the register's `flutterDevice` drives both, and a third desktop
+      # target needs no edit here.
+      - name: Enable the desktop target the register names
+        run: flutter config --enable-${{ steps.reg.outputs.device }}-desktop
+
+      - name: flutter pub get
+        working-directory: apps/subscriptiontracker
+        run: flutter pub get --enforce-lockfile
+
+      # 🔴 A HOSTED DESKTOP IS NOT A DISPLAY THIS REPOSITORY CHOSE. The Linux
+      # job sizes its own X screen; here the screen is whatever the image ships
+      # with, and a window cannot be larger than the desktop it opens on. If the
+      # suite sets its own surface size this check is merely noise; if it does
+      # NOT, a screen smaller than the register's physical size produces smaller
+      # frames, and assert-listing-assets.mjs refuses them AFTER the whole build
+      # — the expensive way to learn it. So measure first and say so plainly.
+      - name: The runner's desktop can hold the frame the register asks for
+        run: |
+          set -uo pipefail
+          W="${{ steps.reg.outputs.width }}"
+          H="${{ steps.reg.outputs.height }}"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            read -r SW SH < <(powershell -NoProfile -Command "Add-Type -AssemblyName System.Windows.Forms; \$b=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds; Write-Output \"\$(\$b.Width) \$(\$b.Height)\"")
+          else
+            SW=$(system_profiler SPDisplaysDataType 2>/dev/null | sed -n 's/.*Resolution: *\([0-9]*\) *x *\([0-9]*\).*/\1/p' | head -1)
+            SH=$(system_profiler SPDisplaysDataType 2>/dev/null | sed -n 's/.*Resolution: *\([0-9]*\) *x *\([0-9]*\).*/\2/p' | head -1)
+          fi
+          echo "register wants ${W}x${H} physical; runner desktop reports ${SW:-unknown}x${SH:-unknown}"
+          if [ -z "${SW:-}" ] || [ -z "${SH:-}" ]; then
+            echo "::warning title=Desktop size not measurable::This runner did not report a resolution. The capture proceeds; assert-listing-assets.mjs is still the judge of the pixels."
+            exit 0
+          fi
+          if [ "$SW" -lt "$W" ] || [ "$SH" -lt "$H" ]; then
+            echo "::warning title=The desktop is smaller than the frame the register asks for::The runner's desktop is ${SW}x${SH} and tooling/channel-register.json asks for ${W}x${H} physical. If integration_test sets its own surface size this does not matter; if it does not, the frames will come out at the smaller size and assert-listing-assets.mjs will refuse them a few minutes from now. The fix is a register acceptedSize this desktop can hold, NOT a resize of a captured frame."
+          fi
+
+      - name: Provision throwaway confirmed user
+        id: user
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node tooling/e2e/provision_user.mjs
+
+      # why: no chromedriver, no fallback fonts and no --browser-dimension —
+      # the runner reads `capture.flutterDevice` from the register, sees a
+      # native device, and drives `flutter drive -d <device>` instead. That
+      # branch is what tooling/ci/test/store-screenshots-lane.test.mjs pins.
+      - name: Capture the set
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          E2E_EMAIL: ${{ steps.user.outputs.email }}
+          E2E_PASSWORD: ${{ steps.user.outputs.password }}
+        run: node tooling/store/capture-play-screenshots.mjs --app subscriptiontracker --channel "$CHANNEL"
+
+      - name: The captured set satisfies the listing-asset guard
+        run: node --single-threaded tooling/ci/assert-listing-assets.mjs
+
+      - name: The captured set satisfies the device-coverage guard
+        run: node --single-threaded tooling/ci/assert-play-device-coverage.mjs
+
+      - name: Keep the frames of a FAILED run, for diagnosis only
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: FAILED-not-a-listing-set-${{ github.run_id }}
+          if-no-files-found: ignore
+          path: ${{ steps.reg.outputs.dir }}/
+
+      - name: Upload the screenshot set
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ inputs.channel }}-screenshots-subscriptiontracker
+          path: ${{ steps.reg.outputs.dir }}/
+          if-no-files-found: error
+
+      # why: PROPOSED, never pushed — a store listing is a sworn filing; a
+      # machine may photograph it and must not commit it to a protected branch
+      # unreviewed.
+      - name: Propose the set for human review (pull request)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHOTS: ${{ steps.reg.outputs.dir }}
+        run: |
+          set -euo pipefail
+          BRANCH="chore/${CHANNEL}-screenshots-${{ github.run_id }}"
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -f "$SHOTS"
+          if git diff --cached --quiet; then
+            echo "::notice title=Nothing to propose::The captured set is byte-identical to what is already committed. The listing already carries this exact capture; no pull request is needed."
+            exit 0
+          fi
+
+          git checkout -b "$BRANCH"
+          git commit -F - <<MSG
+          chore(${CHANNEL}): the captured screenshot set, for review
+
+          Captured live by .github/workflows/store-screenshots.yml against the
+          REAL native desktop binary with the real backend defines — no "Demo
+          data" banner and none of the twelve third-party trademarks the demo
+          seed carries.
+
+          CAPTURE.json records the posture; tooling/ci/assert-listing-assets.mjs
+          proves size, count, aspect, format and the ABSENCE OF THE DEMO BANNER
+          in pixels, and refuses a set whose provenance nobody wrote down.
+
+          What it cannot prove is whether these are the screens worth showing.
+          That is the reason this arrives as a pull request: look at the images
+          in the diff before merging.
+          MSG
+
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$BRANCH"
+
+          # The same refusal path the other two jobs document: "Allow GitHub
+          # Actions to create and approve pull requests" gates every `gh pr
+          # create` run by GITHUB_TOKEN, and was measured OFF on 2026-08-26.
+          set +e
+          gh pr create \
+            --base "${GITHUB_REF_NAME}" \
+            --head "$BRANCH" \
+            --title "chore(${CHANNEL}): the captured screenshot set, for review" \
+            --body "Captured by run \`${{ github.run_id }}\` from the real native desktop binary. **Look at the images in the Files changed tab** — the guard proves size, count, format, aspect and that no demo banner is present in the pixels; it cannot judge whether these are the screens worth showing. Merging is the human decision this PR exists to ask for." > "${RUNNER_TEMP}/gh-pr-create.log" 2>&1
+          PR_RC=$?
+          set -e
+          cat "${RUNNER_TEMP}/gh-pr-create.log"
+
+          if [ "$PR_RC" -ne 0 ]; then
+            if grep -qiF 'not permitted to create or approve pull requests' "${RUNNER_TEMP}/gh-pr-create.log"; then
+              CAUSE='the repository setting "Allow GitHub Actions to create and approve pull requests" is OFF.'
+              REMEDY='REMEDY (owner work — no workflow can set this for itself): Settings → Actions → General → Workflow permissions → tick "Allow GitHub Actions to create and approve pull requests".'
+            else
+              CAUSE="gh pr create exited ${PR_RC} for a reason this step does not recognise."
+              REMEDY='REMEDY: read the gh output above.'
+            fi
+            echo "::error title=The screenshot set was captured but the pull request could not be opened::${CAUSE} THE CAPTURE IS NOT LOST — branch ${BRANCH} is pushed and the same pixels are already uploaded as this run's ${CHANNEL}-screenshots-subscriptiontracker artifact; open the pull request by hand from ${BRANCH} into ${GITHUB_REF_NAME}. ${REMEDY}"
+            exit 1
+          fi
+
+      - name: Purge the throwaway user
+        if: always()
+        env:
+          E2E_USER_ID: ${{ steps.user.outputs.user_id }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          SUBSCRIPTIONTRACKER_D1_DATABASE_ID: 0a36d6a0-c909-40aa-853e-970de3482321
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node tooling/e2e/purge.mjs
+
+  # 🔴 ONE JOB, TWO SETS, ONE PULL REQUEST. iOS is the first channel in this
+  # contract that captures more than one directory, and the reason the sets are
+  # not split across two jobs is the listing itself: App Store Connect grades
+  # the iPhone and the iPad sets on the SAME version record, so frames captured
+  # from two different builds are two listings wearing one version number. One
+  # job, one build, one provisioned user, one pull request to look at.
+  capture-ios:
+    name: Capture the iOS screenshot sets — iPhone and iPad (live)
+    if: ${{ inputs.channel == 'ios-appstore' }}
+    runs-on: macos-26
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      # why: the same four, failing closed for the same reason as every other
+      # capture job — without them the app builds in DEMO posture and the frames
+      # are a "Demo data" banner over twelve third-party trademarks.
+      # TURNSTILE_SITE_KEY is deliberately absent: the gate renders in the WEB
+      # build, and this job drives a native binary on a simulator.
+      - name: Preflight — every secret the live capture needs must be present
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          missing=""
+          for k in SUPABASE_URL SUPABASE_ANON_KEY API_BASE_URL SUPABASE_SERVICE_ROLE_KEY; do
+            eval "v=\$$k"
+            [ -z "$v" ] && missing="$missing $k"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error title=Capture cannot run::Missing secret(s):$missing. Without them the app builds in DEMO posture, whose every screen carries a 'Demo data' banner and whose board is twelve third-party trademarks. This is a failed run, not a skipped one."
+            exit 1
+          fi
+          echo "All four secrets present — the build will be LIVE."
+
+      - uses: ./.github/actions/setup-node
+
+      - uses: ./.github/actions/setup-flutter
+
+      - name: flutter pub get
+        working-directory: apps/subscriptiontracker
+        run: flutter pub get --enforce-lockfile
+
+      # 🔴 THE REGISTER NAMES THE SIMULATORS AND THE DIRECTORIES, and this step
+      # is the only place the workflow learns either. It emits one line per set
+      # so the boot loop and the `git add` below are both derived rather than
+      # typed: the day a third size class is declared, this job captures it
+      # without an edit, which is the opposite of the desktop job's deliberate
+      # one-directory refusal — there, a second set means a second listing; here
+      # a second set is the normal shape.
+      - name: What the register says this channel captures
+        id: reg
+        run: |
+          set -euo pipefail
+          node -e '
+            const fs = require("fs");
+            const r = JSON.parse(fs.readFileSync("tooling/channel-register.json", "utf8"));
+            const s = r.storeMetadataContract.perChannel["ios-appstore"].graphicAssets.screenshots;
+            const sets = Object.entries(s.deviceTypeCoverage.sets);
+            const bad = sets.filter(([, v]) => !v.capture || !v.capture.flutterDevice);
+            if (bad.length) {
+              console.error("::error title=No capture geometry::set(s) " + bad.map(([k]) => k).join(", ") + " declare no `capture.flutterDevice`. tooling/store/capture-play-screenshots.mjs reads the device and the viewport from that limb, and with none it has nothing to open.");
+              process.exit(1);
+            }
+            const wrong = sets.filter(([, v]) => v.capture.runner !== "macos-26");
+            if (wrong.length) {
+              console.error("::error title=The runner and the register disagree::set(s) " + wrong.map(([k]) => k).join(", ") + " name a runner other than `macos-26`, and this job is pinned to macos-26. `runs-on` cannot be read from a file — GitHub resolves it before any step runs — so the two have to be changed together.");
+              process.exit(1);
+            }
+            const dirs = sets.map(([, v]) => "apps/subscriptiontracker/store/ios-appstore/" + v.dir);
+            const devices = [...new Set(sets.map(([, v]) => v.capture.flutterDevice))];
+            // why `;` and not a newline: a step output is one KEY=VALUE line
+            // unless it is written with a heredoc delimiter, and a simulator
+            // name contains spaces, so neither a raw newline nor whitespace can
+            // separate them. The boot loop below splits on `;`.
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, "dirs=" + dirs.join(" ") + "\n");
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, "devices=" + devices.join(";") + "\n");
+            console.log("dirs: " + dirs.join(" "));
+            console.log("devices: " + devices.join(" | "));
+          '
+
+      # 🔴 A SIMULATOR THAT IS NOT BOOTED IS NOT A FLUTTER DEVICE. `flutter
+      # devices` lists RUNNING simulators, so `flutter drive -d "iPad Pro
+      # 13-inch (M4)"` against a shut-down one fails with "no devices" — which
+      # reads like a broken workflow and is really an unbooted simulator. Boot
+      # every device the register names, and say plainly which name was not
+      # found: the runner image ships the size classes Xcode ships, and Apple's
+      # required classes move with the hardware, so THIS is the step that will
+      # go red the year the register's device names age out.
+      - name: Boot the simulators the register names
+        env:
+          DEVICES: ${{ steps.reg.outputs.devices }}
+        run: |
+          set -uo pipefail
+          xcrun simctl list devices available
+          rc=0
+          while IFS= read -r -d ';' d || [ -n "$d" ]; do
+            [ -z "$d" ] && continue
+            echo "booting: $d"
+            if ! xcrun simctl boot "$d"; then
+              echo "::error title=No such simulator::The register names \"$d\" and this runner image has no available simulator by that name. Apple's required screenshot size classes move with the hardware line-up, so either the device name in tooling/channel-register.json has aged out, or this runner image ships a different Xcode. Fix the register (with the size the new class requires, and its source), not this workflow."
+              rc=1
+            fi
+          done <<< "$DEVICES"
+          [ "$rc" -eq 0 ] || exit 1
+          xcrun simctl list devices booted
+
+      - name: Provision throwaway confirmed user
+        id: user
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node tooling/e2e/provision_user.mjs
+
+      # why: one invocation for both sets. The runner iterates the register's
+      # sets itself, so the iPhone and the iPad frames come from one build with
+      # one signed-in account — which is what makes them one listing.
+      - name: Capture both sets
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          E2E_EMAIL: ${{ steps.user.outputs.email }}
+          E2E_PASSWORD: ${{ steps.user.outputs.password }}
+        run: node tooling/store/capture-play-screenshots.mjs --app subscriptiontracker --channel ios-appstore
+
+      - name: The captured sets satisfy the listing-asset guard
+        run: node --single-threaded tooling/ci/assert-listing-assets.mjs
+
+      # why: this is the guard that fails if only ONE set was captured. The
+      # register declares minDistinctTypes 2 for this channel, so a run that
+      # photographed the iPhone and quietly skipped the iPad stops here instead
+      # of arriving as a pull request that looks complete.
+      - name: The captured sets satisfy the device-coverage guard
+        run: node --single-threaded tooling/ci/assert-play-device-coverage.mjs
+
+      - name: Keep the frames of a FAILED run, for diagnosis only
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: FAILED-not-a-listing-set-${{ github.run_id }}
+          if-no-files-found: ignore
+          path: apps/subscriptiontracker/store/ios-appstore/
+
+      - name: Upload the screenshot sets
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ios-screenshots-subscriptiontracker
+          path: |
+            apps/subscriptiontracker/store/ios-appstore/screenshots/
+            apps/subscriptiontracker/store/ios-appstore/screenshots-ipad/
+          if-no-files-found: error
+
+      # why: PROPOSED, never pushed — a store listing is a sworn filing; a
+      # machine may photograph it and must not commit it to a protected branch
+      # unreviewed.
+      - name: Propose the sets for human review (pull request)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHOTS: ${{ steps.reg.outputs.dirs }}
+        run: |
+          set -euo pipefail
+          BRANCH="chore/ios-screenshots-${{ github.run_id }}"
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          for d in $SHOTS; do git add -f "$d"; done
+          if git diff --cached --quiet; then
+            echo "::notice title=Nothing to propose::The captured sets are byte-identical to what is already committed. The listing already carries this exact capture; no pull request is needed."
+            exit 0
+          fi
+
+          git checkout -b "$BRANCH"
+          git commit -F - <<'MSG'
+          chore(ios): the captured screenshot sets, for review
+
+          BOTH size classes — iPhone and iPad — captured live by
+          .github/workflows/store-screenshots.yml from ONE build with ONE
+          signed-in account, against the real backend defines. No "Demo data"
+          banner and none of the twelve third-party trademarks the demo seed
+          carries.
+
+          CAPTURE.json records the posture; tooling/ci/assert-listing-assets.mjs
+          proves size, count, aspect, format and the ABSENCE OF THE DEMO BANNER
+          in pixels, and tooling/ci/assert-play-device-coverage.mjs proves both
+          size classes are present — a set short is a rejected upload.
+
+          What neither can prove is whether these are the screens worth showing,
+          or whether the iPad frames show a tablet layout rather than a stretched
+          phone one. That is the reason this arrives as a pull request: look at
+          the images in the diff before merging.
+          MSG
+
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$BRANCH"
+
+          # The same refusal path the other capture jobs document: "Allow GitHub
+          # Actions to create and approve pull requests" gates every `gh pr
+          # create` run by GITHUB_TOKEN, and was measured OFF on 2026-08-26.
+          set +e
+          gh pr create \
+            --base "${GITHUB_REF_NAME}" \
+            --head "$BRANCH" \
+            --title "chore(ios): the captured screenshot sets, for review" \
+            --body "Captured by run \`${{ github.run_id }}\` from the real iOS build on the simulators the register names — **both** size classes from one build. **Look at the images in the Files changed tab**, and look hardest at the iPad ones: the guards prove size, count, format and that both sets exist, and cannot judge whether the iPad frames show a tablet layout or a stretched phone one. Merging is the human decision this PR exists to ask for." > "${RUNNER_TEMP}/gh-pr-create.log" 2>&1
+          PR_RC=$?
+          set -e
+          cat "${RUNNER_TEMP}/gh-pr-create.log"
+
+          if [ "$PR_RC" -ne 0 ]; then
+            if grep -qiF 'not permitted to create or approve pull requests' "${RUNNER_TEMP}/gh-pr-create.log"; then
+              CAUSE='the repository setting "Allow GitHub Actions to create and approve pull requests" is OFF.'
+              REMEDY='REMEDY (owner work — no workflow can set this for itself): Settings → Actions → General → Workflow permissions → tick "Allow GitHub Actions to create and approve pull requests".'
+            else
+              CAUSE="gh pr create exited ${PR_RC} for a reason this step does not recognise."
+              REMEDY='REMEDY: read the gh output above.'
+            fi
+            echo "::error title=The screenshot sets were captured but the pull request could not be opened::${CAUSE} THE CAPTURE IS NOT LOST — branch ${BRANCH} is pushed and the same pixels are already uploaded as this run's ios-screenshots-subscriptiontracker artifact; open the pull request by hand from ${BRANCH} into ${GITHUB_REF_NAME}. ${REMEDY}"
+            exit 1
+          fi
+
       - name: Purge the throwaway user
         if: always()
         env:

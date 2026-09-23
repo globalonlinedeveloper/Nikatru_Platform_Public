@@ -144,10 +144,30 @@ rediscovered:
 - 🟡 `.github/workflows/submit-*.yml`, `build-platforms.yml`, `extensions.yml` —
   every lane hardcodes its own channel id as a CLI argument. A YAML consumer is
   why `vocabulary.json` exists.
-- 🟡 `tooling/ci/assert-channel-register.mjs:1154-1163` — the `BUILD_TARGETS`
-  oracle types the artifact formats. It is a deliberate independent oracle, so
-  re-pointing it would *remove* a check; the decision is whether the format
-  NAMES come from here while the mapping stays there.
+  ⏱ 2026-09-22: the ids are still typed — nothing generates YAML — but they are
+  no longer unchecked. `assert-channel-register.mjs` limb 6b-iv pairs every
+  `--dart-define=RELEASE_CHANNEL=` and every `--channel` site with the register
+  row it names: the stamping job must be that row's `lane`, or its
+  `submission.workflow`, or must invoke its `submission.script`. Anything else
+  is a declared entry in `CHANNEL_STAMP_EXEMPT` with a written `why`, graded in
+  both directions. The failure this closes is the one membership cannot see —
+  a *valid* id in the wrong lane, e.g. `RELEASE_CHANNEL=ios-appstore` in the
+  Android job, which produces an .aab that reports itself as an App Store build
+  to the rail, the crash sink and analytics. The `--channel` form had no
+  membership check at all before that limb.
+- 🟡 `tooling/ci/assert-channel-register.mjs` — the `BUILD_TARGETS` oracle types
+  the artifact formats. It is a deliberate independent oracle, so re-pointing it
+  would *remove* a check; the decision is whether the format NAMES come from
+  here while the mapping stays there.
+  ⏱ 2026-09-22: decided — the names are held here, the mapping stays there. The
+  table is still written out by hand (that is the independence worth keeping),
+  and every format word in it is now checked against `ARTIFACT_FORMATS`
+  immediately below it. A word this contract does not name is a word no channel
+  row can accept, so it would read as a FORMAT GAP for the life of the typo,
+  never as a mistake in the oracle. A build intermediate nobody ships — `.app`
+  inside a macOS build — is declared in `INTERMEDIATE_FORMATS` with its reason,
+  and that table is graded in both directions: a declared word the contract
+  later adopts, and a declared word no `BUILD_TARGETS` entry emits, both fail.
 - 🟡 **The guard is not its own named step in `.github/workflows/ci.yml`.** It
   runs in CI today only through the green control in
   `tooling/ci/test/store-vocabulary.test.mjs`, which executes it against the

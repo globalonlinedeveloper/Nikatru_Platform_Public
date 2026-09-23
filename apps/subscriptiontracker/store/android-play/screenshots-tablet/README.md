@@ -41,6 +41,9 @@ its dimension rule and a re-fetched source, and that a limit with no artefact be
 | row declared, directory present, no PNGs | **EXIT 0**, shortfall PRINTED | **EXIT 1** — submission blocked |
 | row declared, 4+ PNGs present (**today**) | **EXIT 0** | **EXIT 0** |
 
+⏱ 2026-09-23: the submission column is now `--for-submission=android-play`. The flag names the channel
+it gates, so another store's empty set cannot refuse a Play upload; a bare `--for-submission` exits 2.
+
 That middle row was this tree from 2026-08-21 to 2026-08-27: the shared lane green so unrelated work
 was not blocked, the submission lane red so the listing could not go out one device type short.
 **Emptying this directory returns the tree to it** — which is what `tooling/ci/test/play-device-coverage.test.mjs`

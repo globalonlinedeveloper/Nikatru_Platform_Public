@@ -19,8 +19,8 @@
   ],
   "_rootsNote": "TWO roots since 2026-09-07 ([ADR 067] phase 2, unit app-shell). The Worker half of the template - 13 files, 917 lines every stamped backend app inherits - was outside this ledger entirely while `root` was one string, and `git ls-files -- <that one root>` could not see it to complain. assert-chassis-ledger.mjs is the authority on this list and cross-checks it; a row's `root` is optional and defaults to roots[0], which is why the 96 rows written against the single root are unchanged. ⏱ THE FIGURES IN THIS NOTE MOVED ON 2026-09-08 AND ARE CORRECTED RATHER THAN REWRITTEN: the Worker half is now 14 files and 1,021 lines, because the template gained src/lib/error-sink.ts — a stamped backend had NO crash sink at all and failed tooling/ci/assert-worker-error-sink.mjs on limbs 2, 3 and 5 at its first CI run. The guard PRINTS both figures per root on every run, which is the number to read; this sentence is prose and prose rots.",
   "totals": {
-    "files": 131,
-    "lines": 18455,
+    "files": 133,
+    "lines": 18585,
     "unclassified": 0,
     "unclassifiedLines": 0
   },
@@ -217,9 +217,9 @@
     },
     {
       "path": "lib/state/money_providers.dart",
-      "lines": 233,
+      "lines": 248,
       "verdict": "STAYS",
-      "why": "MEASURED: undeletable and not stubbable (4 guards each) — 4 stamp-properties anchors (:833-835), and it is the only non-test caller of `EntitlementTransport.fetch`. [ADR 072] D1, 2026-09-22 (O-CHASSIS-PHASE-2B): STAYS as the composition root — the brick's Riverpod graph is what every adapter reads and every package view is handed values from; nothing here moves, callSiteDelta 0."
+      "why": "MEASURED: undeletable and not stubbable (4 guards each) — 4 stamp-properties anchors (:833-835), and it is the only non-test caller of `EntitlementTransport.fetch`. [ADR 072] D1, 2026-09-22 (O-CHASSIS-PHASE-2B): STAYS as the composition root — the brick's Riverpod graph is what every adapter reads and every package view is handed values from; nothing here moves, callSiteDelta 0. ⏱ 2026-09-23 (O-IAP-BRIDGE-NOT-WIRED-IN-THE-APP): 233 -> 248 lines, re-measured by assert-chassis-ledger (split on newline, trailing newline dropped) — +15 comment lines only, the stale \"no app has opted in\" note replaced by how an app opts in and why the brick stays bridgeless (`iapBridge: null` unchanged); totals.lines 18415 -> 18430."
     },
     {
       "path": "lib/state/notification_tap_observer.dart",
@@ -367,9 +367,21 @@
     },
     {
       "path": "store/ios-appstore/screenshots/README.md",
-      "lines": 29,
+      "lines": 39,
       "verdict": "STAYS",
-      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave. ⏱ RE-MEASURED 2026-09-23: 29 -> 39, after the store-screenshots row named the exact frame sizes each store requires."
+    },
+    {
+      "path": "store/ios-appstore/screenshots-ipad/README.md",
+      "lines": 41,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave. Added 2026-09-23: the iPad set is a SECOND required App Store set, not a copy of the iPhone one."
+    },
+    {
+      "path": "store/ios-appstore/iap-review/README.md",
+      "lines": 46,
+      "verdict": "STAYS",
+      "why": "Per-app by construction: the review screenshot App Store Connect attaches to each auto-renewable subscription product. Added 2026-09-23; without it a subscription stays in Missing Metadata."
     },
     {
       "path": "store/ios-appstore/short-description.txt",
@@ -427,9 +439,9 @@
     },
     {
       "path": "store/linux-snap/screenshots/README.md",
-      "lines": 27,
+      "lines": 33,
       "verdict": "STAYS",
-      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave. ⏱ RE-MEASURED 2026-09-23: 27 -> 33, after the store-screenshots row named the exact frame sizes each store requires."
     },
     {
       "path": "store/linux-snap/short-description.txt",
@@ -493,9 +505,9 @@
     },
     {
       "path": "store/macos-appstore/screenshots/README.md",
-      "lines": 29,
+      "lines": 33,
       "verdict": "STAYS",
-      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave. ⏱ RE-MEASURED 2026-09-23: 29 -> 33, after the store-screenshots row named the exact frame sizes each store requires."
     },
     {
       "path": "store/macos-appstore/short-description.txt",
@@ -547,9 +559,9 @@
     },
     {
       "path": "store/windows-store/screenshots/README.md",
-      "lines": 28,
+      "lines": 36,
       "verdict": "STAYS",
-      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave. ⏱ RE-MEASURED 2026-09-23: 28 -> 36, after the store-screenshots row named the exact frame sizes each store requires."
     },
     {
       "path": "store/windows-store/search-terms.txt",

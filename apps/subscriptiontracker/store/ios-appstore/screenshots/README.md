@@ -12,30 +12,51 @@ artwork nobody has produced. (It used to say `OWNER_QUEUE A-4`; that row closed
 2026-08-31 and screenshots were never gated on it.) The gap is PRINTED on every
 guard run instead.
 
-## ⚠️ Required dimensions: COULD-NOT-ESTABLISH — do not fill a number in from memory
+## 🔴 This directory is only HALF the listing
 
-| Field | Value | Status |
-|---|---|---|
-| Screenshot pixel dimensions, per required device class | — | ⚠️ **COULD-NOT-ESTABLISH** — not fetched from an Apple page |
-| Which device classes are mandatory for a submission | — | ⚠️ **COULD-NOT-ESTABLISH** |
-| Number of screenshots (min/max) per class | — | ⚠️ **COULD-NOT-ESTABLISH** |
-| App preview (video) duration, resolution, format | — | ⚠️ **COULD-NOT-ESTABLISH** |
-| App icon size for App Store Connect | — | ⚠️ **COULD-NOT-ESTABLISH** |
-| Accepted file formats | — | ⚠️ **COULD-NOT-ESTABLISH** |
+The **iPad** set lives in `../screenshots-ipad/`, and App Store Connect requires
+both: it grades the iPhone and the iPad sets separately on the same version
+record. `tooling/ci/assert-play-device-coverage.mjs` enforces that here —
+`minDistinctTypes: 2` — so a submission with this directory full and the other
+empty is a finding on the lane rather than a rejection at Apple.
 
-🔴 **Why this table is empty rather than helpful.** An invented limit fires on
-**correct** input. This repo has already rejected its own fixture at 129
-characters against a made-up "120 or fewer".
-D-5 — now `Private/requirements/ledger.json`’s `[10]D-5` entry, the stage prose having been
-folded into the JSON spec 2026-08-15 — records screenshot dimensions for
-**every** store as *"COULD-NOT-ESTABLISH — not fetched; do not write a number
-here from memory"*, and that is still true. Fill this table in the same increment
-that fetches Apple's screenshot-specifications page, **with the URL and the
-date**, or leave it marked UNVERIFIED.
+The iPad frames are not these frames scaled up. Capturing them is the same one
+workflow run; see below.
 
-App Store Connect rejects an upload with the wrong image sizes and tells you the
-accepted ones, so the cost of not guessing is one rejected upload — cheaper than
-a number in the repo that everyone trusts and nobody sourced.
+## The rules — in `tooling/channel-register.json`, not here
+
+This file used to carry a table of `COULD-NOT-ESTABLISH` rows, because in 2026-08
+no Apple specification page had been read. The sizes and counts now live in one
+place:
+`storeMetadataContract.perChannel["ios-appstore"].graphicAssets.screenshots` in
+`tooling/channel-register.json`, each beside a dated `source`.
+`tooling/ci/assert-listing-assets.mjs` grades the pixels against the register —
+never against this page.
+
+Two things about the shape of those rules, because they are not the same shape
+as the other channels':
+
+- **The exact sizes live on the SETS, not on the channel.** What was recorded is
+  the size Apple currently REQUIRES per device class, not the full list it
+  accepts, and an exact list that is missing an accepted size refuses a
+  **correct** frame. So the channel declares no `acceptedSizes` and each set
+  declares the one size this repository actually captures — a claim about this
+  repository, not about Apple. Promote them to the channel on the day someone
+  fetches the full list, with the URL and the date.
+- **This row has a known expiry.** Apple's required size classes move with the
+  hardware line-up. Re-fetch before a submission; the capture workflow will also
+  go red on its own the year the simulator names age out, which is the cheap way
+  to find out.
+
+## How these are captured
+
+Since 2026-09-22 the frames are CAPTURED, not drawn: dispatch
+`.github/workflows/store-screenshots.yml` with `channel: ios-appstore`. One run
+boots the simulators the register names, drives the REAL iOS build with the real
+backend defines, fills **both** directories from that one build and one
+signed-in account, and opens a pull request with the pixels in it. A human still
+looks at the images before they merge — that is the whole point of the pull
+request, and the iPad frames are the ones to look hardest at.
 
 ## Naming, once real files land
 

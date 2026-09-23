@@ -240,6 +240,14 @@ class AppConfig {
   // rail that landed in P2.4b is `nikatru_purchases`; these three predate it.
   // Kept for the same reason as `appTagline` — Phase 3 deletes them on purpose,
   // a dedup increment does not delete them by accident.
+  // ⏱ CORRECTED 2026-09-22 (O-IAP-BRIDGE-NOT-WIRED-IN-THE-APP): no longer dead.
+  // `purchaseRailFor` (lib/state/money_providers.dart) reads both: the key is
+  // the RevenueCat PUBLIC SDK key the store lanes compile in (android-play from
+  // REVENUECAT_PUBLIC_KEY_GOOGLE, ios-appstore and macos-appstore from
+  // REVENUECAT_PUBLIC_KEY_APPLE — `purchaseRails.storeKeyDefine` in
+  // tooling/channel-register.json), and the entitlement id must equal
+  // `billing.mobileIap.entitlementId` in app.yaml. Empty on every other lane,
+  // and then a store build sells nothing rather than guessing a rail.
   static const String revenueCatApiKey = String.fromEnvironment(
     'REVENUECAT_KEY',
     defaultValue: '',

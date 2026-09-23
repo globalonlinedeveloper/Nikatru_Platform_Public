@@ -145,6 +145,17 @@ function tree(
   mkdirSync(join(store, 'screenshots'), { recursive: true });
 
   const reg = JSON.parse(readFileSync(join(REPO, 'tooling', 'channel-register.json'), 'utf8'));
+  // ⏱ 2026-09-23 · THE FIXTURE MODELS PLAY ALONE, as it did until store-
+  // screenshots lanes 2–4 declared coverage on ios-appstore, macos-appstore,
+  // windows-store and linux-snap. Copied whole, those blocks entered every case
+  // below: this builder writes only the android-play tree, so the brick cases
+  // read COVERAGE LOST, the ruled-set counts moved, and "no channel declares"
+  // could no longer be reached by deleting Play's block. A case that is about
+  // another channel declares it in `mutate` (iosBlock below does), so each
+  // verdict belongs to the channels the case names.
+  for (const [id, pc] of Object.entries(reg.storeMetadataContract?.perChannel ?? {})) {
+    if (id !== 'android-play' && pc?.graphicAssets?.screenshots) delete pc.graphicAssets.screenshots.deviceTypeCoverage;
+  }
   mutate(reg, { dir, store });
   writeFileSync(join(dir, 'tooling', 'channel-register.json'), JSON.stringify(reg, null, 2));
   writeFileSync(join(dir, 'catalog', 'apps.json'), JSON.stringify([{ slug: 'subscriptiontracker' }], null, 2));
@@ -224,9 +235,9 @@ describe('assert-play-device-coverage', () => {
   });
 
   test('M2 the SAME tree with --for-submission FAILS', () => {
-    const { code, out } = run(tree(), ['--for-submission']);
+    const { code, out } = run(tree(), ['--for-submission=android-play']);
     assert.equal(code, 1, 'the submission lane must refuse what the shared lane only prints');
-    assert.match(out, /SUBMITTING and app "subscriptiontracker"/);
+    assert.match(out, /SUBMITTING to "android-play" and app "subscriptiontracker"/); // ⏱ 2026-09-23 the gate names its channel
     assert.match(out, /assert-play-device-coverage: FAILED/);
   });
 
@@ -266,14 +277,14 @@ describe('assert-play-device-coverage', () => {
 
   test('M4 the declared tablet set, captured to its own declared rule, clears it', () => {
     const dir = tree(() => {}, { extra: tabletSet() });
-    const { code, out } = run(dir, ['--for-submission']);
+    const { code, out } = run(dir, ['--for-submission=android-play']);
     assert.equal(code, 0, out);
     assert.doesNotMatch(out, /SHORTFALL/);
     assert.match(out, /2 declared device-type set\(s\) measured/);
     // The grading limb cannot go dark unnoticed: the pass line says how many
     // frames it opened and how many sets carried a rule to open them against.
     assert.match(out, /4 screenshot\(s\) graded against the 1 set\(s\) that declare a rule/);
-    assert.match(out, /--for-submission, so a shortfall would have been fatal/);
+    assert.match(out, /--for-submission=android-play, so a shortfall on that channel would have been fatal/); // ⏱ 2026-09-23 wording: the flag names its channel
   });
 
   test('M4b the same tree also passes the PLAIN lane silently — no shortfall left to print', () => {
@@ -288,14 +299,14 @@ describe('assert-play-device-coverage', () => {
     const dir = tree(() => {}, {
       shots: ['01.png', '02.png', '03.png', '04.png', '05.png', '06.png', '07.png', '08.png'],
     });
-    const { code, out } = run(dir, ['--for-submission']);
+    const { code, out } = run(dir, ['--for-submission=android-play']);
     assert.equal(code, 1, 'a bigger phone set must not buy a second device type');
     assert.match(out, /covers 1 device type\(s\) — phone \(8\)/);
   });
 
   test('M4d the mirror: a tablet set with pixels and an EMPTY phone set is one type too', () => {
     const dir = tree(() => {}, { shots: [], extra: tabletSet() });
-    const { code, out } = run(dir, ['--for-submission']);
+    const { code, out } = run(dir, ['--for-submission=android-play']);
     assert.equal(code, 1, 'the check must not be satisfiable by whichever set happens to be non-empty');
     assert.match(out, /covers 1 device type\(s\) — tablet \(4\)/);
     assert.match(out, /declared but empty: phone/);
@@ -303,7 +314,7 @@ describe('assert-play-device-coverage', () => {
 
   test('M5 the tablet set holding a 0-byte .png does NOT count — the gate cannot be bought with touch', () => {
     const dir = tree(() => {}, { extra: { [`${TABLET}/01-home.png`]: Buffer.alloc(0) } });
-    const { code, out } = run(dir, ['--for-submission']);
+    const { code, out } = run(dir, ['--for-submission=android-play']);
     assert.equal(code, 1, 'an empty file must not buy device-type coverage');
     assert.match(out, /covers 1 device type\(s\)/);
     assert.match(out, /declared but empty: tablet/);
@@ -311,7 +322,7 @@ describe('assert-play-device-coverage', () => {
 
   test('a file that is not a PNG at all does not count either', () => {
     const dir = tree(() => {}, { extra: { [`${TABLET}/01-home.png`]: Buffer.from('this is not a png') } });
-    const { code, out } = run(dir, ['--for-submission']);
+    const { code, out } = run(dir, ['--for-submission=android-play']);
     assert.equal(code, 1);
     assert.match(out, /declared but empty: tablet/);
   });
@@ -350,7 +361,7 @@ describe('assert-play-device-coverage', () => {
 
   test('R1 four are declared and one is supplied — the count is graded, and coverage is not the complaint', () => {
     const dir = tree(() => {}, { extra: tabletSet(1) });
-    const { code, out } = run(dir, ['--for-submission']);
+    const { code, out } = run(dir, ['--for-submission=android-play']);
     assert.equal(code, 1, 'one frame must not satisfy a declared minCount of 4');
     assert.match(out, /holds 1 screenshot\(s\) and the register declares minCount 4/);
     // Both sets carry pixels, so the device-TYPE minimum is met. This failure is
@@ -362,7 +373,7 @@ describe('assert-play-device-coverage', () => {
     // 180x320 is exactly 9:16, so the aspect rule is silent and minSide is the
     // only bound missed.
     const dir = tree(() => {}, { extra: tabletSet(4, 180, 320) });
-    const { code, out } = run(dir, ['--for-submission']);
+    const { code, out } = run(dir, ['--for-submission=android-play']);
     assert.equal(code, 1);
     assert.match(out, /is 180x320 and set "tablet" declares minSide 1080px/);
     assert.doesNotMatch(out, /portraitAspect/);
@@ -371,7 +382,7 @@ describe('assert-play-device-coverage', () => {
 
   test('R3 four frames whose LONG side is over the declared maxSide', () => {
     const dir = tree(() => {}, { extra: tabletSet(4, 4320, 7680) });
-    const { code, out } = run(dir, ['--for-submission']);
+    const { code, out } = run(dir, ['--for-submission=android-play']);
     assert.equal(code, 1);
     assert.match(out, /is 4320x7680 and set "tablet" declares maxSide 3840px/);
     assert.doesNotMatch(out, /minSide/);
@@ -380,7 +391,7 @@ describe('assert-play-device-coverage', () => {
 
   test('R4 four portrait frames inside both size bounds but not the declared aspect', () => {
     const dir = tree(() => {}, { extra: tabletSet(4, 1200, 1920) });
-    const { code, out } = run(dir, ['--for-submission']);
+    const { code, out } = run(dir, ['--for-submission=android-play']);
     assert.equal(code, 1, '1200x1920 is 5:8, not 9:16');
     assert.match(out, /is 1200x1920 — portrait — and set "tablet" declares portraitAspect 9:16/);
     assert.doesNotMatch(out, /minSide/);
@@ -396,7 +407,7 @@ describe('assert-play-device-coverage', () => {
     // which is the failure that rejected a 129-character fixture against a
     // made-up "120 or fewer". A landscape rule arrives as a register row.
     const dir = tree(() => {}, { extra: tabletSet(4, 3200, 1800) });
-    const { code, out } = run(dir, ['--for-submission']);
+    const { code, out } = run(dir, ['--for-submission=android-play']);
     assert.equal(code, 0, out);
     assert.doesNotMatch(out, /SHORTFALL/);
   });
@@ -421,14 +432,14 @@ describe('assert-play-device-coverage', () => {
     // with a test is the difference between a limit and an accident: if a future
     // change quietly applied the tablet numbers to every set, this goes red.
     const dir = tree(() => {}, { phonePng: png(8, 8), extra: tabletSet() });
-    const { code, out } = run(dir, ['--for-submission']);
+    const { code, out } = run(dir, ['--for-submission=android-play']);
     assert.equal(code, 0, out);
     assert.match(out, /4 screenshot\(s\) graded against the 1 set\(s\) that declare a rule/);
   });
 
   test('R9 COVERAGE LOST when a declared limit cannot be read as a number', () => {
     const dir = tree((reg) => { cov(reg).sets.tablet.minSide = '1080'; }, { extra: tabletSet() });
-    const { code, out } = run(dir, ['--for-submission']);
+    const { code, out } = run(dir, ['--for-submission=android-play']);
     assert.equal(code, 2, 'a limit that grades nothing must not read as a limit that passed');
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /\.minSide is "1080", not a positive integer/);
@@ -436,7 +447,7 @@ describe('assert-play-device-coverage', () => {
 
   test('R9b COVERAGE LOST when the declared aspect is not "W:H"', () => {
     const dir = tree((reg) => { cov(reg).sets.tablet.portraitAspect = '9x16'; }, { extra: tabletSet() });
-    const { code, out } = run(dir, ['--for-submission']);
+    const { code, out } = run(dir, ['--for-submission=android-play']);
     assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /portraitAspect is "9x16", not "W:H"/);
@@ -444,7 +455,7 @@ describe('assert-play-device-coverage', () => {
 
   test('R10 COVERAGE LOST when a set declares a rule with no citation', () => {
     const dir = tree((reg) => { delete cov(reg).sets.tablet.source; }, { extra: tabletSet() });
-    const { code, out } = run(dir, ['--for-submission']);
+    const { code, out } = run(dir, ['--for-submission=android-play']);
     assert.equal(code, 2, 'an uncited per-set limit must not be enforced');
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /declares a dimension rule with no `source`/);
@@ -472,7 +483,7 @@ describe('assert-play-device-coverage', () => {
 
   test('E1 phone and tablet meet the floor and a THIRD declared type holding nothing still fails submission', () => {
     const dir = tree(third(CB_RULED), { extra: tabletSet() });
-    const { code, out } = run(dir, ['--for-submission']);
+    const { code, out } = run(dir, ['--for-submission=android-play']);
     assert.equal(code, 1, 'a floor two siblings satisfy between them must not excuse an empty declared set');
     assert.match(out, /set "chromebook" \(.*screenshots-chromebook\) holds 0 screenshot\(s\) and the register declares minCount 4/);
     // Both siblings carry pixels, so the type floor is MET. This failure is the
@@ -482,7 +493,7 @@ describe('assert-play-device-coverage', () => {
 
   test('E2 a third declared type with no count rule is named too — emptiness is not only a print', () => {
     const dir = tree(third({ dir: CB }), { extra: tabletSet() });
-    const { code, out } = run(dir, ['--for-submission']);
+    const { code, out } = run(dir, ['--for-submission=android-play']);
     assert.equal(code, 1, 'a row with no number to miss is still a device type this tree cannot show');
     assert.match(out, /set "chromebook" \(.*screenshots-chromebook\) is declared and holds no screenshot/);
     assert.doesNotMatch(out, /ACROSS DIFFERENT DEVICE TYPES/);
@@ -505,7 +516,7 @@ describe('assert-play-device-coverage', () => {
 
   test('E4 a third declared type whose directory is ABSENT fails with the floor met', () => {
     const dir = tree(third(CB_RULED), { extra: tabletSet(), omitSetDirs: ['chromebook'] });
-    const { code, out } = run(dir, ['--for-submission']);
+    const { code, out } = run(dir, ['--for-submission=android-play']);
     assert.equal(code, 1);
     assert.match(out, /screenshots-chromebook does not exist/);
     assert.match(out, /either capture the set or remove the row/);
@@ -524,7 +535,7 @@ describe('assert-play-device-coverage', () => {
       const extra = { ...tabletSet() };
       for (const [n, b] of Object.entries(files)) extra[`${CB}/${n}`] = b;
       const dir = tree(third(CB_RULED), { extra });
-      const { code, out } = run(dir, ['--for-submission']);
+      const { code, out } = run(dir, ['--for-submission=android-play']);
       assert.equal(code, 1, `${what} must not buy a declared set: ${out}`);
       assert.match(out, /set "chromebook" .* holds 0 screenshot\(s\) and the register declares minCount 4/);
       assert.doesNotMatch(out, /ACROSS DIFFERENT DEVICE TYPES/);
@@ -533,7 +544,7 @@ describe('assert-play-device-coverage', () => {
 
   test('E6 the third set captured to its own rule passes — the limb does not fire on a set that is kept', () => {
     const dir = tree(third(CB_RULED), { extra: { ...tabletSet(), ...cbShots() } });
-    const { code, out } = run(dir, ['--for-submission']);
+    const { code, out } = run(dir, ['--for-submission=android-play']);
     assert.equal(code, 0, out);
     assert.doesNotMatch(out, /SHORTFALL/);
     assert.doesNotMatch(out, /declared and holds no screenshot/);
@@ -664,19 +675,28 @@ describe('assert-play-device-coverage', () => {
   // asserts — emptying `screenshots-tablet` turns it red again rather than
   // leaving an assertion that would pass on either tree.
   test('the REAL repository covers two device types, on BOTH lanes', () => {
+    // ⏱ 2026-09-23 · WAS "no DEVICE-TYPE SHORTFALL at all" and a set count of
+    // Play's alone. Since store-screenshots lanes 2–4 the real register declares
+    // (still EMPTY, unserved) sets on four more channels, whose shortfalls the
+    // plain lane rightly PRINTS. What this test is about is Play's listing, so
+    // it asserts no shortfall NAMES android-play, and counts every declared set.
     const plain = spawnSync(process.execPath, [GUARD], { cwd: REPO, encoding: 'utf8' });
     assert.equal(plain.status, 0, `${plain.stdout}${plain.stderr}`);
-    assert.doesNotMatch(plain.stdout, /DEVICE-TYPE SHORTFALL/);
+    assert.doesNotMatch(plain.stdout, /SHORTFALL[^\n]*channel "android-play"/);
+    assert.doesNotMatch(plain.stdout, /SHORTFALL[^\n]*store\/android-play\//);
 
-    const submitting = spawnSync(process.execPath, [GUARD, '--for-submission'], { cwd: REPO, encoding: 'utf8' });
+    const submitting = spawnSync(process.execPath, [GUARD, '--for-submission=android-play'], { cwd: REPO, encoding: 'utf8' });
     const both = `${submitting.stdout}${submitting.stderr}`;
     assert.equal(submitting.status, 0, `the real listing must be submittable now that the second device type has pixels:\n${both}`);
 
     // Not merely "no shortfall printed": every declared set must have been
     // MEASURED and the ruled ones GRADED against real frames, because a set the
     // guard never opened prints the same verdict as a covered one.
-    const sets = cov(JSON.parse(readFileSync(join(REPO, 'tooling', 'channel-register.json'), 'utf8'))).sets;
-    assert.match(both, new RegExp(`${Object.keys(sets).length} declared device-type set\\(s\\) measured`));
+    const realReg = JSON.parse(readFileSync(join(REPO, 'tooling', 'channel-register.json'), 'utf8'));
+    const sets = cov(realReg).sets;
+    const declared = Object.values(realReg.storeMetadataContract.perChannel)
+      .reduce((n, pc) => n + Object.keys(pc?.graphicAssets?.screenshots?.deviceTypeCoverage?.sets ?? {}).length, 0);
+    assert.match(both, new RegExp(`${declared} declared device-type set\\(s\\) measured`));
     const graded = Number((both.match(/(\d+) screenshot\(s\) graded/) ?? [])[1]);
     assert.ok(graded >= sets.tablet.minCount, `${graded} frame(s) graded; the tablet row declares minCount ${sets.tablet.minCount}\n${both}`);
   });
@@ -769,7 +789,7 @@ describe('assert-play-device-coverage', () => {
     assert.equal(plain.code, 0, plain.out);
     assert.match(plain.out, /DEVICE-TYPE SHORTFALL/);
     assert.match(plain.out, /ROOT 2 \(the factory\): 1 brick store tree\(s\)/);
-    const submitting = run(dir, ['--for-submission']);
+    const submitting = run(dir, ['--for-submission=android-play']);
     assert.equal(submitting.code, 1, 'root 2 being green must not make the submit lane accept an uncovered listing');
   });
 
@@ -820,5 +840,134 @@ describe('assert-play-device-coverage', () => {
       const pngs = readdirSync(d).filter((n) => n.toLowerCase().endsWith('.png'));
       assert.deepEqual(pngs, [], `${template}/${def.dir} ships ${pngs.length} placeholder frame(s) in the TEMPLATE`);
     }
+  });
+});
+
+// ── store-screenshots lane 1: a NON-PLAY channel through the same gate ──────
+// Apple files a screenshot by device set exactly as Play does, and each set is a
+// short list of EXACT sizes. The guard already iterates every channel carrying a
+// `deviceTypeCoverage` block; these cases prove it grades one that is not Play,
+// in that store's own words, with the lane-1 rule kinds, and that Play's own
+// messages did not move. Android-play is made clean (four tablet frames) in each
+// case, so every verdict below belongs to ios-appstore alone.
+//
+// 🔬 PREDICTIONS WRITTEN FIRST (2026-09-22):
+//   A1 iPhone + iPad sets, each on Apple's list, plain and --for-submission -> exit 0
+//   A2 the iPad set REMOVED from the register, --for-submission -> exit 1, "Apple App
+//      Store (iOS) requires at least 2", and never "Play requires" for this channel
+//   A3 the same tree, plain lane -> exit 0, the shortfall PRINTED (unserved)
+//   A4 an iPad frame at 2048x2736 (not on the list) -> exit 1 on the submit lane naming
+//      it; the plain lane PRINTS it under the SET RULE SHORTFALL label (unserved)
+//   A5 an unreadable acceptedSizes -> COVERAGE LOST
+//   A6 Play's device-type message is byte-identical when Play is short
+describe('assert-play-device-coverage — a non-Play channel (store-screenshots lane 1)', () => {
+  const APPLE = 'https://developer.apple.com/help/app-store-connect/reference/screenshot-specifications (fetched 2026-09-20) — fixture';
+  const cleanPlay = Object.fromEntries(Array.from({ length: 4 }, (_, i) => [`screenshots-tablet/0${i + 1}-shot.png`, png(1800, 3200)]));
+
+  /** Declare ios-appstore's coverage block and write its frames beside Play's tree. */
+  const withIos = (dir, frames) => {
+    for (const [rel, bytes] of Object.entries(frames)) {
+      const p = join(dir, 'apps', 'subscriptiontracker', 'store', 'ios-appstore', rel);
+      mkdirSync(dirname(p), { recursive: true });
+      writeFileSync(p, bytes);
+    }
+    return dir;
+  };
+  const iosBlock = (reg, mutateSets = () => {}) => {
+    const sets = {
+      iphone: { dir: 'screenshots', minCount: 1, acceptedSizes: ['1260x2736', '1290x2796', '1320x2868'], source: APPLE },
+      ipad: { dir: 'screenshots-ipad', minCount: 1, acceptedSizes: ['2064x2752', '2048x2732'], source: APPLE },
+    };
+    mutateSets(sets);
+    reg.storeMetadataContract.perChannel['ios-appstore'].graphicAssets = {
+      screenshots: { dir: 'screenshots', source: APPLE, deviceTypeCoverage: { source: APPLE, minDistinctTypes: 2, sets } },
+    };
+  };
+  const iosFrames = { 'screenshots/01.png': png(1290, 2796), 'screenshots-ipad/01.png': png(2064, 2752) };
+
+  test('A1 iPhone and iPad sets on Apple\'s lists clear both lanes', () => {
+    const dir = withIos(tree((reg) => iosBlock(reg), { extra: cleanPlay }), iosFrames);
+    for (const args of [[], ['--for-submission=android-play'], ['--for-submission=ios-appstore']]) {
+      const { code, out } = run(dir, args);
+      assert.equal(code, 0, out);
+      assert.doesNotMatch(out, /SHORTFALL/);
+    }
+  });
+
+  test('A2 the iPad set removed is FATAL on the submission lane, in Apple\'s name', () => {
+    const dir = withIos(tree((reg) => iosBlock(reg, (sets) => delete sets.ipad), { extra: cleanPlay }), iosFrames);
+    const { code, out } = run(dir, ['--for-submission=ios-appstore']);
+    assert.equal(code, 1, out);
+    assert.match(out, /channel "ios-appstore" covers 1 device type\(s\) — iphone \(1\) — and Apple App Store \(iOS\) requires at least 2 ACROSS DIFFERENT DEVICE TYPES/);
+    assert.doesNotMatch(out, /ios-appstore[^\n]*Play requires/);
+  });
+
+  test('A3 the same tree on the plain lane PRINTS the shortfall (the channel is unserved)', () => {
+    const dir = withIos(tree((reg) => iosBlock(reg, (sets) => delete sets.ipad), { extra: cleanPlay }), iosFrames);
+    const { code, out } = run(dir);
+    assert.equal(code, 0, out);
+    assert.match(out, /DEVICE-TYPE SHORTFALL/);
+    assert.match(out, /Apple App Store \(iOS\) requires at least 2/);
+  });
+
+  test('A4 an iPad frame off Apple\'s list is a SET RULE SHORTFALL naming the frame', () => {
+    const dir = withIos(tree((reg) => iosBlock(reg), { extra: cleanPlay }), { ...iosFrames, 'screenshots-ipad/01.png': png(2048, 2736) });
+    const frame = /screenshots-ipad\/01\.png is 2048x2736, and set "ipad" accepts only 2064x2752, 2048x2732 \(exact, orientation included\)/;
+    const submit = run(dir, ['--for-submission=ios-appstore']);
+    assert.equal(submit.code, 1, submit.out);
+    assert.match(submit.out, frame);
+    const plain = run(dir);
+    assert.equal(plain.code, 0, plain.out);
+    assert.match(plain.out, /SET RULE SHORTFALL/);
+    assert.match(plain.out, frame);
+  });
+
+  test('A5 an unreadable acceptedSizes is COVERAGE LOST', () => {
+    const dir = withIos(tree((reg) => iosBlock(reg, (sets) => { sets.ipad.acceptedSizes = '2064x2752'; }), { extra: cleanPlay }), iosFrames);
+    const { code, out } = run(dir);
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST/);
+    assert.match(out, /sets\["ipad"\]\.acceptedSizes is "2064x2752", not a non-empty list of "WxH" strings/);
+  });
+
+  test('A6 Play\'s own device-type message is unchanged beside an Apple block', () => {
+    const dir = withIos(tree((reg) => iosBlock(reg)), iosFrames);
+    const { code, out } = run(dir, ['--for-submission=android-play']);
+    assert.equal(code, 1, out);
+    assert.match(out, /channel "android-play" covers 1 device type\(s\) — phone \(2\); declared but empty: tablet \(apps\/subscriptiontracker\/store\/android-play\/screenshots-tablet\) — and Play requires at least 2 ACROSS DIFFERENT DEVICE TYPES/);
+  });
+
+  // ⏱ 2026-09-23 · THE SUBMISSION GATE NAMES ITS CHANNEL. Rebased onto store-
+  // screenshots lanes 2–4, the REAL tree declared empty iOS/macOS/Windows/Snap
+  // sets, and a bare `--for-submission` — what submit-play.yml ran — exited 1 on
+  // them: an empty iPad set refusing a PLAY upload. Predictions written first:
+  //   S1 Play clean, iOS declared and EMPTY: =android-play -> exit 0 with the iOS
+  //      gap PRINTED; =ios-appstore -> exit 1 in Apple's name
+  //   S2 a bare --for-submission -> COVERAGE LOST (exit 2), naming the form wanted
+  //   S3 a channel id that declares no coverage -> COVERAGE LOST (exit 2)
+  const emptyIos = { 'screenshots/README.md': Buffer.from('# empty\n'), 'screenshots-ipad/README.md': Buffer.from('# empty\n') };
+
+  test('S1 an EMPTY iOS set does not refuse a Play submission, and does refuse an iOS one', () => {
+    const dir = withIos(tree((reg) => iosBlock(reg), { extra: cleanPlay }), emptyIos);
+    const play = run(dir, ['--for-submission=android-play']);
+    assert.equal(play.code, 0, play.out);
+    assert.match(play.out, /DEVICE-TYPE SHORTFALL[^\n]*channel "ios-appstore"/);
+    assert.match(play.out, /--for-submission=android-play, so a shortfall on that channel would have been fatal/);
+    const ios = run(dir, ['--for-submission=ios-appstore']);
+    assert.equal(ios.code, 1, ios.out);
+    assert.match(ios.out, /SUBMITTING to "ios-appstore" and [^\n]*Apple App Store \(iOS\) requires at least 2/);
+    assert.doesNotMatch(ios.out, /SUBMITTING to "android-play"/);
+  });
+
+  test('S2 a bare --for-submission is COVERAGE LOST — the gate must be told which channel', () => {
+    const { code, out } = run(tree(() => {}, { extra: cleanPlay }), ['--for-submission']);
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST — --for-submission was given without a channel: pass --for-submission=<channel id>/);
+  });
+
+  test('S3 a channel that declares no coverage is COVERAGE LOST, never a pass over nothing', () => {
+    const { code, out } = run(tree(() => {}, { extra: cleanPlay }), ['--for-submission=ios-appstore']);
+    assert.equal(code, 2, out);
+    assert.match(out, /--for-submission names channel "ios-appstore", and no `kind: "store"` channel of that id declares/);
   });
 });

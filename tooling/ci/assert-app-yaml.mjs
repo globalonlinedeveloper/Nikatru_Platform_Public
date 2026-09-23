@@ -54,12 +54,12 @@
 //       the only thing that can: the surrounding document is hand-written prose
 //       a person maintains, so the file cannot carry one "generated" header.
 //
-//   6 · mobile IAP is declared and depended on TOGETHER — an app.yaml
-//       `billing.mobileIap` requires a `nikatru_billing_revenuecat` dependency,
-//       a sworn Play `Purchase history` row under the live posture and the
-//       provider named in the Apple manifest; and the dependency without the
-//       declaration FAILS, because that is the direction in which a sworn
-//       store declaration goes false by a one-line pubspec edit.
+//   6 · mobile IAP is declared and depended on TOGETHER — `billing.mobileIap`
+//       requires a `nikatru_billing_revenuecat` dependency, a sworn Play
+//       `Purchase history` row, that package's Play `dependencySurface` entry and
+//       a `purchases_flutter <version>` row in each Apple `binaryInventory` (rows,
+//       never prose); the dependency or a store row WITHOUT the declaration fails,
+//       the direction in which a sworn declaration goes false by a one-line edit.
 //
 //   7 · AI content is declared, and its consequences hold, both ways — an
 //       app.yaml `ai.generatesContent: true` requires
@@ -126,6 +126,9 @@ import { parseYaml, YamlError } from '../app-yaml/yaml.mjs';
 import { validate, assertSchemaUnderstood } from '../app-yaml/schema-validate.mjs';
 import { plan, APPS_DIR } from '../app-yaml/render.mjs';
 import { planPrivacy } from '../app-yaml/render-privacy.mjs';
+// The Apple inventories that exist — the generator's own list, so limb 6 asks
+// for an SDK row in exactly the inventories that are rendered into bundles.
+import { PLATFORMS as APPLE_PLATFORMS } from '../store/render-apple-privacy-manifest.mjs';
 import { listDir } from './tree-walk.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -487,12 +490,77 @@ if (privacyPlan.problems.length) {
 //
 // And when the declaration IS present, the two sworn store files must already
 // say what the SDK makes true: Play's `Purchase history` row collected under the
-// live posture, and the Apple manifest carrying the SDK's own rows. Those files
-// are STATEMENTS, never generated ([ADR 037]) — so this limb reads them and
-// refuses, and never writes them.
+// live posture and a `dependencySurface` entry for the bridge, and the Apple
+// manifest carrying the SDK's own binary rows. Those files are STATEMENTS, never
+// generated ([ADR 037]) — so this limb reads them and refuses, and never writes
+// them.
+//
+// 🔴 STRUCTURED ROWS ONLY — NEVER THE FILE'S TEXT. ⏱ 2026-09-22. The Apple half
+// used to pass when /revenue\s*cat|purchases_flutter/i matched ANYWHERE in the
+// JSON-stringified manifest, and apps/subscriptiontracker's manifest carries, in
+// a `basis`, the prose "the RevenueCat line is gone by [ADR 026]/[ADR 039]" — so
+// the check passed on a sentence saying the SDK had been REMOVED. Measured on the
+// real tree. A sworn file's prose (`_why`, `basis`, `linkedBasis`, notes) is
+// reasoning, and reasoning names what is absent as readily as what is present.
+// So each half reads ONE structured field, the one a sibling guard already holds
+// equal to the build:
+//
+//   · Apple — `binaryInventory.<platform>[].binary`, parsed with the row shape
+//     assert-apple-privacy-manifest.mjs uses (`<pub package> <version>`), the
+//     field that guard holds EQUAL to the plugins the build links. A declared app
+//     needs a `purchases_flutter <version>` row in EVERY Apple inventory it ships:
+//     the platforms the manifest's `channels` name (`ios-appstore` → ios,
+//     `macos-appstore` → macos) plus any platform it inventories at all — and all
+//     of them when neither says, so a missing `channels` can only ask for more.
+//     The SDK is a framework in each bundle, and each bundle's privacy report is
+//     aggregated on its own; an iOS row says nothing about the macOS binary.
+//   · Play — `dependencySurface.direct["nikatru_billing_revenuecat"]`, the map
+//     assert-play-declarations.mjs holds in BIJECTION with the pubspec's direct
+//     dependencies, so it is the Play form's own record of what links. NOT
+//     `buildPosture.expectedDefines`: that list is held equal to the lane's
+//     --dart-define flags — a build-configuration fact — and a key define can be
+//     passed to a binary that links no SDK at all.
+//
+// The reverse direction reads the SAME fields: an app with no declaration
+// carries neither a `purchases_flutter` inventory row nor the Play entry.
 const IAP_PACKAGE = 'nikatru_billing_revenuecat';
 const IAP_PURCHASE_TYPE = 'Purchase history';
-const IAP_SDK_TOKEN = /revenue\s*cat|purchases_flutter/i;
+const IAP_SDK_BINARY = 'purchases_flutter';
+/** assert-apple-privacy-manifest.mjs's PLUGIN_ROW: `<pub package>` or
+ *  `<pub package> <version>`. `Runner (the app target)` and the engine rows do
+ *  not match, and nothing outside the `binary` field is ever read. */
+const INVENTORY_ROW = /^([a-z][a-z0-9_]*)(?: (\d[^\s]*))?$/;
+
+/** The Apple platforms whose `binaryInventory` names the IAP SDK in a row's
+ *  `binary` field — versioned rows only when `versioned` is set (the forward
+ *  direction swears a specific binary; the reverse refuses any mention). */
+const appleSdkPlatforms = (manifest, versioned) => {
+  const inventory = manifest?.binaryInventory;
+  return APPLE_PLATFORMS.filter((platform) => {
+    const rows = inventory && Array.isArray(inventory[platform]) ? inventory[platform] : [];
+    return rows.some((row) => {
+      const m = row && typeof row.binary === 'string' ? row.binary.match(INVENTORY_ROW) : null;
+      return m !== null && m[1] === IAP_SDK_BINARY && (!versioned || m[2] !== undefined);
+    });
+  });
+};
+
+/** The Apple inventories a declared app must carry the SDK row in. */
+const appleShippedPlatforms = (manifest) => {
+  const channels = Array.isArray(manifest?.channels) ? manifest.channels : [];
+  const inventory = manifest?.binaryInventory;
+  const shipped = APPLE_PLATFORMS.filter(
+    (platform) =>
+      channels.includes(`${platform}-appstore`) || (inventory && Array.isArray(inventory[platform])),
+  );
+  return shipped.length > 0 ? shipped : [...APPLE_PLATFORMS];
+};
+
+/** Whether the Play form's dependency map carries an entry for the bridge. */
+const playMapsIapPackage = (form) => {
+  const direct = form?.dependencySurface?.direct;
+  return Boolean(direct) && typeof direct === 'object' && !Array.isArray(direct) && Object.hasOwn(direct, IAP_PACKAGE);
+};
 
 let iapDeclared = 0;
 let iapChecked = 0;
@@ -523,6 +591,26 @@ for (const { id, doc } of declarations) {
           "which changes what Play's Data safety form and Apple's aggregated privacy report have to say — " +
           'so an undeclared one is a sworn declaration going false by a one-line pubspec edit. Declare the ' +
           'opt-in, or remove the dependency.',
+      );
+    }
+    // The same two structured fields, read in the other direction. A sworn store
+    // row for an SDK the app has not opted in to is a statement about a binary
+    // nobody declared — or a statement that outlived the SDK it describes.
+    const undeclaredPlay = readJson(PLAY_REL(id));
+    if (undeclaredPlay.json && playMapsIapPackage(undeclaredPlay.json)) {
+      problems.push(
+        `${PLAY_REL(id)}: dependencySurface.direct names ${IAP_PACKAGE} and ${APPS_DIR}/${id}/app.yaml declares no ` +
+          '`billing.mobileIap`. The Data safety form is answering for a store billing SDK the app has not opted in ' +
+          'to. Declare the opt-in, or remove the entry together with the dependency.',
+      );
+    }
+    const undeclaredApple = readJson(APPLE_REL(id));
+    const strayRows = undeclaredApple.json ? appleSdkPlatforms(undeclaredApple.json, false) : [];
+    if (strayRows.length > 0) {
+      problems.push(
+        `${APPLE_REL(id)}: binaryInventory.${strayRows.join(' and binaryInventory.')} carries a ${IAP_SDK_BINARY} ` +
+          `row and ${APPS_DIR}/${id}/app.yaml declares no \`billing.mobileIap\`. The manifest is auditing a store ` +
+          'billing framework the app has not opted in to. Declare the opt-in, or remove the row(s).',
       );
     }
     continue;
@@ -561,6 +649,14 @@ for (const { id, doc } of declarations) {
           'inaccurate label. The sworn file is a statement, so answer it: this limb reads it and never writes it.',
       );
     }
+    if (!playMapsIapPackage(play.json)) {
+      problems.push(
+        `${playRel}: ${APPS_DIR}/${id}/app.yaml declares \`billing.mobileIap\` and this form's ` +
+          `dependencySurface.direct has no "${IAP_PACKAGE}" entry. That map is the form's own record of what the ` +
+          'binary links — the entry is where the store billing SDK says what it collects — and prose elsewhere ' +
+          'in the file is not read as one.',
+      );
+    }
   }
 
   const appleRel = APPLE_REL(id);
@@ -571,13 +667,18 @@ for (const { id, doc } of declarations) {
         `${apple.missing ? 'does not exist' : `is not valid JSON (${apple.broken})`}. The IAP SDK is a binary ` +
         "inside the bundle and Apple's privacy report aggregates every binary in it.",
     );
-  } else if (!IAP_SDK_TOKEN.test(JSON.stringify(apple.json))) {
-    problems.push(
-      `${appleRel}: ${APPS_DIR}/${id}/app.yaml declares \`billing.mobileIap\` and this manifest names the ` +
-        'provider nowhere. Apple aggregates one privacy report from the app target AND every framework in the ' +
-        'bundle, each answering for its own code — so a shipped IAP SDK that appears in no binary inventory ' +
-        'row is a manifest that describes a different app than the one submitted.',
-    );
+  } else {
+    const rowed = new Set(appleSdkPlatforms(apple.json, true));
+    for (const platform of appleShippedPlatforms(apple.json)) {
+      if (rowed.has(platform)) continue;
+      problems.push(
+        `${appleRel}: ${APPS_DIR}/${id}/app.yaml declares \`billing.mobileIap\` and binaryInventory.${platform} ` +
+          `has no "${IAP_SDK_BINARY} <version>" row. Apple aggregates one privacy report from the app target AND ` +
+          'every framework in the bundle, each answering for its own code — so a shipped IAP SDK that appears in ' +
+          'no binary inventory row is a manifest that describes a different app than the one submitted. Only the ' +
+          'rows\' `binary` field is read: a sentence about the SDK in `basis` or `_why` is not a row for it.',
+      );
+    }
   }
 }
 
@@ -600,15 +701,17 @@ if (problems.length === problemsBeforeIap) {
     // checked" when nothing had any.
     console.log(
       `note ⬜ limb 6 — NO app declares \`billing.mobileIap\`, so the forward direction (declared ⇒ bridge ` +
-        `dependency + sworn Purchase history + Apple SDK rows) graded NOTHING. The reverse direction — a ` +
-        `${IAP_PACKAGE} dependency with no declaration — IS armed and was checked against all ${iapChecked} ` +
-        'app(s). The forward half arms itself the day an app opts in; no edit here is needed.',
+        `dependency + sworn Purchase history + Play dependencySurface entry + Apple ${IAP_SDK_BINARY} inventory ` +
+        `rows) graded NOTHING. The reverse direction — a ${IAP_PACKAGE} dependency, Play entry or ` +
+        `${IAP_SDK_BINARY} inventory row with no declaration — IS armed and was checked against all ` +
+        `${iapChecked} app(s). The forward half arms itself the day an app opts in; no edit here is needed.`,
     );
   } else {
     ok(
       `limb 6 — ${iapDeclared} of ${iapChecked} app(s) declare mobile IAP, each depending on ${IAP_PACKAGE} ` +
-        `and swearing "${IAP_PURCHASE_TYPE}" on Play with the provider named in the Apple manifest; the ` +
-        'other(s) carry neither the declaration nor the dependency',
+        `and swearing "${IAP_PURCHASE_TYPE}" on Play with a dependencySurface entry for it, and with a ` +
+        `"${IAP_SDK_BINARY} <version>" row in every Apple binary inventory shipped (structured rows only); the ` +
+        'other(s) carry neither the declaration, the dependency nor a store SDK row',
     );
   }
 }

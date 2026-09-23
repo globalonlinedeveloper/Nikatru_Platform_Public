@@ -15,8 +15,11 @@
 // and no client-side receipt validation — because a hosted checkout returns the
 // buyer to the app identically whether they paid, abandoned, or were declined.
 // ─────────────────────────────────────────────────────────────────────────────
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_api_client/nikatru_api_client.dart';
+import 'package:nikatru_billing_revenuecat/nikatru_billing_revenuecat.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_purchases/nikatru_purchases.dart';
 
@@ -92,7 +95,32 @@ final Provider<PurchaseRail> purchaseRailProvider = Provider<PurchaseRail>(
 /// channel — the `'dev'` default — SELLS NOTHING rather than being guessed as
 /// `web`. Every release lane passes `--dart-define=RELEASE_CHANNEL`, and
 /// `assert-channel-register` limb 6b-ii fails a release build that does not.
-PurchaseRail purchaseRailFor(Ref<PurchaseRail> ref, String releaseChannel) {
+///
+/// 🔴 THE STORE BRIDGE — this app OPTS IN to `billing.mobileIap` (app.yaml).
+/// [revenueCatKey] is the RevenueCat PUBLIC SDK key the store lanes compile in
+/// (`--dart-define=REVENUECAT_KEY`, from `REVENUECAT_PUBLIC_KEY_GOOGLE` on
+/// android-play and `REVENUECAT_PUBLIC_KEY_APPLE` on ios-appstore and
+/// macos-appstore; `assert-channel-register` limb 6b-iii refuses a store lane
+/// that omits it and any other lane that carries it). With a key, a bridge is
+/// built; with none, NO bridge is built, the facade answers `iapBridgeMissing`
+/// and the store build sells nothing and describes nothing — it never falls
+/// back to the web rail, because the facade picks the rail kind from the
+/// channel alone. [newBridge] is called ONLY for a store channel: every other
+/// channel's rail is decided before a bridge could matter, and a RevenueCat
+/// bridge configured on web or Windows would be an SDK call with no store
+/// behind it. Both parameters exist so a test can drive the real wiring with a
+/// key and a fake bridge; production passes neither.
+PurchaseRail purchaseRailFor(
+  Ref<PurchaseRail> ref,
+  String releaseChannel, {
+  String revenueCatKey = AppConfig.revenueCatApiKey,
+  IapBridge Function() newBridge = RevenueCatBridge.new,
+}) {
+  final PurchaseChannel? channel = ChassisBilling.channelNamed(releaseChannel);
+  final bool bridged =
+      channel != null &&
+      PurchaseRailKind.forChannel(channel).isStoreBilling &&
+      revenueCatKey.isNotEmpty;
   final ChassisBillingConfig config = ChassisBillingConfig(
     railConfig: ref.watch(railConfigProvider),
     appId: AppConfig.appId,
@@ -103,12 +131,19 @@ PurchaseRail purchaseRailFor(Ref<PurchaseRail> ref, String releaseChannel) {
     accountId: () async => ref.read(authRepositoryProvider).currentUser?.id,
     accessToken: () => ref.read(authRepositoryProvider).currentAccessToken(),
     cancellationTransport: ref.watch(cancellationTransportProvider),
-    // No app has opted in to `billing.mobileIap` (O-REVENUECAT-ACCOUNT), so no
-    // store bridge ships and a store channel answers `iapBridgeMissing`.
-    // `assert-app-yaml` limb 6 holds the dependency and the declaration
-    // together; the opt-in increment passes a `RevenueCatBridge` here.
-    iapBridge: null,
-    iapBridgeConfig: null,
+    // This app declares `billing.mobileIap` and depends on
+    // nikatru_billing_revenuecat — `assert-app-yaml` limb 6 holds the two
+    // together. The buyer's id is NOT passed here: the SDK is configured on the
+    // first store call, and by then [IdentifiesBuyer] below has handed it the
+    // settled sign-in, so the first configure already carries the account.
+    iapBridge: bridged ? newBridge() : null,
+    iapBridgeConfig: bridged
+        ? IapBridgeConfig(
+            publicApiKey: revenueCatKey,
+            entitlementId: AppConfig.proEntitlementId,
+            appUserId: null,
+          )
+        : null,
   );
   final PurchaseRail rail = ChassisBilling.railForDeclared(
     releaseChannel,
@@ -129,6 +164,16 @@ PurchaseRail purchaseRailFor(Ref<PurchaseRail> ref, String releaseChannel) {
 
     ref.listen(authUserProvider, forward, fireImmediately: true);
   }
+
+  // 🔴 ASK THE STORE ONCE, AT BUILD — not at the first paywall open. A store
+  // rail describes nothing until the store answers, and the paywall is not the
+  // only surface that reads its plans: the home promo card and the settings
+  // upgrade row are drawn from the same list and would otherwise stay empty
+  // until somebody happened to open the paywall. Placed AFTER the identity
+  // listener on purpose: `fireImmediately` has already handed a settled
+  // sign-in to the rail, so the SDK's first configure carries the account.
+  // A no-op on every rail that is not a store rail (see [refreshOfferingsOf]).
+  unawaited(refreshOfferingsOf(rail));
   return rail;
 }
 

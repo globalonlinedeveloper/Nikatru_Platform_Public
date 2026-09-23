@@ -66,7 +66,7 @@ const NL = String.fromCharCode(10);
  *  that text-greps `secrets.X` instead of extracting `${{ … }}` expressions from
  *  comment-stripped YAML. Both were real: the bare-grep version of this check
  *  reported a secret named `mjs` against the real tree. */
-const laneWorkflow = ({ laneBuilds = true, releaseChannel = 'web', laneSecrets = [] } = {}) => `name: Deploy web
+const laneWorkflow = ({ laneBuilds = true, releaseChannel = 'web', laneSecrets = [], laneExtraRun = [] } = {}) => `name: Deploy web
 # The aggregating job all_platforms and the job ghost-job are named here in a
 # comment only. Nothing below declares them. So is --dart-define=RELEASE_CHANNEL=ghost-channel,
 # which must never be read as a stamp. Neither is \${{ secrets.GHOST_SECRET }}.
@@ -78,7 +78,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - run: node tooling/ci/scan-secrets.mjs .
-${laneSecrets.map((n) => `      - run: echo "\${{ secrets.${n} }}"`).join('\n')}${laneSecrets.length ? '\n' : ''}      - run: >
+${laneSecrets.map((n) => `      - run: echo "\${{ secrets.${n} }}"`).join('\n')}${laneSecrets.length ? '\n' : ''}${laneExtraRun.map((r) => `      - run: ${r}`).join('\n')}${laneExtraRun.length ? '\n' : ''}      - run: >
           ${typeof laneBuilds === 'string' ? laneBuilds : laneBuilds ? 'flutter build web --release' : 'echo deploy'}${releaseChannel === null ? '' : `
           --dart-define=RELEASE_CHANNEL=${releaseChannel}`}
 `;
@@ -434,6 +434,11 @@ function tree({
   releaseChannel = 'web',
   // [9]R-3 limb 2 (section 8): which `${{ secrets.X }}` the lane workflow names.
   laneSecrets = [],
+  // ⏱ ADDED 2026-09-22 (limb 6b-iv). Extra `- run:` steps in the lane job, so a
+  // fixture can carry a SECOND channel stamp — or a `--channel` argument — in a
+  // job whose register row is known. Pairing is a property of (job, channel),
+  // and one stamp per fixture could not express it.
+  laneExtraRun = [],
   // ── section 9 ──────────────────────────────────────────────────────────────
   // `withAndroid` adds the android-play row (which carries a `gradleContract`)
   // AND the build file it points at. Both off by default.
@@ -486,6 +491,9 @@ function tree({
   // Extra files written into the fixture root, for cases that need a real ADR
   // on disk beside the harness marker.
   extraFiles = {},
+  // Limb 6b-iii's cross-check: what tooling/capability-register.json lists as
+  // `vendors.revenuecat.surfaces`. `null` writes no capability register at all.
+  revenuecatSurfaces = ['REVENUECAT_KEY'],
 } = {}) {
   const root = join(TMP, `r${seq++}`);
   const write = (rel, body) => {
@@ -521,6 +529,24 @@ function tree({
       'own-signing-key': 'our own detached signature, no gatekeeper verifying it',
     },
     channels: [servedWeb(), deferredWindowsStore()],
+    // ⚠️ REQUIRED IN THE FIXTURE, for the reason `keyKinds` is: limb 6b-iii reads
+    // the store-key define and its secret map from here rather than carrying a
+    // second copy, so a fixture without it is COVERAGE LOST. The rows above carry
+    // no `purchaseRail`, so by default no fixture segment is a store segment and
+    // the define is simply forbidden everywhere — every existing case keeps its
+    // exact verdict; the 6b-iii suite adds the rails it needs.
+    purchaseRails: {
+      rails: {
+        paddle: 'the hosted web checkout',
+        'play-billing': 'Google Play Billing, through RevenueCat',
+        'apple-iap': 'Apple in-app purchase, through RevenueCat',
+        none: 'this channel sells nothing',
+      },
+      storeKeyDefine: {
+        define: 'REVENUECAT_KEY',
+        secretByRail: { 'play-billing': 'REVENUECAT_PUBLIC_KEY_GOOGLE', 'apple-iap': 'REVENUECAT_PUBLIC_KEY_APPLE' },
+      },
+    },
     disqualified: [
       {
         id: 'flathub',
@@ -685,7 +711,7 @@ function tree({
   // trees, and the register guard checks that guard EXISTS — a surface pointing
   // at a deleted grader reads as covered. A stub is enough: nothing here runs it.
   write('tooling/ci/assert-store-metadata.mjs', '// fixture stub — presence is the only property asserted');
-  write(LANE_WORKFLOW, laneWorkflow({ laneBuilds, releaseChannel, laneSecrets: [...laneSecrets, ...androidNames] }));
+  write(LANE_WORKFLOW, laneWorkflow({ laneBuilds, releaseChannel, laneSecrets: [...laneSecrets, ...androidNames], laneExtraRun }));
   if (withAndroid && !omitGradleFile) write(GRADLE_TEMPLATE.split('{app}').join('subscriptiontracker'), gradleFile(gradle));
   write(BUILD_WORKFLOW, buildWorkflow({ needs, verdicts, verdictStyle, exitOne, extraJob, windowsRun }));
   if (harnessPresent) {
@@ -710,6 +736,9 @@ function tree({
       if (recipeScriptOnDisk) write(RECIPE_SCRIPT, '// the packaging path\n');
       write(PACKAGE_WORKFLOW, packageWorkflow({ invoked: recipeScriptInvoked }));
     }
+  }
+  if (revenuecatSurfaces !== null) {
+    write('tooling/capability-register.json', JSON.stringify({ vendors: { revenuecat: { surfaces: revenuecatSurfaces } } }, null, 2));
   }
   for (const [rel, body] of Object.entries(extraFiles)) write(rel, body);
   if (!omitRegister) {
@@ -1754,6 +1783,131 @@ describe('assert-channel-register — every release build declares its channel (
     const { code, out } = run(tree({ extraFiles: { [CI]: body } }));
     assert.equal(code, 1, out);
     assert.match(out, /ci\.yml:\d+ \(job "other"\) builds "web" and passes no/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Limb 6b-iii (2026-09-22, the mobile IAP opt-in) — a release build stamped with
+// a STORE-rail channel compiles in exactly the RevenueCat key the register maps
+// that rail to, and every other release build names the define nowhere. The rail
+// is resolved from the STAMP, never from the artifact: the fixture's Play build
+// is an `appbundle` in the `windows` job on purpose, so a guard keyed on the job
+// or the target instead of the stamp cannot pass these cases.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-channel-register — a store-rail build carries its store SDK key, nothing else does (6b-iii)', () => {
+  const GOOGLE = 'REVENUECAT_PUBLIC_KEY_GOOGLE';
+  const APPLE = 'REVENUECAT_PUBLIC_KEY_APPLE';
+  const CI = '.github/workflows/ci.yml';
+  const keyDefine = (secret) => '--dart-define=REVENUECAT_KEY=${{ secrets.' + secret + ' }}';
+  const playBuild = (extra = '') =>
+    `flutter build appbundle --release --dart-define=RELEASE_CHANNEL=android-play${extra ? ` ${extra}` : ''}`;
+  const rail = (id) => ({ rail: id, why: 'fixture rail', forbids: [], forbidsWhy: 'fixture', source: 'fixture' });
+  /** Rails on every row, plus the two key names declared non-signing so section
+   *  8 has nothing to say — a red result here can only be 6b-iii. */
+  const withRails =
+    (extra = () => {}) =>
+    (r) => {
+      r.channels.find((c) => c.id === 'web').purchaseRail = rail('paddle');
+      r.channels.find((c) => c.id === 'windows-store').purchaseRail = rail('paddle');
+      r.channels.find((c) => c.id === ANDROID_ID).purchaseRail = rail('play-billing');
+      r.ciSecretRegister = {
+        kinds: { 'build-config': 'a value compiled into or read by a build; not signing material' },
+        nonSigning: [GOOGLE, APPLE].map((name) => ({
+          name,
+          kind: 'build-config',
+          why: 'a RevenueCat PUBLIC SDK key compiled into a store build; it signs nothing',
+        })),
+      };
+      extra(r);
+    };
+  const storeTree = (opts = {}, extra) => tree({ withAndroid: true, mutate: withRails(extra), ...opts });
+  const iapYaml = ['billing:', '  mobileIap:', '    provider: revenuecat', ''].join(NL);
+
+  test('POSITIVE CONTROL — the Play build carries the mapped key, the web build carries none, one app opts in', () => {
+    const { code, out } = run(
+      storeTree({ windowsRun: playBuild(keyDefine(GOOGLE)), extraFiles: { 'apps/one/app.yaml': iapYaml } }),
+    );
+    assert.equal(code, 0, out);
+    assert.match(out, /6b-iii store SDK key — 1 store-rail release segment\(s\) pass --dart-define=REVENUECAT_KEY from the mapped secret \(play-billing: 1, apple-iap: 0\); 1 other release segment\(s\) name it nowhere; 1 app\(s\) declare billing\.mobileIap/);
+  });
+
+  test('(1) FAILS a play-billing-stamped build WITHOUT the define, naming file, job, line, channel, rail and the expected text', () => {
+    const { code, out } = run(storeTree({ windowsRun: playBuild() }));
+    assert.equal(code, 1, out);
+    assert.match(
+      out,
+      // ⏱ 2026-09-23 (re-cut onto the census): the location is 6b-ii's `buildAt` —
+      // `file:line (job "…", \`flutter build <target>\`)` — so both limbs name a build the same way.
+      /build-platforms\.yml:\d+ \(job "windows", `flutter build appbundle`\) for channel "android-play" \(rail "play-billing"\) passes no REVENUECAT_KEY\. Expected: --dart-define=REVENUECAT_KEY=\$\{\{ secrets\.REVENUECAT_PUBLIC_KEY_GOOGLE \}\}/,
+    );
+  });
+
+  test('(2) FAILS a paddle (web) build that carries the define', () => {
+    const { code, out } = run(
+      storeTree({ windowsRun: playBuild(keyDefine(GOOGLE)), laneBuilds: `flutter build web --release ${keyDefine(GOOGLE)}` }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /deploy-web\.yml:\d+ \(job "deploy-web", `flutter build web`\) is stamped "web", whose rail is "paddle"[^\n]*names REVENUECAT_KEY/);
+    assert.match(out, /Expected: no REVENUECAT_KEY at all in this segment/);
+  });
+
+  test('(2b) FAILS a play-billing build compiled with the APPLE key', () => {
+    const { code, out } = run(storeTree({ windowsRun: playBuild(keyDefine(APPLE)) }));
+    assert.equal(code, 1, out);
+    assert.match(
+      out,
+      /\(job "windows", `flutter build appbundle`\) for channel "android-play" \(rail "play-billing"\) names REVENUECAT_KEY 1 time\(s\) from secret\(s\) REVENUECAT_PUBLIC_KEY_APPLE\. Expected exactly: --dart-define=REVENUECAT_KEY=\$\{\{ secrets\.REVENUECAT_PUBLIC_KEY_GOOGLE \}\}/,
+    );
+  });
+
+  test('FAILS a key on a build whose STAMP resolves to rail `none` — the artifact type decides nothing', () => {
+    const { code, out } = run(
+      storeTree(
+        { windowsRun: `flutter build apk --release --dart-define=RELEASE_CHANNEL=windows-store ${keyDefine(GOOGLE)}` },
+        (r) => { r.channels.find((c) => c.id === 'windows-store').purchaseRail = rail('none'); },
+      ),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /`flutter build apk`\) is stamped "windows-store", whose rail is "none"[^\n]*names REVENUECAT_KEY/);
+  });
+
+  test('FAILS a key on a declared-EXEMPT (unstamped) build', () => {
+    const ci = ['name: CI', 'on:', '  push:', 'jobs:', '  app-brick:', '    runs-on: ubuntu-24.04', '    steps:', `      - run: flutter build web ${keyDefine(GOOGLE)}`, ''].join(NL);
+    const { code, out } = run(storeTree({ windowsRun: playBuild(keyDefine(GOOGLE)), extraFiles: { [CI]: ci } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /ci\.yml:\d+ \(job "app-brick", `flutter build web`\) is a declared `releaseBuildsNeverShipped` build[^\n]*names REVENUECAT_KEY/);
+  });
+
+  test('(two-apps) FAILS while TWO app.yaml files declare billing.mobileIap and the map is keyed by rail', () => {
+    const { code, out } = run(
+      storeTree({
+        windowsRun: playBuild(keyDefine(GOOGLE)),
+        extraFiles: { 'apps/one/app.yaml': iapYaml, 'apps/two/app.yaml': iapYaml },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /2 apps declare `billing\.mobileIap` \(apps\/one\/app\.yaml, apps\/two\/app\.yaml\)/);
+    assert.match(out, /key the secret names per app/);
+  });
+
+  test('FAILS when the define is not a RevenueCat surface in the capability register', () => {
+    const { code, out } = run(storeTree({ windowsRun: playBuild(keyDefine(GOOGLE)), revenuecatSurfaces: ['SOMETHING_ELSE'] }));
+    assert.equal(code, 1, out);
+    assert.match(out, /`vendors\.revenuecat\.surfaces` does not list it/);
+  });
+
+  test('COVERAGE LOST (exit 2) when storeKeyDefine is missing, or keys a rail the dictionary does not declare', () => {
+    const gone = run(storeTree({ windowsRun: playBuild(keyDefine(GOOGLE)) }, (r) => { delete r.purchaseRails.storeKeyDefine; }));
+    assert.equal(gone.code, 2, gone.out);
+    assert.match(gone.out, /FAIL COVERAGE LOST — tooling\/channel-register\.json `purchaseRails\.storeKeyDefine` is missing or malformed/);
+
+    const typo = run(
+      storeTree({ windowsRun: playBuild(keyDefine(GOOGLE)) }, (r) => {
+        r.purchaseRails.storeKeyDefine.secretByRail = { 'play-biling': GOOGLE };
+      }),
+    );
+    assert.equal(typo.code, 2, typo.out);
+    assert.match(typo.out, /keys rail "play-biling", which `purchaseRails\.rails` does not declare/);
   });
 });
 
@@ -3393,5 +3547,137 @@ describe('assert-channel-register — a store channel that can never be scripted
     assert.equal(code, 0, out);
     assert.match(out, /NO SUBMISSION PATH: channel "windows-store"/);
     assert.doesNotMatch(out, /NO SUBMISSION API/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ ADDED 2026-09-22 — limb 6b-iv, PAIRING (P1-2 consumer C6).
+// ⏱ 2026-09-23 — RE-CUT onto the census. Since 6b-ii fails a PLATFORM mismatch
+// (an apk stamped `ios-appstore`), the ios-appstore-in-the-Android-job example
+// this block was written around is 6b-ii's failure now, not this limb's. What
+// only pairing can see is a valid id on the RIGHT platform in the WRONG lane,
+// and that is what these cases build.
+//
+// 6b grades a stamp for MEMBERSHIP, 6b-ii for PLATFORM. The site is paired with
+// the row: (a) the row's `lane` is this workflow#job, (b) the row's
+// `submission.workflow` is this workflow, or (c) the segment invokes the row's
+// `submission.script`. Anything else is declared in the guard's
+// CHANNEL_STAMP_EXEMPT with a `why`, and an excuse that outlives its stamp fails
+// — that half is graded against the REAL tree only, because the table names
+// real workflow paths and a fixture has none of them.
+//
+// Red control on a copy of the real tree, 2026-09-23 (int/base-w34): re-pointing
+// the android-play row's `lane.job` from `linux_web_android` to `apple` — the
+// stamps stay put and the ROW drifts — is exit 0 on the guard as shipped and
+// exit 1 after (both android-play stamps fail as wrong-lane, and the apple job
+// fails the other direction: it stamps "macos-appstore", "ios-appstore" — never
+// "android-play").
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-channel-register — a stamped channel belongs to the job that stamps it', () => {
+  test('PASSES when the only stamp stands in its own row lane', () => {
+    const { code, out } = run(tree());
+    assert.equal(code, 0, out);
+    assert.match(out, /channel stamp\(s\) across .* paired with the row's lane, submission workflow or submission script/);
+  });
+
+  test('FAILS on a valid id, on the right platform, stamped by a job that neither builds nor ships it', () => {
+    // The build workflow's windows job compiles a WEB bundle stamped `web`. The
+    // platform matches (6b-ii is satisfied) and the id resolves (6b is), but the
+    // web row names deploy-web as its lane: a real id, a real job, and the
+    // register says they are not each other's.
+    const { code, out } = run(
+      tree({ windowsRun: 'flutter build web --release --dart-define=RELEASE_CHANNEL=web' }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /\(job "windows"\) stamps channel "web", and its lane is .*#deploy-web/);
+    assert.match(out, /a valid id in the wrong lane/);
+    assert.match(out, /CHANNEL_STAMP_EXEMPT/);
+    assert.doesNotMatch(out, /does not include "web"/);
+  });
+
+  test('PRINTS, never fails, for a row that declares no lane when the census places the build on its platform', () => {
+    // build-platforms.yml's six-platform proof stamps `linux-appimage` and
+    // `apps-gov-in`, and neither row names a lane — nothing has claimed those
+    // artifacts yet. There is no wrong job to name, so the register, not the
+    // workflow, is what has to change; failing here would demand an exemption
+    // for a fact the ROW should carry.
+    const { code, out } = run(
+      tree({ windowsRun: 'flutter build windows --release --dart-define=RELEASE_CHANNEL=windows-store' }),
+    );
+    assert.equal(code, 0, out);
+    assert.match(out, /UNANCHORED STAMP: .*stamps "windows-store", whose row declares no lane and no submission/);
+    assert.match(out, /The census has placed the build on that row's platform/);
+  });
+
+  test('a platform mismatch is 6b-ii\'s failure ALONE — pairing does not report it a second time', () => {
+    // A job that compiles macOS did not build the Windows Store artifact it
+    // stamps. 6b-ii fails that; this limb grades only the census's `graded`
+    // set, so the defect is one failing line, not two.
+    const { code, out } = run(
+      tree({ windowsRun: 'flutter build macos --release --dart-define=RELEASE_CHANNEL=windows-store' }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /stamps RELEASE_CHANNEL=windows-store, whose `platforms` is \[windows\] and does not include "macos"/);
+    assert.doesNotMatch(out, /a valid id in the wrong lane/);
+    assert.doesNotMatch(out, /UNANCHORED STAMP/);
+  });
+
+  test('FAILS in the other direction: the row lane job stamps everything but its own id', () => {
+    // The register says web is built by deploy-web; deploy-web's only STAMP is
+    // windows-store (a platform-valid, lane-less row, so the site itself
+    // prints). The site-side check cannot see this — the stamps stay put and
+    // the ROW drifts — so the lane side is asserted separately. The web build
+    // stays in the job, unstamped: without a web artifact at all, section 3b's
+    // COVERAGE LOST (exit 2) fires before this limb is reached.
+    const { code, out } = run(
+      tree({
+        releaseChannel: null,
+        laneExtraRun: ['flutter build windows --release --dart-define=RELEASE_CHANNEL=windows-store'],
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.doesNotMatch(out, /COVERAGE LOST/);
+    assert.match(out, /gives "web" \(surface app\) the lane .*#deploy-web, and that job stamps "windows-store" — never "web"/);
+  });
+
+  test('PAIRS a --channel argument through the row own submission script, wherever it runs', () => {
+    // Clause (c): the real shape is ci.yml's dry-run leg invoking
+    // submit-appstore.mjs --channel ios-appstore outside the submission workflow.
+    const { code, out } = run(
+      tree({ withSubmission: true, laneExtraRun: [`node ${SUBMIT_SCRIPT} --channel windows-store --dry-run`] }),
+    );
+    assert.equal(code, 0, out);
+    assert.match(out, /paired with the row's lane, submission workflow or submission script/);
+  });
+
+  test('FAILS on a --channel argument that names no register row — the form 6b never graded', () => {
+    const { code, out } = run(
+      tree({ withSubmission: true, laneExtraRun: [`node ${SUBMIT_SCRIPT} --channel windows-stroe --dry-run`] }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /passes --channel windows-stroe/);
+    assert.match(out, /submits nothing, or submits to the wrong listing/);
+  });
+
+  test('a ${{ }} expression is not a literal stamp and is not paired against', () => {
+    // GitHub substitutes it at run time, so there is no id here to pair or to
+    // hold to the register. A limb that read the text would report the
+    // expression itself as an unknown channel on every dispatchable workflow.
+    const { code, out } = run(
+      tree({ withSubmission: true, laneExtraRun: [`node ${SUBMIT_SCRIPT} --channel \${{ inputs.channel }}`] }),
+    );
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /inputs\.channel/);
+  });
+
+  test('a --channel behind a shell comment is prose, not an argument', () => {
+    // Inside a folded `run: >` block a `#` swallows the rest of the command, so
+    // the argument after it never reaches the script — the same cut
+    // workflow-scan's definesIn makes for a define.
+    const { code, out } = run(
+      tree({ withSubmission: true, laneExtraRun: [`echo dry-run # node ${SUBMIT_SCRIPT} --channel windows-stroe`] }),
+    );
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /windows-stroe/);
   });
 });

@@ -1,38 +1,54 @@
 # Screenshot slots — Microsoft Store (`windows-store`)
 
-Drop the listing images for this channel in **this directory**. Nothing here is
-generated: screenshots are the one listing field that cannot be derived from a
-spec var, so the tree carries the SLOT and the rules, and a human fills it.
+The listing images for this channel go in **this directory**. Nothing here is
+drawn by hand: since 2026-09-22 the frames are CAPTURED, by
+`.github/workflows/store-screenshots.yml` dispatched with `channel:
+windows-store`, which drives the REAL Windows binary on a hosted Windows runner
+and opens a pull request with the pixels in it. A human still looks at the
+images before they merge — that is the whole point of the pull request.
 
 `tooling/ci/assert-store-metadata.mjs` requires this README to exist and be
-non-empty — that is the "the slot is still declared" half. It deliberately does
-**not** require image files: there are none yet, the channel is `served: false`,
-and failing CI on artwork only the owner can produce would block every build on
-`OWNER_QUEUE A-2`. The gap is PRINTED on every guard run instead.
+non-empty. It deliberately does **not** require image files: there are none yet,
+the channel is `served: false`, and failing CI on artwork nobody has captured
+would block every build on `OWNER_QUEUE A-2`. The gap is PRINTED on every guard
+run instead.
 
-## ⚠️ Required dimensions: UNVERIFIED — do not fill a number in from memory
+⚠️ **These cannot be borrowed from another channel.** A Windows listing shows
+Windows window chrome and Segoe UI; a macOS or Linux capture dropped here shows
+the wrong chrome and the wrong system fonts, and a reviewer sees it immediately.
 
-| Field | Value | Status |
-|---|---|---|
-| Screenshot pixel dimensions (min/max) | — | ⚠️ **UNVERIFIED** — not fetched from a Microsoft page |
-| Number of screenshots (min/max) | — | ⚠️ **UNVERIFIED** |
-| Store logo / tile image sizes | — | ⚠️ **UNVERIFIED** |
-| Trailer / video specs | — | ⚠️ **UNVERIFIED** |
-| Accepted file formats | — | ⚠️ **UNVERIFIED** |
+## The rules — in `tooling/channel-register.json`, not here
 
-🔴 **Why this table is empty rather than helpful.** An invented limit fires on
-**correct** input. This repo has already rejected its own fixture at 129
-characters against a made-up "120 or fewer". D-5 — now `Private/requirements/ledger.json`’s `[10]D-5` entry,
-the stage prose having been folded into the JSON spec 2026-08-15 — records
-screenshot dimensions for **every** store as
-`COULD-NOT-ESTABLISH — not fetched; do not write a number here from memory`, and
-that is still true. Fill this table in the same increment that fetches the
-Partner Center image-requirements page, **with the URL and the date**, or leave
-it marked UNVERIFIED.
+This file used to carry a table of `UNVERIFIED` rows, because in 2026-08 no
+Microsoft image-requirements page had been read. The numbers now live in one
+place:
+`storeMetadataContract.perChannel["windows-store"].graphicAssets.screenshots` in
+`tooling/channel-register.json`, each beside a dated `source` saying where it
+came from and which of them are this repository's own HOUSE RULES rather than
+the store's. `tooling/ci/assert-listing-assets.mjs` grades the pixels against
+the register — never against this page — so a number copied into this README
+would be a second copy that drifts.
 
-Partner Center rejects a submission with the wrong image sizes and tells you the
-right ones, so the cost of not guessing is one rejected draft — cheaper than a
-number in the repo that everyone trusts and nobody sourced.
+Two things worth knowing before you look at a frame:
+
+- **There is no maximum dimension in the register, on purpose.** Microsoft
+  publishes a minimum (and a generous per-file byte cap); no upper bound was
+  read from a Microsoft page, and an invented ceiling fires on *correct* input.
+  If a run ever needs one, fetch the page, record the URL and the date, and add
+  it in that same change.
+- **The capture is never resized or cropped afterwards.** The register names
+  the exact accepted size; if a frame misses it, the answer is to capture again
+  at the right geometry, not to re-encode a captured frame.
+
+## One language, deliberately
+
+The Store lets a listing carry a different screenshot set per language. This
+listing ships **one English set** and that is a decision, not an omission: a
+second language means a second captured set, a second review and a second thing
+to keep true, and nothing in the current plan sells into a market that needs it.
+Revisit it when a market does — and when you do, revisit the *store listing
+text* at the same time, because a translated gallery over English copy reads
+worse than neither.
 
 ## Naming, once real files land
 
@@ -40,10 +56,18 @@ number in the repo that everyone trusts and nobody sourced.
 them in upload order and the order is part of the listing, so the number is the
 listing's, not the filesystem's.
 
+## Where these are uploaded
+
+By hand, into the Partner Center submission's **Store listings → Screenshots**
+section, in the order their filenames give. No API call in this repository
+uploads them; the packaging workflow ships the `.msix`, which is a different
+filing from the listing page.
+
 ## ⬜ Also missing, and it is not a screenshot
 
-There is **no Subly-specific app icon**. `apps/subscriptiontracker/pubspec.yaml`'s `msix_config`
-has no `logo_path`, so `dart run msix:create` falls back to the `msix` package's
-own default icons. That is fine for a build proof and **not** fine for a
-submission: `[10]D-6` requires a distinct visual identity per app, precisely so
-fifty apps stamped from one brick do not reach the store looking identical.
+There is **no app-specific icon**. `apps/subscriptiontracker/pubspec.yaml`'s
+`msix_config` has no `logo_path`, so `dart run msix:create` falls back to the
+`msix` package's own default icons. That is fine for a build proof and **not**
+fine for a submission: `[10]D-6` requires a distinct visual identity per app,
+precisely so fifty apps stamped from one brick do not reach the store looking
+identical.

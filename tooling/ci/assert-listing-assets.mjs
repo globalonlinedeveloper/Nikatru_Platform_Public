@@ -36,6 +36,13 @@
 //   screenshots present without provenance        -> FAIL
 //   an asset the metadata contract does not name  -> FAIL
 //   a declared limit with no `source`             -> FAIL
+//   a frame off acceptedSizes / under minWidth or
+//     minHeight / over maxBytes / outside
+//     aspectRange (non-Play rule kinds)           -> FAIL
+//   a rule kind present but unreadable            -> COVERAGE LOST
+//   `assets` ABSENT (a screenshots-only block)    -> none owed; `assets: {}` -> COVERAGE LOST
+//   a block with neither assets nor screenshots   -> COVERAGE LOST
+//   a `.png` in additionalFiles with no assets row -> FAIL   ← deleting `assets` is not a pass
 //   a frame under the ink floor recorded for IT   -> FAIL
 //   a committed frame with no ink floor recorded  -> FAIL
 //   an ink floor at or under its textless control -> FAIL   ← it could not fire
@@ -442,6 +449,53 @@ function selfTestBannerDetector(rgb) {
 const unsourced = (where) =>
   `${REGISTER} ${where} declares dimensions with NO \`source\`. An invented limit fires on CORRECT input — a made-up "120 characters or fewer" once rejected this repo's own fixture at 129 — so this guard will not enforce a number nobody sourced, and will not let the register pretend to constrain an asset it does not. Add the URL and the date the page was read, or remove the expectation.`;
 
+/** The store a channel's rules belong to, as a message names it. Play's own
+ *  wording is kept byte-for-byte for android-play; every other channel is named
+ *  by its register `name`. A finding on an Apple set that says "Play requires"
+ *  sends the reader to the wrong store's page to check the number. */
+const storeName = (row) =>
+  row.id === 'android-play' ? 'Play' : typeof row.name === 'string' && row.name.trim() !== '' ? row.name : row.id;
+
+/** "W:H" -> W/H, or null. Width over height, so "1:2" is a tall frame and "2:1" a wide one. */
+const ratio = (v) => {
+  const m = typeof v === 'string' ? /^(\d+):(\d+)$/.exec(v) : null;
+  return m && +m[1] > 0 && +m[2] > 0 ? +m[1] / +m[2] : null;
+};
+
+/** The per-frame screenshot rule kinds beyond Play's four (store-screenshots lane 1):
+ *    acceptedSizes  ["WxH", ...]   the frame must be EXACTLY one of these, orientation included
+ *                                  (Apple: a set is one of a short list of pixel sizes)
+ *    minWidth / minHeight  int     Microsoft: "1366 x 768 pixels or larger"
+ *    maxBytes       int            Snap: 2 MB per frame
+ *    aspectRange    {min:"W:H", max:"W:H"}  width:height, inclusive (Snap: 1:2 to 2:1)
+ *  A kind that is present but cannot be READ is COVERAGE LOST, never a rule that
+ *  quietly grades nothing. Returns the unreadable ones. */
+function unreadableShotRules(s, where) {
+  const bad = [];
+  const posInt = (k) => {
+    if (s[k] !== undefined && !(Number.isInteger(s[k]) && s[k] > 0)) bad.push(`${where}.${k} is ${JSON.stringify(s[k])}, not a positive integer.`);
+  };
+  posInt('minWidth');
+  posInt('minHeight');
+  posInt('maxBytes');
+  if (s.acceptedSizes !== undefined) {
+    const ok =
+      Array.isArray(s.acceptedSizes) &&
+      s.acceptedSizes.length > 0 &&
+      s.acceptedSizes.every((v) => typeof v === 'string' && /^[1-9]\d*x[1-9]\d*$/.test(v));
+    if (!ok) bad.push(`${where}.acceptedSizes is ${JSON.stringify(s.acceptedSizes)}, not a non-empty list of "WxH" strings.`);
+  }
+  if (s.aspectRange !== undefined) {
+    const a = s.aspectRange;
+    const lo = a && typeof a === 'object' ? ratio(a.min) : null;
+    const hi = a && typeof a === 'object' ? ratio(a.max) : null;
+    if (lo === null || hi === null || lo > hi) {
+      bad.push(`${where}.aspectRange is ${JSON.stringify(a)}, not {"min":"W:H","max":"W:H"} with min <= max.`);
+    }
+  }
+  return bad;
+}
+
 // ── the detector proves itself BEFORE anything is scanned ───────────────────
 // Placed here rather than inside the loop on purpose: it must run whether or not
 // a single screenshot exists, which is the entire point (see its header).
@@ -502,14 +556,53 @@ for (const row of withGraphics) {
     ...(contract.perChannel[row.id].additionalFiles ?? []),
   ]);
 
-  const assets = g.assets ?? {};
-  if (Object.keys(assets).filter((k) => k !== '_why').length === 0) {
+  const store = storeName(row);
+
+  // An ABSENT `assets` key means the channel has no fixed-size graphics: Apple,
+  // Microsoft and Snap ask for screenshots only. An EMPTY map is still refused,
+  // exactly as before — `assets: {}` is a declaration of nothing, not of none.
+  const declaresAssets = Object.prototype.hasOwnProperty.call(g, 'assets');
+  const assets = declaresAssets ? g.assets : {};
+  if (
+    declaresAssets &&
+    (!assets || typeof assets !== 'object' || Array.isArray(assets) || Object.keys(assets).filter((k) => k !== '_why').length === 0)
+  ) {
     coverageLost([
       `channel "${row.id}" declares a \`graphicAssets\` block with an EMPTY \`assets\` map.`,
       'The per-asset loop below iterates it. Empty, every listing graphic is "correct" in zero',
       'comparisons — and Play refuses to publish a listing without a feature graphic and an icon, so',
       'this would report ready while the submission could not be saved.',
     ]);
+  }
+  const s0 = g.screenshots;
+  if (!declaresAssets && !(s0 && typeof s0 === 'object' && !Array.isArray(s0))) {
+    coverageLost([
+      `channel "${row.id}" declares a \`graphicAssets\` block with NEITHER an \`assets\` map NOR a \`screenshots\` set.`,
+      'Both limbs below would skip it, so the channel would read as graded while nothing about its',
+      'graphics was measured. Declare what the store asks for, or remove the block.',
+    ]);
+  }
+  // 🔴 A screenshots-only block must not be a way to DELETE fixed-size assets.
+  // Removing `assets` used to be COVERAGE LOST; it is now a legal shape, so the
+  // other half of the declaration keeps the fact: a PNG this channel's listing
+  // must carry (`additionalFiles`) that no `assets` row measures has no size
+  // check at all — one guard holds it, and one is how an asset silently rots.
+  for (const f of contract.perChannel[row.id].additionalFiles ?? []) {
+    if (typeof f === 'string' && f.toLowerCase().endsWith('.png') && !(declaresAssets && assets && typeof assets === 'object' && f in assets)) {
+      problems.push(
+        `perChannel["${row.id}"].additionalFiles names ${f}, and graphicAssets.assets declares no size for it. The listing must carry the file and nothing measures it — declare its dimensions with a \`source\`, or stop requiring the file.`,
+      );
+    }
+  }
+  if (s0 && typeof s0 === 'object') {
+    const bad = unreadableShotRules(s0, `storeMetadataContract.perChannel["${row.id}"].graphicAssets.screenshots`);
+    if (bad.length) {
+      coverageLost([
+        ...bad,
+        'A limit this guard cannot read is not enforced, and a rule that is not enforced must not sit in',
+        'the register looking like one.',
+      ]);
+    }
   }
 
   for (const app of apps) {
@@ -532,7 +625,7 @@ for (const row of withGraphics) {
 
       if (!named.has(name)) {
         problems.push(
-          `${rel} is declared in graphicAssets but is NOT named in \`requiredFiles\` or perChannel["${row.id}"].additionalFiles. Only that list makes assert-store-metadata.mjs require the file to exist, so as declared it is held by this guard alone — delete it and one guard notices, which is one too few for an asset Play will not publish without.`,
+          `${rel} is declared in graphicAssets but is NOT named in \`requiredFiles\` or perChannel["${row.id}"].additionalFiles. Only that list makes assert-store-metadata.mjs require the file to exist, so as declared it is held by this guard alone — delete it and one guard notices, which is one too few for an asset ${store} will not publish without.`,
         );
       }
       if (typeof spec.source !== 'string' || spec.source.trim() === '') {
@@ -561,7 +654,7 @@ for (const row of withGraphics) {
       assetsChecked++;
 
       if (Number.isInteger(spec.width) && Number.isInteger(spec.height) && (h.width !== spec.width || h.height !== spec.height)) {
-        problems.push(`${rel} is ${h.width}x${h.height} and Play requires exactly ${spec.width}x${spec.height}. Source: ${spec.source}`);
+        problems.push(`${rel} is ${h.width}x${h.height} and ${store} requires exactly ${spec.width}x${spec.height}. Source: ${spec.source}`);
       }
       // 🔴 IN THE DIRECTION THIS ASSET DECLARES, not against a house rule. Play
       // wants the feature graphic WITHOUT alpha and the icon WITH it; a single
@@ -569,12 +662,12 @@ for (const row of withGraphics) {
       if (typeof spec.alpha === 'boolean' && h.hasAlpha !== spec.alpha) {
         problems.push(
           spec.alpha
-            ? `${rel} has NO alpha channel (PNG colour type ${h.colourType}) and Play requires a "32-bit PNG (with alpha)". Source: ${spec.source}`
-            : `${rel} HAS an alpha channel (PNG colour type ${h.colourType}) and Play requires a "24-bit PNG (no alpha)". Source: ${spec.source}`,
+            ? `${rel} has NO alpha channel (PNG colour type ${h.colourType}) and ${store === 'Play' ? 'Play requires a "32-bit PNG (with alpha)"' : `${store} requires an alpha channel for it`}. Source: ${spec.source}`
+            : `${rel} HAS an alpha channel (PNG colour type ${h.colourType}) and ${store === 'Play' ? 'Play requires a "24-bit PNG (no alpha)"' : `${store} requires it without alpha`}. Source: ${spec.source}`,
         );
       }
       if (Number.isInteger(spec.maxBytes) && h.bytes > spec.maxBytes) {
-        problems.push(`${rel} is ${h.bytes} bytes and Play's maximum is ${spec.maxBytes}. Source: ${spec.source}`);
+        problems.push(`${rel} is ${h.bytes} bytes and ${store}'s maximum is ${spec.maxBytes}. Source: ${spec.source}`);
       }
     }
 
@@ -598,7 +691,7 @@ for (const row of withGraphics) {
 
     if (shots.length === 0) {
       const why =
-        `${shotDir} holds NO screenshots, and Play will not publish a listing without at least ` +
+        `${shotDir} holds NO screenshots, and ${store} will not publish a listing without at least ` +
         `${s.minCount}. This is the ONE listing asset that cannot be produced on the owner's machine: it ` +
         `must be captured against a LIVE build (a demo build paints "Demo data - sample subscriptions, ` +
         `not your account" over every screen and seeds twelve third-party trademarks), a live build needs ` +
@@ -670,10 +763,10 @@ for (const row of withGraphics) {
     }
 
     if (Number.isInteger(s.minCount) && shots.length < s.minCount) {
-      problems.push(`${shotDir} holds ${shots.length} screenshot(s) and Play requires at least ${s.minCount}. Source: ${s.source}`);
+      problems.push(`${shotDir} holds ${shots.length} screenshot(s) and ${store} requires at least ${s.minCount}. Source: ${s.source}`);
     }
     if (Number.isInteger(s.maxCount) && shots.length > s.maxCount) {
-      problems.push(`${shotDir} holds ${shots.length} screenshot(s) and Play accepts at most ${s.maxCount} per device type. Source: ${s.source}`);
+      problems.push(`${shotDir} holds ${shots.length} screenshot(s) and ${store} accepts at most ${s.maxCount} per device type. Source: ${s.source}`);
     }
     if (Number.isInteger(s.recommendedCount) && shots.length < s.recommendedCount) {
       prints.push(`${shotDir} holds ${shots.length} screenshot(s); Google recommends at least ${s.recommendedCount} at 1080px+ to be eligible for the large-format recommendation surfaces. Not a publish blocker — a reach one.`);
@@ -691,21 +784,56 @@ for (const row of withGraphics) {
       const min = Math.min(h.width, h.height);
       const max = Math.max(h.width, h.height);
       if (Number.isInteger(s.minSide) && min < s.minSide) {
-        problems.push(`${rel} is ${h.width}x${h.height}; Play's "Minimum dimension" is ${s.minSide}px. Source: ${s.source}`);
+        problems.push(`${rel} is ${h.width}x${h.height}; ${store === 'Play' ? `Play's "Minimum dimension"` : `${store}'s minimum side`} is ${s.minSide}px. Source: ${s.source}`);
       }
       if (Number.isInteger(s.maxSide) && max > s.maxSide) {
-        problems.push(`${rel} is ${h.width}x${h.height}; Play's "Maximum dimension" is ${s.maxSide}px. Source: ${s.source}`);
+        problems.push(`${rel} is ${h.width}x${h.height}; ${store === 'Play' ? `Play's "Maximum dimension"` : `${store}'s maximum side`} is ${s.maxSide}px. Source: ${s.source}`);
       }
       // The constraint that is easy to miss and trivially violated by a tall
       // phone: a 1080x2400 capture (a 20:9 handset) is 2.22:1 and is REFUSED,
       // while 1080x1920 is 1.78:1 and is fine.
       if (Number.isFinite(s.maxAspectRatio) && max > min * s.maxAspectRatio) {
         problems.push(
-          `${rel} is ${h.width}x${h.height} — a ratio of ${(max / min).toFixed(2)}:1. Play: "The maximum dimension of your screenshot can't be more than twice as long as the minimum dimension." Source: ${s.source}`,
+          `${rel} is ${h.width}x${h.height} — a ratio of ${(max / min).toFixed(2)}:1. ${
+            store === 'Play'
+              ? `Play: "The maximum dimension of your screenshot can't be more than twice as long as the minimum dimension."`
+              : `${store} accepts at most ${s.maxAspectRatio}:1.`
+          } Source: ${s.source}`,
         );
       }
       if (typeof s.alpha === 'boolean' && h.hasAlpha !== s.alpha && !s.alpha) {
-        problems.push(`${rel} HAS an alpha channel (PNG colour type ${h.colourType}) and Play requires a "24-bit PNG (no alpha)". Source: ${s.source}`);
+        problems.push(
+          `${rel} HAS an alpha channel (PNG colour type ${h.colourType}) and ${store === 'Play' ? 'Play requires a "24-bit PNG (no alpha)"' : `${store}'s rule for this set is no alpha`}. Source: ${s.source}`,
+        );
+      }
+
+      // ── the rule kinds Play does not use (store-screenshots lane 1) ───────
+      // Each was validated as READABLE before the app loop, so a present kind
+      // here is always a real rule. Absent, it grades nothing and says nothing:
+      // Play's set declares none of them, so Play's verdicts are unchanged.
+      if (Array.isArray(s.acceptedSizes) && !s.acceptedSizes.includes(`${h.width}x${h.height}`)) {
+        problems.push(
+          `${rel} is ${h.width}x${h.height}, which is not one of the ${s.acceptedSizes.length} size(s) ${store} accepts for this set (${s.acceptedSizes.join(', ')}). The match is EXACT and orientation-sensitive: a frame one pixel off is refused at upload. Source: ${s.source}`,
+        );
+      }
+      if (Number.isInteger(s.minWidth) && h.width < s.minWidth) {
+        problems.push(`${rel} is ${h.width}x${h.height}; ${store} requires a width of at least ${s.minWidth}px. Source: ${s.source}`);
+      }
+      if (Number.isInteger(s.minHeight) && h.height < s.minHeight) {
+        problems.push(`${rel} is ${h.width}x${h.height}; ${store} requires a height of at least ${s.minHeight}px. Source: ${s.source}`);
+      }
+      if (Number.isInteger(s.maxBytes) && h.bytes > s.maxBytes) {
+        problems.push(`${rel} is ${h.bytes} bytes and ${store} accepts at most ${s.maxBytes} per screenshot. Source: ${s.source}`);
+      }
+      if (s.aspectRange && typeof s.aspectRange === 'object') {
+        const lo = ratio(s.aspectRange.min);
+        const hi = ratio(s.aspectRange.max);
+        const r = h.width / h.height;
+        if (lo !== null && hi !== null && (r < lo || r > hi)) {
+          problems.push(
+            `${rel} is ${h.width}x${h.height} — width:height ${r.toFixed(3)} — outside the ${s.aspectRange.min} to ${s.aspectRange.max} range ${store} accepts. Source: ${s.source}`,
+          );
+        }
       }
 
       // ── the EXACT geometry, against the set's own record ──────────────────
@@ -1185,7 +1313,15 @@ if (treesSeen === 0) {
     'Every check above ranged over nothing. Either the trees moved or the register templates did.',
   ]);
 }
-if (assetsChecked === 0) {
+// Only a channel that DECLARES fixed-size assets can owe a measurement. With
+// screenshots-only blocks legal, "no asset measured" is COVERAGE LOST exactly
+// when some channel named assets and none of them was measured — today, always,
+// because Play's block names two.
+const assetsDeclared = withGraphics.some((r) => {
+  const a = contract.perChannel[r.id].graphicAssets.assets;
+  return a && typeof a === 'object' && Object.keys(a).some((k) => k !== '_why');
+});
+if (assetsDeclared && assetsChecked === 0) {
   coverageLost([
     `${treesSeen} tree(s) were read and ZERO listing graphics were measured.`,
     'The register names assets the trees do not carry, or every asset lost its `source` and was skipped.',

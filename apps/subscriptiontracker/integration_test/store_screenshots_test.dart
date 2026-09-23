@@ -55,10 +55,14 @@
 //   node tooling/store/capture-play-screenshots.mjs           # live, shippable
 //   node tooling/store/capture-play-screenshots.mjs --proof   # demo, throwaway
 
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart' show StatefulNavigationShell;
 import 'package:integration_test/integration_test.dart';
+import 'package:intl/intl.dart' show DateFormat, Intl;
 
 import 'package:subscriptiontracker/core/a11y/web_semantics.dart'
     show releaseWebSemantics;
@@ -80,6 +84,7 @@ import 'package:subscriptiontracker/state/subscriptions_controller.dart';
 
 import 'store_board_census.dart';
 import 'store_capture_guard.dart';
+import 'store_frame_fold.dart';
 
 /// Illustrative subscriptions created through the app's OWN "Add subscription"
 /// sheet, so nothing on screen is a capability the shipping app does not have.
@@ -145,13 +150,22 @@ class _Benign {
   final String why;
 }
 
+/// The illustrative account: name, price, category, and the renewal offset in
+/// days from the run's own today.
+///
+/// ⏱ 2026-09-22 · THE FOURTH COLUMN. Until it, every row took the add sheet's
+/// default renewal (one cycle from today), so all six read the same "In N
+/// days" and `SubMath.upcoming` tied on all six — the phone and the tablet
+/// frames then listed them in two different orders. The offsets are distinct
+/// and all inside one month, so the upcoming list and the calendar both show a
+/// spread. `test/width_shell_fab_test.dart` pins a copy of this block.
 const List<List<String>> kIllustrative = <List<String>>[
-  <String>['Video streaming', '15.99', 'Streaming'],
-  <String>['Music streaming', '10.99', 'Music'],
-  <String>['Cloud storage', '2.99', 'Cloud'],
-  <String>['AI assistant', '20.00', 'AI tools'],
-  <String>['Fitness club', '39.00', 'Fitness'],
-  <String>['News digest', '4.50', 'News'],
+  <String>['Video streaming', '15.99', 'Streaming', '3'],
+  <String>['Music streaming', '10.99', 'Music', '6'],
+  <String>['Cloud storage', '2.99', 'Cloud', '11'],
+  <String>['AI assistant', '20.00', 'AI tools', '17'],
+  <String>['Fitness club', '39.00', 'Fitness', '24'],
+  <String>['News digest', '4.50', 'News', '29'],
 ];
 
 void main() {
@@ -254,6 +268,63 @@ void main() {
   void markFrame(String frame) {
     timeline.add('${sinceInstall.elapsedMilliseconds}ms  FRAME $frame written');
     publish();
+  }
+
+  // ── ⏱ 2026-09-22 · THE FOLD OF EACH FRAME, RECORDED FOR THE HOST ──────────
+  //
+  // The host cannot see a widget tree, only a PNG, so it cannot know where the
+  // page ends. This record tells it: per written frame, the fold (the body's
+  // bottom edge, where the page stops and the shell's own band begins), the
+  // pixel ratio that maps it to PNG rows, the ground colour a row must match
+  // there, and the horizontal span to read. `tooling/store/capture-row-edge.mjs`
+  // then reads the three device rows just above the fold and FAILS the set on
+  // any pixel off the ground: that is a card cut by the frame edge with no fade
+  // over it, which is the defect O-STORE-FRAME-FAB named.
+  //
+  // Recorded on BOTH postures, outside the live-backend block, because the
+  // geometry does not depend on the board: a `--proof` run with no geometry is
+  // COVERAGE LOST on the host, not a pass.
+  final List<Map<String, Object>> folds = <Map<String, Object>>[];
+
+  void recordFold(WidgetTester tester, String frame) {
+    final BuildContext shellContext = tester.element(find.byType(AppShell));
+    final ui.FlutterView view = View.of(shellContext);
+    final Rect page = tester.getRect(find.byType(StatefulNavigationShell));
+    // The add FAB is the one overlay that can sit on the fold line (the rail
+    // layout floats it over the page). Its span is skipped, padded for its
+    // shadow; everything else in the band must be ground.
+    final Finder fab = find.byKey(E2EKeys.fabAdd);
+    final List<List<double>> skip = <List<double>>[];
+    if (fab.evaluate().length == 1) {
+      final Rect r = tester.getRect(fab).inflate(StoreFrameFold.shadowPad);
+      if (r.top < page.bottom && r.bottom > page.bottom - 3) {
+        skip.add(<double>[r.left, r.right]);
+      }
+    }
+    final StoreFrameFold fold = StoreFrameFold(
+      frame: frame,
+      dpr: view.devicePixelRatio,
+      viewWidthLogical: view.physicalSize.width / view.devicePixelRatio,
+      foldTopLogical: page.bottom,
+      pageGroundArgb: Theme.of(shellContext).scaffoldBackgroundColor.toARGB32(),
+      contentLeftLogical: page.left,
+      contentRightLogical: page.right,
+      skipLogical: skip,
+    );
+    final List<String> wrong = fold.problems();
+    expect(
+      wrong,
+      isEmpty,
+      reason:
+          'The fold record for $frame is not one the host can read: '
+          '${wrong.join('; ')}. Publishing it would turn the row-edge check '
+          'into a check of nothing.',
+    );
+    folds.add(fold.toJson());
+    binding.reportData = <String, dynamic>{
+      ...?binding.reportData,
+      'folds': folds,
+    };
   }
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -874,6 +945,138 @@ void main() {
               '${onScreen(tester)}',
         );
 
+        // ── ⏱ 2026-09-22 · THE RENEWAL DAY, TYPED INTO THE PICKER ──────────
+        //
+        // Every row used to keep the sheet's default renewal (one monthly
+        // cycle from today), so all six tied in `SubMath.upcoming` and the
+        // order on screen was an accident of input order: append order on
+        // phone, the server's order on tablet. The fourth column of
+        // `kIllustrative` is an offset in days; distinct offsets mean the
+        // upcoming block never ties on this seed.
+        //
+        // TYPED, NOT TAPPED ON THE GRID. The grid shows one month, and an
+        // offset that crosses a month end needs a page turn the drive would
+        // have to get right on every date it ever runs on. Input mode parses
+        // `formatCompactDate` in the picker's own localizations, so the string
+        // typed is by construction the string the picker reads back.
+        //
+        // ⚠️ NOT YET PROVEN ON THE WEB-SERVER BUILD. If input mode cannot be
+        // driven there, the brief's fallback is the calendar grid via
+        // `find.text('${renews.day}')`. Record which one ran; do not quietly
+        // swap one for the other.
+        //
+        // Known edge, noted and not engineered around: a drive that crosses
+        // midnight UTC shifts every label by one day. Board parity matches by
+        // name, so it stays green.
+        final DateTime now = DateTime.now();
+        final DateTime renews = DateTime(
+          now.year,
+          now.month,
+          now.day + int.parse(row[3]),
+        );
+        final Finder renewalField = find.byKey(E2EKeys.addRenewal);
+        expect(
+          renewalField,
+          findsOneWidget,
+          reason:
+              'The add sheet built no renewal field under E2EKeys.addRenewal, '
+              'so "${row[0]}" would keep the default renewal and tie with '
+              'every other row. On screen: ${onScreen(tester)}',
+        );
+        await tester.ensureVisible(renewalField);
+        await pumpFor(tester, const Duration(milliseconds: 400));
+        expect(
+          renewalField.hitTestable(),
+          findsOneWidget,
+          reason:
+              'The renewal field is in the tree but a finger could not reach '
+              'it, even after ensureVisible. On screen: ${onScreen(tester)}',
+        );
+        await tester.tap(renewalField);
+        // The picker is a dialog ROUTE with an entrance animation.
+        await pumpFor(tester, const Duration(milliseconds: 900));
+        final Finder picker = find.byType(DatePickerDialog);
+        expect(
+          picker,
+          findsOneWidget,
+          reason:
+              'Tapping the renewal field for "${row[0]}" opened no date '
+              'picker. On screen: ${onScreen(tester)}',
+        );
+        final MaterialLocalizations pickerText = MaterialLocalizations.of(
+          tester.element(picker),
+        );
+        final Finder toInput = find.descendant(
+          of: picker,
+          matching: find.byTooltip(pickerText.inputDateModeButtonLabel),
+        );
+        expect(
+          toInput.hitTestable(),
+          findsOneWidget,
+          reason:
+              'The picker offers no reachable switch to input mode '
+              '("${pickerText.inputDateModeButtonLabel}"). STOP here and use '
+              'the calendar-grid fallback, recorded. On screen: '
+              '${onScreen(tester)}',
+        );
+        await tester.tap(toInput);
+        await pumpFor(tester, const Duration(milliseconds: 600));
+        final Finder typed = find.descendant(
+          of: picker,
+          matching: find.byType(TextField),
+        );
+        expect(
+          typed,
+          findsOneWidget,
+          reason:
+              'Input mode built no single date field to type into. On screen: '
+              '${onScreen(tester)}',
+        );
+        await tester.enterText(typed, pickerText.formatCompactDate(renews));
+        await pumpFor(tester, const Duration(milliseconds: 300));
+        final Finder confirm = find.descendant(
+          of: picker,
+          matching: find.text(pickerText.okButtonLabel),
+        );
+        expect(
+          confirm.hitTestable(),
+          findsOneWidget,
+          reason:
+              'The picker has no reachable "${pickerText.okButtonLabel}". On '
+              'screen: ${onScreen(tester)}',
+        );
+        await tester.tap(confirm);
+        await pumpFor(tester, const Duration(milliseconds: 900));
+
+        // The receipt, in two limbs. A picker still up means it REFUSED the
+        // typed text (input mode validates on OK and stays open with an
+        // error); a closed picker with the old date means the tap was eaten.
+        // Either would seed a tie and say nothing.
+        expect(
+          picker,
+          findsNothing,
+          reason:
+              'The picker is still open after OK, so it refused '
+              '"${pickerText.formatCompactDate(renews)}" for "${row[0]}". On '
+              'screen: ${onScreen(tester)}',
+        );
+        // The sheet prints the date with `DateFormat.yMMMd(l10n.localeName)`,
+        // and gen-l10n's `localeName` is `Intl.canonicalizedLocale` of the
+        // active locale, so this is the same string by the same route.
+        final String shown = DateFormat.yMMMd(
+          Intl.canonicalizedLocale(
+            Localizations.localeOf(tester.element(renewalField)).toString(),
+          ),
+        ).format(renews);
+        expect(
+          find.descendant(of: renewalField, matching: find.text(shown)),
+          findsOneWidget,
+          reason:
+              'The renewal field does not read "$shown" after the picker '
+              'closed, so "${row[0]}" was not given its offset of ${row[3]} '
+              'day(s). On screen: ${onScreen(tester)}',
+        );
+
         // 🔴 THE SHIP-BLOCKER, AND IT IS THE CONSENT-SCRIM CLASS AGAIN: A TAP
         // THAT MISSES WITHOUT FAILING. Run 32961461714 (2026-08-26) failed
         // twelve lines below this one with `Found 0 widgets with text "Video
@@ -1084,11 +1287,18 @@ void main() {
       // is photograph `01-home`, and a scroll here would put a mid-list frame
       // on the store listing. It is safe BECAUSE OF WHERE THIS PARTICULAR ROW
       // LANDS, measured rather than hoped. `SubMath.upcoming` takes the four
-      // soonest and every row seeded above renews on the same day (one monthly
-      // cycle from today, the sheet's default), so the stable sort leaves
-      // `kIllustrative.first` FIRST in the upcoming block: pumped at 360x640
-      // with these six rows its TREE position is y=507.5, inside the 640 the
-      // viewport has.
+      // soonest, and `kIllustrative.first` carries the smallest renewal offset
+      // of the six (3 days), so it is FIRST in the upcoming block by date
+      // alone: pumped at 360x640 with these six rows its TREE position is
+      // y=507.5, inside the 640 the viewport has.
+      //
+      // ⏱ 2026-09-22 · WAS "every row seeded above renews on the same day
+      // (one monthly cycle from today, the sheet's default), so the stable
+      // sort leaves `kIllustrative.first` FIRST". That was true until the
+      // fourth column; the rows now tie on nothing, and the row is first for a
+      // reason that holds on the server's order too. y=507.5 was measured on
+      // the old seed; the row keeps the same slot, and the number was not
+      // re-measured.
       //
       // ⚠️ READ THAT AS "NOT SCROLLED OUT OF THE LIST", NOT AS "A FINGER COULD
       // REACH IT". y=507.5 is a layout coordinate and nothing here has checked
@@ -1197,6 +1407,7 @@ void main() {
       forbidden: forbidden,
     );
     markFrame('01-home');
+    recordFold(tester, '01-home');
 
     // Tapped by ICON, not by label: `navPillKey` exists only in the compact
     // window class and each of these words also names something else on screen
@@ -1212,6 +1423,7 @@ void main() {
       forbidden: forbidden,
     );
     markFrame('02-calendar');
+    recordFold(tester, '02-calendar');
 
     await tester.tap(find.byIcon(Icons.insights_rounded));
     await pumpFor(tester, const Duration(seconds: 3));
@@ -1222,6 +1434,7 @@ void main() {
       forbidden: forbidden,
     );
     markFrame('03-insights');
+    recordFold(tester, '03-insights');
 
     await tester.tap(find.byIcon(Icons.account_balance_wallet_rounded));
     await pumpFor(tester, const Duration(seconds: 4));
@@ -1232,6 +1445,7 @@ void main() {
       forbidden: forbidden,
     );
     markFrame('04-budget');
+    recordFold(tester, '04-budget');
 
     // 🔴 SETTINGS IS NOT PHOTOGRAPHED, AND THIS COMMENT IS THE RECORD OF WHY.
     //

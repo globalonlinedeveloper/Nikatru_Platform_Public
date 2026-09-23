@@ -103,10 +103,25 @@ PurchaseRail purchaseRailFor(Ref<PurchaseRail> ref, String releaseChannel) {
     accountId: () async => ref.read(authRepositoryProvider).currentUser?.id,
     accessToken: () => ref.read(authRepositoryProvider).currentAccessToken(),
     cancellationTransport: ref.watch(cancellationTransportProvider),
-    // No app has opted in to `billing.mobileIap` (O-REVENUECAT-ACCOUNT), so no
-    // store bridge ships and a store channel answers `iapBridgeMissing`.
+    // A STAMPED APP SELLS NOTHING IN A STORE UNTIL IT OPTS IN, and that is the
+    // right default: an app with no store products, no RevenueCat app and no
+    // key would otherwise ship a buy button that cannot buy. So a store channel
+    // answers `iapBridgeMissing` — no price, no button, and NEVER the web rail
+    // as a fallback.
     // `assert-app-yaml` limb 6 holds the dependency and the declaration
-    // together; the opt-in increment passes a `RevenueCatBridge` here.
+    // together.
+    //
+    // ⏱ CORRECTED 2026-09-22 (O-IAP-BRIDGE-NOT-WIRED-IN-THE-APP): "no app has
+    // opted in" is stale — subscriptiontracker has. TO OPT IN, an app declares
+    // `billing.mobileIap` in its `app.yaml`, depends on
+    // `nikatru_billing_revenuecat`, and passes a bridge and an
+    // `IapBridgeConfig` here, built from a key its store workflows pass as
+    // `--dart-define=REVENUECAT_KEY=…`; keyless (a fork PR, a missing secret)
+    // it must stay `null`, which is what these two lines are. The brick stays
+    // bridgeless on purpose: it must not import a billing package a new app has
+    // no account for. See `apps/subscriptiontracker/lib/state/money_providers
+    // .dart` for the whole shape, and its `test/iap_opt_in_test.dart` for what
+    // an opted-in app has to prove.
     iapBridge: null,
     iapBridgeConfig: null,
   );

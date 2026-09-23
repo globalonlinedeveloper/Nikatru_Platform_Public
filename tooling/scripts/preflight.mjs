@@ -168,9 +168,25 @@ export const LEG_TIMEOUT_MS = Number(process.env.NIKATRU_PREFLIGHT_LEG_TIMEOUT_M
  *  A file has no EOF to wait for, so the wait ends when the direct child exits.
  *  `timeout` bounds the other case: a direct child that itself never exits. */
 export function captureSync(cmd, args, { cwd = ROOT, env = process.env, shell = false, timeout = LEG_TIMEOUT_MS } = {}) {
-  const dir = mkdtempSync(join(tmpdir(), 'preflight-leg-'));
-  const outFd = openSync(join(dir, 'stdout'), 'w');
-  const errFd = openSync(join(dir, 'stderr'), 'w');
+  // ⏱ 2026-09-23 — "never throw" held for the spawn and not for the capture
+  // files: an unusable temp directory made mkdtempSync throw, and because
+  // TREE_AT_START calls run() at module load, preflight died as an uncaught
+  // crash before any leg ran — no FAIL leg, no verdict. The command is not run
+  // (there is nowhere to capture it to); the caller gets a null status and the
+  // reason in `out`, which run() and exec() already grade as a failure.
+  let dir;
+  let outFd;
+  let errFd;
+  try {
+    dir = mkdtempSync(join(tmpdir(), 'preflight-leg-'));
+    outFd = openSync(join(dir, 'stdout'), 'w');
+    errFd = openSync(join(dir, 'stderr'), 'w');
+  } catch (error) {
+    if (outFd !== undefined) closeSync(outFd);
+    if (dir) { try { rmSync(dir, { recursive: true, force: true }); } catch {} }
+    const out = `COULD NOT CAPTURE — no capture file under ${tmpdir()} (${error?.code ?? error?.message ?? error}), so \`${cmd} ${args.join(' ')}\` was NOT run.\n`;
+    return { status: null, out, error, timedOut: false, timeout };
+  }
   let r;
   try {
     r = spawnSync(cmd, args, { cwd, env, shell, timeout, killSignal: 'SIGKILL', windowsHide: true, stdio: ['ignore', outFd, errFd] });
@@ -462,7 +478,19 @@ function step(name, why, fn) {
   if (UNTRACKED_ONLY && name !== UNTRACKED_LEG) return;
   if (SWEEP_ONLY && name !== SWEEP_LEG && name !== UNTRACKED_LEG) return;
   process.stdout.write(`… ${name}\n`);
-  const { code, out } = fn();
+  // 🔴 A LEG THAT THROWS IS A FAILED LEG, NOT A CRASH (2026-09-23). Uncaught, the
+  // throw would skip `releaseWorkLock()` below and leave the machine-wide lock to
+  // the `process.on('exit')` handler — the one release path a process hung at exit
+  // never reaches (O-PREFLIGHT-HANGS-HOLDING-THE-MACHINE-LOCK). Caught here, every
+  // way out of the work goes through the verdict, and the verdict releases first.
+  let code;
+  let out;
+  try {
+    ({ code, out } = fn());
+  } catch (e) {
+    code = 1;
+    out = `🔴 THE LEG THREW instead of returning a verdict — graded as a failure:\n${e?.stack ?? e}`;
+  }
   results.push({ name, why, code, out });
   process.stdout.write(code === 0 ? `ok   ${name}\n` : `FAIL ${name}\n`);
   // ⬜ An observation prints on a GREEN leg too. A non-blocking advisory nobody
@@ -580,9 +608,16 @@ step(
 // 📌 THE CONTRACT OF THIS SCRIPT IS: preflight ≡ CI. Anything STRICTER than CI is
 // printed as an observation and never blocks. The stamped-app format check, which
 // IS what CI runs, lives in leg 5 where the stamp exists.
+// ⏱ 2026-09-23 — AND ONE TRACKED PATH IS GATED NOW, SO THIS LEG BLOCKS ON IT.
+// ci.yml's workspace-gate step `The shipping app is dart format-clean` gates
+// apps/subscriptiontracker; PR 889 went red there while this leg printed
+// "CI does not gate these", which was false by then. Drift under a CI-gated path
+// fails here — unless the local Flutter is not the tooling/versions.json pin, the
+// same skew downgrade leg 5 applies, because then this machine's dart_style is not CI's.
+const CI_FORMAT_GATED = ['apps/subscriptiontracker/'];
 step(
-  'format drift in tracked Dart (printed — CI gates only the STAMPED apps)',
-  'ci.yml format-gates apps/probe and apps/probeapi only. Tree-wide drift is real but is NOT a CI failure, so it is surfaced here and never blocks.',
+  'format drift in tracked Dart (fails on CI-gated paths, prints the rest)',
+  'ci.yml format-gates the stamped apps (leg 5) and apps/subscriptiontracker (workspace-gate). Drift there fails; drift elsewhere is real but NOT a CI failure, so it is printed and never blocks.',
   () => {
     const files = run('git', ['ls-files', '*.dart']).out.split(/\r?\n/).filter(Boolean)
       // The brick template is not parseable Dart — it carries mustache in
@@ -614,12 +649,30 @@ step(
         if (line.startsWith('Changed ')) drifted.push(line.replace(/^Changed\s+/, ''));
       }
     }
-    return {
-      code: 0,
-      out: drifted.length === 0
-        ? `${files.length} tracked Dart file(s) format-clean`
-        : `⬜ ${drifted.length} of ${files.length} tracked Dart file(s) are NOT format-clean. CI does not gate these — it gates only the stamped apps — so this is an observation, not a blocker:\n   · ${drifted.join('\n   · ')}`,
-    };
+    if (drifted.length === 0) return { code: 0, out: `${files.length} tracked Dart file(s) format-clean` };
+    const gated = drifted.filter((p) => CI_FORMAT_GATED.some((g) => p.replace(/\\/g, '/').startsWith(g)));
+    const loose = drifted.filter((p) => !gated.includes(p));
+    const lines = [];
+    let code = 0;
+    if (gated.length > 0) {
+      let ciPin = null;
+      try { ciPin = JSON.parse(readFileSync(resolve(ROOT, 'tooling/versions.json'), 'utf8')).flutter ?? null; } catch { /* named below */ }
+      const localVer = (run('flutter', ['--version']).out.match(/Flutter\s+([0-9.]+)/) || [])[1] ?? null;
+      if (!ciPin || !localVer) {
+        code = 1;
+        lines.push(`🔴 ${gated.length} file(s) under a CI-gated path are not format-clean, and the skew check could not run (pin ${ciPin ?? 'unreadable'}, local ${localVer ?? 'unknown'}):`);
+      } else if (ciPin !== localVer) {
+        lines.push(`⬜ ${gated.length} file(s) under a CI-gated path disagree with THIS machine's dart format, but local Flutter ${localVer} != the tooling/versions.json pin ${ciPin}, so this is not CI's dart_style. NOT failed; CI's workspace gate prints the authoritative diff. Match the pin to make this leg decisive:`);
+      } else {
+        code = 1;
+        lines.push(`🔴 ${gated.length} file(s) under a path CI format-gates (workspace-gate, \`The shipping app is dart format-clean\`) are not format-clean, so CI will fail. Run \`dart format <file>\`:`);
+      }
+      lines.push(`   · ${gated.join('\n   · ')}`);
+    }
+    if (loose.length > 0) {
+      lines.push(`⬜ ${loose.length} of ${files.length} tracked Dart file(s) outside the CI-gated paths are NOT format-clean. An observation, not a blocker:\n   · ${loose.join('\n   · ')}`);
+    }
+    return { code, out: lines.join('\n') };
   },
 );
 

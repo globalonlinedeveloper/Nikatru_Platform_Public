@@ -135,6 +135,13 @@ const put = (root, rel, text) => writeFileSync(join(root, rel), text);
 const get = (root, rel) => readFileSync(join(root, rel), 'utf8');
 const kill = (root) => rmSync(root, { recursive: true, force: true });
 
+/** The declaration with its top-level `billing:` block removed. ⏱ 2026-09-22 —
+ *  apps/subscriptiontracker opted in to mobile IAP, so a case that appends its
+ *  own billing block, or is ABOUT an app that has not opted in, must take the
+ *  real one away first: appending a second `billing:` key is a different failure
+ *  (a duplicate key) from the one the case names. Comments above it stay. */
+const withoutBilling = (text) => text.replace(/^billing:\n(?:[ \t]+\S.*\n)*/m, '');
+
 /** Every store listing directory `render.mjs --check` will grade, DERIVED from
  *  the two authorities the renderer itself reads: the register's `kind: "store"`
  *  rows with a `{app}` template, filtered to the ones that exist on disk. The
@@ -727,10 +734,49 @@ describe('limb 6 — the mobile-IAP opt-in and the bridge dependency travel toge
     'name: subscriptiontracker\nenvironment:\n  sdk: ">=3.5.0 <4.0.0"\ndependencies:\n' +
     deps.map((d) => `  ${d}:\n    path: ../../packages/x\n`).join('');
 
-  test('POSITIVE CONTROL — no declaration and no dependency is the shipped tree', () => {
+  /** The app opted in (`declare`) or not (`undeclare`), whatever the real
+   *  declaration says today — each case states the side it is about. */
+  const declare = (root) => put(root, APP_YAML, withoutBilling(get(root, APP_YAML)) + IAP_BLOCK);
+  const undeclare = (root) => put(root, APP_YAML, withoutBilling(get(root, APP_YAML)));
+
+  const SDK_ROW = 'purchases_flutter 10.13.1';
+  const IAP_PACKAGE = 'nikatru_billing_revenuecat';
+
+  /** 🔴 THE STORE ROWS ARE WRITTEN INTO THE FIXTURE, never inherited. They are
+   *  what limb 6 grades, so a case that took them from the real files would be
+   *  testing whatever the real files say that day. `ios`/`macos` put or remove a
+   *  `purchases_flutter <version>` row in that `binaryInventory`; `play` puts or
+   *  removes the bridge's `dependencySurface.direct` entry. Nothing else moves. */
+  const storeRows = (root, { ios, macos, play }) => {
+    const apple = readJson(root, APPLE_SWORN);
+    for (const [platform, want] of [['ios', ios], ['macos', macos]]) {
+      const rows = apple.binaryInventory[platform].filter((r) => !/^purchases_flutter\b/.test(String(r.binary)));
+      if (want) {
+        rows.push({ binary: SDK_ROW, manifest: 'fixture', accessedApis: [], basis: ['fixture row'] });
+      }
+      apple.binaryInventory[platform] = rows;
+    }
+    putJson(root, APPLE_SWORN, apple);
+    const ds = readJson(root, PLAY_SWORN);
+    if (play) ds.dependencySurface.direct[IAP_PACKAGE] = { introduces: ['Purchase history'], why: 'fixture entry' };
+    else delete ds.dependencySurface.direct[IAP_PACKAGE];
+    putJson(root, PLAY_SWORN, ds);
+  };
+
+  /** An opted-in app whose pubspec and Play `Purchase history` answer are both
+   *  right, so the only variable left is the store rows the case sets. */
+  const optedIn = (root, rows) => {
+    put(root, 'apps/subscriptiontracker/pubspec.yaml', pubspec(['nikatru_purchases', IAP_PACKAGE]));
+    declare(root);
+    storeRows(root, rows);
+  };
+
+  test('POSITIVE CONTROL — no declaration, no dependency and no store SDK row is clean', () => {
     const root = tree();
     try {
       put(root, 'apps/subscriptiontracker/pubspec.yaml', pubspec(['nikatru_purchases']));
+      undeclare(root);
+      storeRows(root, { ios: false, macos: false, play: false });
       const { code, out } = spawn(GUARD, [root]);
       assert.equal(code, 0, `expected a clean tree, got ${code}:\n${out}`);
       // The empty forward domain is PRINTED, never resolved to an ok line — an
@@ -739,11 +785,21 @@ describe('limb 6 — the mobile-IAP opt-in and the bridge dependency travel toge
     } finally { kill(root); }
   });
 
+  test('POSITIVE CONTROL — declared, depended on, and every structured store row present is clean', () => {
+    const root = tree();
+    try {
+      optedIn(root, { ios: true, macos: true, play: true });
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 0, `expected a clean tree, got ${code}:\n${out}`);
+      assert.match(out, /limb 6 — 1 of 1 app\(s\) declare mobile IAP/);
+    } finally { kill(root); }
+  });
+
   test('declared WITHOUT the bridge dependency fails', () => {
     const root = tree();
     try {
       put(root, 'apps/subscriptiontracker/pubspec.yaml', pubspec(['nikatru_purchases']));
-      put(root, APP_YAML, get(root, APP_YAML) + IAP_BLOCK);
+      declare(root);
       const { code, out } = spawn(GUARD, [root]);
       assert.equal(code, 1, `expected a finding, got ${code}:\n${out}`);
       assert.match(out, /does not depend on nikatru_billing_revenuecat/);
@@ -761,6 +817,8 @@ describe('limb 6 — the mobile-IAP opt-in and the bridge dependency travel toge
         'apps/subscriptiontracker/pubspec.yaml',
         pubspec(['nikatru_purchases', 'nikatru_billing_revenuecat']),
       );
+      undeclare(root);
+      storeRows(root, { ios: false, macos: false, play: false });
       const { code, out } = spawn(GUARD, [root]);
       assert.equal(code, 1, `expected a finding, got ${code}:\n${out}`);
       assert.match(out, /declares no .billing\.mobileIap./);
@@ -779,6 +837,8 @@ describe('limb 6 — the mobile-IAP opt-in and the bridge dependency travel toge
         pubspec(['nikatru_purchases']) +
           '  # nikatru_billing_revenuecat: deliberately absent — see ADR 026.\n',
       );
+      undeclare(root);
+      storeRows(root, { ios: false, macos: false, play: false });
       const { code, out } = spawn(GUARD, [root]);
       assert.equal(code, 0, `a comment must not read as a dependency:\n${out}`);
     } finally { kill(root); }
@@ -787,12 +847,7 @@ describe('limb 6 — the mobile-IAP opt-in and the bridge dependency travel toge
   test('declared, depended on, but the Play form does not swear Purchase history', () => {
     const root = tree();
     try {
-      put(
-        root,
-        'apps/subscriptiontracker/pubspec.yaml',
-        pubspec(['nikatru_purchases', 'nikatru_billing_revenuecat']),
-      );
-      put(root, APP_YAML, get(root, APP_YAML) + IAP_BLOCK);
+      optedIn(root, { ios: true, macos: true, play: true });
       const ds = JSON.parse(get(root, 'apps/subscriptiontracker/store/android-play/data-safety.json'));
       const posture = ds.buildPosture.current;
       for (const a of ds.answers) {
@@ -805,23 +860,88 @@ describe('limb 6 — the mobile-IAP opt-in and the bridge dependency travel toge
     } finally { kill(root); }
   });
 
-  test('declared, depended on, and the Apple manifest names the provider nowhere', () => {
+  // 🔴 RED CONTROLS FOR THE PROSE FALSE-PASS, ⏱ 2026-09-22. The Apple half used
+  // to regex the WHOLE stringified manifest for /revenue\s*cat|purchases_flutter/i,
+  // and the real manifest says, in a `basis`, that "the RevenueCat line is gone"
+  // — so a sentence recording the SDK's REMOVAL satisfied the check that it was
+  // present. Each case below leaves (and adds) exactly that kind of prose, proves
+  // the old regex would have matched it, and requires RED anyway.
+  const OLD_TOKEN = /revenue\s*cat|purchases_flutter/i;
+
+  test('RED CONTROL — a manifest that names RevenueCat only in PROSE, with no inventory row, fails', () => {
     const root = tree();
     try {
-      put(
-        root,
-        'apps/subscriptiontracker/pubspec.yaml',
-        pubspec(['nikatru_purchases', 'nikatru_billing_revenuecat']),
-      );
-      put(root, APP_YAML, get(root, APP_YAML) + IAP_BLOCK);
-      const rel = 'apps/subscriptiontracker/store/ios-appstore/privacy-manifest.json';
-      const apple = get(root, rel)
-        .replace(/purchases_flutter/g, 'some_other_package')
-        .replace(/RevenueCat/gi, 'SomeOtherVendor');
-      put(root, rel, apple);
+      optedIn(root, { ios: false, macos: false, play: true });
+      const apple = readJson(root, APPLE_SWORN);
+      apple.binaryInventory._why = [].concat(apple.binaryInventory._why ?? [], [
+        `RevenueCat's ${SDK_ROW} is linked through ${IAP_PACKAGE} on both Apple platforms.`,
+      ]);
+      putJson(root, APPLE_SWORN, apple);
+      assert.match(get(root, APPLE_SWORN), OLD_TOKEN, 'the fixture must carry the prose the old regex matched');
       const { code, out } = spawn(GUARD, [root]);
       assert.equal(code, 1, `expected a finding, got ${code}:\n${out}`);
-      assert.match(out, /names the provider nowhere/);
+      assert.match(out, /binaryInventory\.ios has no "purchases_flutter <version>" row/);
+      assert.match(out, /binaryInventory\.macos has no "purchases_flutter <version>" row/);
+    } finally { kill(root); }
+  });
+
+  test('RED CONTROL — an iOS row does not answer for the macOS binary', () => {
+    // Two bundles, two aggregated privacy reports. The manifest's `channels`
+    // names both App Store channels, so both inventories must carry the row.
+    const root = tree();
+    try {
+      optedIn(root, { ios: true, macos: false, play: true });
+      assert.deepEqual(
+        readJson(root, APPLE_SWORN).channels.filter((c) => /appstore$/.test(c)).sort(),
+        ['ios-appstore', 'macos-appstore'],
+        'the fixture manifest must ship on both App Store channels or this case is about nothing',
+      );
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, `expected a finding, got ${code}:\n${out}`);
+      assert.match(out, /binaryInventory\.macos has no "purchases_flutter <version>" row/);
+      assert.doesNotMatch(out, /binaryInventory\.ios has no/);
+    } finally { kill(root); }
+  });
+
+  test('RED CONTROL — a Play form that names the bridge only in PROSE fails', () => {
+    // The Android half reads `dependencySurface.direct`, the map
+    // assert-play-declarations holds equal to the pubspec — never the text.
+    const root = tree();
+    try {
+      optedIn(root, { ios: true, macos: true, play: false });
+      const ds = readJson(root, PLAY_SWORN);
+      ds.dependencySurface._why = [].concat(ds.dependencySurface._why ?? [], [
+        `${IAP_PACKAGE} links RevenueCat's purchases_flutter into the Play build.`,
+      ]);
+      putJson(root, PLAY_SWORN, ds);
+      assert.match(get(root, PLAY_SWORN), new RegExp(IAP_PACKAGE), 'the fixture must name the bridge in prose');
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, `expected a finding, got ${code}:\n${out}`);
+      assert.match(out, /dependencySurface\.direct has no "nikatru_billing_revenuecat" entry/);
+    } finally { kill(root); }
+  });
+
+  test('an Apple SDK row WITHOUT the declaration fails — the reverse, on the same field', () => {
+    const root = tree();
+    try {
+      put(root, 'apps/subscriptiontracker/pubspec.yaml', pubspec(['nikatru_purchases']));
+      undeclare(root);
+      storeRows(root, { ios: false, macos: true, play: false });
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, `expected a finding, got ${code}:\n${out}`);
+      assert.match(out, /binaryInventory\.macos carries a purchases_flutter row and .* declares no .billing\.mobileIap./);
+    } finally { kill(root); }
+  });
+
+  test('a Play dependencySurface entry WITHOUT the declaration fails — the reverse, on the same field', () => {
+    const root = tree();
+    try {
+      put(root, 'apps/subscriptiontracker/pubspec.yaml', pubspec(['nikatru_purchases']));
+      undeclare(root);
+      storeRows(root, { ios: false, macos: false, play: true });
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, `expected a finding, got ${code}:\n${out}`);
+      assert.match(out, /dependencySurface\.direct names nikatru_billing_revenuecat and .* declares no .billing\.mobileIap./);
     } finally { kill(root); }
   });
 
@@ -833,7 +953,7 @@ describe('limb 6 — the mobile-IAP opt-in and the bridge dependency travel toge
       put(
         root,
         APP_YAML,
-        get(root, APP_YAML) +
+        withoutBilling(get(root, APP_YAML)) +
           '\nbilling:\n  mobileIap:\n    provider: revenuecat\n' +
           '    entitlementId: pro\n    revenuecatAppIds:\n      android: only_android\n',
       );
@@ -1100,19 +1220,28 @@ describe('ADR 085 A — the RevenueCat app-id map is rendered from the declarati
     return root;
   };
 
-  test('the committed module matches the declarations (no app declares mobile IAP today)', () => {
+  test('the committed module matches the declarations', () => {
+    // ⏱ 2026-09-22 — this case used to pin the EMPTY map ("no app declares
+    // mobile IAP today"). apps/subscriptiontracker opted in, so the expectation is
+    // read from the declaration itself: every declared id routes to its app, and
+    // an app that declares none leaves the map empty.
     const root = withModule();
     try {
       const { code, out } = spawn(RENDER, [root, '--check']);
       assert.equal(code, 0, out);
-      assert.match(get(root, MODULE), /export const REVENUECAT_APP_IDS: Readonly<Record<string, string>> = \{\n\};/);
+      const ids = parseYaml(get(root, APP_YAML))?.billing?.mobileIap?.revenuecatAppIds ?? {};
+      const text = get(root, MODULE);
+      if (Object.keys(ids).length === 0) {
+        assert.match(text, /export const REVENUECAT_APP_IDS: Readonly<Record<string, string>> = \{\n\};/);
+      }
+      for (const rc of Object.values(ids)) assert.match(text, new RegExp(`"${rc}": "subscriptiontracker",`));
     } finally { kill(root); }
   });
 
   test('a declaration renders its ids into the module, and --check names the stale file first', () => {
     const root = withModule();
     try {
-      put(root, APP_YAML, get(root, APP_YAML) + IAP);
+      put(root, APP_YAML, withoutBilling(get(root, APP_YAML)) + IAP);
       const stale = spawn(RENDER, [root, '--check']);
       assert.equal(stale.code, 1, stale.out);
       assert.match(stale.out, /revenuecat-app-ids\.ts/);
@@ -1137,7 +1266,7 @@ describe('ADR 085 A — the RevenueCat app-id map is rendered from the declarati
   test('one RevenueCat id declared by TWO apps is a problem, never last-writer-wins', () => {
     const root = withModule();
     try {
-      put(root, APP_YAML, get(root, APP_YAML) + IAP);
+      put(root, APP_YAML, withoutBilling(get(root, APP_YAML)) + IAP);
       mkdirSync(join(root, 'apps/twin'), { recursive: true });
       // The twin carries no `shortName`, so it is not asked for icon-label files
       // this fixture has no reason to copy.

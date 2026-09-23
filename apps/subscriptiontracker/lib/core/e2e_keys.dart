@@ -19,6 +19,11 @@ class E2EKeys {
   static const Key addPrice = Key('e2e_add_price');
   static const Key addSubmit = Key('e2e_add_submit');
 
+  /// The renewal-date field. The store suite taps it and TYPES a date into the
+  /// picker's input mode, so each seeded row renews on its own day instead of
+  /// the sheet's one-cycle default (2026-09-22).
+  static const Key addRenewal = Key('e2e_add_renewal');
+
   // App shell.
   static const Key fabAdd = Key('e2e_fab_add');
 

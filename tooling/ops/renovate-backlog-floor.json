@@ -1,0 +1,23 @@
+{
+  "_readme": [
+    "Ceilings for tooling/ops/check-renovate-backlog.mjs (row O-RENOVATE-BACKLOG-OUTRUNS-ITS-LIMITS, limb 3).",
+    "Each value carries its measured basis. A ceiling is never set above what would stay green on the measured",
+    "failure state, and never below 0.7 x that measurement. Re-measure with `node tooling/ops/check-renovate-backlog.mjs --json`."
+  ],
+  "issue": 417,
+  "measured": {
+    "asOf": "2026-09-22T06:01:55Z",
+    "source": "#417 body and its userContentEdits (26 revisions, 2026-09-03T05:42:42Z to 2026-09-22T06:01:55Z)",
+    "waiting": 21,
+    "oldestDays": 19.0,
+    "arrivalPerWeek": 4.4
+  },
+  "maxWaiting": {
+    "value": 15,
+    "basis": "0.7 x the 21 waiting on 2026-09-22 = 14.7, rounded up. With prHourlyLimit 6 x two runs per Monday window = 12 PRs a week against 4.4 arriving, the queue before a Monday should hold about one week of arrivals; 15 is reached only after about two Mondays that opened nothing."
+  },
+  "maxOldestDays": {
+    "value": 14,
+    "basis": "An update found just after a Monday window waits up to 7 days for the next one; 14 is one whole missed Monday. 0.7 x the 19.0 days the oldest entry had waited on 2026-09-22 = 13.3, so 14 is above that bound and still red on the measured state."
+  }
+}

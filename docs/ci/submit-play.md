@@ -261,6 +261,16 @@ shortfall would have been fatal". The tablet frames are 9:16 with both
 sides inside [1,080, 3,840], which is the rule Google states for
 "Chromebook and tablets" verbatim.
 
+── ⏱ 2026-09-23: THE FLAG NOW NAMES ITS CHANNEL ────────────────────────
+The quote above is kept as measured. The step now runs
+`--for-submission=android-play`: once the iOS, macOS, Windows and Snap
+channels declared their own (still empty) device-type sets, the bare flag
+made every declared channel's gap fatal, so an empty iPad set would have
+refused a PLAY upload. Only the named channel's gaps are fatal now; a bare
+`--for-submission` is COVERAGE LOST (exit 2). The OK line reads
+"--for-submission=android-play, so a shortfall on that channel would have
+been fatal".
+
 ⚠️ RUN 32451812894 IS NOT EVIDENCE ABOUT THIS TREE. It is the last
 dispatch of this workflow, it failed on exactly this step, and it ran on
 2026-08-21 — hours BEFORE the register row that fixes it. A red run that

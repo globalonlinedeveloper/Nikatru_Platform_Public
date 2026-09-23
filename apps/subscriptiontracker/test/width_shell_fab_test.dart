@@ -56,12 +56,14 @@
 // sideways / got shorter" cannot become the reason this file is green.
 // ─────────────────────────────────────────────────────────────────────────────
 import 'dart:io';
-import 'dart:math' as math;
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart' show StatefulNavigationShell;
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'package:subscriptiontracker/core/e2e_keys.dart';
@@ -166,10 +168,14 @@ class _SignedInAuth extends core.AuthRepository {
 /// so the FAB under test is reachable ONLY through the router. Same rig, and
 /// the same overrides, as `a11y_semantics_test.dart`'s `pumpShell`. [overrides]
 /// are appended last, so on riverpod 2.6.1 they win (see `pumpAt`).
+///
+/// [grab] wraps the app in ONE `RepaintBoundary` keyed [_grabKey], so [_grab]
+/// can read the pixels a camera would. It changes no layout.
 Future<ProviderContainer> _pumpShell(
   WidgetTester tester,
   Size size, {
   List<Override> overrides = const <Override>[],
+  bool grab = false,
 }) async {
   await setSurface(tester, size);
   final ProviderContainer c = ProviderContainer(
@@ -183,17 +189,18 @@ Future<ProviderContainer> _pumpShell(
     ],
   );
   addTearDown(c.dispose);
+  final Widget app = MaterialApp.router(
+    localizationsDelegates: <LocalizationsDelegate<dynamic>>[
+      ...AppLocalizations.localizationsDelegates,
+      ChassisLocalizations.delegate,
+    ],
+    supportedLocales: AppLocalizations.supportedLocales,
+    routerConfig: c.read(routerProvider),
+  );
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: c,
-      child: MaterialApp.router(
-        localizationsDelegates: <LocalizationsDelegate<dynamic>>[
-          ...AppLocalizations.localizationsDelegates,
-          ChassisLocalizations.delegate,
-        ],
-        supportedLocales: AppLocalizations.supportedLocales,
-        routerConfig: c.read(routerProvider),
-      ),
+      child: grab ? RepaintBoundary(key: _grabKey, child: app) : app,
     ),
   );
   await tester.pumpAndSettle();
@@ -342,6 +349,115 @@ Rect _lowest(WidgetTester tester, Finder rows) {
   return lowest;
 }
 
+// ── PIXELS: THE FOLD FADE ───────────────────────────────────────────────────
+
+/// The boundary [_pumpShell] puts round the app when asked to [grab].
+const Key _grabKey = Key('width-shell-fab.grab');
+
+/// One rendered frame: RGBA bytes, one pixel per LOGICAL pixel.
+typedef _Frame = ({Uint8List rgba, int width, int height});
+
+/// Largest per-channel gap tolerated between a pixel and the page ground. The
+/// fade's solid tail is the exact ground colour, so this only absorbs raster
+/// rounding.
+const int _groundTolerance = 2;
+
+/// How far above the fade's top [_straddle] puts a card's top edge, so a probe
+/// halfway down that strip reads the card's own surface, clear of the fade.
+const double _straddleLead = 8;
+
+Future<_Frame> _grab(WidgetTester tester) async {
+  final RenderRepaintBoundary boundary = tester
+      .renderObject<RenderRepaintBoundary>(find.byKey(_grabKey));
+  final _Frame? out = await tester.runAsync(() async {
+    final ui.Image image = await boundary.toImage(pixelRatio: 1);
+    final ByteData? bytes = await image.toByteData(
+      format: ui.ImageByteFormat.rawRgba,
+    );
+    final _Frame frame = (
+      rgba: bytes!.buffer.asUint8List(),
+      width: image.width,
+      height: image.height,
+    );
+    image.dispose();
+    return frame;
+  });
+  expect(out, isNotNull, reason: 'the frame could not be read back');
+  return out!;
+}
+
+/// The largest RGB channel gap between the pixel at ([x], [y]) and [ground].
+int _offGround(_Frame f, int x, int y, Color ground) {
+  final int i = (y * f.width + x) * 4;
+  final int argb = ground.toARGB32();
+  int worst = 0;
+  for (final int d in <int>[
+    (f.rgba[i] - ((argb >> 16) & 0xff)).abs(),
+    (f.rgba[i + 1] - ((argb >> 8) & 0xff)).abs(),
+    (f.rgba[i + 2] - (argb & 0xff)).abs(),
+  ]) {
+    if (d > worst) worst = d;
+  }
+  return worst;
+}
+
+/// The cards of the page at [path], inside its first list.
+Finder _pageCards(String path) {
+  final Finder list = find.byType(ListView).first;
+  if (path == '/home') {
+    return find.descendant(of: list, matching: find.byType(RowCard));
+  }
+  final RegExp barKey = RegExp(r'^budget\.bar\.\d+$');
+  return find.descendant(
+    of: list,
+    matching: find.byWidgetPredicate(
+      (Widget w) =>
+          w.key is ValueKey<String> &&
+          barKey.hasMatch((w.key! as ValueKey<String>).value),
+    ),
+  );
+}
+
+/// Scrolls the page's first list so the first card that fits sits with its
+/// top [_straddleLead] px above the fade and its body across [foldY]. Returns
+/// its rect after ONE jump, or null when no card can be put there within the
+/// list's extent (a page that does not scroll, a card too short).
+Future<Rect?> _straddle(WidgetTester tester, Finder cards, double foldY) async {
+  final Finder list = find.byType(ListView).first;
+  if (list.evaluate().isEmpty) return null;
+  final ScrollableState s = _scrollerOf(tester, list);
+  final double top = foldY - AppShell.foldFade - _straddleLead;
+  // ⏱ 2026-09-23 · A LAZY LIST HAS NOT BUILT A ROW IT HAS NOT REACHED. On the
+  // base this re-landed on, phone 360 /home at offset 0 built ZERO `RowCard`s
+  // (measured: 1 list, 0 cards, maxScrollExtent 1060): the header, hero and
+  // upcoming strip fill the viewport plus its cache extent, so the loop below
+  // ran over nothing and returned null. Step half a viewport at a time until a
+  // card exists, then measure from wherever that leaves the list.
+  while (cards.evaluate().isEmpty &&
+      s.position.pixels < s.position.maxScrollExtent) {
+    s.position.jumpTo(
+      (s.position.pixels + s.position.viewportDimension / 2).clamp(
+        0.0,
+        s.position.maxScrollExtent,
+      ),
+    );
+    await tester.pumpAndSettle();
+  }
+  // Elements, not indexes: a jump rebuilds the list and would re-point
+  // `cards.at(i)`.
+  for (final Element e in cards.evaluate().toList()) {
+    final Rect r = tester.getRect(_exactly(e));
+    if (r.height <= AppShell.foldFade + _straddleLead) continue;
+    final double target = s.position.pixels + r.top - top;
+    if (target < 0 || target > s.position.maxScrollExtent) continue;
+    s.position.jumpTo(target);
+    await tester.pumpAndSettle();
+    final Rect after = tester.getRect(_exactly(e));
+    return after.top <= top + 0.5 && after.bottom > foldY ? after : null;
+  }
+  return null;
+}
+
 // ── AT REST: THE FRAME THE STORE ACTUALLY PHOTOGRAPHS ───────────────────────
 // Everything above scrolls a list to its END. The store suite never does: it
 // photographs each tab at scroll offset 0 (`store_screenshots_test.dart`, the
@@ -355,33 +471,34 @@ Rect _lowest(WidgetTester tester, Finder rows) {
 const Size _capturePhone = Size(360, 640);
 
 /// The six rows the store suite seeds, as `kIllustrative` in
-/// `integration_test/store_screenshots_test.dart` declares them. Copied rather
+/// `integration_test/store_screenshots_test.dart` declares them: name, price,
+/// category and (since 2026-09-22) the renewal offset in days. Copied rather
 /// than imported (that file is an integration binding, not a library); the
 /// first case of the group pins the copy to the source text, so the two cannot
 /// drift apart silently.
 const List<List<String>> _illustrative = <List<String>>[
-  <String>['Video streaming', '15.99', 'Streaming'],
-  <String>['Music streaming', '10.99', 'Music'],
-  <String>['Cloud storage', '2.99', 'Cloud'],
-  <String>['AI assistant', '20.00', 'AI tools'],
-  <String>['Fitness club', '39.00', 'Fitness'],
-  <String>['News digest', '4.50', 'News'],
+  <String>['Video streaming', '15.99', 'Streaming', '3'],
+  <String>['Music streaming', '10.99', 'Music', '6'],
+  <String>['Cloud storage', '2.99', 'Cloud', '11'],
+  <String>['AI assistant', '20.00', 'AI tools', '17'],
+  <String>['Fitness club', '39.00', 'Fitness', '24'],
+  <String>['News digest', '4.50', 'News', '29'],
 ];
 
-/// The account the store photographs: the six rows, each renewing one monthly
-/// cycle from today (the add sheet's default, which is how the suite seeds
-/// them), and the bare-zero budget `/budget` returns to a user who never set
-/// one.
+/// The account the store photographs: the six rows, each renewing its own
+/// offset in days from today (the suite types that date into the add sheet's
+/// renewal picker), and the bare-zero budget `/budget` returns to a user who
+/// never set one.
+///
+/// ⏱ 2026-09-22 · WAS "each renewing one monthly cycle from today (the add
+/// sheet's default, which is how the suite seeds them)". Every row then read
+/// the same "In N days", and `SubMath.upcoming` tied on all six.
 class _IllustrativeRepo implements SubscriptionRepository {
   @override
   Future<List<Subscription>> fetchAll() async {
     final DateTime today = DateTime.now();
-    final int lastDay = DateTime(today.year, today.month + 2, 0).day;
-    final DateTime renews = DateTime(
-      today.year,
-      today.month + 1,
-      math.min(today.day, lastDay),
-    );
+    DateTime renews(List<String> row) =>
+        DateTime(today.year, today.month, today.day + int.parse(row[3]));
     return <Subscription>[
       for (final List<String> row in _illustrative)
         Subscription(
@@ -390,7 +507,7 @@ class _IllustrativeRepo implements SubscriptionRepository {
           category: row[2],
           price: Money((double.parse(row[1]) * 100).round(), 'USD'),
           cycle: BillingCycle.monthly,
-          nextRenewal: renews,
+          nextRenewal: renews(row),
         ),
     ];
   }
@@ -578,6 +695,18 @@ void main() {
             'defect 01-home.png photographed, where the "+" covers the '
             '"per month" line of a price',
       );
+      // ⏱ 2026-09-22 · AND WHOLLY ABOVE THE FOLD FADE. The fade covers the
+      // page's last [AppShell.foldFade] px; at the list's end the last row
+      // must stop where the fade starts, or the end-inset no longer clears
+      // it and the fade dims a row nobody can scroll further up.
+      final Rect fade = tester.getRect(find.byKey(AppShell.foldFadeKey));
+      expect(
+        lowest.bottom,
+        lessThanOrEqualTo(fade.top + 0.01),
+        reason:
+            'scrolled to its end, the last row ($lowest) runs into the fold '
+            'fade, which starts at ${fade.top}',
+      );
     });
 
     testWidgets('phone/budget: the last category card does not intersect '
@@ -616,7 +745,144 @@ void main() {
             '— the defect 04-budget.png photographed, where the "+" covers a '
             'category amount',
       );
+      // ⏱ 2026-09-22 · AND WHOLLY ABOVE THE FOLD FADE (see phone/home).
+      final Rect fade = tester.getRect(find.byKey(AppShell.foldFadeKey));
+      expect(
+        lowest.bottom,
+        lessThanOrEqualTo(fade.top + 0.01),
+        reason:
+            'scrolled to its end, the last category card ($lowest) runs into '
+            'the fold fade, which starts at ${fade.top}',
+      );
     });
+  });
+
+  // ── THE FOLD: WHAT THE CAMERA SEES WHERE THE PAGE STOPS ───────────────────
+  // The cases above prove no row sits UNDER the button. None of them looks at
+  // the row the page's bottom edge CUTS: sliced by a hard edge it reads as a
+  // broken row in a store frame, which is what `AppShell.foldFade` fixes. A
+  // missing fade shows only in pixels, so these read the rendered frame.
+  //
+  // 🔴 MUTATIONS (both must go red at phone 360):
+  //   1. delete the fade's `Positioned` in `app_shell.dart` — the key check
+  //      fails first ("no fold fade");
+  //   2. keep it but make all three gradient colours `withAlpha(0)` — the key
+  //      check passes and the PIXEL check fails ("… px off the ground").
+  group('the fold: a card the page edge cuts fades into the ground', () {
+    const List<(Size, String)> sizes = <(Size, String)>[
+      (_capturePhone, 'phone 360'),
+      (Size(900, 1600), 'tablet 900'),
+      (Size(1280, 800), 'desktop 1280'),
+    ];
+    for (final (Size size, String label) in sizes) {
+      for (final String path in <String>['/home', '/budget']) {
+        testWidgets('$label $path: the device rows just above the fold are '
+            'the page ground', (WidgetTester tester) async {
+          final ProviderContainer c = await _pumpShell(
+            tester,
+            size,
+            grab: true,
+            overrides: <Override>[
+              subscriptionRepositoryProvider.overrideWithValue(
+                _IllustrativeRepo(),
+              ),
+            ],
+          );
+          await _open(tester, c, path);
+
+          // The fold, measured WITHOUT the fade: where the branch's own box
+          // stops (above the FAB band at compact, the window bottom in the
+          // rail classes).
+          final Rect shell = tester.getRect(
+            find.byType(StatefulNavigationShell),
+          );
+          final double foldY = shell.bottom;
+          final Finder fade = find.byKey(AppShell.foldFadeKey);
+          expect(
+            fade,
+            findsOneWidget,
+            reason:
+                '$label $path: no fold fade, so a card the page edge cuts is '
+                'drawn with a hard edge — the broken row the store frames showed',
+          );
+          final Rect fadeRect = tester.getRect(fade);
+          expect(
+            fadeRect.bottom,
+            moreOrLessEquals(foldY),
+            reason:
+                '$label $path: the fade ends at ${fadeRect.bottom}, not at the '
+                'fold ($foldY)',
+          );
+          expect(
+            fadeRect.left <= shell.left && fadeRect.right >= shell.right,
+            isTrue,
+            reason:
+                '$label $path: the fade ($fadeRect) does not span the page '
+                '($shell)',
+          );
+
+          // Put a card ACROSS the fold, or the check below could pass over a
+          // gap between cards with or without a fade.
+          final Rect? card = await _straddle(tester, _pageCards(path), foldY);
+          if (size == _capturePhone) {
+            expect(
+              card,
+              isNotNull,
+              reason:
+                  '$label $path: no card could be scrolled across the fold, so '
+                  'the pixel check would measure bare ground — the seed or the '
+                  'layout changed',
+            );
+          }
+          final Color ground = Theme.of(
+            tester.element(find.byType(AppShell)),
+          ).scaffoldBackgroundColor;
+          final _Frame f = await _grab(tester);
+          if (card != null) {
+            final int probe = _offGround(
+              f,
+              card.center.dx.round(),
+              (foldY - AppShell.foldFade - _straddleLead / 2).floor(),
+              ground,
+            );
+            expect(
+              probe,
+              greaterThan(_groundTolerance),
+              reason:
+                  '$label $path: the card\'s own surface matches the page '
+                  'ground, so a missing fade would not show — this case would '
+                  'measure nothing',
+            );
+          }
+
+          final Rect fab = _fab(tester);
+          int off = 0;
+          final List<String> sample = <String>[];
+          for (
+            int y = (foldY - AppShell.foldFadeSolid).ceil();
+            y < foldY.floor();
+            y++
+          ) {
+            for (int x = shell.left.ceil(); x < shell.right.floor(); x++) {
+              // The FAB and its shadow float over the fade in the rail classes.
+              if (x >= fab.left - 16 && x <= fab.right + 16) continue;
+              final int d = _offGround(f, x, y, ground);
+              if (d <= _groundTolerance) continue;
+              off++;
+              if (sample.length < 5) sample.add('($x,$y) by $d');
+            }
+          }
+          expect(
+            off,
+            0,
+            reason:
+                '$label $path: $off px off the ground in the '
+                '${AppShell.foldFadeSolid} rows above the fold ($foldY), '
+                'e.g. ${sample.join(', ')} — the card is cut by a hard edge',
+          );
+        });
+      }
+    }
   });
 
   group('at rest, the frame the store photographs', () {
@@ -635,11 +901,21 @@ void main() {
       );
       // Both directions: a row edited on either side, a row added to or
       // dropped from the source, or the order changed all fail here.
+      //
+      // ⏱ 2026-09-22 · THREE OR FOUR COLUMNS. The fourth is the renewal
+      // offset in days. The pattern takes either shape, so this pin could
+      // re-base alone before the column landed; a row is compared whole, so
+      // an offset edited on either side fails here too.
       final List<List<String>> seeded =
           RegExp(
-            r"<String>\['([^']*)', '([^']*)', '([^']*)'\]",
+            r"<String>\['([^']*)', '([^']*)', '([^']*)'(?:, '([^']*)')?\]",
           ).allMatches(block!.group(1)!).map((RegExpMatch m) {
-            return <String>[m.group(1)!, m.group(2)!, m.group(3)!];
+            return <String>[
+              m.group(1)!,
+              m.group(2)!,
+              m.group(3)!,
+              if (m.group(4) != null) m.group(4)!,
+            ];
           }).toList();
       expect(
         seeded,

@@ -881,8 +881,9 @@
           "symbol": "RevenueCatBridge"
         }
       ],
-      "consumers": [],
-      "unconsumedReason": "⬜ NO APP HAS OPTED IN YET. [ADR 078] makes Android, iOS and the Mac App Store sell in-app at v1, so this is a sequencing gap, not the design: the first opt-in waits on O-REVENUECAT-ACCOUNT, because billing.mobileIap.revenuecatAppIds.{android,ios} are RevenueCat console ids the schema requires as a pair, and on the owner-sworn store declarations (Play purchase history, the Apple privacy manifest naming the SDK). Until then no app links the native IAP payload, which is why this is a sibling of packages/purchases and not a dependency of it. Opting in is two edits held together by assert-app-yaml limb 6: a billing.mobileIap block in the app’s app.yaml and a dependency here. The owner steps (RevenueCat account, project, entitlement, offerings, Play IAP products, webhook) are recorded in Private/runbooks/revenuecat-setup.md. [ADR 067] decision 7.",
+      "consumers": [
+        "apps/subscriptiontracker"
+      ],
       "capabilityMatrix": {
         "file": "packages/billing_revenuecat/lib/src/revenuecat_capabilities.dart",
         "symbol": "RevenueCatCapabilities",

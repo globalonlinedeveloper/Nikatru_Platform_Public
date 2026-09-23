@@ -798,13 +798,28 @@ class SettingsScreen extends ConsumerWidget {
                     // permitted direction. `assert-purchase-path.mjs` reads
                     // this file for the `context.go('/paywall')` literal, which
                     // is still here — it moved inside an `if`, it did not go.
-                    if (rail.canStartCheckout && rail.offerings.isNotEmpty)
-                      _LinkRow(
-                        icon: '★',
-                        label: l10n.paywallUpgrade,
-                        last: false,
-                        onTap: () => context.go('/paywall'),
-                      ),
+                    //
+                    // ⏱ 2026-09-22 (O-IAP-BRIDGE-NOT-WIRED-IN-THE-APP): on a
+                    // STORE rail the answer arrives after this row is built —
+                    // `offerings` is empty until the store has been asked, and
+                    // `purchaseRailProvider` does not rebuild when it answers
+                    // (the rail object is the same one). So the row listens to
+                    // the rail's own change signal, exactly as the paywall's
+                    // choosing phase and the home promo card do. On a rail that
+                    // cannot change, `offeringsChangesOf` never fires and this
+                    // is the old `if`, evaluated once.
+                    ListenableBuilder(
+                      listenable: offeringsChangesOf(rail),
+                      builder: (BuildContext context, Widget? _) =>
+                          rail.canStartCheckout && rail.offerings.isNotEmpty
+                          ? _LinkRow(
+                              icon: '★',
+                              label: l10n.paywallUpgrade,
+                              last: false,
+                              onTap: () => context.go('/paywall'),
+                            )
+                          : const SizedBox.shrink(),
+                    ),
                     _LinkRow(
                       icon: '≡',
                       label: l10n.managePlanTitle,
