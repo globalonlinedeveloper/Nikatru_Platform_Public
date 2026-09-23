@@ -395,16 +395,22 @@ function githubCredentials() {
  * own `canonical_deployment`. An empty answer is a TRUE reading of the GitHub
  * ledger and stays a clean pass.
  */
-async function collectPaged({ fetchPage, idOf, what, perPage = 100, pageCap = 10 }) {
+/** Every walk this process made, in order: what the API claimed, rows fetched,
+ *  distinct rows kept, pages read. Printed in the summary on every run. */
+const WALKS = [];
+
+async function collectPaged({ fetchPage, idOf, what, perPage = 100, pageCap = 10, log = WALKS }) {
   const byId = new Map();
   let claimed = null;
   let pagesRead = 0;
   let lastPageLength = 0;
+  let fetched = 0;
   for (let page = 1; page <= pageCap; page++) {
     const { rows, totalCount = null } = await fetchPage(page);
     if (!Array.isArray(rows)) throw new CouldNotLook(`${what}: a page of the listing was not an array of rows`);
     pagesRead = page;
     lastPageLength = rows.length;
+    fetched += rows.length;
     // The SMALLEST claim any page made. `total_count` rises under a live walk
     // as new runs complete, and growth is not loss: comparing against the
     // smallest claim is the only comparison that cannot go red merely because
@@ -416,6 +422,10 @@ async function collectPaged({ fetchPage, idOf, what, perPage = 100, pageCap = 10
     for (const row of rows) byId.set(idOf(row), row);
     if (rows.length < perPage) break;
   }
+  // Recorded BEFORE either refusal, so a walk that refuses still leaves its numbers
+  // behind. The row that asked for this (O-PROVENANCE-WALK-HAS-NO-COMPLETENESS-CHECK)
+  // wants the next false red read back as a COUNT, not as a verdict.
+  log.push({ what, claimed, fetched, distinct: byId.size, pages: pagesRead });
   if (pagesRead === pageCap && lastPageLength === perPage) {
     throw new CouldNotLook(
       `${what}: all ${pageCap} pages of ${perPage} came back full, so rows exist that this reader never asked ` +
@@ -1071,6 +1081,9 @@ async function main() {
     `⬜  released-build set: ${runs.length} completed lane run(s), ${runs.filter((r) => (r.conclusion ?? 'success') === 'success').length} successful · ` +
       `deployment ledger: ${deployedShas === null ? 'NOT READ (fixture mode)' : `${deployedShas.size} commit(s) with a GitHub Deployment on a served environment`}`,
   );
+  for (const w of WALKS) {
+    console.log(`⬜  walk · ${w.what}: total_count ${w.claimed ?? 'not given'} · fetched ${w.fetched} · distinct ${w.distinct} · ${w.pages} page(s)`);
+  }
   // An acceptance resting on the weaker footing is announced, never silent — the
   // same rule the manual-deploys register follows. A build that resolves ONLY
   // because a failed run left a deployment behind is a build somebody should be
