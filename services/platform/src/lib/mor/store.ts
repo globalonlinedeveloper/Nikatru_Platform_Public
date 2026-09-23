@@ -27,6 +27,7 @@ import {
   type NormalizedNotification,
   type SubjectAdjustment,
   type SubjectSubscription,
+  type SubjectTransfer,
   decideAdjustment,
   decideSubscription,
 } from './contract';
@@ -148,8 +149,12 @@ export type ApplyResult =
   | { outcome: 'stale'; userId: string; appId: string }
   /** Money arrived and no account could be resolved. A row was kept. [5]M-7 */
   | { outcome: 'unclaimed'; detail: string }
-  /** Not a money subject at all (a product, a customer, a report). */
-  | { outcome: 'ignored'; detail: string }
+  /**
+   * Not a money subject at all (a product, a customer, a report), or one that
+   * concludes with no write. ⏱ 2026-09-22 · [ADR 092] §4.3: a concluded TRANSFER
+   * carries its destination account, stamped on the stored notification.
+   */
+  | { outcome: 'ignored'; detail: string; userId?: string }
   /**
    * UNDECIDABLE ⇒ DENY. Nothing was written. The route answers 503 for this
    * outcome so the rail re-delivers, and the re-delivery is RE-DERIVED — see
@@ -268,7 +273,7 @@ async function resolveAccount(
   n: NormalizedNotification,
   subscriptionId: string | null,
   fromMetadata: { userId: string | null; appId: string | null },
-): Promise<{ userId: string; appId: string } | null> {
+): Promise<{ userId: string; appId: string } | { refused: string } | null> {
   // 🔴 THE APP ID IN THE METADATA IS CLIENT-SETTABLE AND IS VALIDATED HERE.
   // `custom_data` is written by whoever opened the checkout — server-minted on
   // rung 2, but the overlay checkout (`Paddle.Checkout.open`, no server-created
@@ -285,32 +290,80 @@ async function resolveAccount(
         'which is not a registered product. Refusing the attribution; nothing is linked from it.',
     );
   }
-  if (appIdKnown && fromMetadata.userId !== null && fromMetadata.appId !== null && subscriptionId !== null) {
+  const linkAttempted =
+    appIdKnown && fromMetadata.userId !== null && fromMetadata.appId !== null && subscriptionId !== null;
+  const linkMoves = n.provider === REVENUECAT_PROVIDER;
+  if (linkAttempted) {
     await deps.db
-      .prepare(
-        `INSERT INTO provider_accounts
-           (provider, provider_subscription_id, app_id, user_id, linked_at, linked_from_event_id)
-         VALUES (?,?,?,?,?,?)
-         ON CONFLICT (provider, provider_subscription_id) DO NOTHING`,
-      )
-      .bind(n.provider, subscriptionId, fromMetadata.appId, fromMetadata.userId, nowIso(), n.eventId)
+      .prepare(linkMoves ? REVENUECAT_LINK_UPSERT : FIRST_LINK_WINS_INSERT)
+      .bind(n.provider, subscriptionId, fromMetadata.appId, fromMetadata.userId, nowIso(), n.eventId, n.occurredAt)
       .run();
     // Read back rather than trusting the insert: if a link ALREADY existed for
     // this subscription, DO NOTHING kept the original, and the original is the
     // truth. Trusting the payload here would let a later notification carrying
     // different metadata silently move a live subscription to another account.
+    // ⏱ 2026-09-22 · [ADR 092] §4.4: for RevenueCat the upsert MAY have moved
+    // the link, and the read-back is still the truth either way.
   }
   if (subscriptionId === null) return null;
   const row = await deps.db
     .prepare(
-      `SELECT user_id, app_id FROM provider_accounts
+      `SELECT user_id, app_id, COALESCE(linked_occurred_at, linked_at) AS linked_occurred
+         FROM provider_accounts
         WHERE provider = ? AND provider_subscription_id = ?`,
     )
     .bind(n.provider, subscriptionId)
-    .first<{ user_id: string; app_id: string }>();
+    .first<{ user_id: string; app_id: string; linked_occurred: string }>();
   if (row === null) return null;
+  // ⏱ 2026-09-22 · [ADR 092] §4.4 — a NEWER RevenueCat event names another
+  // account and the link did NOT move: the current owner still holds a live row
+  // on this purchase (or the link is another app's). Writing to either account
+  // would be a guess, so it is refused by name. An OLDER event falls through to
+  // the link's owner and loses on the entitlement's own ordering (stale).
+  if (linkMoves && linkAttempted && row.user_id !== fromMetadata.userId && n.occurredAt > row.linked_occurred) {
+    return {
+      refused: `owner_change_on_live_subscription: a newer ${n.provider} event names another account for subscription ${subscriptionId}, and the link was not moved: its current owner still holds a live row on it, or the link is another app's (ADR 092 §4.4)`,
+    };
+  }
   return { userId: row.user_id, appId: row.app_id };
 }
+
+/** Paddle and Razorpay: the FIRST link wins, forever. Their bodies carry the checkout's metadata. */
+const FIRST_LINK_WINS_INSERT = `INSERT INTO provider_accounts
+     (provider, provider_subscription_id, app_id, user_id, linked_at, linked_from_event_id, linked_occurred_at)
+   VALUES (?,?,?,?,?,?,?)
+   ON CONFLICT (provider, provider_subscription_id) DO NOTHING`;
+
+/**
+ * ⏱ 2026-09-22 · [ADR 092] §4.4 — RevenueCat ONLY: a purchase's owner can change
+ * (its TRANSFER event), and the change reaches this ledger as the next signed
+ * lifecycle event naming the new `app_user_id`. The link moves when ALL hold:
+ *   · the same app;
+ *   · the event is NEWER than the one the link rests on — by the PROVIDER's clock
+ *     (`linked_occurred_at`; a link written before migration 0015 falls back to
+ *     `linked_at`, its write time, which is never earlier than its event);
+ *   · the CURRENT owner holds no live RevenueCat row on this purchase at the
+ *     event's time. A live owner is never displaced by a notice; the caller
+ *     refuses that case as `owner_change_on_live_subscription`.
+ */
+const REVENUECAT_LINK_UPSERT = `INSERT INTO provider_accounts
+     (provider, provider_subscription_id, app_id, user_id, linked_at, linked_from_event_id, linked_occurred_at)
+   VALUES (?,?,?,?,?,?,?)
+   ON CONFLICT (provider, provider_subscription_id) DO UPDATE SET
+     user_id              = excluded.user_id,
+     linked_at            = excluded.linked_at,
+     linked_from_event_id = excluded.linked_from_event_id,
+     linked_occurred_at   = excluded.linked_occurred_at
+   WHERE provider_accounts.app_id = excluded.app_id
+     AND excluded.linked_occurred_at > COALESCE(provider_accounts.linked_occurred_at, provider_accounts.linked_at)
+     AND NOT EXISTS (
+       SELECT 1 FROM entitlements e
+        WHERE e.user_id = provider_accounts.user_id
+          AND e.app_id = provider_accounts.app_id
+          AND e.provider = provider_accounts.provider
+          AND e.provider_subscription_id = provider_accounts.provider_subscription_id
+          AND e.is_active = 1
+          AND (e.expires_at IS NULL OR e.expires_at > excluded.linked_occurred_at))`;
 
 /** Record a payment nobody could be found for, so it is resolvable later. */
 async function recordUnclaimed(
@@ -364,7 +417,13 @@ async function upsertEntitlement(
   n: NormalizedNotification,
   account: { userId: string; appId: string },
   decision: DecisionOutcome & { ok: true },
-  ids: { subscriptionId: string | null; transactionId: string | null },
+  ids: {
+    subscriptionId: string | null;
+    transactionId: string | null;
+    /** ⏱ 2026-09-22 · [ADR 092] E1: the rail's product handle and store, verbatim; null when the body names none. */
+    productId?: string | null;
+    store?: string | null;
+  },
 ): Promise<boolean> {
   const d = decision.decision;
   const res = await deps.db
@@ -374,8 +433,14 @@ async function upsertEntitlement(
          provider, provider_environment, provider_subscription_id, provider_transaction_id,
          provider_status, last_event_id, occurred_at, current_period_end, trial_end,
          revoked_at, revocation_reason
-       ) VALUES (?,?,?,NULL,NULL,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON CONFLICT (user_id, app_id, entitlement) DO UPDATE SET
+         product_id               = CASE WHEN excluded.provider = entitlements.provider
+                                         THEN COALESCE(excluded.product_id, entitlements.product_id)
+                                         ELSE excluded.product_id END,
+         store                    = CASE WHEN excluded.provider = entitlements.provider
+                                         THEN COALESCE(excluded.store, entitlements.store)
+                                         ELSE excluded.store END,
          is_active                = excluded.is_active,
          expires_at               = excluded.expires_at,
          updated_at               = excluded.updated_at,
@@ -397,6 +462,8 @@ async function upsertEntitlement(
       account.userId,
       account.appId,
       MONEY_ENTITLEMENT,
+      ids.productId ?? null,
+      ids.store ?? null,
       d.isActive,
       d.expiresAt,
       nowIso(),
@@ -439,7 +506,7 @@ export async function deriveAndApply(
     result.outcome === 'applied' || result.outcome === 'stale'
       ? null
       : `${result.outcome}: ${'detail' in result ? result.detail : ''}`,
-    'userId' in result ? result.userId : null,
+    'userId' in result ? (result.userId ?? null) : null,
   );
   return result;
 }
@@ -454,7 +521,80 @@ async function derive(deps: MoneyStoreDeps, n: NormalizedNotification): Promise<
     return { outcome: 'refused', detail: n.subject.detail };
   }
   if (n.subject.kind === 'subscription') return applySubscription(deps, n, n.subject);
+  // ⏱ 2026-09-22 · [ADR 092] §4.3: an ownership notice, never an adjustment.
+  if (n.subject.kind === 'transfer') return applyTransfer(deps, n, n.subject);
   return applyAdjustment(deps, n, n.subject);
+}
+
+/** The rail whose links MOVE on a newer event ([ADR 092] §4.4); every other rail's first link wins. */
+const REVENUECAT_PROVIDER = 'revenuecat';
+
+/**
+ * The most source ids one TRANSFER tripwire checks in a single statement.
+ *
+ * @ceiling d1.maxBoundParametersPerQuery lte
+ *
+ * The statement binds the provider, the app, the event time and every source id,
+ * so this leaves room for those three under the recorded limit. The vendor's own
+ * sample names ONE source; a body naming more than this is refused by name.
+ */
+const MAX_TRANSFER_SOURCES = 64;
+
+/**
+ * ⏱ 2026-09-22 · [ADR 092] §4.3 — a RevenueCat TRANSFER. It writes NOTHING: the
+ * body names owners and no purchase, so there is no row it could decide.
+ *
+ *   1. The money world, as for a subscription: a sandbox transfer never reaches
+ *      a live destination's ledger.
+ *   2. THE TRIPWIRE. While any source account still holds a LIVE RevenueCat row
+ *      for this app (`is_active = 1` and not expired at the EVENT's time), the
+ *      move would leave a paying customer's access at the mercy of the next
+ *      event's order — refused as `transfer_from_live_owner`, 503, counted
+ *      nightly. Only RevenueCat rows count: a Paddle or Razorpay purchase is not
+ *      what RevenueCat moved.
+ *   3. Otherwise concluded as `ignored`, stamped with the DESTINATION account.
+ *      The ledger's owner of the purchase moves on the next newer signed money
+ *      event for it (`resolveAccount`, §4.4), never on this notice.
+ */
+async function applyTransfer(
+  deps: MoneyStoreDeps,
+  n: NormalizedNotification,
+  t: SubjectTransfer,
+): Promise<ApplyResult> {
+  if (t.railEnvironment !== deps.environment) {
+    return {
+      outcome: 'refused',
+      detail: `the notification says it is ${t.railEnvironment} money and this destination is configured for ${deps.environment}`,
+    };
+  }
+  if (t.from.length > MAX_TRANSFER_SOURCES) {
+    return {
+      outcome: 'refused',
+      detail: `transfer_sources_over_ceiling: \`transferred_from\` names ${t.from.length} accounts, more than the ${MAX_TRANSFER_SOURCES} one statement can check`,
+    };
+  }
+  const live = await deps.db
+    .prepare(
+      `SELECT user_id FROM entitlements
+        WHERE provider = ? AND app_id = ?
+          AND user_id IN (${t.from.map(() => '?').join(',')})
+          AND is_active = 1
+          AND (expires_at IS NULL OR expires_at > ?)
+        LIMIT 1`,
+    )
+    .bind(REVENUECAT_PROVIDER, t.appId, ...t.from, n.occurredAt)
+    .first<{ user_id: string }>();
+  if (live !== null) {
+    return {
+      outcome: 'refused',
+      detail: `transfer_from_live_owner: a source account still holds a live RevenueCat entitlement for ${t.appId} at the event's time, so the move is refused until an owner decides it (ADR 092 §4.3)`,
+    };
+  }
+  return {
+    outcome: 'ignored',
+    detail: `revenuecat TRANSFER concluded for ${t.appId}: no entitlement written and no link moved; the next newer money event moves the link (ADR 092 §4.3, §4.4)`,
+    userId: t.to,
+  };
 }
 
 async function applySubscription(
@@ -475,6 +615,7 @@ async function applySubscription(
     userId: s.accountUserId,
     appId: s.accountAppId,
   });
+  if (account !== null && 'refused' in account) return { outcome: 'refused', detail: account.refused };
   if (account === null) {
     await recordUnclaimed(deps, n, {
       subscriptionId: s.subscriptionId,
@@ -496,6 +637,8 @@ async function applySubscription(
   const written = await upsertEntitlement(deps, n, account, decision, {
     subscriptionId: s.subscriptionId,
     transactionId: s.transactionId,
+    productId: s.productId ?? null,
+    store: s.store ?? null,
   });
   return written
     ? { outcome: 'applied', ...account, isActive: decision.decision.isActive }
@@ -513,6 +656,8 @@ async function applyAdjustment(
     return { outcome: 'ignored', detail: `adjustment action '${a.actionVerbatim}' changes no entitlement` };
   }
   const account = await resolveAccount(deps, n, a.subscriptionId, { userId: null, appId: null });
+  // No metadata is offered, so no link is attempted and none can be refused; the check keeps the type honest.
+  if (account !== null && 'refused' in account) return { outcome: 'refused', detail: account.refused };
   if (account === null) {
     await recordUnclaimed(deps, n, {
       subscriptionId: a.subscriptionId,

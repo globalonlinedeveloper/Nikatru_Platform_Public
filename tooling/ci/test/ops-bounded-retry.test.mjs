@@ -21,6 +21,10 @@
 //   B9  status.mjs: unreached is exit 2, unhealthy is still exit 1
 //
 //   B10 the three Cloudflare readers, driven through their own `cf()`
+//   B11 the class beyond ops-watch
+//   B12 ⏱ 2026-09-22: the per-request ceiling. A read that never answers still
+//       ends. B12 uses a REAL timer of a few ms, because the ceiling IS a timer;
+//       it still touches no network.
 //
 // ── MUTATION PROOF, GREEN CONTROL FIRST, EACH RESTORED BYTE-EXACT ───────────
 // Predictions written before each run. NINE of ten behaved as predicted; the
@@ -76,6 +80,9 @@ import {
   RETRY_CEILING_MS,
   RETRY_AFTER_CEILING_MS,
   RETRY_WALL_CEILING_MS,
+  REQUEST_TIMEOUT_MS,
+  READ_WALL_CEILING_MS,
+  requestTimeoutMs,
 } from '../../ops/bounded-retry.mjs';
 import { probeLive, evaluateSurface, EXIT_UNHEALTHY, EXIT_CANNOT_LOOK } from '../../ops/status.mjs';
 import { cf as cfWildcard } from '../../ops/check-wildcard-dns.mjs';
@@ -541,7 +548,10 @@ describe('B8 — ADOPTION: the class imports it, and no rival reading exists', (
   const TOUCHES_NETWORK = [
     /\bfetch\s*\(/, // the plain call
     /\bdoFetch\s*\(/, // the injected seam this change introduced
-    /=\s*(globalThis\.)?fetch\s*[;,)\n]/, // fetch bound to another name
+    // ⏱ 2026-09-22: `}` joined the class. provision-apple.mjs binds
+    // `fetchImpl = fetch }` as a destructuring default, which the `[;,)\n]` form
+    // could not see, so that reader was outside every limb of this block.
+    /=\s*(globalThis\.)?fetch\s*[;,)}\n]/, // fetch bound to another name
     /from ['"]node:https?['"]/, // the stdlib clients
     /\b(https?)\.(request|get)\s*\(/,
     /from ['"](undici|axios|got|node-fetch)['"]/,
@@ -656,6 +666,170 @@ describe('B8 — ADOPTION: the class imports it, and no rival reading exists', (
     }
   });
 
+  // ── ⏱ APPENDED 2026-09-22: THE PER-REQUEST CEILING LIMB (row O-OPS-READER-NO-CEILING) ──
+  // The retry plan bounds how many times a reader asks. It said nothing about
+  // how long ONE ask may take, so a socket that accepted and never answered held
+  // the job until its `timeout-minutes`. The helper now arms a ceiling per attempt
+  // and hands the read a `signal`. That only helps a call that PASSES the signal
+  // on, so the limb below checks every call site, not every import.
+
+  /** The source with comments blanked out. Offsets and newlines are kept, so a
+   *  line number means the same thing in both. String and regex literals are
+   *  stepped over whole, so a `//` inside a URL is not a comment and a quote
+   *  inside a regex does not open a string. */
+  function blankComments(src) {
+    let out = '';
+    let i = 0;
+    let prev = ''; // the last significant code character, to tell `/` (divide) from `/` (regex)
+    while (i < src.length) {
+      const c = src[i];
+      const n = src[i + 1];
+      if (c === '/' && n === '/') {
+        while (i < src.length && src[i] !== '\n') { out += ' '; i += 1; }
+        continue;
+      }
+      if (c === '/' && n === '*') {
+        while (i < src.length && !(src[i] === '*' && src[i + 1] === '/')) { out += src[i] === '\n' ? '\n' : ' '; i += 1; }
+        out += '  ';
+        i += 2;
+        continue;
+      }
+      const regexStart = c === '/' && (prev === '' || '(,=:[!&|?{};+-*%<>~^'.includes(prev)
+        || /(?:^|[^\w$])(?:return|typeof|case|void|throw|yield|await|delete|in|of|else|do)\s*$/.test(out.slice(-24)));
+      if (c === "'" || c === '"' || c === '`' || regexStart) {
+        const close = c;
+        let inClass = false;
+        out += c;
+        i += 1;
+        while (i < src.length) {
+          const d = src[i];
+          out += d;
+          i += 1;
+          if (d === '\\') { out += src[i] ?? ''; i += 1; continue; }
+          if (regexStart && d === '[') inClass = true;
+          else if (regexStart && d === ']') inClass = false;
+          else if (d === close && !inClass) break;
+          else if (d === '\n' && close !== '`') break; // an unterminated literal ends at the line
+        }
+        prev = close;
+        continue;
+      }
+      if (!/\s/.test(c)) prev = c;
+      out += c;
+      i += 1;
+    }
+    return out;
+  }
+
+  /** The argument list of the call whose `(` is at `open`, up to its matching `)`,
+   *  with string contents dropped: a `signal` inside a message is not a signal. */
+  function argsAt(code, open) {
+    let depth = 0;
+    let args = '';
+    for (let i = open; i < code.length; i += 1) {
+      const c = code[i];
+      if (c === "'" || c === '"' || c === '`') {
+        let j = i + 1;
+        while (j < code.length && code[j] !== c) j += code[j] === '\\' ? 2 : 1;
+        args += `${c}${c}`;
+        i = j;
+        continue;
+      }
+      if (c === '(') depth += 1;
+      else if (c === ')') { depth -= 1; if (depth === 0) return args.slice(1); }
+      args += c;
+    }
+    return args.slice(1);
+  }
+
+  /** Every call to `fetch`, `doFetch`, or any name `fetch` is bound to, with its
+   *  line and whether its argument list names `signal`. The aliases are read from
+   *  the file (`X = fetch`, `X = globalThis.fetch`, a `fetchImpl = fetch` default),
+   *  so the `f(url)` the TOUCHES_NETWORK list already knows about is a site here too. */
+  function networkSites(src) {
+    const code = blankComments(src);
+    const aliases = new Set(['fetch', 'doFetch']);
+    for (const m of code.matchAll(/(?<![\w$.])([A-Za-z_$][\w$]*)\s*=\s*(?:globalThis\.)?fetch\b(?![\w$.])/g)) aliases.add(m[1]);
+    const names = [...aliases].map((a) => a.replace(/\$/g, '\\$')).join('|');
+    const call = new RegExp(`(?<![\\w$])(?<!function\\s)(${names})\\s*\\(`, 'g');
+    return [...code.matchAll(call)].map((m) => {
+      const open = m.index + m[0].length - 1;
+      return {
+        line: code.slice(0, m.index).split('\n').length,
+        callee: m[1],
+        signal: /\bsignal\b/.test(argsAt(code, open)),
+      };
+    });
+  }
+
+  /** The files whose calls do NOT pass a signal, each with the reason. These are
+   *  not ops-watch readers (measured 2026-09-22: no step of ops-watch.yml runs
+   *  them), so row O-OPS-READER-NO-CEILING does not cover them. Each one is a
+   *  named follow-on, not a pass.
+   *
+   *  ⚠️ LIVE, like NOT_A_TRANSIENT_RETRY: an entry whose file is gone, or whose
+   *  every call now passes a signal, fails the test below. An exemption that
+   *  outlived its reason would hide the next unbounded call in that file. */
+  const NO_CEILING_YET = new Map([
+    ['await-pr-checks.mjs', 'a laptop tool that waits on a PR; no workflow runs it. Follow-on.'],
+    ['post-deploy-smoke.mjs', 'the Play-edit calls run in the deploy and submit workflows, not ops-watch; each job has its own timeout-minutes. Its probe calls already pass a signal. Follow-on.'],
+    ['provision-apple.mjs', 'App Store Connect provisioning, run by ci.yml, not ops-watch. Only visible here since `}` joined TOUCHES_NETWORK (2026-09-22). Follow-on.'],
+    ['safe-rerun.mjs', 'run by ci.yml to re-run a failed job, not by ops-watch. Follow-on.'],
+    ['set-monitor-thresholds.mjs', 'a one-off writer run by hand; no workflow runs it. Follow-on.'],
+    ['triage-failed-runs.mjs', 'a laptop triage tool; no workflow runs it. Follow-on.'],
+    ['upload-web-sourcemaps.mjs', 'an upload in deploy-web.yml, not an ops-watch reader. Follow-on.'],
+    ['verify-password-reset-revokes.mjs', 'a hand-run proof against a live project (B11 records why it is not converted). Follow-on.'],
+  ]);
+
+  const sitesByFile = readers
+    .filter(({ src }) => touchesNetwork(src))
+    .map(({ name, src }) => ({ name, sites: networkSites(src) }));
+
+  test('🔴 EVERY network call under tooling/ops passes the signal, or its file is a LIVE exemption', () => {
+    const unbounded = [];
+    let checked = 0;
+    for (const { name, sites } of sitesByFile) {
+      checked += sites.length;
+      if (NO_CEILING_YET.has(name)) continue;
+      for (const s of sites) if (!s.signal) unbounded.push(`tooling/ops/${name}:${s.line} ${s.callee}(…) names no signal`);
+    }
+    const exempted = sitesByFile.filter(({ name }) => NO_CEILING_YET.has(name)).reduce((n, f) => n + f.sites.filter((s) => !s.signal).length, 0);
+    console.log(`# per-request ceiling: ${checked} network call sites checked in ${sitesByFile.length} files; ${exempted} unsignalled sites in ${NO_CEILING_YET.size} exempted files`);
+    assert.ok(checked >= 20, `only ${checked} call sites found; the site finder stopped reaching tooling/ops`);
+    assert.deepEqual(unbounded, [], 'a call that drops the signal has no per-request ceiling: one silent socket holds the job until timeout-minutes');
+  });
+
+  test('🔴 every file the sweep says touches the network has a call site the limb can check', () => {
+    // A file that reaches the network by a mechanism the site finder cannot
+    // parse (node:https, a curl child) would pass the limb above with zero
+    // sites. This is the NON-EMPTY rule applied per file.
+    const blind = sitesByFile.filter(({ sites }) => sites.length === 0).map(({ name }) => name);
+    assert.deepEqual(blind, [], 'these files touch the network but no fetch-like call was found in them');
+  });
+
+  test('the no-ceiling exemptions are LIVE: the file exists and still holds an unsignalled call', () => {
+    for (const name of NO_CEILING_YET.keys()) {
+      const f = sitesByFile.find((x) => x.name === name);
+      assert.ok(f, `${name} is exempted here but is gone from tooling/ops, or no longer touches the network`);
+      assert.ok(f.sites.some((s) => !s.signal), `${name}: every call passes a signal now; remove its exemption`);
+    }
+  });
+
+  test('🔴 NO RIVAL CEILING: no importer of the shared plan arms its own timer', () => {
+    // Two ceilings on one request disagree the same way two retry loops do. The
+    // three 20 s ceilings and status.mjs's own AbortSignal.timeout were folded
+    // into the helper on 2026-09-22; status.mjs keeps its 10 s by passing
+    // `timeoutMs`, which can only shorten the shared ceiling.
+    const rivals = [];
+    for (const { name, src } of readers) {
+      if (!/from '\.\/bounded-retry\.mjs'/.test(src)) continue;
+      const code = blankComments(src);
+      if (/AbortSignal\.timeout\s*\(/.test(code)) rivals.push(`${name}: AbortSignal.timeout(`);
+      if (/new\s+AbortController\s*\(/.test(code)) rivals.push(`${name}: new AbortController(`);
+    }
+    assert.deepEqual(rivals, [], 'pass the signal the helper hands you, or its timeoutMs option; never a second timer');
+  });
+
   test('the module states its numbers AND why they are those numbers', () => {
     const src = readFileSync(join(OPS, 'bounded-retry.mjs'), 'utf8');
     // Not prose-matching for its own sake: the row's closes clause requires "a
@@ -664,6 +838,9 @@ describe('B8 — ADOPTION: the class imports it, and no rival reading exists', (
     assert.match(src, /READ_ATTEMPTS = 3, RETRY_BASE_MS = 1000/);
     assert.match(src, /RETRY_AFTER_CEILING_MS = 5000\./);
     assert.match(src, /timeout-minutes: 5/, 'the Retry-After clamp must show the arithmetic it fits inside');
+    // ⏱ 2026-09-22: the per-request ceiling states its number and its sum too.
+    assert.match(src, /REQUEST_TIMEOUT_MS = 15 000./);
+    assert.match(src, /READ_WALL_CEILING_MS is DERIVED/);
   });
 });
 
@@ -926,5 +1103,121 @@ describe('B11 — the class beyond ops-watch', () => {
     // workflow today, so nothing scheduled is exposed.
     assert.doesNotMatch(src, /from '\.\/bounded-retry\.mjs'/);
     assert.match(src, /\bfetch\(/, 'if this file stopped making requests the exemption is stale');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// B12 — THE PER-REQUEST CEILING (row O-OPS-READER-NO-CEILING, 2026-09-22)
+//
+// A read that NEVER answers must still end, as COULD NOT LOOK, after exactly the
+// planned number of attempts. Each case shortens the ceiling to a few ms through
+// `timeoutMs` (which can only shorten it) and records the sleeps, so no case
+// waits a real second. Each case also carries its own `{ timeout }`: a helper
+// that armed no ceiling makes these cases fail by THAT timeout, never hang.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('B12 — the per-request ceiling: a read that never answers still ends', () => {
+  const never = () => new Promise(() => {});
+
+  test('🔴 a never-answering read that HONOURS the signal ends as COULD NOT LOOK after exactly `attempts` calls', { timeout: 5000 }, async () => {
+    const { slept, sleep } = recorder();
+    const notes = [];
+    let calls = 0;
+    let aborted = 0;
+    const err = await readWithBoundedRetry(
+      (_attempt, { signal }) => {
+        calls += 1;
+        return new Promise((_, reject) => {
+          signal.addEventListener('abort', () => { aborted += 1; reject(signal.reason); }, { once: true });
+        });
+      },
+      { sleep, note: (m) => notes.push(m), timeoutMs: 20 },
+    ).then(() => null, (e) => e);
+    assert.ok(err instanceof CouldNotLook, `ended as ${err?.name}: ${err?.message}`);
+    assert.equal(calls, READ_ATTEMPTS);
+    assert.equal(aborted, READ_ATTEMPTS, 'each attempt got its OWN signal, and each one fired');
+    assert.equal(slept.length, READ_ATTEMPTS - 1, 'the plan ran between attempts, as for any blip');
+    assert.equal(notes.length, READ_ATTEMPTS - 1);
+    assert.match(notes[0], /no answer within 0\.02s \(the per-request ceiling, attempt 1\)/);
+  });
+
+  test('🔴 a never-answering read that IGNORES the signal ends the same way', { timeout: 5000 }, async () => {
+    const { slept, sleep } = recorder();
+    let calls = 0;
+    const err = await readWithBoundedRetry(
+      () => { calls += 1; return never(); },
+      { sleep, timeoutMs: 20 },
+    ).then(() => null, (e) => e);
+    assert.ok(err instanceof CouldNotLook, `ended as ${err?.name}: ${err?.message}`);
+    assert.equal(calls, READ_ATTEMPTS, 'the race ends the attempt even when the read never looks at its signal');
+    assert.equal(slept.length, READ_ATTEMPTS - 1);
+  });
+
+  test('🔴 fetchWithBoundedRetry hands the signal to doFetch, and a silent server ends the same way', { timeout: 5000 }, async () => {
+    const seen = [];
+    const err = await fetchWithBoundedRetry(
+      ({ signal }) => { seen.push(signal); return never(); },
+      { sleep: async () => {}, timeoutMs: 20 },
+    ).then(() => null, (e) => e);
+    assert.ok(err instanceof CouldNotLook, `ended as ${err?.name}: ${err?.message}`);
+    assert.equal(seen.length, READ_ATTEMPTS);
+    assert.ok(seen.every((s) => s instanceof AbortSignal && s.aborted), 'every attempt got a signal, and every one fired');
+    assert.equal(new Set(seen).size, READ_ATTEMPTS, 'a FRESH signal per attempt: a spent one would abort the retry at once');
+  });
+
+  test('🔴 a caller signal that aborts first wins, and is never re-asked', { timeout: 5000 }, async () => {
+    const { slept, sleep } = recorder();
+    const caller = new AbortController();
+    const reason = new Error('the caller stopped');
+    let calls = 0;
+    setTimeout(() => caller.abort(reason), 10).unref?.();
+    const err = await readWithBoundedRetry(
+      () => { calls += 1; return never(); },
+      { sleep, signal: caller.signal, timeoutMs: 2000 },
+    ).then(() => null, (e) => e);
+    assert.equal(err, reason, 'the caller\'s own reason comes back, not a COULD NOT LOOK');
+    assert.equal(calls, 1);
+    assert.deepEqual(slept, []);
+  });
+
+  test('a caller signal already aborted means no call at all', { timeout: 5000 }, async () => {
+    const reason = new Error('already stopped');
+    let calls = 0;
+    const err = await readWithBoundedRetry(
+      () => { calls += 1; return 'rows'; },
+      { signal: AbortSignal.abort(reason) },
+    ).then(() => null, (e) => e);
+    assert.equal(err, reason);
+    assert.equal(calls, 0);
+  });
+
+  test('GREEN CONTROL — a read that answers inside the ceiling is untouched', { timeout: 5000 }, async () => {
+    const { slept, sleep } = recorder();
+    let signalSeen = null;
+    const got = await readWithBoundedRetry(
+      async (_attempt, { signal }) => { signalSeen = signal; return 'rows'; },
+      { sleep, timeoutMs: 1000 },
+    );
+    assert.equal(got, 'rows');
+    assert.deepEqual(slept, []);
+    assert.equal(signalSeen.aborted, false);
+  });
+
+  test('`timeoutMs` and OPS_REQUEST_TIMEOUT_MS only SHORTEN the ceiling; nonsense is ignored', () => {
+    assert.equal(requestTimeoutMs(undefined, {}), REQUEST_TIMEOUT_MS);
+    assert.equal(requestTimeoutMs(10_000, {}), 10_000);
+    assert.equal(requestTimeoutMs(60_000, {}), REQUEST_TIMEOUT_MS, 'a caller may not LENGTHEN it');
+    assert.equal(requestTimeoutMs(undefined, { OPS_REQUEST_TIMEOUT_MS: '50' }), 50);
+    assert.equal(requestTimeoutMs(10_000, { OPS_REQUEST_TIMEOUT_MS: '50' }), 50);
+    for (const bad of ['', '0', '-5', 'abc', null]) {
+      assert.equal(requestTimeoutMs(bad, { OPS_REQUEST_TIMEOUT_MS: bad }), REQUEST_TIMEOUT_MS, `${JSON.stringify(bad)} is not a ceiling`);
+    }
+  });
+
+  test('the wall ceiling of one read is DERIVED, and ten of them fit a 10-minute job', () => {
+    assert.equal(READ_WALL_CEILING_MS, READ_ATTEMPTS * REQUEST_TIMEOUT_MS + RETRY_WALL_CEILING_MS);
+    // ops-watch's reader jobs are `timeout-minutes: 10`. Ten silent reads at the
+    // full ceiling must fit inside one job; the heartbeats and glitchtip jobs run
+    // more than ten, which is why each of their steps carries its own ceiling.
+    assert.ok(10 * READ_WALL_CEILING_MS <= 600_000, `10 × ${READ_WALL_CEILING_MS} ms exceeds a 600 s job`);
   });
 });

@@ -47,6 +47,43 @@ describe('windowsCommand — the mangled cmd invocation is refused, never run', 
       assert.deepEqual(r.args, [sw, 'echo', 'hi']);
     }
   });
+
+  /* ⏱ 2026-09-22 (O-HEAVY-CMD-C). The refusal used to compare the WHOLE word
+     against `cmd`, so every spelling that carries a directory walked past it:
+     `C:\Windows\System32\cmd.exe` is what `$COMSPEC` holds, what an ENOENT hint
+     prints, and what this module itself hands back when it wraps a .bat. The
+     mangled argument is identical in every one of those forms — MSYS rewrote it
+     before node started — so a full-path invocation fell through to the final
+     pass-through and reproduced the vacuous green untouched. */
+  test('🔴 a FULL-PATH cmd is cmd: the refusal is not escaped by spelling it out', () => {
+    for (const file of [
+      'C:\\Windows\\System32\\cmd.exe',
+      'C:/Windows/System32/cmd.exe',
+      'C:\\Windows\\System32\\CMD.EXE',
+      'C:/Windows/System32/cmd',            // no extension, still cmd
+    ]) {
+      const r = onWin([file, 'C:/', 'exit', '7']);
+      assert.ok(r.refuse, `${file} took a path where its switch belongs and was NOT refused`);
+      assert.match(r.refuse, /RUN NOTHING/);
+      assert.equal(r.file, undefined, 'a refusal must not also hand back something to spawn');
+    }
+  });
+
+  test('a full-path cmd with a REAL switch still passes through, spelling and all', () => {
+    const r = onWin(['C:\\Windows\\System32\\cmd.exe', '/c', 'echo', 'hi']);
+    assert.equal(r.refuse, undefined, 'a real switch is a real switch at any spelling');
+    assert.equal(r.file, 'C:\\Windows\\System32\\cmd.exe', 'the file must be handed back exactly as written');
+    assert.deepEqual(r.args, ['/c', 'echo', 'hi']);
+  });
+
+  test('a path that merely ENDS in .cmd is not cmd, and is still wrapped as a script', () => {
+    // The guard rests on the basename, so `foo.cmd` must not be mistaken for the
+    // interpreter — it is a batch script and belongs to the wrapping branch.
+    const r = onWin(['C:\\tools\\flutter.cmd', 'test']);
+    assert.equal(r.refuse, undefined);
+    assert.equal(r.file, 'C:\\Windows\\System32\\cmd.exe');
+    assert.deepEqual(r.args, ['/c', 'C:\\tools\\flutter.cmd', 'test']);
+  });
 });
 
 describe('windowsCommand — a .bat/.cmd is wrapped here, so no caller types a switch', () => {

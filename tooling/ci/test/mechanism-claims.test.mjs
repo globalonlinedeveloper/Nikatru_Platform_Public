@@ -422,6 +422,18 @@ describe('assert-mechanism-claims — the REAL tree', () => {
     const text = readFileSync(join(REPO, ...SEED.split('/')), 'utf8');
     const own = real.claims.filter((c) => c.file === SEED);
     assert.ok(own.length >= 1, `the real register no longer judges ${SEED}; this control lost its subject`);
+    // why: the line M1 must name is found in the file through the register
+    // entry's own anchor, the way the guard finds the sentence, so a comment
+    // added above the sentence moves the expected line with it. A typed line
+    // number went red on unrelated edits while the claim stayed the same. The
+    // shifted copy at the end of this case proves both directions.
+    const anchor = own[0].anchor;
+    const at = text.indexOf(anchor);
+    assert.notEqual(at, -1, `the register anchors ${SEED} on ${JSON.stringify(anchor)}, and that text is not in the file; this control lost its subject`);
+    const seedLine = text.slice(0, at).split('\n').length;
+    const unjudgedAt = (line) => new RegExp(
+      `M1 ${SEED.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} has 1 unjudged mechanism claim\\(s\\) \\(no-second-list at :${line}\\)`,
+    );
     const proof = own[0].test;
     const files = { [SEED]: text, [proof]: readFileSync(join(REPO, ...proof.split('/')), 'utf8') };
     const base = { shapes: real.shapes, backlog: {} };
@@ -435,20 +447,15 @@ describe('assert-mechanism-claims — the REAL tree', () => {
 
     const red = run(fixture({ files: { ...files }, register: { ...base, claims: [...proofOwn] } }));
     assert.equal(red.code, 1, red.out);
-    // ⏱ 2026-09-21 — :139 → :150. THE LINE MOVED; THE CLAIM DID NOT. The bounded
-    // retry (row O-PAGES-FETCH-TRANSIENT-NOT-RETRIED, sweep clause) added eleven
-    // comment lines ABOVE this sentence in verify-supabase-templates.mjs.
-    //
-    // ⚠️ THIS IS THE ONLY ASSERTION IN THE SUITE THAT PINS A REAL FILE'S LINE
-    // NUMBER (measured 2026-09-21 across all 233 test files: ten `at :N` pins, and
-    // the other nine are into fixtures the test writes itself, where the number is
-    // stable by construction). The REGISTER anchors on the sentence TEXT, which is
-    // why assert-mechanism-claims.mjs stayed green on the real tree throughout —
-    // only this control is positional, so ANY edit anywhere above the sentence
-    // reds a control that is otherwise about content.
-    assert.match(
-      red.out,
-      /M1 tooling\/ops\/verify-supabase-templates\.mjs has 1 unjudged mechanism claim\(s\) \(no-second-list at :150\)/,
-    );
+    assert.match(red.out, unjudgedAt(seedLine));
+
+    // The same file with one comment line above everything: still green when
+    // judged, still red when not, and M1 names the line one further down.
+    const shifted = { ...files, [SEED]: `// one line above the sentence\n${text}` };
+    const shiftedGreen = run(fixture({ files: { ...shifted }, register: { ...base, claims: [...own, ...proofOwn] } }));
+    assert.equal(shiftedGreen.code, 0, shiftedGreen.out);
+    const shiftedRed = run(fixture({ files: { ...shifted }, register: { ...base, claims: [...proofOwn] } }));
+    assert.equal(shiftedRed.code, 1, shiftedRed.out);
+    assert.match(shiftedRed.out, unjudgedAt(seedLine + 1));
   });
 });

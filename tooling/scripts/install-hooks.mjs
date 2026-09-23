@@ -44,7 +44,7 @@
 // Usage:  node tooling/scripts/install-hooks.mjs           install + verify
 //         node tooling/scripts/install-hooks.mjs --check   verify only, exit 1 if not installed
 // ─────────────────────────────────────────────────────────────────────────────
-import { repoGitRaw, RepoGitError } from './repo-git.mjs';
+import { repoGitRaw, RepoGitError, mainCheckoutOf } from './repo-git.mjs';
 import { existsSync, statSync, readdirSync } from 'node:fs';
 import { resolve, dirname, basename, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -131,11 +131,26 @@ if (!ANCHOR) {
    directory name rather than spelled out, so today's rename (`Project_Cross_Platform_Apps`
    → `Project_Cross_Platform_Android_Apps_Public`) needed no edit here and the next one
    will not either. */
-const REPO_DIR = basename(REPO);
+/* ⏱ 2026-09-22 (O-INSTALL-HOOKS-NAMES-THE-CORPUS-AFTER-THE-WORKTREE). Named after the
+   MAIN CHECKOUT, never after the tree this process happens to stand in. In a linked
+   worktree `basename(REPO)` is the worktree's own throwaway lane name, so the corpus
+   resolved to `…/.worktrees/<lane>_Private` — a path that never exists — and the
+   ABSENCE branch below then printed `n/a` and exited 0. That is the same vacuous pass
+   this whole file was written against, reached by a third door: not a wrong level
+   count this time, but a right rule applied to the wrong tree. A worktree is a second
+   working copy of ONE repository; the repository's name is a property of the checkout
+   it was cloned into, not of each copy.
+   Elected exactly as `spec-guards.mjs` elects its HOST_ROOT. In a main checkout
+   `mainCheckoutOf(REPO).main === REPO`, so nothing about the normal path changes.
+   When git refuses to answer, `why` is carried to the absence branch and PRINTED
+   there: a fallback to REPO is allowed, a SILENT fallback is not. */
+const ELECTED = mainCheckoutOf(REPO);
+const HOST_ROOT = ELECTED.main ?? REPO;
+const REPO_DIR = basename(HOST_ROOT);
 const PRIVATE_NAME = REPO_DIR.endsWith('_Public')
   ? `${REPO_DIR.slice(0, -'_Public'.length)}_Private`
   : `${REPO_DIR}_Private`;
-const PRIVATE = join(dirname(REPO), PRIVATE_NAME);
+const PRIVATE = join(dirname(HOST_ROOT), PRIVATE_NAME);
 
 /* 🔴 THE EMPTY-SHELL TRAP IS STILL LIVE AND IT GOT ELEVEN TIMES BIGGER TODAY. The note
    here used to read: "The sibling directory `Project_Cross_Platform_Apps_Private` ALREADY
@@ -262,6 +277,14 @@ for (const r of REPOS) {
       console.log(`  n/a  ${r.name.padEnd(20)} only an EMPTY pre-created shell at ${r.path} — never held the corpus`);
     } else if (r.expected) {
       console.log(`  n/a  ${r.name.padEnd(20)} not in this checkout — a separate sibling repo, never cloned alongside`);
+      /* ⏱ 2026-09-22: the ONE line that keeps this n/a honest. The path above is derived
+         from the name of the MAIN checkout; when git could not tell us which that is, the
+         path was derived from this tree instead and "absent" may mean "looked in the wrong
+         place". Printed only in that case, so a normal run is unchanged. */
+      if (ELECTED.why) {
+        console.log(`       ⚠️ derived from THIS tree, not the main checkout: ${ELECTED.why}`);
+        console.log(`       so "${r.path}" may be the wrong place to have looked.`);
+      }
     } else {
       console.log(`  --   ${r.name.padEnd(20)} no .git here — skipped`);
     }

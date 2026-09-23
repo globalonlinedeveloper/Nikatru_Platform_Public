@@ -252,6 +252,18 @@ export const REVENUECAT_EVENT_REASONS = [
     dateDerived: false,
     why: 'NOT A REVOCATION — auto-renew was turned back on before the period ended, so there is nothing to take away.',
   },
+  {
+    event: 'TRANSFER',
+    reason: null,
+    dateDerived: false,
+    why: 'NOT A GRANT AND NOT A REVOCATION — AN OWNERSHIP NOTICE, DECIDED 2026-09-22 BY [ADR 092] §4.3 (LOCKED). RevenueCat\'s event reference (revenuecat.com/docs/integrations/webhooks/event-types-and-fields, read 2026-09-22T15:31:55Z) sends it when the restore behaviour moves purchases between App User IDs: `transferred_from` names the old owner(s), `transferred_to` the new, both String[] marked Always, and the vendor warns that an Always key is present but its value may be null. "The webhook is sent only for the destination user". The body carries NO app_user_id, product_id, original_transaction_id or expiration_at_ms, so it cannot say what access anyone has. revenueCatAccessRuling answers \'transfer\' for it, checked BEFORE the grant rule this row\'s shape (no reason, not date-derived) would otherwise fall into: a TRANSFER read as a grant would give access to an id whose purchase this rail has never seen. services/platform/src/lib/mor/revenuecat.ts refuses it by name when an id list is null or empty, when an id on either side is anonymous, when more than one destination is named, or when `environment` (Sometimes on this event) is absent; store.ts refuses it as transfer_from_live_owner while a source user still holds a live RevenueCat row for the app, and otherwise concludes it with NO write — the ledger\'s owner of a purchase moves later, on the next newer signed money event (ADR 092 §4.4).',
+  },
+  {
+    event: 'TEMPORARY_ENTITLEMENT_GRANT',
+    reason: null,
+    dateDerived: false,
+    why: 'NOT A GRANT — [ADR 092] §4.6, 2026-09-22. RevenueCat\'s event reference (revenuecat.com/docs/integrations/webhooks/event-types-and-fields, read 2026-09-22T15:31:55Z) sends it during a store outage: a provisional grant of at most 24 hours, carrying only `app_user_id` and (Sometimes) `store` — no `environment`, so its money world cannot be told, and no transaction, so it could never be linked. The purchase it stands for arrives later as INITIAL_PURCHASE when validation succeeds, or as EXPIRATION when it fails. It is in NOT_A_GRANT beside SUBSCRIPTION_PAUSED, so revenueCatAccessRuling answers null and a reader acks it and changes nothing.',
+  },
 ];
 
 const REVENUECAT_EVENT_MAP = new Map(REVENUECAT_EVENT_REASONS.map((r) => [r.event, r.reason]));
@@ -270,12 +282,17 @@ export function revocationReasonForRevenueCatEvent(event) {
 }
 
 /**
- * @typedef {'grant' | 'revoke' | 'paid-through'} RevenueCatAccessRuling
+ * @typedef {'grant' | 'revoke' | 'paid-through' | 'transfer'} RevenueCatAccessRuling
  *
  * What a RevenueCat event does to ACCESS, read off the table rather than off a
  * second list. Added 2026-09-15, when the one Worker that reads these events
  * deleted its own ACTIVE / INACTIVE / GRACE sets and started asking this instead.
  *
+ *   'transfer'     — ⏱ 2026-09-22 · [ADR 092] §4.3. The purchases moved between
+ *                    App User IDs; the event says who owns them now and nothing
+ *                    about access. Checked FIRST: the TRANSFER row has no reason
+ *                    and is not date-derived, so the grant rule below would read
+ *                    it as 'grant'.
  *   'paid-through' — `dateDerived`: access stands exactly while the event's
  *                    paid-through date is in the future (CANCELLATION,
  *                    BILLING_ISSUE). Checked FIRST, because CANCELLATION carries
@@ -284,21 +301,48 @@ export function revocationReasonForRevenueCatEvent(event) {
  *   'grant'        — no reason and not date-derived: access is on.
  *   null           — the table does not decide this event. A reader acks it and
  *                    changes nothing: an unknown event revokes nothing, and
- *                    SUBSCRIPTION_PAUSED — no reason, but the vendor also says it
- *                    is no grant — is the one named row that answers null.
+ *                    SUBSCRIPTION_PAUSED and TEMPORARY_ENTITLEMENT_GRANT — no
+ *                    reason, but the vendor says neither is a grant — are the
+ *                    named rows that answer null.
+ *
+ * ⏱ 2026-09-22 · [ADR 092] §4.6 — A REASON THAT RESTORES ACCESS IS NEVER 'revoke'.
+ * Before this date a row whose reason was `chargeback_reversed` (restores: true
+ * in REVOCATION_REASONS above) would have been read as 'revoke' by the last line,
+ * because that line asks only whether a reason exists. A REFUND_REVERSED row
+ * mapped that way would SUSPEND the customer whose refund was just undone. Such a
+ * row now answers null, and a reader must refuse it rather than ack it (the row
+ * carries a reason, so it is not the "changes nothing" shape above); a restore
+ * is routed as an adjustment with `restores: true`, never through this ruling.
  *
  * @param {string} event
  * @returns {RevenueCatAccessRuling | null}
  */
 export function revenueCatAccessRuling(event) {
   const row = REVENUECAT_EVENT_REASONS.find((r) => r.event === event);
-  if (row === undefined || NOT_A_GRANT.has(event)) return null;
+  return row === undefined ? null : revenueCatAccessRulingForRow(row);
+}
+
+/**
+ * The ruling for ONE row, so a row the table does not (yet) carry can be ruled on
+ * in a test — the REFUND_REVERSED shape is exactly such a row.
+ * @param {Pick<RevenueCatEventReason, 'event' | 'reason' | 'dateDerived'>} row
+ * @returns {RevenueCatAccessRuling | null}
+ */
+export function revenueCatAccessRulingForRow(row) {
+  if (TRANSFER_EVENTS.has(row.event)) return 'transfer';
+  if (NOT_A_GRANT.has(row.event)) return null;
+  if (row.reason !== null && !REVOCATION_REASONS.some((r) => r.reason === row.reason && r.restores === false)) {
+    return null;
+  }
   if (row.dateDerived) return 'paid-through';
   return row.reason === null ? 'grant' : 'revoke';
 }
 
-/** Rows that carry no reason and are STILL not a grant. One member, sourced in its row's `why`. */
-const NOT_A_GRANT = new Set(['SUBSCRIPTION_PAUSED']);
+/** Rows that carry no reason and are STILL not a grant. Each member is sourced in its row's `why`. */
+const NOT_A_GRANT = new Set(['SUBSCRIPTION_PAUSED', 'TEMPORARY_ENTITLEMENT_GRANT']);
+
+/** Rows that move OWNERSHIP and say nothing about access ([ADR 092] §4.3). Sourced in the row's `why`. */
+const TRANSFER_EVENTS = new Set(['TRANSFER']);
 
 /** Machine-readable form, kept byte-identical to contract.json by generate.mjs. */
 export const CONTRACT_TABLE = {

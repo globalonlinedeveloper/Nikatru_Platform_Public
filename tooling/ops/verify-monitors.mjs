@@ -383,9 +383,10 @@ try {
   // request carrying one with error 1000 before the origin is reached. Recorded
   // here because this is a hand-rolled request and the mistake is cheap to make.
   const res = await fetchWithBoundedRetry(
-    () =>
+    ({ signal }) =>
       fetch(`${BASE}/api/0/organizations/${ORG}/monitors/`, {
         headers: { Authorization: `Bearer ${TOKEN}`, Accept: 'application/json' },
+        signal,
       }),
     { describe: (why) => `the monitor list: ${why}` },
   );

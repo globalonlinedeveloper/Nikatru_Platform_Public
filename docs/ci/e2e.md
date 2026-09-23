@@ -315,6 +315,32 @@ not a test failure.
 code rather than a comment, and the `hosted` expectation is a second, independent
 reading of the fact Phase 5 is going to move.
 
+🔴 **ADDED 2026-09-22 — IT NOW READS THE `iss` CLAIM BACK, AS COMPARISONS.**
+Until then the step printed `token issuer: the Box A auth stack`, a fixed string
+built from the target: no run had ever read the issuer the box actually mints,
+which is what `O-PHASE5-ISSUER-SUFFIX` was left open on. It now base64url-decodes
+the access token's payload (no signature check — the Worker does that) and prints
+three more lines: `iss path`, `iss host equals SUPABASE_URL host: yes|no` and
+`iss equals SUPABASE_URL + /auth/v1: yes|no`. **They compare rather than print
+because the value cannot be printed**: `SUPABASE_URL` and `BOXA_SUPABASE_URL` are
+repository secrets, so Actions masks them in every log line and a raw `iss` reads
+`***/auth/v1` — unreadable by eye, exactly as `GET ***/v1/subscriptions -> HTTP
+401` reads in run 35704944906. A yes/no computed in-process, and a path, survive
+the mask. The comparison is byte-for-byte against `${SUPABASE_URL}/auth/v1`,
+which is the string `services/_shared/src/auth.ts` hands `jwtVerify` as its
+`issuer` — a trailing slash there is a different issuer.
+
+⚬ **A "no" REPORTS; IT DOES NOT FAIL.** The 401/200 verdict above is the
+assertion and is unchanged: a wrong issuer suffix is what the row expects to
+find, and hiding that reading behind a red run would be worth less than the
+reading. The one new way this step CAN fail is a token that does not decode at
+all — not three segments, a payload that is not JSON, or no `iss` — which exits
+**2**, the same code Public #869 gave the verifiers for "could not decide what to
+expect": exit 1 here means the one-issuer fact is wrong, exit 2 means the reading
+could not be taken. Both halves are exercised by
+`tooling/ci/test/e2e-auth-target.test.mjs` (T1–T4), including one case that holds
+every printed line clear of the token, the payload and the service key.
+
 ### in step **Run integration tests (headless Chrome)**, the two defines added 2026-09-07
 
 `--dart-define=TURNSTILE_SITE_KEY=$TURNSTILE_SITE_KEY` comes from the repository

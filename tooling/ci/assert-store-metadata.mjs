@@ -897,6 +897,16 @@ function fromRefs(node, path, out = []) {
 const OWNER_FILLS = 'OWNER FILLS';
 const STEP3_COUNT = 11;
 
+/** The listing files a human READS before installing: the three that carry
+ *  sentences. `category.txt`, the URLs and `developed-by.txt` are single fields
+ *  checked by their own limbs above. A file absent from a tree is skipped, not
+ *  demanded — `additionalFiles` and the contract decide which must exist. */
+const PRICE_FREE_LISTING_FILES = ['title.txt', 'short-description.txt', 'long-description.txt'];
+/** A money figure, in the notations the listings could plausibly use: `₹499`,
+ *  `Rs. 499`, `Rs 1,499`, `INR 499`, `$4.99`, `USD 4.99`. NOT a bare number —
+ *  "7 days", "3 apps" and a version are not prices. */
+const PRICE_FIGURE = /(?:₹|\bRs\.?\s*|\bINR\s+|\$|\bUSD\s+)\s?\d[\d,]*(?:\.\d{1,2})?/i;
+
 /** form-answers.json, on an app tree and on the brick alike. On the brick, a
  *  `from` naming a PNG the stamp generates (post_gen, see above) is not a file yet.
  *  It is REQUIRED here rather than through the register's `additionalFiles`: a
@@ -954,6 +964,103 @@ function checkFormAnswers(dir, row, rules, onBrick = false) {
     if (a?.answer !== 'Yes' && a?.answer !== 'No') problems.push(`${p} step3 "${a?.id}" answers ${JSON.stringify(a?.answer ?? null)}; the form takes Yes or No.`);
     if (typeof a?.evidence !== 'string' || a.evidence.trim() === '') problems.push(`${p} step3 "${a?.id}" gives no evidence. An answer with no evidence is an answer from memory.`);
   });
+
+  // ── the money answers and the age answer are DERIVED, not typed ────────────
+  // Everything above this point checks the SHAPE of an answer: "Yes" or "No",
+  // with a sentence beside it. Three of these answers are not opinions and must
+  // not be shaped-checked only —
+  //
+  //   · step2.paymentGateway        — the form's "Payment gateway used"
+  //   · step3 "financial-transactions" — the form's question 4
+  //   · step3 "suitable-for-children"  — the form's question 5, its only age field
+  //
+  // [ADR 094] (owner, LOCKED 2026-09-22) item 5 says of this very file, verbatim:
+  // it "derives its `paymentGateway` answer, and its question 4 on financial
+  // transactions ("No"), from rail `none`. Both answers flip only in a build that
+  // actually carries the Razorpay checkout." Nothing derived them. They were two
+  // strings whose `why` NAMED `purchaseRail.rail` in prose no checker reads, and
+  // the flip is a queued lane (O-RAZORPAY-CHECKOUT-ADAPTER) that changes the rail
+  // in tooling/channel-register.json and has no reason to open this directory. On
+  // the day it lands, a file the owner types a government upload form from states
+  // that the app takes no money while the build it describes opens a checkout —
+  // and every check in this repository stays green. So they are read off the row.
+  //
+  // The age answer is not a judgement call either: [ADR 068] puts the floor at 18
+  // for every Nikatru app, so question 5 is "No" on all of them, and a "Yes" here
+  // is an age claim made to a store rather than a fact about the app.
+  const railRow = row.purchaseRail ?? null;
+  const rail = typeof railRow?.rail === 'string' ? railRow.rail : null;
+  const answerOf = (id) => s3.find((a) => a?.id === id);
+  const pg = fa.step2?.paymentGateway ?? null;
+  if (rail === null) {
+    problems.push(
+      `${REGISTER} channel "${row.id}" declares no \`purchaseRail.rail\`, and ${p} step2.paymentGateway and step3 "financial-transactions" are derived from it ([ADR 094] item 5). Without the row they are two hand-written answers about money on a government upload form.`,
+    );
+  } else {
+    const sells = rail !== 'none';
+    formRuleChecks++;
+    if (!sells) {
+      if (pg?.answer !== 'No') {
+        problems.push(
+          `${p} step2.paymentGateway.answer is ${JSON.stringify(pg?.answer ?? null)}, and ${REGISTER} "${row.id}" declares \`purchaseRail.rail: "none"\` — a build of this channel opens no checkout, so the form's "Payment gateway used" is "No". [ADR 094] item 5.`,
+        );
+      }
+    } else {
+      const named = `${pg?.answer ?? ''} ${pg?.why ?? ''}`.toLowerCase();
+      if (typeof pg?.answer !== 'string' || pg.answer.trim() === '' || pg.answer === 'No') {
+        problems.push(
+          `${p} step2.paymentGateway.answer is ${JSON.stringify(pg?.answer ?? null)}, and ${REGISTER} "${row.id}" declares \`purchaseRail.rail: ${JSON.stringify(rail)}\` — this channel now sells, so "No" is a false answer on the upload form. Name the gateway. [ADR 094] item 5: the answer flips with the rail.`,
+        );
+      } else if (!named.includes(rail.toLowerCase())) {
+        problems.push(
+          `${p} step2.paymentGateway answers ${JSON.stringify(pg.answer)} and neither it nor its \`why\` names ${JSON.stringify(rail)}, the rail ${REGISTER} "${row.id}" declares. The form is told one gateway and the build carries another.`,
+        );
+      }
+    }
+    const want = sells ? 'Yes' : 'No';
+    const q4 = answerOf('financial-transactions');
+    formRuleChecks++;
+    if (q4 && q4.answer !== want) {
+      problems.push(
+        `${p} step3 "financial-transactions" answers ${JSON.stringify(q4.answer)}; ${REGISTER} "${row.id}" declares \`purchaseRail.rail: ${JSON.stringify(rail)}\`, so the form's question 4 is ${JSON.stringify(want)}. [ADR 094] item 5: both money answers flip only with the rail.`,
+      );
+    }
+  }
+  const q5 = answerOf('suitable-for-children');
+  formRuleChecks++;
+  if (q5 && q5.answer !== 'No') {
+    problems.push(
+      `${p} step3 "suitable-for-children" answers ${JSON.stringify(q5.answer)}. No Nikatru app targets children — [ADR 068] sets the age floor at 18 for all of them — so the form's question 5 is "No". A "Yes" is an age claim made to a store, and the app has no age gate to back it.`,
+    );
+  }
+
+  // ── the listing this file points at names no price and no lifetime plan ────
+  // [ADR 093] §2 "Lifetime": it "stays on the web checkout only, and — per
+  // §11.2 — no app and no store listing mentions it", and [ADR 078] §11.2 (which
+  // [ADR 093] §5 restates as still standing) keeps the web price out of both.
+  // The one guard that hunts price literals, tooling/ci/assert-no-price-literals.mjs,
+  // reads `.dart` files (SCAN_ROOTS + the non-test dart filter): the store's own
+  // text is outside it, and the store's text is where a price is READ by a buyer.
+  // Deliberately NOT checked here: a nikatru.com URL. The shipped listing carries
+  // the privacy policy and the contact page as URLs the portal asks for, so the
+  // "website" half of §11.2 is a scope question for the owner, not a rule this
+  // guard can apply without failing a tree main calls correct.
+  for (const name of PRICE_FREE_LISTING_FILES) {
+    const body = read(posix.join(dir, name));
+    if (body === null) continue;
+    formRuleChecks++;
+    const figure = PRICE_FIGURE.exec(body);
+    if (figure) {
+      problems.push(
+        `${posix.join(dir, name)} names a price (${JSON.stringify(figure[0].trim())}). A store listing states no price: the buyer is charged by the rail, the rail's figure moves ([ADR 093] set today's), and a listing nobody re-reads is the copy that keeps the old one.`,
+      );
+    }
+    if (/\blifetime\b/i.test(body)) {
+      problems.push(
+        `${posix.join(dir, name)} names the lifetime plan. [ADR 093] §2: lifetime "stays on the web checkout only, and — per §11.2 — no app and no store listing mentions it".`,
+      );
+    }
+  }
 }
 
 for (const { row, app, dir } of present) {

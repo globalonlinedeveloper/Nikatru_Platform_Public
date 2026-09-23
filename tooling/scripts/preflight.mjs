@@ -110,7 +110,7 @@
 //             did not free up within --lock-wait, and no heavy leg ran
 // ─────────────────────────────────────────────────────────────────────────────
 import { spawnSync } from 'node:child_process';
-import { existsSync, rmSync, readFileSync, mkdtempSync } from 'node:fs';
+import { existsSync, rmSync, readFileSync, mkdtempSync, openSync, closeSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -153,16 +153,51 @@ const LOCK_WAIT_MIN = (() => {
   return v;
 })();
 
+/** The ceiling on ONE leg. Env-overridable so a legitimately long leg can be
+ *  given room without a commit; 60 min is far above any leg measured here. */
+export const LEG_TIMEOUT_MS = Number(process.env.NIKATRU_PREFLIGHT_LEG_TIMEOUT_MS) || 60 * 60_000;
+
+/** Run a command, capture everything to FILES, never throw, and never wait on a
+ *  PIPE.
+ *  ⏱ 2026-09-22 (O-PREFLIGHT-HANGS-HOLDING-THE-MACHINE-LOCK). spawnSync with
+ *  stdio pipes returns only at pipe EOF, which is NOT process exit: any
+ *  descendant that inherited the write end keeps the pipe open after the leg's
+ *  own process has gone, and preflight then waits forever HOLDING THE
+ *  MACHINE-WIDE LOCK (measured 2026-09-20: both children, cmd.exe and
+ *  `node --test`, already exited; preflight alive at 85.8 min, CPU flat).
+ *  A file has no EOF to wait for, so the wait ends when the direct child exits.
+ *  `timeout` bounds the other case: a direct child that itself never exits. */
+export function captureSync(cmd, args, { cwd = ROOT, env = process.env, shell = false, timeout = LEG_TIMEOUT_MS } = {}) {
+  const dir = mkdtempSync(join(tmpdir(), 'preflight-leg-'));
+  const outFd = openSync(join(dir, 'stdout'), 'w');
+  const errFd = openSync(join(dir, 'stderr'), 'w');
+  let r;
+  try {
+    r = spawnSync(cmd, args, { cwd, env, shell, timeout, killSignal: 'SIGKILL', windowsHide: true, stdio: ['ignore', outFd, errFd] });
+  } finally {
+    closeSync(outFd);
+    closeSync(errFd);
+  }
+  const read = (f) => { try { return readFileSync(join(dir, f), 'utf8'); } catch { return ''; } };
+  const out = `${read('stdout')}${read('stderr')}`;
+  // An orphan may still hold the capture file open on Windows; litter is harmless.
+  try { rmSync(dir, { recursive: true, force: true }); } catch {}
+  const timedOut = r?.error?.code === 'ETIMEDOUT';
+  return { status: timedOut ? null : r?.status ?? null, out, error: r?.error, timedOut, timeout };
+}
+
 /** Run a command, capture everything, never throw. */
-function run(cmd, args, opts = {}) {
-  const r = spawnSync(cmd, args, {
+export function run(cmd, args, opts = {}) {
+  const r = captureSync(cmd, args, {
     cwd: opts.cwd ?? ROOT,
-    encoding: 'utf8',
-    shell: process.platform === 'win32',
-    maxBuffer: 64 * 1024 * 1024,
     env: { ...process.env, ...(opts.env ?? {}) },
+    shell: process.platform === 'win32',
+    timeout: opts.timeout,
   });
-  return { code: r.status ?? 1, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
+  if (r.timedOut) {
+    return { code: 2, out: `COVERAGE LOST — \`${cmd} ${args.join(' ')}\` did not exit within ${Math.round(r.timeout / 60_000)} min and was killed. Nothing it would have reported was judged.\n${r.out}` };
+  }
+  return { code: r.status ?? 1, out: r.out };
 }
 
 const RE_LINES = new RegExp(String.fromCharCode(13) + '?' + String.fromCharCode(10));
@@ -173,16 +208,18 @@ const TREE_AT_START = IS_MAIN ? run('git', ['status', '--porcelain=v1']).out.tri
 
 // ── the sweep's reds, judged against main (2026-09-19, see the header) ──────
 
-/** Spawn without a shell: every argument arrives exactly as written. */
+/** Spawn without a shell: every argument arrives exactly as written. Output
+ *  goes through FILES, never pipes — see `run()`. sweepLeg's guard-sweep call
+ *  passed NO timeout and waited on a pipe; it is bounded by LEG_TIMEOUT_MS now.
+ *  `error.code === 'ETIMEDOUT'` still reaches every caller unchanged. */
 function exec(cmd, args, opts = {}) {
-  const r = spawnSync(cmd, args, {
+  const r = captureSync(cmd, args, {
     cwd: opts.cwd ?? ROOT,
-    encoding: 'utf8',
-    maxBuffer: 64 * 1024 * 1024,
-    timeout: opts.timeout,
     env: process.env,
+    shell: false,
+    timeout: opts.timeout ?? LEG_TIMEOUT_MS,
   });
-  return { status: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}`, error: r.error };
+  return { status: r.status, out: r.out, error: r.error };
 }
 const firstLine = (s) => (String(s ?? '').split(/\r?\n/).find((l) => l.trim()) ?? '').trim();
 
@@ -494,6 +531,14 @@ if (IS_MAIN && !UNTRACKED_ONLY) {
   releaseWorkLock = () => releaseHeavyLock(free.lock);
 }
 
+/* ⏱ 2026-09-22 (O-PREFLIGHT-HANGS-HOLDING-THE-MACHINE-LOCK): the release is in
+   a `finally`, so the lock goes when the WORK ends — on a throwing leg too, and
+   without depending on an exit handler that a hung process never reaches. The
+   legs inside are deliberately NOT re-indented: `finally` needs no block of its
+   own at this level, and a 220-line whitespace diff would bury the change and
+   conflict with every rebase. `releaseHeavyLock` is idempotent. */
+try {
+
 // ── 1 · the guard test suite, THE WHOLE GLOB ────────────────────────────────
 // 🔴 THE GLOB, NOT A FILE. Running one suite is how 4358 tests reported as 323.
 step(
@@ -709,13 +754,16 @@ step(
   },
 );
 
+} finally {
+  // ⚠️ BEFORE THE VERDICT IS PRINTED, not after, and on a throwing leg too.
+  releaseWorkLock();
+}
+
 // ── verdict ─────────────────────────────────────────────────────────────────
 if (IS_MAIN) {
-  // ⚠️ BEFORE THE VERDICT IS PRINTED, not after. Every leg has run, so the
-  // machine is free whatever happens next — including this process hanging at
-  // exit, which is what kept the lock for 85 minutes on 2026-09-20 while three
-  // other lanes waited. Printing is not work, and no other lane should queue
-  // behind it.
+  // The release already happened in the `finally` above — before this verdict
+  // is printed, as it has since 2026-09-21 (#849). Printing is not work, and no
+  // other lane should queue behind it. `releaseHeavyLock` is idempotent.
   releaseWorkLock();
 
   const failed = results.filter((r) => r.code !== 0);

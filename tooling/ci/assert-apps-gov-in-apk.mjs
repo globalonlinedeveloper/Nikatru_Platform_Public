@@ -283,6 +283,60 @@ export function checkFormAnswers(answers, badging, rules = STORE_FORM_RULES[CHAN
   return problems;
 }
 
+/** The permissions a rail's BUILD would have to request, keyed by the rail id
+ *  `purchaseRail.forbids` names. A rail cannot be proven present from badging —
+ *  a Razorpay checkout is INTERNET, which every build holds — but a forbidden
+ *  rail CAN be proven present, because Play Billing cannot work without its own
+ *  permission. So this is one-sided on purpose: it never claims "the right rail
+ *  shipped", only "a forbidden one did". */
+const RAIL_PERMISSIONS = {
+  'play-billing': ['com.android.vending.BILLING'],
+};
+
+/**
+ * The built .apk against the register row's identity and its `purchaseRail`.
+ *
+ * Two facts the .apk states about itself that nothing read before:
+ *
+ * 1. **The package id.** `aapt2 badging` prints what the build actually stamped;
+ *    `apps/<app>/android/app/build.gradle.kts` declares what it should be. They
+ *    are the same string today and a flavour, a suffix or a merged manifest can
+ *    part them. An .apk uploaded under a package id the store did not expect is
+ *    a new listing, not an update, and on apps.gov.in that is a support ticket
+ *    rather than a rollback.
+ * 2. **No forbidden rail.** The row's `purchaseRail.forbids` names `play-billing`
+ *    for a MECHANICAL reason, quoted in tooling/channel-register.json: the Play
+ *    Billing Library resolves a purchase against the Play install that delivered
+ *    the app, and apps.gov.in did not deliver it. A build that reached here with
+ *    `com.android.vending.BILLING` would open a checkout that cannot complete —
+ *    and it would be discovered by a buyer, on a government store, after paying.
+ *
+ * Returns problem strings; `applicationId` null means the declaration could not
+ * be read, which is itself a problem (a check that quietly skips is not a check).
+ */
+export function checkBuiltIdentity(badging, row, applicationId) {
+  const problems = [];
+  if (applicationId === null) {
+    problems.push(`no applicationId could be read from apps/<app>/android/app/build.gradle.kts, so the .apk's package "${badging.packageName ?? '?'}" is checked against nothing. The declaration is where the id is decided; an unreadable one is an unchecked upload, not a fine one.`);
+  } else if (badging.packageName !== applicationId) {
+    problems.push(`the built .apk's package is "${badging.packageName ?? '?'}" and apps/<app>/android/app/build.gradle.kts declares applicationId "${applicationId}". A store matches an update by package id: uploaded under another one it becomes a second listing.`);
+  }
+  const forbids = Array.isArray(row?.purchaseRail?.forbids) ? row.purchaseRail.forbids : null;
+  if (forbids === null) {
+    problems.push(`tooling/channel-register.json "${CHANNEL}" declares no \`purchaseRail.forbids\`, so no rail is forbidden in the built .apk and this limb ranges over nothing.`);
+    return problems;
+  }
+  const held = new Set(badging.permissions);
+  for (const rail of forbids) {
+    for (const perm of RAIL_PERMISSIONS[rail] ?? []) {
+      if (held.has(perm)) {
+        problems.push(`the built .apk requests ${perm}, and tooling/channel-register.json "${CHANNEL}" forbids the "${rail}" rail on this channel. ${row.purchaseRail.forbidsWhy ? 'Its `forbidsWhy` says why it cannot work.' : ''} A sideloaded build cannot complete that purchase.`.trim());
+      }
+    }
+  }
+  return problems;
+}
+
 /** One markdown table cell. The backslash is escaped FIRST, so a `\|` in the
  *  input (a signer DN can carry one) cannot turn the added escape back into a
  *  cell break. */
@@ -442,6 +496,12 @@ function main() {
     }
     if (answers) problems.push(...checkFormAnswers(answers, badging, rules));
   }
+
+  // The .apk's own identity, and the rails the row forbids in it.
+  const gradlePath = join(ROOT, 'apps', APP, 'android', 'app', 'build.gradle.kts');
+  const gradle = existsSync(gradlePath) ? readFileSync(gradlePath, 'utf8') : null;
+  const declaredId = gradle === null ? null : (/applicationId\s*=\s*"([^"]+)"/.exec(gradle)?.[1] ?? null);
+  problems.push(...checkBuiltIdentity(badging, row, declaredId));
 
   const label = portalLabel(badging.sdkVersion, rules);
   const bytes = statSync(apkPath).size;

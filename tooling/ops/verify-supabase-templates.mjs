@@ -106,9 +106,10 @@ try {
   // outlives the plan still reaches `unreadable()` and is still exit 2, and a 504
   // that persists is still not drift.
   res = await fetchWithBoundedRetry(
-    () =>
+    ({ signal }) =>
       fetch(`https://api.supabase.com/v1/projects/${ref}/config/auth`, {
         headers: { Authorization: `Bearer ${pat}` },
+        signal,
       }),
     { describe: (why) => `GET /v1/projects/<ref>/config/auth: ${why}` },
   );
