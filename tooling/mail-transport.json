@@ -99,7 +99,7 @@
     "smtp_admin_email": "auth@mail.nikatru.com",
     "smtp_sender_name": "Nikatru",
     "site_url": "https://nikatru.com/subscriptiontracker",
-    "uri_allow_list": "https://nikatru.com/subscriptiontracker/**,https://subly-9cp.pages.dev/**,http://localhost:3000/**,http://localhost:8080/**,com.nikatru.subscriptiontracker://auth-callback,com.nikatru.subscriptiontracker://auth-callback?nk_auth=confirm,com.nikatru.subscriptiontracker://auth-callback?nk_auth=oauth,com.nikatru.subscriptiontracker://auth-callback?nk_auth=link,com.nikatru.subscriptiontracker://auth-callback?nk_auth=reset,com.nikatru.subscriptiontracker://auth-callback?nk_auth=email-change",
+    "uri_allow_list": "https://nikatru.com/subscriptiontracker/**,https://subscriptiontracker-7qg.pages.dev/**,http://localhost:3000/**,http://localhost:8080/**,com.nikatru.subscriptiontracker://auth-callback,com.nikatru.subscriptiontracker://auth-callback?nk_auth=confirm,com.nikatru.subscriptiontracker://auth-callback?nk_auth=oauth,com.nikatru.subscriptiontracker://auth-callback?nk_auth=link,com.nikatru.subscriptiontracker://auth-callback?nk_auth=reset,com.nikatru.subscriptiontracker://auth-callback?nk_auth=email-change",
     "external_email_enabled": true,
     "rate_limit_email_sent": 100,
     "mailer_autoconfirm": false,

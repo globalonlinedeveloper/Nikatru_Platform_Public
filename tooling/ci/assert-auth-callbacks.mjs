@@ -139,6 +139,8 @@ const APP_ID = /^[a-z][a-z0-9]*$/;
 const read = (abs) => (existsSync(abs) ? readFileSync(abs, 'utf8') : null);
 const lineAt = (text, index) => text.slice(0, index).split('\n').length;
 const blank = (m) => m.replace(/[^\n]/g, ' ');
+/** Every RegExp metacharacter escaped, so a name read from a file matches literally. */
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 /** XML comments blanked, newlines kept, so line numbers survive. */
 export const stripXmlComments = (s) => s.replace(/<!--[\s\S]*?-->/g, blank);
 /** Desktop Entry comments are whole lines starting with `#`. */
@@ -172,7 +174,7 @@ function balanced(text, open, o = '(', c = ')') {
 
 /** The value of `name:` at the TOP level of an argument list, or null. */
 function namedArg(args, name) {
-  const re = new RegExp(`\\b${name}\\s*:`, 'g');
+  const re = new RegExp(`\\b${escapeRe(name)}\\s*:`, 'g');
   let m;
   while ((m = re.exec(args)) !== null) {
     // Only a top-level argument counts: depth 0 at the match.
@@ -222,10 +224,10 @@ export function readDerivation(root) {
   if (!src.includes(`'${SCHEME_PREFIX}$appId'`)) {
     problems.push(`${AUTH_REDIRECT}: authCallbackScheme() no longer builds '${SCHEME_PREFIX}$appId' — every native registration below is written against that scheme.`);
   }
-  if (!new RegExp(`kAuthCallbackHost\\s*=\\s*'${CALLBACK_HOST}'`).test(src)) {
+  if (!new RegExp(`kAuthCallbackHost\\s*=\\s*'${escapeRe(CALLBACK_HOST)}'`).test(src)) {
     problems.push(`${AUTH_REDIRECT}: kAuthCallbackHost is no longer '${CALLBACK_HOST}' — the Android filter and the allow list name that host.`);
   }
-  if (!new RegExp(`kAuthMarkerKey\\s*=\\s*'${MARKER_KEY}'`).test(src)) {
+  if (!new RegExp(`kAuthMarkerKey\\s*=\\s*'${escapeRe(MARKER_KEY)}'`).test(src)) {
     problems.push(`${AUTH_REDIRECT}: kAuthMarkerKey is no longer '${MARKER_KEY}' — the allow list's exact entries carry that key.`);
   }
   const at = src.search(/\benum\s+AuthFlow\s*\{/);
@@ -284,7 +286,7 @@ function checkAndroid(root, app, scheme, problems, coverageLost) {
   let found = false;
   for (const f of act.matchAll(/<intent-filter\b[^>]*>([\s\S]*?)<\/intent-filter>/g)) {
     const b = f[1];
-    const has = (kind, n) => new RegExp(`<${kind}\\b[^>]*android:name\\s*=\\s*"${n.replace(/\./g, '\\.')}"`).test(b);
+    const has = (kind, n) => new RegExp(`<${kind}\\b[^>]*android:name\\s*=\\s*"${escapeRe(n)}"`).test(b);
     const schemes = new Set([...b.matchAll(/android:scheme\s*=\s*"([^"]+)"/g)].map((m) => m[1]));
     const hosts = new Set([...b.matchAll(/android:host\s*=\s*"([^"]+)"/g)].map((m) => m[1]));
     if (
@@ -565,7 +567,7 @@ export function checkLinkCalls(root, markers) {
     return { problems, calls: 0 };
   }
   let calls = 0;
-  const methods = [...LINK_CALLS.keys()].join('|');
+  const methods = [...LINK_CALLS.keys()].map(escapeRe).join('|');
   for (const file of dartFiles(lib)) {
     const rel = relative(root, file).replace(/\\/g, '/');
     const src = stripDart(readFileSync(file, 'utf8'));

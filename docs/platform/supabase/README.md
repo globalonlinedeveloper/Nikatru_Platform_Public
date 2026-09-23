@@ -10,7 +10,7 @@ One Supabase project authenticates every app in the portfolio. Branding it once 
   **2026-09-09** it still holds `https://subly.nikatru.com`. The cutover PATCHes it; this file
   says what it is being PATCHed to.
 - **Redirect allow-list — TARGET:** `https://nikatru.com/subscriptiontracker/**`,
-  `https://subly-9cp.pages.dev/**`, `http://localhost:3000/**`, `http://localhost:8080/**`
+  `https://subscriptiontracker-7qg.pages.dev/**`, `http://localhost:3000/**`, `http://localhost:8080/**`
   (web + local dev), **plus the native auth callback** (⏱ 2026-09-23):
   `com.nikatru.subscriptiontracker://auth-callback` and the same URL with each marker the app
   sends — `?nk_auth=confirm`, `?nk_auth=oauth`, `?nk_auth=link`, `?nk_auth=reset`,
@@ -46,6 +46,13 @@ One Supabase project authenticates every app in the portfolio. Branding it once 
     its production alias is **`subly-9cp.pages.dev`**. A reader who "fixed" the live list to
     match this file would have deleted the only entry that lets a preview deployment complete a
     sign-in.
+  - 📌 **Correction, 2026-09-23:** the Pages entry is **`https://subscriptiontracker-7qg.pages.dev/**`**.
+    That has been the live production alias since the slug rename moved the app to its own Pages
+    project. `subly-9cp.pages.dev` is the pre-rename origin; it was retired on 2026-09-11, when it
+    left both Workers' CORS lists (`tooling/ci/assert-cors-allowlist.mjs`, which refuses to re-add
+    it). So the 2026-09-09 line above ("carried over unchanged") no longer holds for the Pages entry.
+    A live GET on 2026-09-23 read the four web entries with `-7qg` second, which is what
+    `supabaseAuth.uri_allow_list` records.
 
 ### 🔴 gotrue does not reject a bad redirect. It SILENTLY SUBSTITUTES the Site URL.
 A `redirect_to` that is not on the allow-list produces **no error and no warning**: gotrue
