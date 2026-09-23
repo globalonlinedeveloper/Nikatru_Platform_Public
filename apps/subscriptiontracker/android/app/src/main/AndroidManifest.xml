@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <!-- 🔴 UNTIL 2026-09-09 THIS FILE DECLARED NO PERMISSION AT ALL, and the two
          below are the whole of what a local-reminder app needs. Both have to be
          HERE rather than merged in: flutter_local_notifications 17.2.4's own
@@ -153,6 +154,24 @@
                 <action android:name="com.htc.intent.action.QUICKBOOT_POWERON"/>
             </intent-filter>
         </receiver>
+
+        <!-- ⏱ 2026-09-23 · REMOVED FROM THE MERGED MANIFEST, row
+             O-VAPT-V5-FOREIGN-PERMISSION. purchases_flutter (through
+             packages/billing_revenuecat) carries RevenueCat's Amazon store
+             module, whose manifest merges in this receiver: exported, and
+             guarded only by com.amazon.inapp.purchasing.Permission.NOTIFY, a
+             permission no app here declares. Any app installed first can
+             declare that permission itself, hold it, and send this receiver
+             broadcasts. MobSF, which apps.gov.in runs over the .apk, reports it
+             as "protected by a permission which is not defined in the analysed
+             application", and assert-android-vapt-manifest.mjs V5 fails it.
+             Play billing does not use it, and no purchase rail in
+             tooling/channel-register.json sells through Amazon.
+             REVERT CONDITION: an Amazon rail is declared, so the Amazon IAP
+             receiver must come back; delete the tools:node=remove line and
+             protect it by other means. tooling/ci/test/android-vapt-manifest.test.mjs
+             C1 goes red the day such a rail sits beside this line. -->
+        <receiver android:name="com.amazon.device.iap.ResponseReceiver" tools:node="remove" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

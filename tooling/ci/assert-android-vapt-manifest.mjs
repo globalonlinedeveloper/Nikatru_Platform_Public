@@ -50,6 +50,15 @@
 //                      MAIN + LAUNCHER (the one entry point an app must expose),
 //                      or — the ONE recorded deep link — VIEW + BROWSABLE on
 //                      exactly `com.nikatru.<--app>://auth-callback` (see V5)
+//                      ⏱ 2026-09-23 · AND a protecting permission counts only
+//                      if no stranger can hold it: `android.permission.*`, or
+//                      one THIS merged manifest declares at protectionLevel
+//                      signature (base 2) or signatureOrSystem (3). Any other
+//                      is FOREIGN and fails, on android:permission, on the
+//                      <application> fallback and on a provider's read AND
+//                      write permissions. MobSF prints it as "protected by a
+//                      permission which is not defined in the analysed
+//                      application" (row O-VAPT-V5-FOREIGN-PERMISSION)
 //   V6 logging         not a manifest property, so it is checked where it is
 //                      decided: `avoid_print` stays at severity error in the one
 //                      inherited analysis_options.yaml, and the app's own
@@ -219,6 +228,7 @@ const ATTR_BY_ID = new Map([
   [0x01010006, 'permission'],
   [0x01010007, 'readPermission'],
   [0x01010008, 'writePermission'],
+  [0x01010009, 'protectionLevel'],
   [0x0101000f, 'debuggable'],
   [0x01010010, 'exported'],
   [0x01010024, 'value'],
@@ -370,6 +380,53 @@ if (!Number.isInteger(targetSdk)) {
 }
 const pkg = manifest.attrs.get('package');
 
+// ── the merged manifest's own <permission> declarations, which V5 reads ──────
+// ⏱ 2026-09-23 · A permission this app does not DECLARE can be declared by any
+// app installed before it; that app then holds it and reaches whatever it
+// guards. So V5 asks the manifest it is judging which permissions it declares,
+// and at what level. aapt2 writes protectionLevel as a flag (TYPE_INT_HEX, read
+// as a number above); the low nibble is the base level and the rest are flags,
+// so signature|privileged (0x12) is still base 2. A raw string survives only
+// from a build that keeps raw values; its first `|` token is read. A level this
+// reader cannot parse is FOREIGN: the guard fails closed, never open.
+// <permission-tree> and <permission-group> declare no trusted name.
+const PROTECTION_BASE = { normal: 0, dangerous: 1, signature: 2, signatureOrSystem: 3 };
+const BASE_NAME = ['normal', 'dangerous', 'signature', 'signatureOrSystem'];
+function protectionBase(level) {
+  if (level === undefined) return 0; // Android's default protectionLevel is normal
+  if (typeof level === 'number') return level & 0xf;
+  if (typeof level === 'string') {
+    const first = level.split('|')[0].trim();
+    if (/^0x[0-9a-f]+$/i.test(first)) return parseInt(first, 16) & 0xf;
+    if (Object.hasOwn(PROTECTION_BASE, first)) return PROTECTION_BASE[first];
+  }
+  return null;
+}
+const levelText = (d) =>
+  d.base === null ? `an unreadable protectionLevel ${JSON.stringify(d.level)}` : `protectionLevel ${BASE_NAME[d.base] ?? `0x${d.base.toString(16)}`}`;
+const declared = new Map();
+for (const d of manifest.children.filter((n) => n.tag === 'permission')) {
+  const pName = d.attrs.get('android:name');
+  if (typeof pName !== 'string') continue;
+  const decl = { level: d.attrs.get('android:protectionLevel'), base: protectionBase(d.attrs.get('android:protectionLevel')) };
+  const first = declared.get(pName);
+  if (!first) declared.set(pName, decl);
+  else if (first.base !== decl.base) {
+    problems.push(
+      `V5 exported — <permission android:name="${pName}"> is declared twice in the merged manifest, at ${levelText(first)} and at ${levelText(decl)}. ` +
+        'A device keeps the declaration it saw first, and this guard cannot know which that is. Declare it once.',
+    );
+  }
+}
+// What V5 prints beside a permission, and whether a stranger could hold it.
+function permissionClass(p) {
+  if (p.startsWith('android.permission.')) return { trusted: true, label: 'platform' };
+  const d = declared.get(p);
+  if (!d) return { trusted: false, label: 'FOREIGN: not declared by this app' };
+  if (d.base === 2 || d.base === 3) return { trusted: true, label: `declared ${BASE_NAME[d.base]}` };
+  return { trusted: false, label: `FOREIGN: declared at ${levelText(d)}` };
+}
+
 // ── V1 debuggable ────────────────────────────────────────────────────────────
 if (isTrue(application.attrs.get('android:debuggable'))) {
   problems.push(`V1 debuggable — <application android:debuggable="true">. A debuggable release lets anyone attach a debugger and read the process (MobSF: high).`);
@@ -492,12 +549,30 @@ for (const c of application.children.filter((n) => COMPONENTS.has(n.tag))) {
   // exported; a provider is exported by default only at targetSdk <= 16.
   const exported = isTrue(exp) || (exp === undefined && (c.tag === 'provider' ? targetSdk <= 16 : filters.length > 0));
   if (!exported) continue;
-  const perm = c.attrs.get('android:permission') ?? appPermission;
-  const protectedBy = perm
-    ? `permission ${perm}`
-    : c.tag === 'provider' && c.attrs.get('android:readPermission') && c.attrs.get('android:writePermission')
-      ? 'read + write permissions'
-      : null;
+  const ownPerm = c.attrs.get('android:permission');
+  const perm = ownPerm ?? appPermission;
+  const permFrom = ownPerm !== undefined ? 'android:permission' : '<application android:permission> fallback';
+  // ⏱ 2026-09-23 · Every door a caller comes through is judged, each by the
+  // attribute that guards it: a provider's readPermission and writePermission
+  // each override android:permission for their own direction, so a provider
+  // that names either has two doors. A door with no permission leaves the
+  // component unprotected (the FAIL below it); a door whose permission is
+  // FOREIGN fails on its own line, naming the permission and the fix.
+  const readPerm = c.tag === 'provider' ? c.attrs.get('android:readPermission') : undefined;
+  const writePerm = c.tag === 'provider' ? c.attrs.get('android:writePermission') : undefined;
+  const doors = readPerm || writePerm
+    ? [
+        [readPerm ? 'android:readPermission' : permFrom, readPerm || perm],
+        [writePerm ? 'android:writePermission' : permFrom, writePerm || perm],
+      ]
+    : perm ? [[permFrom, perm]] : [];
+  const guarded = doors.length > 0 && doors.every(([, p]) => typeof p === 'string' && p !== '');
+  const judged = guarded ? doors.map(([attr, p]) => ({ attr, p, ...permissionClass(p) })) : [];
+  const protectedBy = !guarded
+    ? null
+    : judged.length === 1
+      ? `permission ${perm} (${judged[0].label}${ownPerm === undefined ? ', from <application>' : ''})`
+      : `read + write permissions — read ${judged[0].p} (${judged[0].label}), write ${judged[1].p} (${judged[1].label})`;
   const isActivity = c.tag === 'activity' || c.tag === 'activity-alias';
   const takesAuthCallback = isActivity && filters.some(isAuthCallbackFilter);
   const isLauncher =
@@ -513,6 +588,15 @@ for (const c of application.children.filter((n) => COMPONENTS.has(n.tag))) {
       `V5 exported — <${c.tag} android:name="${name}"> is exported${isTrue(exp) ? '' : ' (implicitly, by its intent-filter)'} with no protecting permission. ` +
         'Any app on the device can start or bind it. Set android:exported="false", or protect it with a signature permission; ' +
         'a BROWSABLE deep-link entry point is a decision to record in this guard with its reason, not a silent pass.',
+    );
+  }
+  for (const j of judged.filter((x) => !x.trusted)) {
+    problems.push(
+      `V5 exported — <${c.tag} android:name="${name}"> is exported and guarded only by ${j.p} (its ${j.attr}), which is ${j.label}. ` +
+        `Any app installed first can declare ${j.p} itself, hold it, and reach this component ` +
+        '(MobSF: "protected by a permission which is not defined in the analysed application"). ' +
+        'Fix: declare it with protectionLevel signature, protect the component with a platform permission, ' +
+        'or remove the component from the merged manifest with tools:node="remove".',
     );
   }
 }
@@ -609,4 +693,4 @@ if (problems.length) {
 }
 
 console.log('');
-console.log(`${NAME}: OK — V1 debuggable, V2 allowBackup, V3 cleartext, V4 secrets (${attrValuesScanned} value(s)), V5 exported (${exportedSeen.length} exported, all protected or the launcher), V6 logging`);
+console.log(`${NAME}: OK — V1 debuggable, V2 allowBackup, V3 cleartext, V4 secrets (${attrValuesScanned} value(s)), V5 exported (${exportedSeen.length} exported, each behind a platform or declared-signature permission, or the launcher), V6 logging`);

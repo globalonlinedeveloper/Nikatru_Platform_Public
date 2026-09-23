@@ -181,8 +181,9 @@ void run(HookContext context) {
       )
       ..warn(
         '  1b. AND THE MOMENT YOU ADD android OR windows, TWO WAIVERS COME '
-        'WITH THEM. `flutter create` writes the stock template, which carries '
-        'neither, and the first app in this portfolio needed both the day a '
+        'WITH THEM, AND ON android ONE REMOVAL. `flutter create` writes the '
+        'stock template, which carries none of the three, and the first app '
+        'in this portfolio needed both waivers the day a '
         'transitive plugin arrived: cloudflare_turnstile pulls '
         'flutter_inappwebview, whose Android side calls '
         'getDefaultProguardFile(proguard-android.txt) — AGP 9 makes that '
@@ -195,9 +196,20 @@ void run(HookContext context) {
         'windows/CMakeLists.txt  add_compile_definitions('
         '_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS)  '
         'at DIRECTORY scope, above flutter/generated_plugins.cmake.  '
-        'ci.yml compiles Dart and the web and builds no native binary, so a '
-        'missing waiver is invisible on every required check and only '
-        'build-platforms.yml ever finds out.',
+        'THE REMOVAL (2026-09-23): purchases_flutter merges in '
+        'com.amazon.device.iap.ResponseReceiver, exported and guarded only by '
+        'a permission no app here declares, so any app installed first can '
+        'hold that permission and reach it. MobSF reports it and V5 of '
+        'assert-android-vapt-manifest.mjs fails the build on it. Copy the '
+        'dated tools:node="remove" line for that receiver, and the '
+        'xmlns:tools declaration on <manifest>, out of '
+        'android/app/src/main/AndroidManifest.xml in the app that already '
+        'carries it.  '
+        'CORRECTED 2026-09-23: ci.yml builds the Android APKs of every app on '
+        'every PR, so a missing Android waiver or removal fails a required '
+        'check. Nothing on a PR builds Windows, so a missing Windows waiver '
+        'is invisible on every required check and only build-platforms.yml '
+        'ever finds out.',
       )
       ..info(
         '  2. ONE COMMAND provisions the backend — create the D1 in apac, '
@@ -325,8 +337,9 @@ void run(HookContext context) {
       )
       ..warn(
         '  1b. AND THE MOMENT YOU ADD android OR windows, TWO WAIVERS COME '
-        'WITH THEM. `flutter create` writes the stock template, which carries '
-        'neither, and the first app in this portfolio needed both the day a '
+        'WITH THEM, AND ON android ONE REMOVAL. `flutter create` writes the '
+        'stock template, which carries none of the three, and the first app '
+        'in this portfolio needed both waivers the day a '
         'transitive plugin arrived: cloudflare_turnstile pulls '
         'flutter_inappwebview, whose Android side calls '
         'getDefaultProguardFile(proguard-android.txt) — AGP 9 makes that '
@@ -339,9 +352,20 @@ void run(HookContext context) {
         'windows/CMakeLists.txt  add_compile_definitions('
         '_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS)  '
         'at DIRECTORY scope, above flutter/generated_plugins.cmake.  '
-        'ci.yml compiles Dart and the web and builds no native binary, so a '
-        'missing waiver is invisible on every required check and only '
-        'build-platforms.yml ever finds out.',
+        'THE REMOVAL (2026-09-23): purchases_flutter merges in '
+        'com.amazon.device.iap.ResponseReceiver, exported and guarded only by '
+        'a permission no app here declares, so any app installed first can '
+        'hold that permission and reach it. MobSF reports it and V5 of '
+        'assert-android-vapt-manifest.mjs fails the build on it. Copy the '
+        'dated tools:node="remove" line for that receiver, and the '
+        'xmlns:tools declaration on <manifest>, out of '
+        'android/app/src/main/AndroidManifest.xml in the app that already '
+        'carries it.  '
+        'CORRECTED 2026-09-23: ci.yml builds the Android APKs of every app on '
+        'every PR, so a missing Android waiver or removal fails a required '
+        'check. Nothing on a PR builds Windows, so a missing Windows waiver '
+        'is invisible on every required check and only build-platforms.yml '
+        'ever finds out.',
       )
       // [pipeline S-1r] (absent from the frozen pipeline origin lock by construction — S-1r is a residual id, never a pipeline heading) Same correction as the backend branch above — see the
       // note there for the measurement and for the 2026-09-12 correction. DNS is

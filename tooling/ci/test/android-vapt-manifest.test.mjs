@@ -4,6 +4,8 @@
 // rather than pass when it cannot judge what it read.
 //
 // Register row O-APPS-GOV-IN-VAPT-CHECKLIST: "a mutation case per item".
+// ⏱ 2026-09-23 · Row O-VAPT-V5-FOREIGN-PERMISSION: V5 F1-F7 judge the CLASS of
+// a protecting permission (platform, declared signature, or FOREIGN).
 //
 // ⚠️ THE FIXTURES ARE REAL BYTES. Every .apk below is a genuine zip holding a
 // genuine binary AXML manifest, encoded chunk by chunk by the writer in THIS
@@ -21,11 +23,12 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { deflateRawSync } from 'node:zlib';
+import { stripXmlComments } from '../../store/render-splash.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const GUARD = join(CI_DIR, 'assert-android-vapt-manifest.mjs');
@@ -40,7 +43,7 @@ after(() => { rmSync(TMP, { recursive: true, force: true }); });
 // android.R.attr ids, written out again here rather than imported.
 const ATTR_IDS = {
   name: 0x01010003, permission: 0x01010006, readPermission: 0x01010007, writePermission: 0x01010008,
-  debuggable: 0x0101000f, exported: 0x01010010, value: 0x01010024, resource: 0x01010025,
+  protectionLevel: 0x01010009, debuggable: 0x0101000f, exported: 0x01010010, value: 0x01010024, resource: 0x01010025,
   minSdkVersion: 0x0101020c, targetSdkVersion: 0x01010270, allowBackup: 0x01010280,
   usesCleartextTraffic: 0x010104ec, networkSecurityConfig: 0x01010527, label: 0x01010001, icon: 0x01010002, scheme: 0x01010027,
   host: 0x01010028, pathPattern: 0x0101002c,
@@ -137,6 +140,9 @@ function axml(doc, { utf8 = false, garbleNames = false } = {}) {
         b.writeInt32LE(-1, 8); b[15] = 0x12; b.writeUInt32LE(a.value ? 0xffffffff : 0, 16);
       } else if (typeof a.value === 'number') {
         b.writeInt32LE(-1, 8); b[15] = 0x10; b.writeUInt32LE(a.value, 16);
+      } else if ('hex' in a.value) {
+        // TYPE_INT_HEX, the way aapt2 writes a flag attribute such as protectionLevel
+        b.writeInt32LE(-1, 8); b[15] = 0x11; b.writeUInt32LE(a.value.hex, 16);
       } else {
         b.writeInt32LE(-1, 8); b[15] = 0x01; b.writeUInt32LE(a.value.ref, 16);
       }
@@ -184,7 +190,7 @@ function zip(files) {
 const launcherFilter = () =>
   el('intent-filter', [], [el('action', [A('name', 'android.intent.action.MAIN')]), el('category', [A('name', 'android.intent.category.LAUNCHER')])]);
 
-function baseManifest({ app = {}, targetSdk = 36, extraComponents = [], activityFilters = null } = {}) {
+function baseManifest({ app = {}, targetSdk = 36, extraComponents = [], activityFilters = null, manifestExtras = [] } = {}) {
   const appAttrs = [A('label', 'Demo'), A('name', 'android.app.Application'), A('icon', { ref: 0x7f0d0000 })];
   const backup = 'allowBackup' in app ? app.allowBackup : false;
   if (backup !== undefined) appAttrs.push(A('allowBackup', backup));
@@ -192,6 +198,7 @@ function baseManifest({ app = {}, targetSdk = 36, extraComponents = [], activity
   return el('manifest', [P('package', 'com.example.demo')], [
     el('uses-sdk', [A('minSdkVersion', 21), A('targetSdkVersion', targetSdk)]),
     el('uses-permission', [A('name', 'android.permission.INTERNET')]),
+    ...manifestExtras,
     el('application', appAttrs, [
       el('activity', [A('name', 'com.example.demo.MainActivity'), A('exported', true)], [
         el('meta-data', [A('name', 'io.flutter.embedding.android.NormalTheme'), A('resource', { ref: 0x7f0f0001 })]),
@@ -207,6 +214,36 @@ function baseManifest({ app = {}, targetSdk = 36, extraComponents = [], activity
     ]),
   ]);
 }
+
+// ⏱ 2026-09-23 · THE REAL SHAPE, row O-VAPT-V5-FOREIGN-PERMISSION. The app's
+// built APK (CI job 107298933655's V5 print) exports three components: the
+// launcher, ProfileInstallReceiver on android.permission.DUMP, and
+// com.amazon.device.iap.ResponseReceiver on
+// com.amazon.inapp.purchasing.Permission.NOTIFY, which RevenueCat's Amazon
+// module brings in and the app never declares. The merged manifest does declare
+// one permission of its own, androidx.core's
+// DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION, at signature
+// (store/android-play/data-safety.json). Levels are written as aapt2 writes a
+// flag: TYPE_INT_HEX, `{ hex: n }`.
+const DYNAMIC_PERM = 'com.example.demo.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION';
+const declarePermission = (name, level) => el('permission', [A('name', name), A('protectionLevel', level)]);
+const amazonReceiver = () =>
+  el('receiver', [A('name', 'com.amazon.device.iap.ResponseReceiver'), A('exported', true), A('permission', 'com.amazon.inapp.purchasing.Permission.NOTIFY')], [
+    el('intent-filter', [], [el('action', [A('name', 'com.amazon.inapp.purchasing.NOTIFY')])]),
+  ]);
+function realShape({ amazon = true } = {}) {
+  return baseManifest({
+    extraComponents: amazon ? [amazonReceiver()] : [],
+    manifestExtras: [declarePermission(DYNAMIC_PERM, { hex: 0x2 }), el('uses-permission', [A('name', DYNAMIC_PERM)])],
+  });
+}
+// One receiver on a plugin's own permission, declared at `level` (or not at all).
+const guardedReceiver = (level) =>
+  baseManifest({
+    extraComponents: [el('receiver', [A('name', 'io.plugin.GuardedReceiver'), A('exported', true), A('permission', 'io.plugin.permission.GUARD')])],
+    manifestExtras: level === undefined ? [] : [declarePermission('io.plugin.permission.GUARD', level)],
+  });
+const failLines = (out) => out.split('\n').filter((l) => l.startsWith('FAIL '));
 
 const GOOD_KT = 'package com.example.demo\n\nimport io.flutter.embedding.android.FlutterActivity\n\nclass MainActivity : FlutterActivity()\n';
 const GOOD_ANALYSIS = 'analyzer:\n  errors:\n    avoid_print: error\n';
@@ -402,11 +439,66 @@ describe('assert-android-vapt-manifest', () => {
     assert.match(out, /FAIL V5 exported — <activity android:name="com\.example\.demo\.MainActivity">/);
   });
 
+  // ⏱ 2026-09-23 · a.R and a.W are DECLARED at signature here: since
+  // O-VAPT-V5-FOREIGN-PERMISSION an undeclared one is foreign (F7 below).
   test('V5: an exported provider protected by read AND write permissions passes', () => {
     const pv = el('provider', [A('name', 'io.plugin.Prov'), A('exported', true), A('readPermission', 'a.R'), A('writePermission', 'a.W')]);
-    const { code, out } = run(fixture({ manifest: baseManifest({ extraComponents: [pv] }) }));
+    const manifestExtras = [declarePermission('a.R', { hex: 0x2 }), declarePermission('a.W', { hex: 0x2 })];
+    const { code, out } = run(fixture({ manifest: baseManifest({ extraComponents: [pv], manifestExtras }) }));
     assert.equal(code, 0, out);
     assert.match(out, /exported: provider io\.plugin\.Prov — read \+ write permissions/);
+  });
+
+  // ── V5, the permission CLASS (row O-VAPT-V5-FOREIGN-PERMISSION) ───────────
+  test('V5 F1: the real shape fails on the Amazon receiver, guarded by a permission the app never declares', () => {
+    const { code, out } = run(fixture({ manifest: realShape() }));
+    assert.equal(code, 1, out);
+    assert.match(out, /exported: receiver com\.amazon\.device\.iap\.ResponseReceiver — permission com\.amazon\.inapp\.purchasing\.Permission\.NOTIFY \(FOREIGN: not declared by this app\)/);
+    assert.match(out, /FAIL V5 exported — <receiver android:name="com\.amazon\.device\.iap\.ResponseReceiver"> is exported and guarded only by com\.amazon\.inapp\.purchasing\.Permission\.NOTIFY \(its android:permission\), which is FOREIGN: not declared by this app\./);
+    assert.match(out, /remove the component from the merged manifest with tools:node="remove"/);
+    assert.equal(failLines(out).length, 1, out);
+  });
+
+  test('V5 F2: the real shape with the Amazon receiver removed passes, and the DUMP receiver reads as platform', () => {
+    const { code, out } = run(fixture({ manifest: realShape({ amazon: false }) }));
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /ResponseReceiver/);
+    assert.match(out, /exported: receiver androidx\.profileinstaller\.ProfileInstallReceiver — permission android\.permission\.DUMP \(platform\)/);
+    assert.match(out, /V5 exported \(2 exported/);
+  });
+
+  test('V5 F3: a receiver on a permission the app declares at signature (0x2, as aapt2 writes it) passes', () => {
+    const { code, out } = run(fixture({ manifest: guardedReceiver({ hex: 0x2 }) }));
+    assert.equal(code, 0, out);
+    assert.match(out, /exported: receiver io\.plugin\.GuardedReceiver — permission io\.plugin\.permission\.GUARD \(declared signature\)/);
+  });
+
+  test('V5 F4: the same permission declared at protectionLevel normal (0x0) is foreign, and fails', () => {
+    const { code, out } = run(fixture({ manifest: guardedReceiver({ hex: 0x0 }) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /FAIL V5 exported — <receiver android:name="io\.plugin\.GuardedReceiver"> is exported and guarded only by io\.plugin\.permission\.GUARD \(its android:permission\), which is FOREIGN: declared at protectionLevel normal\./);
+  });
+
+  test('V5 F5: signature|privileged (0x12) keeps base level signature, and passes', () => {
+    const { code, out } = run(fixture({ manifest: guardedReceiver({ hex: 0x12 }) }));
+    assert.equal(code, 0, out);
+    assert.match(out, /exported: receiver io\.plugin\.GuardedReceiver — permission io\.plugin\.permission\.GUARD \(declared signature\)/);
+  });
+
+  test('V5 F6: a foreign <application android:permission> fallback is judged too, and fails the component that leans on it', () => {
+    const svc = el('service', [A('name', 'io.plugin.Svc'), A('exported', true)]);
+    const { code, out } = run(fixture({ manifest: baseManifest({ app: { permission: 'io.vendor.permission.APP_GUARD' }, extraComponents: [svc] }) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /FAIL V5 exported — <service android:name="io\.plugin\.Svc"> is exported and guarded only by io\.vendor\.permission\.APP_GUARD \(its <application android:permission> fallback\), which is FOREIGN: not declared by this app\./);
+  });
+
+  test('V5 F7: a provider with a signature read permission and an undeclared write permission fails on the write', () => {
+    const pv = el('provider', [A('name', 'io.plugin.Prov'), A('exported', true), A('readPermission', 'io.plugin.permission.READ'), A('writePermission', 'io.plugin.permission.WRITE')]);
+    const { code, out } = run(fixture({ manifest: baseManifest({ extraComponents: [pv], manifestExtras: [declarePermission('io.plugin.permission.READ', { hex: 0x2 })] }) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /exported: provider io\.plugin\.Prov — read \+ write permissions — read io\.plugin\.permission\.READ \(declared signature\), write io\.plugin\.permission\.WRITE \(FOREIGN: not declared by this app\)/);
+    assert.match(out, /FAIL V5 exported — <provider android:name="io\.plugin\.Prov"> is exported and guarded only by io\.plugin\.permission\.WRITE \(its android:writePermission\), which is FOREIGN: not declared by this app\./);
+    assert.equal(failLines(out).length, 1, out);
   });
 
   test('V6: avoid_print demoted below error fails', () => {
@@ -507,5 +599,91 @@ describe('assert-android-vapt-manifest', () => {
     const { code, out } = run(fixture({ analysis: null }));
     assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST — packages\/analysis\/lib\/analysis_options\.yaml does not exist/);
+  });
+});
+
+// ── C1 / C2 ──────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-23 · Row O-VAPT-V5-FOREIGN-PERMISSION. An app manifest removes
+// com.amazon.device.iap.ResponseReceiver from the merged manifest with
+// tools:node="remove", because V5 fails it (F1): it is exported and guarded only
+// by com.amazon.inapp.purchasing.Permission.NOTIFY, which no app here declares.
+// That removal is right ONLY while no purchase rail sells through Amazon. So the
+// removal and the register are read together: a manifest that removes the
+// receiver beside a register whose purchaseRails.rails names an Amazon rail is
+// red, and the message names the revert. C1 reads the real tree; C2 adds an
+// `amazon-appstore` rail to a temp COPY of the real register (the real register
+// is never edited) and must turn red.
+const REPO = resolve(CI_DIR, '..', '..');
+const AMAZON_RECEIVER = 'com.amazon.device.iap.ResponseReceiver';
+
+// Comments are removed by the existing fixpoint helper, which also drops
+// everything after a dangling `<!--`. A one-pass replace here was CodeQL's
+// "incomplete multi-character sanitization" alert on PR #908.
+function removesAmazonReceiver(xml) {
+  const live = stripXmlComments(xml);
+  return [...live.matchAll(/<receiver\b[^>]*>/g)].some(
+    ([tag]) => tag.includes(`android:name="${AMAZON_RECEIVER}"`) && /\btools:node="remove"/.test(tag),
+  );
+}
+
+function amazonCoupling(root) {
+  const removers = readdirSync(join(root, 'apps'), { withFileTypes: true })
+    .filter((d) => d.isDirectory())
+    .map((d) => `apps/${d.name}/android/app/src/main/AndroidManifest.xml`)
+    .filter((rel) => existsSync(join(root, rel)) && removesAmazonReceiver(readFileSync(join(root, rel), 'utf8')));
+  const register = JSON.parse(readFileSync(join(root, 'tooling', 'channel-register.json'), 'utf8'));
+  const rails = register.purchaseRails?.rails;
+  if (rails === null || typeof rails !== 'object') {
+    return { removers, problems: ['tooling/channel-register.json has no purchaseRails.rails object, so the Amazon coupling cannot be judged'] };
+  }
+  const amazonRails = Object.keys(rails).filter((r) => /amazon/i.test(r));
+  const problems = amazonRails.length === 0
+    ? []
+    : removers.map(
+      (rel) => `${rel} removes ${AMAZON_RECEIVER} with tools:node="remove", and tooling/channel-register.json purchaseRails.rails declares ${amazonRails.join(', ')}: ` +
+        'an Amazon rail is declared, so the Amazon IAP receiver must come back; delete the tools:node=remove line and protect it by other means',
+    );
+  return { removers, problems };
+}
+
+describe('the Amazon IAP receiver removal is coupled to the purchase rails', () => {
+  test('C1: no app removes the Amazon IAP receiver while the register declares an Amazon rail', () => {
+    const { removers, problems } = amazonCoupling(REPO);
+    // Not vacuous: at least one real manifest must be READ as removing the
+    // receiver, or a reworded removal line would leave C1 judging nothing.
+    assert.ok(removers.length > 0, `no apps/*/android/app/src/main/AndroidManifest.xml is read as removing ${AMAZON_RECEIVER}`);
+    assert.deepEqual(problems, []);
+  });
+
+  test('C2: an amazon-appstore rail in a copy of the register turns the removal red, and names the revert', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'nikatru-vapt-c2-'));
+    try {
+      mkdirSync(join(tmp, 'tooling'), { recursive: true });
+      const register = JSON.parse(readFileSync(join(REPO, 'tooling', 'channel-register.json'), 'utf8'));
+      writeFileSync(join(tmp, 'tooling', 'channel-register.json'), JSON.stringify(register));
+      const rel = 'apps/demo/android/app/src/main/AndroidManifest.xml';
+      mkdirSync(join(tmp, 'apps', 'demo', 'android', 'app', 'src', 'main'), { recursive: true });
+      writeFileSync(
+        join(tmp, rel),
+        `<manifest xmlns:android="${ANDROID_NS}" xmlns:tools="http://schemas.android.com/tools">\n` +
+          '  <application>\n' +
+          `    <receiver android:name="${AMAZON_RECEIVER}" tools:node="remove" />\n` +
+          '  </application>\n</manifest>\n',
+      );
+
+      const control = amazonCoupling(tmp);
+      assert.deepEqual(control.removers, [rel]);
+      assert.deepEqual(control.problems, [], 'the unchanged copy of the register declares no Amazon rail');
+
+      register.purchaseRails.rails['amazon-appstore'] = 'C2 fixture: an Amazon Appstore rail';
+      writeFileSync(join(tmp, 'tooling', 'channel-register.json'), JSON.stringify(register));
+      const { problems } = amazonCoupling(tmp);
+      assert.equal(problems.length, 1, problems.join('\n'));
+      assert.match(problems[0], /^apps\/demo\/android\/app\/src\/main\/AndroidManifest\.xml removes com\.amazon\.device\.iap\.ResponseReceiver/);
+      assert.match(problems[0], /purchaseRails\.rails declares amazon-appstore/);
+      assert.match(problems[0], /an Amazon rail is declared, so the Amazon IAP receiver must come back; delete the tools:node=remove line and protect it by other means/);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
   });
 });
