@@ -13,7 +13,7 @@
   "app-address-shape.test.mjs": 32,
   "app-dod.test.mjs": 32,
   "app-naming.test.mjs": 30,
-  "app-versioning.test.mjs": 51,
+  "app-versioning.test.mjs": 64,
   "app-yaml.test.mjs": 79,
   "appimage-signing.test.mjs": 74,
   "apple-privacy-manifest.test.mjs": 43,

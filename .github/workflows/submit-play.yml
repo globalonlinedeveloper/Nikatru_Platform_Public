@@ -76,14 +76,24 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: node tooling/ci/android-signing.mjs --app subscriptiontracker
+      - name: Derive the release line from pubspec
+        id: ver
+        run: node tooling/ci/assert-app-versioning.mjs --emit apps/subscriptiontracker >> "$GITHUB_OUTPUT"
+      # why: the three version flags, byte-identical to the submit job's build. Without them
+      # AppConfig.appVersion is 'dev' and the versionCode is pubspec's `+1`, which Play has
+      # already consumed — docs/ci/submit-play.md §versioning. assert-app-versioning.mjs
+      # holds every release build in every workflow to this, found by scan, not by list.
       - name: Build the app bundle
         working-directory: apps/subscriptiontracker
         run: >
           flutter build appbundle --release
           --obfuscate --split-debug-info=build/symbols/android-aab
+          --build-name=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
+          --build-number=${{ github.run_number }}
           --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
           --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
           --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
+          --dart-define=APP_VERSION=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}+${GITHUB_SHA::7}
           --dart-define=RELEASE_CHANNEL=android-play
           --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
       # ⏱ MOVED 2026-09-07 (unit `symbols-everywhere`) — THIS STEP USED TO BE THE
@@ -227,14 +237,23 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: node tooling/ci/android-signing.mjs --app subscriptiontracker
+      - name: Derive the release line from pubspec
+        id: ver
+        run: node tooling/ci/assert-app-versioning.mjs --emit apps/subscriptiontracker >> "$GITHUB_OUTPUT"
+      # why: `--build-number` IS THE PLAY versionCode, strictly increasing and never reusable.
+      # `github.run_number` of THIS file: code 1 is burnt (runs 4-5, 2026-09-22) and the
+      # counter is already past it. Renaming this file restarts it — see MAX_RUN_DIGITS.
       - name: Build the app bundle
         working-directory: apps/subscriptiontracker
         run: >
           flutter build appbundle --release
           --obfuscate --split-debug-info=build/symbols/android-aab
+          --build-name=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
+          --build-number=${{ github.run_number }}
           --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
           --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
           --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
+          --dart-define=APP_VERSION=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}+${GITHUB_SHA::7}
           --dart-define=RELEASE_CHANNEL=android-play
           --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
       - name: The .aab must be signed by the upload key, not the debug key
@@ -313,21 +332,25 @@ jobs:
       # track and which the upload itself produced. The snap lane deliberately has no
       # equivalent -- no machine-readable join key exists there; docs/ci/submit-snap.md
       # records why, and warns against copying that exemption onto this lane.
+      # why the expectation is RUN_NUMBER and not pubspec's `+N`: the build above passes
+      # `--build-number=${{ github.run_number }}`, which OVERRIDES pubspec. Reading pubspec
+      # here would assert `1` — the versionCode runs 4-5 burnt on 2026-09-22 — and go green
+      # against the OLD bundle. So the expectation is read from the same expression the
+      # build used; keep the two in step when either changes.
       - name: The Play track must carry the bundle this job just uploaded
         env:
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          RUN_NUMBER: ${{ github.run_number }}
         run: |
           set -euo pipefail
-          PUBSPEC_VERSION="$(node tooling/ci/assert-app-versioning.mjs --emit apps/subscriptiontracker | sed -n 's/^pubspec_version=//p')"
-          case "${PUBSPEC_VERSION}" in
-            *+*) VERSION_CODE="${PUBSPEC_VERSION##*+}" ;;
-            *)
-              echo "FAIL apps/subscriptiontracker/pubspec.yaml declares version ${PUBSPEC_VERSION} with no +<build number> suffix." >&2
-              echo "     Flutter would default the versionCode to 1 and this probe would assert a number nobody" >&2
-              echo "     chose. Refusing to guess is the only honest answer here." >&2
+          case "${RUN_NUMBER}" in
+            ''|*[!0-9]*)
+              echo "FAIL github.run_number is '${RUN_NUMBER}', not a positive integer; the versionCode this job" >&2
+              echo "     built cannot be known, so the probe refuses to guess." >&2
               exit 1
               ;;
           esac
+          VERSION_CODE="${RUN_NUMBER}"
           APPLICATION_ID="$(node --input-type=module -e '
           import { readFileSync } from "node:fs";
           import { readGradleApplicationId } from "./tooling/ci/read-identity.mjs";

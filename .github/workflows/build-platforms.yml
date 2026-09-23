@@ -111,6 +111,8 @@ jobs:
         working-directory: apps/${{ matrix.app }}
         run: >
           flutter build web --release
+          --build-name=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
+          --dart-define=APP_VERSION=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}+${{ needs.prepare.outputs.GITHUB_SHA_SHORT }}
           --dart-define=RELEASE_CHANNEL=web
           --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
       # why: --obfuscate and --split-debug-info are ONE flag, and the directory
@@ -162,6 +164,7 @@ jobs:
           flutter build apk --release
           --obfuscate --split-debug-info=build/symbols/android-apk
           --build-name=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
+          --build-number=${{ github.run_number }}
           --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
           --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
           --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
@@ -240,6 +243,7 @@ jobs:
           flutter build apk --release
           --obfuscate --split-debug-info=build/symbols/android-apk-apps-gov-in
           --build-name=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
+          --build-number=${{ github.run_number }}
           --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
           --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
           --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
@@ -505,7 +509,7 @@ jobs:
           if-no-files-found: error
       - name: Package MSIX (Microsoft Store)
         working-directory: apps/${{ matrix.app }}
-        run: dart run msix:create
+        run: dart run msix:create --version=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}.0
       # why: the artifact is preserved BEFORE the identity check that can reject it. A
       # refusal must leave the evidence behind, not delete it.
       - name: Keep the .msix even if what follows refuses it
@@ -617,6 +621,9 @@ jobs:
       - uses: ./.github/actions/setup-flutter
       - name: Resolve the workspace
         run: flutter pub get --enforce-lockfile
+      - name: Derive the release line from pubspec
+        id: ver
+        run: node tooling/ci/assert-app-versioning.mjs --emit apps/${{ matrix.app }} >> "$GITHUB_OUTPUT"
       - name: Toolchain under test
         run: |
           sw_vers
@@ -691,9 +698,12 @@ jobs:
         run: >
           flutter build macos --release
           --obfuscate --split-debug-info=build/symbols/macos
+          --build-name=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
+          --build-number=${{ github.run_number }}
           --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
           --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
           --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
+          --dart-define=APP_VERSION=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}+${{ needs.prepare.outputs.GITHUB_SHA_SHORT }}
           --dart-define=RELEASE_CHANNEL=macos-appstore
           --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
       - name: The macOS bundle is signed by the identity this lane intended
@@ -721,9 +731,12 @@ jobs:
           flutter build ipa --release
           --export-options-plist "$APPLE_EXPORT_OPTIONS_PLIST"
           --obfuscate --split-debug-info=build/symbols/ios
+          --build-name=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
+          --build-number=${{ github.run_number }}
           --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
           --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
           --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
+          --dart-define=APP_VERSION=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}+${{ needs.prepare.outputs.GITHUB_SHA_SHORT }}
           --dart-define=RELEASE_CHANNEL=ios-appstore
           --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
       - name: Build ios (no codesign — unsigned build proof)
@@ -732,9 +745,12 @@ jobs:
         run: >
           flutter build ios --release --no-codesign
           --obfuscate --split-debug-info=build/symbols/ios
+          --build-name=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
+          --build-number=${{ github.run_number }}
           --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
           --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
           --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
+          --dart-define=APP_VERSION=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}+${{ needs.prepare.outputs.GITHUB_SHA_SHORT }}
           --dart-define=RELEASE_CHANNEL=ios-appstore
           --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
       # ⏱ MOVED 2026-09-07 (fix pass) — THIS STEP USED TO BE THE LAST ONE IN THE

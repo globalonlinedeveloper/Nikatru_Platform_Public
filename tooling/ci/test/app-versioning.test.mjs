@@ -86,6 +86,12 @@ function run({ cwd = ROOT, args = [] } = {}) {
 
 // ── the shape of a correct release lane, with one knob per rule ──────────────
 const BNAME = '${{ steps.ver.outputs.release_line }}.${{ github.run_number }}';
+// The full stamp and the step it reads, for fixtures whose build is NOT a lane's but must
+// still carry the stamp (⏱ 2026-09-23, lane `version-stamp`).
+const EMIT_STEP =
+  '      - id: ver\n        run: node tooling/ci/assert-app-versioning.mjs --emit apps/subscriptiontracker >> "$GITHUB_OUTPUT"\n';
+const STAMP =
+  `--build-name=${BNAME} --build-number=\${{ github.run_number }} --dart-define=APP_VERSION=${BNAME}+\${GITHUB_SHA::7}`;
 
 function workflow({
   buildName = BNAME,
@@ -315,15 +321,18 @@ describe('assert-app-versioning — coverage self-check', () => {
     assert.match(out, /deploy-android\.yml builds a Flutter app AND deploys it/);
   });
 
-  // …but a build matrix that ships NOTHING must not be dragged in, or CI fails
-  // for a lane with no user-visible version at all. build-platforms.yml is
+  // …but a build matrix that ships NOTHING must not be dragged in AS A LANE, or CI
+  // fails for a lane with no user-visible version at all. build-platforms.yml is
   // exactly this: six builds, upload-artifact, no deploy.
+  // ⏱ 2026-09-23 (lane `version-stamp`): the build is STAMPED here, because every
+  // release build in every workflow now carries the stamp whether or not its file is
+  // a lane — what this test pins is that the file is not demanded to be a LANE.
   test('PASSES when another workflow builds every platform but deploys none', () => {
     const dir = lane('cov-matrix', {
       extra: {
         '.github/workflows/build-platforms.yml':
           'name: Build all\npermissions:\n  contents: read\njobs:\n  a:\n    runs-on: ubuntu-24.04\n' +
-          '    steps:\n      - run: flutter build apk --release\n' +
+          `    steps:\n${EMIT_STEP}      - run: flutter build apk --release ${STAMP}\n` +
           '      - uses: actions/upload-artifact@abc\n',
       },
     });
@@ -375,21 +384,26 @@ describe('assert-app-versioning — coverage self-check', () => {
 //   · the register deleted ⇒ COVERAGE LOST.
 // ─────────────────────────────────────────────────────────────────────────────
 describe('assert-app-versioning — the lane set is derived from the channel register', () => {
-  const deferredNativeRow = (served, buildNumber) => ({
+  // `stamped` — ⏱ 2026-09-23 (lane `version-stamp`): a deferred lane is exempt from the
+  // LANE rules only; its build is still stamp-checked by the all-workflows pass, so the
+  // deferred-and-passing fixture must carry the stamp. The served fixtures keep it off:
+  // they pin what the served loop says about a build that lacks it.
+  const deferredNativeRow = (served, buildNumber, stamped = false) => ({
     register: registerJson([
       WEB_ROW,
       { id: 'android-play', served, lane: { workflow: '.github/workflows/build-platforms.yml', job: 'linux_web_android' } },
     ]),
     workflow:
       'name: Build all\npermissions:\n  contents: read\njobs:\n  linux_web_android:\n    runs-on: ubuntu-24.04\n' +
-      '    steps:\n      - name: Build android\n        working-directory: apps/subscriptiontracker\n        run: >\n' +
+      `    steps:\n${stamped ? EMIT_STEP : ''}      - name: Build android\n        working-directory: apps/subscriptiontracker\n        run: >\n` +
       '          flutter build appbundle --release\n' +
       (buildNumber ? '          --build-number=${{ github.run_number }}\n' : '') +
+      (stamped ? `          --build-name=${BNAME}\n          --dart-define=APP_VERSION=${BNAME}+\${GITHUB_SHA::7}\n` : '') +
       '      - uses: actions/upload-artifact@abc\n',
   });
 
   test('a DEFERRED lane is exempt and its exemption is PRINTED, naming the row', () => {
-    const d = deferredNativeRow(false, false);
+    const d = deferredNativeRow(false, true, true);
     const dir = lane('reg-deferred', {
       extra: { '.github/workflows/build-platforms.yml': d.workflow, 'tooling/channel-register.json': d.register },
     });
@@ -474,6 +488,148 @@ describe('assert-app-versioning — the lane set is derived from the channel reg
     const { code, out } = run({ args: [dir] });
     assert.equal(code, 1);
     assert.match(out, /NONE is served/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EVERY release build in EVERY workflow carries the stamp — not only a lane's.
+//
+// 🔴 ADDED 2026-09-23 (lane `version-stamp`). submit-play.yml built its .aab with no
+// --build-name, no --build-number and no APP_VERSION define and uploaded it twice on
+// 2026-09-22; Play's pre-launch robots wrote 22+ production D1 rows as `dev`. The guard
+// was green throughout: the android-play row is deferred and the upload is not a
+// DEPLOY_MARKER. The fixture below is that workflow's shape, and it must FAIL.
+//
+// Mutation run against the real tree the same day: the second APP_VERSION define
+// deleted from submit-play.yml ⇒ exit 1 naming submit-play.yml:248; restored ⇒ exit 0.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-app-versioning — every release build in every workflow is stamp-checked', () => {
+  const submitWf = ({ build, emit = true }) =>
+    'name: Submit Play\npermissions:\n  contents: read\njobs:\n  submit:\n    runs-on: ubuntu-24.04\n' +
+    `    steps:\n${emit ? EMIT_STEP : ''}` +
+    `      - name: Build\n        working-directory: apps/subscriptiontracker\n        run: ${build}\n` +
+    '      - run: node tooling/ops/play-upload.mjs\n';
+  const withWf = (name, text, register) =>
+    lane(name, {
+      extra: {
+        '.github/workflows/submit-play.yml': text,
+        ...(register ? { 'tooling/channel-register.json': register } : {}),
+      },
+    });
+
+  test('FAILS the 2026-09-22 submit-play build: no build-name, no build-number, no APP_VERSION', () => {
+    const { code, out } = run({ args: [withWf('all-unstamped', submitWf({ build: 'flutter build appbundle --release', emit: false }))] });
+    assert.equal(code, 1, out);
+    assert.match(out, /submit-play\.yml:\d+ \(job "submit"/);
+    assert.match(out, /passes no --dart-define=APP_VERSION/);
+    assert.match(out, /passes no --build-name/);
+    assert.match(out, /passes no --build-number/);
+  });
+
+  test('PASSES the same build once it carries the full stamp, and counts it', () => {
+    const { code, out } = run({ args: [withWf('all-stamped', submitWf({ build: `flutter build appbundle --release ${STAMP}` }))] });
+    assert.equal(code, 0, out);
+    assert.match(out, /plus 1 more stamp-checked/);
+  });
+
+  test('FAILS a store target that passes a name and APP_VERSION but no --build-number', () => {
+    const noNumber = `--build-name=${BNAME} --dart-define=APP_VERSION=${BNAME}+\${GITHUB_SHA::7}`;
+    const { code, out } = run({ args: [withWf('all-nonum', submitWf({ build: `flutter build appbundle --release ${noNumber}` }))] });
+    assert.equal(code, 1, out);
+    assert.match(out, /passes no --build-number/);
+  });
+
+  // linux (snap/AppImage) and web version by the name string; a number there is optional.
+  test('PASSES a linux build with a name and APP_VERSION but no --build-number', () => {
+    const noNumber = `--build-name=${BNAME} --dart-define=APP_VERSION=${BNAME}+\${GITHUB_SHA::7}`;
+    const { code, out } = run({ args: [withWf('all-linux', submitWf({ build: `flutter build linux --release ${noNumber}` }))] });
+    assert.equal(code, 0, out);
+  });
+
+  test('IGNORES a --debug build, which the census does not count as a release build', () => {
+    const { code, out } = run({ args: [withWf('all-debug', submitWf({ build: 'flutter build apk --debug', emit: false }))] });
+    assert.equal(code, 0, out);
+  });
+
+  test('FAILS a build-name that reads a step id no --emit step in its job carries', () => {
+    const wrongId = STAMP.replaceAll('steps.ver.', 'steps.version.');
+    const { code, out } = run({ args: [withWf('all-wrongid', submitWf({ build: `flutter build appbundle --release ${wrongId}` }))] });
+    assert.equal(code, 1, out);
+    assert.match(out, /reads a release_line no step in its job derives/);
+  });
+
+  // The ONE way out is the register's thrown-away-output list, and it is printed.
+  test('a releaseBuildsNeverShipped entry is NOT graded and its why is PRINTED', () => {
+    const register = JSON.stringify({
+      channels: [WEB_ROW],
+      releaseBuildsNeverShipped: {
+        entries: [{ workflow: '.github/workflows/submit-play.yml', job: 'submit', target: 'appbundle', why: 'a fixture reason' }],
+      },
+    });
+    const dir = withWf('all-exempt', submitWf({ build: 'flutter build appbundle --release', emit: false }), register);
+    const { code, out } = run({ args: [dir] });
+    assert.equal(code, 0, out);
+    assert.match(out, /release builds NOT stamp-checked \(register releaseBuildsNeverShipped\), printed not hidden/);
+    assert.match(out, /submit-play\.yml:\d+.*a fixture reason/);
+  });
+
+  // A job the census cannot parse must not read as "no builds here, ok".
+  test('COVERAGE LOST when a workflow starts a `flutter build` the census never reached', () => {
+    const offGrid =
+      'name: Submit Play\npermissions:\n  contents: read\njobs:\n   submit:\n      runs-on: ubuntu-24.04\n' +
+      '      steps:\n        - run: flutter build appbundle --release\n';
+    const { code, out } = run({ args: [withWf('all-offgrid', offGrid)] });
+    assert.notEqual(code, 0, out);
+    assert.match(out, /COVERAGE LOST/);
+    assert.match(out, /submit-play\.yml starts a `flutter build`/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The .msix PACKAGE version rises too. ⏱ ADDED 2026-09-23 (lane `version-stamp`, landing
+// review): msix 3.18.0 reads pubspec's `version:` unless `--version` is passed, so every
+// package these workflows built was 1.0.0.0 and the Store refuses a version that does not
+// rise. The first fixture is the shape all three `msix:create` steps had before the fix.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-app-versioning — every msix:create passes a rising --version', () => {
+  const winWf = (pkg) =>
+    'name: Submit Windows\npermissions:\n  contents: read\njobs:\n  submit:\n    runs-on: windows-2025\n' +
+    `    steps:\n${EMIT_STEP}` +
+    `      - name: Build\n        working-directory: apps/subscriptiontracker\n        run: flutter build windows --release ${STAMP}\n` +
+    `      - name: Package\n        working-directory: apps/subscriptiontracker\n        run: ${pkg}\n`;
+  const withWin = (name, pkg) =>
+    lane(name, { extra: { '.github/workflows/submit-windows-store.yml': winWf(pkg) } });
+  const GOOD = `dart run msix:create --version=\${{ steps.ver.outputs.release_line }}.\${{ github.run_number }}.0`;
+
+  test('FAILS the pre-fix shape: msix:create with no --version packages pubspec\'s 1.0.0.0', () => {
+    const { code, out } = run({ args: [withWin('msix-none', 'dart run msix:create')] });
+    assert.equal(code, 1, out);
+    assert.match(out, /submit-windows-store\.yml:\d+ \(job "submit"\) runs `msix:create` with no --version=/);
+  });
+
+  test('FAILS a literal --version — a constant does not rise', () => {
+    const { code, out } = run({ args: [withWin('msix-literal', 'dart run msix:create --version=1.0.7.0')] });
+    assert.equal(code, 1, out);
+    assert.match(out, /msix --version "1\.0\.7\.0" is not <release_line>\.<github\.run_number>\.0/);
+  });
+
+  test('FAILS a --version whose revision is not 0 — the Store reserves it', () => {
+    const bad = GOOD.replace(/\.0$/, '.1');
+    const { code, out } = run({ args: [withWin('msix-rev', bad)] });
+    assert.equal(code, 1, out);
+    assert.match(out, /is not <release_line>\.<github\.run_number>\.0/);
+  });
+
+  test('FAILS a --version that reads a step id no --emit step in the job carries', () => {
+    const { code, out } = run({ args: [withWin('msix-wrongid', GOOD.replace('steps.ver.', 'steps.version.'))] });
+    assert.equal(code, 1, out);
+    assert.match(out, /msix --version reads steps\.version, but no --emit step in this job has that id/);
+  });
+
+  test('PASSES the fixed shape and counts the package', () => {
+    const { code, out } = run({ args: [withWin('msix-good', GOOD)] });
+    assert.equal(code, 0, out);
+    assert.match(out, /1 msix package\(s\) version-checked/);
   });
 });
 
