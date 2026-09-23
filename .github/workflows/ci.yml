@@ -1022,11 +1022,17 @@ jobs:
         run: git diff --exit-code -- packages/design_system/lib
       # why: PR 889 went red here with only "Changed <file>", and the laptop's
       # Flutter is not the pinned one, so the diff could not be reproduced there.
-      # Formatting in place and asking git prints the exact lines CI wants.
+      # The GATE is dart's own --set-exit-if-changed; only on a failure does it
+      # format in place and print the .dart lines CI wants. Not a git-diff gate:
+      # Flutter 3.47 rewrites the app's analysis_options.yaml as a side effect
+      # (measured on run 35814243238), so a whole-tree diff reds on a file nobody
+      # edited, and assert-green-means-ran reads such a diff as a drift check.
       - name: The shipping app is dart format-clean
         run: |
-          dart format apps/subscriptiontracker
-          git diff --exit-code -- apps/subscriptiontracker
+          if dart format --output=none --set-exit-if-changed apps/subscriptiontracker; then exit 0; fi
+          dart format apps/subscriptiontracker > /dev/null
+          git --no-pager diff -- 'apps/subscriptiontracker/*.dart'
+          exit 1
       - name: The Apple privacy manifests still describe the binaries that ship
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-apple-privacy-manifest.mjs

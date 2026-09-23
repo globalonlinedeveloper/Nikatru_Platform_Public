@@ -258,24 +258,27 @@ void main() {
       expect(reported.single.library, 'apple_token_keeper');
     });
 
-    test('🔴 what it reports is a reason and a count, never the token', () async {
-      final _AppleKeeperAuth auth = _AppleKeeperAuth(token);
-      final ProviderContainer c = keeperHarness(auth);
-      addTearDown(c.dispose);
+    test(
+      '🔴 what it reports is a reason and a count, never the token',
+      () async {
+        final _AppleKeeperAuth auth = _AppleKeeperAuth(token);
+        final ProviderContainer c = keeperHarness(auth);
+        addTearDown(c.dispose);
 
-      c.read(appleTokenKeeperProvider);
-      auth.arrive();
-      await pumpEventQueue();
+        c.read(appleTokenKeeperProvider);
+        auth.arrive();
+        await pumpEventQueue();
 
-      final String text = reported.single.exception.toString();
-      expect(text, contains(core.AppleTokenNotKept.reason));
-      // One attempt, because the retry list is empty here. The COUNT is what
-      // separates "the server is down for everybody" from "this one account".
-      expect(text, contains('attempts: 1'));
-      // The token is not a parameter of `onError` and the failure's own words
-      // are dropped, so neither route can carry it out.
-      expect(text, isNot(contains(token)));
-    });
+        final String text = reported.single.exception.toString();
+        expect(text, contains(core.AppleTokenNotKept.reason));
+        // One attempt, because the retry list is empty here. The COUNT is what
+        // separates "the server is down for everybody" from "this one account".
+        expect(text, contains('attempts: 1'));
+        // The token is not a parameter of `onError` and the failure's own words
+        // are dropped, so neither route can carry it out.
+        expect(text, isNot(contains(token)));
+      },
+    );
   });
 }
 
