@@ -2213,8 +2213,12 @@ describe('assert-ops-register — end to end, against the real repository', () =
   // that count, so a guard that stopped querying and a spawn that went back to
   // the live API are both RED.
   /** ⏱ 2026-09-12 — the ratchet on this guard's share of the hourly API quota.
-   *  Measured live: 56 before, 20 after. See the test at the foot of this block. */
-  const OPS_GITHUB_REQUEST_CEILING = 26;
+   *  Measured live: 56 before, 20 after. See the test at the foot of this block.
+   *  2026-09-23: 26 → 28, the documented "tenth workflow costs 2" raise.
+   *  duty.workflow.redeploy-stranded.yml is dispatchable, so it is RED-SINCE
+   *  graded like the two deploy lanes it re-enters; its run history is one new
+   *  page plus one cross-check. The replay measured 27 after the row. */
+  const OPS_GITHUB_REQUEST_CEILING = 28;
   const REPLAY_FIXTURE = join(CI_DIR, 'test', 'fixtures', 'ops-freeze-2026-09-11.json');
   let realRun = null;
   const realGuard = () => {
@@ -5108,8 +5112,12 @@ describe('assert-ops-register — [14]O-3b · RED SINCE: a failed run is graded,
     assert.equal(ids.includes('duty.workflow.ci.yml'), false);
     assert.equal(ids.includes('duty.workflow.site-drift-repair.yml'), false);
 
+    // 2026-09-23: the recovery lane that re-enters both deploy lanes is itself
+    // dispatchable, so it is admitted too — a red recovery run is the silent
+    // strand it exists to end, and it must be graded like the lanes it serves.
+    assert.ok(dispatchable.has('redeploy-stranded.yml'), '.github/workflows/redeploy-stranded.yml no longer declares `workflow_dispatch`');
     const census = redSinceTriggerCensus(real, dispatchable);
-    assert.deepEqual(census.admitted.sort(), ['duty.workflow.deploy-web.yml', 'duty.workflow.deploy-workers.yml']);
+    assert.deepEqual(census.admitted.sort(), ['duty.workflow.deploy-web.yml', 'duty.workflow.deploy-workers.yml', 'duty.workflow.redeploy-stranded.yml']);
     assert.equal(census.excluded.length, 2, 'the committed register has exactly two trigger rows with no non-merge exit');
     assert.ok(census.excluded.every((l) => /declares NO `workflow_dispatch`/.test(l)), 'every exclusion must carry the derived reason');
   });
@@ -5831,7 +5839,8 @@ describe('the 2026-09-11 freeze, replayed — INV1..INV6 against the exact answe
       const r = replay(host, { OPS_REPLAY_GITHUB_STATUS: '403' });
       assert.equal(r.code, 2, r.out.slice(-3000));
       assert.match(r.out, /✗ COVERAGE LOST — \d+ measurement failure\(s\)/);
-      assert.match(r.out, /every one of the 9 RED-SINCE read\(s\) against the GitHub API was unreadable on this run \(first reason: the query threw: GitHub API returned 403/);
+      // 9 → 10 on 2026-09-23: duty.workflow.redeploy-stranded.yml is RED-SINCE graded.
+      assert.match(r.out, /every one of the 10 RED-SINCE read\(s\) against the GitHub API was unreadable on this run \(first reason: the query threw: GitHub API returned 403/);
     }
   });
 

@@ -257,6 +257,11 @@
       "reads": "deploy-web.yml on.push.paths and each job's timeout-minutes, to derive a direct-upload Pages project's expected commit and deploy-lane window"
     },
     {
+      "path": "tooling/ops/redeploy-stranded.mjs",
+      "property": "workflow-scan",
+      "reads": "each deploy lane (push on main + workflow_dispatch + a named assert-gate-passed.mjs step), ci.yml's ci-gate job name, and redeploy-stranded.yml's workflow_run list, to derive which lanes a ci-gate cascade can strand"
+    },
+    {
       "path": "tooling/ops/safe-rerun.mjs",
       "property": "refuses-blind",
       "evidence": "workflow file(s) parsed and NOT ONE declares a top-level",
