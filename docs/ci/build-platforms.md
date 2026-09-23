@@ -591,6 +591,21 @@ plugin's and AndroidX library's components in it, which exists nowhere else
 — and checks logging where it is decided (the inherited analyzer config and
 the app's own Kotlin/Java).
 
+⏱ 2026-09-23, row O-VAPT-V5-FOREIGN-PERMISSION: V5 also judges WHICH
+permission guards an exported component. It counts only if no stranger can
+hold it: an `android.permission.*`, or one the same merged manifest declares
+at protectionLevel signature or signatureOrSystem (`level & 0xf` is 2 or 3).
+Any other is FOREIGN and fails, because any app installed first can declare
+it, hold it, and reach the component; MobSF prints that as "protected by a
+permission which is not defined in the analysed application". The rule reads
+the component's own `android:permission`, the `<application>` fallback, and a
+provider's read and write permissions each, and an unreadable protectionLevel
+fails closed. There is no list of vendor permissions to exempt. The first
+instance measured was the Amazon IAP receiver that purchases_flutter merges
+in; the app manifest removes it with `tools:node="remove"`, and
+`android-vapt-manifest.test.mjs` C1 goes red if an Amazon purchase rail is
+ever declared beside that removal.
+
 It reads the .apk rather than the .aab because an .aab carries a protobuf
 manifest, not AXML; both come from the same manifest merge in this job.
 
@@ -1339,7 +1354,8 @@ every Play artifact and the GlitchTip symbol upload. A finding there fails the j
 cost the artifacts above it.
 
 - **VAPT.** `assert-android-vapt-manifest.mjs` runs on the apps.gov.in .apk as well as the Play
-  one: MobSF is run over the file the owner uploads.
+  one: MobSF is run over the file the owner uploads. ⏱ 2026-09-23: its V5 also fails an exported
+  component guarded only by a FOREIGN permission (§vapt).
 - **Media.** `assert-apps-gov-in-media.mjs` checks that the 155x290 screenshots and the 512 icon
   are still the derivation of the Play set, and that nobody edited one by hand. Its `--write` mode
   re-derives them.
