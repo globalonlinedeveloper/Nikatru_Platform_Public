@@ -65,6 +65,14 @@ in the evidence artifact carries the register, the live version, both readings a
 6. **Verdict:** both readings, plus the instance's live version, held against
    `tooling/ops/symbolication-expectation.json` — see the table above for every exit.
 
+⏱ APPENDED 2026-09-23 (row `O-GLITCHTIP-CALLS-HAVE-NO-RETRY`). Step 2's upload now re-asks a
+transient origin error — a 429 or 5xx, or a request that never answered — up to 3 attempts through
+`tooling/ops/bounded-retry.mjs`, with a 120 s ceiling per attempt; any other status is final on the
+first. The cause was deploy-web run 35831511489, which failed on one 522 from the same origin
+(details in `docs/ci/build-platforms.md`, section of the same date). This workflow is dispatch-only,
+so its first live run of the retry is the next dispatch. A step-2 upload that needed a retry prints
+`retry:` lines, and the verdict is unchanged by it.
+
 ## Run history
 
 | run | outcome | cause, from the kept evidence |

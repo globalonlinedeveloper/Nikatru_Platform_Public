@@ -1710,3 +1710,41 @@ lane spelling a different project ⇒ **exit 1**; the read line deleted and the 
 space inside `${{ matrix.app }}` and captures `${{`. That is a variable but not recognisably
 app-derived, so the single expression this guard exists to refuse would have been graded by the
 weaker of its two rules. The test caught it; the regex now matches the whole `${{ … }}` form.
+
+### ⏱ APPENDED 2026-09-23 — the crash-sink upload re-asks a transient origin error
+
+**Why, measured on the web lane.** deploy-web run 35831511489 (main f64cd921) went red on one
+line, `error: Failed to create release: POST https://glitchtip.nikatru.com/api/0/organizations/nikatru/releases/ returned 522 <unknown status code>: error code: 522`.
+A 522 is Cloudflare saying the origin did not answer in time. The native uploads talk to the same
+origin through the same CLI, and the CLI has no retry: read at the pinned v1.0.0,
+`src/api/client.rs` builds a reqwest client with a 30 s connect timeout, no total timeout and no
+retry, and bails on any non-2xx. Row `O-GLITCHTIP-CALLS-HAVE-NO-RETRY`.
+
+**What changed.** The steps in this file are unchanged. `tooling/ops/upload-native-symbols.mjs`
+(the wrapper described in *Why the crash-sink upload is wrapped instead of called directly*
+above) now runs the whole `glitchtip-cli debug-files upload --wait` as ONE attempt of
+`readWithBoundedRetry` from `tooling/ops/bounded-retry.mjs` — the shared plan, 3 attempts, gaps of
+1 s then 2 s. It re-asks only what the CLI's own pinned error strings call a failed request: a
+`returned <status>` that is 429 or 5xx, or a `<METHOD> <url> failed` / `Chunk upload to <url>
+failed`. Any other status in the same output (a 401, a 400) is final on attempt 1, and the
+found-count and assembly refusals above are answers, never re-asked. A debug file goes up as one
+chunk named by the SHA-1 of its bytes and assemble is keyed by those checksums, so an attempt
+re-sends the same bytes under the same names — the sequence a whole-job re-run already sends.
+⚠️ What the server does with a second assemble was not measured live.
+
+**The ceiling is the spawn's: 120 s per attempt.** The last green uploads took 5 s, 11 s and 22 s
+(build-platforms run 35851949126), and `--wait` alone may poll for 60 s. Worst case per step is
+3 × 120 s plus the 1 s and 2 s gaps = 363 s, inside this file's 30 and 45 minute job timeouts.
+
+**When it first runs live.** This workflow has no push-to-main trigger (tags
+`subscriptiontracker-v*`, the Monday and Thursday schedule, and dispatch), and neither have
+`submit-*.yml` or `symbolication-proof.yml`, which call the same wrapper. The retry is proven by
+`tooling/ci/test/native-symbol-upload.test.mjs` against an injected spawn, and first runs against
+the live instance on the next tagged, scheduled or dispatched run.
+
+**The guard.** `tooling/ci/assert-glitchtip-project.mjs` gains refusal 5: a GlitchTip network
+call run bare from any workflow step — `glitchtip-cli releases|deploys|send-event`,
+`debug-files|sourcemaps|dart-symbol-map … upload`, or curl/wget/`Invoke-RestMethod` on `/api/0/`
+— is exit 1. A continued line is joined by the step's own shell (`\` for bash, a backtick for
+pwsh) before it is split. It cannot see a pwsh variable that holds the CLI's path; no workflow
+does that today.
