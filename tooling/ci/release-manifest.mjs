@@ -1336,13 +1336,20 @@ function main() {
     const surfaceFlag = flag('surface');
     const build = has('build') ? flag('build') : null;
     const out = join(dir, RELEASE_JSON_NAME);
-    if (existsSync(out)) {
+    // The refusal is the EXCLUSIVE CREATE at the write below (`flag: 'wx'`), never
+    // an existsSync here: a check-then-write leaves a window between the two
+    // (CodeQL js/file-system-race, #886), and the create is atomic.
+    const refuseSecondEmit = () =>
       die(
         `${out} already exists.`,
         'A second emit into one release directory means the lane staged or looped twice. Overwriting would',
         'produce a file describing a set that already contains a previous copy of itself.',
       );
-    }
+    // Refused BEFORE any asset is classified — a previous release.json is not an
+    // asset and would otherwise be refused as an unknown format instead. Read from
+    // the directory LISTING, never a path check; the `wx` create below is what
+    // closes the window.
+    if (assetFiles(dir).names.includes(RELEASE_JSON_NAME)) refuseSecondEmit();
     // The surface is resolved from the TREE — same rule as --emit-environments:
     // the register says which channels are on a surface, the tree says which
     // surface this product is on, and reading the first for the second is how
@@ -1376,7 +1383,12 @@ function main() {
         return { name: n, sha256: createHash('sha256').update(bytes).digest('hex'), size: bytes.length };
       }),
     });
-    writeFileSync(out, `${JSON.stringify(json, null, 2)}\n`);
+    try {
+      writeFileSync(out, `${JSON.stringify(json, null, 2)}\n`, { flag: 'wx' });
+    } catch (e) {
+      if (e?.code === 'EEXIST') refuseSecondEmit();
+      throw e;
+    }
     for (const a of json.artefacts) console.log(`described  ${a.name}  ${a.format}  v${a.version}  ${a.channels.join(', ') || '(no channel takes this format)'}`);
     console.log(`\nok  ${RELEASE_JSON_NAME} written for ${json.artefacts.length} artefact(s) at commit ${sha}`);
     process.exit(0);
