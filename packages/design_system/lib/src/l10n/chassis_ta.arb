@@ -106,7 +106,7 @@
   "paywallUnlocked": "எல்லாம் தயார். நன்றி.",
   "paywallUnavailable": "இங்கு வாங்குதல் கிடையாது.",
   "paywallTerm": "ஒரு {term} க்கு கட்டணம்",
-  "paywallTermWithTrial": "{days} நாள் இலவச சோதனைக்குப் பிறகு, ஒரு {term} க்கு கட்டணம்",
+  "paywallTermWithTrial": "{count} {unit, select, week{வார} month{மாத} year{ஆண்டு} other{நாள்}} இலவச சோதனைக்குப் பிறகு, ஒரு {term} க்கு கட்டணம்",
   "restorePurchases": "வாங்கியவை மீட்டெடு",
   "keepPlan": "வைத்திரு",
   "cancelRecorded": "உங்கள் ரத்துக்கோரிக்கை பதிவுசெய்யப்பட்டது. நீங்கள் பணம் செலுத்திய காலகட்டம் முடியும் வரை அணுகல் தொடரும்.",

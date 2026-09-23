@@ -553,12 +553,31 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                     color: isLight ? AppColors.muted : scheme.onSurfaceVariant,
                   ),
                 ),
-                trailing: Text(
-                  money.format(s.monthlyPrice),
-                  style: AppText.fig.copyWith(
-                    fontSize: 15,
-                    color: isLight ? AppColors.ink : scheme.onSurface,
-                  ),
+                // The charge with its own cycle; the heading above carries
+                // the per-month total.
+                trailing: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: <Widget>[
+                    Text(
+                      money.format(s.price),
+                      style: AppText.fig.copyWith(
+                        fontSize: 15,
+                        color: isLight ? AppColors.ink : scheme.onSurface,
+                      ),
+                    ),
+                    Text(
+                      s.cycle == BillingCycle.yearly
+                          ? l10n.perYear
+                          : l10n.perMonth,
+                      style: AppText.muted.copyWith(
+                        fontSize: 10,
+                        color: isLight
+                            ? AppColors.muted
+                            : scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ),
               );
             },

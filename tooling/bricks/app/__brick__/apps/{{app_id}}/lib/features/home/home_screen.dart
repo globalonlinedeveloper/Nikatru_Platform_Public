@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:nikatru_chassis_screens/home/home_screen.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'package:nikatru_notifications/nikatru_notifications.dart';
@@ -230,39 +231,20 @@ class ExploreScreen extends ConsumerWidget {
 /// exactly what both showed before the shell split them apart — the tab index
 /// changed the GATE, never the body. Keeping one widget keeps that true rather
 /// than leaving two copies to drift.
+///
+/// 🏗️ AN ADAPTER SINCE [ADR 067] decision 2: the body is `WelcomeView` in
+/// `packages/chassis_screens/lib/home/home_screen.dart`. What stays here is the
+/// app's name and the brand-token read, which a package that knows no app
+/// cannot make.
 class WelcomePanel extends StatelessWidget {
   const WelcomePanel({super.key});
 
   @override
   Widget build(BuildContext context) {
     final AppThemeX tokens = Theme.of(context).extension<AppThemeX>()!;
-    final ChassisLocalizations l10n = context.chassisL10n;
-    // 🔴 SCROLLS ONLY WHEN SQUEEZED. This body sits in `Expanded` under the
-    // catch-up banner and the promo card; on a build that can sell, the card
-    // carries its buy button, and on a short window the fixed Column below
-    // overflowed (measured: 46 px on the default test surface). Centred when
-    // there is room, scrollable when there is not.
-    return Center(
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            Container(
-              width: 72,
-              height: 72,
-              decoration: BoxDecoration(
-                gradient: tokens.brandGradient,
-                borderRadius: BorderRadius.circular(AppRadius.lg),
-              ),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            Text(l10n.welcomeTo(AppConfig.appName), style: AppText.title),
-            const SizedBox(height: AppSpacing.xs),
-            Text(l10n.homeTagline, style: AppText.muted),
-          ],
-        ),
-      ),
+    return WelcomeView(
+      appName: AppConfig.appName,
+      brandGradient: tokens.brandGradient,
     );
   }
 }
@@ -301,7 +283,6 @@ class CatchUpNudgeBanner extends ConsumerWidget {
       defaultTargetPlatform,
       isWeb: kIsWeb,
     );
-    final ChassisLocalizations l10n = context.chassisL10n;
     final DateTime now = (clock ?? DateTime.now)();
     final core.CatchUpNudgeVerdict verdict = const core.CatchUpNudge().decide(
       now: now,
@@ -314,25 +295,10 @@ class CatchUpNudgeBanner extends ConsumerWidget {
     if (verdict != core.CatchUpNudgeVerdict.show) {
       return const SizedBox.shrink();
     }
-    final ThemeData theme = Theme.of(context);
-    return MaterialBanner(
-      backgroundColor: theme.colorScheme.surfaceContainerHighest,
-      leading: const Icon(Icons.notifications_active_outlined),
-      content: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Text(l10n.catchUpTitle, style: theme.textTheme.titleSmall),
-          Text(l10n.catchUpBody, style: theme.textTheme.bodySmall),
-        ],
-      ),
-      actions: <Widget>[
-        TextButton(
-          onPressed: () =>
-              ref.read(catchUpNudgeProvider.notifier).markShown(now),
-          child: Text(l10n.catchUpDismiss),
-        ),
-      ],
+    // The view is `CatchUpBannerView` in packages/chassis_screens [ADR 067]
+    // decision 2; the decision above and the impression below stay here.
+    return CatchUpBannerView(
+      onDismiss: () => ref.read(catchUpNudgeProvider.notifier).markShown(now),
     );
   }
 }
@@ -419,6 +385,30 @@ class _UpgradePromoCardState extends ConsumerState<UpgradePromoCard> {
   /// persistence would look wrong.
   bool _showing = false;
 
+  /// The rail's "plans changed" signal this card is repainted on.
+  ///
+  /// A STORE RAIL'S PLANS ARRIVE AFTER THE FIRST FRAME. Its price and trial are
+  /// the store's answer, so the card first builds with no plans — which decides
+  /// `nothingToShow` and latches nothing — and is decided again when they land.
+  /// The web rail's plans are the rail config and never change.
+  Listenable? _offeringsChanged;
+
+  void _repaint() {
+    if (mounted) setState(() {});
+  }
+
+  void _follow(Listenable changes) {
+    if (identical(changes, _offeringsChanged)) return;
+    _offeringsChanged?.removeListener(_repaint);
+    _offeringsChanged = changes..addListener(_repaint);
+  }
+
+  @override
+  void dispose() {
+    _offeringsChanged?.removeListener(_repaint);
+    super.dispose();
+  }
+
   /// The app's override for [key], then its variant override, then the chassis
   /// default.
   ///
@@ -489,6 +479,7 @@ class _UpgradePromoCardState extends ConsumerState<UpgradePromoCard> {
     }
 
     final PurchaseRail rail = ref.watch(purchaseRailProvider);
+    _follow(offeringsChangesOf(rail));
     final List<Offering> offerings = rail.offerings;
 
     if (!_showing) {

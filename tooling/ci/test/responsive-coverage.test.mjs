@@ -799,7 +799,11 @@ describe('the chassis_screens floors are floors, not report lines', () => {
     assert.equal(code, 1, out);
     assert.match(
       out,
-      /COVERAGE LOST — `packages\/chassis_screens` yielded only 18 width test file\(s\).*checked-in floor is 19/s,
+      // ⏱ 18/19 → 19/20 ON 2026-09-22 (O-CHASSIS-PHASE-2B): the chassis corpus
+      // gained `home_view_test.dart`, so `widthTestFiles` was raised to the
+      // measured 20 and deleting one file now yields 19. The floor moved with
+      // the corpus; the assertion was NOT loosened.
+      /COVERAGE LOST — `packages\/chassis_screens` yielded only 19 width test file\(s\).*checked-in floor is 20/s,
     );
     // This root ENFORCES, so the surface the deleted file measured is a FAIL and
     // not a print — the half R12 pins for apps/subscriptiontracker, here for the new root.

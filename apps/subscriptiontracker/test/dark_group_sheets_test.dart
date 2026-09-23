@@ -43,6 +43,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/intl.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'package:subscriptiontracker/core/format/money_format.dart';
+import 'package:subscriptiontracker/core/format/monthly_share.dart';
 import 'package:subscriptiontracker/data/models/subscription.dart';
 import 'package:subscriptiontracker/features/add/add_subscription_sheet.dart';
 import 'package:subscriptiontracker/features/cancel/cancel_sheet.dart';
@@ -432,8 +433,8 @@ void main() {
           Locale(code),
         );
         final Subscription s = _sub();
-        final String monthly = kMoney.format(s.monthlyPrice);
-        final String yearly = kMoney.formatRounded(s.monthlyPrice.times(12));
+        final String monthly = kMoney.formatShareFigure(s.monthlyShare);
+        final String yearly = kMoney.formatRounded(s.yearlyCharge);
         // Computed AFTER the pump: the l10n delegates are what call
         // `initializeDateFormatting`, so a DateFormat built for 'ta' before the
         // tree mounts has no symbols to read.
@@ -508,8 +509,8 @@ void main() {
       );
 
       final Subscription s = _sub();
-      final String monthly = kMoney.format(s.monthlyPrice);
-      final String yearly = kMoney.formatRounded(s.monthlyPrice.times(12));
+      final String monthly = kMoney.formatShareFigure(s.monthlyShare);
+      final String yearly = kMoney.formatRounded(s.yearlyCharge);
 
       // THE FALSIFIER. This is the exact string the shipped sheet composed from
       // its three fragments and its English `_months` table.
@@ -554,7 +555,7 @@ void main() {
       final AppLocalizations ta = await AppLocalizations.delegate.load(
         const Locale('ta'),
       );
-      final String monthly = kMoney.format(_sub().monthlyPrice);
+      final String monthly = kMoney.formatShareFigure(_sub().monthlyShare);
 
       // Step 1 is reached by confirming against the unoverridden seed chain —
       // see `defaultWidthOverrides`, which leaves the repository resolving.

@@ -49,7 +49,6 @@ class _InrRail implements PurchaseRail {
       amountMinor: 125000000,
       currencyCode: 'INR',
       term: OfferingTerm.year,
-      trialDays: 0,
     ),
   ];
 
@@ -68,14 +67,67 @@ class _InrRail implements PurchaseRail {
       CancellationOutcome.noActivePlan;
 }
 
-Future<void> _pump(WidgetTester tester, Locale locale) async {
+/// A STORE rail — O-IAP-PAYWALL-SHOWS-WEB-PRICE. Nothing to sell until the
+/// store answers, then the store's price and a trial in the store's own unit.
+/// The answer lands AFTER the paywall's first frame, as a real store's does.
+class _StoreRail extends ChangeNotifier
+    implements PurchaseRail, LoadsOfferings {
+  List<Offering> _plans = const <Offering>[];
+
+  /// How many times a screen asked the store.
+  int asked = 0;
+
+  void storeAnswers() {
+    _plans = const <Offering>[
+      Offering(
+        productId: 'pro_monthly',
+        amountMinor: 719,
+        currencyCode: 'USD',
+        term: OfferingTerm.month,
+        trial: TrialPeriod(count: 1, unit: TrialUnit.month),
+      ),
+    ];
+    notifyListeners();
+  }
+
+  @override
+  List<Offering> get offerings => _plans;
+
+  @override
+  bool get canStartCheckout => _plans.isNotEmpty;
+
+  @override
+  Listenable get offeringsChanged => this;
+
+  @override
+  Future<void> refreshOfferings() async {
+    asked++;
+  }
+
+  @override
+  Future<CheckoutStart> startCheckout(Offering offering) async =>
+      const CheckoutRefused(
+        CheckoutRefusal.notSignedIn,
+        detail: 'this test buys nothing',
+      );
+
+  @override
+  Future<CancellationOutcome> requestCancellation() async =>
+      CancellationOutcome.noActivePlan;
+}
+
+Future<void> _pump(
+  WidgetTester tester,
+  Locale locale, {
+  PurchaseRail? rail,
+}) async {
   await tester.binding.setSurfaceSize(const Size(800, 1600));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   final ProviderContainer c = ProviderContainer(
     overrides: <Override>[
       ...defaultWidthOverrides(),
       secureStoreProvider.overrideWithValue(_MemSecureStore()),
-      purchaseRailProvider.overrideWithValue(_InrRail()),
+      purchaseRailProvider.overrideWithValue(rail ?? _InrRail()),
     ],
   );
   addTearDown(c.dispose);
@@ -116,4 +168,24 @@ void main() {
     expect(find.text('₹1,250,000.00'), findsOneWidget);
     expect(find.textContaining('1250000'), findsNothing);
   });
+
+  // A store build's paywall quoted the rail config's amount — the price the
+  // web charges — beside a sheet that bills the store's. It now asks the store
+  // when it opens, and repaints with the store's answer when that lands.
+  testWidgets(
+    "🔴 a store rail: nothing, then the STORE's price and its month",
+    (WidgetTester tester) async {
+      final _StoreRail rail = _StoreRail();
+      addTearDown(rail.dispose);
+      await _pump(tester, const Locale('en'), rail: rail);
+      expect(rail.asked, greaterThan(0));
+      expect(find.textContaining('7.19'), findsNothing);
+
+      rail.storeAnswers();
+      await tester.pump();
+      expect(find.textContaining('7.19'), findsOneWidget);
+      expect(find.textContaining('1-month free trial'), findsOneWidget);
+      expect(find.textContaining('-day free trial'), findsNothing);
+    },
+  );
 }

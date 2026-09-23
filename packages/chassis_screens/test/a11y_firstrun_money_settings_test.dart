@@ -34,13 +34,12 @@ void main() {
       id: 'pro_monthly',
       formattedPrice: r'$4.99',
       term: 'month',
-      trialDays: 0,
     ),
     PaywallOffer(
       id: 'pro_yearly',
       formattedPrice: r'$39.99',
       term: 'year',
-      trialDays: 7,
+      trial: (count: 7, unit: 'day'),
     ),
   ];
 

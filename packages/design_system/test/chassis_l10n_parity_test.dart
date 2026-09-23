@@ -47,13 +47,113 @@ import 'package:nikatru_design_system/nikatru_design_system.dart';
 Set<String> _messageKeys(Map<String, dynamic> arb) =>
     arb.keys.where((String k) => !k.startsWith('@')).toSet();
 
-/// Every `{placeholder}` an ICU message REFERENCES — a plain `{amount}` and the
-/// argument of a plural selector, `{count, plural, …}`. `=1{…}` and `other{…}`
-/// are arms, not placeholders.
-final RegExp _placeholder = RegExp(r'\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*[,}]');
+/// Every `{placeholder}` an ICU message REFERENCES, found by walking the braces
+/// rather than pattern-matching them.
+///
+/// A pattern cannot tell an argument from the body of a select arm: in a
+/// `select` whose arm is `day{day}`, the arm body looks exactly like a
+/// placeholder named `day`, and the parity check then reports a placeholder the
+/// template never declared. The walk knows which braces open an ARGUMENT (in
+/// message text) and which open an ARM (after a `plural`, `select` or
+/// `selectordinal` type), and reads each arm as message text again, so an
+/// argument nested inside an arm is still found.
+Set<String> _placeholdersIn(String value) => _IcuWalk(value).run();
 
-Set<String> _placeholdersIn(String value) =>
-    _placeholder.allMatches(value).map((RegExpMatch m) => m.group(1)!).toSet();
+class _IcuWalk {
+  _IcuWalk(this.s);
+
+  final String s;
+  final Set<String> found = <String>{};
+  int i = 0;
+
+  static final RegExp _name = RegExp(r'^[A-Za-z_][A-Za-z0-9_]*$');
+  static const Set<String> _selectors = <String>{
+    'plural',
+    'select',
+    'selectordinal',
+  };
+
+  Set<String> run() {
+    _message();
+    return found;
+  }
+
+  /// Message text, up to an unmatched `}` or the end.
+  void _message() {
+    while (i < s.length) {
+      final String c = s[i];
+      if (c == '}') return;
+      i++;
+      if (c == '{') _argument();
+    }
+  }
+
+  /// After an argument's `{`: its name, then either `}` or `, type …}`.
+  void _argument() {
+    _space();
+    final String name = _token();
+    if (_name.hasMatch(name)) found.add(name);
+    _space();
+    if (i < s.length && s[i] == ',') {
+      i++;
+      _space();
+      final String type = _token();
+      _space();
+      if (_selectors.contains(type)) {
+        if (i < s.length && s[i] == ',') i++;
+        _arms();
+      } else {
+        _skipToClose();
+      }
+    }
+    if (i < s.length && s[i] == '}') i++;
+  }
+
+  /// `selector{message} selector{message} …` up to the argument's own `}`.
+  void _arms() {
+    while (i < s.length) {
+      _space();
+      if (i >= s.length || s[i] == '}') return;
+      final String selector = _token();
+      _space();
+      if (i < s.length && s[i] == '{') {
+        i++;
+        _message();
+        if (i < s.length && s[i] == '}') i++;
+      } else if (selector.isEmpty) {
+        i++;
+      }
+    }
+  }
+
+  /// A formatted argument (`number`, `date`, …) carries no placeholder of its
+  /// own after the type: skip to the brace that closes it.
+  void _skipToClose() {
+    int depth = 0;
+    while (i < s.length) {
+      final String c = s[i];
+      if (c == '}' && depth == 0) return;
+      if (c == '{') depth++;
+      if (c == '}') depth--;
+      i++;
+    }
+  }
+
+  void _space() {
+    while (i < s.length && s[i].trim().isEmpty) {
+      i++;
+    }
+  }
+
+  /// A run of characters up to whitespace or `,` `{` `}`.
+  String _token() {
+    final int start = i;
+    while (i < s.length && !', {}\t\n\r'.contains(s[i])) {
+      i++;
+    }
+    return s.substring(start, i);
+  }
+}
 
 /// 🔴 THE CWD IS NOT ONE PLACE, AND A PATH THAT ASSUMES IT IS FAILS IN ONLY ONE
 /// OF THE TWO WAYS THE SUITE IS RUN. `melos run test` enters each package, so

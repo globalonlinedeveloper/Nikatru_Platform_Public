@@ -754,7 +754,15 @@ const REQUIRED_COVERAGE = [
     // (O-PLAY-AI-CONTENT-REPORTING): `ReportContentDialog` joined, swept in
     // `a11y_firstrun_money_settings_test.dart` (+3 cases). Read off this guard's
     // per-root line: `18 of 18 … from 3 a11y test file(s) across 54 case(s)`.
-    surfaces: 18,
+    // ⏱ RAISED 18 → 20 surfaces ON 2026-09-22 (O-CHASSIS-PHASE-2B, [ADR 067]
+    // decision 2, unit chassis-home): `WelcomeView` and `CatchUpBannerView`
+    // (lib/home/home_screen.dart) joined this root. `a11yFiles` and `cases` are
+    // UNCHANGED and that is the honest read — the two arrived with a WIDTH
+    // suite and no a11y sweep, so they are on this guard's printed owed list
+    // and `SWEPT_FLOOR_BY_ROOT` gains no key for them. Raising `cases` without
+    // a case is exactly the blindness the note above records. Read off the
+    // per-root line: `18 of 20 … from 3 a11y test file(s) across 54 case(s)`.
+    surfaces: 20,
     a11yFiles: 3,
     cases: 54,
     label:

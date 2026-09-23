@@ -10,7 +10,7 @@ void main() {
         amountMinor: 499,
         currencyCode: 'USD',
         term: OfferingTerm.month,
-        trialDays: 30,
+        trial: TrialPeriod.days(30),
       );
       // The symbol comes from ICU data, not from a symbol table anybody typed.
       expect(o.formattedPrice, r'$4.99');
@@ -23,7 +23,7 @@ void main() {
         amountMinor: 1999,
         currencyCode: 'USD',
         term: OfferingTerm.year,
-        trialDays: 30,
+        trial: TrialPeriod.days(30),
       );
       expect(o.formattedPrice, r'$19.99');
     });
@@ -34,7 +34,6 @@ void main() {
         amountMinor: 39900,
         currencyCode: 'INR',
         term: OfferingTerm.month,
-        trialDays: 0,
       );
       expect(o.formattedPrice, contains('399'));
       expect(o.formattedPrice, isNot(contains(r'$')));
@@ -55,7 +54,7 @@ void main() {
       expect(o, isNotNull);
       expect(o!.currencyCode, 'USD');
       expect(o.term, OfferingTerm.month);
-      expect(o.trialDays, 30);
+      expect(o.trial, const TrialPeriod.days(30));
     });
 
     for (final MapEntry<String, Object?> bad in <String, Object?>{
@@ -80,8 +79,8 @@ void main() {
 
     test('a missing or negative trial is NO trial, and never drops the plan',
         () {
-      expect(Offering.tryFromJson(good()..remove('trial_days'))!.trialDays, 0);
-      expect(Offering.tryFromJson(good()..['trial_days'] = -5)!.trialDays, 0);
+      expect(Offering.tryFromJson(good()..remove('trial_days'))!.trial, isNull);
+      expect(Offering.tryFromJson(good()..['trial_days'] = -5)!.trial, isNull);
     });
 
     test('a non-map is not an offering', () {
@@ -258,7 +257,6 @@ void main() {
           amountMinor: amount,
           currencyCode: code,
           term: OfferingTerm.month,
-          trialDays: 0,
         );
         expect(o.price, Money(amount, code));
         expect(o.formattedPrice, o.price.plainFormat());
@@ -274,10 +272,108 @@ void main() {
         amountMinor: 500,
         currencyCode: 'JPY',
         term: OfferingTerm.month,
-        trialDays: 0,
       );
       expect(yen.formattedPrice, '¥500');
       expect(Money.minorUnitDigitsFor('JPY'), 0);
+    });
+  });
+
+  // A store's price arrives as a double in major units. It is converted to the
+  // same minor units the rail config states, by the same digits table the
+  // formatter uses, so a store price and a config price cannot disagree about
+  // where the decimal point is.
+  group("the store's plan, in the rail's own terms", () {
+    test('minorUnitsOf rounds to the currency\'s own minor units', () {
+      expect(StorePlan.minorUnitsOf(7.19, 'USD'), 719);
+      expect(StorePlan.minorUnitsOf(179.0, 'INR'), 17900);
+      expect(StorePlan.minorUnitsOf(500, 'JPY'), 500);
+      expect(
+        StorePlan.minorUnitsOf(1.234, 'KWD'),
+        1234,
+        reason: 'KWD has ${Money.minorUnitDigitsFor('KWD')} minor digits',
+      );
+    });
+
+    test('minorUnitsOf refuses what is not a price', () {
+      expect(StorePlan.minorUnitsOf(0, 'USD'), isNull);
+      expect(StorePlan.minorUnitsOf(-1, 'USD'), isNull);
+      expect(StorePlan.minorUnitsOf(double.nan, 'USD'), isNull);
+      expect(StorePlan.minorUnitsOf(4.99, 'US'), isNull);
+    });
+
+    const Offering monthly = Offering(
+      productId: 'pro_monthly',
+      amountMinor: 499,
+      currencyCode: 'USD',
+      term: OfferingTerm.month,
+      trial: TrialPeriod.days(30),
+    );
+    const Offering yearly = Offering(
+      productId: 'pro_yearly',
+      amountMinor: 4999,
+      currencyCode: 'USD',
+      term: OfferingTerm.year,
+    );
+
+    test("offeringsFromStore keeps the config's order and the store's price",
+        () {
+      final List<Offering> out = offeringsFromStore(
+        const <Offering>[monthly, yearly],
+        const <StorePlan>[
+          StorePlan(
+            productId: 'pro_yearly',
+            amountMinor: 5999,
+            currencyCode: 'EUR',
+            term: OfferingTerm.year,
+          ),
+          StorePlan(
+            productId: 'pro_monthly',
+            amountMinor: 719,
+            currencyCode: 'USD',
+            term: OfferingTerm.month,
+            trial: TrialPeriod(count: 1, unit: TrialUnit.month),
+          ),
+        ],
+      );
+      expect(
+        out.map((Offering o) => o.productId),
+        <String>['pro_monthly', 'pro_yearly'],
+      );
+      expect(out.first.amountMinor, 719);
+      expect(
+        out.first.trial,
+        const TrialPeriod(count: 1, unit: TrialUnit.month),
+      );
+      expect(out.last.currencyCode, 'EUR');
+    });
+
+    test('offeringsFromStore never falls back to the config', () {
+      expect(offeringsFromStore(const <Offering>[monthly], const []), isEmpty);
+    });
+
+    test('offeringsFromStore sells nothing the config does not declare', () {
+      expect(
+        offeringsFromStore(const <Offering>[
+          monthly
+        ], const <StorePlan>[
+          StorePlan(
+            productId: 'pro_once',
+            amountMinor: 9999,
+            currencyCode: 'USD',
+            term: OfferingTerm.oneTime,
+          ),
+        ]),
+        isEmpty,
+      );
+    });
+
+    test('a trial counts days only where a day count is exact', () {
+      expect(const TrialPeriod.days(30).exactDays, 30);
+      expect(const TrialPeriod(count: 2, unit: TrialUnit.week).exactDays, 14);
+      expect(
+          const TrialPeriod(count: 1, unit: TrialUnit.month).exactDays, isNull);
+      expect(
+          const TrialPeriod(count: 1, unit: TrialUnit.year).exactDays, isNull);
     });
   });
 }

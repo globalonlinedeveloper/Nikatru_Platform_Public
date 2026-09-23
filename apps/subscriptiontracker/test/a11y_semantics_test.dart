@@ -70,6 +70,7 @@ import 'package:nikatru_purchases/nikatru_purchases.dart';
 import 'package:subscriptiontracker/core/app_config.dart';
 import 'package:subscriptiontracker/core/e2e_keys.dart';
 import 'package:subscriptiontracker/core/format/money_format.dart';
+import 'package:subscriptiontracker/core/format/monthly_share.dart';
 import 'package:subscriptiontracker/core/format/sub_math.dart';
 import 'package:subscriptiontracker/core/router.dart';
 import 'package:subscriptiontracker/data/models/budget_info.dart';
@@ -2545,14 +2546,13 @@ void main() {
             amountMinor: 499,
             currencyCode: 'USD',
             term: OfferingTerm.month,
-            trialDays: 30,
+            trial: TrialPeriod.days(30),
           ),
           Offering(
             productId: 'pro_yearly',
             amountMinor: 4999,
             currencyCode: 'USD',
             term: OfferingTerm.year,
-            trialDays: 0,
           ),
         ];
         await pumpScreen(
@@ -2601,9 +2601,14 @@ void main() {
         // would pin the fixture and say nothing about the formatter. (It would
         // also trip `assert-no-price-literals.mjs`.)
         for (final Offering o in offerings) {
-          final String term = o.trialDays > 0
-              ? l10n.paywallTermWithTrial(o.term.wire, o.trialDays)
-              : l10n.paywallTerm(o.term.wire);
+          final String term = switch (o.trial) {
+            final TrialPeriod t => l10n.paywallTermWithTrial(
+              o.term.wire,
+              t.count,
+              t.unit.wire,
+            ),
+            null => l10n.paywallTerm(o.term.wire),
+          };
           expect(
             labels.where(
               (String l) => l.contains(o.formattedPrice) && l.contains(term),
@@ -2662,14 +2667,13 @@ void main() {
                         amountMinor: 499,
                         currencyCode: 'USD',
                         term: OfferingTerm.month,
-                        trialDays: 30,
+                        trial: TrialPeriod.days(30),
                       ),
                       Offering(
                         productId: 'pro_yearly',
                         amountMinor: 4999,
                         currencyCode: 'USD',
                         term: OfferingTerm.year,
-                        trialDays: 0,
                       ),
                     ],
                     checkoutUrlTemplate: 'https://example.test/{price_id}',
@@ -3135,7 +3139,9 @@ void main() {
         expect(announced(tester), contains(l10n.cancelledHeading));
         expect(
           announced(tester),
-          contains(l10n.cancelStep2Body(money.format(sub.monthlyPrice))),
+          contains(
+            l10n.cancelStep2Body(money.formatShareFigure(sub.monthlyShare)),
+          ),
           reason:
               'the emphasised amount is spliced into a translated sentence at '
               'U+FFFC; a reader must hear the sentence, not the seam. '
@@ -3597,14 +3603,13 @@ void main() {
                         amountMinor: 499,
                         currencyCode: 'USD',
                         term: OfferingTerm.month,
-                        trialDays: 30,
+                        trial: TrialPeriod.days(30),
                       ),
                       Offering(
                         productId: 'pro_yearly',
                         amountMinor: 4999,
                         currencyCode: 'USD',
                         term: OfferingTerm.year,
-                        trialDays: 0,
                       ),
                     ],
                     checkoutUrlTemplate: 'https://example.test/{price_id}',
@@ -4678,14 +4683,13 @@ void main() {
                         amountMinor: 499,
                         currencyCode: 'USD',
                         term: OfferingTerm.month,
-                        trialDays: 30,
+                        trial: TrialPeriod.days(30),
                       ),
                       Offering(
                         productId: 'pro_yearly',
                         amountMinor: 4999,
                         currencyCode: 'USD',
                         term: OfferingTerm.year,
-                        trialDays: 0,
                       ),
                     ],
                     checkoutUrlTemplate: 'https://example.test/{price_id}',
@@ -4990,7 +4994,7 @@ void main() {
                         amountMinor: 499,
                         currencyCode: 'USD',
                         term: OfferingTerm.month,
-                        trialDays: 30,
+                        trial: TrialPeriod.days(30),
                       ),
                     ],
                     checkoutUrlTemplate: 'https://example.test/{price_id}',

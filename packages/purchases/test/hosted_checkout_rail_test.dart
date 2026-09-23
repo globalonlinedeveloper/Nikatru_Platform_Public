@@ -37,7 +37,7 @@ const Offering _monthly = Offering(
   amountMinor: 499,
   currencyCode: 'USD',
   term: OfferingTerm.month,
-  trialDays: 30,
+  trial: TrialPeriod.days(30),
 );
 
 const String _template =

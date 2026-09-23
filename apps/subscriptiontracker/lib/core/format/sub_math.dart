@@ -1,6 +1,7 @@
 import 'package:nikatru_core/nikatru_core.dart' show Money, MoneyBag;
 
 import '../../data/models/subscription.dart';
+import 'monthly_share.dart';
 
 class CategoryTotal {
   const CategoryTotal(this.name, this.value);
@@ -27,18 +28,41 @@ class CategoryTotal {
 class SubMath {
   SubMath._();
 
+  /// The per-month total of every plan's [MonthlyShare]. A PER-MONTH figure:
+  /// it is printed only under a per-month label, never as a charge.
   static MoneyBag totalMonthly(List<Subscription> s) =>
-      MoneyBag.sum(s.map((Subscription x) => x.monthlyPrice));
+      MonthlyShare.sum(s.map((Subscription x) => x.monthlyShare));
+
+  /// What the plans charge in a year: each row's [Subscription.yearlyCharge].
+  ///
+  /// 🔴 NOT `totalMonthly(s).times(12)`. Twelve rounded twelfths of a yearly
+  /// price are not the price (120.53 a year is a 10.04 share, and 12 x 10.04
+  /// is 120.48), so a yearly figure is summed from the charges themselves.
+  static MoneyBag totalYearly(List<Subscription> s) =>
+      MoneyBag.sum(s.map((Subscription x) => x.yearlyCharge));
+
+  /// The money that leaves the account in [month] of [year]: the whole
+  /// [Subscription.price] of every row whose one renewal falls in it.
+  ///
+  /// 🔴 `price`, NOT THE SHARE, for the reason [dueWithin] gives: a yearly
+  /// renewal in March takes the whole yearly price in March. The calendar
+  /// summed the twelfth and read 12x short in the month the money went.
+  static MoneyBag chargedInMonth(List<Subscription> s, int year, int month) =>
+      MoneyBag.sum(
+        s
+            .where((Subscription x) => x.renewsIn(year, month))
+            .map((Subscription x) => x.price),
+      );
 
   static List<CategoryTotal> categoryTotals(List<Subscription> s) {
-    final Map<String, List<Money>> m = <String, List<Money>>{};
+    final Map<String, List<MonthlyShare>> m = <String, List<MonthlyShare>>{};
     for (final Subscription x in s) {
-      (m[x.category] ??= <Money>[]).add(x.monthlyPrice);
+      (m[x.category] ??= <MonthlyShare>[]).add(x.monthlyShare);
     }
     final List<CategoryTotal> list = m.entries
         .map(
-          (MapEntry<String, List<Money>> e) =>
-              CategoryTotal(e.key, MoneyBag.sum(e.value)),
+          (MapEntry<String, List<MonthlyShare>> e) =>
+              CategoryTotal(e.key, MonthlyShare.sum(e.value)),
         )
         .toList();
     list.sort(
@@ -51,10 +75,16 @@ class SubMath {
   static List<Subscription> byMonthlyDesc(List<Subscription> s) {
     final List<String> order = _order(s);
     final List<Subscription> l = List<Subscription>.of(s);
-    l.sort(
-      (Subscription a, Subscription b) =>
-          _compareDesc(a.monthlyPrice, b.monthlyPrice, order),
-    );
+    l.sort((Subscription a, Subscription b) {
+      final int byCurrency = _compareCurrency(
+        a.currencyCode,
+        b.currencyCode,
+        order,
+      );
+      return byCurrency != 0
+          ? byCurrency
+          : MonthlyShare.descending(a.monthlyShare, b.monthlyShare);
+    });
     return l;
   }
 
@@ -80,14 +110,22 @@ class SubMath {
       : bag.amounts.first;
 
   static int _compareDesc(Money a, Money b, List<String> order) {
-    if (a.currencyCode != b.currencyCode) {
-      final int ia = order.indexOf(a.currencyCode);
-      final int ib = order.indexOf(b.currencyCode);
-      // A code the order does not know sorts last rather than first, which is
-      // what `indexOf`'s -1 would otherwise do.
-      return (ia < 0 ? order.length : ia).compareTo(ib < 0 ? order.length : ib);
-    }
-    return b.minorUnits.compareTo(a.minorUnits);
+    final int byCurrency = _compareCurrency(
+      a.currencyCode,
+      b.currencyCode,
+      order,
+    );
+    return byCurrency != 0 ? byCurrency : b.minorUnits.compareTo(a.minorUnits);
+  }
+
+  /// Currency groups in [order]; 0 when [a] and [b] are the same currency.
+  static int _compareCurrency(String a, String b, List<String> order) {
+    if (a == b) return 0;
+    final int ia = order.indexOf(a);
+    final int ib = order.indexOf(b);
+    // A code the order does not know sorts last rather than first, which is
+    // what `indexOf`'s -1 would otherwise do.
+    return (ia < 0 ? order.length : ia).compareTo(ib < 0 ? order.length : ib);
   }
 
   /// The weight a [bag] carries in a CHART, in minor units of [currencyCode].
@@ -134,7 +172,7 @@ class SubMath {
   /// [unused] returns an empty list and this fold returns an empty bag,
   /// permanently.
   ///
-  /// The ARITHMETIC is deliberately unchanged: `monthlyPrice` is the right unit
+  /// The ARITHMETIC is deliberately unchanged: `monthlyShare` is the right unit
   /// for "you would keep this much every month", and normalising a yearly plan
   /// to a twelfth is exactly right for a recurring saving. The dishonesty was
   /// never the sum — it was rendering the sum when the input cannot exist. A
@@ -149,12 +187,12 @@ class SubMath {
   /// read 0.00 beside "nothing flagged". That is the same defect one screen
   /// over and it is that file's to fix.
   static MoneyBag savings(List<Subscription> s) =>
-      MoneyBag.sum(unused(s).map((Subscription x) => x.monthlyPrice));
+      MonthlyShare.sum(unused(s).map((Subscription x) => x.monthlyShare));
 
   /// The money that will actually leave the account in the next [days] days.
   ///
-  /// 🔴 `price`, NOT `monthlyPrice`, AND THE SWAP IS THE WHOLE FIGURE.
-  /// `monthlyPrice` is a NORMALISED monthly share — a yearly plan divided by
+  /// 🔴 `price`, NOT `monthlyShare`, AND THE SWAP IS THE WHOLE FIGURE.
+  /// `monthlyShare` is a NORMALISED monthly share — a yearly plan divided by
   /// twelve — which is what makes `totalMonthly` comparable across cycles. It
   /// is the wrong unit for a horizon: a 120-a-year renewal falling on Thursday
   /// takes the whole 120 off the card on Thursday, not a twelfth of it. This

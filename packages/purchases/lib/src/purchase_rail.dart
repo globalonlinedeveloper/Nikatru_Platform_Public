@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart' show immutable;
+import 'package:flutter/foundation.dart' show Listenable, immutable;
 
 import 'offering.dart';
 
@@ -116,8 +116,14 @@ enum CancellationOutcome {
 /// cannot construct a purchase path, and an untestable purchase path is one
 /// nobody has ever seen work.
 abstract interface class PurchaseRail {
-  /// The plans this rail can sell, from the rail config. Empty is a normal
+  /// The plans this rail can sell, described by whoever charges for them: the
+  /// rail config on the web, the STORE on a store rail. Empty is a normal
   /// answer and means the paywall shows its unavailable state.
+  ///
+  /// A store rail's list arrives LATER than the rail itself — the store has to
+  /// be asked — so it is empty until then; that rail is also a
+  /// [LoadsOfferings], and a screen that paints this list listens through
+  /// [offeringsChangesOf].
   List<Offering> get offerings;
 
   /// Whether a checkout could be started right now, on this platform, through
@@ -133,3 +139,38 @@ abstract interface class PurchaseRail {
   /// ([pipeline 5]M-9 — ROSCA: cancelling must be no harder than buying).
   Future<CancellationOutcome> requestCancellation();
 }
+
+/// A rail whose [PurchaseRail.offerings] come from somewhere that has to be
+/// ASKED — the store, on a store rail.
+///
+/// 🔴 WHY THIS IS NOT ON [PurchaseRail]. The web rail's offerings are the rail
+/// config, known the moment the rail is built; a store rail's are the store's
+/// answer, which arrives later and can change (a sign-in changes trial
+/// eligibility). [PurchaseRail.offerings] stays synchronous because a paywall
+/// reads it while BUILDING a widget, so the change is announced separately, and
+/// only by the rail that has one. A screen never asks `is LoadsOfferings`
+/// itself: it calls [offeringsChangesOf] and [refreshOfferingsOf], which answer
+/// for every rail.
+abstract interface class LoadsOfferings {
+  /// Fires when [PurchaseRail.offerings] changed.
+  Listenable get offeringsChanged;
+
+  /// Ask again. Never throws; a store that cannot be asked leaves the list
+  /// empty, which the paywall already explains.
+  Future<void> refreshOfferings();
+}
+
+/// What a screen listens to so it repaints when [rail]'s offerings change. A
+/// rail whose offerings never change answers a listenable that never fires.
+Listenable offeringsChangesOf(PurchaseRail rail) {
+  if (rail case final LoadsOfferings loads) return loads.offeringsChanged;
+  return _never;
+}
+
+/// Ask [rail] for its offerings again; a no-op for a rail that has nothing to
+/// ask.
+Future<void> refreshOfferingsOf(PurchaseRail rail) async {
+  if (rail case final LoadsOfferings loads) await loads.refreshOfferings();
+}
+
+final Listenable _never = Listenable.merge(const <Listenable?>[]);

@@ -3,6 +3,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:subscriptiontracker/core/format/money_format.dart';
+import 'package:subscriptiontracker/core/format/monthly_share.dart';
 import 'package:subscriptiontracker/core/format/sub_math.dart';
 import 'package:subscriptiontracker/data/models/subscription.dart';
 
@@ -148,13 +149,17 @@ void main() {
 
     test('yearly price normalises to a monthly figure', () {
       expect(
-        make(const Money(12000, 'USD'), BillingCycle.yearly).monthlyPrice,
+        MonthlyShare.sum(<MonthlyShare>[
+          make(const Money(12000, 'USD'), BillingCycle.yearly).monthlyShare,
+        ]).single,
         const Money(1000, 'USD'),
       );
     });
     test('monthly price passes through unchanged', () {
       expect(
-        make(const Money(999, 'USD'), BillingCycle.monthly).monthlyPrice,
+        MonthlyShare.sum(<MonthlyShare>[
+          make(const Money(999, 'USD'), BillingCycle.monthly).monthlyShare,
+        ]).single,
         const Money(999, 'USD'),
       );
     });

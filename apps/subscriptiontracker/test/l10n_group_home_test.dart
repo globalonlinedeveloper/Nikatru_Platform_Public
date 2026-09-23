@@ -284,9 +284,7 @@ void main() {
         expect(find.text(l.dueIn30Days), findsOneWidget);
         expect(
           find.text(
-            l.perYearTotal(
-              money.formatBagRounded(SubMath.totalMonthly(subs).times(12)),
-            ),
+            l.perYearTotal(money.formatBagRounded(SubMath.totalYearly(subs))),
           ),
           findsOneWidget,
         );

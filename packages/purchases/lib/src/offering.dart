@@ -24,6 +24,57 @@ enum OfferingTerm {
   }
 }
 
+/// The unit a free trial is counted in, as the seller states it.
+enum TrialUnit {
+  day('day'),
+  week('week'),
+  month('month'),
+  year('year');
+
+  const TrialUnit(this.wire);
+
+  /// What the paywall's message selects on (`paywallTermWithTrial`'s `unit`).
+  final String wire;
+}
+
+/// A free trial: a COUNT of a UNIT, exactly as the seller states it.
+///
+/// 🔴 NEVER CONVERTED. The App Store sells "1 month free", and a month is 28,
+/// 29, 30 or 31 days depending on when the buyer starts, so "a 30-day free
+/// trial" on that product is a claim the store does not make — and the store's
+/// own sheet, one tap later, would say something else. The web rail config
+/// states days (`trial_days: 30`) and maps to [TrialPeriod.days], so the web
+/// copy is unchanged byte for byte.
+@immutable
+class TrialPeriod {
+  const TrialPeriod({required this.count, required this.unit});
+
+  /// [count] days — the only unit the web rail config states.
+  const TrialPeriod.days(this.count) : unit = TrialUnit.day;
+
+  final int count;
+  final TrialUnit unit;
+
+  /// The length in days when the unit HAS a fixed number of them, else null. A
+  /// month or a year has no fixed length, and a caller that needs a day count
+  /// for one has to say what it does instead rather than be handed a guess.
+  int? get exactDays => switch (unit) {
+        TrialUnit.day => count,
+        TrialUnit.week => count * 7,
+        TrialUnit.month || TrialUnit.year => null,
+      };
+
+  @override
+  bool operator ==(Object other) =>
+      other is TrialPeriod && other.count == count && other.unit == unit;
+
+  @override
+  int get hashCode => Object.hash(count, unit);
+
+  @override
+  String toString() => '$count ${unit.wire}';
+}
+
 /// One purchasable plan, as the RAIL describes it — [pipeline 5]M-11.
 ///
 /// ## Why there is no `priceString` field
@@ -38,6 +89,13 @@ enum OfferingTerm {
 /// So the money is an AMOUNT and a CURRENCY, and the string is derived. When the
 /// rail changes the price, every app changes with it at the next config fetch,
 /// with no release.
+///
+/// ## Who describes it
+/// On the web rail, the rail config. On a STORE rail, the store: `IapRail`
+/// builds each one from the store's own answer (`StorePlan`), and the config
+/// only says which product ids the app sells and in what order. A store buyer
+/// is charged the store's price in the storefront's currency, so that is the
+/// only price a store paywall may show.
 @immutable
 class Offering {
   const Offering({
@@ -45,7 +103,7 @@ class Offering {
     required this.amountMinor,
     required this.currencyCode,
     required this.term,
-    required this.trialDays,
+    this.trial,
   });
 
   /// The merchant of record's own identifier for this price. OPAQUE: we never
@@ -62,8 +120,15 @@ class Offering {
 
   final OfferingTerm term;
 
-  /// Free-trial length in days; 0 when there is none.
-  final int trialDays;
+  /// The free trial THIS buyer would get, in the seller's own unit; null when
+  /// there is none.
+  ///
+  /// 🔴 REPLACED `int trialDays`, RATHER THAN GAINING A UNIT BESIDE IT. A store
+  /// trial of "1 month" kept in a field called `trialDays` holds a 1 that every
+  /// existing reader prints as "a 1-day free trial"; a `trialUnit` added beside
+  /// it would be ignored by exactly the readers that were not updated. Removing
+  /// the field makes the compiler name every one of them.
+  final TrialPeriod? trial;
 
   /// The price as a buyer reads it, DERIVED from [amountMinor] and
   /// [currencyCode] — never a string somebody typed.
@@ -137,13 +202,14 @@ class Offering {
       currencyCode: currency.toUpperCase(),
       term: term,
       // A missing trial is no trial. A NEGATIVE one is nonsense and is also no
-      // trial — never a reason to drop an otherwise sellable plan.
-      trialDays: trial is int && trial > 0 ? trial : 0,
+      // trial — never a reason to drop an otherwise sellable plan. The config
+      // states days, so a config trial is always [TrialPeriod.days].
+      trial: trial is int && trial > 0 ? TrialPeriod.days(trial) : null,
     );
   }
 
   @override
   String toString() =>
       'Offering($productId, $amountMinor $currencyCode, ${term.wire}, '
-      'trial ${trialDays}d)';
+      'trial ${trial ?? 'none'})';
 }

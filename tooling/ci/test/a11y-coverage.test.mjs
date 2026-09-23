@@ -1277,7 +1277,15 @@ describe('a screen that DELEGATES into the chassis is judged where it now lives'
     // This fixture re-points the settings one at its own target, which changes
     // WHERE that surface is judged and not HOW MANY delegate. Re-measured from
     // the guard's own report on 2026-09-06, never incremented blind.
-    assert.match(out, /10 reachable surface\(s\) in .*\{\{app_id\}\} DELEGATE into `packages\/chassis_screens`/);
+    //
+    // ⏱ 10 → 12 ON 2026-09-22 (O-CHASSIS-PHASE-2B). The home adapter now
+    // delegates too, and the brick's home file declares TWO routed surfaces —
+    // HomeScreen and ExploreScreen — so one moved file adds two delegating
+    // surfaces, not one. Both stay on the owed list: the views they delegate to
+    // arrived with a WIDTH suite and no a11y sweep, and the guard says exactly
+    // that ("not swept there either; it stays on the owed list above"). Raised
+    // from the guard's own report, never incremented blind.
+    assert.match(out, /12 reachable surface\(s\) in .*\{\{app_id\}\} DELEGATE into `packages\/chassis_screens`/);
     assert.match(out, /SettingsScreen .* — SWEPT there/);
     // And it has LEFT the owed list, which is the difference the widening makes.
     assert.ok(!printedUnswept(out, BRICK).includes('SettingsScreen'), out);

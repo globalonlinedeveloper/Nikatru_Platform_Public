@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart'
-    show debugPrint, defaultTargetPlatform, kIsWeb;
+    show TargetPlatform, debugPrint, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/services.dart' show PlatformException;
 import 'package:nikatru_purchases/nikatru_purchases.dart';
 import 'package:purchases_flutter/purchases_flutter.dart' as rc;
@@ -12,8 +12,8 @@ import 'revenuecat_capabilities.dart';
 /// [ADR 039] D5.
 ///
 /// ## What it is allowed to decide, which is almost nothing
-/// It configures the SDK, asks the store what is purchasable, runs the store's
-/// sheet, and reports what the store said. It NEVER unlocks: nothing here
+/// It configures the SDK, asks the store what it sells and at what price, runs
+/// the store's sheet, and reports what the store said. It NEVER unlocks: nothing here
 /// touches an entitlement cache, and `CustomerInfo.entitlements` is surfaced as
 /// [IapCustomerState] — a name chosen so no caller can mistake it for our own
 /// entitlement record. The unlock is `GET /v1/entitlements`, converged on by
@@ -121,17 +121,57 @@ class RevenueCatBridge implements IapBridge {
     _states.add(customerStateFrom(info));
   }
 
+  /// The store's own description of every plan it sells here — price,
+  /// currency, term, and the free trial THIS buyer is eligible for.
+  ///
+  /// Eligibility is the store's to decide, and the two stores decide it in
+  /// different places. Play offers only what the buyer is eligible for, and the
+  /// SDK's `defaultOption` is already chosen from those. The App Store attaches
+  /// its introductory offer to the product for EVERY buyer, so it is shown only
+  /// when `checkTrialOrIntroductoryPriceEligibility` says this buyer is
+  /// eligible; a check that fails counts as not eligible, because "1 month
+  /// free" to somebody who already had it is a promise the sheet then breaks.
   @override
-  Future<Set<String>> purchasableProductIds() async {
-    if (!_capabilities.canPurchase) return const <String>{};
+  Future<List<StorePlan>> storePlans() async {
+    if (!_capabilities.canPurchase) return const <StorePlan>[];
     try {
       final rc.Offerings offerings = await rc.Purchases.getOfferings();
-      return productIdsOf(offerings);
+      final Set<String>? appleEligible =
+          _usesAppleIntroRules ? await _appleIntroEligible(offerings) : null;
+      return storePlansOf(offerings, appleIntroEligible: appleEligible);
     } on PlatformException catch (e) {
       debugPrint('[billing_revenuecat] getOfferings refused: ${e.code}');
-      return const <String>{};
+      return const <StorePlan>[];
     } catch (e) {
       debugPrint('[billing_revenuecat] getOfferings failed: $e');
+      return const <StorePlan>[];
+    }
+  }
+
+  bool get _usesAppleIntroRules =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.iOS ||
+          defaultTargetPlatform == TargetPlatform.macOS);
+
+  Future<Set<String>> _appleIntroEligible(rc.Offerings offerings) async {
+    final List<String> ids = <String>[
+      for (final rc.Offering o in offerings.all.values)
+        for (final rc.Package p in o.availablePackages)
+          if (p.storeProduct.introductoryPrice != null)
+            p.storeProduct.identifier,
+    ];
+    if (ids.isEmpty) return const <String>{};
+    try {
+      final Map<String, rc.IntroEligibility> answer =
+          await rc.Purchases.checkTrialOrIntroductoryPriceEligibility(ids);
+      return <String>{
+        for (final MapEntry<String, rc.IntroEligibility> e in answer.entries)
+          if (e.value.status ==
+              rc.IntroEligibilityStatus.introEligibilityStatusEligible)
+            e.key,
+      };
+    } catch (e) {
+      debugPrint('[billing_revenuecat] intro eligibility unknown: $e');
       return const <String>{};
     }
   }
@@ -144,10 +184,10 @@ class RevenueCatBridge implements IapBridge {
         detail: _capabilities.why,
       );
     }
-    rc.Package? package;
+    Map<String, rc.Package> packages;
     try {
       final rc.Offerings offerings = await rc.Purchases.getOfferings();
-      package = packageFor(offerings, offering.productId);
+      packages = packagesFor(offerings, offering.productId);
     } on PlatformException catch (e) {
       return outcomeForPlatformException(e);
     } catch (e) {
@@ -156,7 +196,7 @@ class RevenueCatBridge implements IapBridge {
         detail: 'Could not read the store offerings: $e',
       );
     }
-    if (package == null) {
+    if (packages.isEmpty) {
       // 🔴 A REFUSAL, NOT A FAILURE. The rail config sells a SKU this storefront
       // does not carry — a real state in a portfolio priced per market — and the
       // paywall has to say so rather than opening a sheet that cannot complete.
@@ -165,6 +205,16 @@ class RevenueCatBridge implements IapBridge {
         detail: 'The store does not offer ${offering.productId} here.',
       );
     }
+    if (packages.length > 1) {
+      // 🔴 A REFUSAL, NOT A PICK. Two base plans behind one product id bill
+      // different amounts or terms, and choosing either would charge a buyer
+      // for a plan the paywall did not describe.
+      return IapPurchaseResult(
+        IapPurchaseOutcome.storeRefused,
+        detail: ambiguousPlanDetail(offering.productId, packages.keys),
+      );
+    }
+    final rc.Package package = packages.values.single;
     try {
       await rc.Purchases.purchase(rc.PurchaseParams.package(package));
       // ⚠️ THE RESULT IS DELIBERATELY DISCARDED. `PurchaseResult` carries the
@@ -237,7 +287,7 @@ class RevenueCatBridge implements IapBridge {
 // also performs a platform call can only be tested by mocking the platform. The
 // mistranslations that matter here — a user cancel reported as a failure, a
 // management URL dropped, an inactive entitlement counted as active — are all
-// visible in these three functions and every one of them is exercised directly.
+// visible in these functions and every one of them is exercised directly.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// The store's belief about a customer, as our value type.
@@ -263,25 +313,174 @@ IapCustomerState customerStateFrom(rc.CustomerInfo info) {
   );
 }
 
-/// Every store product id the current offerings can sell.
-Set<String> productIdsOf(rc.Offerings offerings) {
-  final Set<String> out = <String>{};
+/// What the RAIL calls the store product [identifier]: the part before the
+/// first `:`.
+///
+/// 🔴 THE ONE PLACE THIS IS DECIDED. RevenueCat reports a Play subscription as
+/// `<subscription id>:<base plan id>` (`pro_monthly:monthly`) and an App Store
+/// product as its bare id (`pro_monthly`); the rail config names the product
+/// once, as the bare id. An exact comparison of the two found nothing on Play,
+/// so every Play purchase was refused as "not offered here". Every lookup below
+/// goes through this function, so the two stores cannot be matched two ways.
+String railProductIdOf(String identifier) {
+  final int colon = identifier.indexOf(':');
+  return colon == -1 ? identifier : identifier.substring(0, colon);
+}
+
+/// Every rail product id the current offerings can sell.
+Set<String> productIdsOf(rc.Offerings offerings) => <String>{
+      for (final rc.Offering o in offerings.all.values)
+        for (final rc.Package p in o.availablePackages)
+          railProductIdOf(p.storeProduct.identifier),
+    };
+
+/// Every package that sells the rail's [productId], keyed by the STORE's
+/// identifier. The same identifier in two RevenueCat offerings is one plan and
+/// appears once; two identifiers are two base plans.
+Map<String, rc.Package> packagesFor(rc.Offerings offerings, String productId) {
+  final Map<String, rc.Package> out = <String, rc.Package>{};
   for (final rc.Offering o in offerings.all.values) {
     for (final rc.Package p in o.availablePackages) {
-      out.add(p.storeProduct.identifier);
+      final String id = p.storeProduct.identifier;
+      if (railProductIdOf(id) == productId) out.putIfAbsent(id, () => p);
     }
   }
   return out;
 }
 
-/// The package that sells [productId], or null when this storefront has none.
+/// The one package that sells [productId], or null when this storefront has
+/// none — or has more than one base plan for it, which [RevenueCatBridge]
+/// refuses rather than picks.
 rc.Package? packageFor(rc.Offerings offerings, String productId) {
+  final Map<String, rc.Package> found = packagesFor(offerings, productId);
+  return found.length == 1 ? found.values.single : null;
+}
+
+/// The refusal for a product the store sells under more than one base plan.
+String ambiguousPlanDetail(String productId, Iterable<String> identifiers) {
+  final List<String> sorted = identifiers.toList()..sort();
+  return 'The store offers $productId under more than one base plan '
+      '(${sorted.join(', ')}); a subscription must have exactly one, so '
+      'nothing was sold.';
+}
+
+/// The store's plans as the rail reads them — one per rail product id.
+///
+/// [appleIntroEligible] is the App Store identifiers whose introductory offer
+/// THIS buyer is eligible for; null on a store that only offers what the buyer
+/// is eligible for (Play), where `defaultOption` already carries the answer.
+///
+/// Dropped, each with a debug line, never guessed: a product whose price or
+/// currency cannot be read, a billing period that is not one month, one year
+/// or none, and a product id sold under more than one base plan. A PAID
+/// introductory price is not a free trial and is not shown as one.
+List<StorePlan> storePlansOf(
+  rc.Offerings offerings, {
+  Set<String>? appleIntroEligible,
+}) {
+  final Map<String, Map<String, rc.StoreProduct>> byRailId =
+      <String, Map<String, rc.StoreProduct>>{};
   for (final rc.Offering o in offerings.all.values) {
     for (final rc.Package p in o.availablePackages) {
-      if (p.storeProduct.identifier == productId) return p;
+      final rc.StoreProduct sp = p.storeProduct;
+      byRailId
+          .putIfAbsent(
+            railProductIdOf(sp.identifier),
+            () => <String, rc.StoreProduct>{},
+          )
+          .putIfAbsent(sp.identifier, () => sp);
     }
   }
-  return null;
+  final List<StorePlan> out = <StorePlan>[];
+  for (final MapEntry<String, Map<String, rc.StoreProduct>> e
+      in byRailId.entries) {
+    if (e.value.length > 1) {
+      debugPrint(
+        '[billing_revenuecat] ${ambiguousPlanDetail(e.key, e.value.keys)}',
+      );
+      continue;
+    }
+    final rc.StoreProduct sp = e.value.values.single;
+    final String code = sp.currencyCode.toUpperCase();
+    final int? amount = StorePlan.minorUnitsOf(sp.price, code);
+    final OfferingTerm? term = termOfPeriod(sp.subscriptionPeriod);
+    if (amount == null || term == null) {
+      debugPrint(
+        '[billing_revenuecat] dropped ${sp.identifier}: price ${sp.price} '
+        '$code, period ${sp.subscriptionPeriod}',
+      );
+      continue;
+    }
+    out.add(
+      StorePlan(
+        productId: e.key,
+        amountMinor: amount,
+        currencyCode: code,
+        term: term,
+        trial: appleIntroEligible == null
+            ? playFreeTrialOf(sp)
+            : appleFreeTrialOf(
+                sp,
+                eligible: appleIntroEligible.contains(sp.identifier),
+              ),
+      ),
+    );
+  }
+  return out;
+}
+
+/// The term an ISO 8601 billing period bills per. None (a non-subscription
+/// product) is one-time; a period the rail has no word for is null, and the
+/// plan is dropped rather than described as the nearest term.
+OfferingTerm? termOfPeriod(String? iso8601) => switch (iso8601) {
+      null || '' => OfferingTerm.oneTime,
+      'P1M' => OfferingTerm.month,
+      'P1Y' => OfferingTerm.year,
+      _ => null,
+    };
+
+TrialUnit? _trialUnitOf(rc.PeriodUnit unit) => switch (unit) {
+      rc.PeriodUnit.day => TrialUnit.day,
+      rc.PeriodUnit.week => TrialUnit.week,
+      rc.PeriodUnit.month => TrialUnit.month,
+      rc.PeriodUnit.year => TrialUnit.year,
+      rc.PeriodUnit.unknown => null,
+    };
+
+/// Play: the FREE phase of the offer the SDK chose for this buyer, in its own
+/// unit. Play lists only the offers a buyer is eligible for.
+TrialPeriod? playFreeTrialOf(rc.StoreProduct product) {
+  final rc.PricingPhase? free = product.defaultOption?.freePhase;
+  final rc.Period? period = free?.billingPeriod;
+  if (free == null || period == null || period.value <= 0) return null;
+  final TrialUnit? unit = _trialUnitOf(period.unit);
+  if (unit == null) return null;
+  final int cycles = free.billingCycleCount ?? 1;
+  return TrialPeriod(
+    count: period.value * (cycles > 1 ? cycles : 1),
+    unit: unit,
+  );
+}
+
+/// App Store: the introductory offer, when it is FREE and this buyer is
+/// [eligible] for it. A paid introductory price is dropped with a debug line —
+/// it is a discount, and the paywall has no words for one.
+TrialPeriod? appleFreeTrialOf(
+  rc.StoreProduct product, {
+  required bool eligible,
+}) {
+  final rc.IntroductoryPrice? intro = product.introductoryPrice;
+  if (intro == null || !eligible) return null;
+  if (intro.price != 0) {
+    debugPrint(
+      '[billing_revenuecat] ${product.identifier}: a paid introductory price '
+      'is not shown as a trial',
+    );
+    return null;
+  }
+  final TrialUnit? unit = _trialUnitOf(intro.periodUnit);
+  if (unit == null || intro.periodNumberOfUnits <= 0) return null;
+  return TrialPeriod(count: intro.periodNumberOfUnits, unit: unit);
 }
 
 /// The store's error, as an outcome the UI can explain.

@@ -59,10 +59,14 @@ class RailConfig {
   /// Read by CI, not only by the UI: `assert-purchase-path.mjs` compares the
   /// entitlement staleness ceiling against this, because a bound longer than the
   /// trial lets a user cancel on the last trial day and keep access past it.
-  int get longestTrialDays => offerings.fold<int>(
-    0,
-    (int m, Offering o) => o.trialDays > m ? o.trialDays : m,
-  );
+  ///
+  /// The config states trials in days ([TrialPeriod.days]), so every trial here
+  /// has an exact day count; the `?? 0` is for a store-shaped trial, which never
+  /// reaches a [RailConfig].
+  int get longestTrialDays => offerings.fold<int>(0, (int m, Offering o) {
+    final int days = o.trial?.exactDays ?? 0;
+    return days > m ? days : m;
+  });
 
   /// Parses `AppConfig.paywall.extra`.
   ///

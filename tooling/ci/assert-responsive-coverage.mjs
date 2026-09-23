@@ -527,9 +527,26 @@ const REQUIRED_COVERAGE = [
     // own per-root line, never incremented blind. `paywall_screen` and
     // `manage_plan_screen` delegate too and were ALREADY counted (their
     // apps/subscriptiontracker forks carry width suites), which is why one move added one.
-    coveredSurfaces: 10,
+    // ⏱ RAISED 10 → 12 ON 2026-09-22 (O-CHASSIS-PHASE-2B, [ADR 067] decision 2,
+    // unit chassis-home): `home_screen.dart` became an adapter — `WelcomeView`
+    // and `CatchUpBannerView` landed in
+    // `packages/chassis_screens/lib/home/home_screen.dart` with
+    // `test/home_view_test.dart` pumping both at kPhone/kTablet/kDesktop — so
+    // `HomeScreen` and `ExploreScreen`, the last two names on this root's
+    // printed list, now count as measured THROUGH DELEGATION. Read from this
+    // guard's own per-root line: `12 surface(s) reachable, 12 measured`.
+    // 🔴 `enforce` IS DELIBERATELY STILL false, THOUGH THE PRINTED LIST HAS NOW
+    // REACHED ZERO. The two that left it did not get a width decision of their
+    // own: delegated coverage here is keyed by FILE (see `delegatedCoverage`),
+    // so `HomeScreen` and `ExploreScreen` are covered by their CHILDREN'S
+    // suites — the welcome body and the catch-up banner — while their own
+    // Column, AppBar, PaywallGate and `UpgradePromoCard` are pumped at no
+    // width anywhere. Flipping the flag on that basis would record a decision
+    // nobody made. Flip it the day a brick width suite measures the two
+    // screens themselves.
+    coveredSurfaces: 12,
     label:
-      'the template every stamped app inherits — 12 routed screens, 3 measured. The nine unmeasured ' +
+      'the template every stamped app inherits — 12 routed screens, 3 measured here and 9 delegated. The nine unmeasured ' +
       'ones are PRINTED, not failed [G-3, 2026-09-05]; the 3 that ARE measured cannot stop being',
   },
   {
@@ -586,9 +603,15 @@ const REQUIRED_COVERAGE = [
     // (O-PLAY-AI-CONTENT-REPORTING): `ReportContentDialog` and its suite
     // `test/report_content_dialog_test.dart`, pumped at all three classes. Read off
     // the per-root lines: `18 surface(s) reachable, 18 measured` and `— 19 file(s)`.
-    surfaces: 18,
-    widthTestFiles: 19,
-    coveredSurfaces: 18,
+    // ⏱ RAISED 18 → 20 surfaces / 19 → 20 files / 18 → 20 covered ON 2026-09-22
+    // (O-CHASSIS-PHASE-2B, [ADR 067] decision 2, unit chassis-home):
+    // `WelcomeView` and `CatchUpBannerView` (lib/home/home_screen.dart) joined,
+    // and `test/home_view_test.dart` pumps both at all three classes. Read off
+    // this guard's own per-root lines — `20 surface(s) reachable, 20 measured`
+    // and `corpus: … — 20 file(s)` — never incremented off the diff.
+    surfaces: 20,
+    widthTestFiles: 20,
+    coveredSurfaces: 20,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens every stamped ' +
       'app inherits, each measured at all three window classes',
