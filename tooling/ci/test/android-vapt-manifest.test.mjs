@@ -28,6 +28,7 @@ import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { deflateRawSync } from 'node:zlib';
+import { stripXmlComments } from '../../store/render-splash.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const GUARD = join(CI_DIR, 'assert-android-vapt-manifest.mjs');
@@ -615,8 +616,11 @@ describe('assert-android-vapt-manifest', () => {
 const REPO = resolve(CI_DIR, '..', '..');
 const AMAZON_RECEIVER = 'com.amazon.device.iap.ResponseReceiver';
 
+// Comments are removed by the existing fixpoint helper, which also drops
+// everything after a dangling `<!--`. A one-pass replace here was CodeQL's
+// "incomplete multi-character sanitization" alert on PR #908.
 function removesAmazonReceiver(xml) {
-  const live = xml.replace(/<!--[\s\S]*?-->/g, '');
+  const live = stripXmlComments(xml);
   return [...live.matchAll(/<receiver\b[^>]*>/g)].some(
     ([tag]) => tag.includes(`android:name="${AMAZON_RECEIVER}"`) && /\btools:node="remove"/.test(tag),
   );
