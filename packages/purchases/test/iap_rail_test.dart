@@ -564,6 +564,51 @@ void main() {
       expect(rail.offerings.single.currencyCode, 'INR');
     });
 
+    // The row closes on the STRING the paywall paints, so these two read
+    // `formattedPrice` itself. Each plan is built the way the bridge builds
+    // one (`storePlansOf`): the SDK's decimal price through
+    // `StorePlan.minorUnitsOf`. The rail then describes it through
+    // `offeringsFromStore`, which is the path the paywall reads.
+    //
+    // The expected strings follow `formattedPrice`'s own rule, not a run: the
+    // minor units over ten to the currency's digits (two for USD and INR, the
+    // `Money.minorUnitDigitsFor` default), fixed to that many places, behind
+    // the `Money.symbols` entry. So 719 USD is 7.19 behind r'$', and 17900 INR
+    // is 179.00 behind '₹'.
+    StorePlan storeMonthlyAt(double price, String code) => StorePlan(
+          productId: 'pro_monthly',
+          amountMinor: StorePlan.minorUnitsOf(price, code)!,
+          currencyCode: code,
+          term: OfferingTerm.month,
+        );
+
+    test("a store's USD price reaches formattedPrice", () async {
+      final _FakeBridge bridge = _FakeBridge()
+        ..plans = <StorePlan>[storeMonthlyAt(7.19, 'USD')];
+      final IapRail rail =
+          _rail(channel: PurchaseChannel.iosAppStore, bridge: bridge);
+
+      await refreshOfferingsOf(rail);
+      expect(rail.offerings.single.formattedPrice, r'$7.19');
+      expect(
+        rail.offerings.single.formattedPrice,
+        isNot(_monthly.formattedPrice),
+        reason: "the rail config's price is the web price",
+      );
+      expect(rail.offerings.single.amountMinor, 719);
+    });
+
+    test("a store's INR price reaches formattedPrice", () async {
+      final _FakeBridge bridge = _FakeBridge()
+        ..plans = <StorePlan>[storeMonthlyAt(179.0, 'INR')];
+      final IapRail rail =
+          _rail(channel: PurchaseChannel.androidPlay, bridge: bridge);
+
+      await refreshOfferingsOf(rail);
+      expect(rail.offerings.single.formattedPrice, '₹179.00');
+      expect(rail.offerings.single.amountMinor, 17900);
+    });
+
     test("the trial is the store's, for this buyer, in the store's unit",
         () async {
       final _FakeBridge bridge = _FakeBridge()
