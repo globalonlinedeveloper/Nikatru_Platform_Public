@@ -289,7 +289,7 @@ export function checkFormAnswers(answers, badging, rules = STORE_FORM_RULES[CHAN
  *  rail CAN be proven present, because Play Billing cannot work without its own
  *  permission. So this is one-sided on purpose: it never claims "the right rail
  *  shipped", only "a forbidden one did". */
-const RAIL_PERMISSIONS = {
+export const RAIL_PERMISSIONS = {
   'play-billing': ['com.android.vending.BILLING'],
 };
 
