@@ -54,6 +54,16 @@ jobs:
       - uses: ./.github/actions/setup-flutter
       - name: Resolve the workspace
         run: flutter pub get --enforce-lockfile
+      # why `shell: bash` and a SHA output: this runner's default shell is pwsh, where
+      # `${GITHUB_SHA::7}` is not an expansion. The short SHA is computed once here and read
+      # as a step output, the same shape as build-platforms.yml's prepare job.
+      - name: Derive the release line from pubspec
+        id: ver
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tooling/ci/assert-app-versioning.mjs --emit apps/subscriptiontracker >> "$GITHUB_OUTPUT"
+          echo "GITHUB_SHA_SHORT=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
       # why: the backend defines. Without them AppConfig.isBackendLive stays
       # false, every field is at its PLACEHOLDER, and the packaged .msix is the
       # DEMO build -- mock sign-in, seeded data, no crash sink. Graded by
@@ -63,9 +73,12 @@ jobs:
         run: >
           flutter build windows --release
           --obfuscate --split-debug-info=build/symbols/windows
+          --build-name=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
+          --build-number=${{ github.run_number }}
           --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
           --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
           --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
+          --dart-define=APP_VERSION=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}+${{ steps.ver.outputs.GITHUB_SHA_SHORT }}
           --dart-define=RELEASE_CHANNEL=windows-store
           --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
       # ⏱ MOVED AND CORRECTED 2026-09-07 (unit `symbols-everywhere`) — THIS STEP
@@ -127,7 +140,7 @@ jobs:
           --org nikatru --project subscriptiontracker
       - name: Package MSIX (Microsoft Store)
         working-directory: apps/subscriptiontracker
-        run: dart run msix:create
+        run: dart run msix:create --version=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}.0
       - name: Dry-run the Microsoft Store submission
         env:
           MS_STORE_TENANT_ID: ${{ secrets.MS_STORE_TENANT_ID }}
@@ -221,14 +234,27 @@ jobs:
       - uses: ./.github/actions/setup-flutter
       - name: Resolve the workspace
         run: flutter pub get --enforce-lockfile
+      # why `shell: bash` and a SHA output: this runner's default shell is pwsh, where
+      # `${GITHUB_SHA::7}` is not an expansion. The short SHA is computed once here and read
+      # as a step output, the same shape as build-platforms.yml's prepare job.
+      - name: Derive the release line from pubspec
+        id: ver
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tooling/ci/assert-app-versioning.mjs --emit apps/subscriptiontracker >> "$GITHUB_OUTPUT"
+          echo "GITHUB_SHA_SHORT=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
       - name: Build windows
         working-directory: apps/subscriptiontracker
         run: >
           flutter build windows --release
           --obfuscate --split-debug-info=build/symbols/windows
+          --build-name=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
+          --build-number=${{ github.run_number }}
           --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
           --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
           --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
+          --dart-define=APP_VERSION=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}+${{ steps.ver.outputs.GITHUB_SHA_SHORT }}
           --dart-define=RELEASE_CHANNEL=windows-store
           --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
       # ⏱ MOVED AND CORRECTED 2026-09-07 (unit `symbols-everywhere`) — this step
@@ -292,7 +318,7 @@ jobs:
           --org nikatru --project subscriptiontracker
       - name: Package MSIX (Microsoft Store)
         working-directory: apps/subscriptiontracker
-        run: dart run msix:create
+        run: dart run msix:create --version=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}.0
       # why: the Microsoft Store Developer CLI is the transport, for the same reason the
       # Snap lane speaks `snapcraft`: it is Microsoft's own, documented, cross-platform
       # and actively released, and it already holds the two links this repository has no
