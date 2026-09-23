@@ -498,8 +498,14 @@ jobs:
     defaults:
       run:
         shell: bash
+    # why: NEVER `CHANNEL`. subosito/flutter-action's setup.sh (pinned 1a449444,
+    # line 122) reads `if [ -z "${CHANNEL:-}" ]` before its own `stable`
+    # argument, so a job-level CHANNEL is inherited by setup-flutter and
+    # outranks it. Run 35818957977 (2026-09-23) died on exactly that: "Unable to
+    # determine Flutter version for channel: windows-store". The guard is
+    # tooling/ci/test/setup-flutter-env.test.mjs.
     env:
-      CHANNEL: ${{ inputs.channel }}
+      STORE_CHANNEL: ${{ inputs.channel }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -547,7 +553,7 @@ jobs:
           set -euo pipefail
           node -e '
             const fs = require("fs");
-            const channel = process.env.CHANNEL;
+            const channel = process.env.STORE_CHANNEL;
             const r = JSON.parse(fs.readFileSync("tooling/channel-register.json", "utf8"));
             const s = r.storeMetadataContract.perChannel[channel].graphicAssets.screenshots;
             const sets = Object.entries(s.deviceTypeCoverage.sets);
@@ -636,7 +642,7 @@ jobs:
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           E2E_EMAIL: ${{ steps.user.outputs.email }}
           E2E_PASSWORD: ${{ steps.user.outputs.password }}
-        run: node tooling/store/capture-play-screenshots.mjs --app subscriptiontracker --channel "$CHANNEL"
+        run: node tooling/store/capture-play-screenshots.mjs --app subscriptiontracker --channel "$STORE_CHANNEL"
 
       - name: The captured set satisfies the listing-asset guard
         run: node --single-threaded tooling/ci/assert-listing-assets.mjs
@@ -668,7 +674,7 @@ jobs:
           SHOTS: ${{ steps.reg.outputs.dir }}
         run: |
           set -euo pipefail
-          BRANCH="chore/${CHANNEL}-screenshots-${{ github.run_id }}"
+          BRANCH="chore/${STORE_CHANNEL}-screenshots-${{ github.run_id }}"
 
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -681,7 +687,7 @@ jobs:
 
           git checkout -b "$BRANCH"
           git commit -F - <<MSG
-          chore(${CHANNEL}): the captured screenshot set, for review
+          chore(${STORE_CHANNEL}): the captured screenshot set, for review
 
           Captured live by .github/workflows/store-screenshots.yml against the
           REAL native desktop binary with the real backend defines — no "Demo
@@ -706,7 +712,7 @@ jobs:
           gh pr create \
             --base "${GITHUB_REF_NAME}" \
             --head "$BRANCH" \
-            --title "chore(${CHANNEL}): the captured screenshot set, for review" \
+            --title "chore(${STORE_CHANNEL}): the captured screenshot set, for review" \
             --body "Captured by run \`${{ github.run_id }}\` from the real native desktop binary. **Look at the images in the Files changed tab** — the guard proves size, count, format, aspect and that no demo banner is present in the pixels; it cannot judge whether these are the screens worth showing. Merging is the human decision this PR exists to ask for." > "${RUNNER_TEMP}/gh-pr-create.log" 2>&1
           PR_RC=$?
           set -e
@@ -720,7 +726,7 @@ jobs:
               CAUSE="gh pr create exited ${PR_RC} for a reason this step does not recognise."
               REMEDY='REMEDY: read the gh output above.'
             fi
-            echo "::error title=The screenshot set was captured but the pull request could not be opened::${CAUSE} THE CAPTURE IS NOT LOST — branch ${BRANCH} is pushed and the same pixels are already uploaded as this run's ${CHANNEL}-screenshots-subscriptiontracker artifact; open the pull request by hand from ${BRANCH} into ${GITHUB_REF_NAME}. ${REMEDY}"
+            echo "::error title=The screenshot set was captured but the pull request could not be opened::${CAUSE} THE CAPTURE IS NOT LOST — branch ${BRANCH} is pushed and the same pixels are already uploaded as this run's ${STORE_CHANNEL}-screenshots-subscriptiontracker artifact; open the pull request by hand from ${BRANCH} into ${GITHUB_REF_NAME}. ${REMEDY}"
             exit 1
           fi
 

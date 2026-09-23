@@ -452,13 +452,13 @@
                   ],
                   "minCount": 4,
                   "capture": {
-                    "flutterDevice": "iPhone 16 Pro Max",
+                    "flutterDevice": "iPhone 17 Pro Max",
                     "logicalWidth": 440,
                     "logicalHeight": 956,
                     "dpr": 3,
                     "runner": "macos-26"
                   },
-                  "source": "440x956 logical at dpr 3 = 1320x2868, the 6.9-inch iPhone size recorded in Private/research/session-2026-09-21/brief-lane-store-screenshots.md (2026-09-21, NOT re-fetched 2026-09-22). Recorded 2026-09-22 with the block above"
+                  "source": "440x956 logical at dpr 3 = 1320x2868, the 6.9-inch iPhone size recorded in Private/research/session-2026-09-21/brief-lane-store-screenshots.md (2026-09-21, NOT re-fetched 2026-09-22). Recorded 2026-09-22 with the block above. DEVICE RE-NAMED 2026-09-23: the macos-26 image in run 35818953373 lists iPhone 17 Pro Max and no iPhone 16 Pro Max (simctl: Invalid device or device pair); the 17 Pro Max is the same 440x956 logical at dpr 3, so the accepted size is unchanged"
                 },
                 "ipad": {
                   "dir": "screenshots-ipad",
@@ -467,13 +467,13 @@
                   ],
                   "minCount": 4,
                   "capture": {
-                    "flutterDevice": "iPad Pro 13-inch (M4)",
+                    "flutterDevice": "iPad Pro 13-inch (M5)",
                     "logicalWidth": 1032,
                     "logicalHeight": 1376,
                     "dpr": 2,
                     "runner": "macos-26"
                   },
-                  "source": "1032x1376 logical at dpr 2 = 2064x2752, the 13-inch iPad size recorded in Private/research/session-2026-09-21/brief-lane-store-screenshots.md (2026-09-21, NOT re-fetched 2026-09-22). Recorded 2026-09-22 with the block above"
+                  "source": "1032x1376 logical at dpr 2 = 2064x2752, the 13-inch iPad size recorded in Private/research/session-2026-09-21/brief-lane-store-screenshots.md (2026-09-21, NOT re-fetched 2026-09-22). Recorded 2026-09-22 with the block above. DEVICE RE-NAMED 2026-09-23: the macos-26 image in run 35818953373 lists iPad Pro 13-inch (M5) and no (M4); the M5 is the same 1032x1376 logical at dpr 2, so the accepted size is unchanged"
                 }
               }
             }
@@ -526,7 +526,7 @@
               "1320x2868"
             ],
             "assertedBy": "tooling/ci/assert-iap-review-screenshots.mjs",
-            "source": "1320x2868 is the frame the `iphone` capture set above produces (440x956 logical at dpr 3 on iPhone 16 Pro Max) — a claim about THIS REPOSITORY's capture, recorded 2026-09-22. Apple's own accepted range for an IAP review screenshot was NOT fetched and is not recorded in this corpus; the obligation itself (an auto-renewable subscription is held in \"Missing Metadata\" without one) is as recorded in Private/research/session-2026-09-21/brief-lane-store-screenshots.md (2026-09-21)"
+            "source": "1320x2868 is the frame the `iphone` capture set above produces (440x956 logical at dpr 3 on iPhone 17 Pro Max; iPhone 16 Pro Max until 2026-09-23, when the macos-26 image stopped carrying it) — a claim about THIS REPOSITORY's capture, recorded 2026-09-22. Apple's own accepted range for an IAP review screenshot was NOT fetched and is not recorded in this corpus; the obligation itself (an auto-renewable subscription is held in \"Missing Metadata\" without one) is as recorded in Private/research/session-2026-09-21/brief-lane-store-screenshots.md (2026-09-21)"
           }
         }
       },
