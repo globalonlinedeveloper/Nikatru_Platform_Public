@@ -265,12 +265,12 @@
       "mutation": {
         "symbol": "lib/features/cancel/cancel_sheet.dart:_confirm catch → _step stays 0",
         "observedRed": "cancel sheet: a failed cancel never claims success",
-        "date": "2026-09-09",
+        "date": "2026-09-23",
         "edit": {
           "find": "setState(() => _busy = false);",
           "replace": "setState(() { _busy = false; _step = 1; });"
         },
-        "codeHash": "7dc597ed55427e025143e75eff487992c5609f70f97ed6ffb6621b534cbe396d"
+        "codeHash": "78f486c0c8957791733cd384d8c81debf714caf0de2fc2ea2088566fb30a58ee"
       }
     }
   ],

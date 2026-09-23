@@ -812,15 +812,26 @@ jobs:
           git checkout -- catalog/apps.json sites/_shared/_data/apps.json
       - name: Default stamp claims NO Worker, NO D1 and NO R2
         run: node tooling/ci/assert-clone-contract.mjs --client probe
+      # why: a red here used to name the file and never the change, and CI's
+      # formatter is newer than a laptop's, so the change could not be reproduced
+      # (2026-09-23, PR 888: `Changed .../paywall_screen.dart`, nothing more).
+      # Formatting a copy and diffing it fails on exactly the same trees and prints
+      # the lines the brick must carry.
       - name: Stamped app is dart format-clean
-        run: dart format --output=none --set-exit-if-changed apps/probe
+        run: |
+          cp -r apps/probe "$RUNNER_TEMP/probe-as-stamped"
+          dart format apps/probe
+          diff -ru "$RUNNER_TEMP/probe-as-stamped" apps/probe
       - name: Stamp the opt-in backend app
         run: |
           export PATH="$PATH:$HOME/.pub-cache/bin"
           export NIKATRU_ALLOW_OVERWRITE=1
           mason make app -c tooling/bricks/app/_probe_backend_vars.json -o . --on-conflict overwrite
       - name: Stamped backend app is dart format-clean
-        run: dart format --output=none --set-exit-if-changed apps/probeapi
+        run: |
+          cp -r apps/probeapi "$RUNNER_TEMP/probeapi-as-stamped"
+          dart format apps/probeapi
+          diff -ru "$RUNNER_TEMP/probeapi-as-stamped" apps/probeapi
       # why: A STAMPED WORKER MUST BE TESTABLE ON DAY ONE, and until 2026-09-12 it
       # was not: the template shipped no vitest, no `test` script and no test
       # directory, so the first thing an owner could not do with a fresh backend was
