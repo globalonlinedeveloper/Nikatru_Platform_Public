@@ -1164,6 +1164,43 @@
       }
     ]
   },
+  "releaseBuildsNeverShipped": {
+    "_why": [
+      "🔴 ⏱ 2026-09-22 — LIFTED OUT OF assert-channel-register.mjs, WHERE IT WAS A `const` CALLED",
+      "`RELEASE_CHANNEL_EXEMPT` THAT ONLY 6b-ii COULD SEE. Three guards ask a version of the same",
+      "question — assert-store-build-config (does this build carry the backend defines), 6b-ii (does",
+      "it stamp a channel), assert-seams-wired (does it carry the crash DSN) — and each carried its",
+      "own idea of which builds do not count. A build excused in one reader and graded in another is",
+      "an argument no run resolves; a build excused in ALL THREE by accident is the hole the three",
+      "O-*-GRADES-DECLARED-* rows were opened for.",
+      "",
+      "⚠️ AN ENTRY HERE IS NOT A BUILD THAT MAY BE WRONG. It is a build whose OUTPUT IS THROWN AWAY —",
+      "a compile proof, a symbolication fixture — so no user ever runs the binary and no rule about what",
+      "a shipped binary must carry can apply to it. A build a user would install is never listed here,",
+      "whatever the pressure: that is what `.github/workflows/build-platforms.yml`'s Build linux step is —",
+      "the build the linux-appimage row ships from — and it was excused by nobody having written it down.",
+      "",
+      "📌 GRADED IN BOTH DIRECTIONS by workflow-scan.mjs `gradeDomain`: an entry matching no release build",
+      "in any workflow has outlived its subject and is reported stale by assert-channel-register 6b-ii.",
+      "`target` is optional — omit it to cover every release build in that job, give it to name one.",
+      "Every `why` is printed on every run of every reader: an exemption nobody reads is indistinguishable",
+      "from an omission."
+    ],
+    "entries": [
+      {
+        "workflow": ".github/workflows/ci.yml",
+        "job": "app-brick",
+        "target": "web",
+        "why": "the BRICK smoke build — it proves a freshly stamped app compiles and the output is discarded in the same job. It is stamped with no channel because it is for no channel."
+      },
+      {
+        "workflow": ".github/workflows/symbolication-proof.yml",
+        "job": "prove",
+        "target": "apk",
+        "why": "[ADR 090] the symbolication fixture — an apk built to be crashed on purpose so the uploaded debug symbols can be proved to resolve a real stack. Nothing installs it."
+      }
+    ]
+  },
   "surfaces": {
     "_why": [
       "🔴 THE SURFACE IS WHAT THE CHANNEL DELIVERS, AND IT IS A DIFFERENT AXIS FROM `kind`. `kind`",
@@ -1576,7 +1613,15 @@
           "",
           "⚠️ `job` NAMES THE DRY RUN AND IS A FLOOR, NOT A CENSUS: submit-play.yml also carries an",
           "owner-approved `submit:` job that runs this script with `--submit`. Reading `job` as the whole",
-          "file is the defect assert-publish-records.mjs's header records for 2026-08-26."
+          "file is the defect assert-publish-records.mjs's header records for 2026-08-26.",
+          "",
+          "⏱ 2026-09-22 — CORRECTION APPENDED, the paragraph above left as written",
+          "(O-STORE-BUILD-GUARD-GRADES-DECLARED-JOBS-ONLY): assert-store-build-config.mjs read this `job`",
+          "AS ITS CENSUS anyway, so the `submit:` job that builds the .aab Google Play receives was graded",
+          "by nobody — deleting SUPABASE_URL from it left that guard printing ok. The guard now grades",
+          "every release `flutter build` in every workflow (workflow-scan.mjs `flutterReleaseBuilds`),",
+          "placed by the RELEASE_CHANNEL each build stamps; this field stays the submission FLOOR and is",
+          "no longer anyone's subject set."
         ],
         "script": "tooling/release/submit-play.mjs",
         "workflow": ".github/workflows/submit-play.yml",
@@ -2249,7 +2294,12 @@
         "Portable Executable (PE) files must be digitally signed with a code signing certificate that",
         "chains up to a certificate issued by a Certificate Authority (CA) that is part of the Microsoft",
         "Trusted Root Program'. Store = no key; direct = our own cert. Recording both is the whole point",
-        "of the register — one 'windows' row would have hidden a recurring cost until submission day."
+        "of the register — one 'windows' row would have hidden a recurring cost until submission day.",
+        "⏱ 2026-09-22 — O-DIRECT-DOWNLOADS-NEVER-GRADED, FIRST BRANCH TAKEN: a release build stamped",
+        "RELEASE_CHANNEL=windows-direct is graded by assert-store-build-config like a store build (all three",
+        "backend defines). Today NO build stamps this row — the direct installer is packaged from a prebuilt",
+        "bundle ([ADR 015] §3) — and that guard prints so on every run rather than passing silently. The",
+        "day a lane builds for this row it is graded with no further change here."
       ]
     },
     {
@@ -2399,7 +2449,14 @@
           "⚠️ `job` NAMES THE DRY RUN AND IS A FLOOR, NOT A CENSUS: submit-snap.yml also carries an",
           "owner-approved `submit:` job that runs this script with `--submit` — which is why that file's",
           "own name says so. Reading `job` as the whole file is the defect assert-publish-records.mjs's",
-          "header records for 2026-08-26."
+          "header records for 2026-08-26.",
+          "",
+          "⏱ 2026-09-22 — CORRECTION APPENDED, the paragraph above left as written",
+          "(O-STORE-BUILD-GUARD-GRADES-DECLARED-JOBS-ONLY): this row names `#dry-run` as BOTH its `lane`",
+          "and this `job`, and assert-store-build-config.mjs read the pair as its census — the one step",
+          "graded twice, the `submit:` job zero times. The guard now grades every release `flutter build`",
+          "in every workflow (workflow-scan.mjs `flutterReleaseBuilds`), placed by the RELEASE_CHANNEL",
+          "each build stamps; this field stays the submission FLOOR and is no longer anyone's subject set."
         ],
         "_whyRecipeScript": [
           "🔴 THE STEP THAT HAS TO HAPPEN BEFORE `snapcraft upload` HAS ANYTHING TO UPLOAD, and until",
@@ -2566,7 +2623,15 @@
         "produces the signed artifact, not where it is served from.'",
         "🔒 [ADR 015] §5: the in-app update check is the LOCKED update mechanism for every non-store",
         "channel — min_supported_version -> mustForceUpdate -> ForceUpdateGate -> AppConfig.updateUrl.",
-        "linuxdeploy traces and bundles libmpv.so into the image. No store, no discovery, no silent update."
+        "linuxdeploy traces and bundles libmpv.so into the image. No store, no discovery, no silent update.",
+        "⏱ 2026-09-22 — O-DIRECT-DOWNLOADS-NEVER-GRADED, FIRST BRANCH TAKEN, and why: build-platforms.yml's",
+        "Build linux step (the build this row ships from, stamped RELEASE_CHANNEL=linux-appimage) now passes",
+        "SUPABASE_URL, SUPABASE_ANON_KEY and API_BASE_URL, and assert-store-build-config grades every release",
+        "build stamped for a kind:direct row exactly like a store build. The second branch (refuse served=true",
+        "on a direct row whose build lacks them) was not taken: it would leave the build ungraded until the day",
+        "the row is served, and the row's own red control does not isolate — flipping served turns",
+        "assert-channel-register red for unrelated reasons while the store-build guard stays green. Red control",
+        "used instead: delete SUPABASE_URL from Build linux and assert-store-build-config exits 1 naming it."
       ]
     },
     {

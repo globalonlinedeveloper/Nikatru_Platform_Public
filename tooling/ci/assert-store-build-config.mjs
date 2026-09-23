@@ -26,6 +26,9 @@
 // ── WHAT IT ASSERTS ──────────────────────────────────────────────────────────
 // Every `flutter build` step that produces an artifact for a `kind: store`
 // channel supplies every dart-define `AppConfig.isBackendLive` needs.
+// ⏱ 2026-09-22 — CORRECTION APPENDED, the sentence above left as written: every
+// RELEASE `flutter build` in this repository that produces an artifact for a
+// `kind: store` OR a `kind: direct` channel (O-DIRECT-DOWNLOADS-NEVER-GRADED).
 //
 // ── ⚠️ NEITHER SIDE OF THAT SENTENCE IS WRITTEN DOWN HERE ────────────────────
 //   · THE REQUIRED DEFINES ARE DERIVED FROM app_config.dart. The guard reads
@@ -41,6 +44,20 @@
 //     here would point the guard at whatever shipped the day it was written —
 //     "a guard pointed at a lane nobody ships from" is this repo's most-recorded
 //     failure, and the register is the one place that says which lane is which.
+//     ⏱ 2026-09-22 — CORRECTION APPENDED, the paragraph above left as written
+//     (O-STORE-BUILD-GUARD-GRADES-DECLARED-JOBS-ONLY): THE SUBJECT BUILDS ARE NOW
+//     A CENSUS OF THE WORKFLOWS, placed by the register. workflow-scan.mjs
+//     `flutterReleaseBuilds` finds EVERY release `flutter build` in every
+//     workflow; each one is placed against a channel row by the RELEASE_CHANNEL
+//     it stamps into itself. The register still names no workflow here — it
+//     places builds; it no longer chooses which ones are looked at.
+//     THIS USED TO READ `row.lane` AND `row.submission`, AND THE
+//     REGISTER SAYS IN ITS OWN `_why` THAT THOSE FIELDS NAME THE DRY RUN AND ARE A
+//     FLOOR, NOT A CENSUS. Measured at f88912e5: the old domain scored 13 step
+//     counts over 12 distinct builds out of 16 that ship; deleting SUPABASE_URL
+//     from submit-play.yml's `submit` job — the job that builds the .aab Google
+//     Play receives — left this guard exiting 0, printing OK. The same mutation
+//     now exits 1 and names the step.
 //
 // ── WHAT IS DELIBERATELY NOT GRADED ──────────────────────────────────────────
 //   · Any lane a store row does not declare. build-platforms.yml's `apple` job
@@ -50,6 +67,25 @@
 //   · The web build, the Linux build, e2e's debug build, and every fork PR.
 //     A fork holds no secrets, so a rule reaching them could only ever fail on
 //     correct input, and a guard that does that gets deleted by whoever hits it.
+//   ⏱ 2026-09-22 — CORRECTION APPENDED, the two bullets above left as written:
+//   · "Any lane a store row does not declare" is GONE as an exclusion. A build is
+//     excused only where the register says its OUTPUT IS THROWN AWAY:
+//     `releaseBuildsNeverShipped` names ci.yml's brick smoke build and
+//     symbolication-proof.yml's crash fixture, each with its reason, printed on
+//     every run. A build-proof job whose builds stamp no row stays outside this
+//     guard because it produces no store or direct artifact, not because nobody
+//     named it — and 6b-ii of assert-channel-register fails any such build that
+//     stamps nothing and is not in that key.
+//   · "the Linux build" is GONE from the second bullet. It is the build the
+//     `linux-appimage` row (kind: direct) ships from, stamped for that row: it
+//     passed no SUPABASE_URL, no SUPABASE_ANON_KEY and no API_BASE_URL, so the
+//     day that row is served its download would be the demo build, with this
+//     guard printing ok (O-DIRECT-DOWNLOADS-NEVER-GRADED). Latent today — the
+//     row is served:false and only the raw bundle leaves the job, as an artifact.
+//     A debug or profile build and every fork PR stay outside, for the reason given.
+//   · The WEB build stays outside THIS rule: it belongs to the `kind: web` row,
+//     which ships from deploy-web.yml with all three defines and is graded by W1
+//     below for the web-only set instead.
 //   · WHETHER THE VALUES ARE RIGHT. This reads workflow structure; it cannot see
 //     a secret's contents, so a store lane wired to a STAGING Supabase passes
 //     here. Printed on every run rather than left implied.
@@ -76,8 +112,9 @@
 // build with a live backend and no key reports an error (turnstile_gate.dart).
 //
 // Usage:  node tooling/ci/assert-store-build-config.mjs [repoRoot]
-// Exit 0 = no store artifact is a demo build, and the web-only defines reach the web
-//          lanes and no store lane. 1 = a finding (or COVERAGE LOST, see coverageLost).
+// Exit 0 = no store or direct artifact is a demo build, and the web-only defines reach
+//          the web lanes and no store lane. 1 = a finding. 2 = COVERAGE LOST — "did not
+//          check enough to be evidence", never a finding (AGENTS.md exit-code convention).
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
@@ -87,7 +124,10 @@ import { fileURLToPath } from 'node:url';
 // assert-vendor-portability records what a line-based dart-define scan costs:
 // it found 2 of the 11 defines that existed. Four copies of a workflow parser
 // drift in the one way that reports "clean".
-import { parseAllWorkflows } from './workflow-scan.mjs';
+import { parseAllWorkflows, flutterReleaseBuilds, gradeDomain, buildAt } from './workflow-scan.mjs';
+// The declared surface axis (O-EXT-SURFACE-AXIS) — whether a row is a Flutter app
+// or an extension is READ from the register, never inferred from its id.
+import { partitionByFlutterApp } from './channel-surface.mjs';
 // The one directory listing (assert-walks-bounded.mjs) — W3 walks each app's lib/.
 import { listDir } from './tree-walk.mjs';
 
@@ -324,116 +364,181 @@ for (const d of WEB_ONLY) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 2. WHICH STEPS SHIP TO A STORE? Read out of the register, not listed here.
+// 2. WHICH STEPS SHIP TO A STORE? Read out of the BUILDS, graded by the register.
 // ─────────────────────────────────────────────────────────────────────────────
+// 🔴 ⏱ 2026-09-22 — THIS SECTION USED TO WALK `row.lane` AND `row.submission`,
+// and the register says in its own `_why` that those fields NAME THE DRY RUN AND
+// ARE A FLOOR, NOT A CENSUS. Measured at f88912e5: the old domain graded 13 step
+// counts over 12 distinct builds, out of 16 release builds that produce a store
+// or direct artifact. The four it never saw:
+//   · submit-play.yml#submit — the job that builds the .aab Google Play RECEIVES.
+//     `android-play` declares `#dry-run` as its submission, so the real upload
+//     job was graded by nobody.
+//   · submit-windows-store.yml#submit and submit-snap.yml#submit — the same shape.
+//     `linux-snap` names `#dry-run` as BOTH its lane and its submission, so the
+//     old loop graded that one step twice and the submit job zero times.
+//   · build-platforms.yml's Build linux step — `linux-appimage` is `kind: direct`
+//     and declares no lane at all, so the build that row would ship was outside
+//     every store rule (O-DIRECT-DOWNLOADS-NEVER-GRADED). It passed no
+//     SUPABASE_URL, no SUPABASE_ANON_KEY and no API_BASE_URL: a demo build, latent
+//     only because the row is not served yet, with this guard printing ok.
+// And `apps-gov-in` declares neither lane nor submission; its apk was graded only
+// because it happens to sit in `android-play`'s lane job. Move that step to a job
+// of its own and it would have become ungraded silently.
+//
+// 📌 THE DOMAIN IS NOW THE CENSUS: every release `flutter build` in every
+// workflow (workflow-scan.mjs `flutterReleaseBuilds`), placed against a register
+// row by the RELEASE_CHANNEL each build stamps into itself. A job nobody names is
+// graded exactly like a declared one, and a build that must not be graded has to
+// be written down in `releaseBuildsNeverShipped` with a reason.
+//
+// ⚠️ PER SEGMENT, NOT PER LINE. A `run: |` block is joined with ` ; `, so the old
+// whole-line test let one step's defines answer for the step beside it: deleting
+// SUPABASE_URL from the appbundle step left this guard green because the apk step
+// on the same logical line still carried one.
+//
 // `register` was read and parsed in section 0 — the config lookup needs it too,
 // and two parses of one file are two answers waiting to disagree.
-const storeRows = (register.channels ?? []).filter((c) => c.kind === 'store');
-if (storeRows.length === 0) {
+const shippableRows = (register.channels ?? []).filter((c) => c.kind === 'store' || c.kind === 'direct');
+if (shippableRows.length === 0) {
   coverageLost([
-    `${REGISTER} declares no \`kind: "store"\` channel.`,
+    `${REGISTER} declares no \`kind: "store"\` or \`kind: "direct"\` channel.`,
     'The subject set is derived from those rows. With none, this guard grades nothing and prints ok —',
     'the empty-set pass that every guard in this tree is written to refuse.',
   ]);
 }
+const shippableIds = new Set(shippableRows.map((r) => r.id));
 
-const workflows = new Map(parseAllWorkflows(ROOT).map((w) => [w.rel, w]));
+const parsedWorkflows = parseAllWorkflows(ROOT);
+const workflows = new Map(parsedWorkflows.map((w) => [w.rel, w]));
 if (workflows.size === 0) coverageLost([`no workflow parsed under ${ROOT}/.github/workflows.`]);
 
-/** Every (row, job) a store row DECLARES — its build lane and its submission. */
-const declared = [];
-for (const row of storeRows) {
-  for (const [kind, decl] of [['lane', row.lane], ['submission', row.submission]]) {
-    if (!decl || typeof decl.workflow !== 'string' || typeof decl.job !== 'string') continue;
-    declared.push({ row, kind, workflow: decl.workflow, job: decl.job });
-  }
-}
-if (declared.length === 0) {
+const census = flutterReleaseBuilds(ROOT, parsedWorkflows);
+if (census.length === 0) {
   coverageLost([
-    `${storeRows.length} store row(s) and NOT ONE declares a \`lane\` or \`submission\` with {workflow, job}.`,
-    'The subject set is empty, so every store artifact is unchecked and this guard reports clean.',
+    `${workflows.size} workflow(s) parsed and NOT ONE release \`flutter build\` was found in any of them.`,
+    'Either this factory has stopped building the app, or the census has stopped matching inside the',
+    'parsed job lines. Both look exactly like a clean sweep.',
   ]);
+}
+const domain = gradeDomain(census, register);
+
+// A build the census cannot place — unstamped, or stamped with a channel no row
+// declares — is NOT this guard's finding to report. assert-channel-register 6b/6b-ii
+// owns "every release build stamps a channel that exists", and two guards failing
+// on one defect teaches whoever hits it that the second one is noise. Printed here
+// because a build outside the census is also a build outside THIS domain, and that
+// is the sentence a reader of a green run needs.
+if (domain.findings.length) {
+  prints.push(
+    `${domain.findings.length} release build(s) could not be placed against a channel row, so nothing here graded them: ` +
+      `${domain.findings.map((f) => `${buildAt(f.build)} [${f.kind}]`).join(' / ')}. ` +
+      'assert-channel-register.mjs 6b/6b-ii owns that rule and fails on it.',
+  );
+}
+for (const e of domain.exempt) {
+  prints.push(`NOT GRADED — ${buildAt(e)} is listed in ${REGISTER} \`releaseBuildsNeverShipped\`: ${e.why}`);
 }
 
 const NON_RELEASE = /--debug\b|--profile\b/;
 let graded = 0;
 let storeStepsGradedForWebOnly = 0;
-const rowsWithNoBuild = new Map();
-
-for (const d of declared) {
-  const wf = workflows.get(d.workflow);
-  if (!wf) {
-    problems.push(`${REGISTER}: channel "${d.row.id}" declares ${d.kind} workflow ${d.workflow}, which this scan did not parse. A declared lane pointing at a file that is not there is graded by nobody.`);
-    continue;
-  }
-  const job = wf.jobs.get(d.job);
-  if (!job) {
-    problems.push(`${REGISTER}: channel "${d.row.id}" declares ${d.kind} job "${d.job}" in ${d.workflow}, which declares [${[...wf.jobs.keys()].join(', ')}].`);
-    continue;
-  }
-  const platforms = new Set(d.row.platforms ?? []);
-  let buildsHere = 0;
-  for (const line of job.logical) {
-    for (const m of line.text.matchAll(/flutter\s+build\s+([a-z]+)/g)) {
-      const platform = TARGET_PLATFORM.get(m[1]);
-      // A target for another platform in the same job — build-platforms.yml's
-      // android job also builds web and linux — is not this row's artifact.
-      if (platform === undefined || !platforms.has(platform)) continue;
-      if (NON_RELEASE.test(line.text)) continue;
-      buildsHere++;
-      graded++;
-      const where = `${d.workflow}:${line.n} (channel "${d.row.id}", ${d.kind} job "${d.job}", \`flutter build ${m[1]}\`)`;
-      const absent = [...REQUIRED].filter((name) => !new RegExp(`--dart-define(?:=|\\s+)${name}=`).test(line.text));
-      // W2 [ADR 084]: a store build carries no captcha BY DESIGN.
-      const carried = [...WEB_ONLY].filter((name) => new RegExp(`--dart-define(?:=|\\s+)${name}=`).test(line.text));
-      storeStepsGradedForWebOnly++;
-      if (carried.length) {
-        problems.push(
-          `W2 ${where} passes ${carried.join(', ')}. [ADR 084] (owner, 2026-09-15, "Store builds skip it"): a store build ` +
-            'is built WITHOUT the captcha site key on purpose — a Turnstile widget in a native webview is unverified on ' +
-            'any device and a wrong answer blocks sign-in. Remove the define from this step; if bot sign-ups were ' +
-            'observed on a native channel, that is the ADR\'s revisit trigger, and it is a decision, not a lane edit.',
-        );
-      }
-      if (absent.length) {
-        problems.push(
-          `${where} does not pass ${absent.join(', ')}. ` +
-            `AppConfig.${ROOT_GETTER} needs ${[...REQUIRED].join(', ')}; without them the fields stay at their ` +
-            'PLACEHOLDER defaults and the artifact ships with mock auth and seeded data — a demo build, ' +
-            'submitted to a store, with every other check green. deploy-web.yml already passes all of them ' +
-            'from repository secrets that exist.',
-        );
-      }
+// ⚠️ THE DECLARED FIELDS STILL HAVE TO POINT SOMEWHERE. The domain no longer comes
+// from `lane`/`submission` — that is the whole change above — but a row naming a job
+// that does not exist is a register that has drifted from the workflows, and this guard
+// parses both. ⏱ 2026-09-22: it is a FINDING now, not COVERAGE LOST. Under the old
+// domain a ghost job ALSO emptied the subject set, so the run exited 2 and read as a
+// broken guard rather than a broken register; the census grades every build either way,
+// so what is left is simply a register row that is wrong.
+for (const row of shippableRows) {
+  for (const [kind, decl] of [['lane', row.lane], ['submission', row.submission]]) {
+    if (!decl || typeof decl.workflow !== 'string' || typeof decl.job !== 'string') continue;
+    const wf = workflows.get(decl.workflow);
+    if (!wf) {
+      problems.push(`${REGISTER}: channel "${row.id}" declares ${kind} workflow ${decl.workflow}, which this scan did not parse. A declared lane pointing at a file that is not there tells every reader of this register something untrue.`);
+      continue;
     }
-  }
-  if (buildsHere === 0) {
-    const key = d.row.id;
-    if (!rowsWithNoBuild.has(key)) rowsWithNoBuild.set(key, []);
-    rowsWithNoBuild.get(key).push(`${d.kind} job "${d.job}" in ${d.workflow}`);
+    if (!wf.jobs.get(decl.job)) {
+      problems.push(`${REGISTER}: channel "${row.id}" declares ${kind} job "${decl.job}" in ${decl.workflow}, which declares [${[...wf.jobs.keys()].join(', ')}].`);
+    }
   }
 }
 
-// A row whose declared jobs build nothing for its own platform is NOT a failure
-// — linux-snap ingests a prebuilt artifact by design ([ADR 015] §3) — but it IS
-// a row this guard cannot speak for, and an unspoken-for row is how a subject set
-// shrinks unnoticed. Printed every run.
-for (const [id, where] of rowsWithNoBuild) {
-  prints.push(`channel "${id}" — no \`flutter build\` for its platform in ${where.join(' / ')}, so nothing was graded for it. Correct where the artifact is packaged from a prebuilt bundle; a coverage hole if that lane was supposed to build.`);
+
+const storeBuilds = domain.graded.filter((b) => shippableIds.has(b.row.id));
+for (const b of storeBuilds) {
+  graded++;
+  storeStepsGradedForWebOnly++;
+  const where = `${b.workflow}:${b.runLine} (channel "${b.row.id}", job "${b.job}", \`flutter build ${b.target}\`)`;
+  const absent = [...REQUIRED].filter((name) => !b.defines.has(name));
+  // W2 [ADR 084]: a store build carries no captcha BY DESIGN.
+  const carried = [...WEB_ONLY].filter((name) => b.defines.has(name));
+  if (carried.length) {
+    problems.push(
+      `W2 ${where} passes ${carried.join(', ')}. [ADR 084] (owner, 2026-09-15, "Store builds skip it"): a store build ` +
+        'is built WITHOUT the captcha site key on purpose — a Turnstile widget in a native webview is unverified on ' +
+        'any device and a wrong answer blocks sign-in. Remove the define from this step; if bot sign-ups were ' +
+        'observed on a native channel, that is the ADR\'s revisit trigger, and it is a decision, not a lane edit.',
+    );
+  }
+  if (absent.length) {
+    problems.push(
+      `${where} does not pass ${absent.join(', ')}. ` +
+        `AppConfig.${ROOT_GETTER} needs ${[...REQUIRED].join(', ')}; without them the fields stay at their ` +
+        'PLACEHOLDER defaults and the artifact ships with mock auth and seeded data — a demo build, ' +
+        'submitted to a store, with every other check green. deploy-web.yml already passes all of them ' +
+        'from repository secrets that exist.',
+    );
+  }
+}
+
+// A row nothing builds for is NOT a failure — linux-snap ingests a prebuilt
+// artifact by design ([ADR 015] §3), and `windows-direct` declares a `.exe` that
+// the register's own `artifactBuild._why` already records nothing packages — but
+// it IS a row this guard cannot speak for, and an unspoken-for row is how a
+// subject set shrinks unnoticed. Printed every run.
+//
+// ⚠️ THROUGH THE DECLARED SURFACE AXIS, not by guessing from the id. The three
+// extension rows have no Flutter build and never will (ADR 067 decision 1: the
+// packer is build-free); listing them here every run is the noise that teaches a
+// reader to skip this block, and the block is the only place a REAL hole shows up.
+const built = new Set(storeBuilds.map((b) => b.row.id));
+const surfaceSplit = partitionByFlutterApp(register, shippableRows);
+if (surfaceSplit.undeclared.length) {
+  coverageLost([
+    `${surfaceSplit.undeclared.length} shippable row(s) declare no surface this scan can resolve: ${surfaceSplit.undeclared.map((r) => r.id).join(', ')}.`,
+    'The Flutter/extension split decides which rows must be built for, so an unresolved row is a row',
+    'silently excused from the "nothing builds this" report.',
+  ]);
+}
+for (const row of surfaceSplit.flutter) {
+  if (built.has(row.id)) continue;
+  prints.push(
+    `channel "${row.id}" [${row.kind}] — NOT ONE release \`flutter build\` in any workflow stamps RELEASE_CHANNEL=${row.id}, ` +
+      'so nothing was graded for it. Correct where the artifact is packaged from a prebuilt bundle ([ADR 015] §3); ' +
+      'a coverage hole if something was supposed to build it.',
+  );
+}
+if (surfaceSplit.other.length) {
+  prints.push(
+    `${surfaceSplit.other.length} shippable row(s) are not a Flutter-app surface and are outside this rule by ` +
+      `construction: ${surfaceSplit.other.map((r) => r.id).join(', ')} (the extension packer is build-free, ADR 067 decision 1).`,
+  );
 }
 
 if (graded === 0) {
-  // ⚠️ THE DIAGNOSIS COMES FIRST, and the test run is why. A declared job that
-  // does not exist produces BOTH a precise problem and an empty graded set;
-  // exiting on the coverage check alone replaced "channel X declares job
-  // 'ghost', which does not exist" with "zero steps were graded" — true, useless,
-  // and it reads as a broken guard rather than a broken register. The identical
-  // ordering bug was found in assert-artifact-signed.mjs the same day.
+  // ⚠️ THE DIAGNOSIS COMES FIRST, and the test run is why. A census that places
+  // no build produces BOTH precise problems and an empty graded set; exiting on
+  // the coverage check alone replaced "channel X stamps a channel that does not
+  // exist" with "zero steps were graded" — true, useless, and it reads as a broken
+  // guard rather than a broken register. The identical ordering bug was found in
+  // assert-artifact-signed.mjs the same day.
   for (const p of prints) console.error(`     ⬜ ${p}`);
   for (const p of problems) console.error(`FAIL ${p}`);
   coverageLost([
-    `${declared.length} declared store job(s) yielded ZERO graded build steps.`,
-    'Either no store lane builds anything any more, or the `flutter build` matcher has stopped matching',
-    'inside the parsed job lines. Both look exactly like a clean sweep.',
+    `${census.length} release build(s) were found and NOT ONE was placed against a \`store\` or \`direct\` channel row.`,
+    'Either no store artifact is built any more, or every build has stopped stamping a RELEASE_CHANNEL the',
+    'register declares. Both look exactly like a clean sweep.',
   ]);
 }
 
@@ -498,7 +603,8 @@ if (problems.length) {
 }
 
 console.log(
-  `assert-store-build-config: OK — ${graded} store build step(s) across ${declared.length} declared lane(s) ` +
+  `assert-store-build-config: OK — ${graded} of ${census.length} release build step(s) in ${workflows.size} workflow(s) ` +
+    `produce a store or direct artifact (${domain.exempt.length} exempt, ${domain.findings.length} unplaceable) and ` +
     `each pass all ${REQUIRED.size} define(s) AppConfig.${ROOT_GETTER} reaches (${[...REQUIRED].sort().join(', ')}), ` +
       `derived from ${configsRead} app config file(s) via ${getterChains.join(' | ')}; ` +
     `[ADR 084] ${WEB_ONLY.size} web-only define(s) passed by ${webGraded} web step(s) and by none of the store steps`,
