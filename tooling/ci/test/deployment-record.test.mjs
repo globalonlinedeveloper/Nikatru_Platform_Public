@@ -224,7 +224,33 @@ describe('deployment-record — the LEGACY form is unparseable, never "live"', (
   });
 });
 
+/** ⏱ 2026-09-23 · #887. A shell variable in the `{app}` SLOT ONLY — `$TOOL-amo` —
+ *  leaves the channel as literal text, so the channel is readable here even though
+ *  the app is not: the suffix must complete ONE register template EXACTLY. Returns
+ *  that row's id, or null when the token is not this shape or no row claims it. */
+function appSlotChannel(register, written) {
+  const m = String(written).match(/^\$\{?[A-Za-z_][A-Za-z0-9_]*\}?(-[a-z0-9][a-z0-9-]*)$/);
+  if (!m) return null;
+  const rows = (register?.channels ?? []).filter((c) => c?.deploymentEnvironment === `{app}${m[1]}`);
+  return rows.length === 1 ? rows[0].id : null;
+}
+
 describe('deployment-record — the environment resolves against the register', () => {
+  test('an app-slot variable over a claimed channel suffix names that channel', () => {
+    assert.equal(appSlotChannel(REAL_REGISTER, '$TOOL-amo'), 'amo');
+    assert.equal(appSlotChannel(REAL_REGISTER, '${TOOL}-amo'), 'amo');
+  });
+
+  test('an app-slot variable over an UNCLAIMED suffix names nothing', () => {
+    assert.equal(appSlotChannel(REAL_REGISTER, '$TOOL-nowhere'), null);
+  });
+
+  test('a variable anywhere but the app slot is not the app-slot shape', () => {
+    assert.equal(appSlotChannel(REAL_REGISTER, '$environment'), null);
+    assert.equal(appSlotChannel(REAL_REGISTER, 'fullshot-$CHANNEL'), null);
+    assert.equal(appSlotChannel(REAL_REGISTER, '$TOOL-$CHANNEL'), null);
+  });
+
   test('`subscriptiontracker-android-play` resolves to android-play, not to a channel called "play"', () => {
     const r = resolveEnvironment(REGISTER, 'subscriptiontracker-android-play');
     assert.equal(r.app, 'subscriptiontracker');
@@ -364,6 +390,10 @@ describe('deployment-record — the environment resolves against the register', 
     // this goes red — an unresolvable argument is not a licence to record
     // anything.
     for (const c of callSites.filter((s) => isShellVariableEnvironment(s.written))) {
+      // Only the app is a runtime value here; the channel is literal and held to
+      // exactly one register row. record-deployment.mjs resolves the whole name
+      // again before it writes.
+      if (appSlotChannel(REAL_REGISTER, c.written) !== null) continue;
       const name = c.written.replace(/^\$\{?/, '').replace(/\}$/, '');
       const producer = readFileSync(join(dir, c.file), 'utf8')
         .split('\n')

@@ -726,6 +726,15 @@ account exists, so registration day is minutes rather than archaeology.
 `build_windows: false` keeps msix from rebuilding: this packages the
 exact binaries the step above produced and the upload below proves.
 
+⏱ 2026-09-22 — the paragraph above is superseded for subscriptiontracker.
+The account is verified and the register row and the pubspec carry the
+real Partner Center identity (identityName
+`60210NIKATRU.NikatruSubscriptionTracker`), so the .msix this leg builds is
+now the identity a submission would use. `assert-artifact-signed-msix.mjs`
+compares the packaged manifest to those values exactly as it compared the
+sentinel. Still NOT submitted: the row is `served: false`, and a submission
+is the owner's word.
+
 ### before step **Keep the .msix even if what follows refuses it**
 
 ── WHAT msix:create ACTUALLY WROTE ────────────────────────────

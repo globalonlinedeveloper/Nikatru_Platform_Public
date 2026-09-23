@@ -338,6 +338,16 @@ flutter_launcher_icons:
 # one and so `msix` still runs locally (it satisfies the identity-name charset
 # rule ^[a-zA-Z0-9.-]{3,50}$, so packaging is provable before the account exists).
 #
+# ⏱ 2026-09-22 — CONFIGURED; the paragraph above is kept as the record of how
+# the sentinel worked. The three values below were read from Partner Center →
+# Product → Product identity ~09:35Z and land here in the SAME commit as the
+# register row (a half-configured identity is never committed). One correction
+# to the paragraph above: Publisher is Package/Identity/Publisher, not
+# Package/Properties. The Package Family Name is not declared here — `msix`
+# derives it — and tooling/ci/assert-channel-register.mjs §6e recomputes the
+# register's copy from `identity_name` + `publisher`, so a publisher mistyped the
+# same way in both files fails. `store: true` below stays.
+#
 # ⬜ NO PER-APP STORE ICON EXISTS YET (see the STAGED block above): with no
 # `logo_path`, `msix` falls back to its own bundled default icons. That is fine
 # for a build proof and NOT fine for a submission — [10]D-6 requires a distinct
@@ -349,9 +359,9 @@ flutter_launcher_icons:
 #   dart run msix:create
 msix_config:
   display_name: Subscriptions
-  publisher_display_name: PARTNER-CENTER-PENDING
-  identity_name: PARTNER-CENTER-PENDING
-  publisher: CN=PARTNER-CENTER-PENDING
+  publisher_display_name: NIKATRU
+  identity_name: 60210NIKATRU.NikatruSubscriptionTracker
+  publisher: CN=9D0DEF58-EDA2-448E-9498-42C2C3083994
   # `store: true` is the keyKind "none" half of the register row made real: the
   # Store re-signs the submitted package, so nothing here holds or needs a
   # certificate, and `msix` skips signing entirely in this mode. Flipping it to
