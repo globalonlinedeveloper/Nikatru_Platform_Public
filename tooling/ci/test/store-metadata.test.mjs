@@ -1277,7 +1277,7 @@ const png = (width, height, padTo = 0) => {
 const jpegHeader = (width, height) =>
   Buffer.from([0xff, 0xd8, 0xff, 0xc0, 0x00, 0x11, 0x08, height >> 8, height & 0xff, width >> 8, width & 0xff, 0x03, 0, 0, 0, 0, 0, 0, 0, 0]);
 
-const agiRow = () => ({
+const agiRow = (rail = 'none') => ({
   id: AGI,
   name: 'apps.gov.in',
   platforms: ['android'],
@@ -1288,6 +1288,10 @@ const agiRow = () => ({
   artifactFormats: ['.apk'],
   storeMetadataDir: 'apps/{app}/store/apps-gov-in',
   ownerQueue: 'A-9',
+  // The money answers on the upload form are read off this, never typed
+  // ([ADR 094] item 5). `rail: null` drops the key, for the case where the row
+  // carries no rail at all.
+  ...(rail === null ? {} : { purchaseRail: { rail, why: 'the fixture says so', forbids: ['play-billing', 'apple-iap'], forbidsWhy: 'the fixture says so', source: 'the fixture' } }),
 });
 
 const agiIconDecl = (over = {}) => ({ required: true, width: 512, height: 512, format: 'png', maxBytes: 204799, source: 'the form script', ...over });
@@ -1320,7 +1324,11 @@ const formAnswers = (mutate = null) => {
       supportPhone: 'OWNER FILLS',
       description: { from: 'long-description.txt' },
     },
-    step2: { appIcon: { from: 'store-icon-512.png' }, screenshots: { from: 'screenshots' } },
+    step2: {
+      appIcon: { from: 'store-icon-512.png' },
+      screenshots: { from: 'screenshots' },
+      paymentGateway: { answer: 'No', why: 'derived from purchaseRail.rail "none": no build of this channel opens a checkout' },
+    },
     step3: STEP3_IDS.map((id, i) => ({ q: i + 1, id, question: `question ${i + 1}`, answer: i === 1 ? 'Yes' : 'No', evidence: 'the file that shows it' })),
   };
   if (mutate) mutate(fa);
@@ -1342,13 +1350,15 @@ function agiTree({
   brickCategory = 'Others\n',
   brickAnswers = formAnswers(),
   iconDecl = agiIconDecl(),
+  rail = 'none',
+  listing = {},
 } = {}) {
   const root = tree({
     apps: [{ slug: 'subscriptiontracker', name: 'Subly', tagline: 'Track every subscription in one place', platforms: ['web'], status }],
     // form-answers.json is NOT in additionalFiles, as in the real register: a
     // .json there is a sworn declaration to assert-sworn-store-files.mjs.
     mutateRegister: (r) => {
-      r.channels.push(agiRow());
+      r.channels.push(agiRow(rail));
       r.storeMetadataContract.perChannel[AGI] = {
         additionalFiles: ['developed-by.txt', 'store-icon-512.png'],
         graphicAssets: { assets: { 'store-icon-512.png': iconDecl } },
@@ -1364,7 +1374,7 @@ function agiTree({
     mkdirSync(dirname(p), { recursive: true });
     writeFileSync(p, body);
   };
-  for (const rel of REQUIRED) put(rel, rel === 'category.txt' ? category : FIELD[rel]);
+  for (const rel of REQUIRED) put(rel, rel === 'category.txt' ? category : (listing[rel] ?? FIELD[rel]));
   put('developed-by.txt', 'Nikatru\n');
   if (answers !== null) put('form-answers.json', answers);
   if (icon) put('store-icon-512.png', icon);
@@ -1377,6 +1387,94 @@ describe("a store's own form rules — apps.gov.in", () => {
     const { code, out } = run(agiTree());
     assert.equal(code, 0, out);
     assert.match(out, /\d+ store form rule\(s\) checked against the store's own upload form/);
+  });
+
+  // ── the money answers and the age answer are DERIVED ([ADR 094] item 5) ────
+  // The form asks whether the app takes money and names the gateway. Before
+  // these, any string with a sentence beside it passed: a rail change in
+  // tooling/channel-register.json left the form saying "No" and nothing went red.
+
+  test('FAILS "No" on the payment gateway when the row declares a rail that sells', () => {
+    const { code, out } = run(agiTree({ rail: 'razorpay' }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /step2\.paymentGateway\.answer is "No".*purchaseRail\.rail: "razorpay".*this channel now sells/s);
+  });
+
+  test('FAILS a gateway answer that names a rail other than the row’s', () => {
+    const answers = formAnswers((fa) => (fa.step2.paymentGateway = { answer: 'Paddle', why: 'the web checkout' }));
+    const { code, out } = run(agiTree({ rail: 'razorpay', answers, brickAnswers: answers }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /neither it nor its `why` names "razorpay"/);
+  });
+
+  test('a selling rail passes when the gateway is named and question 4 is Yes', () => {
+    const answers = formAnswers((fa) => {
+      fa.step2.paymentGateway = { answer: 'Razorpay', why: 'derived from purchaseRail.rail "razorpay"' };
+      fa.step3[3].answer = 'Yes';
+    });
+    const { code, out } = run(agiTree({ rail: 'razorpay', answers, brickAnswers: answers }));
+    assert.equal(code, 0, out);
+  });
+
+  test('FAILS "Yes" on financial transactions while the rail is none', () => {
+    const answers = formAnswers((fa) => (fa.step3[3].answer = 'Yes'));
+    const { code, out } = run(agiTree({ answers, brickAnswers: answers }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /step3 "financial-transactions" answers "Yes".*purchaseRail\.rail: "none".*so the form's question 4 is "No"/s);
+  });
+
+  test('FAILS a form whose payment gateway answer is missing entirely', () => {
+    const answers = formAnswers((fa) => delete fa.step2.paymentGateway);
+    const { code, out } = run(agiTree({ answers, brickAnswers: answers }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /step2\.paymentGateway\.answer is null/);
+  });
+
+  test('FAILS when the row carries no purchaseRail to derive the money answers from', () => {
+    const { code, out } = run(agiTree({ rail: null }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /declares no `purchaseRail\.rail`.*two hand-written answers about money/s);
+  });
+
+  test('FAILS "Yes" to suitable-for-children — the age floor is 18', () => {
+    const answers = formAnswers((fa) => (fa.step3[4].answer = 'Yes'));
+    const { code, out } = run(agiTree({ answers, brickAnswers: answers }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /step3 "suitable-for-children" answers "Yes"\. No Nikatru app targets children/);
+  });
+
+  // ── the listing text names no price and no lifetime plan ([ADR 093]) ───────
+
+  test('FAILS a listing that names a rupee price', () => {
+    const { code, out } = run(agiTree({ listing: { 'long-description.txt': 'Pro is ₹499 a year.\n' } }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /long-description\.txt names a price \("₹499"\)/);
+  });
+
+  test('FAILS a listing that names a dollar price', () => {
+    const { code, out } = run(agiTree({ listing: { 'short-description.txt': 'Pro for $4.99 a month\n' } }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /short-description\.txt names a price \("\$4\.99"\)/);
+  });
+
+  test('FAILS a listing that names the lifetime plan', () => {
+    const { code, out } = run(agiTree({ listing: { 'long-description.txt': 'A lifetime plan is available.\n' } }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /long-description\.txt names the lifetime plan/);
+  });
+
+  test('a listing that counts days and apps is not read as a price', () => {
+    const { code, out } = run(agiTree({ listing: { 'long-description.txt': 'Reminds you 7 days ahead, across 3 devices. Version 1.0.101.\n' } }));
+    assert.equal(code, 0, out);
   });
 
   test('a jpg screenshot is measured from its own start-of-frame header', () => {

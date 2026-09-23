@@ -295,7 +295,8 @@
   {
     "claims": [],
     "invokedBy": [
-      ".github/workflows/build-platforms.yml#linux_web_android"
+      ".github/workflows/build-platforms.yml#linux_web_android",
+      ".github/workflows/ci.yml#guards-store"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-apps-gov-in-media.mjs",
@@ -1775,6 +1776,18 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/build-platforms.yml#release",
+      ".github/workflows/ci.yml#guards-store",
+      ".github/workflows/extensions.yml#release"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-release-json.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "ADR 067",
       "D-2b",
@@ -2163,6 +2176,10 @@
   },
   {
     "claims": [
+      "ADR 068",
+      "ADR 078",
+      "ADR 093",
+      "ADR 094",
       "D-5",
       "R-5"
     ],
@@ -3311,6 +3328,16 @@
     ],
     "kind": "script",
     "ref": "tooling/smoke/smoke-web-artifact.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/e2e.yml#e2e"
+    ],
+    "kind": "script",
+    "ref": "tooling/store/capture-fallback-fonts.mjs",
     "references": [],
     "state": "WIRED"
   },

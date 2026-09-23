@@ -156,3 +156,155 @@ describe('RevenueCat through the route — the shipped verifier refuses on A, lo
     expect(await count(db, "SELECT COUNT(*) AS n FROM provider_notifications WHERE provider = 'revenuecat' AND derive_error LIKE 'refused:%'")).toBe(1);
   });
 });
+
+// ── ⏱ 2026-09-22 · [ADR 092] §4.3, §4.4, §4.6 · ownership through the store ────
+// A TRANSFER writes no entitlement and moves no link; the NEXT newer lifecycle
+// event naming the new owner moves the link, and only when the current owner
+// holds no live RevenueCat row on that purchase. Times are explicit here, on the
+// provider's clock, because ordering is the whole subject.
+const FROM_USER = '5e4d3c2b-1a09-4f8e-9d7c-6b5a4f3e2d1c';
+const DAY = 86_400_000;
+const T_BUY = NOW_MS - 10 * DAY;
+const T_LAPSE = NOW_MS - 5 * DAY;
+const T_TRANSFER = NOW_MS - DAY;
+const T_REBUY = NOW_MS - 60_000;
+
+function rcTransferBody(over: Record<string, unknown> = {}): string {
+  seq += 1;
+  return JSON.stringify({
+    api_version: '1.0',
+    event: {
+      id: `evt_rc_transfer_${seq}`,
+      type: 'TRANSFER',
+      event_timestamp_ms: T_TRANSFER,
+      app_id: RC_APP,
+      environment: 'PRODUCTION',
+      store: 'PLAY_STORE',
+      transferred_from: [FROM_USER],
+      transferred_to: [USER],
+      ...over,
+    },
+  });
+}
+
+const d1 = (db: RealDb) => db as unknown as D1Database;
+const linkOwner = async (db: RealDb) =>
+  (await d1(db)
+    .prepare("SELECT user_id FROM provider_accounts WHERE provider = 'revenuecat' AND provider_subscription_id = 'otx_money_1'")
+    .first<{ user_id: string }>())?.user_id ?? null;
+const activeFor = async (db: RealDb, userId: string) =>
+  (await d1(db)
+    .prepare('SELECT is_active FROM entitlements WHERE user_id = ? AND app_id = ?')
+    .bind(userId, 'subscriptiontracker')
+    .first<{ is_active: number }>())?.is_active ?? null;
+
+/** FROM_USER bought, then the purchase lapsed: no live row is left on it. */
+async function boughtThenLapsed(db: RealDb) {
+  await deliver(db, rcBody({ app_user_id: FROM_USER, event_timestamp_ms: T_BUY }));
+  await deliver(db, rcBody({ app_user_id: FROM_USER, type: 'EXPIRATION', event_timestamp_ms: T_LAPSE, expiration_at_ms: T_LAPSE - 1000 }));
+  expect(await activeFor(db, FROM_USER)).toBe(0);
+}
+
+describe('RevenueCat TRANSFER through the store — an ownership fact, never a grant', () => {
+  it('writes no entitlement and no link, and the notification names the DESTINATION', async () => {
+    const db = realPlatformDb();
+    const r = await deliver(db, rcTransferBody());
+    expect(r.outcome).toBe('ignored');
+    expect(await count(db, 'SELECT COUNT(*) AS n FROM entitlements')).toBe(0);
+    expect(await count(db, 'SELECT COUNT(*) AS n FROM provider_accounts')).toBe(0);
+    const n = await d1(db)
+      .prepare("SELECT user_id, derive_error FROM provider_notifications WHERE provider = 'revenuecat' AND payload LIKE '%\"TRANSFER\"%'")
+      .first<{ user_id: string | null; derive_error: string | null }>();
+    // Derived, attributed to the destination, and NOT counted as a refusal.
+    expect(n?.user_id).toBe(USER);
+    expect(n?.derive_error).toMatch(/^ignored: revenuecat TRANSFER concluded for subscriptiontracker: /);
+  });
+
+  it('a source that still holds a LIVE RevenueCat row is REFUSED as transfer_from_live_owner', async () => {
+    const db = realPlatformDb();
+    await deliver(db, rcBody({ app_user_id: FROM_USER, event_timestamp_ms: T_BUY }));
+    const r = await deliver(db, rcTransferBody());
+    expect(r.outcome).toBe('refused');
+    expect(r.outcome === 'refused' && r.detail).toMatch(/^transfer_from_live_owner:/);
+    expect(await activeFor(db, FROM_USER)).toBe(1);
+    expect(await activeFor(db, USER)).toBeNull();
+  });
+
+  it('the tripwire reads RevenueCat rows only: a live Paddle row on the source does not trip it', async () => {
+    const db = realPlatformDb();
+    await d1(db)
+      .prepare(
+        `INSERT INTO entitlements (user_id, app_id, entitlement, is_active, expires_at, provider, provider_subscription_id)
+         VALUES (?, 'subscriptiontracker', 'pro', 1, NULL, 'paddle', 'sub_paddle_1')`,
+      )
+      .bind(FROM_USER)
+      .run();
+    expect((await deliver(db, rcTransferBody())).outcome).toBe('ignored');
+  });
+
+  it('TEMPORARY_ENTITLEMENT_GRANT writes nothing (ADR 092 §4.6)', async () => {
+    const db = realPlatformDb();
+    const r = await deliver(db, rcBody({ type: 'TEMPORARY_ENTITLEMENT_GRANT', environment: undefined }));
+    expect(r.outcome).toBe('ignored');
+    expect(await count(db, 'SELECT COUNT(*) AS n FROM entitlements')).toBe(0);
+  });
+
+  it('REFUND_REVERSED is refused by name and writes nothing (ADR 092 §4.6)', async () => {
+    const db = realPlatformDb();
+    await deliver(db, rcBody({ event_timestamp_ms: T_BUY }));
+    const r = await deliver(db, rcBody({ type: 'REFUND_REVERSED', store: 'APP_STORE', event_timestamp_ms: T_REBUY }));
+    expect(r.outcome).toBe('refused');
+    expect(await count(db, "SELECT COUNT(*) AS n FROM provider_notifications WHERE derive_error LIKE 'refused:%refund_reversed_undecided:%'")).toBe(1);
+    // …and the purchase it names keeps its access: a refusal is never a suspension.
+    expect(await activeFor(db, USER)).toBe(1);
+  });
+});
+
+describe('RevenueCat link — the ONE provider whose purchase can change owner (ADR 092 §4.4)', () => {
+  it('lapsed, transferred, re-bought: the newer event MOVES the link and the new owner has access', async () => {
+    const db = realPlatformDb();
+    await boughtThenLapsed(db);
+    await deliver(db, rcTransferBody());
+    const r = await deliver(db, rcBody({ type: 'RENEWAL', event_timestamp_ms: T_REBUY }));
+    expect(r.outcome).toBe('applied');
+    expect(await linkOwner(db)).toBe(USER);
+    expect(await activeFor(db, USER)).toBe(1);
+    expect(await activeFor(db, FROM_USER)).toBe(0);
+  });
+
+  it('while the current owner is LIVE, a newer event naming another account is REFUSED and moves nothing', async () => {
+    const db = realPlatformDb();
+    await deliver(db, rcBody({ app_user_id: FROM_USER, event_timestamp_ms: T_BUY }));
+    const r = await deliver(db, rcBody({ type: 'RENEWAL', event_timestamp_ms: T_REBUY }));
+    expect(r.outcome).toBe('refused');
+    expect(r.outcome === 'refused' && r.detail).toMatch(/^owner_change_on_live_subscription:/);
+    expect(await linkOwner(db)).toBe(FROM_USER);
+    expect(await activeFor(db, USER)).toBeNull();
+  });
+
+  it('a LATE, OLDER event for the old owner does not move the link back and does not revoke the new owner', async () => {
+    const db = realPlatformDb();
+    await boughtThenLapsed(db);
+    await deliver(db, rcBody({ type: 'RENEWAL', event_timestamp_ms: T_REBUY }));
+    const late = await deliver(
+      db,
+      rcBody({ app_user_id: FROM_USER, type: 'EXPIRATION', event_timestamp_ms: T_LAPSE + 1, expiration_at_ms: T_LAPSE - 1000 }),
+    );
+    expect(late.outcome).toBe('stale');
+    expect(await linkOwner(db)).toBe(USER);
+    expect(await activeFor(db, USER)).toBe(1);
+  });
+});
+
+describe('E1 · the store product id and the store survive onto the entitlement', () => {
+  it('a RevenueCat purchase records product_id and store, and a later event without them keeps them', async () => {
+    const db = realPlatformDb();
+    await deliver(db, rcBody({ product_id: 'st_pro_monthly', store: 'PLAY_STORE', event_timestamp_ms: T_BUY }));
+    await deliver(db, rcBody({ type: 'RENEWAL', event_timestamp_ms: T_REBUY }));
+    const row = await d1(db)
+      .prepare('SELECT product_id, store FROM entitlements WHERE user_id = ?')
+      .bind(USER)
+      .first<{ product_id: string | null; store: string | null }>();
+    expect(row).toEqual({ product_id: 'st_pro_monthly', store: 'PLAY_STORE' });
+  });
+});

@@ -56,8 +56,10 @@ import { WILDCARD_APEX } from '../ci/assert-catalog-reachable.mjs';
 import { CouldNotLook, classifyThrown, transientLook, isTransientStatus, retryAfterMs, readWithBoundedRetry } from './bounded-retry.mjs';
 
 export const CF_API = 'https://api.cloudflare.com/client/v4';
-/** One request may not hang a scheduled job. */
-export const REQUEST_TIMEOUT_MS = 20_000;
+// ⏱ 2026-09-22 — THE PRIVATE 20 s `REQUEST_TIMEOUT_MS` IS GONE. The per-request ceiling
+// is armed once, per attempt, by readWithBoundedRetry (tooling/ops/bounded-retry.mjs,
+// "THE PER-REQUEST CEILING"), and `cf()` passes the attempt's `signal` on. Two
+// ceilings on one request was a rival (row O-OPS-READER-NO-CEILING).
 /** A zone with more records than this is not read to the end by this file, and
  *  saying "no wildcard" off a truncated list would be the false clean the whole
  *  file exists to prevent — so it is exit 2 instead. */
@@ -148,12 +150,12 @@ export function judge({ apex, records }) {
 // pass every import-shaped assertion while quietly re-asking nothing.
 export async function cf(path, token, { sleep, note, doFetch = fetch } = {}) {
   return readWithBoundedRetry(
-    async () => {
+    async (_attempt, { signal }) => {
       let res;
       try {
         res = await doFetch(`${CF_API}${path}`, {
           headers: { authorization: `Bearer ${token}`, accept: 'application/json' },
-          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+          signal,
         });
       } catch (e) {
         throw classifyThrown(e, `GET ${path} did not answer (${e?.name ?? 'error'}: ${e?.message ?? e})`);

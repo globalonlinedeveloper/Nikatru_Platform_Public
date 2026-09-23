@@ -231,6 +231,57 @@ describe('verify-monitors / verify-alarm-chains — the GlitchTip pair', () => {
     });
   const glitchtipAt = (url) => ({ GLITCHTIP_TOKEN: 'fixture-token', GLITCHTIP_URL: url, GLITCHTIP_ORG: 'nikatru' });
 
+  // ⏱ 2026-09-22 · A GLITCHTIP THAT ACCEPTS AND NEVER ANSWERS (row
+  // O-OPS-READER-NO-CEILING). Every shape above ANSWERS. A socket that is
+  // accepted and then left silent gives no status, no error and no end, and it
+  // held a reader until the job's timeout-minutes. OPS_REQUEST_TIMEOUT_MS shortens
+  // the shared per-request ceiling (it can only shorten it), so the case ends in
+  // seconds. The child is killed at KILL_MS and the case has its own { timeout },
+  // so a missing ceiling is a red case, never a hung suite.
+  const KILL_MS = 45_000;
+  const serveSilence = async () => {
+    const seen = [];
+    const sockets = new Set();
+    const server = createServer((req) => { seen.push(req.url); });
+    server.on('connection', (s) => { sockets.add(s); s.on('close', () => sockets.delete(s)); });
+    await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
+    return {
+      url: 'http://127.0.0.1:' + server.address().port,
+      seen,
+      close: () => { for (const s of sockets) s.destroy(); return new Promise((ok) => server.close(ok)); },
+    };
+  };
+  const runBounded = (script, env) =>
+    new Promise((ok) => {
+      const child = spawn(process.execPath, [join(OPS, script)], { cwd: REPO, env: { ...process.env, ...env }, timeout: KILL_MS });
+      let out = '';
+      child.stdout.on('data', (d) => { out += d; });
+      child.stderr.on('data', (d) => { out += d; });
+      child.on('close', (code, signal) => ok({ code, signal, out }));
+    });
+
+  const assertSilenceEndsInsideCeiling = async (script) => {
+    const g = await serveSilence();
+    try {
+      const t0 = Date.now();
+      const { code, signal, out } = await runBounded(script, { ...glitchtipAt(g.url), OPS_REQUEST_TIMEOUT_MS: '300' });
+      const took = Date.now() - t0;
+      assert.equal(signal, null, `killed after ${took} ms: the read had no per-request ceiling\n${out}`);
+      assert.ok(g.seen.length >= 1, 'the script never reached the silent server:\n' + out);
+      assert.equal(code, 2, out);
+      assert.match(out, /COULD NOT LOOK/);
+      assert.match(out, /per-request ceiling/, 'the line says WHY it could not look');
+    } finally {
+      await g.close();
+    }
+  };
+  test('🔴 verify-monitors.mjs against a server that never answers is exit 2 inside the ceiling, not a hang', { timeout: KILL_MS + 10_000 }, async () => {
+    await assertSilenceEndsInsideCeiling('verify-monitors.mjs');
+  });
+  test('🔴 verify-alarm-chains.mjs against a server that never answers is exit 2 inside the ceiling, not a hang', { timeout: KILL_MS + 10_000 }, async () => {
+    await assertSilenceEndsInsideCeiling('verify-alarm-chains.mjs');
+  });
+
   for (const [what, answer] of [
     ['a 401 (the token is refused)', () => [401, { detail: 'Invalid token.' }]],
     ['a 503 (the Oracle box is unwell)', () => [503, { detail: 'unavailable' }]],

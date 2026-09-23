@@ -898,7 +898,7 @@ const RETRYABLE_STATUS = (status) => status === 429 || (status >= 500 && status 
 /** ONE read of one project's production deployments. `fetchImpl` and `env` are
  *  injected so every branch — including the transport failing, which is the one
  *  that went red in production — is reachable from a test with NO network. */
-export async function readDeployments(project, { fetchImpl = fetch, env = process.env } = {}) {
+export async function readDeployments(project, { fetchImpl = fetch, env = process.env, signal } = {}) {
   const token = env.CLOUDFLARE_API_TOKEN;
   const account = env.CLOUDFLARE_ACCOUNT_ID;
   if (!token || !account) {
@@ -912,7 +912,7 @@ export async function readDeployments(project, { fetchImpl = fetch, env = proces
   let res;
   let text;
   try {
-    res = await fetchImpl(url, { headers: { authorization: `Bearer ${token}` } });
+    res = await fetchImpl(url, { headers: { authorization: `Bearer ${token}` }, signal });
     text = await res.text();
   } catch (e) {
     throw transientLook(
@@ -979,7 +979,7 @@ async function main() {
     }
 
     try {
-      const deployments = await readWithBoundedRetry(() => readDeployments(p.project), {
+      const deployments = await readWithBoundedRetry((_attempt, { signal }) => readDeployments(p.project, { signal }), {
         note: (m) => console.log(`    ⟳   ${p.project} (${p.kind}) — ${m}`),
       });
       results.push(

@@ -370,7 +370,7 @@ export function sameSite(expected, frame) {
  */
 async function fetchProjectEvents({ instance, org, project, token }) {
   const url = `${instance}/api/0/projects/${org}/${project}/events/?limit=50`;
-  const r = await fetchWithBoundedRetry(() => fetch(url, { headers: { Authorization: `Bearer ${token}` } }), {
+  const r = await fetchWithBoundedRetry(({ signal }) => fetch(url, { headers: { Authorization: `Bearer ${token}` }, signal }), {
     describe: (why) => `GET ${url}: ${why}`,
   });
   if (!r.ok) throw new Error(`GET ${url} -> ${r.status}`);
@@ -390,7 +390,7 @@ async function fetchInstanceVersion({ instance, token }) {
   // rather than thrown, so an un-retried blip did not fail the run — it silently
   // degraded the limb that proves the expectation was measured against the
   // GlitchTip version actually installed, which is worse than a red.
-  const r = await fetchWithBoundedRetry(() => fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} }), {
+  const r = await fetchWithBoundedRetry(({ signal }) => fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {}, signal }), {
     describe: (why) => `GET ${url}: ${why}`,
   });
   if (!r.ok) throw new Error(`GET ${instance}/api/settings/ -> ${r.status}`);

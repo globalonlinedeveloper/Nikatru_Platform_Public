@@ -190,9 +190,10 @@ async function main() {
     // O-PAGES-FETCH-TRANSIENT-NOT-RETRIED, sweep clause. A failure that outlives
     // the plan is STILL exit 2 below: the retry tells a blip from an outage.
     const res = await fetchWithBoundedRetry(
-      () =>
+      ({ signal }) =>
         fetch(`${url.replace(/\/$/, '')}/auth/v1/settings`, {
           headers: { apikey: key, Authorization: `Bearer ${key}` },
+          signal,
         }),
       { describe: (why) => `GET /auth/v1/settings: ${why}` },
     );

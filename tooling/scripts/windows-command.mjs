@@ -24,6 +24,13 @@
 //
 // ⚠️ TELLING CALLERS TO TYPE `//c` IS NOT THE REPAIR. That is a workaround for a
 // tool which accepts an invocation that cannot work and then calls it a pass.
+//
+// ⏱ 2026-09-22 (O-HEAVY-CMD-C). `C:\Windows\System32\cmd.exe` and `$COMSPEC` are
+// cmd too. The rule below used to compare the WHOLE word against `cmd`, so a
+// full-path invocation walked straight past the refusal, fell through to the
+// final pass-through, and reproduced the exact vacuous green this module exists
+// to stop — with the mangled `C:/` still sitting where the switch belongs. It is
+// the basename that decides, never the spelling the caller happened to use.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -38,7 +45,10 @@ export function windowsCommand(cmd, platform = process.platform, comspec = proce
   // executable, and a POSIX shell does not rewrite arguments into drive paths.
   if (platform !== 'win32') return { file, args };
 
-  if (/^cmd(\.exe)?$/i.test(file)) {
+  // ⏱ 2026-09-22: the BASENAME decides. `cmd`, `cmd.exe`, `C:\Windows\System32\cmd.exe`
+  // and whatever `$COMSPEC` holds are all the same program, and all of them are
+  // mangled the same way by MSYS.
+  if (/^cmd(\.exe)?$/i.test(String(file).split(/[\\/]/).pop())) {
     const sw = args[0] ?? '';
     // `//c` is NOT refused: MSYS collapses it to `/c`, so by the time it is read
     // here it is already a real switch. Only the mangled and the missing forms

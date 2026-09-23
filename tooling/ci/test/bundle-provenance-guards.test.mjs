@@ -76,7 +76,12 @@ function run(guard, dir) {
 
 function editText(dir, rel, fn) {
   const p = join(dir, rel);
-  writeFileSync(p, fn(readFileSync(p, 'utf8')));
+  const before = readFileSync(p, 'utf8');
+  const after = fn(before);
+  // A mutation whose anchor text moved changes nothing, and the guard then passes
+  // over the UNMUTATED tree: a red control that silently turns green. Refuse it.
+  if (after === before) throw new Error(`editText: the mutation left ${rel} unchanged — its anchor text is gone`);
+  writeFileSync(p, after);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -117,8 +122,8 @@ describe('assert-no-null-entitlement-key — the trap SQLite will not close', ()
       tree(NULL_KEY_DIRS, (d) =>
         editText(d, STORE, (s) =>
           s.replace(
-            '       ) VALUES (?,?,?,NULL,NULL,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-            '       ) VALUES (?,NULL,?,NULL,NULL,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+            '       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+            '       ) VALUES (?,NULL,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
           ),
         ),
       ),

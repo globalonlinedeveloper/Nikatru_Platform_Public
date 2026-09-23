@@ -29,6 +29,29 @@
 // TOKEN it returns is. `/verify` is not captcha-gated on either target
 // (auth-cutover.md §4.7), which is why this works against Box A at all.
 //
+// ── AND THE SECOND READING: THE `iss` CLAIM, COMPARED RATHER THAN PRINTED
+//
+// Until 2026-09-22 this step printed `token issuer: the Box A auth stack` — a
+// FIXED STRING assembled from the target, not a claim read out of the token. So
+// no run had ever read the live `iss` back, and O-PHASE5-ISSUER-SUFFIX (the
+// suffix on Box A's GOTRUE_JWT_ISSUER) stayed open with nothing to close it on:
+// runbooks/auth-cutover.md records that /settings and /health both answer 401,
+// which leaves the token itself as the only place the value can be read from.
+//
+// 🔴 AND THE VALUE CANNOT BE PRINTED. `BOXA_SUPABASE_URL` and `SUPABASE_URL` are
+// repository SECRETS, so Actions masks them in every log line: a raw `iss`
+// printed here reads `***/auth/v1`, and run 35704944906 shows the same mask on
+// `GET ***/v1/subscriptions -> HTTP 401`. Evidence that survives a mask is a
+// COMPARISON or a PATH, never a value — so this step prints the `iss` PATH and
+// two yes/no lines, each computed in-process where the unmasked value still is.
+//
+// ⚠️ THEY REPORT; THEY DO NOT JUDGE. A "no" on either line does NOT fail the
+// step: the 401-on-boxa / 200-on-hosted verdict below is the assertion, and it is
+// unchanged. A wrong issuer suffix is exactly what this row expects to find, and
+// a red run that hides its own reading behind a failure would be worth less than
+// the reading. The one thing that DOES fail is a token that cannot be read at
+// all — see `readIssuerBack`'s `# why:`.
+//
 // Env: SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, E2E_EMAIL,
 //      API_BASE_URL, E2E_AUTH_TARGET (default `hosted`).
 
@@ -86,6 +109,7 @@ if (target !== 'hosted' && target !== 'boxa') {
         });
         console.log(`auth target : ${target}`);
         console.log(`token issuer: the ${target === 'boxa' ? 'Box A' : 'hosted'} auth stack`);
+        readIssuerBack(accessToken, url);
         console.log(`GET ${apiBase}/v1/subscriptions -> HTTP ${probe.status}`);
 
         if (target === 'hosted') {
@@ -129,4 +153,87 @@ function need(name) {
     process.exit(1);
   }
   return v;
+}
+
+/** `new URL(value)` or null. An `iss` that is not a URL is a READING — the box
+ *  minting a bare name instead of an origin is a finding worth printing — so it
+ *  must not throw its way out of a step whose subject is the HTTP answer above. */
+function asUrl(value) {
+  try {
+    return new URL(value);
+  } catch {
+    return null;
+  }
+}
+
+/** Reads ONE claim — `iss` — out of the access token this run just minted, and
+ *  prints the three lines that survive Actions' masking. No signature check: the
+ *  deployed Worker does that, and what the Worker did with this exact token is
+ *  asserted above. Nothing else from the payload is read, printed or kept.
+ *
+ *  # why: exit 2, not 1, when the token cannot be read back. In this file exit 1
+ *  means THE ONE-ISSUER FACT IS WRONG — a hosted-minted token refused, or a Box
+ *  A-minted token accepted — which is a finding about the deployed Workers. A
+ *  token that does not decode says nothing at all about the Workers: it says
+ *  this step could not take its reading. That is the distinction Public #869
+ *  drew when verify_row, verify_purged and verify_consent were given exit 2 for
+ *  "could not decide what to expect" (tooling/e2e/auth_target_expectation.mjs).
+ *  The step fails on both codes, so an unreadable token can never print as a
+ *  pass; the code says which of the two happened. If the assertion below also
+ *  fails it overwrites this 2 with its 1, deliberately: the finding about the
+ *  live Workers outranks the failure to read a claim.
+ *
+ *  # why: `process.exitCode`, never `process.exit(2)`. The sibling verifiers may
+ *  exit outright because they refuse BEFORE their first request; by here undici
+ *  has already driven three, and an immediate exit can cut off the very lines
+ *  this function exists to leave in the log.
+ */
+function readIssuerBack(token, supabaseUrl) {
+  const expected = `${supabaseUrl}/auth/v1`;
+  const refuse = (missing) => {
+    console.error(
+      `::error title=Issuer readback::${missing}. The one-issuer verdict below still stands — it is ` +
+        'about what the Worker did with this token — but the `iss` claim could not be read, so this ' +
+        'run records no issuer reading at all, which is the one thing it was extended to produce.',
+    );
+    process.exitCode = 2;
+  };
+
+  const parts = token.split('.');
+  if (parts.length !== 3) {
+    refuse(`the access token is not three dot-separated segments (it has ${parts.length})`);
+    return;
+  }
+  let payload;
+  try {
+    payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+  } catch (err) {
+    // The CLASS of the error, never its message: a JSON.parse message quotes the
+    // input it choked on, and the input here IS the decoded payload segment.
+    refuse(`the payload segment did not decode to JSON (${err.name})`);
+    return;
+  }
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+    refuse('the payload segment decoded to JSON that is not an object');
+    return;
+  }
+  if (typeof payload.iss !== 'string' || payload.iss === '') {
+    refuse('the decoded payload carries no `iss` claim');
+    return;
+  }
+
+  const iss = asUrl(payload.iss);
+  const mine = asUrl(supabaseUrl);
+  console.log(`iss path    : ${iss ? iss.pathname : '(the iss claim is not a URL)'}`);
+  console.log(`iss host equals SUPABASE_URL host: ${iss && mine && iss.host === mine.host ? 'yes' : 'no'}`);
+  console.log(`iss equals SUPABASE_URL + /auth/v1: ${payload.iss === expected ? 'yes' : 'no'}`);
+  if (payload.iss !== expected) {
+    console.log(
+      'READ BACK, NOT ASSERTED: this stack mints an issuer that is not byte-for-byte ' +
+        '${SUPABASE_URL}/auth/v1, which is the single string services/_shared/src/auth.ts builds its ' +
+        'JWKS check from. The comparison lines above are the evidence; the value itself is a ' +
+        'repository secret and would print masked. O-PHASE5-ISSUER-SUFFIX: the fix is GOTRUE_JWT_ISSUER ' +
+        'on the box, applied in the owner window (C-BOXA-SUPABASE-ONLY), never by this step.',
+    );
+  }
 }

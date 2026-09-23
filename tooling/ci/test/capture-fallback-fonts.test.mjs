@@ -24,13 +24,10 @@ import { fileURLToPath } from 'node:url';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..', '..');
 
-// A dynamic import of an ABSOLUTE path throws ERR_UNSUPPORTED_ESM_URL_SCHEME on
-// Windows ("Received protocol 'c:'") — it must be a file:// URL, the same way
-// self-host-fallback-fonts.test.mjs does it.
-const SCRIPT = join(ROOT, 'tooling', 'store', 'capture-fallback-fonts.mjs');
-const { bootstrapPosture, checkStaged, readLock, stagedDirFor, unstageFallbackFonts, CoverageLost } = await import(
-  new URL(`file:///${SCRIPT.replace(/\\/g, '/')}`).href
-);
+// A STATIC relative import, not a computed file:// URL: assert-guard-coverage.mjs
+// traces literal relative specifiers only, and e2e.yml now RUNS this script, so
+// a computed import left it counted as never exercised (2026-09-23).
+import { bootstrapPosture, checkStaged, readLock, stagedDirFor, unstageFallbackFonts, CoverageLost } from '../../store/capture-fallback-fonts.mjs';
 
 /** A throwaway app directory with the given bootstrap contents (or none). */
 function appFixture(bootstrap) {

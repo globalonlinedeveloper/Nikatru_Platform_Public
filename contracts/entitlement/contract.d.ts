@@ -45,10 +45,19 @@ export const REVENUECAT_EVENT_REASONS: readonly RevenueCatEventReason[];
 
 export function revocationReasonForRevenueCatEvent(event: string): string | null;
 
-/** What a RevenueCat event does to ACCESS, read off the table. Null: the table does not decide it — ack, change nothing. */
-export type RevenueCatAccessRuling = 'grant' | 'revoke' | 'paid-through';
+/**
+ * What a RevenueCat event does to ACCESS, read off the table. Null: the table does not decide it —
+ * ack, change nothing, UNLESS the row carries a reason (a restoring reason is never 'revoke'; refuse it).
+ * 'transfer': the purchases changed owner and the event says nothing about access ([ADR 092] §4.3).
+ */
+export type RevenueCatAccessRuling = 'grant' | 'revoke' | 'paid-through' | 'transfer';
 
 export function revenueCatAccessRuling(event: string): RevenueCatAccessRuling | null;
+
+/** The same ruling for one row, including a row the table does not carry (REFUND_REVERSED). */
+export function revenueCatAccessRulingForRow(
+  row: Pick<RevenueCatEventReason, 'event' | 'reason' | 'dateDerived'>,
+): RevenueCatAccessRuling | null;
 
 export const CONTRACT_TABLE: {
   readonly moneyEnvironments: readonly MoneyEnvironment[];

@@ -332,11 +332,12 @@ export async function attestationDeployments(res, environment, sha7) {
 // `Retry-After` the API supplies is honoured (clamped) and a persistent 429 still
 // ends as COVERAGE LOST rather than a pass.
 const ghJson = async (repo, token, path, what) =>
-  readWithBoundedRetry(async () => {
+  readWithBoundedRetry(async (_attempt, { signal }) => {
     let res;
     try {
       res = await fetch(`https://api.github.com/repos/${repo}${path}`, {
         headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', 'user-agent': 'nikatru-prod-provenance' },
+        signal,
       });
     } catch (e) {
       throw classifyThrown(e, `the GitHub API did not answer ${what} (${e?.name ?? 'error'}: ${e?.message ?? e})`);
@@ -706,11 +707,12 @@ async function queryD1(dbId, sql) {
   // ⏱ 2026-09-21 — bounded retry, shared plan. A POST that is a READ: the D1 HTTP
   // API takes SELECTs by POST and re-sending one changes nothing, so the decision
   // is recorded at this call site rather than guessed from the verb.
-  return readWithBoundedRetry(async () => {
+  return readWithBoundedRetry(async (_attempt, { signal }) => {
     let res;
     try {
       res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${account}/d1/database/${dbId}/query`, {
         method: 'POST',
+        signal,
         headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
         body: JSON.stringify({ sql }),
       });
@@ -883,9 +885,10 @@ async function main() {
         // CouldNotLook and is still exit 2.
         const gh = (path) =>
           fetchWithBoundedRetry(
-            () =>
+            ({ signal }) =>
               fetch(`https://api.github.com/repos/${ghRepo}${path}`, {
                 headers: { Authorization: `Bearer ${ghToken}`, 'User-Agent': 'check-prod-provenance' },
+                signal,
               }),
             { describe: (why) => `GET ${path}: ${why}` },
           );

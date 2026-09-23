@@ -299,6 +299,28 @@ jobs:
           SUPABASE_ANON_KEY: ${{ (inputs.auth_target || 'hosted') == 'boxa' && secrets.BOXA_SUPABASE_ANON_KEY || (inputs.auth_target || 'hosted') == 'hosted' && secrets.SUPABASE_ANON_KEY || '' }}
         run: node tooling/e2e/captcha_posture.mjs
 
+      # why: apps/<app>/web/flutter_bootstrap.js sets `fontFallbackBaseUrl:
+      # "fallback-fonts/"` — a RELATIVE path — and the `-d web-server` dev server
+      # answers an unmatched request from `<cwd>/web/…`, i.e. with index.html
+      # (HTTP 200, text/html) rather than a 404. CanvasKit therefore got HTML
+      # where Roboto should have been and drew NO Latin glyph, while the bundled
+      # MaterialIcons asset kept rendering — which is why every e2e screenshot
+      # between #567 and today is iconography on blank rows. deploy-web.yml
+      # self-hosts the same fonts for production and the Play capture stages them
+      # through this very script; the nightly drive was the one lane that staged
+      # nothing.
+      #
+      # Safe across the whole matrix: stageFallbackFonts returns `skipped` for an
+      # app whose bootstrap sets no relative fontFallbackBaseUrl
+      # (capture-fallback-fonts.mjs bootstrapPosture/`needsStaging`), so an app
+      # that does not need the fonts pays nothing and fails nothing.
+      #
+      # Row O-NIGHTLY-E2E-DRIVES-A-GLYPHLESS-APP. The class guard that keeps any
+      # future `-d web-server` drive from losing this step again is
+      # tooling/ci/test/web-drive-stages-fonts.test.mjs.
+      - name: Stage the fallback fonts the bootstrap points at
+        run: node tooling/store/capture-fallback-fonts.mjs --stage apps/${{ matrix.app }}
+
       - name: Run integration tests (headless Chrome)
         id: drive
         working-directory: apps/${{ matrix.app }}
