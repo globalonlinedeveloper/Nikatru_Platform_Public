@@ -176,7 +176,7 @@
   "public-citations-tagpin.test.mjs": 10,
   "publish-records.test.mjs": 48,
   "purchase-path.test.mjs": 116,
-  "redeploy-stranded.test.mjs": 30,
+  "redeploy-stranded.test.mjs": 49,
   "refresh-executed-floor.test.mjs": 11,
   "release-durable.test.mjs": 140,
   "release-grades-legs.test.mjs": 5,
@@ -253,7 +253,7 @@
   "worker-error-sink.test.mjs": 18,
   "worker-shared-modules.test.mjs": 13,
   "workflow-readers.test.mjs": 14,
-  "workflow-scan.test.mjs": 22,
+  "workflow-scan.test.mjs": 23,
   "workflow-timeouts.test.mjs": 18,
   "xcode-floor.test.mjs": 19
 }
