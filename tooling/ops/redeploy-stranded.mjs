@@ -89,6 +89,7 @@ import {
   pushBranches,
   workflowRunSources,
 } from '../ci/workflow-scan.mjs';
+import { fetchWithBoundedRetry } from './bounded-retry.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..', '..');
@@ -307,8 +308,14 @@ function liveApi(repo, tok) {
     'x-github-api-version': '2022-11-28',
     'user-agent': 'nikatru-redeploy-stranded',
   };
+  // Every GET is a READ: the shared rule gives each attempt the per-request
+  // ceiling and re-asks a dropped wire or a 429/5xx, so one silent socket cannot
+  // hold this job to timeout-minutes. What survives the retry reaches main()'s
+  // catch as COULD NOT LOOK — exit 2, never a verdict.
   const get = async (path) => {
-    const res = await fetch(`${API}${path}`, { headers });
+    const res = await fetchWithBoundedRetry(({ signal }) => fetch(`${API}${path}`, { headers, signal }), {
+      describe: (what) => `GET ${path}: ${what}`,
+    });
     if (!res.ok) throw new Error(`GET ${path} → HTTP ${res.status}`);
     return res.json();
   };
@@ -338,12 +345,26 @@ function liveApi(repo, tok) {
       const r = spawnSync(process.execPath, rerunArgv(runId), { stdio: 'inherit', env: process.env });
       return r.status === 0 ? { ok: true } : { ok: false, code: r.status === 1 ? 1 : 2, why: `safe-rerun exited ${r.status}` };
     },
+    // A dispatch is a WRITE, so it gets ONE attempt (a re-ask after a lost
+    // answer could start the lane twice), still under the shared per-request
+    // ceiling. A dispatch that never answered, or answered 429/5xx, is COULD NOT
+    // LOOK (exit 2), not "refused": it may have landed.
     dispatch: async (file) => {
-      const res = await fetch(`${API}/repos/${repo}/actions/workflows/${file}/dispatches`, {
-        method: 'POST',
-        headers: { ...headers, 'content-type': 'application/json' },
-        body: JSON.stringify({ ref: 'main' }),
-      });
+      let res;
+      try {
+        res = await fetchWithBoundedRetry(
+          ({ signal }) =>
+            fetch(`${API}/repos/${repo}/actions/workflows/${file}/dispatches`, {
+              method: 'POST',
+              headers: { ...headers, 'content-type': 'application/json' },
+              body: JSON.stringify({ ref: 'main' }),
+              signal,
+            }),
+          { attempts: 1, describe: (what) => `dispatch ${file}: ${what}` },
+        );
+      } catch (e) {
+        return { ok: false, code: 2, why: `${e?.message ?? e} — it may have landed; read the lane's runs before re-dispatching` };
+      }
       if (res.status !== 204) return { ok: false, code: 1, why: `dispatch answered HTTP ${res.status} ${await res.text().catch(() => '')}` };
       return { ok: true };
     },

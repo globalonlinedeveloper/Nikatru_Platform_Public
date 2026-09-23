@@ -295,7 +295,8 @@
   {
     "claims": [],
     "invokedBy": [
-      ".github/workflows/build-platforms.yml#linux_web_android"
+      ".github/workflows/build-platforms.yml#linux_web_android",
+      ".github/workflows/ci.yml#guards-store"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-apps-gov-in-media.mjs",
@@ -1771,6 +1772,18 @@
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-release-durable.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/build-platforms.yml#release",
+      ".github/workflows/ci.yml#guards-store",
+      ".github/workflows/extensions.yml#release"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-release-json.mjs",
     "references": [],
     "state": "WIRED"
   },

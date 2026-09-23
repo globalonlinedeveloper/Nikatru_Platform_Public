@@ -34,6 +34,16 @@
 //
 // Exit codes: 0 green · 1 a finding · 2 COVERAGE LOST (nothing was checked, or
 // the rules or a record could not be read — never reported as a pass).
+//
+// ⏱ 2026-09-22 · WIRED INTO ci.yml, AND RUN WITH V8 BACKGROUND TASKS OFF.
+// Until this date its only call was a build-platforms.yml step, which runs on a
+// dispatch, a tag or the Monday/Thursday cron and never on a pull request: a PR
+// that re-captured the Play set merged green and the next scheduled build went
+// red. It now also runs as the last step of ci.yml's guards-store job. It
+// decodes every committed file and re-derives it from its 1080x1920 original,
+// pixel by pixel — the hot code the four heavy image guards relaunch for
+// (nodejs/node#54918, see single-threaded-relaunch.mjs) — so it adopts the same
+// relaunch, and both workflow steps run it as `node --single-threaded`.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, writeFileSync, existsSync, copyFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -42,6 +52,8 @@ import { fileURLToPath } from 'node:url';
 import { decodeRgba, encodeRgba, PngUnreadable } from '../store/png-codec.mjs';
 import { STORE_FORM_RULES } from '../../contracts/store/vocabulary.js';
 import { listDir } from './tree-walk.mjs';
+// The ONE relaunch with V8 background tasks off — see that module's header.
+import { backgroundTasksNote, relaunchSingleThreaded } from './single-threaded-relaunch.mjs';
 
 const NAME = 'assert-apps-gov-in-media';
 const CHANNEL = 'apps-gov-in';
@@ -347,8 +359,22 @@ function main() {
     process.exit(1);
   }
   if (checked === 0) coverageLost([`${apps.length} apps-gov-in tree(s) and not one derived file checked.`, 'Every tree is still underived; a check that looked at nothing is not a pass.']);
+  // Read from this process's own start-up flags: remove the relaunch below and
+  // this says ON, and apps-gov-in-media.test.mjs fails.
+  console.log(`   ${backgroundTasksNote()}`);
   console.log(`${NAME}: ok — ${checked} file(s) re-derived or matched across ${apps.length} app(s)`);
 }
 
 const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
-if (isMain) main();
+// ── the process that does the work runs with V8 background tasks OFF ────────
+// Inside `isMain`, NOT at module level as in assert-listing-assets.mjs, because
+// this file is also a LIBRARY: apps-gov-in-media.test.mjs imports padToAspect,
+// areaAverage, checkApp and writeApp, and a module-level relaunch would spawn
+// this file again with the test runner's own arguments. argv passes through the
+// relaunch unchanged, so `--write --app <app>` works exactly as before.
+// `coverageLost` is a hoisted function declaration, so handing it over is safe.
+if (isMain) {
+  const relaunched = relaunchSingleThreaded(import.meta.url, process.argv.slice(2), coverageLost);
+  if (relaunched !== null) process.exit(relaunched);
+  main();
+}

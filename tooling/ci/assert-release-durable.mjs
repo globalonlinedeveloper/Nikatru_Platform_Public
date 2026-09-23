@@ -183,18 +183,25 @@ if (!existsSync(manifestAbs)) {
   ]);
 }
 let MANIFEST_NAME;
+let RELEASE_JSON_NAME;
 let installableExtensions;
 let EXTRA_INSTALLABLE;
 try {
-  ({ MANIFEST_NAME, installableExtensions, EXTRA_INSTALLABLE } = await import(
+  ({ MANIFEST_NAME, RELEASE_JSON_NAME, installableExtensions, EXTRA_INSTALLABLE } = await import(
     `file://${manifestAbs.replace(/\\/g, '/')}`
   ));
 } catch (e) {
   coverageLost([`${MANIFEST_SCRIPT_REL} could not be imported (${e.message}).`]);
 }
-if (typeof MANIFEST_NAME !== 'string' || MANIFEST_NAME === '' || typeof installableExtensions !== 'function') {
+if (
+  typeof MANIFEST_NAME !== 'string' ||
+  MANIFEST_NAME === '' ||
+  typeof RELEASE_JSON_NAME !== 'string' ||
+  RELEASE_JSON_NAME === '' ||
+  typeof installableExtensions !== 'function'
+) {
   coverageLost([
-    `${MANIFEST_SCRIPT_REL} no longer exports \`MANIFEST_NAME\` and \`installableExtensions\`.`,
+    `${MANIFEST_SCRIPT_REL} no longer exports \`MANIFEST_NAME\`, \`RELEASE_JSON_NAME\` and \`installableExtensions\`.`,
     'This guard reads both OUT of that file so there is exactly one declaration of each. Without them it',
     'would have to carry its own copy — and a private copy of a constant is the first thing to drift,',
     'silently, in the direction that prints ok.',
@@ -793,6 +800,15 @@ for (const m of mixedPathSteps) {
 // ── limb 2 ───────────────────────────────────────────────────────────────────
 const WRITE = new RegExp(`release-manifest\\.mjs\\s+--write\\s+(\\S+)`);
 const VERIFY = new RegExp(`release-manifest\\.mjs\\s+--verify\\s+(\\S+)`);
+// P4-5 asks for a second record beside the bytes: a machine-readable description
+// of WHAT was released, per artefact. It is held to the same three rules as
+// ${MANIFEST_NAME} above — it must exist, it must describe the directory that is
+// actually published, and something must re-check it before the upload. The
+// emitter is deliberately matched on the same script: one file writes both
+// records, so a lane cannot acquire one and skip the other by importing a helper.
+const EMIT = new RegExp(`release-manifest\\.mjs\\s+--emit-release-json\\s+(\\S+)`);
+const GRADE = new RegExp(`assert-release-json\\.mjs\\s+--dir\\s+(\\S+)`);
+const RELEASE_JSON_GUARD_REL = 'tooling/ci/assert-release-json.mjs';
 let publishingJobs = 0;
 for (const wf of workflows) {
   for (const job of wf.jobs.values()) {
@@ -832,6 +848,59 @@ for (const wf of workflows) {
         problems.push(`${wf.rel}: job "${job.name}" verifies the manifest at :${verify.n}, AFTER its first publish at :${first.n}. A check that runs after the upload cannot stop it.`);
       }
     }
+    // ── the release record, same three rules, one lane at a time ───────────
+    const emit = job.logical.find((l) => EMIT.test(l.text));
+    const graded = job.logical.find((l) => GRADE.test(l.text));
+    if (!emit) {
+      problems.push(
+        `${wf.rel}: job "${job.name}" publishes ${first.what} at :${first.n} and never runs ` +
+          `\`${MANIFEST_SCRIPT_REL} --emit-release-json\`. ${MANIFEST_NAME} proves the bytes did not change; ` +
+          `${RELEASE_JSON_NAME} is the only thing that says what they ARE — which version, on which channels, from which commit. ` +
+          'Without it every consumer has to parse the file names, and a file name is a convention, not a contract.',
+      );
+    } else {
+      const edir = emit.text.match(EMIT)[1];
+      if (edir !== dir) {
+        problems.push(
+          `${wf.rel}: job "${job.name}" describes \`${edir}\` and manifests \`${dir}\`. ` +
+            `The record would then describe a directory other than the one being published — and it would still validate.`,
+        );
+      }
+      if (emit.n > write.n) {
+        problems.push(
+          `${wf.rel}: job "${job.name}" writes ${MANIFEST_NAME} at :${write.n} and only then describes the release at :${emit.n}. ` +
+            `\`--write\` hashes what is in the directory AT THE TIME, so a ${RELEASE_JSON_NAME} written afterwards is the one ` +
+            'published file the checksum manifest does not name — the single asset nobody can verify.',
+        );
+      }
+    }
+    if (!graded) {
+      problems.push(
+        `${wf.rel}: job "${job.name}" publishes ${first.what} at :${first.n} and never runs \`${RELEASE_JSON_GUARD_REL} --dir\`. ` +
+          'An emitted record is a claim about sizes, hashes, versions and channels; nothing re-reads it against the bytes beside it, ' +
+          'and the emitter cannot be the thing that proves its own output.',
+      );
+    } else {
+      const gdir = graded.text.match(GRADE)[1];
+      if (gdir !== dir) {
+        problems.push(
+          `${wf.rel}: job "${job.name}" publishes \`${dir}\` and grades \`${gdir}\`. Two directories means the grade proves nothing about the release.`,
+        );
+      }
+      if (graded.n > first.n) {
+        problems.push(
+          `${wf.rel}: job "${job.name}" grades the release record at :${graded.n}, AFTER its first publish at :${first.n}. ` +
+            'A check that runs after the upload cannot stop it.',
+        );
+      }
+      if (!existsSync(join(ROOT, RELEASE_JSON_GUARD_REL))) {
+        problems.push(
+          `${wf.rel}: job "${job.name}" calls \`${RELEASE_JSON_GUARD_REL}\`, which does not exist under ${ROOT}. ` +
+            'A workflow step that names a missing script fails at runtime; this guard would have passed it.',
+        );
+      }
+    }
+
     // The STEP's whole text, not a logical line looked up by number: a step's
     // `run: |` block is a logical line at the `run:` line, while `step.n` is the
     // `- name:` bullet above it. Matching by number found the NAME line and
