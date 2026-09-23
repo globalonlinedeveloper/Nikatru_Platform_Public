@@ -23,7 +23,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -598,5 +598,85 @@ describe('assert-android-vapt-manifest', () => {
     const { code, out } = run(fixture({ analysis: null }));
     assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST — packages\/analysis\/lib\/analysis_options\.yaml does not exist/);
+  });
+});
+
+// ── C1 / C2 ──────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-23 · Row O-VAPT-V5-FOREIGN-PERMISSION. An app manifest removes
+// com.amazon.device.iap.ResponseReceiver from the merged manifest with
+// tools:node="remove", because V5 fails it (F1): it is exported and guarded only
+// by com.amazon.inapp.purchasing.Permission.NOTIFY, which no app here declares.
+// That removal is right ONLY while no purchase rail sells through Amazon. So the
+// removal and the register are read together: a manifest that removes the
+// receiver beside a register whose purchaseRails.rails names an Amazon rail is
+// red, and the message names the revert. C1 reads the real tree; C2 adds an
+// `amazon-appstore` rail to a temp COPY of the real register (the real register
+// is never edited) and must turn red.
+const REPO = resolve(CI_DIR, '..', '..');
+const AMAZON_RECEIVER = 'com.amazon.device.iap.ResponseReceiver';
+
+function removesAmazonReceiver(xml) {
+  const live = xml.replace(/<!--[\s\S]*?-->/g, '');
+  return [...live.matchAll(/<receiver\b[^>]*>/g)].some(
+    ([tag]) => tag.includes(`android:name="${AMAZON_RECEIVER}"`) && /\btools:node="remove"/.test(tag),
+  );
+}
+
+function amazonCoupling(root) {
+  const removers = readdirSync(join(root, 'apps'), { withFileTypes: true })
+    .filter((d) => d.isDirectory())
+    .map((d) => `apps/${d.name}/android/app/src/main/AndroidManifest.xml`)
+    .filter((rel) => existsSync(join(root, rel)) && removesAmazonReceiver(readFileSync(join(root, rel), 'utf8')));
+  const register = JSON.parse(readFileSync(join(root, 'tooling', 'channel-register.json'), 'utf8'));
+  const rails = register.purchaseRails?.rails;
+  if (rails === null || typeof rails !== 'object') {
+    return { removers, problems: ['tooling/channel-register.json has no purchaseRails.rails object, so the Amazon coupling cannot be judged'] };
+  }
+  const amazonRails = Object.keys(rails).filter((r) => /amazon/i.test(r));
+  const problems = amazonRails.length === 0
+    ? []
+    : removers.map(
+      (rel) => `${rel} removes ${AMAZON_RECEIVER} with tools:node="remove", and tooling/channel-register.json purchaseRails.rails declares ${amazonRails.join(', ')}: ` +
+        'an Amazon rail is declared, so the Amazon IAP receiver must come back; delete the tools:node=remove line and protect it by other means',
+    );
+  return { removers, problems };
+}
+
+describe('the Amazon IAP receiver removal is coupled to the purchase rails', () => {
+  test('C1: no app removes the Amazon IAP receiver while the register declares an Amazon rail', () => {
+    const { problems } = amazonCoupling(REPO);
+    assert.deepEqual(problems, []);
+  });
+
+  test('C2: an amazon-appstore rail in a copy of the register turns the removal red, and names the revert', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'nikatru-vapt-c2-'));
+    try {
+      mkdirSync(join(tmp, 'tooling'), { recursive: true });
+      const register = JSON.parse(readFileSync(join(REPO, 'tooling', 'channel-register.json'), 'utf8'));
+      writeFileSync(join(tmp, 'tooling', 'channel-register.json'), JSON.stringify(register));
+      const rel = 'apps/demo/android/app/src/main/AndroidManifest.xml';
+      mkdirSync(join(tmp, 'apps', 'demo', 'android', 'app', 'src', 'main'), { recursive: true });
+      writeFileSync(
+        join(tmp, rel),
+        `<manifest xmlns:android="${ANDROID_NS}" xmlns:tools="http://schemas.android.com/tools">\n` +
+          '  <application>\n' +
+          `    <receiver android:name="${AMAZON_RECEIVER}" tools:node="remove" />\n` +
+          '  </application>\n</manifest>\n',
+      );
+
+      const control = amazonCoupling(tmp);
+      assert.deepEqual(control.removers, [rel]);
+      assert.deepEqual(control.problems, [], 'the unchanged copy of the register declares no Amazon rail');
+
+      register.purchaseRails.rails['amazon-appstore'] = 'C2 fixture: an Amazon Appstore rail';
+      writeFileSync(join(tmp, 'tooling', 'channel-register.json'), JSON.stringify(register));
+      const { problems } = amazonCoupling(tmp);
+      assert.equal(problems.length, 1, problems.join('\n'));
+      assert.match(problems[0], /^apps\/demo\/android\/app\/src\/main\/AndroidManifest\.xml removes com\.amazon\.device\.iap\.ResponseReceiver/);
+      assert.match(problems[0], /purchaseRails\.rails declares amazon-appstore/);
+      assert.match(problems[0], /an Amazon rail is declared, so the Amazon IAP receiver must come back; delete the tools:node=remove line and protect it by other means/);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
   });
 });
