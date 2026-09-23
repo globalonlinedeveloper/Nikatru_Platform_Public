@@ -644,7 +644,10 @@ function amazonCoupling(root) {
 
 describe('the Amazon IAP receiver removal is coupled to the purchase rails', () => {
   test('C1: no app removes the Amazon IAP receiver while the register declares an Amazon rail', () => {
-    const { problems } = amazonCoupling(REPO);
+    const { removers, problems } = amazonCoupling(REPO);
+    // Not vacuous: at least one real manifest must be READ as removing the
+    // receiver, or a reworded removal line would leave C1 judging nothing.
+    assert.ok(removers.length > 0, `no apps/*/android/app/src/main/AndroidManifest.xml is read as removing ${AMAZON_RECEIVER}`);
     assert.deepEqual(problems, []);
   });
 
