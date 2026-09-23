@@ -13,7 +13,7 @@
 // The mechanism, in three files this test holds to each other:
 //   1. tooling/channel-register.json — an Android row's `purchaseRail.forbids`,
 //      mapped to permissions by RAIL_PERMISSIONS in assert-apps-gov-in-apk.mjs
-//      (the same map the built-.apk guard uses, so the two cannot drift);
+//      (the built-.apk guard's own map, imported from it rather than copied);
 //   2. apps/<app>/android/app/src/channel/<id>/AndroidManifest.xml — the
 //      overlay, `<uses-permission … tools:node="remove">` per forbidden permission;
 //   3. apps/<app>/android/app/build.gradle.kts — the hook that reads
