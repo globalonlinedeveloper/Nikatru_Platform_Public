@@ -61,10 +61,12 @@
 //         ⏱ 2026-09-23 · GITHUB_WORKFLOW_REF, GITHUB_RUN_ID, GITHUB_RUN_ATTEMPT,
 //         GITHUB_RUN_NUMBER — THE RUN IDENTITY. Every Actions step has them from
 //         the runner. They are written into the Deployment as its `payload`
-//         ({workflow, run_id, run_attempt, run_number}), and that payload is the
-//         ONLY thing tooling/ops/check-prod-provenance.mjs binds a SUBMITTED
-//         build to its run by — a time window let a dry run at the same commit
-//         borrow an upload's Deployment. Required on a submittable channel;
+//         ({workflow, run_id, run_attempt, run_number}), and that payload is
+//         what tooling/ops/check-prod-provenance.mjs binds a SUBMITTED build to
+//         its run by — a time window let a dry run at the same commit borrow an
+//         upload's Deployment. (A Deployment written before 2026-09-23 has no
+//         payload and binds only through the dated `legacyDeploymentBindings`
+//         in tooling/prod-provenance.json.) Required on a submittable channel;
 //         written whenever present on every other one.
 // Exit 0 = recorded.
 //      1 = refused or failed: a bad record shape, a missing precondition, or a REAL
