@@ -172,8 +172,8 @@ import { stripSourceComments } from '../ci/text-reductions.mjs';
 import { flutterAppChannel, undeclaredSurfaceLine } from '../ci/channel-surface.mjs';
 import { CouldNotLook, classifyThrown, transientLook, isTransientStatus, retryAfterMs, readWithBoundedRetry, fetchWithBoundedRetry, backoffPlan } from './bounded-retry.mjs';
 // ⏱ 2026-09-23 — the non-release stamp shapes live in ONE module, which the
-// store capture's define helper and assert-live-writer-provenance also import,
-// so the shape a drive stamps and the shape this reader accepts cannot drift.
+// store capture's define helper and assert-live-writer-provenance also import:
+// the shape a drive stamps and the shape this reader accepts are one definition.
 import { CAPTURE_WORKFLOW, E2E_RUN_SHAPE, STORE_CAPTURE_SHAPE } from '../e2e/app-version-stamp.mjs';
 // The product kinds a bundle may span, imported rather than retyped: the same
 // file tooling/bundle-availability.mjs and the Worker twin read, so `script`

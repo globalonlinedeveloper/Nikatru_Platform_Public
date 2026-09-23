@@ -25,13 +25,11 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
-import 'package:nikatru_platform_storage/nikatru_platform_storage.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 
 import 'package:subscriptiontracker/core/a11y/web_semantics.dart'
     show releaseWebSemantics;
-import 'package:subscriptiontracker/core/app_config.dart';
 import 'package:subscriptiontracker/core/e2e_keys.dart';
 import 'package:subscriptiontracker/features/auth/legal_consent_fields.dart';
 import 'package:subscriptiontracker/features/auth/reaccept_terms_screen.dart';
@@ -45,6 +43,8 @@ import 'package:subscriptiontracker/l10n/app_localizations.dart';
 import 'package:subscriptiontracker/main.dart' as app;
 import 'package:subscriptiontracker/state/analytics_providers.dart'
     show kInstallIdKey;
+
+import 'consent.dart';
 
 void main() {
   final IntegrationTestWidgetsFlutterBinding binding =
@@ -548,28 +548,19 @@ void main() {
   /// after the drive, and `anon_id` is the ONLY key it can find the row by —
   /// `consent_artifacts` deliberately carries no user id.
   ///
-  /// POLLED, BECAUSE THE WRITE RACES THE TAP. `installIdProvider` mints the id
-  /// and persists it inside that same un-awaited chain, so it is normally on
-  /// disk within a frame or two — and "normally" is not a schedule.
-  ///
-  /// `SharedPreferences.getInstance()` returns the SAME cached singleton the app
-  /// is writing through, so this reads the app's store rather than a second copy
-  /// of it that could never see the write.
+  /// The poll and the reportData write live in `consent.dart`, shared with the
+  /// store capture (store_screenshots_test.dart), so the two live drives read
+  /// the install id one way and publish it under one key.
   Future<String> exportConsentAnonId(
     WidgetTester tester, {
     Duration timeout = const Duration(seconds: 10),
   }) async {
-    final PrefsKeyValueStore store = await PrefsKeyValueStore.create(
-      appId: AppConfig.appId,
-    );
-    String? id;
     final int startedIn = testEpoch;
-    final DateTime end = DateTime.now().add(timeout);
-    while (DateTime.now().isBefore(end)) {
-      id = await store.read(kInstallIdKey);
-      if (id != null && id.isNotEmpty) break;
-      await guardedPump(tester, startedIn, const Duration(milliseconds: 200));
-    }
+    final String? id = await pollInstallId(
+      pump: () =>
+          guardedPump(tester, startedIn, const Duration(milliseconds: 200)),
+      timeout: timeout,
+    );
     expect(
       id != null && id.isNotEmpty,
       isTrue,
@@ -583,24 +574,9 @@ void main() {
           'bucket stop joining). On screen: ${onScreen(tester)}',
     );
 
-    // 🔴 MERGED INTO reportData, NEVER ASSIGNED OVER IT. `binding.takeScreenshot`
-    // accumulates into this same map (integration_test.dart: `reportData
-    // ??= {}` then `reportData['screenshots'] ??= []`), and `shot('00-consent')`
-    // has already run — so `reportData = {…}` would throw the screenshot list
-    // away on its way past.
-    binding.reportData ??= <String, dynamic>{};
-    binding.reportData!['consent_anon_id'] = id;
-
-    // ⚠️ THIS LINE GOES TO THE BROWSER CONSOLE, NOT TO THE CI LOG, AND IT IS
-    // KEPT ANYWAY. Measured against Flutter 3.44 on 2026-08-09: flutter_tools
-    // does ask chromedriver for browser logs
-    // (`goog:loggingPrefs` in drive/web_driver_service.dart), but nothing ever
-    // reads them — flutter_driver consumes only the PERFORMANCE log, and only
-    // for tracing — so this token cannot reach the tee'd drive log from inside
-    // the app. It is here for a headed local run with devtools open. The
-    // CI-visible copy of the same token is printed HOST-SIDE by
-    // test_driver/integration_test.dart, out of the reportData set above.
-    debugPrint('E2E_CONSENT_ANON_ID=$id');
+    // Merged into reportData (never assigned over it: `shot('00-consent')` has
+    // already put its screenshot list there) — consent.dart says why.
+    publishConsent(binding, id: id);
     return id!;
   }
 

@@ -331,13 +331,53 @@ describe('purge.mjs refuses a miswired consent source', () => {
 // that, because they supply both ends themselves.
 describe('the producers still produce what this parses', () => {
   const REPORT_FIELD = 'consent_anon_id';
+  const PROMPT_FIELD = 'consent_prompt';
+  const IT = 'apps/subscriptiontracker/integration_test';
+  const read = (name) => readFileSync(join(REPO, IT, name), 'utf8');
 
-  test(`the E2E writes \`${REPORT_FIELD}\` into reportData`, () => {
-    const suite = readFileSync(join(REPO, 'apps/subscriptiontracker/integration_test/app_test.dart'), 'utf8');
+  // The two live drives publish through ONE helper (consent.dart, 2026-09-23),
+  // so the key names are written in exactly one Dart file.
+  test(`the shared helper writes \`${REPORT_FIELD}\` and \`${PROMPT_FIELD}\` into reportData`, () => {
+    const helper = read('consent.dart');
+    for (const field of [REPORT_FIELD, PROMPT_FIELD]) {
+      assert.ok(
+        helper.includes(`reportData!['${field}']`),
+        `${IT}/consent.dart no longer writes \`${field}\` into binding.reportData. The nightly and the store ` +
+          'capture would still be green and the consent artifact each uploads would be unfindable.',
+      );
+    }
     assert.ok(
-      suite.includes(`reportData!['${REPORT_FIELD}']`),
-      `apps/subscriptiontracker/integration_test/app_test.dart no longer writes \`${REPORT_FIELD}\` into binding.reportData. ` +
-        'The nightly would still be green and the consent artifact it uploads would be unfindable.',
+      helper.includes(`${ANON_ID_TOKEN}=`),
+      `${IT}/consent.dart no longer prints \`${ANON_ID_TOKEN}=\` beside the reportData write.`,
+    );
+  });
+
+  test('🔴 BOTH live drives publish through the helper', () => {
+    for (const name of ['app_test.dart', 'store_screenshots_test.dart']) {
+      const suite = read(name);
+      assert.ok(
+        /\bpublishConsent\(\s*binding\b/.test(suite) && suite.includes("import 'consent.dart';"),
+        `${IT}/${name} no longer calls publishConsent(binding, …) from consent.dart. A live drive that answers the ` +
+          'consent prompt without publishing the install id leaves a production consent row nobody can delete.',
+      );
+    }
+  });
+
+  test(`🔴 the store capture records \`${PROMPT_FIELD}\` BEFORE it taps the prompt`, () => {
+    const suite = read('store_screenshots_test.dart');
+    const answered = suite.indexOf("publishConsent(binding, prompt: 'answered')");
+    const tap = suite.indexOf('tap(consentDecline');
+    assert.ok(answered >= 0, `${IT}/store_screenshots_test.dart no longer publishes prompt: 'answered'.`);
+    assert.ok(tap >= 0, `${IT}/store_screenshots_test.dart no longer taps consentDecline — re-point this test.`);
+    assert.ok(
+      answered < tap,
+      `${IT}/store_screenshots_test.dart publishes prompt: 'answered' AFTER tapping the consent prompt. The tap ` +
+        'uploads the row, so a drive that dies between the two would report no row while one exists.',
+    );
+    assert.ok(
+      suite.includes("publishConsent(binding, prompt: 'absent')"),
+      `${IT}/store_screenshots_test.dart no longer says prompt: 'absent' when the prompt never came, so "no id" ` +
+        'reads the same as a drive that answered and died.',
     );
   });
 

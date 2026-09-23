@@ -206,8 +206,9 @@ if (capture) {
   // whose anon_id no drive lived long enough to report — and nobody else's.
   // `stampDeletable` admits only `cap-*` and `rehearsal-*`, never `dev`.
   //
-  // It is NEVER done for e2e, and `stampDeletable` refuses `e2e-*` so it cannot
-  // drift into it: the nightly's matrix legs share one stamp, and
+  // It is NEVER done for e2e, and `stampDeletable` refuses `e2e-*` to keep it
+  // that way (consent-anon-id.test.mjs pins the refusal). The nightly's matrix
+  // legs share one stamp, and
   // tooling/e2e/verify_consent.mjs reads the row back, so a stamp delete there
   // would race another leg's audit and delete the row that leg is about to prove.
   let removed = 0;
