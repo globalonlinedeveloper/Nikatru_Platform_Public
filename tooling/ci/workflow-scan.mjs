@@ -246,16 +246,48 @@ export function workflowEvents(parsed) {
  * `releaseTriggerLine` below, which is this function's `line`.
  */
 export function releaseTrigger(wf) {
+  return triggerFilter(wf, 'push', 'tags');
+}
+
+/**
+ * The `branches:` filter under `on: push:`, or null — the same `{ line, items }`
+ * shape as releaseTrigger, read by the same indent walk.
+ *
+ * ⏱ ADDED 2026-09-23 for tooling/ops/redeploy-stranded.mjs, which derives the
+ * set of DEPLOY LANES a red ci-gate can strand (push to main + a gate step)
+ * from the workflow files instead of listing them. Here rather than there for
+ * the reason releaseTrigger moved here: one reading of `on: push:`.
+ */
+export function pushBranches(wf) {
+  return triggerFilter(wf, 'push', 'branches');
+}
+
+/**
+ * The `workflows:` list under `on: workflow_run:`, or null. Same shape again.
+ * Read by redeploy-stranded.mjs to hold the recovery lane's trigger to the
+ * deploy lanes it is meant to hear — derived set on one side, declared list on
+ * the other, compared by the test rather than trusted.
+ */
+export function workflowRunSources(wf) {
+  return triggerFilter(wf, 'workflow_run', 'workflows');
+}
+
+/** `on: <event>: <key>:` as `{ line, items }`, or null. One indent walk for all
+ *  three readers above; the event key is matched at any indent above `jobs:`,
+ *  which is where every workflow in this tree writes its `on:` block. */
+function triggerFilter(wf, event, key) {
   const lines = wf.lines.slice(0, wf.jobsAt ?? wf.lines.length);
+  const eventRe = new RegExp(`^(\\s*)${event}:\\s*$`);
+  const keyRe = new RegExp(`^(\\s*)${key}:(.*)$`);
   for (let i = 0; i < lines.length; i++) {
-    const m = lines[i].text.match(/^(\s*)push:\s*$/);
+    const m = lines[i].text.match(eventRe);
     if (!m) continue;
     const indent = m[1].length;
     for (let j = i + 1; j < lines.length; j++) {
       const t = lines[j].text;
       if (t.trim() === '') continue;
       if (t.match(/^ */)[0].length <= indent) break;
-      const k = t.match(/^(\s*)tags:(.*)$/);
+      const k = t.match(keyRe);
       if (!k) continue;
       return { line: lines[j].n, items: tagItems(lines, j, k[1].length, k[2].trim()) };
     }

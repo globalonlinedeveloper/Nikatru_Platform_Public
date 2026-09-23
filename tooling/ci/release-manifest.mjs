@@ -155,6 +155,11 @@ const REGISTER_REL = 'tooling/channel-register.json';
  */
 export const MANIFEST_NAME = 'SHA256SUMS';
 
+/** The other single declaration, for the same reason: `tooling/ci/assert-release-json.mjs`
+ *  and `assert-release-durable.mjs` read this name OUT OF THIS FILE. A private copy
+ *  in either would be the first thing to drift, and the drift reports "clean". */
+export const RELEASE_JSON_NAME = 'release.json';
+
 /**
  * 🔴 THE EXTENSION SET IS DERIVED FROM THE CHANNEL REGISTER, NOT TYPED HERE.
  * `artifactFormats` on every row of tooling/channel-register.json is what the
@@ -1029,7 +1034,7 @@ function main() {
   // KEPT `--verify`. MEASURED 2026-08-27: `--write dist … --expect-formats --for-workflow
   // build-platforms.yml` exited 0 printing ok, two steps from the `--verify` that exits 1
   // (build-platforms.yml:413 and :419); `--emit-assets` the same. `mode` is first-match.
-  const mode = ['stage', 'write', 'verify', 'emit-assets', 'emit-environments'].find((m) => has(m)) ?? null;
+  const mode = ['stage', 'write', 'verify', 'emit-assets', 'emit-environments', 'emit-release-json'].find((m) => has(m)) ?? null;
   if (flag('for-workflow') !== null && !has('expect-formats')) {
     die(
       '--for-workflow only narrows --expect-formats, and --expect-formats was not given.',
@@ -1318,10 +1323,101 @@ function main() {
     process.exit(0);
   }
 
+  // ── --emit-release-json: what the Release says it is, versioned PER ARTEFACT ─
+  //
+  // 🔴 IT RUNS BEFORE `--write`, AND THAT ORDER IS THE WHOLE POINT. `SHA256SUMS`
+  // has to NAME release.json, or the one file that describes the release is the
+  // one file nobody can verify. assert-release-durable.mjs limb 2 holds the order
+  // so a later edit cannot quietly swap the two steps.
+  //
+  // ⚠️ IT REFUSES A SECOND EMIT INTO THE SAME DIRECTORY rather than overwriting.
+  // A lane that emits twice has either looped or staged twice, and the second
+  // file would describe a set that includes the first — silently, and with a
+  // hash that then disagrees with nothing because the manifest is written after.
+  if (has('emit-release-json')) {
+    const dir = requireDir(positionalAfter('emit-release-json'), '--emit-release-json');
+    const app = flag('app') ?? die('--emit-release-json needs --app <id>');
+    const tag = flag('tag') ?? die('--emit-release-json needs --tag <tag>');
+    const sha = flag('sha') ?? die('--emit-release-json needs --sha <gated commit sha>');
+    const runUrl = flag('run-url') ?? die('--emit-release-json needs --run-url <url>');
+    const notesUrl = flag('notes-url') ?? die('--emit-release-json needs --notes-url <url>');
+    const releasedAt = flag('released-at') ?? die('--emit-release-json needs --released-at <YYYY-MM-DDTHH:MM:SSZ>');
+    // 🔴 VERSION IS PASSED, NOT CUT OUT OF THE TAG. The plan this implements said
+    // "the tag's X.Y.Z" — measured on the lane, that is FALSE for the app surface:
+    // build-platforms builds with `--build-name=<release_line>.<run_number>`
+    // (build-platforms.yml, the windows and linux/android jobs), so the bytes in
+    // the package carry `1.0.<run>` while the tag names pubspec's `1.0.0`. A
+    // version cut from the tag would be a number this file asserts about files
+    // that do not carry it. The lane passes what it built with.
+    const version = flag('version') ?? die('--emit-release-json needs --version <X.Y.Z[.N]>');
+    const minSupported = flag('min-supported') ?? die('--emit-release-json needs --min-supported <X.Y.Z>');
+    const surfaceFlag = flag('surface');
+    const build = has('build') ? flag('build') : null;
+    const out = join(dir, RELEASE_JSON_NAME);
+    // The refusal is the EXCLUSIVE CREATE at the write below (`flag: 'wx'`), never
+    // an existsSync here: a check-then-write leaves a window between the two
+    // (CodeQL js/file-system-race, #886), and the create is atomic.
+    const refuseSecondEmit = () =>
+      die(
+        `${out} already exists.`,
+        'A second emit into one release directory means the lane staged or looped twice. Overwriting would',
+        'produce a file describing a set that already contains a previous copy of itself.',
+      );
+    // Refused BEFORE any asset is classified — a previous release.json is not an
+    // asset and would otherwise be refused as an unknown format instead. Read from
+    // the directory LISTING, never a path check; the `wx` create below is what
+    // closes the window.
+    if (assetFiles(dir).names.includes(RELEASE_JSON_NAME)) refuseSecondEmit();
+    // The surface is resolved from the TREE — same rule as --emit-environments:
+    // the register says which channels are on a surface, the tree says which
+    // surface this product is on, and reading the first for the second is how
+    // `--app subscriptiontracker` once emitted three browser-store environments.
+    const treeRoot = resolve(flag('repo-root') ?? DEFAULT_ROOT);
+    const surface = requireSurface(treeRoot, app, '--emit-release-json');
+    if (surfaceFlag !== null && surfaceFlag !== surface) {
+      die(
+        `--surface "${surfaceFlag}" disagrees with the tree: --app "${app}" is on the "${surface}" surface.`,
+        'The flag is accepted only as a restatement the lane can be read for; it never overrides the tree.',
+      );
+    }
+    const { names, strays } = assetFiles(dir);
+    if (strays.length) {
+      die(
+        `${dir} contains director${strays.length === 1 ? 'y' : 'ies'}: ${strays.join(', ')}.`,
+        'The release directory is flat. release.json would describe the files and say nothing about these.',
+      );
+    }
+    if (names.length === 0) {
+      die(`${dir} holds no asset, so there is nothing to describe.`, 'Refusing to emit a release record over an empty set.');
+    }
+    const json = buildReleaseJson({
+      app, surface, tag, sha, runUrl, notesUrl, releasedAt, version, minSupported, build,
+      register: loadRegister(),
+      treeRoot,
+      // One read per file: the hash and the size come from the same bytes, so a file
+      // swapped between a hash and a separate stat cannot pair one file's digest with another's size.
+      files: names.map((n) => {
+        const bytes = readFileSync(join(dir, n));
+        return { name: n, sha256: createHash('sha256').update(bytes).digest('hex'), size: bytes.length };
+      }),
+    });
+    try {
+      writeFileSync(out, `${JSON.stringify(json, null, 2)}\n`, { flag: 'wx' });
+    } catch (e) {
+      if (e?.code === 'EEXIST') refuseSecondEmit();
+      throw e;
+    }
+    for (const a of json.artefacts) console.log(`described  ${a.name}  ${a.format}  v${a.version}  ${a.channels.join(', ') || '(no channel takes this format)'}`);
+    console.log(`\nok  ${RELEASE_JSON_NAME} written for ${json.artefacts.length} artefact(s) at commit ${sha}`);
+    process.exit(0);
+  }
+
   die(
     'no mode given.',
     'Usage: --stage <from> --out <dir> --app <id> --tag <tag> | --write <dir> --app <id> --tag <tag> --sha <sha>',
     '       | --verify <dir> | --emit-assets <dir> | --emit-environments <dir> --app <id>',
+    '       | --emit-release-json <dir> --app <id> --tag <tag> --sha <sha> --run-url <url> --notes-url <url>',
+    '         --released-at <iso> --version <X.Y.Z[.N]> --min-supported <X.Y.Z> [--build <n>] [--surface app|extension]',
   );
 }
 
@@ -1338,4 +1434,154 @@ function coverageLost(msg, ...more) {
   console.error(`✗ ${msg}`);
   for (const m of more) console.error(`  ${m}`);
   process.exit(2);
+}
+
+/**
+ * 🔴 THE PURE BUILDER. `--emit-release-json` above is the only caller in this
+ * file; `tooling/ci/test/assert-release-json.test.mjs` is the other, and it can
+ * call this without a directory, without a clock and without a network — which
+ * is the whole reason the record is built here and not inline in the CLI block.
+ *
+ * DECLARED LAST, HOISTED, for the same reason `coverageLost` is: a function
+ * declaration added at the end of the file shifts no line above it, so every
+ * `release-manifest.mjs:NNN` citation in the corpus keeps pointing at the line
+ * it names (TRAPS git-08).
+ *
+ * ⚠️ `--for-workflow` IS DELIBERATELY NOT AN INPUT, AND THE PLAN SAID IT SHOULD
+ * BE. Measured: `channels` answers "where may this file be submitted", which is
+ * a property of the SURFACE and the FORMAT — the register's rows — and not of
+ * the lane that happened to build it. Threading the workflow through would make
+ * the same `.aab` list `play-store` when emitted from build-platforms.yml and
+ * list nothing when emitted from anywhere else, i.e. the record would describe
+ * the emitter instead of the artefact. Completeness — "did THIS lane produce
+ * every format it owes?" — is `--verify --expect-formats --for-workflow`'s
+ * question and it is asked two steps later, unchanged.
+ */
+export function buildReleaseJson({
+  app, surface, tag, sha, runUrl, notesUrl, releasedAt, version, minSupported, build = null,
+  register, treeRoot, files,
+}) {
+  /**
+   * ⬜ THE FORMATS A RELEASE DIRECTORY CARRIES THAT NO CHANNEL ACCEPTS, declared
+   * with their reason rather than inferred. `installableExtensions()` is the one
+   * declaration of "what counts as an installable"; these are not installables
+   * and must never widen that set — they are the other files a Release still
+   * publishes, and a record that could not name them would describe a subset of
+   * what a user can download.
+   */
+  const RELEASE_ONLY_FORMATS = new Map([
+    ['.tar.gz', 'the per-platform bundle archive `--stage` writes for anything that is not a single self-contained package (BUNDLE_MEMBERS above). Two dots, so it is matched longest-first or it reads as `.gz`.'],
+    ['.zip', 'the same archive on the app surface, and the ONLY artefact shape on the extension surface, where every store takes a zip.'],
+    ['.txt', 'SHA256SUMS.txt — extensions.yml publishes the integrity record under both names, and the one a browser will open inline is this one.'],
+  ]);
+
+  const known = new Set([...installableExtensions(register), ...RELEASE_ONLY_FORMATS.keys()]);
+  /** Longest known extension wins, so `.tar.gz` stays whole. A name that matches
+   *  nothing known is a refusal and not a guess: a release directory holding a
+   *  file this factory cannot classify is exactly the case where inventing a
+   *  format would put a wrong answer into a signed record. */
+  const formatOf = (name) => {
+    const lower = name.toLowerCase();
+    let best = null;
+    for (const e of known) if (lower.endsWith(e.toLowerCase()) && (best === null || e.length > best.length)) best = e;
+    if (best !== null) return best;
+    die(
+      `${name} carries no format this tree knows.`,
+      `Known: ${[...known].sort().join(' ')} — the register's artifactFormats, EXTRA_INSTALLABLE, and the`,
+      'release-only formats declared beside this function. Add the channel row, or declare the format there',
+      'with its reason. Guessing the extension would write a classification nothing in the factory agrees with.',
+    );
+  };
+
+  /**
+   * 🔴 THE CHANNEL SET IS DERIVED TWICE, ONCE PER SURFACE, because the two
+   * surfaces answer "where does this go" from different declarations.
+   *
+   * APP: the register alone. A channel on the app surface that lists this
+   * format in `artifactFormats` is a place this file can be submitted. `.apk`
+   * matches NO row and never will (Play takes the .aab) — its empty list is the
+   * true answer, and it is the sideload artefact EXTRA_INSTALLABLE exists for.
+   *
+   * EXTENSION: the tool's own `storeMetadata`, then the register. The asset is
+   * `<tool>-<target>.zip` where target is a BUILD target (chromium, firefox) and
+   * not a store; one chromium zip is submitted to two stores. tool.json names
+   * which store keys are built from which target, the register's rows carry
+   * `extensionStoreKey`, and joining them is the only path from a filename to a
+   * channel id that neither file has to repeat.
+   */
+  const channelsFor = (name, format) => {
+    const rows = (register?.channels ?? []).filter((c) => channelIsOnSurface(c, surface));
+    const accepts = (c) => (c?.artifactFormats ?? []).some((f) => typeof f === 'string' && f.toLowerCase() === format.toLowerCase());
+    if (surface !== 'extension') return rows.filter(accepts).map((c) => c.id).filter((id) => typeof id === 'string').sort();
+
+    const m = /^(.+)-([a-z0-9]+)\.zip$/i.exec(name);
+    if (m === null) return [];  // SHA256SUMS.txt and anything else that is not a submittable zip
+    const target = m[2].toLowerCase();
+    const tool = readToolJson(treeRoot, app);
+    const keys = new Set();
+    for (const [key, store] of Object.entries(tool?.storeMetadata?.stores ?? {})) {
+      if (typeof store?.target === 'string' && store.target.toLowerCase() === target) keys.add(key);
+    }
+    if (keys.size === 0) {
+      coverageLost(
+        `COVERAGE LOST — ${name} names build target "${target}" and ${app}'s tool.json declares no store for it.`,
+        'Every store key in storeMetadata.stores carries a `target`; none of them is this one. The asset would',
+        'be published with an EMPTY channel list, which reads exactly like "this file is submitted nowhere" —',
+        'a claim about the product rather than the hole in the declaration that it actually is.',
+      );
+    }
+    return rows.filter((c) => keys.has(c?.extensionStoreKey) && accepts(c)).map((c) => c.id).sort();
+  };
+
+  const artefacts = files
+    .slice()
+    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+    .map((f) => {
+      const format = formatOf(f.name);
+      return {
+        name: f.name,
+        format,
+        version,
+        // The extension surface has no build number — nothing increments one — so
+        // the field is null and present, rather than absent on one surface and
+        // present on the other. A reader that has to ask which shape it got is a
+        // reader that will get it wrong once.
+        build: surface === 'extension' ? null : build,
+        sha256: f.sha256,
+        size: f.size,
+        channels: channelsFor(f.name, format),
+      };
+    });
+
+  return {
+    schema: 'nikatru.release/1',
+    unit: app,
+    surface,
+    tag,
+    commit: sha,
+    runUrl,
+    releasedAt,
+    minSupported,
+    notesUrl,
+    artefacts,
+  };
+}
+
+/** The tool.json that DECLARES this id, found the same way `productSurfaces`
+ *  finds it — by reading the declaration, never by assuming the directory name
+ *  is the id. Returns null when the id is not an extension. */
+function readToolJson(root, id) {
+  const extAbs = join(root, EXT_TOOL_ROOT);
+  if (!existsSync(extAbs)) return null;
+  for (const d of listDir(extAbs)) {
+    const abs = join(extAbs, d, 'tool.json');
+    if (!existsSync(abs)) continue;
+    try {
+      const tool = JSON.parse(readFileSync(abs, 'utf8'));
+      if (tool?.id === id) return tool;
+    } catch {
+      continue;  // a broken tool.json is the extensions gate's finding, not this script's
+    }
+  }
+  return null;
 }

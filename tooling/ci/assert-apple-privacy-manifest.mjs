@@ -667,11 +667,29 @@ for (const app of subjects) {
   // ── limb 4: the plugin-set EQUALITY ──────────────────────────────────────
   const fpdPath = join(appDir, '.flutter-plugins-dependencies');
   if (!existsSync(fpdPath)) {
-    coverageLost([
-      `${rel('.flutter-plugins-dependencies')} does not exist.`,
+    /* ⏱ 2026-09-22 (O-APPLE-PRIVACY-GUARD-CANNOT-RUN-IN-A-WORKTREE). NEVER BUILT and
+       LOST are two different facts and they need two different sentences. `flutter pub
+       get` writes BOTH this file and `.dart_tool/package_config.json` — at the
+       pub-workspace root for a workspace member, in the app itself otherwise — and both
+       are gitignored, so a fresh clone or a fresh `git worktree add` has NEITHER and the
+       refusal below is simply "nobody has resolved this tree yet". A tree that WAS
+       resolved and is missing only this one file is a different and much worse state:
+       something deleted a build input, and re-running `flutter pub get` would paper over
+       whatever did it.
+       Exit 2 either way: COVERAGE LOST is not a pass, and an exit code keeps ONE meaning.
+       What changes is the first thing the reader is told to do — and both first lines
+       still contain `does not exist`, which is what the existing readers match on. */
+    const resolved = [repoRoot, appDir].some((d) => existsSync(join(d, '.dart_tool', 'package_config.json')));
+    coverageLost(resolved ? [
+      `${rel('.flutter-plugins-dependencies')} does not exist, though this tree WAS resolved (.dart_tool/package_config.json is present): the file was LOST after \`flutter pub get\`.`,
       'It is what the Apple build actually links, so it is the only derivation of the plugin set that cannot',
       'go stale. Without it limb 4 compares the audit against nothing and a new plugin ships unaudited.',
-      'Run `flutter pub get` in the app before this guard.',
+      'Find what deleted it BEFORE re-running `flutter pub get` — a resolved tree does not lose this file on its own.',
+    ] : [
+      `${rel('.flutter-plugins-dependencies')} does not exist because this tree was NEVER BUILT (no .dart_tool/package_config.json anywhere above it): the file is build-generated and gitignored, so no clone and no worktree carries it.`,
+      'Run the one command, then this guard:   flutter pub get   (in the app; a pub workspace resolves from the repo root).',
+      'It is what the Apple build actually links, so without it limb 4 compares the audit against nothing',
+      'and a new plugin ships unaudited.',
     ]);
   }
   let fpd;

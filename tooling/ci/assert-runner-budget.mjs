@@ -112,6 +112,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readWithBoundedRetry, classifyThrown, isTransientStatus, transientLook, retryAfterMs } from '../ops/bounded-retry.mjs';
 
 // ── THE DECLARED CEILING ─────────────────────────────────────────────────────
 // USD of NET-BILLED `product: "actions"` usage in the CURRENT billing period,
@@ -293,6 +294,28 @@ function authHeaders(token) {
  * ⚠️ NOT `/users/{owner}/settings/billing/actions`. That endpoint answers 410
  * Gone ("This endpoint has been moved."), verified 2026-08-08.
  */
+/** ⏱ 2026-09-22 — ONE GET under the shared per-request ceiling and bounded plan
+ *  (tooling/ops/bounded-retry.mjs). Both reads below used a bare `fetch` with no
+ *  signal, so a GitHub API that accepted the connection and never answered held
+ *  the runner-budget job until its timeout cancelled it and reported nothing
+ *  (row O-OPS-READER-NO-CEILING). Only the wire dropping, 429 and 5xx are
+ *  re-asked; every other status is returned for the caller to grade exactly as
+ *  before. A read that outlives the plan throws, which main() turns into exit 2. */
+async function getWithCeiling(url, token) {
+  return readWithBoundedRetry(async (_attempt, { signal }) => {
+    let res;
+    try {
+      res = await fetch(url, { headers: authHeaders(token), signal });
+    } catch (e) {
+      throw classifyThrown(e, `${url} could not be reached (${e?.name ?? 'error'}: ${e?.message ?? e})`);
+    }
+    if (isTransientStatus(res.status)) {
+      throw transientLook(`${url} answered HTTP ${res.status}`, { retryAfterMs: retryAfterMs(res) });
+    }
+    return res;
+  });
+}
+
 async function fetchUsage(owner, token) {
   const attempts = [
     `https://api.github.com/users/${owner}/settings/billing/usage`,
@@ -300,12 +323,7 @@ async function fetchUsage(owner, token) {
   ];
   let last = null;
   for (const url of attempts) {
-    let res;
-    try {
-      res = await fetch(url, { headers: authHeaders(token) });
-    } catch (e) {
-      throw new CouldNotLook(`${url} could not be reached (${e.message})`);
-    }
+    const res = await getWithCeiling(url, token);
     if (res.ok) {
       try {
         return await res.json();
@@ -337,7 +355,7 @@ async function fetchUsage(owner, token) {
  *  allowance is load-bearing. Enrichment, never a gate: a failure here PRINTS as
  *  could-not-establish, because the subject of this guard is the ledger. */
 async function fetchVisibility(repo, token) {
-  const res = await fetch(`https://api.github.com/repos/${repo}`, { headers: authHeaders(token) });
+  const res = await getWithCeiling(`https://api.github.com/repos/${repo}`, token);
   if (!res.ok) throw new Error(`${res.status}`);
   const body = await res.json();
   return { private: body.private === true, visibility: body.visibility ?? (body.private ? 'private' : 'public') };

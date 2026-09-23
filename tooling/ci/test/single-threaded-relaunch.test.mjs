@@ -3,11 +3,12 @@
 // through unchanged, and must never let "I could not look" read as a verdict.
 //
 // single-threaded-relaunch.mjs is how assert-launcher-icons.mjs,
-// assert-elf-page-alignment.mjs, assert-listing-assets.mjs and
-// assert-stamp-brand-assets.mjs do their work with V8 background tasks OFF, so
+// assert-elf-page-alignment.mjs, assert-listing-assets.mjs,
+// assert-stamp-brand-assets.mjs and (since 2026-09-22)
+// assert-apps-gov-in-media.mjs do their work with V8 background tasks OFF, so
 // that their exit cannot deadlock (nodejs/node#54918 — the hang that cancelled CI
 // runs 34442894882 and 34553250403). Each of those guards pins the relaunch in
-// its own test file ("V8 background tasks: OFF"). THIS file pins what the four
+// its own test file ("V8 background tasks: OFF"). THIS file pins what the five
 // share, against tiny scripts that import the module exactly as a guard does:
 //
 //   R1 the working process is --single-threaded, and the parent is not doing the work
@@ -143,6 +144,12 @@ describe('single-threaded-relaunch', () => {
 // no parent to hang. The guards that need it are DERIVED — every tooling/ci file
 // that imports this module — so a fifth importer is held to the same rule the
 // day it lands, with no list to update.
+//
+// ⏱ 2026-09-22 · THE FIFTH IMPORTER LANDED: assert-apps-gov-in-media.mjs, which
+// re-derives every apps.gov.in screenshot from its Play original pixel by pixel.
+// Its two steps (ci.yml guards-store, build-platforms.yml) carry the flag, so
+// the floors below are ratcheted to what the tree holds: five importers, nine
+// flagged steps.
 // ─────────────────────────────────────────────────────────────────────────────
 describe('every workflow step that runs a relaunching guard runs it as node --single-threaded', () => {
   const HERE = new URL('.', import.meta.url);
@@ -161,8 +168,8 @@ describe('every workflow step that runs a relaunching guard runs it as node --si
     const { readdirSync, readFileSync: read } = await import('node:fs');
     const ci = new URL('tooling/ci/', REPO_ROOT);
     const importers = readdirSync(ci).filter((f) => f.endsWith('.mjs') && f !== 'single-threaded-relaunch.mjs' && /from '\.\/single-threaded-relaunch\.mjs'/.test(read(new URL(f, ci), 'utf8')));
-    assert.ok(importers.length >= 4, `expected the four heavy guards to import the relaunch, found: ${importers.join(', ')}`);
-    for (const g of ['assert-launcher-icons.mjs', 'assert-elf-page-alignment.mjs', 'assert-listing-assets.mjs', 'assert-stamp-brand-assets.mjs']) {
+    assert.ok(importers.length >= 5, `expected the five heavy guards to import the relaunch, found: ${importers.join(', ')}`);
+    for (const g of ['assert-launcher-icons.mjs', 'assert-elf-page-alignment.mjs', 'assert-listing-assets.mjs', 'assert-stamp-brand-assets.mjs', 'assert-apps-gov-in-media.mjs']) {
       assert.ok(importers.includes(g), `${g} no longer imports the relaunch`);
     }
   });
@@ -188,7 +195,7 @@ describe('every workflow step that runs a relaunching guard runs it as node --si
       });
     }
     assert.deepEqual(bare, [], `a relaunching guard runs under a relaunch parent in CI:\n${bare.join('\n')}`);
-    assert.ok(flagged.length >= 7, `expected the seven heavy-guard steps (ci.yml ×3, build-platforms.yml, submit-play.yml ×2, store-screenshots.yml) to carry the flag, found ${flagged.length}:\n${flagged.join('\n')}`);
+    assert.ok(flagged.length >= 9, `expected the nine heavy-guard steps (ci.yml ×4, build-platforms.yml ×2, submit-play.yml ×2, store-screenshots.yml) to carry the flag, found ${flagged.length}:\n${flagged.join('\n')}`);
     for (const [wf, gs] of PENDING) {
       for (const g of gs) {
         assert.ok(stillPending.has(`${wf}|${g}`), `the declared gap ${wf} → ${g} is closed: remove it from PENDING`);

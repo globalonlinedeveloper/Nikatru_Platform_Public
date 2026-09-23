@@ -418,6 +418,13 @@ jobs:
         run: node tooling/ci/assert-release-provenance.mjs
       - name: No release lane finishes with the artifact stuck inside the run
         run: node tooling/ci/assert-release-durable.mjs
+      # why: THE ONLY PLACE THIS GUARD CAN RUN ON MAIN. It grades a staged release
+      # directory, and no such directory exists outside a release run — so on every
+      # other commit it would never execute, and a guard nobody has seen run is a
+      # guard nobody knows works. `--self-test` builds real release directories in
+      # os.tmpdir(), breaks one thing in each, and requires the guard to name it.
+      - name: The release-record guard can still fail (mutation matrix)
+        run: node tooling/ci/assert-release-json.mjs --self-test
       - name: Nothing is compiled into an artifact that was not declared shippable
         run: node tooling/ci/assert-no-secret-defines.mjs
       - name: Obfuscation and symbol retention are one increment or neither
@@ -459,6 +466,10 @@ jobs:
       # it moves the fewest.
       - name: The store vocabulary has one home, and every word in it is used
         run: node tooling/ci/assert-store-vocabulary.mjs
+      # why: the apps.gov.in media is DERIVED from the Play set; a PR that re-captures the Play set must re-derive it
+      # in the same PR, not at the next build-platforms run — docs/ci/build-platforms.md §apps-gov-in.
+      - name: The apps.gov.in listing media is still the derivation of the Play set
+        run: node --single-threaded tooling/ci/assert-apps-gov-in-media.mjs
 
   guards-chassis:
     name: Guards — chassis, app surface and packages

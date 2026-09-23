@@ -7,6 +7,7 @@ import {
   makeRevenuecatVerifier,
 } from '../src/lib/mor/revenuecat';
 import { decideSubscription } from '../src/lib/mor/contract';
+import { revenueCatAccessRuling, revenueCatAccessRulingForRow } from '../../../contracts/entitlement/contract.js';
 import { verifierFor, MOR_VERIFIERS } from '../src/lib/mor/registry';
 // Side-effect import: the harness installs `crypto.subtle.timingSafeEqual`, the
 // Workers extension Node's WebCrypto lacks — without it a refusal and a crash
@@ -320,9 +321,100 @@ describe('revenuecat parse — what else the table decides, and what it does not
     expect(subjectOf(rcEvent({ type: 'SUBSCRIPTION_PAUSED' })).kind).toBe('unknown');
   });
 
-  it('an event type outside the contract table (TRANSFER) is REFUSED, not ignored', () => {
-    expect(subjectOf(rcEvent({ type: 'TRANSFER' })).kind).toBe('refused');
+  it('an event type outside the contract table is REFUSED, not ignored', () => {
+    expect(subjectOf(rcEvent({ type: 'SOME_FUTURE_EVENT' })).kind).toBe('refused');
   });
+
+  it('TEMPORARY_ENTITLEMENT_GRANT changes no access: acknowledged, not a grant (ADR 092 §4.6)', () => {
+    // P1: at most 24 hours, only app_user_id and store — and no environment.
+    expect(revenueCatAccessRuling('TEMPORARY_ENTITLEMENT_GRANT')).toBeNull();
+    expect(subjectOf(rcEvent({ type: 'TEMPORARY_ENTITLEMENT_GRANT', environment: undefined })).kind).toBe('unknown');
+  });
+
+  it('REFUND_REVERSED is REFUSED BY NAME and is never ruled a revocation (ADR 092 §4.6)', () => {
+    const s = subjectOf(rcEvent({ type: 'REFUND_REVERSED', store: 'APP_STORE' }));
+    expect(s.kind === 'refused' && s.detail).toMatch(/^revenuecat REFUND_REVERSED: refund_reversed_undecided:/);
+    // The restoring reason, fed to the ruling directly: never 'revoke'.
+    expect(
+      revenueCatAccessRulingForRow({ event: 'REFUND_REVERSED', reason: 'chargeback_reversed', dateDerived: false }),
+    ).not.toBe('revoke');
+  });
+
+  it('E1 · a lifecycle event carries product_id and store onto the subject', () => {
+    const s = subjectOf(rcEvent({ product_id: 'st_pro_monthly', store: 'PLAY_STORE' }));
+    expect(s.kind === 'subscription' && [s.productId, s.store]).toEqual(['st_pro_monthly', 'PLAY_STORE']);
+    const bare = subjectOf(rcEvent());
+    expect(bare.kind === 'subscription' && [bare.productId, bare.store]).toEqual([null, null]);
+  });
+});
+
+// ── ⏱ 2026-09-22 · [ADR 092] §4.3 · TRANSFER ─────────────────────────────────
+// The body follows the event reference's TRANSFER sample (P2, read 2026-09-22):
+// `transferred_from` and `transferred_to` are id lists, `environment` and `store`
+// are Sometimes, and there is no app_user_id, product or transaction — "The
+// webhook is sent only for the destination user" (P1).
+const FROM_USER = '0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d';
+
+function rcTransfer(over: Record<string, unknown> = {}): string {
+  return JSON.stringify({
+    api_version: '1.0',
+    event: {
+      id: 'evt_rc_transfer_1',
+      type: 'TRANSFER',
+      event_timestamp_ms: NOW_MS,
+      app_id: RC_APP,
+      environment: 'PRODUCTION',
+      store: 'PLAY_STORE',
+      transferred_from: [FROM_USER],
+      transferred_to: [USER],
+      ...over,
+    },
+  });
+}
+
+describe('revenuecat parse — TRANSFER is an ownership fact, never a grant', () => {
+  it('the ruling answers transfer, not grant', () => {
+    expect(revenueCatAccessRuling('TRANSFER')).toBe('transfer');
+  });
+
+  it('parses to a transfer subject naming the sources and the ONE destination', () => {
+    const s = subjectOf(rcTransfer());
+    expect(s).toEqual({
+      kind: 'transfer',
+      appId: 'subscriptiontracker',
+      from: [FROM_USER],
+      to: USER,
+      railEnvironment: 'live',
+    });
+  });
+
+  it('a TRANSFER from an app id no app declares is refused on A, like any event', () => {
+    expect(subjectOf(rcTransfer({ app_id: 'app_undeclared' })).kind).toBe('refused');
+  });
+
+  it.each([
+    ['transferred_from null', { transferred_from: null }, /^revenuecat TRANSFER: transfer_ids_absent: `transferred_from`/],
+    ['transferred_to empty', { transferred_to: [] }, /^revenuecat TRANSFER: transfer_ids_absent: `transferred_to`/],
+    ['transferred_to null', { transferred_to: null }, /^revenuecat TRANSFER: transfer_ids_absent: `transferred_to`/],
+    ['an anonymous source', { transferred_from: ['$RCAnonymousID:1a2b'] }, /^revenuecat TRANSFER: transfer_anonymous:/],
+    ['an anonymous destination', { transferred_to: ['$RCAnonymousID:1a2b'] }, /^revenuecat TRANSFER: transfer_anonymous:/],
+    ['two destinations', { transferred_to: [USER, FROM_USER] }, /^revenuecat TRANSFER: transfer_ambiguous_destination:/],
+    ['no environment', { environment: undefined }, /^revenuecat TRANSFER: transfer_environment_absent:/],
+    ['an unknown environment', { environment: 'STAGING' }, /neither PRODUCTION nor SANDBOX/],
+    ['an inherited key as environment', { environment: 'toString' }, /neither PRODUCTION nor SANDBOX/],
+  ])('%s is REFUSED BY NAME', (_label, over, detail) => {
+    const s = subjectOf(rcTransfer(over));
+    expect(s.kind).toBe('refused');
+    expect(s.kind === 'refused' && s.detail).toMatch(detail);
+  });
+
+  it('a SANDBOX transfer is carried as the sandbox world', () => {
+    const s = subjectOf(rcTransfer({ environment: 'SANDBOX' }));
+    expect(s.kind === 'transfer' && s.railEnvironment).toBe('sandbox');
+  });
+});
+
+describe('revenuecat parse — the rest of the table', () => {
 
   it('EXPIRATION with expiration_reason SUBSCRIPTION_PAUSED revokes as subscription_paused', () => {
     const s = subjectOf(rcEvent({ type: 'EXPIRATION', expiration_reason: 'SUBSCRIPTION_PAUSED' }));

@@ -184,9 +184,12 @@ async function d1(dbId, sql, params = []) {
     return { body };
   }
   const url = `https://api.cloudflare.com/client/v4/accounts/${process.env.CLOUDFLARE_ACCOUNT_ID}/d1/database/${dbId}/query`;
-  const send = () =>
+  // `signal` is the attempt's, armed by readWithBoundedRetry with the per-request
+  // ceiling; the body read below the helper stays under it (row O-OPS-READER-NO-CEILING).
+  const send = (signal) =>
     fetch(url, {
       method: 'POST',
+      signal,
       headers: {
         authorization: `Bearer ${process.env.CLOUDFLARE_API_TOKEN}`,
         'content-type': 'application/json',
@@ -206,10 +209,10 @@ async function d1(dbId, sql, params = []) {
   // `success:false`, which is a RESULT — is still returned as a body and graded.
   let res;
   try {
-    res = await readWithBoundedRetry(async () => {
+    res = await readWithBoundedRetry(async (_attempt, { signal }) => {
       let r;
       try {
-        r = await send();
+        r = await send(signal);
       } catch (e) {
         throw classifyThrown(e, `the D1 HTTP API was unreachable (${e?.name ?? 'error'}: ${e?.message ?? e})`);
       }

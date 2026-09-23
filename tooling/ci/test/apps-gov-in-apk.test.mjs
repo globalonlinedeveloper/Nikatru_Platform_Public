@@ -34,6 +34,7 @@ import {
   portalLabel,
   decideArtifact,
   checkFormAnswers,
+  checkBuiltIdentity,
   mdCell,
 } from '../assert-apps-gov-in-apk.mjs';
 
@@ -380,15 +381,33 @@ function fakeTool(dir, name, envOut, envCode) {
 }
 
 /** A repo root with a register and form answers, an .apk, and fake tools. */
-function fixture({ pin = null, apksigner = apksignerText(DEBUG_SIGNER.dn, DEBUG_HEX), badging = badgingText(), tools = true, form = answers() } = {}) {
+function fixture({
+  pin = null,
+  apksigner = apksignerText(DEBUG_SIGNER.dn, DEBUG_HEX),
+  badging = badgingText(),
+  tools = true,
+  form = answers(),
+  // `appId: null` omits the gradle file entirely — the case where the
+  // declaration cannot be read. `forbids: null` omits `purchaseRail`.
+  appId = 'com.nikatru.demo',
+  forbids = ['paddle', 'play-billing', 'apple-iap'],
+} = {}) {
   const root = join(TMP, `r${++seq}`);
   mkdirSync(join(root, 'tooling'), { recursive: true });
   writeFileSync(join(root, 'tooling', 'channel-register.json'), JSON.stringify({
     channels: [
       { id: 'android-play', signing: { uploadCertificate: { sha256: PLAY_PIN } } },
-      { id: 'apps-gov-in', signing: { signingCertificate: { sha256: pin } } },
+      {
+        id: 'apps-gov-in',
+        signing: { signingCertificate: { sha256: pin } },
+        ...(forbids === null ? {} : { purchaseRail: { rail: 'none', forbids, forbidsWhy: 'the fixture says so' } }),
+      },
     ],
   }));
+  if (appId !== null) {
+    mkdirSync(join(root, 'apps', 'demo', 'android', 'app'), { recursive: true });
+    writeFileSync(join(root, 'apps', 'demo', 'android', 'app', 'build.gradle.kts'), `android {\n    defaultConfig {\n        applicationId = "${appId}"\n    }\n}\n`);
+  }
   mkdirSync(join(root, 'apps', 'demo', 'store', 'apps-gov-in'), { recursive: true });
   writeFileSync(join(root, 'apps', 'demo', 'store', 'apps-gov-in', 'form-answers.json'), JSON.stringify(form));
   const apk = join(root, 'demo-apps-gov-in-1.0.7.apk');
@@ -424,6 +443,59 @@ function run(fx, extra = [], posture = 'debug') {
   });
   return { code: r.status, out: `${r.stdout}${r.stderr}`, output: readFileSync(out, 'utf8'), summary: readFileSync(summary, 'utf8') };
 }
+
+describe('checkBuiltIdentity — the package id, and the rails the row forbids', () => {
+  const row = (forbids = ['paddle', 'play-billing', 'apple-iap']) => ({ purchaseRail: { rail: 'none', forbids, forbidsWhy: 'the fixture says so' } });
+  const BILLING = 'com.android.vending.BILLING';
+
+  test('the shipped shape passes: the package matches and no billing permission is requested', () => {
+    assert.deepEqual(checkBuiltIdentity(parseBadging(badgingText()), row(), 'com.nikatru.demo'), []);
+  });
+
+  test('FAILS a package the gradle declaration does not name', () => {
+    const p = checkBuiltIdentity(parseBadging(badgingText()), row(), 'com.nikatru.other');
+    assert.equal(p.length, 1);
+    assert.match(p[0], /package is "com\.nikatru\.demo" and apps\/<app>\/android\/app\/build\.gradle\.kts declares applicationId "com\.nikatru\.other"/);
+  });
+
+  test('FAILS an unreadable declaration rather than skipping the check', () => {
+    const p = checkBuiltIdentity(parseBadging(badgingText()), row(), null);
+    assert.equal(p.length, 1);
+    assert.match(p[0], /no applicationId could be read/);
+  });
+
+  test('FAILS an .apk that requests com.android.vending.BILLING while the row forbids play-billing', () => {
+    const badging = parseBadging(badgingText({ perms: ['android.permission.INTERNET', BILLING] }));
+    const p = checkBuiltIdentity(badging, row(), 'com.nikatru.demo');
+    assert.equal(p.length, 1);
+    assert.match(p[0], /requests com\.android\.vending\.BILLING, and .* forbids the "play-billing" rail/);
+  });
+
+  test('a forbidden rail with no permission of its own ranges over nothing, and says nothing', () => {
+    const badging = parseBadging(badgingText({ perms: ['android.permission.INTERNET', BILLING] }));
+    assert.deepEqual(checkBuiltIdentity(badging, row(['paddle']), 'com.nikatru.demo'), []);
+  });
+
+  test('FAILS a row with no purchaseRail.forbids — the limb would range over nothing', () => {
+    const p = checkBuiltIdentity(parseBadging(badgingText()), {}, 'com.nikatru.demo');
+    assert.equal(p.length, 1);
+    assert.match(p[0], /declares no `purchaseRail\.forbids`/);
+  });
+
+  test('END TO END: a billing permission in the built .apk exits 1 and writes no artifact name', () => {
+    const badging = badgingText({ perms: ['android.permission.INTERNET', BILLING] });
+    const { code, out, output } = run(fixture({ badging }));
+    assert.equal(code, 1, out);
+    assert.match(out, /FAIL the built \.apk requests com\.android\.vending\.BILLING/);
+    assert.doesNotMatch(output, /artifact_name=/);
+  });
+
+  test('END TO END: a missing build.gradle.kts exits 1 rather than passing unchecked', () => {
+    const { code, out } = run(fixture({ appId: null }));
+    assert.equal(code, 1, out);
+    assert.match(out, /FAIL no applicationId could be read/);
+  });
+});
 
 describe('the CLI', () => {
   test('no arguments at all is COVERAGE LOST, not a pass', () => {

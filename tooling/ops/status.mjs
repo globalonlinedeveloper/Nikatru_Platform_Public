@@ -123,6 +123,12 @@ const DELEGATE_REL = 'tooling/monitor-register.json';
  * gets cancelled, and a cancelled job reports nothing at all. Ten seconds is
  * long enough that a cold Worker start is not an alarm. One number, changed
  * deliberately.
+ *
+ * ⏱ APPENDED 2026-09-22: it is no longer armed here. probeLive passes it to
+ * readWithBoundedRetry as `timeoutMs`, which may only SHORTEN the shared
+ * per-request ceiling, so one request carries one ceiling. It stays at 10 s
+ * because this reader probes every surface in sequence and its fan-out
+ * arithmetic is sized on it (row O-OPS-READER-NO-CEILING).
  */
 const PROBE_TIMEOUT_MS = 10_000;
 
@@ -431,7 +437,7 @@ export function evaluateSurface(surface, probe) {
 export async function probeLive(surface, { doFetch = fetch, sleep, note } = {}) {
   try {
     return await readWithBoundedRetry(
-      async () => {
+      async (_attempt, { signal }) => {
         let res;
         try {
           // NO `CF-Connecting-IP` HEADER, EVER — Cloudflare's edge rejects any client
@@ -441,7 +447,7 @@ export async function probeLive(surface, { doFetch = fetch, sleep, note } = {}) 
             method: 'GET',
             redirect: 'follow',
             headers: { accept: '*/*' },
-            signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+            signal,
           });
         } catch (e) {
           throw classifyThrown(e, e?.message ?? String(e));
@@ -457,7 +463,7 @@ export async function probeLive(surface, { doFetch = fetch, sleep, note } = {}) 
         }
         return { status: res.status, body };
       },
-      { sleep, note },
+      { sleep, note, timeoutMs: PROBE_TIMEOUT_MS },
     );
   } catch (e) {
     return { unreached: e?.message ?? String(e) };

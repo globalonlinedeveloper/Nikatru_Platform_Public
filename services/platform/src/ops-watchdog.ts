@@ -78,14 +78,16 @@ export const OPS_FETCH_TIMEOUT_MS = 10_000;
  * + 1  main's HEAD commit (the branch-head anchor, read once per pass)
  * + 8  main conclusions: per OPS_MAIN_WORKFLOWS entry, OPS_MAIN_READ_ATTEMPTS
  *      attempts of (one page + one cross-read) — see "THE STALE PAGE" below
+ * + 1  the head_sha second path, per OPS_PUSH_TRIGGERED_ON_MAIN entry, read
+ *      only when every attempt was refused — see "THE SECOND PATH" below
  * + 2  GlitchTip monitor reads (OPS_GLITCHTIP_MONITORS)
  * + 1  the watchdog's own heartbeat POST (scheduled.ts, opsWatchdogJob)
- * = 17. test/ops-watchdog.test.ts recomputes this from the arrays above.
+ * = 18. test/ops-watchdog.test.ts recomputes this from the arrays above.
  * On the 06:00 firing it sits beside keep-alive (1+), Box B (3), Box A (N),
  * the dispatcher (≤3) and the cron beat (1): far inside 50 (Free) and 10,000 (Paid).
  * @ceiling workers.externalSubrequests lte
  */
-export const OPS_WATCHDOG_MAX_SUBREQUESTS = 17;
+export const OPS_WATCHDOG_MAX_SUBREQUESTS = 18;
 
 function githubHeaders(token: string): Record<string, string> {
   return {
@@ -187,9 +189,10 @@ export async function checkStuckRuns(env: Env, nowMs: number = Date.now()): Prom
 //     cache key and filter path. A newer run there, outside the race window,
 //     proves the page behind. One-way: a staler cross-read cannot fail a fresh page.
 // A violated anchor is retried ONCE at a different page size (a real parameter,
-// so a different cache key), and then the row is ok=0 "unreadable: stale page"
-// — the check could not read its subject, which is exactly what ok=0 means
-// here; it is never a FINDING. The node guards share the same three anchors
+// so a different cache key). Then, for a push-triggered workflow, main HEAD's
+// own run is asked through THE SECOND PATH below; failing that, the row is ok=0
+// "unreadable: stale page" — the check could not read its subject, which is
+// exactly what ok=0 means here; it is never a FINDING. The node guards share the same three anchors
 // through tooling/ci/run-page-anchor.mjs; this is the Worker's copy of the two
 // that apply off-runner (the self-run anchor needs GITHUB_RUN_ID).
 // ─────────────────────────────────────────────────────────────────────────────
@@ -218,6 +221,7 @@ export const OPS_CROSS_READ_AFTER_MS = 3 * 3_600_000;
 type MainRun = {
   id: number;
   head_sha?: string;
+  head_branch?: string;
   status?: string;
   conclusion?: string | null;
   created_at?: string;
@@ -263,6 +267,52 @@ export function mainHeadAnchor(body: unknown, nowMs: number): string | null {
   return nowMs - at < OPS_HEAD_RUN_GRACE_MS ? null : sha;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔴 THE SECOND PATH — a refused list is not an unreadable verdict. Added
+// 2026-09-22 (O-OPS-WATCHDOG-STALE-PAGE-REDDENS-THE-RAIL).
+//
+// MEASURED: on 2026-09-21 the 12:00Z firing read a ci.yml page ending at run
+// 35422354427 with no run of main HEAD 42e2645e. The anchor refused it, as it
+// should, and the ok=0 row paged three Ops watch runs red as "says the job
+// FAILED" (35597069314, 35623035343, 35627468681) though nothing on main had
+// failed. The lag was per QUERY that day: per_page=1 answered fresh within
+// minutes of a stale per_page=5.
+//
+// So when every attempt at the branch=main list is refused, main's verdict for
+// a push-triggered workflow is asked ONCE through a different query:
+// `runs?head_sha=<HEAD>`, with the HEAD sha the commits endpoint already gave
+// the anchor (no extra read of it). It needs only the Actions read the token
+// already carries. Only a run OF HEAD ON MAIN answers; the list is still never
+// believed, the anchor and OPS_MAIN_PAGE_SIZE are unchanged, and a second path
+// that is unreadable or holds no run of HEAD leaves the row ok=0 "unreadable:
+// stale page" exactly as before. ops-watch.yml is schedule-only, so it has no
+// HEAD to ask about and no second path.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** PURE. The second path's answer: the newest run of main HEAD in a
+ *  `runs?head_sha=` body, or why there is none. A run of the same sha on
+ *  another branch is not main's verdict, so it does not count. */
+export function headRunOf(body: unknown, headSha: string): { run: MainRun } | { why: string } {
+  const list = (body as { workflow_runs?: unknown } | null)?.workflow_runs;
+  const runs = Array.isArray(list) ? (list as MainRun[]) : [];
+  const run = newestRun(runs.filter((r) => r?.head_sha === headSha && r?.head_branch === 'main'));
+  return run ? { run } : { why: `the head_sha path holds no run of main HEAD ${headSha.slice(0, 8)} either (${runs.length} run(s) answered)` };
+}
+
+/** PURE. One run of main graded into its row; `via` names the path that
+ *  answered. A COMPLETED run's conclusion is the verdict, and anything but
+ *  success is a FINDING. A run still going is ok=1 with no FINDING: the check
+ *  read its subject, and the subject has not concluded yet. */
+export function gradeMainRun(wf: string, run: MainRun, via: string): HeartbeatRow {
+  const target = `main:${wf}`;
+  if (run.status !== 'completed') {
+    return { target, ok: true, detail: `${wf} on main: run ${run.id} is ${run.status ?? '?'}, not concluded yet ${via}` };
+  }
+  const conclusion = run.conclusion ?? 'null';
+  const tag = conclusion === 'success' ? '' : 'FINDING: ';
+  return { target, ok: true, detail: `${tag}${wf} on main: ${conclusion} (run ${run.id}, ${run.updated_at ?? '?'}) ${via}` };
+}
+
 async function githubGet(token: string, path: string): Promise<unknown> {
   const res = await fetch(`https://api.github.com/repos/${OPS_REPO.owner}/${OPS_REPO.repo}${path}`, {
     headers: githubHeaders(token),
@@ -272,14 +322,15 @@ async function githubGet(token: string, path: string): Promise<unknown> {
   return res.json();
 }
 
-/** One anchored read of a workflow's history on main: the page, or an
- *  `unreadable: …` reason. Never a verdict about the workflow itself. */
+/** One anchored read of a workflow's history on main: the page, main HEAD's run
+ *  from the second path when every page was refused, or an `unreadable: …`
+ *  reason. Never a verdict about the workflow itself. */
 async function readMainPage(
   token: string,
   wf: string,
   head: () => Promise<string | null>,
   nowMs: number,
-): Promise<{ runs: MainRun[] } | { unreadable: string }> {
+): Promise<{ runs: MainRun[] } | { headRun: MainRun; headSha: string } | { unreadable: string }> {
   let last = '';
   for (let attempt = 0; attempt < OPS_MAIN_READ_ATTEMPTS; attempt++) {
     const base = `/actions/workflows/${wf}/runs?branch=main`;
@@ -297,7 +348,18 @@ async function readMainPage(
     if (verdict.ok) return { runs };
     last = verdict.why;
   }
-  return { unreadable: `${last} (after ${OPS_MAIN_READ_ATTEMPTS} reads)` };
+  const refused = `${last} (after ${OPS_MAIN_READ_ATTEMPTS} reads)`;
+  // THE SECOND PATH. head() is memoised, so HEAD costs no second read here.
+  const headSha = OPS_PUSH_TRIGGERED_ON_MAIN.includes(wf) ? await head() : null;
+  if (!headSha) return { unreadable: refused };
+  let body: unknown;
+  try {
+    body = await githubGet(token, `/actions/workflows/${wf}/runs?head_sha=${headSha}&per_page=5`);
+  } catch (err) {
+    return { unreadable: `${refused}; the head_sha path was unreadable too: ${String(err).slice(0, 80)}` };
+  }
+  const found = headRunOf(body, headSha);
+  return 'run' in found ? { headRun: found.run, headSha } : { unreadable: `${refused}; ${found.why}` };
 }
 
 /** (b) main's latest COMPLETED run per declared workflow, from an ANCHORED page. */
@@ -312,14 +374,18 @@ export async function checkMainConclusions(env: Env, nowMs: number = Date.now())
     try {
       const page = await readMainPage(token, wf, head, nowMs);
       if ('unreadable' in page) { rows.push({ target, ok: false, detail: `unreadable: ${page.unreadable}`.slice(0, 300) }); continue; }
-      const run = page.runs
-        .filter((r) => isRunId(r?.id) && r.status === 'completed')
-        .sort((a, b) => b.id - a.id)[0];
-      if (!run) { rows.push({ target, ok: false, detail: `unreadable: no completed ${wf} run on main in the newest ${OPS_MAIN_PAGE_SIZE}` }); continue; }
-      const conclusion = run.conclusion ?? 'null';
-      const tag = conclusion === 'success' ? '' : 'FINDING: ';
-      rows.push({ target, ok: true, detail: `${tag}${wf} on main: ${conclusion} (run ${run.id}, ${run.updated_at ?? '?'})` });
-      if (tag) console.log(`[cron] ops watchdog: ${wf} on main concluded ${conclusion} (run ${run.id})`);
+      let row: HeartbeatRow;
+      if ('headRun' in page) {
+        row = gradeMainRun(wf, page.headRun, `via head_sha=${page.headSha.slice(0, 8)} (the branch=main list was a stale page)`);
+      } else {
+        const run = page.runs
+          .filter((r) => isRunId(r?.id) && r.status === 'completed')
+          .sort((a, b) => b.id - a.id)[0];
+        if (!run) { rows.push({ target, ok: false, detail: `unreadable: no completed ${wf} run on main in the newest ${OPS_MAIN_PAGE_SIZE}` }); continue; }
+        row = gradeMainRun(wf, run, 'via the branch=main list');
+      }
+      rows.push(row);
+      if (row.detail.startsWith('FINDING: ')) console.log(`[cron] ops watchdog: ${row.detail}`);
     } catch (err) {
       rows.push({ target, ok: false, detail: `unreadable: ${String(err).slice(0, 150)}` });
     }

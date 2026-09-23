@@ -66,7 +66,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { spawnSync } from 'node:child_process';
 import { realpathSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { resolve, basename, dirname } from 'node:path';
 
 /** Every environment variable by which a CALLER can redirect `git` at a different
  *  repository, in the order the git documentation lists them. `GIT_DIR` is the one
@@ -246,4 +246,44 @@ export function repoGit(root, ...args) {
     );
   }
   return r.stdout;
+}
+
+/** The MAIN checkout of the repository `root` belongs to: the parent of
+ *  `git rev-parse --git-common-dir` when that answer is a `.git` DIRECTORY. In a
+ *  main checkout that is `root` itself, so a caller that elects with this changes
+ *  nothing outside a worktree; in a LINKED worktree it is the checkout the worktree
+ *  was added from, whose name is the one the workspace is laid out under.
+ *
+ *  ⏱ 2026-09-22 (O-INSTALL-HOOKS-NAMES-THE-CORPUS-AFTER-THE-WORKTREE). A caller
+ *  that derives a SIBLING path from `basename(root)` derives it from the worktree's
+ *  own throwaway name inside a worktree — `.worktrees/<lane>_Private`, which never
+ *  exists — and an "absent" branch below that then passes vacuously. The name of the
+ *  checkout is not a property of the tree you are standing in.
+ *
+ *  Returns `{ main, why }` and NEVER throws for a git refusal: `why` carries the
+ *  sentence a caller prints beside its fallback, so falling back is never silent.
+ *  A non-git error still throws, because that is not a refusal.
+ *
+ *  ⚠️ In a linked worktree `--git-common-dir` answers with a RELATIVE path
+ *  (`../..`-style) often enough that resolving it against `root` is not optional.
+ *  A `.git` FILE (the worktree's own pointer) is never the common dir, and a bare
+ *  repository's common dir is not named `.git` at all — both of those answer
+ *  `{ main: null }` rather than a confident wrong directory.
+ *
+ *  Same rule as `spec-guards.mjs` `mainWorktreeOf`, `preflight.mjs` and
+ *  `tooling/store/rehearse-capture-locally.mjs`, which each carry their own copy.
+ *  Those three should import this one in a follow-up; they are deliberately NOT
+ *  touched here, so that this change is readable on its own. */
+export function mainCheckoutOf(root) {
+  let out;
+  try {
+    out = repoGit(root, 'rev-parse', '--git-common-dir').trim();
+  } catch (e) {
+    if (e instanceof RepoGitError) return { main: null, why: e.message };
+    throw e;
+  }
+  if (!out) return { main: null, why: '`git rev-parse --git-common-dir` printed nothing' };
+  const common = resolve(root, out);
+  if (basename(common) !== '.git') return { main: null, why: `the git common dir is ${common}, which is not a \`.git\` directory` };
+  return { main: dirname(common), why: null };
 }

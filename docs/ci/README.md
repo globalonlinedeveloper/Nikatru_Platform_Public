@@ -518,6 +518,7 @@ naming the job it belonged to and the line it sat above.
 | [`e2e.md`](e2e.md) | `.github/workflows/e2e.yml` | the nightly run against live Supabase, the live Worker and live D1 |
 | [`extensions.md`](extensions.md) | `.github/workflows/extensions.yml` | the build-free extensions subtree: gates, sims, packaging, e2e |
 | [`ops-watch.md`](ops-watch.md) | `.github/workflows/ops-watch.yml` | the alarm clock, twelve cron slots and one durable issue |
+| [`redeploy-stranded.md`](redeploy-stranded.md) | `.github/workflows/redeploy-stranded.yml` | re-entering a deploy lane its own red ci-gate stranded, and never one that really failed |
 | [`renovate.md`](renovate.md) | `.github/workflows/renovate.yml` | dependency updates, and why the cron is daily against a weekly duty |
 | [`site-drift-repair.md`](site-drift-repair.md) | `.github/workflows/site-drift-repair.yml` | the post-merge sitemap repair no pre-merge lane can do |
 | [`store-screenshots.md`](store-screenshots.md) | `.github/workflows/store-screenshots.yml` | the live Play capture, proposed for review rather than pushed |

@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "contracts/release.schema.json",
+  "title": "release.json — what one release carries, versioned PER ARTEFACT",
+  "description": "Emitted by tooling/ci/release-manifest.mjs --emit-release-json into the release directory BEFORE SHA256SUMS is written, so the integrity record names it. Graded by tooling/ci/assert-release-json.mjs. There is deliberately NO top-level version field: a cross-product version would renumber FullShot the day the app ships, and a store refuses a version that goes backwards.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "unit", "surface", "tag", "commit", "runUrl", "releasedAt", "minSupported", "notesUrl", "artefacts"],
+  "properties": {
+    "schema": { "const": "nikatru.release/1" },
+    "unit": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*$",
+      "description": "The product id this release is of — an apps/<id> directory or an extensions/Extension/*/tool.json id."
+    },
+    "surface": { "enum": ["app", "extension"] },
+    "tag": {
+      "type": "string",
+      "description": "The release tag <unit>-v<semver>, OR the <unit>-untagged-<short sha> sentinel the build-platforms release job already synthesises on a non-tag run. BOTH shapes are declared here because the emit and validate steps are deliberately NOT tag-gated: a schedule and a dispatch must exercise them, exactly as the staging step's own comment says of assert-app-versioning. A schema that accepted only the first would turn every scheduled run red, and gating the steps instead would leave them dead until the first real release — which is the failure mode this lane exists to remove.",
+      "anyOf": [
+        { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*-v[0-9]+\\.[0-9]+\\.[0-9]+(\\.[0-9]+)?$" },
+        { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*-untagged-[0-9a-f]{7,40}$" }
+      ]
+    },
+    "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "runUrl": { "type": "string", "format": "https-url" },
+    "releasedAt": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+      "description": "The COMMIT's timestamp, not the run's: a re-run of the same commit must emit identical bytes, and a wall clock makes every re-run a different file that SHA256SUMS then disagrees with."
+    },
+    "minSupported": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "description": "The oldest version this release still serves. Until a declared field exists for it the lane passes the tag's own X.Y.Z, which is exactly true while no older build exists."
+    },
+    "notesUrl": { "type": "string", "format": "https-url" },
+    "artefacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "format", "version", "build", "sha256", "size", "channels"],
+        "properties": {
+          "name": { "type": "string", "maxLength": 200, "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]*$" },
+          "format": {
+            "type": "string",
+            "pattern": "^(\\.[A-Za-z0-9]+)+$",
+            "description": "The LONGEST known extension, so `.tar.gz` stays whole rather than reading as `.gz`."
+          },
+          "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(\\.[0-9]+)?$" },
+          "build": {
+            "type": ["string", "null"],
+            "pattern": "^[0-9]+$",
+            "description": "The app surface's build number. null on the extension surface, which has none."
+          },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "size": {
+            "type": "integer",
+            "description": "Bytes. `size > 0` is a GUARD limb, not a schema one: this validator implements no `minimum`, and a keyword it does not implement is refused outright rather than silently skipped."
+          },
+          "channels": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+            "description": "The channel ids of tooling/channel-register.json this file can be submitted to. DERIVED, never typed. The schema cannot enumerate them — that would be a second copy of the register — so membership is a guard limb."
+          }
+        }
+      }
+    }
+  }
+}

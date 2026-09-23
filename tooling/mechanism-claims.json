@@ -1509,6 +1509,14 @@
       "test": "tooling/ci/test/apps-gov-in-media.test.mjs",
       "case": "NEGATIVE: a re-captured Play original makes the derived file STALE, naming the command",
       "proves": "The case re-captures one Play original after the derivation and asserts the guard names the derived file STALE with the --write command; it passes only while the guard re-derives from the committed originals. The hand-edited-output and tampered-record cases are the other two drift directions."
+    },
+    {
+      "file": "tooling/ci/assert-store-metadata.mjs",
+      "anchor": "the money answers and the age answer are DERIVED, not typed",
+      "status": "proven",
+      "test": "tooling/ci/test/store-metadata.test.mjs",
+      "case": "FAILS \"No\" on the payment gateway when the row declares a rail that sells",
+      "proves": "The paymentGateway and financial-transactions answers are read off channel-register purchaseRail.rail (ADR 094 item 5). The case flips the row to a selling rail under a typed \"No\"; it exits 1 only if the answer is derived from the row. Added 2026-09-23 with the apps-gov-in-apk-1 lane."
     }
   ],
   "backlog": {}

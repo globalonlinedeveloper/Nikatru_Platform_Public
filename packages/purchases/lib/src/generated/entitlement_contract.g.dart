@@ -102,6 +102,8 @@ const List<RevenueCatEventReason> kRevenueCatEventReasons =
   RevenueCatEventReason('INITIAL_PURCHASE', null, dateDerived: false),
   RevenueCatEventReason('RENEWAL', null, dateDerived: false),
   RevenueCatEventReason('UNCANCELLATION', null, dateDerived: false),
+  RevenueCatEventReason('TRANSFER', null, dateDerived: false),
+  RevenueCatEventReason('TEMPORARY_ENTITLEMENT_GRANT', null, dateDerived: false),
 ];
 
 /// The revocation reason a RevenueCat event means, or null when it means none.

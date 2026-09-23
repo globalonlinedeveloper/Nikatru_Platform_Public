@@ -323,6 +323,17 @@ const CLASSIFIED_ELSEWHERE = new Map([
       'designed, and it caught this one locally before CI did.',
   ],
   [
+    'redeploy-stranded.yml',
+    're-enters a deploy lane whose newest run on main failed only on its ci-gate step, once ci-gate at ' +
+      "main's head is green. It builds no app, produces no release artifact and names no app id: the lanes " +
+      'it re-enters are DERIVED from the workflow files by tooling/ops/redeploy-stranded.mjs, and those lanes ' +
+      '(deploy-web.yml, deploy-workers.yml) are classified on their own rows. R-1 would carry it in the ' +
+      'denominator as a permanent empty-set pass, the reason already written out for deploy-workers.yml, ' +
+      'ops-watch.yml and site-drift-repair.yml. The owning stage is stage 14 ops, through the duty row ' +
+      '`duty.workflow.redeploy-stranded.yml` in tooling/ops/register.json. What holds its behaviour correct ' +
+      'is tooling/ci/test/redeploy-stranded.test.mjs. Classified 2026-09-23, the round the workflow landed.',
+  ],
+  [
     'site-drift-repair.yml',
     'regenerates the discovery surface after a push to main and opens a pull request when the regenerated ' +
       'bytes differ from what main carries. It builds no app, produces no release artifact and names no ' +

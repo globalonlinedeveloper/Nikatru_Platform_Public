@@ -115,11 +115,11 @@ async function fetchWithRetry(url, init) {
   let attempts = 0;
   try {
     const res = await readWithBoundedRetry(
-      async (attempt) => {
+      async (attempt, { signal }) => {
         attempts = attempt;
         let r;
         try {
-          r = await fetch(url, init);
+          r = await fetch(url, { ...init, signal });
         } catch (e) {
           throw classifyThrown(e, e?.message ?? String(e));
         }

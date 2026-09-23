@@ -56,6 +56,11 @@ const MANIFEST_SCRIPT = join(REPO, 'tooling', 'ci', 'release-manifest.mjs');
 // `COVERAGE LOST — could not be imported`, which is the guard failing closed
 // on a broken fixture rather than on a real defect.
 const TREE_WALK = join(REPO, 'tooling', 'ci', 'tree-walk.mjs');
+// ⏱ 2026-09-22 — limb 2 now also requires the release RECORD, and it checks that
+// the script a workflow names actually exists. The fixture therefore carries it;
+// no case below RUNS it, so a copy is enough and its own matrix lives in
+// tooling/ci/test/assert-release-json.test.mjs.
+const RELEASE_JSON_GUARD = join(CI_DIR, 'assert-release-json.mjs');
 
 let TMP;
 before(() => { TMP = mkdtempSync(join(tmpdir(), 'nikatru-durable-')); });
@@ -173,6 +178,7 @@ function fixture({ workflows = {}, register = REGISTER, withManifestScript = tru
   if (register !== null) writeFileSync(join(root, 'tooling', 'channel-register.json'), JSON.stringify(withSurfaces(register), null, 2));
   if (withManifestScript) copyFileSync(MANIFEST_SCRIPT, join(root, 'tooling', 'ci', 'release-manifest.mjs'));
   if (withManifestScript) copyFileSync(TREE_WALK, join(root, 'tooling', 'ci', 'tree-walk.mjs'));
+  if (withManifestScript) copyFileSync(RELEASE_JSON_GUARD, join(root, 'tooling', 'ci', 'assert-release-json.mjs'));
   // ⏱ 2026-09-15 — release-manifest.mjs imports channel-surface.mjs too (O-EXT-SURFACE-AXIS).
   if (withManifestScript) copyFileSync(join(REPO, 'tooling', 'ci', 'channel-surface.mjs'), join(root, 'tooling', 'ci', 'channel-surface.mjs'));
   for (const [name, body] of Object.entries(workflows)) writeFileSync(join(root, '.github', 'workflows', name), body);
@@ -207,10 +213,18 @@ const UPLOAD = `      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b
           retention-days: 7
 `;
 
-const PUBLISH_STEPS = `      - name: Write the manifest
+// 🔴 THE ORDER IN HERE IS THE THING UNDER TEST, not decoration. Describe, then
+// write (so ${MANIFEST_NAME} names release.json), then verify, then grade, then
+// publish. Each red case below is this constant with exactly one of those moved
+// or removed — which is why they all share it.
+const PUBLISH_STEPS = `      - name: Describe the release
+        run: node tooling/ci/release-manifest.mjs --emit-release-json dist --app subscriptiontracker --tag subscriptiontracker-v1 --sha 93aee1d --run-url https://x/1 --notes-url https://x/2 --released-at 2026-09-22T10:00:00Z --version 1.0.0 --min-supported 1.0.0
+      - name: Write the manifest
         run: node tooling/ci/release-manifest.mjs --write dist --app subscriptiontracker --tag subscriptiontracker-v1 --sha 93aee1d
       - name: Verify it
         run: node tooling/ci/release-manifest.mjs --verify dist
+      - name: Grade the record against the bytes
+        run: node tooling/ci/assert-release-json.mjs --dir dist
       - name: Publish
         run: gh release create "$TAG" $(node tooling/ci/release-manifest.mjs --emit-assets dist)
 `;
@@ -456,6 +470,58 @@ describe('assert-release-durable.mjs — limb 2 (the integrity record)', () => {
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /never runs `tooling\/ci\/release-manifest\.mjs --write`/);
     assert.match(r.out, new RegExp(`published without ${MANIFEST_NAME}`));
+  });
+
+  test('a release described nowhere — the bytes are proved and nothing says what they are', () => {
+    const noRecord = PUBLISH_STEPS.replace(/      - name: Describe the release\n.*\n/, '');
+    const r = run(fixture({ workflows: { 'build.yml': lane({ publish: noRecord }) } }));
+    assert.equal(r.code, 1);
+    assert.match(r.out, /never runs `tooling\/ci\/release-manifest\.mjs --emit-release-json`/);
+  });
+
+  test('THE ORDERING TRAP — a record written after --write is the one asset the manifest cannot name', () => {
+    // Not a style point. `--write` hashes what is in the directory at the time,
+    // so release.json emitted afterwards is published WITHOUT a checksum line —
+    // the single file in the release nobody downstream can verify, in the record
+    // whose whole job is to be trustworthy.
+    const describe_ = PUBLISH_STEPS.match(/      - name: Describe the release\n.*\n/)[0];
+    const swapped = PUBLISH_STEPS.replace(describe_, '').replace(
+      '      - name: Verify it\n',
+      `${describe_}      - name: Verify it\n`,
+    );
+    const r = run(fixture({ workflows: { 'build.yml': lane({ publish: swapped }) } }));
+    assert.equal(r.code, 1);
+    assert.match(r.out, /and only then describes the release at/);
+  });
+
+  test('a record describing a DIFFERENT directory validates perfectly and proves nothing', () => {
+    const elsewhere = PUBLISH_STEPS.replace('--emit-release-json dist', '--emit-release-json staging');
+    const r = run(fixture({ workflows: { 'build.yml': lane({ publish: elsewhere }) } }));
+    assert.equal(r.code, 1);
+    assert.match(r.out, /describes `staging` and manifests `dist`/);
+  });
+
+  test('an emitted record nothing re-reads — the emitter cannot prove its own output', () => {
+    const ungraded = PUBLISH_STEPS.replace(/      - name: Grade the record against the bytes\n.*\n/, '');
+    const r = run(fixture({ workflows: { 'build.yml': lane({ publish: ungraded }) } }));
+    assert.equal(r.code, 1);
+    assert.match(r.out, /never runs `tooling\/ci\/assert-release-json\.mjs --dir`/);
+  });
+
+  test('a grade that runs after the upload cannot stop it', () => {
+    const grade = PUBLISH_STEPS.match(/      - name: Grade the record against the bytes\n.*\n/)[0];
+    const late = `${PUBLISH_STEPS.replace(grade, '')}${grade}`;
+    const r = run(fixture({ workflows: { 'build.yml': lane({ publish: late }) } }));
+    assert.equal(r.code, 1);
+    assert.match(r.out, /grades the release record at :\d+, AFTER its first publish/);
+  });
+
+  test('a workflow naming a guard script the tree does not have is caught here, not at runtime', () => {
+    const root = fixture({ workflows: { 'build.yml': lane() } });
+    rmSync(join(root, 'tooling', 'ci', 'assert-release-json.mjs'), { force: true });
+    const r = run(root);
+    assert.equal(r.code, 1);
+    assert.match(r.out, /which does not exist under/);
   });
 
   test('`--write` without `--verify` is a claim, not a record', () => {

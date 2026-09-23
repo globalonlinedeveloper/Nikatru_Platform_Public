@@ -394,7 +394,7 @@ jobs:
           --app ${{ matrix.app }}
       # why: the listing media is derived from the Play set, never hand-edited — §apps-gov-in.
       - name: The apps.gov.in listing media is still the derivation of the Play set
-        run: node tooling/ci/assert-apps-gov-in-media.mjs
+        run: node --single-threaded tooling/ci/assert-apps-gov-in-media.mjs
       # why: the artifact is named from the signer this reads, against the pin — §apps-gov-in.
       - name: The apps.gov.in .apk — its signer against the pin, its minSdk against the form
         id: agi_verify
@@ -1087,6 +1087,44 @@ jobs:
             tar -czf "dist/${TAG}-${n}.tar.gz" -C "$d" .
             echo "archived  ${TAG}-${n}.tar.gz"
           done
+      # why: BEFORE the manifest, never after. SHA256SUMS has to NAME release.json
+      # or the one file that describes the release is the one file nobody can
+      # verify — and `sha256sum -c` would still print ok, because it only checks
+      # what it lists. assert-release-durable.mjs limb 2 holds this order so a
+      # later edit cannot quietly swap the two steps.
+      # UNCONDITIONAL, for the same reason the versioning guard three steps up is:
+      # on a non-tag run $RELEASE_TAG is the `<app>-untagged-<sha>` sentinel, which
+      # the schema and the guard both accept, so every dispatch and every scheduled
+      # run exercises this. Gating it on `ref_type == 'tag'` would leave it dead
+      # until the first real release, which is the failure this record exists for.
+      - name: Describe the release, versioned per artefact
+        env:
+          APP: ${{ matrix.app }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RELEASES_BASE: ${{ github.server_url }}/${{ github.repository }}/releases/tag
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          # $RELEASE_TAG comes from $GITHUB_ENV two steps up; composing the notes
+          # URL here rather than in `env:` keeps the one declaration of the tag.
+          NOTES_URL="${RELEASES_BASE}/${RELEASE_TAG}"
+          # The SAME emitter the build jobs read, run again here rather than passed
+          # between jobs: a release line carried through a job output is a second
+          # copy of pubspec.yaml's number, and the copy is what drifts.
+          RELEASE_LINE="$(node tooling/ci/assert-app-versioning.mjs --emit "apps/${APP}" | sed -n 's/^release_line=//p')"
+          # 🔴 THE ARTEFACTS DO NOT CARRY THE TAG'S NUMBER. The build jobs build
+          # with `--build-name=<release line>.<run number>`, so the bytes say
+          # 1.0.0.<run> while the tag says 1.0.0. The record states what was BUILT;
+          # the guard requires only that major.minor agree with the tag.
+          # ⚠️ `$?` IS NOT READ AFTER A PIPE ANYWHERE IN THIS STEP — `set -euo
+          # pipefail` on line 1 is what makes a failing substitution fail the job.
+          RELEASED_AT="$(TZ=UTC git show -s --format=%cd --date=format-local:%Y-%m-%dT%H:%M:%SZ "$GITHUB_SHA")"
+          node tooling/ci/release-manifest.mjs --emit-release-json dist \
+            --app "$APP" --tag "$RELEASE_TAG" --sha "$GITHUB_SHA" \
+            --run-url "$RUN_URL" --notes-url "$NOTES_URL" \
+            --released-at "$RELEASED_AT" \
+            --version "${RELEASE_LINE}.${RUN_NUMBER}" --min-supported "$RELEASE_LINE" \
+            --build "$RUN_NUMBER"
       - name: Write the checksum manifest, naming the gated commit
         env:
           APP: ${{ matrix.app }}
@@ -1100,6 +1138,13 @@ jobs:
         run: >
           node tooling/ci/release-manifest.mjs --verify dist
           --expect-formats --for-workflow .github/workflows/build-platforms.yml
+      # why: the manifest answers "are these the bytes that were staged". This
+      # answers "is what the record SAYS about them true" — the sizes, the
+      # per-artefact versions, and the channels each file may actually be
+      # submitted to. Two different questions over the same directory, and the
+      # second one is the one a downloader and a store both read.
+      - name: Grade the release record against the bytes beside it
+        run: node tooling/ci/assert-release-json.mjs --dir dist
       - name: Publish the GitHub Release (tag pushes only)
         if: github.ref_type == 'tag'
         env:

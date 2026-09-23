@@ -1,0 +1,52 @@
+name: Redeploy stranded lanes
+
+# The measurements, the 2026-09-22 instance and the red controls behind this file
+# are in docs/ci/redeploy-stranded.md. Only `# why:` lines live here, and
+# docs/ci/README.md carries the rules every workflow has to obey.
+
+on:
+  # zizmor: ignore[dangerous-triggers]
+  # why: this is the ONE event that fires when ci-gate turns green on a commit
+  # whose paths no deploy lane matches -- the commit that strands them. It is safe
+  # here: no expression reads the triggering event, the checkout is the default
+  # branch, and the only code run is tooling/ops/redeploy-stranded.mjs from it.
+  workflow_run:
+    # why: CI, plus every deploy lane that gates on ci-gate. The lanes' own
+    # completions close the race where a lane fails its gate AFTER CI at a later
+    # commit is already green. redeploy-stranded.test.mjs holds this list equal
+    # to the lanes the tool derives, both ways.
+    workflows: [CI, Deploy web, Deploy workers]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  # why: two completions in the same minute must not both dispatch the same lane.
+  # The second waits, then reads the first one's dispatch as the lane's newest run.
+  group: redeploy-stranded
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  recover:
+    name: Re-enter a deploy lane its own gate stranded
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      # why: the ci-gate check-run at main's head is read, never written.
+      checks: read
+      # why: `actions: write` is the re-run of a stranded run's failed jobs and
+      # the dispatch of a stranded lane on main. Nothing else is requested.
+      actions: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Re-enter every lane stranded by a red ci-gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node tooling/ops/redeploy-stranded.mjs

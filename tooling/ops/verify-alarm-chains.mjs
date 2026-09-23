@@ -130,13 +130,14 @@ async function api(path, init = {}, { sleep, note } = {}) {
   // copy of it in this file is the fork this whole change exists to delete.
   const attempts = isSafeMethod(method) ? undefined : 1;
   return readWithBoundedRetry(
-    async () => {
+    async (_attempt, { signal }) => {
       // NO `CF-Connecting-IP` HEADER, EVER — Cloudflare's edge rejects any client
       // request carrying one with error 1000, before the origin is reached.
       let res;
       try {
         res = await fetch(`${BASE}/api/0/${path}`, {
           ...init,
+          signal,
           headers: {
             Authorization: `Bearer ${TOKEN}`,
             Accept: 'application/json',
