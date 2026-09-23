@@ -465,12 +465,16 @@ the required set from `isBackendLive` itself and grades every build step a
 `kind: store` row declares, so a fourth requirement added to that getter
 cannot silently escape any store lane.
 
-⬜ NO `--build-number` ON THE .apk, ON PURPOSE. That flag is Play's
-versionCode and the .apk is never uploaded to Play, so the only thing it
-would change is a number nothing reads. What MUST match the bundle is
-APP_VERSION — the string version_gate.dart compares and every analytics
-row carries — and it does, character for character, because both come
-from the same `ver` step and the same run number.
+✅ `--build-number` IS ON THE .apk NOW — 2026-09-23, lane `version-stamp`.
+The note here used to read "NO `--build-number` ON THE .apk, ON PURPOSE",
+because the .apk is never uploaded to Play. But the apps.gov.in .apk DOES
+ship, and Android refuses to install an update whose versionCode is not
+above the installed one, so a counter every shipped .apk lacks is an
+update path that breaks on the second release. assert-app-versioning.mjs
+now asks every release build in every workflow for the stamp, and an
+Android target without a number fails. APP_VERSION still matches the
+bundle character for character: both come from the same `ver` step and
+the same run number.
 
 ### before step **Build android (aab — the Google Play artifact)**
 

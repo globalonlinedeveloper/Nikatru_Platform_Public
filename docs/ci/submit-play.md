@@ -454,17 +454,31 @@ the edit committed or it did not. `edits.tracks.list` names the
 versionCodes each track carries, and after an upload that shipped
 nothing NO track carries this build's.
 
-⚠️ THE EXPECTATION IS DERIVED, NOT PASSED IN, AND THE CHAIN IS THE
-REASON IT IS TRUSTWORTHY. `apps/subscriptiontracker/android/app/build.gradle.kts`
-sets `versionCode = flutter.versionCode`, and the build step above
-passes no `--build-number` — so the versionCode Play receives is the
-build number in `apps/subscriptiontracker/pubspec.yaml`, read here THROUGH THE SAME
-PARSER the versioning guard uses rather than by a second reader of the
-same file. The application id comes through the shared identity reader
-for the same reason. If somebody later gives the build an explicit
-`--build-number`, this expectation goes STALE and this step goes RED on
-a good submission — loud, in the job, naming both numbers. That is the
-right direction for it to break in; a silent pass is not available.
+⚠️ THE EXPECTATION IS THE SAME EXPRESSION THE BUILD WAS GIVEN.
+`apps/subscriptiontracker/android/app/build.gradle.kts` sets
+`versionCode = flutter.versionCode`, and since 2026-09-23 the build step
+above passes `--build-number=${{ github.run_number }}` — so the versionCode
+Play receives is this workflow's run number, and this step expects exactly
+that, read from the same `github.run_number` through `RUN_NUMBER` (and
+refused if it is not all digits). The application id comes through the
+shared identity reader, as before.
+
+⏱ SUPERSEDED 2026-09-23 (lane `version-stamp`). Until then the build
+passed NO `--build-number`, so the versionCode was pubspec's `+1` and this
+step read it through the versioning guard's parser. That is exactly how
+the 2026-09-22 21:27Z and 21:38Z uploads went out as versionCode 1 twice,
+with no build name and no APP_VERSION — Play's pre-launch robots then
+wrote 22+ production D1 rows as `dev` (ops watch #443, prod-provenance).
+The paragraph that stood here predicted the switch: "this expectation
+goes STALE and this step goes RED on a good submission". It was changed
+in the same commit as the build so that never happened.
+
+🔴 MONOTONICITY. `github.run_number` is counted per workflow FILE and
+only ever grows, so every new run of this workflow uploads a versionCode
+above the last (runs 3–5 have run; the next is ≥ 6 > 1). A RE-RUN of a
+failed run reuses its run number; if that run already reached Google,
+Play refuses the duplicate versionCode and the job goes red — loud, and
+the fix is a new run, never a hand-bumped number.
 
 ⚠️ IT RUNS BEFORE THE LEDGER STEP AND DOES NOT GUARD IT. That step is
 `always() && steps.upload.outcome == 'success'`, so a red here still

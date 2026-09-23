@@ -55,7 +55,7 @@
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { listDir } from './tree-walk.mjs';
-import { parseWorkflow } from './workflow-scan.mjs';
+import { parseWorkflow, parseAllWorkflows, flutterReleaseBuilds, gradeDomain, buildAt } from './workflow-scan.mjs';
 
 // ── The release lanes are DERIVED FROM THE REGISTER, never typed here ─────────
 //
@@ -570,107 +570,20 @@ for (const laneRow of servedLanes) {
 
   for (const cmd of builds) {
     buildsChecked++;
-
-    // 2. Build number — the Play versionCode. Must be monotonic.
-    const bn = flag(cmd, 'build-number');
-    if (bn === null) {
-      problems.push(
-        `${rel} \`flutter build\` passes no --build-number — every upload carries the same` +
-          ' versionCode and Play rejects the second one',
-      );
-    } else if (/^[0-9]/.test(bn)) {
-      problems.push(`${rel} --build-number is the literal "${bn}" — a constant is not increasing`);
-    } else if (/github\.sha|GITHUB_SHA/.test(bn)) {
-      problems.push(
-        `${rel} --build-number is derived from the commit SHA — a SHA is traceable but NOT ORDERED,` +
-          ' and Play needs strictly increasing',
-      );
-    } else if (!/github\.run_number/.test(bn)) {
-      problems.push(
-        `${rel} --build-number "${bn}" is not derived from github.run_number, the only monotonic` +
-          ' source available to the lane',
-      );
-    }
-
-    // 3. Build name — the version string the store and the kill-switch see.
-    const bname = flag(cmd, 'build-name');
-    if (bname === null) {
-      problems.push(
-        `${rel} \`flutter build\` passes no --build-name, so the binary keeps pubspec's frozen` +
-          " version and version_gate.dart can never tell two releases apart",
-      );
-    } else {
-      if (/^[0-9]/.test(bname)) {
-        problems.push(
-          `${rel} --build-name "${bname}" is a hardcoded literal — a second copy of the version` +
-            ` that ${lane.app}/pubspec.yaml already declares, free to drift from it`,
-        );
-      } else if (!bname.includes('outputs.release_line')) {
-        problems.push(`${rel} --build-name "${bname}" is not derived from the pubspec release line`);
-      }
-      if (!/github\.run_number/.test(bname)) {
-        problems.push(
-          `${rel} --build-name "${bname}" does not move with github.run_number.` +
-            ' version_gate.dart drops everything after `+`, so a frozen major.minor.patch leaves' +
-            ' the CFG-1 force-update kill-switch with no floor it can usefully sit on.',
-        );
-      }
-    }
-
-    // 4. APP_VERSION — what analytics and the consent artifact record, and what
-    //    version_gate.dart actually compares at runtime.
-    const dd = /--dart-define=APP_VERSION=(\S+)/.exec(cmd);
-    if (!dd) {
-      problems.push(
-        `${rel} passes no --dart-define=APP_VERSION, so AppConfig falls back to 'dev' and every` +
-          ' production row is indistinguishable from a developer laptop',
-      );
-    } else {
-      const appVersion = dd[1];
-      const plus = appVersion.indexOf('+');
-      const core = plus === -1 ? appVersion : appVersion.slice(0, plus);
-      const meta = plus === -1 ? '' : appVersion.slice(plus + 1);
-
-      if (/^[0-9]/.test(core)) {
-        problems.push(
-          `${rel} APP_VERSION's version core "${core}" is hardcoded. version_gate.dart compares` +
-            ' exactly this substring against min_supported_version, so a literal here is the' +
-            ' kill-switch being inert no matter what pubspec says.',
-        );
-      }
-      if (bname !== null && core !== bname) {
-        problems.push(
-          `${rel} APP_VERSION core "${core}" differs from --build-name "${bname}" — the number the` +
-            ' store shows and the number the kill-switch compares would be two different things',
-        );
-      }
-      if (!/GITHUB_SHA|github\.sha/.test(meta)) {
-        problems.push(
-          `${rel} APP_VERSION carries no commit SHA in its build metadata — the version is ordered` +
-            ' but no longer traceable to a commit',
-        );
-      }
-
-      // Worst-case rendered length, against the server's silent truncation.
-      const worst = pv.releaseLine.length + 1 + MAX_RUN_DIGITS + 1 + SHA_LEN;
-      if (worst > APP_VERSION_MAX) {
-        problems.push(
-          `${rel} APP_VERSION can render up to ${worst} chars (release line "${pv.releaseLine}"` +
-            ` + ${MAX_RUN_DIGITS}-digit run + "+" + ${SHA_LEN}-char sha) but the platform Worker` +
-            ` truncates app_version at ${APP_VERSION_MAX} — two builds could land under one string`,
-        );
-      }
-    }
+    problems.push(...stampProblems(rel, cmd, { app: lane.app, releaseLine: pv.releaseLine, requireNumber: true }));
   }
  }
 }
 
 // ── the deferred lanes: EXEMPT, and the exemption expires by itself ──────────
-// A row with a lane and `served: false` builds an artifact nobody receives, so
-// holding it to a version rule would fail the build over a number no user can
-// see. What must NOT happen is the exemption becoming invisible: it is printed
-// on every run, naming the row, so the day somebody flips `served` the guard
-// starts asking and nobody has to remember this file exists.
+// A row with a lane and `served: false` is exempt from the LANE-LEVEL rules — the
+// derive-from-pubspec step, and a --build-number on every target. What must NOT happen
+// is the exemption becoming invisible: it is printed on every run, naming the row, so
+// the day somebody flips `served` the guard starts asking.
+// ⏱ NARROWED 2026-09-23: this used to exempt the lane's builds from EVERY version rule,
+// on the reasoning that a served: false artifact reaches nobody. submit-play.yml proved
+// that wrong — an android-play build nobody "served" reached Play and production D1.
+// The builds themselves are now graded by the all-workflows pass below, served or not.
 for (const lane of deferredLanes) {
   const lines = stripAll(readFileSync(join(wfDir, lane.workflow), 'utf8'));
   const parsed = parseWorkflow(repoRoot, `.github/workflows/${lane.workflow}`);
@@ -680,10 +593,162 @@ for (const lane of deferredLanes) {
   exemptions.push(
     `"${lane.id}" — .github/workflows/${lane.workflow} job "${lane.job}" builds ${builds.length} artifact(s), ` +
       `${withNumber} of them passing --build-number. The row is served: false, so this lane is EXEMPT from ` +
-      'the version rules above and this line is the exemption. Flip `served` to true and every check the ' +
-      'web lane answers becomes this lane\'s to answer too.' +
+      'the lane-level rules above and this line is the exemption; its builds are still stamp-checked by ' +
+      'the all-workflows pass. Flip `served` to true and every check the web lane answers becomes this ' +
+      'lane\'s to answer too.' +
       (lines.length ? '' : ''),
   );
+}
+
+// ── EVERY release build in EVERY workflow carries the stamp ──────────────────
+// 🔴 ADDED 2026-09-23 (lane `version-stamp`). THE LANE LIST ABOVE WAS THE WHOLE OF THIS
+// GUARD'S REACH, AND A REAL PLAY UPLOAD WALKED AROUND IT. submit-play.yml built its .aab
+// with no --build-name, no --build-number and no APP_VERSION define, and uploaded it at
+// 2026-09-22 21:27Z and 21:38Z. It was invisible here for two reasons, both by design:
+// the android-play row is `served: false` (so its lane was EXEMPT), and the upload
+// action it uses is not in DEPLOY_MARKERS (so it was not an undeclared lane either).
+// Google Play's pre-launch robots then ran the build and wrote 22+ production D1 rows
+// with app_version `dev` — ops watch #443's prod-provenance job went red on them — and
+// the second upload's versionCode was pubspec's `+1`, which Play never takes twice.
+//
+// So "is this lane served?" and "is this a declared lane?" are the wrong questions for a
+// stamp. A build compiled with release flags can leave the runner, and whether it does
+// is decided by steps this guard cannot enumerate. The rule is now asked of the BUILD:
+// every release build in the census — workflow-scan.mjs `flutterReleaseBuilds`, the ONE
+// reading of "which binaries does this factory produce" that assert-store-build-config
+// and assert-channel-register 6b-ii already grade — carries the three stamps the web
+// lane always has. Not a second scanner, and not a typed list: the only way out is the
+// register key `releaseBuildsNeverShipped` (a thrown-away output), whose `why` is printed
+// below on every run and whose stale entries 6b-ii already fails.
+//
+// A served lane's workflow is skipped here ONLY because the loop above already graded
+// every build in that file, harder (a --build-number on every target); reporting each
+// defect twice would be noise, not coverage.
+
+// Targets whose --build-number is NOT a store ordering key: web has no store, and the
+// snap/AppImage linux lanes version by the --build-name string. Every OTHER target —
+// including one this list has never heard of — must pass a number: the unknown case
+// fails closed.
+const NUMBER_OPTIONAL = new Set(['web', 'linux']);
+
+const servedFiles = new Set(servedLanes.map((l) => `.github/workflows/${l.workflow}`));
+const longestReleaseLine = appsOnDisk
+  .map((a) => readPubspecVersion(join(repoRoot, a, 'pubspec.yaml')))
+  .filter((pv) => pv && !pv.bad)
+  .map((pv) => pv.releaseLine)
+  .reduce((a, b) => (b.length > a.length ? b : a), '');
+// The census keeps `${{ x }}` as written; the version flags are read as whitespace-free
+// tokens, so an expression is collapsed first — the same fold commandAt() applies.
+const flatten = (s) => s.replace(/\$\{\{\s*([^}]*?)\s*\}\}/g, (_m, inner) => `\${{${inner.replace(/\s+/g, '')}}}`);
+
+const allParsed = parseAllWorkflows(repoRoot);
+const census = flutterReleaseBuilds(repoRoot, allParsed);
+const { exempt: stampExempt } = gradeDomain(census, register);
+const exemptKeys = new Set(stampExempt.map((b) => `${b.workflow}\u0000${b.runLine}\u0000${b.segment}`));
+let stampBuilds = 0;
+
+// The steps of each job that derive a release line. Outputs are job-scoped, so a build
+// may only read a step id that exists beside it.
+const emitIdsOf = new Map();
+const emitAppOf = new Map();
+for (const wf of allParsed) {
+  for (const job of wf.jobs.values()) {
+    const ids = new Set();
+    job.logical.forEach((l, i) => {
+      const em = /assert-app-versioning\.mjs\s+--emit\s+(apps[/\\]\S+)/.exec(l.text);
+      if (!em) return;
+      if (!emitAppOf.has(`${wf.rel}#${job.name}`)) emitAppOf.set(`${wf.rel}#${job.name}`, em[1].replace(/["']/g, ''));
+      for (let k = i; k >= 0 && k > i - 12; k--) {
+        const m = /^\s*(?:-\s+)?id:\s*['"]?([A-Za-z0-9_-]+)['"]?\s*$/.exec(job.logical[k].text);
+        if (m) {
+          ids.add(m[1]);
+          break;
+        }
+        if (k !== i && /^\s*-\s+/.test(job.logical[k].text)) break;
+      }
+    });
+    emitIdsOf.set(`${wf.rel}#${job.name}`, ids);
+  }
+}
+
+for (const b of census) {
+  if (exemptKeys.has(`${b.workflow}\u0000${b.runLine}\u0000${b.segment}`)) continue;
+  if (servedFiles.has(b.workflow)) continue;
+  const seg = flatten(b.segment);
+  const at = /\bflutter\s+build\s/.exec(seg);
+  const cmd = at ? seg.slice(at.index).trim() : seg.trim();
+  stampBuilds++;
+  problems.push(
+    ...stampProblems(buildAt(b), cmd, {
+      app: emitAppOf.get(`${b.workflow}#${b.job}`) ?? 'the app',
+      releaseLine: longestReleaseLine,
+      requireNumber: !NUMBER_OPTIONAL.has(b.target),
+      emitIds: emitIdsOf.get(`${b.workflow}#${b.job}`) ?? new Set(),
+    }),
+  );
+}
+// ── every .msix carries a RISING package version, not pubspec's ──────────────
+// 🔴 ADDED 2026-09-23 (lane `version-stamp`, landing review). The stamp above versions the
+// BINARY; the Store reads the PACKAGE. msix 3.18.0 takes its version from
+// `--version ?? msix_config.msix_version ?? pubspec version:` (lib/src/configuration.dart:87)
+// and never sees --build-name, so every .msix these workflows packaged was `1.0.0.0` — and
+// Partner Center refuses a submission whose package version does not rise. So every
+// `msix:create`, in every workflow and served or not, passes
+// `--version=<steps.<emit id>.outputs.release_line>.<github.run_number>.0`: run_number is
+// the ordering key as it is for --build-number, and the fourth part stays 0 because the
+// Store reserves the revision field.
+let msixChecked = 0;
+for (const wf of allParsed) {
+  for (const job of wf.jobs.values()) {
+    const ids = emitIdsOf.get(`${wf.rel}#${job.name}`) ?? new Set();
+    for (const l of job.logical) {
+      if (/^\s*#/.test(l.text) || !/\bmsix:create\b/.test(l.text)) continue;
+      msixChecked++;
+      const at = `${wf.rel}:${l.n} (job "${job.name}")`;
+      const v = flag(flatten(l.text), 'version');
+      const m = v && /^\$\{\{steps\.([A-Za-z0-9_-]+)\.outputs\.release_line\}\}\.\$\{\{github\.run_number\}\}\.0$/.exec(v);
+      if (v === null) {
+        problems.push(
+          `${at} runs \`msix:create\` with no --version=, so the package is pubspec's frozen` +
+            ' version and the Store refuses the second submission',
+        );
+      } else if (!m) {
+        problems.push(
+          `${at} msix --version "${v}" is not <release_line>.<github.run_number>.0 — the only` +
+            ' shape that rises every run and keeps the Store-reserved revision at 0',
+        );
+      } else if (!ids.has(m[1])) {
+        problems.push(
+          `${at} msix --version reads steps.${m[1]}, but no --emit step in this job has that id —` +
+            ' it would read an empty string',
+        );
+      }
+    }
+  }
+}
+
+// A second, dumber reading of each file, against the census: a workflow whose text plainly
+// STARTS a `flutter build` command and from which the census reached no build at all is a
+// file the job parse could not see — a job indented off the 2-space grid is enough — and
+// every build in it would be graded by nothing while this guard printed ok. A file that
+// mentions --debug/--profile anywhere is left out, because a debug-only file legitimately
+// yields no release build and this reading cannot tell which line the flag belongs to.
+const censusFiles = new Set(census.map((b) => b.workflow));
+const unreached = wfFiles.filter((f) => {
+  const text = stripAll(readFileSync(join(wfDir, f), 'utf8'));
+  return (
+    !censusFiles.has(`.github/workflows/${f}`) &&
+    text.some((l) => /^\s*(?:-\s+)?(?:run:\s*)?flutter\s+build\s/.test(l)) &&
+    !text.some((l) => /--(?:debug|profile)\b/.test(l))
+  );
+});
+if (unreached.length) {
+  console.error('✗ COVERAGE LOST — the release-build census reached no build in a workflow that runs one:');
+  for (const f of unreached) {
+    console.error(`    .github/workflows/${f} starts a \`flutter build\` that workflow-scan.mjs flutterReleaseBuilds never returned`);
+  }
+  if (problems.length === 0) coverageLost();
+  problems.push(`the release-build census missed ${unreached.length} workflow(s) (COVERAGE LOST above)`);
 }
 
 // NOTE — there is deliberately NO `if (buildsChecked === 0) COVERAGE LOST` here.
@@ -711,13 +776,137 @@ if (exemptions.length) {
   console.log('⬜ deferred lanes, EXEMPT and printed not hidden:');
   for (const e of exemptions) console.log(`    ${e}`);
 }
+if (stampExempt.length) {
+  console.log('⬜ release builds NOT stamp-checked (register releaseBuildsNeverShipped), printed not hidden:');
+  for (const b of stampExempt) console.log(`    ${buildAt(b)} — ${b.why}`);
+}
 
 console.log(
   `ok  app versioning — ${RELEASE_LANES.length} release lane(s) derived from ${REGISTER_REL}` +
     ` (${servedLanes.length} served and checked, ${deferredLanes.length} deferred and printed),` +
-    ` ${buildsChecked} build command(s), ${appsChecked} app pubspec(s);` +
+    ` ${buildsChecked} build command(s), plus ${stampBuilds} more stamp-checked and` +
+    ` ${msixChecked} msix package(s) version-checked across` +
+    ` ${wfFiles.length} workflow(s), ${appsChecked} app pubspec(s);` +
     ' version derived from pubspec + github.run_number',
 );
+
+/** Every version rule ONE folded `flutter build` command answers for, as problem strings.
+ *
+ *  ⏱ LIFTED OUT 2026-09-23 (lane `version-stamp`) from the served-lane loop, where these
+ *  checks were inline. The all-workflows pass below the loop needs exactly the same rules,
+ *  and two copies of a check drift apart — the served loop keeps calling this with the same
+ *  message wording the tests match on, and the new pass calls it too.
+ *
+ *  `requireNumber` — false only for a target where `--build-number` is not a store's
+ *  ordering key (web, linux); a number that IS passed there is still graded, because a
+ *  literal or a SHA in it is wrong wherever it appears.
+ *  `emitIds` — the ids of the steps IN THE SAME JOB that run `--emit`. When given, the
+ *  build-name must read `steps.<one of them>.outputs.release_line`, not merely contain the
+ *  words: a build that names a step that never derived anything reads an empty string. */
+function stampProblems(rel, cmd, { app, releaseLine, requireNumber, emitIds = null }) {
+  const out = [];
+
+  // 2. Build number — the Play versionCode. Must be monotonic.
+  const bn = flag(cmd, 'build-number');
+  if (bn === null) {
+    if (requireNumber) out.push(
+      `${rel} \`flutter build\` passes no --build-number — every upload carries the same` +
+        ' versionCode and Play rejects the second one',
+    );
+  } else if (/^[0-9]/.test(bn)) {
+    out.push(`${rel} --build-number is the literal "${bn}" — a constant is not increasing`);
+  } else if (/github\.sha|GITHUB_SHA/.test(bn)) {
+    out.push(
+      `${rel} --build-number is derived from the commit SHA — a SHA is traceable but NOT ORDERED,` +
+        ' and Play needs strictly increasing',
+    );
+  } else if (!/github\.run_number/.test(bn)) {
+    out.push(
+      `${rel} --build-number "${bn}" is not derived from github.run_number, the only monotonic` +
+        ' source available to the lane',
+    );
+  }
+
+  // 3. Build name — the version string the store and the kill-switch see.
+  const bname = flag(cmd, 'build-name');
+  if (bname === null) {
+    out.push(
+      `${rel} \`flutter build\` passes no --build-name, so the binary keeps pubspec's frozen` +
+        " version and version_gate.dart can never tell two releases apart",
+    );
+  } else {
+    if (/^[0-9]/.test(bname)) {
+      out.push(
+        `${rel} --build-name "${bname}" is a hardcoded literal — a second copy of the version` +
+          ` that ${app}/pubspec.yaml already declares, free to drift from it`,
+      );
+    } else if (!bname.includes('outputs.release_line')) {
+      out.push(`${rel} --build-name "${bname}" is not derived from the pubspec release line`);
+    } else if (emitIds !== null) {
+      const ids = [...bname.matchAll(/steps\.([A-Za-z0-9_-]+)\.outputs\.release_line/g)].map((m) => m[1]);
+      if (ids.length === 0 || !ids.every((id) => emitIds.has(id))) {
+        out.push(
+          `${rel} --build-name "${bname}" reads a release_line no step in its job derives` +
+            ` (the job's --emit step ids: ${[...emitIds].join(', ') || 'none'}) — an unset step output` +
+            ' expands to the EMPTY string, so the version would be ".<run>"',
+        );
+      }
+    }
+    if (!/github\.run_number/.test(bname)) {
+      out.push(
+        `${rel} --build-name "${bname}" does not move with github.run_number.` +
+          ' version_gate.dart drops everything after `+`, so a frozen major.minor.patch leaves' +
+          ' the CFG-1 force-update kill-switch with no floor it can usefully sit on.',
+      );
+    }
+  }
+
+  // 4. APP_VERSION — what analytics and the consent artifact record, and what
+  //    version_gate.dart actually compares at runtime.
+  const dd = /--dart-define=APP_VERSION=(\S+)/.exec(cmd);
+  if (!dd) {
+    out.push(
+      `${rel} passes no --dart-define=APP_VERSION, so AppConfig falls back to 'dev' and every` +
+        ' production row is indistinguishable from a developer laptop',
+    );
+  } else {
+    const appVersion = dd[1];
+    const plus = appVersion.indexOf('+');
+    const core = plus === -1 ? appVersion : appVersion.slice(0, plus);
+    const meta = plus === -1 ? '' : appVersion.slice(plus + 1);
+
+    if (/^[0-9]/.test(core)) {
+      out.push(
+        `${rel} APP_VERSION's version core "${core}" is hardcoded. version_gate.dart compares` +
+          ' exactly this substring against min_supported_version, so a literal here is the' +
+          ' kill-switch being inert no matter what pubspec says.',
+      );
+    }
+    if (bname !== null && core !== bname) {
+      out.push(
+        `${rel} APP_VERSION core "${core}" differs from --build-name "${bname}" — the number the` +
+          ' store shows and the number the kill-switch compares would be two different things',
+      );
+    }
+    if (!/GITHUB_SHA|github\.sha/.test(meta)) {
+      out.push(
+        `${rel} APP_VERSION carries no commit SHA in its build metadata — the version is ordered` +
+          ' but no longer traceable to a commit',
+      );
+    }
+
+    // Worst-case rendered length, against the server's silent truncation.
+    const worst = releaseLine.length + 1 + MAX_RUN_DIGITS + 1 + SHA_LEN;
+    if (worst > APP_VERSION_MAX) {
+      out.push(
+        `${rel} APP_VERSION can render up to ${worst} chars (release line "${releaseLine}"` +
+          ` + ${MAX_RUN_DIGITS}-digit run + "+" + ${SHA_LEN}-char sha) but the platform Worker` +
+          ` truncates app_version at ${APP_VERSION_MAX} — two builds could land under one string`,
+      );
+    }
+  }
+  return out;
+}
 
 /** The one COVERAGE LOST stop: each could-not-look branch above prints its own reason and ends
  *  here, so the run exits 2 — never 1, which would read as a finding (AGENTS.md exit-code
