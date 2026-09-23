@@ -1,4 +1,5 @@
 import java.io.File
+import java.util.Base64
 import java.util.Properties
 
 plugins {
@@ -160,11 +161,15 @@ val releaseKeystoreFile = if (hasReleaseSigning) {
 // No overlay for the channel, or no channel at all (a debug run, a local build):
 // nothing changes. tooling/ci/test/android-channel-manifest.test.mjs holds the
 // register, the overlays, this hook and the workflow's defines to each other.
+//
+// `Base64` is IMPORTED, never written `java.util.Base64`: in a Kotlin build
+// script `java` is the Java plugin's extension, so the qualified name fails to
+// compile with "Unresolved reference 'util'" (Build apps run 35826781721).
 // ─────────────────────────────────────────────────────────────────────────────
 val releaseChannel: String? =
     (project.findProperty("dart-defines") as String?)
         ?.split(',')
-        ?.mapNotNull { runCatching { String(java.util.Base64.getDecoder().decode(it), Charsets.UTF_8) }.getOrNull() }
+        ?.mapNotNull { runCatching { String(Base64.getDecoder().decode(it), Charsets.UTF_8) }.getOrNull() }
         ?.firstOrNull { it.startsWith("RELEASE_CHANNEL=") }
         ?.substringAfter('=')
         ?.takeIf { Regex("[a-z0-9-]+").matches(it) }
