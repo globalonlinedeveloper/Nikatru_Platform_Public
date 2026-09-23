@@ -73,6 +73,16 @@
 //     DATE, and now followed in the same sentence by today's 24 so the message
 //     cannot be read as claiming the register still holds 22.
 //
+// ── 📏 APPENDED 2026-09-23 — `auth.callbacks` LEFT `blocked` ─────────────────
+// The 2026-08-25 block above is left as written. MEASURED 2026-09-23 by running
+// this file (exit 0), on the branch that registered the native auth callback:
+//   · 26 screen(s) declared          (MIN_SCREENS floor: 26)
+//   · 26 present and anchored        (MIN_PRESENT floor: 26)
+//   · 26 proven reachable, 0 exempt
+//   · 0 blocked — `auth.callbacks` went `present`; its blocker's predicate is now
+//     assert-auth-callbacks.mjs, so the excuse stopped working the same day
+//   · 0 todo, 0 deliberately not built
+//
 // ── WHY A BLOCKER IS ITSELF CHECKED ────────────────────────────────────────
 // `blocked` entries name what must land first. That claim is verified: if the
 // named blocker has already shipped, the build fails. Otherwise "blocked by
@@ -82,6 +92,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { listDir } from './tree-walk.mjs';
 import { delegationOf as resolveChassisDelegation, dartCodeOnly } from './chassis-delegation.mjs';
+import { authCallbacksShipped } from './assert-auth-callbacks.mjs';
 
 const ROOT = process.cwd();
 const REGISTER = 'tooling/screen-register.json';
@@ -137,14 +148,16 @@ const BLOCKERS_STILL_REAL = {
   // runs on EVERY invocation rather than only when something claims to be
   // blocked — see the section below.
   'stage 5 (money rail)': () => false,
-  // Real until app_links is an actual dependency. The moment it is, the
-  // callback screens are buildable and this excuse must stop working.
-  'app_links (deep-link handling)': () =>
-    !/^\s+app_links\s*:/m.test(
-      existsSync(join(ROOT, 'tooling/bricks/app/__brick__/apps/{{app_id}}/pubspec.yaml'))
-        ? readFileSync(join(ROOT, 'tooling/bricks/app/__brick__/apps/{{app_id}}/pubspec.yaml'), 'utf8')
-        : '',
-    ),
+  // ⏱ MOVED 2026-09-23 — the predicate, not the key. It used to be "`app_links:`
+  // is a dependency in the brick pubspec", and that was never the thing the
+  // callback screens waited for: supabase_flutter already carries app_links
+  // transitively, and a dependency line registers nothing with any OS. What
+  // they waited for is the OS handing com.nikatru.<id>://auth-callback back to
+  // the app — so the blocker is real until assert-auth-callbacks.mjs proves, for
+  // at least one native target, that every target the app ships registers the
+  // derived scheme, the allow list admits every flow, and every link-sending
+  // call passes its redirect. `auth.callbacks` went `present` the same day.
+  'app_links (deep-link handling)': () => !authCallbacksShipped(ROOT),
 };
 
 function readAll(dir) {
@@ -650,14 +663,16 @@ if (screens.length > 0 && present === 0) {
 // MEASURED 2026-08-25: `present` is 24, so this floor sits EXACTLY on the tree —
 // demote or delete one screen and it bites. Not raised, because nothing landed;
 // not lowered, because a floor lowered to match prose has stopped being a floor.
-const MIN_PRESENT = 25;
+// 26 since 2026-09-23 — `auth.callbacks` landed `present` when the native
+// targets registered the auth callback (assert-auth-callbacks.mjs).
+const MIN_PRESENT = 26;
 const REQUIRED_COVERAGE = { reachableExempt: 0 };
 if (present > 0 && present < MIN_PRESENT) {
   problems.push(
     `COVERAGE LOST — only ${present} screen(s) are PRESENT, expected >= ${MIN_PRESENT}, so the reachability ` +
       'half ranged over that many. All 22 present entries carried a reachability proof on 2026-08-06, and all ' +
       '24 did when this was last measured (2026-08-25: 25 declared, 24 present, 24 proven reachable, 0 exempt, ' +
-      '1 blocked); a run ' +
+      '1 blocked), and all 26 on 2026-09-23 (26 declared, 26 present, 0 blocked); a run ' +
       'that checks fewer means entries left the `present` set (to todo/blocked/not-building). That is a ' +
       'legitimate move and it may not happen quietly — screens leaving `present` is exactly how the half of ' +
       'C-13 that catches dead screens stops running.',

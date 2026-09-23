@@ -754,7 +754,10 @@ describe('the launcher: snap/gui, an absolute Icon, and no `desktop:` key', () =
     // The absolute installed path, which is what snapcraft could not derive from
     // a bare theme name. `${SNAP}` is snapd's own variable, not a template slot.
     assert.match(text, /^Icon=\$\{SNAP\}\/meta\/gui\/subscriptiontracker\.png$/m);
-    assert.match(text, /^Exec=subscriptiontracker$/m, 'inside a snap the command is the snap name, not a path');
+    // The PROGRAM is the snap name; `%u` stays — it is where the desktop puts the
+    // com.nikatru.subscriptiontracker://auth-callback URL (2026-09-23).
+    assert.match(text, /^Exec=subscriptiontracker %u$/m, 'inside a snap the command is the snap name, not a path');
+    assert.match(text, /^MimeType=x-scheme-handler\/com\.nikatru\.subscriptiontracker;$/m);
     // …and the fields that must NOT be re-invented come from the maintained entry.
     assert.match(text, /^Name=Subly$/m);
     assert.match(text, /^Comment=Track every subscription in one place$/m);
@@ -832,6 +835,34 @@ describe('the launcher: snap/gui, an absolute Icon, and no `desktop:` key', () =
     assertComplained(g.out);
     assert.match(g.out, /`apps\.subscriptiontracker\.desktop` is present/);
     assert.match(g.out, /not found in prime directory/);
+  });
+
+  // ⏱ 2026-09-23 · the unique Linux runner's D-Bus name. The recipe declares it
+  // as a session-bus `dbus` slot and the app takes that slot.
+  test('the recipe declares the app\'s D-Bus name as a session-bus slot', () => {
+    const g = generate(tree(), ['--bundle', bundle()]);
+    assert.equal(g.code, 0, g.out);
+    const text = readFileSync(g.recipe, 'utf8');
+    assert.match(text, /^slots:\n {2}dbus-application-id:\n {4}interface: dbus\n {4}bus: session\n {4}name: com\.nikatru\.subscriptiontracker$/m);
+    assert.match(text, /^ {4}slots:\n {6}- dbus-application-id$/m);
+  });
+
+  test('FAILS when the app no longer takes the D-Bus slot', () => {
+    const g = mutated((gen) =>
+      writeFileSync(gen.recipe, readFileSync(gen.recipe, 'utf8').replace(/^ {4}slots:\n {6}- dbus-application-id\n/m, '')),
+    );
+    assert.equal(g.code, 1, g.out);
+    assertComplained(g.out);
+    assert.match(g.out, /does not name "dbus-application-id"/);
+  });
+
+  test('FAILS when the D-Bus slot names another bus name', () => {
+    const g = mutated((gen) =>
+      writeFileSync(gen.recipe, readFileSync(gen.recipe, 'utf8').replace(/^ {4}name: com\.nikatru\.subscriptiontracker$/m, '    name: com.nikatru.other')),
+    );
+    assert.equal(g.code, 1, g.out);
+    assertComplained(g.out);
+    assert.match(g.out, /slots\.dbus-application-id\.name/);
   });
 
   test('FAILS when the launcher entry is missing from snap/gui', () => {

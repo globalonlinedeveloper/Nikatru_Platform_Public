@@ -19,17 +19,17 @@ import 'dart:async';
 // second one — `features/auth/turnstile_gate.dart` reports its own handled
 // misconfiguration the same way.
 import 'package:flutter/foundation.dart'
-    show ChangeNotifier, FlutterError, FlutterErrorDetails, kIsWeb;
+    show ChangeNotifier, FlutterError, FlutterErrorDetails, TargetPlatform;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_api_client/nikatru_api_client.dart';
 import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
     show
         AuthCapabilities,
         AuthProviders,
+        AuthRedirects,
         InMemoryAuthRepository,
         SupabaseAuthRepository,
-        passwordResetArrivalOf,
-        passwordResetRedirectUrl;
+        passwordResetArrivalOf;
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_platform_storage/age_signals.dart'
     show currentStoreAgeSignalSource;
@@ -110,22 +110,22 @@ final Provider<AuthRepository> authRepositoryProvider =
           ? SupabaseAuthRepository(
               requestServerDeletion: () =>
                   requestAccountDeletion(ref.read(platformRestClientProvider)),
-              // 🔴 UNSET, THE RESET LINK RESOLVES TO THE PROJECT'S SITE URL —
+              // 🔴 UNSET, EVERY AUTH LINK RESOLVES TO THE PROJECT'S SITE URL —
               // one URL shared by every app the portfolio's single Supabase
               // project authenticates. gotrue does not error on an absent
               // `redirect_to`; it substitutes, so the mail sends, the link
               // works, and the only difference is which app the person lands
               // in. Invisible from inside this one.
               //
-              // Read off the RUNNING ORIGIN so a Pages preview and a localhost
-              // run each send their own users back to themselves. Null off web:
-              // no native target here registers a URI scheme yet, and a
-              // fabricated one is not on the allow-list, so gotrue would fall
-              // back to the Site URL anyway with the reason hidden.
-              passwordResetRedirectTo: passwordResetRedirectUrl(
-                isWeb: kIsWeb,
-                base: Uri.base,
-              ),
+              // ⏱ 2026-09-23 — ONE derivation for all five link-sending calls
+              // (confirm, resend, OAuth, identity link, reset), not just reset.
+              // On web it is read off the RUNNING ORIGIN, so a Pages preview
+              // and a localhost run each send their own users back to
+              // themselves. Off web it is the app's own callback,
+              // `com.nikatru.<appId>://auth-callback`, which every native
+              // target in [kAuthCallbackTargets] registers and
+              // `tooling/ci/assert-auth-callbacks.mjs` proves.
+              redirects: AuthRedirects.current(appId: AppConfig.appId),
             )
           : InMemoryAuthRepository(),
     );
@@ -595,20 +595,42 @@ Future<void> signOutAndForgetUser(WidgetRef ref) async {
   if (failure != null) Error.throwWithStackTrace(failure, stack!);
 }
 
+/// The native targets whose manifests register this app's auth callback,
+/// `com.nikatru.<AppConfig.appId>://auth-callback`.
+///
+/// 🔴 NOT A CLAIM: `tooling/ci/assert-auth-callbacks.mjs` reads this literal
+/// and fails the build unless every target named here registers the scheme in
+/// its own manifest (Android intent-filter, iOS/macOS `CFBundleURLTypes`, the
+/// MSIX `protocol_activation` plus the runner's single-instance forwarding,
+/// the Linux `.desktop` `MimeType` plus a unique GApplication) — and unless
+/// every native directory the app ships is named here. Until 2026-09-23 this
+/// set did not exist and every native row reported an OAuth door that could
+/// not bring the user back.
+const Set<TargetPlatform> kAuthCallbackTargets = <TargetPlatform>{
+  TargetPlatform.android,
+  TargetPlatform.iOS,
+  TargetPlatform.macOS,
+  TargetPlatform.windows,
+  TargetPlatform.linux,
+};
+
 /// What identity can actually do on THIS platform — declared, not assumed.
 /// Ask before promising the user something the platform cannot deliver.
 final Provider<AuthCapabilities> authCapabilitiesProvider =
-    Provider<AuthCapabilities>((ref) => AuthCapabilities.current());
+    Provider<AuthCapabilities>(
+      (ref) =>
+          AuthCapabilities.current(registeredCallbacks: kAuthCallbackTargets),
+    );
 
 /// Which federated providers the SERVER will accept — the other half of the
 /// question [authCapabilitiesProvider] answers, and the half that was missing.
 ///
 /// A provider rather than a bare constant read at the call site so a test can
-/// override it and drive BOTH arms of the gate. That is not ceremony: every
-/// row of `AuthCapabilities.forPlatform` except fuchsia says `oauthRedirect:
-/// true`, so with the platform axis alone the "button is hidden" case is
-/// unreachable on anything this portfolio ships, and an assertion that cannot
-/// fail is worse than none.
+/// override it and drive BOTH arms of the gate. That is not ceremony: this app
+/// registers its callback on every target it ships ([kAuthCallbackTargets]),
+/// so `oauthRedirect` is true everywhere it runs and, with the platform axis
+/// alone, the "button is hidden" case is unreachable — and an assertion that
+/// cannot fail is worse than none.
 final Provider<AuthProviders> authProvidersProvider = Provider<AuthProviders>(
   (ref) => AuthProviders.configured,
 );

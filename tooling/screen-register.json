@@ -253,11 +253,20 @@
     },
     {
       "id": "auth.callbacks",
-      "what": "The OAuth callback — the screen a browser redirect lands on. 🔻 NARROWED 2026-08-11: this entry used to also cover password reset, which now has its own `auth.password-reset` row because it shipped. ⚠️ It also still names email verification, and that claim is STALE in the other direction — `VerifyEmailScreen` shipped 2026-08-09 and is reached by the router's own gate rather than by a link. Left as found rather than silently corrected by an increment that does not own it; flagged so the next pass on this register fixes it deliberately.",
-      "status": "blocked",
-      "blockedBy": "app_links (deep-link handling)",
-      "detail": "Entered by following a browser redirect back into a NATIVE binary, which is the half `app_links` is genuinely required for. `app_links` 7.2.1 supports all six platforms (verified against pub.dev 2026-07-28) and would earn its place under [2]C-4 as native-binary — it ships platform code — but it is not a dependency yet, and no target here registers a URI scheme. ⚠️ Web carries two traps recorded in AuthCapabilities: the token arrives in the URL FRAGMENT so query parsing fails SILENTLY, and app_links on web reports only the INITIAL link.",
-      "declaredOn": "2026-07-28"
+      "what": "The auth callback — where a link that ENDS a flow returns into the app: sign-up confirmation, OAuth, identity linking, password reset and email change, each at `com.nikatru.<app id>://auth-callback?nk_auth=<flow>` off web and the app's own origin on web. 🔻 NARROWED 2026-08-11: this entry used to also cover password reset, which has its own `auth.password-reset` row for the SCREEN it lands on; this row is the RETURN every flow shares. ✅ 2026-09-23 · the email-verification note this row carried (stale since `VerifyEmailScreen` shipped 2026-08-09) is resolved rather than restated: the sign-up CONFIRMATION link is one of the five this callback receives, and `VerifyEmailScreen` is still reached by the router's own gate, not by a link.",
+      "status": "present",
+      "declaredOn": "2026-07-28",
+      "detail": "✅ PRESENT SINCE 2026-09-23 (sign-in audit PR A), blocked since 2026-07-28 on \"app_links (deep-link handling)\". It never needed a SCREEN: supabase_flutter (which already carries app_links 7.2.1 transitively) receives the link and exchanges the PKCE code, and the app observes the result on the auth stream. What it needed was the link coming BACK — so the anchor is `AuthRedirects`, the one derivation of every redirect the seam sends, and the proof is `tooling/ci/assert-auth-callbacks.mjs`: every native target an app ships registers the derived scheme (Android intent-filter, iOS/macOS CFBundleURLTypes, MSIX protocol_activation, Linux .desktop MimeType + `%u` with a unique runner), `supabaseAuth.uri_allow_list` admits the bare callback and one EXACT entry per flow marker (gotrue matches the query too), and every link-sending GoTrue call passes `redirects(AuthFlow.<flow>)`. The blocker's predicate in `assert-screen-set.mjs` is that same check, so the excuse stopped working the day it shipped. ⚠️ SUBSCRIPTIONTRACKER ONLY for native: the brick stamps web only (O-BRICK-STAMPS-WEB-ONLY), so a stamped app registers nothing natively, reports `oauthRedirect: false` off web through `AuthCapabilities.current(registeredCallbacks: …)`, and its login screen hides the OAuth doors there. ⚠️ Web carries two traps recorded in AuthCapabilities: the token arrives in the URL FRAGMENT so query parsing fails SILENTLY, and app_links on web reports only the INITIAL link. ⚠️ OWNER/INTEGRATOR ACTION, NOT CODE: the allow list lives on the Supabase project; the recorded value is `supabaseAuth.uri_allow_list` in `tooling/mail-transport.json`, and until it is PATCHed a native link is replaced with the Site URL and opens the web app.",
+      "anchor": {
+        "file": "packages/auth_supabase/lib/src/auth_redirect.dart",
+        "symbol": "AuthRedirects",
+        "kind": "class"
+      },
+      "reachable": {
+        "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/state/providers.dart",
+        "pattern": "redirects: AuthRedirects.current(",
+        "why": "the repository a stamped app builds is what SENDS every link, and without `redirects:` it sends none — gotrue then substitutes the project's Site URL, which is ONE app's page for the whole portfolio, so a second app's users would confirm, reset and return from OAuth into the first. `SupabaseAuthRepository.redirects` defaults to `AuthRedirects.none`, so this argument is the whole difference and nothing at runtime would notice it missing. assert-auth-callbacks.mjs checks the same wiring in every app and in this brick file."
+      }
     },
     {
       "id": "auth.password-reset",

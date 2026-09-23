@@ -10,9 +10,28 @@ One Supabase project authenticates every app in the portfolio. Branding it once 
   **2026-09-09** it still holds `https://subly.nikatru.com`. The cutover PATCHes it; this file
   says what it is being PATCHed to.
 - **Redirect allow-list — TARGET:** `https://nikatru.com/subscriptiontracker/**`,
-  `https://subly-9cp.pages.dev/**`, `http://localhost:3000/**`, `http://localhost:8080/**`
-  (web + local dev). Add per-app web paths as apps ship; add a custom-scheme deep link
-  (e.g. `subscriptiontracker://auth-callback`) once the desktop/mobile apps register one.
+  `https://subscriptiontracker-7qg.pages.dev/**`, `http://localhost:3000/**`, `http://localhost:8080/**`
+  (web + local dev), **plus the native auth callback** (⏱ 2026-09-23):
+  `com.nikatru.subscriptiontracker://auth-callback` and the same URL with each marker the app
+  sends — `?nk_auth=confirm`, `?nk_auth=oauth`, `?nk_auth=link`, `?nk_auth=reset`,
+  `?nk_auth=email-change`, each an EXACT entry, no wildcard. Add per-app web paths as apps ship.
+  The recorded value, entry for entry and in PATCH order, is `supabaseAuth.uri_allow_list` in
+  `tooling/mail-transport.json`; `site_url` sits beside it.
+  - **The scheme is `com.nikatru.<app id>`, reverse-DNS, one per app.** This file used to propose
+    `subscriptiontracker://auth-callback`. Superseded: a bare word is a scheme any other app on the
+    device can also claim, and RFC 8252 §7.1 asks native apps for a reverse-DNS scheme under a
+    domain they control for exactly that reason. One derivation writes it —
+    `authCallbackScheme()` in `packages/auth_supabase/lib/src/auth_redirect.dart` — and
+    `tooling/ci/assert-auth-callbacks.mjs` holds every native registration and this list to it.
+  - **Why each marker is its own entry.** gotrue matches `redirect_to` against each allow-list
+    glob with only the `#fragment` cut off — the query string is part of what must match
+    (`IsRedirectURLValid`, supabase/auth `internal/utilities/request.go`, read 2026-09-23). So the bare
+    `…://auth-callback` entry does NOT admit `…://auth-callback?nk_auth=reset`; without the exact
+    entries every native link would be substituted with the Site URL (below) and open the web app.
+  - ⚠️ **The same file also shows a redirect whose host, scheme and port equal the Site URL's is
+    accepted WITHOUT consulting this list.** With the Site URL on `https://nikatru.com/…`, every
+    `https://nikatru.com/<path>` is accepted whatever the list says, so the per-app `/<app id>/**`
+    rule below keeps the LIST honest but is not the boundary for the apex host itself.
   - 🔴 **PER APP, `/<app id>/**` — NEVER the bare apex `https://nikatru.com/**`.** Every app now
     shares ONE origin, and one Supabase project authenticates all of them. An apex wildcard
     would make **every path on nikatru.com** a legal post-auth redirect target: any other app,
@@ -27,6 +46,13 @@ One Supabase project authenticates every app in the portfolio. Branding it once 
     its production alias is **`subly-9cp.pages.dev`**. A reader who "fixed" the live list to
     match this file would have deleted the only entry that lets a preview deployment complete a
     sign-in.
+  - 📌 **Correction, 2026-09-23:** the Pages entry is **`https://subscriptiontracker-7qg.pages.dev/**`**.
+    That has been the live production alias since the slug rename moved the app to its own Pages
+    project. `subly-9cp.pages.dev` is the pre-rename origin; it was retired on 2026-09-11, when it
+    left both Workers' CORS lists (`tooling/ci/assert-cors-allowlist.mjs`, which refuses to re-add
+    it). So the 2026-09-09 line above ("carried over unchanged") no longer holds for the Pages entry.
+    A live GET on 2026-09-23 read the four web entries with `-7qg` second, which is what
+    `supabaseAuth.uri_allow_list` records.
 
 ### 🔴 gotrue does not reject a bad redirect. It SILENTLY SUBSTITUTES the Site URL.
 A `redirect_to` that is not on the allow-list produces **no error and no warning**: gotrue
@@ -48,7 +74,7 @@ still completes a working-looking flow. The only way to tell an ACCEPTED redirec
 SUBSTITUTED one from outside is that the accepted one comes back carrying the query and fragment
 it was handed (measured 2026-08-11: `…/?nk_auth=reset#/reset-password` accepted vs. the bare Site
 URL substituted). The composition of that URL, and the same warning at the point of use, is
-`packages/auth_supabase/lib/src/password_reset_redirect.dart`.
+`packages/auth_supabase/lib/src/auth_redirect.dart` (was `password_reset_redirect.dart` until 2026-09-23).
 - **Email templates** (`email-templates/*.html`): Nikatru-branded confirm-signup, magic-link,
   reset-password. Inline-CSS table layout (email-client-safe), no remote images (no logo
   hosting dependency, no tracking flags). Variables: `{{ .ConfirmationURL }}`, `{{ .Email }}`.

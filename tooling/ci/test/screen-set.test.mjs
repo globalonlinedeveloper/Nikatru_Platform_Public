@@ -29,12 +29,14 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, cpSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { APP_INPUTS, REPO_INPUTS } from '../assert-auth-callbacks.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const REPO = resolve(CI_DIR, '..', '..');
 const GUARD = join(CI_DIR, 'assert-screen-set.mjs');
 
 let TMP;
@@ -148,7 +150,12 @@ function tree({ mutate = (r) => r, widgets = null, router = null, unwire = null 
   //
   // 22 since 2026-09-18: MIN_PRESENT moved 24 → 25 when `settings.report-content`
   // landed `present` (O-PLAY-AI-CONTENT-REPORTING).
-  const padding = Array.from({ length: 22 }, (_, i) => ({
+  //
+  // 23 since 2026-09-23: MIN_PRESENT moved 25 → 26 when `auth.callbacks` landed
+  // `present` (the native auth callback, assert-auth-callbacks.mjs). The fixture's
+  // own `auth.callbacks` row below stays BLOCKED on purpose: this tree carries no
+  // app, so the blocker's predicate still reads "not shipped" here.
+  const padding = Array.from({ length: 23 }, (_, i) => ({
     id: `settings.pad${i}`,
     what: 'a present, anchored, reachability-proven screen',
     status: 'present',
@@ -249,8 +256,8 @@ describe('assert-screen-set', () => {
   test('passes when every declared screen is present and reachable', () => {
     const { code, out } = run(tree());
     assert.equal(code, 0);
-    assert.match(out, /30 screen\(s\) declared/);
-    assert.match(out, /25 screen\(s\) present and anchored; 25 proven reachable/);
+    assert.match(out, /31 screen\(s\) declared/);
+    assert.match(out, /26 screen\(s\) present and anchored; 26 proven reachable/);
     // Blocked and todo must PRINT — a gap nobody sees is a gap that grows.
     assert.match(out, /2 BLOCKED/);
     assert.match(out, /2 TODO/);
@@ -297,20 +304,37 @@ describe('assert-screen-set', () => {
   // ── blocked entries cannot rot ───────────────────────────────────────────
   test('FAILS when a blocker has already shipped', () => {
     const root = tree();
-    // `app_links` becoming a real dependency is the signal that the callback
-    // screens are buildable — so the excuse must stop working the same hour.
+    // The callback coming BACK is the signal that `auth.callbacks` is built — so
+    // the excuse must stop working the same hour. The fixture gains the REAL
+    // inputs assert-auth-callbacks.mjs reads (one app's native registrations,
+    // the seam, the allow list, the brick wiring), which is exactly the state
+    // the blocker's predicate calls shipped.
     //
-    // (This used to plant a `PaywallGate` consumer to signal that stage 5 had
-    // landed. Stage 5 HAS landed, so a PaywallGate in the template is now the
-    // tree's normal state, and that blocker's predicate returns false
-    // unconditionally — which is itself asserted by the fixture no longer being
-    // able to use it.)
+    // ⏱ RE-POINTED 2026-09-23. This used to plant `app_links:` in the brick
+    // pubspec. That was never the signal: supabase_flutter already carried
+    // app_links transitively, and no native target registered a scheme — so a
+    // pubspec line could have flipped the row while no link came back. (Before
+    // that it planted a `PaywallGate` consumer for stage 5, which HAS landed and
+    // whose predicate now returns false unconditionally.)
+    for (const rel of [...REPO_INPUTS, ...APP_INPUTS.map((a) => `apps/subscriptiontracker/${a}`)]) {
+      cpSync(join(REPO, rel), join(root, rel), { recursive: true });
+    }
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /`auth\.callbacks` claims to be blocked by "app_links \(deep-link handling\)", but that blocker has SHIPPED/);
+  });
+
+  // …and the old signal must NOT count on its own. A dependency line is not a
+  // callback: with no native target registering the scheme, the row is still
+  // honestly blocked.
+  test('does NOT treat an `app_links:` dependency alone as the callback shipping', () => {
+    const root = tree();
     const pubspec = join(root, BRICK, 'pubspec.yaml');
     mkdirSync(dirname(pubspec), { recursive: true });
     writeFileSync(pubspec, 'dependencies:\n  flutter:\n    sdk: flutter\n  app_links: ^6.0.0\n');
     const { code, out } = run(root);
-    assert.equal(code, 1);
-    assert.match(out, /but that blocker has SHIPPED/);
+    assert.equal(code, 0, out);
+    assert.match(out, /2 BLOCKED/);
   });
 
   test('FAILS when a block is undated', () => {
@@ -445,7 +469,7 @@ describe('assert-screen-set', () => {
       }));
       assert.equal(code, 1);
       // 22 still ANCHORED — presence is untouched…
-      assert.match(out, /25 screen\(s\) present and anchored/);
+      assert.match(out, /26 screen\(s\) present and anchored/);
       // …and the offline entry is the one that lost its reachability proof.
       assert.match(out, /`system\.offline` EXISTS but nothing reaches it/);
     });
@@ -509,7 +533,7 @@ describe('assert-screen-set', () => {
       }),
     }));
     assert.equal(code, 2, out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
-    assert.match(out, /COVERAGE LOST — only 3 screen\(s\) are PRESENT, expected >= 25/);
+    assert.match(out, /COVERAGE LOST — only 3 screen\(s\) are PRESENT, expected >= 26/);
   });
 
   // A register of nothing-but-todo passes every anchor check by having none.
@@ -586,7 +610,7 @@ describe('an anchor whose screen moved into the chassis is judged there', () => 
   test('S-D1 · the anchor resolves through the delegation, and says where it landed', () => {
     const { code, out } = run(delegating());
     assert.equal(code, 0, out);
-    assert.match(out, /25 screen\(s\) present and anchored/);
+    assert.match(out, /26 screen\(s\) present and anchored/);
     assert.match(out, /`NotFoundScreen` is DECLARED IN `packages\/chassis_screens\/lib\/system_screens\.dart`/);
     assert.match(out, /The anchor stays on the brick file because that is what still routes it/);
   });

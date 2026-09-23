@@ -115,6 +115,7 @@ import {
   BASE_FOR_RUNNER,
   BUILD_WORKFLOW,
   CONFINEMENT,
+  DBUS_SLOT,
   DESKTOP_PLUGS,
   GRADE,
   GUI_DIR,
@@ -563,6 +564,26 @@ export function validateEmitted({ yaml, expected, label, packBase = null, projec
           'Under strict confinement an interface the app does not declare is a capability it does not have.',
       );
     }
+    // ⏱ 2026-09-23 · the app's own D-Bus name. The Linux runner is a unique
+    // GApplication, so the browser's auth-callback launch reaches the running app
+    // over the session bus under APPLICATION_ID — and a strict snap may own that
+    // name only through a `dbus` slot naming it. Absent, the runner falls back to
+    // NON_UNIQUE and the callback opens a second window.
+    const appSlots = Array.isArray(appEntry.slots) ? appEntry.slots : [];
+    if (!appSlots.includes(DBUS_SLOT)) {
+      bad(`\`apps.${expected.name}.slots\` does not name "${DBUS_SLOT}", so the app does not own its D-Bus name under strict confinement.`);
+    }
+    const slot = doc.slots?.[DBUS_SLOT];
+    if (!slot) {
+      bad(`\`slots\` declares no "${DBUS_SLOT}", the session-bus name the unique Linux runner registers.`);
+    } else if (expected.applicationId) {
+      const want = { interface: 'dbus', bus: 'session', name: expected.applicationId };
+      for (const [k, v] of Object.entries(want)) {
+        if (slot[k] !== v) {
+          bad(`\`slots.${DBUS_SLOT}.${k}\` is ${JSON.stringify(slot[k])}; it has to be ${JSON.stringify(v)} — the runner registers APPLICATION_ID on the session bus.`);
+        }
+      }
+    }
   }
 
   // ── limb 9b — the launcher, on disk, beside the recipe ────────────────────
@@ -614,7 +635,9 @@ export function guiPairProblems({ projectDir, snapName, expectIcon }) {
   const exec = /^Exec=(.*)$/m.exec(text);
   if (!exec) {
     out.push(`${GUI_DIR}/${snapName}.desktop carries no \`Exec=\` line, so the launcher runs nothing.`);
-  } else if (exec[1].trim() !== snapName) {
+  } else if (exec[1].trim().split(/\s+/)[0] !== snapName) {
+    // The PROGRAM is compared; field codes after it (`%u`, the auth-callback URL
+    // since 2026-09-23) belong to the freedesktop entry and pass through.
     out.push(
       `${GUI_DIR}/${snapName}.desktop says \`Exec=${exec[1].trim()}\`; inside a snap the command is the one snapd ` +
         `exposes, which for an app named after its snap is "${snapName}". A binary name off PATH is the freedesktop ` +

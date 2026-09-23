@@ -79,6 +79,33 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- ⏱ 2026-09-23 · THE AUTH CALLBACK. Sign-up confirmation, OAuth,
+                 identity linking and password reset end with gotrue sending the
+                 browser to com.nikatru.subscriptiontracker://auth-callback?nk_auth=<flow>&code=…;
+                 this filter brings that URL back to THIS activity (singleTop, so
+                 a running app receives it in onNewIntent, not a second copy).
+                 supabase_flutter's app_links listener exchanges the PKCE code —
+                 a forged URL from another app cannot, it lacks the verifier.
+                 The scheme's one source is authCallbackScheme() in
+                 packages/auth_supabase/lib/src/auth_redirect.dart;
+                 tooling/ci/assert-auth-callbacks.mjs fails the build if this
+                 filter drifts from it, and assert-android-vapt-manifest.mjs V5
+                 exempts exactly this filter and no other deep link. -->
+            <intent-filter android:autoVerify="false">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data
+                    android:scheme="com.nikatru.subscriptiontracker"
+                    android:host="auth-callback"/>
+            </intent-filter>
+            <!-- The callback is for the SDK, not the router: with Flutter's own
+                 deep linking on, the engine would also push
+                 /?nk_auth=…&code=… to go_router as a route. app_links' own
+                 example turns it off the same way. -->
+            <meta-data
+                android:name="flutter_deeplinking_enabled"
+                android:value="false"/>
         </activity>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->

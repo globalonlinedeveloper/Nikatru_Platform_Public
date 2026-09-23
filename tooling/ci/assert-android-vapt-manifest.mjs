@@ -47,7 +47,9 @@
 //   V5 exported        no exported <activity>, <activity-alias>, <service>,
 //                      <receiver> or <provider> without a protecting permission,
 //                      except a launcher activity whose EVERY intent-filter is
-//                      MAIN + LAUNCHER (the one entry point an app must expose)
+//                      MAIN + LAUNCHER (the one entry point an app must expose),
+//                      or — the ONE recorded deep link — VIEW + BROWSABLE on
+//                      exactly `com.nikatru.<--app>://auth-callback` (see V5)
 //   V6 logging         not a manifest property, so it is checked where it is
 //                      decided: `avoid_print` stays at severity error in the one
 //                      inherited analysis_options.yaml, and the app's own
@@ -221,6 +223,8 @@ const ATTR_BY_ID = new Map([
   [0x01010010, 'exported'],
   [0x01010024, 'value'],
   [0x01010025, 'resource'],
+  [0x01010027, 'scheme'],
+  [0x01010028, 'host'],
   [0x0101020c, 'minSdkVersion'],
   [0x01010270, 'targetSdkVersion'],
   [0x01010280, 'allowBackup'],
@@ -433,6 +437,50 @@ if (attrValuesScanned === 0) {
 // ── V5 exported components ───────────────────────────────────────────────────
 const COMPONENTS = new Set(['activity', 'activity-alias', 'service', 'receiver', 'provider']);
 const appPermission = application.attrs.get('android:permission');
+// ⏱ 2026-09-23 · THE ONE RECORDED DEEP LINK — the auth callback, and why it is
+// not a hole. Sign-up confirmation, OAuth, identity linking and password reset
+// all end with gotrue redirecting the browser to
+// `com.nikatru.<app id>://auth-callback?nk_auth=<flow>&code=…`; the launcher
+// activity must take that VIEW intent or a native user can never finish any of
+// them. What another app on the device gains by starting it: nothing — the
+// `code` is a PKCE code, and exchanging it needs the verifier this installation
+// generated and kept (gotrue's code_verifier storage). A forged URL fails the
+// exchange; it cannot sign anyone in. So the exemption is EXACT: action VIEW
+// only, categories BROWSABLE (+ DEFAULT) only, <data> naming this app's scheme
+// and host `auth-callback` and nothing else — no other scheme, no http(s), no
+// path wildcards. Any other deep link still fails here, and is still a decision
+// to record with its reason. The scheme's single source is
+// `authCallbackScheme()` in packages/auth_supabase/lib/src/auth_redirect.dart;
+// tooling/ci/assert-auth-callbacks.mjs holds the SOURCE manifest to it.
+const AUTH_CALLBACK_SCHEME = `com.nikatru.${APP}`;
+const AUTH_CALLBACK_HOST = 'auth-callback';
+const kidsOf = (f, tag) => f.children.filter((x) => x.tag === tag);
+const namesOf = (f, tag) => kidsOf(f, tag).map((x) => x.attrs.get('android:name'));
+const isLauncherFilter = (f) => {
+  const actions = namesOf(f, 'action');
+  const others = f.children.filter((x) => x.tag !== 'action' && x.tag !== 'category');
+  return actions.length === 1 && actions[0] === 'android.intent.action.MAIN' && namesOf(f, 'category').includes('android.intent.category.LAUNCHER') && others.length === 0;
+};
+const isAuthCallbackFilter = (f) => {
+  const actions = namesOf(f, 'action');
+  const cats = namesOf(f, 'category');
+  const datas = kidsOf(f, 'data');
+  const others = f.children.filter((x) => !['action', 'category', 'data'].includes(x.tag));
+  // <data> elements in one filter COMBINE (every scheme × every host), so each
+  // must name only this scheme and this host, and together they must name both.
+  const dataExact = datas.every((d) =>
+    [...d.attrs.keys()].every((k) => k === 'android:scheme' || k === 'android:host') &&
+    [undefined, AUTH_CALLBACK_SCHEME].includes(d.attrs.get('android:scheme')) &&
+    [undefined, AUTH_CALLBACK_HOST].includes(d.attrs.get('android:host')));
+  return (
+    actions.length === 1 && actions[0] === 'android.intent.action.VIEW' &&
+    cats.includes('android.intent.category.BROWSABLE') &&
+    cats.every((c) => c === 'android.intent.category.BROWSABLE' || c === 'android.intent.category.DEFAULT') &&
+    others.length === 0 && datas.length > 0 && dataExact &&
+    datas.some((d) => d.attrs.get('android:scheme') === AUTH_CALLBACK_SCHEME) &&
+    datas.some((d) => d.attrs.get('android:host') === AUTH_CALLBACK_HOST)
+  );
+};
 const exportedSeen = [];
 let componentCount = 0;
 for (const c of application.children.filter((n) => COMPONENTS.has(n.tag))) {
@@ -450,16 +498,16 @@ for (const c of application.children.filter((n) => COMPONENTS.has(n.tag))) {
     : c.tag === 'provider' && c.attrs.get('android:readPermission') && c.attrs.get('android:writePermission')
       ? 'read + write permissions'
       : null;
+  const isActivity = c.tag === 'activity' || c.tag === 'activity-alias';
+  const takesAuthCallback = isActivity && filters.some(isAuthCallbackFilter);
   const isLauncher =
-    (c.tag === 'activity' || c.tag === 'activity-alias') &&
-    filters.length > 0 &&
-    filters.every((f) => {
-      const actions = f.children.filter((x) => x.tag === 'action').map((x) => x.attrs.get('android:name'));
-      const cats = f.children.filter((x) => x.tag === 'category').map((x) => x.attrs.get('android:name'));
-      const others = f.children.filter((x) => x.tag !== 'action' && x.tag !== 'category');
-      return actions.length === 1 && actions[0] === 'android.intent.action.MAIN' && cats.includes('android.intent.category.LAUNCHER') && others.length === 0;
-    });
-  exportedSeen.push(`${c.tag} ${name} — ${protectedBy ?? (isLauncher ? 'launcher entry point' : 'UNPROTECTED')}`);
+    isActivity &&
+    filters.some(isLauncherFilter) &&
+    filters.every((f) => isLauncherFilter(f) || isAuthCallbackFilter(f));
+  const launcherLabel = takesAuthCallback
+    ? `launcher entry point + auth callback ${AUTH_CALLBACK_SCHEME}://${AUTH_CALLBACK_HOST}`
+    : 'launcher entry point';
+  exportedSeen.push(`${c.tag} ${name} — ${protectedBy ?? (isLauncher ? launcherLabel : 'UNPROTECTED')}`);
   if (!protectedBy && !isLauncher) {
     problems.push(
       `V5 exported — <${c.tag} android:name="${name}"> is exported${isTrue(exp) ? '' : ' (implicitly, by its intent-filter)'} with no protecting permission. ` +

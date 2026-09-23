@@ -1,10 +1,23 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show TargetPlatform;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:supabase_flutter/supabase_flutter.dart' as sb;
+
+/// ⏱ 2026-09-23 — the adapter takes an [AuthRedirects] now, not one reset URL.
+/// A web build under the app's base path: what the reset flow must send is
+/// the same URL the old `passwordResetRedirectUrl` composed for this base.
+final AuthRedirects _webRedirects = AuthRedirects(
+  appId: 'subscriptiontracker',
+  isWeb: true,
+  platform: TargetPlatform.android,
+  base: Uri.parse('https://nikatru.com/subscriptiontracker/'),
+);
+const String _webReset =
+    'https://nikatru.com/subscriptiontracker/?nk_auth=reset#/reset-password';
 
 /// [G-43] The PRODUCTION identity adapter, driven directly.
 ///
@@ -520,13 +533,13 @@ void main() {
       final _FakeGoTrue g = _FakeGoTrue(session: null);
       final SupabaseAuthRepository auth = SupabaseAuthRepository(
         client: g,
-        passwordResetRedirectTo: 'https://nikatru.com/subscriptiontracker/',
+        redirects: _webRedirects,
       );
 
       await auth.sendPasswordReset('a@b.com');
 
       expect(g.resetRequests, <List<String?>>[
-        <String?>['a@b.com', 'https://nikatru.com/subscriptiontracker/'],
+        <String?>['a@b.com', _webReset],
       ]);
     });
 
@@ -867,7 +880,7 @@ void main() {
       final _FakeGoTrue g = _FakeGoTrue(session: null);
       final SupabaseAuthRepository auth = SupabaseAuthRepository(
         client: g,
-        passwordResetRedirectTo: 'https://nikatru.com/subscriptiontracker/',
+        redirects: _webRedirects,
       );
 
       await auth.sendPasswordReset('a@b.com', captchaToken: 'tok-abc123');
@@ -882,7 +895,7 @@ void main() {
       final _FakeGoTrue g = _FakeGoTrue(session: null);
       final SupabaseAuthRepository auth = SupabaseAuthRepository(
         client: g,
-        passwordResetRedirectTo: 'https://nikatru.com/subscriptiontracker/',
+        redirects: _webRedirects,
       );
 
       await auth.sendPasswordReset('a@b.com');
@@ -891,7 +904,7 @@ void main() {
       // …and the redirect is still there. A forwarding change that quietly
       // dropped a sibling argument would pass the line above.
       expect(g.resetRequests, <List<String?>>[
-        <String?>['a@b.com', 'https://nikatru.com/subscriptiontracker/'],
+        <String?>['a@b.com', _webReset],
       ]);
     });
 
