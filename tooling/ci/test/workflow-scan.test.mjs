@@ -28,7 +28,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { parseWorkflow, parseAllWorkflows, joinBlockScalars, shellSegments, workflowEvents } from '../workflow-scan.mjs';
+import { parseWorkflow, parseAllWorkflows, joinBlockScalars, shellSegments, workflowEvents, dispatchInputs } from '../workflow-scan.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 assert.ok(CI_DIR.endsWith(join('tooling', 'ci')), 'the module under test must be the real one');
@@ -401,5 +401,50 @@ jobs:
          else's COVERAGE LOST and two refusals for one fact help nobody. */
       assert.equal(workflowEvents(parseWorkflow(root, '.github/workflows/nope.yml')).size, 0);
     });
+  });
+
+  /* ⏱ ADDED 2026-09-23 with `dispatchInputs`, for tooling/ops/redeploy-stranded.mjs:
+     a lane whose dispatch takes inputs is never reproduced by a bare {ref:'main'}
+     POST, and inputs are how a store publish takes the owner's word. The failure
+     that matters is reading "no inputs" off a lane that has them, so the case is
+     the three shapes that could hide them: the event's own child, a key of the
+     same name one level deeper, and `inputs:` under a DIFFERENT event. */
+  test('dispatchInputs reads the `inputs:` child of `workflow_dispatch:` and nothing else', () => {
+    const root = fixture({
+      'with.yml': `name: W
+on:
+  workflow_dispatch:
+    inputs:
+      lane:
+        type: choice
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+`,
+      'bare.yml': `name: B
+on:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      lane:
+        type: string
+  schedule:
+    - cron: '0 6 * * 1'
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo inputs:
+`,
+      'flow.yml': `name: F
+on: [push, workflow_dispatch]
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+`,
+    });
+    assert.equal(dispatchInputs(parseWorkflow(root, '.github/workflows/with.yml')), 4);
+    assert.equal(dispatchInputs(parseWorkflow(root, '.github/workflows/bare.yml')), null, 'workflow_call inputs are not the dispatch ones');
+    assert.equal(dispatchInputs(parseWorkflow(root, '.github/workflows/flow.yml')), null);
   });
 });

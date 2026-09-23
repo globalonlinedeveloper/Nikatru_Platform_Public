@@ -11,11 +11,14 @@ on:
   # here: no expression reads the triggering event, the checkout is the default
   # branch, and the only code run is tooling/ops/redeploy-stranded.mjs from it.
   workflow_run:
-    # why: CI, plus every deploy lane that gates on ci-gate. The lanes' own
-    # completions close the race where a lane fails its gate AFTER CI at a later
-    # commit is already green. redeploy-stranded.test.mjs holds this list equal
-    # to the lanes the tool derives, both ways.
-    workflows: [CI, Deploy web, Deploy workers]
+    # why: CI, plus every re-enterable lane (push-on-main or scheduled) that
+    # gates on ci-gate. The lanes' own completions close the race where a lane
+    # fails its gate AFTER CI at a later commit is already green. Build apps is
+    # here since 2026-09-23: the Worker's 00:00Z dispatch (#102) failed its gate
+    # and nothing re-entered it. redeploy-stranded.test.mjs holds this list
+    # equal to the lanes the tool derives, both ways. `branches: [main]` keeps a
+    # tag-triggered Build apps run (a release) out.
+    workflows: [CI, Deploy web, Deploy workers, Build apps]
     types: [completed]
     branches: [main]
   workflow_dispatch:

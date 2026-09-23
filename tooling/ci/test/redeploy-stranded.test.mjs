@@ -19,9 +19,16 @@
 // printed the refusal and then dispatched anyway would pass an exit-code check.
 //
 // ⚠️ THE LANE SET IS DERIVED, SO IT IS PINNED FROM BOTH SIDES: against the real
-// tree (exactly deploy-web.yml and deploy-workers.yml), and by mutation — a
-// trigger list missing a lane, and a third gated lane nobody added to the
-// trigger, must each make the tool refuse to run (exit 2).
+// tree (exactly build-platforms.yml, deploy-web.yml and deploy-workers.yml), and
+// by mutation — a trigger list missing a lane, and a new gated lane nobody added
+// to the trigger, must each make the tool refuse to run (exit 2). Each of the
+// four limbs (L1–L4 in the tool's header) has a mutation that breaks it ALONE.
+//
+// 🔴 THE SECOND INSTANCE, 2026-09-23 (O-REDEPLOY-STRANDED-MISSES-THE-BUILD-LANE).
+// Build apps #102 (run 35800063831, the Worker's 00:00Z dispatch at c1cdb241)
+// failed on the gate step, and "all-platforms" — an `if: always()` aggregate
+// behind the gate — failed with it. The REPLAY case below is that run: it must
+// DISPATCH, and a lane whose only failure is such a consequence job must not.
 //
 // NOTHING HERE TOUCHES THE NETWORK. Every CLI case runs the fixture transport,
 // which has no fetch in it; the one live-shaped case withholds the credential.
@@ -31,7 +38,7 @@
 import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, rmSync, existsSync, readFileSync, cpSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, cpSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -40,10 +47,13 @@ import {
   decide,
   deployLanes,
   gateCheckName,
+  newestRun,
   triggerProblem,
   rerunArgv,
   RECOVERY_WORKFLOW,
+  CHANNEL_REGISTER,
 } from '../../ops/redeploy-stranded.mjs';
+import { parseWorkflow, workflowEvents } from '../workflow-scan.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const SCRIPT = join(REPO, 'tooling', 'ops', 'redeploy-stranded.mjs');
@@ -68,7 +78,25 @@ const realJob = (name) => ({ name, conclusion: 'failure', steps: [
   { name: 'Deploy to Cloudflare Pages', conclusion: 'failure' },
 ] });
 const skippedJob = (name) => ({ name, conclusion: 'skipped', steps: [] });
+// build-platforms' `all_platforms`: `if: always()`, needs the gate, fails on its
+// own check whenever anything upstream did not succeed.
+const aggJob = (name) => ({ name, conclusion: 'failure', steps: [
+  { name: 'Set up job', conclusion: 'success' },
+  { name: 'Require every platform green', conclusion: 'failure' },
+] });
 const LANE = { file: 'deploy-web.yml', gateStep: GATE_STEP };
+const BP = { file: 'build-platforms.yml', gateStep: GATE_STEP, consequenceJobs: ['all-platforms'] };
+// Build apps #102 as the jobs API reported it: the gate job and the aggregate
+// failed, every other job skipped.
+const bpStranded = () => [
+  gateJob('Require ci-gate to have passed'),
+  skippedJob('Derive the app set from the pub workspace'),
+  skippedJob('Linux + Web + Android'),
+  skippedJob('Windows'),
+  skippedJob('macOS + iOS'),
+  skippedJob('Durable release artifacts'),
+  aggJob('all-platforms'),
+];
 
 // ═══════════════════════════════════════════════════════════════════════════
 describe('decide — the two ways back in', () => {
@@ -101,6 +129,31 @@ describe('decide — the two ways back in', () => {
   });
 });
 
+describe('decide — a CADENCE lane (Build apps) and its consequence job', () => {
+  test('REPLAY of 35800063831: the Worker dispatch failed the gate, all-platforms failed with it, head ahead and green → dispatch', () => {
+    const v = decide({ lane: BP, head: Y, gate: GREEN,
+      runs: [run({ id: 35800063831, run_number: 102, head_sha: X, event: 'workflow_dispatch' }),
+        run({ id: 35700000000, run_number: 101, head_sha: 'c'.repeat(40), event: 'workflow_dispatch', conclusion: 'success' })],
+      jobs: bpStranded(), relation: 'ahead' });
+    assert.equal(v.action, 'dispatch', v.why);
+  });
+
+  test('a SCHEDULED run stranded at head, attempt 1 → re-run it (a re-run keeps event=schedule)', () => {
+    const v = decide({ lane: BP, head: Y, gate: GREEN,
+      runs: [run({ id: 1030, run_number: 103, head_sha: Y, event: 'schedule' })], jobs: bpStranded() });
+    assert.equal(v.action, 'rerun', v.why);
+    assert.equal(v.runId, 1030);
+  });
+
+  test('newestRun reads a later schedule run over an older failed dispatch', () => {
+    const n = newestRun([
+      run({ id: 1020, run_number: 102, head_sha: X, event: 'workflow_dispatch' }),
+      run({ id: 1030, run_number: 103, head_sha: Y, event: 'schedule', conclusion: 'success' }),
+    ]);
+    assert.equal(n?.id, 1030);
+  });
+});
+
 describe('decide — RED CONTROLS: nothing is re-entered', () => {
   const base = { lane: LANE, head: Y, gate: GREEN, runs: [run({ id: 426, run_number: 426, head_sha: X })], relation: 'ahead' };
   // One `test(` per case, never a loop: coverage-manifest.json counts declarations, so a
@@ -129,15 +182,53 @@ describe('decide — RED CONTROLS: nothing is re-entered', () => {
   test('a same-SHA run already failed the gate on attempt 2', () =>
     refuses({ head: X, runs: [run({ id: 426, run_number: 426, head_sha: X, run_attempt: 2 })] }));
   test('the stranded SHA is not an ancestor of head', () => refuses({ relation: 'diverged' }));
+  test('Build apps: a platform job failed on a REAL build step, and all-platforms with it', () =>
+    refuses({ lane: BP, jobs: [
+      { name: 'Require ci-gate to have passed', conclusion: 'success', steps: [{ name: GATE_STEP, conclusion: 'success' }] },
+      realJob('Linux + Web + Android'), aggJob('all-platforms')] }));
+  test('Build apps: ONLY all-platforms failed, the gate job passed — a consequence job alone is never a strand', () =>
+    refuses({ lane: BP, jobs: [
+      { name: 'Require ci-gate to have passed', conclusion: 'success', steps: [{ name: GATE_STEP, conclusion: 'success' }] },
+      aggJob('all-platforms')] }));
+  test('a deploy lane (no consequence jobs) with an "all-platforms" failure beside its gate job', () =>
+    refuses({ lane: LANE, jobs: [gateJob('web'), aggJob('all-platforms')] }));
+  test('Build apps: a later schedule SUCCESS supersedes the older failed dispatch', () =>
+    refuses({ lane: BP, jobs: bpStranded(), runs: [
+      run({ id: 1020, run_number: 102, head_sha: X, event: 'workflow_dispatch' }),
+      run({ id: 1030, run_number: 103, head_sha: Y, event: 'schedule', conclusion: 'success' })] }));
+  test('Build apps: a same-SHA schedule run already failed the gate on attempt 2', () =>
+    refuses({ lane: BP, jobs: bpStranded(), head: Y,
+      runs: [run({ id: 1030, run_number: 103, head_sha: Y, event: 'schedule', run_attempt: 2 })] }));
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
 describe('derivation — against the real tree', () => {
-  test('the derived lanes are exactly deploy-web.yml and deploy-workers.yml, each with its named gate step', () => {
+  test('the derived lanes are exactly build-platforms.yml, deploy-web.yml and deploy-workers.yml, each with its named gate step', () => {
     const { lanes, problems } = deployLanes(REPO);
     assert.deepEqual(problems, []);
-    assert.deepEqual(lanes.map((l) => l.file).sort(), ['deploy-web.yml', 'deploy-workers.yml']);
+    assert.deepEqual(lanes.map((l) => l.file).sort(), ['build-platforms.yml', 'deploy-web.yml', 'deploy-workers.yml']);
     for (const l of lanes) assert.equal(l.gateStep, GATE_STEP, l.file);
+    // The deploy lanes' `always()` are step-level; only a JOB-level one is a consequence.
+    for (const l of lanes.filter((x) => x.file !== 'build-platforms.yml')) assert.deepEqual(l.consequenceJobs, [], l.file);
+  });
+
+  test('build-platforms: its one consequence job is all-platforms, the channel register\'s aggregatingJob', () => {
+    const bp = deployLanes(REPO).lanes.find((l) => l.file === 'build-platforms.yml');
+    assert.ok(bp, 'build-platforms.yml was not derived');
+    assert.equal(bp.gateStep, GATE_STEP);
+    assert.deepEqual(bp.consequenceJobs, ['all-platforms']);
+    const agg = JSON.parse(readFileSync(join(REPO, CHANNEL_REGISTER), 'utf8')).aggregatingJob;
+    const wf = parseWorkflow(REPO, agg.workflow);
+    const job = wf.jobs.get(agg.job);
+    assert.ok(job, `${agg.workflow} has no job ${agg.job}`);
+    assert.ok(bp.consequenceJobs.includes(job.displayName ?? agg.job), 'the aggregate the channel register names is not a consequence job');
+  });
+
+  test('extensions.yml is NOT derived although it has a schedule and a dispatch', () => {
+    const wf = parseWorkflow(REPO, '.github/workflows/extensions.yml');
+    const ev = workflowEvents(wf);
+    assert.ok(ev.has('schedule') && ev.has('workflow_dispatch'), 'the premise moved: extensions.yml lost its schedule or dispatch');
+    assert.equal(deployLanes(REPO).lanes.some((l) => l.file === 'extensions.yml'), false);
   });
 
   test('the gate check name is read from ci.yml and is ci-gate', () => {
@@ -150,9 +241,13 @@ describe('derivation — against the real tree', () => {
 });
 
 describe('derivation — MUTATIONS the trigger check must catch', () => {
+  // The workflows AND the channel register: L4 reads the register, and a root
+  // without it is exit 2 (COULD NOT LOOK), which would hide every other verdict.
   const mutated = (edit) => {
     const root = tmp();
     cpSync(join(REPO, '.github', 'workflows'), join(root, '.github', 'workflows'), { recursive: true });
+    mkdirSync(join(root, 'tooling'), { recursive: true });
+    cpSync(join(REPO, CHANNEL_REGISTER), join(root, CHANNEL_REGISTER));
     edit(root);
     return root;
   };
@@ -163,12 +258,78 @@ describe('derivation — MUTATIONS the trigger check must catch', () => {
     assert.notEqual(after, before, `mutation did not apply to ${rel}`);
     writeFileSync(p, after);
   };
+  const derived = (root) => deployLanes(root).lanes.map((l) => l.file);
+  const SCHEDULE = "  schedule:\n    - cron: '0 6 * * 1'\n";
 
   test('a lane dropped from the trigger list → MISSING, and the CLI refuses (exit 2)', () => {
-    const root = mutated((r) => rewrite(r, RECOVERY_WORKFLOW, 'workflows: [CI, Deploy web, Deploy workers]', 'workflows: [CI, Deploy web]'));
+    const root = mutated((r) => rewrite(r, RECOVERY_WORKFLOW, 'workflows: [CI, Deploy web, Deploy workers, Build apps]', 'workflows: [CI, Deploy web, Build apps]'));
     assert.match(triggerProblem(root, deployLanes(root).lanes) ?? '', /MISSING Deploy workers/);
     const r = cli(['--root', root], { REDEPLOY_STRANDED_FIXTURE: writeFixture(tonight()) });
     assert.equal(r.status, 2, r.stderr);
+  });
+
+  test('Build apps dropped from the trigger list → MISSING Build apps, and the CLI refuses (exit 2)', () => {
+    const root = mutated((r) => rewrite(r, RECOVERY_WORKFLOW, 'workflows: [CI, Deploy web, Deploy workers, Build apps]', 'workflows: [CI, Deploy web, Deploy workers]'));
+    assert.match(triggerProblem(root, deployLanes(root).lanes) ?? '', /MISSING Build apps/);
+    const r = cli(['--root', root], { REDEPLOY_STRANDED_FIXTURE: writeFixture(tonight()) });
+    assert.equal(r.status, 2, r.stderr);
+  });
+
+  test('L4 alone: submit-appstore.yml (no inputs, unconditional gate) given a schedule is still not a lane', () => {
+    const root = mutated((r) => rewrite(r, '.github/workflows/submit-appstore.yml', 'on:\n  workflow_dispatch:\n', `on:\n  workflow_dispatch:\n${SCHEDULE}`));
+    assert.equal(derived(root).includes('submit-appstore.yml'), false);
+    assert.equal(triggerProblem(root, deployLanes(root).lanes), null);
+  });
+
+  test('L2 + L4: submit-play.yml given a schedule is still not a lane', () => {
+    const root = mutated((r) => rewrite(r, '.github/workflows/submit-play.yml', 'on:\n  workflow_dispatch:\n', `on:\n${SCHEDULE}  workflow_dispatch:\n`));
+    assert.equal(derived(root).includes('submit-play.yml'), false);
+  });
+
+  test('L3: extensions.yml with its dispatch `inputs:` removed is still not a lane (its gate job is conditional)', () => {
+    const root = mutated((r) => {
+      const p = join(r, '.github', 'workflows', 'extensions.yml');
+      const lines = readFileSync(p, 'utf8').split('\n');
+      const at = lines.findIndex((l, i) => l === '    inputs:' && lines[i - 1] === '  workflow_dispatch:');
+      assert.ok(at > 0, 'extensions.yml has no `inputs:` under `workflow_dispatch:` to remove');
+      let end = at + 1;
+      while (end < lines.length && (lines[end].trim() === '' || /^ {5,}/.test(lines[end]))) end++;
+      lines.splice(at, end - at);
+      writeFileSync(p, lines.join('\n'));
+    });
+    assert.equal(derived(root).includes('extensions.yml'), false);
+  });
+
+  test('L3 alone: a job-level `if:` on build-platforms\' gate job takes it out', () => {
+    const root = mutated((r) => rewrite(r, '.github/workflows/build-platforms.yml',
+      '  gate:\n    name: Require ci-gate to have passed\n',
+      "  gate:\n    name: Require ci-gate to have passed\n    if: github.event_name == 'schedule'\n"));
+    assert.equal(derived(root).includes('build-platforms.yml'), false);
+  });
+
+  test('L2 alone: a dispatch `inputs:` block on build-platforms takes it out', () => {
+    const root = mutated((r) => rewrite(r, '.github/workflows/build-platforms.yml',
+      'on:\n  workflow_dispatch:\n  push:\n',
+      'on:\n  workflow_dispatch:\n    inputs:\n      flavour:\n        type: string\n        required: false\n  push:\n'));
+    assert.equal(derived(root).includes('build-platforms.yml'), false);
+  });
+
+  test('L4 alone: build-platforms named as a channel\'s submission workflow takes it out', () => {
+    const root = mutated((r) => {
+      const p = join(r, CHANNEL_REGISTER);
+      const reg = JSON.parse(readFileSync(p, 'utf8'));
+      const ch = reg.channels.find((c) => c.submission?.workflow);
+      assert.ok(ch, 'no channel carries a submission block to repoint');
+      ch.submission.workflow = '.github/workflows/build-platforms.yml';
+      writeFileSync(p, JSON.stringify(reg, null, 2));
+    });
+    assert.equal(derived(root).includes('build-platforms.yml'), false);
+  });
+
+  test('L1 is the only thing keeping symbolication-proof.yml out: a schedule derives it, and the trigger check sees it', () => {
+    const root = mutated((r) => rewrite(r, '.github/workflows/symbolication-proof.yml', '  workflow_dispatch:\n', `  workflow_dispatch:\n${SCHEDULE}`));
+    assert.ok(derived(root).includes('symbolication-proof.yml'), derived(root).join(', '));
+    assert.match(triggerProblem(root, deployLanes(root).lanes) ?? '', /MISSING Symbolication proof/);
   });
 
   test('a third gated lane nobody added to the trigger → MISSING', () => {
@@ -195,6 +356,8 @@ function tonight() {
     runs: {
       'deploy-web.yml': [run({ id: 4260, run_number: 426, head_sha: X }), run({ id: 4250, run_number: 425, head_sha: 'b'.repeat(40), conclusion: 'success' })],
       'deploy-workers.yml': [run({ id: 1680, run_number: 168, head_sha: X })],
+      // Build apps is green here: TONIGHT is the 2026-09-22 instance, before it was a lane.
+      'build-platforms.yml': [run({ id: 1010, run_number: 101, head_sha: 'c'.repeat(40), event: 'workflow_dispatch', conclusion: 'success' })],
     },
     jobs: {
       4260: [gateJob('Build & deploy web to Cloudflare Pages (subscriptiontracker)')],
@@ -220,6 +383,17 @@ describe('CLI — fixture transport', () => {
     const r = cli([], { REDEPLOY_STRANDED_FIXTURE: writeFixture(tonight()), REDEPLOY_STRANDED_FIXTURE_LOG: log });
     assert.equal(r.status, 0, r.stderr);
     assert.deepEqual(readFileSync(log, 'utf8').trim().split('\n').sort(), ['dispatch deploy-web.yml ref=main', 'dispatch deploy-workers.yml ref=main']);
+  });
+
+  test('REPLAY 35800063831: Build apps stranded by the Worker dispatch is dispatched on main beside the deploy lanes', () => {
+    const fx = tonight();
+    fx.runs['build-platforms.yml'].unshift(run({ id: 1020, run_number: 102, head_sha: X, event: 'workflow_dispatch' }));
+    fx.jobs[1020] = bpStranded();
+    const log = join(tmp(), 'actions.log');
+    const r = cli([], { REDEPLOY_STRANDED_FIXTURE: writeFixture(fx), REDEPLOY_STRANDED_FIXTURE_LOG: log });
+    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual(readFileSync(log, 'utf8').trim().split('\n').sort(),
+      ['dispatch build-platforms.yml ref=main', 'dispatch deploy-web.yml ref=main', 'dispatch deploy-workers.yml ref=main']);
   });
 
   test('SAME-SHA: the stranded run at head is re-run through safe-rerun --failed', () => {
