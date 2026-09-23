@@ -439,6 +439,107 @@ export function parseAllWorkflows(root) {
     .filter(Boolean);
 }
 
+/**
+ * THE SHELL A STEP'S `run:` ACTUALLY RUNS UNDER, for the step holding line
+ * `lineNo` of a parsed workflow. GitHub's order: the step's own `shell:`, else
+ * the job's `defaults.run.shell`, else the workflow's, else the RUNNER's
+ * default — `pwsh` on a Windows runner, `bash` on a Linux or macOS one.
+ *
+ * Returns `{ shell, family, from, n }`: `shell` as written, `family` its first
+ * word (`bash -e {0}` is `bash`), `from` which of the four decided it, and `n`
+ * the line that decided it. A shell this cannot name comes back as
+ * `{ shell: null, family: null, from: 'unknown', n, why }` — never a guess.
+ *
+ * ⏱ ADDED 2026-09-23. submit-windows-store.yml's [10]D-9 recorder step declared
+ * no `shell:` inside a `runs-on: windows-2025` job, so it ran under pwsh. There
+ * the bash-written `"$LISTING_URL"` is an unset PowerShell VARIABLE, not the
+ * step's `env:` entry: the recorder got no listing URL and exited 1 before any
+ * POST, so the first real Store submission would have been recorded nowhere.
+ * The test that read that step looked only for an explicit `shell:` key, and a
+ * missing key read as "a plain shell". A missing key IS a shell, chosen by the
+ * runner, so the runner is part of the answer.
+ *
+ * ⚠️ A `runs-on:` that is an expression, a block (`group:` / `labels:`), or a
+ * label set naming no OS is UNKNOWN when nothing above it declares a shell. The
+ * caller decides what a shell nobody can name means for its own question.
+ */
+export function stepShell(wf, lineNo) {
+  const unknown = (why) => ({ shell: null, family: null, from: 'unknown', n: lineNo, why });
+  const job = [...wf.jobs.values()].find((j) => j.lines.some((l) => l.n === lineNo));
+  if (!job) return unknown(`line ${lineNo} is in no job`);
+  const indent = (t) => t.match(/^ */)[0].length;
+  const named = (shell, from, n) => ({ shell, family: shell.split(/\s+/)[0], from, n });
+  const lines = job.lines;
+  const at = lines.findIndex((l) => l.n === lineNo);
+  const self = lines[at].text;
+  const isItem = (t) => /^\s*-\s/.test(t);
+  // The step: the nearest `- ` item at or above the line and shallower than it,
+  // so a line inside a `run: |` block resolves to the step that runs it.
+  let start = at;
+  if (!isItem(self)) while (start > 0 && !(isItem(lines[start].text) && indent(lines[start].text) < indent(self))) start -= 1;
+  if (isItem(lines[start].text)) {
+    const stepIndent = indent(lines[start].text);
+    for (let j = start; j < lines.length; j++) {
+      const t = lines[j].text;
+      if (j > start && t.trim() !== '' && indent(t) <= stepIndent) break;
+      const sh = t.replace(/^(\s*)-\s/, '$1  ').match(/^(\s+)shell:\s*(\S.*?)\s*$/);
+      if (sh && sh[1].length === stepIndent + 2) return named(unquote(sh[2]), 'step', lines[j].n);
+    }
+  }
+  const jobDefault = defaultsShell(lines, 4);
+  if (jobDefault) return named(jobDefault.shell, 'job defaults', jobDefault.n);
+  const wfDefault = defaultsShell(wf.lines.slice(0, wf.jobsAt ?? wf.lines.length), 0);
+  if (wfDefault) return named(wfDefault.shell, 'workflow defaults', wfDefault.n);
+  const runsOn = lines.find((l) => /^ {4}runs-on:/.test(l.text));
+  if (!runsOn) return unknown(`job "${job.name}" has no runs-on`);
+  const label = runsOn.text.replace(/^ {4}runs-on:\s*/, '').trim();
+  if (label === '' || /\$\{\{/.test(label)) {
+    return unknown(`job "${job.name}" runs on \`${label || '(a block)'}\`, which names its runner only at run time, and no shell is declared`);
+  }
+  const from = `runner default, runs-on: ${label}`;
+  if (/windows/i.test(label)) return named('pwsh', from, runsOn.n);
+  if (/ubuntu|macos|linux/i.test(label)) return named('bash', from, runsOn.n);
+  return unknown(`job "${job.name}" runs on \`${label}\`, which names no OS, and no shell is declared`);
+}
+
+/** `defaults: run: shell:` among `lines`, the `defaults:` key at `base`
+ *  spaces, as `{ shell, n }` — or null. Block and flow forms. A `defaults.run`
+ *  that sets only `working-directory` declares no shell. */
+function defaultsShell(lines, base) {
+  const indent = (t) => t.match(/^ */)[0].length;
+  const flow = (text) => text.match(/shell:\s*([^,}]+?)\s*[,}]/);
+  for (let i = 0; i < lines.length; i++) {
+    const d = lines[i].text.match(/^( *)defaults:\s*(.*?)\s*$/);
+    if (!d || d[1].length !== base) continue;
+    if (d[2].startsWith('{')) {
+      const f = flow(d[2]);
+      return f ? { shell: unquote(f[1]), n: lines[i].n } : null;
+    }
+    let runIndent = null;
+    for (let j = i + 1; j < lines.length; j++) {
+      const t = lines[j].text;
+      if (t.trim() === '') continue;
+      const at = indent(t);
+      if (at <= base) break;
+      if (runIndent !== null && at <= runIndent) runIndent = null;
+      const r = t.match(/^( *)run:\s*(.*?)\s*$/);
+      if (r && runIndent === null) {
+        if (r[2].startsWith('{')) {
+          const f = flow(r[2]);
+          if (f) return { shell: unquote(f[1]), n: lines[j].n };
+          continue;
+        }
+        runIndent = r[1].length;
+        continue;
+      }
+      const s = runIndent !== null && t.match(/^\s*shell:\s*(\S.*?)\s*$/);
+      if (s && at > runIndent) return { shell: unquote(s[1]), n: lines[j].n };
+    }
+    return null;
+  }
+  return null;
+}
+
 /** Shell command segments of one logical line. `&&`, `||`, `;` and `|` all end
  *  a command, so each segment answers for itself — a `--dry-run` on one segment
  *  must never exonerate a real publish on the next. */

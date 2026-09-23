@@ -72,7 +72,7 @@
   "dead-repo-names.test.mjs": 17,
   "deletion-control.test.mjs": 35,
   "deploy-triggers.test.mjs": 17,
-  "deployment-record.test.mjs": 72,
+  "deployment-record.test.mjs": 76,
   "desktop-runner-identity.test.mjs": 16,
   "discovery-surface.test.mjs": 139,
   "dod-sync.test.mjs": 20,
@@ -253,7 +253,7 @@
   "worker-error-sink.test.mjs": 18,
   "worker-shared-modules.test.mjs": 13,
   "workflow-readers.test.mjs": 14,
-  "workflow-scan.test.mjs": 23,
+  "workflow-scan.test.mjs": 33,
   "workflow-timeouts.test.mjs": 18,
   "xcode-floor.test.mjs": 19
 }

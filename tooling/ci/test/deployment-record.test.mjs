@@ -21,7 +21,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, readFileSync, readdirSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, readFileSync, readdirSync, writeFileSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -37,7 +37,7 @@ import {
   SUBMISSION_STATES,
   STATE_MEANING,
 } from '../deployment-record.mjs';
-import { RECORD_CALL, expandMatrixEnvironment, isShellVariableEnvironment, shellSegments } from '../workflow-scan.mjs';
+import { RECORD_CALL, expandMatrixEnvironment, isShellVariableEnvironment, shellSegments, parseWorkflow, stepShell } from '../workflow-scan.mjs';
 import { isRetryable, retryDelayMs, RETRY_ATTEMPTS, runIdentity, RUN_IDENTITY_ENV } from '../record-deployment.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -771,12 +771,12 @@ const NO_IDENTITY = Object.fromEntries(RUN_IDENTITY_ENV.map((k) => [k, undefined
 /** Every `node … record-deployment.mjs` invocation in one workflow, and each
  *  thing in that file that would stop it carrying the runner's run identity:
  *  a wrapper in front of `node` (`env -i`, `sudo`, `docker run`, an inline
- *  assignment), a step `shell:` that is not a plain shell, or an `env:` entry
- *  that sets an identity variable to anything but its own `github.*` context. */
+ *  assignment), or an `env:` entry that sets an identity variable to anything
+ *  but its own `github.*` context. The SHELL each call runs under is
+ *  `dialectBlockers`' question, below. */
 function identityBlockers(file) {
   const lines = readFileSync(join(ROOT, '.github/workflows', file), 'utf8').split('\n');
-  const indent = (l) => l.match(/^\s*/)[0].length;
-  const CONTEXT = { GITHUB_WORKFLOW_REF: 'workflow_ref', GITHUB_RUN_ID: 'run_id', GITHUB_RUN_ATTEMPT: 'run_attempt', GITHUB_RUN_NUMBER: 'run_number' };
+  const CONTEXT ={ GITHUB_WORKFLOW_REF: 'workflow_ref', GITHUB_RUN_ID: 'run_id', GITHUB_RUN_ATTEMPT: 'run_attempt', GITHUB_RUN_NUMBER: 'run_number' };
   const problems = [];
   for (const [i, raw] of lines.entries()) {
     if (/^\s*#/.test(raw)) continue;
@@ -795,17 +795,51 @@ function identityBlockers(file) {
     if (!/^node\s+tooling\/ci\/record-deployment\.mjs(\s|$)/.test(segment)) {
       problems.push(`${file}:${i + 1} runs the recorder as \`${segment}\`, not straight from the step's shell`);
     }
-    let start = i;
-    if (!/^\s*-\s/.test(raw)) while (start > 0 && !(/^\s*-\s/.test(lines[start]) && indent(lines[start]) < indent(raw))) start -= 1;
-    const stepIndent = indent(lines[start]);
-    for (let j = start; j < lines.length && (j === start || lines[j].trim() === '' || indent(lines[j]) > stepIndent); j++) {
-      const sh = lines[j].replace(/^(\s*)-\s/, '$1  ').match(/^(\s+)shell:\s*(.*?)\s*$/);
-      if (sh && sh[1].length === stepIndent + 2 && !/^(bash|sh|pwsh|powershell)(\s|$)/.test(sh[2])) {
-        problems.push(`${file}:${j + 1} runs the recorder's step under \`shell: ${sh[2]}\``);
-      }
-    }
   }
   return { invocations, problems };
+}
+
+/** ⏱ 2026-09-23 · THE SHELL THAT READS THE RECORDER'S ARGUMENTS. Every call
+ *  writes them in bash — `"$LISTING_URL"`, `"$environment"`, `"$TOOL-amo"` —
+ *  and so does RECORD_CALL, the one reader of the call site. Under pwsh each of
+ *  those is an unset PowerShell VARIABLE, not the step's `env:` entry, so it
+ *  expands to nothing. submit-windows-store.yml's recorder ran exactly there:
+ *  no `shell:` on the step, in a `runs-on: windows-2025` job, whose default is
+ *  pwsh. The recorder got no listing URL and exited 1 before any POST, and the
+ *  check this replaces passed it, because it read only an explicit `shell:` key
+ *  and admitted pwsh even when one was written. The shell is now the one the
+ *  step RUNS under (workflow-scan's `stepShell`: step, job defaults, workflow
+ *  defaults, then the runner's own default), and only bash or sh reads bash.
+ *
+ *  Why bash and not "pwsh with `$env:NAME`": one call site, one dialect. A pwsh
+ *  call would be read in bash by every reader of RECORD_CALL, so it would be
+ *  right on the runner and misread in every report about it. */
+function dialectBlockers(file, root = ROOT) {
+  const rel = `.github/workflows/${file}`;
+  const lines = readFileSync(join(root, rel), 'utf8').split('\n');
+  const wf = parseWorkflow(root, rel);
+  const problems = [];
+  let invocations = 0;
+  for (const [i, raw] of lines.entries()) {
+    if (/^\s*#/.test(raw) || !/node\s+\S*record-deployment\.mjs/.test(raw)) continue;
+    invocations += 1;
+    const sh = stepShell(wf, i + 1);
+    if (sh.family === 'bash' || sh.family === 'sh') continue;
+    problems.push(
+      sh.shell === null
+        ? `${file}:${i + 1} runs the recorder under a shell nobody can name: ${sh.why} — declare \`shell: bash\` on the step`
+        : `${file}:${i + 1} runs the recorder under \`${sh.shell}\` (${sh.from}, line ${sh.n}), which reads its bash-written arguments as its own unset variables — declare \`shell: bash\` on the step`,
+    );
+  }
+  return { invocations, problems };
+}
+
+/** A one-job workflow in a fresh root, for dialectBlockers. */
+function recorderFixture(body) {
+  const root = join(TMP, `wf-${seq++}`);
+  mkdirSync(join(root, '.github', 'workflows'), { recursive: true });
+  writeFileSync(join(root, '.github', 'workflows', 'submit-x.yml'), body);
+  return root;
 }
 
 describe('record-deployment — every Deployment names the run that wrote it', () => {
@@ -890,6 +924,67 @@ describe('record-deployment — every Deployment names the run that wrote it', (
     for (const f of ['submit-play.yml', 'submit-snap.yml', 'submit-windows-store.yml']) {
       assert.ok(submitCalls[f] >= 1, `${f} records no Deployment — found ${JSON.stringify(submitCalls)}`);
     }
+  });
+
+  test('THE REAL TREE: every recorder call runs under bash, the dialect its arguments are written in', () => {
+    const dir = resolve(ROOT, '.github/workflows');
+    const problems = [];
+    const calls = {};
+    for (const file of readdirSync(dir).filter((f) => /\.ya?ml$/.test(f))) {
+      const r = dialectBlockers(file);
+      problems.push(...r.problems);
+      calls[file] = r.invocations;
+    }
+    assert.deepEqual(problems, [], 'a recorder whose shell cannot read "$LISTING_URL" records nothing, and a real submission goes unwitnessed');
+    assert.ok(calls['submit-windows-store.yml'] >= 1, `the Windows Store lane records no Deployment — found ${JSON.stringify(calls)}`);
+  });
+
+  test('the Windows Store shape — no `shell:`, runs-on windows — is REFUSED: pwsh reads "$LISTING_URL" as its own unset variable', () => {
+    const root = recorderFixture(`name: X
+on: workflow_dispatch
+jobs:
+  submit:
+    runs-on: windows-2025
+    steps:
+      - name: Record the submission in the [10]D-9 ledger
+        env:
+          LISTING_URL: \${{ inputs.listing_url }}
+        run: node tooling/ci/record-deployment.mjs subscriptiontracker-windows-store --state in_review --listing-url "$LISTING_URL"
+`);
+    const { invocations, problems } = dialectBlockers('submit-x.yml', root);
+    assert.equal(invocations, 1);
+    assert.equal(problems.length, 1, JSON.stringify(problems));
+    assert.match(problems[0], /^submit-x\.yml:10 runs the recorder under `pwsh` \(runner default, runs-on: windows-2025, line 5\)/);
+  });
+
+  test('the same Windows step with `shell: bash` passes — Git Bash reads "$LISTING_URL" from the step env', () => {
+    const root = recorderFixture(`name: X
+on: workflow_dispatch
+jobs:
+  submit:
+    runs-on: windows-2025
+    steps:
+      - name: Record the submission in the [10]D-9 ledger
+        shell: bash
+        env:
+          LISTING_URL: \${{ inputs.listing_url }}
+        run: node tooling/ci/record-deployment.mjs subscriptiontracker-windows-store --state in_review --listing-url "$LISTING_URL"
+`);
+    assert.deepEqual(dialectBlockers('submit-x.yml', root), { invocations: 1, problems: [] });
+  });
+
+  test('a recorder whose job runs on an EXPRESSION, with no shell declared, is REFUSED — nobody can say which dialect reads it', () => {
+    const root = recorderFixture(`name: X
+on: workflow_dispatch
+jobs:
+  submit:
+    runs-on: \${{ matrix.os }}
+    steps:
+      - run: node tooling/ci/record-deployment.mjs x-web https://x.example/
+`);
+    const { problems } = dialectBlockers('submit-x.yml', root);
+    assert.equal(problems.length, 1, JSON.stringify(problems));
+    assert.match(problems[0], /a shell nobody can name: job "submit" runs on `\$\{\{ matrix\.os \}\}`/);
   });
 });
 
