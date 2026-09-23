@@ -110,6 +110,9 @@ jobs:
           TURNSTILE_SITE_KEY: ${{ vars.TURNSTILE_SITE_KEY }}
           E2E_EMAIL: ${{ steps.user.outputs.email }}
           E2E_PASSWORD: ${{ steps.user.outputs.password }}
+          # why: the runner records each drive's consent answer and install id here;
+          # the purge step below reads the same path (tooling/e2e/purge.mjs).
+          E2E_CONSENT_LEDGER: ${{ runner.temp }}/store-capture-consent.json
         run: |
           set -euo pipefail
           export CHROME_EXECUTABLE="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium-browser)"
@@ -266,6 +269,11 @@ jobs:
           SUBSCRIPTIONTRACKER_D1_DATABASE_ID: 0a36d6a0-c909-40aa-853e-970de3482321
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # why: this capture's consent rows in platform_db. purge.mjs deletes by the
+          # install ids in the runner's ledger and by its cap-* APP_VERSION stamp.
+          E2E_APP_ID: subscriptiontracker
+          E2E_CONSENT_LEDGER: ${{ runner.temp }}/store-capture-consent.json
+          PLATFORM_D1_DATABASE_ID: 9d1c5c63-97fe-4f82-bc7d-f3fd22e9b351
         run: node tooling/e2e/purge.mjs
 
   # ── THE SNAP STORE SET ──────────────────────────────────────────────────────
@@ -382,6 +390,9 @@ jobs:
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           E2E_EMAIL: ${{ steps.user.outputs.email }}
           E2E_PASSWORD: ${{ steps.user.outputs.password }}
+          # why: the runner records each drive's consent answer and install id here;
+          # the purge step below reads the same path (tooling/e2e/purge.mjs).
+          E2E_CONSENT_LEDGER: ${{ runner.temp }}/store-capture-consent.json
           GDK_SCALE: '2'
           GDK_DPI_SCALE: '1'
         run: |
@@ -498,6 +509,11 @@ jobs:
           SUBSCRIPTIONTRACKER_D1_DATABASE_ID: 0a36d6a0-c909-40aa-853e-970de3482321
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # why: this capture's consent rows in platform_db. purge.mjs deletes by the
+          # install ids in the runner's ledger and by its cap-* APP_VERSION stamp.
+          E2E_APP_ID: subscriptiontracker
+          E2E_CONSENT_LEDGER: ${{ runner.temp }}/store-capture-consent.json
+          PLATFORM_D1_DATABASE_ID: 9d1c5c63-97fe-4f82-bc7d-f3fd22e9b351
         run: node tooling/e2e/purge.mjs
 
   # 🔴 ONE JOB FOR BOTH NATIVE DESKTOP STORES, not two copies of the Linux job.
@@ -664,6 +680,9 @@ jobs:
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           E2E_EMAIL: ${{ steps.user.outputs.email }}
           E2E_PASSWORD: ${{ steps.user.outputs.password }}
+          # why: the runner records each drive's consent answer and install id here;
+          # the purge step below reads the same path (tooling/e2e/purge.mjs).
+          E2E_CONSENT_LEDGER: ${{ runner.temp }}/store-capture-consent.json
         run: node tooling/store/capture-play-screenshots.mjs --app subscriptiontracker --channel "$STORE_CHANNEL"
 
       - name: The captured set satisfies the listing-asset guard
@@ -770,6 +789,11 @@ jobs:
           SUBSCRIPTIONTRACKER_D1_DATABASE_ID: 0a36d6a0-c909-40aa-853e-970de3482321
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # why: this capture's consent rows in platform_db. purge.mjs deletes by the
+          # install ids in the runner's ledger and by its cap-* APP_VERSION stamp.
+          E2E_APP_ID: subscriptiontracker
+          E2E_CONSENT_LEDGER: ${{ runner.temp }}/store-capture-consent.json
+          PLATFORM_D1_DATABASE_ID: 9d1c5c63-97fe-4f82-bc7d-f3fd22e9b351
         run: node tooling/e2e/purge.mjs
 
   # 🔴 ONE JOB, TWO SETS, ONE PULL REQUEST. iOS is the first channel in this
@@ -903,6 +927,9 @@ jobs:
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           E2E_EMAIL: ${{ steps.user.outputs.email }}
           E2E_PASSWORD: ${{ steps.user.outputs.password }}
+          # why: the runner records each drive's consent answer and install id here;
+          # the purge step below reads the same path (tooling/e2e/purge.mjs).
+          E2E_CONSENT_LEDGER: ${{ runner.temp }}/store-capture-consent.json
         run: node tooling/store/capture-play-screenshots.mjs --app subscriptiontracker --channel ios-appstore
 
       - name: The captured sets satisfy the listing-asset guard
@@ -1016,4 +1043,9 @@ jobs:
           SUBSCRIPTIONTRACKER_D1_DATABASE_ID: 0a36d6a0-c909-40aa-853e-970de3482321
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # why: this capture's consent rows in platform_db. purge.mjs deletes by the
+          # install ids in the runner's ledger and by its cap-* APP_VERSION stamp.
+          E2E_APP_ID: subscriptiontracker
+          E2E_CONSENT_LEDGER: ${{ runner.temp }}/store-capture-consent.json
+          PLATFORM_D1_DATABASE_ID: 9d1c5c63-97fe-4f82-bc7d-f3fd22e9b351
         run: node tooling/e2e/purge.mjs
