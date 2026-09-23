@@ -272,6 +272,36 @@ export function workflowRunSources(wf) {
   return triggerFilter(wf, 'workflow_run', 'workflows');
 }
 
+/**
+ * The 1-based line of the `inputs:` key under `on: workflow_dispatch:`, or null
+ * when the dispatch takes none (or the workflow is not dispatchable at all).
+ *
+ * ⏱ ADDED 2026-09-23 for tooling/ops/redeploy-stranded.mjs, whose re-entry is a
+ * dispatch that POSTs `{ref: 'main'}` and nothing else. A lane that declares
+ * inputs is never reproduced by that POST — and inputs are how every store
+ * publish in this tree takes the owner's word (assert-publish-steps-guarded.mjs
+ * limb 2), so "declares no inputs" is what keeps a publisher out of that tool's
+ * lane set by structure rather than by a list. Read by the same indent walk as
+ * `on: push: branches:`: the key is the event's own child, never a deeper one.
+ */
+export function dispatchInputs(wf) {
+  const lines = wf.lines.slice(0, wf.jobsAt ?? wf.lines.length);
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].text.match(/^(\s*)workflow_dispatch:\s*$/);
+    if (!m) continue;
+    let child = null;
+    for (let j = i + 1; j < lines.length; j++) {
+      const t = lines[j].text;
+      if (t.trim() === '') continue;
+      const at = t.match(/^ */)[0].length;
+      if (at <= m[1].length) break;
+      child ??= at;
+      if (at === child && /^\s*inputs:/.test(t)) return lines[j].n;
+    }
+  }
+  return null;
+}
+
 /** `on: <event>: <key>:` as `{ line, items }`, or null. One indent walk for all
  *  three readers above; the event key is matched at any indent above `jobs:`,
  *  which is where every workflow in this tree writes its `on:` block. */

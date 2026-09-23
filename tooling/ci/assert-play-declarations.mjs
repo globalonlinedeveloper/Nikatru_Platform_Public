@@ -276,6 +276,36 @@ function walk(relDir, out = []) {
   return out;
 }
 
+/** The permissions a manifest DECLARES, from text that has been through stripInert().
+ *
+ *  🔴 A `<uses-permission … tools:node="remove">` IS THE OPPOSITE OF A PERMISSION.
+ *  It strips one that a library merges in. Reading its android:name as a
+ *  declaration would put back on paper the very permission the manifest removes.
+ *  First needed on 2026-09-23: #890 linked the Play Billing Library into every
+ *  Android build, and the apps.gov.in channel overlay removes BILLING again
+ *  (Build apps run 35822768347). */
+function declaredPermissions(xml) {
+  const out = [];
+  for (const m of xml.matchAll(/<uses-permission\b[^>]*>/g)) {
+    if (/\btools:node\s*=\s*"remove(?:All)?"/.test(m[0])) continue;
+    const name = m[0].match(/android:name\s*=\s*"([^"]+)"/);
+    if (name) out.push(name[1]);
+  }
+  return out;
+}
+
+/** True for a channel manifest overlay that never reaches the Play artefact.
+ *
+ *  `android/app/src/channel/<id>/AndroidManifest.xml` is merged ONLY into the
+ *  build dispatched with `--dart-define=RELEASE_CHANNEL=<id>` (the hook is in
+ *  android/app/build.gradle.kts; its test is android-channel-manifest.test.mjs).
+ *  The Play artefact is built with RELEASE_CHANNEL=android-play, so CHANNEL's own
+ *  overlay is walked like any other manifest and every other channel's is not. */
+function isOtherChannelOverlay(rel) {
+  const m = rel.match(/\/android\/app\/src\/channel\/([^/]+)\//);
+  return m !== null && m[1] !== CHANNEL;
+}
+
 /** Which root is being checked, so a COVERAGE LOST names it.
  *
  *  🔴 THIS EXISTS BECAUSE THE GUARD NOW LOOPS. Before, every message was about
@@ -712,7 +742,7 @@ function checkApp(app) {
   const APP_DIR = `apps/${app}`;
 
   // (a) Android permissions, per manifest. `walk()` is module-level — see there.
-  const manifestFiles = walk(`${APP_DIR}/android`).filter((f) => f.endsWith('/AndroidManifest.xml')).sort();
+  const manifestFiles = walk(`${APP_DIR}/android`).filter((f) => f.endsWith('/AndroidManifest.xml') && !isOtherChannelOverlay(f)).sort();
   if (manifestFiles.length === 0) {
     coverageLost([
       `no AndroidManifest.xml was found under ${APP_DIR}/android.`,
@@ -726,7 +756,7 @@ function checkApp(app) {
     // XML comments out FIRST. The debug manifest's own comment explains why
     // INTERNET is there; a raw scan of the release manifest would be reading prose.
     const xml = stripInert(read(f) ?? '');
-    const found = [...xml.matchAll(/<uses-permission[^>]*android:name\s*=\s*"([^"]+)"/g)].map((m) => m[1]).sort();
+    const found = declaredPermissions(xml).sort();
     permsByFile.set(f, found);
     for (const p of found) allPerms.add(p);
   }
@@ -2227,7 +2257,7 @@ const brick = (() => {
   const manifests = walk(BRICK).filter((f) => f.endsWith('/AndroidManifest.xml')).sort();
   const perms = new Set();
   for (const f of manifests) {
-    for (const m of stripInert(read(f) ?? '').matchAll(/<uses-permission[^>]*android:name\s*=\s*"([^"]+)"/g)) perms.add(m[1]);
+    for (const p of declaredPermissions(stripInert(read(f) ?? ''))) perms.add(p);
   }
   for (const p of [...perms].sort()) {
     if (watchedPermissions.has(p)) {

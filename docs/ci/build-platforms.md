@@ -1360,6 +1360,38 @@ cost the artifacts above it.
   CANCELS the job, and a cancelled job skips even the `!cancelled()` step, so the ceiling has to
   fit the whole job.
 
+### The channel manifest overlay: what one channel's build strips
+
+Added 2026-09-23. Build apps run 35822768347 failed on the apps.gov.in .apk. Verbatim: "the built
+.apk requests com.android.vending.BILLING, and tooling/channel-register.json "apps-gov-in" forbids
+the "play-billing" rail on this channel". #890 had linked RevenueCat, and with it the Play Billing
+Library, into every Android build. That library's manifest merges BILLING into the Play .aab, where
+it belongs, and into the apps.gov.in .apk, where it cannot work: Play Billing completes a purchase
+only against a Play install.
+
+- **The overlay.** `apps/<app>/android/app/src/channel/<id>/AndroidManifest.xml`. For apps-gov-in
+  it holds one `<uses-permission android:name="com.android.vending.BILLING" tools:node="remove"/>`.
+- **The hook.** The CHANNEL MANIFEST block in `android/app/build.gradle.kts`. It decodes
+  `RELEASE_CHANNEL` out of the `-Pdart-defines` Flutter passes to Gradle. If that channel has an
+  overlay, the hook makes it the release build type's manifest. A build-type manifest outranks main
+  and every library, so its removal wins. It keeps only the channel id and logs only the overlay's
+  path, because the other defines carry keys. With no channel or no overlay, nothing changes.
+- **Before merge.** `tooling/ci/test/android-channel-manifest.test.mjs` checks the following on
+  every pull request. This matters because this workflow never runs on one.
+  - Every Android row whose `forbids` names a rail with a permission has an overlay that removes
+    that permission. The permissions come from `RAIL_PERMISSIONS`, the map the built-.apk guard uses.
+  - No overlay removes the permission its own channel's rail needs.
+  - No overlay names a channel that is not an Android row.
+  - This workflow passes `--dart-define=RELEASE_CHANNEL=<id>` for each overlay.
+  - The hook is present in code, not only in its comment.
+- **After build.** `assert-apps-gov-in-apk.mjs` still reads the permissions of the built .apk. Only
+  a build can prove the merged manifest.
+- **Play declarations.** `assert-play-declarations.mjs` now skips two things:
+  - another channel's overlay, which never reaches the Play artefact;
+  - `tools:node="remove"` lines, because a removal is not a permission.
+
+  An `android-play` overlay would still be read like any other manifest.
+
 ## Obfuscation and native symbols
 
 *Added 2026-09-07 · [ADR 067] decision 6 · closes GAP G2 of the end-to-end audit ·

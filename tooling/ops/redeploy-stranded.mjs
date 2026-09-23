@@ -26,18 +26,41 @@
 //     Same event, same SHA, so deploy-workers' per-service path filter decides
 //     exactly as it did the first time.
 //   · the stranded run is at an ANCESTOR of head → dispatch the lane on main.
-//     Every commit between the two matched none of the lane's `push: paths:`
-//     (else the lane would have a NEWER run and that would be the one read), so
-//     head's lane inputs ARE the stranded commit's lane inputs: dispatching
-//     deploys exactly the payload that was stranded, gated on a green ci-gate.
-//     (deploy-workers on dispatch deploys BOTH Workers — its own `decide` step
-//     has no diff to filter on. Redeploying an unchanged Worker is idempotent;
-//     that is what the hand remedy did on 2026-09-22 too.)
+//     WHY THAT IS SAFE DEPENDS ON WHAT STARTS THE LANE, and there are two kinds:
+//     - a PUSH lane (deploy-web, deploy-workers): every commit between the two
+//       matched none of the lane's `push: paths:` (else the lane would have a
+//       NEWER run and that would be the one read), so head's lane inputs ARE the
+//       stranded commit's lane inputs: dispatching deploys exactly the payload
+//       that was stranded, gated on a green ci-gate. (deploy-workers on dispatch
+//       deploys BOTH Workers — its own `decide` step has no diff to filter on.
+//       Redeploying an unchanged Worker is idempotent; that is what the hand
+//       remedy did on 2026-09-22 too.)
+//     - a CADENCE lane (build-platforms: a GitHub schedule, and the Worker's
+//       84-hour dispatch): the paths argument does not exist — the lane has no
+//       push trigger — and is not needed. The lane's job is to build main's head
+//       each slot, so the dispatch at head is exactly what the next slot would
+//       do; nothing at the stranded SHA is recoverable anyway (ci-gate there
+//       stays red, so a re-run fails its gate again); and on a branch ref the
+//       lane publishes nothing, every publish step being tag-only
+//       (CANONICAL_PUBLISH_IF in tooling/ci/assert-release-durable.mjs).
+//
+// 🔴 THE SECOND INSTANCE, 2026-09-23 (O-REDEPLOY-STRANDED-MISSES-THE-BUILD-LANE).
+// Build apps #102 (run 35800063831, the Worker's 00:00Z dispatch at c1cdb241)
+// failed on the gate step, and this tool never looked: it derived only lanes
+// that push on main. And had it looked, it would still have refused — the run
+// had a SECOND failed job, "all-platforms", an `if: always()` aggregate that
+// needs the gate and so fails whenever the gate does. Both are fixed together:
+// the derivation admits cadence lanes, and `decide` treats such an aggregate as
+// a CONSEQUENCE of the gate, never as a real failure and never as a strand on
+// its own.
 //
 // 🔴 WHAT IT MUST NEVER DO — the red controls in the test, each a fixture:
 //   · re-enter a run that failed on a REAL deploy step. A recovery that re-runs a
 //     genuine deploy failure is worse than no recovery at all. Every FAILED job
-//     of the run must have failed FIRST on the gate step, by name.
+//     of the run must have failed FIRST on the gate step, by name — except the
+//     lane's CONSEQUENCE jobs (job-level `if: always()` downstream of the gate),
+//     which fail because the gate did. At least one job must have failed on the
+//     gate step itself: a consequence job alone is never a strand.
 //   · act when the lane has no run on main, or its newest run is live, green or
 //     cancelled. Nothing is stranded.
 //   · act while ci-gate at head is anything but completed/success. The gate step
@@ -49,20 +72,34 @@
 //     step that fails twice over a green ci-gate is not a cascade, it is a fault
 //     somebody must read.
 //
-// THE LANE SET IS DERIVED, NEVER LISTED: every workflow whose `on:` has `push`
-// with `branches: [main]` AND `workflow_dispatch`, and whose jobs run
-// tooling/ci/assert-gate-passed.mjs in a NAMED step. Today that is deploy-web.yml
-// and deploy-workers.yml. The recovery workflow's `on: workflow_run: workflows:`
-// must name exactly CI plus those lanes; `triggerProblem` compares the two and
-// tooling/ci/test/redeploy-stranded.test.mjs holds it, so a third deploy lane
-// added without a recovery trigger goes red instead of being stranded silently.
+// THE LANE SET IS DERIVED, NEVER LISTED. A workflow whose jobs run
+// tooling/ci/assert-gate-passed.mjs in a NAMED step is a lane when ALL FOUR hold:
+//   L1 it runs on main unprompted — `workflow_dispatch` AND (`push` listing
+//      `main` OR a `schedule`);
+//   L2 a bare dispatch reproduces it — `workflow_dispatch` declares NO `inputs:`.
+//      The re-entry POSTs `{ref:'main'}` and nothing else, and inputs are how
+//      every store publish takes the owner's word, so L2 alone keeps every
+//      publisher out, now and later;
+//   L3 the gate is reached on every event — no job holding the gate step has a
+//      job-level `if:`;
+//   L4 it is not a store-submission workflow — no `channels[].submission.workflow`
+//      in tooling/channel-register.json names it. This closes the one hole L2
+//      leaves: an input-less dry-run submitter that someone gives a schedule.
+// Today that is build-platforms.yml, deploy-web.yml and deploy-workers.yml.
+// extensions.yml fails L2, L3 and L4; every submit-*.yml fails L1 and L4; and
+// symbolication-proof.yml fails L1 alone (a test pins that giving it a schedule
+// derives it). The recovery workflow's `on: workflow_run: workflows:` must name
+// exactly CI plus the lanes; `triggerProblem` compares the two and
+// tooling/ci/test/redeploy-stranded.test.mjs holds it, so a new lane added
+// without a recovery trigger goes red instead of being stranded silently.
 //
 // ── EXIT CONTRACT ────────────────────────────────────────────────────────────
 //   0 = every lane was read; each was re-entered or had nothing stranded.
 //   1 = a lane WAS stranded and the re-entry was refused or rejected (safe-rerun
 //       refused, or GitHub answered the dispatch with an error).
-//   2 = I COULD NOT LOOK — no credential, an unreadable API answer, a lane set
-//       that derived to nothing, or a trigger that no longer matches the lanes.
+//   2 = I COULD NOT LOOK — no credential, an unreadable API answer, an unreadable
+//       channel register, a lane set that derived to nothing, or a trigger that
+//       no longer matches the lanes.
 //       Never readable as "nothing was stranded".
 //
 // ⚠️ NO `process.exit()` once a fetch has been made — the Windows libuv abort
@@ -88,6 +125,7 @@ import {
   workflowEvents,
   pushBranches,
   workflowRunSources,
+  dispatchInputs,
 } from '../ci/workflow-scan.mjs';
 import { fetchWithBoundedRetry } from './bounded-retry.mjs';
 
@@ -97,6 +135,8 @@ const ROOT = resolve(HERE, '..', '..');
 export const GATE_SCRIPT = 'tooling/ci/assert-gate-passed.mjs';
 export const RECOVERY_WORKFLOW = '.github/workflows/redeploy-stranded.yml';
 export const CI_WORKFLOW = '.github/workflows/ci.yml';
+/** L4's subject: every `channels[].submission.workflow` in it is never a lane. */
+export const CHANNEL_REGISTER = 'tooling/channel-register.json';
 /** The job key in ci.yml whose check-run the gate step polls. Its DISPLAY name
  *  is read from the file (it is the required status check's name). */
 export const GATE_JOB = 'ci-gate';
@@ -139,24 +179,65 @@ function gateSteps(wf) {
   return out;
 }
 
+/** Every `channels[].submission.workflow` in the channel register, as repo-
+ *  relative paths. Throws when the register cannot be read: L4 unread is a lane
+ *  set nobody vouched for, and that is exit 2, never a quieter derivation. */
+function submissionWorkflows(root) {
+  const reg = JSON.parse(readFileSync(join(root, CHANNEL_REGISTER), 'utf8'));
+  if (!Array.isArray(reg.channels)) throw new Error('no `channels` array');
+  return new Set(reg.channels.map((c) => c.submission?.workflow).filter(Boolean));
+}
+
+/** The display names of the jobs that fail BECAUSE the gate did: a job-level
+ *  `if:` holding `always()` whose transitive `needs` reach a gate job. Such a
+ *  job runs after a red gate and reports it again; it is never a second fault. */
+function consequenceJobs(wf, gateJobs) {
+  const reaches = (key, seen = new Set()) => {
+    if (seen.has(key)) return false;
+    seen.add(key);
+    const job = wf.jobs.get(key);
+    return (job?.needs ?? []).some((n) => gateJobs.has(n) || reaches(n, seen));
+  };
+  const out = [];
+  for (const [key, job] of wf.jobs) {
+    if (gateJobs.has(key) || !job.jobIf || !/\balways\(\)/.test(job.jobIf.cond)) continue;
+    if (reaches(key)) out.push(job.displayName ?? key);
+  }
+  return out;
+}
+
 /**
- * Every deploy lane a red ci-gate can strand: `push` on `main`, dispatchable,
- * and a gate step. Returns `{ lanes, problems }`; a gate step with no `name:`
- * is a PROBLEM, because the failed-step match below is by name and an unnamed
- * step would make every gate failure read as "a real deploy step failed" —
- * silently switching the recovery off for that lane.
+ * Every lane a red ci-gate can strand, by the four limbs in the header (L1–L4).
+ * Returns `{ lanes, problems }`; a gate step with no `name:` is a PROBLEM,
+ * because the failed-step match below is by name and an unnamed step would make
+ * every gate failure read as "a real deploy step failed" — silently switching
+ * the recovery off for that lane. An unreadable channel register is a problem
+ * too: without L4 the set is not derived.
  */
 export function deployLanes(root) {
   const lanes = [];
   const problems = [];
+  let submissions;
+  try {
+    submissions = submissionWorkflows(root);
+  } catch (e) {
+    return { lanes, problems: [`${CHANNEL_REGISTER} is unreadable (${e.message}), so L4 cannot exclude a store-submission workflow`] };
+  }
   for (const wf of parseAllWorkflows(root)) {
     if (wf.rel === RECOVERY_WORKFLOW) continue;
     const ev = workflowEvents(wf);
-    if (!ev.has('push') || !ev.has('workflow_dispatch')) continue;
-    const branches = pushBranches(wf);
-    if (!branches || !branches.items.some((b) => b.pattern === 'main')) continue;
+    // L1: dispatchable, and runs on main unprompted (a push to main or a schedule).
+    if (!ev.has('workflow_dispatch')) continue;
+    const pushesMain = ev.has('push') && (pushBranches(wf)?.items.some((b) => b.pattern === 'main') ?? false);
+    if (!pushesMain && !ev.has('schedule')) continue;
+    // L2: a bare `{ref:'main'}` dispatch reproduces the run.
+    if (dispatchInputs(wf) !== null) continue;
+    // L4: never a store-submission workflow.
+    if (submissions.has(wf.rel)) continue;
     const gates = gateSteps(wf);
     if (gates.length === 0) continue;
+    // L3: the gate is reached on every event.
+    if (gates.some((g) => wf.jobs.get(g.job)?.jobIf)) continue;
     const names = new Set(gates.map((g) => g.step));
     if (names.has(null)) {
       problems.push(`${wf.rel}: the step running ${GATE_SCRIPT} has no \`name:\` (line ${gates.find((g) => g.step === null).line}), so a gate failure cannot be told from a deploy failure`);
@@ -171,7 +252,13 @@ export function deployLanes(root) {
       problems.push(`${wf.rel}: no top-level \`name:\`, and \`workflow_run.workflows\` matches by name`);
       continue;
     }
-    lanes.push({ file: basename(wf.rel), rel: wf.rel, name, gateStep: [...names][0] });
+    lanes.push({
+      file: basename(wf.rel),
+      rel: wf.rel,
+      name,
+      gateStep: [...names][0],
+      consequenceJobs: consequenceJobs(wf, new Set(gates.map((g) => g.job))),
+    });
   }
   return { lanes, problems };
 }
@@ -235,20 +322,24 @@ export function triggerProblem(root, lanes) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * The lane's newest push or dispatch run on main (highest run_number), or null.
- * ONE definition: `main` uses it to decide what to fetch and `decide` to judge,
- * so the two can never disagree about which run is "the newest".
+ * The lane's newest push, dispatch or schedule run on main (highest
+ * run_number), or null. ONE definition: `main` uses it to decide what to fetch
+ * and `decide` to judge, so the two can never disagree about which run is "the
+ * newest". `schedule` is in the set so that a cron run which went green AFTER a
+ * failed Worker dispatch supersedes it — else the old failure reads as newest
+ * and an old run is re-entered.
  */
+const LANE_EVENTS = new Set(['push', 'workflow_dispatch', 'schedule']);
 export function newestRun(runs) {
-  const mine = (runs ?? []).filter((r) => r.event === 'push' || r.event === 'workflow_dispatch');
+  const mine = (runs ?? []).filter((r) => LANE_EVENTS.has(r.event));
   return mine.length ? mine.reduce((a, b) => (b.run_number > a.run_number ? b : a)) : null;
 }
 
 /**
- * @param lane      { file, gateStep }
+ * @param lane      { file, gateStep, consequenceJobs? }
  * @param head      main's current head SHA
  * @param gate      the NEWEST ci-gate check-run at head, or null
- * @param runs      the lane's runs on main (any order); event push/workflow_dispatch
+ * @param runs      the lane's runs on main (any order); event push/workflow_dispatch/schedule
  * @param jobs      jobs of the newest run (filter=latest), each with `steps`
  * @param relation  compare(newest.head_sha...head).status, when they differ
  * @returns { action: 'none'|'rerun'|'dispatch', runId?, why }
@@ -259,19 +350,28 @@ export function decide({ lane, head, gate, runs, jobs, relation }) {
     return none(`ci-gate at head ${short(head)} is ${gate ? `${gate.status}/${gate.conclusion ?? '-'}` : 'absent'}, not green — a re-entry would fail on the gate again; the next CI completion re-asks`);
   }
   const newest = newestRun(runs);
-  if (!newest) return none('no push or dispatch run of this lane on main — nothing is stranded');
+  if (!newest) return none('no push, dispatch or schedule run of this lane on main — nothing is stranded');
   const tag = `run ${newest.id} (#${newest.run_number}, attempt ${newest.run_attempt ?? 1}, ${newest.event}) at ${short(newest.head_sha)}`;
   if (newest.status !== 'completed') return none(`newest ${tag} is ${newest.status} — it will read ci-gate itself`);
   if (newest.conclusion !== 'failure') return none(`newest ${tag} concluded ${newest.conclusion} — nothing is stranded`);
 
   const failed = (jobs ?? []).filter((j) => j.conclusion === 'failure');
   if (failed.length === 0) return none(`newest ${tag} failed but no job reads failure — not a gate strand this tool can recognise`);
+  // A consequence job (job-level `if: always()` downstream of the gate) fails
+  // because the gate did; it is judged by the gate job beside it, never alone.
+  const conseq = new Set(lane.consequenceJobs ?? []);
+  let onGate = 0;
   for (const j of failed) {
+    if (conseq.has(j.name)) continue;
     const first = (j.steps ?? []).find((s) => s.conclusion === 'failure');
     if (!first) return none(`job "${j.name}" of ${tag} failed with no failed step — a runner or timeout failure, not the gate; left for a human`);
     if (first.name !== lane.gateStep) {
       return none(`job "${j.name}" of ${tag} failed on "${first.name}", a REAL step, not "${lane.gateStep}" — a genuine deploy failure is never re-entered`);
     }
+    onGate++;
+  }
+  if (onGate === 0) {
+    return none(`only consequence job(s) ${failed.map((j) => `"${j.name}"`).join(', ')} of ${tag} failed, and no job failed on "${lane.gateStep}" — a consequence job alone is never a strand`);
   }
 
   if (newest.head_sha === head) {
@@ -412,7 +512,7 @@ export async function main(argv, env = process.env) {
   for (const p of problems) console.error(`✗ ${p}`);
   if (problems.length) return 2;
   if (lanes.length === 0) {
-    console.error('✗ I COULD NOT LOOK — no deploy lane derived (push on main + workflow_dispatch + a gate step). COVERAGE LOST, not "nothing stranded".');
+    console.error('✗ I COULD NOT LOOK — no lane derived (push on main or a schedule, an input-less workflow_dispatch, an unconditional named gate step, not a store submission). COVERAGE LOST, not "nothing stranded".');
     return 2;
   }
   const trig = triggerProblem(root, lanes);
