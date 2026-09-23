@@ -1,0 +1,10 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!-- Merged ONLY into the build dispatched with RELEASE_CHANNEL=apps-gov-in
+         (hook: android/app/build.gradle.kts, CHANNEL MANIFEST). tooling/channel-register.json
+         forbids the play-billing rail on this channel: the Play Billing Library resolves a
+         purchase against the Play install that delivered the app, and an apps.gov.in
+         download is not one. #890 linked it into every Android build through RevenueCat,
+         and its manifest merges BILLING in (Build apps run 35822768347). -->
+    <uses-permission android:name="com.android.vending.BILLING" tools:node="remove"/>
+</manifest>

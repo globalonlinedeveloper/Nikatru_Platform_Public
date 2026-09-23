@@ -139,6 +139,39 @@ val releaseKeystoreFile = if (hasReleaseSigning) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 🔴 CHANNEL MANIFEST — ONE .apk CAN BE WRONG FOR ONE STOREFRONT ONLY.
+//
+// The Play .aab and the apps.gov.in .apk are the same app built twice, told
+// apart only by `--dart-define=RELEASE_CHANNEL=<id>` (build-platforms.yml).
+// #890 linked RevenueCat, and with it the Play Billing Library, into every
+// Android build, and that library's manifest merges
+// `com.android.vending.BILLING` into all of them. tooling/channel-register.json
+// forbids the play-billing rail on apps-gov-in, and the built-.apk guard
+// (tooling/ci/assert-apps-gov-in-apk.mjs) failed Build apps run 35822768347
+// on exactly that permission.
+//
+// So a channel may carry `src/channel/<id>/AndroidManifest.xml`, merged into
+// the RELEASE build as its build-type manifest — which outranks main and every
+// library, so its `tools:node="remove"` strips what a library added. The id is
+// read back out of the defines Flutter hands Gradle as `-Pdart-defines=` (each
+// one base64 of KEY=VALUE, comma-joined). 🔴 THOSE DEFINES CARRY KEYS: only the
+// channel id is kept, and only the overlay's path is ever logged.
+//
+// No overlay for the channel, or no channel at all (a debug run, a local build):
+// nothing changes. tooling/ci/test/android-channel-manifest.test.mjs holds the
+// register, the overlays, this hook and the workflow's defines to each other.
+// ─────────────────────────────────────────────────────────────────────────────
+val releaseChannel: String? =
+    (project.findProperty("dart-defines") as String?)
+        ?.split(',')
+        ?.mapNotNull { runCatching { String(java.util.Base64.getDecoder().decode(it), Charsets.UTF_8) }.getOrNull() }
+        ?.firstOrNull { it.startsWith("RELEASE_CHANNEL=") }
+        ?.substringAfter('=')
+        ?.takeIf { Regex("[a-z0-9-]+").matches(it) }
+val channelManifest: File? =
+    releaseChannel?.let { file("src/channel/$it/AndroidManifest.xml") }?.takeIf { it.exists() }
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 🔴 THE PLAY API-LEVEL FLOOR IS PINNED HERE, NOT INHERITED FROM THE TOOLCHAIN.
 //
 // Until 2026-08-04 this file read `targetSdk = flutter.targetSdkVersion`, which
@@ -225,6 +258,12 @@ android {
                     signingConfigs.getByName("debug")
                 }
         }
+    }
+
+    // See the CHANNEL MANIFEST block above.
+    channelManifest?.let { overlay ->
+        sourceSets.getByName("release").manifest.srcFile(overlay)
+        logger.lifecycle("channel manifest: ${overlay.relativeTo(projectDir).invariantSeparatorsPath}")
     }
 }
 

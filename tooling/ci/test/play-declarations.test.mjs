@@ -863,6 +863,45 @@ describe('assert-play-declarations — equality on permissions and dependencies'
     assert.match(out(r), /A permission is the loudest single tell/);
   });
 
+  // 2026-09-23, Build apps run 35822768347: #890 linked the Play Billing Library
+  // into every Android build, and the apps.gov.in overlay strips BILLING again
+  // with tools:node="remove". A removal is not a permission, and another
+  // channel's overlay is not in the Play artefact. The red halves prove the
+  // guard still reads the Play channel's own overlay and a plain declaration.
+  test('a removal and another channel\'s overlay are not Play permissions; the Play overlay and a plain line still are', () => {
+    const OVERLAY = (id) => `apps/subscriptiontracker/android/app/src/channel/${id}/AndroidManifest.xml`;
+    const REMOVE = '<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">\n    <uses-permission android:name="com.android.vending.BILLING" tools:node="remove"/>\n</manifest>\n';
+    const ADD = '<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n    <uses-permission android:name="android.permission.VIBRATE"/>\n</manifest>\n';
+
+    const other = run(makeRoot({ files: (f) => { f[OVERLAY('apps-gov-in')] = ADD; } }));
+    assert.equal(other.status, 0, out(other));
+
+    const removal = run(makeRoot({ files: (f) => { f[OVERLAY('android-play')] = REMOVE; } }));
+    assert.equal(removal.status, 1, out(removal));
+    assert.match(out(removal), /android-play\/AndroidManifest\.xml/, 'the Play overlay is walked, so it needs its own declaredInRepo entry');
+    const declared = run(makeRoot({
+      files: (f) => { f[OVERLAY('android-play')] = REMOVE; },
+      ds: (x) => { x.androidPermissions.declaredInRepo[OVERLAY('android-play')] = []; },
+    }));
+    assert.equal(declared.status, 0, out(declared));
+
+    const played = run(makeRoot({
+      files: (f) => { f[OVERLAY('android-play')] = ADD; },
+      ds: (x) => { x.androidPermissions.declaredInRepo[OVERLAY('android-play')] = []; },
+    }));
+    assert.equal(played.status, 1, out(played));
+    assert.match(out(played), /A permission is the loudest single tell/);
+
+    const MAIN = 'apps/subscriptiontracker/android/app/src/main/AndroidManifest.xml';
+    const stripped = MANIFEST.replace('<application', '<uses-permission android:name="android.permission.VIBRATE" tools:node="remove"/>\n    <application');
+    assert.notEqual(stripped, MANIFEST, 'the mutation must land');
+    const inMain = run(makeRoot({ files: (f) => { f[MAIN] = stripped; } }));
+    assert.equal(inMain.status, 0, out(inMain));
+    const plain = run(makeRoot({ files: (f) => { f[MAIN] = stripped.replace(' tools:node="remove"', ''); } }));
+    assert.equal(plain.status, 1, out(plain));
+    assert.match(out(plain), /A permission is the loudest single tell/);
+  });
+
   test('FAILS when the declaration names a manifest that is gone', () => {
     const r = run(makeRoot({ ds: (x) => { x.androidPermissions.declaredInRepo['apps/subscriptiontracker/android/app/src/nope/AndroidManifest.xml'] = []; } }));
     assert.equal(r.status, 1);
