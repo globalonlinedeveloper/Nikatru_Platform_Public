@@ -212,8 +212,9 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
             offerings.firstWhere((Offering o) => o.productId == offer.id),
           ),
           onCheckAgain: () async {
-            final bool unlocked = (await refreshEntitlements(ref))
-                .isProAt(DateTime.now());
+            final bool unlocked = (await refreshEntitlements(
+              ref,
+            )).isProAt(DateTime.now());
             if (!mounted) return;
             setState(
               () => _phase = unlocked

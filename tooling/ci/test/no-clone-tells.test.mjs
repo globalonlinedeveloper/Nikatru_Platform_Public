@@ -69,7 +69,7 @@ const NAMES_THE_APP = new RegExp(`shared code names the app "(${rx(APP)}|${rx(CA
 
 /** apps/<APP> + 12 clean shared files (the floor is 10), plus whatever `extra`
  *  the case needs. `nouns` overrides the domain list. */
-function tree({ extra = {}, nouns = ['subscription', 'renewal'], omitTells = false } = {}) {
+function tree({ extra = {}, nouns = ['subscription', 'renewal'], omitTells = false, vendor } = {}) {
   const root = join(TMP, `r${seq++}`);
   const files = {};
   mkdirSync(join(root, 'apps', APP), { recursive: true });
@@ -77,6 +77,7 @@ function tree({ extra = {}, nouns = ['subscription', 'renewal'], omitTells = fal
 
   const reg = { consumerRoots: [], capabilities: [] };
   if (!omitTells) reg.cloneTells = { domainNouns: nouns };
+  if (vendor !== undefined) reg.cloneTells.vendorMembers = vendor;
   files[join(root, 'tooling/capability-register.json')] = JSON.stringify(reg, null, 2);
 
   for (const [rel, body] of Object.entries(extra)) files[join(root, rel)] = body;
@@ -506,5 +507,122 @@ describe('[ADR 070] generated from a contract that names the noun', () => {
     const { code, out } = run(tree());
     assert.equal(code, 0, out);
     assert.doesNotMatch(out, /ADR 070/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VENDOR SDK MEMBERS (2026-09-23). purchases_flutter spells the store's billing
+// period `StoreProduct.subscriptionPeriod`; the shared billing package has to read
+// it and cannot rename it. The exemption is declared, per package and member, and
+// holds only when all four facts hold — each withheld on its own below.
+// ─────────────────────────────────────────────────────────────────────────────
+const SDK = 'vendor_sdk';
+const MEMBER = { package: SDK, member: 'subscriptionPeriod', why: 'the vendor SDK owns this getter name; we map it to our own word' };
+const PUBSPEC = `name: billing\ndependencies:\n  flutter:\n    sdk: flutter\n  ${SDK}: ^1.0.0\n`;
+const READS = `import 'package:${SDK}/${SDK}.dart' as v;\nString termOf(v.Product p) => '${'$'}{p.subscriptionPeriod}';\n`;
+
+describe('vendor SDK members — declared, imported, depended on, and read as a MEMBER', () => {
+  test('THE GREEN CONTROL: all four facts hold — exempt, and the exemption is PRINTED', () => {
+    const { code, out } = run(tree({
+      vendor: [MEMBER],
+      extra: { 'packages/billing/pubspec.yaml': PUBSPEC, 'packages/billing/lib/b.dart': READS },
+    }));
+    assert.equal(code, 0, out);
+    assert.match(out, /1 vendor SDK member access\(es\) exempt: packages\/billing\/lib\/b\.dart ← vendor_sdk\.subscriptionPeriod/);
+  });
+
+  test('(v1) withheld — no entry declared, so the same read is a clone tell', () => {
+    const { code, out } = run(tree({
+      extra: { 'packages/billing/pubspec.yaml': PUBSPEC, 'packages/billing/lib/b.dart': READS },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /domain word "subscription"/);
+  });
+
+  test('(v1) — an entry with no why is refused, not honoured', () => {
+    const { code, out } = run(tree({
+      vendor: [{ package: SDK, member: 'subscriptionPeriod' }],
+      extra: { 'packages/billing/pubspec.yaml': PUBSPEC, 'packages/billing/lib/b.dart': READS },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /`why` must say why this member cannot be renamed/);
+  });
+
+  test('(v1) — an entry whose member carries no domain noun exempts nothing and is refused', () => {
+    const { code, out } = run(tree({
+      vendor: [{ ...MEMBER, member: 'priceString' }],
+      extra: { 'packages/billing/pubspec.yaml': PUBSPEC },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /`priceString` carries no domain noun/);
+  });
+
+  test('(v2) withheld — the file does not import the vendor package', () => {
+    const { code, out } = run(tree({
+      vendor: [MEMBER],
+      extra: {
+        'packages/billing/pubspec.yaml': PUBSPEC,
+        'packages/billing/lib/b.dart': READS.replace(`import 'package:${SDK}/${SDK}.dart' as v;\n`, ''),
+      },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /domain word "subscription"/);
+  });
+
+  test('(v2) — the brick cannot claim it; only packages/*/lib can', () => {
+    const { code, out } = run(tree({
+      vendor: [MEMBER],
+      extra: { 'tooling/bricks/app/__brick__/lib/b.dart': READS },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /domain word "subscription"/);
+  });
+
+  test('(v3) withheld — the package pubspec does not depend on the vendor package', () => {
+    const { code, out } = run(tree({
+      vendor: [MEMBER],
+      extra: {
+        'packages/billing/pubspec.yaml': 'name: billing\ndependencies:\n  flutter:\n    sdk: flutter\n',
+        'packages/billing/lib/b.dart': READS,
+      },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /domain word "subscription"/);
+  });
+
+  test('(v4) withheld — a BARE identifier with the vendor spelling is our word, not theirs', () => {
+    const { code, out } = run(tree({
+      vendor: [MEMBER],
+      extra: {
+        'packages/billing/pubspec.yaml': PUBSPEC,
+        'packages/billing/lib/b.dart': `import 'package:${SDK}/${SDK}.dart';\nfinal String subscriptionPeriod = 'P1M';\n`,
+      },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /domain word "subscription"/);
+  });
+
+  test('the exemption is PER ACCESS — a second domain word on the same line still fails', () => {
+    const { code, out } = run(tree({
+      vendor: [MEMBER],
+      extra: {
+        'packages/billing/pubspec.yaml': PUBSPEC,
+        'packages/billing/lib/b.dart': `import 'package:${SDK}/${SDK}.dart' as v;\nString renewalOf(v.Product p) => p.subscriptionPeriod;\n`,
+      },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /domain word "renewal"/);
+  });
+
+  test('a null-aware member access (?.) is still a member access', () => {
+    const { code, out } = run(tree({
+      vendor: [MEMBER],
+      extra: {
+        'packages/billing/pubspec.yaml': PUBSPEC,
+        'packages/billing/lib/b.dart': `import 'package:${SDK}/${SDK}.dart' as v;\nString? termOf(v.Product? p) => p?.subscriptionPeriod;\n`,
+      },
+    }));
+    assert.equal(code, 0, out);
+    assert.match(out, /1 vendor SDK member access\(es\) exempt/);
   });
 });

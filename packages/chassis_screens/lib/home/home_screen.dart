@@ -31,6 +31,12 @@ class WelcomeView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ChassisLocalizations l10n = context.chassisL10n;
+    // 🔴 THE THEME-RESOLVED STYLES, NOT THE CONST ONES. `AppText.title` and
+    // `AppText.muted` bake near-black ink, so in DARK the two lines measured
+    // 1.02:1 and 3.75:1 against the scaffold (a11y_home_test.dart, 2026-09-23).
+    // `AppText.of` returns the const objects themselves in LIGHT, so the light
+    // build is byte-identical.
+    final AppTextStyles text = AppText.of(context);
     // 🔴 SCROLLS ONLY WHEN SQUEEZED. This body sits in `Expanded` under the
     // catch-up banner and the promo card; on a build that can sell, the card
     // carries its buy button, and on a short window the fixed Column below
@@ -51,9 +57,9 @@ class WelcomeView extends StatelessWidget {
               ),
             ),
             const SizedBox(height: AppSpacing.lg),
-            Text(l10n.welcomeTo(appName), style: AppText.title),
+            Text(l10n.welcomeTo(appName), style: text.title),
             const SizedBox(height: AppSpacing.xs),
-            Text(l10n.homeTagline, style: AppText.muted),
+            Text(l10n.homeTagline, style: text.muted),
           ],
         ),
       ),

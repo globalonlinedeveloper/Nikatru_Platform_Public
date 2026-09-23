@@ -360,7 +360,7 @@ rc.Package? packageFor(rc.Offerings offerings, String productId) {
 String ambiguousPlanDetail(String productId, Iterable<String> identifiers) {
   final List<String> sorted = identifiers.toList()..sort();
   return 'The store offers $productId under more than one base plan '
-      '(${sorted.join(', ')}); a subscription must have exactly one, so '
+      '(${sorted.join(', ')}); a plan is sold under exactly one, so '
       'nothing was sold.';
 }
 

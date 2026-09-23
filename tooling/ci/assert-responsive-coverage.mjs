@@ -609,8 +609,12 @@ const REQUIRED_COVERAGE = [
     // and `test/home_view_test.dart` pumps both at all three classes. Read off
     // this guard's own per-root lines — `20 surface(s) reachable, 20 measured`
     // and `corpus: … — 20 file(s)` — never incremented off the diff.
+    // ⏱ RAISED `widthTestFiles` 20 → 21 ON 2026-09-23, SAME UNIT, for the reason
+    // the 2026-09-07 note above gives: `test/a11y_home_test.dart` joined the
+    // corpus, and R14b caught the slack — deleting a width suite left 20 files and
+    // cleared a floor of 20. Read off the per-root line, `— 21 file(s)`.
     surfaces: 20,
-    widthTestFiles: 20,
+    widthTestFiles: 21,
     coveredSurfaces: 20,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens every stamped ' +

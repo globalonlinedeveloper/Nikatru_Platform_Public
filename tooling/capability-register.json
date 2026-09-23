@@ -953,6 +953,18 @@
       "freeTrial",
       "payee",
       "merchantName"
+    ],
+    "vendorMembers": [
+      {
+        "package": "purchases_flutter",
+        "member": "subscriptionPeriod",
+        "why": "StoreProduct.subscriptionPeriod is the store's own ISO 8601 billing period; packages/billing_revenuecat maps it to OfferingTerm (the chassis word) at the one line it is read. The SDK owns the name."
+      },
+      {
+        "package": "purchases_flutter",
+        "member": "billingCycleCount",
+        "why": "PricingPhase.billingCycleCount is how many periods a Play free phase lasts; packages/billing_revenuecat maps it to TrialPeriod.count (the chassis word). The SDK owns the name."
+      }
     ]
   }
 }
