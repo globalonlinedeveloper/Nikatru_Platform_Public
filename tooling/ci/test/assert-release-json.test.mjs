@@ -26,12 +26,13 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, readdirSync, rmSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { servedFloor, productSurfaces } from '../release-manifest.mjs';
-import { parseAllWorkflows, shellSegments, stepShell } from '../workflow-scan.mjs';
+import { parseAllWorkflows, stepShell } from '../workflow-scan.mjs';
+import { listDir } from '../tree-walk.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const GUARD = join(REPO, 'tooling', 'ci', 'assert-release-json.mjs');
@@ -375,26 +376,55 @@ describe('the release record\'s minSupported is the served floor', () => {
 //   [limb 1] schema: #/minSupported: "1.0" does not match ^[0-9]+\.[0-9]+\.[0-9]+$
 //
 // WHAT THIS DOES, per invocation. The invocations are FOUND by
-// tooling/ci/workflow-scan.mjs — its logical lines and its `shellSegments`, the
-// same reduction every workflow guard here reads — never by a pattern of this
-// file's own over the YAML. For each one, the step that holds it is EXECUTED:
-// its `env:` with every `${{ … }}` replaced from laneContext() below, and its
-// `run:` script under bash exactly as GitHub starts it, so every flag value is
-// computed by the lane's own shell and the emitters it calls
+// tooling/ci/workflow-scan.mjs — its parsed jobs and logical lines, the same
+// reduction every workflow guard here reads. For each one, the step that holds
+// it is EXECUTED: its `env:` with every `${{ … }}` replaced from laneContext()
+// below, and its `run:` script under bash exactly as GitHub starts it, so every
+// flag value is computed by the lane's own shell and the emitters it calls
 // (`assert-app-versioning.mjs --emit`, `git show`). A `node` shell function
 // stands in front of ONE command only — the emit — and records the arguments it
 // was given instead of writing into the lane's directory. The real emitter is
-// then run with exactly those arguments into a temporary directory holding one
-// fixture asset, `--write` seals it, and assert-release-json.mjs grades it.
+// then run with exactly those arguments, the output directory swapped for a
+// temporary one holding one fixture asset, `--write` seals it, and
+// assert-release-json.mjs grades it.
+//
+// 🔴 THE FINDER'S PREDICATE IS THE EMITTER'S, AND NOTHING NARROWER. The first
+// version of this finder took a segment as an emit only when
+// `--emit-release-json` was the token RIGHT AFTER `…release-manifest.mjs`, and
+// its shim recorded only when the flag was `$2`. release-manifest.mjs selects
+// the mode with `has('emit-release-json')` — the flag at ANY position of its
+// argv — so three ordinary ways of writing a second lane ran the emitter and
+// were graded by nobody (review of #897, 2026-09-23, measured with probes):
+//   · the flags in another order (`--app "$APP" --emit-release-json dist …`);
+//   · the script path alone on a line ending `\`, the flag on the next — a
+//     `run: |` block is joined with ` ; `, so the path's next token is `\`;
+//   · the script path held in a variable (`node "$RM" --emit-release-json …`).
+// C1 stayed green over each, because the two real lanes already reach both
+// surfaces, and the lane then failed at the tag build — the class this test
+// exists to close. So a STEP is in the domain when the mode's name appears
+// anywhere in it, the shim records on the same predicate, and a step that
+// mentions the mode and does not emit exactly once is RED, never skipped.
+//
+// 🔴 AND EVERY MENTION IS ACCOUNTED FOR, FLAT. A parse that narrows makes a real
+// call invisible and reads clean — a mode passed through a workflow-level
+// `env:`, a composite action, a job key the parser does not see. So every
+// `.github/` workflow and composite action is ALSO re-read flat, whole-line
+// comments dropped and nothing else reduced, and every line that names the
+// mode must sit inside a step this test executed. That is the
+// assert-no-secret-defines.mjs precedent (parsed set vs flat re-scan), and C9
+// is its failing input.
 //
 // ⚠️ WHAT IT DOES NOT PROVE: the asset set. One fixture asset per invocation is
 // what makes a record at all; the lane's real set is the build's, and
-// release-durable/assert-release-durable own the step order around it.
+// release-durable/assert-release-durable own the step order around it. Nor a
+// mode name the step never writes down (`"--emit-$KIND"`): no reading of the
+// text can see that, and the emitter's own refusals are what stand behind it.
 //
 // ⚠️ AN EXPRESSION laneContext() DOES NOT KNOW FAILS CLOSED, and so does a step
-// that runs under anything but bash, and a step that emits zero or two times.
-// A value this file had to guess would be the second copy this class exists to
-// remove.
+// that runs under anything but bash, and a step that emits zero or two times —
+// including one that reaches the emitter past the shim (`command node …`),
+// which records nothing. A value this file had to guess would be the second
+// copy this class exists to remove.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** The `${{ … }}` values a release lane is given by GitHub, one fixed answer
@@ -423,23 +453,72 @@ function laneContext() {
 const indentOf = (t) => t.match(/^ */)[0].length;
 const unquote = (v) => v.replace(/^(['"])(.*)\1$/, '$2');
 
-/** Every `release-manifest.mjs --emit-release-json` segment in the workflows
- *  under `wfRoot`, as `{ wf, job, n }` — `n` the logical line's number, which is
- *  the `run:` key's line for a block scalar. */
-function emitInvocations(wfRoot) {
+/** The emitter's own name for the mode. release-manifest.mjs selects it with
+ *  `has('emit-release-json')` — the flag at ANY position of its argv — so this
+ *  one string is what the finder, the shim and the flat re-read all look for. */
+const EMIT_MODE = 'emit-release-json';
+
+/** The steps of one parsed job, as `{ start, end }` (1-based, inclusive): each
+ *  `- ` item under the job's `steps:` key, through its last non-blank line. Read
+ *  from workflow-scan's comment-blanked job lines, so a YAML comment never opens
+ *  or closes a step, and bounded to the job, so a line outside every step (a
+ *  job-level `env:`) belongs to none rather than to the nearest item above it. */
+function jobSteps(job) {
+  const isItem = (t) => /^\s*-(\s|$)/.test(t);
+  const at = job.lines.findIndex((l) => /^ {4}steps:\s*$/.test(l.text));
+  const steps = [];
+  if (at === -1) return steps;
+  let itemIndent = null;
+  for (const l of job.lines.slice(at + 1)) {
+    if (l.text.trim() === '') continue;
+    const ind = indentOf(l.text);
+    itemIndent ??= isItem(l.text) ? ind : -1;
+    if (itemIndent === -1 || ind < itemIndent || (ind === itemIndent && !isItem(l.text))) break;
+    if (ind === itemIndent) steps.push({ start: l.n, end: l.n });
+    else steps.at(-1).end = l.n;
+  }
+  return steps;
+}
+
+/** Every STEP under `wfRoot`'s workflows that names the emit mode anywhere, as
+ *  `{ wf, job, step, n }` — `n` the first logical line that names it (a block
+ *  scalar's is its `run:` key's line). Anywhere, not "right after the script
+ *  path": see THE FINDER'S PREDICATE above. */
+function emitInvocations(wfRoot, parsed = parseAllWorkflows(wfRoot)) {
   const found = [];
-  for (const wf of parseAllWorkflows(wfRoot)) {
+  for (const wf of parsed) {
     for (const job of wf.jobs.values()) {
+      const steps = jobSteps(job);
       for (const l of job.logical) {
-        for (const seg of shellSegments(l.text)) {
-          const t = seg.trim().split(/\s+/);
-          const at = t.findIndex((x) => x.endsWith('release-manifest.mjs'));
-          if (at !== -1 && t[at + 1] === '--emit-release-json') found.push({ wf, job, n: l.n });
-        }
+        if (!l.text.includes(EMIT_MODE)) continue;
+        const step = steps.find((s) => s.start <= l.n && l.n <= s.end);
+        if (step && !found.some((f) => f.wf === wf && f.step === step)) found.push({ wf, job, step, n: l.n });
       }
     }
   }
   return found;
+}
+
+/** Every line under `wfRoot/.github` — each workflow and each composite action —
+ *  that names the emit mode, as `{ rel, n }`. FLAT: whole-line comments dropped,
+ *  nothing else reduced, no parse. See EVERY MENTION IS ACCOUNTED FOR above. */
+function flatMentions(wfRoot) {
+  const files = [];
+  const wfDir = join(wfRoot, '.github', 'workflows');
+  if (existsSync(wfDir)) for (const f of listDir(wfDir)) if (/\.ya?ml$/.test(f)) files.push(`.github/workflows/${f}`);
+  const actionsDir = join(wfRoot, '.github', 'actions');
+  if (existsSync(actionsDir)) {
+    for (const d of listDir(actionsDir)) {
+      for (const f of ['action.yml', 'action.yaml']) if (existsSync(join(actionsDir, d, f))) files.push(`.github/actions/${d}/${f}`);
+    }
+  }
+  const out = [];
+  for (const rel of files) {
+    readFileSync(join(wfRoot, rel), 'utf8').split('\n').forEach((t, i) => {
+      if (!/^\s*#/.test(t) && t.includes(EMIT_MODE)) out.push({ rel, n: i + 1 });
+    });
+  }
+  return out;
 }
 
 /** `defaults: run: working-directory:` among raw `lines`, the `defaults:` key at
@@ -456,18 +535,16 @@ function defaultsWorkingDirectory(lines, base) {
   return null;
 }
 
-/** The step holding raw line `n` (1-based): its `env:`, its `run:` script as the
- *  shell receives it, and its `working-directory:`. Read from the RAW file, not
- *  workflow-scan's comment-blanked lines — a `#` inside a script is the script's,
- *  and the script is what is executed here. */
-function readStep(raw, n) {
-  const isItem = (t) => /^\s*-\s/.test(t);
-  let start = n - 1;
-  const selfIndent = indentOf(raw[start]);
-  if (!isItem(raw[start])) while (start > 0 && !(isItem(raw[start]) && indentOf(raw[start]) < selfIndent)) start -= 1;
-  const stepIndent = indentOf(raw[start]);
-  const body = [raw[start].replace(/^(\s*)-\s/, '$1  ')];
-  for (let j = start + 1; j < raw.length && (raw[j].trim() === '' || indentOf(raw[j]) > stepIndent); j++) body.push(raw[j]);
+/** The step at raw lines `start..end` (1-based, from jobSteps): its `env:`, its
+ *  `run:` script as the shell receives it, and its `working-directory:`. Read
+ *  from the RAW file, not workflow-scan's comment-blanked lines — a `#` inside a
+ *  script is the script's, and the script is what is executed here. A PLAIN
+ *  `run:` scalar continued on deeper lines is folded with spaces, as YAML folds
+ *  it: reading its first line alone would execute half a command. */
+function readStep(raw, { start, end }) {
+  const body = raw.slice(start - 1, end);
+  const stepIndent = indentOf(body[0]);
+  body[0] = body[0].replace(/^(\s*)-\s/, '$1  ');
   const step = { env: {}, run: null, workingDirectory: null };
   for (let i = 0; i < body.length; i++) {
     const m = indentOf(body[i]) === stepIndent + 2 && body[i].match(/^\s*([A-Za-z-]+):\s*(.*?)\s*$/);
@@ -485,7 +562,7 @@ function readStep(raw, n) {
       const lines = block.map((l) => l.slice(Math.min(cut, indentOf(l))));
       step.run = m[2].startsWith('|') ? lines.join('\n') : lines.join('\n').split(/\n\s*\n/).map((p) => p.split('\n').join(' ')).join('\n');
     } else if (m[1] === 'run') {
-      step.run = unquote(m[2]);
+      step.run = unquote([m[2], ...block.filter((l) => l.trim() !== '' && !/^\s*#/.test(l)).map((l) => l.trim())].join(' '));
     } else if (m[1] === 'working-directory') {
       step.workingDirectory = unquote(m[2]);
     }
@@ -493,17 +570,28 @@ function readStep(raw, n) {
   return step;
 }
 
-/** The shell function the step's script runs behind: the emit is RECORDED, one
- *  file per call; every other `node` runs for real. */
+/** The shell function the step's script runs behind: a call naming
+ *  `…release-manifest.mjs` AND the mode — each ANYWHERE among node's arguments,
+ *  node's own options included — is RECORDED, one file per call; every other
+ *  `node` runs for real. The next free file number is probed rather than
+ *  counted in a variable, so an emit inside a subshell cannot overwrite one
+ *  outside it, and the function is exported so a child `bash -c` sees it too. */
 const EMIT_SHIM = [
-  'EMIT_N=0',
   'node() {',
-  '  case "${1:-}" in',
-  '    *release-manifest.mjs) if [ "${2:-}" = --emit-release-json ]; then',
-  '      EMIT_N=$((EMIT_N + 1)); printf \'%s\\0\' "$@" > "${EMIT_ARGS_FILE}.${EMIT_N}"; return 0; fi ;;',
-  '  esac',
+  '  local a script=0 emit=0 n=1',
+  '  for a in "$@"; do',
+  '    case "$a" in',
+  '      *release-manifest.mjs) script=1 ;;',
+  `      --${EMIT_MODE}) emit=1 ;;`,
+  '    esac',
+  '  done',
+  '  if [ "$script" = 1 ] && [ "$emit" = 1 ]; then',
+  '    while [ -e "${EMIT_ARGS_FILE}.${n}" ]; do n=$((n + 1)); done',
+  '    printf \'%s\\0\' "$@" > "${EMIT_ARGS_FILE}.${n}"; return 0',
+  '  fi',
   '  command node "$@"',
   '}',
+  'export -f node',
 ].join('\n');
 
 /** Executes the step holding one invocation and grades what it would emit.
@@ -512,9 +600,9 @@ function gradeInvocation(wfRoot, inv, ctx) {
   const where = `${inv.wf.rel}:${inv.n} (job "${inv.job.name}")`;
   const fail = (output, extra = {}) => ({ where, ok: false, output, app: null, surface: null, ...extra });
   const raw = readFileSync(join(wfRoot, inv.wf.rel), 'utf8').split('\n');
-  const step = readStep(raw, inv.n);
-  if (step.run === null) return fail('the step holding it has no `run:` this can read');
-  const sh = stepShell(inv.wf, inv.n);
+  const step = readStep(raw, inv.step);
+  if (step.run === null) return fail(`the step names --${EMIT_MODE} and has no \`run:\` this can read`);
+  const sh = stepShell(inv.wf, inv.step.start);
   if (sh.family !== 'bash') return fail(`the step runs under ${sh.shell ?? `an unknown shell (${sh.why})`}; only bash steps are executed here`);
   const unknown = [];
   const expand = (s) => s.replace(/\$\{\{\s*(.+?)\s*\}\}/g, (all, e) => ctx.expressions[e] ?? (unknown.push(e), all));
@@ -544,10 +632,15 @@ function gradeInvocation(wfRoot, inv, ctx) {
       },
     });
     if (r.status !== 0) return fail(`the step's script exited ${r.status}:\n${r.stdout}${r.stderr}`);
-    const calls = [1, 2, 3].filter((i) => existsSync(`${argsFile}.${i}`));
-    if (calls.length !== 1) return fail(`the step emitted ${calls.length} times; exactly one record per step is what this grades`);
-    const args = readFileSync(`${argsFile}.1`, 'utf8').split('\0').slice(0, -1);
-    const value = (name) => { const i = args.indexOf(name); return i === -1 ? null : args[i + 1]; };
+    const calls = readdirSync(tmp).filter((f) => f.startsWith('emit-args.'));
+    if (calls.length !== 1) return fail(`the step names --${EMIT_MODE} and emitted ${calls.length} times through \`node\`; exactly one record per step is what this grades`);
+    // `args` is node's argv as the lane passed it: node's own options, the script,
+    // then the script's arguments, the mode wherever the lane put it.
+    const args = readFileSync(join(tmp, calls[0]), 'utf8').split('\0').slice(0, -1);
+    const scriptAt = args.findIndex((a) => a.endsWith('release-manifest.mjs'));
+    const at = args.indexOf(`--${EMIT_MODE}`);
+    if (at < scriptAt) return fail(`--${EMIT_MODE} was given to node itself, before the script`);
+    const value = (name) => { const i = args.indexOf(name, scriptAt + 1); return i === -1 ? null : args[i + 1]; };
     const app = value('--app');
     const surfaces = productSurfaces(REPO, app).map((f) => f.surface);
     if (surfaces.length !== 1) return fail(`--app "${app}" resolves to ${surfaces.length} surfaces in the tree`, { app });
@@ -555,8 +648,13 @@ function gradeInvocation(wfRoot, inv, ctx) {
     const dir = join(tmp, 'release');
     mkdirSync(dir);
     writeFileSync(join(dir, surface === 'app' ? `${app}-v1.0.0-app-release.aab` : `${app}-chromium.zip`), 'fixture bytes');
-    const emitter = resolve(cwd, args[0]);
-    const emit = spawnSync(process.execPath, [emitter, '--emit-release-json', dir, ...args.slice(3)], { cwd, encoding: 'utf8' });
+    const emitter = resolve(cwd, args[scriptAt]);
+    // The lane's own arguments, in the lane's own order; only the directory the
+    // mode writes into is swapped. A mode given no directory is passed as it
+    // came, and the emitter's own refusal is what gets graded.
+    const lanes = args[at + 1];
+    const emitArgs = args.map((a, i) => (i === at + 1 && lanes !== undefined && !lanes.startsWith('--') ? dir : a));
+    const emit = spawnSync(process.execPath, emitArgs, { cwd, encoding: 'utf8' });
     if (emit.status !== 0) return fail(`the emitter, given the lane's arguments, exited ${emit.status}:\n${emit.stdout}${emit.stderr}`, { app, surface });
     const seal = spawnSync(process.execPath, [emitter, '--write', dir, '--app', app, '--tag', value('--tag'), '--sha', value('--sha'), '--run-url', value('--run-url')], { cwd, encoding: 'utf8' });
     if (seal.status !== 0) return fail(`--write exited ${seal.status}:\n${seal.stdout}${seal.stderr}`, { app, surface });
@@ -568,13 +666,19 @@ function gradeInvocation(wfRoot, inv, ctx) {
 }
 
 /** The whole class under `wfRoot`, and what is wrong with it: a red invocation,
- *  no invocation at all, or a surface the register declares that no graded
- *  invocation reached. An empty list is the only green. */
+ *  no invocation at all, a mention of the mode outside every step this executed,
+ *  or a surface the register declares that no graded invocation reached. An
+ *  empty list is the only green. */
 function gradeEveryEmitter(wfRoot) {
   const ctx = laneContext();
-  const graded = emitInvocations(wfRoot).map((inv) => gradeInvocation(wfRoot, inv, ctx));
+  const found = emitInvocations(wfRoot);
+  const graded = found.map((inv) => gradeInvocation(wfRoot, inv, ctx));
   const problems = graded.filter((g) => !g.ok).map((g) => `${g.where}\n${g.output}`);
   if (graded.length === 0) problems.push('no workflow runs `release-manifest.mjs --emit-release-json` — nothing was graded');
+  for (const m of flatMentions(wfRoot)) {
+    if (found.some((f) => f.wf.rel === m.rel && f.step.start <= m.n && m.n <= f.step.end)) continue;
+    problems.push(`${m.rel}:${m.n} names --${EMIT_MODE} outside every step this test executed (a workflow- or job-level \`env:\`, a composite action, a key the parse does not read). Refusing to guess which step runs it: write the mode into the step that emits.`);
+  }
   const register = JSON.parse(readFileSync(join(REPO, 'tooling', 'channel-register.json'), 'utf8'));
   const declared = [...new Set((register.channels ?? []).map((c) => c.surface).filter(Boolean))];
   for (const s of declared) {
@@ -592,6 +696,32 @@ function mutatedWorkflows(file, from, to) {
   writeFileSync(join(root, '.github', 'workflows', file), text.replace(from, () => to));
   return root;
 }
+
+/** Every real workflow, unchanged, plus `probe.yml` holding `text`: the two real
+ *  lanes still reach both surfaces, so the probe is what C1 alone would never
+ *  notice — a SECOND lane, written another way. */
+function withProbe(text) {
+  const root = mkdtempSync(join(tmpdir(), 'release-json-wf-'));
+  const to = join(root, '.github', 'workflows');
+  mkdirSync(to, { recursive: true });
+  const from = join(REPO, '.github', 'workflows');
+  for (const f of listDir(from)) if (/\.ya?ml$/.test(f)) copyFileSync(join(from, f), join(to, f));
+  writeFileSync(join(to, 'probe.yml'), text);
+  return root;
+}
+
+/** The problems that name the probe, joined — the assertion's subject and its
+ *  message both. */
+const probeProblems = (problems) => problems.filter((p) => p.startsWith('.github/workflows/probe.yml:')).join('\n\n');
+
+/** The extension lane's `env:`, as extensions.yml gives it, for the probes. */
+const PROBE_EXT_ENV = [
+  '        env:',
+  '          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}',
+  '          NOTES_URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}',
+  '          TOOL: ${{ steps.tag.outputs.id }}',
+  '          VERSION: ${{ steps.tag.outputs.version }}',
+].join('\n');
 
 describe('every --emit-release-json a workflow runs emits a record the schema accepts', () => {
   test('C1 GREEN — each invocation, executed as its lane executes it, grades clean, and every surface is reached', () => {
@@ -647,6 +777,138 @@ describe('every --emit-release-json a workflow runs emits a record the schema ac
     assert.ok(problems.some((p) => /nothing was graded/.test(p)), problems.join('\n'));
     assert.ok(problems.some((p) => /reaches the "app" surface/.test(p)), problems.join('\n'));
     assert.ok(problems.some((p) => /reaches the "extension" surface/.test(p)), problems.join('\n'));
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  // C6–C10: a SECOND lane beside the two real ones, written in a way the first
+  // finder could not see (review of #897). Each is wrong on purpose, so the only
+  // way it reads clean is by not being found — and each must be found, run and
+  // named. C11: node's own options ahead of the script, on the shim's side.
+
+  test('C6 RED — a lane that gives the flags in another order is found, and its old floor is refused', () => {
+    const root = withProbe([
+      'on: workflow_dispatch',
+      'jobs:',
+      '  probe:',
+      '    runs-on: ubuntu-24.04',
+      '    steps:',
+      '      - name: A second app lane, the mode after --app',
+      '        env:',
+      '          APP: ${{ matrix.app }}',
+      '          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}',
+      '          RUN_NUMBER: ${{ github.run_number }}',
+      '        run: |',
+      '          set -euo pipefail',
+      '          RELEASE_LINE="$(node tooling/ci/assert-app-versioning.mjs --emit "apps/${APP}" | sed -n \'s/^release_line=//p\')"',
+      '          node tooling/ci/release-manifest.mjs --app "$APP" --emit-release-json dist \\',
+      '            --tag "$RELEASE_TAG" --sha "$GITHUB_SHA" --run-url "$RUN_URL" --notes-url "$RUN_URL" \\',
+      '            --released-at 2026-09-22T10:00:00Z \\',
+      '            --version "${RELEASE_LINE}.${RUN_NUMBER}" --min-supported "$RELEASE_LINE"',
+      '',
+    ].join('\n'));
+    const probe = probeProblems(gradeEveryEmitter(root).problems);
+    assert.match(probe, /--min-supported is refused on the app surface/, probe || 'the probe lane was never found');
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test('C7 RED — a lane whose script path sits alone on a `\\`-continued line is found and graded', () => {
+    const root = withProbe([
+      'on: workflow_dispatch',
+      'jobs:',
+      '  probe:',
+      '    runs-on: ubuntu-24.04',
+      '    steps:',
+      '      - name: A second extension lane, the path on its own line',
+      '        working-directory: .',
+      PROBE_EXT_ENV,
+      '        run: |',
+      '          set -euo pipefail',
+      '          node tooling/ci/release-manifest.mjs \\',
+      '            --emit-release-json extensions/dist \\',
+      '            --app "$TOOL" --tag "${TOOL}-v${VERSION}" --sha "$GITHUB_SHA" \\',
+      '            --run-url "$RUN_URL" --notes-url "$NOTES_URL" --released-at 2026-09-22T10:00:00Z \\',
+      '            --version "$VERSION" --min-supported "1.0"',
+      '',
+    ].join('\n'));
+    const probe = probeProblems(gradeEveryEmitter(root).problems);
+    assert.ok(probe.includes('[limb 1] schema: #/minSupported: "1.0" does not match ^[0-9]+\\.[0-9]+\\.[0-9]+$'), probe || 'the probe lane was never found');
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test('C8 RED — a lane that holds the script path in a variable is found and graded', () => {
+    const root = withProbe([
+      'on: workflow_dispatch',
+      'jobs:',
+      '  probe:',
+      '    runs-on: ubuntu-24.04',
+      '    steps:',
+      '      - name: A second extension lane, the path in a variable',
+      '        working-directory: .',
+      PROBE_EXT_ENV,
+      '        run: |',
+      '          set -euo pipefail',
+      '          RM=tooling/ci/release-manifest.mjs',
+      '          node "$RM" --emit-release-json extensions/dist \\',
+      '            --app "$TOOL" --tag "${TOOL}-v${VERSION}" --sha "$GITHUB_SHA" \\',
+      '            --run-url "$RUN_URL" --notes-url "$NOTES_URL" --released-at 2026-09-22T10:00:00Z \\',
+      '            --version "$VERSION" --min-supported "1.0"',
+      '',
+    ].join('\n'));
+    const probe = probeProblems(gradeEveryEmitter(root).problems);
+    assert.ok(probe.includes('[limb 1] schema: #/minSupported: "1.0" does not match ^[0-9]+\\.[0-9]+\\.[0-9]+$'), probe || 'the probe lane was never found');
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test('C9 RED — the mode passed through a workflow-level `env:` is a finding at its own line, not an unread lane', () => {
+    const root = withProbe([
+      'on: workflow_dispatch',
+      'env:',
+      '  EMIT: --emit-release-json',
+      'jobs:',
+      '  probe:',
+      '    runs-on: ubuntu-24.04',
+      '    steps:',
+      '      - name: A second extension lane, the mode from the workflow env',
+      '        run: node tooling/ci/release-manifest.mjs "$EMIT" extensions/dist --app fullshot',
+      '',
+    ].join('\n'));
+    const probe = probeProblems(gradeEveryEmitter(root).problems);
+    assert.match(probe, /^\.github\/workflows\/probe\.yml:3 names --emit-release-json outside every step this test executed/, probe || 'the flat re-read never saw the mention');
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test('C10 RED — a lane written as a plain `run:` scalar folded over lines is found and executed WHOLE', () => {
+    const root = withProbe([
+      'on: workflow_dispatch',
+      'jobs:',
+      '  probe:',
+      '    runs-on: ubuntu-24.04',
+      '    steps:',
+      '      - name: A second extension lane, a plain scalar',
+      '        working-directory: .',
+      PROBE_EXT_ENV,
+      '        run: node tooling/ci/release-manifest.mjs',
+      '          --emit-release-json extensions/dist --app "$TOOL" --tag "${TOOL}-v${VERSION}"',
+      '          --sha "$GITHUB_SHA" --run-url "$RUN_URL" --notes-url "$NOTES_URL"',
+      '          --released-at 2026-09-22T10:00:00Z --version "$VERSION" --min-supported "1.0"',
+      '',
+    ].join('\n'));
+    const probe = probeProblems(gradeEveryEmitter(root).problems);
+    assert.ok(probe.includes('[limb 1] schema: #/minSupported: "1.0" does not match ^[0-9]+\\.[0-9]+\\.[0-9]+$'), probe || 'the probe lane was never found');
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test('C11 GREEN — node\'s own options ahead of the script are recorded by the shim, never run for real', () => {
+    const root = mutatedWorkflows(
+      'extensions.yml',
+      'node tooling/ci/release-manifest.mjs --emit-release-json extensions/dist',
+      'node --no-warnings tooling/ci/release-manifest.mjs --emit-release-json extensions/dist',
+    );
+    const inv = emitInvocations(root);
+    assert.equal(inv.length, 1);
+    const g = gradeInvocation(root, inv[0], laneContext());
+    assert.equal(g.ok, true, g.output);
+    assert.equal(g.surface, 'extension');
     rmSync(root, { recursive: true, force: true });
   });
 });

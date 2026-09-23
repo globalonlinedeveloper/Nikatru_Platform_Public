@@ -30,7 +30,7 @@
   "assert-deploy-triggers-deploy.test.mjs": 18,
   "assert-frames-carry-text.test.mjs": 11,
   "assert-name-clearance.test.mjs": 16,
-  "assert-release-json.test.mjs": 29,
+  "assert-release-json.test.mjs": 35,
   "availability.test.mjs": 33,
   "await-pr-checks.test.mjs": 46,
   "bounded-spawn.test.mjs": 9,
