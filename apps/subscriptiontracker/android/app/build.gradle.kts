@@ -172,7 +172,7 @@ val releaseChannel: String? =
         ?.mapNotNull { runCatching { String(Base64.getDecoder().decode(it), Charsets.UTF_8) }.getOrNull() }
         ?.firstOrNull { it.startsWith("RELEASE_CHANNEL=") }
         ?.substringAfter('=')
-        ?.takeIf { Regex("[a-z0-9-]+").matches(it) }
+        ?.takeIf { Regex("[a-z0-9]+").matches(it) }
 val channelManifest: File? =
     releaseChannel?.let { file("src/channel/$it/AndroidManifest.xml") }?.takeIf { it.exists() }
 
