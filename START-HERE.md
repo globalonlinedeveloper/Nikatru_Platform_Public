@@ -29,7 +29,7 @@ or `pnpm-lock.yaml`.
 
 ## What the merge gate enforces
 
-`ci-gate` is the ONE required check and it needs 14 job(s) green; `.github/workflows/ci.yml`
+`ci-gate` is the ONE required check and it needs 16 job(s) green; `.github/workflows/ci.yml`
 decides which lane runs what, across 18 workflow(s). Reproduce it locally with
 `node tooling/scripts/preflight.mjs` — verifying a subset, or outside CI's environment, passes
 while CI fails. The **spec guards** run from the git hooks instead, because their subject is
