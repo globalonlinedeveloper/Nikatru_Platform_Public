@@ -25,12 +25,19 @@
 // the runner and red on the laptop for a reason about `spawnSync` rather than
 // about symbols. The split is stated in the script's own header.
 //
+// ⏱ APPENDED 2026-09-23 (row O-GLITCHTIP-CALLS-HAVE-NO-RETRY): the third block
+// drives `uploadDebugFiles`, the bounded retry around the CLI, through an
+// INJECTED spawner that returns the CLI's own pinned error lines — the same
+// reason as above: no fake binary on disk. deploy-web run 35831511489 went red
+// on one 522 from the GlitchTip origin; these cases pin that a 522 is re-asked,
+// a 401 is not, and a 522 that persists is still a red build.
+//
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -38,7 +45,9 @@ import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const SCRIPT = join(ROOT, 'tooling', 'ops', 'upload-native-symbols.mjs');
 
-const { readCliVerdict } = await import(`file://${SCRIPT.split('\\').join('/')}`);
+const { readCliVerdict, uploadDebugFiles, transientCliLine, CLI_ATTEMPT_TIMEOUT_MS } = await import(
+  `file://${SCRIPT.split('\\').join('/')}`
+);
 
 const DSN = 'https://abc123@glitchtip.example.com/2';
 
@@ -192,5 +201,135 @@ describe("upload-native-symbols — the CLI's three exit-0-having-stored-nothing
     const v = readCliVerdict({ out: goodOutput(2), status: 2, fileCount: 2, cli: 'glitchtip-cli' });
     assert.equal(v.ok, false);
     assert.match(v.lines.join(' '), /exited 2/);
+  });
+});
+
+// ── ⏱ 2026-09-23: the bounded retry around the CLI ──────────────────────────
+const HOST = 'https://glitchtip.example.com';
+/** The CLI's own lines, in the shapes src/api/client.rs and main.rs print them. */
+const infoFailed = (status) =>
+  `Found 2 debug information file(s)\nerror: Failed to get chunk upload info: GET ${HOST}/api/0/organizations/nikatru/chunk-upload/ returned ${status}: error code: 522\n`;
+const chunkFailed = (status) =>
+  `Found 2 debug information file(s)\n  Error uploading a.symbols: Chunk upload to ${HOST}/api/0/organizations/nikatru/chunk-upload/ returned ${status}: error code: 522\n` +
+  `  Uploaded chunk for: b.symbols\nRequesting assembly of 1 file(s)...\n  Assembly completed.\n\n` +
+  `Upload complete: 1 chunk(s) uploaded, 1 error(s).\nerror: 1 file(s) had errors\n`;
+
+/** A spawner that answers from a script, one entry per call (the last repeats),
+ *  and records how it was called. */
+const scripted = (answers) => {
+  const calls = [];
+  const spawn = (cmd, args, opts) => {
+    calls.push({ cmd, args, opts });
+    return answers[Math.min(calls.length - 1, answers.length - 1)];
+  };
+  return { spawn, calls };
+};
+const recorder = () => {
+  const slept = [];
+  return { slept, sleep: async (ms) => { slept.push(ms); } };
+};
+const upload = (spawn, sleep) =>
+  uploadDebugFiles({
+    cli: 'glitchtip-cli',
+    args: ['debug-files', 'upload', '--wait', '--org', 'nikatru', '--project', 'subscriptiontracker', '/syms'],
+    env: {},
+    fileCount: 2,
+    spawn,
+    sleep,
+    note: () => {},
+    print: () => {},
+  });
+const cliExit = (status, out) => ({ status, stdout: out, stderr: '' });
+
+describe('upload-native-symbols — a transient origin error is re-asked, an answer is not', () => {
+  test('🔴 a 522 on the first run and a clean upload on the second is GREEN on attempt 2', async () => {
+    const { spawn, calls } = scripted([cliExit(1, infoFailed('522 <unknown status code>')), cliExit(0, goodOutput(2))]);
+    const { slept, sleep } = recorder();
+    const r = await upload(spawn, sleep);
+    assert.deepEqual(r, { ok: true, attempts: 2 });
+    assert.equal(calls.length, 2);
+    assert.deepEqual(slept, [1000], 'the shared plan waits 1 s before the second attempt');
+  });
+
+  test('🔴 a 401 is FINAL on attempt 1 — a revoked token does not improve in two seconds', async () => {
+    const { spawn, calls } = scripted([cliExit(1, infoFailed('401 Unauthorized')), cliExit(0, goodOutput(2))]);
+    const { slept, sleep } = recorder();
+    const r = await upload(spawn, sleep);
+    assert.equal(r.ok, false);
+    assert.equal(calls.length, 1, 'a 401 was re-asked');
+    assert.deepEqual(slept, []);
+    assert.match(r.lines[0], /exited 1/);
+  });
+
+  test('🔴 a 522 that persists is still a RED build, after exactly 3 attempts', async () => {
+    const { spawn, calls } = scripted([cliExit(1, infoFailed('522 <unknown status code>'))]);
+    const { slept, sleep } = recorder();
+    const r = await upload(spawn, sleep);
+    assert.equal(r.ok, false);
+    assert.equal(r.attempts, 3);
+    assert.equal(calls.length, 3);
+    assert.deepEqual(slept, [1000, 2000]);
+    assert.match(r.lines[0], /the same on all 3 attempt\(s\)/);
+    assert.match(r.lines[0], /returned 522/);
+  });
+
+  test('a 522 on ONE chunk, which the CLI counts as an error, is re-asked too', async () => {
+    const v = readCliVerdict({ out: chunkFailed('522 <unknown status code>'), status: 1, fileCount: 2, cli: 'glitchtip-cli' });
+    assert.equal(v.transient, true, JSON.stringify(v));
+    const { spawn, calls } = scripted([cliExit(1, chunkFailed('522 <unknown status code>')), cliExit(0, goodOutput(2))]);
+    const r = await upload(spawn, recorder().sleep);
+    assert.deepEqual(r, { ok: true, attempts: 2 });
+    assert.equal(calls.length, 2);
+  });
+
+  test('a 522 BESIDE a 400 is final — any non-transient status in the output is an answer', () => {
+    const out = `${chunkFailed('522 <unknown status code>')}error: POST ${HOST}/api/0/projects/nikatru/x/files/difs/assemble/ returned 400 Bad Request: {}\n`;
+    assert.equal(transientCliLine(out), null);
+    const v = readCliVerdict({ out, status: 1, fileCount: 2, cli: 'glitchtip-cli' });
+    assert.equal(v.transient, undefined);
+  });
+
+  test('a request that never answered (the CLI\'s "… failed" context) is transient', () => {
+    const out = `Found 2 debug information file(s)\nerror: POST ${HOST}/api/0/projects/nikatru/x/files/difs/assemble/ failed: error sending request\n`;
+    assert.match(transientCliLine(out), /assemble\/ failed/);
+  });
+
+  test('🔴 a CLI that never returns is stopped at the 120 s spawn ceiling and re-asked', async () => {
+    const hung = { status: null, stdout: '', stderr: '', error: Object.assign(new Error('spawnSync glitchtip-cli ETIMEDOUT'), { code: 'ETIMEDOUT' }) };
+    const { spawn, calls } = scripted([hung, cliExit(0, goodOutput(2))]);
+    const r = await upload(spawn, recorder().sleep);
+    assert.deepEqual(r, { ok: true, attempts: 2 });
+    assert.equal(CLI_ATTEMPT_TIMEOUT_MS, 120_000);
+    assert.equal(calls[0].opts.timeout, CLI_ATTEMPT_TIMEOUT_MS, 'the spawn carries no ceiling, so a hang holds the job');
+  });
+
+  test('a CLI that cannot be run at all (ENOENT) is final on attempt 1', async () => {
+    const missing = { status: null, stdout: '', stderr: '', error: Object.assign(new Error('spawnSync glitchtip-cli ENOENT'), { code: 'ENOENT' }) };
+    const { spawn, calls } = scripted([missing]);
+    const r = await upload(spawn, recorder().sleep);
+    assert.equal(r.ok, false);
+    assert.equal(calls.length, 1);
+    assert.match(r.lines[0], /could not be run/);
+  });
+
+  test('an unfinished assembly and a short file count are answers, never re-asked', async () => {
+    const timedOut = goodOutput(2).replace('  Assembly completed.\n', '  Assembly did not complete within timeout.\n');
+    for (const out of [timedOut, goodOutput(1)]) {
+      const { spawn, calls } = scripted([cliExit(0, out), cliExit(0, goodOutput(2))]);
+      const r = await upload(spawn, recorder().sleep);
+      assert.equal(r.ok, false);
+      assert.equal(calls.length, 1);
+    }
+  });
+
+  test('🔴 WIRED — the direct run goes through uploadDebugFiles, which CALLS the shared plan', () => {
+    const src = readFileSync(SCRIPT, 'utf8');
+    assert.match(src, /from '\.\/bounded-retry\.mjs'/);
+    assert.match(src, /await readWithBoundedRetry\(/);
+    assert.match(src, /const result = await uploadDebugFiles\(/);
+    // The only spawn is the injected one: a second, direct spawnSync call would
+    // be a CLI run outside the retry.
+    const code = src.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+    assert.doesNotMatch(code, /spawnSync\s*\(/);
   });
 });
