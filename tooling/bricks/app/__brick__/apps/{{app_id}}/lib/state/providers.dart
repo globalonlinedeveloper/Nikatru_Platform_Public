@@ -5,9 +5,17 @@ import 'dart:math';
 // kIsWeb + defaultTargetPlatform name the running platform for the analytics
 // envelope. NOT `dart:io`'s `Platform`: merely IMPORTING `dart:io` makes the web
 // build fail to compile, and web is one of the six targets every app here ships.
+// FlutterError/FlutterErrorDetails are the stamped app's EXISTING handled-error
+// reporter: `TelemetryBootstrap.init` (lib/main.dart) runs the app inside
+// `SentryFlutter.init`, whose Flutter integration installs `FlutterError.onError`
+// and forwards every reported `FlutterErrorDetails` to GlitchTip. Reporting
+// through it reaches the tracker every stamped app already has, and adds no
+// second one. See [reportAppleTokenNotKept].
 import 'package:flutter/foundation.dart'
     show
         ChangeNotifier,
+        FlutterError,
+        FlutterErrorDetails,
         Listenable,
         TargetPlatform,
         defaultTargetPlatform,
@@ -1291,9 +1299,42 @@ final Provider<void> appleTokenKeeperProvider = Provider<void>((ref) {
       token,
       appId: AppConfig.appId,
     ),
+    onError: reportAppleTokenNotKept,
   );
   ref.onDispose(sub.cancel);
 });
+
+/// ⏱ 2026-09-22 · O-APPLE-KEEPER-NO-ONERROR — A ROUND THAT GAVE UP IS SAID OUT
+/// LOUD, TO THE TRACKER THIS APP ALREADY HAS.
+///
+/// 🔴 NOBODY WAS LISTENING, AND THAT IS HOW THE LAST ONE SURVIVED. The keeper
+/// has reported a bounded failure through `onError` since 2026-09-22, and
+/// neither this template nor the app written from it passed one — so when the
+/// shared platform Worker's CORS list left out PUT and every web send of
+/// `PUT /v1/account/apple-token` was refused at the preflight, the keeper gave
+/// up silently. It took a hand-run count of `apple_provider_tokens` (0 rows, on
+/// a live Apple account) to find it, and until then every one of those accounts
+/// would have deleted with nothing to revoke at Apple. An unread failure is the
+/// defect; the delivery bug was only its occasion. `onError:` is pinned here by
+/// `tooling/ci/assert-stamp-properties.mjs`, so no app can be stamped without it.
+///
+/// ⚠️ WHAT IT SENDS IS A REASON AND A COUNT, and nothing else. The payload is
+/// `core.appleTokenNotKeptReport`, the one function every other caller uses as
+/// well, so all of them build the same report. The token never leaves the keeper — it is not a parameter of
+/// `onError` and there is no way to reach it from here — and the failure's own
+/// text is deliberately dropped: a server message is the one string a credential
+/// could still be riding in.
+///
+/// NAMED rather than an inline closure for the reason [signOutOnlyIfSessionIsGone]
+/// is: a closure written into the argument list is a decision no test can reach.
+void reportAppleTokenNotKept(Object error) {
+  FlutterError.reportError(
+    FlutterErrorDetails(
+      exception: StateError(core.appleTokenNotKeptReport(error)),
+      library: 'apple_token_keeper',
+    ),
+  );
+}
 
 final Provider<RestClient> restClientProvider = Provider<RestClient>(
   (ref) => RestClient(

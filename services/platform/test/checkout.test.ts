@@ -236,7 +236,7 @@ describe('🔴 status:"billed" is STRUCTURALLY IMPOSSIBLE on the create path', (
     // it and this line compiles, the directive goes unused, and `tsc --noEmit`
     // errors with "Unused '@ts-expect-error' directive". Mutation-verified.
     const smuggled = {
-      items: [{ price_id: 'pri_01kzew6dqmtv3jg33dy9m23g31', quantity: 1 }],
+      items: [{ price_id: 'pri_01m346p0fjtaffk6waj5x5vz1c', quantity: 1 }],
       custom_data: { [PADDLE_CUSTOM_DATA_USER_ID]: USER, [PADDLE_CUSTOM_DATA_APP_ID]: 'subscriptiontracker' },
       status: 'billed',
     };
@@ -314,7 +314,7 @@ describe('the wire request — what actually leaves the Worker', () => {
     const sent = call.body as Record<string, unknown>;
     expect(Object.keys(sent).sort()).toEqual(['custom_data', 'items']);
     expect('status' in sent).toBe(false);
-    expect(sent.items).toEqual([{ price_id: 'pri_01kzew6dqmtv3jg33dy9m23g31', quantity: 1 }]);
+    expect(sent.items).toEqual([{ price_id: 'pri_01m346p0fjtaffk6waj5x5vz1c', quantity: 1 }]);
   });
 
   it('resolves the PRICE ID server-side — a caller can never name a Paddle price', async () => {
@@ -327,7 +327,7 @@ describe('the wire request — what actually leaves the Worker', () => {
 
     expect(res.status).toBe(200);
     const sent = paddleCalls[0].body as Record<string, unknown>;
-    expect(sent.items).toEqual([{ price_id: 'pri_01kzew6e0yec2rfvk561hmzbbz', quantity: 1 }]);
+    expect(sent.items).toEqual([{ price_id: 'pri_01m346p0v8103kqy1zb8zmmj7y', quantity: 1 }]);
     expect('status' in sent).toBe(false);
     expect('price_id' in sent).toBe(false);
   });

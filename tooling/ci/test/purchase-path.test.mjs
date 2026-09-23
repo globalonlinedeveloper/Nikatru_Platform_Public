@@ -80,19 +80,34 @@ const RAILS = () => ({
   paddle: 'Paddle hosted apex checkout, opened in the browser. Merchant of record; nets 7.5%.',
   'play-billing': 'Google Play Billing, 15% on the first-$1M/yr tier, integrated through RevenueCat.',
   'apple-iap': 'Apple StoreKit in-app purchase, 15% under the Small Business Program.',
+  razorpay: 'Razorpay, the India gateway, added by [ADR 094]; Nikatru is the seller of record on it.',
   none: 'this channel sells nothing and must open no checkout of any kind at all.',
 });
 
-const railBlock = (rail, forbids) => ({
+// ⏱ 2026-09-22 — §I's fixture. A REGION RAIL is the optional fifth field on a
+// `purchaseRail` block: one country routed to a different rail than the row's
+// own. [ADR 094] puts an India buyer of the extensions on Razorpay and leaves
+// everybody else on Paddle, because [ADR 076] §3 measured that Paddle's flat
+// per-transaction fee is ~42% of the India monthly plan.
+const regionRail = (over = {}) => ({
+  region: 'IN',
+  rail: 'razorpay',
+  why: 'Paddle cannot sell the India monthly plan at any price: the flat per-transaction fee eats ~42% of it.',
+  source: '[ADR 094] §1, §3',
+  ...over,
+});
+
+const railBlock = (rail, forbids, regionRails) => ({
   rail,
   why: `The policy and the arithmetic that force \`${rail}\` on this channel, written out in full.`,
   forbids,
   forbidsWhy: 'MECHANICAL where the billing SDK cannot exist here, POLICY where the store forbids it.',
   source: '[ADR 039] D1',
+  ...(regionRails ? { regionRails } : {}),
 });
 
 const channelRows = () => [
-  { id: 'web', platforms: ['web'], kind: 'web', purchaseRail: railBlock('paddle', ['play-billing', 'apple-iap']) },
+  { id: 'web', platforms: ['web'], kind: 'web', purchaseRail: railBlock('paddle', ['play-billing', 'apple-iap'], [regionRail()]) },
   { id: 'android-play', platforms: ['android'], kind: 'store', purchaseRail: railBlock('play-billing', ['paddle', 'apple-iap']) },
   { id: 'ios-appstore', platforms: ['ios'], kind: 'store', purchaseRail: railBlock('apple-iap', ['paddle', 'play-billing']) },
   { id: 'macos-appstore', platforms: ['macos'], kind: 'store', purchaseRail: railBlock('apple-iap', ['paddle', 'play-billing']) },
@@ -112,15 +127,23 @@ const parkedRows = () => [
   },
 ];
 
-const registerDoc = ({ channels = channelRows(), rails = RAILS(), parked = parkedRows(), noRailsDict = false } = {}) => {
+const registerDoc = ({
+  channels = channelRows(),
+  rails = RAILS(),
+  parked = parkedRows(),
+  noRailsDict = false,
+  regionRequired = ['web'],
+  noRegionRequired = false,
+} = {}) => {
   // ⏱ 2026-09-15 — §A splits by the surface's DECLARED `flutterApp` (O-EXT-SURFACE-AXIS),
   // so the fixture declares both real surfaces; a row with no `surface` is an app row.
   const doc = {
     surfaces: { app: { flutterApp: true }, extension: { flutterApp: false } },
-    purchaseRails: { rails, awaitingChannelRow: parked },
+    purchaseRails: { rails, regionRailsRequiredOn: regionRequired, awaitingChannelRow: parked },
     channels: channels.map((c) => ('surface' in c ? c : { ...c, surface: 'app' })),
   };
   if (noRailsDict) delete doc.purchaseRails.rails;
+  if (noRegionRequired) delete doc.purchaseRails.regionRailsRequiredOn;
   return JSON.stringify(doc, null, 2);
 };
 
@@ -461,6 +484,25 @@ class PaywallScreen extends ConsumerStatefulWidget {
 }
 `;
 
+// ⏱ 2026-09-22 — §I's two subjects, in the real files' shape.
+//
+// The registry is parsed with the SAME regex assert-mor-adapters.mjs limb 2
+// runs, deliberately: two guards that parse the provider set two ways can
+// disagree about which rails this repo can hear from, and the disagreement
+// shows up as money taken on a rail nothing verifies.
+const MOR_REGISTRY_TS = `import type { MoRWebhookVerifier } from './types';
+export const MOR_VERIFIERS: readonly MoRWebhookVerifier[] = [paddleVerifier, razorpayVerifier];
+`;
+
+const legalRow = (id, status, namedIn) => ({ id, status, namedIn, role: id === 'paddle' ? 'merchant_of_record' : 'payment_gateway' });
+
+const legalDoc = (rows) => JSON.stringify({ providers: rows }, null, 2);
+
+const LEGAL_REGISTER_JSON = legalDoc([
+  legalRow('paddle', 'live', ['terms.html', 'refund.html', 'privacy.html']),
+  legalRow('razorpay', 'wired-not-live', ['terms.html', 'refund.html']),
+]);
+
 function write(root, rel, body) {
   const p = join(root, rel);
   mkdirSync(dirname(p), { recursive: true });
@@ -482,6 +524,11 @@ function run(o = {}) {
   if (o.brickMoney !== null) write(root, `${BRICK}/lib/state/money_providers.dart`, o.brickMoney ?? VIA_FACADE);
   if (o.extraCtorSite) write(root, o.extraCtorSite.file, o.extraCtorSite.body);
   if (o.morPaddle !== null) write(root, 'services/platform/src/lib/mor/paddle.ts', o.morPaddle ?? 'export const paddle = {};\n');
+  // §I's two subjects. A region rail is a claim about MONEY, and it is settled
+  // against these two files: the registry says this repo can verify a webhook
+  // from that rail, the legal register says a published page names who collects.
+  if (o.morRegistry !== null) write(root, 'services/platform/src/lib/mor/registry.ts', o.morRegistry ?? MOR_REGISTRY_TS);
+  if (o.legalRegister !== null) write(root, 'tooling/legal/provider-register.json', o.legalRegister ?? LEGAL_REGISTER_JSON);
   write(root, 'packages/purchases/test/purchase_capabilities_test.dart', 'void main() {}');
   if (o.railTest !== null) write(root, 'packages/purchases/test/hosted_checkout_rail_test.dart', o.railTest ?? RAIL_TEST);
   write(root, 'packages/purchases/lib/src/entitlement_convergence.dart', o.convergence ?? CONVERGENCE);
@@ -642,10 +689,34 @@ describe('assert-purchase-path — the client money rail', () => {
     assert.match(r.out, /must be a NAMED CONSTANT/);
   });
 
-  test('COVERAGE LOST when the rail config declares no trial or term to compare against', () => {
+  test('COVERAGE LOST when the rail config declares no offering to compare against', () => {
     const r = run({ serverConfig: railData({ offerings: [] }) });
     assert.equal(r.code, 2);
-    assert.match(r.out, /COVERAGE LOST — no `trial_days`/);
+    assert.match(r.out, /COVERAGE LOST — no offering with a `term`/);
+  });
+
+  test('🔴 a catalogue where NO offering grants a trial checks the PERIOD half, and says so', () => {
+    // A `trial_days` of 0 is no trial, not a zero-day one. Until 2026-09-22
+    // `Math.min` read the three zeros of a trial-free catalogue as a 0d trial,
+    // which no ceiling above zero can sit under — the limb failed every
+    // trial-free rail. Red control: drop the `> 0` filter in section C and this
+    // case reports THE BOUND OUTLIVES THE TRIAL at 0d.
+    const r = run({
+      serverConfig: railData({ offerings: OFFERINGS.map((o) => ({ ...o, trial_days: 0 })) }),
+    });
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /revocation bound 7d <= shortest period 28d; no offering grants a trial/);
+    assert.doesNotMatch(r.out, /OUTLIVES THE TRIAL/);
+  });
+
+  test('🔴 with no trial anywhere the PERIOD half still bites', () => {
+    // The half that remains is a real check and not a silent pass.
+    const r = run({
+      serverConfig: railData({ offerings: OFFERINGS.map((o) => ({ ...o, trial_days: 0 })) }),
+      cache: CACHE.replace('Duration(days: 7)', 'Duration(days: 60)'),
+    });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /OUTLIVES THE BILLING PERIOD/);
   });
 
   // ── [5]M-6(b) · the bounded wait ──────────────────────────────────────────
@@ -753,10 +824,10 @@ describe('assert-purchase-path — the client money rail', () => {
         enabled: true,
         offerings: [{ product_id: 'lifetime', amount_minor: 4999, currency_code: 'USD', term: 'one_time', trial_days: 0 }],
       }),
-      // M-8's bound is relative to the shortest trial, and this catalogue has no
-      // trial at all — so the ceiling has to come down with it or that
-      // (unrelated) limb fires and the case stops isolating T-11.
-      cache: CACHE.replace('Duration(days: 7)', 'Duration(days: 0)'),
+      // Until 2026-09-22 this case also had to push the M-8 ceiling down to 0d,
+      // because section C read "no trial" as "a 0-day trial" and that unrelated
+      // limb fired on a trial-free catalogue. The ceiling stays where the code
+      // declares it now, and the case isolates T-11 without the prop.
     });
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /no declared offering renews automatically or carries a trial/);
@@ -1556,5 +1627,183 @@ describe('assert-purchase-path §H — who still builds the hosted rail by hand'
     const r = run({ facadeCtor: FACADE_ONLY });
     assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST — §H read \d+ Dart file\(s\) and found no direct/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// §I — A REGION TAKES A DIFFERENT RAIL ([ADR 094], LOCKED 2026-09-22)
+//
+// One `rail` per channel cannot say "India pays through Razorpay and everybody
+// else through Paddle", so the register grew an optional
+// `purchaseRail.regionRails`. These cases are the reason that field is not
+// prose in a JSON file: a row can say a country pays through a rail this
+// repository cannot verify a webhook from, or one no published page names, and
+// nothing else in the tree notices. assert-policy-claims.mjs §3(c) is scoped to
+// `merchant_of_record`, and a gateway is not one.
+//
+// ⚠️ THE FIRST RED BELOW IS THE DELETION, NOT A TYPO. `regionRails` is optional
+// — so a section that validates only the blocks it finds agrees, unanimously,
+// with a tree in which every block was deleted. The domain is read off the
+// register's own `purchaseRails.regionRailsRequiredOn`, and the two COVERAGE
+// LOST cases are what keeps that list from being emptied instead.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-purchase-path §I — a region takes a different rail', () => {
+  /** The default register with `web`'s region rails replaced (or removed). */
+  const withRegion = (entries, opts = {}) => {
+    const rows = channelRows();
+    const pr = rows.find((c) => c.id === 'web').purchaseRail;
+    if (entries === null) delete pr.regionRails;
+    else pr.regionRails = entries;
+    return registerDoc({ channels: rows, ...opts });
+  };
+
+  // GREEN CONTROL — without it every red below is consistent with a §I that
+  // refuses every region rail ever written.
+  test('POSITIVE CONTROL — the India rail is declared, verifiable and disclosed, and §I SAYS so', () => {
+    const r = run();
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /1 region rail claim\(s\) on 1 channel\(s\), all required channels covered/);
+    assert.match(r.out, /web:IN/);
+  });
+
+  // ── I0 · THE DOMAIN ──────────────────────────────────────────────────────
+  test('🔴 FAILS when the India rail is DELETED and the register still requires it', () => {
+    // The failure the domain exists for. Delete the block and the row reads
+    // `rail: paddle` for every buyer everywhere — the rail [ADR 076] §3
+    // measured as unable to sell an Indian buyer the monthly plan at all.
+    const r = run({ channels: withRegion(null) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /CHANNEL `web` MUST CARRY A REGION RAIL AND CARRIES NONE/);
+  });
+
+  test('FAILS when a channel is required to carry one and never had one', () => {
+    const r = run({ channels: registerDoc({ regionRequired: ['web', 'android-play'] }) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /CHANNEL `android-play` MUST CARRY A REGION RAIL AND CARRIES NONE/);
+  });
+
+  test('FAILS when the required list names a channel that does not exist', () => {
+    const r = run({ channels: registerDoc({ regionRequired: ['web', 'android-tv'] }) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /names `android-tv`, which is not a `channels` row/);
+  });
+
+  test('🔴 COVERAGE LOST when the required list is deleted — the cheap way to green the case above', () => {
+    const r = run({ channels: withRegion(null, { noRegionRequired: true }) });
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /declares no `purchaseRails.regionRailsRequiredOn`/);
+  });
+
+  test('🔴 COVERAGE LOST when the required list is EMPTIED — same deletion, one edit cheaper', () => {
+    const r = run({ channels: withRegion(null, { regionRequired: [] }) });
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /is EMPTY, so §I ranges over no channel at all/);
+  });
+
+  // ── I1 · THE VALUE RESOLVES ──────────────────────────────────────────────
+  test('FAILS when a region claims a rail the vocabulary does not define', () => {
+    const r = run({ channels: withRegion([regionRail({ rail: 'stripe' })]) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /declares rail `stripe`, which .* dictionary does not define/);
+    assert.match(r.out, /resolves to nothing/);
+  });
+
+  // ── I2 · THE ENTRY SAYS SOMETHING ────────────────────────────────────────
+  test('FAILS when the region is not an ISO 3166-1 alpha-2 code', () => {
+    const r = run({ channels: withRegion([regionRail({ region: 'India' })]) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /is not an ISO 3166-1 alpha-2 code/);
+  });
+
+  test('🔴 FAILS on TWO answers for one country — whichever is read first decides the money', () => {
+    const r = run({ channels: withRegion([regionRail(), regionRail({ rail: 'paddle' })]) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /is a SECOND answer for `IN`/);
+  });
+
+  test('FAILS when the region rail is the row\'s OWN rail — a difference that does not exist', () => {
+    const r = run({ channels: withRegion([regionRail({ rail: 'paddle' })]) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /WHICH IS THE ROW'S OWN RAIL/);
+  });
+
+  test('🔴 FAILS when the same row routes a region to a rail it FORBIDS', () => {
+    const rows = channelRows();
+    rows.find((c) => c.id === 'web').purchaseRail.forbids.push('razorpay');
+    const r = run({ channels: registerDoc({ channels: rows }) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /CONTRADICTORY ROW — channel `web` region rail #1 sends buyers in IN/);
+  });
+
+  test('FAILS when a region rail carries no substantive `why`', () => {
+    const r = run({ channels: withRegion([regionRail({ why: 'India' })]) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /region rail #1 declares no substantive `why`/);
+  });
+
+  test('FAILS when a region rail cites no `source`', () => {
+    const r = run({ channels: withRegion([regionRail({ source: '' })]) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /region rail #1 cites no `source`/);
+  });
+
+  // ── I3 · THE SERVER CAN HEAR FROM THAT RAIL ──────────────────────────────
+  test('🔴 FAILS when a region pays through a rail no verifier is registered for', () => {
+    // Money in, entitlement never: the buyer's only evidence is a receipt from
+    // a company this repository has never heard of.
+    const r = run({ morRegistry: 'export const MOR_VERIFIERS: readonly MoRWebhookVerifier[] = [paddleVerifier];\n' });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /A REGION PAYS THROUGH `razorpay` AND THIS REPO CANNOT HEAR FROM IT/);
+    assert.match(r.out, /web\/IN/);
+  });
+
+  test('COVERAGE LOST when the MoR registry is not on disk', () => {
+    const r = run({ morRegistry: null });
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /registry\.ts does not exist, so/);
+  });
+
+  test('🔴 COVERAGE LOST when the verifier array cannot be parsed — an empty set cannot fail', () => {
+    const r = run({ morRegistry: 'export const VERIFIERS = [paddleVerifier, razorpayVerifier];\n' });
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /checked against an EMPTY provider set/);
+  });
+
+  // ── I4 · THE BUYER WAS TOLD WHO COLLECTS ─────────────────────────────────
+  test('🔴 FAILS when the legal register still says the rail is named nowhere', () => {
+    const r = run({
+      legalRegister: legalDoc([
+        legalRow('paddle', 'live', ['terms.html']),
+        legalRow('razorpay', 'not-named-not-wired', []),
+      ]),
+    });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /`razorpay` COLLECTS IN web\/IN AND ITS LEGAL ROW SAYS `not-named-not-wired`/);
+  });
+
+  test('FAILS when the rail is wired but `namedIn` is empty — status and naming are two facts', () => {
+    const r = run({
+      legalRegister: legalDoc([legalRow('paddle', 'live', ['terms.html']), legalRow('razorpay', 'wired-not-live', [])]),
+    });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /AND ITS `namedIn` IS EMPTY/);
+  });
+
+  test('FAILS when the legal register has no row for the rail at all', () => {
+    const r = run({ legalRegister: legalDoc([legalRow('paddle', 'live', ['terms.html'])]) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /AND THE LEGAL REGISTER HAS NO ROW FOR IT/);
+  });
+
+  test('COVERAGE LOST when the legal register is not on disk', () => {
+    const r = run({ legalRegister: null });
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /provider-register\.json does not exist, so/);
+  });
+
+  test('COVERAGE LOST when the legal register carries no `providers` array', () => {
+    const r = run({ legalRegister: JSON.stringify({ rows: [] }, null, 2) });
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /carries no `providers` array/);
   });
 });

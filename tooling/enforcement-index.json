@@ -1616,6 +1616,16 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-preflight-test-coverage.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "C-6"
     ],
@@ -1726,6 +1736,8 @@
       "ADR 039",
       "ADR 066",
       "ADR 067",
+      "ADR 076",
+      "ADR 094",
       "B-12",
       "B-2",
       "D-13",
@@ -2777,6 +2789,16 @@
     "ref": "tooling/dod-register.json#four-states",
     "references": [],
     "state": "HELD"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/e2e.yml#e2e"
+    ],
+    "kind": "script",
+    "ref": "tooling/e2e/assert-frames-carry-text.mjs",
+    "references": [],
+    "state": "WIRED"
   },
   {
     "claims": [],

@@ -48,12 +48,33 @@
 // quietly. There is no way to remove it — the commit's own date does not exist
 // until the commit does.
 //
-// 🔴 `--date=short` renders the AUTHOR date in the author's own timezone, so
-// `today()` is built from LOCAL clock components and not from
-// `toISOString()`. In IST (UTC+5:30) a commit made at 02:00 has a UTC date one
-// day earlier, and a UTC `today()` would write yesterday for a file committed
-// today — a one-day flake that only ever fires overnight, which is the worst
-// kind to debug.
+// 🔴 ONE DECLARED TIMEZONE, ON BOTH HALVES: UTC (`LASTMOD_TZ` below).
+//
+// ⏱ 2026-09-23 — O-LASTMOD-READS-TWO-TIMEZONES. Until this date the git half
+// read `git log --date=short`, which renders the AUTHOR date in the AUTHOR's
+// recorded timezone, and `today()` read the RUNNING machine's local clock. The
+// laptop is IST (UTC+5:30) and the CI runner is UTC, so for any commit made
+// 00:00–05:30 IST the two halves named different days for the same instant,
+// and the date a page carried was a function of which machine recorded the
+// commit and which one regenerated. Measured on the pre-fix module with a
+// fixture commit at 2026-01-02T01:00+05:30: git half 2026-01-02 under both
+// TZ=Asia/Kolkata and TZ=UTC; `today()` at that instant 2026-01-02 under
+// Kolkata and 2026-01-01 under UTC.
+//
+// Now the git half is `--date=format-local:%Y-%m-%d` with `TZ=UTC` fixed in
+// the git child's environment, and `today()` reads the UTC components of the
+// same clock. The rendered date no longer depends on the machine, the author,
+// or the process's own TZ.
+//
+// WHY UTC AND NOT IST: CI is the arbiter. `check-site-integrity.mjs` and the
+// site-drift regenerate-and-diff run on a UTC runner, and a declared zone equal
+// to the arbiter's own clock is one fewer thing that can disagree there. It is
+// also the ONLY zone name Git for Windows parses reliably: measured 2026-09-23
+// on git 2.54.0.windows.1, `TZ=America/Los_Angeles` fell back to the machine's
+// IST and rendered 2026-01-02 for the fixture above, while `TZ=UTC` rendered
+// 2026-01-01 — so an IANA name here would silently read the laptop's clock.
+// The cost, stated: a page changed 00:00–05:30 IST carries the previous UTC
+// day, which is what the committed instant IS in UTC.
 //
 // ⚠️ SHALLOW CLONES. In a `fetch-depth: 1` checkout every file's `git log -1` is
 // the single synthetic root commit, so every URL would resolve to the HEAD date
@@ -65,8 +86,17 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { spawnSync } from 'node:child_process';
 
+/** The one timezone both halves read — see the header for why it is UTC. */
+export const LASTMOD_TZ = 'UTC';
+
+// TZ is fixed on EVERY git child, not only the `log` one, so no git call in
+// this file can ever render a date from the machine's zone.
 const git = (repoRoot, args) =>
-  spawnSync('git', ['-C', repoRoot, ...args], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  spawnSync('git', ['-C', repoRoot, ...args], {
+    encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024,
+    env: { ...process.env, TZ: LASTMOD_TZ },
+  });
 
 /** True when `repoRoot` is inside a git work tree at all. A fixture tree in
  *  `tmpdir()` is not, and must not be treated as one — every function below
@@ -87,7 +117,9 @@ export function isShallowRepo(repoRoot) {
 /** `YYYY-MM-DD` of the last commit that touched `relPath`, or null when the path
  *  has no history (untracked, or newly added and not yet committed). */
 export function gitLastmod(repoRoot, relPath) {
-  const r = git(repoRoot, ['log', '-1', '--date=short', '--format=%ad', '--', relPath]);
+  // `format-local` renders in the CHILD's TZ (fixed to LASTMOD_TZ by `git`
+  // above), never in the author's recorded offset — which `--date=short` did.
+  const r = git(repoRoot, ['log', '-1', '--date=format-local:%Y-%m-%d', '--format=%ad', '--', relPath]);
   if (r.status !== 0) return null;
   const d = r.stdout.trim();
   return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null;
@@ -100,11 +132,11 @@ export function headBytes(repoRoot, relPath) {
   return r.status === 0 ? r.stdout : null;
 }
 
-/** Today, in the LOCAL timezone, as `YYYY-MM-DD` — the same rendering
- *  `git log --date=short` gives an author date. */
+/** Today, in LASTMOD_TZ (UTC), as `YYYY-MM-DD` — the same rendering
+ *  `gitLastmod` gives a commit made at `now`, whatever the machine's zone. */
 export function today(now = new Date()) {
   const p = (n) => String(n).padStart(2, '0');
-  return `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}`;
+  return `${now.getUTCFullYear()}-${p(now.getUTCMonth() + 1)}-${p(now.getUTCDate())}`;
 }
 
 /**

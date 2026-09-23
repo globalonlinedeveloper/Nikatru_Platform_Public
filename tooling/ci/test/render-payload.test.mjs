@@ -27,7 +27,7 @@
 //             landing page comes to advertise one number while checkout charges
 //             another.
 //
-// The guard has four independent limbs against those, and this file's job is to
+// The guard has seven independent limbs against those, and this file's job is to
 // prove each one is LOAD-BEARING rather than decorative. 🔴 THAT CLAIM WAS
 // MEASURED, NOT ASSERTED: on 2026-08-18 each limb was neutered in the REAL guard
 // (`if (…) {` -> `if (false) {`, `node --check`ed first) and this whole suite
@@ -39,6 +39,17 @@
 //   limb D (leak check) off                                   2 red
 //   limb H (canary) + the offerings-compared floor off         1 red
 //   the publisher's rail-absent refusal off                    1 red
+//
+// Re-measured the same way on 2026-09-22 for the three limbs added that day,
+// each neutered on its own and this suite re-run:
+//
+//   limb J (one currency per app) off                          1 red
+//   limb K (no price figure in prose) off                      2 red
+//   limb L (no trial on a term that never renews) off          1 red
+//
+// Limb K's two are the pair that matter: the `_readme` case and the SERVED COPY
+// case. A limb that only read the readme would leave the second green, so the
+// count is what says the walk reaches every string rather than one array.
 //
 // 🔴 THE FIRST RUN OF THAT MATRIX FOUND A HOLE, AND IT IS WHY TWO OF THE CASES
 // BELOW MUTATE THE TOOLING INSTEAD OF THE DATA. With limb D neutered, only ONE
@@ -498,6 +509,113 @@ describe('assert-render-payload — the published projection', () => {
     const root = tree({ payload: withRow((row) => { row.currencies = ['INR']; }) });
     try {
       refuses(guard(root), 'currencies', 'a page telling readers the wrong currency');
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  // ── limbs J, K and L (2026-09-22, ADR 093) ────────────────────────────────
+  // Each data case below PUBLISHES before it judges, so the payload is exactly
+  // what its sources produce: the drift limb (I) and the arithmetic (E) both
+  // agree with the mutation, and the limb under test is the only thing left to
+  // refuse it. Without the publish, drift would catch every one of them and the
+  // case would prove nothing about the new limb (the hole the header records).
+  // Every amount here is a FIXTURE number, not a price anybody decided.
+
+  /** The real config, parsed fresh, handed over with its one app's offerings. */
+  const railWith = (mutate) => {
+    const rail = JSON.parse(real(REL.rail));
+    mutate(rail, rail.apps.subscriptiontracker.paywall.offerings);
+    return `${JSON.stringify(rail, null, 2)}\n`;
+  };
+
+  test('🔴 A SECOND CURRENCY is refused even when every other limb agrees with it — limb J', () => {
+    // Measured on main 2026-09-22 BEFORE this limb: a rupee offering added and
+    // both generators run passed every guard, and the pricing page printed rupee
+    // and dollar plans side by side over one Free card priced in dollars.
+    const root = tree({
+      payload: null,
+      rail: railWith((_, offerings) => {
+        offerings.push({ product_id: 'fixture_in', amount_minor: 12300, currency_code: 'INR', term: 'month', trial_days: 0 });
+      }),
+    });
+    try {
+      const p = publish(root);
+      assert.equal(p.code, 0, `the publisher must accept the mixed list, or this case tests the publisher:\n${p.out}`);
+      refuses(guard(root), 'O-WEB-INR-PRICE-BOOK', 'two currencies in one app’s book');
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  test('limb J counts CURRENCIES, not offerings — a fourth offering in the same currency passes', () => {
+    const root = tree({
+      payload: null,
+      rail: railWith((_, offerings) => {
+        offerings.push({ product_id: 'fixture_usd', amount_minor: 12300, currency_code: 'USD', term: 'month', trial_days: 0 });
+      }),
+    });
+    try {
+      const p = publish(root);
+      assert.equal(p.code, 0, p.out);
+      const r = guard(root);
+      assert.equal(r.code, 0, `four offerings in one currency are one book:\n${r.out}`);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  test('🔴 A PRICE FIGURE IN THE CONFIG’S PROSE is refused — limb K', () => {
+    // Measured 2026-09-22: eleven `_readme` strings carried a figure, one of them
+    // a regional price the owner had since changed, and nothing read any of them.
+    // The payload is untouched by `_readme`, so drift cannot see these at all.
+    const cases = [
+      ['Rs1,234/yr', 'Rs1,234'],
+      ['Rs. 1234', 'Rs. 1234'],
+      ['$9.99', '$9.99'],
+      ['₹100', '₹100'],
+      ['12.30 USD', '12.30 USD'],
+      ['EUR 5', 'EUR 5'],
+      ['£4', '£4'],
+    ];
+    for (const [figure, hit] of cases) {
+      const root = tree({ rail: railWith((rail) => { rail._readme.push(`The fixture plan costs ${figure}.`); }) });
+      try {
+        const r = guard(root);
+        refuses(r, '_readme[', `a price figure (${figure}) written into prose`);
+        assert.ok(r.out.includes(JSON.stringify(hit)), `the message must quote the figure ${JSON.stringify(hit)}:\n${r.out}`);
+      } finally { rmSync(root, { recursive: true, force: true }); }
+    }
+  });
+
+  test('limb K reaches EVERY string in the config — a served copy line quoting a price is refused', () => {
+    const root = tree({
+      rail: railWith((rail) => { rail.apps.subscriptiontracker.copy = { fixture_line: 'Go Pro for $9.99' }; }),
+    });
+    try {
+      refuses(guard(root), 'apps.subscriptiontracker.copy.fixture_line', 'a price in served copy');
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  test('limb K is NARROW — numbers that are not prices pass', () => {
+    // Each of these is in the real corpus's prose today or was on 2026-09-22.
+    const prose = ['ADR 093 §2 and §5', 'Rule 35', 'GST at 18%', 'a 30-day trial', 'USD only', 'INR', 'v1', '1.0.0'];
+    const root = tree({ rail: railWith((rail) => { rail._readme.push(...prose); }) });
+    try {
+      const r = guard(root);
+      assert.equal(r.code, 0, `prose with no price figure must pass:\n${r.out}`);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  test('🔴 A TRIAL ON A ONE-TIME OFFERING is refused — limb L', () => {
+    // Until 2026-09-22 the one-time offering carried `trial_days: 30`, and the
+    // pricing page promised a 30-day trial on a purchase that never renews.
+    const root = tree({
+      payload: null,
+      rail: railWith((_, offerings) => {
+        const once = offerings.find((o) => o.term === 'one_time');
+        if (!once) throw new Error('fixture anchor not found: no one_time offering — the real tree moved under this test');
+        once.trial_days = 30;
+      }),
+    });
+    try {
+      const p = publish(root);
+      assert.equal(p.code, 0, p.out);
+      refuses(guard(root), 'no recurring term', 'a trial on a purchase that never renews');
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
 

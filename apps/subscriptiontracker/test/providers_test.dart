@@ -1,3 +1,10 @@
+import 'dart:async';
+
+// `show` only, and FlutterError is here for the same reason it is in
+// `state/providers/auth.dart`: this is the handler the app's telemetry
+// bootstrap installs, so it is where a reported failure actually lands.
+import 'package:flutter/foundation.dart'
+    show FlutterError, FlutterErrorDetails, FlutterExceptionHandler;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 // `show` only: this package also exports a `SupabaseAuthRepository`, and so does
@@ -8,6 +15,8 @@ import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:subscriptiontracker/data/api/api_client.dart';
 import 'package:subscriptiontracker/state/providers.dart';
+
+import 'support/mock_auth_repository.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -175,4 +184,120 @@ void main() {
     addTearDown(c.dispose);
     expect(c.read(entitlementCacheProvider), isA<core.EntitlementCache>());
   });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // ⏱ 2026-09-22 · O-APPLE-KEEPER-NO-ONERROR — A ROUND THAT GAVE UP IS HEARD.
+  //
+  // 🔴 THE KEEPER HAS REPORTED THROUGH `onError` SINCE 2026-09-22 AND NOBODY WAS
+  // PASSING ONE. `packages/core/test/account_deletion_test.dart` already proves
+  // the keeper CALLS `onError` after the bound; what it cannot prove is that
+  // THIS APP hands one in. That gap is the whole defect: when the shared
+  // platform Worker's CORS list left out PUT, every web `PUT
+  // /v1/account/apple-token` was refused at the preflight and the keeper gave up
+  // in silence. It took a hand-run count of `apple_provider_tokens` — 0 rows on
+  // a live Apple account — to notice, and by then those accounts could only
+  // delete with nothing to revoke at Apple.
+  //
+  // So this drives the REAL provider, not the keeper: the only way for the
+  // report to arrive is for `appleTokenKeeperProvider` to have passed
+  // `onError`. Drop that one argument and this goes red with `Expected: <1>
+  // Actual: <0>` — which is the red control this proof is worth.
+  //
+  // ⚠️ IT MAKES NO NETWORK CALL. `platformRestClientProvider` builds its
+  // `RestClient` from [authTokenProvider], and the client awaits that token in a
+  // dio `onRequest` interceptor — BEFORE a socket is opened. A token function
+  // that throws therefore fails the send with no host, no port and no wait.
+  // [appleTokenRetryDelaysProvider] is overridden to empty so the first failure
+  // is the last one; the shipping delays would make this sit for twenty seconds.
+  group('appleTokenKeeperProvider reports a round that gave up', () {
+    // The token this fake session carries. Distinctive on purpose: every
+    // assertion below that it is ABSENT is only worth something if it would
+    // otherwise be present, and the failure text deliberately contains it.
+    const String token = 'apple-refresh-SECRET';
+
+    late List<FlutterErrorDetails> reported;
+
+    setUp(() {
+      reported = <FlutterErrorDetails>[];
+      final FlutterExceptionHandler? previous = FlutterError.onError;
+      FlutterError.onError = reported.add;
+      addTearDown(() => FlutterError.onError = previous);
+    });
+
+    ProviderContainer keeperHarness(_AppleKeeperAuth auth) => ProviderContainer(
+      overrides: <Override>[
+        keyValueStoreProvider.overrideWith(
+          (Ref ref) async => core.InMemoryKeyValueStore(),
+        ),
+        authRepositoryProvider.overrideWithValue(auth),
+        // Fails the send before any socket, and puts the token in the failure
+        // text so the redaction below is a real measurement.
+        authTokenProvider.overrideWithValue(
+          () async => throw StateError('no bearer in a test ($token)'),
+        ),
+        appleTokenRetryDelaysProvider.overrideWithValue(const <Duration>[]),
+      ],
+    );
+
+    test('🔴 a failing send reaches the app error tracker', () async {
+      final _AppleKeeperAuth auth = _AppleKeeperAuth(token);
+      final ProviderContainer c = keeperHarness(auth);
+      addTearDown(c.dispose);
+
+      c.read(appleTokenKeeperProvider); // subscribe, as the root widget does
+      auth.arrive(); // the sign-in that carries Apple's one token
+      await pumpEventQueue();
+
+      expect(
+        reported,
+        hasLength(1),
+        reason:
+            'the keeper gave up and the provider passed no onError — this is '
+            'the 2026-09-22 defect, not a test artefact',
+      );
+      expect(reported.single.library, 'apple_token_keeper');
+    });
+
+    test(
+      '🔴 what it reports is a reason and a count, never the token',
+      () async {
+        final _AppleKeeperAuth auth = _AppleKeeperAuth(token);
+        final ProviderContainer c = keeperHarness(auth);
+        addTearDown(c.dispose);
+
+        c.read(appleTokenKeeperProvider);
+        auth.arrive();
+        await pumpEventQueue();
+
+        final String text = reported.single.exception.toString();
+        expect(text, contains(core.AppleTokenNotKept.reason));
+        // One attempt, because the retry list is empty here. The COUNT is what
+        // separates "the server is down for everybody" from "this one account".
+        expect(text, contains('attempts: 1'));
+        // The token is not a parameter of `onError` and the failure's own words
+        // are dropped, so neither route can carry it out.
+        expect(text, isNot(contains(token)));
+      },
+    );
+  });
+}
+
+/// A signed-in account whose session carries Apple's refresh token, and nothing
+/// else. [MockAuthRepository] supplies every other member of the seam.
+class _AppleKeeperAuth extends MockAuthRepository {
+  _AppleKeeperAuth(this.token);
+
+  final String token;
+  final StreamController<core.AuthUser?> _users =
+      StreamController<core.AuthUser?>.broadcast();
+
+  /// The sign-in landing — the one moment the token is ever offered.
+  void arrive() => _users.add(const core.AuthUser(id: 'u1', email: 'a@b.test'));
+
+  @override
+  Stream<core.AuthUser?> authStateChanges() => _users.stream;
+
+  @override
+  Future<core.AuthSession?> currentSession() async =>
+      core.AuthSession(accessToken: 'at', providerRefreshToken: token);
 }

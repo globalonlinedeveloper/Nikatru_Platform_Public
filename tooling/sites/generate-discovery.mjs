@@ -1447,12 +1447,31 @@ export function pricedApp(ctx, liveApps, problems) {
   return priced[0] ?? null;
 }
 
-/** `<meta name="description">`, carrying the headline prices and the trial. */
+/**
+ * The trial this page may OFFER for one offering: its `trialDays` while the
+ * paywall is open, and 0 while it is shut.
+ *
+ * 🔴 GATED 2026-09-22, THIRTEEN DAYS AFTER THE LANDING BADGE. The landing
+ * page's badge was gated on `paywallEnabled` on 2026-09-09 (see the comment
+ * above `pricingSection`: a trial is an OFFER, not a price, and an offer over a
+ * shut till is a promise with nothing behind it). The price list was never
+ * given the same gate, so `/pricing` promised a 30-day trial on all three plans
+ * while checkout was closed — the one-time plan included. All three price-list
+ * regions read the trial through this one function, so they cannot disagree
+ * with each other or with the landing page again. The case "applyPricing —
+ * a trial is offered only while the paywall is open" in
+ * tooling/ci/test/discovery-surface.test.mjs holds it.
+ */
+export function offeredTrial(app, o) {
+  return app?.paywallEnabled === true && (o.trialDays ?? 0) > 0 ? o.trialDays : 0;
+}
+
+/** `<meta name="description">`, carrying the headline prices and, while checkout is open, the trial. */
 export function pricingMeta(app) {
   if (app === null || app.offerings.length === 0) {
     return '<meta name="description" content="Pricing for Nikatru apps. Nothing is sold from this website today.">';
   }
-  const trial = Math.max(...app.offerings.map((o) => o.trialDays ?? 0));
+  const trial = Math.max(...app.offerings.map((o) => offeredTrial(app, o)));
   const parts = app.offerings.map((o) => (o.term.unit ? `${o.amount}/${o.term.unit}` : `${o.amount} once`));
   const trialWords = trial > 0 ? ` with a ${trial}-day free trial` : '';
   return `<meta name="description" content="Pricing for Nikatru apps. Free plan, and Pro at ${esc(parts.join(' or '))}${trialWords}.">`;
@@ -1476,7 +1495,8 @@ export function pricingPlans(app) {
       </ul>
     </div>`;
   const cards = app.offerings.map((o) => {
-    const trial = (o.trialDays ?? 0) > 0 ? `<span class="tag">${o.trialDays}-DAY TRIAL</span>` : '';
+    const days = offeredTrial(app, o);
+    const trial = days > 0 ? ` <span class="tag">${days}-DAY TRIAL</span>` : '';
     const per = o.term.unit ? ` <small>/ ${esc(o.term.unit)}</small>` : ' <small>once</small>';
     // The highlight follows the TERM, never a position in the list. `year` is
     // the plan every surface leads with, and deriving it from `o.term` means
@@ -1484,7 +1504,7 @@ export function pricingPlans(app) {
     // nobody chose to lead with.
     const hi = o.term.heading === TERM_NAMES.get('year').heading ? ' hi' : '';
     return `    <div class="plan${hi}">
-      <h3>${esc(o.term.heading)} ${trial}</h3>
+      <h3>${esc(o.term.heading)}${trial}</h3>
       <div class="price">${esc(o.amount)}${per}</div>
       <div class="sub">${esc(o.term.renews)}</div>
       <ul>
@@ -1506,7 +1526,8 @@ export function pricingTable(app) {
   const rows = [`    <tr><td>Free</td><td>${esc(zero(code))}</td><td>&mdash;</td><td>&mdash;</td></tr>`];
   for (const o of app.offerings) {
     const billing = o.term.unit ? `Every ${esc(o.term.unit)}` : 'One-time payment';
-    const trial = (o.trialDays ?? 0) > 0 ? `${o.trialDays} days` : '&mdash;';
+    const days = offeredTrial(app, o);
+    const trial = days > 0 ? `${days} days` : '&mdash;';
     rows.push(
       `    <tr><td>Pro ${esc(o.term.heading)}</td><td>${esc(o.amount)}</td><td>${billing}</td><td>${trial}</td></tr>`,
     );

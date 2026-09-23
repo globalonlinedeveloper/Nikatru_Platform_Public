@@ -47,7 +47,7 @@
         "termHeading": "One-time",
         "termUnit": null,
         "termRenews": "A single payment. Nothing renews.",
-        "trialDays": 30
+        "trialDays": 0
       }
     ]
   }
