@@ -21,10 +21,12 @@
 // the calendar opens on. Every expected string is composed from the same
 // `MoneyFormatter` and `AppLocalizations` the screens use; none is typed in.
 //
-// RED CONTROL (run and recorded in the lane notes): put the old expressions
+// RED CONTROL (run 2026-09-23, one site at a time): put the old expressions
 // back at each fix site (`share as Money` for a row, `total.times(12)` for the
 // pill, the share sum for the calendar total, the share times 12 for the cancel
-// sheet) and every widget case below goes red, along with the cast scan.
+// sheet) and that site's widget case goes red at all three widths. Each cast
+// also turns the cast scan red; the pill and the calendar total have no cast,
+// and their widget cases go red on their own.
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -93,9 +95,11 @@ final String _charge = _money.format(const Money(12053, 'USD'));
 final String _share = _money.formatShareFigure(_yearly().monthlyShare);
 
 /// A phone, a tablet (hero in the list column) and a desktop (hero in its own
-/// aside), each tall enough that every row is built.
+/// aside), each tall enough that every row is built. 360 is the narrowest
+/// phone the row's closing condition names, so the figure and its cycle label
+/// are proven to fit there, not at a kinder 375.
 const List<Size> _widths = <Size>[
-  Size(375, 2400),
+  Size(360, 2400),
   Size(900, 2400),
   Size(1280, 2400),
 ];
