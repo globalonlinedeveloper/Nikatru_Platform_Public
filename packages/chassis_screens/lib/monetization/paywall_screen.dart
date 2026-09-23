@@ -48,7 +48,7 @@ class PaywallOffer {
     required this.id,
     required this.formattedPrice,
     required this.term,
-    required this.trialDays,
+    this.trial,
   });
 
   /// The rail's product id — passed back through [PaywallView.onBuy] so the
@@ -61,8 +61,15 @@ class PaywallOffer {
   /// The billing term's wire code (`month`, `year`, …), rendered through l10n.
   final String term;
 
-  /// 0 when the plan has no trial.
-  final int trialDays;
+  /// The free trial, or null when the plan has none.
+  ///
+  /// A COUNT AND A UNIT, NOT A DAY COUNT. A store sells "1 month free", and a
+  /// month is not a fixed number of days, so the row says what the seller says.
+  /// The unit is a wire code (`day`, `week`, `month`, `year`) rendered through
+  /// l10n. ONE nullable value rather than a count defaulting to 0 beside a unit
+  /// defaulting to a word: "no trial" is then unrepresentable as "0 days", and
+  /// no English default sits in the widget for the hardcoded-string guard to find.
+  final ({int count, String unit})? trial;
 }
 
 /// The paywall — [pipeline 5]M-6, and the consumer `PaywallGate` never had.
@@ -223,9 +230,11 @@ class PaywallView extends StatelessWidget {
                 // one appears — in the adapter or here.
                 title: Text(o.formattedPrice),
                 subtitle: Text(
-                  o.trialDays > 0
-                      ? l10n.paywallTermWithTrial(o.term, o.trialDays)
-                      : l10n.paywallTerm(o.term),
+                  switch (o.trial) {
+                    final ({int count, String unit}) t =>
+                      l10n.paywallTermWithTrial(o.term, t.count, t.unit),
+                    null => l10n.paywallTerm(o.term),
+                  },
                 ),
                 trailing: FilledButton(
                   key: upgradeButton,

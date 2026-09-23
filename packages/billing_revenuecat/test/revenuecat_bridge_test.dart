@@ -307,7 +307,7 @@ void main() {
         amountMinor: 499,
         currencyCode: 'USD',
         term: OfferingTerm.month,
-        trialDays: 30,
+        trial: TrialPeriod.days(30),
       );
       expect(
         (await bridge.purchase(monthly)).outcome,
@@ -315,7 +315,214 @@ void main() {
       );
       expect((await bridge.restore()).outcome, IapPurchaseOutcome.unavailable);
       expect(await bridge.currentCustomerState(), IapCustomerState.unknown);
-      expect(await bridge.purchasableProductIds(), isEmpty);
+      expect(await bridge.storePlans(), isEmpty);
     });
   });
+
+  // O-IAP-PLAY-ID-HAS-BASE-PLAN. RevenueCat names a Play subscription
+  // `<subscription id>:<base plan id>`; the rail config names it once, bare.
+  // The exact `==` this replaced found no Play package at all.
+  group('the store product, as the rail names it', () {
+    test('railProductIdOf keeps the part before the first colon', () {
+      expect(railProductIdOf('pro_monthly:monthly'), 'pro_monthly');
+      expect(railProductIdOf('pro_monthly'), 'pro_monthly');
+      expect(railProductIdOf('pro:a:b'), 'pro');
+    });
+
+    test('a Play package is found by the bare rail id', () {
+      final rc.Offerings offerings =
+          _offerings(<rc.StoreProduct>[_product('pro_monthly:monthly')]);
+      expect(
+        packageFor(offerings, 'pro_monthly')?.storeProduct.identifier,
+        'pro_monthly:monthly',
+      );
+      expect(productIdsOf(offerings), <String>{'pro_monthly'});
+    });
+
+    test('an App Store package is found by the same id', () {
+      final rc.Offerings offerings =
+          _offerings(<rc.StoreProduct>[_product('pro_monthly')]);
+      expect(packageFor(offerings, 'pro_monthly'), isNotNull);
+      expect(packageFor(offerings, 'pro_yearly'), isNull);
+    });
+
+    test('the same plan in two offerings is ONE plan', () {
+      final rc.StoreProduct p = _product('pro_monthly:monthly');
+      final rc.Offerings offerings = rc.Offerings(
+        <String, rc.Offering>{
+          'default': _offering('default', <rc.StoreProduct>[p]),
+          'promo': _offering('promo', <rc.StoreProduct>[p]),
+        },
+      );
+      expect(packagesFor(offerings, 'pro_monthly'), hasLength(1));
+      expect(packageFor(offerings, 'pro_monthly'), isNotNull);
+    });
+
+    test('two base plans behind one product id are refused, not picked', () {
+      final rc.Offerings offerings = _offerings(<rc.StoreProduct>[
+        _product('pro_monthly:monthly'),
+        _product('pro_monthly:monthly-promo'),
+      ]);
+      expect(packagesFor(offerings, 'pro_monthly'), hasLength(2));
+      expect(packageFor(offerings, 'pro_monthly'), isNull);
+      expect(
+        ambiguousPlanDetail(
+          'pro_monthly',
+          packagesFor(offerings, 'pro_monthly').keys,
+        ),
+        contains('pro_monthly:monthly, pro_monthly:monthly-promo'),
+      );
+      expect(storePlansOf(offerings), isEmpty);
+    });
+  });
+
+  // O-IAP-PAYWALL-SHOWS-WEB-PRICE. What the paywall quotes is read from here.
+  group("storePlansOf is the store's own description", () {
+    test("the store's price and currency, in minor units", () {
+      final List<StorePlan> plans = storePlansOf(
+        _offerings(<rc.StoreProduct>[
+          _product('pro_monthly:monthly', price: 179.0, currency: 'INR'),
+        ]),
+      );
+      expect(plans.single.productId, 'pro_monthly');
+      expect(plans.single.amountMinor, 17900);
+      expect(plans.single.currencyCode, 'INR');
+      expect(plans.single.term, OfferingTerm.month);
+      expect(plans.single.trial, isNull);
+    });
+
+    test('a billing period the rail has no word for is dropped', () {
+      expect(
+        storePlansOf(
+          _offerings(<rc.StoreProduct>[
+            _product('pro_weekly', period: 'P1W'),
+          ]),
+        ),
+        isEmpty,
+      );
+      expect(termOfPeriod(null), OfferingTerm.oneTime);
+      expect(termOfPeriod('P1Y'), OfferingTerm.year);
+      expect(termOfPeriod('P3M'), isNull);
+    });
+
+    test("Play: the default option's FREE phase, in its own unit", () {
+      final List<StorePlan> plans = storePlansOf(
+        _offerings(<rc.StoreProduct>[
+          _product(
+            'pro_monthly:monthly',
+            defaultOption: _optionWithFreePhase(rc.PeriodUnit.month, 1),
+          ),
+        ]),
+      );
+      expect(
+        plans.single.trial,
+        const TrialPeriod(count: 1, unit: TrialUnit.month),
+      );
+    });
+
+    test('App Store: a free intro is shown ONLY to an eligible buyer', () {
+      final rc.Offerings offerings = _offerings(<rc.StoreProduct>[
+        _product('pro_monthly', intro: _freeIntro(rc.PeriodUnit.month, 1)),
+      ]);
+      expect(
+        storePlansOf(offerings, appleIntroEligible: <String>{'pro_monthly'})
+            .single
+            .trial,
+        const TrialPeriod(count: 1, unit: TrialUnit.month),
+      );
+      expect(
+        storePlansOf(offerings, appleIntroEligible: const <String>{})
+            .single
+            .trial,
+        isNull,
+      );
+    });
+
+    test('App Store: a PAID intro is not a trial', () {
+      final rc.Offerings offerings = _offerings(<rc.StoreProduct>[
+        _product(
+          'pro_monthly',
+          intro: _freeIntro(rc.PeriodUnit.month, 1, price: 0.99),
+        ),
+      ]);
+      expect(
+        storePlansOf(offerings, appleIntroEligible: <String>{'pro_monthly'})
+            .single
+            .trial,
+        isNull,
+      );
+    });
+  });
+}
+
+rc.StoreProduct _product(
+  String identifier, {
+  double price = 7.19,
+  String currency = 'USD',
+  String? period = 'P1M',
+  rc.IntroductoryPrice? intro,
+  rc.SubscriptionOption? defaultOption,
+}) =>
+    rc.StoreProduct(
+      identifier,
+      'description',
+      'title',
+      price,
+      'formatted by the store',
+      currency,
+      introductoryPrice: intro,
+      defaultOption: defaultOption,
+      subscriptionPeriod: period,
+    );
+
+rc.Offering _offering(String id, List<rc.StoreProduct> products) =>
+    rc.Offering(
+      id,
+      'server description',
+      const <String, Object>{},
+      <rc.Package>[
+        for (final rc.StoreProduct p in products)
+          rc.Package(
+            p.identifier,
+            rc.PackageType.custom,
+            p,
+            rc.PresentedOfferingContext(id, null, null),
+          ),
+      ],
+    );
+
+rc.Offerings _offerings(List<rc.StoreProduct> products) => rc.Offerings(
+      <String, rc.Offering>{'default': _offering('default', products)},
+    );
+
+rc.IntroductoryPrice _freeIntro(
+  rc.PeriodUnit unit,
+  int units, {
+  double price = 0,
+}) =>
+    rc.IntroductoryPrice(price, 'intro', 'P1M', 1, unit, units);
+
+rc.SubscriptionOption _optionWithFreePhase(rc.PeriodUnit unit, int value) {
+  final rc.PricingPhase free = rc.PricingPhase(
+    rc.Period(unit, value, 'P${value}M'),
+    rc.RecurrenceMode.finiteRecurring,
+    1,
+    rc.Price('free', 0, 'USD'),
+    rc.OfferPaymentMode.freeTrial,
+  );
+  return rc.SubscriptionOption(
+    'monthly:free-trial',
+    'pro_monthly:monthly',
+    'pro_monthly',
+    <rc.PricingPhase>[free],
+    const <String>[],
+    false,
+    null,
+    false,
+    null,
+    free,
+    null,
+    null,
+    null,
+  );
 }

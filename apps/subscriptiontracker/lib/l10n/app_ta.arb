@@ -106,7 +106,7 @@
   "paywallUnlocked": "எல்லாம் தயார். நன்றி.",
   "paywallUnavailable": "இங்கு வாங்குதல் கிடையாது.",
   "paywallTerm": "ஒரு {term} க்கு கட்டணம்",
-  "paywallTermWithTrial": "{days} நாள் இலவச சோதனைக்குப் பிறகு, ஒரு {term} க்கு கட்டணம்",
+  "paywallTermWithTrial": "{count} {unit, select, week{வார} month{மாத} year{ஆண்டு} other{நாள்}} இலவச சோதனைக்குப் பிறகு, ஒரு {term} க்கு கட்டணம்",
   "managePlanTitle": "சந்தாவை நிர்வகி",
   "planActive": "உங்கள் சந்தா செயலில் உள்ளது",
   "planInactive": "செயலில் உள்ள சந்தா ஏதுமில்லை",

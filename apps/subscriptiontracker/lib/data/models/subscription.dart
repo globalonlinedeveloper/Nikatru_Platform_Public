@@ -1,5 +1,7 @@
 import 'package:nikatru_core/nikatru_core.dart' show Money;
 
+import '../../core/format/monthly_share.dart';
+
 /// Re-exported: a file that constructs a [Subscription] necessarily
 /// names the type its price is in, and one import for the pair is one
 /// fewer place for the two to drift.
@@ -56,11 +58,24 @@ class Subscription {
 
   /// Normalized to a monthly figure so totals compare like-for-like.
   ///
-  /// A yearly plan divides by twelve with the remainder dropped, so twelve of
-  /// these need not add back to the yearly charge. That is right for a
+  /// A yearly plan divides by twelve, rounding half away from zero, so twelve
+  /// of these need not add back to the yearly charge. That is right for a
   /// comparison figure and wrong for a payment; nothing here splits a payment.
-  Money get monthlyPrice =>
-      cycle == BillingCycle.yearly ? price.dividedBy(12) : price;
+  /// It is a [MonthlyShare], not a [Money], so it cannot be printed where a
+  /// charge belongs: a ROW prints [price] with its cycle label.
+  MonthlyShare get monthlyShare => cycle == BillingCycle.yearly
+      ? MonthlyShare.ofYearly(price)
+      : MonthlyShare.ofMonthly(price);
+
+  /// What this plan charges in a year: the yearly price, or twelve monthly
+  /// charges. Computed from [price], never from [monthlyShare].
+  Money get yearlyCharge =>
+      cycle == BillingCycle.yearly ? price : price.times(12);
+
+  /// Whether this row's one renewal falls in [month] of [year]. The calendar's
+  /// list and its month total both ask this, so they cannot disagree.
+  bool renewsIn(int year, int month) =>
+      nextRenewal.year == year && nextRenewal.month == month;
 
   bool get isActive => !unused && usedPct > 60;
 

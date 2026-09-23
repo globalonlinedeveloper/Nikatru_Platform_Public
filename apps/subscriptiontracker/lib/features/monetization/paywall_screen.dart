@@ -1,3 +1,5 @@
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -71,6 +73,10 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       final MoneyFunnel funnel = await ref.read(moneyFunnelProvider.future);
       await funnel.onPaywallViewed(widget.trigger.code);
     });
+    // A store rail's plans are the STORE's answer, asked for here so an open
+    // paywall shows today's price and this buyer's trial. A no-op on the web
+    // rail, whose plans are the rail config.
+    unawaited(refreshOfferingsOf(ref.read(purchaseRailProvider)));
   }
 
   Future<void> _buy(Offering offering) async {
@@ -175,25 +181,30 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       // looking at slides, for a reason the user did not cause. Pinned to the
       // top it stays where it was and only the new rows appear. `.pane` is the
       // 480 this file used to hold privately.
-      body: ContentPane.pane(
-        child: ListView(
-          padding: const EdgeInsets.all(24),
-          shrinkWrap: true,
-          children: <Widget>[
-            Icon(
-              Icons.workspace_premium_outlined,
-              size: 56,
-              color: theme.colorScheme.primary,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              l10n.paywallHeadline,
-              style: theme.textTheme.headlineSmall,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
-            ..._body(l10n, rail, theme),
-          ],
+      // Repainted when a store rail's plans arrive or change; the web rail's
+      // never do.
+      body: ListenableBuilder(
+        listenable: offeringsChangesOf(rail),
+        builder: (BuildContext context, Widget? _) => ContentPane.pane(
+          child: ListView(
+            padding: const EdgeInsets.all(24),
+            shrinkWrap: true,
+            children: <Widget>[
+              Icon(
+                Icons.workspace_premium_outlined,
+                size: 56,
+                color: theme.colorScheme.primary,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                l10n.paywallHeadline,
+                style: theme.textTheme.headlineSmall,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              ..._body(l10n, rail, theme),
+            ],
+          ),
         ),
       ),
     );
@@ -285,11 +296,14 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                 // rail still supplies the amount and the ISO code (`o.price`);
                 // only the rendering moved to the formatter every screen uses.
                 title: Text(MoneyFormatter(l10n.localeName).format(o.price)),
-                subtitle: Text(
-                  o.trialDays > 0
-                      ? l10n.paywallTermWithTrial(o.term.wire, o.trialDays)
-                      : l10n.paywallTerm(o.term.wire),
-                ),
+                subtitle: Text(switch (o.trial) {
+                  final TrialPeriod t => l10n.paywallTermWithTrial(
+                    o.term.wire,
+                    t.count,
+                    t.unit.wire,
+                  ),
+                  null => l10n.paywallTerm(o.term.wire),
+                }),
                 trailing: FilledButton(
                   onPressed: () => _buy(o),
                   child: Text(l10n.paywallUpgrade),

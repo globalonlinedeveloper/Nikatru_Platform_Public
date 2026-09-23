@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show immutable;
 
 import 'offering.dart';
+import 'store_plan.dart';
 
 /// What an [IapBridge] needs before it can do anything.
 ///
@@ -165,13 +166,21 @@ abstract interface class IapBridge {
   /// Answers whether the SDK no longer holds the previous user. Must not throw.
   Future<bool> logOut();
 
-  /// The store product ids this build can actually sell right now.
+  /// The plans the store sells in THIS storefront, to THIS buyer, right now:
+  /// for each, the rail product id, the price as an integer in the currency's
+  /// minor unit plus its ISO 4217 code, the term, and the free trial the buyer
+  /// is eligible for.
   ///
-  /// 🔴 IDS, NOT PRICES. Prices come from the rail config
-  /// ([pipeline 5]M-11, and `assert-no-price-literals` enforces that no price
-  /// is written in code) — what the store is asked for is whether the SKU is
-  /// purchasable in this storefront, which is a fact only the store has.
-  Future<Set<String>> purchasableProductIds();
+  /// 🔴 THE STORE'S PRICE, NOT THE CONFIG'S. This replaced a question that
+  /// returned product ids only, on the premise that prices come from the rail
+  /// config — which holds the WEB price, in the web currency. A store buyer is
+  /// charged what the store charges; that number is a fact only the store has.
+  /// It still arrives as an amount and a code, never a ready-made string
+  /// ([pipeline 5]M-11, `assert-no-price-literals`).
+  ///
+  /// Empty when the store cannot be asked (not configured, offline, the SDK
+  /// refused). Must not throw.
+  Future<List<StorePlan>> storePlans();
 
   /// Run the store's purchase sheet for [offering].
   Future<IapPurchaseResult> purchase(Offering offering);

@@ -174,6 +174,62 @@ if (!Array.isArray(domainNouns) || domainNouns.length === 0) {
   ]);
 }
 
+// ── the vendor SDK members a shared package cannot rename ────────────────────
+// 🔴 A THIRD-PARTY API IS NOT OUR VOCABULARY, AND IT IS NOT A BLANKET PASS EITHER.
+// `packages/billing_revenuecat` reads `StoreProduct.subscriptionPeriod` and
+// `PricingPhase.billingCycleCount` because purchases_flutter spells them that way
+// (2026-09-23, unit iap-store-truth): the store's plan term and trial length come
+// from nowhere else. Renaming is not available, and banning the read would push
+// the store's own price truth back out of the rail. So a DECLARED member of a
+// DECLARED package is exempt, and only where all four facts hold:
+//   (v1) the entry names a package, a member, and a why — and the member carries a
+//        domain noun, since an entry that exempts nothing is dead furniture;
+//   (v2) the file is under packages/<pkg>/lib and imports `package:<package>/`;
+//   (v3) packages/<pkg>/pubspec.yaml declares <package> as a dependency;
+//   (v4) the occurrence is a MEMBER ACCESS (`.member`), never a bare identifier —
+//        a local `subscriptionPeriod` is our word, not the vendor's.
+// Anything else on the line is still scanned. Every exemption is PRINTED, and on a
+// full checkout an entry no line used is refused as stale.
+const vendorMembers = register.cloneTells?.vendorMembers ?? [];
+if (!Array.isArray(vendorMembers)) {
+  fail(['✗ tooling/capability-register.json `cloneTells.vendorMembers` must be an array when present.']);
+}
+{
+  const bad = [];
+  for (const [i, v] of vendorMembers.entries()) {
+    const where = `cloneTells.vendorMembers[${i}]`;
+    if (typeof v?.package !== 'string' || !/^[a-z][a-z0-9_]*$/.test(v.package)) bad.push(`${where}: \`package\` must be a pub package name`);
+    if (typeof v?.member !== 'string' || !/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(v.member)) bad.push(`${where}: \`member\` must be one Dart identifier`);
+    if (typeof v?.why !== 'string' || v.why.trim().length < 20) bad.push(`${where}: \`why\` must say why this member cannot be renamed`);
+    if (typeof v?.member === 'string' && !tellPattern(domainNouns).test(v.member)) {
+      bad.push(`${where}: \`${v.member}\` carries no domain noun, so the entry exempts nothing — remove it`);
+    }
+  }
+  if (bad.length) fail(['✗ clone-tell vendor exemptions are malformed (v1):', ...bad.map((b) => `    ${b}`)]);
+}
+/** Per packages/<pkg>, the vendor packages its pubspec declares (v3). */
+const pubspecDeps = new Map();
+function declaresDependency(pkgDir, dep) {
+  if (!pubspecDeps.has(pkgDir)) {
+    let text = '';
+    try {
+      text = readFileSync(join(ROOT, pkgDir, 'pubspec.yaml'), 'utf8');
+    } catch { /* no pubspec — nothing is declared */ }
+    pubspecDeps.set(pkgDir, text);
+  }
+  return new RegExp(`^dependencies:[\\s\\S]*?^\\s+${dep}:`, 'm').test(pubspecDeps.get(pkgDir));
+}
+/** The vendor members this file may read (v2 + v3); [] outside a package lib/ tree. */
+function vendorMembersFor(rel, raw) {
+  const m = rel.match(/^(packages\/[^/]+)\/lib\//);
+  if (!m) return [];
+  return vendorMembers.filter(
+    (v) =>
+      new RegExp(`^\\s*import\\s+['"]package:${v.package}/`, 'm').test(raw) && declaresDependency(m[1], v.package),
+  );
+}
+const vendorUsed = new Map(vendorMembers.map((v) => [`${v.package}.${v.member}`, 0]));
+
 // ── what counts as shared code ───────────────────────────────────────────────
 function dartFiles(absDir, rel, out) {
   let entries;
@@ -473,6 +529,8 @@ const problems = [];
 /** [ADR 070] — every finding the derivation above waved through, so the passing
  *  line can say how many and from where. */
 const exempt = [];
+/** The vendor-member exemptions (v1..v4) — printed on the passing line too. */
+const vendorExempt = [];
 const appRe = tellPattern(appNames);
 const nounRe = tellPattern(domainNouns);
 
@@ -480,6 +538,7 @@ for (const rel of sharedFiles) {
   const raw = readFileSync(join(ROOT, rel), 'utf8');
   const provenance = contractProvenance(rel, raw);
   const code = stripComments(raw);
+  const members = vendorMembersFor(rel, raw);
   for (const [i, line] of code.split('\n').entries()) {
     const app = line.match(appRe);
     if (app) {
@@ -488,7 +547,20 @@ for (const rel of sharedFiles) {
           'is in, every other app inherits a rule about a product it is not.',
       );
     }
-    const noun = line.match(nounRe);
+    let noun = line.match(nounRe);
+    if (noun && members.length) {
+      // (v4) — scrub each declared `.member` access, then scan what is left.
+      let rest = line;
+      for (const v of members) {
+        const access = new RegExp(`(\\??\\.)\\s*${v.member}(?![A-Za-z0-9_$])`, 'g');
+        if (access.test(rest)) {
+          vendorExempt.push({ rel, line: i + 1, what: `${v.package}.${v.member}` });
+          vendorUsed.set(`${v.package}.${v.member}`, vendorUsed.get(`${v.package}.${v.member}`) + 1);
+          rest = rest.replace(access, '$1__vendor_member__');
+        }
+      }
+      noun = rest.match(nounRe);
+    }
     if (noun) {
       // (c) — the token itself must be in the contract this file was generated
       // from. A generated file does NOT get a blanket pass on the whole list.
@@ -511,6 +583,19 @@ for (const rel of sharedFiles) {
         `${rel}:${i + 1} — shared code uses the domain word "${noun[1]}". That vocabulary belongs to one ` +
           "app's problem, not to the chassis." +
           unwired,
+      );
+    }
+  }
+}
+
+// A declared vendor member that NO line read is an exemption for a call that is
+// gone. Full checkout only: a fixture root legitimately declares members it lacks.
+if (IS_FULL_CHECKOUT) {
+  for (const [what, n] of vendorUsed) {
+    if (n === 0) {
+      problems.push(
+        `tooling/capability-register.json — cloneTells.vendorMembers ${what} exempts no line in shared code. ` +
+          'Remove the entry in the same change that removed the read, or it will exempt the next one unseen.',
       );
     }
   }
@@ -539,10 +624,14 @@ const exemptNote = exempt.length
   ? `; ${exempt.length} finding(s) exempt as generated from a contract [ADR 070]: ` +
     [...new Set(exempt.map((e) => `${e.rel} ← ${e.source}`))].join(', ')
   : '';
+const vendorNote = vendorExempt.length
+  ? `; ${vendorExempt.length} vendor SDK member access(es) exempt: ` +
+    [...new Set(vendorExempt.map((e) => `${e.rel} ← ${e.what}`))].join(', ')
+  : '';
 
 console.log(
   `ok  no clone tells — ${sharedFiles.length} shared file(s) scanned [${split}] for ${appNames.length} app name(s) ` +
-    `and ${domainNouns.length} domain word(s); comments exempt${exemptNote}` +
+    `and ${domainNouns.length} domain word(s); comments exempt${exemptNote}${vendorNote}` +
     (IS_FULL_CHECKOUT
       ? ''
       : '. NOTE: this root is not a checkout of this repository, so only the union floor ' +

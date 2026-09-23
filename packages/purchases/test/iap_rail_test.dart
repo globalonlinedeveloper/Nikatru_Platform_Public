@@ -42,8 +42,19 @@ class _FakeBridge implements IapBridge {
     return identifyAnswer;
   }
 
+  /// What the store says it sells here. By default the one plan the rail
+  /// config sells, at the config's own price; the tests that are about WHOSE
+  /// price the paywall shows set their own.
+  List<StorePlan> plans = const <StorePlan>[_storeMonthly];
+  bool plansThrow = false;
+  int storePlanCalls = 0;
+
   @override
-  Future<Set<String>> purchasableProductIds() async => <String>{'pro_monthly'};
+  Future<List<StorePlan>> storePlans() async {
+    storePlanCalls++;
+    if (plansThrow) throw StateError('store unreachable');
+    return plans;
+  }
 
   @override
   Future<IapPurchaseResult> purchase(Offering offering) async {
@@ -133,7 +144,23 @@ const Offering _monthly = Offering(
   amountMinor: 499,
   currencyCode: 'USD',
   term: OfferingTerm.month,
-  trialDays: 30,
+  trial: TrialPeriod.days(30),
+);
+
+/// The store's answer for [_monthly], priced as the config prices it.
+const StorePlan _storeMonthly = StorePlan(
+  productId: 'pro_monthly',
+  amountMinor: 499,
+  currencyCode: 'USD',
+  term: OfferingTerm.month,
+  trial: TrialPeriod.days(30),
+);
+
+const Offering _yearly = Offering(
+  productId: 'pro_yearly',
+  amountMinor: 4999,
+  currencyCode: 'USD',
+  term: OfferingTerm.year,
 );
 
 const IapBridgeConfig _bridgeConfig = IapBridgeConfig(
@@ -487,6 +514,158 @@ void main() {
       bridge.identifyAnswer = true;
       expect(await rail.startCheckout(_monthly), isA<CheckoutSubmitted>());
       expect(bridge.identities.last, 'identify:user-789');
+    });
+  });
+
+  // O-IAP-PAYWALL-SHOWS-WEB-PRICE. A store build's paywall quoted the rail
+  // config's amount — the WEB price — beside a sheet that bills the store's.
+  // The rail now describes only what the store said, at the store's price.
+  group("the paywall shows the STORE's plan, never the rail config's", () {
+    test('before the store answers there is nothing to sell, not a web price',
+        () {
+      final IapRail rail = _rail(channel: PurchaseChannel.androidPlay);
+      expect(rail.offerings, isEmpty);
+      expect(rail.canStartCheckout, isFalse);
+    });
+
+    test("the store's amount and currency are what the rail describes",
+        () async {
+      final _FakeBridge bridge = _FakeBridge()
+        ..plans = const <StorePlan>[
+          StorePlan(
+            productId: 'pro_monthly',
+            amountMinor: 719,
+            currencyCode: 'USD',
+            term: OfferingTerm.month,
+          ),
+        ];
+      final IapRail rail =
+          _rail(channel: PurchaseChannel.androidPlay, bridge: bridge);
+      int repaints = 0;
+      offeringsChangesOf(rail).addListener(() => repaints++);
+
+      await refreshOfferingsOf(rail);
+      expect(rail.offerings.single.amountMinor, 719);
+      expect(rail.offerings.single.amountMinor, isNot(_monthly.amountMinor));
+      expect(rail.canStartCheckout, isTrue);
+      expect(repaints, greaterThan(0));
+
+      // A storefront in another currency is the store's answer too.
+      bridge.plans = const <StorePlan>[
+        StorePlan(
+          productId: 'pro_monthly',
+          amountMinor: 17900,
+          currencyCode: 'INR',
+          term: OfferingTerm.month,
+        ),
+      ];
+      await refreshOfferingsOf(rail);
+      expect(rail.offerings.single.amountMinor, 17900);
+      expect(rail.offerings.single.currencyCode, 'INR');
+    });
+
+    test("the trial is the store's, for this buyer, in the store's unit",
+        () async {
+      final _FakeBridge bridge = _FakeBridge()
+        ..plans = const <StorePlan>[
+          StorePlan(
+            productId: 'pro_monthly',
+            amountMinor: 719,
+            currencyCode: 'USD',
+            term: OfferingTerm.month,
+            trial: TrialPeriod(count: 1, unit: TrialUnit.month),
+          ),
+        ];
+      final IapRail rail =
+          _rail(channel: PurchaseChannel.iosAppStore, bridge: bridge);
+      await refreshOfferingsOf(rail);
+      expect(
+        rail.offerings.single.trial,
+        const TrialPeriod(count: 1, unit: TrialUnit.month),
+      );
+
+      // A buyer the store says is not eligible sees no trial, whatever the
+      // config's 30 days say.
+      bridge.plans = const <StorePlan>[
+        StorePlan(
+          productId: 'pro_monthly',
+          amountMinor: 719,
+          currencyCode: 'USD',
+          term: OfferingTerm.month,
+        ),
+      ];
+      await refreshOfferingsOf(rail);
+      expect(rail.offerings.single.trial, isNull);
+    });
+
+    test('a plan the store does not return is not listed, and not sold by id',
+        () async {
+      final _FakeBridge bridge = _FakeBridge();
+      final IapRail rail = _rail(
+        channel: PurchaseChannel.androidPlay,
+        bridge: bridge,
+        offerings: const <Offering>[_monthly, _yearly],
+      );
+      await refreshOfferingsOf(rail);
+      expect(
+        rail.offerings.map((Offering o) => o.productId),
+        <String>['pro_monthly'],
+      );
+
+      final CheckoutStart start = await rail.startCheckout(_yearly);
+      expect(
+        (start as CheckoutRefused).reason,
+        CheckoutRefusal.railNotConfigured,
+      );
+      expect(start.detail, contains('does not offer pro_yearly'));
+      expect(bridge.purchased, isEmpty);
+    });
+
+    test('a plan the store bills on another term is dropped, not relabelled',
+        () async {
+      final _FakeBridge bridge = _FakeBridge()
+        ..plans = const <StorePlan>[
+          StorePlan(
+            productId: 'pro_monthly',
+            amountMinor: 4999,
+            currencyCode: 'USD',
+            term: OfferingTerm.year,
+          ),
+        ];
+      final IapRail rail =
+          _rail(channel: PurchaseChannel.androidPlay, bridge: bridge);
+      await refreshOfferingsOf(rail);
+      expect(rail.offerings, isEmpty);
+      expect(rail.canStartCheckout, isFalse);
+    });
+
+    test('a store that cannot be asked leaves nothing to sell', () async {
+      final _FakeBridge bridge = _FakeBridge()..plansThrow = true;
+      final IapRail rail =
+          _rail(channel: PurchaseChannel.androidPlay, bridge: bridge);
+      await refreshOfferingsOf(rail);
+      expect(rail.offerings, isEmpty);
+      expect(rail.canStartCheckout, isFalse);
+    });
+
+    test('a hosted channel never asks the store', () async {
+      final _FakeBridge bridge = _FakeBridge();
+      final IapRail rail = _rail(channel: PurchaseChannel.web, bridge: bridge);
+      await refreshOfferingsOf(rail);
+      expect(bridge.storePlanCalls, 0);
+      expect(bridge.configureCalls, 0);
+      expect(rail.offerings, isEmpty);
+    });
+
+    test('a load and a tap that race share ONE configure', () async {
+      final _FakeBridge bridge = _FakeBridge();
+      final IapRail rail =
+          _rail(channel: PurchaseChannel.androidPlay, bridge: bridge);
+      final Future<void> load = refreshOfferingsOf(rail);
+      final CheckoutStart start = await rail.startCheckout(_monthly);
+      await load;
+      expect(start, isA<CheckoutSubmitted>());
+      expect(bridge.configureCalls, 1);
     });
   });
 }

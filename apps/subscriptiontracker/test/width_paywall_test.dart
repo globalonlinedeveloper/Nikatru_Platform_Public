@@ -104,14 +104,13 @@ class _OfferingRail implements PurchaseRail {
       amountMinor: 499,
       currencyCode: 'USD',
       term: OfferingTerm.month,
-      trialDays: 30,
+      trial: TrialPeriod.days(30),
     ),
     Offering(
       productId: 'pro_yearly',
       amountMinor: 4999,
       currencyCode: 'USD',
       term: OfferingTerm.year,
-      trialDays: 0,
     ),
   ];
 

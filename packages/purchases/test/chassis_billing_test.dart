@@ -23,7 +23,7 @@ class _FakeBridge implements IapBridge {
   Future<bool> logOut() async => true;
 
   @override
-  Future<Set<String>> purchasableProductIds() async => <String>{'pro_monthly'};
+  Future<List<StorePlan>> storePlans() async => const <StorePlan>[];
 
   @override
   Future<IapPurchaseResult> purchase(Offering offering) async =>
@@ -73,7 +73,7 @@ const Offering _monthly = Offering(
   amountMinor: 499,
   currencyCode: 'USD',
   term: OfferingTerm.month,
-  trialDays: 30,
+  trial: TrialPeriod.days(30),
 );
 
 const String _template =

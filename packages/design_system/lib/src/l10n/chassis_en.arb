@@ -439,15 +439,18 @@
       }
     }
   },
-  "paywallTermWithTrial": "Billed per {term}, after a {days}-day free trial",
+  "paywallTermWithTrial": "Billed per {term}, after a {count}-{unit, select, week{week} month{month} year{year} other{day}} free trial",
   "@paywallTermWithTrial": {
-    "description": "As paywallTerm, with the trial length from the rail config.",
+    "description": "As paywallTerm, with the free trial as the seller states it: a count and a unit (day, week, month or year). In a store build that is the store's trial for this buyer; on a hosted channel it is the rail config's, always in days.",
     "placeholders": {
       "term": {
         "type": "String"
       },
-      "days": {
+      "count": {
         "type": "int"
+      },
+      "unit": {
+        "type": "String"
       }
     }
   },

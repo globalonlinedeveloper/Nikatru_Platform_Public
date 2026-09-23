@@ -20,7 +20,7 @@
   "_rootsNote": "TWO roots since 2026-09-07 ([ADR 067] phase 2, unit app-shell). The Worker half of the template - 13 files, 917 lines every stamped backend app inherits - was outside this ledger entirely while `root` was one string, and `git ls-files -- <that one root>` could not see it to complain. assert-chassis-ledger.mjs is the authority on this list and cross-checks it; a row's `root` is optional and defaults to roots[0], which is why the 96 rows written against the single root are unchanged. ⏱ THE FIGURES IN THIS NOTE MOVED ON 2026-09-08 AND ARE CORRECTED RATHER THAN REWRITTEN: the Worker half is now 14 files and 1,021 lines, because the template gained src/lib/error-sink.ts — a stamped backend had NO crash sink at all and failed tooling/ci/assert-worker-error-sink.mjs on limbs 2, 3 and 5 at its first CI run. The guard PRINTS both figures per root on every run, which is the number to read; this sentence is prose and prose rots.",
   "totals": {
     "files": 131,
-    "lines": 18347,
+    "lines": 18455,
     "unclassified": 0,
     "unclassifiedLines": 0
   },
@@ -161,9 +161,11 @@
     },
     {
       "path": "lib/features/home/home_screen.dart",
-      "lines": 616,
-      "verdict": "STAYS",
-      "why": "MEASURED: the second most pinned file here — deleting it reddens ten guards including assert-ads-declarations and assert-sworn-store-files, because apps/subscriptiontracker/store/android-play/ads-declaration.json cites it by path. Must keep the PaywallGate wiring, `const UpgradePromoCard()`, the promo gate decision and impression, the nudge mount, a `caps.<field>` read and a `context.go` to /settings. About half is reachable."
+      "lines": 607,
+      "verdict": "MOVES",
+      "why": "[ADR 067] decision 2 / [ADR 071] — MEASURED 2026-09-22 (O-CHASSIS-PHASE-2B): 616 -> 582 brick lines, 107 package lines, callSiteDelta -34, after `dart format --language-version=3.9` (the brick's sdk floor; CI formats the stamped apps/probe) and counted as split('\\n') minus a trailing newline. Two VIEWS moved: WelcomePanel's body is `WelcomeView(appName, brandGradient)` and CatchUpNudgeBanner's MaterialBanner is `CatchUpBannerView(onDismiss)`. Everything that decides stays HERE: AppShell byte-identical (lib/core/router.dart cites its NavTabs), HomeScreen, ExploreScreen with the PaywallGate wiring, the whole UpgradePromoCard (the promo gate decision and impression; assert-consent-withdrawal-surface limbs 5/6 are per FILE, so PromoObjection().decide( and PromoSurface cannot be split), the `caps.canSchedule` read and CatchUpNudge().decide, and the `.extension<AppThemeX>()` token read (assert-stamp-properties counts package readers as the brand token shipped). Before this measurement the row read: MEASURED: the second most pinned file here — deleting it reddens ten guards including assert-ads-declarations and assert-sworn-store-files, because apps/subscriptiontracker/store/android-play/ads-declaration.json cites it by path. Must keep the PaywallGate wiring, `const UpgradePromoCard()`, the promo gate decision and impression, the nudge mount, a `caps.<field>` read and a `context.go` to /settings. About half is reachable. ⏱ RE-MEASURED 2026-09-23 (O-CHASSIS-PHASE-2B landing, merge-train wave 4): 582 -> 607, the tree as committed, `dart format --language-version=3.9` 0 changed. The 582 above was a pre-landing measurement; the adapter doc comments and the store-truth promo card wiring (O-IAP-PAYWALL-SHOWS-WEB-PRICE) landed after it.",
+      "target": "packages/chassis_screens/lib/home/home_screen.dart",
+      "callSiteDelta": -34
     },
     {
       "path": "lib/features/monetization/manage_plan_screen.dart",
@@ -175,9 +177,9 @@
     },
     {
       "path": "lib/features/monetization/paywall_screen.dart",
-      "lines": 212,
+      "lines": 229,
       "verdict": "MOVES",
-      "why": "[ADR 067] decision 2 — MEASURED 2026-09-06: 297 -> 212 brick lines, 240 package lines, callSiteDelta -85. The RENDERING moved; the phase machine did not. Retained here and each for a named reason: the four `funnel.on*` emissions (stamp-properties `money-funnel-emitted-as-a-set`, and they take a WidgetRef), `PurchaseRail.startCheckout` and `awaitUnlock` (the purchase seam, assert-purchase-path/:287 and assert-seams-wired:473), `.formattedPrice` read where the Offering is still in scope (assert-no-price-literals:371 reads adapter ∪ chassis, so either side satisfies it), and `_PaywallPhase` — now `typedef _PaywallPhase = PaywallPhase;`, an ALIAS of the package enum, because screen-register's reachability limb reads ONE file and does not follow the delegation. One enum, not two.",
+      "why": "[ADR 067] decision 2 — MEASURED 2026-09-06: 297 -> 212 brick lines, 240 package lines, callSiteDelta -85. The RENDERING moved; the phase machine did not. Retained here and each for a named reason: the four `funnel.on*` emissions (stamp-properties `money-funnel-emitted-as-a-set`, and they take a WidgetRef), `PurchaseRail.startCheckout` and `awaitUnlock` (the purchase seam, assert-purchase-path/:287 and assert-seams-wired:473), `.formattedPrice` read where the Offering is still in scope (assert-no-price-literals:371 reads adapter ∪ chassis, so either side satisfies it), and `_PaywallPhase` — now `typedef _PaywallPhase = PaywallPhase;`, an ALIAS of the package enum, because screen-register's reachability limb reads ONE file and does not follow the delegation. One enum, not two. ⏱ RE-MEASURED 2026-09-23 (O-IAP-PAYWALL-SHOWS-WEB-PRICE): 212 -> 230. The paywall now reads each plan's term and trial from the store product rather than the web price table, and passes it to the chassis body; formatted with `dart format --language-version=3.9` before counting (it had 1 unformatted line). ⏱ RE-MEASURED 2026-09-23 again: 230 -> 229, after CI's dart format joined the onCheckAgain refresh onto one expression.",
       "target": "packages/chassis_screens/lib/monetization/paywall_screen.dart",
       "callSiteDelta": -85
     },
@@ -217,19 +219,19 @@
       "path": "lib/state/money_providers.dart",
       "lines": 233,
       "verdict": "STAYS",
-      "why": "MEASURED: undeletable and not stubbable (4 guards each) — 4 stamp-properties anchors (:833-835), and it is the only non-test caller of `EntitlementTransport.fetch`."
+      "why": "MEASURED: undeletable and not stubbable (4 guards each) — 4 stamp-properties anchors (:833-835), and it is the only non-test caller of `EntitlementTransport.fetch`. [ADR 072] D1, 2026-09-22 (O-CHASSIS-PHASE-2B): STAYS as the composition root — the brick's Riverpod graph is what every adapter reads and every package view is handed values from; nothing here moves, callSiteDelta 0."
     },
     {
       "path": "lib/state/notification_tap_observer.dart",
       "lines": 88,
       "verdict": "STAYS",
-      "why": "MEASURED: undeletable, 2 new reds — the thinnest pin of the spine. Two stamp-properties TAP_OBSERVER anchors only."
+      "why": "MEASURED: undeletable, 2 new reds — the thinnest pin of the spine. Two stamp-properties TAP_OBSERVER anchors only. [ADR 072] D1, 2026-09-22 (O-CHASSIS-PHASE-2B): STAYS as the composition root — the brick's Riverpod graph is what every adapter reads and every package view is handed values from; nothing here moves, callSiteDelta 0."
     },
     {
       "path": "lib/state/providers.dart",
       "lines": 2704,
       "verdict": "STAYS",
-      "why": "MEASURED: undeletable (9 guards) and NOT reducible to declarations — a 98-line stub carrying all 51 provider names and all 14 class/typedef signatures still left 8 guards red. MIN_DOMAIN=59 is NOT the binding constraint (its regex does accept a one-line delegation, verified: 51 such lines count 51); the binding constraints are 37 literal anchors in assert-stamp-properties, the analytics envelope literal (assert-analytics-contract:207), the consent gate (assert-policy-claims POLICY_CONSTS), two sole non-test seam call sites (assert-seams-wired:588,622) and MIN_PROVIDERS=20 (assert-provider-graph-acyclic:419, the stub parsed 9)."
+      "why": "MEASURED: undeletable (9 guards) and NOT reducible to declarations — a 98-line stub carrying all 51 provider names and all 14 class/typedef signatures still left 8 guards red. MIN_DOMAIN=59 is NOT the binding constraint (its regex does accept a one-line delegation, verified: 51 such lines count 51); the binding constraints are 37 literal anchors in assert-stamp-properties, the analytics envelope literal (assert-analytics-contract:207), the consent gate (assert-policy-claims POLICY_CONSTS), two sole non-test seam call sites (assert-seams-wired:588,622) and MIN_PROVIDERS=20 (assert-provider-graph-acyclic:419, the stub parsed 9). [ADR 072] D1, 2026-09-22 (O-CHASSIS-PHASE-2B): STAYS as the composition root — the brick's Riverpod graph is what every adapter reads and every package view is handed values from; nothing here moves, callSiteDelta 0."
     },
     {
       "path": "pubspec.yaml",
@@ -611,9 +613,9 @@
     },
     {
       "path": "test/l10n_parity_test.dart",
-      "lines": 219,
+      "lines": 319,
       "verdict": "STAYS",
-      "why": "ADDED 2026-09-14 (O-BRICK-NO-L10N-PARITY-TEST). Per-app by construction: it reads THIS app's AppLocalizations.supportedLocales and THIS app's arb-dir, and gen-l10n falls back to the template silently, so a missing key in a stamped app is invisible to every package suite. Until it existed the assertion lived only in apps/subscriptiontracker."
+      "why": "ADDED 2026-09-14 (O-BRICK-NO-L10N-PARITY-TEST). Per-app by construction: it reads THIS app's AppLocalizations.supportedLocales and THIS app's arb-dir, and gen-l10n falls back to the template silently, so a missing key in a stamped app is invisible to every package suite. Until it existed the assertion lived only in apps/subscriptiontracker. ⏱ RE-MEASURED 2026-09-23 (O-MONTHLY-SHARE-SHOWN-AS-A-CHARGE): 219 -> 319. The placeholder check now WALKS the ICU braces instead of pattern-matching them, so a `select` arm body such as `day{day}` is no longer read as an undeclared placeholder — the monthly-share strings are selects of exactly that shape."
     },
     {
       "path": "test/promo_objection_surface_test.dart",

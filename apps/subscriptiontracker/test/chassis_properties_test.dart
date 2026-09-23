@@ -484,7 +484,7 @@ class _FakeRail implements PurchaseRail {
       amountMinor: 499,
       currencyCode: 'USD',
       term: OfferingTerm.month,
-      trialDays: 30,
+      trial: TrialPeriod.days(30),
     ),
   ];
 

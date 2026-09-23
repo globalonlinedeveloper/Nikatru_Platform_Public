@@ -18,13 +18,12 @@ void main() {
       id: 'pro_monthly',
       formattedPrice: r'$4.99',
       term: 'month',
-      trialDays: 0,
     ),
     PaywallOffer(
       id: 'pro_yearly',
       formattedPrice: r'$39.99',
       term: 'year',
-      trialDays: 7,
+      trial: (count: 7, unit: 'day'),
     ),
   ];
 
@@ -169,5 +168,31 @@ void main() {
     );
     await tester.tap(find.byKey(PaywallView.upgradeButton).last);
     expect(bought, 'pro_yearly');
+  });
+
+  // ── (4) THE TRIAL, IN THE SELLER'S OWN UNIT ───────────────────────────────
+  //
+  // O-IAP-PAYWALL-SHOWS-WEB-PRICE. A store sells "1 month free", and a month is
+  // not a fixed number of days, so the row says a month — never "30-day".
+  testWidgets("a store's one-month trial reads as a month, not as days", (
+    WidgetTester tester,
+  ) async {
+    await pumpChassis(
+      tester,
+      kPhone,
+      view(
+        plans: const <PaywallOffer>[
+          PaywallOffer(
+            id: 'pro_monthly',
+            formattedPrice: r'$7.19',
+            term: 'month',
+            trial: (count: 1, unit: 'month'),
+          ),
+        ],
+      ),
+    );
+    expect(find.text(r'$7.19'), findsOneWidget);
+    expect(find.textContaining('1-month free trial'), findsOneWidget);
+    expect(find.textContaining('-day free trial'), findsNothing);
   });
 }

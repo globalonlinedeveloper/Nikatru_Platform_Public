@@ -39,6 +39,7 @@
         "features/auth/sign_up_screen.dart",
         "features/auth/verify_email_screen.dart",
         "features/firstrun/onboarding_screen.dart",
+        "features/home/home_screen.dart",
         "features/monetization/manage_plan_screen.dart",
         "features/monetization/paywall_screen.dart",
         "features/settings/settings_screen.dart",

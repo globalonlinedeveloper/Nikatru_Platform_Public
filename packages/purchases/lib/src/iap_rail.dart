@@ -1,4 +1,7 @@
-import 'package:flutter/foundation.dart' show debugPrint;
+import 'dart:async' show unawaited;
+
+import 'package:flutter/foundation.dart'
+    show ValueListenable, ValueNotifier, debugPrint;
 import 'package:nikatru_core/nikatru_core.dart' as core;
 
 import 'checkout_launcher.dart';
@@ -8,6 +11,7 @@ import 'purchase_capabilities.dart';
 import 'purchase_rail.dart';
 import 'purchase_rail_kind.dart';
 import 'rail_config.dart';
+import 'store_plan.dart';
 
 /// The STORE billing implementation of [PurchaseRail] — [ADR 067] decision 7,
 /// [ADR 039] D2/D3/D5.
@@ -44,7 +48,16 @@ import 'rail_config.dart';
 /// [startCheckout] and [restorePurchases] re-check the SDK's identity BEFORE
 /// any money moves and refuse if it cannot be brought in line — a purchase
 /// linked to the previous account is worse than no purchase.
-class IapRail implements PurchaseRail, IdentifiesBuyer {
+///
+/// ## Whose price the paywall shows
+/// The STORE's. [offerings] is the rail config's product ids, each described by
+/// the store's own answer ([IapBridge.storePlans]): the storefront's currency,
+/// its price, its billing period and the trial this buyer is eligible for. The
+/// config's amounts are the WEB price and are never shown here — not as a
+/// placeholder while the store is asked, and not as a fallback when it cannot
+/// be. Until the store answers, [offerings] is empty and [canStartCheckout] is
+/// false, which the paywall already explains in a sentence.
+class IapRail implements PurchaseRail, IdentifiesBuyer, LoadsOfferings {
   IapRail({
     required IapBridge bridge,
     required IapBridgeConfig bridgeConfig,
@@ -80,7 +93,13 @@ class IapRail implements PurchaseRail, IdentifiesBuyer {
   final PurchaseRailKind _railKind;
 
   bool _configured = false;
-  bool _configureAttempted = false;
+
+  /// The ONE configure attempt, shared by every caller that arrives while it
+  /// runs. A paywall's first load and a tap on its button can both land before
+  /// the SDK answers, and the second must wait for the first rather than read
+  /// "already attempted" as "could not be configured". An attempt that failed
+  /// stays failed, as it always has.
+  Future<bool>? _configuring;
 
   /// The account the APP says is signed in now.
   String? _appUserId;
@@ -94,6 +113,18 @@ class IapRail implements PurchaseRail, IdentifiesBuyer {
   /// sign-in after it must not leave the SDK logged out.
   Future<void> _identityTail = Future<void>.value();
 
+  /// What the store last said this app sells here, to this buyer. Empty until
+  /// the store has been asked — never the config's own list.
+  final ValueNotifier<List<Offering>> _offered =
+      ValueNotifier<List<Offering>>(const <Offering>[]);
+
+  /// The load in flight, so a burst of refreshes shares one.
+  Future<void>? _loading;
+
+  /// A refresh was asked for while [_loading] ran — the buyer may have changed
+  /// under it — so the loop asks once more before it settles.
+  bool _loadAgain = false;
+
   /// The rail this channel sells through, as the register decides it.
   PurchaseRailKind get railKind => _railKind;
 
@@ -101,25 +132,77 @@ class IapRail implements PurchaseRail, IdentifiesBuyer {
   /// a refusal rather than saying "not supported" with no subject.
   PurchaseChannel get channel => _channel;
 
+  /// The store's description of the config's plans — see the class doc.
   @override
-  List<Offering> get offerings => _config.offerings;
+  List<Offering> get offerings => _offered.value;
 
-  /// 🔴 DELIBERATELY NOT `_bridge.something`. `canStartCheckout` is read while a
-  /// paywall is BUILDING a widget, so it has to be synchronous, and the store's
-  /// answer is not. What it can honestly say without asking the store is: this
-  /// channel takes a store rail, and the rail config has something to sell. The
-  /// store's own refusals ([IapPurchaseOutcome.storeRefused],
-  /// [IapPurchaseOutcome.unavailable]) arrive from [startCheckout] with a reason
-  /// the UI can show — which is better than a button that is absent for a
-  /// condition that cleared thirty seconds ago.
+  @override
+  ValueListenable<List<Offering>> get offeringsChanged => _offered;
+
+  /// Synchronous, because a paywall reads it while BUILDING a widget — so it
+  /// reads the store's LAST answer rather than asking. It says: this channel
+  /// takes a store rail, and the store has described at least one plan the
+  /// config sells. A store that has not answered yet is a paywall with no
+  /// button, not a button with the web price on it; [offeringsChanged] repaints
+  /// it when the answer lands. The store's own refusals at purchase time
+  /// ([IapPurchaseOutcome.storeRefused], [IapPurchaseOutcome.unavailable]) still
+  /// arrive from [startCheckout] with a reason the UI can show.
   @override
   bool get canStartCheckout =>
-      _railKind.isStoreBilling && _config.offerings.isNotEmpty;
+      _railKind.isStoreBilling && _offered.value.isNotEmpty;
+
+  /// Ask the store what it sells, and publish the answer through [offerings].
+  /// Also run after the first configure and after every change of buyer (trial
+  /// eligibility belongs to the account). Never throws.
+  @override
+  Future<void> refreshOfferings() {
+    final Future<void>? running = _loading;
+    if (running != null) {
+      _loadAgain = true;
+      return running;
+    }
+    return _loading = _loadUntilSettled();
+  }
+
+  Future<void> _loadUntilSettled() async {
+    try {
+      do {
+        _loadAgain = false;
+        await _loadOfferings();
+      } while (_loadAgain);
+    } finally {
+      _loading = null;
+    }
+  }
+
+  Future<void> _loadOfferings() async {
+    if (!_railKind.isStoreBilling || _config.offerings.isEmpty) {
+      _offered.value = const <Offering>[];
+      return;
+    }
+    if (!await _ensureConfigured()) {
+      _offered.value = const <Offering>[];
+      return;
+    }
+    List<StorePlan> plans;
+    try {
+      plans = await _bridge.storePlans();
+    } catch (e) {
+      // The seam says storePlans must not throw; a bridge that does anyway
+      // must not take the paywall with it, and must not leave the last buyer's
+      // prices standing either.
+      debugPrint('[purchases] could not read the store plans: $e');
+      plans = const <StorePlan>[];
+    }
+    _offered.value = offeringsFromStore(_config.offerings, plans);
+  }
 
   Future<bool> _ensureConfigured() async {
     if (_configured) return true;
-    if (_configureAttempted) return false;
-    _configureAttempted = true;
+    return _configuring ??= _configureOnce();
+  }
+
+  Future<bool> _configureOnce() async {
     if (!_bridgeConfig.isUsable) return false;
     // Configured as whoever is signed in NOW, not whoever was signed in when
     // the rail was built — the two differ for every user who signs in after
@@ -134,7 +217,12 @@ class IapRail implements PurchaseRail, IdentifiesBuyer {
       debugPrint('[purchases] IAP bridge configure failed: $e');
       _configured = false;
     }
-    if (_configured) _identifiedAs = configuringAs;
+    if (_configured) {
+      _identifiedAs = configuringAs;
+      // The store can be asked what it sells only once it is configured. A
+      // load that is itself configuring carries on to ask by itself.
+      if (_loading == null) unawaited(refreshOfferings());
+    }
     return _configured;
   }
 
@@ -146,11 +234,18 @@ class IapRail implements PurchaseRail, IdentifiesBuyer {
   /// store's customer state and a restore both describe the right account.
   /// Answers whether the SDK is now in line with [appUserId].
   @override
-  Future<bool> identifyBuyer(String? appUserId) {
+  Future<bool> identifyBuyer(String? appUserId) async {
     final String? id =
         (appUserId == null || appUserId.isEmpty) ? null : appUserId;
     _appUserId = id;
-    return _serially(_syncIdentity);
+    final bool inLine = await _serially(_syncIdentity);
+    // The store is asked again for whoever is buying now: what it offers,
+    // trial included, is its answer for this buyer, and the last buyer's
+    // "1 month free" must not stay on the paywall of one who already used it.
+    // Before the first configure there is nothing to refresh — the load that
+    // configures asks as the new buyer by itself.
+    if (_configured) unawaited(refreshOfferings());
+    return inLine;
   }
 
   Future<T> _serially<T>(Future<T> Function() op) {
@@ -230,6 +325,19 @@ class IapRail implements PurchaseRail, IdentifiesBuyer {
       );
     }
 
+    // Only a plan the STORE described is sold here. A config offering the store
+    // did not return carries the web price and the web's product id; asked for
+    // by id, it is refused before any sheet opens.
+    if (!_storeOffers(offering)) {
+      await refreshOfferings();
+      if (!_storeOffers(offering)) {
+        return CheckoutRefused(
+          CheckoutRefusal.railNotConfigured,
+          detail: 'The store does not offer ${offering.productId} here.',
+        );
+      }
+    }
+
     final IapPurchaseResult r = await _bridge.purchase(offering);
     switch (r.outcome) {
       case IapPurchaseOutcome.submitted:
@@ -248,6 +356,9 @@ class IapRail implements PurchaseRail, IdentifiesBuyer {
         return CheckoutRefused(CheckoutRefusal.couldNotOpen, detail: r.detail);
     }
   }
+
+  bool _storeOffers(Offering offering) =>
+      _offered.value.any((Offering o) => o.productId == offering.productId);
 
   /// Ask the store to restore prior purchases — [pipeline 5]M-10.
   ///

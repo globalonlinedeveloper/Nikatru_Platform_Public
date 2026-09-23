@@ -586,6 +586,7 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
             l10n,
             money,
             SubMath.totalMonthly(data),
+            SubMath.totalYearly(data),
             data.length,
             SubMath.dueWithin(data, now, 7),
             SubMath.dueWithin(data, now, 30),
@@ -790,6 +791,7 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
           l10n,
           money,
           total,
+          SubMath.totalYearly(subs),
           subs.length,
           dueSoon,
           SubMath.dueWithin(subs, now, 30),
@@ -1059,6 +1061,7 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
     AppLocalizations l10n,
     MoneyFormatter money,
     MoneyBag total,
+    MoneyBag yearly,
     int count,
     MoneyBag dueSoon,
     MoneyBag due30,
@@ -1114,7 +1117,9 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
                 fg: Colors.white,
               ),
               Pill(
-                l10n.perYearTotal(money.formatBagRounded(total.times(12))),
+                // The plans' own yearly charges, never twelve rounded
+                // twelfths: `SubMath.totalYearly` says why.
+                l10n.perYearTotal(money.formatBagRounded(yearly)),
                 bg: const Color.fromRGBO(255, 255, 255, 0.13),
                 fg: Colors.white,
               ),
@@ -1287,24 +1292,18 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
               usage == null ? s.category : '${s.category} · $usage',
               style: text.muted.copyWith(fontSize: 12),
             ),
-      trailing: showDue
-          ? Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: <Widget>[
-                Text(
-                  money.format(s.monthlyPrice),
-                  style: text.fig.copyWith(fontSize: 16),
-                ),
-                Text(
-                  s.cycle == BillingCycle.yearly ? l10n.perYear : l10n.perMonth,
-                  style: text.muted.copyWith(fontSize: 10),
-                ),
-              ],
-            )
-          : Text(
-              money.format(s.monthlyPrice),
-              style: text.fig.copyWith(fontSize: 16),
-            ),
+      // The list SORTS by monthly share (`SubMath.byMonthlyDesc`) and the row
+      // SHOWS the charge with its own cycle: a share is not a price.
+      trailing: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: <Widget>[
+          Text(money.format(s.price), style: text.fig.copyWith(fontSize: 16)),
+          Text(
+            s.cycle == BillingCycle.yearly ? l10n.perYear : l10n.perMonth,
+            style: text.muted.copyWith(fontSize: 10),
+          ),
+        ],
+      ),
     );
 
     // The `selected` flag ONLY where the layout has a selection. Annotating
@@ -1569,6 +1568,30 @@ class _UpgradePromoCardState extends ConsumerState<UpgradePromoCard> {
   /// persistence would look wrong.
   bool _showing = false;
 
+  /// The rail's "plans changed" signal this card is repainted on.
+  ///
+  /// A STORE RAIL'S PLANS ARRIVE AFTER THE FIRST FRAME. Its price and trial are
+  /// the store's answer, so the card first builds with no plans — which decides
+  /// `nothingToShow` and latches nothing — and is decided again when they land.
+  /// The web rail's plans are the rail config and never change.
+  Listenable? _offeringsChanged;
+
+  void _repaint() {
+    if (mounted) setState(() {});
+  }
+
+  void _follow(Listenable changes) {
+    if (identical(changes, _offeringsChanged)) return;
+    _offeringsChanged?.removeListener(_repaint);
+    _offeringsChanged = changes..addListener(_repaint);
+  }
+
+  @override
+  void dispose() {
+    _offeringsChanged?.removeListener(_repaint);
+    super.dispose();
+  }
+
   /// The app's override for [key], then its variant override, then the chassis
   /// default.
   ///
@@ -1638,6 +1661,7 @@ class _UpgradePromoCardState extends ConsumerState<UpgradePromoCard> {
     }
 
     final PurchaseRail rail = ref.watch(purchaseRailProvider);
+    _follow(offeringsChangesOf(rail));
     final List<Offering> offerings = rail.offerings;
 
     if (!_showing) {

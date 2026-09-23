@@ -78,7 +78,6 @@ class _SellingRail implements PurchaseRail {
       amountMinor: 499,
       currencyCode: 'USD',
       term: OfferingTerm.month,
-      trialDays: 0,
     ),
   ];
 
@@ -104,7 +103,6 @@ class _InrSellingRail implements PurchaseRail {
       amountMinor: 125000000,
       currencyCode: 'INR',
       term: OfferingTerm.year,
-      trialDays: 0,
     ),
   ];
 

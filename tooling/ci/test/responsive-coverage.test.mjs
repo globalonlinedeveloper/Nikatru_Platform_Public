@@ -214,7 +214,8 @@ describe('the guard says YES on the tree as it is', () => {
     // line, and it is PINNED here for the same reason the root line is: the root
     // staying at reachable == measured is the property, and "17 reachable, 12
     // measured" would print as a cheerful report-mode line if it ever slipped.
-    assert.match(out, /packages\/chassis_screens: 18 surface\(s\) reachable, 18 measured — the two sets are EQUAL/);
+    // ⏱ 2026-09-23 (O-CHASSIS-PHASE-2B, unit chassis-home): WelcomeView + CatchUpBannerView joined packages/chassis_screens with home_view_test.dart, so the root reads 20/20. Read off the guard's own per-root line.
+    assert.match(out, /packages\/chassis_screens: 20 surface\(s\) reachable, 20 measured — the two sets are EQUAL/);
 
     assert.match(out, /apps\/subscriptiontracker: 19 surface\(s\) reachable, 19 measured — the two sets are EQUAL/);
     assert.match(
@@ -222,7 +223,10 @@ describe('the guard says YES on the tree as it is', () => {
       /apps\/subscriptiontracker: every measured surface is pumped at kPhone \(375\), kTablet \(768\), kDesktop \(1280\)/,
     );
     // The two report-mode roots, and the shape of what they report.
-    assert.match(out, /\{\{app_id\}\}: 3 of 12 surface\(s\) measured — 2 PRINTED and not failed/);
+    // ⏱ 2026-09-23 (chassis home): the brick's printed list reached ZERO —
+    // HomeScreen and ExploreScreen count through delegation — so the guard now
+    // prints its EQUAL line. `enforce` stays false by the guard's own dated note.
+    assert.match(out, /\{\{app_id\}\}: 12 surface\(s\) reachable, 3 measured — the two sets are EQUAL/);
     assert.match(out, /packages\/design_system: 12 of 20 surface\(s\) measured — 8 PRINTED and not failed/);
   });
 
@@ -249,7 +253,8 @@ describe('the guard says YES on the tree as it is', () => {
     );
     assert.match(out, /PARTIAL TREE: the declared-root-must-exist clause is SKIPPED/);
     assert.match(out, /apps\/subscriptiontracker: 19 surface\(s\) reachable, 19 measured — the two sets are EQUAL/);
-    assert.match(out, /packages\/chassis_screens: 18 surface\(s\) reachable, 18 measured — the two sets are EQUAL/);
+    // ⏱ 2026-09-23 (O-CHASSIS-PHASE-2B, unit chassis-home): WelcomeView + CatchUpBannerView joined packages/chassis_screens with home_view_test.dart, so the root reads 20/20. Read off the guard's own per-root line.
+    assert.match(out, /packages\/chassis_screens: 20 surface\(s\) reachable, 20 measured — the two sets are EQUAL/);
     // ⏱ 2026-09-22 · 36 → 37 TEST FILES, SURFACES UNCHANGED. The app gained
     // `width_shell_fab_test.dart`, which pumps the five shell branches at all
     // three widths to prove the FAB clears each list's last row. It measures
@@ -258,7 +263,10 @@ describe('the guard says YES on the tree as it is', () => {
     // guard's own output, as the 36 was.
     assert.match(
       out,
-      /37 reachable surface\(s\), 37 measured by 37 test file\(s\); 0 measured where they delegate to/,
+      // ⏱ 2026-09-23 · 37 → 39 surfaces and 37 → 39 test files (chassis home):
+      // WelcomeView + CatchUpBannerView, home_view_test.dart + a11y_home_test.dart.
+      // Read off the guard's own summary line on the copied tree.
+      /39 reachable surface\(s\), 39 measured by 39 test file\(s\); 0 measured where they delegate to/,
     );
     assert.equal(fails(out).length, 0, out);
   });
@@ -329,8 +337,13 @@ describe('set equality, both directions, in apps/subscriptiontracker', () => {
     const { code, out } = run(root);
     assert.equal(code, 1, out);
     assert.match(out, /FAIL UNCOVERED SURFACE — `ResetPasswordScreen`/);
-    // The brick's nine unmeasured screens are in the SAME run and NOT failures.
-    assert.ok(printedUnmeasured(out, BRICK).includes('HomeScreen'), out);
+    // The design system's unmeasured widgets are in the SAME run and NOT failures.
+    // ⏱ 2026-09-23 (chassis home): this read the brick's `HomeScreen` until the
+    // brick's printed list reached ZERO — HomeScreen and ExploreScreen now count
+    // through delegation — so the report-mode root that still PRINTS is
+    // packages/design_system, and the same half is pinned there.
+    assert.equal(printedUnmeasured(out, BRICK).length, 0, out);
+    assert.ok(printedUnmeasured(out, DS).includes('PaywallGate'), out);
     assert.equal(
       fails(out).filter((l) => l.includes('{{app_id}}') && l.includes('UNCOVERED')).length,
       0,
@@ -563,7 +576,9 @@ describe('a report-mode root can get better, never quietly worse', () => {
     assert.equal(code, 0, out);
     assert.ok(printedUnmeasured(out, BRICK).includes('showG3ProbeSheet'), out);
     assert.ok(printedUnmeasured(out, DS).includes('G3ProbeWidget'), out);
-    assert.match(out, /\{\{app_id\}\}: 3 of 13 surface\(s\) measured — 3 PRINTED/);
+    // ⏱ 2026-09-23 (chassis home): 3 → 1 PRINTED — only this case's probe sheet is
+    // left; HomeScreen and ExploreScreen now count through delegation.
+    assert.match(out, /\{\{app_id\}\}: 3 of 13 surface\(s\) measured — 1 PRINTED/);
     assert.match(out, /packages\/design_system: 12 of 21 surface\(s\) measured — 9 PRINTED/);
   });
 });
@@ -675,14 +690,18 @@ describe('a screen that DELEGATES into the chassis is measured where it now live
     const { code, out } = run(treeWithChassis());
     assert.equal(code, 0, out);
     assert.match(out, /4 derived root\(s\)/);
-    assert.match(out, /8 measured where they delegate to/);
+    // ⏱ 2026-09-23 · 8 → 10 (chassis home): HomeScreen and ExploreScreen now
+    // delegate too. Read off the guard's own summary line for this fixture.
+    assert.match(out, /10 measured where they delegate to/);
   });
 
   // THE MUTATION — the screen moved and NO width test arrived with it.
   test('R-D2 · the chassis widget has no width test: the brick floor fires', () => {
     const { code, out } = run(treeWithChassis({ chassisWidthTest: false }));
     assert.equal(code, 1, out);
-    assert.match(out, /COVERAGE LOST — .*\{\{app_id\}\}` has 9 measured surface\(s\) and its measured floor is 10/);
+    // ⏱ 2026-09-22 the brick's measured floor went 10 → 12 (chassis home), so the
+    // same mutation now reads 11 against 12. Read off the guard's own FAIL line.
+    assert.match(out, /COVERAGE LOST — .*\{\{app_id\}\}` has 11 measured surface\(s\) and its measured floor is 12/);
   });
 
   // Same mutation seen from the other side: the delegation resolves to nothing.
@@ -733,10 +752,10 @@ describe('the chassis_screens floors are floors, not report lines', () => {
   // GREEN CONTROL, FIRST. Without this half, R14a and R14b are equally
   // consistent with a fixture that fails for some unrelated reason — which is
   // exactly how a floor that never held reads as a floor that fires.
-  test('R14-control · GREEN CONTROL — the same fixture, unmutated, is 18/18 and passes', () => {
+  test('R14-control · GREEN CONTROL — the same fixture, unmutated, is 20/20 and passes', () => {
     const { code, out } = run(treeWithNewRoots());
     assert.equal(code, 0, out);
-    assert.match(out, /packages\/chassis_screens: 18 surface\(s\) reachable, 18 measured/);
+    assert.match(out, /packages\/chassis_screens: 20 surface\(s\) reachable, 20 measured/); // ⏱ 2026-09-23: 18 → 20 (chassis home)
   });
 
   // ── R14a · A SURFACE LEAVES ────────────────────────────────────────────────
@@ -765,13 +784,13 @@ describe('the chassis_screens floors are floors, not report lines', () => {
     // and its measurement left together and the two sets stayed equal.
     assert.match(
       out,
-      /COVERAGE LOST — `packages\/chassis_screens` has only 17 responsive surface\(s\).*floor is 18/s,
+      /COVERAGE LOST — `packages\/chassis_screens` has only 19 responsive surface\(s\).*floor is 20/s, // ⏱ 2026-09-23: 18 → 20
     );
     // AND the ratchet on what was measured, which fires in the same run. Both
     // numbers moved 7 → 17 in the landing and both are load-bearing.
     assert.match(
       out,
-      /COVERAGE LOST — `packages\/chassis_screens` has 17 measured surface\(s\) and its measured floor is 18/s,
+      /COVERAGE LOST — `packages\/chassis_screens` has 19 measured surface\(s\) and its measured floor is 20/s, // ⏱ 2026-09-23: 18 → 20
     );
   });
 
@@ -799,7 +818,14 @@ describe('the chassis_screens floors are floors, not report lines', () => {
     assert.equal(code, 1, out);
     assert.match(
       out,
-      /COVERAGE LOST — `packages\/chassis_screens` yielded only 18 width test file\(s\).*checked-in floor is 19/s,
+      // ⏱ 18/19 → 19/20 ON 2026-09-22 (O-CHASSIS-PHASE-2B): the chassis corpus
+      // gained `home_view_test.dart`, so `widthTestFiles` was raised to the
+      // measured 20 and deleting one file now yields 19. The floor moved with
+      // the corpus; the assertion was NOT loosened.
+      // ⏱ 20/21 ON 2026-09-23: `a11y_home_test.dart` joined the corpus and THIS
+      // case caught the floor left at 20 — deleting one file cleared it. The floor
+      // was raised to the measured 21; the assertion was NOT loosened.
+      /COVERAGE LOST — `packages\/chassis_screens` yielded only 20 width test file\(s\).*checked-in floor is 21/s,
     );
     // This root ENFORCES, so the surface the deleted file measured is a FAIL and
     // not a print — the half R12 pins for apps/subscriptiontracker, here for the new root.

@@ -13,6 +13,7 @@ import 'package:nikatru_design_system/nikatru_design_system.dart'
     show ContentPane, TwoPane;
 
 import '../../core/format/money_format.dart';
+import '../../core/format/sub_math.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/models/subscription.dart';
@@ -217,24 +218,18 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
 
     final Map<int, int> byDay = <int, int>{};
     for (final Subscription s in subs) {
-      if (s.nextRenewal.year == y && s.nextRenewal.month == m) {
+      if (s.renewsIn(y, m)) {
         byDay[s.nextRenewal.day] = (byDay[s.nextRenewal.day] ?? 0) + 1;
       }
     }
     final List<Subscription> inMonth =
-        subs
-            .where(
-              (Subscription s) =>
-                  s.nextRenewal.year == y && s.nextRenewal.month == m,
-            )
-            .toList()
-          ..sort(
-            (Subscription a, Subscription b) =>
-                a.nextRenewal.day.compareTo(b.nextRenewal.day),
-          );
-    final MoneyBag monthTotal = MoneyBag.sum(
-      inMonth.map((Subscription s) => s.monthlyPrice),
-    );
+        subs.where((Subscription s) => s.renewsIn(y, m)).toList()..sort(
+          (Subscription a, Subscription b) =>
+              a.nextRenewal.day.compareTo(b.nextRenewal.day),
+        );
+    // What LEAVES THE ACCOUNT this month: each renewal's whole charge. The
+    // same `renewsIn` test as `inMonth`, so the total and the list agree.
+    final MoneyBag monthTotal = SubMath.chargedInMonth(subs, y, m);
 
     // The selection, re-validated — see [_selectedDay]. `byDay` is the same map
     // the grid paints its dots from, so "is selectable" and "has a dot" are ONE
@@ -894,12 +889,27 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                         ],
                       ),
                     ),
-                    Text(
-                      money.format(s.monthlyPrice),
-                      style: AppText.fig.copyWith(
-                        fontSize: 16,
-                        color: neutral.ink,
-                      ),
+                    // The charge on that date, with its own cycle.
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: <Widget>[
+                        Text(
+                          money.format(s.price),
+                          style: AppText.fig.copyWith(
+                            fontSize: 16,
+                            color: neutral.ink,
+                          ),
+                        ),
+                        Text(
+                          s.cycle == BillingCycle.yearly
+                              ? l10n.perYear
+                              : l10n.perMonth,
+                          style: AppText.muted.copyWith(
+                            fontSize: 10,
+                            color: neutral.muted,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),

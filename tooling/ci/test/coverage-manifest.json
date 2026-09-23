@@ -128,7 +128,7 @@
   "mutation-proofs.test.mjs": 32,
   "name-clearance.test.mjs": 20,
   "native-symbol-upload.test.mjs": 15,
-  "no-clone-tells.test.mjs": 35,
+  "no-clone-tells.test.mjs": 45,
   "no-dead-files.test.mjs": 7,
   "no-do-alarms.test.mjs": 26,
   "no-gate-weakening.test.mjs": 26,

@@ -754,9 +754,24 @@ const REQUIRED_COVERAGE = [
     // (O-PLAY-AI-CONTENT-REPORTING): `ReportContentDialog` joined, swept in
     // `a11y_firstrun_money_settings_test.dart` (+3 cases). Read off this guard's
     // per-root line: `18 of 18 … from 3 a11y test file(s) across 54 case(s)`.
-    surfaces: 18,
-    a11yFiles: 3,
-    cases: 54,
+    // ⏱ RAISED 18 → 20 surfaces ON 2026-09-22 (O-CHASSIS-PHASE-2B, [ADR 067]
+    // decision 2, unit chassis-home): `WelcomeView` and `CatchUpBannerView`
+    // (lib/home/home_screen.dart) joined this root. `a11yFiles` and `cases` are
+    // UNCHANGED and that is the honest read — the two arrived with a WIDTH
+    // suite and no a11y sweep, so they are on this guard's printed owed list
+    // and `SWEPT_FLOOR_BY_ROOT` gains no key for them. Raising `cases` without
+    // a case is exactly the blindness the note above records. Read off the
+    // per-root line: `18 of 20 … from 3 a11y test file(s) across 54 case(s)`.
+    // ⏱ RAISED 3 → 4 files and 54 → 58 cases ON 2026-09-23, SAME UNIT: the owed
+    // list above is DISCHARGED rather than carried. `a11y_home_test.dart` sweeps
+    // both bodies (light kPhone + dark kDesktop each), and its first run caught a
+    // real defect — `WelcomeView` used the const `AppText.title`/`.muted`, so in
+    // DARK its two lines measured 1.02:1 and 3.75:1; it now reads `AppText.of`.
+    // Both keys joined `SWEPT_FLOOR_BY_ROOT` in the same change. Read off the
+    // per-root line: `20 of 20 … from 4 a11y test file(s) across 58 case(s)`.
+    surfaces: 20,
+    a11yFiles: 4,
+    cases: 58,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens plus the ' +
       'money/settings bodies and the app shell, mounted by every stamped app, all seventeen swept',
@@ -955,6 +970,9 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
         'auth/sign_up_screen.dart#SignUpView',
         'auth/verify_email_screen.dart#VerifyEmailView',
         'firstrun/onboarding_screen.dart#OnboardingView',
+        // 2026-09-23: the two home bodies, swept in a11y_home_test.dart.
+        'home/home_screen.dart#CatchUpBannerView',
+        'home/home_screen.dart#WelcomeView',
         'monetization/manage_plan_screen.dart#ManagePlanView',
         'monetization/paywall_screen.dart#PaywallView',
         'settings/report_content_dialog.dart#ReportContentDialog',

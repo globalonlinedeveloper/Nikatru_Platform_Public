@@ -1,3 +1,5 @@
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -80,6 +82,10 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       final MoneyFunnel funnel = await ref.read(moneyFunnelProvider.future);
       await funnel.onPaywallViewed(widget.trigger.code);
     });
+    // A store rail's plans are the STORE's answer, asked for here so an open
+    // paywall shows today's price and this buyer's trial. A no-op on the web
+    // rail, whose plans are the rail config.
+    unawaited(refreshOfferingsOf(ref.read(purchaseRailProvider)));
   }
 
   Future<void> _buy(Offering offering) async {
@@ -177,36 +183,47 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   @override
   Widget build(BuildContext context) {
     final PurchaseRail rail = ref.watch(purchaseRailProvider);
-    // The rail's own `Offering`s, mapped down to the plain rows the chassis
-    // paints. `.formattedPrice` is read HERE, where the amount and the ISO
-    // currency it was derived from are still in scope — [pipeline 5]M-11.
-    final List<Offering> offerings = rail.offerings;
-    return PaywallView(
-      phase: _phase,
-      detail: _detail,
-      canStartCheckout: rail.canStartCheckout,
-      offers: <PaywallOffer>[
-        for (final Offering o in offerings)
-          PaywallOffer(
-            id: o.productId,
-            formattedPrice: o.formattedPrice,
-            term: o.term.wire,
-            trialDays: o.trialDays,
+    // Repainted when a store rail's plans arrive or change; the web rail's
+    // never do.
+    return ListenableBuilder(
+      listenable: offeringsChangesOf(rail),
+      builder: (BuildContext context, Widget? _) {
+        // The rail's own `Offering`s, mapped down to the plain rows the chassis
+        // paints. `.formattedPrice` is read HERE, where the amount and the ISO
+        // currency it was derived from are still in scope — [pipeline 5]M-11.
+        final List<Offering> offerings = rail.offerings;
+        return PaywallView(
+          phase: _phase,
+          detail: _detail,
+          canStartCheckout: rail.canStartCheckout,
+          offers: <PaywallOffer>[
+            for (final Offering o in offerings)
+              PaywallOffer(
+                id: o.productId,
+                formattedPrice: o.formattedPrice,
+                term: o.term.wire,
+                trial: switch (o.trial) {
+                  final t? => (count: t.count, unit: t.unit.wire),
+                  null => null,
+                },
+              ),
+          ],
+          onBuy: (PaywallOffer offer) => _buy(
+            offerings.firstWhere((Offering o) => o.productId == offer.id),
           ),
-      ],
-      onBuy: (PaywallOffer offer) =>
-          _buy(offerings.firstWhere((Offering o) => o.productId == offer.id)),
-      onCheckAgain: () async {
-        final bool unlocked = (await refreshEntitlements(ref))
-            .isProAt(DateTime.now());
-        if (!mounted) return;
-        setState(
-          () => _phase = unlocked
-              ? _PaywallPhase.unlocked
-              : _PaywallPhase.pending,
+          onCheckAgain: () async {
+            final bool unlocked = (await refreshEntitlements(ref))
+                .isProAt(DateTime.now());
+            if (!mounted) return;
+            setState(
+              () => _phase = unlocked
+                  ? _PaywallPhase.unlocked
+                  : _PaywallPhase.pending,
+            );
+          },
+          onGoHome: () => context.go('/'),
         );
       },
-      onGoHome: () => context.go('/'),
     );
   }
 }

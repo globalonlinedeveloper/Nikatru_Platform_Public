@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/format/monthly_share.dart';
 import '../../core/format/money_format.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
@@ -212,8 +213,11 @@ class _CancelSheetState extends ConsumerState<_CancelSheet> {
     final _SheetPalette p = _SheetPalette.of(context);
     final MoneyFormatter money = MoneyFormatter(l10n.localeName);
     final Subscription s = widget.sub;
-    final String monthly = money.format(s.monthlyPrice);
-    final String yearly = money.formatRounded(s.monthlyPrice.times(12));
+    // `monthly` is the share, printed bare ONLY because both sentences it
+    // enters ("{monthly}/mo") carry the unit. `yearly` is the plan's own
+    // yearly charge, never twelve rounded twelfths of it.
+    final String monthly = money.formatShareFigure(s.monthlyShare);
+    final String yearly = money.formatRounded(s.yearlyCharge);
     // `l10n.localeName` rather than the ambient default: `DateFormat` with no
     // locale uses whatever `Intl.defaultLocale` happens to be, which is a
     // process-wide global nothing on this screen sets. Passing the locale the
