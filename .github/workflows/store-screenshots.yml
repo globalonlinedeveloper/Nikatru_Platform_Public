@@ -127,6 +127,7 @@ jobs:
       # because the file belonged to another wave on 2026-09-11; that entry goes
       # in the same commit, because a ratchet that outlives its gap is a lie.
       - name: The captured set satisfies the listing-asset guard
+        id: listing
         run: node --single-threaded tooling/ci/assert-listing-assets.mjs
 
       # why: A FAILED RUN THREW ITS PIXELS AWAY, TWICE. Runs 35483690951 and
@@ -153,6 +154,18 @@ jobs:
           path: |
             apps/subscriptiontracker/store/android-play/screenshots/
             apps/subscriptiontracker/store/android-play/screenshots-tablet/
+
+      # why: a guard failure names ONE frame and one number; re-basing a floor
+      # needs BOTH halves for EVERY frame, from one instrument, on the same bytes
+      # (measure-frame-ink.mjs header). Printing the paste-ready row here lets a
+      # legitimate screen change be re-based from the run's own log, with no
+      # artifact download. Run 35819066562 (2026-09-23): #890 dropped the bars on
+      # uncapped budget rows and tablet 04-budget fell under its floor, and the
+      # log said so for one frame only. Gated on the listing guard's own outcome,
+      # so a run that died before capturing prints nothing misleading.
+      - name: Print the paste-ready ink row of a FAILED run, for diagnosis only
+        if: failure() && steps.listing.outcome == 'failure'
+        run: node --single-threaded tooling/store/measure-frame-ink.mjs apps/subscriptiontracker/store/android-play/screenshots apps/subscriptiontracker/store/android-play/screenshots-tablet
 
       - name: Upload the screenshot set
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -377,6 +390,7 @@ jobs:
             node tooling/store/capture-play-screenshots.mjs --app subscriptiontracker --channel linux-snap
 
       - name: The captured set satisfies the listing-asset guard
+        id: listing
         run: node --single-threaded tooling/ci/assert-listing-assets.mjs
 
       - name: The captured set satisfies the device-coverage guard
@@ -393,6 +407,14 @@ jobs:
           name: FAILED-not-a-listing-set-${{ github.run_id }}
           if-no-files-found: ignore
           path: ${{ steps.reg.outputs.dir }}/
+
+      # why: the Play job's reason — the paste-ready row for every frame, from
+      # the run's own log. Through env, never `${{ }}` inside `run:`.
+      - name: Print the paste-ready ink row of a FAILED run, for diagnosis only
+        if: failure() && steps.listing.outcome == 'failure'
+        env:
+          FRAMES_DIR: ${{ steps.reg.outputs.dir }}
+        run: node --single-threaded tooling/store/measure-frame-ink.mjs "$FRAMES_DIR"
 
       - name: Upload the screenshot set
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -645,6 +667,7 @@ jobs:
         run: node tooling/store/capture-play-screenshots.mjs --app subscriptiontracker --channel "$STORE_CHANNEL"
 
       - name: The captured set satisfies the listing-asset guard
+        id: listing
         run: node --single-threaded tooling/ci/assert-listing-assets.mjs
 
       - name: The captured set satisfies the device-coverage guard
@@ -657,6 +680,14 @@ jobs:
           name: FAILED-not-a-listing-set-${{ github.run_id }}
           if-no-files-found: ignore
           path: ${{ steps.reg.outputs.dir }}/
+
+      # why: the Play job's reason — the paste-ready row for every frame, from
+      # the run's own log. Through env, never `${{ }}` inside `run:`.
+      - name: Print the paste-ready ink row of a FAILED run, for diagnosis only
+        if: failure() && steps.listing.outcome == 'failure'
+        env:
+          FRAMES_DIR: ${{ steps.reg.outputs.dir }}
+        run: node --single-threaded tooling/store/measure-frame-ink.mjs "$FRAMES_DIR"
 
       - name: Upload the screenshot set
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -875,6 +906,7 @@ jobs:
         run: node tooling/store/capture-play-screenshots.mjs --app subscriptiontracker --channel ios-appstore
 
       - name: The captured sets satisfy the listing-asset guard
+        id: listing
         run: node --single-threaded tooling/ci/assert-listing-assets.mjs
 
       # why: this is the guard that fails if only ONE set was captured. The
@@ -891,6 +923,12 @@ jobs:
           name: FAILED-not-a-listing-set-${{ github.run_id }}
           if-no-files-found: ignore
           path: apps/subscriptiontracker/store/ios-appstore/
+
+      # why: the Play job's reason — the paste-ready row for every frame, from
+      # the run's own log.
+      - name: Print the paste-ready ink row of a FAILED run, for diagnosis only
+        if: failure() && steps.listing.outcome == 'failure'
+        run: node --single-threaded tooling/store/measure-frame-ink.mjs apps/subscriptiontracker/store/ios-appstore/screenshots apps/subscriptiontracker/store/ios-appstore/screenshots-ipad
 
       - name: Upload the screenshot sets
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

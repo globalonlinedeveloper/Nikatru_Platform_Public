@@ -182,6 +182,33 @@ describe('the row this tool prints', () => {
     assert.match(r.stderr, /REFUSING — no directory given/);
   });
 
+  // why: store-screenshots.yml prints this row from a FAILED capture of every
+  // channel. The hint used to say android-play whatever it read, so a linux-snap
+  // log would have told the reader to paste linux frames into the Play floor.
+  test('the paste hint names the channel the frames came from, and only one the register declares', () => {
+    const snap = join(dir, 'linux-snap', 'screenshots');
+    mkdirSync(snap, { recursive: true });
+    const frame = inkFixtureFrame({ width: 120, height: 200, glyphs: true });
+    writeFileSync(
+      join(snap, '01-home.png'),
+      encodeRgba({ width: frame.width, height: frame.height, rgba: frame.rgba }, { opaque: true }),
+    );
+    const named = run([snap]);
+    assert.equal(named.status, 0, named.stderr);
+    assert.match(named.stderr, /perChannel\["linux-snap"\]\.graphicAssets\.screenshots\.inkFloor/);
+    assert.doesNotMatch(named.stderr, /android-play/);
+
+    // The red control: a parent that is not a register channel (the mkdtemp
+    // name) must NOT be named as if it were one.
+    const unknown = run([join(dir, 'screenshots-tablet')]);
+    assert.equal(unknown.status, 0, unknown.stderr);
+    assert.match(unknown.stderr, /perChannel\["<channel>"\]/);
+
+    // Two channels in one call is ambiguous: the placeholder, never a guess.
+    const mixed = run([snap, join(dir, 'screenshots-tablet')]);
+    assert.match(mixed.stderr, /perChannel\["<channel>"\]/);
+  });
+
   test('REFUSES a path that is not a directory', () => {
     const r = run([join(dir, 'screenshots-tablet', '01-home.png')]);
     assert.equal(r.status, 1);

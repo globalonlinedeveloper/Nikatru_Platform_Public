@@ -34,7 +34,8 @@
 // change in the frames.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs';
-import { join, basename, resolve } from 'node:path';
+import { join, basename, dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { decodeRgba } from './png-codec.mjs';
 import { METRIC_ID, INK_DELTA, measureFrameInk } from './frame-ink.mjs';
@@ -52,6 +53,7 @@ if (dirs.length === 0) {
 
 const frames = {};
 let read = 0;
+const parents = new Set();
 
 for (const dir of dirs) {
   const abs = resolve(dir);
@@ -59,6 +61,7 @@ for (const dir of dirs) {
     console.error(`measure-frame-ink: REFUSING — ${dir} is not a directory.`);
     process.exit(1);
   }
+  parents.add(basename(dirname(abs)));
   for (const file of readdirSync(abs).filter((f) => f.endsWith('.png')).sort()) {
     const img = decodeRgba(readFileSync(join(abs, file)));
     const key = `${basename(abs)}/${file}`;
@@ -88,6 +91,23 @@ if (read === 0) {
 
 console.log(JSON.stringify({ metric: METRIC_ID, delta: INK_DELTA, frames }, null, 2));
 console.error('');
+// why: this hint said android-play whatever the frames were. store-screenshots.yml
+// now prints this row from a FAILED capture of every channel, so a linux-snap log
+// would have said "paste into android-play" under linux-snap frames. The channel
+// is the set directory's parent (apps/<app>/store/<channel>/<set>), named only
+// when the register declares it and all the directories agree; otherwise the
+// placeholder stays, which is never wrong.
+let channel = '<channel>';
+try {
+  const reg = JSON.parse(
+    readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '..', 'channel-register.json'), 'utf8'),
+  );
+  const known = reg.storeMetadataContract?.perChannel ?? {};
+  const [only] = parents;
+  if (parents.size === 1 && Object.hasOwn(known, only)) channel = only;
+} catch {
+  // No readable register beside the tool: the placeholder is still true.
+}
 console.error(`measure-frame-ink: ${read} frame(s). Paste \`frames\` into`);
-console.error('  storeMetadataContract.perChannel["android-play"].graphicAssets.screenshots.inkFloor');
+console.error(`  storeMetadataContract.perChannel["${channel}"].graphicAssets.screenshots.inkFloor`);
 console.error('and REWRITE its `source` with today\'s date, the run that captured the frames, and this command.');
