@@ -153,7 +153,10 @@
 // check-analytics-liveness, check-d1-accepts-live-sql, verify-supabase-templates,
 // check-prod-provenance, verify-monitors, verify-alarm-chains,
 // verify-auth-providers, verify-free-api-scope, check-wildcard-dns,
-// check-turnstile-hosts, check-retired-names-live; and, outside tooling/ops,
+// check-turnstile-hosts, check-retired-names-live; the GlitchTip writes
+// create-glitchtip-release, upload-web-sourcemaps and upload-native-symbols
+// (2026-09-23, row O-GLITCHTIP-CALLS-HAVE-NO-RETRY — each re-sends a WRITE, and
+// each records why that is safe at its own call site); and, outside tooling/ops,
 // tooling/ci/assert-runner-budget.mjs (2026-09-22, for the per-request ceiling).
 // Failing cases: tooling/ci/test/ops-bounded-retry.test.mjs (this module and the
 // adoption, both directions) and tooling/ci/test/pages-deployments.test.mjs (the

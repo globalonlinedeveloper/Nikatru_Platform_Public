@@ -32,6 +32,10 @@ on:
       - 'tooling/smoke/smoke-web-artifact.mjs'
       - 'tooling/web/**'
       - 'tooling/ops/post-deploy-smoke.mjs'
+      # The GlitchTip writes, and the retry plan they share.
+      - 'tooling/ops/create-glitchtip-release.mjs'
+      - 'tooling/ops/upload-web-sourcemaps.mjs'
+      - 'tooling/ops/bounded-retry.mjs'
       - '.github/workflows/deploy-web.yml'
   workflow_dispatch:
 
@@ -221,6 +225,9 @@ jobs:
         working-directory: .
         run: node tooling/smoke/smoke-web-artifact.mjs apps/${{ matrix.app }}/build/web
 
+      # why: the release is created by a node script, not `glitchtip-cli releases new`: the
+      # CLI has no retry, and one 522 from the origin failed run 35831511489. The script
+      # sends the CLI's own body through the shared bounded retry (docs/ci/deploy-web.md).
       - name: Create and finalize the GlitchTip release
         working-directory: .
         env:
@@ -253,8 +260,8 @@ jobs:
           echo "sentry_url=${server}" >> "$GITHUB_ENV"
           gt_org="$(node -p "require('./tooling/ops/glitchtip-project.json').org")"
           gt_project="$(node -p "require('./tooling/ops/glitchtip-project.json').project")"
-          SENTRY_URL="$server" "${RUNNER_TEMP}/glitchtip-cli" releases new "$release" \
-            --finalize --org "$gt_org" --project "$gt_project"
+          SENTRY_URL="$server" node tooling/ops/create-glitchtip-release.mjs \
+            --release "$release" --org "$gt_org" --project "$gt_project"
 
       - name: Upload the source maps to GlitchTip
         working-directory: .
