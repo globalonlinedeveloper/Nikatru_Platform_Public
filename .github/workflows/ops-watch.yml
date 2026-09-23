@@ -62,6 +62,7 @@ jobs:
         run: node tooling/ci/assert-ops-register.mjs
 
       - name: Read the heartbeat table from OUTSIDE Cloudflare
+        if: ${{ !cancelled() }}
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

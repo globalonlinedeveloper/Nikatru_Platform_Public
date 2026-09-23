@@ -125,6 +125,11 @@
 //       submission. A `--runs-file` entry may carry `path` or `workflow` naming
 //       its lane; one with neither is a served-lane run, as every older fixture
 //       means it. A submission-lane run must carry its `id`.
+//       ⏱ 2026-09-23: `--point-reads-file p.json` supplies the point reads in
+//       that mode — an object mapping each GitHub API path (no leading slash,
+//       e.g. `commits/428beef`) to `{status, body}`; a path it does not name
+//       answers 404. WITHOUT that flag a fixture run makes NO point reads and
+//       says so, rather than inventing an answer for a commit it never asked about.
 //   node tooling/ops/check-prod-provenance.mjs --emit-served-environments
 //     → prints the deployment environments witness (b) is read from, one per
 //       line, and exits. Needs no credential, so it is the ONLY way a test can
@@ -132,6 +137,16 @@
 //   node tooling/ops/check-prod-provenance.mjs --emit-release-lanes
 //     → ⏱ 2026-09-23: prints every release lane as `<workflow>\t<kind>\t<env,…>`
 //       and exits; the same no-credential reach, for footing (c)'s lanes.
+//
+// ⏱ 2026-09-23 · A CONSISTENT WALK, THEN A POINT READ BEFORE A VERDICT
+// (O-PROVENANCE-MIN-CLAIM-PASSES-UNSTABLE-WALK). Each listing is walked from
+// page 1 until one walk is internally consistent — one claim on every page, no
+// row served twice, and as many distinct rows as claimed — up to WALK_ATTEMPTS
+// walks; none consistent is COVERAGE LOST (exit 2). Then every `released-build`
+// value the walked runs cannot place is looked up directly (`commits/<sha7>`,
+// then each release lane's `runs?head_sha=<full>`), at most POINT_READ_CAP of
+// them; a build found that way is judged like any other run and PRINTED. Every
+// walk attempt and every point read prints one line, on success and on exit 2.
 //
 // Env: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID (D1 read)
 //      GITHUB_TOKEN or GH_TOKEN, GITHUB_REPOSITORY (release-lane run history and
@@ -147,7 +162,7 @@ import { stripSourceComments } from '../ci/text-reductions.mjs';
 // APP_VERSION stamp) is the surface's `flutterApp` answer, read the way six guards
 // already read it; a row on a surface that answers nothing is CouldNotLook.
 import { flutterAppChannel, undeclaredSurfaceLine } from '../ci/channel-surface.mjs';
-import { CouldNotLook, classifyThrown, transientLook, isTransientStatus, retryAfterMs, readWithBoundedRetry, fetchWithBoundedRetry } from './bounded-retry.mjs';
+import { CouldNotLook, classifyThrown, transientLook, isTransientStatus, retryAfterMs, readWithBoundedRetry, fetchWithBoundedRetry, backoffPlan } from './bounded-retry.mjs';
 // The product kinds a bundle may span, imported rather than retyped: the same
 // file tooling/bundle-availability.mjs and the Worker twin read, so `script`
 // becoming real is one edit and not three.
@@ -510,7 +525,14 @@ export async function attestationDeployments(res, environment, sha7) {
 // wait than a deploy step can spend; this is a READER on ops-watch, where a
 // `Retry-After` the API supplies is honoured (clamped) and a persistent 429 still
 // ends as COVERAGE LOST rather than a pass.
-const ghJson = async (repo, token, path, what) =>
+//
+// ⏱ 2026-09-23 — split in two. `ghRead` is the one request: a transient status
+// is re-asked on the shared plan, and any OTHER status comes back as an ANSWER,
+// `{ status, body }`, for the caller to grade — because the point read below
+// must tell "this commit does not exist" (404, a finding) from "I was refused"
+// (403, COVERAGE LOST), and a helper that turns every non-2xx into one verdict
+// cannot. `ghJson` keeps its old contract on top of it: 2xx or CouldNotLook.
+const ghRead = async (repo, token, path, what) =>
   readWithBoundedRetry(async (_attempt, { signal }) => {
     let res;
     try {
@@ -521,16 +543,22 @@ const ghJson = async (repo, token, path, what) =>
     } catch (e) {
       throw classifyThrown(e, `the GitHub API did not answer ${what} (${e?.name ?? 'error'}: ${e?.message ?? e})`);
     }
-    if (!res.ok) {
-      const line = `the GitHub API returned ${res.status} ${what}`;
-      throw isTransientStatus(res.status) ? transientLook(line, { retryAfterMs: retryAfterMs(res) }) : new CouldNotLook(line);
+    if (isTransientStatus(res.status)) {
+      throw transientLook(`the GitHub API returned ${res.status} ${what}`, { retryAfterMs: retryAfterMs(res) });
     }
+    if (!res.ok) return { status: res.status, body: null };
     try {
-      return await res.json();
+      return { status: res.status, body: await res.json() };
     } catch (e) {
       throw classifyThrown(e, `the GitHub API response ${what} was not JSON (${e.message})`);
     }
   });
+
+const ghJson = async (repo, token, path, what) => {
+  const { status, body } = await ghRead(repo, token, path, what);
+  if (status < 200 || status > 299) throw new CouldNotLook(`the GitHub API returned ${status} ${what}`);
+  return body;
+};
 
 function githubCredentials() {
   const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
@@ -573,53 +601,187 @@ function githubCredentials() {
  * deploy is not a GitHub Deployment; the canonical record there is Cloudflare's
  * own `canonical_deployment`. An empty answer is a TRUE reading of the GitHub
  * ledger and stays a clean pass.
+ *
+ * ⏱ 2026-09-23 · A WALK IS COMPLETE ONLY WHEN IT IS INTERNALLY CONSISTENT
+ * (row O-PROVENANCE-MIN-CLAIM-PASSES-UNSTABLE-WALK). The 2026-09-22 version
+ * kept the SMALLEST `total_count` any page claimed and refused only when fewer
+ * distinct rows arrived than that. Ops watch run 35843108090 (09:28Z) printed
+ *     walk · listing runs of deploy-web.yml: total_count 384 · fetched 439 · distinct 384 · 5 page(s)
+ * and PASSED it: 55 of the 439 rows served were repeats, so 55 real runs were
+ * never served, and the reader went red on 42 real rows from runs 365-428
+ * instead of saying it could not look. The trial that motivated the check —
+ * `total_count=222 fetched=425 distinct=337` — passed it as well (337 ≥ 222).
+ * "Distinct ≥ the smallest claim" cannot tell a shifted listing from a whole one.
+ *
+ * So one walk from page 1 is accepted only when ALL THREE hold:
+ *   · every page made the SAME claim (a claim that moved means the listing
+ *     changed under the walk, and pages cut from two lists are not one list);
+ *   · no row was served twice (a repeat is a row some other row was pushed off
+ *     the page for — the one never served);
+ *   · as many distinct rows arrived as were claimed, where a claim was made.
+ * An inconsistent walk is walked AGAIN FROM PAGE 1, up to WALK_ATTEMPTS times,
+ * pausing on the shared backoffPlan at WALK_PAUSE_MS. Growth is not special-
+ * cased: a run completing mid-walk makes one inconsistent walk, and the next
+ * walk reads the settled list whole. A walk that never comes back consistent is
+ * COVERAGE LOST (exit 2), naming every attempt's claim, fetched and distinct.
+ * The page-cap refusal is unchanged and is NOT re-walked: a listing bigger than
+ * the window stays bigger on a second read.
+ *
+ * ⚠️ WALK_ATTEMPTS IS NOT A TRANSIENT RETRY, AND IT IS NOT A RIVAL OF
+ * bounded-retry.mjs. Every page read inside a walk already goes through the
+ * shared plan (ghRead). This loop re-asks a question whose answers all
+ * SUCCEEDED and contradicted each other — the same class as post-deploy-smoke's
+ * propagation poll, which ops-bounded-retry.test.mjs exempts by name in
+ * NOT_A_TRANSIENT_RETRY. That guard's NO RIVAL LOOP pattern matches
+ * ATTEMPTS/READ_ATTEMPTS/RETRY_ATTEMPTS and not WALK_ATTEMPTS, so it does not
+ * see this loop at all; registering it there is a named follow-on, not a pass.
+ * The gaps come from backoffPlan itself, so there is no second backoff formula.
  */
-/** Every walk this process made, in order: what the API claimed, rows fetched,
- *  distinct rows kept, pages read. Printed in the summary on every run. */
+/** Every walk this process made, one entry PER ATTEMPT, in order: what the API
+ *  claimed, rows fetched, distinct rows kept, pages read, and whether the walk
+ *  was consistent. Printed in the summary on every run, and on COULD NOT LOOK. */
 const WALKS = [];
 
-async function collectPaged({ fetchPage, idOf, what, perPage = 100, pageCap = 10, log = WALKS }) {
-  const byId = new Map();
-  let claimed = null;
-  let pagesRead = 0;
-  let lastPageLength = 0;
-  let fetched = 0;
-  for (let page = 1; page <= pageCap; page++) {
-    const { rows, totalCount = null } = await fetchPage(page);
-    if (!Array.isArray(rows)) throw new CouldNotLook(`${what}: a page of the listing was not an array of rows`);
-    pagesRead = page;
-    lastPageLength = rows.length;
-    fetched += rows.length;
-    // The SMALLEST claim any page made. `total_count` rises under a live walk
-    // as new runs complete, and growth is not loss: comparing against the
-    // smallest claim is the only comparison that cannot go red merely because
-    // the list got longer while it was being read. A check that cries wolf
-    // gets muted, and a muted check is no check.
-    if (typeof totalCount === 'number' && Number.isFinite(totalCount)) {
-      claimed = claimed === null ? totalCount : Math.min(claimed, totalCount);
+/** How many times one listing is walked from page 1 before an inconsistent
+ *  answer is COVERAGE LOST, and the base of the pause between walks. Named once,
+ *  here. 3 walks of deploy-web's 5 pages took ~22 s each on 2026-09-23 10:46Z;
+ *  with the 2 s + 4 s pauses that is ~72 s, inside the job's 10-minute ceiling. */
+const WALK_ATTEMPTS = 3;
+const WALK_PAUSE_MS = 2000;
+const nap = (ms) => new Promise((done) => setTimeout(done, ms));
+
+/** One walk's line, the SAME text in the summary and on COULD NOT LOOK. */
+function formatWalk(w) {
+  const claim = w.claims?.length ? w.claims.join(' → ') : 'not given';
+  return (
+    `walk · ${w.what}: total_count ${claim} · fetched ${w.fetched} · distinct ${w.distinct} · ${w.pages} page(s) · ` +
+    `attempt ${w.attempt}/${w.attempts} · ${w.consistent ? 'consistent' : `INCONSISTENT — ${w.why}`}`
+  );
+}
+
+async function collectPaged({
+  fetchPage,
+  idOf,
+  what,
+  perPage = 100,
+  pageCap = 10,
+  log = WALKS,
+  attempts = WALK_ATTEMPTS,
+  pauseMs = WALK_PAUSE_MS,
+  sleep = nap,
+}) {
+  if (!Number.isInteger(attempts) || attempts < 1) throw new CouldNotLook(`${what}: ${attempts} walk attempt(s) is no walk at all`);
+  const gaps = backoffPlan(attempts, pauseMs);
+
+  /** ONE walk from page 1. Throws only for a page that is not rows at all. */
+  const walkOnce = async (attempt) => {
+    const byId = new Map();
+    const claims = [];
+    let pagesRead = 0;
+    let lastPageLength = 0;
+    let fetched = 0;
+    for (let page = 1; page <= pageCap; page++) {
+      const { rows, totalCount = null } = await fetchPage(page, { attempt });
+      if (!Array.isArray(rows)) throw new CouldNotLook(`${what}: a page of the listing was not an array of rows`);
+      pagesRead = page;
+      lastPageLength = rows.length;
+      fetched += rows.length;
+      // EVERY distinct claim, in the order served — never the smallest one.
+      if (typeof totalCount === 'number' && Number.isFinite(totalCount) && !claims.includes(totalCount)) claims.push(totalCount);
+      for (const row of rows) {
+        const id = idOf(row);
+        if (!byId.has(id)) byId.set(id, row);
+      }
+      if (rows.length < perPage) break;
     }
-    for (const row of rows) byId.set(idOf(row), row);
-    if (rows.length < perPage) break;
+    const distinct = byId.size;
+    const faults = [];
+    if (claims.length > 1) {
+      faults.push(`the pages claimed ${claims.length} different totals (${claims.join(', ')}), so the listing changed while it was read`);
+    }
+    if (fetched !== distinct) {
+      faults.push(
+        `${fetched - distinct} row(s) were served twice (fetched ${fetched}, distinct ${distinct}) — each repeat stands where a row ` +
+          'that was never served should have been',
+      );
+    }
+    // Capped by what the cap could physically reach, so a listing far larger than
+    // the window refuses for TRUNCATION below and not for arithmetic here.
+    if (claims.length === 1 && distinct !== Math.min(claims[0], pageCap * perPage)) {
+      faults.push(`the GitHub API said it had ${claims[0]} row(s) and served ${distinct} distinct one(s)`);
+    }
+    const entry = {
+      what,
+      attempt,
+      attempts,
+      claimed: claims.length === 1 ? claims[0] : null,
+      claims,
+      fetched,
+      distinct,
+      pages: pagesRead,
+      consistent: faults.length === 0,
+      why: faults.length ? faults.join('; ') : null,
+    };
+    // Recorded BEFORE any refusal, so a walk that refuses still leaves its numbers
+    // behind. The row that asked for this (O-PROVENANCE-WALK-HAS-NO-COMPLETENESS-CHECK)
+    // wants the next false red read back as a COUNT, not as a verdict.
+    log.push(entry);
+    return { entry, rows: [...byId.values()], truncated: pagesRead === pageCap && lastPageLength === perPage };
+  };
+
+  const tried = [];
+  for (let i = 0; i < attempts; i++) {
+    const { entry, rows, truncated } = await walkOnce(i + 1);
+    if (truncated) {
+      throw new CouldNotLook(
+        `${what}: all ${pageCap} pages of ${perPage} came back full, so rows exist that this reader never asked ` +
+          'for — a walk that stopped at its own cap is COVERAGE LOST, not a complete read',
+      );
+    }
+    if (entry.consistent) return rows;
+    tried.push(entry);
+    if (i < gaps.length) await sleep(gaps[i]);
   }
-  // Recorded BEFORE either refusal, so a walk that refuses still leaves its numbers
-  // behind. The row that asked for this (O-PROVENANCE-WALK-HAS-NO-COMPLETENESS-CHECK)
-  // wants the next false red read back as a COUNT, not as a verdict.
-  log.push({ what, claimed, fetched, distinct: byId.size, pages: pagesRead });
-  if (pagesRead === pageCap && lastPageLength === perPage) {
-    throw new CouldNotLook(
-      `${what}: all ${pageCap} pages of ${perPage} came back full, so rows exist that this reader never asked ` +
-        'for — a walk that stopped at its own cap is COVERAGE LOST, not a complete read',
-    );
+  throw new CouldNotLook(
+    `${what}: ${attempts} walk(s) from page 1 and not one was internally consistent — ` +
+      tried
+        .map(
+          (w) =>
+            `attempt ${w.attempt}: total_count ${w.claims.length ? w.claims.join(' → ') : 'not given'}, fetched ${w.fetched}, ` +
+            `distinct ${w.distinct}, ${w.pages} page(s) — ${w.why}`,
+        )
+        .join('; ') +
+      '. Rows a listing claims and did not serve are rows this reader cannot see, so this is COVERAGE LOST, not a complete read',
+  );
+}
+
+/** The floor every LIVE run must stand on, whether it came from a walk or from a
+ *  point read — ⏱ 2026-09-23 extracted from githubRuns so that a walked run and
+ *  a point-read run are floored by this one function. */
+function floorRuns(runs, workflowFile) {
+  // A run with no `conclusion` would silently take the resolver's benefit-of-
+  // the-doubt default below, which is the one direction that weakens without
+  // announcing itself. Live data always carries one; a shape change must be
+  // "could not look", never "looked and it was fine".
+  for (const r of runs) {
+    if (typeof r?.conclusion !== 'string') {
+      throw new CouldNotLook(
+        `run ${r?.run_number ?? '?'} of ${workflowFile} carries no \`conclusion\`, so this reader cannot tell a ` +
+          'successful lane run from a failed one and would treat both as released',
+      );
+    }
+    // Without an id there is nothing to tell two runs apart from ONE run
+    // served twice, which is the whole basis of the de-duplication above.
+    // ⏱ 2026-09-23 — and it is the id a submission Deployment's payload
+    // must name for footing (c), so this one floor serves both.
+    if (typeof r.id !== 'number' && typeof r.id !== 'string') {
+      throw new CouldNotLook(
+        `run ${r?.run_number ?? '?'} of ${workflowFile} carries no \`id\`, so this reader cannot tell two runs ` +
+          'apart from one run served twice across pages',
+      );
+    }
   }
-  // Capped by what the cap could physically reach, so a listing far larger than
-  // the window refuses for TRUNCATION above and not for arithmetic here.
-  if (claimed !== null && byId.size < Math.min(claimed, pageCap * perPage)) {
-    throw new CouldNotLook(
-      `${what}: the GitHub API said it had ${claimed} row(s) and served ${byId.size} distinct one(s). Rows it ` +
-        'claims and did not serve are rows this reader cannot see, so this is COVERAGE LOST, not a complete read',
-    );
-  }
-  return [...byId.values()];
+  return runs;
 }
 
 /** EVERY COMPLETED RUN of a served release lane, not only the successful ones —
@@ -640,28 +802,7 @@ async function githubRuns(workflowFile) {
       );
       const runs = body?.workflow_runs;
       if (!Array.isArray(runs)) throw new CouldNotLook(`the GitHub API response for ${workflowFile} carried no workflow_runs array`);
-      // A run with no `conclusion` would silently take the resolver's benefit-of-
-      // the-doubt default below, which is the one direction that weakens without
-      // announcing itself. Live data always carries one; a shape change must be
-      // "could not look", never "looked and it was fine".
-      for (const r of runs) {
-        if (typeof r?.conclusion !== 'string') {
-          throw new CouldNotLook(
-            `run ${r?.run_number ?? '?'} of ${workflowFile} carries no \`conclusion\`, so this reader cannot tell a ` +
-              'successful lane run from a failed one and would treat both as released',
-          );
-        }
-        // Without an id there is nothing to tell two runs apart from ONE run
-        // served twice, which is the whole basis of the de-duplication above.
-        // ⏱ 2026-09-23 — and it is the id a submission Deployment's payload
-        // must name for footing (c), so this one floor serves both.
-        if (typeof r.id !== 'number' && typeof r.id !== 'string') {
-          throw new CouldNotLook(
-            `run ${r?.run_number ?? '?'} of ${workflowFile} carries no \`id\`, so this reader cannot tell two runs ` +
-              'apart from one run served twice across pages',
-          );
-        }
-      }
+      floorRuns(runs, workflowFile);
       // `total_count` is this endpoint's own claim about how many completed
       // runs it holds. Handing it over is what turns a short read into a
       // refusal instead of a silent, confident undercount.
@@ -721,6 +862,10 @@ function gitRemoteRepo() {
   const m = readFileSync(cfg, 'utf8').match(/github\.com[:/]([\w.-]+\/[\w.-]+?)(?:\.git)?\s*$/m);
   return m ? m[1] : null;
 }
+
+/** The shape a shipped build stamps: `<line>.<run_number>+<sha7>`. ONE pattern,
+ *  read by the resolver, the manual-deploys register and the point reads below. */
+const BUILD_VERSION = /^(\d+)\.(\d+)\.(\d+)\+([0-9a-fA-F]{7,40})$/;
 
 /**
  * `1.0.101+e138f5b` → resolvable iff the line and the run number and the sha all
@@ -851,7 +996,7 @@ function makeReleasedBuildResolver(
 
   return (value) => {
     if (typeof value !== 'string' || value.length === 0) return 'no app_version at all — the build defaults to `dev` only when APP_VERSION is unset, so an empty value is a row written by something that is not a build';
-    const m = value.match(/^(\d+)\.(\d+)\.(\d+)\+([0-9a-fA-F]{7,40})$/);
+    const m = value.match(BUILD_VERSION);
     if (!m) return `\`${value}\` is not the shape a shipped build produces (<release_line>.<run_number>+<sha7>)`;
     const line = `${m[1]}.${m[2]}`;
     if (!lines.has(line)) return `release line ${line} is declared by no app in apps/*/pubspec.yaml`;
@@ -873,6 +1018,126 @@ function makeReleasedBuildResolver(
     }
     return reasons.join(' · ');
   };
+}
+
+// ── POINT READS · CONFIRM BEFORE CONVICTING ─────────────────────────────────
+//
+// ⏱ 2026-09-23 (O-PROVENANCE-MIN-CLAIM-PASSES-UNSTABLE-WALK). A walk that reads
+// as consistent is still a LISTING, and the listing is the one input this reader
+// has been wrong about: on 2026-09-23 09:28Z it served 55 rows twice, and the
+// reader went red on 42 real people's rows from builds it had simply not been
+// shown. So before a `released-build` value is reported as untraceable it is
+// looked up DIRECTLY, by the two facts the value itself carries:
+//   GET commits/<sha7>                                   → the full sha, or "no such commit"
+//   GET actions/workflows/<lane>/runs?head_sha=<full>…   → the completed runs AT that commit
+// A run the point read finds joins the resolver's runs and is judged by exactly
+// the same rules as a walked one — found is not the same as released — and it is
+// PRINTED, because it means a walk that read as consistent missed it.
+//
+// Bounded: values are de-duplicated by app_version and at most POINT_READ_CAP of
+// them are looked up; more than that is COVERAGE LOST, never a partial answer.
+// Every read that does not answer 200 is COVERAGE LOST too — except 404/422 on
+// the commit, which IS an answer ("not a commit on this repository"). A refused
+// read is not a missing build.
+const POINT_READ_CAP = 10;
+/** Every point read this process made: `{value, found, reads, verdict}`. */
+const POINT_READS = [];
+
+async function pointReadBuild({ value, read, lanes }) {
+  const m = value.match(BUILD_VERSION);
+  if (!m) throw new CouldNotLook(`point read · ${value}: not the shape a shipped build produces, so there is nothing to look up`);
+  const n = m[3];
+  const sha7 = m[4].toLowerCase();
+  const reads = [];
+  const ask = async (path) => {
+    let answer;
+    try {
+      answer = await read(path);
+    } catch (e) {
+      throw new CouldNotLook(`point read · ${value}: GET ${path}: ${e.message}`);
+    }
+    reads.push(`GET ${path} → ${answer.status}`);
+    return answer;
+  };
+  const refused = (path, status) =>
+    new CouldNotLook(
+      `point read · ${value}: GET ${path} answered ${status} — a refused read is not a missing build, so this is ` +
+        'COVERAGE LOST, not a verdict about the row',
+    );
+
+  const commitPath = `commits/${sha7}`;
+  const commit = await ask(commitPath);
+  if (commit.status === 404 || commit.status === 422) {
+    return { value, found: null, reads, verdict: `${sha7} is not a commit on this repository` };
+  }
+  if (commit.status !== 200) throw refused(commitPath, commit.status);
+  const full = String(commit.body?.sha ?? '').toLowerCase();
+  if (!/^[0-9a-f]{40}$/.test(full) || !full.startsWith(sha7)) {
+    throw new CouldNotLook(`point read · ${value}: GET ${commitPath} answered 200 without a full sha that starts with ${sha7}`);
+  }
+
+  // Served lanes first: deploy-web is where nearly every stamped build ships.
+  const ordered = [...lanes.filter((l) => l.kind === 'served'), ...lanes.filter((l) => l.kind !== 'served')];
+  const atCommit = [];
+  for (const lane of ordered) {
+    const path = `actions/workflows/${lane.workflow}/runs?head_sha=${full}&status=completed&per_page=100`;
+    const listing = await ask(path);
+    if (listing.status !== 200) throw refused(path, listing.status);
+    const runs = listing.body?.workflow_runs;
+    if (!Array.isArray(runs)) throw new CouldNotLook(`point read · ${value}: GET ${path} carried no workflow_runs array`);
+    floorRuns(runs, lane.workflow);
+    const hit = runs.find((r) => String(r.run_number) === n && String(r.head_sha ?? '').toLowerCase() === full);
+    if (hit) return { value, found: { ...hit, workflow: lane.workflow }, reads, verdict: null };
+    // One commit with more than a page of completed runs on one lane is not a
+    // shape this repository produces; if it ever does, the unread page could hold
+    // the run, so it is COVERAGE LOST rather than "not found".
+    if (typeof listing.body?.total_count === 'number' && listing.body.total_count > runs.length) {
+      throw new CouldNotLook(
+        `point read · ${value}: GET ${path} claimed ${listing.body.total_count} run(s) and served ${runs.length}, so the run ` +
+          'this reader is looking for could be on a page it did not read',
+      );
+    }
+    for (const r of runs) atCommit.push(`${lane.workflow} run ${r.run_number}`);
+  }
+  return {
+    value,
+    found: null,
+    reads,
+    verdict:
+      `commit ${sha7} exists, and no release lane has a completed run numbered ${n} at it` +
+      (atCommit.length ? ` (the completed runs at it: ${atCommit.join(', ')})` : ''),
+  };
+}
+
+/** The lines every walk attempt and every point read leave in the log — the
+ *  SAME lines on a verdict and on COULD NOT LOOK, so the next surprise is read
+ *  back as numbers. `made` is false for a fixture run with no --point-reads-file;
+ *  `summary` is false on COULD NOT LOOK, where the lookups may never have begun. */
+function lookupLines({ made = true, summary = true } = {}) {
+  const out = WALKS.map((w) => `⬜  ${formatWalk(w)}`);
+  for (const p of POINT_READS) {
+    out.push(
+      p.found
+        ? `⬜  point read · ${p.value}: ${p.reads.join(' · ')} → FOUND ${p.found.workflow} run ${p.found.run_number} (${p.found.conclusion})`
+        : `⬜  point read · ${p.value}: ${p.reads.join(' · ')} → not found — ${p.verdict}`,
+    );
+  }
+  const found = POINT_READS.filter((p) => p.found);
+  for (const p of found) {
+    out.push(
+      `⚠   point read found a build the walked runs did not include: ${p.value} — ${p.found.workflow} run ` +
+        `${p.found.run_number} at ${String(p.found.head_sha).slice(0, 7)}; the listing was incomplete even though the walk ` +
+        'that returned read as consistent',
+    );
+  }
+  if (!summary) return out;
+  out.push(
+    made
+      ? `⬜  point reads: ${POINT_READS.length} build(s) looked up, ${found.length} found, ${POINT_READS.length - found.length} not found` +
+          (found.length ? ` — found: ${found.map((p) => p.value).join(', ')}` : '')
+      : '⬜  point reads: NOT MADE — offline fixture mode without --point-reads-file, so no build was looked up directly',
+  );
+  return out;
 }
 
 // ── `e2e-run` · THE NIGHTLY'S OWN STAMP ─────────────────────────────────────
@@ -1135,8 +1400,11 @@ async function main() {
   const rowsFile = flag('--rows-file');
   const runsFile = flag('--runs-file');
   const deploymentsFile = flag('--deployments-file');
-  if (rowsFile || runsFile || deploymentsFile) {
-    console.log('!!  OFFLINE FIXTURE MODE — --rows-file/--runs-file/--deployments-file is set. This must NEVER appear in a real ops-watch log.');
+  const pointReadsFile = flag('--point-reads-file');
+  if (rowsFile || runsFile || deploymentsFile || pointReadsFile) {
+    console.log(
+      '!!  OFFLINE FIXTURE MODE — --rows-file/--runs-file/--deployments-file/--point-reads-file is set. This must NEVER appear in a real ops-watch log.',
+    );
   }
 
   // Resolver contexts. Each throws CouldNotLook rather than resolving nothing.
@@ -1237,7 +1505,7 @@ async function main() {
       const ghToken = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
       const ghRepo = process.env.GITHUB_REPOSITORY || gitRemoteRepo();
       for (const d of reg.deploys ?? []) {
-        const m = String(d.version ?? '').match(/^(\d+)\.(\d+)\.(\d+)\+([0-9a-fA-F]{7,40})$/);
+        const m = String(d.version ?? '').match(BUILD_VERSION);
         if (!m) { attViolations.push(`manual-deploys.json: \`${d.version}\` is not a shipped-build shape`); continue; }
         if (!String(d.sha ?? '').toLowerCase().startsWith(m[4].toLowerCase())) {
           attViolations.push(`manual-deploys.json: \`${d.version}\` build metadata does not match its own sha field`); continue;
@@ -1276,17 +1544,21 @@ async function main() {
     }
   }
 
+  // ⏱ 2026-09-23 — built TWICE. First over the walked runs alone and SILENT, to
+  // find the values a point read must look up (a probe must not print an
+  // acceptance); then again over the walked runs plus whatever the point reads
+  // found, recording, for the census proper. One function either way, so a
+  // point-read run is judged by exactly the rules a walked run is.
+  const buildReleased = (extra, onWitness) =>
+    makeReleasedBuildResolver(lines, [...runs, ...attested, ...extra], { lanes, deployments, deployedShas, legacyBindings, onWitness });
+  const recordWitness = ({ footing, note }) => {
+    const into = footing === 'submission' ? submissionWitnessed : witnessed;
+    if (!into.includes(note)) into.push(note);
+  };
+  let releasedBuild = buildReleased([], () => {});
+
   const resolverFns = {
-    'released-build': makeReleasedBuildResolver(lines, [...runs, ...attested], {
-      lanes,
-      deployments,
-      deployedShas,
-      legacyBindings,
-      onWitness: ({ footing, note }) => {
-        const into = footing === 'submission' ? submissionWitnessed : witnessed;
-        if (!into.includes(note)) into.push(note);
-      },
-    }),
+    'released-build': (v) => releasedBuild(v),
     'e2e-run': e2eRunResolver,
     // ⏱ 2026-09-15 · [ADR 087]. A SECOND resolver only (pending_erasures), so an empty
     // set refuses every step value rather than admitting one.
@@ -1371,13 +1643,12 @@ async function main() {
   const dbId = rowsFile ? null : databaseId();
   const fixture = rowsFile ? JSON.parse(readFileSync(rowsFile, 'utf8')) : null;
 
-  const census = [];
-  const violations = [...attViolations];
-  // Acceptances on a SECOND resolver, printed after the census. Never silent —
-  // the same rule the deployment witness and the manual-deploys register follow,
-  // and here it is what keeps a crashed nightly's residue visible in this log
-  // even though it no longer turns the run red.
-  const alsoAccepted = [];
+  // ⏱ 2026-09-23 — THE CENSUS RUNS IN FOUR PHASES, so that no row is judged
+  // before every build it names has been looked for: (A) read each table's
+  // groups and resolver chain; (B) collect the `released-build` values the
+  // walked runs cannot place; (C) point-read them; (D) judge. The D1 reads are
+  // the same reads as before, in the same order — only the judging moved.
+  const plan = [];
   for (const name of [...tables.keys()].sort()) {
     const rule = rules[name];
     const marker = rule.marker;
@@ -1417,7 +1688,82 @@ async function main() {
             ? reservedAddressCensusSql(name, marker)
             : `SELECT "${marker}" AS marker, COUNT(*) AS n FROM "${name}" GROUP BY "${marker}"`,
         );
+    plan.push({ name, rule, marker, resolve_, alts, groups });
+  }
 
+  // ── (B) the builds a point read must look up ─────────────────────────────
+  // A value qualifies only when ALL hold: its table's chain names
+  // `released-build`; every resolver in that chain refuses it; it has the shape
+  // of a shipped build on a declared line; and NO walked or attested run carries
+  // its run number at its sha. The last is the point: a run the walk DID serve
+  // that failed without a Deployment is a verdict about the build, not a gap in
+  // the listing, and it costs no read.
+  const walkedOrAttested = [...runs, ...attested];
+  const missing = new Set();
+  for (const p of plan) {
+    const chain = [p.rule.resolver, ...(Array.isArray(p.rule.alsoResolves) ? p.rule.alsoResolves : [])];
+    if (!chain.includes('released-build')) continue;
+    for (const g of p.groups) {
+      const v = g.marker;
+      if (typeof v !== 'string') continue;
+      const m = v.match(BUILD_VERSION);
+      if (!m || !lines.has(`${m[1]}.${m[2]}`)) continue;
+      if (p.resolve_(v) === null || p.alts.some(([, fn]) => fn(v) === null)) continue;
+      const sha = m[4].toLowerCase();
+      if (walkedOrAttested.some((r) => String(r.run_number) === m[3] && String(r.head_sha ?? '').toLowerCase().startsWith(sha))) continue;
+      missing.add(v);
+    }
+  }
+  const candidates = [...missing].sort();
+
+  // ── (C) the point reads ──────────────────────────────────────────────────
+  // Live: the GitHub API through the shared bounded retry. Fixture: the
+  // --point-reads-file map, where a path it does not name answers 404. A fixture
+  // run WITHOUT that file makes no point reads at all and prints so; it never
+  // invents "not a commit" for a sha nobody asked about.
+  let pointRead = null;
+  if (pointReadsFile) {
+    const map = JSON.parse(readFileSync(pointReadsFile, 'utf8'));
+    if (map === null || typeof map !== 'object' || Array.isArray(map)) throw new CouldNotLook(`${pointReadsFile} is not an object of path → {status, body}`);
+    for (const [path, a] of Object.entries(map)) {
+      if (!Number.isInteger(a?.status)) throw new CouldNotLook(`${pointReadsFile}: ${path} carries no integer status`);
+    }
+    pointRead = async (path) => (Object.prototype.hasOwnProperty.call(map, path) ? map[path] : { status: 404, body: null });
+  } else if (!runsFile) {
+    let creds = null;
+    pointRead = (path) => {
+      creds ??= githubCredentials();
+      return ghRead(creds.repo, creds.token, `/${path}`, `reading ${path}`);
+    };
+  }
+  const pointReadsMade = pointRead !== null;
+  if (pointReadsMade && candidates.length > POINT_READ_CAP) {
+    throw new CouldNotLook(
+      `${candidates.length} distinct build(s) in production are absent from the walked runs — more than the ` +
+        `${POINT_READ_CAP} this reader will look up one by one (${candidates.join(', ')}). A listing that missed that ` +
+        `many is a listing that failed, so this is COVERAGE LOST, not ${candidates.length} findings`,
+    );
+  }
+  const foundRuns = [];
+  if (pointReadsMade) {
+    for (const value of candidates) {
+      const pr = await pointReadBuild({ value, read: pointRead, lanes });
+      POINT_READS.push(pr);
+      if (pr.found) foundRuns.push(pr.found);
+    }
+  }
+  const pointReadOf = new Map(POINT_READS.map((pr) => [pr.value, pr]));
+  releasedBuild = buildReleased(foundRuns, recordWitness);
+
+  // ── (D) the census proper ────────────────────────────────────────────────
+  const census = [];
+  const violations = [...attViolations];
+  // Acceptances on a SECOND resolver, printed after the census. Never silent —
+  // the same rule the deployment witness and the manual-deploys register follow,
+  // and here it is what keeps a crashed nightly's residue visible in this log
+  // even though it no longer turns the run red.
+  const alsoAccepted = [];
+  for (const { name, rule, marker, resolve_, alts, groups } of plan) {
     let total = 0;
     let bad = 0;
     for (const g of groups) {
@@ -1442,6 +1788,10 @@ async function main() {
       }
       if (why !== null) {
         bad += n;
+        // ⏱ 2026-09-23 — a build that was looked up directly says what the
+        // lookup found, so a finding is never a finding about the listing alone.
+        const pr = pointReadOf.get(g.marker);
+        if (pr && !pr.found) why = `${why} · looked up directly: ${pr.verdict}`;
         violations.push(`${name}: ${n} row(s) — ${why}  [marker \`${marker}\`, resolver \`${rule.resolver}\`]`);
       }
     }
@@ -1468,9 +1818,9 @@ async function main() {
           );
     console.log(`⬜  release lane · ${l.kind} · ${l.workflow}: ${laneRuns} completed run(s) · ${deps} Deployment(s) on ${l.environments.join(', ') || '(none declared)'}`);
   }
-  for (const w of WALKS) {
-    console.log(`⬜  walk · ${w.what}: total_count ${w.claimed ?? 'not given'} · fetched ${w.fetched} · distinct ${w.distinct} · ${w.pages} page(s)`);
-  }
+  // ⏱ 2026-09-23 — one line per walk ATTEMPT (with its consistency verdict) and
+  // one per point read, then the point-read total, on every run.
+  for (const l of lookupLines({ made: pointReadsMade })) console.log(l);
   // An acceptance resting on the weaker footing is announced, never silent — the
   // same rule the manual-deploys register follows. A build that resolves ONLY
   // because a failed run left a deployment behind is a build somebody should be
@@ -1489,9 +1839,19 @@ async function main() {
     console.error(`✗ ${violations.length} group(s) of rows in production cannot be traced to a released build:`);
     for (const v of violations) console.error(`    ${v}`);
     console.error('');
-    console.error('  B-17: verification against production is permitted and EXPECTED — every artifact it creates being');
-    console.error('  provably removed is the other half of that permission. Delete the residue, or, if the row is real,');
-    console.error('  fix what wrote it so the next one carries its provenance.');
+    // ⏱ 2026-09-23 — this text used to end "Delete the residue", and on
+    // 2026-09-23 09:28Z it was printed under 42 rows that were real people's
+    // consent artifacts and events, from builds a shifted listing never served.
+    // It now never suggests removing a row: removal belongs to the harness that
+    // created an artifact, and an untraced row is first a question about who
+    // wrote it. prod-provenance-walk.test.mjs holds the wording to that.
+    console.error('  B-17: verification against production is permitted and EXPECTED, and every artifact it creates must be');
+    console.error('  provably removed — by the harness that created it, never by hand from this list.');
+    console.error('  A row listed here is one this reader could not TRACE, which is not the same as residue: a build stamp');
+    console.error('  above was looked for in the walked run history and, where no walk served it, by a direct read of its');
+    console.error('  commit (the `point read ·` lines).');
+    console.error("  Establish who wrote each row first: a consent artifact or an event from a real person's build is a record to keep.");
+    console.error('  If the row is real, fix what wrote it (or this reader) so the next one traces.');
     process.exitCode = 1;
     return;
   }
@@ -1507,6 +1867,9 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import
     await main();
   } catch (e) {
     if (e instanceof CouldNotLook) {
+      // ⏱ 2026-09-23 — the numbers first: every walk attempt and every point read
+      // made before the refusal, so an exit 2 is read back as counts.
+      for (const l of lookupLines({ summary: POINT_READS.length > 0 })) console.log(l);
       console.error(`✗ COULD NOT LOOK — ${e.message}`);
       console.error('');
       console.error('  This is exit 2, not exit 1, and the difference is the whole point: "I could not look" must never');
@@ -1520,4 +1883,13 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import
   }
 }
 
-export { makeReleasedBuildResolver, releaseLines, CouldNotLook, collectPaged };
+export {
+  makeReleasedBuildResolver,
+  releaseLines,
+  CouldNotLook,
+  collectPaged,
+  formatWalk,
+  WALK_ATTEMPTS,
+  WALK_PAUSE_MS,
+  POINT_READ_CAP,
+};
