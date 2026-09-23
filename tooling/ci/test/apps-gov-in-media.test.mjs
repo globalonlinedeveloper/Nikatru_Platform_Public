@@ -210,4 +210,24 @@ describe('the CLI', () => {
     const r = run('--write');
     assert.equal(r.status, 2);
   });
+  // 🔴 THE EXIT HANG, PINNED (2026-09-22). Spawned with plain `node <guard>` and
+  // no flags, the process that does the work must have started with
+  // --single-threaded, so no V8 worker thread runs a background compile or GC
+  // that Node's shutdown can deadlock on (nodejs/node#54918). Every check decodes
+  // each derived file and its 1080x1920 original and re-derives it pixel by pixel,
+  // the same hot loop as the four heavy image guards. Deterministic, unlike the
+  // hang: delete the relaunch and this line says ON.
+  test('the working guard runs with V8 background tasks OFF, so its exit cannot deadlock', () => {
+    const root = mkdtempSync(join(tmpdir(), 'agi-media-'));
+    try {
+      makeTree(root);
+      const w = run(root, '--write', '--app', 'demo');
+      assert.equal(w.status, 0, w.stderr);
+      const r = run(root);
+      assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+      assert.match(r.stdout, /V8 background tasks: OFF \(--single-threaded\)/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });

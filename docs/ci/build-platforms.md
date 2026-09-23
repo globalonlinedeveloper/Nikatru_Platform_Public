@@ -1334,6 +1334,12 @@ cost the artifacts above it.
 - **Media.** `assert-apps-gov-in-media.mjs` checks that the 155x290 screenshots and the 512 icon
   are still the derivation of the Play set, and that nobody edited one by hand. Its `--write` mode
   re-derives them.
+  2026-09-22: it also runs as the last step of `ci.yml`'s `guards-store` job. This workflow runs
+  only on a dispatch, a tag or the Monday/Thursday cron, so until then a pull request that
+  re-captured the Play set merged green and the next scheduled build went red. Now that pull
+  request fails. The step here stays as the read-back beside the artifact. Both steps run it as
+  `node --single-threaded`, because it decodes and re-derives every image and has adopted the
+  shared relaunch (`tooling/ci/single-threaded-relaunch.mjs`).
 
 ### Two changes the new steps forced on the Play half of the job
 
