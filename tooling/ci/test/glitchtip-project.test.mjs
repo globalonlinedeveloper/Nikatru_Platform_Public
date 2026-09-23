@@ -163,6 +163,104 @@ describe('a variable whose step never reads the declaration is refused', () => {
   });
 });
 
+// ⏱ APPENDED 2026-09-23 — refusal 5, row O-GLITCHTIP-CALLS-HAVE-NO-RETRY. The
+// first case is the real regression: deploy-web.yml's create step put back to
+// the base tree's `glitchtip-cli releases new` (f19f038c), the line a 522 failed in
+// run 35831511489. The split-line cases prove the continuation is joined by the
+// STEP'S shell, bash `\` and pwsh backtick, so a command cannot hide its
+// subcommand on the next line. The positive control proves the limb SEES the CLI
+// on the real tree (a CLI pattern that never matches would pass everything).
+/** A fixture workflow added beside the real ones. Plain strings, not a template
+ *  literal, so the pwsh backtick and the bash backslash reach the file as typed. */
+function stageWith(name, file, lines) {
+  const dir = stage(name);
+  writeFileSync(join(dir, file), `${lines.join('\n')}\n`);
+  return dir;
+}
+
+describe('a GlitchTip network call run bare from a step is refused', () => {
+  test('🔴 the create step put back to `glitchtip-cli releases new` (the base tree): exit 1, named', () => {
+    let hit = 0;
+    const dir = stage('bare-releases-new', (f, body) => {
+      if (f !== 'deploy-web.yml') return body;
+      const out = body
+        .replace('node tooling/ops/create-glitchtip-release.mjs \\', '"${RUNNER_TEMP}/glitchtip-cli" releases new "$release" \\')
+        .replace('--release "$release" --org "$gt_org"', '--finalize --org "$gt_org"');
+      if (out !== body) hit += 1;
+      return out;
+    });
+    assert.equal(hit, 1, 'the mutation did not apply: deploy-web.yml no longer calls create-glitchtip-release.mjs as this case expects');
+    const r = run(dir);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /run BARE from a workflow step/);
+    assert.match(r.out, /deploy-web\.yml:\d+ {2}glitchtip-cli releases, run bare from the step/);
+  });
+
+  test('a bash `\\` continuation that puts the subcommand on the next line is still one command', () => {
+    const dir = stageWith('bare-bash-split', 'bare-bash-split.yml', [
+      'name: fixture',
+      'on: workflow_dispatch',
+      'jobs:',
+      '  web:',
+      '    runs-on: ubuntu-latest',
+      '    steps:',
+      '      - name: create the release bare',
+      '        run: |',
+      '          "${RUNNER_TEMP}/glitchtip-cli" \\',
+      '            releases new "$release" --finalize --org nikatru',
+    ]);
+    const r = run(dir);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /bare-bash-split\.yml:\d+ {2}glitchtip-cli releases, run bare/);
+  });
+
+  test('a pwsh backtick continuation before `debug-files upload` is refused (the Windows lane\'s shell)', () => {
+    const dir = stageWith('bare-pwsh-split', 'bare-pwsh-split.yml', [
+      'name: fixture',
+      'on: workflow_dispatch',
+      'jobs:',
+      '  windows:',
+      '    runs-on: windows-latest',
+      '    steps:',
+      '      - name: upload the symbols bare',
+      '        run: |',
+      '          & "$env:RUNNER_TEMP/glitchtip-cli.exe" `',
+      '            debug-files upload --org nikatru build/windows',
+    ]);
+    const r = run(dir);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /bare-pwsh-split\.yml:\d+ {2}glitchtip-cli debug-files upload, run bare/);
+  });
+
+  test('curl straight at a GlitchTip /api/0/ path is refused', () => {
+    const dir = stageWith('bare-curl', 'bare-curl.yml', [
+      'name: fixture',
+      'on: workflow_dispatch',
+      'jobs:',
+      '  web:',
+      '    runs-on: ubuntu-latest',
+      '    steps:',
+      '      - name: create the release with curl',
+      '        run: curl -sf -X POST -H "Authorization: Bearer $T" "$server/api/0/organizations/nikatru/releases/"',
+    ]);
+    const r = run(dir);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /bare-curl\.yml:\d+ {2}an HTTP client calls a GlitchTip \/api\/0\/ path/);
+  });
+
+  test('the real tree: the limb reads the steps, SEES the CLI, and lets the local `sourcemaps inject` through', () => {
+    const r = run(WORKFLOWS);
+    assert.equal(r.code, 0, r.out);
+    const m = r.out.match(/write limb — (\d+) run step\(s\) in (\d+) workflow\(s\), (\d+) segment\(s\) naming glitchtip-cli/);
+    assert.ok(m, `no write-limb line:\n${r.out}`);
+    assert.ok(Number(m[1]) > 0 && Number(m[3]) > 0, `the limb saw ${m[1]} run step(s) and ${m[3]} CLI segment(s):\n${r.out}`);
+    assert.ok(
+      readFileSync(join(WORKFLOWS, 'deploy-web.yml'), 'utf8').includes('glitchtip-cli" sourcemaps inject'),
+      'deploy-web.yml no longer runs `sourcemaps inject` from the step, so this case no longer proves a local subcommand passes',
+    );
+  });
+});
+
 describe('no call sites is COVERAGE LOST, never a pass', () => {
   test('R2 — the flag renamed away: exit 2 (COVERAGE LOST)', () => {
     const dir = stage('renamed-flag', (f, body) => body.replaceAll('--project ', '--gtproject '));
@@ -190,6 +288,7 @@ describe('the declaration itself is graded', () => {
     mkdirSync(join(shadow, 'tooling', 'ops'), { recursive: true });
     cpSync(GUARD, join(shadow, 'tooling', 'ci', 'assert-glitchtip-project.mjs'));
     cpSync(join(REPO, 'tooling', 'ci', 'tree-walk.mjs'), join(shadow, 'tooling', 'ci', 'tree-walk.mjs'));
+    cpSync(join(REPO, 'tooling', 'ci', 'workflow-scan.mjs'), join(shadow, 'tooling', 'ci', 'workflow-scan.mjs'));
     const r = spawnSync(
       process.execPath,
       [join(shadow, 'tooling', 'ci', 'assert-glitchtip-project.mjs'), '--workflows', WORKFLOWS],
@@ -205,6 +304,7 @@ describe('the declaration itself is graded', () => {
     mkdirSync(join(shadow, 'tooling', 'ops'), { recursive: true });
     cpSync(GUARD, join(shadow, 'tooling', 'ci', 'assert-glitchtip-project.mjs'));
     cpSync(join(REPO, 'tooling', 'ci', 'tree-walk.mjs'), join(shadow, 'tooling', 'ci', 'tree-walk.mjs'));
+    cpSync(join(REPO, 'tooling', 'ci', 'workflow-scan.mjs'), join(shadow, 'tooling', 'ci', 'workflow-scan.mjs'));
     writeFileSync(join(shadow, 'tooling', 'ops', 'glitchtip-project.json'), JSON.stringify({ org: 'nikatru' }));
     const r = spawnSync(
       process.execPath,
@@ -412,6 +512,7 @@ describe('the offline inputs: could-not-read is exit 2', () => {
     mkdirSync(join(shadow, 'tooling', 'ops'), { recursive: true });
     cpSync(GUARD, join(shadow, 'tooling', 'ci', 'assert-glitchtip-project.mjs'));
     cpSync(join(REPO, 'tooling', 'ci', 'tree-walk.mjs'), join(shadow, 'tooling', 'ci', 'tree-walk.mjs'));
+    cpSync(join(REPO, 'tooling', 'ci', 'workflow-scan.mjs'), join(shadow, 'tooling', 'ci', 'workflow-scan.mjs'));
     writeFileSync(join(shadow, 'tooling', 'ops', 'glitchtip-project.json'), '{ "org": ');
     const r = spawnSync(
       process.execPath,

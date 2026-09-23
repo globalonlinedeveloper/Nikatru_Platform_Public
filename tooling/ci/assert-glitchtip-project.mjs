@@ -43,6 +43,30 @@
 // limb depending on the GlitchTip box stands — so the live check is a laptop and
 // runbook step, and the offline invariant is the merge-blocking one.
 //
+// ── ⏱ APPENDED 2026-09-23 — 5. A GLITCHTIP NETWORK CALL RUN BARE FROM A STEP ──
+// Row O-GLITCHTIP-CALLS-HAVE-NO-RETRY. deploy-web run 35831511489 went red on
+//   error: Failed to create release: POST https://glitchtip.nikatru.com/api/0/organizations/nikatru/releases/ returned 522 <unknown status code>: error code: 522
+// because `glitchtip-cli releases new` ran straight from the step, and the CLI
+// has no retry. Every GlitchTip call now goes through a node script that uses
+// tooling/ops/bounded-retry.mjs: create-glitchtip-release, upload-web-sourcemaps
+// and upload-native-symbols. This limb keeps it that way. It refuses any `run:`
+// shell segment, bash or pwsh, whose glitchtip-cli invocation names `releases`,
+// `deploys` or `send-event`, or `debug-files` / `sourcemaps` / `dart-symbol-map`
+// followed by `upload`; and any curl / wget / Invoke-RestMethod /
+// Invoke-WebRequest segment on a GlitchTip `/api/0/` path. What stays in YAML is
+// local: `sourcemaps inject` and the install step's `--version`.
+//   · Built on tooling/ci/workflow-scan.mjs (parseWorkflow, stepShell,
+//     shellSegments). A continued line is joined by the STEP'S shell's own
+//     continuation character before it is split, so `…/glitchtip-cli \` on one
+//     line and `releases new` on the next is one command, not two innocent ones.
+//   · Zero `run:` steps read is COVERAGE LOST (exit 2), not a pass.
+//   · ⚠️ It reads the program by NAME. A pwsh step that stores the path in a
+//     variable (`$out = … 'glitchtip-cli.exe'`, then `& $out releases new`) is
+//     invisible to it; no workflow does that today, and the Windows lane's
+//     install step only asks `--version` that way.
+// Failing cases: tooling/ci/test/glitchtip-project.test.mjs, "a GlitchTip network
+// call run bare from a step is refused".
+//
 // Usage:
 //   node tooling/ci/assert-glitchtip-project.mjs [--workflows <dir>] [--live]
 // Exit 0 = one declared project, reached the same way everywhere.
@@ -59,6 +83,7 @@ import { fileURLToPath } from 'node:url';
 // another repository's workflows as this tree's. That is green in CI, which
 // creates no worktrees, and red on the one machine actually looking at it.
 import { listDir } from './tree-walk.mjs';
+import { parseWorkflow, stepShell, shellSegments } from './workflow-scan.mjs';
 
 const NAME = 'assert-glitchtip-project';
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -221,12 +246,92 @@ if (badLiteral.length) {
   ]);
 }
 
+// ── 5. NO GLITCHTIP WRITE IS RUN BARE FROM A STEP (⏱ APPENDED 2026-09-23) ───
+// The header section of the same date says why. Built on workflow-scan.mjs: its
+// parse (comments blanked, a `run: |` block joined with ` ; `), its shell
+// resolution and its segment splitter. `parseAllWorkflows` is not called because
+// it takes a REPOSITORY root and appends .github/workflows, while `--workflows`
+// names the directory itself (the fixtures in glitchtip-project.test.mjs are flat
+// directories); `parseWorkflow` over this guard's own listing is the same parse.
+const workflows = listDir(WORKFLOWS)
+  .filter((n) => /\.ya?ml$/.test(n))
+  .sort()
+  .map((f) => parseWorkflow(WORKFLOWS, f))
+  .filter(Boolean);
+// The binary as the program of a segment: the token ENDS at `glitchtip-cli`
+// (`.exe` on Windows), however it is prefixed — `${RUNNER_TEMP}/`, a quote, `& `.
+// A URL that merely contains the name (`…/glitchtip-cli/-/jobs/…`) does not end there.
+const CLI_TOKEN = /(?:^|[\s"'/\\&(])glitchtip-cli(?:\.exe)?["']?(?=\s|$)/;
+// The subcommands that reach the server. `releases` whole, reads included: every
+// GlitchTip call goes through a retrying script, not only the writes.
+const NETWORK_SUBCOMMAND = new Set(['releases', 'deploys', 'send-event']);
+const UPLOADING_SUBCOMMAND = new Set(['debug-files', 'sourcemaps', 'dart-symbol-map']);
+const HTTP_CLIENT = /(?:^|\s)(?:curl|wget|Invoke-RestMethod|Invoke-WebRequest|irm|iwr)(?=\s|$)/i;
+const RUN_KEY = /^\s*(?:-\s+)?run:\s*/;
+
+const bareWrites = [];
+let runLines = 0;
+let cliSegments = 0;
+for (const wf of workflows) {
+  for (const job of wf.jobs.values()) {
+    for (const l of job.logical) {
+      if (!RUN_KEY.test(l.text)) continue;
+      runLines++;
+      // A continued line is ONE command. The continuation character is the SHELL's —
+      // `\` for bash, a backtick for pwsh — so the step's shell is asked, not guessed.
+      // A shell nobody can name joins both: seeing more can only refuse more.
+      const { family } = stepShell(wf, l.n);
+      const cont = family === 'pwsh' || family === 'powershell' ? /`\s*;\s/g : family === null ? /[\\`]\s*;\s/g : /\\\s*;\s/g;
+      const text = l.text.replace(RUN_KEY, '').replace(cont, ' ');
+      for (const raw of shellSegments(text)) {
+        const seg = raw.trim();
+        if (HTTP_CLIENT.test(seg) && seg.includes('/api/0/')) {
+          bareWrites.push(`${wf.rel}:${l.n}  an HTTP client calls a GlitchTip /api/0/ path: ${seg.slice(0, 160)}`);
+          continue;
+        }
+        const m = CLI_TOKEN.exec(seg);
+        if (!m) continue;
+        cliSegments++;
+        const words = seg.slice(m.index + m[0].length).trim().split(/\s+/).map((w) => w.replace(/^["']|["']$/g, ''));
+        const direct = words.find((w) => NETWORK_SUBCOMMAND.has(w));
+        const up = words.findIndex((w) => UPLOADING_SUBCOMMAND.has(w));
+        const uploads = up !== -1 && words.slice(up + 1).includes('upload');
+        if (direct || uploads) {
+          const sub = direct ?? `${words[up]} upload`;
+          bareWrites.push(`${wf.rel}:${l.n}  glitchtip-cli ${sub}, run bare from the step: ${seg.slice(0, 160)}`);
+        }
+      }
+    }
+  }
+}
+if (runLines === 0) {
+  coverageLost([
+    `COVERAGE LOST — the write limb read ZERO \`run:\` steps in ${workflows.length} workflow(s).`,
+    'Either the workflow parse stopped reaching the steps, or there are none; neither is a pass.',
+    `Looked in: ${WORKFLOWS}`,
+  ]);
+}
+if (bareWrites.length) {
+  fail([
+    `${bareWrites.length} GlitchTip network call(s) are run BARE from a workflow step, outside the retrying scripts.`,
+    'glitchtip-cli has no retry, and one 522 from the origin failed deploy-web run 35831511489. A release',
+    'is created by tooling/ops/create-glitchtip-release.mjs, source maps are uploaded by',
+    'tooling/ops/upload-web-sourcemaps.mjs and native symbols by tooling/ops/upload-native-symbols.mjs,',
+    'each through tooling/ops/bounded-retry.mjs. Only the local `sourcemaps inject` and `--version` stay in YAML.',
+    ...bareWrites,
+  ]);
+}
+
 const read = sites.filter((s) => isVariable(s.arg)).length;
 console.log(
   `${NAME}: ${sites.length} call site(s) — ${read} read ${DECL_REL} in their own step, ` +
     `${sites.length - read} spell the declared project "${DECLARED}".`,
 );
 for (const s of sites) console.log(`  ${s.file}:${s.line}${isVariable(s.arg) ? '  (reads the declaration)' : ''}`);
+console.log(
+  `${NAME}: write limb — ${runLines} run step(s) in ${workflows.length} workflow(s), ${cliSegments} segment(s) naming glitchtip-cli; ` +
+    'none runs a GlitchTip network call bare (releases, debug-files/sourcemaps upload, or an HTTP client on /api/0/).',
+);
 
 if (LIVE) {
   const token = process.env.GLITCHTIP_TOKEN;

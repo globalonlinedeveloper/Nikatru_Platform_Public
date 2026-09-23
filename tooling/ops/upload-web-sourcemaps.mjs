@@ -41,6 +41,11 @@
 // sent us to the CLI in the first place. It is used in deploy-web.yml for what
 // it does do correctly (`sourcemaps inject`, `releases new`), and this file does
 // the upload the server actually accepts.
+// ⏱ APPENDED 2026-09-23 (row O-GLITCHTIP-CALLS-HAVE-NO-RETRY): `releases new`
+// is no longer the CLI's either. It had no retry, and one 522 from the origin
+// failed deploy-web run 35831511489; tooling/ops/create-glitchtip-release.mjs
+// now sends the same request through the shared bounded retry. The CLI keeps
+// `sourcemaps inject`, which is local and makes no request.
 //
 // ── WHAT THE SERVER ACTUALLY ACCEPTS ─────────────────────────────────────────
 // An ARTIFACT BUNDLE: a zip whose root holds `manifest.json` —
@@ -80,6 +85,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join, relative, basename, resolve, sep } from 'node:path';
 import { createHash } from 'node:crypto';
 import { deflateRawSync, gzipSync } from 'node:zlib';
+import { fetchWithBoundedRetry, CouldNotLook } from './bounded-retry.mjs';
 
 const SOURCE_EXT = /\.(?:js|cjs|mjs)$/;
 const MAP_EXT = /\.map$/;
@@ -352,10 +358,45 @@ if (args.get('dry-run') !== undefined) {
 const sha1 = (buf) => createHash('sha1').update(buf).digest('hex');
 const auth = { authorization: `Bearer ${token}`, accept: 'application/json' };
 
+// ⏱ APPENDED 2026-09-23 (row O-GLITCHTIP-CALLS-HAVE-NO-RETRY): every call below
+// goes through `fetchWithBoundedRetry` (tooling/ops/bounded-retry.mjs, the shared
+// plan: 3 attempts, 1 s then 2 s, Retry-After honoured and clamped to 5 s, a 15 s
+// ceiling per attempt handed in as `signal`). A 429, a 5xx — the 522 that failed
+// deploy-web run 35831511489 one step earlier — or a dropped socket is re-asked;
+// any other status comes back and is judged below exactly as before. The last
+// green run of this whole step took 5 s (deploy-web run 35836688646), so the
+// module's numbers fit it and no per-call option is passed.
+//
+// 🔴 THE TWO POSTS ARE RE-SENT ON A TRANSIENT FAILURE, AND THIS IS WHY IT IS
+// SAFE. A chunk is stored under the sha1 of its own bytes (the part filename,
+// above), so a second POST of the same chunk re-stores the same bytes under the
+// same name; assemble is keyed by `{checksum, chunks}`, which are the same on
+// every attempt; and the proof at the end reads what the server HOLDS, so a
+// re-send that stored nothing still fails the run. A whole-job re-run already
+// re-sends this identical sequence today. What the server does with a SECOND
+// assemble of the same checksum was not measured live on 2026-09-23. The FormData,
+// Blob and string bodies are re-serialised by each fetch, so an attempt never
+// sends a consumed stream.
 const api = async (path, init = {}) => {
   const url = path.startsWith('http') ? path : `${base}${path}`;
-  const res = await fetch(url, { ...init, headers: { ...auth, ...(init.headers ?? {}) } });
-  const text = await res.text();
+  const method = init.method ?? 'GET';
+  let res;
+  try {
+    res = await fetchWithBoundedRetry(
+      async ({ signal }) => {
+        const r = await fetch(url, { ...init, headers: { ...auth, ...(init.headers ?? {}) }, signal });
+        // Read INSIDE the attempt: a body that dies mid-read is the wire failing
+        // and is re-asked, not a garbled answer.
+        const body = await r.text();
+        return { status: r.status, statusText: r.statusText, ok: r.ok, headers: r.headers, body };
+      },
+      { describe: (what) => `${method} ${url}: ${what}`, note: (line) => console.log(`  retry: ${line}`) },
+    );
+  } catch (e) {
+    if (e instanceof CouldNotLook) die(e.message);
+    throw e;
+  }
+  const text = res.body;
   if (!res.ok) {
     die(`${init.method ?? 'GET'} ${url} → ${res.status} ${res.statusText}: ${text.slice(0, 400)}`);
   }

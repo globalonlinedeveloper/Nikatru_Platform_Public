@@ -93,6 +93,25 @@ this lane goes green. (Until 2026-08-09 it also decided whether the
 deployment record got written; it no longer does — the record follows
 the DEPLOY step, see the block on it at the bottom of this file.)
 
+### above `- 'tooling/ops/create-glitchtip-release.mjs'`
+
+⏱ APPENDED 2026-09-23 (row O-GLITCHTIP-CALLS-HAVE-NO-RETRY). The two
+GlitchTip writes this lane runs, listed under the rule in the `# why:`
+above `paths:` — the list names every script this lane RUNS.
+`create-glitchtip-release.mjs` creates and finalizes the release;
+`upload-web-sourcemaps.mjs` uploads the maps and reads them back. Both are
+node scripts since this date, because each now retries a transient
+origin error, and a change to that behaviour must redeploy like any other
+script this lane executes. Like the two entries above, they are
+deliberate rather than enforced: assert-deploy-triggers.mjs derives its
+requirement from `tooling/ci/**` only.
+
+⚠️ NOT LISTED, AND LEFT FOR A DECISION: `tooling/ops/bounded-retry.mjs`
+(the retry plan both scripts import) and `tooling/ops/glitchtip-project.json`
+(the declaration the create and upload steps read). Each changes what this
+lane does with no edit to a file on the list. The PR that added the two
+lines above names the gap without closing it.
+
 ### above `permissions:`
 
 Least privilege. It deploys via a Cloudflare token, not GITHUB_TOKEN. [pipeline F-5b]
@@ -501,6 +520,45 @@ the binary on 2026-09-03: `glitchtip-cli releases new --url` is
 passing the address there posts the release to sentry.io instead. The
 environment variable is not shadowed by anything.
 
+⏱ APPENDED 2026-09-23 — THE CLI NO LONGER CREATES THE RELEASE; A NODE
+SCRIPT DOES, AND IT RETRIES. The paragraphs above are kept as written.
+deploy-web run 35831511489 (main f64cd921) went red at this step on one
+line and nothing else:
+
+    error: Failed to create release: POST https://glitchtip.nikatru.com/api/0/organizations/nikatru/releases/ returned 522 <unknown status code>: error code: 522
+
+A 522 is Cloudflare reporting that the origin did not answer in time — a
+blip on the path, not an answer about the release — and
+`glitchtip-cli releases new` has no retry, so one dropped request failed
+the deploy. The step now runs `tooling/ops/create-glitchtip-release.mjs`,
+which sends the CLI's own request (the body read from the pinned v1.0.0
+`releases.rs`: version, projects, dateStarted and dateReleased, stamped
+ONCE per run) through `fetchWithBoundedRetry` in
+`tooling/ops/bounded-retry.mjs` — 3 attempts, gaps of 1 s then 2 s, a
+15 s ceiling per attempt, no per-call override. The server still arrives
+as `SENTRY_URL`, derived from the DSN exactly as above; the `--url`
+trap no longer applies because the CLI is not called here.
+
+"It is idempotent" above was a reading of the server; it is now a
+measurement. Re-POSTing an existing release on the live instance on
+2026-09-23 (the parent session's probe, `idempotency-measured.md`):
+
+    POST again 201 body.version subscriptiontracker@1.0.439+d90dbfc body.dateCreated 2026-09-23T08:30:42.841Z
+    GET after 200 dateCreated 2026-09-23T08:30:42.841Z dateReleased 2026-09-23T08:30:41.942Z
+    rows with this version after 1 list n 50
+    VERDICT IDEMPOTENT (2xx, one row, dates unchanged)
+
+So a retry after a request the origin DID act on makes no second row and
+moves no date. ⚠️ Not measured: a re-POST carrying a NEWER dateReleased
+(what a whole-job re-run sends, since the stamp is per run), and that
+probe's body omitted dateStarted. A retry inside one run re-sends the
+same bytes, so neither gap reaches the retry itself.
+
+The guard that keeps it this way: refusal 5 of
+tooling/ci/assert-glitchtip-project.mjs refuses a GlitchTip network call
+(`releases`, a `debug-files`/`sourcemaps` upload, or an HTTP client on
+`/api/0/`) run bare from any workflow step.
+
 ### before step **Upload the source maps to GlitchTip**
 
 ── SOURCE MAPS · UPLOADED, AND PROVEN UPLOADED ─────────────────────────
@@ -518,6 +576,19 @@ tooling/ops/upload-web-sourcemaps.mjs.
 THE SCRIPT ENDS BY READING BACK `GET .../releases/{version}/files/` —
 the exact call whose empty answer is the defect — and exits non-zero
 while it stays empty. So this step cannot be green over an empty sink.
+
+⏱ APPENDED 2026-09-23 (row O-GLITCHTIP-CALLS-HAVE-NO-RETRY). Every
+request this script makes — the chunk-upload options GET, the chunk
+POST, the assemble POST and the read-back — now goes through
+`fetchWithBoundedRetry` (tooling/ops/bounded-retry.mjs, the same plan the
+create step uses). The 522 that failed run 35831511489 one step earlier
+is a 5xx, and this step talks to the same origin. The two POSTs are safe
+to re-send: a chunk is stored under the sha1 of its own bytes, assemble
+is keyed by the same `{checksum, chunks}` on every attempt, and the
+read-back judges what the server HOLDS, so a re-send that stored nothing
+still fails. ⚠️ What the server does with a SECOND assemble of the same
+checksum was not measured live. The last green run of this step took
+5 s (deploy-web run 35836688646) against a 15 s ceiling per attempt.
 
 ### before step **Delete the source maps from the bundle that gets published**
 

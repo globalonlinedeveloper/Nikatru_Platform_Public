@@ -33,6 +33,15 @@
 // 17 cases: 5 refuse the arguments or environment, 3 refuse the bundle before
 // any network call, 9 drive the protocol.
 //
+// ⏱ APPENDED 2026-09-23 (row O-GLITCHTIP-CALLS-HAVE-NO-RETRY): 21 cases, as the
+// runner counts them (the protocol block already held 10, not the 9 above, so
+// the 17 was 18 before this row) — the
+// three added drive the shared bounded retry through the stub: a 522 on the
+// chunk POST is re-sent and the run is green, a 401 is not re-sent, and a
+// request that never answers is cut at the per-attempt ceiling (shortened for
+// the test through OPS_REQUEST_TIMEOUT_MS, which can only shorten it) and
+// re-sent. The 503 case now also counts the three attempts.
+//
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe, before, after } from 'node:test';
@@ -188,13 +197,19 @@ const readZip = (buf) => {
 // ── the protocol stub ────────────────────────────────────────────────────────
 /** Speaks the four calls the script makes. `filesAnswers` is consumed one entry
  *  per `GET /files/`, so a run can be made to see an empty list first and a
- *  populated one later — or an empty one for ever, which is the defect. */
+ *  populated one later — or an empty one for ever, which is the defect.
+ *
+ *  ⏱ 2026-09-23: `failFirst` maps a path to the statuses its FIRST requests get,
+ *  one per request, before the route answers normally — a status of 0 means
+ *  "accept the request and never answer". The hung responses are ended on close. */
 const startStub = (opts = {}) =>
   new Promise((res) => {
     const seen = { requests: [], uploads: [], assemble: null, fileReads: 0 };
     const filesAnswers = opts.filesAnswers ?? [
       [{ name: 'main.dart.js' }, { name: 'main.dart.js.map' }],
     ];
+    const failFirst = new Map(Object.entries(opts.failFirst ?? {}).map(([p, s]) => [p, [...s]]));
+    const hung = [];
     let origin = '';
     const server = createServer((req, out) => {
       const body = [];
@@ -207,6 +222,12 @@ const startStub = (opts = {}) =>
           out.writeHead(code, { 'content-type': raw ? 'text/plain' : 'application/json' });
           out.end(raw ?? JSON.stringify(obj));
         };
+        const queued = failFirst.get(path);
+        if (queued && queued.length > 0) {
+          const status = queued.shift();
+          if (status === 0) return hung.push(out);
+          return send(status, null, `error code: ${status}`);
+        }
         if (path === `/api/0/organizations/${ORG}/chunk-upload/`) {
           if (opts.chunkUploadStatus) return send(opts.chunkUploadStatus, { detail: 'nope' });
           if (opts.chunkUploadRaw !== undefined) return send(200, null, opts.chunkUploadRaw);
@@ -242,6 +263,7 @@ const startStub = (opts = {}) =>
         seen,
         close: () =>
           new Promise((done) => {
+            for (const out of hung) out.destroy();
             server.closeAllConnections();
             server.close(done);
           }),
@@ -341,6 +363,41 @@ describe('upload-web-sourcemaps: the protocol', () => {
       const r = await run(ok(buildDir()), { SENTRY_URL: stub.origin, ...TOKEN });
       assert.equal(r.code, 1);
       assert.match(r.all, /503/);
+      // ⏱ 2026-09-23: a 503 is "not now", so it was asked the plan's three times
+      // before it became the red run — and never a fourth.
+      assert.equal(stub.seen.requests.filter((q) => q.endsWith('/chunk-upload/')).length, 3);
+      assert.match(r.all, /the same on all 3 attempt\(s\)/);
+    });
+  });
+
+  test('🔴 a 522 on the chunk POST is re-sent, and the run is GREEN — the failure of run 35831511489', async () => {
+    await withStub({ failFirst: { '/chunks/': [522] } }, async (stub) => {
+      const r = await run(ok(buildDir()), { SENTRY_URL: stub.origin, ...TOKEN });
+      assert.equal(r.code, 0, r.all);
+      assert.equal(stub.seen.requests.filter((q) => q === 'POST /chunks/').length, 2);
+      assert.match(r.stdout, /retry: attempt 1\/3 failed \(POST \S+\/chunks\/: the request answered HTTP 522\)/);
+      assert.match(r.stdout, /ok {2}2 file\(s\) now stored against release/);
+    });
+  });
+
+  test('🔴 a 401 is NOT re-sent — a revoked token is an answer, and the run is red at once', async () => {
+    await withStub({ chunkUploadStatus: 401 }, async (stub) => {
+      const r = await run(ok(buildDir()), { SENTRY_URL: stub.origin, ...TOKEN });
+      assert.equal(r.code, 1);
+      assert.match(r.all, /→ 401/);
+      assert.equal(stub.seen.requests.filter((q) => q.endsWith('/chunk-upload/')).length, 1, 'a 401 was re-asked');
+      assert.doesNotMatch(r.all, /retry: /);
+    });
+  });
+
+  test('🔴 a request that NEVER answers is cut at the per-attempt ceiling and re-sent', async () => {
+    const infoPath = `/api/0/organizations/${ORG}/chunk-upload/`;
+    await withStub({ failFirst: { [infoPath]: [0] } }, async (stub) => {
+      const r = await run(ok(buildDir()), { SENTRY_URL: stub.origin, ...TOKEN, OPS_REQUEST_TIMEOUT_MS: '300' });
+      assert.equal(r.code, 0, r.all);
+      assert.equal(stub.seen.requests.filter((q) => q === `GET ${infoPath}`).length, 2);
+      // The ceiling's own line (bounded-retry.mjs attemptWithCeiling), which wins the race.
+      assert.match(r.stdout, /retry: attempt 1\/3 failed \(no answer within 0\.3s \(the per-request ceiling, attempt 1\)\)/);
     });
   });
 

@@ -3009,6 +3009,16 @@
   {
     "claims": [],
     "invokedBy": [
+      ".github/workflows/deploy-web.yml#deploy-web"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/create-glitchtip-release.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
       ".github/workflows/ci.yml#guards-legal"
     ],
     "kind": "script",

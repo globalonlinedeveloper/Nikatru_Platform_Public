@@ -72,6 +72,39 @@
 // the laptop for a reason that is about `spawnSync`, not about symbols.
 // tooling/ci/test/native-symbol-upload.test.mjs.
 //
+// ⏱ APPENDED 2026-09-23 (row O-GLITCHTIP-CALLS-HAVE-NO-RETRY) — A TRANSIENT
+// ORIGIN ERROR IS RE-ASKED, NOT REPORTED AS A LOST BUILD.
+// 🔴 deploy-web run 35831511489 (main f64cd921) went red on ONE 522 from the
+// GlitchTip origin (`POST …/releases/ returned 522 <unknown status code>`), and
+// nothing on this lane re-asked. The CLI has no retry of its own: read at the
+// pinned v1.0.0, src/api/client.rs builds a reqwest client with a 30 s CONNECT
+// timeout, NO total timeout and no retry, and every non-2xx is `bail!("{METHOD}
+// {url} returned {status}: {body}")`. So the whole CLI run is now ONE attempt of
+// `readWithBoundedRetry` (tooling/ops/bounded-retry.mjs — the shared plan, not a
+// second one): `uploadDebugFiles` below.
+//   · WHAT IS RE-ASKED is read from the CLI's own pinned error strings by
+//     `transientCliLine`: a `returned <status>` whose status `isTransientStatus`
+//     calls transient (429, 5xx), or a `<METHOD> <url> failed` / `Chunk upload to
+//     <url> failed` (the request never answered). ANY other status in the same
+//     output — a 401, a 400 — makes the failure FINAL on attempt 1: a revoked
+//     token does not improve in two seconds. The found-count and assembly
+//     refusals are never re-asked; they are answers, not blips.
+//   · WHY A RE-RUN IS SAFE: a debug file goes up as ONE chunk named by the SHA-1
+//     of its own bytes, and assemble is keyed by those checksums (read from
+//     debug_files.rs), so a second attempt re-sends the same bytes under the same
+//     names. A whole-job re-run already sends the identical sequence today;
+//     what the server does with a second assemble was not measured live.
+//   · THE CEILING IS THE SPAWN'S, 120 s PER ATTEMPT. The module's 15 s ceiling
+//     races a PROMISE, and `spawnSync` blocks the loop until the child exits, so
+//     that timer cannot interrupt it — and 15 s would be too short anyway: the
+//     last green uploads took 5 s, 11 s and 22 s (build-platforms run
+//     35851949126), and `--wait` alone may poll for 60 s. 120 s is about five
+//     times the longest measured, so a hang ends and a slow link does not. Worst
+//     case per step: 3 × 120 s + the 1 s and 2 s gaps = 363 s, inside the 30 and
+//     45 minute job timeouts in build-platforms.yml.
+// The injected `spawn` is what the negative tests drive; no fake CLI is put on
+// disk (the reason is the section above).
+//
 // Usage:
 //   node tooling/ops/upload-native-symbols.mjs \
 //     --cli <path to glitchtip-cli> --dir <split-debug-info dir> \
@@ -84,18 +117,65 @@ import { existsSync, readdirSync, statSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readWithBoundedRetry, transientLook, CouldNotLook, isTransientStatus } from './bounded-retry.mjs';
+
+/** The longest ONE run of the CLI may take before it is stopped and counted as
+ *  a transient attempt. Defended in the header (⏱ APPENDED 2026-09-23). */
+export const CLI_ATTEMPT_TIMEOUT_MS = 120_000;
+
+/** The CLI's own request-failure lines, read from glitchtip-cli v1.0.0
+ *  src/api/client.rs: `bail!("{METHOD} {url} returned {status}: {body}")`,
+ *  `bail!("Chunk upload to {url} returned {status}: {body}")`, and the transport
+ *  contexts `"{METHOD} {url} failed"` / `"Chunk upload to {url} failed"`. */
+const CLI_STATUS = /(?:\b(?:GET|POST|PUT|DELETE) \S+|Chunk upload to \S+) returned (\d{3})\b/;
+const CLI_DROPPED = /(?:\b(?:GET|POST|PUT|DELETE) \S+|Chunk upload to \S+) failed\b/;
+
+/**
+ * PURE. The first line of the CLI's output that says a request failed in a
+ * way worth ASKING AGAIN, or `null` when nothing in it does.
+ *
+ * `null` whenever ANY status line carries a status that is not transient: one
+ * 401 beside a 522 is still a revoked token, and re-running a CLI that will
+ * answer 401 again only makes the log longer.
+ *
+ * @param {string} out  the CLI's stdout and stderr, joined
+ * @returns {string | null}
+ */
+export function transientCliLine(out) {
+  let first = null;
+  for (const raw of String(out ?? '').split(/\r?\n/)) {
+    const line = raw.trim();
+    const status = CLI_STATUS.exec(line);
+    if (status) {
+      if (!isTransientStatus(Number(status[1]))) return null;
+      first ??= line;
+    } else if (CLI_DROPPED.test(line)) {
+      first ??= line;
+    }
+  }
+  return first === null ? null : first.slice(0, 400);
+}
 
 /**
  * The CLI's output contract, read from glitchtip-cli v1.0.0
  * src/commands/debug_files.rs. Every clause here refuses a state in which the
  * command exits 0 having stored nothing; see the header.
  *
+ * ⏱ APPENDED 2026-09-23: a refusal whose cause is a request that failed in a
+ * transient way carries `transient: true` (and `blip`, the line that said so).
+ * Only the three refusals a failed request can produce may carry it — a
+ * non-zero exit, a missing "Upload complete" line (every chunk failed, so the
+ * CLI printed "No files to assemble." and returned Ok) and a non-zero error
+ * count. A file-count mismatch and an unfinished assembly are answers.
+ *
  * @param {{out: string, status: number|null, fileCount: number, cli: string}} r
- * @returns {{ok: true} | {ok: false, lines: string[]}}
+ * @returns {{ok: true} | {ok: false, lines: string[], transient?: boolean, blip?: string}}
  */
 export function readCliVerdict({ out, status, fileCount, cli }) {
+  const blip = transientCliLine(out);
+  const orBlip = (verdict) => (blip === null ? verdict : { ...verdict, transient: true, blip });
   if (status !== 0) {
-    return { ok: false, lines: [`${cli} debug-files upload exited ${status}. Its output is above.`] };
+    return orBlip({ ok: false, lines: [`${cli} debug-files upload exited ${status}. Its output is above.`] });
   }
 
   const found = /Found (\d+) debug information file\(s\)/.exec(out);
@@ -125,23 +205,23 @@ export function readCliVerdict({ out, status, fileCount, cli }) {
 
   const complete = /Upload complete: (\d+) chunk\(s\) uploaded, (\d+) error\(s\)\./.exec(out);
   if (!complete) {
-    return {
+    return orBlip({
       ok: false,
       lines: [
         'the CLI did not print its "Upload complete" line, so the per-file error count is unknown.',
         'That line is the only place a failed chunk is reported — the command returns Ok either way.',
       ],
-    };
+    });
   }
   if (Number(complete[2]) !== 0) {
-    return {
+    return orBlip({
       ok: false,
       lines: [
         `${complete[2]} chunk upload(s) failed and the CLI still exited 0.`,
         'Its per-file loop counts errors and returns Ok, so this is the only place that failure can',
         'become a red build.',
       ],
-    };
+    });
   }
   if (Number(complete[1]) !== fileCount) {
     return {
@@ -168,6 +248,67 @@ export function readCliVerdict({ out, status, fileCount, cli }) {
   }
 
   return { ok: true };
+}
+
+/**
+ * Run `<cli> <args>` as ONE attempt of the shared bounded plan, re-asking only
+ * what `readCliVerdict` marks transient (header, ⏱ APPENDED 2026-09-23).
+ *
+ * `spawn` is `spawnSync`'s signature and is injected by the tests; `timeoutMs`
+ * is its `timeout`, so a CLI that never returns is killed and counted as a
+ * transient attempt (`ETIMEDOUT`). Any other spawn error (ENOENT: no such
+ * binary) is final. The CLI's output is printed on every attempt, so a run that
+ * needed a retry shows both.
+ *
+ * @returns {Promise<{ok: true, attempts: number} | {ok: false, attempts: number, lines: string[]}>}
+ */
+export async function uploadDebugFiles({
+  cli,
+  args,
+  env,
+  fileCount,
+  spawn = spawnSync,
+  sleep,
+  note = (line) => console.log(`  retry: ${line}`),
+  print = (text) => console.log(text),
+  timeoutMs = CLI_ATTEMPT_TIMEOUT_MS,
+}) {
+  let attempts = 0;
+  let lastLines = [];
+  try {
+    await readWithBoundedRetry(
+      async (attempt) => {
+        attempts = attempt;
+        const r = spawn(cli, args, { encoding: 'utf8', env, timeout: timeoutMs });
+        const out = `${r.stdout ?? ''}${r.stderr ?? ''}`;
+        print(out);
+        if (r.error?.code === 'ETIMEDOUT') {
+          lastLines = [
+            `${cli} debug-files upload gave no result within ${timeoutMs / 1000}s and was stopped.`,
+            `The last green uploads took 22 s at most; a run this long is a hang, not a slow link.`,
+          ];
+          throw transientLook(`${cli} debug-files upload gave no result within ${timeoutMs / 1000}s (attempt ${attempt})`);
+        }
+        if (r.error) {
+          lastLines = [`${cli} could not be run: ${r.error.message}`];
+          throw new CouldNotLook(lastLines[0]);
+        }
+        const verdict = readCliVerdict({ out, status: r.status, fileCount, cli });
+        if (verdict.ok) return verdict;
+        lastLines = verdict.lines;
+        if (verdict.transient) throw transientLook(`${verdict.lines[0]} The failed request: ${verdict.blip}`);
+        throw new CouldNotLook(verdict.lines[0]);
+      },
+      { sleep, note },
+    );
+    return { ok: true, attempts };
+  } catch (e) {
+    if (!(e instanceof CouldNotLook)) throw e;
+    // A failure that outlived the plan says so in its first line; a final one on
+    // attempt 1 keeps the verdict's own wording, unchanged from before the retry.
+    const lines = attempts > 1 ? [e.message, ...lastLines] : lastLines;
+    return { ok: false, attempts, lines };
+  }
 }
 
 // Imported for its verdict alone by the negative test; only a direct run does
@@ -272,26 +413,18 @@ if (files.length === 0) {
 console.log(`⬜ ${files.length} debug file(s) in ${dir}:`);
 for (const f of files) console.log(`     ${f.slice(abs.length + 1)}`);
 
-const r = spawnSync(
+const result = await uploadDebugFiles({
   cli,
-  ['debug-files', 'upload', '--wait', '--org', org, '--project', project, abs],
-  {
-    encoding: 'utf8',
-    env: { ...process.env, SENTRY_URL: server },
-  },
-);
-
-const out = `${r.stdout ?? ''}${r.stderr ?? ''}`;
-console.log(out);
-
-if (r.error) fail([`${cli} could not be run: ${r.error.message}`]);
-
-const verdict = readCliVerdict({ out, status: r.status, fileCount: files.length, cli });
-if (!verdict.ok) fail(verdict.lines);
+  args: ['debug-files', 'upload', '--wait', '--org', org, '--project', project, abs],
+  env: { ...process.env, SENTRY_URL: server },
+  fileCount: files.length,
+});
+if (!result.ok) fail(result.lines);
 
 console.log(
   `ok  native symbols — ${files.length} debug file(s) from ${dir} uploaded to ${server} ` +
-    `(org ${org}, project ${project}) and assembled by the server`,
+    `(org ${org}, project ${project}) and assembled by the server` +
+    (result.attempts > 1 ? ` on attempt ${result.attempts}` : ''),
 );
 
 }
