@@ -1013,8 +1013,8 @@ describe('release-manifest.mjs — origin channels are gated on signing posture'
 
     // A register with no `channels` key, and no register at all, are both empty
     // answers rather than a crash in the middle of a release job.
-    assert.deepEqual(originEnvironments({}, 'subscriptiontracker', ['subscriptiontracker-v1-subscriptiontracker.msix']), { environments: [], omitted: [] });
-    assert.deepEqual(originEnvironments(undefined, 'subscriptiontracker', ['subscriptiontracker-v1-subscriptiontracker.msix']), { environments: [], omitted: [] });
+    assert.deepEqual(originEnvironments({}, 'subscriptiontracker', ['subscriptiontracker-v1-subscriptiontracker.msix']), { environments: [], omitted: [], submitted: [] });
+    assert.deepEqual(originEnvironments(undefined, 'subscriptiontracker', ['subscriptiontracker-v1-subscriptiontracker.msix']), { environments: [], omitted: [], submitted: [] });
   });
 
   // 🔴 THE `new Set(out)` DEDUPE HAD NOTHING HOLDING IT — pinned 2026-08-22 by the
@@ -2265,6 +2265,44 @@ describe('release-manifest.mjs — the SURFACE of the release, not just of the r
     // download origin for a file this lane never built.
     const withMsix = originEnvironmentsRaw(withSurfaces(BOTH_SURFACES), 'fullshot', ['fullshot-chromium.zip', 'fullshot-v1.msix'], 'extension');
     assert.deepEqual(withMsix.environments, ['fullshot-amo', 'fullshot-chrome-webstore']);
+  });
+
+  // ⏱ 2026-09-23 · #887. amo is `submittable: true` in the real register. Its
+  // [10]D-9 record is the dispatch submit's `--state in_review`; a tag-push origin
+  // record of `pending_manual_publish` is one record-deployment.mjs refuses at run
+  // time, so the lane must never be handed that environment.
+  const ARMED_AMO = {
+    channels: [...REGISTER.channels.map((c) => ({ ...c, surface: 'app' })), EXT_ROWS[0], { ...EXT_ROWS[1], submittable: true }],
+  };
+
+  test('a SUBMITTABLE store row is reported as submitted, never as an origin environment', () => {
+    const r = originEnvironmentsRaw(withSurfaces(ARMED_AMO), 'fullshot', ['fullshot-chromium.zip'], 'extension');
+    assert.deepEqual(r.environments, ['fullshot-chrome-webstore']);
+    assert.deepEqual(r.submitted, [{ id: 'amo', environment: 'fullshot-amo' }]);
+    assert.deepEqual(r.omitted, [], 'a submitted row is not a withheld row');
+  });
+
+  test('CLI --emit-environments leaves a submittable row off stdout and names it on stderr', () => {
+    const root = fixture({ register: ARMED_AMO, apps: ['subscriptiontracker'], tools: [{ dir: 'Full_Screen_Shot', id: 'fullshot' }] });
+    const d = join(TMP, `d${seq++}`);
+    mkdirSync(d, { recursive: true });
+    writeFileSync(join(d, 'fullshot-chromium.zip'), 'z');
+    const r = cli(['--emit-environments', d, '--app', 'fullshot', '--repo-root', root]);
+    assert.equal(r.code, 0, r.out);
+    assert.deepEqual(r.stdout.trim().split(String.fromCharCode(10)), ['fullshot-chrome-webstore']);
+    assert.match(r.out, /submitted-lane\s+fullshot-amo — channel "amo" is `submittable: true`/);
+  });
+
+  test('CLI --emit-environments exits 0 with an EMPTY stdout when every matched row is submittable', () => {
+    const onlyAmo = { channels: [...REGISTER.channels.map((c) => ({ ...c, surface: 'app' })), { ...EXT_ROWS[1], submittable: true }] };
+    const root = fixture({ register: onlyAmo, apps: ['subscriptiontracker'], tools: [{ dir: 'Full_Screen_Shot', id: 'fullshot' }] });
+    const d = join(TMP, `d${seq++}`);
+    mkdirSync(d, { recursive: true });
+    writeFileSync(join(d, 'fullshot-chromium.zip'), 'z');
+    const r = cli(['--emit-environments', d, '--app', 'fullshot', '--repo-root', root]);
+    assert.equal(r.code, 0, r.out);
+    assert.equal(r.stdout.trim(), '', 'the push lane loops over stdout, so an empty list records nothing');
+    assert.match(r.out, /submitted-lane\s+fullshot-amo/);
   });
 
   test('productSurfaces reads the tool.json DECLARATION, not the directory it sits in', () => {

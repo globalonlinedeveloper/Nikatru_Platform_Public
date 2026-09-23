@@ -294,6 +294,24 @@ function narrowingReason(cond) {
   return { ids };
 }
 
+/**
+ * The ONE triggering event a step-level `if:` pins, or `null`. ⏱ 2026-09-23.
+ * Pinned means a top-level conjunct `github.event_name == '<event>'` in a
+ * condition with no `||` anywhere: a disjunction, a negation or a parenthesised
+ * clause could admit a second event, so it pins nothing and the step is read as
+ * reachable from every event — the fail-closed reading.
+ */
+function pinnedEvent(stepIf) {
+  if (!stepIf) return null;
+  const body = stepIf.cond.trim().replace(/^\$\{\{\s*/, '').replace(/\s*\}\}$/, '').trim();
+  if (body.includes('||')) return null;
+  for (const p of body.split('&&').map((s) => s.trim())) {
+    const m = p.match(/^github\.event_name\s*===?\s*(['"])([A-Za-z_]+)\1$/);
+    if (m) return m[2];
+  }
+  return null;
+}
+
 /** The step a given line belongs to, plus the ids every EARLIER step declares.
  *  `null` when the line belongs to no step at all — which means this parse has
  *  lost the job's step structure, and the caller must treat it as COVERAGE LOST
@@ -627,10 +645,32 @@ for (const row of submittableRows) {
     // Rules 4 and 5 apply to EVERY record call in a submission workflow, whether
     // or not this run classified a publishing invocation — the overstatement is
     // wrong in a rehearsal lane too, and cheaper to catch before it is copied.
+    // ⏱ 2026-09-23 — ONE EXCEPTION, AND IT IS A FACT ABOUT RUNS, NOT A WAIVER: a
+    // record step pinned to one event, in a job whose EVERY publishing invocation
+    // is pinned to a DIFFERENT event, can never run in a submitting run, so it
+    // is not a submitting run's claim. extensions.yml's release job is the
+    // shape: the tag-PUSH origin loop (`pending_manual_publish`) beside the
+    // dispatch-only AMO submit. Any unpinned side keeps the step graded.
+    const publishEvents = invocations
+      .filter((i) => i.canPublish)
+      .map((i) => pinnedEvent(stepContext(job, i.n)?.step.stepIf ?? null));
     for (const c of calls) {
       const key = `${wf.rel}:${c.n}`;
       if (gradedRecordLines.has(key)) continue;
       gradedRecordLines.add(key);
+      const recordEvent = pinnedEvent(c.ctx?.step.stepIf ?? null);
+      if (
+        recordEvent !== null &&
+        publishEvents.length > 0 &&
+        publishEvents.every((e) => e !== null && e !== recordEvent)
+      ) {
+        prints.push(
+          `[10]D-9 · ${wf.rel}:${c.n} — not graded as a "${row.id}" submission record: its step runs only on ` +
+            `\`${recordEvent}\`, and every publishing invocation in job "${job.name}" runs only on ` +
+            `${[...new Set(publishEvents)].map((e) => `\`${e}\``).join(', ')}, so no submitting run reaches it.`,
+        );
+        continue;
+      }
       if (c.state !== null && !SUBMIT_TIME_STATES.includes(c.state) && !/\$\{\{/.test(c.state)) {
         problems.push(
           `[10]D-9 · ${wf.rel}:${c.n} records \`--state ${c.state}\` from the "${row.id}" SUBMISSION workflow. ` +
