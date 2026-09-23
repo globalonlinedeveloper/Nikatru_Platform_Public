@@ -1074,6 +1074,160 @@ jobs:
           echo "Chrome: $CHROME_EXECUTABLE"
           dart test -p chrome
 
+  android-apps:
+    name: Derive the Android app set from the pub workspace
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      apps: ${{ steps.workspace.outputs.apps }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      # why: the app set comes from the emitter build-platforms.yml `prepare` runs, so
+      # the PR lane builds the apps the release lane builds, with no list kept here.
+      - name: The matrix comes from the workspace, never from this file
+        id: workspace
+        run: |
+          set -euo pipefail
+          apps="$(node tooling/ci/assert-release-lane-generic.mjs --emit-apps)"
+          echo "apps=${apps}" >> "$GITHUB_OUTPUT"
+
+  android-artifacts:
+    name: Android artifacts (built, inspected, discarded)
+    runs-on: ubuntu-24.04
+    # why 30: the same three builds measured 11.5–11.7 min inside build-platforms.yml linux_web_android — docs/ci/build-platforms.md §PR lane.
+    timeout-minutes: 30
+    needs: android-apps
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.android-apps.outputs.apps) }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: ./.github/actions/setup-flutter
+      - name: Resolve the workspace
+        run: flutter pub get --enforce-lockfile
+      - name: Derive the release line from pubspec
+        id: ver
+        run: node tooling/ci/assert-app-versioning.mjs --emit apps/${{ matrix.app }} >> "$GITHUB_OUTPUT"
+      # why: build-platforms.yml linux_web_android's three Android builds, flag for flag;
+      # built-artifact-pr-lane.test.mjs holds the copies equal. APP_VERSION ends in +pr,
+      # not the commit, and that is legal ONLY because tooling/channel-register.json lists
+      # this job in releaseBuildsNeverShipped. No signing secret is in reach, so Gradle
+      # signs with its debug fallback. The one secret is the PUBLIC RevenueCat SDK key
+      # that storeKeyDefine requires of an android-play stamp; the rest stay empty.
+      - name: Build android (apk — sideloadable build proof)
+        working-directory: apps/${{ matrix.app }}
+        run: >
+          flutter build apk --release
+          --obfuscate --split-debug-info=build/symbols/android-apk
+          --build-name=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
+          --build-number=${{ github.run_number }}
+          --dart-define=SUPABASE_URL=
+          --dart-define=SUPABASE_ANON_KEY=
+          --dart-define=API_BASE_URL=
+          --dart-define=APP_VERSION=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}+pr
+          --dart-define=RELEASE_CHANNEL=android-play
+          --dart-define=REVENUECAT_KEY=${{ secrets.REVENUECAT_PUBLIC_KEY_GOOGLE }}
+          --dart-define=GLITCHTIP_DSN=
+      - name: Build android (aab — the Google Play artifact)
+        working-directory: apps/${{ matrix.app }}
+        run: >
+          flutter build appbundle --release
+          --obfuscate --split-debug-info=build/symbols/android-aab
+          --build-name=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
+          --build-number=${{ github.run_number }}
+          --dart-define=SUPABASE_URL=
+          --dart-define=SUPABASE_ANON_KEY=
+          --dart-define=API_BASE_URL=
+          --dart-define=APP_VERSION=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}+pr
+          --dart-define=RELEASE_CHANNEL=android-play
+          --dart-define=REVENUECAT_KEY=${{ secrets.REVENUECAT_PUBLIC_KEY_GOOGLE }}
+          --dart-define=GLITCHTIP_DSN=
+      # why: Flutter writes every .apk to one path, so the Play .apk is set aside and put back — §apps-gov-in.
+      - name: Set the Play .apk aside (Flutter writes every .apk to one path)
+        working-directory: apps/${{ matrix.app }}
+        run: |
+          set -euo pipefail
+          rm -rf build/android-play-apk-aside
+          mkdir -p build/android-play-apk-aside
+          mv build/app/outputs/flutter-apk/app-release.apk build/android-play-apk-aside/
+          if [ -f build/app/outputs/flutter-apk/app-release.apk.sha1 ]; then mv build/app/outputs/flutter-apk/app-release.apk.sha1 build/android-play-apk-aside/; fi
+      # why: no env block — main's step env points Gradle at the apps.gov.in key; here no key
+      # exists, so this build is debug-signed too. RELEASE_CHANNEL=apps-gov-in sells nothing.
+      - name: Build android (apk — apps.gov.in, its own key, sells nothing)
+        working-directory: apps/${{ matrix.app }}
+        run: >
+          flutter build apk --release
+          --obfuscate --split-debug-info=build/symbols/android-apk-apps-gov-in
+          --build-name=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
+          --build-number=${{ github.run_number }}
+          --dart-define=SUPABASE_URL=
+          --dart-define=SUPABASE_ANON_KEY=
+          --dart-define=API_BASE_URL=
+          --dart-define=APP_VERSION=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}+pr
+          --dart-define=RELEASE_CHANNEL=apps-gov-in
+          --dart-define=GLITCHTIP_DSN=
+      - name: Take the apps.gov.in .apk out, and put the Play .apk back
+        id: agi_apk
+        working-directory: apps/${{ matrix.app }}
+        env:
+          APP: ${{ matrix.app }}
+          BUILD_NAME: ${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          file="${APP}-apps-gov-in-${BUILD_NAME}.apk"
+          mkdir -p build/apps-gov-in
+          mv build/app/outputs/flutter-apk/app-release.apk "build/apps-gov-in/${file}"
+          rm -f build/app/outputs/flutter-apk/app-release.apk.sha1
+          mv build/android-play-apk-aside/* build/app/outputs/flutter-apk/
+          rmdir build/android-play-apk-aside
+          if cmp -s build/app/outputs/flutter-apk/app-release.apk "build/apps-gov-in/${file}"; then
+            echo "::error title=apps.gov.in apk::the restored Play .apk is byte-identical to the apps.gov.in one"
+            exit 1
+          fi
+          echo "apk=apps/${APP}/build/apps-gov-in/${file}" >> "$GITHUB_OUTPUT"
+      - name: Every artifact this lane claims exists, and is not empty
+        run: >
+          node tooling/ci/assert-artifact-shape.mjs
+          --app ${{ matrix.app }} --platform android-artifacts
+      - name: Every native library is aligned for a 16 KB memory page
+        run: >
+          node --single-threaded tooling/ci/assert-elf-page-alignment.mjs
+          apps/${{ matrix.app }}/build/app/outputs/bundle/release/app-release.aab
+      # why: apps.gov.in runs MobSF over the built .apk, and the merged manifest
+      # exists only inside it. docs/ci/build-platforms.md §vapt.
+      - name: The built .apk passes the static apps.gov.in VAPT items
+        run: >
+          node tooling/ci/assert-android-vapt-manifest.mjs
+          apps/${{ matrix.app }}/build/app/outputs/flutter-apk/app-release.apk
+          --app ${{ matrix.app }}
+      - name: The apps.gov.in .apk passes the static apps.gov.in VAPT items
+        run: >
+          node tooling/ci/assert-android-vapt-manifest.mjs
+          ${{ steps.agi_apk.outputs.apk }}
+          --app ${{ matrix.app }}
+      # why debug: no key is in reach, so the .apk is debug-signed, and --posture debug
+      # is the posture that REQUIRES the debug signer; the permission, form and minSdk
+      # checks run in every posture.
+      - name: The apps.gov.in .apk — its signer against the pin, its minSdk against the form
+        id: agi_verify
+        run: >
+          node tooling/ci/assert-apps-gov-in-apk.mjs
+          --apk ${{ steps.agi_apk.outputs.apk }}
+          --app ${{ matrix.app }}
+          --posture debug
+      # why: nothing here leaves the runner — no upload-artifact, no symbols, no GlitchTip.
+      # A debug-signed PR build is discarded, and release-provenance gives a gate
+      # constituent no credit for publishing (assert-release-provenance.mjs:735-770).
+
 
   ci-gate:
     # why: the ONE required status check on main. It must need every other job in
@@ -1098,6 +1252,8 @@ jobs:
       - app-brick
       - sites
       - workspace-gate
+      - android-apps
+      - android-artifacts
     if: always()
     steps:
       - name: Require all lanes green
@@ -1116,6 +1272,8 @@ jobs:
           echo "app-brick=${{ needs.app-brick.result }}"
           echo "sites=${{ needs.sites.result }}"
           echo "workspace-gate=${{ needs.workspace-gate.result }}"
+          echo "android-apps=${{ needs.android-apps.result }}"
+          echo "android-artifacts=${{ needs.android-artifacts.result }}"
           if [ "${{ contains(needs.*.result, 'failure') }}" = "true" ] || [ "${{ contains(needs.*.result, 'cancelled') }}" = "true" ] || [ "${{ contains(needs.*.result, 'skipped') }}" = "true" ]; then
             echo "::error::One or more CI lanes failed, was cancelled, or never ran — see the verdicts above"; exit 1
           fi

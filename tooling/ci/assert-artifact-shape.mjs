@@ -160,6 +160,35 @@ const LANE_OUTPUTS = new Map([
     },
   ],
   [
+    // ⏱ ADDED 2026-09-23 (O-BUILT-ARTIFACT-GUARDS-RUN-ONLY-AFTER-MERGE) — ci.yml's
+    // `android-artifacts`, the PR lane. It builds linux_web_android's three Android
+    // builds and uploads nothing, so the files are asserted where Flutter and the
+    // take-out step leave them. No register row names this lane: the guard prints
+    // a note for an unbound lane key and grades the files all the same.
+    'android-artifacts',
+    {
+      what: 'the three Android artifacts a PR builds and discards',
+      expect: [
+        {
+          ext: '.aab',
+          dir: 'build/app/outputs/bundle/release',
+          why: 'the Google Play artifact — the format the android-play row accepts, and the one the union upload could hide behind the .apk',
+        },
+        {
+          ext: '.apk',
+          dir: 'build/app/outputs/flutter-apk',
+          why: 'the only Android artifact a person can sideload onto a handset (no channel ACCEPTS an .apk, which is why release-manifest.mjs declares it as an extra rather than a register row declaring it)',
+        },
+        {
+          ext: '.apk',
+          dir: 'build/apps-gov-in',
+          why: 'the apps.gov.in .apk, its own build stamped RELEASE_CHANNEL=apps-gov-in, taken out of flutter-apk/ so the Play .apk can go back. The VAPT and signer checks after this step read it from here',
+        },
+      ],
+      gaps: [],
+    },
+  ],
+  [
     'windows',
     {
       what: 'the Windows runner bundle and the Microsoft Store package',

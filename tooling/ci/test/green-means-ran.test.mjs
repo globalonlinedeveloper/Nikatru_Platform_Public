@@ -124,9 +124,10 @@ describe('§A — an aggregating job cannot go green over a lane that did not ru
     // being a mutation the moment a lane is added and the line is not updated
     // here — and a no-op mutation passes the guard, which reads as the guard
     // failing rather than as the test rotting. Caught 2026-08-02 when the
-    // content_gate lane landed. Keep both halves in step with ci.yml.
-    const root = mutant([['ci.yml', '      - workspace-gate\n    if: always()', '    if: always()']]);
-    caught(run(root), /job "ci-gate" does not `need` "workspace-gate"/);
+    // content_gate lane landed, and again 2026-09-23 when android-artifacts
+    // landed. Keep both halves in step with ci.yml.
+    const root = mutant([['ci.yml', '      - android-artifacts\n    if: always()', '    if: always()']]);
+    caught(run(root), /job "ci-gate" does not `need` "android-artifacts"/);
   });
 
   test('a `needs` entry naming a job that does not exist fails', () => {

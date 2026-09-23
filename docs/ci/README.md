@@ -63,6 +63,8 @@ a bare `true` back and nothing in the tree goes red.
 | `app-brick` | stamps both probe variants, analyzes, validates the clone contract | yes |
 | `sites` | static sites: functions parse, generated feeds, discovery surface | yes |
 | `workspace-gate` | `melos analyze` + `melos test` over the whole workspace | yes |
+| `android-apps` | the Android app set, from `assert-release-lane-generic.mjs --emit-apps` — the emitter `build-platforms.yml` `prepare` runs | yes |
+| `android-artifacts` | per app: `build-platforms.yml` `linux_web_android`'s three Android builds (Play `.apk`, `.aab`, apps.gov.in `.apk`), then the guards that read a built binary; debug-signed and discarded | yes |
 | `ci-gate` | the aggregate — the single required status check on `main` | — |
 
 Two security lanes live in their **own** workflow files and are deliberately
@@ -106,6 +108,27 @@ The obvious next move is to run the 199 s mutation suite only when
 
 The wall-clock cost is paid instead by putting it on **its own job**, so it runs
 beside the four guard shards rather than in front of them.
+
+### Why the Android artifacts are built on every PR
+
+*Added 2026-09-23 · closes `O-BUILT-ARTIFACT-GUARDS-RUN-ONLY-AFTER-MERGE`.*
+
+The guards that read a built Android binary — artifact shape, 16 KB page
+alignment, the apps.gov.in VAPT manifest items and the apps.gov.in `.apk` check —
+ran only in `build-platforms.yml`, which runs on tag, schedule and dispatch. A
+change that broke a built binary therefore merged green and went red on `main`
+afterwards: build apps run 35822768347 is that case, the apps.gov.in `.apk`
+refused for a Play Billing permission a merged change had pulled in.
+
+- `android-artifacts` builds the same three Android targets with the same flags
+  on every pull request, with no path filter, and runs those guards over them.
+  Both jobs are in `ci-gate`'s `needs` and carry no job-level `if:` (§4).
+- Nothing leaves the runner: no upload, no symbols, no signing script. No
+  signing secret is in reach, so Gradle signs with its debug fallback.
+- The cost is about 5 minutes on the pull request's critical path, and $0: a
+  public repository on GitHub-hosted runners.
+- `docs/ci/build-platforms.md` §PR lane says what runs, what stays main-only and
+  why, and which test holds the two copies of the build steps equal.
 
 ## 4. Rules any change to these files must keep
 
