@@ -10,7 +10,7 @@
   "android-channel-manifest.test.mjs": 4,
   "android-signing.test.mjs": 52,
   "android-target-sdk.test.mjs": 34,
-  "android-vapt-manifest.test.mjs": 40,
+  "android-vapt-manifest.test.mjs": 49,
   "app-address-shape.test.mjs": 32,
   "app-dod.test.mjs": 32,
   "app-naming.test.mjs": 30,
