@@ -57,6 +57,18 @@
 // script: the moment the three identity values are copied out of Partner Center,
 // this path publishes. Read it as live code.
 //
+// ⏱ CORRECTED 2026-09-22 — the paragraph above is kept as written and is no
+// longer true of the identity. The publisher account is verified and the three
+// values were copied out of Partner Center that day: `packageIdentity.identityName`
+// is 60210NIKATRU.NikatruSubscriptionTracker, mirrored in the pubspec, with the
+// Package Family Name recomputed by assert-channel-register.mjs §6e. So the
+// placeholder-identity refusal below no longer fires for this app; it stays, for
+// the next app stamped on the sentinel. What stops `--submit` now is only the
+// gates listed above — the typed confirm phrase, the GitHub Actions lane, all
+// five MS_STORE_* secrets, and the publish environment's required reviewer —
+// and the row is still `served: false`. Nothing has been submitted; the submit
+// is the owner's word, never an agent's.
+//
 // Usage:
 //   node tooling/release/submit-windows-store.mjs --dry-run [--app <id>]
 //   node tooling/release/submit-windows-store.mjs --dry-run --allow-missing-artifact

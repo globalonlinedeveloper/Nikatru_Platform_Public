@@ -482,6 +482,71 @@ describe('assert-publish-records — SUBMITTED is not LIVE', () => {
   });
 });
 
+// ⏱ 2026-09-23 · #887. extensions.yml's `release` job is BOTH the tag-push origin
+// lane (records `pending_manual_publish` per channel, on `push` only) AND the AMO
+// submit (on `workflow_dispatch` only). The two steps can never share a run, so
+// the push record is not a submission record and rules 4/5 must not grade it as
+// one — but ONLY when both sides are pinned to a named event by a plain `&&`
+// chain. Anything looser is still graded.
+describe('assert-publish-records — a record no submitting run can reach is not a submission record', () => {
+  const pinnedWorkflow = ({ publishIf, originIf }) => `name: play
+on: [push, workflow_dispatch]
+jobs:
+  dry-run:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Upload
+        id: upload
+${publishIf === null ? '' : `        if: ${publishIf}\n`}        run: node tooling/release/submit-play.mjs --submit --app subscriptiontracker
+      - name: Record the submission
+        if: always() && steps.upload.outcome == 'success'
+        run: node tooling/ci/record-deployment.mjs subscriptiontracker-android-play --state in_review --listing-url https://play.google.com/x
+      - name: Record what shipped as the origin
+${originIf === null ? '' : `        if: ${originIf}\n`}        run: node tooling/ci/record-deployment.mjs subscriptiontracker-android-play --state pending_manual_publish --listing-url https://play.google.com/x
+`;
+  const runPinned = (shape) =>
+    run(
+      fixture({
+        channels: [WEB_ROW, storeRow()],
+        workflows: { 'deploy-web.yml': DEPLOY_WEB_OK, 'submit-play.yml': pinnedWorkflow(shape) },
+      }),
+    );
+  const DISPATCH = "github.event_name == 'workflow_dispatch' && inputs.confirm == 'SUBMIT'";
+
+  test('a push-pinned origin record beside a dispatch-pinned publish is not graded, and passes', () => {
+    const { code, out } = runPinned({ publishIf: DISPATCH, originIf: "github.event_name == 'push' && inputs.dry_run != true" });
+    assert.equal(code, 0, out);
+    assert.match(out, /not graded as a "android-play" submission record: its step runs only on `push`/);
+  });
+
+  test('the same pending record with NO event pin is graded, and fails', () => {
+    const { code, out } = runPinned({ publishIf: DISPATCH, originIf: null });
+    assert.equal(code, 1, out);
+    assert.match(out, /A submitting run knows one fact — it submitted/);
+  });
+
+  test('a pending record pinned to the SAME event as the publish is graded, and fails', () => {
+    const { code, out } = runPinned({ publishIf: DISPATCH, originIf: "github.event_name == 'workflow_dispatch'" });
+    assert.equal(code, 1, out);
+    assert.match(out, /A submitting run knows one fact — it submitted/);
+  });
+
+  test('a pending record whose pin sits inside an `||` is graded, and fails', () => {
+    const { code, out } = runPinned({
+      publishIf: DISPATCH,
+      originIf: "github.event_name == 'push' || github.event_name == 'workflow_dispatch'",
+    });
+    assert.equal(code, 1, out);
+    assert.match(out, /A submitting run knows one fact — it submitted/);
+  });
+
+  test('a push-pinned pending record beside an UNPINNED publish is graded, and fails', () => {
+    const { code, out } = runPinned({ publishIf: null, originIf: "github.event_name == 'push'" });
+    assert.equal(code, 1, out);
+    assert.match(out, /A submitting run knows one fact — it submitted/);
+  });
+});
+
 describe('assert-publish-records — the floor cannot range over zero', () => {
   test('COVERAGE LOST when the register declares no served channel', () => {
     const { code, out } = run(fixture({ channels: [storeRow()], workflows: { 'submit-play.yml': submitWorkflow('      - run: node tooling/release/submit-play.mjs --dry-run --app subscriptiontracker') } }));

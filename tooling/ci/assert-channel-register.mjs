@@ -58,6 +58,11 @@
 //      wrong name. Added 2026-08-08 with the windows-direct and linux-appimage
 //      pins, so that neither landed as a field nothing reads — the defect this
 //      register records catching on `uploadCertificate.alias`.
+//   6e. a configured `packageIdentity` carries the Package Family Name Partner
+//      Center prints, and it equals `${identityName}_${publisherId(publisher)}`
+//      RECOMPUTED here. Every other reader compares one copy of the identity
+//      with another, so a publisher mistyped identically in the register and
+//      the pubspec passed them all. Added 2026-09-22 with the real values.
 //   8. [9]R-3 LIMB 2 — every `${{ secrets.X }}` a workflow names is DECLARED in
 //      the register, as signing material on a row or as non-signing with a
 //      reason. An undeclared name FAILS; a declared name no lane uses PRINTS.
@@ -101,6 +106,7 @@
 // Exit 0 = the register, the apps and the workflows agree. 1 = they do not.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
@@ -404,10 +410,84 @@ function workflow(rel) {
     // but no jobs means the stripper or the matcher has eaten the file, and
     // every "does this job exist" question below would be asked of an empty map.
     const rawTopLevel = (raw.match(/^[a-z]+:/gm) ?? []).length;
-    parsed = { jobs, rawTopLevel, strippedLines: lines.length };
+    // The workflow-level `defaults: run: working-directory:`, read from the
+    // top-level lines only (before `jobs:`). null when absent.
+    let defaultWorkingDirectory = null;
+    const top = jobsAt === -1 ? lines : lines.slice(0, jobsAt);
+    const defaultsAt = top.findIndex((l) => /^defaults:\s*$/.test(l));
+    if (defaultsAt !== -1) {
+      let inRun = false;
+      for (const l of top.slice(defaultsAt + 1)) {
+        if (/^\S/.test(l)) break;
+        if (/^ {2}\S/.test(l)) inRun = /^ {2}run:\s*$/.test(l);
+        const m = inRun ? l.match(/^ {4}working-directory:\s*(.+?)\s*$/) : null;
+        if (m) defaultWorkingDirectory = m[1];
+      }
+    }
+    parsed = { jobs, rawTopLevel, strippedLines: lines.length, defaultWorkingDirectory };
   }
   workflowCache.set(rel, parsed);
   return parsed;
+}
+
+/** Does job `jobName` of parsed workflow `wf` invoke `script`, a path from the
+ *  repository root?
+ *
+ *  ⏱ 2026-09-22 — the literal spelling was the only one accepted until the amo
+ *  row was armed. extensions.yml sets `defaults: run: working-directory:
+ *  extensions`, so its release job runs `node scripts/publish-amo.mjs` for a
+ *  script the register must name as `extensions/scripts/publish-amo.mjs`. A step
+ *  now also counts when its EFFECTIVE working directory — the step's own, else
+ *  the job's `defaults`, else the workflow's — is a leading directory of the
+ *  script and the step names the rest of the path on a token boundary.
+ *
+ *  Only a LITERAL directory resolves. A `${{ … }}` working directory is decided
+ *  at run time, so a step under one counts only by the literal full path; a
+ *  directory this reader cannot know is not a directory it may assume. */
+function jobInvokesScript(wf, jobName, script) {
+  const lines = wf.jobs.get(jobName) ?? [];
+  if (lines.join('\n').includes(script)) return true;
+  const literal = (v) => {
+    if (typeof v !== 'string') return null;
+    const s = v.trim().replace(/^(['"])(.*)\1$/, '$2');
+    return s === '' || s.includes('${{') ? null : s;
+  };
+  let jobDefault = null;
+  for (let i = 0; i < lines.length; i++) {
+    if (!/^ {4}defaults:\s*$/.test(lines[i])) continue;
+    let inRun = false;
+    for (const l of lines.slice(i + 1)) {
+      if (/^ {0,4}\S/.test(l)) break;
+      if (/^ {6}\S/.test(l)) inRun = /^ {6}run:\s*$/.test(l);
+      const m = inRun ? l.match(/^ {8}working-directory:\s*(.+?)\s*$/) : null;
+      if (m) jobDefault = m[1];
+    }
+  }
+  const steps = [];
+  let cur = null;
+  for (const l of lines) {
+    if (/^ {6}- /.test(l)) {
+      cur = [l];
+      steps.push(cur);
+    } else if (/^ {0,4}\S/.test(l)) {
+      cur = null;
+    } else if (cur !== null) {
+      cur.push(l);
+    }
+  }
+  const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  for (const step of steps) {
+    const own = step.map((l) => l.match(/^ {6}- working-directory:\s*(.+?)\s*$|^ {8}working-directory:\s*(.+?)\s*$/)).find(Boolean);
+    const raw = own ? (own[1] ?? own[2]) : (jobDefault ?? wf.defaultWorkingDirectory);
+    const wd = literal(raw);
+    if (wd === null) continue;
+    const prefix = wd.replace(/^\.\//, '').replace(/\/+$/, '');
+    if (prefix === '' || prefix === '.' || !script.startsWith(`${prefix}/`)) continue;
+    const rest = script.slice(prefix.length + 1);
+    const call = new RegExp(`(^|[\\s'"=])(\\./)?${escape(rest)}(?=$|[\\s'";|&)])`);
+    if (step.some((l) => call.test(l))) return true;
+  }
+  return false;
 }
 
 /** Which tracked workflows actually invoke `scriptRel`, anywhere in any job.
@@ -849,10 +929,9 @@ for (const c of channels) {
           // the named JOB must actually RUN the named SCRIPT. Without this a row
           // can name a real script and a real job that have nothing to do with
           // each other, and all three checks above pass.
-          const body = (wf.jobs.get(sub.job) ?? []).join('\n');
-          if (!body.includes(script)) {
+          if (!jobInvokesScript(wf, sub.job, script)) {
             problems.push(
-              `${where} names submission script "${script}" and job "${sub.job}" in ${sub.workflow}, and that job never invokes that script. Both halves exist and they are not connected — which reads as a wired submission path and is not one.`,
+              `${where} names submission script "${script}" and job "${sub.job}" in ${sub.workflow}, and that job never invokes that script — not by that path, and not by the rest of it under a literal \`working-directory\` that is a leading directory of it. Both halves exist and they are not connected — which reads as a wired submission path and is not one.`,
             );
           } else {
             submissionsResolved++;
@@ -1926,6 +2005,117 @@ if (agg === null || typeof agg !== 'object' || typeof agg.workflow !== 'string' 
   }
   if (pinBlocks > 0) {
     ok(`${pinBlocks} pinned signing-material block(s), ${pinsConfigured} configured, ${pinBlocks - pinsConfigured} on their declared sentinel [9]R-3`);
+  }
+}
+
+// ── 6e. THE MSIX PACKAGE FAMILY NAME: a package identity checked against ITSELF ──
+//
+// Added 2026-09-22, the day the windows-store row left the sentinel. 🔴 THE GAP
+// IT CLOSES: every other reader of `packageIdentity` compares one COPY with
+// another — assert-store-metadata.mjs the register with the pubspec,
+// assert-artifact-signed-msix.mjs the register with the packaged manifest,
+// assert-store-identity.mjs `identityName` alone. A publisher mistyped the SAME
+// way in the register and the pubspec (`…3995` for `…3994`, the CN in lower
+// case) agrees with itself everywhere, packages, and submits under a publisher
+// that is not ours. Every one of those guards exited 0 on exactly that mutation.
+//
+// THE INDEPENDENT FACT is the Package Family Name Partner Center prints beside
+// the identity. Its suffix is DERIVED from the publisher: the first 8 bytes of
+// SHA-256 over the publisher string as UTF-16LE, plus one 0 bit, read as 13
+// Crockford base32 characters in lower case. So `packageFamilyName` is a
+// checksum a human transcribed from a different screen, and a publisher that
+// disagrees with it is the typo.
+//
+// THE STATES, the same three §6d grades:
+//   · every identity field on the sentinel → NOT YET CONFIGURED. The PFN must be
+//     absent or the sentinel: a PFN that exists before its inputs do was typed
+//     from somewhere else. (§6d and assert-store-metadata.mjs already PRINT the gap.)
+//   · SOME fields real, some on the sentinel → FAILS (HALF configured).
+//   · none on the sentinel → the PFN is REQUIRED, and must equal
+//     `${identityName}_${publisherId(publisher)}`; otherwise FAIL naming both.
+// ⚠️ `publisherDisplayName` is NOT an input to the PFN, so nothing here can
+// catch it mistyped in both copies; only the package comparison reads it.
+{
+  const PFN_ALPHABET = '0123456789abcdefghjkmnpqrstvwxyz';
+  const publisherId = (publisher) => {
+    const h = createHash('sha256').update(Buffer.from(publisher, 'utf16le')).digest();
+    let bits = '';
+    for (const b of h.subarray(0, 8)) bits += b.toString(2).padStart(8, '0');
+    bits += '0';
+    let out = '';
+    for (let i = 0; i < 65; i += 5) out += PFN_ALPHABET[parseInt(bits.slice(i, i + 5), 2)];
+    return out;
+  };
+  const PFN_INPUTS = ['identityName', 'publisher', 'publisherDisplayName'];
+  let identities = 0;
+  let identitiesConfigured = 0;
+  let identitiesPending = 0;
+  const problemsBefore6e = problems.length;
+  for (const c of channels) {
+    const pi = c.packageIdentity;
+    if (pi === null || typeof pi !== 'object' || Array.isArray(pi)) continue;
+    identities++;
+    const at = `channel "${c.id ?? '(unnamed)'}" packageIdentity`;
+    const sentinel = pi.notYetConfiguredSentinel;
+    if (typeof sentinel !== 'string' || sentinel.trim() === '') {
+      problems.push(
+        `${at} declares no non-empty \`notYetConfiguredSentinel\`. Nothing can then tell a Partner Center placeholder from a real value, so the Package Family Name check below cannot tell "not yet assigned" from "assigned and wrong".`,
+      );
+      continue;
+    }
+    const holes = PFN_INPUTS.filter((f) => typeof pi[f] !== 'string' || pi[f].trim() === '');
+    if (holes.length > 0) {
+      problems.push(`${at}.${holes.join(', .')} missing or empty — a hole, not a placeholder. The register is the single declaration of this identity ([pipeline F-2]).`);
+      continue;
+    }
+    const onSentinel = PFN_INPUTS.filter((f) => pi[f].includes(sentinel));
+    const pfn = pi.packageFamilyName;
+    if (onSentinel.length === PFN_INPUTS.length) {
+      if (pfn !== undefined && pfn !== sentinel) {
+        problems.push(
+          `${at}.packageFamilyName is ${JSON.stringify(pfn)} while every identity field still reads "${sentinel}". A Package Family Name is DERIVED from identityName and publisher; one that exists before they do was copied from somewhere else, and would silently certify whatever values land next.`,
+        );
+      } else {
+        identitiesPending++;
+      }
+      continue;
+    }
+    if (onSentinel.length > 0) {
+      problems.push(
+        `${at} is HALF configured: ${onSentinel.map((f) => `\`${f}\``).join(', ')} still read "${sentinel}" while ${PFN_INPUTS.filter((f) => !onSentinel.includes(f)).map((f) => `\`${f}\``).join(', ')} carry real values. A partially-filled identity packages and submits cleanly under a name that is part real and part placeholder.`,
+      );
+      continue;
+    }
+    if (typeof pfn !== 'string' || pfn.trim() === '') {
+      problems.push(
+        `${at} is configured but declares no \`packageFamilyName\`. It is REQUIRED once the identity is real: it is the one value Partner Center prints that is DERIVED from the publisher, so without it a publisher mistyped identically in ${REGISTER} and the pubspec passes every guard. Copy it from Partner Center → Product → Product identity.`,
+      );
+      continue;
+    }
+    const expected = `${pi.identityName}_${publisherId(pi.publisher)}`;
+    if (pfn !== expected) {
+      problems.push(
+        `${at}.packageFamilyName is ${JSON.stringify(pfn)}, but identityName ${JSON.stringify(pi.identityName)} + publisher ${JSON.stringify(pi.publisher)} derive ${JSON.stringify(expected)} (publisher id "${publisherId(pi.publisher)}" against "${String(pfn).split('_').pop()}"). One of the three was transcribed wrong — most often the publisher, which is compared nowhere else against anything but its own copy — and an MSIX packaged under the wrong publisher submits under an identity we do not own.`,
+      );
+      continue;
+    }
+    identitiesConfigured++;
+  }
+  // COVERAGE. The windows-store row declares one today; a real tree with none
+  // means the block was deleted or the walk stopped reaching it. Real repo only,
+  // for the reason §6d gives.
+  if (scanningRealRepo && identities === 0) {
+    coverageLost([
+      `no channel in ${REGISTER} declares a \`packageIdentity\` object.`,
+      'The Package Family Name check then has no subject. windows-store declares one today; if the',
+      'channel was retired, retire this check in the same change.',
+    ]);
+  }
+  // Only a clean pass prints: a count of "configured" beside a FAIL for the same
+  // row would read as two answers. Every identity is either configured (and its
+  // PFN recomputed), pending (every field on the sentinel, no PFN), or FAILED above.
+  if (identities > 0 && problems.length === problemsBefore6e) {
+    ok(`${identities} MSIX package identit${identities === 1 ? 'y' : 'ies'}: ${identitiesConfigured} configured with its Package Family Name recomputed from the publisher, ${identitiesPending} not yet configured`);
   }
 }
 

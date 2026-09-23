@@ -2114,9 +2114,9 @@
       "storeMetadataDir": "apps/{app}/store/windows-store",
       "ownerQueue": "A-2",
       "accountStatus": {
-        "status": "applied",
-        "asOf": "2026-08-05",
-        "note": "COMPANY account created and SUBMITTED 2026-08-05 via storedeveloper.microsoft.com. Email ✅ and employment ✅ verified INSTANTLY (the sign-in domain matches the company domain — a Google Workspace identity, see nikatru/vendors/google.md); business verification under review, Microsoft quotes ~5 business days, follow-up armed 13 Aug. D-U-N-S auto-retrieved and validated with nothing uploaded and no document reviewed. ⚠️ THIS FIELD SAID \"none\" AND \"OWNER_QUEUE A-2 currently points at Individual\", AND BOTH WERE FALSE — A-2 stopped pointing at Individual on 2026-07-29 and the account was created as a COMPANY on 2026-08-05. The commit that fixed the very same stale claim in this row's `deferral.alsoBlockedBy` (5cefd88, 2026-08-05) did not touch this field, so one fact lived in two fields of one object and only one was corrected. That is the duplication failure the vendor-file restructure exists to remove, reproduced inside a single JSON row. The one-way door is REAL and retained as the reason the Company choice was deliberate: Microsoft does not support converting Individual to Company, and the only remedy is a second publisher account — exactly the related-account posture [10]D-6 and L21 exist to avoid. The account record is nikatru/vendors/microsoft.md."
+        "status": "verified",
+        "asOf": "2026-09-22",
+        "note": "COMPANY account created and SUBMITTED 2026-08-05 via storedeveloper.microsoft.com. Email ✅ and employment ✅ verified INSTANTLY (the sign-in domain matches the company domain — a Google Workspace identity, see nikatru/vendors/google.md); business verification under review, Microsoft quotes ~5 business days, follow-up armed 13 Aug. D-U-N-S auto-retrieved and validated with nothing uploaded and no document reviewed. ⚠️ THIS FIELD SAID \"none\" AND \"OWNER_QUEUE A-2 currently points at Individual\", AND BOTH WERE FALSE — A-2 stopped pointing at Individual on 2026-07-29 and the account was created as a COMPANY on 2026-08-05. The commit that fixed the very same stale claim in this row's `deferral.alsoBlockedBy` (5cefd88, 2026-08-05) did not touch this field, so one fact lived in two fields of one object and only one was corrected. That is the duplication failure the vendor-file restructure exists to remove, reproduced inside a single JSON row. The one-way door is REAL and retained as the reason the Company choice was deliberate: Microsoft does not support converting Individual to Company, and the only remedy is a second publisher account — exactly the related-account posture [10]D-6 and L21 exist to avoid. The account record is nikatru/vendors/microsoft.md. ⏱ 2026-09-22 — `applied` → `verified`: Partner Center Account settings → Legal info read ~09:36Z in the owner's signed-in session: Company, Active, Authorized. The same session read the three Product identity values that `packageIdentity` below now carries. The seller ID is deliberately NOT written here (tooling/release/submit-windows-store.mjs keeps seller-ID values out of the public tree)."
       },
       "identity": {
         "_why": [
@@ -2156,14 +2156,26 @@
           "",
           "`identityName` and `publisherDisplayName` are PER-APP (Partner Center issues one per product);",
           "`publisher` is the account-wide certificate subject and is the same for every app we publish.",
-          "The {app} placeholder is deliberately absent: there is nothing to substitute INTO a sentinel."
+          "The {app} placeholder is deliberately absent: there is nothing to substitute INTO a sentinel.",
+          "",
+          "⏱ 2026-09-22 — CONFIGURED. The three values below were read from Partner Center → Product →",
+          "Product identity ~09:35Z in the owner's signed-in session, with the Package Family Name beside",
+          "them. `notYetConfiguredSentinel` and `identity.placeholderValue` STAY on the sentinel: they",
+          "define the placeholder, they are not a copy of it. `packageFamilyName` is NEW and is not packaged",
+          "(msix derives it); tooling/ci/assert-channel-register.mjs §6e recomputes it from `identityName`",
+          "and `publisher`, so a publisher mistyped IDENTICALLY here and in the pubspec now fails — the two",
+          "copies agreeing was the only thing checked before. ⚠️ `publisherDisplayName` is NOT covered by",
+          "that recomputation (it is not an input to the PFN); only the pubspec and package comparisons",
+          "read it. `source` corrected the same day: Publisher sits on Package/Identity, not",
+          "Package/Properties (tooling/ci/assert-artifact-signed-msix.mjs reads Package/Identity/@Publisher)."
         ],
         "notYetConfiguredSentinel": "PARTNER-CENTER-PENDING",
-        "identityName": "PARTNER-CENTER-PENDING",
-        "publisherDisplayName": "PARTNER-CENTER-PENDING",
-        "publisher": "CN=PARTNER-CENTER-PENDING",
+        "identityName": "60210NIKATRU.NikatruSubscriptionTracker",
+        "publisherDisplayName": "NIKATRU",
+        "publisher": "CN=9D0DEF58-EDA2-448E-9498-42C2C3083994",
+        "packageFamilyName": "60210NIKATRU.NikatruSubscriptionTracker_ab30hnb4490ma",
         "declaredIn": "apps/{app}/pubspec.yaml → msix_config",
-        "source": "https://partner.microsoft.com/dashboard → Product → Product identity → Package/Identity/Name · Package/Properties/PublisherDisplayName · Package/Properties/Publisher"
+        "source": "https://partner.microsoft.com/dashboard → Product → Product identity → Package/Identity/Name · Package/Identity/Publisher · Package/Properties/PublisherDisplayName · Package Family Name (PFN)"
       },
       "submission": {
         "_why": [
@@ -2197,7 +2209,15 @@
         "tooling/ci/assert-store-metadata.mjs [10]D-5, and `submission.script` dry-runs end to end without",
         "contacting Microsoft [10]D-10 limb (i). `served` stays FALSE and MUST: everything left is",
         "OWNER_QUEUE A-2 — the publisher account, the three Partner Center identity values, the reserved",
-        "product name, the age rating, and the privacy-policy URL entered in the console."
+        "product name, the age rating, and the privacy-policy URL entered in the console.",
+        "",
+        "⏱ 2026-09-22 — the account and the identity are no longer owner-gated: `accountStatus` is",
+        "`verified` (Legal info: Company, Active, Authorized) and `packageIdentity` carries the three",
+        "Partner Center values plus the Package Family Name, mirrored into",
+        "apps/subscriptiontracker/pubspec.yaml's msix_config in the same commit. Nothing was uploaded.",
+        "`served` stays FALSE: what remains before a first submission is the listing, the age rating and",
+        "the privacy-policy URL in the console, and the owner's word to submit. The Store ID and the",
+        "seller ID stay OUT of this tree — the submitter reads both from the environment."
       ]
     },
     {
@@ -3144,7 +3164,7 @@
       "kind": "store",
       "storefrontKey": null,
       "served": false,
-      "submittable": false,
+      "submittable": true,
       "purchaseRail": {
         "rail": "paddle",
         "why": "AMO IS A STOREFRONT AND A SIGNING SERVICE, NEVER A CHECKOUT. Mozilla operates no payment rail for add-ons: the channel matrix in Private/pre-minimal-2026-09-08:extensions/DISTRIBUTION.md section 2 scores AMO 'Delivery yes' in the 'can it carry a sale' column, exactly as it scores Chrome and Edge, and Mozilla's own publishing documentation describes listing, signing and blocking — not selling. So the sale happens on our own site whichever way the file is delivered, and the rail is the same hosted apex checkout the web channel uses. What is bought is the account-checked Pro entitlement of extensions ADR 013.",
@@ -3195,6 +3215,24 @@
           "the two chromium rows accept, and tool.json's `targets` is where that split is declared."
         ]
       },
+      "submission": {
+        "_why": [
+          "⏱ 2026-09-22 — [10]D-10 limb (i) for AMO, the one store whose API can make a FIRST submission",
+          "(ADR 067 decision 8). The script is the one `publishScript` already names; the step that runs it",
+          "is `Submit to Firefox Add-ons (AMO)` in the release job, which spells it `scripts/publish-amo.mjs`",
+          "because extensions.yml sets `defaults: run: working-directory: extensions` —",
+          "assert-channel-register.mjs resolves that default rather than asking the workflow to respell it.",
+          "ARMING IS NOT PUBLISHING: that step still needs a workflow_dispatch on a tag carrying the typed",
+          "word SUBMIT-TO-FIREFOX-AMO, and re-checks both inside the step. What arming changes is the tag",
+          "push: the AMO preflight answers `go` when the credentials are present and FAILS the release when",
+          "they are missing, instead of printing `pending`. Limb (ii) is the runbook below; limb (iii), a",
+          "record in the [10]D-9 ledger, stays unsatisfied until the owner's first dispatch."
+        ],
+        "script": "extensions/scripts/publish-amo.mjs",
+        "workflow": ".github/workflows/extensions.yml",
+        "job": "release",
+        "runbook": "Private/runbooks/store-submission-extensions.md"
+      },
       "crashSink": {
         "layers": [],
         "native": false,
@@ -3211,7 +3249,7 @@
       },
       "deferral": {
         "reason": "NO EXTENSION HAS EVER BEEN SUBMITTED ANYWHERE. ADR 067 decision 8: every new product carries ONE MANUAL FIRST PUBLISH per store, and no store API allows a first submission except Firefox — so `served` here cannot flip on a decision alone.",
-        "alsoBlockedBy": "THIS ROW IS THE EXCEPTION TO ITS OWN REASON and the deferral is ours, not Mozilla's: AMO is the one store whose API can make a first submission, so what defers this channel is that this factory has written no submission script for it and the listing screenshots are still owed (open.json O-STORE-SCREENSHOTS)."
+        "alsoBlockedBy": "THIS ROW IS THE EXCEPTION TO ITS OWN REASON and the deferral is ours, not Mozilla's: AMO is the one store whose API can make a first submission, so what defers this channel is that this factory has written no submission script for it and the listing screenshots are still owed (open.json O-STORE-SCREENSHOTS). ⏱ 2026-09-22 — the first half is closed: this row is `submittable: true` with a `submission` block naming publish-amo.mjs. The screenshots are still owed, and `served` stays false until a dispatch the owner types actually lands a listing."
       },
       "notes": [
         "⬜ NOT SERVED. ⚠️ THIS IS THE ONE CHANNEL IN THE WHOLE REGISTER WHOSE API CAN MAKE A FIRST",
@@ -3222,7 +3260,11 @@
         "`platforms: [\"firefox\"]` is the browser this channel reaches; `amo` is the storefront. The",
         "self-distributed signed XPI is a SECOND Firefox channel with the same rail and no row here yet —",
         "DISTRIBUTION.md section 3.6 calls it 'the one real self-distribution channel', and it would need",
-        "its own row rather than a comment on this one, exactly as `android-sideload` does."
+        "its own row rather than a comment on this one, exactly as `android-sideload` does.",
+        "⏱ 2026-09-22 — THE SUBMISSION BLOCK HAS LANDED: `submittable` is true. The chrome-webstore and",
+        "edge-addons rows stay unarmed. `served` stays false: arming changes what a TAG does (the AMO",
+        "preflight answers go, or fails the release on missing credentials), never whether anything is",
+        "sent — only a dispatch carrying SUBMIT-TO-FIREFOX-AMO sends."
       ]
     }
   ],

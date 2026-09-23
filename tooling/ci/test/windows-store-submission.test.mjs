@@ -378,8 +378,13 @@ describe('submit-windows-store — the submission path is walkable, and --submit
       assert.ok(header.includes(gate), `the header must name ${gate}, the gate a reader has to satisfy`);
     }
     // What IS still true, and must stay said: the account does not exist yet.
-    assert.match(header, /PARTNER-CENTER-PENDING/);
-    assert.match(header, /OWNER_QUEUE A-2/);
+    // ⏱ 2026-09-22 — no longer true, and the pin moves with it. The account is
+    // verified and the identity is real, so what must stay said is the DATED
+    // correction naming the real identityName; the two lines this pinned before
+    // survive only inside the paragraph that correction supersedes.
+    assert.match(header, /⏱ CORRECTED 2026-09-22/);
+    assert.match(header, /60210NIKATRU\.NikatruSubscriptionTracker/);
+    assert.match(header, /Nothing has been submitted/);
   });
 
   test('the seven UNVERIFIED lines are gone and what survives is named in UNSOURCED', () => {

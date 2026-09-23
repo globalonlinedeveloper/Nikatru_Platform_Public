@@ -684,6 +684,7 @@ export function originEnvironments(register, app, assetNames, surface) {
   }
   const out = [];
   const omitted = [];
+  const submitted = [];
   // ⚠️ EVERY GUARD IN THIS LOOP IS FALSIFIABLE — READ TO THE END OF THIS BLOCK
   // BEFORE BELIEVING THE NUMBER: this paragraph said SIX and was short by three,
   // corrected 2026-08-24 at the bottom rather than overwritten.
@@ -797,6 +798,20 @@ export function originEnvironments(register, app, assetNames, surface) {
     // input exists on which the two readings disagree about a name, an exit code
     // or a pass/fail line.
     const environment = tpl.replace('{app}', app);
+    // ⏱ 2026-09-23 — A STORE ROW THIS FACTORY CAN SUBMIT THROUGH IS NOT AN ORIGIN
+    // RECORD. The origin record's state is `pending_manual_publish`, and
+    // record-deployment.mjs REFUSES that state on any row that is not
+    // `submittable: false` — so the day the amo row was armed, the tag-push loop
+    // would have failed on `<tool>-amo` after `gh release create`. Such a row's
+    // [10]D-9 record is the submission step's own `--state in_review
+    // --listing-url` call; it is returned in `submitted` so the CLI says so
+    // rather than returning a silently shorter list. `=== true`, so a row that
+    // forgot the field stays an origin record, which record-deployment.mjs then
+    // judges by its own stricter reading.
+    if (c.kind === 'store' && c.submittable === true) {
+      submitted.push({ id: c.id ?? '(unnamed)', environment });
+      continue;
+    }
     const posture = signingPosture(c);
     if (!RECORDABLE_POSTURES.has(posture.state)) {
       omitted.push({ id: c.id ?? '(unnamed)', environment, state: posture.state, detail: posture.detail });
@@ -804,7 +819,7 @@ export function originEnvironments(register, app, assetNames, surface) {
     }
     out.push(environment);
   }
-  return { environments: [...new Set(out)].sort(), omitted };
+  return { environments: [...new Set(out)].sort(), omitted, submitted };
 }
 
 /** `<sha256>  <name>`, the classic two-space (text-mode) form GNU sha256sum
@@ -1227,7 +1242,7 @@ function main() {
     // emitted `subscriptiontracker-chrome-webstore`.
     const emitSurface = requireSurface(resolve(flag('repo-root') ?? DEFAULT_ROOT), app, '--emit-environments');
     const { names } = assetFiles(dir);
-    const { environments, omitted } = originEnvironments(loadRegister(), app, names, emitSurface);
+    const { environments, omitted, submitted } = originEnvironments(loadRegister(), app, names, emitSurface);
     // 🔴 STDERR, NOT STDOUT. The release job reads this command as a word list
     // (`for environment in $(node … --emit-environments …)`), so a reason printed
     // on stdout becomes an argument to record-deployment.mjs.
@@ -1266,7 +1281,10 @@ function main() {
     for (const o of omitted) {
       console.error(`omitted  ${o.environment} — channel "${o.id}" signing posture is ${o.state.toUpperCase()}: ${o.detail}.`);
     }
-    if (environments.length === 0 && omitted.length === 0) {
+    for (const s of submitted) {
+      console.error(`submitted-lane  ${s.environment} — channel "${s.id}" is \`submittable: true\`: its [10]D-9 record is the submission step's \`--state in_review\`, never this release's origin record.`);
+    }
+    if (environments.length === 0 && omitted.length === 0 && submitted.length === 0) {
       die(
         `no \`kind: "direct"\` and no \`surface: "extension"\` channel in ${REGISTER_REL} declares a format this release carries.`,
         `The release holds: ${names.join(', ') || '(nothing)'}, and \`--app ${app}\` is on the "${emitSurface}" surface — only that surface's channels were considered.`,
@@ -1293,7 +1311,7 @@ function main() {
     // what the log says, and exit 0 with a printed reason is the honest reading of
     // a state the register declares out loud. The `die` above keeps exit 1 for the
     // undeclared gap for the same reason: it is the reading, not the lane.
-    if (environments.length === 0) {
+    if (environments.length === 0 && omitted.length > 0) {
       // ⬜ DECLARED WIDENING, not a hole: the leading `\n` is a blank SEPARATOR
       // line, and dropping it leaves release-durable.test.mjs at EXIT 0 / 86 pass /
       // 0 fail (measured 2026-08-24). It must — the assertion on this line is taken

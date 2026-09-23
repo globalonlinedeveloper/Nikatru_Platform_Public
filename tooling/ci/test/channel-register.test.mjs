@@ -1371,6 +1371,63 @@ describe('assert-channel-register — the lane\'s output vs the formats its chan
     assert.match(out, /that job never invokes that script/);
   });
 
+  // ⏱ 2026-09-22 — a `working-directory` is part of the path. extensions.yml
+  // runs `node scripts/publish-amo.mjs` under `defaults: run: working-directory:
+  // extensions`; the register names `extensions/scripts/publish-amo.mjs`. The
+  // relative spelling counts ONLY under a literal directory that is a leading
+  // directory of the script, and only on a token boundary.
+  const wdWorkflow = ({ workflowWd = null, jobWd = null, stepWd = null, call = 'node release/submit-thing.mjs --dry-run' } = {}) =>
+    [
+      'name: Submit',
+      'on:',
+      '  workflow_dispatch:',
+      ...(workflowWd === null ? [] : ['defaults:', '  run:', `    working-directory: ${workflowWd}`]),
+      'jobs:',
+      '  gate:',
+      '    runs-on: ubuntu-24.04',
+      '    steps:',
+      '      - run: node tooling/ci/assert-gate-passed.mjs',
+      '  dry-run:',
+      '    runs-on: ubuntu-24.04',
+      ...(jobWd === null ? [] : ['    defaults:', '      run:', `        working-directory: ${jobWd}`]),
+      '    steps:',
+      '      - name: Dry-run the submission',
+      ...(stepWd === null ? [] : [`        working-directory: ${stepWd}`]),
+      `        run: ${call}`,
+      '',
+    ].join('\n');
+  const withWd = (opts) => tree({ withSubmission: true, extraFiles: { [SUBMIT_WORKFLOW]: wdWorkflow(opts) } });
+
+  test('PASSES a relative call under the WORKFLOW-level working-directory that leads the script path', () => {
+    const { code, out } = run(withWd({ workflowWd: 'tooling' }));
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /never invokes that script/);
+  });
+
+  test('PASSES a relative call under the JOB-level defaults working-directory', () => {
+    const { code, out } = run(withWd({ jobWd: 'tooling' }));
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /never invokes that script/);
+  });
+
+  test('FAILS the same relative call when the STEP overrides the directory back to the root', () => {
+    const { code, out } = run(withWd({ workflowWd: 'tooling', stepWd: '.' }));
+    assert.equal(code, 1, out);
+    assert.match(out, /that job never invokes that script/);
+  });
+
+  test('FAILS a relative call under a working-directory decided at run time', () => {
+    const { code, out } = run(withWd({ workflowWd: '${{ inputs.dir }}' }));
+    assert.equal(code, 1, out);
+    assert.match(out, /that job never invokes that script/);
+  });
+
+  test('FAILS a path that only ENDS in the rest of the script name — a token boundary, not a suffix', () => {
+    const { code, out } = run(withWd({ workflowWd: 'tooling', call: 'node myrelease/submit-thing.mjs --dry-run' }));
+    assert.equal(code, 1, out);
+    assert.match(out, /that job never invokes that script/);
+  });
+
   test('FAILS when the submission block names no script at all', () => {
     const { code, out } = run(tree({ withSubmission: true, mutate: (r) => { delete r.channels[1].submission.script; } }));
     assert.equal(code, 1, out);
@@ -2681,6 +2738,85 @@ describe('assert-channel-register — §6d: pinned signing material and its sent
     );
     assert.equal(code, 0, out);
     assert.doesNotMatch(out, /pinned signing-material block/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// §6e — the MSIX Package Family Name, recomputed from the publisher (2026-09-22).
+//
+// The known answer is the REAL pair: identityName, publisher and PFN are public
+// in every package the Store serves, and Partner Center printed the PFN beside
+// them. A publisherId() that drifts cannot still yield `ab30hnb4490ma` for it,
+// so the first test IS the algorithm's pin. The two failing publishers are the
+// mistakes the limb exists for: one digit off, and the CN in lower case — each
+// typed IDENTICALLY into both copies, which every copy-vs-copy guard accepts.
+describe('assert-channel-register — §6e: the Package Family Name is derived, not trusted', () => {
+  const SENTINEL = 'PARTNER-CENTER-PENDING';
+  const REAL = {
+    identityName: '60210NIKATRU.NikatruSubscriptionTracker',
+    publisherDisplayName: 'NIKATRU',
+    publisher: 'CN=9D0DEF58-EDA2-448E-9498-42C2C3083994',
+    packageFamilyName: '60210NIKATRU.NikatruSubscriptionTracker_ab30hnb4490ma',
+  };
+  const PENDING = {
+    identityName: SENTINEL,
+    publisherDisplayName: SENTINEL,
+    publisher: `CN=${SENTINEL}`,
+  };
+  const identity = (values) => (r) => {
+    r.channels.find((c) => c.id === 'windows-store').packageIdentity = {
+      notYetConfiguredSentinel: SENTINEL,
+      ...values,
+      declaredIn: 'apps/{app}/pubspec.yaml → msix_config',
+    };
+  };
+
+  test('PASSES the real pair — the known answer `ab30hnb4490ma` Partner Center printed', () => {
+    const { code, out } = run(tree({ mutate: identity(REAL) }));
+    assert.equal(code, 0, out);
+    assert.match(out, /1 MSIX package identity: 1 configured with its Package Family Name recomputed/);
+  });
+
+  test('FAILS a publisher one digit off (…3995), typed the same way in both copies', () => {
+    const { code, out } = run(tree({ mutate: identity({ ...REAL, publisher: 'CN=9D0DEF58-EDA2-448E-9498-42C2C3083995' }) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /packageFamilyName is "60210NIKATRU\.NikatruSubscriptionTracker_ab30hnb4490ma"/);
+    assert.match(out, /publisher id "b71dt9xvs34za" against "ab30hnb4490ma"/);
+    // A FAIL for the row and a pass line counting it "configured" would be two
+    // answers; the pass line prints only when §6e found nothing.
+    assert.doesNotMatch(out, /MSIX package identit/);
+  });
+
+  test('FAILS the same CN in lower case — the hash is over the exact string', () => {
+    const { code, out } = run(tree({ mutate: identity({ ...REAL, publisher: 'CN=9d0def58-eda2-448e-9498-42c2c3083994' }) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /publisher id "gex56p498cnxe" against "ab30hnb4490ma"/);
+  });
+
+  test('FAILS a configured identity that declares no packageFamilyName', () => {
+    const noPfn = { ...REAL };
+    delete noPfn.packageFamilyName;
+    const { code, out } = run(tree({ mutate: identity(noPfn) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /is configured but declares no `packageFamilyName`/);
+  });
+
+  test('PASSES the sentinel row with no PFN — not yet configured is not a failure', () => {
+    const { code, out } = run(tree({ mutate: identity(PENDING) }));
+    assert.equal(code, 0, out);
+    assert.match(out, /1 MSIX package identity: 0 configured .* 1 not yet configured/);
+  });
+
+  test('FAILS a PFN that exists before its inputs do', () => {
+    const { code, out } = run(tree({ mutate: identity({ ...PENDING, packageFamilyName: REAL.packageFamilyName }) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /while every identity field still reads "PARTNER-CENTER-PENDING"/);
+  });
+
+  test('FAILS a HALF configured identity — the display name left on the sentinel', () => {
+    const { code, out } = run(tree({ mutate: identity({ ...REAL, publisherDisplayName: SENTINEL }) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /packageIdentity is HALF configured: `publisherDisplayName` still read/);
   });
 });
 
