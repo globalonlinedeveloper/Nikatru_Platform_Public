@@ -93,13 +93,24 @@
 // `submission.workflow` stamps its OWN run number, so it is a release lane too.
 // Its footing is narrower than (b), on purpose:
 //   (c) a run of that submission lane whose head commit is the build's metadata,
-//       AND a GitHub Deployment on that lane's own `{app}-<channel>` environment
-//       at that commit, CREATED BETWEEN the run's `created_at` and `updated_at`.
+//       AND a GitHub Deployment on that lane's own `{app}-<channel>` environment,
+//       at that FULL commit, whose `payload` NAMES THAT RUN: `payload.workflow`
+//       is the lane's workflow basename and `payload.run_id` is the run's id.
+//       tooling/ci/record-deployment.mjs writes that payload from the run's own
+//       GITHUB_WORKFLOW_REF and GITHUB_RUN_ID, and refuses a submission
+//       environment that has neither.
 // The run's conclusion is not consulted: a dry run concludes `success` and
 // uploads nothing, and the one thing that says a binary left is the Deployment
-// the run's own record step wrote after the upload. The time window is what
-// stops a later dry run at the same commit borrowing an earlier upload's
-// Deployment. `dev`, `c6-localprobe` and a dry run's stamp stay refused.
+// the run's own record step wrote after the upload. The binding is by run
+// identity and never by time. A dry run at the same commit, a re-run attempt of
+// that dry run, and a run whose lifetime merely overlaps an upload each carry a
+// run id the upload's Deployment does not name, so none of them can borrow it;
+// and a recovery Deployment written by hand after a rate limit binds however
+// late it is written, provided it carries the run's payload. A payload-less
+// Deployment on a submission environment binds ONLY through
+// `legacyDeploymentBindings` in tooling/prod-provenance.json: a dated, measured
+// deployment id → run id entry for a Deployment written before the payload
+// existed. `dev`, `c6-localprobe` and a dry run's stamp stay refused.
 //
 // Usage:
 //   node tooling/ops/check-prod-provenance.mjs
@@ -108,11 +119,12 @@
 //     → OFFLINE FIXTURE MODE, for tests. It announces itself loudly; that line
 //       must never appear in a real ops-watch log. `--deployments-file d.json`
 //       (an array of sha strings) supplies witness (b) in that mode.
-//       ⏱ 2026-09-23: an entry may also be an object `{environment, sha,
-//       created_at, id?}` — the only form that can witness footing (c); a bare
-//       sha string is a served-ledger entry and never witnesses a submission. A
-//       `--runs-file` entry may carry `path` or `workflow` naming its lane; one
-//       with neither is a served-lane run, as every older fixture means it.
+//       ⏱ 2026-09-23: an entry may also be an object `{environment, sha, id?,
+//       created_at?, payload?}` — the only form that can witness footing (c); a
+//       bare sha string is a served-ledger entry and never witnesses a
+//       submission. A `--runs-file` entry may carry `path` or `workflow` naming
+//       its lane; one with neither is a served-lane run, as every older fixture
+//       means it. A submission-lane run must carry its `id`.
 //   node tooling/ops/check-prod-provenance.mjs --emit-served-environments
 //     → prints the deployment environments witness (b) is read from, one per
 //       line, and exits. Needs no credential, so it is the ONLY way a test can
@@ -195,8 +207,8 @@ const readJson = (rel) => {
 // through a SUBMISSION lane (a submittable Flutter-app channel's
 // `submission.workflow`) is also a shipped build, and its patch is that lane's
 // own run number. Its footing is footing (c) in the header: a Deployment on the
-// lane's environment, written DURING that run. A run's success is not enough
-// there, because a dry run succeeds and ships nothing.
+// lane's environment whose payload names that run. A run's success is not
+// enough there, because a dry run succeeds and ships nothing.
 function releaseLines() {
   const appsDir = join(ROOT, 'apps');
   if (!existsSync(appsDir)) return new Set();
@@ -216,21 +228,36 @@ function releaseLines() {
  *  submission — `submittable: true` rows whose surface ships a Flutter app, via
  *               `submission.workflow`; their stamped builds reach users through
  *               a store, and the witness is the Deployment the run recorded.
- *  One entry per (workflow basename, kind); `environments` is the row's
- *  `deploymentEnvironment` expanded over appSlugs(). Replaced
- *  servedLaneWorkflows() on 2026-09-23, which read the served rows only. */
+ *  `environments` is the rows' `deploymentEnvironment` expanded over
+ *  appSlugs(). Replaced servedLaneWorkflows() on 2026-09-23, which read the
+ *  served rows only.
+ *
+ *  ⏱ 2026-09-23 · ONE LANE PER WORKFLOW, AND THE STRICTEST FOOTING WINS. A
+ *  workflow that any row names as its `submission.workflow` is a SUBMISSION lane,
+ *  whatever else a row says about it, and its environments are those submission
+ *  rows' environments only. This was one entry per (workflow, kind), and a row
+ *  that is both `served: true` and submittable on the same workflow (linux-snap:
+ *  lane.workflow and submission.workflow are both submit-snap.yml) made TWO lanes
+ *  for one workflow — the resolver's lane lookup took the served one and would
+ *  have judged a dry run's stamp on the weaker served footing, where success
+ *  alone resolves. The combination is not forbidden in the register instead,
+ *  because it is a TRUE state a row reaches: a store channel becomes served once
+ *  it is live and stays submittable for its next release, and a register rule
+ *  would force a false row. A per-row rule would also miss two rows naming one
+ *  workflow. Deciding it here decides it once for every reader of the lanes:
+ *  `--emit-release-lanes`, the live walk, the fixture placement, the resolver
+ *  and the census. */
 function releaseLanes() {
   const reg = readJson(CHANNELS_REL);
   const slugs = appSlugs();
   const expand = (tpl) => (tpl.includes('{app}') ? slugs.map((s) => tpl.replace('{app}', s)) : [tpl]);
-  const lanes = new Map(); // key `${kind}\t${workflow}`
+  const byKind = { served: new Map(), submission: new Map() }; // workflow basename → lane
   const add = (kind, wfPath, row) => {
     const workflow = wfPath.split('/').pop();
-    const key = `${kind}\t${workflow}`;
-    const lane = lanes.get(key) ?? { kind, workflow, channels: [], environments: new Set() };
+    const lane = byKind[kind].get(workflow) ?? { kind, workflow, channels: [], environments: new Set() };
     lane.channels.push(row.id);
     if (typeof row.deploymentEnvironment === 'string') for (const e of expand(row.deploymentEnvironment)) lane.environments.add(e);
-    lanes.set(key, lane);
+    byKind[kind].set(workflow, lane);
   };
   for (const c of reg.channels ?? []) {
     if (c?.served === true && c?.lane?.workflow) add('served', c.lane.workflow, c);
@@ -246,43 +273,92 @@ function releaseLanes() {
     }
     add('submission', c.submission.workflow, c);
   }
-  const out = [...lanes.values()].map((l) => ({ ...l, environments: [...l.environments] }));
+  const out = [
+    ...[...byKind.served.values()].filter((l) => !byKind.submission.has(l.workflow)),
+    ...byKind.submission.values(),
+  ].map((l) => ({ ...l, environments: [...l.environments] }));
   if (!out.some((l) => l.kind === 'served')) throw new CouldNotLook(`no served lane in ${CHANNELS_REL}, so the released-build set has no footing`);
   return out;
 }
 
-/** 🔴 A RUN WITH NO READABLE WINDOW IS REFUSED, NOT GUESSED. Footing (c) asks
- *  whether a Deployment was created between a run's `created_at` and
- *  `updated_at`; a missing or unparseable timestamp would make that test pass
- *  or fail without saying so — the same benefit-of-the-doubt hole the
- *  `conclusion` floor in githubRuns closes. Live runs of every lane and fixture
- *  runs of a submission lane pass through this one function. */
-function requireRunWindow(r, workflowFile) {
-  for (const k of ['created_at', 'updated_at']) {
-    if (typeof r?.[k] !== 'string' || !Number.isFinite(Date.parse(r[k]))) {
-      throw new CouldNotLook(
-        `run ${r?.run_number ?? '?'} of ${workflowFile} carries no readable \`${k}\`, so this reader cannot tell ` +
-          'whether a Deployment was recorded during it',
-      );
-    }
+/** 🔴 A SUBMISSION RUN WITH NO `id` IS REFUSED, NOT GUESSED. Footing (c) asks
+ *  whether a Deployment's payload names THIS run, by id; a run without one
+ *  could be bound to nothing, and "refused" would then be a verdict about the
+ *  fixture rather than about the build. Live runs of every lane are already
+ *  floored on `id` in githubRuns; fixture runs of a submission lane pass
+ *  through here. Replaced requireRunWindow() on 2026-09-23, when the time
+ *  window stopped being the binding. */
+function requireRunId(r, workflowFile) {
+  if (typeof r?.id !== 'number' && (typeof r?.id !== 'string' || r.id.length === 0)) {
+    throw new CouldNotLook(
+      `run ${r?.run_number ?? '?'} of ${workflowFile} carries no \`id\`, so no Deployment's payload can be bound to it`,
+    );
   }
   return r;
 }
 
-/** A Deployment record, or CouldNotLook: `{ id, environment, sha, created_at }`.
- *  `environment: null` is a served-ledger entry with no environment named (the
- *  bare-sha fixture form) and is accepted by footing (b) only. Live reads and
- *  fixture files both pass through here. */
+/** A Deployment's payload as `{workflow, run_id, …}`, or `null` when it names
+ *  nothing. The API returns the object record-deployment.mjs posted; a payload
+ *  posted as a string comes back as that string, so a JSON string is parsed.
+ *  `{}`, `''`, a string that is not JSON and a non-object all mean the same
+ *  thing — this Deployment names no run — and the resolver refuses on it rather
+ *  than this reader calling it unreadable. */
+function deploymentPayload(raw) {
+  let p = raw;
+  if (typeof p === 'string') {
+    try {
+      p = JSON.parse(p);
+    } catch {
+      return null;
+    }
+  }
+  if (p === null || typeof p !== 'object' || Array.isArray(p) || Object.keys(p).length === 0) return null;
+  return p;
+}
+
+/** A Deployment record, or CouldNotLook: `{ id, environment, sha, created_at,
+ *  payload }`. `environment: null` is a served-ledger entry with no environment
+ *  named (the bare-sha fixture form) and is accepted by footing (b) only. Live
+ *  reads and fixture files both pass through here. ⏱ 2026-09-23 — `created_at`
+ *  is carried for the log line only; it binds nothing, so its absence is no
+ *  longer a refusal. */
 function deploymentRecord(d, environment) {
   if (typeof d?.sha !== 'string' || d.sha.length === 0) {
     throw new CouldNotLook(`a deployment of ${environment ?? 'the served ledger'} carries no \`sha\`, so it witnesses no build`);
   }
-  if (environment !== null && (typeof d?.created_at !== 'string' || !Number.isFinite(Date.parse(d.created_at)))) {
-    throw new CouldNotLook(
-      `a deployment of ${environment} carries no readable \`created_at\`, so this reader cannot tell which run recorded it`,
-    );
-  }
-  return { id: d?.id ?? null, environment, sha: d.sha.toLowerCase(), created_at: environment === null ? null : d.created_at };
+  return {
+    id: d?.id ?? null,
+    environment,
+    sha: d.sha.toLowerCase(),
+    created_at: environment === null || typeof d?.created_at !== 'string' ? null : d.created_at,
+    payload: environment === null ? null : deploymentPayload(d?.payload),
+  };
+}
+
+/** The dated, measured exceptions to "a submission Deployment must carry its
+ *  run's payload" — `legacyDeploymentBindings` in tooling/prod-provenance.json.
+ *  Each entry binds ONE payload-less Deployment id to ONE run id, and states the
+ *  workflow, environment and full sha it was measured at; the resolver applies
+ *  it only when all of those match. An absent key is an empty list, which fails
+ *  safe (the build it would have bound is refused); a present key of the wrong
+ *  shape is CouldNotLook, because a half-read list would change verdicts
+ *  silently. */
+function legacyDeploymentBindings(register) {
+  const list = register?.legacyDeploymentBindings;
+  if (list === undefined) return [];
+  if (!Array.isArray(list)) throw new CouldNotLook(`${REGISTER_REL} legacyDeploymentBindings is not an array`);
+  return list.map((b, i) => {
+    const bad = (why) => new CouldNotLook(`${REGISTER_REL} legacyDeploymentBindings[${i}] ${why}, so it can bind nothing`);
+    for (const k of ['deploymentId', 'runId']) {
+      if (!/^\d+$/.test(String(b?.[k] ?? ''))) throw bad(`carries no numeric \`${k}\``);
+    }
+    for (const k of ['workflow', 'environment', 'measured', 'why']) {
+      if (typeof b?.[k] !== 'string' || b[k].length === 0) throw bad(`carries no \`${k}\``);
+    }
+    if (!/^[0-9a-f]{40}$/.test(String(b?.sha ?? ''))) throw bad('carries no full 40-hex `sha`');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(b.measured)) throw bad('carries no `measured` date (YYYY-MM-DD)');
+    return { ...b, deploymentId: String(b.deploymentId), runId: String(b.runId) };
+  });
 }
 
 /** The app slugs `{app}` expands over. The published catalogue is the SSoT (it
@@ -577,14 +653,14 @@ async function githubRuns(workflowFile) {
         }
         // Without an id there is nothing to tell two runs apart from ONE run
         // served twice, which is the whole basis of the de-duplication above.
+        // ⏱ 2026-09-23 — and it is the id a submission Deployment's payload
+        // must name for footing (c), so this one floor serves both.
         if (typeof r.id !== 'number' && typeof r.id !== 'string') {
           throw new CouldNotLook(
             `run ${r?.run_number ?? '?'} of ${workflowFile} carries no \`id\`, so this reader cannot tell two runs ` +
               'apart from one run served twice across pages',
           );
         }
-        // ⏱ 2026-09-23 — and without its window, footing (c) cannot be judged.
-        requireRunWindow(r, workflowFile);
       }
       // `total_count` is this endpoint's own claim about how many completed
       // runs it holds. Handing it over is what turns a short read into a
@@ -597,7 +673,7 @@ async function githubRuns(workflowFile) {
 /** Every GitHub Deployment on the given environments — the ledger
  *  tooling/ci/record-deployment.mjs writes, and the second witness. ⏱ 2026-09-23:
  *  returns deploymentRecord()s rather than a Set of shas, because footing (c)
- *  needs each record's environment and `created_at`; main() still derives the
+ *  needs each record's environment, id and payload; main() still derives the
  *  served-ledger sha set from them. */
 async function githubDeployments(environments) {
   const { token, repo } = githubCredentials();
@@ -670,9 +746,14 @@ function gitRemoteRepo() {
  *   attested   — a manual-deploys.json entry: its two witnesses were checked
  *                in main(), so only the sha is compared here.
  *   submission — footing (c): a Deployment on this lane's environments at this
- *                head, created inside [created_at, updated_at]. The conclusion
- *                is not consulted and there is no clock slack: the Deployment is
- *                written by a step of that same run.
+ *                full head whose payload names this run (`payload.run_id` is
+ *                the run's id and `payload.workflow` the lane's workflow), or
+ *                a payload-less one that `legacyBindings` binds to this run's
+ *                id. The conclusion is not consulted and time plays no part:
+ *                the payload is written from the run's own identity.
+ *
+ * `legacyBindings` is legacyDeploymentBindings(register): the dated list of
+ * payload-less Deployments, each bound to exactly one run id.
  *
  * 🔴 RUN NUMBERS ARE PER WORKFLOW, SO ONE NUMBER CAN NAME SEVERAL RUNS. deploy-web
  * and submit-play both have a run 6. The map below keeps EVERY candidate and a
@@ -680,7 +761,11 @@ function gitRemoteRepo() {
  * lane was listed last decide, and refuse a build another lane really shipped.
  * When all refuse, every reason is reported, joined by ` · `.
  */
-function makeReleasedBuildResolver(lines, runs, { lanes = null, deployments = null, deployedShas = null, onWitness = () => {} } = {}) {
+function makeReleasedBuildResolver(
+  lines,
+  runs,
+  { lanes = null, deployments = null, deployedShas = null, legacyBindings = [], onWitness = () => {} } = {},
+) {
   const byNumber = new Map();
   for (const r of runs) {
     const k = String(r.run_number);
@@ -716,29 +801,52 @@ function makeReleasedBuildResolver(lines, runs, { lanes = null, deployments = nu
     return head.startsWith(sha) ? null : `attested manual deploy ${n} shipped ${head.slice(0, 7)}, not ${sha}`;
   };
 
+  // 🔴 BOUND BY RUN IDENTITY, NEVER BY TIME. Until this rework a Deployment
+  // "created between the run's created_at and updated_at" bound it — and a dry
+  // run at the same commit whose lifetime overlapped the upload's Deployment, or
+  // a dry run re-run so its updated_at moved past it, resolved on the upload's
+  // witness. A run id is unique to one run (a re-run attempt keeps the id, but a
+  // dry run's attempts never wrote a Deployment to be named).
   const judgeSubmission = (run, lane, value, n, sha) => {
     const head = String(run.head_sha ?? '').toLowerCase();
     if (!head.startsWith(sha)) return `${lane.workflow} run ${n} shipped ${head.slice(0, 7)}, not ${sha}`;
-    const from = Date.parse(run.created_at);
-    const to = Date.parse(run.updated_at);
-    const inside = (deployments ?? []).find((d) => {
-      if (d.environment === null || !lane.environments.includes(d.environment) || d.sha !== head) return false;
-      const at = Date.parse(d.created_at);
-      return from <= at && at <= to;
-    });
-    if (!inside) {
-      return (
-        `${lane.workflow} run ${n} concluded \`${run.conclusion}\` but NO GitHub Deployment on ` +
-        `${lane.environments.join(', ')} at ${head.slice(0, 7)} was created during it (a dry run writes none)`
-      );
+    const runId = String(run.id);
+    const onLane = (deployments ?? []).filter(
+      (d) => d.environment !== null && lane.environments.includes(d.environment) && d.sha === head,
+    );
+    const bound = onLane.find((d) => d.payload !== null && String(d.payload.run_id) === runId && d.payload.workflow === lane.workflow);
+    if (bound) {
+      onWitness({
+        footing: 'submission',
+        note:
+          `${value} — ${lane.workflow} run ${n} at ${head.slice(0, 7)}, Deployment ${bound.id ?? '?'} on ` +
+          `${bound.environment} whose payload names run ${runId}`,
+      });
+      return null;
     }
-    onWitness({
-      footing: 'submission',
-      note:
-        `${value} — ${lane.workflow} run ${n} at ${head.slice(0, 7)}, Deployment ${inside.id ?? '?'} on ` +
-        `${inside.environment} created ${inside.created_at} inside the run`,
-    });
-    return null;
+    for (const d of onLane) {
+      if (d.payload !== null) continue;
+      const legacy = legacyBindings.find(
+        (b) =>
+          b.deploymentId === String(d.id) &&
+          b.runId === runId &&
+          b.workflow === lane.workflow &&
+          b.environment === d.environment &&
+          b.sha === d.sha,
+      );
+      if (!legacy) continue;
+      onWitness({
+        footing: 'submission',
+        note:
+          `${value} — ${lane.workflow} run ${n} at ${head.slice(0, 7)}, Deployment ${d.id} on ${d.environment} ` +
+          `carries no payload and is bound to run ${runId} by legacyDeploymentBindings (measured ${legacy.measured})`,
+      });
+      return null;
+    }
+    return (
+      `${lane.workflow} run ${n} concluded \`${run.conclusion}\` but no Deployment on ${lane.environments.join(', ')} ` +
+      `names run ${runId}; a dry run writes none, and a hand-written recovery Deployment must carry the run payload`
+    );
   };
 
   return (value) => {
@@ -1001,6 +1109,7 @@ async function main() {
 
   const register = readJson(REGISTER_REL);
   const rules = register.tables ?? {};
+  const legacyBindings = legacyDeploymentBindings(register);
   const migrationsRel = register.migrationsDir;
   if (typeof migrationsRel !== 'string') throw new CouldNotLook(`${REGISTER_REL} declares no migrationsDir`);
 
@@ -1047,7 +1156,7 @@ async function main() {
       const workflow = named ?? servedLane.workflow;
       const lane = laneByWorkflow.get(workflow);
       if (!lane) throw new CouldNotLook(`fixture run ${r?.run_number ?? '?'} names workflow ${workflow}, which is no release lane in ${CHANNELS_REL}`);
-      if (lane.kind === 'submission') requireRunWindow(r, workflow);
+      if (lane.kind === 'submission') requireRunId(r, workflow);
       return { ...r, workflow };
     });
   };
@@ -1076,12 +1185,17 @@ async function main() {
   //
   // ⏱ 2026-09-23 — read as RECORDS, over the ledger environments AND every
   // submission lane's environments, because footing (c) needs each record's
-  // environment and creation time. `deployedShas` keeps its meaning: the shas
+  // environment, id and payload. `deployedShas` keeps its meaning: the shas
   // with a Deployment on a served (or retired served) environment. A bare sha
   // string in a fixture file is a served-ledger entry (`environment: null`); only
   // an object entry names an environment and can witness a submission.
-  const ledger = new Set(ledgerEnvironments());
-  const submissionEnvs = [...new Set(lanes.filter((l) => l.kind === 'submission').flatMap((l) => l.environments))].filter((e) => !ledger.has(e));
+  // Strictest wins here too (see releaseLanes): an environment a submission
+  // lane owns never witnesses the served footing, even when its row is also
+  // `served: true` — otherwise a failed deploy-web run could borrow a store
+  // upload's Deployment at the same commit.
+  const allSubmissionEnvs = new Set(lanes.filter((l) => l.kind === 'submission').flatMap((l) => l.environments));
+  const ledger = new Set(ledgerEnvironments().filter((e) => !allSubmissionEnvs.has(e)));
+  const submissionEnvs = [...allSubmissionEnvs];
   const fixtureDeployments = (arr) => {
     if (!Array.isArray(arr)) throw new CouldNotLook(`${deploymentsFile} is not an array of deployments`);
     return arr.map((d) =>
@@ -1167,6 +1281,7 @@ async function main() {
       lanes,
       deployments,
       deployedShas,
+      legacyBindings,
       onWitness: ({ footing, note }) => {
         const into = footing === 'submission' ? submissionWitnessed : witnessed;
         if (!into.includes(note)) into.push(note);

@@ -37,8 +37,8 @@ import {
   SUBMISSION_STATES,
   STATE_MEANING,
 } from '../deployment-record.mjs';
-import { RECORD_CALL, expandMatrixEnvironment, isShellVariableEnvironment } from '../workflow-scan.mjs';
-import { isRetryable, retryDelayMs, RETRY_ATTEMPTS } from '../record-deployment.mjs';
+import { RECORD_CALL, expandMatrixEnvironment, isShellVariableEnvironment, shellSegments } from '../workflow-scan.mjs';
+import { isRetryable, retryDelayMs, RETRY_ATTEMPTS, runIdentity, RUN_IDENTITY_ENV } from '../record-deployment.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const ROOT = resolve(CI_DIR, '../..');
@@ -148,6 +148,13 @@ function record(args, env = {}) {
       GITHUB_SHA: 'abc12345deadbeef',
       GH_TOKEN: 't',
       GITHUB_API_URL: '',
+      // ⏱ 2026-09-23 — the run identity every Actions step has. A submittable
+      // channel's record is refused without it, so a fixed one is the default and
+      // a case that needs it absent passes `undefined` (spawnSync drops those).
+      GITHUB_WORKFLOW_REF: 'x/y/.github/workflows/submit-play.yml@refs/heads/main',
+      GITHUB_RUN_ID: '35787897094',
+      GITHUB_RUN_ATTEMPT: '1',
+      GITHUB_RUN_NUMBER: '5',
       RECORD_REPLAY_LOG: log,
       ...env,
     },
@@ -746,6 +753,143 @@ describe('record-deployment — the DEPLOYMENT and its STATUS carry the same sha
     assert.deepEqual(records, []);
     assert.equal(unreadable.length, 1);
     assert.match(unreadable[0].reason, /not a "nk1" record/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-23 · EVERY DEPLOYMENT NAMES THE RUN THAT WROTE IT.
+// tooling/ops/check-prod-provenance.mjs accepts a build stamped by a store
+// submission lane only on a Deployment whose `payload` names that run's id and
+// workflow. It used to bind by time — a Deployment created during the run — and
+// a dry run at the upload's commit whose lifetime overlapped the upload's
+// Deployment passed that. The payload is written here, from the runner's own
+// GITHUB_WORKFLOW_REF / GITHUB_RUN_ID / GITHUB_RUN_ATTEMPT / GITHUB_RUN_NUMBER.
+// ─────────────────────────────────────────────────────────────────────────────
+const PLAY_IDENTITY = { workflow: 'submit-play.yml', run_id: 35787897094, run_attempt: 1, run_number: 5 };
+const NO_IDENTITY = Object.fromEntries(RUN_IDENTITY_ENV.map((k) => [k, undefined]));
+
+/** Every `node … record-deployment.mjs` invocation in one workflow, and each
+ *  thing in that file that would stop it carrying the runner's run identity:
+ *  a wrapper in front of `node` (`env -i`, `sudo`, `docker run`, an inline
+ *  assignment), a step `shell:` that is not a plain shell, or an `env:` entry
+ *  that sets an identity variable to anything but its own `github.*` context. */
+function identityBlockers(file) {
+  const lines = readFileSync(join(ROOT, '.github/workflows', file), 'utf8').split('\n');
+  const indent = (l) => l.match(/^\s*/)[0].length;
+  const CONTEXT = { GITHUB_WORKFLOW_REF: 'workflow_ref', GITHUB_RUN_ID: 'run_id', GITHUB_RUN_ATTEMPT: 'run_attempt', GITHUB_RUN_NUMBER: 'run_number' };
+  const problems = [];
+  for (const [i, raw] of lines.entries()) {
+    if (/^\s*#/.test(raw)) continue;
+    const m = raw.match(/^\s+(GITHUB_WORKFLOW_REF|GITHUB_RUN_ID|GITHUB_RUN_ATTEMPT|GITHUB_RUN_NUMBER)\s*:\s*(.*?)\s*$/);
+    if (m && m[2] !== `\${{ github.${CONTEXT[m[1]]} }}`) problems.push(`${file}:${i + 1} sets ${m[1]} to ${m[2] || '(nothing)'}`);
+  }
+  let invocations = 0;
+  for (const [i, raw] of lines.entries()) {
+    if (/^\s*#/.test(raw) || !/node\s+\S*record-deployment\.mjs/.test(raw)) continue;
+    invocations += 1;
+    const segment = shellSegments(raw)
+      .find((s) => /record-deployment\.mjs/.test(s))
+      .trim()
+      .replace(/^(?:-\s+)?run:\s*/, '')
+      .replace(/^(?:do|then|else)\s+/, '');
+    if (!/^node\s+tooling\/ci\/record-deployment\.mjs(\s|$)/.test(segment)) {
+      problems.push(`${file}:${i + 1} runs the recorder as \`${segment}\`, not straight from the step's shell`);
+    }
+    let start = i;
+    if (!/^\s*-\s/.test(raw)) while (start > 0 && !(/^\s*-\s/.test(lines[start]) && indent(lines[start]) < indent(raw))) start -= 1;
+    const stepIndent = indent(lines[start]);
+    for (let j = start; j < lines.length && (j === start || lines[j].trim() === '' || indent(lines[j]) > stepIndent); j++) {
+      const sh = lines[j].replace(/^(\s*)-\s/, '$1  ').match(/^(\s+)shell:\s*(.*?)\s*$/);
+      if (sh && sh[1].length === stepIndent + 2 && !/^(bash|sh|pwsh|powershell)(\s|$)/.test(sh[2])) {
+        problems.push(`${file}:${j + 1} runs the recorder's step under \`shell: ${sh[2]}\``);
+      }
+    }
+  }
+  return { invocations, problems };
+}
+
+describe('record-deployment — every Deployment names the run that wrote it', () => {
+  test('runIdentity reads the Play upload\'s identity from the runner\'s variables', () => {
+    const { payload, missing } = runIdentity({
+      GITHUB_WORKFLOW_REF: 'globalonlinedeveloper/Nikatru_Platform_Public/.github/workflows/submit-play.yml@refs/heads/main',
+      GITHUB_RUN_ID: '35787897094',
+      GITHUB_RUN_ATTEMPT: '1',
+      GITHUB_RUN_NUMBER: '5',
+    });
+    assert.deepEqual(missing, []);
+    assert.deepEqual(payload, PLAY_IDENTITY);
+  });
+
+  test('runIdentity names EVERY missing variable and returns no payload', () => {
+    assert.deepEqual(runIdentity({}), { payload: null, missing: [...RUN_IDENTITY_ENV] });
+  });
+
+  test('runIdentity refuses a ref that names no workflow file and an id that is not a number', () => {
+    const { payload, missing } = runIdentity({
+      GITHUB_WORKFLOW_REF: 'x/y@refs/heads/main',
+      GITHUB_RUN_ID: '35787897094x',
+      GITHUB_RUN_ATTEMPT: '1',
+      GITHUB_RUN_NUMBER: '5',
+    });
+    assert.equal(payload, null);
+    assert.deepEqual(missing, ['GITHUB_WORKFLOW_REF', 'GITHUB_RUN_ID']);
+  });
+
+  test('the recorder WRITES the run payload into the Deployment it creates', () => {
+    const { code, out, requests } = record(
+      ['subscriptiontracker-android-play', '--state', 'in_review', '--listing-url', 'https://play.google.com/store/apps/details?id=x'],
+      { RECORD_REPLAY_STATUS: '201' },
+    );
+    assert.equal(code, 0, out);
+    assert.equal(requests[0].pathname, '/repos/x/y/deployments');
+    assert.deepEqual(requests[0].body.payload, PLAY_IDENTITY);
+  });
+
+  test('a WEB record carries the run payload too — every Deployment names the run that wrote it', () => {
+    const { code, out, requests } = record(['subscriptiontracker-web', 'https://nikatru.com/subscriptiontracker/'], {
+      RECORD_REPLAY_STATUS: '201',
+      GITHUB_WORKFLOW_REF: 'x/y/.github/workflows/deploy-web.yml@refs/heads/main',
+      GITHUB_RUN_ID: '35700000101',
+      GITHUB_RUN_ATTEMPT: '2',
+      GITHUB_RUN_NUMBER: '101',
+    });
+    assert.equal(code, 0, out);
+    assert.deepEqual(requests[0].body.payload, { workflow: 'deploy-web.yml', run_id: 35700000101, run_attempt: 2, run_number: 101 });
+  });
+
+  test('a SUBMITTABLE channel with no run identity is REFUSED, exit 2, before anything is written', () => {
+    const { code, out, requests } = record(
+      ['subscriptiontracker-android-play', '--state', 'in_review', '--listing-url', 'https://play.google.com/store/apps/details?id=x'],
+      { RECORD_REPLAY_STATUS: '201', ...NO_IDENTITY },
+    );
+    assert.equal(code, 2, out);
+    assert.match(out, /is a channel this factory SUBMITS to, and the run identity is missing or unreadable: GITHUB_WORKFLOW_REF, GITHUB_RUN_ID, GITHUB_RUN_ATTEMPT, GITHUB_RUN_NUMBER/);
+    assert.deepEqual(requests, [], 'a record naming no run would witness nothing, so nothing is written');
+  });
+
+  test('a WEB record with no run identity is still written — it is not a submission witness', () => {
+    const { code, out, requests } = record(['subscriptiontracker-web', 'https://nikatru.com/subscriptiontracker/'], {
+      RECORD_REPLAY_STATUS: '201',
+      ...NO_IDENTITY,
+    });
+    assert.equal(code, 0, out);
+    assert.equal(requests.length, 2);
+    assert.equal(requests[0].body.payload, undefined);
+  });
+
+  test('THE REAL TREE: every workflow runs the recorder straight from a step shell that has the run identity', () => {
+    const dir = resolve(ROOT, '.github/workflows');
+    const problems = [];
+    const submitCalls = {};
+    for (const file of readdirSync(dir).filter((f) => /\.ya?ml$/.test(f))) {
+      const r = identityBlockers(file);
+      problems.push(...r.problems);
+      if (/^submit-.*\.ya?ml$/.test(file)) submitCalls[file] = r.invocations;
+    }
+    assert.deepEqual(problems, [], 'a recorder that cannot see GITHUB_RUN_ID writes a Deployment no submitted build can bind to');
+    for (const f of ['submit-play.yml', 'submit-snap.yml', 'submit-windows-store.yml']) {
+      assert.ok(submitCalls[f] >= 1, `${f} records no Deployment — found ${JSON.stringify(submitCalls)}`);
+    }
   });
 });
 

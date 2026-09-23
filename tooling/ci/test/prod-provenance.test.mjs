@@ -21,7 +21,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, appendFileSync, rmSync, cpSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, appendFileSync, rmSync, cpSync, readdirSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -785,16 +785,39 @@ describe('check-prod-provenance — the environments witness (b) is read from', 
 // 21:35:44Z, at 22fd29b7) was a DRY RUN: it concluded `success`, uploaded nothing
 // and recorded no Deployment — so a successful run is exactly what must NOT be
 // enough on this footing. The run numbers, times and ids below are the real ones.
+//
+// ⏱ 2026-09-23 (rework) — THE BINDING IS THE RUN'S IDENTITY, NOT A TIME WINDOW.
+// The first version of footing (c) bound a Deployment to the run whose lifetime
+// contained its `created_at`. Review found three holes in that: a dry run at
+// the upload's commit whose lifetime overlapped the Deployment resolved on it
+// (A2); an earlier dry run re-run the next morning moved its `updated_at` past
+// the Deployment and resolved on it (A1); and a recovery Deployment written by
+// hand after a rate-limited record step could never bind (F3).
+// record-deployment.mjs now writes `{workflow, run_id, run_attempt, run_number}`
+// into every Deployment, and the resolver accepts a submission stamp only when a
+// Deployment on the lane's environments at the run's full head names that run's
+// id and that lane's workflow. Deployment 6601614981 was written before the
+// payload existed (`payload: {}` — measured); it binds to run 35787897094 alone
+// through `legacyDeploymentBindings` in tooling/prod-provenance.json. The shas
+// below are the real full ones, because that entry is matched on the full sha.
 describe('check-prod-provenance — a SUBMISSION lane build', () => {
-  const SHA5 = '0390db6d' + 'a1b2c3d4e5f60718293a4b5c6d7e8f90';
-  const SHA4 = '22fd29b7' + '0f1e2d3c4b5a69788796a5b4c3d2e1f0';
+  const SHA5 = '0390db6da9125c51959a6db19ebaf8130728fdae';
+  const SHA4 = '22fd29b784ee0b3bc66f6cac8a88b549d34fd5b3';
   const SHA6P = '6a6b6c6d' + '11223344556677889900aabbccddeeff';
   const PLAY = '.github/workflows/submit-play.yml';
-  const RUN5 = { path: PLAY, run_number: 5, head_sha: SHA5, conclusion: 'success', created_at: '2026-09-22T21:38:59Z', updated_at: '2026-09-22T21:59:43Z' };
-  const RUN4 = { path: PLAY, run_number: 4, head_sha: SHA4, conclusion: 'success', created_at: '2026-09-22T21:27:38Z', updated_at: '2026-09-22T21:35:44Z' };
-  const DEP5 = { environment: 'subscriptiontracker-android-play', sha: SHA5, created_at: '2026-09-22T21:59:38Z', id: 6601614981 };
+  const ENV = 'subscriptiontracker-android-play';
+  const RUN5 = { path: PLAY, id: 35787897094, run_number: 5, run_attempt: 1, head_sha: SHA5, conclusion: 'success', created_at: '2026-09-22T21:38:59Z', updated_at: '2026-09-22T21:59:43Z' };
+  const RUN4 = { path: PLAY, id: 35786771434, run_number: 4, run_attempt: 1, head_sha: SHA4, conclusion: 'success', created_at: '2026-09-22T21:27:38Z', updated_at: '2026-09-22T21:35:44Z' };
+  // The real record: written before record-deployment.mjs wrote a payload.
+  const DEP5 = { environment: ENV, sha: SHA5, created_at: '2026-09-22T21:59:38Z', id: 6601614981, payload: {} };
   const WEB101 = { run_number: 101, head_sha: 'e138f5be72555ab717d0391e771b40c0883d9fab', conclusion: 'success' };
+  // deploy-web.yml has its own run 5 (436 completed runs, measured 2026-09-23).
+  const WEB5 = { run_number: 5, head_sha: 'aa11bb22cc33dd44ee55ff6600112233445566ff', conclusion: 'success' };
   const ROW5 = { consent_artifacts: [{ marker: '1.0.5+0390db6', n: 1 }] };
+  const REFUSED = 'a dry run writes none, and a hand-written recovery Deployment must carry the run payload';
+
+  /** The payload record-deployment.mjs writes, for a fixture run of submit-play.yml. */
+  const payloadOf = (r) => ({ workflow: 'submit-play.yml', run_id: r.id, run_attempt: r.run_attempt, run_number: r.run_number });
 
   function run(rowsByTable, runs, deployments) {
     const dir = mkdtempSync(join(tmpdir(), 'nikatru-submission-'));
@@ -808,69 +831,74 @@ describe('check-prod-provenance — a SUBMISSION lane build', () => {
     }
   }
 
-  test('S-1 THE INCIDENT SHAPE: a Play build with a Deployment recorded during its run RESOLVES', () => {
-    const r = run(ROW5, [WEB101, RUN5], [DEP5]);
+  test('S-1 THE INCIDENT AS THE LIVE READ SEES IT: deploy-web\'s own run 5 listed LAST does not hide the Play upload', () => {
+    // The real Play Deployment carries no payload, so this resolves through the
+    // legacy binding. origin/main's reader refuses it: it keys runs by number
+    // alone and deploy-web's run 5, listed last, shipped another commit.
+    const r = run(ROW5, [WEB101, RUN5, WEB5], [DEP5]);
     assert.equal(r.status, 0, r.stdout + r.stderr);
     assert.match(r.stdout, /consent_artifacts\s+1 row\(s\), 0 unattributable/);
   });
 
-  test('S-2 and it says so out loud, naming the run and the Deployment that carried it', () => {
-    const r = run(ROW5, [WEB101, RUN5], [DEP5]);
+  test('S-2 and it says so out loud, naming the run, the Deployment and the legacy binding that carried it', () => {
+    const r = run(ROW5, [WEB101, RUN5, WEB5], [DEP5]);
     assert.equal(r.status, 0, r.stdout + r.stderr);
-    assert.match(r.stdout, /submission-witnessed build accepted: 1\.0\.5\+0390db6 — submit-play\.yml run 5/);
-    assert.match(r.stdout, /Deployment 6601614981 on subscriptiontracker-android-play/);
+    assert.match(r.stdout, /submission-witnessed build accepted: 1\.0\.5\+0390db6 — submit-play\.yml run 5 at 0390db6/);
+    assert.match(r.stdout, /Deployment 6601614981 on subscriptiontracker-android-play carries no payload and is bound to run 35787897094 by legacyDeploymentBindings \(measured 2026-09-23\)/);
     assert.match(r.stdout, /release lane · submission · submit-play\.yml: 1 completed run\(s\) · 1 Deployment\(s\)/);
   });
 
-  test('S-3 THE DRY RUN: run 4 succeeded, uploaded nothing and recorded nothing — it stays unattributable', () => {
+  test('S-3 THE REAL DRY RUN: run 4 at 22fd29b succeeded, uploaded nothing and recorded nothing — it stays unattributable', () => {
     const r = run({ consent_artifacts: [{ marker: '1.0.4+22fd29b', n: 1 }] }, [WEB101, RUN4, RUN5], [DEP5]);
     assert.equal(r.status, 1, r.stdout + r.stderr);
-    assert.match(r.stderr, /submit-play\.yml run 4 concluded `success` but NO GitHub Deployment/);
-    assert.match(r.stderr, /was created during it \(a dry run writes none\)/);
+    assert.match(r.stderr, /submit-play\.yml run 4 concluded `success` but no Deployment on subscriptiontracker-android-play names run 35786771434; a dry run writes none, and a hand-written recovery Deployment must carry the run payload/);
   });
 
-  test('S-4 a DRY RUN AT THE SAME SHA as an earlier upload cannot borrow that upload\'s Deployment', () => {
-    // The case an (environment, sha)-only witness wrongly accepts: DEP5 names
-    // 0390db6 on the right environment, but it was created inside run 5, not 6.
-    const RUN6 = { path: PLAY, run_number: 6, head_sha: SHA5, conclusion: 'success', created_at: '2026-09-22T22:10:00Z', updated_at: '2026-09-22T22:15:00Z' };
+  test('S-4 a later DRY RUN AT THE SAME SHA as the upload cannot borrow the upload\'s Deployment', () => {
+    const RUN6 = { path: PLAY, id: 35900000006, run_number: 6, run_attempt: 1, head_sha: SHA5, conclusion: 'success', created_at: '2026-09-22T22:10:00Z', updated_at: '2026-09-22T22:15:00Z' };
     const r = run({ consent_artifacts: [{ marker: '1.0.6+0390db6', n: 1 }] }, [WEB101, RUN5, RUN6], [DEP5]);
     assert.equal(r.status, 1, r.stdout + r.stderr);
-    assert.match(r.stderr, /submit-play\.yml run 6 concluded `success` but NO GitHub Deployment/);
+    assert.match(r.stderr, /submit-play\.yml run 6 concluded `success` but no Deployment on subscriptiontracker-android-play names run 35900000006/);
   });
 
-  test('S-5a a Deployment created one second AFTER the run ended does not witness it', () => {
-    const r = run(ROW5, [WEB101, RUN5], [{ ...DEP5, created_at: '2026-09-22T21:59:44Z' }]);
+  test('S-5a A1: an earlier dry run at the upload\'s sha, RE-RUN the next morning, does not bind the upload\'s Deployment', () => {
+    // Attempt 2 moved updated_at past the Deployment's created_at, which is what
+    // let the time window accept it. The run id did not change, and neither did
+    // the fact that no attempt of this run wrote a Deployment.
+    const RUN4A = { ...RUN4, head_sha: SHA5, run_attempt: 2, updated_at: '2026-09-23T10:08:00Z' };
+    const r = run({ consent_artifacts: [{ marker: '1.0.4+0390db6', n: 1 }] }, [WEB101, RUN4A, RUN5], [DEP5]);
     assert.equal(r.status, 1, r.stdout + r.stderr);
-    assert.match(r.stderr, /was created during it/);
+    assert.match(r.stderr, /submit-play\.yml run 4 concluded `success` but no Deployment on subscriptiontracker-android-play names run 35786771434/);
   });
 
-  test('S-5b a Deployment created one second BEFORE the run began does not witness it', () => {
-    const r = run(ROW5, [WEB101, RUN5], [{ ...DEP5, created_at: '2026-09-22T21:38:58Z' }]);
+  test('S-5b A2: a dry run at the upload\'s sha whose lifetime CONTAINS the upload\'s Deployment does not bind it', () => {
+    const RUN6 = { path: PLAY, id: 35900000006, run_number: 6, run_attempt: 1, head_sha: SHA5, conclusion: 'success', created_at: '2026-09-22T21:55:00Z', updated_at: '2026-09-22T22:03:00Z' };
+    const r = run({ consent_artifacts: [{ marker: '1.0.6+0390db6', n: 1 }] }, [WEB101, RUN5, RUN6], [DEP5]);
     assert.equal(r.status, 1, r.stdout + r.stderr);
-    assert.match(r.stderr, /was created during it/);
+    assert.match(r.stderr, /submit-play\.yml run 6 concluded `success` but no Deployment on subscriptiontracker-android-play names run 35900000006/);
   });
 
-  test('S-6 a bare-sha ledger entry never witnesses a submission — it names no environment and no time', () => {
+  test('S-6 a bare-sha ledger entry never witnesses a submission — it names no environment and no run', () => {
     const r = run(ROW5, [WEB101, RUN5], [SHA5]);
     assert.equal(r.status, 1, r.stdout + r.stderr);
-    assert.match(r.stderr, /submit-play\.yml run 5 concluded `success` but NO GitHub Deployment/);
+    assert.match(r.stderr, /submit-play\.yml run 5 concluded `success` but no Deployment on subscriptiontracker-android-play names run 35787897094/);
   });
 
   test('S-7 a Deployment on the WEB environment never witnesses a Play build', () => {
-    const r = run(ROW5, [WEB101, RUN5], [{ ...DEP5, environment: 'subscriptiontracker-web' }]);
+    const r = run(ROW5, [WEB101, RUN5], [{ ...DEP5, environment: 'subscriptiontracker-web', payload: payloadOf(RUN5) }]);
     assert.equal(r.status, 1, r.stdout + r.stderr);
-    assert.match(r.stderr, /NO GitHub Deployment on subscriptiontracker-android-play at 0390db6/);
+    assert.match(r.stderr, /no Deployment on subscriptiontracker-android-play names run 35787897094/);
   });
 
   test('S-8 a Deployment on another channel of the same app does not witness this lane', () => {
-    const r = run(ROW5, [WEB101, RUN5], [{ ...DEP5, environment: 'subscriptiontracker-linux-snap' }]);
+    const r = run(ROW5, [WEB101, RUN5], [{ ...DEP5, environment: 'subscriptiontracker-linux-snap', payload: payloadOf(RUN5) }]);
     assert.equal(r.status, 1, r.stdout + r.stderr);
-    assert.match(r.stderr, /NO GitHub Deployment on subscriptiontracker-android-play at 0390db6/);
+    assert.match(r.stderr, /no Deployment on subscriptiontracker-android-play names run 35787897094/);
   });
 
   // Run numbers are per workflow: deploy-web and submit-play each have a run 6.
-  const RUN6P = { path: PLAY, run_number: 6, head_sha: SHA6P, conclusion: 'success', created_at: '2026-09-23T01:00:00Z', updated_at: '2026-09-23T01:20:00Z' };
-  const DEP6P = { environment: 'subscriptiontracker-android-play', sha: SHA6P, created_at: '2026-09-23T01:19:00Z', id: 7000000001 };
+  const RUN6P = { path: PLAY, id: 35900000106, run_number: 6, run_attempt: 1, head_sha: SHA6P, conclusion: 'success', created_at: '2026-09-23T01:00:00Z', updated_at: '2026-09-23T01:20:00Z' };
+  const DEP6P = { environment: ENV, sha: SHA6P, created_at: '2026-09-23T01:19:00Z', id: 7000000001, payload: payloadOf(RUN6P) };
   const WEB6 = { run_number: 6, head_sha: '9f9e9d9c9b9a99989796959493929190bfbebdbc', conclusion: 'success' };
   const ROW6 = { consent_artifacts: [{ marker: '1.0.6+6a6b6c6', n: 1 }] };
 
@@ -883,7 +911,7 @@ describe('check-prod-provenance — a SUBMISSION lane build', () => {
   test('S-10 the same collision with no Deployment is refused, and BOTH candidates say why', () => {
     const r = run(ROW6, [WEB101, RUN6P, WEB6], []);
     assert.equal(r.status, 1, r.stdout + r.stderr);
-    assert.match(r.stderr, /submit-play\.yml run 6 concluded `success` but NO GitHub Deployment[^\n]* · run 6 shipped 9f9e9d9, not 6a6b6c6/);
+    assert.match(r.stderr, /submit-play\.yml run 6 concluded `success` but no Deployment on subscriptiontracker-android-play names run 35900000106; a dry run writes none, and a hand-written recovery Deployment must carry the run payload · run 6 shipped 9f9e9d9, not 6a6b6c6/);
   });
 
   test('S-11 `dev` stays refused with an upload and its Deployment right there', () => {
@@ -898,17 +926,17 @@ describe('check-prod-provenance — a SUBMISSION lane build', () => {
     assert.match(r.stderr, /names workflow ci\.yml, which is no release lane/);
   });
 
-  test('S-13 a submission run with no readable window is COULD NOT LOOK, never a guess', () => {
-    const { created_at, updated_at, ...bare } = RUN5;
-    const r = run(ROW5, [WEB101, bare], [DEP5]);
+  test('S-13 a submission run with no `id` is COULD NOT LOOK, never a guess', () => {
+    const { id, ...anonymous } = RUN5;
+    const r = run(ROW5, [WEB101, anonymous], [DEP5]);
     assert.equal(r.status, 2, r.stdout + r.stderr);
-    assert.match(r.stderr, /carries no readable `created_at`/);
+    assert.match(r.stderr, /run 5 of submit-play\.yml carries no `id`, so no Deployment's payload can be bound to it/);
   });
 
   test('S-14 a fixture with no --deployments-file reads as NO witness for a submission, never a permissive one', () => {
     const r = run(ROW5, [WEB101, RUN5], null);
     assert.equal(r.status, 1, r.stdout + r.stderr);
-    assert.match(r.stderr, /submit-play\.yml run 5 concluded `success` but NO GitHub Deployment/);
+    assert.match(r.stderr, /submit-play\.yml run 5 concluded `success` but no Deployment on subscriptiontracker-android-play names run 35787897094/);
   });
 
   test('S-21 submission runs alone cannot stand in for an empty served lane — COULD NOT LOOK', () => {
@@ -917,11 +945,70 @@ describe('check-prod-provenance — a SUBMISSION lane build', () => {
     assert.match(r.stderr, /no completed run of the served lane deploy-web\.yml was found/);
   });
 
-  test('S-22 a Deployment entry that names an environment but no readable time is COULD NOT LOOK', () => {
-    const { created_at, ...untimed } = DEP5;
-    const r = run(ROW5, [WEB101, RUN5], [untimed]);
-    assert.equal(r.status, 2, r.stdout + r.stderr);
-    assert.match(r.stderr, /carries no readable `created_at`, so this reader cannot tell which run recorded it/);
+  test('S-22 a Deployment with no `created_at` binds by its payload alone — time is not consulted', () => {
+    const { created_at, ...untimed } = DEP6P;
+    const r = run(ROW6, [WEB101, RUN6P], [untimed]);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /consent_artifacts\s+1 row\(s\), 0 unattributable/);
+  });
+
+  test('S-24 PAYLOAD MATCH: a Deployment whose payload names this run and this lane\'s workflow is accepted', () => {
+    const r = run(ROW6, [WEB101, RUN6P], [DEP6P]);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /submission-witnessed build accepted: 1\.0\.6\+6a6b6c6 — submit-play\.yml run 6 at 6a6b6c6, Deployment 7000000001 on subscriptiontracker-android-play whose payload names run 35900000106/);
+  });
+
+  test('S-25 a payload naming ANOTHER run id is refused, at the right sha on the right environment', () => {
+    const r = run(ROW6, [WEB101, RUN6P], [{ ...DEP6P, payload: { ...payloadOf(RUN6P), run_id: 35900000999 } }]);
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /submit-play\.yml run 6 concluded `success` but no Deployment on subscriptiontracker-android-play names run 35900000106/);
+  });
+
+  test('S-26 a payload naming this run id under ANOTHER workflow is refused', () => {
+    const r = run(ROW6, [WEB101, RUN6P], [{ ...DEP6P, payload: { ...payloadOf(RUN6P), workflow: 'submit-snap.yml' } }]);
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /submit-play\.yml run 6 concluded `success` but no Deployment on subscriptiontracker-android-play names run 35900000106/);
+  });
+
+  test('S-27 attempt 2 of a DRY RUN at an uploaded sha is refused: its id is its own, and no attempt of it wrote a Deployment', () => {
+    const RUN7 = { path: PLAY, id: 35900000107, run_number: 7, run_attempt: 2, head_sha: SHA6P, conclusion: 'success', created_at: '2026-09-23T01:05:00Z', updated_at: '2026-09-23T09:00:00Z' };
+    const r = run({ consent_artifacts: [{ marker: '1.0.7+6a6b6c6', n: 1 }] }, [WEB101, RUN6P, RUN7], [DEP6P]);
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /submit-play\.yml run 7 concluded `success` but no Deployment on subscriptiontracker-android-play names run 35900000107/);
+  });
+
+  test('S-28 a payload-less Deployment the legacy list does not name is refused', () => {
+    const r = run(ROW6, [WEB101, RUN6P], [{ ...DEP6P, payload: {} }]);
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, new RegExp(`submit-play\\.yml run 6 concluded \`success\` but no Deployment on subscriptiontracker-android-play names run 35900000106; ${REFUSED}`));
+  });
+
+  test('S-29 THE LEGACY BINDING names ONE run: Deployment 6601614981 accepts run 5 and refuses run 4 at the same sha', () => {
+    const RUN4S = { ...RUN4, head_sha: SHA5 };
+    const rows = { consent_artifacts: [{ marker: '1.0.5+0390db6', n: 1 }, { marker: '1.0.4+0390db6', n: 1 }] };
+    const r = run(rows, [WEB101, RUN4S, RUN5], [DEP5]);
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stdout, /consent_artifacts\s+2 row\(s\), 1 unattributable/);
+    assert.match(r.stdout, /submission-witnessed build accepted: 1\.0\.5\+0390db6/);
+    assert.match(r.stderr, /submit-play\.yml run 4 concluded `success` but no Deployment on subscriptiontracker-android-play names run 35786771434/);
+  });
+
+  test('S-30 F3: a recovery Deployment written by hand AFTER the run ended binds when it carries the run payload', () => {
+    const r = run(ROW6, [WEB101, RUN6P], [{ ...DEP6P, created_at: '2026-09-23T03:00:00Z' }]);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /whose payload names run 35900000106/);
+  });
+
+  test('S-31 the legacy binding names ONE Deployment: another payload-less one at the same sha binds nothing', () => {
+    const r = run(ROW5, [WEB101, RUN5], [{ ...DEP5, id: 6601614982 }]);
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /submit-play\.yml run 5 concluded `success` but no Deployment on subscriptiontracker-android-play names run 35787897094/);
+  });
+
+  test('S-32 a payload the API returns as a JSON STRING binds like the object form', () => {
+    const r = run(ROW6, [WEB101, RUN6P], [{ ...DEP6P, payload: JSON.stringify(payloadOf(RUN6P)) }]);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /whose payload names run 35900000106/);
   });
 });
 
@@ -1037,6 +1124,87 @@ describe('check-prod-provenance — the release lanes', () => {
     const r = emitFixture({ surfaces: SURFACES, channels: [PLAYROW] });
     assert.equal(r.status, 2, r.stdout + r.stderr);
     assert.match(r.stderr, /no served lane in tooling\/channel-register\.json/);
+  });
+});
+
+// ── ⏱ 2026-09-23 · ONE WORKFLOW IS ONE LANE, AND THE STRICTER FOOTING WINS ────
+// linux-snap names submit-snap.yml as BOTH its `lane.workflow` and its
+// `submission.workflow`. Today the row is `served: false`, so only the
+// submission lane exists. The day it turns `served: true` (a store channel that
+// went live and stays submittable) the first version of this reader made two
+// lanes for one workflow and judged a snap stamp on the served footing, where a
+// successful DRY RUN resolves. These cases flip that one field in a copy of the
+// real tree, because the real register cannot show the state until it happens.
+describe('check-prod-provenance — a row both served and submittable is judged as a submission', () => {
+  const CHANNELS = 'tooling/channel-register.json';
+  const SNAP = '.github/workflows/submit-snap.yml';
+  const SHA7 = '7b7c7d7e' + '00112233445566778899aabbccddeeff';
+  const WEB101 = { run_number: 101, head_sha: 'e138f5be72555ab717d0391e771b40c0883d9fab', conclusion: 'success' };
+  const ROW7 = { consent_artifacts: [{ marker: '1.0.7+7b7c7d7', n: 1 }] };
+
+  /** A copy of what the monitor opens in offline mode, with linux-snap `served: true`. */
+  function snapServedRoot() {
+    const root = mkdtempSync(join(tmpdir(), 'nikatru-snap-served-'));
+    mkdirSync(join(root, 'tooling', 'legal'), { recursive: true });
+    mkdirSync(join(root, 'catalog'), { recursive: true });
+    cpSync(join(REPO, REGISTER), join(root, REGISTER));
+    cpSync(join(REPO, 'tooling/legal/provider-register.json'), join(root, 'tooling/legal/provider-register.json'));
+    cpSync(join(REPO, 'catalog/apps.json'), join(root, 'catalog/apps.json'));
+    cpSync(join(REPO, MIGRATIONS), join(root, MIGRATIONS), { recursive: true });
+    cpSync(join(REPO, 'services/platform/src'), join(root, 'services/platform/src'), { recursive: true });
+    for (const e of readdirSync(join(REPO, 'apps'), { withFileTypes: true })) {
+      const src = join(REPO, 'apps', e.name, 'pubspec.yaml');
+      if (!e.isDirectory() || !existsSync(src)) continue;
+      mkdirSync(join(root, 'apps', e.name), { recursive: true });
+      cpSync(src, join(root, 'apps', e.name, 'pubspec.yaml'));
+    }
+    const reg = JSON.parse(readFileSync(join(REPO, CHANNELS), 'utf8'));
+    const snap = reg.channels.find((c) => c.id === 'linux-snap');
+    assert.equal(snap.served, false, 'the real linux-snap row is not served today; if it is, this copy tests nothing new');
+    assert.equal(snap.lane.workflow, SNAP);
+    assert.equal(snap.submission.workflow, SNAP);
+    snap.served = true;
+    writeFileSync(join(root, CHANNELS), JSON.stringify(reg, null, 2));
+    return root;
+  }
+
+  function monitor(args, files = {}) {
+    const root = snapServedRoot();
+    try {
+      const argv = [MONITOR, '--root', root, ...args];
+      for (const [flagName, v] of Object.entries(files)) {
+        const p = join(root, `${flagName.replace(/^--/, '')}.json`);
+        writeFileSync(p, JSON.stringify(v));
+        argv.push(flagName, p);
+      }
+      return spawnSync(process.execPath, argv, { cwd: REPO, encoding: 'utf8' });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }
+
+  test('S-33 submit-snap.yml is emitted ONCE, as a submission lane, when its row is also served', () => {
+    const r = monitor(['--emit-release-lanes']);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    const snapLines = r.stdout.trim().split('\n').filter((l) => l.startsWith('submit-snap.yml\t'));
+    assert.deepEqual(snapLines, ['submit-snap.yml\tsubmission\tsubscriptiontracker-linux-snap']);
+  });
+
+  test('S-34 a successful snap DRY RUN with no Deployment stays unattributable when the row is also served', () => {
+    const DRY = { path: SNAP, id: 35900000207, run_number: 7, run_attempt: 1, head_sha: SHA7, conclusion: 'success' };
+    const r = monitor([], { '--rows-file': ROW7, '--runs-file': [WEB101, DRY], '--deployments-file': [] });
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /submit-snap\.yml run 7 concluded `success` but no Deployment on subscriptiontracker-linux-snap names run 35900000207/);
+  });
+
+  test('S-35 a FAILED deploy-web run cannot borrow a snap upload\'s Deployment when the snap row is also served', () => {
+    // The served ledger leaves out every environment a submission lane owns,
+    // so footing (b) never reads a store upload as a web deploy.
+    const WEB7 = { run_number: 7, head_sha: SHA7, conclusion: 'failure' };
+    const SNAPDEP = { environment: 'subscriptiontracker-linux-snap', sha: SHA7, id: 7000000207, payload: { workflow: 'submit-snap.yml', run_id: 35900000299, run_attempt: 1, run_number: 9 } };
+    const r = monitor([], { '--rows-file': ROW7, '--runs-file': [WEB101, WEB7], '--deployments-file': [SNAPDEP] });
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /run 7 concluded `failure` and NO GitHub Deployment names 7b7c7d7 on a served environment/);
   });
 });
 

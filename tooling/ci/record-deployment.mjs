@@ -58,11 +58,21 @@
 //        --state pending_manual_publish            # submittable:false store rows
 //   env:  GH_TOKEN (or GITHUB_TOKEN), GITHUB_REPOSITORY, GITHUB_SHA
 //         GITHUB_API_URL — the real origin or loopback only (a test seam; see githubApiBase)
+//         ⏱ 2026-09-23 · GITHUB_WORKFLOW_REF, GITHUB_RUN_ID, GITHUB_RUN_ATTEMPT,
+//         GITHUB_RUN_NUMBER — THE RUN IDENTITY. Every Actions step has them from
+//         the runner. They are written into the Deployment as its `payload`
+//         ({workflow, run_id, run_attempt, run_number}), and that payload is the
+//         ONLY thing tooling/ops/check-prod-provenance.mjs binds a SUBMITTED
+//         build to its run by — a time window let a dry run at the same commit
+//         borrow an upload's Deployment. Required on a submittable channel;
+//         written whenever present on every other one.
 // Exit 0 = recorded.
 //      1 = refused or failed: a bad record shape, a missing precondition, or a REAL
 //          answer from GitHub (401, a 403 with no rate-limit signal, a 422 …).
-//      2 = the DEPLOY SUCCEEDED and the record was NOT written, because GitHub's
-//          rate limit outlasted the bound (THE BOUND, below). Red on purpose.
+//      2 = the DEPLOY SUCCEEDED and the record was NOT written: GitHub's rate
+//          limit outlasted the bound (THE BOUND, below), or ⏱ 2026-09-23 the
+//          environment is a submittable channel and the run identity above is
+//          missing, so the record would bind to no run. Red on purpose.
 // ─────────────────────────────────────────────────────────────────────────────
 import { appendFileSync, readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
@@ -409,6 +419,39 @@ async function api(path, token, repo, body, ctx) {
   throw new Error(`${last.message} (after ${RETRY_ATTEMPTS} attempts)`);
 }
 
+// ── ⏱ 2026-09-23 · THE RUN IDENTITY THE DEPLOYMENT CARRIES ─────────────────
+// check-prod-provenance.mjs accepts a build stamped by a store-submission lane
+// only when a Deployment on that lane's environment names the run — by id and
+// by workflow file. It used to ask whether the Deployment was CREATED during
+// the run, and a dry run at the same commit whose lifetime overlapped the
+// upload's Deployment passed that test. A run id cannot be overlapped.
+export const RUN_IDENTITY_ENV = Object.freeze(['GITHUB_WORKFLOW_REF', 'GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT', 'GITHUB_RUN_NUMBER']);
+
+/** PURE. `{ payload, missing }` from an environment. `payload` is
+ *  `{workflow, run_id, run_attempt, run_number}` — `workflow` is the workflow
+ *  FILE basename out of GITHUB_WORKFLOW_REF (`owner/repo/.github/workflows/x.yml@ref`),
+ *  the three numbers are positive safe integers — or `null`, with `missing`
+ *  naming every variable that was absent or unreadable. */
+export function runIdentity(env = process.env) {
+  const missing = [];
+  const wf = String(env.GITHUB_WORKFLOW_REF ?? '').match(/\.github\/workflows\/([^/@]+\.ya?ml)@/);
+  if (!wf) missing.push('GITHUB_WORKFLOW_REF');
+  const num = (name) => {
+    const raw = String(env[name] ?? '');
+    const n = Number(raw);
+    if (!/^[1-9]\d*$/.test(raw) || !Number.isSafeInteger(n)) {
+      missing.push(name);
+      return null;
+    }
+    return n;
+  };
+  const run_id = num('GITHUB_RUN_ID');
+  const run_attempt = num('GITHUB_RUN_ATTEMPT');
+  const run_number = num('GITHUB_RUN_NUMBER');
+  if (missing.length) return { payload: null, missing };
+  return { payload: { workflow: wf[1], run_id, run_attempt, run_number }, missing };
+}
+
 async function main() {
   const argv = process.argv.slice(2);
   const positional = [];
@@ -430,6 +473,7 @@ async function main() {
   let description;
   let state;
   let listingUrl;
+  let submittable = false;
   try {
     state = flagValue(argv, 'state');
     listingUrl = flagValue(argv, 'listing-url');
@@ -470,6 +514,7 @@ async function main() {
     // field keeps the stricter submission rules rather than escaping them.
     const isStore = resolved.channel.kind === 'store';
     const cannotSubmit = isStore && resolved.channel.submittable === false;
+    submittable = resolved.channel.submittable === true;
     const NOT_SUBMITTED = NOT_SUBMITTED_STATES[0];
     if (state !== null && NOT_SUBMITTED_STATES.includes(state) && !cannotSubmit) {
       return fail(
@@ -524,6 +569,28 @@ async function main() {
     return fail(`could not build the deployment record: ${err.message}`);
   }
 
+  // ── ⏱ 2026-09-23 · THE RUN IDENTITY, BEFORE ANYTHING IS WRITTEN ───────────
+  // A submittable channel's record is the witness a submitted build is accepted
+  // on, and it witnesses only the run its payload names. Without the identity
+  // the record would bind to no run, so it is not written: exit 2, the same
+  // "the upload happened and its record did not" as the rate-limit branch.
+  const identity = runIdentity(process.env);
+  if (submittable && identity.payload === null) {
+    console.error(
+      `✗ "${environment}" is a channel this factory SUBMITS to, and the run identity is missing or unreadable: ` +
+        `${identity.missing.join(', ')}. The record is NOT written: tooling/ops/check-prod-provenance.mjs binds a ` +
+        "submitted build to its run ONLY through the Deployment payload these variables name, so a record without " +
+        'them would witness no run at all.',
+    );
+    console.error(
+      '  Every GitHub Actions step has them from the runner — a step that lost them was wrapped in something that ' +
+        'cleared its environment. For a recovery written by hand, pass the values of the run being recorded: ' +
+        `GITHUB_SHA=${sha} ${RUN_IDENTITY_ENV.map((k) => `${k}=<from that run>`).join(' ')}.`,
+    );
+    process.exitCode = 2;
+    return;
+  }
+
   // ── the transport: the real API, or a loopback test seam ─────────────────
   const transport = githubApiBase();
   if (transport.error) return fail(transport.error);
@@ -555,6 +622,9 @@ async function main() {
       // deployment to recover a field we were already writing; writing the
       // encoding here costs nothing and makes the cheap query the correct one.
       description,
+      // ⏱ 2026-09-23 — the run that wrote this record, by id. Omitted only on a
+      // non-submittable channel run outside Actions; see RUN_IDENTITY_ENV.
+      ...(identity.payload ? { payload: identity.payload } : {}),
       auto_merge: false,
       required_contexts: [],
       transient_environment: false,
@@ -605,6 +675,16 @@ async function main() {
       console.error(
         `  Write it once the limit resets by running ONLY this script again, same arguments, with GITHUB_SHA=${sha}. ` +
           'A whole-job re-run re-deploys to get a second chance at a write.',
+      );
+      // ⏱ 2026-09-23 — and with THIS run's identity, or the recovery record
+      // names no run and a submitted build stays unattributable. Printed as the
+      // exact assignments to pass; none of them is a secret.
+      console.error(
+        identity.payload
+          ? `  Pass this run's identity too, exactly: GITHUB_SHA=${sha} ` +
+              `GITHUB_WORKFLOW_REF=${process.env.GITHUB_WORKFLOW_REF} GITHUB_RUN_ID=${identity.payload.run_id} ` +
+              `GITHUB_RUN_ATTEMPT=${identity.payload.run_attempt} GITHUB_RUN_NUMBER=${identity.payload.run_number}`
+          : `  This run carried no readable identity (${identity.missing.join(', ')}), so the recovery record will carry no run payload.`,
       );
       process.exitCode = 2;
       return;

@@ -499,8 +499,9 @@ describe('assert-app-versioning — the lane set is derived from the channel reg
 // 2026-09-22; Play's pre-launch robots wrote 22+ production D1 rows as `dev`. The guard
 // was green throughout: the android-play row is deferred and the upload is not a
 // DEPLOY_MARKER. The fixture below is that workflow's shape, and it must FAIL.
-// ⏱ CORRECTED 2026-09-23: ONE upload, run 35787897094 (run_number 5, Play edit
-// committed 21:59:37Z); the 21:27Z run (35786771434, run_number 4) was a dry run.
+// ⏱ CORRECTED 2026-09-23: "uploaded it twice" above is left as written. There was
+// ONE upload, run 35787897094 (run_number 5, Play edit committed 21:59:37Z); the
+// 21:27Z run (35786771434, run_number 4) was a dry run.
 //
 // Mutation run against the real tree the same day: the second APP_VERSION define
 // deleted from submit-play.yml ⇒ exit 1 naming submit-play.yml:248; restored ⇒ exit 0.

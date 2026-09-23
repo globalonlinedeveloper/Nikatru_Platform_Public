@@ -60,6 +60,10 @@ const CHECK_RUNS = `GET /repos/${REPO}/commits/${SHA}/check-runs`;
 /** Inherited CI variables would decide outcomes here (a real GITHUB_STEP_SUMMARY
  *  would even be written to), so every one the scripts read is cleared. */
 const CLEARED = ['GITHUB_TOKEN', 'GH_TOKEN', 'GITHUB_REPOSITORY', 'GITHUB_SHA', 'GITHUB_API_URL', 'GITHUB_STEP_SUMMARY', 'GITHUB_OUTPUT'];
+// ⏱ 2026-09-23 — and the run identity record-deployment.mjs writes into the
+// Deployment payload: set in CI, absent on a laptop, so it is cleared here and
+// every case that needs it passes it.
+CLEARED.push('GITHUB_WORKFLOW_REF', 'GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT', 'GITHUB_RUN_NUMBER');
 const cleanEnv = (env) => {
   const base = { ...process.env };
   for (const k of CLEARED) delete base[k];
@@ -145,11 +149,11 @@ const gap = (calls, key) => {
   return at[1] - at[0];
 };
 
-async function recordAgainst(script) {
+async function recordAgainst(script, env = {}) {
   const gh = await fakeGitHub(script);
   try {
     const r = await runAsync(RECORDER, ['platform', 'https://platform.nikatru.com'], {
-      GITHUB_REPOSITORY: REPO, GITHUB_SHA: SHA, GH_TOKEN: 'ghs-test', GITHUB_API_URL: gh.origin,
+      GITHUB_REPOSITORY: REPO, GITHUB_SHA: SHA, GH_TOKEN: 'ghs-test', GITHUB_API_URL: gh.origin, ...env,
     });
     return { ...r, calls: gh.calls };
   } finally {
@@ -220,6 +224,43 @@ describe('record-deployment — a rate limit is waited out, within the bound', (
     assert.equal(r.code, 2, r.out);
     assert.match(r.out, /the DEPLOY SUCCEEDED; the GitHub Deployment record for abc12345/, r.out);
     assert.match(r.out, /Deployment 42 WAS created/, r.out);
+  });
+
+  // ⏱ 2026-09-23 — the recovery record is written by hand, outside the run, and
+  // a submitted build is accepted only on a Deployment whose payload names its
+  // run. So the hint prints the run's identity as the exact assignments to pass.
+  test('(c) the recovery hint prints THIS run\'s identity, exactly as the recovery must pass it', async () => {
+    const r = await recordAgainst(
+      { [DEPLOYMENTS]: [primary(3600)], [STATUSES]: [STATUS_OK] },
+      {
+        GITHUB_WORKFLOW_REF: 'x/y/.github/workflows/submit-play.yml@refs/heads/main',
+        GITHUB_RUN_ID: '35787897094',
+        GITHUB_RUN_ATTEMPT: '1',
+        GITHUB_RUN_NUMBER: '5',
+      },
+    );
+    noCrash(r.out);
+    assert.equal(r.code, 2, r.out);
+    assert.match(
+      r.out,
+      new RegExp(
+        `Pass this run's identity too, exactly: GITHUB_SHA=${SHA} ` +
+          'GITHUB_WORKFLOW_REF=x/y/\\.github/workflows/submit-play\\.yml@refs/heads/main GITHUB_RUN_ID=35787897094 ' +
+          'GITHUB_RUN_ATTEMPT=1 GITHUB_RUN_NUMBER=5',
+      ),
+      r.out,
+    );
+  });
+
+  test('(c) a rate-limited run with NO identity says its recovery record will name no run', async () => {
+    const r = await recordAgainst({ [DEPLOYMENTS]: [primary(3600)], [STATUSES]: [STATUS_OK] });
+    noCrash(r.out);
+    assert.equal(r.code, 2, r.out);
+    assert.match(
+      r.out,
+      /carried no readable identity \(GITHUB_WORKFLOW_REF, GITHUB_RUN_ID, GITHUB_RUN_ATTEMPT, GITHUB_RUN_NUMBER\), so the recovery record will carry no run payload/,
+      r.out,
+    );
   });
 
   test('(d) 403 "Resource not accessible by integration" — a permission ANSWER, exit 1 on the first response', async () => {
