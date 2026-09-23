@@ -733,6 +733,19 @@ const GUARDS = [
   { name: 'assert-name-clearance', speed: 'fast', needsPrivate: false,
     rel: ['tooling/ci/assert-name-clearance.mjs'],
     what: 'every declared app name carries a current, non-blocked clearance record' },
+
+  /* 🔴 `args: ['--self-test']` IS THE ONLY WAY THIS GUARD CAN RUN HERE, and it is
+     not a loosening. The guard grades a staged release directory; outside a
+     release run there is no such directory, so invoking it bare would be a guard
+     that reports nothing on every commit — the shape this corpus has twice found
+     and deleted. `--self-test` builds real release directories in os.tmpdir()
+     from the real register and the real tool.json, breaks exactly one thing in
+     each, and requires the guard to name it. It exits 1 the moment a limb stops
+     failing, which is the property a sweep can actually check. */
+  { name: 'assert-release-json', speed: 'fast', needsPrivate: false,
+    rel: ['tooling/ci/assert-release-json.mjs'],
+    args: ['--self-test'],
+    what: 'the guard that grades a release record against its own bytes can still fail' },
 ];
 
 const selected = GUARDS.filter((g) => FULL || g.speed === 'fast');

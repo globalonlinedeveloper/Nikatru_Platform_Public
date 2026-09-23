@@ -2299,6 +2299,29 @@ jobs:
             echo '`node scripts/pack.mjs ${{ steps.tag.outputs.id }} --target chromium --release` and compare SHA256SUMS.txt.'
           } >> notes.md
 
+      # why: BEFORE the manifest, never after — SHA256SUMS has to name release.json
+      # or the one file describing this release is the one file nobody can verify.
+      # assert-release-durable.mjs limb 2 holds the order.
+      # ⚠️ `releasedAt` IS THE COMMIT'S TIME, not the run's: this lane is
+      # byte-reproducible by design (the notes above tell a reader to rebuild from
+      # the tag and compare), and a wall clock would make the record the one file
+      # that never reproduces.
+      - name: Describe the release, versioned per artefact
+        working-directory: .
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          NOTES_URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}
+          TOOL: ${{ steps.tag.outputs.id }}
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          set -euo pipefail
+          RELEASED_AT="$(TZ=UTC git show -s --format=%cd --date=format-local:%Y-%m-%dT%H:%M:%SZ "$GITHUB_SHA")"
+          node tooling/ci/release-manifest.mjs --emit-release-json extensions/dist \
+            --app "$TOOL" --tag "${TOOL}-v${VERSION}" --sha "$GITHUB_SHA" \
+            --run-url "$RUN_URL" --notes-url "$NOTES_URL" \
+            --released-at "$RELEASED_AT" \
+            --version "$VERSION" --min-supported "$VERSION"
+
       - name: The integrity record the platform requires of every release
         working-directory: .
         env:
@@ -2313,6 +2336,10 @@ jobs:
         working-directory: .
         run: node tooling/ci/release-manifest.mjs --verify extensions/dist
 
+      - name: Grade the release record against the bytes beside it
+        working-directory: .
+        run: node tooling/ci/assert-release-json.mjs --dir extensions/dist
+
       - name: The register must be able to name where this ships
         if: github.event_name == 'push'
         working-directory: .
@@ -2326,8 +2353,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # 🔴 THE LIST IS EXPLICIT, SO A NEW ASSET HAS TO BE ADDED HERE TOO.
+          # build-platforms.yml enumerates with `--emit-assets` and picks up a new
+          # file for free; this lane does not. release.json is named because the
+          # manifest published beside it CONTAINS a line for release.json — a
+          # release that uploads the manifest and not the file it covers fails
+          # `post-deploy-smoke.mjs --release-manifest` on the first tag, and fails
+          # it as "asset missing", which reads like a build problem.
           gh release create "$GITHUB_REF_NAME" \
             extensions/dist/*.zip extensions/dist/SHA256SUMS.txt extensions/dist/SHA256SUMS \
+            extensions/dist/release.json \
             --title "${{ steps.tag.outputs.id }} v${{ steps.tag.outputs.version }}" \
             --notes-file extensions/notes.md
 
