@@ -189,7 +189,8 @@ for (const dir of dirs) {
       coverageLost([
         `${rel} is ${img.width}x${img.height}; the floor in ${REGISTER} ${BLOCK} was measured on frames ${width} wide.`,
         'Removed ink falls roughly as 1/DPR, so a floor measured at one width says nothing at another. If the',
-        'drive\'s --window-size or DPR changed, re-measure the block in the same change; do not stretch the floor.',
+        'drive\'s --browser-dimension (WxH@dpr) changed, re-measure the block in the same change; do not stretch the',
+        'floor. --window-size is not the lever: flutter drive resizes the window over it (1600x881, run 35824787614).',
       ]);
     }
     judged.push({ rel, width: img.width, height: img.height, ...removedInk(img) });
