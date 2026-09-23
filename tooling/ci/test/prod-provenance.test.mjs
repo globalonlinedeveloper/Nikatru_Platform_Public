@@ -775,6 +775,271 @@ describe('check-prod-provenance — the environments witness (b) is read from', 
   });
 });
 
+// ── ⏱ 2026-09-23 · A BUILD THAT LEFT THROUGH A STORE SUBMISSION ──────────────
+// Modelled on the REAL incident. The first Play upload was submit-play.yml
+// run_number 5 (run 35787897094, 21:38:59Z → 21:59:43Z) at 0390db6d; its record
+// step wrote Deployment 6601614981 on subscriptiontracker-android-play at
+// 21:59:38Z. The build stamped `1.0.5+0390db6`, and the consent row it wrote was
+// called unattributable by ops-watch run 35820464059, because this reader knew
+// deploy-web.yml as the only release lane. Run_number 4 (35786771434, 21:27:38Z →
+// 21:35:44Z, at 22fd29b7) was a DRY RUN: it concluded `success`, uploaded nothing
+// and recorded no Deployment — so a successful run is exactly what must NOT be
+// enough on this footing. The run numbers, times and ids below are the real ones.
+describe('check-prod-provenance — a SUBMISSION lane build', () => {
+  const SHA5 = '0390db6d' + 'a1b2c3d4e5f60718293a4b5c6d7e8f90';
+  const SHA4 = '22fd29b7' + '0f1e2d3c4b5a69788796a5b4c3d2e1f0';
+  const SHA6P = '6a6b6c6d' + '11223344556677889900aabbccddeeff';
+  const PLAY = '.github/workflows/submit-play.yml';
+  const RUN5 = { path: PLAY, run_number: 5, head_sha: SHA5, conclusion: 'success', created_at: '2026-09-22T21:38:59Z', updated_at: '2026-09-22T21:59:43Z' };
+  const RUN4 = { path: PLAY, run_number: 4, head_sha: SHA4, conclusion: 'success', created_at: '2026-09-22T21:27:38Z', updated_at: '2026-09-22T21:35:44Z' };
+  const DEP5 = { environment: 'subscriptiontracker-android-play', sha: SHA5, created_at: '2026-09-22T21:59:38Z', id: 6601614981 };
+  const WEB101 = { run_number: 101, head_sha: 'e138f5be72555ab717d0391e771b40c0883d9fab', conclusion: 'success' };
+  const ROW5 = { consent_artifacts: [{ marker: '1.0.5+0390db6', n: 1 }] };
+
+  function run(rowsByTable, runs, deployments) {
+    const dir = mkdtempSync(join(tmpdir(), 'nikatru-submission-'));
+    try {
+      const f = (name, v) => { const p = join(dir, name); writeFileSync(p, JSON.stringify(v)); return p; };
+      const argv = [MONITOR, '--root', REPO, '--rows-file', f('rows.json', rowsByTable), '--runs-file', f('runs.json', runs)];
+      if (deployments !== null) argv.push('--deployments-file', f('deployments.json', deployments));
+      return spawnSync(process.execPath, argv, { cwd: REPO, encoding: 'utf8' });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  test('S-1 THE INCIDENT SHAPE: a Play build with a Deployment recorded during its run RESOLVES', () => {
+    const r = run(ROW5, [WEB101, RUN5], [DEP5]);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /consent_artifacts\s+1 row\(s\), 0 unattributable/);
+  });
+
+  test('S-2 and it says so out loud, naming the run and the Deployment that carried it', () => {
+    const r = run(ROW5, [WEB101, RUN5], [DEP5]);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /submission-witnessed build accepted: 1\.0\.5\+0390db6 — submit-play\.yml run 5/);
+    assert.match(r.stdout, /Deployment 6601614981 on subscriptiontracker-android-play/);
+    assert.match(r.stdout, /release lane · submission · submit-play\.yml: 1 completed run\(s\) · 1 Deployment\(s\)/);
+  });
+
+  test('S-3 THE DRY RUN: run 4 succeeded, uploaded nothing and recorded nothing — it stays unattributable', () => {
+    const r = run({ consent_artifacts: [{ marker: '1.0.4+22fd29b', n: 1 }] }, [WEB101, RUN4, RUN5], [DEP5]);
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /submit-play\.yml run 4 concluded `success` but NO GitHub Deployment/);
+    assert.match(r.stderr, /was created during it \(a dry run writes none\)/);
+  });
+
+  test('S-4 a DRY RUN AT THE SAME SHA as an earlier upload cannot borrow that upload\'s Deployment', () => {
+    // The case an (environment, sha)-only witness wrongly accepts: DEP5 names
+    // 0390db6 on the right environment, but it was created inside run 5, not 6.
+    const RUN6 = { path: PLAY, run_number: 6, head_sha: SHA5, conclusion: 'success', created_at: '2026-09-22T22:10:00Z', updated_at: '2026-09-22T22:15:00Z' };
+    const r = run({ consent_artifacts: [{ marker: '1.0.6+0390db6', n: 1 }] }, [WEB101, RUN5, RUN6], [DEP5]);
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /submit-play\.yml run 6 concluded `success` but NO GitHub Deployment/);
+  });
+
+  test('S-5a a Deployment created one second AFTER the run ended does not witness it', () => {
+    const r = run(ROW5, [WEB101, RUN5], [{ ...DEP5, created_at: '2026-09-22T21:59:44Z' }]);
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /was created during it/);
+  });
+
+  test('S-5b a Deployment created one second BEFORE the run began does not witness it', () => {
+    const r = run(ROW5, [WEB101, RUN5], [{ ...DEP5, created_at: '2026-09-22T21:38:58Z' }]);
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /was created during it/);
+  });
+
+  test('S-6 a bare-sha ledger entry never witnesses a submission — it names no environment and no time', () => {
+    const r = run(ROW5, [WEB101, RUN5], [SHA5]);
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /submit-play\.yml run 5 concluded `success` but NO GitHub Deployment/);
+  });
+
+  test('S-7 a Deployment on the WEB environment never witnesses a Play build', () => {
+    const r = run(ROW5, [WEB101, RUN5], [{ ...DEP5, environment: 'subscriptiontracker-web' }]);
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /NO GitHub Deployment on subscriptiontracker-android-play at 0390db6/);
+  });
+
+  test('S-8 a Deployment on another channel of the same app does not witness this lane', () => {
+    const r = run(ROW5, [WEB101, RUN5], [{ ...DEP5, environment: 'subscriptiontracker-linux-snap' }]);
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /NO GitHub Deployment on subscriptiontracker-android-play at 0390db6/);
+  });
+
+  // Run numbers are per workflow: deploy-web and submit-play each have a run 6.
+  const RUN6P = { path: PLAY, run_number: 6, head_sha: SHA6P, conclusion: 'success', created_at: '2026-09-23T01:00:00Z', updated_at: '2026-09-23T01:20:00Z' };
+  const DEP6P = { environment: 'subscriptiontracker-android-play', sha: SHA6P, created_at: '2026-09-23T01:19:00Z', id: 7000000001 };
+  const WEB6 = { run_number: 6, head_sha: '9f9e9d9c9b9a99989796959493929190bfbebdbc', conclusion: 'success' };
+  const ROW6 = { consent_artifacts: [{ marker: '1.0.6+6a6b6c6', n: 1 }] };
+
+  test('S-9 THE COLLISION: a served run listed LAST with the same number does not hide the Play build', () => {
+    const r = run(ROW6, [WEB101, RUN6P, WEB6], [DEP6P]);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /submission-witnessed build accepted: 1\.0\.6\+6a6b6c6 — submit-play\.yml run 6/);
+  });
+
+  test('S-10 the same collision with no Deployment is refused, and BOTH candidates say why', () => {
+    const r = run(ROW6, [WEB101, RUN6P, WEB6], []);
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /submit-play\.yml run 6 concluded `success` but NO GitHub Deployment[^\n]* · run 6 shipped 9f9e9d9, not 6a6b6c6/);
+  });
+
+  test('S-11 `dev` stays refused with an upload and its Deployment right there', () => {
+    const r = run({ consent_artifacts: [{ marker: 'dev', n: 1 }] }, [WEB101, RUN5], [DEP5]);
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /not the shape a shipped build produces/);
+  });
+
+  test('S-12 a fixture run on a workflow that is NO release lane is COULD NOT LOOK, never judged', () => {
+    const r = run(ROW5, [WEB101, { ...RUN5, path: '.github/workflows/ci.yml' }], [DEP5]);
+    assert.equal(r.status, 2, r.stdout + r.stderr);
+    assert.match(r.stderr, /names workflow ci\.yml, which is no release lane/);
+  });
+
+  test('S-13 a submission run with no readable window is COULD NOT LOOK, never a guess', () => {
+    const { created_at, updated_at, ...bare } = RUN5;
+    const r = run(ROW5, [WEB101, bare], [DEP5]);
+    assert.equal(r.status, 2, r.stdout + r.stderr);
+    assert.match(r.stderr, /carries no readable `created_at`/);
+  });
+
+  test('S-14 a fixture with no --deployments-file reads as NO witness for a submission, never a permissive one', () => {
+    const r = run(ROW5, [WEB101, RUN5], null);
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /submit-play\.yml run 5 concluded `success` but NO GitHub Deployment/);
+  });
+
+  test('S-21 submission runs alone cannot stand in for an empty served lane — COULD NOT LOOK', () => {
+    const r = run(ROW5, [RUN5], [DEP5]);
+    assert.equal(r.status, 2, r.stdout + r.stderr);
+    assert.match(r.stderr, /no completed run of the served lane deploy-web\.yml was found/);
+  });
+
+  test('S-22 a Deployment entry that names an environment but no readable time is COULD NOT LOOK', () => {
+    const { created_at, ...untimed } = DEP5;
+    const r = run(ROW5, [WEB101, RUN5], [untimed]);
+    assert.equal(r.status, 2, r.stdout + r.stderr);
+    assert.match(r.stderr, /carries no readable `created_at`, so this reader cannot tell which run recorded it/);
+  });
+});
+
+// ── ⏱ 2026-09-23 · THE RELEASE LANES, AND WHERE EACH ONE'S WITNESS IS READ ────
+// `--emit-release-lanes` reaches releaseLanes(), the function the live read
+// calls, without a token. The binding test holds each submission lane's
+// emitted environments to the `record-deployment.mjs <env>` calls in that
+// lane's own workflow file: a rename on either side would make footing (c) read
+// an environment nothing writes, and every store build would go unattributable.
+describe('check-prod-provenance — the release lanes', () => {
+  const CHANNELS = 'tooling/channel-register.json';
+  const CATALOGUE = 'catalog/apps.json';
+  const SURFACES = { app: { flutterApp: true }, extension: { flutterApp: false } };
+  const WEB = { id: 'web', surface: 'app', served: true, lane: { workflow: '.github/workflows/deploy-web.yml' }, deploymentEnvironment: '{app}-web' };
+  const PLAYROW = { id: 'android-play', surface: 'app', served: false, submittable: true, submission: { workflow: '.github/workflows/submit-play.yml' }, deploymentEnvironment: '{app}-android-play' };
+
+  const emitReal = (flagName) => spawnSync(process.execPath, [MONITOR, flagName], { cwd: REPO, encoding: 'utf8' });
+  const parse = (stdout) =>
+    stdout.trim().split('\n').map((s) => s.trim()).filter(Boolean).map((l) => {
+      const [workflow, kind, envs = ''] = l.split('\t');
+      return { workflow, kind, environments: envs.split(',').filter(Boolean) };
+    });
+
+  function emitFixture(register) {
+    const root = mkdtempSync(join(tmpdir(), 'nikatru-release-lanes-'));
+    try {
+      mkdirSync(join(root, 'tooling'), { recursive: true });
+      mkdirSync(join(root, 'catalog'), { recursive: true });
+      writeFileSync(join(root, CHANNELS), JSON.stringify(register, null, 2));
+      writeFileSync(join(root, CATALOGUE), JSON.stringify([{ slug: 'subscriptiontracker' }]));
+      return spawnSync(process.execPath, [MONITOR, '--root', root, '--emit-release-lanes'], { cwd: REPO, encoding: 'utf8' });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }
+
+  test('S-15 THE REAL TREE: deploy-web is the served lane and the four app submission lanes are the others', () => {
+    const r = emitReal('--emit-release-lanes');
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    const got = parse(r.stdout).map((l) => `${l.kind}:${l.workflow}`).sort();
+    assert.deepEqual(got, [
+      'served:deploy-web.yml',
+      'submission:submit-appstore.yml',
+      'submission:submit-play.yml',
+      'submission:submit-snap.yml',
+      'submission:submit-windows-store.yml',
+    ]);
+    assert.doesNotMatch(r.stdout, /extensions\.yml/, 'an extension build carries no APP_VERSION stamp and is no release lane');
+  });
+
+  test('S-16 THE REAL TREE BINDING: every environment a submission lane records into is one this reader reads', () => {
+    const r = emitReal('--emit-release-lanes');
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    const slugs = JSON.parse(readFileSync(join(REPO, 'catalog', 'apps.json'), 'utf8')).map((a) => a.slug);
+    let calls = 0;
+    for (const lane of parse(r.stdout).filter((l) => l.kind === 'submission')) {
+      // The same two normalisations the deploy-web binding above earned.
+      const text = readFileSync(join(REPO, '.github', 'workflows', lane.workflow), 'utf8')
+        .split('\n')
+        .filter((l) => !/^\s*#/.test(l))
+        .join('\n')
+        .replace(/\$\{\{\s*matrix\.app\s*\}\}/g, '{app}')
+        .replace(/\$\{\{[^}]*\}\}/g, 'EXPR');
+      for (const m of text.matchAll(/record-deployment\.mjs\s+(\S+)/g)) {
+        calls += 1;
+        const envs = m[1].includes('{app}') ? slugs.map((s) => m[1].replace('{app}', s)) : [m[1]];
+        for (const env of envs) {
+          assert.ok(
+            lane.environments.includes(env),
+            `${lane.workflow} records "${env}" but this reader looks for its Deployments on ${lane.environments.join(', ')}`,
+          );
+        }
+      }
+    }
+    assert.ok(calls >= 3, `expected the Play, Snap and Windows Store lanes to record Deployments; found ${calls} call(s)`);
+  });
+
+  test('S-17 THIRD SURFACE: a submittable row on an undeclared surface is COULD NOT LOOK', () => {
+    const r = emitFixture({
+      surfaces: SURFACES,
+      channels: [WEB, { ...PLAYROW, id: 'car-store', surface: 'car', submission: { workflow: '.github/workflows/submit-car.yml' }, deploymentEnvironment: '{app}-car-store' }],
+    });
+    assert.equal(r.status, 2, r.stdout + r.stderr);
+    assert.match(r.stderr, /whether its submitted builds carry an APP_VERSION stamp/);
+  });
+
+  test('S-18 a submittable EXTENSION row is no release lane; the app row beside it is', () => {
+    const r = emitFixture({
+      surfaces: SURFACES,
+      channels: [WEB, PLAYROW, { id: 'amo', surface: 'extension', submittable: true, submission: { workflow: '.github/workflows/extensions.yml' }, deploymentEnvironment: '{app}-amo' }],
+    });
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.deepEqual(r.stdout.trim().split('\n').sort(), [
+      'deploy-web.yml\tserved\tsubscriptiontracker-web',
+      'submit-play.yml\tsubmission\tsubscriptiontracker-android-play',
+    ]);
+  });
+
+  test('S-19 a submittable app row with no submission.workflow is COULD NOT LOOK', () => {
+    const { submission, ...noWorkflow } = PLAYROW;
+    const r = emitFixture({ surfaces: SURFACES, channels: [WEB, noWorkflow] });
+    assert.equal(r.status, 2, r.stdout + r.stderr);
+    assert.match(r.stderr, /is submittable but declares no submission\.workflow or deploymentEnvironment/);
+  });
+
+  test('S-20 THE ASYMMETRY HOLDS: no submission environment reaches the served set footing (b) reads', () => {
+    const r = emitReal('--emit-served-environments');
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.doesNotMatch(r.stdout, /-android-play|-linux-snap|-windows-store|-appstore/);
+  });
+
+  test('S-23 a register with submission lanes and NO served lane is COULD NOT LOOK', () => {
+    const r = emitFixture({ surfaces: SURFACES, channels: [PLAYROW] });
+    assert.equal(r.status, 2, r.stdout + r.stderr);
+    assert.match(r.stderr, /no served lane in tooling\/channel-register\.json/);
+  });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ⏱ 2026-09-11 · A REFUSED GITHUB READ IS COULD NOT LOOK (exit 2), NEVER A BAD
 // ATTESTATION (exit 1). The attestation loop read any non-200 on the commit as
