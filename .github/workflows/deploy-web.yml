@@ -32,10 +32,9 @@ on:
       - 'tooling/smoke/smoke-web-artifact.mjs'
       - 'tooling/web/**'
       - 'tooling/ops/post-deploy-smoke.mjs'
-      # The GlitchTip writes, and the retry plan they share.
+      # The two GlitchTip writes this lane runs (row O-GLITCHTIP-CALLS-HAVE-NO-RETRY).
       - 'tooling/ops/create-glitchtip-release.mjs'
       - 'tooling/ops/upload-web-sourcemaps.mjs'
-      - 'tooling/ops/bounded-retry.mjs'
       - '.github/workflows/deploy-web.yml'
   workflow_dispatch:
 
