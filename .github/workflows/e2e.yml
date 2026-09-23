@@ -382,6 +382,17 @@ jobs:
           # changes. `localhost` and not `127.0.0.1`: only the former is on the
           # list (measured — 127.0.0.1:3000 gets no allow-origin), and
           # `--web-hostname` already defaults to localhost.
+          #
+          # 🔴 `--browser-dimension` IS THE SIZE LEVER; `--window-size` NEVER WAS.
+          # From this suite's first commit (c478ef35, 2026-07-18) until
+          # 2026-09-23 the drive passed `--web-browser-flag=--window-size=430,932`,
+          # and flutter drive then resized the window to its own
+          # `--browser-dimension` default, 1600x1024, over it. Every frame was
+          # 1600x881, the desktop layout; E2E live run 35824787614 read that off
+          # screenshots/00-consent.png. `WxH@dpr` is the form the store capture
+          # already uses (tooling/store/capture-play-screenshots.mjs). It sets
+          # the viewport exactly, 430x932 at DPR 1, which is a phone layout and
+          # the size tooling/e2e-leg-register.json framesCarryText was measured at.
           flutter drive \
             --driver=test_driver/integration_test.dart \
             --target=integration_test/app_test.dart \
@@ -390,7 +401,7 @@ jobs:
             --web-browser-flag=--disable-gpu \
             --web-browser-flag=--no-sandbox \
             --web-browser-flag=--disable-dev-shm-usage \
-            --web-browser-flag=--window-size=430,932 \
+            --browser-dimension=430x932@1 \
             --dart-define=SUPABASE_URL="$SUPABASE_URL" \
             --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" \
             --dart-define=API_BASE_URL="$API_BASE_URL" \
@@ -496,7 +507,7 @@ jobs:
       # filter removes; the run's median must reach
       # tooling/e2e-leg-register.json framesCarryText.minMedianRemovedInk,
       # measured 2026-09-23 on real served and glyphless frames at the
-      # --window-size above. A per-frame self-ratio did not separate at DPR 1
+      # --browser-dimension above. A per-frame self-ratio did not separate at DPR 1
       # (the table is in that block's `_why`). Frames of another width are
       # exit 2: change the window size and re-measure the block together.
       #

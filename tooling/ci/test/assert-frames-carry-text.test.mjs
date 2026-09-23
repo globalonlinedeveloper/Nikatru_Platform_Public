@@ -155,7 +155,7 @@ describe('assert-frames-carry-text, as the program CI runs', () => {
     );
     const block = JSON.parse(readFileSync(join(ROOT, 'tooling', 'e2e-leg-register.json'), 'utf8')).framesCarryText;
     assert.equal(block.metric, 'local-contrast-ink-v1');
-    assert.equal(block.calibratedWidth, 430, 'the floor was measured at the drive\'s --window-size width');
+    assert.equal(block.calibratedWidth, 430, 'the floor was measured at the drive\'s --browser-dimension width');
   });
 });
 
@@ -182,14 +182,41 @@ describe('the directory the e2e workflow points it at', () => {
   });
 
   test('the drive still captures at the width the floor was measured at', () => {
-    // The floor is only valid at one width. If --window-size moves, the guard
-    // goes exit 2 on the first nightly; this names it in the PR instead.
+    // The floor is only valid at one width, and the lever that sets it is
+    // flutter drive's --browser-dimension. This test used to hold
+    // `--window-size=430,…`, which flutter drive resizes over with its own
+    // 1600x1024 default: it was green while every frame was 1600x881, and the
+    // first nightly (E2E live run 35824787614) was the thing that noticed.
+    // So it reads the drive command itself, and refuses a --window-size there.
     const wf = readFileSync(join(ROOT, '.github', 'workflows', 'e2e.yml'), 'utf8');
     const block = JSON.parse(readFileSync(join(ROOT, 'tooling', 'e2e-leg-register.json'), 'utf8')).framesCarryText;
-    assert.match(
-      wf,
-      new RegExp(`--window-size=${block.calibratedWidth},\\d+`),
-      `e2e.yml no longer drives Chrome ${block.calibratedWidth} wide; re-measure framesCarryText in the same change`,
-    );
+    const sizeProblems = (text) => {
+      const start = text.indexOf('flutter drive \\');
+      if (start === -1) return ['e2e.yml has no `flutter drive \\` command'];
+      const drive = text.slice(start, text.indexOf('| tee', start));
+      const out = [];
+      const dims = [...drive.matchAll(/--browser-dimension=(\d+)[x,](\d+)(?:@([\d.]+))?/g)];
+      if (dims.length !== 1) out.push(`the drive passes --browser-dimension ${dims.length} time(s), not once`);
+      else if (Number(dims[0][1]) !== block.calibratedWidth || dims[0][3] !== '1') {
+        out.push(`the drive is --browser-dimension=${dims[0][0].split('=')[1]}, not ${block.calibratedWidth}x…@1, the size framesCarryText was measured at`);
+      }
+      if (/--window-size/.test(drive)) out.push('the drive passes --window-size, which flutter drive resizes over; it is not a size lever');
+      return out;
+    };
+    assert.deepEqual(sizeProblems(wf), [], `re-measure framesCarryText in the same change as a drive-size change`);
+
+    // Red controls: each is the drive of a different day, and each must fail.
+    const dim = /--browser-dimension=\S+ \\\n/;
+    assert.match(wf, dim, 'the mutation must land');
+    const reds = {
+      'the flag removed (1600x1024 default)': wf.replace(dim, ''),
+      'the 2026-07-18 drive': wf.replace(dim, '--web-browser-flag=--window-size=430,932 \\\n'),
+      'a DPR of 2': wf.replace(/--browser-dimension=(\d+)x(\d+)@1/, '--browser-dimension=$1x$2@2'),
+      'another width': wf.replace(/--browser-dimension=\d+x/, '--browser-dimension=390x'),
+    };
+    for (const [what, text] of Object.entries(reds)) {
+      assert.notEqual(text, wf, `${what}: the mutation must land`);
+      assert.notDeepEqual(sizeProblems(text), [], `${what} must be red`);
+    }
   });
 });

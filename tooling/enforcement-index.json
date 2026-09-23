@@ -3404,6 +3404,19 @@
   {
     "claims": [],
     "invokedBy": [
+      ".github/workflows/store-screenshots.yml#capture",
+      ".github/workflows/store-screenshots.yml#capture-desktop-native",
+      ".github/workflows/store-screenshots.yml#capture-ios",
+      ".github/workflows/store-screenshots.yml#capture-linux"
+    ],
+    "kind": "script",
+    "ref": "tooling/store/measure-frame-ink.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
       ".github/workflows/ci.yml#app-brick",
       ".github/workflows/deploy-web.yml#deploy-web"
     ],

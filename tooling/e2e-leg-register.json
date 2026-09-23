@@ -200,6 +200,13 @@
       "width is COVERAGE LOST (exit 2), never judged against a floor measured at a different size. A change",
       "to --window-size in e2e.yml re-measures this block in the same change.",
       "",
+      "🔴 CORRECTED 2026-09-23, after the first nightly: the lever is --browser-dimension, not --window-size.",
+      "E2E live run 35824787614 read screenshots/00-consent.png as 1600x881. flutter drive resizes the window",
+      "to its own --browser-dimension default (1600x1024) over any --window-size, so every e2e frame since",
+      "c478ef35 (2026-07-18) was the desktop layout. The calibration frames here were 430x932 at DPR 1 by CDP",
+      "Emulation.setDeviceMetricsOverride, which is what --browser-dimension=430x932@1 sets. e2e.yml passes",
+      "that now, and tooling/ci/test/assert-frames-carry-text.test.mjs holds its width and DPR to this block.",
+      "",
       "Evidence (frames, scripts, tables): Private/research/session-2026-09-23/frames-ink/. The served and",
       "glyphless frames of five pages are committed as tooling/ci/test/fixtures/frames-ink-2026-09-23/."
     ],
