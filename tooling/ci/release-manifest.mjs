@@ -1369,7 +1369,12 @@ function main() {
       app, surface, tag, sha, runUrl, notesUrl, releasedAt, version, minSupported, build,
       register: loadRegister(),
       treeRoot,
-      files: names.map((n) => ({ name: n, sha256: sha256(join(dir, n)), size: statSync(join(dir, n)).size })),
+      // One read per file: the hash and the size come from the same bytes, so a file
+      // swapped between a hash and a separate stat cannot pair one file's digest with another's size.
+      files: names.map((n) => {
+        const bytes = readFileSync(join(dir, n));
+        return { name: n, sha256: createHash('sha256').update(bytes).digest('hex'), size: bytes.length };
+      }),
     });
     writeFileSync(out, `${JSON.stringify(json, null, 2)}\n`);
     for (const a of json.artefacts) console.log(`described  ${a.name}  ${a.format}  v${a.version}  ${a.channels.join(', ') || '(no channel takes this format)'}`);
