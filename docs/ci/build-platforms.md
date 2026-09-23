@@ -1392,6 +1392,66 @@ only against a Play install.
 
   An `android-play` overlay would still be read like any other manifest.
 
+### PR lane — the Android artifacts every PR builds
+
+*Added 2026-09-23 · closes `O-BUILT-ARTIFACT-GUARDS-RUN-ONLY-AFTER-MERGE`.*
+
+This workflow never runs on a pull request. Its three Android builds now also run on every pull
+request, as `ci.yml` `android-artifacts`: one matrix leg per app, from `ci.yml` `android-apps`,
+which runs the same `assert-release-lane-generic.mjs --emit-apps` as `prepare` here. Both jobs are
+in `ci-gate`'s `needs`. The overlay above gets its first build proof on a pull request there.
+
+- **What is built.** The Play `.apk`, the `.aab` and the apps.gov.in `.apk`, with
+  `linux_web_android`'s flags: `--obfuscate --split-debug-info`, the same `RELEASE_CHANNEL` stamps
+  and the same define names. Three things differ:
+  - `APP_VERSION` ends in `+pr`, not the commit. That is legal only because
+    `tooling/channel-register.json` lists `ci.yml#android-artifacts` in `releaseBuildsNeverShipped`,
+    which `assert-app-versioning.mjs`, the channel census and the obfuscation guard read. The
+    obfuscation guard waives a failing COUPLING or SINK for those builds, prints each waiver, and
+    still grades FLOOR: every one of them must carry `--obfuscate`.
+  - `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `API_BASE_URL` and `GLITCHTIP_DSN` are empty.
+  - No signing secret is in reach, so Gradle signs all three with its debug fallback. The
+    apps.gov.in build has no step `env:`.
+- **The one secret: R-KEY, option A.** The Play `.apk` and `.aab` pass
+  `--dart-define=REVENUECAT_KEY=${{ secrets.REVENUECAT_PUBLIC_KEY_GOOGLE }}`, exactly as here.
+  `assert-channel-register.mjs` 6b-iii grades an `android-play` stamp's key before it consults any
+  exemption, so an empty value or a missing define is red on the PR lane as on main. The value is
+  the public RevenueCat SDK key, which ships inside every Play binary. `ci.yml` runs on
+  `pull_request`, so a fork's pull request gets an empty value; its build is discarded like every
+  other. The apps.gov.in `.apk` passes no key, as here. The register's `storeKeyDefine` rule text
+  now says an exempt build stamped with a store-rail channel still carries its key.
+- **What reads the artifacts, and what stays on main.**
+
+  | guard | on the PR | why |
+  |---|---|---|
+  | `assert-artifact-shape.mjs` | yes, `--platform android-artifacts` | its own `LANE_OUTPUTS` key: the `.aab`, the Play `.apk`, `build/apps-gov-in/*.apk`. No channel names this lane job, so the guard prints a note and grades the files |
+  | `assert-elf-page-alignment.mjs` | yes, on the `.aab` | it reads the binary and needs no key |
+  | `assert-android-vapt-manifest.mjs` | yes, both `.apk`s | the merged manifest exists only inside the built `.apk` |
+  | `assert-apps-gov-in-apk.mjs` | yes, `--posture debug` | the posture that requires the debug signer. The permission, form and minSdk checks run in every posture; run 35822768347 failed on exactly those |
+  | `assert-artifact-signed.mjs` | main only | it asks "the upload key, not debug". A pull request holds no key, so its only answer there is "debug". The PR-time analogue is `android-signing.test.mjs`, with `android-signing.mjs`'s refusal of a partial secret set |
+  | `assert-artifact-signed-msix.mjs`, `assert-artifact-signed-apple.mjs` | main only | desktop and Apple lanes, which need certificates; not built on a PR |
+  | `assert-release-json.mjs` | main only | it reads the `dist/` the `release` job writes from every platform's artifacts; an Android-only lane has none. The PR-time analogue is `assert-release-json.test.mjs` |
+
+- **Nothing leaves the runner.** No `upload-artifact`, no symbols upload, no GlitchTip release, no
+  `record-deployment`, no `gh release`, and no `android-signing.mjs`.
+- **The test that holds the copies equal.** `tooling/ci/test/built-artifact-pr-lane.test.mjs` reads
+  both workflows through `workflow-scan.mjs` and goes red on any of these:
+  - a target, a channel stamp, a flag or a define name that differs between the two jobs, from
+    either side;
+  - a secret in the PR lane other than the key `storeKeyDefine` maps for a store-rail stamp;
+  - an upload step or the signing script in the PR lane;
+  - an `assert-*.mjs` step here over an `.apk`, an `.aab` or a `--platform` that is neither in the
+    PR lane nor in the test's `MAIN_ONLY` table with a reason, and a `MAIN_ONLY` entry this job no
+    longer runs;
+  - a posture other than `debug`, a `ci-gate` that does not need both jobs, a job-level `if:`, or
+    a `--platform` value `assert-artifact-shape.mjs` does not know.
+
+  The comment above the Play `.apk` step here names the test.
+- **Cost.** The Android part of `linux_web_android` measured 11.5 and 11.7 min per app (runs
+  35741818599 and 35737416404), hence `timeout-minutes: 30`. It adds about 5 minutes to the pull
+  request's critical path, and to `main`'s `ci-gate`, which the deploy lanes wait on. It costs $0:
+  a public repository on GitHub-hosted runners. There is no Gradle cache yet.
+
 ## Obfuscation and native symbols
 
 *Added 2026-09-07 · [ADR 067] decision 6 · closes GAP G2 of the end-to-end audit ·
