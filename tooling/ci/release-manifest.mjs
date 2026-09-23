@@ -1350,7 +1350,7 @@ function main() {
     // version cut from the tag would be a number this file asserts about files
     // that do not carry it. The lane passes what it built with.
     const version = flag('version') ?? die('--emit-release-json needs --version <X.Y.Z[.N]>');
-    const minSupported = flag('min-supported') ?? die('--emit-release-json needs --min-supported <X.Y.Z>');
+    const minSupportedFlag = flag('min-supported'); // read, never trusted, on the app surface: releaseFloor below
     const surfaceFlag = flag('surface');
     const build = has('build') ? flag('build') : null;
     const out = join(dir, RELEASE_JSON_NAME);
@@ -1380,6 +1380,7 @@ function main() {
         'The flag is accepted only as a restatement the lane can be read for; it never overrides the tree.',
       );
     }
+    const minSupported = releaseFloor(treeRoot, app, surface, minSupportedFlag);
     const { names, strays } = assetFiles(dir);
     if (strays.length) {
       die(
@@ -1417,7 +1418,8 @@ function main() {
     'Usage: --stage <from> --out <dir> --app <id> --tag <tag> | --write <dir> --app <id> --tag <tag> --sha <sha>',
     '       | --verify <dir> | --emit-assets <dir> | --emit-environments <dir> --app <id>',
     '       | --emit-release-json <dir> --app <id> --tag <tag> --sha <sha> --run-url <url> --notes-url <url>',
-    '         --released-at <iso> --version <X.Y.Z[.N]> --min-supported <X.Y.Z> [--build <n>] [--surface app|extension]',
+    '         --released-at <iso> --version <X.Y.Z[.N]> [--build <n>] [--surface app|extension]',
+    '         + --min-supported <X.Y.Z> on the extension surface only (the app surface reads services/platform/src/app-config-data.json)',
   );
 }
 
@@ -1584,4 +1586,110 @@ function readToolJson(root, id) {
     }
   }
   return null;
+}
+
+/**
+ * THE RECORD'S `minSupported` — the oldest version this release still serves,
+ * READ FROM WHERE IT IS DECLARED rather than typed into the lane.
+ * (O-RELEASE-RECORD-MINSUPPORTED-NOT-XYZ, 2026-09-23.)
+ *
+ * 🔴 ON THE APP SURFACE IT IS THE SERVED FLOOR, AND `--min-supported` IS REFUSED.
+ * The platform Worker enforces force-update from the floor declared in
+ * services/platform/src/app-config-data.json (`servedFloor` below says where in
+ * it). Until 2026-09-23 build-platforms.yml passed `--min-supported
+ * "$RELEASE_LINE"` instead, which is pubspec's MAJOR.MINOR, and the grade step
+ * of build-platforms run 35829208001 failed on it:
+ *   [limb 1] schema: #/minSupported: "1.0" does not match ^[0-9]+\.[0-9]+\.[0-9]+$
+ * Appending `.0` would have passed the schema and stated a number nothing
+ * declares — a second, typed copy of "the oldest version we serve" beside the
+ * one the Worker enforces. Two sources for one value is the #890 class, so this
+ * surface takes exactly one, and a lane still passing the flag is told which
+ * file owns the value instead of having it silently ignored.
+ *
+ * ⚠️ WHAT THE RECORD STATES is the floor the REPOSITORY declares at the tagged
+ * commit. A KV override (`config:<app>`, services/platform/README.md "Config
+ * overrides (KV)") can raise the served floor at runtime without a commit; the
+ * record cannot see that and does not claim to.
+ *
+ * THE EXTENSION SURFACE KEEPS THE FLAG: the extensions have no served config and
+ * make no network call, so there is no declared floor to read. extensions.yml
+ * passes the tag's version.
+ *
+ * The SHAPE (X.Y.Z) is not judged here. contracts/release.schema.json owns it,
+ * and assert-release-json.mjs grades it two steps later in both lanes.
+ *
+ * DECLARED LAST, HOISTED, like `coverageLost` and `buildReleaseJson` above: a
+ * declaration at the end of the file moves no `release-manifest.mjs:NNN`
+ * citation (TRAPS git-08). The path is a local for the same reason — a
+ * top-level `const` down here would still be in its dead zone when `main()`
+ * runs, at the direct-invocation check above.
+ */
+function releaseFloor(treeRoot, app, surface, passed) {
+  const SERVED_CONFIG_REL = 'services/platform/src/app-config-data.json';
+  if (surface !== 'app') {
+    return passed ?? die(`--emit-release-json needs --min-supported <X.Y.Z> for --app "${app}" on the "${surface}" surface.`,
+      'Only the app surface has a served floor to read; every other surface states its own.');
+  }
+  if (passed !== null) {
+    die(
+      `--min-supported is refused on the app surface: --app "${app}" reads its floor from ${SERVED_CONFIG_REL}.`,
+      'That file is what the platform Worker enforces through force-update. A value passed here would be a',
+      'second copy of "the oldest version still served", and the copy is what drifts: build-platforms run',
+      '35829208001 passed the release line "1.0" and the schema refused it. Drop the flag from the lane.',
+    );
+  }
+  const abs = join(treeRoot, SERVED_CONFIG_REL);
+  if (!existsSync(abs)) {
+    coverageLost(
+      `COVERAGE LOST — ${SERVED_CONFIG_REL} does not exist under ${treeRoot}.`,
+      `The app surface's minSupported is read from it, and --app "${app}" is on the app surface. Refusing to`,
+      'fall back on a typed number: that is the second copy this read exists to remove.',
+    );
+  }
+  let data;
+  try {
+    data = JSON.parse(readFileSync(abs, 'utf8'));
+  } catch (e) {
+    coverageLost(`COVERAGE LOST — ${SERVED_CONFIG_REL} could not be parsed (${e.message}).`,
+      `The app surface's minSupported is read from it; a file this cannot read is not a floor of 1.0.0.`);
+  }
+  const floor = servedFloor(data, app);
+  if (floor.refused) {
+    die(
+      `${SERVED_CONFIG_REL} declares no served floor for --app "${app}": ${floor.refused}`,
+      'The Worker would serve no floor either (the app reads an empty one as "no floor" and fails open), so',
+      'any number written into the record would be invented. Declare it in defaults.min_supported_version,',
+      `or in apps.${app}.min_supported_version for this app alone.`,
+    );
+  }
+  console.log(`minSupported  ${floor.value}  read from ${SERVED_CONFIG_REL} ${floor.from}`);
+  return floor.value;
+}
+
+/**
+ * The served floor for one app, from the parsed app-config-data.json, the way
+ * services/platform/src/config.ts `buildRegistry` resolves it: the app's own
+ * entry deep-merged OVER `defaults`, so an own `apps.<app>.min_supported_version`
+ * wins and `defaults.min_supported_version` answers otherwise. Pure: parsed data
+ * in, `{ value, from }` or `{ refused }` out. An own key that is present but not
+ * a non-empty string is REFUSED, not skipped past to the defaults: the Worker's
+ * merge would serve that value, not the default's.
+ */
+export function servedFloor(data, app) {
+  const isVersion = (v) => typeof v === 'string' && v.trim() !== '';
+  const own = data?.apps?.[app];
+  if (own !== null && typeof own === 'object' && Object.hasOwn(own, 'min_supported_version')) {
+    const v = own.min_supported_version;
+    return isVersion(v)
+      ? { value: v, from: `apps.${app}.min_supported_version` }
+      : { refused: `apps.${app}.min_supported_version is ${JSON.stringify(v)}, which is not a version.` };
+  }
+  const d = data?.defaults?.min_supported_version;
+  if (isVersion(d)) return { value: d, from: 'defaults.min_supported_version' };
+  return {
+    refused:
+      d === undefined
+        ? `apps.${app} carries no min_supported_version and defaults.min_supported_version is absent.`
+        : `apps.${app} carries no min_supported_version and defaults.min_supported_version is ${JSON.stringify(d)}, which is not a version.`,
+  };
 }
