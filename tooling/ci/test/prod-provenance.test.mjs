@@ -862,6 +862,39 @@ describe('collectPaged — a paged GitHub listing is read whole, or refused', ()
       fetchPage: async (page) => pages[page - 1] ?? { rows: [] },
     });
 
+  // ⏱ ADDED 2026-09-23 — the row's read-back clause: every walk leaves its numbers
+  // behind (claimed, fetched, distinct, pages), so a false red is readable as a count.
+  const walkLogged = (pages) => {
+    const log = [];
+    const done = collectPaged({
+      what: 'listing runs of ci.yml',
+      idOf,
+      perPage: 10,
+      pageCap: 3,
+      log,
+      fetchPage: async (page) => pages[page - 1] ?? { rows: [] },
+    });
+    return { log, done };
+  };
+
+  test('every walk records total_count, fetched, distinct and pages', async () => {
+    const { log, done } = walkLogged([{ rows: rows(10), totalCount: 13 }, { rows: rows(3, 11), totalCount: 13 }]);
+    await done;
+    assert.deepEqual(log, [{ what: 'listing runs of ci.yml', claimed: 13, fetched: 13, distinct: 13, pages: 2 }]);
+  });
+
+  test('a de-duplicated walk records MORE fetched than distinct — the duplicate is visible', async () => {
+    const { log, done } = walkLogged([{ rows: rows(10) }, { rows: [{ id: 10 }, { id: 11 }] }]);
+    await done;
+    assert.deepEqual(log, [{ what: 'listing runs of ci.yml', claimed: null, fetched: 12, distinct: 11, pages: 2 }]);
+  });
+
+  test('a walk that REFUSES still records its numbers first', async () => {
+    const { log, done } = walkLogged([{ rows: rows(4), totalCount: 9 }]);
+    await assert.rejects(done, (e) => e instanceof CouldNotLook);
+    assert.deepEqual(log, [{ what: 'listing runs of ci.yml', claimed: 9, fetched: 4, distinct: 4, pages: 1 }]);
+  });
+
   test('an honest single short page returns every row', async () => {
     assert.deepEqual((await walk([{ rows: rows(4), totalCount: 4 }])).map(idOf), ids(4));
   });
