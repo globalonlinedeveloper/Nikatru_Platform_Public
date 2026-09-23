@@ -542,19 +542,22 @@ describe('verify-supabase-templates — the owner-gated branch ops-watch.yml dep
   // are covered: one that honours the signal it is handed, and one that ignores
   // it, which the helper's race still ends. OPS_REQUEST_TIMEOUT_MS only shortens
   // the ceiling, so each case takes seconds.
-  for (const [how, stub] of [
-    ['honours its signal', "globalThis.fetch = (_u, init = {}) => new Promise((_, reject) => init.signal?.addEventListener('abort', () => reject(init.signal.reason), { once: true }));\n"],
-    ['ignores its signal', 'globalThis.fetch = () => new Promise(() => {});\n'],
-  ]) {
-    test(`exit 2 — a fetch that never answers and ${how} ends inside the ceiling, not at the job's timeout`, { timeout: 60_000 }, () => {
-      const r = withFetch(makeRoot(), stub, { OPS_REQUEST_TIMEOUT_MS: '200' });
-      assert.equal(r.signal, null, `killed by the test's 45 s timeout: the read had no per-request ceiling\n${out(r)}`);
-      assert.equal(r.status, 2, out(r));
-      assert.match(out(r), /per-request ceiling/);
-      assert.match(out(r), /the same on all 3 attempt\(s\)/);
-      assert.doesNotMatch(out(r), /: DRIFT/);
-    });
-  }
+  const HONOURS_SIGNAL = "globalThis.fetch = (_u, init = {}) => new Promise((_, reject) => init.signal?.addEventListener('abort', () => reject(init.signal.reason), { once: true }));\n";
+  const IGNORES_SIGNAL = 'globalThis.fetch = () => new Promise(() => {});\n';
+  const assertEndsInsideCeiling = (stub) => {
+    const r = withFetch(makeRoot(), stub, { OPS_REQUEST_TIMEOUT_MS: '200' });
+    assert.equal(r.signal, null, `killed by the test's 45 s timeout: the read had no per-request ceiling\n${out(r)}`);
+    assert.equal(r.status, 2, out(r));
+    assert.match(out(r), /per-request ceiling/);
+    assert.match(out(r), /the same on all 3 attempt\(s\)/);
+    assert.doesNotMatch(out(r), /: DRIFT/);
+  };
+  test("exit 2 — a fetch that never answers and honours its signal ends inside the ceiling, not at the job's timeout", { timeout: 60_000 }, () => {
+    assertEndsInsideCeiling(HONOURS_SIGNAL);
+  });
+  test("exit 2 — a fetch that never answers and ignores its signal ends inside the ceiling, not at the job's timeout", { timeout: 60_000 }, () => {
+    assertEndsInsideCeiling(IGNORES_SIGNAL);
+  });
 
   test('exit 2 — a 200 whose body is not JSON is UNKNOWN, not drift', () => {
     const r = withFetch(makeRoot(), "globalThis.fetch = async () => new Response('<html>maintenance</html>', { status: 200 });\n");

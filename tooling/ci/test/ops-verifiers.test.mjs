@@ -260,23 +260,27 @@ describe('verify-monitors / verify-alarm-chains — the GlitchTip pair', () => {
       child.on('close', (code, signal) => ok({ code, signal, out }));
     });
 
-  for (const script of ['verify-monitors.mjs', 'verify-alarm-chains.mjs']) {
-    test('🔴 ' + script + ' against a server that never answers is exit 2 inside the ceiling, not a hang', { timeout: KILL_MS + 10_000 }, async () => {
-      const g = await serveSilence();
-      try {
-        const t0 = Date.now();
-        const { code, signal, out } = await runBounded(script, { ...glitchtipAt(g.url), OPS_REQUEST_TIMEOUT_MS: '300' });
-        const took = Date.now() - t0;
-        assert.equal(signal, null, `killed after ${took} ms: the read had no per-request ceiling\n${out}`);
-        assert.ok(g.seen.length >= 1, 'the script never reached the silent server:\n' + out);
-        assert.equal(code, 2, out);
-        assert.match(out, /COULD NOT LOOK/);
-        assert.match(out, /per-request ceiling/, 'the line says WHY it could not look');
-      } finally {
-        await g.close();
-      }
-    });
-  }
+  const assertSilenceEndsInsideCeiling = async (script) => {
+    const g = await serveSilence();
+    try {
+      const t0 = Date.now();
+      const { code, signal, out } = await runBounded(script, { ...glitchtipAt(g.url), OPS_REQUEST_TIMEOUT_MS: '300' });
+      const took = Date.now() - t0;
+      assert.equal(signal, null, `killed after ${took} ms: the read had no per-request ceiling\n${out}`);
+      assert.ok(g.seen.length >= 1, 'the script never reached the silent server:\n' + out);
+      assert.equal(code, 2, out);
+      assert.match(out, /COULD NOT LOOK/);
+      assert.match(out, /per-request ceiling/, 'the line says WHY it could not look');
+    } finally {
+      await g.close();
+    }
+  };
+  test('🔴 verify-monitors.mjs against a server that never answers is exit 2 inside the ceiling, not a hang', { timeout: KILL_MS + 10_000 }, async () => {
+    await assertSilenceEndsInsideCeiling('verify-monitors.mjs');
+  });
+  test('🔴 verify-alarm-chains.mjs against a server that never answers is exit 2 inside the ceiling, not a hang', { timeout: KILL_MS + 10_000 }, async () => {
+    await assertSilenceEndsInsideCeiling('verify-alarm-chains.mjs');
+  });
 
   for (const [what, answer] of [
     ['a 401 (the token is refused)', () => [401, { detail: 'Invalid token.' }]],
