@@ -359,6 +359,22 @@ function openJob(wf, jobName, why) {
 
 // ── 1. SERVED CHANNELS — the deploy lane must record what it shipped ─────────
 const seenRecordLines = new Set();
+/** Mark every RAW line a record call occupies as reached. ⏱ 2026-09-22 — a call
+ *  inside a `run: |` block is ONE logical line numbered at its `run:` key, while
+ *  the flat reader below numbers it at its own raw line (extensions.yml:2490 sits
+ *  three lines under its `run: |` at :2487). Marking only the logical number
+ *  reported a call the census HAD read as one it never reached — COVERAGE LOST
+ *  the moment arming the amo row made extensions.yml a declared submission
+ *  workflow. The span runs to the line before the job's next logical line. */
+function markRecordLinesSeen(wf, job, calls) {
+  const starts = job.logical.map((l) => l.n).sort((x, y) => x - y);
+  const lastRaw = job.lines.length ? job.lines[job.lines.length - 1].n : null;
+  for (const c of calls) {
+    const next = starts.find((n) => n > c.n);
+    const end = next !== undefined ? next - 1 : (lastRaw ?? c.n);
+    for (let n = c.n; n <= end; n++) seenRecordLines.add(`${wf.rel}:${n}`);
+  }
+}
 let deployRecordCalls = 0;
 /** Rule 6's own coverage. `stepsGraded` counts the record steps this parse
  *  actually located and graded — it is the number the previous version could
@@ -439,7 +455,7 @@ for (const row of servedRows) {
   const wf = openWorkflow(rel, `the served "${row.id}" channel's lane`);
   const job = openJob(wf, row.lane.job, `the served "${row.id}" channel's lane job`);
   const calls = recordCalls(job);
-  for (const c of calls) seenRecordLines.add(`${wf.rel}:${c.n}`);
+  markRecordLinesSeen(wf, job, calls);
   deployRecordCalls += calls.length;
 
   for (const env of envs) {
@@ -576,7 +592,7 @@ for (const row of submittableRows) {
   for (const { job, invocations } of censusJobs) {
     censusJobsListed.push(`${wf.rel}#${job.name}`);
     const calls = recordCalls(job);
-    for (const c of calls) seenRecordLines.add(`${wf.rel}:${c.n}`);
+    markRecordLinesSeen(wf, job, calls);
 
     for (const inv of invocations) {
       if (!inv.canPublish) {

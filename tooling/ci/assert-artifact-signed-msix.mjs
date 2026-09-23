@@ -43,6 +43,11 @@
 // the register declares, sentinel included. A package built with a plausible
 // invented identity while the register still says PARTNER-CENTER-PENDING is
 // precisely the unrecoverable case, and it is what this catches today.
+// ⏱ 2026-09-22 — "today" above is past for the windows-store row: it carries the
+// real Partner Center values. Nothing in this guard changes; it requires the
+// package to carry EXACTLY the declared identity, real or sentinel. The Package
+// Family Name is not read here (it is not in the manifest's Identity element);
+// assert-channel-register.mjs §6e recomputes it from the declared publisher.
 //
 // ── APPENDED 2026-08-25: THE PACKAGE IS ZIP64 AND THE READER WAS NOT ─────────
 // Nothing above is withdrawn; this is the third thing that had to be true

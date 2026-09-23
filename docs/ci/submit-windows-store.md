@@ -24,6 +24,13 @@ derived from the spec, the .msix actually builds, and the identity the register
 declares is the identity `msix` packages. That is the whole of D-10's promise:
 submission #2 costs minutes, not archaeology. Submission #1 costs the account.
 
+⏱ 2026-09-22 — the account exists and is verified (Partner Center Legal
+info: Company, Active, Authorized), and the package identity is no longer the
+sentinel: the register row and apps/subscriptiontracker/pubspec.yaml carry the
+real values, and `assert-channel-register.mjs` §6e recomputes the Package
+Family Name from the publisher. Dispatch-only stays the correct shape: the row
+is still `served: false`, and a first submission is the owner's word.
+
 ⚠️ IT RUNS THE REAL THING, NOT A DOUBLE. The dry run is deliberately NOT given
 --allow-missing-artifact: the job builds Windows and packages the MSIX first,
 so the script validates a package that exists on disk. A dry run that skipped
@@ -32,6 +39,14 @@ the channel actually accepts.
 
 The script's `--submit` mode refuses with UNVERIFIED rather than guessing at
 Partner Center's endpoints.
+
+⏱ 2026-09-22 — stale since 2026-09-12, when the script's own header was
+corrected: `--submit` REALLY SUBMITS and is gated, not refused. Read from the
+source (not run): it fails closed without the typed `--confirm` phrase (PG-1),
+outside GitHub Actions (PG-1b), with any of the five `MS_STORE_*` secrets empty
+(PG-3), and unless the publish environment carries a required reviewer read
+back from the GitHub API (PG-6). The placeholder-identity refusal no longer
+fires for subscriptiontracker, whose identity is now real.
 
 ## job `gate`
 
