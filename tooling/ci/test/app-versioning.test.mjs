@@ -796,3 +796,126 @@ describe('assert-app-versioning — --tag: the tag must name the declared versio
     });
   }
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Play's versionCode HIGH-WATER. ⏱ ADDED 2026-09-23 (O-PLAY-VERSIONCODE-HIGH-WATER-UNRECORDED).
+// Play refuses a versionCode at or below one it has consumed, for good, and
+// github.run_number restarts at 1 in a new or renamed workflow file. The register's
+// android-play row records what Play consumed and each Play workflow's run_number floor;
+// every android-play-stamped build and every `submit-play.mjs --submit` job answers to it.
+// One known-bad input per rule. The real-tree mutations (a floor set to 0; submit-play.yml
+// renamed, run against the pre-limb guard and against this one) are recorded in the PR
+// that added the limb, not here.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-app-versioning — Play versionCode high-water (static)', () => {
+  const SUBMIT_PLAY_WF = '.github/workflows/submit-play.yml';
+  const highWater = ({
+    consumed = { subscriptiontracker: { value: 1, asOf: '2026-09-22T21:59:37Z', verify: 'fixture', run: 1 } },
+    floors = { [SUBMIT_PLAY_WF]: { value: 5, asOf: '2026-09-22T21:38:59Z', verify: 'fixture' } },
+  } = {}) => ({ consumed, runNumberFloors: floors });
+  // `omit` leaves the key out of the row entirely; any other value is written as given.
+  const playRegister = (hw, { omit = false } = {}) =>
+    registerJson([WEB_ROW, { id: 'android-play', served: false, ...(omit ? {} : { versionCodeHighWater: hw }) }]);
+  const playBuild = (buildNumber) =>
+    `      - name: Build the app bundle\n        working-directory: apps/subscriptiontracker\n        run: >\n` +
+    '          flutter build appbundle --release\n' +
+    `          --build-name=${BNAME}\n          --build-number=${buildNumber}\n` +
+    `          --dart-define=APP_VERSION=${BNAME}+\${GITHUB_SHA::7}\n          --dart-define=RELEASE_CHANNEL=android-play\n`;
+  const UPLOAD =
+    '      - name: Upload to Google Play\n        run: >\n' +
+    '          node tooling/release/submit-play.mjs --submit --app subscriptiontracker\n          --confirm "$CONFIRM"\n';
+  const job = (name, steps) => `  ${name}:\n    runs-on: ubuntu-24.04\n    steps:\n${steps}`;
+  const playWf = (jobs) => `name: Submit Play\npermissions:\n  contents: read\njobs:\n${jobs}`;
+  const oneJob = (buildNumber = '${{ github.run_number }}') => playWf(job('submit', EMIT_STEP + playBuild(buildNumber) + UPLOAD));
+  const withPlay = (name, { register = playRegister(highWater()), file = SUBMIT_PLAY_WF, wf = oneJob() } = {}) =>
+    lane(name, { extra: { [file]: wf, 'tooling/channel-register.json': register } });
+
+  test('PASSES the shape submit-play.yml has, and counts the bounded build', () => {
+    const { code, out } = run({ args: [withPlay('hw-pass')] });
+    assert.equal(code, 0, out);
+    assert.match(out, /1 Play build\(s\) bounded above versionCode 1/);
+  });
+
+  // floor >= mark, not floor > mark: a floor is the latest COMPLETED run, so the next is floor + 1.
+  test('PASSES a floor EQUAL to the mark: the next run is floor + 1, above it', () => {
+    const hw = highWater({ floors: { [SUBMIT_PLAY_WF]: { value: 1 } } });
+    const { code, out } = run({ args: [withPlay('hw-equal', { register: playRegister(hw) })] });
+    assert.equal(code, 0, out);
+  });
+
+  test('FAILS a floor below the mark (M1)', () => {
+    const hw = highWater({ floors: { [SUBMIT_PLAY_WF]: { value: 0 } } });
+    const { code, out } = run({ args: [withPlay('hw-below', { register: playRegister(hw) })] });
+    assert.equal(code, 1, out);
+    assert.match(out, /floor 0 is below Play's consumed versionCode 1/);
+  });
+
+  test('FAILS a Play build in a workflow file with no recorded floor, as a rename would leave it (M2)', () => {
+    const dir = withPlay('hw-renamed', { file: '.github/workflows/submit-play-v2.yml' });
+    const { code, out } = run({ args: [dir] });
+    assert.equal(code, 1, out);
+    assert.match(out, /submit-play-v2\.yml has no recorded run_number floor/);
+  });
+
+  for (const [name, buildNumber, shown] of [
+    ['the run ATTEMPT counter', '${{ github.run_attempt }}', /--build-number "\$\{\{github\.run_attempt\}\}"/],
+    ['a literal', '7', /--build-number "7"/],
+  ]) {
+    test(`FAILS a Play build whose --build-number is ${name}, not the run counter (M3)`, () => {
+      const { code, out } = run({ args: [withPlay(`hw-bn-${buildNumber.length}`, { wf: oneJob(buildNumber) })] });
+      assert.equal(code, 1, out);
+      assert.match(out, /cannot bound/);
+      assert.match(out, shown);
+    });
+  }
+
+  test('COVERAGE LOST when Play build sources exist and the record is absent (M4)', () => {
+    const dir = withPlay('hw-absent', { register: playRegister(undefined, { omit: true }) });
+    const { code, out } = run({ args: [dir] });
+    assert.equal(code, 2, out);
+    assert.match(out, /versionCodeHighWater is absent/);
+  });
+
+  test('FAILS an upload whose app has no consumed entry (M4)', () => {
+    const dir = withPlay('hw-no-app', { register: playRegister(highWater({ consumed: {} })) });
+    const { code, out } = run({ args: [dir] });
+    assert.equal(code, 1, out);
+    assert.match(out, /uploads app "subscriptiontracker" and .*consumed has no entry/);
+  });
+
+  test('FAILS an upload job that builds no android-play bundle itself (M4b)', () => {
+    const wf = playWf(job('build', EMIT_STEP + playBuild('${{ github.run_number }}')) + job('upload', UPLOAD));
+    const { code, out } = run({ args: [withPlay('hw-split', { wf })] });
+    assert.equal(code, 1, out);
+    assert.match(out, /\(job "upload"\) runs submit-play\.mjs --submit/);
+    assert.match(out, /uploads a bundle this limb does not bound/);
+  });
+
+  test('COVERAGE LOST when the record exists and no job uploads through submit-play.mjs --submit', () => {
+    const wf = playWf(job('submit', EMIT_STEP + playBuild('${{ github.run_number }}')));
+    const { code, out } = run({ args: [withPlay('hw-no-upload', { wf })] });
+    assert.equal(code, 2, out);
+    assert.match(out, /no job runs `node tooling\/release\/submit-play\.mjs --submit`/);
+  });
+
+  test('COVERAGE LOST when the record exists and the census holds no Play build', () => {
+    const dir = lane('hw-no-build', { extra: { 'tooling/channel-register.json': playRegister(highWater()) } });
+    const { code, out } = run({ args: [dir] });
+    assert.equal(code, 2, out);
+    assert.match(out, /no android-play-stamped release build/);
+  });
+
+  test('COVERAGE LOST when a consumed value is not a whole number', () => {
+    const hw = highWater({ consumed: { subscriptiontracker: { value: '1' } } });
+    const { code, out } = run({ args: [withPlay('hw-string', { register: playRegister(hw) })] });
+    assert.equal(code, 2, out);
+    assert.match(out, /consumed\.subscriptiontracker: `value` is not a whole number/);
+  });
+
+  // The limb wakes on the record OR a subject; a tree with neither keeps its verdict and says so.
+  test('a tree with no Play build source and no record PASSES and prints that no bound was held', () => {
+    const { code, out } = run({ args: [lane('hw-none')] });
+    assert.equal(code, 0, out);
+    assert.match(out, /no Play build source and no versionCode high-water record/);
+  });
+});

@@ -55,7 +55,7 @@
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { listDir } from './tree-walk.mjs';
-import { parseWorkflow, parseAllWorkflows, flutterReleaseBuilds, gradeDomain, buildAt } from './workflow-scan.mjs';
+import { parseWorkflow, parseAllWorkflows, flutterReleaseBuilds, gradeDomain, buildAt, shellSegments } from './workflow-scan.mjs';
 
 // ── The release lanes are DERIVED FROM THE REGISTER, never typed here ─────────
 //
@@ -757,6 +757,32 @@ if (unreached.length) {
   problems.push(`the release-build census missed ${unreached.length} workflow(s) (COVERAGE LOST above)`);
 }
 
+// ── Play's versionCode high-water: every Play build source lies above it ──────
+// ⏱ ADDED 2026-09-23 (O-PLAY-VERSIONCODE-HIGH-WATER-UNRECORDED). Play refuses a
+// versionCode at or below one it has consumed, and the only way out is a permanent
+// jump. `--build-number=${{ github.run_number }}` rises within ONE workflow file and
+// restarts at 1 in a new or renamed one (MAX_RUN_DIGITS, above), so a correct stamp
+// alone says nothing about the mark. The register's android-play row records
+// `versionCodeHighWater`: `consumed` per app, read back from the upload log, and one
+// `runNumberFloors` entry per workflow file that builds a Play bundle. A floor is that
+// file's latest COMPLETED run_number, so every later run is at least floor + 1 and
+// lies above the mark exactly when floor >= mark.
+//   (a) every android-play-stamped release build outside releaseBuildsNeverShipped
+//       stamps the run counter itself, and its file's floor is >= every consumed code;
+//   (b) every job that runs `tooling/release/submit-play.mjs --submit` builds an (a)
+//       bundle in the same job, and its --app has a `consumed` entry.
+// This half reads files and cannot see the live counter.
+// The limb is active once the record OR a subject exists, so a tree with neither keeps
+// its verdict; with one and not the other it is COVERAGE LOST, never a pass.
+const play = playHighWater({ census, exemptKeys, allParsed, register });
+problems.push(...play.problems);
+if (play.lost.length) {
+  console.error('✗ COVERAGE LOST — the Play versionCode high-water limb cannot look:');
+  for (const p of play.lost) console.error(`    ${p}`);
+  if (problems.length === 0) coverageLost();
+  problems.push(`the Play versionCode high-water limb lost ${play.lost.length} subject(s) (COVERAGE LOST above)`);
+}
+
 // NOTE — there is deliberately NO `if (buildsChecked === 0) COVERAGE LOST` here.
 // A draft had one. Mutation testing then showed it could never fire: every route
 // to zero matched builds already pushes a strictly better-worded problem ("is
@@ -793,7 +819,10 @@ console.log(
     ` ${buildsChecked} build command(s), plus ${stampBuilds} more stamp-checked and` +
     ` ${msixChecked} msix package(s) version-checked across` +
     ` ${wfFiles.length} workflow(s), ${appsChecked} app pubspec(s);` +
-    ' version derived from pubspec + github.run_number',
+    ' version derived from pubspec + github.run_number;' +
+    (play.active
+      ? ` ${play.bounded} Play build(s) bounded above versionCode ${play.mark}`
+      : ' no Play build source and no versionCode high-water record, so no Play bound to hold'),
 );
 
 /** Every version rule ONE folded `flutter build` command answers for, as problem strings.
@@ -908,6 +937,136 @@ function stampProblems(rel, cmd, { app, releaseLine, requireNumber, emitIds = nu
         `${rel} APP_VERSION can render up to ${worst} chars (release line "${releaseLine}"` +
           ` + ${MAX_RUN_DIGITS}-digit run + "+" + ${SHA_LEN}-char sha) but the platform Worker` +
           ` truncates app_version at ${APP_VERSION_MAX} — two builds could land under one string`,
+      );
+    }
+  }
+  return out;
+}
+
+/** The Play versionCode high-water limb's reading, as
+ *  `{ active, lost: string[], problems: string[], bounded, mark }`.
+ *
+ *  ⏱ ADDED 2026-09-23 — the rule and why it is `floor >= mark` sit at the limb, above the
+ *  problems print. `lost` holds could-not-look reasons (the caller turns them into exit 2
+ *  when nothing else failed); `problems` holds findings. `bounded` counts the builds that
+ *  stamp the run counter and whose file's floor holds; the ok line prints it.
+ *
+ *  SUBMIT_FLAG is the exact token assert-release-provenance limb 4 and
+ *  assert-publish-steps-guarded key on, so the three guards agree on which call uploads. */
+function playHighWater({ census, exemptKeys, allParsed, register }) {
+  const SUBMIT_FLAG = /(?:^|\s)--submit(?=\s|$)/;
+  const SUBMIT_PLAY = /(?<![A-Za-z0-9_.-])tooling\/release\/submit-play\.mjs(?![A-Za-z0-9_.-])/;
+  const APP_ARG = /(?:^|\s)--app(?:=|\s+)["']?([^\s"']+)/;
+  const HW = `${REGISTER_REL} android-play.versionCodeHighWater`;
+  const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+  const wholeFrom = (v, min) => Number.isInteger(v) && v >= min;
+  const has = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+
+  const channels = Array.isArray(register?.channels) ? register.channels : [];
+  const block = channels.find((c) => c?.id === 'android-play')?.versionCodeHighWater;
+  const builds = census.filter(
+    (b) => b.stamp === 'android-play' && !exemptKeys.has(`${b.workflow}\u0000${b.runLine}\u0000${b.segment}`),
+  );
+  const uploads = [];
+  for (const wf of allParsed) {
+    for (const job of wf.jobs.values()) {
+      for (const l of job.logical) {
+        if (/^\s*#/.test(l.text)) continue;
+        for (const seg of shellSegments(l.text)) {
+          if (!/\bnode\b/.test(seg) || !SUBMIT_FLAG.test(seg) || !SUBMIT_PLAY.test(seg)) continue;
+          uploads.push({ workflow: wf.rel, job: job.name, n: l.n, app: APP_ARG.exec(seg)?.[1] ?? null });
+        }
+      }
+    }
+  }
+
+  const out = { active: block !== undefined || builds.length > 0 || uploads.length > 0, lost: [], problems: [], bounded: 0, mark: 0 };
+  if (!out.active) return out;
+
+  let consumed = null;
+  let floors = null;
+  if (block === undefined) {
+    out.lost.push(
+      `COVERAGE LOST — ${HW} is absent while ${builds.length} Play build(s) and ${uploads.length} upload job(s)` +
+        ' exist: nothing records what Play has consumed, so nothing bounds them',
+    );
+  } else if (!isObj(block) || !isObj(block.consumed) || !isObj(block.runNumberFloors)) {
+    out.lost.push(`COVERAGE LOST — ${HW} must be an object carrying a \`consumed\` object and a \`runNumberFloors\` object`);
+  } else {
+    const bad = [
+      ...Object.entries(block.consumed).filter(([, e]) => !wholeFrom(e?.value, 1)).map(([k]) => `consumed.${k}`),
+      ...Object.entries(block.runNumberFloors).filter(([, e]) => !wholeFrom(e?.value, 0)).map(([k]) => `runNumberFloors["${k}"]`),
+    ];
+    if (bad.length) {
+      out.lost.push(
+        `COVERAGE LOST — ${HW} ${bad.join(', ')}: \`value\` is not a whole number` +
+          ' (a consumed versionCode is 1 or more, a floor 0 or more)',
+      );
+    } else {
+      consumed = block.consumed;
+      floors = block.runNumberFloors;
+      out.mark = Math.max(0, ...Object.values(consumed).map((e) => e.value));
+    }
+  }
+  if (builds.length === 0) {
+    out.lost.push(
+      'COVERAGE LOST — the census holds no android-play-stamped release build outside releaseBuildsNeverShipped,' +
+        ` so ${HW} bounds nothing`,
+    );
+  }
+  if (uploads.length === 0) {
+    out.lost.push(
+      'COVERAGE LOST — no job runs `node tooling/release/submit-play.mjs --submit`, so the Play upload path' +
+        ' this limb follows was not found',
+    );
+  }
+
+  for (const b of builds) {
+    const at = buildAt(b);
+    const bn = flag(flatten(b.segment), 'build-number');
+    let holds = true;
+    if (bn !== '${{github.run_number}}') {
+      holds = false;
+      out.problems.push(
+        `${at} is stamped android-play and the high-water limb cannot bound: ` +
+          `${bn === null ? 'no --build-number=' : `--build-number "${bn}"`} is not the workflow run counter` +
+          ' ${{ github.run_number }}, so nothing places its versionCode above what Play consumed',
+      );
+    }
+    if (floors !== null) {
+      const f = has(floors, b.workflow) ? floors[b.workflow] : undefined;
+      if (f === undefined) {
+        holds = false;
+        out.problems.push(
+          `${at}: ${b.workflow} has no recorded run_number floor in ${HW}.runNumberFloors;` +
+            ' a new or renamed workflow starts at 1',
+        );
+      } else if (f.value < out.mark) {
+        holds = false;
+        out.problems.push(
+          `${at}: ${b.workflow} floor ${f.value} is below Play's consumed versionCode ${out.mark}; the next` +
+            ` build from ${b.workflow} could be rejected, and the only fix is a permanent jump`,
+        );
+      }
+    } else {
+      holds = false;
+    }
+    if (holds) out.bounded++;
+  }
+
+  const builtIn = new Set(builds.map((b) => `${b.workflow}#${b.job}`));
+  for (const u of uploads) {
+    const at = `${u.workflow}:${u.n} (job "${u.job}")`;
+    if (!builtIn.has(`${u.workflow}#${u.job}`)) {
+      out.problems.push(
+        `${at} runs submit-play.mjs --submit with no android-play-stamped release build in the job, so it` +
+          ' uploads a bundle this limb does not bound: build it in the job, or extend the limb',
+      );
+    }
+    if (consumed !== null && (u.app === null || !has(consumed, u.app))) {
+      out.problems.push(
+        `${at} uploads ${u.app === null ? 'with no --app' : `app "${u.app}"`} and ${HW}.consumed has no entry` +
+          ' for it: record the versionCode Play holds for that app before anything uploads it',
       );
     }
   }
