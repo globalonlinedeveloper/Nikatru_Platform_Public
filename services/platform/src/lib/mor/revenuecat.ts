@@ -4,6 +4,7 @@ import type {
   NormalizedNotification,
   ParseOutcome,
   SubjectSubscription,
+  SubjectTransfer,
   VerifyOutcome,
 } from './contract';
 import { REVENUECAT_EVENT_REASONS, revenueCatAccessRuling } from '../../../../../contracts/entitlement/contract.js';
@@ -15,15 +16,12 @@ import { REVENUECAT_APP_IDS } from './revenuecat-app-ids';
 //
 // O-REVENUECAT-VERIFIER. [ADR 039] D5 puts both store rails (Play Billing, Apple
 // IAP) behind RevenueCat, and [ADR 020]:18 says a per-app Worker never sees a
-// webhook — yet the only RevenueCat receiver in the tree is
-// services/subscriptiontracker-api's POST /v1/webhooks/revenuecat, behind a bearer
-// string. This adapter puts RevenueCat on `POST /v1/money/revenuecat`, the door
-// every rail already uses (routes/money.ts), with a check stronger than a bearer:
-// a signature over the body.
-// ⏱ 2026-09-16 — THIS IS NOW THE ONLY RevenueCat RECEIVER. The bearer-gated
-// legacy route in services/subscriptiontracker-api was retired (leg b of the row);
-// the paragraph above is left as written. tooling/ci/assert-entitlement-contract.mjs
-// limb 7 now reads THIS file as the runtime that takes RevenueCat events.
+// webhook. THIS FILE IS THE ONLY RevenueCat RECEIVER: RevenueCat arrives on
+// `POST /v1/money/revenuecat`, the door every rail uses (routes/money.ts), checked
+// by a signature over the body. The bearer-gated route that services/
+// subscriptiontracker-api once carried was retired on 2026-09-16, and
+// tooling/ci/assert-entitlement-contract.mjs limb 7 reads THIS file as the runtime
+// that takes RevenueCat events.
 //
 // ── WHAT IS ESTABLISHED HERE, AND FROM WHERE ─────────────────────────────────
 // Read 2026-09-15 from RevenueCat's own documentation
@@ -53,39 +51,19 @@ import { REVENUECAT_APP_IDS } from './revenuecat-app-ids';
 //      clock skew and the latency of that POST". Enforced in both directions, as
 //      Paddle's is, and before the digest is spent.
 //
-// ── WHAT IS NOT ESTABLISHED, AND SO IS NOT WRITTEN ───────────────────────────
-// ⚠️ `parse` REFUSES, DELIBERATELY — the same line razorpay.ts draws, for the same
-// reason in the contract's words: "Refusing is recoverable; a wrong grant is not."
-// The event vocabulary IS decided (contracts/entitlement/contract.js →
-// `revenueCatAccessRuling`, corrected against the vendor's event reference on
-// 2026-09-15). What is NOT decided are four facts about turning a RevenueCat
-// event into a row this store may write, and each is a decision about the money
-// boundary rather than a missing line:
+// ── WHAT `parse` DECIDES, AND THE ONE REFUSAL LEFT ───────────────────────────
+// `parse` reads the event and writes what [ADR 085] decided (A–D below) and what
+// [ADR 092] decided for TRANSFER (§4.3). "Refusing is recoverable; a wrong grant is
+// not" still draws the line: anything the table does not decide is refused by name.
+// The one refusal every REAL event meets today is A's EMPTY MAP: no app declares
+// `billing.mobileIap.revenuecatAppIds` yet (no RevenueCat project exists,
+// O-REVENUECAT-ACCOUNT), so every event is refused on A until one does — the rule
+// is built and tested. Before 2026-09-15 this section said `parse` refused
+// everything on purpose, pending A–D; that text is in git history (up to f88912e5).
 //
-//   A. WHICH OF OUR APPS. The store keys (user_id, app_id, 'pro') and REFUSES an
-//      app id that is not a registered product (store.ts `resolveAccount`). A
-//      RevenueCat event names RevenueCat's app, not ours. The only declared
-//      mapping is `billing.mobileIap.revenuecatAppIds` in apps/<id>/app.yaml
-//      (Private/runbooks/revenuecat-setup.md), which no app declares and nothing
-//      in this Worker reads yet.
-//   B. WHICH SUBSCRIPTION HANDLE links later events (`provider_accounts`) — a
-//      body field this repository has never read and no sample exists for.
-//   C. THE REFUND SHAPE of CANCELLATION. The contract row says the past-dated
-//      reading is `refund_approved` and "belongs to the VERIFIER"; the store's
-//      `until_end` path would record `cancelled_at_period_end` instead.
-//   D. A LAPSED BILLING_ISSUE (paid-through date in the past) carries no reason
-//      in the table, and `decideSubscription` refuses a revocation with none — a
-//      503 on every retry. The legacy route simply writes is_active = 0.
-//
-// So this rail can prove a delivery is genuinely RevenueCat's and will not claim
-// to know what it means for a row. A forged body is refused today. No RevenueCat
-// project or webhook exists (O-REVENUECAT-ACCOUNT), so nothing is lost by the
-// refusal, and Private/runbooks/revenuecat-setup.md §5 still says not to point a
-// live webhook anywhere until the second half lands.
-//
-// ── ⏱ 2026-09-15 · THE FOUR FACTS ARE DECIDED — [ADR 085], OWNER ───────────────
-// The section above is history: the owner locked A–D the same day, and `parse`
-// below implements them. Every vendor field it reads was re-read from
+// ── ⏱ 2026-09-15 · THE FOUR FACTS — [ADR 085], OWNER ──────────────────────────
+// The owner locked A–D on 2026-09-15, and `parse` below implements them. Every
+// vendor field it reads was re-read from
 // revenuecat.com/docs/integrations/webhooks/event-types-and-fields and
 // revenuecat.com/docs/customers/identifying-customers on 2026-09-15, and is quoted
 // beside the line that reads it.
@@ -206,6 +184,10 @@ const RC_PAUSED_EXPIRATION_REASON = 'SUBSCRIPTION_PAUSED';
  *  payload and isn't persisted in production." Acknowledged, never attributed. */
 const RC_TEST_EVENT = 'TEST';
 
+/** REFUND_REVERSED: "A refund was reversed." App Store only. Refused by name — see
+ *  the branch that reads it ([ADR 092] §4.6). */
+const RC_REFUND_REVERSED_EVENT = 'REFUND_REVERSED';
+
 /** Our reasons for the two decided shapes that the table cannot carry by name. */
 const REFUND_REASON = 'refund_approved';
 const BILLING_ISSUE_FINAL_REASON = 'payment_failed_final';
@@ -272,15 +254,33 @@ export function parseRevenueCatEvent(raw: string, appIds: Readonly<Record<string
     );
   }
 
+  // ── ⏱ 2026-09-22 · [ADR 092] §4.6 · REFUND_REVERSED, refused BY NAME ─────────
+  // The event reference says only that "a refund was reversed" (App Store only);
+  // it does not say what access follows. Mapped onto `chargeback_reversed` it
+  // would RESTORE access, and the ruling would once have read that row as
+  // 'revoke'. Until an owner decides the restore, it is a named refusal: 503,
+  // retried, counted nightly — never a silent 200 and never a suspension.
+  if (e.type === RC_REFUND_REVERSED_EVENT) {
+    return refuse('refund_reversed_undecided: the reference gives the meaning, not the access outcome, and a restore is decided by no row (ADR 092 §4.6)');
+  }
+
   // ── what the event does to access, from the contract table ─────────────────
   const row = REVENUECAT_EVENT_REASONS.find((r) => r.event === e.type);
   const ruling = revenueCatAccessRuling(e.type);
   if (row === undefined) {
     return refuse('the event type is not in contracts/entitlement/contract.js REVENUECAT_EVENT_REASONS, so its outcome is undecided');
   }
+  // ⏱ 2026-09-22 · [ADR 092] §4.3 — BEFORE the null ruling and BEFORE B: a
+  // TRANSFER body carries no `app_user_id`, so B would refuse every one of them.
+  if (ruling === 'transfer') return parseTransfer(e, appId, head, refuse);
   if (ruling === null) {
-    // SUBSCRIPTION_PAUSED today: the table DECIDES it changes nothing (its `why`
-    // quotes "Don't revoke access on this event").
+    // A row that CARRIES a reason and still rules null is a restore (see
+    // revenueCatAccessRulingForRow): it is refused, never acked as "no change".
+    if (row.reason !== null) {
+      return refuse(`the contract table maps this event to ${row.reason}, which the ruling does not decide (a restore is never a revocation)`);
+    }
+    // SUBSCRIPTION_PAUSED and TEMPORARY_ENTITLEMENT_GRANT: the table DECIDES they
+    // change nothing (each row's `why` quotes the vendor).
     return ignore(`revenuecat ${e.type}: the contract table decides this event changes no access`);
   }
 
@@ -358,9 +358,66 @@ export function parseRevenueCatEvent(raw: string, appIds: Readonly<Record<string
     customerId: nonEmpty(e.original_app_user_id) ? e.original_app_user_id : null,
     customerEmail: null,
     railEnvironment,
+    // ⏱ 2026-09-22 · [ADR 092] E1. `product_id` is Always on a lifecycle event (a
+    // Play id reads `<subscription_id>:<base_plan_id>`); `store` is Sometimes.
+    // Stored verbatim; the store writes them to entitlements.product_id / .store.
+    productId: nonEmpty(e.product_id) ? e.product_id : null,
+    store: nonEmpty(e.store) ? e.store : null,
   };
   const notification: NormalizedNotification = { ...head, subject };
   return { ok: true, notification };
+}
+
+/**
+ * ⏱ 2026-09-22 · [ADR 092] §4.3 — `transferred_from` / `transferred_to`, read from
+ * revenuecat.com/docs/integrations/webhooks/event-types-and-fields on 2026-09-22:
+ * both String[] marked Always, and the reference defines Always as present with a
+ * value that MAY BE NULL. A list is usable only when it is a non-empty array of
+ * non-empty strings; anything else is null, and the caller refuses by name.
+ */
+function transferIdList(v: unknown): string[] | null {
+  if (!Array.isArray(v) || v.length === 0) return null;
+  return v.every(nonEmpty) ? v : null;
+}
+
+/**
+ * A TRANSFER, read into `SubjectTransfer` or refused BY NAME. The vendor sends it
+ * "only for the destination user", with no product, transaction or expiry, so the
+ * subject carries ownership only; store.ts decides what it may conclude.
+ */
+function parseTransfer(
+  e: Record<string, unknown>,
+  appId: string,
+  head: Omit<NormalizedNotification, 'subject'>,
+  refuse: (detail: string) => ParseOutcome,
+): ParseOutcome {
+  const from = transferIdList(e.transferred_from);
+  const to = transferIdList(e.transferred_to);
+  if (from === null || to === null) {
+    return refuse(
+      `transfer_ids_absent: \`${from === null ? 'transferred_from' : 'transferred_to'}\` is null, empty or not a list of ids, so the owners cannot be named (ADR 092 §4.3)`,
+    );
+  }
+  // ADR 092 §4.3, literally: "any `$RCAnonymousID:` id on either side".
+  if ([...from, ...to].some((id) => id.startsWith(REVENUECAT_ANONYMOUS_PREFIX))) {
+    return refuse('transfer_anonymous: an id on either side is anonymous, so the move is not between NIKATRU accounts (ADR 092 §4.3)');
+  }
+  if (to.length !== 1) {
+    return refuse(`transfer_ambiguous_destination: \`transferred_to\` names ${to.length} accounts; one owner is required (ADR 092 §4.3)`);
+  }
+  // `environment` is Sometimes on this event (Always on a lifecycle event).
+  if (e.environment === undefined || e.environment === null) {
+    return refuse('transfer_environment_absent: the event does not say its money world, so it cannot be checked against this destination (ADR 092 §4.3)');
+  }
+  const railEnvironment =
+    typeof e.environment === 'string' && Object.prototype.hasOwnProperty.call(RC_ENVIRONMENTS, e.environment)
+      ? RC_ENVIRONMENTS[e.environment]
+      : undefined;
+  if (railEnvironment === undefined) {
+    return refuse('`environment` is neither PRODUCTION nor SANDBOX, so the money world is unknown');
+  }
+  const subject: SubjectTransfer = { kind: 'transfer', appId, from, to: to[0], railEnvironment };
+  return { ok: true, notification: { ...head, subject } };
 }
 
 /** The verifier, over a routing table. The registry's instance uses the rendered one. */

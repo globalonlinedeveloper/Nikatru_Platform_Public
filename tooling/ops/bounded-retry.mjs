@@ -73,6 +73,21 @@
 //   plus 10 × 10 s = 100 s of probing = 200 s, inside 300 s with margin. At 8 s
 //   the same arithmetic reaches 260 s, which is inside the timeout but not inside
 //   it with room to be wrong about the surface count.
+//   ⏱ APPENDED 2026-09-22 (row O-OPS-READER-NO-CEILING): the `timeout-minutes: 5`
+//   job above is `alert`, which runs no reader. Every job that runs a reader is
+//   `timeout-minutes: 10` (600 s), and the sum that has to fit it is the one in
+//   "THE PER-REQUEST CEILING" below, not this one. The 5 s clamp is unchanged.
+//
+//   REQUEST_TIMEOUT_MS = 15 000. The longest ONE attempt may take, armed HERE
+//   and not in each reader (see "THE PER-REQUEST CEILING"). 15 s is the ceiling
+//   this repository already uses for one request in assert-ops-register.mjs,
+//   assert-alert-disposition.mjs and post-deploy-smoke.mjs, so it is not a new
+//   number; it is the one number moved to where every reader inherits it.
+//
+//   READ_WALL_CEILING_MS is DERIVED: attempts × REQUEST_TIMEOUT_MS +
+//   RETRY_WALL_CEILING_MS = 3 × 15 s + 10 s = 55 s, the most wall clock ONE read
+//   may spend in total when every attempt hangs to the ceiling and the server
+//   asks for the longest wait on every gap.
 //
 //   RETRY_WALL_CEILING_MS is DERIVED, never typed: (attempts − 1) ×
 //   RETRY_AFTER_CEILING_MS — the most wall-clock ONE read may spend waiting even
@@ -90,6 +105,38 @@
 // every programming error a reader could throw. Three identical lines in the log
 // are not evidence of anything.
 //
+// ── THE PER-REQUEST CEILING (row O-OPS-READER-NO-CEILING, 2026-09-22) ────────
+// 🔴 A RETRY BOUNDS THE NUMBER OF ATTEMPTS, NOT THE LENGTH OF ONE. Twelve
+// fetch sites in ten ops-watch readers passed no signal, so a vendor that
+// accepted the connection and never answered held the attempt until the JOB's
+// timeout cancelled it — and a cancelled job reports nothing at all, which is
+// the silent failure this module exists to remove.
+//
+// So the ceiling lives in `readWithBoundedRetry`, once: a FRESH
+// `AbortSignal.timeout` per attempt (an aborted signal stays aborted, so one
+// hoisted above the loop would fail every retry instantly), combined with the
+// caller's own signal through `AbortSignal.any` and never replacing it. The
+// read receives it as `read(attempt, { signal })` and passes it to its fetch.
+// The attempt is also RACED against that signal, so a read that forgets to pass
+// it still ends: its timeout is a transient look, retried, and then COULD NOT
+// LOOK (exit 2), exactly like a dropped connection. A caller's own abort is not
+// ours to retry, so it ends the loop at once with the caller's reason.
+//
+// A reader may pass `timeoutMs` to SHORTEN the ceiling (status.mjs keeps its
+// 10 s for its fan-out arithmetic); nothing may lengthen it. The env knob
+// OPS_REQUEST_TIMEOUT_MS exists for the behavioural tests and may only shorten
+// it too (`Math.min`), on the VERIFY_FREE_API_SCOPE_RETRY_MS precedent — a knob
+// that could raise it would be a way to switch the ceiling off from outside.
+//
+// The sum that has to fit: every reader job in ops-watch.yml is
+// `timeout-minutes: 10` (600 s), and one read costs at most READ_WALL_CEILING_MS
+// (55 s). Ten sequential reads that ALL hang already reach 550 s, and the
+// heartbeats job (check-d1-accepts-live-sql reads once per statement per
+// database) and the glitchtip job (seven readers in one job) run more than ten.
+// So the job ceiling alone cannot guarantee that a later reader in the same job
+// runs after an outage: each reader STEP carries its own `timeout-minutes`
+// (ops-watch.yml), which fails that step rather than cancelling the job.
+//
 // 🔴 CLASSIFICATION IS MARKED AT THE THROW SITE, NEVER INFERRED FROM A MESSAGE.
 // `transientLook()` sets the flag; `isTransientLook()` reads it. A future branch
 // therefore has to DECIDE which of the two a new failure is, rather than having
@@ -106,7 +153,8 @@
 // check-analytics-liveness, check-d1-accepts-live-sql, verify-supabase-templates,
 // check-prod-provenance, verify-monitors, verify-alarm-chains,
 // verify-auth-providers, verify-free-api-scope, check-wildcard-dns,
-// check-turnstile-hosts, check-retired-names-live.
+// check-turnstile-hosts, check-retired-names-live; and, outside tooling/ops,
+// tooling/ci/assert-runner-budget.mjs (2026-09-22, for the per-request ceiling).
 // Failing cases: tooling/ci/test/ops-bounded-retry.test.mjs (this module and the
 // adoption, both directions) and tooling/ci/test/pages-deployments.test.mjs (the
 // green control for the move).
@@ -174,6 +222,10 @@ const TRANSPORT_CODES = new Set([
  *  bounded walk costs nothing. `AbortError`/`TimeoutError` are here because
  *  every reader on this lane arms an `AbortSignal.timeout`, and a probe the
  *  runner gave up on is the same evidence as a probe the network dropped: none.
+ *  ⏱ APPENDED 2026-09-22: the sentence above was not true when written — twelve
+ *  sites in ten readers armed nothing (row O-OPS-READER-NO-CEILING). Since then
+ *  `readWithBoundedRetry` arms it for every reader, and the B8 limb in
+ *  ops-bounded-retry.test.mjs fails a call site that does not pass it on.
  *
  *  🔴 IT IS DELIBERATELY NOT "anything that is a TypeError". A reader with a bug
  *  that reads a property of undefined also throws TypeError, and re-asking a
@@ -231,6 +283,30 @@ export const RETRY_CEILING_MS = backoffPlan().reduce((a, b) => a + b, 0);
  *  RETRY_CEILING_MS is summed. */
 export const RETRY_WALL_CEILING_MS = Math.max(0, READ_ATTEMPTS - 1) * RETRY_AFTER_CEILING_MS;
 
+/** The longest ONE attempt may take before the runner stops waiting for it.
+ *  Defended in the header ("THE PER-REQUEST CEILING"). Armed by
+ *  `readWithBoundedRetry` on every attempt; a reader may shorten it, never
+ *  lengthen it. */
+export const REQUEST_TIMEOUT_MS = 15_000;
+
+/** The most wall clock ONE read may spend in total: every attempt hanging to the
+ *  ceiling plus every gap stretched to the longest honoured wait. DERIVED, for
+ *  the same reason RETRY_WALL_CEILING_MS is. */
+export const READ_WALL_CEILING_MS = Math.max(1, READ_ATTEMPTS) * REQUEST_TIMEOUT_MS + RETRY_WALL_CEILING_MS;
+
+/** PURE. The ceiling one attempt actually gets: the SHORTEST of the module's
+ *  ceiling, the caller's `timeoutMs` and the test-only `OPS_REQUEST_TIMEOUT_MS`
+ *  knob. Every input can only shorten it — a value that is missing, zero,
+ *  negative or not a number is ignored rather than read as "no ceiling". */
+export function requestTimeoutMs(timeoutMs, env = process.env) {
+  let ms = REQUEST_TIMEOUT_MS;
+  for (const v of [timeoutMs, env?.OPS_REQUEST_TIMEOUT_MS]) {
+    const n = Number(v);
+    if (v !== undefined && v !== null && v !== '' && Number.isFinite(n) && n > 0) ms = Math.min(ms, n);
+  }
+  return ms;
+}
+
 /** PURE. A response's `Retry-After` in milliseconds, CLAMPED, or `null`.
  *
  *  RFC 9110 allows two forms and vendors send both: delta-seconds ("30") and an
@@ -260,6 +336,54 @@ export function retryAfterMs(res, { ceilingMs = RETRY_AFTER_CEILING_MS, now = Da
 const nap = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /**
+ * ONE attempt, under a FRESH ceiling, raced against it.
+ *
+ * ⚠️ A REF'D TIMER, NOT `AbortSignal.timeout`. Node unrefs the timer behind
+ * `AbortSignal.timeout`, so a read that hangs on something holding no handle (a
+ * promise nobody settles) would let the process exit with the read still
+ * pending instead of timing it out. The abort reason is the same `TimeoutError`
+ * `AbortSignal.timeout` produces, so `isTransportFailure` reads it identically.
+ *
+ * ⚠️ ON SUCCESS THE TIMER IS UNREF'D, NOT CLEARED. A reader that returns the
+ * Response and reads its body AFTER the helper returns (check-d1-accepts-live-sql,
+ * verify-supabase-templates) is still reading under this signal, so the body
+ * read keeps the same ceiling; unref'd, it no longer holds the process open once
+ * nothing else does. On failure it is cleared.
+ *
+ * The race is what bounds a read that never passes the signal on: its fetch
+ * keeps running, but this attempt ends at the ceiling as a transient look.
+ */
+async function attemptWithCeiling(read, attempt, ceilingMs, callerSignal) {
+  const own = new AbortController();
+  const timer = setTimeout(
+    () => own.abort(new DOMException(`no answer within ${ceilingMs / 1000}s`, 'TimeoutError')),
+    ceilingMs,
+  );
+  const signal = callerSignal ? AbortSignal.any([callerSignal, own.signal]) : own.signal;
+  let onAbort = () => {};
+  const ended = new Promise((_, reject) => {
+    onAbort = () =>
+      reject(
+        callerSignal?.aborted
+          ? callerSignal.reason
+          : transientLook(`no answer within ${ceilingMs / 1000}s (the per-request ceiling, attempt ${attempt})`),
+      );
+    if (signal.aborted) onAbort();
+    else signal.addEventListener('abort', onAbort, { once: true });
+  });
+  let answered = false;
+  try {
+    const value = await Promise.race([Promise.resolve().then(() => read(attempt, { signal })), ended]);
+    answered = true;
+    return value;
+  } finally {
+    if (answered) timer.unref?.();
+    else clearTimeout(timer);
+    signal.removeEventListener('abort', onAbort);
+  }
+}
+
+/**
  * Run `read` until it succeeds or the bounded plan is exhausted.
  *
  * `read(attempt)` is called with the 1-based attempt number so a caller can say
@@ -277,18 +401,27 @@ const nap = (ms) => new Promise((r) => setTimeout(r, ms));
  * blip from an outage, it does not forgive the outage. The rethrown error is a
  * PLAIN `CouldNotLook` with `retryable` unset — a caller that re-wraps must not
  * be able to send an already-exhausted failure round a second loop.
+ *
+ * `read(attempt, { signal })` — the second argument carries THIS attempt's
+ * signal, armed here with the per-request ceiling (header, "THE PER-REQUEST
+ * CEILING"). Pass it to the fetch. `signal` in the options is the caller's own,
+ * combined with ours and never replaced; `timeoutMs` may only shorten the ceiling.
  */
 export async function readWithBoundedRetry(
   read,
-  { attempts = READ_ATTEMPTS, baseMs = RETRY_BASE_MS, sleep = nap, note = () => {} } = {},
+  { attempts = READ_ATTEMPTS, baseMs = RETRY_BASE_MS, sleep = nap, note = () => {}, signal: callerSignal, timeoutMs } = {},
 ) {
   const gaps = backoffPlan(attempts, baseMs);
+  const ceilingMs = requestTimeoutMs(timeoutMs);
   let last = null;
   let waited = 0;
   for (let i = 0; i < Math.max(1, attempts); i += 1) {
+    if (callerSignal?.aborted) throw callerSignal.reason;
     try {
-      return await read(i + 1);
+      return await attemptWithCeiling(read, i + 1, ceilingMs, callerSignal);
     } catch (e) {
+      // The caller's own abort is an instruction, not a blip: never re-asked.
+      if (callerSignal?.aborted) throw callerSignal.reason;
       if (!isTransientLook(e)) throw e;
       last = e;
       if (i < gaps.length) {
@@ -329,7 +462,9 @@ export function classifyThrown(err, message) {
  * The whole rule in one call, for the eleven readers whose fetch wrapper is the
  * same five lines.
  *
- * `doFetch()` performs ONE request and resolves to a Response. Everything below
+ * `doFetch({ signal })` performs ONE request and resolves to a Response; it
+ * passes `signal` to its fetch so the per-request ceiling reaches the wire.
+ * Everything below
  * is the shared judgement: a dropped wire is transient, 429/5xx is transient and
  * honours `Retry-After`, any other non-OK status is an ANSWER, and the caller
  * still owns what a returned Response means.
@@ -338,10 +473,10 @@ export function classifyThrown(err, message) {
  * the lines this lane's operators read have not moved.
  */
 export async function fetchWithBoundedRetry(doFetch, { describe = (s) => s, ...opts } = {}) {
-  return readWithBoundedRetry(async () => {
+  return readWithBoundedRetry(async (_attempt, { signal }) => {
     let res;
     try {
-      res = await doFetch();
+      res = await doFetch({ signal });
     } catch (err) {
       throw classifyThrown(err, describe(`the request did not answer (${err?.name ?? 'error'}: ${err?.message ?? err})`));
     }

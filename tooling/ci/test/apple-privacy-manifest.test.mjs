@@ -689,12 +689,44 @@ describe('the limbs must bite', () => {
     assert.match(out, /declares an empty binaryInventory\.macos/);
   });
 
-  test('limb 7 — a missing .flutter-plugins-dependencies REFUSES rather than skipping limb 4', () => {
+  /* ⏱ 2026-09-22 (O-APPLE-PRIVACY-GUARD-CANNOT-RUN-IN-A-WORKTREE) — ONE case became
+     TWO, because the refusal now names WHICH of two states it is in and the two
+     sentences send the reader somewhere different. Both still exit 2 and both still
+     say `does not exist`: that part is asserted in each case, so a later edit cannot
+     quietly turn either into a pass or break the readers that match on it.
+     The discriminator is `.dart_tool/package_config.json`, which `flutter pub get`
+     writes beside this file and which `SUBJECT_FILES` never copies — so the fixture
+     tree is NEVER BUILT by construction, and the second case plants it. */
+  test('limb 7 — a missing .flutter-plugins-dependencies in a NEVER BUILT tree says so, and names the one command', () => {
     const root = tree((r) => rmSync(join(r, 'apps', APP, '.flutter-plugins-dependencies')));
+    assert.equal(existsSync(join(root, '.dart_tool', 'package_config.json')), false, 'the fixture must start unresolved or this case proves nothing');
     const { code, out } = run(root);
     assert.equal(code, 2, `COVERAGE LOST must exit 2, not ${code}:\n${out}`);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /flutter-plugins-dependencies does not exist/);
+    assert.match(out, /NEVER BUILT/, out);
+    assert.match(out, /flutter pub get/, out);
+    assert.doesNotMatch(out, /WAS resolved/, out);
+  });
+
+  test('limb 7 — the same file missing from a RESOLVED tree is reported as LOST, not as unbuilt', () => {
+    const root = tree((r) => {
+      rmSync(join(r, 'apps', APP, '.flutter-plugins-dependencies'));
+      // The only evidence that `flutter pub get` ever ran here. Contents are never
+      // parsed by the guard — its EXISTENCE is the whole signal — so `{}` is honest.
+      mkdirSync(join(r, '.dart_tool'), { recursive: true });
+      writeFileSync(join(r, '.dart_tool', 'package_config.json'), '{}', 'utf8');
+    });
+    const { code, out } = run(root);
+    assert.equal(code, 2, `COVERAGE LOST must exit 2, not ${code}:\n${out}`);
+    assert.match(out, /COVERAGE LOST/);
+    assert.match(out, /flutter-plugins-dependencies does not exist/);
+    assert.match(out, /WAS resolved/, out);
+    assert.match(out, /LOST after/, out);
+    assert.doesNotMatch(out, /NEVER BUILT/, out);
+    // ⚠️ It must NOT tell the reader to re-run the command that would erase the
+    // evidence of whatever deleted the file.
+    assert.doesNotMatch(out, /Run the one command/, out);
   });
 
   test('limb 7 — a missing data-safety.json REFUSES rather than skipping limb 5', () => {

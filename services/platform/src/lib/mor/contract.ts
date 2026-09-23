@@ -107,7 +107,7 @@ export { MONEY_ENVIRONMENTS, REVOCATION_REASONS, isMoneyEnvironment, isRevocatio
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** The entity kinds any rail's notification can carry, in our vocabulary. */
-export type MoneySubjectKind = 'subscription' | 'adjustment' | 'unknown';
+export type MoneySubjectKind = 'subscription' | 'adjustment' | 'transfer' | 'unknown';
 
 /** A subscription's access-relevant state, translated out of the rail's own. */
 export interface SubjectSubscription {
@@ -147,6 +147,36 @@ export interface SubjectSubscription {
    * sandbox purchase can never grant a live unlock ([5]M-12).
    */
   railEnvironment?: MoneyEnvironment | null;
+  /**
+   * ⏱ 2026-09-22 · [ADR 092] E1 — the rail's own product handle and store name,
+   * VERBATIM, when the body carries them (RevenueCat: `product_id` Always,
+   * `store` Sometimes). Written to `entitlements.product_id` / `.store`, which
+   * were bound NULL for every row until this date. Absent for a rail whose body
+   * names neither (Paddle), and then the columns stay NULL as before.
+   */
+  productId?: string | null;
+  store?: string | null;
+}
+
+/**
+ * ⏱ 2026-09-22 · [ADR 092] §4.3 — RevenueCat moved an app's purchases from one
+ * App User ID to another (its TRANSFER event). An OWNERSHIP notice, not an access
+ * one: the body carries no transaction, product or expiry. The store checks the
+ * money world, refuses while a source user still holds a live RevenueCat row for
+ * the app (`transfer_from_live_owner`), and otherwise concludes it with NO write,
+ * stamping `to` as the notification's user. The ledger's owner of a purchase
+ * moves later, on the next newer signed money event for it (§4.4).
+ */
+export interface SubjectTransfer {
+  kind: 'transfer';
+  /** Our app id, from the routing table (never from the body). */
+  appId: string;
+  /** `transferred_from`, every id named, non-anonymous, in body order. */
+  from: readonly string[];
+  /** The ONE non-anonymous id in `transferred_to`. */
+  to: string;
+  /** `environment`, translated. Required: an event that does not say its world is refused. */
+  railEnvironment: MoneyEnvironment;
 }
 
 /** A refund / chargeback / reversal against a transaction. */
@@ -189,7 +219,7 @@ export interface SubjectRefused {
   detail: string;
 }
 
-export type MoneySubject = SubjectSubscription | SubjectAdjustment | SubjectUnknown | SubjectRefused;
+export type MoneySubject = SubjectSubscription | SubjectAdjustment | SubjectTransfer | SubjectUnknown | SubjectRefused;
 
 /**
  * One notification, normalised. Every field here is REQUIRED to have been read

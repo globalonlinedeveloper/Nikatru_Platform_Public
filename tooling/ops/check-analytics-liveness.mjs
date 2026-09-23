@@ -333,13 +333,14 @@ async function queryD1(databaseId, job) {
   // on the verb alone; the D1 HTTP API takes SELECTs by POST and re-sending one
   // changes nothing, so the decision is recorded HERE, at the call site, rather
   // than guessed by the helper.
-  return readWithBoundedRetry(async () => {
+  return readWithBoundedRetry(async (_attempt, { signal }) => {
     // NO `CF-Connecting-IP` HEADER, EVER — Cloudflare's edge rejects any client
     // request carrying one with error 1000 before the origin is reached.
     let res;
     try {
       res = await fetch(url, {
         method: 'POST',
+        signal,
         headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
         body: JSON.stringify({
           sql: 'SELECT job, target, ok, detail, ran_at FROM cron_heartbeat WHERE job = ? ORDER BY ran_at DESC LIMIT 20',

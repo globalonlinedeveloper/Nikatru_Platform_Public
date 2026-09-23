@@ -1,0 +1,32 @@
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 0015_revenuecat_ownership.sql — A PURCHASE'S LINK REMEMBERS THE EVENT IT RESTS ON.
+--
+-- Applies to the SHARED platform_db (services/platform is the sole applier):
+--   wrangler d1 migrations apply PLATFORM_DB --local    (or --remote)
+--
+-- 🔴 WHAT THIS IS. ONE statement, below: `provider_accounts.linked_occurred_at`,
+-- the PROVIDER's clock (the event's own time) of the event a link was last
+-- written from. [ADR 092] §4.4: RevenueCat can move a purchase to another App
+-- User ID (its TRANSFER event), so for the `revenuecat` provider ONLY the link
+-- may move to the account a NEWER signed event names — and "newer" must be the
+-- provider's clock, never `linked_at`, which is the time this Worker happened to
+-- process the delivery and orders the retries rather than the events (the same
+-- reason store.ts compares `occurred_at` and not `updated_at`).
+--
+-- ── NO BACKFILL, ON PURPOSE ──────────────────────────────────────────────────
+-- A link written before this migration carries NULL here, and every reader in
+-- store.ts reads `COALESCE(linked_occurred_at, linked_at)`. Two reasons:
+--   · an UPDATE is not a statement test/migrations-replay.test.ts classifies, and
+--     widening that classifier for one backfill trades a guard for a convenience;
+--   · the fallback ALSO covers a link written by the old Worker in the window
+--     between this migration's apply and the new Worker's deploy, which a
+--     one-shot backfill run at apply time could never reach.
+-- `linked_at` is never EARLIER than the event it was written from, so the
+-- fallback can only make an old link harder to move, never easier.
+--
+-- ⚠️ REPLAY. `ALTER TABLE … ADD COLUMN` has no `IF NOT EXISTS` form in SQLite, so
+-- this file is LEDGER-PROTECTED rather than replay-safe, exactly as 0004 section
+-- A is: D1 records migration FILE NAMES, so it is applied exactly once. It is in
+-- test/harness.ts PLATFORM_MIGRATIONS and not in REPLAY_SAFE_MIGRATIONS.
+-- ─────────────────────────────────────────────────────────────────────────────
+ALTER TABLE provider_accounts ADD COLUMN linked_occurred_at TEXT;

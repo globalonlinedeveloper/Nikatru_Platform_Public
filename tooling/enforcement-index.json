@@ -2176,6 +2176,10 @@
   },
   {
     "claims": [
+      "ADR 068",
+      "ADR 078",
+      "ADR 093",
+      "ADR 094",
       "D-5",
       "R-5"
     ],
@@ -3324,6 +3328,16 @@
     ],
     "kind": "script",
     "ref": "tooling/smoke/smoke-web-artifact.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/e2e.yml#e2e"
+    ],
+    "kind": "script",
+    "ref": "tooling/store/capture-fallback-fonts.mjs",
     "references": [],
     "state": "WIRED"
   },

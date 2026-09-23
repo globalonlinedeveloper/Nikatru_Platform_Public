@@ -313,9 +313,11 @@ describe('opsWatchdogJob — beat only after the work, never when it throws', ()
 
   it('@ceiling — the declared subrequest budget is the sum of its parts, and the worst case stays inside it', async () => {
     expect(OPS_WATCHDOG_MAX_SUBREQUESTS).toBe(
-      2 + OPS_MAX_CANCELS_PER_RUN + 1 + OPS_MAIN_WORKFLOWS.length * OPS_MAIN_READ_ATTEMPTS * 2 + OPS_GLITCHTIP_MONITORS.length + 1,
+      2 + OPS_MAX_CANCELS_PER_RUN + 1 + OPS_MAIN_WORKFLOWS.length * OPS_MAIN_READ_ATTEMPTS * 2 + OPS_PUSH_TRIGGERED_ON_MAIN.length +
+        OPS_GLITCHTIP_MONITORS.length + 1,
     );
-    // Worst case: every cancel, AND every main page stale on every attempt, so each spends its retry and its cross-reads.
+    // Worst case: every cancel, AND every main page stale on every attempt, so each spends its retry and its
+    // cross-reads, and every push-triggered workflow then spends its one head_sha second path.
     const runs = Array.from({ length: 20 }, (_, i) => ({ id: i + 1, status: 'in_progress', run_started_at: minutesAgo(9999) }));
     const { f } = apiDouble({ runs, stale: true });
     vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -356,7 +358,7 @@ describe('checkMainConclusions — a stale page is UNREADABLE, never a verdict',
   it('GREEN CONTROL — the current page (holds main HEAD\'s run) is believed and graded', async () => {
     measured([FRESH_RUN, STALE_RUN]);
     const rows = await checkMainConclusions(env({ GITHUB_DISPATCH_TOKEN: TOKEN }).e, NOW);
-    expect(rows[0]).toEqual({ target: 'main:ci.yml', ok: true, detail: 'ci.yml on main: success (run 35340873024, 2026-09-18T11:48:02Z)' });
+    expect(rows[0]).toEqual({ target: 'main:ci.yml', ok: true, detail: 'ci.yml on main: success (run 35340873024, 2026-09-18T11:48:02Z) via the branch=main list' });
     expect(rows[1].ok).toBe(true);
   });
 
@@ -366,7 +368,7 @@ describe('checkMainConclusions — a stale page is UNREADABLE, never a verdict',
     expect(rows[0].ok).toBe(false);
     expect(rows[0].detail).toMatch(/^unreadable: stale page: the page ends at run 35117703012 and holds no run of main HEAD 553e814a/);
     expect(rows[0].detail).not.toMatch(/FINDING/);
-    const pages = urls.filter((u) => u.includes('/workflows/ci.yml/') && !u.includes('created='));
+    const pages = urls.filter((u) => u.includes('/workflows/ci.yml/') && !u.includes('created=') && !u.includes('head_sha='));
     expect(pages.map((u) => new URL(u).searchParams.get('per_page'))).toEqual(
       Array.from({ length: OPS_MAIN_READ_ATTEMPTS }, (_, i) => String(OPS_MAIN_PAGE_SIZE + i)),
     );
@@ -397,6 +399,102 @@ describe('checkMainConclusions — a stale page is UNREADABLE, never a verdict',
     const rows = await checkMainConclusions(env({ GITHUB_DISPATCH_TOKEN: TOKEN }).e, NOW);
     expect(rows[0].ok).toBe(false);
     expect(rows[0].detail).toMatch(/^unreadable: .*HTTP 502/);
+  });
+
+  // ── THE SECOND PATH (O-OPS-WATCHDOG-STALE-PAGE-REDDENS-THE-RAIL, 2026-09-22) ──
+  // The measured stale page and its cross-read refuse the branch=main list on
+  // both attempts; `second` is what `runs?head_sha=<HEAD>` serves: a run list,
+  // an HTTP status, or a thrown error.
+  const HEAD_RUN = { ...FRESH_RUN, head_branch: 'main' };
+  const SECOND_URL = `https://api.github.com/repos/globalonlinedeveloper/Nikatru_Platform_Public/actions/workflows/ci.yml/runs?head_sha=${HEAD_553}&per_page=5`;
+
+  function secondPath(second: unknown[] | number | Error) {
+    const urls: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      urls.push(url);
+      if (url.endsWith('/commits/main')) return json({ sha: HEAD_553, commit: { message: 'feat(platform): ops watchdog (#802)', committer: { date: '2026-09-18T11:41:23Z' } } });
+      if (url.includes('/workflows/ci.yml/') && url.includes('head_sha=')) {
+        if (second instanceof Error) throw second;
+        return typeof second === 'number' ? new Response('', { status: second }) : json({ workflow_runs: second });
+      }
+      if (url.includes('/workflows/ci.yml/') && url.includes('created=')) return json({ workflow_runs: [FRESH_RUN] });
+      if (url.includes('/workflows/ci.yml/')) return json({ workflow_runs: [STALE_RUN] });
+      if (url.includes('/workflows/ops-watch.yml/')) return json({ workflow_runs: [OPS_WATCH_RUN] });
+      return new Response('', { status: 404 });
+    }));
+    return urls;
+  }
+
+  it('🔴 T1 — a stale page and a second path holding HEAD\'s COMPLETED run: ok=1, and detail names the second path', async () => {
+    const urls = secondPath([HEAD_RUN]);
+    const rows = await checkMainConclusions(env({ GITHUB_DISPATCH_TOKEN: TOKEN }).e, NOW);
+    expect(rows[0]).toEqual({
+      target: 'main:ci.yml',
+      ok: true,
+      detail: 'ci.yml on main: success (run 35340873024, 2026-09-18T11:48:02Z) via head_sha=553e814a (the branch=main list was a stale page)',
+    });
+    expect(urls.filter((u) => u.includes('head_sha='))).toEqual([SECOND_URL]);
+    expect(urls.filter((u) => u.endsWith('/commits/main'))).toHaveLength(1); // HEAD is read once, not again for the second path
+    expect(rows[1].detail).toMatch(/via the branch=main list$/); // ops-watch.yml has no HEAD anchor and no second path
+  });
+
+  it('🔴 T2 — as T1 but HEAD\'s run FAILED: ok=1 with FINDING:, never ok=0', async () => {
+    secondPath([{ ...HEAD_RUN, conclusion: 'failure' }]);
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const rows = await checkMainConclusions(env({ GITHUB_DISPATCH_TOKEN: TOKEN }).e, NOW);
+    expect(rows[0].ok).toBe(true);
+    expect(rows[0].detail).toMatch(/^FINDING: ci\.yml on main: failure \(run 35340873024, [^)]*\) via head_sha=553e814a/);
+  });
+
+  it('🔴 T3 — as T1 but HEAD\'s run is still IN PROGRESS: ok=1, it says so, and it is no FINDING', async () => {
+    secondPath([{ ...HEAD_RUN, status: 'in_progress', conclusion: null }]);
+    const rows = await checkMainConclusions(env({ GITHUB_DISPATCH_TOKEN: TOKEN }).e, NOW);
+    expect(rows[0].ok).toBe(true);
+    expect(rows[0].detail).toBe('ci.yml on main: run 35340873024 is in_progress, not concluded yet via head_sha=553e814a (the branch=main list was a stale page)');
+    expect(rows[0].detail).not.toMatch(/FINDING/);
+  });
+
+  it('🔴 T4a — a stale page and a second path that THROWS: ok=0 "unreadable: stale page", naming both paths', async () => {
+    secondPath(new Error('The operation was aborted due to timeout'));
+    const rows = await checkMainConclusions(env({ GITHUB_DISPATCH_TOKEN: TOKEN }).e, NOW);
+    expect(rows[0].ok).toBe(false);
+    expect(rows[0].detail).toMatch(/^unreadable: stale page: the page ends at run 35117703012 and holds no run of main HEAD 553e814a .*; the head_sha path was unreadable too: Error: The operation was aborted due to timeout/);
+    expect(rows[0].detail).not.toMatch(/FINDING/);
+  });
+
+  it('🔴 T4b — a stale page and a second path with no run of HEAD ON MAIN: ok=0 "unreadable: stale page"', async () => {
+    // A run of HEAD on another branch, and a run of another sha on main: neither is main HEAD's verdict.
+    secondPath([{ ...HEAD_RUN, id: 35340900000, head_branch: 'feature' }, { ...STALE_RUN, head_branch: 'main' }]);
+    const rows = await checkMainConclusions(env({ GITHUB_DISPATCH_TOKEN: TOKEN }).e, NOW);
+    expect(rows[0].ok).toBe(false);
+    expect(rows[0].detail).toMatch(/^unreadable: stale page: .*; the head_sha path holds no run of main HEAD 553e814a either \(2 run\(s\) answered\)/);
+    expect(rows[0].detail).not.toMatch(/FINDING/);
+  });
+
+  it('🔴 T5 — a FRESH page, or a fresh retry, never calls the second path', async () => {
+    const fresh = measured([FRESH_RUN, STALE_RUN]);
+    expect((await checkMainConclusions(env({ GITHUB_DISPATCH_TOKEN: TOKEN }).e, NOW))[0].ok).toBe(true);
+    expect(fresh.filter((u) => u.includes('head_sha='))).toEqual([]);
+    const urls: string[] = [];
+    let n = 0;
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      urls.push(url);
+      if (url.endsWith('/commits/main')) return json({ sha: HEAD_553, commit: { message: 'm', committer: { date: '2026-09-18T11:41:23Z' } } });
+      if (url.includes('created=')) return json({ workflow_runs: [FRESH_RUN] });
+      if (url.includes('/workflows/ci.yml/')) return json({ workflow_runs: n++ === 0 ? [STALE_RUN] : [FRESH_RUN] });
+      return json({ workflow_runs: [OPS_WATCH_RUN] });
+    }));
+    const rows = await checkMainConclusions(env({ GITHUB_DISPATCH_TOKEN: TOKEN }).e, NOW);
+    expect(rows[0].detail).toMatch(/via the branch=main list$/);
+    expect(urls.filter((u) => u.includes('head_sha='))).toEqual([]);
+  });
+
+  it('🔴 OPS_MAIN_PAGE_SIZE stays 20 — a wider page would hide the lag the anchor exists to detect', () => {
+    // The 2026-09-18 defence, measured. The retry and the second path are how a refused
+    // page is recovered; widening the page is not one of them.
+    expect(OPS_MAIN_PAGE_SIZE).toBe(20);
   });
 
   it('judgeMainPage — the cross-read anchor refuses a newer run outside the race window and accepts one inside it', () => {

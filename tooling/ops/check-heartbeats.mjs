@@ -682,11 +682,12 @@ export async function queryD1(databaseId, job, target = null) {
   //
   // 🔴 A POST THAT IS A READ. The D1 HTTP API takes SELECTs by POST; re-sending one
   // changes nothing, and the decision is recorded here rather than guessed by verb.
-  return readWithBoundedRetry(async () => {
+  return readWithBoundedRetry(async (_attempt, { signal }) => {
     let res;
     try {
       res = await fetch(url, {
         method: 'POST',
+        signal,
         headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
         body: JSON.stringify({
           sql: narrowed

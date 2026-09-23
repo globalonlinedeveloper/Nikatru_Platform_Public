@@ -52,6 +52,23 @@ const plan = {
 let server;
 let origin;
 
+/** A token whose PAYLOAD is real base64url JSON and whose signature is a
+ *  placeholder. `assert_one_issuer.mjs` never verifies a signature — the
+ *  deployed Worker does, and what the Worker did is the assertion — so the only
+ *  property a fixture token needs is a payload that decodes. Built per case
+ *  rather than pinned, because the `iss` under test has to carry THIS run's
+ *  loopback origin: the script compares it against the SUPABASE_URL it was given.
+ */
+function tokenWithPayload(payload) {
+  const seg = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+  return `${seg({ alg: 'HS256', typ: 'JWT' })}.${seg(payload)}.signature-is-never-checked-here`;
+}
+
+/** The shape the live stacks are supposed to mint: `iss` = SUPABASE_URL +
+ *  `/auth/v1`, byte for byte, which is what services/_shared/src/auth.ts:88
+ *  hands `jwtVerify`. Set once the loopback port is known. */
+let goodToken;
+
 before(async () => {
   server = createServer((req, res) => {
     const path = (req.url ?? '').split('?')[0];
@@ -72,6 +89,7 @@ before(async () => {
   });
   await new Promise((done) => server.listen(0, '127.0.0.1', done));
   origin = `http://127.0.0.1:${server.address().port}`;
+  goodToken = tokenWithPayload({ iss: `${origin}/auth/v1`, sub: 'fixture-user-id', role: 'authenticated' });
 });
 
 after(async () => {
@@ -169,7 +187,11 @@ describe('assert_one_issuer.mjs — the Workers trust exactly one issuer', () =>
     plan.generateLinkStatus = 200;
     plan.generateLinkBody = { hashed_token: 'pkce_deadbeefdeadbeefdeadbeefdeadbeef' };
     plan.verifyStatus = 200;
-    plan.verifyBody = { access_token: 'header.payload.signature' };
+    // Was the literal `header.payload.signature` until 2026-09-22. The script now
+    // READS the payload back, so the default session has to be one a reader can
+    // read; the old placeholder survives as T3's undecodable case, where it is
+    // the point rather than a stand-in.
+    plan.verifyBody = { access_token: goodToken };
   });
 
   test('GREEN CONTROL · hosted mints a session the Worker accepts', async () => {
@@ -208,7 +230,7 @@ describe('assert_one_issuer.mjs — the Workers trust exactly one issuer', () =>
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /Could not mint a session/);
     plan.verifyStatus = 200;
-    plan.verifyBody = { access_token: 'header.payload.signature' };
+    plan.verifyBody = { access_token: goodToken };
   });
 
   test('generate_link answering without a hashed_token FAILS rather than sending an empty one', async () => {
@@ -217,6 +239,95 @@ describe('assert_one_issuer.mjs — the Workers trust exactly one issuer', () =>
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /No hashed_token in generate_link response/);
     plan.generateLinkBody = { hashed_token: 'pkce_deadbeefdeadbeefdeadbeefdeadbeef' };
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // THE `iss` READBACK — added 2026-09-22 for O-PHASE5-ISSUER-SUFFIX.
+  //
+  // 🔴 WHAT IS BEING PROTECTED HERE IS A READING, NOT A VERDICT. The step's
+  // 401-on-boxa / 200-on-hosted assertion is unchanged and is exercised by the
+  // six cases above. These four hold the three lines that were added to READ the
+  // live issuer out of the token, because `BOXA_SUPABASE_URL` is a repository
+  // secret: in a real log the value prints `***`, so the only evidence that
+  // survives is the PATH and two yes/no comparisons computed in-process.
+  // T2 is the defect the row was opened for — an issuer that is the bare URL,
+  // missing the `/auth/v1` suffix the Workers build their JWKS check from — and
+  // it must READ as "no" while the step still passes, or the reading would only
+  // ever be available on a run that had already failed for another reason.
+  // ───────────────────────────────────────────────────────────────────────────
+
+  test('T1 · an iss equal to SUPABASE_URL + /auth/v1 reads "yes" on both comparisons', async () => {
+    plan.apiStatus = 200;
+    plan.verifyBody = { access_token: goodToken };
+    const r = await run(ONE_ISSUER, { E2E_AUTH_TARGET: 'hosted' });
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /^iss path {4}: \/auth\/v1$/m);
+    assert.match(r.out, /^iss host equals SUPABASE_URL host: yes$/m);
+    assert.match(r.out, /^iss equals SUPABASE_URL \+ \/auth\/v1: yes$/m);
+    assert.doesNotMatch(r.out, /READ BACK, NOT ASSERTED/);
+  });
+
+  test('T2 · an iss WITHOUT the /auth/v1 suffix reads "no", prints the wrong path, and still passes', async () => {
+    plan.apiStatus = 200;
+    // The historical shape: GOTRUE_JWT_ISSUER set to the bare project URL.
+    plan.verifyBody = { access_token: tokenWithPayload({ iss: origin, sub: 'fixture-user-id' }) };
+    const bare = await run(ONE_ISSUER, { E2E_AUTH_TARGET: 'hosted' });
+    assert.equal(bare.code, 0, bare.out); // the reading reports; the assertion judges
+    assert.match(bare.out, /^iss path {4}: \/$/m);
+    assert.match(bare.out, /^iss host equals SUPABASE_URL host: yes$/m);
+    assert.match(bare.out, /^iss equals SUPABASE_URL \+ \/auth\/v1: no$/m);
+    assert.match(bare.out, /READ BACK, NOT ASSERTED/);
+    assert.match(bare.out, /ASSERTED: the deployed Worker accepts a hosted-minted session/);
+
+    // 🔴 AND THE NEAR MISS, because `jwtVerify`'s `issuer` is a string compare:
+    // one trailing slash is a different issuer and must not read as "yes".
+    plan.verifyBody = { access_token: tokenWithPayload({ iss: `${origin}/auth/v1/` }) };
+    const slash = await run(ONE_ISSUER, { E2E_AUTH_TARGET: 'hosted' });
+    assert.equal(slash.code, 0, slash.out);
+    assert.match(slash.out, /^iss host equals SUPABASE_URL host: yes$/m);
+    assert.match(slash.out, /^iss equals SUPABASE_URL \+ \/auth\/v1: no$/m);
+    plan.verifyBody = { access_token: goodToken };
+  });
+
+  test('T3 · a token the reader cannot decode FAILS the step with exit 2, on all four ways it can fail', async () => {
+    plan.apiStatus = 200;
+    const undecodable = [
+      ['not three segments', 'header.payload'],
+      ['a payload that is not JSON', 'header.payload.signature'],
+      ['JSON that is not an object', tokenWithPayload(['iss', 'https://example.invalid/auth/v1'])],
+      ['an object with no iss', tokenWithPayload({ sub: 'fixture-user-id', role: 'authenticated' })],
+    ];
+    for (const [why, token] of undecodable) {
+      plan.verifyBody = { access_token: token };
+      const r = await run(ONE_ISSUER, { E2E_AUTH_TARGET: 'hosted' });
+      // 2, not 1: the one-issuer FACT is untouched — the Worker answered 200 and
+      // the assertion below it passed — and the run still fails, because a step
+      // that cannot take its reading must not report one.
+      assert.equal(r.code, 2, `${why}: ${r.out}`);
+      assert.match(r.out, /::error title=Issuer readback::/);
+      assert.match(r.out, /ASSERTED: the deployed Worker accepts a hosted-minted session/);
+      assert.doesNotMatch(r.out, /^iss equals SUPABASE_URL \+ \/auth\/v1: (yes|no)$/m);
+    }
+    plan.verifyBody = { access_token: goodToken };
+  });
+
+  test('T4 · nothing the readback prints carries the token, the payload or the service key', async () => {
+    plan.apiStatus = 200;
+    plan.verifyBody = { access_token: goodToken };
+    const r = await run(ONE_ISSUER, { E2E_AUTH_TARGET: 'hosted' });
+    assert.equal(r.code, 0, r.out);
+    // The ONLY line allowed to carry the token is the one that tells Actions to
+    // mask it, and it has to be there: without it the raw token reaches the log.
+    const masks = r.out.split('\n').filter((l) => l.startsWith('::add-mask::'));
+    assert.ok(masks.includes(`::add-mask::${goodToken}`), 'the access token is not masked');
+    const payloadSegment = goodToken.split('.')[1];
+    for (const line of r.out.split('\n').filter((l) => !l.startsWith('::add-mask::'))) {
+      assert.ok(!line.includes(goodToken), `a line carries the whole token: ${line}`);
+      assert.ok(!line.includes(payloadSegment), `a line carries the payload segment: ${line}`);
+      assert.ok(!line.includes('service-role-key-for-the-fake'), `a line carries the service key: ${line}`);
+      assert.ok(!line.includes('pkce_deadbeef'), `a line carries the magic-link token: ${line}`);
+      assert.ok(!line.includes('fixture-user-id'), `a line carries a claim other than iss: ${line}`);
+    }
   });
 });
 

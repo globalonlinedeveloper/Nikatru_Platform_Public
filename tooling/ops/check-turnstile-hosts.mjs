@@ -57,7 +57,10 @@ import { fileURLToPath } from 'node:url';
 import { CouldNotLook, classifyThrown, transientLook, isTransientStatus, retryAfterMs, readWithBoundedRetry } from './bounded-retry.mjs';
 
 export const CF_API = 'https://api.cloudflare.com/client/v4';
-export const REQUEST_TIMEOUT_MS = 20_000;
+// ⏱ 2026-09-22 — THE PRIVATE 20 s `REQUEST_TIMEOUT_MS` IS GONE. The per-request ceiling
+// is armed once, per attempt, by readWithBoundedRetry (tooling/ops/bounded-retry.mjs,
+// "THE PER-REQUEST CEILING"), and `cf()` passes the attempt's `signal` on. Two
+// ceilings on one request was a rival (row O-OPS-READER-NO-CEILING).
 
 // ⏱ 2026-09-21 — `CouldNotLook` IS NO LONGER DECLARED HERE. Every reader under
 // tooling/ops/ declared its own, so `err instanceof CouldNotLook` was only ever
@@ -130,6 +133,8 @@ export function judge({ sitekey, served, allowed }) {
  * aborted signal stays aborted, so a controller hoisted above the loop would
  * make every retry after a timeout fail instantly on the FIRST attempt's abort —
  * a retry that is only ever going to spend the ceiling and report the same word.
+ * ⏱ APPENDED 2026-09-22: the controller moved into readWithBoundedRetry, which
+ * still builds a fresh one per attempt for the reason above; `signal` is it.
  */
 // 🔴 `doFetch` IS A TEST SEAM AND IT IS LOAD-BEARING. Without it the retry here can
 // only be proven by the fact that the module is imported — and a mutation that put
@@ -137,19 +142,15 @@ export function judge({ sitekey, served, allowed }) {
 // pass every import-shaped assertion while quietly re-asking nothing.
 export async function cf(path, token, { sleep, note, doFetch = fetch } = {}) {
   return readWithBoundedRetry(
-    async () => {
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
+    async (_attempt, { signal }) => {
       let res;
       try {
         res = await doFetch(`${CF_API}${path}`, {
           headers: { Authorization: `Bearer ${token}` },
-          signal: ctrl.signal,
+          signal,
         });
       } catch (err) {
         throw classifyThrown(err, `the Cloudflare API could not be reached (${err.message})`);
-      } finally {
-        clearTimeout(timer);
       }
       if (!res.ok) {
         const line = `the Cloudflare API answered HTTP ${res.status} for ${path}`;

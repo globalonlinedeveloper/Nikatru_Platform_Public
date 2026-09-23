@@ -48,6 +48,7 @@ import pendingErasures0010 from '../migrations/0010_pending_erasures.sql?raw';
 import signups0011 from '../migrations/0011_signups.sql?raw';
 import appleTokens0012 from '../migrations/0012_apple_provider_tokens.sql?raw';
 import contentReports0013 from '../migrations/0013_content_reports.sql?raw';
+import revenuecatOwnership0015 from '../migrations/0015_revenuecat_ownership.sql?raw';
 
 type SQLValue = string | number | bigint | null | Uint8Array;
 
@@ -83,6 +84,9 @@ export const PLATFORM_MIGRATIONS: readonly string[] = [
   // 0014 is the consent_artifacts app_id rename (owner 2026-09-22, pre-launch) —
   // an UPDATE-only data migration over rows this harness never seeds, so, like
   // 0008, it is not in the schema set.
+  // [ADR 092] §4.4 — the event time a RevenueCat link rests on. ADD COLUMN, so
+  // ledger-protected and NOT in REPLAY_SAFE_MIGRATIONS below.
+  revenuecatOwnership0015,
 ];
 
 /**

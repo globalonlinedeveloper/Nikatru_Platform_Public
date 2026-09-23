@@ -501,11 +501,13 @@ describe('verify-supabase-templates — the owner-gated branch ops-watch.yml dep
 
   // A credentialled run whose READ fails. `fetch` is replaced by a preload, so
   // nothing reaches the network; the credential is a placeholder.
-  const withFetch = (root, stubSource) => {
+  // ⏱ 2026-09-22: `extraEnv` carries OPS_REQUEST_TIMEOUT_MS for the never-answers
+  // cases below, and `timeout` kills a child that has no per-request ceiling.
+  const withFetch = (root, stubSource, extraEnv = {}) => {
     const pre = join(TMP, `fetch-stub-${seq++}.mjs`);
     writeFileSync(pre, stubSource);
-    const env = { ...process.env, SUPABASE_PAT: 'sbp_placeholder_for_tests', SUPABASE_PROJECT_REF: 'placeholderref' };
-    return spawnSync(process.execPath, ['--import', pathToFileURL(pre).href, LIVE_CHECKER, root], { encoding: 'utf8', env });
+    const env = { ...process.env, SUPABASE_PAT: 'sbp_placeholder_for_tests', SUPABASE_PROJECT_REF: 'placeholderref', ...extraEnv };
+    return spawnSync(process.execPath, ['--import', pathToFileURL(pre).href, LIVE_CHECKER, root], { encoding: 'utf8', env, timeout: 45_000 });
   };
 
   test('exit 2 — the Management API answering 504 is UNKNOWN, not drift (run 34511747076)', () => {
@@ -532,6 +534,29 @@ describe('verify-supabase-templates — the owner-gated branch ops-watch.yml dep
     assert.match(out(r), /the same on all 3 attempt\(s\)/);
     assert.match(out(r), /is an OUTAGE, not a blip, so this is COULD NOT LOOK and not a pass/);
     assert.doesNotMatch(out(r), /: DRIFT/);
+  });
+
+  // ⏱ 2026-09-22 — A READ THAT NEVER ANSWERS (row O-OPS-READER-NO-CEILING).
+  // Before the shared per-request ceiling, a Management API that accepted and
+  // never answered held this job until its timeout-minutes. Both kinds of fetch
+  // are covered: one that honours the signal it is handed, and one that ignores
+  // it, which the helper's race still ends. OPS_REQUEST_TIMEOUT_MS only shortens
+  // the ceiling, so each case takes seconds.
+  const HONOURS_SIGNAL = "globalThis.fetch = (_u, init = {}) => new Promise((_, reject) => init.signal?.addEventListener('abort', () => reject(init.signal.reason), { once: true }));\n";
+  const IGNORES_SIGNAL = 'globalThis.fetch = () => new Promise(() => {});\n';
+  const assertEndsInsideCeiling = (stub) => {
+    const r = withFetch(makeRoot(), stub, { OPS_REQUEST_TIMEOUT_MS: '200' });
+    assert.equal(r.signal, null, `killed by the test's 45 s timeout: the read had no per-request ceiling\n${out(r)}`);
+    assert.equal(r.status, 2, out(r));
+    assert.match(out(r), /per-request ceiling/);
+    assert.match(out(r), /the same on all 3 attempt\(s\)/);
+    assert.doesNotMatch(out(r), /: DRIFT/);
+  };
+  test("exit 2 — a fetch that never answers and honours its signal ends inside the ceiling, not at the job's timeout", { timeout: 60_000 }, () => {
+    assertEndsInsideCeiling(HONOURS_SIGNAL);
+  });
+  test("exit 2 — a fetch that never answers and ignores its signal ends inside the ceiling, not at the job's timeout", { timeout: 60_000 }, () => {
+    assertEndsInsideCeiling(IGNORES_SIGNAL);
   });
 
   test('exit 2 — a 200 whose body is not JSON is UNKNOWN, not drift', () => {

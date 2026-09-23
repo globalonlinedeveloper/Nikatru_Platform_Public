@@ -453,6 +453,11 @@ describe('[5]M-3 · the entitlement record is complete', () => {
       trial_end: '2026-08-31T00:00:00.000Z',
       revoked_at: null,
       revocation_reason: null,
+      // ⏱ 2026-09-22 · [ADR 092] E1: product_id and store are written from the
+      // RevenueCat body only. A Paddle grant carries neither, and binds NULL
+      // rather than a guess (revenuecat-money.test.ts pins the RevenueCat side).
+      product_id: null,
+      store: null,
     });
     // The legacy reader (services/subscriptiontracker-api/src/routes/entitlements.ts) knows only
     // is_active + expires_at. It must reach the same answer as the new columns.
