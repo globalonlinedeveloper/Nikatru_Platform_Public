@@ -308,3 +308,18 @@ describe('alsoResolves refuses to be half-applied', () => {
     assert.match(r.stderr, /no-such-resolver/);
   });
 });
+
+// ⏱ ADDED 2026-09-23 — the stamp shapes have ONE home, tooling/e2e/app-version-stamp.mjs,
+// which the capture runner and assert-live-writer-provenance.mjs import too. A shape
+// re-declared in the monitor would be a second answer to "what does a nightly stamp
+// look like", and the writer and the reader could then disagree without either
+// test noticing.
+describe('the monitor reads the stamp shapes from the one stamp module', () => {
+  test('the comment-stripped monitor imports ../e2e/app-version-stamp.mjs and declares no /^e2e- or /^cap- literal of its own', async () => {
+    const { stripSourceComments } = await import('../text-reductions.mjs');
+    const code = stripSourceComments(readFileSync(MONITOR, 'utf8'), '.mjs');
+    assert.match(code, /from\s+'\.\.\/e2e\/app-version-stamp\.mjs'/);
+    assert.doesNotMatch(code, /\/\^e2e-/);
+    assert.doesNotMatch(code, /\/\^cap-/);
+  });
+});

@@ -1129,6 +1129,18 @@
   },
   {
     "claims": [
+      "B-17"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-live-writer-provenance.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
       "F-8"
     ],
     "invokedBy": [
@@ -2784,7 +2796,9 @@
     "invokedBy": [],
     "kind": "guard",
     "ref": "tooling/ci/workflow-scan.mjs",
-    "references": [],
+    "references": [
+      "B-17"
+    ],
     "state": "LIBRARY"
   },
   {

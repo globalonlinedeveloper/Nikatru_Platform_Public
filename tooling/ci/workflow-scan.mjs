@@ -467,23 +467,16 @@ export function stepShell(wf, lineNo) {
   const unknown = (why) => ({ shell: null, family: null, from: 'unknown', n: lineNo, why });
   const job = [...wf.jobs.values()].find((j) => j.lines.some((l) => l.n === lineNo));
   if (!job) return unknown(`line ${lineNo} is in no job`);
-  const indent = (t) => t.match(/^ */)[0].length;
   const named = (shell, from, n) => ({ shell, family: shell.split(/\s+/)[0], from, n });
   const lines = job.lines;
   const at = lines.findIndex((l) => l.n === lineNo);
-  const self = lines[at].text;
-  const isItem = (t) => /^\s*-\s/.test(t);
-  // The step: the nearest `- ` item at or above the line and shallower than it,
-  // so a line inside a `run: |` block resolves to the step that runs it.
-  let start = at;
-  if (!isItem(self)) while (start > 0 && !(isItem(lines[start].text) && indent(lines[start].text) < indent(self))) start -= 1;
-  if (isItem(lines[start].text)) {
-    const stepIndent = indent(lines[start].text);
-    for (let j = start; j < lines.length; j++) {
-      const t = lines[j].text;
-      if (j > start && t.trim() !== '' && indent(t) <= stepIndent) break;
-      const sh = t.replace(/^(\s*)-\s/, '$1  ').match(/^(\s+)shell:\s*(\S.*?)\s*$/);
-      if (sh && sh[1].length === stepIndent + 2) return named(unquote(sh[2]), 'step', lines[j].n);
+  // The step, by the module's one step-boundary rule (stepItemAround), so a line
+  // inside a `run: |` block resolves to the step that runs it.
+  const item = stepItemAround(lines, at);
+  if (item) {
+    for (let j = item.start; j < item.end; j++) {
+      const sh = lines[j].text.replace(/^(\s*)-\s/, '$1  ').match(/^(\s+)shell:\s*(\S.*?)\s*$/);
+      if (sh && sh[1].length === item.indent + 2) return named(unquote(sh[2]), 'step', lines[j].n);
     }
   }
   const jobDefault = defaultsShell(lines, 4);
@@ -735,6 +728,171 @@ export function flutterReleaseBuilds(root, parsed = null) {
 
 /** Where a build is, written the one way every reader prints it. */
 export const buildAt = (b) => `${b.workflow}:${b.runLine} (job "${b.job}", \`flutter build ${b.target}\`)`;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE STEP READERS AND THE LIVE-DRIVE CENSUS — ⏱ ADDED 2026-09-23 for
+// tooling/ci/assert-live-writer-provenance.mjs ([pipeline B-17]).
+//
+// A live `flutter drive` against production writes consent rows stamped with the
+// build's APP_VERSION, and the purge after it must be handed the settings that
+// find those rows. Both facts sit in STEP keys (`env:`, `if:`, `run:`) and in
+// `$GITHUB_ENV` writes, so the guard needs steps as records, not lines.
+//
+// ⚠️ ONE STEP-BOUNDARY RULE. stepShell (above) walked its own step boundary
+// inline; it now calls stepItemAround, and so does workflowSteps. Two walks of
+// "where does this step end" would be two answers to one question.
+//
+// ⚠️ STILL NOT A GUARD. Pure text transforms over the parse; what an empty census
+// means belongs to the caller.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const indentOf = (t) => t.match(/^ */)[0].length;
+const isStepItem = (t) => /^\s*-\s/.test(t);
+
+/** The `- ` sequence item holding job line index `at`: the nearest item at or
+ *  above it and shallower than it (the line itself when it is one). `end` is the
+ *  first later non-blank line at or below the item's indent (exclusive). Null
+ *  when the line sits in no item. */
+export function stepItemAround(lines, at) {
+  if (!Array.isArray(lines) || at < 0 || at >= lines.length) return null;
+  const self = lines[at].text;
+  let start = at;
+  if (!isStepItem(self)) while (start > 0 && !(isStepItem(lines[start].text) && indentOf(lines[start].text) < indentOf(self))) start -= 1;
+  if (!isStepItem(lines[start].text)) return null;
+  const indent = indentOf(lines[start].text);
+  let end = start + 1;
+  while (end < lines.length && !(lines[end].text.trim() !== '' && indentOf(lines[end].text) <= indent)) end += 1;
+  return { start, end, indent };
+}
+
+/** `KEY: value` entries directly below a mapping key, as Map KEY → {n, value}.
+ *  Paired quotes are stripped; a `${{ … }}` value is kept verbatim. */
+function mappingBelow(lines, from, to, keyIndent) {
+  const out = new Map();
+  let childIndent = null;
+  for (let j = from; j < to; j++) {
+    const t = lines[j].text;
+    if (t.trim() === '') continue;
+    const at = indentOf(t);
+    if (at <= keyIndent) break;
+    if (childIndent === null) childIndent = at;
+    if (at !== childIndent) continue;
+    const m = t.match(/^\s*([A-Za-z_][A-Za-z0-9_]*):\s*(.*?)\s*$/);
+    if (m) out.set(m[1], { n: lines[j].n, value: unquote(m[2]) });
+  }
+  return out;
+}
+
+/**
+ * Every step of a parsed job, in order: `{ index, first, last, id, name, cond,
+ * env, run }`. `first`/`last` are file line numbers, `cond` is the step's `if:`
+ * as written (null when it has none), `env` is ONLY the step's `env:` mapping
+ * (never `with:`), and `run` is `{ n, text }` taken from the job's LOGICAL lines,
+ * so a `run: |` block arrives joined with ` ; ` and a `run: >` block folded.
+ */
+export function workflowSteps(job) {
+  const lines = job?.lines ?? [];
+  const at = lines.findIndex((l) => /^ {4}steps:\s*$/.test(l.text));
+  if (at === -1) return [];
+  const steps = [];
+  let itemIndent = null;
+  for (let i = at + 1; i < lines.length; i++) {
+    const t = lines[i].text;
+    if (t.trim() === '') continue;
+    if (indentOf(t) <= 4) break;
+    if (!isStepItem(t)) continue;
+    if (itemIndent === null) itemIndent = indentOf(t);
+    if (indentOf(t) !== itemIndent) continue;
+    const item = stepItemAround(lines, i);
+    const step = { index: steps.length, first: lines[i].n, last: lines[i].n, id: null, name: null, cond: null, env: new Map(), run: null };
+    for (let j = item.start; j < item.end; j++) {
+      if (lines[j].text.trim() !== '') step.last = lines[j].n;
+      const text = j === item.start ? lines[j].text.replace(/^(\s*)-\s/, '$1  ') : lines[j].text;
+      const k = text.match(/^( *)([A-Za-z_][A-Za-z0-9_-]*):\s*(.*?)\s*$/);
+      if (!k || k[1].length !== item.indent + 2) continue;
+      if (k[2] === 'id') step.id = unquote(k[3]);
+      else if (k[2] === 'name') step.name = unquote(k[3]);
+      else if (k[2] === 'if') step.cond = k[3];
+      else if (k[2] === 'env' && k[3] === '') step.env = mappingBelow(lines, j + 1, item.end, item.indent + 2);
+      else if (k[2] === 'run') {
+        const logical = job.logical.find((l) => l.n === lines[j].n);
+        step.run = { n: lines[j].n, text: (logical?.text ?? text).replace(/^\s*(?:-\s+)?run:\s*/, '') };
+      }
+    }
+    steps.push(step);
+    i = item.end - 1;
+  }
+  return steps;
+}
+
+/** A job's own `env:` (the key at 4 spaces), as Map KEY → {n, value}. */
+export function jobEnv(job) {
+  const lines = job?.lines ?? [];
+  const at = lines.findIndex((l) => /^ {4}env:\s*$/.test(l.text));
+  return at === -1 ? new Map() : mappingBelow(lines, at + 1, lines.length, 4);
+}
+
+/** `cmd \` continued on the next line of a `run: |` block arrives from
+ *  joinBlockScalars as `cmd \ ; next`: ONE shell command, rejoined here. */
+export const joinShellContinuations = (text) => String(text ?? '').replace(/\s\\\s+;\s/g, ' ');
+
+/** A command in COMMAND POSITION of one shell segment: after optional `NAME=value`
+ *  assignments and an optional `xvfb-run` wrapper with its flags (quoted
+ *  arguments included — `-s "-screen 0 2560x1600x24"`). A command named inside
+ *  an `echo` string is prose, not a command. */
+export const COMMAND_PREFIX = /^\s*(?:[A-Z_][A-Z0-9_]*=\S+\s+)*(?:xvfb-run(?:\s+(?:"[^"]*"|'[^']*'|-\S+))*\s+)?/.source;
+export const commandAt = (segment, command) => new RegExp(`${COMMAND_PREFIX}(?:${command})`).test(String(segment ?? ''));
+
+/** Every `echo "NAME=expr" >> "$GITHUB_ENV"` in a job: `{ name, expr, n,
+ *  stepIndex, cond }`. `$GITHUB_OUTPUT` and a bare echo are not env writes. */
+export function githubEnvWrites(job) {
+  const out = [];
+  for (const step of workflowSteps(job)) {
+    if (step.run === null) continue;
+    for (const seg of shellSegments(joinShellContinuations(step.run.text))) {
+      const m = seg.match(/^\s*echo\s+(?:-e\s+)?(["']?)([A-Za-z_][A-Za-z0-9_]*)=(.*?)\1\s*>>\s*"?\$\{?GITHUB_ENV\}?"?\s*$/);
+      if (m) out.push({ name: m[2], expr: m[3], n: step.run.n, stepIndex: step.index, cond: step.cond });
+    }
+  }
+  return out;
+}
+
+/**
+ * EVERY `flutter drive` A WORKFLOW RUNS, one record per shell segment:
+ * `{ workflow, job, stepIndex, runLine, segment, defines, appVersionExpr,
+ * teeTarget }`. `appVersionExpr` is the `--dart-define=APP_VERSION=` value as
+ * written with its quotes removed (null when the drive passes none), and
+ * `teeTarget` the file the NEXT segment `tee`s the drive's output into (null
+ * when it is not piped to one). `parsed` as in flutterReleaseBuilds.
+ */
+export function flutterDrives(root, parsed = null) {
+  const workflows = parsed ?? parseAllWorkflows(root);
+  const out = [];
+  for (const wf of workflows) {
+    for (const job of wf.jobs.values()) {
+      for (const step of workflowSteps(job)) {
+        if (step.run === null) continue;
+        const segs = shellSegments(joinShellContinuations(step.run.text));
+        segs.forEach((seg, i) => {
+          if (!commandAt(seg, 'flutter\\s+drive\\b')) return;
+          const av = seg.split('#')[0].match(/--dart-define(?:=|\s+)APP_VERSION=("[^"]*"|'[^']*'|\S+)/);
+          const tee = (segs[i + 1] ?? '').match(/^\s*tee\s+(?:-a\s+)?("[^"]*"|\S+)/);
+          out.push({
+            workflow: wf.rel,
+            job: job.name,
+            stepIndex: step.index,
+            runLine: step.run.n,
+            segment: seg,
+            defines: definesIn(seg),
+            appVersionExpr: av ? unquote(av[1]) : null,
+            teeTarget: tee ? unquote(tee[1]) : null,
+          });
+        });
+      }
+    }
+  }
+  return out;
+}
 
 /**
  * SPLIT THE CENSUS INTO {graded, exempt, findings} AGAINST THE REGISTER.

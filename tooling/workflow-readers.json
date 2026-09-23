@@ -120,6 +120,10 @@
       "property": "workflow-scan"
     },
     {
+      "path": "tooling/ci/assert-live-writer-provenance.mjs",
+      "property": "workflow-scan"
+    },
+    {
       "path": "tooling/ci/assert-lockfile-discipline.mjs",
       "property": "refuses-blind",
       "evidence": "\"every workflow install is reproducible\" was asked of nothing.",

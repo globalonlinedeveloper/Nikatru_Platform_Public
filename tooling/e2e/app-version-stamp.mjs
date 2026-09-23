@@ -106,20 +106,24 @@ export const stampDeletable = (s) =>
 export const STAMP_LANES = Object.freeze([
   Object.freeze({
     resolver: 'e2e-run',
-    workflow: '.github/workflows/e2e.yml',
+    workflow: 'e2e.yml',
     prefix: 'e2e',
     source: 'env',
     env: 'E2E_APP_VERSION',
   }),
   Object.freeze({
     resolver: 'store-capture',
-    workflow: `.github/workflows/${CAPTURE_WORKFLOW}`,
+    workflow: CAPTURE_WORKFLOW,
     prefix: 'cap',
     source: 'actions-default',
   }),
 ]);
 
-export const laneForWorkflow = (rel) => STAMP_LANES.find((l) => l.workflow === rel) ?? null;
+/** The lane a workflow is bound to, by its FILE NAME (e2e.yml), the way the
+ *  GitHub runs API and CAPTURE_WORKFLOW name it. A file name, not a repo path:
+ *  this module never reads a workflow, and assert-workflow-readers.mjs treats a
+ *  repo path to one as a reader. */
+export const laneForWorkflow = (file) => STAMP_LANES.find((l) => l.workflow === file) ?? null;
 export const laneByResolver = (id) => STAMP_LANES.find((l) => l.resolver === id) ?? null;
 
 export class StampRefused extends Error {
