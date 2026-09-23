@@ -103,28 +103,32 @@ describe('decide — the two ways back in', () => {
 
 describe('decide — RED CONTROLS: nothing is re-entered', () => {
   const base = { lane: LANE, head: Y, gate: GREEN, runs: [run({ id: 426, run_number: 426, head_sha: X })], relation: 'ahead' };
-  const cases = [
-    ['a REAL deploy step failed', { jobs: [realJob('web')] }],
-    ['one matrix leg failed on the gate, another on a real step', { jobs: [gateJob('web-a'), realJob('web-b')] }],
-    ['a job failed with no failed step (runner loss / timeout)', { jobs: [{ name: 'web', conclusion: 'failure', steps: [] }] }],
-    ['ci-gate at head is RED', { gate: { status: 'completed', conclusion: 'failure' } }],
-    ['ci-gate at head is still running', { gate: { status: 'in_progress', conclusion: null } }],
-    ['ci-gate at head was never reported', { gate: null }],
-    ['the lane has no run on main', { runs: [] }],
-    ['the lane has only a pull_request run', { runs: [run({ id: 9, run_number: 9, head_sha: X, event: 'pull_request' })] }],
-    ['the newest run is still in progress', { runs: [run({ id: 427, run_number: 427, head_sha: Y, status: 'in_progress', conclusion: null })] }],
-    ['the newest run succeeded; an OLDER one was stranded (a re-run would roll back)', {
-      runs: [run({ id: 426, run_number: 426, head_sha: X }), run({ id: 427, run_number: 427, head_sha: Y, conclusion: 'success' })] }],
-    ['the newest run was cancelled', { runs: [run({ id: 426, run_number: 426, head_sha: X, conclusion: 'cancelled' })] }],
-    ['a same-SHA run already failed the gate on attempt 2', { head: X, runs: [run({ id: 426, run_number: 426, head_sha: X, run_attempt: 2 })] }],
-    ['the stranded SHA is not an ancestor of head', { relation: 'diverged' }],
-  ];
-  for (const [why, over] of cases) {
-    test(why, () => {
-      const v = decide({ jobs: [gateJob('web')], ...base, ...over });
-      assert.equal(v.action, 'none', `expected none, got ${v.action}: ${v.why}`);
-    });
-  }
+  // One `test(` per case, never a loop: coverage-manifest.json counts declarations, so a
+  // row deleted from a table would delete a case the ratchet cannot see (assert-no-loop-cases).
+  const refuses = (over) => {
+    const v = decide({ jobs: [gateJob('web')], ...base, ...over });
+    assert.equal(v.action, 'none', `expected none, got ${v.action}: ${v.why}`);
+  };
+  test('a REAL deploy step failed', () => refuses({ jobs: [realJob('web')] }));
+  test('one matrix leg failed on the gate, another on a real step', () =>
+    refuses({ jobs: [gateJob('web-a'), realJob('web-b')] }));
+  test('a job failed with no failed step (runner loss / timeout)', () =>
+    refuses({ jobs: [{ name: 'web', conclusion: 'failure', steps: [] }] }));
+  test('ci-gate at head is RED', () => refuses({ gate: { status: 'completed', conclusion: 'failure' } }));
+  test('ci-gate at head is still running', () => refuses({ gate: { status: 'in_progress', conclusion: null } }));
+  test('ci-gate at head was never reported', () => refuses({ gate: null }));
+  test('the lane has no run on main', () => refuses({ runs: [] }));
+  test('the lane has only a pull_request run', () =>
+    refuses({ runs: [run({ id: 9, run_number: 9, head_sha: X, event: 'pull_request' })] }));
+  test('the newest run is still in progress', () =>
+    refuses({ runs: [run({ id: 427, run_number: 427, head_sha: Y, status: 'in_progress', conclusion: null })] }));
+  test('the newest run succeeded; an OLDER one was stranded (a re-run would roll back)', () =>
+    refuses({ runs: [run({ id: 426, run_number: 426, head_sha: X }), run({ id: 427, run_number: 427, head_sha: Y, conclusion: 'success' })] }));
+  test('the newest run was cancelled', () =>
+    refuses({ runs: [run({ id: 426, run_number: 426, head_sha: X, conclusion: 'cancelled' })] }));
+  test('a same-SHA run already failed the gate on attempt 2', () =>
+    refuses({ head: X, runs: [run({ id: 426, run_number: 426, head_sha: X, run_attempt: 2 })] }));
+  test('the stranded SHA is not an ancestor of head', () => refuses({ relation: 'diverged' }));
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
