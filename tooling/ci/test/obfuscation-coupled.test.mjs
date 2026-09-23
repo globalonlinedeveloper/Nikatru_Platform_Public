@@ -114,11 +114,18 @@ after(() => { rmSync(TMP, { recursive: true, force: true }); });
 
 let seq = 0;
 
-function fixture(workflows) {
+/** `register`, when given, is written to tooling/channel-register.json. ⏱ ADDED
+ *  2026-09-23 for the releaseBuildsNeverShipped cases; every older case passes
+ *  none, so the guard sees no register there and grades every build. */
+function fixture(workflows, register = undefined) {
   const root = join(TMP, `f${seq++}`);
   mkdirSync(join(root, '.github', 'workflows'), { recursive: true });
   for (const [name, body] of Object.entries(workflows)) {
     writeFileSync(join(root, '.github', 'workflows', name), body);
+  }
+  if (register !== undefined) {
+    mkdirSync(join(root, 'tooling'), { recursive: true });
+    writeFileSync(join(root, 'tooling', 'channel-register.json'), `${JSON.stringify(register, null, 2)}\n`);
   }
   return root;
 }
@@ -616,5 +623,69 @@ jobs:
     );
     const { code, out } = run(root);
     assert.equal(code, 0, out);
+  });
+
+  // ── releaseBuildsNeverShipped ⏱ ADDED 2026-09-23 ──────────────────────────
+  // ci.yml `android-artifacts` builds the Android release artifacts on every PR,
+  // obfuscated, and discards them. The register lists that job; this guard reads
+  // the list through workflow-scan `gradeDomain` and waives COUPLING and SINK
+  // only, never the FLOOR. FLOOR_ANCHOR keeps the sink limb's own subject set
+  // non-empty, so each case is about the listed job alone.
+  const neverShippedJob = (buildFlags) => `name: PR
+on:
+  pull_request:
+
+jobs:
+  discarded:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build android (apk)
+        working-directory: apps/subscriptiontracker
+        run: >
+          flutter build apk --release${buildFlags}
+          --dart-define=RELEASE_CHANNEL=android-play
+${FLOOR_ANCHOR}`;
+  const NEVER_SHIPPED_WHY = 'FIXTURE — built, inspected and discarded with the runner; nobody installs it.';
+  const neverShippedRegister = (entries) => ({ releaseBuildsNeverShipped: { _why: ['fixture'], entries } });
+  const listed = [{ workflow: '.github/workflows/pr.yml', job: 'discarded', why: NEVER_SHIPPED_WHY }];
+
+  test('a build listed in releaseBuildsNeverShipped is not held to the coupling or sink limb', () => {
+    const flags = ' --obfuscate --split-debug-info=build/symbols/android-apk';
+    const green = run(fixture({ 'pr.yml': neverShippedJob(flags) }, neverShippedRegister(listed)));
+    assert.equal(green.code, 0, green.out);
+    assert.match(green.out, /COUPLING WAIVED, held to the FLOOR only; listed in releaseBuildsNeverShipped: FIXTURE — built/);
+    assert.match(green.out, /SINK WAIVED, held to the FLOOR only; listed in releaseBuildsNeverShipped: FIXTURE — built/);
+    assert.match(green.out, /FLOOR: all 2 of them pass --obfuscate/);
+    assert.match(green.out, /SINK: all 1 of them upload those symbols/);
+    // RED: the same tree with the entry removed is a COUPLING (and SINK) finding.
+    const red = run(fixture({ 'pr.yml': neverShippedJob(flags) }, neverShippedRegister([])));
+    assert.equal(red.code, 1, red.out);
+    assert.match(red.out, /\.github\/workflows\/pr\.yml:\d+ \(job "discarded"\) obfuscates into "build\/symbols\/android-apk" and nothing in job "discarded" retains it/);
+  });
+
+  test('a build listed in releaseBuildsNeverShipped is still held to the floor', () => {
+    const { code, out } = run(fixture({ 'pr.yml': neverShippedJob(' --split-debug-info=build/symbols/android-apk') }, neverShippedRegister(listed)));
+    assert.equal(code, 1, out);
+    assert.match(out, /\.github\/workflows\/pr\.yml:\d+ \(job "discarded"\) is a RELEASE build of "apk" and does not pass --obfuscate/);
+  });
+
+  test('a missing register grades every build (fail-closed)', () => {
+    const root = fixture({ 'pr.yml': neverShippedJob(' --obfuscate --split-debug-info=build/symbols/android-apk') });
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /nothing in job "discarded" retains it/);
+    assert.match(out, /NOTHING LATER IN job "discarded" uploads those symbols to the crash sink/);
+    assert.doesNotMatch(out, /releaseBuildsNeverShipped/);
+  });
+
+  test('a register that is not JSON is COVERAGE LOST, never a guess', () => {
+    const root = fixture({ 'pr.yml': neverShippedJob(' --obfuscate --split-debug-info=build/symbols/android-apk') });
+    mkdirSync(join(root, 'tooling'), { recursive: true });
+    writeFileSync(join(root, 'tooling', 'channel-register.json'), '{ "releaseBuildsNeverShipped": ');
+    const { code, out } = run(root);
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST/);
+    assert.match(out, /channel-register\.json exists and is not JSON/);
   });
 });

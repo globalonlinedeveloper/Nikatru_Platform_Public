@@ -179,14 +179,44 @@
 // waiver that outlives the thing it waived is how a list stops describing the
 // tree. It is empty today, on purpose — all fourteen upload.
 //
+// ── ➕ APPENDED 2026-09-23 · THE FOURTH READER OF releaseBuildsNeverShipped ────
+//    (O-BUILT-ARTIFACT-GUARDS-RUN-ONLY-AFTER-MERGE)
+//
+// ci.yml job `android-artifacts` builds the three Android release artifacts on
+// every PR, obfuscated exactly as build-platforms.yml builds them, and throws
+// them away with the runner. Holding those builds to COUPLING and SINK would mean
+// uploading a PR's symbols somewhere; the build is never installed, so there is
+// no crash report for them to read.
+//
+// So this guard now reads `releaseBuildsNeverShipped` from
+// tooling/channel-register.json through workflow-scan.mjs `gradeDomain` — the same
+// function, over the same parse, that splits the domain for
+// assert-channel-register, assert-store-build-config and assert-seams-wired.
+// Before today it was the one reader carrying its own idea of which builds count.
+//
+//   · THE FLOOR never reads the list. A listed build that drops --obfuscate is
+//     red, exactly as a shipped one is.
+//   · COUPLING and SINK read it ONLY where they would otherwise fail. A listed
+//     build that retains or uploads its symbols is graded and counted like any
+//     other: symbolication-proof.yml does both, and a blanket skip would silently
+//     take it out of the SINK count.
+//   · Every listed build is printed with its `why` on every run, pass or fail.
+//   · A MISSING register means no exemptions: every build is graded (fail-closed).
+//     A register that is not JSON is COVERAGE LOST, and so is a tree whose every
+//     obfuscating release build is listed: the sink limb would grade nothing.
+//
 // Usage:  node tooling/ci/assert-obfuscation-coupled.mjs [repoRoot]
 // Exit 0 = every release build obfuscates, no build obfuscates without
 //          retaining its symbols, and every obfuscating release build sends
-//          them to the crash sink from its own job.
+//          them to the crash sink from its own job — save a build listed in
+//          releaseBuildsNeverShipped, printed with its reason.
+// Exit 1 = a finding on the FLOOR, COUPLING or SINK limb.
+// Exit 2 = COVERAGE LOST (nothing to grade, or the register unreadable).
 // ─────────────────────────────────────────────────────────────────────────────
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseAllWorkflows, shellSegments } from './workflow-scan.mjs';
+import { parseAllWorkflows, shellSegments, flutterReleaseBuilds, gradeDomain } from './workflow-scan.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 
@@ -320,6 +350,43 @@ for (const wf of workflows) {
   }
 }
 
+// ── THE BUILDS WHOSE OUTPUT NOBODY INSTALLS ─────────────────────────────────
+// `releaseBuildsNeverShipped` in tooling/channel-register.json, split out by the
+// SAME `gradeDomain` the three register readers use, over the SAME parse as the
+// loop below — one list, one reading, one parse. See the header's 2026-09-23
+// section for what it does and does not waive.
+const REGISTER_PATH = join(ROOT, 'tooling', 'channel-register.json');
+let register = null;
+if (existsSync(REGISTER_PATH)) {
+  try {
+    register = JSON.parse(readFileSync(REGISTER_PATH, 'utf8'));
+  } catch (e) {
+    coverageLost([
+      `${REGISTER_PATH} exists and is not JSON (${e.message}).`,
+      'releaseBuildsNeverShipped cannot be read, so this guard cannot tell a discarded build from a',
+      'shipped one. Grading every build instead would be a verdict about a different register.',
+    ]);
+  }
+}
+const neverShippedKey = (workflow, runLine, segment) => JSON.stringify([workflow, runLine, segment]);
+/** workflow + `run:` line + shell segment → the entry's `why`. */
+const neverShipped = new Map();
+for (const b of gradeDomain(flutterReleaseBuilds(ROOT, workflows), register).exempt) {
+  if (typeof b.why !== 'string' || !b.why.trim()) {
+    coverageLost([
+      `a releaseBuildsNeverShipped entry matches ${b.workflow}:${b.runLine} (job "${b.job}") and carries no \`why\`.`,
+      'An exemption with no written reason is a silent skip wearing a label.',
+    ]);
+  }
+  neverShipped.set(neverShippedKey(b.workflow, b.runLine, b.segment), b.why);
+}
+/** Every never-shipped build the loop met, and every COUPLING or SINK finding one of
+ *  them did not become. Both are printed on every run, pass or fail. */
+const neverShippedSeen = new Map();
+const waivedKeys = new Set();
+const waived = [];
+let couplingWaived = 0;
+
 /** Every `path:` value inside a job, one per line — enough to answer "does an
  *  upload step name this directory" without a full YAML model. */
 const uploadedPaths = (job) => {
@@ -343,7 +410,8 @@ const unknownTargets = [];
 const contradictoryModes = [];
 const nonReleaseBuilds = [];
 /** THE SINK LIMB's subject set: one entry per obfuscating RELEASE build.
- *  @type {{wf: string, job: string, line: number, dir: string, sinkAfter: boolean}[]} */
+ *  @type {{wf: string, job: string, line: number, dir: string, sinkAfter: boolean,
+ *          neverShippedWhy: string|null, nsKey: string}[]} */
 const sinkSubjects = [];
 
 for (const wf of workflows) {
@@ -367,6 +435,12 @@ for (const wf of workflows) {
         const split = SPLIT_DEBUG.exec(seg);
 
         const at = `${wf.rel}:${l.n} (job "${job.name}")`;
+        /** Non-null only for a build `releaseBuildsNeverShipped` lists. The FLOOR
+         *  below never reads it; COUPLING and SINK read it only where they would
+         *  otherwise fail. */
+        const nsKey = neverShippedKey(wf.rel, l.n, seg);
+        const neverShippedWhy = neverShipped.get(nsKey) ?? null;
+        if (neverShippedWhy !== null) neverShippedSeen.set(nsKey, { at, why: neverShippedWhy });
 
         // ── THE FLOOR ─────────────────────────────────────────────────────
         // Its domain is a RELEASE build on a target Flutter can obfuscate.
@@ -444,11 +518,22 @@ for (const wf of workflows) {
             line: l.n,
             dir,
             sinkAfter: sinkLines.some((n) => n > l.n),
+            neverShippedWhy,
+            nsKey,
           });
         }
 
         const named = paths.some((p) => p.includes(dir) || dir.includes(p.replace(/\/\*+$/, '')));
         if (hasSinkUpload || named) continue;
+        if (neverShippedWhy !== null) {
+          waivedKeys.add(nsKey);
+          couplingWaived++;
+          waived.push(
+            `${at} obfuscates into "${dir}" and nothing in job "${job.name}" retains it — COUPLING WAIVED, ` +
+              `held to the FLOOR only; listed in releaseBuildsNeverShipped: ${neverShippedWhy}`,
+          );
+          continue;
+        }
 
         problems.push(
           `${at} obfuscates into "${dir}" and nothing in job "${job.name}" retains it. ` +
@@ -538,6 +623,7 @@ for (const e of SINK_UPLOAD_EXEMPT) {
 }
 
 const sinkExemptUsed = new Set();
+let sinkWaived = 0;
 for (const s of sinkSubjects) {
   const key = exemptKey(s.wf, s.job);
   if (s.sinkAfter) {
@@ -552,6 +638,15 @@ for (const s of sinkSubjects) {
     );
     continue;
   }
+  if (s.neverShippedWhy !== null) {
+    sinkWaived++;
+    waivedKeys.add(s.nsKey);
+    waived.push(
+      `${s.wf}:${s.line} (job "${s.job}") obfuscates into "${s.dir}" and sends nothing to the crash sink — ` +
+        `SINK WAIVED, held to the FLOOR only; listed in releaseBuildsNeverShipped: ${s.neverShippedWhy}`,
+    );
+    continue;
+  }
   problems.push(
     `${s.wf}:${s.line} (job "${s.job}") is an obfuscating RELEASE build into "${s.dir}" and NOTHING LATER IN ` +
       `job "${s.job}" uploads those symbols to the crash sink. ` +
@@ -562,6 +657,17 @@ for (const s of sinkSubjects) {
       '`tooling/ops/upload-native-symbols.mjs` step AFTER the build and AFTER the retention artifact in ' +
       `this same job — or, if this job genuinely cannot, add {workflow, job, why} to SINK_UPLOAD_EXEMPT.`,
   );
+}
+
+// A tree whose every obfuscating release build is never-shipped would leave the
+// sink limb grading nothing while it printed "SINK: all 0 of them upload" — the
+// vacuous pass the check above refuses, reached by a different road.
+if (sinkSubjects.length > 0 && sinkSubjects.length === sinkWaived && problems.length === 0) {
+  coverageLost([
+    `all ${sinkWaived} obfuscating release build(s) are listed in releaseBuildsNeverShipped, so the sink`,
+    'limb graded none of them and would report "every release build sends its symbols to the crash',
+    'sink" over an empty set. A tree that ships nothing obfuscated has lost this guard\'s subject.',
+  ]);
 }
 
 for (const [key, why] of sinkExempt) {
@@ -579,6 +685,23 @@ for (const [key, why] of sinkExempt) {
         `Either the workflow or the job was renamed and the waiver did not follow, or it excuses nothing. ` +
         `Its stated reason was: ${why}`,
     );
+  }
+}
+
+// Printed on EVERY run, pass or fail, before the verdict: a build this guard
+// holds to less than all three limbs is named with its reason every time, and a
+// listed build that needed no waiver is named too — an exemption nobody reads is
+// indistinguishable from an omission (the register's own rule).
+if (neverShippedSeen.size) {
+  console.log(
+    `⬜ releaseBuildsNeverShipped (tooling/channel-register.json) — ${neverShippedSeen.size} build(s) whose ` +
+      'output nobody installs; the FLOOR grades every one on an obfuscatable target:',
+  );
+  for (const w of waived) console.log(`    ${w}`);
+  for (const [k, { at, why }] of neverShippedSeen) {
+    if (!waivedKeys.has(k)) {
+      console.log(`    ${at} is listed and needed no waiver here — every limb that applies to it passed: ${why}`);
+    }
   }
 }
 
@@ -603,7 +726,9 @@ console.log(
   `ok  obfuscation — ${workflows.length} workflow(s), ${buildsChecked} \`flutter build\` command(s), ` +
     `${releaseBuilds} release build(s) on an obfuscatable target, ${obfuscating} obfuscating; ` +
     `FLOOR: all ${releaseBuilds} of them pass --obfuscate. COUPLING: every obfuscating build retains ` +
-    `its symbol mapping in its own job. SINK: all ${sinkSubjects.length} of them upload those symbols to ` +
+    `its symbol mapping in its own job` +
+    (couplingWaived ? `, except ${couplingWaived} never-shipped build(s) printed above` : '') +
+    `. SINK: all ${sinkSubjects.length - sinkWaived} of them upload those symbols to ` +
     `the crash sink from a later step of the same job` +
     (sinkExempt.size ? `, except ${sinkExempt.size} declared exemption(s) printed above` : ', with no declared exemption') +
     `. ${webReleaseBuilds} web release build(s) are outside the floor ` +
@@ -611,5 +736,8 @@ console.log(
     (nonReleaseBuilds.length
       ? `; ${nonReleaseBuilds.length} build(s) are outside it on an EXPLICIT --debug/--profile: ` +
         nonReleaseBuilds.join(', ')
-      : '; no build claims --debug or --profile, so nothing left the floor by opting out'),
+      : '; no build claims --debug or --profile, so nothing left the floor by opting out') +
+    (sinkWaived
+      ? `; ${sinkWaived} never-shipped obfuscating release build(s) are held to the FLOOR only and printed above`
+      : ''),
 );

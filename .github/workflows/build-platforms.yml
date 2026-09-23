@@ -158,6 +158,7 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: node tooling/ci/android-signing.mjs --app ${{ matrix.app }}
+      # why: these three Android builds also run on every PR as ci.yml android-artifacts; built-artifact-pr-lane.test.mjs holds the copies equal.
       - name: Build android (apk — sideloadable build proof)
         working-directory: apps/${{ matrix.app }}
         run: >

@@ -1084,8 +1084,8 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      # why: DERIVED, NOT LISTED — the same emitter build-platforms.yml `prepare` runs,
-      # so the PR lane builds exactly the apps the release lane builds.
+      # why: the app set comes from the emitter build-platforms.yml `prepare` runs, so
+      # the PR lane builds the apps the release lane builds, with no list kept here.
       - name: The matrix comes from the workspace, never from this file
         id: workspace
         run: |

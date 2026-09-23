@@ -1476,7 +1476,10 @@
         "a key for a store it cannot reach. assert-channel-register limb 6b-iii reads THIS map: every",
         "release `flutter build` segment stamped with a row whose rail is a key of `secretByRail` must",
         "pass `--dart-define=<define>=${{ secrets.<mapped name> }}` with exactly that name, and every",
-        "other segment — another rail, unstamped, or exempt — must not name `define` at all.",
+        "other segment — another rail, or unstamped (exempt or not) — must not name `define` at all.",
+        "⏱ 2026-09-23: an EXEMPT build stamped with a store-rail row carries that row's key like any other;",
+        "6b-iii grades the stamp before `releaseBuildsNeverShipped` is read, so a discarded build is built",
+        "exactly as the shipped one it proves (ci.yml `android-artifacts`).",
         "`define` must also be a surface of `vendors.revenuecat` in tooling/capability-register.json.",
         "",
         "⚠️ KEYED BY RAIL, SO IT HOLDS ONE OPTED-IN APP. A RevenueCat public key belongs to ONE RevenueCat",
@@ -1638,6 +1641,11 @@
         "job": "app-brick",
         "target": "web",
         "why": "the BRICK smoke build — it proves a freshly stamped app compiles and the output is discarded in the same job. It is stamped with no channel because it is for no channel."
+      },
+      {
+        "workflow": ".github/workflows/ci.yml",
+        "job": "android-artifacts",
+        "why": "the PR built-artifact proof — the Play apk and aab and the apps.gov.in apk, built on every PR exactly as build-platforms.yml builds them, debug-signed because no signing key is in reach, inspected by the built-artifact guards and discarded with the runner. No user installs it. The one secret it passes is the PUBLIC RevenueCat SDK key 6b-iii requires of an android-play stamp; built-artifact-pr-lane.test.mjs holds each build equal to the build-platforms.yml build that does ship."
       },
       {
         "workflow": ".github/workflows/symbolication-proof.yml",

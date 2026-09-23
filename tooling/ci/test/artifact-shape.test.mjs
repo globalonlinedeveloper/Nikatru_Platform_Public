@@ -267,6 +267,32 @@ describe('assert-artifact-shape — the same trap on the Android lane', () => {
     assert.equal(code, 1, out);
     assert.match(out, /build\/web\/ — the directory does not exist/);
   });
+
+  // ⏱ ADDED 2026-09-23 (O-BUILT-ARTIFACT-GUARDS-RUN-ONLY-AFTER-MERGE). ci.yml's
+  // `android-artifacts` builds the three Android artifacts on every PR and uploads
+  // none of them, so this guard is the only thing that says all three exist. The
+  // apps.gov.in .apk is the one the lane moves out of flutter-apk/, so its removal
+  // is the red half: a lane that lost it would still hold a Play .apk.
+  test('android-artifacts expects the aab, the Play apk and the apps.gov.in apk', () => {
+    const ANDROID_ARTIFACTS_OK = {
+      'build/app/outputs/bundle/release/app-release.aab': 'AAB-BYTES',
+      'build/app/outputs/flutter-apk/app-release.apk': 'APK-BYTES',
+      'build/apps-gov-in/subscriptiontracker-apps-gov-in-1.0.0.1.apk': 'AGI-APK-BYTES',
+    };
+    const ok = run(fixture({ build: ANDROID_ARTIFACTS_OK }), ['--app', 'subscriptiontracker', '--platform', 'android-artifacts']);
+    assert.equal(ok.code, 0, ok.out);
+    assert.match(ok.out, /app-release\.aab/);
+    assert.match(ok.out, /flutter-apk\/app-release\.apk/);
+    assert.match(ok.out, /build\/apps-gov-in\/subscriptiontracker-apps-gov-in-1\.0\.0\.1\.apk/);
+    assert.match(ok.out, /no channel in tooling\/channel-register\.json names lane job "android-artifacts"/);
+
+    const build = { ...ANDROID_ARTIFACTS_OK };
+    delete build['build/apps-gov-in/subscriptiontracker-apps-gov-in-1.0.0.1.apk'];
+    const red = run(fixture({ build }), ['--app', 'subscriptiontracker', '--platform', 'android-artifacts']);
+    assert.equal(red.code, 1, red.out);
+    assert.match(red.out, /build\/apps-gov-in\/\*\.apk — the directory does not exist/);
+    assert.doesNotMatch(red.out, /bundle\/release\/\*\.aab/);
+  });
 });
 
 describe('assert-artifact-shape — the apple lane asserts what it produces, and prints what it does not', () => {
