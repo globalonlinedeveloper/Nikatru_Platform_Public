@@ -160,5 +160,53 @@
         "shot('20-account-deleted')"
       ]
     }
-  ]
+  ],
+  "framesCarryText": {
+    "_why": [
+      "🔴 THE e2e LANE'S OWN THRESHOLD, read by tooling/e2e/assert-frames-carry-text.mjs and by nothing else.",
+      "It is deliberately NOT the store block's inkFloor.minFractionOfMeasured (tooling/channel-register.json).",
+      "That 0.7 means \"a recapture of a recorded store frame may lose up to 30% of its ink\" — a drift",
+      "allowance between two captures of the same frame. Reused here it meant \"a frame's textless version",
+      "must be below 0.7 of itself\", a different quantity, and it failed a correct frame on origin/main",
+      "(01-home 1080x1920: measured 0.024118, textless 0.017319, floor 0.016883).",
+      "",
+      "🔴 A PER-FRAME SELF-RATIO DOES NOT SEPARATE AT e2e RESOLUTION — MEASURED 2026-09-23, not assumed.",
+      "Real frames of the live app, captured the way the drive captures (headless Chrome, 430x932, DPR 1),",
+      "once as served and once with every font request answered 200 text/html (the defect, reproduced):",
+      "",
+      "  page              served: measured textless ratio removed | glyphless: measured textless ratio removed",
+      "  00-consent                0.039877 0.007396 0.185 0.032481 |            0.009692 0.007251 0.748 0.002441",
+      "  01-onboarding             0.035555 0.011775 0.331 0.023780 |            0.008067 0.004369 0.542 0.003698",
+      "  01b-onboarding-next       0.037327 0.011174 0.299 0.026153 |            0.006957 0.004337 0.623 0.002620",
+      "  02-after-skip             0.058421 0.010203 0.175 0.048218 |            0.014433 0.006849 0.475 0.007584",
+      "  03-sign-in                0.059287 0.010203 0.172 0.049084 |            0.015311 0.006849 0.447 0.008462",
+      "  03-reset-password         0.021053 0.002031 0.096 0.019022 |            0.002186 0.002016 0.922 0.000170",
+      "  03-sign-up                0.044059 0.002430 0.055 0.041629 |            0.016559 0.002228 0.135 0.014331",
+      "",
+      "The glyphless RATIO spans 0.135-0.922, so a ratio test passes most of the defect: at DPR 1 the 9x9",
+      "mode filter also votes away hairlines, field underlines, checkbox outlines and icon strokes, and the",
+      "Turnstile iframe draws real HTML text even when Flutter draws none. Per frame, REMOVED ink",
+      "(measured - textless) separates only 1.33x (glyphless max 0.014331 vs served min 0.019022).",
+      "",
+      "🔴 SO THE VERDICT IS ON THE RUN, WHICH IS THE UNIT THE DEFECT HAS. Fonts that did not arrive are",
+      "missing from every page at once. The MEDIAN of the run's removed ink is what is compared: glyphless",
+      "median 0.003698, served median 0.032481. The floor below is their geometric mean, rounded: the",
+      "glyphless median sits 2.97x under it, the served median 2.95x over it. The synthetic frame of",
+      "tooling/store/frame-ink.mjs (360x640) removes 0.022318 with glyphs (2.03x over) and 0.000078 without.",
+      "A median also holds when one page keeps its text (a Turnstile widget) or one page is text-light.",
+      "",
+      "🔴 CALIBRATED AT ONE WIDTH. Removed ink is a fraction of pixels and falls roughly as 1/DPR (at 1129",
+      "wide, DPR 2.625, the served median is 0.015585 and the glyphless median 0.002887). A frame of any other",
+      "width is COVERAGE LOST (exit 2), never judged against a floor measured at a different size. A change",
+      "to --window-size in e2e.yml re-measures this block in the same change.",
+      "",
+      "Evidence (frames, scripts, tables): Private/research/session-2026-09-23/frames-ink/. The served and",
+      "glyphless frames of five pages are committed as tooling/ci/test/fixtures/frames-ink-2026-09-23/."
+    ],
+    "metric": "local-contrast-ink-v1",
+    "statistic": "median over the run of (measured - textlessControl)",
+    "calibratedWidth": 430,
+    "minMedianRemovedInk": 0.011,
+    "measuredOn": "2026-09-23"
+  }
 }

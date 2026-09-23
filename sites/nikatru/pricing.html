@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Pricing &mdash; Nikatru</title>
 <!-- PRICING:meta -->
-<meta name="description" content="Pricing for Nikatru apps. Free plan, and Pro at $5.99/month or $34.99/year or $89.00 once with a 30-day free trial.">
+<meta name="description" content="Pricing for Nikatru apps. Free plan, and Pro at $5.99/month or $34.99/year or $89.00 once.">
 <!-- /PRICING:meta -->
 <meta name="robots" content="index,follow">
 <link rel="canonical" href="https://nikatru.com/pricing">
@@ -194,7 +194,7 @@
       </ul>
     </div>
     <div class="plan">
-      <h3>Monthly <span class="tag">30-DAY TRIAL</span></h3>
+      <h3>Monthly</h3>
       <div class="price">$5.99 <small>/ month</small></div>
       <div class="sub">Renews every month until you cancel.</div>
       <ul>
@@ -205,7 +205,7 @@
       </ul>
     </div>
     <div class="plan hi">
-      <h3>Yearly <span class="tag">30-DAY TRIAL</span></h3>
+      <h3>Yearly</h3>
       <div class="price">$34.99 <small>/ year</small></div>
       <div class="sub">Renews every year until you cancel.</div>
       <ul>
@@ -216,7 +216,7 @@
       </ul>
     </div>
     <div class="plan">
-      <h3>One-time <span class="tag">30-DAY TRIAL</span></h3>
+      <h3>One-time</h3>
       <div class="price">$89.00 <small>once</small></div>
       <div class="sub">A single payment. Nothing renews.</div>
       <ul>
@@ -234,9 +234,9 @@
     <!-- PRICING:table -->
     <tr><th>Plan</th><th>Price</th><th>Billing</th><th>Free trial</th></tr>
     <tr><td>Free</td><td>$0</td><td>&mdash;</td><td>&mdash;</td></tr>
-    <tr><td>Pro Monthly</td><td>$5.99</td><td>Every month</td><td>30 days</td></tr>
-    <tr><td>Pro Yearly</td><td>$34.99</td><td>Every year</td><td>30 days</td></tr>
-    <tr><td>Pro One-time</td><td>$89.00</td><td>One-time payment</td><td>30 days</td></tr>
+    <tr><td>Pro Monthly</td><td>$5.99</td><td>Every month</td><td>&mdash;</td></tr>
+    <tr><td>Pro Yearly</td><td>$34.99</td><td>Every year</td><td>&mdash;</td></tr>
+    <tr><td>Pro One-time</td><td>$89.00</td><td>One-time payment</td><td>&mdash;</td></tr>
 <!-- /PRICING:table -->
   </table>
 
@@ -244,12 +244,14 @@
   <ul>
     <li><b>Prices are in USD.</b> If your card is issued in another currency, your bank converts at its own
     rate and may add a foreign-transaction fee.</li>
-    <!-- The trial LENGTH deliberately does not appear in this sentence. It is on
-         the plan cards and in the table above, both generated from the rail
-         config, and writing "30 days" here would put it back in two places —
-         the same second-home defect the cards above were just moved out of. -->
-    <li><b>You are not charged during the free trial.</b> The length of the trial is on every plan above.
-    If you cancel before it ends you are not charged at all.</li>
+    <!-- Neither the trial LENGTH nor the claim that a trial EXISTS appears in
+         this sentence. Both live on the plan cards and in the table above,
+         generated from the rail config and shown only while checkout is open
+         (generate-discovery.mjs `offeredTrial`). Until 2026-09-22 this line
+         said a trial was on "every plan above" while the one-time plan had
+         none and checkout was shut. -->
+    <li><b>If a plan above shows a free trial, you are not charged during it.</b> Cancel before it ends
+    and you are not charged at all.</li>
     <li><b>Subscriptions renew automatically</b> until you cancel &mdash; monthly plans every month, yearly
     plans every 12 months.</li>
     <li><b>You can cancel any time.</b> Cancelling stops future renewals; your paid period stays active

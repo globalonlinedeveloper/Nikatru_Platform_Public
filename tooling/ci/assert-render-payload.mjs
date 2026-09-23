@@ -54,9 +54,18 @@
 // a yearly offering rendered as monthly without this file knowing what "yearly"
 // is called.
 //
+// ── THREE LIMBS ON THE SOURCE ITSELF (J, K, L — 2026-09-22, ADR 093) ─────────
+// The limbs above judge the payload against the config. These three judge the
+// config, because a wrong config projects faithfully and every limb above agrees
+// with it: J, one currency per app until a region-keyed book exists; K, no
+// price figure in any of the config's strings; L, no trial on an offering that
+// never renews. Each was a measured defect on main that day, and each has a
+// failing case in the test file that PUBLISHES first, so drift cannot stand in.
+//
 // Usage:  node tooling/ci/assert-render-payload.mjs [repoRoot]
 // Exit:   0 = the payload is current, complete, and carries no pricing source
-//         1 = stale · BOM · a leaked source field · a mis-rendered price
+//         1 = stale · BOM · a leaked source field · a mis-rendered price ·
+//             a second currency · a price in prose · a trial on a one-time offering
 //         2 = COVERAGE LOST — a subject absent/empty, a source unparseable
 // ─────────────────────────────────────────────────────────────────────────────
 import { existsSync, readFileSync } from 'node:fs';
@@ -105,6 +114,11 @@ const SYMBOLS = new Map([
  *  offering carrying a term nobody has decided a rendering for FAILS here rather
  *  than being compared against whatever the publisher happened to emit. */
 const KNOWN_TERMS = new Set(['month', 'year', 'one_time']);
+
+/** The terms that RENEW, and so the only ones a trial can precede (limb L). A
+ *  subset of KNOWN_TERMS on purpose: a term added there and not classified here
+ *  refuses a trial until somebody decides it recurs — loud, never permissive. */
+const RECURRING_TERMS = new Set(['month', 'year']);
 
 /** UTF-8 BOM. `JSON.parse` throws on a leading one, so a BOM'd payload is
  *  unreadable to every consumer — and the place it would surface is a storefront
@@ -356,6 +370,43 @@ for (const [slug, row] of bySlug) {
   }
 }
 
+// ── limb K · NO PRICE FIGURE IN ANY STRING OF THE CONFIG ───────────────────
+// 🔴 ADDED 2026-09-22, BECAUSE THE PRICE BOOK'S OWN PROSE HAD BECOME A SECOND
+// COPY OF IT. `_readme` restated the prices beside `amount_minor`, with a
+// rationale, and when the owner later set a different regional price the prose
+// kept the old one. Measured that day: 11 of its 76 strings carried a figure,
+// and NOTHING read any of them — `config.ts` declares no `_readme` field, and
+// assert-no-price-literals.mjs never scans services/. A figure in a string is a
+// price nobody re-derives. The numbers live in `amount_minor`; the prose cites
+// the decision that set them and stops there.
+// Every string in the file is walked, not only `_readme`: a served `copy` line
+// quoting a price is the same defect one key over, and that one reaches a screen.
+// The pattern is a currency sign or code touching a digit, on either side. On
+// main's 76 strings it hit those 11 and nothing else: `§4.1`, `18%`, `Rule 35`
+// and `30 days` do not match, and the case "limb K is NARROW" holds that line.
+const PRICE_IN_PROSE =
+  /(?:[$€£₹]|\bRs\.?|\b(?:USD|INR|EUR|GBP)\b)\s?\d[\d,]*(?:\.\d+)?|\d[\d,]*(?:\.\d+)?\s?(?:[€£₹]|\b(?:USD|INR|EUR|GBP)\b)/giu;
+let stringsScanned = 0;
+const walkStrings = (v, path) => {
+  if (typeof v === 'string') {
+    stringsScanned++;
+    const hits = v.match(PRICE_IN_PROSE);
+    if (hits) {
+      problems.push(
+        `${RAIL_CONFIG} ${path} carries a price figure in prose (${hits.map((h) => JSON.stringify(h)).join(', ')}). ` +
+          `A price lives in \`amount_minor\` and nowhere else in this file; prose that restates one is a second ` +
+          `copy that drifts from the first with nothing to notice. Cite the decision instead.`,
+      );
+    }
+    return;
+  }
+  if (Array.isArray(v)) return v.forEach((el, i) => walkStrings(el, `${path}[${i}]`));
+  if (v && typeof v === 'object') {
+    for (const [k, el] of Object.entries(v)) walkStrings(el, path ? `${path}.${k}` : k);
+  }
+};
+walkStrings(rail, '');
+
 // ── limb E · THE INDEPENDENT ARITHMETIC ─────────────────────────────────────
 // Own parse, own division by 100, own symbol table. This is the only limb that
 // can tell a correct projection from a self-consistent wrong one.
@@ -468,6 +519,20 @@ for (const slug of catalogueSlugs) {
           `declares ${expectedTrial}. A trial length on a public page is a term of sale.`,
       );
     }
+    // limb L, folded in where the term is in hand. 🔴 ADDED 2026-09-22: the
+    // one-time offering carried `trial_days: 30`, and /pricing promised a 30-day
+    // trial on a purchase that never renews. A trial is a delay before the first
+    // RECURRING charge; with nothing recurring there is nothing for it to delay,
+    // and no rail in this repository was ever shown to grant one on a one-time
+    // price. Any value other than absent or 0 counts, a string "30" included.
+    if ((o.trial_days ?? 0) !== 0 && !RECURRING_TERMS.has(o.term)) {
+      problems.push(
+        `${RAIL_CONFIG} apps.${slug}.paywall.offerings[${i}] (${o.product_id}) grants a trial ` +
+          `(trial_days ${JSON.stringify(o.trial_days)}) on an offering with no recurring term ("${o.term}"; ` +
+          `recurring: ${[...RECURRING_TERMS].join(', ')}). A trial delays the first renewal, and this offering ` +
+          `never renews — every page that renders it would promise a term of sale no rail can honour.`,
+      );
+    }
     // limb F, folded in where the pairing is available: the term fields must be
     // a FUNCTION of the config's term id. No vocabulary is copied here.
     const triple = JSON.stringify([got.termHeading, got.termUnit, got.termRenews]);
@@ -511,6 +576,29 @@ for (const slug of catalogueSlugs) {
     }
     offeringsCompared++;
   });
+
+  // ── limb J · ONE CURRENCY PER APP, until a region-keyed book exists ──────
+  // 🔴 ADDED 2026-09-22 AFTER A MEASUREMENT, NOT A HUNCH. On main, one rupee
+  // offering added to this app and both generators run passed EVERY guard, and
+  // the pricing page printed rupee and dollar plans side by side. The book
+  // cannot carry a second currency honestly yet: the row has ONE `zeroAmount`
+  // (the Free card, in the first offering's currency), the page prints ONE
+  // "Prices are shown in …" line, the book has no region dimension so every
+  // reader renders every offering to every visitor, and each currency needs a
+  // rail that takes it — checkout.ts sells dollars only. The real fix is a
+  // region-keyed book (row O-WEB-INR-PRICE-BOOK); this limb keeps the shortcut
+  // out until it lands. Judged on the CONFIG, so the payload cannot hide it.
+  const declaredCurrencies = [
+    ...new Set(declared.map((o) => o?.currency_code).filter((c) => typeof c === 'string' && c !== '')),
+  ];
+  if (declaredCurrencies.length > 1) {
+    problems.push(
+      `${RAIL_CONFIG} apps.${slug}.paywall.offerings declares ${declaredCurrencies.length} currencies ` +
+        `(${declaredCurrencies.join(', ')}). One app's book is ONE currency until a region-keyed book exists: ` +
+        `the row has one zeroAmount, the page prints one currency line, every reader renders every offering to ` +
+        `every visitor, and each currency needs a rail that takes it. The open work is O-WEB-INR-PRICE-BOOK.`,
+    );
+  }
 
   // currencies + zeroAmount: the payload exists so a consumer holds NO currency
   // knowledge at all, which makes these two the whole of what it knows.
@@ -677,6 +765,7 @@ console.log(
   `ok  render payload — ${payload.length} row(s) ≡ ${CATALOGUE}; ${offeringsCompared} offering(s) and ` +
     `${featuresCompared} feature(s) re-derived from ${RAIL_CONFIG} by this guard's own arithmetic; ` +
     `${forbiddenKeys.size} config key(s) forbidden in the payload and none present; ` +
+    `${stringsScanned} config string(s) carry no price figure; ` +
     `${REQUIRED_PRICED_ROWS.length} required priced row(s) priced; bytes equal a fresh run of ` +
     `tooling/sites/generate-landing-payload.mjs`,
 );

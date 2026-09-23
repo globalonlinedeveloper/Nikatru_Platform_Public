@@ -11,7 +11,15 @@
 
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show ChangeNotifier, kIsWeb;
+// FlutterError/FlutterErrorDetails are the app's EXISTING handled-error
+// reporter: `TelemetryBootstrap.init` (lib/main.dart) runs the app inside
+// `SentryFlutter.init`, whose Flutter integration installs `FlutterError.onError`
+// and forwards every reported `FlutterErrorDetails` to GlitchTip. Reporting
+// through it is therefore reaching the tracker this app already has, and NOT a
+// second one — `features/auth/turnstile_gate.dart` reports its own handled
+// misconfiguration the same way.
+import 'package:flutter/foundation.dart'
+    show ChangeNotifier, FlutterError, FlutterErrorDetails, kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_api_client/nikatru_api_client.dart';
 import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
@@ -336,9 +344,55 @@ final Provider<void> appleTokenKeeperProvider = Provider<void>((ref) {
       token,
       appId: AppConfig.appId,
     ),
+    onError: reportAppleTokenNotKept,
+    retryDelays: ref.watch(appleTokenRetryDelaysProvider),
   );
   ref.onDispose(sub.cancel);
 });
+
+/// ⏱ 2026-09-22 · O-APPLE-KEEPER-NO-ONERROR — THE ROUND'S BOUND, AS A PROVIDER,
+/// BECAUSE A PROOF THAT GIVING UP IS REPORTED HAS TO REACH THE GIVING UP.
+///
+/// Every build gets [core.appleTokenRetryDelays] — 1 s, 4 s, 15 s — and nothing
+/// in the app overrides it; a build that did would be quietly shortening its own
+/// retries. It is a provider so that a TEST can override it with an empty list
+/// and make the first failure the last one. Without that, the only way to watch
+/// a round give up is to wait out twenty seconds of real time per run, which is
+/// how this proof would come to be deleted for being slow — and the failure it
+/// covers is one that already survived unnoticed once.
+final Provider<List<Duration>> appleTokenRetryDelaysProvider =
+    Provider<List<Duration>>((ref) => core.appleTokenRetryDelays);
+
+/// ⏱ 2026-09-22 · O-APPLE-KEEPER-NO-ONERROR — A ROUND THAT GAVE UP IS SAID OUT
+/// LOUD, TO THE TRACKER THIS APP ALREADY HAS.
+///
+/// 🔴 NOBODY WAS LISTENING, AND THAT IS HOW THE LAST ONE SURVIVED. The keeper
+/// has reported a bounded failure through `onError` since 2026-09-22, and
+/// neither this provider nor the template passed one — so when the shared
+/// platform Worker's CORS list left out PUT and every web send of
+/// `PUT /v1/account/apple-token` was refused at the preflight, the keeper gave
+/// up silently. It took a hand-run count of `apple_provider_tokens` (0 rows, on
+/// a live Apple account) to find it, and until then every one of those accounts
+/// would have deleted with nothing to revoke at Apple. An unread failure is the
+/// defect; the delivery bug was only its occasion.
+///
+/// ⚠️ WHAT IT SENDS IS A REASON AND A COUNT, and nothing else. The payload is
+/// `core.appleTokenNotKeptReport`, the one function the template calls as well,
+/// so both build the same report. The token never leaves the keeper — it is not a parameter of
+/// `onError` and there is no way to reach it from here — and the failure's own
+/// text is deliberately dropped: a server message is the one string a credential
+/// could still be riding in.
+///
+/// NAMED rather than an inline closure for the reason [signOutOnlyIfSessionIsGone]
+/// is: a closure written into the argument list is a decision no test can reach.
+void reportAppleTokenNotKept(Object error) {
+  FlutterError.reportError(
+    FlutterErrorDetails(
+      exception: StateError(core.appleTokenNotKeptReport(error)),
+      library: 'apple_token_keeper',
+    ),
+  );
+}
 
 final Provider<RestClient> platformRestClientProvider = Provider<RestClient>(
   (ref) => RestClient(

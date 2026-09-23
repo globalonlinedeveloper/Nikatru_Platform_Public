@@ -483,6 +483,34 @@ jobs:
           PLATFORM_D1_DATABASE_ID: 9d1c5c63-97fe-4f82-bc7d-f3fd22e9b351
         run: node tooling/e2e/verify_consent.mjs
 
+      # why: THE STAGING STEP ABOVE PROVES THE FONTS WERE PLACED. THIS PROVES
+      # THEY WERE DRAWN. A `-d web-server` drive whose fallback fonts never
+      # arrived exits 0 — the dev server answers the missing `fallback-fonts/…`
+      # request with index.html, HTTP 200, text/html, never a 404 — so CanvasKit
+      # renders the bundled MaterialIcons and no Latin glyph, and every other
+      # check in this job stays green over an artifact of blank rows. That is
+      # what the store listing shipped from #567 to #854.
+      #
+      # The verdict is on the RUN, the unit the defect has: missing fonts are
+      # missing from every page at once. Per frame, the ink the 9x9 glyph
+      # filter removes; the run's median must reach
+      # tooling/e2e-leg-register.json framesCarryText.minMedianRemovedInk,
+      # measured 2026-09-23 on real served and glyphless frames at the
+      # --window-size above. A per-frame self-ratio did not separate at DPR 1
+      # (the table is in that block's `_why`). Frames of another width are
+      # exit 2: change the window size and re-measure the block together.
+      #
+      # It runs BEFORE the upload and the upload is `always()`, so a glyphless
+      # run is red HERE and its frames are still attached to the run for
+      # somebody to open. Gated on the drive succeeding: a drive that failed
+      # wrote a partial set, and grading that would report the wrong defect.
+      #
+      # Row O-NIGHTLY-E2E-DRIVES-A-GLYPHLESS-APP. Exit 2 from this step is
+      # COVERAGE LOST — no frames at all — and is not a pass.
+      - name: The captured frames carry drawn text
+        if: steps.drive.outcome == 'success'
+        run: node tooling/e2e/assert-frames-carry-text.mjs apps/${{ matrix.app }}/screenshots
+
       - name: Upload per-page screenshots
         if: always() && steps.user.outcome != 'skipped'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

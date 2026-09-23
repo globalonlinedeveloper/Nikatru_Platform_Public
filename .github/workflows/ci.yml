@@ -182,6 +182,15 @@ jobs:
         run: node tooling/ci/assert-ceiling-budget.mjs
       - name: CORS allowlist is derived from the app catalogue
         run: node tooling/ci/assert-cors-allowlist.mjs
+      # The allowlist above is about ORIGINS. This one is about METHODS, and it is
+      # the same defect twice: services/platform answered preflights without PUT
+      # while `PUT /v1/account/apple-token` was live, and
+      # services/subscriptiontracker-api had already done it with `PUT /v1/budget`.
+      # Both Workers' cors tests were green, because both asserted a hand-typed
+      # method list. services/_shared/test/preflight.ts derives the list from the
+      # routes; this is what makes importing it the only way to pass.
+      - name: Every browser-serving Worker runs the shared preflight test
+        run: node tooling/ci/assert-preflight-test-coverage.mjs
       # Since [ADR 075] every app shares one origin, so `Origin` can no longer tell
       # one app's caller from another's. This is the guard that keeps the CORS
       # middleware the ONLY place that reads it.
@@ -1011,8 +1020,19 @@ jobs:
       # above.
       - name: gen-l10n overwrote no TRACKED source file under the package
         run: git diff --exit-code -- packages/design_system/lib
+      # why: PR 889 went red here with only "Changed <file>", and the laptop's
+      # Flutter is not the pinned one, so the diff could not be reproduced there.
+      # The GATE is dart's own --set-exit-if-changed; only on a failure does it
+      # format in place and print the .dart lines CI wants. Not a git-diff gate:
+      # Flutter 3.47 rewrites the app's analysis_options.yaml as a side effect
+      # (measured on run 35814243238), so a whole-tree diff reds on a file nobody
+      # edited, and assert-green-means-ran reads such a diff as a drift check.
       - name: The shipping app is dart format-clean
-        run: dart format --output=none --set-exit-if-changed apps/subscriptiontracker
+        run: |
+          if dart format --output=none --set-exit-if-changed apps/subscriptiontracker; then exit 0; fi
+          dart format apps/subscriptiontracker > /dev/null
+          git --no-pager diff -- 'apps/subscriptiontracker/*.dart'
+          exit 1
       - name: The Apple privacy manifests still describe the binaries that ship
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-apple-privacy-manifest.mjs

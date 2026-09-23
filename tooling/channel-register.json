@@ -1047,6 +1047,28 @@
       "                 offered is an anti-steering violation. Neither is an absence.",
       "  `source`     — the ADR clause, so a row OPENS the decision instead of asserting it.",
       "",
+      "⏱ A FIFTH FIELD, OPTIONAL, ADDED 2026-09-22 BY [ADR 094]:",
+      "",
+      "  `regionRails` — the rail this channel takes FOR BUYERS IN ONE COUNTRY, where that differs from",
+      "                 `rail`. Each entry is `{region, rail, why, source}`: `region` is an ISO 3166-1",
+      "                 alpha-2 code, `rail` resolves in the same `rails` dictionary as the row's own, and",
+      "                 `why` and `source` carry the same burden they carry above. Absent on a row means",
+      "                 one rail everywhere, which is what every row said until today.",
+      "",
+      "⚠️ WHY A DIMENSION ON THE ROW AND NOT A SECOND ROW. A channel is a way an artifact REACHES a buyer",
+      "([ADR 039] D1), and `chrome-webstore` reaches an Indian buyer and a German one the same way: one",
+      "listing, one id, one review, one artifact. Splitting the row would duplicate ~60 fields that are",
+      "identical (signing, artifactFormats, review, storefront) so that ONE could differ, and the copy that",
+      "nobody updates is the failure `awaitingChannelRow`'s own note already describes. What differs is who",
+      "collects the money, which is exactly one field deep.",
+      "",
+      "⛔ THE SERVER DOES NOT ROUTE BY COUNTRY YET, AND THIS FIELD DOES NOT CLAIM IT DOES. [ADR 094] §4",
+      "item 8 leaves \"how an extension's checkout knows the buyer is in India\" OPEN. This block records",
+      "the DECISION — which rail an India buyer pays through — so that the routing increment has a fact to",
+      "implement rather than an ADR to re-read. A row carrying a region rail is not a row that has shipped",
+      "one: `tooling/legal/provider-register.json` still says what is and is not wired, and §I of",
+      "assert-purchase-path.mjs holds this block against it.",
+      "",
       "⚠️ `forbids` IS NOT THE COMPLEMENT OF `rail` AND MUST NOT BE COMPUTED AS ONE. On `web`, Play",
       "Billing is absent for a MECHANICAL reason (no Play services in a browser); on `android-play`,",
       "Paddle is absent because Google FORBIDS it. Collapsing \"cannot\" into \"may not\" is the exact",
@@ -1068,8 +1090,32 @@
       "paddle": "Paddle hosted apex checkout, opened in the browser ([ADR 038]). Paddle is MERCHANT OF RECORD and registers and remits the VAT/GST/OIDAR itself — which is what keeps a sole proprietorship out of ~40 tax registrations. Nets $18.49 of the $19.99 annual SKU, i.e. 7.5%.",
       "play-billing": "Google Play Billing, 15% on the first-$1M/yr tier, integrated through RevenueCat ([ADR 039] D5). Carries an exposure the other rails do not: since 2026-08-03 Play bills the developer $15-25 per chargeback dispute.",
       "apple-iap": "Apple StoreKit in-app purchase, 15% under the Small Business Program, integrated through RevenueCat ([ADR 039] D5).",
-      "none": "this channel sells nothing and must open no checkout of any kind. NO ROW CARRIES IT TODAY — it exists so that a channel which must not sell can SAY so, rather than being absent and read as somebody not having got to it. Same reason `keyKinds.none` exists."
+      "razorpay": "Razorpay, the India payment gateway, added by [ADR 094] (LOCKED 2026-09-22) because Paddle cannot sell the India monthly plan at any price ([ADR 076] §1 and §3: a fixed per-transaction fee takes ~42% of a ₹149 plan, and Paddle sends sellers of sub-$10 products to custom pricing). ⚠️ NIKATRU IS THE SELLER OF RECORD ON THIS RAIL and issues the GST invoice itself ([ADR 076] §10.1) — Razorpay only collects. That is the OPPOSITE of `paddle`, which is merchant of record and absorbs the tax registrations, so a row that takes this rail inherits an obligation the other three rails do not carry. REACHED ONLY THROUGH `regionRails`: no row takes it as its whole-world `rail`, and `apps-gov-in` will not take it until a build actually carries the Razorpay checkout ([ADR 094] §4 item 5).",
+      "none": "this channel sells nothing and must open no checkout of any kind. NO ROW CARRIES IT TODAY — it exists so that a channel which must not sell can SAY so, rather than being absent and read as somebody not having got to it. Same reason `keyKinds.none` exists. ⏱ CORRECTED 2026-09-22: `apps-gov-in` carries it today, so the capitalised sentence above is stale. It was true the day it was written and stopped being true when that row landed; it stays, with this correction beside it, because the REASON the value exists is unchanged. The same stale sentence is copied into the `none` doc comment of `packages/purchases/lib/src/purchase_rail_kind.dart`."
     },
+    "regionRailsRequiredOn": [
+      "chrome-webstore",
+      "edge-addons",
+      "amo"
+    ],
+    "_regionRailsRequiredOnWhy": [
+      "🔴 THE CHANNELS THAT MUST CARRY A `purchaseRail.regionRails` ENTRY, AND WHY A LIST EXISTS AT ALL.",
+      "`regionRails` is optional on a row — most channels take one rail everywhere — so a guard that only",
+      "validated the entries it found would agree with a tree in which all three blocks were deleted. This",
+      "list is the domain those limbs range over: `tooling/ci/assert-purchase-path.mjs` §I fails when an id",
+      "here is not a channel row, and when a channel row named here carries no region rail. Deleting a rail",
+      "answer then costs deleting its id from here too, in the same diff, where a reviewer sees it.",
+      "",
+      "[ADR 094] (LOCKED 2026-09-22, owner verbatim \"1 and 2 - Razorpay\") puts a buyer IN INDIA of any of",
+      "the three browser extensions on Razorpay and leaves every other buyer on Paddle. [ADR 094] §4 item 2",
+      "records that one rail per row cannot express that.",
+      "",
+      "⬜ `apps-gov-in` IS NOT IN THIS LIST AND ITS ABSENCE IS DELIBERATE. [ADR 094] §4 item 1 says the row",
+      "must take Razorpay, and item 5 says its `store/apps-gov-in/form-answers.json` answers — the payment",
+      "gateway and question 4 on financial transactions — flip only in a build that actually carries the",
+      "Razorpay checkout. The row therefore keeps `rail: none` until that build exists, and the id joins",
+      "this list in the same increment that flips those answers."
+    ],
     "universalUnlock": "Web-bought premium unlocks via login on EVERY channel, store rails included — additive, free of store commission, and policy-safe on both stores. [ADR 039] D2. This is entitlement delivery, not a rail.",
     "antiSteering": "Once a store IAP rail is offered on a channel, that build performs NO in-app steering to another rail. [ADR 039] D2 (Play) and D3 (Apple). The rule is about the BUILD, not the company: the same app sold through `web` steers freely.",
     "_awaitingChannelRowWhy": [
@@ -2917,7 +2963,15 @@
           "apple-iap"
         ],
         "forbidsWhy": "MECHANICAL, not policy: neither store's billing SDK exists inside a browser extension, so shipping one here would be a paywall that cannot complete a sale. Listed anyway because `forbids` is what a checker reads to catch a SHIPMENT rather than an omission. ⚠️ TWO CONDITIONS RIDE WITH THE `paddle` ANSWER and are listing obligations rather than code: the listing must clearly identify that we, not Google, are the seller, and must say plainly in the description if basic functionality requires payment.",
-        "source": "[ADR 069] D1; extensions ADR 013"
+        "source": "[ADR 069] D1; extensions ADR 013",
+        "regionRails": [
+          {
+            "region": "IN",
+            "rail": "razorpay",
+            "why": "A buyer in India could not buy the monthly plan on this channel at all: [ADR 076] §1 marks the India monthly SKU \"Paddle is not available for it at any price\", and §3 carries the arithmetic. Nothing about the CHANNEL changes — the store still takes nothing, the listing obligation above is unchanged, and what is sold is still the account-checked entitlement of extensions ADR 013. Only who collects changes, and on this rail Nikatru is the seller of record and issues the GST invoice itself ([ADR 076] §10.1).",
+            "source": "[ADR 094] §1, §3"
+          }
+        ]
       },
       "artifactFormats": [
         ".zip"
@@ -3009,7 +3063,15 @@
           "apple-iap"
         ],
         "forbidsWhy": "MECHANICAL, not policy: neither store's billing SDK exists inside a browser extension. ⚠️ ONE CONDITION RIDES WITH THE `paddle` ANSWER and it is stricter here than on Chrome — policy 1.8.2, verbatim: 'Your extension and associated metadata must clearly provide information about the types of in-product purchases offered and the range of prices', and 'your extension must make it clear to users that they are initiating a purchase option in your extension'. So the PRICE RANGE belongs in the listing and the Upgrade button's own label is in scope, not just the store copy.",
-        "source": "[ADR 069] D1; extensions ADR 013"
+        "source": "[ADR 069] D1; extensions ADR 013",
+        "regionRails": [
+          {
+            "region": "IN",
+            "rail": "razorpay",
+            "why": "Same arithmetic as Chrome, and the listing obligation above makes it sharper: policy 1.8.2 requires the PRICE RANGE in the listing, and the range an Indian buyer sees is the one they can actually be charged. With Paddle unable to sell the India monthly plan at all ([ADR 076] §3), the published range would have described a plan the buyer could not buy.",
+            "source": "[ADR 094] §1, §3"
+          }
+        ]
       },
       "artifactFormats": [
         ".zip"
@@ -3111,7 +3173,15 @@
           "apple-iap"
         ],
         "forbidsWhy": "MECHANICAL, not policy: neither store's billing SDK exists inside a browser extension. ⚠️ ONE OBLIGATION RIDES WITH THIS CHANNEL AND IT IS NOT A COMMERCE RULE: since 2025-11-03 every new Firefox extension must declare whether it collects or transmits personal data, and one that collects nothing must say so explicitly with the `none` data-collection permission or it is 'prevented from being submitted to addons.mozilla.org for signing'. The Pro entitlement check of extensions ADR 013 is a network call the FREE tier does not make, so the two tiers must be declared separately rather than averaged.",
-        "source": "[ADR 069] D1; extensions ADR 013"
+        "source": "[ADR 069] D1; extensions ADR 013",
+        "regionRails": [
+          {
+            "region": "IN",
+            "rail": "razorpay",
+            "why": "AMO carries no checkout either way ([ADR 069] D1), so the region changes only where our own site sends the buyer. It changes there for the reason [ADR 076] §3 gives: Paddle cannot sell the India monthly plan at any price. The data-collection declaration above is unaffected — the entitlement check is the same network call on either rail.",
+            "source": "[ADR 094] §1, §3"
+          }
+        ]
       },
       "artifactFormats": [
         ".zip"
