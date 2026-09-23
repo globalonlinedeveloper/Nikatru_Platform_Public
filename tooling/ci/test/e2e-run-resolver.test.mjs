@@ -233,6 +233,9 @@ describe('alsoResolves refuses to be half-applied', () => {
     cpSync(REGISTER, join(root, 'tooling', 'prod-provenance.json'));
     cpSync(join(REPO, 'tooling/legal/provider-register.json'), join(root, 'tooling/legal/provider-register.json'));
     cpSync(join(REPO, 'catalog/apps.json'), join(root, 'catalog/apps.json'));
+    // ⏱ 2026-09-23 — releaseLanes() now runs in offline mode too: a `--runs-file`
+    // entry is placed on its lane (served or submission) by the channel register.
+    cpSync(join(REPO, 'tooling/channel-register.json'), join(root, 'tooling/channel-register.json'));
     // migration-tables.mjs enumerates the schema; cronJobNames() walks the
     // Worker source for `export const <NAME>_JOB`.
     cpSync(join(REPO, 'services/platform/migrations'), join(root, 'services/platform/migrations'), { recursive: true });

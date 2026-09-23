@@ -364,8 +364,14 @@ jobs:
           }
           node tooling/release/submit-windows-store.mjs --submit --app subscriptiontracker --confirm "$env:CONFIRM"
           exit $LASTEXITCODE
+      # why: `shell: bash` is load-bearing (2026-09-23). This job runs on windows-2025, whose
+      # default shell is pwsh, and under pwsh "$LISTING_URL" is an unset PowerShell VARIABLE,
+      # not this step's env entry: the recorder got no --listing-url, exited 1 before any POST,
+      # and a real submission was recorded nowhere. The arguments are bash, like Play's and
+      # Snap's; deployment-record.test.mjs reads the shell this step RUNS under.
       - name: Record the submission in the [10]D-9 ledger
         if: always() && steps.submit.outcome == 'success'
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}

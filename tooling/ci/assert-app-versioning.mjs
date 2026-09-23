@@ -610,6 +610,12 @@ for (const lane of deferredLanes) {
 // Google Play's pre-launch robots then ran the build and wrote 22+ production D1 rows
 // with app_version `dev` — ops watch #443's prod-provenance job went red on them — and
 // the second upload's versionCode was pubspec's `+1`, which Play never takes twice.
+// ⏱ CORRECTED 2026-09-23 — "uploaded it at 2026-09-22 21:27Z and 21:38Z" and "the
+// second upload's versionCode" above are left as written. There was ONE
+// upload: run 35787897094 (run_number 5, dispatched 21:38:59Z; the Play edit was
+// committed at 21:59:37Z, versionCode = pubspec's `+1`). The 21:27Z run was
+// 35786771434 (run_number 4), a dry run, which uploads nothing and records no
+// Deployment — the ledger on subscriptiontracker-android-play holds exactly one.
 //
 // So "is this lane served?" and "is this a declared lane?" are the wrong questions for a
 // stamp. A build compiled with release flags can leave the runner, and whether it does

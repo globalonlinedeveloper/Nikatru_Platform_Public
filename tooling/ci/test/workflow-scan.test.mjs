@@ -28,7 +28,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { parseWorkflow, parseAllWorkflows, joinBlockScalars, shellSegments, workflowEvents, dispatchInputs } from '../workflow-scan.mjs';
+import { parseWorkflow, parseAllWorkflows, joinBlockScalars, shellSegments, workflowEvents, dispatchInputs, stepShell } from '../workflow-scan.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 assert.ok(CI_DIR.endsWith(join('tooling', 'ci')), 'the module under test must be the real one');
@@ -446,5 +446,167 @@ jobs:
     assert.equal(dispatchInputs(parseWorkflow(root, '.github/workflows/with.yml')), 4);
     assert.equal(dispatchInputs(parseWorkflow(root, '.github/workflows/bare.yml')), null, 'workflow_call inputs are not the dispatch ones');
     assert.equal(dispatchInputs(parseWorkflow(root, '.github/workflows/flow.yml')), null);
+  });
+
+  /* ⏱ ADDED 2026-09-23 with `stepShell`, for the [10]D-9 recorder step in
+     submit-windows-store.yml: no `shell:` in a windows-2025 job, so it ran under
+     pwsh and its bash-written "$LISTING_URL" expanded to nothing. The failure
+     that matters is naming the wrong shell, so each case is one link of GitHub's
+     order — step, job defaults, workflow defaults, runner — plus the shapes that
+     must come back UNKNOWN rather than guessed. */
+  describe('stepShell', () => {
+    const shellAt = (body, needle) => {
+      const root = fixture({ 'a.yml': body });
+      const wf = parseWorkflow(root, '.github/workflows/a.yml');
+      const n = wf.lines.find((l) => l.text.includes(needle)).n;
+      return stepShell(wf, n);
+    };
+
+    test('a Windows runner with no shell declared anywhere runs PWSH — the default the Store recorder fell into', () => {
+      const sh = shellAt(`name: A
+jobs:
+  submit:
+    runs-on: windows-2025
+    steps:
+      - name: record
+        env:
+          LISTING_URL: x
+        run: node record.mjs --listing-url "$LISTING_URL"
+`, 'record.mjs');
+      assert.deepEqual(sh, { shell: 'pwsh', family: 'pwsh', from: 'runner default, runs-on: windows-2025', n: 4 });
+    });
+
+    test('a Linux runner with no shell declared runs bash', () => {
+      const sh = shellAt(`name: A
+jobs:
+  submit:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: node record.mjs
+`, 'record.mjs');
+      assert.equal(sh.family, 'bash');
+      assert.equal(sh.from, 'runner default, runs-on: ubuntu-24.04');
+    });
+
+    test('the STEP\'s own `shell:` beats the job defaults and the runner, and its family is the first word', () => {
+      const sh = shellAt(`name: A
+jobs:
+  submit:
+    runs-on: windows-2025
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: record
+        shell: bash -e {0}
+        run: node record.mjs
+`, 'record.mjs');
+      assert.deepEqual(sh, { shell: 'bash -e {0}', family: 'bash', from: 'step', n: 10 });
+    });
+
+    test('a JOB `defaults.run.shell` beats the workflow defaults and the runner', () => {
+      const sh = shellAt(`name: A
+defaults:
+  run:
+    shell: pwsh
+jobs:
+  submit:
+    runs-on: windows-2025
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - run: node record.mjs
+`, 'record.mjs');
+      assert.deepEqual(sh, { shell: 'bash', family: 'bash', from: 'job defaults', n: 10 });
+    });
+
+    test('a WORKFLOW `defaults.run.shell` applies to a job that declares none', () => {
+      const sh = shellAt(`name: A
+defaults:
+  run:
+    shell: bash
+jobs:
+  submit:
+    runs-on: windows-2025
+    steps:
+      - run: node record.mjs
+`, 'record.mjs');
+      assert.deepEqual(sh, { shell: 'bash', family: 'bash', from: 'workflow defaults', n: 4 });
+    });
+
+    test('a `defaults.run` that sets only `working-directory` declares NO shell — the runner still decides', () => {
+      const sh = shellAt(`name: A
+defaults:
+  run:
+    working-directory: extensions
+jobs:
+  submit:
+    runs-on: windows-2025
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - run: node record.mjs
+`, 'record.mjs');
+      assert.equal(sh.family, 'pwsh', 'extensions.yml writes exactly this shape; reading it as a shell declaration would hide a pwsh default');
+    });
+
+    test('a line inside a `run: |` block resolves to the step that runs it, never to a later step', () => {
+      const sh = shellAt(`name: A
+jobs:
+  release:
+    runs-on: windows-2025
+    steps:
+      - name: record every environment
+        shell: bash
+        run: |
+          for environment in a b; do
+            node record.mjs "$environment"
+          done
+      - name: later
+        shell: pwsh
+        run: echo later
+`, 'record.mjs');
+      assert.deepEqual(sh, { shell: 'bash', family: 'bash', from: 'step', n: 7 });
+    });
+
+    test('a runs-on EXPRESSION with no declared shell is UNKNOWN, never guessed', () => {
+      const sh = shellAt(`name: A
+jobs:
+  capture:
+    runs-on: \${{ inputs.channel == 'windows-store' && 'windows-2025' || 'macos-26' }}
+    steps:
+      - run: node record.mjs
+`, 'record.mjs');
+      assert.equal(sh.shell, null);
+      assert.equal(sh.from, 'unknown');
+      assert.match(sh.why, /names its runner only at run time/);
+    });
+
+    test('a runs-on label set that names NO OS, with no declared shell, is UNKNOWN, never guessed', () => {
+      const sh = shellAt(`name: A
+jobs:
+  submit:
+    runs-on: [self-hosted, x64]
+    steps:
+      - run: node record.mjs
+`, 'record.mjs');
+      assert.equal(sh.shell, null);
+      assert.equal(sh.from, 'unknown');
+      assert.match(sh.why, /names no OS/);
+    });
+
+    test('a line outside every job is UNKNOWN', () => {
+      const sh = shellAt(`name: A
+env:
+  RECORD: record.mjs
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+`, 'record.mjs');
+      assert.equal(sh.shell, null);
+      assert.match(sh.why, /is in no job/);
+    });
   });
 });

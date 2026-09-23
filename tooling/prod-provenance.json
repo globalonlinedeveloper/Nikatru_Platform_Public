@@ -55,7 +55,36 @@
     "",
     "Adding a table to services/platform/migrations/ without adding a row here FAILS THE GATE. That is",
     "the regression this register exists to catch — B-17's prose named four shared tables and the",
-    "migrations create nine, three days apart."
+    "migrations create nine, three days apart.",
+    "",
+    "⏱ 2026-09-23 · A SUBMISSION LANE IS A RELEASE LANE, AND ADDING IT DOES NOT WIDEN `released-build`.",
+    "The rule above forbids loosening the PREDICATE — the version shape and the witnesses. This adds the",
+    "store-submission lanes, which ship real binaries stamped with their own run number, under a witness",
+    "STRONGER than the served lane's: a Deployment on that lane's own environment at that full commit whose",
+    "`payload` names that very run — `payload.run_id` is the run's id and `payload.workflow` its workflow",
+    "file, both written by tooling/ci/record-deployment.mjs from the run's own GITHUB_RUN_ID and",
+    "GITHUB_WORKFLOW_REF. Binding is by run identity, never by time: a dry run at the same commit, a",
+    "re-run of one, or a run whose lifetime overlaps an upload names a different run and is refused.",
+    "`dev`, `c6-localprobe`, NULL and a dry run's stamp still fail. Found by ops-watch run 35820464059,",
+    "which called the first Play upload's consent row (submit-play.yml run 35787897094, stamped",
+    "`1.0.5+0390db6`) unattributable.",
+    "",
+    "`legacyDeploymentBindings` below is the ONE place a payload-less submission Deployment can bind: each",
+    "entry maps one Deployment id to one run id, with the workflow, environment and full sha it was measured",
+    "at, a date and a reason. It admits no build by itself — the run must still exist, carry that id and",
+    "have that head commit. An entry is added only for a Deployment written before its writer carried the",
+    "payload, measured with `gh api repos/<owner>/<repo>/deployments?environment=<env>`."
+  ],
+  "legacyDeploymentBindings": [
+    {
+      "deploymentId": 6601614981,
+      "runId": 35787897094,
+      "workflow": "submit-play.yml",
+      "environment": "subscriptiontracker-android-play",
+      "sha": "0390db6da9125c51959a6db19ebaf8130728fdae",
+      "measured": "2026-09-23",
+      "why": "The first Play upload (submit-play.yml run_number 5, attempt 1, 21:38:59Z-21:59:43Z on 2026-09-22) recorded this Deployment at 21:59:38Z with `payload: {}`, before record-deployment.mjs wrote the run payload. It is the only Deployment on subscriptiontracker-android-play. Binding it to run id 35787897094 alone means no other run at 0390db6 can resolve through it."
+    }
   ],
   "database": "platform_db",
   "wrangler": "services/platform/wrangler.jsonc",
@@ -63,7 +92,7 @@
   "resolvers": {
     "operator-minted": "The marker value must be a NON-EMPTY provenance string recorded by the operator act that created the row — a commit sha or a register hash. Rows in these tables are neither client-written nor migration-seeded: they are minted by a dated, reviewed human act, so the honest question is not \"which build shipped this\" but \"what state was this minted against\". NULL or empty fails, which is the point: a row minted against nothing is a row nobody can review.",
     "product-kind": "The marker value must be one of the product kinds declared in contracts/entitlement/bundle.js (`app` | `extension` | `script`) — the same list tooling/bundle-availability.mjs derives the live-product set from. A value outside it is a row nothing in this tree could have written. Deliberately NOT a join against the product catalogues: a RETIRED product leaves the catalogue while grants that pinned it must keep resolving, so a catalogue join would turn honest history into a false red.",
-    "released-build": "The marker value must be the version string of a build the release lane actually shipped: `<release_line>.<run_number>+<sha7>`, where a SERVED lane in tooling/channel-register.json has a SUCCESSFUL run numbered <run_number> whose head commit is <sha7>. Derived from the GitHub Actions API at read time — never a list in this file. `dev` (the dart-define default), `c6-localprobe` (the C-6 live probe's literal) and NULL all fail, which is the point.",
+    "released-build": "The marker value must be the version string of a build a release lane actually shipped: `<release_line>.<run_number>+<sha7>`, where a run numbered <run_number> whose head commit is <sha7> stands on one of three footings. (1) A SERVED lane in tooling/channel-register.json ran it and the run SUCCEEDED, or it left a GitHub Deployment for <sha7> on a served environment. (2) ⏱ 2026-09-23 — a SUBMISSION lane (a submittable Flutter-app channel's `submission.workflow`) ran it, and a GitHub Deployment at that full commit on that lane's `{app}-<channel>` environment carries a `payload` naming that run (`run_id` = the run's id, `workflow` = the lane's workflow file) — or is a payload-less Deployment that `legacyDeploymentBindings` binds to that run's id; its conclusion is not consulted, because a dry run succeeds and ships nothing, and time is not consulted, because a dry run's lifetime can overlap an upload's Deployment. (3) An attested manual deploy in tooling/ops/manual-deploys.json, accepted only once its commit and its Deployment are both read back. Derived from the GitHub Actions API at read time — never a list in this file (`legacyDeploymentBindings` binds a payload-less Deployment to one run id and admits no build by itself). `dev` (the dart-define default), `c6-localprobe` (the C-6 live probe's literal), NULL and a dry run's stamp all fail, which is the point.",
     "live-environment": "The marker value must be exactly `live`. Every row in these tables is written by the money rail, which stamps `live` or `sandbox` on purpose ([5]M-12: a sandbox notification is stored so it is auditable and can never write a live entitlement). A verification against production necessarily runs in sandbox, so `sandbox` IS the test marker for this half of the schema — and NULL is worse than either, because it is a row the rail could not attribute at all.",
     "cron-job": "The marker value must be a job the deployed Worker both DECLARES and USES — the `export const <NAME>_JOB = '<literal>'` set in services/platform/src, the same derivation tooling/ops/check-heartbeats.mjs uses for its completeness limb. A heartbeat row naming a job no deployed code writes is residue from a renamed or deleted job.",
     "provider-register": "The marker value must be a rail declared in tooling/legal/provider-register.json. A row naming a provider the register does not carry is either a fabricated row or a rail that reached production without a legal record, and both need a human.",

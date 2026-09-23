@@ -21,7 +21,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, readFileSync, readdirSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, readFileSync, readdirSync, writeFileSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -37,8 +37,8 @@ import {
   SUBMISSION_STATES,
   STATE_MEANING,
 } from '../deployment-record.mjs';
-import { RECORD_CALL, expandMatrixEnvironment, isShellVariableEnvironment } from '../workflow-scan.mjs';
-import { isRetryable, retryDelayMs, RETRY_ATTEMPTS } from '../record-deployment.mjs';
+import { RECORD_CALL, expandMatrixEnvironment, isShellVariableEnvironment, shellSegments, parseWorkflow, stepShell } from '../workflow-scan.mjs';
+import { isRetryable, retryDelayMs, RETRY_ATTEMPTS, runIdentity, RUN_IDENTITY_ENV } from '../record-deployment.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const ROOT = resolve(CI_DIR, '../..');
@@ -148,6 +148,13 @@ function record(args, env = {}) {
       GITHUB_SHA: 'abc12345deadbeef',
       GH_TOKEN: 't',
       GITHUB_API_URL: '',
+      // ⏱ 2026-09-23 — the run identity every Actions step has. A submittable
+      // channel's record is refused without it, so a fixed one is the default and
+      // a case that needs it absent passes `undefined` (spawnSync drops those).
+      GITHUB_WORKFLOW_REF: 'x/y/.github/workflows/submit-play.yml@refs/heads/main',
+      GITHUB_RUN_ID: '35787897094',
+      GITHUB_RUN_ATTEMPT: '1',
+      GITHUB_RUN_NUMBER: '5',
       RECORD_REPLAY_LOG: log,
       ...env,
     },
@@ -746,6 +753,238 @@ describe('record-deployment — the DEPLOYMENT and its STATUS carry the same sha
     assert.deepEqual(records, []);
     assert.equal(unreadable.length, 1);
     assert.match(unreadable[0].reason, /not a "nk1" record/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-23 · EVERY DEPLOYMENT NAMES THE RUN THAT WROTE IT.
+// tooling/ops/check-prod-provenance.mjs accepts a build stamped by a store
+// submission lane only on a Deployment whose `payload` names that run's id and
+// workflow. It used to bind by time — a Deployment created during the run — and
+// a dry run at the upload's commit whose lifetime overlapped the upload's
+// Deployment passed that. The payload is written here, from the runner's own
+// GITHUB_WORKFLOW_REF / GITHUB_RUN_ID / GITHUB_RUN_ATTEMPT / GITHUB_RUN_NUMBER.
+// ─────────────────────────────────────────────────────────────────────────────
+const PLAY_IDENTITY = { workflow: 'submit-play.yml', run_id: 35787897094, run_attempt: 1, run_number: 5 };
+const NO_IDENTITY = Object.fromEntries(RUN_IDENTITY_ENV.map((k) => [k, undefined]));
+
+/** Every `node … record-deployment.mjs` invocation in one workflow, and each
+ *  thing in that file that would stop it carrying the runner's run identity:
+ *  a wrapper in front of `node` (`env -i`, `sudo`, `docker run`, an inline
+ *  assignment), or an `env:` entry that sets an identity variable to anything
+ *  but its own `github.*` context. The SHELL each call runs under is
+ *  `dialectBlockers`' question, below. */
+function identityBlockers(file) {
+  const lines = readFileSync(join(ROOT, '.github/workflows', file), 'utf8').split('\n');
+  const CONTEXT ={ GITHUB_WORKFLOW_REF: 'workflow_ref', GITHUB_RUN_ID: 'run_id', GITHUB_RUN_ATTEMPT: 'run_attempt', GITHUB_RUN_NUMBER: 'run_number' };
+  const problems = [];
+  for (const [i, raw] of lines.entries()) {
+    if (/^\s*#/.test(raw)) continue;
+    const m = raw.match(/^\s+(GITHUB_WORKFLOW_REF|GITHUB_RUN_ID|GITHUB_RUN_ATTEMPT|GITHUB_RUN_NUMBER)\s*:\s*(.*?)\s*$/);
+    if (m && m[2] !== `\${{ github.${CONTEXT[m[1]]} }}`) problems.push(`${file}:${i + 1} sets ${m[1]} to ${m[2] || '(nothing)'}`);
+  }
+  let invocations = 0;
+  for (const [i, raw] of lines.entries()) {
+    if (/^\s*#/.test(raw) || !/node\s+\S*record-deployment\.mjs/.test(raw)) continue;
+    invocations += 1;
+    const segment = shellSegments(raw)
+      .find((s) => /record-deployment\.mjs/.test(s))
+      .trim()
+      .replace(/^(?:-\s+)?run:\s*/, '')
+      .replace(/^(?:do|then|else)\s+/, '');
+    if (!/^node\s+tooling\/ci\/record-deployment\.mjs(\s|$)/.test(segment)) {
+      problems.push(`${file}:${i + 1} runs the recorder as \`${segment}\`, not straight from the step's shell`);
+    }
+  }
+  return { invocations, problems };
+}
+
+/** ⏱ 2026-09-23 · THE SHELL THAT READS THE RECORDER'S ARGUMENTS. Every call
+ *  writes them in bash — `"$LISTING_URL"`, `"$environment"`, `"$TOOL-amo"` —
+ *  and so does RECORD_CALL, the one reader of the call site. Under pwsh each of
+ *  those is an unset PowerShell VARIABLE, not the step's `env:` entry, so it
+ *  expands to nothing. submit-windows-store.yml's recorder ran exactly there:
+ *  no `shell:` on the step, in a `runs-on: windows-2025` job, whose default is
+ *  pwsh. The recorder got no listing URL and exited 1 before any POST, and the
+ *  check this replaces passed it, because it read only an explicit `shell:` key
+ *  and admitted pwsh even when one was written. The shell is now the one the
+ *  step RUNS under (workflow-scan's `stepShell`: step, job defaults, workflow
+ *  defaults, then the runner's own default), and only bash or sh reads bash.
+ *
+ *  Why bash and not "pwsh with `$env:NAME`": one call site, one dialect. A pwsh
+ *  call would be read in bash by every reader of RECORD_CALL, so it would be
+ *  right on the runner and misread in every report about it. */
+function dialectBlockers(file, root = ROOT) {
+  const rel = `.github/workflows/${file}`;
+  const lines = readFileSync(join(root, rel), 'utf8').split('\n');
+  const wf = parseWorkflow(root, rel);
+  const problems = [];
+  let invocations = 0;
+  for (const [i, raw] of lines.entries()) {
+    if (/^\s*#/.test(raw) || !/node\s+\S*record-deployment\.mjs/.test(raw)) continue;
+    invocations += 1;
+    const sh = stepShell(wf, i + 1);
+    if (sh.family === 'bash' || sh.family === 'sh') continue;
+    problems.push(
+      sh.shell === null
+        ? `${file}:${i + 1} runs the recorder under a shell nobody can name: ${sh.why} — declare \`shell: bash\` on the step`
+        : `${file}:${i + 1} runs the recorder under \`${sh.shell}\` (${sh.from}, line ${sh.n}), which reads its bash-written arguments as its own unset variables — declare \`shell: bash\` on the step`,
+    );
+  }
+  return { invocations, problems };
+}
+
+/** A one-job workflow in a fresh root, for dialectBlockers. */
+function recorderFixture(body) {
+  const root = join(TMP, `wf-${seq++}`);
+  mkdirSync(join(root, '.github', 'workflows'), { recursive: true });
+  writeFileSync(join(root, '.github', 'workflows', 'submit-x.yml'), body);
+  return root;
+}
+
+describe('record-deployment — every Deployment names the run that wrote it', () => {
+  test('runIdentity reads the Play upload\'s identity from the runner\'s variables', () => {
+    const { payload, missing } = runIdentity({
+      GITHUB_WORKFLOW_REF: 'globalonlinedeveloper/Nikatru_Platform_Public/.github/workflows/submit-play.yml@refs/heads/main',
+      GITHUB_RUN_ID: '35787897094',
+      GITHUB_RUN_ATTEMPT: '1',
+      GITHUB_RUN_NUMBER: '5',
+    });
+    assert.deepEqual(missing, []);
+    assert.deepEqual(payload, PLAY_IDENTITY);
+  });
+
+  test('runIdentity names EVERY missing variable and returns no payload', () => {
+    assert.deepEqual(runIdentity({}), { payload: null, missing: [...RUN_IDENTITY_ENV] });
+  });
+
+  test('runIdentity refuses a ref that names no workflow file and an id that is not a number', () => {
+    const { payload, missing } = runIdentity({
+      GITHUB_WORKFLOW_REF: 'x/y@refs/heads/main',
+      GITHUB_RUN_ID: '35787897094x',
+      GITHUB_RUN_ATTEMPT: '1',
+      GITHUB_RUN_NUMBER: '5',
+    });
+    assert.equal(payload, null);
+    assert.deepEqual(missing, ['GITHUB_WORKFLOW_REF', 'GITHUB_RUN_ID']);
+  });
+
+  test('the recorder WRITES the run payload into the Deployment it creates', () => {
+    const { code, out, requests } = record(
+      ['subscriptiontracker-android-play', '--state', 'in_review', '--listing-url', 'https://play.google.com/store/apps/details?id=x'],
+      { RECORD_REPLAY_STATUS: '201' },
+    );
+    assert.equal(code, 0, out);
+    assert.equal(requests[0].pathname, '/repos/x/y/deployments');
+    assert.deepEqual(requests[0].body.payload, PLAY_IDENTITY);
+  });
+
+  test('a WEB record carries the run payload too — every Deployment names the run that wrote it', () => {
+    const { code, out, requests } = record(['subscriptiontracker-web', 'https://nikatru.com/subscriptiontracker/'], {
+      RECORD_REPLAY_STATUS: '201',
+      GITHUB_WORKFLOW_REF: 'x/y/.github/workflows/deploy-web.yml@refs/heads/main',
+      GITHUB_RUN_ID: '35700000101',
+      GITHUB_RUN_ATTEMPT: '2',
+      GITHUB_RUN_NUMBER: '101',
+    });
+    assert.equal(code, 0, out);
+    assert.deepEqual(requests[0].body.payload, { workflow: 'deploy-web.yml', run_id: 35700000101, run_attempt: 2, run_number: 101 });
+  });
+
+  test('a SUBMITTABLE channel with no run identity is REFUSED, exit 2, before anything is written', () => {
+    const { code, out, requests } = record(
+      ['subscriptiontracker-android-play', '--state', 'in_review', '--listing-url', 'https://play.google.com/store/apps/details?id=x'],
+      { RECORD_REPLAY_STATUS: '201', ...NO_IDENTITY },
+    );
+    assert.equal(code, 2, out);
+    assert.match(out, /is a channel this factory SUBMITS to, and the run identity is missing or unreadable: GITHUB_WORKFLOW_REF, GITHUB_RUN_ID, GITHUB_RUN_ATTEMPT, GITHUB_RUN_NUMBER/);
+    assert.deepEqual(requests, [], 'a record naming no run would witness nothing, so nothing is written');
+  });
+
+  test('a WEB record with no run identity is still written — it is not a submission witness', () => {
+    const { code, out, requests } = record(['subscriptiontracker-web', 'https://nikatru.com/subscriptiontracker/'], {
+      RECORD_REPLAY_STATUS: '201',
+      ...NO_IDENTITY,
+    });
+    assert.equal(code, 0, out);
+    assert.equal(requests.length, 2);
+    assert.equal(requests[0].body.payload, undefined);
+  });
+
+  test('THE REAL TREE: every workflow runs the recorder straight from a step shell that has the run identity', () => {
+    const dir = resolve(ROOT, '.github/workflows');
+    const problems = [];
+    const submitCalls = {};
+    for (const file of readdirSync(dir).filter((f) => /\.ya?ml$/.test(f))) {
+      const r = identityBlockers(file);
+      problems.push(...r.problems);
+      if (/^submit-.*\.ya?ml$/.test(file)) submitCalls[file] = r.invocations;
+    }
+    assert.deepEqual(problems, [], 'a recorder that cannot see GITHUB_RUN_ID writes a Deployment no submitted build can bind to');
+    for (const f of ['submit-play.yml', 'submit-snap.yml', 'submit-windows-store.yml']) {
+      assert.ok(submitCalls[f] >= 1, `${f} records no Deployment — found ${JSON.stringify(submitCalls)}`);
+    }
+  });
+
+  test('THE REAL TREE: every recorder call runs under bash, the dialect its arguments are written in', () => {
+    const dir = resolve(ROOT, '.github/workflows');
+    const problems = [];
+    const calls = {};
+    for (const file of readdirSync(dir).filter((f) => /\.ya?ml$/.test(f))) {
+      const r = dialectBlockers(file);
+      problems.push(...r.problems);
+      calls[file] = r.invocations;
+    }
+    assert.deepEqual(problems, [], 'a recorder whose shell cannot read "$LISTING_URL" records nothing, and a real submission goes unwitnessed');
+    assert.ok(calls['submit-windows-store.yml'] >= 1, `the Windows Store lane records no Deployment — found ${JSON.stringify(calls)}`);
+  });
+
+  test('the Windows Store shape — no `shell:`, runs-on windows — is REFUSED: pwsh reads "$LISTING_URL" as its own unset variable', () => {
+    const root = recorderFixture(`name: X
+on: workflow_dispatch
+jobs:
+  submit:
+    runs-on: windows-2025
+    steps:
+      - name: Record the submission in the [10]D-9 ledger
+        env:
+          LISTING_URL: \${{ inputs.listing_url }}
+        run: node tooling/ci/record-deployment.mjs subscriptiontracker-windows-store --state in_review --listing-url "$LISTING_URL"
+`);
+    const { invocations, problems } = dialectBlockers('submit-x.yml', root);
+    assert.equal(invocations, 1);
+    assert.equal(problems.length, 1, JSON.stringify(problems));
+    assert.match(problems[0], /^submit-x\.yml:10 runs the recorder under `pwsh` \(runner default, runs-on: windows-2025, line 5\)/);
+  });
+
+  test('the same Windows step with `shell: bash` passes — Git Bash reads "$LISTING_URL" from the step env', () => {
+    const root = recorderFixture(`name: X
+on: workflow_dispatch
+jobs:
+  submit:
+    runs-on: windows-2025
+    steps:
+      - name: Record the submission in the [10]D-9 ledger
+        shell: bash
+        env:
+          LISTING_URL: \${{ inputs.listing_url }}
+        run: node tooling/ci/record-deployment.mjs subscriptiontracker-windows-store --state in_review --listing-url "$LISTING_URL"
+`);
+    assert.deepEqual(dialectBlockers('submit-x.yml', root), { invocations: 1, problems: [] });
+  });
+
+  test('a recorder whose job runs on an EXPRESSION, with no shell declared, is REFUSED — nobody can say which dialect reads it', () => {
+    const root = recorderFixture(`name: X
+on: workflow_dispatch
+jobs:
+  submit:
+    runs-on: \${{ matrix.os }}
+    steps:
+      - run: node tooling/ci/record-deployment.mjs x-web https://x.example/
+`);
+    const { problems } = dialectBlockers('submit-x.yml', root);
+    assert.equal(problems.length, 1, JSON.stringify(problems));
+    assert.match(problems[0], /a shell nobody can name: job "submit" runs on `\$\{\{ matrix\.os \}\}`/);
   });
 });
 
