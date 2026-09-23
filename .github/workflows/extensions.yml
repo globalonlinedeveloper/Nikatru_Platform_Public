@@ -65,6 +65,16 @@ on:
         type: string
         required: false
         default: ''
+      # why: [10]D-9 records a store submission against its listing. Chrome and Edge are
+      # `submittable: false` today; amo is armed, so its submit refuses without this.
+      listing_url:
+        description: >-
+          Required with SUBMIT-TO-FIREFOX-AMO: the add-on's addons.mozilla.org
+          listing, e.g. https://addons.mozilla.org/firefox/addon/<slug>/. The
+          submission is recorded against it. Ignored otherwise.
+        type: string
+        required: false
+        default: ''
       tag:
         description: >-
           The tag a release rehearsal stands in for, e.g. fullshot-v1.10.1. A
@@ -2411,6 +2421,7 @@ jobs:
           AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
           AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
           CONFIRM: ${{ inputs.confirm }}
+          LISTING_URL: ${{ inputs.listing_url }}
           TOOL: ${{ steps.tag.outputs.id }}
         run: |
           set -euo pipefail
@@ -2422,6 +2433,16 @@ jobs:
             echo "::error::NOT PUBLISHED to Firefox Add-ons: reached on event '${GITHUB_EVENT_NAME}' with confirm '${CONFIRM}'. Only a dispatch carrying SUBMIT-TO-FIREFOX-AMO may publish here, so this step's if: has been widened."
             exit 1
           fi
+          # [10]D-9: checked BEFORE the submit, because record-deployment.mjs refuses a
+          # store record with no listing -- after the submit that refusal is a submission
+          # nobody can account for.
+          case "$LISTING_URL" in
+            https://addons.mozilla.org/*) ;;
+            *)
+              echo "::error::NOT PUBLISHED to Firefox Add-ons: listing_url is '${LISTING_URL}', not an https://addons.mozilla.org/ URL. The [10]D-9 record names the listing, so re-dispatch with listing_url set, e.g. https://addons.mozilla.org/firefox/addon/<slug>/"
+              exit 1
+              ;;
+          esac
           code=0
           out=$(node scripts/publish-amo.mjs --tool "$TOOL" --source-dir build/unpacked-firefox 2>&1) || code=$?
           printf '%s\n' "$out"
@@ -2434,6 +2455,21 @@ jobs:
             exit 1
           fi
           echo "published=yes" >> "$GITHUB_OUTPUT"
+
+      # why: [10]D-9 -- amo is `submittable: true`, so a submitting run records what it
+      # did in the SAME job, as `in_review` against the listing the owner named at
+      # dispatch. `always() && steps.amo.outcome == 'success'` is the one accepted
+      # widening (assert-publish-records.mjs rule 6): the record follows the ACT, so a
+      # later Chrome or Edge step failing cannot erase the AMO ledger row.
+      - name: Record the AMO submission in the [10]D-9 ledger
+        if: always() && steps.amo.outcome == 'success'
+        working-directory: .
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TOOL: ${{ steps.tag.outputs.id }}
+          LISTING_URL: ${{ inputs.listing_url }}
+        run: node tooling/ci/record-deployment.mjs "$TOOL-amo" --state in_review --listing-url "$LISTING_URL"
 
       # why: the Chrome lane authenticates with a SERVICE ACCOUNT as of 2026-09-09
       # (https://developer.chrome.com/docs/webstore/service-accounts). CWS_CLIENT_ID,

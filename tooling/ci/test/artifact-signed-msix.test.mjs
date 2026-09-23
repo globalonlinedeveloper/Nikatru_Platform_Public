@@ -18,6 +18,9 @@
 // declares, sentinel included — a package built under a plausible INVENTED
 // identity while the register still says PENDING is the unrecoverable case, and
 // that is the mutation pinned below.
+// ⏱ 2026-09-22 — the live register now carries the real identity; the fixtures
+// below keep their own fake values on purpose, and the live-register case reads
+// whatever the register declares.
 //
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────

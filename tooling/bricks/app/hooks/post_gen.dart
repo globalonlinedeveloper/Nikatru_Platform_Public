@@ -710,6 +710,13 @@ void _writeMsixConfig(
       );
       return;
     }
+    // ⏱ 2026-09-22 — KNOWN HAZARD, NOT FIXED HERE (the per-app follow-up).
+    // The windows-store row now carries subscriptiontracker's REAL identity,
+    // and `identityName` / `publisherDisplayName` are PER-APP. This stamps that
+    // one row into EVERY new app, so a new app packages under Subly's identity
+    // name, and assert-store-metadata.mjs passes because the copies agree.
+    // Until the register can declare an identity per app, set a new app's
+    // msix_config back to the PARTNER-CENTER-PENDING sentinel by hand.
     final identity = rows.first['packageIdentity'] as Map;
     String field(String key) => (identity[key] ?? '').toString();
     final buffer = StringBuffer(existing.endsWith('\n') ? '' : '\n')
