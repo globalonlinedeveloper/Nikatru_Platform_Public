@@ -1119,16 +1119,23 @@ jobs:
           RELEASE_LINE="$(node tooling/ci/assert-app-versioning.mjs --emit "apps/${APP}" | sed -n 's/^release_line=//p')"
           # 🔴 THE ARTEFACTS DO NOT CARRY THE TAG'S NUMBER. The build jobs build
           # with `--build-name=<release line>.<run number>`, so the bytes say
-          # 1.0.0.<run> while the tag says 1.0.0. The record states what was BUILT;
+          # 1.0.<run> while the tag says 1.0.0. The record states what was BUILT;
           # the guard requires only that major.minor agree with the tag.
           # ⚠️ `$?` IS NOT READ AFTER A PIPE ANYWHERE IN THIS STEP — `set -euo
           # pipefail` on line 1 is what makes a failing substitution fail the job.
+          # 🔴 NO --min-supported HERE. The release line is MAJOR.MINOR ("1.0"), and
+          # passing it as the floor is what failed run 35829208001's grade step:
+          # `#/minSupported: "1.0" does not match ^[0-9]+\.[0-9]+\.[0-9]+$`. The
+          # emitter reads the app surface's floor from the file the platform Worker
+          # enforces force-update from, services/platform/src/app-config-data.json
+          # (apps.<app>.min_supported_version, else defaults), and REFUSES the flag on
+          # this surface, so a second, typed copy of that number cannot come back.
           RELEASED_AT="$(TZ=UTC git show -s --format=%cd --date=format-local:%Y-%m-%dT%H:%M:%SZ "$GITHUB_SHA")"
           node tooling/ci/release-manifest.mjs --emit-release-json dist \
             --app "$APP" --tag "$RELEASE_TAG" --sha "$GITHUB_SHA" \
             --run-url "$RUN_URL" --notes-url "$NOTES_URL" \
             --released-at "$RELEASED_AT" \
-            --version "${RELEASE_LINE}.${RUN_NUMBER}" --min-supported "$RELEASE_LINE" \
+            --version "${RELEASE_LINE}.${RUN_NUMBER}" \
             --build "$RUN_NUMBER"
       - name: Write the checksum manifest, naming the gated commit
         env:

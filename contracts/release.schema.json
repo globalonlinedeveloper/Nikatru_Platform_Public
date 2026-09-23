@@ -32,7 +32,7 @@
     "minSupported": {
       "type": "string",
       "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
-      "description": "The oldest version this release still serves. Until a declared field exists for it the lane passes the tag's own X.Y.Z, which is exactly true while no older build exists."
+      "description": "The oldest version this release still serves. On the app surface it is the SERVED floor, read by the emitter from services/platform/src/app-config-data.json (apps.<app>.min_supported_version, else defaults.min_supported_version), the file the platform Worker enforces force-update from; --min-supported is refused there, so the record and the Worker cannot disagree. It is the floor the repository declares at the tagged commit: a KV override (services/platform/README.md, Config overrides) can raise the served floor at runtime without a commit. On the extension surface, which has no served config, the lane passes --min-supported (the tag's own X.Y.Z)."
     },
     "notesUrl": { "type": "string", "format": "https-url" },
     "artefacts": {
