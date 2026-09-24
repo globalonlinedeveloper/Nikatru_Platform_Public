@@ -857,17 +857,19 @@ describe('assert-app-versioning — Play versionCode high-water (static)', () =>
     assert.match(out, /submit-play-v2\.yml has no recorded run_number floor/);
   });
 
-  for (const [name, buildNumber, shown] of [
-    ['the run ATTEMPT counter', '${{ github.run_attempt }}', /--build-number "\$\{\{github\.run_attempt\}\}"/],
-    ['a literal', '7', /--build-number "7"/],
-  ]) {
-    test(`FAILS a Play build whose --build-number is ${name}, not the run counter (M3)`, () => {
-      const { code, out } = run({ args: [withPlay(`hw-bn-${buildNumber.length}`, { wf: oneJob(buildNumber) })] });
-      assert.equal(code, 1, out);
-      assert.match(out, /cannot bound/);
-      assert.match(out, shown);
-    });
-  }
+  test('FAILS a Play build whose --build-number is the run ATTEMPT counter, not the run counter (M3)', () => {
+    const { code, out } = run({ args: [withPlay('hw-bn-attempt', { wf: oneJob('${{ github.run_attempt }}') })] });
+    assert.equal(code, 1, out);
+    assert.match(out, /cannot bound/);
+    assert.match(out, /--build-number "\$\{\{github\.run_attempt\}\}"/);
+  });
+
+  test('FAILS a Play build whose --build-number is a literal, not the run counter (M3)', () => {
+    const { code, out } = run({ args: [withPlay('hw-bn-literal', { wf: oneJob('7') })] });
+    assert.equal(code, 1, out);
+    assert.match(out, /cannot bound/);
+    assert.match(out, /--build-number "7"/);
+  });
 
   test('COVERAGE LOST when Play build sources exist and the record is absent (M4)', () => {
     const dir = withPlay('hw-absent', { register: playRegister(undefined, { omit: true }) });
@@ -945,13 +947,17 @@ describe('assert-app-versioning — --play-floor', () => {
     assert.match(out, /run_number 1 would become versionCode 1; Play has consumed 1 for subscriptiontracker/);
   });
 
-  for (const n of ['2', '6']) {
-    test(`PASSES run number ${n}, above the mark (M5)`, () => {
-      const { code, out } = run({ args: ['--play-floor', n, ...APP, floorDir(`pf-above-${n}`)] });
-      assert.equal(code, 0, out);
-      assert.match(out, new RegExp(`ok  Play versionCode ${n} > consumed 1`));
-    });
-  }
+  test('PASSES run number 2, the mark + 1 (M5)', () => {
+    const { code, out } = run({ args: ['--play-floor', '2', ...APP, floorDir('pf-above-2')] });
+    assert.equal(code, 0, out);
+    assert.match(out, /ok {2}Play versionCode 2 > consumed 1/);
+  });
+
+  test('PASSES run number 6, above the mark (M5)', () => {
+    const { code, out } = run({ args: ['--play-floor', '6', ...APP, floorDir('pf-above-6')] });
+    assert.equal(code, 0, out);
+    assert.match(out, /ok {2}Play versionCode 6 > consumed 1/);
+  });
 
   test('refuses (2) a run number that is not digits (M5)', () => {
     const { code, out } = run({ args: ['--play-floor', 'abc', ...APP, floorDir('pf-abc')] });
@@ -965,13 +971,19 @@ describe('assert-app-versioning — --play-floor', () => {
     assert.match(out, /--play-floor was passed without --app/);
   });
 
-  for (const [flag, value] of [['--emit', 'apps/x'], ['--tag', 'subscriptiontracker-v1.0.0']]) {
-    test(`refuses (2) --play-floor with ${flag} in one invocation (M5)`, () => {
-      const { code, out } = run({ args: ['--play-floor', '6', flag, value, ...APP, floorDir(`pf-with${flag}`)] });
-      assert.equal(code, 2, out);
-      assert.match(out, new RegExp(`--play-floor with ${flag} in one invocation`));
+  test('refuses (2) --play-floor with --emit in one invocation (M5)', () => {
+    const { code, out } = run({ args: ['--play-floor', '6', '--emit', 'apps/x', ...APP, floorDir('pf-with-emit')] });
+    assert.equal(code, 2, out);
+    assert.match(out, /--play-floor with --emit in one invocation/);
+  });
+
+  test('refuses (2) --play-floor with --tag in one invocation (M5)', () => {
+    const { code, out } = run({
+      args: ['--play-floor', '6', '--tag', 'subscriptiontracker-v1.0.0', ...APP, floorDir('pf-with-tag')],
     });
-  }
+    assert.equal(code, 2, out);
+    assert.match(out, /--play-floor with --tag in one invocation/);
+  });
 
   test('COVERAGE LOST (2) when the app has no consumed entry', () => {
     const { code, out } = run({ args: ['--play-floor', '6', '--app', 'other', floorDir('pf-other')] });
