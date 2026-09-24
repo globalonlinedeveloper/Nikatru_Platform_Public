@@ -22,11 +22,11 @@
   "apple-provisioning.test.mjs": 65,
   "apple-signing-2026-09-09.test.mjs": 22,
   "apple-signing.test.mjs": 117,
-  "apps-gov-in-apk.test.mjs": 52,
+  "apps-gov-in-apk.test.mjs": 53,
   "apps-gov-in-media.test.mjs": 22,
   "appstore-submission.test.mjs": 37,
   "artifact-shape.test.mjs": 30,
-  "artifact-signed-apple.test.mjs": 35,
+  "artifact-signed-apple.test.mjs": 42,
   "artifact-signed-msix.test.mjs": 39,
   "assert-deploy-triggers-deploy.test.mjs": 18,
   "assert-frames-carry-text.test.mjs": 11,
@@ -266,5 +266,5 @@
   "workflow-readers.test.mjs": 14,
   "workflow-scan.test.mjs": 40,
   "workflow-timeouts.test.mjs": 18,
-  "xcode-floor.test.mjs": 19
+  "xcode-floor.test.mjs": 21
 }

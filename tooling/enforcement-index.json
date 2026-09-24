@@ -2809,6 +2809,14 @@
     "claims": [],
     "invokedBy": [],
     "kind": "guard",
+    "ref": "tooling/ci/tool-output.mjs",
+    "references": [],
+    "state": "LIBRARY"
+  },
+  {
+    "claims": [],
+    "invokedBy": [],
+    "kind": "guard",
     "ref": "tooling/ci/tree-walk.mjs",
     "references": [],
     "state": "LIBRARY"

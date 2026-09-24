@@ -914,6 +914,7 @@ means ran" failure with extra stages. `codesign -dvv` is run against the
 .app that was just produced and the verdict is the PARSED output, never
 the exit status — the Android guard shipped after discovering `keytool`
 exits 0 on an unsigned archive.
+⏱ CORRECTED 2026-09-24: it runs `codesign -dv --verbose=4`, what the PROVE steps run, and its tests replay output captured from run 35741818599.
 
 It fails when the posture says `release-signed` and the bundle is
 unsigned or AD-HOC (a real, locally-valid signature with no identity and
@@ -923,6 +924,7 @@ defect), when the leaf is a development or Developer-ID certificate
 rather than a distribution one, when the team is not the one the register
 pins, and — in the other direction — when an identity reached an
 `unsigned-build-proof` build through a path this lane never arranged.
+⏱ CORRECTED 2026-09-24: the team pin is `APPLE_TEAM_ID`; a register `teamId` is an optional cross-check that must equal it, and `release-signed` with no `APPLE_TEAM_ID` is COVERAGE LOST.
 
 ⚠️ THE .app AND NOT AN .ipa. `flutter build ios --no-codesign` below
 produces no .ipa at all, and `codesign` could not read one anyway: it is
@@ -1485,7 +1487,7 @@ in `ci-gate`'s `needs`. The overlay above gets its first build proof on a pull r
   | `assert-android-vapt-manifest.mjs` | yes, both `.apk`s | the merged manifest exists only inside the built `.apk` |
   | `assert-apps-gov-in-apk.mjs` | yes, `--posture debug` | the posture that requires the debug signer. The permission, form and minSdk checks run in every posture; run 35822768347 failed on exactly those |
   | `assert-artifact-signed.mjs` | main only | it asks "the upload key, not debug". A pull request holds no key, so its only answer there is "debug". The PR-time analogue is `android-signing.test.mjs`, with `android-signing.mjs`'s refusal of a partial secret set |
-  | `assert-artifact-signed-msix.mjs`, `assert-artifact-signed-apple.mjs` | main only | desktop and Apple lanes, which need certificates; not built on a PR |
+  | `assert-artifact-signed-msix.mjs`, `assert-artifact-signed-apple.mjs` | main only | desktop and Apple lanes, which need certificates; not built on a PR. ⏱ CORRECTED 2026-09-24: not on main either — `build-platforms.yml` runs on `workflow_dispatch`, a `subscriptiontracker-v*` tag and its two weekly schedule slots, never on a push to main |
   | `assert-release-json.mjs` | main only | it reads the `dist/` the `release` job writes from every platform's artifacts; an Android-only lane has none. The PR-time analogue is `assert-release-json.test.mjs` |
 
 - **Nothing leaves the runner.** No `upload-artifact`, no symbols upload, no GlitchTip release, no

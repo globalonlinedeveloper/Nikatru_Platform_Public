@@ -55,11 +55,13 @@
 // Usage:  node tooling/ci/assert-xcode-floor.mjs [repoRoot]
 // Exit 0 = the runner's Xcode major is >= the declared floor.
 //      1 = it is not, or the question could not be asked.
+// ⏱ CORRECTED 2026-09-24: a question that could not be asked is exit 2, COVERAGE LOST (since 2026-09-15), never 1.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { whatToolReturned } from './tool-output.mjs';
 
 export const VERSIONS_REL = 'tooling/versions.json';
 export const FLOOR_KEY = 'xcode';
@@ -98,18 +100,72 @@ export function meetsFloor(runnerMajor, floorMajor) {
   return runnerMajor >= floorMajor;
 }
 
-function coverageLost(first, ...more) {
-  console.error(`✗ COVERAGE LOST — ${first}`);
-  for (const m of more) console.error(`    ${m}`);
-  console.error('  "The check could not run" must never share an exit code with "the floor is met".');
-  console.error('assert-xcode-floor: FAILED');
-  // ⏱ 2026-09-15 — exit 2, not 1: COVERAGE LOST is "did not check enough to be evidence", never a
-  // finding (AGENTS.md exit-code convention; O-EXIT2-CONVENTION-GAP). This helper exited 1 until today.
-  process.exit(2);
+// ── THE IMPURE HALF — one injection seam, `main({ argv, env, platform, run })` ─
+// ⏱ 2026-09-24 (O-APPLE-GUARDS-PARSE-HAND-WRITTEN-OUTPUT, ADR 064): the tool call
+// goes through `run(cmd, args)`, which returns `{ status, stdout, stderr, error }`
+// and is spawnSync by default, so a test feeds output captured from a real macOS
+// job through the same probe, parse, verdict and exit CI runs. The signature is
+// the one assert-artifact-signed-apple.mjs takes; this guard reads neither `env`
+// nor `platform` — its platform question is whether `xcodebuild` answers.
+
+/** The real tool, both streams as text. */
+const defaultRun = (cmd, args) => spawnSync(cmd, args, { encoding: 'utf8' });
+
+/** Carries an exit code out of the check to `main`, which returns it — the
+ *  assert-ops-register.mjs idiom. The CLI wrapper at the foot of the file is the
+ *  one place that exits. */
+class GuardExit extends Error {
+  constructor(code) {
+    super(`exit ${code}`);
+    this.code = code;
+  }
 }
 
-function main() {
-  const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
+/**
+ * Run the guard. Returns `{ code, stdout, stderr }` and prints nothing itself:
+ * 0 = the floor is met, 1 = it is not, 2 = COVERAGE LOST.
+ */
+export function main({ argv = process.argv.slice(2), env = process.env, platform = process.platform, run = defaultRun } = {}) {
+  const out = [];
+  const err = [];
+  let code;
+  try {
+    code = check({ argv, run, log: (s = '') => out.push(s), error: (s = '') => err.push(s) });
+  } catch (e) {
+    if (!(e instanceof GuardExit)) throw e;
+    code = e.code;
+  }
+  const text = (lines) => (lines.length ? `${lines.join('\n')}\n` : '');
+  return { code, stdout: text(out), stderr: text(err) };
+}
+
+function check({ argv, run, log, error }) {
+  const coverageLost = (first, ...more) => {
+    error(`✗ COVERAGE LOST — ${first}`);
+    for (const m of more) error(`    ${m}`);
+    error('  "The check could not run" must never share an exit code with "the floor is met".');
+    error('assert-xcode-floor: FAILED');
+    // ⏱ 2026-09-15 — exit 2, not 1: COVERAGE LOST is "did not check enough to be evidence", never a
+    // finding (AGENTS.md exit-code convention; O-EXIT2-CONVENTION-GAP). This helper exited 1 until today.
+    throw new GuardExit(2);
+  };
+
+  // What xcodebuild returned, for every COVERAGE LOST on its output: the binary,
+  // the developer directory `xcode-select -p` names (the version query is the
+  // one that failed), the exit, and the first 20 lines of each stream. Resolved
+  // only when a stop needs it, through the same `run`.
+  const firstLine = (r) => (!r.error && r.status === 0 ? String(r.stdout ?? '').trim().split(/\r?\n/)[0] || null : null);
+  const whatXcodebuildReturned = (result) => {
+    const dev = firstLine(run('xcode-select', ['-p']));
+    return whatToolReturned({
+      name: 'xcodebuild',
+      path: firstLine(run('which', ['xcodebuild'])),
+      version: dev ? `unread (\`xcodebuild -version\` is the query below); xcode-select -p: ${dev}` : null,
+      result,
+    });
+  };
+
+  const ROOT = resolve(argv[0] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 
   const versionsAbs = join(ROOT, VERSIONS_REL);
   if (!existsSync(versionsAbs)) {
@@ -145,46 +201,53 @@ function main() {
     );
   }
 
-  const probe = spawnSync('xcodebuild', ['-version'], { encoding: 'utf8' });
+  const probe = run('xcodebuild', ['-version']);
   if (probe.error || probe.status !== 0) {
     coverageLost(
       `\`xcodebuild -version\` could not be run (${probe.error ? probe.error.code ?? probe.error.message : `exit ${probe.status}`}).`,
       'This guard belongs to the Apple lane and asks a question only a macOS runner can answer. On any other',
       `platform that is the expected outcome — it is wired into build-platforms.yml's \`apple\` job and`,
       'deliberately not into ci.yml.',
+      ...whatXcodebuildReturned(probe),
     );
   }
   const seen = parseXcodeMajor(`${probe.stdout ?? ''}\n${probe.stderr ?? ''}`);
   if (seen === null) {
     coverageLost(
       '`xcodebuild -version` ran and this guard could not find an `Xcode <major>` line in its output.',
-      `What it printed was: ${JSON.stringify(`${probe.stdout ?? ''}`.trim().slice(0, 200))}`,
       'An unparseable reading is not a low version and it is not a high one. Refusing beats guessing.',
+      ...whatXcodebuildReturned(probe),
     );
   }
 
   if (!meetsFloor(seen.major, floor)) {
-    console.error(
+    error(
       `✗ the runner reports ${JSON.stringify(seen.reported)} and ${VERSIONS_REL} declares a floor of ${floor}.`,
     );
-    console.error(
+    error(
       '  App Store Connect requires apps to be "built with Xcode 26 or later"' +
         ' (developer.apple.com/news/upcoming-requirements/, fetched 2026-07-29; in force since 28 April 2026).',
     );
-    console.error(
+    error(
       `  The runner LABEL (${JSON.stringify(declared.runner_macos ?? 'unknown')}) names an image FAMILY, not an` +
         ' immutable image, so the image moving its default Xcode is exactly the drift this guard exists to name.',
     );
-    console.error('assert-xcode-floor: FAILED');
-    process.exit(1);
+    error('assert-xcode-floor: FAILED');
+    return 1;
   }
 
-  console.log(
+  log(
     `ok  xcode floor — the runner reports ${JSON.stringify(seen.reported)} and ${VERSIONS_REL} declares a floor of ` +
       `${floor}; ${seen.major} >= ${floor}, so every Apple artifact this job produces was built with a toolchain ` +
       'App Store Connect accepts. The floor is a MAJOR, so a later Xcode passes and is meant to [pipeline C-6]',
   );
+  return 0;
 }
 
 const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
-if (isMain) main();
+if (isMain) {
+  const { code, stdout, stderr } = main();
+  process.stdout.write(stdout);
+  process.stderr.write(stderr);
+  process.exit(code);
+}

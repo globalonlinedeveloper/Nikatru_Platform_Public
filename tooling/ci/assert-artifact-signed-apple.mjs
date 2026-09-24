@@ -5,7 +5,7 @@
 //
 // The Apple half of the pair `assert-artifact-signed.mjs` forms for Play. Same
 // law, different tool: that one runs `keytool -printcert -jarfile` over an .aab,
-// this one runs `codesign -dvv` over an .app.
+// this one runs `codesign -dv --verbose=4` over an .app.
 //
 // 🔴 WHY IT IS A SIBLING FILE AND NOT A BRANCH IN THE ANDROID ONE.
 // The temptation was one guard with `--platform`. Everything about the two is
@@ -34,6 +34,7 @@
 //      direct distribution outside the store. Accepting "some Apple certificate"
 //      would accept both.
 //   4. the team is the team the register pins.
+//      ⏱ CORRECTED 2026-09-24: the team pin is APPLE_TEAM_ID (limb 5); a register teamId is an optional cross-check that must equal it.
 //   5. the real signature agrees with the posture tooling/ci/apple-signing.mjs
 //      exported. That step arranges a credential; this one reads the outcome. A
 //      step that arranges a thing and then reports its own success is the "green
@@ -61,11 +62,14 @@
 //     that reason — they are unit-tested on Windows and Linux against captured
 //     `codesign -dvv` output, which is the only part of the job that does not
 //     need a Mac.
+//     ⏱ CORRECTED 2026-09-24: those fixtures were HAND-WRITTEN, never captured; the captured ones are test/fixtures/apple-run-35741818599/.
 //
 // Usage:
 //   node tooling/ci/assert-artifact-signed-apple.mjs [--repo-root <path>] <bundle>…
 // Env in: APPLE_SIGNING_POSTURE (required — exported by
 //         tooling/ci/apple-signing.mjs; the guard refuses to run without it)
+//         APPLE_TEAM_ID (required when the posture is release-signed — THE team
+//         pin, exported by the same step; the guard refuses to run without it)
 // Exit 0 = the bundle is signed by the identity this lane intended. 1 = it is not.
 //      2 = COVERAGE LOST — the question could not be asked.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -73,6 +77,7 @@ import { readFileSync, existsSync, statSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, resolve, dirname, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { whatToolReturned } from './tool-output.mjs';
 
 export const REGISTER = 'tooling/channel-register.json';
 export const CHANNEL_IDS = ['ios-appstore', 'macos-appstore'];
@@ -113,15 +118,19 @@ export function unreadableSuffix(rel) {
 // PURE DECISION LOGIC — the whole verdict, testable without a Mac.
 // ═════════════════════════════════════════════════════════════════════════════
 
-/** The exact invocation. `-dvv` is display + two verbosity levels, which is what
- *  makes the `Authority=` chain appear; `-dv` alone prints the team identifier
- *  and no authorities, and limb 3 would then range over an empty list. */
+/** The exact invocation: `codesign -dv --verbose=4`, which is what the PROVE steps
+ *  in build-platforms.yml run over the .ipa payload and over the .app the .pkg
+ *  wraps — so the output captured from those steps (test/fixtures/
+ *  apple-run-35741818599/) is the output this guard reads. The verbosity is what
+ *  makes the `Authority=` chain appear; `-dv` at the default level prints the team
+ *  identifier and no authorities, and limb 3 would then range over an empty list.
+ *  ⏱ 2026-09-24: this was `-dvv` until today, a level no captured output was taken at. */
 export function codesignArgv(path) {
-  return ['codesign', '-dvv', path];
+  return ['codesign', '-dv', '--verbose=4', path];
 }
 
 /**
- * Parse `codesign -dvv` output.
+ * Parse `codesign -dv --verbose=4` output.
  *
  * 🔬 THE OUTPUT GOES TO STDERR, NOT STDOUT. That is not a quirk to work around
  * quietly — a caller that reads only stdout gets an empty string, which parses
@@ -153,6 +162,15 @@ export function parseCodesign(text) {
     return out;
   }
 
+  // 🔬 THE CodeDirectory LINE IS NOT `Key=Value`. The real line is
+  // `CodeDirectory v=20400 size=20035 flags=0x0(none) hashes=615+7 location=embedded`,
+  // so a split at the first `=` reads its key as `CodeDirectory v`, and the
+  // `key === 'CodeDirectory'` branch that stood in the loop below until 2026-09-24
+  // never fired on captured output (row O-APPLE-GUARDS-PARSE-HAND-WRITTEN-OUTPUT).
+  // The flags are read off the whole line instead; every other key keeps the split.
+  const cd = raw.match(/^CodeDirectory v=\S+ .*\bflags=(\S+)/m);
+  if (cd) out.flags = cd[1];
+
   for (const line of lines) {
     const eq = line.indexOf('=');
     if (eq === -1) continue;
@@ -163,7 +181,6 @@ export function parseCodesign(text) {
     else if (key === 'Format') out.format = value;
     else if (key === 'Signature') out.signatureField = value;
     else if (key === 'TeamIdentifier') out.teamId = value === 'not set' ? null : value;
-    else if (key === 'CodeDirectory') out.flags = value.match(/flags=(\S+)/)?.[1] ?? null;
   }
 
   // Three independent tells, because any one of them can be absent depending on
@@ -202,7 +219,7 @@ export function verdict({ artifact, posture, parsed, pin = null, arrangedTeamId 
   if (parsed.unparseable) {
     return {
       problems: [
-        `${artifact} — \`codesign -dvv\` produced output this guard cannot parse. It found no Identifier, no ` +
+        `${artifact} — \`codesign -dv --verbose=4\` produced output this guard cannot parse. It found no Identifier, no ` +
           'Authority, no TeamIdentifier and no CodeDirectory flags. That is not an unsigned bundle; it is a ' +
           'reading this guard does not understand, and reporting a verdict from it would certify whatever it found.',
       ],
@@ -266,23 +283,42 @@ export function verdict({ artifact, posture, parsed, pin = null, arrangedTeamId 
     return { problems, prints, evaluated: true, teamChecked: false };
   }
 
-  // ── limb 5: the identity the lane ARRANGED, if it said ────────────────────
-  if (arrangedTeamId !== null && parsed.teamId !== null && parsed.teamId !== arrangedTeamId) {
-    problems.push(
-      `${artifact} is signed by team ${parsed.teamId} and this lane arranged ${arrangedTeamId}. Two identities were ` +
-        'available to xcodebuild and it chose the one nobody asked for — usually a keychain search list that still ' +
-        'contains a developer login keychain.',
-    );
-    return { problems, prints, evaluated: true, teamChecked: false };
+  // ── limb 5: the team the lane ARRANGED — APPLE_TEAM_ID, THE team pin ──────
+  // ⏱ 2026-09-24 (O-APPLE-GUARDS-PARSE-HAND-WRITTEN-OUTPUT): "the team-id pin is the APPLE_TEAM_ID secret; a
+  // register teamId is optional and never a second source of truth." Until today a MATCH here set nothing, so
+  // every run summarised "0 team(s) compared", and a team codesign did not print was skipped, not refused.
+  let teamChecked = false;
+  if (arrangedTeamId !== null) {
+    if (parsed.teamId === null) {
+      problems.push(
+        `${artifact} is distribution-signed by ${JSON.stringify(leaf)} and carries no readable TeamIdentifier, and ` +
+          `APPLE_TEAM_ID (the team pin) is ${arrangedTeamId}. A team this guard cannot read cannot be compared, and ` +
+          'an uncompared team is never a pass.',
+      );
+      return { problems, prints, evaluated: true, teamChecked: false };
+    }
+    if (parsed.teamId !== arrangedTeamId) {
+      problems.push(
+        `${artifact} is signed by team ${parsed.teamId} and this lane arranged ${arrangedTeamId} (APPLE_TEAM_ID, the ` +
+          'team pin). Two identities were available to xcodebuild and it chose the one nobody asked for — usually a ' +
+          'keychain search list that still contains a developer login keychain.',
+      );
+      return { problems, prints, evaluated: true, teamChecked: false };
+    }
+    teamChecked = true;
   }
 
-  // ── limb 4: the team the register pins ────────────────────────────────────
+  // ── limb 4: the team the register pins — an OPTIONAL cross-check ──────────
+  // It never stands in for APPLE_TEAM_ID: `main` refuses a release-signed run with no APPLE_TEAM_ID, and fails a
+  // register teamId that disagrees with it before any bundle is read.
   if (pin === null) {
-    prints.push(
-      `${artifact} is distribution-signed by team ${parsed.teamId ?? '(unstated)'}; its team was NOT compared to a ` +
-        'pin (see above).',
-    );
-    return { problems, prints, evaluated: true, teamChecked: false };
+    if (!teamChecked) {
+      prints.push(
+        `${artifact} is distribution-signed by team ${parsed.teamId ?? '(unstated)'}; its team was NOT compared to a ` +
+          'pin (see above).',
+      );
+    }
+    return { problems, prints, evaluated: true, teamChecked };
   }
   if (parsed.teamId !== pin) {
     problems.push(
@@ -300,7 +336,8 @@ export function verdict({ artifact, posture, parsed, pin = null, arrangedTeamId 
 
 /** The team identifier the register pins, or null with the reason. Read through
  *  a documented path so that turning the pin ON later is a record edit and not a
- *  code change. */
+ *  code change.
+ *  ⏱ 2026-09-24: OPTIONAL — APPLE_TEAM_ID is the pin; a register value is a cross-check that must equal it. */
 export function pinnedTeamId(register, channelIds = CHANNEL_IDS) {
   const found = new Map();
   for (const id of channelIds) {
@@ -319,31 +356,82 @@ export function pinnedTeamId(register, channelIds = CHANNEL_IDS) {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// THE IMPURE HALF
+// THE IMPURE HALF — one injection seam, `main({ argv, env, platform, run })`
 // ═════════════════════════════════════════════════════════════════════════════
+// ⏱ 2026-09-24 (O-APPLE-GUARDS-PARSE-HAND-WRITTEN-OUTPUT, ADR 064): every tool
+// call goes through `run(cmd, args)`, which returns `{ status, stdout, stderr,
+// error }` and is spawnSync by default. A test hands `main` a `run` that returns
+// output captured from a real macOS job, and that output travels the SAME path
+// CI's does — probe, parse, verdict, summary, exit. No flag and no environment
+// variable points this guard at a file: a second input path is one CI never runs.
 
-const argv = process.argv.slice(2);
-const opt = (name, fallback = null) => {
-  const i = argv.indexOf(`--${name}`);
-  return i !== -1 && i + 1 < argv.length ? argv[i + 1] : fallback;
-};
-// 🔴 `rootIdx + 1` ALONE IS THE BUG scan-secrets.mjs SHIPPED. With the flag
-// absent, indexOf returns -1 and -1 + 1 is 0 — the first ARTIFACT's own index —
-// so the flagless form would silently drop its first artifact.
-const rootIdx = argv.indexOf('--repo-root');
-const rootValueIdx = rootIdx >= 0 ? rootIdx + 1 : -1;
+/** The real tool, both streams as text. */
+const defaultRun = (cmd, args) => spawnSync(cmd, args, { encoding: 'utf8' });
 
-function coverageLost(lines) {
-  console.error('');
-  console.error(`FAIL COVERAGE LOST — ${lines[0]}`);
-  for (const l of lines.slice(1)) console.error(`     ${l}`);
-  console.error('\nassert-artifact-signed-apple: FAILED');
-  // ⏱ 2026-09-16 — exit 2, not 1: COVERAGE LOST is "did not check enough to be evidence", never a
-  // finding (AGENTS.md exit-code convention; O-EXIT2-CONVENTION-GAP). This helper exited 1 until today.
-  process.exit(2);
+/** Carries an exit code out of the check to `main`, which returns it — the
+ *  assert-ops-register.mjs idiom. The CLI wrapper at the foot of the file is the
+ *  one place that exits. */
+class GuardExit extends Error {
+  constructor(code) {
+    super(`exit ${code}`);
+    this.code = code;
+  }
 }
 
-function main() {
+/**
+ * Run the guard. Returns `{ code, stdout, stderr }` and prints nothing itself:
+ * 0 = signed by the identity this lane intended, 1 = it is not, 2 = COVERAGE LOST.
+ */
+export function main({ argv = process.argv.slice(2), env = process.env, platform = process.platform, run = defaultRun } = {}) {
+  const out = [];
+  const err = [];
+  let code;
+  try {
+    code = check({ argv, env, platform, run, log: (s = '') => out.push(s), error: (s = '') => err.push(s) });
+  } catch (e) {
+    if (!(e instanceof GuardExit)) throw e;
+    code = e.code;
+  }
+  const text = (lines) => (lines.length ? `${lines.join('\n')}\n` : '');
+  return { code, stdout: text(out), stderr: text(err) };
+}
+
+function check({ argv, env, platform, run, log, error }) {
+  const coverageLost = (lines) => {
+    error('');
+    error(`FAIL COVERAGE LOST — ${lines[0]}`);
+    for (const l of lines.slice(1)) error(`     ${l}`);
+    error('\nassert-artifact-signed-apple: FAILED');
+    // ⏱ 2026-09-16 — exit 2, not 1: COVERAGE LOST is "did not check enough to be evidence", never a
+    // finding (AGENTS.md exit-code convention; O-EXIT2-CONVENTION-GAP). This helper exited 1 until today.
+    throw new GuardExit(2);
+  };
+
+  const opt = (name, fallback = null) => {
+    const i = argv.indexOf(`--${name}`);
+    return i !== -1 && i + 1 < argv.length ? argv[i + 1] : fallback;
+  };
+  // 🔴 `rootIdx + 1` ALONE IS THE BUG scan-secrets.mjs SHIPPED. With the flag
+  // absent, indexOf returns -1 and -1 + 1 is 0 — the first ARTIFACT's own index —
+  // so the flagless form would silently drop its first artifact.
+  const rootIdx = argv.indexOf('--repo-root');
+  const rootValueIdx = rootIdx >= 0 ? rootIdx + 1 : -1;
+
+  // What codesign returned, for every COVERAGE LOST on its output: the binary,
+  // a version (codesign has no --version, so the host's macOS release is printed
+  // in its place), the exit, and the first 20 lines of each stream. Resolved only
+  // when a stop needs it, through the same `run`.
+  const firstLine = (r) => (!r.error && r.status === 0 ? String(r.stdout ?? '').trim().split(/\r?\n/)[0] || null : null);
+  const whatCodesignReturned = (result) => {
+    const os = firstLine(run('sw_vers', ['-productVersion']));
+    return whatToolReturned({
+      name: 'codesign',
+      path: firstLine(run('which', ['codesign'])),
+      version: os ? `codesign has no --version; the host is macOS ${os} (sw_vers -productVersion)` : null,
+      result,
+    });
+  };
+
   const ROOT = resolve(opt('repo-root') ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
   const artifacts = argv.filter((a, i) => !a.startsWith('--') && i !== rootValueIdx);
 
@@ -351,7 +439,7 @@ function main() {
   // Required, not defaulted. A default would make the most important comparison
   // in the file — intended vs actual — collapse into "actual vs actual" on
   // exactly the runs where the export failed, which is when it matters.
-  const posture = (process.env[POSTURE_ENV] ?? '').trim();
+  const posture = (env[POSTURE_ENV] ?? '').trim();
   if (posture === '') {
     coverageLost([
       `${POSTURE_ENV} is not set, so this guard does not know what the lane intended.`,
@@ -368,6 +456,20 @@ function main() {
     ]);
   }
 
+  // ── the team pin: APPLE_TEAM_ID ──────────────────────────────────────────
+  // ⏱ 2026-09-24 — parent ruling: "the team-id pin is the APPLE_TEAM_ID secret; a register teamId is optional
+  // and never a second source of truth." apple-signing.mjs exports it to $GITHUB_ENV on the release-signed
+  // path. Until today an EMPTY value skipped limb 5 without a word, and the run passed with no team compared.
+  const arrangedTeamId = (env.APPLE_TEAM_ID ?? '').trim() || null;
+  if (posture === RELEASE_SIGNED && arrangedTeamId === null) {
+    coverageLost([
+      `${RELEASE_SIGNED} and APPLE_TEAM_ID is empty — the team cannot be compared.`,
+      `APPLE_TEAM_ID is the team pin. tooling/ci/apple-signing.mjs exports it beside ${POSTURE_ENV} whenever it`,
+      'arranges a release identity, so a release-signed run without it is a step that did not reach this job —',
+      'and a signature compared against no team passes whichever team signed it.',
+    ]);
+  }
+
   if (artifacts.length === 0) {
     coverageLost([
       'no bundle path was given, so this guard evaluated nothing.',
@@ -377,31 +479,32 @@ function main() {
   }
 
   // ── codesign ─────────────────────────────────────────────────────────────
-  if (process.platform !== 'darwin') {
+  if (platform !== 'darwin') {
     coverageLost([
-      `\`codesign\` does not exist on "${process.platform}" — it ships with Xcode and runs only on macOS.`,
+      `\`codesign\` does not exist on "${platform}" — it ships with Xcode and runs only on macOS.`,
       'This is the check being IMPOSSIBLE here, not the bundle being fine, and the two must never share an',
       'exit code. Run this guard in the macOS lane, next to the build that produced the bundle.',
       '⬜ COVERAGE — every DECISION in this file is a pure function tested on this platform against captured',
-      '   `codesign -dvv` output; what cannot be exercised off macOS is the invocation itself.',
+      '   `codesign -dv --verbose=4` output; what cannot be exercised off macOS is the invocation itself.',
     ]);
   }
-  const probe = spawnSync('codesign', ['--help'], { encoding: 'utf8' });
+  const probe = run('codesign', ['--help']);
   if (probe.error) {
     coverageLost([
       'codesign could not be run on this macOS host.',
       "It is this guard's only way to read a signature. A check that cannot be made must not report success.",
       'Install the Xcode command line tools in the job (xcode-select --install, or actions/setup-xcode).',
+      ...whatCodesignReturned(probe),
     ]);
   }
 
-  // ── the pinned team ──────────────────────────────────────────────────────
+  // ── the register: the Apple rows, and their optional team cross-check ────
   const registerAbs = join(ROOT, REGISTER);
   if (!existsSync(registerAbs)) {
     coverageLost([
       `${REGISTER} does not exist under ${ROOT}.`,
-      'It carries the pinned distribution team. Without it limb 4 would range over undefined and every',
-      'distribution certificate on earth would read as the right one.',
+      'It carries the Apple rows and any team they record, which must equal APPLE_TEAM_ID. Reading it as absent',
+      'would drop that cross-check without a word.',
     ]);
   }
   let register;
@@ -430,18 +533,22 @@ function main() {
     );
   } else if (pinResult.pin === null) {
     prints.push(
-      `NO PINNED TEAM — no Apple row in ${REGISTER} carries \`signing.distributionCertificate.teamId\`, so limb 4 ` +
-        'is not enforced: ANY distribution certificate passes. That is the honest state today — there is no ' +
-        'Apple distribution certificate. CORRECTED 2026-09-08: the account is ACTIVE and APPLE_TEAM_ID IS a ' +
-        'repository secret, so the team identifier is pinnable TODAY - this is now a to-do, not a gap. ' +
-        'It is a one-line record edit, and this line is what stops it being forgotten.',
+      `NO REGISTER TEAM — no Apple row in ${REGISTER} carries \`signing.distributionCertificate.teamId\`, and none ` +
+        'is needed: the team pin is APPLE_TEAM_ID, the repository secret apple-signing.mjs exports, and every ' +
+        'release-signed bundle is compared against it. A register teamId is an OPTIONAL cross-check — when ' +
+        'present it must equal APPLE_TEAM_ID, and it never stands in for it (ruling 2026-09-24).',
+    );
+  } else if (arrangedTeamId !== null && pinResult.pin !== arrangedTeamId) {
+    problems.push(
+      `the register disagrees with APPLE_TEAM_ID; the env is the pin. ${REGISTER}'s Apple rows record team ` +
+        `${pinResult.pin} and APPLE_TEAM_ID is ${arrangedTeamId}. A register teamId is an optional cross-check and ` +
+        'never a second source of truth: correct or delete the register value in the same change as the team.',
     );
   }
 
-  const arrangedTeamId = (process.env.APPLE_TEAM_ID ?? '').trim() || null;
-
   let evaluated = 0;
   let teamChecked = 0;
+  const unread = [];
   for (const rel of artifacts) {
     const abs = isAbsolute(rel) ? rel : join(ROOT, rel);
     const suffix = unreadableSuffix(rel);
@@ -465,21 +572,22 @@ function main() {
     }
 
     const args = codesignArgv(abs);
-    const r = spawnSync(args[0], args.slice(1), { encoding: 'utf8' });
-    // 🔬 BOTH STREAMS. `codesign -dvv` writes its report to STDERR; a caller
+    const r = run(args[0], args.slice(1));
+    // 🔬 BOTH STREAMS. `codesign -dv` writes its report to STDERR; a caller
     // reading stdout alone gets "" and would fail every correct build.
     const output = `${r.stdout ?? ''}${r.stderr ?? ''}`;
     const parsed = parseCodesign(output);
+    if (parsed.unparseable) unread.push({ rel, r });
     const v = verdict({ artifact: rel, posture, parsed, pin: pinResult.pin, arrangedTeamId });
     if (parsed.signed && !parsed.adhoc && !parsed.unparseable) {
-      console.log(`   ${rel} · leaf ${JSON.stringify(leafAuthority(parsed))} · team ${parsed.teamId ?? '(none)'} · id ${parsed.identifier ?? '(none)'}`);
+      log(`   ${rel} · leaf ${JSON.stringify(leafAuthority(parsed))} · team ${parsed.teamId ?? '(none)'} · id ${parsed.identifier ?? '(none)'}`);
     }
     problems.push(...v.problems);
     prints.push(...v.prints);
     if (v.evaluated) evaluated++;
     if (v.teamChecked) teamChecked++;
     if (v.problems.length === 0 && v.prints.length === 0) {
-      console.log(`ok   ${rel} — distribution-signed by the pinned team`);
+      log(`ok   ${rel} — distribution-signed by the pinned team`);
     }
   }
 
@@ -490,40 +598,46 @@ function main() {
   // "nothing was evaluated", which is true, useless, and reads as a broken guard
   // rather than a broken artifact.
   if (evaluated === 0) {
-    for (const p of problems) console.error(`FAIL ${p}`);
+    for (const p of problems) error(`FAIL ${p}`);
     coverageLost([
       `${artifacts.length} bundle path(s) were given and NOT ONE yielded a readable signature report.`,
       'Every assertion above ranged over an empty set. Either the build produced nothing, or the paths are',
       'wrong, or codesign has stopped reading these bundles — and all three look identical to a clean run.',
+      ...unread.flatMap(({ rel, r }) => [`what codesign returned for ${rel}:`, ...whatCodesignReturned(r)]),
     ]);
   }
 
   if (prints.length) {
-    console.log('');
-    console.log('   ── printed, not failed ──');
-    for (const p of prints) console.log(`   ⬜ ${p}`);
+    log('');
+    log('   ── printed, not failed ──');
+    for (const p of prints) log(`   ⬜ ${p}`);
   }
 
   if (problems.length) {
-    console.error('');
-    for (const p of problems) console.error(`FAIL ${p}`);
-    console.error('');
-    console.error('  Every .aab this factory built before 2026-08-04 was debug-signed and every configuration');
-    console.error('  check was green, because the configuration was already correct and nothing read the bytes.');
-    console.error('  This is that guard for the Apple side, written before the first Apple artifact exists.');
-    console.error('\nassert-artifact-signed-apple: FAILED');
-    process.exit(1);
+    error('');
+    for (const p of problems) error(`FAIL ${p}`);
+    error('');
+    error('  Every .aab this factory built before 2026-08-04 was debug-signed and every configuration');
+    error('  check was green, because the configuration was already correct and nothing read the bytes.');
+    error('  This is that guard for the Apple side, written before the first Apple artifact exists.');
+    error('\nassert-artifact-signed-apple: FAILED');
+    return 1;
   }
 
-  console.log('');
-  console.log(
+  log('');
+  log(
     `assert-artifact-signed-apple: OK — ${evaluated}/${artifacts.length} bundle(s) read with codesign; posture ` +
-      `"${posture}" matches the real signer; ${teamChecked} team(s) compared against the pin` +
-      `${pinResult.pin === null ? ' (none pinned — see above)' : ''}`,
+      `"${posture}" matches the real signer; ${teamChecked} team(s) compared against APPLE_TEAM_ID` +
+      `${posture === UNSIGNED_PROOF ? ` (none — "${UNSIGNED_PROOF}" arranges no identity)` : ''}` +
+      `${pinResult.pin !== null && arrangedTeamId !== null ? '; the register teamId agrees with it' : ''}`,
   );
-  console.log('   A code object only — an .ipa, .pkg, .zip or .dmg is refused by name, never read as unsigned.');
+  log('   A code object only — an .ipa, .pkg, .zip or .dmg is refused by name, never read as unsigned.');
+  return 0;
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
-  main();
+  const { code, stdout, stderr } = main();
+  process.stdout.write(stdout);
+  process.stderr.write(stderr);
+  process.exit(code);
 }

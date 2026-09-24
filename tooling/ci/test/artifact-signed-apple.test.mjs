@@ -21,13 +21,14 @@
 // until it happens the guard's own header carries that as an open gap rather
 // than as a claim. This comment is the receipt for that honesty, and if the
 // first real run disagrees with these fixtures, THE FIXTURES ARE WRONG.
+// ⏱ 2026-09-24: it did — its CodeDirectory line is not `Key=Value`; the captured fixtures and their cases are at the foot of this file.
 //
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -43,10 +44,15 @@ import {
   verdict,
   pinnedTeamId,
   unreadableSuffix,
+  main,
 } from '../assert-artifact-signed-apple.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const GUARD = join(CI_DIR, 'assert-artifact-signed-apple.mjs');
+// REAL output from run 35741818599 — the citation and the two substitutions are in its README.md.
+const CAPTURED = join(CI_DIR, 'test', 'fixtures', 'apple-run-35741818599');
+const CAPTURED_APP = readFileSync(join(CAPTURED, 'codesign-macos-app.txt'), 'utf8');
+const CAPTURED_IPA = readFileSync(join(CAPTURED, 'codesign-ipa-payload.txt'), 'utf8');
 
 const TEAM = 'A1B2C3D4E5';
 const OTHER_TEAM = 'Z9Y8X7W6V5';
@@ -61,6 +67,7 @@ after(() => { if (TMP) rmSync(TMP, { recursive: true, force: true }); });
 // report goes to STDERR.
 
 /** A correctly signed Mac App Store / App Store build. */
+// HAND-WRITTEN SHAPE — not captured output; the captured fixtures are fixtures/apple-run-35741818599/.
 const DISTRIBUTION = `Executable=/Users/runner/work/app/build/macos/Build/Products/Release/Subly.app/Contents/MacOS/Subly
 Identifier=com.nikatru.subscriptiontracker
 Format=app bundle with Mach-O universal (x86_64 arm64)
@@ -79,6 +86,7 @@ Internal requirements count=1 size=180
 
 /** The older Mac App Store application certificate, still issued to accounts
  *  created before Apple unified the two into `Apple Distribution`. */
+// HAND-WRITTEN SHAPE — not captured output; the captured fixtures are fixtures/apple-run-35741818599/.
 const LEGACY_MAS = DISTRIBUTION.replace(
   `Authority=Apple Distribution: Rajasekar Selvam (${TEAM})`,
   `Authority=3rd Party Mac Developer Application: Rajasekar Selvam (${TEAM})`,
@@ -87,6 +95,7 @@ const LEGACY_MAS = DISTRIBUTION.replace(
 /** 🔴 THE DEFECT THIS GUARD EXISTS FOR. `codesign -s -` — a real signature,
  *  locally valid, verifying happily, with NOBODY behind it. Xcode falls back to
  *  it, "is it signed?" answers yes, and App Store Connect refuses it. */
+// HAND-WRITTEN SHAPE — not captured output; the captured fixtures are fixtures/apple-run-35741818599/.
 const ADHOC = `Executable=/Users/runner/work/app/build/macos/Build/Products/Release/Subly.app/Contents/MacOS/Subly
 Identifier=com.nikatru.subscriptiontracker
 Format=app bundle with Mach-O thin (arm64)
@@ -99,6 +108,7 @@ Internal requirements count=0 size=0
 `;
 
 /** A development certificate: valid, verifies, refused by the store. */
+// HAND-WRITTEN SHAPE — not captured output; the captured fixtures are fixtures/apple-run-35741818599/.
 const DEVELOPMENT = DISTRIBUTION.replace(
   `Authority=Apple Distribution: Rajasekar Selvam (${TEAM})`,
   `Authority=Apple Development: Rajasekar Selvam (${TEAM})`,
@@ -107,18 +117,22 @@ const DEVELOPMENT = DISTRIBUTION.replace(
 /** Developer ID: the certificate for shipping OUTSIDE the store. Also valid,
  *  also verifies, also refused by the store — and the one most likely to be
  *  reached for by someone who has read about notarization. */
+// HAND-WRITTEN SHAPE — not captured output; the captured fixtures are fixtures/apple-run-35741818599/.
 const DEVELOPER_ID = DISTRIBUTION.replace(
   `Authority=Apple Distribution: Rajasekar Selvam (${TEAM})`,
   `Authority=Developer ID Application: Rajasekar Selvam (${TEAM})`,
 );
 
 /** A distribution build from a DIFFERENT team. */
+// HAND-WRITTEN SHAPE — not captured output; the captured fixtures are fixtures/apple-run-35741818599/.
 const OTHER_TEAM_SIGNED = DISTRIBUTION.split('\n').map((l) => l.replace(new RegExp(TEAM, 'g'), OTHER_TEAM)).join('\n');
 
+// HAND-WRITTEN SHAPE — not captured output; the captured fixtures are fixtures/apple-run-35741818599/.
 const UNSIGNED = '/Users/runner/work/app/build/macos/Build/Products/Release/Subly.app: code object is not signed at all\n';
 
 /** Output from a tool that is not codesign at all — a wrapper printing a
  *  message, a localisation, a future version with a different report. */
+// HAND-WRITTEN SHAPE — not captured output; the captured fixtures are fixtures/apple-run-35741818599/.
 const GIBBERISH = 'some other tool wrote this and it has no fields the parser knows\n';
 
 const at = (parsed, extra = {}) => ({ artifact: 'Subly.app', posture: RELEASE_SIGNED, parsed, pin: TEAM, ...extra });
@@ -126,8 +140,8 @@ const textOf = (v) => [...v.problems, ...v.prints].join('\n');
 
 // ═════ the invocation ════════════════════════════════════════════════════════
 describe('assert-artifact-signed-apple — the invocation', () => {
-  test('it is `codesign -dvv`, not -dv — the Authority chain needs the second v', () => {
-    assert.deepEqual(codesignArgv('/tmp/Subly.app'), ['codesign', '-dvv', '/tmp/Subly.app']);
+  test('it is `codesign -dv --verbose=4`, what the PROVE steps run — so the captured fixtures are what it reads', () => {
+    assert.deepEqual(codesignArgv('/tmp/Subly.app'), ['codesign', '-dv', '--verbose=4', '/tmp/Subly.app']);
   });
 });
 
@@ -171,6 +185,7 @@ describe('assert-artifact-signed-apple — the parser', () => {
   });
 
   test('a value containing "=" survives — only the FIRST separator splits', () => {
+    // HAND-WRITTEN SHAPE — not captured output; the captured fixtures are fixtures/apple-run-35741818599/.
     const p = parseCodesign('Identifier=com.nikatru.subscriptiontracker\nFormat=app bundle with Mach-O thin (arm64)\nTeamIdentifier=A1B2C3D4E5\n');
     assert.equal(p.format, 'app bundle with Mach-O thin (arm64)');
   });
@@ -246,6 +261,7 @@ describe('assert-artifact-signed-apple — valid Apple certificates the store re
   });
 
   test('an UNRECOGNISED leaf is refused, not accepted by default', () => {
+    // HAND-WRITTEN SHAPE — not captured output; the captured fixtures are fixtures/apple-run-35741818599/.
     const p = parseCodesign(DISTRIBUTION.replace(/Authority=Apple Distribution:[^\n]*/, 'Authority=Some Other CA: Nobody (XXXXXXXXXX)'));
     const v = verdict(at(p));
     assert.equal(v.problems.length, 1);
@@ -340,10 +356,12 @@ function makeRoot({ rows = ['ios-appstore', 'macos-appstore'], pin = null } = {}
   return root;
 }
 
-const runGuard = (root, artifacts, posture) =>
+// APPLE_TEAM_ID defaults to TEAM: since 2026-09-24 a release-signed run without it is COVERAGE LOST, so
+// the cases below that are about other stops pass a team, and the empty-team case says '' itself.
+const runGuard = (root, artifacts, posture, teamId = TEAM) =>
   spawnSync(process.execPath, [GUARD, ...(root ? ['--repo-root', root] : []), ...artifacts], {
     encoding: 'utf8',
-    env: { ...process.env, [POSTURE_ENV]: posture, APPLE_TEAM_ID: '' },
+    env: { ...process.env, [POSTURE_ENV]: posture, APPLE_TEAM_ID: teamId },
   });
 const out = (r) => `${r.stdout}${r.stderr}`;
 
@@ -385,5 +403,114 @@ describe('assert-artifact-signed-apple — coverage self-checks, run as a proces
     const r = runGuard(makeRoot(), ['Subly.app'], '');
     assert.match(out(r), /is not set/);
     assert.doesNotMatch(out(r), /ships with Xcode/);
+  });
+});
+
+// ═════ the captured output, through main({ run }) ════════════════════════════
+// REAL `codesign -dv --verbose=4` output from run 35741818599 (fixtures/apple-run-35741818599/README.md),
+// fed through the guard's one seam: `main({ argv, env, platform, run })`. The fake `run` answers the way the
+// macOS runner did — 🔬 the report on STDERR, where `codesign -dv` writes it, and stdout empty — so these
+// cases take the same probe, parse, verdict, summary and exit as CI. `platform: 'darwin'` is injected; nothing
+// else is faked.
+
+/** A root with a register and one bundle directory at `bundle`; `pin` goes into both Apple rows. */
+function rootWithBundle(bundle, { pin = null } = {}) {
+  const root = makeRoot({ pin });
+  mkdirSync(join(root, bundle), { recursive: true });
+  return root;
+}
+
+/** A `run` that replays `report` as codesign's answer, and records every call it was asked to make. */
+function replay(report, { status = 0 } = {}) {
+  const calls = [];
+  const run = (cmd, args) => {
+    calls.push([cmd, ...args]);
+    if (cmd === 'codesign' && args[0] === '--help') return { status: 0, stdout: '', stderr: '' };
+    if (cmd === 'codesign') return { status, stdout: '', stderr: report };
+    // Only reached on a COVERAGE LOST, to name the tool: made-up answers, not captured ones.
+    if (cmd === 'which') return { status: 0, stdout: `/usr/bin/${args[0]}\n`, stderr: '' };
+    if (cmd === 'sw_vers') return { status: 0, stdout: '26.0\n', stderr: '' };
+    return { status: null, stdout: '', stderr: '', error: Object.assign(new Error(`spawn ${cmd} ENOENT`), { code: 'ENOENT' }) };
+  };
+  return { run, calls };
+}
+
+const releaseEnv = (teamId) => ({ [POSTURE_ENV]: RELEASE_SIGNED, APPLE_TEAM_ID: teamId });
+
+describe('assert-artifact-signed-apple — the captured output of run 35741818599', () => {
+  test('T1: the real .app, release-signed, APPLE_TEAM_ID matching — exit 0 and ONE team compared', () => {
+    const bundle = 'build/macos/Build/Products/Release/Subscriptions.app';
+    const root = rootWithBundle(bundle);
+    const { run, calls } = replay(CAPTURED_APP);
+    const r = main({ argv: ['--repo-root', root, bundle], env: releaseEnv(TEAM), platform: 'darwin', run });
+    assert.equal(r.code, 0, `${r.stdout}${r.stderr}`);
+    assert.match(r.stdout, /1 team\(s\) compared against APPLE_TEAM_ID/);
+    assert.match(r.stdout, /leaf "Apple Distribution: <PERSONAL-NAME> \(A1B2C3D4E5\)" · team A1B2C3D4E5 · id com\.nikatru\.subscriptiontracker/);
+    // The fixture is what the guard reads because the guard runs what PROVE ran.
+    assert.deepEqual(calls.find((c) => c[0] === 'codesign' && c[1] !== '--help'), ['codesign', '-dv', '--verbose=4', join(root, bundle)]);
+  });
+
+  test('T2: the real .ipa payload against a DIFFERENT APPLE_TEAM_ID — exit 1, naming both teams', () => {
+    const bundle = 'Payload/Runner.app';
+    const root = rootWithBundle(bundle);
+    const r = main({ argv: ['--repo-root', root, bundle], env: releaseEnv(OTHER_TEAM), platform: 'darwin', run: replay(CAPTURED_IPA).run });
+    assert.equal(r.code, 1, `${r.stdout}${r.stderr}`);
+    assert.match(r.stderr, new RegExp(`signed by team ${TEAM} and this lane arranged ${OTHER_TEAM}`));
+    assert.match(r.stderr, /assert-artifact-signed-apple: FAILED/);
+  });
+
+  test('T3: the CodeDirectory flags are read from BOTH captured reports — the line is not Key=Value', () => {
+    const app = parseCodesign(CAPTURED_APP);
+    const ipa = parseCodesign(CAPTURED_IPA);
+    assert.equal(app.flags, '0x0(none)');
+    assert.equal(ipa.flags, '0x0(none)');
+    assert.equal(app.teamId, TEAM);
+    assert.equal(ipa.format, 'app bundle with Mach-O thin (arm64)');
+    assert.equal(app.adhoc, false);
+    assert.equal(leafAuthority(ipa), 'Apple Distribution: <PERSONAL-NAME> (A1B2C3D4E5)');
+  });
+
+  test('T5: COVERAGE LOST prints what codesign returned — path, version, exit, the first 20 of 25 lines', () => {
+    const bundle = 'Subly.app';
+    const root = rootWithBundle(bundle);
+    const lines25 = `${Array.from({ length: 25 }, (_, i) => `garbled ${i}`).join('\n')}\n`;
+    const r = main({ argv: ['--repo-root', root, bundle], env: releaseEnv(TEAM), platform: 'darwin', run: replay(lines25, { status: 1 }).run });
+    assert.equal(r.code, 2, `${r.stdout}${r.stderr}`);
+    assert.match(r.stderr, /FAIL COVERAGE LOST — 1 bundle path\(s\) were given and NOT ONE yielded a readable signature report/);
+    assert.match(r.stderr, /what codesign returned for Subly\.app:/);
+    assert.match(r.stderr, /tool: \/usr\/bin\/codesign/);
+    assert.match(r.stderr, /version: codesign has no --version; the host is macOS 26\.0/);
+    assert.match(r.stderr, /exit: 1\n/);
+    assert.match(r.stderr, /stderr: 25 line\(s\), \d+ bytes, first 20 shown/);
+    const shown = r.stderr.split('\n').filter((l) => /^\s*stderr\| /.test(l)).map((l) => l.trim());
+    assert.deepEqual(shown, Array.from({ length: 20 }, (_, i) => `stderr| garbled ${i}`));
+  });
+
+  test('T6: release-signed with an EMPTY APPLE_TEAM_ID is COVERAGE LOST, not a silent pass', () => {
+    // `platform: 'darwin'` and a correctly signed bundle: without the stop, this run would reach a pass.
+    const bundle = 'Subscriptions.app';
+    const root = rootWithBundle(bundle);
+    const r = main({ argv: ['--repo-root', root, bundle], env: releaseEnv(''), platform: 'darwin', run: replay(CAPTURED_APP).run });
+    assert.equal(r.code, 2, `${r.stdout}${r.stderr}`);
+    assert.match(r.stderr, /release-signed and APPLE_TEAM_ID is empty — the team cannot be compared/);
+    assert.equal(r.stdout, '');
+  });
+
+  test('T7: a register teamId that disagrees with APPLE_TEAM_ID FAILS — the env is the pin', () => {
+    const bundle = 'Subscriptions.app';
+    const root = rootWithBundle(bundle, { pin: OTHER_TEAM });
+    const r = main({ argv: ['--repo-root', root, bundle], env: releaseEnv(TEAM), platform: 'darwin', run: replay(CAPTURED_APP).run });
+    assert.equal(r.code, 1, `${r.stdout}${r.stderr}`);
+    assert.match(r.stderr, /the register disagrees with APPLE_TEAM_ID; the env is the pin/);
+  });
+
+  test('a signature whose team cannot be read FAILS when APPLE_TEAM_ID is set — it is never skipped', () => {
+    // HAND-WRITTEN SHAPE — not captured output; the captured fixtures are fixtures/apple-run-35741818599/.
+    const noTeam = CAPTURED_APP.replace(`TeamIdentifier=${TEAM}`, 'TeamIdentifier=not set');
+    const bundle = 'Subscriptions.app';
+    const root = rootWithBundle(bundle);
+    const r = main({ argv: ['--repo-root', root, bundle], env: releaseEnv(TEAM), platform: 'darwin', run: replay(noTeam).run });
+    assert.equal(r.code, 1, `${r.stdout}${r.stderr}`);
+    assert.match(r.stderr, /carries no readable TeamIdentifier/);
   });
 });
