@@ -2082,6 +2082,40 @@
         "job": "dry-run",
         "runbook": "Private/runbooks/store-submission-android.md"
       },
+      "versionCodeHighWater": {
+        "_why": [
+          "⏱ 2026-09-23 — PLAY NEVER ACCEPTS A versionCode AT OR BELOW ONE IT HAS CONSUMED, AND THE ONLY FIX IS",
+          "A PERMANENT JUMP. `consumed` is read back from the last green submit-play run's upload log; every",
+          "workflow that builds a Play-reachable bundle names its run_number floor here, so assert-app-versioning",
+          "can prove the next code lies above the mark. Refresh `consumed` after every upload (the readback",
+          "step prints the value). Refresh a floor whenever it falls below the mark.",
+          "",
+          "A floor is the latest COMPLETED run_number of that file, so every later run is at least floor + 1:",
+          "the guard therefore requires floor >= every consumed value, and --play-floor requires the live",
+          "run_number > it. The truth about what Play consumed is the COMMITTED line plus the readback, never",
+          "the run number: run 35787897094 was run_number 5 and uploaded versionCode 1."
+        ],
+        "consumed": {
+          "subscriptiontracker": {
+            "value": 1,
+            "asOf": "2026-09-22T21:59:37Z",
+            "verify": "gh run view 35787897094 --log: upload step 'edit … COMMITTED — versionCode N is on the internal track'",
+            "run": 35787897094
+          }
+        },
+        "runNumberFloors": {
+          ".github/workflows/submit-play.yml": {
+            "value": 5,
+            "asOf": "2026-09-22T21:38:59Z",
+            "verify": "gh run list --workflow submit-play.yml -L 1 --json number"
+          },
+          ".github/workflows/build-platforms.yml": {
+            "value": 106,
+            "asOf": "2026-09-23T10:59:45Z",
+            "verify": "gh run list --workflow build-platforms.yml -L 1 --json number"
+          }
+        }
+      },
       "deferral": {
         "reason": "39-CHASSIS §4 cut 5 — native store work is deferred until an app proves it converts strangers.",
         "alsoBlockedBy": "RESOLVED 2026-08-04 — the D-U-N-S issued free, the Organization account is verified, and the 12-tester window turned out never to have applied. ⚠️ THIS FIELD DESCRIBED BOTH BLOCKERS AS LIVE AND NEITHER WAS. The Individual-vs-Organization trade it framed is moot: Organization was obtained at no extra cost, and the 12-tester / 14-day closed test is scoped BY GOOGLE to personal accounts (see notes below), so it would not have been the price of Individual either. What remains deferred is the SUBMISSION work per `reason` above — not the account, and not a tester calendar."
