@@ -28,8 +28,11 @@
 // never be the reason it says nothing.
 //
 // ── WHAT IS CHECKED, PER KIND (the register's `expect`, and nothing more) ────
-//   spf    exactly one `v=spf1` TXT (RFC 7208 §4.5); its `include` targets
-//          exactly the declared set; the `all` term exactly the declared one.
+//   spf    exactly one `v=spf1` TXT (RFC 7208 §4.5); its WHOLE term set exactly
+//          the declared one: each declared `include`, unqualified or `+`, and the
+//          declared `all`, last, each once. Every term is parsed into qualifier
+//          (absent = `+`, §4.6.2), mechanism and value; a qualified include, any
+//          other mechanism or modifier, a repeat or a missing include is RED, named.
 //   dkim   one TXT at the selector, its character-strings joined with NOTHING
 //          between (RFC 6376 §3.6.2.2); `v`, if present, is DKIM1; `k` (default
 //          `rsa`, §3.6.1) is the declared one; `p` present, non-empty, base64.
@@ -37,7 +40,8 @@
 //          make a routine rotation a red on every pull request. Its LENGTH in
 //          characters is printed; the key itself never is.
 //   dmarc  exactly one record starting `v=DMARC1` (RFC 7489 §6.6.3); `p` and, if
-//          declared, `rua` equal to the register's.
+//          declared, `rua` equal to the register's. Limb F of
+//          assert-mail-transport-claims.mjs requires the dmarc row to declare `rua`.
 //   mx     exactly one MX, naming the declared exchange at the declared preference.
 //
 // A declared `rail` must be one of the register's `rails[].id`.
@@ -221,24 +225,62 @@ export function tagList(text) {
   return tags;
 }
 
+/** PURE. One SPF term (RFC 7208 §4.6.1), lower-cased: a modifier `name=value`
+ *  (§6), or a mechanism with its qualifier, where an absent qualifier is `+`
+ *  (§4.6.2). `key` is the term with its qualifier made explicit, so `include:x`
+ *  and `+include:x` are one term and a second copy of it is a repeat. */
+function spfTerm(text) {
+  const raw = String(text).toLowerCase();
+  const mod = raw.match(/^([a-z][a-z0-9_.-]*)=(.*)$/);
+  if (mod) return { raw, key: raw, modifier: true, qualifier: '', mechanism: mod[1], value: mod[2] };
+  const m = raw.match(/^([+?~-]?)([a-z][a-z0-9]*)(.*)$/);
+  const qualifier = m?.[1] || '+';
+  const mechanism = m?.[2] ?? '';
+  const rest = m?.[3] ?? raw;
+  return { raw, key: `${qualifier}${raw.replace(/^[+?~-]/, '')}`, modifier: false, qualifier, mechanism, value: rest.replace(/^:/, '') };
+}
+
+/** The WHOLE term set is the declaration, order aside except that `all` comes
+ *  last: the declared includes, each unqualified or `+`, and the declared `all`,
+ *  each once. Every other term is RED and named — a qualified include, any other
+ *  mechanism (ip4 ip6 a mx exists ptr) or modifier (redirect= exp= or unknown),
+ *  a repeat, a missing include, a changed `all`. An added term authorises one
+ *  more sender, or sends the check somewhere else, which is a change as much as a
+ *  removed one. */
 function judgeSpf(record, values) {
   const spf = values.filter((v) => /^v=spf1(\s|$)/i.test(v.trim()));
   if (spf.length === 0) return red(`no \`v=spf1\` record among ${values.length} TXT record(s)`);
   if (spf.length > 1) return red(`${spf.length} \`v=spf1\` records — RFC 7208 §4.5 makes that a permerror, which a receiver reads as no SPF at all`);
-  const terms = spf[0].trim().toLowerCase().split(/\s+/).slice(1);
-  const missing = record.expect.include.filter((d) => !terms.includes(`include:${d.toLowerCase()}`));
-  if (missing.length > 0) return red(`\`${spf[0].trim()}\` does not include ${missing.join(', ')}`);
-  // The include SET is the declaration, order aside: an added include authorises
-  // one more sender, which is a change as much as a removed one.
+  const text = spf[0].trim();
+  const terms = text.split(/\s+/).slice(1).map(spfTerm);
   const declared = record.expect.include.map((d) => d.toLowerCase());
-  const added = terms.filter((t) => t.startsWith('include:') && !declared.includes(t.slice('include:'.length)));
-  if (added.length > 0) return red(`\`${spf[0].trim()}\` also has ${added.join(', ')}, which the register does not declare`);
-  const norm = (t) => t.replace(/^\+/, '');
-  const all = terms.find((t) => /^[~?+-]?all$/.test(t));
-  if (all === undefined || norm(all) !== norm(record.expect.all.toLowerCase())) {
-    return red(`\`${spf[0].trim()}\` ends in ${all ?? 'no `all` term'}, where the register declares ${record.expect.all}`);
+  const wantAll = spfTerm(record.expect.all);
+  const allAt = terms.findIndex((t) => !t.modifier && t.mechanism === 'all');
+  const present = new Set();
+  const seen = new Set();
+  const found = [];
+  terms.forEach((t, i) => {
+    if (seen.has(t.key)) return void found.push(`repeats the term \`${t.raw}\``);
+    seen.add(t.key);
+    if (!t.modifier && t.mechanism === 'include' && t.qualifier !== '+') {
+      found.push(`has an include with qualifier \`${t.qualifier}\`: \`${t.raw}\``);
+    } else if (!t.modifier && t.mechanism === 'include' && declared.includes(t.value)) {
+      present.add(t.value);
+    } else if (i !== allAt) {
+      found.push(`has an undeclared term \`${t.raw}\``);
+    }
+  });
+  const missing = declared.filter((d) => !present.has(d));
+  if (missing.length > 0) found.unshift(`does not include ${missing.join(', ')}`);
+  if (allAt < 0) {
+    found.push(`ends in no \`all\` term, where the register declares ${record.expect.all}`);
+  } else {
+    const all = terms[allAt];
+    if (all.qualifier !== wantAll.qualifier) found.push(`ends in ${all.raw}, where the register declares ${record.expect.all}`);
+    if (allAt !== terms.length - 1) found.push(`has terms after \`${all.raw}\`, which RFC 7208 §5.1 never evaluates`);
   }
-  return ok(`\`${spf[0].trim()}\``);
+  if (found.length > 0) return red(`\`${text}\` ${found.join('; ')}`);
+  return ok(`\`${text}\``);
 }
 
 function judgeDkim(record, values) {

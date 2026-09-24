@@ -473,11 +473,14 @@ if (!checkerRel) {
 // ── LIMB F · the mail-auth DNS declaration is whole, and its checker reads it ─
 // `authRecords` declares the SPF, DKIM, DMARC and bounce-MX records of each rail,
 // and tooling/ops/check-mail-auth-dns.mjs reads them against live DNS in
-// ops-watch (row O-MAIL-AUTH-DNS-UNGUARDED). This is the offline half: every
-// record belongs to a declared rail and sits at or under its domain, every rail
-// carries at least one DKIM and one SPF record, there is exactly one DMARC
-// record, and the checker still READS the block — proven the way limb C proves
-// it, by running the checker's `--plan` with the register and without it.
+// ops-watch (row O-MAIL-AUTH-DNS-UNGUARDED). This is the offline half, and the
+// FLOOR the register cannot shrink below while staying green: every record
+// belongs to a declared rail and sits at or under its domain; every rail carries
+// at least one DKIM and one SPF record; there is exactly one DMARC record, and it
+// declares `rua` as well as `p`; every rail in BOUNCE_MX_RAILS is declared and
+// carries an `mx` record; and the checker still READS the block — proven the way
+// limb C proves it, by running the checker's `--plan` with the register and
+// without it.
 // `--plan` validates the block and makes no request, so a malformed record also
 // fails here, offline, before ops-watch ever asks a resolver.
 //
@@ -511,12 +514,42 @@ for (const rail of rails) {
     }
   }
 }
+// The bounce MX is where the provider delivers bounces and complaints for a send
+// subdomain. No field of `rails` says which rail receives them: `role` and
+// `sendsAutomatedMail` say who SENDS, and the `mx` row's own `why` is prose. So
+// the rails that carry one today are named here, by id, and a rail named here
+// that `rails` stops declaring is a finding, so a rename cannot take the floor
+// with it. Follow-up: a `rails[].receivesBounces` field would let this read the
+// register instead.
+const BOUNCE_MX_RAILS = ['resend'];
+for (const id of BOUNCE_MX_RAILS) {
+  const rail = railById.get(id);
+  if (!rail) {
+    problems.push(
+      `${REGISTER_REL}: the bounce-MX floor names the rail \`${id}\`, which \`rails\` does not declare. ` +
+        'Rename it in BOUNCE_MX_RAILS with the rail, in tooling/ci/assert-mail-transport-claims.mjs.',
+    );
+  } else if (!authRows.some((r) => r?.rail === id && r?.kind === 'mx')) {
+    problems.push(
+      `${REGISTER_REL}: the \`${id}\` rail (${rail.domain}) declares no \`mx\` auth record. Its bounces and complaints ` +
+        'are delivered to that MX, and with no record declared nothing would notice it going.',
+    );
+  }
+}
 const dmarcRows = authRows.filter((r) => r?.kind === 'dmarc');
 if (dmarcRows.length !== 1) {
   problems.push(
     `${REGISTER_REL}: ${dmarcRows.length} \`dmarc\` auth record(s), expected exactly 1 — the organisational domain ` +
       'publishes one policy, and a subdomain with none of its own falls back to it (RFC 7489 §6.6.3).',
   );
+}
+for (const r of dmarcRows) {
+  if (typeof r?.expect?.rua !== 'string' || r.expect.rua === '') {
+    problems.push(
+      `${REGISTER_REL}: the \`dmarc\` auth record \`${r?.id}\` declares no \`expect.rua\`. The live checker compares \`rua\` ` +
+        'only when it is declared, so a report address that changed or went would go unseen.',
+    );
+  }
 }
 const authCheckerRel = authBlock.checker;
 if (typeof authCheckerRel !== 'string' || authCheckerRel === '') {

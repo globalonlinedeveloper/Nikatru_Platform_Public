@@ -11,7 +11,7 @@
     "free ~20). The per-configuration knob is `wrangler hyperdrive create|update --origin-connection-limit <n>`, 'the",
     "(soft) maximum number of connections that Hyperdrive may establish to the origin database'. Nothing sets it by",
     "default, so an unset configuration may take up to the plan ceiling, and against the budget below that is more",
-    "connections than Box A has free.",
+    "connections than the auth box has free.",
     "",
     "⏱ 2026-09-14 — NO CONFIGURATION EXISTS YET. `git grep -nliE \"hyperdrive|max_connections\"` over the whole tree",
     "returned zero files before this file and its guard landed, so `configs` is empty on purpose, and the guard passes",
@@ -25,16 +25,22 @@
     "how many they held at the moment of reading. A sample lets the caps below grow into slots Supabase's own pools may",
     "still take. The old `verify` counted every pg_stat_activity row, background processes that hold no slot included;",
     "the new one counts client backends. Raising `budget` further is another Postgres restart in the owner's window,",
-    "with the tracked copy of the override in Private runbooks/config/ edited to match."
+    "with the tracked copy of the override in Private runbooks/config/ edited to match.",
+    "",
+    "⏱ 2026-09-24 — THE AUTH BOX MOVED TO BOX C (Hostinger VPS 2005630), and the origin is now that box. Re-read on Box C",
+    "at 2026-09-24T11:26:56Z: max_connections 200 and superuser_reserved_connections 3, both unchanged. `inUse` stays",
+    "110, the CEILING recorded above on 2026-09-22 (the pools that set it moved with the stack); it was NOT re-read on",
+    "Box C. The 25 read there is a pg_stat_activity SAMPLE, the measure the 2026-09-22 note retired, so it does not",
+    "replace the ceiling and `budget` stays 87. Re-read the pool ceilings on Box C before the first configuration is sized."
   ],
   "origin": {
-    "host": "Box A Postgres (self-hosted Supabase)",
+    "host": "the auth box's Postgres (self-hosted Supabase; Box C since 2026-09-24, Box A before)",
     "maxConnections": 200,
     "reserved": 3,
     "inUse": 110,
     "budget": 87,
-    "asOf": "measured 2026-09-22 03:26Z on Box A after the max_connections change; inUse is the CEILING the Supabase services may open (18 held at measurement), not a sample",
-    "verify": "on Box A: SELECT setting, source FROM pg_settings WHERE name IN ('max_connections','superuser_reserved_connections'); SELECT count(*) FROM pg_stat_activity WHERE backend_type='client backend';"
+    "asOf": "max_connections and reserved re-read 2026-09-24T11:26:56Z on Box C (200, 3); inUse is the CEILING measured 2026-09-22 03:26Z on Box A (18 held then), carried, not re-read on Box C",
+    "verify": "on the auth box (Box C): SELECT setting, source FROM pg_settings WHERE name IN ('max_connections','superuser_reserved_connections'); SELECT count(*) FROM pg_stat_activity WHERE backend_type='client backend';"
   },
   "configs": []
 }

@@ -218,8 +218,17 @@ collects:
 # drift. Self-hosted SERVICES are deliberately absent: GlitchTip and the auth
 # stack are software this company operates, not a party the data is disclosed
 # to. The VENDOR of each machine they run on is present, as `infrastructure`,
-# and the rule is one rule for every such machine: `oracle-cloud` for the
-# identity stack (Box A), `hostinger` for the crash sink (Box B).
+# and the rule is one rule for every such machine: `hostinger` for the
+# identity stack (Box C) and the crash sink (Box B), and `oracle-cloud` for
+# the encrypted third backup copy.
+#
+# ⏱ 2026-09-24 — the identity stack moved from Box A (Oracle) to Box C
+# (Hostinger), and Box A was wiped of the platform. `oracle-cloud` STAYS: it
+# runs none of the services now, but its Object Storage still holds the
+# encrypted third backup copy (duty.restic-third-copy in
+# tooling/ops/register.json), and dropping a party that still holds data
+# would under-disclose. Until this date the line above read "`oracle-cloud`
+# for the identity stack (Box A), `hostinger` for the crash sink (Box B)".
 #
 # ⏱ 2026-09-11 — owner decision "Name Hostinger". Until then this list named
 # oracle-cloud and omitted hostinger, the LIVE crash sink, while the portfolio
@@ -236,15 +245,15 @@ processors:
 
   - id: oracle-cloud
     role: infrastructure
-    purpose: Hosts the identity stack that issues and verifies the session.
+    purpose: Stores an encrypted copy of the backups; it runs none of the services.
     source: tooling/legal/provider-register.json
-    asOf: "2026-09-05"
+    asOf: "2026-09-24"
 
   - id: hostinger
     role: infrastructure
-    purpose: Hosts the machine the self-hosted crash-report service runs on.
+    purpose: Hosts the machines the self-hosted identity stack and crash-report service run on.
     source: tooling/legal/provider-register.json
-    asOf: "2026-09-11"
+    asOf: "2026-09-24"
 
   - id: paddle
     role: merchant_of_record

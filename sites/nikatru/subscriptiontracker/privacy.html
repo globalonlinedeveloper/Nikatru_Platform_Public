@@ -197,8 +197,8 @@
 <table>
 <tr><th>Who</th><th>Role</th><th>What they do with it</th></tr>
 <tr><td>cloudflare</td><td>infrastructure</td><td>Serves the web app, runs the Workers and holds the D1 rows.</td></tr>
-<tr><td>oracle-cloud</td><td>infrastructure</td><td>Hosts the identity stack that issues and verifies the session.</td></tr>
-<tr><td>hostinger</td><td>infrastructure</td><td>Hosts the machine the self-hosted crash-report service runs on.</td></tr>
+<tr><td>oracle-cloud</td><td>infrastructure</td><td>Stores an encrypted copy of the backups; it runs none of the services.</td></tr>
+<tr><td>hostinger</td><td>infrastructure</td><td>Hosts the machines the self-hosted identity stack and crash-report service run on.</td></tr>
 <tr><td>paddle</td><td>merchant of record</td><td>Takes the payment and is the seller of record for the web channel.</td></tr>
 <tr><td>resend</td><td>email delivery</td><td>Delivers the transactional email an account needs to exist.</td></tr>
 </table>

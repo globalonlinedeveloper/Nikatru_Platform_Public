@@ -245,10 +245,14 @@
       "landing since 2026-09-02, and is the arithmetic that corrects Private/runbooks/boxes/oracle.md's cron",
       "table from a UTC heading to an IST one.",
       "",
-      "This key is reached by the five `duty.supabase-*` rows and by nothing else. It resolves to `oci` today;",
-      "the whole point of the map is that a move is this one right-hand side and nothing else."
+      "This key is reached by the five `duty.supabase-*` rows and by nothing else. It resolved to `oci` (Box A,",
+      "Oracle) until 2026-09-24 and to `hostinger` (Box C, Hostinger VPS 2005630) since the move that day: one",
+      "right-hand side, as designed. ⚠️ Box C and the watcher's box (Box B) are DIFFERENT MACHINES at the SAME",
+      "PROVIDER, so [14]O-4 now prints 'shares the duty's host' for all five rows. That is TRUE at account level",
+      "(one Hostinger account loss silences the duty and its watcher together) and FALSE at machine level. It is",
+      "recorded, not hidden, and was accepted on 2026-09-24 rather than masked: each of the five rows' `absenceWatcher.gap` says so."
     ],
-    "supabase-box-cron": "oci",
+    "supabase-box-cron": "hostinger",
     "windows-task-scheduler": "laptop",
     "claude-scheduled-task": "laptop",
     "laptop": "laptop",
@@ -733,7 +737,6 @@
       "recovery.git-bundle-restore",
       "recovery.vault-only-rebuild",
       "recovery.glitchtip-postgres",
-      "recovery.oci-boot-volume",
       "recovery.worker-d1-export",
       "recovery.fresh-host",
       "recovery.app-retirement",
@@ -965,6 +968,35 @@
         "retiredWhy": "THE CERTIFICATE NO LONGER EXISTS. The owner answered O-ORIGIN-CA-KEEP-OR-REVOKE \"revoke, after you check\" on 2026-09-18, and it was revoked that day. It had protected no live hostname since GlitchTip moved to Box B on 2026-09-02 (Box B nginx binds 127.0.0.1:8080 with no TLS; every proxied record targets a tunnel, a Pages project or a Worker). A row tracking the expiry of a revoked certificate asks the register to watch a date that can no longer matter.",
         "evidence": "Read-only scans first, issuer read with openssl on every .pem/.crt/.cer outside the system CA store: Box A (Oracle, ubuntu-ampere) 2,624 files, 2,311 issuers readable, 0 \"CloudFlare Origin\" (control: ISRG Root X1 read correctly; /etc/ssl/glitchtip/ absent); Box B (Hostinger) 1,154 files, 1,056 readable, 0 hits. Then with the repo CLOUDFLARE_API_TOKEN: GET /client/v4/certificates?zone_id=<nikatru.com ef7d36e6…> -> 1 certificate (id 5550142505…, *.nikatru.com + nikatru.com, expires 2041-07-16); DELETE /client/v4/certificates/<id> -> success:true; READ-BACK GET -> 0 certificates. After: https://nikatru.com/, /subscriptiontracker/, platform and subscriptiontracker-api /v1/health all HTTP 200.",
         "whatTheRetirementCosts": "NOTHING. No script or duty read this row (its mechanism.readBy was \"nothing yet\"), no live hostname presented the certificate, and the zone SSL mode (strict) is satisfied by the edge certificates and the tunnels. If an origin certificate is ever needed again, mint a new one and give it a new row."
+      },
+      {
+        "id": "recovery.oci-boot-volume",
+        "retiredOn": "2026-09-24",
+        "retiredWhy": "2026-09-24: Box A wiped of the platform after the auth box moved to Box C; the VM is kept for non-platform use; nothing of the platform remains on its boot volume. A restore of that volume would bring back a machine that runs nothing of this portfolio, so a 180d drill clock on it would demand work that recovers nothing.",
+        "evidence": "THE WIPE AND ITS READ-BACK WERE MEASURED BY THE PARENT SESSION AND HANDED TO THE LANE THAT WROTE THIS ENTRY; they are inherited here, not re-measured. The owner ran the Box A wipe: its log opens \"== Box A wipe, started 2026-09-24T13:24:39Z\" and closes \"== finished 2026-09-24T13:25:18Z\" (13:24:39 to 13:25:18 UTC, 39 seconds), with \"remote wipe exit 0\", and after it \"auth-api /auth/v1/health -> 401 (still served by Box C)\". Read-back: docker, cloudflared, rclone, wg and beszel-agent are gone; /opt/supabase, /etc/cloudflared, /etc/wireguard and /var/lib/docker are gone; ufw keeps only OpenSSH plus 2 Fail2Ban rejects; the listening ports are only 22 and 53 (local). Re-checked independently over SSH at 13:26Z: all 5 binaries gone, no root crontab, and the VM still up because it is KEPT for reuse. Box C still served auth-api (/auth/v1/health 401) after the wipe.",
+        "whatTheRetirementCosts": "NOTHING OF THE PLATFORM, AND THE ROW ITSELF SAYS WHY. Its `lastDrill` was null (never drilled) and its `mechanism.readBy` was \"nothing yet\", so no script or duty read it. Every platform recovery path now runs off Box A: recovery.supabase-auth-postgres on Box C, recovery.glitchtip-postgres on Box B. What Oracle still holds is the encrypted third backup copy in Object Storage, which is duty.restic-third-copy and is not this boot volume. The owner-console work its `ownerGap` named (a custom backup policy, restore-by-replacement) now protects nothing of the platform.",
+        "row": {
+          "id": "recovery.oci-boot-volume",
+          "kind": "recovery-path",
+          "what": "Restore the Oracle box's boot volume.",
+          "detector": "This row's cadence against lastDrill.",
+          "response": "Private/runbooks/operations.md §0.",
+          "cadence": "180d",
+          "lastDrill": null,
+          "mechanism": {
+            "substrate": "oci",
+            "anchor": "Private/runbooks/operations.md",
+            "record": "the OCI console's backup list",
+            "failingValue": "no backup policy, or no dated restore drill",
+            "readBy": "nothing yet"
+          },
+          "accessProviders": [
+            "oci"
+          ],
+          "ownerGated": true,
+          "ownerGap": "⚠️ RESTORE-BY-REPLACEMENT IS THE ONLY CORRECT PROCEDURE HERE — the wrong one silently downgrades the grandfathered instance shape and is irreversible. Also: the free backup cap is 5 TOTAL and the stock Bronze/Silver/Gold policies all overflow it, so a custom policy is required. Owner action in the OCI console.",
+          "source": "verified"
+        }
       }
     ]
   },
@@ -2319,12 +2351,12 @@
         "gap": "🔴 THE WATCHER IS ON THE MACHINE IT WATCHES. backup-liveness.py, the GlitchTip instance holding monitor 16, the alert evaluation and the Resend hop are all on this one box — BOX B (Hostinger) since 2026-09-02; this said 'Oracle box' until it was corrected on 2026-09-03, and the argument is unchanged by WHICH box it is, but the name was wrong — including monitor id 1, which watches GlitchTip itself. If the box is down, the check that would notice is down and the mail that would say so is down with it. Proving the chain delivers WHILE THE BOX IS UP says nothing about the case that matters most. [pipeline E-9b], owner-gated and recorded as undecided in tooling/monitor-register.json -> observability.spof; do NOT read a green verify-alarm-chains.mjs run as an answer to it. The third path — a non-zero exit so cron mails root — does not depend on GlitchTip but still depends on the box."
       },
       "accessProviders": [
-        "oci"
+        "hostinger"
       ],
       "ownerGated": true,
       "ownerGap": "The schedule and the script are on a host this repository cannot reach; only the owner (or an SSH session) can change them. Enumerated here so the duty is countable at all.",
       "source": "verified",
-      "verifiedHow": "2026-08-05 — a healthy run was measured, not assumed (gt-2026-08-05.sql.gz, 1.2h old, 3,379,805 bytes, present on Drive, heartbeat posted), and then two failures were forced and both produced delivered mail."
+      "verifiedHow": "2026-08-05 — a healthy run was measured, not assumed (gt-2026-08-05.sql.gz, 1.2h old, 3,379,805 bytes, present on Drive, heartbeat posted), and then two failures were forced and both produced delivered mail. ⏱ 2026-09-24 — accessProviders corrected: `oci` was stale since the 2026-09-02 move of GlitchTip to Box B; the duty runs on Box B (Hostinger)."
     },
     {
       "id": "duty.oci.gt-drive-sync",
@@ -2351,13 +2383,13 @@
         "gap": "Same single point of failure as duty.oci.glitchtip-pg-dump: the checker, the monitor, the alert rule and the mail hop are all on the box being watched. [pipeline E-9b]. ⚠️ Recorded here as its own row rather than folded into the dump's because the two duties fail independently and for different reasons — a dump can be perfect and unsynced, which is the state the .done stamp exists to make visible."
       },
       "accessProviders": [
-        "oci",
+        "hostinger",
         "google"
       ],
       "ownerGated": true,
       "ownerGap": "On-box schedule and script; unreachable from CI. ⚠️ DR-CRITICAL and unchanged by this row: the rclone crypt password and salt live only in the on-box rclone.conf, so the Drive copies are unrecoverable without the vaulted copy.",
       "source": "verified",
-      "verifiedHow": "2026-08-05 — the dump was confirmed PRESENT on Drive by the checker's own Drive assertion during a healthy run, not by reading the script."
+      "verifiedHow": "2026-08-05 — the dump was confirmed PRESENT on Drive by the checker's own Drive assertion during a healthy run, not by reading the script. ⏱ 2026-09-24 — accessProviders corrected: `oci` was stale since the 2026-09-02 move of GlitchTip to Box B; the duty runs on Box B (Hostinger)."
     },
     {
       "id": "duty.oci.backup-liveness",
@@ -2385,12 +2417,12 @@
         "gap": "🔴 THE MOST CIRCULAR ROW IN THE REGISTER, and it is worth stating plainly rather than leaving as an inference: this duty IS the box's watcher, and the only thing watching ITS absence is a monitor hosted on the same box, evaluated by a process on the same box, mailing through a hop on the same box. Everything from the failure to the notification shares one machine. [pipeline E-9b], owner-gated and undecided. The closing move is the same one duty.workflow.ops-watch.yml needs — an absence signal on a second provider — which is the shape of O-4 repeating one level down."
       },
       "accessProviders": [
-        "oci"
+        "hostinger"
       ],
       "ownerGated": true,
       "ownerGap": "On-box schedule; unreachable from CI.",
       "source": "verified",
-      "verifiedHow": "2026-08-05 — proven, not installed: a healthy run posted the heartbeat, and two forced failures each produced a delivered event instead of a post."
+      "verifiedHow": "2026-08-05 — proven, not installed: a healthy run posted the heartbeat, and two forced failures each produced a delivered event instead of a post. ⏱ 2026-09-24 — accessProviders corrected: `oci` was stale since the 2026-09-02 move of GlitchTip to Box B; the duty runs on Box B (Hostinger)."
     },
     {
       "id": "duty.oci.disk-alert",
@@ -2417,12 +2449,12 @@
         "gap": "🔴 AND THE FAILURE MODE IS DEMONSTRATED, NOT THEORETICAL. Until 2026-08-05 the `ops` project 'had received nothing, ever', and that silence was read as 'nothing to report'. It was not: Cloudflare's bot-signature check was returning HTTP 403 / error 1010 to Python's stock `Python-urllib/3.12` User-Agent at the edge, so every server-side send was dropped BEFORE reaching GlitchTip — a plain 403 from the sender's side and pure silence from the sink's. An empty project is indistinguishable from a healthy one, which is this entire criterion in one sentence. The client half is fixed with an explicit UA; the durable fix (Bot Fight Mode OFF) is a P1 owner item. Giving this script a heartbeat as well as its events would close the absence half, and that is on-box work this repository cannot do."
       },
       "accessProviders": [
-        "oci"
+        "hostinger"
       ],
       "ownerGated": true,
       "ownerGap": "On-box schedule; unreachable from CI. The absence half needs a heartbeat this script does not post.",
       "source": "verified",
-      "verifiedHow": "2026-08-05 — proven end to end rather than installed: a threshold breach was forced, the event landed as OPS-1, and the mail was delivered to support@nikatru.com 42s later. That is a DIFFERENT code path from the uptime alerts proven the same day, which is exactly why it was tested rather than assumed. OPS-1 was synthetic and has been resolved."
+      "verifiedHow": "2026-08-05 — proven end to end rather than installed: a threshold breach was forced, the event landed as OPS-1, and the mail was delivered to support@nikatru.com 42s later. That is a DIFFERENT code path from the uptime alerts proven the same day, which is exactly why it was tested rather than assumed. OPS-1 was synthetic and has been resolved. ⏱ 2026-09-24 — accessProviders corrected: `oci` was stale since the 2026-09-02 move of GlitchTip to Box B; the duty runs on Box B (Hostinger)."
     },
     {
       "id": "duty.cloudflare-backup-pull",
@@ -2609,16 +2641,15 @@
         "signal": "No heartbeat inside the monitor's 32400s interval -> Down transition -> the `ops` uptime alert rule -> email to support@nikatru.com and a push to the nikatru-page ntfy topic.",
         "margin": "32400s against a 6h cadence is exactly the 1.5x this register asks for: one late or missed slot is absorbed, two are not. Unlike monitor 22 the ceiling is not in the way here — GlitchTip refuses an interval above 86400s and 6h x 1.5 is well under it.",
         "ownerGated": true,
-        "gap": "⬜ THE DOWN TRANSITION HAS NEVER BEEN FORCED FOR THIS MONITOR, so no `downTransitionDrill` field is carried — the guard PRINTS that field for any row that has one, and a line asserting an observation nobody made is this register answering confidently about a chain it has not seen work, which is the defect monitor 6 embodied for nine days. What HAS been observed is the negative arm of the thing that feeds the beat (see `verifiedHow`) — a failed job produces silence, and the silence is real. What nobody has watched is GlitchTip turning that silence into a delivered message for THIS monitor. Monitor 6's transition WAS forced, in this same project and through this same alert rule (id 2), which is the nearest evidence there is and is not the same claim. 🔴 AND ONE THING IS BETTER HERE THAN ANYWHERE ELSE IN THIS FILE AND MUST NOT BE READ AS THE USUAL GAP: the watcher is NOT on the machine it watches. Box A dying leaves the monitor, the alert evaluation and both notification hops alive on the other box. The residual [pipeline E-9b] is the mirror image — nothing off-host watches the SERVICES box — and it is carried by the rows that live there."
+        "gap": "⬜ THE DOWN TRANSITION HAS NEVER BEEN FORCED FOR THIS MONITOR, so no `downTransitionDrill` field is carried — the guard PRINTS that field for any row that has one, and a line asserting an observation nobody made is this register answering confidently about a chain it has not seen work, which is the defect monitor 6 embodied for nine days. What HAS been observed is the negative arm of the thing that feeds the beat (see `verifiedHow`) — a failed job produces silence, and the silence is real. What nobody has watched is GlitchTip turning that silence into a delivered message for THIS monitor. Monitor 6's transition WAS forced, in this same project and through this same alert rule (id 2), which is the nearest evidence there is and is not the same claim. 🔴 AND ONE THING IS BETTER HERE THAN ANYWHERE ELSE IN THIS FILE AND MUST NOT BE READ AS THE USUAL GAP: the watcher is NOT on the machine it watches. The auth box (Box C since 2026-09-24; Box A before) dying leaves the monitor, the alert evaluation and both notification hops alive on Box B. ⚠️ Since 2026-09-24 both boxes are Hostinger: a Hostinger ACCOUNT loss (suspension, billing, a compromised panel) takes the duty and its watcher together, which O-4 now prints. The residual [pipeline E-9b] is the mirror image — nothing off-host watches the SERVICES box — and it is carried by the rows that live there."
       },
       "accessProviders": [
-        "oci",
         "hostinger"
       ],
       "ownerGated": true,
       "ownerGap": "The schedule, the wrapper and the five scripts are on a host CI cannot reach; only the owner or an SSH session can change them. Two named items are open so they are countable rather than remembered: (1) the down transition has never been forced for this monitor — see `absenceWatcher.gap`; (2) hb-run.sh is not in any backup set. sb_drive_sync.sh copies /opt/supabase through an INCLUDE allowlist that names docker-compose.override.yml, backup.sh and sb_drive_sync.sh and nothing else, so a rebuild restores the jobs without the wrapper and every one of these five duties comes back silent. The wrapper is reproduced verbatim in Private/runbooks/backup-restore.md against exactly that day.",
       "source": "verified",
-      "verifiedHow": "2026-09-05 — measured, not installed. The first run through the installed wrapper printed `supabase backup ok 2026-09-06-0404`, exited 0, and monitor 24 recorded `isUp: true` at 22:34:29.332Z — its first check ever, and an ok rather than the bootstrap miss monitor 22 took, because the beat arrived inside the interval the monitor was created in. The wrapper carries a recorded FAILING case, run on the box on 2026-09-05 against a throwaway monitor (created and deleted, id 28, burnt): a job exiting 1, a job exiting 42, an absent endpoint file and a malformed duty name each produced the job's own code / 91 / 90 and NO check at all, while `/bin/true` produced exit 0 and an `isUp: true` check. Two arms, one monitor, two checks — 22:32:50.475Z and 22:33:12.214Z — and four failures that wrote nothing. A beat that could not fail would be worse than none. ✅ AND THE CRON SLOT HAS NOW FIRED, 2026-09-06: monitor 24 recorded a second `isUp: true` at 2026-09-06T00:45:02.905Z, unattended, which is `15 0,6,12,18` read in IST (06:15 IST = 00:45Z). The sentence this row inherited said the first cron-fired slot was still ahead of it; it is behind it, and a beat is a record where a slot was only a prediction."
+      "verifiedHow": "2026-09-05 — measured, not installed. The first run through the installed wrapper printed `supabase backup ok 2026-09-06-0404`, exited 0, and monitor 24 recorded `isUp: true` at 22:34:29.332Z — its first check ever, and an ok rather than the bootstrap miss monitor 22 took, because the beat arrived inside the interval the monitor was created in. The wrapper carries a recorded FAILING case, run on the box on 2026-09-05 against a throwaway monitor (created and deleted, id 28, burnt): a job exiting 1, a job exiting 42, an absent endpoint file and a malformed duty name each produced the job's own code / 91 / 90 and NO check at all, while `/bin/true` produced exit 0 and an `isUp: true` check. Two arms, one monitor, two checks — 22:32:50.475Z and 22:33:12.214Z — and four failures that wrote nothing. A beat that could not fail would be worse than none. ✅ AND THE CRON SLOT HAS NOW FIRED, 2026-09-06: monitor 24 recorded a second `isUp: true` at 2026-09-06T00:45:02.905Z, unattended, which is `15 0,6,12,18` read in IST (06:15 IST = 00:45Z). The sentence this row inherited said the first cron-fired slot was still ahead of it; it is behind it, and a beat is a record where a slot was only a prediction. ⏱ 2026-09-24 — moved to Box C (Hostinger VPS 2005630) with the crontab byte-identical (sha12 96171557adcd); hand-run under cron's environment it exited 0, and monitor 24 beat from Box C 2026-09-24 11:15–11:20Z. Box C's first unattended dump followed at 2026-09-24 12:45Z (329848 B)."
     },
     {
       "id": "duty.supabase-drive-sync",
@@ -2647,17 +2678,16 @@
         "signal": "No heartbeat inside the monitor's 32400s interval -> Down transition -> the `ops` uptime alert rule -> email to support@nikatru.com and a push to the nikatru-page ntfy topic.",
         "margin": "32400s against a 6h cadence — 1.5x, so one missed slot is absorbed and two are not.",
         "ownerGated": true,
-        "gap": "⬜ THE DOWN TRANSITION HAS NEVER BEEN FORCED FOR THIS MONITOR, so no `downTransitionDrill` field is carried — the guard PRINTS that field for any row that has one, and a line asserting an observation nobody made is this register answering confidently about a chain it has not seen work, which is the defect monitor 6 embodied for nine days. What HAS been observed is the negative arm of the thing that feeds the beat (see `verifiedHow`) — a failed job produces silence, and the silence is real. What nobody has watched is GlitchTip turning that silence into a delivered message for THIS monitor. Monitor 6's transition WAS forced, in this same project and through this same alert rule (id 2), which is the nearest evidence there is and is not the same claim. 🔴 AND ONE THING IS BETTER HERE THAN ANYWHERE ELSE IN THIS FILE AND MUST NOT BE READ AS THE USUAL GAP: the watcher is NOT on the machine it watches. Box A dying leaves the monitor, the alert evaluation and both notification hops alive on the other box. The residual [pipeline E-9b] is the mirror image — nothing off-host watches the SERVICES box — and it is carried by the rows that live there."
+        "gap": "⬜ THE DOWN TRANSITION HAS NEVER BEEN FORCED FOR THIS MONITOR, so no `downTransitionDrill` field is carried — the guard PRINTS that field for any row that has one, and a line asserting an observation nobody made is this register answering confidently about a chain it has not seen work, which is the defect monitor 6 embodied for nine days. What HAS been observed is the negative arm of the thing that feeds the beat (see `verifiedHow`) — a failed job produces silence, and the silence is real. What nobody has watched is GlitchTip turning that silence into a delivered message for THIS monitor. Monitor 6's transition WAS forced, in this same project and through this same alert rule (id 2), which is the nearest evidence there is and is not the same claim. 🔴 AND ONE THING IS BETTER HERE THAN ANYWHERE ELSE IN THIS FILE AND MUST NOT BE READ AS THE USUAL GAP: the watcher is NOT on the machine it watches. The auth box (Box C since 2026-09-24; Box A before) dying leaves the monitor, the alert evaluation and both notification hops alive on Box B. ⚠️ Since 2026-09-24 both boxes are Hostinger: a Hostinger ACCOUNT loss (suspension, billing, a compromised panel) takes the duty and its watcher together, which O-4 now prints. The residual [pipeline E-9b] is the mirror image — nothing off-host watches the SERVICES box — and it is carried by the rows that live there."
       },
       "accessProviders": [
-        "oci",
         "google",
         "hostinger"
       ],
       "ownerGated": true,
       "ownerGap": "The schedule, the wrapper and the five scripts are on a host CI cannot reach; only the owner or an SSH session can change them. Two named items are open so they are countable rather than remembered: (1) the down transition has never been forced for this monitor — see `absenceWatcher.gap`; (2) hb-run.sh is not in any backup set. sb_drive_sync.sh copies /opt/supabase through an INCLUDE allowlist that names docker-compose.override.yml, backup.sh and sb_drive_sync.sh and nothing else, so a rebuild restores the jobs without the wrapper and every one of these five duties comes back silent. The wrapper is reproduced verbatim in Private/runbooks/backup-restore.md against exactly that day.",
       "source": "verified",
-      "verifiedHow": "2026-09-05 — measured. The first run through the installed wrapper printed `supabase drive sync ok`, exited 0 with rclone reporting `Checks: 1 / 1, 100%`, and monitor 25 recorded `isUp: true` at 22:34:47.404Z. The wrapper carries a recorded FAILING case, run on the box on 2026-09-05 against a throwaway monitor (created and deleted, id 28, burnt): a job exiting 1, a job exiting 42, an absent endpoint file and a malformed duty name each produced the job's own code / 91 / 90 and NO check at all, while `/bin/true` produced exit 0 and an `isUp: true` check. Two arms, one monitor, two checks — 22:32:50.475Z and 22:33:12.214Z — and four failures that wrote nothing. A beat that could not fail would be worse than none. ✅ AND THE CRON SLOT HAS NOW FIRED, 2026-09-06: monitor 25 recorded a second `isUp: true` at 2026-09-06T01:05:13.649Z, unattended — `35 0,6,12,18` in IST (06:35 IST = 01:05Z). The thirteen seconds are the rclone pass itself, which is what the wrapper waits on before it beats."
+      "verifiedHow": "2026-09-05 — measured. The first run through the installed wrapper printed `supabase drive sync ok`, exited 0 with rclone reporting `Checks: 1 / 1, 100%`, and monitor 25 recorded `isUp: true` at 22:34:47.404Z. The wrapper carries a recorded FAILING case, run on the box on 2026-09-05 against a throwaway monitor (created and deleted, id 28, burnt): a job exiting 1, a job exiting 42, an absent endpoint file and a malformed duty name each produced the job's own code / 91 / 90 and NO check at all, while `/bin/true` produced exit 0 and an `isUp: true` check. Two arms, one monitor, two checks — 22:32:50.475Z and 22:33:12.214Z — and four failures that wrote nothing. A beat that could not fail would be worse than none. ✅ AND THE CRON SLOT HAS NOW FIRED, 2026-09-06: monitor 25 recorded a second `isUp: true` at 2026-09-06T01:05:13.649Z, unattended — `35 0,6,12,18` in IST (06:35 IST = 01:05Z). The thirteen seconds are the rclone pass itself, which is what the wrapper waits on before it beats. ⏱ 2026-09-24 — moved to Box C (Hostinger VPS 2005630) with the crontab byte-identical (sha12 96171557adcd); hand-run under cron's environment it exited 0, and monitor 25 beat from Box C 2026-09-24 11:15–11:20Z."
     },
     {
       "id": "duty.supabase-second-copy",
@@ -2686,16 +2716,15 @@
         "signal": "No heartbeat inside the monitor's 32400s interval -> Down transition -> the `ops` uptime alert rule -> email to support@nikatru.com and a push to the nikatru-page ntfy topic.",
         "margin": "32400s against a 6h cadence — 1.5x, so one missed slot is absorbed and two are not.",
         "ownerGated": true,
-        "gap": "⬜ THE DOWN TRANSITION HAS NEVER BEEN FORCED FOR THIS MONITOR, so no `downTransitionDrill` field is carried — the guard PRINTS that field for any row that has one, and a line asserting an observation nobody made is this register answering confidently about a chain it has not seen work, which is the defect monitor 6 embodied for nine days. What HAS been observed is the negative arm of the thing that feeds the beat (see `verifiedHow`) — a failed job produces silence, and the silence is real. What nobody has watched is GlitchTip turning that silence into a delivered message for THIS monitor. Monitor 6's transition WAS forced, in this same project and through this same alert rule (id 2), which is the nearest evidence there is and is not the same claim. 🔴 AND ONE THING IS BETTER HERE THAN ANYWHERE ELSE IN THIS FILE AND MUST NOT BE READ AS THE USUAL GAP: the watcher is NOT on the machine it watches. Box A dying leaves the monitor, the alert evaluation and both notification hops alive on the other box. The residual [pipeline E-9b] is the mirror image — nothing off-host watches the SERVICES box — and it is carried by the rows that live there. ⚠️ AND ONE EXTRA FOR THIS ROW: the destination and the watcher are the SAME BOX. The monitor still survives Box A, so the duty is watched; but the loss of the services box would take this copy and its alarm together, and the Drive copy is what covers that direction."
+        "gap": "⬜ THE DOWN TRANSITION HAS NEVER BEEN FORCED FOR THIS MONITOR, so no `downTransitionDrill` field is carried — the guard PRINTS that field for any row that has one, and a line asserting an observation nobody made is this register answering confidently about a chain it has not seen work, which is the defect monitor 6 embodied for nine days. What HAS been observed is the negative arm of the thing that feeds the beat (see `verifiedHow`) — a failed job produces silence, and the silence is real. What nobody has watched is GlitchTip turning that silence into a delivered message for THIS monitor. Monitor 6's transition WAS forced, in this same project and through this same alert rule (id 2), which is the nearest evidence there is and is not the same claim. 🔴 AND ONE THING IS BETTER HERE THAN ANYWHERE ELSE IN THIS FILE AND MUST NOT BE READ AS THE USUAL GAP: the watcher is NOT on the machine it watches. The auth box (Box C since 2026-09-24; Box A before) dying leaves the monitor, the alert evaluation and both notification hops alive on Box B. ⚠️ Since 2026-09-24 both boxes are Hostinger: a Hostinger ACCOUNT loss (suspension, billing, a compromised panel) takes the duty and its watcher together, which O-4 now prints. The residual [pipeline E-9b] is the mirror image — nothing off-host watches the SERVICES box — and it is carried by the rows that live there. ⚠️ AND ONE EXTRA FOR THIS ROW: the destination and the watcher are the SAME BOX. The monitor still survives the auth box, so the duty is watched; but the loss of the services box would take this copy and its alarm together, and the Drive copy is what covers that direction. Since 2026-09-24 the source is ALSO Hostinger, so this copy is no longer cross-provider: Drive is the only copy off Hostinger."
       },
       "accessProviders": [
-        "oci",
         "hostinger"
       ],
       "ownerGated": true,
       "ownerGap": "The schedule, the wrapper and the five scripts are on a host CI cannot reach; only the owner or an SSH session can change them. Two named items are open so they are countable rather than remembered: (1) the down transition has never been forced for this monitor — see `absenceWatcher.gap`; (2) hb-run.sh is not in any backup set. sb_drive_sync.sh copies /opt/supabase through an INCLUDE allowlist that names docker-compose.override.yml, backup.sh and sb_drive_sync.sh and nothing else, so a rebuild restores the jobs without the wrapper and every one of these five duties comes back silent. The wrapper is reproduced verbatim in Private/runbooks/backup-restore.md against exactly that day.",
       "source": "verified",
-      "verifiedHow": "2026-09-05 — measured, and the read-back arm is the evidence rather than the exit code. The first run through the installed wrapper exited 0 and logged `2026-09-05T22:34:55Z sync OK (sb-* -> boxbenc: over WireGuard; verified sb-postgres-2026-09-06-0404.dump present)`, so the artefact this run produced was named on the far side by that run. Monitor 26 recorded `isUp: true` at 22:34:55.666Z. The wrapper carries a recorded FAILING case, run on the box on 2026-09-05 against a throwaway monitor (created and deleted, id 28, burnt): a job exiting 1, a job exiting 42, an absent endpoint file and a malformed duty name each produced the job's own code / 91 / 90 and NO check at all, while `/bin/true` produced exit 0 and an `isUp: true` check. Two arms, one monitor, two checks — 22:32:50.475Z and 22:33:12.214Z — and four failures that wrote nothing. A beat that could not fail would be worse than none. ✅ AND THE CRON SLOT HAS NOW FIRED, 2026-09-06: monitor 26 recorded a second `isUp: true` at 2026-09-06T01:20:05.132Z, unattended — `50 0,6,12,18` in IST (06:50 IST = 01:20Z). The wrapper beats only on exit 0, so that check carries the read-back arm this row is verified by and not merely the fact that cron ran."
+      "verifiedHow": "2026-09-05 — measured, and the read-back arm is the evidence rather than the exit code. The first run through the installed wrapper exited 0 and logged `2026-09-05T22:34:55Z sync OK (sb-* -> boxbenc: over WireGuard; verified sb-postgres-2026-09-06-0404.dump present)`, so the artefact this run produced was named on the far side by that run. Monitor 26 recorded `isUp: true` at 22:34:55.666Z. The wrapper carries a recorded FAILING case, run on the box on 2026-09-05 against a throwaway monitor (created and deleted, id 28, burnt): a job exiting 1, a job exiting 42, an absent endpoint file and a malformed duty name each produced the job's own code / 91 / 90 and NO check at all, while `/bin/true` produced exit 0 and an `isUp: true` check. Two arms, one monitor, two checks — 22:32:50.475Z and 22:33:12.214Z — and four failures that wrote nothing. A beat that could not fail would be worse than none. ✅ AND THE CRON SLOT HAS NOW FIRED, 2026-09-06: monitor 26 recorded a second `isUp: true` at 2026-09-06T01:20:05.132Z, unattended — `50 0,6,12,18` in IST (06:50 IST = 01:20Z). The wrapper beats only on exit 0, so that check carries the read-back arm this row is verified by and not merely the fact that cron ran. ⏱ 2026-09-24 — moved to Box C (Hostinger VPS 2005630) with the crontab byte-identical (sha12 96171557adcd); hand-run under cron's environment it exited 0, and monitor 26 beat from Box C 2026-09-24 11:15–11:20Z."
     },
     {
       "id": "duty.supabase-backup-liveness",
@@ -2724,17 +2753,16 @@
         "signal": "No heartbeat inside the monitor's 7200s interval -> Down transition -> the `ops` uptime alert rule -> email to support@nikatru.com and a push to the nikatru-page ntfy topic.",
         "margin": "7200s against a 1h cadence is 2x, not 1.5x, and the extra hour is deliberate rather than sloppy: the beat is withheld on a real chain problem as well as on a dead checker, so a single hour of a slow rclone remote read would otherwise page. Two consecutive misses alarm.",
         "ownerGated": true,
-        "gap": "⬜ THE DOWN TRANSITION HAS NEVER BEEN FORCED FOR THIS MONITOR, so no `downTransitionDrill` field is carried — the guard PRINTS that field for any row that has one, and a line asserting an observation nobody made is this register answering confidently about a chain it has not seen work, which is the defect monitor 6 embodied for nine days. What HAS been observed is the negative arm of the thing that feeds the beat (see `verifiedHow`) — a failed job produces silence, and the silence is real. What nobody has watched is GlitchTip turning that silence into a delivered message for THIS monitor. Monitor 6's transition WAS forced, in this same project and through this same alert rule (id 2), which is the nearest evidence there is and is not the same claim. 🔴 AND ONE THING IS BETTER HERE THAN ANYWHERE ELSE IN THIS FILE AND MUST NOT BE READ AS THE USUAL GAP: the watcher is NOT on the machine it watches. Box A dying leaves the monitor, the alert evaluation and both notification hops alive on the other box. The residual [pipeline E-9b] is the mirror image — nothing off-host watches the SERVICES box — and it is carried by the rows that live there."
+        "gap": "⬜ THE DOWN TRANSITION HAS NEVER BEEN FORCED FOR THIS MONITOR, so no `downTransitionDrill` field is carried — the guard PRINTS that field for any row that has one, and a line asserting an observation nobody made is this register answering confidently about a chain it has not seen work, which is the defect monitor 6 embodied for nine days. What HAS been observed is the negative arm of the thing that feeds the beat (see `verifiedHow`) — a failed job produces silence, and the silence is real. What nobody has watched is GlitchTip turning that silence into a delivered message for THIS monitor. Monitor 6's transition WAS forced, in this same project and through this same alert rule (id 2), which is the nearest evidence there is and is not the same claim. 🔴 AND ONE THING IS BETTER HERE THAN ANYWHERE ELSE IN THIS FILE AND MUST NOT BE READ AS THE USUAL GAP: the watcher is NOT on the machine it watches. The auth box (Box C since 2026-09-24; Box A before) dying leaves the monitor, the alert evaluation and both notification hops alive on Box B. ⚠️ Since 2026-09-24 both boxes are Hostinger: a Hostinger ACCOUNT loss (suspension, billing, a compromised panel) takes the duty and its watcher together, which O-4 now prints. The residual [pipeline E-9b] is the mirror image — nothing off-host watches the SERVICES box — and it is carried by the rows that live there."
       },
       "accessProviders": [
-        "oci",
         "google",
         "hostinger"
       ],
       "ownerGated": true,
       "ownerGap": "The schedule, the wrapper and the five scripts are on a host CI cannot reach; only the owner or an SSH session can change them. Two named items are open so they are countable rather than remembered: (1) the down transition has never been forced for this monitor — see `absenceWatcher.gap`; (2) hb-run.sh is not in any backup set. sb_drive_sync.sh copies /opt/supabase through an INCLUDE allowlist that names docker-compose.override.yml, backup.sh and sb_drive_sync.sh and nothing else, so a rebuild restores the jobs without the wrapper and every one of these five duties comes back silent. The wrapper is reproduced verbatim in Private/runbooks/backup-restore.md against exactly that day.",
       "source": "verified",
-      "verifiedHow": "2026-09-05 — measured against a monitor with a long history rather than a fresh one. Monitor 19 holds 50 checks on its newest page and every one is `isUp: true`; a hand run immediately after the crontab was rewritten printed `ok  supabase backup chain healthy - sb-postgres-2026-09-06-0404.dump 0.01 h old, 326205 bytes, on remote, synced`, exited 0, and beat at 22:35:06.125Z — which is also the check that proves the crontab edit did not break the chain. 🔴 THE HOURLY CHECKS ARE STAMPED HH:17Z, WHICH IS `47 * * * *` READ IN IST, and that is the arithmetic that corrects this box's cron table from UTC to IST."
+      "verifiedHow": "2026-09-05 — measured against a monitor with a long history rather than a fresh one. Monitor 19 holds 50 checks on its newest page and every one is `isUp: true`; a hand run immediately after the crontab was rewritten printed `ok  supabase backup chain healthy - sb-postgres-2026-09-06-0404.dump 0.01 h old, 326205 bytes, on remote, synced`, exited 0, and beat at 22:35:06.125Z — which is also the check that proves the crontab edit did not break the chain. 🔴 THE HOURLY CHECKS ARE STAMPED HH:17Z, WHICH IS `47 * * * *` READ IN IST, and that is the arithmetic that corrects this box's cron table from UTC to IST. ⏱ 2026-09-24 — moved to Box C (Hostinger VPS 2005630) with the crontab byte-identical (sha12 96171557adcd); hand-run under cron's environment it exited 0, and monitor 19 beat from Box C 2026-09-24 11:15–11:20Z."
     },
     {
       "id": "duty.supabase-disk-alert",
@@ -2763,16 +2791,15 @@
         "signal": "No heartbeat inside the monitor's 5400s interval -> Down transition -> the `ops` uptime alert rule -> email to support@nikatru.com and a push to the nikatru-page ntfy topic.",
         "margin": "5400s against a 1h cadence — 1.5x, so one missed hour is absorbed and two are not.",
         "ownerGated": true,
-        "gap": "⬜ THE DOWN TRANSITION HAS NEVER BEEN FORCED FOR THIS MONITOR, so no `downTransitionDrill` field is carried — the guard PRINTS that field for any row that has one, and a line asserting an observation nobody made is this register answering confidently about a chain it has not seen work, which is the defect monitor 6 embodied for nine days. What HAS been observed is the negative arm of the thing that feeds the beat (see `verifiedHow`) — a failed job produces silence, and the silence is real. What nobody has watched is GlitchTip turning that silence into a delivered message for THIS monitor. Monitor 6's transition WAS forced, in this same project and through this same alert rule (id 2), which is the nearest evidence there is and is not the same claim. 🔴 AND ONE THING IS BETTER HERE THAN ANYWHERE ELSE IN THIS FILE AND MUST NOT BE READ AS THE USUAL GAP: the watcher is NOT on the machine it watches. Box A dying leaves the monitor, the alert evaluation and both notification hops alive on the other box. The residual [pipeline E-9b] is the mirror image — nothing off-host watches the SERVICES box — and it is carried by the rows that live there."
+        "gap": "⬜ THE DOWN TRANSITION HAS NEVER BEEN FORCED FOR THIS MONITOR, so no `downTransitionDrill` field is carried — the guard PRINTS that field for any row that has one, and a line asserting an observation nobody made is this register answering confidently about a chain it has not seen work, which is the defect monitor 6 embodied for nine days. What HAS been observed is the negative arm of the thing that feeds the beat (see `verifiedHow`) — a failed job produces silence, and the silence is real. What nobody has watched is GlitchTip turning that silence into a delivered message for THIS monitor. Monitor 6's transition WAS forced, in this same project and through this same alert rule (id 2), which is the nearest evidence there is and is not the same claim. 🔴 AND ONE THING IS BETTER HERE THAN ANYWHERE ELSE IN THIS FILE AND MUST NOT BE READ AS THE USUAL GAP: the watcher is NOT on the machine it watches. The auth box (Box C since 2026-09-24; Box A before) dying leaves the monitor, the alert evaluation and both notification hops alive on Box B. ⚠️ Since 2026-09-24 both boxes are Hostinger: a Hostinger ACCOUNT loss (suspension, billing, a compromised panel) takes the duty and its watcher together, which O-4 now prints. The residual [pipeline E-9b] is the mirror image — nothing off-host watches the SERVICES box — and it is carried by the rows that live there."
       },
       "accessProviders": [
-        "oci",
         "hostinger"
       ],
       "ownerGated": true,
       "ownerGap": "The schedule, the wrapper and the five scripts are on a host CI cannot reach; only the owner or an SSH session can change them. Two named items are open so they are countable rather than remembered: (1) the down transition has never been forced for this monitor — see `absenceWatcher.gap`; (2) hb-run.sh is not in any backup set. sb_drive_sync.sh copies /opt/supabase through an INCLUDE allowlist that names docker-compose.override.yml, backup.sh and sb_drive_sync.sh and nothing else, so a rebuild restores the jobs without the wrapper and every one of these five duties comes back silent. The wrapper is reproduced verbatim in Private/runbooks/backup-restore.md against exactly that day.",
       "source": "verified",
-      "verifiedHow": "2026-09-05 — measured, and this is the ONE row in the set whose beat is proven to arrive FROM CRON rather than from a hand run. The first run through the installed wrapper exited 0 with no stderr and monitor 27 recorded `isUp: true` at 22:34:23.010Z; thirteen minutes later the crontab line fired on its own and monitor 27 recorded a second `isUp: true` at 22:47:01.354Z — `17 * * * *` read in IST, to the second. That second check is what proves the INVOCATION SHAPE `/opt/supabase/hb-run.sh <duty> <script> >/dev/null` works under cron’s environment, PATH and permissions, and the other three wrapped rows inherit that half from here: their own beats are hand runs of the same line, and their first cron-fired slot is the next one on the 6h clock. ⚠️ WHAT IS NOT PROVEN, and is not counted as if it were: no threshold breach has been forced on THIS box since the wrapper existed. The send path itself was proven end to end on 2026-08-05 on the services box, where a breach was forced, the event landed as OPS-1 and the mail arrived 42s later. The wrapper carries a recorded FAILING case, run on the box on 2026-09-05 against a throwaway monitor (created and deleted, id 28, burnt): a job exiting 1, a job exiting 42, an absent endpoint file and a malformed duty name each produced the job's own code / 91 / 90 and NO check at all, while `/bin/true` produced exit 0 and an `isUp: true` check. Two arms, one monitor, two checks — 22:32:50.475Z and 22:33:12.214Z — and four failures that wrote nothing. A beat that could not fail would be worse than none. ✅ AND IT IS NO LONGER THE ONLY ONE, 2026-09-06 — written here rather than by editing the sentence above, because that sentence was true when it was written and the sequence is the record. All four wrapped duties have now beaten FROM CRON at their own slots, unattended: 24 at 2026-09-06T00:45:02.905Z, 25 at 01:05:13.649Z, 26 at 01:20:05.132Z. This monitor has since run eight consecutive hourly cron slots, 2026-09-05T22:47:01.354Z through 2026-09-06T05:47:01.808Z, every one `isUp: true` and none recording a miss — a whole night with no hand on it. ⚠️ THE THRESHOLD GAP IMMEDIATELY ABOVE IS UNTOUCHED BY THIS. A job that ran is not an alarm that arrived."
+      "verifiedHow": "2026-09-05 — measured, and this is the ONE row in the set whose beat is proven to arrive FROM CRON rather than from a hand run. The first run through the installed wrapper exited 0 with no stderr and monitor 27 recorded `isUp: true` at 22:34:23.010Z; thirteen minutes later the crontab line fired on its own and monitor 27 recorded a second `isUp: true` at 22:47:01.354Z — `17 * * * *` read in IST, to the second. That second check is what proves the INVOCATION SHAPE `/opt/supabase/hb-run.sh <duty> <script> >/dev/null` works under cron’s environment, PATH and permissions, and the other three wrapped rows inherit that half from here: their own beats are hand runs of the same line, and their first cron-fired slot is the next one on the 6h clock. ⚠️ WHAT IS NOT PROVEN, and is not counted as if it were: no threshold breach has been forced on THIS box since the wrapper existed. The send path itself was proven end to end on 2026-08-05 on the services box, where a breach was forced, the event landed as OPS-1 and the mail arrived 42s later. The wrapper carries a recorded FAILING case, run on the box on 2026-09-05 against a throwaway monitor (created and deleted, id 28, burnt): a job exiting 1, a job exiting 42, an absent endpoint file and a malformed duty name each produced the job's own code / 91 / 90 and NO check at all, while `/bin/true` produced exit 0 and an `isUp: true` check. Two arms, one monitor, two checks — 22:32:50.475Z and 22:33:12.214Z — and four failures that wrote nothing. A beat that could not fail would be worse than none. ✅ AND IT IS NO LONGER THE ONLY ONE, 2026-09-06 — written here rather than by editing the sentence above, because that sentence was true when it was written and the sequence is the record. All four wrapped duties have now beaten FROM CRON at their own slots, unattended: 24 at 2026-09-06T00:45:02.905Z, 25 at 01:05:13.649Z, 26 at 01:20:05.132Z. This monitor has since run eight consecutive hourly cron slots, 2026-09-05T22:47:01.354Z through 2026-09-06T05:47:01.808Z, every one `isUp: true` and none recording a miss — a whole night with no hand on it. ⚠️ THE THRESHOLD GAP IMMEDIATELY ABOVE IS UNTOUCHED BY THIS. A job that ran is not an alarm that arrived. ⏱ 2026-09-24 — moved to Box C (Hostinger VPS 2005630) with the crontab byte-identical (sha12 96171557adcd); hand-run under cron's environment it exited 0, and monitor 27 beat from Box C 2026-09-24 11:15–11:20Z."
     },
     {
       "id": "revert.worker.platform",
@@ -3055,46 +3082,25 @@
     {
       "id": "recovery.supabase-auth-postgres",
       "kind": "recovery-path",
-      "what": "Restore the SELF-HOSTED Supabase auth database on Box A from its dump. This is the recovery path for every identity in the portfolio once the cutover lands: auth.users, auth.identities and auth.refresh_tokens live in one Postgres on one Mumbai VM.",
+      "what": "Restore the SELF-HOSTED Supabase auth database on the auth box (Box C, Hostinger, since 2026-09-24; Box A before) from its dump. This is the recovery path for every identity in the portfolio once the cutover lands: auth.users, auth.identities and auth.refresh_tokens live in one Postgres on one VM.",
       "detector": "This row's cadence against lastDrill.",
       "response": "Private/runbooks/operations.md section F.",
       "cadence": "180d",
       "lastDrill": "2026-09-03",
-      "drillEvidence": "FIRST EVER RECORDED PASS 2026-09-03, run twice, the second time with a labelled banner. Restored sb-postgres-2026-09-03-1815.dump (321550 B) plus sb-globals-2026-09-03-1815.sql.gz into a throwaway container and two throwaway volumes on supabase/postgres:17.6.1.136, with sb-pgsodium_root.key seeded explicitly because it lives in a named volume that a directory copy does not capture. pg_restore reported ZERO error lines and the self-calibrating manifest came back byte-identical: 0|0|0|31|6|7|0|27|supabase_admin|23 on both sides. Production was read-only throughout; the throwaway was destroyed at teardown. 🔴 WHAT THE PASS DOES NOT PROVE, because auth.users is 0 on this box today: the three columns this drill EXISTS FOR compared 0 to 0. Six of ten columns carried a real non-zero comparison (31 roles, 6 extensions, 7 roles with passwords, 27 RLS tables, the auth schema owner, its 23 tables), so the restore MECHANISM and the schema are proven and identity-row survival is NOT. The drill now PRINTS its own vacuous columns so a later reader cannot take it for more than it is, and that limb was negative-tested against three manifest shapes including all-zero. The Vault assertion is vacuous too (0|0). ⚠️ AND _supabase IS BACKED UP BUT NOT DRILLED: the backup set is four artefacts and all four are current (all stamped 18:15, sb-_supabase at 566174 B, LARGER than the postgres dump), but the drill restores globals + postgres only. ⚠️ The drill script had its own defect until this date: its banner escaped $ inside double quotes, so every earlier run printed the literal text $(basename $DUMP) and could not say which backup it had restored.",
+      "drillEvidence": "FIRST EVER RECORDED PASS 2026-09-03, run twice, the second time with a labelled banner. Restored sb-postgres-2026-09-03-1815.dump (321550 B) plus sb-globals-2026-09-03-1815.sql.gz into a throwaway container and two throwaway volumes on supabase/postgres:17.6.1.136, with sb-pgsodium_root.key seeded explicitly because it lives in a named volume that a directory copy does not capture. pg_restore reported ZERO error lines and the self-calibrating manifest came back byte-identical: 0|0|0|31|6|7|0|27|supabase_admin|23 on both sides. Production was read-only throughout; the throwaway was destroyed at teardown. 🔴 WHAT THE PASS DOES NOT PROVE, because auth.users is 0 on this box today: the three columns this drill EXISTS FOR compared 0 to 0. Six of ten columns carried a real non-zero comparison (31 roles, 6 extensions, 7 roles with passwords, 27 RLS tables, the auth schema owner, its 23 tables), so the restore MECHANISM and the schema are proven and identity-row survival is NOT. The drill now PRINTS its own vacuous columns so a later reader cannot take it for more than it is, and that limb was negative-tested against three manifest shapes including all-zero. The Vault assertion is vacuous too (0|0). ⚠️ AND _supabase IS BACKED UP BUT NOT DRILLED: the backup set is four artefacts and all four are current (all stamped 18:15, sb-_supabase at 566174 B, LARGER than the postgres dump), but the drill restores globals + postgres only. ⚠️ The drill script had its own defect until this date: its banner escaped $ inside double quotes, so every earlier run printed the literal text $(basename $DUMP) and could not say which backup it had restored. ⏱ 2026-09-24 — the method was exercised twice on Box C during the move (S4 rehearsal, S7 final): full restore of postgres + _supabase + globals, 0 error lines, manifest equal to A. This was a MIGRATION, not a drill of restore-drill.sh; the 180d clock is not reset by it.",
       "mechanism": {
-        "substrate": "oci-docker",
+        "substrate": "supabase-box-docker",
         "anchor": "Private/runbooks/operations.md",
-        "record": "the dump files and their timestamps on Box A, /opt/supabase/backups",
+        "record": "the dump files and their timestamps on the auth box (Box C), /opt/supabase/backups",
         "failingValue": "no dated restore drill",
         "readBy": "nothing yet"
       },
       "accessProviders": [
-        "oci"
+        "hostinger",
+        "google"
       ],
       "ownerGated": true,
       "ownerGap": "DRILLED 2026-09-03 (first time) - see drillEvidence. 🔴 THE CADENCE IS NOT THE BINDING CONSTRAINT HERE. 180d puts the next run at 2027-03-02, but the CUTOVER is what makes this drill meaningful: it creates the first real auth.users rows, and the run immediately after it is the first one whose identity comparison is not vacuous. Re-drill then, not in March. ⚠️ Residual risk recorded rather than hidden: nothing reads this row, so it fails only by going stale against its own cadence - and the _supabase half of the backup set has no drill at all.",
-      "source": "verified"
-    },
-    {
-      "id": "recovery.oci-boot-volume",
-      "kind": "recovery-path",
-      "what": "Restore the Oracle box's boot volume.",
-      "detector": "This row's cadence against lastDrill.",
-      "response": "Private/runbooks/operations.md §0.",
-      "cadence": "180d",
-      "lastDrill": null,
-      "mechanism": {
-        "substrate": "oci",
-        "anchor": "Private/runbooks/operations.md",
-        "record": "the OCI console's backup list",
-        "failingValue": "no backup policy, or no dated restore drill",
-        "readBy": "nothing yet"
-      },
-      "accessProviders": [
-        "oci"
-      ],
-      "ownerGated": true,
-      "ownerGap": "⚠️ RESTORE-BY-REPLACEMENT IS THE ONLY CORRECT PROCEDURE HERE — the wrong one silently downgrades the grandfathered instance shape and is irreversible. Also: the free backup cap is 5 TOTAL and the stock Bronze/Silver/Gold policies all overflow it, so a custom policy is required. Owner action in the OCI console.",
       "source": "verified"
     },
     {
