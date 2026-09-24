@@ -6,7 +6,7 @@
 // [pipeline C-6 / 8]K-11, DPDP §6(3), ADR 037 P2.7] — the measured false-green.
 //
 // ── THE HOLE, MEASURED, AND WHY IT IS NOT assert-seams-wired's FAULT ────────
-// assert-seams-wired.mjs:261 requires *a* UI caller of `recordAnalyticsConsent(`
+// assert-seams-wired.mjs:360 requires *a* UI caller of `recordAnalyticsConsent(`
 // somewhere other than its declaring file. That is exactly the right question
 // for the seam it owns: "is the analytics on-switch dead code". It is the wrong
 // question for withdrawal, and the difference is not academic —

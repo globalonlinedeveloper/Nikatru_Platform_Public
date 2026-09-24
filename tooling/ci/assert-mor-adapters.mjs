@@ -535,7 +535,7 @@ for (const p of providers) {
 // ── LIMB 3 · [5]M-14, the two halves ─────────────────────────────────────────
 /**
  * Is `symbol` CALLED somewhere other than the file that declares it? Matched as
- * a call, and the declaring file is excluded — assert-seams-wired.mjs:65-74
+ * a call, and the declaring file is excluded — assert-seams-wired.mjs:249-253
  * records what happens otherwise: a check that matched its own function's
  * declaration kept passing after every real caller was deleted.
  */
