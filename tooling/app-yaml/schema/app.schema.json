@@ -8,11 +8,11 @@
   "required": ["id", "name", "tagline", "category", "status", "hosts", "platforms", "listings", "legal", "ai"],
   "properties": {
     "id": {
-      "description": "The app id, and the catalogue `slug`. Same shape assert-catalog-contract.mjs grades and the same string the directory is named.",
+      "description": "The app id, and the catalogue `slug`. The rule is contracts/app-id (lowercase letters and digits, a letter first, 2-32 characters); tooling/ci/assert-app-id-contract.mjs fails if this property accepts an id that contract refuses. Same shape assert-catalog-contract.mjs grades and the same string the directory is named.",
       "type": "string",
-      "pattern": "^[a-z][a-z0-9_]*$",
+      "pattern": "^[a-z][a-z0-9]*$",
       "minLength": 2,
-      "maxLength": 40
+      "maxLength": 32
     },
     "name": {
       "description": "The listing title. Rendered verbatim into every store/<channel>/title.txt and into the catalogue `name`, which is what makes them the same string by construction rather than by two spellings agreeing today. Play caps a title at 30 characters and it is the tightest of the five channels.",

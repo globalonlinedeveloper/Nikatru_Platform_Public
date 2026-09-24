@@ -504,6 +504,10 @@ jobs:
       # in the same PR, not at the next build-platforms run — docs/ci/build-platforms.md §apps-gov-in.
       - name: The apps.gov.in listing media is still the derivation of the Play set
         run: node --single-threaded tooling/ci/assert-apps-gov-in-media.mjs
+      # why: O-APP-ID-FORM-UNVALIDATED (a). Appended at the END of this job, like
+      # the store vocabulary step, so it shifts as few `ci.yml:NNNN` citations as it can.
+      - name: The app id has one rule, and the Worker, the callers and the schemas agree with it
+        run: node tooling/ci/assert-app-id-contract.mjs
 
   guards-chassis:
     name: Guards — chassis, app surface and packages
@@ -873,6 +877,24 @@ jobs:
           cp -r apps/probeapi "$RUNNER_TEMP/probeapi-as-stamped"
           dart format apps/probeapi
           diff -ru "$RUNNER_TEMP/probeapi-as-stamped" apps/probeapi
+      # why: O-APP-ID-FORM-UNVALIDATED (a). pre_gen applies contracts/app-id and
+      # throws, so mason exits non-zero having written NOTHING. `habit_tracker` is
+      # the id the old snake_case rule let through. Exit code alone is not the
+      # proof: the log must carry the contract's message, and no app may exist.
+      - name: A bad app id is refused before anything is written
+        run: |
+          export PATH="$PATH:$HOME/.pub-cache/bin"
+          set +e
+          mason make app -c tooling/bricks/app/_probe_bad_id_vars.json -o . --on-conflict overwrite > "$RUNNER_TEMP/bad-id-stamp.log" 2>&1
+          code=$?
+          set -e
+          cat "$RUNNER_TEMP/bad-id-stamp.log"
+          echo "mason exit: $code"
+          if [ "$code" -eq 0 ]; then echo "::error::mason stamped app_id habit_tracker; pre_gen did not refuse it"; exit 1; fi
+          if ! grep -q 'app_id' "$RUNNER_TEMP/bad-id-stamp.log"; then echo "::error::mason exited $code and its log never names app_id"; exit 1; fi
+          if ! grep -q 'contracts/app-id' "$RUNNER_TEMP/bad-id-stamp.log"; then echo "::error::mason exited $code without the contracts/app-id message"; exit 1; fi
+          if ! grep -qF 'got "habit_tracker", which contains "_"' "$RUNNER_TEMP/bad-id-stamp.log"; then echo "::error::mason exited $code, but not on the underscore in habit_tracker"; exit 1; fi
+          if [ -e apps/habit_tracker ]; then echo "::error::apps/habit_tracker exists after a refused stamp"; exit 1; fi
       # why: A STAMPED WORKER MUST BE TESTABLE ON DAY ONE, and until 2026-09-12 it
       # was not: the template shipped no vitest, no `test` script and no test
       # directory, so the first thing an owner could not do with a fresh backend was

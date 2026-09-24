@@ -21,7 +21,7 @@ environment:
 vars:
   app_id:
     type: string
-    description: Lowercase snake_case app id (also the Dart package name), e.g. lingo
+    description: App id, lowercase letters and digits with a letter first, 2-32 characters (contracts/app-id; also the Dart package name), e.g. lingo
     prompt: App id (lowercase)
   needs_backend:
     type: boolean

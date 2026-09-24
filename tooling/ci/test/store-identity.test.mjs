@@ -238,6 +238,17 @@ describe('assert-store-identity', () => {
     assert.match(out, /2 \(app × platform\) identity\(ies\) compared/);
   });
 
+  // O-APP-ID-FORM-UNVALIDATED (a). `com.nikatru.habit_tracker` would be bound by
+  // every store for good; the slug is refused through contracts/app-id first.
+  test('a catalog slug habit_tracker is refused, naming it', () => {
+    const { code, out } = run(
+      fixture({ apps: [{ slug: 'subscriptiontracker', platforms: ['web'] }, { slug: 'habit_tracker', platforms: ['web'] }] }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /catalog\/apps\.json\[1\] slug "habit_tracker": app id "habit_tracker" breaks the pattern/);
+    assert.match(out, /contracts\/app-id/);
+  });
+
   test('FAILS on an Android package name that is not the canonical form', () => {
     const { code, out } = run(
       fixture({

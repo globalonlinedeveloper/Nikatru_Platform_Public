@@ -80,6 +80,7 @@ import { spawnSync } from 'node:child_process';
 import { resolve, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveIdentity } from './read-identity.mjs';
+import { appIdProblems } from '../../contracts/app-id/app-id.js';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER_REL = 'tooling/channel-register.json';
@@ -251,6 +252,16 @@ for (const app of apps) {
   const slug = typeof app?.slug === 'string' ? app.slug : null;
   if (!slug) {
     problems.push(`${APPS_REL} carries an entry with no \`slug\`, so no identity can be resolved for it.`);
+    continue;
+  }
+  // The slug IS the app id, and `com.nikatru.<slug>` is bound by every store for
+  // good at the first upload — so the slug meets contracts/app-id before any
+  // identity is built from it (O-APP-ID-FORM-UNVALIDATED (a)).
+  const idProblems = appIdProblems(slug);
+  if (idProblems.length > 0) {
+    for (const p of idProblems) {
+      problems.push(`${APPS_REL}[${apps.indexOf(app)}] slug "${slug}": ${p} No store identity is derived from it.`);
+    }
     continue;
   }
   const appDir = join(ROOT, 'apps', slug);

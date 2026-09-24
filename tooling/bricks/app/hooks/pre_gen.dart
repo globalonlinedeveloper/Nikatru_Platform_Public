@@ -35,23 +35,54 @@ void run(HookContext context) {
   // so a spec with two real problems reported one and looked fixed after one
   // edit. Diagnostics only (no stamp result ever depended on it), but a
   // diagnostic that hides a second problem costs a whole extra round trip.
+  //
+  // THE RULE IS contracts/app-id, read from its generated app-id.json (Dart
+  // cannot import app-id.js), and this hook carries no copy of it. The id
+  // becomes a Worker name and a DNS label (no `_`), a Dart package and an
+  // Android package name (no `-`, a letter first, no language keyword) and an
+  // Apple bundle id. The length limit is the platform Worker's: services/
+  // platform/src/config.ts APP_ID_PATTERN serves at most 32 characters and
+  // DROPS a longer id with no error. (The limit here used to be 63, for an
+  // `<app_id>.nikatru.com` host that [ADR 075] retired.)
   final String appId = v('app_id');
   bool appIdValid = true;
-  if (!RegExp(r'^[a-z][a-z0-9_]*$').hasMatch(appId)) {
+  final _AppIdContract idRule = _readAppIdContract();
+  if (idRule.error != null) {
     appIdValid = false;
+    problems.add(idRule.error!);
+  } else if (!idRule.pattern!.hasMatch(appId)) {
+    appIdValid = false;
+    final String offending = appId
+        .split('')
+        .where((String c) {
+          final int u = c.codeUnitAt(0);
+          return !((u >= 0x61 && u <= 0x7a) || (u >= 0x30 && u <= 0x39));
+        })
+        .toSet()
+        .map((String c) => '"$c"')
+        .join(', ');
     problems.add(
-      'app_id must be lowercase snake_case starting with a letter — got "$appId". '
-      'It becomes the Dart package, the database, the subdomain and the store '
-      'identity, so it cannot hold a capital, a dash or a space.',
+      'app_id must be lowercase letters and digits, starting with a letter '
+      '(${idRule.pattern!.pattern}, contracts/app-id) — got "$appId"'
+      '${offending.isEmpty ? '' : ', which contains $offending'}. It becomes a '
+      'Worker name and a DNS label, which cannot hold "_", and a Dart package '
+      'and an Android package name, which cannot hold "-".',
     );
-  } else if (appId.length < 2 || appId.length > 63) {
+  } else if (appId.length < idRule.minLength ||
+      appId.length > idRule.maxLength) {
     appIdValid = false;
-    // 63 is not a taste. `<app_id>.nikatru.com` makes app_id a DNS LABEL, and a
-    // label cannot exceed 63 octets — a longer one produces a hostname that
-    // cannot exist, surfacing as a deploy failure long after stamping.
     problems.add(
-      'app_id must be 2-63 characters — got "$appId" (${appId.length}). It '
-      'becomes a DNS label in $appId.nikatru.com, which cannot exceed 63.',
+      'app_id must be ${idRule.minLength}-${idRule.maxLength} characters '
+      '(contracts/app-id) — got "$appId" (${appId.length}). The platform '
+      'Worker serves no longer id: services/platform/src/config.ts '
+      'APP_ID_PATTERN drops it without an error.',
+    );
+  } else if (idRule.reserved.contains(appId)) {
+    appIdValid = false;
+    problems.add(
+      'app_id "$appId" is a reserved word in Dart, Java or Kotlin '
+      '(contracts/app-id), so it cannot name the Dart package or the Android '
+      'package it becomes.',
     );
   }
 
@@ -522,6 +553,64 @@ void run(HookContext context) {
   vars['audience'] = audience;
 
   context.logger.info('Stamping $displayName ($appId)…');
+}
+
+/// The app-id rule as this hook needs it: the pattern, the length bounds and the
+/// reserved words of `contracts/app-id`. O-APP-ID-FORM-UNVALIDATED (a).
+///
+/// FAIL-CLOSED BY CONSTRUCTION, like [_DutyMatrix]: every way of failing to read
+/// the rule produces an [error], which the caller turns into a refusal. There is
+/// no fallback rule in this file, because a fallback is a second copy of the rule.
+class _AppIdContract {
+  _AppIdContract(this.pattern, this.minLength, this.maxLength, this.reserved)
+      : error = null;
+  _AppIdContract.failed(String this.error)
+      : pattern = null,
+        minLength = 0,
+        maxLength = 0,
+        reserved = const <String>{};
+
+  final String? error;
+  final RegExp? pattern;
+  final int minLength;
+  final int maxLength;
+  final Set<String> reserved;
+}
+
+/// Read `contracts/app-id/app-id.json`, or say why not.
+///
+/// The file is GENERATED from `contracts/app-id/app-id.js` by
+/// `contracts/app-id/generate.mjs`, because Dart cannot import the JavaScript
+/// that every node caller imports. Read relative to the repository root, like
+/// [_readDutyMatrix] and [_sourcedListingLimits], and for the same reason: an id
+/// checked against a rule nobody could open is an id nobody checked.
+_AppIdContract _readAppIdContract() {
+  final File file = File('contracts/app-id/app-id.json');
+  if (!file.existsSync()) {
+    return _AppIdContract.failed(
+      'contracts/app-id/app-id.json was not found from the current directory '
+      '(${Directory.current.path}), so app_id could not be checked against '
+      'the app-id rule. Stamp from the repository root. Nothing was stamped.',
+    );
+  }
+  try {
+    final Map<String, dynamic> decoded =
+        (jsonDecode(file.readAsStringSync()) as Map).cast<String, dynamic>();
+    final Map<String, dynamic> rule =
+        (decoded['rule'] as Map).cast<String, dynamic>();
+    final String pattern = rule['pattern'] as String;
+    final int minLength = rule['minLength'] as int;
+    final int maxLength = rule['maxLength'] as int;
+    final Set<String> reserved =
+        (decoded['reserved'] as List).cast<String>().toSet();
+    return _AppIdContract(RegExp(pattern), minLength, maxLength, reserved);
+  } catch (e) {
+    return _AppIdContract.failed(
+      'contracts/app-id/app-id.json could not be read as the app-id rule ($e), '
+      'so app_id could not be checked. Regenerate it with '
+      '`node contracts/app-id/generate.mjs`. Nothing was stamped.',
+    );
+  }
 }
 
 /// The duty matrix as this hook needs it: the rows, plus the market vocabulary
