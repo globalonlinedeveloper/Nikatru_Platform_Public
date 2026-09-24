@@ -1,0 +1,76 @@
+name: Apple signing expiry write
+
+run-name: "Apple signing expiry write on ${{ github.ref_name }}"
+
+# The rows this writes, and why a machine writes them, are in the header of
+# tooling/ops/check-apple-signing-expiry.mjs. Only `# why:` lines live here, and
+# docs/ci/README.md carries the rules every workflow has to obey.
+
+on:
+  # why: DISPATCH ONLY. The dates change when Apple renews, re-mints or revokes
+  # something, which is rare and never on a clock. A schedule would push to a
+  # branch nobody asked for; ops-watch.yml does the scheduled READ-ONLY half.
+  workflow_dispatch:
+
+concurrency:
+  group: apple-expiry-write-${{ github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  write:
+    name: Write the Apple signing expiry dates from App Store Connect
+    # why: never on main. The rows land through a pull request and ci-gate like
+    # every other change; this job only ever pushes to the branch it was
+    # dispatched on, and the checker refuses GITHUB_REF_NAME=main on its own too.
+    if: github.ref_name != 'main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      # why: `contents: write` pushes the one machine commit to the dispatched
+      # branch and nothing else. It is on this job, never on the workflow, and
+      # never in ops-watch.yml, whose every job stays read-only.
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-node
+
+      # why: the write is graded BEFORE anything is committed — the checker
+      # re-judges the file it wrote and exits non-zero unless every row now
+      # matches App Store Connect, and a non-zero exit ends the job here.
+      # tooling/ci/assert-ops-register.mjs is deliberately NOT run in this job:
+      # it would make this workflow one of its guard hosts, and on a dispatch
+      # that host ENFORCES every live verdict — so a red ops-watch (the Apple
+      # drift this dispatch exists to repair) would fail the very run that
+      # repairs it. The full guard grades these rows on the pull request, in
+      # ci.yml's guards-platform job, where ci-gate decides.
+      - name: Read App Store Connect and write the expiring rows
+        env:
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+        run: node tooling/ops/check-apple-signing-expiry.mjs --write
+
+      - name: Commit the rows and push them to the dispatched branch
+        env:
+          # why: the push stays on the job's own least-privilege token —
+          # `checkout` above sets `persist-credentials: false`, so the one command
+          # that pushes builds its own remote URL for that command only.
+          PUSH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- tooling/ops/register.json; then
+            echo "::notice title=The Apple expiry rows already match App Store Connect::tooling/ops/register.json is byte-identical after the read, so there is nothing to commit."
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- tooling/ops/register.json
+          git commit -m "ops: Apple signing expiry rows written from App Store Connect" -m "Machine-written by apple-expiry-write.yml run ${GITHUB_RUN_ID} from App Store Connect, by tooling/ops/check-apple-signing-expiry.mjs --write. Every date is the UTC date of the expirationDate Apple returned for the id in tooling/apple-provisioning.json."
+          git push "https://x-access-token:${PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:${GITHUB_REF_NAME}"
+          echo "::notice title=Apple expiry rows pushed::One commit is on ${GITHUB_REF_NAME}. A push by GITHUB_TOKEN starts no workflow, so open the pull request from that branch to run ci-gate on it."

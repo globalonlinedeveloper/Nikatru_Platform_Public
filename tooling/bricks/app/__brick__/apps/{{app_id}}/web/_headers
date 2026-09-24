@@ -39,6 +39,11 @@
 #   · `connect-src` names the first-party hosts a stamped app calls, and the app's
 #     OWN API host only when it has a backend. It does NOT name the apex, because
 #     `'self'` IS the apex once the app is served there.
+#   · ⏱ 2026-09-24 — deploy-web's launch smoke boots the built bundle under THIS
+#     policy and probes SUPABASE_URL, API_BASE_URL and the GlitchTip origin from
+#     the page, so a host missing here fails before publication. ⚠️ Until that set
+#     is derived per app (row O-WEB-CSP-HAND-LIST-UNSMOKED) the API origin probed
+#     is the shared secret's, so an app stamped with no backend stops at the smoke.
 #   · the Supabase project is the ONE this portfolio shares (see `SUPABASE_URL` in
 #     services/platform/wrangler.jsonc, shared across every NIKATRU app). ⏱
 #     2026-09-24 — the auth cutover moves it to the self-hosted sign-in host

@@ -20,7 +20,8 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { READ_ATTEMPTS, RETRY_CEILING_MS } from '../../ops/bounded-retry.mjs';
 
 import {
   evaluateFreshness,
@@ -755,5 +756,102 @@ describe('the timer record must be DECLARED, not assumed', () => {
       },
       (v) => assert.match(v.error, /declares no row/),
     );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔴 TRAP ci-48 — PR #913 CI run 35967342865 attempt 1, ~2026-09-24T07:01Z.
+// This guard failed "newest green scheduled run is 5.0 days old, ceiling is 3"
+// while main carried 35962444367 (updated 06:06:58Z that day) and 35838102124
+// (2026-09-23T08:43:34Z); the re-query at 07:05:34Z returned 73 rows, newest
+// 35962444367. The trap does not record the stale page's own rows, so the page
+// below is SYNTHETIC and dated to the measured 5.0 days; the two green runs are
+// the measured ids and updated_at. Every case runs the guard as CI does, with
+// `--runs-file` in its { "page", "cross" } form (decision E6).
+// ─────────────────────────────────────────────────────────────────────────────
+describe('THE STALE PAGE (trap ci-48) — the union, the read line and the ceiling, through the CLI', () => {
+  const NOW_913 = '2026-09-24T07:01:00Z';
+  const green = (id, created, updated, event = 'workflow_dispatch') => ({ id, conclusion: 'success', head_branch: 'main', event, created_at: created, updated_at: updated });
+  const PAGE = [
+    green(35500000001, '2026-09-19T06:41:00Z', '2026-09-19T07:01:00Z'),
+    green(35400000001, '2026-09-18T06:41:00Z', '2026-09-18T07:01:00Z'),
+  ];
+  const DISPATCHED = green(35962444367, '2026-09-24T05:46:58Z', '2026-09-24T06:06:58Z');
+  const SCHEDULED = green(35838102124, '2026-09-23T08:23:34Z', '2026-09-23T08:43:34Z', 'schedule');
+  const at913 = (name, doc, env = process.env) => {
+    const runsFile = join(TMP, name);
+    writeFileSync(runsFile, JSON.stringify(doc));
+    const timerFile = timerFixture(`timer-${name}`, [timerRow({ ran_at: '2026-09-24T06:00:00Z' })]);
+    return spawnSync(process.execPath, [GUARD, '--runs-file', runsFile, '--timer-file', timerFile, '--now', NOW_913], { cwd: REPO, encoding: 'utf8', env });
+  };
+
+  test('🟢 RED CONTROL 1 — the PR #913 page with a cross-read holding 35962444367 is GREEN, and says the page was stale', () => {
+    const r = at913('913-carried.json', { page: PAGE, cross: [DISPATCHED, SCHEDULED] });
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(
+      r.stdout,
+      /^STALE PAGE, CROSS-READ CARRIED THE PROOF: the page's newest qualifying run is 35500000001 \(updated_at 2026-09-19T07:01:00Z\) over 2 row\(s\); the cross-read's is 35962444367 \(updated_at 2026-09-24T06:06:58Z\) over 2 row\(s\)/m,
+    );
+    assert.match(r.stdout, /green run 35962444367 on main, 0\.0 day\(s\) old \(ceiling 3\)/);
+    assert.match(r.stdout, /nightly golden-path proof fresh on BOTH records/);
+  });
+
+  test('🔴 …CONTROL — the same page with an EMPTY cross-read is exit 1, and the reason names the run, updated_at, rows and query', () => {
+    const r = at913('913-empty-cross.json', { page: PAGE, cross: [] });
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(
+      r.stderr,
+      /OUTCOME \(GitHub run history\) : {2}newest green scheduled run is 5\.0 days old, ceiling is 3 — run 35500000001 \(updated_at 2026-09-19T07:01:00Z\) is the newest green run on main of 2 row\(s\) returned by GET \/repos\/[^/\s]+\/[^/\s]+\/actions\/workflows\/e2e\.yml\/runs\?branch=main&status=success&per_page=100 and 0 row\(s\) on its cross-read/,
+    );
+    assert.doesNotMatch(r.stdout + r.stderr, /STALE PAGE/);
+  });
+
+  test('🔴 RED CONTROL 2 — page proven stale, and the cross-read\'s newest is ALSO past the ceiling: exit 2, not 1', () => {
+    const r = at913('913-both-stale.json', { page: PAGE, cross: [green(35700000001, '2026-09-20T06:41:00Z', '2026-09-20T07:01:00Z')] });
+    assert.equal(r.status, 2, r.stdout + r.stderr);
+    assert.match(r.stderr, /OUTCOME \(GitHub run history\) : {2}stale page — the successful-run history of e2e\.yml on main ends at run 35500000001/);
+    assert.match(r.stderr, /not fresh either \(newest green scheduled run is 4\.0 days old, ceiling is 3/);
+    assert.match(r.stderr, /COVERAGE LOST {2}the nightly golden-path proof could not be graded/);
+  });
+
+  test('E6 — an ARRAY fixture is a page with no cross-read, and the READ line says so rather than reaching the network', () => {
+    const r = at913('913-array.json', PAGE);
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(
+      r.stderr,
+      /READ {4}\(GitHub run history\) : {2}fixture standing in for GET \/repos\/\S+\/actions\/workflows\/e2e\.yml\/runs\?branch=main&status=success&per_page=100 · 2 row\(s\) returned, per_page 100, saturated no · newest qualifying run 35500000001 \(updated_at 2026-09-19T07:01:00Z\) · cross-read not run \(fixture has none\)$/m,
+    );
+  });
+
+  test('E3 — the READ line is printed on a PASS too', () => {
+    const r = at913('913-pass-read.json', { page: [DISPATCHED, ...PAGE], cross: [] });
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /READ {4}\(GitHub run history\) : {2}fixture standing in for GET .* · 3 row\(s\) returned, per_page 100, saturated no · newest qualifying run 35962444367 \(updated_at 2026-09-24T06:06:58Z\) · cross-read created=>=2026-09-24T05:46:58Z: 0 row\(s\), newest none$/m);
+  });
+
+  test('a fixture whose `cross` is not an array is COVERAGE LOST (2), never a page read without its anchor', () => {
+    const r = at913('913-bad-cross.json', { page: PAGE, cross: { oops: true } });
+    assert.equal(r.status, 2, r.stdout + r.stderr);
+    assert.match(r.stderr, /could not read fixture .*`cross` that is not an array/);
+  });
+
+  test('🔴 RED CONTROL 4 — a GitHub API that never answers hits the SHARED ceiling and is exit 2, inside the bound', { timeout: 60_000 }, () => {
+    // The guard's own fetch, answered by a preload that never resolves: no
+    // fixture flag, no network. OPS_REQUEST_TIMEOUT_MS is bounded-retry.mjs's
+    // test knob, which can only SHORTEN the ceiling. The D1 limb has no
+    // Cloudflare credential here, so the assertion is on the RUN limb's words.
+    const preload = join(TMP, 'never-answers.mjs');
+    writeFileSync(preload, 'globalThis.fetch = () => new Promise(() => {});\n');
+    const env = { ...process.env, GITHUB_TOKEN: 'fixture-token', GITHUB_REPOSITORY: 'o/r', OPS_REQUEST_TIMEOUT_MS: '200' };
+    delete env.GH_TOKEN;
+    delete env.CLOUDFLARE_API_TOKEN;
+    delete env.CLOUDFLARE_ACCOUNT_ID;
+    const t0 = Date.now();
+    const r = spawnSync(process.execPath, ['--import', pathToFileURL(preload).href, GUARD], { cwd: REPO, encoding: 'utf8', env });
+    const elapsed = Date.now() - t0;
+    assert.equal(r.status, 2, r.stdout + r.stderr);
+    assert.match(r.stderr, /OUTCOME \(GitHub run history\) : {2}no answer within 0\.2s \(the per-request ceiling, attempt 3\) — and the same on all 3 attempt\(s\)/);
+    assert.ok(elapsed >= READ_ATTEMPTS * 200 + RETRY_CEILING_MS - 50, `ended in ${elapsed}ms, faster than ${READ_ATTEMPTS} ceilings and the backoff`);
+    assert.ok(elapsed < READ_ATTEMPTS * 200 + RETRY_CEILING_MS + 10_000, `took ${elapsed}ms, far past the shared bound`);
   });
 });

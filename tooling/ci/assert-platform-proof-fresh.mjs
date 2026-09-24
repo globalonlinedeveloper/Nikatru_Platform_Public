@@ -144,7 +144,7 @@ import { fileURLToPath } from 'node:url';
 import { parseWorkflow, shellSegments, WORKFLOW_DIR } from './workflow-scan.mjs';
 import { cronExpressions } from './assert-e2e-proof-fresh.mjs';
 import { flutterAppChannel, undeclaredSurfaceLine } from './channel-surface.mjs';
-import { judgeRunPage, needsCrossRead, crossReadTerm } from './run-page-anchor.mjs';
+import { anchoredRunRead, gradeUnion, describeRead } from './anchored-run-read.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const WORKFLOW = 'build-platforms.yml';
@@ -843,63 +843,64 @@ export function evaluateProvenance(runs, gradedSha, ancestryOf) {
   };
 }
 
-async function fetchRuns() {
+/** The run-history query. Exported so a test pins the query the guard SENDS.
+ *
+ *  ⚠️ NO `branch=` FILTER, and freshness is not weakened by its absence.
+ *  Freshness selects on `event === 'schedule'`, and GitHub fires a schedule
+ *  only on the default branch, so the filter never carried that claim. What it
+ *  DID do was hide the one run that can discharge an input-currency failure:
+ *  a `workflow_dispatch` on the branch that changed the inputs. A guard whose
+ *  failure has no reachable remedy is a guard that gets switched off. */
+export function buildRunsUrl(repo) {
+  return `https://api.github.com/repos/${repo}/actions/workflows/${WORKFLOW}/runs?status=success&per_page=100`;
+}
+
+async function fetchRuns(nowMs) {
   const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
   if (!token) throw new Error('no GITHUB_TOKEN / GH_TOKEN in the environment — cannot read run history, so this fails closed');
   const repo = process.env.GITHUB_REPOSITORY || DEFAULT_REPO;
-  // ⚠️ NO `branch=` FILTER, and freshness is not weakened by its absence.
-  // Freshness selects on `event === 'schedule'`, and GitHub fires a schedule
-  // only on the default branch, so the filter never carried that claim. What it
-  // DID do was hide the one run that can discharge an input-currency failure:
-  // a `workflow_dispatch` on the branch that changed the inputs. A guard whose
-  // failure has no reachable remedy is a guard that gets switched off.
-  const url = `https://api.github.com/repos/${repo}/actions/workflows/${WORKFLOW}/runs?status=success&per_page=100`;
-  const res = await fetch(url, {
-    headers: {
-      authorization: `Bearer ${token}`,
-      accept: 'application/vnd.github+json',
-      'user-agent': 'nikatru-ci',
-    },
-  });
-  if (!res.ok) throw new Error(`GitHub API returned ${res.status} for ${WORKFLOW} runs`);
-  const body = await res.json();
-  // 🔴 THE STALE PAGE, ANCHORED (2026-09-18, coverage unit `stale-run-page`).
-  // PR #806's CI read this very URL and was answered with a page whose newest
-  // scheduled green was run 32003607931 of 2026-08-17 — 32.3 days — while run
-  // 35215254802 of 2026-09-17 existed; the rerun passed. One read cannot see
-  // that it is behind, so a page old enough to move the verdict is cross-read
-  // by creation date (a different cache key and filter path), and a newer run
-  // on the cross-read makes the history UNREADABLE: thrown here, reported by
-  // main() as COVERAGE LOST, never as "not fresh". See run-page-anchor.mjs.
-  return anchoredRuns(repo, url, body?.workflow_runs, token, Date.now());
+  return readRunHistory({ repo, token, nowMs });
 }
 
-/** Applies the cross-read anchor to one page. Returns the runs or THROWS
- *  `stale page — …`. Exported so the measured stale page is a test case with
- *  no network: `crossRead(url)` is injectable. */
-export async function anchoredRuns(repo, url, runs, token, nowMs, crossRead = null) {
-  if (!Array.isArray(runs)) throw new Error(`the ${WORKFLOW} run list came back without a workflow_runs array`);
-  const term = needsCrossRead(runs, nowMs) ? crossReadTerm(runs) : null;
-  if (!term) return runs;
-  const crossUrl = url.replace(/per_page=\d+/, `${term}&per_page=10`);
-  const read =
-    crossRead ??
-    (async (u) => {
-      const r = await fetch(u, {
-        headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', 'user-agent': 'nikatru-ci' },
-      });
-      if (!r.ok) throw new Error(`GitHub API returned ${r.status} for the ${WORKFLOW} cross-read`);
-      return r.json();
-    });
-  const cross = await read(crossUrl);
-  if (!Array.isArray(cross?.workflow_runs)) throw new Error(`the ${WORKFLOW} cross-read came back without a workflow_runs array`);
-  const verdict = judgeRunPage(runs, {
-    what: `the successful-run history of ${WORKFLOW} in ${repo}`,
-    cross: { runs: cross.workflow_runs, why: 'a cross-read of the same question by creation date' },
+/**
+ * 🔴 THE STALE PAGE, ANCHORED (2026-09-18, coverage unit `stale-run-page`), and
+ * since 2026-09-24 through the SHARED reader, tooling/ci/anchored-run-read.mjs.
+ * PR #806's CI read this very query and was answered with a page whose newest
+ * scheduled green was run 32003607931 of 2026-08-17 — 32.3 days — while run
+ * 35215254802 of 2026-09-17 existed; the rerun passed. A page old enough to move
+ * the verdict is cross-read by creation date. Anchors that fit THIS reader: the
+ * cross-read only. It runs in ci.yml and grades build-platforms.yml, so no
+ * self-run floor; build-platforms.yml is pushed only by a tag, so no branch head.
+ *
+ * Exported with an injectable `read(url, { signal })` and `fixture`, so the
+ * measured page is a test case with no network.
+ */
+export async function readRunHistory({ repo = DEFAULT_REPO, token = null, read = null, fixture = undefined, nowMs = Date.now(), retry = {} } = {}) {
+  return anchoredRunRead({
+    workflow: WORKFLOW,
+    url: buildRunsUrl(repo),
+    token,
+    read,
+    fixture,
     nowMs,
+    what: `the successful-run history of ${WORKFLOW} in ${repo}`,
+    label: `${WORKFLOW} runs`,
+    retry,
   });
-  if (!verdict.ok) throw new Error(verdict.why);
-  return runs;
+}
+
+/** The newest run that can satisfy freshness: a scheduled success. */
+export function newestScheduledGreen(runs) {
+  const s = (runs ?? []).filter((r) => r && r.conclusion === 'success' && r.event === 'schedule' && !Number.isNaN(Date.parse(r.updated_at ?? '')));
+  return s.length ? s.reduce((a, b) => (Date.parse(b.updated_at) > Date.parse(a.updated_at) ? b : a)) : null;
+}
+
+/** Freshness, graded on the UNION of the page and its cross-read (decision E2):
+ *  a stale page whose cross-read holds a fresh scheduled green is GREEN, with
+ *  the carried-proof line; a stale page whose union is still not fresh is
+ *  unreadable (exit 2); a page not proven stale grades exactly as before. */
+export function gradeRunHistory(read, nowMs) {
+  return gradeUnion(read, (runs) => evaluateFreshness(runs, nowMs), newestScheduledGreen);
 }
 
 async function main() {
@@ -918,26 +919,40 @@ async function main() {
     return;
   }
 
-  let runs;
+  // `--runs-file` holds either an array (a page, and no cross-read) or
+  // { "page": [...], "cross": [...] } — decision E6, so the union is reachable
+  // offline. Either way it goes through the same reader the live path does.
+  let read;
   if (runsFile) {
     console.log('!!  OFFLINE FIXTURE MODE — --runs-file is set. This must NEVER appear in a real CI log.');
+    let doc;
     try {
-      runs = JSON.parse(readFileSync(runsFile, 'utf8'));
+      doc = JSON.parse(readFileSync(runsFile, 'utf8'));
     } catch (e) {
       fail(`could not read fixture ${runsFile}: ${e.message}`);
       return;
     }
+    try {
+      read = await readRunHistory({ repo: process.env.GITHUB_REPOSITORY || DEFAULT_REPO, fixture: doc, nowMs });
+    } catch (e) {
+      lost(`platform proof freshness unreadable — the ${WORKFLOW} run history in the fixture could not be read: ${e.message}`);
+      return;
+    }
   } else {
     try {
-      runs = await fetchRuns();
+      read = await fetchRuns(nowMs);
     } catch (e) {
       lost(`the ${WORKFLOW} run history could not be read — ${e.message}`);
       return;
     }
   }
 
-  reportFreshness(evaluateFreshness(runs, nowMs), nowMs);
-  reportProvenance(runs, nowMs, runsFile !== null);
+  // DECISION E3: what was read, on every run, pass or fail.
+  console.log(`      READ    (GitHub run history) :  ${describeRead(read, newestScheduledGreen)}`);
+  const verdict = gradeRunHistory(read, nowMs);
+  if (verdict.stalePageCarried) console.log(verdict.stalePageCarried);
+  reportFreshness(verdict, nowMs);
+  reportProvenance(read.union, nowMs, runsFile !== null);
 }
 
 function reportFreshness(verdict, nowMs) {

@@ -220,9 +220,17 @@ jobs:
       # why: the bundle is BOOTED before it is published, not after. A Pages SPA answers
       # 200 for every missing path, so no post-deploy status code can tell a served
       # build from a served fallback (TRAPS ci-02).
+      # why: it boots under its own _headers CSP, and each --connect origin (the build's URL-valued defines) is
+      # fetched from the page and answered by the smoke, never sent; hand-passed until row O-WEB-CSP-HAND-LIST-UNSMOKED derives them.
       - name: Launch the built bundle once, before it is published
         working-directory: .
-        run: node tooling/smoke/smoke-web-artifact.mjs apps/${{ matrix.app }}/build/web
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
+        run: >
+          node tooling/smoke/smoke-web-artifact.mjs apps/${{ matrix.app }}/build/web
+          --connect "$SUPABASE_URL" --connect "$API_BASE_URL" --connect "$GLITCHTIP_DSN"
 
       # why: the release is created by a node script, not `glitchtip-cli releases new`: the
       # CLI has no retry, and one 522 from the origin failed run 35831511489. The script

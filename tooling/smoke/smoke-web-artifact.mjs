@@ -41,8 +41,37 @@
 // puppeteer, no new SHA-pinned action in the deploy lane — the smoke must not
 // become the reason a deploy fails to start.
 //
-// Usage:  node tooling/smoke/smoke-web-artifact.mjs <bundleDir> [--timeout-ms N] [--chrome PATH]
-// Exit 0 = the artifact started and reached the ready signal.
+// ── IT BOOTS UNDER THE BUNDLE'S OWN CONTENT-SECURITY-POLICY (2026-09-24) ─────
+// Until today this server sent no header but content-type, so the bundle booted
+// under NO policy and the smoke said nothing about the one the edge serves. The
+// app's `_headers` carries a CSP whose `connect-src` is a hand list of hosts,
+// and a host missing from it is not a build failure or a 404: the browser
+// refuses the request, sign-in or an API call fails at runtime, and every lane
+// in this repository was green. (Row O-WEB-CSP-HAND-LIST-UNSMOKED.)
+//
+//   · THE POLICY IS THE BUNDLE'S OWN. `serveBundle` applies the bundle's
+//     `_headers` rules as Pages does: a `*` splat, `:name` placeholders, every
+//     matching rule's headers, and a header set by two rules joined with a
+//     comma. A bundle with no `_headers`, or one that puts no CSP on the page,
+//     is COVERAGE LOST (exit 2): a boot under no policy proves nothing about it.
+//   · A VIOLATION IS REPORTED, NOT SCRAPED. Before navigation a
+//     `securitypolicyviolation` listener is installed that calls a
+//     `Runtime.addBinding` binding, so the directive and the blocked URI arrive
+//     as data. An enforced violation fails the smoke (exit 1), and one during
+//     boot fails it before the ready signal counts.
+//   · THE PROBE. A boot reaches only the hosts its own code path calls, so once
+//     the ready signal is observed the page fetches each `--connect <url>`
+//     origin itself. `Fetch.enable` pauses every request to those origins and
+//     answers it HERE with a 204, so no probe request reaches its host; a CSP
+//     refusal happens in the renderer before a request exists, so an origin
+//     missing from `connect-src` still surfaces as a violation. Each probe must
+//     also have BEEN paused: a pattern that stopped matching is a failure, not a
+//     request that went out unnoticed.
+//
+// Usage:  node tooling/smoke/smoke-web-artifact.mjs <bundleDir> [--connect URL]... [--timeout-ms N] [--chrome PATH]
+// Exit 0 = the artifact started under its own policy and reached the ready
+// signal, and every --connect origin was allowed. Exit 1 = a finding. Exit 2 =
+// COVERAGE LOST: the bundle carries no policy for the smoke to boot under.
 // ─────────────────────────────────────────────────────────────────────────────
 import { createServer } from 'node:http';
 import { readFileSync, existsSync, statSync, mkdtempSync, rmSync } from 'node:fs';
@@ -68,15 +97,33 @@ export const READY_SIGNAL = {
     '~1.5s against a real release build of apps/subscriptiontracker on 2026-08-03.',
 };
 
+/**
+ * THE CSP HALF. Installed before navigation, like the ready signal, so a
+ * violation during the very first script is heard. Each one is handed to the
+ * harness through a DevTools binding as JSON — the directive and the blocked URI
+ * as data, never read back out of console text. The binding is looked up when
+ * a violation fires, not when the listener is installed.
+ */
+export const CSP_VIOLATION = {
+  binding: '__nikatruCspViolation',
+  install:
+    "window.addEventListener('securitypolicyviolation', function (e) { if (typeof window.__nikatruCspViolation === 'function') " +
+    'window.__nikatruCspViolation(JSON.stringify({ directive: e.effectiveDirective || e.violatedDirective, blocked: e.blockedURI, ' +
+    'disposition: e.disposition, source: e.sourceFile, line: e.lineNumber })); }, true);',
+};
+
 const args = process.argv.slice(2);
 const flag = (name, fallback) => {
   const i = args.indexOf(`--${name}`);
   return i === -1 ? fallback : args[i + 1];
 };
+/** Every value of a repeatable flag, in order. */
+const flagAll = (name) => args.flatMap((a, i) => (a === `--${name}` ? [args[i + 1]] : []));
 const positional = args.filter((a, i) => !a.startsWith('--') && !(i > 0 && args[i - 1].startsWith('--')));
 
 const BUNDLE = positional[0] ? resolve(positional[0]) : null;
 const TIMEOUT_MS = Number(flag('timeout-ms', '90000'));
+const CONNECT = flagAll('connect');
 
 /** Entry points whose absence means the bundle cannot start at all. Checked
  *  before a browser is launched so the failure names the cause instead of
@@ -148,12 +195,91 @@ export function stripBasePrefix(path, prefix) {
   return `/${path.slice(prefix.length)}`;
 }
 
+/** A Cloudflare Pages `_headers` path pattern as a RegExp: one greedy `*` splat
+ *  and `:name` placeholders, each matching one path segment. */
+const pagesPattern = (pattern) =>
+  new RegExp(
+    `^${pattern
+      .split('*')
+      .map((part) => part.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/:[A-Za-z]\w*/g, '[^/]+'))
+      .join('.*')}$`,
+  );
+
+/** The rules of a Pages `_headers` file: a path pattern at column 0, then its
+ *  indented `Name: value` lines; `#` lines are comments.
+ *
+ *  🔴 ANYTHING ELSE THROWS, naming the line. The smoke's claim is "this bundle
+ *  boots under the policy Pages will serve", and a line it cannot model — an
+ *  absolute-URL rule, a `! Name` detach, a header before any pattern — is a line
+ *  on which that claim would be a guess. main() turns the throw into COVERAGE
+ *  LOST. tooling/ci/assert-web-cache-policy.mjs reads the same files for
+ *  Cache-Control and skips what it does not understand; this reader cannot. */
+export function parseHeadersFile(text) {
+  const rules = [];
+  let rule = null;
+  const lines = text.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].replace(/\r$/, '');
+    if (line.trim() === '' || line.trim().startsWith('#')) continue;
+    if (/^\s/.test(line)) {
+      const m = line.match(/^\s+([A-Za-z0-9-]+)\s*:\s*(.*?)\s*$/);
+      if (!rule) throw new Error(`_headers:${i + 1} is a header line before any path pattern`);
+      if (!m) throw new Error(`_headers:${i + 1} is not a \`Name: value\` header line: ${line.trim()}`);
+      rule.headers.push([m[1], m[2]]);
+      continue;
+    }
+    const pattern = line.trim();
+    if (!pattern.startsWith('/')) throw new Error(`_headers:${i + 1} is not a path pattern: ${pattern}`);
+    rule = { pattern, line: i + 1, re: pagesPattern(pattern), headers: [] };
+    rules.push(rule);
+  }
+  return rules;
+}
+
+/** The headers Pages sends for `path`: every matching rule applies, and a header
+ *  two rules set is joined with a comma — which for Content-Security-Policy
+ *  means both policies are enforced, exactly as a browser would read it. */
+export function headersFor(rules, path) {
+  const out = new Map();
+  for (const r of rules) {
+    if (!r.re.test(path)) continue;
+    for (const [name, value] of r.headers) {
+      const k = name.toLowerCase();
+      out.set(k, out.has(k) ? [out.get(k)[0], `${out.get(k)[1]}, ${value}`] : [name, value]);
+    }
+  }
+  return Object.fromEntries(out.values());
+}
+
+/** The bundle's `_headers` rules, or null when it has none. One read, no
+ *  existence check first (the same CodeQL #89 shape as the file server). */
+export function readBundleHeaders(dir) {
+  let text;
+  try {
+    text = readFileSync(join(dir, '_headers'), 'utf8');
+  } catch (e) {
+    if (e?.code === 'ENOENT') return null;
+    throw e;
+  }
+  return parseHeadersFile(text);
+}
+
+/** The value of `name` in `headers`, whatever its case. */
+export const headerValue = (headers, name) =>
+  Object.entries(headers).find(([k]) => k.toLowerCase() === name.toLowerCase())?.[1];
+
 /** A static server over `dir`, bound to loopback on an ephemeral port.
  *  Loopback and not 0.0.0.0: a CI runner is a shared network and this serves an
- *  unreleased build. */
-export function serveBundle(dir, onRequest = () => {}) {
+ *  unreleased build.
+ *
+ *  Every response from inside the bundle carries the headers the bundle's own
+ *  `_headers` gives its path, matched against the path RELATIVE TO THE BUNDLE —
+ *  the Pages project serves the bundle at its root and the apex router adds the
+ *  `/<id>` prefix, so `/*` and `/index.html` mean what they mean at the edge. */
+export function serveBundle(dir, onRequest = () => {}, rules = readBundleHeaders(dir) ?? []) {
   const server = createServer((req, res) => {
-    let p = decodeURIComponent(new URL(req.url, 'http://127.0.0.1').pathname);
+    const requested = decodeURIComponent(new URL(req.url, 'http://127.0.0.1').pathname);
+    let p = requested;
     if (p.endsWith('/')) p += 'index.html';
     // CONTAINMENT, and it is these two operations rather than a third check.
     // `p` always begins with `/` (an origin-form request line does), so
@@ -185,7 +311,8 @@ export function serveBundle(dir, onRequest = () => {}) {
     // match where it is published is still caught — by the 404 list, from the
     // other direction — and a bundle with no `<base>` tag keeps the old
     // root-mounted behaviour unchanged.
-    const stripped = basePrefix(dir) === '/' ? p : stripBasePrefix(p, basePrefix(dir));
+    const prefix = basePrefix(dir);
+    const stripped = prefix === '/' ? p : stripBasePrefix(p, prefix);
     if (stripped === null) {
       // Outside the bundle's own base path: a real 404 for this artifact, and
       // exactly what the edge would answer.
@@ -208,10 +335,47 @@ export function serveBundle(dir, onRequest = () => {}) {
       return;
     }
     onRequest({ path: p, status: 200 });
-    res.writeHead(200, { 'content-type': mimeFor(abs) });
+    const rel = prefix === '/' ? requested : stripBasePrefix(requested, prefix);
+    res.writeHead(200, { ...headersFor(rules, rel), 'content-type': mimeFor(abs) });
     res.end(body);
   });
   return server;
+}
+
+/** The origin a `--connect` value names, or null when it is not an https URL.
+ *  Only the origin is ever used or printed: deploy-web passes the GlitchTip DSN,
+ *  whose user part is its key.
+ *
+ *  ⚠️ HTTPS ONLY, AND THAT IS A CONTAINMENT RULE, NOT A PREFERENCE. The app's
+ *  policy carries `upgrade-insecure-requests`, so the page would rewrite an
+ *  `http://` probe to `https://` — past an interception pattern written for
+ *  `http://` — and that request would leave the machine. */
+export function probeOrigin(value) {
+  try {
+    const u = new URL(value);
+    return u.protocol === 'https:' ? u.origin : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Fetched in the page once it is ready: one request per origin, sequential,
+ *  `no-cors` so an answer without CORS headers still resolves (the question is
+ *  whether the POLICY lets the request out, not whether the host allows the
+ *  page to read it), and no credentials. The trailing wait lets a violation
+ *  event, which is dispatched as its own task, reach the binding first. */
+const probeExpression = (origins) =>
+  `(async function (urls) { const out = []; for (const url of urls) { try { const r = await fetch(url, { mode: 'no-cors', cache: 'no-store', credentials: 'omit' }); ` +
+  `out.push({ url: url, reached: true, type: r.type }); } catch (e) { out.push({ url: url, reached: false, error: String((e && e.message) || e) }); } } ` +
+  `await new Promise(function (done) { setTimeout(done, 100); }); return out; })(${JSON.stringify(origins.map((o) => `${o}/`))})`;
+
+/** COVERAGE LOST — exit 2, never 1: the smoke did not check enough to be
+ *  evidence (AGENTS.md exit-code convention), which is not a pass either. */
+function coverageLost(msg, detail = [], cleanup = () => {}) {
+  console.error(`FAIL COVERAGE LOST — smoke-web-artifact: ${oneLine(msg)}`);
+  for (const d of detail) console.error(`     ${oneLine(d)}`);
+  cleanup();
+  process.exit(2);
 }
 
 const CHROME_CANDIDATES = [
@@ -239,17 +403,50 @@ function main() {
     );
     process.exit(1);
   }
-  return run();
+  const origins = CONNECT.map(probeOrigin);
+  const notHttps = origins.flatMap((o, i) => (o ? [] : [i + 1]));
+  if (notHttps.length) {
+    console.error(
+      `FAIL smoke-web-artifact: --connect value(s) #${notHttps.join(', #')} are not https:// URLs (the values are not ` +
+        'printed: one may be a DSN, whose user part is a key). An http:// probe would be upgraded past its interception ' +
+        'pattern by the policy and leave the machine, so it is refused rather than sent.',
+    );
+    process.exit(1);
+  }
+  // The policy is checked for BEFORE a browser is launched, for the same reason
+  // as the entry files: the failure names its cause instead of passing a boot
+  // that proved nothing about the policy.
+  let rules;
+  try {
+    rules = readBundleHeaders(BUNDLE);
+  } catch (e) {
+    coverageLost(`${BUNDLE}/_headers could not be read as Pages header rules: ${e.message}`, [
+      'The smoke cannot boot the bundle under the policy Pages will serve if it cannot model the file that sets it.',
+    ]);
+  }
+  if (rules === null) {
+    coverageLost(`${BUNDLE} carries no _headers, so the smoke would boot it under NO Content-Security-Policy.`, [
+      'A boot under no policy proves nothing about the policy. Flutter copies web/_headers into build/web, so a',
+      'built bundle without one was built from an app that declares no headers at all.',
+    ]);
+  }
+  const csp = headerValue(headersFor(rules, '/'), 'content-security-policy');
+  if (!csp) {
+    coverageLost(`no rule in ${BUNDLE}/_headers puts a Content-Security-Policy on the page (/).`, [
+      'The smoke would boot the bundle under no policy, which proves nothing about the one it is meant to test.',
+    ]);
+  }
+  return run(rules, [...new Set(origins)], csp);
 }
 
-async function run() {
+async function run(rules, origins, csp) {
   /** Every 404 the page asked for. A declared-but-missing asset is one of the
    *  three failures R-13 names, and it does NOT always stop the first frame —
    *  so it is asserted separately rather than folded into the ready signal. */
   const notFound = [];
   const server = serveBundle(BUNDLE, ({ path, status }) => {
     if (status === 404 || status === 403) notFound.push(`${status} ${path}`);
-  });
+  }, rules);
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   // The page is opened AT THE BUNDLE'S OWN BASE PATH, for the same reason the
   // server mounts it there: that is the URL the deploy will serve it from, and
@@ -257,6 +454,8 @@ async function run() {
   const prefix = basePrefix(BUNDLE);
   const base = `http://127.0.0.1:${server.address().port}${prefix}`;
   console.log(`serving ${BUNDLE} at ${base}${prefix === '/' ? '' : `  (base href ${prefix}, read from the artifact)`}`);
+  const connectSrc = csp.split(/[;,]/).map((d) => d.trim()).find((d) => /^connect-src\s/i.test(d));
+  console.log(`     under its own _headers (${rules.length} rule(s)); the page's policy has ${connectSrc ? `\`${connectSrc}\`` : 'no connect-src'}`);
 
   const profile = mkdtempSync(join(tmpdir(), 'nikatru-smoke-'));
   let chrome = null;
@@ -274,6 +473,7 @@ async function run() {
     cleanup();
     process.exit(1);
   };
+  const lost = (msg, detail = []) => coverageLost(msg, detail, cleanup);
 
   const explicit = flag('chrome', process.env.CHROME_EXECUTABLE);
   const candidates = explicit ? [explicit] : CHROME_CANDIDATES;
@@ -325,9 +525,25 @@ async function run() {
   const pageErrors = [];
   const consoleErrors = [];
   const netFailures = [];
+  /** Enforced CSP violations, from the binding. A report-only one blocks
+   *  nothing, so it is printed and never fails the smoke. */
+  const violations = [];
+  const reportOnly = [];
+  /** Every request the probe's interception paused, and so answered here. */
+  const paused = [];
   ws.addEventListener('message', (e) => {
     const msg = JSON.parse(e.data);
     if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); return; }
+    if (msg.method === 'Runtime.bindingCalled' && msg.params?.name === CSP_VIOLATION.binding) {
+      let v;
+      try { v = JSON.parse(msg.params.payload); } catch { v = { directive: 'unreadable', blocked: String(msg.params.payload) }; }
+      (v.disposition === 'report' ? reportOnly : violations).push(v);
+    }
+    if (msg.method === 'Fetch.requestPaused') {
+      // Answered HERE, never continued: this is what keeps a probe off its host.
+      paused.push(msg.params.request.url);
+      send('Fetch.fulfillRequest', { requestId: msg.params.requestId, responseCode: 204, responseHeaders: [] }, msg.sessionId);
+    }
     if (msg.method === 'Runtime.exceptionThrown') {
       const d = msg.params?.exceptionDetails ?? {};
       pageErrors.push(d.exception?.description ?? d.text ?? 'unknown exception');
@@ -355,6 +571,16 @@ async function run() {
   await send('Page.enable', {}, session);
   await send('Log.enable', {}, session);
   await send('Network.enable', {}, session);
+  // The violation listener, BEFORE navigation for the same reason as the ready
+  // signal. A listener that could not be installed is a CSP half that hears
+  // nothing, and silence from it would read as "no violation".
+  const bound = await send('Runtime.addBinding', { name: CSP_VIOLATION.binding }, session);
+  const listening = await send('Page.addScriptToEvaluateOnNewDocument', { source: CSP_VIOLATION.install }, session);
+  if (bound.error || listening.error) {
+    lost('the CSP violation listener could not be installed, so a violation would go unheard.', [
+      JSON.stringify(bound.error ?? listening.error),
+    ]);
+  }
   // BEFORE navigation. The event fires once and does not replay, so a listener
   // installed after the load is a check that can only ever time out.
   await send('Page.addScriptToEvaluateOnNewDocument', { source: READY_SIGNAL.install }, session);
@@ -364,10 +590,25 @@ async function run() {
   let ready = false;
   while (Date.now() - started < TIMEOUT_MS) {
     await new Promise((r) => setTimeout(r, 250));
+    if (violations.length) break;
     const r = await send('Runtime.evaluate', { expression: READY_SIGNAL.expression, returnByValue: true }, session);
     if (r.result?.result?.value === true) { ready = true; break; }
   }
   const elapsed = Date.now() - started;
+  const showViolation = (v) =>
+    `${v.directive} refused ${v.blocked || '(no URI)'}${v.source ? `  (from ${v.source}${v.line ? `:${v.line}` : ''})` : ''}`;
+  const POLICY_WHY =
+    "The policy is the bundle's own _headers, served as Pages serves it. A refusal is not an error page or a 404: " +
+    'the feature behind it fails at runtime, for every visitor, while every other lane in this repository is green.';
+
+  // BEFORE the ready signal counts. A violation is named with its directive
+  // and blocked URI, which a timeout could never do.
+  if (violations.length) {
+    die(
+      `the artifact broke its own Content-Security-Policy while it booted: ${showViolation(violations[0])}.`,
+      [...violations.slice(0, 5).map(showViolation), POLICY_WHY],
+    );
+  }
 
   if (!ready) {
     die(
@@ -400,8 +641,68 @@ async function run() {
     );
   }
 
+  // ── THE PROBE, after the boot's own verdicts so nothing it answers can move
+  // them. Interception is switched on only now: the boot above reaches exactly
+  // what it reached before this limb existed, and from here every request to a
+  // probe origin is paused and answered with a 204 by the handler above.
+  if (origins.length) {
+    const intercepting = await send(
+      'Fetch.enable',
+      { patterns: origins.map((o) => ({ urlPattern: `${o}/*`, requestStage: 'Request' })) },
+      session,
+    );
+    if (intercepting.error) {
+      lost('request interception could not be switched on, so the connect-src probe was NOT sent.', [
+        JSON.stringify(intercepting.error),
+        'A probe that is not intercepted reaches the real host, so the smoke refuses to send one.',
+      ]);
+    }
+    const probe = await send(
+      'Runtime.evaluate',
+      { expression: probeExpression(origins), awaitPromise: true, returnByValue: true },
+      session,
+    );
+    const results = probe.result?.result?.value;
+    if (!Array.isArray(results)) {
+      lost('the connect-src probe returned nothing readable, so no origin was tested.', [
+        JSON.stringify(probe.error ?? probe.result?.exceptionDetails ?? probe.result ?? {}),
+      ]);
+    }
+    if (violations.length) {
+      die(
+        `the bundle's own Content-Security-Policy refused a --connect origin: ${showViolation(violations[0])}.`,
+        [
+          ...violations.slice(0, 5).map(showViolation),
+          'Each --connect origin is a host the build was given to call. One its connect-src does not name is a',
+          'request the browser blocks in production: sign-in, the API or crash reporting fails for every visitor.',
+          POLICY_WHY,
+        ],
+      );
+    }
+    const unpaused = results.filter((r) => !paused.includes(r.url));
+    if (unpaused.length) {
+      die(`${unpaused.length} probe request(s) were NOT paused by the interception, so they may have reached the host.`, [
+        ...unpaused.map((r) => `  ${r.url}`),
+        'The probe exists to test the policy without touching production; a request it did not answer itself is',
+        'one it cannot vouch for.',
+      ]);
+    }
+    const failed = results.filter((r) => !r.reached);
+    if (failed.length) {
+      die(`${failed.length} probe request(s) did not complete although no violation was reported.`, [
+        ...failed.map((r) => `  ${r.url}: ${r.error}`),
+      ]);
+    }
+  }
+
   console.log(`ok   ${READY_SIGNAL.id} reached in ${elapsed} ms — the artifact starts`);
   console.log(`ok   no 404 from the bundle, no unhandled page exception`);
+  console.log("ok   no Content-Security-Policy violation, under the bundle's own _headers");
+  for (const o of origins) {
+    console.log(`ok   connect-src allows ${o} — fetched from the page, paused and answered here with a 204; it never reached the host`);
+  }
+  if (!origins.length) console.log('--   no --connect origin was given, so connect-src was not probed');
+  for (const v of reportOnly.slice(0, 5)) console.log(`--   report-only: ${oneLine(showViolation(v))}`);
   console.log('\nsmoke-web-artifact: ok (this ran BEFORE publication — the artifact, not the deployment)');
   cleanup();
   process.exit(0);

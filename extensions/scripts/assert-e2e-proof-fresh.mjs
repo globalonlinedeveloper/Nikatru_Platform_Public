@@ -76,6 +76,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+/* 🔴 THE RUN HISTORY IS READ THROUGH THE SHARED ANCHORED READER (trap ci-48,
+   2026-09-24). PR #913's CI failed its sibling on a stale GitHub page it could
+   not tell from a real gap: one page, no anchor, no cross-read, no request
+   ceiling, and a reason that named no run and no query. This gate read the same
+   way. tooling/ci/anchored-run-read.mjs is the one reader the three freshness
+   gates share (precedent for the path: publish-arming.mjs imports
+   ../../tooling/ci/channel-arming.mjs). */
+import { anchoredRunRead, describeRead, staleCarriedLine, githubJson, GITHUB_API } from '../../tooling/ci/anchored-run-read.mjs';
+import { selfRunFloor } from '../../tooling/ci/run-page-anchor.mjs';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 /* 🔴 THE WORKFLOW THIS GATE READS ITS CEILING OUT OF IS NO LONGER IN THIS TREE.
@@ -456,24 +465,66 @@ if (FIXTURE) {
 }
 if (Number.isNaN(NOW)) cannotRun('PROOF_ALARM_NOW is not a parseable date.');
 
+/* Every request is under the shared per-request ceiling and bounded retry
+   (tooling/ops/bounded-retry.mjs, through githubJson). Until 2026-09-24 this
+   was a bare fetch, so a GitHub API that accepted the connection and never
+   answered held the job until its timeout-minutes cancelled it. A read that
+   outlives the plan throws, and the handler at the bottom reports it as
+   COVERAGE LOST, exit 2. */
+const TOKEN_MISSING = 'no GH_TOKEN in the environment — run history is unreadable, so this fails closed rather than certifying a timer it cannot see';
 const api = async p => {
   const token = process.env.GH_TOKEN;
-  if (!token) throw new Error('no GH_TOKEN in the environment — run history is unreadable, so this fails closed rather than certifying a timer it cannot see');
-  const res = await fetch('https://api.github.com' + p, {
-    headers: { authorization: 'Bearer ' + token, accept: 'application/vnd.github+json', 'user-agent': 'nikatru-proof-fresh' }
-  });
-  if (!res.ok) throw new Error(`GitHub API returned ${res.status} for ${p}`);
-  return res.json();
+  if (!token) throw new Error(TOKEN_MISSING);
+  return githubJson(GITHUB_API + p, token, { label: p, userAgent: 'nikatru-proof-fresh' });
 };
+/* The newest QUALIFYING row: a scheduled run on main, by created_at — the field
+   both limbs grade (see THREE THINGS above). */
+const newestScheduled = runs => (runs || [])
+  .filter(r => r && r.event === 'schedule' && !Number.isNaN(Date.parse(r.created_at || '')))
+  .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0] || null;
+/* The reds of the two FRESHNESS limbs, kept apart from the self-checks: on a
+   page the cross-read proved stale, only these change meaning (see the end). */
+const freshRed = [];
+const freshErr = m => { freshRed.push(m); err(m); };
 
 (async () => {
   const repo = process.env.REPO || process.env.GITHUB_REPOSITORY || '';
   if (!fixture && !repo) throw new Error('REPO and GITHUB_REPOSITORY are both empty — the query would have been built against nothing');
 
   const runsPath = `/repos/${repo}/actions/workflows/${WORKFLOW}/runs?branch=${BRANCH}&event=schedule&per_page=${RUNS_PAGE_SIZE}`;
-  const bodyJson = fixture ? fixture : await api(runsPath);
-  const rows = bodyJson && bodyJson.workflow_runs;
-  if (!Array.isArray(rows)) throw new Error('run list was not an array — an unreadable answer is a failure, not a pass');
+  if (!fixture && !process.env.GH_TOKEN) throw new Error(TOKEN_MISSING);
+  /* ── THE READ, ANCHORED ─────────────────────────────────────────────────
+     Anchors that fit THIS gate, measured 2026-09-24:
+     · CROSS-READ — yes: the same query with `created>=<the page's newest>`.
+     · SELF-RUN — only on the schedule event. This gate grades the workflow it
+       runs in, but its query is `event=schedule` and its job's `if:` excludes
+       that event today, so on a pull_request or a dispatch the running run is
+       NOT a row of this page and would be a false anchor. On a schedule run it
+       is one: the page must hold it (it is then excluded from grading below,
+       which is a different question from whether the page is current).
+     · BRANCH HEAD — no: extensions.yml is pushed only by a tag, so
+       `pushTriggersBranch` reads false for it.
+     The fixture carries an optional `cross` array beside `workflow_runs`; with
+     none, the cross-read is reported `not run (fixture has none)` and nothing
+     reaches the network. */
+  const read = await anchoredRunRead({
+    workflow: WORKFLOW,
+    url: GITHUB_API + runsPath,
+    token: process.env.GH_TOKEN || null,
+    fixture: fixture ? { page: fixture.workflow_runs, cross: fixture.cross } : undefined,
+    nowMs: NOW,
+    floor: process.env.GITHUB_EVENT_NAME === 'schedule' ? selfRunFloor(process.env, { repo, workflow: WORKFLOW, branch: BRANCH }) : null,
+    what: `the scheduled-run history of ${WORKFLOW} on ${BRANCH}`,
+    label: runsPath,
+    userAgent: 'nikatru-proof-fresh',
+  });
+  /* DECISION E2: the UNION of the page and its cross-read is what is graded.
+     A replica can omit runs, never invent one, so each row exists and matches
+     the query. Whether the page was proven stale decides, at the end, what a
+     red from the two freshness limbs means. */
+  const rows = read.union;
+  /* DECISION E3: what was read, on every run, pass or fail. */
+  console.log(`proof-fresh READ  ${describeRead(read, newestScheduled)}`);
 
   /* The server-side event filter is re-checked here. A filter that quietly
      stopped filtering would let hand-presses back in, which is the one thing
@@ -572,14 +623,14 @@ const api = async p => {
     if (NOW < BOOTSTRAP_UNTIL) {
       console.log(`::notice::${why} BOOTSTRAP: this repository's history for this workflow begins 2026-09-05 and the cron only began firing daily on 2026-09-07, so an empty history is expected until ${new Date(BOOTSTRAP_UNTIL).toISOString()}. This escape expires on that date by arithmetic, not by anybody remembering it.`);
     } else {
-      err(why);
+      freshErr(why);
     }
   }
   let timerAge = null;
   if (sched.length) {
     timerAge = (NOW - Date.parse(sched[0].created_at)) / DAY;
-    if (Number.isNaN(timerAge)) err(`newest scheduled run ${sched[0].id} has an unparseable created_at: ${sched[0].created_at}`);
-    else if (timerAge > MAX_AGE_DAYS) err(`THE CRON IS DEAD OR DISABLED — the newest scheduled ${WORKFLOW} run (${sched[0].id}, ${sched[0].created_at}) fired ${timerAge.toFixed(1)} day(s) ago, ceiling ${MAX_AGE_DAYS}. A dispatch cannot clear this; only the timer can.`);
+    if (Number.isNaN(timerAge)) freshErr(`newest scheduled run ${sched[0].id} has an unparseable created_at: ${sched[0].created_at}`);
+    else if (timerAge > MAX_AGE_DAYS) freshErr(`THE CRON IS DEAD OR DISABLED — the newest scheduled ${WORKFLOW} run (${sched[0].id}, ${sched[0].created_at}) fired ${timerAge.toFixed(1)} day(s) ago, ceiling ${MAX_AGE_DAYS}. A dispatch cannot clear this; only the timer can.`);
     else console.log(`proof-fresh TIMER ok  newest scheduled run ${sched[0].id} fired ${timerAge.toFixed(1)} day(s) ago (ceiling ${MAX_AGE_DAYS})`);
   }
 
@@ -638,13 +689,25 @@ const api = async p => {
   if (!green && !sched.length && NOW < BOOTSTRAP_UNTIL) {
     console.log(`::notice::no scheduled run to grade yet; see the bootstrap notice above. Expires ${new Date(BOOTSTRAP_UNTIL).toISOString()}.`);
   } else if (!green) {
-    err(`NO GREEN SCHEDULED RUN in the newest ${walked} scheduled ${WORKFLOW} run(s)${sched.length > walked ? ` (of ${sched.length} visible; the walk is capped at ${WALK_BACK})` : ''}. The weekly proof has been red, has run nothing, or did not run the ${EXPECT_LEGS} leg(s) this checkout expects, for every one of them.`);
+    freshErr(`NO GREEN SCHEDULED RUN in the newest ${walked} scheduled ${WORKFLOW} run(s)${sched.length > walked ? ` (of ${sched.length} visible; the walk is capped at ${WALK_BACK})` : ''}. The weekly proof has been red, has run nothing, or did not run the ${EXPECT_LEGS} leg(s) this checkout expects, for every one of them.`);
   } else {
     greenAge = (NOW - Date.parse(green.created_at)) / DAY;
-    if (greenAge > MAX_AGE_DAYS) err(`THE WEEKLY PROOF IS STALE — the newest scheduled run whose e2e legs all passed is ${green.id} (${green.created_at}), ${greenAge.toFixed(1)} day(s) old, ceiling ${MAX_AGE_DAYS}. The cron may well be firing; what it produces is red.`);
+    if (greenAge > MAX_AGE_DAYS) freshErr(`THE WEEKLY PROOF IS STALE — the newest scheduled run whose e2e legs all passed is ${green.id} (${green.created_at}), ${greenAge.toFixed(1)} day(s) old, ceiling ${MAX_AGE_DAYS}. The cron may well be firing; what it produces is red.`);
     else console.log(`proof-fresh GREEN ok  scheduled run ${green.id} passed every e2e leg ${greenAge.toFixed(1)} day(s) ago (ceiling ${MAX_AGE_DAYS})`);
   }
 
+  /* ── DECISION E2: WHAT A RED MEANS ON A PAGE PROVEN STALE ─────────────────
+     Both limbs above graded the UNION. When the anchor proved the page stale:
+     · the limbs are green   → the cross-read carried the proof; say so, and
+                               go on to the normal verdict;
+     · a limb is still red   → COVERAGE LOST, exit 2: GitHub served a history
+                               that ends before the present, and nothing this
+                               gate can see is evidence either way. */
+  if (read.stale && freshRed.length) {
+    console.log(`::error::proof-fresh COVERAGE LOST — ${read.verdict.why} The union of the page and its cross-read was graded too and is not fresh either: ${freshRed.join(' | ')}`);
+    process.exit(2);
+  }
+  if (read.stale) console.log(staleCarriedLine(read, newestScheduled));
   if (red.length) {
     console.log(`::error::${red.length} freshness finding(s): ${red.join(' | ')}`);
     process.exit(1);

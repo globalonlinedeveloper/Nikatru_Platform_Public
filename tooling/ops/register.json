@@ -1770,6 +1770,29 @@
       "source": "verified"
     },
     {
+      "_whyThisRowExists": "APPENDED 2026-09-24 for O-APPLE-SIGNING-EXPIRY-UNWATCHED. assert-ops-register.mjs holds every workflow file to a duty row anchored at it, so the file and this row land together (measured: without it the guard reports `.github/workflows/apple-expiry-write.yml has NO duty row anchored at it`).",
+      "id": "duty.workflow.apple-expiry-write.yml",
+      "kind": "duty",
+      "what": "The machine write of the Apple signing expiry dates: tooling/ops/check-apple-signing-expiry.mjs --write reads App Store Connect for the certificates and App Store profiles declared in tooling/apple-provisioning.json, writes each matching `expiring.cert.apple-*` and `expiring.profile.apple-appstore-*` row's `expires` into tooling/ops/register.json, and commits that one file to the branch it was dispatched on.",
+      "detector": "Attended: whoever dispatched it reads the run. The checker exits 1 on a finding a date cannot repair (a 404, a profile that is not ACTIVE, an unknown or duplicate type) and 2 when it could not look, and writes nothing in either case; after a write it re-judges the file it wrote and fails the job, before anything is committed, unless every row now matches. tooling/ci/assert-ops-register.mjs grades the rows on the pull request, never in this job: that would make this workflow a guard host, which enforces live verdicts on a dispatch, so a red ops-watch would fail the dispatch that repairs it.",
+      "response": "Read the run. Exit 2 with a 401 or 403 means the App Store Connect key cannot read certificates or profiles, which is an owner step. Exit 1 names the id that is gone or not ACTIVE, which is a re-mint and then another dispatch. A green run pushed one commit: open the pull request from that branch.",
+      "cadence": "on-demand",
+      "why": "The dates move when Apple renews, re-mints or revokes a certificate or profile, which is rare and never on a clock. The scheduled half is read-only and belongs in ops-watch.yml; a scheduled workflow holding `contents: write` would widen every job beside it. Dispatch-only, and never on main.",
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": ".github/workflows/apple-expiry-write.yml",
+        "record": "GitHub Actions run history for apple-expiry-write.yml, plus the one commit it pushes to the dispatched branch",
+        "failingValue": "conclusion = failure: the checker exiting 1 or 2, with nothing written or with a written file it does not accept, so nothing is committed",
+        "readBy": "the dispatching agent or human, plus tooling/ci/assert-ops-register.mjs on the pull request that carries the commit"
+      },
+      "accessProviders": [
+        "github",
+        "apple"
+      ],
+      "source": "unverified",
+      "unverifiedWhy": "The workflow has not run yet. Its first dispatch, after this row reaches main, is the first read of App Store Connect with the repository's key, and whether that key may read v1/certificates and v1/profiles is unmeasured until then."
+    },
+    {
       "_whyThisRowExists": "APPENDED 2026-08-25. assert-ops-register.mjs holds `watched workflows ≡ .github/workflows/*.yml` in BOTH directions, so a new workflow file with no row here exits 1 — which is also this workflow's reddening mutation, recorded in its own header: delete .github/workflows/site-drift-repair.yml and both this guard and assert-enforcement-index.mjs go red.",
       "_theWindowThisDoesNotClose": "⚠️ AN AUTO-PR SHORTENS AND DE-HUMANISES THE REPAIR; IT DOES NOT CLOSE THE CRAWLER WINDOW. Cloudflare's Git integration deploys sites/nikatru on the merge push itself — no workflow involved and no GitHub check it can read — so the stale sitemap goes LIVE at merge and stays live until the repair pull request merges. Measured on 2026-08-25: 14m49s (51df9ef 09:48:24 +0530 → f67ee2b 10:03:13 +0530), with a human watching and acting. A zero window would mean pushing straight to protected main, which is a branch-protection change and OWNER work; it is deliberately not attempted.",
       "id": "duty.workflow.site-drift-repair.yml",

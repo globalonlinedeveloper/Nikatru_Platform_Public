@@ -2399,6 +2399,76 @@ expect('a GITHUB_RUN_ID that is in no row leaves the history untouched', {
 });
 
 /* =====================================================================
+   🔴 A STALE PAGE IS NOT A DEAD CRON — trap ci-48, PR #913, 2026-09-24
+   =====================================================================
+   The sibling in tooling/ci failed PR #913's CI on a GitHub page whose newest
+   green run was 5.0 days old while a green run of 06:06:58Z that day existed,
+   and its message could not tell that from a real gap. This gate read the same
+   way: one page, no anchor, no cross-read. It now reads through
+   tooling/ci/anchored-run-read.mjs, and the fixture carries an optional `cross`
+   array — the cross-read by creation date — beside `workflow_runs`.
+
+   THREE CORNERS, ONE PAGE. The page's newest scheduled run is 30 days old, so
+   on its own it is a dead cron (exit 1). A cross-read holding a fresh green
+   scheduled run proves the page stale AND carries the proof (exit 0, and the
+   line says so). A cross-read whose newest run is also past the ceiling proves
+   the page stale and carries nothing (exit 2: no verdict, not a finding). And a
+   fixture with no `cross` says so on its READ line rather than reaching the
+   network. */
+const withStalePage = (cross, crossJobs = {}) => withProof(h => {
+  h.workflow_runs = [
+    { id: 2, event: 'schedule', created_at: proofAgo(30) },
+    { id: 1, event: 'schedule', created_at: proofAgo(37) }
+  ];
+  h.jobs = { 2: proofLeg('success'), 1: proofLeg('success'), ...crossJobs };
+  if (cross !== undefined) h.cross = cross;
+});
+expect('CONTROL — the stale page alone, with an EMPTY cross-read, is a dead cron (1)', {
+  script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 1,
+  contains: 'THE CRON IS DEAD OR DISABLED',
+  root: withStalePage([]), env: noSelfEnv
+});
+expect('a cross-read holding a fresh green scheduled run CARRIES the proof (0)', {
+  script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 0,
+  contains: 'STALE PAGE, CROSS-READ CARRIED THE PROOF: the page\'s newest qualifying run is 2 (updated_at absent) over 2 row(s); the cross-read\'s is 5 (updated_at absent) over 1 row(s)',
+  root: withStalePage([{ id: 5, event: 'schedule', created_at: proofAgo(2) }], { 5: proofLeg('success') }), env: noSelfEnv
+});
+expect('…and the carried proof still ends in the normal green verdict', {
+  script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 0,
+  contains: 'proof-fresh ok — timer 2.0d, green proof 2.0d',
+  root: withStalePage([{ id: 5, event: 'schedule', created_at: proofAgo(2) }], { 5: proofLeg('success') }), env: noSelfEnv
+});
+expect('a page proven stale whose cross-read is ALSO past the ceiling is COVERAGE LOST (2)', {
+  script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 2,
+  contains: 'proof-fresh COVERAGE LOST — stale page — the scheduled-run history of e2e.yml on main ends at run 2',
+  root: withStalePage([{ id: 5, event: 'schedule', created_at: proofAgo(12) }], { 5: proofLeg('success') }), env: noSelfEnv
+});
+expect('the READ line names the query, the rows and the cross-read on every run', {
+  script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 0,
+  contains: 'proof-fresh READ  fixture standing in for GET /repos/o/r/actions/workflows/e2e.yml/runs?branch=main&event=schedule&per_page=100 · 3 row(s) returned, per_page 100, saturated no · newest qualifying run 3 (updated_at absent) · cross-read not run (fixture has none)\n',
+  root: withProof(), env: root => ({ ...noSelfEnv(root), REPO: 'o/r' })
+});
+/* THE SELF-RUN FLOOR, AND ONLY ON THE SCHEDULE EVENT. On a scheduled run the
+   running run is a row of this `event=schedule` page, so a page that does not
+   hold it ends before the present. On any other event the running run is not a
+   scheduled row at all, and the same floor would be a false anchor — so the
+   pair below differs ONLY in GITHUB_EVENT_NAME. */
+const floorEnv = event => root => ({
+  ...proofEnv(root), GITHUB_ACTIONS: 'true', GITHUB_RUN_ID: SELF_ID, GITHUB_EVENT_NAME: event,
+  GITHUB_WORKFLOW_REF: 'o/r/.github/workflows/e2e.yml@refs/heads/main', GITHUB_REF: 'refs/heads/main', GITHUB_REPOSITORY: 'o/r', REPO: 'o/r'
+});
+expect('on the schedule event, a page without the running run is PROVEN STALE by the self-run floor', {
+  script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 0,
+  contains: 'the page is PROVEN STALE',
+  root: withProof(), env: floorEnv('schedule')
+});
+expect('on a pull_request the same page is NOT anchored on the running run (no false stale)', {
+  script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 0,
+  contains: 'cross-read not run (fixture has none)\n',
+  root: withProof(), env: floorEnv('pull_request')
+});
+
+/* =====================================================================
    argument handling
    ===================================================================== */
 console.log('\nargument handling');

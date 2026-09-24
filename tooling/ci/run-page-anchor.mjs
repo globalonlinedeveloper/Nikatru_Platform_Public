@@ -43,7 +43,7 @@
 //               A page without a run for HEAD is stale, once HEAD is older than
 //               HEAD_RUN_GRACE_MS and carries no skip marker. Catches (3)-(5).
 //   CROSS-READ — the same question asked through a DIFFERENT query: the
-//               platform-proof reader re-asks by creation date
+//               freshness readers (anchored-run-read.mjs) re-ask by creation date
 //               (`created=>=<the page's newest run>`, `crossReadTerm`); the
 //               ops-register reader, which holds ten workflow pages, reads the
 //               repository-wide run list ONCE and filters it by `path` (one
@@ -59,10 +59,24 @@
 // (freshness) and hides them (red-since); the honest verdict for "GitHub served
 // me an old history" is "no verdict", printed, on every run.
 //
+// ⏱ APPENDED 2026-09-24 (trap ci-48, PR #913 CI run 35967342865): still never a
+// finding, and now GREEN when the cross-read itself holds the proof. A replica
+// can only omit runs, so every run on the page and on the cross-read exists and
+// matches the query; the three FRESHNESS readers (anchored-run-read.mjs, which
+// now holds the platform reader's cross-read) grade the UNION of the two. Union
+// fresh: green, with a line starting `STALE PAGE, CROSS-READ CARRIED THE PROOF:`.
+// Page proven stale and the union still not fresh: COVERAGE LOST, as before.
+// assert-ops-register.mjs's `anchoredBranchPage` keeps the refusal unchanged —
+// its red-since use is not a freshness claim, and a union cannot answer it.
+//
 // ⬜ NAMED, NOT CLOSED: a status-filtered history read OUTSIDE Actions, for a
 // workflow that is not push-triggered, has only the cross-read, and a
 // cross-read served by the same stale replica agrees with the page. That
-// residue is stated here rather than implied away.
+// residue is stated here rather than implied away. What exposes it is the
+// read line each freshness reader prints on every run (anchored-run-read.mjs
+// `describeRead`): the query, the row count and the newest run of each read,
+// so two reads that agree on an old answer can be told from a real gap by
+// asking the same query once more by hand.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** A run that completed within this many ms of now may genuinely have landed

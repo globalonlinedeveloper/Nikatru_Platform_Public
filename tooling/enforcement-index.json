@@ -20,6 +20,14 @@
     "state": "LIBRARY"
   },
   {
+    "claims": [],
+    "invokedBy": [],
+    "kind": "guard",
+    "ref": "tooling/ci/anchored-run-read.mjs",
+    "references": [],
+    "state": "LIBRARY"
+  },
+  {
     "claims": [
       "D-10"
     ],
@@ -3004,6 +3012,16 @@
     ],
     "kind": "script",
     "ref": "tooling/ops/check-analytics-liveness.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/apple-expiry-write.yml#write"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/check-apple-signing-expiry.mjs",
     "references": [],
     "state": "WIRED"
   },
