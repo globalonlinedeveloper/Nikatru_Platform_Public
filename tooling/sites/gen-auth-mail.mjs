@@ -42,7 +42,7 @@
 // Exit 2 = COVERAGE LOST: a source template is missing, so there is nothing to
 //          copy and nothing to compare against. Never a pass.
 // ─────────────────────────────────────────────────────────────────────────────
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from '../ci/tree-walk.mjs';
@@ -56,7 +56,10 @@ export const AUTH_MAIL_PREFIX = `${AUTH_MAIL_SERVED_DIR}/`;
 export const AUTH_MAIL_ORIGIN = 'https://nikatru.com';
 
 /**
- * The three templates, and everything each is known by. `hostedField` is the
+ * The three templates, and everything each is known by. `source` is the tracked
+ * body, written out in full so the dead-files guard reaches it from this, its real
+ * consumer (a bare `file` stopped being unique once the served copies existed,
+ * #921). `hostedField` is the
  * hosted Management API field (verify-supabase-templates.mjs), `gotrueEnv` the
  * self-hosted GoTrue variable that must hold `url`, and `subjectKey` the key of
  * `supabaseAuth.subjects` in tooling/mail-transport.json.
@@ -64,6 +67,7 @@ export const AUTH_MAIL_ORIGIN = 'https://nikatru.com';
 export const AUTH_MAIL_TEMPLATES = Object.freeze([
   Object.freeze({
     file: 'confirm-signup.html',
+    source: 'docs/platform/supabase/email-templates/confirm-signup.html',
     hostedField: 'mailer_templates_confirmation_content',
     gotrueEnv: 'GOTRUE_MAILER_TEMPLATES_CONFIRMATION',
     subjectKey: 'confirmation',
@@ -71,6 +75,7 @@ export const AUTH_MAIL_TEMPLATES = Object.freeze([
   }),
   Object.freeze({
     file: 'magic-link.html',
+    source: 'docs/platform/supabase/email-templates/magic-link.html',
     hostedField: 'mailer_templates_magic_link_content',
     gotrueEnv: 'GOTRUE_MAILER_TEMPLATES_MAGIC_LINK',
     subjectKey: 'magic_link',
@@ -78,6 +83,7 @@ export const AUTH_MAIL_TEMPLATES = Object.freeze([
   }),
   Object.freeze({
     file: 'reset-password.html',
+    source: 'docs/platform/supabase/email-templates/reset-password.html',
     hostedField: 'mailer_templates_recovery_content',
     gotrueEnv: 'GOTRUE_MAILER_TEMPLATES_RECOVERY',
     subjectKey: 'recovery',
@@ -96,10 +102,30 @@ export function isAuthMailPath(rel) {
  */
 export function genAuthMail(root, { check = false } = {}) {
   const lines = [];
-  const src = join(root, ...AUTH_MAIL_SOURCE_DIR.split('/'));
   const out = join(root, ...AUTH_MAIL_SERVED_DIR.split('/'));
 
-  const missing = AUTH_MAIL_TEMPLATES.filter((t) => !existsSync(join(src, t.file)));
+  // Read, never check-then-read: an existsSync() before the read (and the write
+  // below) is a file-system race CodeQL grades high (js/file-system-race, #921).
+  const readOrNull = (p) => {
+    try {
+      return readFileSync(p);
+    } catch (e) {
+      if (e?.code === 'ENOENT') return null;
+      throw e;
+    }
+  };
+  // The table names each source in full (for the dead-files guard); it must still
+  // be the one file of that name in the source directory, or the copy is not a copy.
+  const astray = AUTH_MAIL_TEMPLATES.filter((t) => t.source !== `${AUTH_MAIL_SOURCE_DIR}/${t.file}`);
+  if (astray.length) {
+    lines.push(
+      `gen-auth-mail: TABLE — each source must be ${AUTH_MAIL_SOURCE_DIR}/<file>; ` +
+        `these are not: ${astray.map((t) => t.file).join(', ')}. Never a pass.`,
+    );
+    return { code: 2, lines };
+  }
+  const wants = new Map(AUTH_MAIL_TEMPLATES.map((t) => [t.file, readOrNull(join(root, ...t.source.split('/')))]));
+  const missing = AUTH_MAIL_TEMPLATES.filter((t) => wants.get(t.file) === null);
   if (missing.length) {
     lines.push(
       `gen-auth-mail: COVERAGE LOST — source template(s) missing under ${AUTH_MAIL_SOURCE_DIR}/: ` +
@@ -111,9 +137,9 @@ export function genAuthMail(root, { check = false } = {}) {
   const drift = [];
   let written = 0;
   for (const t of AUTH_MAIL_TEMPLATES) {
-    const want = readFileSync(join(src, t.file));
+    const want = wants.get(t.file);
     const dest = join(out, t.file);
-    const have = existsSync(dest) ? readFileSync(dest) : null;
+    const have = readOrNull(dest);
     if (have && have.equals(want)) {
       lines.push(`ok   ${AUTH_MAIL_SERVED_DIR}/${t.file} == ${AUTH_MAIL_SOURCE_DIR}/${t.file} (${want.length} B)`);
       continue;
