@@ -63,6 +63,10 @@ const APP_HEADERS = readFileSync(join(ROOT, 'apps', 'subscriptiontracker', 'web'
 /** The CSP the app ships, as written on its one `Content-Security-Policy:` line. */
 const APP_CSP = APP_HEADERS.match(/^\s+Content-Security-Policy:\s*(.+?)\s*$/m)?.[1];
 const API = 'https://subscriptiontracker-api.nikatru.com';
+const API_HOST = new URL(API).hostname;
+/** The host a recorded proxy request named: `host:port` for a CONNECT tunnel, an
+ *  absolute URL for a plain request. Compared whole, never as a substring. */
+const hostOf = (u) => (/^[a-z][a-z0-9+.-]*:\/\//i.test(u) ? new URL(u).hostname : String(u).replace(/:\d+$/, ''));
 /** A `_headers` that sets a policy and nothing else, for the cases that never reach a browser. */
 const MINIMAL_HEADERS = "/*\n  Content-Security-Policy: default-src 'self'\n";
 
@@ -488,7 +492,7 @@ describe("smoke-web-artifact.mjs — in Chrome, the fixture boots under the app'
     assert.match(r.out, /ok {3}no Content-Security-Policy violation/);
     assert.match(r.out, /ok {3}connect-src allows https:\/\/subscriptiontracker-api\.nikatru\.com — fetched from the page, paused and answered here/);
     if (r.seen === null) return t.skip('the no-egress half needs a shell wrapper for Chrome, which Windows cannot spawn');
-    assert.deepEqual(r.seen.filter((u) => u.includes('subscriptiontracker-api.nikatru.com')), [], `the probe reached the network: ${r.seen.join(', ')}`);
+    assert.deepEqual(r.seen.filter((u) => hostOf(u) === API_HOST), [], `the probe reached the network: ${r.seen.join(', ')}`);
   });
 
   test('GREEN CONTROL for RC4 — a request the probe does NOT intercept does arrive at the recording proxy', { timeout: 90000 }, async (t) => {
@@ -507,8 +511,8 @@ describe("smoke-web-artifact.mjs — in Chrome, the fixture boots under the app'
     );
     const r = await smokeInChrome(dir, ['--connect', API]);
     assert.equal(r.code, 0, r.out);
-    assert.ok(r.seen.includes('config.nikatru.com:443'), `the recording proxy saw: ${r.seen.join(', ') || 'nothing'}`);
-    assert.deepEqual(r.seen.filter((u) => u.includes('subscriptiontracker-api.nikatru.com')), []);
+    assert.ok(r.seen.some((u) => u === 'config.nikatru.com:443'), `the recording proxy saw: ${r.seen.join(', ') || 'nothing'}`);
+    assert.deepEqual(r.seen.filter((u) => hostOf(u) === API_HOST), []);
   });
 
   test("RC1 — the API origin removed from connect-src fails the probe, naming the directive and the origin", { timeout: 90000 }, async (t) => {
