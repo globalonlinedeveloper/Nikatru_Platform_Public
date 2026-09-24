@@ -89,6 +89,19 @@ function run(root, args = []) {
 
 const RECORD = 'apps/subscriptiontracker/name-clearance.json';
 
+/** ⏱ 2026-09-24 — THE OWED STATE IS SEEDED, NOT INHERITED. M0 and M5 read the null
+ *  ruling and its owner gate off the LIVE record, which carried them until apps-review
+ *  F1 recorded the owner's ruling there; from then on both would have been measuring a
+ *  state the tree no longer has — the same lesson M3 records about its wall. The gate
+ *  date is computed, so the control does not expire on a calendar day either. */
+const IN_30_DAYS = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10);
+const owed = (doc) => {
+  Object.assign(doc.trademark, { ruling: null, ruledBy: null, ruledOn: null, basis: null, ownerItem: 'O-FIXTURE-TRADEMARK-HOLD', gatedUntil: IN_30_DAYS });
+};
+const ruled = (doc) => {
+  Object.assign(doc.trademark, { ruling: 'PROCEED', ruledBy: 'owner', ruledOn: '2026-09-09', basis: 'ADR 074', ownerItem: null, gatedUntil: null });
+};
+
 describe('assert-name-clearance — the green control', () => {
   // 🔴 THIS CONTROL ASSERTS THE GUARD'S BEHAVIOUR, NOT TODAY'S VERDICTS. It used to
   // also require `PROVEN-TAKEN on ios-appstore` and `NOT BLOCKING TODAY`, which were
@@ -97,11 +110,17 @@ describe('assert-name-clearance — the green control', () => {
   // A green control that fails because a real-world verdict IMPROVED is a control
   // reporting on the internet rather than on the guard. The wall is still tested —
   // M3 now SEEDS one rather than borrowing whichever one the tree happens to carry.
-  test('M0 GREEN CONTROL — the unmutated fixture exits 0 and PRINTS the owed finding', () => {
-    const r = run(fixture());
+  test('M0 GREEN CONTROL — an owed ruling inside its gate exits 0 and PRINTS the owed finding', () => {
+    const r = run(fixture(({ editJson }) => editJson(RECORD, owed)));
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /QUALIFIED, NOT CLEAR/, 'a null trademark ruling must never print as clear');
     assert.match(r.out, /owner-gated until/);
+  });
+
+  test('M0b GREEN CONTROL — a PROCEED ruling with who, when and on what basis exits 0 and prints nothing owed', () => {
+    const r = run(fixture(({ editJson }) => editJson(RECORD, ruled)));
+    assert.equal(r.code, 0, r.out);
+    assert.doesNotMatch(r.out, /QUALIFIED, NOT CLEAR/);
   });
 });
 
@@ -201,6 +220,7 @@ ${before.out}`);
     const expired = run(
       fixture(({ editJson }) =>
         editJson(RECORD, (doc) => {
+          owed(doc);
           doc.trademark.gatedUntil = '2020-01-01';
         }),
       ),
@@ -211,6 +231,7 @@ ${before.out}`);
     const undated = run(
       fixture(({ editJson }) =>
         editJson(RECORD, (doc) => {
+          owed(doc);
           doc.trademark.gatedUntil = null;
         }),
       ),
@@ -221,6 +242,7 @@ ${before.out}`);
     const unowned = run(
       fixture(({ editJson }) =>
         editJson(RECORD, (doc) => {
+          owed(doc);
           doc.trademark.ownerItem = null;
         }),
       ),
@@ -235,11 +257,76 @@ ${before.out}`);
         doc.trademark.ruling = 'DO-NOT-PROCEED';
         doc.trademark.ruledBy = 'owner';
         doc.trademark.ruledOn = '2026-09-09';
+        doc.trademark.basis = 'a fixture decision record';
       }),
     );
     const r = run(root);
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /RULED DO-NOT-PROCEED/);
+    assert.doesNotMatch(r.out, /and lacks/, 'the ruling is complete, so the only finding is the ruling itself');
+  });
+
+  // RC6. `PROCEDE` is refused by the schema's enum before limb 7 is reached, so the
+  // first run is the whole guard and the second takes the schema out of the way: the
+  // fixture's enum is WIDENED to admit the typo, and limb 7 must still refuse it.
+  // Without the second run, limb 7's own check would be one no input could reach.
+  test('M16 (RC6) a misspelt ruling is a finding, and limb 7 refuses it even where the schema admits it', () => {
+    const typo = (doc) => {
+      ruled(doc);
+      doc.trademark.ruling = 'PROCEDE';
+    };
+    const whole = run(fixture(({ editJson }) => editJson(RECORD, typo)));
+    assert.equal(whole.code, 1, whole.out);
+    assert.match(whole.out, /trademark\/ruling/);
+
+    const limb7 = run(
+      fixture(({ editJson }) => {
+        editJson(RECORD, typo);
+        editJson('contracts/name-clearance.schema.json', (s) => {
+          s.properties.trademark.properties.ruling.anyOf[1].enum.push('PROCEDE');
+        });
+      }),
+    );
+    assert.equal(limb7.code, 1, limb7.out);
+    assert.match(limb7.out, /`trademark\.ruling` is "PROCEDE", and a ruling is null, "PROCEED" or "DO-NOT-PROCEED"/);
+  });
+
+  test('M17 (RC7) a PROCEED with no basis is a finding — and so is one with no ruledBy or no dated ruledOn', () => {
+    const noBasis = run(
+      fixture(({ editJson }) =>
+        editJson(RECORD, (doc) => {
+          ruled(doc);
+          delete doc.trademark.basis;
+        }),
+      ),
+    );
+    assert.equal(noBasis.code, 1, noBasis.out);
+    assert.match(noBasis.out, /`trademark\.ruling` is PROCEED and lacks `basis`/);
+
+    const unattributed = run(
+      fixture(({ editJson }) =>
+        editJson(RECORD, (doc) => {
+          ruled(doc);
+          doc.trademark.ruledBy = null;
+          doc.trademark.ruledOn = null;
+        }),
+      ),
+    );
+    assert.equal(unattributed.code, 1, unattributed.out);
+    assert.match(unattributed.out, /is PROCEED and lacks `ruledBy`, a dated `ruledOn`/);
+  });
+
+  test('M18 a null ruling whose ownerItem is not an owner id is a finding, even inside its gate', () => {
+    const r = run(
+      fixture(({ editJson }) =>
+        editJson(RECORD, (doc) => {
+          owed(doc);
+          doc.trademark.ownerItem = 'the owner, eventually';
+        }),
+      ),
+    );
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /is not an owner id/);
   });
 
   test('M7 IDENTITY DRIFT — an applicationId the tree no longer declares is a finding', () => {

@@ -32,7 +32,10 @@
 //   4  a record whose channel set is not the register's channel set
 //   5  a SELF-COLLISION-free catalogue check: a DIFFERENT app declaring this name
 //   6  a PROVEN-TAKEN on a channel that refuses duplicates AND IS ARMED
-//   7  `trademark.ruling: null` past its dated, bounded owner gate
+//   7  `trademark.ruling: null` past its dated, bounded owner gate, or with an
+//      `ownerItem` outside the owner-id grammar; a ruling outside null /
+//      PROCEED / DO-NOT-PROCEED; a PROCEED or DO-NOT-PROCEED with no `ruledBy`,
+//      no dated `ruledOn` or no `basis`
 //   8  an identifier in the record that the tree no longer declares
 //   9  (--execute) an `asOf` past the 30-day ceiling
 //
@@ -59,6 +62,18 @@
 // extend its own gate — a waiver that can renew itself is a waiver that outlives
 // its reason.
 //
+// ⏱ 2026-09-24 (apps-review F1, O-NAME-CLEARANCE-WAITS-ON-A-MISSING-ROW). The gate
+// above held for fifteen days on `O-NAME-SUBLY-TRADEMARK`, a row that was never
+// opened: this limb read `ownerItem` for PRESENCE and nothing read it for
+// EXISTENCE. And any ruling other than null or DO-NOT-PROCEED fell through the
+// limb as a pass, dated or not. So the limb now checks SHAPE — the ruling is one
+// of three readable values, a non-null ruling carries `ruledBy`, a dated
+// `ruledOn` and a `basis`, and a null one names an `ownerItem` in the owner-id
+// grammar of `tooling/scripts/owner-ids.mjs`. Whether that id is a LIVE row is a
+// question about the private corpus, which a runner cannot read, so it is asked
+// by the ID CITATIONS class of `tooling/scripts/assert-public-citations.mjs`,
+// in the hooks.
+//
 // ── THE COVERAGE FLOOR ───────────────────────────────────────────────────────
 // If no app had a record, a naive guard would pass over an empty set. The
 // expected set is DERIVED — every app in `catalog/apps.json` — so a missing
@@ -80,6 +95,7 @@ import { fileURLToPath } from 'node:url';
 import { resolveIdentity } from './read-identity.mjs';
 import { armingOf } from './channel-arming.mjs';
 import { validate, assertSchemaUnderstood } from '../app-yaml/schema-validate.mjs';
+import { isOwnerId } from '../scripts/owner-ids.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
@@ -144,6 +160,14 @@ const today = (d = new Date()) => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 };
 const daysBetween = (from, to) => Math.floor((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
+/** A calendar date that round-trips, so `2026-02-31` is not one. */
+const isIsoDate = (s) =>
+  typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(`${s}T00:00:00Z`)) && new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) === s;
+
+/** Limb 7's three readable states. The schema's enum says the same, and limb 7
+ *  checks it anyway: a schema edit that widened the enum would otherwise let an
+ *  unreadable ruling fall through this limb as a pass. */
+const RULINGS = new Set([null, 'PROCEED', 'DO-NOT-PROCEED']);
 
 /** The top-level `name:` of an app declaration. ANCHORED AT COLUMN ZERO on
  *  purpose: `name:` is a plausible key under `hosts:`, under a store block or
@@ -298,13 +322,35 @@ for (const app of expectedApps) {
 
   // 7. the trademark ruling — QUALIFIED, never a pass
   const tm = r.trademark;
-  if (tm.ruling === 'DO-NOT-PROCEED') {
-    problems.push(`${rel} — the owner RULED DO-NOT-PROCEED on this name (${tm.ruledBy ?? 'unattributed'}, ${tm.ruledOn ?? 'undated'}). Nothing ships under it.`);
-  } else if (tm.ruling === null) {
+  if (!RULINGS.has(tm.ruling)) {
+    problems.push(
+      `${rel} — \`trademark.ruling\` is ${JSON.stringify(tm.ruling)}, and a ruling is null, "PROCEED" or "DO-NOT-PROCEED". ` +
+        'A ruling this guard cannot read is not a ruling, whatever the schema let through.',
+    );
+  } else if (tm.ruling !== null) {
+    const owed = [];
+    if (typeof tm.ruledBy !== 'string' || tm.ruledBy.trim() === '') owed.push('`ruledBy`');
+    if (!isIsoDate(tm.ruledOn)) owed.push('a dated `ruledOn`');
+    if (typeof tm.basis !== 'string' || tm.basis.trim() === '') owed.push('`basis`');
+    if (owed.length) {
+      problems.push(
+        `${rel} — \`trademark.ruling\` is ${tm.ruling} and lacks ${owed.join(', ')}. A ruling is a dated act by a named ` +
+          'person on a stated basis; missing any of the three, nobody can check it, so it is not counted as one.',
+      );
+    }
+    if (tm.ruling === 'DO-NOT-PROCEED') {
+      problems.push(`${rel} — the owner RULED DO-NOT-PROCEED on this name (${tm.ruledBy ?? 'unattributed'}, ${tm.ruledOn ?? 'undated'}). Nothing ships under it.`);
+    }
+  } else {
     const signals = tm.signals?.length ?? 0;
     const line = `${rel} — QUALIFIED, NOT CLEAR: \`trademark.ruling\` is null with ${signals} advisory signal(s) recorded. Software cannot clear a trademark; an owner must rule, and the ruling carries a date.`;
     if (!tm.ownerItem) {
       problems.push(`${line} No \`trademark.ownerItem\` names the open item that owes it, so this is a finding nobody owns.`);
+    } else if (!isOwnerId(tm.ownerItem)) {
+      problems.push(
+        `${line} Its \`trademark.ownerItem\` ${JSON.stringify(tm.ownerItem)} is not an owner id (an open.json \`O-<WORDS>\` row, ` +
+          'or an owner-queue id such as `A-12`), so nothing can look up who owes it.',
+      );
     } else if (!tm.gatedUntil || daysBetween(NOW, tm.gatedUntil) <= 0) {
       problems.push(`${line} Its owner gate (${tm.ownerItem}) ${tm.gatedUntil ? `EXPIRED on ${tm.gatedUntil}` : 'carries no `gatedUntil` date'}, so the block is no longer lifted.`);
     } else {
