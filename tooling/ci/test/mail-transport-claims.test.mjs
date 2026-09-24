@@ -103,8 +103,9 @@ const GOOD_REGISTER = () => ({
     records: [
       { id: 'spf-w', rail: 'workspace', kind: 'spf', name: 'example.test', expect: { include: ['spf.provider.test'], all: '~all' } },
       { id: 'dkim-w', rail: 'workspace', kind: 'dkim', name: 'sel._domainkey.example.test', expect: { k: 'rsa' } },
-      { id: 'dmarc', rail: 'workspace', kind: 'dmarc', name: '_dmarc.example.test', expect: { p: 'none' } },
+      { id: 'dmarc', rail: 'workspace', kind: 'dmarc', name: '_dmarc.example.test', expect: { p: 'none', rua: 'mailto:dmarc@example.test' } },
       { id: 'spf-r', rail: 'resend', kind: 'spf', name: 'send.mail.example.test', expect: { include: ['ses.provider.test'], all: '~all' } },
+      { id: 'mx-r', rail: 'resend', kind: 'mx', name: 'send.mail.example.test', expect: { exchange: 'feedback.provider.test', preference: 10 } },
       { id: 'dkim-r', rail: 'resend', kind: 'dkim', name: 'r._domainkey.mail.example.test', expect: { k: 'rsa' } },
     ],
   },
@@ -442,7 +443,7 @@ describe('assert-mail-transport-claims — limb F: the mail-auth DNS declaration
     const r = run(root);
     assert.equal(r.status, 0, out(r));
     assert.match(out(r), /auth-record checker wiring PROVEN behaviourally: tooling\/ops\/check-mail-auth-dns\.mjs --plan exits 0 with the register and 2 without it/);
-    assert.match(out(r), /2 rail\(s\), 5 auth record\(s\)/);
+    assert.match(out(r), /2 rail\(s\), 6 auth record\(s\)/);
   });
 
   test('F2 FAILS when a record names a rail nobody declared, or sits outside its rail\'s domain', () => {
@@ -490,6 +491,34 @@ for (const n of RECORDS) console.log('plan  ' + n);
     const r = run(makeRoot({ register: reg }));
     assert.equal(r.status, 2, out(r));
     assert.match(out(r), /COVERAGE LOST — tooling\/mail-transport\.json declares no `authRecords\.records`/);
+  });
+
+  // ⏱ 2026-09-24, review #2 of PR #917: limb F had a floor for DKIM and SPF and
+  // none for the rest, so the register could drop DMARC's `rua` or the bounce MX
+  // and the guard stayed green while the live checker compared less. F7 and F8
+  // each read exit 0 on that code (recorded before the fix).
+  test('F7 FAILS when the DMARC record declares no `rua` — the live checker would then compare `p` alone', () => {
+    const reg = GOOD_REGISTER();
+    delete reg.authRecords.records.find((x) => x.id === 'dmarc').expect.rua;
+    const r = run(makeRoot({ register: reg }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /the `dmarc` auth record `dmarc` declares no `expect\.rua`/);
+  });
+
+  test('F8 FAILS when the bounce MX is removed, or the rail the floor names is no longer declared', () => {
+    const reg = GOOD_REGISTER();
+    reg.authRecords.records = reg.authRecords.records.filter((x) => x.id !== 'mx-r');
+    const r = run(makeRoot({ register: reg }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /the `resend` rail \(mail\.example\.test\) declares no `mx` auth record/);
+    assert.doesNotMatch(out(r), /the `workspace` rail .* declares no `mx`/);
+    // Renaming the rail must not take the floor with it.
+    const renamed = GOOD_REGISTER();
+    renamed.rails.find((x) => x.id === 'resend').id = 'ses';
+    for (const x of renamed.authRecords.records) if (x.rail === 'resend') x.rail = 'ses';
+    const r2 = run(makeRoot({ register: renamed }));
+    assert.equal(r2.status, 1, out(r2));
+    assert.match(out(r2), /the bounce-MX floor names the rail `resend`, which `rails` does not declare/);
   });
 });
 
