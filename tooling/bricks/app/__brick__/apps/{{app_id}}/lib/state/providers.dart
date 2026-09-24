@@ -1584,8 +1584,7 @@ final Provider<AuthRefreshNotifier> authRefreshProvider =
 /// was tearing down (`features/settings/settings_screen.dart:650-657`), so the
 /// message could be destroyed before it was read. `apps/subscriptiontracker` hit the same wall
 /// from the other side and recorded the measurement on
-/// `lastAccountDeletionOutcomeProvider` in
-/// `apps/subscriptiontracker/lib/state/providers/auth.dart`: its first version
+/// `lastAccountDeletionOutcomeProvider` in apps/subscriptiontracker: its first version
 /// rendered the result inside the dialog, and the router-driven test found ZERO
 /// widgets carrying the result key once the redirect settled — so *the message
 /// that matters most (502: your data is gone and your login still works) was the
