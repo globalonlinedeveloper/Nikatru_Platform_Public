@@ -193,6 +193,27 @@ describe('assert-release-lane-generic.mjs — limb A (the lanes cover the worksp
     assert.match(r.out, /deploy-web\.yml \(\[pipeline 10\]D-2b\)/);
   });
 
+  // ⏱ 2026-09-24 · RC6 of O-GUARDS-READ-A-HAND-LISTED-APP-SET: tooling/ci/app-set.mjs
+  // is the one reader of the app set, and a guard that parses `workspace:` itself
+  // is the second reader limb A refuses.
+  const SECOND_READER =
+    "const text = readFileSync(join(ROOT, 'pubspec.yaml'), 'utf8');\n" +
+    'const at = text.split(\'\\n\').findIndex((l) => /^workspace:\\s*$/.test(l));\n';
+  const lanesA = { 'build-platforms.yml': platforms(literalLane(APP_PATH)), 'e2e.yml': E2E };
+
+  test('RC6 · a guard that reads `workspace:` itself is a second reader, and fails naming it', () => {
+    const r = run(fixture({ workflows: lanesA, guards: { 'assert-thing.mjs': SECOND_READER } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /tooling\/ci\/assert-thing\.mjs reads the root pubspec `workspace:` block itself/);
+  });
+
+  test('…the same read inside a COMMENT is prose, not a reader', () => {
+    const commented = SECOND_READER.split('\n').map((l) => (l ? `// ${l}` : l)).join('\n');
+    const r = run(fixture({ workflows: lanesA, guards: { 'assert-thing.mjs': commented } }));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /single reader — no new `workspace:` reader/);
+  });
+
   test('THE RECORDED FAILING CASE — a second workspace app no lane covers', () => {
     const r = run(
       fixture({
