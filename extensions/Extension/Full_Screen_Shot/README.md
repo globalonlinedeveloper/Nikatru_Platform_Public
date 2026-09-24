@@ -92,7 +92,7 @@ icons/                 Toolbar icons
 
 ```
 node test/sim-torture.node.js   # engine-vs-fake-DOM simulator, 3 modes, 78 checks
-node test/pixel-sim/run.js      # pixel simulator: REAL capture.js + REAL result.js
+node test/pixel-sim/run.node.js # pixel simulator: REAL capture.js + REAL result.js
                                 # stitching → PNGs in test/pixel-sim/out/, 8 scenarios
                                 # / 161 checks (app shell ×3 incl. 125% DPR with side-rail
                                 #  unroll, doc scroll, multi-part smart split, wide-table

@@ -11,7 +11,7 @@
    the header is the only addition.
 
    THE ORIGINAL IS STILL THERE, AND THAT IS DELIBERATE. FullShot's sims require
-   it by relative path (test/pixel-sim/run.js and five *.node.js suites), and
+   it by relative path (test/pixel-sim/run.node.js and five *.node.js suites), and
    FullShot's import contract is zero file moves and zero source changes. So two
    copies exist today. The sha256 above is the whole defence against them
    drifting — there is no CI check on it yet — and re-pointing FullShot's sims

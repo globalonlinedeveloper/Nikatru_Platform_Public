@@ -747,6 +747,6 @@ default where it is.
 
 ```bash
 node test/sim-torture.node.js    # engine logic vs fake DOM, 3 modes
-node test/pixel-sim/run.js       # real capture.js + real result.js stitching
+node test/pixel-sim/run.node.js  # real capture.js + real result.js stitching
                                  # → actual PNGs in test/pixel-sim/out/
 ```

@@ -313,7 +313,7 @@ Cheap gates first — that ordering is why work can iterate for days without ope
 cd Extension/<Tool>
 
 # 1. Node tiers: pure logic, no DOM, seconds. Run every one; the exit code is the gate.
-for t in test/*.node.js test/pixel-sim/run.js; do
+for t in test/*.node.js test/pixel-sim/run.node.js; do
   [ -f "$t" ] || continue                 # an unmatched glob is passed through literally, and
                                           # "cannot find module" is not a failing test
   out=$(node "$t" 2>&1); code=$?          # capture the status on its own line, before anything else
