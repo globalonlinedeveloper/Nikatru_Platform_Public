@@ -1147,6 +1147,19 @@ desktop bundles, the web build, anything else the run produced — so
 "outlives the run" covers the artifact SET rather than just the
 installers. Moving first is what stops the .apk existing twice.
 
+⏱ 2026-09-24 — `--stage` now COLLECTS every installer, JUDGES them, and
+only then moves any. On a release tag it refuses, and moves nothing, when
+a native installer serves a channel row whose `nativeAuth` is not true in
+tooling/channel-register.json: that build cannot complete email sign-in,
+sign-up and recovery against the backend its release points at
+(O-BOXA-CAPTCHA-REFUSES-NATIVE-SIGN-IN). On the `<app>-untagged-<sha>`
+value a non-tag run synthesises, the same finding prints as "would refuse"
+and the run stages as before. A ref neither shape reads is judged as a
+release. assert-channel-register.mjs is the register half: no native row
+is `served` while its `nativeAuth` is false. The row stays open, and a row
+flips to `nativeAuth: true` only on observed evidence of a native build
+signing in.
+
 Expressions go through `env:` rather than into the shell body: a ref name
 is attacker-influenced text and `${{ }}` in a `run:` is substituted before
 bash ever sees it. [zizmor template-injection]
