@@ -65,7 +65,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
-import { parseWorkflow } from './workflow-scan.mjs';
+import { parseWorkflow, parseAllWorkflows, resolveLocalCalls, workflowEvents } from './workflow-scan.mjs';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
 
@@ -326,6 +326,50 @@ for (const target of AGGREGATORS) {
   }
 }
 
+// A7. ⏱ 2026-09-24 — A WORKFLOW ONLY `workflow_call` CAN START IS GATED ONLY
+// THROUGH ITS CALLER. It has no check run of its own that branch protection could
+// name; its jobs reach a verdict only as the result of the job that calls it. So a
+// called-only workflow must be called by a CONSTITUENT of an aggregator (a job in
+// that aggregator's `needs`), or every red in it is advisory. The call job itself is
+// an ordinary job of the caller, so A2, A5 and A6 already judge it as a constituent:
+// forgotten in `needs`, unechoed, or given an `if:`.
+const everyWorkflow = parseAllWorkflows(ROOT);
+const calledOnly = everyWorkflow.filter((w) => {
+  const ev = workflowEvents(w);
+  return ev.size === 1 && ev.has('workflow_call');
+});
+const aggregatorCalls = [];
+for (const target of AGGREGATORS) {
+  const wf = workflow(target.workflow);
+  if (wf === null || !wf.jobs.has(target.job)) continue;
+  const resolved = resolveLocalCalls(wf, everyWorkflow);
+  if (resolved.refusal !== null) {
+    coverageLost([
+      `${target.workflow} job "${resolved.refusal.job}" calls ${resolved.refusal.callee}, which this scan cannot follow (${resolved.refusal.kind}).`,
+      'Rule A7 asks which aggregator constituent calls each called-only workflow; with a call unread,',
+      'the answer "none" would be a guess.',
+    ]);
+  }
+  aggregatorCalls.push({ target, needs: wf.jobs.get(target.job).needs, resolved });
+}
+let calledOnlyGated = 0;
+for (const callee of calledOnly) {
+  const gatedBy = [];
+  for (const { target, needs, resolved } of aggregatorCalls) {
+    for (const c of resolved.calls) {
+      if (c.callee.rel === callee.rel && needs.includes(c.job)) gatedBy.push(`${target.workflow} "${c.job}" (a need of "${target.job}")`);
+    }
+  }
+  if (gatedBy.length === 0) {
+    problems.push(
+      `${callee.rel} can be started only by \`workflow_call\`, and no constituent of an aggregator (${AGGREGATORS.map((a) => `${a.workflow} "${a.job}"`).join(', ')}) calls it. ` +
+        'Its jobs report only through the job that calls them, so with no gated caller every red in it gates nothing.',
+    );
+    continue;
+  }
+  calledOnlyGated++;
+}
+
 if (aggregatorsChecked !== AGGREGATORS.length) {
   coverageLost([
     `${aggregatorsChecked} of ${AGGREGATORS.length} declared aggregator(s) were checked.`,
@@ -472,5 +516,6 @@ const gates = [...secretGateFiles.values()].reduce((n, xs) => n + xs.length, 0);
 const drifts = [...driftFiles.values()].reduce((n, xs) => n + xs.length, 0);
 console.log(
   `ok  green means ran — ${aggregatorsChecked} aggregating job(s) fail on failure/cancelled/skipped over every lane, ` +
-    `${gates} secret-presence check(s) fail closed, ${drifts} drift check(s) delete their artifact before rebuilding it`,
+    `${gates} secret-presence check(s) fail closed, ${drifts} drift check(s) delete their artifact before rebuilding it` +
+    `${calledOnly.length ? `, ${calledOnlyGated} of ${calledOnly.length} called-only workflow(s) called by an aggregator constituent` : ''}`,
 );

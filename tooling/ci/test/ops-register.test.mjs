@@ -5133,7 +5133,11 @@ describe('assert-ops-register — [14]O-3b · RED SINCE: a failed run is graded,
     assert.ok(dispatchable.has('redeploy-stranded.yml'), '.github/workflows/redeploy-stranded.yml no longer declares `workflow_dispatch`');
     const census = redSinceTriggerCensus(real, dispatchable);
     assert.deepEqual(census.admitted.sort(), ['duty.workflow.deploy-web.yml', 'duty.workflow.deploy-workers.yml', 'duty.workflow.redeploy-stranded.yml']);
-    assert.equal(census.excluded.length, 2, 'the committed register has exactly two trigger rows with no non-merge exit');
+    // ⏱ 2026-09-24: three. duty.workflow.extensions-ci.yml joined them — a called
+    // workflow declares no `workflow_dispatch` (it runs only as a call), so a merge
+    // is its only exit and it is excluded by the same derived reason.
+    assert.equal(census.excluded.length, 3, 'the committed register has exactly three trigger rows with no non-merge exit');
+    assert.ok(census.excluded.some((l) => /duty\.workflow\.extensions-ci\.yml/.test(l)), 'the extensions CI callee is excluded by derivation');
     assert.ok(census.excluded.every((l) => /declares NO `workflow_dispatch`/.test(l)), 'every exclusion must carry the derived reason');
   });
 

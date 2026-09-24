@@ -180,7 +180,7 @@ if (repoRootFlag !== null && !repoRootFlag) die('--repo-root needs a directory')
    scripts/lib/toolinfo.mjs IS the extensions root by construction, in this
    monorepo, in a worktree, and in any future split. It is a file path with
    three segments, so no unrelated directory carries it by accident. The step
-   `The fleet audit still finds the fleet` in .github/workflows/extensions.yml
+   `The fleet audit still finds the fleet` in .github/workflows/extensions-ci.yml
    runs this file bare, so a fourth breakage turns that job red rather than
    waiting for somebody to type the command. */
 const ROOT_MARKER = path.join('scripts', 'lib', 'toolinfo.mjs');

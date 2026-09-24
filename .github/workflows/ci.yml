@@ -1249,6 +1249,18 @@ jobs:
       # A debug-signed PR build is discarded, and release-provenance gives a gate
       # constituent no credit for publishing (assert-release-provenance.mjs:735-770).
 
+  # why: the extensions CI lane, as ONE constituent of ci-gate. extensions-ci.yml runs
+  # only as a call, and its jobs report inside this run; this job's result is red when
+  # any of them is. No `if:` (green-means-ran A6), and no `timeout-minutes` — GitHub
+  # rejects one on a call; every callee job bounds itself (workflow-hardening limb 4).
+  # docs/ci/extensions-ci.md.
+  extensions:
+    name: extensions
+    uses: ./.github/workflows/extensions-ci.yml
+    permissions:
+      contents: read
+      actions: read
+
 
   ci-gate:
     # why: the ONE required status check on main. It must need every other job in
@@ -1275,6 +1287,7 @@ jobs:
       - workspace-gate
       - android-apps
       - android-artifacts
+      - extensions
     if: always()
     steps:
       - name: Require all lanes green
@@ -1295,6 +1308,7 @@ jobs:
           echo "workspace-gate=${{ needs.workspace-gate.result }}"
           echo "android-apps=${{ needs.android-apps.result }}"
           echo "android-artifacts=${{ needs.android-artifacts.result }}"
+          echo "extensions=${{ needs.extensions.result }}"
           if [ "${{ contains(needs.*.result, 'failure') }}" = "true" ] || [ "${{ contains(needs.*.result, 'cancelled') }}" = "true" ] || [ "${{ contains(needs.*.result, 'skipped') }}" = "true" ]; then
             echo "::error::One or more CI lanes failed, was cancelled, or never ran — see the verdicts above"; exit 1
           fi

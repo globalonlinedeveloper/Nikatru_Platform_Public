@@ -9,9 +9,10 @@
 //
 // This file reads the release job's step as TEXT — the workflow(s) it queries
 // and the job-name families its grade() recognises — and fails when a queried
-// workflow does not define a job for every graded family. Red control: point
-// the query back at ci.yml and "every queried workflow defines every graded
-// family" goes red. No tag is pushed to prove it: pushing a tag is the owner's act.
+// workflow does not define (itself, or through a local call one level deep) a job
+// for every graded family. ⏱ 2026-09-24: the legs moved to extensions-ci.yml,
+// which ci.yml calls, so the red control now points the query at deploy-web.yml.
+// No tag is pushed to prove it: pushing a tag is the owner's act.
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
@@ -21,6 +22,8 @@ import { fileURLToPath } from 'node:url';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const LANE = '.github/workflows/extensions.yml';
+/** ⏱ 2026-09-24: the per-tool legs moved here; ci.yml and extensions.yml both call it. */
+const CALLEE = '.github/workflows/extensions-ci.yml';
 
 /** The text of one top-level job, from its key to the next job key. */
 function jobText(workflowText, job) {
@@ -53,10 +56,18 @@ function findings(releaseJob, read) {
   for (const t of targets) {
     const [file, query] = t.split('?');
     if (!/(^|&)head_sha=/.test(query)) out.push(`${file} is queried without head_sha=, so the run it grades is not pinned to a SHA`);
-    const text = read(`.github/workflows/${file}`);
-    if (text === null) {
+    const own = read(`.github/workflows/${file}`);
+    if (own === null) {
       out.push(`${file} is queried and does not exist`);
       continue;
+    }
+    // ⏱ 2026-09-24: a called workflow's jobs run INSIDE the caller's run, so a queried
+    // workflow defines what it defines plus what its local call jobs call, one level.
+    let text = own;
+    for (const m of own.matchAll(/^ {4}uses: \.\/(\.github\/workflows\/[A-Za-z0-9._-]+\.ya?ml)\s*$/gm)) {
+      const callee = read(m[1]);
+      if (callee === null) out.push(`${file} calls ${m[1]}, which does not exist`);
+      else text += `\n${callee}`;
     }
     const names = [...text.matchAll(/^ {4}name: (.+)$/gm)].map((m) => m[1].trim());
     for (const fam of families) {
@@ -87,18 +98,30 @@ describe('the extension release grades where the legs run', () => {
     assert.deepEqual(findings(release, readReal), []);
   });
 
-  test('red control: the query pointed back at ci.yml is caught', () => {
-    const before = release.split('actions/workflows/extensions.yml/runs').length - 1;
-    assert.ok(before >= 1, 'the fixture edit would hit nothing');
-    const mutated = release.replaceAll('actions/workflows/extensions.yml/runs', 'actions/workflows/ci.yml/runs');
-    const f = findings(mutated, readReal);
-    assert.ok(f.some((x) => /ci\.yml is queried for "gates · <id>" legs and defines no job/.test(x)), f.join('\n'));
+  // ⏱ 2026-09-24 — INVERTED. Until today the legs were jobs of extensions.yml and a
+  // query at ci.yml was the defect; now ci.yml CALLS the lane, so ci.yml is right and
+  // a workflow that neither defines nor calls the legs is the defect.
+  test('the query asks ci.yml, which runs the legs through its call job', () => {
+    assert.ok(gradingOf(release).targets.some((t) => t.startsWith('ci.yml?')), gradingOf(release).targets.join('\n'));
   });
 
-  test('red control: a graded family the queried workflow does not define is caught', () => {
-    const lane = readReal(LANE).replace(/^ {4}name: sims · /m, '    name: simulations · ');
-    const f = findings(release, (rel) => (rel === LANE ? lane : readReal(rel)));
+  test('red control: the query pointed at a workflow that neither defines nor calls the legs is caught', () => {
+    const before = release.split('actions/workflows/ci.yml/runs').length - 1;
+    assert.ok(before >= 1, 'the fixture edit would hit nothing');
+    const mutated = release.replaceAll('actions/workflows/ci.yml/runs', 'actions/workflows/deploy-web.yml/runs');
+    const f = findings(mutated, readReal);
+    assert.ok(f.some((x) => /deploy-web\.yml is queried for "gates · <id>" legs and defines no job/.test(x)), f.join('\n'));
+  });
+
+  test('red control: a graded family the called workflow does not define is caught', () => {
+    const lane = readReal(CALLEE).replace(/^ {4}name: sims · /m, '    name: simulations · ');
+    const f = findings(release, (rel) => (rel === CALLEE ? lane : readReal(rel)));
     assert.ok(f.some((x) => /defines no job named "sims/.test(x)), f.join('\n'));
+  });
+
+  test('red control: a call to a workflow that is missing is caught', () => {
+    const f = findings(release, (rel) => (rel === CALLEE ? null : readReal(rel)));
+    assert.ok(f.some((x) => /calls \.github\/workflows\/extensions-ci\.yml, which does not exist/.test(x)), f.join('\n'));
   });
 
   test('red control: an unpinned query is caught', () => {

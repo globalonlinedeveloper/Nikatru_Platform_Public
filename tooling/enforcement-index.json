@@ -872,7 +872,7 @@
       "ADR 067"
     ],
     "invokedBy": [
-      ".github/workflows/extensions.yml#build-free"
+      ".github/workflows/extensions-ci.yml#build-free"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-extensions-build-free.mjs",

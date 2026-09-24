@@ -16,7 +16,7 @@ body:
         published app or one of the websites built from this tree.
 
   # ⚠️ THE PARENTHESISED IDS ARE GRADED, NOT DECORATIVE. The `discover` job of
-  # .github/workflows/extensions.yml greps this file for "($id)" for every tool id
+  # .github/workflows/extensions-ci.yml greps this file for "($id)" for every tool id
   # it finds on disk, so an extension option's id must match its tool.json exactly
   # and must keep its brackets. The non-extension options below carry no id
   # because no tool.json produces one — they are graded by nothing and free to be

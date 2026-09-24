@@ -1367,8 +1367,17 @@ expect('an archive with no manifest.json is a finding, not a skip', {
    so it exits 0 — and the run must SAY so, because "0 packages, clean" and
    "12 packages, clean" printing the same thing is the failure this whole file
    exists to prevent. */
-expect('zero packages exits 0 but says out loud that it proved nothing', {
-  script: 'check-store-packages.mjs', argv: ['goodtool'], code: 0, contains: 'ZERO PACKAGES WERE PRESENT',
+expect('zero packages with --allow-none exits 0 but says out loud that it proved nothing', {
+  script: 'check-store-packages.mjs', argv: ['goodtool', '--allow-none'], code: 0, contains: 'ZERO PACKAGES WERE PRESENT',
+  root: fixture(root => { writeJson(root, TOOL + '/publish/identity.json', { slug: 'goodtool', ownerDomain: 'example.test' }); })
+});
+
+/* ⏱ 2026-09-24 — AND WITHOUT THE FLAG, ZERO PACKAGES IS COVERAGE LOST. The `package` job
+   and the release job both run this AFTER a build: there, zero means the build produced
+   nothing, and exit 0 was a pass over it. Only the pre-package `gates` call says none can
+   exist yet. */
+expect('zero packages without --allow-none is COVERAGE LOST (exit 2)', {
+  script: 'check-store-packages.mjs', argv: ['goodtool'], code: 2, contains: 'COVERAGE LOST: zero packages graded; pass --allow-none only before packaging',
   root: fixture(root => { writeJson(root, TOOL + '/publish/identity.json', { slug: 'goodtool', ownerDomain: 'example.test' }); })
 });
 
@@ -1867,7 +1876,7 @@ const E2E_DAILY = [
   ''
 ].join('\n');
 
-/* THE REAL LEG SHAPE. extensions.yml:1000 names the matrix job `e2e · <Category>/<Tool>`,
+/* THE REAL LEG SHAPE. extensions.yml:166 names the matrix job `e2e · <Category>/<Tool>`,
    and the gate now parses that payload and compares it as a SET — so a fixture
    carrying a made-up name would prove nothing about the real one. The separator
    is the real U+00B7, written as itself so the character makes the whole trip:

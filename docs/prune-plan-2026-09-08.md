@@ -168,6 +168,10 @@ git grep -n "ISSUE_TEMPLATE" -- .github/workflows
 # .github/workflows/extensions.yml:331:  for t in .github/ISSUE_TEMPLATE/bad-page.yml .github/ISSUE_TEMPLATE/bug.yml; do
 ```
 
+> ⏱ Appended 2026-09-24; the record above is unchanged. That loop now lives in the `discover` job of
+> `.github/workflows/extensions-ci.yml` (`:294`). Since 2026-09-08 it reads the ROOT forms through
+> `$GITHUB_WORKSPACE/.github/ISSUE_TEMPLATE/`, so the working-directory point below no longer applies to it.
+
 ⚠️ **That line is repo-root-relative *in appearance only*** — `extensions.yml:80` sets
 `defaults.run.working-directory: extensions`, so it reads `extensions/.github/ISSUE_TEMPLATE/{bad-page,bug}.yml`.
 Those two are **live CI subjects and are KEPT** (§3.4); `config.yml`, `feature.yml` and `new-tool.yml`

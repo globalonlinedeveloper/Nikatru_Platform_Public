@@ -124,10 +124,39 @@ describe('§A — an aggregating job cannot go green over a lane that did not ru
     // being a mutation the moment a lane is added and the line is not updated
     // here — and a no-op mutation passes the guard, which reads as the guard
     // failing rather than as the test rotting. Caught 2026-08-02 when the
-    // content_gate lane landed, and again 2026-09-23 when android-artifacts
-    // landed. Keep both halves in step with ci.yml.
-    const root = mutant([['ci.yml', '      - android-artifacts\n    if: always()', '    if: always()']]);
-    caught(run(root), /job "ci-gate" does not `need` "android-artifacts"/);
+    // content_gate lane landed, again 2026-09-23 when android-artifacts
+    // landed, and again 2026-09-24 when the extensions call job landed. Keep
+    // both halves in step with ci.yml.
+    const root = mutant([['ci.yml', '      - extensions\n    if: always()', '    if: always()']]);
+    caught(run(root), /job "ci-gate" does not `need` "extensions"/);
+  });
+
+  // ⏱ 2026-09-24 — rule A7: a workflow only `workflow_call` can start is gated only
+  // through the job that calls it.
+  test('deleting the call job fails A7 — the called-only workflow is then called by no gate constituent', () => {
+    const root = mutant([
+      ['ci.yml', /\n {2}extensions:\n {4}name: extensions\n {4}uses: \.\/\.github\/workflows\/extensions-ci\.yml\n {4}permissions:\n {6}contents: read\n {6}actions: read\n/, '\n'],
+      ['ci.yml', '      - extensions\n    if: always()', '    if: always()'],
+      ['ci.yml', '          echo "extensions=${{ needs.extensions.result }}"\n', ''],
+    ]);
+    caught(run(root), /\.github\/workflows\/extensions-ci\.yml can be started only by `workflow_call`, and no constituent of an aggregator/);
+  });
+
+  test('a call job ci-gate does not need fails A7 as well as A2 — calling it is not enough', () => {
+    const root = mutant([['ci.yml', '      - extensions\n    if: always()', '    if: always()']]);
+    caught(run(root), /extensions-ci\.yml can be started only by `workflow_call`, and no constituent of an aggregator/);
+  });
+
+  test('a call job with an `if:` fails A6 — a call that skips reports skipped', () => {
+    const root = mutant([['ci.yml', '  extensions:\n    name: extensions\n', "  extensions:\n    if: github.event_name == 'pull_request'\n    name: extensions\n"]]);
+    caught(run(root), /lane "extensions" carries a job-level `if: github\.event_name == 'pull_request'`, and "ci-gate" aggregates it/);
+  });
+
+  test('a call to a callee that is not in the tree is COVERAGE LOST (exit 2), not a finding', () => {
+    const root = mutant([['ci.yml', 'uses: ./.github/workflows/extensions-ci.yml', 'uses: ./.github/workflows/extensions-cii.yml']]);
+    const r = run(root);
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /COVERAGE LOST — \.github\/workflows\/ci\.yml job "extensions" calls \.github\/workflows\/extensions-cii\.yml, which this scan cannot follow \(missing\)/);
   });
 
   test('a `needs` entry naming a job that does not exist fails', () => {

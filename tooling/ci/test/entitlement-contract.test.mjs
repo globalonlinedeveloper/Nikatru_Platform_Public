@@ -1164,7 +1164,7 @@ describe('assert-entitlement-contract limb 5 — every writer of the shared row 
 //     node tooling/ci/assert-entitlement-contract.mjs        EXIT 0
 //     node contracts/entitlement/generate-dart.mjs --check   EXIT 1   <- only this
 //
-// The gate is now a step in `.github/workflows/extensions.yml`'s `contracts`
+// The gate is now a step in `.github/workflows/extensions-ci.yml`'s `contracts`
 // job, and [ADR 070]'s fact (d) in assert-no-clone-tells.mjs refuses the
 // exemption unless a workflow invokes it — so unwiring it reddens two guards
 // rather than none. THE CASES BELOW ARE THE PIN: the green control comes first,

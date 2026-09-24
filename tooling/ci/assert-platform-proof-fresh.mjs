@@ -379,7 +379,7 @@ export function requiredTargets(register) {
     // of six comes to read as all."
     //
     // ⚠️ NOTHING STOPS BEING PROVEN, BECAUSE NOTHING WAS EVER PROVEN HERE ABOUT
-    // AN EXTENSION. What proves that lane is `extensions.yml`'s own `package`
+    // AN EXTENSION. What proves that lane is `extensions-ci.yml`'s own `package`
     // job — pack, verify-refs inside the zip, a leak check, a determinism check
     // and `web-ext lint` — and `assert-channel-register.mjs` §3b now compares the
     // format that lane emits against what each extension row accepts. The
