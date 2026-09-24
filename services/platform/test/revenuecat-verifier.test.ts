@@ -237,11 +237,28 @@ describe('revenuecat parse — A · an event is routed by the app id an app decl
     expect(s.kind === 'subscription' && s.accountAppId).toBe('subscriptiontracker');
   });
 
-  it('THE REGISTERED VERIFIER SHIPS REFUSING ON A: no app declares a RevenueCat id yet', () => {
-    // The rendered table is empty (tooling/app-yaml/render.mjs), so a fully valid
-    // event is refused. This case goes red the day an app declares one — which is
-    // the day it should be rewritten, not deleted.
-    expect(subjectOf(rcEvent(), revenuecatVerifier).kind).toBe('refused');
+  // ⏱ 2026-09-24 — the case that stood here was 'THE REGISTERED VERIFIER SHIPS
+  // REFUSING ON A: no app declares a RevenueCat id yet', and it asked to be
+  // rewritten, not deleted, the day an app declared one. That day was #890
+  // (35da94b2): apps/subscriptiontracker/app.yaml billing.mobileIap.revenuecatAppIds
+  // declares both store apps, and tooling/app-yaml/render.mjs renders them into
+  // revenuecat-app-ids.ts. The old case stayed green only because rcEvent()
+  // defaults to the fixture RC_APP, which the rendered table does not hold.
+  it('the REGISTERED verifier routes the Play app id appa553a1e2c6 to subscriptiontracker', () => {
+    const s = subjectOf(rcEvent({ app_id: 'appa553a1e2c6' }), revenuecatVerifier);
+    expect(s.kind).toBe('subscription');
+    expect(s.kind === 'subscription' && s.accountAppId).toBe('subscriptiontracker');
+  });
+
+  it('the REGISTERED verifier routes the App Store app id app805d73cd44 to subscriptiontracker', () => {
+    const s = subjectOf(rcEvent({ app_id: 'app805d73cd44' }), revenuecatVerifier);
+    expect(s.kind).toBe('subscription');
+    expect(s.kind === 'subscription' && s.accountAppId).toBe('subscriptiontracker');
+  });
+
+  it('the REGISTERED verifier still refuses an app id no app declares', () => {
+    const s = subjectOf(rcEvent({ app_id: 'app_undeclared' }), revenuecatVerifier);
+    expect(s.kind).toBe('refused');
   });
 });
 
@@ -323,6 +340,25 @@ describe('revenuecat parse — what else the table decides, and what it does not
 
   it('an event type outside the contract table is REFUSED, not ignored', () => {
     expect(subjectOf(rcEvent({ type: 'SOME_FUTURE_EVENT' })).kind).toBe('refused');
+  });
+
+  it('the seven vendor types that change no access are acknowledged by name, not refused', () => {
+    // O-REVENUECAT-ACCOUNT step 6, 2026-09-24: each is a contract row in NOT_A_GRANT,
+    // and each row's `why` quotes the vendor. Before it, each drew a 503 and five retries.
+    expect(revenueCatAccessRuling('INVOICE_ISSUANCE')).toBeNull();
+    expect(subjectOf(rcEvent({ type: 'INVOICE_ISSUANCE' })).kind).toBe('unknown');
+    expect(revenueCatAccessRuling('VIRTUAL_CURRENCY_TRANSACTION')).toBeNull();
+    expect(subjectOf(rcEvent({ type: 'VIRTUAL_CURRENCY_TRANSACTION' })).kind).toBe('unknown');
+    expect(revenueCatAccessRuling('EXPERIMENT_ENROLLMENT')).toBeNull();
+    expect(subjectOf(rcEvent({ type: 'EXPERIMENT_ENROLLMENT' })).kind).toBe('unknown');
+    expect(revenueCatAccessRuling('PURCHASE_REDEEMED')).toBeNull();
+    expect(subjectOf(rcEvent({ type: 'PURCHASE_REDEEMED' })).kind).toBe('unknown');
+    expect(revenueCatAccessRuling('SUBSCRIBER_ALIAS')).toBeNull();
+    expect(subjectOf(rcEvent({ type: 'SUBSCRIBER_ALIAS' })).kind).toBe('unknown');
+    expect(revenueCatAccessRuling('PRICE_INCREASE_CONSENT_REQUIRED')).toBeNull();
+    expect(subjectOf(rcEvent({ type: 'PRICE_INCREASE_CONSENT_REQUIRED' })).kind).toBe('unknown');
+    expect(revenueCatAccessRuling('PRICE_INCREASE_CONSENT_APPROVED')).toBeNull();
+    expect(subjectOf(rcEvent({ type: 'PRICE_INCREASE_CONSENT_APPROVED' })).kind).toBe('unknown');
   });
 
   it('TEMPORARY_ENTITLEMENT_GRANT changes no access: acknowledged, not a grant (ADR 092 §4.6)', () => {
