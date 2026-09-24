@@ -833,7 +833,7 @@
     },
     {
       "file": "extensions/Extension/Full_Screen_Shot/tool.json",
-      "anchor": "so a bump can no longer be right-in-one-file-and-wrong-in-the-other",
+      "anchor": "it does not restate the version, so it cannot drift from it.",
       "status": "demoted",
       "reason": "Publishing-doc prose recording a dated run of check-version.mjs and quoting its overlay limb. The mechanism is real: publish/manifest.firefox.json is an RFC 7386 merge patch with no `version` key, and check-version.mjs limb 4 fails when an overlay states a version that disagrees with manifest.json. But no case plants a `version` in an overlay (scripts/test/selftest.node.js has no overlay expect(), and no node:test file reaches check-version), so nothing a register can name fails when the sentence goes false. Judged 2026-09-18."
     },
