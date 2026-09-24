@@ -195,11 +195,17 @@ if (existsSync(rootPubspec)) {
 }
 
 // ── the extension catalogue, read the same way pubspec's workspace list is ───
-// extensions/catalog/extensions.json is an independently maintained registry —
-// extensions/scripts/check-catalog.mjs §1 asserts "published slugs == extension-
-// surface tool ids on disk", so it is a real second list rather than a copy of
-// the walk above. That is what makes it usable both as a CLAIM (below) and as
-// the scan-root cross-check (further below).
+// extensions/catalog/extensions.json is GENERATED, not hand-maintained:
+// extensions/scripts/publish-catalog.mjs writes one row per tool.json, and the
+// `catalogue` job of extensions.yml deletes it, regenerates it and fails on any
+// `git diff`; extensions/scripts/check-catalog.mjs §1 then asserts "published
+// slugs == extension-surface tool ids on disk". So it is the same tool.json set
+// this scan walks, rendered by a different program and COMMITTED. That is what
+// makes it usable both as a CLAIM (below) and as the scan-root cross-check
+// (further below), which names any published slug this scan never enumerated.
+// ⏱ CORRECTED 2026-09-24: this comment used to call the file "an independently
+// maintained registry" and "a real second list rather than a copy of the walk
+// above". It has been publish-catalog's output since that script existed.
 const catalogSlugs = new Set();
 const extCatalog = join(repoRoot, 'extensions', 'catalog', 'extensions.json');
 if (existsSync(extCatalog)) {

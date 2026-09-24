@@ -13,6 +13,9 @@
    reading this repository. This writes catalog/extensions.json — a catalogue in
    the shape a MACHINE in another repository consumes.
 
+   ⏱ 2026-09-24: the fetch the next note removes is still gone, but the file has
+   live readers again — see "CORRECTED 2026-09-24" further down.
+
    🔴 CORRECTION 2026-08-22 — NOTHING FETCHES THIS FILE TODAY, AND THIS HEADER
    CLAIMED SOMETHING DID. The sentence that stood immediately above read:
 
@@ -128,6 +131,28 @@
    a consumer returns is the worst day to discover the bytes drifted. What this
    correction removes is the opposite error — a file that reads as load-bearing when
    nothing loads from it, which hides the real loss rather than recording it.
+
+   ⏱ CORRECTED 2026-09-24 — THE FILE HAS LIVE READERS AGAIN, SO "NOTHING FETCHES
+   THIS FILE TODAY" AND "NO LIVE READER" ABOVE ARE HISTORY. They were true on
+   2026-08-22. Since 2026-09-10 (ac72330a, PR #585)
+   services/platform/src/lib/bundle/availability.ts IMPORTS
+   extensions/catalog/extensions.json into the platform Worker at build time, and
+   .github/workflows/deploy-workers.yml lists the path under its push triggers, so
+   a change to these bytes redeploys production. tooling/bundle-availability.mjs and
+   tooling/ci/assert-lane-coverage.mjs parse it with JSON.parse, and
+   contracts/entitlement/bundle.js names it as the extension register. Nothing
+   FETCHES it over https — the storefront reader the 2026-08-22 note removed has
+   not come back — but "no reader" is no longer the fact. The determinism and the
+   BOM refusal below now protect a production input, not only a shape. The
+   readers, measured 2026-09-24:
+     · contracts/entitlement/bundle.js:118 — the extension register
+     · services/platform/src/lib/bundle/availability.ts:29 — imported at build
+     · services/platform/test/config.test.ts:16 — imported by the Worker's test
+     · tooling/bundle-availability.mjs:11 — the live slugs
+     · tooling/ci/assert-bundle-availability.mjs:63
+     · tooling/ci/assert-lane-coverage.mjs:213 — JSON.parse, the scan-root check
+     · extensions/scripts/check-catalog.mjs:108 — the default catalogue path
+     · .github/workflows/deploy-workers.yml:32 and :103 — push triggers
 
    Two catalogues, two shapes, ONE source: every field below is read out of a
    tool.json. Neither generator holds a fact the other does not.
@@ -409,11 +434,11 @@ const existing = existingBytes === null
 /* Named once so the --check failure and the rewrite notice cannot drift apart. */
 const BOM_WHY =
   'The first three bytes of ' + outRel + ' are EF BB BF — a UTF-8 byte order mark — before the opening `[`.\n' +
-  'This file is a published SHAPE: its bytes are held to an interface standard even though no consumer\n' +
-  'fetches them today (measured 2026-08-22 — see the correction at the top of this script). `JSON.parse`\n' +
-  'throws on a leading U+FEFF in every path Node offers (string and Buffer alike), so with the BOM\n' +
-  'present any consumer that ever does read this catalogue cannot parse it at all — it would report\n' +
-  '"not valid JSON", vendor nothing, and render no extensions.\n' +
+  'This file is a published SHAPE with live readers: the platform Worker imports it at build time, and\n' +
+  'tooling/bundle-availability.mjs and tooling/ci/assert-lane-coverage.mjs parse it (see the 2026-09-24\n' +
+  'correction at the top of this script). `JSON.parse` throws on a leading U+FEFF in every path Node\n' +
+  'offers (string and Buffer alike), so with the BOM present a reader that parses it that way cannot\n' +
+  'read this catalogue at all — it reports "not valid JSON" and sees no extensions.\n' +
   'Nothing else in this repository notices, because readText() in lib/toolinfo.mjs strips a BOM on read\n' +
   'and every gate here reads through it. That is correct for an internal file and wrong for this one.\n' +
   'PowerShell 5.1 writes a BOM by default from `Out-File -Encoding utf8`; use `Set-Content -Encoding utf8NoBOM`,\n' +
