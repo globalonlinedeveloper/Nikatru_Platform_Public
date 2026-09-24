@@ -3008,6 +3008,18 @@
   },
   {
     "claims": [
+      "ADR 029"
+    ],
+    "invokedBy": [
+      ".github/workflows/ops-watch.yml#glitchtip"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/check-mail-auth-dns.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
       "ADR 075"
     ],
     "invokedBy": [

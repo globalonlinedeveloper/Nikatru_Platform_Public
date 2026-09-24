@@ -32,6 +32,10 @@
 //      file → CAUGHT.
 //   M5 a NEW doc carrying the stale claim, i.e. the eighth copy → CAUGHT.
 //   M6 the checker MENTIONS the register and hardcodes its expectations → CAUGHT.
+//   ⏱ 2026-09-24, limb F: the `--plan` probe pointed at a copy of the real
+//      tooling/ops/check-mail-auth-dns.mjs whose register read was replaced by the
+//      declaration typed in → F1 RED, alone; the real checker made to ignore
+//      `--root` → the real-tree guard exit 1, "behaves IDENTICALLY".
 //
 // 🔬 THAT RUN FOUND TWO REAL BUGS, and both were invisible to fixtures:
 //   1. THE REGISTER WAS ANSWERING FOR THE WHOLE REPOSITORY. It necessarily
@@ -94,6 +98,16 @@ const GOOD_REGISTER = () => ({
     correctionMarkers: [{ marker: 'smtp.provider.test', why: 'names the live host' }],
   },
   liveChecker: { path: 'tooling/ops/checker.mjs', why: 'the live half' },
+  authRecords: {
+    checker: 'tooling/ops/auth-checker.mjs',
+    records: [
+      { id: 'spf-w', rail: 'workspace', kind: 'spf', name: 'example.test', expect: { include: ['spf.provider.test'], all: '~all' } },
+      { id: 'dkim-w', rail: 'workspace', kind: 'dkim', name: 'sel._domainkey.example.test', expect: { k: 'rsa' } },
+      { id: 'dmarc', rail: 'workspace', kind: 'dmarc', name: '_dmarc.example.test', expect: { p: 'none' } },
+      { id: 'spf-r', rail: 'resend', kind: 'spf', name: 'send.mail.example.test', expect: { include: ['ses.provider.test'], all: '~all' } },
+      { id: 'dkim-r', rail: 'resend', kind: 'dkim', name: 'r._domainkey.mail.example.test', expect: { k: 'rsa' } },
+    ],
+  },
 });
 
 /** The live checker stand-in, modelling the real one's THREE-VALUED exit:
@@ -109,7 +123,17 @@ if (!process.env.SUPABASE_PAT) { console.error('no credential'); process.exit(2)
 process.exit(0);
 `;
 
-function makeRoot({ register, docs, checker } = {}) {
+/** The mail-auth DNS checker stand-in, modelling the real one's `--plan`: it
+ *  reads the register under `--root` and exits 0, or 2 when there is none. Limb F
+ *  proves the wiring by running it with the register and without. */
+const GOOD_AUTH_CHECKER = `import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+const at = process.argv.indexOf('--root');
+const root = at >= 0 ? process.argv[at + 1] : process.cwd();
+if (!existsSync(join(root, 'tooling', 'mail-transport.json'))) { console.error('✗ COULD NOT LOOK — no register'); process.exitCode = 2; }
+`;
+
+function makeRoot({ register, docs, checker, authChecker } = {}) {
   const root = join(TMP, `r${seq++}`);
   mkdirSync(join(root, 'tooling', 'ops'), { recursive: true });
   mkdirSync(join(root, 'docs'), { recursive: true });
@@ -117,6 +141,7 @@ function makeRoot({ register, docs, checker } = {}) {
     writeFileSync(join(root, 'tooling', 'mail-transport.json'), JSON.stringify(register ?? GOOD_REGISTER(), null, 2));
   }
   if (checker !== null) writeFileSync(join(root, 'tooling', 'ops', 'checker.mjs'), checker ?? GOOD_CHECKER);
+  if (authChecker !== null) writeFileSync(join(root, 'tooling', 'ops', 'auth-checker.mjs'), authChecker ?? GOOD_AUTH_CHECKER);
   // Always at least one document carrying the superseded phrase WITH its
   // correction, so the aggregate non-vacuity check has something to see and the
   // happy path is a real pass rather than a scan over nothing.
@@ -397,6 +422,74 @@ process.exit(0);
     const r = run(makeRoot({ register: reg }));
     assert.equal(r.status, 1, out(r));
     assert.match(out(r), /no `liveChecker.path`/);
+  });
+});
+
+// ⏱ 2026-09-24 — LIMB F (row O-MAIL-AUTH-DNS-UNGUARDED). `authRecords` declares
+// the mail-auth DNS records, and tooling/ops/check-mail-auth-dns.mjs reads them
+// live in ops-watch. F1 runs the REAL checker, copied with its one import, so the
+// with/without probe is proven against the file ops-watch runs and not a stand-in.
+describe('assert-mail-transport-claims — limb F: the mail-auth DNS declaration', () => {
+  const OPS = join(REPO, 'tooling', 'ops');
+
+  test('F1 PASSES when removing the register changes the REAL checker\'s --plan answer, and counts the records', () => {
+    const reg = GOOD_REGISTER();
+    reg.authRecords.checker = 'tooling/ops/check-mail-auth-dns.mjs';
+    const root = makeRoot({ register: reg, authChecker: null });
+    for (const f of ['check-mail-auth-dns.mjs', 'bounded-retry.mjs']) {
+      writeFileSync(join(root, 'tooling', 'ops', f), readFileSync(join(OPS, f), 'utf8'));
+    }
+    const r = run(root);
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /auth-record checker wiring PROVEN behaviourally: tooling\/ops\/check-mail-auth-dns\.mjs --plan exits 0 with the register and 2 without it/);
+    assert.match(out(r), /2 rail\(s\), 5 auth record\(s\)/);
+  });
+
+  test('F2 FAILS when a record names a rail nobody declared, or sits outside its rail\'s domain', () => {
+    const reg = GOOD_REGISTER();
+    reg.authRecords.records.push({ id: 'stray', rail: 'marketing', kind: 'spf', name: 'news.example.test', expect: { include: [], all: '~all' } });
+    reg.authRecords.records.find((x) => x.id === 'dkim-r').name = 'r._domainkey.example.test';
+    const r = run(makeRoot({ register: reg }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /auth record `stray` names the rail "marketing", which is not declared in `rails`/);
+    assert.match(out(r), /auth record `dkim-r` is "r\._domainkey\.example\.test", which is neither `mail\.example\.test` nor under it/);
+  });
+
+  test('F3 FAILS when a rail declares no DKIM record — a key that goes would go unseen', () => {
+    const reg = GOOD_REGISTER();
+    reg.authRecords.records = reg.authRecords.records.filter((x) => x.id !== 'dkim-r');
+    const r = run(makeRoot({ register: reg }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /the `resend` rail \(mail\.example\.test\) declares no `dkim` auth record/);
+    assert.doesNotMatch(out(r), /the `workspace` rail .* declares no/);
+  });
+
+  test('F4 FAILS unless there is EXACTLY one DMARC record', () => {
+    const reg = GOOD_REGISTER();
+    reg.authRecords.records.push({ id: 'dmarc-2', rail: 'resend', kind: 'dmarc', name: '_dmarc.mail.example.test', expect: { p: 'none' } });
+    const r = run(makeRoot({ register: reg }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /2 `dmarc` auth record\(s\), expected exactly 1/);
+  });
+
+  // The limb C lesson, one block over: a checker that NAMES the register and has
+  // its records typed into itself answers the same with the register and without.
+  test('F5 FAILS when the auth checker has its records typed in and no longer reads the register', () => {
+    const r = run(makeRoot({
+      authChecker: `const RECORDS = ['example.test', 'sel._domainkey.example.test']; // not tooling/mail-transport.json
+for (const n of RECORDS) console.log('plan  ' + n);
+`,
+    }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /--plan behaves IDENTICALLY with and without tooling\/mail-transport\.json \(both exit 0\)/);
+  });
+
+  test('F6 COVERAGE LOST when `authRecords` declares no records — limb F would range over nothing', () => {
+    const reg = GOOD_REGISTER();
+    reg.authRecords.records = [];
+    const r = run(makeRoot({ register: reg }));
+    assert.equal(r.status, 2, out(r));
+    assert.match(out(r), /COVERAGE LOST — tooling\/mail-transport\.json declares no `authRecords\.records`/);
   });
 });
 

@@ -133,6 +133,9 @@ const superseded =
     : {};
 const patternRows = Array.isArray(superseded.patterns) ? superseded.patterns : [];
 const markerRows = Array.isArray(superseded.correctionMarkers) ? superseded.correctionMarkers : [];
+const authBlock =
+  typeof reg.authRecords === 'object' && reg.authRecords !== null && !Array.isArray(reg.authRecords) ? reg.authRecords : {};
+const authRows = Array.isArray(authBlock.records) ? authBlock.records : [];
 
 if (rails.length === 0) {
   coverageLost([`${REGISTER_REL} declares no rails, so every architectural invariant below is vacuous.`]);
@@ -148,6 +151,12 @@ if (markerRows.length === 0) {
     `${REGISTER_REL} declares no correction markers.`,
     'With nothing able to SATISFY the rule, every historical mention becomes a failure — the guard',
     'would fire on correct input, which is how a guard gets switched off.',
+  ]);
+}
+if (authRows.length === 0) {
+  coverageLost([
+    `${REGISTER_REL} declares no \`authRecords.records\`.`,
+    'Limb F would range over nothing, and the live checker in ops-watch would have no record to read.',
   ]);
 }
 
@@ -461,9 +470,105 @@ if (!checkerRel) {
   }
 }
 
+// ── LIMB F · the mail-auth DNS declaration is whole, and its checker reads it ─
+// `authRecords` declares the SPF, DKIM, DMARC and bounce-MX records of each rail,
+// and tooling/ops/check-mail-auth-dns.mjs reads them against live DNS in
+// ops-watch (row O-MAIL-AUTH-DNS-UNGUARDED). This is the offline half: every
+// record belongs to a declared rail and sits at or under its domain, every rail
+// carries at least one DKIM and one SPF record, there is exactly one DMARC
+// record, and the checker still READS the block — proven the way limb C proves
+// it, by running the checker's `--plan` with the register and without it.
+// `--plan` validates the block and makes no request, so a malformed record also
+// fails here, offline, before ops-watch ever asks a resolver.
+//
+// ⚠️ IT HOLDS NO OPINION ON THE POLICY. `p` is whatever the register says, and
+// the live checker compares it with the DNS; this limb pins no value of it.
+const railById = new Map(rails.map((r) => [r.id, r]));
+for (const r of authRows) {
+  const rail = railById.get(r?.rail);
+  if (!rail) {
+    problems.push(
+      `${REGISTER_REL}: auth record \`${r?.id}\` names the rail ${JSON.stringify(r?.rail)}, which is not declared in \`rails\`. ` +
+        'A record no rail owns is checked against nothing ADR 029 decided.',
+    );
+    continue;
+  }
+  const name = String(r?.name ?? '');
+  if (name !== rail.domain && !name.endsWith(`.${rail.domain}`)) {
+    problems.push(
+      `${REGISTER_REL}: auth record \`${r.id}\` is ${JSON.stringify(name)}, which is neither \`${rail.domain}\` nor under it, ` +
+        `so it cannot authenticate mail sent from the \`${rail.id}\` rail it claims.`,
+    );
+  }
+}
+for (const rail of rails) {
+  for (const kind of ['dkim', 'spf']) {
+    if (!authRows.some((r) => r?.rail === rail.id && r?.kind === kind)) {
+      problems.push(
+        `${REGISTER_REL}: the \`${rail.id}\` rail (${rail.domain}) declares no \`${kind}\` auth record. A receiver checks ` +
+          `${kind.toUpperCase()} on mail from it, and with no record declared nothing would notice that record going.`,
+      );
+    }
+  }
+}
+const dmarcRows = authRows.filter((r) => r?.kind === 'dmarc');
+if (dmarcRows.length !== 1) {
+  problems.push(
+    `${REGISTER_REL}: ${dmarcRows.length} \`dmarc\` auth record(s), expected exactly 1 — the organisational domain ` +
+      'publishes one policy, and a subdomain with none of its own falls back to it (RFC 7489 §6.6.3).',
+  );
+}
+const authCheckerRel = authBlock.checker;
+if (typeof authCheckerRel !== 'string' || authCheckerRel === '') {
+  problems.push(`${REGISTER_REL}: no \`authRecords.checker\`. Nothing then compares these records with the live DNS, and a deleted DKIM key goes unseen.`);
+} else {
+  const authCheckerAbs = join(repoRoot, authCheckerRel.split('/').join(sep));
+  if (!existsSync(authCheckerAbs)) {
+    problems.push(`${REGISTER_REL}: \`authRecords.checker\` names ${authCheckerRel}, which does not exist. Nothing reads the mail-auth records.`);
+  } else {
+    const probeRoot = mkdtempSync(join(tmpdir(), 'nikatru-mailauth-probe-'));
+    try {
+      mkdirSync(join(probeRoot, 'tooling'), { recursive: true });
+      const probeRegister = join(probeRoot, 'tooling', 'mail-transport.json');
+      copyFileSync(REGISTER, probeRegister);
+      const probe = () =>
+        spawnSync(process.execPath, [authCheckerAbs, '--plan', '--root', probeRoot], { encoding: 'utf8', timeout: 60_000 });
+
+      const withRegister = probe();
+      rmSync(probeRegister);
+      const withoutRegister = probe();
+
+      // PRECONDITION, as in limb C: with the register present `--plan` must
+      // validate it and exit 0. Anything else is either a malformed declaration
+      // or a probe that proves nothing, and both are said out loud.
+      if (withRegister.status !== 0) {
+        problems.push(
+          `the auth-record wiring probe could not be run: ${authCheckerRel} --plan exited ${withRegister.status} with the ` +
+            `register present, where 0 was expected.\n        it said: ${
+              (withRegister.stderr || withRegister.stdout || '').trim().split('\n').find((l) => l.includes('✗')) ??
+              ((withRegister.stderr || withRegister.stdout || '').trim().split('\n')[0] || '(nothing)')
+            }`,
+        );
+      } else if (withoutRegister.status === withRegister.status) {
+        problems.push(
+          `${authCheckerRel} --plan behaves IDENTICALLY with and without ${REGISTER_REL} (both exit ${withRegister.status}), ` +
+            'so it no longer reads `authRecords`. It is then comparing the DNS with records typed into itself, and the ' +
+            'register could change with nothing red.',
+        );
+      } else {
+        prints.push(
+          `auth-record checker wiring PROVEN behaviourally: ${authCheckerRel} --plan exits ${withRegister.status} with the register and ${withoutRegister.status} without it`,
+        );
+      }
+    } finally {
+      rmSync(probeRoot, { recursive: true, force: true });
+    }
+  }
+}
+
 // ── report ──────────────────────────────────────────────────────────────────
 prints.push(
-  `scanned ${filesRead} text file(s) / ${unitsScanned} unit(s); ${rails.length} rail(s), ` +
+  `scanned ${filesRead} text file(s) / ${unitsScanned} unit(s); ${rails.length} rail(s), ${authRows.length} auth record(s), ` +
     `transport "${transport}" recorded from live on ${reg.verifiedLiveOn ?? '(no date)'}`,
 );
 prints.push(
@@ -481,6 +586,7 @@ prints.push(
     : `⬜ private trees NOT visible: ${privateMissing.join(', ')}${privateVisible.length ? ` (saw ${privateVisible.join(', ')})` : ''}. They are gitignored, so CI never sees them and this run did NOT check them. "I did not look" is not "it is clean".`,
 );
 prints.push('DRIFT vs the live Supabase config is NOT checked here (needs SUPABASE_PAT) — run tooling/ops/verify-supabase-templates.mjs');
+prints.push('DRIFT vs the live mail-auth DNS is NOT checked here (no CI check may depend on live DNS) — run tooling/ops/check-mail-auth-dns.mjs');
 prints.push('this guard enforces that a correction is PRESENT, never that a stale claim was removed — it cannot judge which of two adjacent sentences a reader believes');
 
 if (problems.length) {
