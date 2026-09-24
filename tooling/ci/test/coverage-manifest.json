@@ -85,7 +85,7 @@
   "e2e-verify-target.test.mjs": 30,
   "elf-page-alignment.test.mjs": 23,
   "enforcement-index.test.mjs": 26,
-  "entitlement-contract.test.mjs": 92,
+  "entitlement-contract.test.mjs": 99,
   "erasure-reach.test.mjs": 49,
   "extension-submission.test.mjs": 46,
   "extensions-build-free.test.mjs": 14,

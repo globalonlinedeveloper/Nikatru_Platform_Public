@@ -50,6 +50,18 @@ if (!payload.revenuecatEventReasons?.length || !payload.revenuecatEventReasons.s
   console.error('  would carry a translation table that translates nothing. That is not the same as a table nobody needed.');
   process.exit(1);
 }
+// ⏱ 2026-09-24 · F912 — contract.schema.json requires `notAGrant` on every row,
+// and nothing validates this file against that schema, so the generator refuses
+// a row without it rather than write a copy the schema rejects.
+{
+  const undeclared = payload.revenuecatEventReasons.filter((r) => typeof r.notAGrant !== 'boolean');
+  if (undeclared.length) {
+    console.error(`✗ contract.js exported RevenueCat event(s) ${undeclared.map((r) => r.event).join(', ')} with no ` +
+      `boolean notAGrant, so ${REL} would carry a row the schema rejects.`);
+    console.error('  The field is required on every row: a row that omits it is not a grant, and it is not written as one.');
+    process.exit(1);
+  }
+}
 
 if (!check) {
   writeFileSync(OUT, rendered, 'utf8');

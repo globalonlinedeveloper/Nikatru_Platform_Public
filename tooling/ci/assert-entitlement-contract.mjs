@@ -1074,16 +1074,7 @@ const REVENUECAT_MAP_COPIES = [
   {
     file: CONTRACT_JS_REL,
     why: 'THE AUTHORED COPY',
-    parse: (src) => {
-      const arr = /REVENUECAT_EVENT_REASONS\s*=\s*\[([\s\S]*?)\n\]/.exec(src);
-      const out = new Map();
-      if (!arr) return out;
-      const row = /event:\s*'([^']+)'\s*,\s*reason:\s*(?:'([^']+)'|null)\s*,\s*dateDerived:\s*(true|false)/g;
-      for (const m of arr[1].matchAll(row)) {
-        out.set(m[1], { reason: m[2] ?? null, dateDerived: m[3] === 'true' });
-      }
-      return out;
-    },
+    parse: parseRcJsRows,
   },
   {
     file: 'contracts/entitlement/contract.json',
@@ -1101,6 +1092,7 @@ const REVENUECAT_MAP_COPIES = [
           out.set(row.event, {
             reason: typeof row.reason === 'string' ? row.reason : null,
             dateDerived: row.dateDerived,
+            notAGrant: row.notAGrant,
           });
         }
       }
@@ -1110,16 +1102,7 @@ const REVENUECAT_MAP_COPIES = [
   {
     file: 'extensions/core/v1/entitlement-contract.js',
     why: 'the copy the build-free extension runtime carries (byte-compared by limb 4 as well)',
-    parse: (src) => {
-      const arr = /REVENUECAT_EVENT_REASONS\s*=\s*\[([\s\S]*?)\n\]/.exec(src);
-      const out = new Map();
-      if (!arr) return out;
-      const row = /event:\s*'([^']+)'\s*,\s*reason:\s*(?:'([^']+)'|null)\s*,\s*dateDerived:\s*(true|false)/g;
-      for (const m of arr[1].matchAll(row)) {
-        out.set(m[1], { reason: m[2] ?? null, dateDerived: m[3] === 'true' });
-      }
-      return out;
-    },
+    parse: parseRcJsRows,
   },
   {
     file: 'packages/purchases/lib/src/generated/entitlement_contract.g.dart',
@@ -1127,9 +1110,10 @@ const REVENUECAT_MAP_COPIES = [
     parse: (src) => {
       const out = new Map();
       const row =
-        /RevenueCatEventReason\(\s*'([^']+)'\s*,\s*(?:'([^']+)'|null)\s*,\s*dateDerived:\s*(true|false)\s*\)/g;
+        /RevenueCatEventReason\(\s*'([^']+)'\s*,\s*(?:'([^']+)'|null)\s*,\s*dateDerived:\s*(true|false)(?:\s*,\s*notAGrant:\s*(true|false))?\s*\)/g;
       for (const m of src.matchAll(row)) {
-        out.set(m[1], { reason: m[2] ?? null, dateDerived: m[3] === 'true' });
+        const notAGrant = m[4] === undefined ? undefined : m[4] === 'true';
+        out.set(m[1], { reason: m[2] ?? null, dateDerived: m[3] === 'true', notAGrant });
       }
       return out;
     },
@@ -1187,7 +1171,7 @@ const rcAuthored = existsSync(join(ROOT, CONTRACT_JS_REL))
         continue;
       }
       rcCopiesCompared++;
-      for (const [event, { reason, dateDerived }] of authored) {
+      for (const [event, { reason, dateDerived, notAGrant }] of authored) {
         if (!inCopy.has(event)) {
           fail(
             `RevenueCat event '${event}' is mapped in ${CONTRACT_JS_REL} but ABSENT from ${copy.file}. ` +
@@ -1211,6 +1195,14 @@ const rcAuthored = existsSync(join(ROOT, CONTRACT_JS_REL))
               'refund, told apart by the paid-through date alone; a copy that loses it revokes a paying ' +
               'customer or keeps a refunded one.',
           );
+        } else if (inCopy.get(event).notAGrant !== notAGrant) {
+          // (e) ⏱ 2026-09-24 · F912 — the field that says a no-reason row is NOT a grant.
+          fail(
+            `RevenueCat event '${event}' disagrees about notAGrant — ${CONTRACT_JS_REL} says ` +
+              `${String(notAGrant)} and ${copy.file} says ${String(inCopy.get(event).notAGrant)}. That flag is ` +
+              'what keeps an event the vendor describes as no access change from being read as a grant; a ' +
+              'copy that loses it grants access nobody paid for, or drops one somebody did.',
+          );
         }
       }
       for (const event of inCopy.keys()) {
@@ -1229,6 +1221,71 @@ const rcAuthored = existsSync(join(ROOT, CONTRACT_JS_REL))
       );
     }
   }
+}
+
+// ── LIMB 6b · every authored row says whether it is a grant ─────────────────
+//
+// ⏱ 2026-09-24 · F912 (the #912 cloud review, finding 3). "Not a
+// grant" was a Set of event names in contract.js beside the table, and the ruling
+// read a no-reason, not-date-derived row as 'grant' unless its name was ALSO in
+// that Set. So the row was one edit and the Set a second, and a row added without
+// the second granted access on a vendor event nobody had ruled on. The flag is now
+// each row's own `notAGrant`, and this limb holds two things, each by row name:
+//
+//   (a) every authored row declares `notAGrant` as a boolean LITERAL, directly
+//       after dateDerived. A row that omits it is refused here rather than read
+//       as `false`: defaulting it would be the grant nobody decided. (The ruling
+//       fails closed on it too, answering null for anything but an explicit false.)
+//   (b) `notAGrant: true` sits only on a row with `reason: null` and
+//       `dateDerived: false` — the one shape the ruling would otherwise read as a
+//       grant. On a row with a reason it would silence a revocation; on a
+//       date-derived row, a paid-through ruling.
+//
+// Its input is limb 6's authored parse, so an empty parse is limb 6's COVERAGE
+// LOST, and a parse that stopped finding the field reads as (a) on every row.
+let rcNotAGrantRows = 0;
+{
+  for (const [event, { reason, dateDerived, notAGrant }] of rcAuthored) {
+    if (typeof notAGrant !== 'boolean') {
+      fail(
+        `RevenueCat event '${event}' in ${CONTRACT_JS_REL} declares no boolean notAGrant ` +
+          (notAGrant === undefined
+            ? '(the field is absent, or not directly after dateDerived). '
+            : `(it reads \`notAGrant: ${notAGrant}\`, which is not a literal true or false). `) +
+          'Every row must say whether it is a grant: a row that omits it would be a grant nobody decided, and ' +
+          'the ruling refuses to read one. Add `notAGrant: true` or `notAGrant: false` after dateDerived.',
+      );
+    } else if (notAGrant && (reason !== null || dateDerived)) {
+      fail(
+        `RevenueCat event '${event}' in ${CONTRACT_JS_REL} is marked notAGrant: true but ` +
+          (reason !== null ? `carries reason '${reason}'` : 'is dateDerived: true') +
+          '. A notAGrant row carries a reason of null and is not date-derived: it marks only the shape the ' +
+          'ruling would otherwise read as a grant, and on any other row it would silence a revocation or a ' +
+          'paid-through ruling.',
+      );
+    } else if (notAGrant) {
+      rcNotAGrantRows++;
+    }
+  }
+}
+
+/** The JS rows — the authored copy and its byte-identical extension copy (limb 6).
+ *  ⏱ 2026-09-24 · F912: `notAGrant` is read where every row declares it, DIRECTLY
+ *  AFTER dateDerived, and kept as found: `true`/`false` as a boolean, any other
+ *  token as its source text, and nothing as undefined. Limb 6b refuses the last
+ *  two by row name, so a flag placed anywhere else in a row fails closed. Declared
+ *  as a (hoisted) function here so REVENUECAT_MAP_COPIES keeps its cited line. */
+function parseRcJsRows(src) {
+  const arr = /REVENUECAT_EVENT_REASONS\s*=\s*\[([\s\S]*?)\n\]/.exec(src);
+  const out = new Map();
+  if (!arr) return out;
+  const row =
+    /event:\s*'([^']+)'\s*,\s*reason:\s*(?:'([^']+)'|null)\s*,\s*dateDerived:\s*(true|false)(?:\s*,\s*notAGrant:\s*([^,\s}]+))?/g;
+  for (const m of arr[1].matchAll(row)) {
+    const notAGrant = m[4] === 'true' ? true : m[4] === 'false' ? false : m[4];
+    out.set(m[1], { reason: m[2] ?? null, dateDerived: m[3] === 'true', notAGrant });
+  }
+  return out;
 }
 
 // ── LIMB 7 · the ONE runtime that already reads a RevenueCat event ──────────
@@ -1805,6 +1862,8 @@ console.log(
     'nothing but new Date(…).toISOString(); ' +
     `the RevenueCat event map is equal across all ${rcCopiesCompared} runtime copy/copies, every mapped ` +
     'reason is seeded, and at least one store event really revokes; ' +
+    `limb 6b: all ${rcAuthored.size} authored row(s) declare a boolean notAGrant, and the ${rcNotAGrantRows} ` +
+    'marked true carry no reason and are not date-derived; ' +
     (rcDuplicationClosed
       ? `${WEBHOOK_REL} now IMPORTS the contract instead of restating it, so limb 7's declared divergence ` +
         'is retired'
