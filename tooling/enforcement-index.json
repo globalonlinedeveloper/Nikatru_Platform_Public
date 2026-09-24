@@ -3008,6 +3008,16 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/apple-expiry-write.yml#write"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/check-apple-signing-expiry.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "K-7"
     ],

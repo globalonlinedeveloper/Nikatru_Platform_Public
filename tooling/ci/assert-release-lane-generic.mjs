@@ -354,6 +354,16 @@ const CLASSIFIED_ELSEWHERE = new Map([
       'is tooling/ci/test/redeploy-stranded.test.mjs. Classified 2026-09-23, the round the workflow landed.',
   ],
   [
+    'apple-expiry-write.yml',
+    'writes the Apple signing certificate and App Store profile expiry dates into tooling/ops/register.json ' +
+      'from App Store Connect, dispatch-only and never on main, and pushes that one file to the dispatched ' +
+      'branch. It builds no app, produces no release artifact and names no app id, so R-1 would carry it in ' +
+      'the denominator as a permanent empty-set pass, the reason already written out for ops-watch.yml and ' +
+      'site-drift-repair.yml. The owning stage is stage 14 ops, through the duty row ' +
+      '`duty.workflow.apple-expiry-write.yml` in tooling/ops/register.json. What holds its behaviour correct ' +
+      'is tooling/ci/test/apple-signing-expiry.test.mjs. Classified 2026-09-24, the round the workflow landed.',
+  ],
+  [
     'site-drift-repair.yml',
     'regenerates the discovery surface after a push to main and opens a pull request when the regenerated ' +
       'bytes differ from what main carries. It builds no app, produces no release artifact and names no ' +
