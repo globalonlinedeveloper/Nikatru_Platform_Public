@@ -38,6 +38,9 @@ import { fileURLToPath } from 'node:url';
 // which has to find a line of CODE in a guard that quotes its own source in
 // prose — see the comment there for why a raw substring count is wrong.
 import { stripSourceComments } from '../text-reductions.mjs';
+// The crash-sink limb of assert-seams-wired reads a define's VALUE through this
+// reader, so its four answers are pinned here beside that limb's fixture cases.
+import { defineValueIn } from '../workflow-scan.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -3133,6 +3136,30 @@ Future<void> main() async {
     });
     assert.equal(code, 0, out);
     assert.match(out, /crash sink wired/);
+  });
+
+  // ── workflow-scan `defineValueIn` — the VALUE a build passes, not its name ──
+  // ⏱ 2026-09-24 (O-SEAMS-WIRED-GRADES-DECLARED-LANES-ONLY, patch B). The limb
+  // used to accept any `--dart-define=GLITCHTIP_DSN=`, and ci.yml's exempt
+  // android-artifacts builds pass exactly that with NOTHING after the `=` — the
+  // NoOp client this limb exists to catch. These four are the reader's answers.
+  test('defineValueIn — a secret expression is a non-empty value, read whole', () => {
+    const v = defineValueIn('flutter build web --release --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }} --dart-define=A=1', 'GLITCHTIP_DSN');
+    assert.equal(v, '${{ secrets.GLITCHTIP_DSN }}');
+  });
+
+  test('defineValueIn — `GLITCHTIP_DSN=` with nothing after it is the EMPTY string, not absent', () => {
+    assert.equal(defineValueIn('flutter build apk --release --dart-define=GLITCHTIP_DSN= --dart-define=A=1', 'GLITCHTIP_DSN'), '');
+    // A quoted empty value is the same empty value.
+    assert.equal(defineValueIn('flutter build apk --release --dart-define=GLITCHTIP_DSN=""', 'GLITCHTIP_DSN'), '');
+  });
+
+  test('defineValueIn — a define behind a `#` is prose, so it reads as null', () => {
+    assert.equal(defineValueIn('flutter build apk --release # --dart-define=GLITCHTIP_DSN=x', 'GLITCHTIP_DSN'), null);
+  });
+
+  test('defineValueIn — an absent define is null, and a longer name is not this one', () => {
+    assert.equal(defineValueIn('flutter build apk --release --dart-define=GLITCHTIP_DSN_SPARE=x', 'GLITCHTIP_DSN'), null);
   });
 
   // ── [pipeline 12]W-7b · EXACTLY ONE CALLER, and zero is not "at most one" ──
