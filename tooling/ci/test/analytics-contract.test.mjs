@@ -258,6 +258,11 @@ const EXEMPT_REL = 'services/platform/migrations/0014_consent_artifacts_app_id_r
 const EXEMPT_STATEMENT = "UPDATE consent_artifacts SET app_id = 'subscriptiontracker' WHERE app_id = 'subly';";
 const exemptFile = () => readFileSync(join(REPO, ...EXEMPT_REL.split('/')), 'utf8');
 
+// ⏱ 2026-09-24 · the guard grades every app in the workspace set, read from the
+// root pubspec (tooling/ci/app-set.mjs), so every fixture carries the REAL one,
+// copied: its set is app #1.
+const rootPubspec = () => readFileSync(join(REPO, 'pubspec.yaml'), 'utf8');
+
 /** Replace `from` with `to` in one fixture file, REFUSING if `from` is not there.
  *  A mutation helper that silently no-ops produces a test asserting the guard is
  *  red about an unchanged tree — which it would not be, so the test would fail
@@ -273,6 +278,7 @@ const mutate = (files, rel, from, to) => {
 function makeRepo(edit = (f) => f) {
   const root = join(TMP, `r${seq++}`);
   const files = edit({
+    'pubspec.yaml': rootPubspec(),
     'services/platform/migrations/0002_analytics.sql': MIGRATION,
     'services/platform/src/routes/events.ts': ROUTE,
     'packages/core/lib/src/analytics/analytics.dart': ANALYTICS_DART,
@@ -597,7 +603,7 @@ describe('assert-analytics-contract — coverage self-checks', () => {
           .replace('envelope: <String, Object?>', 'envelope: buildEnvelope'),
     })));
     assert.equal(r.code, 2, r.out);
-    assert.match(r.out, /COVERAGE LOST — .*no longer contains `envelope: <String, Object\?>`/s);
+    assert.match(r.out, /COVERAGE LOST — apps\/subscriptiontracker: no file under apps\/subscriptiontracker\/lib\/ declares `envelope: <String, Object\?>`/);
   });
 
   test('COVERAGE LOST when the client stops emitting one of the ten envelope fields', () => {
@@ -1080,5 +1086,106 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
         "data: <String, Object?>{'application_id': appId},")));
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /the request literal sends \{application_id\}, the pinned shape is \{app_id\}/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE APP SET — 2026-09-24, O-GUARDS-READ-A-HAND-LISTED-APP-SET.
+// The per-app envelope is found by its marker under <root>/lib for every app in
+// the root pubspec's workspace set and for the brick. Each app's own Worker is
+// services/<id>-api when it exists (app.yaml declares no `backend` key), and app
+// #1's config-default pin is keyed to app #1. App 2 below is in the BRICK
+// layout: its envelope is the brick's, in lib/state/providers.dart.
+// ─────────────────────────────────────────────────────────────────────────────
+const SCRATCH = 'apps/scratch';
+const withScratch = (f) => ({
+  ...mutate(f, 'pubspec.yaml', '  - apps/subscriptiontracker\n', '  - apps/subscriptiontracker\n  - apps/scratch\n'),
+  [`${SCRATCH}/lib/state/providers.dart`]: BRICK_PROVIDERS,
+});
+const APP1_HEALTH = 'services/subscriptiontracker-api/src/index.ts';
+const APP1_ACCOUNT = 'services/subscriptiontracker-api/src/routes/account.ts';
+
+describe('assert-analytics-contract — the app set, every app graded', () => {
+  test('RC1: a workspace with no apps/ member -> exit 2, COVERAGE LOST naming the guard', () => {
+    const r = run(makeRepo((f) => mutate(f, 'pubspec.yaml', '  - apps/subscriptiontracker\n', '')));
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /COVERAGE LOST — assert-analytics-contract: .*pubspec\.yaml declares no `workspace:` entry under apps\//);
+  });
+
+  test('RC2: app 2 with no Worker -> exit 0 apps=2, its envelope read, its missing Worker a printed GAP', () => {
+    const r = run(makeRepo(withScratch));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /assert-analytics-contract: ok apps=2 — /);
+    assert.match(r.out, /client envelope — 10 key\(s\) across 5 source\(s\) \(.*apps\/scratch\/lib\/state\/providers\.dart → 2/);
+    assert.match(r.out, /GAP {2}apps\/scratch has no Worker: services\/scratch-api does not exist, and app\.yaml declares no `backend` key/);
+    assert.match(r.out, /1\/2 app Worker\(s\) graded, 1 app\(s\) with no Worker \(GAP printed\)/);
+    assert.match(r.out, /answered by all 2 health handler\(s\)/);
+    assert.match(r.out, /status set pinned: .* across 2 host\(s\)/);
+  });
+
+  test("app 2 with its own Worker -> its health and account routes graded beside the shared one and app #1's", () => {
+    const r = run(makeRepo((f) => ({
+      ...withScratch(f),
+      'services/scratch-api/src/index.ts': f[APP1_HEALTH],
+      'services/scratch-api/src/routes/account.ts': f[APP1_ACCOUNT],
+    })));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /answered by all 3 health handler\(s\)/);
+    assert.match(r.out, /status set pinned: .* across 3 host\(s\)/);
+    assert.match(r.out, /2\/2 app Worker\(s\) graded\./);
+  });
+
+  test("app 2's Worker renames the field the deploy smoke joins on -> exit 1 naming that Worker", () => {
+    const r = run(makeRepo((f) => mutate({
+      ...withScratch(f),
+      'services/scratch-api/src/index.ts': f[APP1_HEALTH],
+      'services/scratch-api/src/routes/account.ts': f[APP1_ACCOUNT],
+    }, 'services/scratch-api/src/index.ts', 'build: c.env.RELEASE ?? null,', 'release: c.env.RELEASE ?? null,')));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /services\/scratch-api\/src\/index\.ts does not answer field\(s\) the deploy smoke joins on: build/);
+  });
+
+  test("app 2's Worker without its account route -> exit 2 naming the file", () => {
+    const r = run(makeRepo((f) => ({
+      ...withScratch(f),
+      'services/scratch-api/src/index.ts': f[APP1_HEALTH],
+    })));
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /COVERAGE LOST — services\/scratch-api\/src\/routes\/account\.ts is named as a shared route's server half and does not exist/);
+  });
+
+  test('app 2 with no envelope -> exit 2 naming apps/scratch and the marker', () => {
+    const r = run(makeRepo((f) =>
+      mutate(withScratch(f), `${SCRATCH}/lib/state/providers.dart`, 'envelope: <String, Object?>', 'envelope: buildEnvelope')));
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /COVERAGE LOST — apps\/scratch: no file under apps\/scratch\/lib\/ declares `envelope: <String, Object\?>`/);
+  });
+
+  test('app 2 whose envelope marker is only in a COMMENT -> exit 2, prose is not the literal', () => {
+    const r = run(makeRepo((f) => ({
+      ...withScratch(f),
+      [`${SCRATCH}/lib/state/providers.dart`]: "// envelope: <String, Object?>{'platform': p, 'app_version': v}\n",
+    })));
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /COVERAGE LOST — apps\/scratch: no file under apps\/scratch\/lib\/ declares/);
+  });
+
+  test('two files in one app declare the envelope -> exit 1 naming both', () => {
+    const r = run(makeRepo((f) => ({
+      ...withScratch(f),
+      [`${SCRATCH}/lib/state/providers_copy.dart`]: BRICK_PROVIDERS,
+    })));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /apps\/scratch: 2 files declare `envelope: <String, Object\?>` \(apps\/scratch\/lib\/state\/providers\.dart, apps\/scratch\/lib\/state\/providers_copy\.dart\)/);
+  });
+
+  test("RC5: the config pin keyed to an app that left the set is stale -> exit 1, and the route is not counted pinned", () => {
+    const r = run(makeRepo((f) => ({
+      ...mutate(f, 'pubspec.yaml', '  - apps/subscriptiontracker\n', '  - apps/scratch\n'),
+      [`${SCRATCH}/lib/state/providers.dart`]: BRICK_PROVIDERS,
+    })));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /config: a pin is keyed to app `subscriptiontracker` \(apps\/subscriptiontracker\/test\/config_default_test\.dart\), which is not in the workspace app set \(scratch\)/);
+    assert.doesNotMatch(r.out, /wire config — pinned by/);
   });
 });
