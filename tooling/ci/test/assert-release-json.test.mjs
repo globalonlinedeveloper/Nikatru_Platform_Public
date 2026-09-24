@@ -32,7 +32,8 @@ import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { servedFloor, productSurfaces, channelStampName } from '../release-manifest.mjs';
-import { parseAllWorkflows, stepShell } from '../workflow-scan.mjs';
+import { parseAllWorkflows, stepShell, workflowSteps } from '../workflow-scan.mjs';
+import { uploadableArtifactName } from '../assert-apps-gov-in-apk.mjs';
 import { listDir } from '../tree-walk.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -1072,4 +1073,86 @@ describe('--stage reads each installer\'s channel from its build stamp', () => {
     assert.match(r.stderr, /✗ app-release\.aab — its stamp records sha256 "[0-9a-f]{64}", and the bytes hash to [0-9a-f]{64}: the stamp was written for other bytes\./);
     assert.deepEqual(listed(out), []);
   });
+
+  // ⏱ 2026-09-24 — THE UPLOADABLE apps.gov.in .apk IS THE RELEASE'S .apk
+  // (O-APPS-GOV-IN-CHANNEL-APK). The release job's second download takes the
+  // artifact named by assert-apps-gov-in-apk.mjs `uploadableArtifactName` into
+  // `downloads/<that name>/`, and the step after it says, in one line, whether it
+  // came. Until the owner's pin is set no run uploads that name: one line naming
+  // the null pin, no .apk staged, exit 0. S5 is the green control for S6 and S7.
+  const AGI_ARTIFACT = uploadableArtifactName('subscriptiontracker');
+
+  test('S5 GREEN CONTROL — the UPLOADABLE download is staged with its apps-gov-in stamp, and the record names it apps-gov-in', () => {
+    const from = downloadTree([
+      { artifact: 'subscriptiontracker-linux-web-android-release-signed', file: 'app-release.aab', body: 'aab bytes', stamp: { channel: 'android-play' } },
+      { artifact: AGI_ARTIFACT, file: AGI, body: 'apk bytes', stamp: { channel: 'apps-gov-in' } },
+    ]);
+    const step = runAgiStep(REPO, join(from, AGI_ARTIFACT));
+    assert.equal(step.status, 0, `${step.stdout}${step.stderr}`);
+    assert.match(step.stdout, /^uploadable apps\.gov\.in apk downloaded into \S+apps-gov-in-subscriptiontracker-apk; --stage takes it with its stamp\n$/);
+    const { r, out, stamps } = stageDownloads(from);
+    assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+    assert.deepEqual(listed(out), [`${UNTAGGED_TAG}-app-release.aab`, `${UNTAGGED_TAG}-${AGI}`]);
+    assert.deepEqual(listed(join(from, AGI_ARTIFACT)), [], 'the .apk and its stamp left the download tree');
+    const emit = run(EMITTER, [
+      '--emit-release-json', out,
+      '--app', 'subscriptiontracker',
+      '--tag', UNTAGGED_TAG,
+      '--sha', 'a'.repeat(40),
+      '--run-url', 'https://github.com/nikatru/platform/actions/runs/1',
+      '--notes-url', 'https://github.com/nikatru/platform/releases/tag/x',
+      '--released-at', '2026-09-22T10:00:00Z',
+      '--version', '1.0.7',
+      '--build', '7',
+      '--stamps', stamps,
+      '--repo-root', REPO,
+    ]);
+    assert.equal(emit.status, 0, `${emit.stdout}${emit.stderr}`);
+    const byName = new Map(JSON.parse(readFileSync(join(out, 'release.json'), 'utf8')).artefacts.map((a) => [a.name, a]));
+    assert.deepEqual(byName.get(`${UNTAGGED_TAG}-${AGI}`).channels, ['apps-gov-in']);
+  });
+
+  test('S6 the pin null — no UPLOADABLE download: one line naming the null pin, exit 0, and no .apk staged', () => {
+    const root = registerTree(null);
+    const from = downloadTree([
+      { artifact: 'subscriptiontracker-linux-web-android-release-signed', file: 'app-release.aab', body: 'aab bytes', stamp: { channel: 'android-play' } },
+    ]);
+    const step = runAgiStep(root, join(from, AGI_ARTIFACT));
+    assert.equal(step.status, 0, `${step.stdout}${step.stderr}`);
+    assert.equal(step.stdout, 'no uploadable apps.gov.in apk: signingCertificate.sha256 is null\n');
+    const { r, out } = stageDownloads(from);
+    assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+    assert.deepEqual(listed(out), [`${UNTAGGED_TAG}-app-release.aab`]);
+  });
+
+  test('S7 RED — a pin set and no UPLOADABLE download is exit 1, never the null-pin line', () => {
+    const root = registerTree(Array(32).fill('AB').join(':'));
+    const step = runAgiStep(root, join(scratchDir('release-json-downloads-'), AGI_ARTIFACT));
+    assert.equal(step.status, 1, `${step.stdout}${step.stderr}`);
+    assert.match(step.stdout, /^::error title=apps\.gov\.in apk::signingCertificate\.sha256 is AB:AB:\S+ and this run uploaded no apps-gov-in-subscriptiontracker-apk artifact$/m);
+    assert.doesNotMatch(step.stdout, /no uploadable apps\.gov\.in apk/);
+  });
 });
+
+/** A repo root holding only the register, with its apps.gov.in pin set to `pin`.
+ *  The step reads nothing else, and the real pin is the owner's to set. */
+function registerTree(pin) {
+  const root = scratchDir('release-json-register-');
+  const register = JSON.parse(readFileSync(join(REPO, 'tooling', 'channel-register.json'), 'utf8'));
+  register.channels.find((c) => c.id === 'apps-gov-in').signing.signingCertificate.sha256 = pin;
+  mkdirSync(join(root, 'tooling'));
+  writeFileSync(join(root, 'tooling', 'channel-register.json'), `${JSON.stringify(register, null, 2)}\n`);
+  return root;
+}
+
+/** The release job's step that answers for the apps.gov.in download (the one
+ *  whose `env:` names AGI_DIR), its `run:` executed under bash as GitHub starts
+ *  it, from `cwd` (a repo root: the step reads the register there), AGI_DIR = `dir`
+ *  with `/` separators, as the runner's relative path has them. */
+function runAgiStep(cwd, dir) {
+  const wf = parseAllWorkflows(REPO).find((w) => w.rel === '.github/workflows/build-platforms.yml');
+  const step = workflowSteps(wf.jobs.get('release')).find((s) => s.env.has('AGI_DIR'));
+  assert.ok(step, 'build-platforms.yml job "release" holds no step whose env names AGI_DIR');
+  const { run: script } = readStep(readFileSync(join(REPO, wf.rel), 'utf8').split('\n'), { start: step.first, end: step.last });
+  return spawnSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', script], { cwd, encoding: 'utf8', env: { ...process.env, AGI_DIR: dir.replace(/\\/g, '/') } });
+}

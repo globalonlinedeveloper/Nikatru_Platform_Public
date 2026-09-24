@@ -24,6 +24,11 @@
  * inside `--self-test` too, over the real tree and over two mutations of it, so
  * the two lanes that call the self-test (ci.yml, spec-guards.mjs) grade it.
  *
+ * ⏱ 2026-09-24 — LIMB 10 IS STATIC TOO (O-APPS-GOV-IN-CHANNEL-APK). The release
+ * job downloads the apps.gov.in .apk only under the UPLOADABLE name that
+ * assert-apps-gov-in-apk.mjs exports, so the file the owner uploads is the file
+ * the record names, and a NOT-FOR-UPLOAD .apk never reaches a release.
+ *
  * Usage:
  *   node tooling/ci/assert-release-json.mjs --dir <release dir> [--repo-root <root>]
  *   node tooling/ci/assert-release-json.mjs --static [--repo-root <root>]
@@ -64,6 +69,7 @@ import {
 } from './release-manifest.mjs';
 import { validate, SchemaError } from '../app-yaml/schema-validate.mjs';
 import { parseAllWorkflows, workflowSteps, RELEASE_CHANNEL_STAMP } from './workflow-scan.mjs';
+import { uploadableArtifactName } from './assert-apps-gov-in-apk.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = resolve(join(HERE, '..', '..'));  // tooling/ci -> repo root
@@ -355,6 +361,17 @@ function stepWith(job, step) {
   return { uses, with: out };
 }
 
+/** Which artifact names one download step reaches, as a predicate. A `pattern:`
+ *  is a glob (`*`, `?`); a `name:` is one exact artifact; neither is every one. */
+function downloadReaches(w) {
+  const pattern = w.with.get('pattern')?.[0] ?? null;
+  const name = w.with.get('name')?.[0] ?? null;
+  if (pattern === null && name === null) return () => true;
+  const escaped = normExpr(pattern ?? name).replace(/[.+^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp(`^${pattern === null ? escaped : escaped.replace(/\*/g, '.*').replace(/\?/g, '.')}$`);
+  return (n) => re.test(normExpr(n));
+}
+
 /** A stamp step's `run:` read as stamp-channel.mjs reads its argv. */
 function stampCall(runText) {
   const tokens = normExpr(runText).split(/\s+/).filter(Boolean).map(unquoteToken);
@@ -392,7 +409,7 @@ export function gradeStampWiring({ root, register }) {
   const findings = [];
   const lost = [];
   const add = (msg, ...more) => findings.push({ limb: 9, msg, more });
-  const counts = { stagers: 0, releaseBound: 0, installerPaths: 0, stampSteps: 0 };
+  const counts = { stagers: 0, releaseBound: 0, installerPaths: 0, stampSteps: 0, agiDownloads: 0 };
   const installers = [...installableExtensions(register)].filter((x) => !BUNDLE_MEMBERS.has(x));
   const isInstallerPath = (p) => installers.some((x) => p.toLowerCase().endsWith(x.toLowerCase()));
 
@@ -439,20 +456,14 @@ export function gradeStampWiring({ root, register }) {
     for (const { job, steps } of jobs) {
       if (!steps.some((s) => /release-manifest\.mjs/.test(s.run?.text ?? '') && /(^|\s)--stage(\s|$)/.test(s.run?.text ?? ''))) continue;
       counts.stagers++;
-      const downloads = steps.map((s) => stepWith(job, s)).filter((w) => /^actions\/download-artifact@/.test(w.uses ?? ''));
+      const downloadSteps = steps.map((s) => ({ s, w: stepWith(job, s) })).filter(({ w }) => /^actions\/download-artifact@/.test(w.uses ?? ''));
+      const downloads = downloadSteps.map(({ w }) => w);
       if (downloads.length === 0) {
         lost.push(`${wf.rel} job "${job.name}" stages a release and holds no actions/download-artifact step, so which uploads reach it cannot be read.`);
         continue;
       }
-      const reaches = downloads.map((d) => {
-        const pattern = d.with.get('pattern')?.[0] ?? null;
-        const name = d.with.get('name')?.[0] ?? null;
-        if (pattern === null && name === null) return () => true;
-        // A `pattern:` is a glob (`*`, `?`); a `name:` is one exact artifact.
-        const escaped = normExpr(pattern ?? name).replace(/[.+^${}()|[\]\\]/g, '\\$&');
-        const re = new RegExp(`^${pattern === null ? escaped : escaped.replace(/\*/g, '.*').replace(/\?/g, '.')}$`);
-        return (n) => re.test(normExpr(n));
-      });
+      gradeAppsGovInDownload({ wf, job, downloadSteps, add: (msg, ...more) => findings.push({ limb: 10, msg, more }), counts });
+      const reaches = downloads.map(downloadReaches);
       for (const { job: upJob, steps: upSteps } of jobs) {
         for (const u of upSteps) {
           const w = stepWith(upJob, u);
@@ -479,6 +490,53 @@ export function gradeStampWiring({ root, register }) {
   return { findings, lost, counts };
 }
 
+/**
+ * LIMB 10 — ⏱ 2026-09-24 (O-APPS-GOV-IN-CHANNEL-APK). The release job takes the
+ * apps.gov.in .apk only under the one name an owner may upload, the answer of
+ * assert-apps-gov-in-apk.mjs `uploadableArtifactName` for the app `${{ matrix.app }}`,
+ * imported so the name is typed in one file. For one stager job:
+ *   · it downloads exactly one artifact whose name starts as that name does, and
+ *     by a `pattern:` equal to it. A `name:` is refused: download-artifact v4.3.0
+ *     throws when a named artifact is missing, and this one is missing on every
+ *     run until the owner's pin is set (O-APPS-GOV-IN-SIGNING-KEY);
+ *   · none of its downloads reaches a NOT-FOR-UPLOAD name (a glob such as
+ *     `apps-gov-in-*`, or a download with neither `pattern:` nor `name:`).
+ */
+function gradeAppsGovInDownload({ wf, job, downloadSteps, add, counts }) {
+  const app = normExpr('${{ matrix.app }}');
+  const want = normExpr(uploadableArtifactName(app));
+  const prefix = want.slice(0, want.indexOf(app));
+  const notForUpload = `${want}-NOT-FOR-UPLOAD-release-signed-unpinned`;
+  const target = (w) => w.with.get('pattern')?.[0] ?? w.with.get('name')?.[0] ?? null;
+  const agi = downloadSteps.filter(({ w }) => normExpr(target(w) ?? '').startsWith(prefix));
+  if (agi.length !== 1) {
+    add(
+      `${wf.rel} job "${job.name}" stages a release and holds ${agi.length} download(s) of an ${prefix}… artifact; it needs exactly one, of ${want}.`,
+      'With none, the uploadable .apk never reaches the record; with two, the second one is a name nobody graded.',
+    );
+  }
+  for (const { s, w } of agi) {
+    counts.agiDownloads++;
+    const where = `${wf.rel}:${s.first} (job "${job.name}")`;
+    if (w.with.has('name')) {
+      add(
+        `${where} downloads the apps.gov.in .apk by \`name:\`.`,
+        'download-artifact v4.3.0 throws when a named artifact is missing, and this one is missing on every run until the owner\'s pin is set. Use `pattern:` with the exact name.',
+      );
+    } else if (normExpr(target(w)) !== want) {
+      add(
+        `${where} downloads ${target(w)}, and the one apps.gov.in name an owner may upload is ${want} (assert-apps-gov-in-apk.mjs uploadableArtifactName).`,
+        'Any other name puts an unpinned or debug-signed .apk into the record under apps-gov-in.',
+      );
+    }
+  }
+  for (const { s, w } of downloadSteps) {
+    if (downloadReaches(w)(notForUpload)) {
+      add(`${wf.rel}:${s.first} (job "${job.name}") downloads ${target(w) ?? 'every artifact of the run'}, which reaches ${notForUpload}: a NOT-FOR-UPLOAD .apk would be staged.`);
+    }
+  }
+}
+
 function reportStatic({ findings, lost, counts }) {
   if (findings.length) {
     console.error(`✗ ${findings.length} finding(s) in the stamp wiring:`);
@@ -492,7 +550,7 @@ function reportStatic({ findings, lost, counts }) {
     for (const l of lost) console.error(`✗ COVERAGE LOST — ${l}`);
     return 2;
   }
-  console.log(`ok  limb 9: ${counts.stampSteps} stamp step(s) each paired with its build's RELEASE_CHANNEL; ${counts.installerPaths} installer path(s) in ${counts.releaseBound} release-bound upload(s), each stamped and shipped with its .channel.json`);
+  console.log(`ok  limb 9: ${counts.stampSteps} stamp step(s) each paired with its build's RELEASE_CHANNEL; ${counts.installerPaths} installer path(s) in ${counts.releaseBound} release-bound upload(s), each stamped and shipped with its .channel.json; limb 10: ${counts.agiDownloads} apps.gov.in download(s), each of the UPLOADABLE name only`);
   return 0;
 }
 
@@ -601,11 +659,11 @@ export function selfTest(root) {
   });
   check('the untagged sentinel still grades', null, (r) => { r.tag = 'subscriptiontracker-untagged-abc1234'; });
 
-  // ── limb 9 (static): the real workflows, then two mutations of build-platforms.yml ──
+  // ── limbs 9 and 10 (static): the real workflows, then three mutations of build-platforms.yml ──
   // Each mutation is ONE text edit of the real file, anchored on text that must
   // occur exactly once, so a case can only fail for the reason it names. An anchor
   // that moved fails the case, never skips it.
-  // LANE-BOUND: build-platforms.yml — ONLY for these two mutation cases, never for the limb. gradeStampWiring
+  // LANE-BOUND: build-platforms.yml — ONLY for these three mutation cases, never for the limb. gradeStampWiring
   // finds every workflow that runs `--stage` and grades each; the mutations need real text to break, and
   // the one staging lane today is build-platforms.yml, whose apps.gov.in stamp and Play .apk are the defect.
   const staticCase = (name, expect, mutation) => {
@@ -634,6 +692,11 @@ export function selfTest(root) {
     'limb 9: a stamp step saying android-play over the build that compiled apps-gov-in',
     'compiled RELEASE_CHANNEL=apps-gov-in',
     ['--channel apps-gov-in --build-step build_apk_agi', '--channel android-play --build-step build_apk_agi'],
+  );
+  staticCase(
+    'limb 10: the release job downloading the NOT-FOR-UPLOAD apps.gov.in name',
+    'the one apps.gov.in name an owner may upload is apps-gov-in-${{matrix.app}}-apk',
+    ['          pattern: apps-gov-in-${{ matrix.app }}-apk\n', '          pattern: apps-gov-in-${{ matrix.app }}-apk-NOT-FOR-UPLOAD-release-signed-unpinned\n'],
   );
   staticCase(
     'limb 9: the Play .apk put back into the <app>-* upload the release downloads',

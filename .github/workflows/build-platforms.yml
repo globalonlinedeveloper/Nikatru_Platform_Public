@@ -426,7 +426,7 @@ jobs:
           --apk ${{ steps.agi_apk.outputs.apk }}
           --app ${{ matrix.app }}
           --posture ${{ steps.agi_key.outputs.posture }}
-      # why its own artifact: `apps-gov-in-*` never matches the release job's `<app>-*` download.
+      # why its own artifact: `apps-gov-in-*` never matches the release job's `<app>-*` download; its second download takes this only under the UPLOADABLE name.
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ steps.agi_verify.outputs.artifact_name }}
@@ -1108,6 +1108,31 @@ jobs:
         with:
           path: downloads
           pattern: ${{ matrix.app }}-*
+      # why: the apps.gov.in .apk reaches the release ONLY under the one name the owner may upload
+      # (assert-apps-gov-in-apk.mjs uploadableArtifactName; assert-release-json.mjs limb 10 holds this
+      # line to it), so a NOT-FOR-UPLOAD .apk is never downloaded. An exact `pattern:` and not `name:`:
+      # download-artifact v4.3.0 throws "Artifact '…' not found" for a missing `name:`, and until the
+      # owner's pin is set (O-APPS-GOV-IN-SIGNING-KEY) no run uploads this name. A pattern with no
+      # match downloads nothing and the step passes; the next step says why in one line.
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: downloads
+          pattern: apps-gov-in-${{ matrix.app }}-apk
+      # why: an absent uploadable .apk is the owner's open pin, not a build defect: one line, no .apk staged, exit 0.
+      - name: The uploadable apps.gov.in .apk, or one line naming the null pin
+        env:
+          AGI_DIR: downloads/apps-gov-in-${{ matrix.app }}-apk
+        run: |
+          set -euo pipefail
+          pin="$(node -p "require('./tooling/channel-register.json').channels.find((c) => c.id === 'apps-gov-in').signing.signingCertificate.sha256")"
+          if [ -d "$AGI_DIR" ]; then
+            echo "uploadable apps.gov.in apk downloaded into ${AGI_DIR}; --stage takes it with its stamp"
+          elif [ "$pin" = "null" ]; then
+            echo "no uploadable apps.gov.in apk: signingCertificate.sha256 is null"
+          else
+            echo "::error title=apps.gov.in apk::signingCertificate.sha256 is ${pin} and this run uploaded no $(basename "$AGI_DIR") artifact"
+            exit 1
+          fi
       - name: Stage the installers and archive the rest
         env:
           APP: ${{ matrix.app }}
