@@ -222,6 +222,14 @@
   "@passwordTooShort": {
     "description": "Client-side length check before sending a sign-up."
   },
+  "passwordBreached": "This password has appeared in a data breach. Choose a different one.",
+  "@passwordBreached": {
+    "description": "The auth server refused a new password because it is in a known data breach (GoTrue weak_password reason pwned). Shown instead of any other reason, since adding characters cannot fix it."
+  },
+  "passwordTooWeak": "Choose a stronger password.",
+  "@passwordTooWeak": {
+    "description": "The auth server refused a new password as weak without saying it was too short or breached (GoTrue weak_password reason characters, an unknown reason, or no reason)."
+  },
   "signUpAgeRefused": "We can't create an account here. Your app store's age setting says you are under 18, and this app is only for people 18 or older.",
   "@signUpAgeRefused": {
     "description": "⏱ 2026-09-15 · [ADR 082] §5. Shown when the app store's age signal (Apple Declared Age Range, Google Play Age Signals) says the person is under 18: no account is created and no terms are recorded. Never shown when there is no signal — that case proceeds on the 18+ declaration. Must not invite a retry with a different age: the declaration cannot override a store signal."
