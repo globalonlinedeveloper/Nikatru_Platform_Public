@@ -17,10 +17,19 @@
 //     bridge, even when a key is present.
 //   · the signed-in user's id reaches the bridge's FIRST configure ([ADR 085] B).
 //
-// Red controls (run by the writer, recorded in the PR): force `iapBridge: null`
-// in money_providers.dart → the IapRail cases go red; wire the bridge with an
-// empty key → the empty-key case goes red; drop `unawaited(refreshOfferingsOf
-// (rail))` → "asks the store once, at build" goes red.
+// Red controls, run 2026-09-24T02:47Z against main 98527d61, each observed red
+// and reverted; the exits are recorded in the PR that closes
+// O-IAP-BRIDGE-NOT-WIRED-IN-THE-APP:
+//   · `iapBridge: null` in money_providers.dart → on every store channel all
+//     three "+ a RevenueCat key" cases go red: "is an IapRail over the injected
+//     bridge", "asks the store once, at build — no paywall needed for plans"
+//     and "the signed-in user's id reaches the bridge's FIRST configure".
+//   · the bridge wired with an empty key (`revenueCatKey.isNotEmpty` dropped
+//     from `bridged`) → "+ an EMPTY key → sells nothing, describes nothing"
+//     goes red on every store channel.
+//   · `unawaited(refreshOfferingsOf(rail))` dropped → the same three
+//     "+ a RevenueCat key" cases go red on every store channel, not only "asks
+//     the store once, at build": nothing configures the bridge at build.
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
