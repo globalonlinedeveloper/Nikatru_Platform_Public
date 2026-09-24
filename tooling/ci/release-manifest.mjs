@@ -139,7 +139,7 @@ import { fileURLToPath } from 'node:url';
 // integration run; it is the same defect that had .claude/worktrees — eleven
 // full copies of this repo — resolving citations into stale branches today.
 import { listDir } from './tree-walk.mjs';
-import { flutterAppChannel, undeclaredSurfaceLine } from './channel-surface.mjs';
+import { flutterAppChannel, undeclaredSurfaceLine, declaredSurfaces, FLUTTER_APP_FIELD } from './channel-surface.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = resolve(join(HERE, '..', '..'));  // tooling/ci -> repo root
@@ -182,7 +182,7 @@ export const EXTRA_INSTALLABLE = new Map([
   [
     '.apk',
     {
-      surface: 'app',
+      surface: 'app', platform: 'android',
       why: 'no channel ACCEPTS an .apk (Play takes the .aab), so no register row can declare it — yet it is the only Android artifact a person can sideload onto a handset, which is exactly the "intended for a user" the requirement quantifies over.',
     },
   ],
@@ -1029,7 +1029,7 @@ const positionalAfter = (name) => {
   return v === undefined || v.startsWith('--') ? null : v;
 };
 
-function main() {
+async function main() {
   // 🔴 HOISTED ABOVE THE MODE DISPATCH — inside `--verify` it caught only the typo that
   // KEPT `--verify`. MEASURED 2026-08-27: `--write dist … --expect-formats --for-workflow
   // build-platforms.yml` exited 0 printing ok, two steps from the `--verify` that exits 1
@@ -1075,50 +1075,59 @@ function main() {
     // must still find no installable — which is what main did and what the
     // extension rows widened away until 2026-09-05.
     const stageSurface = requireSurface(resolve(flag('repo-root') ?? DEFAULT_ROOT), app, '--stage');
-    const exts = new Set([...installableExtensions(loadRegister(), stageSurface)].filter((x) => !BUNDLE_MEMBERS.has(x)));
+    const stageRegister = loadRegister();
+    const exts = new Set([...installableExtensions(stageRegister, stageSurface)].filter((x) => !BUNDLE_MEMBERS.has(x)));
     mkdirSync(out, { recursive: true });
 
-    const staged = [];
+    // ⏱ 2026-09-24 — COLLECT, JUDGE, THEN MOVE (O-BOXA-CAPTCHA-REFUSES-NATIVE-SIGN-IN).
+    // The walk used to move each installer the moment it found one, so a refusal
+    // could only land after some installers had already left the download tree.
+    // Nothing moves now until every installer found has been judged.
+    const found = [];
     const walk = (dir) => {
       for (const e of listDir(dir, { withFileTypes: true })) {
         const abs = join(dir, e.name);
         if (e.isDirectory()) { walk(abs); continue; }
-        const ext = [...exts].find((x) => e.name.toLowerCase().endsWith(x.toLowerCase()));
-        if (!ext) continue;
-        // `<tag>-<basename>`, and NOT `<app>-<tag>-…`: the tag already carries
-        // the app (`subscriptiontracker-v1.0.0`, from the `<app>-v*` trigger), so prefixing
-        // the app again produced `subscriptiontracker-subscriptiontracker-v1.0.0-app-release.apk`. What the
-        // name has to survive is a year in a downloads folder —
-        // `subscriptiontracker-v1.0.0-app-release.apk` does; `app-release.apk`, which is what
-        // every Flutter build emits for every app, does not.
-        let name = `${tag}-${basename(e.name)}`;
-        // upload-artifact names are per-app already, but two platform artifacts
-        // can still carry the same basename. A silent overwrite would drop an
-        // asset AND leave the manifest describing whichever survived, so a
-        // collision is disambiguated rather than resolved by luck.
-        let n = 2;
-        while (existsSync(join(out, name))) name = `${tag}-${n++}-${basename(e.name)}`;
-        // renameSync fails with EXDEV across devices — the runner's workspace and
-        // a caller-chosen --out need not share one — so the copy+unlink fallback
-        // is not defensive padding, it is the path a different mount takes.
-        try {
-          renameSync(abs, join(out, name));
-        } catch {
-          copyFileSync(abs, join(out, name));
-          unlinkSync(abs);
-        }
-        staged.push(name);
+        if ([...exts].some((x) => e.name.toLowerCase().endsWith(x.toLowerCase()))) found.push({ abs, file: e.name });
       }
     };
     walk(from);
 
-    if (staged.length === 0) {
+    if (found.length === 0) {
       coverageLost(
         `COVERAGE LOST — no installable artifact found under ${from}.`,
         `Looked for: ${[...exts].sort().join(', ')} (derived from ${REGISTER_REL}, surface "${stageSurface}").`,
         'A release with no installer is a release of nothing, and publishing one would satisfy every',
         'downstream check over an empty set.',
       );
+    }
+    await refuseUnableNativeInstallers(stageRegister, found.map((f) => f.file), { surface: stageSurface, tag });
+
+    const staged = [];
+    for (const { abs, file } of found) {
+      // `<tag>-<basename>`, and NOT `<app>-<tag>-…`: the tag already carries
+      // the app (`subscriptiontracker-v1.0.0`, from the `<app>-v*` trigger), so prefixing
+      // the app again produced `subscriptiontracker-subscriptiontracker-v1.0.0-app-release.apk`. What the
+      // name has to survive is a year in a downloads folder —
+      // `subscriptiontracker-v1.0.0-app-release.apk` does; `app-release.apk`, which is what
+      // every Flutter build emits for every app, does not.
+      let name = `${tag}-${basename(file)}`;
+      // upload-artifact names are per-app already, but two platform artifacts
+      // can still carry the same basename. A silent overwrite would drop an
+      // asset AND leave the manifest describing whichever survived, so a
+      // collision is disambiguated rather than resolved by luck.
+      let n = 2;
+      while (existsSync(join(out, name))) name = `${tag}-${n++}-${basename(file)}`;
+      // renameSync fails with EXDEV across devices — the runner's workspace and
+      // a caller-chosen --out need not share one — so the copy+unlink fallback
+      // is not defensive padding, it is the path a different mount takes.
+      try {
+        renameSync(abs, join(out, name));
+      } catch {
+        copyFileSync(abs, join(out, name));
+        unlinkSync(abs);
+      }
+      staged.push(name);
     }
     for (const s of staged) console.log(`staged  ${s}`);
     console.log(`\nok  ${staged.length} installable artifact(s) staged into ${out}`);
@@ -1424,7 +1433,7 @@ function main() {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
-  main();
+  await main();
 }
 
 /** die()'s COVERAGE LOST twin: the same framing, but exit 2 — the run could not
@@ -1692,4 +1701,106 @@ export function servedFloor(data, app) {
         ? `apps.${app} carries no min_supported_version and defaults.min_supported_version is absent.`
         : `apps.${app} carries no min_supported_version and defaults.min_supported_version is ${JSON.stringify(d)}, which is not a version.`,
   };
+}
+
+/**
+ * ⏱ 2026-09-24 — O-BOXA-CAPTCHA-REFUSES-NATIVE-SIGN-IN, limb 3, the RELEASE half
+ * (assert-channel-register.mjs §6c-ii is the register half). Declared LAST, for
+ * the reason `coverageLost` is.
+ *
+ * Which of these installer files would ship a native build that cannot sign
+ * anybody in? A file maps to the NATIVE rows of `surface` that carry it:
+ *   · every native row whose `artifactFormats` names its extension, and
+ *   · for a declared extra that names a `platform` (`.apk` → android), every
+ *     native row whose `platforms` holds that platform: the sideload artefact is
+ *     the same build that platform's rows ship.
+ * A native row is `flutterAppChannel(...) === true` and not `kind: "web"`, the
+ * reading the register guard makes.
+ *
+ * Returns one `{ file, rows, why }` per REFUSED file, and [] when none is:
+ *   · a surface whose declared `flutterApp` is false ships no native build ⇒ [].
+ *   · a surface with no boolean `flutterApp` ⇒ every file refused. A surface
+ *     nobody placed fails closed, never open.
+ *   · a file no native row claims ⇒ refused, `rows: []`. No row vouches for it.
+ *   · a file with any claiming row whose `nativeAuth` is not `true` ⇒ refused,
+ *     naming those rows. One build serves every row that carries it, so one row
+ *     that cannot sign in is enough.
+ * Pure: a parsed register and basenames in, a list out.
+ */
+export function nativeAuthRefusals(register, files, { surface }) {
+  const ROW_ID = 'O-BOXA-CAPTCHA-REFUSES-NATIVE-SIGN-IN';
+  const flutterApp = declaredSurfaces(register).get(surface)?.[FLUTTER_APP_FIELD];
+  if (flutterApp === false) return [];
+  if (flutterApp !== true) {
+    return files.map((file) => ({
+      file,
+      rows: [],
+      why: `surface ${JSON.stringify(surface)} declares no boolean \`${FLUTTER_APP_FIELD}\` in ${REGISTER_REL}, so whether this is a native build cannot be decided; refused, never guessed (${ROW_ID}).`,
+    }));
+  }
+  const native = (register?.channels ?? []).filter(
+    (c) => channelIsOnSurface(c, surface) && flutterAppChannel(register, c) === true && c.kind !== 'web',
+  );
+  const lower = (s) => String(s).toLowerCase();
+  const refusals = [];
+  for (const file of files) {
+    const name = lower(file);
+    const claims = new Set();
+    for (const c of native) {
+      if ((c.artifactFormats ?? []).some((f) => typeof f === 'string' && f.startsWith('.') && name.endsWith(lower(f)))) claims.add(c);
+    }
+    for (const [ext, x] of EXTRA_INSTALLABLE) {
+      if (x.surface !== surface || typeof x.platform !== 'string' || !name.endsWith(lower(ext))) continue;
+      for (const c of native) if ((c.platforms ?? []).includes(x.platform)) claims.add(c);
+    }
+    if (claims.size === 0) {
+      refusals.push({
+        file,
+        rows: [],
+        why: `no native row on surface "${surface}" claims it, by format or by platform, so no row vouches that it can sign anybody in (${ROW_ID}).`,
+      });
+      continue;
+    }
+    const unable = [...claims].filter((c) => c.nativeAuth !== true).map((c) => c.id);
+    if (unable.length > 0) {
+      refusals.push({
+        file,
+        rows: unable,
+        why: `it is the native build of ${unable.map((id) => `"${id}"`).join(', ')}, and nativeAuth is not true there: that build cannot complete email sign-in, sign-up and recovery against the backend its release points at (${ROW_ID}).`,
+      });
+    }
+  }
+  return refusals;
+}
+
+/**
+ * `--stage`'s judgement, between collecting the installers and moving them.
+ * On a RELEASE ref, and on a ref tag-owner.mjs cannot read (which fails closed),
+ * any refusal exits 1 before a single file moves. On the `<app>-untagged-<sha>`
+ * ref a non-tag run synthesises, the same refusals print as "would refuse" and
+ * the run goes on, so every scheduled and dispatched build still stages and
+ * still shows what a release tag would stop.
+ *
+ * tag-owner.mjs is imported HERE, dynamically, and not at the top of this file:
+ * assert-release-durable.mjs imports a fixture root's copy of this file, and
+ * tag-owner.mjs's own imports (the product registers, the workflow reader) are
+ * not in that fixture. The import runs on every `--stage`, refusals or none, so
+ * an import that breaks fails the next run rather than the first release tag.
+ */
+async function refuseUnableNativeInstallers(register, files, { surface, tag }) {
+  const { releaseTagOf } = await import('./tag-owner.mjs');
+  const ref = releaseTagOf(tag);
+  const refusals = nativeAuthRefusals(register, files, { surface });
+  if (refusals.length === 0) return;
+  if (ref.kind === 'untagged') {
+    for (const r of refusals) console.error(`⚠ would refuse on a release tag: ${r.file} — ${r.why}`);
+    console.error(`  "${tag}" is the untagged ref a non-tag run synthesises, so they are staged here; a release tag stops before staging any of them.`);
+    return;
+  }
+  for (const r of refusals) console.error(`✗ ${r.file} — ${r.why}`);
+  die(
+    `--stage refuses ${refusals.length} native installer(s) on ${ref.kind === 'release' ? `release tag "${tag}"` : `"${tag}", a ref tag-owner.mjs cannot read, judged as a release`}.`,
+    'Nothing was moved: every installer is still in the download tree, and the output directory holds none of them.',
+    'Flip `nativeAuth` in tooling/channel-register.json only on OBSERVED evidence, a native build signing in (O-BOXA-CAPTCHA-REFUSES-NATIVE-SIGN-IN).',
+  );
 }

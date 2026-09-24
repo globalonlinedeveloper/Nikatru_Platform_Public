@@ -310,6 +310,30 @@ export function checkFindings(root, d) {
   return problems;
 }
 
+/**
+ * What kind of ref a release run was handed, read with THIS file's grammar:
+ *   · `untagged` — the `<app>-untagged-<sha>` value a non-tag run synthesises
+ *                  (UNTAGGED_REF); `slug` is the part before `-untagged-`.
+ *   · `release`  — `<slug>-v<version>`, split at the LAST `-v`, the same split
+ *                  assert-app-versioning.mjs makes.
+ *   · `invalid`  — anything else, an empty string included. A caller that gates
+ *                  a release treats it as a release: an unreadable ref fails
+ *                  closed, never open.
+ * Returns `{ kind, slug, version }`; `slug` and `version` are null where the
+ * kind has none. Its caller is release-manifest.mjs `--stage`, which refuses a
+ * native installer on a release ref while no row that installer serves can sign
+ * in (O-BOXA-CAPTCHA-REFUSES-NATIVE-SIGN-IN), and only warns on an untagged one.
+ */
+export function releaseTagOf(tag) {
+  if (typeof tag !== 'string' || tag === '') return { kind: 'invalid', slug: null, version: null };
+  if (UNTAGGED_REF.test(tag)) {
+    return { kind: 'untagged', slug: tag.slice(0, tag.lastIndexOf('-untagged-')), version: null };
+  }
+  const m = /^(.+)-v(.+)$/.exec(tag);
+  if (m) return { kind: 'release', slug: m[1], version: m[2] };
+  return { kind: 'invalid', slug: null, version: null };
+}
+
 // ── CLI ──────────────────────────────────────────────────────────────────────
 function coverageLost(lines) {
   for (const l of lines) console.error(`COVERAGE LOST — tag-owner: ${l}`);
