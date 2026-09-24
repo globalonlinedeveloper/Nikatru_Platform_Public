@@ -1115,6 +1115,9 @@ export function evaluate(reg, tree, nowMs) {
   let expiringRows = 0;
   let expiryWindowChecks = 0;
   const nullExpiries = [];
+  // ⏱ 2026-09-24 · every date the arithmetic below graded, printed one per line
+  // (O-APPLE-SIGNING-EXPIRY-UNWATCHED): a count names no row and no date.
+  const datedExpiries = [];
   let retentionRows = 0;
   let periodDeclared = 0;
   /** Rows whose period is enforced by the STORE (a KV TTL) rather than by a
@@ -1355,6 +1358,7 @@ export function evaluate(reg, tree, nowMs) {
         expiryWindowChecks++;
         const t = Date.parse(`${r.expires}T00:00:00Z`);
         const daysLeft = (t - nowMs) / 86_400_000;
+        datedExpiries.push({ id, expires: r.expires, daysLeft, leadDays: r.leadDays });
         if (daysLeft < 0) bad(`${id} — \`expires: ${r.expires}\` is in the PAST.`);
         else if (daysLeft <= r.leadDays) bad(`${id} — \`expires: ${r.expires}\` is ${daysLeft.toFixed(0)} day(s) away, inside its own ${r.leadDays}-day lead window. Renew it.`);
       }
@@ -1488,6 +1492,14 @@ export function evaluate(reg, tree, nowMs) {
       `[14]O-11 — ${expiringRows} expiring row(s) · ${expiryWindowChecks} lead-window comparison(s) ACTUALLY EXECUTED · ` +
         `${nullExpiries.length} expiry UNREAD (ceiling ${capNull ?? '?'})`,
     );
+    // ⏱ 2026-09-24 · O-APPLE-SIGNING-EXPIRY-UNWATCHED. THE DATES THEMSELVES, soonest
+    // first, on green AND on red. The count above says how many comparisons ran;
+    // only these lines say WHICH row was graded against WHICH date, and that is
+    // the evidence a machine-written expiry is confirmed by — a date nobody can
+    // see graded is a count, not a watch. Same rounding as the red message above.
+    for (const d of [...datedExpiries].sort((a, b) => a.daysLeft - b.daysLeft)) {
+      prints.push(`[14]O-11 · ${d.id} · expires ${d.expires} · ${d.daysLeft.toFixed(0)} day(s) left · lead ${d.leadDays}`);
+    }
     if (expiryWindowChecks === 0) {
       prints.push(
         '[14]O-11 — 🔴 THE LEAD-WINDOW ARITHMETIC RAN ZERO TIMES ON THIS RUN. Every date is null, so nothing ' +
