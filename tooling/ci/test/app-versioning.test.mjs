@@ -674,7 +674,7 @@ describe('assert-app-versioning — --emit is the build step\'s source of truth'
 // every one.
 describe('assert-app-versioning — --tag: the tag must name the declared version', () => {
   test('PASSES when the tag names the build name pubspec declares', () => {
-    const { code, out } = run({ args: ['--tag', 'subscriptiontracker-v1.0.0', lane('tag-ok')] });
+    const { code, out } = run({ args: ['--tag', 'subscriptiontracker-v1.0.0', '--ref-type', 'tag', lane('tag-ok')] });
     assert.equal(code, 0, out);
     assert.match(out, /ok\s+tag ↔ pubspec/);
     assert.match(out, /build name 1\.0\.0/);
@@ -685,21 +685,60 @@ describe('assert-app-versioning — --tag: the tag must name the declared versio
     const emitted = run({ cwd: REPO, args: ['--emit', 'apps/subscriptiontracker'] });
     assert.equal(emitted.code, 0, emitted.out);
     const raw = /^pubspec_version=(\S+)$/m.exec(emitted.out)[1];
-    const { code, out } = run({ cwd: REPO, args: ['--tag', `subscriptiontracker-v${raw.split('+')[0]}`] });
+    const { code, out } = run({ cwd: REPO, args: ['--tag', `subscriptiontracker-v${raw.split('+')[0]}`, '--ref-type', 'tag'] });
     assert.equal(code, 0, out);
   });
 
   test('FAILS naming BOTH versions when the tag names a different one', () => {
-    const { code, out } = run({ args: ['--tag', 'subscriptiontracker-v9.9.9', lane('tag-mismatch')] });
+    const { code, out } = run({ args: ['--tag', 'subscriptiontracker-v9.9.9', '--ref-type', 'tag', lane('tag-mismatch')] });
     assert.equal(code, 1);
     assert.match(out, /names version 9\.9\.9/);
     assert.match(out, /declares "1\.0\.0\+1"/);
   });
 
-  test('is a NO-OP on the <app>-untagged-<sha> value a non-tag run synthesises', () => {
-    const { code, out } = run({ args: ['--tag', 'subscriptiontracker-untagged-659380f', lane('tag-untagged')] });
+  test('is a NO-OP on the <app>-untagged-<sha> value a non-tag run synthesises (--ref-type branch)', () => {
+    const { code, out } = run({ args: ['--tag', 'subscriptiontracker-untagged-659380f', '--ref-type', 'branch', lane('tag-untagged')] });
     assert.equal(code, 0, out);
     assert.match(out, /claims no version/);
+    assert.doesNotMatch(out, /ok\s+tag ↔ pubspec/);
+  });
+
+  // ⏱ 2026-09-24 — "untagged" is decided by the ref TYPE the workflow read from
+  // github.ref_type, never by the string. `subscriptiontracker-v1-untagged-abc1234`
+  // matches the app trigger AND the synthesised shape, so a string-keyed skip let a
+  // pushed tag through as "claims no version".
+  test('FAILS on a pushed tag (--ref-type tag) in the synthesised untagged shape', () => {
+    const { code, out } = run({ args: ['--tag', 'subscriptiontracker-v1-untagged-abc1234', '--ref-type', 'tag', lane('tag-untagged-pushed')] });
+    assert.equal(code, 1, `expected a RED, got ${code}: ${out}`);
+    assert.match(out, /untagged shape/);
+    assert.doesNotMatch(out, /claims no version/);
+  });
+
+  test('FAILS on a non-tag run (--ref-type branch) handed anything but the synthesised value', () => {
+    const { code, out } = run({ args: ['--tag', 'subscriptiontracker-v1.0.0', '--ref-type', 'branch', lane('tag-branch-release')] });
+    assert.equal(code, 1, `expected a RED, got ${code}: ${out}`);
+    assert.match(out, /a non-tag run is handed only the synthesised value/);
+    assert.doesNotMatch(out, /ok\s+tag ↔ pubspec/);
+  });
+
+  test('REFUSES (2) --tag without --ref-type rather than guessing the ref type from the string', () => {
+    const { code, out } = run({ args: ['--tag', 'subscriptiontracker-v1.0.0', lane('tag-no-reftype')] });
+    assert.equal(code, 2, `expected a REFUSAL, got ${code}: ${out}`);
+    assert.match(out, /--tag was passed without --ref-type/);
+    assert.doesNotMatch(out, /ok\s+tag ↔ pubspec/);
+  });
+
+  test('REFUSES (2) --ref-type without --tag rather than dropping it', () => {
+    const { code, out } = run({ args: ['--ref-type', 'tag', lane('reftype-no-tag')] });
+    assert.equal(code, 2, `expected a REFUSAL, got ${code}: ${out}`);
+    assert.match(out, /--ref-type was passed without --tag/);
+    assert.doesNotMatch(out, /^ok\s+app versioning/m);
+  });
+
+  test('REFUSES (2) a --ref-type that is neither tag nor branch', () => {
+    const { code, out } = run({ args: ['--tag', 'subscriptiontracker-v1.0.0', '--ref-type', 'release', lane('reftype-bad')] });
+    assert.equal(code, 2, `expected a REFUSAL, got ${code}: ${out}`);
+    assert.match(out, /--ref-type must be tag or branch, got "release"/);
     assert.doesNotMatch(out, /ok\s+tag ↔ pubspec/);
   });
 
@@ -717,20 +756,20 @@ describe('assert-app-versioning — --tag: the tag must name the declared versio
   ]) {
     test(`FAILS rather than skipping on ${name}`, () => {
       const dir = lane(`tag-bad-${tag.replace(/[^a-z0-9]/gi, '_')}`);
-      const { code, out } = run({ args: ['--tag', tag, dir] });
+      const { code, out } = run({ args: ['--tag', tag, '--ref-type', 'tag', dir] });
       assert.equal(code, 1, `expected a RED, got ${code}: ${out}`);
       assert.match(out, expected);
     });
   }
 
   test('compares the build NAME only — a tag carrying +N still passes', () => {
-    const { code, out } = run({ args: ['--tag', 'subscriptiontracker-v1.0.0+7', lane('tag-plusn')] });
+    const { code, out } = run({ args: ['--tag', 'subscriptiontracker-v1.0.0+7', '--ref-type', 'tag', lane('tag-plusn')] });
     assert.equal(code, 0, out);
   });
 
   test('FAILS rather than inventing a version when the pubspec is unreadable', () => {
     const dir = lane('tag-badspec', { version: null });
-    const { code, out } = run({ args: ['--tag', 'subscriptiontracker-v1.0.0', dir] });
+    const { code, out } = run({ args: ['--tag', 'subscriptiontracker-v1.0.0', '--ref-type', 'tag', dir] });
     assert.equal(code, 1);
     assert.match(out, /no parseable `version: X\.Y\.Z`/);
   });
@@ -738,20 +777,20 @@ describe('assert-app-versioning — --tag: the tag must name the declared versio
   // 🔴 `--app` RELOCATES THE APP; UNTIL 2026-08-27 IT DISARMED TWO OF THE SIX ABOVE.
   test('an explicit --app RELOCATES which pubspec is read', () => {
     const dir = lane('tag-app-relocate', { extra: { 'packages/subscriptiontracker/pubspec.yaml': pubspec('2.3.4+1') } });
-    const { code, out } = run({ args: ['--tag', 'subscriptiontracker-v2.3.4', '--app', 'packages/subscriptiontracker', dir] });
+    const { code, out } = run({ args: ['--tag', 'subscriptiontracker-v2.3.4', '--ref-type', 'tag', '--app', 'packages/subscriptiontracker', dir] });
     assert.equal(code, 0, out);
     assert.match(out, /ok\s+tag ↔ pubspec/);
     assert.match(out, /packages\/subscriptiontracker\/pubspec\.yaml \("2\.3\.4\+1"\)/);
   });
 
   test('--app pointing at a DIFFERENT app does NOT excuse the slug', () => {
-    const { code, out } = run({ args: ['--tag', 'probe-v1.0.0', '--app', 'apps/subscriptiontracker', lane('tag-app-probe')] });
+    const { code, out } = run({ args: ['--tag', 'probe-v1.0.0', '--ref-type', 'tag', '--app', 'apps/subscriptiontracker', lane('tag-app-probe')] });
     assert.equal(code, 1, `expected a RED, got ${code}: ${out}`);
     assert.match(out, /--app points at apps\/subscriptiontracker/);
   });
 
   test('--app does NOT excuse the casefold seam', () => {
-    const { code, out } = run({ args: ['--tag', 'SUBLY-v1.0.0', '--app', 'apps/SUBLY', lane('tag-app-case')] });
+    const { code, out } = run({ args: ['--tag', 'SUBLY-v1.0.0', '--ref-type', 'tag', '--app', 'apps/SUBLY', lane('tag-app-case')] });
     assert.equal(code, 1, `expected a RED, got ${code}: ${out}`);
     assert.match(out, /names app "SUBLY"/);
   });

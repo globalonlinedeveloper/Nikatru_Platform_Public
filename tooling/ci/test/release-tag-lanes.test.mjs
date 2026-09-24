@@ -132,9 +132,23 @@ describe('the real tree', () => {
     assert.match(r.out, /belongs to \.github\/workflows\/build-platforms\.yml, not to \.github\/workflows\/extensions\.yml/);
   });
 
-  test('the untagged ref a non-tag run synthesises passes: it names no product', () => {
+  // ⏱ 2026-09-24 — FLIPPED ON PURPOSE (this case exited 0 until then). The gate runs
+  // only on a tag ref (build-platforms.yml gates the step on github.ref_type == 'tag'),
+  // so a value in the synthesised shape reaching it is a PUSHED tag, and passing it
+  // let the release stage it as untagged.
+  test('the untagged ref a non-tag run synthesises is refused: the gate runs only on a tag ref', () => {
     const r = run(['--root', REPO, '--lane', APP_LANE, '--tag', 'subscriptiontracker-untagged-0123abc']);
-    assert.equal(r.code, 0, r.out);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /runs only on a tag ref/);
+  });
+
+  test('a pushed tag that matches the app trigger AND the untagged shape is refused, not owned', () => {
+    const tag = 'subscriptiontracker-v1-untagged-abc1234';
+    assert.deepEqual(actualOwners(tagTriggeredWorkflows(REPO), tag), [APP_LANE], 'the app lane trigger fires on this tag');
+    const r = run(['--root', REPO, '--lane', APP_LANE, '--tag', tag]);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /runs only on a tag ref/);
+    assert.doesNotMatch(r.out, /build-platforms\.yml's: it releases/);
   });
 
   test('--write reproduces the committed filters byte for byte', () => {
@@ -191,21 +205,39 @@ describe('red controls, each on a fixture copy', () => {
 
 // release-manifest.mjs `--stage` asks this which kind of ref it was handed: it
 // refuses a native installer that cannot sign in on a release ref and only warns
-// on an untagged one (O-BOXA-CAPTCHA-REFUSES-NATIVE-SIGN-IN). One case per kind.
+// on an untagged one (O-BOXA-CAPTCHA-REFUSES-NATIVE-SIGN-IN). The KIND comes from
+// the ref type the workflow read from github.ref_type; the string is only split.
 describe('releaseTagOf — the kind of ref a release run was handed', () => {
-  test('the untagged ref a non-tag run synthesises is `untagged`, with its app slug', () => {
-    assert.deepEqual(releaseTagOf('subscriptiontracker-untagged-0123abc'), {
+  test('on a branch ref the synthesised value is `untagged`, with its app slug; any other value is `invalid`', () => {
+    assert.deepEqual(releaseTagOf('subscriptiontracker-untagged-0123abc', { refType: 'branch' }), {
       kind: 'untagged',
       slug: 'subscriptiontracker',
       version: null,
     });
+    assert.deepEqual(releaseTagOf('subscriptiontracker-v1.0.0', { refType: 'branch' }), { kind: 'invalid', slug: null, version: null });
   });
 
-  test('`<slug>-v<version>` is `release`, split at the last `-v`', () => {
-    assert.deepEqual(releaseTagOf('subscriptiontracker-v1.0.0'), { kind: 'release', slug: 'subscriptiontracker', version: '1.0.0' });
+  test('`<slug>-v<version>` on a tag ref is `release`, split at the last `-v`', () => {
+    assert.deepEqual(releaseTagOf('subscriptiontracker-v1.0.0', { refType: 'tag' }), { kind: 'release', slug: 'subscriptiontracker', version: '1.0.0' });
   });
 
-  test('a ref with neither shape is `invalid`, which a release gate treats as a release', () => {
-    assert.deepEqual(releaseTagOf('subscriptiontracker'), { kind: 'invalid', slug: null, version: null });
+  test('a tag ref with neither shape is `invalid`, which a release gate treats as a release', () => {
+    assert.deepEqual(releaseTagOf('subscriptiontracker', { refType: 'tag' }), { kind: 'invalid', slug: null, version: null });
+  });
+
+  test('a pushed tag in the untagged shape is a `release` on a tag ref, never `untagged`', () => {
+    assert.deepEqual(releaseTagOf('subscriptiontracker-v1-untagged-abc1234', { refType: 'tag' }), {
+      kind: 'release',
+      slug: 'subscriptiontracker',
+      version: '1-untagged-abc1234',
+    });
+  });
+
+  test('an empty tag ref is `invalid`', () => {
+    assert.deepEqual(releaseTagOf('', { refType: 'tag' }), { kind: 'invalid', slug: null, version: null });
+  });
+
+  test('with no ref type the synthesised value is `invalid`, not `untagged`: the string alone decides nothing', () => {
+    assert.deepEqual(releaseTagOf('subscriptiontracker-untagged-0123abc'), { kind: 'invalid', slug: null, version: null });
   });
 });

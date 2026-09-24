@@ -2125,6 +2125,23 @@ describe('assert-channel-register — §6c-ii: a served native row is one whose 
     assert.equal(code, 2, out);
     assert.match(out, /declares no native row/);
   });
+
+  // The `&& undeclared === 0` half of the COVERAGE LOST condition: with no native row
+  // because the only one sits on an undeclared surface, the empty domain is that row's
+  // finding, and exit 2 would mask it.
+  test('no native row because the only one sits on an undeclared surface exits 1 on that surface, not COVERAGE LOST', () => {
+    const { code, out } = run(
+      tree({
+        mutate: (r) => {
+          r.channels = r.channels.filter((c) => c.kind === 'web' || c.id === 'windows-store');
+          r.channels.find((c) => c.id === 'windows-store').surface = 'gadget';
+        },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /has surface "gadget"; expected one of/);
+    assert.doesNotMatch(out, /declares no native row/);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

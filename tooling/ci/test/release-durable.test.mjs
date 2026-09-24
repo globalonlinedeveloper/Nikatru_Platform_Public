@@ -2009,7 +2009,7 @@ describe('release-manifest.mjs — the CLI refuses rather than producing a hollo
     mkdirSync(join(from, 'subscriptiontracker-web'), { recursive: true });
     writeFileSync(join(from, 'subscriptiontracker-web', 'index.html'), '<html>');
     const out = join(TMP, `o${seq++}`);
-    const r = cli(['--stage', from, '--out', out, '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-v1']);
+    const r = cli(['--stage', from, '--out', out, '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-v1', '--ref-type', 'tag']);
     assert.equal(r.code, 2, r.out); // COVERAGE LOST is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(r.out, /no installable artifact found/);
     assert.match(r.out, /A release with no installer is a release of nothing/);
@@ -2030,7 +2030,7 @@ describe('release-manifest.mjs — the CLI refuses rather than producing a hollo
     mkdirSync(join(from, 'subscriptiontracker-linux', 'app', 'outputs'), { recursive: true });
     writeFileSync(join(from, 'subscriptiontracker-linux', 'app', 'outputs', 'app-release.apk'), 'apk');
     const out = join(TMP, `o${seq++}`);
-    const r = cli(['--stage', from, '--out', out, '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-v1.0.0', '--repo-root', root]);
+    const r = cli(['--stage', from, '--out', out, '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-v1.0.0', '--ref-type', 'tag', '--repo-root', root]);
     assert.equal(r.code, 0, r.out);
     assert.deepEqual(assetFiles(out).names, ['subscriptiontracker-v1.0.0-app-release.apk']);
     assert.equal(assetFiles(join(from, 'subscriptiontracker-linux', 'app', 'outputs')).names.length, 0, 'the installer must not exist twice');
@@ -2049,7 +2049,7 @@ describe('release-manifest.mjs — the CLI refuses rather than producing a hollo
     writeFileSync(join(from, 'subscriptiontracker-windows', 'x64', 'runner', 'Release', 'flutter_windows.dll'), 'dll');
     writeFileSync(join(from, 'subscriptiontracker-windows', 'msix', 'subscriptiontracker.msix'), 'msix');
     const out = join(TMP, `o${seq++}`);
-    const r = cli(['--stage', from, '--out', out, '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-v1', '--repo-root', root]);
+    const r = cli(['--stage', from, '--out', out, '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-v1', '--ref-type', 'tag', '--repo-root', root]);
     assert.equal(r.code, 0, r.out);
     assert.deepEqual(assetFiles(out).names, ['subscriptiontracker-v1-subscriptiontracker.msix'], 'only the self-contained package is lifted');
     assert.deepEqual(
@@ -2069,7 +2069,7 @@ describe('release-manifest.mjs — the CLI refuses rather than producing a hollo
     mkdirSync(join(from, 'subscriptiontracker-linux', 'app', 'outputs'), { recursive: true });
     writeFileSync(join(from, 'subscriptiontracker-linux', 'app', 'outputs', 'app-release.apk'), 'apk');
     const out = join(TMP, `o${seq++}`);
-    const r = cli(['--stage', from, '--out', out, '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-v1.0.0']);
+    const r = cli(['--stage', from, '--out', out, '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-v1.0.0', '--ref-type', 'tag']);
     assert.equal(r.code, 1, r.out);
     assert.match(r.stderr, /✗ app-release\.apk — it is the native build of [^\n]*"android-play"[^\n]*\(O-BOXA-CAPTCHA-REFUSES-NATIVE-SIGN-IN\)/);
     assert.match(r.stderr, /--stage refuses 1 native installer\(s\) on release tag "subscriptiontracker-v1\.0\.0"/);
@@ -2082,7 +2082,7 @@ describe('release-manifest.mjs — the CLI refuses rather than producing a hollo
     mkdirSync(join(from, 'subscriptiontracker-linux', 'app', 'outputs'), { recursive: true });
     writeFileSync(join(from, 'subscriptiontracker-linux', 'app', 'outputs', 'app-release.apk'), 'apk');
     const out = join(TMP, `o${seq++}`);
-    const r = cli(['--stage', from, '--out', out, '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-untagged-abc1234']);
+    const r = cli(['--stage', from, '--out', out, '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-untagged-abc1234', '--ref-type', 'branch']);
     assert.equal(r.code, 0, r.out);
     assert.match(r.stderr, /⚠ would refuse on a release tag: app-release\.apk — it is the native build of [^\n]*"android-play"/);
     assert.deepEqual(assetFiles(out).names, ['subscriptiontracker-untagged-abc1234-app-release.apk']);
@@ -2093,10 +2093,54 @@ describe('release-manifest.mjs — the CLI refuses rather than producing a hollo
     mkdirSync(join(from, 'subscriptiontracker-linux', 'app', 'outputs'), { recursive: true });
     writeFileSync(join(from, 'subscriptiontracker-linux', 'app', 'outputs', 'app-release.apk'), 'apk');
     const out = join(TMP, `o${seq++}`);
-    const r = cli(['--stage', from, '--out', out, '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker']);
+    const r = cli(['--stage', from, '--out', out, '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker', '--ref-type', 'tag']);
     assert.equal(r.code, 1, r.out);
     assert.match(r.stderr, /"subscriptiontracker", a ref tag-owner\.mjs cannot read, judged as a release/);
     assert.deepEqual(assetFiles(out).names, []);
+  });
+
+  // ⏱ 2026-09-24 — THE REF TYPE, NOT THE STRING, SAYS "UNTAGGED". This tag matches the
+  // app lane's trigger AND the synthesised shape; read by its string it was staged as
+  // untagged, a warning printed, and the release published the native installer.
+  test('--stage on a PUSHED tag in the untagged shape (--ref-type tag) refuses like any release tag', () => {
+    const from = join(TMP, `s${seq++}`);
+    mkdirSync(join(from, 'subscriptiontracker-linux', 'app', 'outputs'), { recursive: true });
+    writeFileSync(join(from, 'subscriptiontracker-linux', 'app', 'outputs', 'app-release.apk'), 'apk');
+    const out = join(TMP, `o${seq++}`);
+    const r = cli(['--stage', from, '--out', out, '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-v1-untagged-abc1234', '--ref-type', 'tag']);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.stderr, /--stage refuses 1 native installer\(s\) on release tag "subscriptiontracker-v1-untagged-abc1234"/);
+    assert.doesNotMatch(r.stderr, /would refuse/);
+    assert.deepEqual(assetFiles(out).names, [], 'a refused release stages nothing');
+    assert.deepEqual(assetFiles(join(from, 'subscriptiontracker-linux', 'app', 'outputs')).names, ['app-release.apk'], 'the refusal lands before any move');
+  });
+
+  test('--stage without --ref-type refuses before it moves anything, and never guesses the ref type', () => {
+    const root = fixture({ register: NATIVE_ABLE });
+    const from = join(TMP, `s${seq++}`);
+    mkdirSync(join(from, 'subscriptiontracker-linux'), { recursive: true });
+    writeFileSync(join(from, 'subscriptiontracker-linux', 'app-release.apk'), 'apk');
+    const out = join(TMP, `o${seq++}`);
+    mkdirSync(out, { recursive: true });
+    const r = cli(['--stage', from, '--out', out, '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-v1.0.0', '--repo-root', root]);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.stderr, /--stage needs --ref-type <tag\|branch>/);
+    assert.deepEqual(assetFiles(out).names, [], 'nothing is staged without a ref type');
+    assert.deepEqual(assetFiles(join(from, 'subscriptiontracker-linux')).names, ['app-release.apk']);
+  });
+
+  test('--stage refuses a --ref-type that is neither tag nor branch', () => {
+    const root = fixture({ register: NATIVE_ABLE });
+    const from = join(TMP, `s${seq++}`);
+    mkdirSync(join(from, 'subscriptiontracker-linux'), { recursive: true });
+    writeFileSync(join(from, 'subscriptiontracker-linux', 'app-release.apk'), 'apk');
+    const out = join(TMP, `o${seq++}`);
+    mkdirSync(out, { recursive: true });
+    const r = cli(['--stage', from, '--out', out, '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-v1.0.0', '--ref-type', 'release', '--repo-root', root]);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.stderr, /--stage --ref-type must be tag or branch, got "release"/);
+    assert.deepEqual(assetFiles(out).names, [], 'nothing is staged on a ref type it cannot read');
+    assert.deepEqual(assetFiles(join(from, 'subscriptiontracker-linux')).names, ['app-release.apk']);
   });
 
   test('--stage on a release tag stages native installers whose rows can all sign in, and warns nothing', () => {
@@ -2107,7 +2151,7 @@ describe('release-manifest.mjs — the CLI refuses rather than producing a hollo
     writeFileSync(join(from, 'subscriptiontracker-linux', 'app-release.apk'), 'apk');
     writeFileSync(join(from, 'subscriptiontracker-windows', 'subscriptiontracker.msix'), 'msix');
     const out = join(TMP, `o${seq++}`);
-    const r = cli(['--stage', from, '--out', out, '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-v1.0.0', '--repo-root', root]);
+    const r = cli(['--stage', from, '--out', out, '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-v1.0.0', '--ref-type', 'tag', '--repo-root', root]);
     assert.equal(r.code, 0, r.out);
     assert.doesNotMatch(r.stderr, /would refuse|refuses|O-BOXA/);
     assert.deepEqual(assetFiles(out).names, ['subscriptiontracker-v1.0.0-app-release.apk', 'subscriptiontracker-v1.0.0-subscriptiontracker.msix']);
@@ -2506,7 +2550,7 @@ describe('release-manifest.mjs — the SURFACE of the release, not just of the r
     mkdirSync(from, { recursive: true });
     writeFileSync(join(from, 'subscriptiontracker-1.0.0.zip'), 'z');
     const out = join(TMP, `o${seq++}`);
-    const r = cli(['--stage', from, '--out', out, '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-v1.0.0', '--repo-root', root]);
+    const r = cli(['--stage', from, '--out', out, '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-v1.0.0', '--ref-type', 'tag', '--repo-root', root]);
     assert.equal(r.code, 2, r.out); // COVERAGE LOST is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(r.out, /no installable artifact found/);
     assert.match(r.out, /surface "app"/);
@@ -2516,7 +2560,7 @@ describe('release-manifest.mjs — the SURFACE of the release, not just of the r
     mkdirSync(from2, { recursive: true });
     writeFileSync(join(from2, 'fullshot-chromium.zip'), 'z');
     const out2 = join(TMP, `o${seq++}`);
-    const e = cli(['--stage', from2, '--out', out2, '--app', 'fullshot', '--tag', 'fullshot-v1.0.0', '--repo-root', root]);
+    const e = cli(['--stage', from2, '--out', out2, '--app', 'fullshot', '--tag', 'fullshot-v1.0.0', '--ref-type', 'tag', '--repo-root', root]);
     assert.equal(e.code, 0, e.out);
     assert.deepEqual(assetFiles(out2).names, ['fullshot-v1.0.0-fullshot-chromium.zip']);
   });
@@ -2547,7 +2591,7 @@ describe('release-manifest.mjs — the SURFACE of the release, not just of the r
     mkdirSync(from, { recursive: true });
     writeFileSync(join(from, 'subscriptiontracker-1.0.0.html'), 'h');
     const out = join(TMP, `o${seq++}`);
-    const r = cli(['--stage', from, '--out', out, '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-v1.0.0', '--repo-root', root]);
+    const r = cli(['--stage', from, '--out', out, '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-v1.0.0', '--ref-type', 'tag', '--repo-root', root]);
     assert.equal(r.code, 2, r.out); // COVERAGE LOST is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(r.out, /no installable artifact found/);
     assert.match(r.out, /surface "app"/);
