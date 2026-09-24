@@ -76,7 +76,8 @@
         "manifestPatch": null,
         "_patchWhy": "Microsoft documents exactly two required edits to a Chrome package: remove `update_url`, and rebrand if the name or description says 'Chrome'. FullShot's manifest carries no update_url and its name is __MSG_appName__ — measured 2026-08-20 — so no patch is needed TODAY. The key is present and null so that the day one is needed it is a value, not a new mechanism.",
         "limits": {
-          "long-description.txt": { "min": 250, "max": 10000, "source": "https://learn.microsoft.com/en-us/microsoft-edge/extensions/publish/publish-extension (fetched 2026-08-20) — verbatim: \"Length: Minimum 250 characters, maximum 10,000 characters.\"" }
+          "long-description.txt": { "min": 250, "max": 10000, "source": "https://learn.microsoft.com/en-us/microsoft-edge/extensions/publish/publish-extension (fetched 2026-08-20) — verbatim: \"Length: Minimum 250 characters, maximum 10,000 characters.\"" },
+          "search-terms.txt": { "maxItems": 7, "source": "https://learn.microsoft.com/en-us/legal/microsoft-edge/extensions/developer-policies (fetched 2026-09-24) — verbatim: \"Search terms may not exceed seven unique terms\"" }
         }
       },
       "firefox": {

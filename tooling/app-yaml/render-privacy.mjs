@@ -73,7 +73,7 @@
 // Exit 0 = the notice surfaces match the declarations. 1 = they do not (or a
 // declaration is invalid). 2 = COVERAGE LOST — see the refusals in `planPrivacy`.
 // ─────────────────────────────────────────────────────────────────────────────
-import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseYaml, YamlError } from './yaml.mjs';
@@ -459,6 +459,25 @@ export function planPrivacy(root) {
     if (bad.length) {
       for (const b of bad) problems.push(b);
       return null;
+    }
+    // ⏱ 2026-09-24 — A REPOSITORY-PATH `source` MUST NAME A FILE THAT EXISTS.
+    // The schema grades a source's SHAPE (repo-path or https-url) and nothing
+    // opened it, so a row could cite a deleted file and still render and pass:
+    // a source naming any missing path exited 0 here and in assert-app-yaml,
+    // measured before this limb. A basis read from a file that is gone cannot be
+    // re-read. An https source is an external authority and is not fetched. The
+    // doc is still returned, so the run stays a FINDING (1) and never turns into
+    // a coverage loss (2) for want of a declaration to render.
+    const sources = [
+      ...(doc.collects ?? []).map((r) => r?.source),
+      ...(doc.storeDisclosures ?? []).map((r) => r?.source),
+      ...(doc.processors ?? []).map((r) => r?.source),
+      doc.limitedUse?.source,
+    ].filter((s) => typeof s === 'string' && !s.startsWith('https://'));
+    for (const s of [...new Set(sources)]) {
+      if (!existsSync(join(root, s))) {
+        problems.push(`${rel}: source ${s} does not exist in this repository. A row's basis must be re-readable from the file it names; point the source at the file that holds that reasoning now.`);
+      }
     }
     return doc;
   };

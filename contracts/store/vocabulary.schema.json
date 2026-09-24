@@ -44,7 +44,7 @@
             "enum": ["required", "additional", "form-rule", null]
           },
           "extension": {
-            "description": "'per-store' = one copy in EVERY store directory; 'per-store-additional' = lives in a store directory but only some stores take it, and WHICH stores is a per-row fact in extensions/scripts/store-graphics.json; 'shared' = one copy in store/_shared/, required of every tool; 'shared-additional' = one copy in store/_shared/ but only some tools have it; null = not an extension listing field.",
+            "description": "'per-store' = one copy in EVERY store directory; 'per-store-additional' = lives in a store directory but only some stores take it, and WHICH stores is a per-row fact — in extensions/scripts/store-graphics.json for an image, and the store directory that holds the file for a text field (Edge's search-terms.txt, AMO's tags.txt); 'shared' = one copy in store/_shared/, required of every tool; 'shared-additional' = one copy in store/_shared/ but only some tools have it; null = not an extension listing field.",
             "enum": ["per-store", "per-store-additional", "shared", "shared-additional", null]
           },
           "rendered": {

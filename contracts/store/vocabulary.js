@@ -99,6 +99,11 @@
  *   logo from Chrome and both from Firefox, four failures measured — or to leave
  *   them out of the contract, which makes this guard refuse them as undeclared.
  *   Neither is the truth, and the truth is the whole point of the table.
+ *   ⏱ 2026-09-24: two TEXT fields joined the graphics — Edge's
+ *   `search-terms.txt` and AMO's `tags.txt`. For a text field, which store takes
+ *   it is the store directory that holds the file, and a count or length limit
+ *   on it is a `limits` entry in that tool's tool.json, which
+ *   check-store-metadata.mjs grades; store-graphics.json governs images only.
  *   `'shared'` — one copy in store/_shared/, REQUIRED of every tool, because it
  *   does not differ between stores.
  *   `'shared-additional'` — one copy in store/_shared/, but only SOME TOOLS have
@@ -261,7 +266,14 @@ export const LISTING_FIELDS = /** @type {const} */ ([
   { name: 'subtitle.txt', kind: 'text', app: 'additional', extension: null, rendered: false },
   { name: 'keywords.txt', kind: 'text', app: 'additional', extension: null, rendered: false },
   { name: 'promotional-text.txt', kind: 'text', app: 'additional', extension: null, rendered: false },
-  { name: 'search-terms.txt', kind: 'text', app: 'additional', extension: null, rendered: false },
+  // ⏱ 2026-09-24: `search-terms.txt` is ALSO an extension field — Edge Add-ons
+  // takes search terms (store/edge/search-terms.txt), capped at seven unique
+  // terms by Microsoft's developer policies §1.1.4 and graded by
+  // check-store-metadata.mjs off `maxItems` in tool.json. `tags.txt` is AMO's
+  // tag list and has no application channel. Both are per-store-additional:
+  // one store takes each, so neither can be required of every store directory.
+  { name: 'search-terms.txt', kind: 'text', app: 'additional', extension: 'per-store-additional', rendered: false },
+  { name: 'tags.txt', kind: 'text', app: null, extension: 'per-store-additional', rendered: false },
   { name: 'snap-name.txt', kind: 'text', app: 'additional', extension: null, rendered: false },
   { name: 'license.txt', kind: 'text', app: 'additional', extension: null, rendered: false },
   { name: 'privacy-manifest.json', kind: 'json', app: 'additional', extension: null, rendered: false },
@@ -455,8 +467,10 @@ export const extensionSharedListingFiles = () =>
 
 /**
  * The extension listing fields that live in a store directory but that only
- * SOME stores take — today the listing graphics, whose sizes each store
- * publishes for itself.
+ * SOME stores take — the listing graphics, whose sizes each store publishes
+ * for itself, and (since 2026-09-24) Edge's search terms and AMO's tags.
+ * `check-store-metadata.mjs` binds it as ADDITIONAL_PER_STORE and grades any
+ * of these files a tool.json `limits` block names.
  *
  * 🔴 NOT A SUBSET OF {@link extensionPerStoreListingFiles} AND NOT ADDED TO IT.
  * `check-store-metadata.mjs` reads that array as REQUIRED_PER_STORE and demands

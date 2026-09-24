@@ -1,0 +1,7 @@
+screenshot
+full page screenshot
+screen capture
+webpage capture
+annotate
+redact PII
+screenshot to PDF

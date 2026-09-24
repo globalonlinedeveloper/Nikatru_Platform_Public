@@ -14,11 +14,16 @@ patch, and there are **no packages in this folder** (all twelve deleted 2026-08-
 
 Legend: ✅ PASS · ⚠️ OWNER ACTION · ➖ N/A.
 
-Companion documents added since the last revision:
-`SUBMISSION-PACKET.md` (every field all three stores ask for, drafted or marked
-OWNER) and `PRIVACY-POLICY-HOSTING.md` (getting the policy live, plus the exact
-Chrome data-declaration answers). The consolidated owner list at the foot of
-this file is the short version; those two are the working documents.
+Where the store answers live (re-pointed 2026-09-24, when the two companion
+packets `SUBMISSION-PACKET.md` and `PRIVACY-POLICY-HOSTING.md` were deleted — file
+deleted 2026-09-24, both): every per-store listing field is a file under
+`../store/<store>/` graded by `extensions/scripts/check-store-metadata.mjs`,
+including Edge's search terms (`../store/edge/search-terms.txt`) and AMO's tags
+(`../store/firefox/tags.txt`); the Chrome data-declaration answers are
+`privacy.yaml`, rendered into `STORE-LISTING.md` and graded by
+`tooling/ci/assert-app-yaml.mjs`; the hosted policy URL is `identity.json` and
+`../store/_shared/privacy-policy-url.txt`, held equal by check-store-metadata.
+The consolidated owner list at the foot of this file is the short version.
 
 **Code audit basis (what was scanned):** all shipped JS/HTML/CSS in
 `background.js`, `content/`, `pages/`, `popup/`, plus `manifest.json` and — since
@@ -47,7 +52,7 @@ excluded from the package and from these claims). Findings:
 | A7 | `minimum_chrome_version` declared | ✅ | `"116"` (optional but good practice; MV3 + optional host perms supported). Chrome/Edge only — deliberately **absent** from `publish/manifest.firefox.json`, where Gecko's `strict_min_version: "128.0"` does the job |
 | A8 | Package excludes tests/dev/scratch files | ✅ | Zip = **85 entries** (30 shipping files + 55 `_locales/<lang>/messages.json`), leak check clean (no `test/`, `Reference/`, `i18n/`, `*.md`, `node_modules`, `*.node.js`, `DELETE`). Re-read from both 1.10.1 zips for this revision. ⚠️ **RETIRED 2026-08-26** — see **§A.2**, row *A8 / E1*: the 1.10.1 zips this cell was re-read from are gone (deleted 2026-08-20). The count is still **85**; it now rests on a fresh `scripts/pack.mjs` build, not on those files. |
 | A9 | All in-package references resolve (self-contained) | ✅ | Reference-integrity script: every `<script src>`, `<link href>`, icon, `importScripts` target resolves inside the zip |
-| A10 | `description` ≤ 132 chars (store display limit) | ⚠️ | **137 chars → Chrome truncates.** Cosmetic, not a blocker. **Where it lives has changed** — see A10-fix. ⚠️ **RETIRED 2026-08-26** — the en `appDescription` is **111 chars** today and `node scripts/policy-check.mjs fullshot` PASSES `name/short_name/description within store limits — checked across all 55 locale(s)` (EXIT **0**, measured 2026-08-26). This file has no appendix row for A10; the retirement is recorded in `SUBMISSION-PACKET.md` **§A.2**, row §6 **N1**. |
+| A10 | `description` ≤ 132 chars (store display limit) | ⚠️ | **137 chars → Chrome truncates.** Cosmetic, not a blocker. **Where it lives has changed** — see A10-fix. ⚠️ **RETIRED 2026-08-26** — the en `appDescription` is **111 chars** today and `node scripts/policy-check.mjs fullshot` PASSES `name/short_name/description within store limits — checked across all 55 locale(s)` (EXIT **0**, measured 2026-08-26). This file has no appendix row for A10; the retirement is recorded in `SUBMISSION-PACKET.md` **§A.2**, row §6 **N1** (file deleted 2026-09-24, EXT-1; read it at 7f5d0bfd). |
 | A11 | `default_locale` set ⇒ `_locales/` present in the package | ✅ | `"default_locale": "en"` with all 55 catalogues packaged. Chrome **rejects** a package that names a `default_locale` it cannot find, so this is a hard upload gate, not a nicety. `publish/package.node.js` enumerates `_locales` through a dedicated path that bypasses the allowlist pattern language entirely, precisely so no future pattern edit can silently un-ship it. |
 
 **A10-fix (drop-in replacement, 123 chars — verified):**
@@ -89,17 +94,17 @@ Note on `unlimitedStorage` (B1): justified by the local capture History (screens
 
 | # | Requirement | Status | Evidence / Action |
 |---|---|---|---|
-| C1 | A privacy policy is posted (required — the item handles user data) | ⚠️ | Written and ready: `PRIVACY-POLICY.html`. **Owner must fill six placeholders, host it publicly, and paste the URL** into all three dashboards. Step-by-step, with five hosting options compared: **`PRIVACY-POLICY-HOSTING.md`**. Per FAQ Q14, local-only/Storage-Sync items still need one. |
+| C1 | A privacy policy is posted (required — the item handles user data) | ⚠️ | Written and ready: `PRIVACY-POLICY.html`. **Owner must fill six placeholders, host it publicly, and paste the URL** into all three dashboards. ⏱ 2026-09-24: **hosted** — `identity.json` `privacyPolicyUrl` and `../store/_shared/privacy-policy-url.txt` both carry https://nikatru.com/fullshot/privacy, and `extensions/scripts/check-store-metadata.mjs` fails if the two disagree; the hosting guide that stood here was deleted that day. Per FAQ Q14, local-only/Storage-Sync items still need one. |
 | C2 | Local-only handling is still disclosed | ✅ | Privacy policy §3 discloses screenshots = website content handled locally (FAQ Q3). Also reflected in the dashboard disclosure (C4). |
 | C3 | Data is strictly necessary to the single purpose (Aug 2026 Limited Use) | ✅ | Only website content (the screenshot), used only for the capture/edit/export feature; no unrelated collection |
-| C4 | Privacy-practices tab: data-collection disclosure completed | ⚠️ | **Owner action** (data entry only — the answers are decided). Disclose "Website content"; all eight other categories NO. Each of the nine is answered with its reasoning in `PRIVACY-POLICY-HOSTING.md` §4c. See *Data-disclosure decision* below. |
-| C5 | Limited-Use certification (3 affirmations) | ⚠️ | **Owner action** in dashboard — FullShot qualifies for all three (no sale, no unrelated use, no credit/lending). Pre-filled in `STORE-LISTING.md` and `PRIVACY-POLICY-HOSTING.md` §4c. |
+| C4 | Privacy-practices tab: data-collection disclosure completed | ⚠️ | **Owner action** (data entry only — the answers are decided). Disclose "Website content"; all eight other categories NO. Each of the nine is declared with its `basis` in `privacy.yaml`, which `tooling/app-yaml/render-privacy.mjs` renders into `STORE-LISTING.md`'s privacy-practices block and `tooling/ci/assert-app-yaml.mjs` holds byte-identical. One point the Web history row's `basis` does not state, kept here so a reviewer's question has an answer: a capture kept in the local History (IndexedDB) carries the page's URL and timestamp — the user's own saved work on their own device, not a record of browsing. See *Data-disclosure decision* below. |
+| C5 | Limited-Use certification (3 affirmations) | ⚠️ | **Owner action** in dashboard — FullShot qualifies for all three (no sale, no unrelated use, no credit/lending). Pre-filled in `STORE-LISTING.md`, rendered from `privacy.yaml` `limitedUse`. |
 | C6 | Limited-Use disclosure present ≤1 click from homepage | ✅ | Privacy policy §10 (host it and the requirement is met) |
 | C7 | Secure transmission / encryption of user data | ➖ | No transmission occurs (FAQ Q16: local-only handling has no transmission-security obligation) |
 | C8 | No collection of browsing activity beyond a user-facing feature | ✅ | No browsing activity collected at all; a page is read only on an explicit capture |
 | C9 | No analytics, telemetry, ads, or data sale | ✅ | Audit: none present |
 | C10 | Prominent disclosure + consent for data collection (FAQ Q10) | ✅ | Capture is user-initiated per action (click/shortcut); redaction is opt-in in Options; the optional broad-access grant shows Chrome's own consent prompt. No silent background collection to consent to. |
-| C11 | **EU DSA trader / non-trader declaration** | ⚠️ | **OWNER ACTION — was missing from this checklist entirely, and it is a hard gate on EEA distribution, not a formality.** Every Chrome Web Store developer must declare trader status at **account** level. Declaring *Trader* means Google **publishes the legal name, physical address, email and phone to EEA users**; Google verifies the details, so it takes days, not minutes. Undeclared or unverified ⇒ the item is not distributed in the EEA. Edge collects the equivalent through Partner Center publisher verification. Detail and the privacy implications of using a home address: `SUBMISSION-PACKET.md` §O2. |
+| C11 | **EU DSA trader / non-trader declaration** | ⚠️ | **OWNER ACTION — was missing from this checklist entirely, and it is a hard gate on EEA distribution, not a formality.** Every Chrome Web Store developer must declare trader status at **account** level. Declaring *Trader* means Google **publishes the legal name, physical address, email and phone to EEA users**; Google verifies the details, so it takes days, not minutes. Undeclared or unverified ⇒ the item is not distributed in the EEA. Edge collects the equivalent through Partner Center publisher verification. A home address declared here becomes public; the usual alternatives are a registered business address, a company with a registered office, or a virtual-office or agent address you are entitled to use. Non-trader is correct only if the extension is genuinely outside any trade, business or profession — an owner call, not an agent's. |
 | C12 | Claims made to the user match what the code can deliver | ✅ | The listing, the policy **and the product string** all describe opt-in PII redaction the same way. `PRIVACY-POLICY.html` §3d carries an explicit **"What it cannot do"** paragraph: the scan reads only text the page exposes *as text*, so canvas-rendered pages, embedded images and scanned documents get no blocks even with the feature on. All three were rewritten to `REDACTION-CLAIM-SPEC.md` §7 when the claim was reduced: the product states what it did (matched / painted / confirmed opaque), shows the user the marked image before an AI hand-off, and says in every place that it cannot tell them the image is clean. The Options row — `optionsRedactPIIDesc`, the sentence a user actually reads before switching the feature on, in 55 languages — was the last carrier of the old *"scans the page … over each"* wording and now matches the other two; `test/i18n-sim` grades the redaction strings by shape rather than by key prefix so a fourth carrier cannot appear unnoticed. §3d also discloses the one new thing stored locally — the positions of the blocks it confirmed. A protection claimed but not delivered is the most damaging thing a privacy product can ship, and the copy a user reads inside the product is the version they will hold you to. |
 
 ### Data-disclosure decision (the one real judgment call) — needs owner sign-off
@@ -141,7 +146,7 @@ Sources: https://extensionworkshop.com/documentation/develop/firefox-builtin-dat
 https://blog.mozilla.org/addons/2025/10/23/data-collection-consent-changes-for-new-firefox-extensions/ ·
 https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/browser_specific_settings
 
-Full Firefox runbook, including the two blockers above: `CROSS-BROWSER-PUBLISHING.md` §Firefox.
+Both blockers above (F1 `data_collection_permissions`, F4 the `gecko.id`) are settled in `publish/manifest.firefox.json` — an RFC 7386 overlay on the root `manifest.json` that carries no `version`, a rule check-version's overlay limb grades. The Firefox listing fields are files under `../store/firefox/` (its README names each, AMO's tags in `tags.txt`), graded by `extensions/scripts/check-store-metadata.mjs`; the package is verified by `verify-firefox-package.node.js` and submitted by `extensions/scripts/publish-amo.mjs`.
 
 ---
 
@@ -162,7 +167,7 @@ Nothing in the listing claims anything unshipped, but before submitting the owne
 should do one on-device pass of these three plus the redaction end-to-end fixture,
 so the store screenshots and claims are demonstrably true (CWS penalizes
 description-vs-behavior mismatches). Store screenshots should be taken **after**
-this pass, from the QA'd build — asset specs in `SUBMISSION-PACKET.md` §5.
+this pass, from the QA'd build — the graphic sizes are declared in `extensions/scripts/store-graphics.json` and the screenshot size in `../store/_shared/README.md`.
 
 **D3-note, second part — the redaction claim (RESOLVED this revision).**
 The listing bullet used to promise that redaction *"finds … on the page and
@@ -229,8 +234,9 @@ matched patterns in the image, not to gather them."*
 
 ## Consolidated OWNER-ACTION list (do before "Publish")
 
-Ordered by what unblocks the most. The full field-by-field version, with every
-answer that can be drafted already drafted, is `SUBMISSION-PACKET.md`.
+Ordered by what unblocks the most. Every answer that can be drafted is already
+a file: the listing copy under `../store/<store>/`, the dashboard text in
+`STORE-LISTING.md`, the data answers in `privacy.yaml`.
 
 1. **Settle your legal name and a domain you control.** One decision each,
    feeding five places: the EU DSA trader details, the `LICENSE` Required Notice,
@@ -247,22 +253,24 @@ answer that can be drafted already drafted, is `SUBMISSION-PACKET.md`.
    previous revisions of this checklist.)*
 3. **Host the privacy policy.** Fill the six placeholders in
    `PRIVACY-POLICY.html`, delete the instruction comment, put it on a public
-   HTTPS URL, and paste that one URL into all three dashboards. Five hosting
-   options compared, plus a done-check: `PRIVACY-POLICY-HOSTING.md`. *(C1)*
+   HTTPS URL, and paste that one URL into all three dashboards. ⏱ 2026-09-24:
+   hosted at https://nikatru.com/fullshot/privacy; paste
+   `../store/_shared/privacy-policy-url.txt`. *(C1)*
 4. **Fill the Privacy practices tab.** Website content = YES, the other eight
    categories = NO, remote code = No, three Limited-Use boxes ticked. Every
-   answer with its reasoning: `PRIVACY-POLICY-HOSTING.md` §4. *(C4, C5)*
+   answer with its reasoning: `privacy.yaml`, rendered into `STORE-LISTING.md`. *(C4, C5)*
 5. **Paste the dashboard text fields** from `STORE-LISTING.md`: single-purpose
    description + one justification per permission (incl. the optional
-   `<all_urls>`). Reviewer notes are drafted in `SUBMISSION-PACKET.md` §2e. *(B7)*
+   `<all_urls>`). Reviewer notes were drafted in `SUBMISSION-PACKET.md` §2e and §4c
+   (file deleted 2026-09-24, EXT-1; read them at 7f5d0bfd). *(B7)*
 6. **On-device QA pass** before submit: batch capture, Beautify, Clip, and the
    `redact-e2e.html` fixture — the eyeball-pending items. Do this **before** the
    screenshots. *(D3-note)*
 7. **Create store visual assets** (agent can't produce these): 1–5 screenshots
    at 1280×800 (or 640×400, opaque — a transparent PNG is the most common
    rejection), a 440×280 small promo tile, and a **300×300 logo for Edge**.
-   Confirm `icons/icon128.png` is final art. Full spec table:
-   `SUBMISSION-PACKET.md` §5.
+   Confirm `icons/icon128.png` is final art. Sizes: `extensions/scripts/store-graphics.json`
+   for the graphics, `../store/_shared/README.md` for the screenshots.
 8. **Provide a support email** (Chrome additionally requires it **verified** at
    account level) and an optional homepage URL.
 9. ~~**Bring the redaction claim into line** in `STORE-LISTING.md`~~ — **done.**
@@ -413,8 +421,9 @@ be touched. The grep the reader is invited to run —
   flagged at `:170` with `>>> OWNER ACTION — replace the line above BEFORE the first commit. <<<`
 
 `templates/tool/LICENSE:1` carries the same slot as `⟨LICENSOR⟩ (⟨LICENSOR_URL⟩)` and needs the same
-line. `SUBMISSION-PACKET.md` §4b is what makes this reach a store: AMO has no PolyForm Shield entry
-in its licence dropdown, so `LICENSE` is pasted in as a **Custom License**.
+line. `SUBMISSION-PACKET.md` §4b (file deleted 2026-09-24, EXT-1; read it at 7f5d0bfd) is what made this reach a store: AMO has no PolyForm Shield entry
+in its licence dropdown, so `LICENSE` is pasted in as a **Custom License** — never a near-miss from the
+list (MIT, MPL, GPL…), which would publicly license the code under terms nobody chose.
 
 ## A.6 Gate results this appendix rests on
 
@@ -424,7 +433,7 @@ Each exit code captured on its own line, not printed beside a command substituti
 |---|---|
 | `node scripts/policy-check.mjs fullshot` | **0** — `15 passed`, and it also prints warning(s). **The warning count is deliberately not written down here** — `policy-check.mjs` is being edited to retire a false-positive locale warning, so the same command can honestly print a different number depending on merge order. Read the run. `tool.json` `NOTES."gate status today"` says the same and names the standing one (no CSP `connect-src`). `EXIT 0` is the stable fact. ⚠️ **UPDATED 2026-08-26** — the CSP warning this cell names as *the standing one* is **closed**. The same command now prints `16 passed` with **no warnings**, EXIT **0**, measured 2026-08-26. See **§B.1**. |
 | `node scripts/check-version.mjs fullshot` | **0** — `3 passed` |
-| `node scripts/check-store-metadata.mjs fullshot` | **0** — `25 passed · 1 owner action(s)` — the owner action is the empty `store/_shared/screenshots/` — in **this** file that is §A.3 item 7, *"Create store visual assets"*. ⚠️ This cell used to say "A.4's O5", which is a pointer into a different document: `grep -n 'O5' COMPLIANCE-CHECKLIST.md` returns nothing but that phrase, this file has no O-numbering at all, and its §A.4 is *"The one genuinely pending store account"* (Microsoft Partner Center). The **O**-numbers live in `SUBMISSION-PACKET.md`, where "A.4's O5" is correct. Recorded here for the same reason the `check-catalog` row records its own: an exit code of 0 beside a bare pass-count hides work that is owed, and this table is what a reader trusts instead of re-running. |
+| `node scripts/check-store-metadata.mjs fullshot` | **0** — `25 passed · 1 owner action(s)` — the owner action is the empty `store/_shared/screenshots/` — in **this** file that is §A.3 item 7, *"Create store visual assets"*. ⚠️ This cell used to say "A.4's O5", which is a pointer into a different document: `grep -n 'O5' COMPLIANCE-CHECKLIST.md` returns nothing but that phrase, this file has no O-numbering at all, and its §A.4 is *"The one genuinely pending store account"* (Microsoft Partner Center). The **O**-numbers live in `SUBMISSION-PACKET.md` (file deleted 2026-09-24, EXT-1; read it at 7f5d0bfd), where "A.4's O5" is correct. Recorded here for the same reason the `check-catalog` row records its own: an exit code of 0 beside a bare pass-count hides work that is owed, and this table is what a reader trusts instead of re-running. |
 | `node scripts/check-core-sync.mjs fullshot` | **0** — `1 passed` |
 | `node scripts/check-catalog.mjs` | **0** — `7 passed`, 1 owner action (nothing listed in any store) |
 | `node scripts/pack.mjs fullshot --target firefox --out <scratch> --release` | **0** — 85 entries |
@@ -710,9 +719,9 @@ separate writer's or the owner's action:
 - 🔴 **`Extension/Full_Screen_Shot/publish/SUBMISSION-PACKET.md:350`** — states `15 passed` for
   `node scripts/policy-check.mjs fullshot`. **This is the STORE-SUBMISSION document** — the one a reviewer
   and the owner read at the moment of submitting — which makes it the most expensive of these to leave
-  stale, and it was the one an earlier draft of this list omitted.
+  stale, and it was the one an earlier draft of this list omitted. (file deleted 2026-09-24, EXT-1; read it at 7f5d0bfd)
 - **`Extension/Full_Screen_Shot/publish/CROSS-BROWSER-PUBLISHING.md:319`** — same `15 passed · 1
-  warning(s)` string for the same command, in the Firefox publishing walkthrough.
+  warning(s)` string for the same command, in the Firefox publishing walkthrough. (file deleted 2026-09-24, EXT-1; read it at 7f5d0bfd)
 - 🔴 **`Extension/Full_Screen_Shot/publish/verify-firefox-package.node.js:101-102`** — `ALLOWED_DELTA`
   does not list `content_security_policy`, so the drift limb fails on a *correct* tree. **This is the one
   item on this list that is currently RED in CI**, and §B.1.4 carries the exact one-line change and the

@@ -806,36 +806,6 @@
       "reason": "Editorial intent in a compliance document: the CSP summary line and the table under it are two pieces of prose kept in step by the writer. No script reads either, so nothing fails when they disagree. Judged 2026-09-18."
     },
     {
-      "file": "extensions/Extension/Full_Screen_Shot/publish/CROSS-BROWSER-PUBLISHING.md",
-      "anchor": "it states no version at all (so it cannot drift)",
-      "status": "demoted",
-      "reason": "Publishing-doc prose recording a dated run of check-version.mjs and quoting its overlay limb. The mechanism is real: publish/manifest.firefox.json is an RFC 7386 merge patch with no `version` key, and check-version.mjs limb 4 fails when an overlay states a version that disagrees with manifest.json. But no case plants a `version` in an overlay (scripts/test/selftest.node.js has no overlay expect(), and no node:test file reaches check-version), so nothing a register can name fails when the sentence goes false. Judged 2026-09-18."
-    },
-    {
-      "file": "extensions/Extension/Full_Screen_Shot/publish/CROSS-BROWSER-PUBLISHING.md",
-      "anchor": "`3 passed` — `CHANGELOG top entry is [1.10.2]`",
-      "status": "demoted",
-      "reason": "Publishing-doc prose recording a dated run of check-version.mjs and quoting its overlay limb. The mechanism is real: publish/manifest.firefox.json is an RFC 7386 merge patch with no `version` key, and check-version.mjs limb 4 fails when an overlay states a version that disagrees with manifest.json. But no case plants a `version` in an overlay (scripts/test/selftest.node.js has no overlay expect(), and no node:test file reaches check-version), so nothing a register can name fails when the sentence goes false. Judged 2026-09-18."
-    },
-    {
-      "file": "extensions/Extension/Full_Screen_Shot/publish/CROSS-BROWSER-PUBLISHING.md",
-      "anchor": "so there is nothing to bump and the two **cannot** drift",
-      "status": "demoted",
-      "reason": "Publishing-doc prose recording a dated run of check-version.mjs and quoting its overlay limb. The mechanism is real: publish/manifest.firefox.json is an RFC 7386 merge patch with no `version` key, and check-version.mjs limb 4 fails when an overlay states a version that disagrees with manifest.json. But no case plants a `version` in an overlay (scripts/test/selftest.node.js has no overlay expect(), and no node:test file reaches check-version), so nothing a register can name fails when the sentence goes false. Judged 2026-09-18."
-    },
-    {
-      "file": "extensions/Extension/Full_Screen_Shot/publish/SUBMISSION-PACKET.md",
-      "anchor": "an overlay that restates no version, so the two cannot drift.",
-      "status": "demoted",
-      "reason": "Publishing-doc prose recording a dated run of check-version.mjs and quoting its overlay limb. The mechanism is real: publish/manifest.firefox.json is an RFC 7386 merge patch with no `version` key, and check-version.mjs limb 4 fails when an overlay states a version that disagrees with manifest.json. But no case plants a `version` in an overlay (scripts/test/selftest.node.js has no overlay expect(), and no node:test file reaches check-version), so nothing a register can name fails when the sentence goes false. Judged 2026-09-18."
-    },
-    {
-      "file": "extensions/Extension/Full_Screen_Shot/publish/SUBMISSION-PACKET.md",
-      "anchor": "so the two *cannot* drift and `check-version` says so by name",
-      "status": "demoted",
-      "reason": "Publishing-doc prose recording a dated run of check-version.mjs and quoting its overlay limb. The mechanism is real: publish/manifest.firefox.json is an RFC 7386 merge patch with no `version` key, and check-version.mjs limb 4 fails when an overlay states a version that disagrees with manifest.json. But no case plants a `version` in an overlay (scripts/test/selftest.node.js has no overlay expect(), and no node:test file reaches check-version), so nothing a register can name fails when the sentence goes false. Judged 2026-09-18."
-    },
-    {
       "file": "extensions/Extension/Full_Screen_Shot/publish/package.node.js",
       "anchor": "deliberately, so that a version bump cannot drift between the two engines.",
       "status": "demoted",

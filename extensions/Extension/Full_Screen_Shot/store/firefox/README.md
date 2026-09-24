@@ -7,6 +7,8 @@ AMO takes a **different build** from Chrome and Edge — the firefox target, wit
 
 - `short-description.txt` — 250 characters. This is what AMO calls the **summary**.
   extensionworkshop.com/documentation/develop/create-an-appealing-listing/
+- `tags.txt` — AMO's tags, one per line. **No limit is enforced**: AMO's tag limit has not yet
+  been read from its primary source, and a limit with no source is refused, not guessed.
 
 ## Two things AMO does differently
 

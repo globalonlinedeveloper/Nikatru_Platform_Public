@@ -91,6 +91,20 @@ function tree() {
     cpSync(join(REPO, rel), join(root, rel));
   }
   cpSync(join(REPO, 'apps/subscriptiontracker/store'), join(root, 'apps/subscriptiontracker/store'), { recursive: true });
+  // ⏱ 2026-09-24 — every repository-path `source` the two declarations name.
+  // render-privacy refuses a source that does not exist, so a fixture without
+  // them would exercise that refusal on every case below. Read off the
+  // declarations themselves, so a row that re-points its source brings the new
+  // file into the fixture with it.
+  for (const rel of ['apps/subscriptiontracker/privacy.yaml', 'extensions/Extension/Full_Screen_Shot/publish/privacy.yaml']) {
+    const doc = parseYaml(readFileSync(join(REPO, rel), 'utf8'));
+    const rows = [...(doc.collects ?? []), ...(doc.storeDisclosures ?? []), ...(doc.processors ?? []), doc.limitedUse ?? {}];
+    for (const src of rows.map((r) => r?.source)) {
+      if (typeof src !== 'string' || src.startsWith('https://') || existsSync(join(root, src))) continue;
+      mkdirSync(join(root, dirname(src)), { recursive: true });
+      cpSync(join(REPO, src), join(root, src));
+    }
+  }
   return root;
 }
 
@@ -704,6 +718,26 @@ describe('limb 5 — the notice surfaces are what the declaration renders to', (
       const { code, out } = spawn(GUARD, [root]);
       assert.equal(code, 1, `expected a finding, got ${code}:\n${out}`);
       assert.match(out, /limitedUse\/noSale/);
+    } finally { kill(root); }
+  });
+
+  test('MUTATION: a `source` naming a file that does not exist is a FINDING in the guard AND in --check', () => {
+    // ⏱ 2026-09-24. Before render-privacy graded existence, this exact mutation
+    // exited 0 from both: the schema checks a source's shape, and nine FullShot
+    // rows went on citing a packet after it was due to be deleted.
+    const root = tree();
+    try {
+      const rel = 'extensions/Extension/Full_Screen_Shot/publish/privacy.yaml';
+      const text = get(root, rel);
+      const from = 'source: extensions/Extension/Full_Screen_Shot/publish/COMPLIANCE-CHECKLIST.md';
+      assert.ok(text.includes(from), 'the extension declaration must still cite COMPLIANCE-CHECKLIST.md for this mutation to mean anything');
+      put(root, rel, text.replace(from, 'source: extensions/Extension/Full_Screen_Shot/publish/PRIVACY-POLICY-HOSTING.md'));
+      const guard = spawn(GUARD, [root]);
+      assert.equal(guard.code, 1, `expected a finding from the guard, got ${guard.code}:\n${guard.out}`);
+      assert.match(guard.out, /PRIVACY-POLICY-HOSTING\.md does not exist in this repository/);
+      const check = spawn(PRIVACY_RENDER, ['--check', root]);
+      assert.equal(check.code, 1, `expected a finding from --check, got ${check.code}:\n${check.out}`);
+      assert.match(check.out, /PRIVACY-POLICY-HOSTING\.md does not exist in this repository/);
     } finally { kill(root); }
   });
 

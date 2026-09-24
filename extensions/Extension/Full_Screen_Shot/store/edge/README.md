@@ -9,6 +9,9 @@ goes to both". What differs is the listing, which is why this directory exists.
 - `long-description.txt` — **minimum 250**, maximum 10,000 characters.
   learn.microsoft.com/en-us/microsoft-edge/extensions/publish/publish-extension
   Edge is the only one of the three with a MINIMUM, and it is the easiest to trip.
+- `search-terms.txt` — **at most seven unique terms**, one per line (`maxItems: 7` in `tool.json`).
+  learn.microsoft.com/en-us/legal/microsoft-edge/extensions/developer-policies §1.1.4, fetched
+  2026-09-24: "Search terms may not exceed seven unique terms".
 
 ## Two things Edge does differently
 

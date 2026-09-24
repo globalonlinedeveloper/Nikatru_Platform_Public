@@ -20,7 +20,8 @@ anywhere in the listing: the product no longer states a verdict about the image,
 so a listing that states one is a claim the code cannot answer for. The matching
 product string is `optionsRedactPIIDesc`, the matching policy text is
 `PRIVACY-POLICY.html` §3d, and `COMPLIANCE-CHECKLIST.md` §C12 / §D3-note records
-why. Every field these blocks feed into is listed in SUBMISSION-PACKET.md.
+why. Every field these blocks feed into is named in `contracts/store/vocabulary.js`
+and graded by `extensions/scripts/check-store-metadata.mjs`.
 
 ---
 
@@ -145,7 +146,8 @@ handling still must be disclosed — so this is disclosed honestly below.
 📌 **THE DASHBOARD ANSWERS BELOW ARE GENERATED, AND THE TWO BULLETS THAT USED TO STAND HERE ARE
 SUPERSEDED RATHER THAN DELETED.** They said the same thing this block says — *Website content =
 handled locally only; the other eight = NOT collected; all three Limited Use boxes affirmable* — but
-they said it in prose, three files away from the table in `PRIVACY-POLICY-HOSTING.md` §4c that
+they said it in prose, three files away from the table in `PRIVACY-POLICY-HOSTING.md` §4c (file
+deleted 2026-09-24; each row's `basis` in `publish/privacy.yaml` carries that reasoning now) that
 decided each answer, with nothing able to tell agreement from a coincidence. The answers now live in
 `publish/privacy.yaml`, one row per category with its own basis and source, and this block is
 rendered from that file by `tooling/app-yaml/render-privacy.mjs`. ⟨The owner-decision note in

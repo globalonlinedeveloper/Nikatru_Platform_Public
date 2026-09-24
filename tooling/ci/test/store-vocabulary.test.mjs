@@ -90,10 +90,11 @@ const RENDER_STAND_IN = [
 ].join('\n');
 
 const CHECK_STAND_IN = [
-  "import { extensionPerStoreListingFiles, extensionSharedListingFiles } from '../../contracts/store/vocabulary.js';",
+  "import { extensionPerStoreListingFiles, extensionSharedListingFiles, extensionAdditionalListingFiles } from '../../contracts/store/vocabulary.js';",
   'const REQUIRED_PER_STORE = extensionPerStoreListingFiles();',
   'const REQUIRED_SHARED = extensionSharedListingFiles();',
-  'export { REQUIRED_PER_STORE, REQUIRED_SHARED };',
+  'const ADDITIONAL_PER_STORE = extensionAdditionalListingFiles();',
+  'export { REQUIRED_PER_STORE, REQUIRED_SHARED, ADDITIONAL_PER_STORE };',
   '',
 ].join('\n');
 

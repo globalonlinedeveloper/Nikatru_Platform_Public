@@ -28,9 +28,10 @@ https://nikatru.com/fullshot/privacy
 #
 # The SOURCE OF TRUTH for the page text is publish/PRIVACY-POLICY.html in THIS
 # repo. The served copy lives in another repo and no guard can see across that
-# boundary, so edit here first and then re-copy. See PRIVACY-POLICY-HOSTING.md,
-# WITH ONE WARNING, because that pointer led to a stale record until this day:
-# PRIVACY-POLICY-HOSTING.md's "STILL OPEN, and both are deliberate" list said
+# boundary, so edit here first and then re-copy. See COMPLIANCE-CHECKLIST.md C1.
+# ONE WARNING, because the hosting guide this line used to point to led to a
+# stale record until this day: PRIVACY-POLICY-HOSTING.md (file deleted
+# 2026-09-24, EXT-1) said in its "STILL OPEN, and both are deliberate" list
 # `identity.json`'s privacyPolicyUrl "is STILL EMPTY" and that the page was
 # "committed but not yet deployed". Both were already false when read on
 # 2026-08-22: identity.json carries the URL above (`grep -n privacyPolicyUrl
@@ -52,3 +53,12 @@ https://nikatru.com/fullshot/privacy
 #      returns zero hits is worse than the line number it replaced. Both are now
 #      greps a reader can paste. Item 2 of that same STILL-OPEN list — LICENSE's
 #      unfilled `Required Notice:` — IS still open and is owner work.
+#
+# ⏱ APPENDED 2026-09-24 (EXT-1): PRIVACY-POLICY-HOSTING.md was deleted
+#   2026-09-24; read it at 7f5d0bfd. The two dated notes above cite it, and the
+#   greps they offer find nothing on the current tree. What the hosting guide
+#   was for is done, and publish/COMPLIANCE-CHECKLIST.md C1 records it: the URL
+#   is this file's one non-comment line, publish/identity.json privacyPolicyUrl
+#   carries the same value, and extensions/scripts/check-store-metadata.mjs
+#   fails when the two disagree. The page SOURCE is still
+#   publish/PRIVACY-POLICY.html.

@@ -1663,6 +1663,60 @@ expect('a value under a SOURCED minimum is caught', {
   })
 });
 
+/* 🔴 THE LIMITS BLOCK NAMES FILES BEYOND THE REQUIRED ONES (section 3b, 2026-09-24).
+   Before it, a limit on an additional file was read by nothing: every case
+   below that expects exit 1 exited 0 against that version of the guard. */
+const SEVEN_TERMS = 'screenshot\nfull page screenshot\nscreen capture\nwebpage capture\nannotate\nredact PII\nscreenshot to PDF\n';
+const TERMS_LIMIT = { maxItems: 7, source: 'https://learn.microsoft.com/x (fetched 2026-09-24)' };
+expect('an additional field inside its sourced maxItems passes and is graded', {
+  script: 'check-store-metadata.mjs', argv: ['goodtool'], code: 0, contains: '7 item(s), maxItems 7',
+  root: withStores((t, root) => {
+    t.storeMetadata.stores.edge.limits = { 'search-terms.txt': TERMS_LIMIT };
+    w(root, TOOL + '/store/edge/search-terms.txt', SEVEN_TERMS);
+  })
+});
+expect('an additional field over its sourced maxItems is caught', {
+  script: 'check-store-metadata.mjs', argv: ['goodtool'], code: 1, contains: '8 distinct item(s) against a maxItems of 7',
+  root: withStores((t, root) => {
+    t.storeMetadata.stores.edge.limits = { 'search-terms.txt': TERMS_LIMIT };
+    w(root, TOOL + '/store/edge/search-terms.txt', SEVEN_TERMS + 'region capture\n');
+  })
+});
+expect('a repeated item is one item — the cap is on unique terms', {
+  script: 'check-store-metadata.mjs', argv: ['goodtool'], code: 0, contains: '7 item(s), maxItems 7',
+  root: withStores((t, root) => {
+    t.storeMetadata.stores.edge.limits = { 'search-terms.txt': TERMS_LIMIT };
+    w(root, TOOL + '/store/edge/search-terms.txt', SEVEN_TERMS + 'annotate\n');
+  })
+});
+expect('a repeat differing only in case is one item — lines are case-folded', {
+  script: 'check-store-metadata.mjs', argv: ['goodtool'], code: 0, contains: '7 item(s), maxItems 7',
+  root: withStores((t, root) => {
+    t.storeMetadata.stores.edge.limits = { 'search-terms.txt': TERMS_LIMIT };
+    w(root, TOOL + '/store/edge/search-terms.txt', SEVEN_TERMS + '  Annotate \n');
+  })
+});
+expect('an additional field present with no limit passes and says so', {
+  script: 'check-store-metadata.mjs', argv: ['goodtool'], code: 0, contains: 'store/firefox/tags.txt  — ',
+  root: withStores((t, root) => { w(root, TOOL + '/store/firefox/tags.txt', 'screenshot\nannotate\n'); })
+});
+expect('a limit on an additional field whose file is absent is caught', {
+  script: 'check-store-metadata.mjs', argv: ['goodtool'], code: 1, contains: 'declares a limit on it, and the file is absent',
+  root: withStores(t => { t.storeMetadata.stores.edge.limits = { 'search-terms.txt': TERMS_LIMIT }; })
+});
+expect('a limit naming a file that is no listing field is refused', {
+  script: 'check-store-metadata.mjs', argv: ['goodtool'], code: 1, contains: 'limits names nonsense.txt, which is not a listing file',
+  root: withStores(t => {
+    t.storeMetadata.stores.edge.limits = { 'nonsense.txt': { max: 5, source: 'https://example.invalid' } };
+  })
+});
+expect('maxItems on a required field is refused — nothing there counts lines', {
+  script: 'check-store-metadata.mjs', argv: ['goodtool'], code: 1, contains: 'maxItems counts lines and is graded only on',
+  root: withStores(t => {
+    t.storeMetadata.stores.chrome.limits = { 'title.txt': { max: 75, maxItems: 1, source: 'https://developer.chrome.com/x (fetched 2026-08-20)' } };
+  })
+});
+
 /* 🔴 THE CONTENT MUTATIONS ON THE SHARED URL FILES.
    Until 2026-08-22 these files were graded on existence and non-blankness
    alone, and the real tree shipped a `privacy-policy-url.txt` whose entire
