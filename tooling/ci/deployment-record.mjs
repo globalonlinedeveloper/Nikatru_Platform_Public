@@ -274,6 +274,36 @@ export function readSubmissions(entries, register) {
   return { records, unreadable };
 }
 
+/** ⏱ 2026-09-24 · The largest versionCode a list of Deployments records, or `null`.
+ *
+ *  record-deployment.mjs --version-code writes it into the Deployment `payload` as
+ *  `version_code` on every row that carries a `versionCodeHighWater` block (android-play);
+ *  read-ledger-version-code.mjs hands this to assert-app-versioning.mjs --play-floor, which
+ *  stops a build while the committed mark sits below it. The payload is read the way
+ *  tooling/ops/check-prod-provenance.mjs `deploymentPayload` reads it: the API returns the
+ *  object that was posted, a payload posted as a string comes back as that string and is
+ *  parsed, and `{}`, `''`, a string that is not JSON or a non-object names nothing. Only a
+ *  whole `version_code` of 1 or more counts; the Deployments written before 2026-09-24
+ *  carry none, so a ledger holding only those answers `null`. Pure: no I/O. */
+export function maxVersionCode(deployments) {
+  let max = null;
+  for (const d of deployments ?? []) {
+    let p = d?.payload;
+    if (typeof p === 'string') {
+      try {
+        p = JSON.parse(p);
+      } catch {
+        continue;
+      }
+    }
+    if (p === null || typeof p !== 'object' || Array.isArray(p)) continue;
+    const v = p.version_code;
+    if (!Number.isInteger(v) || v < 1) continue;
+    if (max === null || v > max) max = v;
+  }
+  return max;
+}
+
 /** `YYYY-MM` of an ISO timestamp — the bucket the NIKATRU cadence rule counts
  *  in. UTC, so the bucket does not depend on where the reader is sitting. */
 export function calendarMonth(iso) {

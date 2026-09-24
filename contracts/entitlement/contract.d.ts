@@ -37,6 +37,12 @@ export interface RevenueCatEventReason {
    * refund; only `expiration_at_ms` tells them apart.
    */
   readonly dateDerived: boolean;
+  /**
+   * Whether the vendor describes this event as NO access change although the row
+   * carries no reason and is not date-derived. Required: the ruling goes on to
+   * 'grant' only on an explicit `false` (2026-09-24, F912).
+   */
+  readonly notAGrant: boolean;
   /** The sentence that forces the answer. A row with no ground cannot be re-decided. */
   readonly why: string;
 }
@@ -56,7 +62,7 @@ export function revenueCatAccessRuling(event: string): RevenueCatAccessRuling | 
 
 /** The same ruling for one row, including a row the table does not carry (REFUND_REVERSED). */
 export function revenueCatAccessRulingForRow(
-  row: Pick<RevenueCatEventReason, 'event' | 'reason' | 'dateDerived'>,
+  row: Pick<RevenueCatEventReason, 'event' | 'reason' | 'dateDerived' | 'notAGrant'>,
 ): RevenueCatAccessRuling | null;
 
 export const CONTRACT_TABLE: {

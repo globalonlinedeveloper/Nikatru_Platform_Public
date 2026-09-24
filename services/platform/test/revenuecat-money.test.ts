@@ -120,7 +120,12 @@ describe('RevenueCat through the store — decided events write, refusals do not
   });
 });
 
-describe('RevenueCat through the route — the shipped verifier refuses on A, loudly', () => {
+// ⏱ 2026-09-24 · F912 (the #912 review, finding 5). This describe was titled "the
+// shipped verifier refuses on A, loudly", and it stayed green only because its
+// fixture app id is one no app declares: the shipped verifier routes both declared
+// subscriptiontracker ids since #890. The case is unchanged; the title now says
+// what it measures, and the describe after it drives the declared ids.
+describe('RevenueCat through the route — an undeclared app id is refused on A, loudly', () => {
   it('a genuinely signed, well-formed event is 503 (refused, recorded), never a silent 200', async () => {
     const db = realPlatformDb();
     const app = new Hono<AppEnv>();
@@ -154,6 +159,68 @@ describe('RevenueCat through the route — the shipped verifier refuses on A, lo
     expect(await res.json()).toMatchObject({ recorded: true, derived: 'refused' });
     expect(await count(db, 'SELECT COUNT(*) AS n FROM entitlements')).toBe(0);
     expect(await count(db, "SELECT COUNT(*) AS n FROM provider_notifications WHERE provider = 'revenuecat' AND derive_error LIKE 'refused:%'")).toBe(1);
+  });
+});
+
+/** POST a genuinely signed body to the REAL route, which takes its verifier from
+ *  the REAL registry (routes/money.ts → verifierFor): the shape of the case above. */
+async function throughRoute(db: RealDb, raw: string) {
+  const app = new Hono<AppEnv>();
+  app.use('*', async (c, next) => {
+    c.set('requestId', 'rc-rid');
+    await next();
+  });
+  app.route('/v1/money', money);
+  const secret = 'rc_route_signing_secret';
+  const env = {
+    PLATFORM_DB: db,
+    MONEY_CEILING_LIMITER: { limit: async () => ({ success: true }) },
+    MONEY_ENVIRONMENT: 'live',
+    REVENUECAT_WEBHOOK_SIGNING_SECRET: secret,
+  } as unknown as AppEnv['Bindings'];
+  const t = Math.floor(Date.now() / 1000);
+  return app.fetch(
+    new Request('https://x/v1/money/revenuecat', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'X-RevenueCat-Webhook-Signature': `t=${t},v1=${await revenueCatSignature(secret, t, raw)}`,
+      },
+      body: raw,
+    }),
+    env,
+    { waitUntil() {}, passThroughOnException() {} } as unknown as ExecutionContext,
+  );
+}
+
+// ⏱ 2026-09-24 · F912 (the #912 review, findings 1 and 5, and M2). No case drove a
+// DECLARED app id through the route, so a registry serving another instance than
+// the one the verifier tests import would have passed. These do, on the registered
+// verifier and its rendered app-id table (apps/subscriptiontracker/app.yaml).
+describe('RevenueCat through the route — the registered verifier on the declared ids', () => {
+  it('a declared App Store id (app805d73cd44) INITIAL_PURCHASE is 200 applied and writes one entitlement', async () => {
+    const db = realPlatformDb();
+    const res = await throughRoute(db, rcBody({ app_id: 'app805d73cd44' }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, recorded: true, derived: 'applied' });
+    expect(await count(db, 'SELECT COUNT(*) AS n FROM entitlements')).toBe(1);
+    const row = await d1(db)
+      .prepare('SELECT is_active, provider FROM entitlements WHERE user_id = ? AND app_id = ?')
+      .bind(USER, 'subscriptiontracker')
+      .first<{ is_active: number; provider: string }>();
+    expect(row).toEqual({ is_active: 1, provider: 'revenuecat' });
+  });
+
+  it('M2 · EXPERIMENT_ENROLLMENT with NO app_id is 200 ignored: no entitlement, no refusal counted', async () => {
+    const db = realPlatformDb();
+    const res = await throughRoute(db, rcBody({ type: 'EXPERIMENT_ENROLLMENT', app_id: undefined }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, recorded: true, derived: 'ignored' });
+    expect(await count(db, 'SELECT COUNT(*) AS n FROM entitlements')).toBe(0);
+    expect(await count(db, "SELECT COUNT(*) AS n FROM provider_notifications WHERE derive_error LIKE 'refused:%'")).toBe(0);
+    expect(
+      await count(db, "SELECT COUNT(*) AS n FROM provider_notifications WHERE derive_error LIKE 'ignored:%acknowledged before routing%'"),
+    ).toBe(1);
   });
 });
 

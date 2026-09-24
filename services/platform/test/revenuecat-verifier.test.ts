@@ -7,7 +7,11 @@ import {
   makeRevenuecatVerifier,
 } from '../src/lib/mor/revenuecat';
 import { decideSubscription } from '../src/lib/mor/contract';
-import { revenueCatAccessRuling, revenueCatAccessRulingForRow } from '../../../contracts/entitlement/contract.js';
+import {
+  REVENUECAT_EVENT_REASONS,
+  revenueCatAccessRuling,
+  revenueCatAccessRulingForRow,
+} from '../../../contracts/entitlement/contract.js';
 import { verifierFor, MOR_VERIFIERS } from '../src/lib/mor/registry';
 // Side-effect import: the harness installs `crypto.subtle.timingSafeEqual`, the
 // Workers extension Node's WebCrypto lacks — without it a refusal and a crash
@@ -244,21 +248,75 @@ describe('revenuecat parse — A · an event is routed by the app id an app decl
   // declares both store apps, and tooling/app-yaml/render.mjs renders them into
   // revenuecat-app-ids.ts. The old case stayed green only because rcEvent()
   // defaults to the fixture RC_APP, which the rendered table does not hold.
+  //
+  // ⏱ 2026-09-24 · F912 (the #912 review, finding 1). The three cases below took
+  // the IMPORTED `revenuecatVerifier`, so a registry that registered some other
+  // instance kept them green while the route served that other instance. They now
+  // take the verifier the route takes (routes/money.ts calls verifierFor), and the
+  // first case pins that the registry serves the imported one.
+  it('the registry serves the REGISTERED verifier itself — the instance the route looks up', () => {
+    expect(verifierFor('revenuecat')).toBe(revenuecatVerifier);
+  });
+
   it('the REGISTERED verifier routes the Play app id appa553a1e2c6 to subscriptiontracker', () => {
-    const s = subjectOf(rcEvent({ app_id: 'appa553a1e2c6' }), revenuecatVerifier);
+    const s = subjectOf(rcEvent({ app_id: 'appa553a1e2c6' }), verifierFor('revenuecat')!);
     expect(s.kind).toBe('subscription');
     expect(s.kind === 'subscription' && s.accountAppId).toBe('subscriptiontracker');
   });
 
   it('the REGISTERED verifier routes the App Store app id app805d73cd44 to subscriptiontracker', () => {
-    const s = subjectOf(rcEvent({ app_id: 'app805d73cd44' }), revenuecatVerifier);
+    const s = subjectOf(rcEvent({ app_id: 'app805d73cd44' }), verifierFor('revenuecat')!);
     expect(s.kind).toBe('subscription');
     expect(s.kind === 'subscription' && s.accountAppId).toBe('subscriptiontracker');
   });
 
   it('the REGISTERED verifier still refuses an app id no app declares', () => {
-    const s = subjectOf(rcEvent({ app_id: 'app_undeclared' }), revenuecatVerifier);
+    const s = subjectOf(rcEvent({ app_id: 'app_undeclared' }), verifierFor('revenuecat')!);
     expect(s.kind).toBe('refused');
+  });
+});
+
+// ⏱ 2026-09-24 · F912 — [ADR 085] A, append 2026-09-24. A row whose
+// `notAGrant` is true is acknowledged BEFORE routing step A, the way TEST is: it
+// writes nothing, so routing it could change no entitlement, and refusing it only
+// cost five vendor retries and a false count in the nightly refused total. The
+// reference says EXPERIMENT_ENROLLMENT "isn't associated with a store" and that
+// `app_id` "is usually excluded", so it is the case that forces the order. Every
+// case here goes through the REGISTERED verifier, as the route does.
+describe('revenuecat parse — M2 · a not-a-grant row is acknowledged before A', () => {
+  it('EXPERIMENT_ENROLLMENT with NO app_id is acknowledged, not refused on A', () => {
+    const s = subjectOf(rcEvent({ type: 'EXPERIMENT_ENROLLMENT', app_id: undefined }), verifierFor('revenuecat')!);
+    expect(s.kind).toBe('unknown');
+    expect(s.kind === 'unknown' && s.detail).toMatch(/acknowledged before routing, \[ADR 085\] A append 2026-09-24/);
+  });
+
+  it('EXPERIMENT_ENROLLMENT with the declared Play app id appa553a1e2c6 is acknowledged', () => {
+    const s = subjectOf(rcEvent({ type: 'EXPERIMENT_ENROLLMENT', app_id: 'appa553a1e2c6' }), verifierFor('revenuecat')!);
+    expect(s.kind).toBe('unknown');
+  });
+
+  it('EXPERIMENT_ENROLLMENT with an app id no app declares is acknowledged, not refused on A', () => {
+    const s = subjectOf(rcEvent({ type: 'EXPERIMENT_ENROLLMENT', app_id: 'app_undeclared' }), verifierFor('revenuecat')!);
+    expect(s.kind).toBe('unknown');
+  });
+
+  it('control: INITIAL_PURCHASE with NO app_id is still refused on A — a grant is never routed by guess', () => {
+    const s = subjectOf(rcEvent({ app_id: undefined }), verifierFor('revenuecat')!);
+    expect(s.kind).toBe('refused');
+    expect(s.kind === 'refused' && s.detail).toMatch(/carries no `app_id`.*ADR 085 A/);
+  });
+
+  it('control: TRANSFER with NO app_id is still refused on A', () => {
+    const s = subjectOf(rcTransfer({ app_id: undefined }), verifierFor('revenuecat')!);
+    expect(s.kind).toBe('refused');
+    expect(s.kind === 'refused' && s.detail).toMatch(/carries no `app_id`.*ADR 085 A/);
+  });
+
+  it('control: REFUND_REVERSED is still refused by name, and with NO app_id still refused on A', () => {
+    const named = subjectOf(rcEvent({ type: 'REFUND_REVERSED', app_id: 'app805d73cd44' }), verifierFor('revenuecat')!);
+    expect(named.kind === 'refused' && named.detail).toMatch(/^revenuecat REFUND_REVERSED: refund_reversed_undecided:/);
+    const bare = subjectOf(rcEvent({ type: 'REFUND_REVERSED', app_id: undefined }), verifierFor('revenuecat')!);
+    expect(bare.kind).toBe('refused');
   });
 });
 
@@ -345,6 +403,7 @@ describe('revenuecat parse — what else the table decides, and what it does not
   it('the seven vendor types that change no access are acknowledged by name, not refused', () => {
     // O-REVENUECAT-ACCOUNT step 6, 2026-09-24: each is a contract row in NOT_A_GRANT,
     // and each row's `why` quotes the vendor. Before it, each drew a 503 and five retries.
+    // ⏱ 2026-09-24 · F912: that Set is now each row's `notAGrant: true` (pinned below).
     expect(revenueCatAccessRuling('INVOICE_ISSUANCE')).toBeNull();
     expect(subjectOf(rcEvent({ type: 'INVOICE_ISSUANCE' })).kind).toBe('unknown');
     expect(revenueCatAccessRuling('VIRTUAL_CURRENCY_TRANSACTION')).toBeNull();
@@ -372,7 +431,12 @@ describe('revenuecat parse — what else the table decides, and what it does not
     expect(s.kind === 'refused' && s.detail).toMatch(/^revenuecat REFUND_REVERSED: refund_reversed_undecided:/);
     // The restoring reason, fed to the ruling directly: never 'revoke'.
     expect(
-      revenueCatAccessRulingForRow({ event: 'REFUND_REVERSED', reason: 'chargeback_reversed', dateDerived: false }),
+      revenueCatAccessRulingForRow({
+        event: 'REFUND_REVERSED',
+        reason: 'chargeback_reversed',
+        dateDerived: false,
+        notAGrant: false,
+      }),
     ).not.toBe('revoke');
   });
 
@@ -381,6 +445,48 @@ describe('revenuecat parse — what else the table decides, and what it does not
     expect(s.kind === 'subscription' && [s.productId, s.store]).toEqual(['st_pro_monthly', 'PLAY_STORE']);
     const bare = subjectOf(rcEvent());
     expect(bare.kind === 'subscription' && [bare.productId, bare.store]).toEqual([null, null]);
+  });
+});
+
+// ⏱ 2026-09-24 · F912 (the #912 review, finding 3). "Not a grant" was a Set of
+// event names beside the table, so a row could be added without being in it and
+// read as a grant. It is now each row's own REQUIRED boolean, and the ruling reads
+// the row. tooling/ci/assert-entitlement-contract.mjs limb 6b refuses a row that
+// omits it; the cases here pin what the ruling does with it.
+describe('the contract table — every row says whether it is a grant', () => {
+  it('every REVENUECAT_EVENT_REASONS row declares notAGrant as a boolean', () => {
+    const undeclared = REVENUECAT_EVENT_REASONS.filter((row) => typeof row.notAGrant !== 'boolean').map((r) => r.event);
+    expect(undeclared).toEqual([]);
+  });
+
+  it('the nine rows that change no access are the rows marked notAGrant: true, and no others', () => {
+    const marked = REVENUECAT_EVENT_REASONS.filter((row) => row.notAGrant === true).map((r) => r.event);
+    expect([...marked].sort()).toEqual(
+      [
+        'EXPERIMENT_ENROLLMENT',
+        'INVOICE_ISSUANCE',
+        'PRICE_INCREASE_CONSENT_APPROVED',
+        'PRICE_INCREASE_CONSENT_REQUIRED',
+        'PURCHASE_REDEEMED',
+        'SUBSCRIBER_ALIAS',
+        'SUBSCRIPTION_PAUSED',
+        'TEMPORARY_ENTITLEMENT_GRANT',
+        'VIRTUAL_CURRENCY_TRANSACTION',
+      ],
+    );
+  });
+
+  it('the ruling reads the ROW: a grant-shaped row is null with notAGrant true, and a grant with false', () => {
+    const grantRow = { event: 'INITIAL_PURCHASE', reason: null, dateDerived: false };
+    expect(revenueCatAccessRulingForRow({ ...grantRow, notAGrant: true })).toBeNull();
+    expect(revenueCatAccessRulingForRow({ ...grantRow, notAGrant: false })).toBe('grant');
+  });
+
+  it('a row that declares no notAGrant is never read as a grant — the ruling fails closed', () => {
+    const bare = { event: 'INITIAL_PURCHASE', reason: null, dateDerived: false } as unknown as Parameters<
+      typeof revenueCatAccessRulingForRow
+    >[0];
+    expect(revenueCatAccessRulingForRow(bare)).toBeNull();
   });
 });
 

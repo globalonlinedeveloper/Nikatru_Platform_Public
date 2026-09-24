@@ -58,6 +58,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     needs: gate
+    permissions:
+      contents: read
+      deployments: read
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -83,7 +86,12 @@ jobs:
       - name: The versionCode lies above what Play consumed
         env:
           RUN_NUMBER: ${{ github.run_number }}
-        run: node tooling/ci/assert-app-versioning.mjs --play-floor "$RUN_NUMBER" --app subscriptiontracker
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          RECORDED="$(node tooling/ci/read-ledger-version-code.mjs subscriptiontracker-android-play)"
+          node tooling/ci/assert-app-versioning.mjs --play-floor "$RUN_NUMBER" --app subscriptiontracker --recorded-upload "$RECORDED"
       # why: the three version flags, byte-identical to the submit job's build. Without them
       # AppConfig.appVersion is 'dev' and the versionCode is pubspec's `+1`, which Play has
       # already consumed — docs/ci/submit-play.md §versioning. assert-app-versioning.mjs
@@ -250,7 +258,12 @@ jobs:
       - name: The versionCode lies above what Play consumed
         env:
           RUN_NUMBER: ${{ github.run_number }}
-        run: node tooling/ci/assert-app-versioning.mjs --play-floor "$RUN_NUMBER" --app subscriptiontracker
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          RECORDED="$(node tooling/ci/read-ledger-version-code.mjs subscriptiontracker-android-play)"
+          node tooling/ci/assert-app-versioning.mjs --play-floor "$RUN_NUMBER" --app subscriptiontracker --recorded-upload "$RECORDED"
       # why: `--build-number` IS THE PLAY versionCode, strictly increasing and never reusable.
       # `github.run_number` of THIS file: code 1 is burnt (runs 4-5, 2026-09-22) and the
       # counter is already past it. Renaming this file restarts it — see MAX_RUN_DIGITS.
@@ -373,11 +386,12 @@ jobs:
           ')"
           echo "⬜ [14]O-7 reading the Play track state for ${APPLICATION_ID}, expecting versionCode ${VERSION_CODE}"
           node tooling/ops/post-deploy-smoke.mjs --play-package "${APPLICATION_ID}" --expect "${VERSION_CODE}"
-          echo "::notice title=Play versionCode high-water::versionCode ${VERSION_CODE} is consumed. Record it in tooling/channel-register.json android-play.versionCodeHighWater.consumed.subscriptiontracker"
+          echo "::notice title=Play versionCode high-water::versionCode ${VERSION_CODE} is consumed. Record it in tooling/channel-register.json android-play.versionCodeHighWater.consumed.subscriptiontracker, and the ledger now holds it: the next dispatch stops until consumed is raised to it"
       - name: Record the submission in the [10]D-9 ledger
         if: always() && steps.upload.outcome == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           LISTING_URL: ${{ inputs.listing_url }}
-        run: node tooling/ci/record-deployment.mjs subscriptiontracker-android-play --state in_review --listing-url "$LISTING_URL"
+          RUN_NUMBER: ${{ github.run_number }}
+        run: node tooling/ci/record-deployment.mjs subscriptiontracker-android-play --state in_review --listing-url "$LISTING_URL" --version-code "$RUN_NUMBER"

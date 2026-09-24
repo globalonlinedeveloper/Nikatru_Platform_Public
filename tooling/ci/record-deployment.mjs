@@ -56,6 +56,11 @@
 //        --state <in_review|live|rejected|pulled> --listing-url <url>
 //   node tooling/ci/record-deployment.mjs <environment> [url] \
 //        --state pending_manual_publish            # submittable:false store rows
+//   node tooling/ci/record-deployment.mjs <environment> [url] --state in_review \
+//        --listing-url <url> --version-code <n>    # ⏱ 2026-09-24: a row with versionCodeHighWater
+//     → `version_code` joins the Deployment payload. REQUIRED on a row whose register entry
+//       carries a `versionCodeHighWater` block (android-play) and REFUSED on every other row;
+//       tooling/ci/read-ledger-version-code.mjs reads the largest one back for --play-floor.
 //   env:  GH_TOKEN (or GITHUB_TOKEN), GITHUB_REPOSITORY, GITHUB_SHA
 //         GITHUB_API_URL — the real origin or loopback only (a test seam; see githubApiBase)
 //         ⏱ 2026-09-23 · GITHUB_WORKFLOW_REF, GITHUB_RUN_ID, GITHUB_RUN_ATTEMPT,
@@ -346,26 +351,32 @@ export class RateLimitExhausted extends Error {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function api(path, token, repo, body, ctx) {
+/** The one bounded GitHub client. ⏱ 2026-09-24 — exported, and `ctx.method` names the verb
+ *  (default POST, every write here): read-ledger-version-code.mjs reads the ledger through
+ *  it with `method: 'GET'` and no body, so the read and the write share one retry and
+ *  rate-limit policy. A call with no body sends no body and no content-type. */
+export async function api(path, token, repo, body, ctx) {
+  const method = ctx.method ?? 'POST';
+  const hasBody = body !== undefined && body !== null;
   let last = null;
   let transientAttempts = 0;
   for (;;) {
     let res = null;
     try {
       res = await fetch(`${ctx.base}/repos/${repo}/${path}`, {
-        method: 'POST',
+        method,
         headers: {
           authorization: `Bearer ${token}`,
           accept: 'application/vnd.github+json',
           'x-github-api-version': '2022-11-28',
-          'content-type': 'application/json',
+          ...(hasBody ? { 'content-type': 'application/json' } : {}),
           'user-agent': 'nikatru-record-deployment',
         },
-        body: JSON.stringify(body),
+        ...(hasBody ? { body: JSON.stringify(body) } : {}),
       });
     } catch (e) {
       // A network error never reached GitHub at all → the short backoff below.
-      last = new Error(`POST ${path} → ${e && e.message ? e.message : e}`);
+      last = new Error(`${method} ${path} → ${e && e.message ? e.message : e}`);
     }
 
     if (res !== null) {
@@ -377,13 +388,13 @@ async function api(path, token, repo, body, ctx) {
         // record that was not there.
         if (transientAttempts > 0 || ctx.rl.retries > 0) {
           console.log(
-            `   ⬜ POST ${path} succeeded after ${transientAttempts} transient and ${ctx.rl.retries} rate-limit ` +
+            `   ⬜ ${method} ${path} succeeded after ${transientAttempts} transient and ${ctx.rl.retries} rate-limit ` +
               `retr${transientAttempts + ctx.rl.retries === 1 ? 'y' : 'ies'} in this run.`,
           );
         }
         return JSON.parse(text);
       }
-      last = new Error(`POST ${path} → ${res.status} ${text.slice(0, 300)}`);
+      last = new Error(`${method} ${path} → ${res.status} ${text.slice(0, 300)}`);
       const refusal = classifyRefusal({ status: res.status, headers: res.headers, bodyText: text, secondaryStrikes: ctx.rl.secondaryStrikes });
       if (refusal.kind === 'rate-limit') {
         // "Could not ask", not "refused": wait what GitHub says, inside ONE bound
@@ -396,7 +407,7 @@ async function api(path, token, repo, body, ctx) {
         ctx.rl.retries++;
         if (refusal.limit === 'secondary') ctx.rl.secondaryStrikes++;
         console.error(
-          `   ⬜ POST ${path} → ${res.status}: ${limitName(refusal)} (${refusal.signal}) — GitHub could not be asked yet, ` +
+          `   ⬜ ${method} ${path} → ${res.status}: ${limitName(refusal)} (${refusal.signal}) — GitHub could not be asked yet, ` +
             `which is not a refusal; waiting ${formatWait(plan.waitMs)} (rate-limit retry ${ctx.rl.retries} of at most ` +
             `${RATE_LIMIT_MAX_RETRIES}, bound ${RATE_LIMIT_BUDGET_MS / 60_000} min).`,
         );
@@ -410,8 +421,8 @@ async function api(path, token, repo, body, ctx) {
     if (transientAttempts >= RETRY_ATTEMPTS) break;
     console.error(
       res !== null
-        ? `   ⬜ POST ${path} → ${res.status} on attempt ${transientAttempts} of ${RETRY_ATTEMPTS} — retrying.`
-        : `   ⬜ POST ${path} could not reach GitHub on attempt ${transientAttempts} of ${RETRY_ATTEMPTS} — retrying (${last.message}).`,
+        ? `   ⬜ ${method} ${path} → ${res.status} on attempt ${transientAttempts} of ${RETRY_ATTEMPTS} — retrying.`
+        : `   ⬜ ${method} ${path} could not reach GitHub on attempt ${transientAttempts} of ${RETRY_ATTEMPTS} — retrying (${last.message}).`,
     );
     await sleep(retryDelayMs(transientAttempts));
   }
@@ -476,9 +487,12 @@ async function main() {
   let state;
   let listingUrl;
   let submittable = false;
+  let versionCodeRaw = null;
+  let recordsVersionCode = false;
   try {
     state = flagValue(argv, 'state');
     listingUrl = flagValue(argv, 'listing-url');
+    versionCodeRaw = flagValue(argv, 'version-code');
     if (state !== null && !STATES.includes(state)) {
       return fail(
         `--state "${state}" is not one of ${STATES.join(', ')}. A free-text state is a state nobody can ` +
@@ -517,6 +531,10 @@ async function main() {
     const isStore = resolved.channel.kind === 'store';
     const cannotSubmit = isStore && resolved.channel.submittable === false;
     submittable = resolved.channel.submittable === true;
+    // ⏱ 2026-09-24 — does this row record the versionCode each upload consumes? Read from the
+    // register's `versionCodeHighWater` block, never from the environment's name.
+    const hw = resolved.channel.versionCodeHighWater;
+    recordsVersionCode = hw !== null && typeof hw === 'object' && !Array.isArray(hw);
     const NOT_SUBMITTED = NOT_SUBMITTED_STATES[0];
     if (state !== null && NOT_SUBMITTED_STATES.includes(state) && !cannotSubmit) {
       return fail(
@@ -593,6 +611,38 @@ async function main() {
     return;
   }
 
+  // ── ⏱ 2026-09-24 · THE versionCode THE UPLOAD CONSUMED, BEFORE ANYTHING IS WRITTEN ──
+  // cloud-review #909 finding 1. The committed mark in the register moved only when somebody
+  // committed it, so an upload nobody recorded left --play-floor holding a run against a
+  // stale mark. A row with a `versionCodeHighWater` block now writes the code into this
+  // Deployment's payload as `version_code`, and read-ledger-version-code.mjs hands the
+  // largest one to --play-floor before the next build. Required there, refused elsewhere:
+  // a code on a row that bounds nothing is a claim no reader checks. Both exit 1, after the
+  // run-identity refusal (exit 2) above.
+  let versionCode = null;
+  if (recordsVersionCode) {
+    if (versionCodeRaw === null || !/^[1-9]\d*$/.test(versionCodeRaw) || !Number.isSafeInteger(Number(versionCodeRaw))) {
+      return fail(
+        `"${environment}" is a row whose ${REGISTER_REL} entry carries \`versionCodeHighWater\`, and ` +
+          `${versionCodeRaw === null ? 'no --version-code was given' : `--version-code "${versionCodeRaw}" is not a whole number of 1 or more`}. ` +
+          'Every upload on this row writes the versionCode it consumed into its ledger Deployment, because ' +
+          'assert-app-versioning.mjs --play-floor reads it back to stop a build while the committed mark is below it. ' +
+          'Pass the versionCode the upload carried (the build\'s --build-number).',
+      );
+    }
+    versionCode = Number(versionCodeRaw);
+  } else if (versionCodeRaw !== null) {
+    return fail(
+      `--version-code was given for "${environment}", whose ${REGISTER_REL} row carries no \`versionCodeHighWater\` ` +
+        'block: nothing reads a versionCode back from this ledger, so the record would carry a claim no check holds. ' +
+        'Drop the flag, or record the row\'s high-water block first.',
+    );
+  }
+  const payload =
+    identity.payload || versionCode !== null
+      ? { ...(identity.payload ?? {}), ...(versionCode !== null ? { version_code: versionCode } : {}) }
+      : null;
+
   // ── the transport: the real API, or a loopback test seam ─────────────────
   const transport = githubApiBase();
   if (transport.error) return fail(transport.error);
@@ -626,7 +676,8 @@ async function main() {
       description,
       // ⏱ 2026-09-23 — the run that wrote this record, by id. Omitted only on a
       // non-submittable channel run outside Actions; see RUN_IDENTITY_ENV.
-      ...(identity.payload ? { payload: identity.payload } : {}),
+      // ⏱ 2026-09-24 — plus `version_code` on a versionCodeHighWater row (above).
+      ...(payload ? { payload } : {}),
       auto_merge: false,
       required_contexts: [],
       transient_environment: false,
@@ -646,6 +697,7 @@ async function main() {
 
     console.log(
       `ok  recorded ${environment} ${state} at ${sha.slice(0, 8)}` +
+        `${versionCode !== null ? ` · versionCode ${versionCode}` : ''}` +
         `${listingUrl ? ` · listing ${listingUrl}` : ''}${environmentUrl ? ` → ${environmentUrl}` : ''}`,
     );
 

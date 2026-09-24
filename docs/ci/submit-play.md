@@ -233,8 +233,16 @@ jobs, under the same name: the dry run meets the refusal before anyone
 dispatches a real submission, and the submit job checks the very run that
 will upload.
 
+⏱ 2026-09-24 — the step first runs
+`tooling/ci/read-ledger-version-code.mjs subscriptiontracker-android-play`,
+which prints the largest `payload.version_code` on that environment's
+[10]D-9 ledger Deployments (or `none`), and passes it to `--play-floor` as
+`--recorded-upload`. `set -euo pipefail` fails the step when the reader
+exits 2 (it could not read the ledger), so the check fails closed.
+
 The same script's verify mode holds the files: every android-play-stamped
-release build must stamp `--build-number=${{ github.run_number }}`, its
+release build outside `releaseBuildsNeverShipped` (the ci.yml artifact
+builds never ship) must stamp `--build-number=${{ github.run_number }}`, its
 workflow must carry a `runNumberFloors` entry at or above every consumed
 value, and every job that runs `submit-play.mjs --submit` must build its
 own bundle.
@@ -247,6 +255,16 @@ this file's `runNumberFloors` entry in the same commit: verify mode fails
 once a consumed value passes a floor. A mark nobody refreshed sits below
 Play's real one, and this step then passes a number Play may still
 refuse.
+
+⏱ 2026-09-24 — the mark no longer goes stale silently: every upload now
+writes the versionCode it consumed into its own ledger Deployment
+(`payload.version_code`, `record-deployment.mjs --version-code`), with no
+human commit and no CI write to `main`. This step reads the largest one
+back and exits 1 while `consumed.subscriptiontracker` is below it, so the
+next dispatch stops at the dry run until someone commits the value and
+raises the floor. The dry-run job reads the ledger, so it now declares its
+own `permissions:` block with `deployments: read` beside `contents: read`
+(a job-level block replaces the workflow's).
 
 ### before step **Build the app bundle**
 
@@ -550,6 +568,14 @@ was here.
 deployment-record.mjs is `['in_review']` because an upload finishing means
 WE SUBMITTED, never THE STORE APPROVED. Play decides `live` hours-to-weeks
 later, after this run has ended; a separate act writes that transition.
+
+⏱ 2026-09-24 — `--version-code "$RUN_NUMBER"` writes the versionCode this
+upload consumed into the Deployment's payload as `version_code`, beside the
+run identity. The recorder REQUIRES it on a row whose register entry
+carries `versionCodeHighWater` (android-play) and refuses it on every
+other row; the expectation is `github.run_number` because the build stamps
+`--build-number=${{ github.run_number }}`. The `--play-floor` step reads it
+back before the next build.
 
 ⚠️ THE CONDITION IS A STRICT WIDENING OF THE INHERITED `success()`, which
 is what makes it safe and why rule 6 accepts exactly this form. `success()`

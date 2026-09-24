@@ -7,7 +7,7 @@ import type {
   SubjectTransfer,
   VerifyOutcome,
 } from './contract';
-import { REVENUECAT_EVENT_REASONS, revenueCatAccessRuling } from '../../../../../contracts/entitlement/contract.js';
+import { REVENUECAT_EVENT_REASONS, revenueCatAccessRulingForRow } from '../../../../../contracts/entitlement/contract.js';
 import { REVENUECAT_APP_IDS } from './revenuecat-app-ids';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -78,11 +78,15 @@ import { REVENUECAT_APP_IDS } from './revenuecat-app-ids';
 //      no app declares is REFUSED. ⏱ 2026-09-24: subscriptiontracker declares
 //      both of its ids (since #890), so the rendered map holds two entries and
 //      the registered verifier routes either one (test/revenuecat-verifier.test.ts).
-//      ⚠️ An event with NO `app_id` is refused here too. The reference says the
-//      field is present "Always, except when `store` is `PROMOTIONAL` or when the
-//      event has no linked app configuration (e.g. `EXPERIMENT_ENROLLMENT`)", so
-//      such an event is refused on A (503, retried) although the table rules
-//      EXPERIMENT_ENROLLMENT null. Recorded 2026-09-24; A is not reordered.
+//      ⚠️ An event with NO `app_id` is refused here too when it is a grant, a
+//      revoke, a paid-through or a transfer. The reference says the field is
+//      present "Always, except when `store` is `PROMOTIONAL` or when the event has
+//      no linked app configuration (e.g. `EXPERIMENT_ENROLLMENT`)". ⏱ 2026-09-24
+//      ([ADR 085] A, append 2026-09-24): a row the contract table marks
+//      `notAGrant` is acknowledged BEFORE A, with or without an `app_id`, so
+//      EXPERIMENT_ENROLLMENT is a 200 that changes nothing, not a 503 retried five
+//      times. Until then this note said such an event was refused on A and that A
+//      was not reordered; that text is in git history (up to 2241754f).
 //   B. "App user id = NIKATRU user id" — `event.app_user_id` IS the account id.
 //      An anonymous id is REFUSED until the purchase is attached to a logged-in
 //      user.
@@ -252,6 +256,18 @@ export function parseRevenueCatEvent(raw: string, appIds: Readonly<Record<string
 
   if (e.type === RC_TEST_EVENT) return ignore('revenuecat TEST event — a sample payload, attributed to nobody');
 
+  // ── ⏱ 2026-09-24 · [ADR 085] A, append 2026-09-24 · BEFORE routing ──────────
+  // A row the contract table marks `notAGrant` writes nothing, so routing it
+  // could change no entitlement: it is acknowledged here, the way TEST is, with or
+  // without an `app_id`. Refusing it on A cost five vendor retries and a false
+  // count in the nightly refused total, and nothing else.
+  const row = REVENUECAT_EVENT_REASONS.find((r) => r.event === e.type);
+  if (row?.notAGrant === true) {
+    return ignore(
+      `revenuecat ${e.type}: the contract table decides this event changes no access; acknowledged before routing, [ADR 085] A append 2026-09-24`,
+    );
+  }
+
   // ── A · which of OUR apps ──────────────────────────────────────────────────
   // `app_id`: "Public identifier of the dashboard app (store configuration)
   // associated with the event."
@@ -274,11 +290,11 @@ export function parseRevenueCatEvent(raw: string, appIds: Readonly<Record<string
   }
 
   // ── what the event does to access, from the contract table ─────────────────
-  const row = REVENUECAT_EVENT_REASONS.find((r) => r.event === e.type);
-  const ruling = revenueCatAccessRuling(e.type);
+  // `row` was looked up once, before A.
   if (row === undefined) {
     return refuse('the event type is not in contracts/entitlement/contract.js REVENUECAT_EVENT_REASONS, so its outcome is undecided');
   }
+  const ruling = revenueCatAccessRulingForRow(row);
   // ⏱ 2026-09-22 · [ADR 092] §4.3 — BEFORE the null ruling and BEFORE B: a
   // TRANSFER body carries no `app_user_id`, so B would refuse every one of them.
   if (ruling === 'transfer') return parseTransfer(e, appId, head, refuse);
@@ -288,9 +304,14 @@ export function parseRevenueCatEvent(raw: string, appIds: Readonly<Record<string
     if (row.reason !== null) {
       return refuse(`the contract table maps this event to ${row.reason}, which the ruling does not decide (a restore is never a revocation)`);
     }
-    // The rows in contract.js NOT_A_GRANT: the table DECIDES they change nothing
-    // (each row's `why` quotes the vendor).
-    return ignore(`revenuecat ${e.type}: the contract table decides this event changes no access`);
+    // ⏱ 2026-09-24 · F912. Until this date the rows in contract.js's NOT_A_GRANT
+    // Set were acked here. A `notAGrant: true` row is now acknowledged before A
+    // and never reaches this line; what still can is a row whose `notAGrant` is
+    // not a boolean, which the ruling answers null for rather than 'grant'. That
+    // row is undecided, so it is refused, loudly: acked, a grant row that had lost
+    // the field would be dropped with a 200 and never retried.
+    // tooling/ci/assert-entitlement-contract.mjs limb 6b refuses such a row in CI.
+    return refuse('the contract table row declares no boolean notAGrant, so its outcome is undecided (contracts/entitlement/contract.js)');
   }
 
   // ── B · which account ───────────────────────────────────────────────────────

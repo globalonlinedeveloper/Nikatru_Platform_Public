@@ -2648,6 +2648,19 @@
   },
   {
     "claims": [
+      "D-9"
+    ],
+    "invokedBy": [
+      ".github/workflows/submit-play.yml#dry-run",
+      ".github/workflows/submit-play.yml#submit"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/read-ledger-version-code.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
       "D-9",
       "F-5b"
     ],

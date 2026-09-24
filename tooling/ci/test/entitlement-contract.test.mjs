@@ -351,15 +351,26 @@ ${bypass}  if (typeof v !== 'string') return { ok: false };
 //  event sets, and the DECLARED divergence between the two is a constant in the
 //  guard: a fixture that models fewer events would show a wider divergence than
 //  the guard declares and fail for the wrong reason.
+//
+//  ⏱ 2026-09-24 · F912 — the FOURTH element is notAGrant (limb 6b), rendered
+//  `false` when a tuple leaves it out, so every older case keeps meaning what it
+//  meant. OMIT_NOT_A_GRANT drops the key from a copy altogether, and any other
+//  string is rendered verbatim as a non-literal token. SUBSCRIPTION_PAUSED is the
+//  fixture's one `true` row, with reason null as the real table has had it since
+//  2026-09-15, so the positive control holds a legitimate notAGrant row.
+const OMIT_NOT_A_GRANT = Symbol('omit notAGrant');
 const RC_EVENTS = [
-  ['CANCELLATION', 'cancelled_at_period_end', true],
-  ['EXPIRATION', 'subscription_expired', false],
-  ['SUBSCRIPTION_PAUSED', 'subscription_paused', false],
-  ['BILLING_ISSUE', null, true],
-  ['INITIAL_PURCHASE', null, false],
-  ['RENEWAL', null, false],
-  ['UNCANCELLATION', null, false],
+  ['CANCELLATION', 'cancelled_at_period_end', true, false],
+  ['EXPIRATION', 'subscription_expired', false, false],
+  ['SUBSCRIPTION_PAUSED', null, false, true],
+  ['BILLING_ISSUE', null, true, false],
+  ['INITIAL_PURCHASE', null, false, false],
+  ['RENEWAL', null, false, false],
+  ['UNCANCELLATION', null, false, false],
 ];
+
+/** `, notAGrant: <n>` for one fixture row, or nothing when the row omits it. */
+const notAGrantKey = (n) => (n === OMIT_NOT_A_GRANT ? '' : `, notAGrant: ${n === undefined ? false : n}`);
 
 const rcJs = (events = RC_EVENTS) =>
   `
@@ -367,8 +378,8 @@ const rcJs = (events = RC_EVENTS) =>
 export const REVENUECAT_EVENT_REASONS = [
 ${events
   .map(
-    ([e, r, d]) =>
-      `  { event: '${e}', reason: ${r === null ? 'null' : `'${r}'`}, dateDerived: ${d === true}, why: 'a sourced sentence' },`,
+    ([e, r, d, n]) =>
+      `  { event: '${e}', reason: ${r === null ? 'null' : `'${r}'`}, dateDerived: ${d === true}${notAGrantKey(n)}, why: 'a sourced sentence' },`,
   )
   .join('\n')}
 ];
@@ -380,18 +391,19 @@ const List<RevenueCatEventReason> kRevenueCatEventReasons =
     <RevenueCatEventReason>[
 ${events
   .map(
-    ([e, r, d]) =>
-      `  RevenueCatEventReason('${e}', ${r === null ? 'null' : `'${r}'`}, dateDerived: ${d === true}),`,
+    ([e, r, d, n]) =>
+      `  RevenueCatEventReason('${e}', ${r === null ? 'null' : `'${r}'`}, dateDerived: ${d === true}${notAGrantKey(n)}),`,
   )
   .join('\n')}
 ];
 `;
 
 const rcJson = (events = RC_EVENTS) =>
-  events.map(([event, reason, dateDerived]) => ({
+  events.map(([event, reason, dateDerived, n]) => ({
     event,
     reason,
     dateDerived: dateDerived === true,
+    ...(n === OMIT_NOT_A_GRANT ? {} : { notAGrant: n === undefined ? false : n }),
     why: 'a sourced sentence',
   }));
 
@@ -1292,8 +1304,8 @@ describe('assert-entitlement-contract limb 6 — the RevenueCat event map is one
     // The expensive shape: both copies name the event, and one of them revokes
     // a subscription the other keeps.
     const r = run({
-      vendoredRc: RC_EVENTS.map(([e, reason, d]) =>
-        e === 'BILLING_ISSUE' ? [e, 'payment_failed_final', d] : [e, reason, d],
+      vendoredRc: RC_EVENTS.map(([e, reason, d, n]) =>
+        e === 'BILLING_ISSUE' ? [e, 'payment_failed_final', d, n] : [e, reason, d, n],
       ),
     });
     assert.equal(r.code, 1, r.out);
@@ -1312,8 +1324,8 @@ describe('assert-entitlement-contract limb 6 — the RevenueCat event map is one
     // The limb limb 4 cannot reach: the reason never appears in the reason
     // ARRAY, so the per-copy loop up there never sees it — and the write would
     // fail after the money has moved.
-    const rc = RC_EVENTS.map(([e, r, d]) =>
-      e === 'EXPIRATION' ? [e, 'vanished_into_thin_air', d] : [e, r, d],
+    const rc = RC_EVENTS.map(([e, r, d, n]) =>
+      e === 'EXPIRATION' ? [e, 'vanished_into_thin_air', d, n] : [e, r, d, n],
     );
     const r = run({ jsRc: rc, jsonRc: rc, vendoredRc: rc, dartRc: rc });
     assert.equal(r.code, 1, r.out);
@@ -1323,7 +1335,7 @@ describe('assert-entitlement-contract limb 6 — the RevenueCat event map is one
   test('FAILS when the table maps every event to NOTHING', () => {
     // Valid data that silently means "no store event ever revokes anything",
     // and it renders, compiles and reads exactly like a working table.
-    const rc = RC_EVENTS.map(([e, , d]) => [e, null, d]);
+    const rc = RC_EVENTS.map(([e, , d, n]) => [e, null, d, n]);
     const r = run({ jsRc: rc, jsonRc: rc, vendoredRc: rc, dartRc: rc });
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /a translation table that translates nothing/);
@@ -1341,11 +1353,73 @@ describe('assert-entitlement-contract limb 6 — the RevenueCat event map is one
     // customer on a cancel-at-period-end, or keeps a refunded one; prose in the
     // authored copy's why: field never reaches the generated table.
     const r = run({
-      dartRc: RC_EVENTS.map(([e, reason, d]) => [e, reason, e === 'CANCELLATION' ? !d : d]),
+      dartRc: RC_EVENTS.map(([e, reason, d, n]) => [e, reason, e === 'CANCELLATION' ? !d : d, n]),
     });
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /'CANCELLATION' disagrees about dateDerived/);
     assert.match(r.out, /revokes a paying customer or keeps a refunded one/);
+  });
+
+  test('FAILS when a copy disagrees about notAGrant — the Dart copy flips it', () => {
+    // ⏱ 2026-09-24 · F912. The flag that keeps a no-access-change event from
+    // being read as a grant has to survive every copy, as dateDerived does.
+    const r = run({
+      dartRc: RC_EVENTS.map(([e, reason, d, n]) => [e, reason, d, e === 'SUBSCRIPTION_PAUSED' ? false : n]),
+    });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /'SUBSCRIPTION_PAUSED' disagrees about notAGrant — contracts\/entitlement\/contract\.js says true and packages\/purchases\/lib\/src\/generated\/entitlement_contract\.g\.dart says false/);
+  });
+
+  test('FAILS when the JSON copy drops notAGrant from a row', () => {
+    const r = run({
+      jsonRc: RC_EVENTS.map(([e, reason, d, n]) => [e, reason, d, e === 'SUBSCRIPTION_PAUSED' ? OMIT_NOT_A_GRANT : n]),
+    });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /'SUBSCRIPTION_PAUSED' disagrees about notAGrant — contracts\/entitlement\/contract\.js says true and contracts\/entitlement\/contract\.json says undefined/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-entitlement-contract limb 6b — every authored row says whether it is a grant', () => {
+  // ⏱ 2026-09-24 · F912 (the #912 review, finding 3). "Not a grant" was a Set of
+  // event names beside the table; a row added without the second edit was read
+  // as a grant. It is now each row's REQUIRED boolean, and this limb refuses a row
+  // that omits it, or that sets it where it would silence a ruling.
+
+  test('POSITIVE CONTROL — every row declares it, and the one true row has no reason', () => {
+    const r = run();
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /limb 6b: all 7 authored row\(s\) declare a boolean notAGrant, and the 1 marked true carry no reason/);
+  });
+
+  test('FAILS, naming the row, when an authored row OMITS notAGrant — never read as false', () => {
+    // Omitted from every copy, so the copies still agree and 6b alone is what fires.
+    const rc = RC_EVENTS.map(([e, reason, d, n]) => [e, reason, d, e === 'RENEWAL' ? OMIT_NOT_A_GRANT : n]);
+    const r = run({ jsRc: rc, jsonRc: rc, vendoredRc: rc, dartRc: rc });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /RevenueCat event 'RENEWAL' in contracts\/entitlement\/contract\.js declares no boolean notAGrant \(the field is absent/);
+    assert.doesNotMatch(r.out, /disagrees about notAGrant/);
+  });
+
+  test('FAILS, naming the row, when notAGrant is not a boolean literal', () => {
+    const rc = RC_EVENTS.map(([e, reason, d, n]) => [e, reason, d, e === 'INITIAL_PURCHASE' ? 'isGrantish' : n]);
+    const r = run({ jsRc: rc, vendoredRc: rc });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /RevenueCat event 'INITIAL_PURCHASE' in contracts\/entitlement\/contract\.js declares no boolean notAGrant \(it reads `notAGrant: isGrantish`/);
+  });
+
+  test('FAILS when a row with a REASON is marked notAGrant: true — it would silence a revocation', () => {
+    const rc = RC_EVENTS.map(([e, reason, d, n]) => [e, reason, d, e === 'EXPIRATION' ? true : n]);
+    const r = run({ jsRc: rc, jsonRc: rc, vendoredRc: rc, dartRc: rc });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /RevenueCat event 'EXPIRATION' in contracts\/entitlement\/contract\.js is marked notAGrant: true but carries reason 'subscription_expired'/);
+  });
+
+  test('FAILS when a DATE-DERIVED row is marked notAGrant: true — it would silence a paid-through ruling', () => {
+    const rc = RC_EVENTS.map(([e, reason, d, n]) => [e, reason, d, e === 'BILLING_ISSUE' ? true : n]);
+    const r = run({ jsRc: rc, jsonRc: rc, vendoredRc: rc, dartRc: rc });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /RevenueCat event 'BILLING_ISSUE' in contracts\/entitlement\/contract\.js is marked notAGrant: true but is dateDerived: true/);
   });
 });
 
@@ -1401,7 +1475,7 @@ describe('assert-entitlement-contract limb 7 — the one runtime that already re
     // CANCELLATION means cancelled_at_period_end, full stop, while this very
     // repository already documented and implemented the refund shape of the
     // same event.
-    const rc = RC_EVENTS.map(([e, r2, d]) => [e, r2, e === 'CANCELLATION' ? false : d]);
+    const rc = RC_EVENTS.map(([e, r2, d, n]) => [e, r2, e === 'CANCELLATION' ? false : d, n]);
     const r = run({ jsRc: rc, jsonRc: rc, vendoredRc: rc, dartRc: rc });
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /treats RevenueCat event 'CANCELLATION' as GRACE-class/);
@@ -1409,14 +1483,14 @@ describe('assert-entitlement-contract limb 7 — the one runtime that already re
   });
 
   test('FAILS when the Worker revokes outright on an event the contract calls no revocation', () => {
-    const rc = RC_EVENTS.map(([e, r2, d]) => [e, e === 'EXPIRATION' ? null : r2, d]);
+    const rc = RC_EVENTS.map(([e, r2, d, n]) => [e, e === 'EXPIRATION' ? null : r2, d, n]);
     const r = run({ jsRc: rc, jsonRc: rc, vendoredRc: rc, dartRc: rc });
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /revokes access outright on RevenueCat event 'EXPIRATION'/);
   });
 
   test('FAILS when the Worker GRANTS outright on an event the contract revokes on', () => {
-    const rc = RC_EVENTS.map(([e, r2, d]) => [e, e === 'RENEWAL' ? 'subscription_expired' : r2, d]);
+    const rc = RC_EVENTS.map(([e, r2, d, n]) => [e, e === 'RENEWAL' ? 'subscription_expired' : r2, d, n]);
     const r = run({ jsRc: rc, jsonRc: rc, vendoredRc: rc, dartRc: rc });
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /GRANTS access outright on RevenueCat event 'RENEWAL'/);

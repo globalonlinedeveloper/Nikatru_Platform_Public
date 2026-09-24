@@ -42,7 +42,7 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["event", "reason", "dateDerived", "why"],
+        "required": ["event", "reason", "dateDerived", "notAGrant", "why"],
         "properties": {
           "event": {
             "type": "string",
@@ -57,6 +57,10 @@
           "dateDerived": {
             "type": "boolean",
             "description": "TRUE when the event's ACCESS outcome is decided by the paid-through date carried on the event, not by the event name — so a consumer that acts on the name alone is wrong for one of the shapes the name covers. CANCELLATION is the case that forces the field: the same event name is sent for cancel-at-period-end (access continues) and for a REFUND (expiration_at_ms in the past, access ends now, and the honest reason is refund_approved). The Dart and JSON copies carry this field for exactly that reason: prose in a why: string does not reach the generated Dart table, and a Dart consumer reading only (event, reason) would revoke a paying customer. services/platform/src/lib/mor/revenuecat.ts reads these events as paid-through rulings (until 2026-09-16 the retired legacy route services/subscriptiontracker-api/src/routes/webhooks.ts called them grace-class)."
+          },
+          "notAGrant": {
+            "type": "boolean",
+            "description": "TRUE when the vendor describes the event as NO access change although it carries no reason and is not date-derived, which is the shape the ruling otherwise reads as a grant (2026-09-24, F912). REQUIRED and never defaulted, because it fails closed: services/platform's revenueCatAccessRulingForRow goes on to 'grant' only on an explicit false, so a row that omitted it would be a grant nobody decided, and tooling/ci/assert-entitlement-contract.mjs limb 6b refuses such a row by name. True is allowed only with reason null and dateDerived false. services/platform/src/lib/mor/revenuecat.ts acknowledges a true row BEFORE routing step A ([ADR 085] A, append 2026-09-24): it writes nothing, so routing it could change no entitlement."
           },
           "why": {
             "type": "string",

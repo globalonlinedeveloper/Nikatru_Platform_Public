@@ -43,6 +43,9 @@ const events = CONTRACT_TABLE.revenuecatEventReasons.map((r) => ({
   event: r.event,
   reason: r.reason ?? null,
   dateDerived: r.dateDerived === true,
+  // ⏱ 2026-09-24 · F912 — carried as authored, never defaulted: a row that omits
+  // it is refused below rather than emitted as a grant.
+  notAGrant: r.notAGrant,
 }));
 
 // A COVERAGE SELF-CHECK, because an empty table renders as valid Dart and reads
@@ -79,6 +82,18 @@ if (events.length === 0 || !events.some((e) => e.reason !== null)) {
     console.error(`✗ ${REL} would map RevenueCat event(s) ${stray.map((e) => e.event).join(', ')} to reason(s) ` +
       `${stray.map((e) => e.reason).join(', ')}, which contract.js does not declare as revocation reasons.`);
     console.error('  A revocation reason nothing seeded is a value the database will reject after the money has moved.');
+    process.exit(1);
+  }
+}
+// ⏱ 2026-09-24 · F912 — every row says whether it is a grant, as a boolean. A
+// generator that wrote `false` for a missing field would emit a grant nobody
+// decided; assert-entitlement-contract limb 6b refuses the row too.
+{
+  const undeclared = events.filter((e) => typeof e.notAGrant !== 'boolean');
+  if (undeclared.length) {
+    console.error(`✗ ${REL} would carry RevenueCat event(s) ${undeclared.map((e) => e.event).join(', ')} with no ` +
+      'boolean notAGrant in contract.js.');
+    console.error('  The field is required on every row: a row that omits it is not a grant, and it is not emitted as one.');
     process.exit(1);
   }
 }
@@ -152,7 +167,12 @@ lines.push('/// A null [reason] is an event that is deliberately NOT a revocatio
 lines.push('/// a different fact from an event nobody mapped — the table records both so the');
 lines.push('/// next reader does not close the gap by guessing.');
 lines.push('class RevenueCatEventReason {');
-lines.push('  const RevenueCatEventReason(this.event, this.reason, {required this.dateDerived});');
+lines.push('  const RevenueCatEventReason(');
+lines.push('    this.event,');
+lines.push('    this.reason, {');
+lines.push('    required this.dateDerived,');
+lines.push('    required this.notAGrant,');
+lines.push('  });');
 lines.push('');
 lines.push('  /// The vendor event type, verbatim.');
 lines.push('  final String event;');
@@ -170,6 +190,12 @@ lines.push('  /// a caller that acts on [reason] alone for a date-derived event 
 lines.push('  /// one of the two shapes the vendor spells the same way.');
 lines.push('  final bool dateDerived;');
 lines.push('');
+lines.push('  /// Whether the vendor describes this event as NO access change, although it');
+lines.push('  /// carries no [reason] and is not [dateDerived] — the shape otherwise read');
+lines.push('  /// as a grant. Required on every row: a caller must never treat a row as a');
+lines.push('  /// grant unless this is false.');
+lines.push('  final bool notAGrant;');
+lines.push('');
 lines.push('  @override');
 lines.push("  String toString() => reason == null ? '$event -> (no revocation)' : '$event -> $reason';");
 lines.push('}');
@@ -180,7 +206,7 @@ lines.push('    <RevenueCatEventReason>[');
 for (const e of events) {
   lines.push(
     `  RevenueCatEventReason(${dq(e.event)}, ${e.reason === null ? 'null' : dq(e.reason)}, ` +
-      `dateDerived: ${e.dateDerived ? 'true' : 'false'}),`,
+      `dateDerived: ${e.dateDerived ? 'true' : 'false'}, notAGrant: ${e.notAGrant ? 'true' : 'false'}),`,
   );
 }
 lines.push('];');

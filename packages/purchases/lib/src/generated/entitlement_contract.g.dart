@@ -67,7 +67,12 @@ bool revocationRestoresAccess(String reason) =>
 /// a different fact from an event nobody mapped — the table records both so the
 /// next reader does not close the gap by guessing.
 class RevenueCatEventReason {
-  const RevenueCatEventReason(this.event, this.reason, {required this.dateDerived});
+  const RevenueCatEventReason(
+    this.event,
+    this.reason, {
+    required this.dateDerived,
+    required this.notAGrant,
+  });
 
   /// The vendor event type, verbatim.
   final String event;
@@ -85,6 +90,12 @@ class RevenueCatEventReason {
   /// one of the two shapes the vendor spells the same way.
   final bool dateDerived;
 
+  /// Whether the vendor describes this event as NO access change, although it
+  /// carries no [reason] and is not [dateDerived] — the shape otherwise read
+  /// as a grant. Required on every row: a caller must never treat a row as a
+  /// grant unless this is false.
+  final bool notAGrant;
+
   @override
   String toString() => reason == null ? '$event -> (no revocation)' : '$event -> $reason';
 }
@@ -92,25 +103,25 @@ class RevenueCatEventReason {
 /// The RevenueCat event to revocation-reason map, in the order it is authored.
 const List<RevenueCatEventReason> kRevenueCatEventReasons =
     <RevenueCatEventReason>[
-  RevenueCatEventReason('CANCELLATION', 'cancelled_at_period_end', dateDerived: true),
-  RevenueCatEventReason('EXPIRATION', 'subscription_expired', dateDerived: false),
-  RevenueCatEventReason('SUBSCRIPTION_PAUSED', null, dateDerived: false),
-  RevenueCatEventReason('NON_RENEWING_PURCHASE', null, dateDerived: false),
-  RevenueCatEventReason('PRODUCT_CHANGE', null, dateDerived: false),
-  RevenueCatEventReason('SUBSCRIPTION_EXTENDED', null, dateDerived: false),
-  RevenueCatEventReason('BILLING_ISSUE', null, dateDerived: true),
-  RevenueCatEventReason('INITIAL_PURCHASE', null, dateDerived: false),
-  RevenueCatEventReason('RENEWAL', null, dateDerived: false),
-  RevenueCatEventReason('UNCANCELLATION', null, dateDerived: false),
-  RevenueCatEventReason('TRANSFER', null, dateDerived: false),
-  RevenueCatEventReason('TEMPORARY_ENTITLEMENT_GRANT', null, dateDerived: false),
-  RevenueCatEventReason('INVOICE_ISSUANCE', null, dateDerived: false),
-  RevenueCatEventReason('VIRTUAL_CURRENCY_TRANSACTION', null, dateDerived: false),
-  RevenueCatEventReason('EXPERIMENT_ENROLLMENT', null, dateDerived: false),
-  RevenueCatEventReason('PURCHASE_REDEEMED', null, dateDerived: false),
-  RevenueCatEventReason('SUBSCRIBER_ALIAS', null, dateDerived: false),
-  RevenueCatEventReason('PRICE_INCREASE_CONSENT_REQUIRED', null, dateDerived: false),
-  RevenueCatEventReason('PRICE_INCREASE_CONSENT_APPROVED', null, dateDerived: false),
+  RevenueCatEventReason('CANCELLATION', 'cancelled_at_period_end', dateDerived: true, notAGrant: false),
+  RevenueCatEventReason('EXPIRATION', 'subscription_expired', dateDerived: false, notAGrant: false),
+  RevenueCatEventReason('SUBSCRIPTION_PAUSED', null, dateDerived: false, notAGrant: true),
+  RevenueCatEventReason('NON_RENEWING_PURCHASE', null, dateDerived: false, notAGrant: false),
+  RevenueCatEventReason('PRODUCT_CHANGE', null, dateDerived: false, notAGrant: false),
+  RevenueCatEventReason('SUBSCRIPTION_EXTENDED', null, dateDerived: false, notAGrant: false),
+  RevenueCatEventReason('BILLING_ISSUE', null, dateDerived: true, notAGrant: false),
+  RevenueCatEventReason('INITIAL_PURCHASE', null, dateDerived: false, notAGrant: false),
+  RevenueCatEventReason('RENEWAL', null, dateDerived: false, notAGrant: false),
+  RevenueCatEventReason('UNCANCELLATION', null, dateDerived: false, notAGrant: false),
+  RevenueCatEventReason('TRANSFER', null, dateDerived: false, notAGrant: false),
+  RevenueCatEventReason('TEMPORARY_ENTITLEMENT_GRANT', null, dateDerived: false, notAGrant: true),
+  RevenueCatEventReason('INVOICE_ISSUANCE', null, dateDerived: false, notAGrant: true),
+  RevenueCatEventReason('VIRTUAL_CURRENCY_TRANSACTION', null, dateDerived: false, notAGrant: true),
+  RevenueCatEventReason('EXPERIMENT_ENROLLMENT', null, dateDerived: false, notAGrant: true),
+  RevenueCatEventReason('PURCHASE_REDEEMED', null, dateDerived: false, notAGrant: true),
+  RevenueCatEventReason('SUBSCRIBER_ALIAS', null, dateDerived: false, notAGrant: true),
+  RevenueCatEventReason('PRICE_INCREASE_CONSENT_REQUIRED', null, dateDerived: false, notAGrant: true),
+  RevenueCatEventReason('PRICE_INCREASE_CONSENT_APPROVED', null, dateDerived: false, notAGrant: true),
 ];
 
 /// The revocation reason a RevenueCat event means, or null when it means none.

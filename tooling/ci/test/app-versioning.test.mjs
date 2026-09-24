@@ -953,6 +953,42 @@ describe('assert-app-versioning — Play versionCode high-water (static)', () =>
     assert.match(out, /consumed\.subscriptiontracker: `value` is not a whole number/);
   });
 
+  // ⏱ 2026-09-24 — cloud-review #909 finding 3: four refusal branches had no test, and deleting
+  // any one of them left this file green. Each case below goes red when its branch is deleted.
+  test('COVERAGE LOST when a runNumberFloors value is not a whole number (F3a)', () => {
+    const hw = highWater({ floors: { [SUBMIT_PLAY_WF]: { value: '5' } } });
+    const { code, out } = run({ args: [withPlay('hw-floor-string', { register: playRegister(hw) })] });
+    assert.equal(code, 2, out);
+    assert.match(out, /runNumberFloors\[".github\/workflows\/submit-play.yml"\]: .value. is not a whole number/);
+  });
+
+  test('COVERAGE LOST when the record carries consumed and no runNumberFloors object (F3b)', () => {
+    const hw = { consumed: highWater().consumed };
+    const { code, out } = run({ args: [withPlay('hw-no-floors', { register: playRegister(hw) })] });
+    assert.equal(code, 2, out);
+    assert.match(out, /must be an object carrying a .consumed. object and a .runNumberFloors. object/);
+  });
+
+  test('FAILS an upload that names no --app: no consumed entry can be its mark (F3d)', () => {
+    const uploadNoApp =
+      '      - name: Upload to Google Play\n        run: >\n' +
+      '          node tooling/release/submit-play.mjs --submit\n          --confirm "$CONFIRM"\n';
+    const wf = playWf(job('submit', EMIT_STEP + playBuild('${{ github.run_number }}') + uploadNoApp));
+    const { code, out } = run({ args: [withPlay('hw-upload-no-app', { wf })] });
+    assert.equal(code, 1, out);
+    assert.match(out, /uploads with no --app/);
+  });
+
+  // cloud-review #909 finding 2: a reusable workflow's github.run_number is its CALLER's counter.
+  test('FAILS a Play build in a reusable workflow (on: workflow_call): its floor bounds nothing (F2)', () => {
+    const wf =
+      'name: Submit Play\non:\n  workflow_call:\npermissions:\n  contents: read\njobs:\n' +
+      job('submit', EMIT_STEP + playBuild('${{ github.run_number }}') + UPLOAD);
+    const { code, out } = run({ args: [withPlay('hw-workflow-call', { wf })] });
+    assert.equal(code, 1, out);
+    assert.match(out, /reusable workflow \(on: workflow_call\)/);
+  });
+
   // The limb wakes on the record OR a subject; a tree with neither keeps its verdict and says so.
   test('a tree with no Play build source and no record PASSES and prints that no bound was held', () => {
     const { code, out } = run({ args: [lane('hw-none')] });
@@ -981,58 +1017,111 @@ describe('assert-app-versioning — --play-floor', () => {
   const APP = ['--app', 'subscriptiontracker'];
 
   test('FAILS a run number EQUAL to the mark: it would reuse a consumed versionCode (M5)', () => {
-    const { code, out } = run({ args: ['--play-floor', '1', ...APP, floorDir('pf-equal')] });
+    const { code, out } = run({ args: ['--play-floor', '1', ...APP, '--recorded-upload', 'none', floorDir('pf-equal')] });
     assert.equal(code, 1, out);
     assert.match(out, /run_number 1 would become versionCode 1; Play has consumed 1 for subscriptiontracker/);
   });
 
   test('PASSES run number 2, the mark + 1 (M5)', () => {
-    const { code, out } = run({ args: ['--play-floor', '2', ...APP, floorDir('pf-above-2')] });
+    const { code, out } = run({ args: ['--play-floor', '2', ...APP, '--recorded-upload', 'none', floorDir('pf-above-2')] });
     assert.equal(code, 0, out);
     assert.match(out, /ok {2}Play versionCode 2 > consumed 1/);
   });
 
   test('PASSES run number 6, above the mark (M5)', () => {
-    const { code, out } = run({ args: ['--play-floor', '6', ...APP, floorDir('pf-above-6')] });
+    const { code, out } = run({ args: ['--play-floor', '6', ...APP, '--recorded-upload', 'none', floorDir('pf-above-6')] });
     assert.equal(code, 0, out);
     assert.match(out, /ok {2}Play versionCode 6 > consumed 1/);
   });
 
   test('refuses (2) a run number that is not digits (M5)', () => {
-    const { code, out } = run({ args: ['--play-floor', 'abc', ...APP, floorDir('pf-abc')] });
+    const { code, out } = run({ args: ['--play-floor', 'abc', ...APP, '--recorded-upload', 'none', floorDir('pf-abc')] });
     assert.equal(code, 2, out);
     assert.match(out, /--play-floor "abc" is not a run number/);
   });
 
   test('refuses (2) --play-floor without --app (M5)', () => {
-    const { code, out } = run({ args: ['--play-floor', '6', floorDir('pf-no-app')] });
+    const { code, out } = run({ args: ['--play-floor', '6', '--recorded-upload', 'none', floorDir('pf-no-app')] });
     assert.equal(code, 2, out);
     assert.match(out, /--play-floor was passed without --app/);
   });
 
   test('refuses (2) --play-floor with --emit in one invocation (M5)', () => {
-    const { code, out } = run({ args: ['--play-floor', '6', '--emit', 'apps/x', ...APP, floorDir('pf-with-emit')] });
+    const { code, out } = run({ args: ['--play-floor', '6', '--emit', 'apps/x', ...APP, '--recorded-upload', 'none', floorDir('pf-with-emit')] });
     assert.equal(code, 2, out);
     assert.match(out, /--play-floor with --emit in one invocation/);
   });
 
   test('refuses (2) --play-floor with --tag in one invocation (M5)', () => {
     const { code, out } = run({
-      args: ['--play-floor', '6', '--tag', 'subscriptiontracker-v1.0.0', ...APP, floorDir('pf-with-tag')],
+      args: ['--play-floor', '6', '--tag', 'subscriptiontracker-v1.0.0', ...APP, '--recorded-upload', 'none', floorDir('pf-with-tag')],
     });
     assert.equal(code, 2, out);
     assert.match(out, /--play-floor with --tag in one invocation/);
   });
 
   test('COVERAGE LOST (2) when the app has no consumed entry', () => {
-    const { code, out } = run({ args: ['--play-floor', '6', '--app', 'other', floorDir('pf-other')] });
+    const { code, out } = run({ args: ['--play-floor', '6', '--app', 'other', '--recorded-upload', 'none', floorDir('pf-other')] });
     assert.equal(code, 2, out);
     assert.match(out, /consumed has no entry "other" \(it has: subscriptiontracker\)/);
   });
 
   test('COVERAGE LOST (2) when the register carries no high-water record', () => {
-    const { code, out } = run({ args: ['--play-floor', '6', ...APP, floorDir('pf-no-record', DEFAULT_REGISTER)] });
+    const { code, out } = run({ args: ['--play-floor', '6', ...APP, '--recorded-upload', 'none', floorDir('pf-no-record', DEFAULT_REGISTER)] });
     assert.equal(code, 2, out);
     assert.match(out, /has no entry "subscriptiontracker" \(it has: no consumed object\)/);
+  });
+
+  // ⏱ 2026-09-24 — cloud-review #909 findings 1 and 3. `--recorded-upload` is the largest
+  // versionCode the [10]D-9 ledger holds for the app (read-ledger-version-code.mjs), or `none`.
+  // A ledger above the committed mark means the mark was never refreshed, and the run stops.
+  const regAt = (mark) =>
+    registerJson([
+      WEB_ROW,
+      {
+        id: 'android-play',
+        served: false,
+        versionCodeHighWater: {
+          consumed: { subscriptiontracker: { value: mark, asOf: '2026-09-22T21:59:37Z', verify: 'fixture', run: 1 } },
+          runNumberFloors: {},
+        },
+      },
+    ]);
+
+  test('COVERAGE LOST (2) when the consumed value is 0, not a whole number of 1 or more (F3c)', () => {
+    const { code, out } = run({ args: ['--play-floor', '6', ...APP, '--recorded-upload', 'none', floorDir('pf-mark-0', regAt(0))] });
+    assert.equal(code, 2, out);
+    assert.match(out, /not a whole number of 1 or more/);
+  });
+
+  test('FAILS when the ledger records an upload above the committed mark (D1)', () => {
+    const { code, out } = run({ args: ['--play-floor', '7', ...APP, '--recorded-upload', '6', floorDir('pf-ledger-above', regAt(1))] });
+    assert.equal(code, 1, out);
+    assert.match(out, /ledger records versionCode 6/);
+    assert.match(out, /consumed\.subscriptiontracker is 1/);
+  });
+
+  test('PASSES when the ledger records an upload below the committed mark (D2)', () => {
+    const { code, out } = run({ args: ['--play-floor', '6', ...APP, '--recorded-upload', '3', floorDir('pf-ledger-below', regAt(5))] });
+    assert.equal(code, 0, out);
+    assert.match(out, /ok {2}Play versionCode 6 > consumed 5/);
+  });
+
+  test('PASSES when the ledger records an upload EQUAL to the committed mark (D3)', () => {
+    const { code, out } = run({ args: ['--play-floor', '6', ...APP, '--recorded-upload', '5', floorDir('pf-ledger-equal', regAt(5))] });
+    assert.equal(code, 0, out);
+    assert.match(out, /last recorded upload \(5\)/);
+  });
+
+  test('refuses (2) --play-floor without --recorded-upload (D4)', () => {
+    const { code, out } = run({ args: ['--play-floor', '7', ...APP, floorDir('pf-no-recorded')] });
+    assert.equal(code, 2, out);
+    assert.match(out, /--play-floor was passed without --recorded-upload/);
+  });
+
+  test('refuses (2) a --recorded-upload that is neither digits nor `none` (D5)', () => {
+    const { code, out } = run({ args: ['--play-floor', '7', ...APP, '--recorded-upload', 'abc', floorDir('pf-recorded-abc')] });
+    assert.equal(code, 2, out);
+    assert.match(out, /--recorded-upload "abc" is not a versionCode or `none`/);
   });
 });

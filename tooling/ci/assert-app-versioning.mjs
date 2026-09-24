@@ -49,15 +49,16 @@
 //     → prints `release_line=…` / `pubspec_version=…` in GITHUB_OUTPUT form.
 //   node tooling/ci/assert-app-versioning.mjs --tag subscriptiontracker-v1.0.0 --ref-type tag|branch [--app apps/subscriptiontracker] [repoRoot]
 //     → the tag names the build name pubspec declares. See the --tag block.
-//   node tooling/ci/assert-app-versioning.mjs --play-floor <run_number> --app subscriptiontracker [repoRoot]
-//     → the run number lies above the versionCode Play consumed. See the --play-floor block.
+//   node tooling/ci/assert-app-versioning.mjs --play-floor <run_number> --app subscriptiontracker --recorded-upload <n|none> [repoRoot]
+//     → the run number lies above the versionCode Play consumed, and the committed mark is not below
+//       the ledger's last recorded upload (read-ledger-version-code.mjs). See the --play-floor block.
 //
 // Exit 0 = wired, 1 = not wired (or the scan shrank), 2 = the flags name no check.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { listDir } from './tree-walk.mjs';
-import { parseWorkflow, parseAllWorkflows, flutterReleaseBuilds, gradeDomain, buildAt, shellSegments } from './workflow-scan.mjs';
+import { parseWorkflow, parseAllWorkflows, flutterReleaseBuilds, gradeDomain, buildAt, shellSegments, workflowEvents } from './workflow-scan.mjs';
 import { UNTAGGED_REF, releaseTagOf } from './tag-owner.mjs';
 
 // ── The release lanes are DERIVED FROM THE REGISTER, never typed here ─────────
@@ -148,8 +149,9 @@ const tagFlag = takeFlag(emitFlag.rest, '--tag');
 const appFlag = takeFlag(tagFlag.rest, '--app');
 const playFlag = takeFlag(appFlag.rest, '--play-floor');
 const refTypeFlag = takeFlag(playFlag.rest, '--ref-type');
+const recordedFlag = takeFlag(refTypeFlag.rest, '--recorded-upload');
 const emitApp = emitFlag.value;
-const repoRoot = refTypeFlag.rest[0] ?? process.cwd();
+const repoRoot = recordedFlag.rest[0] ?? process.cwd();
 
 // 🔴 MODE COLLISION. MEASURED 2026-08-27: `--emit … --tag subscriptiontracker-v9.9.9` → 0; that tag alone → 1.
 if (emitApp !== null && tagFlag.value !== null) {
@@ -180,6 +182,18 @@ if (refTypeFlag.value !== null && tagFlag.value === null) {
 }
 if (refTypeFlag.value !== null && refTypeFlag.value !== 'tag' && refTypeFlag.value !== 'branch') {
   console.error(`✗ --ref-type must be tag or branch, got ${JSON.stringify(refTypeFlag.value)} — those are the two values github.ref_type takes`);
+  process.exit(2);
+}
+// ⏱ 2026-09-24 — after the checks above, so each keeps answering first for its own mistake.
+if (playFlag.value !== null && recordedFlag.value === null) {
+  console.error(
+    '✗ --play-floor was passed without --recorded-upload — the ledger\'s last recorded upload (a versionCode, or `none`)' +
+      ' is what shows the committed mark is not stale; read it with tooling/ci/read-ledger-version-code.mjs',
+  );
+  process.exit(2);
+}
+if (recordedFlag.value !== null && playFlag.value === null) {
+  console.error('✗ --recorded-upload was passed without --play-floor — it would be silently dropped and a different check report ok');
   process.exit(2);
 }
 
@@ -373,6 +387,11 @@ if (tagFlag.value !== null) {
 // versionCode each upload consumed; recording it is a commit. A mark nobody
 // refreshed is lower than Play's real one, and this check then passes numbers
 // Play may still refuse. The static limb's floor >= mark rule does not close that.
+// ⏱ 2026-09-24 — and a stale mark now STOPS the dispatch (cloud-review #909 finding 1).
+// Every upload writes its versionCode into its ledger Deployment
+// (`payload.version_code`, record-deployment.mjs --version-code), the step reads the
+// largest one with read-ledger-version-code.mjs and passes it as --recorded-upload, and
+// a ledger above the committed mark exits 1 until somebody commits it.
 if (playFlag.value !== null) {
   const runRaw = playFlag.value;
   const app = appFlag.value;
@@ -408,6 +427,28 @@ if (playFlag.value !== null) {
     console.error(`✗ COVERAGE LOST — ${where}.${app}.value is ${JSON.stringify(mark)}, not a whole number of 1 or more`);
     process.exit(2);
   }
+  const recordedRaw = recordedFlag.value;
+  let recorded = null;
+  if (recordedRaw !== 'none') {
+    if (!/^\d+$/.test(recordedRaw)) {
+      console.error(
+        `✗ --recorded-upload "${recordedRaw}" is not a versionCode or \`none\` — the ledger's answer could not be read,` +
+          ' so there is nothing to hold the committed mark against',
+      );
+      process.exit(2);
+    }
+    recorded = Number(recordedRaw);
+  }
+  // With recorded <= mark the mark is the higher bound, and the run check below holds it.
+  if (recorded !== null && recorded > mark) {
+    console.error(
+      `✗ the ledger records versionCode ${recorded} (the largest payload.version_code on the android-play ledger` +
+        ` Deployments for ${app}), but consumed.${app} is ${mark} (${where}.${app}, asOf ${entry.asOf ?? 'unrecorded'}):` +
+        ` set consumed.${app}.value to ${recorded}, with its asOf and run, and raise runNumberFloors before the next build.` +
+        ' A mark below an upload the ledger holds passes numbers Play may still refuse.',
+    );
+    process.exit(1);
+  }
   const run = Number(runRaw);
   if (run <= mark) {
     console.error(
@@ -419,7 +460,7 @@ if (playFlag.value !== null) {
   }
   console.log(
     `ok  Play versionCode ${run} > consumed ${mark} (${app}, ${where}.${app}, asOf ${entry.asOf ?? 'unrecorded'});` +
-      ' the recorded mark, not a live Play read.',
+      ` the recorded mark, checked against the ledger's last recorded upload (${recorded ?? 'none'}), not a live Play read.`,
   );
   process.exit(0);
 }
@@ -1150,6 +1191,16 @@ function playHighWater({ census, exemptKeys, allParsed, register }) {
         `${at} is stamped android-play and the high-water limb cannot bound: ` +
           `${bn === null ? 'no --build-number=' : `--build-number "${bn}"`} is not the workflow run counter` +
           ' ${{ github.run_number }}, so nothing places its versionCode above what Play consumed',
+      );
+    }
+    // ⏱ 2026-09-24 — cloud-review #909 finding 2. A reusable workflow's run counter is its
+    // CALLER's, so a floor recorded against this file says nothing about the number it stamps.
+    const parsed = allParsed.find((w) => w.rel === b.workflow) ?? null;
+    if (workflowEvents(parsed).has('workflow_call')) {
+      holds = false;
+      out.problems.push(
+        `${at}: ${b.workflow} is a reusable workflow (on: workflow_call), so github.run_number there is the CALLER's counter, not` +
+          " this file's; its runNumberFloors entry bounds nothing. Build Play bundles only in a workflow that owns its run counter.",
       );
     }
     if (floors !== null) {

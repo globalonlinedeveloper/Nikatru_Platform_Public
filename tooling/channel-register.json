@@ -2108,7 +2108,9 @@
           "A floor is the latest COMPLETED run_number of that file, so every later run is at least floor + 1:",
           "the guard therefore requires floor >= every consumed value, and --play-floor requires the live",
           "run_number > it. The truth about what Play consumed is the COMMITTED line plus the readback, never",
-          "the run number: run 35787897094 was run_number 5 and uploaded versionCode 1."
+          "the run number: run 35787897094 was run_number 5 and uploaded versionCode 1.",
+          "⏱ 2026-09-24 — CORRECTION: `verify` (`gh run list … -L 1`) returns the latest run of ANY status, and that is what each floor holds; every later run is still at least floor + 1, so the bound is unchanged.",
+          "⏱ 2026-09-24 — Each upload also writes its versionCode into its ledger Deployment (`payload.version_code`, record-deployment.mjs --version-code), and --play-floor refuses to build while `consumed` is below the largest one: a mark nobody refreshed stops the next dispatch instead of passing it."
         ],
         "consumed": {
           "subscriptiontracker": {

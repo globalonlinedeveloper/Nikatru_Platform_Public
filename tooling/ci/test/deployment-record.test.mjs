@@ -43,6 +43,7 @@ import { isRetryable, retryDelayMs, RETRY_ATTEMPTS, runIdentity, RUN_IDENTITY_EN
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const ROOT = resolve(CI_DIR, '../..');
 const RECORDER = join(CI_DIR, 'record-deployment.mjs');
+const READER = join(CI_DIR, 'read-ledger-version-code.mjs');
 
 let TMP;
 let seq = 0;
@@ -109,14 +110,22 @@ function githubReplay(appendFileSync) {
   const json = (body, code) => new Response(JSON.stringify(body), { status: code, headers: { 'content-type': 'application/json' } });
   globalThis.fetch = async (input, init = {}) => {
     const url = typeof input === 'string' ? input : input.url;
-    const { pathname } = new URL(url);
+    const { pathname, search } = new URL(url);
     let body = null;
     try {
       body = JSON.parse(init.body ?? 'null');
     } catch {
       body = { unparseable: String(init.body) };
     }
-    if (log) appendFileSync(log, `${JSON.stringify({ method: init.method ?? 'GET', pathname, body })}\n`);
+    if (log) appendFileSync(log, `${JSON.stringify({ method: init.method ?? 'GET', pathname, search, body })}\n`);
+    // ⏱ 2026-09-24 — the ledger READ (read-ledger-version-code.mjs). It answers the list in
+    // RECORD_REPLAY_LIST unless the case names a refusal status of its own; the 401 default
+    // is the write's, and a read case that wants a refusal says so.
+    if ((init.method ?? 'GET') === 'GET' && /^\/repos\/[^/]+\/[^/]+\/deployments$/.test(pathname)) {
+      return process.env.RECORD_REPLAY_STATUS && status >= 300
+        ? json({ message: 'Bad credentials' }, status)
+        : json(JSON.parse(process.env.RECORD_REPLAY_LIST ?? '[]'), 200);
+    }
     if (/^\/repos\/[^/]+\/[^/]+\/deployments$/.test(pathname)) {
       return status === 201 ? json({ id: 42 }, 201) : json({ message: 'Bad credentials' }, status);
     }
@@ -138,9 +147,9 @@ before(() => {
 
 /** Run the real recorder against the replay. Every request it makes is written
  *  to a per-call log, so "what did it send" is measured rather than described. */
-function record(args, env = {}) {
+function record(args, env = {}, script = RECORDER) {
   const log = join(TMP, `replay-${seq++}.log`);
-  const r = spawnSync(process.execPath, ['--import', pathToFileURL(REPLAY).href, RECORDER, ...args], {
+  const r = spawnSync(process.execPath, ['--import', pathToFileURL(REPLAY).href, script, ...args], {
     encoding: 'utf8',
     env: {
       ...process.env,
@@ -162,8 +171,11 @@ function record(args, env = {}) {
   const requests = existsSync(log)
     ? readFileSync(log, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l))
     : [];
-  return { code: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}`, requests };
+  return { code: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}`, stdout: r.stdout ?? '', requests };
 }
+
+/** ⏱ 2026-09-24 — the ledger READER, against the same replay. */
+const readLedger = (args, env = {}) => record(args, env, READER);
 
 describe('deployment-record — the encoding round-trips', () => {
   for (const state of STATES) {
@@ -702,7 +714,7 @@ describe('record-deployment — the DEPLOYMENT and its STATUS carry the same sha
 
   test('a store record carries its review state and listing URL into BOTH bodies', () => {
     const { code, requests } = record(
-      ['subscriptiontracker-android-play', '--state', 'in_review', '--listing-url', 'https://play.google.com/store/apps/details?id=x'],
+      ['subscriptiontracker-android-play', '--state', 'in_review', '--listing-url', 'https://play.google.com/store/apps/details?id=x', '--version-code', '5'],
       { RECORD_REPLAY_STATUS: '201' },
     );
     assert.equal(code, 0);
@@ -871,12 +883,12 @@ describe('record-deployment — every Deployment names the run that wrote it', (
 
   test('the recorder WRITES the run payload into the Deployment it creates', () => {
     const { code, out, requests } = record(
-      ['subscriptiontracker-android-play', '--state', 'in_review', '--listing-url', 'https://play.google.com/store/apps/details?id=x'],
+      ['subscriptiontracker-android-play', '--state', 'in_review', '--listing-url', 'https://play.google.com/store/apps/details?id=x', '--version-code', '5'],
       { RECORD_REPLAY_STATUS: '201' },
     );
     assert.equal(code, 0, out);
     assert.equal(requests[0].pathname, '/repos/x/y/deployments');
-    assert.deepEqual(requests[0].body.payload, PLAY_IDENTITY);
+    assert.deepEqual(requests[0].body.payload, { ...PLAY_IDENTITY, version_code: 5 });
   });
 
   test('a WEB record carries the run payload too — every Deployment names the run that wrote it', () => {
@@ -893,7 +905,7 @@ describe('record-deployment — every Deployment names the run that wrote it', (
 
   test('a SUBMITTABLE channel with no run identity is REFUSED, exit 2, before anything is written', () => {
     const { code, out, requests } = record(
-      ['subscriptiontracker-android-play', '--state', 'in_review', '--listing-url', 'https://play.google.com/store/apps/details?id=x'],
+      ['subscriptiontracker-android-play', '--state', 'in_review', '--listing-url', 'https://play.google.com/store/apps/details?id=x', '--version-code', '5'],
       { RECORD_REPLAY_STATUS: '201', ...NO_IDENTITY },
     );
     assert.equal(code, 2, out);
@@ -985,6 +997,71 @@ jobs:
     const { problems } = dialectBlockers('submit-x.yml', root);
     assert.equal(problems.length, 1, JSON.stringify(problems));
     assert.match(problems[0], /a shell nobody can name: job "submit" runs on `\$\{\{ matrix\.os \}\}`/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-24 · A PLAY UPLOAD RECORDS ITS versionCode (cloud-review #909 finding 1).
+// The committed mark in tooling/channel-register.json moved only when somebody committed
+// it, so a run nobody recorded left --play-floor comparing against a stale mark. The
+// upload's own ledger Deployment now carries `payload.version_code`, and
+// read-ledger-version-code.mjs hands the largest one to --play-floor before each build.
+// Whether a row requires the flag is read from the register (`versionCodeHighWater`),
+// never from the environment's name.
+// ─────────────────────────────────────────────────────────────────────────────
+const PLAY_ARGS = ['subscriptiontracker-android-play', '--state', 'in_review', '--listing-url', 'https://play.google.com/store/apps/details?id=x'];
+
+describe('record-deployment — a Play upload writes its versionCode into the ledger', () => {
+  test('the Deployment payload carries version_code beside the run identity (L1)', () => {
+    const { code, out, requests } = record([...PLAY_ARGS, '--version-code', '7'], { RECORD_REPLAY_STATUS: '201' });
+    assert.equal(code, 0, out);
+    assert.equal(requests[0].pathname, '/repos/x/y/deployments');
+    assert.equal(requests[0].body.payload.version_code, 7);
+    assert.equal(requests[0].body.payload.run_id, 35787897094, 'the run identity stays beside it');
+  });
+
+  test('a row with a versionCodeHighWater block REFUSES a record with no --version-code, before anything is written (L2)', () => {
+    const { code, out, requests } = record(PLAY_ARGS, { RECORD_REPLAY_STATUS: '201' });
+    assert.equal(code, 1, out);
+    assert.match(out, /--version-code/);
+    assert.deepEqual(requests, [], 'a Play record that names no versionCode is not written');
+  });
+
+  test('a row with no versionCodeHighWater block REFUSES --version-code, before anything is written (L3)', () => {
+    const { code, out, requests } = record(['subscriptiontracker-web', 'https://nikatru.com/subscriptiontracker/', '--version-code', '7'], {
+      RECORD_REPLAY_STATUS: '201',
+    });
+    assert.equal(code, 1, out);
+    assert.match(out, /--version-code/);
+    assert.deepEqual(requests, []);
+  });
+});
+
+describe('read-ledger-version-code — the largest versionCode the ledger holds', () => {
+  test('prints the largest version_code, reading a string payload as JSON (L4)', () => {
+    const list = [{ payload: { version_code: 5 } }, { payload: '{"version_code":9}' }, { payload: {} }];
+    const { code, out, stdout, requests } = readLedger(['subscriptiontracker-android-play'], { RECORD_REPLAY_LIST: JSON.stringify(list) });
+    assert.equal(code, 0, out);
+    assert.equal(stdout.trim(), '9');
+    assert.deepEqual(requests.map((r) => `${r.method} ${r.pathname}`), ['GET /repos/x/y/deployments'], 'one short page, one read');
+    assert.match(requests[0].search, /environment=subscriptiontracker-android-play/);
+  });
+
+  test('prints `none` when no Deployment carries a version_code (L5)', () => {
+    const list = [
+      { payload: { workflow: 'submit-play.yml', run_id: 35787897094, run_attempt: 1, run_number: 5 } },
+      { payload: '' },
+      {},
+    ];
+    const { code, out, stdout } = readLedger(['subscriptiontracker-android-play'], { RECORD_REPLAY_LIST: JSON.stringify(list) });
+    assert.equal(code, 0, out);
+    assert.equal(stdout.trim(), 'none');
+  });
+
+  test('exits 2 and prints nothing on stdout when GitHub refuses the read (L6)', () => {
+    const { code, out, stdout } = readLedger(['subscriptiontracker-android-play'], { RECORD_REPLAY_STATUS: '401' });
+    assert.equal(code, 2, out);
+    assert.equal(stdout, '', 'the step reads stdout as the answer, so a refusal must print none of it');
   });
 });
 
