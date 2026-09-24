@@ -37,8 +37,12 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { listDir } from './tree-walk.mjs';
 import { deriveAdapters, pubspecDeps } from './adapter-set.mjs';
+import { requireAppSet } from './app-set.mjs';
 
 const ROOT = process.cwd();
+// ⏱ 2026-09-24 · O-GUARDS-READ-A-HAND-LISTED-APP-SET: limb (c)'s app roots are
+// the workspace app set, not a directory listing of apps/. Empty → exit 2.
+const APP_SET = requireAppSet(ROOT, 'assert-package-boundaries');
 const problems = [];
 const notes = [];
 const ok = (m) => console.log(`ok   ${m}`);
@@ -235,16 +239,18 @@ const KNOWN_BYPASSES = {
     "2026-08-01 · same reclassification, same reason: the template opens `AppConfig.privacyUrl`, `AppConfig.termsUrl` and a support `mailto:`. `CheckoutLauncher` refuses non-https by design, so it cannot serve them. THIS ONE IS THE REAL WORK ITEM — it is the chassis, so every stamped app inherits it: the gap is a shared `ExternalLinkLauncher` seam, not a change to the money rail.",
 };
 
+// ⏱ 2026-09-24 · THE APP ROOTS ARE THE WORKSPACE APP SET (tooling/ci/app-set.mjs).
+// This was a directory listing of apps/ that skipped `apps/probe` as "a gitignored
+// local stamp, never in CI" — false by then: ci.yml's app-brick job stamps
+// apps/probe INTO the workspace, so the skip left the one stamped app CI grades
+// unread. A dev-box stamp is still not scanned, because it is not in the
+// workspace; an app the workspace declares with no lib/ is COVERAGE LOST.
 const appRoots = [];
-if (existsSync(join(ROOT, 'apps'))) {
-  for (const a of listDir(join(ROOT, 'apps'))) {
-    // apps/probe is a gitignored local stamp — present on a dev box, never in
-    // CI. Scanning it would make this guard's result depend on whether somebody
-    // happened to stamp a probe, which is not a property of the repository.
-    if (a === 'probe') continue;
-    if (existsSync(join(ROOT, 'apps', a, 'lib'))) appRoots.push(`apps/${a}/lib`);
-  }
+for (const a of APP_SET) {
+  if (existsSync(join(ROOT, a.dir, 'lib'))) appRoots.push(`${a.dir}/lib`);
+  else coverageLost(`${a.dir} is in the workspace app set and has no lib/ — limb (c) cannot grade its imports.`);
 }
+const APP_IDS = new Set(APP_SET.map((a) => a.dir));
 const BRICK_LIB = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib';
 if (existsSync(join(ROOT, BRICK_LIB))) appRoots.push(BRICK_LIB);
 
@@ -271,6 +277,14 @@ for (const root of appRoots) {
 // A grandfathered entry for a bypass that no longer happens is a stale claim,
 // and stale claims inflate apparent debt exactly as badly as they hide it.
 for (const key of Object.keys(KNOWN_BYPASSES)) {
+  // ⏱ 2026-09-24 · a waiver keyed by an app the workspace does not declare is a
+  // stale exemption: it can never be seen, so it would otherwise read as fixed
+  // debt while re-admitting the import the day the app returns.
+  const owner = key.split('|')[0];
+  if (owner !== 'brick' && !APP_IDS.has(owner)) {
+    problems.push(`stale exemption — KNOWN_BYPASSES key \`${key}\` names ${owner}, which is not in the workspace app set (${[...APP_IDS].join(', ')}). Delete it.`);
+    continue;
+  }
   if (!seen.has(key) && appRoots.length > 0 && WRAPPED.size >= MIN_WRAPPED) { // a limb (c) that could not look proves nothing stale — its COVERAGE LOST (exit 2) already stands
     problems.push(`KNOWN_BYPASSES still lists \`${key}\`, but that import no longer exists. It was fixed — delete the entry so the list keeps meaning something.`);
   }
@@ -291,5 +305,6 @@ if (problems.length) {
   console.error('\nassert-package-boundaries: FAILED');
   process.exit(problems.every((p) => p.startsWith('COVERAGE LOST')) ? 2 : 1);
 } else {
-  console.log('\nassert-package-boundaries: ok — core is pure, the design system is domain-free, and no NEW adapter bypass exists');
+  // apps=N is the workspace set's length, never the number of roots found.
+  console.log(`\nassert-package-boundaries: ok apps=${APP_SET.length} — core is pure, the design system is domain-free, and no NEW adapter bypass exists`);
 }

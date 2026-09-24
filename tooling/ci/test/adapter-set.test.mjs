@@ -107,7 +107,13 @@ describe('adapter-set — both guards range over ONE adapter set', () => {
     }
     mkdirSync(join(root, 'tooling'), { recursive: true });
     copyFileSync(join(REPO, 'tooling', 'capability-register.json'), join(root, 'tooling', 'capability-register.json'));
-    return write(root, { 'packages/sdk_only/pubspec.yaml': SDK_ONLY });
+    // ⏱ 2026-09-24 · assert-package-boundaries grades the workspace app set
+    // (tooling/ci/app-set.mjs) and refuses an empty one, so the tree declares an app.
+    return write(root, {
+      'packages/sdk_only/pubspec.yaml': SDK_ONLY,
+      'pubspec.yaml': 'workspace:\n  - apps/one\n',
+      'apps/one/lib/main.dart': '\n',
+    });
   }
   const runGuard = (guard, cwd) => {
     const r = spawnSync(process.execPath, [join(CI_DIR, guard)], { cwd, encoding: 'utf8' });
