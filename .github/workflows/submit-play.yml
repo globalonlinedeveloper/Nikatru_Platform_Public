@@ -79,6 +79,11 @@ jobs:
       - name: Derive the release line from pubspec
         id: ver
         run: node tooling/ci/assert-app-versioning.mjs --emit apps/subscriptiontracker >> "$GITHUB_OUTPUT"
+      # why: docs/ci/submit-play.md — before step "The versionCode lies above what Play consumed".
+      - name: The versionCode lies above what Play consumed
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+        run: node tooling/ci/assert-app-versioning.mjs --play-floor "$RUN_NUMBER" --app subscriptiontracker
       # why: the three version flags, byte-identical to the submit job's build. Without them
       # AppConfig.appVersion is 'dev' and the versionCode is pubspec's `+1`, which Play has
       # already consumed — docs/ci/submit-play.md §versioning. assert-app-versioning.mjs
@@ -241,6 +246,11 @@ jobs:
       - name: Derive the release line from pubspec
         id: ver
         run: node tooling/ci/assert-app-versioning.mjs --emit apps/subscriptiontracker >> "$GITHUB_OUTPUT"
+      # why: docs/ci/submit-play.md — before step "The versionCode lies above what Play consumed".
+      - name: The versionCode lies above what Play consumed
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+        run: node tooling/ci/assert-app-versioning.mjs --play-floor "$RUN_NUMBER" --app subscriptiontracker
       # why: `--build-number` IS THE PLAY versionCode, strictly increasing and never reusable.
       # `github.run_number` of THIS file: code 1 is burnt (runs 4-5, 2026-09-22) and the
       # counter is already past it. Renaming this file restarts it — see MAX_RUN_DIGITS.
@@ -363,6 +373,7 @@ jobs:
           ')"
           echo "⬜ [14]O-7 reading the Play track state for ${APPLICATION_ID}, expecting versionCode ${VERSION_CODE}"
           node tooling/ops/post-deploy-smoke.mjs --play-package "${APPLICATION_ID}" --expect "${VERSION_CODE}"
+          echo "::notice title=Play versionCode high-water::versionCode ${VERSION_CODE} is consumed. Record it in tooling/channel-register.json android-play.versionCodeHighWater.consumed.subscriptiontracker"
       - name: Record the submission in the [10]D-9 ledger
         if: always() && steps.upload.outcome == 'success'
         env:

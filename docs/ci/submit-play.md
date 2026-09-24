@@ -213,6 +213,41 @@ than validating a bundle nobody can upload. build-platforms.yml uses the
 same script and is NOT required to sign, because it is not the submission
 workflow and most of its runs are not tag pushes.
 
+### before step **The versionCode lies above what Play consumed**
+
+── 🔴 PLAY'S versionCode IS A ONE-WAY DOOR ─────────────────────────────
+⏱ ADDED 2026-09-23 (O-PLAY-VERSIONCODE-HIGH-WATER-UNRECORDED). Play refuses
+any upload whose versionCode is at or below one it has already consumed,
+and nothing lowers that high-water mark again: the only way past it is a
+permanent jump. The build below takes its versionCode from
+`github.run_number`, which counts runs of THIS FILE and restarts at 1 when
+the file is renamed or replaced.
+
+So before building, this step runs
+`assert-app-versioning.mjs --play-floor "$RUN_NUMBER" --app subscriptiontracker`.
+It reads `tooling/channel-register.json` →
+`android-play.versionCodeHighWater.consumed.subscriptiontracker` and fails
+the job when this run's number is at or below the recorded value. The run
+number comes through `env:`, never interpolated. The step sits in both
+jobs, under the same name: the dry run meets the refusal before anyone
+dispatches a real submission, and the submit job checks the very run that
+will upload.
+
+The same script's verify mode holds the files: every android-play-stamped
+release build must stamp `--build-number=${{ github.run_number }}`, its
+workflow must carry a `runNumberFloors` entry at or above every consumed
+value, and every job that runs `submit-play.mjs --submit` must build its
+own bundle.
+
+⚠️ THE CHECK IS ONLY AS GOOD AS THE RECORDED MARK. The readback step
+prints a `Play versionCode high-water` notice with the versionCode each
+upload consumed. After every real upload, write that value into
+`consumed.subscriptiontracker`, with its `asOf` and run id, and raise
+this file's `runNumberFloors` entry in the same commit: verify mode fails
+once a consumed value passes a floor. A mark nobody refreshed sits below
+Play's real one, and this step then passes a number Play may still
+refuse.
+
 ### before step **Build the app bundle**
 
 🔴 THE DEFINES ARE WHAT MAKE THIS A REAL BUNDLE RATHER THAN THE DEMO.
@@ -482,6 +517,11 @@ wrote 22+ production D1 rows as `dev` (ops watch #443, prod-provenance).
 The paragraph that stood here predicted the switch: "this expectation
 goes STALE and this step goes RED on a good submission". It was changed
 in the same commit as the build so that never happened.
+
+⏱ 2026-09-24 — corrected by the upload log of run 35787897094: ONE edit
+was committed (log :1691), versionCode 1, built without --build-number.
+The high-water mark is recorded in channel-register.json
+android-play.versionCodeHighWater.
 
 🔴 MONOTONICITY. `github.run_number` is counted per workflow FILE and
 only ever grows, so every new run of this workflow uploads a versionCode
