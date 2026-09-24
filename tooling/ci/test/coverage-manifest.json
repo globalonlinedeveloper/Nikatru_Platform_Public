@@ -16,7 +16,7 @@
   "app-naming.test.mjs": 30,
   "app-set.test.mjs": 10,
   "app-versioning.test.mjs": 101,
-  "app-yaml.test.mjs": 84,
+  "app-yaml.test.mjs": 85,
   "appimage-signing.test.mjs": 74,
   "apple-privacy-manifest.test.mjs": 44,
   "apple-provisioning.test.mjs": 65,

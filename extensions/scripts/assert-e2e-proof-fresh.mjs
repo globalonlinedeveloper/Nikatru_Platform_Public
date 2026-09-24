@@ -11,12 +11,15 @@
  * `legs.length > 0 && …`, while the runs query either side of it was
  * byte-identical once de-indented. Both call sites now run THIS file.
  *
- * BOTH CALL SITES SURVIVE ON PURPOSE, because their silences are complementary:
- *   ci.yml         — every push to main and every PR. A dead cron cannot
- *                    silence it, which is the whole reason it exists.
- *   e2e.yml        — its own `proof-fresh` job, on the weekly cron, on
- *                    workflow_dispatch, or on a `run-e2e` label this repository
- *                    does not define. A quiet main cannot silence it.
+ * ONE CALL SITE: the job `e2e-proof-fresh` of extensions.yml, which runs on
+ * push, pull_request and a `lane: ci` dispatch and NOT on the schedule event (its
+ * `if:` excludes schedule, tags and the label event). A dead cron cannot silence
+ * it. e2e.yml has no proof-fresh job, and ci.yml's proof step runs
+ * tooling/ci/assert-e2e-proof-fresh.mjs, the Platform_Public sibling named
+ * below — a different file. The silence left uncovered: while main is quiet,
+ * this gate does not run at all.
+ * ⏱ 2026-09-24: this paragraph used to read "BOTH CALL SITES SURVIVE ON PURPOSE"
+ * (ci.yml and e2e.yml's proof-fresh job); neither call site exists today.
  *
  * THREE THINGS IT DOES DIFFERENTLY FROM THE Platform_Public SIBLINGS
  * (tooling/ci/assert-e2e-proof-fresh.mjs, assert-platform-proof-fresh.mjs):
@@ -529,7 +532,12 @@ const api = async p => {
      has no run of its own — both leave this list untouched, which is the correct
      behaviour for a reader that is already outside its subject. The notice is
      printed only when a row was really removed, so a log that does not carry it
-     is saying the history was read whole. */
+     is saying the history was read whole.
+
+     ⏱ 2026-09-24: this branch is unreachable while the one caller, the job
+     `e2e-proof-fresh` of extensions.yml, excludes the schedule event — a push or
+     pull_request run's own id is never a scheduled run's. It stays for the day
+     the job runs on schedule again. */
   const SELF_RUN_ID = String(process.env.GITHUB_RUN_ID || '').trim();
   let selfExcluded = null;
   if (SELF_RUN_ID) {
@@ -537,7 +545,7 @@ const api = async p => {
     if (self.length) {
       selfExcluded = self[0];
       sched = sched.filter(r => String(r.id) !== SELF_RUN_ID);
-      console.log(`::notice::EXCLUDING RUN ${SELF_RUN_ID} (${self[0].created_at}) FROM BOTH LIMBS — IT IS THIS RUN. This job now lives on the schedule event of ${WORKFLOW}, so the newest scheduled run is the one executing this gate, and its own e2e legs have not finished while it is being read. A run cannot be its own proof: grading it would report a ~0-day timer off a run that has proved nothing, and would grade legs that are still pending. ${sched.length} other scheduled run(s) remain to grade. Measured 2026-09-07, run 34168610730.`);
+      console.log(`::notice::EXCLUDING RUN ${SELF_RUN_ID} (${self[0].created_at}) FROM BOTH LIMBS — IT IS THIS RUN. Its own e2e legs have not finished while it is being read. A run cannot be its own proof: grading it would report a ~0-day timer off a run that has proved nothing, and would grade legs that are still pending. ${sched.length} other scheduled run(s) remain to grade. Measured 2026-09-07, run 34168610730.`);
     }
   }
   if (rows.length >= RUNS_PAGE_SIZE) {
