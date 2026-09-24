@@ -175,6 +175,7 @@ jobs:
           --dart-define=REVENUECAT_KEY=${{ secrets.REVENUECAT_PUBLIC_KEY_GOOGLE }}
           --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
       - name: Build android (aab — the Google Play artifact)
+        id: build_aab
         working-directory: apps/${{ matrix.app }}
         run: >
           flutter build appbundle --release
@@ -188,6 +189,11 @@ jobs:
           --dart-define=RELEASE_CHANNEL=android-play
           --dart-define=REVENUECAT_KEY=${{ secrets.REVENUECAT_PUBLIC_KEY_GOOGLE }}
           --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
+      # why: release.json reads each file's channel from its build's stamp, never from its extension; assert-release-json.mjs --static pairs --channel with the define of --build-step — docs/ci/build-platforms.md §channel-stamps.
+      - name: Stamp the .aab with the channel its build compiled in
+        run: >
+          node tooling/ci/stamp-channel.mjs --channel android-play --build-step build_aab
+          apps/${{ matrix.app }}/build/app/outputs/bundle/release/*.aab
       # why: apps.gov.in's .apk is self-signed with its OWN key, which never reaches $GITHUB_ENV (the Play key stays there) — docs/ci/build-platforms.md §apps-gov-in.
       - name: Prepare the apps.gov.in signing key (its own key, never the upload key)
         id: agi_key
@@ -237,6 +243,7 @@ jobs:
           if [ -f build/app/outputs/flutter-apk/app-release.apk.sha1 ]; then mv build/app/outputs/flutter-apk/app-release.apk.sha1 build/android-play-apk-aside/; fi
       # why: a step's env beats $GITHUB_ENV, so the apps.gov.in key signs THIS build only; RELEASE_CHANNEL=apps-gov-in sells nothing — §apps-gov-in.
       - name: Build android (apk — apps.gov.in, its own key, sells nothing)
+        id: build_apk_agi
         working-directory: apps/${{ matrix.app }}
         env:
           ANDROID_KEYSTORE_PATH: ${{ steps.agi_key.outputs.keystore_path }}
@@ -273,6 +280,11 @@ jobs:
             exit 1
           fi
           echo "apk=apps/${APP}/build/apps-gov-in/${file}" >> "$GITHUB_OUTPUT"
+      # why: stamped under its final name, after the Play .apk went back — docs/ci/build-platforms.md §channel-stamps.
+      - name: Stamp the apps.gov.in .apk with the channel its build compiled in
+        env:
+          APK: ${{ steps.agi_apk.outputs.apk }}
+        run: node tooling/ci/stamp-channel.mjs --channel apps-gov-in --build-step build_apk_agi "$APK"
       # ⏱ MOVED 2026-09-07 (fix pass) — THIS STEP USED TO BE THE LAST ONE IN THE
       # JOB, and that lost the mapping it exists to keep. This unit states the
       # rule in the store lanes ("BEFORE the upload, not after -- a step placed
@@ -381,12 +393,19 @@ jobs:
               --dir "apps/${APP}/build/symbols/${lane}" \
               --org "$gt_org" --project "$gt_project"
           done
+      # why: the Play .apk is a build proof, never a release file — `ci-proof-*` is outside the release job's `<app>-*` download (O-RELEASE-RECORD-GUESSES-CHANNEL-FROM-EXTENSION).
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ci-proof-android-play-apk-${{ matrix.app }}
+          path: apps/${{ matrix.app }}/build/app/outputs/flutter-apk/*.apk
+          retention-days: 90
+          if-no-files-found: error
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ matrix.app }}-linux-web-android-${{ env.ANDROID_SIGNING_POSTURE }}
           path: |
-            apps/${{ matrix.app }}/build/app/outputs/flutter-apk/*.apk
             apps/${{ matrix.app }}/build/app/outputs/bundle/release/*.aab
+            apps/${{ matrix.app }}/build/app/outputs/bundle/release/*.aab.channel.json
             apps/${{ matrix.app }}/build/linux/x64/release/bundle
           retention-days: 90
           if-no-files-found: error
@@ -411,7 +430,9 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ steps.agi_verify.outputs.artifact_name }}
-          path: ${{ steps.agi_apk.outputs.apk }}
+          path: |
+            ${{ steps.agi_apk.outputs.apk }}
+            ${{ steps.agi_apk.outputs.apk }}.channel.json
           retention-days: 90
           if-no-files-found: error
 
@@ -468,6 +489,7 @@ jobs:
         shell: bash
         run: node tooling/ci/assert-app-versioning.mjs --emit apps/${{ matrix.app }} >> "$GITHUB_OUTPUT"
       - name: Build windows
+        id: build_windows
         working-directory: apps/${{ matrix.app }}
         run: >
           flutter build windows --release
@@ -514,6 +536,12 @@ jobs:
       - name: Package MSIX (Microsoft Store)
         working-directory: apps/${{ matrix.app }}
         run: dart run msix:create --version=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}.0
+      # why: bash, because pwsh hands a glob to node unexpanded; the .msix is what `build_windows` compiled — docs/ci/build-platforms.md §channel-stamps.
+      - name: Stamp the .msix with the channel its build compiled in
+        shell: bash
+        run: >
+          node tooling/ci/stamp-channel.mjs --channel windows-store --build-step build_windows
+          apps/${{ matrix.app }}/build/windows/msix/*.msix
       # why: the artifact is preserved BEFORE the identity check that can reject it. A
       # refusal must leave the evidence behind, not delete it.
       - name: Keep the .msix even if what follows refuses it
@@ -521,7 +549,9 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ matrix.app }}-windows-msix-diagnostic
-          path: apps/${{ matrix.app }}/build/windows/msix/*.msix
+          path: |
+            apps/${{ matrix.app }}/build/windows/msix/*.msix
+            apps/${{ matrix.app }}/build/windows/msix/*.msix.channel.json
           retention-days: 14
           if-no-files-found: warn
       - name: The MSIX carries the identity the register declares
@@ -606,6 +636,7 @@ jobs:
           path: |
             apps/${{ matrix.app }}/build/windows/x64/runner/Release
             apps/${{ matrix.app }}/build/windows/msix/*.msix
+            apps/${{ matrix.app }}/build/windows/msix/*.msix.channel.json
           retention-days: 90
           if-no-files-found: error
 
@@ -698,6 +729,7 @@ jobs:
           security list-keychains -d user
           security find-identity -v "$APPLE_KEYCHAIN_PATH"
       - name: Build macos
+        id: build_macos
         working-directory: apps/${{ matrix.app }}
         run: >
           flutter build macos --release
@@ -730,6 +762,7 @@ jobs:
       # keeps the old command — the two branches below are the same build with
       # and without a signature, not two different postures bolted together.
       - name: Build ios (signed archive + export)
+        id: build_ipa
         if: env.APPLE_SIGNING_POSTURE == 'release-signed'
         working-directory: apps/${{ matrix.app }}
         run: >
@@ -745,6 +778,12 @@ jobs:
           --dart-define=RELEASE_CHANNEL=ios-appstore
           --dart-define=REVENUECAT_KEY=${{ secrets.REVENUECAT_PUBLIC_KEY_APPLE }}
           --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
+      # why: the unsigned proof below makes no .ipa, so only the signed posture stamps one — docs/ci/build-platforms.md §channel-stamps.
+      - name: Stamp the .ipa with the channel its build compiled in
+        if: env.APPLE_SIGNING_POSTURE == 'release-signed'
+        run: >
+          node tooling/ci/stamp-channel.mjs --channel ios-appstore --build-step build_ipa
+          apps/${{ matrix.app }}/build/ios/ipa/*.ipa
       - name: Build ios (no codesign — unsigned build proof)
         if: env.APPLE_SIGNING_POSTURE != 'release-signed'
         working-directory: apps/${{ matrix.app }}
@@ -824,6 +863,12 @@ jobs:
             --keychain "$APPLE_KEYCHAIN_PATH" \
             "$out"
           ls -l "$out"
+      # why: the .pkg wraps the .app `build_macos` compiled — docs/ci/build-platforms.md §channel-stamps.
+      - name: Stamp the .pkg with the channel its build compiled in
+        if: env.APPLE_SIGNING_POSTURE == 'release-signed'
+        run: >
+          node tooling/ci/stamp-channel.mjs --channel macos-appstore --build-step build_macos
+          apps/${{ matrix.app }}/build/macos/pkg/*.pkg
       # ⏱ ADDED 2026-09-09. THIS STEP EXISTS BECAUSE EVERY STEP ABOVE CAN EXIT 0
       # WHILE PRODUCING AN UNSIGNED OR EMPTY ARTIFACT, which is the failure this
       # repository keeps hitting. Nothing below trusts an exit code: each check
@@ -994,14 +1039,18 @@ jobs:
         if: env.APPLE_SIGNING_POSTURE == 'release-signed'
         with:
           name: ${{ matrix.app }}-macos-pkg
-          path: apps/${{ matrix.app }}/build/macos/pkg/*.pkg
+          path: |
+            apps/${{ matrix.app }}/build/macos/pkg/*.pkg
+            apps/${{ matrix.app }}/build/macos/pkg/*.pkg.channel.json
           retention-days: 90
           if-no-files-found: error
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: env.APPLE_SIGNING_POSTURE == 'release-signed'
         with:
           name: ${{ matrix.app }}-ios-${{ env.APPLE_SIGNING_POSTURE }}
-          path: apps/${{ matrix.app }}/build/ios/ipa/*.ipa
+          path: |
+            apps/${{ matrix.app }}/build/ios/ipa/*.ipa
+            apps/${{ matrix.app }}/build/ios/ipa/*.ipa.channel.json
           retention-days: 90
           if-no-files-found: error
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -1084,7 +1133,9 @@ jobs:
           # `ref_type == 'tag'` would leave it dead until the first real release.
           node tooling/ci/assert-app-versioning.mjs --tag "$TAG" --ref-type "$REF_TYPE"
           mkdir -p dist
-          node tooling/ci/release-manifest.mjs --stage downloads --out dist --app "$APP" --tag "$TAG" --ref-type "$REF_TYPE"
+          # Each installer's build stamp goes to stamps/, never to dist/ (flat, and
+          # published whole); the next step reads each file's channel from there.
+          node tooling/ci/release-manifest.mjs --stage downloads --out dist --stamps stamps --app "$APP" --tag "$TAG" --ref-type "$REF_TYPE"
           for d in downloads/*/; do
             [ -d "$d" ] || continue
             n="$(basename "$d")"
@@ -1139,7 +1190,8 @@ jobs:
             --run-url "$RUN_URL" --notes-url "$NOTES_URL" \
             --released-at "$RELEASED_AT" \
             --version "${RELEASE_LINE}.${RUN_NUMBER}" \
-            --build "$RUN_NUMBER"
+            --build "$RUN_NUMBER" \
+            --stamps stamps
       - name: Write the checksum manifest, naming the gated commit
         env:
           APP: ${{ matrix.app }}

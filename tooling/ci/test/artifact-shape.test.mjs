@@ -91,6 +91,11 @@ const REGISTER = {
       platforms: ['macos'],
       lane: { workflow: '.github/workflows/build-platforms.yml', job: 'apple' },
     },
+    // ⏱ ADDED 2026-09-24. `.apk` reached this guard's universe through
+    // release-manifest.mjs's EXTRA_INSTALLABLE until the .apk left it
+    // (O-RELEASE-RECORD-GUESSES-CHANNEL-FROM-EXTENSION). The real register derives
+    // it through this row, so the fixture mirrors the row as it stands: lane-less.
+    { id: 'apps-gov-in', kind: 'store', served: false, artifactFormats: ['.apk'], platforms: ['android'], lane: null },
   ],
 };
 
@@ -453,7 +458,10 @@ describe('assert-artifact-shape — COVERAGE LOST: the derivation, not the tree'
     assert.match(out, /COVERAGE LOST/);
     // `.apk` is EXTRA_INSTALLABLE, so the set is never truly empty — what fails
     // is direction (a): `.msix`/`.exe` are no longer derivable from the register.
-    assert.match(out, /derives no such installable format/);
+    // ⏱ CORRECTED 2026-09-24: the extras are empty now, so an empty register
+    // derives an EMPTY set, and the guard's earlier rail, unreachable while the
+    // .apk extra kept the set non-empty, is what refuses it first.
+    assert.match(out, /yielded ZERO installable extensions/);
   });
 
   // The direction that matters most: a channel binds to this job, declares a

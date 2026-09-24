@@ -144,7 +144,7 @@ const LANE_OUTPUTS = new Map([
         {
           ext: '.apk',
           dir: 'build/app/outputs/flutter-apk',
-          why: 'the only Android artifact a person can sideload onto a handset (no channel ACCEPTS an .apk, which is why release-manifest.mjs declares it as an extra rather than a register row declaring it)',
+          why: 'the only Android artifact a person can sideload onto a handset (no channel ACCEPTS an .apk, which is why release-manifest.mjs declares it as an extra rather than a register row declaring it; ⏱ corrected 2026-09-24: the apps-gov-in row accepts .apk and the extra is gone, so `.apk` is derived through that row, and this Play .apk is a build proof that never enters a release)',
         },
         {
           tree: 'build/linux/x64/release/bundle',
@@ -177,7 +177,7 @@ const LANE_OUTPUTS = new Map([
         {
           ext: '.apk',
           dir: 'build/app/outputs/flutter-apk',
-          why: 'the only Android artifact a person can sideload onto a handset (no channel ACCEPTS an .apk, which is why release-manifest.mjs declares it as an extra rather than a register row declaring it)',
+          why: 'the only Android artifact a person can sideload onto a handset (no channel ACCEPTS an .apk, which is why release-manifest.mjs declares it as an extra rather than a register row declaring it; ⏱ corrected 2026-09-24: the apps-gov-in row accepts .apk and the extra is gone, so `.apk` is derived through that row, and this Play .apk is a build proof that never enters a release)',
         },
         {
           ext: '.apk',

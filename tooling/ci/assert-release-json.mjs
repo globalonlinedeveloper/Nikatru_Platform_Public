@@ -13,8 +13,20 @@
  * without the other's input. assert-release-durable.mjs limb 2 is extended to
  * require that the lane CALLS this one; this file is what the call does.
  *
+ * ⏱ 2026-09-24 — LIMB 9 IS STATIC, AND IT GRADES THE WORKFLOW THAT FEEDS THE
+ * RECORD (O-RELEASE-RECORD-GUESSES-CHANNEL-FROM-EXTENSION). release.json now
+ * takes each installer's channel from the stamp its build wrote
+ * (tooling/ci/stamp-channel.mjs). A stamp is only as true as the `--channel` its
+ * step passes, so `--static` reads the workflows and asks, per stamp step, that
+ * its `--channel` equal the RELEASE_CHANNEL define of the build it names
+ * (`--build-step <id>`); and, per upload the release job downloads, that every
+ * installer path is stamped in its job and carries its `.channel.json`. It runs
+ * inside `--self-test` too, over the real tree and over two mutations of it, so
+ * the two lanes that call the self-test (ci.yml, spec-guards.mjs) grade it.
+ *
  * Usage:
  *   node tooling/ci/assert-release-json.mjs --dir <release dir> [--repo-root <root>]
+ *   node tooling/ci/assert-release-json.mjs --static [--repo-root <root>]
  *   node tooling/ci/assert-release-json.mjs --self-test
  *
  * Exit codes (AGENTS.md convention):
@@ -46,8 +58,12 @@ import {
   channelIsOnSurface,
   buildReleaseJson,
   renderManifest,
+  installableExtensions,
+  BUNDLE_MEMBERS,
+  channelStampName,
 } from './release-manifest.mjs';
 import { validate, SchemaError } from '../app-yaml/schema-validate.mjs';
+import { parseAllWorkflows, workflowSteps, RELEASE_CHANNEL_STAMP } from './workflow-scan.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = resolve(join(HERE, '..', '..'));  // tooling/ci -> repo root
@@ -284,10 +300,12 @@ function report(dir, { findings, notes }) {
 function main() {
   const root = resolve(flag('repo-root') ?? DEFAULT_ROOT);
   if (argv.includes('--self-test')) process.exit(selfTest(root));
+  if (argv.includes('--static')) process.exit(reportStatic(gradeStampWiring({ root, register: loadRegister(root) })));
 
   const dir = flag('dir');
   if (dir === null) {
     console.error('Usage: assert-release-json.mjs --dir <release dir> [--repo-root <root>]');
+    console.error('       assert-release-json.mjs --static [--repo-root <root>]');
     console.error('       assert-release-json.mjs --self-test');
     process.exit(1);
   }
@@ -301,6 +319,181 @@ function main() {
     );
   }
   process.exit(report(abs, gradeRelease({ dir: abs, schema: loadSchema(root), register: loadRegister(root) })));
+}
+
+/* ─────────────────────── limb 9: the stamp wiring (static) ─────────────────────── */
+
+const unquoteToken = (t) => t.replace(/^(['"])(.*)\1$/, '$2');
+/** `${{ matrix.app }}` and `${{matrix.app}}` are one expression: both become the
+ *  compact `${{matrix.app}}`, which also keeps a run line splittable on spaces. */
+const normExpr = (s) => String(s).replace(/\$\{\{\s*(.*?)\s*\}\}/g, (all, e) => `\${{${e.replace(/\s+/g, '')}}}`);
+
+/** `uses:` and the `with:` mapping of one step, read from its job's comment-blanked
+ *  lines. A `key: |` value is its block lines, trimmed; a scalar is one entry. */
+function stepWith(job, step) {
+  const lines = job.lines.filter((l) => l.n >= step.first && l.n <= step.last).map((l) => l.text);
+  const ind = (t) => t.match(/^ */)[0].length;
+  const uses = lines.map((t) => t.match(/^\s*(?:-\s+)?uses:\s*(\S+)/)).find(Boolean)?.[1] ?? null;
+  const out = new Map();
+  const at = lines.findIndex((t) => /^\s*(?:-\s+)?with:\s*$/.test(t));
+  if (at === -1) return { uses, with: out };
+  const base = ind(lines[at].replace(/^(\s*)-\s/, '$1  '));
+  for (let i = at + 1; i < lines.length; i++) {
+    const t = lines[i];
+    if (t.trim() === '') continue;
+    if (ind(t) <= base) break;
+    const m = t.match(/^\s*([A-Za-z_][A-Za-z0-9_-]*):\s*(.*?)\s*$/);
+    if (!m) continue;
+    if (/^[|>][-+]?$/.test(m[2])) {
+      const block = [];
+      for (let k = i + 1; k < lines.length && (lines[k].trim() === '' || ind(lines[k]) > ind(t)); k++) if (lines[k].trim() !== '') block.push(lines[k].trim());
+      out.set(m[1], block);
+    } else {
+      out.set(m[1], [unquoteToken(m[2])]);
+    }
+  }
+  return { uses, with: out };
+}
+
+/** A stamp step's `run:` read as stamp-channel.mjs reads its argv. */
+function stampCall(runText) {
+  const tokens = normExpr(runText).split(/\s+/).filter(Boolean).map(unquoteToken);
+  const at = tokens.findIndex((t) => t.endsWith('stamp-channel.mjs'));
+  const VALUED = new Set(['--channel', '--build-step', '--run-id', '--repo-root']);
+  const opts = new Map();
+  const files = [];
+  for (let i = at + 1; i < tokens.length; i++) {
+    const t = tokens[i];
+    if (t === ';' || t === '&&' || t === '||' || t === '|') break;
+    if (VALUED.has(t)) { opts.set(t, tokens[i + 1] ?? null); i++; } else if (!t.startsWith('--')) files.push(normExpr(t));
+  }
+  return { channel: opts.get('--channel') ?? null, buildStep: opts.get('--build-step') ?? null, files };
+}
+
+/**
+ * LIMB 9 — every stamp is paired with the build it speaks for, and every
+ * installer the release downloads is stamped. Pure over a tree: `{ findings,
+ * lost, counts }`. `lost` is COVERAGE LOST (the limb could not look), never a pass.
+ *
+ *   · A step running `release-manifest.mjs --stage` is a STAGER. Its job's
+ *     `download-artifact` `pattern:` (or `name:`) decides which uploads of that
+ *     workflow reach the release: those are RELEASE-BOUND.
+ *   · In a release-bound upload, a `path:` entry ending in an installer format
+ *     (the register's, minus the bundle members `--stage` never lifts) must be
+ *     listed again as `<entry>.channel.json`, and a stamp step EARLIER in the same
+ *     job must name exactly that entry as a file. Else --stage would meet an
+ *     unstamped installer on the release run, a week after the edit that made it.
+ *   · A step running `stamp-channel.mjs` must name `--channel` and `--build-step`;
+ *     the step with that `id:` must come earlier in its job and pass
+ *     `--dart-define=RELEASE_CHANNEL=<the same channel>`. A stamp that disagrees
+ *     with its build is the defect this limb exists for, one layer down.
+ */
+export function gradeStampWiring({ root, register }) {
+  const findings = [];
+  const lost = [];
+  const add = (msg, ...more) => findings.push({ limb: 9, msg, more });
+  const counts = { stagers: 0, releaseBound: 0, installerPaths: 0, stampSteps: 0 };
+  const installers = [...installableExtensions(register)].filter((x) => !BUNDLE_MEMBERS.has(x));
+  const isInstallerPath = (p) => installers.some((x) => p.toLowerCase().endsWith(x.toLowerCase()));
+
+  const parsed = parseAllWorkflows(root);
+  if (parsed.length === 0) {
+    lost.push(`no workflow was read under ${root}/.github/workflows, so limb 9 ranged over nothing.`);
+    return { findings, lost, counts };
+  }
+  for (const wf of parsed) {
+    const jobs = [...wf.jobs.values()].map((job) => ({ job, steps: workflowSteps(job) }));
+
+    // ── every stamp step, paired with the build it names ──
+    for (const { job, steps } of jobs) {
+      for (const s of steps) {
+        if (!/stamp-channel\.mjs/.test(s.run?.text ?? '')) continue;
+        counts.stampSteps++;
+        const where = `${wf.rel}:${s.first} (job "${job.name}", step "${s.name ?? s.id ?? '?'}")`;
+        const call = stampCall(s.run.text);
+        if (call.channel === null || call.buildStep === null) {
+          add(`${where} runs stamp-channel.mjs without ${call.channel === null ? '--channel' : '--build-step'}.`, 'Nothing then says which build this stamp speaks for, so nothing can check it.');
+          continue;
+        }
+        const build = steps.find((b) => b.id === call.buildStep);
+        if (build === undefined || build.index >= s.index) {
+          add(`${where} names --build-step ${call.buildStep}, and no earlier step of job "${job.name}" has that id.`);
+          continue;
+        }
+        const define = RELEASE_CHANNEL_STAMP.exec(build.run?.text ?? '');
+        if (define === null) {
+          add(`${where} names --build-step ${call.buildStep}, and that step passes no --dart-define=RELEASE_CHANNEL.`);
+          continue;
+        }
+        const built = unquoteToken(define[1]);
+        if (built !== call.channel) {
+          add(
+            `${where} stamps --channel ${call.channel}, and the build it names (${wf.rel}:${build.first}, step "${build.name ?? build.id}") compiled RELEASE_CHANNEL=${built}.`,
+            'The record would then offer these bytes to a channel their build was not made for.',
+          );
+        }
+      }
+    }
+
+    // ── what the release downloads, and whether each installer in it is stamped ──
+    for (const { job, steps } of jobs) {
+      if (!steps.some((s) => /release-manifest\.mjs/.test(s.run?.text ?? '') && /(^|\s)--stage(\s|$)/.test(s.run?.text ?? ''))) continue;
+      counts.stagers++;
+      const downloads = steps.map((s) => stepWith(job, s)).filter((w) => /^actions\/download-artifact@/.test(w.uses ?? ''));
+      if (downloads.length === 0) {
+        lost.push(`${wf.rel} job "${job.name}" stages a release and holds no actions/download-artifact step, so which uploads reach it cannot be read.`);
+        continue;
+      }
+      const reaches = downloads.map((d) => {
+        const pattern = d.with.get('pattern')?.[0] ?? null;
+        const name = d.with.get('name')?.[0] ?? null;
+        if (pattern === null && name === null) return () => true;
+        // A `pattern:` is a glob (`*`, `?`); a `name:` is one exact artifact.
+        const escaped = normExpr(pattern ?? name).replace(/[.+^${}()|[\]\\]/g, '\\$&');
+        const re = new RegExp(`^${pattern === null ? escaped : escaped.replace(/\*/g, '.*').replace(/\?/g, '.')}$`);
+        return (n) => re.test(normExpr(n));
+      });
+      for (const { job: upJob, steps: upSteps } of jobs) {
+        for (const u of upSteps) {
+          const w = stepWith(upJob, u);
+          if (!/^actions\/upload-artifact@/.test(w.uses ?? '')) continue;
+          const name = w.with.get('name')?.[0] ?? '';
+          if (!reaches.some((r) => r(name))) continue;
+          counts.releaseBound++;
+          const paths = (w.with.get('path') ?? []).map(normExpr);
+          for (const p of paths.filter(isInstallerPath)) {
+            counts.installerPaths++;
+            const where = `${wf.rel}:${u.first} (job "${upJob.name}", upload "${name}")`;
+            if (!paths.includes(channelStampName(p))) {
+              add(`${where} ships ${p} and not ${channelStampName(p)}.`, 'The release would download an installer with no stamp beside it, and --stage refuses that (COVERAGE LOST) on the release run.');
+            }
+            const stamped = upSteps.some((s) => s.index < u.index && /stamp-channel\.mjs/.test(s.run?.text ?? '') && stampCall(s.run.text).files.includes(p));
+            if (!stamped) add(`${where} ships ${p}, and no earlier step of job "${upJob.name}" runs stamp-channel.mjs on exactly that path.`);
+          }
+        }
+      }
+    }
+  }
+  if (counts.stagers === 0) lost.push('no workflow runs release-manifest.mjs --stage, so no upload is known to reach a release and limb 9 graded nothing.');
+  else if (counts.installerPaths === 0) lost.push('no upload the release job downloads names an installer path, so limb 9 graded nothing: the release would stage nothing.');
+  return { findings, lost, counts };
+}
+
+function reportStatic({ findings, lost, counts }) {
+  if (findings.length) {
+    console.error(`✗ ${findings.length} finding(s) in the stamp wiring:`);
+    for (const f of findings) {
+      console.error(`  [limb ${f.limb}] ${f.msg}`);
+      for (const m of f.more) console.error(`      ${m}`);
+    }
+    return 1;
+  }
+  if (lost.length) {
+    for (const l of lost) console.error(`✗ COVERAGE LOST — ${l}`);
+    return 2;
+  }
+  console.log(`ok  limb 9: ${counts.stampSteps} stamp step(s) each paired with its build's RELEASE_CHANNEL; ${counts.installerPaths} installer path(s) in ${counts.releaseBound} release-bound upload(s), each stamped and shipped with its .channel.json`);
+  return 0;
 }
 
 /* ───────────────────────────── the self test ────────────────────────────── */
@@ -326,12 +519,17 @@ export function selfTest(root) {
   /** Build a valid release directory: three assets, the record, the manifest —
    *  in the lane's own order, through the lane's own functions. */
   const makeValid = (dir, { tag = 'subscriptiontracker-v1.0.0', version = '1.0.0' } = {}) => {
+    // ⏱ 2026-09-24 — each installer carries its build's stamp, as `--stage` hands
+    // it on (O-RELEASE-RECORD-GUESSES-CHANNEL-FROM-EXTENSION); the archive has none.
     const files = [
-      { name: 'subscriptiontracker-v1.0.0-app-release.aab', body: 'aab' },
-      { name: 'subscriptiontracker-v1.0.0-app-release.apk', body: 'apk' },
-      { name: 'subscriptiontracker-v1.0.0-linux-x64.tar.gz', body: 'tgz' },
+      { name: 'subscriptiontracker-v1.0.0-app-release.aab', body: 'aab', channel: 'android-play' },
+      { name: 'subscriptiontracker-v1.0.0-app-release.apk', body: 'apk', channel: 'apps-gov-in' },
+      { name: 'subscriptiontracker-v1.0.0-linux-x64.tar.gz', body: 'tgz', channel: null },
     ];
     for (const f of files) writeFileSync(join(dir, f.name), f.body);
+    const stampOf = (f) => (f.channel === null
+      ? null
+      : { channel: f.channel, file: f.name.replace(/^subscriptiontracker-v1\.0\.0-/, ''), sha256: sha256Of(join(dir, f.name)), runId: '1' });
     const record = buildReleaseJson({
       app: 'subscriptiontracker',
       surface: 'app',
@@ -345,7 +543,7 @@ export function selfTest(root) {
       build: '7',
       register,
       treeRoot: root,
-      files: files.map((f) => ({ name: f.name, sha256: sha256Of(join(dir, f.name)), size: statSync(join(dir, f.name)).size })),
+      files: files.map((f) => ({ name: f.name, sha256: sha256Of(join(dir, f.name)), size: statSync(join(dir, f.name)).size, stamp: stampOf(f) })),
     });
     return { record, files };
   };
@@ -402,6 +600,49 @@ export function selfTest(root) {
     return 'already-sealed';
   });
   check('the untagged sentinel still grades', null, (r) => { r.tag = 'subscriptiontracker-untagged-abc1234'; });
+
+  // ── limb 9 (static): the real workflows, then two mutations of build-platforms.yml ──
+  // Each mutation is ONE text edit of the real file, anchored on text that must
+  // occur exactly once, so a case can only fail for the reason it names. An anchor
+  // that moved fails the case, never skips it.
+  // LANE-BOUND: build-platforms.yml — ONLY for these two mutation cases, never for the limb. gradeStampWiring
+  // finds every workflow that runs `--stage` and grades each; the mutations need real text to break, and
+  // the one staging lane today is build-platforms.yml, whose apps.gov.in stamp and Play .apk are the defect.
+  const staticCase = (name, expect, mutation) => {
+    let tree = root;
+    if (mutation !== null) {
+      const rel = '.github/workflows/build-platforms.yml';
+      const text = readFileSync(join(root, rel), 'utf8');
+      const [from, to] = mutation;
+      if (text.split(from).length !== 2) {
+        cases.push({ name, ok: false, findings: 0, text: `the mutation anchor is not exactly once in ${rel}: ${JSON.stringify(from)}` });
+        failures++;
+        return;
+      }
+      tree = join(work, `static-${String(++n).padStart(2, '0')}`);
+      mkdirSync(join(tree, '.github', 'workflows'), { recursive: true });
+      writeFileSync(join(tree, rel), text.replace(from, () => to));
+    }
+    const { findings, lost } = gradeStampWiring({ root: tree, register });
+    const text = [...findings.map((f) => `[limb ${f.limb}] ${f.msg}`), ...lost.map((l) => `COVERAGE LOST — ${l}`)].join('\n');
+    const ok = expect === null ? findings.length === 0 && lost.length === 0 : findings.some((f) => f.msg.includes(expect));
+    cases.push({ name, ok, findings: findings.length, text });
+    if (!ok) failures++;
+  };
+  staticCase('limb 9: the real workflows pair every stamp with its build, and stamp every installer the release downloads', null, null);
+  staticCase(
+    'limb 9: a stamp step saying android-play over the build that compiled apps-gov-in',
+    'compiled RELEASE_CHANNEL=apps-gov-in',
+    ['--channel apps-gov-in --build-step build_apk_agi', '--channel android-play --build-step build_apk_agi'],
+  );
+  staticCase(
+    'limb 9: the Play .apk put back into the <app>-* upload the release downloads',
+    'flutter-apk/*.apk and not',
+    [
+      '            apps/${{ matrix.app }}/build/app/outputs/bundle/release/*.aab\n',
+      '            apps/${{ matrix.app }}/build/app/outputs/flutter-apk/*.apk\n            apps/${{ matrix.app }}/build/app/outputs/bundle/release/*.aab\n',
+    ],
+  );
 
   for (const c of cases) console.log(`${c.ok ? 'pass' : 'FAIL'}  ${c.name}${c.ok ? '' : `\n      got ${c.findings} finding(s):\n${c.text.replace(/^/gm, '      ')}`}`);
   console.log(`\n${cases.length - failures} pass, ${failures} fail`);
