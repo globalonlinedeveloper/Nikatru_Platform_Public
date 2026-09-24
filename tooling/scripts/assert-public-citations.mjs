@@ -13,7 +13,7 @@
 // This is the public half of ST-3 ("every pointer resolves"). The private half is
 // `assert-index-complete` + `assert-adr-citations`.
 //
-// TWO CLASSES, BOTH CHECKED:
+// THREE CLASSES, ALL CHECKED:
 //
 //   1. PRIVATE PATH REFERENCES — any `Private/...` path named in a public file
 //      must exist on disk. These rot loudly at review time and silently at read
@@ -25,6 +25,11 @@
 //      field in `Private/requirements/*.json` (`[pipeline C-6]` -> origin
 //      `[2]C-6`). So they are live pointers with a stale vocabulary, and the
 //      correct treatment is to CHECK them, not to rewrite 1,453 tags.
+//
+//   3. ID CITATIONS — an owner id that a public field HOLDS A BUILD ON must name
+//      a row that exists, and, within this branch's diff, one still owed. The
+//      subjects, the id grammar and the resolver are `owner-ids.mjs`; the rules
+//      and the `--all-subjects` flag are at the ID CITATIONS block below.
 //
 // 🔴 A TAG IS NOT ONE ID. This is the whole reason the guard exists rather than a
 // grep. A first pass at this with a naive `[A-Z]-[0-9]+` regex reported 55 of 157
@@ -142,6 +147,7 @@
    `repo-git.mjs`, which deletes the six redirecting variables from the child
    environment and proves the root is its own repository before reading it. */
 import { repoGit, repoGitRaw, RepoGitError, strippedNote } from './repo-git.mjs';
+import { HOLD_SUBJECTS, LIVENESS, subjectFor, holdsIn, indexRows, idClass, resolveHold } from './owner-ids.mjs';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { resolve, dirname, join, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -766,6 +772,162 @@ for (const rel of files) {
   }
 }
 
+/* The ID CITATIONS counters, declared OUTSIDE the block below for the reason the
+   shard descent gives about `shardDecl`: deleting the block must leave this file
+   valid and behaving exactly as it did before the class existed, which is how the
+   test puts the defect back and watches the class bite. */
+let holdSubjectFiles = 0, holdsChecked = 0, holdsLive = 0;
+const staleHolds = [];
+
+/* ── ID CITATIONS BEGIN ──────────────────────────────────────────────────────
+   🔴 THE THIRD CLASS (2026-09-24, apps-review F1). A public field that HOLDS A
+   BUILD ON an owner id — today one field, `trademark.ownerItem` in every
+   `apps/<app>/name-clearance.json` — is a citation like any other, and the one
+   F1 found did not resolve: limb 7 of `tooling/ci/assert-name-clearance.mjs`
+   lifted its block on `O-NAME-SUBLY-TRADEMARK`, a row that was never opened. The
+   subjects, the grammar and the resolver are `owner-ids.mjs`; this block reads
+   the files and owns the exit codes.
+
+   · ABSENT — no row carries the id — is exit 1 on EVERY run. Nothing anybody
+     closes can cause it, so it never turns an unrelated commit red by surprise.
+   · NOT LIVE — the row is closed, or an owner ruling is carried by a row the
+     owner does not own — is exit 1 only when the subject FILE differs from
+     `git merge-base HEAD origin/main`, or under `--all-subjects`. Otherwise it
+     PRINTS `STALE HOLD <file> <jsonPath> <id> <state>` and passes. A row closed
+     in Private or in the owner queue must never turn an unrelated Public hook
+     red; the branch that edits the subject is the one that has to settle it.
+   · With no readable merge-base and no `--all-subjects` liveness is NOT GRADED
+     and the run says so in one line. Absence still is.
+   · A register this class needs and cannot read is exit 2 COVERAGE LOST. Each is
+     read only when a subject holds an id in its namespace, so a tree holding
+     nothing reads nothing: open.json from the private root, and `owner-queue.json`
+     from $NIKATRU_BUSINESS_ROOT, else `<private root>/../../nikatru` — the one
+     business file this guard opens.
+
+   🔴 CI NEVER RUNS THIS, for the reason at the head of the file: its subject
+   registers are private. `tooling/ci/test/public-citations-owner-ids.test.mjs`
+   drives it over a fixture workspace, and the hooks run it for real. */
+const ALL_SUBJECTS = process.argv.slice(2).includes('--all-subjects');
+
+function idRefuse(lines) {
+  console.error('✗  public citations — REFUSING: the ID CITATIONS class could not read what it resolves against.');
+  for (const l of lines) console.error(`      ${l}`);
+  console.error('   Exit 2 COVERAGE LOST: an owner id nobody could look up has not been checked, and');
+  console.error('   "not checked" must not share an exit code with "it resolves".');
+  process.exit(2);
+}
+
+/** A register's rows, keyed by id, or a refusal. `held` is the ids this run holds
+ *  in the register's namespace, so a duplicate is refused only where it matters. */
+function readRegister(cls, abs, held) {
+  let raw;
+  try { raw = readFileSync(abs, 'utf8'); } catch (e) {
+    idRefuse([
+      `${LIVENESS[cls].register} is unreadable at ${abs} (${e.code || e.message}).`,
+      `Held in its namespace: ${held.join(', ')}.`,
+      ...(cls === 'queue' ? ['Set NIKATRU_BUSINESS_ROOT if the business root is not `<private root>/../../nikatru` on this host.'] : []),
+    ]);
+  }
+  let doc;
+  try { doc = JSON.parse(raw); } catch (e) {
+    idRefuse([`${abs} is not parseable JSON (${e.message}).`]);
+  }
+  const { rows, duplicates } = indexRows(doc, cls);
+  if (rows.size === 0) {
+    idRefuse([
+      `${abs} parsed, and not one object in it carries an \`id\` in this namespace and a \`${LIVENESS[cls].field}\`.`,
+      'A register with no readable row would report every held id ABSENT, which is a true-looking report of nothing.',
+    ]);
+  }
+  const ambiguous = held.filter((id) => duplicates.has(id));
+  if (ambiguous.length) {
+    idRefuse([`${abs} carries more than one row for ${ambiguous.join(', ')}; which of them decides is a guess.`]);
+  }
+  return rows;
+}
+
+/** The tracked files this branch changes, or null when there is no merge-base to
+ *  measure against. `git diff <base>` compares the WORKING TREE, so a staged
+ *  change in a pre-commit hook is part of the set. */
+function changedSinceMergeBase() {
+  let mb;
+  try {
+    mb = repoGitRaw(REPO, ['merge-base', 'HEAD', 'origin/main']);
+  } catch (e) {
+    if (!(e instanceof RepoGitError)) throw e;
+    idRefuse([`git could not be asked for a merge-base: ${e.message}`, ...(e.detail ? [e.detail] : [])]);
+  }
+  const base = mb.status === 0 ? mb.stdout.trim() : '';
+  if (!base) return null;
+  let out;
+  try {
+    out = repoGit(REPO, 'diff', '--name-only', '--no-renames', base, '--');
+  } catch (e) {
+    if (!(e instanceof RepoGitError)) throw e;
+    idRefuse([`the merge-base ${base} resolved and the diff against it did not: ${e.message}`, ...(e.detail ? [e.detail] : [])]);
+  }
+  return new Set(out.split('\n').map((s) => s.trim()).filter(Boolean));
+}
+
+const held = [];
+for (const rel of files) {
+  const subject = subjectFor(rel);
+  if (!subject) continue;
+  let raw;
+  try { raw = readFileSync(join(REPO, rel), 'utf8'); } catch { continue; }
+  let doc;
+  try { doc = JSON.parse(raw); } catch (e) {
+    idRefuse([`${rel} is a hold subject (${subject.glob}) and is not parseable JSON (${e.message}).`, `What it holds at \`${subject.jsonPath}\` is unknown.`]);
+  }
+  holdSubjectFiles++;
+  const rawLines = raw.split(/\r?\n/);
+  for (const h of holdsIn(subject, rel, doc)) {
+    const at = rawLines.findIndex((l) => l.includes(JSON.stringify(h.id)));
+    held.push({ ...h, line: at === -1 ? 1 : at + 1 });
+  }
+}
+
+const rowsByClass = { open: null, queue: null };
+const heldIn = (cls) => held.filter((h) => idClass(h.id) === cls).map((h) => h.id);
+if (heldIn('open').length) {
+  rowsByClass.open = readRegister('open', join(PRIVATE, 'platform-state', 'open.json'), heldIn('open'));
+}
+if (heldIn('queue').length) {
+  const business = process.env.NIKATRU_BUSINESS_ROOT
+    ? resolve(process.env.NIKATRU_BUSINESS_ROOT)
+    : resolve(PRIVATE, '..', '..', 'nikatru');
+  rowsByClass.queue = readRegister('queue', join(business, 'owner-queue.json'), heldIn('queue'));
+}
+
+const notLive = [];
+for (const h of held) {
+  holdsChecked++;
+  const r = resolveHold(h, rowsByClass);
+  if (r.verdict === 'live') { holdsLive++; continue; }
+  if (r.verdict === 'malformed') {
+    failures.push({ rel: h.file, line: h.line, kind: 'owner-id', what: String(h.id), why: `${h.jsonPath} — ${r.why}` });
+    continue;
+  }
+  if (r.verdict === 'absent') {
+    failures.push({ rel: h.file, line: h.line, kind: 'owner-id', what: h.id, why: `${h.jsonPath} holds on a row ${LIVENESS[r.cls].register} does not carry (ABSENT)` });
+    continue;
+  }
+  notLive.push({ ...h, cls: r.cls, state: r.state });
+}
+if (notLive.length) {
+  const changed = ALL_SUBJECTS ? null : changedSinceMergeBase();
+  for (const h of notLive) {
+    if (ALL_SUBJECTS || (changed && changed.has(h.file))) {
+      failures.push({ rel: h.file, line: h.line, kind: 'owner-id', what: h.id, why: `${h.jsonPath} holds on a row that is NOT LIVE (${h.state}) in ${LIVENESS[h.cls].register}` });
+    } else {
+      staleHolds.push(h);
+      console.log(`STALE HOLD ${h.file} ${h.jsonPath} ${h.id} ${h.state}`);
+    }
+  }
+  if (!ALL_SUBJECTS && changed === null) console.log('liveness not graded here: no merge-base');
+}
+/* ── ID CITATIONS END ────────────────────────────────────────────────────── */
+
 /* The resolution ROOT is printed, not just the counts. After 2026-08-18 `Private/`
    is a logical prefix with more than one possible answer, so a report that says
    how many citations resolved without saying what they resolved AGAINST is not a
@@ -775,7 +937,9 @@ const label = `${filesScanned} tracked file(s) · ${pathsChecked} Private/ path 
   `${selfPinsChecked} self-pin(s) to this repository's own tag(s), resolved with \`git cat-file -e\` against ${REPO} · ` +
   `${tagsChecked} [pipeline] tag(s) yielding ${idsChecked} id(s), resolved against ` +
   `${origins.size} origin(s) from ${specFiles} spec file(s)` +
-  (shardDecl ? `, ${shardsRead} of them declared shard(s) under ${Object.keys(shardDecl.declared.reduce((a, r) => { a[r.split('/')[0]] = 1; return a; }, {})).length} sharded register(s)` : ' (no `shards` block declared)');
+  (shardDecl ? `, ${shardsRead} of them declared shard(s) under ${Object.keys(shardDecl.declared.reduce((a, r) => { a[r.split('/')[0]] = 1; return a; }, {})).length} sharded register(s)` : ' (no `shards` block declared)') +
+  ` · ${holdsChecked} owner-id hold(s) in ${holdSubjectFiles} subject file(s) (${HOLD_SUBJECTS.map((s) => `${s.glob} ${s.jsonPath}`).join('; ')}), ` +
+  `${holdsLive} live` + (staleHolds.length ? `, ${staleHolds.length} STALE and printed above, outside this branch's diff` : '');
 
 if (!failures.length) {
   console.log(`ok  public citations — every citation resolves. ${label}` +
@@ -798,6 +962,7 @@ for (const [rel, hits] of [...byFile.entries()].sort((a, b) => b[1].length - a[1
     const why = h.kind === 'path' ? 'no such path'
       : h.kind === 'pin' ? 'not at that tag'
       : h.kind === 'selfpin' ? 'not at that tag in this repository'
+      : h.kind === 'owner-id' ? h.why
       : 'unknown requirement id';
     console.error(`    :${h.line}  ${why}  ${h.what}`);
   }
@@ -806,4 +971,9 @@ for (const [rel, hits] of [...byFile.entries()].sort((a, b) => b[1].length - a[1
 console.error('\n  A citation that still parses and no longer points at the right thing is this');
 console.error('  corpus\'s most repeated defect. Repoint it, or disclose the absence on the same');
 console.error('  line — `(deleted 2026-08-15)` — which this guard accepts and a reader can see.\n');
+if (failures.some((f) => f.kind === 'owner-id')) {
+  console.error('  An owner-id hold is not settled by a disclosure. Open the row it names, or record the');
+  console.error('  ruling it waits on and null the hold. `--all-subjects` grades every subject, not only');
+  console.error('  the ones this branch changes.\n');
+}
 process.exit(1);
