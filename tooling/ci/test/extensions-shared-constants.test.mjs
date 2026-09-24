@@ -17,7 +17,7 @@
 //      longer a value to compare. The three cases below grade the three things
 //      that replaced the comparison: the packager reads that module and defines
 //      neither constant itself; the BYTES its writeZip stamps into a real
-//      archive are the module's values; and the node majors extensions.yml runs
+//      archive are the module's values; and the node majors extensions-ci.yml runs
 //      the sims on are all high enough for a CommonJS file to require an ES
 //      module at all (22.12.0 and up), because that is what the first two rest
 //      on and it is written in a workflow matrix nothing else reads.
@@ -185,7 +185,7 @@ describe('the zip timestamp is ONE constant', () => {
     assert.equal(buf.readUInt16LE(cd + 14), DOS_DATE, 'the central directory carries a different DOS date');
   });
 
-  test('extensions.yml runs the Full_Screen_Shot sims only on node majors that can require() an ES module', () => {
+  test('extensions-ci.yml runs the Full_Screen_Shot sims only on node majors that can require() an ES module', () => {
     // THE FLOOR THE TWO CASES ABOVE REST ON. `require()` of an .mjs is enabled
     // by default from node 22.12.0; below it the packager — and therefore
     // test/i18n-sim.node.js, which requires it — throws ERR_REQUIRE_ESM at load.
@@ -195,10 +195,10 @@ describe('the zip timestamp is ONE constant', () => {
     // A bare major is safe because setup-node resolves it to the newest release
     // of that line, which for 22 can never again be below 22.12.
     const MIN_MAJOR = 22;
-    const wf = parseWorkflow(REPO, '.github/workflows/extensions.yml');
-    assert.ok(wf, 'extensions.yml could not be read');
+    const wf = parseWorkflow(REPO, '.github/workflows/extensions-ci.yml');
+    assert.ok(wf, 'extensions-ci.yml could not be read');
     const sims = wf.jobs.get('sims');
-    assert.ok(sims, 'extensions.yml has no `sims` job — the sims moved and this floor is now unguarded');
+    assert.ok(sims, 'extensions-ci.yml has no `sims` job — the sims moved and this floor is now unguarded');
 
     const lines = sims.lines.map((l) => l.text);
     const matrix = lines.find((t) => /^\s+node:\s*\[/.test(t));

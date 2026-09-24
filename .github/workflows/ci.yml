@@ -12,6 +12,9 @@ on:
   push:
     branches: [main]
   pull_request:
+    # why: `edited` so that fixing a PR body re-runs assert-pr-rows (guard-meta).
+    # The other three are GitHub's defaults, listed because `types:` replaces them.
+    types: [opened, synchronize, reopened, edited]
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -145,6 +148,17 @@ jobs:
         run: node tooling/ci/assert-guards-refuse-empty.mjs
       - name: No dead tracked files
         run: node tooling/scripts/assert-no-dead-files.mjs
+      # why: a STEP-level `if:`, never a job-level one: ci-gate aggregates this job,
+      # and a job skipped on push would read as not-green (assert-green-means-ran A6).
+      # The body is untrusted input, so it arrives through env: and never inside run:.
+      # BASE_SHA's history is read for the grandfather rule, which fetch-depth: 0 above provides.
+      - name: A pull request names the rows it moves, or says why none
+        if: github.event_name == 'pull_request'
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_CREATED_AT: ${{ github.event.pull_request.created_at }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: node tooling/ci/assert-pr-rows.mjs
 
   guards-platform:
     name: Guards — platform, data and ops
@@ -490,6 +504,10 @@ jobs:
       # in the same PR, not at the next build-platforms run — docs/ci/build-platforms.md §apps-gov-in.
       - name: The apps.gov.in listing media is still the derivation of the Play set
         run: node --single-threaded tooling/ci/assert-apps-gov-in-media.mjs
+      # why: O-APP-ID-FORM-UNVALIDATED (a). Appended at the END of this job, like
+      # the store vocabulary step, so it shifts as few `ci.yml:NNNN` citations as it can.
+      - name: The app id has one rule, and the Worker, the callers and the schemas agree with it
+        run: node tooling/ci/assert-app-id-contract.mjs
 
   guards-chassis:
     name: Guards — chassis, app surface and packages
@@ -859,6 +877,24 @@ jobs:
           cp -r apps/probeapi "$RUNNER_TEMP/probeapi-as-stamped"
           dart format apps/probeapi
           diff -ru "$RUNNER_TEMP/probeapi-as-stamped" apps/probeapi
+      # why: O-APP-ID-FORM-UNVALIDATED (a). pre_gen applies contracts/app-id and
+      # throws, so mason exits non-zero having written NOTHING. `habit_tracker` is
+      # the id the old snake_case rule let through. Exit code alone is not the
+      # proof: the log must carry the contract's message, and no app may exist.
+      - name: A bad app id is refused before anything is written
+        run: |
+          export PATH="$PATH:$HOME/.pub-cache/bin"
+          set +e
+          mason make app -c tooling/bricks/app/_probe_bad_id_vars.json -o . --on-conflict overwrite > "$RUNNER_TEMP/bad-id-stamp.log" 2>&1
+          code=$?
+          set -e
+          cat "$RUNNER_TEMP/bad-id-stamp.log"
+          echo "mason exit: $code"
+          if [ "$code" -eq 0 ]; then echo "::error::mason stamped app_id habit_tracker; pre_gen did not refuse it"; exit 1; fi
+          if ! grep -q 'app_id' "$RUNNER_TEMP/bad-id-stamp.log"; then echo "::error::mason exited $code and its log never names app_id"; exit 1; fi
+          if ! grep -q 'contracts/app-id' "$RUNNER_TEMP/bad-id-stamp.log"; then echo "::error::mason exited $code without the contracts/app-id message"; exit 1; fi
+          if ! grep -qF 'got "habit_tracker", which contains "_"' "$RUNNER_TEMP/bad-id-stamp.log"; then echo "::error::mason exited $code, but not on the underscore in habit_tracker"; exit 1; fi
+          if [ -e apps/habit_tracker ]; then echo "::error::apps/habit_tracker exists after a refused stamp"; exit 1; fi
       # why: A STAMPED WORKER MUST BE TESTABLE ON DAY ONE, and until 2026-09-12 it
       # was not: the template shipped no vitest, no `test` script and no test
       # directory, so the first thing an owner could not do with a fresh backend was
@@ -1235,6 +1271,18 @@ jobs:
       # A debug-signed PR build is discarded, and release-provenance gives a gate
       # constituent no credit for publishing (assert-release-provenance.mjs:735-770).
 
+  # why: the extensions CI lane, as ONE constituent of ci-gate. extensions-ci.yml runs
+  # only as a call, and its jobs report inside this run; this job's result is red when
+  # any of them is. No `if:` (green-means-ran A6), and no `timeout-minutes` — GitHub
+  # rejects one on a call; every callee job bounds itself (workflow-hardening limb 4).
+  # docs/ci/extensions-ci.md.
+  extensions:
+    name: extensions
+    uses: ./.github/workflows/extensions-ci.yml
+    permissions:
+      contents: read
+      actions: read
+
 
   ci-gate:
     # why: the ONE required status check on main. It must need every other job in
@@ -1261,6 +1309,7 @@ jobs:
       - workspace-gate
       - android-apps
       - android-artifacts
+      - extensions
     if: always()
     steps:
       - name: Require all lanes green
@@ -1281,6 +1330,7 @@ jobs:
           echo "workspace-gate=${{ needs.workspace-gate.result }}"
           echo "android-apps=${{ needs.android-apps.result }}"
           echo "android-artifacts=${{ needs.android-artifacts.result }}"
+          echo "extensions=${{ needs.extensions.result }}"
           if [ "${{ contains(needs.*.result, 'failure') }}" = "true" ] || [ "${{ contains(needs.*.result, 'cancelled') }}" = "true" ] || [ "${{ contains(needs.*.result, 'skipped') }}" = "true" ]; then
             echo "::error::One or more CI lanes failed, was cancelled, or never ran — see the verdicts above"; exit 1
           fi

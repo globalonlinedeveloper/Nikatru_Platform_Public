@@ -241,6 +241,24 @@ const CLASSIFIED_ELSEWHERE = new Map([
       'business, and the check that closes it is `discover.mjs --assert-generic` (report 04 §6.2 item 5), ' +
       'not this one. [ADR 067] decision 1.',
   ],
+  [
+    // Classified for the reason extensions.yml's row gives just above, restated
+    // rather than cross-referenced: this map is read one entry at a time. The
+    // CI jobs of the extension lane moved out of extensions.yml into this file
+    // on 2026-09-24 (O-EXTENSIONS-CI-REQUIRED-GATES-NOTHING). It has only a
+    // `workflow_call` trigger.
+    'extensions-ci.yml',
+    'runs the CI jobs of the browser-extension lane (build-free, the shared contract, the gate inventory, ' +
+      'the per-tool gates, sims, packages, the selftest and the templates) over ' +
+      'extensions/Extension/<Tool>/tool.json, not over apps from the pubspec workspace. It is started only ' +
+      "by `workflow_call`: ci.yml's `extensions` job calls it on every push and pull request, and " +
+      "extensions.yml's `ci` job on a `lane: ci` dispatch. It submits nothing to a store. R-1 quantifies " +
+      'over the workspace APP set, so this lane has nothing for this guard to compare and would report a ' +
+      'permanent empty-set pass if it were graded. The owning stage is stage 14 ops, through the duty row ' +
+      '`duty.workflow.extensions-ci.yml` in tooling/ops/register.json. Classified 2026-09-24, the round ' +
+      "the workflow landed; the PR's first CI run (36049952550) exited 1 here naming it, which is the " +
+      'unclassified-lane limb working as designed.',
+  ],
 
   [
     'deploy-workers.yml',

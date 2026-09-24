@@ -51,6 +51,22 @@ const EXT_WORKFLOW = '.github/workflows/extensions.yml';
 /** A newline as a value — writing the escape into a generated string literal is
  *  how this repository has twice produced a file that would not parse. */
 const NL = String.fromCharCode(10);
+/** ⏱ 2026-09-24 — the gate the grader-is-run limb walks: ci.yml `ci-gate`, whose
+ *  one need runs the fixture's grader. */
+const GATE_CI = '.github/workflows/ci.yml';
+const GATE_JOBS = [
+  '  guards-store:',
+  '    runs-on: ubuntu-24.04',
+  '    steps:',
+  '      - run: node tooling/ci/assert-store-metadata.mjs',
+  '  ci-gate:',
+  '    runs-on: ubuntu-24.04',
+  '    needs: [guards-store]',
+  '    if: always()',
+  '    steps:',
+  '      - run: echo gate',
+  '',
+].join(NL);
 
 /** A lane workflow with one job, plus a decoy COMMENT naming a job that does not
  *  exist — so a guard that grepped prose instead of parsing jobs would resolve a
@@ -497,6 +513,11 @@ function tree({
   // Limb 6b-iii's cross-check: what tooling/capability-register.json lists as
   // `vendors.revenuecat.surfaces`. `null` writes no capability register at all.
   revenuecatSurfaces = ['REVENUECAT_KEY'],
+  // ⏱ 2026-09-24 — the grader-is-run limb walks ci.yml `ci-gate`, and skips a
+  // fixture root with no ci.yml. A case that hands in its own ci.yml gets the two
+  // gate jobs appended unless it declares `ci-gate` itself (or passes gate: false),
+  // so every existing case keeps its verdict.
+  gate = true,
 } = {}) {
   const root = join(TMP, `r${seq++}`);
   const write = (rel, body) => {
@@ -743,7 +764,9 @@ function tree({
   if (revenuecatSurfaces !== null) {
     write('tooling/capability-register.json', JSON.stringify({ vendors: { revenuecat: { surfaces: revenuecatSurfaces } } }, null, 2));
   }
-  for (const [rel, body] of Object.entries(extraFiles)) write(rel, body);
+  for (const [rel, body] of Object.entries(extraFiles)) {
+    write(rel, gate && rel === GATE_CI && !/^ {2}ci-gate:/m.test(body) ? `${body.replace(/\n*$/, '')}${NL}${GATE_JOBS}` : body);
+  }
   if (!omitRegister) {
     write('tooling/channel-register.json', registerRaw ?? JSON.stringify(register, null, 2));
   }
@@ -3757,5 +3780,77 @@ describe('assert-channel-register — a stamped channel belongs to the job that 
     );
     assert.equal(code, 0, out);
     assert.doesNotMatch(out, /windows-stroe/);
+  });
+});
+
+// ⏱ 2026-09-24 — grader-is-run (O-EXTENSIONS-CI-REQUIRED-GATES-NOTHING, EXT-2 limb a).
+// Every `storeMetadataGradedBy` must be run by a job ci-gate waits on: its needs, a
+// local call one level in, the callee's ci-required needs. Each case hands in a ci.yml
+// whose `app-brick` keeps the fixture register's `releaseBuildsNeverShipped` entry true.
+describe('assert-channel-register — grader-is-run: every storeMetadataGradedBy runs inside ci-gate', () => {
+  const EXT_GRADER = 'extensions/scripts/check-store-metadata.mjs';
+  const CALLEE = '.github/workflows/lane-ci.yml';
+  const brick = ['  app-brick:', '    runs-on: ubuntu-24.04', '    steps:', '      - run: flutter build web --pwa-strategy=none'];
+  const ciYml = (jobs, needs) =>
+    ['name: CI', 'on:', '  push:', 'jobs:', ...brick, ...jobs,
+      '  ci-gate:', '    runs-on: ubuntu-24.04', `    needs: [${['app-brick', ...needs].join(', ')}]`, '    if: always()', '    steps:', '      - run: echo gate', ''].join(NL);
+  const calleeYml = (gatesRun) =>
+    ['name: Lane CI', 'on:', '  workflow_call:', 'defaults:', '  run:', '    working-directory: extensions', 'jobs:',
+      '  gates:', '    runs-on: ubuntu-24.04', '    steps:', `      - run: ${gatesRun}`,
+      '  ci-required:', '    runs-on: ubuntu-24.04', '    needs: [gates]', '    if: always()', '    steps:', '      - run: echo aggregate', ''].join(NL);
+  const callJob = (callee) => ['  extensions:', `    uses: ./${callee}`];
+  const extGraded = (r) => { r.surfaces.app.storeMetadataGradedBy = EXT_GRADER; };
+
+  test('PASSES when a job ci-gate needs runs the grader, and prints the walk', () => {
+    const storeJob = ['  guards-store:', '    runs-on: ubuntu-24.04', '    steps:', '      - run: node tooling/ci/assert-store-metadata.mjs'];
+    const { code, out } = run(tree({ gate: false, extraFiles: { [GATE_CI]: ciYml(storeJob, ['guards-store']) } }));
+    assert.equal(code, 0, out);
+    assert.match(out, /grader-is-run — 1 storeMetadataGradedBy grader\(s\) run by a job ci-gate waits on/);
+    assert.match(out, /surfaces\."app" → tooling\/ci\/assert-store-metadata\.mjs, run by \.github\/workflows\/ci\.yml job "guards-store" \(ci-gate → guards-store\)/);
+  });
+
+  test('PASSES when the grader runs in a callee job inside the callee\'s ci-required needs, through the call', () => {
+    const { code, out } = run(tree({
+      gate: false,
+      mutate: extGraded,
+      extraFiles: {
+        [EXT_GRADER]: '// the extension listing grader\n',
+        [GATE_CI]: ciYml(callJob(CALLEE), ['extensions']),
+        [CALLEE]: calleeYml('node scripts/check-store-metadata.mjs fullshot'),
+      },
+    }));
+    assert.equal(code, 0, out);
+    assert.match(out, /surfaces\."app" → extensions\/scripts\/check-store-metadata\.mjs, run by \.github\/workflows\/lane-ci\.yml job "gates" \(ci-gate → extensions → \.github\/workflows\/lane-ci\.yml ci-required → gates\)/);
+  });
+
+  test('FAILS when the grader runs only in a job outside ci-gate\'s closure — the release job\'s shape', () => {
+    const release = ['name: Ext', 'on:', '  push:', '    tags: [x-v1]', 'defaults:', '  run:', '    working-directory: extensions', 'jobs:',
+      '  release:', '    runs-on: ubuntu-24.04', '    steps:', '      - run: node scripts/check-store-metadata.mjs fullshot', ''].join(NL);
+    const { code, out } = run(tree({
+      gate: false,
+      mutate: extGraded,
+      extraFiles: {
+        [EXT_GRADER]: '// the extension listing grader\n',
+        [GATE_CI]: ciYml(callJob(CALLEE), ['extensions']),
+        [CALLEE]: calleeYml('echo no grader here'),
+        '.github/workflows/ext.yml': release,
+      },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /surfaces\."app" is graded by extensions\/scripts\/check-store-metadata\.mjs, and no job ci-gate waits on runs it/);
+    assert.match(out, /It is invoked only by \.github\/workflows\/ext\.yml job "release", outside that closure/);
+  });
+
+  test('COVERAGE LOST (exit 2) when a need of ci-gate calls a workflow that is not in the tree', () => {
+    const { code, out } = run(tree({
+      gate: false,
+      mutate: extGraded,
+      extraFiles: {
+        [EXT_GRADER]: '// the extension listing grader\n',
+        [GATE_CI]: ciYml(callJob('.github/workflows/gone.yml'), ['extensions']),
+      },
+    }));
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST — \.github\/workflows\/ci\.yml job `extensions` is a need of ci-gate and calls \.github\/workflows\/gone\.yml, which the grader-is-run limb cannot follow \(missing\)/);
   });
 });

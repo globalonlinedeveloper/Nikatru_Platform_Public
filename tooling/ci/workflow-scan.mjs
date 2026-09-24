@@ -955,3 +955,62 @@ export function gradeDomain(builds, register) {
   const staleExemptions = exemptions.filter((_, i) => !used.has(i));
   return { graded, exempt, findings, exemptions, staleExemptions };
 }
+
+/**
+ * THE LOCAL REUSABLE-WORKFLOW CALLS a parsed workflow makes, followed ONE level.
+ *
+ * A job whose own key `uses:` (four spaces: a job's keys, never a step's) names
+ * `./.github/workflows/<file>.yml` runs every job of that callee inside the
+ * caller's run. A guard that reads a job's `needs:` or its `runs-on:` sees
+ * nothing of that: the call job has no steps, no runner and no timeout of its
+ * own. This is the one place that turns such a job into the callee's REL path.
+ *
+ * `parsedAll` is the set the caller already holds (`parseAllWorkflows`), so this
+ * walks no tree and reads no file of its own: like `parseWorkflow`, it answers
+ * only about what its caller handed it.
+ *
+ * Returns `{ calls, remote, refusal }`:
+ *   · `calls`   — `[{ job, n, callee }]`, `callee` the callee's parsed workflow;
+ *   · `remote`  — `[{ job, n, ref }]`, job-level `uses:` that are not local;
+ *   · `refusal` — null, or `{ kind, job, n, callee }` with `kind`
+ *     `missing` (no such file in `parsedAll`) or `nested` (the callee itself
+ *     makes a local call). It RETURNS the refusal and never exits: each caller
+ *     turns it into its own COVERAGE LOST.
+ *
+ * ⏱ ADDED 2026-09-24 (O-EXTENSIONS-CI-REQUIRED-GATES-NOTHING): ci.yml's
+ * `extensions` job calls extensions-ci.yml, and ci-gate needs it.
+ */
+export function resolveLocalCalls(wf, parsedAll) {
+  const calls = [];
+  const remote = [];
+  let refusal = null;
+  const byRel = new Map((parsedAll ?? []).map((p) => [p.rel, p]));
+  const jobCalls = (w) => {
+    const out = [];
+    for (const job of w.jobs.values()) {
+      for (const l of job.lines) {
+        const m = l.text.match(/^ {4}uses:\s*(['"]?)(\S+?)\1\s*$/);
+        if (m) out.push({ job: job.name, n: l.n, ref: m[2] });
+      }
+    }
+    return out;
+  };
+  for (const c of jobCalls(wf)) {
+    const local = c.ref.match(/^\.\/(\.github\/workflows\/[^@\s]+\.ya?ml)$/);
+    if (!local) {
+      remote.push(c);
+      continue;
+    }
+    const callee = byRel.get(local[1]);
+    if (!callee) {
+      refusal ??= { kind: 'missing', job: c.job, n: c.n, callee: local[1] };
+      continue;
+    }
+    if (jobCalls(callee).some((d) => /^\.\//.test(d.ref))) {
+      refusal ??= { kind: 'nested', job: c.job, n: c.n, callee: local[1] };
+      continue;
+    }
+    calls.push({ job: c.job, n: c.n, callee });
+  }
+  return { calls, remote, refusal };
+}

@@ -10,7 +10,9 @@
     "app": {
       "description": "The app id, or the extension slug. For an app it must equal app.yaml's `id`; for an extension it must equal publish/identity.json's `slug` — two files describing two different products is the one mistake a per-surface declaration makes easy.",
       "type": "string",
-      "pattern": "^[a-z][a-z0-9_]*$"
+      "pattern": "^[a-z][a-z0-9]*$",
+      "minLength": 2,
+      "maxLength": 32
     },
     "surface": {
       "description": "Which kind of shipped thing this declares. The two surfaces answer to different regulators with different vocabularies — an app answers Play's Data safety form and Apple's App Privacy questions, an extension answers the Chrome Web Store's Privacy practices tab — and the arity rules below differ because of that, not because one is graded more loosely. C-LOGIN-MANDATORY-IN-APPS is the same split, recorded for the same reason: the two surfaces genuinely differ.",

@@ -4,7 +4,8 @@
 //
 // 🔴 EVERY CASE MUTATES A COPY OF THE REAL `.github/workflows`, never a
 // hand-built fixture. The guard's whole subject is a graph — which jobs are in
-// the `needs` closure of ci.yml `ci-gate` and extensions.yml `ci-required` — and
+// the `needs` closure of ci.yml `ci-gate`, followed through its call job into
+// extensions-ci.yml (⏱ 2026-09-24; extensions.yml `ci-required` until then) — and
 // a hand-built two-job workflow would encode whatever the author believed that
 // graph looked like and then agree with itself. The real tree is the only
 // fixture that can disagree.
@@ -35,7 +36,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, cpSync, un
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { timeoutLines, timeoutValue, isBoundedValue, needsClosure, GATING_CAP, DEFAULT_CAP } from '../assert-workflow-timeouts.mjs';
+import { timeoutLines, timeoutValue, isBoundedValue, needsClosure, gatingThroughCalls, GATE_ANCHORS, GATING_CAP, DEFAULT_CAP } from '../assert-workflow-timeouts.mjs';
 import { parseAllWorkflows } from '../workflow-scan.mjs';
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -269,10 +270,15 @@ describe('assert-workflow-timeouts — the two caps', () => {
     // that matters is that the walk reaches MORE than the anchor.
     assert.ok(closure.size > 1, 'a closure of one means the `needs:` walk read nothing');
 
-    const ext = wfs.find((w) => w.rel === `${WF}/extensions.yml`);
-    const extClosure = needsClosure(ext, 'ci-required');
-    assert.ok(extClosure.size > 1);
-    assert.equal(extClosure.has('e2e-suite'), false, 'e2e-suite blocks no merge — that is why it is graded at the default cap');
+    // ⏱ 2026-09-24: the extensions CI lane holds a merge only THROUGH ci.yml's
+    // `extensions` call job, so its closure is ci-gate's, followed one level.
+    assert.equal(GATE_ANCHORS.length, 1, 'ci-gate is the one required check and the one anchor');
+    const { gating, refusal } = gatingThroughCalls(wfs, GATE_ANCHORS[0]);
+    assert.equal(refusal, null);
+    assert.ok(gating.get(`${WF}/ci.yml`).has('extensions'), 'the call job is a direct need of ci-gate');
+    const callee = gating.get(`${WF}/extensions-ci.yml`);
+    assert.ok(callee && callee.has('ci-required') && callee.has('sims') && callee.has('build-free'), 'every callee job is merge-blocking through the call');
+    assert.equal(gating.has(`${WF}/extensions.yml`), false, 'e2e-suite and release block no merge — that is why they are graded at the default cap');
   });
 });
 
@@ -323,6 +329,46 @@ describe('assert-workflow-timeouts — COVERAGE LOST', () => {
         assert.equal(r.status, 2, `${r.stdout}${r.stderr}`);
         assert.match(r.stderr, /has no job `ci-gate`/);
         assert.match(r.stderr, /silently drops to the 60-minute cap/);
+      },
+    );
+  });
+});
+
+// ⏱ 2026-09-24 — the closure followed THROUGH ci.yml's `extensions` call job.
+describe('assert-workflow-timeouts — through a reusable-workflow call', () => {
+  const CALLEE = { file: 'extensions-ci.yml', job: 'sims' };
+
+  test('a callee job over the gating cap is a finding: the call puts it in ci-gate\'s closure', () => {
+    withTree(
+      (root) => mutateJobTimeout(root, CALLEE, [`    timeout-minutes: ${GATING_CAP + 15}`]),
+      (r) => {
+        assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
+        assert.match(r.stderr, /extensions-ci\.yml:\d+ job `sims` sets `timeout-minutes: 45`, over its cap of 30 — it is in the `needs` closure of ci-gate, through a call/);
+      },
+    );
+  });
+
+  test('a callee job with no timeout is a finding', () => {
+    withTree(
+      (root) => mutateJobTimeout(root, CALLEE, []),
+      (r) => {
+        assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
+        assert.match(r.stderr, /extensions-ci\.yml job `sims` declares no job-level `timeout-minutes:`/);
+      },
+    );
+  });
+
+  test('a call to a callee that is not in the tree refuses with 2', () => {
+    withTree(
+      (root) => {
+        const text = read(root, 'ci.yml');
+        const next = text.replace('uses: ./.github/workflows/extensions-ci.yml', 'uses: ./.github/workflows/extensions-cii.yml');
+        assert.notEqual(next, text, 'the call job moved under this test');
+        write(root, 'ci.yml', next);
+      },
+      (r) => {
+        assert.equal(r.status, 2, `${r.stdout}${r.stderr}`);
+        assert.match(r.stderr, /COVERAGE LOST — \.github\/workflows\/ci\.yml job `extensions` \(line \d+\) is in the ci-gate closure and calls \.github\/workflows\/extensions-cii\.yml, which this scan cannot follow \(missing\)/);
       },
     );
   });

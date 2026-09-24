@@ -211,6 +211,16 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-store"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-app-id-contract.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "ADR 074"
     ],
@@ -872,7 +882,7 @@
       "ADR 067"
     ],
     "invokedBy": [
-      ".github/workflows/extensions.yml#build-free"
+      ".github/workflows/extensions-ci.yml#build-free"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-extensions-build-free.mjs",
@@ -1667,6 +1677,16 @@
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-policy-claims.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guard-meta"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-pr-rows.mjs",
     "references": [],
     "state": "WIRED"
   },
@@ -2803,6 +2823,14 @@
     "invokedBy": [],
     "kind": "guard",
     "ref": "tooling/ci/text-reductions.mjs",
+    "references": [],
+    "state": "LIBRARY"
+  },
+  {
+    "claims": [],
+    "invokedBy": [],
+    "kind": "guard",
+    "ref": "tooling/ci/tool-output.mjs",
     "references": [],
     "state": "LIBRARY"
   },

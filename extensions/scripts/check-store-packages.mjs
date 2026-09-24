@@ -7,6 +7,7 @@
      node scripts/check-store-packages.mjs fullshot
      node scripts/check-store-packages.mjs fullshot --dir dist
      node scripts/check-store-packages.mjs --all
+     node scripts/check-store-packages.mjs fullshot --allow-none   (before any build: zero is not a loss)
 
    🔴 WHY THIS EXISTS — the source is right and the artifacts are wrong.
 
@@ -111,8 +112,15 @@ const GECKO_ID_RE = /^[a-zA-Z0-9\-._]*@[a-zA-Z0-9\-._]+$/;
 const DEFAULT_DIRS = ['publish', 'dist'];
 
 const args = parseArgs(process.argv.slice(2));
-args.rejectUnknown(['dir', 'all', 'repo-root']);
+args.rejectUnknown(['dir', 'all', 'repo-root', 'allow-none']);
 const root = repoRoot(args);
+/* ⏱ 2026-09-24 — ZERO PACKAGES IS COVERAGE LOST, UNLESS THE CALLER SAYS NONE CAN EXIST YET.
+   Until today zero packages printed a note and exited 0, so the `package` job and the
+   release job — both of which run AFTER a build — would have passed over a build that
+   produced nothing. Only the pre-package `gates` call passes --allow-none: at that point
+   no build has run, so there is nothing to grade and the targets are still accounted
+   for. Zero TARGETS stays the separate exit 2 below. */
+const allowNone = args.bool('allow-none');
 
 /* 🔴 `--all` HAD NEVER RUN HERE EITHER, AND IT IS IN THIS FILE'S OWN USAGE LINE.
    FOUND AND FIXED 2026-08-22 by running the documented invocation. This is the
@@ -583,6 +591,12 @@ if (packagesGraded === 0) {
   r.note('   committed to grade. Until the first one, this limb bites only where the artifacts are: a developer');
   r.note('   machine after a build, or the `package` job, which grades the zip it just built. Read this line');
   r.note('   rather than the exit code.');
+  if (!allowNone) {
+    /* A finding already made (an unreadable zip is one) outranks the loss: exit with it. */
+    const found = r.finish();
+    if (found !== 0) process.exit(found);
+    die('COVERAGE LOST: zero packages graded; pass --allow-none only before packaging.');
+  }
 }
 
 process.exit(r.finish());

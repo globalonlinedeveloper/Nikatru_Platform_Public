@@ -1170,19 +1170,19 @@
       "reason": "A design argument comparing two shapes (refuse at the ref vs an exempt-run list), not a property of the step below. No test executes the rehearsal preflight step. Judged 2026-09-19."
     },
     {
-      "file": ".github/workflows/extensions.yml",
+      "file": ".github/workflows/extensions-ci.yml",
       "anchor": "# DERIVED, NOT LISTED. The set is read out of the workflow files, so it",
       "status": "demoted",
       "reason": "A comment inside an inline `run:` bash block. No test executes this step (no case in tooling/ci/test or extensions/scripts/test reads it); the `find`/`grep` the sentence describes sits directly beneath it and is the mechanism, run on every CI pass. Nothing a node:test case could grade without re-implementing the step. Judged 2026-09-19."
     },
     {
-      "file": ".github/workflows/extensions.yml",
+      "file": ".github/workflows/extensions-ci.yml",
       "anchor": "# DERIVED, NOT LISTED — the same rule the gate inventory above follows,",
       "status": "demoted",
       "reason": "A comment inside an inline `run:` bash block. No test executes this step (no case in tooling/ci/test or extensions/scripts/test reads it); the `find`/`grep` the sentence describes sits directly beneath it and is the mechanism, run on every CI pass. Nothing a node:test case could grade without re-implementing the step. Judged 2026-09-19."
     },
     {
-      "file": ".github/workflows/extensions.yml",
+      "file": ".github/workflows/extensions-ci.yml",
       "anchor": "# DERIVED, NOT LISTED — the same rule the gate inventory at the top of",
       "status": "demoted",
       "reason": "A comment inside an inline `run:` bash block. No test executes this step (no case in tooling/ci/test or extensions/scripts/test reads it); the `find`/`grep` the sentence describes sits directly beneath it and is the mechanism, run on every CI pass. Nothing a node:test case could grade without re-implementing the step. Judged 2026-09-19."

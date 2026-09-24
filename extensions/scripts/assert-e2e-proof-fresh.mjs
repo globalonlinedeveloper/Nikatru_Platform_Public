@@ -11,16 +11,20 @@
  * `legs.length > 0 && …`, while the runs query either side of it was
  * byte-identical once de-indented. Both call sites now run THIS file.
  *
- * ONE CALL SITE: the job `e2e-proof-fresh` of extensions.yml, which runs on
- * pull_request and a `lane: ci` dispatch, never on a push: extensions.yml's
- * `push` trigger fires only on `fullshot-v*` tags, and the job's `if:` excludes
- * tags, the schedule event and the label event. A dead cron cannot silence
- * it. e2e.yml has no proof-fresh job, and ci.yml's proof step runs
- * tooling/ci/assert-e2e-proof-fresh.mjs, the Platform_Public sibling named
+ * ONE CALL SITE: the job `e2e-proof-fresh` of extensions-ci.yml, a workflow
+ * with no trigger of its own that runs only when called. ci.yml's `extensions`
+ * job calls it on every push to main and every pull request (ci-gate needs that
+ * job), and extensions.yml's `ci` job calls it on a `lane: ci` dispatch. The
+ * job carries no `if:`, so every call runs it. A dead cron cannot silence it.
+ * e2e.yml has no proof-fresh job, and ci.yml's `guards-platform` proof step
+ * runs tooling/ci/assert-e2e-proof-fresh.mjs, the Platform_Public sibling named
  * below — a different file. The silence left uncovered: while main is quiet,
  * this gate does not run at all.
  * ⏱ 2026-09-24: this paragraph used to read "BOTH CALL SITES SURVIVE ON PURPOSE"
- * (ci.yml and e2e.yml's proof-fresh job); neither call site exists today.
+ * (ci.yml and e2e.yml's proof-fresh job); neither call site exists today. Later
+ * the same day it named the job in extensions.yml, which ran on pull_request and
+ * a `lane: ci` dispatch and never on a push, before the job moved into
+ * extensions-ci.yml.
  *
  * THREE THINGS IT DOES DIFFERENTLY FROM THE Platform_Public SIBLINGS
  * (tooling/ci/assert-e2e-proof-fresh.mjs, assert-platform-proof-fresh.mjs):
@@ -135,9 +139,9 @@ const LEG = /^e2e[^A-Za-z0-9]/;
    beginning with a non-alphanumeric is discovered by the walk below (it skips
    only dot-names and LEG_SKIP), so that shape is reachable. LEG_WS is tried
    first and resolves it by taking the separator as WHITESPACE-DELIMITED, which
-   is what extensions.yml:1000 actually emits (it was line 84 of the pre-merge
+   is what extensions.yml:166 actually emits (it was line 84 of the pre-merge
    extensions repository's own e2e workflow, a file that does not exist in this
-   tree; re-measured against extensions.yml 2026-09-06);
+   tree; re-measured against extensions.yml 2026-09-06, and again 2026-09-24);
    the greedy form stays as a fallback so an
    unspaced separator still parses. */
 const LEG_WS = /^e2e\s+(?:[^\sA-Za-z0-9]+\s+)?([A-Za-z0-9_].*?)\s*$/;
@@ -535,10 +539,12 @@ const api = async p => {
      printed only when a row was really removed, so a log that does not carry it
      is saying the history was read whole.
 
-     ⏱ 2026-09-24: this branch is unreachable while the one caller, the job
-     `e2e-proof-fresh` of extensions.yml, excludes the schedule event — a push or
-     pull_request run's own id is never a scheduled run's. It stays for the day
-     the job runs on schedule again. */
+     ⏱ 2026-09-24: this branch is unreachable while the one caller is the job
+     `e2e-proof-fresh` of extensions-ci.yml. A called job runs inside its
+     caller's run, and both callers' runs are never scheduled extensions.yml
+     runs: ci.yml's `extensions` job runs on push and pull_request, and
+     extensions.yml's `ci` job on a `lane: ci` dispatch. It stays for the day the
+     job runs on schedule again. */
   const SELF_RUN_ID = String(process.env.GITHUB_RUN_ID || '').trim();
   let selfExcluded = null;
   if (SELF_RUN_ID) {

@@ -101,6 +101,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { APP_ID_RULE, appIdProblems } from '../../contracts/app-id/app-id.js';
 
 const ROOT = resolve(process.argv[2] ?? process.cwd());
 
@@ -112,12 +113,12 @@ const REGISTER = 'tooling/channel-register.json';
  *  vacuously true, and with the register unread the platform limb is. */
 const REQUIRED_COVERAGE = [CATALOGUE, REGISTER];
 
-/** The slug shape is pre_gen.dart's `app_id` rule (`^[a-z][a-z0-9_]*$`), not a
- *  new invention. A catalogue slug IS the app id — it is what every store
- *  identity, every subdomain and every directory name is derived from — so a
- *  slug the stamper could never have produced means the row was hand-written,
- *  which is the case this guard is most useful against. */
-const SLUG = /^[a-z][a-z0-9_]*$/;
+/** The slug shape is contracts/app-id — the rule pre_gen.dart applies to
+ *  `app_id` at stamp time, not a new invention. A catalogue slug IS the app id —
+ *  it is what every store identity, every subdomain and every directory name is
+ *  derived from — so a slug the stamper could never have produced means the row
+ *  was hand-written, which is the case this guard is most useful against. */
+const SLUG = `${APP_ID_RULE.pattern}, ${APP_ID_RULE.minLength}-${APP_ID_RULE.maxLength} characters (contracts/app-id)`;
 
 /** `preview` is what post_gen writes as a constant; `live` is the promotion an
  *  owner makes once the surface actually answers. assert-catalog-reachable.mjs
@@ -323,11 +324,11 @@ catalogue.forEach((row, i) => {
   // slug — the identity the whole factory derives from.
   if (!Object.hasOwn(row, 'slug')) {
     fail(`${at} has no \`slug\`. The slug is the app id every store identity, subdomain and directory name is derived from; a row without one cannot be matched to an app at all.`);
-  } else if (typeof row.slug !== 'string' || !SLUG.test(row.slug)) {
+  } else if (appIdProblems(row.slug).length > 0) {
     fail(
       `${at} has slug ${JSON.stringify(row.slug)}, which is not the app-id shape ${SLUG} that ` +
-        `tooling/bricks/app/hooks/pre_gen.dart enforces at stamp time. A slug the stamper could not have ` +
-        `produced means this row was written by hand.`,
+        `tooling/bricks/app/hooks/pre_gen.dart enforces at stamp time: ${appIdProblems(row.slug).join(' ')} ` +
+        `A slug the stamper could not have produced means this row was written by hand.`,
     );
   } else {
     const prev = slugsSeen.get(row.slug);

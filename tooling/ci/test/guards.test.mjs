@@ -1359,11 +1359,45 @@ describe('assert-workflow-hardening', () => {
       // GitHub rejects `timeout-minutes` there, so demanding one would be an
       // unsatisfiable red — and silently skipping it would be an unadvertised
       // hole. There is NO exemption list here; the guard says it cannot tell.
-      const files = three({ b: job('    uses: ./.github/workflows/a.yml\n') });
+      // ⏱ 2026-09-24: a LOCAL call is now followed one level (the cases below), so
+      // the unclassifiable shape here is a job with neither a runner nor a call.
+      const files = three({ b: job('    environment: x\n') });
       const { code, out } = run('assert-workflow-hardening.mjs', { args: [fixture('wh-to-nounsonjob', files)] });
       assert.equal(code, 2);
       assert.match(out, /REFUSING TO REPORT — 1 job\(s\) this limb cannot classify/);
       assert.match(out, /b\.yml job `j` declares no `runs-on:`/);
+    });
+
+    // ── ⏱ 2026-09-24: a LOCAL reusable-workflow call, followed one level ──────
+    const callJob = (ref) =>
+      `name: X\non: push\npermissions:\n  contents: read\njobs:\n  lane:\n    uses: ${ref}\n    permissions:\n      contents: read\n`;
+
+    test('a local call job whose callee jobs are all bounded passes, and the ok line counts the call', () => {
+      const files = { ...three(), '.github/workflows/d.yml': callJob('./.github/workflows/a.yml') };
+      const { code, out } = run('assert-workflow-hardening.mjs', { args: [fixture('wh-call-ok', files)] });
+      assert.equal(code, 0, out);
+      assert.match(out, /3 job\(s\) all bounded by `timeout-minutes`, 1 local reusable-workflow call\(s\) bounded by every callee job/);
+    });
+
+    test('FAILS naming the call job when one callee job declares no timeout', () => {
+      const files = { ...three({ a: job('    runs-on: ubuntu-24.04\n') }), '.github/workflows/d.yml': callJob('./.github/workflows/a.yml') };
+      const { code, out } = run('assert-workflow-hardening.mjs', { args: [fixture('wh-call-loose', files)] });
+      assert.equal(code, 1);
+      assert.match(out, /d\.yml job `lane` calls \.github\/workflows\/a\.yml, whose job\(s\) `j` declare no `timeout-minutes:`/);
+    });
+
+    test('REFUSES (exit 2) on a local call to a workflow that is not in the tree', () => {
+      const files = { ...three(), '.github/workflows/d.yml': callJob('./.github/workflows/gone.yml') };
+      const { code, out } = run('assert-workflow-hardening.mjs', { args: [fixture('wh-call-missing', files)] });
+      assert.equal(code, 2);
+      assert.match(out, /d\.yml job `lane` calls \.github\/workflows\/gone\.yml, which is not a workflow in this tree/);
+    });
+
+    test('REFUSES (exit 2) on a REMOTE reusable-workflow call: its jobs are not in this tree', () => {
+      const files = { ...three(), '.github/workflows/d.yml': callJob(`owner/repo/.github/workflows/x.yml@${SHA}`) };
+      const { code, out } = run('assert-workflow-hardening.mjs', { args: [fixture('wh-call-remote', files)] });
+      assert.equal(code, 2);
+      assert.match(out, /d\.yml job `lane` calls a REMOTE reusable workflow/);
     });
 
     test('REFUSES (exit 2) when a workflow parses to ZERO jobs', () => {
@@ -1479,7 +1513,7 @@ describe('assert-workflow-hardening', () => {
         '.github/workflows/b.yml': wf([`actions/checkout@v4`, `actions/act1@${SHA40}`, `actions/act2@${SHA40}`, `actions/act3@${SHA40}`]),
         // the stop: a job with no `runs-on:`, which limb 4 refuses to classify
         '.github/workflows/c.yml':
-          `name: X\non: push\npermissions:\n  contents: read\njobs:\n  j:\n    uses: ./.github/workflows/a.yml\n    steps:\n` +
+          `name: X\non: push\npermissions:\n  contents: read\njobs:\n  j:\n    uses: ./.github/workflows/gone.yml\n    steps:\n` +
           Array.from({ length: 4 }, (_, i) => `      - uses: actions/act${i}@${SHA40}\n`).join(''),
       };
       const { code, out } = run('assert-workflow-hardening.mjs', { args: [fixture('wh-stop-keeps-findings', files)] });
@@ -1517,7 +1551,7 @@ describe('assert-workflow-hardening', () => {
         files[`.github/workflows/${f}.yml`] = wf(Array.from({ length: 4 }, (_, i) => `actions/act${i}@${SHA}`));
       }
       files['.github/workflows/b.yml'] =
-        `name: X\non: push\npermissions:\n  contents: read\njobs:\n  j:\n    uses: ./.github/workflows/a.yml\n    steps:\n` +
+        `name: X\non: push\npermissions:\n  contents: read\njobs:\n  j:\n    uses: ./.github/workflows/gone.yml\n    steps:\n` +
         Array.from({ length: 4 }, (_, i) => `      - uses: actions/act${i}@${SHA}\n`).join('');
       const { code, out } = run('assert-workflow-hardening.mjs', { args: [fixture('wh-stop-clean', files)] });
       assert.equal(code, 2);

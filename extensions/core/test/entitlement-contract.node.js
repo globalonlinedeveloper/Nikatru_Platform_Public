@@ -24,7 +24,7 @@
    would be a SECOND copy of the money vocabulary, which is the exact failure
    contracts/ exists to prevent. Byte-identity is worth more here than
    uniformity of module system, and it is checked twice:
-   extensions/scripts/check-contracts-sync.mjs (extensions.yml) and
+   extensions/scripts/check-contracts-sync.mjs (extensions-ci.yml, core) and
    tooling/ci/assert-entitlement-contract.mjs limb 4 (ci.yml).
 
    Run: node core/test/entitlement-contract.node.js      (cwd-independent) */

@@ -22,6 +22,12 @@
    lane. These two scripts are the authoring path and its faster, sharper
    message.
 
+   ⏱ APPENDED 2026-09-24; the paragraph above is left as written. The gap it
+   names has since closed: the `core` job runs `node scripts/check-contracts-
+   sync.mjs`, and that job now lives in `.github/workflows/extensions-ci.yml`,
+   which ci.yml calls on every pull request and push to main (required through
+   ci-gate). assert-entitlement-contract.mjs limb 4 still gates it as well.
+
    Exit codes under test: 0 in sync · 1 drifted · 2 could not run. */
 
 import { test, describe, before, after } from 'node:test';

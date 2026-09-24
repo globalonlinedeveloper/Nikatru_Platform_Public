@@ -11,7 +11,9 @@
     "unit": {
       "type": "string",
       "pattern": "^[a-z][a-z0-9]*$",
-      "description": "The product id this release is of — an apps/<id> directory or an extensions/Extension/*/tool.json id."
+      "minLength": 2,
+      "maxLength": 32,
+      "description": "The product id this release is of — an apps/<id> directory or an extensions/Extension/*/tool.json id. The bounds are contracts/app-id's; tooling/ci/assert-app-id-contract.mjs limb 4 fails if this property accepts an id that contract refuses."
     },
     "surface": { "enum": ["app", "extension"] },
     "tag": {

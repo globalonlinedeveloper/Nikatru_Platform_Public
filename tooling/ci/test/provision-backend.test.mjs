@@ -216,6 +216,18 @@ describe('[S-12r] --self-check exercises the config surgery, offline', () => {
     assert.match(out, /no stamped backend at/);
   });
 
+  // O-APP-ID-FORM-UNVALIDATED (a). The old snake_case rule let `habit_tracker`
+  // through, and the script then died one check later on "no stamped backend" —
+  // also exit 1, which is why the exit code alone proves nothing here. The
+  // refusal must come from the contract, before any name is built from the id.
+  test('refuses habit_tracker before any other check, naming the app-id contract', () => {
+    const { code, out } = run(tree('habit_tracker', { config: null }), 'habit_tracker');
+    assert.equal(code, 1, out);
+    assert.match(out, /contracts\/app-id/);
+    assert.match(out, /"_"/);
+    assert.doesNotMatch(out, /no stamped backend/);
+  });
+
   // ── the boundary that makes this mode usable in CI at all ─────────────────
   // If --self-check ever starts reaching the credential gate, the CI step
   // becomes a secret check that fails on every fork PR. These two pin the split.
