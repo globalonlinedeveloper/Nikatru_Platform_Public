@@ -16,6 +16,14 @@
 //   RC2c  RC2b under --all-subjects                           -> 1
 //   RC3   an owner ruling carried by an agent row, changed    -> 1
 //   RC4   an owner-queue id, the business root absent         -> 2
+//   ⏱ 2026-09-24, from the PR 913 review:
+//   M1    a live owner row that never names the subject       -> 1, UNRELATED
+//         (the review's `O-KEY-ESCROW`; the resolver before it said `live`)
+//   L1    an id is looked up in BOTH registers: a queue id of open.json's shape
+//         resolves from the queue, one both carry is AMBIGUOUS -> 1
+//   L3    a duplicate held id, a register with zero rows, an unparseable subject
+//         -> 2 each; case and whitespace variants of a real id -> 1 each; a
+//         recorded ruling beside its old id holds nothing       -> 0
 //   Each is written out by hand; none is declared in a loop.
 //
 // ⚠️ THE FIXTURE IS A REAL WORKSPACE, as in public-citations-shards.test.mjs: the
@@ -34,7 +42,7 @@ import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
-import { idClass, isOwnerId, indexRows, resolveHold, holdsIn, subjectFor, HOLD_SUBJECTS } from '../../scripts/owner-ids.mjs';
+import { idClass, isOwnerId, indexRows, resolveHold, holdsIn, subjectFor, subjectText, HOLD_SUBJECTS } from '../../scripts/owner-ids.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '..', '..', '..');
@@ -69,31 +77,52 @@ const writeJson = (abs, value) => {
 };
 
 /** The subject, shaped like the real record's trademark block. `edited` changes a
- *  byte the class does not read, so "the subject changed" never means "the id changed". */
-const subjectDoc = (ownerItem, { edited = false } = {}) => ({
+ *  byte the class does not read, so "the subject changed" never means "the id changed".
+ *  `ruling` is the answer the hold waits on; a recorded one ends the hold. */
+const subjectDoc = (ownerItem, { edited = false, ruling = null } = {}) => ({
   app: 'fixture',
   trademark: {
     signals: edited ? ['fixture signal, edited on this branch'] : [],
-    ruling: null,
-    ruledBy: null,
-    ruledOn: null,
+    ruling,
+    ruledBy: ruling === null ? null : 'owner',
+    ruledOn: ruling === null ? null : '2026-09-09',
     ownerItem,
-    gatedUntil: ownerItem === null ? null : '2099-01-01',
+    gatedUntil: ownerItem === null || ruling !== null ? null : '2099-01-01',
   },
 });
 
-/** Commit the subject holding `ownerItem` and point `origin/main` at that commit, so
- *  the subject is identical to the merge-base. `changed` then edits the working tree,
- *  which is what a branch in a pre-commit hook looks like. */
-function setSubject(ownerItem, { changed = false } = {}) {
-  writeJson(join(PUB, SUBJECT), subjectDoc(ownerItem));
+/** Commit `text` as the subject and point `origin/main` at that commit, so the
+ *  subject is identical to the merge-base. */
+function commitSubject(text, message) {
+  mkdirSync(dirname(join(PUB, SUBJECT)), { recursive: true });
+  writeFileSync(join(PUB, SUBJECT), text, 'utf8');
   git(PUB, 'add', '--', SUBJECT);
-  git(PUB, 'commit', '-q', '--allow-empty', '-m', `hold ${ownerItem}`, '--no-gpg-sign');
+  git(PUB, 'commit', '-q', '--allow-empty', '-m', message, '--no-gpg-sign');
   git(PUB, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
-  if (changed) writeJson(join(PUB, SUBJECT), subjectDoc(ownerItem, { edited: true }));
 }
 
-const openRow = (id, over = {}) => ({ id, owner: 'owner', state: 'open', closedOn: null, what: 'fixture row', ...over });
+/** Commit the subject holding `ownerItem`. `changed` then edits the working tree,
+ *  which is what a branch in a pre-commit hook looks like. */
+function setSubject(ownerItem, { changed = false, ruling = null } = {}) {
+  commitSubject(`${JSON.stringify(subjectDoc(ownerItem, { ruling }), null, 2)}\n`, `hold ${ownerItem}`);
+  if (changed) writeJson(join(PUB, SUBJECT), subjectDoc(ownerItem, { edited: true, ruling }));
+}
+
+/** An open.json row. By default its `closes` names the subject file, which is what
+ *  makes a live row a hold on THIS subject rather than on any row the owner owns. */
+const openRow = (id, over = {}) => ({
+  id, owner: 'owner', state: 'open', closedOn: null, what: 'fixture row',
+  blocks: 'the first store submission under the fixture name',
+  closes: `${SUBJECT} carries trademark.ruling PROCEED or DO-NOT-PROCEED`,
+  ...over,
+});
+
+/** A live owner row about something else entirely — the review's M1 case. */
+const KEY_ESCROW = openRow('O-KEY-ESCROW', {
+  what: 'Escrow the upload keys',
+  blocks: 'every signed release until the key is escrowed',
+  closes: 'the escrow receipt is filed',
+});
 
 function setOpen(rows) {
   rmSync(OPEN_JSON, { force: true });
@@ -104,6 +133,10 @@ function setQueue(abs, rows) {
   rmSync(abs, { force: true });
   if (rows !== null) writeJson(abs, { _readme: 'fixture owner queue', items: rows });
 }
+
+/** The queue every open-id case reads beside open.json: an id is looked up in BOTH
+ *  registers, so both must be there. Its rows are about nothing the fixture holds. */
+const DEFAULT_QUEUE = [{ id: 'A-1', status: 'pending', what: 'a fixture queue row about nothing held here' }];
 
 /** Run a guard file from the fixture repo. The machine's own root overrides are
  *  removed, or a case would resolve against the REAL corpus and pass over nothing. */
@@ -140,6 +173,7 @@ before(() => {
 
   mkdirSync(join(BASE, 'nikatru'), { recursive: true });
   writeFileSync(join(BASE, 'nikatru', 'README.md'), 'the shared business brain, fixture\n', 'utf8');
+  setQueue(QUEUE_JSON, DEFAULT_QUEUE);
 
   const spec = join(PRIV, 'requirements');
   writeJson(join(spec, 'index.json'), { registers: { 'invariants.json': { kind: 'invariant' } } });
@@ -197,7 +231,7 @@ describe('owner-ids.mjs — the grammar and the resolver, as pure functions', ()
       ['O-DONE', openRow('O-DONE', { state: 'done' })],
       ['O-AGENTS', openRow('O-AGENTS', { owner: 'agent' })],
     ]);
-    const queue = new Map([['A-7', { id: 'A-7', status: 'pending' }], ['A-8', { id: 'A-8', status: 'done' }]]);
+    const queue = new Map([['A-7', { id: 'A-7', status: 'pending', what: `rule on ${SUBJECT}` }], ['A-8', { id: 'A-8', status: 'done', what: `rule on ${SUBJECT}` }]]);
     const rows = { open, queue };
     const hold = (id, kind = 'owner-ruling') => ({ id, kind, file: SUBJECT, jsonPath: 'trademark.ownerItem' });
     assert.equal(resolveHold(hold('O-LIVE'), rows).verdict, 'live');
@@ -218,6 +252,91 @@ describe('owner-ids.mjs — the grammar and the resolver, as pure functions', ()
     assert.equal(subjectFor('apps/subscriptiontracker/store/name-clearance.json'), null);
     assert.deepEqual(holdsIn(s, SUBJECT, subjectDoc(null)), []);
     assert.deepEqual(holdsIn(s, SUBJECT, subjectDoc('O-X')), [{ file: SUBJECT, jsonPath: 'trademark.ownerItem', id: 'O-X', kind: 'owner-ruling' }]);
+  });
+
+  // ⏱ 2026-09-24, the PR 913 review, L3: `holdsIn` read `ownerItem` whatever the
+  // ruling, so a recorded ruling that kept its old id for provenance was graded as
+  // a hold — while limb 7 of assert-name-clearance.mjs reads the id only while the
+  // ruling is null.
+  test('a recorded ruling ends the hold; a null or ABSENT ruling leaves it standing', () => {
+    const s = subjectFor(SUBJECT);
+    assert.deepEqual(holdsIn(s, SUBJECT, subjectDoc('O-OLD-RULING-ROW', { ruling: 'PROCEED' })), [], 'PROCEED kept beside its old id is provenance, not a hold');
+    assert.deepEqual(holdsIn(s, SUBJECT, subjectDoc('O-OLD-RULING-ROW', { ruling: 'DO-NOT-PROCEED' })), []);
+    assert.equal(holdsIn(s, SUBJECT, subjectDoc('O-OLD-RULING-ROW')).length, 1, 'green control: the same id with a null ruling is a hold');
+    const noRuling = subjectDoc('O-OLD-RULING-ROW');
+    delete noRuling.trademark.ruling;
+    assert.equal(holdsIn(s, SUBJECT, noRuling).length, 1, 'a record that lost its `ruling` field has not recorded one');
+  });
+
+  // ⏱ 2026-09-24, the PR 913 review, M1: any live row the owner owned lifted the
+  // gate. The review held the record on `O-KEY-ESCROW` and got `live`.
+  test('M1 — a live owner row whose text never names the subject is UNRELATED', () => {
+    const rows = { open: new Map([['O-KEY-ESCROW', KEY_ESCROW]]), queue: new Map() };
+    const hold = { id: 'O-KEY-ESCROW', kind: 'owner-ruling', file: SUBJECT, jsonPath: 'trademark.ownerItem' };
+    assert.deepEqual(resolveHold(hold, rows), { verdict: 'unrelated', cls: 'open', id: 'O-KEY-ESCROW', state: 'state=open' });
+    const otherApp = { ...hold, file: 'apps/otherapp/name-clearance.json' };
+    const named = { open: new Map([['O-NAMED', openRow('O-NAMED')]]), queue: new Map() };
+    assert.equal(resolveHold({ ...otherApp, id: 'O-NAMED' }, named).verdict, 'unrelated', 'a row naming ANOTHER app\'s record is not a hold on this one');
+  });
+
+  test('M1 — `blocks` alone or `closes` alone names the subject; a queue row is read across its own text fields', () => {
+    const hold = (id) => ({ id, kind: 'owner-ruling', file: SUBJECT, jsonPath: 'trademark.ownerItem' });
+    const open = new Map([
+      ['O-BY-BLOCKS', openRow('O-BY-BLOCKS', { blocks: `lifting the gate in ${SUBJECT}`, closes: 'a ruling is recorded' })],
+      ['O-BY-CLOSES', openRow('O-BY-CLOSES', { blocks: 'the first submission', closes: `${SUBJECT} carries a ruling` })],
+      ['O-BY-WHAT', openRow('O-BY-WHAT', { what: `rule on ${SUBJECT}`, blocks: 'x', closes: 'y' })],
+    ]);
+    const queue = new Map([
+      ['S-4', { id: 'S-4', status: 'pending', title: 'trademark', notes: [`see ${SUBJECT}`] }],
+      ['S-5', { id: 'S-5', status: 'pending', title: 'the trademark ruling for the record' }],
+    ]);
+    const rows = { open, queue };
+    assert.equal(resolveHold(hold('O-BY-BLOCKS'), rows).verdict, 'live');
+    assert.equal(resolveHold(hold('O-BY-CLOSES'), rows).verdict, 'live');
+    assert.equal(resolveHold(hold('O-BY-WHAT'), rows).verdict, 'unrelated', 'for an open.json row only `blocks` and `closes` are read');
+    assert.equal(resolveHold(hold('S-4'), rows).verdict, 'live', 'an array of strings is text');
+    assert.equal(resolveHold(hold('S-5'), rows).verdict, 'unrelated');
+    assert.equal(subjectText({ id: SUBJECT, status: SUBJECT }, 'queue'), '', 'the id and the liveness field are not the row\'s text');
+  });
+
+  // ⏱ 2026-09-24, the PR 913 review, L1: the grammar missed 18 of the queue's 70
+  // ids and sent `O-ADDR-PUBLISH`, a QUEUE row, to open.json.
+  test('L1 — an id is looked up in BOTH registers, whatever its shape', () => {
+    const queueDoc = {
+      items: [
+        { id: 'HOSTINGER-EXPIRY', status: 'pending', what: `renew the host; ${SUBJECT} names it` },
+        { id: 'O-ADDR-PUBLISH', status: 'pending', what: `publish the address; see ${SUBJECT}` },
+        { id: 'A-13-orig', status: 'done', what: `renamed; ${SUBJECT}` },
+        { id: 'OD-6.1', status: 'pending', what: 'x' },
+        { id: 'O-BOTH-PLACES', status: 'pending', what: SUBJECT },
+      ],
+    };
+    const indexed = indexRows(queueDoc, 'queue');
+    assert.deepEqual([...indexed.rows.keys()], ['HOSTINGER-EXPIRY', 'O-ADDR-PUBLISH', 'A-13-orig', 'OD-6.1', 'O-BOTH-PLACES'], 'a queue row is keyed on `status`, never on the id grammar');
+    const rows = { open: new Map([['O-BOTH-PLACES', openRow('O-BOTH-PLACES')]]), queue: indexed.rows };
+    const hold = (id) => ({ id, kind: 'owner-ruling', file: SUBJECT, jsonPath: 'trademark.ownerItem' });
+    assert.equal(idClass('HOSTINGER-EXPIRY'), null, 'the first guess has no answer for it');
+    assert.deepEqual(resolveHold(hold('HOSTINGER-EXPIRY'), rows), { verdict: 'live', cls: 'queue', state: 'status=pending' });
+    assert.equal(idClass('O-ADDR-PUBLISH'), 'open', 'the first guess is wrong for it');
+    assert.deepEqual(resolveHold(hold('O-ADDR-PUBLISH'), rows), { verdict: 'live', cls: 'queue', state: 'status=pending' });
+    assert.deepEqual(resolveHold(hold('A-13-orig'), rows), { verdict: 'not-live', cls: 'queue', state: 'status=done' });
+    assert.deepEqual(resolveHold(hold('O-NOPE-NOPE'), rows), { verdict: 'absent', guess: 'open' });
+    assert.deepEqual(resolveHold(hold('O-BOTH-PLACES'), rows), { verdict: 'ambiguous', classes: ['open', 'queue'] });
+    assert.throws(() => resolveHold(hold('A-7'), { open: new Map(), queue: null }), /looked up in both registers/);
+  });
+
+  test('L1 — MALFORMED is only a value that cannot be an id: not a string, empty, whitespace, no capital', () => {
+    assert.equal(isOwnerId('HOSTINGER-EXPIRY'), true);
+    assert.equal(isOwnerId('A-13-orig'), true);
+    assert.equal(isOwnerId('OD-6.1'), true);
+    assert.equal(isOwnerId(''), false);
+    assert.equal(isOwnerId(' O-NAME-SUBLY-TRADEMARK'), false);
+    assert.equal(isOwnerId('O-NAME SUBLY'), false);
+    assert.equal(isOwnerId('o-name-subly-trademark'), false);
+    assert.equal(isOwnerId(null), false);
+    const rows = { open: new Map(), queue: new Map() };
+    assert.equal(resolveHold({ id: 7, kind: 'owner-ruling', file: SUBJECT }, rows).verdict, 'malformed');
+    assert.equal(resolveHold({ id: 'O-Name-Subly-Trademark', kind: 'owner-ruling', file: SUBJECT }, rows).verdict, 'absent', 'a mixed-case id has an id\'s shape and is looked up; no row carries it');
   });
 });
 
@@ -299,7 +418,7 @@ describe('assert-public-citations — the ID CITATIONS class over a fixture work
 
   test('RC4 — an owner-queue id with the business root ABSENT is exit 2', () => {
     setSubject('A-99');
-    setOpen(null);
+    setOpen([openRow(HELD)]);
     const r = runGuard({ env: { NIKATRU_BUSINESS_ROOT: join(BASE, 'no-such-business-root') } });
     assert.equal(r.code, 2, r.out);
     assert.match(r.out, /owner-queue\.json is unreadable/);
@@ -308,17 +427,17 @@ describe('assert-public-citations — the ID CITATIONS class over a fixture work
 
   test('RC4 control — the same id resolves once the queue is there, at the override and at the default root', () => {
     setSubject('A-99');
-    setOpen(null);
+    setOpen([openRow(HELD)]);
     const elsewhere = join(BASE, 'elsewhere-business');
-    setQueue(join(elsewhere, 'owner-queue.json'), [{ id: 'A-99', status: 'pending', what: 'fixture' }]);
+    setQueue(join(elsewhere, 'owner-queue.json'), [{ id: 'A-99', status: 'pending', what: `rule on ${SUBJECT}` }]);
     const viaEnv = runGuard({ env: { NIKATRU_BUSINESS_ROOT: elsewhere } });
     assert.equal(viaEnv.code, 0, viaEnv.out);
 
-    setQueue(QUEUE_JSON, [{ id: 'A-99', status: 'done', what: 'fixture' }]);
+    setQueue(QUEUE_JSON, [{ id: 'A-99', status: 'done', what: `rule on ${SUBJECT}` }]);
     const viaDefault = runGuard({ args: ['--all-subjects'] });
     assert.equal(viaDefault.code, 1, `the default root is <private root>/../../nikatru, and its A-99 is done: ${viaDefault.out}`);
     assert.match(viaDefault.out, /NOT LIVE \(status=done\)/);
-    setQueue(QUEUE_JSON, null);
+    setQueue(QUEUE_JSON, DEFAULT_QUEUE);
   });
 
   test('a held open id with open.json unreadable is exit 2; a null hold reads nothing and passes', () => {
@@ -340,6 +459,107 @@ describe('assert-public-citations — the ID CITATIONS class over a fixture work
     const r = runGuard();
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /is not an owner id/);
+  });
+
+  test('M1 (RC-M1) — a hold on O-KEY-ESCROW, a LIVE owner row about key escrow, is exit 1 UNRELATED', () => {
+    setSubject('O-KEY-ESCROW');
+    setOpen([openRow(HELD), KEY_ESCROW]);
+    const r = runGuard();
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /holds on O-KEY-ESCROW, a live open\.json row whose text never names apps\/fixture\/name-clearance\.json \(UNRELATED\)/);
+
+    const old = runGuard({ file: 'mutant-no-id-class.mjs' });
+    assert.equal(old.code, 0, `the guard without the ID CITATIONS block must pass this tree: ${old.out}`);
+  });
+
+  test('M1 control — the same live row, once its `blocks` names the subject file, is a hold and exits 0', () => {
+    setSubject('O-KEY-ESCROW');
+    setOpen([openRow(HELD), { ...KEY_ESCROW, blocks: `every signed release, and the trademark gate in ${SUBJECT}` }]);
+    const r = runGuard();
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /1 live/);
+  });
+
+  test('L1 — O-ADDR-PUBLISH, an owner-QUEUE row of open.json\'s shape, resolves from the queue', () => {
+    setSubject('O-ADDR-PUBLISH');
+    setOpen([openRow(HELD)]);
+    setQueue(QUEUE_JSON, [...DEFAULT_QUEUE, { id: 'O-ADDR-PUBLISH', status: 'pending', what: `publish the address before ${SUBJECT} ships` }]);
+    const r = runGuard();
+    setQueue(QUEUE_JSON, DEFAULT_QUEUE);
+    assert.equal(r.code, 0, `the grammar alone sent this id to open.json, where it is ABSENT: ${r.out}`);
+    assert.match(r.out, /1 live/);
+  });
+
+  test('L1 — an id BOTH registers carry is exit 1 AMBIGUOUS', () => {
+    setSubject(HELD);
+    setOpen([openRow(HELD)]);
+    setQueue(QUEUE_JSON, [...DEFAULT_QUEUE, { id: HELD, status: 'pending', what: `rule on ${SUBJECT}` }]);
+    const r = runGuard();
+    setQueue(QUEUE_JSON, DEFAULT_QUEUE);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /open\.json and owner-queue\.json BOTH carry \(AMBIGUOUS\)/);
+  });
+
+  test('L3 — a held id with two rows in one register is exit 2', () => {
+    setSubject(HELD);
+    setOpen([openRow(HELD), openRow(HELD, { state: 'done' })]);
+    const r = runGuard();
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, new RegExp(`carries more than one row for ${HELD}`));
+  });
+
+  test('L3 — a register with zero readable rows is exit 2, never a report of every id ABSENT', () => {
+    setSubject(HELD);
+    writeJson(OPEN_JSON, { _readme: 'fixture open register', rows: [] });
+    const r = runGuard();
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /not one object in it carries an owner-id-shaped `id` and a `state`/);
+  });
+
+  test('L3 — an unparseable subject file is exit 2', () => {
+    commitSubject('{ "app": "fixture", "trademark": { "ownerItem": \n', 'an unparseable subject');
+    setOpen([openRow(HELD)]);
+    const r = runGuard();
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /apps\/fixture\/name-clearance\.json is a hold subject .* and is not parseable JSON/);
+  });
+
+  test('L3 — a lower-case variant of a real id is exit 1 MALFORMED', () => {
+    setSubject(HELD.toLowerCase());
+    setOpen([openRow(HELD)]);
+    const r = runGuard();
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /is not an owner id/);
+  });
+
+  test('L3 — a mixed-case variant of a real id is exit 1 ABSENT: ids are matched exactly', () => {
+    setSubject('O-Fixture-Trademark-Hold');
+    setOpen([openRow(HELD)]);
+    const r = runGuard();
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /O-Fixture-Trademark-Hold/);
+    assert.match(r.out, /\(ABSENT\)/);
+  });
+
+  test('L3 — a real id with a trailing space is exit 1 MALFORMED, never trimmed into a match', () => {
+    setSubject(`${HELD} `);
+    setOpen([openRow(HELD)]);
+    const r = runGuard();
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /is not an owner id/);
+  });
+
+  test('L3 — a recorded ruling that keeps its old id holds nothing, and reads no register', () => {
+    setSubject('O-NAME-SUBLY-TRADEMARK', { ruling: 'PROCEED' });
+    setOpen(null);
+    const r = runGuard();
+    setOpen([openRow(HELD)]);
+    assert.equal(r.code, 0, `the ruling is recorded, so the id is provenance: ${r.out}`);
+    assert.match(r.out, /0 owner-id hold\(s\) in 1 subject file\(s\)/);
+
+    setSubject('O-NAME-SUBLY-TRADEMARK');
+    const owed = runGuard();
+    assert.equal(owed.code, 1, `green control: the same id with a null ruling is a hold, and its row is ABSENT: ${owed.out}`);
   });
 
   test('the fixture guard and resolver are the committed ones, byte for byte', () => {

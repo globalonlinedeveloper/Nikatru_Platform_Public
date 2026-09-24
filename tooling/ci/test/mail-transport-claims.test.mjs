@@ -830,4 +830,209 @@ describe('verify-supabase-templates — every RECORDED auth field is compared', 
     assert.equal(r.status, 0, out(r));
     assert.doesNotMatch(out(r), /_whyHardening/);
   });
+
+  // ⏱ 2026-09-24 — THE SUBJECTS MAP. `subjects` is keyed by template, so it is
+  // not itself a live field; each key is compared as `mailer_subjects_<key>`.
+  const WITH_SUBJECTS = {
+    ...HARDENED,
+    subjects: { confirmation: 'Confirm — T', magic_link: 'Sign in — T', recovery: 'Reset — T' },
+  };
+  const LIVE_SUBJECTS = {
+    mailer_subjects_confirmation: 'Confirm — T',
+    mailer_subjects_magic_link: 'Sign in — T',
+    mailer_subjects_recovery: 'Reset — T',
+  };
+
+  test('A7 — recorded subjects that live agrees with: exit 0, and each key counts as one compared field', () => {
+    const r = runAgainst(WITH_SUBJECTS, LIVE_SUBJECTS);
+    assert.equal(r.status, 0, out(r));
+    // HARDENED's 5 plus the 3 subject keys; `subjects` itself is not a field.
+    assert.match(out(r), /\(8 field\(s\) compared\)/);
+    assert.match(out(r), /mailer_subjects_magic_link ≡ "Sign in — T"/);
+    assert.doesNotMatch(out(r), /auth `subjects`/);
+  });
+
+  test('A8 — a live subject that differs from the record is drift: exit 1', () => {
+    const r = runAgainst(WITH_SUBJECTS, { ...LIVE_SUBJECTS, mailer_subjects_magic_link: 'Magic Link' });
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /auth `mailer_subjects_magic_link`: register says "Sign in — T", live says "Magic Link"/);
+  });
+
+  test('A9 — a recorded subject key live has NO field for is drift, not a skip: exit 1', () => {
+    const r = runAgainst(WITH_SUBJECTS, { mailer_subjects_confirmation: 'Confirm — T', mailer_subjects_magic_link: 'Sign in — T' });
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /auth subject `recovery`: .*NO SUCH FIELD `mailer_subjects_recovery`/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-24 — THE SELF-HOSTED MODE (`--selfhosted`).
+//
+// After the auth switch the mail comes from a self-hosted GoTrue that has no
+// config endpoint. This mode grades three looks PASS / FAIL / LOST: (a) the
+// served templates, byte for byte; (b) `/auth/v1/settings` with the anon key;
+// (c) SMTP, subjects and template URLs from an env dump, LOST without one.
+// Every case stubs `fetch` with a preload that routes by URL — nothing touches
+// the network — and every credential is a placeholder from the environment.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('verify-supabase-templates --selfhosted — the three looks and the exit rule', () => {
+  const DR = {
+    'confirm-signup.html': '<h2>confirm</h2>\n',
+    'magic-link.html': '<h2>magic</h2>\n',
+    'reset-password.html': '<h2>reset</h2>\n',
+  };
+  const AUTH = {
+    _why: 'prose',
+    transport: 'custom-smtp',
+    smtp_host: 'smtp.provider.test',
+    smtp_admin_email: 'auth@example.test',
+    external_email_enabled: true,
+    mailer_autoconfirm: false,
+    subjects: { confirmation: 'Confirm — T', magic_link: 'Sign in — T', recovery: 'Reset — T' },
+  };
+  const GOOD_SETTINGS = { external: { email: true, apple: true }, mailer_autoconfirm: false, disable_signup: false };
+  const ANON = 'anon-placeholder-CANARY-A1';
+  const PASS_VALUE = 'smtp-pass-CANARY-P1';
+  const GOOD_ENV_LINES = [
+    '# a GoTrue env dump',
+    'GOTRUE_SMTP_HOST=smtp.provider.test',
+    'GOTRUE_SMTP_ADMIN_EMAIL=auth@example.test',
+    `GOTRUE_SMTP_PASS=${PASS_VALUE}`,
+    'GOTRUE_MAILER_SUBJECTS_CONFIRMATION="Confirm — T"',
+    'GOTRUE_MAILER_SUBJECTS_MAGIC_LINK=Sign in — T',
+    'GOTRUE_MAILER_SUBJECTS_RECOVERY=Reset — T',
+    'GOTRUE_MAILER_TEMPLATES_CONFIRMATION=https://nikatru.com/auth-mail/confirm-signup.html',
+    'GOTRUE_MAILER_TEMPLATES_MAGIC_LINK=https://nikatru.com/auth-mail/magic-link.html',
+    'GOTRUE_MAILER_TEMPLATES_RECOVERY=https://nikatru.com/auth-mail/reset-password.html',
+    'UNRELATED_SECRET=never-read-CANARY-U1',
+  ];
+
+  const shRoot = () => {
+    const register = GOOD_REGISTER();
+    register.supabaseAuth = AUTH;
+    const root = makeRoot({ register });
+    const dir = join(root, 'docs', 'platform', 'supabase', 'email-templates');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'confirm-signup.html'), DR['confirm-signup.html']);
+    writeFileSync(join(dir, 'magic-link.html'), DR['magic-link.html']);
+    writeFileSync(join(dir, 'reset-password.html'), DR['reset-password.html']);
+    return root;
+  };
+  const envFile = (lines) => {
+    const p = join(TMP, `boxc-env-${seq++}.txt`);
+    writeFileSync(p, `${lines.join('\n')}\n`);
+    return p;
+  };
+
+  /** Run `--selfhosted` with a fetch stub that serves `served` (file → body, or a
+   *  number for a status) under /auth-mail/ and `settings` (object or status) at
+   *  /auth/v1/settings. `boxcEnv` null = no flag; `creds` false = no SELFHOSTED env. */
+  const runSH = ({ served = DR, settings = GOOD_SETTINGS, boxcEnv = GOOD_ENV_LINES, creds = true } = {}) => {
+    const pre = join(TMP, `fetch-stub-sh-${seq++}.mjs`);
+    writeFileSync(pre, [
+      `const SERVED = ${JSON.stringify(served)};`,
+      `const SETTINGS = ${JSON.stringify(settings)};`,
+      'globalThis.fetch = async (u) => {',
+      '  const url = String(u);',
+      "  if (url.includes('/auth-mail/')) {",
+      "    const b = SERVED[url.split('/').pop()];",
+      "    return typeof b === 'number' ? new Response('gone', { status: b }) : new Response(b ?? 'missing', { status: b === undefined ? 404 : 200 });",
+      '  }',
+      "  if (url.endsWith('/auth/v1/settings')) {",
+      "    return typeof SETTINGS === 'number' ? new Response('no', { status: SETTINGS }) : new Response(JSON.stringify(SETTINGS), { status: 200, headers: { 'content-type': 'application/json' } });",
+      '  }',
+      "  return new Response('unexpected url', { status: 418 });",
+      '};',
+      '',
+    ].join('\n'));
+    const env = { ...process.env };
+    delete env.SELFHOSTED_SUPABASE_URL;
+    delete env.SELFHOSTED_SUPABASE_ANON_KEY;
+    if (creds) {
+      env.SELFHOSTED_SUPABASE_URL = 'https://auth.example.test';
+      env.SELFHOSTED_SUPABASE_ANON_KEY = ANON;
+    }
+    const args = ['--import', pathToFileURL(pre).href, LIVE_CHECKER, shRoot(), '--selfhosted'];
+    if (boxcEnv !== null) args.push('--boxc-env', envFile(boxcEnv));
+    return spawnSync(process.execPath, args, { encoding: 'utf8', env, timeout: 45_000 });
+  };
+  const noCanary = (r) => {
+    assert.doesNotMatch(out(r), /CANARY/, 'a credential or env value reached the output');
+  };
+
+  test('SH1 POSITIVE CONTROL — templates equal, settings as recorded, env dump agrees: exit 0', () => {
+    const r = runSH();
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /^verify-supabase-templates --selfhosted: IN SYNC/);
+    assert.match(out(r), /PASS  \(a\) template magic-link\.html: https:\/\/nikatru\.com\/auth-mail\/magic-link\.html == repo source/);
+    assert.match(out(r), /PASS  \(b\) settings mailer_autoconfirm/);
+    assert.match(out(r), /PASS  \(c\) env subject recovery/);
+    assert.match(out(r), /summary: \d+ PASS · 0 FAIL · 0 LOST → exit 0/);
+    noCanary(r);
+  });
+
+  test('SH2 — the anon key is printed only as a length and a short hash', () => {
+    const r = runSH();
+    assert.match(out(r), /SELFHOSTED_SUPABASE_ANON_KEY len=26 sha256:[0-9a-f]{8}/);
+    noCanary(r);
+  });
+
+  test('SH3 — a served template that differs by one byte is a FINDING: exit 1, and the first line names it', () => {
+    const r = runSH({ served: { ...DR, 'reset-password.html': `${DR['reset-password.html']} ` } });
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /DRIFT — first finding: \(a\) template reset-password\.html/);
+    assert.match(out(r), /FAIL  \(a\) template reset-password\.html: .*DIFFERS/);
+  });
+
+  test('SH4 — a served template answering 404 is a FINDING, not a gap: exit 1', () => {
+    const r = runSH({ served: { ...DR, 'confirm-signup.html': 404 } });
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /FAIL  \(a\) template confirm-signup\.html: .*HTTP 404/);
+  });
+
+  test('SH5 — no SELFHOSTED credentials in the environment is COVERAGE LOST: exit 2', () => {
+    const r = runSH({ creds: false });
+    assert.equal(r.status, 2, out(r));
+    assert.match(out(r), /COVERAGE LOST — first gap: \(b\) settings/);
+    assert.match(out(r), /SELFHOSTED_SUPABASE_URL is not in the environment/);
+  });
+
+  test('SH6 — no --boxc-env leaves SMTP and subjects LOST, never passed: exit 2', () => {
+    const r = runSH({ boxcEnv: null });
+    assert.equal(r.status, 2, out(r));
+    assert.match(out(r), /LOST  \(c\) env SMTP \+ subjects \+ template URLs: .*pass --boxc-env <file>/);
+  });
+
+  test('SH7 — an env-dump subject that differs is a FINDING, and the env value is never printed: exit 1', () => {
+    const lines = GOOD_ENV_LINES.map((l) => (l.startsWith('GOTRUE_MAILER_SUBJECTS_MAGIC_LINK=') ? 'GOTRUE_MAILER_SUBJECTS_MAGIC_LINK=Magic CANARY-S1' : l));
+    const r = runSH({ boxcEnv: lines });
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /FAIL  \(c\) env subject magic_link: GOTRUE_MAILER_SUBJECTS_MAGIC_LINK differs from the record "Sign in — T" \(env len=\d+ sha256:[0-9a-f]{8}\)/);
+    noCanary(r);
+  });
+
+  test('SH8 — live mailer_autoconfirm differing from the record is a FINDING: exit 1', () => {
+    const r = runSH({ settings: { ...GOOD_SETTINGS, mailer_autoconfirm: true } });
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /FAIL  \(b\) settings mailer_autoconfirm: register says false, live says true/);
+  });
+
+  test('SH9 — a settings endpoint that refuses (401) is LOST, not drift: exit 2', () => {
+    const r = runSH({ settings: 401 });
+    assert.equal(r.status, 2, out(r));
+    assert.match(out(r), /LOST  \(b\) settings auth\/v1\/settings: .*HTTP 401/);
+  });
+
+  test('SH10 — a FAIL outranks a LOST: a 404 template with no env dump is exit 1', () => {
+    const r = runSH({ served: { ...DR, 'magic-link.html': 404 }, boxcEnv: null });
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /summary: \d+ PASS · 1 FAIL · 1 LOST → exit 1/);
+  });
+
+  test('SH11 — an empty GOTRUE_SMTP_PASS is a FINDING: exit 1', () => {
+    const lines = GOOD_ENV_LINES.map((l) => (l.startsWith('GOTRUE_SMTP_PASS=') ? 'GOTRUE_SMTP_PASS=' : l));
+    const r = runSH({ boxcEnv: lines });
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /FAIL  \(c\) env smtp_pass: GOTRUE_SMTP_PASS is EMPTY/);
+  });
 });

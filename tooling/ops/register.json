@@ -2008,6 +2008,49 @@
       "verifiedHow": "2026-09-06 — 🔴 TWO PINS, NAMED SEPARATELY, BECAUSE ONE SENTENCE ABOUT 'trufflehog pinned to <sha>' CERTIFIES A PIN THAT DOES NOT EXIST. (1) THE ACTION: `trufflesecurity/trufflehog` is pinned to commit 363923b901c911a9164f50b6c423f47c15372b1c (the commit the annotated tag v3.97.4 dereferences to, read from the git ref API rather than off a label). That SHA pins a COMPOSITE WRAPPER, and nothing more. (2) THE SCANNER: the wrapper's only real step is `docker run --rm -v .:/tmp -w /tmp \"${IMAGE}:${VERSION}\" …`, and its `version` input DEFAULTS TO \"latest\" — read from action.yml at that same commit on 2026-09-06. The workflow therefore reads `trufflehog` from tooling/versions.json with `node -p` and passes it as `version:` (3.97.4), which puts the scanner inside F-2's single declaration and inside [pipeline 14]O-9's update coverage with its own renovate.json customManager. ⚠️ AND WHAT IS STILL NOT PINNED, STATED RATHER THAN ROUNDED AWAY: a registry TAG, not a digest. The action exposes only `image` and `version` joined by a colon, so `image@sha256:…` cannot be expressed; on 2026-09-06 `3.97.4` and `latest` resolved to the same manifest sha256:562bc231afa9de3d04de44cfe624252b08207de1fc3cebc5e7ed92bed7f279e4, and nothing in this repository would see that tag move. ⛔ THE ORIGINAL VERSION OF THIS ROW SAID ONLY (1) AND WAS CORRECTED THE SAME DAY: it read as a scanner pinned at v3.97.4 while the executable was `latest`. Also verified: `contents: read` and nothing else, `persist-credentials: false`, `fetch-depth: 0` (without which the scan would read ONE commit and duplicate the working-tree scan gitleaks already does in ci.yml), a 20-minute job timeout, and `extra_args: --results=verified` with `--json` REMOVED — see the workflow's own note, and the `response` field below, for why that flag is a disclosure and not a formatting choice. Verified locally before the push: assert-workflow-hardening exit 0, scan-workflows (zizmor at medium/high) exit 0, and a duplicate-key-rejecting YAML loader read the file as 1 job and 2 triggers (TRAPS ci-33). ⚠️ NOT VERIFIED: that the scan finds a real historic credential — no positive control has been run against this repository's history, so this row claims the lane RUNS, never that it has ever caught anything."
     },
     {
+      "_whyThisRowExists": "APPENDED 2026-09-24 for O-NAME-CLEARANCE-SWEEP-RUN-BY-NOTHING, in the same commit as .github/workflows/name-clearance.yml, because assert-ops-register.mjs holds `watched workflows ≡ .github/workflows/*.yml` in BOTH directions: the file without this row exits 1, and so does this row without the file. The record it keeps fresh, apps/subscriptiontracker/name-clearance.json, carried `asOf: 2026-09-09` when this landed and nothing re-derived it, so it would have crossed tooling/ci/assert-name-clearance.mjs's 30-day ceiling after 2026-10-09.",
+      "id": "duty.workflow.name-clearance.yml",
+      "kind": "duty",
+      "what": "The weekly re-derivation of every declared app's name clearance: tooling/ops/name-clearance-sweep.mjs re-runs the 12-channel probe for every app in catalog/apps.json, rewrites each apps/<app>/name-clearance.json, and the workflow lands the rewritten records on main by pull request (branch chore/name-clearance-<run_id>, opened as the RENOVATE_TOKEN actor so ci-gate runs on it). It auto-merges ONLY when no verdict flipped. Mondays 07:10 UTC.",
+      "detector": "The run history for name-clearance.yml filtered to event = schedule, and the run's own red exit: 1 when a verdict FLIPPED (tooling/ops/name-clearance-sweep.mjs prints the previous `overall` beside the new one), when the proposal was refused, or when the rewrite touched a path other than apps/*/name-clearance.json; 2 when COVERAGE LOST (a red control failed or a store did not answer, so the sweep refused to overwrite and nothing was proposed). Behind it, the heartbeats job of .github/workflows/ops-watch.yml runs tooling/ci/assert-name-clearance.mjs --execute daily (step \"Every name-clearance record is inside its 30-day ceiling\"), so a record this duty stopped refreshing becomes a red ops-watch run, and the durable issue, 30 days after its `asOf`.",
+      "response": "FLIP: the pull request the run opened sits open WITHOUT auto-merge, its body leading with the flip lines. File an owner item — a name that was cleared and is not any more is an owner decision, not a build detail — and merge or close that pull request only on the ruling. COVERAGE LOST: nothing was proposed and the records on main still stand; re-run once by workflow_dispatch when the stores answer, and if it stays lost, the sweep step's log names the red control that failed (tooling/store/name-clearance.mjs). PULL REQUEST REFUSED: the run's classified ::error names the cause and the remedy, and the rewritten records were uploaded as the run's name-clearance artifact before the proposal was attempted; open the pull request by hand from the pushed branch. A PATH OUTSIDE apps/*/name-clearance.json: nothing was proposed and the path is printed; that is a defect in the sweep or something it imports, never a record to merge.",
+      "cadence": "7d",
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": ".github/workflows/name-clearance.yml",
+        "record": "GitHub Actions run history for name-clearance.yml, filtered to event = schedule, plus the chore/name-clearance-<run_id> pull request each run with a changed record opens",
+        "failingValue": "no scheduled success inside the window. A run that exits 1 (a flip, a refused proposal, an out-of-scope path) or 2 (COVERAGE LOST) is not a success, so an unresolved flip or a store that keeps refusing ages this row exactly as a stopped timer does.",
+        "readBy": "nothing in-tree reads this cadence specifically — see `freshnessGap` below",
+        "recordQuery": {
+          "reader": "github-run-history",
+          "workflow": "name-clearance.yml",
+          "unit": "run",
+          "event": "schedule",
+          "headBranch": "main",
+          "firstDue": "2026-10-03T00:00:00Z",
+          "firstDueWhy": "⚠️ THE BOOTSTRAP, on the same terms as duty.workflow.trufflehog.yml's and duty.workflow.codeql.yml's were (TRAPS ci-18): the both-directions coverage limb refuses a workflow with no duty row, and a run history does not exist until the file is on the default branch, so the row and the record cannot both be true on the day of the merge. The first slot after a merge on or before 2026-09-28 07:10 UTC is that Monday; 2026-10-03 gives it ~113h of scheduler lateness and sits inside this row's own [7d x 1.5 = 252h] window from 2026-09-24, which is the bound the guard enforces. ⚠️ IF THIS MERGES AFTER 2026-09-28 07:10 UTC the first slot is 2026-10-05, so this date must move to 2026-10-08 in the same pull request, or main's push run blocks between 2026-10-03 and that slot. ⬜ DELETE THIS FIELD AND `firstDue` once one scheduled run has succeeded on main.",
+          "why": "🔴 `event: schedule` — the workflow's other trigger is workflow_dispatch, which is indistinguishable from a person pressing the button and is therefore the opposite of a cadence claim; a re-run after COVERAGE LOST is a repair, not the duty. `headBranch: main` is stated rather than left implied by GitHub firing schedules only on the default branch. `unit: run` because the workflow has one job and no other row reads it."
+        }
+      },
+      "absenceWatcher": {
+        "substrate": "github-actions",
+        "what": "Nothing outside GitHub watches this workflow's absence.",
+        "ownerGated": true,
+        "gap": "⚠️ THE WATCHER IS ON THE PROVIDER IT WATCHES — the same circularity as every other workflow row here. It DOES catch a schedule GitHub disables in an inactive public repository, because the [14]O-3 limb reads this record on every CI run. It does NOT catch GitHub Actions ceasing to run this repository's jobs at all. The second line of defence is on the same provider too: the ceiling step in ops-watch.yml's heartbeats job turns the record's age into a red run 30 days after its `asOf`, which is later than this row goes stale and says nothing if Actions stops. Closing it needs a heartbeat on a second provider: OWNER_QUEUE S-8."
+      },
+      "freshnessGap": "🔴 NO DEDICATED IN-TREE FRESHNESS READER for the 7d cadence, the same choice as duty.workflow.trufflehog.yml. What reads the EFFECT is tooling/ci/assert-name-clearance.mjs limb 9 — a finding under --execute, run daily by a step of ops-watch.yml's heartbeats job, and a printed WARNING in ci.yml, which runs it without --execute on purpose. ⚠️ UNLIKE trufflehog.yml THIS CRON IS WEEKLY, NOT DAILY (TRAPS ci-19 weighed and not applied): every run whose records differ opens a pull request, and a daily cron would open seven a week against one file. The cost is stated: ONE missed or red Monday puts this row past its 252h window. Declared 2026-09-24.",
+      "accessProviders": [
+        "github",
+        "apple",
+        "google",
+        "mozilla",
+        "canonical",
+        "microsoft"
+      ],
+      "source": "unverified",
+      "unverifiedWhy": "The workflow has never run: it lands with this row, so no scheduled run, no pull request it opened and no auto-merge it armed has been observed. Verified before the push, by mutation of the real tree: deleting this row, and renaming the workflow file with this row kept, each turn assert-ops-register.mjs's both-directions limb red naming the file; writeRecord carrying all five owner trademark fields is tooling/ci/test/name-clearance.test.mjs D6, red when `ruling` is dropped. NOT VERIFIED: that the sweep's ~20 store calls answer from a GitHub-hosted runner — the probe was measured from the owner's machine, and a store that refuses runner addresses is COVERAGE LOST every week. The first scheduled run is that measurement; flip this row to `verified` on its evidence."
+    },
+    {
       "id": "duty.renovate",
       "kind": "duty",
       "what": "Advances every pinned input — actions, npm, pub, and the toolchain versions in tooling/versions.json — by proposal, never by memory.",
@@ -2318,6 +2361,28 @@
       "accessProviders": [
         "laptop",
         "hostinger"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "duty.laptop.auth-cutover-preflight",
+      "kind": "duty",
+      "what": "The graded go/no-go for switching auth from the hosted Supabase project to the self-hosted GoTrue: `node tooling/ops/auth-cutover-preflight.mjs --phase pre|post` runs fourteen read-only checks (web CSP, the three wrangler configs through tooling/ci/assert-platform-register.mjs, GoTrue health and settings, the signing keys, the captcha posture against the served channels, the redirect allow list, the served mail templates, the repo secret names, the keep-alive target, the deployed web bundle, and the breach-copy and Apple return-URL gates) and prints one PASS, FAIL or LOST line per check.",
+      "detector": "Attended: the operator runs it on the laptop before the switch (`--phase pre`) and again after it (`--phase post`), with SELFHOSTED_SUPABASE_URL and SELFHOSTED_SUPABASE_ANON_KEY in the environment and, for the redirect and template checks, `--boxc-env <file>`. The first output line names the check that decided the exit.",
+      "response": "Exit 1: a check found a FAIL — do not switch (or, post, roll back) until the named check passes. Exit 2: at least one check could not look (a missing credential, env dump or attestation, or one of the three Cloudflare-side checks this tool does not read yet) — read that check by hand before switching; exit 2 is never a pass. Exit 0 needs all fourteen to PASS.",
+      "cadence": "on-demand",
+      "why": "The switch changes one URL in three configs, the web build and the keep-alive at once, and each has failed separately before in a way nothing else would catch before users did: a CSP that blocks the new origin, a keep-alive that still pings the old project, a mail template GoTrue cannot fetch. Every input it needs is either on the laptop or behind the operator's own credentials, so it is a laptop step in the cutover runbook, not a CI limb.",
+      "mechanism": {
+        "substrate": "laptop",
+        "anchor": "tooling/ops/auth-cutover-preflight.mjs",
+        "record": "the run output: one line per check and the summary line",
+        "failingValue": "exit 1 (a check found the switch unsafe) or exit 2 (a check could not look)",
+        "readBy": "the operator who ran it, before and after the switch"
+      },
+      "accessProviders": [
+        "laptop",
+        "github",
+        "cloudflare"
       ],
       "source": "verified"
     },

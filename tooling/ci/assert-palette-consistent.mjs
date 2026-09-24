@@ -179,6 +179,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, resolve, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isAuthMailPath } from '../sites/gen-auth-mail.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 
@@ -487,7 +488,13 @@ if (git.error || git.status !== 0) {
 }
 const tracked = git.stdout.split('\0').filter(Boolean);
 
-const candidates = tracked.filter((p) => /^sites\/.+\.(?:html|css)$/.test(p)).sort();
+// The served auth mail bodies (sites/nikatru/auth-mail/, written by
+// tooling/sites/gen-auth-mail.mjs) are e-mail markup the auth server fetches,
+// not pages: they declare no `:root` (mail clients drop custom properties) and
+// get no site chrome. Counted as pages they would raise the page count by three
+// while adding nothing to compare, so the page floor below would stop meaning
+// "the pages". One reading of the path, shared with the generator.
+const candidates = tracked.filter((p) => /^sites\/.+\.(?:html|css)$/.test(p) && !isAuthMailPath(p)).sort();
 const excluded = candidates.filter((p) => SNAPSHOT.test(p));
 const pages = candidates.filter((p) => !SNAPSHOT.test(p));
 

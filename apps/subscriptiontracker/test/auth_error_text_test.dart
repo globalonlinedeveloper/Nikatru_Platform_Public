@@ -4,6 +4,7 @@ import 'package:subscriptiontracker/features/auth/auth_error_text.dart';
 import 'package:subscriptiontracker/l10n/app_localizations.dart';
 import 'package:subscriptiontracker/l10n/app_localizations_en.dart';
 import 'package:subscriptiontracker/l10n/app_localizations_ta.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 
 /// ── WHY THIS FILE EXISTS ─────────────────────────────────────────────────────
 /// `_friendlyMessage` shipped with NO test enumerating its branches — the two
@@ -41,9 +42,9 @@ void main() {
       ),
     );
     test(
-      'weak password',
+      'weak password with no reason says "stronger", never the length rule',
       () =>
-          expect(authErrorText(en, fail('weak_password')), en.passwordTooShort),
+          expect(authErrorText(en, fail('weak_password')), en.passwordTooWeak),
     );
     test(
       'email not confirmed',
@@ -144,6 +145,100 @@ void main() {
       );
     });
   });
+
+  group(
+    '🔴 a weak password is mapped by REASON — ⏱ 2026-09-24, cutover prep',
+    () {
+      /// The REAL vendor type, not a look-alike: `authErrorText` reads the list
+      /// out of this exception's own `toString()`, so a test built on a copy of
+      /// that format would stay green after gotrue-dart changed it. What reaches
+      /// the login screen's `catch (e)` is exactly this object.
+      sb.AuthWeakPasswordException refused(List<String> reasons) =>
+          sb.AuthWeakPasswordException(
+            message: 'Password is known to be weak and easy to guess.',
+            statusCode: '422',
+            reasons: reasons,
+          );
+
+      test(
+        'pwned → passwordBreached',
+        () => expect(
+          authErrorText(en, refused(<String>['pwned'])),
+          en.passwordBreached,
+        ),
+      );
+      test(
+        'length → passwordTooShort',
+        () => expect(
+          authErrorText(en, refused(<String>['length'])),
+          en.passwordTooShort,
+        ),
+      );
+      test(
+        'characters → passwordTooWeak',
+        () => expect(
+          authErrorText(en, refused(<String>['characters'])),
+          en.passwordTooWeak,
+        ),
+      );
+      test(
+        'pwned + length → passwordBreached: pwned WINS, in either order',
+        () {
+          expect(
+            authErrorText(en, refused(<String>['length', 'pwned'])),
+            en.passwordBreached,
+          );
+          expect(
+            authErrorText(en, refused(<String>['pwned', 'length'])),
+            en.passwordBreached,
+          );
+        },
+      );
+      test('an unknown reason, or an empty list → passwordTooWeak', () {
+        expect(
+          authErrorText(en, refused(<String>['some_future_reason'])),
+          en.passwordTooWeak,
+        );
+        expect(authErrorText(en, refused(<String>[])), en.passwordTooWeak);
+      });
+
+      test(
+        'reasons MISSING — the reset screen\'s AuthFailure carries only the '
+        'sentence — → passwordTooWeak for each of GoTrue\'s three sentences',
+        () {
+          // GoTrue v2.189.0 internal/api/password.go:43, :50 and :66. The pwned
+          // one matched no branch before this change and showed "Something went
+          // wrong"; the characters one was sent to the LENGTH message.
+          for (final String sentence in <String>[
+            'Password should be at least 8 characters.',
+            'Password should contain at least one character of each: '
+                'abcdefghijklmnopqrstuvwxyz, 0123456789.',
+            'Password is known to be weak and easy to guess, please choose a '
+                'different one.',
+          ]) {
+            expect(
+              authErrorText(en, fail(sentence)),
+              en.passwordTooWeak,
+              reason: sentence,
+            );
+          }
+        },
+      );
+
+      test('it is localized, not hardcoded English', () {
+        expect(
+          authErrorText(ta, refused(<String>['pwned'])),
+          ta.passwordBreached,
+        );
+        expect(
+          authErrorText(ta, refused(<String>['characters'])),
+          ta.passwordTooWeak,
+        );
+        expect(ta.passwordBreached, isNot(en.passwordBreached));
+        expect(ta.passwordTooWeak, isNot(en.passwordTooWeak));
+      });
+    },
+  );
 
   test(
     'a String passes through untouched — the pre-repository field errors rely on it',

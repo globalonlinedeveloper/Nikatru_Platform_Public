@@ -1,19 +1,22 @@
 {
   "_why": [
-    "SEEDED 2026-09-09 by `node tooling/store/name-clearance.mjs Subly --app subscriptiontracker --execute`. Every verdict below was READ off a live endpoint on that run, with its red control green — controls.failed is empty, so nothing here is a downgraded guess.",
-    "",
-    "🔴 THE RECORD IS BLOCKED AND THAT IS THE POINT. Two live iOS listings carry the exact name Subly, one of them in Finance — the same category — and App Store names are GLOBALLY UNIQUE, so App Store Connect would refuse it. On 2026-09-09 the Microsoft Partner Center reserve-a-name dialog was one click from starting a three-month clock on it.",
-    "",
-    "⏱ 2026-09-24 — THE TWO PARAGRAPHS ABOVE ARE THE SUBLY RUN OF 2026-09-09, KEPT AS THE REASON THIS FILE EXISTS. They no longer describe this record, which is the renamed app's re-probe of the same day: `name`, `channels` and `overall` below are that run. Why the build is or is not red over them is not written here. tooling/ci/assert-name-clearance.mjs weighs every PROVEN-TAKEN against tooling/ci/channel-arming.mjs on each run, and that file reads each channel's arming off tooling/channel-register.json, so a sentence naming a channel's arming goes stale the day a lane lands — as the one this replaces did.",
-    "",
-    "⏱ 2026-09-24 — THE TRADEMARK RULING IS RECORDED: PROCEED, by the owner, 2026-09-09, basis ADR 074 (the store-name decision, LOCKED that day, decidedBy owner). ADR 074 is read as the ruling by the parent (2026-09-24, under the owner's 2026-09-23 delegation); the ruling itself is the owner's of 2026-09-09. Until this date the block read `ruling: null`, owner-gated until 2026-10-09 on O-NAME-SUBLY-TRADEMARK — a row that was never opened (apps-review F1, O-NAME-CLEARANCE-WAITS-ON-A-MISSING-ROW). A hold on an absent row now fails tooling/scripts/assert-public-citations.mjs, and limb 7 of tooling/ci/assert-name-clearance.mjs refuses a ruling without ruledBy, a dated ruledOn and a basis. No software can clear a trademark; --execute preserves this block rather than rewriting it."
+    "GENERATED — whyLines() in tooling/store/name-clearance-why.mjs computes these lines from this record's own fields, and limb 11 of tooling/ci/assert-name-clearance.mjs refuses any other text. Change a field, then regenerate offline: node tooling/store/name-clearance.mjs --why --app subscriptiontracker",
+    "\"Nikatru Subscription Tracker\", probed 2026-09-09; overall UNDETERMINED. Re-probe (networked, ~20 external calls): node tooling/store/name-clearance.mjs 'Nikatru Subscription Tracker' --app subscriptiontracker --execute",
+    "Clear (PROVEN-FREE) — an authority answered \"no such name\" with its red control green: web, amo.",
+    "Held (HELD) — the owner reserved the name in that store's console and recorded its id: none.",
+    "Blocked for a submission (PROVEN-TAKEN) — a live record holds the name: none.",
+    "Blocked for a submission (UNDETERMINED) — could not check, which is never a pass: android-play, ios-appstore (global), macos-appstore (global), windows-store, linux-snap (global), chrome-webstore, edge-addons.",
+    "Not applicable (NOT-APPLICABLE) — no third party holds a name there, and no submission passes on it: windows-direct, linux-appimage, apps-gov-in.",
+    "Trademark: PROCEED, ruled by owner on 2026-09-09, basis ADR 074 (owner, 2026-09-09: store name chosen; section 6 defers the NIKATRU mark), read and applied by the parent on 2026-09-24 under the owner's 2026-09-23 delegation. No software can clear a trademark; the ruling is the owner's.",
+    "A submit lane runs node tooling/ci/assert-name-clearance.mjs --for-submission=<channel>, which passes only PROVEN-FREE, or HELD with its store record id, on that channel. The owner records a hold with: node tooling/store/name-clearance.mjs --hold <channel> --record <store record id> --app subscriptiontracker",
+    "Whether a channel can reach a user today is register state and is not written here: tooling/ci/assert-name-clearance.mjs reads it off tooling/channel-register.json on every run."
   ],
   "app": "subscriptiontracker",
   "slug": "nikatrusubscriptiontracker",
   "name": {
     "value": "Nikatru Subscription Tracker",
     "asOf": "2026-09-09",
-    "verify": "node tooling/store/name-clearance.mjs Nikatru Subscription Tracker --app subscriptiontracker --execute",
+    "verify": "node tooling/store/name-clearance.mjs 'Nikatru Subscription Tracker' --app subscriptiontracker --execute",
     "verifyKind": "remote"
   },
   "asOf": "2026-09-09",

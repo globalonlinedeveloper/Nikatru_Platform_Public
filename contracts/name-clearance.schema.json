@@ -9,7 +9,7 @@
   "properties": {
     "_why": {
       "type": "array",
-      "description": "Free prose. Present so a seeded record can carry the sentence that explains it without inventing a field.",
+      "description": "GENERATED prose: exactly `whyLines(record)` from tooling/store/name-clearance-why.mjs, computed from this record's own fields and written by tooling/store/name-clearance.mjs on every write. Regenerate it offline with `node tooling/store/name-clearance.mjs --why --app <slug>`; limb 11 of tooling/ci/assert-name-clearance.mjs refuses any other text. Optional in the shape so the guard, not the schema, names the command that fixes an absent one.",
       "items": { "type": "string" }
     },
     "app": {
@@ -68,11 +68,31 @@
         "type": "object",
         "required": ["verdict", "uniqueness", "why"],
         "additionalProperties": false,
+        "anyOf": [
+          { "properties": { "verdict": { "enum": ["PROVEN-FREE", "PROVEN-TAKEN", "UNDETERMINED", "NOT-APPLICABLE"] } } },
+          { "required": ["storeRecordId", "heldBy", "heldOn"], "properties": { "verdict": { "const": "HELD" } } }
+        ],
+        "description": "The `anyOf` is `if verdict is HELD then storeRecordId, heldBy and heldOn are required`, spelled in the keywords tooling/app-yaml/schema-validate.mjs implements (it has no `if`/`then`, and refuses a keyword it does not implement).",
         "properties": {
           "verdict": {
             "type": "string",
-            "enum": ["PROVEN-FREE", "PROVEN-TAKEN", "UNDETERMINED", "NOT-APPLICABLE"],
-            "description": "THREE ANSWERS, NEVER TWO, plus the non-answer for a channel with no namespace. UNDETERMINED never counts as clear."
+            "enum": ["PROVEN-FREE", "PROVEN-TAKEN", "UNDETERMINED", "NOT-APPLICABLE", "HELD"],
+            "description": "THREE ANSWERS, NEVER TWO, plus the non-answer for a channel with no namespace, plus HELD — the one verdict no probe can write. UNDETERMINED never counts as clear. HELD is the OWNER'S record that the name is reserved in that store's own console, which no unauthenticated probe can see; it carries the store's record id, is written only by `node tooling/store/name-clearance.mjs --hold <channel> --record <store record id> --app <slug>`, and `--execute` carries it forward rather than re-probing over it."
+          },
+          "storeRecordId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "HELD only. The store's own id for the reservation, as the owner read it off the console: Play's package entry, App Store Connect's Apple ID, Partner Center's reserved-name product id, the registered snap name. A HELD without it is a claim nobody can look up."
+          },
+          "heldBy": {
+            "type": "string",
+            "const": "owner",
+            "description": "HELD only. Always `owner`: a reservation is made in a console the owner signs into, so nobody else can attest it."
+          },
+          "heldOn": {
+            "type": "string",
+            "format": "date",
+            "description": "HELD only. The local date the hold was recorded."
           },
           "uniqueness": {
             "type": "string",
@@ -134,12 +154,12 @@
         "ruledBy": { "anyOf": [{ "type": "null" }, { "type": "string" }] },
         "ruledOn": { "anyOf": [{ "type": "null" }, { "type": "string", "format": "date" }] },
         "basis": {
-          "anyOf": [{ "type": "null" }, { "type": "string", "minLength": 1 }],
-          "description": "WHAT THE RULING RESTS ON — the decision record a reader opens to check it (`ADR 074`). Optional in the shape so a record written before the field existed still parses; tooling/ci/assert-name-clearance.mjs limb 7 refuses a non-null `ruling` without it."
+          "anyOf": [{ "type": "null" }, { "type": "string", "minLength": 1, "pattern": "\\S" }],
+          "description": "WHAT THE RULING RESTS ON — the decision record a reader opens to check it (`ADR 074`). Optional in the shape so a record written before the field existed still parses; tooling/ci/assert-name-clearance.mjs limb 7 refuses a non-null `ruling` without it. A whitespace-only string is refused here too (`pattern`), because a blank basis names nothing a reader can open."
         },
         "ownerItem": {
           "anyOf": [{ "type": "null" }, { "type": "string" }],
-          "description": "The owner id that carries the owed ruling: an `O-<WORDS>` row in Private/platform-state/open.json, or an owner-queue id such as `A-12` (the grammar is tooling/scripts/owner-ids.mjs). A null ruling with no owner item is a finding nobody owns, so the guard refuses it outright, and tooling/scripts/assert-public-citations.mjs refuses an id whose row does not exist."
+          "description": "The owner id that carries the owed ruling: a row of Private/platform-state/open.json such as `O-NAME-SUBLY-TRADEMARK`, or of the owner queue such as `A-12` (the id shape and the lookup are tooling/scripts/owner-ids.mjs). A null ruling with no owner item is a finding nobody owns, so the guard refuses it outright. tooling/scripts/assert-public-citations.mjs looks the id up in BOTH registers and refuses one that neither carries, one that both carry, and a live row whose text (`blocks` or `closes`, in open.json) never names this file's repo-relative path. Once `ruling` is recorded the id is provenance and holds nothing."
         },
         "gatedUntil": {
           "anyOf": [{ "type": "null" }, { "type": "string", "format": "date" }],

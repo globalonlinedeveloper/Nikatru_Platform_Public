@@ -120,6 +120,32 @@ jobs:
           fi
           exit "$code"
 
+      # why: the 30-day ceiling on apps/*/name-clearance.json, read DAILY and OFF
+      # the pull-request path. ci.yml runs this guard without `--execute` on
+      # purpose: every record shares a birthday, and a gate that refuses every
+      # pull request on the day a window closes is a gate that gets skipped. Here a
+      # stale record pages through the alert job instead.
+      # why: a STEP in this job, not a job of its own. A new job joins a duty
+      # row's `unit.jobs`, and every ops-watch run before it lacks that job, so
+      # the row would read NO SUCCESSFUL RUN on main until one landed. This job
+      # runs assert-ops-register, so it is no row's unit and ages none.
+      # why: no `env:`. The guard reads JSON from the checkout and touches no
+      # network and no secret; `--execute` turns one limb, the age of `asOf`,
+      # from a warning into a finding.
+      - name: Every name-clearance record is inside its 30-day ceiling
+        if: ${{ !cancelled() }}
+        run: |
+          set +e
+          node tooling/ci/assert-name-clearance.mjs --execute
+          code=$?
+          set -e
+          if [ "$code" -eq 2 ]; then
+            echo "::error title=Name clearance is UNKNOWN - nothing was graded::The register, the catalogue, the schema or a record could not be read, so NO record was judged. That is never a pass: an unread record could be any age."
+          elif [ "$code" -eq 1 ]; then
+            echo "::error title=A name-clearance record is past its ceiling, or another finding stands::The step log names the record and the finding. Past 30 days, name-clearance.yml has not landed a refresh: read its newest scheduled run, which is red or absent, and what it says to do."
+          fi
+          exit "$code"
+
   status:
     name: Every enumerated surface produced its expected output
     runs-on: ubuntu-24.04

@@ -1,0 +1,238 @@
+name: Name clearance
+
+run-name: "Name clearance sweep (${{ github.event_name }})"
+
+# The decisions and measurements behind this file are in docs/name-clearance.md.
+# Only `# why:` lines live here, and docs/ci/README.md carries the rules every
+# workflow has to obey.
+
+on:
+  workflow_dispatch:
+  schedule:
+    # why: WEEKLY, not daily, because every run whose records differ opens a pull
+    # request. Four slots fall inside the record's 30-day ceiling, but the duty
+    # row's own window is 7d x 1.5 = 252h, so ONE missed or red Monday ages that
+    # row (TRAPS ci-19); docs/name-clearance.md weighs the two.
+    - cron: '10 7 * * 1' # 07:10 UTC Mondays
+
+# why: empty at file level; the one job grants only what it needs.
+permissions: {}
+
+concurrency:
+  # why: cancel-in-progress FALSE. A dispatch landing on a scheduled run must not
+  # kill a sweep that may already have pushed its branch.
+  group: name-clearance
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    name: Re-derive every declared app's name clearance and propose the records
+    runs-on: ubuntu-24.04
+    # why: catalog/apps.json declares one app and the sweep measured ~16.5 s per
+    # app, so 15 minutes is headroom for the catalogue to grow, not for a hang.
+    timeout-minutes: 15
+    permissions:
+      # why: `contents: write` pushes the branch and nothing else. There is no
+      # `pull-requests: write`: every `gh` call below runs as the RENOVATE_TOKEN
+      # actor, because a pull request opened by GITHUB_TOKEN starts no workflows
+      # and therefore never reaches a green ci-gate.
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-node
+
+      - name: Re-derive every declared app's clearance record
+        id: sweep
+        # why: NO token in this step's environment. The sweep makes ~20 calls to
+        # third-party stores and parses what they answer; the push token and the
+        # pull-request token are handed only to the step that uses them.
+        run: |
+          OUT="${RUNNER_TEMP}/name-clearance"
+          mkdir -p "$OUT"
+          set +e
+          node tooling/ops/name-clearance-sweep.mjs > "$OUT/sweep.stdout.txt" 2> "$OUT/sweep.stderr.txt"
+          code=$?
+          set -e
+          cat "$OUT/sweep.stdout.txt"
+          cat "$OUT/sweep.stderr.txt" >&2
+          echo "exit=${code}" >> "$GITHUB_OUTPUT"
+          echo "sweep exit: ${code}"
+
+      - name: Propose the records by pull request, armed to merge only when no verdict flipped
+        env:
+          SWEEP_EXIT: ${{ steps.sweep.outputs.exit }}
+          # why: GITHUB_TOKEN cannot close this loop. A pull request it opens
+          # triggers NO workflow runs, so ci-gate never starts and the refresh
+          # waits on a human. RENOVATE_TOKEN is a real actor, so the checks RUN.
+          GH_TOKEN: ${{ secrets.RENOVATE_TOKEN }}
+          # why: the branch push stays on the job's own least-privilege token;
+          # `checkout` sets `persist-credentials: false`, so the one command that
+          # pushes builds its own remote URL for that command only.
+          PUSH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          OUT="${RUNNER_TEMP}/name-clearance"
+
+          # ── the sweep's exit decides everything, and exit 1 is two things ──
+          # 1 is a FLIP only when the sweep printed its flip report; an uncaught
+          # throw in node also exits 1, and must never be proposed as a flip.
+          case "$SWEEP_EXIT" in
+            0) ;;
+            1)
+              if ! grep -q 'clearance verdict(s) FLIPPED' "$OUT/sweep.stderr.txt"; then
+                echo "::error title=The name-clearance sweep failed without a verdict::tooling/ops/name-clearance-sweep.mjs exited 1 and printed no flip report, so it did not finish: the step log above carries the error. Nothing was proposed."
+                exit 1
+              fi
+              ;;
+            2)
+              echo "::error title=Name clearance COVERAGE LOST - nothing was proposed::The sweep could not re-derive every record: a red control failed, a store did not answer, or the catalogue or register was unreadable. It refused to overwrite the existing records with a clearance full of could-not-check, so no branch and no pull request exist for this run. REMEDY: re-run once by workflow_dispatch when the stores answer; if it stays lost, the step log names the red control that failed."
+              git status --porcelain -- apps/
+              exit 2
+              ;;
+            *)
+              echo "::error title=The name-clearance sweep exited ${SWEEP_EXIT}::An exit code the sweep does not document (0 no flip, 1 flip, 2 coverage lost). Nothing was proposed; the step log above carries its output."
+              exit 1
+              ;;
+          esac
+
+          git add -A
+          git diff --cached --no-renames --name-only > "$OUT/changed-paths.txt"
+
+          if [ ! -s "$OUT/changed-paths.txt" ]; then
+            echo 'The sweep rewrote no record that differs from main. Nothing was proposed.' > "$OUT/NO-CHANGE.txt"
+            echo "::notice title=No name-clearance change::Every record the sweep rewrote is byte-identical to what main carries. There is nothing to propose."
+            exit "$SWEEP_EXIT"
+          fi
+
+          # ── 🔴 THE PROPOSAL CARRIES THE RECORDS AND NOTHING ELSE ──
+          if grep -Ev '^apps/[^/]+/name-clearance\.json$' "$OUT/changed-paths.txt" > "$OUT/outside-scope.txt"; then
+            git diff --cached > "$OUT/name-clearance.diff"
+            echo '--- PATHS OUTSIDE apps/*/name-clearance.json ---'
+            cat "$OUT/outside-scope.txt"
+            echo '--- END ---'
+            echo "::error title=The sweep changed a path it does not own - nothing was proposed::A pull request from this workflow may carry apps/*/name-clearance.json and nothing else, and this run changed the paths printed above. That is a defect in the sweep or in something it imports, not a record to merge. The full diff is uploaded as this run's name-clearance artifact."
+            exit 1
+          fi
+
+          echo "The sweep rewrote:"
+          cat "$OUT/changed-paths.txt"
+
+          # ── 🔴 THE SECRET IS CHECKED WHERE IT IS NEEDED, AND ITS ABSENCE IS RED ──
+          if [ -z "${GH_TOKEN:-}" ]; then
+            git diff --cached > "$OUT/name-clearance.diff"
+            echo 'RENOVATE_TOKEN was not set, so no pull request was opened. name-clearance.diff is the rewrite.' > "$OUT/NO-TOKEN.txt"
+            echo '--- THE REWRITTEN RECORDS, IN FULL ---'
+            cat "$OUT/name-clearance.diff"
+            echo '--- END OF THE REWRITTEN RECORDS ---'
+            echo "::error title=The records were re-derived but no pull request could be opened::The repository secret RENOVATE_TOKEN is not set, and it is what this workflow opens and auto-merges the refresh with. THE RECORDS ARE NOT LOST - they are printed above and uploaded as this run's name-clearance artifact. REMEDY (owner work): create RENOVATE_TOKEN, a classic PAT with repo scope, at Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+
+          BRANCH="chore/name-clearance-${GITHUB_RUN_ID}"
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git commit -m "apps: re-derive the name-clearance records (weekly sweep)" -m "Written by .github/workflows/name-clearance.yml, which runs tooling/ops/name-clearance-sweep.mjs every Monday. Sweep exit ${SWEEP_EXIT}. The pull request body says whether it merges itself."
+
+          # THE RECORDS ARE PUT SOMEWHERE DURABLE BEFORE THEY ARE PROPOSED. The
+          # proposal is the step that can be refused; the patch is not.
+          git format-patch -1 --stdout > "$OUT/name-clearance.patch"
+
+          {
+            if [ "$SWEEP_EXIT" -eq 1 ]; then
+              printf '%s\n' '```'
+              cat "$OUT/sweep.stderr.txt"
+              printf '%s\n\n' '```'
+              printf '%s\n\n' '**A NAME THAT WAS CLEARED AND IS NOT ANY MORE IS AN OWNER DECISION.** So this pull request does **not** merge itself: auto-merge was deliberately not armed, and the run that opened it is red on purpose. File an owner item for the flip above, and merge or close this pull request only on that ruling. Merging it records the new verdict on main; it does not decide anything about the name.'
+            else
+              printf '%s\n\n' 'The weekly sweep re-derived every declared app'"'"'s name clearance and **no verdict flipped**. This refreshes each record'"'"'s `asOf` and evidence, so the name-clearance guard (`assert-name-clearance.mjs`) keeps reading a measurement inside its 30-day ceiling.'
+              printf '%s\n\n' '**This pull request merges itself.** Auto-merge (squash) is armed by the same step that opened it, so it lands the moment `ci-gate` is green. `ci-gate` is still the required check, so a red gate stops this exactly as it stops anything else.'
+            fi
+            printf '%s\n' 'What the sweep printed, per app (previous verdict -> this run'"'"'s):'
+            printf '%s\n' '```'
+            cat "$OUT/sweep.stdout.txt"
+            printf '%s\n\n' '```'
+            printf '%s\n\n' 'The owner'"'"'s `trademark.ruling`, `ruledBy`, `ruledOn`, `ownerItem` and `gatedUntil` are carried over from main by the probe'"'"'s `writeRecord`, never rewritten by a re-probe (cases D4 and D6 of `name-clearance.test.mjs`).'
+            printf '%s\n\n' '**Review note.** This diff should be `apps/*/name-clearance.json` and nothing else; the workflow refuses to propose anything wider. If it contains anything that is not a re-derived record, do not merge it.'
+            printf '%s\n' 'Rows: none - an automated name-clearance refresh closes no row.'
+          } > "${RUNNER_TEMP}/pr-body.md"
+          cp "${RUNNER_TEMP}/pr-body.md" "$OUT/pr-body.md"
+
+          if [ "$SWEEP_EXIT" -eq 1 ]; then
+            TITLE='apps: a name-clearance verdict FLIPPED - owner decision (weekly sweep)'
+          else
+            TITLE='apps: refresh the name-clearance records (weekly sweep)'
+          fi
+
+          git push "https://x-access-token:${PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$BRANCH"
+
+          # ── 🔴 `gh pr create` CAN BE REFUSED, AND A REFUSAL IS NOT A REFRESH ──
+          set +e
+          gh pr create \
+            --base main \
+            --head "$BRANCH" \
+            --title "$TITLE" \
+            --body-file "${RUNNER_TEMP}/pr-body.md" > "$OUT/gh-pr-create.log" 2>&1
+          PR_RC=$?
+          set -e
+          cat "$OUT/gh-pr-create.log"
+
+          if [ "$PR_RC" -ne 0 ]; then
+            echo '--- THE REWRITTEN RECORDS, IN FULL ---'
+            cat "$OUT/name-clearance.patch"
+            echo '--- END OF THE REWRITTEN RECORDS ---'
+
+            if grep -qiE 'not permitted to create or approve pull requests' "$OUT/gh-pr-create.log"; then
+              CAUSE='the repository setting "Allow GitHub Actions to create and approve pull requests" is OFF, so even a PAT-authenticated gh inside Actions is refused.'
+              REMEDY='REMEDY (owner work): Settings -> Actions -> General -> Workflow permissions -> tick "Allow GitHub Actions to create and approve pull requests". API equivalent: gh api -X PUT "repos/'"${GITHUB_REPOSITORY}"'/actions/permissions/workflow" -F can_approve_pull_request_reviews=true'
+            elif grep -qiE 'HTTP 40[13]|Bad credentials|Resource not accessible' "$OUT/gh-pr-create.log"; then
+              CAUSE='RENOVATE_TOKEN was rejected - expired, revoked, or no longer carrying repo scope.'
+              REMEDY='REMEDY (owner work): reissue the classic PAT with repo scope and update the RENOVATE_TOKEN repository secret. .github/workflows/renovate.yml and site-drift-repair.yml use the same secret and will be failing too.'
+            else
+              CAUSE="gh pr create exited ${PR_RC} for a reason this step does not recognise."
+              REMEDY='REMEDY: read the gh output above.'
+            fi
+
+            echo "::error title=The records were re-derived but the pull request could not be opened::${CAUSE} THE RECORDS ARE NOT LOST - branch ${BRANCH} is pushed, and the patch is both printed above and uploaded as this run's name-clearance artifact; open the pull request by hand from ${BRANCH} into main. ${REMEDY}"
+            exit 1
+          fi
+
+          PR_URL="$(tail -n 1 "$OUT/gh-pr-create.log")"
+          echo "opened ${PR_URL}"
+
+          if [ "$SWEEP_EXIT" -eq 1 ]; then
+            echo "::error title=A name-clearance verdict FLIPPED - owner decision::${PR_URL} is open and will NOT merge itself. A name that was cleared and is not any more is an owner decision: file an owner item for the flip printed in the sweep step, and merge or close ${PR_URL} only on that ruling."
+            exit 1
+          fi
+
+          # ── 🔴 ARMING AUTO-MERGE IS THE HALF THAT CLOSES THE LOOP ──
+          set +e
+          gh pr merge "$PR_URL" --auto --squash > "$OUT/gh-pr-merge.log" 2>&1
+          MERGE_RC=$?
+          set -e
+          cat "$OUT/gh-pr-merge.log"
+
+          if [ "$MERGE_RC" -ne 0 ]; then
+            if grep -qiE 'auto.?merge is not (allowed|enabled)|Protected branch rules not configured' "$OUT/gh-pr-merge.log"; then
+              CAUSE='the repository setting "Allow auto-merge" is OFF.'
+              REMEDY='REMEDY (owner work): gh api -X PATCH "repos/'"${GITHUB_REPOSITORY}"'" -F allow_auto_merge=true'
+            else
+              CAUSE="gh pr merge --auto exited ${MERGE_RC} for a reason this step does not recognise."
+              REMEDY='REMEDY: read the gh output above.'
+            fi
+            echo "::error title=The name-clearance refresh is open but will not merge itself::${CAUSE} ${PR_URL} IS OPEN AND CORRECT - merge it by hand and the records on main are fresh. ${REMEDY}"
+            exit 1
+          fi
+
+          echo "::notice title=Name-clearance refresh proposed and armed::${PR_URL} will squash-merge itself as soon as ci-gate is green."
+
+      - name: Preserve the sweep's output and the proposed records
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: name-clearance
+          path: ${{ runner.temp }}/name-clearance/
+          if-no-files-found: error
