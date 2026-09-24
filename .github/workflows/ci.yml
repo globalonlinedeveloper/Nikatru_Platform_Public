@@ -12,6 +12,9 @@ on:
   push:
     branches: [main]
   pull_request:
+    # why: `edited` so that fixing a PR body re-runs assert-pr-rows (guard-meta).
+    # The other three are GitHub's defaults, listed because `types:` replaces them.
+    types: [opened, synchronize, reopened, edited]
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -145,6 +148,17 @@ jobs:
         run: node tooling/ci/assert-guards-refuse-empty.mjs
       - name: No dead tracked files
         run: node tooling/scripts/assert-no-dead-files.mjs
+      # why: a STEP-level `if:`, never a job-level one: ci-gate aggregates this job,
+      # and a job skipped on push would read as not-green (assert-green-means-ran A6).
+      # The body is untrusted input, so it arrives through env: and never inside run:.
+      # BASE_SHA's history is read for the grandfather rule, which fetch-depth: 0 above provides.
+      - name: A pull request names the rows it moves, or says why none
+        if: github.event_name == 'pull_request'
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_CREATED_AT: ${{ github.event.pull_request.created_at }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: node tooling/ci/assert-pr-rows.mjs
 
   guards-platform:
     name: Guards — platform, data and ops

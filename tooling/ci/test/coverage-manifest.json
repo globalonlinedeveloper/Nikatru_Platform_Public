@@ -168,6 +168,7 @@
   "policy-archive.test.mjs": 31,
   "policy-claims.test.mjs": 43,
   "post-deploy-smoke.test.mjs": 146,
+  "pr-rows.test.mjs": 47,
   "precommit-pii.test.mjs": 3,
   "preflight-hung-leg.test.mjs": 5,
   "preflight-sweep-regression.test.mjs": 15,

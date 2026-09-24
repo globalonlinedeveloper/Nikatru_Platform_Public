@@ -1672,6 +1672,16 @@
   {
     "claims": [],
     "invokedBy": [
+      ".github/workflows/ci.yml#guard-meta"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-pr-rows.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
       ".github/workflows/ci.yml#guards-platform"
     ],
     "kind": "guard",
