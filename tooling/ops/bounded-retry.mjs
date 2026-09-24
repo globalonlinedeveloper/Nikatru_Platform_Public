@@ -112,11 +112,15 @@
 // timeout cancelled it — and a cancelled job reports nothing at all, which is
 // the silent failure this module exists to remove.
 //
-// So the ceiling lives in `readWithBoundedRetry`, once: a FRESH
-// `AbortSignal.timeout` per attempt (an aborted signal stays aborted, so one
-// hoisted above the loop would fail every retry instantly), combined with the
-// caller's own signal through `AbortSignal.any` and never replacing it. The
-// read receives it as `read(attempt, { signal })` and passes it to its fetch.
+// So the ceiling lives in `readWithBoundedRetry`, once: a FRESH ceiling per
+// attempt (an aborted signal stays aborted, so one hoisted above the loop would
+// fail every retry instantly). `attemptWithCeiling` gives each attempt its own
+// `AbortController`, aborted by a ref'd `setTimeout` and not by
+// `AbortSignal.timeout` (why ref'd: the note on that function), and combines it
+// with the caller's own signal through `AbortSignal.any`, never replacing it.
+// ⏱ CORRECTED 2026-09-24: this paragraph said `AbortSignal.timeout`; the code
+// under it is the ref'd timer. The read receives the combined signal as
+// `read(attempt, { signal })` and passes it to its fetch.
 // The attempt is also RACED against that signal, so a read that forgets to pass
 // it still ends: its timeout is a transient look, retried, and then COULD NOT
 // LOOK (exit 2), exactly like a dropped connection. A caller's own abort is not
@@ -134,8 +138,13 @@
 // heartbeats job (check-d1-accepts-live-sql reads once per statement per
 // database) and the glitchtip job (seven readers in one job) run more than ten.
 // So the job ceiling alone cannot guarantee that a later reader in the same job
-// runs after an outage: each reader STEP carries its own `timeout-minutes`
-// (ops-watch.yml), which fails that step rather than cancelling the job.
+// runs after an outage. ⏱ CORRECTED 2026-09-24: this said each reader STEP
+// carries its own `timeout-minutes`. Measured in ops-watch.yml, it is set per
+// JOB, on nine lines (the `alert` job's 5, every other job's 10), and on no
+// step. A job whose reads all hang can therefore reach its 10 minutes and be
+// cancelled, and the readers after the hung one in that job do not run. A
+// per-step `timeout-minutes` on each reader step is a named follow-on of row
+// O-OPS-READER-NO-CEILING.
 //
 // 🔴 CLASSIFICATION IS MARKED AT THE THROW SITE, NEVER INFERRED FROM A MESSAGE.
 // `transientLook()` sets the flag; `isTransientLook()` reads it. A future branch
@@ -227,8 +236,10 @@ const TRANSPORT_CODES = new Set([
  *  runner gave up on is the same evidence as a probe the network dropped: none.
  *  ⏱ APPENDED 2026-09-22: the sentence above was not true when written — twelve
  *  sites in ten readers armed nothing (row O-OPS-READER-NO-CEILING). Since then
- *  `readWithBoundedRetry` arms it for every reader, and the B8 limb in
- *  ops-bounded-retry.test.mjs fails a call site that does not pass it on.
+ *  `readWithBoundedRetry` arms it (a ref'd timer since #882, in
+ *  `attemptWithCeiling`; its TimeoutError reads the same) for every reader, and
+ *  the B8 limb in ops-bounded-retry.test.mjs fails a call site that does not
+ *  pass it on.
  *
  *  🔴 IT IS DELIBERATELY NOT "anything that is a TypeError". A reader with a bug
  *  that reads a property of undefined also throws TypeError, and re-asking a
