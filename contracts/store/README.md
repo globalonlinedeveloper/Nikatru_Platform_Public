@@ -127,7 +127,7 @@ rediscovered:
   so this needs a **generated Dart** emitter, the way
   `contracts/entitlement/generate-dart.mjs` already works. It is the largest
   single consumer and the one whose drift would be hardest to see.
-- 🟡 `tooling/store/name-probes.mjs:166-450` — the `PROBES` table restates the
+- 🟡 `tooling/store/name-probes.mjs:171-455` — the `PROBES` table restates the
   entire channel-id vocabulary as object keys. Its header already says it is
   "keyed by channel-register `id`", and nothing derives it.
 - 🟡 `tooling/release/submit-appstore.mjs:78` (`CHANNELS`), `submit-play.mjs:91`,

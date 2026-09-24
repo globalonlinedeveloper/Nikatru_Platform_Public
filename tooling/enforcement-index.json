@@ -1273,7 +1273,8 @@
       "D-5"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#guards-store"
+      ".github/workflows/ci.yml#guards-store",
+      ".github/workflows/ops-watch.yml#heartbeats"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-name-clearance.mjs",
@@ -3098,6 +3099,16 @@
     ],
     "kind": "script",
     "ref": "tooling/ops/money-dry-run.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/name-clearance.yml#sweep"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/name-clearance-sweep.mjs",
     "references": [],
     "state": "WIRED"
   },

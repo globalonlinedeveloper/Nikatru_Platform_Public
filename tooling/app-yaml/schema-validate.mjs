@@ -42,12 +42,22 @@ const UNDERSTOOD = new Set([
   'anyOf', 'allOf',
 ]);
 
+/** A calendar date that round-trips, so `2026-02-31` is not one. THE ONE COPY:
+ *  the `date` format below, limb 7 of `tooling/ci/assert-name-clearance.mjs` (by
+ *  way of `tooling/scripts/name-ruling.mjs`) and `tooling/ci/assert-ops-register.mjs`
+ *  import it. ⏱ 2026-09-24 (the PR 913 review, L2): the format and the ops
+ *  register each carried `!Number.isNaN(Date.parse(v))`, and V8 parses
+ *  `2026-02-31` as 3 March, so both accepted a day that does not exist while
+ *  limb 7 refused it. */
+export const isIsoDate = (s) =>
+  typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(`${s}T00:00:00Z`)) && new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) === s;
+
 /** The closed `format` set. A format nobody implemented must not read as a
  *  constraint that passed — same reason as UNDERSTOOD above. */
 const FORMATS = {
   'https-url': (v) => /^https:\/\/[^\s/]+(\/[^\s]*)?$/.test(v),
   hostname: (v) => /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(v),
-  date: (v) => /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v)),
+  date: isIsoDate,
   'repo-path': (v) => /^[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(v) && !v.includes('..'),
 };
 

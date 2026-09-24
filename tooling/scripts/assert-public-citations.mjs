@@ -27,8 +27,9 @@
 //      correct treatment is to CHECK them, not to rewrite 1,453 tags.
 //
 //   3. ID CITATIONS — an owner id that a public field HOLDS A BUILD ON must name
-//      a row that exists, and, within this branch's diff, one still owed. The
-//      subjects, the id grammar and the resolver are `owner-ids.mjs`; the rules
+//      a row that exists in exactly one register and whose text names the
+//      subject file, and, within this branch's diff, one still owed. The
+//      subjects, the id shape and the resolver are `owner-ids.mjs`; the rules
 //      and the `--all-subjects` flag are at the ID CITATIONS block below.
 //
 // 🔴 A TAG IS NOT ONE ID. This is the whole reason the guard exists rather than a
@@ -147,7 +148,7 @@
    `repo-git.mjs`, which deletes the six redirecting variables from the child
    environment and proves the root is its own repository before reading it. */
 import { repoGit, repoGitRaw, RepoGitError, strippedNote } from './repo-git.mjs';
-import { HOLD_SUBJECTS, LIVENESS, subjectFor, holdsIn, indexRows, idClass, resolveHold } from './owner-ids.mjs';
+import { HOLD_SUBJECTS, LIVENESS, subjectFor, holdsIn, indexRows, isOwnerId, resolveHold } from './owner-ids.mjs';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { resolve, dirname, join, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -788,8 +789,17 @@ const staleHolds = [];
    subjects, the grammar and the resolver are `owner-ids.mjs`; this block reads
    the files and owns the exit codes.
 
-   · ABSENT — no row carries the id — is exit 1 on EVERY run. Nothing anybody
-     closes can cause it, so it never turns an unrelated commit red by surprise.
+   · ABSENT — no row carries the id — is exit 1 on EVERY run. CLOSING a row
+     cannot cause it; RENAMING or PRUNING one can, and then it turns an unrelated
+     commit red, in either repository: the owner queue has already renamed a row
+     to `A-13-orig`, so a hold on its old id went ABSENT with no Public change.
+     That is accepted, not hidden: a hold on an id nobody carries holds on
+     nothing, and the branch that meets it repoints the hold.
+   · UNRELATED — the row is live and its text never names the subject file (the
+     rule is in `owner-ids.mjs`) — and AMBIGUOUS — both registers carry the id —
+     are exit 1 on every run, exactly as ABSENT is. (PR 913 review, M1 and L1.)
+   · Both registers are read whenever a subject holds an id: which one carries
+     it is a lookup, never a reading of the id's shape.
    · NOT LIVE — the row is closed, or an owner ruling is carried by a row the
      owner does not own — is exit 1 only when the subject FILE differs from
      `git merge-base HEAD origin/main`, or under `--all-subjects`. Otherwise it
@@ -798,10 +808,11 @@ const staleHolds = [];
      red; the branch that edits the subject is the one that has to settle it.
    · With no readable merge-base and no `--all-subjects` liveness is NOT GRADED
      and the run says so in one line. Absence still is.
-   · A register this class needs and cannot read is exit 2 COVERAGE LOST. Each is
-     read only when a subject holds an id in its namespace, so a tree holding
-     nothing reads nothing: open.json from the private root, and `owner-queue.json`
-     from $NIKATRU_BUSINESS_ROOT, else `<private root>/../../nikatru` — the one
+   · A register this class needs and cannot read is exit 2 COVERAGE LOST, and so
+     is one with no readable row, or one carrying a held id twice. Both are read
+     only when a subject holds an id, so a tree holding nothing reads nothing:
+     open.json from the private root, and `owner-queue.json` from
+     $NIKATRU_BUSINESS_ROOT, else `<private root>/../../nikatru` — the one
      business file this guard opens.
 
    🔴 CI NEVER RUNS THIS, for the reason at the head of the file: its subject
@@ -817,14 +828,14 @@ function idRefuse(lines) {
   process.exit(2);
 }
 
-/** A register's rows, keyed by id, or a refusal. `held` is the ids this run holds
- *  in the register's namespace, so a duplicate is refused only where it matters. */
+/** A register's rows, keyed by id, or a refusal. `held` is the ids this run holds,
+ *  so a duplicate is refused only where it matters. */
 function readRegister(cls, abs, held) {
   let raw;
   try { raw = readFileSync(abs, 'utf8'); } catch (e) {
     idRefuse([
       `${LIVENESS[cls].register} is unreadable at ${abs} (${e.code || e.message}).`,
-      `Held in its namespace: ${held.join(', ')}.`,
+      `Held, and looked up in both registers: ${held.join(', ')}.`,
       ...(cls === 'queue' ? ['Set NIKATRU_BUSINESS_ROOT if the business root is not `<private root>/../../nikatru` on this host.'] : []),
     ]);
   }
@@ -835,7 +846,7 @@ function readRegister(cls, abs, held) {
   const { rows, duplicates } = indexRows(doc, cls);
   if (rows.size === 0) {
     idRefuse([
-      `${abs} parsed, and not one object in it carries an \`id\` in this namespace and a \`${LIVENESS[cls].field}\`.`,
+      `${abs} parsed, and not one object in it carries an owner-id-shaped \`id\` and a \`${LIVENESS[cls].field}\`.`,
       'A register with no readable row would report every held id ABSENT, which is a true-looking report of nothing.',
     ]);
   }
@@ -887,16 +898,16 @@ for (const rel of files) {
   }
 }
 
+/* An id is looked up in BOTH registers, so both are read the moment any subject
+   holds a value that could be an id. A malformed value needs neither. */
 const rowsByClass = { open: null, queue: null };
-const heldIn = (cls) => held.filter((h) => idClass(h.id) === cls).map((h) => h.id);
-if (heldIn('open').length) {
-  rowsByClass.open = readRegister('open', join(PRIVATE, 'platform-state', 'open.json'), heldIn('open'));
-}
-if (heldIn('queue').length) {
+const lookedUp = held.filter((h) => isOwnerId(h.id)).map((h) => h.id);
+if (lookedUp.length) {
+  rowsByClass.open = readRegister('open', join(PRIVATE, 'platform-state', 'open.json'), lookedUp);
   const business = process.env.NIKATRU_BUSINESS_ROOT
     ? resolve(process.env.NIKATRU_BUSINESS_ROOT)
     : resolve(PRIVATE, '..', '..', 'nikatru');
-  rowsByClass.queue = readRegister('queue', join(business, 'owner-queue.json'), heldIn('queue'));
+  rowsByClass.queue = readRegister('queue', join(business, 'owner-queue.json'), lookedUp);
 }
 
 const notLive = [];
@@ -909,7 +920,15 @@ for (const h of held) {
     continue;
   }
   if (r.verdict === 'absent') {
-    failures.push({ rel: h.file, line: h.line, kind: 'owner-id', what: h.id, why: `${h.jsonPath} holds on a row ${LIVENESS[r.cls].register} does not carry (ABSENT)` });
+    failures.push({ rel: h.file, line: h.line, kind: 'owner-id', what: h.id, why: `${h.jsonPath} holds on a row neither ${LIVENESS.open.register} nor ${LIVENESS.queue.register} carries (ABSENT)` });
+    continue;
+  }
+  if (r.verdict === 'ambiguous') {
+    failures.push({ rel: h.file, line: h.line, kind: 'owner-id', what: h.id, why: `${h.jsonPath} holds on an id that ${r.classes.map((c) => LIVENESS[c].register).join(' and ')} BOTH carry (AMBIGUOUS); which row decides is a guess` });
+    continue;
+  }
+  if (r.verdict === 'unrelated') {
+    failures.push({ rel: h.file, line: h.line, kind: 'owner-id', what: h.id, why: `${h.jsonPath} holds on ${r.id}, a live ${LIVENESS[r.cls].register} row whose text never names ${h.file} (UNRELATED)` });
     continue;
   }
   notLive.push({ ...h, cls: r.cls, state: r.state });
@@ -972,8 +991,8 @@ console.error('\n  A citation that still parses and no longer points at the righ
 console.error('  corpus\'s most repeated defect. Repoint it, or disclose the absence on the same');
 console.error('  line — `(deleted 2026-08-15)` — which this guard accepts and a reader can see.\n');
 if (failures.some((f) => f.kind === 'owner-id')) {
-  console.error('  An owner-id hold is not settled by a disclosure. Open the row it names, or record the');
-  console.error('  ruling it waits on and null the hold. `--all-subjects` grades every subject, not only');
-  console.error('  the ones this branch changes.\n');
+  console.error('  An owner-id hold is not settled by a disclosure. Hold on a live row whose `blocks` or');
+  console.error('  `closes` names the subject file, or record the ruling it waits on, which ends the hold.');
+  console.error('  `--all-subjects` grades every subject, not only the ones this branch changes.\n');
 }
 process.exit(1);

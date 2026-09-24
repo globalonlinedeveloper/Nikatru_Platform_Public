@@ -418,7 +418,30 @@ function replayWorld(fixture, register) {
       if (limb === q) for (const job of Object.keys(row.watchedJobs ?? {})) answerD1('jobs', job);
     }
   }
-  return { world: { ...fixture, glitchtip, d1 }, derived, derivedD1 };
+  // ⏱ 2026-09-24 · the same split for a SCHEDULED WORKFLOW the freeze never read.
+  // `githubWorkflowsAtFreeze` lists the nine run histories run 34546423386 read,
+  // and each is answered ONLY by the fixture. A scheduled workflow added since —
+  // duty.workflow.name-clearance.yml was the first — named a history the stub
+  // answered EMPTY, so the replay read "holds NO SUCCESSFUL RUN AT ALL" for a
+  // correct row. It gets one clean run of its own event at `now`, newest id on the
+  // page. Only `unit: "run"` and only a TIME cadence: a jobs or step unit would
+  // need a jobs answer this does not invent, and a `trigger` row (RED-SINCE
+  // graded, redeploy-stranded.yml) already reads an empty history as it is live.
+  const wfAtFreeze = new Set(fixture.githubWorkflowsAtFreeze ?? []);
+  const runs = { ...(fixture.runs ?? {}) };
+  const derivedRuns = [];
+  let nextId = Math.max(0, ...Object.values(runs).flat().map((r) => Number(r[0]) || 0)) + 1;
+  for (const row of register.rows ?? []) {
+    const q = row?.mechanism?.recordQuery;
+    if (q?.reader !== 'github-run-history' || q.unit !== 'run') continue;
+    if (!/^\d+[hd]$/.test(String(row.cadence ?? ''))) continue;
+    const wf = String(q.workflow);
+    if (wfAtFreeze.has(wf) || Object.hasOwn(runs, wf)) continue;
+    runs[wf] = [[nextId, q.event ?? 'schedule', 'success', beat]];
+    nextId += 1;
+    derivedRuns.push(wf);
+  }
+  return { world: { ...fixture, glitchtip, d1, runs }, derived, derivedD1, derivedRuns };
 }
 
 /** Writes `replayWorld(fixture, register)` to a file a spawned guard can read.
@@ -451,12 +474,12 @@ function replayWorldFile(fixturePath, mutate = null) {
 //     replay must red on it too, and the two cases below hold that line.
 // Only the fields the guard itself refuses for being in the future are touched:
 // `absenceWatcher.downTransitionDrill.date` and the per-kind HUMAN_DATED field
-// (assert-ops-register.mjs:296). `drillDue`, `degradedUntil` and `expires` are
+// (assert-ops-register.mjs:300). `drillDue`, `degradedUntil` and `expires` are
 // dated tripwires that are SUPPOSED to be in the future and are never rewritten.
 // Pure, and in the TEST, never in the guard (INV5).
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** The guard's HUMAN_DATED map (assert-ops-register.mjs:296): the kinds whose
+/** The guard's HUMAN_DATED map (assert-ops-register.mjs:300): the kinds whose
  *  "when was this last done" is a hand-written date rather than a machine record. */
 const REPLAY_HUMAN_DATED = new Map([
   ['recovery-path', 'lastDrill'],
@@ -472,6 +495,7 @@ function replayRegister(register, fixtureNow, realNowMs) {
   const fixtureMs = Date.parse(fixtureNow);
   const day = String(fixtureNow).slice(0, 10);
   const normalised = [];
+  const rebased = [];
   const later = (date) => {
     if (typeof date !== 'string' || !ISO_DAY.test(date)) return false;
     const t = Date.parse(`${date}T00:00:00Z`);
@@ -489,9 +513,24 @@ function replayRegister(register, fixtureNow, realNowMs) {
       normalised.push(`${row.id} · ${field} ${row[field]} -> ${day}`);
       out = { ...out, [field]: day };
     }
+    // ⏱ 2026-09-24 · a BOOTSTRAP is judged at the distance the REAL clock sees.
+    // The guard refuses a `recordQuery.firstDue` more than one cadence window
+    // ahead of `Date.now()`, and the stub pins that to the freeze, so a bootstrap
+    // written on 2026-09-24 read 22 days ahead in the past world and every replay
+    // went red on a correct row. It is moved back by exactly the gap between the
+    // real clock and the fixture's, so "how far ahead" is the live guard's number:
+    // a firstDue the live guard refuses is still refused here, and one it has let
+    // expire has expired here too. The real clock, not `realNowMs`: that parameter
+    // pins the drill rule above, and a bootstrap is only ever legal relative to now.
+    const q = row?.mechanism?.recordQuery;
+    if (typeof q?.firstDue === 'string' && !Number.isNaN(Date.parse(q.firstDue))) {
+      const moved = new Date(Date.parse(q.firstDue) - (Date.now() - fixtureMs)).toISOString();
+      rebased.push(`${row.id} · recordQuery.firstDue ${q.firstDue} -> ${moved}`);
+      out = { ...out, mechanism: { ...out.mechanism, recordQuery: { ...q, firstDue: moved } } };
+    }
     return out;
   });
-  return { register: { ...register, rows }, normalised };
+  return { register: { ...register, rows }, normalised, rebased };
 }
 
 /** Writes `replayRegister(committed, fixture.now, Date.now())` to a file the
@@ -883,6 +922,14 @@ describe('assert-ops-register — the dated tripwire cannot rot', () => {
     assert.match(m, /Moving the date is the one move this field exists to refuse/);
   });
 
+  // ⏱ 2026-09-24 (the PR 913 review, L2): this guard's date check read
+  // `Date.parse(s)` alone, and V8 parses `2026-02-31` as 3 March. It imports the
+  // one round-trip check from tooling/app-yaml/schema-validate.mjs now.
+  test('a degradedUntil that is not a calendar day (2099-02-31) FAILS as not an ISO date', () => {
+    assert.match(messages(withTripwire({ degradedUntil: '2099-02-31' })), /`degradedUntil` must be an ISO date/);
+    assert.deepEqual(run(withTripwire({ degradedUntil: '2096-02-29' })).errors, [], 'green control: a real leap day far out is a date');
+  });
+
   test('a degradedUntil far in the future PRINTS and does not block', () => {
     const v = run(withTripwire());
     assert.deepEqual(v.errors, []);
@@ -979,6 +1026,10 @@ describe('assert-ops-register — O-11 expiring and O-20 review', () => {
 
   test('an expiry in the past FAILS', () => {
     assert.match(messages(withExpiring({ expires: '2020-01-01', ownerGated: false, ownerGap: undefined })), /is in the PAST/);
+  });
+
+  test('an expiry that is not a calendar day (2027-04-31) FAILS as not an ISO date', () => {
+    assert.match(messages(withExpiring({ expires: '2027-04-31', ownerGated: false, ownerGap: undefined })), /`expires` is not an ISO date: "2027-04-31"/);
   });
 
   test('an expiry comfortably beyond the lead window passes', () => {
@@ -2217,8 +2268,11 @@ describe('assert-ops-register — end to end, against the real repository', () =
    *  2026-09-23: 26 → 28, the documented "tenth workflow costs 2" raise.
    *  duty.workflow.redeploy-stranded.yml is dispatchable, so it is RED-SINCE
    *  graded like the two deploy lanes it re-enters; its run history is one new
-   *  page plus one cross-check. The replay measured 27 after the row. */
-  const OPS_GITHUB_REQUEST_CEILING = 28;
+   *  page plus one cross-check. The replay measured 27 after the row.
+   *  2026-09-24: 28 → 30, the same documented raise for the tenth scheduled
+   *  workflow, duty.workflow.name-clearance.yml. The replay measured 29 after
+   *  the row (its history is answered by replayWorld's derived run). */
+  const OPS_GITHUB_REQUEST_CEILING = 30;
   const REPLAY_FIXTURE = join(CI_DIR, 'test', 'fixtures', 'ops-freeze-2026-09-11.json');
   let realRun = null;
   const realGuard = () => {
@@ -5770,6 +5824,49 @@ describe('the 2026-09-11 freeze, replayed — INV1..INV6 against the exact answe
     );
   });
 
+  test('O-NAME-CLEARANCE-SWEEP-RUN-BY-NOTHING · a scheduled workflow the freeze never read gets ONE clean run; a history it read is never filled in', () => {
+    const f = JSON.parse(readFileSync(FIXTURE, 'utf8'));
+    const register = JSON.parse(readFileSync(REPLAY_REGISTER, 'utf8'));
+    const { world, derivedRuns } = replayWorld(f, register);
+    assert.deepEqual(derivedRuns, ['name-clearance.yml'], 'only the scheduled workflow added after the freeze is derived');
+    assert.equal(world.runs['name-clearance.yml'].length, 1);
+    assert.equal(world.runs['name-clearance.yml'][0][1], 'schedule', 'the run carries the event the row filters on');
+    assert.equal(world.runs['name-clearance.yml'][0][2], 'success');
+    assert.equal(world.runs['name-clearance.yml'][0][3], new Date(Date.parse(f.now)).toISOString(), 'one clean run at the replayed instant');
+    assert.equal(Object.hasOwn(world.runs, 'redeploy-stranded.yml'), false, 'a trigger row reads an empty history as it is live, and is not derived');
+    assert.deepEqual(world.runs['trufflehog.yml'], f.runs['trufflehog.yml'], 'a history run 34546423386 read is handed over as it is');
+    // RED CONTROL: drop a history the freeze READ, and it stays dropped.
+    const { 'trufflehog.yml': _dropped, ...rest } = f.runs;
+    const pure = replayWorld({ ...f, runs: rest }, register);
+    assert.equal(Object.hasOwn(pure.world.runs, 'trufflehog.yml'), false, 'the derivation must never answer a workflow the freeze read');
+    assert.deepEqual(pure.derivedRuns, ['name-clearance.yml']);
+  });
+
+  test('O-NAME-CLEARANCE-SWEEP-RUN-BY-NOTHING · a firstDue is replayed at the distance the REAL clock sees, so one the live guard refuses is still refused', () => {
+    const f = JSON.parse(readFileSync(FIXTURE, 'utf8'));
+    const fixtureMs = Date.parse(f.now);
+    const ahead = 5 * 86_400_000;
+    const committed = new Date(Date.now() + ahead).toISOString();
+    const input = { rows: [{ id: 'boot', mechanism: { recordQuery: { reader: 'github-run-history', firstDue: committed } } }] };
+    const { register, normalised, rebased } = replayRegister(input, f.now, REAL_NOW);
+    const moved = Date.parse(register.rows[0].mechanism.recordQuery.firstDue);
+    assert.ok(Math.abs(moved - fixtureMs - ahead) < 60_000, `five days ahead of the real clock is five days ahead of the fixture's: ${register.rows[0].mechanism.recordQuery.firstDue}`);
+    assert.equal(rebased.length, 1, rebased.join(' | '));
+    assert.deepEqual(normalised, [], 'a bootstrap is not a past-tense record, and is counted apart from them');
+    assert.equal(input.rows[0].mechanism.recordQuery.firstDue, committed, 'the committed register the caller holds is never mutated');
+    // RED CONTROL: a firstDue far past any cadence window of the REAL clock is
+    // still far past it in the replay, so the spawned guard still refuses it.
+    const over = (register) => {
+      const row = register.rows.find((r) => r.id === 'duty.workflow.name-clearance.yml');
+      assert.ok(row?.mechanism?.recordQuery?.firstDue, 'premise: the row carries a bootstrap');
+      row.mechanism.recordQuery.firstDue = '2099-01-01T00:00:00Z';
+    };
+    const r = replay(HOST.PR, { OPS_REPLAY_REGISTER_FILE: replayRegisterFile(FIXTURE, { mutate: over }) });
+    assert.equal(r.code, 1, r.out.slice(-3000));
+    assert.equal(r.problems.length, 1, r.problems.join('\n'));
+    assert.match(r.problems[0], /^duty\.workflow\.name-clearance\.yml — `recordQuery\.firstDue: .+` is more than one cadence window/);
+  });
+
   test('INV1 · GREEN CONTROL — ci.yml on pull_request exits 0 on today\'s state, and all four TRUE verdicts still PRINT with their remedy', () => {
     const r = replay(HOST.PR);
     assert.equal(r.code, 0, `a proposal must not be blocked by main's history:\n${r.problems.join('\n')}\n${r.out.slice(-3000)}`);
@@ -5855,7 +5952,8 @@ describe('the 2026-09-11 freeze, replayed — INV1..INV6 against the exact answe
       assert.equal(r.code, 2, r.out.slice(-3000));
       assert.match(r.out, /✗ COVERAGE LOST — \d+ measurement failure\(s\)/);
       // 9 → 10 on 2026-09-23: duty.workflow.redeploy-stranded.yml is RED-SINCE graded.
-      assert.match(r.out, /every one of the 10 RED-SINCE read\(s\) against the GitHub API was unreadable on this run \(first reason: the query threw: GitHub API returned 403/);
+      // 10 → 11 on 2026-09-24: so is duty.workflow.name-clearance.yml, a workflow on a clock.
+      assert.match(r.out, /every one of the 11 RED-SINCE read\(s\) against the GitHub API was unreadable on this run \(first reason: the query threw: GitHub API returned 403/);
     }
   });
 
@@ -5996,13 +6094,15 @@ describe('INV3 · a duty is judged by the unit that performs it — the pure hal
       'Read the heartbeat table from OUTSIDE Cloudflare',
       'Live D1 still runs every statement the Workers send it',
       "Judge whether the analytics rail's silence is a FAULT",
+      'Every name-clearance record is inside its 30-day ceiling',
     ]);
-    assert.deepEqual(named.map((s) => s.runsGuard), [true, false, false, false]);
+    assert.deepEqual(named.map((s) => s.runsGuard), [true, false, false, false, false]);
     // ⏱ 2026-09-23 — this pinned `null`, the defect itself: with no condition the
     // heartbeat read was SKIPPED in every red register run (O-OPS-WATCH-HEARTBEAT-
     // READER-SKIPPED). It now runs whatever the register concluded.
     assert.match(named[1].cond, /!cancelled\(\)/, 'O-OPS-WATCH-HEARTBEAT-READER-SKIPPED: the heartbeat reader must carry !cancelled()');
     assert.match(named[2].cond, /!cancelled\(\)/);
+    assert.match(named[4].cond, /!cancelled\(\)/, 'the name-clearance ceiling must be read after a red register too');
     assert.equal(describeUnit({ workflow: 'w.yml', unit: RUN_UNIT }), 'the whole w.yml run');
   });
 

@@ -313,6 +313,18 @@ const CLASSIFIED_ELSEWHERE = new Map([
       'designed, and it caught this one locally before CI did.',
   ],
   [
+    'name-clearance.yml',
+    're-derives every declared app\'s name clearance weekly and opens a pull request carrying the rewritten ' +
+      'apps/*/name-clearance.json records. It builds no app, produces no release artifact and names no app id: ' +
+      'tooling/ops/name-clearance-sweep.mjs walks catalog/apps.json for its app set. R-1 quantifies over the ' +
+      'workspace APP set to prove a lane is generic, so a lane that ships no app has nothing for this guard to ' +
+      'compare and would sit in the denominator as a permanent empty-set pass, the reason already written out ' +
+      'for site-drift-repair.yml, whose pull-request shape it copies. The owning stage is stage 14 ops, through ' +
+      'the duty row `duty.workflow.name-clearance.yml` in tooling/ops/register.json. What holds its OUTPUT ' +
+      'correct is tooling/ci/assert-name-clearance.mjs, which ci.yml runs on the pull request it opens. ' +
+      'Classified 2026-09-24, the round the workflow landed.',
+  ],
+  [
     'redeploy-stranded.yml',
     're-enters a deploy lane whose newest run on main failed only on its ci-gate step, once ci-gate at ' +
       "main's head is green. It builds no app, produces no release artifact and names no app id: the lanes " +
