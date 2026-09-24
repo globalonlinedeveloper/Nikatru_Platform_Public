@@ -134,12 +134,12 @@
         "ruledBy": { "anyOf": [{ "type": "null" }, { "type": "string" }] },
         "ruledOn": { "anyOf": [{ "type": "null" }, { "type": "string", "format": "date" }] },
         "basis": {
-          "anyOf": [{ "type": "null" }, { "type": "string", "minLength": 1 }],
-          "description": "WHAT THE RULING RESTS ON — the decision record a reader opens to check it (`ADR 074`). Optional in the shape so a record written before the field existed still parses; tooling/ci/assert-name-clearance.mjs limb 7 refuses a non-null `ruling` without it."
+          "anyOf": [{ "type": "null" }, { "type": "string", "minLength": 1, "pattern": "\\S" }],
+          "description": "WHAT THE RULING RESTS ON — the decision record a reader opens to check it (`ADR 074`). Optional in the shape so a record written before the field existed still parses; tooling/ci/assert-name-clearance.mjs limb 7 refuses a non-null `ruling` without it. A whitespace-only string is refused here too (`pattern`), because a blank basis names nothing a reader can open."
         },
         "ownerItem": {
           "anyOf": [{ "type": "null" }, { "type": "string" }],
-          "description": "The owner id that carries the owed ruling: an `O-<WORDS>` row in Private/platform-state/open.json, or an owner-queue id such as `A-12` (the grammar is tooling/scripts/owner-ids.mjs). A null ruling with no owner item is a finding nobody owns, so the guard refuses it outright, and tooling/scripts/assert-public-citations.mjs refuses an id whose row does not exist."
+          "description": "The owner id that carries the owed ruling: a row of Private/platform-state/open.json such as `O-NAME-SUBLY-TRADEMARK`, or of the owner queue such as `A-12` (the id shape and the lookup are tooling/scripts/owner-ids.mjs). A null ruling with no owner item is a finding nobody owns, so the guard refuses it outright. tooling/scripts/assert-public-citations.mjs looks the id up in BOTH registers and refuses one that neither carries, one that both carry, and a live row whose text (`blocks` or `closes`, in open.json) never names this file's repo-relative path. Once `ruling` is recorded the id is provenance and holds nothing."
         },
         "gatedUntil": {
           "anyOf": [{ "type": "null" }, { "type": "string", "format": "date" }],

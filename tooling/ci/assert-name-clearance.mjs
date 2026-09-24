@@ -74,6 +74,13 @@
 // by the ID CITATIONS class of `tooling/scripts/assert-public-citations.mjs`,
 // in the hooks.
 //
+// ⏱ 2026-09-24, later (the PR 913 review, L1 and L2). "Grammar" above now reads
+// SHAPE: `isOwnerId` is a non-empty string with no whitespace and a capital, and
+// which register carries the id is a lookup the citations guard makes in both.
+// The completeness test for a non-null ruling is `rulingOwed` in
+// `tooling/scripts/name-ruling.mjs`, which `rollUp` in the probe calls too, so the
+// probe can no longer roll a ruling up to CLEAR that this limb refuses.
+//
 // ── THE COVERAGE FLOOR ───────────────────────────────────────────────────────
 // If no app had a record, a naive guard would pass over an empty set. The
 // expected set is DERIVED — every app in `catalog/apps.json` — so a missing
@@ -96,6 +103,7 @@ import { resolveIdentity } from './read-identity.mjs';
 import { armingOf } from './channel-arming.mjs';
 import { validate, assertSchemaUnderstood } from '../app-yaml/schema-validate.mjs';
 import { isOwnerId } from '../scripts/owner-ids.mjs';
+import { rulingOwed } from '../scripts/name-ruling.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
@@ -160,9 +168,6 @@ const today = (d = new Date()) => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 };
 const daysBetween = (from, to) => Math.floor((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
-/** A calendar date that round-trips, so `2026-02-31` is not one. */
-const isIsoDate = (s) =>
-  typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(`${s}T00:00:00Z`)) && new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) === s;
 
 /** Limb 7's three readable states. The schema's enum says the same, and limb 7
  *  checks it anyway: a schema edit that widened the enum would otherwise let an
@@ -328,10 +333,7 @@ for (const app of expectedApps) {
         'A ruling this guard cannot read is not a ruling, whatever the schema let through.',
     );
   } else if (tm.ruling !== null) {
-    const owed = [];
-    if (typeof tm.ruledBy !== 'string' || tm.ruledBy.trim() === '') owed.push('`ruledBy`');
-    if (!isIsoDate(tm.ruledOn)) owed.push('a dated `ruledOn`');
-    if (typeof tm.basis !== 'string' || tm.basis.trim() === '') owed.push('`basis`');
+    const owed = rulingOwed(tm);
     if (owed.length) {
       problems.push(
         `${rel} — \`trademark.ruling\` is ${tm.ruling} and lacks ${owed.join(', ')}. A ruling is a dated act by a named ` +
@@ -348,8 +350,8 @@ for (const app of expectedApps) {
       problems.push(`${line} No \`trademark.ownerItem\` names the open item that owes it, so this is a finding nobody owns.`);
     } else if (!isOwnerId(tm.ownerItem)) {
       problems.push(
-        `${line} Its \`trademark.ownerItem\` ${JSON.stringify(tm.ownerItem)} is not an owner id (an open.json \`O-<WORDS>\` row, ` +
-          'or an owner-queue id such as `A-12`), so nothing can look up who owes it.',
+        `${line} Its \`trademark.ownerItem\` ${JSON.stringify(tm.ownerItem)} is not an owner id (a non-empty string with no ` +
+          'whitespace and at least one upper-case letter, carried by a row of open.json or owner-queue.json), so nothing can look up who owes it.',
       );
     } else if (!tm.gatedUntil || daysBetween(NOW, tm.gatedUntil) <= 0) {
       problems.push(`${line} Its owner gate (${tm.ownerItem}) ${tm.gatedUntil ? `EXPIRED on ${tm.gatedUntil}` : 'carries no `gatedUntil` date'}, so the block is no longer lifted.`);

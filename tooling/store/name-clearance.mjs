@@ -64,6 +64,7 @@ import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { resolveIdentity } from '../ci/read-identity.mjs';
+import { rulingOwed } from '../scripts/name-ruling.mjs';
 import { PROBES, noProbeRegistered, identityLines, norm, PROVEN_FREE, PROVEN_TAKEN, UNDETERMINED, NOT_APPLICABLE, GLOBAL } from './name-probes.mjs';
 
 export const RECORD_REL = (app) => `apps/${app}/name-clearance.json`;
@@ -275,13 +276,19 @@ export function rollUp(record) {
   const undetermined = entries.filter(([, c]) => c.verdict === UNDETERMINED);
   const undeterminedGlobal = undetermined.filter(([, c]) => c.uniqueness === GLOBAL);
 
-  if (blocking.length) return { overall: 'BLOCKED', exit: 1, blocking, advisory, undetermined };
+  // The owner refusing the name is a wall too, and outranks what follows for the
+  // same reason: nothing ships under it, whatever the channels could not tell.
+  const tm = record.trademark ?? {};
+  if (blocking.length || tm.ruling === 'DO-NOT-PROCEED') return { overall: 'BLOCKED', exit: 1, blocking, advisory, undetermined };
   if (record.controls.failed.length || undeterminedGlobal.length) {
     return { overall: 'UNDETERMINED', exit: 2, blocking, advisory, undetermined };
   }
-  // Only PROCEED clears. This read `ruling == null` until 2026-09-24, which let a
-  // DO-NOT-PROCEED roll up to CLEAR on a record with nothing else owed.
-  if (advisory.length || undetermined.length || record.trademark?.ruling !== 'PROCEED') {
+  // Only a COMPLETE PROCEED clears. This read `ruling == null` until 2026-09-24,
+  // which let a DO-NOT-PROCEED roll up to CLEAR on a record with nothing else
+  // owed; then `ruling === 'PROCEED'` alone, which cleared a PROCEED that limb 7
+  // of tooling/ci/assert-name-clearance.mjs refuses for want of who, when or on
+  // what basis (the PR 913 review, L2). Both now ask `rulingOwed`.
+  if (advisory.length || undetermined.length || tm.ruling !== 'PROCEED' || rulingOwed(tm).length) {
     return { overall: 'QUALIFIED', exit: 1, blocking, advisory, undetermined };
   }
   return { overall: 'CLEAR', exit: 0, blocking, advisory, undetermined };

@@ -503,6 +503,16 @@ describe('schema-validate.mjs — an unimplemented keyword is refused, never ign
     const schema = { type: 'object', additionalProperties: false, required: ['a', 'b'], properties: { a: { type: 'string' }, b: { type: 'string' } } };
     assert.equal(validate({ c: 1 }, schema).length, 3);
   });
+
+  // ⏱ 2026-09-24 (the PR 913 review, L2): `format: date` read `Date.parse(v)`, and
+  // V8 parses `2026-02-31` as 3 March, so the format passed a day that does not exist.
+  test('`format: date` refuses an impossible calendar date and accepts a real leap day', () => {
+    const date = { type: 'string', format: 'date' };
+    assert.deepEqual(validate('2026-02-31', date), ['#: "2026-02-31" is not a valid date']);
+    assert.deepEqual(validate('2026-04-31', date), ['#: "2026-04-31" is not a valid date']);
+    assert.deepEqual(validate('2028-02-29', date), [], 'green control: a real leap day');
+    assert.deepEqual(validate('2026-09-24', date), []);
+  });
 });
 
 describe('limb 4 — the declaration and the two SWORN store declarations agree', () => {

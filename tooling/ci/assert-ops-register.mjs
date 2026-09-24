@@ -237,6 +237,10 @@ import { listDir } from './tree-walk.mjs';
 import { parseAllWorkflows, workflowEvents, shellSegments, RECORD_CALL, expandMatrixEnvironment } from './workflow-scan.mjs';
 // The ONE comment tokenizer, for the same reason as the workflow parser above.
 import { stripSourceComments } from './text-reductions.mjs';
+// The ONE calendar-date check. The copy that stood here read `Date.parse(s)`
+// alone, and V8 parses `2026-02-31` as 3 March, so an impossible date passed
+// (the PR 913 review, L2, 2026-09-24).
+import { isIsoDate } from '../app-yaml/schema-validate.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER_REL = 'tooling/ops/register.json';
@@ -420,7 +424,6 @@ export function findWranglerConfigs(root) {
   return { found: found.sort(), excluded: excluded.sort() };
 }
 
-const isIsoDate = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(s));
 const nonEmpty = (v) => typeof v === 'string' && v.trim().length > 0;
 
 /** Comments out, so a check about BEHAVIOUR can never be satisfied by a

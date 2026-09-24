@@ -329,6 +329,70 @@ ${before.out}`);
     assert.match(r.out, /is not an owner id/);
   });
 
+  // ⏱ 2026-09-24 (the PR 913 review, L1): limb 7 and the citations guard read one
+  // `isOwnerId`, so a queue id no pattern fits is an id to both.
+  test('M19 a null ruling held on an owner-queue id outside the old grammar is an owner id, inside its gate', () => {
+    const r = run(
+      fixture(({ editJson }) =>
+        editJson(RECORD, (doc) => {
+          owed(doc);
+          doc.trademark.ownerItem = 'HOSTINGER-EXPIRY';
+        }),
+      ),
+    );
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /owner-gated until .* under HOSTINGER-EXPIRY/);
+  });
+
+  // ⏱ 2026-09-24 (the PR 913 review, L2): `basis: " "` passed the schema's
+  // `minLength: 1`, and only limb 7 caught it.
+  test('M20 (RC4) a whitespace-only `basis` fails the schema, and limb 7 refuses it without the schema too', () => {
+    const blank = (doc) => {
+      ruled(doc);
+      doc.trademark.basis = ' ';
+    };
+    const r = run(fixture(({ editJson }) => editJson(RECORD, blank)));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /trademark\/basis: matches none of the 2 permitted shapes/);
+
+    const limb7 = run(
+      fixture(({ editJson }) => {
+        editJson(RECORD, blank);
+        editJson('contracts/name-clearance.schema.json', (s) => {
+          delete s.properties.trademark.properties.basis.anyOf[1].pattern;
+        });
+      }),
+    );
+    assert.equal(limb7.code, 1, limb7.out);
+    assert.match(limb7.out, /is PROCEED and lacks `basis`/);
+  });
+
+  // ⏱ 2026-09-24 (the PR 913 review, L2): V8 parses `2026-02-31` as 3 March, so the
+  // schema's `date` format accepted it while limb 7 refused it. One helper now.
+  test('M21 (RC5) `ruledOn: "2026-02-31"` fails the schema, and limb 7 refuses it without the schema too', () => {
+    const noSuchDay = (doc) => {
+      ruled(doc);
+      doc.trademark.ruledOn = '2026-02-31';
+    };
+    const r = run(fixture(({ editJson }) => editJson(RECORD, noSuchDay)));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /trademark\/ruledOn: matches none of the 2 permitted shapes/);
+
+    const limb7 = run(
+      fixture(({ editJson }) => {
+        editJson(RECORD, noSuchDay);
+        editJson('contracts/name-clearance.schema.json', (s) => {
+          delete s.properties.trademark.properties.ruledOn.anyOf[1].format;
+        });
+      }),
+    );
+    assert.equal(limb7.code, 1, limb7.out);
+    assert.match(limb7.out, /is PROCEED and lacks a dated `ruledOn`/);
+
+    const leap = run(fixture(({ editJson }) => editJson(RECORD, (doc) => { ruled(doc); doc.trademark.ruledOn = '2028-02-29'; })));
+    assert.equal(leap.code, 0, `green control: a real leap day is a date: ${leap.out}`);
+  });
+
   test('M7 IDENTITY DRIFT — an applicationId the tree no longer declares is a finding', () => {
     // The `applicationId` LINE, not the first occurrence of the string: this
     // file also carries `namespace = "com.nikatru.subscriptiontracker"` above it, and a bare

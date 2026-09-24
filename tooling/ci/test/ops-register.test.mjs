@@ -474,12 +474,12 @@ function replayWorldFile(fixturePath, mutate = null) {
 //     replay must red on it too, and the two cases below hold that line.
 // Only the fields the guard itself refuses for being in the future are touched:
 // `absenceWatcher.downTransitionDrill.date` and the per-kind HUMAN_DATED field
-// (assert-ops-register.mjs:296). `drillDue`, `degradedUntil` and `expires` are
+// (assert-ops-register.mjs:300). `drillDue`, `degradedUntil` and `expires` are
 // dated tripwires that are SUPPOSED to be in the future and are never rewritten.
 // Pure, and in the TEST, never in the guard (INV5).
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** The guard's HUMAN_DATED map (assert-ops-register.mjs:296): the kinds whose
+/** The guard's HUMAN_DATED map (assert-ops-register.mjs:300): the kinds whose
  *  "when was this last done" is a hand-written date rather than a machine record. */
 const REPLAY_HUMAN_DATED = new Map([
   ['recovery-path', 'lastDrill'],
@@ -922,6 +922,14 @@ describe('assert-ops-register — the dated tripwire cannot rot', () => {
     assert.match(m, /Moving the date is the one move this field exists to refuse/);
   });
 
+  // ⏱ 2026-09-24 (the PR 913 review, L2): this guard's date check read
+  // `Date.parse(s)` alone, and V8 parses `2026-02-31` as 3 March. It imports the
+  // one round-trip check from tooling/app-yaml/schema-validate.mjs now.
+  test('a degradedUntil that is not a calendar day (2099-02-31) FAILS as not an ISO date', () => {
+    assert.match(messages(withTripwire({ degradedUntil: '2099-02-31' })), /`degradedUntil` must be an ISO date/);
+    assert.deepEqual(run(withTripwire({ degradedUntil: '2096-02-29' })).errors, [], 'green control: a real leap day far out is a date');
+  });
+
   test('a degradedUntil far in the future PRINTS and does not block', () => {
     const v = run(withTripwire());
     assert.deepEqual(v.errors, []);
@@ -1018,6 +1026,10 @@ describe('assert-ops-register — O-11 expiring and O-20 review', () => {
 
   test('an expiry in the past FAILS', () => {
     assert.match(messages(withExpiring({ expires: '2020-01-01', ownerGated: false, ownerGap: undefined })), /is in the PAST/);
+  });
+
+  test('an expiry that is not a calendar day (2027-04-31) FAILS as not an ISO date', () => {
+    assert.match(messages(withExpiring({ expires: '2027-04-31', ownerGated: false, ownerGap: undefined })), /`expires` is not an ISO date: "2027-04-31"/);
   });
 
   test('an expiry comfortably beyond the lead window passes', () => {

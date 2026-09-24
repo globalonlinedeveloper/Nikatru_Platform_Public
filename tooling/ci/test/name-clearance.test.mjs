@@ -180,9 +180,14 @@ describe('the probe — self is not a collision', () => {
   });
 });
 
+/** A PROCEED that says who ruled, when and on what — the only ruling that clears.
+ *  ⏱ 2026-09-24: the fixtures here carried `{ ruling: 'PROCEED' }` alone until the
+ *  PR 913 review (L2) found `rollUp` clearing what limb 7 refuses. */
+const COMPLETE_PROCEED = Object.freeze({ ruling: 'PROCEED', ruledBy: 'owner', ruledOn: '2026-09-09', basis: 'ADR 074' });
+
 describe('the probe — the roll-up and the record', () => {
   test('D1 a wall outranks everything; coverage lost on a global channel outranks QUALIFIED', () => {
-    const base = { controls: { green: 1, failed: [] }, trademark: { ruling: 'PROCEED' }, channels: {} };
+    const base = { controls: { green: 1, failed: [] }, trademark: { ...COMPLETE_PROCEED }, channels: {} };
     const blocked = { ...base, channels: { a: { verdict: PROVEN_TAKEN, uniqueness: 'global' }, b: { verdict: UNDETERMINED, uniqueness: 'global' } } };
     assert.equal(rollUp(blocked).overall, 'BLOCKED');
     const undet = { ...base, channels: { b: { verdict: UNDETERMINED, uniqueness: 'global' } } };
@@ -202,13 +207,56 @@ describe('the probe — the roll-up and the record', () => {
 
   // ⏱ 2026-09-24 (apps-review F1). The roll-up read `ruling == null`, so ANY other
   // value cleared — the owner refusing the name included.
-  test('D6 only PROCEED clears — a DO-NOT-PROCEED ruling can never roll up to CLEAR', () => {
+  // ⏱ 2026-09-24, later (the PR 913 review, L2): a refusal is a wall, so it rolls
+  // up to BLOCKED, where it rolled up to QUALIFIED until then.
+  test('D6 only PROCEED clears — a DO-NOT-PROCEED ruling rolls up to BLOCKED, exit 1', () => {
     const channels = { d: { verdict: PROVEN_FREE, uniqueness: 'none' } };
-    const refused = { controls: { green: 1, failed: [] }, trademark: { ruling: 'DO-NOT-PROCEED' }, channels };
-    assert.equal(rollUp(refused).overall, 'QUALIFIED');
+    const refused = { controls: { green: 1, failed: [] }, trademark: { ...COMPLETE_PROCEED, ruling: 'DO-NOT-PROCEED' }, channels };
+    assert.equal(rollUp(refused).overall, 'BLOCKED');
     assert.equal(rollUp(refused).exit, 1);
-    const ruled = { controls: { green: 1, failed: [] }, trademark: { ruling: 'PROCEED' }, channels };
+    const ruled = { controls: { green: 1, failed: [] }, trademark: { ...COMPLETE_PROCEED }, channels };
     assert.equal(rollUp(ruled).overall, 'CLEAR', 'green control: the same record with PROCEED clears, so the case above is about the ruling');
+    assert.equal(rollUp(ruled).exit, 0);
+  });
+
+  test('D8 (RC3) DO-NOT-PROCEED outranks coverage lost, and a bare one with no who or when still blocks', () => {
+    const channels = { b: { verdict: UNDETERMINED, uniqueness: 'global' } };
+    const refused = { controls: { green: 1, failed: [] }, trademark: { ruling: 'DO-NOT-PROCEED' }, channels };
+    assert.equal(rollUp(refused).overall, 'BLOCKED', 'nothing ships under a refused name, whatever the channels could not tell');
+    const undecided = { controls: { green: 1, failed: [] }, trademark: { ...COMPLETE_PROCEED }, channels };
+    assert.equal(rollUp(undecided).overall, 'UNDETERMINED', 'green control: the same channels under a PROCEED stay UNDETERMINED');
+  });
+
+  // ⏱ 2026-09-24 (the PR 913 review, L2). `rollUp` read `ruling === 'PROCEED'` alone
+  // and gave CLEAR, exit 0, to a ruling limb 7 refuses. Both now call `rulingOwed`.
+  test('D9 (RC2) a PROCEED with no `basis` rolls up to QUALIFIED, never CLEAR', () => {
+    const channels = { d: { verdict: PROVEN_FREE, uniqueness: 'none' } };
+    const noBasis = { controls: { green: 1, failed: [] }, trademark: { ruling: 'PROCEED', ruledBy: 'owner', ruledOn: '2026-09-09' }, channels };
+    assert.equal(rollUp(noBasis).overall, 'QUALIFIED');
+    assert.equal(rollUp(noBasis).exit, 1);
+    const bare = { controls: { green: 1, failed: [] }, trademark: { ruling: 'PROCEED' }, channels };
+    assert.equal(rollUp(bare).overall, 'QUALIFIED', 'the review\'s own case: `{ruling:"PROCEED"}` with nothing else');
+  });
+
+  test('D10 a PROCEED with a blank `basis`, a blank `ruledBy` or an impossible `ruledOn` rolls up to QUALIFIED', () => {
+    const channels = { d: { verdict: PROVEN_FREE, uniqueness: 'none' } };
+    const blankBasis = { controls: { green: 1, failed: [] }, trademark: { ...COMPLETE_PROCEED, basis: ' ' }, channels };
+    assert.equal(rollUp(blankBasis).overall, 'QUALIFIED');
+    const blankBy = { controls: { green: 1, failed: [] }, trademark: { ...COMPLETE_PROCEED, ruledBy: '' }, channels };
+    assert.equal(rollUp(blankBy).overall, 'QUALIFIED');
+    const noSuchDay = { controls: { green: 1, failed: [] }, trademark: { ...COMPLETE_PROCEED, ruledOn: '2026-02-31' }, channels };
+    assert.equal(rollUp(noSuchDay).overall, 'QUALIFIED', 'V8 parses 2026-02-31 as 3 March; it is not a date anybody ruled on');
+    const leapDay = { controls: { green: 1, failed: [] }, trademark: { ...COMPLETE_PROCEED, ruledOn: '2028-02-29' }, channels };
+    assert.equal(rollUp(leapDay).overall, 'CLEAR', 'green control: a real leap day is a date');
+  });
+
+  test('D11 the probe and limb 7 ask ONE completeness check, and neither carries a copy of it', () => {
+    const probe = readFileSync(PROBE_SCRIPT, 'utf8');
+    const limb7 = readFileSync(join(REPO, 'tooling', 'ci', 'assert-name-clearance.mjs'), 'utf8');
+    assert.match(probe, /import \{ rulingOwed \} from '\.\.\/scripts\/name-ruling\.mjs';/);
+    assert.match(limb7, /import \{ rulingOwed \} from '\.\.\/scripts\/name-ruling\.mjs';/);
+    assert.doesNotMatch(probe, /tm\.basis\.trim\(\)|tm\.ruledBy\.trim\(\)/, 'a second copy of the check would drift from the first');
+    assert.doesNotMatch(limb7, /tm\.basis\.trim\(\)|tm\.ruledBy\.trim\(\)/);
   });
 
   test('D3 --execute REFUSES to overwrite an existing record when a control failed', () => {
@@ -329,6 +377,46 @@ describe('the probe — the roll-up and the record', () => {
       const second = settle({ root: tmp, app: 'x', name: 'X', previous: written, record });
       assert.equal(second.overall, 'CLEAR');
       assert.equal(second.flip, null, 'a second run over its own output reports no flip');
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  // ⏱ 2026-09-24 (the batch that landed N5 and the PR 913 review's L2 together).
+  // The probe carries no ruling, so it rolls up QUALIFIED here as well; the
+  // merged record is what changes once the owner states a basis, and that one
+  // change is the one flip the sweep may report.
+  test('N5+L2 a PROCEED with no `basis` is written and printed QUALIFIED with no flip; stating the basis is ONE flip to CLEAR', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'nk-nc-'));
+    const noBasis = { ruling: 'PROCEED', ruledBy: 'owner', ruledOn: '2026-09-20', basis: null, ownerItem: null, gatedUntil: null };
+    try {
+      mkdirSync(join(tmp, 'apps', 'x'), { recursive: true });
+      writeFileSync(join(tmp, RECORD_REL('x')), `${JSON.stringify({ overall: 'QUALIFIED', trademark: noBasis })}\n`);
+      const record = {
+        app: 'x', slug: 'x', name: 'X', asOf: '2026-09-28', identifiers: [], controls: { green: 3, failed: [] },
+        channels: { d: { verdict: PROVEN_FREE, uniqueness: 'global' } },
+        trademark: { disclaimer: 'd', signals: [], ruling: null, ruledBy: null, ruledOn: null, basis: null, ownerItem: null, gatedUntil: null },
+      };
+      const readBack = () => JSON.parse(readFileSync(join(tmp, RECORD_REL('x')), 'utf8'));
+
+      const first = settle({ root: tmp, app: 'x', name: 'X', previous: 'QUALIFIED', record });
+      assert.equal(readBack().overall, 'QUALIFIED', 'a PROCEED with no basis does not clear');
+      assert.equal(readBack().trademark.ruling, 'PROCEED', 'the ruling is carried, not reset');
+      assert.equal(first.overall, readBack().overall, 'the sweep\'s verdict is the one it wrote');
+      assert.match(first.line, /QUALIFIED → QUALIFIED$/);
+      assert.equal(first.flip, null);
+      const second = settle({ root: tmp, app: 'x', name: 'X', previous: first.overall, record });
+      assert.equal(second.flip, null, 'a second run over its own output reports no flip');
+
+      const doc = readBack();
+      doc.trademark.basis = 'ADR 074';
+      writeFileSync(join(tmp, RECORD_REL('x')), `${JSON.stringify(doc)}\n`);
+      const stated = settle({ root: tmp, app: 'x', name: 'X', previous: second.overall, record });
+      assert.equal(readBack().overall, 'CLEAR');
+      assert.equal(stated.overall, 'CLEAR', 'the sweep prints the merged verdict; the probe alone still rolls up QUALIFIED');
+      assert.match(stated.flip ?? '', /moved QUALIFIED → CLEAR/, 'the basis being stated is a real change, reported once');
+      const after = settle({ root: tmp, app: 'x', name: 'X', previous: stated.overall, record });
+      assert.equal(after.flip, null);
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }
