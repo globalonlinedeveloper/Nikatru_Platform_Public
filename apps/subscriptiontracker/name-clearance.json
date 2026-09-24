@@ -4,9 +4,9 @@
     "",
     "🔴 THE RECORD IS BLOCKED AND THAT IS THE POINT. Two live iOS listings carry the exact name Subly, one of them in Finance — the same category — and App Store names are GLOBALLY UNIQUE, so App Store Connect would refuse it. On 2026-09-09 the Microsoft Partner Center reserve-a-name dialog was one click from starting a three-month clock on it.",
     "",
-    "WHY THE BUILD IS NOT RED TODAY, DERIVED AND NOT WAIVED. tooling/ci/assert-name-clearance.mjs weighs a wall against tooling/ci/channel-arming.mjs: ios-appstore and macos-appstore are `served: false` with `lane: null`, so neither can reach a user, and the guard PRINTS the finding on every run instead of blocking. The day a lane lands for either, this same unchanged record turns the guard red. Nothing has to be remembered for that to happen.",
+    "⏱ 2026-09-24 — THE TWO PARAGRAPHS ABOVE ARE THE SUBLY RUN OF 2026-09-09, KEPT AS THE REASON THIS FILE EXISTS. They no longer describe this record, which is the renamed app's re-probe of the same day: `name`, `channels` and `overall` below are that run. Why the build is or is not red over them is not written here. tooling/ci/assert-name-clearance.mjs weighs every PROVEN-TAKEN against tooling/ci/channel-arming.mjs on each run, and that file reads each channel's arming off tooling/channel-register.json, so a sentence naming a channel's arming goes stale the day a lane lands — as the one this replaces did.",
     "",
-    "The trademark ruling is OWED, not answered. subscriptiontracker.app resolves to a live commercial site in the same category, and no software can clear a trademark. `ruling: null` reads as QUALIFIED and prints as FAILING; its block is lifted only until gatedUntil, and --execute preserves that date rather than rewriting it, so a re-probe cannot extend its own gate."
+    "⏱ 2026-09-24 — THE TRADEMARK RULING IS RECORDED: PROCEED, by the owner, 2026-09-09, basis ADR 074 (the store-name decision, LOCKED that day, decidedBy owner). ADR 074 is read as the ruling by the parent (2026-09-24, under the owner's 2026-09-23 delegation); the ruling itself is the owner's of 2026-09-09. Until this date the block read `ruling: null`, owner-gated until 2026-10-09 on O-NAME-SUBLY-TRADEMARK — a row that was never opened (apps-review F1, O-NAME-CLEARANCE-WAITS-ON-A-MISSING-ROW). A hold on an absent row now fails tooling/scripts/assert-public-citations.mjs, and limb 7 of tooling/ci/assert-name-clearance.mjs refuses a ruling without ruledBy, a dated ruledOn and a basis. No software can clear a trademark; --execute preserves this block rather than rewriting it."
   ],
   "app": "subscriptiontracker",
   "slug": "nikatrusubscriptiontracker",
@@ -189,11 +189,12 @@
       "nikatrusubscriptiontracker.app — did not resolve (fetch failed).",
       "nikatrusubscriptiontracker.io — did not resolve (fetch failed)."
     ],
-    "ruling": null,
-    "ruledBy": null,
-    "ruledOn": null,
-    "ownerItem": "O-NAME-SUBLY-TRADEMARK",
-    "gatedUntil": "2026-10-09"
+    "ruling": "PROCEED",
+    "ruledBy": "owner",
+    "ruledOn": "2026-09-09",
+    "basis": "ADR 074",
+    "ownerItem": null,
+    "gatedUntil": null
   },
   "overall": "UNDETERMINED"
 }

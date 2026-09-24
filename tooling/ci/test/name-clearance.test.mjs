@@ -199,6 +199,17 @@ describe('the probe — the roll-up and the record', () => {
     assert.equal(rollUp(r).exit, 1);
   });
 
+  // ⏱ 2026-09-24 (apps-review F1). The roll-up read `ruling == null`, so ANY other
+  // value cleared — the owner refusing the name included.
+  test('D6 only PROCEED clears — a DO-NOT-PROCEED ruling can never roll up to CLEAR', () => {
+    const channels = { d: { verdict: PROVEN_FREE, uniqueness: 'none' } };
+    const refused = { controls: { green: 1, failed: [] }, trademark: { ruling: 'DO-NOT-PROCEED' }, channels };
+    assert.equal(rollUp(refused).overall, 'QUALIFIED');
+    assert.equal(rollUp(refused).exit, 1);
+    const ruled = { controls: { green: 1, failed: [] }, trademark: { ruling: 'PROCEED' }, channels };
+    assert.equal(rollUp(ruled).overall, 'CLEAR', 'green control: the same record with PROCEED clears, so the case above is about the ruling');
+  });
+
   test('D3 --execute REFUSES to overwrite an existing record when a control failed', () => {
     const tmp = mkdtempSync(join(tmpdir(), 'nk-nc-'));
     try {
@@ -228,6 +239,24 @@ describe('the probe — the roll-up and the record', () => {
       assert.equal(back.trademark.gatedUntil, '2026-10-09', 'the gate date must survive a re-probe untouched');
       assert.equal(back.trademark.ownerItem, 'O-KEEP-ME');
       assert.equal(back.name.verifyKind, 'remote', 'the record ages by the same mechanism as every other dated fact');
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test('D7 --execute PRESERVES a recorded ruling whole, `basis` included', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'nk-nc-'));
+    try {
+      mkdirSync(join(tmp, 'apps', 'x'), { recursive: true });
+      writeFileSync(
+        join(tmp, RECORD_REL('x')),
+        `${JSON.stringify({ trademark: { ruling: 'PROCEED', ruledBy: 'owner', ruledOn: '2026-09-09', basis: 'ADR 074', ownerItem: null, gatedUntil: null } })}\n`,
+      );
+      const record = { app: 'x', slug: 'x', name: 'X', asOf: '2026-09-30', overall: 'QUALIFIED', channels: {}, identifiers: [], controls: { green: 3, failed: [] }, trademark: { disclaimer: 'd', signals: [], ruling: null, ruledBy: null, ruledOn: null, basis: null, ownerItem: null, gatedUntil: null } };
+      assert.equal(writeRecord(tmp, record).written, true);
+      const back = JSON.parse(readFileSync(join(tmp, RECORD_REL('x')), 'utf8'));
+      assert.equal(back.trademark.ruling, 'PROCEED');
+      assert.equal(back.trademark.basis, 'ADR 074', 'a re-probe that dropped the basis would leave a ruling limb 7 refuses');
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }
