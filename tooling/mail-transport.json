@@ -112,7 +112,12 @@
     "mailer_notifications_mfa_factor_enrolled_enabled": true,
     "mailer_notifications_mfa_factor_unenrolled_enabled": true,
     "mailer_notifications_identity_linked_enabled": true,
-    "mailer_notifications_identity_unlinked_enabled": true
+    "mailer_notifications_identity_unlinked_enabled": true,
+    "subjects": {
+      "confirmation": "Confirm your email — Nikatru",
+      "magic_link": "Your sign-in link — Nikatru",
+      "recovery": "Reset your password — Nikatru"
+    }
   },
 
   "supersededTransportClaims": {
