@@ -130,6 +130,7 @@ import {
 } from './chrome.mjs';
 import { lastmodFor } from './lastmod.mjs';
 import { APEX_ORIGIN } from './apex.mjs';
+import { isAuthMailPath } from './gen-auth-mail.mjs';
 import { renderAvailability, AVAILABILITY_CSS, availabilitySummary, availabilityRow } from './availability.mjs';
 
 /** The deploy root this generator owns. The mirror (`sites/rajasekarselvam`) is
@@ -1838,6 +1839,11 @@ export function planDiscovery(repoRoot) {
       const abs = join(repoRoot, ...rel.split('/'));
       const html = planned ?? (existsSync(abs) ? readFileSync(abs, 'utf8') : '');
       if (isNoindex(html)) continue;
+      // The served auth mail bodies are fragments that cannot carry a robots
+      // meta (their bytes must equal the template source); their noindex is the
+      // `/auth-mail/*` X-Robots-Tag in _headers. Left out by the one prefix
+      // gen-auth-mail.mjs owns, which check-site-integrity.mjs reads too.
+      if (isAuthMailPath(rel)) continue;
       entries.push({
         loc: urlForPage(rel.slice(`${DEPLOY_ROOT}/`.length)),
         lastmod: lastmodFor(repoRoot, rel, planned),

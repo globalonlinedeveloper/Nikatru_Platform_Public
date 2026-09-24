@@ -32,6 +32,16 @@
 /checkout-return
   Cache-Control: public, max-age=0, must-revalidate
 
+# ── /auth-mail/*: MAIL BODIES THE AUTH SERVER FETCHES, NEVER PAGES ──────────
+# Self-hosted GoTrue reads its confirmation, recovery and magic-link templates
+# from these URLs (GOTRUE_MAILER_TEMPLATES_*) and sends their bytes as the email.
+# The files are byte copies of docs/platform/supabase/email-templates/, written
+# by tooling/sites/gen-auth-mail.mjs, so they cannot carry a robots meta of
+# their own: this header is their noindex. The splat also covers the
+# extensionless form Pages redirects `.html` requests to.
+/auth-mail/*
+  X-Robots-Tag: noindex
+
 # ── CSS and JS: DECLARED, not inherited ─────────────────────────────────────
 # 🔴 2026-08-04. Until today these two classes had no rule here at all, and
 # that was not a decision — it was a gap the Cloudflare zone happened to be

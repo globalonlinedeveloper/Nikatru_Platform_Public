@@ -203,8 +203,11 @@ const GUARD_IMPORTS = ['text-reductions.mjs', 'tree-walk.mjs'];
  *  under tooling/sites because the GENERATOR that writes sites/nikatru/sitemap.xml
  *  and this guard must evaluate one function ([12]W-3a); leaving it out of the
  *  copy reproduced exactly the failure this list's own comment describes — 33
- *  cases reporting a module-loader error instead of the assertion under test. */
-const GUARD_IMPORTS_SITES = ['lastmod.mjs'];
+ *  cases reporting a module-loader error instead of the assertion under test.
+ *  `gen-auth-mail.mjs` travels for the same reason: the guard asks it which
+ *  served files are auth mail bodies rather than pages, and it imports only
+ *  `../ci/tree-walk.mjs`, which the list above already copies. */
+const GUARD_IMPORTS_SITES = ['lastmod.mjs', 'gen-auth-mail.mjs'];
 
 function selfHosted(dir, { root = 'a' } = {}) {
   const to = join(dir, 'tooling', 'ci', GUARD);

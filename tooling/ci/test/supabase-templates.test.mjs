@@ -55,7 +55,30 @@ Config is applied via the Management API: \`PATCH /v1/projects/{ref}/config/auth
 Fields used: \`mailer_subjects_*\`, \`mailer_templates_*_content\`, \`smtp_*\`.
 `;
 
-function makeRoot({ files, readme } = {}) {
+// The served-copy premise: sites/nikatru/_headers sends noindex for the bodies.
+const GOOD_HEADERS = `/*
+  X-Content-Type-Options: nosniff
+
+# auth mail bodies — fragments, never pages
+/auth-mail/*
+  X-Robots-Tag: noindex
+`;
+
+const GOOD_SUBJECTS = {
+  confirmation: 'Confirm your email — Nikatru',
+  magic_link: 'Your sign-in link — Nikatru',
+  recovery: 'Reset your password — Nikatru',
+};
+const transportWith = (subjects) =>
+  `${JSON.stringify({ supabaseAuth: { smtp_host: 'smtp.example.com', ...(subjects === undefined ? {} : { subjects }) } }, null, 2)}\n`;
+
+/**
+ * `served`: the files under sites/nikatru/auth-mail/ — defaults to a BYTE copy of
+ * `files` (what gen-auth-mail.mjs writes); `null` writes no served directory.
+ * `headers` / `transport`: the _headers text and the mail-transport.json text;
+ * `null` writes no file.
+ */
+function makeRoot({ files, readme, served, headers, transport } = {}) {
   const root = join(TMP, `r${seq++}`);
   const dir = join(root, 'docs', 'platform', 'supabase', 'email-templates');
   mkdirSync(dir, { recursive: true });
@@ -66,8 +89,29 @@ function makeRoot({ files, readme } = {}) {
   };
   for (const [f, body] of Object.entries(set)) writeFileSync(join(dir, f), body);
   if (readme !== null) writeFileSync(join(root, 'docs', 'platform', 'supabase', 'README.md'), readme ?? GOOD_README);
+  if (served !== null) {
+    const sdir = join(root, 'sites', 'nikatru', 'auth-mail');
+    mkdirSync(sdir, { recursive: true });
+    for (const [f, body] of Object.entries(served ?? set)) writeFileSync(join(sdir, f), body);
+  }
+  if (headers !== null) {
+    mkdirSync(join(root, 'sites', 'nikatru'), { recursive: true });
+    writeFileSync(join(root, 'sites', 'nikatru', '_headers'), headers ?? GOOD_HEADERS);
+  }
+  if (transport !== null) {
+    mkdirSync(join(root, 'tooling'), { recursive: true });
+    writeFileSync(join(root, 'tooling', 'mail-transport.json'), transport ?? transportWith(GOOD_SUBJECTS));
+  }
   return root;
 }
+
+// The three DR sources as makeRoot writes them by default — the served-copy
+// tests start from these so exactly one byte differs.
+const DEFAULT_SET = () => ({
+  'confirm-signup.html': GOOD('Confirm your email'),
+  'magic-link.html': GOOD('Your sign-in link'),
+  'reset-password.html': GOOD('Reset your password'),
+});
 
 const run = (root) => spawnSync(process.execPath, [GUARD, root], { encoding: 'utf8' });
 const out = (r) => `${r.stdout}${r.stderr}`;
@@ -212,5 +256,134 @@ describe('assert-supabase-templates — the restore procedure must stay findable
   test('a CONCRETE field name is accepted too, not only the glob', () => {
     const r = run(makeRoot({ readme: 'PATCH config/auth sets mailer_templates_confirmation_content.\n' }));
     assert.equal(r.status, 0, out(r));
+  });
+});
+
+// ── The served copies self-hosted GoTrue fetches (sites/nikatru/auth-mail/) ──
+describe('assert-supabase-templates — the served copy is the source, byte for byte', () => {
+  test('the happy path says 3/3 served copies are byte-equal', () => {
+    const r = run(makeRoot());
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /served copies 3\/3 byte-equal/);
+  });
+
+  test('FAILS when one served copy differs by a single word', () => {
+    const served = DEFAULT_SET();
+    served['magic-link.html'] = served['magic-link.html'].replace('Continue', 'Continu3');
+    assert.notEqual(served['magic-link.html'], DEFAULT_SET()['magic-link.html'], 'the mutation must change bytes');
+    const r = run(makeRoot({ served }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /SERVED DRIFT: sites\/nikatru\/auth-mail\/magic-link\.html differs/);
+  });
+
+  test('FAILS on a CRLF-only difference — equal text is not equal bytes', () => {
+    const served = DEFAULT_SET();
+    served['reset-password.html'] = served['reset-password.html'].replace(/\n/g, '\r\n');
+    assert.notEqual(served['reset-password.html'], DEFAULT_SET()['reset-password.html'], 'the mutation must change bytes');
+    const r = run(makeRoot({ served }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /reset-password\.html differs from its source/);
+  });
+
+  test('FAILS when a served copy is missing', () => {
+    const served = DEFAULT_SET();
+    delete served['confirm-signup.html'];
+    const r = run(makeRoot({ served }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /auth-mail\/confirm-signup\.html is missing/);
+  });
+
+  test('FAILS when the served directory does not exist at all', () => {
+    const r = run(makeRoot({ served: null }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /SERVED DRIFT/);
+    assert.doesNotMatch(out(r), /assert-supabase-templates: OK/);
+  });
+
+  test('FAILS on a stray served .html that no source produces', () => {
+    const served = { ...DEFAULT_SET(), 'invite.html': GOOD('Invite') };
+    const r = run(makeRoot({ served }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /auth-mail\/invite\.html is served but no source template produces it/);
+  });
+
+  test('FAILS when _headers stops sending noindex for /auth-mail/*', () => {
+    const r = run(makeRoot({ headers: '/*\n  X-Content-Type-Options: nosniff\n' }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /no `\/auth-mail\/\*` block with `X-Robots-Tag: noindex`/);
+  });
+
+  test('a noindex under a DIFFERENT path does not count for /auth-mail/*', () => {
+    const r = run(makeRoot({ headers: '/auth-mail/*\n  Cache-Control: no-store\n/other/*\n  X-Robots-Tag: noindex\n' }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /X-Robots-Tag: noindex/);
+  });
+
+  test('FAILS when _headers is missing entirely', () => {
+    const r = run(makeRoot({ headers: null }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /_headers missing/);
+  });
+});
+
+describe('assert-supabase-templates — the subjects record has exactly the three keys', () => {
+  test('the happy path says 3/3 subjects', () => {
+    const r = run(makeRoot());
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /subjects 3\/3 present and non-empty/);
+  });
+
+  test('FAILS when supabaseAuth.subjects is absent', () => {
+    const r = run(makeRoot({ transport: transportWith(undefined) }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /no supabaseAuth\.subjects object/);
+  });
+
+  test('FAILS when one subject key is missing', () => {
+    const { recovery, ...two } = GOOD_SUBJECTS;
+    assert.ok(recovery);
+    const r = run(makeRoot({ transport: transportWith(two) }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /subjects is missing recovery/);
+  });
+
+  test('FAILS on an extra subject key no template sends', () => {
+    const r = run(makeRoot({ transport: transportWith({ ...GOOD_SUBJECTS, invite: 'You are invited' }) }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /unknown key\(s\) invite/);
+  });
+
+  test('FAILS on an empty (whitespace) subject — GoTrue would fall back to its default', () => {
+    const r = run(makeRoot({ transport: transportWith({ ...GOOD_SUBJECTS, magic_link: '   ' }) }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /empty or non-string value for magic_link/);
+  });
+
+  test('FAILS on a non-string subject', () => {
+    const r = run(makeRoot({ transport: transportWith({ ...GOOD_SUBJECTS, confirmation: 42 }) }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /non-string value for confirmation/);
+  });
+
+  test('FAILS when mail-transport.json does not parse', () => {
+    const r = run(makeRoot({ transport: '{ "supabaseAuth": ' }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /does not parse/);
+  });
+
+  test('COVERAGE LOST (exit 2, never a pass) when mail-transport.json does not exist', () => {
+    const r = run(makeRoot({ transport: null }));
+    assert.equal(r.status, 2, out(r));
+    assert.match(out(r), /COVERAGE LOST: tooling\/mail-transport\.json does not exist/);
+    assert.doesNotMatch(out(r), /assert-supabase-templates: OK/);
+  });
+
+  test('a FINDING outranks a could-not-look: missing transport + served drift exits 1', () => {
+    const served = DEFAULT_SET();
+    served['magic-link.html'] += ' ';
+    const r = run(makeRoot({ served, transport: null }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /SERVED DRIFT/);
+    assert.match(out(r), /COVERAGE LOST: tooling\/mail-transport\.json/);
   });
 });

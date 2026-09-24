@@ -61,6 +61,9 @@ import { listDir } from './tree-walk.mjs';
 // that WRITES sites/nikatru/sitemap.xml. See tooling/sites/lastmod.mjs for why
 // the writer and the checker must evaluate the same function. [pipeline 12]W-3a
 import { lastmodFor, isGitRepo, isShallowRepo } from '../sites/lastmod.mjs';
+// ONE reading of which served files are MAIL BODIES rather than pages, shared with
+// the generator that writes them and the one that writes the sitemap.
+import { isAuthMailPath } from '../sites/gen-auth-mail.mjs';
 
 const repoRoot = process.argv[2] ?? process.cwd();
 const claimedRoots = process.argv.slice(3);
@@ -586,7 +589,11 @@ for (const root of siteRoots) {
   urlFormRoots++;
 
   const pages = htmlIn(root).map((abs) => ({ abs, page: posixRel(root, abs), html: readFileSync(abs, 'utf8') }));
-  const indexable = pages.filter((p) => !isNoindex(p.html));
+  // The served auth mail bodies (tooling/sites/gen-auth-mail.mjs) are byte copies
+  // of a template fragment and cannot carry a robots meta; their noindex is the
+  // `/auth-mail/*` X-Robots-Tag in _headers, which assert-supabase-templates.mjs
+  // holds. So they owe no canonical and belong in no sitemap.
+  const indexable = pages.filter((p) => !isNoindex(p.html) && !isAuthMailPath(posixRel(repoRoot, p.abs)));
   /** EVERY file on this root, keyed by both spellings a <loc> can name it by: the
    *  served form and the `.html` form Pages 308s to it. Exact strings from the
    *  names on disk, never an existsSync() probe — that would resolve a

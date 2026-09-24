@@ -58,6 +58,7 @@
 // receiving chrome while every guard goes on printing a count. `spliceRegion`
 // refuses, and `chrome-splice.test.mjs` has the failing case recorded.
 // ─────────────────────────────────────────────────────────────────────────────
+import { AUTH_MAIL_SERVED_DIR, AUTH_MAIL_TEMPLATES } from './gen-auth-mail.mjs';
 
 /** The deploy root this chrome belongs to. `sites/rajasekarselvam` is a separate
  *  brochure site with its own identity and is deliberately NOT a member — it is
@@ -100,6 +101,19 @@ export const CHROME_EXCLUDED = new Map([
       'and is now something a guard in this repository can see.) The cost is that this page carries no site navigation; ' +
       'that is recorded as a known gap, not an oversight.',
   ],
+  // One entry per served auth mail template, NAMED (each key is a real file),
+  // derived from the one list in gen-auth-mail.mjs so a fourth template cannot
+  // be served without its exemption, or keep an exemption after it is gone.
+  ...AUTH_MAIL_TEMPLATES.map((t) => [
+    `${AUTH_MAIL_SERVED_DIR}/${t.file}`,
+    'a MAIL BODY, not a page: self-hosted GoTrue fetches it from this URL (GOTRUE_MAILER_TEMPLATES_*) and ' +
+      'sends its bytes as the email. It is a byte copy of docs/platform/supabase/email-templates/' +
+      `${t.file}, written by tooling/sites/gen-auth-mail.mjs and held equal by ` +
+      'tooling/ci/assert-supabase-templates.mjs. Splicing site chrome into it would change the mail every ' +
+      'user receives and break that equality. It is a fragment (no <head>), so it cannot carry a robots ' +
+      'meta: sites/nikatru/_headers sends X-Robots-Tag: noindex for /auth-mail/*, and the sitemap and ' +
+      'check-site-integrity.mjs leave the path out by the same prefix.',
+  ]),
 ]);
 
 
