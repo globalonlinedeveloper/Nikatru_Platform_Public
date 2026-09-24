@@ -119,7 +119,7 @@ function declare(entries) {
   }
   const abs = join(DECL_REPO, ...DECLARATION_REL.split('/'));
   mkdirSync(dirname(abs), { recursive: true });
-  writeFileSync(abs, `${JSON.stringify({ guards: entries }, null, 2)}\n`, 'utf8');
+  writeFileSync(abs, `${JSON.stringify({ entries }, null, 2)}\n`, 'utf8');
   const add = spawnSync('git', ['-C', DECL_REPO, 'add', '-A'], { encoding: 'utf8' });
   assert.equal(add.status, 0, add.stderr);
   const commit = spawnSync('git', ['-C', DECL_REPO, 'commit', '-q', '--allow-empty', '-m', 'declaration', '--no-gpg-sign'], { encoding: 'utf8' });

@@ -38,9 +38,11 @@
 // `GuardDeclarationError`, and the runner prints it as COVERAGE LOST, exit 2:
 //   blob    the blob could not be read — not committed, not staged, git absent, or
 //           the corpus root is not its own repository;
-//   parse   the blob is not JSON, or holds no entry list;
-//   entry   an entry without `id`, `file` or `hook`, or whose `hook` or `args` is
-//           not a list of strings;
+//   parse   the blob is not JSON, or is not an object with an array under `entries`
+//           (a bare array and any other key included);
+//   entry   an entry without `id`, `file` or `hook`, whose `hook` or `args` is not a
+//           list of strings, or whose `hook` names a value other than "public" or
+//           "private";
 //   pinned  a PINNED_HOOK name absent, or not declared for both sides.
 // A runner that cannot read its guard list has checked nothing.
 //
@@ -307,9 +309,10 @@ export const PINNED_HOOK = Object.freeze([
 /** The fields every entry must carry for the hook to act on it. */
 export const REQUIRED_FIELDS = Object.freeze(['id', 'file', 'hook']);
 
-/** Where the entry list may sit when the document is an object rather than a bare
- *  array. Exactly one of these must hold an array; two is ambiguous and refused. */
-export const ENTRY_LIST_KEYS = Object.freeze(['guards', 'entries']);
+/** The one key the entry list sits under. The declaration is an object — the corpus
+ *  writes `_what`, `_fields` and `entries` — and a bare array, or a list under any other
+ *  key, is refused: a shape nobody writes is a branch no real run exercises. */
+export const ENTRY_LIST_KEYS = Object.freeze(['entries']);
 
 /** Thrown for every refusal. `limb` is one of 'side', 'blob', 'parse', 'entry',
  *  'pinned'. `tried` lists each blob the loader asked for — `{ root, blob, command,
@@ -363,19 +366,12 @@ export function parseDeclaration(text, source) {
   } catch (e) {
     throw new GuardDeclarationError('parse', `${where} is not JSON: ${e.message}`, tried);
   }
-  let list = null;
-  if (Array.isArray(doc)) {
-    list = doc;
-  } else if (doc !== null && typeof doc === 'object') {
-    const keys = ENTRY_LIST_KEYS.filter((k) => Array.isArray(doc[k]));
-    if (keys.length > 1) {
-      throw new GuardDeclarationError('parse', `${where} holds entry lists under ${keys.map((k) => `\`${k}\``).join(' and ')}; which one is the guard set is ambiguous`, tried);
-    }
-    if (keys.length === 1) list = doc[keys[0]];
+  const [key] = ENTRY_LIST_KEYS;
+  const isObject = doc !== null && typeof doc === 'object' && !Array.isArray(doc);
+  if (!isObject || !Array.isArray(doc[key])) {
+    throw new GuardDeclarationError('parse', `${where} holds no \`${key}\` list: expected an object with an array under \`${key}\``, tried);
   }
-  if (!list) {
-    throw new GuardDeclarationError('parse', `${where} holds no entry list: expected a JSON array, or an object with an array under one of ${ENTRY_LIST_KEYS.map((k) => `\`${k}\``).join(' / ')}`, tried);
-  }
+  const list = doc[key];
 
   const bad = [];
   list.forEach((entry, i) => {
@@ -389,6 +385,11 @@ export function parseDeclaration(text, source) {
     if (!missing.includes('id') && !isNonEmptyString(entry.id)) bad.push(`${label}: \`id\` is not a non-empty string`);
     if (!missing.includes('file') && !isNonEmptyString(entry.file)) bad.push(`${label}: \`file\` is not a non-empty string`);
     if (!missing.includes('hook') && !isStringList(entry.hook)) bad.push(`${label}: \`hook\` is not a list of strings`);
+    else if (!missing.includes('hook')) {
+      for (const value of entry.hook.filter((v) => !SIDES.includes(v))) {
+        bad.push(`${label}: \`hook\` names ${JSON.stringify(value)}, which is neither ${SIDES.map((s) => `"${s}"`).join(' nor ')}`);
+      }
+    }
     if (Object.prototype.hasOwnProperty.call(entry, 'args') && !isStringList(entry.args)) bad.push(`${label}: \`args\` is not a list of strings`);
   });
   if (bad.length) {

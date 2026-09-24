@@ -185,7 +185,7 @@ function buildCorpus() {
           : `process.exit(0);\n`;
     write(join(PRIV, rel), body);
   }
-  write(join(PRIV, ...DECLARATION_REL.split('/')), `${JSON.stringify({ guards: DECLARED }, null, 2)}\n`);
+  write(join(PRIV, ...DECLARATION_REL.split('/')), `${JSON.stringify({ entries: DECLARED }, null, 2)}\n`);
   git(PRIV, 'init', '-q');
   git(PRIV, 'config', 'user.email', 'fixture@example.test');
   git(PRIV, 'config', 'user.name', 'fixture');
@@ -460,7 +460,7 @@ test('a half-edited declaration in the corpus working tree does not change what 
 
 test('a committed declaration without a pinned guard is COVERAGE LOST, exit 2, naming the blob and the guard', () => {
   const decl = join(PRIV, ...DECLARATION_REL.split('/'));
-  writeFileSync(decl, `${JSON.stringify({ guards: DECLARED.filter((e) => e.id !== 'assert-platform-state') }, null, 2)}\n`, 'utf8');
+  writeFileSync(decl, `${JSON.stringify({ entries: DECLARED.filter((e) => e.id !== 'assert-platform-state') }, null, 2)}\n`, 'utf8');
   git(PRIV, 'commit', '-q', '-am', 'fixture: drop a pinned guard', '--no-gpg-sign');
   try {
     const r = runRunner(PUB);

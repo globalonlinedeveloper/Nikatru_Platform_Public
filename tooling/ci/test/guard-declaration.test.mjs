@@ -97,7 +97,7 @@ function withEnv(extra, fn) {
 test('(1) public side: the COMMITTED blob is read, a corrupted working tree is not, and only hook:["public"] entries are selected', () => {
   const base = mkdtempSync(join(tmpdir(), 'guard-decl-public-'));
   try {
-    const P = corpusRepo(join(base, 'Fixture_Private'), { guards: validEntries() });
+    const P = corpusRepo(join(base, 'Fixture_Private'), { entries: validEntries() });
     write(declPath(P), '{ this is not json, and HEAD is clean\n');
 
     // CONTROL — the working tree really is unreadable, so a loader that read it would refuse.
@@ -122,15 +122,15 @@ test('(2) private side: the STAGED blob is read, not HEAD and not the working tr
   const base = mkdtempSync(join(tmpdir(), 'guard-decl-private-'));
   try {
     const committed = validEntries();
-    const P = corpusRepo(join(base, 'Fixture_Private'), committed);
+    const P = corpusRepo(join(base, 'Fixture_Private'), { entries: committed });
     const staged = [...validEntries(), { id: 'fixture-staged-only', file: 'requirements/tooling/fixture-staged-only.mjs', hook: ['private'], what: 'staged, not committed' }];
-    write(declPath(P), `${JSON.stringify(staged, null, 2)}\n`);
+    write(declPath(P), `${JSON.stringify({ entries: staged }, null, 2)}\n`);
     git(P, 'add', DECLARATION_REL);
     write(declPath(P), 'not json: the working tree is neither HEAD nor the index\n');
 
     // CONTROL — HEAD and the index really differ, so reading HEAD would miss the staged entry.
     const atHead = JSON.parse(git(P, 'show', `HEAD:${DECLARATION_REL}`));
-    assert.equal(atHead.some((e) => e.id === 'fixture-staged-only'), false, 'the staged entry is already in HEAD, so this case cannot tell the two blobs apart');
+    assert.equal(atHead.entries.some((e) => e.id === 'fixture-staged-only'), false, 'the staged entry is already in HEAD, so this case cannot tell the two blobs apart');
 
     const d = loadGuardDeclaration(P, 'private');
     assert.equal(d.blob, `:${DECLARATION_REL}`);
@@ -161,7 +161,7 @@ test('(3) a missing blob while the corpus is present is a refusal naming the blo
     assert.equal(pub.tried[0].root, P);
 
     // Present in the working tree only: still a refusal. The working tree is never the source.
-    write(declPath(P), `${JSON.stringify(validEntries())}\n`);
+    write(declPath(P), `${JSON.stringify({ entries: validEntries() })}\n`);
     const priv = refusalOf(() => loadGuardDeclaration(P, 'private'));
     assert.equal(priv.limb, 'blob');
     assert.match(priv.message, /STAGED declaration could not be read/);
@@ -169,17 +169,17 @@ test('(3) a missing blob while the corpus is present is a refusal naming the blo
 
     // A corpus root that is not a repository of its own is the same limb.
     const bare = join(base, 'Not_A_Repo');
-    write(declPath(bare), `${JSON.stringify(validEntries())}\n`);
+    write(declPath(bare), `${JSON.stringify({ entries: validEntries() })}\n`);
     assert.equal(refusalOf(() => loadGuardDeclaration(bare, 'public')).limb, 'blob');
   } finally {
     rmSync(base, { recursive: true, force: true });
   }
 });
 
-test('(4) an unparseable blob, or one with no entry list, is a parse refusal', () => {
+test('(4) an unparseable blob, or one with no `entries` list, is a parse refusal — a bare array and `{ guards }` included', () => {
   const base = mkdtempSync(join(tmpdir(), 'guard-decl-parse-'));
   try {
-    const notJson = corpusRepo(join(base, 'A_Private'), '{ "guards": [ \n');
+    const notJson = corpusRepo(join(base, 'A_Private'), '{ "entries": [ \n');
     const e1 = refusalOf(() => loadGuardDeclaration(notJson, 'public'));
     assert.equal(e1.limb, 'parse');
     assert.match(e1.message, /is not JSON/);
@@ -188,16 +188,23 @@ test('(4) an unparseable blob, or one with no entry list, is a parse refusal', (
     const noList = corpusRepo(join(base, 'B_Private'), { _readme: 'no entries here', rows: validEntries() });
     const e2 = refusalOf(() => loadGuardDeclaration(noList, 'public'));
     assert.equal(e2.limb, 'parse');
-    assert.match(e2.message, /holds no entry list/);
+    assert.match(e2.message, /holds no `entries` list/);
 
-    const twoLists = corpusRepo(join(base, 'C_Private'), { guards: validEntries(), entries: validEntries() });
-    const e3 = refusalOf(() => loadGuardDeclaration(twoLists, 'public'));
+    // The declaration's one shape is an object with `entries` (measured 2026-09-24 on the corpus: keys
+    // `_what`, `_fields`, `entries`). A shape nobody writes is refused, not accepted as an untested path.
+    const bareArray = corpusRepo(join(base, 'C_Private'), validEntries());
+    const e3 = refusalOf(() => loadGuardDeclaration(bareArray, 'public'));
     assert.equal(e3.limb, 'parse');
-    assert.match(e3.message, /ambiguous/);
+    assert.match(e3.message, /holds no `entries` list/);
 
-    // CONTROL — the same entries as a bare array, and under `entries`, load.
-    assert.equal(loadGuardDeclaration(corpusRepo(join(base, 'D_Private'), validEntries()), 'public').entries.length, validEntries().length);
-    assert.equal(loadGuardDeclaration(corpusRepo(join(base, 'E_Private'), { entries: validEntries() }), 'public').entries.length, validEntries().length);
+    const guardsKey = corpusRepo(join(base, 'D_Private'), { guards: validEntries() });
+    const e4 = refusalOf(() => loadGuardDeclaration(guardsKey, 'private'));
+    assert.equal(e4.limb, 'parse');
+    assert.match(e4.message, /holds no `entries` list/);
+
+    // CONTROL — the same entries under `entries`, beside the corpus's two other top-level keys, load.
+    const real = { _what: 'fixture', _fields: {}, entries: validEntries() };
+    assert.equal(loadGuardDeclaration(corpusRepo(join(base, 'E_Private'), real), 'public').entries.length, validEntries().length);
   } finally {
     rmSync(base, { recursive: true, force: true });
   }
@@ -210,7 +217,7 @@ test('(5) an entry without id, file or hook is refused, and every malformed entr
     delete entries[16].id;                       // fixture-public-only loses its id
     delete entries[17].file;                     // fixture-private-only loses its file
     delete entries[18].hook;                     // fixture-sweep-only loses its hook
-    const P = corpusRepo(join(base, 'Fixture_Private'), entries);
+    const P = corpusRepo(join(base, 'Fixture_Private'), { entries });
     const e = refusalOf(() => loadGuardDeclaration(P, 'public'));
     assert.equal(e.limb, 'entry');
     assert.equal(e.detail.length, 3, `all three malformed entries must be named, not the first: ${e.detail.join(' | ')}`);
@@ -223,7 +230,7 @@ test('(5) an entry without id, file or hook is refused, and every malformed entr
     const shapes = validEntries();
     shapes[16].hook = 'public';
     shapes[17].args = '--held';
-    const Q = corpusRepo(join(base, 'Shapes_Private'), shapes);
+    const Q = corpusRepo(join(base, 'Shapes_Private'), { entries: shapes });
     const f = refusalOf(() => loadGuardDeclaration(Q, 'public'));
     assert.equal(f.limb, 'entry');
     assert.deepEqual(f.detail, ['entry 16 (fixture-public-only): `hook` is not a list of strings', 'entry 17 (fixture-private-only): `args` is not a list of strings']);
@@ -236,7 +243,7 @@ test('(6) a pinned guard absent, or declared for one side only, is refused — a
   const base = mkdtempSync(join(tmpdir(), 'guard-decl-pinned-'));
   try {
     const without = validEntries().filter((e) => e.id !== 'assert-platform-state');
-    const P = corpusRepo(join(base, 'Fixture_Private'), without);
+    const P = corpusRepo(join(base, 'Fixture_Private'), { entries: without });
     for (const side of ['public', 'private']) {
       const e = refusalOf(() => loadGuardDeclaration(P, side));
       assert.equal(e.limb, 'pinned');
@@ -245,7 +252,7 @@ test('(6) a pinned guard absent, or declared for one side only, is refused — a
 
     const oneSided = validEntries();
     oneSided.find((e) => e.id === 'gen-traps').hook = ['private'];
-    const Q = corpusRepo(join(base, 'OneSided_Private'), oneSided);
+    const Q = corpusRepo(join(base, 'OneSided_Private'), { entries: oneSided });
     const g = refusalOf(() => loadGuardDeclaration(Q, 'private'));
     assert.equal(g.limb, 'pinned');
     assert.deepEqual(g.detail, ['gen-traps: declared with hook ["private"], which lacks "public"']);
@@ -262,10 +269,10 @@ test('(6) a pinned guard absent, or declared for one side only, is refused — a
 test('(7) an exported GIT_DIR and GIT_INDEX_FILE naming another repository do not redirect the read', () => {
   const base = mkdtempSync(join(tmpdir(), 'guard-decl-gitdir-'));
   try {
-    const P = corpusRepo(join(base, 'Fixture_Private'), validEntries());
+    const P = corpusRepo(join(base, 'Fixture_Private'), { entries: validEntries() });
     // The decoy: a repository whose committed declaration lacks a pinned guard, so
     // reading it instead of P is a refusal rather than a quiet wrong answer.
-    const D = corpusRepo(join(base, 'Decoy_Public'), validEntries().filter((e) => e.id !== 'check-dod-sync'));
+    const D = corpusRepo(join(base, 'Decoy_Public'), { entries: validEntries().filter((e) => e.id !== 'check-dod-sync') });
     const poison = { GIT_DIR: join(D, '.git'), GIT_INDEX_FILE: join(D, '.git', 'index') };
 
     withEnv(poison, () => {
@@ -275,8 +282,35 @@ test('(7) an exported GIT_DIR and GIT_INDEX_FILE naming another repository do no
       // CONTROL — the same read WITHOUT repo-git.mjs answers about the decoy.
       const raw = spawnSync('git', ['-C', P, 'cat-file', 'blob', `HEAD:${DECLARATION_REL}`], { encoding: 'utf8' });
       assert.equal(raw.status, 0, `the unguarded control failed to run: ${raw.stderr}`);
-      assert.equal(JSON.parse(raw.stdout).some((e) => e.id === 'check-dod-sync'), false, 'the unguarded `git -C` did NOT read the decoy, so this environment does not reproduce the hook and the assertions above prove nothing');
+      assert.equal(JSON.parse(raw.stdout).entries.some((e) => e.id === 'check-dod-sync'), false, 'the unguarded `git -C` did NOT read the decoy, so this environment does not reproduce the hook and the assertions above prove nothing');
     });
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('(8) a hook value that is neither "public" nor "private" is an entry refusal naming the value', () => {
+  const base = mkdtempSync(join(tmpdir(), 'guard-decl-hookvalue-'));
+  try {
+    // A misspelt side would put the entry in no hook while the declaration reads as if it
+    // were in one; a third side name would be a hook nobody runs.
+    const entries = validEntries();
+    entries[16].hook = ['public', 'pre-push'];
+    entries[17].hook = ['Private'];
+    const P = corpusRepo(join(base, 'Fixture_Private'), { entries });
+    for (const side of ['public', 'private']) {
+      const e = refusalOf(() => loadGuardDeclaration(P, side));
+      assert.equal(e.limb, 'entry');
+      assert.deepEqual(e.detail, [
+        'entry 16 (fixture-public-only): `hook` names "pre-push", which is neither "public" nor "private"',
+        'entry 17 (fixture-private-only): `hook` names "Private", which is neither "public" nor "private"',
+      ], `side ${side}: ${e.detail.join(' | ')}`);
+    }
+
+    // CONTROL — an empty hook (a sweep-only entry) is not a hook value and still loads.
+    const sweep = validEntries();
+    assert.deepEqual(sweep[18].hook, []);
+    assert.equal(loadGuardDeclaration(corpusRepo(join(base, 'Sweep_Private'), { entries: sweep }), 'public').entries.length, sweep.length);
   } finally {
     rmSync(base, { recursive: true, force: true });
   }
