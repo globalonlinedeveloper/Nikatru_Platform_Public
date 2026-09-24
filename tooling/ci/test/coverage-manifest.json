@@ -221,7 +221,7 @@
   "single-threaded-relaunch.test.mjs": 8,
   "sink-disclosure.test.mjs": 49,
   "site-integrity.test.mjs": 108,
-  "smoke-web-artifact.test.mjs": 15,
+  "smoke-web-artifact.test.mjs": 30,
   "snap-submission.test.mjs": 41,
   "snapcraft-generable.test.mjs": 69,
   "spec-guards-worktree.test.mjs": 16,

@@ -463,6 +463,38 @@ image already ships — the same binary e2e.yml drives nightly. `setup-node`
 is explicit because that WebSocket needs Node >= 22 and the smoke must
 never fail for the harness's own reasons.
 
+⏱ 2026-09-24 — THE SMOKE BOOTS THE BUNDLE UNDER ITS OWN CONTENT-SECURITY-POLICY
+(row O-WEB-CSP-HAND-LIST-UNSMOKED). The local server now answers every file
+with the headers the bundle's `_headers` gives it, so the app starts under the
+same policy Cloudflare Pages will serve. Two things then fail the step:
+
+- **A violation while it boots.** A `securitypolicyviolation` listener is
+  installed before the page loads; any refusal before the first frame is
+  exit 1, naming the directive and the blocked URI.
+- **A `--connect` origin the policy refuses.** The step passes three:
+  `SUPABASE_URL`, `API_BASE_URL` and `GLITCHTIP_DSN` (only its origin is
+  kept; the key part is dropped). After the first frame, the page fetches
+  each origin. A `connect-src` refusal is exit 1, naming the directive and
+  the origin.
+
+Exit 2 is COVERAGE LOST: the bundle carries no `_headers`, the `_headers`
+puts no Content-Security-Policy on `/`, or it holds a line the parser does
+not model. None of those is a pass.
+
+The probe requests never leave the browser. Each probe origin is paused by
+DevTools `Fetch` interception and answered locally with a 204. The smoke
+also fails if a probe was NOT paused, so an interception pattern that stops
+matching is red rather than a request to production. `--connect` accepts
+https origins only: `upgrade-insecure-requests` would rewrite an http probe
+to https, past the pattern. What this does not cover:
+
+- Chrome's own background traffic to Google hosts still leaves the runner,
+  as it did before.
+- The log shows the Supabase origin as `***`, because GitHub masks any value
+  equal to a secret.
+- Until E1b, every app is probed with the repository-wide `API_BASE_URL`, so
+  a stamped app with no backend stops here on that origin.
+
 ### before step **Install glitchtip-cli (pinned by version AND by digest)**
 
 ── SOURCE MAPS · INSTALL AND INJECT, BEFORE THE ARTIFACT IS SMOKED ─────
