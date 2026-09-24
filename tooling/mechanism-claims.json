@@ -561,8 +561,8 @@
       "anchor": "describe('release-manifest.mjs — the expected-format set is DERIVED, not typed', () => {",
       "status": "proven",
       "test": "tooling/ci/test/release-durable.test.mjs",
-      "case": "a register whose rows are all lane-less contributes NOTHING — only the declared extra survives",
-      "proves": "A register whose only row has no lane must yield just the declared .apk. A typed format set returns the same formats whatever the register says, and the case goes red. Mutation-verified 2026-09-18: returning a typed seven-format set from expectedReleaseFormats turns it red."
+      "case": "a register whose rows are all lane-less contributes NOTHING — and with no extra, nothing survives",
+      "proves": "A register whose only row has no lane must yield just the declared .apk. A typed format set returns the same formats whatever the register says, and the case goes red. Mutation-verified 2026-09-18: returning a typed seven-format set from expectedReleaseFormats turns it red. Corrected 2026-09-24 (O-RELEASE-RECORD-GUESSES-CHANNEL-FROM-EXTENSION): the declared extras are empty, so the case now requires the EMPTY set; re-verified 2026-09-24 with the same typed seven-format mutation, which turns the renamed case red."
     },
     {
       "file": "tooling/ci/test/render-payload.test.mjs",
@@ -806,36 +806,6 @@
       "reason": "Editorial intent in a compliance document: the CSP summary line and the table under it are two pieces of prose kept in step by the writer. No script reads either, so nothing fails when they disagree. Judged 2026-09-18."
     },
     {
-      "file": "extensions/Extension/Full_Screen_Shot/publish/CROSS-BROWSER-PUBLISHING.md",
-      "anchor": "it states no version at all (so it cannot drift)",
-      "status": "demoted",
-      "reason": "Publishing-doc prose recording a dated run of check-version.mjs and quoting its overlay limb. The mechanism is real: publish/manifest.firefox.json is an RFC 7386 merge patch with no `version` key, and check-version.mjs limb 4 fails when an overlay states a version that disagrees with manifest.json. But no case plants a `version` in an overlay (scripts/test/selftest.node.js has no overlay expect(), and no node:test file reaches check-version), so nothing a register can name fails when the sentence goes false. Judged 2026-09-18."
-    },
-    {
-      "file": "extensions/Extension/Full_Screen_Shot/publish/CROSS-BROWSER-PUBLISHING.md",
-      "anchor": "`3 passed` — `CHANGELOG top entry is [1.10.2]`",
-      "status": "demoted",
-      "reason": "Publishing-doc prose recording a dated run of check-version.mjs and quoting its overlay limb. The mechanism is real: publish/manifest.firefox.json is an RFC 7386 merge patch with no `version` key, and check-version.mjs limb 4 fails when an overlay states a version that disagrees with manifest.json. But no case plants a `version` in an overlay (scripts/test/selftest.node.js has no overlay expect(), and no node:test file reaches check-version), so nothing a register can name fails when the sentence goes false. Judged 2026-09-18."
-    },
-    {
-      "file": "extensions/Extension/Full_Screen_Shot/publish/CROSS-BROWSER-PUBLISHING.md",
-      "anchor": "so there is nothing to bump and the two **cannot** drift",
-      "status": "demoted",
-      "reason": "Publishing-doc prose recording a dated run of check-version.mjs and quoting its overlay limb. The mechanism is real: publish/manifest.firefox.json is an RFC 7386 merge patch with no `version` key, and check-version.mjs limb 4 fails when an overlay states a version that disagrees with manifest.json. But no case plants a `version` in an overlay (scripts/test/selftest.node.js has no overlay expect(), and no node:test file reaches check-version), so nothing a register can name fails when the sentence goes false. Judged 2026-09-18."
-    },
-    {
-      "file": "extensions/Extension/Full_Screen_Shot/publish/SUBMISSION-PACKET.md",
-      "anchor": "an overlay that restates no version, so the two cannot drift.",
-      "status": "demoted",
-      "reason": "Publishing-doc prose recording a dated run of check-version.mjs and quoting its overlay limb. The mechanism is real: publish/manifest.firefox.json is an RFC 7386 merge patch with no `version` key, and check-version.mjs limb 4 fails when an overlay states a version that disagrees with manifest.json. But no case plants a `version` in an overlay (scripts/test/selftest.node.js has no overlay expect(), and no node:test file reaches check-version), so nothing a register can name fails when the sentence goes false. Judged 2026-09-18."
-    },
-    {
-      "file": "extensions/Extension/Full_Screen_Shot/publish/SUBMISSION-PACKET.md",
-      "anchor": "so the two *cannot* drift and `check-version` says so by name",
-      "status": "demoted",
-      "reason": "Publishing-doc prose recording a dated run of check-version.mjs and quoting its overlay limb. The mechanism is real: publish/manifest.firefox.json is an RFC 7386 merge patch with no `version` key, and check-version.mjs limb 4 fails when an overlay states a version that disagrees with manifest.json. But no case plants a `version` in an overlay (scripts/test/selftest.node.js has no overlay expect(), and no node:test file reaches check-version), so nothing a register can name fails when the sentence goes false. Judged 2026-09-18."
-    },
-    {
       "file": "extensions/Extension/Full_Screen_Shot/publish/package.node.js",
       "anchor": "deliberately, so that a version bump cannot drift between the two engines.",
       "status": "demoted",
@@ -863,7 +833,7 @@
     },
     {
       "file": "extensions/Extension/Full_Screen_Shot/tool.json",
-      "anchor": "so a bump can no longer be right-in-one-file-and-wrong-in-the-other",
+      "anchor": "it does not restate the version, so it cannot drift from it.",
       "status": "demoted",
       "reason": "Publishing-doc prose recording a dated run of check-version.mjs and quoting its overlay limb. The mechanism is real: publish/manifest.firefox.json is an RFC 7386 merge patch with no `version` key, and check-version.mjs limb 4 fails when an overlay states a version that disagrees with manifest.json. But no case plants a `version` in an overlay (scripts/test/selftest.node.js has no overlay expect(), and no node:test file reaches check-version), so nothing a register can name fails when the sentence goes false. Judged 2026-09-18."
     },

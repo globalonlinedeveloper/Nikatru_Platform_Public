@@ -112,11 +112,15 @@
 // timeout cancelled it — and a cancelled job reports nothing at all, which is
 // the silent failure this module exists to remove.
 //
-// So the ceiling lives in `readWithBoundedRetry`, once: a FRESH
-// `AbortSignal.timeout` per attempt (an aborted signal stays aborted, so one
-// hoisted above the loop would fail every retry instantly), combined with the
-// caller's own signal through `AbortSignal.any` and never replacing it. The
-// read receives it as `read(attempt, { signal })` and passes it to its fetch.
+// So the ceiling lives in `readWithBoundedRetry`, once: a FRESH ceiling per
+// attempt (an aborted signal stays aborted, so one hoisted above the loop would
+// fail every retry instantly). `attemptWithCeiling` gives each attempt its own
+// `AbortController`, aborted by a ref'd `setTimeout` and not by
+// `AbortSignal.timeout` (why ref'd: the note on that function), and combines it
+// with the caller's own signal through `AbortSignal.any`, never replacing it.
+// ⏱ CORRECTED 2026-09-24: this paragraph said `AbortSignal.timeout`; the code
+// under it is the ref'd timer. The read receives the combined signal as
+// `read(attempt, { signal })` and passes it to its fetch.
 // The attempt is also RACED against that signal, so a read that forgets to pass
 // it still ends: its timeout is a transient look, retried, and then COULD NOT
 // LOOK (exit 2), exactly like a dropped connection. A caller's own abort is not
@@ -134,8 +138,13 @@
 // heartbeats job (check-d1-accepts-live-sql reads once per statement per
 // database) and the glitchtip job (seven readers in one job) run more than ten.
 // So the job ceiling alone cannot guarantee that a later reader in the same job
-// runs after an outage: each reader STEP carries its own `timeout-minutes`
-// (ops-watch.yml), which fails that step rather than cancelling the job.
+// runs after an outage. ⏱ CORRECTED 2026-09-24: this said each reader STEP
+// carries its own `timeout-minutes`. Measured in ops-watch.yml, it is set per
+// JOB, on nine lines (the `alert` job's 5, every other job's 10), and on no
+// step. A job whose reads all hang can therefore reach its 10 minutes and be
+// cancelled, and the readers after the hung one in that job do not run. A
+// per-step `timeout-minutes` on each reader step is a named follow-on of row
+// O-OPS-READER-NO-CEILING.
 //
 // 🔴 CLASSIFICATION IS MARKED AT THE THROW SITE, NEVER INFERRED FROM A MESSAGE.
 // `transientLook()` sets the flag; `isTransientLook()` reads it. A future branch
@@ -153,7 +162,7 @@
 // check-analytics-liveness, check-d1-accepts-live-sql, verify-supabase-templates,
 // check-prod-provenance, verify-monitors, verify-alarm-chains,
 // verify-auth-providers, verify-free-api-scope, check-wildcard-dns,
-// check-turnstile-hosts, check-retired-names-live; the GlitchTip writes
+// check-turnstile-hosts, check-retired-names-live, check-mail-auth-dns; the GlitchTip writes
 // create-glitchtip-release, upload-web-sourcemaps and upload-native-symbols
 // (2026-09-23, row O-GLITCHTIP-CALLS-HAVE-NO-RETRY — each re-sends a WRITE, and
 // each records why that is safe at its own call site); and, outside tooling/ops,
@@ -227,8 +236,10 @@ const TRANSPORT_CODES = new Set([
  *  runner gave up on is the same evidence as a probe the network dropped: none.
  *  ⏱ APPENDED 2026-09-22: the sentence above was not true when written — twelve
  *  sites in ten readers armed nothing (row O-OPS-READER-NO-CEILING). Since then
- *  `readWithBoundedRetry` arms it for every reader, and the B8 limb in
- *  ops-bounded-retry.test.mjs fails a call site that does not pass it on.
+ *  `readWithBoundedRetry` arms it (a ref'd timer since #882, in
+ *  `attemptWithCeiling`; its TimeoutError reads the same) for every reader, and
+ *  the B8 limb in ops-bounded-retry.test.mjs fails a call site that does not
+ *  pass it on.
  *
  *  🔴 IT IS DELIBERATELY NOT "anything that is a TypeError". A reader with a bug
  *  that reads a property of undefined also throws TypeError, and re-asking a
@@ -459,6 +470,33 @@ export async function readWithBoundedRetry(
  */
 export function classifyThrown(err, message) {
   return isTransportFailure(err) ? transientLook(message) : new CouldNotLook(message);
+}
+
+/**
+ * ⏱ 2026-09-24 — A WHOLE-RUN CEILING, for a reader that makes MANY reads and has
+ * to end inside its step's budget (check-mail-auth-dns: every declared record,
+ * asked of two resolvers, under a `timeout-minutes: 3` step). Pass `.signal` as
+ * the caller `signal` of every read: `readWithBoundedRetry` already combines it
+ * with the per-request ceiling, and a caller abort ends the loop at once,
+ * un-retried, with this reason.
+ *
+ * It lives HERE and not in the reader for the reason the per-request ceiling
+ * does: B8 in ops-bounded-retry.test.mjs refuses a timer armed by an importer of
+ * this module, because two timers written in two places disagree silently. This
+ * module is the one place a timer on this lane is armed.
+ *
+ * The reason is a PLAIN `CouldNotLook`: a run that outlived its ceiling judged
+ * nothing more, which is COULD NOT LOOK and never a pass. The timer is unref'd so
+ * a run that finished early does not wait for it; `cancel()` clears it.
+ */
+export function runDeadline(ms) {
+  const ctl = new AbortController();
+  const timer = setTimeout(
+    () => ctl.abort(new CouldNotLook(`the whole-run ceiling of ${ms / 1000}s passed before every read answered`)),
+    ms,
+  );
+  timer.unref?.();
+  return { signal: ctl.signal, cancel: () => clearTimeout(timer) };
 }
 
 /**

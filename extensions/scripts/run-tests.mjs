@@ -47,6 +47,12 @@
    number — a hardcoded "at least 11" is a second copy of the same fact, and the
    copy is the one that rots.
 
+   ⏱ 2026-09-24: FullShot's pixel simulator was test/pixel-sim/run.js, a sim
+   under the old name that this floor could not see — it read 10 on disk while
+   11 were listed, so deleting the pixel sim's line from tool.json stayed green.
+   It is now test/pixel-sim/run.node.js and the floor counts 11. The convention
+   below is unchanged; the file moved to meet it.
+
    (Neither glob above is written out in its real form, because a doubled star
    followed by a slash is a block-comment terminator and this is a block
    comment. templates/tool/TEMPLATE.md records that costing this family twice;
@@ -165,7 +171,7 @@ for (const rel of declared) {
   console.log('── ' + tool.rel + '/' + rel);
 
   /* The ambient environment is passed through unchanged and nothing is added to
-     it. test/pixel-sim/run.js:30 reads FS_ROOT and falls back to a __dirname
+     it. test/pixel-sim/run.node.js:31 reads FS_ROOT and falls back to a __dirname
      path — that fallback is the one that points at the tool being graded, so
      setting FS_ROOT here would let this gate aim a sim at a tree other than the
      one it is reporting on. */

@@ -189,4 +189,5 @@ It creates no conflict with any of the three stores. Chrome Web Store,
 Microsoft Edge Add-ons and addons.mozilla.org all distribute proprietary and
 source-available extensions; none require an OSI license. AMO asks for
 reviewable source only when a submission is minified or obfuscated, and
-FullShot ships unminified. See publish/SUBMISSION-PACKET.md.
+FullShot ships unminified. See `extensions/scripts/pack.mjs` (the package is
+built from source unminified).

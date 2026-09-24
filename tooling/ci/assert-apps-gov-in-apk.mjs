@@ -212,6 +212,18 @@ export function portalLabel(sdk, rules = STORE_FORM_RULES[CHANNEL]) {
 }
 
 /**
+ * ⏱ 2026-09-24 — THE ONE NAME THE OWNER MAY UPLOAD, `apps-gov-in-<app>-apk`,
+ * given only to an .apk signed by the pinned key. Exported because the release
+ * job of build-platforms.yml downloads exactly this name and nothing longer, and
+ * assert-release-json.mjs limb 10 compares that download with this function's
+ * answer for the app `${{ matrix.app }}` (O-APPS-GOV-IN-CHANNEL-APK). The two
+ * NOT-FOR-UPLOAD names below are this name plus a suffix.
+ */
+export function uploadableArtifactName(app) {
+  return `${CHANNEL}-${app}-apk`;
+}
+
+/**
  * The decision table in the header, as a pure function.
  * @returns {{ problems: string[], artifactName: string|null, verdict: string|null, reason: string|null }}
  */
@@ -232,19 +244,19 @@ export function decideArtifact({ app, posture, signer, pin, playPin }) {
   }
   if (problems.length) return { problems, artifactName: null, verdict: null, reason: null };
   if (pin !== null) {
-    return { problems, artifactName: `${CHANNEL}-${app}-apk`, verdict: 'UPLOADABLE', reason: 'SIGNED BY THE PINNED apps-gov-in KEY. THIS IS THE FILE THE OWNER UPLOADS.' };
+    return { problems, artifactName: uploadableArtifactName(app), verdict: 'UPLOADABLE', reason: 'SIGNED BY THE PINNED apps-gov-in KEY. THIS IS THE FILE THE OWNER UPLOADS.' };
   }
   if (posture === 'release') {
     return {
       problems,
-      artifactName: `${CHANNEL}-${app}-apk-NOT-FOR-UPLOAD-release-signed-unpinned`,
+      artifactName: `${uploadableArtifactName(app)}-NOT-FOR-UPLOAD-release-signed-unpinned`,
       verdict: 'NOT-FOR-UPLOAD',
       reason: 'RELEASE-SIGNED, BUT NO PIN IS RECORDED. PASTE THE CERTIFICATE SHA-256 INTO tooling/channel-register.json apps-gov-in.signing.signingCertificate.sha256 BEFORE ANY UPLOAD.',
     };
   }
   return {
     problems,
-    artifactName: `${CHANNEL}-${app}-apk-NOT-FOR-UPLOAD-debug-signed-build-proof`,
+    artifactName: `${uploadableArtifactName(app)}-NOT-FOR-UPLOAD-debug-signed-build-proof`,
     verdict: 'NOT-FOR-UPLOAD',
     reason: 'THE APPSGOVIN_* SECRETS ARE NOT SET, SO THIS .apk IS SIGNED WITH THE DEBUG KEY. IT PROVES THE BUILD. IT MUST NEVER BE UPLOADED.',
   };

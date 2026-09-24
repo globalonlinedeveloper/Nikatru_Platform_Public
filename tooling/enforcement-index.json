@@ -2775,6 +2775,18 @@
   {
     "claims": [],
     "invokedBy": [
+      ".github/workflows/build-platforms.yml#apple",
+      ".github/workflows/build-platforms.yml#linux_web_android",
+      ".github/workflows/build-platforms.yml#windows"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/stamp-channel.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
       ".github/workflows/build-platforms.yml#prepare",
       ".github/workflows/extensions.yml#release"
     ],
@@ -2991,6 +3003,18 @@
     ],
     "kind": "script",
     "ref": "tooling/ops/check-heartbeats.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "ADR 029"
+    ],
+    "invokedBy": [
+      ".github/workflows/ops-watch.yml#glitchtip"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/check-mail-auth-dns.mjs",
     "references": [],
     "state": "WIRED"
   },

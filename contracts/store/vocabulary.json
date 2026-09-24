@@ -145,7 +145,14 @@
       "name": "search-terms.txt",
       "kind": "text",
       "app": "additional",
-      "extension": null,
+      "extension": "per-store-additional",
+      "rendered": false
+    },
+    {
+      "name": "tags.txt",
+      "kind": "text",
+      "app": null,
+      "extension": "per-store-additional",
       "rendered": false
     },
     {

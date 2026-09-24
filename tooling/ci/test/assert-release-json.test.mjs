@@ -23,15 +23,17 @@
 //
 // Run:  node --test tooling/ci/test/assert-release-json.test.mjs
 // ─────────────────────────────────────────────────────────────────────────────
-import { test, describe } from 'node:test';
+import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, readdirSync, rmSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { servedFloor, productSurfaces } from '../release-manifest.mjs';
-import { parseAllWorkflows, stepShell } from '../workflow-scan.mjs';
+import { servedFloor, productSurfaces, channelStampName } from '../release-manifest.mjs';
+import { parseAllWorkflows, stepShell, workflowSteps } from '../workflow-scan.mjs';
+import { uploadableArtifactName } from '../assert-apps-gov-in-apk.mjs';
 import { listDir } from '../tree-walk.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -41,19 +43,42 @@ const SCHEMA = join(REPO, 'contracts', 'release.schema.json');
 const SERVED_CONFIG = join(REPO, 'services', 'platform', 'src', 'app-config-data.json');
 
 const run = (script, args) => spawnSync(process.execPath, [script, ...args], { encoding: 'utf8' });
+const sha256 = (text) => createHash('sha256').update(text).digest('hex');
+
+/** Directories outside the release directory (stamps, download trees), removed at the end. */
+const scratch = [];
+const scratchDir = (prefix) => { const d = mkdtempSync(join(tmpdir(), prefix)); scratch.push(d); return d; };
+after(() => { for (const d of scratch) rmSync(d, { recursive: true, force: true }); });
+
+/** The stamp a build writes beside a file (tooling/ci/stamp-channel.mjs), written
+ *  as `<at>.channel.json` for a file whose BUILD name is `file`. */
+function writeStamp(at, { channel, file, body, sha = sha256(body), runId = '1' }) {
+  writeFileSync(channelStampName(at), `${JSON.stringify({ channel, file, sha256: sha, runId }, null, 2)}\n`);
+}
+
+/** The release's .apk: the apps.gov.in build, the only .apk a release carries. */
+const AGI_APK = 'subscriptiontracker-v1.0.0-subscriptiontracker-apps-gov-in-1.0.7.apk';
 
 /** One staged release directory, built the way the lane builds it: assets, then
  *  `--emit-release-json`, then `--write` (which is what puts release.json into
  *  SHA256SUMS). Nothing is hand-written — a fixture whose manifest was typed
- *  cannot catch the emitter writing a manifest the lane would not. */
+ *  cannot catch the emitter writing a manifest the lane would not.
+ *  ⏱ 2026-09-24 — each asset is `[name, body, channel]`: an installer carries the
+ *  stamp `--stage` would have carried out (channel null = no stamp), and the app
+ *  surface is given `--stamps` as the lane gives it (O-RELEASE-RECORD-GUESSES-CHANNEL-FROM-EXTENSION). */
 function stage({ app = 'subscriptiontracker', tag = 'subscriptiontracker-v1.0.0', version = '1.0.0', assets = null, emitArgs = [] } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'release-json-test-'));
   const files = assets ?? [
-    ['subscriptiontracker-v1.0.0-app-release.aab', 'aab bytes'],
-    ['subscriptiontracker-v1.0.0-app-release.apk', 'apk bytes'],
-    ['subscriptiontracker-v1.0.0-linux-x64.tar.gz', 'archive bytes'],
+    ['subscriptiontracker-v1.0.0-app-release.aab', 'aab bytes', 'android-play'],
+    [AGI_APK, 'apk bytes', 'apps-gov-in'],
+    ['subscriptiontracker-v1.0.0-linux-x64.tar.gz', 'archive bytes', null],
   ];
-  for (const [name, body] of files) writeFileSync(join(dir, name), body);
+  const onApp = existsSync(join(REPO, 'apps', app));
+  const stamps = scratchDir('release-json-stamps-');
+  for (const [name, body, channel = null] of files) {
+    writeFileSync(join(dir, name), body);
+    if (channel !== null) writeStamp(join(stamps, name), { channel, file: name.startsWith(`${tag}-`) ? name.slice(tag.length + 1) : name, body });
+  }
   const emit = run(EMITTER, [
     '--emit-release-json', dir,
     '--app', app,
@@ -66,7 +91,7 @@ function stage({ app = 'subscriptiontracker', tag = 'subscriptiontracker-v1.0.0'
     // The app surface READS its floor (app-config-data.json) and refuses the flag;
     // every other surface states it. Which one is decided by the tree, as the
     // emitter decides it — never by a list of ids typed here.
-    ...(existsSync(join(REPO, 'apps', app)) ? [] : ['--min-supported', '1.0.0']),
+    ...(onApp ? ['--stamps', stamps] : ['--min-supported', '1.0.0']),
     '--build', '7',
     '--repo-root', REPO,
     ...emitArgs,
@@ -107,15 +132,37 @@ describe('assert-release-json', () => {
     rmSync(s.dir, { recursive: true, force: true });
   });
 
-  test('M2 channels are DERIVED — the .aab carries android-play and the .apk does not', () => {
+  test('M2 channels are STAMPED, never read off the extension — each installer lists the one channel its build compiled in', () => {
     const s = stage();
+    assert.equal(s.emit.status, 0, s.emit.stderr);
     const byName = new Map(s.record().artefacts.map((a) => [a.name, a]));
     assert.deepEqual(byName.get('subscriptiontracker-v1.0.0-app-release.aab').channels, ['android-play']);
     // ⚠️ MEASURED, NOT ASSUMED: `.apk` is no longer channel-less. The apps.gov.in
     // row accepts it, so the derivation returns it — and EXTRA_INSTALLABLE's
     // comment in release-manifest.mjs, which still says no channel accepts an
     // .apk, is stale rather than this assertion being wrong.
-    assert.ok(byName.get('subscriptiontracker-v1.0.0-app-release.apk').channels.includes('apps-gov-in'));
+    // ⏱ CORRECTED 2026-09-24 (O-RELEASE-RECORD-GUESSES-CHANNEL-FROM-EXTENSION). The
+    // measurement above was right, and the assertion it justified was the defect:
+    // it held that EVERY .apk is an apps.gov.in file because a row accepts the
+    // extension, so the Play build's .apk (compiled with RELEASE_CHANNEL=
+    // android-play) was offered to apps.gov.in. INVERTED: an .apk lists
+    // apps-gov-in only because its build stamped it so, and the same bytes
+    // stamped android-play are REFUSED below, not listed.
+    assert.deepEqual(byName.get(AGI_APK).channels, ['apps-gov-in']);
+    // An archive is no installer: no stamp, and no channel.
+    assert.deepEqual(byName.get('subscriptiontracker-v1.0.0-linux-x64.tar.gz').channels, []);
+    rmSync(s.dir, { recursive: true, force: true });
+    const play = stage({ assets: [[AGI_APK, 'apk bytes', 'android-play']] });
+    assert.equal(play.emit.status, 1, `${play.emit.stdout}${play.emit.stderr}`);
+    assert.match(play.emit.stderr, /it is stamped "android-play", and that row does not accept \.apk/);
+    assert.equal(existsSync(join(play.dir, 'release.json')), false, 'a refused record is never written');
+    rmSync(play.dir, { recursive: true, force: true });
+  });
+
+  test('M2b COVERAGE LOST — an installer with no stamp is exit 2 at the emit, never a channel read off its extension', () => {
+    const s = stage({ assets: [['subscriptiontracker-v1.0.0-app-release.aab', 'aab bytes', null]] });
+    assert.equal(s.emit.status, 2, `${s.emit.stdout}${s.emit.stderr}`);
+    assert.match(s.emit.stderr, /COVERAGE LOST — subscriptiontracker-v1\.0\.0-app-release\.aab is a \.aab installer and carries no build stamp/);
     rmSync(s.dir, { recursive: true, force: true });
   });
 
@@ -250,15 +297,17 @@ function floorTree(config) {
   return root;
 }
 
-/** One app-surface emit against `root`, with one asset, and no --min-supported
- *  unless the case passes it. */
+/** One app-surface emit against `root`, with one asset and its stamp, and no
+ *  --min-supported unless the case passes it. */
 function emitApp(root, extra = []) {
   const dir = mkdtempSync(join(tmpdir(), 'release-floor-dir-'));
   writeFileSync(join(dir, 'subscriptiontracker-v1.0.0-app-release.aab'), 'aab bytes');
+  const stamps = scratchDir('release-floor-stamps-');
+  writeStamp(join(stamps, 'subscriptiontracker-v1.0.0-app-release.aab'), { channel: 'android-play', file: 'app-release.aab', body: 'aab bytes' });
   const r = run(EMITTER, [
     '--emit-release-json', dir, '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-v1.0.0',
     '--sha', 'a'.repeat(40), '--run-url', 'https://x/1', '--notes-url', 'https://x/2',
-    '--released-at', '2026-09-22T10:00:00Z', '--version', '1.0.7', '--repo-root', root, ...extra,
+    '--released-at', '2026-09-22T10:00:00Z', '--version', '1.0.7', '--stamps', stamps, '--repo-root', root, ...extra,
   ]);
   const record = existsSync(join(dir, 'release.json')) ? JSON.parse(readFileSync(join(dir, 'release.json'), 'utf8')) : null;
   rmSync(dir, { recursive: true, force: true });
@@ -654,6 +703,20 @@ function gradeInvocation(wfRoot, inv, ctx) {
     // came, and the emitter's own refusal is what gets graded.
     const lanes = args[at + 1];
     const emitArgs = args.map((a, i) => (i === at + 1 && lanes !== undefined && !lanes.startsWith('--') ? dir : a));
+    // ⏱ 2026-09-24 — `--stamps <dir>` is where `--stage` put each installer's
+    // build stamp (O-RELEASE-RECORD-GUESSES-CHANNEL-FROM-EXTENSION). It is swapped
+    // the same way, for a directory holding the fixture's stamp: the channel is the
+    // register's own row on this surface that takes the fixture's format. A lane
+    // that passes no `--stamps` on the app surface is graded as it is, and refused.
+    const stampsAt = args.indexOf('--stamps', scriptAt + 1);
+    if (stampsAt !== -1 && args[stampsAt + 1] !== undefined && !args[stampsAt + 1].startsWith('--')) {
+      const stamps = join(tmp, 'stamps');
+      mkdirSync(stamps);
+      const register = JSON.parse(readFileSync(join(REPO, 'tooling', 'channel-register.json'), 'utf8'));
+      const row = (register.channels ?? []).find((c) => c.surface === surface && (c.artifactFormats ?? []).includes('.aab'));
+      writeStamp(join(stamps, `${app}-v1.0.0-app-release.aab`), { channel: row?.id ?? null, file: 'app-release.aab', body: 'fixture bytes' });
+      emitArgs[stampsAt + 1] = stamps;
+    }
     const emit = spawnSync(process.execPath, emitArgs, { cwd, encoding: 'utf8' });
     if (emit.status !== 0) return fail(`the emitter, given the lane's arguments, exited ${emit.status}:\n${emit.stdout}${emit.stderr}`, { app, surface });
     const seal = spawnSync(process.execPath, [emitter, '--write', dir, '--app', app, '--tag', value('--tag'), '--sha', value('--sha'), '--run-url', value('--run-url')], { cwd, encoding: 'utf8' });
@@ -911,4 +974,185 @@ describe('every --emit-release-json a workflow runs emits a record the schema ac
     assert.equal(g.surface, 'extension');
     rmSync(root, { recursive: true, force: true });
   });
+
+  test('C12 RED — the app lane with its `--stamps` dropped is refused, not described from the extensions', () => {
+    const root = mutatedWorkflows('build-platforms.yml', '            --build "$RUN_NUMBER" \\\n            --stamps stamps\n', '            --build "$RUN_NUMBER"\n');
+    const inv = emitInvocations(root);
+    assert.equal(inv.length, 1);
+    const g = gradeInvocation(root, inv[0], laneContext());
+    assert.equal(g.ok, false, g.output);
+    assert.match(g.output, /--emit-release-json needs --stamps <dir> on the "app" surface/);
+    rmSync(root, { recursive: true, force: true });
+  });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// `--stage` READS EACH INSTALLER'S BUILD STAMP (O-RELEASE-RECORD-GUESSES-CHANNEL-FROM-EXTENSION).
+//
+// The release job downloads `<app>-*` into `downloads/`, and `--stage` lifts
+// every installer out of it. Each build job now writes `<file>.channel.json`
+// beside every file it ships (tooling/ci/stamp-channel.mjs) and uploads the two
+// together. These cases build that download tree and run the real `--stage` on
+// it. Every one runs on the UNTAGGED ref, where the native-auth refusal
+// (O-BOXA-CAPTCHA-REFUSES-NATIVE-SIGN-IN) only warns, so an exit here is the
+// stamp's and nothing else's. S1 is the green control the reds are read against.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const UNTAGGED_TAG = 'subscriptiontracker-untagged-abc1234';
+
+/** A download tree: `<root>/<artifact>/<file>` with `body`, and, unless `stamp`
+ *  is null, the stamp its build wrote beside it (`stamp` overrides its fields). */
+function downloadTree(entries) {
+  const root = scratchDir('release-json-downloads-');
+  for (const { artifact, file, body, stamp = {} } of entries) {
+    mkdirSync(join(root, artifact), { recursive: true });
+    writeFileSync(join(root, artifact, file), body);
+    if (stamp !== null) writeStamp(join(root, artifact, file), { channel: 'android-play', file, body, ...stamp });
+  }
+  return root;
+}
+
+/** The release job's own `--stage` line, over `from`, into fresh `dist` and `stamps` directories. */
+function stageDownloads(from) {
+  const at = scratchDir('release-json-stage-');
+  const out = join(at, 'dist');
+  const stamps = join(at, 'stamps');
+  const r = run(EMITTER, ['--stage', from, '--out', out, '--stamps', stamps, '--app', 'subscriptiontracker', '--tag', UNTAGGED_TAG, '--ref-type', 'branch', '--repo-root', REPO]);
+  return { r, out, stamps };
+}
+
+const listed = (dir) => (existsSync(dir) ? readdirSync(dir).sort() : []);
+
+describe('--stage reads each installer\'s channel from its build stamp', () => {
+  const AGI = 'subscriptiontracker-apps-gov-in-1.0.7.apk';
+
+  test('S1 GREEN CONTROL — stamped installers are staged, and each stamp follows its file under the staged name', () => {
+    const from = downloadTree([
+      { artifact: 'subscriptiontracker-linux-web-android-release-signed', file: 'app-release.aab', body: 'aab bytes', stamp: { channel: 'android-play' } },
+      { artifact: 'subscriptiontracker-apps-gov-in', file: AGI, body: 'apk bytes', stamp: { channel: 'apps-gov-in' } },
+    ]);
+    const { r, out, stamps } = stageDownloads(from);
+    assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+    assert.deepEqual(listed(out), [`${UNTAGGED_TAG}-app-release.aab`, `${UNTAGGED_TAG}-${AGI}`]);
+    assert.deepEqual(listed(stamps), [`${UNTAGGED_TAG}-app-release.aab.channel.json`, `${UNTAGGED_TAG}-${AGI}.channel.json`]);
+    assert.equal(JSON.parse(readFileSync(join(stamps, `${UNTAGGED_TAG}-${AGI}.channel.json`), 'utf8')).channel, 'apps-gov-in');
+    assert.deepEqual(listed(join(from, 'subscriptiontracker-apps-gov-in')), [], 'neither the file nor its stamp is left to be archived');
+  });
+
+  test('S2 RED — an apk stamped android-play is refused as an apps-gov-in file (the closes\' red control)', () => {
+    // The apps.gov.in file's NAME, and the Play build's stamp: the bytes were
+    // compiled with RELEASE_CHANNEL=android-play, and android-play takes no .apk.
+    // Before the stamp existed this staged, and the record listed apps-gov-in.
+    const from = downloadTree([
+      { artifact: 'subscriptiontracker-apps-gov-in', file: AGI, body: 'play apk bytes', stamp: { channel: 'android-play' } },
+    ]);
+    const { r, out } = stageDownloads(from);
+    assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
+    assert.match(r.stderr, new RegExp(`✗ ${AGI.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} — it is stamped "android-play", and that row does not accept \\.apk \\(it accepts \\.aab\\)`));
+    assert.match(r.stderr, /--stage refuses 1 stamp finding\(s\)/);
+    assert.deepEqual(listed(out), [], 'a refused stage moves nothing');
+    assert.deepEqual(listed(join(from, 'subscriptiontracker-apps-gov-in')), [AGI, `${AGI}.channel.json`]);
+  });
+
+  test('S3 COVERAGE LOST — a shippable file whose stamp is missing is exit 2, never a default channel', () => {
+    const from = downloadTree([
+      { artifact: 'subscriptiontracker-linux-web-android-release-signed', file: 'app-release.aab', body: 'aab bytes', stamp: null },
+    ]);
+    const { r, out } = stageDownloads(from);
+    assert.equal(r.status, 2, `${r.stdout}${r.stderr}`);
+    assert.match(r.stderr, /COVERAGE LOST — 1 installer\(s\) carry no build stamp: app-release\.aab\./);
+    assert.deepEqual(listed(out), []);
+  });
+
+  test('S4 RED — a stamp whose sha256 belongs to another file is refused', () => {
+    const from = downloadTree([
+      { artifact: 'subscriptiontracker-linux-web-android-release-signed', file: 'app-release.aab', body: 'aab bytes', stamp: { sha: sha256('the bytes of another file') } },
+    ]);
+    const { r, out } = stageDownloads(from);
+    assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
+    assert.match(r.stderr, /✗ app-release\.aab — its stamp records sha256 "[0-9a-f]{64}", and the bytes hash to [0-9a-f]{64}: the stamp was written for other bytes\./);
+    assert.deepEqual(listed(out), []);
+  });
+
+  // ⏱ 2026-09-24 — THE UPLOADABLE apps.gov.in .apk IS THE RELEASE'S .apk
+  // (O-APPS-GOV-IN-CHANNEL-APK). The release job's second download takes the
+  // artifact named by assert-apps-gov-in-apk.mjs `uploadableArtifactName` into
+  // `downloads/<that name>/`, and the step after it says, in one line, whether it
+  // came. Until the owner's pin is set no run uploads that name: one line naming
+  // the null pin, no .apk staged, exit 0. S5 is the green control for S6 and S7.
+  const AGI_ARTIFACT = uploadableArtifactName('subscriptiontracker');
+
+  test('S5 GREEN CONTROL — the UPLOADABLE download is staged with its apps-gov-in stamp, and the record names it apps-gov-in', () => {
+    const from = downloadTree([
+      { artifact: 'subscriptiontracker-linux-web-android-release-signed', file: 'app-release.aab', body: 'aab bytes', stamp: { channel: 'android-play' } },
+      { artifact: AGI_ARTIFACT, file: AGI, body: 'apk bytes', stamp: { channel: 'apps-gov-in' } },
+    ]);
+    const step = runAgiStep(REPO, join(from, AGI_ARTIFACT));
+    assert.equal(step.status, 0, `${step.stdout}${step.stderr}`);
+    assert.match(step.stdout, /^uploadable apps\.gov\.in apk downloaded into \S+apps-gov-in-subscriptiontracker-apk; --stage takes it with its stamp\n$/);
+    const { r, out, stamps } = stageDownloads(from);
+    assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+    assert.deepEqual(listed(out), [`${UNTAGGED_TAG}-app-release.aab`, `${UNTAGGED_TAG}-${AGI}`]);
+    assert.deepEqual(listed(join(from, AGI_ARTIFACT)), [], 'the .apk and its stamp left the download tree');
+    const emit = run(EMITTER, [
+      '--emit-release-json', out,
+      '--app', 'subscriptiontracker',
+      '--tag', UNTAGGED_TAG,
+      '--sha', 'a'.repeat(40),
+      '--run-url', 'https://github.com/nikatru/platform/actions/runs/1',
+      '--notes-url', 'https://github.com/nikatru/platform/releases/tag/x',
+      '--released-at', '2026-09-22T10:00:00Z',
+      '--version', '1.0.7',
+      '--build', '7',
+      '--stamps', stamps,
+      '--repo-root', REPO,
+    ]);
+    assert.equal(emit.status, 0, `${emit.stdout}${emit.stderr}`);
+    const byName = new Map(JSON.parse(readFileSync(join(out, 'release.json'), 'utf8')).artefacts.map((a) => [a.name, a]));
+    assert.deepEqual(byName.get(`${UNTAGGED_TAG}-${AGI}`).channels, ['apps-gov-in']);
+  });
+
+  test('S6 the pin null — no UPLOADABLE download: one line naming the null pin, exit 0, and no .apk staged', () => {
+    const root = registerTree(null);
+    const from = downloadTree([
+      { artifact: 'subscriptiontracker-linux-web-android-release-signed', file: 'app-release.aab', body: 'aab bytes', stamp: { channel: 'android-play' } },
+    ]);
+    const step = runAgiStep(root, join(from, AGI_ARTIFACT));
+    assert.equal(step.status, 0, `${step.stdout}${step.stderr}`);
+    assert.equal(step.stdout, 'no uploadable apps.gov.in apk: signingCertificate.sha256 is null\n');
+    const { r, out } = stageDownloads(from);
+    assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+    assert.deepEqual(listed(out), [`${UNTAGGED_TAG}-app-release.aab`]);
+  });
+
+  test('S7 RED — a pin set and no UPLOADABLE download is exit 1, never the null-pin line', () => {
+    const root = registerTree(Array(32).fill('AB').join(':'));
+    const step = runAgiStep(root, join(scratchDir('release-json-downloads-'), AGI_ARTIFACT));
+    assert.equal(step.status, 1, `${step.stdout}${step.stderr}`);
+    assert.match(step.stdout, /^::error title=apps\.gov\.in apk::signingCertificate\.sha256 is AB:AB:\S+ and this run uploaded no apps-gov-in-subscriptiontracker-apk artifact$/m);
+    assert.doesNotMatch(step.stdout, /no uploadable apps\.gov\.in apk/);
+  });
+});
+
+/** A repo root holding only the register, with its apps.gov.in pin set to `pin`.
+ *  The step reads nothing else, and the real pin is the owner's to set. */
+function registerTree(pin) {
+  const root = scratchDir('release-json-register-');
+  const register = JSON.parse(readFileSync(join(REPO, 'tooling', 'channel-register.json'), 'utf8'));
+  register.channels.find((c) => c.id === 'apps-gov-in').signing.signingCertificate.sha256 = pin;
+  mkdirSync(join(root, 'tooling'));
+  writeFileSync(join(root, 'tooling', 'channel-register.json'), `${JSON.stringify(register, null, 2)}\n`);
+  return root;
+}
+
+/** The release job's step that answers for the apps.gov.in download (the one
+ *  whose `env:` names AGI_DIR), its `run:` executed under bash as GitHub starts
+ *  it, from `cwd` (a repo root: the step reads the register there), AGI_DIR = `dir`
+ *  with `/` separators, as the runner's relative path has them. */
+function runAgiStep(cwd, dir) {
+  const wf = parseAllWorkflows(REPO).find((w) => w.rel === '.github/workflows/build-platforms.yml');
+  const step = workflowSteps(wf.jobs.get('release')).find((s) => s.env.has('AGI_DIR'));
+  assert.ok(step, 'build-platforms.yml job "release" holds no step whose env names AGI_DIR');
+  const { run: script } = readStep(readFileSync(join(REPO, wf.rel), 'utf8').split('\n'), { start: step.first, end: step.last });
+  return spawnSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', script], { cwd, encoding: 'utf8', env: { ...process.env, AGI_DIR: dir.replace(/\\/g, '/') } });
+}

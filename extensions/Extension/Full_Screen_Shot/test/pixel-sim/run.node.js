@@ -16,7 +16,8 @@
                      rail, inner panel and a mid-page sticky section header
                      (blank-band regression)
 
-   Usage: node test/pixel-sim/run.js   [exit 0 = all pass] */
+   Usage: node test/pixel-sim/run.node.js   [exit 0 = all pass]
+   (Renamed from run.js 2026-09-24, so scripts/run-tests.mjs's floor counts it.) */
 
 'use strict';
 const fs = require('fs');

@@ -366,6 +366,34 @@ jobs:
           fi
           exit "$code"
 
+      # ⏱ 2026-09-24 · THE RECORDS THAT MAKE SENT MAIL VERIFIABLE ARE READ HERE
+      # (row O-MAIL-AUTH-DNS-UNGUARDED). tooling/mail-transport.json `authRecords`
+      # declares the SPF, DKIM, DMARC and bounce-MX records of both ADR 029 rails.
+      # Nothing read them before this step, so a DKIM key deleted in the dashboard
+      # would have left every send reporting success while receivers junked the
+      # mail. It asks two public DoH resolvers rather than the runner's own, which
+      # was measured lagging the zone (the wildcard step above), and it needs no
+      # secret, so there is no `env:`.
+      #
+      # why: IN THIS JOB, for the same reason the wildcard check is - every job in
+      # this workflow must be the unit of a duty row in tooling/ops/register.json,
+      # and what a zone publishes is exactly this job's live-ops half. Its own
+      # `timeout-minutes` keeps a hung resolver from spending the steps after it.
+      - name: The mail-auth DNS records still say what the register declares
+        if: always()
+        timeout-minutes: 3
+        run: |
+          set +e
+          node tooling/ops/check-mail-auth-dns.mjs
+          code=$?
+          set -e
+          if [ "$code" -eq 2 ]; then
+            echo "::error title=The mail-auth DNS records are UNKNOWN - they were not judged::Neither DoH resolver answered for a record, the two disagree (a SPLIT, which is what a record mid-change looks like), or the register's authRecords block is missing or malformed. NOTHING about those records is known from this run, and that is never a pass."
+          elif [ "$code" -eq 1 ]; then
+            echo "::error title=A mail-auth DNS record no longer says what the register declares::A missing or changed SPF, DKIM, DMARC or bounce-MX record makes receivers junk mail that still reports sent. If the DNS changed on purpose, change authRecords in tooling/mail-transport.json the same hour; this red reaches ci-gate on every open pull request. The step log names the record."
+          fi
+          exit "$code"
+
       # why: THE SECOND PLACE THE APP'S ADDRESS IS WRITTEN DOWN, AND THE ONE THAT
       # TOOK SIGN-IN OFFLINE. Measured 2026-09-12: the `nikatru-auth` Turnstile
       # widget allowed `localhost` and `subly.nikatru.com` while the app is served

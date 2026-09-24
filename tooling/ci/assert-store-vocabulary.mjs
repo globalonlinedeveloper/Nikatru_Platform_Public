@@ -96,7 +96,9 @@ const REPOINTED_CONSUMERS = [
   },
   {
     file: 'extensions/scripts/check-store-metadata.mjs',
-    bindings: ['REQUIRED_PER_STORE', 'REQUIRED_SHARED'],
+    // ADDITIONAL_PER_STORE since 2026-09-24, when the limits limb began grading
+    // the additional files a `limits` block names.
+    bindings: ['REQUIRED_PER_STORE', 'REQUIRED_SHARED', 'ADDITIONAL_PER_STORE'],
     importSpecifier: '../../contracts/store/vocabulary.js',
     // NOT importable: it is a script that parses argv and exits at import time.
     // So this one is held by the source check plus section 4's tree walk, which

@@ -1180,6 +1180,13 @@ matches this lane's `subscriptiontracker-v*` trigger) is a release, so
 required on both `--tag` and `--stage`, never defaulted: a default would be
 the same guess from the string.
 
+⏱ 2026-09-24 — before that judgement, `--stage` reads the STAMP beside each
+installer (`<file>.channel.json`, §channel-stamps) and moves it to
+`stamps/`, never to `dist/`. A stamp that does not fit its file refuses the
+stage (exit 1); an installer with no stamp is COVERAGE LOST (exit 2). The
+next step reads each installer's channel from `stamps/`
+(O-RELEASE-RECORD-GUESSES-CHANNEL-FROM-EXTENSION).
+
 Expressions go through `env:` rather than into the shell body: a ref name
 is attacker-influenced text and `${{ }}` in a `run:` is substituted before
 bash ever sees it. [zizmor template-injection]
@@ -1500,6 +1507,65 @@ in `ci-gate`'s `needs`. The overlay above gets its first build proof on a pull r
   35741818599 and 35737416404), hence `timeout-minutes: 30`. It adds about 5 minutes to the pull
   request's critical path, and to `main`'s `ci-gate`, which the deploy lanes wait on. It costs $0:
   a public repository on GitHub-hosted runners. There is no Gradle cache yet.
+
+## channel-stamps — each shippable file carries the channel its build compiled in
+
+*Added 2026-09-24 · row O-RELEASE-RECORD-GUESSES-CHANNEL-FROM-EXTENSION.* Every `§channel-stamps`
+pointer in `build-platforms.yml` lands here.
+
+### The defect
+
+release.json listed, for each file, every register row on the surface that accepts the file's
+extension. `apps-gov-in` accepts `.apk`, so the Play build's .apk (compiled with
+`RELEASE_CHANNEL=android-play`, sold through Play Billing) was described as an apps.gov.in file,
+and one .msix answered both Windows rows. An extension says what a file IS. Only its build knows
+which channel it was compiled for.
+
+### What each build job does now
+
+A step after each build that makes a shippable file runs `tooling/ci/stamp-channel.mjs --channel
+<row> --build-step <id> <file glob>`. It writes `<file>.channel.json`, holding `{channel, file,
+sha256, runId}`, reads the stamp back, and compares its hash with the bytes again. The upload that
+carries the file lists `<file glob>.channel.json` too.
+
+| build step `id:` | its define | the stamped file | upload |
+|---|---|---|---|
+| `build_aab` | `android-play` | `bundle/release/*.aab` | `<app>-linux-web-android-<posture>` |
+| `build_apk_agi` | `apps-gov-in` | `build/apps-gov-in/<app>-apps-gov-in-<ver>.apk` | its own (`apps-gov-in-…`, see §apps-gov-in) |
+| `build_windows` | `windows-store` | `build/windows/msix/*.msix` | `<app>-windows` and `<app>-windows-msix-diagnostic` |
+| `build_macos` | `macos-appstore` | `build/macos/pkg/*.pkg` (signed posture) | `<app>-macos-pkg` |
+| `build_ipa` | `ios-appstore` | `build/ios/ipa/*.ipa` (signed posture) | `<app>-ios-release-signed` |
+
+The Play .apk is a build proof, not a release file. It is uploaded as
+`ci-proof-android-play-apk-<app>`, a name the release job's `<app>-*` download never matches, so no
+Play-built .apk can be described as anybody's file. The apps.gov.in .apk is stamped too. Its
+artifact still never reaches the release (§apps-gov-in): the owner uploads it to the portal by hand,
+and the stamp travels with it.
+
+Four defines stamp nothing, because their builds leave no single shippable file: `web` (not
+uploaded here), `linux-appimage` (the bundle directory is archived whole), the Play .apk
+(`android-play`, now a `ci-proof-*` build proof) and the unsigned iOS build (`ios-appstore`, a
+directory).
+
+### What the release job does with them
+
+`--stage … --stamps stamps` judges every stamp before anything moves. The stamp must name its file,
+carry the file's sha256, and name a row on the release's surface that accepts the file's format.
+Otherwise the stage refuses (exit 1). An installer with no stamp is COVERAGE LOST (exit 2), never a
+default. Each stamp moves to `stamps/<staged name>.channel.json`, never to `dist/`, which is flat and
+published whole. `--emit-release-json … --stamps stamps` then judges each stamp again against the
+staged bytes, and lists exactly the stamped channel. An archive (`.tar.gz`) is no installer: it has
+no stamp and lists no channel. The extension surface is unchanged, and still reads its stores from
+tool.json.
+
+### What holds the wiring
+
+`node tooling/ci/assert-release-json.mjs --static` (limb 9, run by `--self-test` in ci.yml and
+spec-guards.mjs). Per stamp step, its `--channel` must equal the `RELEASE_CHANNEL` define of the step
+its `--build-step` names. Per upload the release job downloads, every installer path must be stamped
+earlier in its job and listed again as `<path>.channel.json`. The self-test runs it over the real
+tree, and over two mutations of it: a stamp saying `android-play` over the `apps-gov-in` build, and
+the Play .apk put back into the `<app>-*` upload.
 
 ## Obfuscation and native symbols
 

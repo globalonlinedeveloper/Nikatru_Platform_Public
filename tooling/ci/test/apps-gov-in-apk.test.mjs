@@ -33,6 +33,7 @@ import {
   parseBadging,
   portalLabel,
   decideArtifact,
+  uploadableArtifactName,
   checkFormAnswers,
   checkBuiltIdentity,
   mdCell,
@@ -322,6 +323,16 @@ describe('decideArtifact — one case per row of the decision table', () => {
   test('debug posture with a non-debug signer FAILS: some other key leaked into the build', () => {
     const d = decideArtifact({ app: 'demo', posture: 'debug', signer: OWN_SIGNER, pin: null, playPin: PLAY_PIN });
     assert.match(d.problems.join('\n'), /posture is "debug" .* NOT the debug key/);
+  });
+
+  test('uploadableArtifactName is the pinned build\'s name, and each NOT-FOR-UPLOAD name is it plus a suffix the release download does not take', () => {
+    assert.equal(uploadableArtifactName('demo'), 'apps-gov-in-demo-apk');
+    const pinned = decideArtifact({ app: 'demo', posture: 'release', signer: OWN_SIGNER, pin: OWN_PIN, playPin: PLAY_PIN });
+    assert.equal(pinned.artifactName, uploadableArtifactName('demo'));
+    const unpinned = decideArtifact({ app: 'demo', posture: 'release', signer: OWN_SIGNER, pin: null, playPin: PLAY_PIN });
+    assert.equal(unpinned.artifactName, `${uploadableArtifactName('demo')}-NOT-FOR-UPLOAD-release-signed-unpinned`);
+    const debug = decideArtifact({ app: 'demo', posture: 'debug', signer: DEBUG_SIGNER, pin: null, playPin: PLAY_PIN });
+    assert.equal(debug.artifactName, `${uploadableArtifactName('demo')}-NOT-FOR-UPLOAD-debug-signed-build-proof`);
   });
 });
 

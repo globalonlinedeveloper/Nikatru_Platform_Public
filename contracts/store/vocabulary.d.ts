@@ -9,7 +9,7 @@ export type Surface = 'app' | 'extension';
 export type ChannelKind = 'web' | 'store' | 'direct';
 export type ListingFieldKind = 'doc' | 'text' | 'url' | 'json' | 'image';
 export type AppListingScope = 'required' | 'additional' | 'form-rule' | null;
-export type ExtensionListingScope = 'per-store' | 'shared' | null;
+export type ExtensionListingScope = 'per-store' | 'per-store-additional' | 'shared' | 'shared-additional' | null;
 
 export interface ListingField {
   readonly name: string;
@@ -57,6 +57,7 @@ export function appFormRuleListingFiles(): string[];
 export function urlListingFiles(): string[];
 export function extensionPerStoreListingFiles(): string[];
 export function extensionSharedListingFiles(): string[];
+export function extensionAdditionalListingFiles(): string[];
 export function renderedListingFiles(): string[];
 export function allListingFiles(): string[];
 

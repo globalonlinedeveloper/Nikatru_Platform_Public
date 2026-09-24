@@ -21,6 +21,7 @@
 //   B9  status.mjs: unreached is exit 2, unhealthy is still exit 1
 //
 //   B10 the three Cloudflare readers, driven through their own `cf()`
+//   B10b ⏱ 2026-09-24: check-mail-auth-dns's `doh()`, on the same five checks
 //   B11 the class beyond ops-watch
 //   B12 ⏱ 2026-09-22: the per-request ceiling. A read that never answers still
 //       ends. B12 uses a REAL timer of a few ms, because the ceiling IS a timer;
@@ -83,11 +84,13 @@ import {
   REQUEST_TIMEOUT_MS,
   READ_WALL_CEILING_MS,
   requestTimeoutMs,
+  runDeadline,
 } from '../../ops/bounded-retry.mjs';
 import { probeLive, evaluateSurface, EXIT_UNHEALTHY, EXIT_CANNOT_LOOK } from '../../ops/status.mjs';
 import { cf as cfWildcard } from '../../ops/check-wildcard-dns.mjs';
 import { cf as cfTurnstile } from '../../ops/check-turnstile-hosts.mjs';
 import { cf as cfRetired } from '../../ops/check-retired-names-live.mjs';
+import { doh, RESOLVERS as DOH_RESOLVERS } from '../../ops/check-mail-auth-dns.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const OPS = resolve(HERE, '..', '..', 'ops');
@@ -784,18 +787,48 @@ describe('B8 — ADOPTION: the class imports it, and no rival reading exists', (
     .filter(({ src }) => touchesNetwork(src))
     .map(({ name, src }) => ({ name, sites: networkSites(src) }));
 
-  test('🔴 EVERY network call under tooling/ops passes the signal, or its file is a LIVE exemption', () => {
+  /** Every call site in `files` that names no signal, as the line the limb
+   *  prints, skipping each file `exempt` names. ⏱ 2026-09-24: lifted out of the
+   *  limb below so its red controls judge through the same code it does. */
+  function unboundedSites(files, exempt) {
     const unbounded = [];
-    let checked = 0;
-    for (const { name, sites } of sitesByFile) {
-      checked += sites.length;
-      if (NO_CEILING_YET.has(name)) continue;
+    for (const { name, sites } of files) {
+      if (exempt.has(name)) continue;
       for (const s of sites) if (!s.signal) unbounded.push(`tooling/ops/${name}:${s.line} ${s.callee}(…) names no signal`);
     }
+    return unbounded;
+  }
+
+  test('🔴 EVERY network call under tooling/ops passes the signal, or its file is a LIVE exemption', () => {
+    const checked = sitesByFile.reduce((n, f) => n + f.sites.length, 0);
+    const unbounded = unboundedSites(sitesByFile, NO_CEILING_YET);
     const exempted = sitesByFile.filter(({ name }) => NO_CEILING_YET.has(name)).reduce((n, f) => n + f.sites.filter((s) => !s.signal).length, 0);
     console.log(`# per-request ceiling: ${checked} network call sites checked in ${sitesByFile.length} files; ${exempted} unsignalled sites in ${NO_CEILING_YET.size} exempted files`);
     assert.ok(checked >= 20, `only ${checked} call sites found; the site finder stopped reaching tooling/ops`);
     assert.deepEqual(unbounded, [], 'a call that drops the signal has no per-request ceiling: one silent socket holds the job until timeout-minutes');
+  });
+
+  test('🔴 RED CONTROL — the real check-prod-provenance.mjs with ghRead\'s `signal,` deleted is named by the limb, once', () => {
+    // The row's "red control that re-adds one bare fetch", run in memory on the
+    // real source. Each line is found by its text, never by a number, and the
+    // unmutated file is the green control.
+    const src = readFileSync(join(OPS, 'check-prod-provenance.mjs'), 'utf8');
+    const lines = src.split('\n');
+    const ghRead = lines.findIndex((l) => l.startsWith('const ghRead = '));
+    const fetchAt = lines.findIndex((l, i) => i > ghRead && /\bfetch\(/.test(l));
+    const signalAt = lines.findIndex((l, i) => i > fetchAt && l === '        signal,');
+    assert.ok(ghRead >= 0 && fetchAt > ghRead && signalAt > fetchAt, `ghRead (${ghRead}), its fetch( (${fetchAt}) or its \`signal,\` (${signalAt}) is gone; re-find them`);
+    assert.deepEqual(unboundedSites([{ name: 'check-prod-provenance.mjs', sites: networkSites(src) }], new Map()), [], 'the green control: the real file names a signal at every site');
+    const mutated = [...lines.slice(0, signalAt), ...lines.slice(signalAt + 1)].join('\n');
+    assert.deepEqual(unboundedSites([{ name: 'check-prod-provenance.mjs', sites: networkSites(mutated) }], new Map()), [
+      `tooling/ops/check-prod-provenance.mjs:${fetchAt + 1} fetch(…) names no signal`,
+    ]);
+  });
+
+  test('🔴 RED CONTROL — `fetch` bound through `globalThis` and called bare is a site, and the limb names it', () => {
+    const sites = networkSites('const f = globalThis.fetch;\nexport const go = async (u) => { await f(u); };\n');
+    assert.deepEqual(sites, [{ line: 2, callee: 'f', signal: false }], 'the alias finder no longer reads `X = globalThis.fetch`');
+    assert.deepEqual(unboundedSites([{ name: 'alias.mjs', sites }], new Map()), ['tooling/ops/alias.mjs:2 f(…) names no signal']);
   });
 
   test('🔴 every file the sweep says touches the network has a call site the limb can check', () => {
@@ -1067,6 +1100,82 @@ describe('B10 — the Cloudflare readers re-ask a blip and still refuse an outag
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// B10b — ⏱ 2026-09-24: check-mail-auth-dns's `doh()`, driven through its own
+// `doFetch` seam, on the same five checks as B10. It is not a `cf()` — it takes a
+// resolver, a name and a type, and returns the DoH JSON — so the five are written
+// for it rather than squeezed through B10's helpers. Its body is read INSIDE the
+// attempt, so a connection that drops mid-body is re-asked too.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('B10b — the DoH reader re-asks a blip and still refuses an outage', () => {
+  const DNS = { Status: 0, Answer: [{ name: '_dmarc.example.test', type: 16, TTL: 300, data: '"v=DMARC1; p=none"' }] };
+  const ok = () => ({ ok: true, status: 200, headers: { get: () => null }, text: async () => JSON.stringify(DNS) });
+  const bad = (status) => ({ ok: false, status, headers: { get: () => null }, text: async () => `HTTP ${status}` });
+  const ask = (doFetch) => doh(DOH_RESOLVERS[0], '_dmarc.example.test', 'TXT', { sleep: async () => {}, doFetch });
+
+  test('check-mail-auth-dns — GREEN CONTROL: one clean read, one attempt', async () => {
+    let n = 0;
+    const got = await ask(async (url, init) => {
+      n += 1;
+      assert.match(url, /^https:\/\/cloudflare-dns\.com\/dns-query\?name=_dmarc\.example\.test&type=TXT$/);
+      assert.ok(init.signal instanceof AbortSignal, 'the per-request signal reaches the fetch');
+      return ok();
+    });
+    assert.deepEqual(got, DNS);
+    assert.equal(n, 1);
+  });
+
+  test('🔴 check-mail-auth-dns — a dropped connection, before the headers or mid-body, FOLLOWED BY A SUCCESS reads as ok', async () => {
+    let n = 0;
+    const got = await ask(async () => {
+      n += 1;
+      if (n === 1) throw new TypeError('fetch failed');
+      return ok();
+    });
+    assert.deepEqual(got, DNS);
+    assert.equal(n, 2, 'the blip must be re-asked exactly once, not zero times and not five');
+    let m = 0;
+    const midBody = await ask(async () => {
+      m += 1;
+      if (m === 1) return { ok: true, status: 200, headers: { get: () => null }, text: async () => { throw new TypeError('terminated'); } };
+      return ok();
+    });
+    assert.deepEqual(midBody, DNS);
+    assert.equal(m, 2, 'a body that died mid-read is the wire dropping, not an empty answer');
+  });
+
+  test('🔴 check-mail-auth-dns — a PERSISTENT failure is still COULD NOT LOOK, never a pass', async () => {
+    let n = 0;
+    await assert.rejects(
+      ask(async () => {
+        n += 1;
+        throw new TypeError('fetch failed');
+      }),
+      (e) => e instanceof CouldNotLook && /all 3 attempt\(s\)/.test(e.message) && /cloudflare-dns\.com _dmarc\.example\.test TXT/.test(e.message),
+    );
+    assert.equal(n, READ_ATTEMPTS);
+  });
+
+  test('check-mail-auth-dns — a 429 then a success reads as ok', async () => {
+    let n = 0;
+    const got = await ask(async () => (n++ === 0 ? bad(429) : ok()));
+    assert.deepEqual(got, DNS);
+    assert.equal(n, 2);
+  });
+
+  test('🔴 RED CONTROL — check-mail-auth-dns does NOT re-ask a 403: an answer is an answer', async () => {
+    let n = 0;
+    await assert.rejects(
+      ask(async () => {
+        n += 1;
+        return bad(403);
+      }),
+      (e) => e instanceof CouldNotLook && /answered HTTP 403/.test(e.message),
+    );
+    assert.equal(n, 1, 'a resolver refusing us does not change its mind in two seconds');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // B11 — THE TWO READERS OUTSIDE ops-watch THAT ARE STILL IN THE CLASS.
 //
 // The sweep clause says "any other ops reader that turns a single fetch failure
@@ -1218,5 +1327,26 @@ describe('B12 — the per-request ceiling: a read that never answers still ends'
     // full ceiling must fit inside one job; the heartbeats and glitchtip jobs run
     // more than ten, which is why each of their steps carries its own ceiling.
     assert.ok(10 * READ_WALL_CEILING_MS <= 600_000, `10 × ${READ_WALL_CEILING_MS} ms exceeds a 600 s job`);
+  });
+
+  test('🔴 runDeadline ends every read still pending as COULD NOT LOOK, un-retried, and cancel() disarms it', { timeout: 5000 }, async () => {
+    // ⏱ 2026-09-24: the whole-run ceiling check-mail-auth-dns passes as its caller
+    // signal. It lives in this module because B8 refuses a timer armed by an importer.
+    const { slept, sleep } = recorder();
+    const run = runDeadline(20);
+    let calls = 0;
+    const err = await readWithBoundedRetry(
+      () => { calls += 1; return never(); },
+      { sleep, signal: run.signal, timeoutMs: 2000 },
+    ).then(() => null, (e) => e);
+    assert.ok(err instanceof CouldNotLook, `ended as ${err?.name}: ${err?.message}`);
+    assert.match(err.message, /the whole-run ceiling of 0\.02s passed before every read answered/);
+    assert.equal(err.retryable, undefined, 'a spent run is not a blip');
+    assert.equal(calls, 1, 'the run ceiling is the caller\'s abort: never re-asked');
+    assert.deepEqual(slept, []);
+    const idle = runDeadline(20);
+    idle.cancel();
+    await new Promise((r) => setTimeout(r, 40));
+    assert.equal(idle.signal.aborted, false, 'a cancelled deadline never fires');
   });
 });

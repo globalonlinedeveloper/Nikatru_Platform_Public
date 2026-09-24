@@ -28,6 +28,7 @@ import { fileURLToPath } from 'node:url';
 
 import { enumerateMigrationTables, sqlLiteral } from '../migration-tables.mjs';
 import { attestationCommitRead, attestationDeployments, CouldNotLook, collectPaged, reservedAddressCensusSql } from '../../ops/check-prod-provenance.mjs';
+import { KILL_MS, serveSilence, runBounded } from './fixtures/silent-server.mjs';
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const GATE = join(REPO, 'tooling', 'ci', 'assert-prod-provenance.mjs');
@@ -1459,5 +1460,74 @@ describe('collectPaged — a paged GitHub listing is read whole, or refused', ()
       walk([{ rows: null }]),
       (e) => e instanceof CouldNotLook && /a page of the listing was not an array of rows/.test(e.message),
     );
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-24 · A GITHUB THAT ACCEPTS AND NEVER ANSWERS (row
+// O-OPS-READER-NO-CEILING). verify-monitors, verify-alarm-chains and
+// verify-supabase-templates each had a never-answer case; this reader had none,
+// because both of its GitHub reads hard-coded https://api.github.com and no test
+// could point them anywhere else. They now take their origin from
+// record-deployment.mjs's loopback-only `githubApiBase`, so the REAL monitor,
+// with its real transport, is run against the shared silent server.
+//
+// 🔴 THE CASE PROVES WHY IT EXITED, NOT ONLY THAT IT DID. main() reads GitHub
+// (`githubRuns`) before D1, and the Cloudflare credential is left empty here: if
+// that order ever flipped, the run would still exit 2, for the missing
+// credential. Only the `per-request ceiling` match tells the two apart.
+// No flag is passed. Every `--*-file` flag turns on OFFLINE FIXTURE MODE,
+// `--runs-file` skips `githubRuns`, and each `--emit-*` returns before any read.
+// ──────────────────────────────────────────────────────────────────────────────
+describe('check-prod-provenance — a GitHub that never answers is exit 2 inside the ceiling', () => {
+  const env = {
+    GITHUB_TOKEN: 'fixture-token',
+    GH_TOKEN: '',
+    GITHUB_REPOSITORY: 'fixture/repo',
+    CLOUDFLARE_API_TOKEN: '',
+    CLOUDFLARE_ACCOUNT_ID: '',
+  };
+
+  test('🔴 a GitHub that accepts and never answers ends as exit 2 inside the ceiling, not a hang', { timeout: KILL_MS + 10_000 }, async () => {
+    const g = await serveSilence();
+    try {
+      const t0 = Date.now();
+      const { code, signal, out } = await runBounded(MONITOR, { ...env, GITHUB_API_URL: g.url, OPS_REQUEST_TIMEOUT_MS: '300' });
+      const took = Date.now() - t0;
+      console.log(`# never answers: exit ${code} after ${took} ms, ${g.seen.length} request(s) reached the silent server`);
+      assert.equal(signal, null, `killed after ${took} ms: the GitHub read had no per-request ceiling\n${out}`);
+      assert.ok(g.seen.length >= 1, 'the monitor never reached the silent server, so a GitHub read bypassed the seam:\n' + out);
+      assert.deepEqual(g.seen.filter((u) => !u.startsWith('/repos/fixture/repo/')), [], 'every request names the repository under test');
+      assert.equal(code, 2, out);
+      assert.match(out, /COULD NOT LOOK/);
+      assert.match(out, /per-request ceiling/, 'the line says WHY it could not look, and it is not the missing Cloudflare credential');
+      assert.match(out, /LOOPBACK TEST SEAM/);
+    } finally {
+      await g.close();
+    }
+  });
+
+  test('CONTROL — the same silent server with no shortened ceiling is still waiting at 5 s, and is killed', { timeout: KILL_MS + 10_000 }, async () => {
+    // One attempt alone is REQUEST_TIMEOUT_MS = 15 s, three of them more, so a
+    // 5 s kill lands mid-read. That is what makes the case above evidence: its
+    // fast end comes from the ceiling knob, and this harness does see a hang.
+    // The knob is SET EMPTY rather than left out, so a value inherited from the
+    // parent environment is not read either (an empty value is ignored).
+    const g = await serveSilence();
+    try {
+      const { signal, out } = await runBounded(MONITOR, { ...env, GITHUB_API_URL: g.url, OPS_REQUEST_TIMEOUT_MS: '' }, { killMs: 5_000 });
+      console.log(`# control: signal ${signal} at the 5 s kill, ${g.seen.length} request(s) reached the silent server`);
+      assert.notEqual(signal, null, `the monitor ended by itself inside 5 s with no shortened ceiling, so the case above proves nothing:\n${out}`);
+      assert.ok(g.seen.length >= 1, 'the kill landed before the monitor reached the silent server:\n' + out);
+    } finally {
+      await g.close();
+    }
+  });
+
+  test('🔴 the seam refuses a host that is neither GitHub nor loopback, before any request', { timeout: KILL_MS + 10_000 }, async () => {
+    const { code, signal, out } = await runBounded(MONITOR, { ...env, GITHUB_API_URL: 'http://example.invalid' });
+    assert.equal(signal, null, out);
+    assert.equal(code, 2, out);
+    assert.match(out, /neither https:\/\/api\.github\.com nor loopback/);
   });
 });

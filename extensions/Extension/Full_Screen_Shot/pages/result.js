@@ -32,7 +32,7 @@
      sentences some of the 55 reorder — Japanese renders the first as
      "パート 1 / 2". The English travels beside the key as the fallback, exactly
      as it does in the markup. The three failure sentences are deliberately NOT
-     quoted in this comment: test/pixel-sim/run.js greps this file for them to
+     quoted in this comment: test/pixel-sim/run.node.js greps this file for them to
      prove each sink still names what failed, and it reads the source with the
      comments in, so a comment that quoted one would answer the check for it. */
 

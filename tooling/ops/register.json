@@ -635,9 +635,15 @@
       "⏱ 2026-09-16 — RATCHETED DOWN 14 -> 13, BECAUSE ONE MORE DATE WAS READ. expiring.cert.origin-ca carries 2041-07-16, read live from",
       "the Cloudflare API (`GET /client/v4/certificates?zone_id=<nikatru.com>` -> the zone's one Origin CA certificate, `expires_on`",
       "2041-07-16 16:44:00 UTC). Before the change assert-ops-register printed 14 expiry UNREAD against a ceiling of 14; after it, 13,",
-      "with one more lead-window comparison actually executed. Same rule as above: the ceiling moves to the new count, no slack."
+      "with one more lead-window comparison actually executed. Same rule as above: the ceiling moves to the new count, no slack.",
+      "",
+      "⏱ 2026-09-24 — RATCHETED DOWN 13 -> 12, BECAUSE ONE MORE DATE WAS READ. expiring.store-credential.edge-api-key carries",
+      "2026-11-20, the expiry Partner Center shows beside EDGE_API_KEY (O-EDGE-API-KEY-EXPIRES-2026-11-20). Before the change",
+      "assert-ops-register printed 13 expiry UNREAD against a ceiling of 13; after it, 12, with one more lead-window comparison actually",
+      "executed. The AMO key minted the same day does NOT move this number: an AMO JWT credential carries no expiry of its own, so",
+      "expiring.store-credential.amo-api-key keeps its null and says why. Same rule as above: the ceiling moves to the new count, no slack."
     ],
-    "_maxNull": 13
+    "_maxNull": 12
   },
   "_retentionCoverage": {
     "_why": [
@@ -3516,7 +3522,7 @@
         "mozilla"
       ],
       "ownerGated": true,
-      "ownerGap": "Owner: create the AMO developer account and issue the API key pair, then set AMO_JWT_ISSUER and AMO_JWT_SECRET and write the issue date here. UNKNOWN UNTIL MINTED. The credential does not exist yet — no account has issued it — so there is no date to read anywhere, and writing one would be an invented expiry, which is strictly worse than a null because the lead-window arithmetic would then run and PASS on a fiction. The row exists NOW rather than on the day the credential arrives because the day it arrives is exactly the day nobody remembers to write it down.",
+      "ownerGap": "✅ MINTED 2026-09-08 — this field is CORRECTED off UNKNOWN UNTIL MINTED and the owner step below is DONE: the AMO developer account exists and the repository secrets AMO_JWT_ISSUER (updated 2026-09-08T21:35:12Z) and AMO_JWT_SECRET (updated 2026-09-08T21:35:27Z) exist, read off one `gh secret list` on 2026-09-24 (names and dates only). `expires` stays null ON PURPOSE, and for the same kind of reason as the Google service-account row: an AMO JWT key pair carries no expiry date of its own — it is revoked or re-issued, never dated — so the null records an absent kind of fact rather than an unread one, and the `_maxNull` ceiling is not lowered for this row. ⚠️ A secret that exists and a secret that works are different claims, and only the first is made here: the AMO lane has never run with these credentials. THE PRIOR TEXT, kept because it was true until 2026-09-08: Owner: create the AMO developer account and issue the API key pair, then set AMO_JWT_ISSUER and AMO_JWT_SECRET and write the issue date here. UNKNOWN UNTIL MINTED. The credential does not exist yet — no account has issued it — so there is no date to read anywhere, and writing one would be an invented expiry, which is strictly worse than a null because the lead-window arithmetic would then run and PASS on a fiction. The row exists NOW rather than on the day the credential arrives because the day it arrives is exactly the day nobody remembers to write it down.",
       "source": "unverified",
       "unverifiedWhy": "No page fetched for this row states a fixed lifetime for an AMO API key — the credential is revocable and re-issuable rather than dated. The row is therefore a RE-READ obligation on a 180d cadence, not a countdown; `expires` stays null until the owner records an issue date and a policy read that gives it meaning.",
       "expiryKnownAt": "addons.mozilla.org -> Developer Hub -> Manage API Keys. Console-only. Private/runbooks/store-submission-extensions.md"
@@ -3550,10 +3556,10 @@
       "id": "expiring.store-credential.edge-api-key",
       "kind": "expiring",
       "what": "The Microsoft Edge Add-ons Partner Center API key EDGE_API_KEY (sent as `Authorization: ApiKey <key>` beside the EDGE_CLIENT_ID header). Partner Center shows an expiry against the key on the page that issues it, which makes this the one extension credential with a real date to read.",
-      "detector": "This row. Nothing in CI can reach the issuing console, so the register is the detector until a date is written here.",
+      "detector": "This row. Nothing in CI can reach the issuing console, so the register is the detector until a date is written here. ⏱ 2026-09-24: the date IS written — `expires` carries 2026-11-20, the expiry Partner Center shows beside the key (O-EDGE-API-KEY-EXPIRES-2026-11-20) — so tooling/ci/assert-ops-register.mjs now runs its leadDays arithmetic on this row, and from 2026-10-21 it reports the key inside its own 30-day lead window, which turns ci.yml red until the key is re-issued and the new expiry written here.",
       "response": "Open Partner Center -> Microsoft Edge program -> Publish API and read the key's expiry. Write it into `expires` here, and re-issue before the lead window closes — a key that expires between two releases fails a tag push, not a rehearsal.",
       "cadence": "180d",
-      "expires": null,
+      "expires": "2026-11-20",
       "leadDays": 30,
       "mechanism": {
         "substrate": "external-registry",
@@ -3566,7 +3572,7 @@
         "microsoft"
       ],
       "ownerGated": true,
-      "ownerGap": "Owner: register the tool in Partner Center, publish it manually once, enable the Publish API and set EDGE_CLIENT_ID and EDGE_API_KEY — then write the expiry Partner Center shows into `expires` on this row. UNKNOWN UNTIL MINTED. The credential does not exist yet — no account has issued it — so there is no date to read anywhere, and writing one would be an invented expiry, which is strictly worse than a null because the lead-window arithmetic would then run and PASS on a fiction. The row exists NOW rather than on the day the credential arrives because the day it arrives is exactly the day nobody remembers to write it down.",
+      "ownerGap": "✅ MINTED 2026-09-08 — this field is CORRECTED off UNKNOWN UNTIL MINTED and the owner step below is DONE apart from the manual publish: the repository secrets EDGE_API_KEY (updated 2026-09-08T21:34:32Z) and EDGE_CLIENT_ID (updated 2026-09-08T21:34:15Z) exist, read off one `gh secret list` on 2026-09-24 (names and dates only), and the Publish API is INFERRED to be enabled from the key existing — nothing here has read the console. `expires` is now 2026-11-20, the date Partner Center shows beside the key, so the leadDays-30 arithmetic is RUNNABLE where a null made it UNRUNNABLE rather than merely late. ⚠️ WHAT REMAINS OWNER WORK IS THE RENEWAL AND THE FIRST PUBLISH: the key must be re-issued, and the new expiry written here, by 2026-10-20 — from 2026-10-21 the key sits inside its own lead window and this guard fails ci.yml on every change. The FullShot product is still \"In draft\" with no package uploaded (see extensions/Extension/Full_Screen_Shot/tool.json, storeMetadata.stores.edge._listingIdWhy), so nothing has yet proved these credentials authenticate a submission. THE PRIOR TEXT, kept because it was true until 2026-09-08: Owner: register the tool in Partner Center, publish it manually once, enable the Publish API and set EDGE_CLIENT_ID and EDGE_API_KEY — then write the expiry Partner Center shows into `expires` on this row. UNKNOWN UNTIL MINTED. The credential does not exist yet — no account has issued it — so there is no date to read anywhere, and writing one would be an invented expiry, which is strictly worse than a null because the lead-window arithmetic would then run and PASS on a fiction. The row exists NOW rather than on the day the credential arrives because the day it arrives is exactly the day nobody remembers to write it down.",
       "source": "verified",
       "expiryKnownAt": "Partner Center -> Microsoft Edge program -> Publish API, beside the key. Console-only. Private/runbooks/store-submission-extensions.md"
     },

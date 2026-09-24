@@ -178,6 +178,10 @@
       "property": "workflow-scan"
     },
     {
+      "path": "tooling/ci/assert-release-json.mjs",
+      "property": "workflow-scan"
+    },
+    {
       "path": "tooling/ci/assert-release-lane-generic.mjs",
       "property": "workflow-scan"
     },

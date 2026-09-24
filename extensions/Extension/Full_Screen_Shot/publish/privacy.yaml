@@ -18,11 +18,14 @@
 # nine dashboard answers a reviewer compares to the code.
 #
 # ── EVERY ROW IS SOURCED, NONE IS INVENTED ───────────────────────────────────
-# The nine dispositions below are the nine already decided and reasoned in
-# publish/PRIVACY-POLICY-HOSTING.md §4c (the table at :287-295) and summarised
-# in publish/COMPLIANCE-CHECKLIST.md C4 / §"Data-disclosure decision". Nothing
-# here is a new judgement; this file is where those answers stop being prose a
-# renderer cannot read.
+# The nine dispositions below are the nine decided in
+# publish/COMPLIANCE-CHECKLIST.md C4 / §"Data-disclosure decision", which every
+# row's `source` names. Nothing here is a new judgement; this file is where those
+# answers stop being prose a renderer cannot read.
+# ⏱ 2026-09-24: PRIVACY-POLICY-HOSTING.md §4c was deleted 2026-09-24 (EXT-1).
+# Each row's `basis` carries its reasoning. The deleted table is at
+# 7f5d0bfd:extensions/Extension/Full_Screen_Shot/publish/PRIVACY-POLICY-HOSTING.md:280-295.
+# The one point no `basis` states is kept in the checklist's C4 row.
 #
 # ── WHY "Website content" IS local-only AND NOT not-collected ────────────────
 # 🔴 THE TEMPTING ANSWER IS THE WRONG ONE, and the checklist says so in its own
@@ -64,7 +67,7 @@ storeDisclosures:
       entirely on the device and no request of any kind leaves the browser, but
       Google's User Data FAQ counts handling rather than transmission, so the
       box is ticked and the local-only explanation travels with it.
-    source: extensions/Extension/Full_Screen_Shot/publish/PRIVACY-POLICY-HOSTING.md
+    source: extensions/Extension/Full_Screen_Shot/publish/COMPLIANCE-CHECKLIST.md
     asOf: "2026-09-06"
 
   - category: Personally identifiable information
@@ -74,7 +77,7 @@ storeDisclosures:
       stored. A capture may depict a name; FullShot never extracts, parses,
       indexes or retains one, and the opt-in redaction feature exists to remove
       such text from the image rather than to gather it.
-    source: extensions/Extension/Full_Screen_Shot/publish/PRIVACY-POLICY-HOSTING.md
+    source: extensions/Extension/Full_Screen_Shot/publish/COMPLIANCE-CHECKLIST.md
     asOf: "2026-09-06"
 
   - category: Health information
@@ -83,7 +86,7 @@ storeDisclosures:
       Never touched. There is no code path that reads, classifies or stores
       anything of this kind, and no network layer that could carry it anywhere
       if there were.
-    source: extensions/Extension/Full_Screen_Shot/publish/PRIVACY-POLICY-HOSTING.md
+    source: extensions/Extension/Full_Screen_Shot/publish/COMPLIANCE-CHECKLIST.md
     asOf: "2026-09-06"
 
   - category: Financial and payment information
@@ -92,7 +95,7 @@ storeDisclosures:
       Card-number patterns are detected only in order to paint an opaque block
       over them, and the matched value is never stored, indexed or transmitted.
       Detecting in order to hide is the opposite of collecting.
-    source: extensions/Extension/Full_Screen_Shot/publish/PRIVACY-POLICY-HOSTING.md
+    source: extensions/Extension/Full_Screen_Shot/publish/COMPLIANCE-CHECKLIST.md
     asOf: "2026-09-06"
 
   - category: Authentication information
@@ -101,7 +104,7 @@ storeDisclosures:
       Never read. No credential, password, security answer or PIN is requested,
       observed or stored anywhere in the extension, which has no account system
       of its own to need one.
-    source: extensions/Extension/Full_Screen_Shot/publish/PRIVACY-POLICY-HOSTING.md
+    source: extensions/Extension/Full_Screen_Shot/publish/COMPLIANCE-CHECKLIST.md
     asOf: "2026-09-06"
 
   - category: Personal communications
@@ -110,7 +113,7 @@ storeDisclosures:
       FullShot does not read messages as messages. Capturing a page that happens
       to be an inbox produces an image, exactly as any other page does, and
       nothing parses it back into correspondence.
-    source: extensions/Extension/Full_Screen_Shot/publish/PRIVACY-POLICY-HOSTING.md
+    source: extensions/Extension/Full_Screen_Shot/publish/COMPLIANCE-CHECKLIST.md
     asOf: "2026-09-06"
 
   - category: Location
@@ -119,7 +122,7 @@ storeDisclosures:
       No geolocation API is called and there is no network layer at all, so
       there is nothing that could infer where the user is — not from the device
       and not from a connection that is never opened.
-    source: extensions/Extension/Full_Screen_Shot/publish/PRIVACY-POLICY-HOSTING.md
+    source: extensions/Extension/Full_Screen_Shot/publish/COMPLIANCE-CHECKLIST.md
     asOf: "2026-09-06"
 
   - category: Web history
@@ -129,7 +132,7 @@ storeDisclosures:
       touched only at the instant the user starts a capture on it. The local
       capture history holds the captures the user chose to keep, on their own
       device, which is their saved work rather than a record of browsing.
-    source: extensions/Extension/Full_Screen_Shot/publish/PRIVACY-POLICY-HOSTING.md
+    source: extensions/Extension/Full_Screen_Shot/publish/COMPLIANCE-CHECKLIST.md
     asOf: "2026-09-06"
 
   - category: User activity
@@ -138,7 +141,7 @@ storeDisclosures:
       Nothing is logged. Programmatic scrolling happens during a capture in
       order to stitch the page together; it is not recorded, and the user's own
       clicks, keystrokes and scrolling are never observed.
-    source: extensions/Extension/Full_Screen_Shot/publish/PRIVACY-POLICY-HOSTING.md
+    source: extensions/Extension/Full_Screen_Shot/publish/COMPLIANCE-CHECKLIST.md
     asOf: "2026-09-06"
 
 # The three Limited Use affirmations the dashboard requires. Declared here so

@@ -86,6 +86,10 @@ the manifest still reads 1.10.2 and nothing has been published at it. Everything
   of that diff is the comment explaining why the stylesheet is not consulted. The places skipped and
   the characters in them are recorded as `notRendered` and `notRenderedChars`, so that "FullShot did
   not look at that" is a fact a reader can check rather than a silence.
+- *Appended 2026-09-24:* **A redaction block paints only the visible part of a match, and a match
+  wholly clipped by an ancestor counts as not covered** (#826, 8d1751e3, 2026-09-19,
+  `content/capture.js`; O-FULLSHOT-CLIPPED-ANCESTOR-OVERMASK). Shipped without a version bump: the
+  manifest and this heading stay 1.10.2, the pair `scripts/check-version.mjs` grades.
 
 ### Changed
 
@@ -149,6 +153,24 @@ panel) is treated as visible text" is fixed by the second item under **Fixed** a
 never only the recall gap it was recorded as, because the boxes measured from that text were then
 painted onto the image. The rest of 1.10.1's list still applies, the placeholder
 `browser_specific_settings.gecko.id` included.*
+
+*Appended 2026-09-24, measured that day. Three sentences in this entry are no longer true, and they
+are corrected here rather than rewritten above. (1) **The gecko id is not a placeholder, and it was
+not one on 2026-08-26 either.** `browser_specific_settings.gecko.id` has been `fullshot@nikatru.com`
+since 2026-08-18 (`publish/manifest.firefox.json`, from `publish/identity.json`), so neither the first
+"Known limitations" bullet nor the 2026-08-26 note beneath it names an open owner decision. (2) **The
+Fixed bullet's "`name` within 45" is not a Chrome limit.** Chrome documents a 75-character manifest
+name (`tool.json` `storeMetadata.stores.chrome.limits`, fetched 2026-08-20); 45 is the number
+`scripts/policy-check.mjs` grades `name` against, and the only published source this repository holds
+for it is MDN's statement of Edge's limit, which `tool.json` `storeMetadata._unverified` records as
+never read from Microsoft. The 132-code-point description limit is Chrome's and stands. (3) **This repo
+no longer verifies only `connect-src`.** `node scripts/policy-check.mjs fullshot` prints
+`PASS 9 more CSP directive(s) hold the intended posture` (the `CSP_POSTURE` limb,
+`scripts/policy-check.mjs:1005`) beside the `connect-src` limb, and exits 0 at
+`17 passed · 1 warning(s)`; the self-test's `img-src: NOT DECLARED` and `permitted and not intended: *`
+cases exit 1, so deleting `img-src` or setting it to `*` now fails the gate. The one warning names the
+directives the gate does not model. The Chromium-only and content-script limits recorded under
+**Fixed** above still hold.*
 
 *Packages: `publish/fullshot-1.10.2.zip` and `-firefox.zip`, 85 entries each, 55 locale catalogues.*
 

@@ -44,6 +44,9 @@
      directory present but a required file empty-> FAIL, at any served state
      a directory no store declares              -> FAIL    (an orphan listing)
      a limit with no `source`                   -> FAIL    (see below)
+     a limit on a file no listing field names   -> FAIL    (see 3b)
+     a limit on an additional file, file absent -> FAIL    (see 3b)
+     more distinct lines than a sourced maxItems-> FAIL    (see 3b)
      a URL file that is not an https URL        -> OWNER while unserved, FAIL once served
      a URL file that disagrees with identity.json-> FAIL, at any served state
      screenshots/ with no images                -> OWNER while unserved, FAIL once served
@@ -73,8 +76,10 @@ import { fileURLToPath } from 'node:url';
 import { Report, parseArgs, die } from './lib/report.mjs';
 import { repoRoot, resolveTool, loadAllTools, readText } from './lib/toolinfo.mjs';
 import {
+  LISTING_FIELDS,
   extensionPerStoreListingFiles,
   extensionSharedListingFiles,
+  extensionAdditionalListingFiles,
 } from '../../contracts/store/vocabulary.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -106,6 +111,14 @@ const REQUIRED_PER_STORE = extensionPerStoreListingFiles();
 /* Material all three stores accept, kept once. 1280x800 is the only screenshot
    size Chrome, Edge and AMO all take — measured from their own docs. */
 const REQUIRED_SHARED = extensionSharedListingFiles();
+/* Files a store directory MAY hold that only SOME stores take: the listing
+   graphics, Edge's search terms, AMO's tags. Never demanded of every store —
+   that is REQUIRED_PER_STORE's job — but a `limits` entry may name one, and
+   section 3b grades it. Added 2026-09-24: until then the limits loop read only
+   the required files, so a sourced limit on any other file was read by nothing. */
+const ADDITIONAL_PER_STORE = extensionAdditionalListingFiles();
+/* `maxItems` counts lines, so it means something only on a TEXT field. */
+const KIND_OF = new Map(LISTING_FIELDS.map((f) => [f.name, f.kind]));
 
 const args = parseArgs(process.argv.slice(2));
 args.rejectUnknown(['all', 'repo-root']);
@@ -227,6 +240,39 @@ function urlLinesOf(body) {
   return body.split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
 }
 const isHttpsUrl = (v) => /^https:\/\/[^\s<>"']+$/.test(v);
+
+/* One sourced limit, graded against one listing file. `max` and `min` count
+   characters. `maxItems` counts DISTINCT value lines — blank and `#` lines are
+   not values, the rule urlLinesOf applies to the URL files, and a repeated line
+   is one item because the limit it was written for caps "unique terms". Lines
+   are trimmed and case-folded before they are compared, so "Screenshot" and
+   "screenshot" are one term. It is counted only on an additional file:
+   section 3b refuses it anywhere else. */
+function gradeLimit(label, id, f, lim, text) {
+  if (typeof lim.source !== 'string' || !lim.source.startsWith('https://')) {
+    return r.fail(label + ' limit carries a source',
+      'storeMetadata.stores.' + id + '.limits["' + f + '"] declares a limit with no https `source`.\n' +
+      'An invented limit fires on CORRECT input. Add the URL and the fetch date, or remove the limit.');
+  }
+  const n = charCount(text);
+  const items = Number.isInteger(lim.maxItems) && ADDITIONAL_PER_STORE.includes(f)
+    ? new Set(urlLinesOf(text).map((l) => l.toLowerCase())).size : null;
+  if (items !== null && items > lim.maxItems) {
+    return r.fail(label + ' within the store item limit',
+      items + ' distinct item(s) against a maxItems of ' + lim.maxItems + '.\nSource: ' + lim.source);
+  }
+  if (Number.isInteger(lim.max) && n > lim.max) {
+    return r.fail(label + ' within the store limit',
+      n + ' characters against a maximum of ' + lim.max + '.\nSource: ' + lim.source);
+  }
+  if (Number.isInteger(lim.min) && n < lim.min) {
+    return r.fail(label + ' meets the store minimum',
+      n + ' characters against a minimum of ' + lim.min + '.\nSource: ' + lim.source);
+  }
+  return r.pass(label, (items !== null ? items + ' item(s), maxItems ' + lim.maxItems + ', ' : '') + n + ' chars' +
+    (Number.isInteger(lim.min) ? ', min ' + lim.min : '') +
+    (Number.isInteger(lim.max) ? ', max ' + lim.max : ''));
+}
 
 /* A read that FAILS is not a result that is EMPTY — the rule policy-check and
    lib/toolinfo.mjs both state above their own walks. An identity.json that does
@@ -446,6 +492,54 @@ for (const tool of tools) {
     const rel = tool.rel + '/' + row.dir;
     const served = row.served === true;
 
+    /* ── 3b. 🔴 EVERY FILE A `limits` BLOCK NAMES IS GRADED ─────────────────
+       ADDED 2026-09-24. The loop below reads `row.limits[f]` only for f in
+       REQUIRED_PER_STORE, so a limit on any other file was a sentence in
+       tool.json that nothing executed: Edge's seven-search-term cap could be
+       declared, sourced, and exceeded at exit 0. Four limbs — (a) and (d) here,
+       because they are facts about tool.json alone and hold whether or not the
+       directory exists yet; (b) and (c) after the required loop:
+         (a) a key naming a file in neither REQUIRED_PER_STORE nor
+             ADDITIONAL_PER_STORE                                -> FAIL
+         (b) an additional file a key names is absent or blank, or
+             holds more distinct value lines than its maxItems   -> FAIL
+         (c) an additional text file present with no key         -> PASS,
+             "no sourced limit"
+         (d) maxItems anywhere but a kind:'text' additional field -> FAIL
+       (d) is a refusal, not a style rule: the required loop grades CHARACTERS
+       and reads no maxItems, and an image has no lines to count, so a maxItems
+       in either place would be a limit enforced by nothing — the same shape as
+       the unsourced limit refused in gradeLimit. */
+    const limits = row.limits && typeof row.limits === 'object' ? row.limits : {};
+    const limitedAdditional = [];
+    for (const [f, lim] of Object.entries(limits)) {
+      if (!REQUIRED_PER_STORE.includes(f) && !ADDITIONAL_PER_STORE.includes(f)) {
+        r.fail(rel + '/' + f + ' limit names a listing field',
+          'limits names ' + f + ', which is not a listing file: storeMetadata.stores.' + id + '.limits["' + f + '"] is a limit on a file that is not a per-store listing field.\n' +
+          'Per-store fields, from contracts/store/vocabulary.js: ' + [...REQUIRED_PER_STORE, ...ADDITIONAL_PER_STORE].join(', ') + '.\n' +
+          'A limit on a file this guard never opens is enforced by nothing. Fix the name, or add the field to the contract.');
+        continue;
+      }
+      if (lim && typeof lim === 'object' && lim.maxItems !== undefined) {
+        const listField = ADDITIONAL_PER_STORE.includes(f) && KIND_OF.get(f) === 'text';
+        if (!listField) {
+          r.fail(rel + '/' + f + ' maxItems sits on a text field only some stores take',
+            'storeMetadata.stores.' + id + '.limits["' + f + '"] declares maxItems ' + JSON.stringify(lim.maxItems) + '.\n' +
+            'maxItems counts lines and is graded only on a kind:\'text\' per-store-additional field (' +
+            ADDITIONAL_PER_STORE.filter((x) => KIND_OF.get(x) === 'text').join(', ') + ').\n' +
+            'On ' + f + ' nothing reads it, so it would be a limit enforced by nothing. `max` counts characters.');
+          continue;
+        }
+        if (!(Number.isInteger(lim.maxItems) && lim.maxItems > 0)) {
+          r.fail(rel + '/' + f + ' maxItems is a positive integer',
+            'storeMetadata.stores.' + id + '.limits["' + f + '"] declares maxItems ' + JSON.stringify(lim.maxItems) + ',\n' +
+            'which counts nothing. A limit that cannot be compared is a limit enforced by nothing.');
+          continue;
+        }
+      }
+      if (ADDITIONAL_PER_STORE.includes(f) && lim) limitedAdditional.push([f, lim]);
+    }
+
     if (!fs.existsSync(abs) || !fs.statSync(abs).isDirectory()) {
       const why = rel + ' does not exist.';
       if (served) {
@@ -475,27 +569,41 @@ for (const tool of tools) {
       /* limits — only where somebody sourced one */
       const lim = row.limits?.[f];
       if (lim) {
-        if (typeof lim.source !== 'string' || !lim.source.startsWith('https://')) {
-          r.fail(rel + '/' + f + ' limit carries a source',
-            'storeMetadata.stores.' + id + '.limits["' + f + '"] declares a limit with no https `source`.\n' +
-            'An invented limit fires on CORRECT input. Add the URL and the fetch date, or remove the limit.');
-        } else {
-          const n = charCount(text);
-          if (Number.isInteger(lim.max) && n > lim.max) {
-            r.fail(rel + '/' + f + ' within the store limit',
-              n + ' characters against a maximum of ' + lim.max + '.\nSource: ' + lim.source);
-          } else if (Number.isInteger(lim.min) && n < lim.min) {
-            r.fail(rel + '/' + f + ' meets the store minimum',
-              n + ' characters against a minimum of ' + lim.min + '.\nSource: ' + lim.source);
-          } else {
-            r.pass(rel + '/' + f, n + ' chars' +
-              (Number.isInteger(lim.min) ? ', min ' + lim.min : '') +
-              (Number.isInteger(lim.max) ? ', max ' + lim.max : ''));
-          }
-        }
+        gradeLimit(rel + '/' + f, id, f, lim, text);
       } else {
         r.pass(rel + '/' + f, charCount(text) + ' chars, no sourced limit');
       }
+    }
+
+    /* 3b (b) and (c): an additional file a `limits` entry names must be there,
+       non-empty, and inside its sourced limit. */
+    for (const [f, lim] of limitedAdditional) {
+      const fAbs = path.join(abs, f);
+      if (!fs.existsSync(fAbs)) {
+        r.fail(rel + '/' + f + ' exists',
+          'storeMetadata.stores.' + id + '.limits declares a limit on it, and the file is absent.\n' +
+          'A declared limit on a missing file grades nothing. Restore the file, or remove the limit.');
+        continue;
+      }
+      const text = readText(fAbs);
+      filesChecked++;
+      if (!text.trim()) {
+        r.fail(rel + '/' + f + ' is non-empty',
+          'the file exists and is blank, and storeMetadata.stores.' + id + '.limits declares a limit on it.');
+        continue;
+      }
+      gradeLimit(rel + '/' + f, id, f, lim, text);
+    }
+
+    /* 3b (c): an additional TEXT file that is present and names no limit
+       passes, and says so — the same line the required loop prints. Images are
+       sized by store-graphics.json, not here. */
+    for (const f of ADDITIONAL_PER_STORE) {
+      if (KIND_OF.get(f) !== 'text' || limits[f]) continue;
+      const fAbs = path.join(abs, f);
+      if (!fs.existsSync(fAbs)) continue;
+      filesChecked++;
+      r.pass(rel + '/' + f, charCount(readText(fAbs)) + ' chars, no sourced limit');
     }
   }
 

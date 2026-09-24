@@ -1,12 +1,12 @@
 # FullShot — Full Page Screen Capture
 
-A complete, GoFullPage-style Chrome extension (Manifest V3). No external libraries, no build step, no special permissions beyond `activeTab`.
+A complete, GoFullPage-style Chrome extension (Manifest V3). No external libraries, no build step. Permissions, as `manifest.json` declares them: `permissions` (:12) `activeTab`, `scripting`, `downloads`, `storage` and `unlimitedStorage`, plus `optional_host_permissions` (:19) `<all_urls>`, requested at run time only for cross-origin iframe expansion and Batch URL capture. Each is justified in `tool.json` `policy`, which `node scripts/policy-check.mjs fullshot` (run from `extensions/`) grades against `manifest.json`; the dashboard text is `publish/STORE-LISTING.md` "## Permission justifications (one per dashboard field)".
 
 ## Install (developer mode)
 
 1. Open `chrome://extensions` in Chrome (or Edge/Brave: `edge://extensions`, `brave://extensions`).
 2. Turn on **Developer mode** (top right).
-3. Click **Load unpacked** and select this folder (`Tools_Full_Screen_Shot`).
+3. Click **Load unpacked** and select this folder (`extensions/Extension/Full_Screen_Shot`).
 4. Pin the FullShot icon to your toolbar. Done.
 
 ## Features
@@ -92,7 +92,7 @@ icons/                 Toolbar icons
 
 ```
 node test/sim-torture.node.js   # engine-vs-fake-DOM simulator, 3 modes, 78 checks
-node test/pixel-sim/run.js      # pixel simulator: REAL capture.js + REAL result.js
+node test/pixel-sim/run.node.js # pixel simulator: REAL capture.js + REAL result.js
                                 # stitching → PNGs in test/pixel-sim/out/, 8 scenarios
                                 # / 161 checks (app shell ×3 incl. 125% DPR with side-rail
                                 #  unroll, doc scroll, multi-part smart split, wide-table

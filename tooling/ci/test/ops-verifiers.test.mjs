@@ -41,6 +41,7 @@ import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { compareProviders, declared } from '../../ops/verify-auth-providers.mjs';
+import { KILL_MS, serveSilence, runBounded } from './fixtures/silent-server.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = resolve(CI_DIR, '..', '..');
@@ -237,34 +238,14 @@ describe('verify-monitors / verify-alarm-chains — the GlitchTip pair', () => {
   // held a reader until the job's timeout-minutes. OPS_REQUEST_TIMEOUT_MS shortens
   // the shared per-request ceiling (it can only shorten it), so the case ends in
   // seconds. The child is killed at KILL_MS and the case has its own { timeout },
-  // so a missing ceiling is a red case, never a hung suite.
-  const KILL_MS = 45_000;
-  const serveSilence = async () => {
-    const seen = [];
-    const sockets = new Set();
-    const server = createServer((req) => { seen.push(req.url); });
-    server.on('connection', (s) => { sockets.add(s); s.on('close', () => sockets.delete(s)); });
-    await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
-    return {
-      url: 'http://127.0.0.1:' + server.address().port,
-      seen,
-      close: () => { for (const s of sockets) s.destroy(); return new Promise((ok) => server.close(ok)); },
-    };
-  };
-  const runBounded = (script, env) =>
-    new Promise((ok) => {
-      const child = spawn(process.execPath, [join(OPS, script)], { cwd: REPO, env: { ...process.env, ...env }, timeout: KILL_MS });
-      let out = '';
-      child.stdout.on('data', (d) => { out += d; });
-      child.stderr.on('data', (d) => { out += d; });
-      child.on('close', (code, signal) => ok({ code, signal, out }));
-    });
-
+  // so a missing ceiling is a red case, never a hung suite. ⏱ 2026-09-24: the
+  // server and the runner live in fixtures/silent-server.mjs, shared with
+  // prod-provenance.test.mjs.
   const assertSilenceEndsInsideCeiling = async (script) => {
     const g = await serveSilence();
     try {
       const t0 = Date.now();
-      const { code, signal, out } = await runBounded(script, { ...glitchtipAt(g.url), OPS_REQUEST_TIMEOUT_MS: '300' });
+      const { code, signal, out } = await runBounded(join(OPS, script), { ...glitchtipAt(g.url), OPS_REQUEST_TIMEOUT_MS: '300' });
       const took = Date.now() - t0;
       assert.equal(signal, null, `killed after ${took} ms: the read had no per-request ceiling\n${out}`);
       assert.ok(g.seen.length >= 1, 'the script never reached the silent server:\n' + out);
