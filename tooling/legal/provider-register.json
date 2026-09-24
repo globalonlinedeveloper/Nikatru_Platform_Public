@@ -846,7 +846,7 @@
       "namedIn": [
         "subscriptiontracker/privacy.html"
       ],
-      "privateRecord": "Private/runbooks/boxes/oracle.md — Box A, the always-free VM and the self-hosted Supabase stack on it.",
+      "privateRecord": "Private/runbooks/boxes/oracle.md — Box A, the always-free VM (wiped of the platform 2026-09-24 and kept for non-platform use; until then it ran the self-hosted Supabase stack), and the OCI tenancy whose Object Storage holds the encrypted third backup copy.",
       "notes": [
         "🔴 THIS ID EXISTED BEFORE 2026-09-05 AND MEANT SOMETHING ELSE. It carried the CRASH SINK — the",
         "GlitchTip instance — because that was the only thing on the Oracle box anybody had written a row",
@@ -879,7 +879,19 @@
         "⏱ 2026-09-11 CORRECTION, appended rather than replacing ([ADR 053] rule 2): \"NAMED IN NO PAGE\" above was false for",
         "the generated per-app notice. sites/nikatru/subscriptiontracker/privacy.html has listed `oracle-cloud` as a processor",
         "since it was first rendered on 2026-09-06, and `namedIn` said nothing. It now records that page, so the naming is",
-        "checked against the page text like every other disclosure. The portfolio privacy.html still does not name Oracle."
+        "checked against the page text like every other disclosure. The portfolio privacy.html still does not name Oracle.",
+        "",
+        "⏱ 2026-09-24 — THE IDENTITY STACK MOVED TO HOSTINGER (Box C) AND BOX A WAS WIPED OF THE PLATFORM; appended rather",
+        "than replacing ([ADR 053] rule 2). Oracle now runs none of the services: the VM is kept for non-platform use and",
+        "holds nothing of the platform. What Oracle STILL holds is the encrypted third backup copy: /srv/restic from the",
+        "services box, copied daily into the OCI Object Storage bucket `nikatru-backup-thirdcopy` through the `ocienc:`",
+        "crypt remote (duty.restic-third-copy in tooling/ops/register.json). So the row STAYS, as a party that stores",
+        "ciphertext, and apps/subscriptiontracker/privacy.yaml keeps it as a processor with that purpose; dropping a party",
+        "that still holds data would under-disclose. The paragraphs above that call it the identity stack's host, and the",
+        "tie of its status to the `supabase` row, describe it until this date. `status` stays `wired-not-live`: the only",
+        "status rule this register's `_readme` states is that \"every `infrastructure` row with status `live` DECLARES the",
+        "personal-data categories it receives and retains\", and nothing in it makes `wired-not-live` false for a party",
+        "that only stores an encrypted copy."
       ]
     },
     {

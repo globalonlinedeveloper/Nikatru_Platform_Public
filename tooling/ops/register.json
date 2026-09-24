@@ -737,7 +737,6 @@
       "recovery.git-bundle-restore",
       "recovery.vault-only-rebuild",
       "recovery.glitchtip-postgres",
-      "recovery.oci-boot-volume",
       "recovery.worker-d1-export",
       "recovery.fresh-host",
       "recovery.app-retirement",
@@ -969,6 +968,35 @@
         "retiredWhy": "THE CERTIFICATE NO LONGER EXISTS. The owner answered O-ORIGIN-CA-KEEP-OR-REVOKE \"revoke, after you check\" on 2026-09-18, and it was revoked that day. It had protected no live hostname since GlitchTip moved to Box B on 2026-09-02 (Box B nginx binds 127.0.0.1:8080 with no TLS; every proxied record targets a tunnel, a Pages project or a Worker). A row tracking the expiry of a revoked certificate asks the register to watch a date that can no longer matter.",
         "evidence": "Read-only scans first, issuer read with openssl on every .pem/.crt/.cer outside the system CA store: Box A (Oracle, ubuntu-ampere) 2,624 files, 2,311 issuers readable, 0 \"CloudFlare Origin\" (control: ISRG Root X1 read correctly; /etc/ssl/glitchtip/ absent); Box B (Hostinger) 1,154 files, 1,056 readable, 0 hits. Then with the repo CLOUDFLARE_API_TOKEN: GET /client/v4/certificates?zone_id=<nikatru.com ef7d36e6…> -> 1 certificate (id 5550142505…, *.nikatru.com + nikatru.com, expires 2041-07-16); DELETE /client/v4/certificates/<id> -> success:true; READ-BACK GET -> 0 certificates. After: https://nikatru.com/, /subscriptiontracker/, platform and subscriptiontracker-api /v1/health all HTTP 200.",
         "whatTheRetirementCosts": "NOTHING. No script or duty read this row (its mechanism.readBy was \"nothing yet\"), no live hostname presented the certificate, and the zone SSL mode (strict) is satisfied by the edge certificates and the tunnels. If an origin certificate is ever needed again, mint a new one and give it a new row."
+      },
+      {
+        "id": "recovery.oci-boot-volume",
+        "retiredOn": "2026-09-24",
+        "retiredWhy": "2026-09-24: Box A wiped of the platform after the auth box moved to Box C; the VM is kept for non-platform use; nothing of the platform remains on its boot volume. A restore of that volume would bring back a machine that runs nothing of this portfolio, so a 180d drill clock on it would demand work that recovers nothing.",
+        "evidence": "THE WIPE AND ITS READ-BACK WERE MEASURED BY THE PARENT SESSION AND HANDED TO THE LANE THAT WROTE THIS ENTRY; they are inherited here, not re-measured. The owner ran the Box A wipe: its log opens \"== Box A wipe, started 2026-09-24T13:24:39Z\" and closes \"== finished 2026-09-24T13:25:18Z\" (13:24:39 to 13:25:18 UTC, 39 seconds), with \"remote wipe exit 0\", and after it \"auth-api /auth/v1/health -> 401 (still served by Box C)\". Read-back: docker, cloudflared, rclone, wg and beszel-agent are gone; /opt/supabase, /etc/cloudflared, /etc/wireguard and /var/lib/docker are gone; ufw keeps only OpenSSH plus 2 Fail2Ban rejects; the listening ports are only 22 and 53 (local). Re-checked independently over SSH at 13:26Z: all 5 binaries gone, no root crontab, and the VM still up because it is KEPT for reuse. Box C still served auth-api (/auth/v1/health 401) after the wipe.",
+        "whatTheRetirementCosts": "NOTHING OF THE PLATFORM, AND THE ROW ITSELF SAYS WHY. Its `lastDrill` was null (never drilled) and its `mechanism.readBy` was \"nothing yet\", so no script or duty read it. Every platform recovery path now runs off Box A: recovery.supabase-auth-postgres on Box C, recovery.glitchtip-postgres on Box B. What Oracle still holds is the encrypted third backup copy in Object Storage, which is duty.restic-third-copy and is not this boot volume. The owner-console work its `ownerGap` named (a custom backup policy, restore-by-replacement) now protects nothing of the platform.",
+        "row": {
+          "id": "recovery.oci-boot-volume",
+          "kind": "recovery-path",
+          "what": "Restore the Oracle box's boot volume.",
+          "detector": "This row's cadence against lastDrill.",
+          "response": "Private/runbooks/operations.md §0.",
+          "cadence": "180d",
+          "lastDrill": null,
+          "mechanism": {
+            "substrate": "oci",
+            "anchor": "Private/runbooks/operations.md",
+            "record": "the OCI console's backup list",
+            "failingValue": "no backup policy, or no dated restore drill",
+            "readBy": "nothing yet"
+          },
+          "accessProviders": [
+            "oci"
+          ],
+          "ownerGated": true,
+          "ownerGap": "⚠️ RESTORE-BY-REPLACEMENT IS THE ONLY CORRECT PROCEDURE HERE — the wrong one silently downgrades the grandfathered instance shape and is irreversible. Also: the free backup cap is 5 TOTAL and the stock Bronze/Silver/Gold policies all overflow it, so a custom policy is required. Owner action in the OCI console.",
+          "source": "verified"
+        }
       }
     ]
   },
@@ -3073,28 +3101,6 @@
       ],
       "ownerGated": true,
       "ownerGap": "DRILLED 2026-09-03 (first time) - see drillEvidence. 🔴 THE CADENCE IS NOT THE BINDING CONSTRAINT HERE. 180d puts the next run at 2027-03-02, but the CUTOVER is what makes this drill meaningful: it creates the first real auth.users rows, and the run immediately after it is the first one whose identity comparison is not vacuous. Re-drill then, not in March. ⚠️ Residual risk recorded rather than hidden: nothing reads this row, so it fails only by going stale against its own cadence - and the _supabase half of the backup set has no drill at all.",
-      "source": "verified"
-    },
-    {
-      "id": "recovery.oci-boot-volume",
-      "kind": "recovery-path",
-      "what": "Restore the Oracle box's boot volume.",
-      "detector": "This row's cadence against lastDrill.",
-      "response": "Private/runbooks/operations.md §0.",
-      "cadence": "180d",
-      "lastDrill": null,
-      "mechanism": {
-        "substrate": "oci",
-        "anchor": "Private/runbooks/operations.md",
-        "record": "the OCI console's backup list",
-        "failingValue": "no backup policy, or no dated restore drill",
-        "readBy": "nothing yet"
-      },
-      "accessProviders": [
-        "oci"
-      ],
-      "ownerGated": true,
-      "ownerGap": "⚠️ RESTORE-BY-REPLACEMENT IS THE ONLY CORRECT PROCEDURE HERE — the wrong one silently downgrades the grandfathered instance shape and is irreversible. Also: the free backup cap is 5 TOTAL and the stock Bronze/Silver/Gold policies all overflow it, so a custom policy is required. Owner action in the OCI console.",
       "source": "verified"
     },
     {
