@@ -784,18 +784,48 @@ describe('B8 — ADOPTION: the class imports it, and no rival reading exists', (
     .filter(({ src }) => touchesNetwork(src))
     .map(({ name, src }) => ({ name, sites: networkSites(src) }));
 
-  test('🔴 EVERY network call under tooling/ops passes the signal, or its file is a LIVE exemption', () => {
+  /** Every call site in `files` that names no signal, as the line the limb
+   *  prints, skipping each file `exempt` names. ⏱ 2026-09-24: lifted out of the
+   *  limb below so its red controls judge through the same code it does. */
+  function unboundedSites(files, exempt) {
     const unbounded = [];
-    let checked = 0;
-    for (const { name, sites } of sitesByFile) {
-      checked += sites.length;
-      if (NO_CEILING_YET.has(name)) continue;
+    for (const { name, sites } of files) {
+      if (exempt.has(name)) continue;
       for (const s of sites) if (!s.signal) unbounded.push(`tooling/ops/${name}:${s.line} ${s.callee}(…) names no signal`);
     }
+    return unbounded;
+  }
+
+  test('🔴 EVERY network call under tooling/ops passes the signal, or its file is a LIVE exemption', () => {
+    const checked = sitesByFile.reduce((n, f) => n + f.sites.length, 0);
+    const unbounded = unboundedSites(sitesByFile, NO_CEILING_YET);
     const exempted = sitesByFile.filter(({ name }) => NO_CEILING_YET.has(name)).reduce((n, f) => n + f.sites.filter((s) => !s.signal).length, 0);
     console.log(`# per-request ceiling: ${checked} network call sites checked in ${sitesByFile.length} files; ${exempted} unsignalled sites in ${NO_CEILING_YET.size} exempted files`);
     assert.ok(checked >= 20, `only ${checked} call sites found; the site finder stopped reaching tooling/ops`);
     assert.deepEqual(unbounded, [], 'a call that drops the signal has no per-request ceiling: one silent socket holds the job until timeout-minutes');
+  });
+
+  test('🔴 RED CONTROL — the real check-prod-provenance.mjs with ghRead\'s `signal,` deleted is named by the limb, once', () => {
+    // The row's "red control that re-adds one bare fetch", run in memory on the
+    // real source. Each line is found by its text, never by a number, and the
+    // unmutated file is the green control.
+    const src = readFileSync(join(OPS, 'check-prod-provenance.mjs'), 'utf8');
+    const lines = src.split('\n');
+    const ghRead = lines.findIndex((l) => l.startsWith('const ghRead = '));
+    const fetchAt = lines.findIndex((l, i) => i > ghRead && /\bfetch\(/.test(l));
+    const signalAt = lines.findIndex((l, i) => i > fetchAt && l === '        signal,');
+    assert.ok(ghRead >= 0 && fetchAt > ghRead && signalAt > fetchAt, `ghRead (${ghRead}), its fetch( (${fetchAt}) or its \`signal,\` (${signalAt}) is gone; re-find them`);
+    assert.deepEqual(unboundedSites([{ name: 'check-prod-provenance.mjs', sites: networkSites(src) }], new Map()), [], 'the green control: the real file names a signal at every site');
+    const mutated = [...lines.slice(0, signalAt), ...lines.slice(signalAt + 1)].join('\n');
+    assert.deepEqual(unboundedSites([{ name: 'check-prod-provenance.mjs', sites: networkSites(mutated) }], new Map()), [
+      `tooling/ops/check-prod-provenance.mjs:${fetchAt + 1} fetch(…) names no signal`,
+    ]);
+  });
+
+  test('🔴 RED CONTROL — `fetch` bound through `globalThis` and called bare is a site, and the limb names it', () => {
+    const sites = networkSites('const f = globalThis.fetch;\nexport const go = async (u) => { await f(u); };\n');
+    assert.deepEqual(sites, [{ line: 2, callee: 'f', signal: false }], 'the alias finder no longer reads `X = globalThis.fetch`');
+    assert.deepEqual(unboundedSites([{ name: 'alias.mjs', sites }], new Map()), ['tooling/ops/alias.mjs:2 f(…) names no signal']);
   });
 
   test('🔴 every file the sweep says touches the network has a call site the limb can check', () => {
