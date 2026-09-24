@@ -48,6 +48,12 @@
 // cannot disagree about what the retired name is. Counted the same way, by
 // reading the map's own keys.
 //
+// ⏱ APPENDED 2026-09-24 — TWENTY-FIVE entries now, counted the same way (the
+// TWELVE above had rotted to 24 before today). The new one is the API shape of
+// the first paragraph: read-ledger-version-code.mjs asks the GitHub API for one
+// environment's Deployments through record-deployment.mjs's client, beside
+// assert-gate-passed.mjs and record-deployment.mjs.
+//
 // It also self-checks, because a guard-coverage guard that stopped finding
 // guards would report perfect coverage over an empty set.
 //
@@ -329,6 +335,10 @@ const NOT_A_SCANNER = new Map([
   [
     'assert-gate-passed.mjs',
     'takes a SHA and asks the GitHub API one question about it. There is no tree to under-reach; its failure mode is argument handling, which is where the real off-by-one lived and which its tests cover.',
+  ],
+  [
+    'read-ledger-version-code.mjs',
+    'asks the GitHub API one question about one environment. There is no tree to under-reach; its failure modes are an unreadable answer (exit 2) and the payload reading, which deployment-record.test.mjs covers.',
   ],
   [
     'record-deployment.mjs',
