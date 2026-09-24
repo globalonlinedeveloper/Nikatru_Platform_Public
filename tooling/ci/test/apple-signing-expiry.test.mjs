@@ -28,6 +28,7 @@
 //   A16 the checker imports only `ascJwt` and names no non-GET method
 //   A18 apple-expiry-write.yml is dispatch-only, never runs on main, and holds
 //       `contents: write` on its job only
+//   A19 readAll requests only an id path; any other is COULD NOT LOOK, never fetched
 //   (A17 — ops-watch runs the checker — lands with the rows, in the second PR.)
 //
 // Red controls run against the checker, each restored byte-identical:
@@ -35,6 +36,7 @@
 //   R2 rows mapped by array position      → A5 RED
 //   R3 --write writes what it could read  → A13 RED
 //   R4 the GITHUB_REF_NAME=main refusal dropped → A14 RED
+//   R5 readAll's request-path check dropped      → A19 RED
 //
 // Run:  node --test tooling/ci/test/apple-signing-expiry.test.mjs
 // ─────────────────────────────────────────────────────────────────────────────
@@ -46,7 +48,7 @@ import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
-import { run, ROW_TEMPLATES, CouldNotLook } from '../../ops/check-apple-signing-expiry.mjs';
+import { run, readAll, ROW_TEMPLATES, CouldNotLook } from '../../ops/check-apple-signing-expiry.mjs';
 import { evaluate } from '../assert-ops-register.mjs';
 import { stripSourceComments } from '../text-reductions.mjs';
 
@@ -314,6 +316,14 @@ describe('check-apple-signing-expiry — the check', () => {
     assert.equal(r.code, 2, r.out);
     assert.match(r.out, /certificates FXDIST0001 — COULD NOT LOOK: .*all 3 attempt\(s\)/);
     assert.equal(r.calls.filter((u) => u.endsWith('/FXDIST0001')).length, 3);
+  });
+
+  test('🔴 A19 · readAll requests only an id path — anything else is COULD NOT LOOK and never reaches fetch', async () => {
+    const { doFetch, calls } = fakeAsc();
+    const reads = await readAll({ certificates: ['FXDIST0001', '../apps'], profiles: ['FXPIOS0001'] }, 'fx-jwt', { doFetch, sleep: async () => {} });
+    assert.deepEqual(reads.map((r) => r.status), ['ok', 'could-not-look', 'ok']);
+    assert.match(reads[1].reason, /is not a path this checker sends/);
+    assert.deepEqual(calls.map((u) => new URL(u).pathname), ['/v1/certificates/FXDIST0001', '/v1/profiles/FXPIOS0001']);
   });
 });
 

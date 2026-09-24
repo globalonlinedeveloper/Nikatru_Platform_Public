@@ -22,7 +22,7 @@
   "apple-privacy-manifest.test.mjs": 44,
   "apple-provisioning.test.mjs": 65,
   "apple-signing-2026-09-09.test.mjs": 22,
-  "apple-signing-expiry.test.mjs": 17,
+  "apple-signing-expiry.test.mjs": 18,
   "apple-signing.test.mjs": 117,
   "apps-gov-in-apk.test.mjs": 53,
   "apps-gov-in-media.test.mjs": 22,

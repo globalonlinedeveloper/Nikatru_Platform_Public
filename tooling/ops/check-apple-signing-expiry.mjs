@@ -157,6 +157,10 @@ export const ROW_TEMPLATES = [
 
 const nonEmpty = (v) => typeof v === 'string' && v.trim().length > 0;
 const ID_SHAPE = /^[A-Za-z0-9]{1,64}$/;
+/** The only request path this checker sends. `readAll` holds each built path to
+ *  it before `ascGet`, so nothing read from a file reaches `fetch` unless it is
+ *  an id (CodeQL js/file-access-to-http, answered in code). */
+const ASC_PATH = /^\/v1\/(?:certificates|profiles)\/[A-Za-z0-9]{1,64}$/;
 
 /** IMPURE (one file read). The ids to read, from `protected` in
  *  tooling/apple-provisioning.json. A missing or malformed block is COULD NOT
@@ -174,12 +178,14 @@ export function readProtectedIds(root) {
     if (!Array.isArray(list) || list.length === 0) {
       throw new CouldNotLook(`${PROVISIONING_REL} \`protected.${key}\` is not a non-empty array, so there is nothing to read`);
     }
+    // Only the ids that passed the check are returned, never a copy of the file's array.
+    out[key] = [];
     for (const id of list) {
       if (typeof id !== 'string' || !ID_SHAPE.test(id)) {
         throw new CouldNotLook(`${PROVISIONING_REL} \`protected.${key}\` holds ${JSON.stringify(id)}, which is not an App Store Connect id`);
       }
+      out[key].push(id);
     }
-    out[key] = [...list];
   }
   return out;
 }
@@ -224,6 +230,7 @@ export async function readAll(ids, jwt, opts = {}) {
     asks.map(async ({ resource, id }) => {
       const path = `/v1/${resource}/${encodeURIComponent(id)}`;
       try {
+        if (!ASC_PATH.test(path)) throw new CouldNotLook(`${JSON.stringify(path)} is not a path this checker sends, so it was not requested`);
         const body = await ascGet(path, jwt, opts);
         return body === null ? { resource, id, path, status: 'not-found' } : { resource, id, path, status: 'ok', body };
       } catch (e) {
