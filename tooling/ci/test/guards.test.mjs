@@ -3399,6 +3399,97 @@ Future<void> main() async {
     assert.match(out, /names job `windows_build` .* and this scan could not find that job/);
   });
 
+  // ── O-SEAMS-WIRED-GRADES-DECLARED-LANES-ONLY, patch B — THE CENSUS IS THE DOMAIN ──
+  // Until 2026-09-24 this limb read the register's `lane` rows only, so a job no
+  // row named was graded by nobody: submit-play.yml#submit — the job that builds
+  // and UPLOADS the Play bundle — could drop the define with the guard at exit 0
+  // (measured on 2241754f). Each case below is one hole that closed.
+  test('T1 · FAILS on an UNDECLARED second job whose stamped release build omits GLITCHTIP_DSN', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-undeclared-job', { deployExtra: PREVIEW_NO_DSN }),
+    });
+    assert.equal(code, 1, out);
+    assert.match(out, /FAIL \.github\/workflows\/deploy-web\.yml:13 \(job "preview", `flutter build web`\), a release build of channel `web`, does not pass --dart-define=GLITCHTIP_DSN/);
+  });
+
+  test('T2 · FAILS when a sibling STEP in the job has the DSN and the build step does not', () => {
+    // The declared lane job this time, so the only hole under test is the old
+    // match against the job's BODY: the profile build's define sat in the body.
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-sibling-step', {
+        deployJob:
+          '  deploy-web:\n    runs-on: ubuntu-24.04\n    steps:\n' +
+          '      - name: profile build\n        run: flutter build web --profile --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}\n' +
+          '      - name: release build\n        run: flutter build web --release --dart-define=RELEASE_CHANNEL=web\n',
+      }),
+    });
+    assert.equal(code, 1, out);
+    assert.match(out, /deploy-web\.yml:10 \(job "deploy-web", `flutter build web`\), a release build of channel `web`, does not pass --dart-define=GLITCHTIP_DSN/);
+  });
+
+  test('T3 · FAILS on `--dart-define=GLITCHTIP_DSN=` with an EMPTY value — the NoOp client by another name', () => {
+    // ci.yml's exempt android-artifacts builds pass exactly this shape.
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-empty-dsn', {
+        deploy: 'run: >\n  flutter build web --release\n  --dart-define=RELEASE_CHANNEL=web\n  --dart-define=GLITCHTIP_DSN=\n  --dart-define=APP_ENV=production\n',
+      }),
+    });
+    assert.equal(code, 1, out);
+    assert.match(out, /deploy-web\.yml:8 \(job "deploy-web", `flutter build web`\), a release build of channel `web`, passes --dart-define=GLITCHTIP_DSN= with an EMPTY value/);
+  });
+
+  test('T4 · an undeclared build named in releaseBuildsNeverShipped is NOT GRADED, and its why is printed', () => {
+    const exempted = JSON.parse(CHANNEL_REGISTER);
+    exempted.releaseBuildsNeverShipped = {
+      entries: [
+        {
+          workflow: '.github/workflows/deploy-web.yml',
+          job: 'preview',
+          why: 'a fixture preview build: deployed to a throwaway URL and deleted with the run, so no user runs it.',
+        },
+      ],
+    };
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-undeclared-exempt', { deployExtra: PREVIEW_NO_DSN, register: JSON.stringify(exempted, null, 2) }),
+    });
+    assert.equal(code, 0, out);
+    assert.match(out, /NOT GRADED — \.github\/workflows\/deploy-web\.yml:13 \(job "preview", `flutter build web`\): a fixture preview build: deployed to a throwaway URL/);
+    assert.match(out, /crash sink wired — 18 census-graded release build\(s\).*1 exempt build\(s\) named above/);
+  });
+
+  test('T5 · FAILS when a `#` on the build line puts the define behind a comment', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-dsn-hash-same-line', {
+        deploy:
+          'run: >\n  flutter build web --release --dart-define=RELEASE_CHANNEL=web # --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}\n',
+      }),
+    });
+    assert.equal(code, 1, 'a flag behind a comment marker is not a flag');
+    assert.match(out, /deploy-web\.yml:8 \(job "deploy-web", `flutter build web`\), a release build of channel `web`, does not pass --dart-define=GLITCHTIP_DSN/);
+  });
+
+  test('T6 · COVERAGE LOST when an exemption takes the graded count below the floor', () => {
+    // An exemption is the one door out of the domain, so it is also the one
+    // way to shrink it quietly. The floor holds it, and the exemption is still
+    // printed with its why.
+    const exempted = JSON.parse(CHANNEL_REGISTER);
+    exempted.releaseBuildsNeverShipped = {
+      entries: [
+        {
+          workflow: '.github/workflows/census-fill.yml',
+          job: 'fill_0',
+          why: 'a fixture build excused to prove an exemption cannot shrink the graded set below what exists.',
+        },
+      ],
+    };
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-exempt-below-floor', { register: JSON.stringify(exempted, null, 2) }),
+    });
+    assert.equal(code, 2, out);
+    assert.match(out, /the census graded only 17 release build\(s\) on a Flutter channel, fewer than the 18 that exist today/);
+    assert.match(out, /NOT GRADED — \.github\/workflows\/census-fill\.yml:8 \(job "fill_0", `flutter build web`\)/);
+  });
+
   // ── [pipeline 11]E-10 — the sink must not imply a metric the server cannot
   //    supply. sentry_flutter defaults enableAutoSessionTracking ON and
   //    GlitchTip does not implement release health, so the client shipped
