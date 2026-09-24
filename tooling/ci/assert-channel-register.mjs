@@ -2361,6 +2361,72 @@ let releaseCensus = { workflows: [], domain: null };
   }
 }
 
+// ── 6c-ii. NATIVE AUTH: a served native row is one whose build can sign in ────
+// ⏱ 2026-09-24 · O-BOXA-CAPTCHA-REFUSES-NATIVE-SIGN-IN, limb 3. Box A enforces a
+// captcha on every auth call and no native build carries a captcha token, so a
+// native build is refused at sign-in, sign-up and recovery alike. Nothing in the
+// register said so: a row could flip `served: true` and a store listing would
+// ship an app that cannot let its own users in.
+//
+// `nativeAuth` is the row's answer to "can a build for this row complete email
+// sign-in, sign-up and recovery against the backend its release points at?".
+// A NATIVE row is `flutterAppChannel(...) === true` and not `kind: "web"` — the
+// surface axis, never a literal surface name (O-EXT-SURFACE-AXIS). The web row
+// signs in through the page that holds the widget, and an extension row is not a
+// Flutter build, so neither carries the key.
+//
+//   · a native row without a boolean `nativeAuth`   ⇒ FAIL. Absent is not false:
+//     an absent key would let a new native row skip the question entirely.
+//   · a web or extension row carrying the key         ⇒ FAIL. It would be a claim
+//     about a build that row does not ship.
+//   · `served: true` and `nativeAuth` not true        ⇒ FAIL, naming the row.
+//   · an undeclared surface (null) is skipped HERE: the surface-declaration check
+//     above has already refused it, and a second refusal would only repeat it.
+//   · no native row at all, and no undeclared row to explain it ⇒ COVERAGE LOST.
+//     With an undeclared row the empty domain is that row's finding, already a
+//     FAIL above, so exit 2 would only mask it.
+// release-manifest.mjs `--stage` asks the same key before a release tag ships an
+// installer; this limb is the register half.
+{
+  const ROW_ID = 'O-BOXA-CAPTCHA-REFUSES-NATIVE-SIGN-IN';
+  const native = channels.filter((c) => flutterAppChannel(register, c) === true && c.kind !== 'web');
+  const undeclared = channels.filter((c) => flutterAppChannel(register, c) === null).length;
+  if (native.length === 0 && undeclared === 0) {
+    coverageLost([
+      `${REGISTER} declares no native row (a surface whose \`${FLUTTER_APP_FIELD}\` is true, \`kind\` not "web"), so the nativeAuth check has no domain.`,
+      'Every native store and download row is one; a register with none is a scan that lost its subject,',
+      'not a platform that stopped shipping native builds.',
+    ]);
+  }
+  for (const c of channels) {
+    const place = flutterAppChannel(register, c);
+    if (place === null) continue;
+    const isNative = place === true && c.kind !== 'web';
+    if (!isNative) {
+      if (Object.hasOwn(c, 'nativeAuth')) {
+        problems.push(
+          `channel "${c.id}" carries \`nativeAuth\`, and it is not a native row (surface "${c.surface}", kind "${c.kind}"). The key says whether a native build can sign somebody in; on a ${c.kind === 'web' ? 'web row, which signs in through the page that holds the widget' : 'row that ships no Flutter build'} it is a claim about nothing. Delete it (${ROW_ID}).`,
+        );
+      }
+      continue;
+    }
+    if (typeof c.nativeAuth !== 'boolean') {
+      problems.push(
+        `channel "${c.id}" is a native row and carries no boolean \`nativeAuth\` (found ${JSON.stringify(c.nativeAuth ?? null)}). Every native row answers "can a build for this row complete email sign-in, sign-up and recovery against the backend its release points at?" — absent is not false (${ROW_ID}).`,
+      );
+      continue;
+    }
+    if (c.served === true && c.nativeAuth !== true) {
+      problems.push(
+        `channel "${c.id}" is SERVED with nativeAuth: false. A native build for this row cannot complete email sign-in, sign-up and recovery against the backend its release points at, so serving it lists an app that refuses its own users (${ROW_ID}). Set served back to false, or flip nativeAuth on OBSERVED evidence — a native build signing in — first.`,
+      );
+    }
+  }
+  const able = native.filter((c) => c.nativeAuth === true).length;
+  const servedNative = native.filter((c) => c.served === true).length;
+  ok(`nativeAuth — ${native.length} native row(s), ${able} able to sign in, ${servedNative} served [${ROW_ID}]`);
+}
+
 // ── 6d. SIGNING-MATERIAL PINS: the fingerprint a row commits to ──────────────
 //
 // 🔴 WHY A PIN NEEDS A GUARD AT ALL, IN THIS REGISTER'S OWN WORDS. The Play row

@@ -168,6 +168,8 @@ const deferredWindowsStore = () => ({
   platforms: ['windows'],
   kind: 'store',
   served: false,
+  // §6c-ii (O-BOXA-CAPTCHA-REFUSES-NATIVE-SIGN-IN): every native row answers it.
+  nativeAuth: false,
   submittable: true,
   artifactFormats: ['.msix'],
   signing: {
@@ -289,6 +291,7 @@ const androidPlay = () => ({
   platforms: ['android'],
   kind: 'store',
   served: false,
+  nativeAuth: false,
   submittable: true,
   artifactFormats: ['.aab'],
   signing: {
@@ -2063,6 +2066,64 @@ describe('assert-channel-register — the channel↔account status', () => {
     );
     assert.equal(code, 1, out);
     assert.match(out, /channel "windows-store" is on the "app" surface and claims accountStatus.status "live"/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// §6c-ii, 2026-09-24 — O-BOXA-CAPTCHA-REFUSES-NATIVE-SIGN-IN limb 3. Box A's
+// captcha refuses every auth call a native build makes, so a native row may not
+// be SERVED until its build can sign somebody in. A served fixture row owes
+// everything else a served row owes (a lane, a verified account), so the refusal
+// cases pin the MESSAGE, and the exit pins that the guard did not pass.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-channel-register — §6c-ii: a served native row is one whose build can sign in', () => {
+  const serveAndroid = (nativeAuth) => (r) => {
+    const a = r.channels.find((c) => c.id === ANDROID_ID);
+    a.served = true;
+    a.nativeAuth = nativeAuth;
+  };
+
+  test('a native row with served:true and nativeAuth:false exits 1', () => {
+    const { code, out } = run(tree({ withAndroid: true, mutate: serveAndroid(false) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /channel "android-play" is SERVED with nativeAuth: false/);
+    assert.match(out, /\(O-BOXA-CAPTCHA-REFUSES-NATIVE-SIGN-IN\)/);
+  });
+
+  test('a native row without nativeAuth exits 1', () => {
+    const { code, out } = run(tree({ mutate: (r) => { delete r.channels.find((c) => c.id === 'windows-store').nativeAuth; } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /channel "windows-store" is a native row and carries no boolean `nativeAuth` \(found null\)/);
+  });
+
+  test('a web row carrying nativeAuth exits 1', () => {
+    const { code, out } = run(tree({ mutate: (r) => { r.channels.find((c) => c.id === 'web').nativeAuth = true; } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /channel "web" carries `nativeAuth`, and it is not a native row \(surface "app", kind "web"\)/);
+  });
+
+  test('an extension row carrying nativeAuth exits 1', () => {
+    const { code, out } = run(tree({ withExtension: true, mutate: (r) => { r.channels.find((c) => c.id === 'chrome-webstore').nativeAuth = false; } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /channel "chrome-webstore" carries `nativeAuth`, and it is not a native row \(surface "extension", kind "store"\)/);
+  });
+
+  test('a native row with served:true and nativeAuth:true passes this limb', () => {
+    const { out } = run(tree({ withAndroid: true, mutate: serveAndroid(true) }));
+    assert.doesNotMatch(out, /is SERVED with nativeAuth/);
+    assert.match(out, /ok\s+nativeAuth — 2 native row\(s\), 1 able to sign in, 1 served/);
+  });
+
+  test('the summary names the native count', () => {
+    const { code, out } = run(tree({ withAndroid: true }));
+    assert.equal(code, 0, out);
+    assert.match(out, /ok\s+nativeAuth — 2 native row\(s\), 0 able to sign in, 0 served \[O-BOXA-CAPTCHA-REFUSES-NATIVE-SIGN-IN\]/);
+  });
+
+  test('a register with no native row is COVERAGE LOST, never a pass over nothing', () => {
+    const { code, out } = run(tree({ withExtension: true, mutate: (r) => { r.channels = r.channels.filter((c) => c.id !== 'windows-store'); } }));
+    assert.equal(code, 2, out);
+    assert.match(out, /declares no native row/);
   });
 });
 
