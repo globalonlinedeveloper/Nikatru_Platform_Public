@@ -45,7 +45,7 @@
 // or the register could not be read to check the channel.
 // ─────────────────────────────────────────────────────────────────────────────
 import { createHash } from 'node:crypto';
-import { readFileSync, writeFileSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { channelStampName, channelStampKeys } from './release-manifest.mjs';
@@ -113,10 +113,18 @@ function main(argv) {
     const abs = resolve(f);
     if (f.endsWith('.channel.json')) die(`${f} is a stamp; a stamp is never stamped.`);
     // An unmatched shell glob arrives as its own text, `…/*.aab`, and lands here:
-    // nothing was stamped, which is COVERAGE LOST and never a quiet 0.
-    if (!existsSync(abs)) coverageLost(`${f} is not a file.`, 'An unmatched glob arrives as its own text; the build made no such file, so nothing was stamped.');
-    if (!statSync(abs).isFile()) die(`${f} is a directory, not a file; a stamp speaks for one file's bytes.`);
-    const stamp = makeChannelStamp({ channel, file: abs, bytes: readFileSync(abs), runId });
+    // nothing was stamped, which is COVERAGE LOST and never a quiet 0. The bytes
+    // are read with no existence check before them, so no gap sits between a
+    // check and the read; the read's own error says which case it is.
+    let bytes;
+    try {
+      bytes = readFileSync(abs);
+    } catch (e) {
+      if (e?.code === 'ENOENT') coverageLost(`${f} is not a file.`, 'An unmatched glob arrives as its own text; the build made no such file, so nothing was stamped.');
+      if (e?.code === 'EISDIR') die(`${f} is a directory, not a file; a stamp speaks for one file's bytes.`);
+      throw e;
+    }
+    const stamp = makeChannelStamp({ channel, file: abs, bytes, runId });
     const out = channelStampName(abs);
     try {
       writeFileSync(out, `${JSON.stringify(stamp, null, 2)}\n`, { flag: 'wx' });

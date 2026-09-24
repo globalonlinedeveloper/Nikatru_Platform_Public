@@ -423,7 +423,8 @@ describe('check-mail-auth-dns — the source and the wiring', () => {
     assert.equal(DOH_TIMEOUT_MS, 10_000);
     assert.equal(RUN_CEILING_MS, 90_000);
     const register = readFileSync(join(REPO, 'tooling', 'mail-transport.json'), 'utf8');
-    assert.ok(!register.includes('cloudflare-dns.com') && !register.includes('dns.google'), 'whom to ask is the checker\'s question, not the register\'s');
+    // The hosts come from RESOLVERS, pinned to the two names one line up.
+    assert.deepEqual(RESOLVERS.map((r) => r.host).filter((h) => register.includes(h)), [], 'whom to ask is the checker\'s question, not the register\'s');
     assert.match(code, /import \{ CouldNotLook, fetchWithBoundedRetry, runDeadline \} from '\.\/bounded-retry\.mjs';/);
   });
 

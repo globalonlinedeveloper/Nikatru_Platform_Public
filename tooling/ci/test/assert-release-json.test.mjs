@@ -1048,7 +1048,7 @@ describe('--stage reads each installer\'s channel from its build stamp', () => {
     ]);
     const { r, out } = stageDownloads(from);
     assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
-    assert.match(r.stderr, new RegExp(`✗ ${AGI.replace(/\./g, '\\.')} — it is stamped "android-play", and that row does not accept \\.apk \\(it accepts \\.aab\\)`));
+    assert.match(r.stderr, new RegExp(`✗ ${AGI.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} — it is stamped "android-play", and that row does not accept \\.apk \\(it accepts \\.aab\\)`));
     assert.match(r.stderr, /--stage refuses 1 stamp finding\(s\)/);
     assert.deepEqual(listed(out), [], 'a refused stage moves nothing');
     assert.deepEqual(listed(join(from, 'subscriptiontracker-apps-gov-in')), [AGI, `${AGI}.channel.json`]);

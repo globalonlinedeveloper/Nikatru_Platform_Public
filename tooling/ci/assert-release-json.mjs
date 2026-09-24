@@ -332,7 +332,7 @@ function main() {
 const unquoteToken = (t) => t.replace(/^(['"])(.*)\1$/, '$2');
 /** `${{ matrix.app }}` and `${{matrix.app}}` are one expression: both become the
  *  compact `${{matrix.app}}`, which also keeps a run line splittable on spaces. */
-const normExpr = (s) => String(s).replace(/\$\{\{\s*(.*?)\s*\}\}/g, (all, e) => `\${{${e.replace(/\s+/g, '')}}}`);
+const normExpr = (s) => String(s).replace(/\$\{\{\s*(.*?)\s*\}\}/g, (all, e) => '${{' + e.replace(/\s+/g, '') + '}}');
 
 /** `uses:` and the `with:` mapping of one step, read from its job's comment-blanked
  *  lines. A `key: |` value is its block lines, trimmed; a scalar is one entry. */
