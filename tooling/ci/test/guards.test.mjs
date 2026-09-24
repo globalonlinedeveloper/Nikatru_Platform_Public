@@ -2902,7 +2902,20 @@ Future<void> _signOut(BuildContext context, WidgetRef ref, AppLocalizations l10n
   // identical. Both ends are fixtured because the guard asserts both — a deploy
   // that supplies a value nothing reads is as broken as an app reading a value
   // nothing supplies.
-  const DEPLOY_WITH_DSN = 'run: flutter build web --release --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}\n';
+  //
+  // ⏱ 2026-09-24 — EVERY BUILD CARRIES ITS RELEASE_CHANNEL STAMP, because the
+  // limb's subject is now workflow-scan's census (O-SEAMS-WIRED-GRADES-DECLARED-
+  // LANES-ONLY, patch B): a build is placed by the channel it stamps, whatever
+  // job it sits in, and an unstamped one is assert-channel-register's finding,
+  // not this limb's subject.
+  const DEPLOY_WITH_DSN =
+    'run: flutter build web --release --dart-define=RELEASE_CHANNEL=web --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}\n';
+  const ANDROID_WITH_DSN =
+    'run: flutter build appbundle --release --dart-define=RELEASE_CHANNEL=android-play --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}\n';
+  const WINDOWS_WITH_DSN =
+    'run: flutter build windows --release --dart-define=RELEASE_CHANNEL=windows-store --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}\n';
+  const SNAP_WITH_DSN =
+    'run: flutter build linux --release --dart-define=RELEASE_CHANNEL=linux-snap --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}\n';
   const MAIN_READS_DSN = "Future<void> main() async {\n  final dsn = String.fromEnvironment('GLITCHTIP_DSN');\n}\n";
   // ⏱ 2026-09-24 · O-GUARDS-READ-A-HAND-LISTED-APP-SET. The guard grades every
   // app in the workspace set, finding each per-app seam by symbol, so every tree
@@ -2933,29 +2946,47 @@ Future<void> _signOut(BuildContext context, WidgetRef ref, AppLocalizations l10n
       .split('\n')
       .join('\n        ')}\n`;
   const workflow = (...jobs) => `name: fixture\non: [push]\njobs:\n${jobs.join('')}`;
-  /** FOUR lanes — the number the real register carries — because the guard
-   *  floors the derived subject set at that number and a fixture below
-   *  deliberately drops one to prove that floor can fail.
+  /** FOUR lanes — the number the real register carries. Until 2026-09-24 the
+   *  guard floored the derived subject set at that number, and a fixture below
+   *  dropped one to prove that floor could fail.
    *
    *  Three until 2026-08-09, when `linux-snap` gained a lane: submit-snap.yml's
    *  `dry-run` job now compiles a Linux bundle and packs a .snap, so it acquired
    *  the crash-sink obligation by BEING a lane — which is exactly the property
    *  the derivation exists for, and the reason this fixture moves with the
-   *  register rather than pinning a number of its own. */
+   *  register rather than pinning a number of its own.
+   *
+   *  ⏱ 2026-09-24 — the lanes are now a CROSS-CHECK and the floor is on graded
+   *  BUILDS (MIN_GRADED, 18 on the real census). Each row declares `platforms`
+   *  because gradeDomain holds a stamp to the row's platforms; the four lane
+   *  builds plus CENSUS_FILL undeclared ones make the eighteen. */
   // ⏱ 2026-09-15 — lanes are scoped by the surface's DECLARED `flutterApp` (O-EXT-SURFACE-AXIS).
   const CHANNEL_REGISTER = JSON.stringify(
     {
       surfaces: { app: { flutterApp: true }, extension: { flutterApp: false } },
       channels: [
-        { id: 'web', surface: 'app', lane: { workflow: '.github/workflows/deploy-web.yml', job: 'deploy-web' } },
-        { id: 'android-play', surface: 'app', lane: { workflow: '.github/workflows/build-platforms.yml', job: 'linux_web_android' } },
-        { id: 'windows-store', surface: 'app', lane: { workflow: '.github/workflows/build-platforms.yml', job: 'windows' } },
-        { id: 'linux-snap', surface: 'app', lane: { workflow: '.github/workflows/submit-snap.yml', job: 'dry-run' } },
+        { id: 'web', surface: 'app', platforms: ['web'], lane: { workflow: '.github/workflows/deploy-web.yml', job: 'deploy-web' } },
+        { id: 'android-play', surface: 'app', platforms: ['android'], lane: { workflow: '.github/workflows/build-platforms.yml', job: 'linux_web_android' } },
+        { id: 'windows-store', surface: 'app', platforms: ['windows'], lane: { workflow: '.github/workflows/build-platforms.yml', job: 'windows' } },
+        { id: 'linux-snap', surface: 'app', platforms: ['linux'], lane: { workflow: '.github/workflows/submit-snap.yml', job: 'dry-run' } },
       ],
     },
     null,
     2,
   );
+  /** The graded builds beyond the four lanes that bring the fixture's census to
+   *  the guard's MIN_GRADED (18): the real tree's census grades 18, most of them
+   *  in jobs no row names, which is the point of grading a census. */
+  const CENSUS_FILL = 14;
+  /** `count` web builds, one per job, in a workflow no row declares. */
+  const censusFill = (count) => {
+    const jobs = [];
+    for (let i = 0; i < count; i++) jobs.push(jobWith(`fill_${i}`, DEPLOY_WITH_DSN));
+    return workflow(...jobs);
+  };
+  /** A second, UNDECLARED job — the shape O-SEAMS-WIRED-GRADES-DECLARED-LANES-ONLY
+   *  names: no row's `lane` points at it, so the old limb never read it. */
+  const PREVIEW_NO_DSN = jobWith('preview', 'run: flutter build web --release --dart-define=RELEASE_CHANNEL=web\n');
 
   // [G-43] The secure-session seam. `initNikatruAuth` is the one call that keeps
   // the refresh token out of plaintext, and it had ZERO callers tree-wide while
@@ -2985,9 +3016,14 @@ Future<void> main() async {
       dartVersion = '2026-07-26',
       fillerCount = 14,
       deploy = DEPLOY_WITH_DSN,
-      android = DEPLOY_WITH_DSN,
-      windows = DEPLOY_WITH_DSN,
-      snap = DEPLOY_WITH_DSN,
+      // The whole `deploy-web` job, for a case that needs more than jobWith's one step.
+      deployJob = null,
+      // Jobs after `deploy-web` in deploy-web.yml — jobs NO row's lane names.
+      deployExtra = '',
+      android = ANDROID_WITH_DSN,
+      windows = WINDOWS_WITH_DSN,
+      snap = SNAP_WITH_DSN,
+      fill = CENSUS_FILL,
       register = CHANNEL_REGISTER,
       // [pipeline 11]E-10. The fixture's COMMENT deliberately explains the
       // setting in prose, so the passing case exercises the comment stripping
@@ -3037,12 +3073,13 @@ Future<void> main() async {
       'apps/subscriptiontracker/lib/features/consent/consent_prompt.dart': ui,
       'sites/nikatru/privacy.html': POLICY(htmlVersion),
       'tooling/channel-register.json': register,
-      '.github/workflows/deploy-web.yml': workflow(jobWith('deploy-web', deploy)),
+      '.github/workflows/deploy-web.yml': workflow(deployJob ?? jobWith('deploy-web', deploy), deployExtra),
       '.github/workflows/build-platforms.yml': workflow(
         jobWith('linux_web_android', android),
         jobWith('windows', windows),
       ),
       '.github/workflows/submit-snap.yml': workflow(jobWith('dry-run', snap)),
+      '.github/workflows/census-fill.yml': censusFill(fill),
       'apps/subscriptiontracker/lib/main.dart': mainDart,
       'packages/telemetry/lib/src/telemetry_bootstrap.dart': bootstrap,
       'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/main.dart': brickMain,
@@ -3080,7 +3117,7 @@ Future<void> main() async {
     // This was live: no workflow passed the DSN, so the only shipping app
     // initialised a NoOp client and a real user's crash reached nobody.
     const { code, out } = run('assert-seams-wired.mjs', {
-      cwd: build('seams-no-dsn', { deploy: 'run: flutter build web --release\n' }),
+      cwd: build('seams-no-dsn', { deploy: 'run: flutter build web --release --dart-define=RELEASE_CHANNEL=web\n' }),
     });
     assert.equal(code, 1);
     assert.match(out, /does not pass --dart-define=GLITCHTIP_DSN/);
@@ -3107,21 +3144,24 @@ Future<void> main() async {
     const { code, out } = run('assert-seams-wired.mjs', {
       cwd: build('seams-dsn-commented', {
         deploy:
-          'run: >\n  flutter build web --release\n  # --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}\n  --dart-define=APP_ENV=production\n',
+          'run: >\n  flutter build web --release\n  --dart-define=RELEASE_CHANNEL=web\n  # --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}\n  --dart-define=APP_ENV=production\n',
       }),
     });
     assert.equal(code, 1, 'a flag behind a comment marker is not a flag');
     assert.match(out, /does not pass --dart-define=GLITCHTIP_DSN/);
   });
 
+  // ⏱ 2026-09-24 — a commented-out build is no build, so the census never sees
+  // it: what goes red is the declared lane holding nothing, which names the job.
   test('FAILS when the whole build line is commented out', () => {
     const { code, out } = run('assert-seams-wired.mjs', {
       cwd: build('seams-dsn-line-commented', {
-        deploy: '# run: flutter build web --release --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}\nrun: echo skipped\n',
+        deploy:
+          '# run: flutter build web --release --dart-define=RELEASE_CHANNEL=web --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}\nrun: echo skipped\n',
       }),
     });
     assert.equal(code, 1);
-    assert.match(out, /does not pass --dart-define=GLITCHTIP_DSN/);
+    assert.match(out, /channel `web` declares lane \.github\/workflows\/deploy-web\.yml#deploy-web, and that job holds no census-graded release build/);
   });
 
   // The false-alarm side: only a `#` BEFORE the define disqualifies it. A real
@@ -3131,7 +3171,7 @@ Future<void> main() async {
     const { code, out } = run('assert-seams-wired.mjs', {
       cwd: build('seams-dsn-trailing-comment', {
         deploy:
-          '# build the web bundle\nrun: >\n  flutter build web --release\n  --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}  # crash sink\n',
+          '# build the web bundle\nrun: >\n  flutter build web --release\n  --dart-define=RELEASE_CHANNEL=web\n  --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}  # crash sink\n',
       }),
     });
     assert.equal(code, 0, out);
@@ -3293,15 +3333,17 @@ Future<void> main() async {
   });
 
   // ── [pipeline 11]E-7 — the SUPPLIER SET IS DERIVED, and it is per-JOB ──────
+  // ⏱ 2026-09-24 — per BUILD now: each failure names the build's own place, as
+  // workflow-scan's `buildAt` prints it (workflow:line, job, target).
   test('FAILS when an ARTIFACT lane other than the web deploy supplies no DSN', () => {
     // The residue this replaced: build-platforms.yml built all six platforms
     // with zero `--dart-define`s while the old check, which read the filename
     // `deploy-web.yml`, printed ok. Both non-web rows point at that workflow.
     const { code, out } = run('assert-seams-wired.mjs', {
-      cwd: build('seams-android-no-dsn', { android: 'run: flutter build appbundle --release\n' }),
+      cwd: build('seams-android-no-dsn', { android: 'run: flutter build appbundle --release --dart-define=RELEASE_CHANNEL=android-play\n' }),
     });
     assert.equal(code, 1);
-    assert.match(out, /job `linux_web_android` \(the lane of channel `android-play`\) does not pass --dart-define=GLITCHTIP_DSN/);
+    assert.match(out, /build-platforms\.yml:8 \(job "linux_web_android", `flutter build appbundle`\), a release build of channel `android-play`, does not pass --dart-define=GLITCHTIP_DSN/);
   });
 
   test('the define in a DIFFERENT job of the same workflow does not satisfy the check', () => {
@@ -3310,10 +3352,10 @@ Future<void> main() async {
     // the `windows` job to the `apple` job, five occurrences in the file, and the
     // guard still named `windows`.
     const { code, out } = run('assert-seams-wired.mjs', {
-      cwd: build('seams-dsn-wrong-job', { windows: 'run: flutter build windows --release\n' }),
+      cwd: build('seams-dsn-wrong-job', { windows: 'run: flutter build windows --release --dart-define=RELEASE_CHANNEL=windows-store\n' }),
     });
     assert.equal(code, 1);
-    assert.match(out, /job `windows` \(the lane of channel `windows-store`\)/);
+    assert.match(out, /build-platforms\.yml:13 \(job "windows", `flutter build windows`\), a release build of channel `windows-store`/);
   });
 
   // 🔴 THE OBLIGATION IS ACQUIRED BY BEING A LANE, and this is the proof for the
@@ -3321,32 +3363,39 @@ Future<void> main() async {
   // submit-snap.yml: the subject set is derived from the register, so the .snap
   // lane started owing a crash sink the moment it got a `lane` block — which is
   // the property the derivation exists for, stated as a failing case rather than
-  // as a comment.
+  // as a comment. ⏱ 2026-09-24: acquired by being STAMPED now — the census
+  // places the build by its RELEASE_CHANNEL, and the lane is the cross-check.
   test('FAILS when the SNAP lane supplies no DSN — a lane acquires the duty by existing', () => {
     const { code, out } = run('assert-seams-wired.mjs', {
-      cwd: build('seams-dsn-no-snap', { snap: 'run: flutter build linux --release\n' }),
+      cwd: build('seams-dsn-no-snap', { snap: 'run: flutter build linux --release --dart-define=RELEASE_CHANNEL=linux-snap\n' }),
     });
     assert.equal(code, 1);
-    assert.match(out, /job `dry-run` \(the lane of channel `linux-snap`\)/);
+    assert.match(out, /submit-snap\.yml:8 \(job "dry-run", `flutter build linux`\), a release build of channel `linux-snap`/);
   });
 
-  test('COVERAGE LOST when the register stops declaring the lanes that exist', () => {
-    const shrunk = JSON.parse(CHANNEL_REGISTER);
-    shrunk.channels[2].lane = null;
+  // ⏱ 2026-09-24 — THE FLOOR IS ON GRADED BUILDS NOW (MIN_GRADED). Until then
+  // this case dropped a row's `lane` and expected "only 3 channel row(s) declare
+  // a lane"; a dropped lane no longer shrinks the domain at all, because the
+  // census grades the build by its stamp. What can shrink is the census itself.
+  test('COVERAGE LOST when the census grades fewer builds than exist today', () => {
     const { code, out } = run('assert-seams-wired.mjs', {
-      cwd: build('seams-lane-dropped', { register: JSON.stringify(shrunk, null, 2) }),
+      cwd: build('seams-census-shrunk', { fill: CENSUS_FILL - 1 }),
     });
-    assert.equal(code, 2);
-    assert.match(out, /only 3 channel row\(s\) declare a `lane\.workflow` \+ `lane\.job`/);
+    assert.equal(code, 2, out);
+    assert.match(out, /the census graded only 17 release build\(s\) on a Flutter channel, fewer than the 18 that exist today/);
   });
 
-  test('COVERAGE LOST when a lane names a job that is not in its workflow', () => {
+  // A lane naming a job that is gone is a register that has drifted from the
+  // workflows. ⏱ 2026-09-24: a FINDING (exit 1), not COVERAGE LOST (it was 2) —
+  // the census graded every build either way, so the guard is not blind; the
+  // register row is wrong. assert-store-build-config made the same move.
+  test('FAILS when a lane names a job that is not in its workflow', () => {
     const renamed = JSON.parse(CHANNEL_REGISTER);
     renamed.channels[2].lane.job = 'windows_build';
     const { code, out } = run('assert-seams-wired.mjs', {
       cwd: build('seams-lane-job-gone', { register: JSON.stringify(renamed, null, 2) }),
     });
-    assert.equal(code, 2);
+    assert.equal(code, 1, out);
     assert.match(out, /names job `windows_build` .* and this scan could not find that job/);
   });
 
@@ -3772,8 +3821,16 @@ class Ed25519PackVerifier implements PackVerifier {
   // since 2026-08-02 ([pipeline 11]E-7), so satisfying it needs the register and
   // both lane workflows — a bare deploy-web.yml no longer answers the question
   // the guard now asks.
-  const laneJob = (name) =>
-    `  ${name}:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: flutter build --release --dart-define=GLITCHTIP_DSN=\${{ secrets.GLITCHTIP_DSN }}\n`;
+  // ⏱ 2026-09-24 — and since the limb grades workflow-scan's CENSUS, each build
+  // stamps the channel it is for, and the tree carries the 18 graded builds the
+  // guard floors at (MIN_GRADED): the four lanes plus fourteen in census-fill.yml.
+  const laneJob = (name, target = 'web', channel = 'web') =>
+    `  ${name}:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: flutter build ${target} --release --dart-define=RELEASE_CHANNEL=${channel} --dart-define=GLITCHTIP_DSN=\${{ secrets.GLITCHTIP_DSN }}\n`;
+  const fillJobs = () => {
+    let jobs = '';
+    for (let i = 0; i < 14; i++) jobs += laneJob(`fill_${i}`);
+    return jobs;
+  };
   // [pipeline 7]P-9 consumer half · [8]K-9. Since 2026-08-03 `pack_verifier` is
   // `wired: true` with two brick-scoped needs, so the consumer half belongs in
   // this fixture for the same "isolate the verifier" reason as everything else
@@ -3833,21 +3890,22 @@ class Ed25519PackVerifier implements PackVerifier {
     'tooling/channel-register.json': JSON.stringify({
       surfaces: { app: { flutterApp: true }, extension: { flutterApp: false } },
       channels: [
-        { id: 'web', surface: 'app', lane: { workflow: '.github/workflows/deploy-web.yml', job: 'deploy-web' } },
-        { id: 'android-play', surface: 'app', lane: { workflow: '.github/workflows/build-platforms.yml', job: 'linux_web_android' } },
-        { id: 'windows-store', surface: 'app', lane: { workflow: '.github/workflows/build-platforms.yml', job: 'windows' } },
+        { id: 'web', surface: 'app', platforms: ['web'], lane: { workflow: '.github/workflows/deploy-web.yml', job: 'deploy-web' } },
+        { id: 'android-play', surface: 'app', platforms: ['android'], lane: { workflow: '.github/workflows/build-platforms.yml', job: 'linux_web_android' } },
+        { id: 'windows-store', surface: 'app', platforms: ['windows'], lane: { workflow: '.github/workflows/build-platforms.yml', job: 'windows' } },
         // The fourth lane, from 2026-08-09: submit-snap.yml's `dry-run` job packs
         // a .snap and therefore carries the crash-sink obligation. The guard
-        // floors its subject set at what the real register carries, so a fixture
-        // one lane short fails on coverage rather than on the verifier these
+        // floors its subject set at what the real tree carries, so a fixture
+        // one build short fails on coverage rather than on the verifier these
         // tests are about.
-        { id: 'linux-snap', surface: 'app', lane: { workflow: '.github/workflows/submit-snap.yml', job: 'dry-run' } },
+        { id: 'linux-snap', surface: 'app', platforms: ['linux'], lane: { workflow: '.github/workflows/submit-snap.yml', job: 'dry-run' } },
       ],
     }),
     '.github/workflows/deploy-web.yml': `name: f\njobs:\n${laneJob('deploy-web')}`,
     '.github/workflows/build-platforms.yml':
-      `name: f\njobs:\n${laneJob('linux_web_android')}${laneJob('windows')}`,
-    '.github/workflows/submit-snap.yml': `name: f\njobs:\n${laneJob('dry-run')}`,
+      `name: f\njobs:\n${laneJob('linux_web_android', 'appbundle', 'android-play')}${laneJob('windows', 'windows', 'windows-store')}`,
+    '.github/workflows/submit-snap.yml': `name: f\njobs:\n${laneJob('dry-run', 'linux', 'linux-snap')}`,
+    '.github/workflows/census-fill.yml': `name: f\njobs:\n${fillJobs()}`,
     ...APP1_SEAMS_PV,
     'apps/subscriptiontracker/lib/main.dart': "Future<void> main() async {\n  final dsn = String.fromEnvironment('GLITCHTIP_DSN');\n}\n",
     // [pipeline 11]E-10 — another seam that must stay satisfied so these tests

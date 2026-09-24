@@ -22,6 +22,9 @@ import { listDir } from './tree-walk.mjs';
 import { delegationOf as resolveChassisDelegation } from './chassis-delegation.mjs';
 import { partitionByFlutterApp, undeclaredSurfaceLine } from './channel-surface.mjs';
 import { requireAppSet } from './app-set.mjs';
+// The release-build census (O-SEAMS-WIRED-GRADES-DECLARED-LANES-ONLY): the crash-sink
+// limb grades every build it finds, the same census store-build-config grades.
+import { parseAllWorkflows, flutterReleaseBuilds, gradeDomain, buildAt, defineValueIn } from './workflow-scan.mjs';
 
 const repo = process.cwd();
 // ⏱ 2026-09-24 · O-GUARDS-READ-A-HAND-LISTED-APP-SET. Every per-app seam below
@@ -1201,33 +1204,6 @@ try {
   fail(`policy version check could not run: ${e.message}`);
 }
 
-/**
- * The lines belonging to ONE job of a workflow, or null when no such job exists.
- *
- * Written rather than pulled from a YAML parser because tooling/ci has no
- * dependencies by design, and because the question is narrow: workflow job keys
- * sit at exactly two spaces under `jobs:`, so a job's body runs from its key to
- * the next two-space key. Comment lines are not keys — `  # a note` would
- * otherwise end a job's body early and hide every step below it, which is the
- * same "a comment satisfied/defeated a check" defect this file already carries a
- * scar from.
- */
-function jobBody(yaml, jobName) {
-  const lines = yaml.split('\n');
-  const jobsAt = lines.findIndex((l) => /^jobs:\s*(#.*)?$/.test(l));
-  if (jobsAt === -1) return null;
-  const startsKey = (l) => /^ {2}[^\s#][^\n]*:/.test(l);
-  let start = -1;
-  for (let i = jobsAt + 1; i < lines.length; i++) {
-    if (start === -1) {
-      if (new RegExp(`^ {2}${jobName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*:`).test(lines[i])) start = i;
-      continue;
-    }
-    if (startsKey(lines[i]) || /^\S/.test(lines[i])) return lines.slice(start, i).join('\n');
-  }
-  return start === -1 ? null : lines.slice(start).join('\n');
-}
-
 // ── the crash sink is a fail-closed seam too, and it was closed ──────────────
 // TelemetryBootstrap falls back to a NoOp client when the DSN is empty — correct
 // behaviour, and indistinguishable from working. No workflow passed
@@ -1251,70 +1227,152 @@ function jobBody(yaml, jobName) {
 // register: every row carrying `lane.workflow` + `lane.job` must have THAT JOB
 // supply the define — so a new channel acquires the obligation by being given a
 // lane, rather than when somebody remembers this file exists.
+//
+// 🔴 ⏱ 2026-09-24 — AND THE SUBJECT SET IS NOW THE RELEASE-BUILD CENSUS, NOT
+// THE DECLARED LANE (O-SEAMS-WIRED-GRADES-DECLARED-LANES-ONLY, patch B). The
+// register's own `_why` says a `lane` "NAMES THE DRY RUN AND IS A FLOOR, NOT A
+// CENSUS", and this limb read `lane` only, so it graded a floor and printed a
+// census. Three holes, each measured on 2241754f:
+//   · the `submit` jobs of submit-play, submit-snap and submit-windows-store —
+//     the jobs that build and UPLOAD what a store receives — were nobody's
+//     subject: deleting the define from submit-play.yml#submit left this guard
+//     at exit 0;
+//   · the define was matched anywhere in the job BODY, so a sibling step's
+//     define exonerated a build that carried none;
+//   · the NAME was matched, not the value, so `--dart-define=GLITCHTIP_DSN=`
+//     with nothing after it passed. ci.yml's exempt android-artifacts builds
+//     carry exactly that, and it is the NoOp client this limb exists to catch.
+// So one list, several readers: the domain is workflow-scan.mjs
+// `gradeDomain` — the census assert-store-build-config grades — kept to rows
+// whose surface declares a Flutter app, and each build is read on its OWN shell
+// segment for a NON-EMPTY value (`defineValueIn`). A job nobody names is graded
+// exactly like a declared one. A build that must not be graded is written into
+// the register's `releaseBuildsNeverShipped` with its `why`, printed here on
+// every run. The declared lanes survive as a cross-check: each must still hold
+// a graded build, or the register has drifted from the workflows.
 {
   const REGISTER = join(repo, 'tooling', 'channel-register.json');
   // ⏱ 2026-09-24 · the consumer half is every app's entry point, and the
   // brick's, found by symbol (ENTRY_SEAM) — no longer app #1's lib/main.dart alone.
   const entries = locate(ENTRY_SEAM);
-  /** Rows with a lane today. A DERIVED subject set can shrink to nothing — the
-   *  register losing its `lane` keys would leave this loop iterating zero jobs
-   *  and printing nothing at all — so the count is floored by what exists.
+  /** Census-graded release builds on a Flutter channel today. A DERIVED subject
+   *  set can shrink to nothing — a census that stopped matching would leave the
+   *  grading loop iterating zero builds and printing nothing at all — so the count
+   *  is floored by what exists.
    *
-   *  3 → 4 on 2026-08-09, when `linux-snap` gained a lane (submit-snap.yml's
-   *  `dry-run` job now compiles a Linux bundle and packs a .snap). The floor is
-   *  "what exists today", so it moves with the register in the same change — a
-   *  floor left behind is one that would accept the new lane silently vanishing. */
-  const MIN_LANES = 4;
+   *  It replaced MIN_LANES (4, the rows with a lane) on 2026-09-24, measured on
+   *  2241754f: 23 release builds in 18 workflows, 5 exempt, 18 graded, all 18 on a
+   *  Flutter row. The floor is what exists today, moved with the workflows in the
+   *  same change — a floor left behind is one that would accept a build silently
+   *  leaving the census. */
+  const MIN_GRADED = 18;
+  const DSN_QUESTION = 'whether its release builds must --dart-define GLITCHTIP_DSN';
 
-  let lanes = [];
+  let register = null;
   try {
-    const register = JSON.parse(readFileSync(REGISTER, 'utf8'));
-    // 🔴 `--dart-define` IS A FLUTTER FLAG, SO THE DOMAIN IS THE FLUTTER
-    // SURFACE. This check's other half is `apps/subscriptiontracker/lib/main.dart` reading
-    // `String.fromEnvironment('GLITCHTIP_DSN')` — a Dart consumer — and the
-    // failure it exists to catch is a Flutter build initialising the NoOp
-    // client. On 2026-09-05 the register acquired three `surface: "extension"`
-    // rows whose lane is extensions.yml's `release` job: it runs
-    // `node scripts/pack.mjs` and no `flutter build` at all, so demanding
-    // `--dart-define` there is demanding a flag the build has nowhere to put.
-    //
-    // ⚠️ THE EXTENSIONS DO NOT SILENTLY LOSE A CRASH SINK — THEY NEVER HAD ONE,
-    // AND THE REGISTER NOW SAYS SO OUT LOUD. Each extension row carries
-    // `crashSink: { layers: [], native: false }` with the reason: the free tier
-    // is held to zero network calls by extensions/PRINCIPLES.md and extensions
-    // ADR 013 makes the Pro entitlement check the ONE call the product makes, so
-    // an error sink would be a second one. That is a declaration a reader can
-    // disagree with, which is more than the silence this limb would otherwise
-    // have produced by failing on an impossible flag.
+    register = JSON.parse(readFileSync(REGISTER, 'utf8'));
+  } catch (e) {
+    coverageLost(`tooling/channel-register.json could not be read (${e.message}), so the set of release builds that must supply GLITCHTIP_DSN is empty and this check asserts nothing.`);
+  }
+
+  // Census-graded builds on a Flutter row — this limb's subject — and the rows
+  // whose declared lane is on a Flutter surface, which are the cross-check.
+  const graded = [];
+  let flutterLanes = [];
+  let exemptCount = 0;
+  let parsed = [];
+  if (register !== null) {
+    parsed = parseAllWorkflows(repo);
+    if (parsed.length === 0) {
+      coverageLost('no workflow parsed under .github/workflows, so the census of release builds that must supply GLITCHTIP_DSN is empty.');
+    }
+    const census = gradeDomain(flutterReleaseBuilds(repo, parsed), register);
+    // 🔴 `--dart-define` IS A FLUTTER FLAG, SO THE DOMAIN IS THE FLUTTER SURFACE.
+    // The split is the surface's DECLARED `flutterApp` (tooling/ci/channel-surface.mjs),
+    // never the literal 'extension'; a row on a surface that declares no answer is
+    // refused rather than asked for a `--dart-define` it may have nowhere to put
+    // (O-EXT-SURFACE-AXIS).
+    const undeclaredSeen = new Set();
+    const refuseUndeclared = (row) => {
+      if (undeclaredSeen.has(row?.id)) return;
+      undeclaredSeen.add(row?.id);
+      coverageLost(undeclaredSurfaceLine(row, DSN_QUESTION));
+    };
+    for (const b of census.graded) {
+      const split = partitionByFlutterApp(register, [b.row]);
+      if (split.flutter.length === 1) {
+        graded.push(b);
+      } else if (split.undeclared.length === 1) {
+        refuseUndeclared(b.row);
+      } else {
+        console.log(
+          `note ⬜ NOT GRADED — ${buildAt(b)} stamps RELEASE_CHANNEL=${b.stamp}, whose surface "${b.row.surface}" ` +
+            'declares no Flutter app, so there is no Dart for GLITCHTIP_DSN to be defined into.',
+        );
+      }
+    }
+    // An exemption nobody reads is indistinguishable from an omission, so each
+    // one is printed with its reason on every run, green or red.
+    for (const e of census.exempt) {
+      console.log(`note ⬜ NOT GRADED — ${buildAt(e)}: ${e.why}`);
+    }
+    exemptCount = census.exempt.length;
+    // A build the census cannot place, and an exemption that matches nothing, are
+    // NOT this limb's findings. assert-channel-register 6b/6b-ii owns both and exits
+    // 1 on them; two guards failing on one defect teaches whoever hits it that the
+    // second one is noise. Printed, because a build outside the census is also a
+    // build outside THIS domain, and a reader of a green run needs that sentence.
+    if (census.findings.length) {
+      console.log(
+        `note ⬜ ${census.findings.length} release build(s) could not be placed against a channel row, so this limb graded none of them: ` +
+          `${census.findings.map((f) => `${buildAt(f.build)} [${f.kind}]`).join(' / ')}. ` +
+          'assert-channel-register.mjs 6b/6b-ii owns that rule and fails on it.',
+      );
+    }
+    if (census.staleExemptions.length) {
+      console.log(
+        `note ⬜ ${census.staleExemptions.length} \`releaseBuildsNeverShipped\` entr(y/ies) match no release build: ` +
+          `${census.staleExemptions.map((e) => `${e?.workflow}#${e?.job}${e?.target ? ` (${e.target})` : ''}`).join(', ')}. ` +
+          'assert-channel-register.mjs 6b/6b-ii owns that rule and fails on it.',
+      );
+    }
+
     const allLanes = (register.channels ?? []).filter(
       (c) => typeof c?.lane?.workflow === 'string' && typeof c?.lane?.job === 'string',
     );
-    // ⏱ 2026-09-15 — the split is the surface's DECLARED `flutterApp`
-    // (tooling/ci/channel-surface.mjs), not the literal 'extension'; a lane on a
-    // surface that declares no answer is refused rather than asked for a
-    // `--dart-define` it may have nowhere to put (O-EXT-SURFACE-AXIS).
     const split = partitionByFlutterApp(register, allLanes);
-    for (const c of split.undeclared) {
-      coverageLost(`${undeclaredSurfaceLine(c, 'whether its lane must --dart-define GLITCHTIP_DSN')}`);
-    }
-    const notFlutter = split.other;
-    lanes = split.flutter.map((c) => ({ id: c.id, workflow: c.lane.workflow.split('/').pop(), job: c.lane.job }));
-    for (const c of notFlutter) {
+    for (const c of split.undeclared) refuseUndeclared(c);
+    flutterLanes = split.flutter;
+    // ⚠️ THE EXTENSIONS DO NOT SILENTLY LOSE A CRASH SINK — THEY NEVER HAD ONE,
+    // AND THE REGISTER SAYS SO OUT LOUD. Their lane is extensions.yml's `release`
+    // job, which runs `node scripts/pack.mjs` and no `flutter build` at all. Each
+    // extension row carries `crashSink: { layers: [], native: false }` with the
+    // reason: the free tier is held to zero network calls by
+    // extensions/PRINCIPLES.md and extensions ADR 013 makes the Pro entitlement
+    // check the ONE call the product makes, so an error sink would be a second
+    // one. That is a declaration a reader can disagree with, which is more than
+    // the silence this limb would otherwise have produced by failing on an
+    // impossible flag.
+    for (const c of split.other) {
       console.log(
         `note ⬜ NO DART TO DEFINE INTO: channel \`${c.id}\` (surface "${c.surface}") names lane ${c.lane.workflow}#${c.lane.job}, ` +
           `which runs no \`flutter build\`. Its declared crashSink is layers=[${(c.crashSink?.layers ?? []).join(', ') || 'none'}] — ` +
           'a stated absence, not an unchecked one.',
       );
     }
-  } catch (e) {
-    coverageLost(`tooling/channel-register.json could not be read (${e.message}), so the set of artifact lanes that must supply GLITCHTIP_DSN is empty and this check asserts nothing.`);
   }
 
-  if (lanes.length < MIN_LANES) {
+  // The floor refuses a shrunken census but does not hide what the census DID
+  // grade: a build that vanished from a lane job is both a smaller census and a
+  // lane holding nothing, and the second sentence is the one that names it.
+  if (register !== null && graded.length < MIN_GRADED) {
     coverageLost(
-      `only ${lanes.length} channel row(s) declare a \`lane.workflow\` + \`lane.job\`, fewer than the ${MIN_LANES} that exist today. ` +
-        'The crash-sink check quantifies over that set; a shrunken one certifies the remaining lanes and says nothing about the rest.',
+      `the census graded only ${graded.length} release build(s) on a Flutter channel, fewer than the ${MIN_GRADED} that exist today. ` +
+        'The crash-sink check quantifies over that set; a shrunken one certifies the remaining builds and says nothing about the rest.',
     );
+  }
+  if (register === null) {
+    // Refused above: with no register there is no census to grade against.
   } else if (entries.size === 0) {
     coverageLost('no entry point was located in any app or the brick; the consumer half of the crash-sink check cannot be verified.');
   } else {
@@ -1330,42 +1388,58 @@ function jobBody(yaml, jobName) {
       }
     }
     let wired = 0;
-    for (const lane of lanes) {
-      const wfPath = join(repo, '.github', 'workflows', lane.workflow);
-      if (!existsSync(wfPath)) {
-        coverageLost(`channel \`${lane.id}\` names lane workflow ${lane.workflow}, which does not exist, so its crash-sink obligation is unenforceable.`);
-        continue;
-      }
-      const wf = readFileSync(wfPath, 'utf8');
-      const body = jobBody(wf, lane.job);
-      if (body === null) {
-        coverageLost(`channel \`${lane.id}\` names job \`${lane.job}\` in ${lane.workflow} and this scan could not find that job, so the define could be anywhere or nowhere.`);
-        continue;
-      }
-      // 🔴 NO `#` BEFORE THE MATCH (2026-08-01 full-corpus review). This tested
-      // the RAW workflow text, so commenting the define out — one `#`, the exact
-      // edit somebody makes while debugging build flags — still counted as
-      // "supplied", and the shipped build initialised the NoOp client with this
-      // guard printing ok. Worse: the define sits in a `run: >` folded scalar,
-      // where that `#` is a SHELL comment that also swallows the rest of the
-      // line. A define behind a comment marker is prose, not a flag; the match
-      // must sit on a line with no `#` anywhere before it.
-      //
-      // ⚠️ AND IT IS MATCHED INSIDE THE JOB'S OWN BODY, not the file's. The
-      // whole-file form would have let `deploy-web.yml`'s define satisfy a
-      // check about a job in the same file that supplies nothing.
-      if (!/^[^#\n]*--dart-define=GLITCHTIP_DSN=/m.test(body)) {
+    for (const b of graded) {
+      // 🔴 THE BUILD'S OWN SEGMENT, AND ITS VALUE. `b.segment` is the one shell
+      // command that runs `flutter build`, so neither a sibling step nor a second
+      // build on the same `run:` line answers for it; `defineValueIn` cuts at the
+      // first `#` (a define behind a comment marker is prose — inside a folded
+      // `run: >` that `#` is a SHELL comment that swallows the rest of the
+      // command) and returns '' for a define with nothing after its `=`.
+      const dsn = defineValueIn(b.segment, 'GLITCHTIP_DSN');
+      if (dsn === null || dsn === '') {
         fail(
-          `${lane.workflow} job \`${lane.job}\` (the lane of channel \`${lane.id}\`) does not pass --dart-define=GLITCHTIP_DSN. ` +
+          `${buildAt(b)}, a release build of channel \`${b.row.id}\`, ` +
+            `${dsn === null ? 'does not pass --dart-define=GLITCHTIP_DSN' : 'passes --dart-define=GLITCHTIP_DSN= with an EMPTY value'} in its own command. ` +
             'TelemetryBootstrap falls back to a NoOp client when the DSN is empty — correct behaviour, and ' +
-            'indistinguishable from working — so that artifact ships with crashes reaching nobody and nothing going red.',
+            'indistinguishable from working — so that artifact ships with crashes reaching nobody and nothing going red. ' +
+            `If nobody ships it, name it in tooling/channel-register.json \`releaseBuildsNeverShipped\` with its reason.`,
         );
         continue;
       }
       wired++;
     }
-    if (consumed && wired === lanes.length) {
-      ok(`crash sink wired — ${wired} artifact lane(s) supply GLITCHTIP_DSN (${lanes.map((l) => `${l.id}:${l.job}`).join(', ')}) and ${entries.size} entry point(s) read it (${[...entries.values()].join(', ')})`);
+    // ⚠️ THE DECLARED LANES STILL HAVE TO POINT SOMEWHERE. They no longer set the
+    // domain — that is the whole change above — but a lane naming a job that is
+    // gone, or one that builds nothing, is a register that has drifted from the
+    // workflows, and this limb reads both. A FINDING, not COVERAGE LOST: the census
+    // graded every build either way, so what is left is a register row that is wrong.
+    // Same shape as assert-store-build-config's declared-field check. Skipped when
+    // the census graded NOTHING: then "the lane holds no build" is the census's
+    // blindness, not the register's drift, and the floor above already refused.
+    let lanesHeld = 0;
+    for (const c of graded.length > 0 ? flutterLanes : []) {
+      const wf = parsed.find((w) => w.rel === c.lane.workflow);
+      if (!wf) {
+        fail(`channel \`${c.id}\` names lane workflow ${c.lane.workflow}, which this scan did not parse. A declared lane pointing at a file that is not there tells every reader of the register something untrue.`);
+        continue;
+      }
+      if (!wf.jobs.get(c.lane.job)) {
+        fail(`channel \`${c.id}\` names job \`${c.lane.job}\` in ${c.lane.workflow} and this scan could not find that job; it declares [${[...wf.jobs.keys()].join(', ')}].`);
+        continue;
+      }
+      if (!graded.some((b) => b.workflow === c.lane.workflow && b.job === c.lane.job)) {
+        fail(`channel \`${c.id}\` declares lane ${c.lane.workflow}#${c.lane.job}, and that job holds no census-graded release build — the lane the register names builds nothing this limb could hold to GLITCHTIP_DSN.`);
+        continue;
+      }
+      lanesHeld++;
+    }
+    if (consumed && graded.length >= MIN_GRADED && wired === graded.length && lanesHeld === flutterLanes.length) {
+      const channels = [...new Set(graded.map((b) => b.row.id))].sort();
+      ok(
+        `crash sink wired — ${wired} census-graded release build(s) pass a non-empty GLITCHTIP_DSN on their own command, whatever job they sit in ` +
+          `(${channels.length} channel(s): ${channels.join(', ')}); ${exemptCount} exempt build(s) named above; ` +
+          `${lanesHeld} declared lane(s) each hold one; and ${entries.size} entry point(s) read it (${[...entries.values()].join(', ')})`,
+      );
     }
   }
 
