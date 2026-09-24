@@ -55,9 +55,24 @@
 //   1  BLOCKED or QUALIFIED — a wall, or a ruling is owed before this name ships
 //   2  COVERAGE LOST — could not check, which is deliberately NOT a pass
 //
+// ── HELD: THE ONE VERDICT THIS PROBE CANNOT READ, SO IT NEVER OVERWRITES IT ───
+// A name reserved in a store's own console (Play's package entry, an App Store
+// Connect record, a Partner Center reservation, a registered snap) is invisible
+// to every unauthenticated read above. So the owner's word is recorded, OFFLINE,
+// with the store's record id: `--hold` writes the verdict, `heldBy: "owner"` and
+// `heldOn`, and recomputes `overall`. `--execute` carries a prior HELD forward
+// and says so, exactly as it carries the owner's trademark ruling.
+//
+// ── `_why` IS GENERATED ON EVERY WRITE ──────────────────────────────────────
+// Every write here sets `_why` to `whyLines(record)` from
+// `name-clearance-why.mjs`, and `--why` rewrites `_why` alone, offline. The
+// guard's limb 11 refuses any other text, so the prose moves with the fields.
+//
 // USAGE
 //   node tooling/store/name-clearance.mjs <Name> [--app <slug>] [--json]
 //   node tooling/store/name-clearance.mjs <Name> --app <slug> --execute
+//   node tooling/store/name-clearance.mjs --hold <channel> --record <store record id> --app <slug>   (offline; exit 2 on an unknown channel)
+//   node tooling/store/name-clearance.mjs --why --app <slug>   (offline; rewrites `_why` and nothing else)
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
@@ -65,7 +80,8 @@ import { fileURLToPath } from 'node:url';
 
 import { resolveIdentity } from '../ci/read-identity.mjs';
 import { rulingOwed } from '../scripts/name-ruling.mjs';
-import { PROBES, noProbeRegistered, identityLines, norm, PROVEN_FREE, PROVEN_TAKEN, UNDETERMINED, NOT_APPLICABLE, GLOBAL } from './name-probes.mjs';
+import { PROBES, noProbeRegistered, identityLines, norm, PROVEN_FREE, PROVEN_TAKEN, UNDETERMINED, NOT_APPLICABLE, HELD, GLOBAL } from './name-probes.mjs';
+import { whyLines } from './name-clearance-why.mjs';
 
 export const RECORD_REL = (app) => `apps/${app}/name-clearance.json`;
 export const REGISTER_REL = 'tooling/channel-register.json';
@@ -275,6 +291,8 @@ export function rollUp(record) {
   const advisory = entries.filter(([, c]) => c.verdict === PROVEN_TAKEN && c.uniqueness === 'tolerated');
   const undetermined = entries.filter(([, c]) => c.verdict === UNDETERMINED);
   const undeterminedGlobal = undetermined.filter(([, c]) => c.uniqueness === GLOBAL);
+  // HELD falls through every filter above: the owner holds the name on that
+  // channel, which is at least as good as the probe proving it free.
 
   // The owner refusing the name is a wall too, and outranks what follows for the
   // same reason: nothing ships under it, whatever the channels could not tell.
@@ -308,12 +326,18 @@ export function rollUp(record) {
  * ruling, and a re-probe that reset `gatedUntil` would be a waiver extending its
  * own reason, which is the shape this corpus deletes.
  *
+ * A HELD channel is preserved the same way and for the same reason: the owner's
+ * fields (`verdict`, `why`, `storeRecordId`, `heldBy`, `heldOn`) are carried, and
+ * this run's observations (`uniqueness`, `evidence`, `control`) are refreshed.
+ * The ids carried come back in `carriedHeld`, so the caller can print them.
+ *
  * 🔴 ONE VERDICT: the MERGED record's. The probe's own roll-up never sees the
- * carried ruling, so a PROCEED record re-probed clean rolls up QUALIFIED while
- * the file says CLEAR — and a sweep comparing that against the file's `overall`
- * reports a flip that never happened, every week. So this returns the written
- * `overall` (and its exit), and the sweep and the CLI print and compare THAT.
- * `dryRun` builds and rolls up the merged record without writing it.
+ * carried ruling or a carried HELD, so a PROCEED record re-probed clean rolls up
+ * QUALIFIED while the file says CLEAR — and a sweep comparing that against the
+ * file's `overall` reports a flip that never happened, every week. So this
+ * returns the written `overall` (and its exit), and the sweep and the CLI print
+ * and compare THAT. `dryRun` builds and rolls up the merged record without
+ * writing it.
  */
 export function writeRecord(root, record, { force = false, dryRun = false } = {}) {
   const rel = RECORD_REL(record.app);
@@ -346,23 +370,30 @@ export function writeRecord(root, record, { force = false, dryRun = false } = {}
     };
   }
   let carried = null;
-  let carriedWhy = null;
+  let priorChannels = null;
   if (existed) {
     try {
       const prior = JSON.parse(priorText);
       carried = prior.trademark ?? null;
-      // The seeded prose survives the weekly sweep. A routine that silently
-      // deleted the paragraph explaining why a record is BLOCKED and the build
-      // is not would leave the next reader with the verdict and none of the
-      // reasoning — which is how a considered state comes to look like a bug.
-      carriedWhy = Array.isArray(prior._why) ? prior._why : null;
+      priorChannels = prior.channels && typeof prior.channels === 'object' ? prior.channels : null;
     } catch {
       carried = null;
     }
   }
+  const channels = { ...record.channels };
+  const carriedHeld = [];
+  for (const [id, prev] of Object.entries(priorChannels ?? {})) {
+    if (prev?.verdict !== HELD || !channels[id]) continue;
+    channels[id] = { ...channels[id], verdict: HELD, why: prev.why, storeRecordId: prev.storeRecordId, heldBy: prev.heldBy, heldOn: prev.heldOn };
+    carriedHeld.push(id);
+  }
+  // ⏱ 2026-09-24 — `_why` was carried over from the prior record verbatim, so
+  // the 2026-09-09 re-probe under the new name kept the paragraphs about Subly,
+  // and they stood for fifteen days. It is generated below instead; the prose
+  // that explained a state is regenerated WITH the state.
   const merged = {
-    ...(carriedWhy ? { _why: carriedWhy } : {}),
     ...record,
+    channels,
     name: { value: record.name, asOf: record.asOf, verify: `node tooling/store/name-clearance.mjs ${shellQuote(record.name)} --app ${record.app} --execute`, verifyKind: 'remote' },
     trademark: carried
       ? { ...record.trademark, ruling: carried.ruling ?? null, ruledBy: carried.ruledBy ?? null, ruledOn: carried.ruledOn ?? null, basis: carried.basis ?? null, ownerItem: carried.ownerItem ?? null, gatedUntil: carried.gatedUntil ?? null }
@@ -370,12 +401,23 @@ export function writeRecord(root, record, { force = false, dryRun = false } = {}
   };
   const verdict = rollUp(merged);
   merged.overall = verdict.overall;
+  const out = withWhy(merged);
   if (dryRun) {
-    return { written: false, refused: false, rel, why: `${rel} not written (dry run).`, overall: verdict.overall, exit: verdict.exit, verdict, record: merged };
+    return { written: false, refused: false, rel, carriedHeld, why: `${rel} not written (dry run).`, overall: verdict.overall, exit: verdict.exit, verdict, record: out };
   }
   mkdirSync(dirname(abs), { recursive: true });
-  writeFileSync(abs, `${JSON.stringify(merged, null, 2)}\n`);
-  return { written: true, refused: false, rel, why: `${rel} rewritten from this run.`, overall: verdict.overall, exit: verdict.exit, verdict, record: merged };
+  writeFileSync(abs, `${JSON.stringify(out, null, 2)}\n`);
+  return {
+    written: true,
+    refused: false,
+    rel,
+    carriedHeld,
+    why: `${rel} rewritten from this run.${carriedHeld.length ? ` HELD carried forward on ${carriedHeld.join(', ')}: an owner's console reservation is invisible to this probe, so it is never re-probed over.` : ''}`,
+    overall: verdict.overall,
+    exit: verdict.exit,
+    verdict,
+    record: out,
+  };
 }
 
 /** POSIX single-quoting, so a multi-word name stays ONE argument when the
@@ -383,6 +425,108 @@ export function writeRecord(root, record, { force = false, dryRun = false } = {}
  *  "Nikatru Subscription Tracker" into three positionals and cleared "Nikatru". */
 export function shellQuote(s) {
   return /^[A-Za-z0-9._\/-]+$/.test(s) ? s : `'${String(s).replace(/'/g, `'\\''`)}'`;
+}
+
+/** `record` with `_why` regenerated from its fields and placed first; every
+ *  other key keeps its value and its order. */
+export function withWhy(record) {
+  const { _why, ...rest } = record;
+  return { _why: whyLines(rest), ...rest };
+}
+
+/**
+ * `--why --app <slug>`. OFFLINE: rewrites `_why` and nothing else, and writes
+ * only when the text differs. An absent or unparseable record is
+ * `CoverageLost`: there is nothing to generate the lines from.
+ */
+export function rewriteWhy(root, { app }) {
+  if (typeof app !== 'string' || app.trim() === '') {
+    throw new CoverageLost(['--why needs --app <slug>: the lines are generated from ONE app\'s record, and no app was named.']);
+  }
+  const rel = RECORD_REL(app);
+  const abs = join(root, rel);
+  let rec;
+  try {
+    rec = JSON.parse(readFileSync(abs, 'utf8'));
+  } catch (e) {
+    throw new CoverageLost([`cannot read ${rel} (${e.message}).`, 'The `_why` lines are generated from the record, so with no record there is nothing to generate them from.']);
+  }
+  const out = withWhy(rec);
+  const changed = JSON.stringify(out._why) !== JSON.stringify(rec._why);
+  if (changed) writeFileSync(abs, `${JSON.stringify(out, null, 2)}\n`);
+  return { rel, why: changed ? `${rel} — \`_why\` regenerated (${out._why.length} line(s)); no other field was touched.` : `${rel} — \`_why\` already matches its fields; nothing written.` };
+}
+
+/** The marker `--hold` writes between the owner's sentence and the probe's
+ *  reading it replaced, so a second hold keeps the probe's reading rather than
+ *  nesting one hold inside another. */
+const BEFORE_HOLD = ' Before the hold the probe read ';
+
+/**
+ * `--hold <channel> --record <store record id> --app <slug>`. OFFLINE: it reads
+ * the register and the record and writes the record, and nothing else.
+ *
+ * It refuses — `CoverageLost`, exit 2 — rather than guess: a channel the
+ * register does not declare, a record that does not exist yet (a hold is
+ * recorded INTO a probed record; `--execute` makes one), a channel that record
+ * is silent on, or an empty store record id.
+ */
+export function holdChannel(root, { app, channel, storeRecordId, now = new Date() }) {
+  if (typeof app !== 'string' || app.trim() === '') {
+    throw new CoverageLost(['--hold needs --app <slug>: a hold is recorded into ONE app\'s record, and no app was named.']);
+  }
+  if (typeof storeRecordId !== 'string' || storeRecordId.trim() === '') {
+    throw new CoverageLost([
+      '--hold needs --record <store record id>, and none was given.',
+      'A HELD is the owner\'s word that the name is reserved in the store\'s console; without the store\'s own id for that reservation nobody can look it up.',
+    ]);
+  }
+  let register;
+  try {
+    register = JSON.parse(readFileSync(join(root, REGISTER_REL), 'utf8'));
+  } catch (e) {
+    throw new CoverageLost([`cannot read ${REGISTER_REL} (${e.message}).`, 'The channel a hold names is checked against the register, so with it unreadable nothing was recorded.']);
+  }
+  const ids = Array.isArray(register.channels) ? register.channels.map((c) => c?.id).filter(Boolean) : [];
+  if (!ids.includes(channel)) {
+    throw new CoverageLost([
+      `--hold names channel ${JSON.stringify(channel ?? null)}, which ${REGISTER_REL} does not declare.`,
+      `Channels: ${ids.join(', ') || '(none)'}. Nothing was written: a hold on a channel nobody releases to holds nothing.`,
+    ]);
+  }
+  const rel = RECORD_REL(app);
+  const abs = join(root, rel);
+  let rec;
+  try {
+    rec = JSON.parse(readFileSync(abs, 'utf8'));
+  } catch (e) {
+    throw new CoverageLost([
+      `cannot read ${rel} (${e.message}).`,
+      `A hold is recorded INTO a probed record. Make one first: node tooling/store/name-clearance.mjs "<Name>" --app ${app} --execute`,
+    ]);
+  }
+  const prev = rec.channels?.[channel];
+  if (!prev || typeof prev !== 'object') {
+    throw new CoverageLost([`${rel} carries no entry for ${channel}, which the register declares.`, 'The record is older than the register; re-probe it with --execute before recording a hold on it.']);
+  }
+  const id = storeRecordId.trim();
+  const heldOn = today(now);
+  const before =
+    prev.verdict === HELD ? (typeof prev.why === 'string' && prev.why.includes(BEFORE_HOLD) ? prev.why.slice(prev.why.indexOf(BEFORE_HOLD)) : '') : `${BEFORE_HOLD}${prev.verdict}: ${prev.why}`;
+  rec.channels[channel] = {
+    ...prev,
+    verdict: HELD,
+    why:
+      `HELD by the owner, recorded ${heldOn}: the name is reserved in this store's own console under record ${id}. ` +
+      'No unauthenticated probe can see a console reservation, so --execute carries this verdict forward rather than re-probing over it.' +
+      before,
+    storeRecordId: id,
+    heldBy: 'owner',
+    heldOn,
+  };
+  rec.overall = rollUp(rec).overall;
+  writeFileSync(abs, `${JSON.stringify(withWhy(rec), null, 2)}\n`);
+  return { rel, why: `${rel} — ${channel} HELD under store record ${id} (heldBy owner, heldOn ${heldOn}); overall ${rec.overall}.` };
 }
 
 // ── CLI ──────────────────────────────────────────────────────────────────────
@@ -396,8 +540,42 @@ if (isMain) {
     const i = argv.indexOf(n);
     return i === -1 ? d : argv[i + 1];
   };
-  const FLAGS_WITH_VALUES = new Set(['--app', '--repo']);
+  const FLAGS_WITH_VALUES = new Set(['--app', '--repo', '--hold', '--record']);
   const positional = argv.filter((a, i) => !a.startsWith('--') && !FLAGS_WITH_VALUES.has(argv[i - 1]));
+  /** A flag's value, or null when it is absent or the next slot is another flag. */
+  const valueOf = (n) => {
+    const v = flag(n);
+    return typeof v === 'string' && !v.startsWith('--') ? v : null;
+  };
+  const refuse = (e) => {
+    if (!(e instanceof CoverageLost)) throw e;
+    console.error(`✗ COVERAGE LOST — ${e.lines[0]}`);
+    for (const l of e.lines.slice(1)) console.error(`  ${l}`);
+    process.exit(2);
+  };
+
+  // ── --hold: offline, the owner's word with the store's record id ──────────
+  if (argv.includes('--hold')) {
+    try {
+      const h = holdChannel(resolve(flag('--repo', DEFAULT_ROOT)), { app: valueOf('--app'), channel: valueOf('--hold'), storeRecordId: valueOf('--record') });
+      console.log(`✔ ${h.why}`);
+      process.exit(0);
+    } catch (e) {
+      refuse(e);
+    }
+  }
+
+  // ── --why: offline, `_why` regenerated from the record's own fields ───────
+  if (argv.includes('--why')) {
+    try {
+      const w = rewriteWhy(resolve(flag('--repo', DEFAULT_ROOT)), { app: valueOf('--app') });
+      console.log(`✔ ${w.why}`);
+      process.exit(0);
+    } catch (e) {
+      refuse(e);
+    }
+  }
+
   const NAME = positional[0];
   if (!NAME) {
     console.error('COVERAGE LOST — no candidate name was given, so nothing was checked.');
@@ -457,6 +635,7 @@ if (isMain) {
 
   if (EXECUTE) {
     console.log(w.written ? `wrote ${w.rel}` : `✗ ${w.why}`);
+    if (w.carriedHeld?.length) console.log(`↻ HELD carried forward on ${w.carriedHeld.join(', ')} — the owner's record, which this probe cannot read and never overwrites.`);
     if (!w.written) process.exit(2);
   }
   process.exit(verdict.exit);

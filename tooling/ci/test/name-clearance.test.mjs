@@ -33,9 +33,10 @@ import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
-import { clear, rollUp, writeRecord, makeHttp, shellQuote, CoverageLost, RECORD_REL } from '../../store/name-clearance.mjs';
+import { clear, rollUp, writeRecord, makeHttp, shellQuote, CoverageLost, RECORD_REL, today } from '../../store/name-clearance.mjs';
 import { settle } from '../../ops/name-clearance-sweep.mjs';
-import { PROBES, noProbeRegistered, PROVEN_FREE, PROVEN_TAKEN, UNDETERMINED, NOT_APPLICABLE } from '../../store/name-probes.mjs';
+import { PROBES, noProbeRegistered, PROVEN_FREE, PROVEN_TAKEN, UNDETERMINED, NOT_APPLICABLE, HELD } from '../../store/name-probes.mjs';
+import { whyLines } from '../../store/name-clearance-why.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const PROBE_SCRIPT = join(REPO, 'tooling', 'store', 'name-clearance.mjs');
@@ -461,6 +462,213 @@ describe('the probe — the roll-up and the record', () => {
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }
+  });
+});
+
+// ── HELD — the owner's verdict, which no probe can read ─────────────────────
+// A throwaway root with a two-channel register and a probed record over it. The
+// record's `overall` is UNDETERMINED for exactly ONE reason — `ios-appstore`, a
+// global channel the probe could not settle — so a hold there is the only thing
+// in it that can move the roll-up, and H1's CLEAR is attributable to the hold.
+const heldRecord = () => ({
+  app: 'x',
+  slug: 'x',
+  name: { value: 'X', asOf: '2026-09-09', verify: 'node tooling/store/name-clearance.mjs X --app x --execute', verifyKind: 'remote' },
+  asOf: '2026-09-09',
+  channels: {
+    'ios-appstore': { verdict: UNDETERMINED, uniqueness: 'global', why: 'No iOS listing carries this name.', evidence: [], control: null },
+    amo: { verdict: PROVEN_FREE, uniqueness: 'tolerated', why: 'No listed add-on carries this name.', evidence: [], control: null },
+  },
+  identifiers: [],
+  controls: { green: 1, failed: [] },
+  trademark: { disclaimer: 'd', signals: [], ruling: 'PROCEED', ruledBy: 'owner', ruledOn: '2026-09-09', basis: 'ADR 074', ownerItem: null, gatedUntil: null },
+  overall: 'UNDETERMINED',
+});
+function heldRoot() {
+  const tmp = mkdtempSync(join(tmpdir(), 'nk-nc-held-'));
+  mkdirSync(join(tmp, 'tooling'), { recursive: true });
+  mkdirSync(join(tmp, 'apps', 'x'), { recursive: true });
+  writeFileSync(join(tmp, 'tooling', 'channel-register.json'), `${JSON.stringify({ channels: [{ id: 'ios-appstore' }, { id: 'amo' }] }, null, 2)}\n`);
+  writeFileSync(join(tmp, RECORD_REL('x')), `${JSON.stringify(heldRecord(), null, 2)}\n`);
+  return tmp;
+}
+const hold = (root, args) => spawnSync(process.execPath, [PROBE_SCRIPT, '--repo', root, ...args], { encoding: 'utf8' });
+
+describe('the probe — HELD, the owner-recorded verdict', () => {
+  test('H1 --hold writes HELD with the store record id, heldBy owner and today, and recomputes overall', () => {
+    const tmp = heldRoot();
+    try {
+      const before = JSON.parse(readFileSync(join(tmp, RECORD_REL('x')), 'utf8'));
+      assert.equal(before.overall, 'UNDETERMINED', 'green control: the fixture starts UNDETERMINED, so the CLEAR below is the hold');
+      assert.equal(rollUp(before).overall, 'UNDETERMINED');
+      const r = hold(tmp, ['--hold', 'ios-appstore', '--record', '6741234567', '--app', 'x']);
+      assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+      const back = JSON.parse(readFileSync(join(tmp, RECORD_REL('x')), 'utf8'));
+      const ch = back.channels['ios-appstore'];
+      assert.equal(ch.verdict, HELD);
+      assert.equal(ch.storeRecordId, '6741234567');
+      assert.equal(ch.heldBy, 'owner');
+      assert.equal(ch.heldOn, today());
+      assert.match(ch.why, /HELD by the owner/);
+      assert.match(ch.why, /Before the hold the probe read UNDETERMINED: No iOS listing carries this name\./, 'the probe reading the hold replaced must survive in the prose');
+      assert.equal(ch.uniqueness, 'global', 'the probe\'s observation fields are left as they were');
+      assert.equal(back.overall, 'CLEAR', 'overall must be recomputed, not left at the pre-hold UNDETERMINED');
+      assert.equal(back.channels.amo.verdict, PROVEN_FREE, 'a hold touches the one channel it names');
+      assert.deepEqual(back._why, whyLines(back), 'a hold is a write, and every write regenerates `_why`');
+      assert.ok(back._why.some((l) => l.includes('ios-appstore (global; store record 6741234567,')), back._why.join('\n'));
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test('H2 --execute carries a prior HELD forward, and only a HELD', () => {
+    const tmp = heldRoot();
+    try {
+      const prior = heldRecord();
+      prior.channels['ios-appstore'] = {
+        verdict: HELD,
+        uniqueness: 'global',
+        why: 'HELD by the owner, recorded 2026-09-20: reserved under record 6741234567.',
+        evidence: [],
+        control: null,
+        storeRecordId: '6741234567',
+        heldBy: 'owner',
+        heldOn: '2026-09-20',
+      };
+      prior.channels.amo.verdict = UNDETERMINED;
+      writeFileSync(join(tmp, RECORD_REL('x')), `${JSON.stringify(prior, null, 2)}\n`);
+      const fresh = heldRecord();
+      fresh.name = 'X';
+      fresh.asOf = '2026-09-30';
+      fresh.channels['ios-appstore'].control = { what: 'itunes lookup', green: true, detail: 'HTTP 200' };
+      const w = writeRecord(tmp, fresh);
+      assert.equal(w.written, true);
+      assert.deepEqual(w.carriedHeld, ['ios-appstore']);
+      assert.match(w.why, /HELD carried forward on ios-appstore/);
+      const back = JSON.parse(readFileSync(join(tmp, RECORD_REL('x')), 'utf8'));
+      const ch = back.channels['ios-appstore'];
+      assert.equal(ch.verdict, HELD, 'a re-probe must never overwrite the owner\'s hold with its own UNDETERMINED');
+      assert.equal(ch.storeRecordId, '6741234567');
+      assert.equal(ch.heldBy, 'owner');
+      assert.equal(ch.heldOn, '2026-09-20');
+      assert.match(ch.why, /reserved under record 6741234567/);
+      assert.deepEqual(ch.control, { what: 'itunes lookup', green: true, detail: 'HTTP 200' }, 'this run\'s observation is refreshed');
+      assert.equal(back.channels.amo.verdict, PROVEN_FREE, 'green control: a channel that was not HELD takes this run\'s verdict');
+      assert.equal(back.overall, 'CLEAR');
+      assert.deepEqual(back._why, whyLines(back), '--execute regenerates `_why` from the merged record, the carried HELD included');
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test('H3 --hold on a channel the register does not declare exits 2 and writes nothing', () => {
+    const tmp = heldRoot();
+    try {
+      const bytes = readFileSync(join(tmp, RECORD_REL('x')), 'utf8');
+      const r = hold(tmp, ['--hold', 'ios-app-store', '--record', '6741234567', '--app', 'x']);
+      assert.equal(r.status, 2, `${r.stdout}${r.stderr}`);
+      assert.match(r.stderr, /COVERAGE LOST/);
+      assert.match(r.stderr, /"ios-app-store", which tooling\/channel-register\.json does not declare/);
+      assert.equal(readFileSync(join(tmp, RECORD_REL('x')), 'utf8'), bytes, 'a refused hold must leave the record byte-identical');
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test('H4 --hold with no store record id exits 2 and writes nothing', () => {
+    const tmp = heldRoot();
+    try {
+      const bytes = readFileSync(join(tmp, RECORD_REL('x')), 'utf8');
+      const r = hold(tmp, ['--hold', 'ios-appstore', '--app', 'x']);
+      assert.equal(r.status, 2, `${r.stdout}${r.stderr}`);
+      assert.match(r.stderr, /--hold needs --record <store record id>/);
+      assert.equal(readFileSync(join(tmp, RECORD_REL('x')), 'utf8'), bytes);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  // ⏱ 2026-09-24 (the batch that landed N5 and HELD together). The probe cannot
+  // see a console reservation, so it rolls `ios-appstore` up UNDETERMINED on
+  // every run; the merged record carries the HELD and says CLEAR. The sweep
+  // prints and compares the merged verdict, so a hold is no weekly flip.
+  test('H5 a hold on the only undetermined global channel moves the record UNDETERMINED → CLEAR, and the sweep then prints CLEAR with no flip, twice', () => {
+    const tmp = heldRoot();
+    try {
+      const readBack = () => JSON.parse(readFileSync(join(tmp, RECORD_REL('x')), 'utf8'));
+      assert.equal(readBack().overall, 'UNDETERMINED', 'green control: ios-appstore is the one undetermined global channel');
+      const h = hold(tmp, ['--hold', 'ios-appstore', '--record', '6741234567', '--app', 'x']);
+      assert.equal(h.status, 0, `${h.stdout}${h.stderr}`);
+      assert.equal(readBack().overall, 'CLEAR', 'the hold is the only change, and it clears the record');
+
+      const probe = heldRecord();
+      probe.name = 'X';
+      probe.asOf = '2026-09-30';
+      assert.equal(rollUp(probe).overall, 'UNDETERMINED', 'green control: the probe alone still rolls up UNDETERMINED, so a CLEAR below is the merge\'s');
+
+      const first = settle({ root: tmp, app: 'x', name: 'X', previous: readBack().overall, record: probe });
+      assert.equal(readBack().overall, 'CLEAR');
+      assert.equal(readBack().channels['ios-appstore'].verdict, HELD, 'the sweep carries the hold forward');
+      assert.equal(first.overall, 'CLEAR', 'the sweep\'s verdict is the one it wrote');
+      assert.match(first.line, /CLEAR → CLEAR$/);
+      assert.equal(first.flip, null, 'the hold is not re-reported as a flip by every sweep after it');
+
+      const second = settle({ root: tmp, app: 'x', name: 'X', previous: first.overall, record: probe });
+      assert.equal(second.overall, 'CLEAR');
+      assert.equal(second.flip, null, 'a second run over its own output reports no flip');
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('the probe — `_why` is generated from the record, on every write', () => {
+  test('W1 --why rewrites `_why` and nothing else, and a second run writes nothing', () => {
+    const tmp = heldRoot();
+    try {
+      const rec = heldRecord();
+      const stale = { _why: ['SEEDED by hand, about a name this record no longer clears.'], ...rec };
+      writeFileSync(join(tmp, RECORD_REL('x')), `${JSON.stringify(stale, null, 2)}\n`);
+      const r = hold(tmp, ['--why', '--app', 'x']);
+      assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+      assert.match(r.stdout, /`_why` regenerated/);
+      const back = JSON.parse(readFileSync(join(tmp, RECORD_REL('x')), 'utf8'));
+      assert.deepEqual(back._why, whyLines(rec));
+      assert.deepEqual(Object.keys(back), Object.keys(stale), 'key order is kept');
+      const { _why: _a, ...restBack } = back;
+      const { _why: _b, ...restStale } = stale;
+      assert.deepEqual(restBack, restStale, 'every field but `_why` is byte-for-byte the input');
+      const bytes = readFileSync(join(tmp, RECORD_REL('x')), 'utf8');
+      const again = hold(tmp, ['--why', '--app', 'x']);
+      assert.equal(again.status, 0);
+      assert.match(again.stdout, /already matches its fields; nothing written/);
+      assert.equal(readFileSync(join(tmp, RECORD_REL('x')), 'utf8'), bytes);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test('W2 --why with no record exits 2 and creates nothing', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'nk-nc-why-'));
+    try {
+      const r = hold(tmp, ['--why', '--app', 'x']);
+      assert.equal(r.status, 2, `${r.stdout}${r.stderr}`);
+      assert.match(r.stderr, /COVERAGE LOST — cannot read apps\/x\/name-clearance\.json/);
+      assert.ok(!existsSync(join(tmp, 'apps')));
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test('W3 whyLines groups the verdicts, names the trademark state, and carries no register state', () => {
+    const rec = heldRecord();
+    rec.trademark = { ...rec.trademark, ruling: null, ruledBy: null, ruledOn: null, basis: null, ownerItem: 'O-FIXTURE-TRADEMARK-HOLD', gatedUntil: '2026-10-09' };
+    const lines = whyLines(rec);
+    assert.ok(lines.includes('Clear (PROVEN-FREE) — an authority answered "no such name" with its red control green: amo.'), lines.join('\n'));
+    assert.ok(lines.includes('Blocked for a submission (UNDETERMINED) — could not check, which is never a pass: ios-appstore (global).'), lines.join('\n'));
+    assert.ok(lines.some((l) => l.startsWith('Trademark: no ruling') && l.includes('O-FIXTURE-TRADEMARK-HOLD') && l.includes('2026-10-09')), lines.join('\n'));
+    assert.doesNotMatch(lines.join('\n'), /\b(armed|arming|served|lane: null|submittable)\b/i, 'arming is register state; writing it into a record is how `_why[4]` went stale');
+    assert.deepEqual(whyLines(rec), lines, 'pure: the same record gives the same lines');
   });
 });
 

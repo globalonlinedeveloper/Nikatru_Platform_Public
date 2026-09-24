@@ -33,6 +33,9 @@ import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
+import { VERDICTS } from '../../store/name-probes.mjs';
+import { whyLines } from '../../store/name-clearance-why.mjs';
+
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const GUARD = join(REPO, 'tooling', 'ci', 'assert-name-clearance.mjs');
 
@@ -70,9 +73,13 @@ function fixture(mutate = () => {}) {
   }
   const readText = (rel) => readFileSync(join(root, ...rel.split('/')), 'utf8');
   const writeText = (rel, text) => writeFileSync(join(root, ...rel.split('/')), text);
+  // A mutated RECORD is given the `_why` its mutated fields generate, as every
+  // writer gives it, so each case below still isolates the ONE property it
+  // names. Limb 11's own cases (M29-M31) write the record raw, with writeText.
   const editJson = (rel, fn) => {
     const doc = JSON.parse(readText(rel));
     const next = fn(doc) ?? doc;
+    if (rel === RECORD) next._why = whyLines(next);
     writeText(rel, `${JSON.stringify(next, null, 2)}\n`);
   };
   mutate({ root, readText, writeText, editJson });
@@ -501,5 +508,166 @@ ${before.out}`);
     const r = run(root);
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /More than a day is more than geography can explain/);
+  });
+});
+
+// ── --for-submission=<channel> (limb 10) ──────────────────────────────────────
+// The pass set is exactly two answers on the named channel: PROVEN-FREE, or HELD
+// with a store record id, `heldBy: "owner"` and a dated `heldOn`. Every case
+// below runs the SAME fixture bare first where that is the point, so a red under
+// the flag is the flag and not the fixture.
+const heldOnPlay = (doc) => {
+  Object.assign(doc.channels['android-play'], { verdict: 'HELD', storeRecordId: 'com.nikatru.subscriptiontracker', heldBy: 'owner', heldOn: '2026-09-24' });
+};
+
+describe('assert-name-clearance --for-submission — limb 10', () => {
+  test('M22 (A7-RC1) an UNDETERMINED channel is fatal under the flag, and the bare run of the same record passes', () => {
+    const root = fixture(({ editJson }) =>
+      editJson(RECORD, (doc) => {
+        doc.channels['android-play'].verdict = 'UNDETERMINED';
+      }),
+    );
+    const bare = run(root);
+    assert.equal(bare.code, 0, `green control: UNDETERMINED is not a finding in the bare run:\n${bare.out}`);
+    const r = run(root, ['--for-submission=android-play']);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /is UNDETERMINED on android-play/);
+    assert.match(r.out, /name-clearance\.mjs --hold android-play --record <store record id> --app subscriptiontracker/, 'the finding must name the command that records a hold');
+  });
+
+  test('M23 (A7-RC2) a HELD with its store record id, heldBy owner and heldOn passes under the flag', () => {
+    const r = run(fixture(({ editJson }) => editJson(RECORD, heldOnPlay)), ['--for-submission=android-play']);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /--for-submission=android-play: subscriptiontracker HELD \(store record com\.nikatru\.subscriptiontracker, 2026-09-24\)/);
+  });
+
+  // The schema refuses a HELD without its id before limb 10 is reached, so the
+  // second run takes the schema's clause out of the fixture: limb 10 must still
+  // refuse it. Without that run, limb 10's own check is one no input could reach.
+  test('M24 (A7-RC3) a HELD with no storeRecordId is a finding — from the schema, and from limb 10 where the schema admits it', () => {
+    const noId = (doc) => {
+      heldOnPlay(doc);
+      delete doc.channels['android-play'].storeRecordId;
+    };
+    const whole = run(fixture(({ editJson }) => editJson(RECORD, noId)), ['--for-submission=android-play']);
+    assert.equal(whole.code, 1, whole.out);
+    assert.match(whole.out, /channels\/android-play: matches none of the 2 permitted shapes/);
+
+    const limb10 = run(
+      fixture(({ editJson }) => {
+        editJson(RECORD, noId);
+        editJson('contracts/name-clearance.schema.json', (s) => {
+          delete s.properties.channels.additionalProperties.anyOf;
+        });
+      }),
+      ['--for-submission=android-play'],
+    );
+    assert.equal(limb10.code, 1, limb10.out);
+    assert.match(limb10.out, /android-play is HELD and lacks a `storeRecordId`/);
+  });
+
+  test('M25 (A7-RC4) a bare --for-submission is COVERAGE LOST, and so is a channel the register does not declare', () => {
+    const bare = run(fixture(), ['--for-submission']);
+    assert.equal(bare.code, 2, bare.out);
+    assert.match(bare.out, /--for-submission was given without a channel/);
+
+    const stranger = run(fixture(), ['--for-submission=android-playstore']);
+    assert.equal(stranger.code, 2, stranger.out);
+    assert.match(stranger.out, /names channel "android-playstore", which tooling\/channel-register\.json does not declare/);
+  });
+
+  test('M26 the pass set is exactly PROVEN-FREE or HELD — PROVEN-FREE passes, NOT-APPLICABLE and a tolerated PROVEN-TAKEN do not', () => {
+    const free = run(fixture(), ['--for-submission=web']);
+    assert.equal(free.code, 0, free.out);
+    assert.match(free.out, /--for-submission=web: subscriptiontracker PROVEN-FREE/);
+
+    const na = run(fixture(), ['--for-submission=windows-direct']);
+    assert.equal(na.code, 1, na.out);
+    assert.match(na.out, /is NOT-APPLICABLE on windows-direct/);
+
+    // tolerated, so limb 6 never grades it and the bare run stays green
+    const taken = fixture(({ editJson }) =>
+      editJson(RECORD, (doc) => {
+        doc.channels['windows-store'].verdict = 'PROVEN-TAKEN';
+      }),
+    );
+    assert.equal(run(taken).code, 0, 'green control: a tolerated PROVEN-TAKEN is not a bare finding');
+    const r = run(taken, ['--for-submission=windows-store']);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /is PROVEN-TAKEN on windows-store/);
+  });
+
+  test('M27 the trademark owner gate is FATAL under the flag and a print in the bare run', () => {
+    const root = fixture(({ editJson }) =>
+      editJson(RECORD, (doc) => {
+        owed(doc);
+        heldOnPlay(doc);
+      }),
+    );
+    const bare = run(root);
+    assert.equal(bare.code, 0, bare.out);
+    assert.match(bare.out, /owner-gated until/);
+    const r = run(root, ['--for-submission=android-play']);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /bounds a BUILD, not a submission/);
+    assert.doesNotMatch(r.out, /android-play is HELD and lacks/, 'the hold is complete, so the only finding is the gate');
+  });
+
+  test('M32 a HELD record regenerated by the fixture names its store record id in `_why`', () => {
+    const root = fixture(({ editJson }) => editJson(RECORD, heldOnPlay));
+    const back = JSON.parse(readFileSync(join(root, ...RECORD.split('/')), 'utf8'));
+    assert.ok(back._why.some((l) => l.startsWith('Held (HELD)') && l.includes('android-play (store record com.nikatru.subscriptiontracker, 2026-09-24)')), back._why.join('\n'));
+    assert.equal(run(root).code, 0, 'the regenerated text is the text limb 11 wants');
+  });
+
+  test('M28 HELD is one verdict in both places — the schema enum is name-probes.mjs VERDICTS', () => {
+    const schema = JSON.parse(readFileSync(join(REPO, 'contracts', 'name-clearance.schema.json'), 'utf8'));
+    const verdicts = schema.properties.channels.additionalProperties.properties.verdict.enum;
+    assert.ok(verdicts.includes('HELD'));
+    assert.deepEqual([...verdicts].sort(), [...VERDICTS].sort());
+  });
+});
+
+// ── limb 11: `_why` is generated, never typed ─────────────────────────────────
+// These cases write the record RAW (writeText), because editJson regenerates
+// `_why` and would repair the very defect each one plants.
+describe('assert-name-clearance — limb 11, the generated `_why`', () => {
+  test('M29 (A7-RC5) one word changed in `_why[0]` is a finding naming the offline command', () => {
+    const control = run(fixture());
+    assert.equal(control.code, 0, `green control: the tree's own record carries the generated text:\n${control.out}`);
+    const root = fixture(({ readText, writeText }) => {
+      const doc = JSON.parse(readText(RECORD));
+      const before = doc._why[0];
+      doc._why[0] = before.replace('GENERATED', 'WRITTEN');
+      assert.notEqual(doc._why[0], before, 'the mutation must change the line');
+      writeText(RECORD, `${JSON.stringify(doc, null, 2)}\n`);
+    });
+    const r = run(root);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /`_why` differs from whyLines\(\) at line 0/);
+    assert.match(r.out, /node tooling\/store\/name-clearance\.mjs --why --app subscriptiontracker/);
+  });
+
+  test('M30 an absent `_why` is a finding', () => {
+    const root = fixture(({ readText, writeText }) => {
+      const doc = JSON.parse(readText(RECORD));
+      delete doc._why;
+      writeText(RECORD, `${JSON.stringify(doc, null, 2)}\n`);
+    });
+    const r = run(root);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /`_why` is absent/);
+  });
+
+  test('M31 a verdict changed WITHOUT regenerating is a finding — the stale-prose defect itself', () => {
+    const root = fixture(({ readText, writeText }) => {
+      const doc = JSON.parse(readText(RECORD));
+      assert.equal(doc.channels.amo.verdict, 'PROVEN-FREE', 'the mutation below must change a verdict the text names');
+      doc.channels.amo.verdict = 'UNDETERMINED';
+      writeText(RECORD, `${JSON.stringify(doc, null, 2)}\n`);
+    });
+    const r = run(root);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /`_why` differs from whyLines\(\) at line 2/);
   });
 });

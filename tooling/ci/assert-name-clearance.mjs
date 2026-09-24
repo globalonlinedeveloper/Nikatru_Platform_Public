@@ -38,6 +38,27 @@
 //      no dated `ruledOn` or no `basis`
 //   8  an identifier in the record that the tree no longer declares
 //   9  (--execute) an `asOf` past the 30-day ceiling
+//  10  (--for-submission=<channel id>) that channel's verdict is anything but
+//      PROVEN-FREE, or HELD with a `storeRecordId`, `heldBy: "owner"` and a
+//      dated `heldOn`; and limb 7's owner gate is a finding, not a print
+//  11  a `_why` that is not exactly `whyLines(record)` from
+//      tooling/store/name-clearance-why.mjs — the prose is generated from the
+//      record's own fields, and a hand edit or a field changed without
+//      regenerating is refused, naming the offline command that fixes it
+//
+// ── WHY --for-submission=<channel> IS A MODE AND NOT A LIMB OF THE BARE RUN ──
+// The bare run (ci.yml) asks "is anything WRONG with the record"; UNDETERMINED
+// is not wrong there — it is the honest answer for most stores, and limb 6 only
+// ever grades a wall. A submit lane asks the other question: "may THIS name go
+// to THIS store today". There UNDETERMINED is "could not check", which is never
+// a pass, so the lane names its channel and only two answers get through: the
+// probe proved the name free, or the owner reserved it in that store's console
+// and recorded the store's id with `tooling/store/name-clearance.mjs --hold`.
+// The trademark gate stops being a gate in this mode for the same reason the
+// IAP screenshot guard's deferrals turn fatal under its own flag: a date in the
+// future bounds a BUILD, and a submission under an unruled name is the harm the
+// gate was only ever deferring. A bare flag, or a channel the register does not
+// declare, is COVERAGE LOST (the precedent is assert-play-device-coverage.mjs).
 //
 // ── WHY (6) ASKS `channel-arming.mjs` RATHER THAN BLOCKING ON EVERY HIT ──────
 // The property worth enforcing is "no build ships under a name a REACHABLE
@@ -88,12 +109,13 @@
 // underneath it catches the other case: a walk that graded nothing AND had
 // nothing to say about why, which is the scan itself under-reaching.
 //
-// EXIT CODES:  0 = every declared name is cleared, or owner-gated and printed
+// EXIT CODES:  0 = every declared name is cleared, or owner-gated and printed;
+//                  under --for-submission=<channel>, also PROVEN-FREE or HELD there
 //              1 = a finding
 //              2 = COVERAGE LOST — the subject or the register was unreadable,
 //                  so nothing was checked, and nothing is not a pass
 //
-// USAGE:  node tooling/ci/assert-name-clearance.mjs [--repo <path>] [--execute]
+// USAGE:  node tooling/ci/assert-name-clearance.mjs [--repo <path>] [--execute] [--for-submission=<channel id>]
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
@@ -101,9 +123,10 @@ import { fileURLToPath } from 'node:url';
 
 import { resolveIdentity } from './read-identity.mjs';
 import { armingOf } from './channel-arming.mjs';
-import { validate, assertSchemaUnderstood } from '../app-yaml/schema-validate.mjs';
+import { validate, assertSchemaUnderstood, isIsoDate } from '../app-yaml/schema-validate.mjs';
 import { isOwnerId } from '../scripts/owner-ids.mjs';
 import { rulingOwed } from '../scripts/name-ruling.mjs';
+import { whyLines } from '../store/name-clearance-why.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
@@ -113,6 +136,11 @@ const flagValue = (n, d) => {
 };
 const ROOT = resolve(flagValue('--repo', resolve(HERE, '..', '..')));
 const EXECUTE = argv.includes('--execute');
+// `=` and not a separate argv slot, as assert-play-device-coverage.mjs parses it:
+// a bare `--for-submission` names no channel, and is refused below, not ignored.
+const SUBMIT_ARG = argv.find((a) => a === '--for-submission' || a.startsWith('--for-submission='));
+const FOR_SUBMISSION = SUBMIT_ARG !== undefined;
+const SUBMITTING = FOR_SUBMISSION && SUBMIT_ARG.includes('=') ? SUBMIT_ARG.slice(SUBMIT_ARG.indexOf('=') + 1).trim() : null;
 
 const REGISTER_REL = 'tooling/channel-register.json';
 const CATALOG_REL = 'catalog/apps.json';
@@ -146,6 +174,7 @@ const CLOCK_SKEW_DAYS = 1;
 const problems = [];
 const notes = [];
 const gated = [];
+const submittable = [];
 
 const coverageLost = (lines) => {
   console.error(`✗ COVERAGE LOST — ${lines[0]}`);
@@ -202,6 +231,15 @@ if (!Array.isArray(channels) || channels.length === 0) {
 }
 const registerIds = new Set(channels.map((c) => c.id));
 const rowById = new Map(channels.map((c) => [c.id, c]));
+if (FOR_SUBMISSION && !registerIds.has(SUBMITTING)) {
+  coverageLost([
+    SUBMITTING
+      ? `--for-submission names channel "${SUBMITTING}", which ${REGISTER_REL} does not declare.`
+      : '--for-submission was given without a channel: pass --for-submission=<channel id>, e.g. --for-submission=android-play.',
+    'The submission mode grades ONE channel, so it has to be told which; grading every channel would let one store\'s',
+    `UNDETERMINED refuse an upload to another. Channels: ${[...registerIds].join(', ')}.`,
+  ]);
+}
 
 const catalog = readJson(CATALOG_REL);
 if (catalog.missing || catalog.bad || !Array.isArray(catalog.value)) {
@@ -355,6 +393,11 @@ for (const app of expectedApps) {
       );
     } else if (!tm.gatedUntil || daysBetween(NOW, tm.gatedUntil) <= 0) {
       problems.push(`${line} Its owner gate (${tm.ownerItem}) ${tm.gatedUntil ? `EXPIRED on ${tm.gatedUntil}` : 'carries no `gatedUntil` date'}, so the block is no longer lifted.`);
+    } else if (FOR_SUBMISSION) {
+      problems.push(
+        `${line} Its owner gate (${tm.ownerItem}, until ${tm.gatedUntil}) bounds a BUILD, not a submission: under ` +
+          `--for-submission=${SUBMITTING} an unruled name is the harm the gate was deferring, so it is fatal here.`,
+      );
     } else {
       gated.push(`${line}\n      ⬜ FAILING, owner-gated until ${tm.gatedUntil} under ${tm.ownerItem} — ${daysBetween(NOW, tm.gatedUntil)} day(s) left, after which this blocks.`);
     }
@@ -395,6 +438,51 @@ for (const app of expectedApps) {
         'geography can explain, so this is a clock no staleness ceiling can be computed against.',
     );
   }
+
+  // 10. --for-submission=<channel>: only a proven or an owner-held name passes.
+  // Limb 4 has already refused a record whose channel set is not the register's,
+  // and SUBMITTING was checked against the register above, so the entry exists.
+  if (FOR_SUBMISSION) {
+    const ch = r.channels[SUBMITTING];
+    const holdCmd = `node tooling/store/name-clearance.mjs --hold ${SUBMITTING} --record <store record id> --app ${app}`;
+    if (ch.verdict === 'PROVEN-FREE') {
+      submittable.push(`${app} PROVEN-FREE`);
+    } else if (ch.verdict === 'HELD') {
+      // The schema requires all three on a HELD; checked here anyway, as limb 7
+      // checks RULINGS, so a widened schema cannot turn an empty hold into a pass.
+      const owed = [];
+      if (typeof ch.storeRecordId !== 'string' || ch.storeRecordId.trim() === '') owed.push('a `storeRecordId`');
+      if (ch.heldBy !== 'owner') owed.push('`heldBy: "owner"`');
+      if (!isIsoDate(ch.heldOn)) owed.push('a dated `heldOn`');
+      if (owed.length) {
+        problems.push(
+          `${rel} — --for-submission=${SUBMITTING}: ${SUBMITTING} is HELD and lacks ${owed.join(', ')}. A hold is the owner's word ` +
+            `with the store's own record id and a date; missing any of them nobody can look it up, so it does not pass. Record it: ${holdCmd}`,
+        );
+      } else {
+        submittable.push(`${app} HELD (store record ${ch.storeRecordId}, ${ch.heldOn})`);
+      }
+    } else {
+      problems.push(
+        `${rel} — --for-submission=${SUBMITTING}: "${r.name.value}" is ${ch.verdict} on ${SUBMITTING}, and a submission passes only on ` +
+          `PROVEN-FREE, or on HELD with the store's record id.${ch.verdict === 'UNDETERMINED' ? ' UNDETERMINED is "could not check", never a pass.' : ''} ` +
+          `Reserve the name in that store's console, then record the hold: ${holdCmd}`,
+      );
+    }
+  }
+
+  // 11. the prose is the record's fields, regenerated — never typed
+  const want = whyLines(r);
+  const have = Array.isArray(r._why) ? r._why : null;
+  if (JSON.stringify(have) !== JSON.stringify(want)) {
+    let at = 0;
+    while (have && at < Math.max(have.length, want.length) && have[at] === want[at]) at += 1;
+    problems.push(
+      `${rel} — \`_why\` ${have ? `differs from whyLines() at line ${at}` : 'is absent'}: the lines are generated from this record's own fields ` +
+        'by tooling/store/name-clearance-why.mjs, and a hand edit, or a field changed without regenerating, leaves them describing a ' +
+        `state the record no longer has. Regenerate offline: node tooling/store/name-clearance.mjs --why --app ${app}`,
+    );
+  }
 }
 
 // ── THE COVERAGE FLOOR ──────────────────────────────────────────────────────
@@ -423,5 +511,6 @@ if (problems.length) {
 
 console.log(
   `✔ ${checked} of ${expectedApps.length} declared app(s) carry a current clearance over all ${registerIds.size} register channel(s)` +
-    `${gated.length ? `, ${gated.length} owner-gated finding(s) PRINTED and still owed` : ''}${notes.length ? `, ${notes.length} ageing warning(s)` : ''}.`,
+    `${gated.length ? `, ${gated.length} owner-gated finding(s) PRINTED and still owed` : ''}${notes.length ? `, ${notes.length} ageing warning(s)` : ''}` +
+    `${FOR_SUBMISSION ? `; --for-submission=${SUBMITTING}: ${submittable.join(', ')}` : ''}.`,
 );

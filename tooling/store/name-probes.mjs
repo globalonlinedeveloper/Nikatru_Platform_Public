@@ -71,7 +71,12 @@ export const PROVEN_FREE = 'PROVEN-FREE';
 export const PROVEN_TAKEN = 'PROVEN-TAKEN';
 export const UNDETERMINED = 'UNDETERMINED';
 export const NOT_APPLICABLE = 'NOT-APPLICABLE';
-export const VERDICTS = Object.freeze([PROVEN_FREE, PROVEN_TAKEN, UNDETERMINED, NOT_APPLICABLE]);
+/** The fifth, and NO PROBE IN THIS TABLE RETURNS IT. HELD is the owner's record
+ *  that the name is reserved in the store's own console, with the store's record
+ *  id — a reservation an unauthenticated read cannot see, so only
+ *  `name-clearance.mjs --hold` writes it and `--execute` carries it forward. */
+export const HELD = 'HELD';
+export const VERDICTS = Object.freeze([PROVEN_FREE, PROVEN_TAKEN, UNDETERMINED, NOT_APPLICABLE, HELD]);
 
 export const GLOBAL = 'global';
 export const TOLERATED = 'tolerated';
