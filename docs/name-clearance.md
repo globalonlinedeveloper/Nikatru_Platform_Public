@@ -6,6 +6,9 @@ belongs in `Private/platform-state/open.json`; both are **owed** and named at th
 bottom of this page, because the branch that landed this mechanism had the
 private corpus read-only.
 
+⏱ **2026-09-24:** neither is owed now. Both are retired in § 8, and the owner's
+trademark ruling is in the record itself.
+
 ---
 
 ## 1. What happened, and why a person cannot be the check
@@ -92,9 +95,13 @@ the reason is **derived, not waived**:
 
 - The guard weighs every wall against `tooling/ci/channel-arming.mjs`, the
   existing single reading of *"can this channel reach a user today?"*
-  (`served: true`, or `submittable: true` with a real lane). `ios-appstore` and
-  `macos-appstore` are `served: false` with `lane: null`, so the finding is
-  **printed on every run** as `⬜ NOT BLOCKING TODAY` and does not block.
+  (`served: true`, or `submittable: true` with a real lane). When Subly was
+  measured, `ios-appstore` and `macos-appstore` were `served: false` with
+  `lane: null`, so the finding was **printed on every run** as
+  `⬜ NOT BLOCKING TODAY` and did not block. ⏱ 2026-09-24: that was the arming
+  on the day of the Subly run, and this section describes that record. Which
+  channels are armed now is not restated here: `channel-arming.mjs` reads it
+  off the register on every run, and the guard prints what it weighed.
 - **It arms itself.** Flip `served` on that channel and the same unchanged record
   turns the guard red. That is asserted by mutation in
   `tooling/ci/test/assert-name-clearance.test.mjs` case **M3**: exit `0 → 1`.
@@ -103,6 +110,12 @@ the reason is **derived, not waived**:
   item and a dated `gatedUntil` both stand — **2026-10-09**, after which it
   blocks. `--execute` **preserves** that date rather than rewriting it, so a
   re-probe can never extend its own gate.
+- ⏱ **2026-09-24:** the owner's ruling is recorded — `PROCEED`, 2026-09-09,
+  `basis: "ADR 074"` — so the record carries no gate. That gate had held on
+  `O-NAME-SUBLY-TRADEMARK`, a row that was never opened (§ 8, item 2).
+  `tooling/scripts/assert-public-citations.mjs` now refuses a hold on a row that
+  does not exist, and limb 7 refuses a ruling without `ruledBy`, a dated
+  `ruledOn` and a `basis`.
 
 ## 6. Staleness
 
@@ -128,8 +141,18 @@ build.
 
 ## 8. Still owed
 
-1. **`Private/decisions/074-name-clearance-is-a-pipeline-step.md`** (does not exist yet — owed 2026-09-09, and the next free number was 074 on that day) — the ADR, with its row in `Private/decisions/index.json`.
-2. **`Private/platform-state/open.json`** — one row:
+1. ~~**`Private/decisions/074-name-clearance-is-a-pipeline-step.md`** (does not exist yet — owed 2026-09-09, and the next free number was 074 on that day) — the ADR, with its row in `Private/decisions/index.json`.~~
+   **(retired 2026-09-24, never written.)** Number 074 went to the owner's
+   store-name decision of 2026-09-09, and the mechanism's reasoning lives on this
+   page, in the guard's header and in the probe's. Retired by the parent under the
+   owner's 2026-09-23 delegation.
+2. ~~**`Private/platform-state/open.json`** — one row:~~
+   **(retired 2026-09-24, never opened.)** The ruling this row would have owed is
+   recorded in `apps/subscriptiontracker/name-clearance.json`: `PROCEED`, by the
+   owner, 2026-09-09, `basis: "ADR 074"`. ADR 074 is read as the ruling by the
+   parent (2026-09-24, under the owner's 2026-09-23 delegation). The record held
+   its gate on this id for fifteen days while the row did not exist — apps-review
+   F1. The proposal is kept below as it was written:
    ```json
    {
      "id": "O-NAME-SUBLY-TRADEMARK",
@@ -170,3 +193,9 @@ build.
    with a `kind: "duty"` row in `tooling/ops/register.json` anchored at
    `.github/workflows/name-clearance.yml`, `cadence: "7d"`, whose `detector` is
    the flip report this script prints and whose `absenceWatcher` is `ops-watch`.
+
+   ⏱ **2026-09-24: still owed, and not retired with items 1 and 2.** Neither
+   `.github/workflows/name-clearance.yml` nor a name-clearance row in
+   `tooling/ops/register.json` exists, and no workflow calls
+   `tooling/ops/name-clearance-sweep.mjs`, so the weekly re-verification runs
+   only when somebody runs it.
