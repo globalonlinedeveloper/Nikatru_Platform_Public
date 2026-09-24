@@ -12,8 +12,9 @@
  * byte-identical once de-indented. Both call sites now run THIS file.
  *
  * ONE CALL SITE: the job `e2e-proof-fresh` of extensions.yml, which runs on
- * push, pull_request and a `lane: ci` dispatch and NOT on the schedule event (its
- * `if:` excludes schedule, tags and the label event). A dead cron cannot silence
+ * pull_request and a `lane: ci` dispatch, never on a push: extensions.yml's
+ * `push` trigger fires only on `fullshot-v*` tags, and the job's `if:` excludes
+ * tags, the schedule event and the label event. A dead cron cannot silence
  * it. e2e.yml has no proof-fresh job, and ci.yml's proof step runs
  * tooling/ci/assert-e2e-proof-fresh.mjs, the Platform_Public sibling named
  * below — a different file. The silence left uncovered: while main is quiet,
