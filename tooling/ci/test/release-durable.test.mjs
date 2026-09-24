@@ -18,6 +18,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, copyFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -644,14 +645,21 @@ describe('assert-release-durable.mjs — REQUIRED_COVERAGE', () => {
 // release-manifest.mjs — the mechanism
 // ─────────────────────────────────────────────────────────────────────────────
 describe('release-manifest.mjs — the derivations', () => {
-  test('the installable set is the register plus the DECLARED extras, and .apk is one', () => {
+  test('the installable set is the register plus the DECLARED extras, and since 2026-09-24 the extras are empty', () => {
     const exts = installableExtensions(REGISTER);
     assert.ok(exts.has('.aab'));
     assert.ok(exts.has('.msix'));
-    assert.ok(exts.has('.apk'), 'the only sideloadable Android artifact must be covered');
     assert.ok(!exts.has('static-bundle'), 'a shape name is not a file extension');
-    assert.ok(EXTRA_INSTALLABLE.get('.apk').why.length > 60, 'an extra without a reason is a hole with a comment');
-    assert.equal(EXTRA_INSTALLABLE.get('.apk').surface, 'app', 'an extra with no surface is an extra offered to every surface');
+    // ⏱ INVERTED 2026-09-24 (O-RELEASE-RECORD-GUESSES-CHANNEL-FROM-EXTENSION). This
+    // case asserted `.apk` was an installable through the declared extra, with a
+    // reason and the app surface. The Play build's .apk left the release, and the
+    // one .apk a release may carry is apps.gov.in's, which the register's own
+    // `apps-gov-in` row declares. This fixture register has no such row, so here
+    // `.apk` is no installable; the real register still reaches it through its row.
+    assert.ok(!exts.has('.apk'), 'no fixture row accepts an .apk, and no extra supplies one any more');
+    assert.equal(EXTRA_INSTALLABLE.size, 0, 'an extra comes back only with its reason and its surface, and this case with it');
+    const real = JSON.parse(readFileSync(join(REPO, 'tooling', 'channel-register.json'), 'utf8'));
+    assert.ok(installableExtensions(real).has('.apk'), 'the apps-gov-in row declares the .apk');
   });
 
   test('originEnvironments takes DIRECT channels only, and only when the release carries their format', () => {
@@ -1620,7 +1628,8 @@ describe('release-manifest.mjs — the expected-format set is DERIVED, not typed
 
   test('a lane-less channel is a channel that does not exist yet — its format is not demanded', () => {
     const expected = expectedReleaseFormats(REG);
-    assert.deepEqual([...expected].sort(), ['.aab', '.apk', '.msix']);
+    // ⏱ 2026-09-24 — `.apk` left this set with the declared extra (O-RELEASE-RECORD-GUESSES-CHANNEL-FROM-EXTENSION).
+    assert.deepEqual([...expected].sort(), ['.aab', '.msix']);
     assert.ok(!expected.has('.ipa'), 'demanding an .ipa no lane builds would fail every release for work nobody started');
   });
 
@@ -1636,15 +1645,21 @@ describe('release-manifest.mjs — the expected-format set is DERIVED, not typed
     for (const e of expectedReleaseFormats(REG)) assert.ok(installable.has(e), `${e} escaped the single installable declaration`);
   });
 
-  test('the `.apk` is expected through the declared extra — no channel can ever declare it', () => {
-    assert.ok(expectedReleaseFormats(REG).has('.apk'));
-    assert.ok(EXTRA_INSTALLABLE.has('.apk'));
+  // ⏱ INVERTED 2026-09-24 (O-RELEASE-RECORD-GUESSES-CHANNEL-FROM-EXTENSION). This
+  // case was "the `.apk` is expected through the declared extra — no channel can
+  // ever declare it". A channel does declare it now (`apps-gov-in`, lane-less), and
+  // the Play .apk the extra demanded left the release: build-platforms.yml uploads
+  // it as `ci-proof-android-play-apk-<app>`, outside the `<app>-*` download. Still
+  // demanding it would red `--verify --expect-formats` on every release run.
+  test('the `.apk` is no longer demanded through a declared extra — the Play .apk left the release', () => {
+    assert.ok(!expectedReleaseFormats(REG).has('.apk'));
+    assert.ok(!EXTRA_INSTALLABLE.has('.apk'));
   });
 
-  test('a register whose rows are all lane-less contributes NOTHING — only the declared extra survives', () => {
+  test('a register whose rows are all lane-less contributes NOTHING — and with no extra, nothing survives', () => {
     // The CLI treats exactly this as COVERAGE LOST rather than as a small
     // expectation; the case is proven end-to-end further down.
-    assert.deepEqual([...expectedReleaseFormats({ channels: [{ id: 'x', artifactFormats: ['.ipa'], lane: null }] })].sort(), ['.apk']);
+    assert.deepEqual([...expectedReleaseFormats({ channels: [{ id: 'x', artifactFormats: ['.ipa'], lane: null }] })].sort(), []);
   });
 
   test('missingReleaseFormats answers by extension, case-insensitively, sorted', () => {
@@ -1682,7 +1697,9 @@ describe('release-manifest.mjs — the expected-format set is DERIVED, not typed
     // `.zip` and `.snap`, these are NOT a reason to reach for the narrowing:
     // they come out of the very workflow that stages the dist, so the narrowed
     // set below grows with this one rather than staying behind it.
-    assert.deepEqual([...expectedReleaseFormats(real)].sort(), ['.aab', '.apk', '.ipa', '.msix', '.pkg', '.snap', '.zip']);
+    // ⏱ 2026-09-24 — `.apk` left with the declared extra; the `apps-gov-in` row that
+    // accepts it has no lane (O-RELEASE-RECORD-GUESSES-CHANNEL-FROM-EXTENSION).
+    assert.deepEqual([...expectedReleaseFormats(real)].sort(), ['.aab', '.ipa', '.msix', '.pkg', '.snap', '.zip']);
   });
 
   // ⚠️ THE QUESTION THE NOTE ABOVE PARKED WAS ANSWERED 2026-08-27, AND ONLY HALF
@@ -1695,13 +1712,13 @@ describe('release-manifest.mjs — the expected-format set is DERIVED, not typed
   test('narrowed to the workflow that STAGES the dist, the .snap is not demanded of it', () => {
     const real = JSON.parse(readFileSync(join(REPO, 'tooling', 'channel-register.json'), 'utf8'));
     const bp = expectedReleaseFormats(real, '.github/workflows/build-platforms.yml');
-    assert.deepEqual([...bp].sort(), ['.aab', '.apk', '.ipa', '.msix', '.pkg']);
+    assert.deepEqual([...bp].sort(), ['.aab', '.ipa', '.msix', '.pkg']);
     assert.ok(!bp.has('.snap'), 'submit-snap.yml is a different workflow on a different trigger; download-artifact cannot reach its output');
   });
 
   test('narrowed to submit-snap.yml the .snap IS demanded and the store artifacts are not', () => {
     const real = JSON.parse(readFileSync(join(REPO, 'tooling', 'channel-register.json'), 'utf8'));
-    assert.deepEqual([...expectedReleaseFormats(real, 'submit-snap.yml')].sort(), ['.apk', '.snap']);
+    assert.deepEqual([...expectedReleaseFormats(real, 'submit-snap.yml')].sort(), ['.snap']);
   });
 
   test('narrowing is a FILTER on the unnarrowed set', () => {
@@ -1716,11 +1733,13 @@ describe('release-manifest.mjs — the expected-format set is DERIVED, not typed
     const real = JSON.parse(readFileSync(join(REPO, 'tooling', 'channel-register.json'), 'utf8'));
     // Only the declared extra survives. Proven end-to-end against the CLI below;
     // here to pin that this is the state the rail there is aimed at.
-    assert.deepEqual([...expectedReleaseFormats(real, 'nope.yml')].sort(), ['.apk']);
+    // ⏱ 2026-09-24 — and with the extras empty, nothing survives at all
+    // (O-RELEASE-RECORD-GUESSES-CHANNEL-FROM-EXTENSION).
+    assert.deepEqual([...expectedReleaseFormats(real, 'nope.yml')].sort(), []);
     // ⚠️ AND A REAL LANE REACHES IT TOO, which is why the rail is not hypothetical:
     // deploy-web.yml IS a declared lane, and its only artifactFormat is
     // `static-bundle` — a shape name, not a file extension — so it contributes none.
-    assert.deepEqual([...expectedReleaseFormats(real, 'deploy-web.yml')].sort(), ['.apk']);
+    assert.deepEqual([...expectedReleaseFormats(real, 'deploy-web.yml')].sort(), []);
   });
 });
 
@@ -1796,8 +1815,10 @@ describe('release-manifest.mjs — `--verify --expect-formats` (the G3 half)', (
   // the fixture — leaving them out would let this set call itself "complete" over
   // a release missing two whole platforms, which is precisely the defect the
   // recorded failing case below exists to catch.
+  // ⏱ 2026-09-24 — the `.apk` LEFT this set: no lane emits one for a release since
+  // the Play build's .apk became a `ci-proof-*` upload and EXTRA_INSTALLABLE lost it
+  // (O-RELEASE-RECORD-GUESSES-CHANNEL-FROM-EXTENSION).
   const COMPLETE = [
-    'subscriptiontracker-v1-app-release.apk',
     'subscriptiontracker-v1-app-release.aab',
     'subscriptiontracker-v1-subscriptiontracker.msix',
     'subscriptiontracker-v1-subscriptiontracker.snap',
@@ -1820,7 +1841,7 @@ describe('release-manifest.mjs — `--verify --expect-formats` (the G3 half)', (
     const d = staged(COMPLETE);
     const r = cli(['--verify', d, '--expect-formats']);
     assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /all 7 expected format\(s\) present: \.aab, \.apk, \.ipa, \.msix, \.pkg, \.snap, \.zip/);
+    assert.match(r.out, /all 6 expected format\(s\) present: \.aab, \.ipa, \.msix, \.pkg, \.snap, \.zip/);
   });
 
   test('DEFAULT BEHAVIOUR IS UNCHANGED — without the flag nothing new can go red', () => {
@@ -1850,6 +1871,10 @@ describe('release-manifest.mjs — `--verify --expect-formats` (the G3 half)', (
     // failing input is worse than none. Every row lane-less — which is also what
     // a broken lane derivation looks like — and the expectation collapses to one
     // sideloadable .apk that would certify a release missing every store artifact.
+    // ⏱ CORRECTED 2026-09-24: the extras are EMPTY now (the .apk left them,
+    // O-RELEASE-RECORD-GUESSES-CHANNEL-FROM-EXTENSION), so the collapse is to
+    // nothing at all. The rail and this case are unchanged; the register's half is
+    // still the one that can go empty.
     const root = fixture({
       register: {
         channels: [
@@ -1877,8 +1902,10 @@ describe('release-manifest.mjs — `--verify --expect-formats` (the G3 half)', (
   // ───────────────────────────────────────────────────────────────────────────
   // ⏱ `.ipa` and `.pkg` ADDED 2026-09-09 — the apple job emits both now, so a
   // dist without them is short two platforms rather than complete.
+  // ⏱ 2026-09-24 — the `.apk` LEFT: build-platforms.yml uploads the Play .apk as
+  // `ci-proof-android-play-apk-<app>`, which its release job never downloads
+  // (O-RELEASE-RECORD-GUESSES-CHANNEL-FROM-EXTENSION).
   const BUILD_PLATFORMS = [
-    'subscriptiontracker-v1-app-release.apk',
     'subscriptiontracker-v1-app-release.aab',
     'subscriptiontracker-v1-subscriptiontracker.msix',
     'subscriptiontracker-v1-subscriptiontracker.ipa',
@@ -1914,11 +1941,12 @@ describe('release-manifest.mjs — `--verify --expect-formats` (the G3 half)', (
     assert.match(r.out, /missing 1 expected release format\(s\): \.msix/);
   });
 
-  test('narrowed to build-platforms.yml, its own complete dist passes and NAMES the five', () => {
+  test('narrowed to build-platforms.yml, its own complete dist passes and NAMES the four', () => {
     const d = staged(BUILD_PLATFORMS);
     const r = cli(['--verify', d, '--expect-formats', '--for-workflow', '.github/workflows/build-platforms.yml']);
     assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /all 5 expected format\(s\) present: \.aab, \.apk, \.ipa, \.msix, \.pkg/);
+    // ⏱ 2026-09-24 — five until the .apk left the release (O-RELEASE-RECORD-GUESSES-CHANNEL-FROM-EXTENSION).
+    assert.match(r.out, /all 4 expected format\(s\) present: \.aab, \.ipa, \.msix, \.pkg/);
   });
 
   test('🔴 UNNARROWED, THAT SAME DIST IS RED — which is why the flag could not be wired as it stood', () => {
@@ -1973,7 +2001,7 @@ describe('release-manifest.mjs — `--verify --expect-formats` (the G3 half)', (
     const d = staged(COMPLETE);
     const r = cli(['--verify', d, '--expect-formats']);
     assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /all 7 expected format\(s\) present: \.aab, \.apk, \.ipa, \.msix, \.pkg, \.snap, \.zip/);
+    assert.match(r.out, /all 6 expected format\(s\) present: \.aab, \.ipa, \.msix, \.pkg, \.snap, \.zip/);
   });
 });
 
@@ -2024,15 +2052,31 @@ describe('release-manifest.mjs — the CLI refuses rather than producing a hollo
   const NATIVE_ABLE = registerWith((wd) => Object.assign(wd, { platforms: ['windows'], nativeAuth: true }));
   Object.assign(NATIVE_ABLE.channels.find((c) => c.id === 'android-play'), { platforms: ['android'], nativeAuth: true });
 
+  // ⏱ 2026-09-24 — EVERY INSTALLER BELOW CARRIES ITS BUILD'S STAMP, and every app
+  // `--stage` names `--stamps` (O-RELEASE-RECORD-GUESSES-CHANNEL-FROM-EXTENSION):
+  // an unstamped installer is COVERAGE LOST before anything these cases measure.
+  // The Play `.apk` these cases staged is an `.aab` now: the .apk left
+  // EXTRA_INSTALLABLE, and no row of the fixture register accepts one.
+  // The stamp's own matrix is in assert-release-json.test.mjs and stamp-channel.test.mjs.
+  const stampBeside = (abs, channel) => writeFileSync(`${abs}.channel.json`, JSON.stringify({
+    channel,
+    file: abs.split(/[/\\]/).pop(),
+    sha256: createHash('sha256').update(readFileSync(abs)).digest('hex'),
+    runId: '1',
+  }));
+
   test('--stage MOVES the installer, names it after the tag, and leaves nothing behind to duplicate', () => {
     const root = fixture({ register: NATIVE_ABLE });
     const from = join(TMP, `s${seq++}`);
     mkdirSync(join(from, 'subscriptiontracker-linux', 'app', 'outputs'), { recursive: true });
-    writeFileSync(join(from, 'subscriptiontracker-linux', 'app', 'outputs', 'app-release.apk'), 'apk');
+    writeFileSync(join(from, 'subscriptiontracker-linux', 'app', 'outputs', 'app-release.aab'), 'aab');
+    stampBeside(join(from, 'subscriptiontracker-linux', 'app', 'outputs', 'app-release.aab'), 'android-play');
     const out = join(TMP, `o${seq++}`);
-    const r = cli(['--stage', from, '--out', out, '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-v1.0.0', '--ref-type', 'tag', '--repo-root', root]);
+    const stamps = join(TMP, `t${seq++}`);
+    const r = cli(['--stage', from, '--out', out, '--stamps', stamps, '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-v1.0.0', '--ref-type', 'tag', '--repo-root', root]);
     assert.equal(r.code, 0, r.out);
-    assert.deepEqual(assetFiles(out).names, ['subscriptiontracker-v1.0.0-app-release.apk']);
+    assert.deepEqual(assetFiles(out).names, ['subscriptiontracker-v1.0.0-app-release.aab']);
+    assert.deepEqual(assetFiles(stamps).names, ['subscriptiontracker-v1.0.0-app-release.aab.channel.json'], 'the stamp follows its file');
     assert.equal(assetFiles(join(from, 'subscriptiontracker-linux', 'app', 'outputs')).names.length, 0, 'the installer must not exist twice');
   });
 
@@ -2048,8 +2092,9 @@ describe('release-manifest.mjs — the CLI refuses rather than producing a hollo
     writeFileSync(join(from, 'subscriptiontracker-windows', 'x64', 'runner', 'Release', 'subscriptiontracker.exe'), 'exe');
     writeFileSync(join(from, 'subscriptiontracker-windows', 'x64', 'runner', 'Release', 'flutter_windows.dll'), 'dll');
     writeFileSync(join(from, 'subscriptiontracker-windows', 'msix', 'subscriptiontracker.msix'), 'msix');
+    stampBeside(join(from, 'subscriptiontracker-windows', 'msix', 'subscriptiontracker.msix'), 'windows-direct');
     const out = join(TMP, `o${seq++}`);
-    const r = cli(['--stage', from, '--out', out, '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-v1', '--ref-type', 'tag', '--repo-root', root]);
+    const r = cli(['--stage', from, '--out', out, '--stamps', join(TMP, `t${seq++}`), '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-v1', '--ref-type', 'tag', '--repo-root', root]);
     assert.equal(r.code, 0, r.out);
     assert.deepEqual(assetFiles(out).names, ['subscriptiontracker-v1-subscriptiontracker.msix'], 'only the self-contained package is lifted');
     assert.deepEqual(
@@ -2067,33 +2112,36 @@ describe('release-manifest.mjs — the CLI refuses rather than producing a hollo
   test('--stage on a release tag REFUSES a native installer of the real register, and moves nothing', () => {
     const from = join(TMP, `s${seq++}`);
     mkdirSync(join(from, 'subscriptiontracker-linux', 'app', 'outputs'), { recursive: true });
-    writeFileSync(join(from, 'subscriptiontracker-linux', 'app', 'outputs', 'app-release.apk'), 'apk');
+    writeFileSync(join(from, 'subscriptiontracker-linux', 'app', 'outputs', 'app-release.aab'), 'aab');
+    stampBeside(join(from, 'subscriptiontracker-linux', 'app', 'outputs', 'app-release.aab'), 'android-play');
     const out = join(TMP, `o${seq++}`);
-    const r = cli(['--stage', from, '--out', out, '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-v1.0.0', '--ref-type', 'tag']);
+    const r = cli(['--stage', from, '--out', out, '--stamps', join(TMP, `t${seq++}`), '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-v1.0.0', '--ref-type', 'tag']);
     assert.equal(r.code, 1, r.out);
-    assert.match(r.stderr, /✗ app-release\.apk — it is the native build of [^\n]*"android-play"[^\n]*\(O-BOXA-CAPTCHA-REFUSES-NATIVE-SIGN-IN\)/);
+    assert.match(r.stderr, /✗ app-release\.aab — it is the native build of [^\n]*"android-play"[^\n]*\(O-BOXA-CAPTCHA-REFUSES-NATIVE-SIGN-IN\)/);
     assert.match(r.stderr, /--stage refuses 1 native installer\(s\) on release tag "subscriptiontracker-v1\.0\.0"/);
     assert.deepEqual(assetFiles(out).names, [], 'a refused release stages nothing');
-    assert.deepEqual(assetFiles(join(from, 'subscriptiontracker-linux', 'app', 'outputs')).names, ['app-release.apk'], 'the refusal lands before any move');
+    assert.deepEqual(assetFiles(join(from, 'subscriptiontracker-linux', 'app', 'outputs')).names, ['app-release.aab', 'app-release.aab.channel.json'], 'the refusal lands before any move');
   });
 
   test('--stage on the untagged ref of a non-tag run WARNS "would refuse" and still stages', () => {
     const from = join(TMP, `s${seq++}`);
     mkdirSync(join(from, 'subscriptiontracker-linux', 'app', 'outputs'), { recursive: true });
-    writeFileSync(join(from, 'subscriptiontracker-linux', 'app', 'outputs', 'app-release.apk'), 'apk');
+    writeFileSync(join(from, 'subscriptiontracker-linux', 'app', 'outputs', 'app-release.aab'), 'aab');
+    stampBeside(join(from, 'subscriptiontracker-linux', 'app', 'outputs', 'app-release.aab'), 'android-play');
     const out = join(TMP, `o${seq++}`);
-    const r = cli(['--stage', from, '--out', out, '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-untagged-abc1234', '--ref-type', 'branch']);
+    const r = cli(['--stage', from, '--out', out, '--stamps', join(TMP, `t${seq++}`), '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-untagged-abc1234', '--ref-type', 'branch']);
     assert.equal(r.code, 0, r.out);
-    assert.match(r.stderr, /⚠ would refuse on a release tag: app-release\.apk — it is the native build of [^\n]*"android-play"/);
-    assert.deepEqual(assetFiles(out).names, ['subscriptiontracker-untagged-abc1234-app-release.apk']);
+    assert.match(r.stderr, /⚠ would refuse on a release tag: app-release\.aab — it is the native build of [^\n]*"android-play"/);
+    assert.deepEqual(assetFiles(out).names, ['subscriptiontracker-untagged-abc1234-app-release.aab']);
   });
 
   test('--stage judges a ref it cannot read as a release, and refuses', () => {
     const from = join(TMP, `s${seq++}`);
     mkdirSync(join(from, 'subscriptiontracker-linux', 'app', 'outputs'), { recursive: true });
-    writeFileSync(join(from, 'subscriptiontracker-linux', 'app', 'outputs', 'app-release.apk'), 'apk');
+    writeFileSync(join(from, 'subscriptiontracker-linux', 'app', 'outputs', 'app-release.aab'), 'aab');
+    stampBeside(join(from, 'subscriptiontracker-linux', 'app', 'outputs', 'app-release.aab'), 'android-play');
     const out = join(TMP, `o${seq++}`);
-    const r = cli(['--stage', from, '--out', out, '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker', '--ref-type', 'tag']);
+    const r = cli(['--stage', from, '--out', out, '--stamps', join(TMP, `t${seq++}`), '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker', '--ref-type', 'tag']);
     assert.equal(r.code, 1, r.out);
     assert.match(r.stderr, /"subscriptiontracker", a ref tag-owner\.mjs cannot read, judged as a release/);
     assert.deepEqual(assetFiles(out).names, []);
@@ -2106,13 +2154,14 @@ describe('release-manifest.mjs — the CLI refuses rather than producing a hollo
     const from = join(TMP, `s${seq++}`);
     mkdirSync(join(from, 'subscriptiontracker-linux', 'app', 'outputs'), { recursive: true });
     writeFileSync(join(from, 'subscriptiontracker-linux', 'app', 'outputs', 'app-release.apk'), 'apk');
+    stampBeside(join(from, 'subscriptiontracker-linux', 'app', 'outputs', 'app-release.apk'), 'apps-gov-in');
     const out = join(TMP, `o${seq++}`);
-    const r = cli(['--stage', from, '--out', out, '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-v1-untagged-abc1234', '--ref-type', 'tag']);
+    const r = cli(['--stage', from, '--out', out, '--stamps', join(TMP, `t${seq++}`), '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-v1-untagged-abc1234', '--ref-type', 'tag']);
     assert.equal(r.code, 1, r.out);
     assert.match(r.stderr, /--stage refuses 1 native installer\(s\) on release tag "subscriptiontracker-v1-untagged-abc1234"/);
     assert.doesNotMatch(r.stderr, /would refuse/);
     assert.deepEqual(assetFiles(out).names, [], 'a refused release stages nothing');
-    assert.deepEqual(assetFiles(join(from, 'subscriptiontracker-linux', 'app', 'outputs')).names, ['app-release.apk'], 'the refusal lands before any move');
+    assert.deepEqual(assetFiles(join(from, 'subscriptiontracker-linux', 'app', 'outputs')).names, ['app-release.apk', 'app-release.apk.channel.json'], 'the refusal lands before any move');
   });
 
   test('--stage without --ref-type refuses before it moves anything, and never guesses the ref type', () => {
@@ -2148,13 +2197,15 @@ describe('release-manifest.mjs — the CLI refuses rather than producing a hollo
     const from = join(TMP, `s${seq++}`);
     mkdirSync(join(from, 'subscriptiontracker-linux'), { recursive: true });
     mkdirSync(join(from, 'subscriptiontracker-windows'), { recursive: true });
-    writeFileSync(join(from, 'subscriptiontracker-linux', 'app-release.apk'), 'apk');
+    writeFileSync(join(from, 'subscriptiontracker-linux', 'app-release.aab'), 'aab');
     writeFileSync(join(from, 'subscriptiontracker-windows', 'subscriptiontracker.msix'), 'msix');
+    stampBeside(join(from, 'subscriptiontracker-linux', 'app-release.aab'), 'android-play');
+    stampBeside(join(from, 'subscriptiontracker-windows', 'subscriptiontracker.msix'), 'windows-direct');
     const out = join(TMP, `o${seq++}`);
-    const r = cli(['--stage', from, '--out', out, '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-v1.0.0', '--ref-type', 'tag', '--repo-root', root]);
+    const r = cli(['--stage', from, '--out', out, '--stamps', join(TMP, `t${seq++}`), '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-v1.0.0', '--ref-type', 'tag', '--repo-root', root]);
     assert.equal(r.code, 0, r.out);
     assert.doesNotMatch(r.stderr, /would refuse|refuses|O-BOXA/);
-    assert.deepEqual(assetFiles(out).names, ['subscriptiontracker-v1.0.0-app-release.apk', 'subscriptiontracker-v1.0.0-subscriptiontracker.msix']);
+    assert.deepEqual(assetFiles(out).names, ['subscriptiontracker-v1.0.0-app-release.aab', 'subscriptiontracker-v1.0.0-subscriptiontracker.msix']);
   });
 
   test('nativeAuthRefusals refuses a file that no native row claims, by format or by platform', () => {
@@ -2425,7 +2476,8 @@ describe('release-manifest.mjs — the SURFACE of the release, not just of the r
       ],
     };
     const app = installableExtensions(THIRD, 'app');
-    assert.deepEqual([...app].sort(), ['.aab', '.apk'], 'a site channel\'s .html is not an app installable');
+    // ⏱ 2026-09-24 — `.apk` left with the declared extra (O-RELEASE-RECORD-GUESSES-CHANNEL-FROM-EXTENSION).
+    assert.deepEqual([...app].sort(), ['.aab'], 'a site channel\'s .html is not an app installable');
     assert.ok(!app.has('.html'), 'the third surface\'s format must not fold into the --app set');
     const site = installableExtensions(THIRD, 'site');
     assert.deepEqual([...site].sort(), ['.html'], 'and the third surface still gets its own, so this is a narrowing and not a ban');
@@ -2436,11 +2488,14 @@ describe('release-manifest.mjs — the SURFACE of the release, not just of the r
 
   test('installableExtensions narrows to one surface, and UNNARROWED is still the whole register', () => {
     const all = installableExtensions(BOTH_SURFACES);
-    assert.ok(all.has('.zip') && all.has('.aab') && all.has('.apk'), 'the guards ask the whole-tree question and must keep getting it');
+    // ⏱ 2026-09-24 — the `.apk` assertions here read the declared extra, which is
+    // empty now (O-RELEASE-RECORD-GUESSES-CHANNEL-FROM-EXTENSION); this fixture has
+    // no row accepting `.apk`, so the whole-tree and the app sets both lack it.
+    assert.ok(all.has('.zip') && all.has('.aab'), 'the guards ask the whole-tree question and must keep getting it');
     const app = installableExtensions(BOTH_SURFACES, 'app');
     assert.ok(!app.has('.zip'), 'a .zip is an extension channel format and nothing else — an app release must not stage one');
     assert.ok(app.has('.aab') && app.has('.msix'));
-    assert.ok(app.has('.apk'), 'the declared extra is on the app surface and stays there');
+    assert.ok(!app.has('.apk'), 'no extra supplies an .apk any more, and no row of this fixture accepts one');
     const ext = installableExtensions(BOTH_SURFACES, 'extension');
     assert.deepEqual([...ext].sort(), ['.zip'], 'an extension release carries the packer output and nothing a Flutter build makes');
     assert.ok(!ext.has('.apk'), 'the .apk extra must not be offered to a lane that can never build one');

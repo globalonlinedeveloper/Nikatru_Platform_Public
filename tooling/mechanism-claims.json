@@ -561,8 +561,8 @@
       "anchor": "describe('release-manifest.mjs — the expected-format set is DERIVED, not typed', () => {",
       "status": "proven",
       "test": "tooling/ci/test/release-durable.test.mjs",
-      "case": "a register whose rows are all lane-less contributes NOTHING — only the declared extra survives",
-      "proves": "A register whose only row has no lane must yield just the declared .apk. A typed format set returns the same formats whatever the register says, and the case goes red. Mutation-verified 2026-09-18: returning a typed seven-format set from expectedReleaseFormats turns it red."
+      "case": "a register whose rows are all lane-less contributes NOTHING — and with no extra, nothing survives",
+      "proves": "A register whose only row has no lane must yield just the declared .apk. A typed format set returns the same formats whatever the register says, and the case goes red. Mutation-verified 2026-09-18: returning a typed seven-format set from expectedReleaseFormats turns it red. Corrected 2026-09-24 (O-RELEASE-RECORD-GUESSES-CHANNEL-FROM-EXTENSION): the declared extras are empty, so the case now requires the EMPTY set; re-verified 2026-09-24 with the same typed seven-format mutation, which turns the renamed case red."
     },
     {
       "file": "tooling/ci/test/render-payload.test.mjs",

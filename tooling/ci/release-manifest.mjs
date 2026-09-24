@@ -114,8 +114,11 @@
 // lane. Nothing here closes [pipeline G3].
 //
 // Usage:
-//   node tooling/ci/release-manifest.mjs --stage  <fromDir> --out <dir> --app <id> --tag <tag> --ref-type <tag|branch>
+//   node tooling/ci/release-manifest.mjs --stage  <fromDir> --out <dir> --app <id> --tag <tag> --ref-type <tag|branch> [--stamps <dir>]
 //   node tooling/ci/release-manifest.mjs --write  <dir> --app <id> --tag <tag> --sha <sha> [--run-url <url>]
+//   (`--stamps <dir>` is REQUIRED on every surface but the extension one, and is
+//   read back by `--emit-release-json … --stamps <dir>`: each installer's build
+//   stamp, tooling/ci/stamp-channel.mjs, O-RELEASE-RECORD-GUESSES-CHANNEL-FROM-EXTENSION.)
 //   node tooling/ci/release-manifest.mjs --verify <dir> [--expect-formats [--for-workflow <file>]]
 //   node tooling/ci/release-manifest.mjs --emit-assets <dir>
 //   node tooling/ci/release-manifest.mjs --emit-environments <dir> --app <id>
@@ -129,7 +132,7 @@
 // Exit 0 = the mode succeeded. 1 = it did not, loudly and with a reason.
 // ─────────────────────────────────────────────────────────────────────────────
 import { createHash } from 'node:crypto';
-import { readFileSync, writeFileSync, existsSync, statSync, copyFileSync, renameSync, unlinkSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, statSync, copyFileSync, renameSync, unlinkSync, mkdirSync, constants as fsConstants } from 'node:fs';
 import { join, resolve, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -173,20 +176,25 @@ export const RELEASE_JSON_NAME = 'release.json';
  * can ever declare it. It is nonetheless the only Android artifact a human can
  * install on a handset, which is precisely "an artifact intended for a user".
  * A format with a reason beats a format with a row that would be a lie.
+ *
+ * ⏱ CORRECTED 2026-09-24 (O-RELEASE-RECORD-GUESSES-CHANNEL-FROM-EXTENSION). The
+ * paragraph above is kept as it was written, and both of its facts are gone.
+ * A register row DOES accept an .apk now (`apps-gov-in`), so `.apk` is
+ * installable through the register and needs no extra. And the .apk this extra
+ * existed for, the Play build's sideload proof, no longer enters a release:
+ * build-platforms.yml uploads it as `ci-proof-android-play-apk-<app>`, a name
+ * the release job's `<app>-*` download never matches. Kept here, it would make
+ * `--verify --expect-formats` demand an .apk the release no longer carries, on
+ * every run. The Map stays, EMPTY, because it still has readers:
+ * installableExtensions, expectedReleaseFormats, `--verify`, nativeAuthRefusals
+ * and assert-release-durable.mjs. A new extra is added back with its reason.
+ * Retiring the Map together with those five readers is queued for the A1b PR.
  */
 /* ⚠️ THE VALUE CARRIES A `surface` AS WELL AS A REASON, added 2026-09-05. An
  * extra with no surface is an extra that belongs to EVERY surface, and `.apk` on
  * an extension release would be exactly the leak `channelIsOnSurface` below
  * exists to stop — a format offered to a lane that can never build it. */
-export const EXTRA_INSTALLABLE = new Map([
-  [
-    '.apk',
-    {
-      surface: 'app', platform: 'android',
-      why: 'no channel ACCEPTS an .apk (Play takes the .aab), so no register row can declare it — yet it is the only Android artifact a person can sideload onto a handset, which is exactly the "intended for a user" the requirement quantifies over.',
-    },
-  ],
-]);
+export const EXTRA_INSTALLABLE = new Map([]);
 
 /**
  * 🔴 INSTALLABLE IS NOT THE SAME AS SELF-CONTAINED, and the first local dry run
@@ -1093,7 +1101,9 @@ async function main() {
       for (const e of listDir(dir, { withFileTypes: true })) {
         const abs = join(dir, e.name);
         if (e.isDirectory()) { walk(abs); continue; }
-        if ([...exts].some((x) => e.name.toLowerCase().endsWith(x.toLowerCase()))) found.push({ abs, file: e.name });
+        // The LONGEST extension that matches is the file's format, as formatOf reads it.
+        const ext = [...exts].filter((x) => e.name.toLowerCase().endsWith(x.toLowerCase())).sort((a, b) => b.length - a.length)[0];
+        if (ext !== undefined) found.push({ abs, file: e.name, ext });
       }
     };
     walk(from);
@@ -1106,7 +1116,16 @@ async function main() {
         'downstream check over an empty set.',
       );
     }
+    // ⏱ 2026-09-24 — EVERY INSTALLER CARRIES ITS BUILD'S STAMP, judged before the
+    // native-auth question and before anything moves (O-RELEASE-RECORD-GUESSES-CHANNEL-FROM-EXTENSION).
+    // The stamps leave the download tree for `--stamps <dir>`, never for the
+    // release directory, which is flat and published whole; --emit-release-json
+    // reads each file's channel from there. The extension surface reads its
+    // channels from tool.json and is not asked (stampsDirFor returns null).
+    const stampsOut = stampsDirFor(stageSurface, '--stage');
+    if (stampsOut !== null) judgeStageStamps(stageRegister, found, { surface: stageSurface });
     await refuseUnableNativeInstallers(stageRegister, found.map((f) => f.file), { surface: stageSurface, tag, refType });
+    if (stampsOut !== null) mkdirSync(stampsOut, { recursive: true });
 
     const staged = [];
     for (const { abs, file } of found) {
@@ -1131,6 +1150,17 @@ async function main() {
       } catch {
         copyFileSync(abs, join(out, name));
         unlinkSync(abs);
+      }
+      // The stamp follows its file under the file's STAGED name. An exclusive
+      // copy, so a stamp already there is refused and never overwritten.
+      if (stampsOut !== null) {
+        try {
+          copyFileSync(channelStampName(abs), join(stampsOut, channelStampName(name)), fsConstants.COPYFILE_EXCL);
+        } catch (e) {
+          if (e?.code === 'EEXIST') die(`${join(stampsOut, channelStampName(name))} already exists.`, 'A second stage into one stamps directory would pair a file with a previous run\'s stamp.');
+          throw e;
+        }
+        unlinkSync(channelStampName(abs));
       }
       staged.push(name);
     }
@@ -1208,6 +1238,9 @@ async function main() {
       // half to nothing, and "expected nothing, found nothing" would exit 0 over
       // a dist missing every platform — a check that reads as completeness and
       // asserts nothing. Same rail, so it cannot be reached by a typo either.
+      // ⏱ CORRECTED 2026-09-24: EXTRA_INSTALLABLE is EMPTY since the .apk left it
+      // (O-RELEASE-RECORD-GUESSES-CHANNEL-FROM-EXTENSION), so the total CAN be empty
+      // now. The rail on the register's half still catches that empty, first.
       const fromRegister = [...expected].filter((e) => !EXTRA_INSTALLABLE.has(e));
       if (fromRegister.length === 0) {
         coverageLost(
@@ -1405,6 +1438,10 @@ async function main() {
     if (names.length === 0) {
       die(`${dir} holds no asset, so there is nothing to describe.`, 'Refusing to emit a release record over an empty set.');
     }
+    // ⏱ 2026-09-24 — the stamps `--stage` carried out of the download tree
+    // (O-RELEASE-RECORD-GUESSES-CHANNEL-FROM-EXTENSION); null on the extension surface.
+    const stampsIn = stampsDirFor(surface, '--emit-release-json');
+    if (stampsIn !== null) requireDir(stampsIn, '--stamps');
     const json = buildReleaseJson({
       app, surface, tag, sha, runUrl, notesUrl, releasedAt, version, minSupported, build,
       register: loadRegister(),
@@ -1413,7 +1450,8 @@ async function main() {
       // swapped between a hash and a separate stat cannot pair one file's digest with another's size.
       files: names.map((n) => {
         const bytes = readFileSync(join(dir, n));
-        return { name: n, sha256: createHash('sha256').update(bytes).digest('hex'), size: bytes.length };
+        const stamp = stampsIn === null ? null : readChannelStamp(join(stampsIn, channelStampName(n)));
+        return { name: n, sha256: createHash('sha256').update(bytes).digest('hex'), size: bytes.length, stamp };
       }),
     });
     try {
@@ -1429,10 +1467,11 @@ async function main() {
 
   die(
     'no mode given.',
-    'Usage: --stage <from> --out <dir> --app <id> --tag <tag> --ref-type <tag|branch> | --write <dir> --app <id> --tag <tag> --sha <sha>',
+    'Usage: --stage <from> --out <dir> --app <id> --tag <tag> --ref-type <tag|branch> [--stamps <dir>] | --write <dir> --app <id> --tag <tag> --sha <sha>',
     '       | --verify <dir> | --emit-assets <dir> | --emit-environments <dir> --app <id>',
     '       | --emit-release-json <dir> --app <id> --tag <tag> --sha <sha> --run-url <url> --notes-url <url>',
-    '         --released-at <iso> --version <X.Y.Z[.N]> [--build <n>] [--surface app|extension]',
+    '         --released-at <iso> --version <X.Y.Z[.N]> [--build <n>] [--surface app|extension] [--stamps <dir>]',
+    '         (--stamps is required on every surface but the extension one, for both --stage and --emit-release-json)',
     '         + --min-supported <X.Y.Z> on the extension surface only (the app surface reads services/platform/src/app-config-data.json)',
   );
 }
@@ -1518,6 +1557,20 @@ export function buildReleaseJson({
    * matches NO row and never will (Play takes the .aab) — its empty list is the
    * true answer, and it is the sideload artefact EXTRA_INSTALLABLE exists for.
    *
+   * ⏱ CORRECTED 2026-09-24 (O-RELEASE-RECORD-GUESSES-CHANNEL-FROM-EXTENSION). The
+   * APP paragraph above is kept as written, and it was false twice. `apps-gov-in`
+   * accepts `.apk`, so this derivation answered `apps-gov-in` for the Play
+   * build's .apk: a binary compiled with RELEASE_CHANNEL=android-play, which
+   * apps.gov.in must never receive (assert-release-json.test.mjs M2 measured it
+   * and called this comment stale). And an extension says what a file IS, never
+   * which channel it was BUILT for: one .msix answered both Windows rows. So on
+   * every surface but the extension one, an installer's channel is now READ from
+   * the stamp its build wrote (`<file>.channel.json`, tooling/ci/stamp-channel.mjs)
+   * and the register only JUDGES it (`stampProblems`): the stamped row must be on
+   * this surface and accept this format. An installer with no stamp is COVERAGE
+   * LOST, never a default. A release-only format (an archive, SHA256SUMS.txt) is
+   * no installer here, carries no stamp, and lists no channel.
+   *
    * EXTENSION: the tool's own `storeMetadata`, then the register. The asset is
    * `<tool>-<target>.zip` where target is a BUILD target (chromium, firefox) and
    * not a store; one chromium zip is submitted to two stores. tool.json names
@@ -1525,10 +1578,30 @@ export function buildReleaseJson({
    * `extensionStoreKey`, and joining them is the only path from a filename to a
    * channel id that neither file has to repeat.
    */
-  const channelsFor = (name, format) => {
+  const surfaceInstallers = installableExtensions(register, surface);
+  const channelsFor = ({ name, sha256: bytesHash, stamp }, format) => {
     const rows = (register?.channels ?? []).filter((c) => channelIsOnSurface(c, surface));
     const accepts = (c) => (c?.artifactFormats ?? []).some((f) => typeof f === 'string' && f.toLowerCase() === format.toLowerCase());
-    if (surface !== 'extension') return rows.filter(accepts).map((c) => c.id).filter((id) => typeof id === 'string').sort();
+    if (surface !== 'extension') {
+      if (!surfaceInstallers.has(format)) return [];
+      if (stamp === null || stamp === undefined) {
+        coverageLost(
+          `COVERAGE LOST — ${name} is a ${format} installer and carries no build stamp (${channelStampName(name)}).`,
+          'Its channel is what its build compiled in (RELEASE_CHANNEL), and only the stamp says which that was.',
+          'Reading a channel off the extension instead is how the Play .apk was described as an apps.gov.in file',
+          '(O-RELEASE-RECORD-GUESSES-CHANNEL-FROM-EXTENSION). Stamp it in its build job with tooling/ci/stamp-channel.mjs.',
+        );
+      }
+      const problems = stampProblems(stamp, { name, sha256: bytesHash, format, register, surface });
+      if (problems.length) {
+        die(
+          `${name} cannot be described: its build stamp does not fit it.`,
+          ...problems,
+          'The record would otherwise offer these bytes to a channel their build was not made for.',
+        );
+      }
+      return [stamp.channel];
+    }
 
     const m = /^(.+)-([a-z0-9]+)\.zip$/i.exec(name);
     if (m === null) return [];  // SHA256SUMS.txt and anything else that is not a submittable zip
@@ -1565,7 +1638,7 @@ export function buildReleaseJson({
         build: surface === 'extension' ? null : build,
         sha256: f.sha256,
         size: f.size,
-        channels: channelsFor(f.name, format),
+        channels: channelsFor(f, format),
       };
     });
 
@@ -1810,4 +1883,137 @@ async function refuseUnableNativeInstallers(register, files, { surface, tag, ref
     'Nothing was moved: every installer is still in the download tree, and the output directory holds none of them.',
     'Flip `nativeAuth` in tooling/channel-register.json only on OBSERVED evidence, a native build signing in (O-BOXA-CAPTCHA-REFUSES-NATIVE-SIGN-IN).',
   );
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * ⏱ 2026-09-24 — THE BUILD'S CHANNEL STAMP (O-RELEASE-RECORD-GUESSES-CHANNEL-FROM-EXTENSION).
+ *
+ * A build job writes `<file>.channel.json` beside each file it ships, with
+ * tooling/ci/stamp-channel.mjs: `{ channel, file, sha256, runId }`, where
+ * `channel` is the RELEASE_CHANNEL that build compiled in. `--stage` judges each
+ * stamp against its file and carries it to `--stamps <dir>`, and
+ * `--emit-release-json` reads each installer's channel from it. The helpers are
+ * declared LAST, hoisted, for the reason `coverageLost` is, and stamp-channel.mjs
+ * imports them, so the writer and the readers share one name and one judgement.
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+/** The stamp's path for a file: the file's own path plus `.channel.json`. */
+export function channelStampName(file) {
+  return `${file}.channel.json`;
+}
+
+/** The keys a stamp carries, exactly these, sorted. */
+export function channelStampKeys() {
+  return ['channel', 'file', 'runId', 'sha256'];
+}
+
+/**
+ * Everything wrong with one stamp for one file, as sentences; [] when it fits.
+ * Pure. `name` is the file's name where it is judged: its build name on
+ * `--stage`, its staged `<tag>-…` name on `--emit-release-json`, so the stamp's
+ * `file` must be the name itself or its `-`-joined tail. `format` is the file's
+ * installer format; the stamped row must be on `surface` and accept it.
+ */
+export function stampProblems(stamp, { name, sha256, format, register, surface }) {
+  if (stamp === null || typeof stamp !== 'object' || Array.isArray(stamp)) return ['its stamp is not a JSON object.'];
+  const problems = [];
+  const keys = Object.keys(stamp).sort();
+  if (keys.join(',') !== channelStampKeys().join(',')) {
+    problems.push(`its stamp carries the keys [${keys.join(', ')}]; a stamp is exactly {channel, file, sha256, runId}.`);
+  }
+  const { channel, file, sha256: stamped, runId } = stamp;
+  if (typeof file !== 'string' || file === '' || !(name === file || name.endsWith(`-${file}`))) {
+    problems.push(`its stamp names the file ${JSON.stringify(file)}, and this file is ${name}.`);
+  }
+  if (stamped !== sha256) {
+    problems.push(`its stamp records sha256 ${JSON.stringify(stamped)}, and the bytes hash to ${sha256}: the stamp was written for other bytes.`);
+  }
+  if (typeof runId !== 'string' || !/^[0-9]+$/.test(runId)) {
+    problems.push(`its stamp's runId ${JSON.stringify(runId)} is not a workflow run id.`);
+  }
+  const row = typeof channel === 'string' ? (register?.channels ?? []).find((c) => c?.id === channel) : undefined;
+  if (row === undefined) {
+    problems.push(`it is stamped ${JSON.stringify(channel)}, and ${REGISTER_REL} declares no such channel.`);
+  } else if (!channelIsOnSurface(row, surface)) {
+    problems.push(`it is stamped "${channel}", which is not on the "${surface}" surface.`);
+  } else if (!(row.artifactFormats ?? []).some((f) => typeof f === 'string' && f.toLowerCase() === String(format).toLowerCase())) {
+    problems.push(
+      `it is stamped "${channel}", and that row does not accept ${format} (it accepts ${(row.artifactFormats ?? []).join(', ') || 'nothing'}): ` +
+        `its build compiled RELEASE_CHANNEL=${channel} into a file that channel never takes.`,
+    );
+  }
+  return problems;
+}
+
+/** One stamp read from disk: the parsed value, or null when there is no file.
+ *  A stamp that is there and is not JSON is a finding (exit 1), never "none". */
+function readChannelStamp(abs) {
+  let text;
+  try {
+    text = readFileSync(abs, 'utf8');
+  } catch (e) {
+    if (e?.code === 'ENOENT') return null;
+    throw e;
+  }
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    return die(`${abs} is not JSON (${e.message}).`, 'A stamp nobody can read says nothing about which channel its file was built for.');
+  }
+}
+
+/** `--stamps <dir>` for a mode, resolved; null on the extension surface, which
+ *  reads its channels from tool.json and is refused the flag. */
+function stampsDirFor(surface, mode) {
+  const dir = flag('stamps');
+  if (surface === 'extension') {
+    if (dir !== null) {
+      die(
+        `--stamps is refused on the extension surface (${mode}).`,
+        'An extension zip is a BUILD TARGET and its stores come from tool.json; no build stamps it.',
+      );
+    }
+    return null;
+  }
+  if (dir === null) {
+    die(
+      `${mode} needs --stamps <dir> on the "${surface}" surface.`,
+      'Each installer\'s channel is read from the stamp its build wrote; without the directory there is none to read.',
+    );
+  }
+  return resolve(dir);
+}
+
+/** `--stage`'s stamp judgement, before the native-auth question and before any
+ *  move. A stamp that does not fit its file is exit 1; an installer with no stamp
+ *  beside it is COVERAGE LOST (exit 2). Every file is judged before either exit,
+ *  so one run names them all. */
+function judgeStageStamps(register, found, { surface }) {
+  const wrong = [];
+  const missing = [];
+  for (const f of found) {
+    const stamp = readChannelStamp(channelStampName(f.abs));
+    if (stamp === null) {
+      missing.push(f.file);
+      continue;
+    }
+    const sha = createHash('sha256').update(readFileSync(f.abs)).digest('hex');
+    for (const p of stampProblems(stamp, { name: f.file, sha256: sha, format: f.ext, register, surface })) wrong.push(`${f.file} — ${p}`);
+  }
+  if (wrong.length) {
+    for (const w of wrong) console.error(`✗ ${w}`);
+    die(
+      `--stage refuses ${wrong.length} stamp finding(s): an installer whose build stamp does not fit it.`,
+      'Nothing was moved. The record would otherwise describe these bytes under a channel their build was not made for',
+      '(O-RELEASE-RECORD-GUESSES-CHANNEL-FROM-EXTENSION).',
+    );
+  }
+  if (missing.length) {
+    coverageLost(
+      `COVERAGE LOST — ${missing.length} installer(s) carry no build stamp: ${missing.join(', ')}.`,
+      `Each needs its ${channelStampName('<file>')} beside it, written in its build job by tooling/ci/stamp-channel.mjs`,
+      'and listed in its upload\'s `path:`. Nothing was moved. An unstamped installer is never given a default channel:',
+      'that default is the guess O-RELEASE-RECORD-GUESSES-CHANNEL-FROM-EXTENSION removes.',
+    );
+  }
 }
