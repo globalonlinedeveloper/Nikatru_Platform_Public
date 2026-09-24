@@ -137,6 +137,8 @@ describe('preflight allows every method a MOUNTED route answers — derived, not
     // test pass vacuously, and a table missing this route would mean the seam
     // stopped seeing sub-apps merged in by `app.route`.
     expect(endpoints).toContainEqual({ method: 'PUT', path: '/v1/account/apple-token' });
+    // ⏱ 2026-09-24 · its provider-general successor, preflighted the same way.
+    expect(endpoints).toContainEqual({ method: 'PUT', path: '/v1/account/provider-token' });
     expect(endpoints).toContainEqual({ method: 'DELETE', path: '/v1/account' });
     expect(endpoints.length).toBeGreaterThan(5);
   });

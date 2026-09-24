@@ -166,6 +166,21 @@ const columnsOf = (db: RealDb, table: string): ColumnInfo[] =>
   }));
 
 /**
+ * ⏱ 2026-09-24 · The first value a `CHECK (<column> IN ('…', …))` in the table's
+ * own DDL allows, or null. READ from `sqlite_master`, not listed here: 0016's
+ * `provider_tokens.provider` is the first such column, and the engine refuses a
+ * filler string there, so without this every planting test fails on the fixture
+ * rather than on the erasure.
+ */
+function checkedValue(db: RealDb, table: string, column: string): string | null {
+  const ddl = String(
+    db.rows(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?`, table)[0]?.sql ?? '',
+  );
+  const m = new RegExp(`CHECK\\s*\\(\\s*${column}\\s+IN\\s*\\(\\s*'([^']*)'`, 'i').exec(ddl);
+  return m ? m[1] : null;
+}
+
+/**
  * Insert one row into `table` belonging to (or referencing) `userId`.
  *
  * EVERY column is filled — not just the required ones — so a column added by a
@@ -179,6 +194,8 @@ function plant(db: RealDb, table: string, userId: string, tag: string): void {
   const cols = columnsOf(db, table);
   const values = cols.map((c, i) => {
     if (c.name === 'user_id' || c.name.endsWith('_user_id')) return userId;
+    const allowed = checkedValue(db, table, c.name);
+    if (allowed !== null) return allowed;
     const numeric = /INT|REAL|NUM|DOUB|FLOA/i.test(c.type);
     return numeric ? i : `filler-${table}-${tag}-${i}`;
   });

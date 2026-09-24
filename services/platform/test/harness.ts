@@ -49,6 +49,7 @@ import signups0011 from '../migrations/0011_signups.sql?raw';
 import appleTokens0012 from '../migrations/0012_apple_provider_tokens.sql?raw';
 import contentReports0013 from '../migrations/0013_content_reports.sql?raw';
 import revenuecatOwnership0015 from '../migrations/0015_revenuecat_ownership.sql?raw';
+import providerTokens0016 from '../migrations/0016_provider_tokens.sql?raw';
 
 type SQLValue = string | number | bigint | null | Uint8Array;
 
@@ -87,6 +88,9 @@ export const PLATFORM_MIGRATIONS: readonly string[] = [
   // [ADR 092] §4.4 — the event time a RevenueCat link rests on. ADD COLUMN, so
   // ledger-protected and NOT in REPLAY_SAFE_MIGRATIONS below.
   revenuecatOwnership0015,
+  // ⏱ 2026-09-24 · O-GOOGLE-SIGN-IN-NOT-BUILT — one token row per (subject,
+  // provider), with 0012's Apple rows copied in.
+  providerTokens0016,
 ];
 
 /**
@@ -127,6 +131,11 @@ export const REPLAY_SAFE_MIGRATIONS: readonly string[] = [
   appleTokens0012,
   // 0013 is CREATE TABLE / CREATE INDEX IF NOT EXISTS only — it replays.
   contentReports0013,
+  // 0016 is one CREATE TABLE IF NOT EXISTS plus one INSERT … SELECT … ON
+  // CONFLICT DO NOTHING — both replay-safe forms, and the copy is idempotent BY
+  // the conflict clause (test/provider-tokens-migration.test.ts applies it twice).
+  // It reads 0012's table, which is listed above it.
+  providerTokens0016,
 ];
 
 // `node:sqlite` is fetched through `process.getBuiltinModule` rather than a

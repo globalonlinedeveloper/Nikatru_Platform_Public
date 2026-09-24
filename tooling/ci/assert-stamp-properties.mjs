@@ -1507,7 +1507,11 @@ const REQUIRED_COVERAGE = [
     key: 'apple-token-kept',
     group: /group\(\s*'property: apple-token-kept'/,
     sources: [
-      { file: PROVIDERS, re: /core\.keepAppleRefreshToken\s*\(/, what: 'the stamped app must really start the keeper — the identity provider hands Apple\'s refresh token over ONCE, on the session that completes the OAuth redirect, and stores none of it' },
+      // ⏱ 2026-09-24 · O-GOOGLE-SIGN-IN-NOT-BUILT. Either keeper: the Apple-only
+      // one the template starts, or the provider-general one (packages/core
+      // provider_token_keeper.dart) that keeps Apple's token AND Google's. Both
+      // anchors below still demand the call and its `onError`.
+      { file: PROVIDERS, re: /core\.keep(?:Apple|Provider)RefreshToken\s*\(/, what: 'the stamped app must really start the keeper — the identity provider hands Apple\'s refresh token over ONCE, on the session that completes the OAuth redirect, and stores none of it' },
       // ⏱ 2026-09-22 · O-APPLE-KEEPER-NO-ONERROR. The keeper reports a round
       // that gave up through `onError`, and for six days NOBODY PASSED ONE —
       // so the shared platform Worker's missing PUT refused every web send at
@@ -1515,7 +1519,7 @@ const REQUIRED_COVERAGE = [
       // because the call spans lines and `.` does not cross one, and it stops
       // at the first `;` so the match cannot run past the end of the call into
       // some later statement's `onError:`.
-      { file: PROVIDERS, re: /core\.keepAppleRefreshToken\s*\([^;]*\bonError\s*:/, what: 'the keeper must be handed an `onError`: without one a round that gave up is reported NOWHERE, and the account goes on to delete with nothing to revoke at Apple — which is exactly how the CORS defect fixed by #867 survived until a hand-run token count found it' },
+      { file: PROVIDERS, re: /core\.keep(?:Apple|Provider)RefreshToken\s*\([^;]*\bonError\s*:/, what: 'the keeper must be handed an `onError`: without one a round that gave up is reported NOWHERE, and the account goes on to delete with nothing to revoke at Apple — which is exactly how the CORS defect fixed by #867 survived until a hand-run token count found it' },
       { file: APP_ROOT, re: /ref\.watch\(\s*appleTokenKeeperProvider\s*\)/, what: 'the keeper must be WATCHED from the app root: a Riverpod provider nobody reads is never created, so the listener silently does not exist and the capture never happens' },
     ],
     why: "Apple requires an app offering Sign in with Apple to revoke the user's tokens when their account is deleted (O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE), the revoke call takes a token, and that token is offered exactly once — so an app that does not capture it signs people in happily for months and fails at the first deletion, on the server, with nothing to revoke",

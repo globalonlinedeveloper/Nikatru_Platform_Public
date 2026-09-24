@@ -4776,7 +4776,7 @@ final class _FixedAgeSignal implements core.AgeSignalSource {
 /// COUNTS what the keeper does to it: how many listeners the identity stream has,
 /// and how many times the session was read. The token's journey ONWARD is proven
 /// in packages/core (keepAppleRefreshToken, with a red control) and in
-/// services/platform/test/apple-revoke.test.ts; what a stamped app owes is that
+/// services/platform/test/provider-revoke.test.ts; what a stamped app owes is that
 /// the listener exists at all.
 class _AppleKeeperAuth extends MockAuthRepository {
   final StreamController<core.AuthUser?> _users =

@@ -286,7 +286,10 @@ export interface Env {
    *
    * ⚠️ ABSENT ⇒ A DELETION WITH A STORED APPLE TOKEN IS REFUSED LOUDLY, not
    * skipped: the route answers 202 `erasure_pending`, the identity stays, and the
-   * nightly retry keeps trying. See src/lib/apple-revoke.ts.
+   * nightly retry keeps trying. See src/lib/provider-revoke.ts.
+   *
+   * ⏱ 2026-09-24 · Google's revoke (the same file) needs NO value here: its
+   * endpoint takes the token alone, so there is no `GOOGLE_*` secret to set.
    *
    *   · CLIENT_ID   — the identifier the token was issued to (the Services ID the
    *                   identity provider signs in with). A mismatch is Apple's
@@ -390,6 +393,12 @@ export interface Variables {
    * [userId] by `middleware/auth.ts`. See `authRecencyOf` there.
    */
   authRecency?: AuthRecency;
+  /**
+   * ⏱ 2026-09-24 · O-GOOGLE-SIGN-IN-NOT-BUILT. The verified token's
+   * `app_metadata.providers`, set by `middleware/auth.ts` beside [authRecency].
+   * PUT /v1/account/provider-token refuses a token for a provider not in it.
+   */
+  linkedProviders?: readonly string[];
   /**
    * [pipeline B-16] WHICH APP THIS REQUEST IS FOR, set by each route the moment
    * it has resolved and VALIDATED one, and read by `app.onError`.
