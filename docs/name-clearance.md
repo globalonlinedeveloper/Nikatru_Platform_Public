@@ -200,7 +200,7 @@ build.
    `tooling/ops/name-clearance-sweep.mjs`, so the weekly re-verification runs
    only when somebody runs it.
 
-   **LANDED 2026-09-24**, in the pull request that added
+   **LANDED 2026-09-24**, in #923, which added
    `.github/workflows/name-clearance.yml` (O-NAME-CLEARANCE-SWEEP-RUN-BY-NOTHING).
    **Where the records go:** the workflow runs the sweep every Monday at 07:10
    UTC and lands the rewritten `apps/*/name-clearance.json` on `main` by pull
