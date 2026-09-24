@@ -33,7 +33,8 @@ import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
-import { clear, rollUp, writeRecord, makeHttp, CoverageLost, RECORD_REL } from '../../store/name-clearance.mjs';
+import { clear, rollUp, writeRecord, makeHttp, shellQuote, CoverageLost, RECORD_REL } from '../../store/name-clearance.mjs';
+import { settle } from '../../ops/name-clearance-sweep.mjs';
 import { PROBES, noProbeRegistered, PROVEN_FREE, PROVEN_TAKEN, UNDETERMINED, NOT_APPLICABLE } from '../../store/name-probes.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -266,6 +267,109 @@ describe('the probe — the roll-up and the record', () => {
     const tmp = mkdtempSync(join(tmpdir(), 'nk-nc-'));
     try {
       await assert.rejects(() => clear({ root: tmp, name: 'X', app: 'x', http: stub([]) }), (e) => e instanceof CoverageLost && /channel set/i.test(e.lines.join(' ')));
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  // D4 carries a gate whose ruling is still null, so a writeRecord that dropped
+  // `ruling`, `ruledBy` or `ruledOn` would pass it: the fresh record's nulls and
+  // the carried nulls are the same bytes. The weekly sweep rewrites the record
+  // on every run and lands it by pull request, so an owner's ruling that did not
+  // survive the rewrite would be deleted by a bot and merged on a green gate.
+  test('D6 the sweep\'s rewrite CARRIES an owner RULING — all five trademark fields survive, the evidence does not', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'nk-nc-'));
+    try {
+      mkdirSync(join(tmp, 'apps', 'x'), { recursive: true });
+      writeFileSync(
+        join(tmp, RECORD_REL('x')),
+        `${JSON.stringify({ asOf: '2026-09-01', trademark: { disclaimer: 'old', signals: ['old signal'], ruling: 'PROCEED', ruledBy: 'owner', ruledOn: '2026-09-20', ownerItem: 'O-RULED', gatedUntil: '2026-10-09' } })}\n`,
+      );
+      const record = { app: 'x', slug: 'x', name: 'X', asOf: '2026-09-28', overall: 'QUALIFIED', channels: {}, identifiers: [], controls: { green: 3, failed: [] }, trademark: { disclaimer: 'd', signals: ['fresh signal'], ruling: null, ruledBy: null, ruledOn: null, ownerItem: null, gatedUntil: null } };
+      assert.equal(writeRecord(tmp, record).written, true);
+      const back = JSON.parse(readFileSync(join(tmp, RECORD_REL('x')), 'utf8'));
+      assert.equal(back.trademark.ruling, 'PROCEED', 'an owner ruling must survive a re-probe');
+      assert.equal(back.trademark.ruledBy, 'owner');
+      assert.equal(back.trademark.ruledOn, '2026-09-20');
+      assert.equal(back.trademark.ownerItem, 'O-RULED');
+      assert.equal(back.trademark.gatedUntil, '2026-10-09');
+      assert.deepEqual(back.trademark.signals, ['fresh signal'], 'the observations are this run\'s; only the owner\'s five fields are carried');
+      assert.equal(back.asOf, '2026-09-28', 'the date is this run\'s, or the 30-day ceiling reads a date nobody measured');
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  // ⏱ 2026-09-24 (review M2). The sweep compared the PROBE's roll-up against the
+  // file's `overall`, but the probe carries no ruling: a PROCEED record re-probed
+  // clean rolled up QUALIFIED, printed "CLEAR → QUALIFIED" and reported a flip
+  // every Monday while writing CLEAR. One verdict, from the merged record.
+  test('N5 the sweep reports the MERGED record\'s verdict — a PROCEED record re-probed clean stays CLEAR, and a second run reports no flip', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'nk-nc-'));
+    try {
+      mkdirSync(join(tmp, 'apps', 'x'), { recursive: true });
+      writeFileSync(
+        join(tmp, RECORD_REL('x')),
+        `${JSON.stringify({ overall: 'CLEAR', trademark: { ruling: 'PROCEED', ruledBy: 'owner', ruledOn: '2026-09-20', basis: 'ADR 074', ownerItem: null, gatedUntil: null } })}\n`,
+      );
+      const record = {
+        app: 'x', slug: 'x', name: 'X', asOf: '2026-09-28', overall: 'QUALIFIED', identifiers: [], controls: { green: 3, failed: [] },
+        channels: { d: { verdict: PROVEN_FREE, uniqueness: 'global' }, e: { verdict: NOT_APPLICABLE, uniqueness: 'none' } },
+        trademark: { disclaimer: 'd', signals: [], ruling: null, ruledBy: null, ruledOn: null, basis: null, ownerItem: null, gatedUntil: null },
+      };
+      assert.equal(rollUp(record).overall, 'QUALIFIED', 'green control: the probe alone rolls up QUALIFIED, so the verdict below is the merge\'s');
+
+      const first = settle({ root: tmp, app: 'x', name: 'X', previous: 'CLEAR', record });
+      const written = JSON.parse(readFileSync(join(tmp, RECORD_REL('x')), 'utf8')).overall;
+      assert.equal(written, 'CLEAR');
+      assert.equal(first.overall, written, 'the sweep\'s verdict is the one it wrote');
+      assert.match(first.line, /CLEAR → CLEAR$/);
+      assert.equal(first.flip, null, 'nothing flipped: the file said CLEAR and still says CLEAR');
+
+      const second = settle({ root: tmp, app: 'x', name: 'X', previous: written, record });
+      assert.equal(second.overall, 'CLEAR');
+      assert.equal(second.flip, null, 'a second run over its own output reports no flip');
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test('N5 a dry run rolls up the merged record and writes nothing', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'nk-nc-'));
+    try {
+      mkdirSync(join(tmp, 'apps', 'x'), { recursive: true });
+      const before = `${JSON.stringify({ overall: 'CLEAR', trademark: { ruling: 'PROCEED', ruledBy: 'owner', ruledOn: '2026-09-20', basis: 'ADR 074', ownerItem: null, gatedUntil: null } })}\n`;
+      writeFileSync(join(tmp, RECORD_REL('x')), before);
+      const record = {
+        app: 'x', slug: 'x', name: 'X', asOf: '2026-09-28', identifiers: [], controls: { green: 3, failed: [] },
+        channels: { d: { verdict: PROVEN_FREE, uniqueness: 'global' } },
+        trademark: { disclaimer: 'd', signals: [], ruling: null, ruledBy: null, ruledOn: null, basis: null, ownerItem: null, gatedUntil: null },
+      };
+      const w = writeRecord(tmp, record, { dryRun: true });
+      assert.equal(w.written, false);
+      assert.equal(w.refused, false);
+      assert.equal(w.overall, 'CLEAR');
+      assert.equal(readFileSync(join(tmp, RECORD_REL('x')), 'utf8'), before, 'a dry run leaves the record byte-for-byte');
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  // ⏱ 2026-09-24 (review M2). `verify` spliced the name in bare, so the pasted
+  // command cleared "Nikatru" — the first word — and wrote the result over the
+  // record for the three-word name.
+  test('N5 the record\'s verify line quotes a multi-word name, so pasting it clears the whole name', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'nk-nc-'));
+    try {
+      const record = {
+        app: 'x', slug: 'x', name: 'Nikatru Subscription Tracker', asOf: '2026-09-28', identifiers: [], controls: { green: 3, failed: [] },
+        channels: {}, trademark: { disclaimer: 'd', signals: [], ruling: null, ruledBy: null, ruledOn: null, basis: null, ownerItem: null, gatedUntil: null },
+      };
+      assert.equal(writeRecord(tmp, record).written, true);
+      const back = JSON.parse(readFileSync(join(tmp, RECORD_REL('x')), 'utf8'));
+      assert.equal(back.name.verify, "node tooling/store/name-clearance.mjs 'Nikatru Subscription Tracker' --app x --execute");
+      assert.equal(shellQuote('Subly'), 'Subly', 'a one-word name needs no quotes');
+      assert.equal(shellQuote("It's"), "'It'\\''s'", 'an apostrophe closes, escapes and reopens the quote');
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }

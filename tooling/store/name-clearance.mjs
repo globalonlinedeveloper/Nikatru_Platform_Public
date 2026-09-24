@@ -300,8 +300,15 @@ export function rollUp(record) {
  * The trademark block is PRESERVED, never rewritten: the probe cannot produce a
  * ruling, and a re-probe that reset `gatedUntil` would be a waiver extending its
  * own reason, which is the shape this corpus deletes.
+ *
+ * 🔴 ONE VERDICT: the MERGED record's. The probe's own roll-up never sees the
+ * carried ruling, so a PROCEED record re-probed clean rolls up QUALIFIED while
+ * the file says CLEAR — and a sweep comparing that against the file's `overall`
+ * reports a flip that never happened, every week. So this returns the written
+ * `overall` (and its exit), and the sweep and the CLI print and compare THAT.
+ * `dryRun` builds and rolls up the merged record without writing it.
  */
-export function writeRecord(root, record, { force = false } = {}) {
+export function writeRecord(root, record, { force = false, dryRun = false } = {}) {
   const rel = RECORD_REL(record.app);
   const abs = join(root, rel);
   // ⚠️ ONE READ, NOT A CHECK-THEN-WRITE. This was `existsSync(abs)` followed by a
@@ -323,6 +330,7 @@ export function writeRecord(root, record, { force = false } = {}) {
   if (record.controls.failed.length && existed && !force) {
     return {
       written: false,
+      refused: true,
       rel,
       why:
         `REFUSED — ${record.controls.failed.length} red control(s) failed on this run (${record.controls.failed.join(', ')}), ` +
@@ -348,15 +356,26 @@ export function writeRecord(root, record, { force = false } = {}) {
   const merged = {
     ...(carriedWhy ? { _why: carriedWhy } : {}),
     ...record,
-    name: { value: record.name, asOf: record.asOf, verify: `node tooling/store/name-clearance.mjs ${record.name} --app ${record.app} --execute`, verifyKind: 'remote' },
+    name: { value: record.name, asOf: record.asOf, verify: `node tooling/store/name-clearance.mjs ${shellQuote(record.name)} --app ${record.app} --execute`, verifyKind: 'remote' },
     trademark: carried
       ? { ...record.trademark, ruling: carried.ruling ?? null, ruledBy: carried.ruledBy ?? null, ruledOn: carried.ruledOn ?? null, basis: carried.basis ?? null, ownerItem: carried.ownerItem ?? null, gatedUntil: carried.gatedUntil ?? null }
       : record.trademark,
   };
-  merged.overall = rollUp(merged).overall;
+  const verdict = rollUp(merged);
+  merged.overall = verdict.overall;
+  if (dryRun) {
+    return { written: false, refused: false, rel, why: `${rel} not written (dry run).`, overall: verdict.overall, exit: verdict.exit, verdict, record: merged };
+  }
   mkdirSync(dirname(abs), { recursive: true });
   writeFileSync(abs, `${JSON.stringify(merged, null, 2)}\n`);
-  return { written: true, rel, why: `${rel} rewritten from this run.` };
+  return { written: true, refused: false, rel, why: `${rel} rewritten from this run.`, overall: verdict.overall, exit: verdict.exit, verdict, record: merged };
+}
+
+/** POSIX single-quoting, so a multi-word name stays ONE argument when the
+ *  record's `verify` line is pasted into a shell. A bare `${name}` split
+ *  "Nikatru Subscription Tracker" into three positionals and cleared "Nikatru". */
+export function shellQuote(s) {
+  return /^[A-Za-z0-9._\/-]+$/.test(s) ? s : `'${String(s).replace(/'/g, `'\\''`)}'`;
 }
 
 // ── CLI ──────────────────────────────────────────────────────────────────────
@@ -394,7 +413,11 @@ if (isMain) {
     }
     throw e;
   }
-  const verdict = rollUp(record);
+  // The verdict printed and exited on is the one the record carries once the
+  // owner's ruling is merged in — the same roll-up `writeRecord` stamps into the
+  // file's `overall`. A refused write keeps the probe's own.
+  const w = writeRecord(ROOT, record, { dryRun: !EXECUTE });
+  const verdict = w.refused ? rollUp(record) : w.verdict;
 
   if (AS_JSON) {
     console.log(JSON.stringify(record, null, 2));
@@ -426,7 +449,6 @@ if (isMain) {
   }
 
   if (EXECUTE) {
-    const w = writeRecord(ROOT, record);
     console.log(w.written ? `wrote ${w.rel}` : `✗ ${w.why}`);
     if (!w.written) process.exit(2);
   }

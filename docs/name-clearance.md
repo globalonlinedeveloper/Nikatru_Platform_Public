@@ -199,3 +199,26 @@ build.
    `tooling/ops/register.json` exists, and no workflow calls
    `tooling/ops/name-clearance-sweep.mjs`, so the weekly re-verification runs
    only when somebody runs it.
+
+   **LANDED 2026-09-24**, in the pull request that added
+   `.github/workflows/name-clearance.yml` (O-NAME-CLEARANCE-SWEEP-RUN-BY-NOTHING).
+   **Where the records go:** the workflow runs the sweep every Monday at 07:10
+   UTC and lands the rewritten `apps/*/name-clearance.json` on `main` by pull
+   request, the `site-drift-repair.yml` pattern: branch
+   `chore/name-clearance-<run_id>` pushed with the job's own token, the patch
+   uploaded as the run's artifact before the proposal, the pull request opened as
+   the `RENOVATE_TOKEN` actor so `ci-gate` runs on it, and any changed path outside
+   those records refusing the proposal. **When it merges itself:** only when no
+   verdict flipped; a flip opens the pull request without auto-merge, its body
+   leading with the flip lines, and turns the run red, COVERAGE LOST proposes
+   nothing and exits 2, and `writeRecord` carries the owner's five trademark
+   fields over every rewrite (`tooling/ci/test/name-clearance.test.mjs` D6).
+   **The duty row:** `duty.workflow.name-clearance.yml`, a 7d `github-run-history`
+   read of the scheduled runs on `main`, with a `firstDue` bootstrap until the
+   first Monday run succeeds; the cron is weekly rather than TRAPS ci-19's daily
+   because every run with a changed record opens a pull request, so one missed or
+   red Monday puts that row past its 252h window. **The ceiling, daily:**
+   `ops-watch.yml` runs `assert-name-clearance.mjs --execute` as a step of its
+   `heartbeats` job, a step and not a job because a new job joins a duty row's
+   unit and every earlier run lacks it; `ci.yml` still runs the guard without
+   `--execute`.

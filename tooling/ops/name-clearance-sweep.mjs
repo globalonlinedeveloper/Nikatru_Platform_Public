@@ -38,35 +38,34 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { clear, writeRecord, makeHttp, rollUp, CoverageLost, RECORD_REL, CATALOG_REL } from '../store/name-clearance.mjs';
+import { clear, writeRecord, makeHttp, CoverageLost, RECORD_REL, CATALOG_REL } from '../store/name-clearance.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const argv = process.argv.slice(2);
-const flagValue = (n, d) => {
-  const i = argv.indexOf(n);
-  return i === -1 ? d : argv[i + 1];
-};
-const ROOT = resolve(flagValue('--repo', resolve(HERE, '..', '..')));
-const DRY_RUN = argv.includes('--dry-run');
 
-const lose = (lines) => {
-  console.error(`✗ COVERAGE LOST — ${lines[0]}`);
-  for (const l of lines.slice(1)) console.error(`  ${l}`);
-  process.exit(2);
-};
-
-const catalogAbs = join(ROOT, CATALOG_REL);
-if (!existsSync(catalogAbs)) {
-  lose([`${CATALOG_REL} is absent at ${catalogAbs}.`, 'The set of apps to re-verify is unknown, so a sweep over it would sweep nothing and report success.']);
-}
-let catalog;
-try {
-  catalog = JSON.parse(readFileSync(catalogAbs, 'utf8'));
-} catch (e) {
-  lose([`${CATALOG_REL} did not parse (${e.message}).`]);
-}
-if (!Array.isArray(catalog) || catalog.length === 0) {
-  lose([`${CATALOG_REL} declares no apps.`, 'A sweep over an empty set is the vacuous green this routine exists to avoid.']);
+/**
+ * One app's probe, settled against its record: write (or, dry, only merge) it,
+ * and compare the previous `overall` with the one the MERGED record carries.
+ *
+ * 🔴 The comparison is against `writeRecord`'s `overall`, never `rollUp(record)`.
+ * The probe cannot produce a ruling, so its own roll-up of a PROCEED record is
+ * QUALIFIED while the rewritten file says CLEAR — a flip reported every week
+ * that never happened, and a record whose line here disagrees with its file.
+ */
+export function settle({ root, app, name, previous, record, dryRun = false }) {
+  const failed = record.controls.failed.length
+    ? `   [${record.controls.failed.length} red control(s) FAILED: ${record.controls.failed.join(', ')}]`
+    : '';
+  const was = previous ?? '(no previous record)';
+  const w = writeRecord(root, record, { dryRun });
+  if (w.refused) {
+    return { line: `${app} — "${name}" — ${was} → NOT REWRITTEN${failed}`, overall: previous, flip: null, lost: `${app} — ${w.why}` };
+  }
+  const flip =
+    previous !== null && previous !== w.overall
+      ? `${app} — the clearance for "${name}" moved ${previous} → ${w.overall}. FILE AN OWNER ITEM: a name that ` +
+        'was cleared and is not any more is a decision, not a build detail, and the record alone will not raise it.'
+      : null;
+  return { line: `${app} — "${name}" — ${was} → ${w.overall}${failed}`, overall: w.overall, flip, lost: null };
 }
 
 /** The top-level `name:` of an app declaration, anchored at column zero for the
@@ -77,64 +76,87 @@ const declaredName = (text) => {
   return m ? m[1].replace(/^['"]|['"]$/g, '') : null;
 };
 
-const http = makeHttp();
-const flips = [];
-const lost = [];
-let swept = 0;
-
-for (const row of catalog) {
-  const app = row.slug;
-  const yamlAbs = join(ROOT, `apps/${app}/app.yaml`);
-  if (!existsSync(yamlAbs)) {
-    lose([`apps/${app}/app.yaml is absent.`, `${CATALOG_REL} declares this app and there is no declaration to read its name from, so nothing could be re-verified for it.`]);
-  }
-  const name = declaredName(readFileSync(yamlAbs, 'utf8'));
-  if (!name) lose([`apps/${app}/app.yaml declares no top-level \`name:\`.`, 'There is nothing to clear.']);
-
-  const recordAbs = join(ROOT, RECORD_REL(app));
-  let previous = null;
-  if (existsSync(recordAbs)) {
-    try {
-      previous = JSON.parse(readFileSync(recordAbs, 'utf8')).overall ?? null;
-    } catch {
-      previous = null;
-    }
-  }
-
-  let record;
-  try {
-    record = await clear({ root: ROOT, name, app, http });
-  } catch (e) {
-    if (e instanceof CoverageLost) lose(e.lines);
-    throw e;
-  }
-  swept += 1;
-  const verdict = rollUp(record);
-  console.log(`${app} — "${name}" — ${previous ?? '(no previous record)'} → ${verdict.overall}` + (record.controls.failed.length ? `   [${record.controls.failed.length} red control(s) FAILED: ${record.controls.failed.join(', ')}]` : ''));
-
-  if (DRY_RUN) continue;
-  const w = writeRecord(ROOT, record);
-  if (!w.written) {
-    lost.push(`${app} — ${w.why}`);
-    continue;
-  }
-  if (previous !== null && previous !== verdict.overall) {
-    flips.push(
-      `${app} — the clearance for "${name}" moved ${previous} → ${verdict.overall}. FILE AN OWNER ITEM: a name that ` +
-        'was cleared and is not any more is a decision, not a build detail, and the record alone will not raise it.',
-    );
-  }
-}
-
-if (lost.length) {
-  console.error(`✗ COVERAGE LOST — ${lost.length} record(s) were NOT rewritten:`);
-  for (const l of lost) console.error(`    ${l}`);
-  console.error('  Nothing was made worse: the existing records still stand. Re-run when the endpoints answer.');
+const lose = (lines) => {
+  console.error(`✗ COVERAGE LOST — ${lines[0]}`);
+  for (const l of lines.slice(1)) console.error(`  ${l}`);
   process.exit(2);
+};
+
+async function main() {
+  const argv = process.argv.slice(2);
+  const flagValue = (n, d) => {
+    const i = argv.indexOf(n);
+    return i === -1 ? d : argv[i + 1];
+  };
+  const ROOT = resolve(flagValue('--repo', resolve(HERE, '..', '..')));
+  const DRY_RUN = argv.includes('--dry-run');
+
+  const catalogAbs = join(ROOT, CATALOG_REL);
+  if (!existsSync(catalogAbs)) {
+    lose([`${CATALOG_REL} is absent at ${catalogAbs}.`, 'The set of apps to re-verify is unknown, so a sweep over it would sweep nothing and report success.']);
+  }
+  let catalog;
+  try {
+    catalog = JSON.parse(readFileSync(catalogAbs, 'utf8'));
+  } catch (e) {
+    lose([`${CATALOG_REL} did not parse (${e.message}).`]);
+  }
+  if (!Array.isArray(catalog) || catalog.length === 0) {
+    lose([`${CATALOG_REL} declares no apps.`, 'A sweep over an empty set is the vacuous green this routine exists to avoid.']);
+  }
+
+  const http = makeHttp();
+  const flips = [];
+  const lost = [];
+  let swept = 0;
+
+  for (const row of catalog) {
+    const app = row.slug;
+    const yamlAbs = join(ROOT, `apps/${app}/app.yaml`);
+    if (!existsSync(yamlAbs)) {
+      lose([`apps/${app}/app.yaml is absent.`, `${CATALOG_REL} declares this app and there is no declaration to read its name from, so nothing could be re-verified for it.`]);
+    }
+    const name = declaredName(readFileSync(yamlAbs, 'utf8'));
+    if (!name) lose([`apps/${app}/app.yaml declares no top-level \`name:\`.`, 'There is nothing to clear.']);
+
+    const recordAbs = join(ROOT, RECORD_REL(app));
+    let previous = null;
+    if (existsSync(recordAbs)) {
+      try {
+        previous = JSON.parse(readFileSync(recordAbs, 'utf8')).overall ?? null;
+      } catch {
+        previous = null;
+      }
+    }
+
+    let record;
+    try {
+      record = await clear({ root: ROOT, name, app, http });
+    } catch (e) {
+      if (e instanceof CoverageLost) lose(e.lines);
+      throw e;
+    }
+    swept += 1;
+    const s = settle({ root: ROOT, app, name, previous, record, dryRun: DRY_RUN });
+    console.log(s.line);
+    if (DRY_RUN) continue;
+    if (s.lost) lost.push(s.lost);
+    if (s.flip) flips.push(s.flip);
+  }
+
+  if (lost.length) {
+    console.error(`✗ COVERAGE LOST — ${lost.length} record(s) were NOT rewritten:`);
+    for (const l of lost) console.error(`    ${l}`);
+    console.error('  Nothing was made worse: the existing records still stand. Re-run when the endpoints answer.');
+    process.exit(2);
+  }
+  if (flips.length) {
+    console.error(`✗ ${flips.length} clearance verdict(s) FLIPPED:`);
+    for (const f of flips) console.error(`    ${f}`);
+    process.exit(1);
+  }
+  console.log(`✔ ${swept} app(s) re-verified${DRY_RUN ? ' (dry run — nothing written)' : ''}, no verdict flipped.`);
 }
-if (flips.length) {
-  console.error(`✗ ${flips.length} clearance verdict(s) FLIPPED:`);
-  for (const f of flips) console.error(`    ${f}`);
-  process.exit(1);
-}
-console.log(`✔ ${swept} app(s) re-verified${DRY_RUN ? ' (dry run — nothing written)' : ''}, no verdict flipped.`);
+
+const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
+if (isMain) await main();

@@ -14,6 +14,8 @@ on:
     # was built by a lane nobody re-ran.
     paths:
       - 'apps/**'
+      # why: the weekly sweep's record PR must not redeploy; no web build reads it.
+      - '!apps/*/name-clearance.json'
       - 'packages/**'
       - 'pubspec.yaml'
       - 'pubspec.lock'
