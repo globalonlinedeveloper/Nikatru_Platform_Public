@@ -20,7 +20,7 @@
 //   D7  a name holding no record of the type is RED
 //   D8  SERVFAIL, REFUSED, a Status-less body and the whole-run ceiling are NOT
 //       JUDGED, never RED and never ok
-//   D9  two v=spf1 records are a permerror, RED
+//   D9  two v=spf1 records are a permerror, RED — two copies of the declared one too
 //   D10 an SPF include missing or added, or its `all` term changed, is RED
 //   D11 a DMARC policy other than the declared one is RED, naming both
 //   D12 a DMARC rua drift, a record not starting v=DMARC1, or two records, RED
@@ -30,6 +30,16 @@
 //   D15 end to end: one resolver down, the other decides, and the line says so
 //   D16 the exit: RED 1 beats NOT JUDGED 2 beats ok 0; zero records is 2
 //   D17 dns.google's shape (U1) gives the same verdicts as cloudflare-dns.com's
+//   D18 an added `+include:` is RED, named as an undeclared term
+//   D19 a `?include:` is RED, named with its qualifier
+//   D20 a `~include:` is RED, named with its qualifier
+//   D21 `-include:` of the declared target is RED: qualifier named, include missing
+//   D22 an `ip4:0.0.0.0/0` term is RED, named
+//   D23 an `a` term is RED, named
+//   D24 a `redirect=` modifier is RED, named
+//   D25 a repeated declared include is RED, named
+//   D26 an `all` that is not the last term is RED (RFC 7208 §5.1)
+//   D27 GREEN CONTROL — `+include:` of the declared target, any letter case
 //   P1  --plan on the real register: six records, both resolvers, no request
 //   P2  --plan with no register is exit 2
 //   P3  an empty `authRecords.records` is REFUSED, exit 2, before any request
@@ -242,6 +252,10 @@ describe('check-mail-auth-dns — each kind, judged', () => {
     const v = judgeAnswer(rec('spf-google'), cf(TXT, '"v=spf1 include:_spf.google.com ~all"', '"v=spf1 include:other.example ~all"'));
     assert.equal(v.state, 'red');
     assert.match(v.detail, /2 `v=spf1` records — RFC 7208 §4\.5/);
+    // The COUNT is the permerror, not the content: two copies of the declared record are RED too.
+    const twin = judgeAnswer(rec('spf-google'), cf(TXT, '"v=spf1 include:_spf.google.com ~all"', '"v=spf1 include:_spf.google.com ~all"'));
+    assert.equal(twin.state, 'red');
+    assert.match(twin.detail, /2 `v=spf1` records — RFC 7208 §4\.5/);
   });
 
   test('D10 an SPF include that went missing, or an `all` term that changed, is RED', () => {
@@ -254,10 +268,10 @@ describe('check-mail-auth-dns — each kind, judged', () => {
     const none = judgeAnswer(rec('spf-resend'), cf(TXT, '"v=spf1 include:amazonses.com"'));
     assert.equal(none.state, 'red');
     assert.match(none.detail, /no `all` term/);
-    // The include SET is judged: one more authorised sender is a change too.
+    // The TERM SET is judged: one more authorised sender is a change too.
     const added = judgeAnswer(rec('spf-google'), cf(TXT, '"v=spf1 include:_spf.google.com include:other.example ~all"'));
     assert.equal(added.state, 'red');
-    assert.match(added.detail, /also has include:other\.example, which the register does not declare/);
+    assert.match(added.detail, /has an undeclared term `include:other\.example`/);
   });
 
   test('D11 a DMARC policy other than the declared one is RED, and the line names both', () => {
@@ -352,6 +366,75 @@ describe('check-mail-auth-dns — each kind, judged', () => {
       assert.equal(a.state, 'ok', `${r.id}: ${a.detail}`);
       assert.deepEqual(b, a, `${r.id}: the two shapes must judge alike`);
     }
+  });
+
+  // ⏱ 2026-09-24, review #1 of PR #917: the include compare skipped any term that
+  // did not start `include:`, so a QUALIFIED include, and every other mechanism or
+  // modifier, passed with exit 0. D18-D26 each read ok on that code. The rule is
+  // now the whole term set, exactly: the declared includes (unqualified or `+`),
+  // the declared `all`, each once, `all` last.
+  const spfGoogle = (text) => judgeAnswer(rec('spf-google'), cf(TXT, `"${text}"`));
+
+  test('D18 an ADDED `+include:` is RED — an explicit `+` is the same include (RFC 7208 §4.6.2), and its target is undeclared', () => {
+    const v = spfGoogle('v=spf1 include:_spf.google.com +include:evil.example ~all');
+    assert.equal(v.state, 'red', v.detail);
+    assert.match(v.detail, /has an undeclared term `\+include:evil\.example`/);
+  });
+
+  test('D19 an added `?include:` is RED — an include with qualifier `?`', () => {
+    const v = spfGoogle('v=spf1 include:_spf.google.com ?include:evil.example ~all');
+    assert.equal(v.state, 'red', v.detail);
+    assert.match(v.detail, /has an include with qualifier `\?`: `\?include:evil\.example`/);
+  });
+
+  test('D20 an added `~include:` is RED — an include with qualifier `~`', () => {
+    const v = spfGoogle('v=spf1 include:_spf.google.com ~include:evil.example ~all');
+    assert.equal(v.state, 'red', v.detail);
+    assert.match(v.detail, /has an include with qualifier `~`: `~include:evil\.example`/);
+  });
+
+  test('D21 the declared include written `-include:` is RED — qualified, so the declared include is missing', () => {
+    const v = spfGoogle('v=spf1 -include:_spf.google.com ~all');
+    assert.equal(v.state, 'red', v.detail);
+    assert.match(v.detail, /does not include _spf\.google\.com/);
+    assert.match(v.detail, /has an include with qualifier `-`: `-include:_spf\.google\.com`/);
+  });
+
+  test('D22 an added `ip4:0.0.0.0/0` is RED — an undeclared term that authorises every IPv4 sender', () => {
+    const v = spfGoogle('v=spf1 include:_spf.google.com ip4:0.0.0.0/0 ~all');
+    assert.equal(v.state, 'red', v.detail);
+    assert.match(v.detail, /has an undeclared term `ip4:0\.0\.0\.0\/0`/);
+  });
+
+  test('D23 an added bare `a` mechanism is RED — an undeclared term', () => {
+    const v = spfGoogle('v=spf1 a include:_spf.google.com ~all');
+    assert.equal(v.state, 'red', v.detail);
+    assert.match(v.detail, /has an undeclared term `a`/);
+  });
+
+  test('D24 an added `redirect=` modifier is RED — an undeclared term', () => {
+    const v = spfGoogle('v=spf1 include:_spf.google.com redirect=evil.example ~all');
+    assert.equal(v.state, 'red', v.detail);
+    assert.match(v.detail, /has an undeclared term `redirect=evil\.example`/);
+  });
+
+  test('D25 the declared include written TWICE is RED — each declared term once', () => {
+    const v = spfGoogle('v=spf1 include:_spf.google.com +include:_spf.google.com ~all');
+    assert.equal(v.state, 'red', v.detail);
+    assert.match(v.detail, /repeats the term `\+include:_spf\.google\.com`/);
+  });
+
+  test('D26 an `all` that is not the LAST term is RED — RFC 7208 §5.1 never evaluates a term after it', () => {
+    const v = spfGoogle('v=spf1 ~all include:_spf.google.com');
+    assert.equal(v.state, 'red', v.detail);
+    assert.match(v.detail, /has terms after `~all`, which RFC 7208 §5\.1 never evaluates/);
+  });
+
+  test('D27 GREEN CONTROL — the declared include with an explicit `+`, in any letter case, is the declared record', () => {
+    const plus = spfGoogle('v=spf1 +include:_spf.google.com ~all');
+    assert.equal(plus.state, 'ok', plus.detail);
+    const upper = spfGoogle('V=SPF1 INCLUDE:_SPF.GOOGLE.COM ~ALL');
+    assert.equal(upper.state, 'ok', upper.detail);
   });
 });
 
