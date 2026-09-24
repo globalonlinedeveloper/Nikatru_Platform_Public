@@ -141,6 +141,9 @@
 //                  corpus could not be located at all, or it IS present and a guard
 //                  inside it is missing. All three are refusals: not one of them
 //                  checked the thing it claims to check.
+//                  ⏱ 2026-09-24: and a fourth — the corpus is present and its
+//                  declared guard set (requirements/tooling/guards.json) cannot be
+//                  read, parsed, or lacks a pinned guard. See guard-declaration.mjs.
 //
 // Usage:  node tooling/scripts/spec-guards.mjs --fast
 //         node tooling/scripts/spec-guards.mjs --full
@@ -158,6 +161,10 @@ import { fileURLToPath } from 'node:url';
    runner and FALSE of everything it spawns, and the gap had teeth. See CHILD_ENV
    below. */
 import { cleanGitEnv, repoGit, RepoGitError, strippedNote } from './repo-git.mjs';
+/* The corpus's own guards are not typed in this file. They are entries in the corpus's
+   declaration, `Private/requirements/tooling/guards.json`, read through this loader out
+   of a git blob; see the DECLARED SET block below and the loader's header. */
+import { DECLARATION_REL, GuardDeclarationError, loadGuardDeclaration } from './guard-declaration.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '..', '..');          // tooling/scripts -> repo root
@@ -468,238 +475,8 @@ function locate(...relCandidates) {
    The plan and its measurements: `Private/pre-minimal-2026-09-08:research/full-read-2026-09-08/P2-minimal-corpus-2026-09-08.md`.
    The runner’s fast set drops from 10 to 7. No surviving guard lost a limb and no floor moved. */
 const GUARDS = [
-  { name: 'check-dod-sync', speed: 'fast', needsPrivate: true,
-    rel: ['tooling/scripts/check-dod-sync.mjs'],
-    what: 'the DoD page, the register and requirements/dod-master-items.md §4 agree' },
-  { name: 'assert-spec', speed: 'fast', needsPrivate: true,
-    rel: ['requirements/tooling/assert-spec.mjs', 'Private/requirements/tooling/assert-spec.mjs', 'Private/spec/tooling/assert-spec.mjs', 'tooling/assert-spec.mjs'],  // fallback chain — `locate` takes the FIRST that exists, so only one candidate need resolve. 🔴 2026-08-18: the LEADING entry is now corpus-RELATIVE, which is what survives the move — `locate` joins it onto PRIVATE_ROOT, so it resolves to `Private/requirements/…` before the move and `..._Private/requirements/…` after it, with no second edit on the day. The `Private/…` spelling is demoted to a fallback rather than deleted because it is still how the path resolves from the OTHER candidate roots. The `spec/` entry names the pre-flatten layout (retired 2026-08-16, when spec/ dissolved into requirements/) and is kept on purpose. Same shape as the four entries below it.
-    what: 'the JSON spec is schema-valid, id-unique, origin-locked, and every enforcer it names exists' },
-  /* ADDED 2026-08-15 with the flatten. `Private/README.md` is the index the
-     flatten exists to deliver, and an index is a hand-kept second copy of the
-     tree — the exact artefact this repository has twice watched go stale in
-     silence. The README it replaced still read as authoritative while pointing
-     at `../knowledge/decisions/`, a directory that had not existed for days.
-     Prose cannot announce its own staleness, so the index is asserted instead. */
-  { name: 'assert-index-complete', speed: 'fast', needsPrivate: true,
-    rel: ['requirements/tooling/assert-index-complete.mjs', 'Private/requirements/tooling/assert-index-complete.mjs', 'Private/spec/tooling/assert-index-complete.mjs', 'tooling/assert-index-complete.mjs'],  // same fallback chain, corpus-relative leading entry added 2026-08-18 (retired 2026-08-16 layout in the third slot) — see the assert-spec entry above
-    what: 'Private/README.md names every directory and every navigable file, and its links resolve' },
-  /* ADDED 2026-08-16 with the streamline. `assert-index-complete` deliberately
-     does NOT enumerate `research/` — 51 filenames in the corpus index would bury
-     the sixteen runbooks that index exists to surface — and the cost of that
-     judgement was measured on the day: `research/README.md` named 8 of its 51
-     files, and carried a link to `../../company/MASTER_PLAN.md` for a day after
-     that path stopped existing. So the directory gets its own register and its
-     own guard, at its own depth. Same doctrine, one level down. */
-  /* ADDED 2026-08-31 with the plans/ streamline. The SECOND directory to get its
-     own register at its own depth, and the reasoning is `assert-research-archive`'s
-     verbatim: `assert-index-complete` guards the `### dir/ — N files` heading for
-     `plans/` and nothing below it, so a reader could not tell a LIVE stage plan
-     from a 2026-08-08 executed draft without opening the file. 46 files, six
-     directories, four kinds, zero markers.
-     🔴 THAT COST WAS ALREADY PAID TWICE IN THIS DIRECTORY, IN WRITING:
-     `plans/rework-patches/README.md` listed four of twelve patches as OUTSTANDING
-     when all twelve had merged, and `plans/adr040-artifacts/README.md` described
-     three patches as PENDING when all three had merged and none was on disk. Both
-     read as current the whole time.
-     ⚠️ THE REGISTER WAS EXPLICITLY REJECTED ON 2026-08-16 — "no guard would read
-     it" — and that objection was RIGHT. This entry is the condition it named; the
-     rejection is quoted in `plans/index.json` rather than quietly reversed.
-     ⚠️ One deliberate difference from the research guard it copies: `plans/` is NOT
-     flat, so its readdir is RECURSIVE and a floor (`nested`, 25) fails the run if
-     the walk ever stops descending. A non-recursive walk here would check 16 of 46
-     files and print ok. */
-  /* ADDED 2026-08-16 with the decisions/ streamline. The ADR set had ONE property
-     nothing could check and nothing structurally could: whether a cited number is
-     a decision at all. Three — 012, 014, 018 — were pre-allocated as headings in
-     `research/29-SYNTHESIS-A-S.md`, never written, and are cited 63 times today
-     from 17 files, one of them in the PUBLIC tree. A bare `[ADR 012]` is not a
-     markdown link, so `assert-index-complete`'s link limb cannot see it, and the
-     README table lists only files that exist, so a number with no file is
-     invisible to any check that walks files. Existing phantoms are DECLARED and
-     printed on every run rather than banned — the citations sit inside the
-     finished spec, which must not be restructured — so what this ratchets is the
-     NEXT one: an ADR cited before it lands fails the commit that writes it. */
-  { name: 'assert-adr-citations', speed: 'fast', needsPrivate: true,
-    rel: ['requirements/tooling/assert-adr-citations.mjs', 'Private/requirements/tooling/assert-adr-citations.mjs', 'Private/spec/tooling/assert-adr-citations.mjs', 'tooling/assert-adr-citations.mjs'],  // same fallback chain, corpus-relative leading entry added 2026-08-18 (retired 2026-08-16 layout in the third slot) — see the assert-spec entry above
-    what: 'decisions/index.json matches the ADRs on disk, and every `ADR NNN` under Private/ resolves' },
-  /* ADDED 2026-08-17 with the session-log index. `session-notes.md` is 11k lines
-     and 149 entries, APPEND-ONLY and correct that way — the log is the durable
-     memory, and truncating it would destroy what the corpus is for. What it had
-     no map, so in practice nobody read past the top: every finding after the
-     first week was on disk and effectively unreachable. `notes/session-notes-index.json`
-     is that map. ⚠️ It is also the FOURTH hand-kept second copy of a tree in this
-     corpus, and the other three each went stale in silence — so it gets the same
-     treatment as the other three registers rather than a promise. The drift here
-     is not hypothetical or slow: appending an entry IS the ritual of that file,
-     and the row is forgotten the first time somebody appends in a hurry. The
-     title limb is the sharp one — it catches an INSERTION, which shifts every
-     line below it and would otherwise leave each row pointing confidently at
-     somebody else's entry, exactly the `ci.yml:NNNN` failure one file over. */
-  /* ADDED 2026-08-17. THE PUBLIC HALF OF ST-3, AND NOTHING HAD EVER CHECKED IT.
-     `assert-spec` limb 3 checks the spec's own `guard` fields, and
-     `assert-adr-citations` is scoped to `Private/` — so between them a file in
-     the PUBLIC tree could cite anything at all and no build would notice. Its
-     first run found 241 unresolved citations across 101 files.
+  // The 15 corpus rows that stood here are entries in Private/requirements/tooling/guards.json, read by guard-declaration.mjs; their comment blocks moved there verbatim (pinned source: 7f5d0bfd:tooling/scripts/spec-guards.mjs).
 
-     It resolves two classes, and the split between them reversed the obvious
-     read: 362 `Private/...` path references, of which 189 were dead, against
-     1,464 `[pipeline X-N]` tags yielding 1,020 requirement ids, of which only 18
-     were. So the tags were NOT rot — each still resolves to an `origin` field in
-     `Private/requirements/*.json` — and rewriting them would have been a large
-     edit that destroyed working pointers. The paths were the damage.
-
-     It belongs in this set rather than in CI for the same reason every other
-     guard here does: the resolution target is private, so a CI run would answer
-     NOT APPLICABLE every time, which is a check that always passes. */
-  { name: 'assert-public-citations', speed: 'fast', needsPrivate: true,
-    rel: ['tooling/scripts/assert-public-citations.mjs'],
-    what: 'every `Private/` path, every `[pipeline]` requirement id and every owner id a public field holds a build on, cited in the PUBLIC tree, resolves' },
-  /* ADDED 2026-08-27. `Private/requirements/index.json` is a hand-kept second copy
-     of the tree here. Measured with `fs` instrumented
-     rather than grepped: assert-spec, assert-research-archive and assert-session-index touch
-     it zero times, assert-index-complete only existsSync()s it, and assert-adr-citations
-     readFileSync()s it but text-scans for `ADR NNN` and `Private/` paths. Setting an `entries`
-     count to 1 and a `perStage` cell to 999 left all five at exit 0.
-     ⚠️ It checks `entries` and `perStage` ONLY. The `bytes` figures it used to carry are
-     DELETED, not guarded — three of the seven were stale on the day, and index.json's own
-     `_generated` note records why: a byte count re-measured while other writers hold the
-     checkout open is stale before it is read. One `rel` candidate, corpus-relative: this guard
-     never existed under the pre-2026-08-18 layouts, so it has no legacy spellings to fall back
-     to and adding dead ones would be citing paths that do not resolve. */
-  { name: 'assert-requirements-index', speed: 'fast', needsPrivate: true,
-    rel: ['requirements/tooling/assert-requirements-index.mjs'],
-    what: "requirements/index.json's `entries` and `perStage` counts are the counts in the kind files" },
-  /* ADDED 2026-09-05 with the knowledge set. `Private/platform-state/` is the
-     cold-start knowledge set [ADR 067] decision 3 created: eight schema-validated
-     files in which every number is `{value, asOf, verify}` and a BARE number is
-     refused anywhere in the directory. It is the FIFTH hand-kept second copy of the
-     tree in this corpus, and the other four each went stale in silence — which is
-     why it was born with a guard rather than a promise.
-     🔴 THE GUARD EXISTED AND NOTHING RAN IT, which is the failure class this whole
-     set exists to close: `assert-platform-state.mjs` was written on the day the
-     directory was, was documented in two READMEs, and was in no runner at all — so
-     a mutated state file committed clean. A guard that is written and not wired is a
-     guard nobody runs. One `rel` candidate, corpus-relative: this guard has never
-     existed under any pre-2026-08-18 layout, so it has no legacy spellings to fall
-     back to and adding dead ones would be citing paths that do not resolve — same
-     reasoning as the `assert-requirements-index` entry above. */
-  { name: 'assert-platform-state', speed: 'fast', needsPrivate: true,
-    rel: ['requirements/tooling/assert-platform-state.mjs'],
-    what: 'platform-state/ validates against its schemas and carries no bare number — every fact names the command that re-derives it' },
-  /* ADDED 2026-09-09. BOTH OF THESE LANDED ON 2026-09-08 AND NOTHING INVOKED THEM.
-     They ran in the manual sweep (`.claude/skills/run-guards/`) and in no hook and no
-     CI job, which is the `assert-platform-state` failure one entry above, repeated
-     within a day of being written down there. A guard nothing runs is a guard nobody
-     runs, and the defect that prompted the link guard had survived three commits.
-
-     🔴 CI IS NOT THE ALTERNATIVE HERE, and that is not a preference. Both subjects are
-     under `Private/`, which no CI job can read — the reason this whole runner exists
-     (see the header). Wiring them "into CI instead" would produce a job that answers
-     NOT APPLICABLE forever, i.e. a check that always passes. The hook is the only
-     enforcement surface these two have, so the cost below is the price of enforcing
-     them at all, not a choice between two places to put them.
-
-     ⏱ MEASURED 2026-09-09 on this machine, three samples each, warm:
-       assert-links       3641 / 3745 / 3652 ms
-       check-agent-docs    585 /  590 /  650 ms
-       the fast set before  7044 ms in-runner (7.3-8.6 s wall)
-     So the hook goes from ~7.0 s to ~11.3 s in-runner: +4.3 s, and `assert-links` is
-     four fifths of it. That is deliberately RECORDED rather than absorbed: it is the
-     second-slowest entry in the set after `assert-public-citations` (4.5 s), and if
-     the set is ever split into a hook tier and a pre-push tier, these numbers are
-     where that split should be argued from.
-
-     `args: ['--index']` is NOT a loosening. Both guards implement the honesty gate
-     from the 2026-09-08 index-blind-spot audit: their subject is the git INDEX, so a
-     run over an unstaged edit exits 2 (COVERAGE LOST) rather than printing a green
-     about content nobody staged. In a pre-commit hook, judging the staged index IS
-     the question being asked — "is what I am about to commit clean?" — so `--index`
-     is the mode that MATCHES the caller. Anywhere else the gate stays armed. Proved
-     mid-pass on the live tree: over three unstaged edits `assert-links` exited 2 and
-     named all three files.
-
-     Both entries anchor their own ROOT from `import.meta.url`, not from cwd, so they
-     check the corpus from a public-repo commit and a private-repo commit alike — one
-     `rel` candidate each, corpus-relative, for the same reason as the two entries
-     above: neither guard existed under any pre-2026-08-18 layout, so a legacy
-     spelling would be a path that does not resolve. */
-  { name: 'assert-links', speed: 'fast', needsPrivate: true,
-    rel: ['requirements/tooling/assert-links.mjs'],
-    args: ['--index'],
-    what: 'every private→private link resolves in the index, and every pin names a checkout that is here' },
-  { name: 'check-agent-docs', speed: 'fast', needsPrivate: true,
-    rel: ['requirements/tooling/check-agent-docs.mjs'],
-    args: ['--index'],
-    what: 'the corpus’s agent-facing docs stay under their byte and line caps' },
-  /* ADDED 2026-09-16. THE CORPUS'S SIX GENERATORS, EACH RUN AS `--check`, AND UNTIL
-     TODAY NOTHING IN THIS HOOK RAN ANY OF THEM.
-     `O-GEN-CHECK-IS-A-NO-OP` (closed 2026-09-13) gave all six one shared `--check`
-     (`requirements/tooling/gen-check.mjs`: generate into memory, compare, exit 1 on a
-     diff, WRITE NOTHING) and put them in the run-guards SWEEP. The sweep is run by a
-     session that remembers to; this runner is run by `git commit`. So the property
-     "a drifted generated page is caught" held only when somebody swept, which is the
-     `assert-platform-state` failure above, a third time.
-
-     🔴 MEASURED 2026-09-16, BOTH HALVES, on the private corpus as committed:
-       node requirements/tooling/gen-start-here.mjs --check      → EXIT 1
-       node tooling/scripts/spec-guards.mjs --fast               → EXIT 0
-     The stale page was committed through this hook and the hook said nothing. A few
-     hours later, with other commits between, the same generator was red on
-     START-HERE.md — the entry card every cold session reads first.
-
-     ONE ROW PER GENERATOR, not one row running all six, so a red names the page that
-     drifted and a deleted generator trips the coverage floor by name.
-     `args: ['--check']` is the whole point: without it four of the six WRITE their
-     target, and a hook that rewrites the corpus while claiming to inspect it is the
-     no-op that row was filed over, with a side effect added.
-
-     ⚠️ TWO READ THE GIT INDEX. `gen-index` and `gen-picture-stamp` derive their
-     page from `git ls-files --cached` by design, so a commit that adds or removes a
-     corpus file is red until README.md and the stamp are regenerated IN THE SAME
-     COMMIT. That is the drift they were built to catch, not a false positive. The
-     other four read the working tree, as every row here except the two `--index`
-     guards does. No generator reads a
-     clock into the compared bytes: `gen-traps`' `asOf` and the stamp's
-     `commit`/`branch` are declared `volatile` in gen-check.mjs and printed, and
-     `gen-start-here` interpolates only register values.
-
-     ⏱ MEASURED 2026-09-16 on this machine, three samples each, warm, cwd = the
-     public worktree (all six anchor ROOT from `import.meta.url`):
-       gen-adr-frontmatter   193 / 157 / 167 ms
-       gen-index             230 / 210 / 204 ms
-       gen-picture-stamp    1047 /1064 /1023 ms   (one `git ls-files` over the corpus)
-       gen-register-index    155 / 154 / 160 ms
-       gen-start-here        154 / 167 / 162 ms
-       gen-traps             137 / 141 / 147 ms
-       the fast set before  18118 ms in-runner (assert-public-citations 10716 of it)
-     So +~1.9 s, ~10 %. None is slow by this file's own yardstick — `assert-links`
-     (3.6-4.7 s) and `assert-public-citations` (4.5-10.7 s) are the entries a split
-     would be argued from — so all six are `fast`. One corpus-relative `rel` each,
-     for the reason given on `assert-platform-state`: no earlier layout had them. */
-  { name: 'gen-adr-frontmatter', speed: 'fast', needsPrivate: true,
-    rel: ['requirements/tooling/gen-adr-frontmatter.mjs'],
-    args: ['--check'],
-    what: 'every live ADR carries the header decisions/index.json generates' },
-  { name: 'gen-index', speed: 'fast', needsPrivate: true,
-    rel: ['requirements/tooling/gen-index.mjs'],
-    args: ['--check'],
-    what: 'README.md, the corpus index, is what `git ls-files --cached` derives' },
-  { name: 'gen-picture-stamp', speed: 'fast', needsPrivate: true,
-    rel: ['requirements/tooling/gen-picture-stamp.mjs'],
-    args: ['--check'],
-    what: 'docs/PICTURE.stamp.json counts and fingerprint match the git index' },
-  { name: 'gen-register-index', speed: 'fast', needsPrivate: true,
-    rel: ['requirements/tooling/gen-register-index.mjs'],
-    args: ['--check'],
-    what: 'the generated register pages are byte-identical to their registers' },
-  { name: 'gen-start-here', speed: 'fast', needsPrivate: true,
-    rel: ['requirements/tooling/gen-start-here.mjs'],
-    args: ['--check'],
-    what: 'START-HERE.md and platform-state/brief.md are what the registers generate' },
-  { name: 'gen-traps', speed: 'fast', needsPrivate: true,
-    rel: ['requirements/tooling/gen-traps.mjs'],
-    args: ['--check'],
-    what: 'platform-state/traps.json is what TRAPS.md generates' },
   /* ADDED 2026-09-09. THE FIRST ENTRY IN THIS ARRAY WHOSE SUBJECT IS PUBLIC, and
      `needsPrivate: false` is that fact declared rather than assumed: every other
      row here guards a file under the corpus, which is why the hook is their only
@@ -748,7 +525,9 @@ const GUARDS = [
     what: 'the guard that grades a release record against its own bytes can still fail' },
 ];
 
-const selected = GUARDS.filter((g) => FULL || g.speed === 'fast');
+/* The rows typed in this file. The corpus's own rows join them below, once the corpus
+   is located and its declaration read; until then these are all this runner can name. */
+const STATIC_SELECTED = GUARDS.filter((g) => FULL || g.speed === 'fast');
 
 /* 🔴 CORPUS NOT LOCATED — REFUSE. Changed 2026-08-18 from exit 0; the header carries
    the reasoning and the cost. This branch used to be "case (b)" and printed NOT
@@ -761,7 +540,7 @@ const selected = GUARDS.filter((g) => FULL || g.speed === 'fast');
    corpus is genuinely gone. Nothing downstream of here can run, so this is terminal
    rather than a skip — there is no partial answer to give. */
 if (!PRIVATE_ROOT) {
-  console.error(`\n  CANNOT RUN — the private corpus was not found, so all ${selected.length} spec guard(s) have no subject.`);
+  console.error(`\n  CANNOT RUN — the private corpus was not found, so all ${STATIC_SELECTED.length} spec guard(s) have no subject.`);
   console.error(`  Searched ${PRIVATE_ROOT_CANDIDATES.length} root(s), each required to be a NON-EMPTY directory containing \`${CORPUS_MARKER}/\`:`);
   for (const root of PRIVATE_ROOT_CANDIDATES) {
     const mark = !isDir(root) ? 'no such directory'
@@ -777,12 +556,59 @@ if (!PRIVATE_ROOT) {
   console.error(`  This repo: ${REPO_NAME}   ->   expected private sibling: ${PRIVATE_SIBLING_NAME}`);
   if (WORKTREE) console.error(`  This tree is a linked worktree of ${WORKTREE.main}, and the sibling above is named from THAT checkout.`);
   console.error('  These guard(s) were therefore not run:');
-  for (const g of selected) console.error(`    --   ${g.name.padEnd(24)} ${g.what}`);
+  for (const g of STATIC_SELECTED) console.error(`    --   ${g.name.padEnd(24)} ${g.what}`);
+  console.error(`    --   ${'(every declared guard)'.padEnd(24)} the corpus declares them in ${DECLARATION_REL}, which is inside it`);
   console.error('  A runner that cannot find its subject has checked nothing, and nothing is not a pass.');
   console.error('  If the corpus moved, add its new home to PRIVATE_ROOT_CANDIDATES in this file — that');
   console.error('  list is the single place this runner learns where the corpus lives.\n');
   process.exit(2);
 }
+
+/* 🔴 THE DECLARED SET (2026-09-24, O-GUARD-SET-DECLARED-NOWHERE). The corpus's own
+   guards are entries in its declaration, read through guard-declaration.mjs out of a
+   git blob and never out of a working tree:
+     · a commit OUTSIDE the corpus (this repo, or a worktree of it) reads the
+       declaration at the corpus's HEAD, so it is judged against what the corpus
+       committed and not against a half-edited file;
+     · a commit IN the corpus reads the STAGED declaration, the one it is recording.
+   WHICH SIDE A RUN IS ON. `REPO` is the corpus only when this runner sits inside it.
+   The corpus's own hook runs THIS repository's copy (its `core.hooksPath` points at
+   this repo's `.githooks/`), so there `REPO` is this repo and what names the corpus is
+   the working directory: git runs a hook from the root of the work tree being
+   committed (githooks(5)). Both are asked.
+   An entry runs iff its `hook` array names the side, with its `args` verbatim. A
+   declaration that cannot be read or parsed, an entry without `id`, `file` or `hook`,
+   and a pinned guard absent are all COVERAGE LOST, printed with the blob tried in the
+   shape of the corpus-not-found refusal above. */
+const SIDE = sameRoot(REPO, PRIVATE_ROOT) || sameRoot(process.cwd(), PRIVATE_ROOT) ? 'private' : 'public';
+let DECLARED;
+try {
+  DECLARED = loadGuardDeclaration(PRIVATE_ROOT, SIDE);
+} catch (e) {
+  if (!(e instanceof GuardDeclarationError)) throw e;
+  console.error(`\n  CANNOT RUN — the corpus's declared guard set could not be used (limb: ${e.limb}), so the guards it declares have no list.`);
+  console.error(`  ${e.message}`);
+  for (const line of e.detail) console.error(`    --   ${line}`);
+  console.error(`  Side: ${SIDE} — ${SIDE === 'public'
+    ? 'a commit outside the corpus reads the declaration as the corpus COMMITTED it (HEAD)'
+    : 'a commit in the corpus reads the declaration as STAGED (the index)'}.`);
+  console.error(`  Tried ${e.tried.length} blob(s):`);
+  for (const t of e.tried) {
+    console.error(`    --   ${t.blob}   in ${t.root}`);
+    console.error(`         ${t.command}`);
+    for (const line of String(t.why ?? 'read; refused on its content, above').split('\n')) console.error(`         ${line}`);
+  }
+  console.error(`  Not read, by design: the working-tree copy ${join(PRIVATE_ROOT, ...DECLARATION_REL.split('/'))}`);
+  console.error(`  Corpus root in use: ${PRIVATE_ROOT}   (searched: ${PRIVATE_ROOT_CANDIDATES.join(' , ')})`);
+  console.error('  These guard(s) were therefore not run:');
+  for (const g of STATIC_SELECTED) console.error(`    --   ${g.name.padEnd(24)} ${g.what}`);
+  console.error(`    --   ${'(every declared guard)'.padEnd(24)} ${DECLARATION_REL}`);
+  console.error('  A runner that cannot read its guard list has checked nothing, and nothing is not a pass.\n');
+  process.exit(2);
+}
+console.log(`  declared set — ${DECLARED.rows.length} of ${DECLARED.entries.length} entries hook the ${SIDE} side, read from ${DECLARED.blob} in ${PRIVATE_ROOT}`);
+
+const selected = [...DECLARED.rows, ...GUARDS].filter((g) => FULL || g.speed === 'fast');
 
 /* Per-guard NOT APPLICABLE survives, and ONLY at this granularity: a guard whose own
    subject is legitimately absent while the corpus is present. Every entry today sets

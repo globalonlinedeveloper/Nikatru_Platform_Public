@@ -27,12 +27,29 @@
 // twice: once over the real file (must pass) and once over a mutated copy of its
 // text with the subject removed (must fail). If a future edit makes the predicate
 // unable to fail, the mutant half goes red and says so.
+//
+// ⏱ 2026-09-24 — THE CORPUS'S ROWS LEFT THE TABLE (O-GUARD-SET-DECLARED-NOWHERE).
+// They are entries in the corpus's `requirements/tooling/guards.json`, read by
+// `tooling/scripts/guard-declaration.mjs`, and the table keeps only the rows whose
+// subject is public. So the first four cases below assert two things where they
+// asserted one: the guard is in the loader's PINNED_HOOK, which is source in this
+// repo, and the loader, run over a fixture declaration carrying the guard's exact
+// file and args, hands the runner that rel and those args. The mutants are the same
+// three: the row removed, the rel changed, `--check` dropped. The real declaration's
+// content is the corpus's to check (`assert-guard-set`); what is checkable here is
+// that the pin holds and the loader passes a declared row through unchanged.
 // ─────────────────────────────────────────────────────────────────────────────
-import { test } from 'node:test';
+import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  DECLARATION_REL,
+  GuardDeclarationError,
+  PINNED_HOOK,
+  loadGuardDeclaration,
+} from '../../scripts/guard-declaration.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '..', '..', '..'); // tooling/ci/test -> repo root
@@ -68,72 +85,140 @@ function withoutRow(src, name) {
   return src.split('\n').filter((l) => l !== line).join('\n');
 }
 
+/* The fixture declaration: the sixteen pinned guards with the file and args the real
+   declaration gives each (Private requirements/tooling/guards.json, as measured
+   2026-09-24), every one on both sides. Written out by hand, because a fixture computed
+   from the pin would agree with the pin by construction. */
+const FIXTURE_DECLARATION = [
+  { id: 'assert-platform-state', file: 'requirements/tooling/assert-platform-state.mjs', hook: ['public', 'private'], args: [] },
+  { id: 'assert-adr-citations', file: 'requirements/tooling/assert-adr-citations.mjs', hook: ['public', 'private'], args: [] },
+  { id: 'assert-index-complete', file: 'requirements/tooling/assert-index-complete.mjs', hook: ['public', 'private'], args: [] },
+  { id: 'assert-spec', file: 'requirements/tooling/assert-spec.mjs', hook: ['public', 'private'], args: [] },
+  { id: 'assert-requirements-index', file: 'requirements/tooling/assert-requirements-index.mjs', hook: ['public', 'private'], args: [] },
+  { id: 'assert-links', file: 'requirements/tooling/assert-links.mjs', hook: ['public', 'private'], args: ['--index'] },
+  { id: 'check-agent-docs', file: 'requirements/tooling/check-agent-docs.mjs', hook: ['public', 'private'], args: ['--index'] },
+  { id: 'assert-guard-set', file: 'requirements/tooling/assert-guard-set.mjs', hook: ['public', 'private'], args: ['--index'] },
+  { id: 'gen-start-here', file: 'requirements/tooling/gen-start-here.mjs', hook: ['public', 'private'], args: ['--check'] },
+  { id: 'gen-register-index', file: 'requirements/tooling/gen-register-index.mjs', hook: ['public', 'private'], args: ['--check'] },
+  { id: 'gen-adr-frontmatter', file: 'requirements/tooling/gen-adr-frontmatter.mjs', hook: ['public', 'private'], args: ['--check'] },
+  { id: 'gen-index', file: 'requirements/tooling/gen-index.mjs', hook: ['public', 'private'], args: ['--check'] },
+  { id: 'gen-traps', file: 'requirements/tooling/gen-traps.mjs', hook: ['public', 'private'], args: ['--check'] },
+  { id: 'gen-picture-stamp', file: 'requirements/tooling/gen-picture-stamp.mjs', hook: ['public', 'private'], args: ['--check'] },
+  { id: 'check-dod-sync', file: 'tooling/scripts/check-dod-sync.mjs', hook: ['public', 'private'], args: [] },
+  { id: 'assert-public-citations', file: 'tooling/scripts/assert-public-citations.mjs', hook: ['public', 'private'], args: [] },
+];
+
+/* One throwaway corpus per run of this file, re-committed per declaration. The loader
+   reads a git BLOB, so a declaration it is handed has to be a commit. */
+let DECL_BASE = null;
+let DECL_REPO = null;
+function declare(entries) {
+  if (!DECL_REPO) {
+    DECL_BASE = mkdtempSync(join(tmpdir(), 'spec-guards-decl-'));
+    DECL_REPO = fixtureRepo(join(DECL_BASE, 'Fixture_Private'), 'marker', 1);
+  }
+  const abs = join(DECL_REPO, ...DECLARATION_REL.split('/'));
+  mkdirSync(dirname(abs), { recursive: true });
+  writeFileSync(abs, `${JSON.stringify({ guards: entries }, null, 2)}\n`, 'utf8');
+  const add = spawnSync('git', ['-C', DECL_REPO, 'add', '-A'], { encoding: 'utf8' });
+  assert.equal(add.status, 0, add.stderr);
+  const commit = spawnSync('git', ['-C', DECL_REPO, 'commit', '-q', '--allow-empty', '-m', 'declaration', '--no-gpg-sign'], { encoding: 'utf8' });
+  assert.equal(commit.status, 0, commit.stderr);
+  return loadGuardDeclaration(DECL_REPO, 'public');
+}
+after(() => { if (DECL_BASE) rmSync(DECL_BASE, { recursive: true, force: true }); });
+
+/** The runner row the loader hands over for `name`, or null when the loader refuses
+ *  the declaration or does not select the guard. A refusal is null, not a throw: each
+ *  predicate below must be able to answer "no" to a mutant. */
+function loadedRow(entries, name) {
+  try {
+    return declare(entries).rows.find((r) => r.name === name) ?? null;
+  } catch (e) {
+    if (e instanceof GuardDeclarationError) return null;
+    throw e;
+  }
+}
+
+const withoutEntry = (entries, name) => entries.filter((e) => e.id !== name);
+const withEntry = (entries, name, patch) => entries.map((e) => (e.id === name ? { ...e, ...patch } : e));
+
+/* The runner must still READ the declaration: a runner that stopped importing or
+   calling the loader would run the two static rows and print ok. */
+const RUNNER_LOADS = (src) => /from '\.\/guard-declaration\.mjs'/.test(src) && /loadGuardDeclaration\(PRIVATE_ROOT, SIDE\)/.test(src);
+
 test('the runner still declares a parseable GUARDS table', () => {
   const rows = rowsOf(guardsTable(SOURCE));
-  // RE-BASED 9 -> 7 on 2026-09-08: three rows retired with their subjects (assert-session-index, assert-research-archive, assert-plans-archive), so the runner declares 7 and a floor of 9 would refuse on a complete read.
-  assert.ok(rows.length >= 7, `expected at least 7 guard rows, parsed ${rows.length} — the row shape changed and every case below is reading nothing`);
+  // RE-BASED 7 -> static 2 + PINNED_HOOK 16 on 2026-09-24: the fifteen corpus rows left the table for the corpus's declaration (O-GUARD-SET-DECLARED-NOWHERE). Measured on the day: the table parses 2 rows (assert-name-clearance, assert-release-json) and the pin names 16 (the fifteen, plus assert-guard-set).
+  assert.ok(rows.length >= 2, `expected at least 2 static guard rows, parsed ${rows.length} — the row shape changed and every case below is reading nothing`);
+  assert.ok(PINNED_HOOK.length >= 16, `expected at least 16 pinned guards, found ${PINNED_HOOK.length} — a guard left the hook with no reviewed edit here`);
+  assert.equal(RUNNER_LOADS(SOURCE), true, 'spec-guards.mjs no longer imports and calls loadGuardDeclaration — the corpus\'s guards would run from no list');
+
+  // MUTANT — a static row deleted is seen by the parse, and a runner that no longer
+  // imports the loader is seen by the load check.
+  assert.equal(rowsOf(guardsTable(withoutRow(SOURCE, 'assert-release-json'))).length, rows.length - 1, 'the parse does not see a deleted row, so the floor above reads nothing');
+  assert.equal(RUNNER_LOADS(SOURCE.replace("from './guard-declaration.mjs'", "from './nothing.mjs'")), false, 'the loader check cannot fail');
 });
 
 test('assert-platform-state is wired into the runner, and the check can fail', () => {
   const NAME = 'assert-platform-state';
 
-  const rows = rowsOf(guardsTable(SOURCE));
-  const row = rows.find((r) => r.name === NAME);
-  assert.ok(row, `${NAME} is not in the GUARDS table — the guard exists and nothing runs it`);
+  assert.ok(PINNED_HOOK.includes(NAME), `${NAME} is not in PINNED_HOOK — the guard exists and a declaration may drop it unseen`);
+  const row = loadedRow(FIXTURE_DECLARATION, NAME);
+  assert.ok(row, `the loader did not hand ${NAME} to the runner from a declaration that names it`);
   assert.equal(row.needsPrivate, true, `${NAME}'s subject is the private corpus, so needsPrivate must be true`);
   assert.equal(row.speed, 'fast', `${NAME} is a schema validation over eight files; it belongs in the pre-commit set`);
 
-  // MUTANT — the same predicate over a copy with the row deleted MUST fail.
-  const mutantRows = rowsOf(guardsTable(withoutRow(SOURCE, NAME)));
-  assert.equal(mutantRows.find((r) => r.name === NAME), undefined, 'the mutant still finds the row — this assertion cannot fail and is worse than none');
+  // MUTANT — the same predicate over a declaration with the row deleted MUST fail,
+  // and over a pin list without the name.
+  assert.equal(loadedRow(withoutEntry(FIXTURE_DECLARATION, NAME), NAME), null, 'the loader still hands over the row it was not given — this assertion cannot fail and is worse than none');
+  assert.equal(PINNED_HOOK.filter((n) => n !== NAME).includes(NAME), false, 'the membership check cannot fail');
 });
 
 test('the runner names the guard by a corpus-relative path that a locate() candidate can join', () => {
   const NAME = 'assert-platform-state';
-  const table = guardsTable(SOURCE);
-  const at = table.indexOf(`{ name: '${NAME}'`);
-  assert.notEqual(at, -1, `${NAME} row not found`);
-  const entry = table.slice(at, at + 400);
-  assert.match(
-    entry,
-    /rel:\s*\[\s*'requirements\/tooling\/assert-platform-state\.mjs'/,
+  const REL = 'requirements/tooling/assert-platform-state.mjs';
+  const relOk = (row) => row !== null && row.rel.length === 1 && row.rel[0] === REL;
+  assert.equal(
+    relOk(loadedRow(FIXTURE_DECLARATION, NAME)),
+    true,
     'the rel candidate must be corpus-relative and un-prefixed; `locate()` joins it onto the resolved corpus root, and an absolute or repo-relative spelling resolves nowhere',
   );
+  assert.match(SOURCE, /path: locate\(\.\.\.g\.rel\)/, 'the runner no longer resolves a row by joining its rel through locate()');
 
-  // MUTANT — a rel list that no longer names the guard must be caught.
-  const mutant = entry.replace('requirements/tooling/assert-platform-state.mjs', 'requirements/tooling/does-not-exist.mjs');
-  assert.doesNotMatch(mutant, /rel:\s*\[\s*'requirements\/tooling\/assert-platform-state\.mjs'/, 'the mutant still matches — the pattern is not reading the rel list');
+  // MUTANT — a declaration whose file no longer names the guard must be caught.
+  const moved = withEntry(FIXTURE_DECLARATION, NAME, { file: 'requirements/tooling/does-not-exist.mjs' });
+  assert.equal(relOk(loadedRow(moved, NAME)), false, 'the mutant still matches — the predicate is not reading the rel');
 });
 
 /* ADDED 2026-09-16. The corpus's six generators joined the table, and each is only a
    check when it is invoked with `--check` — without the flag four of them WRITE their
    target. So the row must exist, be fast and private, name the corpus-relative
    generator, and carry `args: ['--check']`. Measured the day they were added:
-   gen-start-here --check exited 1 on the committed corpus while this runner exited 0. */
+   gen-start-here --check exited 1 on the committed corpus while this runner exited 0.
+   ⏱ 2026-09-24: "the row" is now a PINNED_HOOK name plus a declared entry the loader
+   passes through; the three mutants are unchanged in meaning. */
 const PRIVATE_GENERATORS = ['gen-adr-frontmatter', 'gen-index', 'gen-picture-stamp', 'gen-register-index', 'gen-start-here', 'gen-traps'];
 
-function generatorRowOk(src, name) {
-  const table = guardsTable(src);
-  const row = rowsOf(table).find((r) => r.name === name);
+function generatorRowOk(entries, name, pinned = PINNED_HOOK) {
+  if (!pinned.includes(name)) return false;
+  const row = loadedRow(entries, name);
   if (!row || row.speed !== 'fast' || row.needsPrivate !== true) return false;
-  const at = table.indexOf(`{ name: '${name}'`);
-  const next = table.indexOf('{ name:', at + 1);
-  const entry = table.slice(at, next === -1 ? undefined : next);
-  return new RegExp(`rel:\\s*\\[\\s*'requirements/tooling/${name}\\.mjs'\\s*\\]`).test(entry)
-    && /args:\s*\[\s*'--check'\s*\]/.test(entry);
+  return row.rel.length === 1 && row.rel[0] === `requirements/tooling/${name}.mjs`
+    && row.args.length === 1 && row.args[0] === '--check';
 }
 
 test('every private generator runs in the hook, as --check, from its corpus-relative path', () => {
   for (const name of PRIVATE_GENERATORS) {
-    assert.ok(generatorRowOk(SOURCE, name), `${name} is missing from the GUARDS table, or is not fast/needsPrivate, or does not run as \`--check\` from requirements/tooling/${name}.mjs`);
+    assert.ok(generatorRowOk(FIXTURE_DECLARATION, name), `${name} is missing from PINNED_HOOK, or the loader does not hand it over fast/needsPrivate, or it does not run as \`--check\` from requirements/tooling/${name}.mjs`);
 
-    // MUTANT 1 — the row deleted.
-    assert.equal(generatorRowOk(withoutRow(SOURCE, name), name), false, `deleting the ${name} row still passes — the predicate cannot fail`);
-    // MUTANT 2 — the row kept, the flag dropped: the generator would WRITE its target.
-    const at = SOURCE.indexOf(`{ name: '${name}'`);
-    const flagAt = SOURCE.indexOf("args: ['--check']", at);
-    const dropped = SOURCE.slice(0, flagAt) + 'args: []' + SOURCE.slice(flagAt + "args: ['--check']".length);
-    assert.equal(generatorRowOk(dropped, name), false, `dropping --check from ${name} still passes — a writing generator would read as a check`);
+    // MUTANT 1 — the row deleted: from the declaration, and from the pin.
+    assert.equal(generatorRowOk(withoutEntry(FIXTURE_DECLARATION, name), name), false, `deleting the ${name} entry still passes — the predicate cannot fail`);
+    assert.equal(generatorRowOk(FIXTURE_DECLARATION, name, PINNED_HOOK.filter((n) => n !== name)), false, `unpinning ${name} still passes — the predicate cannot fail`);
+    // MUTANT 2 — the rel changed.
+    assert.equal(generatorRowOk(withEntry(FIXTURE_DECLARATION, name, { file: `requirements/tooling/${name}-moved.mjs` }), name), false, `moving ${name}'s file still passes — the predicate is not reading the rel`);
+    // MUTANT 3 — the row kept, the flag dropped: the generator would WRITE its target.
+    assert.equal(generatorRowOk(withEntry(FIXTURE_DECLARATION, name, { args: [] }), name), false, `dropping --check from ${name} still passes — a writing generator would read as a check`);
   }
 });
 
@@ -159,6 +244,9 @@ test('every private generator runs in the hook, as --check, from its corpus-rela
 // These are the only cases in this file that spawn anything, and they are cheap —
 // two `git init`s in a temp directory, no network, no corpus. They run everywhere,
 // including in CI where the private corpus is absent by construction.
+// ⏱ 2026-09-24: no longer the only ones — the four cases above commit their fixture
+// declarations into one throwaway repository through `fixtureRepo` below, for the
+// same reason: the loader reads a git blob. Still no network and no corpus.
 // ─────────────────────────────────────────────────────────────────────────────
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
