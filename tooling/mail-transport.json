@@ -176,6 +176,81 @@
     ]
   },
 
+  "authRecords": {
+    "_why": [
+      "THE DNS RECORDS THAT MAKE SENT MAIL VERIFIABLE, one row per record, for both rails above. A receiver",
+      "checks SPF, DKIM and DMARC on every message; if one of these goes missing or is edited away the mail",
+      "still leaves, still reaches the provider and still reports sent, and the receiver files it as spam.",
+      "Nothing in the send path can see that, and until 2026-09-24 nothing in this repository read them.",
+      "",
+      "WHO READS THIS BLOCK. tooling/ops/check-mail-auth-dns.mjs (LIVE, in ops-watch) asks two public DoH",
+      "resolvers for each record and compares the answer with `expect`. It reads its expectations from this",
+      "block and types none of them. tooling/ci/assert-mail-transport-claims.mjs (OFFLINE, limb F) checks",
+      "the block's shape and that the checker still reads it.",
+      "",
+      "WHAT `expect` HOLDS, per kind, and nothing more — a key the checker does not know is refused, never",
+      "ignored: spf {include, all} · dkim {k} · dmarc {p, rua} · mx {exchange, preference}.",
+      "🔴 NO DKIM KEY IS PINNED. A key is rotated by the provider, and a pinned key would turn a routine",
+      "rotation into a red ops-watch on every pull request. `present, with a key, of the declared k=` is",
+      "the contract; the checker prints the key's length in characters, never the key.",
+      "",
+      "Values were read over DoH from a public resolver on verifiedLiveOn. `p` is `none` because that is",
+      "what the record says today; a change of policy is a DNS change first and a one-line edit here second."
+    ],
+    "verifiedLiveOn": "2026-09-24",
+    "checker": "tooling/ops/check-mail-auth-dns.mjs",
+    "records": [
+      {
+        "id": "spf-google",
+        "rail": "workspace",
+        "kind": "spf",
+        "name": "nikatru.com",
+        "expect": { "include": ["_spf.google.com"], "all": "~all" },
+        "why": "Authorises Google Workspace to send as nikatru.com. The apex also carries a site-verification TXT, so the checker picks the one v=spf1 string out of the set."
+      },
+      {
+        "id": "dkim-google",
+        "rail": "workspace",
+        "kind": "dkim",
+        "name": "google._domainkey.nikatru.com",
+        "expect": { "k": "rsa" },
+        "why": "The Workspace signing key. It is longer than one 255-byte TXT character-string, so it is published as two, and a verifier joins them with nothing between."
+      },
+      {
+        "id": "dmarc",
+        "rail": "workspace",
+        "kind": "dmarc",
+        "name": "_dmarc.nikatru.com",
+        "expect": { "p": "none", "rua": "mailto:dmarc@nikatru.com" },
+        "why": "The one policy record for the organisational domain. A subdomain that publishes no record of its own falls back to this one (RFC 7489 §6.6.3), which is why a single DMARC row is declared for both rails. p=none is the DECLARED policy today: monitor only, with aggregate reports sent to the rua address. Moving to quarantine or reject is an OWNER decision, made here in the register, and never by a pull request that only wants this check green."
+      },
+      {
+        "id": "spf-resend",
+        "rail": "resend",
+        "kind": "spf",
+        "name": "send.mail.nikatru.com",
+        "expect": { "include": ["amazonses.com"], "all": "~all" },
+        "why": "The SPF record on the send subdomain that Resend's domain setup publishes. SPF is judged against the envelope sender's domain, not the From domain, which is why it sits here and not on mail.nikatru.com."
+      },
+      {
+        "id": "mx-resend",
+        "rail": "resend",
+        "kind": "mx",
+        "name": "send.mail.nikatru.com",
+        "expect": { "exchange": "feedback-smtp.ap-northeast-1.amazonses.com", "preference": 10 },
+        "why": "Where bounces and complaints for the send subdomain are delivered, so that the sender learns an address is dead."
+      },
+      {
+        "id": "dkim-resend",
+        "rail": "resend",
+        "kind": "dkim",
+        "name": "resend._domainkey.mail.nikatru.com",
+        "expect": { "k": "rsa" },
+        "why": "The Resend signing key. The record carries only p=, so k= takes its RFC 6376 default, rsa."
+      }
+    ]
+  },
+
   "liveChecker": {
     "path": "tooling/ops/verify-supabase-templates.mjs",
     "why": "The only thing that can see drift between this record and the live project. The CI guard asserts it still READS this file — a live checker that hardcodes its expectations stops being a checker of this record and becomes a second copy of it, which is the defect this register exists to remove."

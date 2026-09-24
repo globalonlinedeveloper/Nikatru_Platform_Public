@@ -162,7 +162,7 @@
 // check-analytics-liveness, check-d1-accepts-live-sql, verify-supabase-templates,
 // check-prod-provenance, verify-monitors, verify-alarm-chains,
 // verify-auth-providers, verify-free-api-scope, check-wildcard-dns,
-// check-turnstile-hosts, check-retired-names-live; the GlitchTip writes
+// check-turnstile-hosts, check-retired-names-live, check-mail-auth-dns; the GlitchTip writes
 // create-glitchtip-release, upload-web-sourcemaps and upload-native-symbols
 // (2026-09-23, row O-GLITCHTIP-CALLS-HAVE-NO-RETRY — each re-sends a WRITE, and
 // each records why that is safe at its own call site); and, outside tooling/ops,
@@ -470,6 +470,33 @@ export async function readWithBoundedRetry(
  */
 export function classifyThrown(err, message) {
   return isTransportFailure(err) ? transientLook(message) : new CouldNotLook(message);
+}
+
+/**
+ * ⏱ 2026-09-24 — A WHOLE-RUN CEILING, for a reader that makes MANY reads and has
+ * to end inside its step's budget (check-mail-auth-dns: every declared record,
+ * asked of two resolvers, under a `timeout-minutes: 3` step). Pass `.signal` as
+ * the caller `signal` of every read: `readWithBoundedRetry` already combines it
+ * with the per-request ceiling, and a caller abort ends the loop at once,
+ * un-retried, with this reason.
+ *
+ * It lives HERE and not in the reader for the reason the per-request ceiling
+ * does: B8 in ops-bounded-retry.test.mjs refuses a timer armed by an importer of
+ * this module, because two timers written in two places disagree silently. This
+ * module is the one place a timer on this lane is armed.
+ *
+ * The reason is a PLAIN `CouldNotLook`: a run that outlived its ceiling judged
+ * nothing more, which is COULD NOT LOOK and never a pass. The timer is unref'd so
+ * a run that finished early does not wait for it; `cancel()` clears it.
+ */
+export function runDeadline(ms) {
+  const ctl = new AbortController();
+  const timer = setTimeout(
+    () => ctl.abort(new CouldNotLook(`the whole-run ceiling of ${ms / 1000}s passed before every read answered`)),
+    ms,
+  );
+  timer.unref?.();
+  return { signal: ctl.signal, cancel: () => clearTimeout(timer) };
 }
 
 /**
