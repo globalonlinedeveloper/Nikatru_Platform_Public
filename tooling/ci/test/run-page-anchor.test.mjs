@@ -46,6 +46,7 @@ import {
   fixtureReads,
   unionById,
   crossReadUrl,
+  queryOf,
 } from '../anchored-run-read.mjs';
 import { CouldNotLook, READ_ATTEMPTS } from '../../ops/bounded-retry.mjs';
 import { stripSourceComments } from '../text-reductions.mjs';
@@ -339,6 +340,11 @@ describe('anchored-run-read — the pure edges', () => {
 
   test('crossReadUrl refuses a query with no per_page — the replace would re-send the SAME query', () => {
     assert.throws(() => crossReadUrl('https://api.github.com/x/runs?status=success', 'created=1'), /carries no per_page/);
+  });
+
+  test('🔴 queryOf strips GitHub\'s host only when a `/` follows it — a lookalike host is printed whole', () => {
+    assert.equal(queryOf('https://api.github.com/repos/o/r/actions/runs?per_page=100'), '/repos/o/r/actions/runs?per_page=100');
+    assert.equal(queryOf('https://api.github.com.example/repos/o/r/actions/runs'), 'https://api.github.com.example/repos/o/r/actions/runs');
   });
 });
 

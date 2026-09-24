@@ -84,10 +84,13 @@ export const CROSS_READ_PAGE = 10;
 export const STALE_PAGE_CARRIED = 'STALE PAGE, CROSS-READ CARRIED THE PROOF:';
 
 /** PURE. The path and parameters of a request, never the host and never a
- *  credential (the token travels in a header, not in the URL). */
+ *  credential (the token travels in a header, not in the URL). The host is
+ *  stripped only when a `/` follows it, so a lookalike host
+ *  (`api.github.com.example`) is printed whole, never passed off as GitHub's
+ *  (CodeQL js/incomplete-url-substring-sanitization). */
 export function queryOf(url) {
   const s = String(url ?? '');
-  return s.startsWith(GITHUB_API) ? s.slice(GITHUB_API.length) : s;
+  return s.startsWith(`${GITHUB_API}/`) ? s.slice(GITHUB_API.length) : s;
 }
 
 /** PURE. The `per_page` a query asks for, or null. */
