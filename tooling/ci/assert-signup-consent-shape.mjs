@@ -54,8 +54,22 @@ import { join, resolve } from 'node:path';
 import { stripSourceComments } from './text-reductions.mjs';
 import { listDir } from './tree-walk.mjs';
 import { delegationOf as resolveChassisDelegation } from './chassis-delegation.mjs';
+import { requireAppSet } from './app-set.mjs';
 
 const ROOT = resolve(process.argv[2] ?? process.cwd());
+const APP_SET = requireAppSet(ROOT, 'assert-signup-consent-shape');
+
+// ── LOCATORS: every surface is found by the class it declares (⏱ 2026-09-24) ──
+// Graded for every app in the workspace set (tooling/ci/app-set.mjs) and for the
+// brick. This list once named app #1's paths, so the second app the factory
+// stamped was never read. The brick does not share app #1's names either: its
+// sign-in door is `SignInScreen` in sign_in_screen.dart, app #1's is
+// `LoginScreen` in login_screen.dart — so the door is ONE required locator with
+// two symbols, and the class that matched picks that door's config below.
+//   · zero files under `<root>/lib/` → COVERAGE LOST, naming the root, the symbol and `what`;
+//   · more than one → a finding: a surface is supposed to live in ONE file.
+const BRICK_APP = 'tooling/bricks/app/__brick__/apps/{{app_id}}';
+const LOCATOR_ROOTS = [...APP_SET.map((a) => a.dir), BRICK_APP];
 
 /** The span of ONE `onPressed:` expression, for the per-button checks below: it
  *  may not run into the next control's `onPressed:` or `key:`. Widget trees
@@ -64,58 +78,54 @@ const ROOT = resolve(process.argv[2] ?? process.cwd());
  *  disabling half went green because the Apple button below still had one. */
 const ONE_EXPRESSION = '(?:(?!onPressed|\\bkey\\s*:)[^;])*?';
 
-/** The surfaces that TAKE a consent decision. Both trees, always.
+/** The surfaces that TAKE a consent decision, located in every root.
  *
  *  `terms` is the flag that must block; `marketing` is the flag that must not.
  *  A surface with no marketing box (the re-acceptance interstitial) declares
  *  `marketing: null` — it is not exempt from limb 1, only from limb 3. */
-const SURFACES = [
-  {
-    file: 'apps/subscriptiontracker/lib/features/auth/sign_up_screen.dart',
-    terms: '_acceptedTerms',
-    marketing: '_marketingEmail',
-  },
-  {
-    // 🔴 THE SECOND DOOR, AND IT IS THE ONE MOST USERS TAKE. Subly's
-    // `LoginScreen` carries a sign-up TOGGLE, so `/sign-up` is not the only way
-    // to register — and `/sign-in` is where the router sends every signed-out
-    // visitor. A clickwrap with a second entrance is not a clickwrap.
-    file: 'apps/subscriptiontracker/lib/features/auth/login_screen.dart',
-    terms: '_acceptedTerms',
-    marketing: '_marketingEmail',
+const SIGN_UP = {
+  symbol: /\bclass\s+SignUpScreen\b/,
+  what: 'the sign-up screen',
+  terms: '_acceptedTerms',
+  marketing: '_marketingEmail',
+};
+/** 🔴 THE SECOND DOOR, AND IT IS THE ONE MOST USERS TAKE. Subly's `LoginScreen`
+ *  carries a sign-up TOGGLE, so `/sign-up` is not the only way to register — and
+ *  `/sign-in` is where the router sends every signed-out visitor. A clickwrap
+ *  with a second entrance is not a clickwrap.
+ *
+ *  ⏱ 2026-09-15 · O-SIWA-NO-CLICKWRAP. THE BRICK'S DOOR HAD NO BOX AT ALL. Sign
+ *  in with Apple can create an account, so the chassis sign-in body now carries
+ *  the same two flags for the Apple button (read through the brick adapter's
+ *  delegation). Subly's `LoginScreen` gates its Apple button on the flags it
+ *  already declares.
+ *
+ *  REQUIRED in every root, never optional: each has a sign-in door, measured
+ *  2026-09-24 (app #1 `LoginScreen` login_screen.dart:32, the brick
+ *  `SignInScreen` sign_in_screen.dart:32). `byClass` is what differs by the class
+ *  the locator matched. */
+const SIGN_IN = {
+  symbol: /\bclass\s+(LoginScreen|SignInScreen)\b/,
+  what: 'the sign-in door',
+  terms: '_acceptedTerms',
+  marketing: '_marketingEmail',
+  byClass: {
     // ⏱ 2026-09-15 · this screen's flags now gate TWO controls — the sign-up
     // submit and the Apple button (O-SIWA-NO-CLICKWRAP). A file-wide "some
     // onPressed disables on the flag" stopped proving the submit is one of them
     // (the case that deletes its disabling half went green), so limb 2 reads the
     // SUBMIT's own onPressed here; limb 4 reads the Apple button's.
-    button: 'E2EKeys\\.loginSubmit',
+    LoginScreen: { button: 'E2EKeys\\.loginSubmit' },
+    SignInScreen: {},
   },
-  {
-    file: 'apps/subscriptiontracker/lib/features/auth/reaccept_terms_screen.dart',
-    terms: '_accepted',
-    marketing: null,
-  },
-  {
-    file: 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/auth/sign_up_screen.dart',
-    terms: '_acceptedTerms',
-    marketing: '_marketingEmail',
-  },
-  {
-    file: 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/auth/reaccept_terms_screen.dart',
-    terms: '_accepted',
-    marketing: null,
-  },
-  {
-    // ⏱ 2026-09-15 · O-SIWA-NO-CLICKWRAP. THE THIRD DOOR, AND IT HAD NO BOX AT ALL.
-    // Sign in with Apple can create an account, so the chassis sign-in body now
-    // carries the same two flags for the Apple button (read through the brick
-    // adapter's delegation). Subly's `LoginScreen`, above, gates its Apple button
-    // on the flags it already declares.
-    file: 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/auth/sign_in_screen.dart',
-    terms: '_acceptedTerms',
-    marketing: '_marketingEmail',
-  },
-];
+};
+const REACCEPT = {
+  symbol: /\bclass\s+ReacceptTermsScreen\b/,
+  what: 'the terms re-acceptance interstitial',
+  terms: '_accepted',
+  marketing: null,
+};
+const SURFACES = [SIGN_UP, SIGN_IN, REACCEPT];
 
 /** ⏱ 2026-09-15 · O-SIWA-NO-CLICKWRAP — every door that reaches Sign in with Apple.
  *
@@ -130,16 +140,18 @@ const SURFACES = [
  *
  *  `accept` is the acceptance call in that door's code; `provider` is the call it
  *  must precede. The brick adapter delegates its ordering to the chassis body, so
- *  it is read through the delegation and additionally has its wiring checked. */
-const APPLE_DOORS = [
-  {
-    file: 'apps/subscriptiontracker/lib/features/auth/login_screen.dart',
+ *  it is read through the delegation and additionally has its wiring checked.
+ *
+ *  ⏱ 2026-09-24 · the door is each root's SIGN_IN file, and the config is keyed
+ *  by the class that file declares, so a stamped app (a `SignInScreen` adapter)
+ *  is judged as the brick is and app #1's `LoginScreen` as it always was. */
+const APPLE_DOOR_BY_CLASS = {
+  LoginScreen: {
     provider: /\bsignInWithApple\s*\(\s*\)/,
     accept: /legalAcceptanceProvider\s*\.\s*notifier\s*\)\s*\.\s*accept\s*\(/,
     button: new RegExp(`continueWithApple\\s*,\\s*onPressed\\s*:${ONE_EXPRESSION}!_acceptedTerms\\b`),
   },
-  {
-    file: 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/auth/sign_in_screen.dart',
+  SignInScreen: {
     provider: /\bwidget\s*\.\s*onSignInWithApple\s*\(\s*\)/,
     accept: /\bwidget\s*\.\s*onAcceptTerms\s*\(/,
     button: new RegExp(`SignInView\\s*\\.\\s*appleButton\\s*,\\s*onPressed\\s*:${ONE_EXPRESSION}!_acceptedTerms\\b`),
@@ -154,25 +166,25 @@ const APPLE_DOORS = [
       },
     ],
   },
-];
+};
 
 /** Lib trees whose provider calls must all belong to a door. Declarations
  *  (`Future<void> signInWithApple()`) and the seam implementations in
  *  packages/auth_supabase and packages/core are not call sites. */
 const APPLE_SCAN_ROOTS = [
   'apps',
-  'tooling/bricks/app/__brick__/apps/{{app_id}}/lib',
+  `${BRICK_APP}/lib`,
   'packages/chassis_screens/lib',
 ];
 const APPLE_CALL = /(?<!Future<void>\s)\b(?:signInWithApple|onSignInWithApple)\s*\(\s*\)/;
 
-/** The shared widget both trees render the boxes with. Its checkbox `value:`
+/** The shared widget every root renders the boxes with. Its checkbox `value:`
  *  comes from the caller and it takes no `initial…` argument at all — the
  *  property that makes limb 1 sufficient rather than a spot check. */
-const WIDGETS = [
-  'apps/subscriptiontracker/lib/features/auth/legal_consent_fields.dart',
-  'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/auth/legal_consent_fields.dart',
-];
+const WIDGET = {
+  symbol: /\bclass\s+LegalConsentFields\b/,
+  what: 'the shared consent widget limb 1 relies on',
+};
 
 /** The floor. Below it the scan broke rather than the tree being clean.
  *
@@ -190,18 +202,49 @@ const WIDGETS = [
  *  message could not. And a surface vanishing from the list is what
  *  [MIN_SURFACES] is for. The floor was therefore redundant in every direction
  *  it could point, and this repository's rule is that an assertion nobody can
- *  write a failing input for is worse than none: it inflates apparent coverage. */
-const MIN_SURFACES = 6;
+ *  write a failing input for is worse than none: it inflates apparent coverage.
+ *
+ *  ⏱ 2026-09-24 · three per root, for every app in the set and the brick — 6 on a
+ *  one-app tree, as the literal was. It stays a NUMBER rather than
+ *  `SURFACES.length`, so a locator deleted from SURFACES still falls below it. */
+const MIN_SURFACES_PER_ROOT = 3;
+const MIN_SURFACES = MIN_SURFACES_PER_ROOT * LOCATOR_ROOTS.length;
 
 const problems = [];
 const coverageLost = (m) => problems.push(`COVERAGE LOST — ${m}`); // exit 2 only if EVERY problem is one (summary below)
 const notes = [];
 const ok = (m) => console.log(`ok   ${m}`);
 
-const read = (rel) => stripSourceComments(readFileSync(join(ROOT, rel), 'utf8'), '.dart');
+// Each file is read once: the locators and limb 4's call-site scan walk the same lib trees.
+const stripped = new Map();
+const read = (rel) => {
+  if (!stripped.has(rel)) stripped.set(rel, stripSourceComments(readFileSync(join(ROOT, rel), 'utf8'), '.dart'));
+  return stripped.get(rel);
+};
+
+/** `{ root, file }` for every root, or a COVERAGE LOST / finding naming it. */
+function locate(loc) {
+  const found = [];
+  for (const root of LOCATOR_ROOTS) {
+    const files = dartFilesUnder(`${root}/lib`)
+      .filter((f) => loc.symbol.test(read(f)))
+      .sort();
+    if (files.length === 0) {
+      coverageLost(
+        `${root}: no file under ${root}/lib/ declares \`${loc.symbol.source}\` — ${loc.what}. Every surface is ` +
+          'graded per app by the class it declares, so an app without it is an app this guard cannot grade.',
+      );
+    } else if (files.length > 1) {
+      problems.push(`${root}: ${files.length} files declare \`${loc.symbol.source}\` (${files.join(', ')}) — ${loc.what} must live in one file.`);
+    } else {
+      found.push({ root, file: files[0] });
+    }
+  }
+  return found;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 🔴 THE SURFACES ARE PINNED BY PATH *AND* BY FIELD NAME, SO A SCREEN THAT MOVES
+// 🔴 THE SURFACES ARE FOUND BY CLASS *AND* PINNED BY FIELD NAME, SO A SCREEN THAT MOVES
 // INTO THE CHASSIS TAKES THE FLAG WITH IT.
 //
 // [ADR 067] decision 2 empties a brick screen into
@@ -244,15 +287,19 @@ function readWithDelegation(rel) {
 let scanned = 0;
 let blocking = 0;
 
-for (const s of SURFACES) {
-  if (!existsSync(join(ROOT, s.file))) {
-    coverageLost(
-      `${s.file} is in the surface list and does not exist. A sign-up surface that ` +
-        'moved without this list moving is a surface nothing checks; re-point the entry or remove it ' +
-        'deliberately.',
-    );
-    continue;
+// Each located file, with the config its locator carries. The sign-in door's
+// config also depends on WHICH class it declares, and that file is limb 4's door.
+const surfaces = [];
+const doors = [];
+for (const loc of SURFACES) {
+  for (const { file } of locate(loc)) {
+    const cls = loc.byClass ? loc.symbol.exec(read(file))[1] : null;
+    surfaces.push({ file, terms: loc.terms, marketing: loc.marketing, ...(cls ? loc.byClass[cls] : {}) });
+    if (loc === SIGN_IN) doors.push({ file, ...APPLE_DOOR_BY_CLASS[cls] });
   }
+}
+
+for (const s of surfaces) {
   const scan = readWithDelegation(s.file);
   if (scan.lost) {
     coverageLost(
@@ -335,11 +382,7 @@ for (const s of SURFACES) {
 // where the thing it forbids cannot occur. The union only ever ADDS text, so a
 // real `initial…` on either side is still caught, and a delegation this scan
 // cannot follow is COVERAGE LOST rather than silence.
-for (const rel of WIDGETS) {
-  if (!existsSync(join(ROOT, rel))) {
-    coverageLost(`${rel} does not exist; the shared consent widget is the thing limb 1 relies on.`);
-    continue;
-  }
+for (const { file: rel } of locate(WIDGET)) {
   const widgetScan = readWithDelegation(rel);
   if (widgetScan.lost) {
     coverageLost(
@@ -363,14 +406,10 @@ for (const rel of WIDGETS) {
 }
 
 // ── limb 4 · EVERY APPLE DOOR RECORDS THE ACCEPTANCE BEFORE THE PROVIDER ──────
-// ⏱ 2026-09-15 · O-SIWA-NO-CLICKWRAP. See APPLE_DOORS for why limbs 1-3 could not.
+// ⏱ 2026-09-15 · O-SIWA-NO-CLICKWRAP. See APPLE_DOOR_BY_CLASS for why limbs 1-3 could not.
 let appleDoors = 0;
 const doorFiles = new Set();
-for (const d of APPLE_DOORS) {
-  if (!existsSync(join(ROOT, d.file))) {
-    coverageLost(`${d.file} is an Apple door on the list and does not exist.`);
-    continue;
-  }
+for (const d of doors) {
   const scan = readWithDelegation(d.file);
   if (scan.lost) {
     coverageLost(`${d.file} ${scan.lost} Limb 4 reads the door PLUS what it delegates to.`);
@@ -383,7 +422,7 @@ for (const d of APPLE_DOORS) {
   if (!call) {
     problems.push(
       `${d.file}: no Sign in with Apple call (\`${d.provider.source}\`) found in the door or what it delegates to. ` +
-        'The door this limb checks is gone or renamed; remove it from APPLE_DOORS deliberately if so.',
+        'The door this limb checks is gone or renamed; change APPLE_DOOR_BY_CLASS deliberately if so.',
     );
     continue;
   }
@@ -451,8 +490,9 @@ if (appleCallFiles.length === 0) {
 for (const f of appleCallFiles) {
   if (!doorFiles.has(f)) {
     problems.push(
-      `🔴 UNLISTED APPLE DOOR — ${f} calls Sign in with Apple and is not in APPLE_DOORS. A door this guard does ` +
-        'not know about is a door nobody checks for the clickwrap: add it, with the acceptance before the call.',
+      `🔴 UNLISTED APPLE DOOR — ${f} calls Sign in with Apple and is not the sign-in door of an app in the ` +
+        'workspace set, of the brick, or a chassis file one delegates to. A door this guard does not know about is ' +
+        'a door nobody checks for the clickwrap: move the call into the door, with the acceptance before it.',
     );
   }
 }
@@ -477,7 +517,7 @@ if (problems.length) {
 }
 
 ok(
-  `signup consent shape — ${scanned} surface(s) scanned, every consent flag initialises to false, ` +
+  `signup consent shape apps=${APP_SET.length} — ${scanned} surface(s) scanned, every consent flag initialises to false, ` +
     `${blocking} terms tick(s) block in both positions, no optional consent gates a sign-up, ` +
     `${appleDoors} Sign in with Apple door(s) record the acceptance before the provider (${appleCallFiles.length} call-site file(s), all listed)`,
 );

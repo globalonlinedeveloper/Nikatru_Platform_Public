@@ -59,6 +59,9 @@ const CHASSIS_FIELDS = `${CHASSIS_LIB}/auth/legal_consent_fields.dart`;
  *  file's belief about what moved rather than what did. */
 function realTree() {
   const root = mkdtempSync(join(tmpdir(), 'nikatru-signup-consent-'));
+  // ⏱ 2026-09-24 · the guard grades every app in the root pubspec's `workspace:`
+  // set (tooling/ci/app-set.mjs), so the copy carries the real one.
+  cpSync(join(REPO, 'pubspec.yaml'), join(root, 'pubspec.yaml'));
   for (const r of [BRICK, SUBLY]) {
     mkdirSync(join(root, r, 'lib', 'features'), { recursive: true });
     cpSync(join(REPO, r, 'lib', 'features', 'auth'), join(root, r, 'lib', 'features', 'auth'), {
@@ -104,7 +107,7 @@ describe('the real tree', () => {
       () => {},
       (r) => {
         assert.equal(r.status, 0, r.stderr);
-        assert.match(r.stdout, /6 surface\(s\) scanned/);
+        assert.match(r.stdout, /signup consent shape apps=1 — 6 surface\(s\) scanned/);
         // ⏱ 2026-09-15 · O-SIWA-NO-CLICKWRAP: limb 4 saw both Apple doors and every call site.
         assert.match(
           r.stdout,
@@ -452,7 +455,7 @@ describe('the guard knows when it is not looking', () => {
       (root) => rmSync(join(root, BRICK_SIGNUP)),
       (r) => {
         assert.equal(r.status, 2);
-        assert.match(r.stderr, /COVERAGE LOST/);
+        assert.match(r.stderr, /COVERAGE LOST — tooling\/bricks\/app\/__brick__\/apps\/\{\{app_id\}\}: no file under .* declares `\\bclass\\s\+SignUpScreen\\b`/);
       },
     );
   });
@@ -580,6 +583,100 @@ describe('limb 4 · every Sign in with Apple door records the acceptance first',
         ),
       (r) => {
         assert.equal(r.status, 0, r.stderr);
+      },
+    );
+  });
+});
+
+// ⏱ 2026-09-24 · O-GUARDS-READ-A-HAND-LISTED-APP-SET. The surfaces were app #1's
+// paths, so a second app was never read. Each surface is now found by the class
+// it declares, in every app of the workspace set and in the brick. A stamped app
+// has the BRICK's layout (sign_in_screen.dart's `SignInScreen`, not
+// login_screen.dart's `LoginScreen`), so app 2 below is the brick's auth tree
+// copied into apps/scratch — the layout the factory stamps, not app #1's.
+describe('app set · a second app in the brick layout', () => {
+  const SCRATCH = 'apps/scratch';
+  const SCRATCH_SIGNIN = `${SCRATCH}/lib/features/auth/sign_in_screen.dart`;
+
+  /** app 2 on disk, AND in the workspace (`declare: false` leaves it out). */
+  const addScratch = (root, { declare = true } = {}) => {
+    mkdirSync(join(root, SCRATCH, 'lib', 'features'), { recursive: true });
+    cpSync(join(REPO, BRICK, 'lib', 'features', 'auth'), join(root, SCRATCH, 'lib', 'features', 'auth'), {
+      recursive: true,
+    });
+    if (declare) {
+      edit(root, 'pubspec.yaml', (s) =>
+        s.replace('  - apps/subscriptiontracker\n', `  - apps/subscriptiontracker\n  - ${SCRATCH}\n`),
+      );
+    }
+  };
+
+  test('RC2 · GREEN — app 2 is read: apps=2, three more surfaces, a third Apple door', () => {
+    withTree(
+      (root) => addScratch(root),
+      (r) => {
+        assert.equal(r.status, 0, `${r.stdout}\n${r.stderr}`);
+        assert.match(r.stdout, /signup consent shape apps=2 — 9 surface\(s\) scanned/);
+        assert.match(r.stdout, /9 terms tick\(s\) block in both positions/);
+        assert.match(r.stdout, /3 Sign in with Apple door\(s\) record the acceptance before the provider \(4 call-site file\(s\), all listed\)/);
+        assert.match(r.stdout, /⬜ apps\/scratch\/lib\/features\/auth\/sign_in_screen\.dart also read 1 chassis file/);
+      },
+    );
+  });
+
+  test("🔴 app 2's own adapter decides the device owes nothing → caught, naming app 2", () => {
+    // The brick's SignInScreen config, including its wiring check, reaches app 2
+    // because the locator matched `SignInScreen` there — not because of a path.
+    withTree(
+      (root) => {
+        addScratch(root);
+        edit(root, SCRATCH_SIGNIN, (src) =>
+          src.replace(/appleTermsOwed: core\.needsLegalReacceptance\([\s\S]*?kLegalVersions,\n\s*\),/, 'appleTermsOwed: false,'),
+        );
+      },
+      (r) => {
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(r.stderr, /apps\/scratch\/lib\/features\/auth\/sign_in_screen\.dart: `appleTermsOwed:` must be/);
+      },
+    );
+  });
+
+  test('app 2 with NO sign-in door is COVERAGE LOST, naming apps/scratch and both symbols', () => {
+    withTree(
+      (root) => {
+        addScratch(root);
+        rmSync(join(root, SCRATCH_SIGNIN));
+      },
+      (r) => {
+        assert.equal(r.status, 2, `${r.stdout}\n${r.stderr}`);
+        assert.match(r.stderr, /COVERAGE LOST — apps\/scratch: no file under apps\/scratch\/lib\/ declares `\\bclass\\s\+\(LoginScreen\|SignInScreen\)\\b` — the sign-in door/);
+      },
+    );
+  });
+
+  test('two files declaring one surface in app 2 is a finding, not a pick', () => {
+    withTree(
+      (root) => {
+        addScratch(root);
+        writeFileSync(
+          join(root, SCRATCH, 'lib', 'features', 'auth', 'sign_up_screen_copy.dart'),
+          'class SignUpScreen {}\n',
+        );
+      },
+      (r) => {
+        assert.equal(r.status, 1, `${r.stdout}\n${r.stderr}`);
+        assert.match(r.stderr, /apps\/scratch: 2 files declare `\\bclass\\s\+SignUpScreen\\b`/);
+      },
+    );
+  });
+
+  test('RC1 · a workspace with no apps/ member is COVERAGE LOST before any surface is graded', () => {
+    withTree(
+      (root) => edit(root, 'pubspec.yaml', (s) => s.replace('  - apps/subscriptiontracker\n', '')),
+      (r) => {
+        assert.equal(r.status, 2, `${r.stdout}\n${r.stderr}`);
+        assert.match(r.stderr, /COVERAGE LOST — assert-signup-consent-shape: .*pubspec\.yaml declares no `workspace:` entry under apps\//);
+        assert.doesNotMatch(r.stdout, /signup consent shape/);
       },
     );
   });
