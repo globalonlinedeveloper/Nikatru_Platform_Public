@@ -40,11 +40,13 @@
 #     OWN API host only when it has a backend. It does NOT name the apex, because
 #     `'self'` IS the apex once the app is served there.
 #   · the Supabase project is the ONE this portfolio shares (see `SUPABASE_URL` in
-#     services/platform/wrangler.jsonc, shared across every NIKATRU app). ⚠️ WHEN
-#     THE BOX A CUTOVER LANDS ([ADR 080] Phase 5) this line gains
-#     `https://auth-api.nikatru.com` and loses the hosted project — in the same
-#     change that moves `SUPABASE_URL` on both Workers, or every stamped app's
-#     sign-in is blocked by its own policy.
+#     services/platform/wrangler.jsonc, shared across every NIKATRU app). ⏱
+#     2026-09-24 — the auth cutover moves it to the self-hosted sign-in host
+#     [ADR 080] names, `https://auth-api.nikatru.com`, and this line carries
+#     BOTH hosts until the cutover is finished: the self-hosted one was added in
+#     the cutover PREP, BEFORE `SUPABASE_URL` moves at Phase 5, so no stamped
+#     app's sign-in is blocked by its own policy on switch day; the hosted
+#     project stays as the rollback and is removed in Phase 6, when it is retired.
 #
 # ⚠️ `frame-ancestors 'none'` and `X-Frame-Options: DENY` are both set: the app must
 # not be framed, including by another path on its own origin, because same-origin
@@ -54,7 +56,7 @@
   X-Frame-Options: DENY
   Referrer-Policy: strict-origin-when-cross-origin
   Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
-  Content-Security-Policy: default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data: blob:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval' https://challenges.cloudflare.com; worker-src 'self' blob:; child-src 'self' blob:; frame-src 'self' https://challenges.cloudflare.com; connect-src 'self' https://lcrkiurkvzhkonjwhpiv.supabase.co{{#needs_backend}} https://{{{api_domain}}}{{/needs_backend}} https://config.nikatru.com https://platform.nikatru.com https://glitchtip.nikatru.com; upgrade-insecure-requests
+  Content-Security-Policy: default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data: blob:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval' https://challenges.cloudflare.com; worker-src 'self' blob:; child-src 'self' blob:; frame-src 'self' https://challenges.cloudflare.com; connect-src 'self' https://lcrkiurkvzhkonjwhpiv.supabase.co https://auth-api.nikatru.com{{#needs_backend}} https://{{{api_domain}}}{{/needs_backend}} https://config.nikatru.com https://platform.nikatru.com https://glitchtip.nikatru.com; upgrade-insecure-requests
 # ===========================================================================
 #
 # 🔴 WHY THIS FILE EXISTS — [pipeline 9]R-9, the cache limb.

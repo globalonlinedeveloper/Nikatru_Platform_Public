@@ -35,17 +35,19 @@ String authErrorText(AppLocalizations l10n, Object e) {
       raw.contains('user_already_exists')) {
     return l10n.authAlreadyRegistered;
   }
-  if (raw.contains('weak_password') || raw.contains('password should be')) {
-    // 🔴 THE COPY CHANGED HERE, ON PURPOSE (WORKORDER §8 decision 3). This said
-    // "Password must be at least 6 characters." — the 6 was GoTrue's server
-    // default leaking into our words, while `signUpTitle`'s own screen enforces
-    // 8 client-side and says so via `passwordTooShort` ("Use at least 8
-    // characters."). Two numbers for one rule is a bug in the copy, and the
-    // shipped one was the wrong number.
-    // 👤 Flagged for the polish list: the login screen's sign-up toggle has no
-    // client-side 8-check at all, so it can still reach the server with 6.
-    return l10n.passwordTooShort;
-  }
+  // 🔴 THE COPY CHANGED HERE, ON PURPOSE (WORKORDER §8 decision 3). This said
+  // "Password must be at least 6 characters." — the 6 was GoTrue's server
+  // default leaking into our words, while `signUpTitle`'s own screen enforces
+  // 8 client-side and says so via `passwordTooShort` ("Use at least 8
+  // characters."). Two numbers for one rule is a bug in the copy, and the
+  // shipped one was the wrong number.
+  // 👤 Flagged for the polish list: the login screen's sign-up toggle has no
+  // client-side 8-check at all, so it can still reach the server with 6.
+  // ⏱ 2026-09-24 — every weak-password refusal went to `passwordTooShort`
+  // here, including the two that are not about length at all. It is now mapped
+  // by the server's REASON: see `_weakPasswordText` below.
+  final String? weak = _weakPasswordText(l10n, raw);
+  if (weak != null) return weak;
   if (raw.contains('email_not_confirmed') || raw.contains('not confirmed')) {
     return l10n.authConfirmEmail;
   }
@@ -83,3 +85,55 @@ String authErrorText(AppLocalizations l10n, Object e) {
   }());
   return l10n.authUnknownError;
 }
+
+/// A weak-password refusal, mapped by REASON — ⏱ 2026-09-24, auth cutover prep.
+/// Returns null when [raw] is not a weak-password refusal at all.
+///
+/// The self-hosted server (GoTrue v2.189.0, `internal/api/password.go`) refuses
+/// a weak password with HTTP 422, code `weak_password`, and a
+/// `weak_password.reasons` list whose members are exactly `length`,
+/// `characters` and `pwned`. It runs with the breached-password check ON, so
+/// `pwned` is a live answer there, and its sentence ("known to be weak and easy
+/// to guess") used to fall through every branch above to `authUnknownError`.
+///
+///   · `pwned`  → `passwordBreached`. It WINS when several reasons arrive: it is
+///     the only one a user cannot fix by adding characters.
+///   · `length` → `passwordTooShort`.
+///   · `characters`, an unknown reason, or NO reasons list → `passwordTooWeak`.
+///     Never the length message without `length` — it may be false.
+///
+/// ⚠️ THE VENDOR TYPE CANNOT BE NAMED HERE. gotrue-dart throws
+/// `AuthWeakPasswordException` carrying the list, but
+/// `assert-package-boundaries` limb (c) fails any app `lib/` import of
+/// `package:supabase_flutter`, which `packages/auth_supabase` wraps. So the list
+/// is read from that exception's own `toString()` — gotrue-dart writes it as
+/// `AuthWeakPasswordException(message: …, statusCode: …, reasons: [..])`, a
+/// string literal that survives web minification where a runtime type name
+/// would not.
+///
+/// ⚠️ THE NO-LIST CASE IS REAL, NOT DEFENSIVE. `auth_supabase`'s
+/// `updatePassword` rewraps the vendor exception as `AuthFailure(e.message)`
+/// and drops the list, so the reset screen hands this function GoTrue's
+/// sentences only. They are matched to know it IS a weak-password refusal —
+/// never to decide which reason.
+String? _weakPasswordText(AppLocalizations l10n, String raw) {
+  final bool isWeakPassword =
+      raw.contains('weakpasswordexception') ||
+      raw.contains('weak_password') ||
+      raw.contains('password should be') ||
+      raw.contains('password should contain') ||
+      raw.contains('known to be weak');
+  if (!isWeakPassword) return null;
+  final Match? list = _reasonsList.firstMatch(raw);
+  final Set<String> reasons = <String>{
+    if (list != null)
+      for (final String r in list.group(1)!.split(','))
+        if (r.trim().isNotEmpty) r.trim(),
+  };
+  if (reasons.contains('pwned')) return l10n.passwordBreached;
+  if (reasons.contains('length')) return l10n.passwordTooShort;
+  return l10n.passwordTooWeak;
+}
+
+/// The `reasons: [..]` field of the vendor exception's `toString()`, lowercased.
+final RegExp _reasonsList = RegExp(r'reasons: \[([a-z_, ]*)\]');
