@@ -264,6 +264,48 @@ export const REVENUECAT_EVENT_REASONS = [
     dateDerived: false,
     why: 'NOT A GRANT — [ADR 092] §4.6, 2026-09-22. RevenueCat\'s event reference (revenuecat.com/docs/integrations/webhooks/event-types-and-fields, read 2026-09-22T15:31:55Z) sends it during a store outage: a provisional grant of at most 24 hours, carrying only `app_user_id` and (Sometimes) `store` — no `environment`, so its money world cannot be told, and no transaction, so it could never be linked. The purchase it stands for arrives later as INITIAL_PURCHASE when validation succeeds, or as EXPIRATION when it fails. It is in NOT_A_GRANT beside SUBSCRIPTION_PAUSED, so revenueCatAccessRuling answers null and a reader acks it and changes nothing.',
   },
+  {
+    event: 'INVOICE_ISSUANCE',
+    reason: null,
+    dateDerived: false,
+    why: 'NOT A GRANT — re-read 2026-09-24 (O-REVENUECAT-ACCOUNT step 6). RevenueCat\'s event reference (Event Types and Fields, revenuecat.com/docs/integrations/webhooks/event-types-and-fields, read 2026-09-24T04:01:33Z): "A new, unpaid invoice was issued." It is created for a purchase "that hasn\'t yet been paid", and "This only applies to RevenueCat Billing purchases". An unpaid invoice is not access, and the reference describes no access change for it. Until this row it was an unnamed type, which services/platform/src/lib/mor/revenuecat.ts refuses with a 503 that the vendor retries five times. It is in NOT_A_GRANT, so revenueCatAccessRuling answers null and a reader acks it and changes nothing.',
+  },
+  {
+    event: 'VIRTUAL_CURRENCY_TRANSACTION',
+    reason: null,
+    dateDerived: false,
+    why: 'NOT A GRANT — re-read 2026-09-24 (O-REVENUECAT-ACCOUNT step 6). RevenueCat\'s event reference (Event Types and Fields, revenuecat.com/docs/integrations/webhooks/event-types-and-fields, read 2026-09-24T04:01:33Z): "An in-app currency transaction occurred." It "provides details about the in-app currency adjustment, including the amount, currency type, and source of the change": a currency balance, not an entitlement. The vendor sends it beside the purchase, renewal or refund that caused it, and each of those reaches this table as its own event. It is in NOT_A_GRANT, so revenueCatAccessRuling answers null and a reader acks it and changes nothing.',
+  },
+  {
+    event: 'EXPERIMENT_ENROLLMENT',
+    reason: null,
+    dateDerived: false,
+    why: 'NOT A GRANT — re-read 2026-09-24 (O-REVENUECAT-ACCOUNT step 6). RevenueCat\'s event reference (Event Types and Fields, revenuecat.com/docs/integrations/webhooks/event-types-and-fields, read 2026-09-24T04:01:33Z): "A customer was enrolled in an experiment." The reference says "This event isn\'t associated with a store" and that `app_id` "is usually excluded", so services/platform/src/lib/mor/revenuecat.ts still refuses one that carries no app_id on [ADR 085] decision A, before it reads this row. It is in NOT_A_GRANT, so revenueCatAccessRuling answers null and a reader acks it and changes nothing.',
+  },
+  {
+    event: 'PURCHASE_REDEEMED',
+    reason: null,
+    dateDerived: false,
+    why: 'NOT A GRANT — re-read 2026-09-24 (O-REVENUECAT-ACCOUNT step 6). RevenueCat\'s event reference (Event Types and Fields, revenuecat.com/docs/integrations/webhooks/event-types-and-fields, read 2026-09-24T04:01:33Z): "A Paddle, RevenueCat Billing, or Stripe purchase was redeemed and associated with an App User ID." It "fires when a user opens a redemption deep link in your app", and "If the redemption results in a transfer, this is fired in addition to `TRANSFER`", so an ownership move is the TRANSFER row\'s to rule on, not this one\'s. The reference describes no access change for the redemption itself. It is in NOT_A_GRANT, so revenueCatAccessRuling answers null and a reader acks it and changes nothing.',
+  },
+  {
+    event: 'SUBSCRIBER_ALIAS',
+    reason: null,
+    dateDerived: false,
+    why: 'NOT A GRANT, AND DEPRECATED BY THE VENDOR — re-read 2026-09-24 (O-REVENUECAT-ACCOUNT step 6). RevenueCat\'s event reference (Event Types and Fields, revenuecat.com/docs/integrations/webhooks/event-types-and-fields, read 2026-09-24T04:01:33Z): "Deprecated. A new App User ID was registered for an existing subscriber." and "This is a legacy event type. New projects don\'t receive this webhook." It names an id, not an access change. It stays a row so that a legacy delivery is acknowledged rather than retried. It is in NOT_A_GRANT, so revenueCatAccessRuling answers null and a reader acks it and changes nothing.',
+  },
+  {
+    event: 'PRICE_INCREASE_CONSENT_REQUIRED',
+    reason: null,
+    dateDerived: false,
+    why: 'NOT A GRANT — re-read 2026-09-24 (O-REVENUECAT-ACCOUNT step 6). RevenueCat\'s event reference (Event Types and Fields, revenuecat.com/docs/integrations/webhooks/event-types-and-fields, read 2026-09-24T04:01:33Z): "A price increase requires customer consent before the subscription can renew at the new price." App Store and Google Play only. The current paid period is unchanged; the subscription then renews or lapses through its own later event (RENEWAL or EXPIRATION). A notice to the user would be a separate product decision, not an access ruling. It is in NOT_A_GRANT, so revenueCatAccessRuling answers null and a reader acks it and changes nothing.',
+  },
+  {
+    event: 'PRICE_INCREASE_CONSENT_APPROVED',
+    reason: null,
+    dateDerived: false,
+    why: 'NOT A GRANT — re-read 2026-09-24 (O-REVENUECAT-ACCOUNT step 6). RevenueCat\'s event reference (Event Types and Fields, revenuecat.com/docs/integrations/webhooks/event-types-and-fields, read 2026-09-24T04:01:33Z): "A customer consented to a pending price increase." App Store and Google Play only. Consent changes the next price, not the current access; the renewal at the new price arrives as its own RENEWAL. It is in NOT_A_GRANT, so revenueCatAccessRuling answers null and a reader acks it and changes nothing.',
+  },
 ];
 
 const REVENUECAT_EVENT_MAP = new Map(REVENUECAT_EVENT_REASONS.map((r) => [r.event, r.reason]));
@@ -300,10 +342,10 @@ export function revocationReasonForRevenueCatEvent(event) {
  *   'revoke'       — a reason and not date-derived: access ends (EXPIRATION).
  *   'grant'        — no reason and not date-derived: access is on.
  *   null           — the table does not decide this event. A reader acks it and
- *                    changes nothing: an unknown event revokes nothing, and
- *                    SUBSCRIPTION_PAUSED and TEMPORARY_ENTITLEMENT_GRANT — no
- *                    reason, but the vendor says neither is a grant — are the
- *                    named rows that answer null.
+ *                    changes nothing: an unknown event revokes nothing, and the
+ *                    rows in NOT_A_GRANT below — no reason, but the vendor
+ *                    describes none of them as a grant, each quoted in its row's
+ *                    `why` — are the named rows that answer null.
  *
  * ⏱ 2026-09-22 · [ADR 092] §4.6 — A REASON THAT RESTORES ACCESS IS NEVER 'revoke'.
  * Before this date a row whose reason was `chargeback_reversed` (restores: true
@@ -339,7 +381,17 @@ export function revenueCatAccessRulingForRow(row) {
 }
 
 /** Rows that carry no reason and are STILL not a grant. Each member is sourced in its row's `why`. */
-const NOT_A_GRANT = new Set(['SUBSCRIPTION_PAUSED', 'TEMPORARY_ENTITLEMENT_GRANT']);
+const NOT_A_GRANT = new Set([
+  'SUBSCRIPTION_PAUSED',
+  'TEMPORARY_ENTITLEMENT_GRANT',
+  'INVOICE_ISSUANCE',
+  'VIRTUAL_CURRENCY_TRANSACTION',
+  'EXPERIMENT_ENROLLMENT',
+  'PURCHASE_REDEEMED',
+  'SUBSCRIBER_ALIAS',
+  'PRICE_INCREASE_CONSENT_REQUIRED',
+  'PRICE_INCREASE_CONSENT_APPROVED',
+]);
 
 /** Rows that move OWNERSHIP and say nothing about access ([ADR 092] §4.3). Sourced in the row's `why`. */
 const TRANSFER_EVENTS = new Set(['TRANSFER']);
