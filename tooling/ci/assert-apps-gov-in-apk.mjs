@@ -90,6 +90,10 @@ import { fileURLToPath } from 'node:url';
 import { STORE_FORM_RULES } from '../../contracts/store/vocabulary.js';
 // The ONE directory listing in tooling/ci: it skips nested checkouts (see its header).
 import { listDir } from './tree-walk.mjs';
+// What a tool returned, for every COVERAGE LOST on its output. It lived here until 2026-09-24; re-exported for
+// test/apps-gov-in-apk.test.mjs, which imports it from this file.
+import { toolOutputLines } from './tool-output.mjs';
+export { toolOutputLines } from './tool-output.mjs';
 
 const NAME = 'assert-apps-gov-in-apk';
 const CHANNEL = 'apps-gov-in';
@@ -175,18 +179,6 @@ export function parseApksignerCerts(text) {
 /** The distinct SHA-256 keys among the signer entries (one key printed in two blocks or two schemes is ONE). */
 export function distinctSignerKeys(signers) {
   return [...new Set(signers.map((s) => s.sha256).filter(Boolean))];
-}
-
-/** One stream of a tool's output → at most `max` lines, each prefixed `<name>| `, control characters escaped. */
-export function toolOutputLines(name, text, max = 20) {
-  const s = String(text ?? '');
-  if (s === '') return [`${name}: (empty, 0 bytes)`];
-  const lines = s.split('\n');
-  if (lines[lines.length - 1] === '') lines.pop();
-  const esc = (l) => l.replace(/[\x00-\x1f\x7f]/g, (c) => ({ '\r': '\\r', '\t': '\\t' })[c] ?? `\\x${c.charCodeAt(0).toString(16).padStart(2, '0')}`);
-  const out = [`${name}: ${lines.length} line(s), ${Buffer.byteLength(s)} bytes${lines.length > max ? `, first ${max} shown` : ''}`];
-  for (const l of lines.slice(0, max)) out.push(`${name}| ${esc(l)}`);
-  return out;
 }
 
 /** `aapt2 dump badging` stdout → the fields this guard and the summary use. */
