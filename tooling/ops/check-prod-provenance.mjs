@@ -159,6 +159,8 @@
 // Env: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID (D1 read)
 //      GITHUB_TOKEN or GH_TOKEN, GITHUB_REPOSITORY (release-lane run history and
 //      the deployment ledger)
+//      GITHUB_API_URL (the loopback test seam of record-deployment.mjs; Actions
+//      sets the real origin, accepted unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -166,6 +168,9 @@ import { fileURLToPath } from 'node:url';
 
 import { enumerateMigrationTables } from '../ci/migration-tables.mjs';
 import { stripSourceComments } from '../ci/text-reductions.mjs';
+// ⏱ 2026-09-24 — where the GitHub reads go is record-deployment.mjs's loopback-only
+// seam, the rule assert-gate-passed.mjs already imports, not a third copy of it.
+import { githubApiBase } from '../ci/record-deployment.mjs';
 // ⏱ 2026-09-23 — which submittable channels ship a Flutter build (and so carry an
 // APP_VERSION stamp) is the surface's `flutterApp` answer, read the way six guards
 // already read it; a row on a surface that answers nothing is CouldNotLook.
@@ -546,9 +551,10 @@ export async function attestationDeployments(res, environment, sha7) {
 // cannot. `ghJson` keeps its old contract on top of it: 2xx or CouldNotLook.
 const ghRead = async (repo, token, path, what) =>
   readWithBoundedRetry(async (_attempt, { signal }) => {
+    const base = githubBase();
     let res;
     try {
-      res = await fetch(`https://api.github.com/repos/${repo}${path}`, {
+      res = await fetch(`${base}/repos/${repo}${path}`, {
         headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', 'user-agent': 'nikatru-prod-provenance' },
         signal,
       });
@@ -578,6 +584,23 @@ function githubCredentials() {
   if (!token) throw new CouldNotLook('neither GITHUB_TOKEN nor GH_TOKEN is set, so the released-build set cannot be derived');
   if (!repo) throw new CouldNotLook('the repository could not be resolved (GITHUB_REPOSITORY unset and no origin remote)');
   return { token, repo };
+}
+
+/** The origin both GitHub reads are built on. ⏱ 2026-09-24 (row
+ *  O-OPS-READER-NO-CEILING): until today both hard-coded `https://api.github.com`,
+ *  so no test reached them with a server that accepts and never answers. Resolved
+ *  once, by `githubApiBase`: unset or the real origin (what Actions sets) is
+ *  GitHub; a loopback `http:` URL is the test seam and says so on one line; any
+ *  other host is refused as COULD NOT LOOK before a request carries the token. */
+let resolvedGithubBase = null;
+function githubBase() {
+  if (resolvedGithubBase === null) {
+    const { base, override, error } = githubApiBase();
+    if (error) throw new CouldNotLook(error);
+    if (override) console.log(`⬜ GITHUB_API_URL override in effect: ${base} — a LOOPBACK TEST SEAM, not GitHub.`);
+    resolvedGithubBase = base;
+  }
+  return resolvedGithubBase;
 }
 
 /**
@@ -1578,6 +1601,7 @@ async function main() {
       const reg = JSON.parse(readFileSync(regPath, 'utf8'));
       const ghToken = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
       const ghRepo = process.env.GITHUB_REPOSITORY || gitRemoteRepo();
+      const ghBase = githubBase();
       for (const d of reg.deploys ?? []) {
         const m = String(d.version ?? '').match(BUILD_VERSION);
         if (!m) { attViolations.push(`manual-deploys.json: \`${d.version}\` is not a shipped-build shape`); continue; }
@@ -1592,7 +1616,7 @@ async function main() {
         const gh = (path) =>
           fetchWithBoundedRetry(
             ({ signal }) =>
-              fetch(`https://api.github.com/repos/${ghRepo}${path}`, {
+              fetch(`${ghBase}/repos/${ghRepo}${path}`, {
                 headers: { Authorization: `Bearer ${ghToken}`, 'User-Agent': 'check-prod-provenance' },
                 signal,
               }),
