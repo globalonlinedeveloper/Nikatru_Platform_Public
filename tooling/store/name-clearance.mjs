@@ -239,7 +239,7 @@ export async function clear({ root, name, app, http, now = new Date() }) {
     }
   }
 
-  out.trademark = { disclaimer: TRADEMARK_DISCLAIMER, signals: await trademarkSignals({ http, slug, out }), ruling: null, ruledBy: null, ruledOn: null, ownerItem: null, gatedUntil: null };
+  out.trademark = { disclaimer: TRADEMARK_DISCLAIMER, signals: await trademarkSignals({ http, slug, out }), ruling: null, ruledBy: null, ruledOn: null, basis: null, ownerItem: null, gatedUntil: null };
   out.overall = rollUp(out).overall;
   return out;
 }
@@ -279,7 +279,9 @@ export function rollUp(record) {
   if (record.controls.failed.length || undeterminedGlobal.length) {
     return { overall: 'UNDETERMINED', exit: 2, blocking, advisory, undetermined };
   }
-  if (advisory.length || undetermined.length || record.trademark?.ruling == null) {
+  // Only PROCEED clears. This read `ruling == null` until 2026-09-24, which let a
+  // DO-NOT-PROCEED roll up to CLEAR on a record with nothing else owed.
+  if (advisory.length || undetermined.length || record.trademark?.ruling !== 'PROCEED') {
     return { overall: 'QUALIFIED', exit: 1, blocking, advisory, undetermined };
   }
   return { overall: 'CLEAR', exit: 0, blocking, advisory, undetermined };
@@ -348,7 +350,7 @@ export function writeRecord(root, record, { force = false } = {}) {
     ...record,
     name: { value: record.name, asOf: record.asOf, verify: `node tooling/store/name-clearance.mjs ${record.name} --app ${record.app} --execute`, verifyKind: 'remote' },
     trademark: carried
-      ? { ...record.trademark, ruling: carried.ruling ?? null, ruledBy: carried.ruledBy ?? null, ruledOn: carried.ruledOn ?? null, ownerItem: carried.ownerItem ?? null, gatedUntil: carried.gatedUntil ?? null }
+      ? { ...record.trademark, ruling: carried.ruling ?? null, ruledBy: carried.ruledBy ?? null, ruledOn: carried.ruledOn ?? null, basis: carried.basis ?? null, ownerItem: carried.ownerItem ?? null, gatedUntil: carried.gatedUntil ?? null }
       : record.trademark,
   };
   merged.overall = rollUp(merged).overall;

@@ -133,9 +133,13 @@
         },
         "ruledBy": { "anyOf": [{ "type": "null" }, { "type": "string" }] },
         "ruledOn": { "anyOf": [{ "type": "null" }, { "type": "string", "format": "date" }] },
+        "basis": {
+          "anyOf": [{ "type": "null" }, { "type": "string", "minLength": 1 }],
+          "description": "WHAT THE RULING RESTS ON — the decision record a reader opens to check it (`ADR 074`). Optional in the shape so a record written before the field existed still parses; tooling/ci/assert-name-clearance.mjs limb 7 refuses a non-null `ruling` without it."
+        },
         "ownerItem": {
           "anyOf": [{ "type": "null" }, { "type": "string" }],
-          "description": "The `O-<ID>` row in Private/platform-state/open.json that carries the owed ruling. A null ruling with no owner item is a finding nobody owns, so the guard refuses it outright."
+          "description": "The owner id that carries the owed ruling: an `O-<WORDS>` row in Private/platform-state/open.json, or an owner-queue id such as `A-12` (the grammar is tooling/scripts/owner-ids.mjs). A null ruling with no owner item is a finding nobody owns, so the guard refuses it outright, and tooling/scripts/assert-public-citations.mjs refuses an id whose row does not exist."
         },
         "gatedUntil": {
           "anyOf": [{ "type": "null" }, { "type": "string", "format": "date" }],

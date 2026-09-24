@@ -553,7 +553,7 @@ const GUARDS = [
      NOT APPLICABLE every time, which is a check that always passes. */
   { name: 'assert-public-citations', speed: 'fast', needsPrivate: true,
     rel: ['tooling/scripts/assert-public-citations.mjs'],
-    what: 'every `Private/` path and every `[pipeline]` requirement id cited in the PUBLIC tree resolves' },
+    what: 'every `Private/` path, every `[pipeline]` requirement id and every owner id a public field holds a build on, cited in the PUBLIC tree, resolves' },
   /* ADDED 2026-08-27. `Private/requirements/index.json` is a hand-kept second copy
      of the tree here. Measured with `fs` instrumented
      rather than grepped: assert-spec, assert-research-archive and assert-session-index touch

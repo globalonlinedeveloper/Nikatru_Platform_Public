@@ -74,6 +74,9 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '..', '..', '..'); // tooling/ci/test -> repo root
 const GUARD_SRC = resolve(REPO, 'tooling', 'scripts', 'assert-public-citations.mjs');
 const GIT_HELPER_SRC = resolve(REPO, 'tooling', 'scripts', 'repo-git.mjs');
+/* The guard imports its ID CITATIONS resolver from here, so the fixture carries it
+   beside the guard. The fixture holds no owner id, so that class reads nothing. */
+const OWNER_IDS_SRC = resolve(REPO, 'tooling', 'scripts', 'owner-ids.mjs');
 
 /* The guard's own floor. Read from the source rather than typed here, so that a
    future change to the floor cannot leave this file quietly building a fixture
@@ -259,6 +262,7 @@ before(() => {
   mkdirSync(join(PUB, 'tooling', 'scripts'), { recursive: true });
   cpSync(GUARD_SRC, join(PUB, 'tooling', 'scripts', 'assert-public-citations.mjs'));
   cpSync(GIT_HELPER_SRC, join(PUB, 'tooling', 'scripts', 'repo-git.mjs'));
+  cpSync(OWNER_IDS_SRC, join(PUB, 'tooling', 'scripts', 'owner-ids.mjs'));
   writeDescentMutant();
   writeTombstoneMutant();
 
