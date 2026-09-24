@@ -72,6 +72,8 @@
     "  · the aggregating job's `needs` equals every other job in its workflow — the 'never a partial",
     "    set' half, which is how a new platform job silently stops being required  [R-5]",
     "  · disqualified channels are named with the LOCKED ADR that killed them, and printed every run",
+    "  · every native row carries a boolean `nativeAuth`, a web or extension row carries none, and",
+    "    `served: true` on a native row needs it true             [O-BOXA-CAPTCHA-REFUSES-NATIVE-SIGN-IN]",
     "  · COVERAGE LOST when the register is absent, empty, or has nothing served   [D-1 requires loud]",
     "",
     "🔴 `storefrontKey` IS THE STOREFRONT'S NAME FOR THIS CHANNEL, AND IT LIVES HERE SO THAT ADDING A",
@@ -124,7 +126,19 @@
     "[ADR 039] re-read their own corpus five days later and summarised it as \"APK and iOS = own store,",
     "everything else Paddle\" — wrong on APK, in the direction that costs 15% and a policy question. A",
     "structure that cannot EXPRESS the split will be misread again, so the sideload channel is carried as",
-    "its own entry rather than as a comment on the Play row: see `purchaseRails.awaitingChannelRow`."
+    "its own entry rather than as a comment on the Play row: see `purchaseRails.awaitingChannelRow`.",
+    "",
+    "🔒 `nativeAuth` SAYS WHETHER A NATIVE BUILD CAN SIGN SOMEBODY IN. It is true only when a build for",
+    "this row can complete email sign-in, sign-up and recovery against the auth backend its release",
+    "points at. It is false while Box A enforces the captcha and native builds carry no captcha token,",
+    "because every auth call such a build makes is refused (O-BOXA-CAPTCHA-REFUSES-NATIVE-SIGN-IN).",
+    "A NATIVE row is a row on a surface whose `flutterApp` is true and whose `kind` is not `web`; only",
+    "those rows carry the key. The web row signs in through the page that holds the widget, and an",
+    "extension row is not a Flutter build, so on either the key would be a claim about nothing.",
+    "While it is false, assert-channel-register.mjs refuses `served: true` on the row, and",
+    "`release-manifest.mjs --stage` refuses, on a release tag, every installer the row claims (an",
+    "untagged build-proof run only warns). Flip it on OBSERVED evidence — a native build completing",
+    "sign-in, sign-up and recovery against that backend — never on a changed setting alone."
   ],
   "aggregatingJob": {
     "_why": [
@@ -1833,6 +1847,7 @@
       "surface": "app",
       "storefrontKey": "play",
       "served": false,
+      "nativeAuth": false,
       "submittable": true,
       "purchaseRail": {
         "rail": "play-billing",
@@ -2191,6 +2206,7 @@
       "surface": "app",
       "storefrontKey": "appstore",
       "served": false,
+      "nativeAuth": false,
       "submittable": true,
       "purchaseRail": {
         "rail": "apple-iap",
@@ -2363,6 +2379,7 @@
       "surface": "app",
       "storefrontKey": "mac",
       "served": false,
+      "nativeAuth": false,
       "submittable": true,
       "purchaseRail": {
         "rail": "apple-iap",
@@ -2499,6 +2516,7 @@
       "surface": "app",
       "storefrontKey": "microsoft",
       "served": false,
+      "nativeAuth": false,
       "submittable": true,
       "purchaseRail": {
         "rail": "paddle",
@@ -2672,6 +2690,7 @@
       "surface": "app",
       "storefrontKey": null,
       "served": false,
+      "nativeAuth": false,
       "submittable": false,
       "purchaseRail": {
         "rail": "paddle",
@@ -2820,6 +2839,7 @@
       "surface": "app",
       "storefrontKey": "linux",
       "served": false,
+      "nativeAuth": false,
       "submittable": true,
       "purchaseRail": {
         "rail": "paddle",
@@ -3022,6 +3042,7 @@
       "surface": "app",
       "storefrontKey": null,
       "served": false,
+      "nativeAuth": false,
       "submittable": false,
       "purchaseRail": {
         "rail": "paddle",
@@ -3174,6 +3195,7 @@
         "and regenerates the two derived files — one change, with a URL in it."
       ],
       "served": false,
+      "nativeAuth": false,
       "submittable": false,
       "noSubmissionApi": "apps.gov.in publishes NO submission API at all — the developer portal is a manual web workflow and the \"APIs\" it advertises are open-data APIs for apps to CONSUME, not to publish through. Measured in research/revamp-2026-09-05/09-selfhost-build-release.md §1.9. So this is not a path nobody has built yet; it is a path that cannot be built, and it is manual forever.",
       "_submittableWhy": [

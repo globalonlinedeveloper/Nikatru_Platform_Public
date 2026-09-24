@@ -20,7 +20,7 @@ import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { refFilterToRegExp, refFilterMatches } from '../workflow-scan.mjs';
-import { derive, tagTriggeredWorkflows, actualOwners, TAG_SHAPES } from '../tag-owner.mjs';
+import { derive, tagTriggeredWorkflows, actualOwners, TAG_SHAPES, releaseTagOf } from '../tag-owner.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = resolve(CI_DIR, '..', '..');
@@ -186,5 +186,26 @@ describe('red controls, each on a fixture copy', () => {
     const r = run(['--root', empty]);
     assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST — tag-owner:/);
+  });
+});
+
+// release-manifest.mjs `--stage` asks this which kind of ref it was handed: it
+// refuses a native installer that cannot sign in on a release ref and only warns
+// on an untagged one (O-BOXA-CAPTCHA-REFUSES-NATIVE-SIGN-IN). One case per kind.
+describe('releaseTagOf — the kind of ref a release run was handed', () => {
+  test('the untagged ref a non-tag run synthesises is `untagged`, with its app slug', () => {
+    assert.deepEqual(releaseTagOf('subscriptiontracker-untagged-0123abc'), {
+      kind: 'untagged',
+      slug: 'subscriptiontracker',
+      version: null,
+    });
+  });
+
+  test('`<slug>-v<version>` is `release`, split at the last `-v`', () => {
+    assert.deepEqual(releaseTagOf('subscriptiontracker-v1.0.0'), { kind: 'release', slug: 'subscriptiontracker', version: '1.0.0' });
+  });
+
+  test('a ref with neither shape is `invalid`, which a release gate treats as a release', () => {
+    assert.deepEqual(releaseTagOf('subscriptiontracker'), { kind: 'invalid', slug: null, version: null });
   });
 });

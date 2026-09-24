@@ -38,6 +38,7 @@ import {
   parseManifest,
   verifyEntries,
   assetFiles,
+  nativeAuthRefusals,
 } from '../release-manifest.mjs';
 // ⚠️ NOTHING IS IMPORTED FROM assert-release-durable.mjs, deliberately. That file
 // runs its whole scan at module scope (it has no `import.meta.url` direct-invocation
@@ -2014,12 +2015,22 @@ describe('release-manifest.mjs — the CLI refuses rather than producing a hollo
     assert.match(r.out, /A release with no installer is a release of nothing/);
   });
 
+  // ⏱ 2026-09-24 — THE TWO STAGING CASES BELOW RUN ON A FIXTURE WHOSE NATIVE ROWS
+  // CAN SIGN IN. On a release tag `--stage` now refuses a native installer while a
+  // row it serves carries `nativeAuth: false` (O-BOXA-CAPTCHA-REFUSES-NATIVE-SIGN-IN),
+  // and every native row of the real register does today. These cases measure the
+  // move and the naming, so they stand on a register that lets a move happen; the
+  // refusal on the real register is its own case further down.
+  const NATIVE_ABLE = registerWith((wd) => Object.assign(wd, { platforms: ['windows'], nativeAuth: true }));
+  Object.assign(NATIVE_ABLE.channels.find((c) => c.id === 'android-play'), { platforms: ['android'], nativeAuth: true });
+
   test('--stage MOVES the installer, names it after the tag, and leaves nothing behind to duplicate', () => {
+    const root = fixture({ register: NATIVE_ABLE });
     const from = join(TMP, `s${seq++}`);
     mkdirSync(join(from, 'subscriptiontracker-linux', 'app', 'outputs'), { recursive: true });
     writeFileSync(join(from, 'subscriptiontracker-linux', 'app', 'outputs', 'app-release.apk'), 'apk');
     const out = join(TMP, `o${seq++}`);
-    const r = cli(['--stage', from, '--out', out, '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-v1.0.0']);
+    const r = cli(['--stage', from, '--out', out, '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-v1.0.0', '--repo-root', root]);
     assert.equal(r.code, 0, r.out);
     assert.deepEqual(assetFiles(out).names, ['subscriptiontracker-v1.0.0-app-release.apk']);
     assert.equal(assetFiles(join(from, 'subscriptiontracker-linux', 'app', 'outputs')).names.length, 0, 'the installer must not exist twice');
@@ -2030,6 +2041,7 @@ describe('release-manifest.mjs — the CLI refuses rather than producing a hollo
     // `subscriptiontracker.exe` was moved out of build/windows/x64/runner/Release, producing a
     // loose executable with no DLLs beside it and an archive with no executable
     // in it. Neither would run, and the manifest would have said both were fine.
+    const root = fixture({ register: NATIVE_ABLE });
     const from = join(TMP, `s${seq++}`);
     mkdirSync(join(from, 'subscriptiontracker-windows', 'x64', 'runner', 'Release'), { recursive: true });
     mkdirSync(join(from, 'subscriptiontracker-windows', 'msix'), { recursive: true });
@@ -2037,7 +2049,7 @@ describe('release-manifest.mjs — the CLI refuses rather than producing a hollo
     writeFileSync(join(from, 'subscriptiontracker-windows', 'x64', 'runner', 'Release', 'flutter_windows.dll'), 'dll');
     writeFileSync(join(from, 'subscriptiontracker-windows', 'msix', 'subscriptiontracker.msix'), 'msix');
     const out = join(TMP, `o${seq++}`);
-    const r = cli(['--stage', from, '--out', out, '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-v1']);
+    const r = cli(['--stage', from, '--out', out, '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-v1', '--repo-root', root]);
     assert.equal(r.code, 0, r.out);
     assert.deepEqual(assetFiles(out).names, ['subscriptiontracker-v1-subscriptiontracker.msix'], 'only the self-contained package is lifted');
     assert.deepEqual(
@@ -2045,6 +2057,87 @@ describe('release-manifest.mjs — the CLI refuses rather than producing a hollo
       ['flutter_windows.dll', 'subscriptiontracker.exe'],
       'the bundle must still be whole so its archive is usable',
     );
+  });
+
+  // ── O-BOXA-CAPTCHA-REFUSES-NATIVE-SIGN-IN, limb 3: no native installer on a
+  // release tag while a row it serves cannot sign in. The REAL register is the
+  // subject of the first case on purpose: every native row there says
+  // `nativeAuth: false` today, and this is what stops a tag shipping one. When a
+  // row flips on observed evidence, this case is the one that has to move.
+  test('--stage on a release tag REFUSES a native installer of the real register, and moves nothing', () => {
+    const from = join(TMP, `s${seq++}`);
+    mkdirSync(join(from, 'subscriptiontracker-linux', 'app', 'outputs'), { recursive: true });
+    writeFileSync(join(from, 'subscriptiontracker-linux', 'app', 'outputs', 'app-release.apk'), 'apk');
+    const out = join(TMP, `o${seq++}`);
+    const r = cli(['--stage', from, '--out', out, '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-v1.0.0']);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.stderr, /✗ app-release\.apk — it is the native build of [^\n]*"android-play"[^\n]*\(O-BOXA-CAPTCHA-REFUSES-NATIVE-SIGN-IN\)/);
+    assert.match(r.stderr, /--stage refuses 1 native installer\(s\) on release tag "subscriptiontracker-v1\.0\.0"/);
+    assert.deepEqual(assetFiles(out).names, [], 'a refused release stages nothing');
+    assert.deepEqual(assetFiles(join(from, 'subscriptiontracker-linux', 'app', 'outputs')).names, ['app-release.apk'], 'the refusal lands before any move');
+  });
+
+  test('--stage on the untagged ref of a non-tag run WARNS "would refuse" and still stages', () => {
+    const from = join(TMP, `s${seq++}`);
+    mkdirSync(join(from, 'subscriptiontracker-linux', 'app', 'outputs'), { recursive: true });
+    writeFileSync(join(from, 'subscriptiontracker-linux', 'app', 'outputs', 'app-release.apk'), 'apk');
+    const out = join(TMP, `o${seq++}`);
+    const r = cli(['--stage', from, '--out', out, '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-untagged-abc1234']);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.stderr, /⚠ would refuse on a release tag: app-release\.apk — it is the native build of [^\n]*"android-play"/);
+    assert.deepEqual(assetFiles(out).names, ['subscriptiontracker-untagged-abc1234-app-release.apk']);
+  });
+
+  test('--stage judges a ref it cannot read as a release, and refuses', () => {
+    const from = join(TMP, `s${seq++}`);
+    mkdirSync(join(from, 'subscriptiontracker-linux', 'app', 'outputs'), { recursive: true });
+    writeFileSync(join(from, 'subscriptiontracker-linux', 'app', 'outputs', 'app-release.apk'), 'apk');
+    const out = join(TMP, `o${seq++}`);
+    const r = cli(['--stage', from, '--out', out, '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker']);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.stderr, /"subscriptiontracker", a ref tag-owner\.mjs cannot read, judged as a release/);
+    assert.deepEqual(assetFiles(out).names, []);
+  });
+
+  test('--stage on a release tag stages native installers whose rows can all sign in, and warns nothing', () => {
+    const root = fixture({ register: NATIVE_ABLE });
+    const from = join(TMP, `s${seq++}`);
+    mkdirSync(join(from, 'subscriptiontracker-linux'), { recursive: true });
+    mkdirSync(join(from, 'subscriptiontracker-windows'), { recursive: true });
+    writeFileSync(join(from, 'subscriptiontracker-linux', 'app-release.apk'), 'apk');
+    writeFileSync(join(from, 'subscriptiontracker-windows', 'subscriptiontracker.msix'), 'msix');
+    const out = join(TMP, `o${seq++}`);
+    const r = cli(['--stage', from, '--out', out, '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-v1.0.0', '--repo-root', root]);
+    assert.equal(r.code, 0, r.out);
+    assert.doesNotMatch(r.stderr, /would refuse|refuses|O-BOXA/);
+    assert.deepEqual(assetFiles(out).names, ['subscriptiontracker-v1.0.0-app-release.apk', 'subscriptiontracker-v1.0.0-subscriptiontracker.msix']);
+  });
+
+  test('nativeAuthRefusals refuses a file that no native row claims, by format or by platform', () => {
+    const register = withSurfaces({
+      channels: [
+        { id: 'web', kind: 'web', surface: 'app', artifactFormats: ['static-bundle'] },
+        { id: 'android-play', kind: 'store', surface: 'app', artifactFormats: ['.aab'], nativeAuth: true },
+      ],
+    });
+    const got = nativeAuthRefusals(register, ['app-release.apk'], { surface: 'app' });
+    assert.equal(got.length, 1, JSON.stringify(got));
+    assert.equal(got[0].file, 'app-release.apk');
+    assert.deepEqual(got[0].rows, []);
+    assert.match(got[0].why, /no native row on surface "app" claims it/);
+  });
+
+  test('nativeAuthRefusals has nothing to refuse on a surface that ships no Flutter build', () => {
+    const register = withSurfaces({
+      channels: [{ id: 'chrome-webstore', kind: 'store', surface: 'extension', artifactFormats: ['.zip'] }],
+    });
+    assert.deepEqual(nativeAuthRefusals(register, ['fullshot-chromium.zip'], { surface: 'extension' }), []);
+  });
+
+  test('nativeAuthRefusals refuses every file on a surface that declares no boolean flutterApp', () => {
+    const got = nativeAuthRefusals({ channels: [] }, ['app-release.apk'], { surface: 'app' });
+    assert.equal(got.length, 1, JSON.stringify(got));
+    assert.match(got[0].why, /declares no boolean `flutterApp`/);
   });
 
   test('every bundle member carries a reason, so the exclusion cannot be a silent hole', () => {
