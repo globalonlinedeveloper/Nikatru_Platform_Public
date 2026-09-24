@@ -114,7 +114,7 @@
 // lane. Nothing here closes [pipeline G3].
 //
 // Usage:
-//   node tooling/ci/release-manifest.mjs --stage  <fromDir> --out <dir> --app <id> --tag <tag>
+//   node tooling/ci/release-manifest.mjs --stage  <fromDir> --out <dir> --app <id> --tag <tag> --ref-type <tag|branch>
 //   node tooling/ci/release-manifest.mjs --write  <dir> --app <id> --tag <tag> --sha <sha> [--run-url <url>]
 //   node tooling/ci/release-manifest.mjs --verify <dir> [--expect-formats [--for-workflow <file>]]
 //   node tooling/ci/release-manifest.mjs --emit-assets <dir>
@@ -1068,6 +1068,11 @@ async function main() {
     const out = resolve(flag('out') ?? die('--stage needs --out <dir>'));
     const app = flag('app') ?? die('--stage needs --app <id>');
     const tag = flag('tag') ?? die('--stage needs --tag <tag>');
+    // ⏱ 2026-09-24 — REQUIRED, NEVER DEFAULTED. Whether `tag` is a release or the
+    // untagged value a non-tag run synthesises is github.ref_type's answer; a
+    // defaulted ref type would be the same guess from the string this replaces.
+    const refType = flag('ref-type') ?? die('--stage needs --ref-type <tag|branch>');
+    if (refType !== 'tag' && refType !== 'branch') die(`--stage --ref-type must be tag or branch, got ${JSON.stringify(refType)}`);
     // Installable MINUS the declared bundle members — see BUNDLE_MEMBERS above.
     // Lifting a bundle's executable out breaks the executable and the bundle.
     // NARROWED TO THE SURFACE `--app` IS ON: `.zip` is an extension channel's
@@ -1101,7 +1106,7 @@ async function main() {
         'downstream check over an empty set.',
       );
     }
-    await refuseUnableNativeInstallers(stageRegister, found.map((f) => f.file), { surface: stageSurface, tag });
+    await refuseUnableNativeInstallers(stageRegister, found.map((f) => f.file), { surface: stageSurface, tag, refType });
 
     const staged = [];
     for (const { abs, file } of found) {
@@ -1424,7 +1429,7 @@ async function main() {
 
   die(
     'no mode given.',
-    'Usage: --stage <from> --out <dir> --app <id> --tag <tag> | --write <dir> --app <id> --tag <tag> --sha <sha>',
+    'Usage: --stage <from> --out <dir> --app <id> --tag <tag> --ref-type <tag|branch> | --write <dir> --app <id> --tag <tag> --sha <sha>',
     '       | --verify <dir> | --emit-assets <dir> | --emit-environments <dir> --app <id>',
     '       | --emit-release-json <dir> --app <id> --tag <tag> --sha <sha> --run-url <url> --notes-url <url>',
     '         --released-at <iso> --version <X.Y.Z[.N]> [--build <n>] [--surface app|extension]',
@@ -1779,7 +1784,9 @@ export function nativeAuthRefusals(register, files, { surface }) {
  * any refusal exits 1 before a single file moves. On the `<app>-untagged-<sha>`
  * ref a non-tag run synthesises, the same refusals print as "would refuse" and
  * the run goes on, so every scheduled and dispatched build still stages and
- * still shows what a release tag would stop.
+ * still shows what a release tag would stop. The kind comes from `refType`
+ * (`--ref-type`, github.ref_type), never from the string: a PUSHED tag in the
+ * untagged shape is a release and is refused (⏱ 2026-09-24).
  *
  * tag-owner.mjs is imported HERE, dynamically, and not at the top of this file:
  * assert-release-durable.mjs imports a fixture root's copy of this file, and
@@ -1787,14 +1794,14 @@ export function nativeAuthRefusals(register, files, { surface }) {
  * not in that fixture. The import runs on every `--stage`, refusals or none, so
  * an import that breaks fails the next run rather than the first release tag.
  */
-async function refuseUnableNativeInstallers(register, files, { surface, tag }) {
+async function refuseUnableNativeInstallers(register, files, { surface, tag, refType }) {
   const { releaseTagOf } = await import('./tag-owner.mjs');
-  const ref = releaseTagOf(tag);
+  const ref = releaseTagOf(tag, { refType });
   const refusals = nativeAuthRefusals(register, files, { surface });
   if (refusals.length === 0) return;
   if (ref.kind === 'untagged') {
     for (const r of refusals) console.error(`⚠ would refuse on a release tag: ${r.file} — ${r.why}`);
-    console.error(`  "${tag}" is the untagged ref a non-tag run synthesises, so they are staged here; a release tag stops before staging any of them.`);
+    console.error(`  "${tag}" is the untagged ref a non-tag run (ref type branch) synthesises, so they are staged here; a release tag stops before staging any of them.`);
     return;
   }
   for (const r of refusals) console.error(`✗ ${r.file} — ${r.why}`);

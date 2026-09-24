@@ -47,7 +47,7 @@
 //   node tooling/ci/assert-app-versioning.mjs [repoRoot]        # verify
 //   node tooling/ci/assert-app-versioning.mjs --emit apps/subscriptiontracker [repoRoot]
 //     → prints `release_line=…` / `pubspec_version=…` in GITHUB_OUTPUT form.
-//   node tooling/ci/assert-app-versioning.mjs --tag subscriptiontracker-v1.0.0 [--app apps/subscriptiontracker] [repoRoot]
+//   node tooling/ci/assert-app-versioning.mjs --tag subscriptiontracker-v1.0.0 --ref-type tag|branch [--app apps/subscriptiontracker] [repoRoot]
 //     → the tag names the build name pubspec declares. See the --tag block.
 //   node tooling/ci/assert-app-versioning.mjs --play-floor <run_number> --app subscriptiontracker [repoRoot]
 //     → the run number lies above the versionCode Play consumed. See the --play-floor block.
@@ -58,6 +58,7 @@ import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { listDir } from './tree-walk.mjs';
 import { parseWorkflow, parseAllWorkflows, flutterReleaseBuilds, gradeDomain, buildAt, shellSegments } from './workflow-scan.mjs';
+import { UNTAGGED_REF, releaseTagOf } from './tag-owner.mjs';
 
 // ── The release lanes are DERIVED FROM THE REGISTER, never typed here ─────────
 //
@@ -146,8 +147,9 @@ const emitFlag = takeFlag(args, '--emit');
 const tagFlag = takeFlag(emitFlag.rest, '--tag');
 const appFlag = takeFlag(tagFlag.rest, '--app');
 const playFlag = takeFlag(appFlag.rest, '--play-floor');
+const refTypeFlag = takeFlag(playFlag.rest, '--ref-type');
 const emitApp = emitFlag.value;
-const repoRoot = playFlag.rest[0] ?? process.cwd();
+const repoRoot = refTypeFlag.rest[0] ?? process.cwd();
 
 // 🔴 MODE COLLISION. MEASURED 2026-08-27: `--emit … --tag subscriptiontracker-v9.9.9` → 0; that tag alone → 1.
 if (emitApp !== null && tagFlag.value !== null) {
@@ -164,6 +166,20 @@ if (appFlag.value !== null && tagFlag.value === null && playFlag.value === null)
 }
 if (playFlag.value !== null && appFlag.value === null) {
   console.error('✗ --play-floor was passed without --app — the consumed versionCode is recorded per app, so there is no mark to compare against');
+  process.exit(2);
+}
+// ⏱ 2026-09-24 — `--tag` takes the ref TYPE the workflow read from github.ref_type. The
+// string alone cannot say "untagged": a pushed tag can carry the synthesised shape.
+if (tagFlag.value !== null && refTypeFlag.value === null) {
+  console.error('✗ --tag was passed without --ref-type — whether the tag is the untagged value a non-tag run synthesises is the ref TYPE\'s answer (github.ref_type), never the string\'s; pass --ref-type tag|branch');
+  process.exit(2);
+}
+if (refTypeFlag.value !== null && tagFlag.value === null) {
+  console.error('✗ --ref-type was passed without --tag — it would be silently dropped and a different check report ok');
+  process.exit(2);
+}
+if (refTypeFlag.value !== null && refTypeFlag.value !== 'tag' && refTypeFlag.value !== 'branch') {
+  console.error(`✗ --ref-type must be tag or branch, got ${JSON.stringify(refTypeFlag.value)} — those are the two values github.ref_type takes`);
   process.exit(2);
 }
 
@@ -219,11 +235,12 @@ if (emitApp) {
 
 // ── --tag: the tag must name the version the app declares ────────────────────
 //
-// THE HOLE. `RELEASE_TAG` comes straight from `github.ref_name`
-// (build-platforms.yml:380-384, `TAG="$REF_NAME"` at :381) with nothing validating it,
-// then renames every staged installer and titles the Release. Tag `subscriptiontracker-v9.9.9`
-// today and the lane publishes `subscriptiontracker-v9.9.9-app-release.aab` whose build name
-// is whatever pubspec says. The tag is the one claim a downloader reads BEFORE
+// THE HOLE. `RELEASE_TAG` comes straight from `github.ref_name` (build-platforms.yml
+// step "Stage the installers and archive the rest", `TAG="$REF_NAME"` on a tag ref)
+// with nothing validating it, then renames every staged installer and titles the
+// Release. Tag `subscriptiontracker-v9.9.9` today and the lane publishes
+// `subscriptiontracker-v9.9.9-app-release.aab` whose build name is whatever
+// pubspec says. The tag is the one claim a downloader reads BEFORE
 // opening the file, and nothing cross-read it; the requirement existed in prose
 // only, at tooling/release/RELEASE-RUNBOOK.md:264.
 //
@@ -238,16 +255,40 @@ if (emitApp) {
 //
 // 🔴 THE SKIP IS THE DANGEROUS HALF, SO IT IS THE NARROW HALF. No tag has ever
 // been pushed here (`git tag` → 0, measured 2026-08-27). The value a non-tag run
-// synthesises is `${APP}-untagged-<sha7>` (build-platforms.yml:383); that
-// exact shape is a no-op, so anything that is not the untagged shape must
-// resolve to an `X.Y.Z` or FAIL.
-const UNTAGGED_REF = /^[A-Za-z0-9._-]+-untagged-[0-9a-f]{7,40}$/;
-
+// synthesises is `${APP}-untagged-<sha7>` (build-platforms.yml step "Stage the
+// installers and archive the rest"). ⏱ 2026-09-24: the skip is keyed on
+// `--ref-type`, the github.ref_type the workflow passes, never on the string.
+// `subscriptiontracker-v1-untagged-abc1234` matches the app trigger AND
+// UNTAGGED_REF, and a string-keyed skip let that PUSHED tag through as
+// "claims no version". Now:
+//   · `--ref-type branch` + the synthesised shape ⇒ the no-op, and only there;
+//   · `--ref-type tag` + the synthesised shape    ⇒ FAIL, a pushed tag in that shape;
+//   · `--ref-type branch` + anything else         ⇒ FAIL, a non-tag run is handed
+//     only the synthesised value;
+//   · `--ref-type tag` + anything else            ⇒ must resolve to `X.Y.Z` or FAIL.
+// UNTAGGED_REF and the split are tag-owner.mjs's, imported, so the job gate, this
+// check and `release-manifest.mjs --stage` read one grammar.
 if (tagFlag.value !== null) {
   const tag = tagFlag.value;
-  if (UNTAGGED_REF.test(tag)) {
-    console.log(`⬜ "${tag}" is the <app>-untagged-<sha> value a NON-tag run synthesises — it claims no version, so there is nothing to compare`);
+  const refType = refTypeFlag.value;
+  const ref = releaseTagOf(tag, { refType });
+  if (ref.kind === 'untagged') {
+    console.log(`⬜ "${tag}" is the <app>-untagged-<sha> value a NON-tag run synthesises (--ref-type branch) — it claims no version, so there is nothing to compare`);
     process.exit(0);
+  }
+  if (refType === 'tag' && UNTAGGED_REF.test(tag)) {
+    console.error(
+      `✗ tag "${tag}" is a pushed tag with the synthesised untagged shape (<app>-untagged-<sha>) — on a tag ref it` +
+        ' claims no checkable version, and a release reading it by its string would stage it as untagged; retag with `<app>-v<X.Y.Z>`',
+    );
+    process.exit(1);
+  }
+  if (refType === 'branch') {
+    console.error(
+      `✗ "${tag}" on --ref-type branch: a non-tag run is handed only the synthesised value <app>-untagged-<sha>,` +
+        ' so anything else means the workflow passed the wrong ref or the wrong ref type',
+    );
+    process.exit(1);
   }
   const m = /^(.+)-v(.+)$/.exec(tag);
   if (!m) {

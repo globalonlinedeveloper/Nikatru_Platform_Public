@@ -35,9 +35,11 @@
 //                                the JOB GATE. A workflow_dispatch on a tag ref
 //                                never passes through a tag filter, so the lane
 //                                asks this, and it exits 1 unless <wf> owns <t>.
-//                                The `<app>-untagged-<sha>` value a non-tag run
-//                                synthesises is a no-op (exit 0), exactly as in
-//                                assert-app-versioning.mjs.
+//                                It runs only on a tag ref, so a <t> in the
+//                                `<app>-untagged-<sha>` shape a non-tag run
+//                                synthesises is a PUSHED tag, and it is refused
+//                                (exit 1): read by its string, the release would
+//                                stage it as untagged (⏱ 2026-09-24).
 //
 // Exit codes: 0 green; 1 a finding; 2 COVERAGE LOST — a register that could not
 // be read, no product at all, or no lane at all. A derivation over an empty set
@@ -72,7 +74,9 @@ export const TAG_SHAPES = {
   },
 };
 
-/** The non-tag value build-platforms.yml synthesises; the same shape assert-app-versioning.mjs skips. */
+/** The non-tag value build-platforms.yml synthesises. Its SHAPE never decides a ref's kind (see
+ *  releaseTagOf): the job gate refuses it on the tag ref it runs on, and assert-app-versioning.mjs
+ *  imports it to skip it on a branch ref only. */
 export const UNTAGGED_REF = /^[A-Za-z0-9._-]+-untagged-[0-9a-f]{7,40}$/;
 
 /** A slug that can be written into a filter as a literal: no filter metacharacter can reach it. */
@@ -311,27 +315,37 @@ export function checkFindings(root, d) {
 }
 
 /**
- * What kind of ref a release run was handed, read with THIS file's grammar:
- *   · `untagged` — the `<app>-untagged-<sha>` value a non-tag run synthesises
- *                  (UNTAGGED_REF); `slug` is the part before `-untagged-`.
- *   · `release`  — `<slug>-v<version>`, split at the LAST `-v`, the same split
- *                  assert-app-versioning.mjs makes.
- *   · `invalid`  — anything else, an empty string included. A caller that gates
- *                  a release treats it as a release: an unreadable ref fails
- *                  closed, never open.
+ * What kind of ref a release run was handed. The KIND comes from `refType`, the
+ * ref type the workflow read from `github.ref_type`; the string is only split,
+ * never read for its kind. ⏱ 2026-09-24: the kind used to come from the string,
+ * and a pushed tag `subscriptiontracker-v1-untagged-abc1234` matches the app
+ * trigger AND UNTAGGED_REF, so it was staged as untagged and published.
+ *   · `release`  — `refType === 'tag'` and `<slug>-v<version>`, split at the LAST
+ *                  `-v`, the same split assert-app-versioning.mjs makes. A tag
+ *                  in the untagged shape is a release here, never `untagged`.
+ *   · `untagged` — `refType === 'branch'` and the `<app>-untagged-<sha>` value a
+ *                  non-tag run synthesises (UNTAGGED_REF); `slug` is the part
+ *                  before `-untagged-`.
+ *   · `invalid`  — anything else: an empty string, a tag with no `-v`, a branch
+ *                  value not in the synthesised shape, and any other `refType`,
+ *                  a missing one included. A caller that gates a release treats
+ *                  it as a release: an unreadable ref fails closed, never open.
  * Returns `{ kind, slug, version }`; `slug` and `version` are null where the
  * kind has none. Its caller is release-manifest.mjs `--stage`, which refuses a
  * native installer on a release ref while no row that installer serves can sign
  * in (O-BOXA-CAPTCHA-REFUSES-NATIVE-SIGN-IN), and only warns on an untagged one.
  */
-export function releaseTagOf(tag) {
-  if (typeof tag !== 'string' || tag === '') return { kind: 'invalid', slug: null, version: null };
-  if (UNTAGGED_REF.test(tag)) {
+export function releaseTagOf(tag, { refType } = {}) {
+  const invalid = { kind: 'invalid', slug: null, version: null };
+  if (typeof tag !== 'string' || tag === '') return invalid;
+  if (refType === 'tag') {
+    const m = /^(.+)-v(.+)$/.exec(tag);
+    return m ? { kind: 'release', slug: m[1], version: m[2] } : invalid;
+  }
+  if (refType === 'branch' && UNTAGGED_REF.test(tag)) {
     return { kind: 'untagged', slug: tag.slice(0, tag.lastIndexOf('-untagged-')), version: null };
   }
-  const m = /^(.+)-v(.+)$/.exec(tag);
-  if (m) return { kind: 'release', slug: m[1], version: m[2] };
-  return { kind: 'invalid', slug: null, version: null };
+  return invalid;
 }
 
 // ── CLI ──────────────────────────────────────────────────────────────────────
@@ -358,8 +372,8 @@ function main(argv) {
       process.exit(1);
     }
     if (UNTAGGED_REF.test(tag)) {
-      console.log(`⬜ "${tag}" is the <app>-untagged-<sha> value a NON-tag run synthesises — it names no product, so there is no owner to check`);
-      process.exit(0);
+      console.error(`✗ "${tag}" has the <app>-untagged-<sha> shape a NON-tag run synthesises, but this gate runs only on a tag ref (build-platforms.yml "This lane owns the tag" is gated on github.ref_type == 'tag'): a pushed tag in that shape would be staged as untagged, so it is refused`);
+      process.exit(1);
     }
     const d = derive(root);
     if (d.lost.length) coverageLost(d.lost);

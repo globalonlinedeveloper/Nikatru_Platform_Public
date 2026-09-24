@@ -65,7 +65,8 @@ jobs:
         if: github.ref_type == 'tag'
         env:
           REF_NAME: ${{ github.ref_name }}
-        run: node tooling/ci/assert-app-versioning.mjs --tag "$REF_NAME"
+          REF_TYPE: ${{ github.ref_type }}
+        run: node tooling/ci/assert-app-versioning.mjs --tag "$REF_NAME" --ref-type "$REF_TYPE"
       # why: DERIVED, NOT LISTED. A hand-written app list here is a second copy of the
       # workspace, and the copy is the one that rots.
       - name: The matrix comes from the workspace, never from this file
@@ -1076,13 +1077,14 @@ jobs:
           # `--stage` renames every one of them after $TAG. `set -euo pipefail`
           # above is what makes a non-zero exit fail the job.
           # UNCONDITIONAL on purpose — on a non-tag run $TAG is the
-          # `<app>-untagged-<sha>` value synthesised two lines up, which the guard
-          # treats as a no-op, so every dispatch and every scheduled run still
-          # exercises the parse and proves the code loads. Gating this on
+          # `<app>-untagged-<sha>` value synthesised above, which the guard treats
+          # as a no-op ONLY with --ref-type branch (a pushed tag in that shape is
+          # refused), so every dispatch and every scheduled run still exercises
+          # the parse and proves the code loads. Gating this on
           # `ref_type == 'tag'` would leave it dead until the first real release.
-          node tooling/ci/assert-app-versioning.mjs --tag "$TAG"
+          node tooling/ci/assert-app-versioning.mjs --tag "$TAG" --ref-type "$REF_TYPE"
           mkdir -p dist
-          node tooling/ci/release-manifest.mjs --stage downloads --out dist --app "$APP" --tag "$TAG"
+          node tooling/ci/release-manifest.mjs --stage downloads --out dist --app "$APP" --tag "$TAG" --ref-type "$REF_TYPE"
           for d in downloads/*/; do
             [ -d "$d" ] || continue
             n="$(basename "$d")"

@@ -1160,6 +1160,26 @@ is `served` while its `nativeAuth` is false. The row stays open, and a row
 flips to `nativeAuth: true` only on observed evidence of a native build
 signing in.
 
+⏱ 2026-09-24, later (cloud-review #910 findings 1 and 4) — the line above
+names one of THREE refusals; `nativeAuthRefusals` in
+tooling/ci/release-manifest.mjs makes all three, and on a release tag each
+one stops the stage before anything moves: (1) the native build of a row
+whose `nativeAuth` is not true; (2) a file no native row on the surface
+claims, by format or by platform, since no row vouches that it can sign
+anybody in; (3) every file on a surface that declares no boolean
+`flutterApp`, since whether it is a native build cannot be decided.
+The release / untagged split beside "On the `<app>-untagged-<sha>` value a
+non-tag run synthesises" above now comes from `--ref-type`, the
+`github.ref_type` this step passes as `REF_TYPE`, and never from the tag
+string: only `--ref-type branch` with the synthesised value is untagged.
+A PUSHED tag in the untagged shape (`subscriptiontracker-v1-untagged-abc1234`
+matches this lane's `subscriptiontracker-v*` trigger) is a release, so
+`--stage` refuses it like any other, `assert-app-versioning.mjs --tag
+… --ref-type tag` refuses it, and so does the job gate in `prepare`
+(`tag-owner.mjs --lane`), which runs only on a tag ref. `--ref-type` is
+required on both `--tag` and `--stage`, never defaulted: a default would be
+the same guess from the string.
+
 Expressions go through `env:` rather than into the shell body: a ref name
 is attacker-influenced text and `${{ }}` in a `run:` is substituted before
 bash ever sees it. [zizmor template-injection]
