@@ -2842,7 +2842,7 @@ Future<void> _signOut(BuildContext context, WidgetRef ref, AppLocalizations l10n
     settingsExtra = '',
   } = {}) => ({
     'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/state/providers.dart':
-      `const String kPrivacyPolicyVersion = '2026-07-26';\n${reminders}${review}${packLoader}${packLoad}${promoDecl}${forget}`,
+      `const String kPrivacyPolicyVersion = '2026-07-26';\nclass ReviewPromptController extends Notifier<core.ReviewGateState> {}\n${reminders}${review}${packLoader}${packLoad}${promoDecl}${forget}`,
     'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/settings/settings_screen.dart':
       toggle + signOutTile + signOutHandler + settingsExtra,
     'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/state/money_providers.dart': money,
@@ -2866,7 +2866,22 @@ Future<void> _signOut(BuildContext context, WidgetRef ref, AppLocalizations l10n
   // that supplies a value nothing reads is as broken as an app reading a value
   // nothing supplies.
   const DEPLOY_WITH_DSN = 'run: flutter build web --release --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}\n';
-  const MAIN_READS_DSN = "final dsn = String.fromEnvironment('GLITCHTIP_DSN');\n";
+  const MAIN_READS_DSN = "Future<void> main() async {\n  final dsn = String.fromEnvironment('GLITCHTIP_DSN');\n}\n";
+  // ⏱ 2026-09-24 · O-GUARDS-READ-A-HAND-LISTED-APP-SET. The guard grades every
+  // app in the workspace set, finding each per-app seam by symbol, so every tree
+  // carries the set and app #1's review/auth spines in app #1's layout.
+  /** The brick's located spine exists and no longer calls: the per-root form of
+   *  "nothing calls it" once more than one root is graded. */
+  const BRICK_SPINE_SILENT = (id) =>
+    new RegExp(`${id} — the one permitted call site tooling\\/bricks\\/app\\/__brick__\\/apps\\/\\{\\{app_id\\}\\}\\/lib\\/state\\/providers\\.dart no longer calls it`);
+  const APP1_SEAMS = {
+    'pubspec.yaml': 'workspace:\n  - packages/core\n  - apps/subscriptiontracker\n',
+    'apps/subscriptiontracker/lib/state/providers/review.dart':
+      'class ReviewPromptController extends Notifier<core.ReviewGateState> {\n' +
+      '  Future<void> maybeAsk() async { await prompter.requestReview(); }\n}\n',
+    'apps/subscriptiontracker/lib/state/providers/auth.dart':
+      'Future<void> signOutAndForgetUser(WidgetRef ref) async {\n  await auth.signOut();\n}\n',
+  };
 
   // 🔴 THE SUPPLIER SIDE IS DERIVED FROM tooling/channel-register.json SINCE
   // 2026-08-02 ([pipeline 11]E-7 residue), so these fixtures now have to model a
@@ -2919,6 +2934,7 @@ Future<void> main() async {
       secureStore: FlutterSecureStore(),
     );
   }
+  final dsn = String.fromEnvironment('GLITCHTIP_DSN');
 }
 `;
 
@@ -2960,6 +2976,7 @@ Future<void> main() async {
     } = {},
   ) =>
     fixture(name, {
+      ...APP1_SEAMS,
       ...filler(fillerCount),
       ...PACK_FILES,
       ...brickFiles({
@@ -3035,7 +3052,7 @@ Future<void> main() async {
   test('FAILS when the app stops reading the DSN the deploy supplies', () => {
     // The other end of the pipe. Checking only the workflow would keep passing.
     const { code, out } = run('assert-seams-wired.mjs', {
-      cwd: build('seams-dsn-unread', { mainDart: '// telemetry removed\n' }),
+      cwd: build('seams-dsn-unread', { mainDart: 'Future<void> main() async {}\n// telemetry removed\n' }),
     });
     assert.equal(code, 1);
     assert.match(out, /no longer reads/);
@@ -3147,6 +3164,23 @@ Future<void> main() async {
       cwd: build('seams-review-none', { review: '// the prompt is asked nowhere\n' }),
     });
     assert.equal(code, 1);
+    // ⏱ 2026-09-24 · app #1 is in the set with its own spine, so the brick losing
+    // its caller is the brick's LOCATED spine no longer calling, named per root.
+    assert.match(out, BRICK_SPINE_SILENT('review_prompt'));
+  });
+
+  // ⏱ 2026-09-24 · …and the case the per-root message above cannot reach: NO
+  // app in the set calls it. The brick's caller is gone AND app #1's spine still
+  // declares the controller but no longer asks, so zero callers remain anywhere.
+  test('FAILS when NO app in the set calls it — the brick and app #1 both silent', () => {
+    const dir = build('seams-review-none-anywhere', { review: '// the prompt is asked nowhere\n' });
+    writeFileSync(
+      join(dir, 'apps/subscriptiontracker/lib/state/providers/review.dart'),
+      'class ReviewPromptController extends Notifier<core.ReviewGateState> {\n' +
+        '  Future<void> maybeAsk() async {}\n}\n',
+    );
+    const { code, out } = run('assert-seams-wired.mjs', { cwd: dir });
+    assert.equal(code, 1, out);
     assert.match(out, /review_prompt — NOTHING calls it/);
   });
 
@@ -3158,7 +3192,7 @@ Future<void> main() async {
       }),
     });
     assert.equal(commented.code, 1, 'a call behind a comment marker is not a call');
-    assert.match(commented.out, /review_prompt — NOTHING calls it/);
+    assert.match(commented.out, BRICK_SPINE_SILENT('review_prompt'));
 
     // …and the same edit against an OLDER limb, because the fix was to the
     // shared matcher rather than to the new rule.
@@ -3183,7 +3217,7 @@ Future<void> main() async {
       }),
     });
     assert.equal(code, 1);
-    assert.match(out, /review_prompt — NOTHING calls it/);
+    assert.match(out, BRICK_SPINE_SILENT('review_prompt'));
   });
 
   test('FAILS when the permitted caller MOVES without the allowlist moving', () => {
@@ -3330,6 +3364,7 @@ Future<void> main() async {
   // guard still printed ok, held up entirely by a throwaway stamp.
   test('a gitignored apps/probe stamp does NOT count as a caller', () => {
     const dir = fixture('seams-probe-only', {
+      ...APP1_SEAMS,
       ...filler(14),
       ...PACK_FILES,
       ...brickFiles(),
@@ -3405,6 +3440,7 @@ Future<void> main() async {
   // discriminating and the rail can go dark with CI green.
   test('a DECLARATION alone does not count as a caller', () => {
     const dir = fixture('seams-decl-only', {
+      ...APP1_SEAMS,
       ...filler(14),
       ...PACK_FILES,
       ...brickFiles(),
@@ -3431,6 +3467,7 @@ Future<void> main() async {
 
   test('FAILS when privacy.html carries no version at all', () => {
     const dir = fixture('seams-noversion', {
+      ...APP1_SEAMS,
       ...filler(14),
       ...PACK_FILES,
       ...brickFiles(),
@@ -3627,7 +3664,7 @@ Future<void> main() async {
       }),
     });
     assert.equal(code, 1);
-    assert.match(out, /session_end — NOTHING calls it/);
+    assert.match(out, BRICK_SPINE_SILENT('session_end'));
   });
 
   // The self-check. A guard whose scan silently stops reaching the tree would
@@ -3688,6 +3725,7 @@ class Ed25519PackVerifier implements PackVerifier {
     'final r = await ref.watch(contentPackLoaderProvider).load(expectPackId: AppConfig.appId, remote: s);\n';
   const brickProviders = ({ packLoader = PACK_LOADER_CONSTRUCTED, packLoad = PACK_ASKED_FOR } = {}) =>
     "const String kPrivacyPolicyVersion = '2026-07-26';\n" +
+    'class ReviewPromptController extends Notifier<core.ReviewGateState> {}\n' +
     'Future<bool> applyReminderChoice({required bool on}) async {\n' +
     '  await svc.init();\n' +
     '  await svc.scheduleDaily(core.DailyReminder(id: 1));\n' +
@@ -3720,6 +3758,16 @@ class Ed25519PackVerifier implements PackVerifier {
     packLoader +
     packLoad;
 
+  // ⏱ 2026-09-24 · the app set and app #1's review/auth spines, as in the
+  // describe above: the guard grades every app in the set by symbol.
+  const APP1_SEAMS_PV = {
+    'pubspec.yaml': 'workspace:\n  - packages/core\n  - apps/subscriptiontracker\n',
+    'apps/subscriptiontracker/lib/state/providers/review.dart':
+      'class ReviewPromptController extends Notifier<core.ReviewGateState> {\n' +
+      '  Future<void> maybeAsk() async { await prompter.requestReview(); }\n}\n',
+    'apps/subscriptiontracker/lib/state/providers/auth.dart':
+      'Future<void> signOutAndForgetUser(WidgetRef ref) async {\n  await auth.signOut();\n}\n',
+  };
   const consentOk = {
     'tooling/channel-register.json': JSON.stringify({
       surfaces: { app: { flutterApp: true }, extension: { flutterApp: false } },
@@ -3739,7 +3787,8 @@ class Ed25519PackVerifier implements PackVerifier {
     '.github/workflows/build-platforms.yml':
       `name: f\njobs:\n${laneJob('linux_web_android')}${laneJob('windows')}`,
     '.github/workflows/submit-snap.yml': `name: f\njobs:\n${laneJob('dry-run')}`,
-    'apps/subscriptiontracker/lib/main.dart': "final dsn = String.fromEnvironment('GLITCHTIP_DSN');\n",
+    ...APP1_SEAMS_PV,
+    'apps/subscriptiontracker/lib/main.dart': "Future<void> main() async {\n  final dsn = String.fromEnvironment('GLITCHTIP_DSN');\n}\n",
     // [pipeline 11]E-10 — another seam that must stay satisfied so these tests
     // isolate the verifier rather than failing for an unrelated reason.
     'packages/telemetry/lib/src/telemetry_bootstrap.dart':
@@ -3770,7 +3819,9 @@ class Ed25519PackVerifier implements PackVerifier {
       'Future<void> _signOut(BuildContext context, WidgetRef ref, AppLocalizations l10n) async {\n' +
       '  await signOutAndForgetUser(ref);\n}\n',
     'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/main.dart':
-      'await initNikatruAuth(url: u, publishableKey: k, secureStore: FlutterSecureStore());\n',
+      'Future<void> main() async {\n' +
+      '  await initNikatruAuth(url: u, publishableKey: k, secureStore: FlutterSecureStore());\n' +
+      "  final dsn = String.fromEnvironment('GLITCHTIP_DSN');\n}\n",
     // …and the ENTITLEMENTS seam ([pipeline 5]M-5, wired 2026-08-01), whose
     // three needs are all scoped to the brick: the fetch, the gate that reads
     // its answer, and the checkout the gate can be got past.

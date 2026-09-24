@@ -92,6 +92,7 @@ final FutureProvider<core.ContentPack?> contentPackProvider =
 `;
 
   const brickProviders = `const String kPrivacyPolicyVersion = '2026-07-26';
+class ReviewPromptController extends Notifier<core.ReviewGateState> {}
 Future<bool> applyReminderChoice({required bool on}) async {
   await svc.init();
   await svc.scheduleDaily(core.DailyReminder(id: kDailyReminderId));
@@ -166,6 +167,15 @@ Future<void> _signOut(BuildContext context, WidgetRef ref, AppLocalizations l10n
     2,
   );
 
+  // App #1's per-app seams, in app #1's layout. The guard finds each by the
+  // symbol it declares (REVIEW_SEAM, SESSION_END_SEAM, ENTRY_SEAM).
+  const APP1_REVIEW =
+    'class ReviewPromptController extends Notifier<core.ReviewGateState> {\n' +
+    '  Future<void> maybeAsk() async { await prompter.requestReview(); }\n}\n';
+  const APP1_AUTH =
+    'Future<void> signOutAndForgetUser(WidgetRef ref) async {\n  await auth.signOut();\n}\n';
+  const APP1_MAIN = "Future<void> main() async {\n  final dsn = String.fromEnvironment('GLITCHTIP_DSN');\n}\n";
+
   /**
    * @param homeExtra   appended to the brick's home screen — the CHASSIS consumer slot.
    * @param subscriptiontracker       an extra apps/subscriptiontracker lib file — a consumer OUTSIDE the chassis.
@@ -174,7 +184,14 @@ Future<void> _signOut(BuildContext context, WidgetRef ref, AppLocalizations l10n
    */
   const build = (
     name,
-    { homeExtra = '', subscriptiontracker = null, brickTest = null, wrangler = null, keys = '' } = {},
+    {
+      homeExtra = '',
+      subscriptiontracker = null,
+      brickTest = null,
+      wrangler = null,
+      keys = '',
+      workspace = ['packages/core', 'apps/subscriptiontracker'],
+    } = {},
   ) => {
     const files = {};
     // 14 filler files: the guard fails COVERAGE LOST below 12 scanned dart files,
@@ -216,8 +233,15 @@ Future<void> main() async {
     publishableKey: AppConfig.supabaseAnonKey,
     secureStore: FlutterSecureStore(),
   );
+  final dsn = String.fromEnvironment('GLITCHTIP_DSN');
 }
 `,
+      // ⏱ 2026-09-24 · the app set, and app #1's own per-app seams in app #1's
+      // layout (review and auth split out of providers.dart), which the guard
+      // now finds by symbol rather than by path.
+      'pubspec.yaml': `workspace:\n${workspace.map((w) => `  - ${w}\n`).join('')}`,
+      'apps/subscriptiontracker/lib/state/providers/review.dart': APP1_REVIEW,
+      'apps/subscriptiontracker/lib/state/providers/auth.dart': APP1_AUTH,
       'apps/subscriptiontracker/lib/state/analytics_providers.dart': `
 final x = () async {
   await controller.record(
@@ -237,7 +261,7 @@ const String kPrivacyPolicyVersion = '2026-07-26';
 `,
       'apps/subscriptiontracker/lib/features/consent/consent_prompt.dart':
         'onPressed: () => recordAnalyticsConsent(ref, granted: true),',
-      'apps/subscriptiontracker/lib/main.dart': "final dsn = String.fromEnvironment('GLITCHTIP_DSN');\n",
+      'apps/subscriptiontracker/lib/main.dart': APP1_MAIN,
       'packages/telemetry/lib/src/telemetry_bootstrap.dart':
         'options.enableAutoSessionTracking = false;\n',
       'sites/nikatru/privacy.html': '<p class="updated" data-policy-version="2026-07-26">x</p>',
@@ -553,6 +577,80 @@ const String kPrivacyPolicyVersion = '2026-07-26';
       );
       assert.equal(code, 1, out);
       assert.match(out, /the sign-out CONTROL routed through that awaited handler NOT FOUND/);
+    });
+  });
+
+  // ── ⏱ 2026-09-24 · EVERY APP IN THE WORKSPACE, FOUND BY SYMBOL ─────────────
+  // O-GUARDS-READ-A-HAND-LISTED-APP-SET, red controls RC2-RC4. App 2 is stamped
+  // in the BRICK's layout (one lib/state/providers.dart, no providers/review.dart),
+  // which is what every app the factory makes looks like. A guard that built
+  // app 2's paths from app #1's would find nothing there and either exit 2 on
+  // every stamped app or exempt it; this guard finds each seam by the symbol it
+  // declares.
+  describe('app set · a second app in the brick layout', () => {
+    const SCRATCH = 'apps/scratch';
+    const SCRATCH_MAIN =
+      "Future<void> main() async {\n  final dsn = String.fromEnvironment('GLITCHTIP_DSN');\n}\n";
+    /** RC2's tree: app #1, and `apps/scratch` stamped in the brick's layout. */
+    const twoApps = (name, { providers = brickProviders, extra = {} } = {}) => {
+      const dir = build(name, { workspace: ['packages/core', 'apps/subscriptiontracker', SCRATCH] });
+      const files = {
+        [`${SCRATCH}/lib/state/providers.dart`]: providers,
+        [`${SCRATCH}/lib/main.dart`]: SCRATCH_MAIN,
+        ...extra,
+      };
+      for (const [r, body] of Object.entries(files)) {
+        mkdirSync(dirname(join(dir, r)), { recursive: true });
+        writeFileSync(join(dir, r), body);
+      }
+      return dir;
+    };
+    const REVIEW_SEAM_TEXT =
+      'class ReviewPromptController extends Notifier<core.ReviewGateState> {}\n';
+    const REVIEW_CALL_TEXT =
+      'Future<void> maybeAsk() async {\n  if (decision.shouldAsk) {\n    await prompter.requestReview();\n  }\n}\n';
+
+    test('RC2 · two apps, the second in the brick layout: green, apps=2, and app 2 is READ', () => {
+      const { code, out } = run(twoApps('app2-green'));
+      assert.equal(code, 0, out);
+      assert.match(out, /assert-seams-wired: ok apps=2/);
+      // Read, not merely counted: app 2's own spine is on the allowlist line.
+      assert.match(out, /review_prompt — every caller is a permitted spine \([^)]*apps\/scratch\/lib\/state\/providers\.dart/);
+      assert.match(out, /entry point\(s\) read it \([^)]*apps\/scratch\/lib\/main\.dart/);
+    });
+
+    test('RC3 · app 2 with its review seam deleted is COVERAGE LOST, naming the app and the symbol', () => {
+      assert.ok(brickProviders.includes(REVIEW_SEAM_TEXT) && brickProviders.includes(REVIEW_CALL_TEXT));
+      const providers = brickProviders.replace(REVIEW_SEAM_TEXT, '').replace(REVIEW_CALL_TEXT, '');
+      const { code, out } = run(twoApps('app2-no-review', { providers }));
+      assert.equal(code, 2, out);
+      assert.match(out, /COVERAGE LOST — apps\/scratch: no file under apps\/scratch\/lib\/ declares `\\bclass\\s\+ReviewPromptController\\b`/);
+    });
+
+    test('RC4 · app 2 calling `.requestReview(` from a second file is a finding naming that file', () => {
+      const second = `${SCRATCH}/lib/features/settings/rate_us.dart`;
+      const { code, out } = run(
+        twoApps('app2-second-caller', { extra: { [second]: 'onPressed: () => ref.read(p).requestReview(),\n' } }),
+      );
+      assert.equal(code, 1, out);
+      assert.match(out, /review_prompt — 1 additional call site\(s\): apps\/scratch\/lib\/features\/settings\/rate_us\.dart/);
+    });
+
+    test('an apps/<dir> the workspace does not declare is not scanned — a dev-box stamp holds nothing up', () => {
+      // The second app's files are on disk, but the workspace lists app #1 only.
+      const dir = build('app2-undeclared');
+      const r = `${SCRATCH}/lib/features/settings/rate_us.dart`;
+      mkdirSync(dirname(join(dir, r)), { recursive: true });
+      writeFileSync(join(dir, r), 'onPressed: () => ref.read(p).requestReview(),\n');
+      const { code, out } = run(dir);
+      assert.equal(code, 0, out);
+      assert.match(out, /assert-seams-wired: ok apps=1/);
+    });
+
+    test('RC1 · a workspace with no apps/ member is COVERAGE LOST before any seam is graded', () => {
+      const { code, out } = run(build('app-set-empty', { workspace: ['packages/core'] }));
+      assert.equal(code, 2, out);
+      assert.match(out, /COVERAGE LOST — assert-seams-wired: .*pubspec\.yaml declares no `workspace:` entry under apps\//);
     });
   });
 

@@ -21,8 +21,14 @@ import { join, sep } from 'node:path';
 import { listDir } from './tree-walk.mjs';
 import { delegationOf as resolveChassisDelegation } from './chassis-delegation.mjs';
 import { partitionByFlutterApp, undeclaredSurfaceLine } from './channel-surface.mjs';
+import { requireAppSet } from './app-set.mjs';
 
 const repo = process.cwd();
+// ⏱ 2026-09-24 · O-GUARDS-READ-A-HAND-LISTED-APP-SET. Every per-app seam below
+// is graded for EACH app in the workspace set, and for the brick, found by the
+// symbol that app declares — never by app #1's paths, which the brick and every
+// app stamped from it do not share. An empty set is COVERAGE LOST (exit 2).
+const APP_SET = requireAppSet(repo, 'assert-seams-wired');
 const problems = [];
 const fail = (m) => { console.error(`FAIL ${m}`); problems.push(m); };
 const coverageLost = (m) => fail(`COVERAGE LOST — ${m}`); // exit 2 only if EVERY problem is one (summary below)
@@ -33,14 +39,25 @@ const ok = (m) => console.log(`ok   ${m}`);
 // a test is exactly the state this guard exists to reject.
 const SCAN_ROOTS = ['apps', 'tooling/bricks'];
 const SKIP_DIR = new Set(['build', '.dart_tool', 'node_modules', 'test', 'integration_test']);
-// 🔴 apps/probe is a GITIGNORED LOCAL STAMP — present on a dev box, never in a
-// fresh CI checkout. Scanning it makes this guard's answer depend on whether
-// somebody happened to run `mason make`, which is not a property of the
-// repository. Found 2026-08-01 while mutation-testing the secure_session seam:
-// with the call deleted from BOTH real call sites the guard still printed `ok`,
+// 🔴 A LOCAL STAMP THE WORKSPACE DOES NOT DECLARE IS NOT SCANNED. apps/probe
+// on a dev box is gitignored and absent from a fresh CI checkout, so counting it
+// makes this guard's answer depend on whether somebody happened to run `mason
+// make`. Found 2026-08-01 while mutation-testing the secure_session seam: with
+// the call deleted from BOTH real call sites the guard still printed `ok`,
 // satisfied entirely by a throwaway stamp — a caller check that cannot fail.
-// assert-package-boundaries.mjs already excludes it for the same reason.
-const SKIP_PATH = [join('apps', 'probe')];
+//
+// ⏱ 2026-09-24 · the skip is now "every apps/<dir> NOT in the workspace set",
+// not the literal `apps/probe`. The CI probe (ci.yml's app-brick job) stamps
+// apps/probe INTO the workspace, and a literal skip would have left the one
+// stamped app CI grades unread. A dev-box stamp that is not in the workspace is
+// still skipped, for the reason above.
+const IN_SET = new Set(APP_SET.map((a) => a.dir));
+const SKIP_PATH = listDirSafe(join(repo, 'apps'))
+  .filter((d) => !IN_SET.has(`apps/${d}`))
+  .map((d) => join('apps', d));
+function listDirSafe(dir) {
+  try { return listDir(dir); } catch { return []; }
+}
 
 function walk(dir, out = []) {
   let entries;
@@ -245,6 +262,58 @@ const hits = (re, declares, scope) =>
 // The template every stamped app is born from — the scope for anything the
 // CHASSIS must carry, as opposed to anything some app happens to do.
 const BRICK_APP = 'tooling/bricks/app/__brick__/apps/{{app_id}}';
+
+// ── LOCATORS: a per-app seam found by SYMBOL (⏱ 2026-09-24) ──────────────────
+// `{ symbol, under, what }`: the files under `<root>/<under>/` whose
+// comment-stripped code matches `symbol`. Graded for every app in the workspace
+// set and for the brick. The brick does not share app #1's layout (app #1 splits
+// its providers into lib/state/providers/*.dart; the brick keeps one
+// lib/state/providers.dart), so a path built from an app id finds nothing in any
+// stamped app, and that is why these are symbols.
+//   · zero files → COVERAGE LOST, naming the root, the symbol and `what`;
+//   · more than one → a finding: the seam is supposed to live in ONE place.
+const LOCATOR_ROOTS = [...APP_SET.map((a) => a.dir), BRICK_APP];
+function locate(loc) {
+  const found = new Map();
+  for (const root of LOCATOR_ROOTS) {
+    const prefix = `${root}/${loc.under}/`;
+    const files = [...bodies]
+      .filter(([f, src]) => rel(f).startsWith(prefix) && loc.symbol.test(src))
+      .map(([f]) => rel(f))
+      .sort();
+    if (files.length === 0) {
+      coverageLost(
+        `${root}: no file under ${prefix} declares \`${loc.symbol.source}\` — ${loc.what}. The seam is graded per ` +
+          'app by the symbol it declares, so an app without it is an app this guard cannot grade.',
+      );
+    } else if (files.length > 1) {
+      fail(`${root}: ${files.length} files declare \`${loc.symbol.source}\` (${files.join(', ')}) — ${loc.what} must live in one file.`);
+    } else {
+      found.set(root, files[0]);
+    }
+  }
+  return found;
+}
+const REVIEW_SEAM = {
+  symbol: /\bclass\s+ReviewPromptController\b/,
+  under: 'lib',
+  what: 'the review provider, the one file allowed to call `.requestReview(`',
+};
+const SESSION_END_SEAM = {
+  symbol: /\bFuture<void>\s+signOutAndForgetUser\s*\(/,
+  under: 'lib',
+  what: 'the sign-out spine, the one file allowed to call `.signOut(`',
+};
+const POLICY_SEAM = {
+  symbol: /\bconst\s+String\s+kPrivacyPolicyVersion\s*=/,
+  under: 'lib',
+  what: 'the privacy-policy version every consent artifact names',
+};
+const ENTRY_SEAM = {
+  symbol: /\b(?:Future<void>|void)\s+main\s*\(\s*\)/,
+  under: 'lib',
+  what: 'the entry point that must read GLITCHTIP_DSN',
+};
 
 // ── the seams ───────────────────────────────────────────────────────────────
 // REQUIRED_COVERAGE: every fail-closed seam this repo owns. `wired: false` means
@@ -692,10 +761,13 @@ const EXCLUSIVE_TRIGGERS = [
     // app's copy of that exact file. Any OTHER file calling it is still the
     // failure this trigger exists for. Every future in-repo stamped app
     // repeats this line; a call site outside a providers spine never gets one.
-    allowed: [
-      `${BRICK_APP}/lib/state/providers.dart`,
-      'apps/subscriptiontracker/lib/state/providers/review.dart',
-    ],
+    //
+    // ⏱ 2026-09-24 · the allowlist is no longer typed: it is, per app in the
+    // workspace set and for the brick, the ONE file that declares the review
+    // provider (REVIEW_SEAM). App #1 keeps it in lib/state/providers/review.dart
+    // and the brick in lib/state/providers.dart; a stamped app without it is
+    // COVERAGE LOST, not an app with no allowlist entry.
+    allowed: [...locate(REVIEW_SEAM).values()],
     why:
       'ReviewPromptController.maybeAsk is the only thing allowed to ask, because the decision belongs to ' +
       'ReviewGate and nothing else can know whether the quota is worth spending. iOS discards requests past ' +
@@ -726,10 +798,8 @@ const EXCLUSIVE_TRIGGERS = [
     // two call sites are deliberate: `signOutOnlyIfSessionIsGone` (the 401
     // handler, which must decide before it ends anything) and
     // `signOutAndForgetUser` (every user-facing control).
-    allowed: [
-      `${BRICK_APP}/lib/state/providers.dart`,
-      'apps/subscriptiontracker/lib/state/providers/auth.dart',
-    ],
+    // ⏱ 2026-09-24 · per app, the file that declares that spine (SESSION_END_SEAM).
+    allowed: [...locate(SESSION_END_SEAM).values()],
     why:
       'A session-ending control that calls signOut() directly skips `signOutAndForgetUser`, so the entitlement ' +
       'cache (honoured offline for up to seven days) and the notification schedule outlive the user — the next ' +
@@ -744,14 +814,10 @@ for (const t of EXCLUSIVE_TRIGGERS) {
   // is what a narrower scan would hide.
   const found = hits(t.re, undefined, undefined);
   const extra = found.filter((f) => !t.allowed.includes(f));
-  // An allowed file that EXISTS but no longer calls is a moved caller — fail.
-  // An allowed file that does not exist at all is a tree without that stamped
-  // app (every fixture, and any checkout before an app is stamped in-repo):
-  // the allowlist names where the call is PERMITTED, not trees it is owed to.
-  // The at-least-one clause below still refuses a tree with zero callers.
-  const missing = t.allowed.filter(
-    (a) => !found.includes(a) && existsSync(join(repo, a)),
-  );
+  // An allowed file that no longer calls is a moved caller — fail. Every
+  // allowed file was LOCATED by its declaration, so it exists; an app with no
+  // declaration was already COVERAGE LOST in locate().
+  const missing = t.allowed.filter((a) => !found.includes(a));
   if (found.length === 0) {
     // The at-least-one half. Without it, deleting the only caller turns this
     // check GREEN — an "at most one" rule is satisfied by zero, which is the
@@ -1095,11 +1161,11 @@ const POLICY_HTML = 'sites/nikatru/privacy.html';
 // wired into it — and a single-file check would have let the TEMPLATE drift
 // silently, so every app stamped afterwards would ship a consent artifact naming
 // a policy its users were never shown. A false compliance record is worse than
-// none. Add a file here the moment it declares the constant.
-const POLICY_CONSTS = [
-  'apps/subscriptiontracker/lib/state/analytics_providers.dart',
-  'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/state/providers.dart',
-];
+// none.
+// ⏱ 2026-09-24 · no longer typed: per app in the workspace set and for the
+// brick, the file that declares the constant (POLICY_SEAM). App #1 declares it
+// in lib/state/analytics_providers.dart, the brick in lib/state/providers.dart.
+const POLICY_CONSTS = [...locate(POLICY_SEAM).values()];
 try {
   const html = readFileSync(join(repo, POLICY_HTML), 'utf8');
   const published = html.match(/data-policy-version="([^"]+)"/)?.[1];
@@ -1187,7 +1253,9 @@ function jobBody(yaml, jobName) {
 // lane, rather than when somebody remembers this file exists.
 {
   const REGISTER = join(repo, 'tooling', 'channel-register.json');
-  const entry = join(repo, 'apps', 'subscriptiontracker', 'lib', 'main.dart');
+  // ⏱ 2026-09-24 · the consumer half is every app's entry point, and the
+  // brick's, found by symbol (ENTRY_SEAM) — no longer app #1's lib/main.dart alone.
+  const entries = locate(ENTRY_SEAM);
   /** Rows with a lane today. A DERIVED subject set can shrink to nothing — the
    *  register losing its `lane` keys would leave this loop iterating zero jobs
    *  and printing nothing at all — so the count is floored by what exists.
@@ -1247,16 +1315,19 @@ function jobBody(yaml, jobName) {
       `only ${lanes.length} channel row(s) declare a \`lane.workflow\` + \`lane.job\`, fewer than the ${MIN_LANES} that exist today. ` +
         'The crash-sink check quantifies over that set; a shrunken one certifies the remaining lanes and says nothing about the rest.',
     );
-  } else if (!existsSync(entry)) {
-    coverageLost('apps/subscriptiontracker/lib/main.dart is gone; the consumer half of the crash-sink check cannot be verified.');
+  } else if (entries.size === 0) {
+    coverageLost('no entry point was located in any app or the brick; the consumer half of the crash-sink check cannot be verified.');
   } else {
     // BOTH ENDS are asserted on purpose. Checking only the workflow would keep
     // passing if main.dart stopped reading the value, and checking only
     // main.dart would keep passing if every deploy stopped supplying it. Either
     // half alone is a check watching one end of a pipe.
-    const consumed = /String\.fromEnvironment\(\s*'GLITCHTIP_DSN'/.test(readFileSync(entry, 'utf8'));
-    if (!consumed) {
-      fail("apps/subscriptiontracker/lib/main.dart no longer reads String.fromEnvironment('GLITCHTIP_DSN') — the lanes would be supplying a value nothing consumes.");
+    let consumed = true;
+    for (const entry of entries.values()) {
+      if (!/String\.fromEnvironment\(\s*'GLITCHTIP_DSN'/.test(readFileSync(join(repo, entry), 'utf8'))) {
+        consumed = false;
+        fail(`${entry} no longer reads String.fromEnvironment('GLITCHTIP_DSN') — the lanes would be supplying a value nothing consumes.`);
+      }
     }
     let wired = 0;
     for (const lane of lanes) {
@@ -1294,7 +1365,7 @@ function jobBody(yaml, jobName) {
       wired++;
     }
     if (consumed && wired === lanes.length) {
-      ok(`crash sink wired — ${wired} artifact lane(s) supply GLITCHTIP_DSN (${lanes.map((l) => `${l.id}:${l.job}`).join(', ')}) and the app reads it`);
+      ok(`crash sink wired — ${wired} artifact lane(s) supply GLITCHTIP_DSN (${lanes.map((l) => `${l.id}:${l.job}`).join(', ')}) and ${entries.size} entry point(s) read it (${[...entries.values()].join(', ')})`);
     }
   }
 
@@ -1334,5 +1405,6 @@ if (problems.length) {
   console.error('\nassert-seams-wired: FAILED');
   process.exit(problems.every((p) => p.startsWith('COVERAGE LOST')) ? 2 : 1); // 2 = could not look (every problem is COVERAGE LOST); 1 = a finding
 } else {
-  console.log('\nassert-seams-wired: ok');
+  // apps=N is the workspace set's length, never the number of files found.
+  console.log(`\nassert-seams-wired: ok apps=${APP_SET.length}`);
 }
