@@ -919,3 +919,69 @@ describe('assert-app-versioning — Play versionCode high-water (static)', () =>
     assert.match(out, /no Play build source and no versionCode high-water record/);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// --play-floor. ⏱ ADDED 2026-09-23 (O-PLAY-VERSIONCODE-HIGH-WATER-UNRECORDED). The run
+// number a submit-play run actually gets, held above the recorded mark before the build.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-app-versioning — --play-floor', () => {
+  const REG = registerJson([
+    WEB_ROW,
+    {
+      id: 'android-play',
+      served: false,
+      versionCodeHighWater: {
+        consumed: { subscriptiontracker: { value: 1, asOf: '2026-09-22T21:59:37Z', verify: 'fixture', run: 1 } },
+        runNumberFloors: {},
+      },
+    },
+  ]);
+  const floorDir = (name, register = REG) => fixture(name, { 'tooling/channel-register.json': register });
+  const APP = ['--app', 'subscriptiontracker'];
+
+  test('FAILS a run number EQUAL to the mark: it would reuse a consumed versionCode (M5)', () => {
+    const { code, out } = run({ args: ['--play-floor', '1', ...APP, floorDir('pf-equal')] });
+    assert.equal(code, 1, out);
+    assert.match(out, /run_number 1 would become versionCode 1; Play has consumed 1 for subscriptiontracker/);
+  });
+
+  for (const n of ['2', '6']) {
+    test(`PASSES run number ${n}, above the mark (M5)`, () => {
+      const { code, out } = run({ args: ['--play-floor', n, ...APP, floorDir(`pf-above-${n}`)] });
+      assert.equal(code, 0, out);
+      assert.match(out, new RegExp(`ok  Play versionCode ${n} > consumed 1`));
+    });
+  }
+
+  test('refuses (2) a run number that is not digits (M5)', () => {
+    const { code, out } = run({ args: ['--play-floor', 'abc', ...APP, floorDir('pf-abc')] });
+    assert.equal(code, 2, out);
+    assert.match(out, /--play-floor "abc" is not a run number/);
+  });
+
+  test('refuses (2) --play-floor without --app (M5)', () => {
+    const { code, out } = run({ args: ['--play-floor', '6', floorDir('pf-no-app')] });
+    assert.equal(code, 2, out);
+    assert.match(out, /--play-floor was passed without --app/);
+  });
+
+  for (const [flag, value] of [['--emit', 'apps/x'], ['--tag', 'subscriptiontracker-v1.0.0']]) {
+    test(`refuses (2) --play-floor with ${flag} in one invocation (M5)`, () => {
+      const { code, out } = run({ args: ['--play-floor', '6', flag, value, ...APP, floorDir(`pf-with${flag}`)] });
+      assert.equal(code, 2, out);
+      assert.match(out, new RegExp(`--play-floor with ${flag} in one invocation`));
+    });
+  }
+
+  test('COVERAGE LOST (2) when the app has no consumed entry', () => {
+    const { code, out } = run({ args: ['--play-floor', '6', '--app', 'other', floorDir('pf-other')] });
+    assert.equal(code, 2, out);
+    assert.match(out, /consumed has no entry "other" \(it has: subscriptiontracker\)/);
+  });
+
+  test('COVERAGE LOST (2) when the register carries no high-water record', () => {
+    const { code, out } = run({ args: ['--play-floor', '6', ...APP, floorDir('pf-no-record', DEFAULT_REGISTER)] });
+    assert.equal(code, 2, out);
+    assert.match(out, /has no entry "subscriptiontracker" \(it has: no consumed object\)/);
+  });
+});
