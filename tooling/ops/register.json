@@ -3569,6 +3569,98 @@
       "expiryKnownAt": "Apple Developer -> Membership -> Expiration Date ($99/yr). Not yet enrolled. Console-only."
     },
     {
+      "id": "expiring.cert.apple-distribution",
+      "kind": "expiring",
+      "what": "The Apple DISTRIBUTION signing certificate: every iOS and macOS App Store build is signed with it, and both App Store profiles name it.",
+      "detector": "tooling/ops/check-apple-signing-expiry.mjs compares `expires` with App Store Connect and exits 1 on a differing date, a missing row, a 404 or a profile that is not ACTIVE; tooling/ci/assert-ops-register.mjs grades `expires` against `leadDays` on every CI run and prints it.",
+      "response": "Create a new DISTRIBUTION certificate before this date, re-set APPLE_DIST_CERT_P12_BASE64, re-mint the App Store profiles against it and re-set APPLE_PROVISIONING_PROFILES_BASE64, put the new ids in tooling/apple-provisioning.json, then cut a branch from main, dispatch apple-expiry-write.yml on it and open the pull request.",
+      "cadence": "180d",
+      "expires": "2027-09-09",
+      "leadDays": 45,
+      "mechanism": {
+        "substrate": "external-registry",
+        "anchor": "tooling/apple-provisioning.json",
+        "record": "App Store Connect `GET v1/certificates/{id}` -> `attributes.expirationDate`, for the id in tooling/apple-provisioning.json `protected.certificates` that answers certificateType DISTRIBUTION",
+        "failingValue": "`expires` inside 45 days or past; the register's date differing from Apple's; the id answering 404",
+        "readBy": "tooling/ops/check-apple-signing-expiry.mjs (with --write only from .github/workflows/apple-expiry-write.yml, dispatch-only and never on main); tooling/ci/assert-ops-register.mjs, which grades and prints the date"
+      },
+      "accessProviders": [
+        "apple"
+      ],
+      "ownerGated": false,
+      "source": "verified",
+      "expiryKnownAt": "App Store Connect `GET v1/certificates/ND3WDZ2B5K` -> `attributes.expirationDate` 2027-09-09T03:12:16.000+00:00; read by tooling/ops/check-apple-signing-expiry.mjs --write in apple-expiry-write.yml run 36067948334 at 2026-09-24T22:32:03.951Z. Written by the checker from the App Store Connect read; the next dispatch of apple-expiry-write.yml rewrites it."
+    },
+    {
+      "id": "expiring.cert.apple-installer",
+      "kind": "expiring",
+      "what": "The Apple MAC_INSTALLER_DISTRIBUTION certificate: the macOS App Store package is signed with it.",
+      "detector": "tooling/ops/check-apple-signing-expiry.mjs compares `expires` with App Store Connect and exits 1 on a differing date, a missing row, a 404 or a profile that is not ACTIVE; tooling/ci/assert-ops-register.mjs grades `expires` against `leadDays` on every CI run and prints it.",
+      "response": "Create a new MAC_INSTALLER_DISTRIBUTION certificate before this date, re-set APPLE_INSTALLER_CERT_P12_BASE64, put the new id in tooling/apple-provisioning.json, then cut a branch from main, dispatch apple-expiry-write.yml on it and open the pull request.",
+      "cadence": "180d",
+      "expires": "2027-09-09",
+      "leadDays": 45,
+      "mechanism": {
+        "substrate": "external-registry",
+        "anchor": "tooling/apple-provisioning.json",
+        "record": "App Store Connect `GET v1/certificates/{id}` -> `attributes.expirationDate`, for the id in tooling/apple-provisioning.json `protected.certificates` that answers certificateType MAC_INSTALLER_DISTRIBUTION",
+        "failingValue": "`expires` inside 45 days or past; the register's date differing from Apple's; the id answering 404",
+        "readBy": "tooling/ops/check-apple-signing-expiry.mjs (with --write only from .github/workflows/apple-expiry-write.yml, dispatch-only and never on main); tooling/ci/assert-ops-register.mjs, which grades and prints the date"
+      },
+      "accessProviders": [
+        "apple"
+      ],
+      "ownerGated": false,
+      "source": "verified",
+      "expiryKnownAt": "App Store Connect `GET v1/certificates/RDYD44LRCZ` -> `attributes.expirationDate` 2027-09-09T03:12:34.000+00:00; read by tooling/ops/check-apple-signing-expiry.mjs --write in apple-expiry-write.yml run 36067948334 at 2026-09-24T22:32:03.951Z. Written by the checker from the App Store Connect read; the next dispatch of apple-expiry-write.yml rewrites it."
+    },
+    {
+      "id": "expiring.profile.apple-appstore-ios",
+      "kind": "expiring",
+      "what": "The iOS App Store provisioning profile the release lane signs with (profileType IOS_APP_STORE). A profile can also turn INVALID before its date — adding a capability to the App ID does it — and the checker reports that too.",
+      "detector": "tooling/ops/check-apple-signing-expiry.mjs compares `expires` with App Store Connect and exits 1 on a differing date, a missing row, a 404 or a profile that is not ACTIVE; tooling/ci/assert-ops-register.mjs grades `expires` against `leadDays` on every CI run and prints it.",
+      "response": "Re-mint the profile (tooling/ops/provision-apple.mjs), re-set APPLE_PROVISIONING_PROFILES_BASE64, put the new id in tooling/apple-provisioning.json, then cut a branch from main, dispatch apple-expiry-write.yml on it and open the pull request.",
+      "cadence": "180d",
+      "expires": "2027-09-09",
+      "leadDays": 30,
+      "mechanism": {
+        "substrate": "external-registry",
+        "anchor": "tooling/apple-provisioning.json",
+        "record": "App Store Connect `GET v1/profiles/{id}` -> `attributes.expirationDate` and `attributes.profileState`, for the id in tooling/apple-provisioning.json `protected.profiles` that answers profileType IOS_APP_STORE",
+        "failingValue": "`expires` inside 30 days or past; the register's date differing from Apple's; the id answering 404; `profileState` other than ACTIVE",
+        "readBy": "tooling/ops/check-apple-signing-expiry.mjs (with --write only from .github/workflows/apple-expiry-write.yml, dispatch-only and never on main); tooling/ci/assert-ops-register.mjs, which grades and prints the date"
+      },
+      "accessProviders": [
+        "apple"
+      ],
+      "ownerGated": false,
+      "source": "verified",
+      "expiryKnownAt": "App Store Connect `GET v1/profiles/JWVU72A2N6` -> `attributes.expirationDate` 2027-09-09T03:12:16.000+00:00, profileState ACTIVE; read by tooling/ops/check-apple-signing-expiry.mjs --write in apple-expiry-write.yml run 36067948334 at 2026-09-24T22:32:03.951Z. Written by the checker from the App Store Connect read; the next dispatch of apple-expiry-write.yml rewrites it."
+    },
+    {
+      "id": "expiring.profile.apple-appstore-macos",
+      "kind": "expiring",
+      "what": "The macOS App Store provisioning profile the release lane signs with (profileType MAC_APP_STORE). A profile can also turn INVALID before its date — adding a capability to the App ID does it — and the checker reports that too.",
+      "detector": "tooling/ops/check-apple-signing-expiry.mjs compares `expires` with App Store Connect and exits 1 on a differing date, a missing row, a 404 or a profile that is not ACTIVE; tooling/ci/assert-ops-register.mjs grades `expires` against `leadDays` on every CI run and prints it.",
+      "response": "Re-mint the profile (tooling/ops/provision-apple.mjs), re-set APPLE_PROVISIONING_PROFILES_BASE64, put the new id in tooling/apple-provisioning.json, then cut a branch from main, dispatch apple-expiry-write.yml on it and open the pull request.",
+      "cadence": "180d",
+      "expires": "2027-09-09",
+      "leadDays": 30,
+      "mechanism": {
+        "substrate": "external-registry",
+        "anchor": "tooling/apple-provisioning.json",
+        "record": "App Store Connect `GET v1/profiles/{id}` -> `attributes.expirationDate` and `attributes.profileState`, for the id in tooling/apple-provisioning.json `protected.profiles` that answers profileType MAC_APP_STORE",
+        "failingValue": "`expires` inside 30 days or past; the register's date differing from Apple's; the id answering 404; `profileState` other than ACTIVE",
+        "readBy": "tooling/ops/check-apple-signing-expiry.mjs (with --write only from .github/workflows/apple-expiry-write.yml, dispatch-only and never on main); tooling/ci/assert-ops-register.mjs, which grades and prints the date"
+      },
+      "accessProviders": [
+        "apple"
+      ],
+      "ownerGated": false,
+      "source": "verified",
+      "expiryKnownAt": "App Store Connect `GET v1/profiles/26RV2N2Y4L` -> `attributes.expirationDate` 2027-09-09T03:12:16.000+00:00, profileState ACTIVE; read by tooling/ops/check-apple-signing-expiry.mjs --write in apple-expiry-write.yml run 36067948334 at 2026-09-24T22:32:03.951Z. Written by the checker from the App Store Connect read; the next dispatch of apple-expiry-write.yml rewrites it."
+    },
+    {
       "id": "expiring.store-enrolment.microsoft",
       "kind": "expiring",
       "what": "The Microsoft Partner Center developer account.",
