@@ -73,10 +73,14 @@ function tree({
   authDeps = '  flutter:\n    sdk: flutter\n  nikatru_core:\n    path: ../core\n  supabase_flutter: ^2.16.0\n',
   subscriptiontrackerImports = null,
   brickImports = "import 'package:flutter/material.dart';\n",
+  workspace = ['packages/core', 'apps/subscriptiontracker'],
   extra = {},
 } = {}) {
   const root = join(TMP, `r${seq++}`);
   const files = {};
+  // ⏱ 2026-09-24 · limb (c)'s app roots are the workspace app set
+  // (tooling/ci/app-set.mjs), so every tree declares one.
+  files[join(root, 'pubspec.yaml')] = `workspace:\n${workspace.map((w) => `  - ${w}\n`).join('')}`;
   const spec = (name, deps) =>
     `name: ${name}\npublish_to: none\nresolution: workspace\n\nenvironment:\n  sdk: ">=3.5.0 <4.0.0"\n\ndependencies:\n${deps}\ndev_dependencies:\n  lints: ^6.0.0\n`;
 
@@ -338,6 +342,41 @@ describe('assert-package-boundaries', () => {
       const { code, out } = run(root);
       assert.equal(code, 2, out);
       assert.match(out, /COVERAGE LOST — no app or brick lib\/ directory found/);
+    });
+  });
+
+  // ⏱ 2026-09-24 · O-GUARDS-READ-A-HAND-LISTED-APP-SET. The app roots are the
+  // workspace app set; the directory listing and its `probe` skip are retired.
+  describe('app set', () => {
+    test('RC5 · a KNOWN_BYPASSES key whose app is not in the set is a stale exemption (exit 1)', () => {
+      // The waived imports are still on disk under apps/subscriptiontracker, but the
+      // workspace no longer declares that app, so its waivers can never be seen.
+      const { code, out } = run(tree({ workspace: ['packages/core', 'apps/other'], extra: { 'apps/other/lib/main.dart': '\n' } }));
+      assert.equal(code, 1, out);
+      assert.match(out, /stale exemption — KNOWN_BYPASSES key `apps\/subscriptiontracker\|dio` names apps\/subscriptiontracker, which is not in the workspace app set/);
+    });
+
+    test('a stamped apps/probe IN the workspace is graded — the old `probe` skip hid it', () => {
+      const { code, out } = run(
+        tree({
+          workspace: ['packages/core', 'apps/subscriptiontracker', 'apps/probe'],
+          extra: { 'apps/probe/lib/main.dart': "import 'package:dio/dio.dart';\n" },
+        }),
+      );
+      assert.equal(code, 1, out);
+      assert.match(out, /apps\/probe imports `package:dio` directly/);
+    });
+
+    test('an apps/<dir> the workspace does not declare is not scanned, and the OK line counts the SET', () => {
+      const { code, out } = run(tree({ extra: { 'apps/probe/lib/main.dart': "import 'package:dio/dio.dart';\n" } }));
+      assert.equal(code, 0, out);
+      assert.match(out, /assert-package-boundaries: ok apps=1/);
+    });
+
+    test('RC1 · a workspace with no apps/ member is COVERAGE LOST', () => {
+      const { code, out } = run(tree({ workspace: ['packages/core'] }));
+      assert.equal(code, 2, out);
+      assert.match(out, /COVERAGE LOST — assert-package-boundaries: .*declares no `workspace:` entry under apps\//);
     });
   });
 });

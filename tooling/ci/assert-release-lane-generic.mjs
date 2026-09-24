@@ -140,6 +140,7 @@ import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
 import { parseAllWorkflows, WORKFLOW_DIR } from './workflow-scan.mjs';
 import { stripSourceComments } from './text-reductions.mjs';
+import { workspaceApps, emitApps } from './app-set.mjs';
 
 const argv = process.argv.slice(2);
 const EMIT_APPS = argv[0] === '--emit-apps';
@@ -154,22 +155,11 @@ const GATE_SCRIPT = 'tooling/ci/assert-gate-passed.mjs';
 // an unrelated limb lost its corpus. It fails LOUDLY on an empty answer, because
 // an empty matrix is a workflow that runs zero jobs and reports success — the
 // green-over-nothing shape this whole file exists to remove.
+// ⏱ 2026-09-24 — the reader and this mode's refusals MOVED to ./app-set.mjs
+// (O-GUARDS-READ-A-HAND-LISTED-APP-SET), byte-identical in output, so every guard
+// that grades "every app" reads the set the lanes iterate.
 if (EMIT_APPS) {
-  const found = workspaceApps(ROOT);
-  if (found === null || found.length === 0) {
-    console.error(`FAIL --emit-apps: ${join(ROOT, 'pubspec.yaml')} declares no \`workspace:\` entry under apps/.`);
-    console.error('     A release lane whose matrix is [] runs no build and reports green. Refusing to emit one.');
-    process.exit(1);
-  }
-  const ids = found.map((a) => a.slice('apps/'.length));
-  const nested = ids.filter((id) => id.includes('/'));
-  if (nested.length) {
-    console.error(`FAIL --emit-apps: workspace entr${nested.length === 1 ? 'y' : 'ies'} ${nested.join(', ')} nest below apps/<id>.`);
-    console.error('     The lanes address an app as `apps/${{ matrix.app }}`, which a nested path cannot round-trip.');
-    process.exit(1);
-  }
-  console.log(JSON.stringify(ids));
-  process.exit(0);
+  process.exit(emitApps(ROOT));
 }
 
 const problems = [];
@@ -470,25 +460,8 @@ if (missingGraded.length) {
 // LIMB A — which apps does a lane actually resolve to?
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** The workspace app set. Derived, never listed here. */
-function workspaceApps(root) {
-  const p = join(root, 'pubspec.yaml');
-  if (!existsSync(p)) return null;
-  const lines = readFileSync(p, 'utf8')
-    .split('\n')
-    .map((l) => l.replace(/(^|\s)#.*$/, '$1'));
-  const at = lines.findIndex((l) => /^workspace:\s*$/.test(l));
-  if (at === -1) return null;
-  const out = [];
-  for (let i = at + 1; i < lines.length; i++) {
-    if (lines[i].trim() === '') continue;
-    const m = lines[i].match(/^\s+-\s+(['"]?)([^'"\s]+)\1\s*$/);
-    if (!m) break;
-    out.push(m[2].replace(/\/+$/, ''));
-  }
-  return out.filter((e) => e.startsWith('apps/'));
-}
-
+// The workspace app set comes from ./app-set.mjs, the one reader (moved there
+// 2026-09-24 from a function private to this file).
 const apps = workspaceApps(ROOT);
 if (apps === null || apps.length === 0) {
   coverageLost([
@@ -498,6 +471,79 @@ if (apps === null || apps.length === 0) {
   ]);
 }
 const APPS = new Set(apps);
+
+// ── LIMB A, THE SINGLE READER (⏱ 2026-09-24, O-GUARDS-READ-A-HAND-LISTED-APP-SET) ──
+// The lanes' matrix and this limb's expected set are one function in
+// ./app-set.mjs. A guard that re-parses `workspace:` itself is a second reader,
+// and a second reader is the copy that quietly stops reading what the lanes
+// read. So a guard source under tooling/ci/ (tests excluded: they WRITE fixture
+// pubspecs, they grade nothing) that matches the read shape — a `/^workspace:`
+// pattern or an `=== 'workspace:'` comparison, in code, in a file that names a
+// pubspec — fails, unless it is app-set.mjs.
+//
+// ⚠️ MEASURED AT 2241754f: fifteen guards already read it that way, most of
+// them for the whole member list (packages AND apps), which app-set.mjs does not
+// export. Re-pointing them is not this change, so they are NAMED here, printed
+// on every run, and graded stale: an entry whose file stopped reading fails, so
+// the list only shrinks. A NEW reader fails at once.
+const WORKSPACE_READER = 'tooling/ci/app-set.mjs';
+const WORKSPACE_READ_SHAPE = /\/\^workspace:|===\s*(['"`])workspace:\1/;
+const PRE_APP_SET_READERS = new Set([
+  'tooling/ci/assert-a11y-coverage.mjs',
+  'tooling/ci/assert-ads-declarations.mjs',
+  'tooling/ci/assert-app-dod.mjs',
+  'tooling/ci/assert-consent-withdrawal-surface.mjs',
+  'tooling/ci/assert-deletion-control.mjs',
+  'tooling/ci/assert-lane-coverage.mjs',
+  'tooling/ci/assert-modal-detection.mjs',
+  'tooling/ci/assert-no-price-literals.mjs',
+  'tooling/ci/assert-play-declarations.mjs',
+  'tooling/ci/assert-pseudonymity-firewall.mjs',
+  'tooling/ci/assert-responsive-coverage.mjs',
+  'tooling/ci/assert-stamp-platforms.mjs',
+  'tooling/ci/assert-stamp-properties.mjs',
+  'tooling/ci/assert-sworn-store-files.mjs',
+  'tooling/ci/assert-workspace-coverage.mjs',
+]);
+{
+  const readers = [];
+  const walkCi = (rel) => {
+    const abs = join(ROOT, rel);
+    if (!existsSync(abs)) return;
+    for (const e of listDir(abs, { withFileTypes: true })) {
+      const child = `${rel}/${e.name}`;
+      if (e.isDirectory()) {
+        if (child !== 'tooling/ci/test' && e.name !== 'node_modules') walkCi(child);
+      } else if (e.name.endsWith('.mjs') && child !== WORKSPACE_READER) {
+        const code = stripSourceComments(readFileSync(join(ROOT, child), 'utf8'), '.mjs');
+        if (WORKSPACE_READ_SHAPE.test(code) && /pubspec/.test(code)) readers.push(child);
+      }
+    }
+  };
+  walkCi('tooling/ci');
+  const fresh = readers.filter((r) => !PRE_APP_SET_READERS.has(r));
+  for (const r of fresh) {
+    fail(
+      `${r} reads the root pubspec \`workspace:\` block itself. ${WORKSPACE_READER} is the one reader of the ` +
+        'app set: import `appSet`/`requireAppSet` from it. A second parse is the copy that stops reading what ' +
+        'the lanes read, and nothing notices until an app is graded by one and not the other.',
+    );
+  }
+  if (scanningRealRepo) {
+    const stale = [...PRE_APP_SET_READERS].filter((r) => !readers.includes(r));
+    for (const r of stale) {
+      fail(
+        `PRE_APP_SET_READERS names ${r}, which no longer reads \`workspace:\` itself. Delete the entry, so the ` +
+          'list keeps meaning "readers still owed a re-point".',
+      );
+    }
+    note(
+      `single reader — ${WORKSPACE_READER}; ${readers.length - fresh.length} pre-existing reader(s) still owed a ` +
+        `re-point: ${readers.filter((r) => PRE_APP_SET_READERS.has(r)).join(', ') || 'none'}`,
+    );
+  }
+  if (!fresh.length) ok(`single reader — no new \`workspace:\` reader under tooling/ci/ besides ${WORKSPACE_READER}`);
+}
 
 /** The sentinel a `${{ … }}` leaves behind when nothing here can resolve it.
  *

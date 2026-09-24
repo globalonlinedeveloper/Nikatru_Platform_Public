@@ -136,8 +136,17 @@ import { join, resolve, dirname, extname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stripSourceComments, stripStringLiterals } from './text-reductions.mjs';
 import { listDir } from './tree-walk.mjs';
+import { requireAppSet } from './app-set.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
+
+/** The apps this guard grades: the `apps/<id>` members of the root pubspec's
+ *  `workspace:` list (tooling/ci/app-set.mjs). An empty set is exit 2. */
+const APP_SET = requireAppSet(ROOT, 'assert-analytics-contract');
+
+/** The brick's app tree, graded beside every app in the set: it is the app a
+ *  stamp starts from. */
+const BRICK_APP = 'tooling/bricks/app/__brick__/apps/{{app_id}}';
 
 const MIGRATIONS_DIR = 'services/platform/migrations';
 const ROUTE = 'services/platform/src/routes/events.ts';
@@ -176,10 +185,11 @@ const WIRE_TO_COLUMN = new Map([['ts', 'client_ts']]);
 const NOT_A_COLUMN = new Set(['events']);
 
 /** Dart sources the client key set is derived from, each with the MARKER that
- *  opens the literal to read. All four are needed for the set to be complete:
- *  the event object carries the per-row fields, the transport carries the batch
- *  fields, and `platform`/`app_version` exist only in the per-app `envelope:`
- *  literal that the transport spreads.
+ *  opens the literal to read. The two package sources below and every app's
+ *  envelope (ENVELOPE) are needed for the set to be complete: the event object
+ *  carries the per-row fields, the transport carries the batch fields, and
+ *  `platform`/`app_version` exist only in the per-app `envelope:` literal that
+ *  the transport spreads.
  *
  *  🔴 THE REGION IS NOT DECORATION. The first version of this limb scanned each
  *  WHOLE file for `'key':` and picked up `true` — out of a Dart conditional
@@ -198,17 +208,21 @@ const CLIENT_SOURCES = [
     marker: 'data: <String, Object?>',
     what: 'the batch wire literal',
   },
-  {
-    file: join('apps', 'subscriptiontracker', 'lib', 'state', 'analytics_providers.dart'),
-    marker: 'envelope: <String, Object?>',
-    what: "the flagship app's per-batch envelope",
-  },
-  {
-    file: join('tooling', 'bricks', 'app', '__brick__', 'apps', '{{app_id}}', 'lib', 'state', 'providers.dart'),
-    marker: 'envelope: <String, Object?>',
-    what: 'the envelope every future stamped app starts from',
-  },
 ];
+
+/** THE PER-APP ENVELOPE, FOUND BY ITS MARKER. Located under `<root>/lib` for
+ *  every app in the set and for the brick, in comment-stripped source: app #1
+ *  keeps it in lib/state/analytics_providers.dart, the brick in
+ *  lib/state/providers.dart, and a stamped app wherever it moves it. A root
+ *  where no file declares it is COVERAGE LOST (that app's `platform` and
+ *  `app_version` would go unread); more than one file is a finding, because the
+ *  transport spreads one envelope. */
+const ENVELOPE = {
+  marker: 'envelope: <String, Object?>',
+  under: 'lib',
+  what: 'the per-batch envelope the transport spreads',
+  skip: new Set(['build', '.dart_tool']),
+};
 
 // ─── limb 5 · the shared server's wire contract, [pipeline 4]B-14 ────────────
 
@@ -277,6 +291,15 @@ const CONFIG_CLIENT_HALF = {
   floor: ['min_supported_version', 'update_url'],
 };
 
+/** AN APP'S OWN WORKER, graded beside the shared one by every contract with an
+ *  `appServer`. app.yaml declares no `backend` key (measured 2026-09-24: app
+ *  #1's names only `hosts.api`), so an app's Worker is `services/<id>-api` when
+ *  that directory exists, and app #1's does. An app in the set without one
+ *  prints a GAP on every run naming it: a `backend` key (family E) is what would
+ *  say whether it should have one. A Worker directory that exists without the
+ *  route file is COVERAGE LOST. */
+const APP_WORKER = (id) => `services/${id}-api`;
+
 /** ONE ENTRY PER SHARED ROUTE, and the id must be the register's id. The set is
  *  checked against the register in BOTH directions before anything below runs,
  *  so this array cannot silently fall behind the server. */
@@ -284,13 +307,14 @@ const WIRE_CONTRACTS = [
   {
     id: 'health',
     kind: 'flags',
-    // Both Workers answer this shape and both are smoked by the same script, so
-    // both are pinned: a rename in ONE of them breaks that one's deploy only,
-    // which is exactly the failure that is easiest to miss.
+    // The shared Worker and every app's own Worker (APP_WORKER) answer this shape
+    // and are smoked by the same script, so all are pinned: a rename in ONE of
+    // them breaks that one's deploy only, which is exactly the failure that is
+    // easiest to miss.
     servers: [
       { file: 'services/platform/src/index.ts', marker: "'/v1/health'" },
-      { file: 'services/subscriptiontracker-api/src/index.ts', marker: "'/v1/health'" },
     ],
+    appServer: { under: 'src/index.ts', marker: "'/v1/health'" },
     // 🔴 THE CONSUMER IS FOUND, NOT NAMED. This read `.github/workflows/deploy-workers.yml`
     // until 2026-08-06, and naming one workflow had two costs. It tripped
     // `assert-release-lane-generic.mjs`, whose rule is that a guard naming exactly one
@@ -315,7 +339,10 @@ const WIRE_CONTRACTS = [
       // Subly's own bundled-default pin. STILL REAL and still checked — it pins
       // Subly's VALUES against the server's — but it is no longer what satisfies
       // this route: see `clientHalf` below for why one stamped app cannot.
-      { file: 'apps/subscriptiontracker/test/config_default_test.dart', marker: 'kSublyDefaultConfig equals the server contract values' },
+      // KEYED to its app, `file` under apps/<app>/: it is app #1's own pin, not
+      // an app-set seam, and a key naming an app outside the set is a stale pin,
+      // a finding.
+      { app: 'subscriptiontracker', file: 'test/config_default_test.dart', marker: 'kSublyDefaultConfig equals the server contract values' },
     ],
     clientHalf: CONFIG_CLIENT_HALF,
   },
@@ -334,13 +361,14 @@ const WIRE_CONTRACTS = [
   {
     id: 'account',
     kind: 'status',
-    // Two servers, one released client. apps/subscriptiontracker points its deletion at
-    // services/subscriptiontracker-api and the brick's stamped backend answers the same
-    // contract, so a status either of them invents lands on the same Dart enum.
+    // The shared Worker and every app's own Worker (APP_WORKER), one released
+    // client. An app points its deletion at its own Worker and the brick's
+    // stamped backend answers the same contract, so a status any of them
+    // invents lands on the same Dart enum.
     servers: [
       'services/platform/src/routes/account.ts',
-      'services/subscriptiontracker-api/src/routes/account.ts',
     ],
+    appServer: { under: 'src/routes/account.ts' },
     client: {
       file: 'packages/core/lib/src/auth/account_deletion.dart',
       member: 'static AccountDeletionOutcome forStatus(',
@@ -757,9 +785,41 @@ for (const t of TABLES) {
 }
 
 // ── 2 · client coverage ─────────────────────────────────────────────────────
+/** Every .dart file under `rel`, repo-relative with forward slashes. */
+function dartFilesUnder(rel, out = []) {
+  let entries;
+  try { entries = listDir(join(ROOT, rel)); } catch { return out; }
+  for (const e of [...entries].sort()) {
+    const child = `${rel}/${e}`;
+    let s;
+    try { s = statSync(join(ROOT, child)); } catch { continue; }
+    if (s.isDirectory()) { if (!ENVELOPE.skip.has(e)) dartFilesUnder(child, out); }
+    else if (extname(e) === '.dart') out.push(child);
+  }
+  return out;
+}
+
+const envelopeSources = [];
+for (const root of [...APP_SET.map((a) => a.dir), BRICK_APP]) {
+  const files = dartFilesUnder(`${root}/${ENVELOPE.under}`).filter((f) =>
+    stripSourceComments(read(f), '.dart').includes(ENVELOPE.marker),
+  );
+  if (files.length === 0) {
+    coverageLost(
+      `${root}: no file under ${root}/${ENVELOPE.under}/ declares \`${ENVELOPE.marker}\` (${ENVELOPE.what}). ` +
+        "That app's `platform` and `app_version` would go unread, and limb 2 would report the remaining keys covered.",
+    );
+  }
+  if (files.length > 1) {
+    fail(`${root}: ${files.length} files declare \`${ENVELOPE.marker}\` (${files.join(', ')}); ${ENVELOPE.what} is one literal.`);
+  }
+  for (const file of files) envelopeSources.push({ file, marker: ENVELOPE.marker, what: `${root}'s ${ENVELOPE.what}` });
+}
+const clientSources = [...CLIENT_SOURCES, ...envelopeSources];
+
 const clientKeys = new Set();
 const perSource = [];
-for (const { file, marker, what } of CLIENT_SOURCES) {
+for (const { file, marker, what } of clientSources) {
   if (!has(file)) {
     coverageLost(`${file} is named as a source of the client envelope (${what}) and does not exist.`);
   }
@@ -832,7 +892,7 @@ if (unsupplied.length) {
   );
 } else if (notAColumn.length === 0) {
   ok(
-    `client envelope — ${clientKeys.size} key(s) across ${CLIENT_SOURCES.length} source(s) (${perSource.join(', ')}), ` +
+    `client envelope — ${clientKeys.size} key(s) across ${clientSources.length} source(s) (${perSource.join(', ')}), ` +
       `all real columns; ${required.length} required column(s) supplied; ${[...EDGE_WRITTEN].join(', ')} written by the edge`,
   );
 }
@@ -1498,25 +1558,54 @@ function clientHalfOf(contract) {
 let wireGaps = 0;
 let wirePinned = 0;
 
+// ── 5c · the app Workers graded beside the shared one ──────────────────────
+const appWorkers = [];
+for (const { id, dir } of APP_SET) {
+  const worker = APP_WORKER(id);
+  if (has(worker)) {
+    appWorkers.push(worker);
+  } else {
+    gap(
+      `${dir} has no Worker: ${worker} does not exist, and app.yaml declares no \`backend\` key that says whether it ` +
+        'should (family E). Its health and account routes are graded on the shared Worker only.',
+    );
+  }
+}
+const serverFilesOf = (contract) => appWorkers.map((w) => `${w}/${contract.appServer.under}`);
+
+/** A keyed pin lives under its app's directory; an unkeyed one is repo-relative. */
+const pinPath = (pin) => (pin.app ? `apps/${pin.app}/${pin.file}` : pin.file);
+
 for (const contract of WIRE_CONTRACTS) {
   // ── pointers ───────────────────────────────────────────────────────────────
   if (contract.kind === 'elsewhere') {
+    let stale = false;
     for (const pin of contract.pins) {
-      if (!has(pin.file)) {
-        coverageLost(`${contract.id}: its pin is declared to live in ${pin.file}, which does not exist.`);
+      if (pin.app && !APP_SET.some((a) => a.id === pin.app)) {
+        stale = true;
+        fail(
+          `${contract.id}: a pin is keyed to app \`${pin.app}\` (${pinPath(pin)}), which is not in the workspace app set ` +
+            `(${APP_SET.map((a) => a.id).join(', ')}). A stale pin: the app it protects left the set, so it grades ` +
+            'an app no release builds. Re-key it or delete it.',
+        );
+        continue;
       }
-      if (!read(pin.file).includes(pin.marker)) {
+      const file = pinPath(pin);
+      if (!has(file)) {
+        coverageLost(`${contract.id}: its pin is declared to live in ${file}, which does not exist.`);
+      }
+      if (!read(file).includes(pin.marker)) {
         coverageLost(
-          `${contract.id}: ${pin.file} no longer contains \`${pin.marker}\`. The pin this route delegates to moved or ` +
+          `${contract.id}: ${file} no longer contains \`${pin.marker}\`. The pin this route delegates to moved or ` +
             'was deleted, and a pointer to a pin that is gone is exactly the "covered" that covers nothing.',
         );
       }
     }
     const half = clientHalfOf(contract);
-    if (half.pinned) {
+    if (half.pinned && !stale) {
       wirePinned++;
       ok(
-        `wire ${contract.id} — pinned by ${contract.pins.map((p) => p.file).join(' + ')}; client half INHERITED by ` +
+        `wire ${contract.id} — pinned by ${contract.pins.map(pinPath).join(' + ')}; client half INHERITED by ` +
           `every stamped app: ${half.keys.length} key(s) in ${contract.clientHalf.file.replaceAll('\\', '/')} equal ` +
           `the server's \`${contract.clientHalf.server.marker.replace(/^const\s+/, '').replace(/\s*=\s*$/, '')}\`, ` +
           'all of them read by ' +
@@ -1637,7 +1726,8 @@ for (const contract of WIRE_CONTRACTS) {
       );
     }
     let serverStatuses = new Set();
-    for (const rel of contract.servers) {
+    const servers = [...contract.servers, ...serverFilesOf(contract)];
+    for (const rel of servers) {
       const shape = routeShape(rel);
       if (shape.computedStatus) {
         coverageLost(
@@ -1654,7 +1744,7 @@ for (const contract of WIRE_CONTRACTS) {
     if (unmapped.length) {
       fail(
         `${contract.id} — the server can answer status(es) ${unmapped.join(', ')} that the released client does not map ` +
-          `(${contract.servers.join(', ')} vs ${contract.client.file}). \`forStatus\` resolves an unmodelled status to ` +
+          `(${servers.join(', ')} vs ${contract.client.file}). \`forStatus\` resolves an unmodelled status to ` +
           '`unknown`, whose message says we cannot tell how much was removed — so a new status ships as a shrug to the ' +
           'user rather than as a build failure here.',
       );
@@ -1662,7 +1752,7 @@ for (const contract of WIRE_CONTRACTS) {
       wirePinned++;
       ok(
         `wire ${contract.id} — status set pinned: server answers {${[...serverStatuses].sort((a, b) => a - b).join(', ')}} ` +
-          `across ${contract.servers.length} host(s), client maps {${[...mapped].sort((a, b) => a - b).join(', ')}}`,
+          `across ${servers.length} host(s), client maps {${[...mapped].sort((a, b) => a - b).join(', ')}}`,
       );
     }
     continue;
@@ -1731,7 +1821,11 @@ for (const contract of WIRE_CONTRACTS) {
       );
     }
     let allOk = true;
-    for (const server of contract.servers) {
+    const servers = [
+      ...contract.servers,
+      ...serverFilesOf(contract).map((file) => ({ file, marker: contract.appServer.marker })),
+    ];
+    for (const server of servers) {
       if (!has(server.file)) coverageLost(`${contract.id}: ${server.file} does not exist.`);
       const src = stripSourceComments(read(server.file), '.ts');
       const at = src.indexOf(server.marker);
@@ -1759,7 +1853,7 @@ for (const contract of WIRE_CONTRACTS) {
       wirePinned++;
       ok(
         `wire ${contract.id} — deploy-smoke fields {${[...consumed].sort().join(', ')}} answered by all ` +
-          `${contract.servers.length} health handler(s), from ${healthCalls.length} invocation(s)`,
+          `${servers.length} health handler(s), from ${healthCalls.length} invocation(s)`,
       );
     }
     continue;
@@ -1939,7 +2033,8 @@ for (const contract of WIRE_CONTRACTS) {
 
 console.log(
   `     [4]B-14 — ${WIRE_CONTRACTS.length} shared route(s) from ${WIRE_REGISTER}: ${wirePinned} pinned, ` +
-    `${wireGaps} printed gap(s).`,
+    `${wireGaps} printed gap(s); ${appWorkers.length}/${APP_SET.length} app Worker(s) graded` +
+    `${appWorkers.length < APP_SET.length ? `, ${APP_SET.length - appWorkers.length} app(s) with no Worker (GAP printed)` : ''}.`,
 );
 
 if (failed) {
@@ -1947,7 +2042,7 @@ if (failed) {
   process.exit(1);
 }
 console.log(
-  `\nassert-analytics-contract: ok — ${TABLES.length} table(s) parsed from ${migrationFiles.length} migration(s), ` +
+  `\nassert-analytics-contract: ok apps=${APP_SET.length} — ${TABLES.length} table(s) parsed from ${migrationFiles.length} migration(s), ` +
     `route parity + arity, ${clientKeys.size} client key(s), no address column, append-only across ${serviceFiles.length} service file(s) ` +
     `(+${exemptUsed} owner-exempt statement, 2026-09-22), ` +
     `${wirePinned}/${WIRE_CONTRACTS.length} shared route wire contract(s) pinned + ${wireGaps} printed`,
