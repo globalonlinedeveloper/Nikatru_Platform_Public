@@ -1,0 +1,28 @@
+Executable=/Users/runner/work/_temp/ipa-check/Payload/Runner.app/Runner
+Identifier=com.nikatru.subscriptiontracker
+Format=app bundle with Mach-O thin (arm64)
+CodeDirectory v=20400 size=20035 flags=0x0(none) hashes=615+7 location=embedded
+VersionPlatform=2
+VersionMin=983040
+VersionSDK=1705216
+Hash type=sha256 size=32
+CandidateCDHash sha256=1f55810ecf14b857ae73cdf5baa47809f55503b6
+CandidateCDHashFull sha256=1f55810ecf14b857ae73cdf5baa47809f55503b64396e45951de3ac50ec074aa
+Hash choices=sha256
+CMSDigest=1f55810ecf14b857ae73cdf5baa47809f55503b64396e45951de3ac50ec074aa
+CMSDigestType=2
+Executable Segment base=0
+Executable Segment limit=1933312
+Executable Segment flags=0x1
+Executable=/Users/runner/work/_temp/ipa-check/Payload/Runner.app/Runner
+Page size=4096
+CDHash=1f55810ecf14b857ae73cdf5baa47809f55503b6
+Signature size=4790
+Authority=Apple Distribution: <PERSONAL-NAME> (A1B2C3D4E5)
+Authority=Apple Worldwide Developer Relations Certification Authority
+Authority=Apple Root CA
+Signed Time=Sep 22, 2026 at 2:56:08 PM
+Info.plist entries=33
+TeamIdentifier=A1B2C3D4E5
+Sealed Resources version=2 rules=10 files=96
+Internal requirements count=1 size=200
