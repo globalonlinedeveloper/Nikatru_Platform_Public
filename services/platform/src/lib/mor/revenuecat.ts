@@ -51,15 +51,19 @@ import { REVENUECAT_APP_IDS } from './revenuecat-app-ids';
 //      clock skew and the latency of that POST". Enforced in both directions, as
 //      Paddle's is, and before the digest is spent.
 //
-// ── WHAT `parse` DECIDES, AND THE ONE REFUSAL LEFT ───────────────────────────
+// ── WHAT `parse` DECIDES, AND WHAT IT STILL REFUSES ──────────────────────────
 // `parse` reads the event and writes what [ADR 085] decided (A–D below) and what
 // [ADR 092] decided for TRANSFER (§4.3). "Refusing is recoverable; a wrong grant is
 // not" still draws the line: anything the table does not decide is refused by name.
-// The one refusal every REAL event meets today is A's EMPTY MAP: no app declares
-// `billing.mobileIap.revenuecatAppIds` yet (no RevenueCat project exists,
-// O-REVENUECAT-ACCOUNT), so every event is refused on A until one does — the rule
-// is built and tested. Before 2026-09-15 this section said `parse` refused
-// everything on purpose, pending A–D; that text is in git history (up to f88912e5).
+// ⏱ 2026-09-24 · A's map is no longer empty. Since #890 (35da94b2)
+// apps/subscriptiontracker/app.yaml declares both of its RevenueCat app ids under
+// `billing.mobileIap.revenuecatAppIds` (android appa553a1e2c6, ios app805d73cd44),
+// so a real event from either store app passes A and meets the rest of `parse`;
+// an id no app declares is still refused on A. Until 2026-09-24 this paragraph
+// said the map was empty and every real event was refused on A; that text is in
+// git history (up to b8f40c2c). Before 2026-09-15 this section said `parse`
+// refused everything on purpose, pending A–D; that text is in git history (up to
+// f88912e5).
 //
 // ── ⏱ 2026-09-15 · THE FOUR FACTS — [ADR 085], OWNER ──────────────────────────
 // The owner locked A–D on 2026-09-15, and `parse` below implements them. Every
@@ -71,9 +75,14 @@ import { REVENUECAT_APP_IDS } from './revenuecat-app-ids';
 //   A. "RevenueCat app id per app" — `event.app_id` is looked up in
 //      REVENUECAT_APP_IDS, RENDERED from apps/*/app.yaml
 //      `billing.mobileIap.revenuecatAppIds` by tooling/app-yaml/render.mjs. An id
-//      no app declares is REFUSED. ⚠️ TODAY NO APP DECLARES ONE (no RevenueCat
-//      project exists, O-REVENUECAT-ACCOUNT), so the shipped verifier refuses
-//      every event on A — the rule is built and tested, the map is empty.
+//      no app declares is REFUSED. ⏱ 2026-09-24: subscriptiontracker declares
+//      both of its ids (since #890), so the rendered map holds two entries and
+//      the registered verifier routes either one (test/revenuecat-verifier.test.ts).
+//      ⚠️ An event with NO `app_id` is refused here too. The reference says the
+//      field is present "Always, except when `store` is `PROMOTIONAL` or when the
+//      event has no linked app configuration (e.g. `EXPERIMENT_ENROLLMENT`)", so
+//      such an event is refused on A (503, retried) although the table rules
+//      EXPERIMENT_ENROLLMENT null. Recorded 2026-09-24; A is not reordered.
 //   B. "App user id = NIKATRU user id" — `event.app_user_id` IS the account id.
 //      An anonymous id is REFUSED until the purchase is attached to a logged-in
 //      user.
@@ -279,8 +288,8 @@ export function parseRevenueCatEvent(raw: string, appIds: Readonly<Record<string
     if (row.reason !== null) {
       return refuse(`the contract table maps this event to ${row.reason}, which the ruling does not decide (a restore is never a revocation)`);
     }
-    // SUBSCRIPTION_PAUSED and TEMPORARY_ENTITLEMENT_GRANT: the table DECIDES they
-    // change nothing (each row's `why` quotes the vendor).
+    // The rows in contract.js NOT_A_GRANT: the table DECIDES they change nothing
+    // (each row's `why` quotes the vendor).
     return ignore(`revenuecat ${e.type}: the contract table decides this event changes no access`);
   }
 
@@ -464,7 +473,8 @@ const revenuecatVerifierBase = {
 /**
  * The registered rail. ⏱ 2026-09-15: `parse` was a deliberate refusal naming the
  * four undecided facts; [ADR 085] decided them and it now reads the event, routed
- * by the RENDERED app-id table — which is EMPTY until an app declares mobile IAP,
- * so every real event is refused on A today.
+ * by the RENDERED app-id table. ⏱ 2026-09-24: that table holds both
+ * subscriptiontracker ids (declared since #890), so a real event from either
+ * store app is routed; an id no app declares is still refused on A.
  */
 export const revenuecatVerifier: MoRWebhookVerifier = makeRevenuecatVerifier(REVENUECAT_APP_IDS);
