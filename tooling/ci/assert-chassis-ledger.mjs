@@ -55,6 +55,13 @@
 //   5. `UNCLASSIFIED` IS A RATCHET. The count may fall and never rise, so a new
 //      undecided file cannot be parked here quietly.
 //   6. EVERY ROW CARRIES A REASON. An empty `why` is a row nobody thought about.
+//   7. THE BRICK lib/ TOTAL IS PRINTED AND HELD UNDER ITS CEILING [ADR 096].
+//      Every tracked file under the Dart app root's `lib/`, and again under
+//      `lib/state/`, is counted by `linesOf`; either total above its
+//      `floors.<key>.max` in the ledger fails. A PR that grows brick lib/ raises
+//      that max in the same PR and says why. This limb exists because lib/ grew
+//      past ADR 072's re-stated band while every run printed ok: the guard
+//      printed no lib/ total, so no run said so.
 //
 // ── COVERAGE, BECAUSE A SCAN OVER NOTHING PRINTS OK ─────────────────────────
 // The recurring failure in this repository is a check that silently stopped
@@ -125,6 +132,18 @@ const ROOTS = [
 
 /** The first root is where a row with no `root` of its own lives. */
 const DEFAULT_ROOT = ROOTS[0].path;
+
+// ── THE lib/ CEILING'S SUBJECT LIVES HERE; ITS MAX LIVES IN THE LEDGER ──────
+// [ADR 096] re-states the brick's lib/ size as two ceilings. The prefixes are
+// fixed in this file for the reason THE ROOT LIST is (above): a ledger that
+// named its own subject could narrow what it is judged on and print a smaller
+// ok. The MAX is a ledger key, `floors.<key>.max`, because a PR that grows
+// lib/ already re-measures that file's row in the ledger (limb 2), so the rise
+// and its reason land as one diff. Both prefixes are under DEFAULT_ROOT only.
+const LIB_SUBJECTS = [
+  { key: 'lib', prefix: 'lib/', what: 'brick lib/' },
+  { key: 'state', prefix: 'lib/state/', what: 'lib/state' },
+];
 
 /** A sentinel OUTSIDE every subject tree, so it survives any mutation OF the
  *  subject — which a sentinel inside the brick would not. */
@@ -232,6 +251,36 @@ if (ledger === null || typeof ledger !== 'object' || Array.isArray(ledger)) {
 }
 if (!Array.isArray(ledger.files) || ledger.files.length === 0) {
   coverageLost([`${LEDGER_REL} declares no \`files\`, so the bijection below would hold vacuously.`]);
+}
+
+// ── limb 7's register · `floors`, validated before anything is summed ──────
+// A ceiling that is missing or malformed is COVERAGE LOST, not a pass: limb 7
+// would print a lib/ total and hold it against nothing.
+const floors = ledger.floors;
+if (floors === null || typeof floors !== 'object' || Array.isArray(floors)) {
+  coverageLost([
+    `${LEDGER_REL} declares no \`floors\` object, so the brick lib/ ceiling [ADR 096] has no max to hold.`,
+    'Limb 7 would print a lib/ total and compare it against nothing — the silence that let lib/ outgrow',
+    "ADR 072's band while every run printed ok.",
+  ]);
+}
+for (const s of LIB_SUBJECTS) {
+  const f = floors[s.key];
+  if (f === null || typeof f !== 'object' || Array.isArray(f)) {
+    coverageLost([`${LEDGER_REL} has no \`floors.${s.key}\` object, so ${s.what} has no ceiling to be held under.`]);
+  }
+  if (!Number.isInteger(f.max) || f.max <= 0) {
+    coverageLost([
+      `${LEDGER_REL} \`floors.${s.key}.max\` is ${JSON.stringify(f.max)}, not a positive integer.`,
+      'A string or a fraction compares against a line total by accident; write the measured number.',
+    ]);
+  }
+  if (typeof f.adr !== 'string' || !/^ADR \d{3}$/.test(f.adr)) {
+    coverageLost([
+      `${LEDGER_REL} \`floors.${s.key}.adr\` is ${JSON.stringify(f.adr)}, not "ADR" and the three digits of the`,
+      'decision that set the ceiling. A max that names no decision is a number somebody wrote down once.',
+    ]);
+  }
 }
 
 /** Lines exactly as the generator counted them: newline-separated, not counting
@@ -368,6 +417,32 @@ for (const [k, row] of rowByKey) {
   }
 }
 
+// ── 7 · the brick lib/ totals, summed from the TREE ─────────────────────────
+// Summed over every tracked key under DEFAULT_ROOT, not over the ledger's rows:
+// [ADR 096] counts every git-tracked file under lib/, so a lib/ file whose row
+// is missing is still counted here (and fails limb 1 besides).
+const libTotals = new Map(LIB_SUBJECTS.map((s) => [s.key, { files: 0, lines: 0 }]));
+for (const k of treeSet) {
+  if (!k.startsWith(`${DEFAULT_ROOT}${KEYSEP}`)) continue;
+  const rel = k.slice(DEFAULT_ROOT.length + KEYSEP.length);
+  const n = linesOf(showKey(k)) ?? 0;
+  for (const s of LIB_SUBJECTS) {
+    if (!rel.startsWith(s.prefix)) continue;
+    const acc = libTotals.get(s.key);
+    acc.files += 1;
+    acc.lines += n;
+  }
+}
+for (const s of LIB_SUBJECTS) {
+  if (libTotals.get(s.key).files === 0) {
+    coverageLost([
+      `no tracked file was found under ${DEFAULT_ROOT}/${s.prefix}, so ${s.what} totals 0 and its ceiling holds vacuously.`,
+      'That is the enumeration breaking, not the template emptying. If the directory really moved, move its',
+      'prefix in LIB_SUBJECTS in this file in the same PR.',
+    ]);
+  }
+}
+
 // ── 3 · declared totals recomputed from the rows ────────────────────────────
 const t = ledger.totals ?? {};
 const declaredFiles = t.files;
@@ -405,6 +480,31 @@ if (unclassified > UNCLASSIFIED_CEILING) {
   );
 }
 
+// ── 7 · the brick lib/ ceiling [ADR 096] ────────────────────────────────────
+for (const s of LIB_SUBJECTS) {
+  const { files, lines } = libTotals.get(s.key);
+  const { max, adr } = floors[s.key];
+  if (lines > max) {
+    problems.push(
+      `${s.what} is ${lines} line(s) in ${files} file(s), ${lines - max} above floors.${s.key}.max ${max} [${adr}]. ` +
+        `Raise \`floors.${s.key}.max\` in ${LEDGER_REL} in the SAME PR with a reason in its body, or shrink it. ` +
+        'The ceiling was set at the measured size with zero headroom, so any growth is a decision to record.',
+    );
+  } else if (lines < max) {
+    notes.push(
+      `⬜ ${s.what} is ${lines} line(s), ${max - lines} below the ceiling of ${max} [${adr}] — lower ` +
+        `floors.${s.key}.max in ${LEDGER_REL} to bank it, in the same PR that shrank it.`,
+    );
+  }
+}
+const libFloor = floors[LIB_SUBJECTS[0].key];
+const libLine = LIB_SUBJECTS.map((s) => {
+  const { files, lines } = libTotals.get(s.key);
+  const { max, adr } = floors[s.key];
+  const cite = s === LIB_SUBJECTS[0] || adr !== libFloor.adr ? ` [${adr}]` : '';
+  return `${s.what} — ${files} file(s), ${lines} line(s), ceiling ${max}${cite}`;
+}).join('; ');
+
 // ── report ──────────────────────────────────────────────────────────────────
 for (const n of notes) console.log(n);
 
@@ -415,6 +515,7 @@ if (problems.length) {
   console.error('  [ADR 065] the template becomes a thin shell; [ADR 066] the size of that shell is a');
   console.error('  MEASUREMENT, not a number somebody wrote down once. Every line is accounted for here');
   console.error('  or the build is red.');
+  console.error(`  measured on this run: ${libLine}`);
   process.exit(1);
 }
 
@@ -432,6 +533,8 @@ for (const r of ROOTS) {
   const lines = files.reduce((n, k) => n + (linesOf(showKey(k)) ?? 0), 0);
   console.log(`ok  ${r.path} — ${files.length} file(s), ${lines} line(s) · ${r.what}`);
 }
+
+console.log(`ok  ${libLine}`);
 
 console.log(
   `ok  chassis ledger — ${treeSet.size} tracked file(s) across ${ROOTS.length} root(s), ${sumLines} line(s), ` +

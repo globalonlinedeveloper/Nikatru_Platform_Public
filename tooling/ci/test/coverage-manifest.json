@@ -58,7 +58,7 @@
   "channel-register.test.mjs": 284,
   "channel-surface.test.mjs": 7,
   "chassis-delegation.test.mjs": 54,
-  "chassis-ledger.test.mjs": 29,
+  "chassis-ledger.test.mjs": 37,
   "chassis-parity.test.mjs": 19,
   "chrome-raster.test.mjs": 1,
   "chrome-splice.test.mjs": 26,
