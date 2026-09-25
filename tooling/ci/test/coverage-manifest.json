@@ -222,6 +222,7 @@
   "seams-wired.test.mjs": 27,
   "selection-record.test.mjs": 12,
   "self-host-fallback-fonts.test.mjs": 22,
+  "session-revocation.test.mjs": 15,
   "setup-flutter-env.test.mjs": 4,
   "signup-consent-shape.test.mjs": 33,
   "signup-retention.test.mjs": 12,

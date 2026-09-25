@@ -180,6 +180,14 @@
     // public document, doubling the KV writes that cache costs against a Free
     // budget of 1,000/day account-wide (tooling/ceilings.json → kv.writesPerDay).
     { "binding": "JWKS_CACHE", "id": "bcfcb1618d1a4bfd8d02f87d3d21010d" },
+    // ⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. The revocation list, key
+    // `rev:<sub>`: src/middleware/auth.ts READS it on every authenticated
+    // request and refuses a signed-out session's token; src/routes/sessions.ts is
+    // its ONLY writer, every put with `expirationTtl: REVOCATION_TTL_SECONDS`.
+    // The SAME namespace services/subscriptiontracker-api binds — a sign-out must
+    // refuse the token at every Worker, so there is one list, not one per Worker.
+    // Not in the nightly export: every record expires within the hour.
+    { "binding": "SESSION_REVOKED", "id": "aa46ad5002874231931cc5dc5b6e2904" },
     // BOUND FOR THE NIGHTLY EXPORT AND NOTHING ELSE. `06 §3.4` measured this
     // namespace bound to NO Worker — 2 list operations, 0 reads, 0 writes in
     // seven days — so it was a store that could disappear with nobody noticing.
@@ -298,6 +306,21 @@
       "name": "EXT_TOKEN_CEILING_LIMITER",
       "namespace_id": "1005",
       "simple": { "limit": 60, "period": 60 }
+    },
+    {
+      // ⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. The per-USER ceiling on the four
+      // /v1/sessions routes, keyed `sessions:<sub>` — these routes are
+      // authenticated, so the key is the verified subject, not the edge. Every
+      // revoke is a SESSION_REVOKED write, and this is what bounds the writes one
+      // account can cause against the account-wide KV write budget
+      // (tooling/ceilings.json → kv.writesPerDay).
+      //
+      // 5/min: a person signs a device out a few times a year; five in a minute
+      // is a list reload and a couple of taps. `period` is 60, one of
+      // tooling/ceilings.json's allowed values.
+      "name": "SESSIONS_LIMITER",
+      "namespace_id": "1010",
+      "simple": { "limit": 5, "period": 60 }
     }
   ],
   "triggers": {

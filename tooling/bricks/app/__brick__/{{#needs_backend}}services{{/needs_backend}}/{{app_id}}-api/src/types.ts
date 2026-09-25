@@ -9,6 +9,11 @@ export interface Env {
   APP_DB: D1Database;
   PLATFORM_DB: D1Database;
   JWKS_CACHE: KVNamespace;
+  // ⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. The shared revocation list
+  // (`rev:<sub>`), READ ONLY here, by middleware/auth.ts; services/platform
+  // writes it. Optional: absence fails OPEN, and
+  // tooling/ci/assert-session-revocation.mjs reds a config that does not bind it.
+  SESSION_REVOKED?: KVNamespace;
   APP_ID: string;
   SUPABASE_URL: string;
   API_VERSION: string;

@@ -373,6 +373,12 @@
         "value": "bcfcb1618d1a4bfd8d02f87d3d21010d",
         "why": "One identity project means one public JWKS document, so a second namespace would be a second copy of one public file — doubling the KV writes that cache costs against the budget tooling/ceilings.json records as kv.writesPerDay. tooling/legal/data-inventory.json also pins this id, which is why a mutation here is the one of the four an existing guard already caught; that guard answers a legal question about a store of data, not the portfolio-agreement question this entry answers.",
         "absentFrom": []
+      },
+      {
+        "at": "kv_namespaces[SESSION_REVOKED].id",
+        "value": "aa46ad5002874231931cc5dc5b6e2904",
+        "why": "⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. One identity project means ONE revocation list: services/platform writes `rev:<sub>` when a person signs a session out, and every Worker's auth middleware reads it. A Worker bound to a DIFFERENT namespace would read an empty list forever and keep admitting every signed-out session's token for the rest of its hour — silently, because an empty list is indistinguishable from nobody having signed out. tooling/ci/assert-session-revocation.mjs holds that every token-verifying Worker binds SESSION_REVOKED at all; this entry holds that they all bind the SAME one. tooling/legal/data-inventory.json keys its row on the same id.",
+        "absentFrom": []
       }
     ]
   },
@@ -560,6 +566,42 @@
       "purpose": "🔴 THE ROUTE THAT REMOVES THE IRREVERSIBLE CLIENT UNLOCK. A store purchase must never grant on the strength of the client's word, and never on the push alone: Google's RTDN carries no proof in its body (purchases.subscriptionsv2.get is mandatory) and Microsoft Store has no push at all. The client posts an OPAQUE token; the SERVER calls the store's own API; only a verified server-side answer writes a bundle grant. That is what makes the purchase→unlock loop testable without the leg that, on iOS and Android, cannot be reversed. It also carries the double-billing pre-check: 409 already_entitled NAMES the holding rail before a store call is spent, so a person who owns the set on another rail is told where.",
       "unconsumedReason": "NO DART CLIENT POSTS TO IT YET, and that is a state rather than a construction: no rail has a credential minted, so every verifier answers 503 in this deploy and there is nothing for a client to succeed at. The purchase surface arrives with the store rails. There is therefore no released client of ours to break and no wire contract to pin; what stands in for one is tooling/ci/assert-bundle-provenance.mjs, which asserts every writer into bundle_grants is downstream of a verification seam and that no grant-deciding field derives from a request body.",
       "noLimiterReason": "NOT APPLICABLE — `auth: required`, so limb 4 does not range over it. Recorded anyway because it is the one authenticated route that makes an OUTBOUND call per request: a retry loop here spends a store API quota as well as the account-wide 100k Worker-requests/day ceiling, and the honest bound is that a verified receipt is written once and re-posting the same token is an upsert, not a second pull."
+    },
+    {
+      "id": "sessions-list",
+      "method": "GET",
+      "path": "/v1/sessions",
+      "auth": "required",
+      "owningFile": "services/platform/src/routes/sessions.ts",
+      "purpose": "⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. The caller's own sign-in sessions, newest activity first: `{sessions:[{id, current, createdAt, lastActiveAt, device}]}`. Read through the service-role RPC public.nikatru_sessions_of (docs/platform/supabase/sql/sessions-rpc.sql), which returns no IP; `device` is a label derived from the user agent. 503 until the SQL is applied; bounded by SESSIONS_LIMITER (5/60 s per account).",
+      "unconsumedReason": "client half (requestSessionRevocation + the sessions list) ships in the web PR after this Worker deploys; the server must be live first"
+    },
+    {
+      "id": "sessions-revoke",
+      "method": "DELETE",
+      "path": "/v1/sessions/:id",
+      "auth": "required",
+      "owningFile": "services/platform/src/routes/sessions.ts",
+      "purpose": "⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. Ends ONE of the caller's other sessions: public.nikatru_revoke_session deletes the auth.sessions row only when it belongs to the caller (another account's id is a 404 and nothing is written), which kills its refresh token; the route then adds the session id to the SESSION_REVOKED list so every Worker refuses its already-issued access token. The caller's own session is a 409 (sign out instead). 204 even when the list write fails twice (logged): the refresh token is already dead, and the access token lapses within jwt_exp.",
+      "unconsumedReason": "client half (requestSessionRevocation + the sessions list) ships in the web PR after this Worker deploys; the server must be live first"
+    },
+    {
+      "id": "sessions-revoke-all",
+      "method": "POST",
+      "path": "/v1/sessions/revoke-all",
+      "auth": "required",
+      "owningFile": "services/platform/src/routes/sessions.ts",
+      "purpose": "⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. Moves the caller's `before` watermark to now, so every Worker refuses every token issued to this account up to now, the caller's own included. Deletes no auth.sessions row: the client's GoTrue signOut({scope:'global'}) does that. 503 when the list cannot be written, because a 204 would claim a sign-out that did not happen.",
+      "unconsumedReason": "client half (requestSessionRevocation + the sessions list) ships in the web PR after this Worker deploys; the server must be live first"
+    },
+    {
+      "id": "sessions-revoke-others",
+      "method": "POST",
+      "path": "/v1/sessions/revoke-others",
+      "auth": "required",
+      "owningFile": "services/platform/src/routes/sessions.ts",
+      "purpose": "⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. Lists the caller's sessions and adds every one except the caller's own to the SESSION_REVOKED list. Deletes no auth.sessions row: the client's GoTrue signOut({scope:'others'}) does that. 409 when the token carries no session_id; 204 with no write when there are no other sessions; 503 when the RPC or the list write fails.",
+      "unconsumedReason": "client half (requestSessionRevocation + the sessions list) ships in the web PR after this Worker deploys; the server must be live first"
     }
   ],
   "bindings": [
@@ -613,6 +655,18 @@
       "purpose": "Caches the Supabase JWKS document so an ES256 verify does not fetch it per request. One identity project portfolio-wide, so one cache.",
       "readers": [
         "services/platform/src/middleware/auth.ts",
+        "services/subscriptiontracker-api/src/middleware/auth.ts",
+        "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/src/middleware/auth.ts"
+      ]
+    },
+    {
+      "binding": "SESSION_REVOKED",
+      "kind": "kv_namespaces",
+      "scope": "shared",
+      "purpose": "⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. The signed-out-session list, `rev:<sub>` → `{ before, sids }`. Every auth middleware reads it AFTER verifying a token and refuses (401) a token whose session_id is listed or whose iat precedes `before`; the read FAILS OPEN (a KV incident must not become a portfolio-wide 401). services/platform/src/routes/sessions.ts is the ONLY writer, every put with `expirationTtl: REVOCATION_TTL_SECONDS`. One namespace portfolio-wide — see sharedValues.",
+      "readers": [
+        "services/platform/src/middleware/auth.ts",
+        "services/platform/src/routes/sessions.ts",
         "services/subscriptiontracker-api/src/middleware/auth.ts",
         "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/src/middleware/auth.ts"
       ]
@@ -679,6 +733,15 @@
       "purpose": "⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. The server-derived ceiling for POST /v1/ext/token, keyed `edge:<colo>:<asn>` — never an IP. `simple: { limit: 60, period: 60 }`: one exchange per sign-in, room for a shared NAT, and the end of a flood against a 128-bit code. Its OWN namespace (1005) so a code-guessing flood cannot spend the budget analytics ingest, config resolution or the money rail depend on.",
       "readers": [
         "services/platform/src/routes/ext.ts"
+      ]
+    },
+    {
+      "binding": "SESSIONS_LIMITER",
+      "kind": "ratelimits",
+      "scope": "shared",
+      "purpose": "⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. The per-account bucket for the four /v1/sessions routes, keyed `sessions:<sub>` — the VERIFIED subject, never a client-chosen value. `simple: { limit: 5, period: 60 }`: a person signs a session out a handful of times, not dozens. It bounds the one KV write per revoke (kv.writesPerDay) and the service-role RPC behind every route. Its OWN namespace (1010) so it cannot spend any other route's budget.",
+      "readers": [
+        "services/platform/src/routes/sessions.ts"
       ]
     }
   ]

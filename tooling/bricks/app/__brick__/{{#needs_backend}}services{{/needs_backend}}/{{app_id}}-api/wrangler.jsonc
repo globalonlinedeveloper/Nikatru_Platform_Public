@@ -10,7 +10,8 @@
   // ── THE CLONE CONTRACT (what may and may not be per-app) ──────────────────
   //   PER-APP   : APP_DB (this D1 only), ALLOWED_ORIGINS, APP_ID
   //   SHARED    : PLATFORM_DB (one entitlements table for the whole portfolio),
-  //               JWKS_CACHE, SUPABASE_URL (one identity project),
+  //               JWKS_CACHE, SESSION_REVOKED, SUPABASE_URL (one identity
+  //               project, so one revocation list),
   //               R2 (ONE portfolio bucket keyed by an `<app_id>/` prefix — a
   //               per-app bucket is never stamped)
   //   NEVER HERE: MoR/payment webhooks. They terminate in `platform`, which
@@ -119,7 +120,10 @@
     }
   ],
   "kv_namespaces": [
-    { "binding": "JWKS_CACHE", "id": "bcfcb1618d1a4bfd8d02f87d3d21010d" }
+    { "binding": "JWKS_CACHE", "id": "bcfcb1618d1a4bfd8d02f87d3d21010d" },
+    // The revocation list (`rev:<sub>`), READ ONLY here by
+    // src/middleware/auth.ts; services/platform writes it. Shared.
+    { "binding": "SESSION_REVOKED", "id": "aa46ad5002874231931cc5dc5b6e2904" }
   ],
   // ───────────────────────────────────────────────────────────────────────────
   // [pipeline B-15] THE STAMPED BACKEND BINDS ITS OWN HOST — NO MANUAL STEP.

@@ -187,4 +187,6 @@ valid until `jwt_exp` (3600 s live), because GoTrue's JWTs are stateless. The
 ruling asks about refresh tokens; closing the access-token window is separate
 work in `services/_shared/src/auth.ts`.
 
+**Signed-out sessions (AUTH-REVOKE-AT-WORKERS, 2026-09-25):** every Worker now refuses a token whose session is on the `SESSION_REVOKED` list. `services/platform/src/routes/sessions.ts` lists and ends sessions through two service-role RPCs in [`sql/sessions-rpc.sql`](sql/sessions-rpc.sql). That file is **not** a migration: the parent applies it by hand after review, and its header carries the two read-backs and the rollback. Until then `GET /v1/sessions`, `DELETE /v1/sessions/:id` and `POST /v1/sessions/revoke-others` answer 503 `sessions_unavailable`; `POST /v1/sessions/revoke-all` calls neither function and works from the deploy.
+
 [adr029]: ../../../knowledge/decisions/029-email-sending-architecture.md

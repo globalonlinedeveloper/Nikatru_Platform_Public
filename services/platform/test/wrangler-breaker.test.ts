@@ -120,6 +120,17 @@ describe('wrangler.jsonc declares BOTH halves of the cost circuit breaker', () =
     expect(e!.simple?.period).toBe(60);
   });
 
+  it('declares the per-account bucket for the /v1/sessions routes', () => {
+    // ⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. routes/sessions.ts fails OPEN without
+    // it, so deleting this entry removes the only bound on the revocation list's
+    // KV writes (kv.writesPerDay) and on the service-role RPC behind every route.
+    const e = byName.get('SESSIONS_LIMITER');
+    expect(e, 'SESSIONS_LIMITER missing — /v1/sessions has no bound').toBeDefined();
+    expect(String(e!.namespace_id)).toBe('1010');
+    expect(e!.simple?.limit).toBe(5);
+    expect(e!.simple?.period).toBe(60);
+  });
+
   it('the three limiters have DISTINCT namespace ids, so they do not share a budget', () => {
     const ids = rl.map((e) => String(e.namespace_id));
     expect(new Set(ids).size, `namespace_id collision among ${ids.join(', ')}`).toBe(ids.length);
