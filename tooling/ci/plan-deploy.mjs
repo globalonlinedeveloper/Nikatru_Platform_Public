@@ -69,7 +69,7 @@ import { api, githubApiBase, RateLimitExhausted, limitName, SECONDARY_MIN_WAIT_M
 import { globClaims } from './assert-deploy-triggers-deploy.mjs';
 
 const ROOT = resolve(join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
-export const UNITS_REL = 'tooling/ci/deploy-units.json';
+export const UNITS_REL = 'tooling/ci/lane-map.json';
 
 /** The newest Deployments read from the ledger, and so the most status reads one plan
  *  makes. A Deployment with no success status is one whose status write failed after

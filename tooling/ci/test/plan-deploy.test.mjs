@@ -6,7 +6,7 @@
 // `fetchJson`, or, for the one end-to-end case, a loopback server this file starts.
 // Ancestry and the diff are REAL: a throwaway git repository is built with three
 // commits, so `git merge-base --is-ancestor` and `git diff` answer as they will on
-// the runner. The deploy globs are the SHIPPING tooling/ci/deploy-units.json.
+// the runner. The deploy globs are the SHIPPING tooling/ci/lane-map.json `deployUnits`.
 //
 // Red controls (the brief's numbering):
 //   RC1  ledger latest = HEAD, target = HEAD~1        → superseded, deploy=false, exit 0

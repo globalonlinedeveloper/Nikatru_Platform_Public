@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// deploy-units.test.mjs — tooling/ci/deploy-units.json `deployUnits` holds the
+// deploy-units.test.mjs — tooling/ci/lane-map.json `deployUnits` holds the
 // SAME globs as the two deploy workflows' own path filters, both ways.
 //
 // ⏱ ADDED 2026-09-24 (row O-DEPLOY-IS-NOT-ONE-GATED-LANE, limb 3). plan-deploy.mjs
@@ -25,7 +25,7 @@ import { resolveEnvironment } from '../deployment-record.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const read = (rel) => readFileSync(join(ROOT, rel), 'utf8');
-const UNITS = JSON.parse(read('tooling/ci/deploy-units.json')).deployUnits;
+const UNITS = JSON.parse(read('tooling/ci/lane-map.json')).deployUnits;
 const WEB = read('.github/workflows/deploy-web.yml');
 const WORKERS = read('.github/workflows/deploy-workers.yml');
 
