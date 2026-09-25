@@ -739,7 +739,7 @@
       "binding": "SESSIONS_LIMITER",
       "kind": "ratelimits",
       "scope": "shared",
-      "purpose": "⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. The per-account bucket for the four /v1/sessions routes, keyed `sessions:<sub>` — the VERIFIED subject, never a client-chosen value. `simple: { limit: 5, period: 60 }`: a person signs a session out a handful of times, not dozens. It bounds the one KV write per revoke (kv.writesPerDay) and the service-role RPC behind every route. Its OWN namespace (1010) so it cannot spend any other route's budget.",
+      "purpose": "⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. The per-account bucket for the four /v1/sessions routes, keyed `sessions:<sub>` — the VERIFIED subject, never a client-chosen value. `simple: { limit: 5, period: 60 }`: a person signs a session out a handful of times, not dozens. It bounds the one KV write per revoke (kv.writesPerDay) and the service-role RPC behind every route. Its OWN namespace (1011) so it cannot spend any other route's budget.",
       "readers": [
         "services/platform/src/routes/sessions.ts"
       ]

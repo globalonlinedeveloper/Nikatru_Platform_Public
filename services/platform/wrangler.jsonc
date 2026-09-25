@@ -320,8 +320,11 @@
       // 5/min: a person signs a device out a few times a year; five in a minute
       // is a list reload and a couple of taps. `period` is 60, one of
       // tooling/ceilings.json's allowed values.
+      //
+      // 1011, not 1010: a namespace_id is account-wide, and env.sandbox below
+      // holds 1006-1010 (tooling/store/capture-backend.mjs limb id-reuse).
       "name": "SESSIONS_LIMITER",
-      "namespace_id": "1010",
+      "namespace_id": "1011",
       "simple": { "limit": 5, "period": 60 }
     }
   ],
@@ -411,8 +414,8 @@
   // refuses both, an inherited `workers_dev`, and a production database.
   //
   // ⚠️ `ratelimits` ARE DECLARED WITH THEIR OWN namespace_ids (1006-1010), never
-  // the top level's 1001-1005: a shared namespace would let a public sandbox URL
-  // spend the budget production's callers are counted against. Every limiter
+  // the top level's 1001-1005 or 1011: a shared namespace would let a public
+  // sandbox URL spend the budget production's callers are counted against. Every limiter
   // binding is optional and fails OPEN (src/types.ts:63), so an absent one is a
   // sandbox with no breaker at all, not an error anyone would see.
   //

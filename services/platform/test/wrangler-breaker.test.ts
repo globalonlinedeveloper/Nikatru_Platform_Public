@@ -126,7 +126,7 @@ describe('wrangler.jsonc declares BOTH halves of the cost circuit breaker', () =
     // KV writes (kv.writesPerDay) and on the service-role RPC behind every route.
     const e = byName.get('SESSIONS_LIMITER');
     expect(e, 'SESSIONS_LIMITER missing — /v1/sessions has no bound').toBeDefined();
-    expect(String(e!.namespace_id)).toBe('1010');
+    expect(String(e!.namespace_id)).toBe('1011');
     expect(e!.simple?.limit).toBe(5);
     expect(e!.simple?.period).toBe(60);
   });
