@@ -138,6 +138,18 @@
 //       enters `--runs-file` (which refuses a workflow that is no release lane),
 //       and WITHOUT it a fixture run's capture set is empty, refusing every
 //       `cap-*` value.
+//       ⏱ 2026-09-25: four more seams for the pending-migration path below,
+//       each REFUSED without `--rows-file`, because a live run reads the real
+//       thing: `--schema-file s.json` — what the two schema reads answer,
+//       `{"tables": [<name>…], "migrations": [<file>…] | {"error": "…"}}`
+//       (WITHOUT it every enumerated table is present and every migration
+//       applied, which is what every older fixture means); `--now <iso>` — that
+//       path's clock (a fixture that reaches it without one is refused, so no
+//       test reads the wall clock); `--history <dir>` — the git repository merge
+//       times and ancestry are read from (default: `--root`); and
+//       `--platform-deployments-file p.json` — the platform environment's
+//       Deployments, `[{sha, id?, created_at?}]` (WITHOUT it: NOT READ, and the
+//       clock alone decides).
 //   node tooling/ops/check-prod-provenance.mjs --emit-served-environments
 //     → prints the deployment environments witness (b) is read from, one per
 //       line, and exits. Needs no credential, so it is the ONLY way a test can
@@ -156,12 +168,47 @@
 // them; a build found that way is judged like any other run and PRINTED. Every
 // walk attempt and every point read prints one line, on success and on exit 2.
 //
+// ⏱ 2026-09-25 · A TABLE ITS MIGRATION HAS NOT REACHED YET IS NOT A FAILED READ
+// (PROV-BEFORE-MIGRATION). #930 merged 0017_ext_devices.sql; deploy-workers #186,
+// the one run that applies PLATFORM_DB migrations, refused because CI #3828 was
+// red (ops-watch #484, an unrelated GlitchTip cause); and ops-watch #485 then
+// counted `ext_devices` in production before anything had created it. D1
+// answered `no such table`, this reader exited 2, and a red monitor keeps CI red
+// — the loop that froze deploys until #186 was re-run by hand and applied 0017
+// at 04:07:54Z. So, before the census, two plain schema reads through `queryD1`:
+// every table in `sqlite_master`, and every name in wrangler's migration ledger
+// (`migrations_table` of the same D1 entry, default `d1_migrations`). A table
+// the migrations create and production lacks is then exactly one of:
+//   · its migration IS recorded → a finding (exit 1): it ran, and the table it
+//     creates is not there.
+//   · its migration is NOT recorded → zero rows, PRINTED `⬜ not yet migrated: …`,
+//     for as long as waiting can still bring it: no platform Deployment at a
+//     commit containing the migration exists, and it merged less than
+//     PENDING_LIMIT_HOURS ago. Past either, a finding naming the table, the
+//     file, the merge time and the hours since.
+// The clock is git: the committer date of the first-parent commit that ADDED
+// the file, which on this squash-merge repository is the merge. A SHALLOW clone
+// is refused — every file in it looks added by its one commit, a clock that
+// restarts each checkout and never reaches 24 h — which is why ops-watch's job
+// checks out with `fetch-depth: 0`. The ledger is the platform environment's
+// GitHub Deployments: deploy-workers applies PLATFORM_DB migrations BEFORE its
+// `deploy` step and records only when that step succeeded (the gate's limb 9
+// holds that order), so a Deployment at a commit containing the migration says
+// the applier ran it, and waiting will not bring the table. It is read only
+// while something is pending, and the schema is read AGAIN after it, so a deploy
+// that finishes between the two reads is seen as applied, never contradicted. A
+// MISSING Deployment (the 2026-08-17 503) only leaves the clock to decide; the
+// ledger can make a verdict red sooner and can never make a table look
+// migrated. Either schema read failing, or answering in a shape this reader
+// cannot believe, is exit 2 — never "every migration applied".
+//
 // Env: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID (D1 read)
 //      GITHUB_TOKEN or GH_TOKEN, GITHUB_REPOSITORY (release-lane run history and
 //      the deployment ledger)
 //      GITHUB_API_URL (the loopback test seam of record-deployment.mjs; Actions
 //      sets the real origin, accepted unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
+import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -1344,7 +1391,10 @@ function providerIds() {
 }
 
 // ── D1 ──────────────────────────────────────────────────────────────────────
-function databaseId() {
+/** The D1 database that owns the tables — `{ id, migrationsTable }`, from the
+ *  one binding carrying `migrations_dir`. ⏱ 2026-09-25 — `migrationsTable` is
+ *  that entry's wrangler ledger, read by the pending-migration path. */
+function platformD1() {
   const rel = 'services/platform/wrangler.jsonc';
   const p = join(ROOT, rel);
   if (!existsSync(p)) throw new CouldNotLook(`${rel} does not exist, so the database that owns the tables cannot be resolved`);
@@ -1354,9 +1404,13 @@ function databaseId() {
   } catch (e) {
     throw new CouldNotLook(`${rel} could not be parsed (${e.message})`);
   }
-  const id = (cfg.d1_databases ?? []).find((d) => d.migrations_dir)?.database_id;
-  if (!id) throw new CouldNotLook(`${rel} has no D1 binding carrying \`migrations_dir\``);
-  return id;
+  const entry = (cfg.d1_databases ?? []).find((d) => d.migrations_dir);
+  if (!entry?.database_id) throw new CouldNotLook(`${rel} has no D1 binding carrying \`migrations_dir\``);
+  const migrationsTable = entry.migrations_table ?? 'd1_migrations';
+  if (typeof migrationsTable !== 'string' || !SAFE_IDENTIFIER.test(migrationsTable)) {
+    throw new CouldNotLook(`${rel} names \`migrations_table\` ${JSON.stringify(migrationsTable)}, which this reader will not quote into SQL`);
+  }
+  return { id: entry.database_id, migrationsTable };
 }
 
 async function queryD1(dbId, sql) {
@@ -1395,6 +1449,156 @@ async function queryD1(dbId, sql) {
     if (!Array.isArray(rows)) throw new CouldNotLook('the D1 API response carried no results array');
     return rows;
   });
+}
+
+// ── THE PENDING-MIGRATION PATH · ⏱ 2026-09-25 (see the header) ─────────────
+/** How long a migration may wait for the deploy that applies it. */
+export const PENDING_LIMIT_HOURS = 24;
+/** The schema read, VERBATIM the shape D1's authorizer was measured to accept
+ *  (a plain sqlite_master read — tooling/ci/d1-sql-inventory.mjs) and the one
+ *  tooling/e2e/verify_purged.mjs already runs against live D1. */
+export const SCHEMA_TABLES_SQL = "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name";
+const SAFE_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
+/** A migration's ledger key. wrangler records the file name; the `.sql` is
+ *  dropped on BOTH sides so a ledger that omits it cannot call every table
+ *  pending — and a ledger naming none of the files is refused outright below. */
+const migrationKey = (f) => String(f).replace(/\.sql$/i, '');
+const isoZ = (ms) => new Date(ms).toISOString().replace('.000Z', 'Z');
+
+/** PURE. The names one schema read answered, or CouldNotLook for an answer
+ *  that is not a list of named rows. */
+function namesOf(rows, what) {
+  if (!Array.isArray(rows)) throw new CouldNotLook(`${what} did not answer with a list of rows`);
+  const names = new Set();
+  for (const r of rows) {
+    const n = typeof r === 'string' ? r : r?.name;
+    if (typeof n !== 'string' || n.length === 0) throw new CouldNotLook(`a row of ${what} carries no \`name\` (${JSON.stringify(r)?.slice(0, 80)})`);
+    names.add(n);
+  }
+  return names;
+}
+
+/** PURE. The `sqlite_master` read → the set of tables production has.
+ *  CouldNotLook when it names no table, or not the migration ledger itself:
+ *  either way "none recorded" would call every missing table pending. */
+export function presentTablesFrom(rows, migrationsTable) {
+  const present = namesOf(rows, 'the sqlite_master read');
+  if (present.size === 0) throw new CouldNotLook('the sqlite_master read answered zero tables — a production database with none is a read that failed');
+  if (!present.has(migrationsTable)) {
+    throw new CouldNotLook(
+      `production has no \`${migrationsTable}\` table, so which migrations ran cannot be read — and "none recorded" ` +
+        'would call every missing table pending',
+    );
+  }
+  return present;
+}
+
+/** PURE. The migration-ledger read → the set of applied migration keys.
+ *  CouldNotLook when it is empty: a database that has tables and no recorded
+ *  migration is a read this reader cannot believe, never "nothing applied". */
+export function appliedMigrationsFrom(rows, migrationsTable) {
+  const applied = namesOf(rows, `the \`${migrationsTable}\` read`);
+  if (applied.size === 0) throw new CouldNotLook(`\`${migrationsTable}\` answered zero migrations from a database that has tables`);
+  return new Set([...applied].map(migrationKey));
+}
+
+/** PURE. Every table the migrations create, against production:
+ *  `present`, `pending` (absent, its migration NOT recorded) or `vanished`
+ *  (absent, its migration recorded). CouldNotLook when the ledger names none of
+ *  the files that create a table — a name format this reader does not expect
+ *  would otherwise read as "nothing has been applied yet". */
+export function classifyMigrationState(tables, schema) {
+  const files = [...new Set([...tables.values()].map((t) => t.createdIn))];
+  if (!files.some((f) => schema.applied.has(migrationKey(f)))) {
+    throw new CouldNotLook(
+      `the migration ledger names none of the ${files.length} migration file(s) that create a table ` +
+        `(${[...schema.applied].slice(0, 3).join(', ') || 'nothing'} …), so its names are not the ones this reader expects`,
+    );
+  }
+  const out = { present: [], pending: [], vanished: [] };
+  for (const name of [...tables.keys()].sort()) {
+    const file = tables.get(name).createdIn;
+    if (schema.present.has(name)) out.present.push(name);
+    else (schema.applied.has(migrationKey(file)) ? out.vanished : out.pending).push({ table: name, file });
+  }
+  return out;
+}
+
+/** `git -C <dir> …`, bounded. Never throws: callers read `status`, which is
+ *  `null` when git did not finish. */
+function runGit(dir, argv) {
+  const r = spawnSync('git', ['-C', dir, ...argv], { encoding: 'utf8', timeout: 30_000, windowsHide: true });
+  return { status: r.status, stdout: r.stdout ?? '', stderr: r.stderr || (r.error?.message ?? '') };
+}
+
+/** When `rel` merged: `{ sha, mergedAt }` of the newest first-parent commit on
+ *  HEAD that ADDED it — on this squash-merge repository, the merge. CouldNotLook
+ *  on a shallow clone, a git that does not answer, or no such commit. */
+export function migrationMerge(dir, rel, git = runGit) {
+  const shallow = git(dir, ['rev-parse', '--is-shallow-repository']);
+  if (shallow.status !== 0) {
+    throw new CouldNotLook(`\`git rev-parse --is-shallow-repository\` exited ${shallow.status ?? 'without a status'} in ${dir}, so when ${rel} merged cannot be read`);
+  }
+  if (shallow.stdout.trim() === 'true') {
+    throw new CouldNotLook(
+      `${dir} is a SHALLOW clone, so ${rel} looks added by the oldest commit it holds — a clock that restarts every ` +
+        `checkout and never reaches ${PENDING_LIMIT_HOURS} h. The job running this reader must check out with \`fetch-depth: 0\``,
+    );
+  }
+  const log = git(dir, ['log', '--first-parent', '-m', '--no-renames', '--diff-filter=A', '--format=%H%x09%cI', 'HEAD', '--', rel]);
+  if (log.status !== 0) throw new CouldNotLook(`\`git log\` for ${rel} exited ${log.status ?? 'without a status'} (${log.stderr.trim().slice(0, 200)})`);
+  const m = log.stdout.split('\n').find((l) => l.trim())?.match(/^([0-9a-f]{40})\t(\S+)$/);
+  if (!m || !Number.isFinite(Date.parse(m[2]))) {
+    throw new CouldNotLook(`no first-parent commit on HEAD in ${dir} adds ${rel}, so how long it has waited for its deploy cannot be said`);
+  }
+  return { sha: m[1], mergedAt: isoZ(Date.parse(m[2])) };
+}
+
+/** Does commit `descendant` contain commit `ancestor`? `true` / `false`, or
+ *  `null` when git cannot say — a Deployment of a commit this clone never
+ *  fetched. */
+export function commitContains(dir, ancestor, descendant, git = runGit) {
+  if (!/^[0-9a-f]{7,40}$/i.test(String(descendant))) return null;
+  const r = git(dir, ['merge-base', '--is-ancestor', ancestor, descendant]);
+  return r.status === 0 ? true : r.status === 1 ? false : null;
+}
+
+/** PURE. One pending migration's verdict: `{ overdue, line }`. `containing` is
+ *  the platform Deployments at a commit that contains the merge. */
+export function pendingMigrationVerdict({ table, file, merged, nowMs, containing = [], migrationsTable = 'd1_migrations' }) {
+  const mergedMs = Date.parse(merged?.mergedAt);
+  if (!Number.isFinite(mergedMs)) throw new CouldNotLook(`${file} has no readable merge time, so how long \`${table}\` has waited cannot be said`);
+  if (!Number.isFinite(nowMs)) throw new CouldNotLook(`the pending-migration path has no clock, so how long \`${table}\` has waited cannot be said`);
+  const hours = ((nowMs - mergedMs) / 3_600_000).toFixed(1);
+  const at = `merged ${isoZ(mergedMs)} in ${String(merged.sha ?? '?').slice(0, 7)}`;
+  if (containing.length) {
+    return {
+      overdue: true,
+      line:
+        `${table}: absent from production and ${file} is not in \`${migrationsTable}\` (${at}, ${hours} h ago), yet ${containing.length} ` +
+        `platform Deployment(s) at a commit containing it exist (${containing.map((d) => `${d.sha.slice(0, 7)}${d.id != null ? ` · Deployment ${d.id}` : ''}`).join(', ')}). ` +
+        'deploy-workers applies PLATFORM_DB migrations before it deploys, so the applier has run this one — waiting will not bring the table',
+    };
+  }
+  if (Number(hours) >= PENDING_LIMIT_HOURS) {
+    return {
+      overdue: true,
+      line: `${table}: ${file} is still not in \`${migrationsTable}\` ${hours} h after the merge that added it (${at}) — a migration may wait ${PENDING_LIMIT_HOURS} h for its deploy, not longer`,
+    };
+  }
+  return { overdue: false, line: `⬜ not yet migrated: ${table} (${file}, merged ${isoZ(mergedMs)})` };
+}
+
+/** The GitHub Deployment environment the platform Worker's deploys record into:
+ *  the ONE service environment whose `source` is the directory of the
+ *  register's `wrangler` file. */
+function platformEnvironment(register) {
+  const src = String(register.wrangler ?? '').split('/').slice(0, -1).join('/');
+  const hits = (readJson(CHANNELS_REL).serviceEnvironments ?? []).filter((s) => s?.source === src && typeof s?.deploymentEnvironment === 'string');
+  if (hits.length !== 1) {
+    throw new CouldNotLook(`${CHANNELS_REL} declares ${hits.length} service environment(s) with source \`${src || '(none)'}\` — the platform Deployment ledger needs exactly one`);
+  }
+  return hits[0].deploymentEnvironment;
 }
 
 /**
@@ -1508,6 +1712,18 @@ async function main() {
     console.log(
       '!!  OFFLINE FIXTURE MODE — --rows-file/--runs-file/--deployments-file/--point-reads-file/--capture-runs-file is set. This must NEVER appear in a real ops-watch log.',
     );
+  }
+  // ⏱ 2026-09-25 — the pending-migration seams. Each one without `--rows-file`
+  // would let a LIVE run judge real rows against a hand-written schema, clock,
+  // history or ledger, so it is refused rather than honoured.
+  const schemaFile = flag('--schema-file');
+  const nowFlag = flag('--now');
+  const historyFlag = flag('--history');
+  const platformDeploymentsFile = flag('--platform-deployments-file');
+  for (const [name, v] of [['--schema-file', schemaFile], ['--now', nowFlag], ['--history', historyFlag], ['--platform-deployments-file', platformDeploymentsFile]]) {
+    if (v !== null && !rowsFile) {
+      throw new CouldNotLook(`${name} is an offline fixture seam and this run has no --rows-file: a live run reads production's schema, the wall clock, this checkout's history and the real ledger`);
+    }
   }
 
   // Resolver contexts. Each throws CouldNotLook rather than resolving nothing.
@@ -1785,8 +2001,84 @@ async function main() {
     'migration-seed': null, // built per table below — the allowed set is that table's own seeds
   };
 
-  const dbId = rowsFile ? null : databaseId();
+  const d1 = rowsFile && !schemaFile ? null : platformD1();
+  const dbId = rowsFile ? null : d1.id;
   const fixture = rowsFile ? JSON.parse(readFileSync(rowsFile, 'utf8')) : null;
+
+  // ── (0) HAS EVERY TABLE ARRIVED? · ⏱ 2026-09-25 — see the header ─────────
+  // Live: two bounded reads through `queryD1`, the ledger only once the table
+  // read has shown it exists. Fixture: `--schema-file`, through the same two
+  // judges; WITHOUT it, `null` — every table present, which is what every older
+  // fixture means and the only state in which this block reads nothing.
+  const readSchema = async () => {
+    if (schemaFile) {
+      const s = JSON.parse(readFileSync(schemaFile, 'utf8'));
+      const present = presentTablesFrom(s?.tables, d1.migrationsTable);
+      if (s?.migrations?.error !== undefined) throw new CouldNotLook(`the \`${d1.migrationsTable}\` read failed: ${s.migrations.error}`);
+      return { present, applied: appliedMigrationsFrom(s?.migrations, d1.migrationsTable) };
+    }
+    if (rowsFile) return null;
+    const present = presentTablesFrom(await queryD1(dbId, SCHEMA_TABLES_SQL), d1.migrationsTable);
+    return { present, applied: appliedMigrationsFrom(await queryD1(dbId, `SELECT name FROM "${d1.migrationsTable}" ORDER BY name`), d1.migrationsTable) };
+  };
+  const everyTable = { present: [...tables.keys()].sort(), pending: [], vanished: [] };
+  let schema = await readSchema();
+  let migState = schema === null ? everyTable : classifyMigrationState(tables, schema);
+  let platformEnv = null;
+  let platformDeploys = null;
+  if (migState.pending.length) {
+    platformEnv = platformEnvironment(register);
+    platformDeploys = platformDeploymentsFile
+      ? (() => {
+          const arr = JSON.parse(readFileSync(platformDeploymentsFile, 'utf8'));
+          if (!Array.isArray(arr)) throw new CouldNotLook(`${platformDeploymentsFile} is not an array of deployments`);
+          return arr.map((d) => deploymentRecord(typeof d === 'string' ? { sha: d } : d, platformEnv));
+        })()
+      : rowsFile
+        ? null
+        : await githubDeployments([platformEnv]);
+    // 🔴 READ AGAIN, AFTER THE LEDGER. A Deployment the ledger lists was
+    // recorded after its migrations applied, so a schema read that FOLLOWS the
+    // ledger read has to see them; the first read may predate a deploy that
+    // finished in between, and would call that deploy a contradiction.
+    if (!rowsFile) {
+      schema = await readSchema();
+      migState = classifyMigrationState(tables, schema);
+    }
+  }
+  const quiet = new Set([...migState.pending, ...migState.vanished].map((p) => p.table));
+  const migrationViolations = migState.vanished.map(
+    ({ table, file }) => `${table}: absent from production, yet ${file} is recorded in \`${d1.migrationsTable}\` — the migration ran and the table it creates is not there`,
+  );
+  const pendingLines = [];
+  const unplaced = new Set();
+  if (migState.pending.length) {
+    const nowMs = nowFlag !== null ? Date.parse(nowFlag) : rowsFile ? NaN : Date.now();
+    if (!Number.isFinite(nowMs)) {
+      throw new CouldNotLook(
+        nowFlag !== null
+          ? `--now ${JSON.stringify(nowFlag)} is not a time`
+          : `fixture mode reached ${migState.pending.length} pending migration(s) with no --now — a test must never read the wall clock`,
+      );
+    }
+    const history = resolve(historyFlag ?? ROOT);
+    const mergeOf = new Map();
+    for (const { table, file } of migState.pending) {
+      if (!mergeOf.has(file)) mergeOf.set(file, migrationMerge(history, `${migrationsRel}/${file}`));
+      const merged = mergeOf.get(file);
+      const mergedMs = Date.parse(merged.mergedAt);
+      const containing = [];
+      // A Deployment created before the merge cannot contain it, so only the
+      // ones after it cost a git call.
+      for (const d of (platformDeploys ?? []).filter((x) => x.created_at === null || !(Date.parse(x.created_at) < mergedMs))) {
+        const c = commitContains(history, merged.sha, d.sha);
+        if (c === true) containing.push(d);
+        else if (c === null) unplaced.add(`platform Deployment ${d.sha.slice(0, 7)} is not in this checkout's history, so it neither shows nor rules out ${file}`);
+      }
+      const v = pendingMigrationVerdict({ table, file, merged, nowMs, containing, migrationsTable: d1.migrationsTable });
+      (v.overdue ? migrationViolations : pendingLines).push(v.line);
+    }
+  }
 
   // ⏱ 2026-09-23 — THE CENSUS RUNS IN FOUR PHASES, so that no row is judged
   // before every build it names has been looked for: (A) read each table's
@@ -1825,15 +2117,19 @@ async function main() {
       return [id, fn];
     });
 
-    const groups = fixture
-      ? (fixture[name] ?? [])
-      : await queryD1(
-          dbId,
-          rule.resolver === 'not-reserved-address'
-            ? reservedAddressCensusSql(name, marker)
-            : `SELECT "${marker}" AS marker, COUNT(*) AS n FROM "${name}" GROUP BY "${marker}"`,
-        );
-    plan.push({ name, rule, marker, resolve_, alts, groups });
+    // ⏱ 2026-09-25 — a table production does not have yet is ZERO rows, and a
+    // table that vanished is its own finding above: neither is queried.
+    const groups = quiet.has(name)
+      ? []
+      : fixture
+        ? (fixture[name] ?? [])
+        : await queryD1(
+            dbId,
+            rule.resolver === 'not-reserved-address'
+              ? reservedAddressCensusSql(name, marker)
+              : `SELECT "${marker}" AS marker, COUNT(*) AS n FROM "${name}" GROUP BY "${marker}"`,
+          );
+    plan.push({ name, rule, marker, resolve_, alts, groups, quiet: quiet.has(name) });
   }
 
   // ── (B) the builds a point read must look up ─────────────────────────────
@@ -1908,7 +2204,7 @@ async function main() {
   // and here it is what keeps a crashed nightly's residue visible in this log
   // even though it no longer turns the run red.
   const alsoAccepted = [];
-  for (const { name, rule, marker, resolve_, alts, groups } of plan) {
+  for (const { name, rule, marker, resolve_, alts, groups, quiet: unread } of plan) {
     let total = 0;
     let bad = 0;
     for (const g of groups) {
@@ -1945,7 +2241,7 @@ async function main() {
         violations.push(`${name}: ${n} row(s) — ${why}  [marker \`${marker}\`, resolver \`${rule.resolver}\`]`);
       }
     }
-    census.push({ name, total, bad, marker, resolver: rule.resolver });
+    census.push({ name, total, bad, marker, resolver: rule.resolver, unread });
   }
 
   const grandTotal = census.reduce((a, c) => a + c.total, 0);
@@ -1956,6 +2252,20 @@ async function main() {
   );
   // ⏱ 2026-09-23 — one line per release lane, so a lane that was read and found
   // empty is visible as a count and not as an absence.
+  // ⏱ 2026-09-25 — what the schema reads found, on every run, as counts.
+  console.log(
+    schema === null
+      ? '⬜  migration ledger: NOT READ (fixture mode, no --schema-file) — every enumerated table taken as present'
+      : `⬜  migration ledger: ${schema.applied.size} migration(s) recorded in \`${d1.migrationsTable}\` · ${migState.present.length} of ${tables.size} table(s) present · ` +
+          `${migState.pending.length} not yet migrated · ${migState.vanished.length} missing though recorded`,
+  );
+  if (platformEnv !== null) {
+    console.log(
+      `⬜  platform Deployment ledger (${platformEnv}): ${platformDeploys === null ? 'NOT READ (fixture mode) — the clock alone decides' : `${platformDeploys.length} Deployment(s)`}`,
+    );
+  }
+  for (const l of pendingLines) console.log(l);
+  for (const u of unplaced) console.log(`⬜  ${u}`);
   for (const l of lanes) {
     const laneRuns = runs.filter((r) => r.workflow === l.workflow && laneByWorkflow.get(r.workflow)?.kind === l.kind).length;
     const deps =
@@ -1983,9 +2293,23 @@ async function main() {
   for (const w of captureWitnessed) console.log(`⬜  store-capture-witnessed stamp accepted: ${w}`);
   for (const a of alsoAccepted) console.log(`⬜  second-resolver acceptance: ${a}`);
   for (const c of census) {
+    if (c.unread) {
+      console.log(`    ⬜  ${c.name.padEnd(24)} ${String(c.total).padStart(6)} row(s) — not in production, not queried   [${c.marker} · ${c.resolver}]`);
+      continue;
+    }
     console.log(`    ${c.bad === 0 ? 'ok ' : '✗  '} ${c.name.padEnd(24)} ${String(c.total).padStart(6)} row(s), ${c.bad} unattributable   [${c.marker} · ${c.resolver}]`);
   }
 
+  if (migrationViolations.length) {
+    console.error('');
+    console.error(`✗ ${migrationViolations.length} table(s) the migrations create are not in production, and waiting will not bring them:`);
+    for (const v of migrationViolations) console.error(`    ${v}`);
+    console.error('');
+    console.error('  deploy-workers is the one applier of PLATFORM_DB migrations. A migration still waiting past the limit is a');
+    console.error('  deploy that has not happened — find what is blocking it; one the applier has run, or one recorded with');
+    console.error('  its table gone, is a database this reader and the deploy do not agree on.');
+    process.exitCode = 1;
+  }
   if (violations.length) {
     console.error('');
     console.error(`✗ ${violations.length} group(s) of rows in production cannot be traced to a released build:`);
@@ -2007,6 +2331,7 @@ async function main() {
     process.exitCode = 1;
     return;
   }
+  if (migrationViolations.length) return;
 
   console.log('ok  every row in every shared table resolves to a released build or its declared equivalent [pipeline B-17]');
   console.log('⬜  THIS IS A MONITOR, NOT A GATE. Green means "nothing has contradicted B-17 since this run", never');

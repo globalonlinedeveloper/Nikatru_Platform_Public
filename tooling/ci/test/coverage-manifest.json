@@ -184,7 +184,7 @@
   "price-literals.test.mjs": 15,
   "privacy-manifest.test.mjs": 20,
   "prod-provenance-walk.test.mjs": 15,
-  "prod-provenance.test.mjs": 117,
+  "prod-provenance.test.mjs": 139,
   "propagate-versions.test.mjs": 11,
   "provider-graph-acyclic.test.mjs": 12,
   "provision-backend.test.mjs": 11,

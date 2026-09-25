@@ -40,6 +40,11 @@
 //      invoked by a job in ops-watch.yml, and ops-watch.yml must still have no
 //      `push`/`pull_request` trigger (the reason it is allowed to hold the
 //      credential at all).
+//   9. ⏱ 2026-09-25 · A TABLE WAITING FOR ITS MIGRATION IS WAITED FOR, 24 H AND
+//      NO LONGER. The monitor keeps its pending-migration path, the ops-watch job
+//      running it keeps whole git history, and deploy-workers keeps applying the
+//      migrations before the deploy it records — each held by text, comments
+//      stripped.
 //
 // Every limb has a recorded failing case in tooling/ci/test/prod-provenance
 // .test.mjs, and limb 2 has one against the REAL TREE: adding a CREATE TABLE to
@@ -71,6 +76,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 import { enumerateMigrationTables } from './migration-tables.mjs';
+import { stripSourceComments } from './text-reductions.mjs';
 import { parseWorkflow } from './workflow-scan.mjs';
 
 const ROOT = resolve(process.argv[2] ?? process.cwd());
@@ -345,6 +351,116 @@ if (opsWatch === null) {
         `(line ${triggers.map((l) => l.n).join(', ')}). It holds CLOUDFLARE_API_TOKEN, and it is allowed to only because ` +
         'no untrusted push can start it. Either revert the trigger or move the monitor.',
     );
+  }
+}
+
+// ── LIMB 9 · ⏱ 2026-09-25 · A TABLE ITS MIGRATION HAS NOT REACHED IS WAITED FOR — 24 H, NOT LONGER ──
+// On 2026-09-25 #930 merged 0017, deploy-workers #186 was refused (CI #3828 was
+// red over ops-watch #484), and ops-watch #485 read `ext_devices` from a
+// production that did not have it yet: a D1 400, so COULD NOT LOOK, so red —
+// over a deploy that simply had not happened. The monitor now takes such a
+// table as zero rows and says so, until 24 h after the merge. That rests on
+// three things in three files, and this limb holds each by text, comments
+// stripped, so a comment describing one never stands in for it:
+//   (a) the monitor still HAS the pending path: the 24 h limit, the ⬜ line,
+//       the sqlite_master read and the shallow-clone refusal;
+//   (b) the job that runs it checks out whole history (`fetch-depth: 0`) —
+//       the merge time is read from git, and a shallow clone has none;
+//   (c) deploy-workers applies the migrations BEFORE the deploy and records the
+//       Deployment only after it, into the environment the monitor reads — the
+//       premise under "a Deployment at a commit containing M means the applier
+//       has run M", which is what turns a pending table red before 24 h.
+const PENDING_TOKENS = [
+  [/\bPENDING_LIMIT_HOURS\s*=\s*24\b/, 'the 24 h limit (`PENDING_LIMIT_HOURS = 24`)'],
+  [/not yet migrated: /, 'the `⬜ not yet migrated:` line'],
+  [/sqlite_master/, 'the schema read (`sqlite_master`)'],
+  // the ARGV, not the flag's name: the refusal's own error text spells the flag too
+  [/\[\s*'rev-parse'\s*,\s*'--is-shallow-repository'\s*\]/, "the shallow-clone refusal (`git(dir, ['rev-parse', '--is-shallow-repository'])`)"],
+];
+if (existsSync(join(ROOT, MONITOR_REL))) {
+  const code = stripSourceComments(readFileSync(join(ROOT, MONITOR_REL), 'utf8'), '.mjs');
+  const lost = PENDING_TOKENS.filter(([re]) => !re.test(code)).map(([, what]) => what);
+  if (lost.length) {
+    problems.push(
+      `${MONITOR_REL} has lost its pending-migration path — missing outside a comment: ${lost.join('; ')}. Without it a ` +
+        'table whose migration has not deployed yet is a failed read again, and a migration that never deploys is ' +
+        'never named: the 2026-09-25 freeze (ops-watch #485 over `ext_devices` before 0017 applied).',
+    );
+  }
+}
+if (opsWatch !== null) {
+  for (const j of [...opsWatch.jobs.values()].filter((x) => x.logical.some((l) => (l.text ?? l).includes(MONITOR_REL)))) {
+    if (!j.lines.some((l) => /^\s*fetch-depth:\s*0\s*$/.test(l.text))) {
+      problems.push(
+        `${OPS_WATCH_REL} job \`${j.name}\` runs ${MONITOR_REL} from a shallow checkout (no \`fetch-depth: 0\`). The monitor ` +
+          'reads when a pending migration merged from git history; a shallow clone has none, so it refuses (exit 2) on the ' +
+          'first day a migration waits for its deploy.',
+      );
+    }
+  }
+}
+const DEPLOY_WORKERS_REL = '.github/workflows/deploy-workers.yml';
+const CHANNELS_REL = 'tooling/channel-register.json';
+const workerDir = String(register.wrangler ?? '').split('/').slice(0, -1).join('/');
+const deployWorkers = parseWorkflow(ROOT, DEPLOY_WORKERS_REL);
+if (!workerDir) {
+  problems.push(`${REGISTER_REL} declares no \`wrangler\`, so the job that applies ${register.database ?? 'the database'}'s migrations cannot be found.`);
+} else if (deployWorkers === null) {
+  problems.push(`${DEPLOY_WORKERS_REL} does not exist, so nothing applies ${migrationsRel} — and a pending migration would wait for an applier that is not there.`);
+} else {
+  const esc = workerDir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const appliers = [...deployWorkers.jobs.values()].filter(
+    (j) => j.lines.some((l) => /\bd1 migrations apply\b.*--remote\b/.test(l.text)) && j.lines.some((l) => new RegExp(`^\\s*workingDirectory:\\s*${esc}\\s*$`).test(l.text)),
+  );
+  if (appliers.length !== 1) {
+    problems.push(
+      `${DEPLOY_WORKERS_REL} has ${appliers.length} job(s) that run \`d1 migrations apply … --remote\` in ${workerDir}; the ` +
+        'monitor treats a platform Deployment as proof the ONE applier ran, so there must be exactly one.',
+    );
+  } else {
+    const j = appliers[0];
+    const at = (re) => j.lines.find((l) => re.test(l.text)) ?? null;
+    const apply = at(/\bd1 migrations apply\b.*--remote\b/);
+    const deploy = at(/^\s*id:\s*deploy\s*$/);
+    const record = at(/record-deployment\.mjs\s/);
+    const stepOf = (line) => {
+      const starts = j.lines.filter((l) => /^ {6}- /.test(l.text)).map((l) => l.n);
+      const from = Math.max(...starts.filter((n) => n <= line.n));
+      const to = Math.min(...starts.filter((n) => n > line.n), Infinity);
+      return j.lines.filter((l) => l.n >= from && l.n < to);
+    };
+    const where = `${DEPLOY_WORKERS_REL} job \`${j.name}\``;
+    if (!deploy || !record) {
+      problems.push(`${where} applies the migrations but has ${!deploy ? 'no `id: deploy` step' : 'no `record-deployment.mjs` step'}, so a platform Deployment no longer proves the applier ran.`);
+    } else if (!(apply.n < deploy.n && deploy.n < record.n)) {
+      problems.push(
+        `${where}: the migrations apply at line ${apply.n}, the deploy at ${deploy.n}, the Deployment is recorded at ${record.n}. ` +
+          'Only apply → deploy → record makes a platform Deployment proof that its migrations ran.',
+      );
+    } else {
+      if (stepOf(apply).some((l) => /^\s*if:/.test(l.text))) {
+        problems.push(`${where}: the migration step (line ${apply.n}) carries an \`if:\`, so a deploy can happen without it running.`);
+      }
+      if (!stepOf(record).some((l) => /^\s*if:.*steps\.deploy\.outcome\s*==\s*'success'/.test(l.text))) {
+        problems.push(`${where}: the Deployment record (line ${record.n}) is not conditioned on \`steps.deploy.outcome == 'success'\`.`);
+      }
+      if (j.continueOnError !== null) {
+        problems.push(`${where}: \`continue-on-error: true\` at line ${j.continueOnError.n} lets the deploy and its record run past a failed migration.`);
+      }
+      let envs = [];
+      try {
+        envs = (JSON.parse(readFileSync(join(ROOT, CHANNELS_REL), 'utf8')).serviceEnvironments ?? []).filter((s) => s?.source === workerDir).map((s) => s.deploymentEnvironment);
+      } catch {
+        // an unreadable register is reported below as "no environment", never skipped
+      }
+      const recorded = record.text.match(/record-deployment\.mjs\s+(\S+)/)?.[1];
+      if (envs.length !== 1 || envs[0] !== recorded) {
+        problems.push(
+          `${where} records its Deployment into \`${recorded}\`, and ${CHANNELS_REL} gives ${workerDir} ` +
+            `${envs.length === 1 ? `\`${envs[0]}\`` : `${envs.length} environment(s)`} — the monitor reads the platform Deployment ledger from the latter.`,
+        );
+      }
+    }
   }
 }
 

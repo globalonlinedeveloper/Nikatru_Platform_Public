@@ -24,10 +24,19 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, appendFileSync, rmSync, cpSync, readdirSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { enumerateMigrationTables, sqlLiteral } from '../migration-tables.mjs';
-import { attestationCommitRead, attestationDeployments, CouldNotLook, collectPaged, reservedAddressCensusSql } from '../../ops/check-prod-provenance.mjs';
+import {
+  attestationCommitRead,
+  attestationDeployments,
+  CouldNotLook,
+  collectPaged,
+  migrationMerge,
+  PENDING_LIMIT_HOURS,
+  pendingMigrationVerdict,
+  reservedAddressCensusSql,
+} from '../../ops/check-prod-provenance.mjs';
 import { KILL_MS, serveSilence, runBounded } from './fixtures/silent-server.mjs';
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -37,6 +46,8 @@ const MONITOR = join(REPO, 'tooling', 'ops', 'check-prod-provenance.mjs');
 const REGISTER = 'tooling/prod-provenance.json';
 const MIGRATIONS = 'services/platform/migrations';
 const OPS_WATCH = '.github/workflows/ops-watch.yml';
+const DEPLOY_WORKERS = '.github/workflows/deploy-workers.yml';
+const CHANNELS = 'tooling/channel-register.json';
 
 /** A real-tree copy carrying exactly what the gate reads. */
 function realTree() {
@@ -45,6 +56,9 @@ function realTree() {
   mkdirSync(join(root, '.github', 'workflows'), { recursive: true });
   cpSync(join(REPO, REGISTER), join(root, REGISTER));
   cpSync(join(REPO, OPS_WATCH), join(root, OPS_WATCH));
+  // ⏱ 2026-09-25 · limb 9 reads the applier and the environment it records into.
+  cpSync(join(REPO, DEPLOY_WORKERS), join(root, DEPLOY_WORKERS));
+  cpSync(join(REPO, CHANNELS), join(root, CHANNELS));
   cpSync(join(REPO, 'tooling', 'ops', 'check-prod-provenance.mjs'), join(root, 'tooling', 'ops', 'check-prod-provenance.mjs'));
   mkdirSync(join(root, MIGRATIONS), { recursive: true });
   cpSync(join(REPO, MIGRATIONS), join(root, MIGRATIONS), { recursive: true });
@@ -354,6 +368,128 @@ describe('assert-prod-provenance — the gate limb', () => {
     assert.deepEqual(reg.tables.consent_artifacts.alsoResolves, ['e2e-run', 'store-capture']);
     assert.ok(Object.prototype.hasOwnProperty.call(reg.resolvers, 'store-capture'));
   });
+
+  // ⏱ 2026-09-25 · LIMB 9 — the pending-migration path, and the two workflow facts it rests on.
+  // Each case is one edit somebody could make in a diff; the gate at BASE (60b63fb9) was
+  // measured green on every one of them against the real worktree.
+  const edit = (root, rel, from, to) => {
+    const s = readFileSync(join(root, rel), 'utf8');
+    assert.ok(s.includes(from), `${rel} no longer carries the text this case mutates: ${from}`);
+    writeFileSync(join(root, rel), s.replace(from, to));
+  };
+  const PLATFORM_RECORD =
+    "      - name: Record the deployed SHA\n        if: always() && steps.deploy.outcome == 'success'\n        env:\n          GH_TOKEN: ${{ github.token }}\n" +
+    '        run: node tooling/ci/record-deployment.mjs platform https://platform.nikatru.com\n';
+
+  // The copy carries no catalog/apps.json, so every withTree run is already red on the app
+  // catalogue; the cases below are told apart by their message, and this is their green control.
+  test('limb 9: the unmutated copy raises none of limb 9\'s findings', () => {
+    withTree(
+      () => {},
+      (r) => assert.doesNotMatch(r.stderr, /pending-migration path|from a shallow checkout|deploy-workers\.yml|the migrations apply at line|records its Deployment into/),
+    );
+  });
+
+  test('limb 9: the ops-watch job running the monitor from a SHALLOW checkout is RED', () => {
+    withTree(
+      (root) => {
+        const s = readFileSync(join(root, OPS_WATCH), 'utf8');
+        const job = s.indexOf('  prod-provenance:');
+        const at = s.indexOf('          fetch-depth: 0\n', job);
+        assert.ok(job !== -1 && at !== -1 && at < s.indexOf('  pages-deployments:'), 'the prod-provenance job no longer sets fetch-depth: 0');
+        writeFileSync(join(root, OPS_WATCH), s.slice(0, at) + s.slice(at + '          fetch-depth: 0\n'.length));
+      },
+      (r) => {
+        assert.equal(r.status, 1, r.stdout + r.stderr);
+        assert.match(r.stderr, /job `prod-provenance` runs tooling\/ops\/check-prod-provenance\.mjs from a shallow checkout/);
+      },
+    );
+  });
+
+  test('limb 9: a `# fetch-depth: 0` COMMENT does not satisfy it — and the pages-deployments job\'s real one does not either', () => {
+    withTree(
+      (root) => {
+        const s = readFileSync(join(root, OPS_WATCH), 'utf8');
+        const job = s.indexOf('  prod-provenance:');
+        const at = s.indexOf('          fetch-depth: 0\n', job);
+        writeFileSync(join(root, OPS_WATCH), `${s.slice(0, at)}          # fetch-depth: 0\n${s.slice(at + '          fetch-depth: 0\n'.length)}`);
+      },
+      (r) => {
+        assert.equal(r.status, 1, r.stdout + r.stderr);
+        assert.match(r.stderr, /from a shallow checkout/);
+      },
+    );
+  });
+
+  test('limb 9: a monitor that lost its 24 h limit — or kept it only in a comment — is RED', () => {
+    withTree(
+      (root) => edit(root, 'tooling/ops/check-prod-provenance.mjs', 'export const PENDING_LIMIT_HOURS = 24;', 'export const PENDING_LIMIT_HOURS = 240; // PENDING_LIMIT_HOURS = 24'),
+      (r) => {
+        assert.equal(r.status, 1, r.stdout + r.stderr);
+        assert.match(r.stderr, /has lost its pending-migration path — missing outside a comment: the 24 h limit/);
+      },
+    );
+  });
+
+  test('limb 9: a monitor with no shallow-clone refusal is RED', () => {
+    withTree(
+      (root) => edit(root, 'tooling/ops/check-prod-provenance.mjs', "['rev-parse', '--is-shallow-repository']", "['rev-parse', '--is-bare-repository']"),
+      (r) => {
+        assert.equal(r.status, 1, r.stdout + r.stderr);
+        assert.match(r.stderr, /the shallow-clone refusal/);
+      },
+    );
+  });
+
+  test('limb 9: deploy-workers recording the platform Deployment BEFORE the deploy is RED', () => {
+    withTree(
+      (root) => {
+        edit(root, DEPLOY_WORKERS, PLATFORM_RECORD, '');
+        edit(root, DEPLOY_WORKERS, '      - name: Apply PLATFORM_DB migrations (before deploy)\n', `${PLATFORM_RECORD}      - name: Apply PLATFORM_DB migrations (before deploy)\n`);
+      },
+      (r) => {
+        assert.equal(r.status, 1, r.stdout + r.stderr);
+        assert.match(r.stderr, /job `platform`: the migrations apply at line \d+, the deploy at \d+, the Deployment is recorded at \d+/);
+      },
+    );
+  });
+
+  test('limb 9: a platform migration step that may be skipped or may fail past is RED', () => {
+    withTree(
+      (root) => edit(root, DEPLOY_WORKERS, '          command: d1 migrations apply PLATFORM_DB --remote\n', '          command: d1 migrations apply PLATFORM_DB --remote\n        continue-on-error: true\n'),
+      (r) => {
+        assert.equal(r.status, 1, r.stdout + r.stderr);
+        assert.match(r.stderr, /`continue-on-error: true` at line \d+ lets the deploy and its record run past a failed migration/);
+      },
+    );
+    withTree(
+      (root) => edit(root, DEPLOY_WORKERS, '      - name: Apply PLATFORM_DB migrations (before deploy)\n', "      - name: Apply PLATFORM_DB migrations (before deploy)\n        if: github.event_name == 'workflow_dispatch'\n"),
+      (r) => {
+        assert.equal(r.status, 1, r.stdout + r.stderr);
+        assert.match(r.stderr, /the migration step \(line \d+\) carries an `if:`/);
+      },
+    );
+  });
+
+  test('limb 9: a platform Deployment recorded into an environment the monitor does not read is RED', () => {
+    withTree(
+      (root) => edit(root, DEPLOY_WORKERS, 'record-deployment.mjs platform https://platform.nikatru.com', 'record-deployment.mjs platform-api https://platform.nikatru.com'),
+      (r) => {
+        assert.equal(r.status, 1, r.stdout + r.stderr);
+        assert.match(r.stderr, /records its Deployment into `platform-api`, and tooling\/channel-register\.json gives services\/platform `platform`/);
+      },
+    );
+  });
+
+  test('limb 9: no deploy-workers.yml at all is RED — a pending migration would wait for nothing', () => {
+    withTree(
+      (root) => rmSync(join(root, DEPLOY_WORKERS)),
+      (r) => {
+        assert.equal(r.status, 1, r.stdout + r.stderr);
+        assert.match(r.stderr, /deploy-workers\.yml does not exist, so nothing applies services\/platform\/migrations/);
+      },
+    );
+  });
 });
 
 // ── the MONITOR ─────────────────────────────────────────────────────────────
@@ -532,6 +668,256 @@ describe('check-prod-provenance — the monitor limb', () => {
   test('fixture mode announces itself so it can never pass as a real ops-watch run', () => {
     const r = run({});
     assert.match(r.stdout, /OFFLINE FIXTURE MODE/);
+  });
+});
+
+// ── ⏱ 2026-09-25 · A TABLE ITS MIGRATION HAS NOT REACHED YET (PROV-BEFORE-MIGRATION) ──
+// Modelled on the real freeze: #930 merged 0017_ext_devices.sql at 2026-09-25T03:44:39Z,
+// deploy-workers #186 was refused (CI #3828 red over ops-watch #484), ops-watch #485 read
+// `ext_devices` from a production that did not have it yet and went red over a deploy that had
+// not happened; #186 applied 0017 at 04:07:54Z. Every production read here is a fixture, every
+// clock is `--now`, and every history is a throwaway repository with pinned commit dates.
+describe('check-prod-provenance — a table its migration has not reached yet', () => {
+  const RUNS = [{ run_number: 101, head_sha: 'e138f5be72555ab717d0391e771b40c0883d9fab' }];
+  const M16 = '0016_provider_tokens.sql';
+  const M17 = '0017_ext_devices.sql';
+  const MERGED_930 = '2026-09-25T03:44:39Z';
+  const { tables } = enumerateMigrationTables(join(REPO, MIGRATIONS));
+  const FILES = [...new Set([...tables.values()].map((t) => t.createdIn))].sort();
+  const hoursAfter = (iso, h) => new Date(Date.parse(iso) + h * 3_600_000).toISOString();
+
+  /** Production as the two schema reads answer it: every table the migrations create except
+   *  those `pending` files create and the `dropped` ones, plus the ledger and D1's own table. */
+  function schema({ pending = [], dropped = [], migrations } = {}) {
+    return {
+      tables: [...tables]
+        .filter(([n, t]) => !pending.includes(t.createdIn) && !dropped.includes(n))
+        .map(([n]) => n)
+        .concat(['_cf_KV', 'd1_migrations']),
+      migrations: migrations ?? FILES.filter((f) => !pending.includes(f)),
+    };
+  }
+
+  /** A throwaway history: each commit adds `add` (or a note) at committer date `date`. */
+  function historyRepo(commits) {
+    const dir = mkdtempSync(join(tmpdir(), 'nikatru-provmig-history-'));
+    const git = (args, env = {}) => {
+      const r = spawnSync('git', ['-C', dir, ...args], { encoding: 'utf8', timeout: 30_000, env: { ...process.env, ...env } });
+      assert.equal(r.status, 0, `git ${args.join(' ')}: ${r.stderr}`);
+      return r.stdout.trim();
+    };
+    git(['init', '-q']);
+    git(['config', 'user.email', 'fixture@example.test']);
+    git(['config', 'user.name', 'fixture']);
+    git(['config', 'commit.gpgsign', 'false']);
+    const shas = [];
+    commits.forEach((c, i) => {
+      for (const rel of c.add ?? [`note-${i}.txt`]) {
+        mkdirSync(join(dir, dirname(rel)), { recursive: true });
+        writeFileSync(join(dir, rel), `-- fixture ${i}\n`);
+      }
+      git(['add', '-A']);
+      git(['commit', '-q', '-m', `fixture ${i}`], { GIT_AUTHOR_DATE: c.date, GIT_COMMITTER_DATE: c.date });
+      shas.push(git(['rev-parse', 'HEAD']));
+    });
+    return { dir, shas };
+  }
+  const m = (file) => `${MIGRATIONS}/${file}`;
+  /** The #930 shape: 0016 lands, then 0017 lands with #930's merge time. */
+  const history930 = () => historyRepo([{ date: '2026-09-25T00:18:30Z', add: [m(M16)] }, { date: MERGED_930, add: [m(M17)] }]);
+
+  function run({ schemaJson, now = null, history = null, platformDeployments = null, rows = {} }) {
+    const dir = mkdtempSync(join(tmpdir(), 'nikatru-provmig-'));
+    try {
+      const put = (name, v) => {
+        writeFileSync(join(dir, name), JSON.stringify(v));
+        return join(dir, name);
+      };
+      const argv = [MONITOR, '--root', REPO, '--rows-file', put('rows.json', rows), '--runs-file', put('runs.json', RUNS)];
+      if (schemaJson !== undefined) argv.push('--schema-file', put('schema.json', schemaJson));
+      if (now !== null) argv.push('--now', now);
+      if (history !== null) argv.push('--history', history);
+      if (platformDeployments !== null) argv.push('--platform-deployments-file', put('platform.json', platformDeployments));
+      return spawnSync(process.execPath, argv, { cwd: REPO, encoding: 'utf8', timeout: 120_000 });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  test('1 · absent table, absent migration, merged 2 h ago: ⬜ and exit 0', () => {
+    const h = history930();
+    try {
+      const r = run({ schemaJson: schema({ pending: [M17] }), now: hoursAfter(MERGED_930, 2), history: h.dir });
+      assert.equal(r.status, 0, r.stdout + r.stderr);
+      assert.match(r.stdout, /^⬜ not yet migrated: ext_devices \(0017_ext_devices\.sql, merged 2026-09-25T03:44:39Z\)$/m);
+      assert.match(r.stdout, /^⬜ not yet migrated: ext_codes \(0017_ext_devices\.sql, merged 2026-09-25T03:44:39Z\)$/m);
+      assert.match(r.stdout, /ext_devices\s+0 row\(s\) — not in production, not queried/);
+      assert.ok(
+        r.stdout.includes(
+          `migration ledger: ${FILES.length - 1} migration(s) recorded in \`d1_migrations\` · ${tables.size - 2} of ${tables.size} table(s) present · 2 not yet migrated · 0 missing though recorded`,
+        ),
+        r.stdout,
+      );
+      assert.match(r.stdout, /THIS IS A MONITOR, NOT A GATE/);
+    } finally {
+      rmSync(h.dir, { recursive: true, force: true });
+    }
+  });
+
+  test('2 · the same, merged 25 h ago: RED naming the table, the file, the merge time and the hours', () => {
+    const h = history930();
+    try {
+      const r = run({ schemaJson: schema({ pending: [M17] }), now: hoursAfter(MERGED_930, 25), history: h.dir });
+      assert.equal(r.status, 1, r.stdout + r.stderr);
+      assert.match(
+        r.stderr,
+        /ext_devices: 0017_ext_devices\.sql is still not in `d1_migrations` 25\.0 h after the merge that added it \(merged 2026-09-25T03:44:39Z in [0-9a-f]{7}\)/,
+      );
+      assert.doesNotMatch(r.stdout, /not yet migrated: ext_devices/);
+      assert.doesNotMatch(r.stdout, /^ok {2}every row/m);
+    } finally {
+      rmSync(h.dir, { recursive: true, force: true });
+    }
+  });
+
+  test('the limit is 24 h exactly: 23.9 h waits, 24.0 h is red', () => {
+    assert.equal(PENDING_LIMIT_HOURS, 24);
+    const merged = { sha: 'a'.repeat(40), mergedAt: MERGED_930 };
+    const at = (h) => pendingMigrationVerdict({ table: 't', file: 'f.sql', merged, nowMs: Date.parse(MERGED_930) + h * 3_600_000 });
+    assert.equal(at(23.9).overdue, false);
+    assert.equal(at(24).overdue, true);
+    assert.match(at(24).line, /24\.0 h after the merge/);
+  });
+
+  test('3 · table absent while its migration IS recorded: RED, and never queried', () => {
+    const r = run({ schemaJson: schema({ dropped: ['provider_tokens'] }) });
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /provider_tokens: absent from production, yet 0016_provider_tokens\.sql is recorded in `d1_migrations` — the migration ran and the table it creates is not there/);
+    assert.match(r.stdout, /1 missing though recorded/);
+  });
+
+  test('4 · the migration ledger unreadable: exit 2, never a verdict', () => {
+    const failed = run({ schemaJson: { ...schema({ pending: [M17] }), migrations: { error: 'D1_ERROR: SQLITE_AUTH' } }, now: hoursAfter(MERGED_930, 2) });
+    assert.equal(failed.status, 2, failed.stdout + failed.stderr);
+    assert.match(failed.stderr, /COULD NOT LOOK — the `d1_migrations` read failed: D1_ERROR: SQLITE_AUTH/);
+
+    const noLedger = schema({ pending: [M17] });
+    noLedger.tables = noLedger.tables.filter((t) => t !== 'd1_migrations');
+    const absent = run({ schemaJson: noLedger });
+    assert.equal(absent.status, 2, absent.stdout + absent.stderr);
+    assert.match(absent.stderr, /production has no `d1_migrations` table/);
+
+    const empty = run({ schemaJson: schema({ migrations: [] }) });
+    assert.equal(empty.status, 2, empty.stdout + empty.stderr);
+    assert.match(empty.stderr, /answered zero migrations/);
+
+    const foreign = run({ schemaJson: schema({ migrations: ['20260101_init', '20260102_more'] }) });
+    assert.equal(foreign.status, 2, foreign.stdout + foreign.stderr);
+    assert.ok(foreign.stderr.includes(`names none of the ${FILES.length} migration file(s) that create a table`), foreign.stderr);
+  });
+
+  test('a ledger that records names WITHOUT `.sql` reads the same', () => {
+    const r = run({ schemaJson: schema({ migrations: FILES.map((f) => f.replace(/\.sql$/, '')) }) });
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /22 of 22 table\(s\) present · 0 not yet migrated/);
+  });
+
+  test('5 · THE INCIDENT REPLAY: ext_devices absent, 0017 absent, #930 merged hours before: ⬜ and exit 0', () => {
+    const h = history930();
+    try {
+      // 04:00Z is inside the window ops-watch #485 read in (before #186 applied 0017 at
+      // 04:07:54Z); 07:00Z is the same state three hours on, still inside the 24 h.
+      for (const now of ['2026-09-25T04:00:00Z', '2026-09-25T07:00:00Z']) {
+        const r = run({ schemaJson: schema({ pending: [M17] }), now, history: h.dir });
+        assert.equal(r.status, 0, `${now}: ${r.stdout}${r.stderr}`);
+        assert.match(r.stdout, /⬜ not yet migrated: ext_devices \(0017_ext_devices\.sql, merged 2026-09-25T03:44:39Z\)/);
+        assert.doesNotMatch(r.stderr, /COULD NOT LOOK/);
+      }
+    } finally {
+      rmSync(h.dir, { recursive: true, force: true });
+    }
+  });
+
+  test('6 · a successful platform Deployment at a commit CONTAINING the migration, migration absent: RED at once', () => {
+    // A adds 0017; B is a later commit on top of it. A Deployment at B means deploy-workers
+    // ran its migration step at B — waiting will not bring the table.
+    const h = historyRepo([
+      { date: '2026-09-25T00:18:30Z', add: [m(M16)] },
+      { date: MERGED_930, add: [m(M17)] },
+      { date: '2026-09-25T04:30:00Z' },
+    ]);
+    try {
+      const [pre, , after] = h.shas;
+      const now = hoursAfter(MERGED_930, 2);
+      const red = run({ schemaJson: schema({ pending: [M17] }), now, history: h.dir, platformDeployments: [{ sha: after, id: 99, created_at: '2026-09-25T04:35:00Z' }] });
+      assert.equal(red.status, 1, red.stdout + red.stderr);
+      assert.match(red.stdout, /platform Deployment ledger \(platform\): 1 Deployment\(s\)/);
+      assert.match(
+        red.stderr,
+        new RegExp(`ext_devices: absent from production and 0017_ext_devices\\.sql is not in \`d1_migrations\` \\(merged 2026-09-25T03:44:39Z in [0-9a-f]{7}, 2\\.0 h ago\\), yet 1 platform Deployment\\(s\\) at a commit containing it exist \\(${after.slice(0, 7)} · Deployment 99\\)`),
+      );
+
+      // control: a Deployment of a commit that PREDATES the migration shows nothing about it.
+      const before = run({ schemaJson: schema({ pending: [M17] }), now, history: h.dir, platformDeployments: [{ sha: pre, id: 98, created_at: null }] });
+      assert.equal(before.status, 0, before.stdout + before.stderr);
+      assert.match(before.stdout, /⬜ not yet migrated: ext_devices/);
+
+      // control: a Deployment this history does not hold neither shows nor rules out — and says so.
+      const unknown = run({ schemaJson: schema({ pending: [M17] }), now, history: h.dir, platformDeployments: [{ sha: 'f'.repeat(40), id: 97 }] });
+      assert.equal(unknown.status, 0, unknown.stdout + unknown.stderr);
+      assert.match(unknown.stdout, /platform Deployment fffffff is not in this checkout's history, so it neither shows nor rules out 0017_ext_devices\.sql/);
+    } finally {
+      rmSync(h.dir, { recursive: true, force: true });
+    }
+  });
+
+  test('a SHALLOW checkout is refused — its clock restarts whenever main moves', () => {
+    const h = history930();
+    const shallow = mkdtempSync(join(tmpdir(), 'nikatru-provmig-shallow-'));
+    try {
+      const c = spawnSync('git', ['clone', '-q', '--depth', '1', pathToFileURL(h.dir).href, shallow], { encoding: 'utf8', timeout: 60_000 });
+      assert.equal(c.status, 0, c.stderr);
+      assert.throws(() => migrationMerge(shallow, m(M17)), (e) => e instanceof CouldNotLook && /SHALLOW clone/.test(e.message) && /fetch-depth: 0/.test(e.message));
+      const r = run({ schemaJson: schema({ pending: [M17] }), now: hoursAfter(MERGED_930, 2), history: shallow });
+      assert.equal(r.status, 2, r.stdout + r.stderr);
+      assert.match(r.stderr, /COULD NOT LOOK — .* is a SHALLOW clone/);
+      // the whole history reads the real merge, not the clone's one commit
+      assert.deepEqual(migrationMerge(h.dir, m(M17)).mergedAt, MERGED_930);
+    } finally {
+      rmSync(shallow, { recursive: true, force: true });
+      rmSync(h.dir, { recursive: true, force: true });
+    }
+  });
+
+  test('a history with no commit adding the migration is exit 2, never "merged just now"', () => {
+    const h = historyRepo([{ date: '2026-09-25T00:18:30Z', add: [m(M16)] }]);
+    try {
+      const r = run({ schemaJson: schema({ pending: [M17] }), now: hoursAfter(MERGED_930, 2), history: h.dir });
+      assert.equal(r.status, 2, r.stdout + r.stderr);
+      assert.match(r.stderr, /no first-parent commit on HEAD .* adds services\/platform\/migrations\/0017_ext_devices\.sql/);
+    } finally {
+      rmSync(h.dir, { recursive: true, force: true });
+    }
+  });
+
+  test('D3 · fixture mode reaching a pending migration with no --now is refused — a test never reads the wall clock', () => {
+    const r = run({ schemaJson: schema({ pending: [M17] }) });
+    assert.equal(r.status, 2, r.stdout + r.stderr);
+    assert.match(r.stderr, /with no --now — a test must never read the wall clock/);
+  });
+
+  test('every pending-migration seam without --rows-file is refused, never honoured by a live run', () => {
+    for (const [flagName, value] of [['--schema-file', 'x.json'], ['--now', MERGED_930], ['--history', REPO], ['--platform-deployments-file', 'x.json']]) {
+      const r = spawnSync(process.execPath, [MONITOR, '--root', REPO, flagName, value], { cwd: REPO, encoding: 'utf8', timeout: 120_000, env: { ...process.env, CLOUDFLARE_API_TOKEN: '', GITHUB_TOKEN: '' } });
+      assert.equal(r.status, 2, `${flagName}: ${r.stdout}${r.stderr}`);
+      assert.match(r.stderr, new RegExp(`${flagName} is an offline fixture seam and this run has no --rows-file`));
+    }
+  });
+
+  test('with no --schema-file an older fixture still reads every table as present, and says it did not look', () => {
+    const r = run({});
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /migration ledger: NOT READ \(fixture mode, no --schema-file\) — every enumerated table taken as present/);
   });
 });
 
