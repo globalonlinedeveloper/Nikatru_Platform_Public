@@ -784,9 +784,17 @@ export function stepItemAround(lines, at) {
 }
 
 /** `KEY: value` entries directly below a mapping key, as Map KEY → {n, value}.
- *  Paired quotes are stripped; a `${{ … }}` value is kept verbatim. */
-function mappingBelow(lines, from, to, keyIndent) {
+ *  Paired quotes are stripped; a `${{ … }}` value is kept verbatim.
+ *
+ *  `inputs: true` reads an action's `with:` instead of an `env:`, which differs in
+ *  two ways. Its keys carry hyphens (`if-no-files-found`, `retention-days`). And a
+ *  value may continue on deeper-indented lines: `path: |` (each line joined with a
+ *  newline), `path: >` (joined with a space), or a plain scalar wrapped onto the
+ *  next line (joined with a space). Those continuation lines belong to the key, so
+ *  the value is what the action receives, not the key line's `|`. */
+function mappingBelow(lines, from, to, keyIndent, { inputs = false } = {}) {
   const out = new Map();
+  const KEY = inputs ? /^\s*([A-Za-z_][A-Za-z0-9_-]*):\s*(.*?)\s*$/ : /^\s*([A-Za-z_][A-Za-z0-9_]*):\s*(.*?)\s*$/;
   let childIndent = null;
   for (let j = from; j < to; j++) {
     const t = lines[j].text;
@@ -795,18 +803,68 @@ function mappingBelow(lines, from, to, keyIndent) {
     if (at <= keyIndent) break;
     if (childIndent === null) childIndent = at;
     if (at !== childIndent) continue;
-    const m = t.match(/^\s*([A-Za-z_][A-Za-z0-9_]*):\s*(.*?)\s*$/);
-    if (m) out.set(m[1], { n: lines[j].n, value: unquote(m[2]) });
+    const m = t.match(KEY);
+    if (!m) continue;
+    if (!inputs) {
+      out.set(m[1], { n: lines[j].n, value: unquote(m[2]) });
+      continue;
+    }
+    const more = [];
+    for (let k = j + 1; k < to; k++) {
+      const c = lines[k].text;
+      if (c.trim() === '') continue;
+      if (indentOf(c) <= childIndent) break;
+      more.push(c.trim());
+    }
+    const block = m[2].match(/^([|>])(?:[+-]?[0-9]?|[0-9][+-])$/);
+    const value = block ? more.join(block[1] === '|' ? '\n' : ' ') : more.length ? [m[2], ...more].join(' ') : unquote(m[2]);
+    out.set(m[1], { n: lines[j].n, value });
+  }
+  return out;
+}
+
+/** A one-line flow mapping — `with: { fetch-depth: 0, persist-credentials: false }` —
+ *  as the same Map KEY → {n, value}, every entry at the `with:` line. A comma or a
+ *  brace inside quotes or inside a `${{ … }}` expression does not split an entry. */
+function flowMapping(text, n) {
+  const out = new Map();
+  const body = text.trim().replace(/^\{/, '').replace(/\}$/, '');
+  const entries = [];
+  let depth = 0;
+  let quote = null;
+  let from = 0;
+  for (let i = 0; i < body.length; i++) {
+    const c = body[i];
+    if (quote !== null) {
+      if (c === quote) quote = null;
+    } else if (c === "'" || c === '"') quote = c;
+    else if (c === '{' || c === '(' || c === '[') depth += 1;
+    else if (c === '}' || c === ')' || c === ']') depth -= 1;
+    else if (c === ',' && depth === 0) {
+      entries.push(body.slice(from, i));
+      from = i + 1;
+    }
+  }
+  entries.push(body.slice(from));
+  for (const e of entries) {
+    const m = e.match(/^\s*([A-Za-z_][A-Za-z0-9_-]*):\s*(.*?)\s*$/);
+    if (m) out.set(m[1], { n, value: unquote(m[2]) });
   }
   return out;
 }
 
 /**
  * Every step of a parsed job, in order: `{ index, first, last, id, name, cond,
- * env, run }`. `first`/`last` are file line numbers, `cond` is the step's `if:`
- * as written (null when it has none), `env` is ONLY the step's `env:` mapping
- * (never `with:`), and `run` is `{ n, text }` taken from the job's LOGICAL lines,
- * so a `run: |` block arrives joined with ` ; ` and a `run: >` block folded.
+ * env, run, uses, with }`. `first`/`last` are file line numbers, `cond` is the
+ * step's `if:` as written (null when it has none), `env` is ONLY the step's `env:`
+ * mapping (never `with:`), and `run` is `{ n, text }` taken from the job's LOGICAL
+ * lines, so a `run: |` block arrives joined with ` ; ` and a `run: >` block folded.
+ * `uses` is the action reference (null for a `run:` step), and `with` is the
+ * step's inputs as Map KEY → {n, value}, where `n` is the key's line and a block
+ * or wrapped value is joined as `mappingBelow` describes.
+ *
+ * ⏱ `uses` and `with` ADDED 2026-09-24 for assert-workflow-hardening.mjs limb 8,
+ * which judges a failure-path action's inputs. Additive: no earlier field moved.
  */
 export function workflowSteps(job) {
   const lines = job?.lines ?? [];
@@ -822,7 +880,7 @@ export function workflowSteps(job) {
     if (itemIndent === null) itemIndent = indentOf(t);
     if (indentOf(t) !== itemIndent) continue;
     const item = stepItemAround(lines, i);
-    const step = { index: steps.length, first: lines[i].n, last: lines[i].n, id: null, name: null, cond: null, env: new Map(), run: null };
+    const step = { index: steps.length, first: lines[i].n, last: lines[i].n, id: null, name: null, cond: null, env: new Map(), run: null, uses: null, with: new Map() };
     for (let j = item.start; j < item.end; j++) {
       if (lines[j].text.trim() !== '') step.last = lines[j].n;
       const text = j === item.start ? lines[j].text.replace(/^(\s*)-\s/, '$1  ') : lines[j].text;
@@ -832,6 +890,9 @@ export function workflowSteps(job) {
       else if (k[2] === 'name') step.name = unquote(k[3]);
       else if (k[2] === 'if') step.cond = k[3];
       else if (k[2] === 'env' && k[3] === '') step.env = mappingBelow(lines, j + 1, item.end, item.indent + 2);
+      else if (k[2] === 'uses') step.uses = unquote(k[3]);
+      else if (k[2] === 'with' && k[3] === '') step.with = mappingBelow(lines, j + 1, item.end, item.indent + 2, { inputs: true });
+      else if (k[2] === 'with' && k[3].startsWith('{')) step.with = flowMapping(k[3], lines[j].n);
       else if (k[2] === 'run') {
         const logical = job.logical.find((l) => l.n === lines[j].n);
         step.run = { n: lines[j].n, text: (logical?.text ?? text).replace(/^\s*(?:-\s+)?run:\s*/, '') };

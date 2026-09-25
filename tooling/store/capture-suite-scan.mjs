@@ -41,7 +41,7 @@
 // The suite's own convention is the contract this reads:
 //
 //     expect(find.byType(HomeScreen), findsWidgets);
-//     await captureFrame(take: binding.takeScreenshot, frame: '01-home', …);
+//     await captureFrame(take: shutter, frame: '01-home', …);
 //
 // Each capture names the screen it is of, on the line above. A `shot(name)`
 // wrapper — which is what the suite used to have — collapses every capture to
@@ -58,6 +58,31 @@ import { stripSourceComments, stripStringLiterals } from '../ci/text-reductions.
 export const SUITE_FILE = 'integration_test/store_screenshots_test.dart';
 /** The refusal the suite must route every frame through. */
 export const GUARD_FILE = 'integration_test/store_capture_guard.dart';
+/** The shutter the suite binds once and hands to every frame. */
+export const SHUTTER_FILE = 'integration_test/store_frame_shutter.dart';
+
+/**
+ * The capture devices with no platform shutter, each with the `TargetPlatform`
+ * the shutter file must map to the LAYER shutter. The register's
+ * `capture.flutterDevice` is the key. ⏱ 2026-09-24, O-DESKTOP-CAPTURE-HAS-NO-SHUTTER.
+ */
+export const DESKTOP_DEVICES = new Map([
+  ['linux', 'TargetPlatform.linux'],
+  ['windows', 'TargetPlatform.windows'],
+  ['macos', 'TargetPlatform.macOS'],
+]);
+
+/**
+ * The `--dart-define` pair that tells the suite which geometry to impose, for a
+ * runner capture `{ flutterDevice, cssWidth, cssHeight, dpr }`. Two tokens, the
+ * way `flutter drive` takes every define. `[]` for any device that is not a
+ * desktop (a phone simulator, or web, whose `flutterDevice` is null): those use
+ * the platform shutter, and the suite refuses the define there.
+ */
+export function storeViewDefineArgs(cap) {
+  if (!DESKTOP_DEVICES.has(cap?.flutterDevice)) return [];
+  return ['--dart-define', `STORE_CAPTURE_VIEW=${cap.cssWidth}x${cap.cssHeight}@${cap.dpr}`];
+}
 
 /**
  * A read of the signed-in account's ADDRESS.
@@ -177,8 +202,11 @@ function dartFilesUnder(dir) {
  * Returns `{ present, problems, frames }`. `present: false` means the app has no
  * capture suite at all — not a fault here, and the CALLER decides whether that is
  * expected (a fixture) or coverage loss (the real repository).
+ *
+ * `devices` is every `capture.flutterDevice` the caller will capture on. Limb 5
+ * judges the ones in DESKTOP_DEVICES; the rest are ignored.
  */
-export function scanCaptureSuite({ root, app }) {
+export function scanCaptureSuite({ root, app, devices = [] }) {
   const problems = [];
   const frames = [];
   const suiteRel = `apps/${app}/${SUITE_FILE}`;
@@ -212,12 +240,75 @@ export function scanCaptureSuite({ root, app }) {
   }
 
   // ── limb 2: no unguarded shutter ──────────────────────────────────────────
-  // The tear-off `take: binding.takeScreenshot` carries no parenthesis, so the
-  // one legitimate mention does not match. A direct call does.
+  // The suite names no platform shutter of its own: every frame's `take:` is the
+  // one `shutter` limb 4 holds it to, and the plugin call lives in the shutter
+  // file. So any `takeScreenshot(` call in the suite is a frame that skipped
+  // `captureFrame`.
   if (/\btakeScreenshot\s*\(/.test(suite)) {
     problems.push(
       `${suiteRel} calls \`takeScreenshot(\` directly. Every frame must go through \`captureFrame\` in ${guardRel}, which refuses to photograph a frame carrying the signed-in account. This is how the defect comes back — not by somebody deleting the refusal, but by somebody adding one more frame in the obvious way.`,
     );
+  }
+
+  // ── limb 4: ONE shutter, and every frame takes it ─────────────────────────
+  // ⏱ 2026-09-24 (O-DESKTOP-CAPTURE-HAS-NO-SHUTTER). The suite binds one
+  // `storeShutter(…)` — the plugin on web and phones, the root layer on the
+  // desktops — and hands it to `captureFrame` as `take: shutter`. A frame given
+  // a tear-off such as `take: binding.takeScreenshot` photographs through the
+  // plugin on every platform, and on a desktop that is no photograph at all. A
+  // second binding is a second shutter nobody chose, and a direct `shutter(`
+  // call is a frame that skipped `captureFrame`'s refusal.
+  //
+  // Placed BEFORE limb 3 on purpose: limb 3 returns early when it resolves no
+  // frame or reads no screen source, and a check after it would stop running on
+  // exactly those suites. Read with string literals blanked as well, since a
+  // refusal message that says "the shutter (…)" is prose, not a call. Blanking
+  // keeps every offset, so a line number still points into the real file.
+  const code = stripStringLiterals(suite);
+  const lineAt = (index) => code.slice(0, index).split('\n').length;
+  const bindings = [...code.matchAll(/\bstoreShutter\s*\(/g)];
+  if (bindings.length !== 1) {
+    problems.push(
+      `${suiteRel}${bindings.length ? `:${lineAt(bindings[1].index)}` : ''} — limb 4 (one shutter): the suite binds ${bindings.length} \`storeShutter(\` shutter(s), and it must bind exactly ONE and pass it to every frame as \`take: shutter\`. ` +
+        `Zero means the frames take whatever they are handed, which on a desktop is a plugin shutter that does not exist; two means a second shutter that ${SHUTTER_FILE}'s platform choice never made.`,
+    );
+  }
+  for (const m of code.matchAll(/\btake:\s*([^,)\s]+)/g)) {
+    if (m[1] === 'shutter') continue;
+    problems.push(
+      `${suiteRel}:${lineAt(m.index)} — limb 4 (one shutter): a frame is handed \`take: ${m[1]}\`. Every frame takes the one \`shutter\` the suite binds with \`storeShutter(\`, which photographs through the plugin on web, android and iOS and renders the root layer on linux, windows and macOS. Anything else photographs through the plugin everywhere, and a desktop capture has no plugin shutter.`,
+    );
+  }
+  for (const m of code.matchAll(/\bshutter\s*\(/g)) {
+    problems.push(
+      `${suiteRel}:${lineAt(m.index)} — limb 4 (one shutter): the shutter is called directly. A frame taken that way skips \`captureFrame\` in ${guardRel}, the refusal that stops a frame carrying the signed-in account from becoming bytes.`,
+    );
+  }
+
+  // ── limb 5: every desktop device the register captures on gets the layer ──
+  // Read from the shutter file's CODE, comments blanked: an arm that exists
+  // only in a comment maps nothing. One arm per desktop device, in the form
+  // `TargetPlatform.linux => StoreShutterKind.layer,`.
+  const desktops = [...new Set(devices)].filter((d) => DESKTOP_DEVICES.has(d));
+  if (desktops.length) {
+    const shutterRel = `apps/${app}/${SHUTTER_FILE}`;
+    const shutterAbs = join(root, shutterRel);
+    if (!existsSync(shutterAbs)) {
+      problems.push(
+        `${shutterRel} does not exist, and the register captures on ${desktops.join(', ')} — limb 5 (desktop shutter): a desktop capture has no platform shutter, so without this file's layer shutter it cannot photograph a frame at all.`,
+      );
+    } else {
+      const shutterCode = stripSourceComments(readFileSync(shutterAbs, 'utf8'), '.dart');
+      for (const device of desktops) {
+        const platform = DESKTOP_DEVICES.get(device);
+        const arm = new RegExp(`^\\s*${platform.replace('.', '\\.')}\\s*=>\\s*StoreShutterKind\\.layer\\s*,`, 'm');
+        if (!arm.test(shutterCode)) {
+          problems.push(
+            `${shutterRel} — limb 5 (desktop shutter): the register captures on \`${device}\` and the shutter file's code has no \`${platform} => StoreShutterKind.layer,\` arm. That device would be photographed through the plugin shutter, which a desktop does not have, or by no shutter at all.`,
+          );
+        }
+      }
+    }
   }
 
   // ── limb 3: every frame resolves to the screen it photographs ─────────────

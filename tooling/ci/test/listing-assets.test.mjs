@@ -834,22 +834,46 @@ describe('capture-play-screenshots.mjs — the posture gate', () => {
 //          and pass a leaking frame, which is the direction that costs
 //          something. The exact question is answered at capture time.
 //
+// ⏱ 2026-09-24, limbs 4 and 5 (O-DESKTOP-CAPTURE-HAS-NO-SHUTTER), the same way,
+// each restored afterwards and the tree diff compared byte for byte:
+//
+//   I  the real suite's `01-home` frame put back to `take: binding.takeScreenshot`
+//        ⇒ FAIL "store_screenshots_test.dart:1483 — limb 4 (one shutter): a
+//          frame is handed `take: binding.takeScreenshot`", the first and only
+//          finding. Before limb 4, every frame took exactly that tear-off and
+//          this guard exited 0.
+//   J  the real shutter file's `TargetPlatform.windows => StoreShutterKind.layer,`
+//      arm set to `…plugin,`
+//        ⇒ FAIL "store_frame_shutter.dart — limb 5 (desktop shutter): the
+//          register captures on `windows` and the shutter file's code has no
+//          `TargetPlatform.windows => StoreShutterKind.layer,` arm"
+//
 // The fixtures below come after, and model the same shapes.
 // ─────────────────────────────────────────────────────────────────────────────
 describe('assert-listing-assets.mjs — the capture cannot photograph the account', () => {
-  /** A capture suite in the shape the scan reads: one `find.byType` naming the
-   *  screen, then one `captureFrame` for the frame it photographs. */
+  /** A capture suite in the shape the scan reads: ONE `storeShutter(` binding,
+   *  then per frame one `find.byType` naming the screen and one `captureFrame`
+   *  that takes the bound `shutter`. */
+  const SHUTTER_BINDING = [
+    '    final StoreShutter shutter = storeShutter(',
+    '      tester: tester,',
+    '      sink: BindingScreenshotSink(binding),',
+    '      kind: currentStoreShutterKind(),',
+    '    );',
+  ];
   const suite = (frames) =>
     Buffer.from(
       [
         "import 'store_capture_guard.dart';",
+        "import 'store_frame_shutter.dart';",
         '',
         'void main() {',
         "  testWidgets('captures the set', (WidgetTester tester) async {",
+        ...SHUTTER_BINDING,
         ...frames.flatMap(([frame, screen]) => [
           `    expect(find.byType(${screen}), findsWidgets);`,
           '    await captureFrame(',
-          '      take: binding.takeScreenshot,',
+          '      take: shutter,',
           `      frame: '${frame}',`,
           '      forbidden: forbidden,',
           '    );',
@@ -858,6 +882,44 @@ describe('assert-listing-assets.mjs — the capture cannot photograph the accoun
         '}',
       ].join('\n'),
     );
+
+  /** The shutter file, reduced to what limb 5 reads: one arm per platform, the
+   *  windows arm's kind (and whether it is commented out) chosen by the case. */
+  const shutterLib = ({ windows = 'layer', windowsCommented = false } = {}) =>
+    Buffer.from(
+      [
+        'StoreShutterKind storeShutterKindFor({',
+        '  required bool isWeb,',
+        '  required TargetPlatform platform,',
+        '}) {',
+        '  if (isWeb) {',
+        '    return StoreShutterKind.plugin;',
+        '  }',
+        '  return switch (platform) {',
+        '    TargetPlatform.android => StoreShutterKind.plugin,',
+        '    TargetPlatform.iOS => StoreShutterKind.plugin,',
+        '    TargetPlatform.linux => StoreShutterKind.layer,',
+        `    ${windowsCommented ? '// ' : ''}TargetPlatform.windows => StoreShutterKind.${windows},`,
+        '    TargetPlatform.macOS => StoreShutterKind.layer,',
+        "    TargetPlatform.fuchsia => throw ArgumentError.value(platform),",
+        '  };',
+        '}',
+      ].join('\n'),
+    );
+
+  /** The fixture register's android-play screenshots gain a capture set per
+   *  device, in the real register's shape: this is how the guard learns which
+   *  devices limb 5 must judge. `dir` is the channel's own screenshot dir, so
+   *  no other limb gains a directory to read. */
+  const captureOn = (s, devices) => {
+    const sets = {};
+    devices.forEach((flutterDevice, i) => {
+      sets[`set${i}`] = { dir: 'screenshots', capture: { flutterDevice, logicalWidth: 1280, logicalHeight: 800, dpr: 2 } };
+    });
+    s.register.storeMetadataContract.perChannel['android-play'].graphicAssets.screenshots.deviceTypeCoverage = { sets };
+  };
+  const SHUTTER_REL = 'apps/subscriptiontracker/integration_test/store_frame_shutter.dart';
+  const SUITE_REL = 'apps/subscriptiontracker/integration_test/store_screenshots_test.dart';
 
   /** The refusal, reduced to the three things the scan requires of it. Its
    *  BEHAVIOUR is proven in apps/subscriptiontracker/test/store_capture_guard_test.dart, in a
@@ -895,6 +957,7 @@ describe('assert-listing-assets.mjs — the capture cannot photograph the accoun
   /** A tree that captures two clean frames through the guarded shutter. */
   const withCapture = (s, mutate = () => {}) => {
     s.files['apps/subscriptiontracker/integration_test/store_capture_guard.dart'] = guardLib;
+    s.files[SHUTTER_REL] = shutterLib();
     s.files['apps/subscriptiontracker/integration_test/store_screenshots_test.dart'] = suite([
       ['01-home', 'HomeScreen'],
       ['02-settings', 'SettingsScreen'],
@@ -948,6 +1011,7 @@ describe('assert-listing-assets.mjs — the capture cannot photograph the accoun
         t.files['apps/subscriptiontracker/integration_test/store_screenshots_test.dart'] = Buffer.from(
           [
             'void main() {',
+            ...SHUTTER_BINDING,
             '  expect(find.byType(HomeScreen), findsWidgets);',
             "  await binding.takeScreenshot('01-home');",
             '  expect(find.byType(SettingsScreen), findsWidgets);',
@@ -967,9 +1031,10 @@ describe('assert-listing-assets.mjs — the capture cannot photograph the accoun
         t.files['apps/subscriptiontracker/integration_test/store_screenshots_test.dart'] = Buffer.from(
           [
             'void main() {',
+            ...SHUTTER_BINDING,
             '  expect(find.byType(HomeScreen), findsWidgets);',
-            "  await captureFrame(frame: '01-home', forbidden: forbidden);",
-            "  await captureFrame(frame: '02-mystery', forbidden: forbidden);",
+            "  await captureFrame(take: shutter, frame: '01-home', forbidden: forbidden);",
+            "  await captureFrame(take: shutter, frame: '02-mystery', forbidden: forbidden);",
             '}',
           ].join('\n'),
         );
@@ -1050,7 +1115,7 @@ describe('assert-listing-assets.mjs — the capture cannot photograph the accoun
     const r = run(build((s) =>
       withCapture(s, (t) => {
         t.files['apps/subscriptiontracker/integration_test/store_screenshots_test.dart'] = Buffer.from(
-          'void main() {\n  expect(find.byType(HomeScreen), findsWidgets);\n}\n',
+          ['void main() {', ...SHUTTER_BINDING, '  expect(find.byType(HomeScreen), findsWidgets);', '}', ''].join('\n'),
         );
       }),
     ));
@@ -1067,9 +1132,10 @@ describe('assert-listing-assets.mjs — the capture cannot photograph the accoun
         t.files['apps/subscriptiontracker/integration_test/store_screenshots_test.dart'] = Buffer.from(
           [
             'void main() {',
+            ...SHUTTER_BINDING,
             '  expect(find.byType(HomeScreen), findsWidgets);',
-            "  await captureFrame(frame: '01-home', forbidden: forbidden);",
-            "  // await captureFrame(frame: '02-settings', forbidden: forbidden);",
+            "  await captureFrame(take: shutter, frame: '01-home', forbidden: forbidden);",
+            "  // await captureFrame(take: shutter, frame: '02-settings', forbidden: forbidden);",
             '}',
           ].join('\n'),
         );
@@ -1077,6 +1143,134 @@ describe('assert-listing-assets.mjs — the capture cannot photograph the accoun
     ));
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /1 frame\(s\) resolved/);
+  });
+
+  // ── limbs 4 and 5 · ⏱ 2026-09-24 · O-DESKTOP-CAPTURE-HAS-NO-SHUTTER ────────
+  // Limb 4: the suite binds ONE `storeShutter(` and every frame takes it. Limb 5:
+  // every desktop device the register captures on has a layer arm in the shutter
+  // file's code. The devices reach the guard the way the real ones do, through a
+  // capture block in the fixture register (`captureOn`), never through an argument.
+
+  test('🔴 limb 4 — a frame handed the binding\'s tear-off FAILS, naming the suite line', () => {
+    const r = run(build((s) =>
+      withCapture(s, (t) => {
+        t.files[SUITE_REL] = Buffer.from(
+          [
+            'void main() {',
+            ...SHUTTER_BINDING,
+            '  expect(find.byType(HomeScreen), findsWidgets);',
+            "  await captureFrame(take: binding.takeScreenshot, frame: '01-home', forbidden: forbidden);",
+            '}',
+          ].join('\n'),
+        );
+      }),
+    ));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /store_screenshots_test\.dart:8 — limb 4 \(one shutter\): a frame is handed `take: binding\.takeScreenshot`/);
+  });
+
+  test('🔴 limb 4 — a second `storeShutter(` binding FAILS', () => {
+    const r = run(build((s) =>
+      withCapture(s, (t) => {
+        t.files[SUITE_REL] = Buffer.from(
+          [
+            'void main() {',
+            ...SHUTTER_BINDING,
+            '  final StoreShutter other = storeShutter(tester: tester, sink: sink, kind: kind);',
+            '  expect(find.byType(HomeScreen), findsWidgets);',
+            "  await captureFrame(take: shutter, frame: '01-home', forbidden: forbidden);",
+            '}',
+          ].join('\n'),
+        );
+      }),
+    ));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /store_screenshots_test\.dart:7 — limb 4 \(one shutter\): the suite binds 2 `storeShutter\(` shutter\(s\)/);
+  });
+
+  test('🔴 limb 4 — a direct call of the shutter skips the refusal and FAILS', () => {
+    const r = run(build((s) =>
+      withCapture(s, (t) => {
+        t.files[SUITE_REL] = Buffer.from(
+          [
+            'void main() {',
+            ...SHUTTER_BINDING,
+            '  expect(find.byType(HomeScreen), findsWidgets);',
+            "  await captureFrame(take: shutter, frame: '01-home', forbidden: forbidden);",
+            '  expect(find.byType(SettingsScreen), findsWidgets);',
+            "  await shutter('02-settings');",
+            '}',
+          ].join('\n'),
+        );
+      }),
+    ));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /store_screenshots_test\.dart:10 — limb 4 \(one shutter\): the shutter is called directly/);
+  });
+
+  test('🔴 limb 4 still fires on a suite with ZERO `captureFrame(` calls — it sits before limb 3\'s early return', () => {
+    const r = run(build((s) =>
+      withCapture(s, (t) => {
+        t.files[SUITE_REL] = Buffer.from('void main() {\n  expect(find.byType(HomeScreen), findsWidgets);\n}\n');
+      }),
+    ));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /contains no `captureFrame\(` call/);
+    assert.match(r.out, /limb 4 \(one shutter\): the suite binds 0 `storeShutter\(` shutter\(s\)/);
+  });
+
+  test('🔴 limb 5 — the register captures on windows and the windows arm is the PLUGIN: FAILS', () => {
+    const r = run(build((s) =>
+      withCapture(s, (t) => {
+        captureOn(t, ['windows']);
+        t.files[SHUTTER_REL] = shutterLib({ windows: 'plugin' });
+      }),
+    ));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /store_frame_shutter\.dart — limb 5 \(desktop shutter\): the register captures on `windows` and the shutter file's code has no `TargetPlatform\.windows => StoreShutterKind\.layer,` arm/);
+  });
+
+  test('🔴 limb 5 — the register captures on a desktop and the shutter file is absent: FAILS', () => {
+    const r = run(build((s) =>
+      withCapture(s, (t) => {
+        captureOn(t, ['linux']);
+        delete t.files[SHUTTER_REL];
+      }),
+    ));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /store_frame_shutter\.dart does not exist, and the register captures on linux — limb 5 \(desktop shutter\)/);
+  });
+
+  test('🔴 limb 5 — a windows arm that exists only inside a comment maps nothing: FAILS', () => {
+    const r = run(build((s) =>
+      withCapture(s, (t) => {
+        captureOn(t, ['windows']);
+        t.files[SHUTTER_REL] = shutterLib({ windowsCommented: true });
+      }),
+    ));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /limb 5 \(desktop shutter\): the register captures on `windows`/);
+  });
+
+  test('limbs 4 and 5 — all three desktop devices with the right shutter file PASS, and the count is printed', () => {
+    const r = run(build((s) =>
+      withCapture(s, (t) => {
+        captureOn(t, ['linux', 'windows', 'macos']);
+      }),
+    ));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /THE SHUTTER — every capture suite binds ONE shutter and hands it to every frame; 3 desktop capture device\(s\) in the register \(linux, windows, macos\)/);
+  });
+
+  test('limb 5 — no desktop device in the register and no shutter file PASSES: a phone capture needs no layer', () => {
+    const r = run(build((s) =>
+      withCapture(s, (t) => {
+        captureOn(t, ['iPhone 17 Pro Max']);
+        delete t.files[SHUTTER_REL];
+      }),
+    ));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /THE SHUTTER — .*; 0 desktop capture device\(s\) in the register, each mapped/);
   });
 
   // The fixture roots below carry no capture suite at all, which is why every
