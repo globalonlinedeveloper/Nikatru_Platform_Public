@@ -6,15 +6,22 @@
 // ids and times; each has a GREEN CONTROL (the current page) beside it, without
 // which every refusal here would be consistent with an anchor that refuses all.
 // The node-side readers are exercised THROUGH their callers —
-// assert-ops-register.mjs `anchoredBranchPage` and
-// assert-platform-proof-fresh.mjs `anchoredRuns` — so a caller that stopped
-// applying the anchor reds here, not only the module.
+// assert-ops-register.mjs `anchoredBranchPage`, and the three freshness guards'
+// `readRunHistory`, which read through anchored-run-read.mjs — so a caller that
+// stopped applying the anchor reds here, not only the module.
+//
+// ⏱ 2026-09-24 (trap ci-48): the fourth measured page, PR #913's, and the
+// UNION rule (decision E2) — a page the cross-read proves stale is graded on
+// the union of both reads, so the PR #806 page, which read COVERAGE LOST, now
+// reads GREEN on the cross-read's run 35215254802. Page (1) and page (3) are
+// unchanged: they reach the anchor through assert-ops-register.mjs, whose
+// refusal is not a freshness claim and was deliberately left as it was.
 //
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -30,7 +37,18 @@ import {
   maxRunId,
 } from '../run-page-anchor.mjs';
 import { anchoredBranchPage } from '../assert-ops-register.mjs';
-import { anchoredRuns } from '../assert-platform-proof-fresh.mjs';
+import * as platformGuard from '../assert-platform-proof-fresh.mjs';
+import * as e2eGuard from '../assert-e2e-proof-fresh.mjs';
+import {
+  STALE_PAGE_CARRIED,
+  anchoredRunRead,
+  describeRead,
+  fixtureReads,
+  unionById,
+  crossReadUrl,
+  queryOf,
+} from '../anchored-run-read.mjs';
+import { CouldNotLook, READ_ATTEMPTS } from '../../ops/bounded-retry.mjs';
 import { stripSourceComments } from '../text-reductions.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -126,37 +144,207 @@ describe('(1) ops-watch 35369631763 — the SELF-RUN anchor, through assert-ops-
   });
 });
 
+/** An injected `read(url)` for the shared reader: the page for the caller's
+ *  own query, the cross-read for anything else, and every URL asked recorded. */
+function served(page, cross) {
+  const asked = [];
+  return {
+    asked,
+    read: async (u) => {
+      asked.push(u);
+      if (asked.length === 1) return { workflow_runs: page };
+      if (cross === undefined) assert.fail(`a second request was not expected: ${u}`);
+      return typeof cross === 'function' ? cross(u) : { workflow_runs: cross };
+    },
+  };
+}
+
 describe('(2) PR #806 — the CROSS-READ anchor, through assert-platform-proof-fresh', () => {
   test('GREEN CONTROL — a cross-read that knows nothing newer leaves the page believed', async () => {
     const cur = [C2_NEW, ...C2_STALE];
-    const got = await anchoredRuns(REPO, C2_URL, cur, 't', C2_NOW, async () => ({ workflow_runs: [C2_NEW] }));
-    assert.equal(got, cur);
+    const s = served(cur, [C2_NEW]);
+    const got = await platformGuard.readRunHistory({ repo: REPO, read: s.read, nowMs: C2_NOW });
+    assert.equal(got.stale, false);
+    assert.equal(got.page, cur);
+    const v = platformGuard.gradeRunHistory(got, C2_NOW);
+    assert.equal(v.ok, true);
+    assert.equal(v.stalePageCarried, undefined, 'a page that is not stale carries no stale-page line');
   });
 
-  test('🔴 THE MEASURED PAGE — newest green 32003607931, cross-read answers 35215254802: THROWS stale page', async () => {
-    let asked = null;
-    await assert.rejects(
-      anchoredRuns(REPO, C2_URL, C2_STALE, 't', C2_NOW, async (u) => {
-        asked = u;
-        return { workflow_runs: [C2_NEW] };
-      }),
-      (e) => {
-        assert.ok(e.message.startsWith(STALE_PAGE), e.message);
-        assert.match(e.message, /ends at run 32003607931/);
-        assert.match(e.message, /answered run 35215254802/);
-        return true;
-      },
-    );
-    assert.equal(asked, C2_URL.replace('per_page=100', 'created=%3E%3D2026-08-17T06%3A55%3A35Z&per_page=10'));
+  test('🔴 THE MEASURED PAGE — newest green 32003607931, cross-read answers 35215254802: the anchor still says STALE', async () => {
+    const s = served(C2_STALE, [C2_NEW]);
+    const got = await platformGuard.readRunHistory({ repo: REPO, read: s.read, nowMs: C2_NOW });
+    assert.equal(got.stale, true);
+    assert.ok(got.verdict.why.startsWith(STALE_PAGE), got.verdict.why);
+    assert.match(got.verdict.why, /ends at run 32003607931/);
+    assert.match(got.verdict.why, /answered run 35215254802/);
+    assert.deepEqual(s.asked, [C2_URL, C2_URL.replace('per_page=100', 'created=%3E%3D2026-08-17T06%3A55%3A35Z&per_page=10')]);
+  });
+
+  test('🟢 RE-GRADED UNDER THE UNION (E2) — VERDICT CHANGED: COVERAGE LOST before, GREEN now, on the cross-read\'s 35215254802', async () => {
+    // The page alone graded 32.3 days against a 14-day ceiling. The cross-read
+    // held 35215254802, a scheduled green of 2026-09-17T11:37:48Z — 1.1 days at
+    // C2_NOW. A replica can omit runs, never invent one, so that run exists.
+    const got = await platformGuard.readRunHistory({ repo: REPO, read: served(C2_STALE, [C2_NEW]).read, nowMs: C2_NOW });
+    const v = platformGuard.gradeRunHistory(got, C2_NOW);
+    assert.equal(v.ok, true, v.reason);
+    assert.equal(v.runId, 35215254802);
+    assert.ok(v.stalePageCarried.startsWith(STALE_PAGE_CARRIED), v.stalePageCarried);
+    assert.match(v.stalePageCarried, /page's newest qualifying run is 32003607931 \(updated_at 2026-08-17T07:07:59Z\) over 2 row\(s\)/);
+    assert.match(v.stalePageCarried, /cross-read's is 35215254802 \(updated_at 2026-09-17T11:37:48Z\) over 1 row\(s\)/);
+  });
+
+  test('🔴 the same stale page, and a cross-read whose newest is ALSO past the ceiling: COVERAGE LOST, never a finding', async () => {
+    const old = run(33000000001, '2026-08-31T06:00:00Z', '2026-08-31T06:20:00Z', { event: 'schedule', conclusion: 'success' });
+    const got = await platformGuard.readRunHistory({ repo: REPO, read: served(C2_STALE, [old]).read, nowMs: C2_NOW });
+    assert.equal(got.stale, true);
+    const v = platformGuard.gradeRunHistory(got, C2_NOW);
+    assert.equal(v.ok, false);
+    assert.equal(v.unreadable, true, 'the platform guard reports `unreadable` as COULD NOT LOOK, exit 2');
+    assert.match(v.reason, /^stale page — .*not fresh either \(newest green run is 18\.4 days old, ceiling is 14\)/);
   });
 
   test('a page whose newest run is recent is not cross-read at all — the budget holds', async () => {
     const recent = [run(1, new Date(C2_NOW - 3_600_000).toISOString())];
-    await anchoredRuns(REPO, C2_URL, recent, 't', C2_NOW, async () => assert.fail('a recent page must not spend a cross-read'));
+    const got = await platformGuard.readRunHistory({ repo: REPO, read: served(recent).read, nowMs: C2_NOW });
+    assert.equal(got.cross, null);
+    assert.match(got.crossWhyNot, /^the page's newest run 1 is under 3h old$/);
   });
 
   test('🔴 a cross-read without a workflow_runs array throws — an unread anchor is not an absent one', async () => {
-    await assert.rejects(anchoredRuns(REPO, C2_URL, C2_STALE, 't', C2_NOW, async () => ({ message: 'x' })), /cross-read came back without/);
+    await assert.rejects(
+      platformGuard.readRunHistory({ repo: REPO, read: served(C2_STALE, () => ({ message: 'x' })).read, nowMs: C2_NOW }),
+      (e) => e instanceof CouldNotLook && /cross-read came back without/.test(e.message),
+    );
+  });
+});
+
+// ── (4) PR #913 CI run 35967342865 attempt 1, ~2026-09-24T07:01Z ────────────
+// assert-e2e-proof-fresh failed "newest green scheduled run is 5.0 days old,
+// ceiling is 3" while main carried 35962444367 (updated 06:06:58Z, dispatched
+// by the Worker cron, which the outcome limb counts) and 35838102124
+// (2026-09-23T08:43:34Z, scheduled). The re-query at 07:05:34Z returned 73 rows,
+// newest 35962444367; attempt 2 passed. The trap records neither the stale
+// page's run id nor its rows, so the page below is SYNTHETIC (35500000001 and
+// its neighbours) and dated to give exactly the measured 5.0 days; the two
+// green runs and their updated_at are the measured ones, and their created_at
+// (not recorded) is set twenty minutes before.
+const C4_NOW = Date.parse('2026-09-24T07:01:00Z');
+const C4_E2E_URL = e2eGuard.buildRunsUrl(REPO);
+const C4_PAGE = [
+  run(35500000001, '2026-09-19T06:41:00Z', '2026-09-19T07:01:00Z', { event: 'workflow_dispatch', conclusion: 'success' }),
+  run(35400000001, '2026-09-18T06:41:00Z', '2026-09-18T07:01:00Z', { event: 'workflow_dispatch', conclusion: 'success' }),
+];
+const C4_DISPATCHED = run(35962444367, '2026-09-24T05:46:58Z', '2026-09-24T06:06:58Z', { event: 'workflow_dispatch', conclusion: 'success' });
+const C4_SCHEDULED = run(35838102124, '2026-09-23T08:23:34Z', '2026-09-23T08:43:34Z', { event: 'schedule', conclusion: 'success' });
+
+describe('(4) PR #913 — the e2e guard now reads through the shared anchored reader', () => {
+  test('🟢 THE MEASURED SHAPE — the cross-read holds 35962444367, so the union is GREEN and says the page was stale', async () => {
+    const s = served(C4_PAGE, [C4_DISPATCHED, C4_SCHEDULED]);
+    const got = await e2eGuard.readRunHistory({ repo: REPO, read: s.read, nowMs: C4_NOW });
+    assert.deepEqual(s.asked, [C4_E2E_URL, C4_E2E_URL.replace('per_page=100', 'created=%3E%3D2026-09-19T06%3A41%3A00Z&per_page=10')]);
+    assert.equal(got.stale, true);
+    const v = e2eGuard.gradeRunHistory(got, C4_NOW);
+    assert.equal(v.ok, true, v.reason);
+    assert.equal(v.runId, 35962444367);
+    assert.match(v.stalePageCarried, /^STALE PAGE, CROSS-READ CARRIED THE PROOF: the page's newest qualifying run is 35500000001 \(updated_at 2026-09-19T07:01:00Z\) over 2 row\(s\); the cross-read's is 35962444367 \(updated_at 2026-09-24T06:06:58Z\) over 2 row\(s\)/);
+  });
+
+  test('🔴 CONTROL — the same page with an EMPTY cross-read is the finding, and the reason NAMES what it read', async () => {
+    const got = await e2eGuard.readRunHistory({ repo: REPO, read: served(C4_PAGE, []).read, nowMs: C4_NOW });
+    assert.equal(got.stale, false);
+    const v = e2eGuard.gradeRunHistory(got, C4_NOW);
+    assert.equal(v.ok, false);
+    assert.notEqual(v.coverageLost, true, 'a page that is not proven stale is a finding (exit 1), as before');
+    assert.equal(
+      v.reason,
+      'newest green scheduled run is 5.0 days old, ceiling is 3 — run 35500000001 (updated_at 2026-09-19T07:01:00Z) is the newest green run on main ' +
+        `of 2 row(s) returned by GET /repos/${REPO}/actions/workflows/e2e.yml/runs?branch=main&status=success&per_page=100 and 0 row(s) on its cross-read`,
+    );
+  });
+
+  test('🔴 page proven stale, and the cross-read\'s newest is ALSO past the ceiling: COVERAGE LOST (exit 2), not a finding', async () => {
+    const fourDays = run(35700000001, '2026-09-20T06:41:00Z', '2026-09-20T07:01:00Z', { event: 'workflow_dispatch', conclusion: 'success' });
+    const got = await e2eGuard.readRunHistory({ repo: REPO, read: served(C4_PAGE, [fourDays]).read, nowMs: C4_NOW });
+    const v = e2eGuard.gradeRunHistory(got, C4_NOW);
+    assert.equal(v.ok, false);
+    assert.equal(v.coverageLost, true);
+    assert.match(v.reason, /^stale page — the successful-run history of e2e\.yml on main ends at run 35500000001, but .*answered run 35700000001/);
+    assert.match(v.reason, /not fresh either \(newest green scheduled run is 4\.0 days old, ceiling is 3/);
+  });
+
+  test('describeRead — the query, rows, per_page, saturation, newest qualifying run and the cross-read, in one line', async () => {
+    const got = await e2eGuard.readRunHistory({ repo: REPO, read: served(C4_PAGE, [C4_DISPATCHED, C4_SCHEDULED]).read, nowMs: C4_NOW });
+    assert.equal(
+      describeRead(got, e2eGuard.newestGreenOnBranch),
+      `GET /repos/${REPO}/actions/workflows/e2e.yml/runs?branch=main&status=success&per_page=100 · 2 row(s) returned, per_page 100, ` +
+        'saturated no · newest qualifying run 35962444367 (updated_at 2026-09-24T06:06:58Z) · cross-read created=>=2026-09-19T06:41:00Z: ' +
+        '2 row(s), newest 35962444367 · the page is PROVEN STALE',
+    );
+  });
+});
+
+describe('the per-request ceiling — a read that never answers is COVERAGE LOST inside the shared bound (E4)', () => {
+  const never = () => new Promise(() => {});
+  test('🔴 through the e2e guard: the ceiling fires on every attempt, and the whole read ends inside the bound', { timeout: 10_000 }, async () => {
+    const TIMEOUT = 50;
+    let calls = 0;
+    const t0 = Date.now();
+    await assert.rejects(
+      e2eGuard.readRunHistory({ repo: REPO, read: () => { calls += 1; return never(); }, nowMs: C4_NOW, retry: { timeoutMs: TIMEOUT, sleep: async () => {} } }),
+      (e) => e instanceof CouldNotLook && /no answer within 0\.05s/.test(e.message) && /COULD NOT LOOK/.test(e.message),
+    );
+    const elapsed = Date.now() - t0;
+    assert.equal(calls, READ_ATTEMPTS, 'each attempt was made and each one hit the ceiling');
+    assert.ok(elapsed >= READ_ATTEMPTS * TIMEOUT - 10, `ended in ${elapsed}ms — faster than the ceiling, so the ceiling did not fire`);
+    assert.ok(elapsed < READ_ATTEMPTS * TIMEOUT + 1000, `took ${elapsed}ms, past ${READ_ATTEMPTS} x ${TIMEOUT}ms plus slack`);
+  });
+
+  test('🔴 through the platform guard: the same', { timeout: 10_000 }, async () => {
+    const t0 = Date.now();
+    await assert.rejects(
+      platformGuard.readRunHistory({ repo: REPO, read: never, nowMs: C2_NOW, retry: { timeoutMs: 50, sleep: async () => {} } }),
+      (e) => e instanceof CouldNotLook && /no answer within 0\.05s/.test(e.message),
+    );
+    assert.ok(Date.now() - t0 < READ_ATTEMPTS * 50 + 1000);
+  });
+
+  test('🔴 and the CROSS-READ is bounded too, not only the page', { timeout: 10_000 }, async () => {
+    await assert.rejects(
+      e2eGuard.readRunHistory({ repo: REPO, read: served(C4_PAGE, () => never()).read, nowMs: C4_NOW, retry: { timeoutMs: 50, sleep: async () => {} } }),
+      (e) => e instanceof CouldNotLook && /no answer within 0\.05s/.test(e.message),
+    );
+  });
+});
+
+describe('anchored-run-read — the pure edges', () => {
+  test('fixtureReads — an array is a page with no cross-read; {page, cross} carries both; anything else throws', () => {
+    assert.deepEqual(fixtureReads([1]), { page: [1], cross: null });
+    assert.deepEqual(fixtureReads({ page: [1], cross: [2] }), { page: [1], cross: [2] });
+    assert.deepEqual(fixtureReads({ page: [1] }), { page: [1], cross: null });
+    assert.throws(() => fixtureReads({ page: [1], cross: 'x' }), CouldNotLook);
+    assert.throws(() => fixtureReads({ workflow_runs: [] }), /neither an array of runs/);
+  });
+
+  test('a fixture never reaches the network, and says so on its read line', async () => {
+    const got = await anchoredRunRead({ workflow: 'e2e.yml', url: C4_E2E_URL, fixture: C4_PAGE, nowMs: C4_NOW, read: () => assert.fail('a fixture read must not fetch') });
+    assert.equal(got.crossWhyNot, 'fixture has none');
+    assert.match(describeRead(got, e2eGuard.newestGreenOnBranch), /fixture standing in for GET .* · cross-read not run \(fixture has none\)$/);
+  });
+
+  test('unionById — one row per id, the later updated_at wins, id-less rows kept', () => {
+    const a = { id: 1, updated_at: '2026-09-01T00:00:00Z', v: 'page' };
+    const b = { id: 1, updated_at: '2026-09-02T00:00:00Z', v: 'cross' };
+    assert.deepEqual(unionById([a, { v: 'no id' }], [b, { id: 2 }]).map((r) => r.v ?? r.id), ['cross', 'no id', 2]);
+  });
+
+  test('crossReadUrl refuses a query with no per_page — the replace would re-send the SAME query', () => {
+    assert.throws(() => crossReadUrl('https://api.github.com/x/runs?status=success', 'created=1'), /carries no per_page/);
+  });
+
+  test('🔴 queryOf strips GitHub\'s host only when a `/` follows it — a lookalike host is printed whole', () => {
+    assert.equal(queryOf('https://api.github.com/repos/o/r/actions/runs?per_page=100'), '/repos/o/r/actions/runs?per_page=100');
+    assert.equal(queryOf('https://api.github.com.example/repos/o/r/actions/runs'), 'https://api.github.com.example/repos/o/r/actions/runs');
   });
 });
 
@@ -193,6 +381,15 @@ describe('(3) the Worker watchdog 12:00Z — the BRANCH HEAD anchor', () => {
     assert.equal(pushTriggersBranch('on:\n  push:\n    branches:\n      - main\n', 'main'), true, 'the list form');
     assert.equal(pushTriggersBranch('on: [push]\n', 'main'), false, 'a form it cannot read plainly answers false');
   });
+
+  test('…and the three graded by the freshness readers carry no BRANCH HEAD anchor because none is pushed on main', () => {
+    // anchored-run-read.mjs states, per caller, that the branch-head anchor fits
+    // none of them. That is a MEASUREMENT of these three files; the day one of
+    // them gains a push trigger on main this reds, and the anchor should be armed.
+    assert.equal(pushTriggersBranch(workflow('e2e.yml'), 'main'), false, 'e2e.yml has no push trigger');
+    assert.equal(pushTriggersBranch(workflow('build-platforms.yml'), 'main'), false, 'build-platforms.yml is pushed only by a tag');
+    assert.equal(pushTriggersBranch(workflow('extensions.yml'), 'main'), false, 'extensions.yml is pushed only by a tag');
+  });
 });
 
 describe('judgeRunPage — the pure edges', () => {
@@ -223,15 +420,94 @@ describe('judgeRunPage — the pure edges', () => {
   });
 });
 
-describe('the anchor is WIRED into both readers, not merely available to them', () => {
-  // The cases above call anchoredBranchPage / anchoredRuns directly, so they
-  // cannot see a reader that stopped calling them. These two can: the one
-  // call each reader's live path makes, read from its CODE (comments stripped).
-  const code = (f) => stripSourceComments(readFileSync(join(REPO_ROOT, 'tooling', 'ci', f), 'utf8'), '.mjs');
+describe('the anchor is WIRED into every reader, not merely available to them', () => {
+  // The cases above call anchoredBranchPage / readRunHistory directly, so they
+  // cannot see a reader that stopped calling them. These can: the calls each
+  // reader's live path makes, read from its CODE (comments stripped). For the
+  // three freshness readers that is four links — the import, the reader built on
+  // anchoredRunRead with the guard's own query, the live path reaching it, and
+  // the verdict graded on what it returned — plus no bare `fetch(`, which would
+  // be a request outside the shared ceiling (E4).
+  const code = (rel) => stripSourceComments(readFileSync(join(REPO_ROOT, rel), 'utf8'), '.mjs');
   test('assert-ops-register.mjs — the shared branch page returns through anchoredBranchPage', () => {
-    assert.match(code('assert-ops-register.mjs'), /return anchoredBranchPage\(repo, workflow, branch, runs, /);
+    assert.match(code('tooling/ci/assert-ops-register.mjs'), /return anchoredBranchPage\(repo, workflow, branch, runs, /);
   });
-  test('assert-platform-proof-fresh.mjs — fetchRuns returns through anchoredRuns', () => {
-    assert.match(code('assert-platform-proof-fresh.mjs'), /return anchoredRuns\(repo, url, body\?\.workflow_runs, token, Date\.now\(\)\);/);
+  test('assert-platform-proof-fresh.mjs — the live read and the grade both go through the shared reader', () => {
+    const c = code('tooling/ci/assert-platform-proof-fresh.mjs');
+    assert.match(c, /import \{[^}]*\banchoredRunRead\b[^}]*\} from '\.\/anchored-run-read\.mjs';/);
+    assert.match(c, /return anchoredRunRead\(\{\s*workflow: WORKFLOW,\s*url: buildRunsUrl\(repo\),/);
+    assert.match(c, /read = await fetchRuns\(nowMs\);/);
+    assert.match(c, /async function fetchRuns\(nowMs\) \{[^}]*return readRunHistory\(\{ repo, token, nowMs \}\);/);
+    assert.match(c, /const verdict = gradeRunHistory\(read, nowMs\);/);
+    assert.doesNotMatch(c, /\bfetch\s*\(/, 'a bare fetch is a request outside the shared ceiling');
+  });
+  test('tooling/ci/assert-e2e-proof-fresh.mjs — the live read and the grade both go through the shared reader', () => {
+    const c = code('tooling/ci/assert-e2e-proof-fresh.mjs');
+    assert.match(c, /import \{[^}]*\banchoredRunRead\b[^}]*\} from '\.\/anchored-run-read\.mjs';/);
+    assert.match(c, /return anchoredRunRead\(\{\s*workflow: WORKFLOW,\s*url: buildRunsUrl\(repo\),/);
+    assert.match(c, /read = await fetchRuns\(nowMs\);/);
+    assert.match(c, /async function fetchRuns\(nowMs\) \{[^}]*return readRunHistory\(\{ repo, token, nowMs \}\);/);
+    assert.match(c, /: gradeRunHistory\(read, nowMs\);/);
+    assert.doesNotMatch(c, /\bfetch\s*\(/, 'a bare fetch is a request outside the shared ceiling');
+  });
+  test('extensions/scripts/assert-e2e-proof-fresh.mjs — the run history and the jobs both go through the shared reader', () => {
+    const c = code('extensions/scripts/assert-e2e-proof-fresh.mjs');
+    assert.match(c, /import \{[^}]*\banchoredRunRead\b[^}]*\} from '\.\.\/\.\.\/tooling\/ci\/anchored-run-read\.mjs';/);
+    assert.match(c, /const read = await anchoredRunRead\(\{\s*workflow: WORKFLOW,\s*url: GITHUB_API \+ runsPath,/);
+    assert.match(c, /const rows = read\.union;/);
+    assert.match(c, /return githubJson\(GITHUB_API \+ p, token, /);
+    assert.doesNotMatch(c, /\bfetch\s*\(/, 'a bare fetch is a request outside the shared ceiling');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// E5 — THE CLASS CANNOT GROW A FOURTH UNANCHORED READER.
+// Measured at 403d7716, `actions/workflows/…/runs` URLs are built in FIVE files
+// under tooling/ci and extensions/scripts: the three freshness readers above,
+// assert-alert-disposition.mjs:508 and assert-ops-register.mjs (:2617, :2664,
+// :3114). tooling/ops readers (triage-failed-runs, check-prod-provenance,
+// redeploy-stranded) are OUTSIDE this case: they are ops-watch and operator
+// tools, not the CI guards this class is about. The set below is DERIVED from
+// the tree; the exempt list is SHRINK-ONLY and every entry must still be true.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('E5 — every run-history URL builder under tooling/ci and extensions/scripts reads through the shared reader, or is a named exemption', () => {
+  const RUNS_URL = /actions\/workflows\/[^'"`\n]*\/runs\b/;
+  const EXEMPT = new Map([
+    ['tooling/ci/assert-alert-disposition.mjs', 'grades whether each FAILED run (a firing) was dispositioned, not how fresh a proof is; a stale page there hides firings, which is its own anchor question'],
+    ['tooling/ci/assert-ops-register.mjs', 'its shared branch page is anchored through anchoredBranchPage (kept on purpose: red-since is not a freshness claim); the two targeted fallback reads (ghNewestRun, unitRunsPage) are reconciled at two widths, not yet anchored'],
+  ]);
+  const candidates = [];
+  for (const dir of ['tooling/ci', 'extensions/scripts']) {
+    for (const f of readdirSync(join(REPO_ROOT, dir)).filter((n) => n.endsWith('.mjs')).sort()) {
+      const rel = `${dir}/${f}`;
+      const c = stripSourceComments(readFileSync(join(REPO_ROOT, rel), 'utf8'), '.mjs');
+      if (RUNS_URL.test(c)) candidates.push({ rel, code: c });
+    }
+  }
+
+  test('the sweep reached the three freshness readers (anti-vacuity: a blind sweep would pass everything)', () => {
+    const found = candidates.map((c) => c.rel);
+    for (const must of ['tooling/ci/assert-e2e-proof-fresh.mjs', 'tooling/ci/assert-platform-proof-fresh.mjs', 'extensions/scripts/assert-e2e-proof-fresh.mjs']) {
+      assert.ok(found.includes(must), `${must} builds a run-history URL and the sweep did not see it: ${found.join(', ')}`);
+    }
+  });
+
+  test('🔴 every builder calls anchoredRunRead, or is on the exempt list with its reason', () => {
+    const unanchored = candidates
+      .filter(({ rel, code: c }) => !EXEMPT.has(rel) && !/\banchoredRunRead\s*\(\{/.test(c))
+      .map(({ rel }) => rel);
+    assert.deepEqual(unanchored, [], 'a run-history reader that grades freshness must read through tooling/ci/anchored-run-read.mjs');
+  });
+
+  test('the exempt list is LIVE — each entry still builds a run URL and still does not read through the shared reader', () => {
+    for (const [rel, why] of EXEMPT) {
+      const hit = candidates.find((c) => c.rel === rel);
+      assert.ok(hit, `${rel}: no longer builds a run-history URL; remove its exemption (${why})`);
+      assert.doesNotMatch(hit.code, /\banchoredRunRead\s*\(/, `${rel}: now reads through the shared reader; remove its exemption`);
+    }
+  });
+
+  test('the exempt list only SHRINKS — two entries at 403d7716', () => {
+    assert.ok(EXEMPT.size <= 2, `the exempt list grew to ${EXEMPT.size}; adopt the shared reader instead`);
   });
 });

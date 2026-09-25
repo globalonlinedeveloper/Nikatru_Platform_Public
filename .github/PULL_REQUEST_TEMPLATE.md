@@ -18,6 +18,15 @@ that was made. This repo's best documentation is its PR titles:
   CI was reading aloud three false statements about its own state
 -->
 
+<!-- ROWS — replace the line below with the register rows this PR closes or
+     advances, by id, comma-separated:   Rows: O-ROW-ID, O-ROW-ID
+     A PR that moves no row says why, in at least 10 characters:
+                                         Rows: none — why no row moves
+     tooling/ci/assert-pr-rows.mjs reads exactly one such line, outside comments
+     and code fences, on every pull_request event. Left as written it is red;
+     editing the body re-runs the check. -->
+Rows: <O-ROW-ID, … | none — why>
+
 ## What was wrong
 
 <!-- The defect, not the diff. If there was no defect — a new capability — say

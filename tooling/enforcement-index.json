@@ -20,6 +20,14 @@
     "state": "LIBRARY"
   },
   {
+    "claims": [],
+    "invokedBy": [],
+    "kind": "guard",
+    "ref": "tooling/ci/anchored-run-read.mjs",
+    "references": [],
+    "state": "LIBRARY"
+  },
+  {
     "claims": [
       "D-10"
     ],
@@ -207,6 +215,16 @@
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-app-dod.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-store"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-app-id-contract.mjs",
     "references": [],
     "state": "WIRED"
   },
@@ -872,7 +890,7 @@
       "ADR 067"
     ],
     "invokedBy": [
-      ".github/workflows/extensions.yml#build-free"
+      ".github/workflows/extensions-ci.yml#build-free"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-extensions-build-free.mjs",
@@ -1667,6 +1685,16 @@
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-policy-claims.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guard-meta"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-pr-rows.mjs",
     "references": [],
     "state": "WIRED"
   },
@@ -2810,6 +2838,14 @@
     "claims": [],
     "invokedBy": [],
     "kind": "guard",
+    "ref": "tooling/ci/tool-output.mjs",
+    "references": [],
+    "state": "LIBRARY"
+  },
+  {
+    "claims": [],
+    "invokedBy": [],
+    "kind": "guard",
     "ref": "tooling/ci/tree-walk.mjs",
     "references": [],
     "state": "LIBRARY"
@@ -2976,6 +3012,16 @@
     ],
     "kind": "script",
     "ref": "tooling/ops/check-analytics-liveness.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/apple-expiry-write.yml#write"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/check-apple-signing-expiry.mjs",
     "references": [],
     "state": "WIRED"
   },

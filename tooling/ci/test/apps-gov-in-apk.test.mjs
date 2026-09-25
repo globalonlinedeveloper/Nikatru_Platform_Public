@@ -38,6 +38,7 @@ import {
   checkBuiltIdentity,
   mdCell,
 } from '../assert-apps-gov-in-apk.mjs';
+import { toolOutputLines as libraryToolOutputLines, whatToolReturned } from '../tool-output.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const GUARD = join(CI_DIR, 'assert-apps-gov-in-apk.mjs');
@@ -273,6 +274,19 @@ describe('parseApksignerCerts — the three shapes apksigner prints, keyed by la
     assert.equal(many.length, 21);
     assert.match(many[0], /25 line\(s\), .*first 20 shown/);
     assert.equal(many[20], 'stdout| l19');
+  });
+
+  test('whatToolReturned names the path, version and exit, then 20 of 25 lines per stream with the remainder marked', () => {
+    // The re-export is the moved function itself, not a second copy of it.
+    assert.equal(toolOutputLines, libraryToolOutputLines);
+    const lines25 = `${Array.from({ length: 25 }, (_, i) => `l${i}`).join('\n')}\n`;
+    const got = whatToolReturned({ name: 'codesign', path: '/usr/bin/codesign', version: 'macOS 26.0', result: { status: 1, stdout: '', stderr: lines25 } });
+    assert.deepEqual(got.slice(0, 4), ['tool: /usr/bin/codesign', 'version: macOS 26.0', 'exit: 1', 'stdout: (empty, 0 bytes)']);
+    assert.match(got[4], /^stderr: 25 line\(s\), \d+ bytes, first 20 shown$/);
+    assert.deepEqual(got.slice(5), Array.from({ length: 20 }, (_, i) => `stderr| l${i}`));
+    assert.equal(got.length, 25);
+    const missing = whatToolReturned({ name: 'xcodebuild', result: { error: Object.assign(new Error('spawn xcodebuild ENOENT'), { code: 'ENOENT' }), status: null } });
+    assert.deepEqual(missing.slice(0, 3), ['tool: not found (xcodebuild)', 'version: unknown', 'exit: error ENOENT']);
   });
 });
 

@@ -1366,6 +1366,26 @@
       "_retracted20260825NotReddenableClaim": "APPENDED 2026-08-25 (Round B), correcting the row above; nothing in it was rewritten. THE CLAIM MARKED «» ABOVE IS FALSE AND IS RETRACTED. It was true only of the domain it grepped: `tooling/ci/*.mjs` and `tooling/scripts/*.mjs`, non-recursive, which is 0 hits — but the guard that reads this policy is neither in tooling/ci/ nor in tooling/scripts/. MEASURED THIS RUN: `grep -rniE \"concurrency|cancel-in-progress\" tooling/ci/ tooling/scripts/` -> 25 hits, ALL in tooling/ci/test/safe-rerun.test.mjs; `grep -rlniE \"concurrency|cancel-in-progress\" tooling/ops/` -> tooling/ops/safe-rerun.mjs, tooling/ops/register.json, tooling/ops/manual-deploys.json. THE TRUE STATEMENT: tooling/ops/safe-rerun.mjs:221-282 parses every workflow's top-level `concurrency:`, and :333-344 `namedLaneProblem()` is pointed BY NAME at '.github/workflows/ci.yml' and asserts its `cancel-in-progress`. tooling/ci/test/safe-rerun.test.mjs:351 ('namedLaneProblem is null on the REAL tree — ci.yml is still the subject') runs it against the REAL .github/workflows directory, and that suite is executed in CI at .github/workflows/ci.yml:160 (`node --test \"tooling/ci/test/*.test.mjs\"`). PROVEN BY MUTATION THIS RUN, against a copy of .github/workflows in a scratch directory, calling loadWorkflows()+namedLaneProblem() from the real tooling/ops/safe-rerun.mjs: unmutated -> parse {group:'ci-${{ github.ref }}', cancelInProgress:true, cancelIsExpression:true}, namedLaneProblem null, and `node --test tooling/ci/test/safe-rerun.test.mjs` -> 41 pass / 0 fail, exit 0. Line 16 replaced by a bare `cancel-in-progress: false` -> parse {cancelInProgress:false, cancelIsExpression:false}, namedLaneProblem 'COVERAGE LOST — .github/workflows/ci.yml declares a group but `cancel-in-progress` is not true, so this tool would now allow every re-run on it.' SO THE LINE IS REDDENABLE, AND THE FIXTURE ALREADY EXISTED IN THE TREE BEFORE THIS CHANGE. ⚠️ WHAT REMAINS TRUE, STATED ACCURATELY AND NOT SOFTENED: NO fixture in this tree catches an EXPRESSION mutant. safe-rerun.mjs:280 collapses any `${{ ... }}` to cancelling (`const cancelInProgress = cancelIsExpression ? true : String(cancel).trim() === 'true'`), so all three of `${{ github.ref == 'refs/heads/main' }}`, `${{ github.ref != 'refs/head/main' }}` and `${{ github.refx != 'refs/heads/main' }}` return namedLaneProblem null — each mutated and run this round — and so does putting the original bare `true` back. WE DID NOT BUILD A FIXTURE THAT DISTINGUISHES THEM. That gap is recorded here and at the site, not closed. The source mutation for all four of those stays recorded in the trailing comment on ci.yml:16, which was corrected in the same change (one line replaced by one line, `git diff -U0` -> a single `@@ -16 +16 @@` hunk, so no ci.yml:NNNN citation shifted). ROUTED, NOT FIXED HERE: tooling/ops/safe-rerun.mjs:6-11 still quotes this workflow's block as `cancel-in-progress: true` and :333-336's doc-comment repeats it; both are stale as of the 2026-08-25 change and that file is owned elsewhere this round."
     },
     {
+      "id": "duty.workflow.extensions-ci.yml",
+      "kind": "duty",
+      "what": "The extensions CI lane — build-free, the shared contract, the gate inventory, discover, the secret scan, the catalogue, core, the per-tool gates, sims and packages, the selftest, the templates, the e2e proof-freshness check and the ci-required aggregate — as a reusable workflow that runs only as a call. Split out of extensions.yml on 2026-09-24 (O-EXTENSIONS-CI-REQUIRED-GATES-NOTHING) so that ci-gate, the one required check, needs it.",
+      "detector": "ci-gate red on the pull request or push that caused it (required check), through ci.yml's `extensions` call job, whose result is red when any job of this workflow is.",
+      "response": "Fix before merge. Branch protection is the enforcement, through ci-gate; `ci-required` is not, and must never be, a required check of its own.",
+      "cadence": "trigger",
+      "trigger": "called by ci.yml (`extensions` job) on every push to main and every pull request; by extensions.yml on dispatch lane=ci",
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": ".github/workflows/extensions-ci.yml",
+        "record": "GitHub Actions run history for ci.yml (a called workflow's jobs run inside the caller's run)",
+        "failingValue": "conclusion = failure",
+        "readBy": "ci-gate (required check), through ci.yml's `extensions` call job"
+      },
+      "accessProviders": [
+        "github"
+      ],
+      "source": "verified"
+    },
+    {
       "id": "duty.workflow.build-platforms.yml",
       "kind": "duty",
       "what": "The six-platform compile proof — the ONLY place macOS, iOS, Windows, Linux and Android are ever compiled.",
@@ -1535,8 +1555,8 @@
     {
       "id": "duty.workflow.extensions.yml",
       "kind": "duty",
-      "what": "The whole extension pipeline in one workflow: the CI lane on every pull request, the end-to-end lane on the DAILY 20:53 UTC schedule, and the release lane on a `<tool>-v<x.y.z>` tag push. Arrived 2026-09-05 with the extensions subtree, replacing three workflows in a repository that is now archived. THE DUTY IS WEEKLY AND THE CRON IS DAILY, DELIBERATELY: the schedule moved from `17 4 * * 1` to `53 20 * * *` on 2026-09-07 because a Monday-only slot gave this row's 7d x 1.5 = 252h window one or two chances at a scheduler measured delivering 10.1% of scheduled slots on time, and the row still held ZERO scheduled runs. The margin is given to the EVIDENCE, not to the duty (TRAPS ci-19), which is the shape codeql.yml, trufflehog.yml and renovate.yml already take. `cadence` stays `7d` because the duty did not change; only the number of chances the evidence gets did.",
-      "detector": "A red check on the pull request that caused it, attended by definition, for the CI lane. For the scheduled end-to-end lane, extensions/scripts/assert-e2e-proof-fresh.mjs on every push: the newest SCHEDULED green run must be inside the window it DERIVES from this workflow's own cron, and a workflow_dispatch deliberately does not satisfy it.",
+      "what": "The whole extension pipeline in one workflow: the CI lane (since 2026-09-24 extensions-ci.yml, called by ci.yml on every pull request and every push to main, and by this workflow on dispatch lane=ci), the end-to-end lane on the DAILY 20:53 UTC schedule, and the release lane on a `<tool>-v<x.y.z>` tag push. Arrived 2026-09-05 with the extensions subtree, replacing three workflows in a repository that is now archived. THE DUTY IS WEEKLY AND THE CRON IS DAILY, DELIBERATELY: the schedule moved from `17 4 * * 1` to `53 20 * * *` on 2026-09-07 because a Monday-only slot gave this row's 7d x 1.5 = 252h window one or two chances at a scheduler measured delivering 10.1% of scheduled slots on time, and the row still held ZERO scheduled runs. The margin is given to the EVIDENCE, not to the duty (TRAPS ci-19), which is the shape codeql.yml, trufflehog.yml and renovate.yml already take. `cadence` stays `7d` because the duty did not change; only the number of chances the evidence gets did.",
+      "detector": "ci-gate red on the pull request (required check), for the CI lane — through ci.yml's `extensions` call job since 2026-09-24. For the scheduled end-to-end lane, extensions/scripts/assert-e2e-proof-fresh.mjs on every push: the newest SCHEDULED green run must be inside the window it DERIVES from this workflow's own cron, and a workflow_dispatch deliberately does not satisfy it.",
       "response": "Fix before merge for the CI lane. A stale scheduled proof means the extension end-to-end evidence is unproven, not that the extensions are broken — read the run history before treating it as an outage, and remember the run history for the SCHEDULED lane starts on 2026-09-05 because the previous repository holds everything before it.",
       "cadence": "7d",
       "mechanism": {
@@ -1544,7 +1564,7 @@
         "anchor": ".github/workflows/extensions.yml",
         "record": "GitHub Actions run history for extensions.yml",
         "failingValue": "conclusion = failure on event = schedule",
-        "readBy": "extensions/scripts/assert-e2e-proof-fresh.mjs, run by this same workflow on every pull request. Since 2026-09-05 that gate RESOLVES the workflow it reads its ceiling out of rather than assuming a file beside itself — the candidates are extensions.yml then e2e.yml, so it keeps working both here and in a tree reconstructed by `git subtree split --prefix=extensions`.",
+        "readBy": "extensions/scripts/assert-e2e-proof-fresh.mjs, run by extensions-ci.yml's `e2e-proof-fresh` job, called by ci.yml (`extensions` job) and required through ci-gate. Since 2026-09-05 that gate RESOLVES the workflow it reads its ceiling out of rather than assuming a file beside itself — the candidates are extensions.yml then e2e.yml, so it keeps working both here and in a tree reconstructed by `git subtree split --prefix=extensions`.",
         "recordQuery": {
           "reader": "github-run-history",
           "workflow": "extensions.yml",
@@ -1748,6 +1768,29 @@
         "hostinger"
       ],
       "source": "verified"
+    },
+    {
+      "_whyThisRowExists": "APPENDED 2026-09-24 for O-APPLE-SIGNING-EXPIRY-UNWATCHED. assert-ops-register.mjs holds every workflow file to a duty row anchored at it, so the file and this row land together (measured: without it the guard reports `.github/workflows/apple-expiry-write.yml has NO duty row anchored at it`).",
+      "id": "duty.workflow.apple-expiry-write.yml",
+      "kind": "duty",
+      "what": "The machine write of the Apple signing expiry dates: tooling/ops/check-apple-signing-expiry.mjs --write reads App Store Connect for the certificates and App Store profiles declared in tooling/apple-provisioning.json, writes each matching `expiring.cert.apple-*` and `expiring.profile.apple-appstore-*` row's `expires` into tooling/ops/register.json, and commits that one file to the branch it was dispatched on.",
+      "detector": "Attended: whoever dispatched it reads the run. The checker exits 1 on a finding a date cannot repair (a 404, a profile that is not ACTIVE, an unknown or duplicate type) and 2 when it could not look, and writes nothing in either case; after a write it re-judges the file it wrote and fails the job, before anything is committed, unless every row now matches. tooling/ci/assert-ops-register.mjs grades the rows on the pull request, never in this job: that would make this workflow a guard host, which enforces live verdicts on a dispatch, so a red ops-watch would fail the dispatch that repairs it.",
+      "response": "Read the run. Exit 2 with a 401 or 403 means the App Store Connect key cannot read certificates or profiles, which is an owner step. Exit 1 names the id that is gone or not ACTIVE, which is a re-mint and then another dispatch. A green run pushed one commit: open the pull request from that branch.",
+      "cadence": "on-demand",
+      "why": "The dates move when Apple renews, re-mints or revokes a certificate or profile, which is rare and never on a clock. The scheduled half is read-only and belongs in ops-watch.yml; a scheduled workflow holding `contents: write` would widen every job beside it. Dispatch-only, and never on main.",
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": ".github/workflows/apple-expiry-write.yml",
+        "record": "GitHub Actions run history for apple-expiry-write.yml, plus the one commit it pushes to the dispatched branch",
+        "failingValue": "conclusion = failure: the checker exiting 1 or 2, with nothing written or with a written file it does not accept, so nothing is committed",
+        "readBy": "the dispatching agent or human, plus tooling/ci/assert-ops-register.mjs on the pull request that carries the commit"
+      },
+      "accessProviders": [
+        "github",
+        "apple"
+      ],
+      "source": "unverified",
+      "unverifiedWhy": "The workflow has not run yet. Its first dispatch, after this row reaches main, is the first read of App Store Connect with the repository's key, and whether that key may read v1/certificates and v1/profiles is unmeasured until then."
     },
     {
       "_whyThisRowExists": "APPENDED 2026-08-25. assert-ops-register.mjs holds `watched workflows ≡ .github/workflows/*.yml` in BOTH directions, so a new workflow file with no row here exits 1 — which is also this workflow's reddening mutation, recorded in its own header: delete .github/workflows/site-drift-repair.yml and both this guard and assert-enforcement-index.mjs go red.",

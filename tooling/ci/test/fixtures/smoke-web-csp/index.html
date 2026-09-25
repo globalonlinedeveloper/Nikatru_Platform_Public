@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <!-- The CSP fixture for tooling/ci/test/smoke-web-artifact.test.mjs. NOT a Flutter build.
+       Compiled "for" the path the app is published at, so the smoke mounts it under that
+       prefix exactly as it mounts the real bundle. The test copies this directory and puts
+       the app's own apps/subscriptiontracker/web/_headers beside it, so it boots under the
+       policy that ships. No inline script: 'self' is the only script source it needs. -->
+  <base href="/subscriptiontracker/">
+  <meta charset="UTF-8">
+  <title>smoke-web-artifact CSP fixture</title>
+  <!-- An empty icon, so the browser does not ask for /favicon.ico outside the base path. -->
+  <link rel="icon" href="data:,">
+  <script src="flutter_bootstrap.js" defer></script>
+</head>
+<body></body>
+</html>

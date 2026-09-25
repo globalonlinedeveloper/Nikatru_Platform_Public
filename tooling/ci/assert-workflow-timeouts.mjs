@@ -34,8 +34,9 @@
 //      nothing, while satisfying limb 4 of the hardening guard perfectly. Two
 //      ceilings, because a job that blocks a merge and a job that does not are
 //      different kinds of wait: a job in the `needs` closure of ci.yml `ci-gate`
-//      or extensions.yml `ci-required` holds every merge behind it and is capped
-//      at 30; every other job at 60. The closure is DERIVED by walking `needs`,
+//      (followed one level into a local reusable-workflow call, which is how
+//      extensions-ci.yml's jobs hold a merge) is capped at 30; every other job
+//      at 60. The closure is DERIVED by walking `needs`,
 //      never listed — a list is a second copy of the graph and it goes stale in
 //      the direction of admitting a job nobody meant to admit.
 //
@@ -59,20 +60,21 @@
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { parseAllWorkflows, WORKFLOW_DIR } from './workflow-scan.mjs';
+import { parseAllWorkflows, resolveLocalCalls, WORKFLOW_DIR } from './workflow-scan.mjs';
 
 /** The two ceilings, in minutes. Named rather than inlined so the numbers this
  *  guard enforces can be read in one place and cited in a report. */
 export const GATING_CAP = 30;
 export const DEFAULT_CAP = 60;
 
-/** The gate a job has to be reachable from to count as merge-blocking. Both are
- *  the aggregate their own workflow already declares as the required check —
- *  ci.yml `ci-gate` and extensions.yml `ci-required` — so this guard follows the
- *  branch-protection shape instead of restating it. */
+/** The gate a job has to be reachable from to count as merge-blocking: ci.yml
+ *  `ci-gate`, the one required check, so this guard follows the branch-protection
+ *  shape instead of restating it. ⏱ 2026-09-24: extensions.yml `ci-required` was
+ *  a second anchor until the extensions CI lane became extensions-ci.yml, called by
+ *  ci.yml's `extensions` job; its jobs now reach this closure THROUGH that call
+ *  (gatingThroughCalls below), which is the only way they hold a merge. */
 export const GATE_ANCHORS = [
   { rel: `${WORKFLOW_DIR}/ci.yml`, job: 'ci-gate' },
-  { rel: `${WORKFLOW_DIR}/extensions.yml`, job: 'ci-required' },
 ];
 
 /**
@@ -114,6 +116,38 @@ export function needsClosure(wf, anchor) {
   }
   return seen;
 }
+
+/**
+ * ⏱ 2026-09-24 — THE CLOSURE, FOLLOWED THROUGH A LOCAL CALL. A job in an anchor's
+ * `needs` closure that calls `./.github/workflows/<callee>.yml` runs EVERY job of
+ * the callee inside the anchor's run, and the anchor's verdict reads the call's
+ * result — so every callee job holds the merge exactly as a direct need does.
+ * Returns `{ gating: Map(rel -> Set(job)), refusal }`; `refusal` is
+ * workflow-scan.resolveLocalCalls' own, for a call job IN the closure, and the
+ * caller turns it into COVERAGE LOST. One level, as the resolver follows.
+ */
+export function gatingThroughCalls(workflows, anchor) {
+  const gating = new Map();
+  const wf = workflows.find((w) => w.rel === anchor.rel);
+  if (!wf) return { gating, refusal: null };
+  const closure = needsClosure(wf, anchor.job);
+  gating.set(anchor.rel, closure);
+  const { calls, refusal } = resolveLocalCalls(wf, workflows);
+  for (const c of calls) {
+    if (!closure.has(c.job)) continue;
+    const into = gating.get(c.callee.rel) ?? new Set();
+    for (const name of c.callee.jobs.keys()) into.add(name);
+    gating.set(c.callee.rel, into);
+  }
+  return { gating, refusal: refusal !== null && closure.has(refusal.job) ? refusal : null };
+}
+
+/** A job whose own key `uses:` makes it a reusable-workflow CALL: GitHub rejects
+ *  `timeout-minutes` on it, so it is bounded by its callee's jobs instead. */
+export const callRef = (jobLines) => {
+  const hit = jobLines.find((l) => /^ {4}uses:\s*\S/.test(l.text));
+  return hit ? hit.text.replace(/^ {4}uses:\s*/, '').trim() : null;
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 🔴 EVERYTHING BELOW RUNS ONLY WHEN THIS FILE IS THE ENTRY POINT.
@@ -221,7 +255,16 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
         `merge, or every job in ${anchor.rel} silently drops to the ${DEFAULT_CAP}-minute cap.`,
       ]);
     }
-    const closure = needsClosure(wf, anchor.job);
+    const through = gatingThroughCalls(workflows, anchor);
+    if (through.refusal !== null) {
+      coverageLost([
+        `${anchor.rel} job \`${through.refusal.job}\` (line ${through.refusal.n}) is in the ${anchor.job} closure and calls ` +
+          `${through.refusal.callee}, which this scan cannot follow (${through.refusal.kind}).`,
+        'A call job has no timeout of its own; its callee\'s jobs are what hold the merge. With the callee',
+        'unread, those jobs would be graded against nothing — so this guard does not report.',
+      ]);
+    }
+    const closure = through.gating.get(anchor.rel);
     if (closure.size < 2) {
       coverageLost([
         `the \`needs\` closure of ${anchor.rel} \`${anchor.job}\` is ${closure.size} job(s).`,
@@ -230,7 +273,11 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
         'not the workflow, has gone wrong.',
       ]);
     }
-    gating.set(anchor.rel, closure);
+    for (const [rel, jobs] of through.gating) {
+      const into = gating.get(rel) ?? new Set();
+      for (const name of jobs) into.add(name);
+      gating.set(rel, into);
+    }
   }
 
   // ── the limbs ─────────────────────────────────────────────────────────────
@@ -238,12 +285,32 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   let unbounded = 0;
   let overCap = 0;
 
+  let callJobs = 0;
   for (const wf of workflows) {
     const closure = gating.get(wf.rel) ?? new Set();
-    const anchorName = GATE_ANCHORS.find((a) => a.rel === wf.rel)?.job;
+    const anchorName = GATE_ANCHORS.find((a) => a.rel === wf.rel)?.job ?? `${GATE_ANCHORS[0].job}, through a call`;
+    const calls = resolveLocalCalls(wf, workflows);
     for (const job of wf.jobs.values()) {
       jobCount++;
       const hits = timeoutLines(job.lines);
+
+      // ⏱ 2026-09-24 — a reusable-workflow CALL is exempt from its own timeout and
+      // inherits its callee's: the callee's jobs are graded where that file is read,
+      // at the gating cap when the call sits in a gate's closure. A call this scan
+      // cannot follow is not graded at all, so it is COVERAGE LOST, not a pass.
+      const ref = callRef(job.lines);
+      if (ref !== null) {
+        if (calls.calls.some((c) => c.job === job.name) && hits.length === 0) {
+          callJobs++;
+          continue;
+        }
+        coverageLost([
+          `${wf.rel} job \`${job.name}\` calls \`${ref}\`, which this scan cannot follow one level into ` +
+            (calls.refusal !== null && calls.refusal.job === job.name ? `(${calls.refusal.kind})` : hits.length ? '(a call carries `timeout-minutes`, which GitHub rejects)' : '(not a local workflow)') +
+            '.',
+          'Its callee\'s jobs are what bound it; with them unread there is nothing to grade it against.',
+        ]);
+      }
 
       if (hits.length === 0) {
         unbounded++;
@@ -305,8 +372,8 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     );
     for (const f of findings) console.error(`  · ${f}`);
     console.error(
-      `  Caps: ${GATING_CAP} minutes for a job in the \`needs\` closure of ci.yml ci-gate or ` +
-        `extensions.yml ci-required, ${DEFAULT_CAP} for every other job.`,
+      `  Caps: ${GATING_CAP} minutes for a job in the \`needs\` closure of ci.yml ci-gate, followed ` +
+        `through a local reusable-workflow call, ${DEFAULT_CAP} for every other job.`,
     );
     process.exit(1);
   }
@@ -315,6 +382,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   console.log(
     `ok  workflow timeouts — ${workflows.length} workflow(s), ${jobCount} job(s), ${unbounded} unbounded, ` +
       `${overCap} over cap; every job carries exactly one job-level timeout-minutes at an integer >= 1; ` +
-      `${gatingCount} merge-blocking job(s) capped at ${GATING_CAP}, the rest at ${DEFAULT_CAP}`,
+      `${gatingCount} merge-blocking job(s) capped at ${GATING_CAP}, the rest at ${DEFAULT_CAP}` +
+      `${callJobs ? `; ${callJobs} reusable-workflow call job(s) bounded by their callee's jobs` : ''}`,
   );
 }

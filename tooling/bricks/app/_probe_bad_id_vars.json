@@ -1,0 +1,14 @@
+{
+  "app_id": "habit_tracker",
+  "display_name": "Probe's E-Book & Co — 24/7 Smoke",
+  "icon_label": "E-Book & Co",
+  "subdomain": "probe.nikatru.com",
+  "api_domain": "",
+  "seed_hex": "6459F5",
+  "category": "productivity",
+  "description": "CI probe: & ' / \" survive the stamp.",
+  "subtitle": "Probe's & \"only\" smoke test",
+  "markets": "in",
+  "audience": "general",
+  "needs_backend": false
+}

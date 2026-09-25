@@ -91,6 +91,7 @@ import { cf as cfWildcard } from '../../ops/check-wildcard-dns.mjs';
 import { cf as cfTurnstile } from '../../ops/check-turnstile-hosts.mjs';
 import { cf as cfRetired } from '../../ops/check-retired-names-live.mjs';
 import { doh, RESOLVERS as DOH_RESOLVERS } from '../../ops/check-mail-auth-dns.mjs';
+import { ascGet as ascApple } from '../../ops/check-apple-signing-expiry.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const OPS = resolve(HERE, '..', '..', 'ops');
@@ -1097,6 +1098,19 @@ describe('B10 — the Cloudflare readers re-ask a blip and still refuse an outag
   test('check-retired-names-live — a 429 then a success reads as ok', () => rateLimitThenSuccess(cfRetired, result));
   test('🔴 RED CONTROL — check-retired-names-live does NOT re-ask a 403: an answer is an answer', () =>
     forbiddenIsNotReasked(cfRetired));
+
+  // ── check-apple-signing-expiry (⏱ 2026-09-24) ──────────────────────────────
+  // App Store Connect, not Cloudflare, but the same seam shape — `(path, token,
+  // { sleep, doFetch })` resolving to the whole parsed body — so the same five
+  // checks drive its one GET (row O-APPLE-SIGNING-EXPIRY-UNWATCHED).
+  test('check-apple-signing-expiry — GREEN CONTROL: one clean read, one attempt', () => greenControl(ascApple, whole));
+  test('🔴 check-apple-signing-expiry — a dropped connection FOLLOWED BY A SUCCESS reads as ok', () =>
+    blipThenSuccess(ascApple, whole));
+  test('🔴 check-apple-signing-expiry — a PERSISTENT failure is still COULD NOT LOOK, never a pass', () =>
+    persistentIsCouldNotLook(ascApple));
+  test('check-apple-signing-expiry — a 429 then a success reads as ok', () => rateLimitThenSuccess(ascApple, whole));
+  test('🔴 RED CONTROL — check-apple-signing-expiry does NOT re-ask a 403: an answer is an answer', () =>
+    forbiddenIsNotReasked(ascApple));
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

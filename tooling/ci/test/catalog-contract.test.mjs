@@ -278,6 +278,15 @@ describe('assert-catalog-contract.mjs — the row contract', () => {
     assert.match(out, /app-id shape/);
   });
 
+  // O-APP-ID-FORM-UNVALIDATED (a). The old local rule allowed `_`, so this slug
+  // passed here while a Worker name and a DNS label cannot hold it.
+  test('a slug with an underscore (habit_tracker) is refused, naming contracts/app-id', () => {
+    const { code, out } = run(tree([{ ...ROW_FOR('habit_tracker') }]));
+    assert.equal(code, 1, out);
+    assert.match(out, /has slug "habit_tracker", which is not the app-id shape/);
+    assert.match(out, /contracts\/app-id/);
+  });
+
   test('a duplicate slug is refused and BOTH indices are named', () => {
     const { code, out } = run(tree([ROW(), ROW()]));
     assert.equal(code, 1, out);

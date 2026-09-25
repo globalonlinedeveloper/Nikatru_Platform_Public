@@ -56,11 +56,13 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, cpSync, ex
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { DECLARATION_REL, PINNED_HOOK } from '../../scripts/guard-declaration.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '..', '..', '..'); // tooling/ci/test -> repo root
 const RUNNER_SRC = resolve(REPO, 'tooling', 'scripts', 'spec-guards.mjs');
 const GIT_HELPER_SRC = resolve(REPO, 'tooling', 'scripts', 'repo-git.mjs');
+const LOADER_SRC = resolve(REPO, 'tooling', 'scripts', 'guard-declaration.mjs');
 const SOURCE = readFileSync(RUNNER_SRC, 'utf8');
 
 /* The two paths the ENFORCEMENT rows need at the repo root, read out of the runner
@@ -72,10 +74,11 @@ const HOST_ANCHORS = (() => {
   return m[1].split(',').map((s) => s.trim().replace(/^'|'$/g, '')).filter(Boolean);
 })();
 
-/** Every guard the runner will try to locate, by its FIRST `rel` candidate — the
- *  corpus-relative one. Parsed from the table so a guard added tomorrow is stubbed
- *  tomorrow, instead of this fixture silently under-covering the runner. */
-function firstRels(src) {
+/** The rows still typed in the runner's GUARDS table, by their FIRST `rel` candidate.
+ *  ⏱ 2026-09-24: the corpus's own rows left the table for the corpus's declaration
+ *  (`requirements/tooling/guards.json`, read by guard-declaration.mjs), so the table
+ *  holds only the rows whose subject is public — two on the day. */
+function staticRels(src) {
   const start = src.indexOf('const GUARDS = [');
   assert.notEqual(start, -1, 'the GUARDS table is gone');
   const table = src.slice(start, src.indexOf('\n];', start));
@@ -83,11 +86,35 @@ function firstRels(src) {
   const re = /\{\s*name:\s*'([^']+)',[\s\S]*?rel:\s*\[\s*'([^']+)'/g;
   let m;
   while ((m = re.exec(table)) !== null) out.push({ name: m[1], rel: m[2] });
-  // RE-BASED 9 -> 7 on 2026-09-08: three rows retired with their subjects (assert-session-index, assert-research-archive, assert-plans-archive), so the runner declares 7 and a floor of 9 would refuse on a complete read.
-  assert.ok(out.length >= 7, `parsed ${out.length} guard rows, expected at least 7 — the row shape changed and this fixture would stub nothing`);
+  assert.ok(out.length >= 2, `parsed ${out.length} static guard rows, expected at least 2 — the row shape changed and this fixture would stub nothing`);
   return out;
 }
-const GUARD_ROWS = firstRels(SOURCE);
+
+/** The fixture corpus's declaration: every pinned guard on both sides, at the path the
+ *  real declaration gives it, plus one hook:["private"] entry, which a commit outside
+ *  the corpus must not run. The pin comes from the loader, so a guard pinned tomorrow is
+ *  declared and stubbed here tomorrow. */
+const PUBLIC_FILE = new Set(['check-dod-sync', 'assert-public-citations']);
+const PRIVATE_ONLY = 'fixture-private-only';
+const DECLARED = [
+  ...PINNED_HOOK.map((id) => ({
+    id,
+    file: PUBLIC_FILE.has(id) ? `tooling/scripts/${id}.mjs` : `requirements/tooling/${id}.mjs`,
+    hook: ['public', 'private'],
+    args: [],
+    what: `fixture stub for ${id}`,
+  })),
+  { id: PRIVATE_ONLY, file: `requirements/tooling/${PRIVATE_ONLY}.mjs`, hook: ['private'], args: [], what: 'runs from a commit in the corpus only' },
+];
+const declaredRels = (side) => DECLARED.filter((e) => e.hook.includes(side)).map((e) => ({ name: e.id, rel: e.file }));
+
+/** Every guard the runner will try to locate from a PUBLIC commit: the declared rows
+ *  that hook the public side, then the static ones — the order the runner runs them. */
+const GUARD_ROWS = [...declaredRels('public'), ...staticRels(SOURCE)];
+// RE-BASED 9 -> 7 on 2026-09-08: three rows retired with their subjects (assert-session-index, assert-research-archive, assert-plans-archive), so the runner declares 7 and a floor of 9 would refuse on a complete read.
+assert.ok(GUARD_ROWS.length >= 7, `the fixture names ${GUARD_ROWS.length} guard rows, expected at least 7 — this fixture would stub almost nothing`);
+/** And from a commit IN the corpus. */
+const CORPUS_ROWS = [...declaredRels('private'), ...staticRels(SOURCE)];
 
 let BASE;      // the throwaway workspace
 let PUB;       // <BASE>/Projects/Fixture_Public   — the MAIN checkout
@@ -95,6 +122,7 @@ let WT;        // <BASE>/Projects/Fixturewt_Public — the linked worktree
 let PRIV;      // <BASE>/Projects/Fixture_Private  — the corpus
 let ENV_SEEN;
 let GITDIR_SEEN;  // where the assert-public-citations stub records what it was handed
+let PRIVATE_RAN;  // where the hook:["private"] stub records that it ran
 
 const git = (where, ...args) => {
   const r = spawnSync('git', ['-C', where, ...args], { encoding: 'utf8' });
@@ -136,23 +164,41 @@ writeFileSync(process.env.FIXTURE_GITDIR_SEEN, String(process.env.GIT_DIR ?? '')
 process.exit(0);
 `;
 
+/** The hook:["private"] stub: records that it ran, so "a Public commit does not run
+ *  it" is asserted on a file rather than on a count. */
+const PRIVATE_ONLY_STUB = `import { writeFileSync } from 'node:fs';
+writeFileSync(process.env.FIXTURE_PRIVATE_RAN, 'ran', 'utf8');
+process.exit(0);
+`;
+
+/* ⏱ 2026-09-24: the corpus is a REAL repository now, because the runner reads its
+   declared guard set out of a git blob — `HEAD:` from a commit outside it, the index
+   from a commit in it — and never out of the working tree. */
 function buildCorpus() {
   rmSync(PRIV, { recursive: true, force: true });
   // The corpus marker the runner probes for: a NON-EMPTY `requirements/`.
   write(join(PRIV, 'requirements', 'index.json'), '{}\n');
-  for (const { name, rel } of GUARD_ROWS) {
+  for (const { name, rel } of [...CORPUS_ROWS, ...GUARD_ROWS]) {
     const body = name === 'assert-spec' ? ANCHOR_STUB
       : name === 'assert-public-citations' ? ENV_STUB
-        : `process.exit(0);\n`;
+        : name === PRIVATE_ONLY ? PRIVATE_ONLY_STUB
+          : `process.exit(0);\n`;
     write(join(PRIV, rel), body);
   }
+  write(join(PRIV, ...DECLARATION_REL.split('/')), `${JSON.stringify({ entries: DECLARED }, null, 2)}\n`);
+  git(PRIV, 'init', '-q');
+  git(PRIV, 'config', 'user.email', 'fixture@example.test');
+  git(PRIV, 'config', 'user.name', 'fixture');
+  git(PRIV, 'config', 'commit.gpgsign', 'false');
+  git(PRIV, 'add', '-A');
+  git(PRIV, 'commit', '-q', '-m', 'fixture corpus', '--no-gpg-sign');
 }
 
 /** Run the runner from `where`, with a copy of the environment that cannot smuggle
  *  the answer in: the machine running this suite has a real corpus and may well have
  *  `NIKATRU_PRIVATE_ROOT` set, and git exports `GIT_DIR` into hooks. */
-function runRunner(where, file = 'spec-guards.mjs', { gitDir = null } = {}) {
-  const env = { ...process.env, FIXTURE_ENV_SEEN: ENV_SEEN, FIXTURE_GITDIR_SEEN: GITDIR_SEEN };
+function runRunner(where, file = 'spec-guards.mjs', { gitDir = null, cwd = where } = {}) {
+  const env = { ...process.env, FIXTURE_ENV_SEEN: ENV_SEEN, FIXTURE_GITDIR_SEEN: GITDIR_SEEN, FIXTURE_PRIVATE_RAN: PRIVATE_RAN };
   delete env.NIKATRU_PRIVATE_ROOT;
   for (const k of ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_PREFIX', 'GIT_COMMON_DIR', 'GIT_OBJECT_DIRECTORY']) delete env[k];
   // `gitDir` is git's own export, put back DELIBERATELY: a pre-commit hook always
@@ -161,12 +207,16 @@ function runRunner(where, file = 'spec-guards.mjs', { gitDir = null } = {}) {
   if (gitDir) env.GIT_DIR = gitDir;
   rmSync(ENV_SEEN, { force: true });
   rmSync(GITDIR_SEEN, { force: true });
-  const r = spawnSync(process.execPath, [join(where, 'tooling', 'scripts', file), '--fast'], { cwd: where, env, encoding: 'utf8' });
+  rmSync(PRIVATE_RAN, { force: true });
+  // `cwd` is where git would run the hook from: the root of the work tree being
+  // committed. The corpus's own hook runs THIS repo's runner with cwd = the corpus.
+  const r = spawnSync(process.execPath, [join(where, 'tooling', 'scripts', file), '--fast'], { cwd, env, encoding: 'utf8' });
   return {
     code: r.status,
     out: `${r.stdout ?? ''}${r.stderr ?? ''}`,
     envSeen: existsSync(ENV_SEEN) ? readFileSync(ENV_SEEN, 'utf8') : null,
     gitDirSeen: existsSync(GITDIR_SEEN) ? readFileSync(GITDIR_SEEN, 'utf8') : null,
+    privateRan: existsSync(PRIVATE_RAN),
   };
 }
 
@@ -193,16 +243,18 @@ before(() => {
   PRIV = join(PRODUCTS, 'Fixture_Private');
   ENV_SEEN = join(BASE, 'env-seen.txt');
   GITDIR_SEEN = join(BASE, 'gitdir-seen.txt');
+  PRIVATE_RAN = join(BASE, 'private-only-ran.txt');
 
   // The workspace anchor: `Projects/` and `nikatru/` side by side.
   write(join(BASE, 'nikatru', 'README.md'), 'the shared business brain, fixture\n');
 
-  // The main checkout. Only the runner and its git helper are TRACKED — which is
-  // what puts them in the worktree and keeps everything else out of it.
+  // The main checkout. Only the runner, its git helper and its declaration loader are
+  // TRACKED — which is what puts them in the worktree and keeps everything else out of it.
   mkdirSync(PUB, { recursive: true });
   mkdirSync(join(PUB, 'tooling', 'scripts'), { recursive: true });
   cpSync(RUNNER_SRC, join(PUB, 'tooling', 'scripts', 'spec-guards.mjs'));
   cpSync(GIT_HELPER_SRC, join(PUB, 'tooling', 'scripts', 'repo-git.mjs'));
+  cpSync(LOADER_SRC, join(PUB, 'tooling', 'scripts', 'guard-declaration.mjs'));
   git(PUB, 'init', '-q');
   git(PUB, 'config', 'user.email', 'fixture@example.test');
   git(PUB, 'config', 'user.name', 'fixture');
@@ -357,4 +409,70 @@ test('MUTANT — CHILD_ENV back to a bare copy of process.env: GIT_DIR reaches t
     decoy,
     'the mutant did NOT leak GIT_DIR, so the case above is passing for some other reason and proves nothing about the scrub',
   );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-24 — THE DECLARED SET (O-GUARD-SET-DECLARED-NOWHERE). The corpus's own
+// guards are entries in its `requirements/tooling/guards.json`, and the runner reads
+// them out of a git blob: `HEAD:` from a commit outside the corpus, the index from a
+// commit in it. These cases run the runner end to end over the fixture corpus — which
+// side a run is on, which blob that side reads, and the refusal when the pin breaks.
+// The loader's own limbs are graded in guard-declaration.test.mjs.
+// ─────────────────────────────────────────────────────────────────────────────
+test('a commit outside the corpus runs the hook:["public"] entries from HEAD, and not a hook:["private"] one', () => {
+  const r = runRunner(PUB);
+  assert.equal(r.code, 0, r.out);
+  assert.ok(r.out.includes(`hook the public side, read from HEAD:${DECLARATION_REL}`), `the run did not name the committed declaration: ${r.out}`);
+  assert.equal(r.privateRan, false, 'a hook:["private"] entry ran from a commit outside the corpus');
+  assert.match(r.out, new RegExp(`${GUARD_ROWS.length} guard\\(s\\) in`));
+});
+
+test('a commit IN the corpus reads the STAGED declaration and runs its hook:["private"] entries', () => {
+  const r = runRunner(PUB, 'spec-guards.mjs', { cwd: PRIV });
+  assert.equal(r.code, 0, r.out);
+  assert.ok(r.out.includes(`hook the private side, read from :${DECLARATION_REL}`), `the run did not read the staged declaration: ${r.out}`);
+  assert.equal(r.privateRan, true, 'the hook:["private"] entry did not run from a commit in the corpus');
+  assert.match(r.out, new RegExp(`${CORPUS_ROWS.length} guard\\(s\\) in`));
+});
+
+test('MUTANT — the side named from REPO alone: the corpus\'s own hook runs the public set', () => {
+  // The corpus's hook runs THIS repo's runner, so REPO is never the corpus there; only
+  // the working directory git runs the hook from names it.
+  writeMutant('mutant-side-from-repo.mjs', 'sameRoot(REPO, PRIVATE_ROOT) || sameRoot(process.cwd(), PRIVATE_ROOT)', 'sameRoot(REPO, PRIVATE_ROOT)');
+  const r = runRunner(PUB, 'mutant-side-from-repo.mjs', { cwd: PRIV });
+  assert.equal(r.code, 0, r.out);
+  assert.equal(r.privateRan, false, 'the mutant still ran the hook:["private"] entry, so the case above is not what proves the side comes from the working directory');
+  assert.ok(r.out.includes('hook the public side'), r.out);
+});
+
+test('a half-edited declaration in the corpus working tree does not change what a Public commit runs', () => {
+  const decl = join(PRIV, ...DECLARATION_REL.split('/'));
+  const saved = readFileSync(decl, 'utf8');
+  writeFileSync(decl, '{ half-edited, not json\n', 'utf8');
+  try {
+    const r = runRunner(PUB);
+    assert.equal(r.code, 0, `a Public commit must be judged against the corpus's HEAD, not its working tree: ${r.out}`);
+    assert.match(r.out, new RegExp(`${GUARD_ROWS.length} guard\\(s\\) in`));
+  } finally {
+    writeFileSync(decl, saved, 'utf8');
+  }
+});
+
+test('a committed declaration without a pinned guard is COVERAGE LOST, exit 2, naming the blob and the guard', () => {
+  const decl = join(PRIV, ...DECLARATION_REL.split('/'));
+  writeFileSync(decl, `${JSON.stringify({ entries: DECLARED.filter((e) => e.id !== 'assert-platform-state') }, null, 2)}\n`, 'utf8');
+  git(PRIV, 'commit', '-q', '-am', 'fixture: drop a pinned guard', '--no-gpg-sign');
+  try {
+    const r = runRunner(PUB);
+    assert.equal(r.code, 2, `a declaration that drops a pinned guard must refuse, not run the rest: ${r.out}`);
+    assert.match(r.out, /declared guard set could not be used \(limb: pinned\)/);
+    assert.match(r.out, /assert-platform-state: not declared/);
+    assert.ok(r.out.includes(`HEAD:${DECLARATION_REL}   in ${PRIV}`), `the refusal must name the blob and the root it tried: ${r.out}`);
+    assert.doesNotMatch(r.out, /guard\(s\) in \d+ ms/, 'guards ran after the refusal');
+  } finally {
+    git(PRIV, 'reset', '-q', '--hard', 'HEAD~1');
+  }
+  // CONTROL — restored, the same run is green, so the refusal was the pin and not the fixture.
+  const again = runRunner(PUB);
+  assert.equal(again.code, 0, again.out);
 });

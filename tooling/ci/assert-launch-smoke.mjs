@@ -169,7 +169,7 @@ const LAUNCH_MECHANISM = new Map([
   // dated, disagreeable claim instead, and they print on every run.
   //
   // ⚠️ WHAT IS AND IS NOT ALREADY PROVEN, so `script: null` is not read as
-  // "nothing checks the artifact". extensions.yml's `package` job already runs
+  // "nothing checks the artifact". extensions-ci.yml's `package` job already runs
   // web-ext lint on the firefox build, a reference-integrity pass and a leak
   // check INSIDE the zip, and a byte-reproducibility check. None of those is a
   // LAUNCH: R-13 asks whether the shipped artifact starts, and for an extension

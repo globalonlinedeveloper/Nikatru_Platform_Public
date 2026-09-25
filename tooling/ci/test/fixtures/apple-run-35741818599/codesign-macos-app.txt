@@ -1,0 +1,27 @@
+Executable=/Users/runner/work/Nikatru_Platform_Public/Nikatru_Platform_Public/apps/subscriptiontracker/build/macos/Build/Products/Release/Subscriptions.app/Contents/MacOS/Subscriptions
+Identifier=com.nikatru.subscriptiontracker
+Format=app bundle with Mach-O universal (x86_64 arm64)
+CodeDirectory v=20400 size=6019 flags=0x0(none) hashes=177+7 location=embedded
+VersionPlatform=1
+VersionMin=786432
+VersionSDK=1705216
+Hash type=sha256 size=32
+CandidateCDHash sha256=79c387f223c05ac71f5a03893deca17fe85f7fa9
+CandidateCDHashFull sha256=79c387f223c05ac71f5a03893deca17fe85f7fa984b611b9444f7eac07dbec7d
+Hash choices=sha256
+CMSDigest=79c387f223c05ac71f5a03893deca17fe85f7fa984b611b9444f7eac07dbec7d
+CMSDigestType=2
+Executable Segment base=0
+Executable Segment limit=1310720
+Executable Segment flags=0x1
+Page size=16384
+CDHash=79c387f223c05ac71f5a03893deca17fe85f7fa9
+Signature size=4790
+Authority=Apple Distribution: <PERSONAL-NAME> (A1B2C3D4E5)
+Authority=Apple Worldwide Developer Relations Certification Authority
+Authority=Apple Root CA
+Signed Time=Sep 22, 2026 at 2:52:08 PM
+Info.plist entries=25
+TeamIdentifier=A1B2C3D4E5
+Sealed Resources version=2 rules=13 files=25
+Internal requirements count=1 size=200

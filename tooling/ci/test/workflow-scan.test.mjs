@@ -31,6 +31,7 @@ import { fileURLToPath } from 'node:url';
 import {
   parseWorkflow, parseAllWorkflows, joinBlockScalars, shellSegments, workflowEvents, dispatchInputs, stepShell,
   stepItemAround, workflowSteps, jobEnv, githubEnvWrites, joinShellContinuations, commandAt, flutterDrives,
+  resolveLocalCalls,
 } from '../workflow-scan.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -723,5 +724,64 @@ jobs:
     assert.equal(d.teeTarget, '$E2E_DRIVE_LOG');
     assert.deepEqual([bare.job, bare.appVersionExpr, bare.teeTarget], ['bare', null, null]);
     assert.equal(bare.defines.size, 0);
+  });
+});
+
+// ⏱ 2026-09-24 — resolveLocalCalls: a local call job followed ONE level, and the two refusals it
+// returns instead of exiting (the calling guard turns either into its own COVERAGE LOST).
+const CALLER_YML = `name: Caller
+on: [push]
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - run: echo lint
+  lane:
+    uses: ./.github/workflows/callee.yml
+    permissions:
+      contents: read
+  pinned:
+    uses: owner/repo/.github/workflows/x.yml@0123456789abcdef0123456789abcdef01234567
+`;
+const CALLEE_YML = `name: Callee
+on:
+  workflow_call:
+jobs:
+  core:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: ./.github/actions/setup-flutter
+      - run: echo core
+`;
+
+describe('workflow-scan resolveLocalCalls', () => {
+  test('one level resolves: the call job names its callee, a step-level ./ action is not a call, a remote ref is listed apart', () => {
+    const root = fixture({ 'caller.yml': CALLER_YML, 'callee.yml': CALLEE_YML });
+    const all = parseAllWorkflows(root);
+    const r = resolveLocalCalls(all.find((w) => w.rel === '.github/workflows/caller.yml'), all);
+    assert.equal(r.refusal, null);
+    assert.deepEqual(r.calls.map((c) => [c.job, c.callee.rel]), [['lane', '.github/workflows/callee.yml']]);
+    assert.equal(r.calls[0].n, CALLER_YML.split('\n').indexOf('    uses: ./.github/workflows/callee.yml') + 1);
+    assert.deepEqual(r.remote.map((c) => c.job), ['pinned']);
+    assert.deepEqual(resolveLocalCalls(all.find((w) => w.rel === '.github/workflows/callee.yml'), all).calls, []);
+  });
+
+  test('a missing callee is a refusal of kind `missing`, naming the callee path and the call job', () => {
+    const root = fixture({ 'caller.yml': CALLER_YML });
+    const all = parseAllWorkflows(root);
+    const r = resolveLocalCalls(all[0], all);
+    assert.deepEqual(r.refusal && [r.refusal.kind, r.refusal.job, r.refusal.callee], ['missing', 'lane', '.github/workflows/callee.yml']);
+    assert.deepEqual(r.calls, []);
+  });
+
+  test('a callee that itself makes a local call is a refusal of kind `nested`: one level, never two', () => {
+    const nested = CALLEE_YML + '  deeper:\n    uses: ./.github/workflows/third.yml\n';
+    const root = fixture({ 'caller.yml': CALLER_YML, 'callee.yml': nested, 'third.yml': CALLEE_YML });
+    const all = parseAllWorkflows(root);
+    const r = resolveLocalCalls(all.find((w) => w.rel === '.github/workflows/caller.yml'), all);
+    assert.deepEqual(r.refusal && [r.refusal.kind, r.refusal.job, r.refusal.callee], ['nested', 'lane', '.github/workflows/callee.yml']);
+    assert.deepEqual(r.calls, []);
   });
 });

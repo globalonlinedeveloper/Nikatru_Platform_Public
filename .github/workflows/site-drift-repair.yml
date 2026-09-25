@@ -125,6 +125,7 @@ jobs:
           fi
 
           {
+            printf '%s\n\n' 'Rows: none — automated site drift repair (generated sites/ only)'
             printf '%s\n\n' 'The generator `tooling/sites/generate-discovery.mjs` produced a discovery surface that differs from what `main` carries, so `tooling/ci/check-site-integrity.mjs` is failing (or is about to fail) on `main`. This branch is that regeneration, unedited.'
             printf '%s\n\n' '**Why no pre-merge lane could have caught it.** `<lastmod>` is derived from each page git date (`tooling/sites/lastmod.mjs`), so the correct value for a page a PR changes is the date that PR *merges* — a date that does not exist while the PR is open. The `sites` job in `ci.yml` is right about the pre-merge tree every time, and the merge is what makes it wrong. This was hand-repaired in `f67ee2b` (2026-08-25) and again 16 days earlier in `6ea109d`.'
             printf '%s\n\n' '**This pull request merges itself.** Auto-merge (squash) is armed on it by the same step that opened it, so it lands the moment `ci-gate` is green and nothing waits on a human. Branch protection is unchanged: `ci-gate` is still the required check, so a red gate stops this exactly as it stops anything else, and the pull request then sits open for a person to read.'

@@ -2728,6 +2728,49 @@ describe('assert-ops-register — HOSTNAMES ARE DELEGATED, and the delegation ca
     assert.match(r.out, /delegated to tooling\/monitor-register\.json \(1 hosts\)/);
   });
 
+  // ── ⏱ 2026-09-24 · [14]O-11 · THE GUARD PRINTS WHAT IT GRADED (O-APPLE-SIGNING-EXPIRY-UNWATCHED) ──
+  // Until this date a green run said only "N expiring row(s) · M comparison(s)":
+  // no row and no date, so "read the guard output listing the rows with their
+  // dates" could not be done off any log. These three spawn the REAL guard on the
+  // fixture root, so the line is proven to leave main() on green AND on red.
+  // O1 was run FIRST against the unmodified guard and was RED (R0).
+  test('O1 · [14]O-11 prints one DATED line per graded expiry — the row, its date, the days left and its lead', () => {
+    const at = new Date(Date.now() + 200 * 86_400_000).toISOString().slice(0, 10);
+    const r = runRoot(fixtureRoot((s) => {
+      const row = s.reg.rows.find((x) => x.id === 'expiring.fixture-domain');
+      assert.ok(row, 'the fixture lost the row this case dates');
+      Object.assign(row, { expires: at, ownerGated: false });
+      delete row.ownerGap;
+    }));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, new RegExp(`\\[14\\]O-11 · expiring\\.fixture-domain · expires ${at} · (199|200) day\\(s\\) left · lead 30`));
+  });
+
+  test('🔴 O2 · the closes\' red control on a fixture ROOT — an expiry 10 days out with a 30-day lead is exit 1, and its dated line still prints', () => {
+    const at = new Date(Date.now() + 10 * 86_400_000).toISOString().slice(0, 10);
+    const r = runRoot(fixtureRoot((s) => {
+      const row = s.reg.rows.find((x) => x.id === 'expiring.fixture-domain');
+      assert.ok(row, 'the fixture lost the row this case dates');
+      Object.assign(row, { expires: at, leadDays: 30, ownerGated: false });
+      delete row.ownerGap;
+    }));
+    assert.equal(r.code, 1, `a date inside its own lead window is a FINDING, exit 1:\n${r.out}`);
+    assert.match(r.out, new RegExp(`expiring\\.fixture-domain — \`expires: ${at}\` is (9|10) day\\(s\\) away, inside its own 30-day lead window\\. Renew it\\.`));
+    assert.match(r.out, new RegExp(`\\[14\\]O-11 · expiring\\.fixture-domain · expires ${at} · (9|10) day\\(s\\) left · lead 30`), 'the red run must still list the date it graded');
+  });
+
+  test('🔴 O3 · a NEW `expiring` row arriving with `expires: null` trips the `_maxNull` ratchet through the real guard', () => {
+    // Why a machine-written row may only ever arrive WITH its date: the ceiling
+    // ratchets down, so one undated row more than it is exit 1, not a quiet gap.
+    const r = runRoot(fixtureRoot((s) => {
+      const row = s.reg.rows.find((x) => x.id === 'expiring.fixture-domain');
+      assert.ok(row, 'the fixture lost the row this case copies');
+      s.reg.rows.push({ ...row, id: 'expiring.cert.fixture-undated' });
+    }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /2 `expiring` row\(s\) carry `expires: null` and the ceiling is 1/);
+  });
+
   // ── [14]O-3b · THE EXIT CODE, PROVEN BY SPAWNING THE GUARD ────────────────
   // The pure suite above proves the verdicts. These two prove the WIRING: that
   // a green fixture really returns 0 with the limb having run, and that the
@@ -5187,7 +5230,11 @@ describe('assert-ops-register — [14]O-3b · RED SINCE: a failed run is graded,
     assert.ok(dispatchable.has('redeploy-stranded.yml'), '.github/workflows/redeploy-stranded.yml no longer declares `workflow_dispatch`');
     const census = redSinceTriggerCensus(real, dispatchable);
     assert.deepEqual(census.admitted.sort(), ['duty.workflow.deploy-web.yml', 'duty.workflow.deploy-workers.yml', 'duty.workflow.redeploy-stranded.yml']);
-    assert.equal(census.excluded.length, 2, 'the committed register has exactly two trigger rows with no non-merge exit');
+    // ⏱ 2026-09-24: three. duty.workflow.extensions-ci.yml joined them — a called
+    // workflow declares no `workflow_dispatch` (it runs only as a call), so a merge
+    // is its only exit and it is excluded by the same derived reason.
+    assert.equal(census.excluded.length, 3, 'the committed register has exactly three trigger rows with no non-merge exit');
+    assert.ok(census.excluded.some((l) => /duty\.workflow\.extensions-ci\.yml/.test(l)), 'the extensions CI callee is excluded by derivation');
     assert.ok(census.excluded.every((l) => /declares NO `workflow_dispatch`/.test(l)), 'every exclusion must carry the derived reason');
   });
 

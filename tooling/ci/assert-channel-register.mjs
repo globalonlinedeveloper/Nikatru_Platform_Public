@@ -121,7 +121,7 @@ import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
 import { stripSourceComments, stripStringLiterals } from './text-reductions.mjs';
 import { FLUTTER_APP_FIELD, flutterAppChannel } from './channel-surface.mjs';
-import { parseAllWorkflows, flutterReleaseBuilds, gradeDomain, buildAt, shellSegments } from './workflow-scan.mjs';
+import { parseAllWorkflows, flutterReleaseBuilds, gradeDomain, buildAt, shellSegments, resolveLocalCalls } from './workflow-scan.mjs';
 import { parseYaml } from '../app-yaml/yaml.mjs';
 import { lanesOfSurface } from './tag-owner.mjs';
 import { ARTIFACT_FORMATS } from '../../contracts/store/vocabulary.js';
@@ -524,6 +524,98 @@ function workflowsInvoking(scriptRel) {
     if (stripped.includes(scriptRel)) hits.push(rel);
   }
   return hits;
+}
+
+// ── grader-is-run: every `storeMetadataGradedBy` runs inside ci-gate ─────────
+// ⏱ 2026-09-24 (O-EXTENSIONS-CI-REQUIRED-GATES-NOTHING, EXT-2 limb a; G1-01).
+// The surfaces check above proves the grader FILE exists. That is all it proved:
+// the extension row's grader, extensions/scripts/check-store-metadata.mjs, ran
+// only in extensions.yml's `gates` job and its release job, and nothing ci-gate
+// needs ran either, so a red metadata grade gated no merge. This limb walks what
+// ci-gate actually waits on — ci.yml `ci-gate`, its `needs`, a local call job one
+// level into its callee (workflow-scan.resolveLocalCalls, the ONE resolver, which
+// hands back the callee's path), and inside the callee `ci-required`'s `needs` —
+// and asks each job, through this guard's own `workflow()` and
+// `jobInvokesScript()`, whether it runs the grader. A call it cannot follow is
+// COVERAGE LOST: the walk would otherwise end early and call that "not run".
+const GATE_WORKFLOW = `${WORKFLOW_DIR}/ci.yml`;
+const graderWalk = [];
+// A FIXTURE root that carries no ci.yml has no gate to walk and is skipped, the
+// same allowance the stale-exemption check below makes; the REAL repository
+// always carries one, so there a missing ci.yml is COVERAGE LOST.
+const gateScanned = parseAllWorkflows(ROOT);
+const gateSkipped = !scanningRealRepo && !gateScanned.some((w) => w.rel === GATE_WORKFLOW);
+if (!gateSkipped) {
+  const scanned = gateScanned;
+  const ci = scanned.find((w) => w.rel === GATE_WORKFLOW);
+  if (!ci || !ci.jobs.has('ci-gate')) {
+    coverageLost([
+      `${GATE_WORKFLOW} has no job \`ci-gate\`, so the grader-is-run limb has no closure to walk.`,
+      'Every `storeMetadataGradedBy` would read as "run by nothing", which says nothing about the tree.',
+    ]);
+  }
+  const gateNeeds = ci.jobs.get('ci-gate').needs;
+  for (const job of gateNeeds) graderWalk.push({ rel: GATE_WORKFLOW, job, via: `ci-gate → ${job}` });
+  const { calls, refusal } = resolveLocalCalls(ci, scanned);
+  if (refusal !== null && gateNeeds.includes(refusal.job)) {
+    coverageLost([
+      `${GATE_WORKFLOW} job \`${refusal.job}\` is a need of ci-gate and calls ${refusal.callee}, which the grader-is-run limb cannot follow (${refusal.kind}).`,
+      'Its jobs are part of what ci-gate waits on; with them unread, "no job runs the grader" would be a guess.',
+    ]);
+  }
+  for (const call of calls) {
+    if (!gateNeeds.includes(call.job)) continue;
+    const aggregate = call.callee.jobs.get('ci-required');
+    if (!aggregate) {
+      coverageLost([
+        `${call.callee.rel}, called by ci-gate's need \`${call.job}\`, has no job \`ci-required\`.`,
+        'The grader-is-run limb follows the callee\'s own aggregate; with it gone the walk stops at the call.',
+      ]);
+    }
+    for (const job of aggregate.needs) {
+      graderWalk.push({ rel: call.callee.rel, job, via: `ci-gate → ${call.job} → ${call.callee.rel} ci-required → ${job}` });
+    }
+  }
+}
+if (!gateSkipped && graderWalk.length === 0) {
+  coverageLost([
+    `ci-gate in ${GATE_WORKFLOW} needs no job this limb could walk.`,
+    'Every grader would read as "run by nothing" over an empty closure.',
+  ]);
+}
+let gradersRun = 0;
+const graderLines = [];
+for (const [name, def] of Object.entries(gateSkipped ? {} : surfaceDefs)) {
+  if (name.startsWith('_') || def === null || typeof def !== 'object') continue;
+  const grader = def.storeMetadataGradedBy;
+  if (typeof grader !== 'string' || grader.trim() === '' || !existsSync(join(ROOT, grader))) continue; // reported above
+  const runBy = graderWalk.filter(({ rel, job }) => {
+    const wf = workflow(rel);
+    return wf !== null && jobInvokesScript(wf, job, grader);
+  });
+  if (runBy.length === 0) {
+    // Where it DOES run, through the same invoker check, so a working-directory
+    // relative call (`node scripts/…` under `extensions`) is named too.
+    const elsewhere = [];
+    for (const w of gateScanned) {
+      const wf = workflow(w.rel);
+      if (wf === null) continue;
+      for (const job of wf.jobs.keys()) if (jobInvokesScript(wf, job, grader)) elsewhere.push(`${w.rel} job "${job}"`);
+    }
+    problems.push(
+      `${REGISTER} surfaces."${name}" is graded by ${grader}, and no job ci-gate waits on runs it ` +
+        `(walked ${graderWalk.length} job(s): ci-gate's needs, a local call one level in, the callee's ci-required needs). ` +
+        (elsewhere.length ? `It is invoked only by ${elsewhere.join(', ')}, outside that closure. ` : 'No workflow invokes it at all. ') +
+        'A metadata grade nothing required runs is advisory: red, it blocks no merge.',
+    );
+    continue;
+  }
+  gradersRun++;
+  graderLines.push(`surfaces."${name}" → ${grader}, run by ${runBy.map((r) => `${r.rel} job "${r.job}" (${r.via})`).join('; ')}`);
+}
+if (gradersRun > 0) {
+  ok(`grader-is-run — ${gradersRun} storeMetadataGradedBy grader(s) run by a job ci-gate waits on (${graderWalk.length} job(s) walked):`);
+  for (const l of graderLines) console.log(`       ${l}`);
 }
 
 // ── the extension surface's listing trees, on disk ───────────────────────────

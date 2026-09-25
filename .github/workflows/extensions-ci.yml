@@ -1,0 +1,1013 @@
+name: Extensions CI
+
+# The CI lane of the extensions subtree. It runs ONLY as a call: ci.yml's `extensions`
+# job calls it on every push to main and every pull request, and ci-gate needs that
+# job, so a red job here is a red required check. extensions.yml's `ci` job calls it on
+# a dispatch with lane=ci. docs/ci/extensions-ci.md says why it is a separate file; the
+# measurements behind each job are in docs/ci/extensions.md.
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+# why: no `concurrency:` key. The caller's group governs the run, and a callee group
+# equal to the caller's would cancel the call from inside it.
+
+defaults:
+  run:
+    working-directory: extensions
+
+# why: restated, not inherited -- a caller's workflow-level env does not reach a callee.
+env:
+  NODE_VERSION: '24'
+
+jobs:
+
+  # why: ADR 067 decision 1 -- the extensions subtree ships build-free, so what AMO
+  # reviews is the source that is committed; a bundler or a transpile step is what
+  # would create the review burden. Two things grade it: tooling/ci/test/
+  # extensions-build-free.test.mjs, which runs the guard on the real tree inside
+  # guard-meta (ci.yml's test glob), and this job, required through ci-gate by way of
+  # ci.yml's `extensions` call job. Its second step plants a bundler to prove the
+  # guard can still fail.
+  build-free:
+    name: The extensions are still build-free
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with: { node-version: '24' }
+      - name: No package manager, no bundler, no transpiler under extensions/
+        run: node tooling/ci/assert-extensions-build-free.mjs .
+      - name: And the guard can still fail
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'export default {}' > extensions/Extension/Full_Screen_Shot/vite.config.js
+          code=0
+          node tooling/ci/assert-extensions-build-free.mjs . > /dev/null 2>&1 || code=$?
+          rm -f extensions/Extension/Full_Screen_Shot/vite.config.js
+          if [ "$code" -ne 1 ]; then
+            echo "::error::assert-extensions-build-free.mjs exited $code with a vite.config.js planted under extensions/. It is supposed to exit 1. A guard that cannot fail is not guarding, and this lane would report green over a bundler."
+            exit 1
+          fi
+          node tooling/ci/assert-extensions-build-free.mjs . > /dev/null
+          echo "planted a bundler config: exit 1. removed it: exit 0."
+
+  # why: contracts/ is read by Dart, the Workers and the extensions (ADR 067
+  # decision 1), so a copy that drifts is three consumers disagreeing in silence.
+  contracts:
+    name: The shared contract has not drifted
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with: { node-version: '24' }
+      - name: contract.json is what contract.js derives
+        run: node contracts/entitlement/generate.mjs --check
+      # why: this is the ONLY thing that re-derives the [ADR 070] premise that the
+      # Dart mirror is machine-written. See docs/ci/extensions.md.
+      - name: the generated Dart is what contract.js derives
+        run: node contracts/entitlement/generate-dart.mjs --check
+      # why: bundle.json is the machine-readable half of the bundle source enum,
+      # and the SQL half is seeded in 0009_bundle_grants.sql. A drifted copy is a
+      # grant whose provenance one runtime believes and the other does not.
+      - name: bundle.json is what bundle.js derives
+        run: node contracts/entitlement/generate-bundle.mjs --check
+
+  gate-inventory:
+    name: Gate inventory (which gates exist)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with: { persist-credentials: false }
+      - name: Every gate script these workflows call must exist
+        shell: bash
+        run: |
+          set -euo pipefail  # 🔴 FIXED 2026-08-22, AND THE HOLE WAS PRE-EXISTING AT HEAD — IT WAS NOT INTRODUCED BY THE CHANGE THIS COMMENT SHIPS IN. GitHub runs an explicit `shell: bash` as `bash --noprofile --norc -eo pipefail {0}`, so `-e` IS ALREADY ON when this body starts. This line used to read `set -uo pipefail`, which added `-u` and removed nothing — and under `-e` a command whose failure this step means to REPORT kills the shell first, so the report is dead code on the runner. `-e` is spelled out here so the flag a reader sees is the flag that is running, and every reported command below carries its own `||`. Here the reported command is the `called=` grep: with no match it exits 1, pipefail propagates that, and `-e` killed the step before the `::error::` that says THIS CHECK'S OWN PATTERN IS BROKEN could print. MEASURED 2026-08-22, this exact body against an empty .github/workflows: runner flags EXIT 1 and 0 bytes; bare `bash` EXIT 1 and the 168-byte explanation. (Trailing comment rather than a line of its own: 23 `ci.yml:NNN` citations in six other files land in the band below and every line added here moves all of them.)
+          # DERIVED, NOT LISTED. The set is read out of the workflow files, so it
+          # is exactly what will be invoked — .mjs gates and the .node.js self-test
+          # alike. A hand-written list would be a second copy of the same fact, and
+          # the copy is the one that rots, toward looking healthier than the repo is.
+          # 🔴 THE SECOND ALTERNATIVE WAS ADDED 2026-08-20 AND IT CLOSED A REAL
+          # BLIND SPOT. The pattern was anchored on `scripts/` alone, so a gate
+          # living in a TOOL's publish/ directory could never appear in this
+          # inventory — which is how publish/verify-firefox-package.node.js sat
+          # in no workflow at all, unnoticed, while being the repo's most
+          # detailed AMO gate.
+          #
+          # ⚠️ IT IS DELIBERATELY NARROW RATHER THAN A GENERAL PATH MATCH.
+          # Measured that day: loosening it to any `<something>/publish/*.node.js`
+          # also matches PROSE — a comment three jobs below mentions
+          # `publish/package.node.js`, a tool-relative path that does not resolve
+          # from the repo root, so the inventory would have reported ABSENT and
+          # failed the build over a sentence. Requiring the full
+          # `Extension/<Tool>/publish/` prefix cannot match that, and was
+          # verified to produce a byte-identical list on the current workflows.
+          # ⏱ 2026-09-24: BOTH files. The CI lane lives in extensions-ci.yml; a script
+          # named only by extensions.yml's release job must exist all the same.
+          called=$(grep -rhoE '(scripts|Extension/[A-Za-z0-9_]+/publish)/[A-Za-z0-9][A-Za-z0-9._/-]*\.(mjs|node\.js)' "$GITHUB_WORKSPACE/.github/workflows/extensions-ci.yml" "$GITHUB_WORKSPACE/.github/workflows/extensions.yml" | sort -u) || true  # `|| true` is what lets a no-match reach the `::error::` below instead of ending the step — see the `set -euo` line at the top of this body.
+          if [ -z "$called" ]; then
+            echo "::error::this check found no gate-script call in .github/workflows at all — its own pattern is broken, and it was about to report a clean inventory over an empty set."
+            exit 1
+          fi
+          missing=0
+          total=0
+          while IFS= read -r s; do
+            total=$((total + 1))
+            if [ -f "$s" ]; then
+              printf 'PRESENT  %s\n' "$s"
+            else
+              printf 'ABSENT   %s\n' "$s"
+              missing=$((missing + 1))
+            fi
+          done <<< "$called"
+          echo
+          echo "$((total - missing)) of $total gate script(s) present."
+          if [ "$missing" -gt 0 ]; then
+            echo "::error::$missing gate script(s) listed above as ABSENT are called by a workflow in this repository and do not exist. Until they land, the jobs that call them fail — that is the intended state, not a misconfiguration. What must never happen is those gates being skipped, because a skipped gate and a passing gate look identical on the checks list."
+            exit 1
+          fi
+
+      - name: Every action is referenced at ONE ref across all workflows
+        shell: bash
+        run: |
+          set -euo pipefail
+          # DERIVED, NOT LISTED — the same rule the gate inventory above follows,
+          # and the domain is the literal command rather than a description of it.
+          # It is ANCHORED AT THE LINE START so it reads STEPS, not PROSE: a
+          # comment that mentions an action ref starts with '#', so it cannot
+          # match — and this file discusses action refs at length, the block
+          # directly above included. MEASURED 2026-08-25 on the delivered tree:
+          # the anchored and the unanchored form of this pattern both return 28
+          # matches, so today they agree and the anchoring looks like fussiness.
+          # Plant ONE ordinary comment line that quotes a setup-node ref at the
+          # older major — the way a correction note in this file naturally would —
+          # and the unanchored form climbs to 29 and this step goes RED over a
+          # SENTENCE, reporting that action as SPLIT across two refs, while the
+          # anchored form stays at 28 and EXIT 0. Both numbers were taken that
+          # way rather than asserted. It is the same trap the `shell: bash` count
+          # in the selftest job's comments already pays for once: a count that
+          # its own explanation moves. ⚠️ WHICH IS WHY NO SUCH LITERAL IS WRITTEN
+          # HERE — spelling the example out in full would have made this
+          # paragraph the 29th match and falsified its own first sentence.
+          all=$(grep -rhoE '^[[:space:]]*-?[[:space:]]*uses:[[:space:]]*[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9._/-]+@[A-Za-z0-9._-]+' "$GITHUB_WORKSPACE/.github/workflows/extensions-ci.yml" "$GITHUB_WORKSPACE/.github/workflows/extensions.yml" \
+                  | sed -E 's/^.*uses:[[:space:]]*//') || true   # `|| true` so a no-match reaches the required-coverage limb below instead of ending the step under `-e`.
+          # REQUIRED COVERAGE. Zero refs is a RED, never a clean pass: a sweep
+          # that stops matching and a tree that invokes no action are the same
+          # two lines of output, and only one of them is a real state.
+          if [ -z "$all" ]; then
+            echo "::error::this check found no anchored 'uses: <action>@<ref>' line under .github/workflows at all — its own pattern is broken, and it was about to report a uniform inventory over an empty set."
+            exit 1
+          fi
+          # PRINTED RATHER THAN ASSUMED, the same way the gate inventory prints
+          # PRESENT/ABSENT: the counts are the evidence that the sweep saw the
+          # tree, and they are what makes a future partial bump legible in the log
+          # before it is legible in a diff.
+          echo "action refs under .github/workflows, as invoked:"
+          printf '%s\n' "$all" | sort | uniq -c | sed 's/^ */  /'
+          echo
+          split=0
+          actions=0
+          while IFS= read -r row; do
+            [ -n "$row" ] || continue
+            n=${row%% *}
+            rest=${row#* }
+            a=${rest%% *}
+            refs=${rest#* }
+            actions=$((actions + 1))
+            if [ "$n" -eq 1 ]; then
+              printf 'ONE REF  %-26s %s\n' "$a" "$refs"
+            else
+              printf 'SPLIT    %-26s %s\n' "$a" "$refs"
+              echo "::error::$a is invoked at $n different refs ($refs) across .github/workflows. A partial bump is how this happens, and the leftover ref is the one nothing will ever revisit — the updater already believes the action is current."
+              split=$((split + 1))
+            fi
+          done <<< "$(printf '%s\n' "$all" | sort -u \
+                        | awk -F'@' '{n[$1]++; r[$1]=r[$1] (r[$1]=="" ? "" : " ") $2} END {for (a in n) printf "%d %s %s\n", n[a], a, r[a]}' \
+                        | sort -k2,2)"
+          echo
+          echo "$actions distinct action(s) invoked; $split of them at more than one ref."
+          if [ "$split" -gt 0 ]; then
+            echo "::error::$split action(s) above are invoked at more than one ref. Pick ONE ref per action and use it everywhere. Since 2026-09-02 the ref for this repo is a full 40-hex commit SHA, and Renovate's helpers:pinGitHubActionDigests keeps those SHAs current — so pinning is the FIX here, not the thing to avoid. (This message previously said the opposite, citing a dependabot.yml retired on 2026-09-03.)"
+            exit 1
+          fi
+
+  discover:
+    name: Discover affected tools
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      tools: ${{ steps.set.outputs.tools }}
+      count: ${{ steps.set.outputs.count }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with: { fetch-depth: 0, persist-credentials: false }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with: { node-version: '${{ env.NODE_VERSION }}' }
+
+      - name: Cross-check discovery against the filesystem
+        shell: bash
+        run: |
+          set -euo pipefail  # 🔴 FIXED 2026-08-22, same pre-existing hole as the gate-inventory job's `set` line above and the same fix. GitHub runs an explicit `shell: bash` as `bash --noprofile --norc -eo pipefail {0}`, so `-e` IS ALREADY ON when this body starts. This line used to read `set -uo pipefail`, which added `-u` and removed nothing — and under `-e` a command whose failure this step means to REPORT kills the shell first, so the report is dead code on the runner. `-e` is spelled out here so the flag a reader sees is the flag that is running, and every reported command below carries its own `||`. Here the reported command is `discover.mjs --all`: a bare `code=$?` after it was unreachable as anything but 0, so `::error::discover.mjs exited N` never printed. MEASURED 2026-08-22 on this exact body with discover.mjs stubbed to `process.exit(3)`: runner flags EXIT 3, 20 bytes, no `::error::`; bare `bash` EXIT 1, 120 bytes, the diagnosis present.
+          # templates/ carries a tool.json too — it is the thing a tool is stamped
+          # FROM, not a tool: it does not ship, and it has no id a reporter could
+          # name. (_skeleton/ was its location before the move recorded in
+          # ref/pre-prune-2026-09-08:extensions/MIGRATION.md; the exclusion is kept because new-tool.mjs deliberately
+          # keeps that path as a fallback.) private/ is gitignored and absent on a runner;
+          # it is excluded anyway so this reads the same on the owner's machine.
+          # toolinfo.mjs excludes the same directories, which is what makes the
+          # two counts comparable at all.
+          found=$(find . -mindepth 3 -maxdepth 3 -name tool.json \
+                    -not -path './.git/*' -not -path './templates/*' \
+                    -not -path './_skeleton/*' -not -path './private/*' \
+                    -not -path './node_modules/*')
+          n_find=$(printf '%s' "$found" | grep -c . || true)
+          echo "tool.json on disk: $n_find"
+          [ -n "$found" ] && printf '%s\n' "$found" | sed 's|^\./||'
+
+          out="$RUNNER_TEMP/discover-all.txt"
+          : > "$out"
+          code=0  # ← initialised, and `|| code=$?` below rather than a bare `code=$?`; see this body's `set -euo` line.
+          node scripts/discover.mjs --all --out "$out" || code=$?
+          if [ "$code" -ne 0 ]; then
+            echo "::error::discover.mjs exited $code — the matrix cannot be trusted, so nothing below it can be either."
+            exit 1
+          fi
+          ids=$(sed -n 's/^tools=//p' "$out" | tail -1)
+          if [ -z "$ids" ]; then
+            echo "::error::discover.mjs exited 0 but wrote no tools= line to --out. Its output contract changed, and every count derived from it below would be a guess."
+            exit 1
+          fi
+          n_disc=$(node -p 'JSON.parse(process.argv[1]).length' "$ids")
+          echo "discover.mjs --all sees: $n_disc  $ids"
+
+          if [ "$n_find" -ne "$n_disc" ]; then
+            echo "::error::discovery disagrees with the filesystem — $n_find tool.json file(s) on disk, $n_disc tool(s) seen by discover.mjs. One of the two is wrong, and the expensive version of being wrong is the low one: a tool that gets no CI looks exactly like a tool that passed."
+            exit 1
+          fi
+          if [ "$n_find" -eq 0 ]; then
+            echo "::notice::no tool has been onboarded to tool.json yet. That is a real state, not a search failure — the per-tool jobs below have nothing to grade, and say so rather than reporting a green run over an empty set."
+          fi
+
+      # ⚠️ THE TWO TEMPLATE PATHS BELOW ARE ABSOLUTE, AND THAT IS THE WHOLE POINT
+      # OF THIS STEP AS OF 2026-09-08. `defaults.run.working-directory: extensions`
+      # governs every `run:` in this workflow, so the relative
+      # `.github/ISSUE_TEMPLATE/bad-page.yml` this step used to carry resolved to
+      # `extensions/.github/ISSUE_TEMPLATE/bad-page.yml` — a path GitHub has never
+      # read, because issue forms resolve at the repository ROOT only. The step was
+      # therefore grading two files that could not appear to a single user, while
+      # this repository offered its users NO issue forms at all.
+      #
+      # The forms were promoted to the root in the same change, and this step now
+      # names them from $GITHUB_WORKSPACE so that the file it grades is the file a
+      # reporter fills in. `find .` below is deliberately still relative: its
+      # subject is the tool tree, which really does live under `extensions/`.
+      - name: Issue templates list every tool id
+        shell: bash
+        run: |
+          set -euo pipefail  # 🔴 FIXED 2026-08-22, same pre-existing hole again. GitHub runs an explicit `shell: bash` as `bash --noprofile --norc -eo pipefail {0}`, so `-e` IS ALREADY ON when this body starts. This line used to read `set -uo pipefail`, which added `-u` and removed nothing — and under `-e` a command whose failure this step means to REPORT kills the shell first, so the report is dead code on the runner. `-e` is spelled out here so the flag a reader sees is the flag that is running, and every reported command below carries its own `||`. Here the reported command is the per-file `node -p` that reads the id: a tool.json that does not PARSE made node exit 1, and the capture then killed the whole loop — no `::error file=`, no dropdown check for any later tool, and no `graded against N tool id(s)` accounting.
+          fail=0
+          checked=0
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            id=$(node -p "JSON.parse(require('fs').readFileSync(process.argv[1],'utf8')).id || ''" "$f") || id=''  # `|| id=''` keeps an unparseable tool.json inside the loop; the message below covers both states because from here they are one state: no usable id.
+            if [ -z "$id" ]; then
+              echo "::error file=$f::tool.json has no \"id\", or could not be parsed at all — the id is the stable public handle every tag, zip and matrix entry is built from."
+              fail=1
+              continue
+            fi
+            checked=$((checked + 1))
+            for t in "$GITHUB_WORKSPACE/.github/ISSUE_TEMPLATE/bad-page.yml" "$GITHUB_WORKSPACE/.github/ISSUE_TEMPLATE/bug.yml"; do
+              if [ ! -f "$t" ]; then
+                echo "::error::$t does not exist. This step greps the issue forms a reporter actually sees, and it cannot grade a file that is not there — a missing form must not read as a form with every id in it."
+                fail=1
+                continue
+              fi
+              if ! grep -qF -- "($id)" "$t"; then
+                echo "::error file=$t::tool id '$id' is missing from the extension dropdown — a reporter cannot name this tool"
+                fail=1
+              fi
+            done
+          done < <(find . -mindepth 3 -maxdepth 3 -name tool.json \
+                     -not -path './.git/*' -not -path './templates/*' \
+                     -not -path './_skeleton/*' -not -path './private/*' \
+                     -not -path './node_modules/*')
+          # Coverage, printed rather than assumed: with no tools this check cannot
+          # fail, and an assertion that cannot fail inflates apparent coverage.
+          # The cross-check above is what decides whether zero is legitimate.
+          echo "issue-template dropdowns graded against $checked tool id(s), in $GITHUB_WORKSPACE/.github/ISSUE_TEMPLATE/."
+          exit $fail
+
+      - id: set
+        name: Build the matrix
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: node scripts/discover.mjs --base "$BASE_SHA" --out "$GITHUB_OUTPUT"
+
+      - name: Show the matrix
+        env:
+          TOOLS: ${{ steps.set.outputs.tools }}
+          COUNT: ${{ steps.set.outputs.count }}
+        run: |
+          echo "affected tools ($COUNT): $TOOLS"
+          if [ "$COUNT" = "0" ]; then
+            echo "::notice::no tool was affected by this change — the per-tool jobs below are skipped on purpose, not by accident."
+          fi
+
+  secrets-scan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with: { node-version: '${{ env.NODE_VERSION }}' }
+      - run: node scripts/secret-scan.mjs .
+
+  catalogue:
+    name: catalogue
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with: { node-version: '${{ env.NODE_VERSION }}' }
+      - name: Delete the catalogue so the publisher has to produce it
+        run: rm -f catalog/extensions.json
+      - run: node scripts/publish-catalog.mjs
+      - name: The publisher actually wrote it
+        run: test -s catalog/extensions.json
+      - name: Catalogue must equal a fresh publish from the tool.json files
+        run: git diff --exit-code -- catalog/extensions.json
+      - name: The catalogue describes something real
+        run: node scripts/check-catalog.mjs
+      # ADDED 2026-09-16. gen-catalog.mjs's own usage line says `--check` is for CI,
+      # and no workflow ran it: the README catalog table could drift from the
+      # tool.json files with every lane green. Found by the sweep that wired the
+      # private generators' --check into the repo's pre-commit runner (spec-guards).
+      - name: The README catalog table is what the tool.json files generate
+        run: node scripts/gen-catalog.mjs --check
+
+  core:
+    name: core sims
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with: { node-version: '${{ env.NODE_VERSION }}' }
+
+      - name: Lint + run core sims
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -d core ]; then
+            echo "::notice::core/ does not exist in this tree — there is no shared runtime to check yet."
+            exit 0
+          fi
+          node scripts/lint.mjs core
+          shopt -s nullglob
+          sims=(core/test/*.node.js)
+          if [ ${#sims[@]} -eq 0 ]; then
+            echo "::error::core/ exists but core/test/ holds no sims. Every core module ships with one, because core has N consumers and a regression there is N outages. core.json's own gaps list names this; it is a known gap, not a surprise, and it is red until the sims exist."
+            exit 1
+          fi
+          for f in "${sims[@]}"; do echo "── $f"; node "$f"; done
+
+      # why: core/v1/entitlement-contract.js is a byte-identical mirror of the
+      # monorepo's contracts/entitlement/contract.js, and byte-identity is the whole
+      # claim the arrangement makes. It is graded here, in the job that owns the core
+      # surface, as well as by tooling/ci/assert-entitlement-contract.mjs limb 4 --
+      # which compares it against the SQL seed rather than against another copy, so
+      # the two are not the same check run twice.
+      - name: The vendored contract is byte-identical to contracts/
+        run: node scripts/check-contracts-sync.mjs
+
+      # why: the gate above has to be provable, and its twelve red/green cases live in
+      # their own suite rather than in selftest.node.js because they need a synthetic
+      # monorepo (--repo-root plus --contracts-root), not the single-tree fixture every
+      # selftest case mutates. Running them here is what stops that suite being cases
+      # nobody executes.
+      - name: ...and that gate can still fail
+        run: node --test scripts/test/contracts-sync.test.mjs
+      - name: The listing-asset guard can still fail
+        run: node --test scripts/test/listing-assets.test.mjs
+
+  gates:
+    name: gates · ${{ matrix.tool }}
+    needs: discover
+    if: needs.discover.outputs.count != '0'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        tool: ${{ fromJSON(needs.discover.outputs.tools) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with: { node-version: '${{ env.NODE_VERSION }}' }
+      - name: Syntax check every shipped script
+        run: node scripts/lint.mjs ${{ matrix.tool }}
+      - name: Privacy / permission / store-limit policy
+        run: node scripts/policy-check.mjs ${{ matrix.tool }}
+      - name: Vendored core matches core/
+        run: node scripts/check-core-sync.mjs ${{ matrix.tool }}
+      - name: Version agreement (manifest ↔ CHANGELOG)
+        run: node scripts/check-version.mjs ${{ matrix.tool }}
+      # why: the same wrapper as the `package` leg below, for the same reason. This
+      # call has never been the one that hung, but it is the same gate on the same
+      # runner image, and a ceiling that only covers the leg that has already failed
+      # is a ceiling that will be absent from wherever it fails next.
+      - name: The BUILT store packages carry the right add-on identity
+        run: >-
+          node scripts/lib/hang-guard.mjs --seconds 180 --retries 1 --report-dir diag
+          -- node scripts/check-store-packages.mjs ${{ matrix.tool }} --allow-none
+      - name: One listing per store, and the store axis has not drifted
+        run: node scripts/check-store-metadata.mjs ${{ matrix.tool }}
+      # why: the store states the pixels; scripts/store-graphics.json records each number
+      # with the URL it was read from, and this grades the committed pictures against it.
+      - name: Listing pictures are the size, format and count the stores state
+        run: node scripts/check-listing-assets.mjs ${{ matrix.tool }}
+      - name: The tool's own AMO submission gate (FullShot)
+        if: matrix.tool == 'fullshot'
+        run: node Extension/Full_Screen_Shot/publish/verify-firefox-package.node.js
+
+  sims:
+    name: sims · ${{ matrix.tool }} · node ${{ matrix.node }}
+    needs: [discover, gates]
+    if: needs.discover.outputs.count != '0'
+    strategy:
+      fail-fast: false
+      matrix:
+        tool: ${{ fromJSON(needs.discover.outputs.tools) }}
+        node: ['22', '24']
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with: { node-version: '${{ matrix.node }}' }
+
+      - name: Run tool sims
+        run: node scripts/run-tests.mjs ${{ matrix.tool }}
+
+      - name: Upload pixel-sim output on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: pixels-${{ matrix.tool }}-node${{ matrix.node }}
+          path: |
+            extensions/**/test/pixel-sim/out/**
+          retention-days: 7
+          if-no-files-found: ignore
+
+  package:
+    name: package · ${{ matrix.tool }} · ${{ matrix.target }} · ${{ matrix.os }}
+    needs: [discover, sims]
+    if: needs.discover.outputs.count != '0'
+    strategy:
+      fail-fast: false
+      matrix:
+        tool: ${{ fromJSON(needs.discover.outputs.tools) }}
+        target: [chromium, firefox]
+        os: [ubuntu-24.04, windows-2022]   # windows leg catches path/CRLF/casing bugs
+    runs-on: ${{ matrix.os }}
+    # why: 30 -> 15 on 2026-09-06. Measured on run 34007402189's clean attempt, all four
+    # legs: 8s, 13s, 20s and 22s wall-clock for the WHOLE job. The step-level ceiling in
+    # the hang guard below fires first at ~6.5 min worst case (two attempts of 180s plus
+    # the report grace), so this number is the backstop for a hang somewhere the guard
+    # does not wrap — and at 15 it costs a wasted runner a quarter of an hour instead of
+    # the six hours GitHub's default would have.
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with: { node-version: '${{ env.NODE_VERSION }}' }
+
+      - name: Build package
+        run: node scripts/pack.mjs ${{ matrix.tool }} --target ${{ matrix.target }} --out dist
+
+      - name: Reference integrity (inside the zip)
+        run: node scripts/verify-refs.mjs --zip dist/${{ matrix.tool }}-${{ matrix.target }}.zip --strict
+
+      - name: Leak check (no test/, docs, node_modules, zips, secrets)
+        run: node scripts/verify-refs.mjs --zip dist/${{ matrix.tool }}-${{ matrix.target }}.zip --leaks
+
+      - name: Determinism check (zip is byte-reproducible)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/pack.mjs ${{ matrix.tool }} --target ${{ matrix.target }} --out dist2
+          a=$(node scripts/sha256.mjs dist/${{ matrix.tool }}-${{ matrix.target }}.zip)
+          b=$(node scripts/sha256.mjs dist2/${{ matrix.tool }}-${{ matrix.target }}.zip)
+          echo "$a"; echo "$b"
+          [ "$a" = "$b" ] || { echo "::error::zip is not reproducible"; exit 1; }
+
+      # why: 🔴 THIS EXACT STEP HUNG TWICE ON 2026-09-06, ON THE firefox · ubuntu-24.04
+      # LEG ONLY, AFTER PRINTING ITS ENTIRE OUTPUT. Run 34007402189 attempt 1: started
+      # 02:51:53Z, still running at 03:17:00Z when it was cancelled — 25 minutes for a
+      # command the other three legs of the same matrix ran in under a second, and that
+      # every re-run finishes in ~20s. Run 34015605278 attempt 1, 13 minutes, same leg.
+      # In both the log ended with the `3 passed` summary line the gate writes
+      # immediately before process.exit, so the work was DONE and the process did not
+      # leave. The gate and its whole import set were read for anything that can hold a
+      # Node event loop open — no sockets, no child processes, no workers, no fs.watch,
+      # no timers, no exit handlers, and zlib is used only through inflateRawSync — and
+      # there is nothing in it to fix. So the wrapper does not pretend to know the
+      # cause: it bounds the wait and it makes the child write a Node diagnostic report
+      # (JS stack of every thread + every open libuv handle) BEFORE killing it, which
+      # is the one artefact a blind re-run destroys. 124 here is a real failure and is
+      # meant to be — a red job in minutes with evidence attached beats an amber one
+      # for GitHub's six-hour default with none. Never widen --seconds to make it green.
+      - name: The built package carries the right store identity
+        run: >-
+          node scripts/lib/hang-guard.mjs --seconds 180 --retries 1 --report-dir diag
+          -- node scripts/check-store-packages.mjs ${{ matrix.tool }} --dir dist
+
+      # why: 🔴 `always()`, NOT `failure()`, AND THE FIRST RUN OF THIS BRANCH IS WHY.
+      # This step was written `if: failure()` on the reasoning that a green run leaves an
+      # empty directory. Then the defect reproduced live, on this leg, in the very run
+      # that was meant to prove the guard — job 101443310052:
+      #
+      #   06:45:39.350  3 passed                      <- the gate had finished its work
+      #   06:48:39.317  ::warning:: attempt 1 passed its 180s ceiling (elapsed 180.1s)
+      #   06:48:51.328  ::warning:: retrying (attempt 2 of 2)
+      #   06:48:51.477  attempt 2 finished in 0.1s with code 0
+      #
+      # The retry took ONE TENTH OF A SECOND, so the step passed, so the job was GREEN —
+      # and `failure()` threw away the diagnostic report the guard had just stopped to
+      # collect. That is the exact case the report exists for: the guard fires, the retry
+      # saves the build, and the ONLY record of what was wedged is discarded because
+      # nothing went red. `if-no-files-found: ignore` already makes a clean run upload
+      # nothing, so `always()` costs an empty check and buys the evidence.
+      - name: The hang guard's diagnostic report, if the ceiling fired
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: hang-report-${{ matrix.tool }}-${{ matrix.target }}-${{ matrix.os }}
+          path: extensions/diag/**
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: The tool's own AMO submission gate, on the built zip (FullShot)
+        if: matrix.tool == 'fullshot' && matrix.target == 'firefox' && matrix.os == 'ubuntu-24.04'
+        shell: bash
+        run: |
+          # 🔴 `-euo`, NOT `-uo`. GitHub runs an explicit `shell: bash` as
+          # `bash --noprofile --norc -eo pipefail {0}`, so `-e` is ALREADY ON
+          # when this body starts and `set -uo pipefail` only added `-u`. Under
+          # `-e` the capture below aborted the shell the instant the gate
+          # failed, so `code` was unreachable as anything but 0 and the
+          # `printf '%s\n' "$out"` that shows WHY never ran. Measured 2026-08-22
+          # on this exact body against a corrupt dist/fullshot-firefox.zip:
+          # `bash --noprofile --norc -eo pipefail <body>` exited 1 having
+          # printed 0 bytes, while a bare `bash <body>` printed 3976. A step
+          # that fails silently is a check whose diagnostics do not exist. `-e`
+          # is now written where a reader sees it, and the one command whose
+          # exit code this step REPORTS carries `|| code=$?`. Re-measured after
+          # the fix, same corrupt zip, RUNNER flags: EXIT 1 and 3976 bytes — the
+          # log the bare shell used to be needed for. Against the real zip the
+          # same body is EXIT 0 and 4242 bytes ending `ALL PASS`, so the step
+          # still discriminates rather than having been turned green.
+          set -euo pipefail
+          zip="dist/${{ matrix.tool }}-${{ matrix.target }}.zip"
+          if [ ! -f "$zip" ]; then
+            echo "::error::$zip does not exist, though the pack step above reported success — so this gate would have graded the source tree and exited 0 while inspecting no package at all."
+            exit 1
+          fi
+          code=0
+          out=$(node Extension/Full_Screen_Shot/publish/verify-firefox-package.node.js --zip "$zip" 2>&1) || code=$?
+          printf '%s\n' "$out"
+          if [ "$code" -ne 0 ]; then exit "$code"; fi
+          if ! printf '%s\n' "$out" | grep -q '^ALL PASS$'; then
+            echo "::error::the AMO gate exited 0 but never printed ALL PASS. Its only other exit-0 path is 'SOURCE PASSES — NO PACKAGE WAS GRADED', i.e. it graded the source tree and opened no zip. An empty subject must not print the same verdict as a verified one."
+            exit 1
+          fi
+
+      - name: web-ext lint (Firefox only)
+        if: matrix.target == 'firefox' && matrix.os == 'ubuntu-24.04'
+        # NOTE the path differs from the release job on purpose. THIS job never hands
+        # its dist to release-manifest.mjs, so the flat-release-directory rule does not
+        # apply and pack.mjs's own <out>/unpacked-<target>/ is read where it lands.
+        run: npx --yes web-ext@8 lint --source-dir dist/unpacked-firefox --warnings-as-errors
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: matrix.os == 'ubuntu-24.04'
+        with:
+          name: ${{ matrix.tool }}-${{ matrix.target }}
+          path: extensions/dist/*.zip
+          retention-days: 14
+          if-no-files-found: error
+
+  selftest:
+    name: Gate self-test (do the gates bite?)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with: { node-version: '${{ env.NODE_VERSION }}' }
+      - name: Every gate must be proven to fail on a real mutation
+        run: node scripts/test/selftest.node.js
+
+      # why: the hang guard's own red/green pair. selftest.node.js cannot host it —
+      # its run() helper appends `--repo-root <root>`, which the guard forwards to the
+      # child, and node answers `bad option: --repo-root` and exits 9 (measured
+      # 2026-09-06). So the pair lives in a node:test file and runs in the same job, and
+      # the exemption in selftest.node.js's NO_CASE_RECORDED points at it by name.
+      - name: The hang guard's ceiling must be proven to fire
+        run: node --test scripts/test/hang-guard.test.mjs
+
+  templates:
+    name: templates parse (the tree every future tool is stamped from)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with: { node-version: '${{ env.NODE_VERSION }}' }
+      - name: Every script under templates/ must parse
+        shell: bash
+        run: |
+          # 🔴 `-e` IS ALREADY ON BEFORE THIS LINE, AND THAT ONCE MADE THIS WHOLE
+          # LOOP POINTLESS. GitHub runs a `run:` step as `bash --noprofile --norc -eo
+          # pipefail {0}`, so writing `set -uo pipefail` added `-u` and removed nothing.
+          # Under `-e` the `out=$(node --check ...)` capture below killed the shell on
+          # the FIRST unparseable file: no `PARSE` line, no node error, no accounting,
+          # no `::error::` — the step went red having printed only the OK lines before
+          # it. Measured 2026-08-22 on this exact body, two syntax errors planted in a
+          # scratch copy of templates/: under the runner's flags the output stops dead
+          # one file before the first break — no PARSE block, no accounting, no
+          # `::error::`; under a bare `bash` BOTH PARSE blocks print and the step
+          # reports `18 of 20 file(s) under templates/ parse.` Those two structural
+          # facts are the measurement and they re-derive on any rebuild of the fixture.
+          # ⚠️ AMENDED 2026-08-22, later pass: this sentence used to pin the two
+          # outputs at 241 and 1825 bytes. The second does not reproduce — an
+          # independent rebuild of the same fixture measured 1916 — because the
+          # difference is node's per-file error text, which carries the scratch path
+          # and moves with the node version. The fixture was never recorded, so
+          # neither figure is re-derivable by a reader and both are gone. Plant two
+          # syntax errors of your own and compare the two shells; the shape is the
+          # finding, not the byte count. Enumerating EVERY broken file
+          # in one run is the only reason this is a loop rather than one lint call, so
+          # the flag was the whole feature. `-e` is now spelled out where a reader can
+          # see it, and every command whose failure this step REPORTS carries its own
+          # `||` so the report survives the failure.
+          set -euo pipefail
+          # DERIVED, NOT LISTED — the same rule the gate inventory at the top of
+          # this file follows. A hand-typed list of paths only ever covers the
+          # files somebody remembered to add, and the next script added is
+          # precisely the one that gets stamped into a tool having never been
+          # parsed. The domain is stated in one place, here, and printed below.
+          # `|| true` because a MISSING templates/ makes find exit 1, and under `-e`
+          # that killed the step before the required-coverage limb below could name
+          # the reason. An empty sweep and a vanished directory must both reach it.
+          files=$(find templates -type f \
+                    \( -name '*.mjs' -o -name '*.cjs' -o -name '*.js' \) \
+                    -not -path '*/node_modules/*' | sort) || true
+          # REQUIRED COVERAGE. An empty sweep is the failure this whole family
+          # keeps paying for: a `find` that stops matching prints nothing and a
+          # loop over nothing exits 0, so "20 files parsed" and "the directory
+          # was renamed" look identical on the checks list. Zero is a RED here.
+          if [ -z "$files" ]; then
+            echo "::error::found no .js/.mjs/.cjs under templates/ at all. Either the skeleton moved and this job is now grading an empty set, or its own find expression is broken — and both of those report as a clean pass unless something like this line stops them."
+            exit 1
+          fi
+          failed=0
+          checked=0
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            checked=$((checked + 1))
+            # 🔴 The exit code is captured on its own line, never interpolated
+            # beside a command substitution: `printf "%s EXIT %s" "$(basename
+            # "$f")" "$?"` runs the substitution FIRST, so $? is basename's
+            # status and reads 0 over every failure.
+            # ⚠️ THAT IS ONE TRAP; THE FLAGS ARE A SECOND, AND THIS LINE HAD IT.
+            # Same family — a failing thing reporting success — one level over:
+            # there the trap is EXPANSION ORDER, here it is `-e`, which aborts
+            # the shell on a failing substitution in an assignment. Without the
+            # `|| code=$?`, `code` was only ever reachable as 0 on the runner
+            # and the `else` limb below could not be taken.
+            code=0
+            out=$(node --check "$f" 2>&1) || code=$?
+            if [ "$code" -eq 0 ]; then
+              printf 'OK    %s\n' "$f"
+            else
+              printf 'PARSE %s\n' "$f"
+              printf '%s\n' "$out"
+              failed=$((failed + 1))
+            fi
+          done <<< "$files"
+          echo
+          echo "$((checked - failed)) of $checked file(s) under templates/ parse."
+          if [ "$failed" -gt 0 ]; then
+            echo "::error::$failed file(s) above do not parse. new-tool.mjs copies this tree into every new tool, so a syntax error here is not one broken file — it is one broken file per tool created from today onward, discovered by whoever creates the next one."
+            exit 1
+          fi
+      # 2026-09-14: THE FLEET AUDIT BROKE THREE TIMES, AND WAS WIRED INTO NOTHING
+      # EACH TIME. templates/tool/tools/audit-fleet.mjs finds the fleet by walking
+      # up from its own folder; the walk root has moved with the template twice and
+      # with the ADR 067 monorepo merge once, and every breakage was found by a
+      # reviewer typing the command by hand, weeks later. This step runs it BARE —
+      # no --repo-root, no named tools — because the bare invocation is exactly what
+      # broke. PRINT-ONLY FOR DRIFT: BEHIND / DIVERGED / UNSTAMPED always exit 0 by
+      # the auditor's own contract, so this never gates on a tool's choices. It is
+      # red only on the auditor's two "do not believe this report" exits — 1 BROKEN
+      # AUDIT (the walk reached no tool) and 2 CANNOT RUN (no root, no template).
+      - name: The fleet audit still finds the fleet (drift is printed, never gated)
+        run: node templates/tool/tools/audit-fleet.mjs
+      # 2026-09-14, O-PLAYWRIGHT-FLEET-FALLBACK: THE FLEET PLAYWRIGHT INSTALL IS
+      # CREATED HERE, AND THE BROWSER TIER IS GRADED ON FINDING IT. The template's
+      # test/browser/smoke.mjs and publish/shots.mjs look for `_playwright/` by
+      # walking UP from their own folder first, and only then fall back to a walk
+      # that lands inside ONE tool's test/e2e/node_modules — so renaming or
+      # deleting that tool stopped every browser tier at once, and nothing in CI
+      # ran the tier to notice. The docs spell the location `Tools/_playwright/`,
+      # the name the extensions repository root had before the ADR 067 merge.
+      # WHERE IT GOES, AND WHY NOT `extensions/`: the resolver only probes
+      # ANCESTORS, so a `Tools/` subdirectory is never reached, and
+      # tooling/ci/assert-extensions-build-free.mjs walks the extensions/ tree on
+      # DISK and refuses any package.json or node_modules outside a tool's
+      # test/e2e island — a fleet install at extensions/_playwright would turn that
+      # guard red for anyone who followed the setup instructions. The repository
+      # root is an ancestor of every tool and of the template, and is outside that
+      # guard's subject. Its package.json and package-lock.json are TRACKED at
+      # _playwright/ (pinned to the version the one e2e island's lockfile resolves,
+      # and reached by Renovate's npm manager); node_modules is installed here by
+      # `npm ci`, never committed. A loose `npm install` was the first draft, and
+      # assert-lockfile-discipline.mjs refused it on this PR's first run, rightly.
+      - name: Create the fleet Playwright install (the one location every browser tier finds first)
+        working-directory: _playwright
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --no-audit --no-fund
+          npx playwright install --with-deps chromium
+      - name: The template browser tier runs, and resolves Playwright from the fleet location
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The smoke's own exit is captured on its own line, never through a pipe:
+          # `node … | tee` reports tee's status and reads green over a red tier.
+          code=0
+          node templates/tool/test/browser/smoke.mjs > "$RUNNER_TEMP/smoke.log" 2>&1 || code=$?
+          cat "$RUNNER_TEMP/smoke.log"
+          # The path line is printed on every run that found Playwright at all. It
+          # must name the fleet install; the fallback walk prints a NOT-the-fleet note.
+          resolved=$(grep -m1 '^playwright  ' "$RUNNER_TEMP/smoke.log" || true)
+          echo "resolved: ${resolved:-<no playwright line>}"
+          case "$resolved" in
+            *"/_playwright/node_modules/playwright/"*) ;;
+            *)
+              echo "::error::the browser tier did not resolve Playwright from the fleet location ($GITHUB_WORKSPACE/_playwright). It either found nothing or fell back to another tool's node_modules — the dependency this step exists to remove."
+              exit 1
+              ;;
+          esac
+          if grep -qF 'NOT the fleet location' "$RUNNER_TEMP/smoke.log"; then
+            echo "::error::the browser tier printed its fallback warning."
+            exit 1
+          fi
+          exit "$code"
+
+  # why: the single aggregate for this workflow. It carries always(), needs every
+  # job above, and treats skipped as not-green. It is not a required check of its
+  # own: ci-gate requires it through ci.yml's `extensions` call job, whose result is
+  # red when any job here is.
+  ci-required:
+    name: ci-required
+    needs: [build-free, contracts, gate-inventory, discover, secrets-scan, catalogue, core, gates, sims, package, selftest, templates, e2e-proof-fresh]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      DISCOVER_COUNT: ${{ needs.discover.outputs.count }}
+      R_BUILD_FREE: ${{ needs.build-free.result }}
+      R_CONTRACTS: ${{ needs.contracts.result }}
+      R_GATE_INVENTORY: ${{ needs.gate-inventory.result }}
+      R_DISCOVER: ${{ needs.discover.result }}
+      R_SECRETS_SCAN: ${{ needs.secrets-scan.result }}
+      R_CATALOGUE: ${{ needs.catalogue.result }}
+      R_CORE: ${{ needs.core.result }}
+      R_GATES: ${{ needs.gates.result }}
+      R_SIMS: ${{ needs.sims.result }}
+      R_PACKAGE: ${{ needs.package.result }}
+      R_SELFTEST: ${{ needs.selftest.result }}
+      R_TEMPLATES: ${{ needs.templates.result }}
+      R_E2E_PROOF_FRESH: ${{ needs.e2e-proof-fresh.result }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with: { persist-credentials: false }
+      - name: Every job in this workflow is accounted for, and every outcome is graded
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # ── THE RULE, ONCE ──────────────────────────────────────────────────
+          # verdict <count> <discover-result> <job=result>...
+          # One line per job on stdout; returns 0 for GREEN, 1 for RED.
+          verdict() {
+            local count="$1"; shift
+            local dres="$1"; shift
+            local rc=0 pair job res
+            for pair in "$@"; do
+              job=${pair%%=*}
+              res=${pair#*=}
+              case "$res" in
+                success)
+                  printf '  ok   %-14s %s\n' "$job" "$res"
+                  ;;
+                skipped)
+                  # 🔴 THE WHOLE POINT OF THIS JOB IS THIS BRANCH. `skipped` is
+                  # NOT a synonym for success; it is licensed only by the one
+                  # input that makes "nothing ran" the correct outcome, and ONLY
+                  # for the three per-tool jobs that input can skip (2026-09-24:
+                  # it licensed any job until then; case 11 below pins it).
+                  if [ "$dres" = 'success' ] && [ "$count" = '0' ] && { [ "$job" = gates ] || [ "$job" = sims ] || [ "$job" = package ]; }; then
+                    printf '  ok   %-14s %s  (licensed: discover succeeded and selected 0 tools)\n' "$job" "$res"
+                  else
+                    printf '  RED  %-14s %s  (UNLICENSED: discover=%s count=%s)\n' "$job" "$res" "$dres" "${count:-<empty>}"
+                    rc=1
+                  fi
+                  ;;
+                failure|cancelled)
+                  printf '  RED  %-14s %s\n' "$job" "$res"
+                  rc=1
+                  ;;
+                *)
+                  printf '  RED  %-14s %s  (outcome is not in the allowed set)\n' "$job" "$res"
+                  rc=1
+                  ;;
+              esac
+            done
+            return "$rc"
+          }
+
+          # ── WHO IS GRADED, DERIVED FROM THE PAIRS BELOW, NOT FROM PROSE ─────
+          pairs=(
+            "build-free=$R_BUILD_FREE"
+            "contracts=$R_CONTRACTS"
+            "gate-inventory=$R_GATE_INVENTORY"
+            "discover=$R_DISCOVER"
+            "secrets-scan=$R_SECRETS_SCAN"
+            "catalogue=$R_CATALOGUE"
+            "core=$R_CORE"
+            "gates=$R_GATES"
+            "sims=$R_SIMS"
+            "package=$R_PACKAGE"
+            "selftest=$R_SELFTEST"
+            "templates=$R_TEMPLATES"
+            "e2e-proof-fresh=$R_E2E_PROOF_FRESH"
+          )
+
+          # ── STRUCTURAL: NO JOB MAY ESCAPE THIS AGGREGATOR ───────────────────
+          # An aggregated required check is only as good as its `needs:` list,
+          # and that list is hand-written — so the next job added to this file
+          # would be outside the required check while looking exactly like part
+          # of it. This reads the job ids back out of the file and refuses a
+          # disagreement.
+          #
+          # 🔴 THE DOMAIN IS THIS FILE, EVERY JOB IN IT. Until 2026-09-24 the CI
+          # lane shared extensions.yml with the release and e2e lanes, so a job
+          # belonged here only when its `if:` carried the CI lane's guard. The lane
+          # now has a file of its own that runs only as a call, so there is no
+          # guard left to key on and the rule is the stricter one: every job in
+          # extensions-ci.yml except this one is a constituent. Case 10 below
+          # plants a job this list does not name and requires a disagreement.
+          wf="$GITHUB_WORKSPACE/.github/workflows/extensions-ci.yml"
+          jobs_of() {
+            awk '/^jobs:/{f=1;next}
+                 f && /^[^ #]/ {f=0}
+                 f && /^  [A-Za-z0-9_-]+:[[:space:]]*$/ { job=$1; sub(/:.*/,"",job); print job }' "$1" \
+              | grep -v '^ci-required$' | sort || true
+          }
+          declared=$(jobs_of "$wf")
+          required=$(printf '%s\n' "${pairs[@]}" | sed 's/=.*//' | sort)
+          if [ -z "$declared" ]; then
+            echo "::error::found no job ids in $wf at all — this step's own awk is broken, and it was about to certify that every job is aggregated over an empty set."
+            exit 1
+          fi
+          if [ "$declared" != "$required" ]; then
+            echo "jobs declared in extensions-ci.yml (excluding ci-required itself):"
+            printf '%s\n' "$declared" | sed 's/^/  /'
+            echo "jobs this aggregator waits on:"
+            printf '%s\n' "$required" | sed 's/^/  /'
+            echo "::error::the two lists above disagree. A job outside this aggregator's needs list can fail while ci-required, the \`extensions\` call job and ci-gate all report green. Add it to needs: and to the pairs list in this step."
+            exit 1
+          fi
+          echo "$(printf '%s\n' "$required" | grep -c .) job(s) declared in extensions-ci.yml, and this aggregator waits on every one of them."
+          echo
+
+          # ── THE RULE IS EXERCISED BEFORE IT IS TRUSTED ──────────────────────
+          # 🔴 THESE CASES ARE THE REDDENABILITY HARNESS, AND THEY RUN ON EVERY
+          # PUSH. Cases 2 and 3 are the same job outcomes under different
+          # discovery inputs and they must disagree; a fixture that only ever
+          # supplied count=='1' could not express the skip case at all, and the
+          # defect this job exists to prevent lives exactly there.
+          # MEASURED 2026-08-25, by mutating the rule above and re-running these
+          # same cases: licensing 'skipped' unconditionally (the `success ||
+          # skipped` defect) flips cases 3 and 6 to GREEN — NOT 7, which stays
+          # RED because discover's own 'failure' reds it independently of the
+          # skip rule — and adding 'failure' to the success arm flips 4 and 8.
+          # Two cases per mutation, and the step exits 1 rather than grading the
+          # run, which is what makes this harness a pin and not a decoration.
+          ALL_OK='build-free=success contracts=success gate-inventory=success discover=success secrets-scan=success catalogue=success core=success gates=success sims=success package=success selftest=success templates=success'
+          ZERO_MATRIX="${ALL_OK/gates=success/gates=skipped}"
+          ZERO_MATRIX="${ZERO_MATRIX/sims=success/sims=skipped}"
+          ZERO_MATRIX="${ZERO_MATRIX/package=success/package=skipped}"
+          cases=0
+          bad=0
+          expect() {
+            local want="$1" label="$2" count="$3" dres="$4"; shift 4
+            local got=GREEN
+            verdict "$count" "$dres" "$@" >/dev/null 2>&1 || got=RED
+            cases=$((cases + 1))
+            if [ "$got" = "$want" ]; then
+              printf '  ok    %-64s -> %s\n' "$label" "$got"
+            else
+              printf '  FAIL  %-64s -> %s, expected %s\n' "$label" "$got" "$want"
+              bad=$((bad + 1))
+            fi
+          }
+          echo "built-in cases for the rule above:"
+          expect GREEN '1. every job succeeded, one tool selected'                  '1' 'success' $ALL_OK
+          expect GREEN '2. zero matrix: the three per-tool lanes skipped'           '0' 'success' $ZERO_MATRIX
+          expect RED   '3. THE DEFECT: same lanes skipped, but a tool WAS selected' '1' 'success' $ZERO_MATRIX
+          expect RED   '4. a per-tool lane failed'                                  '1' 'success' ${ALL_OK/sims=success/sims=failure}
+          expect RED   '5. a per-tool lane was cancelled'                           '1' 'success' ${ALL_OK/package=success/package=cancelled}
+          expect RED   '6. lanes skipped, count output empty (contract broke)'      ''  'success' $ZERO_MATRIX
+          expect RED   '7. discover failed and the lanes skipped in its wake'       ''  'failure' ${ZERO_MATRIX/discover=success/discover=failure}
+          expect RED   '8. a non-matrix job failed under a legitimate zero matrix'  '0' 'success' ${ZERO_MATRIX/core=success/core=failure}
+          expect RED   '9. an outcome nobody enumerated'                            '1' 'success' ${ALL_OK/core=success/core=neutral}
+          # 10: the self-inventory above, on a copy of this file with one job planted
+          # that the pairs list does not name. It must DISAGREE, or the structural
+          # check would pass a job that escapes this aggregator.
+          planted="${RUNNER_TEMP:-/tmp}/extensions-ci.planted.yml"
+          { cat "$wf"; printf '  planted-job:\n'; } > "$planted"   # a job KEY is all jobs_of reads; no runner literal, which assert-version-consistency would grade
+          cases=$((cases + 1))
+          if [ "$(jobs_of "$planted")" != "$required" ]; then
+            printf '  ok    %-64s -> %s\n' '10. a job left out of needs: the inventory disagrees' RED
+          else
+            printf '  FAIL  %-64s -> %s, expected %s\n' '10. a job left out of needs: the inventory disagrees' GREEN RED
+            bad=$((bad + 1))
+          fi
+          rm -f "$planted"
+          expect RED   '11. a skipped NON-per-tool job under a zero matrix'          '0' 'success' ${ZERO_MATRIX/core=success/core=skipped}
+          if [ "$bad" -ne 0 ]; then
+            echo "::error::$bad of $cases built-in case(s) above disagree with the rule this job is about to apply. The rule was weakened or the cases were; either way this run's verdict would mean nothing."
+            exit 1
+          fi
+          echo "$cases of $cases built-in case(s) agree with the rule."
+          echo
+
+          # ── AND NOW, THIS RUN ───────────────────────────────────────────────
+          echo "discover: result=$R_DISCOVER count=${DISCOVER_COUNT:-<empty>}"
+          code=0
+          verdict "${DISCOVER_COUNT:-}" "$R_DISCOVER" "${pairs[@]}" || code=$?   # `|| code=$?` and not a bare `code=$?`: `-e` is already on, and a bare capture would abort the step before the table above could be read.
+          if [ "$code" -ne 0 ]; then
+            echo "::error::at least one job above is RED, and it is red because the tree is — a skipped per-tool job is only licensed by a discover run that succeeded and selected zero tools. ci-gate requires this job through ci.yml's \`extensions\` call job; do not add 'ci-required' to branch protection, where it would sit Pending forever."
+            exit 1
+          fi
+          echo "ci-required: ${#pairs[@]} job(s) accounted for, every outcome in the allowed set."
+
+  e2e-proof-fresh:
+    # why: the name must NOT start `e2e` + a non-alphanumeric - the GREEN limb of
+    # assert-e2e-proof-fresh.mjs matches PAST runs' job names on /^e2e[^A-Za-z0-9]/ and
+    # counted this job as a matrix leg. See docs/ci/extensions.md, 2026-09-07.
+    name: Proof freshness (is the weekly cron alive?)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with: { node-version: '${{ env.NODE_VERSION }}' }
+      - name: The weekly e2e proof must be RECENT, SCHEDULED and GREEN
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: node scripts/assert-e2e-proof-fresh.mjs

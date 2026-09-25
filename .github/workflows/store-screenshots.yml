@@ -240,7 +240,7 @@ jobs:
             --base "${GITHUB_REF_NAME}" \
             --head "$BRANCH" \
             --title "chore(play): the captured screenshot set, for review" \
-            --body "Captured by run \`${{ github.run_id }}\`. **Look at the images in the Files changed tab** — the guard proves size, count, format, aspect and that no demo banner is present in the pixels; it cannot judge whether these are the screens worth showing, and Google requires screenshots to demonstrate the actual in-app experience. Merging is the human decision this PR exists to ask for." > "${RUNNER_TEMP}/gh-pr-create.log" 2>&1
+            --body "Captured by run \`${{ github.run_id }}\`. **Look at the images in the Files changed tab** — the guard proves size, count, format, aspect and that no demo banner is present in the pixels; it cannot judge whether these are the screens worth showing, and Google requires screenshots to demonstrate the actual in-app experience. Merging is the human decision this PR exists to ask for."$'\n\nRows: none — automated store screenshot capture, reviewed by eye' > "${RUNNER_TEMP}/gh-pr-create.log" 2>&1
           PR_RC=$?
           set -e
           cat "${RUNNER_TEMP}/gh-pr-create.log"
@@ -483,7 +483,7 @@ jobs:
             --base "${GITHUB_REF_NAME}" \
             --head "$BRANCH" \
             --title "chore(snap): the captured screenshot set, for review" \
-            --body "Captured by run \`${{ github.run_id }}\` from the real Linux binary. **Look at the images in the Files changed tab** — the guard proves size, count, format, aspect and that no demo banner is present in the pixels; it cannot judge whether these are the screens worth showing. Merging is the human decision this PR exists to ask for." > "${RUNNER_TEMP}/gh-pr-create.log" 2>&1
+            --body "Captured by run \`${{ github.run_id }}\` from the real Linux binary. **Look at the images in the Files changed tab** — the guard proves size, count, format, aspect and that no demo banner is present in the pixels; it cannot judge whether these are the screens worth showing. Merging is the human decision this PR exists to ask for."$'\n\nRows: none — automated store screenshot capture, reviewed by eye' > "${RUNNER_TEMP}/gh-pr-create.log" 2>&1
           PR_RC=$?
           set -e
           cat "${RUNNER_TEMP}/gh-pr-create.log"
@@ -763,7 +763,7 @@ jobs:
             --base "${GITHUB_REF_NAME}" \
             --head "$BRANCH" \
             --title "chore(${STORE_CHANNEL}): the captured screenshot set, for review" \
-            --body "Captured by run \`${{ github.run_id }}\` from the real native desktop binary. **Look at the images in the Files changed tab** — the guard proves size, count, format, aspect and that no demo banner is present in the pixels; it cannot judge whether these are the screens worth showing. Merging is the human decision this PR exists to ask for." > "${RUNNER_TEMP}/gh-pr-create.log" 2>&1
+            --body "Captured by run \`${{ github.run_id }}\` from the real native desktop binary. **Look at the images in the Files changed tab** — the guard proves size, count, format, aspect and that no demo banner is present in the pixels; it cannot judge whether these are the screens worth showing. Merging is the human decision this PR exists to ask for."$'\n\nRows: none — automated store screenshot capture, reviewed by eye' > "${RUNNER_TEMP}/gh-pr-create.log" 2>&1
           PR_RC=$?
           set -e
           cat "${RUNNER_TEMP}/gh-pr-create.log"
@@ -1017,7 +1017,7 @@ jobs:
             --base "${GITHUB_REF_NAME}" \
             --head "$BRANCH" \
             --title "chore(ios): the captured screenshot sets, for review" \
-            --body "Captured by run \`${{ github.run_id }}\` from the real iOS build on the simulators the register names — **both** size classes from one build. **Look at the images in the Files changed tab**, and look hardest at the iPad ones: the guards prove size, count, format and that both sets exist, and cannot judge whether the iPad frames show a tablet layout or a stretched phone one. Merging is the human decision this PR exists to ask for." > "${RUNNER_TEMP}/gh-pr-create.log" 2>&1
+            --body "Captured by run \`${{ github.run_id }}\` from the real iOS build on the simulators the register names — **both** size classes from one build. **Look at the images in the Files changed tab**, and look hardest at the iPad ones: the guards prove size, count, format and that both sets exist, and cannot judge whether the iPad frames show a tablet layout or a stretched phone one. Merging is the human decision this PR exists to ask for."$'\n\nRows: none — automated store screenshot capture, reviewed by eye' > "${RUNNER_TEMP}/gh-pr-create.log" 2>&1
           PR_RC=$?
           set -e
           cat "${RUNNER_TEMP}/gh-pr-create.log"

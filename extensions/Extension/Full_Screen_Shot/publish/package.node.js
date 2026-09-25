@@ -396,7 +396,7 @@ function crc32(buf) {
    enabled require() of an ES module by default in 22.12.0 and has kept it
    unflagged since; below that this line throws ERR_REQUIRE_ESM at load. The
    only automated caller of this file is test/i18n-sim.node.js, which requires
-   it as a library, and .github/workflows/extensions.yml runs the sims on node
+   it as a library, and .github/workflows/extensions-ci.yml runs the sims on node
    '22' and '24' — bare majors, which setup-node always resolves to the newest
    release of that line, so the 22 leg cannot land below 22.12 (it measured
    v22.23.2 on 2026-09-19). tooling/ci/test/extensions-shared-constants.test.mjs

@@ -71,6 +71,10 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
+// The app-id rule, resolved against THIS module's URL (a static import always is),
+// never the working directory: the script runs from the repo root, its tests from
+// a temp dir. Row O-APP-ID-FORM-UNVALIDATED (a).
+import { appIdProblems } from '../../contracts/app-id/app-id.js';
 
 const PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -102,8 +106,18 @@ function die(lines) {
 }
 const step = (n, msg) => console.log(`\n[${n}] ${msg}`);
 
-if (!appId || !/^[a-z][a-z0-9_]*$/.test(appId)) {
-  die(['usage: provision-backend.mjs <app_id> [--location apac] [--dry]', '  app_id must be snake_case.']);
+if (!appId) {
+  die(['usage: provision-backend.mjs <app_id> [--location apac] [--dry]']);
+}
+// Checked BEFORE anything is derived from the id: `${appId}_db` and `${appId}-api`
+// below are a D1 name and a Worker name, and neither is renamed cheaply.
+const idProblems = appIdProblems(appId);
+if (idProblems.length > 0) {
+  die([
+    `✗ "${appId}" is not a valid app_id:`,
+    ...idProblems.map((p) => `  · ${p}`),
+    'usage: provision-backend.mjs <app_id> [--location apac] [--dry]',
+  ]);
 }
 if (!VALID_HINTS.includes(location)) {
   die([
@@ -322,8 +336,10 @@ function sh(cmd, cmdArgs, cwd = ROOT) {
 // 🔴 THE SERVICE'S OWN PINNED WRANGLER, resolved to an absolute path — not
 // `npx wrangler@4`, and never through a shell.
 //   · npx would resolve a version independent of the one the template pins
-//     (`wrangler: ^4.0.0`), so the tool that provisions could differ from the
-//     tool that deploys. [pipeline F-2] is the same lesson about mason_cli.
+//     (the stamped service's package.json pins wrangler EXACTLY, and
+//     tooling/versions.json holds that pin), so the tool that provisions could
+//     differ from the tool that deploys. [pipeline F-2] is the same lesson about
+//     mason_cli.
 //   · spawning through a shell on Windows re-parses every argument, which
 //     mangled the verification query `... WHERE type='table'` and made the
 //     command fail; the script then read the empty output as "the table is

@@ -1105,3 +1105,46 @@ describe('the declared cadence must be able to reach MAX_AGE_DAYS', () => {
     assert.equal(cronFieldValues('MON', 1, 31), null, 'day-of-month has no names');
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔴 PR #806's PAGE THROUGH THE CLI, UNDER THE UNION (trap ci-48, 2026-09-24).
+// The measured page (newest scheduled green 32003607931, 32.3 days) and its
+// cross-read (35215254802, 2026-09-17T11:37:48Z), written as the { "page",
+// "cross" } fixture (decision E6). Until 2026-09-24 a stale page proven by the
+// cross-read was COVERAGE LOST; the cross-read's run exists, so it now carries
+// the proof and says so. The control is the same page with no cross-read.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('the PR #806 page and its cross-read, through the CLI (E2, E3, E6)', () => {
+  const PAGE = [
+    { id: 32003607931, event: 'schedule', conclusion: 'success', created_at: '2026-08-17T06:55:35Z', updated_at: '2026-08-17T07:07:59Z' },
+    { id: 31366937403, event: 'schedule', conclusion: 'success', created_at: '2026-08-10T07:42:11Z', updated_at: '2026-08-10T08:00:00Z' },
+  ];
+  const CROSS = [{ id: 35215254802, event: 'schedule', conclusion: 'success', created_at: '2026-09-17T11:21:32Z', updated_at: '2026-09-17T11:37:48Z' }];
+  const stamp = (runs) => runs.map((r) => ({ head_sha: HEAD_SHA, ...r }));
+  const at806 = (name, doc) => {
+    const f = join(TMP, name);
+    writeFileSync(f, JSON.stringify(doc));
+    return spawnSync(process.execPath, [GUARD, '--runs-file', f, '--now', '2026-09-18T14:57:00Z'], { cwd: REPO, encoding: 'utf8' });
+  };
+
+  test('🟢 the page with its cross-read exits 0 and names both reads on the carried-proof line', () => {
+    const r = at806('806-carried.json', { page: stamp(PAGE), cross: stamp(CROSS) });
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(
+      r.stdout,
+      /^STALE PAGE, CROSS-READ CARRIED THE PROOF: the page's newest qualifying run is 32003607931 \(updated_at 2026-08-17T07:07:59Z\) over 2 row\(s\); the cross-read's is 35215254802 \(updated_at 2026-09-17T11:37:48Z\) over 1 row\(s\)/m,
+    );
+    assert.match(r.stdout, /platform proof fresh — newest green build-platforms\.yml run 35215254802 is 1\.1 day\(s\) old/);
+  });
+
+  test('🔴 CONTROL — the same page as a plain array is exit 1, and its READ line says the cross-read was not run', () => {
+    const r = at806('806-alone.json', stamp(PAGE));
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /platform proof is not fresh — newest green run is 32\.3 days old, ceiling is 14/);
+    assert.match(
+      r.stdout,
+      /READ {4}\(GitHub run history\) : {2}fixture standing in for GET \/repos\/\S+\/actions\/workflows\/build-platforms\.yml\/runs\?status=success&per_page=100 · 2 row\(s\) returned, per_page 100, saturated no · newest qualifying run 32003607931 \(updated_at 2026-08-17T07:07:59Z\) · cross-read not run \(fixture has none\)$/m,
+    );
+    assert.doesNotMatch(r.stdout, /STALE PAGE/);
+  });
+});

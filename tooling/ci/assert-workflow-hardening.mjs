@@ -106,7 +106,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { listDir } from './tree-walk.mjs';
-import { parseWorkflow, joinBlockScalars, WORKFLOW_DIR } from './workflow-scan.mjs';
+import { parseWorkflow, joinBlockScalars, resolveLocalCalls, WORKFLOW_DIR } from './workflow-scan.mjs';
 
 /** Positionals and flags are separated so `--live-workflows=` (limb 5) can be
  *  passed alongside a fixture root. AN UNKNOWN `--flag` IS A REFUSAL, NOT A
@@ -747,6 +747,10 @@ const unclassifiable = [];
 const jobCountMismatch = [];
 let jobIdsSeen = 0;
 let looseJobIdsSeen = 0;
+let callsBounded = 0;
+// ⏱ 2026-09-24 — every workflow parsed once more, up front, so limb 4 can follow a
+// LOCAL reusable-workflow call into its callee (workflow-scan.resolveLocalCalls).
+const parsedAll = files.map((f) => parseWorkflow(repoRoot, `${WORKFLOW_DIR}/${f}`)).filter(Boolean);
 
 for (const f of files) {
   const parsed = parseWorkflow(repoRoot, `${WORKFLOW_DIR}/${f}`);
@@ -790,8 +794,43 @@ for (const f of files) {
     jobless.push(f);
     continue;
   }
+  const resolved = resolveLocalCalls(parsed, parsedAll);
   for (const job of parsed.jobs.values()) {
+    const call = resolved.calls.find((c) => c.job === job.name);
+    if (call && !job.lines.some((l) => JOB_RUNS_ON.test(l.text))) {
+      // ⏱ 2026-09-24 — A LOCAL CALL JOB IS BOUNDED IFF EVERY JOB OF ITS CALLEE IS.
+      // GitHub rejects `timeout-minutes` on the call itself; the callee's jobs run
+      // inside this run under their own. Each callee job is also graded as a runner
+      // job where its own file is read; this line names the CALL as unbounded too,
+      // because the call is what the caller's gate waits on. One level only: a
+      // missing or nested callee is a refusal below, never a pass.
+      const loose = [...call.callee.jobs.values()].filter((cj) => !cj.lines.some((l) => JOB_TIMEOUT.test(l.text)));
+      if (loose.length) {
+        problems.push(
+          `${f} job \`${job.name}\` calls ${call.callee.rel}, whose job(s) ${loose.map((cj) => `\`${cj.name}\``).join(', ')} ` +
+            'declare no `timeout-minutes:` — a call job is bounded only by its callee\'s jobs, so this call is not bounded.',
+        );
+        continue;
+      }
+      callsBounded++;
+      continue;
+    }
     if (!job.lines.some((l) => JOB_RUNS_ON.test(l.text))) {
+      const refused = resolved.refusal !== null && resolved.refusal.job === job.name ? resolved.refusal : null;
+      const remote = resolved.remote.find((c) => c.job === job.name);
+      if (refused) {
+        unclassifiable.push(
+          `${f} job \`${job.name}\` calls ${refused.callee}, ` +
+            (refused.kind === 'missing'
+              ? 'which is not a workflow in this tree'
+              : 'which makes a local call of its own; this limb follows one level'),
+        );
+        continue;
+      }
+      if (remote) {
+        unclassifiable.push(`${f} job \`${job.name}\` calls a REMOTE reusable workflow (\`${remote.ref}\`), whose jobs are not in this tree`);
+        continue;
+      }
       // NOT AN EXEMPTION — there is no exemption list here, and there must not
       // be one while every job in the tree is a runner job (42 of 42 measured
       // 2026-08-17). This is the limb saying it cannot classify what it found.
@@ -1756,7 +1795,8 @@ if (notes.length) {
 console.log(
   `ok  workflow hardening — ${files.length} workflow(s) (${tracked.length ? `all ${tracked.length} git tracks` : 'no git manifest'}), ` +
     `${usesCount} action(s) all SHA-pinned, every \`uses:\` accounted for, all declare permissions and none is write-all, ` +
-    `${jobsChecked} job(s) all bounded by \`timeout-minutes\` ` +
+    `${jobsChecked} job(s) all bounded by \`timeout-minutes\`` +
+    `${callsBounded ? `, ${callsBounded} local reusable-workflow call(s) bounded by every callee job` : ''} ` +
     `(two independent job-id counts agree per file, ${jobIdsSeen} = ${looseJobIdsSeen})`,
 );
 // PRINTED WHETHER IT RAN OR NOT, and that is the whole repair. The line above

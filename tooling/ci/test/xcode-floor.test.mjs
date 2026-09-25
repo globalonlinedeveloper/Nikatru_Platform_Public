@@ -24,13 +24,18 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { parseXcodeMajor, parseFloor, meetsFloor, VERSIONS_REL, FLOOR_KEY } from '../assert-xcode-floor.mjs';
+import { parseXcodeMajor, parseFloor, meetsFloor, main, VERSIONS_REL, FLOOR_KEY } from '../assert-xcode-floor.mjs';
 
 const GUARD = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'assert-xcode-floor.mjs');
+// REAL `xcodebuild -version` output from run 35741818599 — the citation is in that directory's README.md.
+const CAPTURED_VERSION = readFileSync(
+  resolve(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'apple-run-35741818599', 'xcodebuild-version.txt'),
+  'utf8',
+);
 
 let TMP;
 before(() => { TMP = mkdtempSync(join(tmpdir(), 'nikatru-xcfloor-')); });
@@ -59,6 +64,7 @@ const run = (root) => {
 describe('assert-xcode-floor — reading what xcodebuild reported', () => {
   // The real two-line shape, captured from a macos-26 runner as recorded in
   // tooling/channel-register.json's ios-appstore notes ("Xcode 26.6 / 17F113").
+  // HAND-WRITTEN SHAPE — not captured output; the captured fixtures are fixtures/apple-run-35741818599/.
   const REAL = 'Xcode 26.6\nBuild version 17F113\n';
 
   test('the real two-line report yields the MAJOR', () => {
@@ -66,20 +72,24 @@ describe('assert-xcode-floor — reading what xcodebuild reported', () => {
   });
 
   test('a bare major, with no dotted part', () => {
+    // HAND-WRITTEN SHAPE — not captured output; the captured fixtures are fixtures/apple-run-35741818599/.
     assert.equal(parseXcodeMajor('Xcode 27\nBuild version 19A1\n').major, 27);
   });
 
   test('a three-part version still yields the major', () => {
+    // HAND-WRITTEN SHAPE — not captured output; the captured fixtures are fixtures/apple-run-35741818599/.
     assert.equal(parseXcodeMajor('Xcode 26.1.1\nBuild version 17B55\n').major, 26);
   });
 
   // 🔴 THE LINE ANCHOR IS LOAD-BEARING. `Build version 17F113` carries digits,
   // and a matcher that scanned anywhere could read a build number as a version.
   test('the BUILD VERSION line is never read as the answer', () => {
+    // HAND-WRITTEN SHAPE — not captured output; the captured fixtures are fixtures/apple-run-35741818599/.
     assert.equal(parseXcodeMajor('Build version 17F113\n'), null);
   });
 
   test('prose that merely mentions Xcode is not a reading', () => {
+    // HAND-WRITTEN SHAPE — not captured output; the captured fixtures are fixtures/apple-run-35741818599/.
     assert.equal(parseXcodeMajor('note: install Xcode 26 from the App Store\n'), null);
     assert.equal(parseXcodeMajor('xcode-select: error: tool not installed\n'), null);
   });
@@ -179,5 +189,45 @@ describe('assert-xcode-floor — a question that could not be asked is never a p
     const out = `${r.stdout}${r.stderr}`;
     if (r.status === 0) assert.match(out, /ok {2}xcode floor — the runner reports .* floor of \d+/);
     else assert.match(out, /COVERAGE LOST|assert-xcode-floor: FAILED/);
+  });
+});
+
+// ── the captured output, through main({ run }) ───────────────────────────────
+// REAL `xcodebuild -version` output from run 35741818599, fed through the guard's one seam against the REAL
+// tooling/versions.json: the same probe, parse, verdict and exit CI runs. Only the tool call is replayed.
+describe('assert-xcode-floor — the captured output of run 35741818599', () => {
+  test('T4: the real report on stdout meets the real floor — exit 0, reading "Xcode 26.6"', () => {
+    const calls = [];
+    const run = (cmd, args) => {
+      calls.push([cmd, ...args]);
+      return cmd === 'xcodebuild' ? { status: 0, stdout: CAPTURED_VERSION, stderr: '' } : { status: 1, stdout: '', stderr: '' };
+    };
+    const r = main({ argv: [], run });
+    assert.equal(r.code, 0, `${r.stdout}${r.stderr}`);
+    assert.match(r.stdout, /ok {2}xcode floor — the runner reports "Xcode 26\.6" and tooling\/versions\.json declares a floor of 26; 26 >= 26/);
+    assert.deepEqual(calls, [['xcodebuild', '-version']]);
+    // The hand-typed REAL above agrees with the capture byte for byte.
+    assert.equal(CAPTURED_VERSION, 'Xcode 26.6\nBuild version 17F113\n');
+  });
+
+  test('T5: COVERAGE LOST prints what xcodebuild returned — path, version, exit, the first 20 of 25 lines', () => {
+    const lines25 = `${Array.from({ length: 25 }, (_, i) => `garbled ${i}`).join('\n')}\n`;
+    // Made-up answers, not captured ones: the stop is what is under test.
+    const run = (cmd, args) => {
+      if (cmd === 'xcodebuild') return { status: 1, stdout: lines25, stderr: '' };
+      if (cmd === 'which') return { status: 0, stdout: `/usr/bin/${args[0]}\n`, stderr: '' };
+      if (cmd === 'xcode-select') return { status: 0, stdout: '/Applications/Xcode_26.6.app/Contents/Developer\n', stderr: '' };
+      return { status: null, stdout: '', stderr: '', error: Object.assign(new Error(`spawn ${cmd} ENOENT`), { code: 'ENOENT' }) };
+    };
+    const r = main({ argv: [], run });
+    assert.equal(r.code, 2, `${r.stdout}${r.stderr}`);
+    assert.match(r.stderr, /✗ COVERAGE LOST — `xcodebuild -version` could not be run \(exit 1\)/);
+    assert.match(r.stderr, /tool: \/usr\/bin\/xcodebuild/);
+    assert.match(r.stderr, /version: unread .*xcode-select -p: \/Applications\/Xcode_26\.6\.app\/Contents\/Developer/);
+    assert.match(r.stderr, /exit: 1\n/);
+    assert.match(r.stderr, /stdout: 25 line\(s\), \d+ bytes, first 20 shown/);
+    const shown = r.stderr.split('\n').filter((l) => /^\s*stdout\| /.test(l)).map((l) => l.trim());
+    assert.deepEqual(shown, Array.from({ length: 20 }, (_, i) => `stdout| garbled ${i}`));
+    assert.equal(r.stdout, '');
   });
 });

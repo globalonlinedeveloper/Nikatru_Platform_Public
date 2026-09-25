@@ -162,7 +162,9 @@
 // check-analytics-liveness, check-d1-accepts-live-sql, verify-supabase-templates,
 // check-prod-provenance, verify-monitors, verify-alarm-chains,
 // verify-auth-providers, verify-free-api-scope, check-wildcard-dns,
-// check-turnstile-hosts, check-retired-names-live, check-mail-auth-dns; the GlitchTip writes
+// check-turnstile-hosts, check-retired-names-live, check-mail-auth-dns,
+// check-apple-signing-expiry (2026-09-24, row O-APPLE-SIGNING-EXPIRY-UNWATCHED);
+// the GlitchTip writes
 // create-glitchtip-release, upload-web-sourcemaps and upload-native-symbols
 // (2026-09-23, row O-GLITCHTIP-CALLS-HAVE-NO-RETRY — each re-sends a WRITE, and
 // each records why that is safe at its own call site); and, outside tooling/ops,

@@ -1,5 +1,14 @@
 # `extensions.yml`
 
+> ⏱ **2026-09-24: the CI lane moved to `.github/workflows/extensions-ci.yml`**
+> (O-EXTENSIONS-CI-REQUIRED-GATES-NOTHING). That file runs only as a call: ci.yml's
+> `extensions` job calls it on every pull request and every push to main, and ci-gate
+> needs that job, so a red extension job is a red required check. extensions.yml keeps
+> the tag, schedule, labeled-e2e and dispatch lanes, and its `ci` job calls the same
+> file on a dispatch with lane=ci. The job sections below keep their measurements; the
+> jobs from `build-free` through `e2e-proof-fresh` (and `ci-required`) are now jobs of
+> extensions-ci.yml. [`extensions-ci.md`](extensions-ci.md) says why it is a separate file.
+
 The prose that used to live inside `.github/workflows/extensions.yml`. The workflow keeps a
 one-line `# why:` on each non-obvious decision; everything that explains,
 retracts or records a measurement is here. Read `docs/ci/README.md` first —
@@ -14,10 +23,11 @@ it carries the rules every workflow in this repository has to obey.
 > never offset, and there is nothing left to re-measure them against. Where the
 > text they name is still live, it is in `extensions.yml` — for example the
 > matrix job the e2e gate parses, `name: e2e · ${{ matrix.suite.dir }}`, was
-> line 84 of *that* `ci.yml` and is `extensions.yml:1000` here (re-measured
+> line 84 of *that* `ci.yml` and is `extensions.yml:166` here (re-measured 2026-09-24; before that
 > 2026-09-07, after the daily-cron comment block at the top of the file moved
 > it again; the history of the number is 896, 913, 917, then 980 once every job
-> acquired a `timeout-minutes`, and 1000 now. Each of those was measured with
+> acquired a `timeout-minutes`, 1000 from 2026-09-07, and 166 since the CI lane
+> moved into `extensions-ci.yml` on 2026-09-24. Each of those was measured with
 > `grep -n`, never offset, which is why the last one was found to have been
 > stale on `main` before this branch touched anything). This repository's own `ci.yml:84` is an unrelated line.
 
@@ -58,7 +68,10 @@ reading: `extensions-lane-accounting` at the bottom asserts that the set of
 jobs which actually ran matches the lane the event selected, and fails if a
 lane came out empty.
 
-  ci        push to main · pull_request · workflow_dispatch(lane=ci)
+  ci        extensions-ci.yml, called by ci.yml on push to main and every
+            pull_request (required through ci-gate) · workflow_dispatch(lane=ci)
+            here, through the `ci` call job. (Until 2026-09-24 this line said
+            "push to main", and extensions.yml had no such trigger.)
   e2e       daily cron (20:53 UTC) · a PR labelled `run-e2e`
             · workflow_dispatch(lane=e2e)
   release   a tag push `<tool>-v<x.y.z>[.<n>]`, one filter line per tool
@@ -825,10 +838,21 @@ without it just resets the clock until the next partial bump.
 
 ## job `ci-required`
 
+> ⏱ **2026-09-24, and it reverses the heading below.** Nobody ever required
+> `ci-required`, and requiring it would not have worked: on a labeled pull request
+> the whole CI lane was SKIPPED (the `labeled` run cancelled the `opened` one in the
+> shared concurrency group, measured on #861 at `7dc3ea62`), and a skipped required
+> check reads as Success. The job now lives in `extensions-ci.yml` and is required
+> through ci-gate, by way of ci.yml's `extensions` call job. **Do not add it to branch
+> protection**: after the move it is no longer a top-level check, so a required
+> `ci-required` would sit Pending forever. Its self-inventory now reads every job of
+> its own file (built-in case 10), and a skip is licensed only for gates, sims and
+> package (case 11). The text below is the dated record of why it was written.
+
 ### above `ci-required:`
 
 ═════════════════════════════════════════════════════════════════════════
-THE ONE CHECK NAME BRANCH PROTECTION CAN REQUIRE.
+THE ONE CHECK NAME BRANCH PROTECTION CAN REQUIRE (until 2026-09-24; see above).
 
 🔴 THE NAME IS THE DELIVERABLE, AND IT IS `ci-required`. A required status
 check is configured by its STRING. Three of the jobs above name themselves

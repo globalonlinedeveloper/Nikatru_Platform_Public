@@ -97,7 +97,10 @@
 //      narrowed job+target, the watched workflow gone, its cron no longer daily,
 //      the suite ripped out of it, or the register no longer declaring the timer
 //      record. [C-COVERAGE-LOST-IS-NOT-PASS] — "I could not tell" must never
-//      share an exit code with "every floor holds".
+//      share an exit code with "every floor holds". Since 2026-09-24 (trap
+//      ci-48) also: a request past the shared per-request ceiling, and a run
+//      page the cross-read PROVED STALE whose union with the cross-read is still
+//      not fresh (a stale page whose cross-read holds a fresh run is exit 0).
 //
 // ⚠️ ONE DELIBERATE EXCEPTION, AND IT IS NOT A DRAFTING SLIP. `evaluateFreshness`
 // prints "COVERAGE LOST" inside two window-saturation DIAGNOSES that still exit
@@ -300,7 +303,9 @@
 // Offline testing: --runs-file <json> --timer-file <json> --now <iso> injects
 // fixture data for BOTH records so the decision logic is genuinely exercised
 // without network. It prints a loud banner so its presence in a real CI log is
-// unmistakable.
+// unmistakable. Since 2026-09-24 the runs file is an array (a page, no
+// cross-read) or { "page": [...], "cross": [...] }, so the stale-page union is
+// reachable offline too.
 //
 // ⚠️ THE TWO FIXTURE FLAGS ARE ALL-OR-NOTHING, and that is a coverage rule, not
 // ergonomics. A half-fixture would exercise one limb offline and send the other
@@ -325,6 +330,9 @@ import { fileURLToPath } from 'node:url';
 // query is how two transports drift apart with nobody watching the one that
 // moved. `parseJsonc` is the same file's wrangler parser, for the same reason.
 import { parseJsonc, queryD1 } from '../ops/check-heartbeats.mjs';
+// The run history is read through the SHARED anchored reader (trap ci-48): the
+// stale-page anchor, the cross-read, the union and the per-request ceiling.
+import { anchoredRunRead, gradeUnion, describeRead } from './anchored-run-read.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const WORKFLOW = 'e2e.yml';
@@ -659,7 +667,15 @@ export function evaluateTimer(rows, nowMs, maxAgeDays = MAX_AGE_DAYS) {
 
 // The decision, kept pure so it can be tested without network. This is where the
 // real defects live — the API call is the boring half.
-export function evaluateFreshness(runs, nowMs, maxAgeDays = MAX_AGE_DAYS, pageSize = RUNS_PAGE_SIZE) {
+//
+// ⏱ 2026-09-24 (trap ci-48): `read`, when given, is what was read —
+// { query, rows, crossRows, saturated } from the shared reader — and the stale
+// reason then NAMES the newest run, its `updated_at`, the row count and the
+// query. PR #913's CI failed with "5.0 days old, ceiling is 3" and nothing else,
+// so a stale page and a real five-day gap read identically. `saturated` comes
+// from the PAGE, not from `runs.length`: the runs graded are the union of the
+// page and its cross-read, and the cross-read's rows say nothing about the page.
+export function evaluateFreshness(runs, nowMs, maxAgeDays = MAX_AGE_DAYS, pageSize = RUNS_PAGE_SIZE, read = null) {
   if (!Array.isArray(runs)) {
     return { ok: false, reason: 'run list was not an array — treating an unreadable answer as a failure' };
   }
@@ -668,7 +684,7 @@ export function evaluateFreshness(runs, nowMs, maxAgeDays = MAX_AGE_DAYS, pageSi
   // API had more successes to give and this query never asked for them — which
   // is a coverage loss in this file's own sense: rows the guard is meant to see
   // and did not.
-  const windowSaturated = runs.length >= pageSize;
+  const windowSaturated = typeof read?.saturated === 'boolean' ? read.saturated : runs.length >= pageSize;
   const successes = runs.filter((r) => r && r.conclusion === 'success' && r.updated_at);
   if (successes.length === 0) {
     return { ok: false, reason: `no successful ${WORKFLOW} run found on ${BRANCH}` };
@@ -733,6 +749,12 @@ export function evaluateFreshness(runs, nowMs, maxAgeDays = MAX_AGE_DAYS, pageSi
   }
   const ageDays = (nowMs - stamp) / 86_400_000;
   const stale = ageDays > maxAgeDays;
+  // What the stale verdict was read from, in the reason itself (trap ci-48).
+  const rows = read?.rows ?? runs.length;
+  const readFrom =
+    ` — run ${newest.id} (updated_at ${newest.updated_at}) is the newest green run on ${BRANCH} of ${rows} row(s) returned by ` +
+    `${read?.query ? `GET ${read.query}` : 'the run list handed to this check'}` +
+    (Number.isInteger(read?.crossRows) ? ` and ${read.crossRows} row(s) on its cross-read` : '');
 
   // ⚠️ THE AGE BRANCH CARRIES THE SATURATION CAVEAT TOO, since 2026-08-26. This
   // file used to argue it could never need one: truncation drops the oldest
@@ -760,9 +782,16 @@ export function evaluateFreshness(runs, nowMs, maxAgeDays = MAX_AGE_DAYS, pageSi
           'saw. This is a statement about the WINDOW as well as the age: the page is ordered by `created_at` but this age is ' +
           'graded by `updated_at`, and a run created earlier can update later, so a truncated scheduled run could in principle ' +
           'be newer than this one. It still FAILS — a guard that cannot see the timer must not certify it — but confirm with ' +
-          `\`gh run list --workflow=${WORKFLOW} --branch ${BRANCH} --status success\` before blaming the schedule.`
-        : `newest green scheduled run is ${ageDays.toFixed(1)} days old, ceiling is ${maxAgeDays}`,
+          `\`gh run list --workflow=${WORKFLOW} --branch ${BRANCH} --status success\` before blaming the schedule.${readFrom}.`
+        : `newest green scheduled run is ${ageDays.toFixed(1)} days old, ceiling is ${maxAgeDays}${readFrom}`,
   };
+}
+
+/** The newest run that can satisfy the OUTCOME limb: a success on main, by
+ *  `updated_at` — the same selection evaluateFreshness grades. */
+export function newestGreenOnBranch(runs) {
+  const s = (runs ?? []).filter((r) => r && r.conclusion === 'success' && r.head_branch === BRANCH && !Number.isNaN(Date.parse(r.updated_at ?? '')));
+  return s.length ? s.reduce((a, b) => (Date.parse(b.updated_at) > Date.parse(a.updated_at) ? b : a)) : null;
 }
 
 /** The run-history query.
@@ -775,21 +804,49 @@ export function buildRunsUrl(repo) {
   return `https://api.github.com/repos/${repo}/actions/workflows/${WORKFLOW}/runs?branch=${BRANCH}&status=success&per_page=${RUNS_PAGE_SIZE}`;
 }
 
-async function fetchRuns() {
+async function fetchRuns(nowMs) {
   const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
   if (!token) throw new Error('no GITHUB_TOKEN / GH_TOKEN in the environment — cannot read run history, so this fails closed');
   const repo = process.env.GITHUB_REPOSITORY || DEFAULT_REPO;
-  const url = buildRunsUrl(repo);
-  const res = await fetch(url, {
-    headers: {
-      authorization: `Bearer ${token}`,
-      accept: 'application/vnd.github+json',
-      'user-agent': 'nikatru-ci',
-    },
+  return readRunHistory({ repo, token, nowMs });
+}
+
+/**
+ * 🔴 ONE PAGE WAS NEVER EVIDENCE OF ITS OWN CURRENCY (trap ci-48, 2026-09-24).
+ * PR #913's CI run 35967342865 read this query at ~07:01Z and was served a page
+ * whose newest green run on main was 5.0 days old while 35962444367 (06:06:58Z
+ * that day) existed; the same query at 07:05:34Z returned 73 rows, newest
+ * 35962444367. This reader had no anchor, no cross-read and no request ceiling.
+ * It now reads through tooling/ci/anchored-run-read.mjs, which it shares with
+ * assert-platform-proof-fresh.mjs and extensions/scripts/assert-e2e-proof-fresh.mjs.
+ *
+ * Anchors that fit THIS reader, measured: the cross-read only. It runs in
+ * ci.yml and grades e2e.yml, so the self-run floor never applies; e2e.yml has no
+ * push trigger at all, so `pushTriggersBranch` is false and no branch head
+ * anchors it. The query is kept exactly: `branch=main&status=success`.
+ *
+ * Exported with an injectable `read(url, { signal })`, `fixture` and `retry`,
+ * so the measured page and a read that never answers are test cases.
+ */
+export async function readRunHistory({ repo = DEFAULT_REPO, token = null, read = null, fixture = undefined, nowMs = Date.now(), retry = {} } = {}) {
+  return anchoredRunRead({
+    workflow: WORKFLOW,
+    url: buildRunsUrl(repo),
+    token,
+    read,
+    fixture,
+    nowMs,
+    what: `the successful-run history of ${WORKFLOW} on ${BRANCH}`,
+    label: `${WORKFLOW} runs`,
+    retry,
   });
-  if (!res.ok) throw new Error(`GitHub API returned ${res.status} for ${WORKFLOW} runs`);
-  const body = await res.json();
-  return body.workflow_runs;
+}
+
+/** The OUTCOME verdict, graded on the UNION of the page and its cross-read
+ *  (decision E2), with the read's own facts carried into the stale reason. */
+export function gradeRunHistory(read, nowMs) {
+  const ctx = { query: read.query, rows: read.page.length, crossRows: read.cross ? read.cross.runs.length : null, saturated: read.saturated };
+  return gradeUnion(read, (runs) => evaluateFreshness(runs, nowMs, MAX_AGE_DAYS, RUNS_PAGE_SIZE, ctx), newestGreenOnBranch);
 }
 
 /** The timer-record query, over the SHARED reader.
@@ -836,14 +893,19 @@ async function main() {
     return;
   }
 
-  let runs;
+  let read = null;
   let timerRows;
   let runsError = null;
   let timerError = null;
   if (runsFile) {
     console.log('!!  OFFLINE FIXTURE MODE — --runs-file and --timer-file are set. This must NEVER appear in a real CI log.');
+    // `--runs-file` holds an array (a page, and no cross-read — reported as
+    // `not run (fixture has none)`) or { "page": [...], "cross": [...] }
+    // (decision E6). Either way it goes through the reader the live path uses,
+    // and nothing reaches the network.
     try {
-      runs = JSON.parse(readFileSync(runsFile, 'utf8'));
+      const doc = JSON.parse(readFileSync(runsFile, 'utf8'));
+      read = await readRunHistory({ repo: process.env.GITHUB_REPOSITORY || DEFAULT_REPO, fixture: doc, nowMs });
     } catch (e) {
       runsError = `could not read fixture ${runsFile}: ${e.message}`;
     }
@@ -859,7 +921,7 @@ async function main() {
     // discover the second only on the next run. Both records are read, both
     // verdicts are printed, and the exit code is the worst of them.
     try {
-      runs = await fetchRuns();
+      read = await fetchRuns(nowMs);
     } catch (e) {
       runsError = e.message;
     }
@@ -870,7 +932,7 @@ async function main() {
     }
   }
 
-  const runVerdict = runsError ? { ok: false, coverageLost: true, reason: runsError } : evaluateFreshness(runs, nowMs);
+  const runVerdict = runsError ? { ok: false, coverageLost: true, reason: runsError } : gradeRunHistory(read, nowMs);
   const timerVerdict = timerError ? { ok: false, coverageLost: true, reason: timerError } : evaluateTimer(timerRows, nowMs);
 
   // ── BOTH LIMBS, SIDE BY SIDE, ON EVERY RUN ────────────────────────────────
@@ -885,6 +947,11 @@ async function main() {
     'OUTCOME (GitHub run history) :',
     runVerdict.ok,
   );
+  // DECISION E3 — WHAT WAS READ, pass or fail: the query, rows, per_page,
+  // saturation, the newest green run on main and the cross-read. PR #913's red
+  // printed none of it, so a stale page could not be told from a real gap.
+  say(read ? describeRead(read, newestGreenOnBranch) : 'nothing was read — see the line above', 'READ    (GitHub run history) :', runVerdict.ok);
+  if (runVerdict.stalePageCarried) console.log(runVerdict.stalePageCarried);
   say(
     timerVerdict.ok
       ? `${TIMER_TABLE} row for ${TIMER_JOB} -> ${TIMER_TARGET} at ${timerVerdict.ranAt}, ${timerVerdict.ageDays.toFixed(1)} day(s) old (ceiling ${MAX_AGE_DAYS})`
