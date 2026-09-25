@@ -167,7 +167,9 @@ export function armingOf(row) {
  * fail-OPEN into the one act this repository treats as irreversible. The
  * identity now lives on `extensions/Extension/<tool>/tool.json`
  * `storeMetadata.stores.<key>.listingId`, and a channel that is armed for a tool
- * with no listing id is NOT armed for that tool.
+ * with no listing id is NOT armed for that tool. (⏱ 2026-09-25: Firefox's add-on
+ * id is the exception — the package declares it, and `listingId` here is the
+ * value publish-arming.mjs derived from the tool's own files.)
  *
  * Pure, like everything else here: the caller reads the row and the tool's
  * declared id and hands both over.
@@ -191,8 +193,14 @@ export function armingOfTool(row, { toolId = null, identityField = 'listingId', 
   if (identified) {
     reasons.push(`tool "${tool}" declares its own \`${identityField}\` for this store, so the destination is this tool's listing and not another's`);
   } else {
+    // ⏱ 2026-09-25 (O-NEW-TOOL-HAS-NO-FIREFOX-IDENTITY): this sentence is about
+    // the STORE-ISSUED ids only (the Chrome item id, the Edge product id). An id
+    // the package manifest declares — Firefox's `browser_specific_settings.gecko.id`
+    // — is derived by extensions/scripts/publish-arming.mjs toolListingId() from
+    // the tool's publish/identity.json, and reaches here either set or not at all:
+    // an id it cannot derive is refused there, before this function is called.
     blockers.push(
-      `tool "${tool}" declares no \`${identityField}\` for this store — the listing id is issued by the STORE and never by this factory, is not derivable, and is read off that store's own dashboard into the tool manifest — so there is no destination to address`,
+      `tool "${tool}" declares no \`${identityField}\` for this store — a store-issued listing id is issued by the STORE and never by this factory, is not derivable, and is read off that store's own dashboard into the tool manifest — so there is no destination to address`,
     );
   }
 

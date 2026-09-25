@@ -21,14 +21,25 @@
 // with something plausible. A guessed publisher id does not fail here; it fails
 // against a live account, on somebody else's item id.
 //
-// ── THE TWO CALLS ────────────────────────────────────────────────────────────
+// ── THE TWO CALLS, AND THE READ BETWEEN THEM ─────────────────────────────────
 //   POST https://chromewebstore.googleapis.com/upload/v2/publishers/{P}/items/{I}:upload
 //        Authorization: Bearer <token>; body = the zip bytes.
+//        → `uploadState`; while it is IN_PROGRESS the upload is re-read with
+//   GET  https://chromewebstore.googleapis.com/v2/publishers/{P}/items/{I}:fetchStatus
+//        → `lastAsyncUploadState`, until SUCCEEDED or a failure state
 //   POST https://chromewebstore.googleapis.com/v2/publishers/{P}/items/{I}:publish
-//        Authorization: Bearer <token>.
+//        Authorization: Bearer <token>. → `state`, the item's state
 // preceded by the token mint:
 //   POST https://oauth2.googleapis.com/token
 //        grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer, assertion=<RS256 JWT>
+// CWS_API_BASE_URL and CWS_OAUTH_TOKEN_URL may point these at loopback for the
+// stub tests, and at nothing else (store-poll.mjs `loopbackBase`).
+//
+// 🔴 A 200 IS NOT A SUBMISSION (EXT-6, 2026-09-25). Until then both POSTs were
+// read for `ok` alone, so a 200 upload whose uploadState was FAILED was published,
+// and a 200 publish whose state was REJECTED printed SUBMITTED. Each answer is
+// now classified against the v2 vocabulary in store-poll.mjs, the publish is sent
+// only after the upload reads SUCCEEDED, and SUBMITTED names the item state.
 //
 // ⏱ CONVERTED 2026-09-09 — THE AUTH IS A SERVICE ACCOUNT, NOT A REFRESH TOKEN.
 // CWS_CLIENT_ID / CWS_CLIENT_SECRET / CWS_REFRESH_TOKEN are retired. Google
@@ -61,8 +72,20 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { laneVerdict, ArmingCoverageLost, readSubmittablePackage } from './publish-arming.mjs';
-import { mintAccessToken, CWS_SA_ENV, CWS_SA_DOC } from './publish-cws-token.mjs';
+import { mintAccessToken, CWS_SA_ENV, CWS_SA_DOC, TOKEN_URL } from './publish-cws-token.mjs';
 import { requireStorePublishEnvironment } from './lib/store-environment.mjs';
+import {
+  pollToTerminal,
+  readStatus,
+  parseBody,
+  classifyCwsUpload,
+  classifyCwsSubmission,
+  loopbackBase,
+  overrideLine,
+  pollTiming,
+  NOT_CONFIRMED,
+} from './store-poll.mjs';
+import { CouldNotLook } from '../../tooling/ops/bounded-retry.mjs';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PRIMARY SOURCES — fetched 2026-09-07.
@@ -72,8 +95,7 @@ const PRIMARY_SOURCES = Object.freeze({
   serviceAccounts: CWS_SA_DOC,
 });
 
-const UPLOAD_ROOT = 'https://chromewebstore.googleapis.com/upload/v2/publishers';
-const ITEM_ROOT = 'https://chromewebstore.googleapis.com/v2/publishers';
+const API_ORIGIN = 'https://chromewebstore.googleapis.com';
 
 const argv = process.argv.slice(2);
 const opt = (name, fallback = null) => {
@@ -95,6 +117,26 @@ async function main() {
     die(['FAIL --tool <id> is required.']);
     return;
   }
+  // The seams and the poll timing are settled before anything is read: a refused
+  // override stops the run before any request, to any host.
+  const api = loopbackBase('CWS_API_BASE_URL', API_ORIGIN);
+  const tokenSeam = loopbackBase('CWS_OAUTH_TOKEN_URL', TOKEN_URL);
+  for (const [name, s] of [['CWS_API_BASE_URL', api], ['CWS_OAUTH_TOKEN_URL', tokenSeam]]) {
+    if (s.error !== undefined) {
+      die([`FAIL ${s.error}`]);
+      return;
+    }
+    if (s.override) console.log(overrideLine(name, s.base));
+  }
+  // Only the API seam licenses a shortened poll: the poll reads the API, never
+  // the token endpoint.
+  const timing = pollTiming(process.env, api.override);
+  if (timing.error !== undefined) {
+    die([`FAIL ${timing.error}`]);
+    return;
+  }
+  const UPLOAD_ROOT = `${api.base}/upload/v2/publishers`;
+  const ITEM_ROOT = `${api.base}/v2/publishers`;
   let result = null;
   try {
     result = laneVerdict('chrome-webstore', { toolId: TOOL, ...(opt('repo-root') === null ? {} : { root: opt('repo-root') }) });
@@ -122,7 +164,7 @@ async function main() {
     return;
   }
 
-  const tok = await mintAccessToken({ serviceAccountJson: process.env[CWS_SA_ENV] });
+  const tok = await mintAccessToken({ serviceAccountJson: process.env[CWS_SA_ENV], tokenUrl: tokenSeam.base });
   if (!tok.ok) {
     die([
       `FAIL the Chrome Web Store token mint failed (HTTP ${tok.status}): ${tok.detail}`,
@@ -164,7 +206,37 @@ async function main() {
     ]);
     return;
   }
-  console.log(`ok   uploaded ${ZIP} — ${upText.slice(0, 300)}`);
+  // The upload's 200 carries its verdict in `uploadState`. A large package may
+  // still be processing, and then the upload is re-read until it is terminal.
+  let upload = classifyCwsUpload(parseBody(upText), up.status);
+  if (upload.state === 'in-progress') {
+    console.log(`ok   upload accepted and ${upload.detail} — polling :fetchStatus`);
+    const bearer = { authorization: `Bearer ${tok.accessToken}` };
+    try {
+      upload = await pollToTerminal({
+        read: () => readStatus(`${ITEM_ROOT}/${publisher}/items/${item}:fetchStatus`, bearer, 'the Chrome upload status read'),
+        classify: classifyCwsUpload,
+        ...timing,
+      });
+    } catch (e) {
+      if (!(e instanceof CouldNotLook)) throw e;
+      die([`FAIL could not look at the upload status: ${e.message}`, `     ${NOT_CONFIRMED}`]);
+      return;
+    }
+  }
+  if (upload.state === 'timed-out') {
+    die([`FAIL the upload is ${upload.detail}.`, `     ${NOT_CONFIRMED}`]);
+    return;
+  }
+  if (upload.state !== 'succeeded') {
+    die([
+      `FAIL the Chrome Web Store upload ended ${upload.detail}`,
+      '     Nothing was published: the publish call is sent only after the upload reads SUCCEEDED.',
+      `     Source: ${PRIMARY_SOURCES.api}`,
+    ]);
+    return;
+  }
+  console.log(`ok   uploaded ${ZIP} — uploadState SUCCEEDED`);
 
   const pub = await fetch(`${ITEM_ROOT}/${publisher}/items/${item}:publish`, {
     method: 'POST',
@@ -179,10 +251,19 @@ async function main() {
     ]);
     return;
   }
-  console.log(`ok   published — ${pubText.slice(0, 300)}`);
+  // The publish's 200 carries the item's state; REJECTED arrives as a 200 too.
+  const submission = classifyCwsSubmission(parseBody(pubText), pub.status);
+  if (submission.state !== 'succeeded') {
+    die([
+      `FAIL the Chrome Web Store did not take the submission: ${submission.detail}`,
+      '     The package IS uploaded; the store refused the publish. Do not re-upload the same version.',
+    ]);
+    return;
+  }
+  console.log(`ok   published — item state ${submission.detail}`);
   // The listing the [10]D-9 record names: the tool's `listings.chrome`.
   if (result.identity.listingUrl !== null) console.log(`LISTING_URL=${result.identity.listingUrl}`);
-  console.log(`publish-cws: SUBMITTED — ${TOOL} uploaded and submitted for review on the Chrome Web Store.`);
+  console.log(`publish-cws: SUBMITTED — ${TOOL} uploaded and submitted for review on the Chrome Web Store (item state ${submission.detail}).`);
 }
 
 await main();

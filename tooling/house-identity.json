@@ -1,0 +1,23 @@
+{
+  "_readme": [
+    "THE HOUSE IDENTITY: the four facts every browser extension this repository ships shares, written once. A tool's publish/identity.json is these values with its own slug put in, and extensions/scripts/new-tool.mjs writes it that way at stamp time, together with the Firefox add-on id <slug>@<ownerDomain> in the stamped publish/manifest.firefox.json.",
+    "Graded by tooling/ci/assert-house-identity.mjs, in extensions-ci.yml's catalogue job: (a) no value here is a placeholder, (b) every extensions/Extension/*/publish/identity.json equals these values with {slug} expanded and its slug equal to its tool.json id, (d) a run that read no tool's identity is COVERAGE LOST, exit 2. Limb (c), the support address against tooling/legal/policy-claims.json, is not implemented: that file declares no support-address key to compare against (its top-level keys, measured 2026-09-25: _readme, pages, siteRoot, claims).",
+    "Every value below was FullShot's (extensions/Extension/Full_Screen_Shot/publish/identity.json) on the day this file was written. No new value was chosen here; the file moved them to where the next tool reads them."
+  ],
+  "ownerDomain": {
+    "value": "nikatru.com",
+    "why": "The right-hand side of every Firefox add-on id, <slug>@<ownerDomain>. AMO fixes an add-on's id at FIRST SIGNING, so a placeholder that ships once is a permanently wrong identity rather than a typo. A domain this business controls: it serves the storefront the extensions are catalogued on. FullShot's identity.json records the choice as made on 2026-08-18."
+  },
+  "supportEmail": {
+    "value": "support@nikatru.com",
+    "why": "The store listing's support field, one inbox for every tool. The same address is asserted in SECURITY.md and sites/nikatru/contact.html by the storefront's assert-repo-posture guard, so it is not a new claim."
+  },
+  "privacyPolicyUrlPattern": {
+    "value": "https://nikatru.com/{slug}/privacy",
+    "why": "One privacy page per tool, at a path named by the tool's slug. {slug} is replaced with the tool's slug to give its identity.json privacyPolicyUrl. The pattern states where the page will be; that a given tool's page is live is a separate fact, checked before a listing is submitted (FullShot's was verified live on 2026-08-21)."
+  },
+  "homepageUrl": {
+    "value": "https://nikatru.com/",
+    "why": "The storefront that lists every extension. Optional in a store listing, and the same for every tool."
+  }
+}

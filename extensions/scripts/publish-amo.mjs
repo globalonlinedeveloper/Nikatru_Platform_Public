@@ -102,8 +102,9 @@ export function signArgv({ sourceDir, artifactsDir, metadataPath }) {
   ];
 }
 
-/** An AMO API JWT: HS256 over {iss, jti, iat, exp}, per AMO's authentication docs. */
-function amoJwt(issuer, secret, now = Math.floor(Date.now() / 1000)) {
+/** An AMO API JWT: HS256 over {iss, jti, iat, exp}, per AMO's authentication docs.
+ *  Exported for store-key-keepalive.mjs, whose scheduled probe signs the same way. */
+export function amoJwt(issuer, secret, now = Math.floor(Date.now() / 1000)) {
   const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
   const unsigned = `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({ iss: issuer, jti: randomUUID(), iat: now, exp: now + 60 })}`;
   return `${unsigned}.${createHmac('sha256', secret).update(unsigned).digest('base64url')}`;
