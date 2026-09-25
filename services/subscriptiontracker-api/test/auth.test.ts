@@ -444,7 +444,7 @@ describe('a REVOKED session is refused at both boundaries, and the read fails op
     jwk = { ...(await exportJWK(pair.publicKey)), alg: 'ES256', kid: 'rev-key-1' };
     vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.startsWith(DOWN)) throw new Error('Network connection lost');
+      if (new URL(url).origin === DOWN) throw new Error('Network connection lost');
       if (url === `${UP}/auth/v1/.well-known/jwks.json`) {
         return new Response(JSON.stringify({ keys: [jwk] }), { status: 200 });
       }
