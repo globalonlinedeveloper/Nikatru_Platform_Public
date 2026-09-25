@@ -104,6 +104,11 @@
       "reads": "every tooling/ci invocation in every tracked workflow"
     },
     {
+      "path": "tooling/ci/assert-guards-refuse-empty.mjs",
+      "property": "workflow-scan",
+      "resolves": "local-uses"
+    },
+    {
       "path": "tooling/ci/assert-hostname-depth.mjs",
       "property": "refuses-blind",
       "evidence": "no .github/workflows/*.yml was found, so no workflow host was read.",

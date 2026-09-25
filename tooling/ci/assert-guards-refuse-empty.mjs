@@ -105,13 +105,14 @@
 // Exit:   0 = every probed executable refused · 1 = one printed ok over nothing,
 //         or the scan itself could not be trusted.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, readdirSync, writeFileSync, existsSync, mkdirSync, mkdtempSync, copyFileSync, rmSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, mkdtempSync, copyFileSync, rmSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, resolve, dirname, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
 import { codeMask, NON_CODE } from './text-reductions.mjs';
+import { parseResolvedWorkflows, workflowSteps, refusalText, shellSegments, commandAt, WORKFLOW_DIR } from './workflow-scan.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 /* The root is read AFTER the fixture flag is parsed, a few lines below, so that a
@@ -558,63 +559,86 @@ for (const [rel, src] of sourceOf) {
 // guard-home sources, so this file called the preload dead ("nothing imports
 // it") and reddened PR #942 (run 36130094190, job 108055127917). A `--import` in
 // a workflow's executable text is the same edge with the runtime as the
-// importer. It is DERIVED from the workflows GitHub runs, never listed: a
-// preload named only in a YAML comment is no edge, and the home prefix is
-// required, so a `--import` of another tree's file promotes nothing here. The
-// leading `./` or `../` is not resolved — it depends on the step's
-// working-directory, and a wrong one fails that step loudly on its own.
+// importer. It is DERIVED from the workflows GitHub runs, never listed, and read
+// through workflow-scan.mjs like every other workflow reader: composites and
+// local callees inlined, comments stripped, and only a step's `run:` text read,
+// one shell segment at a time, where the segment's command is `node` itself. A
+// step `name:`, an `if:`/`env:` value, or an `echo "node --import …"` naming a
+// preload is no edge. The home prefix is required, so a `--import` of another
+// tree's file promotes nothing here, and the name must end at `.mjs`, so
+// `x.mjs.bak` is no edge. The leading `./` or `../` is not resolved — it
+// depends on the step's working-directory, and a wrong one fails that step
+// loudly on its own. Every miss here LOSES an edge, which reports the module
+// dead, loudly; none passes one silently.
+// The first version walked .github/workflows itself over raw YAML and reddened
+// PR #942 again (run 36133361080, job 108065752801) on two guards:
+// assert-walks-bounded (a second directory walker) and assert-workflow-readers
+// (a reader with no row in tooling/workflow-readers.json).
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const PRELOAD_RE = new RegExp(
-  `--import(?:=|\\s+)['"]?(?:\\.{1,2}/)*(${HOMES.map(escapeRe).join('|')})/([A-Za-z0-9][A-Za-z0-9._-]*\\.mjs)`,
+  `--import(?:=|\\s+)['"]?(?:\\.{1,2}/)*(${HOMES.map(escapeRe).join('|')})/([A-Za-z0-9][A-Za-z0-9._-]*\\.mjs)(?![A-Za-z0-9._-])`,
   'g',
 );
-/** A YAML line up to its comment: `#` at the head or after whitespace. A `#`
- *  inside a quoted run string also cuts, which can only LOSE an edge — the
- *  module is then reported dead, loudly, never passed silently. */
-const yamlCode = (text) =>
-  text
-    .split(/\r?\n/)
-    .map((l) => {
-      const i = l.search(/(?:^|\s)#/);
-      return i === -1 ? l : l.slice(0, i);
-    })
-    .join('\n');
-const preloadsFrom = (text) => [...yamlCode(text).matchAll(PRELOAD_RE)].map((m) => `${m[1]}/${m[2]}`);
+/** The preloads a step's `run:` text names, from its `node` segments only. */
+const preloadsFrom = (runText) =>
+  shellSegments(runText)
+    .filter((seg) => commandAt(seg, 'node(?=\\s)'))
+    .flatMap((seg) => [...seg.matchAll(PRELOAD_RE)].map((m) => `${m[1]}/${m[2]}`));
 
 // The matcher's own negative test, on every run, like the import canaries above.
 // Assembled from halves so no whole path to a file that is not on disk appears
 // as one token in this repository.
 const CANARY_PRELOAD_NAME = 'canary-' + 'preload.mjs';
 const canaryPreloadRun = preloadsFrom(
-  `        run: node --import ../tooling/scripts/${CANARY_PRELOAD_NAME} --test-timeout=600000 --test x.test.mjs`,
+  `node --import ../tooling/scripts/${CANARY_PRELOAD_NAME} --test-timeout=600000 --test x.test.mjs`,
 );
-const canaryPreloadComment = preloadsFrom(
-  `        # run: node --import ./tooling/scripts/${CANARY_PRELOAD_NAME} --test x.test.mjs`,
-);
-const canaryPreloadForeign = preloadsFrom(`        run: node --import ./packages/lib/${CANARY_PRELOAD_NAME} --test x.test.mjs`);
+const canaryPreloadEcho = preloadsFrom(`echo "node --import ./tooling/scripts/${CANARY_PRELOAD_NAME} --test x.test.mjs"`);
+const canaryPreloadForeign = preloadsFrom(`node --import ./packages/lib/${CANARY_PRELOAD_NAME} --test x.test.mjs`);
+const canaryPreloadSuffix = preloadsFrom(`node --import ./tooling/scripts/${CANARY_PRELOAD_NAME}.bak --test x.test.mjs`);
 if (
   canaryPreloadRun.length !== 1 ||
   canaryPreloadRun[0] !== `tooling/scripts/${CANARY_PRELOAD_NAME}` ||
-  canaryPreloadComment.length !== 0 ||
-  canaryPreloadForeign.length !== 0
+  canaryPreloadEcho.length !== 0 ||
+  canaryPreloadForeign.length !== 0 ||
+  canaryPreloadSuffix.length !== 0
 ) {
   coverageLost([
     'the preload matcher no longer reads `node --import <guard-home file>` as an edge, or reads one it must not.',
-    `A run line yielded [${canaryPreloadRun.join(', ')}] (must be exactly tooling/scripts/${CANARY_PRELOAD_NAME}),`,
-    `the same line in a YAML comment yielded [${canaryPreloadComment.join(', ')}] (must be empty), and a preload`,
-    `from outside the guard homes yielded [${canaryPreloadForeign.join(', ')}] (must be empty).`,
+    `A node run segment yielded [${canaryPreloadRun.join(', ')}] (must be exactly tooling/scripts/${CANARY_PRELOAD_NAME});`,
+    `the same text inside an echo yielded [${canaryPreloadEcho.join(', ')}], a preload from outside the guard homes`,
+    `[${canaryPreloadForeign.join(', ')}], and a \`.mjs.bak\` name [${canaryPreloadSuffix.join(', ')}] (all three must be empty).`,
   ]);
 }
 
-const WORKFLOWS = join(ROOT, '.github', 'workflows');
+const resolvedWorkflows = parseResolvedWorkflows(ROOT);
+if (resolvedWorkflows.refusal !== null) {
+  coverageLost([
+    refusalText(resolvedWorkflows.refusal),
+    'The workflow `--import` preloads are read from the resolved workflows; a step this cannot resolve could',
+    'hold one, and the module it loads would be reported dead or, worse, a dead one passed.',
+  ]);
+}
 const preloaded = new Set();
-if (existsSync(WORKFLOWS)) {
-  for (const f of readdirSync(WORKFLOWS).filter((n) => /\.ya?ml$/i.test(n)).sort()) {
-    for (const target of preloadsFrom(readFileSync(join(WORKFLOWS, f), 'utf8'))) {
-      preloaded.add(target);
-      importedBy.set(target, (importedBy.get(target) ?? 0) + 1);
+let runStepsRead = 0;
+for (const wf of resolvedWorkflows.workflows) {
+  for (const job of wf.jobs.values()) {
+    for (const step of workflowSteps(job)) {
+      if (!step.run) continue;
+      runStepsRead++;
+      for (const target of preloadsFrom(step.run.text)) {
+        preloaded.add(target);
+        importedBy.set(target, (importedBy.get(target) ?? 0) + 1);
+      }
     }
   }
+}
+// A fixture tree carries no workflows; the real repository always does. Zero
+// here is a parse that read nothing, and every preload would then read as dead.
+if (scanningRealRepo && runStepsRead === 0) {
+  coverageLost([
+    `read ${resolvedWorkflows.workflows.length} workflow(s) and ZERO \`run:\` steps under ${WORKFLOW_DIR}.`,
+    'The workflow `--import` preloads cannot be derived from nothing.',
+  ]);
 }
 
 const libraries = [];

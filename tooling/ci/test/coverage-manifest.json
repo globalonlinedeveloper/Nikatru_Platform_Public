@@ -108,7 +108,7 @@
   "guard-coverage.test.mjs": 67,
   "guard-declaration.test.mjs": 8,
   "guard-sweep-invocations.test.mjs": 5,
-  "guards-refuse-empty.test.mjs": 17,
+  "guards-refuse-empty.test.mjs": 18,
   "guards.test.mjs": 438,
   "heartbeats.test.mjs": 77,
   "heavy-lock.test.mjs": 36,
