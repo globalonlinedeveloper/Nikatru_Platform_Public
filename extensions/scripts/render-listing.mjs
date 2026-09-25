@@ -46,6 +46,17 @@ import { repoRoot, resolveTool, loadAllTools, readText } from './lib/toolinfo.mj
 import { requiredNotice } from './lib/licence.mjs';
 import { transmits, recurringOfferings } from '../../contracts/legal/pro-gate.mjs';
 
+/** The file's text, or null if it is not there. One read answers both questions, so nothing can change
+ *  between a check and a use. Anything else still throws: a permissions error is not "absent". */
+function readTextOrNull(abs) {
+  try {
+    return readText(abs);
+  } catch (err) {
+    if (err.code === 'ENOENT') return null;
+    throw err;
+  }
+}
+
 export const LISTING_REL = 'store/listing.json';
 /* Resolved from the extensions root, which is what repoRoot() returns. */
 export const APP_CONFIG_REL = '../services/platform/src/app-config-data.json';
@@ -227,7 +238,7 @@ function main() {
     for (const [rel, body] of plan.files) {
       rendered++;
       const abs = path.join(tool.dirAbs, rel);
-      const cur = fs.existsSync(abs) ? readText(abs) : null;
+      const cur = readTextOrNull(abs);
       if (cur === body) { r.pass(tool.rel + '/' + rel, 'fresh'); continue; }
       if (check) {
         r.fail(tool.rel + '/' + rel + ' is what ' + LISTING_REL + ' renders',
