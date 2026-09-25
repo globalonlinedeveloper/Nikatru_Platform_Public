@@ -690,6 +690,66 @@ jobs:
     assert.deepEqual(steps[3].env.get('E2E_DRIVE_LOG'), { n: lineOf('E2E_DRIVE_LOG: ${{'), value: '${{ runner.temp }}/drive.log' });
   });
 
+  // ⏱ ADDED 2026-09-24 — `uses` and `with`, for assert-workflow-hardening.mjs limb 8.
+  const WITH_YML = `name: W
+jobs:
+  up:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Register
+        id: reg
+        run: echo "dir=x" >> "$GITHUB_OUTPUT"
+      - name: Keep the frames
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shots-\${{ github.run_id }}
+          if-no-files-found: ignore
+          path: |
+            logs/
+            \${{ steps.x.outputs.k }}/
+          retention-days: 3
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0, token: '\${{ secrets.T }}' }
+      - uses: "some/action@v1"
+        with:
+          body: >
+            one
+            two
+          wrapped: first
+            second
+`;
+  const withJob = () => parseWorkflow(fixture({ 'w.yml': WITH_YML }), '.github/workflows/w.yml').jobs.get('up');
+  const withLine = (needle) => WITH_YML.split('\n').findIndex((l) => l.includes(needle)) + 1;
+
+  test('workflowSteps reads `uses:` from a `- uses:` item and from an indented key, and null on a run: step', () => {
+    const steps = workflowSteps(withJob());
+    assert.deepEqual(steps.map((s) => s.uses), [null, 'actions/upload-artifact@v4', 'actions/checkout@v4', 'some/action@v1']);
+  });
+
+  test('workflowSteps reads `with:` keys, hyphens included, each at its own line', () => {
+    const up = workflowSteps(withJob())[1];
+    assert.deepEqual([...up.with.keys()], ['name', 'if-no-files-found', 'path', 'retention-days']);
+    assert.deepEqual(up.with.get('name'), { n: withLine('name: shots-'), value: 'shots-${{ github.run_id }}' });
+    assert.deepEqual(up.with.get('if-no-files-found'), { n: withLine('if-no-files-found:'), value: 'ignore' });
+    assert.deepEqual(up.with.get('retention-days'), { n: withLine('retention-days:'), value: '3' });
+    assert.equal(up.env.size, 0, 'a with: key is still never an environment variable');
+  });
+
+  test('workflowSteps joins a `path: |` block\'s continuation lines into the key\'s value, at the key\'s line', () => {
+    const up = workflowSteps(withJob())[1];
+    assert.deepEqual(up.with.get('path'), { n: withLine('path: |'), value: 'logs/\n${{ steps.x.outputs.k }}/' });
+  });
+
+  test('workflowSteps folds a `>` block with spaces, joins a wrapped plain value, and reads a flow-mapping `with:`', () => {
+    const steps = workflowSteps(withJob());
+    assert.deepEqual(steps[2].with.get('fetch-depth'), { n: withLine('with: { fetch-depth'), value: '0' });
+    assert.deepEqual(steps[2].with.get('token'), { n: withLine('with: { fetch-depth'), value: '${{ secrets.T }}' });
+    assert.equal(steps[3].with.get('body').value, 'one two');
+    assert.equal(steps[3].with.get('wrapped').value, 'first second');
+    assert.equal(steps[0].with.size, 0);
+  });
+
   test('jobEnv reads the job\'s own env: with quotes removed, and neither the workflow\'s nor a step\'s', () => {
     const env = jobEnv(jobOf('drive'));
     assert.deepEqual([...env.keys()], ['E2E_APP_ID', 'QUOTED']);

@@ -182,7 +182,7 @@ import { decodeRgba, encodeRgba, PngUnreadable } from '../store/png-codec.mjs';
 // the end of this file. Shared with the capture runner rather than reimplemented:
 // two readings of "does this capture leak the account" would eventually differ,
 // and the disagreement would be silent.
-import { scanCaptureSuite, selfTestAccountAddressDetector, SUITE_FILE } from '../store/capture-suite-scan.mjs';
+import { scanCaptureSuite, selfTestAccountAddressDetector, SUITE_FILE, DESKTOP_DEVICES } from '../store/capture-suite-scan.mjs';
 // 🔴 THE THING THE HEADER USED TO SAY COULD NOT BE SEEN — see THE INK limb at
 // the end of this file, and that module's header for the measurement table that
 // chose its threshold. It is a module for the same reason png-codec.mjs is one:
@@ -256,6 +256,21 @@ const contract = register.storeMetadataContract;
 if (contract === null || typeof contract !== 'object') {
   coverageLost([`${REGISTER} declares no \`storeMetadataContract\`.`]);
 }
+// Every device a declared capture runs on — the union of each channel's
+// `graphicAssets.screenshots.deviceTypeCoverage.sets.<type>.capture.flutterDevice`,
+// read once. The capture-suite scan's limb 5 holds each DESKTOP one to a layer
+// shutter; a fixture register with no capture block yields none, and limb 5 then
+// has nothing to judge.
+const captureDevices = [
+  ...new Set(
+    Object.values(contract.perChannel ?? {}).flatMap((ch) =>
+      Object.values(ch?.graphicAssets?.screenshots?.deviceTypeCoverage?.sets ?? {})
+        .map((set) => set?.capture?.flutterDevice)
+        .filter((d) => typeof d === 'string' && d !== ''),
+    ),
+  ),
+];
+const desktopCaptureDevices = captureDevices.filter((d) => DESKTOP_DEVICES.has(d));
 const storeRows = (Array.isArray(register.channels) ? register.channels : []).filter((c) => c && c.kind === 'store');
 if (storeRows.length === 0) {
   coverageLost([`${REGISTER} declares ZERO \`kind: "store"\` channels — there is no listing to have graphics for.`]);
@@ -1036,7 +1051,7 @@ let debugBannerBrickChecked = false;
   }
   for (const app of apps) {
     if (typeof app.slug !== 'string' || app.slug === '') continue;
-    const scan = scanCaptureSuite({ root: ROOT, app: app.slug });
+    const scan = scanCaptureSuite({ root: ROOT, app: app.slug, devices: captureDevices });
     if (!scan.present) continue;
     captureSuitesScanned++;
     capturedFrames += scan.frames.length;
@@ -1379,6 +1394,11 @@ if (problems.length) {
     `ok   THE ACCOUNT — ${captureSuitesScanned} capture suite(s) read, ${capturedFrames} frame(s) resolved to the ` +
       'screen they photograph, none of which reads `.email` off the session; every frame goes through the ' +
       'guarded shutter that refuses one carrying the signed-in account. Detector SELF-TESTED this run.',
+  );
+  console.log(
+    `ok   THE SHUTTER — every capture suite binds ONE shutter and hands it to every frame; ` +
+      `${desktopCaptureDevices.length} desktop capture device(s) in the register` +
+      `${desktopCaptureDevices.length ? ` (${desktopCaptureDevices.join(', ')})` : ''}, each mapped to the layer shutter.`,
   );
   if (captureSuitesScanned > 0 && capturedFrames === 0) {
     console.log('   ⬜ …and 0 frames resolved is not a pass. The suite captures nothing this scan can name;');

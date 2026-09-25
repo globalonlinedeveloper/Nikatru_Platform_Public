@@ -28,6 +28,18 @@
   "@restorePurchasesHint": {
     "description": "Explains what the control does in terms of the user's situation rather than the mechanism."
   },
+  "restoreFoundPlan": "We found your subscription. It is active on this account.",
+  "@restoreFoundPlan": {
+    "description": "After Restore, when the server's entitlement (re-read after the store was asked) shows an active plan. Chosen from the server's answer, never from the store's alone, so it always agrees with the plan row above it."
+  },
+  "restoreNothingFound": "No subscription was found for this account.",
+  "@restoreNothingFound": {
+    "description": "After Restore, when the store was asked (or there is no store to ask) and the server's entitlement still shows no active plan."
+  },
+  "restoreCouldNotReachStore": "We could not reach the store to check your subscription. Please try again later.",
+  "@restoreCouldNotReachStore": {
+    "description": "After Restore on a store build, when the store could not be asked or did not answer and the server shows no active plan. Not 'nothing found': the store was never checked."
+  },
   "cancelPlan": "Cancel subscription",
   "@cancelPlan": {
     "description": "Starts the cancellation. One tap from Manage, which is one tap from Settings — the same depth as Upgrade (ROSCA)."

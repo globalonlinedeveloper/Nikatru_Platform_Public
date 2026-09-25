@@ -156,7 +156,7 @@ import { randomBytes } from 'node:crypto';
 import { pngHeader, flattenToOpaque, RasterUnavailable } from './chrome-raster.mjs';
 import { decodeRgba, PngUnreadable } from './png-codec.mjs';
 import { foldsOf, foldFor, foldLineProblems, selfTestFoldLineDetector, FOLD_ROWS, FOLD_TOLERANCE } from './capture-row-edge.mjs';
-import { scanCaptureSuite, selfTestAccountAddressDetector } from './capture-suite-scan.mjs';
+import { scanCaptureSuite, selfTestAccountAddressDetector, storeViewDefineArgs } from './capture-suite-scan.mjs';
 import { stageFallbackFonts, unstageFallbackFonts } from './capture-fallback-fonts.mjs';
 import { boardFileFor, boardOf, boardParityProblems, boardProvenance } from './capture-board-parity.mjs';
 import { appVersionDefine, StampRefused } from '../e2e/app-version-stamp.mjs';
@@ -481,7 +481,7 @@ if (!existsSync(join(appDir, 'integration_test', 'store_screenshots_test.dart'))
       'tell the two apart, so it would clear every captured screen for the same reason — silently.',
     ]);
   }
-  const scan = scanCaptureSuite({ root: ROOT, app });
+  const scan = scanCaptureSuite({ root: ROOT, app, devices: CAPTURES.map((c) => c.flutterDevice).filter(Boolean) });
   if (!scan.present) {
     fail([`apps/${app} carries no store capture suite for this scan to vet.`]);
   }
@@ -844,12 +844,15 @@ try {
     // is the one thing this branch must say out loud. On web, the frame size is
     // an ARGUMENT to this process: `--browser-dimension` sets it and the number
     // in the register is a prediction this script then verifies. On Linux,
-    // Windows, macOS and a simulator there is no such flag — the frame is
-    // whatever the WINDOW is, so the geometry has to be imposed by the runner
-    // (an Xvfb screen size, a simulator model) and by the suite itself. The
-    // register's `capture` limb therefore records what the runner must be set
-    // to, and `acceptedSizes` on the same set is what makes a wrong window
-    // size a RED run rather than a listing at the wrong size. See the workflow.
+    // Windows and macOS there is no such flag and the window is whatever the
+    // runner's desktop allows, so the lever is `STORE_CAPTURE_VIEW`:
+    // `storeViewDefineArgs(cap)` builds it from this capture's register
+    // geometry, the suite imposes it on the view, and its layer shutter
+    // (integration_test/store_frame_shutter.dart) refuses a root layer of any
+    // other size. It is per capture, so it is spread here rather than pushed
+    // into `defines`, which is built once for every capture. A simulator gets
+    // `[]`: its model is its size, and it photographs through the plugin.
+    // `acceptedSizes` on the set is still what makes a wrong size a RED run.
     const args = NATIVE
       ? [
           'drive',
@@ -857,6 +860,7 @@ try {
           '--target=integration_test/store_screenshots_test.dart',
           '-d', cap.flutterDevice,
           ...defines,
+          ...storeViewDefineArgs(cap),
         ]
       : [
           'drive',

@@ -10,6 +10,7 @@ import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'core/app_config.dart';
+import 'core/e2e_keys.dart';
 import 'core/router.dart';
 import 'l10n/app_localizations.dart';
 import 'state/analytics_funnel.dart';
@@ -182,37 +183,38 @@ class SublyApp extends ConsumerWidget {
       // being mounted, and its tests kept passing, which is how a copy decision
       // came to be recorded against a widget no user could see; the class was
       // deleted 2026-08-10.
-      builder: (BuildContext context, Widget? child) =>
-          MediaQuery.withClampedTextScaling(
-            minScaleFactor: 1.0,
-            maxScaleFactor: 2.0,
-            // 🔴 THE COPY IS PASSED, AND UNTIL 2026-09-04 IT WAS NOT.
-            // `ForceUpdateGate` carried English parameter defaults and this call
-            // site supplied none, so the one screen that REPLACES THE WHOLE APP
-            // and cannot be dismissed shipped English to every locale. No key
-            // for it had ever existed in any arb, in either tree: `grep` for
-            // `updateRequired` over all four files answered 0.
-            //
-            // ⚠️ `AppLocalizations.of(context)` IS AVAILABLE HERE. This is
-            // `MaterialApp.router`'s `builder`, which runs BELOW the
-            // `Localizations` widget the MaterialApp installs — the same reason
-            // the wall can be themed from here at all. Reading it above the
-            // MaterialApp would throw.
-            child: ForceUpdateGate(
-              mustUpdate: mustUpdate,
-              onUpdate: () => _openUpdate(updateUrl),
-              title: AppLocalizations.of(context).updateRequiredTitle,
-              message: AppLocalizations.of(context).updateRequiredMessage,
-              buttonLabel: AppLocalizations.of(context).updateRequiredAction,
-              child: AnalyticsGate(
-                child: _NotificationTapGate(
-                  child: _OfflineBanner(
-                    child: child ?? const SizedBox.shrink(),
-                  ),
-                ),
+      builder: (BuildContext context, Widget? child) => RepaintBoundary(
+        // why: the store capture's desktop shutter renders this layer to PNG.
+        key: E2EKeys.storeFrame,
+        child: MediaQuery.withClampedTextScaling(
+          minScaleFactor: 1.0,
+          maxScaleFactor: 2.0,
+          // 🔴 THE COPY IS PASSED, AND UNTIL 2026-09-04 IT WAS NOT.
+          // `ForceUpdateGate` carried English parameter defaults and this call
+          // site supplied none, so the one screen that REPLACES THE WHOLE APP
+          // and cannot be dismissed shipped English to every locale. No key
+          // for it had ever existed in any arb, in either tree: `grep` for
+          // `updateRequired` over all four files answered 0.
+          //
+          // ⚠️ `AppLocalizations.of(context)` IS AVAILABLE HERE. This is
+          // `MaterialApp.router`'s `builder`, which runs BELOW the
+          // `Localizations` widget the MaterialApp installs — the same reason
+          // the wall can be themed from here at all. Reading it above the
+          // MaterialApp would throw.
+          child: ForceUpdateGate(
+            mustUpdate: mustUpdate,
+            onUpdate: () => _openUpdate(updateUrl),
+            title: AppLocalizations.of(context).updateRequiredTitle,
+            message: AppLocalizations.of(context).updateRequiredMessage,
+            buttonLabel: AppLocalizations.of(context).updateRequiredAction,
+            child: AnalyticsGate(
+              child: _NotificationTapGate(
+                child: _OfflineBanner(child: child ?? const SizedBox.shrink()),
               ),
             ),
           ),
+        ),
+      ),
     );
   }
 

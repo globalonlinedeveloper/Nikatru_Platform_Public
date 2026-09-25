@@ -264,14 +264,14 @@ final Provider<bool> paywallLockedProvider = Provider<bool>((ref) {
 
 /// Re-read the entitlement from the server and republish the answer.
 ///
-/// 🔒 THIS IS "RESTORE PURCHASES" ON THIS RAIL — [pipeline 5]M-10. There are no
-/// device-local receipts to restore: the entitlement is a row keyed
-/// `(user_id, app_id)` on a host every app shares, so a fresh install on a new
-/// device is unlocked by SIGNING IN and nothing else. The control exists anyway
-/// because a user who has just paid wants a button, and because Apple guideline
-/// 3.1.1 makes an explicit Restore control mandatory the day a native IAP rail
-/// ships — which 39-CHASSIS §4 cut 5 defers, and its absence is a documented
-/// rejection cause.
+/// 🔒 THE SERVER HALF OF "RESTORE PURCHASES" — [pipeline 5]M-10. The Restore
+/// control asks the rail first (`restorePurchasesOf`: the store, on a store
+/// build) and re-reads the entitlement AFTER it, because the entitlement is a
+/// row keyed `(user_id, app_id)` on a host every app shares and that row is the
+/// only unlock. On a rail with no store to ask, this re-read is the whole
+/// restore, and a fresh install on a new device is unlocked by SIGNING IN.
+/// Apple guideline 3.1.1 makes an explicit Restore control mandatory in a build
+/// that sells through StoreKit.
 Future<core.Entitlements> refreshEntitlements(WidgetRef ref) async {
   ref.invalidate(entitlementsProvider);
   return ref.read(entitlementsProvider.future);
