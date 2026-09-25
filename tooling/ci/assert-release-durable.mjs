@@ -141,7 +141,11 @@ import { spawnSync } from 'node:child_process';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
-import { parseWorkflow, WORKFLOW_DIR, shellSegments, releaseTriggerLine } from './workflow-scan.mjs';
+// ⏱ 2026-09-24 (O-GUARDS-DO-NOT-FOLLOW-LOCAL-USES) — the RESOLVED view: an
+// upload or a publish behind `uses: ./.github/actions/<x>`, or in a job of a
+// `uses: ./.github/workflows/<f>.yml` callee, is graded where it runs, under the
+// CALLER's `on:` (a callee's own trigger is only `workflow_call`).
+import { parseResolvedWorkflows, lineAt, refusalText, WORKFLOW_DIR, shellSegments, releaseTriggerLine } from './workflow-scan.mjs';
 
 // Flags are filtered out of the positional scan BEFORE the root is taken, or
 // `--fail-on-mixed-upload-paths` would be resolved as a repository path and every
@@ -253,6 +257,17 @@ if (!existsSync(wfDir)) coverageLost([`${WORKFLOW_DIR} does not exist under ${RO
 const wfFiles = listDir(wfDir).filter((f) => /\.ya?ml$/.test(f)).sort();
 if (wfFiles.length === 0) coverageLost([`${WORKFLOW_DIR} contains no workflow file.`]);
 
+const resolved = parseResolvedWorkflows(ROOT);
+if (resolved.refusal !== null) {
+  coverageLost([
+    refusalText(resolved.refusal),
+    'An upload or a publish behind that reference would be graded as absent, and absent reads as clean.',
+  ]);
+}
+// What the resolved parse OPENED, not what the directory lists: the cross-check
+// below compares git's workflow set with the files this guard actually read.
+const opened = resolved.filesRead.filter((f) => f.startsWith(`${WORKFLOW_DIR}/`)).map((f) => f.split('/').pop());
+
 const ls = spawnSync('git', ['-C', ROOT, 'ls-files', '--', WORKFLOW_DIR], { encoding: 'utf8' });
 const tracked =
   ls.status === 0
@@ -264,10 +279,10 @@ if (tracked.length === 0 && scanningRealRepo) {
     'The manifest that anchors the lane set is unreadable, so "did I see every lane" cannot be answered.',
   ]);
 }
-const unseen = tracked.filter((t) => !wfFiles.includes(t));
+const unseen = tracked.filter((t) => !opened.includes(t));
 if (unseen.length) {
   coverageLost([
-    `git tracks ${tracked.length} workflow(s) and this scan opened ${wfFiles.length}; it never saw: ${unseen.join(', ')}.`,
+    `git tracks ${tracked.length} workflow(s) and this scan opened ${opened.length}; it never saw: ${unseen.join(', ')}.`,
     'An unseen lane takes its uploads with it, so limb 1 would be computed over a smaller set and print ok.',
   ]);
 }
@@ -278,7 +293,7 @@ if (unseen.length) {
 // credit a lane for the prose explaining its own publish. This repo has shipped
 // that exact defect twice (the guard-coverage counter that accepted a name in a
 // comment; assert-stamp-platforms.mjs's deleted build step).
-const workflows = wfFiles.map((f) => parseWorkflow(ROOT, `${WORKFLOW_DIR}/${f}`)).filter(Boolean);
+const workflows = resolved.workflows;
 for (const wf of workflows) {
   if (wf.rawStepCount > 0 && wf.strippedStepCount === 0) {
     coverageLost([
@@ -713,15 +728,20 @@ if (installableUploads === 0) {
 // ── limb 1 ───────────────────────────────────────────────────────────────────
 /** Jobs downstream of `name` in `wf`, transitively — the only other place a
  *  durable destination can legitimately live. An upstream job cannot publish an
- *  artifact that does not exist yet. */
+ *  artifact that does not exist yet.
+ *
+ *  ⏱ P-A1: a child job `<caller>/<job>`, read out of a local reusable workflow,
+ *  finishes before its call job does, so a job that `needs:` the call job is
+ *  downstream of every child — as GitHub runs it. */
 function downstream(wf, name) {
+  const via = wf.jobs.get(name)?.calledBy;
   const out = new Set();
   let grew = true;
   while (grew) {
     grew = false;
     for (const j of wf.jobs.values()) {
       if (out.has(j.name) || j.name === name) continue;
-      if (j.needs.some((d) => d === name || out.has(d))) { out.add(j.name); grew = true; }
+      if (j.needs.some((d) => d === name || (via !== undefined && d === via) || out.has(d))) { out.add(j.name); grew = true; }
     }
   }
   return out;
@@ -754,7 +774,7 @@ for (const wf of workflows) {
     graded++;
     if (found.length === 0) {
       problems.push(
-        `${wf.rel}: job "${job.name}" uploads an installable artifact (${job.installable[0].paths.join(', ')}, first at :${job.installable[0].n}) ` +
+        `${wf.rel}: job "${job.name}" uploads an installable artifact (${job.installable[0].paths.join(', ')}, first at ${lineAt(wf, job.installable[0].n)}) ` +
           `and NOTHING in it or downstream of it publishes to a durable destination. This workflow is a release lane — it triggers on \`push: tags:\` at :${wf.releaseTrigger} — ` +
           'so on a tag it produces the artifact a user is meant to install and then lets it expire with the run. That is [9]R-4\'s negation, not a weak form of it.',
       );
@@ -767,7 +787,7 @@ for (const wf of workflows) {
       const d = dead[0];
       const literalFalse = /^false$/i.test(d.if.cond);
       problems.push(
-        `${wf.rel}: job "${job.name}"'s only durable destination is ${d.what} in job "${d.job}" at :${d.n}, whose step-level \`if:\` is ` +
+        `${wf.rel}: job "${job.name}"'s only durable destination is ${d.what} in job "${d.job}" at ${lineAt(wf, d.n)}, whose step-level \`if:\` is ` +
           (literalFalse
             ? 'the literal `false`. '
             : `\`${d.if.cond}\` — not the canonical tag-publish condition \`${CANONICAL_PUBLISH_IF}\`. ` +
@@ -789,7 +809,7 @@ for (const wf of workflows) {
 // the `services/*` block-comment trap recorded further up. Square brackets.
 for (const m of mixedPathSteps) {
   const line =
-    `${m.rel}: job "${m.job}" uploads at :${m.n} with a \`path:\` block that mixes an extension glob [${m.globs.join(', ')}] ` +
+    `${m.rel}: job "${m.job}" uploads at ${lineAt(byRel.get(m.rel), m.n)} with a \`path:\` block that mixes an extension glob [${m.globs.join(', ')}] ` +
     `with a bare directory [${m.dirs.join(', ')}]. \`if-no-files-found: error\` fires only when the WHOLE union is empty, so the ` +
     'directory always satisfies it and the glob is free to match nothing: the artifact uploads a platform short and every check ' +
     'downstream agrees with the reduced set it was handed. Split them into separate upload steps so each one can fail on its own.';
@@ -819,7 +839,7 @@ for (const wf of workflows) {
     const verify = job.logical.find((l) => VERIFY.test(l.text));
     if (!write) {
       problems.push(
-        `${wf.rel}: job "${job.name}" performs ${first.what} at :${first.n} and never runs \`${MANIFEST_SCRIPT_REL} --write\`. ` +
+        `${wf.rel}: job "${job.name}" performs ${first.what} at ${lineAt(wf, first.n)} and never runs \`${MANIFEST_SCRIPT_REL} --write\`. ` +
           `A release published without ${MANIFEST_NAME} is a set of downloads nobody can check against anything — the "integrity record" half of [9]R-4, missing.`,
       );
       continue;
@@ -827,7 +847,7 @@ for (const wf of workflows) {
     const dir = write.text.match(WRITE)[1];
     if (write.n > first.n) {
       problems.push(
-        `${wf.rel}: job "${job.name}" writes the manifest at :${write.n}, AFTER its first publish at :${first.n}. ` +
+        `${wf.rel}: job "${job.name}" writes the manifest at ${lineAt(wf, write.n)}, AFTER its first publish at ${lineAt(wf, first.n)}. ` +
           'An integrity record written after the assets have left the runner describes something already downloadable.',
       );
     }
@@ -845,7 +865,7 @@ for (const wf of workflows) {
         );
       }
       if (verify.n > first.n) {
-        problems.push(`${wf.rel}: job "${job.name}" verifies the manifest at :${verify.n}, AFTER its first publish at :${first.n}. A check that runs after the upload cannot stop it.`);
+        problems.push(`${wf.rel}: job "${job.name}" verifies the manifest at ${lineAt(wf, verify.n)}, AFTER its first publish at ${lineAt(wf, first.n)}. A check that runs after the upload cannot stop it.`);
       }
     }
     // ── the release record, same three rules, one lane at a time ───────────
@@ -853,7 +873,7 @@ for (const wf of workflows) {
     const graded = job.logical.find((l) => GRADE.test(l.text));
     if (!emit) {
       problems.push(
-        `${wf.rel}: job "${job.name}" publishes ${first.what} at :${first.n} and never runs ` +
+        `${wf.rel}: job "${job.name}" publishes ${first.what} at ${lineAt(wf, first.n)} and never runs ` +
           `\`${MANIFEST_SCRIPT_REL} --emit-release-json\`. ${MANIFEST_NAME} proves the bytes did not change; ` +
           `${RELEASE_JSON_NAME} is the only thing that says what they ARE — which version, on which channels, from which commit. ` +
           'Without it every consumer has to parse the file names, and a file name is a convention, not a contract.',
@@ -868,7 +888,7 @@ for (const wf of workflows) {
       }
       if (emit.n > write.n) {
         problems.push(
-          `${wf.rel}: job "${job.name}" writes ${MANIFEST_NAME} at :${write.n} and only then describes the release at :${emit.n}. ` +
+          `${wf.rel}: job "${job.name}" writes ${MANIFEST_NAME} at ${lineAt(wf, write.n)} and only then describes the release at ${lineAt(wf, emit.n)}. ` +
             `\`--write\` hashes what is in the directory AT THE TIME, so a ${RELEASE_JSON_NAME} written afterwards is the one ` +
             'published file the checksum manifest does not name — the single asset nobody can verify.',
         );
@@ -876,7 +896,7 @@ for (const wf of workflows) {
     }
     if (!graded) {
       problems.push(
-        `${wf.rel}: job "${job.name}" publishes ${first.what} at :${first.n} and never runs \`${RELEASE_JSON_GUARD_REL} --dir\`. ` +
+        `${wf.rel}: job "${job.name}" publishes ${first.what} at ${lineAt(wf, first.n)} and never runs \`${RELEASE_JSON_GUARD_REL} --dir\`. ` +
           'An emitted record is a claim about sizes, hashes, versions and channels; nothing re-reads it against the bytes beside it, ' +
           'and the emitter cannot be the thing that proves its own output.',
       );
@@ -889,7 +909,7 @@ for (const wf of workflows) {
       }
       if (graded.n > first.n) {
         problems.push(
-          `${wf.rel}: job "${job.name}" grades the release record at :${graded.n}, AFTER its first publish at :${first.n}. ` +
+          `${wf.rel}: job "${job.name}" grades the release record at ${lineAt(wf, graded.n)}, AFTER its first publish at ${lineAt(wf, first.n)}. ` +
             'A check that runs after the upload cannot stop it.',
         );
       }

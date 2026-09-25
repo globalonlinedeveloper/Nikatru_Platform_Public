@@ -31,7 +31,7 @@ import { fileURLToPath } from 'node:url';
 import {
   parseWorkflow, parseAllWorkflows, joinBlockScalars, shellSegments, workflowEvents, dispatchInputs, stepShell,
   stepItemAround, workflowSteps, jobEnv, githubEnvWrites, joinShellContinuations, commandAt, flutterDrives,
-  resolveLocalCalls,
+  resolveLocalCalls, parseResolvedWorkflows, lineAt, placeOf, refusalText,
 } from '../workflow-scan.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -843,5 +843,185 @@ describe('workflow-scan resolveLocalCalls', () => {
     const r = resolveLocalCalls(all.find((w) => w.rel === '.github/workflows/caller.yml'), all);
     assert.deepEqual(r.refusal && [r.refusal.kind, r.refusal.job, r.refusal.callee], ['nested', 'lane', '.github/workflows/callee.yml']);
     assert.deepEqual(r.calls, []);
+  });
+});
+
+// ⏱ 2026-09-24 — parseResolvedWorkflows (O-GUARDS-DO-NOT-FOLLOW-LOCAL-USES): a step behind
+// `uses: ./.github/actions/<x>` and a job behind `uses: ./.github/workflows/<f>.yml` are read
+// in place, each inlined line printing its real `<file>:<line>`, and the five references it
+// cannot follow come back as a refusal (each reader's own COVERAGE LOST). One case per behaviour.
+function actionFixture(workflows, actions) {
+  const root = fixture(workflows);
+  for (const [name, body] of Object.entries(actions)) {
+    mkdirSync(join(root, '.github', 'actions', name), { recursive: true });
+    writeFileSync(join(root, '.github', 'actions', name, 'action.yml'), body);
+  }
+  return root;
+}
+
+const PUB_ACTION = `name: Publish
+inputs:
+  target:
+    description: where
+    default: staging
+  dry-run:
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    - name: Deploy
+      shell: bash
+      run: |
+        wrangler pages deploy --branch \${{ inputs.target }}
+        echo dry=\${{ inputs.dry-run }}
+    - name: Record
+      if: always()
+      shell: bash
+      run: node tooling/scripts/record.mjs
+`;
+const USES_YML = `name: Uses
+on: [push]
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@0123456789abcdef0123456789abcdef01234567
+      - name: Publish it
+        if: github.ref == 'refs/heads/main'
+        uses: ./.github/actions/pub
+        with:
+          target: production
+      - run: echo after
+`;
+const RELEASE_YML = `name: Release
+on:
+  push:
+    tags: ['v*']
+jobs:
+  gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - run: echo gate
+  ship:
+    needs: gate
+    if: github.repository == 'o/r'
+    uses: ./.github/workflows/ship.yml
+`;
+const SHIP_YML = `name: Ship
+on:
+  workflow_call:
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - run: echo build
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment: production
+    steps:
+      - uses: ./.github/actions/pub
+`;
+
+describe('workflow-scan parseResolvedWorkflows', () => {
+  test('a composite step is replaced AT ITS INDEX by the composite\'s steps, and each inlined line prints its action.yml line', () => {
+    const root = actionFixture({ 'uses.yml': USES_YML }, { pub: PUB_ACTION });
+    const r = parseResolvedWorkflows(root);
+    assert.equal(r.refusal, null);
+    const wf = r.workflows[0];
+    const job = wf.jobs.get('deploy');
+    const steps = workflowSteps(job);
+    assert.deepEqual(steps.map((s) => s.name ?? null), [null, 'Deploy', 'Record', null]);
+    assert.equal(steps[3].run.text, 'echo after');
+    assert.ok(steps[0].first < steps[1].first && steps[2].last < steps[3].first);
+    assert.equal(placeOf(wf, steps[1].first), '.github/actions/pub/action.yml:11');
+    assert.equal(lineAt(wf, steps[2].first), '.github/actions/pub/action.yml:16');
+    assert.equal(lineAt(wf, steps[3].first), ':14');
+    assert.equal(placeOf(wf, steps[3].first), '.github/workflows/uses.yml:14');
+    assert.equal(job.lines.some((l) => l.text.includes('./.github/actions/pub')), false);
+    assert.deepEqual(r.filesRead, ['.github/workflows/uses.yml', '.github/actions/pub/action.yml']);
+  });
+
+  test('`${{ inputs.X }}` becomes the calling step\'s `with: X`, or the action\'s `default:` when the caller passes none', () => {
+    const root = actionFixture({ 'uses.yml': USES_YML }, { pub: PUB_ACTION });
+    const wf = parseResolvedWorkflows(root).workflows[0];
+    const deploy = workflowSteps(wf.jobs.get('deploy'))[1];
+    assert.equal(deploy.run.text, 'wrangler pages deploy --branch production ; echo dry=false');
+  });
+
+  test('the calling step\'s `if:` gates each inlined step that has none, printed at the CALLER\'s line; a step\'s own `if:` stays', () => {
+    const root = actionFixture({ 'uses.yml': USES_YML }, { pub: PUB_ACTION });
+    const wf = parseResolvedWorkflows(root).workflows[0];
+    const job = wf.jobs.get('deploy');
+    const steps = workflowSteps(job);
+    assert.equal(steps[1].cond, "github.ref == 'refs/heads/main'");
+    assert.equal(steps[2].cond, 'always()');
+    const injected = job.lines.find((l) => l.text.trim() === "if: github.ref == 'refs/heads/main'");
+    assert.equal(placeOf(wf, injected.n), '.github/workflows/uses.yml:10');
+  });
+
+  test('a callee\'s jobs become `<caller>/<job>` children in the CALLER\'s workflow: its triggers, its `needs`, its `if:`', () => {
+    const root = actionFixture({ 'release.yml': RELEASE_YML, 'ship.yml': SHIP_YML }, { pub: PUB_ACTION });
+    const r = parseResolvedWorkflows(root);
+    assert.equal(r.refusal, null);
+    assert.deepEqual(r.workflows.map((w) => w.rel), ['.github/workflows/release.yml']);
+    const wf = r.workflows[0];
+    assert.deepEqual([...wf.jobs.keys()], ['gate', 'ship', 'ship/build', 'ship/deploy']);
+    assert.equal(workflowEvents(wf).has('push'), true);
+    const child = wf.jobs.get('ship/deploy');
+    assert.deepEqual(child.needs, ['gate', 'ship/build']);
+    assert.equal(child.jobIf.cond, "github.repository == 'o/r'");
+    assert.equal(child.calledBy, 'ship');
+    const env = child.lines.find((l) => l.text.trim() === 'environment: production');
+    assert.equal(placeOf(wf, env.n), '.github/workflows/ship.yml:14');
+    assert.deepEqual(r.filesRead, ['.github/workflows/release.yml', '.github/workflows/ship.yml', '.github/actions/pub/action.yml']);
+  });
+
+  test('a composite used INSIDE a callee job is inlined into the child too, still printing its action.yml line', () => {
+    const root = actionFixture({ 'release.yml': RELEASE_YML, 'ship.yml': SHIP_YML }, { pub: PUB_ACTION });
+    const wf = parseResolvedWorkflows(root).workflows[0];
+    const steps = workflowSteps(wf.jobs.get('ship/deploy'));
+    assert.deepEqual(steps.map((s) => s.name), ['Deploy', 'Record']);
+    assert.equal(steps[0].run.text, 'wrangler pages deploy --branch staging ; echo dry=false');
+    assert.equal(placeOf(wf, steps[1].first), '.github/actions/pub/action.yml:16');
+  });
+
+  test('refusal `nested`: a composite that itself uses a local action — one level, never two', () => {
+    const nested = PUB_ACTION + '    - uses: ./.github/actions/other\n';
+    const root = actionFixture({ 'uses.yml': USES_YML }, { pub: nested, other: PUB_ACTION });
+    const r = parseResolvedWorkflows(root);
+    assert.deepEqual(r.refusal, { kind: 'nested', at: '.github/actions/pub/action.yml:20', path: './.github/actions/other' });
+  });
+
+  test('refusal `missing`: a local action that is not in the tree, and the sentence a reader prints for it', () => {
+    const root = actionFixture({ 'uses.yml': USES_YML }, {});
+    const r = parseResolvedWorkflows(root);
+    assert.deepEqual(r.refusal, { kind: 'missing', at: '.github/workflows/uses.yml:11', path: '.github/actions/pub/action.yml' });
+    assert.match(refusalText(r.refusal), /\(missing\) at \.github\/workflows\/uses\.yml:11: \.github\/actions\/pub\/action\.yml/);
+  });
+
+  test('refusal `remote`: a job-level `uses:` of another repository\'s workflow (a step\'s third-party action is not one)', () => {
+    const remote = RELEASE_YML.replace('./.github/workflows/ship.yml', 'other/repo/.github/workflows/x.yml@0000000');
+    const root = actionFixture({ 'release.yml': remote }, {});
+    const r = parseResolvedWorkflows(root);
+    assert.deepEqual(r.refusal, { kind: 'remote', at: '.github/workflows/release.yml:14', path: 'other/repo/.github/workflows/x.yml@0000000' });
+  });
+
+  test('refusal `not-composite`: a local action whose `runs.using` is not `composite` has no steps to read', () => {
+    const js = 'name: Js\nruns:\n  using: node20\n  main: index.js\n';
+    const root = actionFixture({ 'uses.yml': USES_YML }, { pub: js });
+    const r = parseResolvedWorkflows(root);
+    assert.deepEqual(r.refusal, { kind: 'not-composite', at: '.github/workflows/uses.yml:11', path: '.github/actions/pub/action.yml' });
+  });
+
+  test('refusal `orphan-callee`: a workflow_call-only workflow nobody here calls, and it is not returned on its own', () => {
+    const root = actionFixture({ 'ship.yml': SHIP_YML }, { pub: PUB_ACTION });
+    const r = parseResolvedWorkflows(root);
+    assert.deepEqual(r.refusal, { kind: 'orphan-callee', at: '.github/workflows/ship.yml:1', path: '.github/workflows/ship.yml' });
+    assert.deepEqual(r.workflows, []);
   });
 });
