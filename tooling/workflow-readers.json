@@ -60,6 +60,10 @@
       "reads": "each lane workflow: pack.mjs --target formats, packaging-script invocations, secret names"
     },
     {
+      "path": "tooling/ci/assert-deploy-ref.mjs",
+      "property": "workflow-scan"
+    },
+    {
       "path": "tooling/ci/assert-deploy-triggers-deploy.mjs",
       "property": "refuses-blind",
       "evidence": "COVERAGE LOST: no workflow files under",
