@@ -8,7 +8,7 @@
 //
 // The fixture deliberately does NOT contain `tooling/ci/assert-chassis-ledger.mjs`,
 // so the guard's own sentinel reports "not a full checkout" and the 60-file floor
-// is skipped. That is what lets a three-file fixture exercise every other limb
+// is skipped. That is what lets a four-file fixture exercise every other limb
 // without tripping a floor written for a 96-file template.
 //
 // 🔴 EVERY CASE HERE WAS PROVEN ABLE TO FAIL. Before this file was kept, each
@@ -39,12 +39,16 @@ const write = (root, rel, body) => {
   writeFileSync(abs, body);
 };
 
-/** A minimal template: three tracked files, and a ledger that describes them. */
+/** A minimal template: four tracked files, and a ledger that describes them. */
 function fixture(mutate = () => {}) {
   const root = mkdtempSync(join(tmpdir(), 'chassis-ledger-'));
+  // `lib/state/` carries TWO lines so that "one below its total" is still a
+  // positive max, which is what the lib/ ceiling cases below need to reach
+  // limb 7 rather than the register validation.
   const files = {
     'lib/main.dart': 'void main() {}\n',
     'lib/core/app_config.dart': 'class AppConfig {}\n',
+    'lib/state/providers.dart': 'final a = 1;\nfinal b = 2;\n',
     'pubspec.yaml': 'name: app\n',
   };
   for (const [rel, body] of Object.entries(files)) write(root, `${BRICK}/${rel}`, body);
@@ -74,6 +78,11 @@ function fixture(mutate = () => {}) {
     why: 'per-app Worker by construction',
   }));
   const allRows = [...rows, ...workerRows];
+  // [ADR 096]'s ceilings, set to the fixture's OWN totals with zero headroom,
+  // exactly as the real ledger's are set to the real tree's.
+  const linesUnder = (prefix) =>
+    Object.entries(files).filter(([p]) => p.startsWith(prefix)).reduce((n, [, body]) => n + countLines(body), 0);
+  const floor = (max) => ({ max, adr: 'ADR 096', asOf: '2026-09-25', verify: 'node tooling/ci/assert-chassis-ledger.mjs' });
   const ledger = {
     roots: [BRICK, WORKER],
     totals: {
@@ -81,6 +90,7 @@ function fixture(mutate = () => {}) {
       lines: allRows.reduce((n, r) => n + r.lines, 0),
       unclassified: 0,
     },
+    floors: { lib: floor(linesUnder('lib/')), state: floor(linesUnder('lib/state/')) },
     files: allRows,
   };
 
@@ -95,7 +105,9 @@ function fixture(mutate = () => {}) {
 
 function run(root) {
   const r = spawnSync('node', [GUARD, root], { encoding: 'utf8' });
-  return { code: r.status, out: (r.stdout ?? '') + (r.stderr ?? '') };
+  const stdout = r.stdout ?? '';
+  const stderr = r.stderr ?? '';
+  return { code: r.status, out: stdout + stderr, stdout, stderr };
 }
 
 const withFixture = (mutate, check) => {
@@ -111,8 +123,8 @@ describe('assert-chassis-ledger · the control', () => {
   test('an accounted-for template passes, and says what it counted', () => {
     withFixture(() => {}, (r) => {
       assert.equal(r.code, 0, r.out);
-      assert.match(r.out, /4 tracked file\(s\) across 2 root\(s\)/);
-      assert.match(r.out, /STAYS=4/);
+      assert.match(r.out, /5 tracked file\(s\) across 2 root\(s\)/);
+      assert.match(r.out, /STAYS=5/);
       // The fixture is not a checkout of this repo, and the guard must SAY so
       // rather than silently skipping its floor.
       assert.match(r.out, /NOT applied/);
@@ -363,7 +375,7 @@ describe('assert-chassis-ledger · two roots, and nothing between them', () => {
     }, (r) => {
       assert.equal(r.code, 0, r.out);
       assert.doesNotMatch(r.out, /twice/);
-      assert.match(r.out, /5 tracked file\(s\)/);
+      assert.match(r.out, /6 tracked file\(s\)/);
     });
   });
 
@@ -373,5 +385,75 @@ describe('assert-chassis-ledger · two roots, and nothing between them', () => {
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /apps\/\{\{app_id\}\} — \d+ file\(s\), \d+ line\(s\)/);
     assert.match(r.out, /\{\{app_id\}\}-api — \d+ file\(s\), \d+ line\(s\)/);
+  });
+});
+
+// ── LIMB 7 · THE BRICK lib/ CEILING [ADR 096] ───────────────────────────────
+// Added 2026-09-25. The fixture's lib/ is 4 lines in 3 files and its lib/state
+// is 2 lines in 1 file; its `floors` are set to exactly those totals.
+describe('assert-chassis-ledger · the brick lib/ total is printed and held under its ceiling', () => {
+  test('the real repository prints the brick lib/ total beside its ceiling', () => {
+    const repo = join(HERE, '..', '..', '..');
+    const r = run(repo);
+    assert.equal(r.code, 0, r.out);
+    assert.match(
+      r.stdout,
+      /ok {2}brick lib\/ — \d+ file\(s\), \d+ line\(s\), ceiling \d+ \[ADR \d{3}\]; lib\/state — /,
+    );
+  });
+
+  test('brick lib/ one line over floors.lib.max FAILS, naming the key and the ADR', () => {
+    withFixture((b) => { b.ledger.floors.lib.max -= 1; }, (r) => {
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.stderr, /brick lib\/ is 4 line\(s\) in 3 file\(s\), 1 above floors\.lib\.max 3 \[ADR 096\]/);
+    });
+  });
+
+  test('lib/state one line over floors.state.max FAILS, naming that key alone', () => {
+    withFixture((b) => { b.ledger.floors.state.max -= 1; }, (r) => {
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.stderr, /lib\/state is 2 line\(s\) in 1 file\(s\), 1 above floors\.state\.max 1 \[ADR 096\]/);
+      assert.doesNotMatch(r.stderr, /floors\.lib\.max/);
+    });
+  });
+
+  test('a ledger with no `floors` is COVERAGE LOST, never a pass', () => {
+    withFixture((b) => { delete b.ledger.floors; }, (r) => {
+      assert.equal(r.code, 2, r.out);
+      assert.match(r.out, /COVERAGE LOST[\s\S]*declares no `floors` object/);
+    });
+  });
+
+  test('a max written as a string is COVERAGE LOST', () => {
+    withFixture((b) => { b.ledger.floors.lib.max = String(b.ledger.floors.lib.max); }, (r) => {
+      assert.equal(r.code, 2, r.out);
+      assert.match(r.out, /COVERAGE LOST[\s\S]*`floors\.lib\.max` is "4", not a positive integer/);
+    });
+  });
+
+  test('a max above the total PASSES and asks for the max to be lowered', () => {
+    withFixture((b) => { b.ledger.floors.lib.max += 1; }, (r) => {
+      assert.equal(r.code, 0, r.out);
+      assert.match(r.stdout, /brick lib\/ is 4 line\(s\), 1 below the ceiling of 5 \[ADR 096\]/);
+    });
+  });
+
+  test('a ceiling naming no three-digit ADR is COVERAGE LOST', () => {
+    withFixture((b) => { b.ledger.floors.state.adr = 'ADR 96'; }, (r) => {
+      assert.equal(r.code, 2, r.out);
+      assert.match(r.out, /COVERAGE LOST[\s\S]*`floors\.state\.adr` is "ADR 96"/);
+    });
+  });
+
+  test('a lib/state/ with no tracked file is COVERAGE LOST, not a total of 0 under its ceiling', () => {
+    withFixture((b) => {
+      rmSync(join(b.root, `${BRICK}/lib/state/providers.dart`));
+      b.ledger.files = b.ledger.files.filter((f) => f.path !== 'lib/state/providers.dart');
+      b.ledger.totals.files -= 1;
+      b.ledger.totals.lines -= 2;
+    }, (r) => {
+      assert.equal(r.code, 2, r.out);
+      assert.match(r.out, /COVERAGE LOST[\s\S]*lib\/state\/, so lib\/state totals 0/);
+    });
   });
 });
