@@ -1,0 +1,11 @@
+{
+  "name": "tooling-web-ext",
+  "private": true,
+  "description": "The ONE web-ext install: the Firefox lint in extensions-ci.yml and extensions.yml, and the AMO signer in extensions/scripts/publish-amo.mjs, all run node_modules/.bin/web-ext from here after `npm ci --ignore-scripts --prefix tooling/web-ext`. The version is exact and lives only in this file and its lockfile; Renovate's npm manager proposes each move. No node_modules is committed. Follows the _playwright/ island. The override lifts addons-linter's exact image-size 2.0.2 pin to 2.0.3 (GHSA-5p2g-fcmc-qvqq, GHSA-w3rx-r6r6-pgpr, both High, reported by ci.yml's osv-scanner); drop it once a web-ext release carries 2.0.3 itself.",
+  "devDependencies": {
+    "web-ext": "10.6.0"
+  },
+  "overrides": {
+    "image-size": "2.0.3"
+  }
+}

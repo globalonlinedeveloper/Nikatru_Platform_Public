@@ -26,7 +26,8 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, cpSync, readdirSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { parseWorkflow, readSteps, stepModel, storePublishSteps, parseResolvedWorkflows } from '../workflow-scan.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const GUARD = join(REPO, 'tooling', 'ci', 'assert-publish-steps-guarded.mjs');
@@ -393,10 +394,11 @@ describe('assert-publish-steps-guarded — the region is the job, and zero is no
     assert.match(out, /declares no channel with `publishScript`/);
   });
 
+  // ⏱ 2026-09-24 (EXT-3): the three rows' lane job is `store-publish`, the one job that submits.
   test('the three live extension rows declare their publishScript, so the real derivation is not empty', () => {
     const reg = JSON.parse(readFileSync(join(REPO, 'tooling', 'channel-register.json'), 'utf8'));
     const declared = reg.channels
-      .filter((c) => c?.lane?.workflow === '.github/workflows/extensions.yml' && c?.lane?.job === 'release' && typeof c.publishScript === 'string')
+      .filter((c) => c?.lane?.workflow === '.github/workflows/extensions.yml' && c?.lane?.job === 'store-publish' && typeof c.publishScript === 'string')
       .map((c) => c.publishScript)
       .sort();
     assert.deepEqual(declared, [
@@ -450,6 +452,10 @@ const mutateFile = (root, rel, from, to) => {
 const ownerWord = (root, limb = 'owner-word') => runGuard(['--repo-root', root, '--limb', limb]);
 const EXT = '.github/workflows/extensions.yml';
 const EDGE_IF = "github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/tags/') && inputs.dry_run != true && inputs.confirm == 'SUBMIT-TO-EDGE-ADDONS'";
+/** ⏱ 2026-09-24 (EXT-3): the store steps live in the `store-publish` job, whose own
+ *  `if:` also carries the dispatch conjunct — so a case about a step reachable from
+ *  push must widen the JOB's condition as well, or the job answers for the step. */
+const STORE_JOB_IF = "    if: github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/tags/') && inputs.lane == 'release' && inputs.dry_run != true";
 
 describe("assert-publish-steps-guarded limb 2 — a store publish waits for the owner's typed word", () => {
   test('GREEN CONTROL: the real tree grades at least six store publish steps, every one owner-gated', () => {
@@ -471,16 +477,22 @@ describe("assert-publish-steps-guarded limb 2 — a store publish waits for the 
   });
 
   test("(a) a publish condition that names the push event is REACHABLE FROM PUSH", () => {
-    const root = realCopy((r) => mutateFile(r, EXT, EDGE_IF, EDGE_IF.replace("'workflow_dispatch'", "'push'")));
+    const root = realCopy((r) => {
+      mutateFile(r, EXT, EDGE_IF, EDGE_IF.replace("'workflow_dispatch'", "'push'"));
+      mutateFile(r, EXT, STORE_JOB_IF, "    if: startsWith(github.ref, 'refs/tags/')");
+    });
     const { code, out } = ownerWord(root);
     assert.equal(code, 1, out);
-    assert.match(out, /NOT OWNER-GATED {2}[.]github\/workflows\/extensions[.]yml:\d+ job "release" step "Submit to Microsoft Edge Add-ons"/);
+    assert.match(out, /NOT OWNER-GATED {2}[.]github\/workflows\/extensions[.]yml:\d+ job "store-publish" step "Submit to Microsoft Edge Add-ons"/);
     assert.match(out, /\(a\) REACHABLE FROM PUSH/);
     assert.match(out, /\(a\) NAMES THE PUSH EVENT/);
   });
 
   test('THE MEASURED DEFECT: the old tag-push condition fails limb 2 — and limb 1 alone still calls it guarded', () => {
-    const root = realCopy((r) => mutateFile(r, EXT, EDGE_IF, "github.event_name == 'push' && inputs.dry_run != true"));
+    const root = realCopy((r) => {
+      mutateFile(r, EXT, EDGE_IF, "github.event_name == 'push' && inputs.dry_run != true");
+      mutateFile(r, EXT, STORE_JOB_IF, "    if: startsWith(github.ref, 'refs/tags/')");
+    });
     const two = ownerWord(root);
     assert.equal(two.code, 1, two.out);
     assert.match(two.out, /\(a\) REACHABLE FROM PUSH/);
@@ -592,7 +604,7 @@ describe("assert-publish-steps-guarded limb 2 — a store publish waits for the 
   });
 
   test('a register publishScript that no step invokes is COVERAGE LOST — respelled past the scan', () => {
-    const root = realCopy((r) => mutateFile(r, EXT, 'node scripts/publish-edge.mjs', 'node scripts/publish_edge.mjs'));
+    const root = realCopy((r) => mutateFile(r, EXT, 'node extensions/scripts/publish-edge.mjs', 'node extensions/scripts/publish_edge.mjs'));
     const { code, out } = ownerWord(root);
     assert.equal(code, 2, out);
     assert.match(out, /declares publishScript extensions\/scripts\/publish-edge[.]mjs and no store publish step in any workflow invokes it/);
@@ -634,5 +646,139 @@ describe('assert-publish-steps-guarded — a publish moved into a local composit
     const { code, out } = runGuard(['--repo-root', root, '--workflow', '.github/workflows/fixture.yml', '--job', 'release', '--limb', 'dry-run']);
     assert.equal(code, 0, out);
     assert.match(out, /1 publishing-surface step\(s\)/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EXT-3 (2026-09-24) — AMO's first submit carries a metadata payload, the store
+// steps run in one environment-bound job, and that job submits the Release's own
+// bytes. Every case is written out by hand (assert-no-loop-cases.mjs).
+// ─────────────────────────────────────────────────────────────────────────────
+const AMO_SCRIPT = join(REPO, 'extensions', 'scripts', 'publish-amo.mjs');
+const AMO_META = join(REPO, 'extensions', 'scripts', 'amo-metadata.mjs');
+const STORE_ENV = join(REPO, 'extensions', 'scripts', 'lib', 'store-environment.mjs');
+const FS_DIR = join(REPO, 'extensions', 'Extension', 'Full_Screen_Shot');
+
+/** A minimal extensions root holding FullShot's metadata sources only, so a case
+ *  can break one of them without touching the real tree. */
+function metaRoot(mutate = () => {}) {
+  const root = join(TMP, `amometa${seq++}`);
+  const tool = join(root, 'Extension', 'Full_Screen_Shot');
+  for (const rel of ['tool.json', 'LICENSE', 'publish/identity.json', 'store/firefox', 'store/_shared/support-url.txt']) {
+    cpSync(join(FS_DIR, rel), join(tool, rel), { recursive: true });
+  }
+  mutate(tool);
+  return root;
+}
+
+describe('EXT-3 — the AMO first submit carries the listing, and the store steps run where the owner gates them', () => {
+  test('E3-1 the sign argv hands web-ext the metadata file (--amo-metadata) and does not wait on review', async () => {
+    const { signArgv } = await import(pathToFileURL(AMO_SCRIPT).href);
+    const args = signArgv({ sourceDir: 'src', artifactsDir: 'out', metadataPath: 'out/amo-metadata.json' });
+    assert.equal(args[0], 'sign');
+    assert.equal(args[args.indexOf('--amo-metadata') + 1], 'out/amo-metadata.json', JSON.stringify(args));
+    assert.equal(args[args.indexOf('--channel') + 1], 'listed');
+    assert.equal(args[args.indexOf('--approval-timeout') + 1], '0');
+  });
+
+  test('E3-2 GREEN CONTROL: the real FullShot payload carries every field a listed first submit needs', async () => {
+    const { buildAmoMetadata } = await import(pathToFileURL(AMO_META).href);
+    const r = buildAmoMetadata({ toolId: 'fullshot' });
+    assert.equal(r.ok, true, JSON.stringify(r.why));
+    const p = r.payload;
+    assert.equal(p.slug, 'fullshot');
+    assert.ok(p.name['en-US'] && p.summary['en-US'] && p.description['en-US']);
+    assert.deepEqual(p.categories, { firefox: ['photos-music-videos', 'privacy-security'] });
+    assert.equal(p.support_email['en-US'], 'support@nikatru.com');
+    assert.equal(p.version.custom_license.name['en-US'], 'PolyForm Shield License 1.0.0');
+    assert.match(p.version.custom_license.text['en-US'], /^Required Notice: Copyright Rajasekar Selvam, trading as NIKATRU \(https:\/\/nikatru\.com\)$/m);
+    assert.ok(p.version.approval_notes.trim().length > 0, 'reviewer notes are the approval_notes');
+  });
+
+  test('E3-3 RED: a LICENSE whose Required Notice is a placeholder refuses the payload', async () => {
+    const { buildAmoMetadata } = await import(pathToFileURL(AMO_META).href);
+    const root = metaRoot((tool) => {
+      const lic = readFileSync(join(tool, 'LICENSE'), 'utf8');
+      writeFileSync(join(tool, 'LICENSE'), lic.replace(/^Required Notice: .*$/m, 'Required Notice: Copyright <OWNER LEGAL NAME OR COMPANY> (<OPTIONAL URL>)'));
+    });
+    const r = buildAmoMetadata({ toolId: 'fullshot', root });
+    assert.equal(r.ok, false);
+    assert.match(r.why.join('\n'), /LICENSE its Required Notice is still a placeholder/);
+  });
+
+  test('E3-4 RED: an empty reviewer note, and a category AMO has no slug for, each refuse by name', async () => {
+    const { buildAmoMetadata } = await import(pathToFileURL(AMO_META).href);
+    const root = metaRoot((tool) => {
+      writeFileSync(join(tool, 'store', 'firefox', 'reviewer-notes.txt'), '\n');
+      writeFileSync(join(tool, 'store', 'firefox', 'category.txt'), 'Productivity\n');
+    });
+    const r = buildAmoMetadata({ toolId: 'fullshot', root });
+    assert.equal(r.ok, false);
+    const why = r.why.join('\n');
+    assert.match(why, /store\/firefox\/reviewer-notes\.txt is empty/);
+    assert.match(why, /names "Productivity", which is not an AMO extension category/);
+  });
+
+  test('E3-5 publish-amo WITHOUT --submit is a dry run: it prints the payload and the argv, and sends nothing', () => {
+    const env = { ...process.env };
+    delete env.AMO_JWT_ISSUER;
+    delete env.AMO_JWT_SECRET;
+    const r = spawnSync(process.execPath, [AMO_SCRIPT, '--tool', 'fullshot', '--artifacts-dir', join(TMP, 'amo-dry')], { encoding: 'utf8', env });
+    assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+    assert.match(r.stdout, /"approval_notes"/);
+    assert.match(r.stdout, /→ {4}web-ext sign --channel listed .* --amo-metadata \S+amo-metadata\.json --approval-timeout 0/);
+    assert.match(r.stdout, /^publish-amo: DRY RUN — nothing was sent to addons\.mozilla\.org/m);
+    assert.doesNotMatch(r.stdout, /SUBMITTED/);
+  });
+
+  test('E3-6 the store-publish job is environment-bound, needs the release, and submits AMO with --submit', () => {
+    const wf = parseWorkflow(REPO, '.github/workflows/extensions.yml');
+    const job = wf.jobs.get('store-publish');
+    assert.ok(job, 'extensions.yml declares a store-publish job');
+    assert.ok(job.lines.some((l) => /^ {4}environment: store-publish\s*$/.test(l.text)), 'environment: store-publish');
+    assert.ok(job.lines.some((l) => /^ {4}needs: release\s*$/.test(l.text)), 'needs: release');
+    const amo = readSteps(job).map(stepModel).find((st) => st.name === 'Submit to Firefox Add-ons (AMO)');
+    assert.ok(amo, 'the AMO step is in store-publish');
+    assert.match(amo.run, /node extensions\/scripts\/publish-amo\.mjs [^;]*--submit/);
+    assert.ok(!wf.jobs.get('release').lines.some((l) => /publish-(?:amo|cws|edge)\.mjs/.test(l.text)), 'no store publisher is left in the release job');
+  });
+
+  test('E3-7 requireStorePublishEnvironment refuses outside Actions, a missing environment, and one with no reviewer', async () => {
+    const { requireStorePublishEnvironment } = await import(pathToFileURL(STORE_ENV).href);
+    const env = { GITHUB_ACTIONS: 'true', GITHUB_REPOSITORY: 'o/r', GITHUB_TOKEN: 't' };
+    const answer = (status, body) => async () => ({ status, ok: status >= 200 && status < 300, json: async () => body });
+    const outside = await requireStorePublishEnvironment({ env: { GITHUB_TOKEN: 't' }, fetchImpl: answer(200, {}) });
+    assert.equal(outside.ok, false);
+    assert.match(outside.lines[0], /only inside GitHub Actions/);
+    const missing = await requireStorePublishEnvironment({ env, fetchImpl: answer(404, {}) });
+    assert.equal(missing.ok, false);
+    assert.match(missing.lines[0], /"store-publish" environment does not exist in o\/r/);
+    const unguarded = await requireStorePublishEnvironment({ env, fetchImpl: answer(200, { protection_rules: [] }) });
+    assert.equal(unguarded.ok, false);
+    assert.match(unguarded.lines[0], /carries NO required reviewer/);
+    const gated = await requireStorePublishEnvironment({ env, fetchImpl: answer(200, { protection_rules: [{ reviewers: [{ id: 1 }] }], can_admins_bypass: false }) });
+    assert.equal(gated.ok, true, gated.lines.join('\n'));
+  });
+
+  test('E3-8 store-publish downloads and checksum-verifies the Release BEFORE every store step, and submits those bytes, never a fresh pack', () => {
+    const wf = parseWorkflow(REPO, '.github/workflows/extensions.yml');
+    const job = wf.jobs.get('store-publish');
+    assert.ok(job, 'extensions.yml declares a store-publish job');
+    const steps = readSteps(job).map(stepModel);
+    const download = steps.findIndex((st) => /\bgh release download\b/.test(st.run));
+    const verify = steps.findIndex((st) => /\bsha256sum -c\b/.test(st.run));
+    const register = JSON.parse(readFileSync(join(REPO, 'tooling', 'channel-register.json'), 'utf8'));
+    const storeLines = storePublishSteps(parseResolvedWorkflows(REPO).workflows, register).filter((x) => x.wf.rel === wf.rel && x.job.name === 'store-publish').map((x) => x.step.n);
+    assert.equal(storeLines.length, 3, `three store steps in store-publish, read ${storeLines.length}`);
+    const storeIdx = steps.map((st, i) => (storeLines.includes(st.n) ? i : -1)).filter((i) => i !== -1);
+    assert.ok(download !== -1, 'a step runs gh release download');
+    assert.ok(verify !== -1, 'a step runs sha256sum -c');
+    assert.ok(download < Math.min(...storeIdx) && verify < Math.min(...storeIdx), 'download and verify come before every store step');
+    for (const i of storeIdx) {
+      const run = steps[i].run;
+      assert.doesNotMatch(run, /\bdist\//, `${steps[i].name} names dist/, a fresh pack`);
+      const pkg = run.match(/--zip\s+"?([^\s"]+)/)?.[1] ?? run.match(/--source-dir\s+"?([^\s"]+)/)?.[1] ?? null;
+      assert.ok(pkg !== null && pkg.startsWith('release-assets/'), `${steps[i].name} package argument ${pkg} is not the downloaded Release`);
+    }
   });
 });

@@ -932,6 +932,37 @@ describe('assert-lockfile-discipline', () => {
     assert.match(out, /read 1 workflow file\(s\) under \.github\/workflows and 0 install command\(s\)/);
   });
 
+  test('FAILS on `npx --yes <pkg>@<ver>` in a workflow — a run-time registry fetch (EXT-3)', () => {
+    const wf = 'jobs:\n  a:\n    steps:\n      - run: npm ci\n      - run: npx --yes web-ext@8 lint --source-dir x\n';
+    const { code, out } = run('assert-lockfile-discipline.mjs', { args: [build('ld-npx-yes', { workflow: wf })] });
+    assert.equal(code, 1, out);
+    assert.match(out, /ci\.yml:5 fetches a package with npx at run time/);
+  });
+
+  test('ALLOWS `npx tsc` — the locked local binary of a unit that ran npm ci', () => {
+    const wf = 'jobs:\n  a:\n    steps:\n      - run: npm ci\n      - run: npx tsc --noEmit\n';
+    const { code, out } = run('assert-lockfile-discipline.mjs', { args: [build('ld-npx-local', { workflow: wf })] });
+    assert.equal(code, 0, out);
+  });
+
+  test('FAILS on a script that spawns npx with --yes on a line of its own (EXT-3)', () => {
+    const dir = build('ld-npx-spawn');
+    writeFileSync(join(dir, 'services/w1/publish.mjs'), "const r = spawnSync(\n  'npx',\n  ['--yes', 'web-ext@10.6.0', 'sign'],\n);\n");
+    const { code, out } = run('assert-lockfile-discipline.mjs', { args: [dir] });
+    assert.equal(code, 1, out);
+    assert.match(out, /services\/w1\/publish\.mjs:2 spawns npx with a fetch flag/);
+  });
+
+  test('FAILS when a tooling island has a package.json and no lockfile (EXT-3)', () => {
+    const dir = build('ld-island');
+    writeFileSync(join(dir, 'services/w1/package.json'), '{"name":"x"}\n');
+    mkdirSync(join(dir, 'tooling/web-ext'), { recursive: true });
+    writeFileSync(join(dir, 'tooling/web-ext/package.json'), '{"devDependencies":{"web-ext":"10.6.0"}}\n');
+    const { code, out } = run('assert-lockfile-discipline.mjs', { args: [dir] });
+    assert.equal(code, 1, out);
+    assert.match(out, /tooling\/web-ext has a package\.json declaring npm and no package-lock\.json/);
+  });
+
   test('FAILS its own coverage check when the scan finds almost nothing', () => {
     const { code, out } = run('assert-lockfile-discipline.mjs', { args: [build('ld-cov', { units: ['services/only'] })] });
     assert.equal(code, 2, out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
@@ -2151,6 +2182,8 @@ describe('assert-version-consistency', () => {
       android = true,
       gitleaksPin = DECL.gitleaks,
       scanBody,
+      wranglerIsland = true,
+      islandPin = DECL.wrangler,
       ...wfOpts
     } = opts;
     const files = {
@@ -2164,6 +2197,8 @@ describe('assert-version-consistency', () => {
     };
     if (android) files[ANDROID] = androidModule(java, gradleExtra);
     if (brick) files[BRICK] = brickPkg(wranglerPin);
+    // The tooling/wrangler island (EXT-3, 2026-09-24), a REQUIRED target like the brick.
+    if (wranglerIsland) files['tooling/wrangler/package.json'] = brickPkg(islandPin);
     return fixture(name, files);
   };
 
@@ -2229,10 +2264,10 @@ describe('assert-version-consistency', () => {
   test('FAILS its own coverage check when the scan finds almost nothing', () => {
     // Every REQUIRED target is present and yielding (their absence is a
     // DIFFERENT COVERAGE LOST, tested below), so the only failure here is the
-    // global MIN_OCCURRENCES floor itself. The 7 it does find are the brick's
-    // wrangler pin, melos in pubspec.yaml and README.md, the Android module's
-    // three java literals, and scan-secrets.mjs's VALIDATED_AGAINST — the
-    // workflow contributes nothing.
+    // global MIN_OCCURRENCES floor itself. The 8 it does find are the brick's
+    // wrangler pin, the tooling/wrangler island's pin, melos in pubspec.yaml and
+    // README.md, the Android module's three java literals, and scan-secrets.mjs's
+    // VALIDATED_AGAINST — the workflow contributes nothing.
     const dir = fixture('vc-cov', {
       'tooling/versions.json': JSON.stringify(DECL),
       '.github/workflows/ci.yml': `name: X\njobs:\n  j:\n    steps:\n      - run: echo hi\n`,
@@ -2240,11 +2275,12 @@ describe('assert-version-consistency', () => {
       'README.md': readmeDoc(),
       [ANDROID]: androidModule(),
       [BRICK]: brickPkg(DECL.wrangler),
+      'tooling/wrangler/package.json': brickPkg(DECL.wrangler),
       [SCAN_SECRETS]: scanSecrets(),
     });
     const { code, out } = run('assert-version-consistency.mjs', { args: [dir] });
     assert.equal(code, 2);
-    assert.match(out, /COVERAGE LOST — matched 7 version reference\(s\), expected at least 10/);
+    assert.match(out, /COVERAGE LOST — matched 8 version reference\(s\), expected at least 10/);
   });
 
   // ── the two rules PR #79 added, untested until triage 2026-07-31 ───────────
@@ -2276,6 +2312,18 @@ describe('assert-version-consistency', () => {
     const { code, out } = run('assert-version-consistency.mjs', { args: [build('vc-brick-gone', { brick: false })] });
     assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST — the brick's stamped-service package\.json is gone/);
+  });
+
+  test('COVERAGE LOST when the tooling/wrangler island package.json is absent', () => {
+    const { code, out } = run('assert-version-consistency.mjs', { args: [build('vc-island-gone', { wranglerIsland: false })] });
+    assert.equal(code, 2);
+    assert.match(out, /COVERAGE LOST — the wrangler island's package\.json is gone/);
+  });
+
+  test('FAILS when the tooling/wrangler island pins a wrangler the declaration does not', () => {
+    const { code, out } = run('assert-version-consistency.mjs', { args: [build('vc-island-drift', { islandPin: '4.0.1' })] });
+    assert.equal(code, 1, out);
+    assert.match(out, /tooling\/wrangler\/package\.json:\d+ Wrangler \(brick dep\) is "4\.0\.1"/);
   });
 
   test('FAILS when a workflow uses cloudflare/wrangler-action WITHOUT wranglerVersion', () => {
@@ -2468,6 +2516,7 @@ describe('assert-version-consistency', () => {
       'README.md': readmeDoc(),
       [ANDROID]: 'android {\n    compileOptions {\n        sourceCompatibility(JavaVersion.VERSION_17)\n    }\n}\n',
       [BRICK]: brickPkg(DECL.wrangler),
+      'tooling/wrangler/package.json': brickPkg(DECL.wrangler),
       [SCAN_SECRETS]: scanSecrets(),
     });
     assert.equal(run('assert-version-consistency.mjs', { args: [dir] }).code, 0);

@@ -75,6 +75,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Report, parseArgs, die } from './lib/report.mjs';
 import { repoRoot, resolveTool, loadAllTools, readText } from './lib/toolinfo.mjs';
+import { requiredNotice } from './lib/licence.mjs';
 import {
   LISTING_FIELDS,
   extensionPerStoreListingFiles,
@@ -635,6 +636,29 @@ for (const tool of tools) {
       }
       gradeScreenshots(rel, abs, anyServed);
     }
+  }
+
+  /* ── 4b. the licensor is NAMED in the notice every store zip carries ──────
+     ⏱ 2026-09-24 (EXT-3, O-EXTENSION-LICENSE-NOTICE-UNFILLED). PolyForm
+     Shield's Notices section makes the `Required Notice:` line travel with every
+     copy, pack.mjs ships LICENSE in every zip, and AMO receives the text as the
+     Custom License. FullShot's line read `<OWNER LEGAL NAME OR COMPANY>` while
+     every limb above passed. A tool that packs LICENSE is graded on it; the
+     reader is lib/licence.mjs, shared with amo-metadata.mjs. */
+  const include = Array.isArray(tool.raw?.package?.include) ? tool.raw.package.include : [];
+  if (include.includes('LICENSE')) {
+    const licAbs = path.join(tool.dirAbs, 'LICENSE');
+    if (!fs.existsSync(licAbs)) {
+      r.fail(tool.rel + '/LICENSE exists', 'package.include ships LICENSE and the file is absent.');
+    } else {
+      const notice = requiredNotice(readText(licAbs));
+      if (notice.ok) r.pass(tool.rel + '/LICENSE names its licensor', notice.line);
+      else r.fail(tool.rel + '/LICENSE names its licensor', 'LICENSE ' + notice.why + '\n' +
+        'Every store zip carries this file, and AMO takes it as the Custom License: an unnamed licensor ships to all three.');
+    }
+  } else if (Object.values(rows).some((x) => x?.target)) {
+    r.fail(tool.rel + ' ships LICENSE in its store packages',
+      'package.include does not list LICENSE, so the zips go out without the notice PolyForm Shield says travels with every copy.');
   }
 
   /* ── 5. orphans — a listing directory no row declares ──────────────────── */

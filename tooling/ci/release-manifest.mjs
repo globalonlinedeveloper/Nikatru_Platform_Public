@@ -1397,7 +1397,7 @@ async function main() {
     // version cut from the tag would be a number this file asserts about files
     // that do not carry it. The lane passes what it built with.
     const version = flag('version') ?? die('--emit-release-json needs --version <X.Y.Z[.N]>');
-    const minSupportedFlag = flag('min-supported'); // read, never trusted, on the app surface: releaseFloor below
+    const minSupportedFlag = flag('min-supported'); // read only to be refused, on every surface: releaseFloor below
     const surfaceFlag = flag('surface');
     const build = has('build') ? flag('build') : null;
     const out = join(dir, RELEASE_JSON_NAME);
@@ -1427,7 +1427,7 @@ async function main() {
         'The flag is accepted only as a restatement the lane can be read for; it never overrides the tree.',
       );
     }
-    const minSupported = releaseFloor(treeRoot, app, surface, minSupportedFlag);
+    const minSupported = releaseFloor(treeRoot, app, surface, minSupportedFlag, version);
     const { names, strays } = assetFiles(dir);
     if (strays.length) {
       die(
@@ -1472,7 +1472,7 @@ async function main() {
     '       | --emit-release-json <dir> --app <id> --tag <tag> --sha <sha> --run-url <url> --notes-url <url>',
     '         --released-at <iso> --version <X.Y.Z[.N]> [--build <n>] [--surface app|extension] [--stamps <dir>]',
     '         (--stamps is required on every surface but the extension one, for both --stage and --emit-release-json)',
-    '         + --min-supported <X.Y.Z> on the extension surface only (the app surface reads services/platform/src/app-config-data.json)',
+    '         (no --min-supported: the app surface reads services/platform/src/app-config-data.json, the extension surface states X.Y.Z of --version)',
   );
 }
 
@@ -1698,9 +1698,11 @@ function readToolJson(root, id) {
  * overrides (KV)") can raise the served floor at runtime without a commit; the
  * record cannot see that and does not claim to.
  *
- * THE EXTENSION SURFACE KEEPS THE FLAG: the extensions have no served config and
- * make no network call, so there is no declared floor to read. extensions.yml
- * passes the tag's version.
+ * THE EXTENSION SURFACE STATES THE RELEASE LINE: the extensions have no served
+ * config and make no network call, so there is no declared floor to read. The
+ * floor is the first three components of --version (EXT-3, 2026-09-24): until
+ * then extensions.yml passed `--min-supported "$VERSION"`, and a four-part store
+ * tag broke the schema's X.Y.Z. The flag is refused on this surface as well.
  *
  * The SHAPE (X.Y.Z) is not judged here. contracts/release.schema.json owns it,
  * and assert-release-json.mjs grades it two steps later in both lanes.
@@ -1711,11 +1713,30 @@ function readToolJson(root, id) {
  * top-level `const` down here would still be in its dead zone when `main()`
  * runs, at the direct-invocation check above.
  */
-function releaseFloor(treeRoot, app, surface, passed) {
+function releaseFloor(treeRoot, app, surface, passed, version) {
   const SERVED_CONFIG_REL = 'services/platform/src/app-config-data.json';
   if (surface !== 'app') {
-    return passed ?? die(`--emit-release-json needs --min-supported <X.Y.Z> for --app "${app}" on the "${surface}" surface.`,
-      'Only the app surface has a served floor to read; every other surface states its own.');
+    // ⏱ 2026-09-24 (EXT-3, O-EXTENSION-MINSUPPORTED-FOUR-PART-TAG): the extension
+    // lane passed `--min-supported "$VERSION"`, the tag's own version. A store-only
+    // FOURTH component (fullshot-v1.10.1.2, which the tag filter and the schema's
+    // `tag` and artefact `version` accept) then reached the one property the schema
+    // holds to X.Y.Z, and the grade step refused the release. The floor of an
+    // extension release is the release line it belongs to: the first three
+    // components of --version, derived here from the one value the lane already
+    // passes. The flag is refused, so the record has one source on this surface too.
+    if (passed !== null) {
+      die(
+        `--min-supported is refused on the "${surface}" surface: --app "${app}" states its floor as the first three components of --version.`,
+        'A value passed here is a second copy of the release line, and the copy is what broke: a four-part',
+        'store tag passed as the floor fails the schema\'s X.Y.Z. Drop the flag from the lane.',
+      );
+    }
+    const line = /^([0-9]+\.[0-9]+\.[0-9]+)(?:\.[0-9]+)?$/.exec(version ?? '');
+    if (line === null) {
+      die(`--version ${JSON.stringify(version)} is not X.Y.Z or X.Y.Z.N, so --app "${app}" on the "${surface}" surface has no release line to state as its floor.`);
+    }
+    console.log(`minSupported  ${line[1]}  the release line of --version ${version}`);
+    return line[1];
   }
   if (passed !== null) {
     die(

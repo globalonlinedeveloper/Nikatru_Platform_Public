@@ -35,6 +35,8 @@ on:
       # The two GlitchTip writes this lane runs (row O-GLITCHTIP-CALLS-HAVE-NO-RETRY).
       - 'tooling/ops/create-glitchtip-release.mjs'
       - 'tooling/ops/upload-web-sourcemaps.mjs'
+      # The locked wrangler island the Pages-project step runs.
+      - 'tooling/wrangler/**'
       - '.github/workflows/deploy-web.yml'
   workflow_dispatch:
 
@@ -311,10 +313,13 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           APP: ${{ matrix.app }}
+        # why: wrangler is the locked tooling/wrangler island's binary, installed from its
+        # committed lockfile; a run-time registry fetch held the account token over a loose
+        # tree. assert-version-consistency holds the island's pin to tooling/versions.json.
         run: |
           set -uo pipefail
-          ver="$(node -p "require('./tooling/versions.json').wrangler")"
-          out="$(npx --yes "wrangler@${ver}" pages project create "$APP" --production-branch=main 2>&1)" && code=0 || code=$?
+          npm ci --ignore-scripts --prefix tooling/wrangler || { echo "::error title=Pages project::the tooling/wrangler island did not install from its lockfile."; exit 1; }
+          out="$(tooling/wrangler/node_modules/.bin/wrangler pages project create "$APP" --production-branch=main 2>&1)" && code=0 || code=$?
           printf '%s\n' "$out"
           if [ "$code" -eq 0 ]; then echo "Created Direct Upload Pages project \"$APP\"."; exit 0; fi
           if printf '%s' "$out" | grep -qiE 'already exists|\b8000002\b'; then echo "Pages project \"$APP\" already exists — nothing to create."; exit 0; fi

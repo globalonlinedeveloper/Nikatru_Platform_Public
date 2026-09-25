@@ -9,10 +9,13 @@
 // applies D1 migrations. `git checkout <sha> && npm install` could never
 // reproduce a shipped build.
 //
-// Two things are asserted:
+// Three things are asserted:
 //   1. every Node unit ships a lockfile, and it is TRACKED (an untracked lock is
-//      not a lock — it does not travel with a clone)
+//      not a lock — it does not travel with a clone). The tooling islands
+//      (TOOL_ISLANDS) are units too.
 //   2. no workflow uses a non-reproducible install for a unit that has one
+//   3. no workflow and no script fetches a package with `npx` at run time
+//      (added 2026-09-24, EXT-3)
 //
 // ── 🔴 THE HOLE THIS GUARD SHIPPED WITH, FOUND 2026-08-01 ────────────────────
 // It reported "3 node unit(s) locked" and exited 0 while the REPO ROOT — which
@@ -105,11 +108,21 @@ const problems = [];
 // below. Its absence from this list is what let an unpinned pnpm workspace sit
 // in a repo whose CI reports "dependency resolution is reproducible".
 const rootIsUnit = existsSync(join(repoRoot, 'package.json'));
+/** ⏱ 2026-09-24 (EXT-3) — THE TOOLING ISLANDS ARE NODE UNITS. Each is a directory
+ *  whose only job is to hold one tool's exact version and its lockfile, installed
+ *  with `npm ci --prefix <island>`: `_playwright/` (the browser tier), and since
+ *  O-WEB-EXT-FETCHED-AT-RUN-TIME `tooling/web-ext/` (the Firefox lint and the AMO
+ *  signer) and `tooling/wrangler/` (deploy-web's Pages-project step). An island
+ *  without a tracked lockfile is the run-time fetch it replaced, so each is held to
+ *  limb 1 like any service. Named here rather than globbed: `tooling/*` also holds
+ *  dependency-free packages that need no lockfile. */
+const TOOL_ISLANDS = ['_playwright', 'tooling/web-ext', 'tooling/wrangler'];
 const nodeUnits = [
   ...(rootIsUnit ? ['.'] : []),
   ...childDirs('services'),
   ...childDirs('packages'),
   ...childDirs('sites'),
+  ...TOOL_ISLANDS,
 ].filter((d) => existsSync(join(repoRoot, d === '.' ? '' : d, 'package.json')));
 
 // The scan must still be reaching the root. A refactor of the globs above that
@@ -204,6 +217,77 @@ for (const wf of workflows) {
   });
 }
 
+// ── 3. nothing fetches a package from the registry at run time ───────────────
+// ⏱ 2026-09-24 (EXT-3, O-WEB-EXT-FETCHED-AT-RUN-TIME). `npx --yes <pkg>@<ver>`
+// is an install with no lockfile at all: the exact version pins the top package
+// and every package under it resolves loose, at the moment the step runs — for the
+// AMO signer that moment held the store credentials, and for wrangler the account
+// token. Limb 2 could not see it, because `npx` is not an install verb. A tool a
+// workflow or a script runs comes from a locked island (limb 1) instead.
+//
+// A workflow line (comments stripped) is a fetch when `npx` carries `--yes`/`-y`,
+// `--package`/`-p`, or a `<pkg>@<version>` spec. `npx tsc` in a unit that
+// `npm ci`s first runs the locked local binary and is not one.
+const NPX_FETCH = /\bnpx\b[^\n]*?(?:\s(?:--yes|-y|--package|-p)(?=[\s=]|$)|\s["']?(?:@[A-Za-z0-9._-]+\/)?[A-Za-z0-9._-]+@[^\s"']+)/;
+// A script that spawns `npx` with a fetch flag as its FIRST argument — the shape
+// publish-amo.mjs shipped: spawnSync of npx whose argv opened with --yes, then the pin and 'sign'.
+const NPX_SPAWN_FETCH = /["']npx["']\s*,\s*\[\s*["'](?:--yes|-y|--package|-p)["']/;
+for (const wf of workflows) {
+  readFileSync(join(wfDir, wf), 'utf8')
+    .split('\n')
+    .forEach((line, i) => {
+      if (NPX_FETCH.test(line.replace(/#.*$/, ''))) {
+        problems.push(
+          `.github/workflows/${wf}:${i + 1} fetches a package with npx at run time — its tree resolves loose, with no lockfile. ` +
+            'Install the tool from a locked island (`npm ci --ignore-scripts --prefix <island>`) and run its node_modules/.bin binary.',
+        );
+      }
+    });
+}
+/** Every tracked script file, or — outside a git checkout — every one on disk. */
+function codeFiles() {
+  if (gitAvailable) {
+    try {
+      return execFileSync('git', ['ls-files', '-z', '--', '*.mjs', '*.js', '*.cjs'], { cwd: repoRoot, encoding: 'utf8' })
+        .split('\0')
+        .filter(Boolean);
+    } catch {
+      return [];
+    }
+  }
+  const out = [];
+  const walk = (rel) => {
+    for (const d of childDirs(rel)) walk(d);
+    const abs = join(repoRoot, rel);
+    for (const e of listDir(abs, { withFileTypes: true })) {
+      if (e.isFile() && /\.(?:mjs|js|cjs)$/.test(e.name)) out.push(posix.join(rel, e.name));
+    }
+  };
+  walk('');
+  return out;
+}
+const scripts = codeFiles();
+for (const rel of scripts) {
+  const text = readFileSync(join(repoRoot, rel), 'utf8');
+  // Over the WHOLE text, not per line: the call publish-amo.mjs shipped put `'npx',`
+  // and its argv on separate lines, which a per-line test never sees (measured on
+  // this limb's own red control, 2026-09-24).
+  for (const m of text.matchAll(new RegExp(NPX_SPAWN_FETCH.source, 'g'))) {
+    const line = text.slice(0, m.index).split('\n').length;
+    problems.push(
+      `${rel}:${line} spawns npx with a fetch flag — a registry fetch at run time, with no lockfile under the top package. ` +
+        'Run the binary a locked island installs instead, and refuse when it is absent.',
+    );
+  }
+}
+// In a git checkout a zero is `git ls-files` failing, never a tree without scripts:
+// this repository tracks hundreds. (A fixture tree outside git is walked instead,
+// and may hold none.)
+if (gitAvailable && scripts.length === 0) {
+  console.error(`✗ COVERAGE LOST — git ls-files named ZERO script files under ${repoRoot}, so "no script spawns an npx fetch" was asked of nothing.`);
+  coverageLost();
+}
+
 // ⏱ 2026-09-15 — LIMB 2 OVER NOTHING IS COVERAGE LOST. With .github/workflows
 // moved aside this guard printed "every workflow install is reproducible" and
 // exited 0 having read no workflow (O-LOCAL-SCRIPTS-PARSE-MOVED-WORKFLOWS). The
@@ -231,7 +315,7 @@ const byManager = nodeUnits.reduce((acc, u) => {
 }, {});
 console.log(
   `ok  lockfile discipline — ${nodeUnits.length} node unit(s) locked (${Object.entries(byManager).map(([m, n]) => `${n} ${m}`).join(', ')}), ` +
-    `repo root included, every workflow install is reproducible`,
+    `repo root included, every workflow install is reproducible, no npx fetch in ${workflows.length} workflow(s) or ${scripts.length} script(s)`,
 );
 
 /** The one COVERAGE LOST stop: each could-not-look branch above prints its own reason and ends

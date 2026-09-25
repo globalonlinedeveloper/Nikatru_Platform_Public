@@ -1597,6 +1597,10 @@ function withStores(mutate = () => {}) {
        mutations below are the only thing that can empty the directory. */
     fs.copyFileSync(path.join(REPO, 'templates', 'tool', 'icons', 'icon128.png'),
       path.join(root, TOOL, 'store', '_shared', 'screenshots', 'shot-01.png'));
+    /* LICENSE ships in every store zip and names its licensor (EXT-3,
+       O-EXTENSION-LICENSE-NOTICE-UNFILLED); section 4b grades both halves. */
+    t.package.include.push('LICENSE');
+    w(root, TOOL + '/LICENSE', 'Required Notice: Copyright Example Licensor (https://example.test)\n');
     mutate(t, root);
     writeJson(root, TOOL + '/tool.json', t);
   });
@@ -1605,6 +1609,33 @@ function withStores(mutate = () => {}) {
 expect('a complete three-store layer passes', {
   script: 'check-store-metadata.mjs', argv: ['goodtool'], code: 0, contains: '3 store row(s) graded',
   root: withStores()
+});
+
+/* 🔴 THE LICENSOR IS NAMED, AND THE NOTICE SHIPS (EXT-3, 2026-09-24). */
+expect('a LICENSE whose Required Notice is still a placeholder is caught', {
+  script: 'check-store-metadata.mjs', argv: ['goodtool'], code: 1, contains: 'LICENSE names its licensor',
+  root: withStores((t, root) => { w(root, TOOL + '/LICENSE', 'Required Notice: Copyright <OWNER LEGAL NAME OR COMPANY> (<OPTIONAL URL>)\n'); })
+});
+expect('store packages that would ship without LICENSE are caught', {
+  script: 'check-store-metadata.mjs', argv: ['goodtool'], code: 1, contains: 'ships LICENSE in its store packages',
+  root: withStores(t => { t.package.include = t.package.include.filter(x => x !== 'LICENSE'); })
+});
+
+/* 🔴 THE AMO FIRST SUBMIT CARRIES ITS LISTING (EXT-3, 2026-09-24). amo-metadata.mjs
+   builds `--amo-metadata` from these same files; the pair below is its green and
+   its red on one licence line. */
+const amoReady = (licenceLine) => (t, root) => {
+  w(root, TOOL + '/store/firefox/category.txt', 'Privacy & Security\n');
+  w(root, TOOL + '/store/firefox/reviewer-notes.txt', 'Runs on-device; no account and no credentials.\n');
+  w(root, TOOL + '/LICENSE', '# PolyForm Shield License 1.0.0\n\n' + licenceLine + '\n');
+};
+expect('amo-metadata.mjs builds the listing payload from a complete firefox listing', {
+  script: 'amo-metadata.mjs', argv: ['--tool', 'goodtool', '--print'], code: 0, contains: '"approval_notes"',
+  root: withStores(amoReady('Required Notice: Copyright Example Licensor (https://example.test)'))
+});
+expect('amo-metadata.mjs REFUSES while the LICENSE Required Notice is a placeholder', {
+  script: 'amo-metadata.mjs', argv: ['--tool', 'goodtool', '--print'], code: 1, contains: 'still a placeholder',
+  root: withStores(amoReady('Required Notice: Copyright <OWNER LEGAL NAME OR COMPANY> (<OPTIONAL URL>)'))
 });
 
 /* 🔴 THE AXIS MUTATIONS — the two that let builds and stores drift apart. */
@@ -2772,11 +2803,15 @@ function unarmedTree(id, opts = {}) { return laneTree({ id, submittable: false, 
 
 const LISTED = { amo: 'fixture@nikatru.com', 'chrome-webstore': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'edge-addons': 'bbbbbbbb-cccc-dddd-eeee-ffffffffffff' };
 
+/* ⏱ 2026-09-24 (EXT-3): publish-amo.mjs is a DRY RUN unless `--submit`, and the
+   register's verdict is asked on the submit path, first — so these two cases pass
+   it. Neither fixture holds a credential, so the verdict answers before anything
+   else runs. */
 expect('publish-amo.mjs REFUSES when the register ARMS amo and its credentials are empty', {
-  script: 'publish-amo.mjs', argv: ['--tool', 'fullshot'], root: armedTree('amo', { listingId: LISTED.amo }), code: 1, contains: 'REFUSED'
+  script: 'publish-amo.mjs', argv: ['--tool', 'fullshot', '--submit'], root: armedTree('amo', { listingId: LISTED.amo }), code: 1, contains: 'REFUSED'
 });
 expect('publish-amo.mjs prints the owner step and exits 0 while amo is unarmed', {
-  script: 'publish-amo.mjs', argv: ['--tool', 'fullshot'], root: unarmedTree('amo', { listingId: LISTED.amo }), code: 0, contains: 'OWNER STEP:'
+  script: 'publish-amo.mjs', argv: ['--tool', 'fullshot', '--submit'], root: unarmedTree('amo', { listingId: LISTED.amo }), code: 0, contains: 'OWNER STEP:'
 });
 
 expect('publish-cws.mjs REFUSES when the register ARMS chrome-webstore and its credentials are empty', {

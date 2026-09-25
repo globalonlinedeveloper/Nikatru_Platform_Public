@@ -1,0 +1,8 @@
+{
+  "name": "tooling-wrangler",
+  "private": true,
+  "description": "The ONE wrangler install a workflow runs outside a Worker: deploy-web.yml creates each Direct Upload Pages project with node_modules/.bin/wrangler from here after `npm ci --ignore-scripts --prefix tooling/wrangler`. The version is exact and equals tooling/versions.json `wrangler`; assert-version-consistency.mjs reads this file as a required target and Renovate's wrangler group moves it with every other copy. No node_modules is committed. Follows the _playwright/ island.",
+  "devDependencies": {
+    "wrangler": "4.135.0"
+  }
+}

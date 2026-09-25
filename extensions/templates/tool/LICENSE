@@ -1,10 +1,11 @@
-Required Notice: Copyright ⟨LICENSOR⟩ (⟨LICENSOR_URL⟩)
+Required Notice: Copyright Rajasekar Selvam, trading as NIKATRU (https://nikatru.com)
 
-<!-- PLACEHOLDER(licensor) — replace ⟨LICENSOR⟩ with the copyright holder's
-     legal name and ⟨LICENSOR_URL⟩ with a URL for them, then delete this
-     comment. PolyForm Shield's "Notices" section makes that Required Notice
-     line travel with every copy of the software, which is why this file is in
-     the packaging allowlist and ships inside the store zip.
+<!-- The licensor of every tool stamped from this template (filled 2026-09-24,
+     O-EXTENSION-LICENSE-NOTICE-UNFILLED). PolyForm Shield's "Notices" section
+     makes that Required Notice line travel with every copy of the software,
+     which is why this file is in the packaging allowlist and ships inside the
+     store zip; extensions/scripts/check-store-metadata.mjs fails on a
+     placeholder in it.
 
      This is a SOURCE-AVAILABLE, NON-COMPETE licence, not an OSI open-source
      one. Mozilla's add-on submission form has no PolyForm entry in its licence

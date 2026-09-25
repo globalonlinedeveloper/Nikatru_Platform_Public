@@ -149,7 +149,7 @@ import { fileURLToPath } from 'node:url';
 // record or submit step behind `uses: ./.github/actions/<x>` or a local reusable
 // workflow is graded where it lives. The flat self-check below stays on
 // parseAllWorkflows: it is the deliberately different reader.
-import { parseAllWorkflows, parseResolvedWorkflows, lineAt, placeOf, refusalText, shellSegments, RECORD_CALL, expandMatrixEnvironment } from './workflow-scan.mjs';
+import { parseWorkflow, parseAllWorkflows, parseResolvedWorkflows, lineAt, placeOf, refusalText, shellSegments, RECORD_CALL, expandMatrixEnvironment, storePublishSteps } from './workflow-scan.mjs';
 import { resolveEnvironment, STATES, SUBMIT_TIME_STATES, STATE_MEANING } from './deployment-record.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
@@ -743,6 +743,74 @@ for (const row of submittableRows) {
   censusByRow.push(`${row.id}: ${perJob.join(' + ') || 'no invocation in any job'}`);
 }
 
+// ── RULE 2b · EVERY OTHER STORE PUBLISH STEP IS RECORDED TOO ────────────────
+// ⏱ 2026-09-24 (EXT-3, O-STORE-PUBLISH-STEP-DEFINED-THREE-WAYS). Rule 2 ranges
+// over the register's SUBMITTABLE rows. The Chrome and Edge submit steps belong
+// to rows that are `submittable: false` until EXT-6 arms them, so they sat outside
+// it: either step could upload and nothing required a record after it. This rule's
+// domain is workflow-scan.mjs `storePublishSteps()`, the one definition limb 2 of
+// assert-publish-steps-guarded.mjs and limb 4 of assert-release-provenance.mjs
+// also read. A store publish step running a row's `publishScript`, for a row
+// rule 2 does not already cover, must be followed in its job by a record of that
+// row's environment, under rule 6's skippability test.
+let storeStepsGraded = 0;
+const storeSteps = storePublishSteps(resolved.workflows, register);
+for (const { wf, job, step, scripts } of storeSteps) {
+  const bases = scripts.map((x) => x.split('/').pop());
+  const owners = rows.filter(
+    (r) => r?.submittable !== true && typeof r?.publishScript === 'string' && bases.includes(r.publishScript.split('/').pop()),
+  );
+  if (owners.length === 0) continue;
+  const calls = recordCalls(job);
+  markRecordLinesSeen(wf, job, calls);
+  for (const row of owners) {
+    storeStepsGraded++;
+    const record = calls.find((c) => {
+      const r = resolveEnvironment(register, c.environment);
+      return r !== null && r.channel?.id === row.id && c.n > step.n;
+    });
+    if (!record) {
+      problems.push(
+        `[10]D-9 · ${placeOf(wf, step.n)} — job "${job.name}" runs the "${row.id}" store publish ${JSON.stringify(step.name ?? '(unnamed)')} ` +
+          `and no later step records it. Add, after it:\n` +
+          `      run: node tooling/ci/${RECORDER} ${String(row.deploymentEnvironment).replace('{app}', '<app>')} --state ${SUBMIT_TIME_STATES[0]} --listing-url <url>`,
+      );
+      continue;
+    }
+    gradeSkippability(wf, job.name, record, `the record step for a "${row.id}" store publish`, `the "${row.id}" submission`);
+  }
+}
+
+// The rule's floor: a register that declares a non-submittable row WITH a
+// publishScript has a store step for this rule to grade, so grading none means the
+// definition stopped matching. (A tree with no such row gives rule 2b no subject.)
+const rule2bRows = rows.filter((r) => r?.submittable !== true && typeof r?.publishScript === 'string' && r.publishScript.trim() !== '');
+if (rule2bRows.length > 0 && storeStepsGraded === 0) {
+  coverageLost([
+    `rule 2b graded ZERO store publish steps while ${REGISTER_REL} declares ${rule2bRows.map((r) => `"${r.id}"`).join(', ')} with a publishScript.`,
+    'workflow-scan.mjs storePublishSteps() has stopped matching them, so this rule ranged over nothing.',
+  ]);
+}
+
+// Every OTHER job of a declared submission workflow is read by the same
+// structured parse, so the accounting identity below compares two complete reads
+// of those files. ⏱ 2026-09-24 (EXT-3): extensions.yml's `release` job keeps its
+// tag-PUSH origin record (`pending_manual_publish`) while the AMO submit moved to
+// `store-publish`; that record is no submission's, and rule 6b grades its `if:`.
+for (const rel of new Set(submittableRows.map((r) => r?.submission?.workflow).filter((x) => typeof x === 'string'))) {
+  const wf = openWorkflow(rel, 'a declared submission workflow');
+  for (const job of wf.jobs.values()) {
+    const calls = recordCalls(job);
+    const fresh = calls.filter((c) => !seenRecordLines.has(placeOf(wf, c.n)));
+    if (fresh.length === 0) continue;
+    markRecordLinesSeen(wf, job, fresh);
+    prints.push(
+      `[10]D-9 · ${fresh.map((c) => placeOf(wf, c.n)).join(', ')} — reached in job "${job.name}", which runs no submission; ` +
+        'not a submission record, so rules 2 and 4/5 do not grade it (rule 6b does).',
+    );
+  }
+}
+
 // ── THE CENSUS FLOOR — a rule that ranged over nothing may not certify ───────
 // The declared job is proven non-empty per row above, so this can only fire if
 // `wf.jobs` itself came back empty for every row. It is here anyway because the
@@ -890,6 +958,10 @@ console.log(
   `⬜ SUBMISSION-RECORD CENSUS ranged over ${new Set(censusJobsListed).size} job(s), listed: ${[...new Set(censusJobsListed)].join(', ')}. ` +
     'The register names ONE job per row and that is a floor, not a ceiling: every job of each declared submission ' +
     'workflow whose `run:` lines name the row\'s script is censused.',
+);
+console.log(
+  `⬜ RULE 2b (a store publish step outside every submittable row) graded ${storeStepsGraded} step/row pair(s) of ` +
+    `${storeSteps.length} store publish step(s) from workflow-scan.mjs storePublishSteps().`,
 );
 console.log(
   `⬜ SUBMISSION-RECORD LIMB: ${publishing} of ${rehearsals + publishing} submission invocation(s) can perform a REAL ` +

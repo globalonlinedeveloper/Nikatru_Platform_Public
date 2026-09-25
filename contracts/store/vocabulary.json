@@ -156,6 +156,13 @@
       "rendered": false
     },
     {
+      "name": "reviewer-notes.txt",
+      "kind": "text",
+      "app": null,
+      "extension": "per-store-additional",
+      "rendered": false
+    },
+    {
       "name": "snap-name.txt",
       "kind": "text",
       "app": "additional",

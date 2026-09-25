@@ -259,6 +259,21 @@ for (const tool of tools) {
         'and nothing about its identity could be read.');
       continue;
     }
+    /* 🔴 THE LICENCE NOTICE TRAVELS WITH EVERY COPY (EXT-3, 2026-09-24,
+       O-EXTENSION-LICENSE-NOTICE-UNFILLED). A tool with a LICENSE at its root is
+       licensed under a text whose Notices section makes the Required Notice travel
+       with every copy, and a store zip is a copy. FullShot's zips shipped without
+       it. Read off the archive itself: the package, not the allowlist, is what a
+       store receives. */
+    if (fs.existsSync(path.join(tool.dirAbs, 'LICENSE'))) {
+      if (readZipEntry(pkg.abs, 'LICENSE') === null) {
+        r.fail(pkg.rel + ' carries LICENSE',
+          tool.rel + '/LICENSE exists and this package has no LICENSE entry at its root. Add "LICENSE" to\n' +
+          'package.include in tool.json; the Required Notice must travel with every copy.');
+      } else {
+        r.pass(pkg.rel + ' carries LICENSE');
+      }
+    }
     let manifest;
     try {
       manifest = JSON.parse(raw.toString('utf8'));
