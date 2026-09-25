@@ -11,8 +11,8 @@
     "(17 were red both before and after, all of them needing build artifacts, credentials or CLI args). This ledger is the first",
     "thing that makes the template a declared set."
   ],
-  "measuredOn": "2026-09-16",
-  "measuredAtCommit": "63fb84ce",
+  "measuredOn": "2026-09-25",
+  "measuredAtCommit": "60b63fb9",
   "roots": [
     "tooling/bricks/app/__brick__/apps/{{app_id}}",
     "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api"
@@ -23,6 +23,21 @@
     "lines": 18888,
     "unclassified": 0,
     "unclassifiedLines": 0
+  },
+  "floors": {
+    "_why": "ADR 096: brick lib/ and lib/state are CEILINGS, not bands, set at their measured size with zero headroom. assert-chassis-ledger.mjs counts every git-tracked file under the Dart app root's lib/ (the .arb files included) with the same line rule as the rows, prints both totals, and exits 1 when either is over its max. A PR that grows brick lib/ raises floors.*.max in the same PR and names why in its body; a fall is banked by lowering the max. First values measured at 60b63fb9 (#931): ADR 096 recorded 6,702 / 3,046 at 24189ff3 (#930), and #931 (sign-out-everywhere) then moved lib/ by net +31 (settings_screen.dart +20, state/providers.dart +11) and lib/state by net +11, named under ADR 096 rule 4.",
+    "lib": {
+      "max": 6733,
+      "adr": "ADR 096",
+      "asOf": "2026-09-25",
+      "verify": "node tooling/ci/assert-chassis-ledger.mjs"
+    },
+    "state": {
+      "max": 3057,
+      "adr": "ADR 096",
+      "asOf": "2026-09-25",
+      "verify": "node tooling/ci/assert-chassis-ledger.mjs"
+    }
   },
   "verdicts": {
     "STAYS": "This file is per-app by construction, or a guard requires it to remain here. It is not step 4 work.",
