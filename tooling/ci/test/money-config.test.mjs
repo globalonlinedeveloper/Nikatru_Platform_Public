@@ -807,3 +807,52 @@ describe('assert-money-config — sandbox money cannot grant a production unlock
     assert.match(r.out, /COVERAGE LOST — tooling\/channel-register\.json carries no `ciSecretRegister\.nonSigning` array/);
   });
 });
+
+// ── LIMB 1d · limiter parity (added 2026-09-25, capsand-b) ────────────────────
+// Each case is written out by hand.
+const TOP_LIMITERS = [
+  { name: 'EVENTS_LIMITER', namespace_id: '1001', simple: { limit: 120, period: 60 } },
+  { name: 'MONEY_CEILING_LIMITER', namespace_id: '1004', simple: { limit: 120, period: 60 } },
+];
+const SANDBOX_LIMITERS = [
+  { name: 'EVENTS_LIMITER', namespace_id: '1006', simple: { limit: 120, period: 60 } },
+  { name: 'MONEY_CEILING_LIMITER', namespace_id: '1009', simple: { limit: 120, period: 60 } },
+];
+/** platformWithEnv's config, plus top-level rate limiters. */
+function platformWithLimiters(env) {
+  const cfg = JSON.parse(platformWithEnv(env));
+  cfg.ratelimits = TOP_LIMITERS;
+  return JSON.stringify(cfg, null, 2);
+}
+
+describe('assert-money-config — limb 1d, a sandbox declares every limiter on its own namespace', () => {
+  test('PASSES when the sandbox declares each top-level limiter by name, on namespaces the top level does not use', () => {
+    const r = run({ platformWrangler: platformWithLimiters({ sandbox: { ...SANDBOX_ENV, ratelimits: SANDBOX_LIMITERS } }) });
+    assert.equal(r.code, 0, r.out);
+  });
+
+  test('FAILS when the sandbox lacks one top-level limiter (the 1010 entry deleted)', () => {
+    const r = run({ platformWrangler: platformWithLimiters({ sandbox: { ...SANDBOX_ENV, ratelimits: [SANDBOX_LIMITERS[0]] } }) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /env\.sandbox declares no rate limiter `MONEY_CEILING_LIMITER`, which the top level binds/);
+  });
+
+  test('FAILS when the sandbox declares no ratelimits at all', () => {
+    const r = run({ platformWrangler: platformWithLimiters({ sandbox: SANDBOX_ENV }) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /declares no rate limiter `EVENTS_LIMITER`/);
+    assert.match(r.out, /declares no rate limiter `MONEY_CEILING_LIMITER`/);
+  });
+
+  test('FAILS when a sandbox limiter reuses a top-level namespace_id', () => {
+    const shared = [SANDBOX_LIMITERS[0], { ...SANDBOX_LIMITERS[1], namespace_id: '1004' }];
+    const r = run({ platformWrangler: platformWithLimiters({ sandbox: { ...SANDBOX_ENV, ratelimits: shared } }) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /rate limiter `MONEY_CEILING_LIMITER` uses namespace_id 1004, which a top-level limiter uses/);
+  });
+
+  test('a config with no top-level limiters asks nothing of its sandbox', () => {
+    const r = run({ platformWrangler: platformWithEnv({ sandbox: SANDBOX_ENV }) });
+    assert.equal(r.code, 0, r.out);
+  });
+});

@@ -32,6 +32,15 @@
 //   L5  the register widens app_version acceptance only through a stamp lane:
 //       every `alsoResolves` id on a table whose marker is app_version is a
 //       STAMP_LANES resolver, and every lane's resolver is registered.
+//   L6  ⏱ 2026-09-25 — a SANDBOX lane (STAMP_LANES `backend: 'sandbox'`) reaches
+//       the sandbox and purges the sandbox. For every writer job in its workflow:
+//       (a) no step or job env names API_BASE_URL, PLATFORM_BASE_URL or
+//       CONFIG_BASE_URL, and no job line reads `secrets.`/`vars.` of one;
+//       (b) every purge's PLATFORM_D1_DATABASE_ID is platform's env.sandbox
+//       PLATFORM_DB id and its SUBSCRIPTIONTRACKER_D1_DATABASE_ID the API's
+//       env.sandbox APP_DB id, as tooling/store/capture-backend.mjs
+//       sandboxBackend() reads them, never a top-level id; (c) a sandbox lane with
+//       no writer job, or configs sandboxBackend() refuses, is COVERAGE LOST.
 //
 // ⚠️ WHAT IT CANNOT SEE: a row in production. Whether a purge DID delete what it
 // was handed is answerable only by the monitor (ops-watch.yml, daily). This is a
@@ -61,6 +70,7 @@ import {
   workflowSteps,
 } from './workflow-scan.mjs';
 import { STAMP_LANES, StampRefused, appVersionDefine, laneByResolver, laneForWorkflow, stampShape } from '../e2e/app-version-stamp.mjs';
+import { CAPTURE_WORKERS, SUPPLIED_HOST_KEYS, productionD1Ids, sandboxBackend } from '../store/capture-backend.mjs';
 
 const ROOT = resolve(process.argv[2] ?? process.cwd());
 const REGISTER_REL = 'tooling/prod-provenance.json';
@@ -478,6 +488,74 @@ for (const [name, t] of Object.entries(tables)) {
   }
 }
 
+// ── L6: a sandbox lane reaches the sandbox, and purges the sandbox ──────────
+const SANDBOX_PURGE_IDS = [
+  { key: 'PLATFORM_D1_DATABASE_ID', worker: 'platform', binding: 'd1:PLATFORM_DB' },
+  { key: 'SUBSCRIPTIONTRACKER_D1_DATABASE_ID', worker: 'subscriptiontracker-api', binding: 'd1:APP_DB' },
+];
+const sandboxLanes = STAMP_LANES.filter((l) => l.backend === 'sandbox');
+let sandboxJobs = 0;
+if (sandboxLanes.length) {
+  let backend = null;
+  try {
+    backend = sandboxBackend({ read: (rel) => readFileSync(join(ROOT, rel), 'utf8') });
+  } catch (e) {
+    problems.push(`COVERAGE LOST — L6: tooling/store/capture-backend.mjs sandboxBackend() refuses the capture Workers' configs (${e.message}), so no sandbox lane's purge can be held to a sandbox id.`);
+  }
+  const wanted = backend ? SANDBOX_PURGE_IDS.map((w) => ({ ...w, id: backend[w.worker]?.sandboxIds?.[w.binding] ?? null })) : [];
+  const undeclared = wanted.filter((w) => w.id === null);
+  for (const w of undeclared) {
+    problems.push(`COVERAGE LOST — L6: ${CAPTURE_WORKERS[w.worker]} env.sandbox declares no ${w.binding.slice(3)}, so a sandbox purge's ${w.key} has nothing to be held to.`);
+  }
+  const prodIds = backend ? productionD1Ids(backend) : new Set();
+  const hostRead = new RegExp(`\\b(?:secrets|vars)\\.(?:${SUPPLIED_HOST_KEYS.join('|')})\\b`);
+  for (const lane of sandboxLanes) {
+    const keys = [...writerJobs.keys()].filter((k) => fileOf(k.split('#')[0]) === lane.workflow);
+    if (keys.length === 0) {
+      problems.push(`COVERAGE LOST — L6: the \`${lane.resolver}\` lane is marked backend 'sandbox' and ${lane.workflow} has no writer job this guard can see, so nothing it runs is held to the sandbox.`);
+      continue;
+    }
+    for (const key of keys) {
+      const jobSteps = stepsOf.filter((s) => jobKey(s) === key);
+      if (jobSteps.length === 0) continue;
+      sandboxJobs++;
+      const { wf, job, jEnv } = jobSteps[0];
+      // (a) the sandbox hosts are derived; a supplied one is a way back to production.
+      for (const k of SUPPLIED_HOST_KEYS) {
+        const j = jEnv.get(k);
+        if (j) problems.push(`${at(wf.rel, j.n, job.name)} — the job env names ${k} in the sandbox lane \`${lane.resolver}\`: its hosts are the ones capture-backend.mjs derives, and the runner refuses a supplied one.`);
+        for (const s of jobSteps) {
+          const v = s.step.env.get(k);
+          if (v) problems.push(`${at(wf.rel, v.n, job.name)} — a step env names ${k} in the sandbox lane \`${lane.resolver}\`: its hosts are the ones capture-backend.mjs derives, and the runner refuses a supplied one.`);
+        }
+      }
+      for (const l of job.lines) {
+        if (/^\s*#/.test(l.text)) continue;
+        const m = l.text.match(hostRead);
+        if (m) problems.push(`${at(wf.rel, l.n, job.name)} — reads ${m[0]} in the sandbox lane \`${lane.resolver}\`: a sandbox job never takes a Worker host from the repo's settings.`);
+      }
+      // (b) the purge deletes where the capture wrote.
+      if (wanted.length === 0 || undeclared.length) continue;
+      for (const p of purges.filter((q) => jobKey(q) === key)) {
+        const where = at(p.wf.rel, p.step.run.n, p.job.name);
+        for (const w of wanted) {
+          const raw = envOf(p, w.key);
+          const got = raw === null ? null : unquotePath(raw);
+          if (got === w.id) continue;
+          const want = `${CAPTURE_WORKERS[w.worker]} env.sandbox ${w.binding.slice(3)} (${w.id})`;
+          problems.push(
+            got === null
+              ? `${where} — the purge in the sandbox lane \`${lane.resolver}\` carries no ${w.key}; it must name ${want}.`
+              : prodIds.has(got)
+                ? `${where} — ${w.key}=${got} is a PRODUCTION database id; the sandbox lane \`${lane.resolver}\` writes the sandbox, so its purge must name ${want}.`
+                : `${where} — ${w.key}=${got} is not ${want}, the database the sandbox lane \`${lane.resolver}\` writes.`,
+          );
+        }
+      }
+    }
+  }
+}
+
 // ── verdict ──────────────────────────────────────────────────────────────────
 if (problems.length) {
   console.error(`✗ live writer provenance — ${problems.length} problem(s):`);
@@ -489,7 +567,7 @@ if (problems.length) {
 }
 console.log(
   `ok  live writer provenance — drives=${drives.length} spawners=${spawnerFiles.length} spawnerSteps=${spawnerSteps.length} ` +
-    `provisioningJobs=${provisioningJobs.size} purges=${purges.length} lanes=${STAMP_LANES.length}`,
+    `provisioningJobs=${provisioningJobs.size} purges=${purges.length} lanes=${STAMP_LANES.length} sandboxJobs=${sandboxJobs}`,
 );
 for (const d of drives) console.log(`    drive   ${at(d.workflow, d.runLine, d.job)} APP_VERSION=${d.appVersionExpr}`);
 for (const s of spawnerSteps) console.log(`    spawner ${at(s.wf.rel, s.step.run.n, s.job.name)} ${s.spawner}`);
