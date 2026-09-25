@@ -427,6 +427,79 @@ jobs:
   });
 });
 
+// ⏱ 2026-09-25 — O-TAG-BUILDS-EVERY-APP. build-platforms.yml's `prepare` built its
+// matrix from `--emit-apps` alone, so a tag for ONE app built and staged EVERY app,
+// each renamed after that one tag. On a tag ref it now passes `--tag`, and the
+// matrix is the app the tag names. Measured on BASE a9bb8ef0 with the two-app
+// workspace below: `--emit-apps <root> --tag <APP>-v1.0.0` printed
+// `["<APP>","second"]` and exited 0, and so did `second-v1.0.0`, `nosuch-v1.0.0`
+// and `garbage` (--tag was never read). `--emit-apps --tag <t> <root>` exited 1,
+// because `--tag` itself was read as the root.
+describe('assert-release-lane-generic.mjs — `--emit-apps --tag` (a tag builds its own app)', () => {
+  const emitWith = (...args) => {
+    const r = spawnSync(process.execPath, [GUARD, ...args], { encoding: 'utf8' });
+    return { code: r.status, out: `${r.stdout}${r.stderr}`, stdout: r.stdout.trim() };
+  };
+  const twoApps = () => fixture({ workspace: ['packages/core', APP_PATH, 'apps/second'] });
+
+  test('R1 · the first app\'s tag emits that app alone', () => {
+    const r = emitWith('--emit-apps', twoApps(), '--tag', `${APP}-v1.0.0`);
+    assert.equal(r.code, 0, r.out);
+    assert.deepEqual(JSON.parse(r.stdout), [APP]);
+  });
+
+  test('R2 · the second app\'s tag emits the second app alone', () => {
+    const r = emitWith('--emit-apps', twoApps(), '--tag', 'second-v1.0.0');
+    assert.equal(r.code, 0, r.out);
+    assert.deepEqual(JSON.parse(r.stdout), ['second']);
+  });
+
+  test('R3 · no --tag, which is every run that is not a tag push, emits the whole set', () => {
+    const r = emitWith('--emit-apps', twoApps());
+    assert.equal(r.code, 0, r.out);
+    assert.deepEqual(JSON.parse(r.stdout), [APP, 'second']);
+  });
+
+  test('R4 · a tag naming no workspace app exits 1 and names the ids the workspace declares', () => {
+    const r = emitWith('--emit-apps', twoApps(), '--tag', 'nosuch-v1.0.0');
+    assert.equal(r.code, 1, r.out);
+    assert.equal(r.stdout, '', 'a refused tag prints no matrix');
+    assert.match(r.out, new RegExp(`the tag names app "nosuch", and the workspace declares ${rx(APP)}, second`));
+  });
+
+  test('R4 · a tag with no -v<version> names no app and exits 1', () => {
+    const r = emitWith('--emit-apps', twoApps(), '--tag', 'garbage');
+    assert.equal(r.code, 1, r.out);
+    assert.equal(r.stdout, '', 'a refused tag prints no matrix');
+    assert.match(r.out, /"garbage" is not <app>-v<version>, so it names no app to build/);
+  });
+
+  test('--tag before the root parses the same as after it', () => {
+    const r = emitWith('--emit-apps', '--tag', 'second-v1.0.0', twoApps());
+    assert.equal(r.code, 0, r.out);
+    assert.deepEqual(JSON.parse(r.stdout), ['second']);
+  });
+
+  test('--tag with no value is refused, never read as "no tag"', () => {
+    const r = emitWith('--emit-apps', twoApps(), '--tag');
+    assert.equal(r.code, 1, r.out);
+    assert.equal(r.stdout, '', 'a refused tag prints no matrix');
+    assert.match(r.out, /--emit-apps --tag was passed with no value/);
+  });
+
+  test('--tag without --emit-apps is refused, never dropped while the grader runs', () => {
+    const r = emitWith('--tag', `${APP}-v1.0.0`, twoApps());
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /--tag narrows --emit-apps and nothing else/);
+  });
+
+  test('a tag still meets the whole-set refusal first: an empty workspace emits nothing', () => {
+    const r = emitWith('--emit-apps', fixture({ workspace: ['packages/core'] }), '--tag', `${APP}-v1.0.0`);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /declares no `workspace:` entry under apps\//);
+  });
+});
+
 describe('assert-release-lane-generic.mjs — limb D (no literal app id on the deploy path)', () => {
   const R1 = { 'build-platforms.yml': platforms(literalLane(APP_PATH)), 'e2e.yml': E2E };
   const deployWeb = (field) => DEPLOY_WEB.replace('- run: flutter build web --release', field);

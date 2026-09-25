@@ -1089,6 +1089,8 @@ async function main() {
     // defaulted ref type would be the same guess from the string this replaces.
     const refType = flag('ref-type') ?? die('--stage needs --ref-type <tag|branch>');
     if (refType !== 'tag' && refType !== 'branch') die(`--stage --ref-type must be tag or branch, got ${JSON.stringify(refType)}`);
+    // ⏱ 2026-09-25 — the tag must name `--app` before anything is walked (O-TAG-BUILDS-EVERY-APP).
+    await refuseAnotherUnitsTag('--stage', { app, tag, refType });
     // Installable MINUS the declared bundle members — see BUNDLE_MEMBERS above.
     // Lifting a bundle's executable out breaks the executable and the bundle.
     // NARROWED TO THE SURFACE `--app` IS ON: `.zip` is an extension channel's
@@ -1408,6 +1410,8 @@ async function main() {
     const minSupportedFlag = flag('min-supported'); // read only to be refused, on every surface: releaseFloor below
     const surfaceFlag = flag('surface');
     const build = has('build') ? flag('build') : null;
+    // ⏱ 2026-09-25 — the record's tag must name `--app` (O-TAG-BUILDS-EVERY-APP). No ref type is passed here.
+    await refuseAnotherUnitsTag('--emit-release-json', { app, tag, refType: null });
     const out = join(dir, RELEASE_JSON_NAME);
     // The refusal is the EXCLUSIVE CREATE at the write below (`flag: 'wx'`), never
     // an existsSync here: a check-then-write leaves a window between the two
@@ -1922,6 +1926,38 @@ async function refuseUnableNativeInstallers(register, files, { surface, tag, ref
     `--stage refuses ${refusals.length} native installer(s) on ${ref.kind === 'release' ? `release tag "${tag}"` : `"${tag}", a ref tag-owner.mjs cannot read, judged as a release`}.`,
     'Nothing was moved: every installer is still in the download tree, and the output directory holds none of them.',
     'Flip `nativeAuth` in tooling/channel-register.json only on OBSERVED evidence, a native build signing in (O-BOXA-CAPTCHA-REFUSES-NATIVE-SIGN-IN).',
+  );
+}
+
+/**
+ * ⏱ 2026-09-25 — THE TAG NAMES `--app` (O-TAG-BUILDS-EVERY-APP). `--stage` renames
+ * every installer `<tag>-<file>` and `--emit-release-json` writes the tag into the
+ * record, so a tag that names ANOTHER unit publishes this app's files under that
+ * unit's name. build-platforms.yml's release matrix did exactly that: one app's tag
+ * ran every workspace app, and each staged its installers under that one tag.
+ * The unit is read with tag-owner.mjs's releaseTagOf, the split
+ * `assert-app-versioning.mjs --tag` and `assert-release-lane-generic.mjs --emit-apps --tag` read:
+ *   · `--stage` hands it the ref type it was given (github.ref_type);
+ *   · `--emit-release-json` is given none, so the tag is read in the two shapes
+ *     contracts/release.schema.json declares: the `<unit>-untagged-<sha>` value a
+ *     non-tag run synthesises (UNTAGGED_REF) as that, and anything else as a
+ *     release tag. Only the unit is taken from that reading, never the kind.
+ * A tag whose unit is not `app`, and a tag with no unit to read, exit 1 before
+ * a file is walked, moved or written. On `--stage` that includes the ref
+ * refuseUnableNativeInstallers would otherwise judge as a release: its
+ * `invalid` branch stays as the fail-closed default and no longer decides one.
+ * Imported dynamically, for the reason refuseUnableNativeInstallers gives.
+ */
+async function refuseAnotherUnitsTag(mode, { app, tag, refType }) {
+  const { releaseTagOf, UNTAGGED_REF } = await import('./tag-owner.mjs');
+  const ref = releaseTagOf(tag, { refType: refType ?? (UNTAGGED_REF.test(tag) ? 'branch' : 'tag') });
+  if (ref.kind !== 'invalid' && ref.slug === app) return;
+  die(
+    ref.kind === 'invalid'
+      ? `${mode} --tag "${tag}" names no unit: tag-owner.mjs reads neither <unit>-v<version> nor <unit>-untagged-<sha> in it${refType === null ? '' : ` on --ref-type ${refType}`}, and --app is "${app}".`
+      : `${mode} --tag "${tag}" is ${ref.kind === 'release' ? 'a release tag' : 'the untagged ref'} of "${ref.slug}", and --app is "${app}".`,
+    'Every file would be named after, or recorded under, a tag that is not this app\'s (O-TAG-BUILDS-EVERY-APP).',
+    'Nothing was walked, moved or written.',
   );
 }
 

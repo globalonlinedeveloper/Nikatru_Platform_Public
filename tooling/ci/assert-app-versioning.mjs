@@ -304,15 +304,16 @@ if (tagFlag.value !== null) {
     );
     process.exit(1);
   }
-  const m = /^(.+)-v(.+)$/.exec(tag);
-  if (!m) {
+  // `--ref-type tag` from here on, so releaseTagOf answered `release` or `invalid`, and
+  // the slug and the version are its split, never a second one cut here.
+  if (ref.kind !== 'release') {
     console.error(
       `✗ tag "${tag}" names no version — it renames every staged installer and titles the Release,` +
         ' so a tag with no `-v<version>` ships files whose names claim nothing checkable',
     );
     process.exit(1);
   }
-  const [, slug, claimed] = m;
+  const { slug, version: claimed } = ref;
   const claimedName = claimed.split('+')[0];
   if (!/^\d+\.\d+\.\d+$/.test(claimedName)) {
     console.error(

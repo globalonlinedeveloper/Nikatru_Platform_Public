@@ -121,9 +121,10 @@
 // fail" this repo keeps deleting.
 //
 // Usage:  node tooling/ci/assert-release-lane-generic.mjs [repoRoot]
-//         node tooling/ci/assert-release-lane-generic.mjs --emit-apps [repoRoot]
+//         node tooling/ci/assert-release-lane-generic.mjs --emit-apps [repoRoot] [--tag <app>-v<version>]
 // Exit 0 = every R-1 lane covers the whole workspace and no guard hides a lane.
-// Exit 1 = a finding (or `--emit-apps` refusing an empty or nested matrix). 2 = COVERAGE LOST.
+// Exit 1 = a finding (or `--emit-apps` refusing an empty or nested matrix, or a
+//          `--tag` that names no app of the workspace). 2 = COVERAGE LOST.
 //
 // `--emit-apps` prints the workspace app IDS as a JSON array (`["subscriptiontracker"]`) and
 // exits. THIS IS NOT A CONVENIENCE. `build-platforms.yml` and `e2e.yml` build
@@ -132,6 +133,14 @@
 // call. The alternative — a second pubspec reader inlined in each workflow — is
 // three implementations of one parse, and this repository's most repeated
 // failure is the copy that quietly stops reading what it thinks it reads.
+//
+// ⏱ 2026-09-25 — `--emit-apps --tag <app>-v<version>` prints `["<app>"]`, the one
+// app the tag names, after judging the whole set as above (O-TAG-BUILDS-EVERY-APP).
+// build-platforms.yml's `prepare` passes it on a tag ref only, so a release tag
+// builds and stages its own app and no other. The tag is split by tag-owner.mjs's
+// releaseTagOf; a tag with no `-v<version>` and an id the workspace does not hold
+// both exit 1. Limb A still grades the whole set: every run that is not a tag
+// push, and every other lane, iterates all of it.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
@@ -141,10 +150,17 @@ import { listDir } from './tree-walk.mjs';
 import { parseAllWorkflows, WORKFLOW_DIR } from './workflow-scan.mjs';
 import { stripSourceComments } from './text-reductions.mjs';
 import { workspaceApps, emitApps } from './app-set.mjs';
+import { releaseTagOf } from './tag-owner.mjs';
 
 const argv = process.argv.slice(2);
 const EMIT_APPS = argv[0] === '--emit-apps';
-const ROOT_ARG = EMIT_APPS ? argv[1] : argv[0];
+// ⏱ 2026-09-25 — `--tag` and its value leave argv before the root is read, so
+// `--emit-apps --tag <t> [root]` and `--emit-apps [root] --tag <t>` read the same
+// root. Until today the first form read `--tag` itself as the root and exited 1.
+const TAG_AT = argv.indexOf('--tag');
+const EMIT_TAG = TAG_AT === -1 ? null : argv[TAG_AT + 1] ?? '';
+const REST = TAG_AT === -1 ? argv : argv.filter((_a, i) => i !== TAG_AT && i !== TAG_AT + 1);
+const ROOT_ARG = EMIT_APPS ? REST[1] : REST[0];
 const ROOT = resolve(ROOT_ARG ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const CI_DIR = join(ROOT, 'tooling', 'ci');
 const GATE_SCRIPT = 'tooling/ci/assert-gate-passed.mjs';
@@ -158,8 +174,29 @@ const GATE_SCRIPT = 'tooling/ci/assert-gate-passed.mjs';
 // ⏱ 2026-09-24 — the reader and this mode's refusals MOVED to ./app-set.mjs
 // (O-GUARDS-READ-A-HAND-LISTED-APP-SET), byte-identical in output, so every guard
 // that grades "every app" reads the set the lanes iterate.
+// ⏱ 2026-09-25 — `--tag` (O-TAG-BUILDS-EVERY-APP): a release tag's matrix is the
+// ONE app the tag names, read with tag-owner.mjs's releaseTagOf, the split
+// assert-app-versioning.mjs and release-manifest.mjs read. It was the whole
+// set, so tagging one app built and staged every app under that app's tag.
+// build-platforms.yml passes it only on a tag ref; every other run, and every
+// other lane, passes none and gets the whole set as before.
+if (EMIT_TAG !== null && !EMIT_APPS) {
+  console.error('FAIL --tag narrows --emit-apps and nothing else; the grader takes no tag. Refusing to drop it and grade.');
+  process.exit(1);
+}
+if (EMIT_TAG !== null && (EMIT_TAG === '' || EMIT_TAG.startsWith('--'))) {
+  console.error('FAIL --emit-apps --tag was passed with no value. Refusing to fall back on the whole set.');
+  process.exit(1);
+}
 if (EMIT_APPS) {
-  process.exit(emitApps(ROOT));
+  if (EMIT_TAG === null) process.exit(emitApps(ROOT));
+  const ref = releaseTagOf(EMIT_TAG, { refType: 'tag' });
+  if (ref.kind !== 'release') {
+    console.error(`FAIL --emit-apps --tag: "${EMIT_TAG}" is not <app>-v<version>, so it names no app to build.`);
+    console.error('     A tag builds and stages only its own app; a tag that names none builds nothing.');
+    process.exit(1);
+  }
+  process.exit(emitApps(ROOT, { only: ref.slug }));
 }
 
 const problems = [];

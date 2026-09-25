@@ -41,6 +41,7 @@ import {
   assetFiles,
   nativeAuthRefusals,
 } from '../release-manifest.mjs';
+import { parseWorkflow, workflowSteps, shellSegments } from '../workflow-scan.mjs';
 // ⚠️ NOTHING IS IMPORTED FROM assert-release-durable.mjs, deliberately. That file
 // runs its whole scan at module scope (it has no `import.meta.url` direct-invocation
 // guard), so importing `conditionTokens` to unit-test it would execute the guard
@@ -2204,10 +2205,16 @@ describe('release-manifest.mjs — the CLI refuses rather than producing a hollo
     writeFileSync(join(from, 'subscriptiontracker-linux', 'app', 'outputs', 'app-release.aab'), 'aab');
     stampBeside(join(from, 'subscriptiontracker-linux', 'app', 'outputs', 'app-release.aab'), 'android-play');
     const out = join(TMP, `o${seq++}`);
+    // ⏱ 2026-09-25 — made here, as the lane's `mkdir -p dist` makes it: the refusal
+    // below now lands before `--stage` would have made it.
+    mkdirSync(out, { recursive: true });
     const r = cli(['--stage', from, '--out', out, '--stamps', join(TMP, `t${seq++}`), '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker', '--ref-type', 'tag']);
     assert.equal(r.code, 1, r.out);
-    assert.match(r.stderr, /"subscriptiontracker", a ref tag-owner\.mjs cannot read, judged as a release/);
+    // ⏱ 2026-09-25 — refused one judgement earlier: a ref with no unit to read names
+    // no app, so the tag-unit judgement stops it before the walk (O-TAG-BUILDS-EVERY-APP).
+    assert.match(r.stderr, /--stage --tag "subscriptiontracker" names no unit: tag-owner\.mjs reads neither/);
     assert.deepEqual(assetFiles(out).names, []);
+    assert.deepEqual(assetFiles(join(from, 'subscriptiontracker-linux', 'app', 'outputs')).names, ['app-release.aab', 'app-release.aab.channel.json'], 'the refusal lands before any move');
   });
 
   // ⏱ 2026-09-24 — THE REF TYPE, NOT THE STRING, SAYS "UNTAGGED". This tag matches the
@@ -2269,6 +2276,108 @@ describe('release-manifest.mjs — the CLI refuses rather than producing a hollo
     assert.equal(r.code, 0, r.out);
     assert.doesNotMatch(r.stderr, /would refuse|refuses|O-BOXA/);
     assert.deepEqual(assetFiles(out).names, ['subscriptiontracker-v1.0.0-app-release.aab', 'subscriptiontracker-v1.0.0-subscriptiontracker.msix']);
+  });
+
+  // ⏱ 2026-09-25 — O-TAG-BUILDS-EVERY-APP. The release job runs once per matrix app,
+  // and `--stage` renamed each app's installers after whatever tag it was handed:
+  // measured on BASE a9bb8ef0 with the first case's fixture, `--app second --tag
+  // subscriptiontracker-v1.0.0` exited 0 and staged `subscriptiontracker-v1.0.0-app-release.aab`,
+  // the second app's bundle under the first app's name. The register lets every
+  // native row sign in, so the tag-unit judgement is the only thing that can refuse.
+  const secondApp = () => {
+    const root = fixture({ register: NATIVE_ABLE, apps: ['subscriptiontracker', 'second'] });
+    const from = join(TMP, `s${seq++}`);
+    mkdirSync(join(from, 'second-linux'), { recursive: true });
+    writeFileSync(join(from, 'second-linux', 'app-release.aab'), 'aab');
+    stampBeside(join(from, 'second-linux', 'app-release.aab'), 'android-play');
+    const out = join(TMP, `o${seq++}`);
+    mkdirSync(out, { recursive: true }); // as the lane's `mkdir -p dist` makes it
+    return { root, from, out, stamps: join(TMP, `t${seq++}`) };
+  };
+
+  test('R5 · --stage refuses another app\'s release tag, and moves nothing', () => {
+    const { root, from, out, stamps } = secondApp();
+    const r = cli(['--stage', from, '--out', out, '--stamps', stamps, '--app', 'second', '--tag', 'subscriptiontracker-v1.0.0', '--ref-type', 'tag', '--repo-root', root]);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.stderr, /--stage --tag "subscriptiontracker-v1\.0\.0" is a release tag of "subscriptiontracker", and --app is "second"/);
+    assert.deepEqual(assetFiles(out).names, [], 'dist/ stays empty');
+    assert.deepEqual(assetFiles(join(from, 'second-linux')).names, ['app-release.aab', 'app-release.aab.channel.json'], 'the refusal lands before any move');
+  });
+
+  test('R5 control · --stage stages the same tree under the app\'s own release tag', () => {
+    const { root, from, out, stamps } = secondApp();
+    const r = cli(['--stage', from, '--out', out, '--stamps', stamps, '--app', 'second', '--tag', 'second-v1.0.0', '--ref-type', 'tag', '--repo-root', root]);
+    assert.equal(r.code, 0, r.out);
+    assert.deepEqual(assetFiles(out).names, ['second-v1.0.0-app-release.aab']);
+  });
+
+  test('--stage accepts the app\'s own untagged ref', () => {
+    const { root, from, out, stamps } = secondApp();
+    const r = cli(['--stage', from, '--out', out, '--stamps', stamps, '--app', 'second', '--tag', 'second-untagged-abc1234', '--ref-type', 'branch', '--repo-root', root]);
+    assert.equal(r.code, 0, r.out);
+    assert.deepEqual(assetFiles(out).names, ['second-untagged-abc1234-app-release.aab']);
+  });
+
+  test('--stage refuses another unit\'s untagged ref, and moves nothing', () => {
+    const { root, from, out, stamps } = secondApp();
+    const r = cli(['--stage', from, '--out', out, '--stamps', stamps, '--app', 'second', '--tag', 'other-untagged-abc1234', '--ref-type', 'branch', '--repo-root', root]);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.stderr, /--stage --tag "other-untagged-abc1234" is the untagged ref of "other", and --app is "second"/);
+    assert.deepEqual(assetFiles(out).names, [], 'dist/ stays empty');
+    assert.deepEqual(assetFiles(join(from, 'second-linux')).names, ['app-release.aab', 'app-release.aab.channel.json']);
+  });
+
+  // `--emit-release-json` is handed no ref type (extensions.yml passes
+  // `--tag "${TOOL}-v${VERSION}"`, build-platforms.yml the `$RELEASE_TAG` its stage
+  // step chose), so it reads the tag in the two shapes contracts/release.schema.json
+  // declares. These run on the extension surface of the real tree: its floor is
+  // the first three parts of --version (--min-supported is refused there), so a dist of one .zip is a whole release.
+  const extensionDist = () => {
+    const d = join(TMP, `d${seq++}`);
+    mkdirSync(d, { recursive: true });
+    writeFileSync(join(d, 'fullshot-chromium.zip'), 'chromium bytes');
+    return d;
+  };
+  const emitRecord = (dir, tag, version = '1.0.0') => cli([
+    '--emit-release-json', dir, '--app', 'fullshot', '--tag', tag,
+    '--sha', 'a'.repeat(40), '--run-url', 'https://x/1', '--notes-url', 'https://x/2',
+    '--released-at', '2026-09-22T10:00:00Z', '--version', version,
+    '--repo-root', REPO,
+  ]);
+
+  test('R6 · --emit-release-json refuses a tag of another unit, and writes no record', () => {
+    // BASE a9bb8ef0: exit 0, and release.json recorded fullshot's zip under subscriptiontracker-v1.0.0.
+    const d = extensionDist();
+    const r = emitRecord(d, 'subscriptiontracker-v1.0.0');
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.stderr, /--emit-release-json --tag "subscriptiontracker-v1\.0\.0" is a release tag of "subscriptiontracker", and --app is "fullshot"/);
+    assert.deepEqual(assetFiles(d).names, ['fullshot-chromium.zip'], 'no release.json was written');
+  });
+
+  test('R8 · --emit-release-json accepts an extension tag with a four-part version', () => {
+    const d = extensionDist();
+    const r = emitRecord(d, 'fullshot-v1.10.1.2', '1.10.1.2');
+    assert.equal(r.code, 0, r.out);
+    assert.deepEqual(assetFiles(d).names, ['fullshot-chromium.zip', 'release.json']);
+  });
+
+  test('--emit-release-json accepts the unit\'s own untagged ref and refuses another unit\'s', () => {
+    const own = extensionDist();
+    const accepted = emitRecord(own, 'fullshot-untagged-abc1234');
+    assert.equal(accepted.code, 0, accepted.out);
+    const other = extensionDist();
+    const refused = emitRecord(other, 'other-untagged-abc1234');
+    assert.equal(refused.code, 1, refused.out);
+    assert.match(refused.stderr, /--emit-release-json --tag "other-untagged-abc1234" is the untagged ref of "other", and --app is "fullshot"/);
+    assert.deepEqual(assetFiles(other).names, ['fullshot-chromium.zip'], 'no release.json was written');
+  });
+
+  test('--emit-release-json refuses a tag with no unit to read', () => {
+    const d = extensionDist();
+    const r = emitRecord(d, 'garbage');
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.stderr, /--emit-release-json --tag "garbage" names no unit/);
+    assert.deepEqual(assetFiles(d).names, ['fullshot-chromium.zip'], 'no release.json was written');
   });
 
   test('nativeAuthRefusals refuses a file that no native row claims, by format or by platform', () => {
@@ -2394,6 +2503,41 @@ describe('the real tree still satisfies the mechanism it declares', () => {
     const needs = wf.match(/needs:\s*\[([^\]]+)\]/)[1];
     assert.match(needs, /\brelease\b/);
     assert.match(needs, /\ball_platforms\b|\bgate\b/, 'the aggregator is the job this matched');
+  });
+
+  // ⏱ 2026-09-25 — R7, O-TAG-BUILDS-EVERY-APP. The release matrix is `prepare`'s
+  // `apps` output, and the release job stages each matrix app under the run's tag,
+  // so the matrix of a tag run IS the set of apps that tag publishes. Read through
+  // workflow-scan.mjs, as the guards read the lane: comments blanked, `run: |`
+  // joined, and each shell command its own segment.
+  test('R7 · a tag ref builds only the app its tag names, and the release checks the tag against that app', () => {
+    const wf = parseWorkflow(REPO, '.github/workflows/build-platforms.yml');
+    assert.ok(wf, 'build-platforms.yml must parse');
+    const segmentsOf = (step) => shellSegments(step.run.text).map((s) => s.trim());
+
+    const matrix = workflowSteps(wf.jobs.get('prepare')).find((s) => s.id === 'workspace');
+    assert.ok(matrix?.run, 'prepare must keep the `workspace` step that emits the matrix');
+    assert.equal(matrix.env.get('REF_TYPE')?.value, '${{ github.ref_type }}', 'the ref type reaches the shell through env:');
+    assert.equal(matrix.env.get('REF_NAME')?.value, '${{ github.ref_name }}', 'the tag reaches the shell through env:');
+    const seg = segmentsOf(matrix);
+    const at = seg.indexOf('if [ "$REF_TYPE" = "tag" ]');
+    assert.ok(at !== -1, `the emitter is chosen by the ref type; segments: ${JSON.stringify(seg)}`);
+    assert.deepEqual(seg.slice(at + 1, at + 6), [
+      'then',
+      'apps="$(node tooling/ci/assert-release-lane-generic.mjs --emit-apps --tag "$REF_NAME")"',
+      'else',
+      'apps="$(node tooling/ci/assert-release-lane-generic.mjs --emit-apps)"',
+      'fi',
+    ]);
+    assert.equal(seg.filter((s) => s.includes('--emit-apps')).length, 2, 'no third emitter call decides the matrix');
+
+    const stage = workflowSteps(wf.jobs.get('release')).find((s) => s.name === 'Stage the installers and archive the rest');
+    assert.ok(stage?.run, 'the release job must keep its staging step');
+    assert.equal(stage.env.get('APP')?.value, '${{ matrix.app }}');
+    const versioning = segmentsOf(stage).filter((s) => s.startsWith('node tooling/ci/assert-app-versioning.mjs'));
+    assert.equal(versioning.length, 1, `one version check in the staging step; found ${JSON.stringify(versioning)}`);
+    assert.match(versioning[0], /(?:^|\s)--tag "\$TAG"(?:\s|$)/);
+    assert.match(versioning[0], /(?:^|\s)--app "apps\/\$APP"(?:\s|$)/, 'the tag is checked against THIS matrix app, not the app its own slug names');
   });
 });
 
