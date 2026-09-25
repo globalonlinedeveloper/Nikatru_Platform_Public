@@ -123,8 +123,9 @@
 // paints "Demo data - sample subscriptions, not your account" across every
 // screen, and `demo_data.dart` seeds twelve third-party trademarks. So:
 //
-//   default   requires a LIVE build (SUPABASE_URL + SUPABASE_ANON_KEY +
-//             API_BASE_URL + a confirmed account) and writes into the listing
+//   default   requires a LIVE build (SUPABASE_URL + SUPABASE_ANON_KEY + a
+//             confirmed account, and the sandbox API host this script computes
+//             from the wrangler configs) and writes into the listing
 //             directory. This is the only output that may be uploaded.
 //   --proof   allows a demo build, and writes to a THROWAWAY directory. It
 //             exercises the mechanism end to end — chromedriver, the drive, the
@@ -166,6 +167,7 @@ import {
   selfTestOfflineBannerDetector,
   BAND_ROW_FRACTION,
 } from './capture-network-posture.mjs';
+import { backendDefinesForRun, assertCaptureDefines, CaptureBackendRefused } from './capture-backend.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(join(HERE, '..', '..'));
@@ -367,14 +369,18 @@ if (PROOF && (baseDir === listingBase || baseDir.startsWith(listingBase + sep)))
 }
 
 // ── the posture gate ────────────────────────────────────────────────────────
-const need = ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'API_BASE_URL', 'E2E_EMAIL', 'E2E_PASSWORD'];
+// API_BASE_URL left this list on 2026-09-25 (O-STORE-CAPTURE-WRITES-UNATTRIBUTED-ROWS):
+// the capture computes its API host from the wrangler configs (see "THE BACKEND
+// IS COMPUTED" below), and a caller that still sets it is REFUSED there.
+const need = ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'E2E_EMAIL', 'E2E_PASSWORD'];
 const missing = need.filter((k) => !process.env[k]);
 if (!PROOF && missing.length) {
   fail([
     `a live capture needs ${missing.join(', ')} and they are not set.`,
     '',
     'THIS IS NOT A CONFIGURATION NAG — a demo build is a different app on screen. AppConfig.isBackendLive',
-    'is a compile-time constant over exactly these defines, and with them absent the app runs MockAuth +',
+    'is a compile-time constant over these defines and the API host this script computes from the wrangler',
+    'configs (tooling/store/capture-backend.mjs), and with them absent the app runs MockAuth +',
     'SeedApiClient, which means:',
     '  · app_shell.dart paints "Demo data - sample subscriptions, not your account" over every screen;',
     '  · demo_data.dart fills the board with Netflix, Spotify, Disney+, Adobe CC, 1Password and friends.',
@@ -709,6 +715,32 @@ const writeLedger = () => {
   if (LEDGER) writeFileSync(LEDGER, `${JSON.stringify(ledger, null, 2)}\n`);
 };
 
+// 🔴 THE BACKEND IS COMPUTED, NEVER HANDED IN (O-STORE-CAPTURE-WRITES-UNATTRIBUTED-ROWS,
+// 2026-09-25). Until this limb API_BASE_URL came from a repository secret that
+// named the production API, so every live drive's consent answer and seeded
+// subscriptions landed in production platform_db and subscriptiontracker_db.
+// A live capture now drives the two Workers' `env.sandbox` scripts on their
+// workers.dev hosts, computed from services/*/wrangler.jsonc by
+// tooling/store/capture-backend.mjs, and passes PIN_BACKEND_HOSTS=true so the
+// app takes the API host from the define rather than from its seed config
+// document (F1 in that file's header). The refusals — a caller-supplied host, a
+// production or foreign host, a SUPABASE_URL the sandbox does not verify
+// against, a malformed `env.sandbox` — run here, among the checks that read
+// only the tree, so a refused run has touched nothing. `--proof` gets `[]`.
+let BACKEND_DEFINE = [];
+try {
+  BACKEND_DEFINE = backendDefinesForRun({ proof: PROOF });
+} catch (e) {
+  if (!(e instanceof CaptureBackendRefused)) throw e;
+  fail([
+    `a live capture must drive the sandbox Workers, and the backend was refused on limb ${e.limb}.`,
+    e.message,
+    '',
+    'A capture that reached production would write its consent answer and seeded subscriptions into',
+    'production platform_db and subscriptiontracker_db. See tooling/store/capture-backend.mjs.',
+  ]);
+}
+
 // 🔴 CHROMEDRIVER IS RESOLVED BEFORE ANY BYTES ARE DELETED. It used to be
 // resolved after, which meant a machine without chromedriver — the owner's, as
 // measured 2026-08-21: not on PATH, CHROMEDRIVER unset — EMPTIED THE PUBLISHED
@@ -832,6 +864,19 @@ if (PROOF) defines.push('--dart-define', 'STORE_CAPTURE_ALLOW_DEMO=true');
 // alternative are in capture-network-posture.mjs; the lever is app_config.dart's
 // own, documented for exactly this caller and wired to nothing until now.
 defines.push(...launchDefineArgs());
+// The sandbox hosts and the pin, computed above ([] on `--proof`). See "THE BACKEND IS COMPUTED".
+defines.push(...BACKEND_DEFINE);
+
+// Every define KEY this run passes, each capture's STORE_CAPTURE_VIEW included,
+// against CAPTURE_DEFINE_ALLOWLIST (tooling/store/capture-backend.mjs): a key
+// outside it — GLITCHTIP_DSN, REVENUECAT_KEY or a new one — is refused by name,
+// on `--proof` too. It runs before the fonts are staged into the app directory.
+try {
+  for (const cap of CAPTURES) assertCaptureDefines([...defines, ...(NATIVE ? storeViewDefineArgs(cap) : [])]);
+} catch (e) {
+  if (!(e instanceof CaptureBackendRefused)) throw e;
+  fail([`a dart-define this run would pass is outside the capture allowlist.`, e.message]);
+}
 
 // 🔴 THE APP MUST HAVE A FONT TO DRAW TEXT WITH, AND SINCE 2026-09-12 IT HAD
 // NONE. `web/flutter_bootstrap.js` sends the engine's fallback fonts — ROBOTO
@@ -922,9 +967,11 @@ try {
     //      like a lane launched with API_BASE_URL missing — a real and very
     //      different failure (an app that signs in and can reach no API) — and
     //      it was chased as one before `need` above was re-read: this script
-    //      REFUSES to start without all five, so they cannot be absent here. A
-    //      redaction whose output is indistinguishable from a bug is worse than
-    //      no line at all.
+    //      refused to start without all five, so they could not be absent
+    //      here. (Since 2026-09-25 `need` holds four, and API_BASE_URL is the
+    //      sandbox host this script computes or refuses to run without — see
+    //      "THE BACKEND IS COMPUTED".) A redaction whose output is
+    //      indistinguishable from a bug is worse than no line at all.
     //   2. SECRET. `.*password` can only match text that follows an `=`, so the
     //      KEY name in `E2E_PASSWORD=…` never triggered it — the VALUE was
     //      printed in full, into a CI step log, on every live run. It was

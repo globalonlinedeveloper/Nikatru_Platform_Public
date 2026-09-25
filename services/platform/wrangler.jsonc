@@ -35,7 +35,9 @@
     // SEPARATE wrangler environment with its own secret, never this file with
     // the value edited — tooling/ci/assert-money-config.mjs fails the build on a
     // sandbox value or a sandbox base URL here, and that input is constructible,
-    // which is the whole point of the check.
+    // which is the whole point of the check. That environment is `env.sandbox`
+    // at the foot of this file (MONEY_ENVIRONMENT "sandbox", its own database,
+    // namespaces and limiters), deployed only by deploy-sandbox.yml.
     "MONEY_ENVIRONMENT": "live",
     // ⚠️ EXACT allowlist — no pattern matching, and an EMPTY value now DENIES
     // every browser origin rather than falling back to '*'. This Worker is no
@@ -352,7 +354,7 @@
     // webhooks. custom_domain auto-provisions the DNS record + edge cert
     // (nikatru.com is a zone in this account).
     { "pattern": "platform.nikatru.com", "custom_domain": true }
-  ]
+  ],
 
   // "r2_buckets" NOW EXISTS — see the block above `triggers`. This comment said
   // "NO r2_buckets YET — nothing reads or writes object storage today" until
@@ -364,4 +366,117 @@
   // unresolvable bucket binding FAILS this Worker's deploy, so `nikatru-backups`
   // was created before this line was written (2026-09-05, `wrangler r2 bucket
   // create`), never the other way round.
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // 🧪 env.sandbox — THE SANDBOX PLATFORM WORKER (Q11, row
+  // O-STORE-CAPTURE-WRITES-UNATTRIBUTED-ROWS; the sandbox money rail of
+  // [5]M-12). `wrangler deploy --env sandbox` deploys the script
+  // `platform-sandbox`, which answers on
+  // https://platform-sandbox.nikatru.workers.dev and nowhere else. A store
+  // capture's events, consent and config reads go here instead of production,
+  // and a sandbox payment notification is recorded in a sandbox database.
+  // Deployed only by .github/workflows/deploy-sandbox.yml (workflow_dispatch);
+  // deploy-workers deploys the top level above and never this block.
+  //
+  // 🔴 EVERY KEY IS DECLARED; NONE IS LEFT TO INHERITANCE. Wrangler inherits
+  // `routes`, `workers_dev` and `triggers` into an environment and does NOT
+  // inherit `vars`, `d1_databases`, `kv_namespaces`, `r2_buckets` or
+  // `services`. Without `routes: []` this block would claim the two production
+  // custom domains above for the sandbox script; without `crons: []` it would
+  // run the five production crons — the destructive nightly retention sweep
+  // among them — a second time. tooling/ci/assert-money-config.mjs limb 1c
+  // refuses both, an inherited `workers_dev`, and a production database.
+  //
+  // ⚠️ `ratelimits` ARE DECLARED WITH THEIR OWN namespace_ids (1006-1010), never
+  // the top level's 1001-1005: a shared namespace would let a public sandbox URL
+  // spend the budget production's callers are counted against. Every limiter
+  // binding is optional and fails OPEN (src/types.ts:63), so an absent one is a
+  // sandbox with no breaker at all, not an error anyone would see.
+  //
+  // NOT BOUND, each on purpose: JWKS_CACHE (optional, src/types.ts:30);
+  // SIGNUPS and BACKUPS_R2 (optional, :46 and :54; only the nightly backup
+  // cron reads them, src/backup/index.ts); SUBSCRIPTIONTRACKER_DB and the ERASURE_* services
+  // (the nightly fan-out and account deletion — no cron runs here, and a
+  // sandbox erasure relay into production's app Worker is the one direction
+  // this block must not open); APP_ERASURE_ENDPOINTS for the same reason. No
+  // secret is set here or anywhere in this file.
+  "env": {
+    "sandbox": {
+      "routes": [],
+      "workers_dev": true,
+      "triggers": { "crons": [] },
+      "vars": {
+        // why: src/types.ts:104 — every route and log line names the app by it.
+        "APP_ID": "platform",
+        // why: the SAME identity project as production (D1 identity option
+        // (a)). ES256 verification reads its JWKS, and /v1/health probes it
+        // (src/index.ts:143).
+        "SUPABASE_URL": "https://lcrkiurkvzhkonjwhpiv.supabase.co",
+        // why: src/types.ts:348.
+        "API_VERSION": "v1",
+        // why: src/middleware/cors.ts:22, copied from the top level. Web stays
+        // exactly as production's.
+        "ALLOWED_ORIGINS": "https://nikatru.com,https://subscriptiontracker-7qg.pages.dev,http://localhost:3000",
+        // why: src/routes/money.ts:97 — THIS is the sandbox money world. The
+        // top level's value stays "live" (limb 1), and this one must be
+        // exactly "sandbox" (limb 1b).
+        "MONEY_ENVIRONMENT": "sandbox"
+      },
+      "d1_databases": [
+        {
+          // why: src/types.ts:13 and the /v1/health probe (src/index.ts:127).
+          // `platform_db_sandbox`, created 2026-09-23 and EMPTY. This Worker is
+          // its sole migration applier, as at the top level.
+          "binding": "PLATFORM_DB",
+          "database_name": "platform_db_sandbox",
+          "database_id": "ead92001-03e1-4f71-9b92-c64963a24925",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "kv_namespaces": [
+        // why: REQUIRED — src/types.ts:18; src/routes/config.ts:52 reads it
+        // unguarded and /v1/health probes it (src/index.ts:138), so an absent
+        // binding 500s config and reports the Worker unhealthy.
+        // `platform-config-sandbox`, created 2026-09-24.
+        { "binding": "CONFIG_KV", "id": "7ba3a916f8a5429091dec4a39284bffb" }
+      ],
+      "ratelimits": [
+        {
+          // why: src/routes/money.ts:93 and src/routes/receipts.ts:260. The
+          // top level's MONEY_CEILING_LIMITER (1004), same limit.
+          "name": "MONEY_CEILING_LIMITER",
+          "namespace_id": "1006",
+          "simple": { "limit": 120, "period": 60 }
+        },
+        {
+          // why: src/routes/events.ts:250 and :356, src/routes/report.ts:126.
+          // The top level's EVENTS_LIMITER (1001), same limit.
+          "name": "EVENTS_LIMITER",
+          "namespace_id": "1007",
+          "simple": { "limit": 120, "period": 60 }
+        },
+        {
+          // why: src/routes/events.ts:194 and :324. The top level's
+          // EVENTS_CEILING_LIMITER (1002), same limit.
+          "name": "EVENTS_CEILING_LIMITER",
+          "namespace_id": "1008",
+          "simple": { "limit": 600, "period": 60 }
+        },
+        {
+          // why: src/routes/config.ts:48. The top level's
+          // CONFIG_CEILING_LIMITER (1003), same limit.
+          "name": "CONFIG_CEILING_LIMITER",
+          "namespace_id": "1009",
+          "simple": { "limit": 1200, "period": 60 }
+        },
+        {
+          // why: src/routes/ext.ts (POST /v1/ext/token). The top level's
+          // EXT_TOKEN_CEILING_LIMITER (1005), same limit.
+          "name": "EXT_TOKEN_CEILING_LIMITER",
+          "namespace_id": "1010",
+          "simple": { "limit": 60, "period": 60 }
+        }
+      ]
+    }
+  }
 }

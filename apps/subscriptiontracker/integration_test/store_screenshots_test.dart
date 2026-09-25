@@ -529,6 +529,23 @@ void main() {
           'runner with --proof if you only mean to exercise the mechanism.',
     );
 
+    // ── the backend pin (F1, row O-STORE-CAPTURE-WRITES-UNATTRIBUTED-ROWS) ────
+    // A build that can reach an API must be pinned to the host it was given:
+    // unpinned, `apiClientProvider` follows the compiled config seed, whose
+    // `apiBaseUrl` is PRODUCTION, and every row this drive writes lands there.
+    // A `--proof` build has no API at all, so there is no host to pin.
+    expect(
+      AppConfig.pinnedBackend || !AppConfig.isApiConfigured,
+      isTrue,
+      reason:
+          'This build can reach an API but was not given PIN_BACKEND_HOSTS=true, '
+          'so the API host would come from the config document — the compiled '
+          'seed names the production API (row '
+          'O-STORE-CAPTURE-WRITES-UNATTRIBUTED-ROWS). Run the capture through '
+          'tooling/store/capture-play-screenshots.mjs, which computes the '
+          'sandbox hosts and passes the pin.',
+    );
+
     // `app.main()` installs AppErrorScreen as `ErrorWidget.builder`
     // (main.dart:100 → system_screens.dart:72) and flutter_test fails any test
     // that leaves that global changed, so the last line of this body puts it

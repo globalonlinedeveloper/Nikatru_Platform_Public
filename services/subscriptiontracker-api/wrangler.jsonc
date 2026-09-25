@@ -128,7 +128,7 @@
     // removed after e2e run 34606369081 went green on the host above. wrangler publishes
     // custom domains with `override_scope: true`, so the deploy of this line detaches
     // it from this Worker.
-  ]
+  ],
 
   // 🔴 NO "r2_buckets". The per-app `EXPORTS` → `subly-exports` binding was
   // REMOVED on 2026-08-01 ([4]B-18, [4]B-1 limb 3). It had been bound since
@@ -159,4 +159,73 @@
   // every ops-watch run; nothing reads the account for any other name.
   //   ⏱ Until 2026-09-25 this said "THE BUCKET ITSELF IS STILL IN THE ACCOUNT"
   //   and that deleting it was the owner's; the reading above retired that.
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // 🧪 env.sandbox — THE STORE CAPTURE'S API (Q11, row
+  // O-STORE-CAPTURE-WRITES-UNATTRIBUTED-ROWS). `wrangler deploy --env sandbox`
+  // deploys the script `subscriptiontracker-api-sandbox`, which answers on
+  // https://subscriptiontracker-api-sandbox.nikatru.workers.dev and nowhere
+  // else, so a store capture's demo rows land in a sandbox database instead of
+  // production's. Deployed only by .github/workflows/deploy-sandbox.yml
+  // (workflow_dispatch); deploy-workers deploys the top level above and never
+  // this block.
+  //
+  // 🔴 EVERY KEY IS DECLARED; NONE IS LEFT TO INHERITANCE. Wrangler inherits
+  // `routes`, `workers_dev` and `triggers` into an environment and does NOT
+  // inherit `vars`, `d1_databases` or `kv_namespaces`. Without `routes: []`
+  // this block would try to attach the production custom domain above to the
+  // sandbox script. tooling/ci/assert-money-config.mjs limb 1c refuses a
+  // sandbox environment that inherits a route, a cron or `workers_dev`, or that
+  // binds a production database.
+  //
+  // No secrets: auth is ES256 through the project's JWKS
+  // (services/_shared/src/auth.ts); SUPABASE_JWT_SECRET and GLITCHTIP_DSN are
+  // optional. No ratelimits, services or R2: the top level binds none.
+  "env": {
+    "sandbox": {
+      "routes": [],
+      "workers_dev": true,
+      "triggers": { "crons": [] },
+      "vars": {
+        // why: src/index.ts:158 reports it; every log line names the app by it.
+        "APP_ID": "subscriptiontracker",
+        // why: the SAME identity project as production (D1 identity option
+        // (a)). A capture signs in as the e2e user, and src/middleware/auth.ts
+        // verifies that token against this project's JWKS.
+        "SUPABASE_URL": "https://lcrkiurkvzhkonjwhpiv.supabase.co",
+        "API_VERSION": "v1",
+        // why: src/middleware/cors.ts:40, as at the top level. The localhost
+        // pattern a web capture sends is code (cors.ts:38), not this list.
+        "ALLOWED_ORIGINS": "https://nikatru.com,https://subscriptiontracker-7qg.pages.dev",
+        // why: src/routes/entitlements.ts:73 reads it and an absent world
+        // answers 503; this deploy is the sandbox one ([5]M-12, limb 1b).
+        "MONEY_ENVIRONMENT": "sandbox"
+      },
+      "d1_databases": [
+        {
+          // why: src/types.ts:13 — the capture's subscriptions and budgets are
+          // written here. `subscriptiontracker_db_sandbox`, created 2026-09-24.
+          "binding": "APP_DB",
+          "database_name": "subscriptiontracker_db_sandbox",
+          "database_id": "4e7c7730-3dc7-4004-9895-403b17702b91",
+          "migrations_dir": "migrations"
+        },
+        {
+          // why: src/types.ts:14 — entitlement reads. `platform_db_sandbox`,
+          // migrated by services/platform's own env.sandbox (the sole applier),
+          // so NO migrations_dir here, exactly as at the top level.
+          "binding": "PLATFORM_DB",
+          "database_name": "platform_db_sandbox",
+          "database_id": "ead92001-03e1-4f71-9b92-c64963a24925"
+        }
+      ],
+      "kv_namespaces": [
+        // why: REQUIRED — src/types.ts:17, and src/middleware/auth.ts:91 calls
+        // env.JWKS_CACHE.get unguarded. Its own namespace: production's holds
+        // the same public keys and would work, but a production id in a
+        // sandbox block is the shape this block exists to keep out.
+        { "binding": "JWKS_CACHE", "id": "b2acb786d12f4e36b339dd19f8812bbe" }
+      ]
+    }
+  }
 }

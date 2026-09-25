@@ -58,7 +58,11 @@
 //      entry per drive, read by resolveCaptureConsentIds. It is MUTUALLY EXCLUSIVE
 //      with E2E_RESPONSE_DATA / E2E_DRIVE_LOG (the nightly's single-drive
 //      sources), and it requires PLATFORM_D1_DATABASE_ID: either mix is a wiring
-//      defect and is refused before any request is made.
+//      defect and is refused before any request is made. Since 2026-09-25 a
+//      ledger also refuses a PRODUCTION database id in PLATFORM_D1_DATABASE_ID
+//      or SUBSCRIPTIONTRACKER_D1_DATABASE_ID: a store capture drives the sandbox
+//      Workers (tooling/store/capture-backend.mjs), so its rows are in the
+//      sandbox databases, and its purge has no business in production's.
 //
 // 🔴 PLATFORM_D1_DATABASE_ID IS THE SWITCH THAT SAYS "THIS INVOCATION OWNS THE
 // CONSENT ARTIFACT", and it decides whether an unresolved anon_id is a failure
@@ -68,11 +72,12 @@
 // NOTE: CLOUDFLARE_API_TOKEN must have D1 WRITE access for this account.
 import { resolveConsentAnonId, resolveCaptureConsentIds } from './consent_anon_id.mjs';
 import { stampDeletable } from './app-version-stamp.mjs';
+import { sandboxBackend, productionD1Ids, CaptureBackendRefused } from '../store/capture-backend.mjs';
 
 const userId = process.env.E2E_USER_ID;
 
-// The store capture's consent source (see the env header). Both refusals below
-// run before the first request, so `process.exit()` is still safe here.
+// The store capture's consent source (see the env header). All three refusals
+// below run before the first request, so `process.exit()` is still safe here.
 const ledgerPath = process.env.E2E_CONSENT_LEDGER || null;
 if (ledgerPath && (process.env.E2E_RESPONSE_DATA || process.env.E2E_DRIVE_LOG)) {
   console.error(
@@ -90,6 +95,33 @@ if (ledgerPath && !process.env.PLATFORM_D1_DATABASE_ID) {
       'wired for and still pass. Nothing was purged.',
   );
   process.exit(1);
+}
+// The third refusal (O-STORE-CAPTURE-WRITES-UNATTRIBUTED-ROWS, 2026-09-25): the
+// production ids are the top-level D1 ids of both Workers' wrangler.jsonc, as
+// sandboxBackend() reads them. A backend it refuses is refused here too, since
+// a purge that cannot tell production from sandbox has no safe target.
+if (ledgerPath) {
+  let productionIds;
+  try {
+    productionIds = productionD1Ids(sandboxBackend());
+  } catch (e) {
+    if (!(e instanceof CaptureBackendRefused)) throw e;
+    console.error(
+      `REFUSED: E2E_CONSENT_LEDGER is set, and the capture backend could not be read (${e.message}). ` +
+        'Without it this step cannot tell a production database id from a sandbox one. Nothing was purged.',
+    );
+    process.exit(1);
+  }
+  for (const key of ['PLATFORM_D1_DATABASE_ID', 'SUBSCRIPTIONTRACKER_D1_DATABASE_ID']) {
+    if (process.env[key] && productionIds.has(process.env[key])) {
+      console.error(
+        `REFUSED: E2E_CONSENT_LEDGER is set and ${key} is ${process.env[key]}, a PRODUCTION database. ` +
+          'A store capture drives the sandbox Workers, so its rows are in the sandbox databases; pointing ' +
+          'its purge at production would delete by its ids where it wrote nothing. Nothing was purged.',
+      );
+      process.exit(1);
+    }
+  }
 }
 
 // Resolved BEFORE the early exit below, because the two are independent: the

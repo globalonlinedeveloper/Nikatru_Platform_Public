@@ -37,6 +37,7 @@ import {
   RED_LEAD,
 } from '../../store/capture-network-posture.mjs';
 import { storeViewDefineArgs } from '../../store/capture-suite-scan.mjs';
+import { sandboxBackend, productionD1Ids } from '../../store/capture-backend.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HERE, '..', '..', '..');
@@ -411,7 +412,7 @@ describe('capture-play-screenshots.mjs stamps its drive and refuses without a le
     assert.match(code, /m\[2\] === 'APP_VERSION' \|\|/);
   });
 
-  /** A bare env: only what node needs to start, the five posture-gate vars
+  /** A bare env: only what node needs to start, the four posture-gate vars
    *  dummied past that gate, and nothing that looks like Actions. PATH is node's
    *  own directory, so neither chromedriver nor flutter can be found even if a
    *  refusal under test were missing; `--out` is a throwaway directory, so no
@@ -421,7 +422,7 @@ describe('capture-play-screenshots.mjs stamps its drive and refuses without a le
     try {
       const env = { PATH: dirname(process.execPath) };
       for (const k of ['SystemRoot', 'TEMP', 'TMP']) if (process.env[k]) env[k] = process.env[k];
-      for (const k of ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'API_BASE_URL', 'E2E_EMAIL', 'E2E_PASSWORD']) env[k] = 'x';
+      for (const k of ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'E2E_EMAIL', 'E2E_PASSWORD']) env[k] = 'x';
       Object.assign(env, extra);
       const r = spawnSync(process.execPath, [RUNNER, '--app', 'subscriptiontracker', '--out', out], {
         encoding: 'utf8',
@@ -462,7 +463,14 @@ describe('capture-play-screenshots.mjs stamps its drive and refuses without a le
     assert.match(reh, /STORE_CAPTURE_APP_VERSION: rehearsalStamp,/);
     // The capture env and the purge env: the ledger twice, nothing else writes it.
     assert.equal((reh.match(/E2E_CONSENT_LEDGER: consentLedger,/g) ?? []).length, 2);
-    assert.match(reh, /PLATFORM_D1_DATABASE_ID: '9d1c5c63-97fe-4f82-bc7d-f3fd22e9b351',/);
+    // The purge targets the SANDBOX databases, as sandboxBackend() reads them
+    // from the wrangler configs, and no production database id is in the file.
+    assert.match(reh, /import \{ sandboxBackend, CaptureBackendRefused \} from '\.\/capture-backend\.mjs';/);
+    assert.match(reh, /PLATFORM_D1_DATABASE_ID: SANDBOX\.platform\.sandboxIds\['d1:PLATFORM_DB'\],/);
+    assert.match(reh, /SUBSCRIPTIONTRACKER_D1_DATABASE_ID: SANDBOX\['subscriptiontracker-api'\]\.sandboxIds\['d1:APP_DB'\],/);
+    const production = [...productionD1Ids(sandboxBackend())];
+    assert.equal(production.length, 2, `expected the two production D1 ids, read ${production.join(', ')}`);
+    for (const id of production) assert.ok(!reh.includes(id), `the rehearsal names production database ${id}`);
     assert.match(reh, /E2E_APP_ID: APP,/);
     // The purge is still the one in `finally`, after the capture.
     assert.ok(reh.indexOf('STORE_CAPTURE_APP_VERSION: rehearsalStamp') < reh.indexOf("'purge the throwaway user'"));
@@ -861,5 +869,39 @@ describe('a desktop capture is told its geometry, and only a desktop capture', (
     const webEnd = code.indexOf('];', webAt);
     assert.match(code.slice(nativeAt, webAt), /\.\.\.storeViewDefineArgs\(cap\)/);
     assert.doesNotMatch(code.slice(webAt, webEnd), /storeViewDefineArgs/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// L-PIN — the capture binary is pinned to the host it was given (F1, row
+// O-STORE-CAPTURE-WRITES-UNATTRIBUTED-ROWS). A capture handed a sandbox
+// API_BASE_URL still wrote to production: apiClientProvider preferred the
+// config document's apiBaseUrl, and under SKIP_REMOTE_CONFIG that document is
+// the compiled seed, which names the production API. The decision is now
+// apiBaseFor (proved both ways by test/api_base_pin_test.dart); these two
+// source reads hold the provider to calling it and the harness to refusing an
+// unpinned build that can reach an API.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('the capture binary is pinned to the host it was given (F1)', () => {
+  test('L-PIN: apiClientProvider decides its host through apiBaseFor, never `cfg?.apiBaseUrl ??`', () => {
+    const PROVIDER = join(
+      REPO, 'apps', 'subscriptiontracker', 'lib', 'state', 'providers', 'subscriptions.dart',
+    );
+    const code = stripSourceComments(readFileSync(PROVIDER, 'utf8'), '.dart');
+    const start = code.indexOf('apiClientProvider = Provider<ApiClient>');
+    assert.notEqual(start, -1, 'subscriptions.dart no longer declares apiClientProvider = Provider<ApiClient>');
+    const end = code.indexOf('});', start);
+    assert.notEqual(end, -1, 'the apiClientProvider body has no closing `});`');
+    const body = code.slice(start, end);
+    assert.match(body, /apiBaseFor\(/);
+    assert.doesNotMatch(body, /cfg\?\.apiBaseUrl\s*\?\?/);
+  });
+
+  test('L-PIN: the harness refuses an API-reaching build that was not given the pin', () => {
+    const SUITE = join(
+      REPO, 'apps', 'subscriptiontracker', 'integration_test', 'store_screenshots_test.dart',
+    );
+    const dart = stripSourceComments(readFileSync(SUITE, 'utf8'), '.dart');
+    assert.match(dart, /AppConfig\.pinnedBackend\s*\|\|\s*!AppConfig\.isApiConfigured/);
   });
 });
