@@ -212,6 +212,9 @@ describe('platform_db migrations re-apply cleanly', () => {
       'entitlements',
       'events',
       'events_daily',
+      // ⏱ 2026-09-24 · the extension account check (O-EXTENSION-ACCOUNT-CHECK-UNBUILT).
+      'ext_codes',
+      'ext_devices',
       'feature_set_members',
       'feature_sets',
       // ⏱ 2026-09-15 · [ADR 081] migration 0010.

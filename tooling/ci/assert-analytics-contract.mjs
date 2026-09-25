@@ -504,6 +504,33 @@ const WIRE_CONTRACTS = [
      *  statement, and this fails rather than going on printing it. */
     absentFromDart: '/v1/entitlements/subject',
   },
+  // ⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT — the browser extension's
+  // account check (services/platform/src/routes/ext.ts). Three gaps, one per
+  // route, because NONE of their clients is Dart: the page is plain JS on
+  // nikatru.com and the extension half is PR-X. `absentFromDart` keeps each
+  // claim checked — the day a Dart source builds one of these paths, the gap
+  // becomes a false statement and this fails rather than printing it.
+  {
+    id: 'ext-codes',
+    kind: 'gap',
+    reason:
+      'NO DART CLIENT, BY CONSTRUCTION — the caller is sites/nikatru/ext/connect.js, the signed-in page that links a browser extension to the account, and it is plain JavaScript served by Cloudflare Pages. It reads exactly two keys of the answer, `code` and `redirect_uri`, and navigates only to the server-returned `redirect_uri`. No released Dart client exists to break.',
+    absentFromDart: '/v1/ext/codes',
+  },
+  {
+    id: 'ext-token',
+    kind: 'gap',
+    reason:
+      'NO DART CLIENT, BY CONSTRUCTION — the caller is the FullShot browser extension (extensions/, JavaScript), and its half of the contract ({token, link_id}) lands in PR-X. Until the parent fills a measured `extensionRedirectUri` in tooling/channel-register.json, no code can be minted in production and nothing can reach a 200 here.',
+    absentFromDart: '/v1/ext/token',
+  },
+  {
+    id: 'ext-revoke',
+    kind: 'gap',
+    reason:
+      'NO DART CLIENT, BY CONSTRUCTION — the caller is the FullShot browser extension signing ITSELF out (PR-X). It reads the status code (200, or 401 for a credential already dead), not the body.',
+    absentFromDart: '/v1/ext/revoke',
+  },
   {
     id: 'receipts',
     kind: 'gap',

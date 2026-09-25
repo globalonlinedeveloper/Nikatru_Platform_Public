@@ -279,6 +279,25 @@
       "name": "MONEY_CEILING_LIMITER",
       "namespace_id": "1004",
       "simple": { "limit": 120, "period": 60 }
+    },
+    {
+      // ⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. The SAME server-derived
+      // ceiling for POST /v1/ext/token — the browser extension's code exchange,
+      // unauthenticated in the Supabase sense because the one-time code IS the
+      // credential. Keyed `edge:<colo>:<asn>` by src/lib/edge-ceiling.ts, NEVER on
+      // an IP: this Worker reads no CF-Connecting-IP anywhere.
+      //
+      // Its OWN namespace_id so a code-guessing flood cannot spend the budget of
+      // analytics ingest, config resolution or the money rail.
+      //
+      // 60/min per (colo, asn): one exchange per sign-in, so 60 a minute leaves
+      // room for a shared NAT while still ending a flood against a 128-bit code.
+      // `period` is 60, one of tooling/ceilings.json's allowed values. Same
+      // honest caveat as the others: per-colo and eventually consistent, a BURST
+      // bound, not accounting.
+      "name": "EXT_TOKEN_CEILING_LIMITER",
+      "namespace_id": "1005",
+      "simple": { "limit": 60, "period": 60 }
     }
   ],
   "triggers": {

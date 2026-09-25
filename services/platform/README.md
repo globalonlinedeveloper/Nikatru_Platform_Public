@@ -102,13 +102,15 @@ because a caller can get them wrong in ways the others do not offer.)
   granted against — until `0014` moved those rows too, by owner decision
   2026-09-22, pre-launch), then `0009_bundle_grants`, `0010_pending_erasures`,
   `0011_signups`, `0012_apple_provider_tokens`, `0013_content_reports` (the
-  in-app AI content report, O-PLAY-AI-CONTENT-REPORTING) and
+  in-app AI content report, O-PLAY-AI-CONTENT-REPORTING),
   `0014_consent_artifacts_app_id_rename` (that one-time consent-row rename — the
   single exemption `tooling/ci/assert-analytics-contract.mjs` grants the
-  append-only rule, pinned to that file and its one statement), then
+  append-only rule, pinned to that file and its one statement),
+  `0015_revenuecat_ownership` (the event time a RevenueCat link rests on), then
   `0016_provider_tokens` (the Apple token table widened to one row per subject and
   provider, the Apple rows copied in; `apple_provider_tokens` stays until a later
-  change drops it). Additive-only, enforced
+  change drops it) and `0017_ext_devices` (the browser extension's one-time code
+  and per-device credential, O-EXTENSION-ACCOUNT-CHECK-UNBUILT). Additive-only, enforced
   by `tooling/ci/check-migrations.mjs`. (This list had stopped at 0008 until
   2026-09-18; nothing guards it, so the directory is the authority.)
 - **`subscriptiontracker_db`** (binding `SUBSCRIPTIONTRACKER_DB`) — bound read/write for the renewals fan-out

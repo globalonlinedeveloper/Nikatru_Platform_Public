@@ -411,6 +411,24 @@ function appSlugs() {
   return readdirSync(appsDir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
 }
 
+/** ⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. The EXTENSION slugs, read from
+ *  extensions/catalog/extensions.json — the extension catalogue the extensions
+ *  lane publishes from. Its own reader, deliberately NOT `appSlugs()`: an
+ *  extension is not an app, has no `apps/*` directory to fall back to, and an
+ *  app slug must never resolve an extension-keyed row (nor the reverse). No
+ *  directory floor: an unreadable catalogue yields [], which the resolver
+ *  below refuses as COULD NOT LOOK rather than marking every row bad. */
+function extensionSlugs() {
+  const cat = join(ROOT, 'extensions', 'catalog', 'extensions.json');
+  if (!existsSync(cat)) return [];
+  try {
+    const parsed = JSON.parse(readFileSync(cat, 'utf8'));
+    return (Array.isArray(parsed) ? parsed : []).map((e) => e?.slug).filter((s) => typeof s === 'string');
+  } catch {
+    return [];
+  }
+}
+
 /** `{app}-web` × the apps — the environments a served RELEASE channel's lane
  *  records into, and therefore the only ones whose GitHub Deployments witness
  *  that an app build was PUBLISHED. Service environments (the Workers) are
@@ -1692,6 +1710,30 @@ async function main() {
         return s;
       })(),
     ),
+    // ⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. For the extension
+    // account-check tables (`ext_codes`, `ext_devices`), whose `product` names a
+    // browser extension, never an app. Same shape and same weakness as
+    // `app-catalogue` one entry up — it proves the row belongs to an extension
+    // the factory ships, not that a released build wrote it — over its OWN
+    // catalogue, so no app slug can resolve an extension row.
+    //
+    // ⚠️ THE CATALOGUE IS READ WHEN A ROW FIRST NEEDS IT, not when this map is
+    // built: a census with no extension rows (and every offline fixture tree,
+    // which carries no extensions/ directory) must not be refused for a
+    // catalogue it never consults. An empty catalogue met BY A ROW is still
+    // COULD NOT LOOK, never a finding about the row.
+    'extension-catalogue': ((read) => {
+      let set = null;
+      return (v) => {
+        if (set === null) {
+          set = new Set(read());
+          if (set.size === 0) throw new CouldNotLook('the extension catalogue declares zero extensions, so every row would read as unattributable');
+        }
+        return typeof v === 'string' && set.has(v)
+          ? null
+          : `extension \`${v}\` has no entry in extensions/catalog/extensions.json, so this row belongs to no extension the factory ships`;
+      };
+    })(extensionSlugs),
     // For rows created by a dated, reviewed OPERATOR act — neither a client, nor
     // the money rail, nor a migration seed. `feature_sets` is the case: minting a
     // bundle version is an explicit forward-only act ([ADR 057] §4), and

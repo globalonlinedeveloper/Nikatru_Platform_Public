@@ -3546,6 +3546,7 @@
       "deploymentEnvironment": "{app}-chrome-webstore",
       "storeMetadataDir": "extensions/Extension/{tool}/store/chrome",
       "extensionStoreKey": "chrome",
+      "extensionRedirectUri": null,
       "ownerQueue": null,
       "accountStatus": {
         "status": "live",
@@ -3642,6 +3643,7 @@
       "deploymentEnvironment": "{app}-edge-addons",
       "storeMetadataDir": "extensions/Extension/{tool}/store/edge",
       "extensionStoreKey": "edge",
+      "extensionRedirectUri": null,
       "ownerQueue": null,
       "accountStatus": {
         "status": "live",
@@ -3770,6 +3772,7 @@
       "deploymentEnvironment": "{app}-amo",
       "storeMetadataDir": "extensions/Extension/{tool}/store/firefox",
       "extensionStoreKey": "firefox",
+      "extensionRedirectUri": null,
       "ownerQueue": null,
       "accountStatus": {
         "status": "live",

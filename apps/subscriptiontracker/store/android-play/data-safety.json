@@ -1597,6 +1597,8 @@
     ],
     "register": "tooling/legal/data-inventory.json",
     "notFromThisApp": {
+      "table:platform_db.ext_codes": "⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. The one-time code a signed-in user mints on https://nikatru.com/ext/connect to link the FullShot BROWSER EXTENSION to their account (services/platform/src/routes/ext.ts). Written by that web page and consumed by the extension; nothing in this app reads or writes it, and it holds only a hash of the code, the account id, the extension's product and store channel.",
+      "table:platform_db.ext_devices": "⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. One row per browser that has linked the FullShot BROWSER EXTENSION to an account — a hash of the extension's credential, the account id, the product and store channel. Written by the extension's code exchange (services/platform/src/routes/ext.ts); nothing in this app reads or writes it.",
       "table:platform_db.provider_notifications": "The verbatim payment notification a provider POSTs to services/platform. It holds the buyer's name and email because that is what the provider sent; nothing leaves the device to produce it. No seller account exists (OWNER_QUEUE A-1) so nothing writes to it today.",
       "table:platform_db.provider_accounts": "Derived server-side from a provider notification. Same reasoning as provider_notifications.",
       "table:platform_db.unclaimed_payments": "Written when a payment arrives that cannot be attributed. Server-to-server from the provider; not transmitted by this app.",

@@ -42,6 +42,29 @@
 /auth-mail/*
   X-Robots-Tag: noindex
 
+# ── /ext/connect: THE ONE PATH WHOSE CSP MAY TALK TO THE SIGN-IN HOST ────────
+# ⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. The page a browser extension
+# opens to link itself to the user's account (ext/connect.html). It signs in
+# against GoTrue and asks the platform Worker for a one-time code, so it needs
+# exactly two more `connect-src` origins than every other page — and ONLY it.
+#
+# 🔴 THE GLOBAL CSP IS DETACHED, NOT DUPLICATED. Cloudflare Pages JOINS a header
+# that two matching rules both set, and a browser ENFORCES EVERY CSP it is sent,
+# so a second policy here would be intersected with the global `connect-src
+# 'self'` and change nothing. `! Content-Security-Policy` removes the `/*` value
+# on this path; the line after it restates the WHOLE policy — the same six
+# `script-src` hashes and `form-action 'self'` — with only `connect-src` widened.
+# The page carries no inline script, so it adds no hash.
+# `Referrer-Policy` is detached the same way (the `/*` rule sets it globally): the
+# URL of this page carries the extension's PKCE challenge and state, and it must
+# not leave in a Referer. `no-store`, because it is a signed-in page.
+/ext/connect
+  ! Content-Security-Policy
+  Content-Security-Policy: default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'sha256-/F5Ry+1cCHURQ7c2PIC+pv90DaJ01rRWBejMCVN4Dm4=' 'sha256-I0qLQpwW2LoqBwFwve24dDecmVHlbmOOtB0YoqJru6w=' 'sha256-MgqFFGLQqvfHTjM1wDUjdvXwSAKg/tr5sx4ydu3DVNY=' 'sha256-SdQiYmfng5RFNXxQywQLylCcSrYBeQ+MfoGO578s0XY=' 'sha256-W6m5iDhIwK8RKiz10LnfxTMC9ykoe+hCZTXsNom5tWM=' 'sha256-se6nVksVFvJGiLATTxTxshBOCrCLLqEM7cJ2CJk5WYE='; connect-src 'self' https://auth-api.nikatru.com https://platform.nikatru.com; form-action 'self'; upgrade-insecure-requests
+  ! Referrer-Policy
+  Referrer-Policy: no-referrer
+  Cache-Control: no-store
+
 # ── CSS and JS: DECLARED, not inherited ─────────────────────────────────────
 # 🔴 2026-08-04. Until today these two classes had no rule here at all, and
 # that was not a decision — it was a gap the Cloudflare zone happened to be

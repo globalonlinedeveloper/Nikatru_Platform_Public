@@ -647,6 +647,10 @@ describe('DELETE /v1/account — three limbs, executed against a real engine', (
     // ⚠️ AND A FIFTH TIME, 2026-09-18, with 0013's `content_reports.user_id` — the
     // in-app AI content report (O-PLAY-AI-CONTENT-REPORTING). This case went red
     // exactly as the paragraph above promised, naming the new table by its 200.
+    //
+    // ⚠️ AND A SIXTH TIME, 2026-09-24, with `ext_codes.user_id` and
+    // `ext_devices.user_id` — the browser extension's one-time code and linked
+    // device (O-EXTENSION-ACCOUNT-CHECK-UNBUILT). Red first, by its 200, as above.
     const db = realPlatformDb();
     db.db.exec('DROP TABLE entitlements;');
     db.db.exec('DROP TABLE provider_accounts;');
@@ -654,6 +658,8 @@ describe('DELETE /v1/account — three limbs, executed against a real engine', (
     db.db.exec('DROP TABLE provider_notifications;');
     db.db.exec('DROP TABLE bundle_grants;');
     db.db.exec('DROP TABLE content_reports;');
+    db.db.exec('DROP TABLE ext_codes;');
+    db.db.exec('DROP TABLE ext_devices;');
     const res = await harness({ db }).del('/v1/account', `Bearer ${await token({ sub: 'user-a' })}`);
     expect(res.status).toBe(503);
     expect(identityCalls).toHaveLength(0);

@@ -101,7 +101,11 @@
       "receipts",
       "apple-token",
       "provider-token",
-      "report"
+      "report",
+      "ext",
+      "codes",
+      "token",
+      "revoke"
     ],
     "_subject": [
       "🟢 `subject` ADDED 2026-09-09, AND THIS LIMB CAUGHT IT AGAIN. GET /v1/entitlements/subject is the",
@@ -178,7 +182,8 @@
       "apps/subscriptiontracker's domain noun. `cancel` is the verb. No merchant of record is named in either, and none",
       "can be: the route resolves the subscription from the verified session, never from the request."
     ],
-    "_appleToken": "⏱ 2026-09-16 · O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE. `apple-token` is OURS, not a provider's tell: PUT /v1/account/apple-token is the app handing us the user's Apple refresh token so the account deletion can revoke it at Apple. Nothing calls IN on it — it is not a webhook, takes no provider signature, and is behind platformAuth like the rest of /v1/account. The call OUT to Apple is in services/platform/src/lib/provider-revoke.ts and reaches appleid.apple.com, never this Worker. ⏱ 2026-09-24 · `provider-token` is the same resource of ours for any provider (PUT /v1/account/provider-token, O-GOOGLE-SIGN-IN-NOT-BUILT): the app hands us the user's Apple or Google refresh token, and the call OUT to Google, from the same file, reaches oauth2.googleapis.com."
+    "_appleToken": "⏱ 2026-09-16 · O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE. `apple-token` is OURS, not a provider's tell: PUT /v1/account/apple-token is the app handing us the user's Apple refresh token so the account deletion can revoke it at Apple. Nothing calls IN on it — it is not a webhook, takes no provider signature, and is behind platformAuth like the rest of /v1/account. The call OUT to Apple is in services/platform/src/lib/provider-revoke.ts and reaches appleid.apple.com, never this Worker. ⏱ 2026-09-24 · `provider-token` is the same resource of ours for any provider (PUT /v1/account/provider-token, O-GOOGLE-SIGN-IN-NOT-BUILT): the app hands us the user's Apple or Google refresh token, and the call OUT to Google, from the same file, reaches oauth2.googleapis.com.",
+    "_ext": "⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. `ext`, `codes`, `token` and `revoke` are OURS, not a provider's tell: POST /v1/ext/codes (the signed-in nikatru.com/ext/connect page mints a one-time code), POST /v1/ext/token (the browser extension exchanges it, PKCE S256, for a per-device credential) and POST /v1/ext/revoke (that credential revokes itself) are the extension account check in services/platform/src/routes/ext.ts. None is a webhook and none takes a provider signature: the callers are our own page and our own extension. `token` is spelled like an OAuth endpoint because it is one — of ours."
   },
   "roles": {
     "_why": "The vocabulary rows are validated against, declared once HERE rather than inside the guard — the same reason keyKinds lives in tooling/channel-register.json. Renaming a role out from under the rows still using it fails.",

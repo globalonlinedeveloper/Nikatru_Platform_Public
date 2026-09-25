@@ -1349,7 +1349,8 @@ export type RetentionStore =
   | 'events_daily'
   | 'provider_notifications'
   | 'signups'
-  | 'content_reports';
+  | 'content_reports'
+  | 'ext_codes';
 
 /** Days-to-keep per store. `null` is UNDECLARED, and undeclared is INERT. */
 export type RetentionPeriods = Record<RetentionStore, number | null>;
@@ -1474,6 +1475,17 @@ export const SIGNUPS_RETENTION_DAYS = 400;
 // `user_id` puts every row in the erasure walk (0013_content_reports.sql).
 // @ceiling none — a RETENTION PERIOD is a policy number, not a platform resource; nothing in tooling/ceilings.json bounds how long rows may be kept.
 export const CONTENT_REPORTS_RETENTION_DAYS = 400;
+
+// 🔒 DECLARED — ONE DAY PAST EXPIRY. O-EXTENSION-ACCOUNT-CHECK-UNBUILT. Register
+// row: retention.d1.platform_db.ext_codes. A code lives 120 seconds and is
+// single-use (routes/ext.ts); after `expires_at` it can never be exchanged, so a
+// row older than that is only a record that a sign-in happened. The design
+// (extension-account-check §3.4) deletes it 24 hours after `expires_at` — the day
+// is kept so a failed exchange can still be read against its code the morning
+// after. The cutoff is on `expires_at`, NOT `created_at`, so an UNEXPIRED code is
+// never swept: retention-sweep.test.ts seeds one and asserts it survives.
+// @ceiling none — a RETENTION PERIOD is a policy number, not a platform resource; nothing in tooling/ceilings.json bounds how long rows may be kept.
+export const EXT_CODES_RETENTION_DAYS = 1;
 
 // The per-store, per-run delete bound. A sweep is a CATCH-UP job, not a one
 // shot: hitting the bound leaves the remainder for tomorrow and says `capped=1`
@@ -1768,6 +1780,13 @@ async function deleteOlderThan(env: Env, store: RetentionStore, cutoff: string):
             // O-PLAY-AI-CONTENT-REPORTING. On AGE ALONE, from `created_at`.
             'DELETE FROM content_reports WHERE rowid IN (SELECT rowid FROM content_reports WHERE created_at < ? ORDER BY created_at LIMIT ?)',
           )
+      : store === 'ext_codes'
+        ? env.PLATFORM_DB.prepare(
+            // O-EXTENSION-ACCOUNT-CHECK-UNBUILT. From `expires_at`, never
+            // `created_at`: both are ISO-8601 TEXT (the ext_devices migration's header records why an
+            // integer here would sweep every live code).
+            'DELETE FROM ext_codes WHERE rowid IN (SELECT rowid FROM ext_codes WHERE expires_at < ? ORDER BY expires_at LIMIT ?)',
+          )
       : store === 'events_daily'
         ? env.PLATFORM_DB.prepare(
             // Deletes on AGE ALONE, and that asymmetry with `events` is
@@ -1847,10 +1866,18 @@ export async function retentionSweep(
     provider_notifications: PROVIDER_NOTIFICATIONS_RETENTION_DAYS,
     signups: SIGNUPS_RETENTION_DAYS,
     content_reports: CONTENT_REPORTS_RETENTION_DAYS,
+    ext_codes: EXT_CODES_RETENTION_DAYS,
   },
   nowMs: number = Date.now(),
 ): Promise<void> {
-  const stores: RetentionStore[] = ['events', 'events_daily', 'provider_notifications', 'signups', 'content_reports'];
+  const stores: RetentionStore[] = [
+    'events',
+    'events_daily',
+    'provider_notifications',
+    'signups',
+    'content_reports',
+    'ext_codes',
+  ];
   const n_stores = stores.length;
   let declared = 0;
   let deleted = 0;
