@@ -188,7 +188,15 @@ describe('deriveExpectation — the two facts come from the URL and the register
 
   test('a refusal never carries the URL it was handed', () => {
     const d = real.deriveExpectation(BOXC, registerWith());
-    assert.ok(!d.why.includes(BOXC), d.why);
+    // The WHOLE refusal, not "the URL is absent": a substring check on a URL is
+    // the incomplete-sanitisation shape (CodeQL js/incomplete-url-substring-
+    // sanitization, PR #957), and the exact sentence is the narrower claim — it
+    // leaves no room for the URL, or for anything else, to ride along.
+    assert.equal(
+      d.why,
+      'could not decide what to expect: tooling/platform-register.json declares 0 vars.SUPABASE_URL entries, ' +
+        'not exactly one. Exit 2: nothing was looked at.',
+    );
   });
 });
 
@@ -444,10 +452,10 @@ describe('derive_expectation.mjs — writes the two facts, prints no URL, and re
 
   test('the URL never reaches the log, only the words', () => {
     const r = derive(BOXC, registerWith(HOSTED));
-    assert.ok(!r.out.includes(BOXC), r.out);
-    assert.ok(!r.out.includes(HOSTED), r.out);
-    assert.match(r.out, /^E2E_STACK=selfhosted$/m);
-    assert.match(r.out, /^E2E_WORKERS_TRUST=no$/m);
+    // The WHOLE log, not "neither URL is in it" (CodeQL js/incomplete-url-
+    // substring-sanitization, PR #957): the two word lines and nothing else,
+    // so neither URL, nor any other line, can reach it.
+    assert.equal(r.out, 'E2E_STACK=selfhosted\nE2E_WORKERS_TRUST=no\n');
   });
 
   test('an unset SUPABASE_URL is exit 2 and writes nothing', () => {
