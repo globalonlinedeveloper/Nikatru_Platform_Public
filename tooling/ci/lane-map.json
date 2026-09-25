@@ -18,7 +18,11 @@
     "<name>`, and --check fails when that file is missing or names another lane.",
     "Only `workers` has a callee today (extensions-ci.yml keeps its own discover job until it adopts",
     "lane-detect); the other lanes' globs are written now so that `unmapped` means new to the map,",
-    "not a lane that has not moved yet (O-CI-LANES-NOT-CALLABLE-UNITS)."
+    "not a lane that has not moved yet (O-CI-LANES-NOT-CALLABLE-UNITS).",
+    "deployUnits: for each production deploy unit, the repo paths whose change makes a new publish of that unit worth doing. Keyed by the ledger environment tooling/ci/record-deployment.mjs writes the unit's Deployment under; the key \"<app>-web\" stands for every app in deploy-web.yml's matrix (subscriptiontracker-web, and each app after it).",
+    "Read by tooling/ci/plan-deploy.mjs before every publish: it diffs the unit's latest SUCCESSFUL Deployment against the target commit and publishes only when a changed path matches one of these globs (row O-DEPLOY-IS-NOT-ONE-GATED-LANE, limb 3).",
+    "Since ADR 095 §4 (2026-09-25) the deploy workflows carry no push paths and no dorny filters: they run only as ci.yml's deploy-web and deploy-workers call jobs, after ci-gate, and these globs alone decide what publishes. The copies went with the triggers, and so did tooling/ci/test/deploy-units.test.mjs's equality checks; that test now holds the units' own shape, and fails when either deploy workflow grows a trigger back.",
+    "Glob shapes: `X/**` (a tree), `X/*.ext` or `X/*` (files directly in X), or a literal path. plan-deploy.mjs refuses any other shape rather than guessing, through globClaims in assert-deploy-triggers-deploy.mjs."
   ],
   "lanes": {
     "workers": {
@@ -116,5 +120,43 @@
     "*.md",
     ".editorconfig",
     ".ignore"
-  ]
+  ],
+  "deployUnits": {
+    "<app>-web": [
+      "apps/**",
+      "packages/**",
+      "pubspec.yaml",
+      "pubspec.lock",
+      "tooling/versions.json",
+      "catalog/apps.json",
+      "tooling/ci/assert-app-versioning.mjs",
+      "tooling/ci/assert-release-lane-generic.mjs",
+      "tooling/ci/assert-catalog-reachable.mjs",
+      "tooling/ci/record-deployment.mjs",
+      "tooling/ci/plan-deploy.mjs",
+      "tooling/smoke/smoke-web-artifact.mjs",
+      "tooling/web/**",
+      "tooling/ops/post-deploy-smoke.mjs",
+      "tooling/ops/create-glitchtip-release.mjs",
+      "tooling/ops/upload-web-sourcemaps.mjs",
+      "tooling/wrangler/**",
+      ".github/workflows/deploy-web.yml"
+    ],
+    "subscriptiontracker-api": [
+      "services/subscriptiontracker-api/**",
+      "services/_shared/**",
+      ".github/workflows/deploy-workers.yml"
+    ],
+    "platform": [
+      "services/platform/**",
+      "services/_shared/**",
+      "catalog/apps.json",
+      "contracts/entitlement/*.js",
+      "contracts/entitlement/*.json",
+      "catalog/bundles.json",
+      "extensions/catalog/extensions.json",
+      "tooling/channel-register.json",
+      ".github/workflows/deploy-workers.yml"
+    ]
+  }
 }

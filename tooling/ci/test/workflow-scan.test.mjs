@@ -32,6 +32,7 @@ import {
   parseWorkflow, parseAllWorkflows, joinBlockScalars, shellSegments, workflowEvents, dispatchInputs, stepShell,
   stepItemAround, workflowSteps, jobEnv, githubEnvWrites, joinShellContinuations, commandAt, flutterDrives,
   resolveLocalCalls, parseResolvedWorkflows, lineAt, placeOf, refusalText,
+  POST_GATE_IF, postGateClass, postGateJobs, laneRunHost, laneRefusalText,
 } from '../workflow-scan.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -976,6 +977,7 @@ describe('workflow-scan parseResolvedWorkflows', () => {
     assert.deepEqual(child.needs, ['gate', 'ship/build']);
     assert.equal(child.jobIf.cond, "github.repository == 'o/r'");
     assert.equal(child.calledBy, 'ship');
+    assert.equal(child.callee, '.github/workflows/ship.yml');
     const env = child.lines.find((l) => l.text.trim() === 'environment: production');
     assert.equal(placeOf(wf, env.n), '.github/workflows/ship.yml:14');
     assert.deepEqual(r.filesRead, ['.github/workflows/release.yml', '.github/workflows/ship.yml', '.github/actions/pub/action.yml']);
@@ -1023,5 +1025,99 @@ describe('workflow-scan parseResolvedWorkflows', () => {
     const r = parseResolvedWorkflows(root);
     assert.deepEqual(r.refusal, { kind: 'orphan-callee', at: '.github/workflows/ship.yml:1', path: '.github/workflows/ship.yml' });
     assert.deepEqual(r.workflows, []);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-25 [ADR 095 §4] — the post-gate class and a lane's run host, ONE
+// definition each. assert-green-means-ran A9 and assert-ops-register import the
+// class; every served-lane reader imports laneRunHost.
+const POST_GATE_CI = `name: CI
+on: [push, pull_request]
+jobs:
+  lane:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo lane
+  ci-gate:
+    needs: [lane]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo gate
+  ship:
+    needs: [ci-gate]
+    if: ${POST_GATE_IF}
+    uses: ./.github/workflows/ship.yml
+  wide:
+    needs: [ci-gate]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo wide
+  loose:
+    needs: [lane]
+    if: ${POST_GATE_IF}
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo loose
+`;
+
+describe('workflow-scan postGateClass / postGateJobs', () => {
+  test('each job touching the class is named once, in file order: post, wide-if, ungated', () => {
+    const wf = parseWorkflow(fixture({ 'ci.yml': POST_GATE_CI }), '.github/workflows/ci.yml');
+    assert.deepEqual(postGateClass(wf, 'ci-gate'), [
+      { id: 'ship', kind: 'post', cond: POST_GATE_IF },
+      { id: 'wide', kind: 'wide-if', cond: 'always()' },
+      { id: 'loose', kind: 'ungated', cond: POST_GATE_IF },
+    ]);
+    assert.deepEqual(postGateJobs(wf, 'ci-gate'), ['ship']);
+  });
+
+  test('RED CONTROL — the predicate is byte-equal: a wrapped or reordered `if:` is wide-if, never post', () => {
+    for (const cond of [`\${{ ${POST_GATE_IF} }}`, "github.ref == 'refs/heads/main' && github.event_name == 'push'", "github.event_name == 'push'"]) {
+      const wf = parseWorkflow(fixture({ 'ci.yml': POST_GATE_CI.replace(`if: ${POST_GATE_IF}\n    uses:`, `if: ${cond}\n    uses:`) }), '.github/workflows/ci.yml');
+      assert.deepEqual(postGateJobs(wf, 'ci-gate'), [], cond);
+      assert.equal(postGateClass(wf, 'ci-gate')[0].kind, 'wide-if', cond);
+    }
+  });
+
+  test('in the RESOLVED view the call job is graded, never its `<call>/<job>` children', () => {
+    const root = actionFixture({ 'ci.yml': POST_GATE_CI, 'ship.yml': SHIP_YML }, { pub: PUB_ACTION });
+    const wf = parseResolvedWorkflows(root).workflows.find((w) => w.rel === '.github/workflows/ci.yml');
+    assert.ok(wf.jobs.has('ship/deploy'));
+    assert.deepEqual(postGateJobs(wf, 'ci-gate'), ['ship']);
+  });
+});
+
+describe('workflow-scan laneRunHost', () => {
+  const second = RELEASE_YML.replace('name: Release', 'name: Again');
+
+  test('a file with its own trigger runs as itself', () => {
+    const scan = parseResolvedWorkflows(actionFixture({ 'release.yml': RELEASE_YML, 'ship.yml': SHIP_YML }, { pub: PUB_ACTION }));
+    assert.deepEqual(laneRunHost(scan, '.github/workflows/release.yml'), { workflow: '.github/workflows/release.yml', callJob: null, children: null });
+  });
+
+  test('a call-only file runs as its ONE caller\'s call job: the caller, the call job and its children', () => {
+    const scan = parseResolvedWorkflows(actionFixture({ 'release.yml': RELEASE_YML, 'ship.yml': SHIP_YML }, { pub: PUB_ACTION }));
+    const host = laneRunHost(scan, '.github/workflows/ship.yml');
+    assert.equal(host.workflow, '.github/workflows/release.yml');
+    assert.equal(host.callJob, 'ship');
+    assert.deepEqual(host.children.map((j) => j.name), ['ship/build', 'ship/deploy']);
+  });
+
+  test('RED CONTROL — two call jobs run it: `ambiguous-callee`, never the first one found', () => {
+    const scan = parseResolvedWorkflows(actionFixture({ 'release.yml': RELEASE_YML, 'again.yml': second, 'ship.yml': SHIP_YML }, { pub: PUB_ACTION }));
+    const { refusal } = laneRunHost(scan, '.github/workflows/ship.yml');
+    assert.equal(refusal.kind, 'ambiguous-callee');
+    assert.equal(refusal.hosts, 2);
+    assert.match(laneRefusalText(refusal), /ship\.yml is `workflow_call`-only and 2 call job\(s\) run it \(\.github\/workflows\/again\.yml#ship, \.github\/workflows\/release\.yml#ship\)/);
+  });
+
+  test('RED CONTROL — no call job runs it: `orphan-callee`; no such file: `missing`', () => {
+    const scan = parseResolvedWorkflows(actionFixture({ 'ship.yml': SHIP_YML }, { pub: PUB_ACTION }));
+    assert.equal(laneRunHost(scan, '.github/workflows/ship.yml').refusal.kind, 'orphan-callee');
+    assert.match(laneRefusalText(laneRunHost(scan, '.github/workflows/ship.yml').refusal), /no call job runs it \(orphan-callee\)/);
+    assert.equal(laneRunHost(scan, '.github/workflows/gone.yml').refusal.kind, 'missing');
   });
 });

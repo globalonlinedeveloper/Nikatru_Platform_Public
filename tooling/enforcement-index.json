@@ -916,8 +916,6 @@
     ],
     "invokedBy": [
       ".github/workflows/build-platforms.yml#gate",
-      ".github/workflows/deploy-web.yml#deploy-web",
-      ".github/workflows/deploy-workers.yml#detect",
       ".github/workflows/extensions.yml#release",
       ".github/workflows/submit-appstore.yml#gate",
       ".github/workflows/submit-play.yml#gate",
@@ -2718,6 +2716,18 @@
     "ref": "tooling/ci/migration-tables.mjs",
     "references": [],
     "state": "LIBRARY"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/deploy-web.yml#deploy-web",
+      ".github/workflows/deploy-workers.yml#platform",
+      ".github/workflows/deploy-workers.yml#subscriptiontracker-api"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/plan-deploy.mjs",
+    "references": [],
+    "state": "WIRED"
   },
   {
     "claims": [

@@ -271,7 +271,9 @@ describe('the tree — the Google CDN is off the web app\'s runtime path', () =>
     assert.ok(build >= 0 && smoke >= 0, 'build or smoke step not found');
     assert.ok(flag > build && flag < lines.indexOf('--dart-define', build), '--no-web-resources-cdn is not on the release build line');
     assert.ok(fonts > build && fonts < smoke, 'the fonts step must run after the build and before the pre-publication smoke');
-    assert.match(lines, /^\s*- 'tooling\/web\/\*\*'$/m, "deploy-web.yml paths: must include 'tooling/web/**' or editing the script deploys nothing");
+    // deploy-web.yml is workflow_call only (D2b-2): what publishes the web unit is lane-map.json deployUnits.
+    const webUnit = JSON.parse(readFileSync(join(REPO, 'tooling', 'ci', 'lane-map.json'), 'utf8')).deployUnits['<app>-web'];
+    assert.ok(webUnit.includes('tooling/web/**'), "lane-map.json deployUnits['<app>-web'] must include 'tooling/web/**' or editing the script deploys nothing");
   });
 
   test('the committed lock is well-formed and non-empty', () => {

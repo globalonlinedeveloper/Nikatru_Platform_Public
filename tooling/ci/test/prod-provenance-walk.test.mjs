@@ -40,7 +40,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, cpSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -187,7 +187,18 @@ describe('the point read — absence from a listing is not a finding', () => {
   const commitOf = (full) => ({ status: 200, body: { sha: full } });
   const listing = (runs) => ({ status: 200, body: { total_count: runs.length, workflow_runs: runs } });
   /** Every lane answers "no run at this commit". */
-  const noLaneHas = (full) => Object.fromEntries(LANES.map((wf) => [runsAt(wf, full), listing([])]));
+  // ⏱ 2026-09-25 [ADR 095 §4]: a callee lane's stamp may carry its CALLER's run
+  // number, so the point read also asks the caller (4th column), filtered to
+  // push runs on main. "No lane has it" must answer every workflow read.
+  const RUN_HOSTS = spawnSync(process.execPath, [MONITOR, '--root', REPO, '--emit-release-lanes'], { cwd: REPO, encoding: 'utf8' })
+    .stdout.trim()
+    .split('\n')
+    .flatMap((l) => String(l.split('\t')[3] ?? '').split(',').slice(1));
+  const callerRunsAt = (workflow, full) => `actions/workflows/${workflow}/runs?head_sha=${full}&branch=main&event=push&status=completed&per_page=100`;
+  const noLaneHas = (full) => Object.fromEntries([
+    ...LANES.map((wf) => [runsAt(wf, full), listing([])]),
+    ...RUN_HOSTS.map((wf) => [callerRunsAt(wf, full), listing([])]),
+  ]);
 
   function run(rowsByTable, pointReads) {
     const dir = mkdtempSync(join(tmpdir(), 'nikatru-point-read-'));
@@ -273,5 +284,108 @@ describe('the point read — absence from a listing is not a finding', () => {
     assert.equal(r.status, 0, r.stdout + r.stderr);
     assert.doesNotMatch(r.stdout, /point read · /);
     assert.match(r.stdout, /point reads: 0 build\(s\) looked up/);
+  });
+});
+
+// ── ⏱ 2026-09-25 [ADR 095 §4] · A CALLEE LANE IS POINT-READ IN ITS CALLER TOO ──
+// Once deploy-web.yml is `workflow_call`-only, a stamp's run number is ci.yml's,
+// so the point read lists the lane's own file and then its caller's
+// `branch=main&event=push` runs at the commit, and names the workflow it found
+// the run in. A copy of the monitor's offline inputs carries that tree.
+describe('the point read — a callee lane is looked up in its caller\'s runs', () => {
+  const RUNS = [{ run_number: 101, head_sha: 'e138f5be72555ab717d0391e771b40c0883d9fab', conclusion: 'success' }];
+  const FULL_C = 'c1c2c3c4'.padEnd(40, '2');
+  const CHANNELS = 'tooling/channel-register.json';
+  const STUB = 'name: Stub\non:\n  workflow_dispatch:\njobs:\n  one:\n    runs-on: ubuntu-24.04\n    timeout-minutes: 5\n    steps:\n      - run: echo stub\n';
+  const CI = [
+    'name: CI', 'on:', '  push:', '    branches: [main]', '  pull_request:', 'jobs:',
+    '  gate:', '    runs-on: ubuntu-24.04', '    timeout-minutes: 5', '    steps:', '      - run: echo gate',
+    '  deploy-web:', '    needs: gate', "    if: github.event_name == 'push' && github.ref == 'refs/heads/main'",
+    '    uses: ./.github/workflows/deploy-web.yml', '',
+  ].join('\n');
+  const CALLEE = [
+    'name: Deploy web', 'on:', '  workflow_call:', 'jobs:',
+    '  deploy:', '    runs-on: ubuntu-24.04', '    timeout-minutes: 5', '    steps:', '      - run: echo deploy', '',
+  ].join('\n');
+  const commitOf = (full) => ({ status: 200, body: { sha: full } });
+  const listing = (runs) => ({ status: 200, body: { total_count: runs.length, workflow_runs: runs } });
+  const ownAt = (workflow, full) => `actions/workflows/${workflow}/runs?head_sha=${full}&status=completed&per_page=100`;
+  const ciAt = (full) => `actions/workflows/ci.yml/runs?head_sha=${full}&branch=main&event=push&status=completed&per_page=100`;
+
+  function calleeRoot() {
+    const root = mkdtempSync(join(tmpdir(), 'nikatru-point-read-callee-'));
+    mkdirSync(join(root, 'tooling', 'legal'), { recursive: true });
+    mkdirSync(join(root, 'catalog'), { recursive: true });
+    for (const f of ['tooling/prod-provenance.json', CHANNELS, 'tooling/legal/provider-register.json', 'catalog/apps.json']) {
+      cpSync(join(REPO, f), join(root, f));
+    }
+    cpSync(join(REPO, 'services/platform/migrations'), join(root, 'services/platform/migrations'), { recursive: true });
+    cpSync(join(REPO, 'services/platform/src'), join(root, 'services/platform/src'), { recursive: true });
+    for (const e of readdirSync(join(REPO, 'apps'), { withFileTypes: true })) {
+      const src = join(REPO, 'apps', e.name, 'pubspec.yaml');
+      if (!e.isDirectory() || !existsSync(src)) continue;
+      mkdirSync(join(root, 'apps', e.name), { recursive: true });
+      cpSync(src, join(root, 'apps', e.name, 'pubspec.yaml'));
+    }
+    const dir = join(root, '.github', 'workflows');
+    mkdirSync(dir, { recursive: true });
+    for (const c of JSON.parse(readFileSync(join(REPO, CHANNELS), 'utf8')).channels ?? []) {
+      for (const p of [c?.lane?.workflow, c?.submission?.workflow]) if (typeof p === 'string') writeFileSync(join(dir, p.split('/').pop()), STUB);
+    }
+    writeFileSync(join(dir, 'deploy-web.yml'), CALLEE);
+    writeFileSync(join(dir, 'ci.yml'), CI);
+    return root;
+  }
+
+  function run(root, rowsByTable, pointReads) {
+    const f = (name, v) => { const p = join(root, name); writeFileSync(p, JSON.stringify(v)); return p; };
+    const argv = [MONITOR, '--root', root, '--rows-file', f('rows.json', rowsByTable), '--runs-file', f('runs.json', RUNS)];
+    argv.push('--point-reads-file', f('point-reads.json', pointReads));
+    return spawnSync(process.execPath, argv, { cwd: REPO, encoding: 'utf8' });
+  }
+
+  /** Every lane but deploy-web answers "no run at this commit", in its own file. */
+  function otherLanesEmpty(root, full) {
+    const lanes = spawnSync(process.execPath, [MONITOR, '--root', root, '--emit-release-lanes'], { cwd: REPO, encoding: 'utf8' });
+    assert.equal(lanes.status, 0, lanes.stdout + lanes.stderr);
+    const rows = lanes.stdout.trim().split('\n').map((l) => l.trim().split('\t'));
+    assert.equal(rows.find((c) => c[0] === 'deploy-web.yml')?.[3], 'deploy-web.yml,ci.yml', lanes.stdout);
+    return Object.fromEntries(rows.filter((c) => c[0] !== 'deploy-web.yml').map((c) => [ownAt(c[0], full), listing([])]));
+  }
+
+  test('(i) a stamp carrying ci.yml\'s run number is FOUND in ci.yml, after deploy-web.yml\'s own listing', () => {
+    const root = calleeRoot();
+    try {
+      const r = run(root, { consent_artifacts: [{ marker: '1.0.3850+c1c2c3c', n: 1 }] }, {
+        'commits/c1c2c3c': commitOf(FULL_C),
+        [ownAt('deploy-web.yml', FULL_C)]: listing([]),
+        [ciAt(FULL_C)]: listing([{ id: 38500000001, run_number: 3850, head_sha: FULL_C, conclusion: 'success' }]),
+        ...otherLanesEmpty(root, FULL_C),
+      });
+      assert.equal(r.status, 0, r.stdout + r.stderr);
+      assert.match(
+        r.stdout,
+        /point read · 1\.0\.3850\+c1c2c3c: GET commits\/c1c2c3c → 200 · GET actions\/workflows\/deploy-web\.yml\/runs\?[^ ]* → 200 · GET actions\/workflows\/ci\.yml\/runs\?head_sha=c1c2c3c4[0-9]*&branch=main&event=push&[^ ]* → 200 → FOUND ci\.yml run 3850/,
+      );
+      assert.match(r.stdout, /host-resolved build accepted: 1\.0\.3850\+c1c2c3c — resolved in ci\.yml run 3850/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('(i) 🔴 a ci.yml run 3850 at ANOTHER head is not the run — the stamp stays unattributable, exit 1', () => {
+    const root = calleeRoot();
+    try {
+      const r = run(root, { consent_artifacts: [{ marker: '1.0.3850+c1c2c3c', n: 1 }] }, {
+        'commits/c1c2c3c': commitOf(FULL_C),
+        [ownAt('deploy-web.yml', FULL_C)]: listing([]),
+        [ciAt(FULL_C)]: listing([{ id: 38500000009, run_number: 3850, head_sha: 'd1d2d3d4'.padEnd(40, '3'), conclusion: 'success' }]),
+        ...otherLanesEmpty(root, FULL_C),
+      });
+      assert.equal(r.status, 1, r.stdout + r.stderr);
+      assert.match(r.stderr, /no release lane has a completed run numbered 3850 at it \(the completed runs at it: ci\.yml run 3850\)/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

@@ -119,7 +119,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, existsSync
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { parseAllWorkflows, parseWorkflow } from '../workflow-scan.mjs';
+import { parseAllWorkflows, parseWorkflow, postGateJobs } from '../workflow-scan.mjs';
 
 import {
   evaluate,
@@ -183,6 +183,13 @@ import {
   liveReadInputs,
   proposalChangedFiles,
   liveReadPlan,
+  isCallJob,
+  G4_UNMEASURED,
+  collectRunJobs,
+  RUN_JOB_PAGES,
+  gateJobOf,
+  postGateAdmission,
+  postGateUnit,
 } from '../assert-ops-register.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -4965,7 +4972,12 @@ describe('assert-ops-register — [14]O-3b · RED SINCE: a failed run is graded,
   test('INV4 in the register - `checkRunUnits` REFUSES every unit that contains the guard, and the committed ops-watch rows hold', () => {
     const { byFile } = parsedRepo();
     const topo = gateTopology(resolve(CI_DIR, '..', '..'));
-    const errsOf = (unit) => checkRunUnits(regOf(opsRowWith(unit)), byFile, topo).errors;
+    // ⏱ 2026-09-25 [ADR 095 §4]: a one-row register leaves ci.yml's post-gate call
+    // jobs unowned, which is the register-wide INV3 completeness finding, held by
+    // its own tests. This case is about the ops-watch unit, so that one is set aside.
+    const UNOWNED_POST_GATE = /post-gate job\(s\) .* are the unit of no row\. \[INV3\]/;
+    const errsOf = (unit) => checkRunUnits(regOf(opsRowWith(unit)), byFile, topo).errors.filter((e) => !UNOWNED_POST_GATE.test(e));
+    assert.ok(checkRunUnits(regOf(opsRowWith('run')), byFile, topo).errors.some((e) => UNOWNED_POST_GATE.test(e)), 'the set-aside finding must still be raised, or this filter hides nothing and should go');
     assert.ok(errsOf('run').some((e) => /the whole run contains this guard's own verdict/.test(e)), errsOf('run').join('\n'));
     assert.ok(errsOf({ jobs: ['heartbeats'] }).some((e) => /job heartbeats runs tooling\/ci\/assert-ops-register\.mjs/.test(e)));
     const guardStep = errsOf({ job: 'heartbeats', step: 'The whole ops register — every duty, not just the heartbeat-backed ones' });
@@ -5208,28 +5220,49 @@ describe('assert-ops-register — [14]O-3b · RED SINCE: a failed run is graded,
 
   // ── the tree, which is the only place the derivation can be wrong ─────────
   test('the COMMITTED tree really does put both deploy lanes in this domain, and keeps ci.yml out', () => {
-    // The ratchet. If `workflow_dispatch:` is ever removed from a deploy
-    // workflow, or a deploy row loses its `recordQuery`, THIS is what goes red
-    // rather than the alarm quietly shrinking to the seven nightly proofs.
+    // The ratchet. If a deploy call job stops being post-gate (its `needs:` or its
+    // `if:` drifts), or a deploy row loses its `recordQuery`, THIS is what goes
+    // red rather than the alarm quietly shrinking to the seven nightly proofs.
+    // ⏱ 2026-09-25 [ADR 095 §4]: the two deploy lanes are call jobs of ci.yml now,
+    // admitted because their unit is post-gate jobs of the gate workflow — no
+    // longer because their own file declares `workflow_dispatch` (it declares none).
     const dispatchable = dispatchableWorkflows(REPO_ROOT);
-    assert.ok(dispatchable.has('deploy-web.yml'), '.github/workflows/deploy-web.yml no longer declares `workflow_dispatch` — a red web deploy now has no exit but a merge');
-    assert.ok(dispatchable.has('deploy-workers.yml'), '.github/workflows/deploy-workers.yml no longer declares `workflow_dispatch`');
+    const byFile = new Map(parseAllWorkflows(REPO_ROOT).map((wf) => [String(wf.rel).split('/').pop(), wf]));
+    const postGate = postGateAdmission(byFile, gateTopology(REPO_ROOT));
+    assert.ok(postGate, 'the gate workflow or its gate job could not be derived — the post-gate admission is gone');
+    assert.deepEqual([...postGate.jobs].sort(), ['deploy-web', 'deploy-workers'], 'the post-gate jobs of ci.yml have changed');
+    assert.equal(dispatchable.has('deploy-web.yml'), false, 'deploy-web.yml has grown a `workflow_dispatch` — a second way to start the lane that skips the gate');
+    assert.equal(dispatchable.has('deploy-workers.yml'), false, 'deploy-workers.yml has grown a `workflow_dispatch` — same');
     assert.equal(dispatchable.has('ci.yml'), false, 'ci.yml has grown a `workflow_dispatch` — re-read the deadlock argument before letting it into this domain');
     assert.equal(dispatchable.has('site-drift-repair.yml'), false, 'site-drift-repair.yml has grown a `workflow_dispatch` — same re-read');
 
     const real = JSON.parse(readFileSync(resolve(CI_DIR, '..', 'ops', 'register.json'), 'utf8'));
-    const ids = redSinceDomain(real, dispatchable).map((r) => r.id);
+    const ids = redSinceDomain(real, dispatchable, postGate).map((r) => r.id);
     assert.ok(ids.includes('duty.workflow.deploy-web.yml'), 'the web deploy lane has fallen out of the RED-SINCE domain — the 2026-09-09 defect is back');
     assert.ok(ids.includes('duty.workflow.deploy-workers.yml'), 'the workers deploy lane has fallen out of the RED-SINCE domain');
     assert.equal(ids.includes('duty.workflow.ci.yml'), false);
     assert.equal(ids.includes('duty.workflow.site-drift-repair.yml'), false);
+    const without = redSinceDomain(real, dispatchable).map((r) => r.id);
+    assert.equal(without.includes('duty.workflow.deploy-web.yml'), false, 'without the post-gate admission the web lane must be out — else this test proves nothing about it');
 
     // 2026-09-23: the recovery lane that re-enters both deploy lanes is itself
     // dispatchable, so it is admitted too — a red recovery run is the silent
     // strand it exists to end, and it must be graded like the lanes it serves.
     assert.ok(dispatchable.has('redeploy-stranded.yml'), '.github/workflows/redeploy-stranded.yml no longer declares `workflow_dispatch`');
-    const census = redSinceTriggerCensus(real, dispatchable);
+    const census = redSinceTriggerCensus(real, dispatchable, postGate);
     assert.deepEqual(census.admitted.sort(), ['duty.workflow.deploy-web.yml', 'duty.workflow.deploy-workers.yml', 'duty.workflow.redeploy-stranded.yml']);
+    assert.equal(census.admittedBy['duty.workflow.deploy-web.yml'], 'post-gate');
+    assert.equal(census.admittedBy['duty.workflow.deploy-workers.yml'], 'post-gate');
+    assert.equal(census.admittedBy['duty.workflow.redeploy-stranded.yml'], 'workflow_dispatch');
+    // Every post-gate job of ci.yml is the unit of EXACTLY ONE admitted row.
+    const byId = new Map((real.rows ?? []).map((r) => [r.id, r]));
+    for (const j of postGate.jobs) {
+      const owners = census.admitted.filter((id) => {
+        const q = byId.get(id)?.mechanism?.recordQuery;
+        return q?.workflow === postGate.gateWorkflow && Array.isArray(q?.unit?.jobs) && q.unit.jobs.includes(j);
+      });
+      assert.equal(owners.length, 1, `post-gate job ${j} is the unit of ${owners.length} admitted row(s): ${owners.join(', ') || 'none'}`);
+    }
     // ⏱ 2026-09-24: three. duty.workflow.extensions-ci.yml joined them — a called
     // workflow declares no `workflow_dispatch` (it runs only as a call), so a merge
     // is its only exit and it is excluded by the same derived reason.
@@ -5337,7 +5370,17 @@ describe('assert-ops-register — [14]O-3b · RED SINCE: a failed run is graded,
       assert.equal(t.gateName, 'ci-gate', `${GATE_SCRIPT_REL} no longer waits for a check named ci-gate`);
       assert.equal(t.gateWorkflow, 'ci.yml', 'the workflow declaring the gate job is no longer ci.yml');
       assert.ok(t.selfGated.has('build-platforms.yml'), 'build-platforms.yml no longer runs the gate script — re-read the livelock before trusting this');
-      assert.ok(t.selfGated.has('deploy-web.yml') && t.selfGated.has('deploy-workers.yml') && t.selfGated.has('extensions.yml'));
+      // ⏱ 2026-09-25 [ADR 095 §4]: the deploy lanes are post-gate call jobs of ci.yml now.
+      // ci-gate is their `needs:`, so they run no gate step and are NOT self-gated.
+      assert.ok(t.selfGated.has('extensions.yml'));
+      assert.equal(t.selfGated.has('deploy-web.yml'), false, 'deploy-web.yml runs the gate script again — it is a post-gate callee');
+      assert.equal(t.selfGated.has('deploy-workers.yml'), false, 'deploy-workers.yml runs the gate script again — it is a post-gate callee');
+      const ci = parseAllWorkflows(REPO_ROOT).find((wf) => String(wf.rel).split('/').pop() === 'ci.yml');
+      assert.deepEqual(postGateJobs(ci, t.gateName).sort(), ['deploy-web', 'deploy-workers'], 'the post-gate jobs of ci.yml have changed');
+      for (const j of ['deploy-web', 'deploy-workers']) {
+        const needs = ci.jobs.get(j)?.needs ?? [];
+        assert.ok(needs.includes(t.gateName), `${j} no longer needs ${t.gateName}`);
+      }
       for (const s of ['submit-appstore.yml', 'submit-play.yml', 'submit-snap.yml', 'submit-windows-store.yml']) {
         assert.ok(t.selfGated.has(s), `${s} carries the gate step and must be in the self-gated set`);
       }
@@ -6161,5 +6204,283 @@ describe('INV3 · a duty is judged by the unit that performs it — the pure hal
     assert.match(githubDarkness(dark), /every one of the 2 RED-SINCE read\(s\)/);
     assert.equal(githubDarkness(new Map([['a', { unreadable: true, why: 'x' }], ['b', { success: null, failure: null }]])), null);
     assert.equal(githubDarkness(new Map()), null, 'an empty domain is refused by its own limb, not by this one');
+  });
+});
+
+// ⏱ 2026-09-25 [ADR 095 §4] · the deploy lanes as post-gate CALL jobs of the gate
+// workflow. A fixture tree, not the real one: the real ci.yml gains its call jobs
+// in the commit that moves the lanes, and these rules must hold before it does.
+describe('post-gate call jobs of the gate workflow — read, graded, admitted (ADR 095 §4)', () => {
+  const CI_YML = [
+    'name: CI',
+    'on:',
+    '  push:',
+    '    branches: [main]',
+    '  pull_request:',
+    'permissions:',
+    '  contents: read',
+    'jobs:',
+    '  guards:',
+    '    runs-on: ubuntu-latest',
+    '    steps:',
+    '      - name: The ops register',
+    '        run: node tooling/ci/assert-ops-register.mjs',
+    '  ci-gate:',
+    '    name: ci-gate',
+    '    if: always()',
+    '    needs: [guards]',
+    '    runs-on: ubuntu-latest',
+    '    steps:',
+    '      - run: echo gate',
+    '  deploy-web:',
+    '    needs: [ci-gate]',
+    "    if: github.event_name == 'push' && github.ref == 'refs/heads/main'",
+    '    uses: ./.github/workflows/deploy-web.yml',
+    '    secrets: inherit',
+    '  deploy-workers:',
+    '    needs: [ci-gate]',
+    "    if: github.event_name == 'push' && github.ref == 'refs/heads/main'",
+    '    uses: ./.github/workflows/deploy-workers.yml',
+    '    secrets: inherit',
+    '  late:',
+    '    needs: [ci-gate]',
+    "    if: github.event_name == 'push'",
+    '    runs-on: ubuntu-latest',
+    '    steps:',
+    '      - run: echo late',
+    '',
+  ].join('\n');
+  const CALLEE = (name) => [`name: ${name}`, 'on:', '  workflow_call:', 'jobs:', `  ${name}:`, '    runs-on: ubuntu-latest', '    steps:', '      - run: echo deploy', ''].join('\n');
+  let root;
+  let files;
+  let topo;
+  before(() => {
+    root = join(TMP, 'post-gate');
+    mkdirSync(join(root, '.github', 'workflows'), { recursive: true });
+    mkdirSync(join(root, 'tooling', 'ci'), { recursive: true });
+    writeFileSync(join(root, '.github', 'workflows', 'ci.yml'), CI_YML);
+    writeFileSync(join(root, '.github', 'workflows', 'deploy-web.yml'), CALLEE('deploy-web'));
+    writeFileSync(join(root, '.github', 'workflows', 'deploy-workers.yml'), CALLEE('deploy-workers'));
+    writeFileSync(join(root, 'tooling', 'ci', 'assert-gate-passed.mjs'), "const GATE = 'ci-gate';\n");
+    files = new Map(parseAllWorkflows(root).map((wf) => [String(wf.rel).split('/').pop(), wf]));
+    topo = gateTopology(root);
+  });
+  const CI = () => files.get('ci.yml');
+  const q = (jobs, over = {}) => ({ reader: 'github-run-history', workflow: 'ci.yml', event: 'push', headBranch: 'main', unit: { jobs }, ...over });
+  const row = (id, jobs, over = {}) => ({ id, kind: 'duty', cadence: 'trigger', mechanism: { recordQuery: q(jobs, over) } });
+  const RUN = { id: 3843, conclusion: 'success', updated_at: '2026-09-25T08:00:00Z', head_branch: 'main', event: 'push' };
+  const j = (name, conclusion) => ({ name, status: 'completed', conclusion });
+  const GATE_OK = j('ci-gate', 'success');
+
+  test('the fixture reads as intended: ci.yml is the gate workflow, its gate job is ci-gate, and exactly the two call jobs are post-gate', () => {
+    assert.equal(topo.gateWorkflow, 'ci.yml', topo.why.join(' · '));
+    assert.ok(topo.guardHosts.has('ci.yml'));
+    assert.equal(gateJobOf(CI(), topo), 'ci-gate');
+    assert.equal(gateJobOf(files.get('deploy-web.yml'), topo), null, 'only the gate workflow has a gate job');
+    const pg = postGateAdmission(files, topo);
+    assert.deepEqual([pg.gateWorkflow, pg.gateJob, [...pg.jobs]], ['ci.yml', 'ci-gate', ['deploy-web', 'deploy-workers']], '`late` needs the gate with a wider `if:`, so it is not post-gate');
+    assert.equal(postGateAdmission(files, { ...topo, gateName: 'no-such-gate' }), null);
+    assert.equal(isCallJob(CI().jobs.get('deploy-web')), true);
+    assert.equal(isCallJob(CI().jobs.get('guards')), false, 'a `uses:` inside a step is not a call job');
+  });
+
+  test('the call-job arm of apiJobMatcher: the lone entry and every `<callJob> / …` child, and no other job', () => {
+    const web = apiJobMatcher('deploy-web', CI().jobs.get('deploy-web'));
+    assert.equal(web('deploy-web'), true);
+    assert.equal(web('deploy-web / deploy-web'), true);
+    assert.equal(web('deploy-web / Build and publish'), true);
+    assert.equal(web('deploy-workers / deploy-workers'), false);
+    assert.equal(web('deploy-webx / deploy-web'), false);
+    assert.equal(apiJobMatcher('guards', CI().jobs.get('guards'))('guards / x'), false, 'a job that calls nothing has no children');
+  });
+
+  test('G4 shape 1 — children present: the children are graded', () => {
+    const ok = unitConclusion(q(['deploy-web']), RUN, [GATE_OK, j('deploy-web / deploy-web', 'success')], CI());
+    assert.equal(ok.verdict, 'success', ok.detail);
+    const red = unitConclusion(q(['deploy-web']), RUN, [GATE_OK, j('deploy-web / deploy-web', 'success'), j('deploy-web / smoke', 'failure')], CI());
+    assert.equal(red.verdict, 'failure');
+    assert.match(red.detail, /job deploy-web concluded failure/);
+  });
+
+  test('G4 shape 2 — exactly one entry named just the call job, `skipped`: the lane was skipped, which says nothing', () => {
+    const c = unitConclusion(q(['deploy-web']), RUN, [GATE_OK, j('deploy-web', 'skipped')], CI());
+    assert.equal(c.verdict, 'neutral', c.detail);
+  });
+
+  test('G4 shape 3 — ZERO entries for the call job: COVERAGE LOST (exit 2), naming the unmeasured claim, through every layer', () => {
+    const c = unitConclusion(q(['deploy-web']), RUN, [GATE_OK, j('deploy-workers / deploy-workers', 'success')], CI());
+    assert.equal(c.verdict, 'lost', c.detail);
+    assert.ok(c.detail.includes(G4_UNMEASURED), c.detail);
+    assert.equal(G4_UNMEASURED, 'G4: whole-call-job skip shape unmeasured (cloud-drafts/pd2b/d2b2-ruling-verify.md)');
+    // Any other own-entry shape is unmeasured too: one entry, not skipped, no child.
+    assert.equal(unitConclusion(q(['deploy-web']), RUN, [j('deploy-web', 'success')], CI()).verdict, 'lost');
+    assert.equal(unitConclusion(q(['deploy-web']), RUN, [j('deploy-web', 'skipped'), j('deploy-web', 'skipped')], CI()).verdict, 'lost');
+
+    const e = (id, at, verdict) => ({ run: { id, updated_at: at }, c: { verdict, detail: verdict === 'lost' ? c.detail : `run ${id}` } });
+    const probe = decideUnitRedSince(q(['deploy-web']), [e(3, '2026-09-25T08:00:00Z', 'lost'), e(2, '2026-09-25T07:00:00Z', 'success')], false);
+    assert.equal(probe.lost.id, 3);
+    const r = row('duty.workflow.deploy-web.yml', ['deploy-web']);
+    const cl = classifyRedSince(r, probe);
+    assert.equal(cl.verdict, 'lost');
+    assert.match(cl.line, /COVERAGE LOST for this row, neither a pass nor a RED/);
+    const out = evaluateRedSince({ rows: [r] }, new Map([[r.id, probe]]), new Set(), postGateAdmission(files, topo));
+    assert.deepEqual(out.live.map((l) => [l.id, l.code]), [[r.id, 2]], 'a lost row is a live verdict with exit 2, never a pass');
+    assert.ok(out.errors.some((l) => l.includes(G4_UNMEASURED)));
+    assert.equal(out.stats.lost, 1);
+
+    // A lost run OLDER than a failure already found cannot un-red it: the scan reads past it for the success term.
+    const red = decideUnitRedSince(q(['deploy-web']), [e(4, '2026-09-25T09:00:00Z', 'failure'), e(3, '2026-09-25T08:00:00Z', 'lost'), e(2, '2026-09-25T07:00:00Z', 'success')], false);
+    assert.deepEqual([red.failure.id, red.success.id, red.lost], [4, 2, undefined]);
+    assert.equal(classifyRedSince(r, red).verdict, 'red');
+  });
+
+  // ⏱ 2026-09-25 [ADR 095 §4] PD2B2-4 · THE THREE NEUTRAL ARMS of the zero-entry shape.
+  // RUN_3848 is main CI run 3848 (id 36106900356, c02e6d33) as the /jobs list gave
+  // it: 31 jobs, ci-gate success, no deploy entry — the run every RED-SINCE read
+  // reaches first after the merge. Names and conclusions only.
+  const RUN_3848_JOBS = [
+    ['Guards — the guards can still fail', 'success'],
+    ['Guards — platform, data and ops', 'success'],
+    ['Shared site build', 'success'],
+    ['App brick (stamp both variants + analyze + validate the clone contract)', 'success'],
+    ['Guards — privacy, legal and money', 'success'],
+    ['extensions / secrets-scan', 'success'],
+    ['extensions / The shared contract has not drifted', 'success'],
+    ['Design tokens (build + drift, all three outputs)', 'success'],
+    ['Static sites (functions parse + required files)', 'success'],
+    ['Workspace gate (melos analyze + test)', 'success'],
+    ['extensions / Gate self-test (do the gates bite?)', 'success'],
+    ['extensions / The extensions are still build-free', 'success'],
+    ['extensions / Proof freshness (is the weekly cron alive?)', 'success'],
+    ['extensions / Discover affected tools', 'success'],
+    ['extensions / Gate inventory (which gates exist)', 'success'],
+    ['extensions / templates parse (the tree every future tool is stamped from)', 'success'],
+    ['extensions / catalogue', 'success'],
+    ['extensions / gates · ${{ matrix.tool }}', 'skipped'],
+    ['extensions / sims · ${{ matrix.tool }} · node ${{ matrix.node }}', 'skipped'],
+    ['Android artifacts (built, inspected, discarded) (subscriptiontracker)', 'success'],
+    ['extensions / ci-required', 'success'],
+    ['extensions / package · ${{ matrix.tool }} · ${{ matrix.target }} · ${{ matrix.os }}', 'skipped'],
+    ['Content pipeline (recipe -> pack -> sign -> gate)', 'success'],
+    ['Guards — store, release and versioning', 'success'],
+    ['Security — secret and workflow scanners', 'success'],
+    ['Derive the Android app set from the pub workspace', 'success'],
+    ['subscriptiontracker-api Worker (typecheck + test + dry-run)', 'success'],
+    ['extensions / core sims', 'success'],
+    ['platform Worker (typecheck + test + dry-run)', 'success'],
+    ['Guards — chassis, app surface and packages', 'success'],
+    ['ci-gate', 'success'],
+  ].map(([name, conclusion]) => j(name, conclusion));
+  const REF = (file) => ({ path: `globalonlinedeveloper/Nikatru_Platform_Public/.github/workflows/${file}@c02e6d3304b4024208ac3c69b25654f0bf923f00` });
+  const RUN_3848 = { id: 36106900356, conclusion: 'success', updated_at: '2026-09-25T07:53:19Z', head_branch: 'main', event: 'push', referenced_workflows: [REF('extensions-ci.yml')] };
+
+  test('RC-a — run 3848 predates the call (referenced_workflows names only extensions-ci.yml), a push to main: neutral, where it was lost', () => {
+    assert.equal(RUN_3848_JOBS.length, 31);
+    assert.equal(RUN_3848_JOBS.find((x) => x.name === 'ci-gate')?.conclusion, 'success');
+    for (const id of ['deploy-web', 'deploy-workers']) {
+      const c = unitConclusion(q([id]), RUN_3848, RUN_3848_JOBS, CI());
+      assert.equal(c.verdict, 'neutral', c.detail);
+      assert.ok(c.detail.includes(`(a) its referenced_workflows name no "/.github/workflows/${id}.yml@"`), c.detail);
+    }
+  });
+
+  test('RC-a2 — the same list, referenced_workflows ALSO naming deploy-web.yml: lost (G4 fail-closed)', () => {
+    const run = { ...RUN_3848, referenced_workflows: [REF('extensions-ci.yml'), REF('deploy-web.yml')] };
+    const c = unitConclusion(q(['deploy-web']), run, RUN_3848_JOBS, CI());
+    assert.equal(c.verdict, 'lost', c.detail);
+    assert.ok(c.detail.includes(G4_UNMEASURED), c.detail);
+    assert.equal(unitConclusion(q(['deploy-workers']), run, RUN_3848_JOBS, CI()).verdict, 'neutral', 'deploy-workers.yml is still unreferenced');
+  });
+
+  test('RC-a3 — no referenced_workflows key at all: lost, because arm (a) cannot fire for it', () => {
+    const { referenced_workflows: _drop, ...run } = RUN_3848;
+    assert.equal('referenced_workflows' in run, false);
+    const c = unitConclusion(q(['deploy-web']), run, RUN_3848_JOBS, CI());
+    assert.equal(c.verdict, 'lost', c.detail);
+    assert.equal(unitConclusion(q(['deploy-web']), { ...run, referenced_workflows: null }, RUN_3848_JOBS, CI()).verdict, 'lost', 'a non-array is not an array');
+  });
+
+  test('RC-b — the post-gate if: cannot hold (a schedule run, or a push off main), zero entries: neutral', () => {
+    const refs = [REF('extensions-ci.yml'), REF('deploy-web.yml')];
+    const sched = unitConclusion(q(['deploy-web']), { ...RUN_3848, event: 'schedule', referenced_workflows: refs }, RUN_3848_JOBS, CI());
+    assert.equal(sched.verdict, 'neutral', sched.detail);
+    assert.match(sched.detail, /\(b\) its `if:` is POST_GATE_IF and the run is "schedule" on "main"/);
+    const branch = unitConclusion(q(['deploy-web']), { ...RUN_3848, head_branch: 'feature', referenced_workflows: refs }, RUN_3848_JOBS, CI());
+    assert.equal(branch.verdict, 'neutral', branch.detail);
+  });
+
+  test('RC-c — ci-gate did not pass, the callee referenced, zero entries: neutral (that red is the gate row)', () => {
+    const run = { ...RUN_3848, conclusion: 'failure', referenced_workflows: [REF('deploy-web.yml'), REF('deploy-workers.yml')] };
+    const jobs = RUN_3848_JOBS.map((x) => (x.name === 'ci-gate' ? j('ci-gate', 'failure') : x));
+    const c = unitConclusion(q(['deploy-web']), run, jobs, CI());
+    assert.equal(c.verdict, 'neutral', c.detail);
+    assert.match(c.detail, /\(c\) the job it needs, ci-gate, came back "failure"/);
+    assert.equal(unitConclusion(q(['deploy-web']), { ...run, conclusion: 'success' }, RUN_3848_JOBS, CI()).verdict, 'lost', 'the same run with ci-gate success stays lost');
+  });
+
+  test('collectRunJobs walks every page to total_count, and a list that does not add up THROWS', async () => {
+    const JOB = (n) => Array.from({ length: n }, (_, i) => j(`job ${i}`, 'success'));
+    const pages = [];
+    const two = await collectRunJobs(1, async (p) => { pages.push(p); return p === 1 ? { total_count: 101, jobs: JOB(100) } : { total_count: 101, jobs: JOB(1) }; });
+    assert.equal(two.length, 101);
+    assert.deepEqual(pages, [1, 2]);
+    const reads = [];
+    assert.equal((await collectRunJobs(1, async (p) => { reads.push(p); return { total_count: 3, jobs: JOB(3) }; })).length, 3);
+    assert.deepEqual(reads, [1], 'a one-page list is one read');
+    await assert.rejects(collectRunJobs(1, async () => ({ jobs: JOB(3) })), /without a total_count/);
+    await assert.rejects(collectRunJobs(1, async () => ({ total_count: 3 })), /without a jobs array/);
+    await assert.rejects(collectRunJobs(1, async (p) => ({ total_count: 150, jobs: p === 1 ? JOB(100) : [] })), /page 2 came back empty after 100/);
+    await assert.rejects(collectRunJobs(1, async () => ({ total_count: 5000, jobs: JOB(100) })), new RegExp(`more than ${RUN_JOB_PAGES * 100} jobs`));
+  });
+
+  test('INV4 — a post-gate job is walked THROUGH the gate aggregator to this guard, and routes OWN HOST', () => {
+    const why = unitNeedsGuard(CI(), unitOf(q(['deploy-web'])), topo);
+    assert.match(why, /job deploy-web carries the post-gate `if:` and needs ci-gate, the gate aggregator, which RUNS after a failure but does not PASS after one — job ci-gate needs guards and concludes failure when it fails — job guards runs tooling\/ci\/assert-ops-register\.mjs$/);
+    assert.equal(unitNeedsGuard(CI(), unitOf(q(['deploy-web']))), null, 'with no topology the walk stops at the always() aggregator, as before');
+    const hosts = unitNeedsHosts(row('duty.workflow.deploy-web.yml', ['deploy-web']), topo, files);
+    assert.deepEqual(hosts.map((h) => h.host), ['ci.yml']);
+    assert.match(hosts[0].why, /^OWN HOST/);
+  });
+
+  test('INV4 + INV3 in checkRunUnits: an all-post-gate unit PRINTS its exemption; every post-gate job needs a row', () => {
+    const both = [row('duty.workflow.deploy-web.yml', ['deploy-web']), row('duty.workflow.deploy-workers.yml', ['deploy-workers'])];
+    const ok = checkRunUnits({ rows: both }, files, topo);
+    assert.deepEqual(ok.errors, []);
+    assert.equal(ok.prints.filter((p) => /^\[INV4\] duty\.workflow\.deploy-(web|workers)\.yml — every job of its unit .* is post-gate in ci\.yml: .* OWN HOST/.test(p)).length, 2);
+    assert.ok(ok.prints.includes('[INV3] ci.yml — 2 post-gate job(s), each the unit of: deploy-web ← duty.workflow.deploy-web.yml · deploy-workers ← duty.workflow.deploy-workers.yml'), ok.prints.join('\n'));
+
+    const one = checkRunUnits({ rows: [both[0]] }, files, topo);
+    assert.match(one.errors.join('\n'), /post-gate job\(s\) deploy-workers \(needs `ci-gate`.*\) are the unit of no row\. \[INV3\]/);
+    const none = checkRunUnits({ rows: [] }, files, topo);
+    assert.match(none.errors.join('\n'), /post-gate job\(s\) deploy-web · deploy-workers .* are the unit of no row/, 'ranged even when no row reads the gate workflow');
+
+    const mixed = checkRunUnits({ rows: [...both, row('duty.x', ['late', 'guards'])] }, files, topo);
+    assert.match(mixed.errors.join('\n'), /duty\.x — its unit contains this guard's own verdict: .*\[INV4\] No host requires itself/, 'the exemption is for all-post-gate units only');
+  });
+
+  test('RED-SINCE admission: a trigger row judged by post-gate jobs only is admitted by `post-gate`; a unit with any other job is excluded, and says which', () => {
+    const pg = postGateAdmission(files, topo);
+    const web = row('duty.workflow.deploy-web.yml', ['deploy-web']);
+    const wide = row('duty.workflow.late', ['late']);
+    const mix = row('duty.workflow.mix', ['deploy-workers', 'guards']);
+    const reg = { rows: [web, wide, mix] };
+    assert.deepEqual(postGateUnit(web.mechanism.recordQuery, pg), { ok: true });
+    assert.deepEqual(postGateUnit(mix.mechanism.recordQuery, pg), { ok: false, off: ['guards'] });
+    assert.equal(postGateUnit({ ...web.mechanism.recordQuery, workflow: 'deploy-web.yml' }, pg), null, 'a row reading another workflow is not this admission\'s business');
+
+    assert.deepEqual(redSinceDomain(reg, new Set(), pg).map((r) => r.id), [web.id]);
+    assert.deepEqual(redSinceDomain(reg, null, pg).map((r) => r.id), [web.id], 'the admission is its own derivation, not the dispatch one');
+    assert.deepEqual(redSinceDomain(reg, new Set(), null).map((r) => r.id), [], 'no derivation handed in admits nothing: fail closed');
+
+    const census = redSinceTriggerCensus(reg, new Set(), pg);
+    assert.deepEqual(census.admitted, [web.id]);
+    assert.deepEqual(census.admittedBy, { [web.id]: 'post-gate' });
+    assert.equal(census.excluded.length, 2);
+    assert.match(census.excluded.find((l) => l.startsWith(wide.id)), /the gate workflow, and job\(s\) late of its unit are not post-gate/);
+    assert.match(census.excluded.find((l) => l.startsWith(mix.id)), /job\(s\) guards of its unit are not post-gate/);
+    assert.deepEqual(redSinceTriggerCensus(reg, new Set(['ci.yml']), pg).admittedBy, { [web.id]: 'post-gate', [wide.id]: 'workflow_dispatch', [mix.id]: 'workflow_dispatch' }, 'two admissions, each named');
+
+    const printed = evaluateRedSince(reg, LIVE_READS_NOT_MADE, new Set(), pg).prints.join('\n');
+    assert.match(printed, /admitted: duty\.workflow\.deploy-web\.yml \(post-gate\)/);
   });
 });

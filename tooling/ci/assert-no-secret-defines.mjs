@@ -43,7 +43,7 @@
 // scan found 2 of the 11 that existed. Both fold shapes are handled by
 // tooling/ci/workflow-scan.mjs, which is where that lesson lives.
 //
-// Comments are BLANKED before anything is read: `deploy-web.yml:248` is a
+// Comments are BLANKED before anything is read: `deploy-web.yml:266` is a
 // comment about a `--dart-define`, and counting it would demand an allowlist
 // entry for a define nobody passes — a failure caused by prose.
 //
@@ -64,6 +64,8 @@
 // same grep now also returns :123, a quoted `grep -rn "dart-define=…"`.
 // ⏱ RE-MEASURED 2026-09-24 (TRAPS git-08). The pointer said :242; the comment
 // is at :248, and the same grep returns :126 for the quoted line.
+// ⏱ RE-MEASURED 2026-09-25 (TRAPS git-08), after deploy-web.yml became a
+// `workflow_call` callee [ADR 095 §4]: the comment is at :266, the quoted line :128.
 //
 // ── SCOPE ────────────────────────────────────────────────────────────────────
 // `--dart-define` and `--dart-define-from-file`, in every workflow. The

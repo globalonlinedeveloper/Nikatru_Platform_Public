@@ -45,7 +45,10 @@
 //   grep -cE "assert-gate-passed|record-deployment" .github/workflows/deploy-web.yml
 //   grep -cE "run: node tooling/ci/(assert-gate-passed|record-deployment)\.mjs" .github/workflows/deploy-web.yml
 // The first has always exceeded the second by a wide margin, and that gap — not
-// its width on any given day — is the whole argument. This
+// its width on any given day — is the whole argument. ⏱ 2026-09-25 [ADR 095 §4]:
+// deploy-web.yml no longer RUNS assert-gate-passed.mjs (its gate is ci.yml's
+// `needs: [ci-gate]` on the call), so the pair now counts record-deployment
+// and the prose around it; the gap is the same argument. This
 // repo has shipped that exact defect twice — the guard-coverage counter that
 // accepted a name in a comment ([pipeline F-10], fixed at dd30feb) and
 // `assert-stamp-platforms.mjs:41-46`, whose header records deleting the real
@@ -202,6 +205,8 @@
 //        grep -nE "checks: read. for assert-gate-passed" .github/workflows/deploy-web.yml
 //      printed 2 lines on 2026-08-24. deploy-web.yml is being rewritten by a
 //      sibling this round, which is exactly why this is a command.
+//      ⏱ 2026-09-25: it prints 0 — the lane holds no checks: read and no gate
+//      step any more; ci.yml's call job needs ci-gate instead [ADR 095 §4].
 //   · "`assert-stamp-platforms.mjs:37-42`" — :37-38 is that file's
 //      `PLATFORM_DIRS` constant. The comment recording the green-on-a-comment
 //      mutation is :41-46. Repointed.
@@ -239,7 +244,7 @@ import { stripSourceComments } from './text-reductions.mjs';
 // view: a publish, a gate call or a record moved behind `uses: ./.github/actions/<x>`
 // or into a `uses: ./.github/workflows/<f>.yml` callee is graded where it runs,
 // and a finding on such a line prints its real `<file>:<line>` via lineAt/placeOf.
-import { parseWorkflow, parseResolvedWorkflows, lineAt, placeOf, refusalText, storePublishSteps } from './workflow-scan.mjs';
+import { parseWorkflow, parseResolvedWorkflows, lineAt, placeOf, refusalText, storePublishSteps, laneRunHost, laneRefusalText } from './workflow-scan.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const WORKFLOWS = '.github/workflows';
@@ -728,14 +733,26 @@ for (const wf of workflows) {
  * neutralizer on the path; `refused` records credits that WOULD have counted,
  * so the failure message can name the exact line that disarmed them instead of
  * claiming no gate exists.
+ *
+ * ⏱ 2026-09-25 — THE GATE VERDICT ITSELF, IN THE SAME RUN. [ADR 095 §4] The
+ * deploys are ci.yml call jobs that `needs: [ci-gate]`, and parseResolvedWorkflows
+ * hands each callee job that edge as `<caller>/<job>` (an inherited need). GitHub
+ * starts a job only when every job it needs SUCCEEDED, and ci-gate succeeds only
+ * when every lane did — the very verdict assert-gate-passed.mjs polls for by
+ * name, read here without the poll. So reaching the ONE gate-verdict job (see
+ * gateVerdictJobs below; none is credited while the name is ambiguous) in the
+ * SAME workflow is a gate, under the same neutralizers as a gate call: an
+ * always()/failure() on the walked path, or continue-on-error on the verdict job,
+ * withdraws it. The walk's own start is never its own credit.
  */
 function findGate(wf, job) {
   let clean = null;
   const refused = [];
+  const verdict = gateVerdictJobs.length === 1 && gateVerdictJobs[0].wf === wf ? gateVerdictJobs[0].job : null;
   const walk = (j, blockedBy, path) => {
     if (path.has(j.name)) return;
     path.add(j.name);
-    if (j.gateCall) {
+    if (j.gateCall || (j === verdict && j !== job)) {
       if (blockedBy) refused.push({ kind: 'if', gate: j, blockedBy });
       else if (j.continueOnError) refused.push({ kind: 'coe', gate: j });
       else if (!clean) clean = j;
@@ -805,12 +822,17 @@ if (gateVerdictJobs.length === 1) {
 
 // ── the served lanes, from [9]R-5's register ─────────────────────────────────
 const registerRaw = read(REGISTER);
-const servedLaneWorkflows = new Set();
+/** Each served lane as the register names it: a workflow, and the job in it
+ *  when the row gives one. `key` is how the lane is printed and counted. */
+const servedLanes = [];
 if (registerRaw !== null) {
   try {
     const register = JSON.parse(registerRaw);
     for (const c of register.channels ?? []) {
-      if (c.served === true && c.lane && typeof c.lane.workflow === 'string') servedLaneWorkflows.add(c.lane.workflow);
+      if (c.served !== true || !c.lane || typeof c.lane.workflow !== 'string') continue;
+      const job = typeof c.lane.job === 'string' ? c.lane.job : null;
+      const key = job === null ? c.lane.workflow : `${c.lane.workflow}#${job}`;
+      if (!servedLanes.some((l) => l.key === key)) servedLanes.push({ workflow: c.lane.workflow, job, key });
     }
   } catch {
     problems.push(`${REGISTER} is not valid JSON, so the served-lane half of this guard has no subject.`);
@@ -835,10 +857,42 @@ let submitProblems = 0;
 const unnamedSubmitScripts = [];
 const submitScriptsChecked = new Set();
 
-for (const wf of workflows) {
-  const isServedLane = servedLaneWorkflows.has(wf.rel);
+// ⏱ 2026-09-25 — A SERVED LANE CAN RUN AS A CALL JOB'S CHILDREN. [ADR 095 §4]
+// deploy-web.yml is `on: workflow_call` only and runs as ci.yml's `deploy-web`
+// call, after ci-gate. The register still names the file that holds the steps,
+// deploy-web.yml#deploy-web, so the lane is resolved to where it RUNS by
+// workflow-scan's laneRunHost — the one derivation, imported, never re-derived
+// here — and graded as that host's child `deploy-web/deploy-web` in ci.yml.
+//   · a file that runs as itself: the lane is the named job and the children it
+//     calls (`job.calledBy`), or, for a row with no job, its whole workflow;
+//   · a call-only file: the lane is the named child `<callJob>/<job>` among the
+//     host's `children`, or, for a row with no job, all of them. Never the
+//     caller's other jobs: matching by the caller's `wf.rel` alone would make
+//     EVERY ci.yml job the served lane;
+//   · ambiguous-callee / orphan-callee is COVERAGE LOST now, in
+//     laneRefusalText's words; `missing` matches no job and is COVERAGE LOST
+//     below with every other lane that matched none, where a lookup that stopped
+//     matching used to leave limb 3 with no subject while its `ok` line still
+//     named the lane.
+for (const l of servedLanes) {
+  const host = laneRunHost(resolved, l.workflow);
+  if (host.refusal && host.refusal.kind !== 'missing') {
+    coverageLost([`the served lane ${l.key} from ${REGISTER} has no one place it runs.`, laneRefusalText(host.refusal)]);
+  }
+  l.host = host.refusal ? null : host;
+}
+const inLane = (l, wf, job) => {
+  if (l.host === null || wf.rel !== l.host.workflow) return false;
+  if (l.host.callJob === null) return l.job === null || job.name === l.job || job.calledBy === l.job;
+  return l.host.children.includes(job) && (l.job === null || job.name === `${l.host.callJob}/${l.job}`);
+};
+const servedLaneOf = (wf, job) => servedLanes.find((l) => inLane(l, wf, job))?.key ?? null;
+const servedLanesGraded = new Set();
 
+for (const wf of workflows) {
   for (const job of wf.jobs.values()) {
+    const servedLane = servedLaneOf(wf, job);
+    if (servedLane !== null) servedLanesGraded.add(servedLane);
     const buildsRelease = job.releaseBuilds.length > 0;
     if (buildsRelease) releaseJobs++;
 
@@ -861,7 +915,7 @@ for (const wf of workflows) {
         );
       } else {
         problems.push(
-          `${wf.rel}: job "${job.name}" runs ${job.releaseBuilds.length} release build(s) (first at ${lineAt(wf, job.releaseBuilds[0].n)}) and neither it nor any job it \`needs\` calls ${GATE_SCRIPT}. ` +
+          `${wf.rel}: job "${job.name}" runs ${job.releaseBuilds.length} release build(s) (first at ${lineAt(wf, job.releaseBuilds[0].n)}) and neither it nor any job it \`needs\` calls ${GATE_SCRIPT} or reaches the "${GATE_CHECK}" verdict in this run. ` +
             'An artifact can then be built from any dispatched ref, including one whose gate is RED, and nothing downstream can tell the difference.',
         );
       }
@@ -895,7 +949,7 @@ for (const wf of workflows) {
           problems.push(neutralizedCredit(wf, job, refused[0], `performs ${lastPublish.what} at ${lineAt(wf, lastPublish.n)}`));
         } else {
           problems.push(
-            `${wf.rel}: job "${job.name}" performs ${lastPublish.what} without any \`${GATE_SCRIPT}\` call in itself or a job it \`needs\`.`,
+            `${wf.rel}: job "${job.name}" performs ${lastPublish.what} without any \`${GATE_SCRIPT}\` call in itself or a job it \`needs\`, and no clean path to the "${GATE_CHECK}" verdict in this run.`,
           );
         }
       } else if (gateJob.name === job.name && gateJob.gateCall.n > firstPublish.n) {
@@ -990,13 +1044,15 @@ for (const wf of workflows) {
     // under `if (!anyGated)`. So on every path where the conjunct could matter
     // it was already true. The other three conjuncts each DO change the
     // verdict and each has a case below.
-    if (isServedLane && !buildsRelease && job.publishes.length === 0) {
+    if (servedLane !== null && !buildsRelease && job.publishes.length === 0) {
       // Not every job in a served lane's workflow builds or publishes (a lint
-      // job, say). Only complain if NO job in this workflow is gated at all.
-      const anyGated = [...wf.jobs.values()].some((j) => j.gateCall);
+      // job, say). Only complain if NO job in this lane is gated at all — by a
+      // gate call, or (⏱ 2026-09-25) by a clean path to the gate verdict itself.
+      const laneJobs = [...wf.jobs.values()].filter((j) => servedLaneOf(wf, j) === servedLane);
+      const anyGated = laneJobs.some((j) => j.gateCall || findGate(wf, j).clean);
       if (!anyGated) {
         problems.push(
-          `${wf.rel} is the lane for a SERVED channel in ${REGISTER}, and no job in it calls ${GATE_SCRIPT}. A served channel ships from an unverified commit.`,
+          `${servedLane} is the lane for a SERVED channel in ${REGISTER}, and no job in it calls ${GATE_SCRIPT} or needs the "${GATE_CHECK}" verdict. A served channel ships from an unverified commit.`,
         );
       }
     }
@@ -1075,7 +1131,7 @@ if (releaseJobs === 0) {
 if (publishJobs === 0) {
   coverageLost([
     `ZERO publishing jobs found across ${workflows.length} workflow file(s).`,
-    'deploy-web.yml and deploy-workers.yml deploy to Cloudflare on every push to main, so zero means the',
+    'ci.yml calls deploy-web.yml and deploy-workers.yml after ci-gate on every push to main, and both deploy to Cloudflare, so zero means the',
     'PUBLISH pattern set has stopped matching — and limb 2 would then be vacuously true forever.',
   ]);
 }
@@ -1101,10 +1157,20 @@ if (unnamedSubmitScripts.length > 0) {
     'is exactly the half GitHub fails open on.',
   ]);
 }
-if (servedLaneWorkflows.size === 0) {
+if (servedLanes.length === 0) {
   problems.push(
     `${REGISTER} declares no SERVED channel with a lane, so limb 3 has no subject. [9]R-5 requires at least one served channel; this guard should never see zero.`,
   );
+}
+const ungradedLanes = servedLanes.map((l) => l.key).filter((k) => !servedLanesGraded.has(k));
+if (ungradedLanes.length > 0) {
+  coverageLost([
+    `served lane(s) ${ungradedLanes.join(', ')} from ${REGISTER} matched no job: no workflow runs that path and job, as itself or as a call job's child.`,
+    ...servedLanes
+      .filter((l) => ungradedLanes.includes(l.key) && l.host !== null && l.host.callJob !== null)
+      .map((l) => `${l.key} runs as ${l.host.workflow} call job "${l.host.callJob}", whose children are: ${l.host.children.map((j) => j.name).join(', ')}.`),
+    'Limb 3 then grades nothing for that channel while its `ok` line still names it.',
+  ]);
 }
 
 ok(`${workflows.length} workflow file(s), ${totalJobs} job(s); ${releaseJobs} build for release, ${publishJobs} publish`);
@@ -1164,7 +1230,7 @@ ok(
       : `; ${submitProblems} of those assertions FAILED — see the FAIL line(s) below`) +
     `. The two environment names are NOT compared. limb 4 also ranges over the ${storeStepsBeyondSubmit} store publish step(s) no \`--submit\` verb reaches, in ${storeStepJobs.size} job(s) (EXT-3); it does NOT range over the ${publishJobs} publish job(s) — see the header.`,
 );
-ok(`${servedLaneWorkflows.size} served-channel lane(s) from ${REGISTER}: ${[...servedLaneWorkflows].join(', ') || '(none)'}`);
+ok(`${servedLanes.length} served-channel lane(s) from ${REGISTER}: ${servedLanes.map((l) => l.key).join(', ') || '(none)'}`);
 
 if (problems.length) {
   console.error('');

@@ -26,7 +26,8 @@
 //     canceled stay red. ops-watch run 35422355154 went red on the difference.
 //   · A DIRECT UPLOAD THAT CARRIES A COMMIT IS GRADED ON IT (2026-09-19, row
 //     O-PAGES-DIRECT-UPLOAD-COMMIT-UNGRADED). Its expected commit comes from
-//     deploy-web.yml's own `on.push.paths`, its in-flight window from that
+//     the deploy unit deploy-web.yml plans (its own `on.push.paths` until
+//     ADR 095 §4 moved the deploy behind ci-gate), its in-flight window from that
 //     workflow's job timeouts; a stale served commit past the window is RED,
 //     and UNGRADED is left only for a row with no commit_hash at all.
 //   · ONE DROPPED CONNECTION IS NOT AN OUTAGE, AND AN OUTAGE IS NOT A PASS
@@ -71,7 +72,7 @@ import {
   RETRY_BASE_MS,
   RETRY_CEILING_MS,
 } from '../../ops/check-pages-deployments.mjs';
-import { parseTriggerPaths } from '../assert-deploy-triggers-deploy.mjs';
+import { readUnits, UNITS_REL } from '../assert-deploy-triggers-deploy.mjs';
 import { parseWorkflow } from '../workflow-scan.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -613,13 +614,12 @@ describe('deployLaneInputs — the expected commit and the window come FROM depl
     assert.equal(jobTimeouts(null).problems.length, 1);
   });
 
-  test('🔴 THE REAL deploy-web.yml — every filter entry translates, and the ceiling is derived from its jobs', () => {
+  test('🔴 THE REAL deploy-web.yml — every entry of the unit it plans translates, and the ceiling is derived from its jobs', () => {
     const lane = deployLaneInputs(REPO);
     assert.deepEqual(lane.problems, []);
-    const text = readFileSync(join(REPO, DEPLOY_WEB_REL), 'utf8');
-    const globs = parseTriggerPaths(text);
+    const globs = readUnits(REPO)['<app>-web'];
     assert.ok(globs.length > 0);
-    assert.deepEqual(lane.pathspecs, globs.map(toPathspec), 'one pathspec per filter entry, none dropped');
+    assert.deepEqual(lane.pathspecs, globs.map(toPathspec), 'one pathspec per unit entry, none dropped');
     for (const need of [':(literal)apps', ':(literal)packages', ':(literal)pubspec.lock', `:(literal)${DEPLOY_WEB_REL}`]) {
       assert.ok(lane.pathspecs.includes(need), `${need} — a web build input the lane redeploys on`);
     }
@@ -629,25 +629,30 @@ describe('deployLaneInputs — the expected commit and the window come FROM depl
     assert.equal(DEPLOY_LANE_RUNS, 2, 'one run in progress ahead plus its own: the concurrency group never cancels on main');
   });
 
-  test('RED CONTROL — a filter entry with an untranslatable shape is a problem, not a narrower set', () => {
-    const root = join(TMP, 'lane-negation');
+  /** A root holding a deploy-web.yml whose one job plans `env`, and a lane-map.json with `units`. */
+  const laneRoot = (name, env, units) => {
+    const root = join(TMP, name);
     mkdirSync(join(root, '.github', 'workflows'), { recursive: true });
-    writeFileSync(
-      join(root, ...DEPLOY_WEB_REL.split('/')),
-      "on:\n  push:\n    paths:\n      - 'apps/**'\n      - '!apps/**/*.md'\njobs:\n  a:\n    timeout-minutes: 5\n",
-    );
-    const lane = deployLaneInputs(root);
+    mkdirSync(join(root, ...dirname(UNITS_REL).split('/')), { recursive: true });
+    const plan = env === null ? '' : `      - run: node tooling/ci/plan-deploy.mjs ${env}\n`;
+    writeFileSync(join(root, ...DEPLOY_WEB_REL.split('/')), `on:\n  workflow_call:\njobs:\n  a:\n    timeout-minutes: 5\n    steps:\n${plan}      - run: echo deploy\n`);
+    if (units !== null) writeFileSync(join(root, ...UNITS_REL.split('/')), JSON.stringify({ deployUnits: units }));
+    return root;
+  };
+
+  test('RED CONTROL — a unit entry with an untranslatable shape is a problem, not a narrower set', () => {
+    const lane = deployLaneInputs(laneRoot('lane-negation', '${{ matrix.app }}-web', { '<app>-web': ['apps/**', '!apps/**/*.md'] }));
     assert.equal(lane.problems.length, 1);
-    assert.match(lane.problems[0], /cannot translate exactly/);
+    assert.match(lane.problems[0], /deployUnits\["<app>-web"\] entry "!apps\/\*\*\/\*\.md" has a shape this reader cannot translate exactly/);
   });
 
-  test('RED CONTROL — no workflow, or one with no push paths, is a problem', () => {
+  test('RED CONTROL — no workflow, no plan step, or no unit file is a problem', () => {
     assert.match(deployLaneInputs(join(TMP, 'no-such-root')).problems[0], /does not exist/);
-    const root = join(TMP, 'lane-nopaths');
-    mkdirSync(join(root, '.github', 'workflows'), { recursive: true });
-    writeFileSync(join(root, ...DEPLOY_WEB_REL.split('/')), 'on:\n  workflow_dispatch:\njobs:\n  a:\n    timeout-minutes: 5\n');
-    const lane = deployLaneInputs(root);
-    assert.ok(lane.problems.some((p) => /no readable `on.push.paths`/.test(p)));
+    const noUnit = /plans no single readable deploy unit in tooling\/ci\/lane-map\.json/;
+    assert.ok(deployLaneInputs(laneRoot('lane-noplan', null, { '<app>-web': ['apps/**'] })).problems.some((p) => noUnit.test(p)));
+    assert.ok(deployLaneInputs(laneRoot('lane-nounits', '${{ matrix.app }}-web', null)).problems.some((p) => noUnit.test(p)));
+    assert.ok(deployLaneInputs(laneRoot('lane-unknown', 'site-web', { platform: ['services/platform/**'] })).problems.some((p) => noUnit.test(p)));
+    assert.deepEqual(deployLaneInputs(laneRoot('lane-ok', '${{ matrix.app }}-web', { '<app>-web': ['apps/**'] })).pathspecs, [':(literal)apps']);
   });
 
   test('newestCommitTouching passes EVERY pathspec after `--`', () => {

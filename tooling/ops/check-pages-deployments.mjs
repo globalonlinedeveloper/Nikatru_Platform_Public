@@ -123,6 +123,14 @@
 //   `record-deployment.mjs` / check-prod-provenance.mjs (pipeline B-17) remain
 //   the second, independent commit witness.
 //
+//   ⏱ 2026-09-25 [ADR 095 §4]: deploy-web.yml has no `on.push.paths` now —
+//   ci.yml calls it after ci-gate on every push to main, and its plan step
+//   publishes only for a commit its unit claims. So the source set is that
+//   unit, `deployUnits` in tooling/ci/lane-map.json, resolved from the plan
+//   step's environment the way plan-deploy.mjs resolves it. The ceiling still
+//   sums deploy-web.yml's own jobs; the ci.yml lanes that run before the call
+//   are not in it.
+//
 // ── THREE-VALUED, AND 2 IS NOT A PASS ───────────────────────────────────────
 //   0  every derived project's newest production deployment succeeded, and every
 //      one carrying a commit_hash is at the commit `main` says it should be (a
@@ -203,7 +211,7 @@ import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { parseTriggerPaths } from '../ci/assert-deploy-triggers-deploy.mjs';
+import { readUnits, plannedEnvironments, unitKeyFor, UNITS_REL } from '../ci/assert-deploy-triggers-deploy.mjs';
 import { parseWorkflow } from '../ci/workflow-scan.mjs';
 import {
   CouldNotLook,
@@ -318,11 +326,14 @@ export function derivePagesProjects(root) {
   return { projects, problems };
 }
 
-/** The workflow that direct-uploads every catalogue app. Named once: its
- *  `on.push.paths` IS the source set of a direct-upload project, and its job
- *  timeouts ARE the window in which a newer commit may not be served yet. */
+/** The workflow that direct-uploads every catalogue app. Named once: the
+ *  deploy unit it plans IS the source set of a direct-upload project, and its
+ *  job timeouts ARE the window in which a newer commit may not be served yet.
+ *  ⏱ 2026-09-25 [ADR 095 §4]: it has no `on.push.paths` any more — ci.yml calls
+ *  it after ci-gate on every push to main, and its plan step publishes only for
+ *  a commit its deployUnits entry claims, so the unit is the source set. */
 export const DEPLOY_WEB_REL = '.github/workflows/deploy-web.yml';
-const DEPLOY_WEB_FILTER_LABEL = `${DEPLOY_WEB_REL} on.push.paths`;
+const DEPLOY_WEB_FILTER_LABEL = `the deploy unit ${DEPLOY_WEB_REL} plans (${UNITS_REL} deployUnits)`;
 
 /** How many full deploy-web runs the newest commit can wait through before it
  *  is served: its own, plus ONE in progress ahead of it. deploy-web.yml's
@@ -375,7 +386,7 @@ export function jobTimeouts(parsed) {
 }
 
 /** What a direct-upload project's commit limb is graded against, read from
- *  deploy-web.yml itself: `{ pathspecs, ceilingMs, problems }`. A non-empty
+ *  deploy-web.yml and the unit it plans: `{ pathspecs, ceilingMs, problems }`. A non-empty
  *  `problems` is exit 2 for every direct-upload project — never a pass, and
  *  never a fallback to `apps/<slug>`, which is narrower than what the lane
  *  deploys for and would grade against an OLDER commit. The workflow is read
@@ -388,14 +399,24 @@ export function deployLaneInputs(root) {
     return { pathspecs: [], ceilingMs: null, problems: [`${DEPLOY_WEB_REL} does not exist`] };
   }
 
-  const globs = parseTriggerPaths(parsed.lines.map((l) => l.text).join('\n'));
+  // The unit is resolved the way assert-deploy-triggers-deploy.mjs limb 1 and
+  // plan-deploy.mjs resolve it: from the environment the workflow's plan step names.
+  const units = readUnits(root);
+  const keys =
+    units === null
+      ? []
+      : [...new Set(plannedEnvironments(parsed.lines.map((l) => l.text).join('\n')).map((e) => unitKeyFor(units, e)))];
+  const globs = units !== null && keys.length === 1 && keys[0] !== null ? units[keys[0]] : null;
   const pathspecs = [];
   if (!Array.isArray(globs) || globs.length === 0) {
-    problems.push(`${DEPLOY_WEB_REL} has no readable \`on.push.paths\`, so the set of commits it deploys for is unknown`);
+    problems.push(
+      `${DEPLOY_WEB_REL} plans no single readable deploy unit in ${UNITS_REL} (found ${JSON.stringify(keys)}), ` +
+        'so the set of commits it deploys for is unknown',
+    );
   } else {
     for (const g of globs) {
       const spec = toPathspec(g);
-      if (spec === null) problems.push(`${DEPLOY_WEB_REL} on.push.paths entry ${JSON.stringify(g)} has a shape this reader cannot translate exactly`);
+      if (spec === null) problems.push(`deployUnits["${keys[0]}"] entry ${JSON.stringify(g)} has a shape this reader cannot translate exactly`);
       else pathspecs.push(spec);
     }
   }

@@ -19,7 +19,7 @@
 // printed the refusal and then dispatched anyway would pass an exit-code check.
 //
 // ⚠️ THE LANE SET IS DERIVED, SO IT IS PINNED FROM BOTH SIDES: against the real
-// tree (exactly build-platforms.yml, deploy-web.yml and deploy-workers.yml), and
+// tree (exactly build-platforms.yml since 2026-09-25, below), and
 // by mutation — a trigger list missing a lane, and a new gated lane nobody added
 // to the trigger, must each make the tool refuse to run (exit 2). Each of the
 // four limbs (L1–L4 in the tool's header) has a mutation that breaks it ALONE.
@@ -29,6 +29,13 @@
 // failed on the gate step, and "all-platforms" — an `if: always()` aggregate
 // behind the gate — failed with it. The REPLAY case below is that run: it must
 // DISPATCH, and a lane whose only failure is such a consequence job must not.
+//
+// ⏱ 2026-09-25 [ADR 095 §4]: deploy-web.yml and deploy-workers.yml are no
+// longer lanes. They are `on: workflow_call` only, run by ci.yml after ci-gate in
+// the same run, so the real tree derives build-platforms.yml alone. The two
+// instances above stay as fixtures: `legacyRoot()` writes the two deploy lanes
+// back (push on main, a bare dispatch, the named gate step) onto a copy of the
+// real tree, and every CLI case over them runs with `--root` on that copy.
 //
 // NOTHING HERE TOUCHES THE NETWORK. Every CLI case runs the fixture transport,
 // which has no fetch in it; the one live-shaped case withholds the credential.
@@ -203,13 +210,22 @@ describe('decide — RED CONTROLS: nothing is re-entered', () => {
 
 // ═══════════════════════════════════════════════════════════════════════════
 describe('derivation — against the real tree', () => {
-  test('the derived lanes are exactly build-platforms.yml, deploy-web.yml and deploy-workers.yml, each with its named gate step', () => {
+  test('the derived lanes are exactly build-platforms.yml, with its named gate step', () => {
     const { lanes, problems } = deployLanes(REPO);
     assert.deepEqual(problems, []);
-    assert.deepEqual(lanes.map((l) => l.file).sort(), ['build-platforms.yml', 'deploy-web.yml', 'deploy-workers.yml']);
+    assert.deepEqual(lanes.map((l) => l.file).sort(), ['build-platforms.yml']);
     for (const l of lanes) assert.equal(l.gateStep, GATE_STEP, l.file);
-    // The deploy lanes' `always()` are step-level; only a JOB-level one is a consequence.
-    for (const l of lanes.filter((x) => x.file !== 'build-platforms.yml')) assert.deepEqual(l.consequenceJobs, [], l.file);
+  });
+
+  test('deploy-web.yml and deploy-workers.yml are NOT derived: call-only, they fail L1 (no dispatch, no push)', () => {
+    for (const f of ['deploy-web.yml', 'deploy-workers.yml']) {
+      const ev = workflowEvents(parseWorkflow(REPO, `.github/workflows/${f}`));
+      assert.deepEqual([...ev], ['workflow_call'], `the premise moved: ${f} starts on more than a call`);
+    }
+    const legacy = deployLanes(legacyRoot()).lanes.map((l) => l.file).sort();
+    assert.deepEqual(legacy, ['build-platforms.yml', 'deploy-web.yml', 'deploy-workers.yml'], 'the legacy fixture no longer derives the old lanes');
+    // The legacy lanes' `always()` would be step-level; only a JOB-level one is a consequence.
+    for (const l of deployLanes(legacyRoot()).lanes.filter((x) => x.file !== 'build-platforms.yml')) assert.deepEqual(l.consequenceJobs, [], l.file);
   });
 
   test('build-platforms: its one consequence job is all-platforms, the channel register\'s aggregatingJob', () => {
@@ -261,15 +277,15 @@ describe('derivation — MUTATIONS the trigger check must catch', () => {
   const derived = (root) => deployLanes(root).lanes.map((l) => l.file);
   const SCHEDULE = "  schedule:\n    - cron: '0 6 * * 1'\n";
 
-  test('a lane dropped from the trigger list → MISSING, and the CLI refuses (exit 2)', () => {
-    const root = mutated((r) => rewrite(r, RECOVERY_WORKFLOW, 'workflows: [CI, Deploy web, Deploy workers, Build apps]', 'workflows: [CI, Deploy web, Build apps]'));
+  test('a lane dropped from the trigger list (legacy tree) → MISSING, and the CLI refuses (exit 2)', () => {
+    const root = legacyRoot((r) => rewrite(r, RECOVERY_WORKFLOW, LEGACY_TRIGGER, 'workflows: [CI, Deploy web, Build apps]'));
     assert.match(triggerProblem(root, deployLanes(root).lanes) ?? '', /MISSING Deploy workers/);
     const r = cli(['--root', root], { REDEPLOY_STRANDED_FIXTURE: writeFixture(tonight()) });
     assert.equal(r.status, 2, r.stderr);
   });
 
   test('Build apps dropped from the trigger list → MISSING Build apps, and the CLI refuses (exit 2)', () => {
-    const root = mutated((r) => rewrite(r, RECOVERY_WORKFLOW, 'workflows: [CI, Deploy web, Deploy workers, Build apps]', 'workflows: [CI, Deploy web, Deploy workers]'));
+    const root = mutated((r) => rewrite(r, RECOVERY_WORKFLOW, 'workflows: [CI, Build apps]', 'workflows: [CI]'));
     assert.match(triggerProblem(root, deployLanes(root).lanes) ?? '', /MISSING Build apps/);
     const r = cli(['--root', root], { REDEPLOY_STRANDED_FIXTURE: writeFixture(tonight()) });
     assert.equal(r.status, 2, r.stderr);
@@ -334,21 +350,49 @@ describe('derivation — MUTATIONS the trigger check must catch', () => {
 
   test('a third gated lane nobody added to the trigger → MISSING', () => {
     const root = mutated((r) => {
-      const src = readFileSync(join(r, '.github', 'workflows', 'deploy-web.yml'), 'utf8');
+      const src = readFileSync(join(r, '.github', 'workflows', 'build-platforms.yml'), 'utf8');
       writeFileSync(join(r, '.github', 'workflows', 'deploy-third.yml'), src.replace(/^name: .*$/m, 'name: Deploy third'));
     });
     assert.match(triggerProblem(root, deployLanes(root).lanes) ?? '', /MISSING Deploy third/);
   });
 
-  test('a gate step with no name → a derivation problem, never a silent "real step failed"', () => {
-    const root = mutated((r) => rewrite(r, '.github/workflows/deploy-workers.yml', `name: ${GATE_STEP}`, ''));
+  test('a gate step with no name (legacy tree) → a derivation problem, never a silent "real step failed"', () => {
+    const root = legacyRoot((r) => rewrite(r, '.github/workflows/deploy-workers.yml', `name: ${GATE_STEP}`, ''));
     const { problems } = deployLanes(root);
     assert.ok(problems.some((p) => p.includes('deploy-workers.yml') && /no `name:`/.test(p)), problems.join('\n'));
   });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// CLI over the fixture transport, on the real tree.
+// The 2026-09-22 tree: the real workflows and channel register, with deploy-web.yml
+// and deploy-workers.yml written back as the push-on-main, dispatchable, self-
+// gated lanes they were before ADR 095 §4, and the recovery trigger listening to
+// them again. `edit` mutates the copy before it is returned.
+const LEGACY_TRIGGER = 'workflows: [CI, Deploy web, Deploy workers, Build apps]';
+const LEGACY_ON = 'on:\n  push:\n    branches: [main]\n  workflow_dispatch:\n\npermissions:\n  contents: read\n\n';
+const LEGACY_GATE = `      - name: ${GATE_STEP}\n        run: node tooling/ci/assert-gate-passed.mjs\n`;
+const LEGACY = {
+  'deploy-web.yml': `name: Deploy web\n\n${LEGACY_ON}jobs:\n  web:\n    name: Build & deploy web to Cloudflare Pages (subscriptiontracker)\n    runs-on: ubuntu-24.04\n    steps:\n${LEGACY_GATE}      - name: Deploy\n        run: echo deploy\n`,
+  'deploy-workers.yml': `name: Deploy workers\n\n${LEGACY_ON}jobs:\n  detect:\n    runs-on: ubuntu-24.04\n    steps:\n${LEGACY_GATE}  deploy-api:\n    needs: [detect]\n    runs-on: ubuntu-24.04\n    steps:\n      - run: echo deploy\n`,
+};
+function legacyRoot(edit = () => {}) {
+  const root = tmp();
+  cpSync(join(REPO, '.github', 'workflows'), join(root, '.github', 'workflows'), { recursive: true });
+  mkdirSync(join(root, 'tooling'), { recursive: true });
+  cpSync(join(REPO, CHANNEL_REGISTER), join(root, CHANNEL_REGISTER));
+  for (const [f, text] of Object.entries(LEGACY)) writeFileSync(join(root, '.github', 'workflows', f), text);
+  const trig = join(root, RECOVERY_WORKFLOW);
+  const before = readFileSync(trig, 'utf8');
+  const after = before.replace('workflows: [CI, Build apps]', LEGACY_TRIGGER);
+  assert.notEqual(after, before, `${RECOVERY_WORKFLOW} no longer reads \`workflows: [CI, Build apps]\``);
+  writeFileSync(trig, after);
+  edit(root);
+  return root;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CLI over the fixture transport, on the legacy tree above (the real tree has no
+// deploy lane left to strand).
 function tonight() {
   return {
     head: Y,
@@ -380,7 +424,7 @@ function cli(args, env) {
 describe('CLI — fixture transport', () => {
   test('TONIGHT: both lanes are dispatched on main, exit 0', () => {
     const log = join(tmp(), 'actions.log');
-    const r = cli([], { REDEPLOY_STRANDED_FIXTURE: writeFixture(tonight()), REDEPLOY_STRANDED_FIXTURE_LOG: log });
+    const r = cli(['--root', legacyRoot()], { REDEPLOY_STRANDED_FIXTURE: writeFixture(tonight()), REDEPLOY_STRANDED_FIXTURE_LOG: log });
     assert.equal(r.status, 0, r.stderr);
     assert.deepEqual(readFileSync(log, 'utf8').trim().split('\n').sort(), ['dispatch deploy-web.yml ref=main', 'dispatch deploy-workers.yml ref=main']);
   });
@@ -390,7 +434,7 @@ describe('CLI — fixture transport', () => {
     fx.runs['build-platforms.yml'].unshift(run({ id: 1020, run_number: 102, head_sha: X, event: 'workflow_dispatch' }));
     fx.jobs[1020] = bpStranded();
     const log = join(tmp(), 'actions.log');
-    const r = cli([], { REDEPLOY_STRANDED_FIXTURE: writeFixture(fx), REDEPLOY_STRANDED_FIXTURE_LOG: log });
+    const r = cli(['--root', legacyRoot()], { REDEPLOY_STRANDED_FIXTURE: writeFixture(fx), REDEPLOY_STRANDED_FIXTURE_LOG: log });
     assert.equal(r.status, 0, r.stderr);
     assert.deepEqual(readFileSync(log, 'utf8').trim().split('\n').sort(),
       ['dispatch build-platforms.yml ref=main', 'dispatch deploy-web.yml ref=main', 'dispatch deploy-workers.yml ref=main']);
@@ -402,7 +446,7 @@ describe('CLI — fixture transport', () => {
     delete fx.runs['deploy-workers.yml'];
     fx.runs['deploy-workers.yml'] = [run({ id: 1690, run_number: 169, head_sha: X, conclusion: 'success' })];
     const log = join(tmp(), 'actions.log');
-    const r = cli([], { REDEPLOY_STRANDED_FIXTURE: writeFixture(fx), REDEPLOY_STRANDED_FIXTURE_LOG: log });
+    const r = cli(['--root', legacyRoot()], { REDEPLOY_STRANDED_FIXTURE: writeFixture(fx), REDEPLOY_STRANDED_FIXTURE_LOG: log });
     assert.equal(r.status, 0, r.stderr);
     assert.equal(readFileSync(log, 'utf8').trim(), 'rerun 4260 --failed');
   });
@@ -412,7 +456,7 @@ describe('CLI — fixture transport', () => {
     fx.jobs[4260] = [realJob('web')];
     fx.jobs[1680] = [realJob('deploy-api')];
     const log = join(tmp(), 'actions.log');
-    const r = cli([], { REDEPLOY_STRANDED_FIXTURE: writeFixture(fx), REDEPLOY_STRANDED_FIXTURE_LOG: log });
+    const r = cli(['--root', legacyRoot()], { REDEPLOY_STRANDED_FIXTURE: writeFixture(fx), REDEPLOY_STRANDED_FIXTURE_LOG: log });
     assert.equal(r.status, 0, r.stderr);
     assert.equal(existsSync(log), false, 'an action was requested over a genuine deploy failure');
   });
@@ -421,14 +465,14 @@ describe('CLI — fixture transport', () => {
     const fx = tonight();
     fx.gate = { status: 'completed', conclusion: 'failure' };
     const log = join(tmp(), 'actions.log');
-    const r = cli([], { REDEPLOY_STRANDED_FIXTURE: writeFixture(fx), REDEPLOY_STRANDED_FIXTURE_LOG: log });
+    const r = cli(['--root', legacyRoot()], { REDEPLOY_STRANDED_FIXTURE: writeFixture(fx), REDEPLOY_STRANDED_FIXTURE_LOG: log });
     assert.equal(r.status, 0, r.stderr);
     assert.equal(existsSync(log), false);
   });
 
   test('--dry-run decides and requests nothing', () => {
     const log = join(tmp(), 'actions.log');
-    const r = cli(['--dry-run'], { REDEPLOY_STRANDED_FIXTURE: writeFixture(tonight()), REDEPLOY_STRANDED_FIXTURE_LOG: log });
+    const r = cli(['--dry-run', '--root', legacyRoot()], { REDEPLOY_STRANDED_FIXTURE: writeFixture(tonight()), REDEPLOY_STRANDED_FIXTURE_LOG: log });
     assert.equal(r.status, 0, r.stderr);
     assert.match(r.stdout, /DISPATCH/);
     assert.equal(existsSync(log), false);
@@ -437,7 +481,7 @@ describe('CLI — fixture transport', () => {
   test('an unreadable answer is COULD NOT LOOK (2), never "nothing stranded"', () => {
     const fx = tonight();
     delete fx.jobs[1680];
-    const r = cli([], { REDEPLOY_STRANDED_FIXTURE: writeFixture(fx), REDEPLOY_STRANDED_FIXTURE_LOG: join(tmp(), 'a.log') });
+    const r = cli(['--root', legacyRoot()], { REDEPLOY_STRANDED_FIXTURE: writeFixture(fx), REDEPLOY_STRANDED_FIXTURE_LOG: join(tmp(), 'a.log') });
     assert.equal(r.status, 2, r.stderr);
   });
 

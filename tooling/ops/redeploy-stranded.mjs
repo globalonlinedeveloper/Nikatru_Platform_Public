@@ -85,7 +85,10 @@
 //   L4 it is not a store-submission workflow — no `channels[].submission.workflow`
 //      in tooling/channel-register.json names it. This closes the one hole L2
 //      leaves: an input-less dry-run submitter that someone gives a schedule.
-// Today that is build-platforms.yml, deploy-web.yml and deploy-workers.yml.
+// Today that is build-platforms.yml alone. deploy-web.yml and deploy-workers.yml
+// fail L1 since 2026-09-25 [ADR 095 §4]: they are `on: workflow_call` only, run
+// by ci.yml after ci-gate in the same run, so no run of theirs waits on a gate
+// another run decides — there is nothing of theirs to strand.
 // extensions.yml fails L2, L3 and L4; every submit-*.yml fails L1 and L4; and
 // symbolication-proof.yml fails L1 alone (a test pins that giving it a schedule
 // derives it). The recovery workflow's `on: workflow_run: workflows:` must name

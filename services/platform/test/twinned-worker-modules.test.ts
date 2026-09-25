@@ -36,10 +36,10 @@ import { describe, it, expect } from 'vitest';
 //
 //   · "A BARE RELATIVE IMPORT INTO A `services/_shared/` WOULD BUILD AND WOULD
 //     BREAK THE DEPLOY." That one was REAL and is now closed by the repair it
-//     always implied: `.github/workflows/deploy-workers.yml` names
-//     `services/_shared/**` in `on.push.paths` AND in BOTH inner `paths-filter`
-//     globs, and `tooling/ci/assert-deploy-triggers-deploy.mjs` fails the build
-//     when a filter claims a source tree without claiming what that tree imports
+//     always implied: `tooling/ci/lane-map.json` names `services/_shared/**` in
+//     BOTH Worker `deployUnits` (what decides deploy-workers.yml's publishes since
+//     ADR 095 §4), and `tooling/ci/assert-deploy-triggers-deploy.mjs` fails the build
+//     when a unit claims a source tree without claiming what that tree imports
 //     from outside itself. The incident it names — #155, a merged fix reporting
 //     success with production broken for six hours — is why that guard's
 //     mutation is part of the acceptance of this change rather than an extra.

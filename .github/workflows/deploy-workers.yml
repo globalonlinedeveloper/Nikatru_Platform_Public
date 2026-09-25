@@ -1,38 +1,27 @@
 name: Deploy workers
 
-run-name: "Deploy workers from ${{ github.ref_name }} (${{ github.event_name }})"
-
 # Everything this file does, and every rule it has to obey, is in
 # docs/ci/deploy-workers.md. Only `# why:` lines live here.
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'services/subscriptiontracker-api/**'
-      - 'services/platform/**'
-      # why: services/_shared is a BUILD INPUT of both Workers and lives outside
-      # both service directories — the incident-#155 shape if it went unnamed.
-      - 'services/_shared/**'
-      # why: src/config.ts imports catalog/apps.json and esbuild INLINES it, so
-      # the app set the live Worker serves is decided at build time. Named as
-      # the exact file, not catalog/**, for the same reason as below.
-      - 'catalog/apps.json'
-      # why: contracts/entitlement is a build input of the platform Worker;
-      # scoped to *.js/*.json so a README edit cannot redeploy production.
-      - 'contracts/entitlement/*.js'
-      - 'contracts/entitlement/*.json'
-      # why: src/lib/bundle/availability.ts imports these three and esbuild
-      # INLINES them, so the bundle set, the extension set and the channel
-      # map the live Worker serves are all decided at build time. Named as
-      # exact files, not catalog/** or tooling/**, for the same reason
-      # catalog/apps.json is: a broad glob would redeploy production on an
-      # unrelated edit.
-      - 'catalog/bundles.json'
-      - 'extensions/catalog/extensions.json'
-      - 'tooling/channel-register.json'
-      - '.github/workflows/deploy-workers.yml'
-  workflow_dispatch:
+  # why: RUNS ONLY AS ci.yml's `deploy-workers` CALL JOB, after ci-gate, on a push to
+  # main ([ADR 095] §4). ci-gate is a `needs:` of the call, so it has passed before
+  # `d1 migrations apply --remote`, which is irreversible, can start. There is no
+  # push trigger, paths list, dispatch or detect job: each job's plan step decides
+  # from its own unit in tooling/ci/lane-map.json deployUnits, and
+  # tooling/ci/assert-deploy-triggers-deploy.mjs grades those units (this file, and
+  # everything each service imports from outside its own directory — #155).
+  workflow_call:
+    # why: NAMED, NOT INHERITED — a name the call forgets fails at startup.
+    secrets:
+      CLOUDFLARE_API_TOKEN:
+        required: true
+      CLOUDFLARE_ACCOUNT_ID:
+        required: true
+      GLITCHTIP_DSN:
+        required: true
+      SUPABASE_ANON_KEY:
+        required: true
 
 concurrency:
   group: deploy-workers
@@ -42,100 +31,43 @@ concurrency:
 # record a deployment marker rather than on every job. [pipeline F-11]
 permissions:
   contents: read
-  checks: read
 
 jobs:
-  detect:
-    name: Detect changed services
-    runs-on: ubuntu-24.04
-    # why: 25 because the gate check polls for up to assert-gate-passed.mjs's own
-    # 1200 s default; this job's longest recorded run is 20m06s. [pipeline F-5b]
-    timeout-minutes: 25
-    outputs:
-      subscriptiontracker_api: ${{ steps.decide.outputs.subscriptiontracker_api }}
-      platform: ${{ steps.decide.outputs.platform }}
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        # why: persist-credentials: false — checkout otherwise leaves
-        # GITHUB_TOKEN in .git/config for the whole job. [zizmor artipacked]
-        with:
-          persist-credentials: false
-
-      # why: the gate lives in `detect`, so it blocks BOTH deploy jobs and runs
-      # before `d1 migrations apply --remote`, which is irreversible.
-      - name: Require ci-gate to have passed for this commit
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-        run: node tooling/ci/assert-gate-passed.mjs ${{ github.sha }}
-
-      # why: EVERY trigger path must be claimed by a filter, and every filter
-      # must claim this workflow file and everything its service imports from
-      # outside its own directory. #155 is what the omission costs.
-      # tooling/ci/assert-deploy-triggers-deploy.mjs fails the build on both.
-      - uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad # v3
-        id: filter
-        if: github.event_name == 'push'
-        with:
-          filters: |
-            subscriptiontracker_api:
-              - 'services/subscriptiontracker-api/**'
-              - 'services/_shared/**'
-              # why: no contracts/entitlement claim here. The one importer
-              # (src/routes/webhooks.ts, 2026-09-15) was retired 2026-09-16, so
-              # this Worker again imports nothing from contracts/ — the comment
-              # under `platform` below is true again.
-              - '.github/workflows/deploy-workers.yml'
-            platform:
-              - 'services/platform/**'
-              - 'services/_shared/**'
-              # why: the inlined app catalogue — see the trigger list. subscriptiontracker-api
-              # does not read it.
-              - 'catalog/apps.json'
-              # why: subscriptiontracker-api deliberately does NOT claim contracts/entitlement
-              # — it imports nothing from contracts/ and restates its own money
-              # environment in src/lib/money.ts.
-              - 'contracts/entitlement/*.js'
-              - 'contracts/entitlement/*.json'
-              # why: the three inlined bundle inputs — see the trigger list.
-              # subscriptiontracker-api reads none of them.
-              - 'catalog/bundles.json'
-              - 'extensions/catalog/extensions.json'
-              - 'tooling/channel-register.json'
-              - '.github/workflows/deploy-workers.yml'
-      - id: decide
-        # why: manual dispatch has no diff to filter on → deploy both.
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "subscriptiontracker_api=true"  >> "$GITHUB_OUTPUT"
-            echo "platform=true"   >> "$GITHUB_OUTPUT"
-          else
-            echo "subscriptiontracker_api=${{ steps.filter.outputs.subscriptiontracker_api }}" >> "$GITHUB_OUTPUT"
-            echo "platform=${{ steps.filter.outputs.platform }}"   >> "$GITHUB_OUTPUT"
-          fi
-
   subscriptiontracker-api:
     name: Deploy subscriptiontracker-api
-    needs: detect
-    if: needs.detect.outputs.subscriptiontracker_api == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    # why: job-level, so `detect` does not inherit write access it never uses.
+    # why: job-level, so a job that records nothing never holds write access.
     permissions:
       contents: read
-      checks: read
       deployments: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+          # why: the plan reads ancestry and a diff against the live SHA, which a
+          # depth-1 clone does not hold; plan-deploy.mjs exits 1 on a shallow clone.
+          fetch-depth: 0
+      # why: a superseded SHA never publishes (row O-DEPLOY-IS-NOT-ONE-GATED-LANE,
+      # limb 3), and a commit that touches none of this Worker's deployUnits globs
+      # does not publish it. Runs BEFORE the irreversible migrations: every later
+      # step runs only on deploy == 'true'. An unreadable ledger exits 1 and
+      # nothing publishes.
+      - name: Plan from the Deployment ledger
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node tooling/ci/plan-deploy.mjs subscriptiontracker-api
       - uses: ./.github/actions/setup-node
+        if: steps.plan.outputs.deploy == 'true'
       - run: npm ci
+        if: steps.plan.outputs.deploy == 'true'
         working-directory: services/subscriptiontracker-api
       # why: MIGRATIONS BEFORE DEPLOY. The schema standard is additive-only, so
       # new columns are harmless to code that predates them; deploying code that
       # reads a column the database lacks is an outage. Expand, then deploy.
       - name: Apply APP_DB migrations (before deploy)
+        if: steps.plan.outputs.deploy == 'true'
         uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -148,6 +80,7 @@ jobs:
       # runtime while every static check stayed green. Blocking, and exit 2
       # ("could not look") blocks too.
       - name: The deployed SQL is SQL live D1 will run
+        if: steps.plan.outputs.deploy == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -157,6 +90,7 @@ jobs:
       # why: the two `--var`s are supplied at DEPLOY time — GLITCHTIP_DSN is a
       # write-only ingest key, and RELEASE is the SHA, not API_VERSION.
       - uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3
+        if: steps.plan.outputs.deploy == 'true'
         id: deploy
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -168,6 +102,7 @@ jobs:
       # is the literal "v1" and a smoke joined to it would pass forever.
       # `--require-ok` is a separate conjunct: deployed-and-unwell is not good.
       - name: Smoke — the live Worker answers at THIS commit
+        if: steps.plan.outputs.deploy == 'true'
         run: >
           node tooling/ops/post-deploy-smoke.mjs
           --url https://subscriptiontracker-api.nikatru.com/v1/health
@@ -184,25 +119,34 @@ jobs:
 
   platform:
     name: Deploy platform
-    needs: detect
-    if: needs.detect.outputs.platform == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    # why: job-level, so `detect` does not inherit write access it never uses.
+    # why: job-level — see the subscriptiontracker-api job.
     permissions:
       contents: read
-      checks: read
       deployments: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+          # why: see the subscriptiontracker-api job — the plan needs full history.
+          fetch-depth: 0
+      # why: the plan, exactly as in the subscriptiontracker-api job, for this Worker's
+      # own ledger environment and deployUnits globs.
+      - name: Plan from the Deployment ledger
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node tooling/ci/plan-deploy.mjs platform
       - uses: ./.github/actions/setup-node
+        if: steps.plan.outputs.deploy == 'true'
       - run: npm ci
+        if: steps.plan.outputs.deploy == 'true'
         working-directory: services/platform
       # why: MIGRATIONS BEFORE DEPLOY — see the subscriptiontracker-api job. platform is the
       # SOLE applier of platform_db migrations.
       - name: Apply PLATFORM_DB migrations (before deploy)
+        if: steps.plan.outputs.deploy == 'true'
         uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -214,6 +158,7 @@ jobs:
       # well as platform_db, so the check executes against both — a route reads
       # the databases it reads, not the ones its Worker binds.
       - name: The deployed SQL is SQL live D1 will run
+        if: steps.plan.outputs.deploy == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -224,6 +169,7 @@ jobs:
       # the command, so do not copy this shape to a Worker that does not exist
       # yet: a new Worker needs one deploy before its first secret.
       - uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3
+        if: steps.plan.outputs.deploy == 'true'
         id: deploy
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -239,6 +185,7 @@ jobs:
       # why: see the identical step in the subscriptiontracker-api job. Until this line
       # nothing ever asked this Worker whether it had actually come up.
       - name: Smoke — the live Worker answers at THIS commit
+        if: steps.plan.outputs.deploy == 'true'
         run: >
           node tooling/ops/post-deploy-smoke.mjs
           --url https://platform.nikatru.com/v1/health
