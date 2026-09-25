@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
+
+import 'auth_error_text.dart';
 
 /// "Check your inbox" — the only screen an UNVERIFIED session can reach.
 ///
@@ -73,10 +74,12 @@ class _VerifyEmailViewState extends State<VerifyEmailView> {
     try {
       final String? message = await action();
       if (mounted) setState(() => _notice = message);
-    } on core.AuthFailure catch (e) {
-      if (mounted) setState(() => _notice = e.message);
     } catch (e) {
-      if (mounted) setState(() => _notice = '$e');
+      // ⏱ 2026-09-24 — ONE arm, through the mapper. `resend` is captcha-gated
+      // on the self-hosted server, and this printed its refusal as written.
+      if (mounted) {
+        setState(() => _notice = authErrorText(context.chassisL10n, e));
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }

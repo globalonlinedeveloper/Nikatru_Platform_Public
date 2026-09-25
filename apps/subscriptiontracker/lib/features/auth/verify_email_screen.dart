@@ -7,7 +7,7 @@ import 'package:nikatru_design_system/nikatru_design_system.dart'
 import '../../l10n/app_localizations.dart';
 import '../../state/providers.dart';
 import 'turnstile_gate.dart';
-import 'auth_error_text.dart';
+import 'auth_error_sentence.dart';
 
 /// "Check your inbox" — the only screen an UNVERIFIED session can reach.
 ///
@@ -63,18 +63,13 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
     try {
       final String? message = await action();
       if (mounted) setState(() => _notice = message);
-    } on core.AuthFailure catch (e) {
+    } catch (e) {
       // Was `_notice = e.message`. `resendVerificationEmail` hits `resend`, which
-      // Box A gates, so this is one of the two screens the captcha actually reaches.
-      if (mounted) {
-        setState(
-          () => _notice = authErrorText(AppLocalizations.of(context), e),
-        );
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() => _notice = AppLocalizations.of(context).authUnknownError);
-      }
+      // the self-hosted auth server (Box C) gates, so this is one of the two
+      // screens the captcha actually reaches. ⏱ 2026-09-24 — one arm: the
+      // shared mapper already answers anything unmodelled with
+      // `authUnknownError`, which the second arm here spelled out by hand.
+      if (mounted) setState(() => _notice = authErrorSentence(context, e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }

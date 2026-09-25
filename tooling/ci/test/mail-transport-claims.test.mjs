@@ -64,6 +64,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'nod
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { BOXC_DEFAULT_TARGET } from '../../ops/selfhosted-auth.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = resolve(CI_DIR, '..', '..');
@@ -1004,19 +1005,22 @@ describe('verify-supabase-templates --selfhosted — the three looks and the exi
 
   /** Run `--selfhosted` with a fetch stub that serves `served` (file → body, or a
    *  number for a status) under /auth-mail/ and `settings` (object or status) at
-   *  /auth/v1/settings. `boxcEnv` null = no flag; `creds` false = no SELFHOSTED env. */
-  const runSH = ({ served = DR, settings = GOOD_SETTINGS, boxcEnv = GOOD_ENV_LINES, creds = true } = {}) => {
+   *  /auth/v1/settings — on any host, or only at `settingsAt` when given.
+   *  `boxcEnv` null = no flag; `creds` false = no SELFHOSTED env; `url` null =
+   *  SELFHOSTED_SUPABASE_URL unset while the anon key stays. */
+  const runSH = ({ served = DR, settings = GOOD_SETTINGS, boxcEnv = GOOD_ENV_LINES, creds = true, url = 'https://auth.example.test', settingsAt = null } = {}) => {
     const pre = join(TMP, `fetch-stub-sh-${seq++}.mjs`);
     writeFileSync(pre, [
       `const SERVED = ${JSON.stringify(served)};`,
       `const SETTINGS = ${JSON.stringify(settings)};`,
+      `const SETTINGS_AT = ${JSON.stringify(settingsAt)};`,
       'globalThis.fetch = async (u) => {',
       '  const url = String(u);',
       "  if (url.includes('/auth-mail/')) {",
       "    const b = SERVED[url.split('/').pop()];",
       "    return typeof b === 'number' ? new Response('gone', { status: b }) : new Response(b ?? 'missing', { status: b === undefined ? 404 : 200 });",
       '  }',
-      "  if (url.endsWith('/auth/v1/settings')) {",
+      "  if (url.endsWith('/auth/v1/settings') && (SETTINGS_AT === null || url === SETTINGS_AT)) {",
       "    return typeof SETTINGS === 'number' ? new Response('no', { status: SETTINGS }) : new Response(JSON.stringify(SETTINGS), { status: 200, headers: { 'content-type': 'application/json' } });",
       '  }',
       "  return new Response('unexpected url', { status: 418 });",
@@ -1027,7 +1031,7 @@ describe('verify-supabase-templates --selfhosted — the three looks and the exi
     delete env.SELFHOSTED_SUPABASE_URL;
     delete env.SELFHOSTED_SUPABASE_ANON_KEY;
     if (creds) {
-      env.SELFHOSTED_SUPABASE_URL = 'https://auth.example.test';
+      if (url !== null) env.SELFHOSTED_SUPABASE_URL = url;
       env.SELFHOSTED_SUPABASE_ANON_KEY = ANON;
     }
     const args = ['--import', pathToFileURL(pre).href, LIVE_CHECKER, shRoot(), '--selfhosted'];
@@ -1069,10 +1073,11 @@ describe('verify-supabase-templates --selfhosted — the three looks and the exi
   });
 
   test('SH5 — no SELFHOSTED credentials in the environment is COVERAGE LOST: exit 2', () => {
+    // The URL has a default now (SH12); the anon key has none, so it is the gap.
     const r = runSH({ creds: false });
     assert.equal(r.status, 2, out(r));
     assert.match(out(r), /COVERAGE LOST — first gap: \(b\) settings/);
-    assert.match(out(r), /SELFHOSTED_SUPABASE_URL is not in the environment/);
+    assert.match(out(r), /SELFHOSTED_SUPABASE_ANON_KEY is not in the environment/);
   });
 
   test('SH6 — no --boxc-env leaves SMTP and subjects LOST, never passed: exit 2', () => {
@@ -1112,5 +1117,29 @@ describe('verify-supabase-templates --selfhosted — the three looks and the exi
     const r = runSH({ boxcEnv: lines });
     assert.equal(r.status, 1, out(r));
     assert.match(out(r), /FAIL  \(c\) env smtp_pass: GOTRUE_SMTP_PASS is EMPTY/);
+  });
+
+  // ⏱ 2026-09-24 — THE DEFAULT URL, BOTH WAYS. With SELFHOSTED_SUPABASE_URL unset
+  // the settings are read at BOXC_DEFAULT_TARGET, the preflight's default (the
+  // vault holds a retired host under another name). Each stub answers the
+  // settings at ONE host only, so a read anywhere else is a 418 and LOST.
+  test('SH12 — SELFHOSTED_SUPABASE_URL unset: the settings are read at BOXC_DEFAULT_TARGET, and the line says default', () => {
+    const r = runSH({ url: null, settingsAt: `${BOXC_DEFAULT_TARGET}/auth/v1/settings` });
+    assert.equal(r.status, 0, out(r));
+    assert.ok(out(r).includes(`auth URL ${BOXC_DEFAULT_TARGET} (default)`), out(r));
+    assert.match(out(r), /PASS  \(b\) settings mailer_autoconfirm/);
+    noCanary(r);
+  });
+
+  test('SH13 — SELFHOSTED_SUPABASE_URL set: it wins over the default, and the line says so', () => {
+    const r = runSH({ url: 'https://auth.example.test', settingsAt: 'https://auth.example.test/auth/v1/settings' });
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /auth URL len=25 sha256:[0-9a-f]{8} \(from SELFHOSTED_SUPABASE_URL\)/);
+    assert.doesNotMatch(out(r), /\(default\)/);
+    // The control: the same env with the stub answering only at the default is not
+    // read there, so (b) is LOST — the env URL really was the one used.
+    const other = runSH({ url: 'https://auth.example.test', settingsAt: `${BOXC_DEFAULT_TARGET}/auth/v1/settings` });
+    assert.equal(other.status, 2, out(other));
+    assert.match(out(other), /LOST  \(b\) settings auth\/v1\/settings: .*HTTP 418/);
   });
 });

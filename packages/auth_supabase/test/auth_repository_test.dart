@@ -351,6 +351,23 @@ void main() {
       expect('sevench'.length, core.kMinPasswordLength - 1);
     });
 
+    // ⏱ 2026-09-25 — the refusal speaks the SERVER's vocabulary, as the real
+    // repository's does: uncoded, the shared mapper can only answer
+    // `passwordTooWeak` for a rule it could have named exactly.
+    test('the short-password refusal is coded weak_password, reason length',
+        () async {
+      auth.deliverPasswordRecovery('a@b.com');
+      final Object? thrown = await auth
+          .updatePassword(newPassword: 'sevench')
+          .then<Object?>((_) => null, onError: (Object e) => e);
+
+      expect(thrown, isA<core.AuthFailure>());
+      final core.AuthFailure f = thrown! as core.AuthFailure;
+      expect(f.code, core.AuthFailure.weakPassword);
+      expect(f.reasons, <String>[core.AuthFailure.reasonLength]);
+      expect(f.localized, isFalse);
+    });
+
     // The expired / already-used / wrong-device link, at the seam.
     test('with no session at all it refuses rather than doing nothing',
         () async {

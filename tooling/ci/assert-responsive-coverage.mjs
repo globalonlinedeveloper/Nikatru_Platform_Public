@@ -613,8 +613,14 @@ const REQUIRED_COVERAGE = [
     // the 2026-09-07 note above gives: `test/a11y_home_test.dart` joined the
     // corpus, and R14b caught the slack — deleting a width suite left 20 files and
     // cleared a floor of 20. Read off the per-root line, `— 21 file(s)`.
+    // ⏱ RAISED `widthTestFiles` 21 → 23 ON 2026-09-24, surfaces unchanged, for
+    // the same reason: the shared auth error mapper moved into this package
+    // with its suite (`test/auth_error_text_test.dart`) and a helper
+    // (`test/support/raw_vendor_error.dart`) the auth view suites share. R14b
+    // caught the slack — deleting a width suite left 22 and cleared 21. Read
+    // off the per-root line, `— 23 file(s)`.
     surfaces: 20,
-    widthTestFiles: 21,
+    widthTestFiles: 23,
     coveredSurfaces: 20,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens every stamped ' +
