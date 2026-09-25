@@ -359,6 +359,25 @@ export const LISTING_CATEGORIES = /** @type {const} */ ({
 });
 
 /**
+ * The Apple category UTI each portfolio category word stands for — what
+ * tooling/app-yaml/render.mjs writes into `LSApplicationCategoryType` in both
+ * Apple Info.plists (O-APPLE-PLIST-KEYS-UNRENDERED). Keyed by the word an
+ * app.yaml `category` carries, and it covers every category LISTING_CATEGORIES
+ * lists on an Apple channel; store-vocabulary.test.mjs fails the day an Apple
+ * channel lists a word this map does not resolve.
+ *
+ * The renderer refuses an app whose category is not a key here (exit 1: an
+ * authoring error), and refuses an EMPTY map as COVERAGE LOST (exit 2), because
+ * an empty map would resolve nothing while every plist stayed as it was.
+ * Values are Apple's own identifiers (the `public.app-category.*` family in
+ * Apple's LSApplicationCategoryType reference); add one only with its word.
+ * @type {Readonly<Record<string, string>>}
+ */
+export const APPLE_CATEGORY_UTI = /** @type {const} */ ({
+  Productivity: 'public.app-category.productivity',
+});
+
+/**
  * 🔴 A STORE'S OWN FORM RULES, READ FROM THE FORM — the first axis in this file
  * that is the STORE's closed set rather than the portfolio's. Keyed by channel
  * id; today one channel.
@@ -549,6 +568,7 @@ export const STORE_VOCABULARY = {
   listingFields: LISTING_FIELDS,
   listingCategories: LISTING_CATEGORIES,
   storeFormRules: STORE_FORM_RULES,
+  appleCategoryUti: APPLE_CATEGORY_UTI,
 };
 
 /** The axis names, so a reader can enumerate them without hardcoding a list. */
@@ -564,4 +584,5 @@ export const VOCABULARY_AXES = /** @type {const} */ ([
   'listingFields',
   'listingCategories',
   'storeFormRules',
+  'appleCategoryUti',
 ]);

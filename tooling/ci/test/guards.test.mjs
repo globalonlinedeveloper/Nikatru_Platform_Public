@@ -1274,6 +1274,47 @@ describe('assert-workflow-hardening', () => {
     assert.match(out, /all SHA-pinned/);
   });
 
+  // ── limb 11 · ⏱ 2026-09-25 · O-GUARD-SHARD-STOPS-AT-FIRST-RED ─────────────────
+  // ci.yml's four guard shards ran each assert step on `success()`, so the first
+  // red skipped the rest of its shard. The fixture is two ordinary workflows plus a
+  // ci.yml of `count` shards of 25 assert steps each (four clear both floors).
+  const shardYml = (count, bare = null) => {
+    let y = 'name: CI\non: push\npermissions:\n  contents: read\njobs:\n';
+    for (let k = 0; k < count; k++) {
+      y += `  guards-s${k}:\n    runs-on: ubuntu-24.04\n    timeout-minutes: 5\n    steps:\n      - uses: actions/checkout@${SHA}\n`;
+      for (let i = 0; i < 25; i++) {
+        y += `      - name: Guard ${k}.${i}\n`;
+        if (!(bare && bare.shard === k && bare.step === i)) y += '        if: ${{ !cancelled() }}\n';
+        y += `        run: node tooling/ci/assert-g${k}-${i}.mjs\n`;
+      }
+    }
+    return y;
+  };
+  const buildShards = (name, count, bare = null) => {
+    const files = {};
+    for (const f of ['a', 'b']) files[`.github/workflows/${f}.yml`] = wf(Array.from({ length: 4 }, (_, i) => `actions/act${i}@${SHA}`));
+    files['.github/workflows/ci.yml'] = shardYml(count, bare);
+    return fixture(name, files);
+  };
+
+  test('limb 11 — a guards-* assert step with no `if: ${{ !cancelled() }}` FAILS, naming the job and the step', () => {
+    const { code, out } = run('assert-workflow-hardening.mjs', { args: [buildShards('wh-shard-bare', 4, { shard: 2, step: 7 })] });
+    assert.equal(code, 1, out);
+    assert.match(out, /ci\.yml:\d+ job "guards-s2" step "Guard 2\.7" has no `if:`/);
+  });
+
+  test('limb 11 — every assert step carrying it PASSES, and the ok block says what it judged', () => {
+    const { code, out } = run('assert-workflow-hardening.mjs', { args: [buildShards('wh-shard-ok', 4)] });
+    assert.equal(code, 0, out);
+    assert.match(out, /limb 11 — 100 assert step\(s\) across 4 `guards-\*` shard\(s\)/);
+  });
+
+  test('limb 11 — THREE shards is COVERAGE LOST (2), never a pass over a remnant', () => {
+    const { code, out } = run('assert-workflow-hardening.mjs', { args: [buildShards('wh-shard-three', 3)] });
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST — limb 11 read 3 `guards-\*` shard\(s\) and 75/);
+  });
+
   test('FAILS on a movable tag reference, naming file and line', () => {
     const dir = build('wh-tag', { bad: { file: 'b', index: 2, ref: 'actions/checkout@v4' } });
     const { code, out } = run('assert-workflow-hardening.mjs', { args: [dir] });

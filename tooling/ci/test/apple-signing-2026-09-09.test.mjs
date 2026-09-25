@@ -132,13 +132,14 @@ describe('xcodeProfileDirs names both locations Xcode has used', () => {
 /** A provisioning profile is a CMS envelope with an XML plist inside; the parser
  *  looks for `<?xml` … `</plist>` and ignores the wrapper, so a bare plist with
  *  plausible surrounding bytes is a faithful stand-in for the two real files.
- *  The two real profiles this repository actually holds (ZUHKLYLZNR and
- *  97KS2MWMVC, against bundle id W5XX7RJ4WQ = com.nikatru.subscriptiontracker)
- *  were read with this parser before these fixtures were written; the key names
- *  below are what they measured.
+ *  The two real profiles this repository held on 2026-09-09 (against the App ID
+ *  for com.nikatru.subscriptiontracker) were read with this parser before these
+ *  fixtures were written; the key names below are what they measured. Their ids,
+ *  and every later one, are in tooling/apple-provisioning.json (`protected`,
+ *  `retired`) and nowhere in tooling/ci — assert-apple-entitlements.mjs refuses one.
  *
- *  🔴 THE IDS MOVED AND THE MEASUREMENT DID NOT. The first pair, TPT7N9XTC7 and
- *  HRJS9Z65X6 against YZGQND6Z9C (com.nikatru.subly), was deleted on 2026-09-09
+ *  🔴 THE IDS MOVED AND THE MEASUREMENT DID NOT. The first pair, against the App
+ *  ID for com.nikatru.subly, was deleted on 2026-09-09
  *  when the owner moved the package identifier; the replacements were re-read
  *  with this same parser and carry the SAME two spellings of
  *  `application-identifier` — iOS bare, macOS `com.apple.`-prefixed. That is a

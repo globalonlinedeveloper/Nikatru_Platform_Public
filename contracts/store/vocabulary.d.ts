@@ -29,6 +29,7 @@ export const ARTIFACT_FORMATS: readonly string[];
 export const DEVICE_CLASSES: readonly string[];
 export const LISTING_FIELDS: readonly ListingField[];
 export const LISTING_CATEGORIES: Readonly<Record<string, readonly string[]>>;
+export const APPLE_CATEGORY_UTI: Readonly<Record<string, string>>;
 
 export interface StoreFormRules {
   readonly source: string;
@@ -73,6 +74,7 @@ export interface StoreVocabulary {
   readonly listingFields: readonly ListingField[];
   readonly listingCategories: Readonly<Record<string, readonly string[]>>;
   readonly storeFormRules: Readonly<Record<string, StoreFormRules>>;
+  readonly appleCategoryUti: Readonly<Record<string, string>>;
 }
 
 export const STORE_VOCABULARY: StoreVocabulary;

@@ -166,6 +166,85 @@ describe('assert-bundle-availability — the coming-soon gate is derived', () =>
     assert.match(r.out, /disagree about `priced`/);
   });
 
+  // ── F · O-BUNDLE-MEMBERSHIP-UNGRADED — every catalogue product is placed ────
+  test('BA5 — a catalogue product neither a member nor excluded is refused', () => {
+    const r = run(
+      tree((d) =>
+        editJson(d, 'extensions/catalog/extensions.json', (doc) => {
+          doc.push({ ...doc[0], slug: 'newext', status: 'preview' });
+          return doc;
+        }),
+      ),
+    );
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /`newext` is a catalogue product and catalog\/bundles\.json neither lists it/);
+  });
+
+  test('BA6 — an excluded catalogue product with a `why` passes', () => {
+    const r = run(
+      tree((d) => {
+        editJson(d, 'extensions/catalog/extensions.json', (doc) => {
+          doc.push({ ...doc[0], slug: 'newext', status: 'preview' });
+          return doc;
+        });
+        editJson(d, 'catalog/bundles.json', (doc) => {
+          doc[0].excluded = [{ slug: 'newext', why: 'a free utility, not sold in the bundle' }];
+          return doc;
+        });
+      }),
+    );
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /equal members ∪ excluded .*excluded: newext/);
+  });
+
+  test('BA7 — an excluded catalogue product with no `why` is refused', () => {
+    const r = run(
+      tree((d) => {
+        editJson(d, 'extensions/catalog/extensions.json', (doc) => {
+          doc.push({ ...doc[0], slug: 'newext', status: 'preview' });
+          return doc;
+        });
+        editJson(d, 'catalog/bundles.json', (doc) => {
+          doc[0].excluded = [{ slug: 'newext', why: ' ' }];
+          return doc;
+        });
+      }),
+    );
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /excludes `newext` with no `why`/);
+  });
+
+  test('BA8 — a member no catalogue carries is refused', () => {
+    const r = run(
+      tree((d) =>
+        editJson(d, 'catalog/bundles.json', (doc) => {
+          doc[0].members.push({ slug: 'ghost', kind: 'app' });
+          return doc;
+        }),
+      ),
+    );
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /lists member `ghost`, which neither catalog\/apps\.json nor extensions\/catalog\/extensions\.json carries/);
+  });
+
+  test('limb F reading zero catalogue slugs is COVERAGE LOST, never a clean membership', () => {
+    const r = run(
+      tree((d) => {
+        writeFileSync(join(d, 'catalog/apps.json'), '[]');
+        writeFileSync(join(d, 'extensions/catalog/extensions.json'), '[]');
+      }),
+    );
+    // Limb D also goes red (no product can go live), and a finding outranks a blind limb.
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /COVERAGE LOST — limb F read ZERO product slugs/);
+  });
+
+  test('limb C prints all four conjuncts with their values', () => {
+    const r = run(tree());
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /limb C conjuncts: enoughLive=false \(1 live, floor 2\), missingMembers=\[fullshot\], membersAllLive=false, priced=false/);
+  });
+
   // ── THE EMPTY SUBJECT ──────────────────────────────────────────────────────
   // assert-guards-refuse-empty.mjs runs this guard with NO argv against a tree
   // that carries only tooling/, so the registers are gone. Asserted here too,

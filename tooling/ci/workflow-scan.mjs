@@ -1095,6 +1095,58 @@ export function resolveLocalCalls(wf, parsedAll) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ⏱ ADDED 2026-09-25 (O-RELEASE-EMITTER-WRITES-UNCHECKED): THE RELEASE-RECORD
+// EMITTER'S CALL SITES, read once. assert-release-json.test.mjs executed every
+// step it found with a private finder, and assert-release-durable.mjs matched a
+// narrower private regex (`release-manifest.mjs --emit-release-json <dir>`) that
+// missed the flag in another order, on a continuation line, or behind a script
+// held in a variable. One finder now serves both. Its step model is
+// `workflowSteps` above: the test's own `jobSteps` walk was measured against it
+// over every job in .github/workflows (86 jobs, 830 steps) and agreed on every
+// boundary, so it was dropped rather than moved.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The emitter's own name for the mode. release-manifest.mjs selects it with
+ *  `has('emit-release-json')` — the flag at ANY position of its argv. */
+export const EMIT_RELEASE_JSON_MODE = 'emit-release-json';
+
+/** The directory a text hands the emitter: the token after `--emit-release-json`,
+ *  read the way release-manifest.mjs's `positionalAfter` reads its argv (a
+ *  following `--flag` is no directory), across a `\` continuation. As written,
+ *  quotes kept, like the `--write`/`--verify` directories callers compare it with.
+ *  Null when the text names no directory. */
+export function emitOutputDir(text) {
+  const m = joinShellContinuations(text).match(new RegExp(`--${EMIT_RELEASE_JSON_MODE}\\s+(\\S+)`));
+  return m && !m[1].startsWith('--') ? m[1] : null;
+}
+
+/**
+ * Every STEP of `parsed` (default: every workflow under `wfRoot`) that names the
+ * emit mode anywhere, in file order, as `{ wf, job, step, n, dir }`: `step` is a
+ * `workflowSteps` entry (`first`/`last` are its file lines), `n` the first
+ * LOGICAL line naming the mode (a block scalar's is its `run:` key's line), and
+ * `dir` that line's `emitOutputDir`. A mention outside every step (a job-level
+ * `env:`) is in no step and is not returned; a caller that must account for
+ * every mention re-reads the file flat.
+ */
+export function emitInvocations(wfRoot, parsed = parseAllWorkflows(wfRoot)) {
+  const found = [];
+  for (const wf of parsed) {
+    for (const job of wf.jobs.values()) {
+      const steps = workflowSteps(job);
+      for (const l of job.logical) {
+        if (!l.text.includes(EMIT_RELEASE_JSON_MODE)) continue;
+        const step = steps.find((s) => s.first <= l.n && l.n <= s.last);
+        if (step && !found.some((f) => f.wf === wf && f.step.first === step.first)) {
+          found.push({ wf, job, step, n: l.n, dir: emitOutputDir(l.text) });
+        }
+      }
+    }
+  }
+  return found;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // THE RESOLVED VIEW — every workflow with its LOCAL references followed, once.
 //
 // ⏱ ADDED 2026-09-24 (O-GUARDS-DO-NOT-FOLLOW-LOCAL-USES). The release and publish

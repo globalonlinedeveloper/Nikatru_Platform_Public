@@ -12,7 +12,7 @@
 // slip, and the edit that causes it looks like a one-word diff.
 //
 // So the answer is DERIVED from registers that already exist and are already
-// graded by other guards, and this file asserts FIVE things about that:
+// graded by other guards, and this file asserts SIX things about that:
 //
 //   A · NO LITERAL. `purchasable` (and its siblings) never appear as a boolean
 //       literal in the register, in either derivation, or in anything that
@@ -39,6 +39,19 @@
 //       conjunct set is compared to the .mjs's, on the model of limb 4 of
 //       assert-entitlement-contract.mjs — which already holds one set across
 //       four runtimes for exactly this reason.
+//
+//   F · EVERY CATALOGUE PRODUCT IS A MEMBER OR IS EXCLUDED, BY NAME.
+//       O-BUNDLE-MEMBERSHIP-UNGRADED. `membersAllLive` reads only the slugs the
+//       bundle names, so a product added to catalog/apps.json or
+//       extensions/catalog/extensions.json and never added to `members` left the
+//       "every Nikatru product" bundle silently short of it. The slugs of both
+//       catalogues must equal the bundle's `members` ∪ `excluded`; each
+//       `excluded` entry is `{ slug, why }` with a non-empty why; a member or an
+//       exclusion naming no catalogue product is refused. A missing `excluded`
+//       reads as []. Reading zero catalogue slugs is COVERAGE LOST.
+//
+// Limb C prints every conjunct of `purchasable` with its value, so the reason
+// the gate is shut is read off the log rather than inferred.
 //
 // ⚠️ COVERAGE LOST IS NOT A PASS. A missing register, an unparseable one, or a
 // derivation that could not be imported all REFUSE. An empty product set makes
@@ -201,6 +214,11 @@ if (typeof bundleAvailability !== 'function') {
   done();
 }
 
+/** Every conjunct of `purchasable` beyond `visible`, with its value. */
+const conjunctsOf = (why) =>
+  `enoughLive=${why.enoughLive} (${why.liveProductCount} live, floor ${why.minLiveProducts}), ` +
+  `missingMembers=[${why.missingMembers.join(', ')}], membersAllLive=${why.membersAllLive}, priced=${why.priced}`;
+
 // ── C · TODAY'S REGISTERS YIELD false, FOR THE RIGHT REASON ──────────────────
 {
   const today = bundleAvailability(ROOT);
@@ -217,18 +235,20 @@ if (typeof bundleAvailability !== 'function') {
       `the real registers derive \`purchasable: ${today.purchasable}\`. As of this commit ${APPS} carries ` +
         `${today.why.liveProducts.length} live product(s) (${today.why.liveProducts.join(', ') || 'none'}) and the ` +
         `floor is ${today.why.minLiveProducts}. If a second product really did go live, this line is the review ` +
-        'that says so — it is not a line to edit past.',
+        `that says so — it is not a line to edit past. Conjuncts: ${conjunctsOf(today.why)}.`,
     );
   } else if (today.why.enoughLive !== false) {
     fail(
       'the gate is closed but NOT because there are too few live products — the evidence says the floor is met. ' +
-        'That means something else is holding it shut and the "one more live product opens it" story is false.',
+        'That means something else is holding it shut and the "one more live product opens it" story is false. ' +
+        `Conjuncts: ${conjunctsOf(today.why)}.`,
     );
   } else {
     ok(
       `today's registers derive purchasable=false because ${today.why.liveProductCount} live product(s) < ` +
         `${today.why.minLiveProducts} (live: ${today.why.liveProducts.join(', ') || 'none'})`,
     );
+    ok(`limb C conjuncts: ${conjunctsOf(today.why)}`);
   }
 }
 
@@ -318,6 +338,79 @@ if (typeof bundleAvailability !== 'function') {
     coverageLost('limb E compared ZERO conjuncts, so the two derivations were never held together.');
   } else if (disagreed === 0) {
     ok(`both derivations decide the same ${compared} conjuncts`);
+  }
+}
+
+// ── F · EVERY CATALOGUE PRODUCT IS A MEMBER OR IS EXCLUDED, BY NAME ───────────
+// O-BUNDLE-MEMBERSHIP-UNGRADED. The row graded is bundles[0], the one the
+// derivation reads.
+{
+  const before = problems.length;
+  const catalog = new Set();
+  for (const file of [APPS, EXTENSIONS]) {
+    let rows;
+    try {
+      rows = JSON.parse(sources.get(file));
+    } catch (e) {
+      coverageLost(`limb F could not parse ${file} (${e.message}), so its products were never held against the bundle.`);
+      continue;
+    }
+    for (const r of Array.isArray(rows) ? rows : []) {
+      if (typeof r?.slug === 'string' && r.slug) catalog.add(r.slug);
+    }
+  }
+  let bundle = null;
+  try {
+    const bundles = JSON.parse(sources.get(BUNDLES));
+    bundle = Array.isArray(bundles) && bundles.length > 0 ? bundles[0] : null;
+  } catch (e) {
+    coverageLost(`limb F could not parse ${BUNDLES} (${e.message}).`);
+  }
+  if (catalog.size === 0) {
+    coverageLost(`limb F read ZERO product slugs from ${APPS} and ${EXTENSIONS}, so membership was asserted over nothing.`);
+  } else if (bundle === null) {
+    coverageLost(`limb F found no bundle row in ${BUNDLES} to hold the ${catalog.size} catalogue product(s) against.`);
+  } else {
+    const members = (Array.isArray(bundle.members) ? bundle.members : []).map((m) => m?.slug);
+    const excludedRaw = bundle.excluded ?? [];
+    const excluded = [];
+    if (!Array.isArray(excludedRaw)) {
+      fail(`${BUNDLES} \`excluded\` is not an array of { slug, why }.`);
+    } else {
+      for (const [i, x] of excludedRaw.entries()) {
+        if (typeof x?.slug !== 'string' || !x.slug) {
+          fail(`${BUNDLES} excluded[${i}] names no \`slug\`.`);
+          continue;
+        }
+        if (typeof x.why !== 'string' || x.why.trim() === '') {
+          fail(`${BUNDLES} excludes \`${x.slug}\` with no \`why\`. An exclusion from "every product" is a decision, and a decision states its reason.`);
+        }
+        excluded.push(x.slug);
+      }
+    }
+    for (const s of members) {
+      if (typeof s !== 'string' || !catalog.has(s)) {
+        fail(`${BUNDLES} lists member \`${s}\`, which neither ${APPS} nor ${EXTENSIONS} carries — an unknown member can never be live.`);
+      }
+      if (excluded.includes(s)) fail(`${BUNDLES} lists \`${s}\` as a member AND excludes it.`);
+    }
+    for (const s of excluded) {
+      if (!catalog.has(s)) fail(`${BUNDLES} excludes \`${s}\`, which neither ${APPS} nor ${EXTENSIONS} carries.`);
+    }
+    for (const s of catalog) {
+      if (!members.includes(s) && !excluded.includes(s)) {
+        fail(
+          `\`${s}\` is a catalogue product and ${BUNDLES} neither lists it in \`members\` nor names it in \`excluded\` ` +
+            'with a `why`. The bundle is sold as every Nikatru product; add it to one of the two.',
+        );
+      }
+    }
+    if (problems.length === before) {
+      ok(
+        `the ${catalog.size} catalogue product(s) equal members ∪ excluded ` +
+          `(members: ${members.join(', ') || 'none'}; excluded: ${excluded.join(', ') || 'none'})`,
+      );
+    }
   }
 }
 

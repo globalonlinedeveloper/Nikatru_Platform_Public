@@ -5,7 +5,7 @@
   "description": "apps/<id>/app.yaml — the ONE place an app's identity, hosts, platforms, storefront listings and legal URLs are written. catalog/apps.json, every apps/<id>/store/<channel>/{title,short-description,category,privacy-policy-url,support-url}.txt and the Apple channels' terms-of-use-url.txt are RENDERED from it by tooling/app-yaml/render.mjs; none of them is authored. [ADR 067] decision 2.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["id", "name", "tagline", "category", "status", "hosts", "platforms", "listings", "legal", "ai"],
+  "required": ["id", "name", "tagline", "category", "status", "hosts", "platforms", "listings", "legal", "ai", "exportCompliance"],
   "properties": {
     "id": {
       "description": "The app id, and the catalogue `slug`. The rule is contracts/app-id (lowercase letters and digits, a letter first, 2-32 characters); tooling/ci/assert-app-id-contract.mjs fails if this property accepts an id that contract refuses. Same shape assert-catalog-contract.mjs grades and the same string the directory is named.",
@@ -79,6 +79,31 @@
       "additionalProperties": { "type": ["string", "null"], "format": "https-url" },
       "properties": {}
     },
+    "stores": {
+      "description": "OPTIONAL. The identities a store CONSOLE issues to this app, one record per store, keyed by the tooling/channel-register.json channel id. O-SECOND-APP-SIGNS-AS-THE-FIRST limb (1): the Windows identity was one value on the windows-store channel row, and tooling/bricks/app/hooks/post_gen.dart copies that row into every app it stamps, so a second app would package and submit as the first. It is a top-level key and not `listings.windows-store.identity` because `listings` types every value as an https URL. The account-wide facts (`publisher`, `publisherDisplayName`) stay on the channel row. tooling/ci/assert-store-metadata.mjs fails two apps that declare the same non-sentinel identityName, and, while the channel row still carries its own copy, a record that disagrees with it.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "windows-store": {
+          "description": "The MSIX Package/Identity/Name and the Package Family Name Partner Center issued to THIS app (Product → Product identity). Neither can be derived from the app id. An app with no Partner Center product yet writes the channel row's `packageIdentity.notYetConfiguredSentinel`, PARTNER-CENTER-PENDING, in both fields: an invented value would package and submit under an identity nobody owns.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["identityName", "packageFamilyName"],
+          "properties": {
+            "identityName": {
+              "description": "Letters, digits, `.` and `-`: the characters the one issued identity and the sentinel both use. The pattern refuses a space or an underscore typed into the field; it cannot tell a wrong name from a right one, which is what the equality checks are for.",
+              "type": "string",
+              "pattern": "^[A-Za-z0-9.-]+$"
+            },
+            "packageFamilyName": {
+              "description": "`<identityName>_<publisher id>`, where the publisher id is 13 lower-case Crockford base32 characters (tooling/ci/assert-channel-register.mjs §6e derives it from the publisher), or the sentinel.",
+              "type": "string",
+              "pattern": "^(PARTNER-CENTER-PENDING|[A-Za-z0-9.-]+_[0-9a-hjkmnp-tv-z]{13})$"
+            }
+          }
+        }
+      }
+    },
     "legal": {
       "description": "The listing URLs. privacyPolicyUrl and supportUrl go into every channel's tree; termsUrl (added 2026-09-24, O-APPLE-LISTING-HAS-NO-EULA) goes only into the channels whose register row names terms-of-use-url.txt in its additionalFiles, today the two Apple rows. All three are compared to tooling/channel-register.json's storeMetadataContract.portfolioUrls by assert-store-metadata.mjs, so a fork here fails the build rather than pointing a store reviewer at somebody else's policy.",
       "type": "object",
@@ -149,6 +174,23 @@
         "generatesContent": {
           "description": "Whether the app generates content with AI at runtime — text, images, voice or video a model produces for the user. Out of Play's scope: an app that only hosts AI content, summarises non-AI content, or uses AI to improve an existing productivity feature (answer/14094294).",
           "type": "boolean"
+        }
+      }
+    },
+    "exportCompliance": {
+      "description": "REQUIRED of every app, `false` included, for the reason `ai` is: an optional field the renderer defaulted to false would be a legal declaration nobody made. O-APPLE-PLIST-KEYS-UNRENDERED. tooling/app-yaml/render.mjs renders `usesNonExemptEncryption` into ITSAppUsesNonExemptEncryption in both Apple Info.plists, and tooling/ci/assert-app-yaml.mjs limb 8 (export-compliance consistency) holds a `false` to the code: no shipped first-party Dart may import a cipher package or name a cipher class, and the app's pubspec may carry no direct dependency on one.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["usesNonExemptEncryption", "basis"],
+      "properties": {
+        "usesNonExemptEncryption": {
+          "description": "Apple's export-compliance answer, as the build ships it. `false` means every use of cryptography in the app falls inside Apple's exemption (OS-provided HTTPS, authentication, digital signatures, hashing). The owner answers App Store Connect's export questions consistently with it.",
+          "type": "boolean"
+        },
+        "basis": {
+          "description": "The sentence a reviewer reads: what was measured and why the answer holds. A stamped app carries the brick's placeholder, marked to be re-measured before its first Apple upload.",
+          "type": "string",
+          "minLength": 20
         }
       }
     }

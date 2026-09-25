@@ -66,6 +66,7 @@ import {
   installableExtensions,
   BUNDLE_MEMBERS,
   channelStampName,
+  RELEASE_SCHEMA_REL as SCHEMA_REL,
 } from './release-manifest.mjs';
 import { validate, SchemaError } from '../app-yaml/schema-validate.mjs';
 import { parseAllWorkflows, workflowSteps, RELEASE_CHANNEL_STAMP } from './workflow-scan.mjs';
@@ -73,7 +74,6 @@ import { uploadableArtifactName } from './assert-apps-gov-in-apk.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = resolve(join(HERE, '..', '..'));  // tooling/ci -> repo root
-const SCHEMA_REL = 'contracts/release.schema.json';
 const REGISTER_REL = 'tooling/channel-register.json';
 
 /** The sentinel build-platforms.yml's release job synthesises on a run that is

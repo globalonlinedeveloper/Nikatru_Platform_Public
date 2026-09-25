@@ -21,6 +21,13 @@
 // renderings into files this script does not otherwise own; see
 // ICON_LABEL_TARGETS below for the anchor rule that makes that safe.
 //
+// and, into both Apple Info.plists, the TWO keys App Store review reads from the
+// bundle: LSApplicationCategoryType (from `category`, through the vocabulary's
+// APPLE_CATEGORY_UTI) and ITSAppUsesNonExemptEncryption (from
+// `exportCompliance.usesNonExemptEncryption`, a legal answer). Those are UPSERTS,
+// not replace-only, because `flutter create` writes neither; see
+// PLIST_KEY_TARGETS below (O-APPLE-PLIST-KEYS-UNRENDERED).
+//
 // ⛔ THE SIXTH OS-LEVEL LABEL — the .desktop `Name=` — IS NOT WRITTEN HERE, and
 // that is not an omission. `tooling/store/render-linux-icons.mjs` derives that
 // whole file, all nine lines of it, and assert-launcher-icons.mjs limb 7
@@ -87,7 +94,7 @@ import { fileURLToPath } from 'node:url';
 import { parseYaml, YamlError } from './yaml.mjs';
 import { validate } from './schema-validate.mjs';
 import { publicAppUrl } from '../sites/apex.mjs';
-import { renderedListingFiles, STORE_FORM_RULES } from '../../contracts/store/vocabulary.js';
+import { APPLE_CATEGORY_UTI, renderedListingFiles, STORE_FORM_RULES } from '../../contracts/store/vocabulary.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -254,6 +261,82 @@ export const ICON_LABEL_TARGETS = [
     encode: yamlScalar,
   },
 ];
+
+/** The Apple category UTI a portfolio category word maps to, through the
+ *  vocabulary's APPLE_CATEGORY_UTI. An unmapped word is an authoring error
+ *  (`problem`, exit 1): the plist would otherwise carry no category, or a
+ *  guessed one. An EMPTY map is `lost` (exit 2), because then every word is
+ *  unmapped and the refusal would be about the map, not about the app. `map` is
+ *  a parameter so the empty case can be exercised without editing the contract. */
+export function appleCategoryUti(category, map = APPLE_CATEGORY_UTI) {
+  if (!map || Object.keys(map).length === 0) {
+    return { lost: 'contracts/store/vocabulary.js APPLE_CATEGORY_UTI is empty, so no category can be written into LSApplicationCategoryType.' };
+  }
+  if (!Object.hasOwn(map, category)) {
+    return {
+      problem:
+        `category "${category}" has no Apple category UTI in contracts/store/vocabulary.js APPLE_CATEGORY_UTI ` +
+        `(it maps ${Object.keys(map).map((k) => `"${k}"`).join(', ')}). Add the word with its public.app-category.* UTI ` +
+        'from Apple\'s LSApplicationCategoryType list, then regenerate vocabulary.json.',
+    };
+  }
+  return { uti: map[category] };
+}
+
+/**
+ * The two Info.plist keys App Store review reads from the bundle, in both Apple
+ * plists (O-APPLE-PLIST-KEYS-UNRENDERED).
+ *
+ * `value(doc, t)` returns `{ type: 'string' | 'bool', v }`, or `{ problem }` /
+ * `{ lost }` when the declaration cannot be resolved. It is called ONLY for a
+ * target file that exists, so an app with no Apple target is never asked to
+ * map its category.
+ *
+ * 🔴 AN UPSERT, NOT REPLACE-ONLY. ICON_LABEL_TARGETS replaces a value inside a
+ * key `flutter create` always writes. `flutter create` writes neither of these,
+ * so a missing key is INSERTED before the root `</dict>`; a present key has its
+ * whole value element replaced, type included, so flipping the declaration is
+ * `<false/>` to `<true/>` and nothing else. A file with no root `</dict>` /
+ * `</plist>` close is COVERAGE LOST whether or not the key is present: without
+ * that check, a rewritten file that still carried the key would render to its
+ * own bytes and pass.
+ */
+export const PLIST_KEY_TARGETS = [
+  {
+    key: 'LSApplicationCategoryType',
+    in: 'ios/Runner/Info.plist',
+    channel: 'ios-appstore',
+    value: (doc, t) => plistCategory(doc, t),
+  },
+  {
+    key: 'ITSAppUsesNonExemptEncryption',
+    in: 'ios/Runner/Info.plist',
+    value: (doc) => ({ type: 'bool', v: doc.exportCompliance.usesNonExemptEncryption }),
+  },
+  {
+    key: 'LSApplicationCategoryType',
+    in: 'macos/Runner/Info.plist',
+    channel: 'macos-appstore',
+    value: (doc, t) => plistCategory(doc, t),
+  },
+  {
+    key: 'ITSAppUsesNonExemptEncryption',
+    in: 'macos/Runner/Info.plist',
+    value: (doc) => ({ type: 'bool', v: doc.exportCompliance.usesNonExemptEncryption }),
+  },
+];
+
+/** The category the channel's own category.txt carries (channelCategory), as a UTI. */
+function plistCategory(doc, t) {
+  const r = appleCategoryUti(channelCategory(t.channel, doc.category));
+  return r.uti ? { type: 'string', v: r.uti } : r;
+}
+
+/** One plist value element. The element name IS the type, so it is rendered whole. */
+const plistValue = ({ type, v }) => (type === 'bool' ? (v ? '<true/>' : '<false/>') : `<string>${xmlText(String(v))}</string>`);
+
+/** The root dictionary's close: the one place a missing key is inserted. */
+const PLIST_ROOT_CLOSE = /(\r?\n)(<\/dict>\r?\n<\/plist>\s*)$/;
 
 /** The catalogue row's key order. Locked, because the row is the published record
  *  and the bytes are compared by two positive controls: a row whose keys arrive
@@ -536,6 +619,56 @@ export function plan(root) {
   }
   if (labelApps > 0 && labelFields === 0) {
     lost.push(`${labelApps} declaration(s) carry a \`shortName\` and zero icon-label fields were rendered from any of them.`);
+  }
+
+  // ── the two Apple Info.plist keys (O-APPLE-PLIST-KEYS-UNRENDERED) ──────────
+  // Every declaration carries `exportCompliance` (the schema requires it), so
+  // this runs for every app that has an Apple target. A target file that is not
+  // on disk is a platform the app was never stamped for and is skipped, exactly
+  // as the label loop skips one; see PLIST_KEY_TARGETS for the rest.
+  for (const { id, doc } of declarations) {
+    for (const t of PLIST_KEY_TARGETS) {
+      const rel = `${APPS_DIR}/${id}/${t.in}`;
+      // Two rows share each file; the second reads the first's output.
+      const current = files.get(rel) ?? read(root, rel);
+      if (current === null) continue;
+      if (!PLIST_ROOT_CLOSE.test(current)) {
+        lost.push(
+          `${rel} exists but does not end with the root \`</dict>\` and \`</plist>\` this renderer inserts ${t.key} before. ` +
+            'It is an Apple target of a declared app, so App Store review reads this key from it; a render that skipped the file ' +
+            'would leave the key to whatever the file happens to say. Restore the plist\'s root close.',
+        );
+        continue;
+      }
+      const val = t.value(doc, t);
+      if (val.lost) {
+        lost.push(`${rel} ${t.key}: ${val.lost}`);
+        continue;
+      }
+      if (val.problem) {
+        problems.push(`${APPS_DIR}/${id}/app.yaml → ${rel} ${t.key}: ${val.problem}`);
+        continue;
+      }
+      const keyTag = `<key>${t.key}</key>`;
+      const seen = current.split(keyTag).length - 1;
+      if (seen > 1) {
+        problems.push(
+          `${rel} carries ${keyTag} ${seen} times. A plist reader keeps one of them, and which one is not this renderer's to guess; ` +
+            'delete the extra copies by hand, then re-render.',
+        );
+        continue;
+      }
+      if (seen === 1) {
+        const span = new RegExp(`(${keyTag}\\s*)(?:<string>[^<]*</string>|<true\\s*/>|<false\\s*/>)`);
+        if (!span.test(current)) {
+          lost.push(`${rel} carries ${keyTag} but its value is not a <string>, <true/> or <false/> this renderer can replace.`);
+          continue;
+        }
+        files.set(rel, current.replace(span, (_m, pre) => `${pre}${plistValue(val)}`));
+      } else {
+        files.set(rel, current.replace(PLIST_ROOT_CLOSE, (_m, nl, close) => `${nl}\t${keyTag}${nl}\t${plistValue(val)}${nl}${close}`));
+      }
+    }
   }
 
   // ── ⏱ 2026-09-15 · the RevenueCat app-id routing map ([ADR 085] decision A) ──
