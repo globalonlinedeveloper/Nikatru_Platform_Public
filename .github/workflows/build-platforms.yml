@@ -756,6 +756,11 @@ jobs:
         run: >
           node tooling/ci/assert-artifact-signed-apple.mjs
           apps/${{ matrix.app }}/build/macos/Build/Products/Release/*.app
+      # why: App Store review reads these keys from the bundle, not the repo; an INFOPLIST_KEY_* setting can override the rendered source plist.
+      - name: The macOS bundle carries the Info.plist keys app.yaml renders
+        run: >
+          node tooling/ci/assert-built-info-plist.mjs --app ${{ matrix.app }}
+          apps/${{ matrix.app }}/build/macos/Build/Products/Release/*.app
       # ⏱ CHANGED 2026-09-09 — THIS WAS `flutter build ios --release --no-codesign`
       # FROM THE FIRST COMMIT OF THIS LANE, AND THAT COMMAND CANNOT EMIT AN .ipa.
       # It produced `build/ios/iphoneos/Runner.app` and nothing else, so the
@@ -792,6 +797,11 @@ jobs:
         if: env.APPLE_SIGNING_POSTURE == 'release-signed'
         run: >
           node tooling/ci/stamp-channel.mjs --channel ios-appstore --build-step build_ipa
+          apps/${{ matrix.app }}/build/ios/ipa/*.ipa
+      - name: The .ipa carries the Info.plist keys app.yaml renders
+        if: env.APPLE_SIGNING_POSTURE == 'release-signed'
+        run: >
+          node tooling/ci/assert-built-info-plist.mjs --app ${{ matrix.app }}
           apps/${{ matrix.app }}/build/ios/ipa/*.ipa
       - name: Build ios (no codesign — unsigned build proof)
         if: env.APPLE_SIGNING_POSTURE != 'release-signed'
@@ -980,6 +990,11 @@ jobs:
         if: env.APPLE_SIGNING_POSTURE != 'release-signed'
         run: >
           node tooling/ci/assert-artifact-signed-apple.mjs
+          apps/${{ matrix.app }}/build/ios/iphoneos/*.app
+      - name: The iOS bundle carries the Info.plist keys app.yaml renders
+        if: env.APPLE_SIGNING_POSTURE != 'release-signed'
+        run: >
+          node tooling/ci/assert-built-info-plist.mjs --app ${{ matrix.app }}
           apps/${{ matrix.app }}/build/ios/iphoneos/*.app
       - name: Every artifact this lane claims exists, and is not empty
         run: >

@@ -361,5 +361,8 @@
         "30": "Android 11"
       }
     }
+  },
+  "appleCategoryUti": {
+    "Productivity": "public.app-category.productivity"
   }
 }

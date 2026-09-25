@@ -176,3 +176,15 @@ legal:
 # tells fail the day an AI package becomes a dependency.
 ai:
   generatesContent: false
+
+# O-APPLE-PLIST-KEYS-UNRENDERED. Required of every app, false included: it is a
+# legal answer, rendered into ITSAppUsesNonExemptEncryption in both Info.plists.
+# Measured at Public main 80ef8e39 and re-measured 2026-09-25 (design
+# apple-plist-keys section 1). assert-app-yaml limb 8 holds a false to the code.
+exportCompliance:
+  usesNonExemptEncryption: false
+  basis: >-
+    OS-provided HTTPS for transport, Ed25519 signature verify of content packs,
+    sha256 hashing, the OS keychain and JWT verify only; no first-party cipher.
+    All of it falls inside the exemption for authentication, digital signatures
+    and hashing.
