@@ -450,9 +450,10 @@ function parseTransfer(
   return { ok: true, notification: { ...head, subject } };
 }
 
-/** The verifier, over a routing table. The registry's instance uses the rendered one. */
+/** The verifier, over a routing table. The registry's instance uses the rendered one.
+ *  The event-id hint is ignored: a RevenueCat body carries its own `event.id`. */
 export function makeRevenuecatVerifier(appIds: Readonly<Record<string, string>>): MoRWebhookVerifier {
-  return { ...revenuecatVerifierBase, parse: (raw: string) => parseRevenueCatEvent(raw, appIds) };
+  return { ...revenuecatVerifierBase, parse: (raw: string, _eventIdHint?: string) => parseRevenueCatEvent(raw, appIds) };
 }
 
 const revenuecatVerifierBase = {

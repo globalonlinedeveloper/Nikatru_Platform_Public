@@ -135,7 +135,7 @@
   "measure-frame-ink.test.mjs": 15,
   "mechanism-claims.test.mjs": 45,
   "modal-detection.test.mjs": 44,
-  "money-config.test.mjs": 37,
+  "money-config.test.mjs": 56,
   "money-dry-run.test.mjs": 16,
   "monitor-coverage.test.mjs": 30,
   "mor-adapters.test.mjs": 42,

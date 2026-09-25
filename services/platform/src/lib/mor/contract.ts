@@ -280,13 +280,35 @@ export interface MoRWebhookVerifier {
    */
   readonly secretEnvVar: string;
   /**
+   * ⏱ 2026-09-24 · The request header that carries this rail's EVENT id, for a
+   * rail whose body carries none (Razorpay: `x-razorpay-event-id`). Absent for a
+   * rail whose body names its own event (Paddle, RevenueCat).
+   *
+   * When it is set, `routes/money.ts` refuses a verified delivery whose header is
+   * absent or empty with 400 `missing_event_id`, before `parse` runs and before
+   * anything is stored, and hands the trimmed value to `parse` as `eventIdHint`.
+   * The header NAME lives in the adapter and nowhere else: the door and the
+   * nightly replay stay provider-neutral.
+   */
+  readonly eventIdHeader?: string;
+  /**
    * Verify the signature over the RAW BODY. Takes the raw string, never a parsed
    * object: every rail signs the bytes it sent, and a re-serialised copy of a
    * parsed body is a different byte string that can never re-verify.
    */
   verify(raw: string, headers: Headers, secret: string, nowMs: number): Promise<VerifyOutcome>;
-  /** Translate the rail's body into the portfolio's vocabulary, or refuse. */
-  parse(raw: string): ParseOutcome;
+  /**
+   * Translate the rail's body into the portfolio's vocabulary, or refuse.
+   *
+   * `eventIdHint` is the vendor's delivery-time event id, for a rail whose body
+   * carries none — the value of `eventIdHeader` on a live delivery. It has
+   * exactly TWO callers, and both pass the same id for the same event: the door
+   * (`routes/money.ts`) passes the header it read, and the nightly replay
+   * (`scheduled.ts` `moneyRederive`) passes the stored `provider_event_id`,
+   * because no header survives into a stored payload. A rail whose body names its
+   * own event ignores the hint.
+   */
+  parse(raw: string, eventIdHint?: string): ParseOutcome;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

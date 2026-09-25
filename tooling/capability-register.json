@@ -208,6 +208,35 @@
       },
       "note": "🟢 THE SELLER ACCOUNT IS LIVE — CORRECTED 2026-08-28. This note read, verbatim: '⬜ NOT YET LIVE, AND THE GAP IS ONE SIGNUP. The rail is built, tested and mounted; PADDLE_NOTIFICATION_SECRET does not exist because it can only be generated in the Paddle seller console, which needs the seller account — OWNER_QUEUE A-1, PENDING.' THE SIGNUP HALF IS DONE: [ADR 044], LOCKED 2026-08-11, evidences a PRODUCTION credential — PADDLE_API_KEY_LIVE (prefix `pdl_live_apikey_`) authenticating against api.paddle.com, 403’d by the SANDBOX host with the same key (which is what proves it is production), and a live POST /transactions returning 201 with txn_01kzs3qcvryq785t7shpq5d7wj. tooling/legal/provider-register.json’s paddle row is `status: live` for the same reason. ⚠️ WHAT REMAINS IS THE DESTINATION SECRET, NOT AN ACCOUNT: PADDLE_NOTIFICATION_SECRET is generated per notification-destination in the seller console and set with `wrangler secret put`, and a Worker secret is invisible to every guard in this tree — so until it is set POST /v1/money/paddle answers 503, and tooling/ci/assert-mor-adapters.mjs PRINTS that one gap on every run rather than failing the build over work only the owner can do. [ADR 004]’s 2026-07-24 sequencing constraint — apply only after a reviewable product with a live paywall and complete legal pages exists — is HISTORICAL now that the application has landed; it is kept because it explains the date. ⛔ AND `live` HERE IS PER CHANNEL: Apple and Google Play remain the merchant of record on their own in-app purchases ([ADR 039] D1, LOCKED 2026-08-09)."
     },
+    "razorpay": {
+      "surface": "The INDIA SELLER's payment GATEWAY. [ADR 076] §10 makes Nikatru the seller of record for India domestic sales, with Razorpay as the gateway rather than a merchant of record, and [ADR 094] routes apps.gov.in and India extension buyers through it. The surface in this repo is three Worker secrets: RAZORPAY_WEBHOOK_SECRET, which the razorpayVerifier checks the X-Razorpay-Signature HMAC with, and the API key pair RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET a checkout creator will authenticate with. Declared in `interface Env` on 2026-09-24 (O-RAZORPAY-CHECKOUT-ADAPTER), which is what makes them derived surfaces this vendor claims.",
+      "stickiness": "★★★★ — payments, the stickiest point the portability standard names. Mitigated the same way as paddle: the entitlement RECORD is ours, and the rail is one interface with per-provider adapters.",
+      "surfaces": [
+        "RAZORPAY_KEY_ID",
+        "RAZORPAY_KEY_SECRET",
+        "RAZORPAY_WEBHOOK_SECRET"
+      ],
+      "openProtocol": "NO — payment APIs are proprietary and there is no standard to speak. The signature scheme (HMAC-SHA256 over the raw body, in X-Razorpay-Signature) and the event-id header live in one adapter file, services/platform/src/lib/mor/razorpay.ts, and what the rail produces is written in our own vocabulary into our own table.",
+      "seam": {
+        "file": "services/platform/src/lib/mor/contract.ts",
+        "symbol": "MoRWebhookVerifier",
+        "note": "The same seam paddle and revenuecat sit behind ([ADR 004]). Every Razorpay-specific fact — the signature header, the HMAC construction, the `x-razorpay-event-id` header the door reads through `eventIdHeader` — lives in services/platform/src/lib/mor/razorpay.ts and nowhere else, quoted from the razorpay.com page it was read from."
+      },
+      "configKeyed": {
+        "kind": "runtime",
+        "detail": "All three are Worker secrets (`wrangler secret put`), never committed vars and never compile-time defines; tooling/ci/assert-money-config.mjs fails the build on a destination secret in any `vars` block, top level or environment. The owner pastes them, test mode and live, through the vault one-command. Rotating one is a secret change: no app release, and no shipped client talks to the rail."
+      },
+      "ownTheRecord": "YES — the same strategy as paddle. What this rail produces will be written into OUR platform_db in OUR vocabulary by the adapter, and `provider_notifications` keeps every notification byte for byte under (provider, provider_event_id), where this rail's event id is the `x-razorpay-event-id` header the door persists. Razorpay holds the buyer's payment method and its own payment record.",
+      "exportPath": {
+        "path": "services/platform/migrations",
+        "detail": "The same PUBLIC, CHECKABLE export shape as paddle: 0004_money_rail.sql's columns plus `provider_notifications`, the verbatim store. Leaving Razorpay means pointing another adapter at the same table."
+      },
+      "exitPlan": {
+        "alternative": "Cashfree, the alternative [ADR 076] names in its rider, which is not withdrawn — behind the same MoRWebhookVerifier seam.",
+        "swapCost": "Medium — one adapter file, one registry line, its secrets and a checkout creator. No app release, no client change and no data migration, because the entitlement table is ours."
+      },
+      "note": "⬜ NOT YET LIVE. `parse` refuses every body (the payload shape is not yet read from a real event), no checkout creator exists, and all three secrets are unset, so POST /v1/money/razorpay answers 503 before it reads anything. Recorded now because the names are declared in the tree, and a vendor whose keys are declared before its checklist is exactly the adoption-without-review this register stops."
+    },
     "glitchtip": {
       "surface": "Crash and error reporting sink (self-hostable Sentry-protocol server).",
       "stickiness": "★ — deliberately the least sticky choice available.",

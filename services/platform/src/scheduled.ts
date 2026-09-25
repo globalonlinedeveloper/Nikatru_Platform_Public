@@ -928,7 +928,9 @@ export async function moneyRederive(env: Env, nowMs: number = Date.now()): Promi
     for (const row of rows) {
       const verifier = verifierFor(row.provider);
       if (verifier === null) { bump('unknown_provider'); failed++; continue; }
-      const parsed = verifier.parse(row.payload);
+      // The stored id goes back as the hint: a rail whose event id arrived as a
+      // header (contract.ts `eventIdHeader`) has no other way to recover it here.
+      const parsed = verifier.parse(row.payload, row.provider_event_id);
       if (!parsed.ok) { bump('unparseable'); failed++; continue; }
       try {
         bump((await deriveAndApply(deps, parsed.notification)).outcome);
