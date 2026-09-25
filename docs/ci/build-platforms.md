@@ -409,11 +409,13 @@ reject the result, nothing downstream could tell. So the file that was
 just emitted is read back and graded: it parses, its `name` is the one
 apps/*/store/linux-snap/snap-name.txt claims, it carries no absolute host
 paths, `confinement` is `strict` (`classic` needs a manual store review
-nobody has argued for), and `stage-packages` EQUALS the apt list the
-"Linux build deps" step above installs — a retyped list, a list truncated
-at the first line continuation, and a workflow that grew a package the
-recipe did not are one failure: the snap builds and the app does not
-start.
+nobody has argued for), and `stage-packages` EQUALS the runtime list
+derived, through the generator's RUNTIME_OF, from the apt list the
+"Linux build deps" step above installs, with no build package staged
+(2026-09-24; it equalled the apt list itself before) — a retyped list, a
+list truncated at the first line continuation, and a workflow that grew a
+package the recipe did not follow are one failure: the snap builds and
+the app does not start.
 
 ### before step **Prepare the Android upload key**
 
