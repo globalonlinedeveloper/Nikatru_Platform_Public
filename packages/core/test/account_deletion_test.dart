@@ -20,6 +20,15 @@ class _ProviderAuth extends AuthRepository {
     if (emitOnApple != null) users.add(emitOnApple);
   }
 
+  int googleCalls = 0;
+  AuthUser? emitOnGoogle;
+
+  @override
+  Future<void> signInWithGoogle() async {
+    googleCalls++;
+    if (emitOnGoogle != null) users.add(emitOnGoogle);
+  }
+
   /// The session [currentSession] hands back — the ONE place Apple's own refresh
   /// token ever appears.
   AuthSession? session;
@@ -319,6 +328,59 @@ void main() {
         () {
       expect(kProviderReauthFreshness.inSeconds, lessThan(600));
     });
+
+    // ⏱ 2026-09-25 · O-GOOGLE-SIGN-IN-NOT-BUILT. A Google-only account has no
+    // Apple identity and no password: the Apple sheet can never confirm it.
+    AuthUser googleOnly(DateTime? at, {String id = 'u1'}) => AuthUser(
+          id: id,
+          email: 'person@gmail.com',
+          hasPasswordIdentity: false,
+          lastSignInAt: at,
+          oauthProviders: const <String>['google'],
+        );
+
+    test('🔴 a Google-only account is re-proved by the GOOGLE sheet, never Apple',
+        () async {
+      final _ProviderAuth auth = _ProviderAuth()
+        ..emitOnGoogle = googleOnly(now.add(const Duration(seconds: 5)));
+      await confirmIdentityWithProvider(
+        auth: auth,
+        user: googleOnly(now.subtract(const Duration(hours: 3))),
+        now: () => now,
+      );
+      expect(auth.googleCalls, 1);
+      expect(auth.appleCalls, 0);
+    });
+
+    test('an account holding BOTH identities keeps the Apple sheet', () async {
+      final AuthUser both = AuthUser(
+        id: 'u1',
+        email: 'relay@privaterelay.appleid.com',
+        hasPasswordIdentity: false,
+        lastSignInAt: now.subtract(const Duration(hours: 3)),
+        oauthProviders: const <String>['apple', 'google'],
+      );
+      final _ProviderAuth auth = _ProviderAuth()
+        ..emitOnApple = apple(now.add(const Duration(seconds: 5)));
+      await confirmIdentityWithProvider(auth: auth, user: both, now: () => now);
+      expect(auth.appleCalls, 1);
+      expect(auth.googleCalls, 0);
+    });
+
+    test('reauthProviderOf: google only for a Google-only account', () {
+      expect(reauthProviderOf(apple(null)), 'apple');
+      expect(reauthProviderOf(googleOnly(null)), 'google');
+      expect(
+        reauthProviderOf(
+          AuthUser(
+            id: 'u1',
+            email: 'a@b.test',
+            oauthProviders: const <String>['apple', 'google'],
+          ),
+        ),
+        'apple',
+      );
+    });
   });
 
   group('AuthUser carries the password identity and the last sign-in', () {
@@ -330,6 +392,23 @@ void main() {
         lastSignInAt: DateTime.utc(2026, 9, 15, 12),
       );
       expect(AuthUser.fromJson(u.toJson()), u);
+    });
+
+    test('the OAuth providers survive a JSON round trip, and count for ==', () {
+      final AuthUser u = AuthUser(
+        id: 'u1',
+        email: 'a@b.test',
+        hasPasswordIdentity: false,
+        oauthProviders: const <String>['google'],
+      );
+      expect(AuthUser.fromJson(u.toJson()), u);
+      expect(AuthUser.fromJson(u.toJson()).oauthProviders, <String>['google']);
+      expect(
+        u,
+        isNot(
+          AuthUser(id: 'u1', email: 'a@b.test', hasPasswordIdentity: false),
+        ),
+      );
     });
 
     test('an older payload without the fields reads as a password account', () {

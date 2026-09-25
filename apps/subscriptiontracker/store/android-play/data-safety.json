@@ -426,25 +426,32 @@
       "type": "Name",
       "collected": {
         "demo": false,
-        "backend-live": false
+        "backend-live": true
       },
       "shared": {
         "demo": false,
         "backend-live": false
       },
       "ephemeral": false,
-      "required": null,
-      "purposes": [],
-      "tells": {
+      "required": false,
+      "purposes": [
+        "Account management"
+      ],
+      "clientAbsence": {
+        "claim": "The name is one the USER CHOSE: the display name they type in Settings, or the name Apple supplies when the user picks Sign in with Apple. The app never reads the device's account list. If GET_ACCOUNTS appeared, the app could take a name from an account the user never offered, and `required: false` for Account management would stop describing what actually happens.",
         "androidPermissions": [
           "android.permission.GET_ACCOUNTS"
         ],
         "dartPackages": [],
         "iosUsageDescriptionKeys": []
       },
-      "evidence": [],
+      "evidence": [
+        "packages/core/lib/src/auth/auth_models.dart",
+        "packages/auth_supabase/lib/src/supabase_auth_repository.dart",
+        "apps/subscriptiontracker/lib/features/settings/settings_screen.dart"
+      ],
       "inventoryRows": [],
-      "basis": "Subly's sign-up is email and password only (apps/subscriptiontracker/lib/features/auth/login_screen.dart) — there is no name field anywhere in the app, and packages/core/lib/src/auth/auth_models.dart carries id and email and nothing else. ⚠️ platform_db.provider_notifications DOES hold a buyer's name verbatim, and it is excluded here rather than ignored: see `inventory.notFromThisApp` — that row is written by a merchant-of-record webhook arriving server-to-server from the provider, not by anything transmitted from this app, which is what Play's `collected` definition is about."
+      "basis": "⏱ CORRECTED 2026-09-25 · O-OAUTH-NAME-UNDECLARED. This row said 'not collected' on the ground that there was no name field anywhere in the app and that packages/core/lib/src/auth/auth_models.dart carried id and email only. Neither was still true: AuthUser carries `displayName`, packages/auth_supabase/lib/src/supabase_auth_repository.dart reads it from the Supabase user-metadata key `full_name` and `updateProfile` writes it there, and the Settings screen (apps/subscriptiontracker/lib/features/settings/settings_screen.dart, `_editProfile`) lets the user type or change it. The user can enter the name in Settings, and it comes from the Apple profile when the user chooses Sign in with Apple. OPTIONAL: an account needs no name and email sign-in never asks for one. ACCOUNT MANAGEMENT only. NOT SHARED: Supabase is a service provider processing on our behalf. FALSE under demo because InMemoryAuthRepository never opens a socket. Sign in with Google is built and OFF in this build (`AuthProviders.configured` says google: false); the row is declared now because Sign in with Apple and the Settings edit already reach it. ⚠️ platform_db.provider_notifications ALSO holds a buyer's name verbatim, and stays excluded: see `inventory.notFromThisApp` — that row is written by a merchant-of-record webhook arriving server-to-server from the provider, not by anything transmitted from this app, which is what Play's `collected` definition is about."
     },
     {
       "category": "Personal info",
@@ -464,7 +471,7 @@
         "App functionality"
       ],
       "clientAbsence": {
-        "claim": "The address is TYPED BY THE USER into a sign-in form. The app never reads the device's account list, so the only address it can ever hold is one somebody deliberately entered. If GET_ACCOUNTS appeared, the app could harvest addresses the user never typed, and `required: true` for Account management would stop describing what actually happens.",
+        "claim": "The address is TYPED BY THE USER into a sign-in form, or SUPPLIED BY APPLE when the user chooses Sign in with Apple. The app never reads the device's account list, so the only address it can ever hold is one the user entered or one the user chose to share through the sign-in they picked. If GET_ACCOUNTS appeared, the app could harvest addresses the user never gave it, and `required: true` for Account management would stop describing what actually happens.",
         "androidPermissions": [
           "android.permission.GET_ACCOUNTS"
         ],

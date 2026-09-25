@@ -118,7 +118,7 @@ read as one that is owed.
 
 `NSPrivacyTracking` is `false` and `NSPrivacyTrackingDomains` is empty — the pair is
 asserted together, because a non-empty domain list under tracking-false is a
-contradiction. The eleven `NSPrivacyCollectedDataTypes` rows are **derived from**
+contradiction. The twelve `NSPrivacyCollectedDataTypes` rows are **derived from**
 `apps/subscriptiontracker/store/android-play/data-safety.json` at its current posture rather than
 written independently, so a Play row cannot flip without this file moving.
 

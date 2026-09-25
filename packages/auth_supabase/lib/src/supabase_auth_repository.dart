@@ -107,7 +107,20 @@ class SupabaseAuthRepository implements core.AuthRepository {
           lastSignInAt: u.lastSignInAt == null
               ? null
               : DateTime.tryParse(u.lastSignInAt!),
+          oauthProviders: oauthProvidersOf(u.appMetadata),
         );
+
+  /// ⏱ 2026-09-25 · O-GOOGLE-SIGN-IN-NOT-BUILT. The OAuth sign-in methods on
+  /// the account: `app_metadata.providers` without `email`, the same claim
+  /// [hasPasswordIdentityOf] reads. Empty when the claim is absent.
+  @visibleForTesting
+  static List<String> oauthProvidersOf(Map<String, dynamic>? appMetadata) {
+    final Object? providers = appMetadata?['providers'];
+    if (providers is! List) return const <String>[];
+    return List<String>.unmodifiable(
+      providers.whereType<String>().where((String p) => p != 'email'),
+    );
+  }
 
   /// ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH. Password-less ONLY when the provider
   /// POSITIVELY says so: `app_metadata.providers` is a list without `email`. The
@@ -257,15 +270,75 @@ class SupabaseAuthRepository implements core.AuthRepository {
     // Completion surfaces on authStateChanges(), never as a return value —
     // the app is torn down and rebuilt by the redirect on some platforms, so
     // there is no continuation to return to.
+    await _signInWithOAuth(sb.OAuthProvider.apple, 'apple');
+  }
+
+  /// ⏱ 2026-09-25 · O-GOOGLE-SIGN-IN-NOT-BUILT. The same door as
+  /// [signInWithApple], through the same call, plus [googleQueryParams]. No
+  /// scope is added: Supabase's default Google scopes (email, profile) are the
+  /// whole of what this app reads.
+  @override
+  Future<void> signInWithGoogle() =>
+      _signInWithOAuth(sb.OAuthProvider.google, 'google',
+          queryParams: googleQueryParams);
+
+  /// 🔴 WHY GOOGLE IS ASKED FOR `offline` ACCESS WITH `consent`: without both,
+  /// Google issues no refresh token on a returning sign-in, so there is nothing
+  /// for the platform to store and nothing for account deletion to revoke at
+  /// Google (O-GOOGLE-SIGN-IN-NOT-BUILT, PR C's `provider_tokens`).
+  @visibleForTesting
+  static const Map<String, String> googleQueryParams = <String, String>{
+    'access_type': 'offline',
+    'prompt': 'consent',
+  };
+
+  /// The OAuth provider this repository last sent the user to, recorded
+  /// BEFORE the redirect: the PKCE verifier is overwritten by every launch, so
+  /// the only exchange that can complete is the last one launched. Lost when
+  /// the process is (a web full-page redirect reloads it) — see
+  /// [oauthProviderOf] for what is read then.
+  String? _launchedProvider;
+
+  /// The one `signInWithOAuth` call every provider door goes through.
+  Future<void> _signInWithOAuth(
+    sb.OAuthProvider provider,
+    String name, {
+    Map<String, String>? queryParams,
+  }) async {
+    _launchedProvider = name;
     await _auth.signInWithOAuth(
-      sb.OAuthProvider.apple,
+      provider,
       // On native this is the scheme the OS hands back to THIS installation,
       // which is the only one holding the PKCE verifier the exchange needs.
       redirectTo: redirects(AuthFlow.oauth),
       authScreenLaunchMode: kIsWeb
           ? sb.LaunchMode.platformDefault
           : sb.LaunchMode.externalApplication,
+      queryParams: queryParams,
     );
+  }
+
+  /// ⏱ 2026-09-25 · O-GOOGLE-SIGN-IN-NOT-BUILT (PB-1). Which provider issued a
+  /// session's provider refresh token, or null when that cannot be told.
+  ///
+  /// 🔴 NULL IS READ AS APPLE BY `keepProviderRefreshToken`, so a Google token
+  /// left unnamed is stored in the Apple row and revoked at Apple. The order:
+  ///   1. the provider this process launched ([launched]) — the PKCE verifier
+  ///      makes that the only exchange that can land;
+  ///   2. otherwise the account's OAuth identities, when there is exactly one;
+  ///   3. otherwise null, and [currentSession] then WITHHOLDS the token. A
+  ///      token that is not kept is recoverable (the next sign-in offers
+  ///      another); one filed under the wrong provider is not.
+  @visibleForTesting
+  static String? oauthProviderOf({
+    required String? launched,
+    required List<String> identityProviders,
+  }) {
+    if (launched != null) return launched;
+    final Set<String> oauth = identityProviders
+        .where((String p) => p == 'apple' || p == 'google')
+        .toSet();
+    return oauth.length == 1 ? oauth.single : null;
   }
 
   /// 🔴 `redirectTo:` IS THE ARGUMENT THAT WAS MISSING, and without it the link
@@ -353,6 +426,9 @@ class SupabaseAuthRepository implements core.AuthRepository {
   Future<void> signOut({
     core.SignOutScope scope = core.SignOutScope.local,
   }) async {
+    // A launch record outlives nothing it names: the next account on this
+    // device must not inherit the last one's provider.
+    _launchedProvider = null;
     if (scope == core.SignOutScope.local) {
       return _auth.signOut(scope: sdkSignOutScopeOf(scope));
     }
@@ -438,21 +514,40 @@ class SupabaseAuthRepository implements core.AuthRepository {
   /// it: a dashboard setting is mutable and the control that calls this lives
   /// here.
   @override
-  Future<void> linkAppleIdentity() async {
+  Future<void> linkAppleIdentity() =>
+      _linkIdentity(sb.OAuthProvider.apple, 'apple');
+
+  /// ⏱ 2026-09-25 · O-GOOGLE-SIGN-IN-NOT-BUILT. [linkAppleIdentity]'s rules
+  /// exactly, with Google's [googleQueryParams].
+  @override
+  Future<void> linkGoogleIdentity() => _linkIdentity(
+        sb.OAuthProvider.google,
+        'google',
+        queryParams: googleQueryParams,
+      );
+
+  /// The one `linkIdentity` call every provider's link goes through.
+  Future<void> _linkIdentity(
+    sb.OAuthProvider provider,
+    String name, {
+    Map<String, String>? queryParams,
+  }) async {
     if (!core.mayLinkIdentity(currentUser)) {
       throw core.AuthFailure(
         'Confirm your email address before linking another sign-in method.',
       );
     }
+    _launchedProvider = name;
     // Same web-vs-native launch rule as signInWithApple above, and for the same
     // reason: a popup is blocked by default in several browsers and breaks
     // outright in embedded webviews and standalone PWAs [G-43].
     await _auth.linkIdentity(
-      sb.OAuthProvider.apple,
+      provider,
       redirectTo: redirects(AuthFlow.linkIdentity),
       authScreenLaunchMode: kIsWeb
           ? sb.LaunchMode.platformDefault
           : sb.LaunchMode.externalApplication,
+      queryParams: queryParams,
     );
   }
 
@@ -539,13 +634,27 @@ class SupabaseAuthRepository implements core.AuthRepository {
   Future<core.AuthSession?> currentSession() async {
     final sb.Session? s = _auth.currentSession;
     if (s == null) return null;
+    // ⏱ 2026-09-25 · O-GOOGLE-SIGN-IN-NOT-BUILT (PB-1): the provider is NAMED
+    // on every session that carries a provider token, and a token whose
+    // provider cannot be told is withheld rather than sent as Apple's.
+    final String? provider = s.providerRefreshToken == null
+        ? null
+        : oauthProviderOf(
+            launched: _launchedProvider,
+            identityProviders: <String>[
+              for (final sb.UserIdentity i
+                  in s.user.identities ?? const <sb.UserIdentity>[])
+                i.provider,
+            ],
+          );
     return core.AuthSession(
       accessToken: s.accessToken,
       refreshToken: s.refreshToken,
-      // ⏱ 2026-09-16 · O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE: Apple's own refresh
-      // token, which gotrue puts on the session that completes the OAuth redirect
-      // and on no session after it.
-      providerRefreshToken: s.providerRefreshToken,
+      // ⏱ 2026-09-16 · O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE: the provider's own
+      // refresh token, which gotrue puts on the session that completes the
+      // OAuth redirect and on no session after it.
+      providerRefreshToken: provider == null ? null : s.providerRefreshToken,
+      oauthProvider: provider,
       // GoTrue reports expiry as UNIX seconds; null when it does not know.
       expiresAt: s.expiresAt == null
           ? null

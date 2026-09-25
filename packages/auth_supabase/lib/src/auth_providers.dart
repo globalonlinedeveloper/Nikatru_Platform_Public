@@ -91,6 +91,15 @@ class AuthProviders {
   /// done through the App Store Connect API (measured 2026-09-16: the write enum
   /// accepts only `PRIMARY_APP_CONSENT`), so it is one manual portal step per
   /// app, and it is the one step that must not be skipped.
+  ///
+  /// ⏱ 2026-09-25 · O-GOOGLE-SIGN-IN-NOT-BUILT. The Google door is BUILT
+  /// (`signInWithGoogle`, `linkGoogleIdentity`, the button under
+  /// `providers.google`) and `google` stays `false` until the owner provisions
+  /// the Google client and the live probe answers `external.google: true`.
+  /// 🔴 `google: true` NEVER SHIPS WITHOUT `apple: true`: App Store Review
+  /// Guideline 4.8 requires Sign in with Apple beside any third-party sign-in
+  /// on iOS. `tooling/ci/assert-auth-callbacks.mjs` (limb PROVIDER-POLICY)
+  /// reads this constant and fails the build when it does.
   static const AuthProviders configured = AuthProviders(
     apple: true,
     google: false,

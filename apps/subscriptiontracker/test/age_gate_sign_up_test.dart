@@ -56,6 +56,18 @@ class _AppleAuth extends MockAuthRepository {
   }
 }
 
+/// ⏱ 2026-09-25 · O-GOOGLE-SIGN-IN-NOT-BUILT. [_AppleAuth] for the Google
+/// door: records `google` into [log], and never reaches Apple.
+class _GoogleAuth extends _AppleAuth {
+  _GoogleAuth([super.log]);
+  int googleCalls = 0;
+  @override
+  Future<void> signInWithGoogle() async {
+    log?.add('google');
+    googleCalls++;
+  }
+}
+
 /// A device that has accepted the CURRENT terms (a returning user, here).
 class _AcceptedHere extends LegalAcceptanceController {
   @override
@@ -83,6 +95,7 @@ Future<void> _pump(
   required MockAuthRepository auth,
   bool? termsOwed,
   core.ConsentTransport? transport,
+  AuthProviders providers = const AuthProviders(apple: true, google: false),
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -98,9 +111,7 @@ Future<void> _pump(
         keyValueStoreProvider.overrideWith((ref) async => _MemStore()),
         authRepositoryProvider.overrideWithValue(auth),
         ageSignalSourceProvider.overrideWithValue(_Fixed(signal)),
-        authProvidersProvider.overrideWithValue(
-          const AuthProviders(apple: true, google: false),
-        ),
+        authProvidersProvider.overrideWithValue(providers),
       ],
       child: MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -269,6 +280,101 @@ void main() {
       expect(log, <String>[
         'apple',
       ], reason: 'no second acceptance for somebody who already accepted');
+    });
+  });
+
+  // ⏱ 2026-09-25 · O-GOOGLE-SIGN-IN-NOT-BUILT. Google FORCED ON (the shipping
+  // declaration keeps it off): it can create an account exactly as Apple can,
+  // so it answers the SAME clickwrap and the SAME age gate, in the same order.
+  group('LoginScreen — the Google door carries the same gates', () {
+    const AuthProviders both = AuthProviders(apple: true, google: true);
+
+    Future<void> tapGoogle(WidgetTester tester) async {
+      await tester.ensureVisible(find.text(_l10n(tester).continueWithGoogle));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(_l10n(tester).continueWithGoogle));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+    }
+
+    testWidgets(
+      'FIRST TIME: no Google sign-in until the terms are ticked, and the '
+      'terms artifact is written BEFORE the provider is called',
+      (WidgetTester tester) async {
+        final List<String> log = <String>[];
+        final _GoogleAuth auth = _GoogleAuth(log);
+        await _pump(
+          tester,
+          const LoginScreen(),
+          signal: const core.NoAgeSignal(core.NoAgeSignalReason.noApiOnTarget),
+          auth: auth,
+          transport: _RecordingTransport(log),
+          providers: both,
+        );
+        expect(
+          find.byType(LegalConsentFields),
+          findsOneWidget,
+          reason: 'one clickwrap above both doors, never one each',
+        );
+        await tapGoogle(tester);
+        expect(auth.googleCalls, 0, reason: 'unticked: no Google account');
+        expect(log, isEmpty);
+
+        await tester.ensureVisible(
+          find.byKey(LegalConsentFields.termsCheckbox),
+        );
+        await tester.tap(find.byKey(LegalConsentFields.termsCheckbox));
+        await tester.pumpAndSettle();
+        await tapGoogle(tester);
+        expect(auth.googleCalls, 1);
+        expect(auth.appleCalls, 0);
+        expect(
+          log.indexOf('consent:terms:true'),
+          isNonNegative,
+          reason: 'the accepted terms must be on the consent record',
+        );
+        expect(
+          log.indexOf('consent:terms:true'),
+          lessThan(log.indexOf('google')),
+          reason: 'the acceptance must already be on record: $log',
+        );
+      },
+    );
+
+    testWidgets('a store signal BELOW ADULT never calls Google', (
+      WidgetTester tester,
+    ) async {
+      final _GoogleAuth auth = _GoogleAuth();
+      await _pump(
+        tester,
+        const LoginScreen(),
+        signal: const core.BelowAdultAgeSignal(),
+        auth: auth,
+        termsOwed: false,
+        providers: both,
+      );
+      await tapGoogle(tester);
+      expect(auth.googleCalls, 0);
+      expect(find.text(_l10n(tester).signUpAgeRefused), findsOneWidget);
+    });
+
+    testWidgets('RETURNING: Google is not re-prompted, and calls only Google', (
+      WidgetTester tester,
+    ) async {
+      final List<String> log = <String>[];
+      final _GoogleAuth auth = _GoogleAuth(log);
+      await _pump(
+        tester,
+        const LoginScreen(),
+        signal: const core.NoAgeSignal(core.NoAgeSignalReason.noApiOnTarget),
+        auth: auth,
+        termsOwed: false,
+        transport: _RecordingTransport(log),
+        providers: both,
+      );
+      expect(find.byType(LegalConsentFields), findsNothing);
+      await tapGoogle(tester);
+      expect(log, <String>['google']);
     });
   });
 }

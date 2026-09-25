@@ -517,15 +517,16 @@ describe('schema-validate.mjs — an unimplemented keyword is refused, never ign
 
 describe('limb 4 — the declaration and the two SWORN store declarations agree', () => {
   test('POSITIVE CONTROL: the real tree matches in both directions, and says how many rows it compared', () => {
-    // The strongest statement available here: the eleven categories a human
-    // swore to Google, the eleven Apple rows derived from them, and the eleven
-    // in the notice declaration are the same eleven. If that stops holding,
-    // every negative case below is about a tree nobody ships.
+    // The strongest statement available here: the twelve categories a human
+    // swore to Google, the twelve Apple rows derived from them, and the twelve
+    // in the notice declaration are the same twelve. If that stops holding,
+    // every negative case below is about a tree nobody ships. (Eleven until
+    // 2026-09-25: O-OAUTH-NAME-UNDECLARED added Personal info / Name.)
     const root = tree();
     try {
       const { code, out } = spawn(GUARD, [root]);
       assert.equal(code, 0, out);
-      assert.match(out, /limb 4 — 11 collected categor\(ies\) across 1 app\(s\)/);
+      assert.match(out, /limb 4 — 12 collected categor\(ies\) across 1 app\(s\)/);
     } finally { kill(root); }
   });
 

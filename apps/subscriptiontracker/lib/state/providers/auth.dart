@@ -358,10 +358,11 @@ final Provider<void> appleTokenKeeperProvider = Provider<void>((ref) {
 
 /// ⏱ 2026-09-24 · O-GOOGLE-SIGN-IN-NOT-BUILT — WHERE EACH PROVIDER'S TOKEN GOES.
 ///
-/// Apple's goes exactly where it always went — `PUT /account/apple-token`, body
-/// `{refreshToken, appId}` — so the Apple path is unchanged on the wire. Every
-/// other provider's goes to `PUT /account/provider-token`, which names it; the
-/// shared Worker refuses a provider this account has not linked.
+/// ⏱ 2026-09-25 · PROVIDER-TOKEN-ONE-PATH (PB-2): EVERY provider's token, Apple's
+/// included, goes to `PUT /account/provider-token`, body
+/// `{provider, refreshToken, appId}`; the shared Worker refuses a provider this
+/// account has not linked. `PUT /account/apple-token` stays on the server as an
+/// alias for builds already installed, and no path in this app calls it.
 ///
 /// NAMED rather than an inline closure for the reason [reportAppleTokenNotKept]
 /// is: a closure written into the argument list is a decision no test can reach.
@@ -370,9 +371,6 @@ Future<void> sendProviderRefreshToken(
   String provider,
   String token,
 ) {
-  if (provider == 'apple') {
-    return storeAppleRefreshToken(client, token, appId: AppConfig.appId);
-  }
   return storeProviderRefreshToken(
     client,
     provider: provider,

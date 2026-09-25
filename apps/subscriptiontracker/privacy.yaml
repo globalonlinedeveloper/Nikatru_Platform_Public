@@ -19,11 +19,11 @@
 # address.
 #
 # ── THE ROWS ARE DERIVED, NOT INVENTED ───────────────────────────────────────
-# Every `collects` row below is one of the ELEVEN rows that are
+# Every `collects` row below is one of the TWELVE rows that are
 # `collected: true` under the `backend-live` posture in
-# apps/subscriptiontracker/store/android-play/data-safety.json — the same eleven the Apple
+# apps/subscriptiontracker/store/android-play/data-safety.json — the same twelve the Apple
 # manifest carries, which assert-apple-privacy-manifest.mjs already holds in
-# step. There is no twelfth row and no tenth.
+# step. There is no thirteenth row and no eleventh.
 #
 # ── RETENTION IS AN ENUM, NOT A NUMBER ───────────────────────────────────────
 # 400 / 730 / 1100 days, locked by [ADR 045] and by C-RETENTION-PERIODS. 400 is
@@ -80,6 +80,22 @@ collects:
       schema-derived erasure route, identity last.
     source: apps/subscriptiontracker/store/android-play/data-safety.json
     asOf: "2026-09-05"
+
+  - category: Personal info
+    type: Name
+    purposes:
+      - Account management
+    retentionClass: 730
+    required: false
+    shared: false
+    basis: >-
+      Optional. The user can enter a name in Settings, and if the user chooses
+      Sign in with Apple, an optional way to sign in, Apple shares the name on
+      that account as the user allows; an account needs no name. It sits on
+      the identity record beside the address, is held for the account's life
+      and is erased with the identity.
+    source: apps/subscriptiontracker/store/android-play/data-safety.json
+    asOf: "2026-09-25"
 
   - category: Personal info
     type: User IDs

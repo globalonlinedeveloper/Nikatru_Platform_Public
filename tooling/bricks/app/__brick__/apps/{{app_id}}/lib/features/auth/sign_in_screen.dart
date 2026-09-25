@@ -60,6 +60,10 @@ class SignInScreen extends ConsumerWidget {
       onNeedAccount: () => context.go('/sign-up'),
       showAppleButton: caps.oauthRedirect && providers.any && providers.apple,
       onSignInWithApple: () => auth.signInWithApple(),
+      // ⏱ 2026-09-25 · O-GOOGLE-SIGN-IN-NOT-BUILT — the same two facts, and
+      // `providers.google` is false until the owner provisions the client.
+      showGoogleButton: caps.oauthRedirect && providers.any && providers.google,
+      onSignInWithGoogle: () => auth.signInWithGoogle(),
       // ⏱ 2026-09-15 · O-SIWA-NO-CLICKWRAP — Sign in with Apple can create an
       // account, so a device that still owes the terms answers the SAME clickwrap
       // before the provider is called, and the acceptance is recorded first.

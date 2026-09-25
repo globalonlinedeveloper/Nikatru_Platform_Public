@@ -182,7 +182,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
-  Future<void> _apple() async {
+  /// Both provider doors, through ONE handler: Google inherits the clickwrap,
+  /// the age gate and their order rather than a copy of them
+  /// (⏱ 2026-09-25 · O-GOOGLE-SIGN-IN-NOT-BUILT).
+  Future<void> _oauth({required bool google}) async {
     final AppLocalizations l10n = AppLocalizations.of(context);
     // ⏱ 2026-09-15 · O-SIWA-NO-CLICKWRAP — Sign in with Apple can CREATE an account,
     // and whether this tap will is only knowable after the redirect returns. So
@@ -228,7 +231,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             .read(legalAcceptanceProvider.notifier)
             .accept(marketingEmail: _marketingEmail);
       }
-      await auth.signInWithApple();
+      if (google) {
+        await auth.signInWithGoogle();
+      } else {
+        await auth.signInWithApple();
+      }
       if (mounted && auth.currentUser != null) context.go('/scan');
     } catch (e) {
       _snack(e);
@@ -254,7 +261,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   ///
   /// 🔴 AND A THIRD, FOUND 2026-09-05: NOTHING STOPPED A SECOND TAP. This was
   /// the ONE await on this screen outside the `_loading` idiom — `_submit` and
-  /// `_apple` both raise the flag before their request, the submit button and
+  /// `_oauth` both raise the flag before their request, the submit button and
   /// the Apple button are both gated on it, and even `onSubmitted` re-states it
   /// so a second Enter cannot fire a second sign-in. This button was
   /// `onPressed: _forgot`, flat. So a user who taps twice — the ordinary
@@ -273,7 +280,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   /// is what actually holds.
   ///
   /// ⚠️ `_loading`, NOT A SECOND FLAG. It is this screen's "a request is in
-  /// flight" bit, already shared by `_submit` and `_apple`, and a reset in
+  /// flight" bit, already shared by `_submit` and `_oauth`, and a reset in
   /// flight genuinely should hold the sign-in button too — the chassis `_run`
   /// uses one `_busy` across every action for the same reason. A private
   /// `_resetting` would be a second concept for one fact, and the screen would
@@ -343,7 +350,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     // capability matrix does not describe. Both must be true; see below.
     final AuthProviders providers = ref.watch(authProvidersProvider);
     // ⏱ 2026-09-15 · O-SIWA-NO-CLICKWRAP — whether the Apple door must carry the
-    // clickwrap on THIS device. See `_apple`.
+    // clickwrap on THIS device. See `_oauth`.
     // 🔴 THE SOURCE PROVIDER, COMPARED HERE — NOT `legalReacceptanceNeededProvider`.
     // Reading the DERIVED provider inside build makes Riverpod recompute it
     // mid-build, and the router's refresh listener on that provider then fires
@@ -593,11 +600,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   // translator drops, and would therefore render differently
                   // per locale for no stated reason. The reused key is the
                   // chassis's plain `continueWithApple`.
-                  if (providers.apple) ...<Widget>[
+                  if (providers.apple || providers.google) ...<Widget>[
                     // ⏱ 2026-09-15 · O-SIWA-NO-CLICKWRAP. On the sign-IN arm, a
                     // device that owes the terms gets the SAME boxes directly
                     // above the Apple button; the sign-up arm already shows them
                     // above, and both doors read the same two flags.
+                    // ⏱ 2026-09-25 · O-GOOGLE-SIGN-IN-NOT-BUILT — ONE set of boxes
+                    // above BOTH provider buttons: one tick, one acceptance.
                     if (!_signUp && appleTermsOwed) ...<Widget>[
                       LegalConsentFields(
                         termsAccepted: _acceptedTerms,
@@ -610,13 +619,24 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ),
                       const SizedBox(height: 12),
                     ],
-                    SoftButton(
-                      label: l10n.continueWithApple,
-                      onPressed:
-                          (_loading || (appleTermsOwed && !_acceptedTerms))
-                          ? null
-                          : _apple,
-                    ),
+                    if (providers.apple)
+                      SoftButton(
+                        label: l10n.continueWithApple,
+                        onPressed:
+                            (_loading || (appleTermsOwed && !_acceptedTerms))
+                            ? null
+                            : () => _oauth(google: false),
+                      ),
+                    if (providers.apple && providers.google)
+                      const SizedBox(height: 12),
+                    if (providers.google)
+                      SoftButton(
+                        label: l10n.continueWithGoogle,
+                        onPressed:
+                            (_loading || (appleTermsOwed && !_acceptedTerms))
+                            ? null
+                            : () => _oauth(google: true),
+                      ),
                   ],
                 ],
                 const SizedBox(height: 24),

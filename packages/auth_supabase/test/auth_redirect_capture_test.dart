@@ -24,6 +24,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart';
+import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 
 /// One request as the fake gotrue saw it.
@@ -91,6 +92,10 @@ class _FakeGoTrueServer {
           'token_type': 'bearer',
           'expires_in': 3600,
           'refresh_token': 'rt',
+          // gotrue puts the PROVIDER's refresh token on the one session that
+          // completes an OAuth redirect — the PKCE code exchange.
+          if (req.uri.queryParameters['grant_type'] == 'pkce')
+            'provider_refresh_token': 'prt-from-the-provider',
           'user': _user(confirmed: true),
         },
       ('POST', '/signup') => _user(confirmed: false),
@@ -240,6 +245,128 @@ void main() {
     // PKCE: the challenge travels, so only THIS installation can finish it —
     // which is why the redirect must come back to this installation.
     expect(authorize.queryParameters['code_challenge'], isNotEmpty);
+  });
+
+  // ⏱ 2026-09-25 · O-GOOGLE-SIGN-IN-NOT-BUILT. The Google door, over the wire.
+  test('signInWithGoogle asks for offline access with consent and no scope',
+      () async {
+    final List<String> launched = _captureLaunchedUrls();
+    await live((SupabaseAuthRepository auth) async {
+      await auth.signInWithGoogle();
+    });
+    expect(launched, hasLength(1));
+    final Uri authorize = Uri.parse(launched.single);
+    expect(authorize.path, '/authorize');
+    expect(authorize.queryParameters['provider'], 'google');
+    expect(authorize.queryParameters['redirect_to'], _want(AuthFlow.oauth));
+    // Without BOTH, Google issues no refresh token on a returning sign-in, and
+    // account deletion has nothing to revoke at Google.
+    expect(authorize.queryParameters['access_type'], 'offline');
+    expect(authorize.queryParameters['prompt'], 'consent');
+    // Supabase's default Google scopes (email, profile) are all this app
+    // reads; a scope added here is a new disclosure, not a code change.
+    expect(
+      authorize.queryParameters.containsKey('scopes'),
+      isFalse,
+      reason: 'scopes sent: ${authorize.queryParameters['scopes']}',
+    );
+    expect(authorize.queryParameters['code_challenge'], isNotEmpty);
+  });
+
+  test('linkGoogleIdentity asks gotrue for the LINK callback, offline+consent',
+      () async {
+    _captureLaunchedUrls();
+    await live((SupabaseAuthRepository auth) async {
+      await signIn(auth);
+      await auth.linkGoogleIdentity();
+    });
+    final _Seen req = server.only('GET', '/user/identities/authorize');
+    expect(req.redirectTo, _want(AuthFlow.linkIdentity));
+    expect(req.uri.queryParameters['provider'], 'google');
+    expect(req.uri.queryParameters['access_type'], 'offline');
+    expect(req.uri.queryParameters['prompt'], 'consent');
+    expect(req.uri.queryParameters.containsKey('scopes'), isFalse);
+  });
+
+  // 🔴 PB-1: a provider token whose provider is not NAMED is read as Apple's by
+  // `keepProviderRefreshToken` — stored in the Apple row, revoked at Apple.
+  test('PB-1: the session a Google redirect completes is tagged google',
+      () async {
+    _captureLaunchedUrls();
+    await HttpOverrides.runWithHttpOverrides(() async {
+      final sb.GoTrueClient client = sb.GoTrueClient(
+        url: server.url,
+        autoRefreshToken: false,
+        asyncStorage: _MemoryStorage(),
+      );
+      final SupabaseAuthRepository auth =
+          SupabaseAuthRepository(client: client, redirects: _native);
+      await auth.signInWithGoogle();
+      // What the deep-link handler does when the browser comes back.
+      await client.exchangeCodeForSession('code-from-google');
+      final core.AuthSession? session = await auth.currentSession();
+      expect(session, isNotNull);
+      expect(session!.providerRefreshToken, 'prt-from-the-provider');
+      expect(session.oauthProvider, 'google');
+    }, _RealNetwork());
+  });
+
+  group('PB-1 oauthProviderOf', () {
+    test('the provider this process launched wins', () {
+      expect(
+        SupabaseAuthRepository.oauthProviderOf(
+          launched: 'google',
+          identityProviders: const <String>['apple', 'google'],
+        ),
+        'google',
+      );
+    });
+
+    test('no launch record: the ONE OAuth identity names it', () {
+      expect(
+        SupabaseAuthRepository.oauthProviderOf(
+          launched: null,
+          identityProviders: const <String>['email', 'google'],
+        ),
+        'google',
+      );
+    });
+
+    test('no launch record and two OAuth identities: null, never apple', () {
+      expect(
+        SupabaseAuthRepository.oauthProviderOf(
+          launched: null,
+          identityProviders: const <String>['apple', 'google'],
+        ),
+        isNull,
+      );
+    });
+
+    test('no launch record and no OAuth identity: null', () {
+      expect(
+        SupabaseAuthRepository.oauthProviderOf(
+          launched: null,
+          identityProviders: const <String>['email'],
+        ),
+        isNull,
+      );
+    });
+  });
+
+  test('oauthProvidersOf reads app_metadata.providers without email', () {
+    expect(
+      SupabaseAuthRepository.oauthProvidersOf(<String, dynamic>{
+        'providers': <Object?>['email', 'google'],
+      }),
+      <String>['google'],
+    );
+    expect(SupabaseAuthRepository.oauthProvidersOf(null), isEmpty);
+    expect(
+      SupabaseAuthRepository.oauthProvidersOf(<String, dynamic>{
+        'providers': 'google',
+      }),
+      isEmpty,
+    );
   });
 
   // The honest null, over the wire: a repository nobody configured sends no

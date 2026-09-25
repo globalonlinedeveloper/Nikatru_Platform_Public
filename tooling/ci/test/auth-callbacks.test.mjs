@@ -427,3 +427,57 @@ describe('assert-auth-callbacks — derivation and wiring', () => {
     red((root) => rmSync(join(root, 'apps'), { recursive: true, force: true }), 2, /COVERAGE LOST — no app under apps\/ constructs SupabaseAuthRepository/);
   });
 });
+
+// ⏱ 2026-09-25 · O-GOOGLE-SIGN-IN-NOT-BUILT · limb PROVIDER-POLICY. Google is
+// never shipped without Apple (App Store Review Guideline 4.8). Each case sets
+// BOTH flags in the fixture's `AuthProviders.configured`, written out by hand.
+describe('assert-auth-callbacks — provider policy', () => {
+  const PROVIDERS = 'packages/auth_supabase/lib/src/auth_providers.dart';
+  const CONFIGURED = /apple: true,\s*google: false,/;
+
+  test('the real tree reads apple=true google=false and passes', () => {
+    const r = run(fixture());
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /providers apple=true google=false/);
+  });
+
+  test('🔴 google: true with apple: false FAILS, naming the file', () => {
+    red(
+      (root) => mutate(root, PROVIDERS, CONFIGURED, 'apple: false,\n    google: true,'),
+      1,
+      /auth_providers\.dart:\d+: `google: true` with `apple: false` — App Store Review Guideline 4\.8/,
+    );
+  });
+
+  test('google: true with apple: true passes', () => {
+    const root = fixture();
+    mutate(root, PROVIDERS, CONFIGURED, 'apple: true,\n    google: true,');
+    const r = run(root);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /providers apple=true google=true/);
+  });
+
+  test('google: false with apple: false passes', () => {
+    const root = fixture();
+    mutate(root, PROVIDERS, CONFIGURED, 'apple: false,\n    google: false,');
+    const r = run(root);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /providers apple=false google=false/);
+  });
+
+  test('a flag that is not a literal is COVERAGE LOST (exit 2), not a guess', () => {
+    red(
+      (root) => mutate(root, PROVIDERS, CONFIGURED, 'apple: true,\n    google: kIsWeb,'),
+      2,
+      /COVERAGE LOST — packages\/auth_supabase\/lib\/src\/auth_providers\.dart:\d+: `google:` is `kIsWeb`/,
+    );
+  });
+
+  test('a renamed declaration is COVERAGE LOST (exit 2)', () => {
+    red(
+      (root) => mutate(root, PROVIDERS, 'static const AuthProviders configured', 'static const AuthProviders live'),
+      2,
+      /COVERAGE LOST — packages\/auth_supabase\/lib\/src\/auth_providers\.dart: no `static const AuthProviders configured = AuthProviders\(`/,
+    );
+  });
+});
