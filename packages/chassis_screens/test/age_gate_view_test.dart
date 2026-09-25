@@ -108,6 +108,44 @@ void main() {
             log?.add('accept:$marketingEmail'),
       );
 
+  /// ⏱ 2026-09-25 · O-GOOGLE-SIGN-IN-NOT-BUILT. The SAME view with BOTH doors
+  /// open; [log] records `google` where [signIn]'s records `apple`.
+  Widget signInBoth(
+    core.AgeSignalSource ages, {
+    bool owed = false,
+    required List<String> log,
+  }) =>
+      SignInView(
+        ageSignals: ages,
+        onSignIn: (String _, String __) async {},
+        onForgotPassword: (String _) async {},
+        onNeedAccount: () {},
+        showAppleButton: true,
+        onSignInWithApple: () async => log.add('apple'),
+        showGoogleButton: true,
+        onSignInWithGoogle: () async => log.add('google'),
+        appleTermsOwed: owed,
+        consentFields: ({
+          required bool termsAccepted,
+          required bool marketingAccepted,
+          required bool enabled,
+          required ValueChanged<bool> onTermsChanged,
+          required ValueChanged<bool> onMarketingChanged,
+        }) =>
+            LegalConsentFieldsView(
+          termsAccepted: termsAccepted,
+          marketingAccepted: marketingAccepted,
+          enabled: enabled,
+          showMarketing: true,
+          onTermsChanged: onTermsChanged,
+          onMarketingChanged: onMarketingChanged,
+          onOpenTerms: () {},
+          onOpenPrivacy: () {},
+        ),
+        onAcceptTerms: ({required bool marketingEmail}) async =>
+            log.add('accept:$marketingEmail'),
+      );
+
   group('SignUpView — email sign-up', () {
     testWidgets('a store signal BELOW ADULT creates no account and says why',
         (WidgetTester tester) async {
@@ -233,6 +271,64 @@ void main() {
       expect(log, isEmpty,
           reason: 'the age gate runs first; a refused tap creates nothing '
               'and records nothing');
+    });
+  });
+
+  // ⏱ 2026-09-25 · O-GOOGLE-SIGN-IN-NOT-BUILT. Google can create an account
+  // exactly as Apple can, so it answers the SAME clickwrap and the SAME age
+  // gate, in the same order — one tick box above both doors.
+  group('SignInView — the Google door carries the same gates', () {
+    testWidgets(
+        'FIRST TIME: Google is unreachable until the terms are ticked, '
+        'and the acceptance is recorded BEFORE it is called',
+        (WidgetTester tester) async {
+      final List<String> log = <String>[];
+      await pumpChassis(
+          tester, kPhone, signInBoth(_none, owed: true, log: log));
+      expect(find.byType(LegalConsentFieldsView), findsOneWidget,
+          reason: 'one clickwrap for both doors, never one each');
+      await tester.ensureVisible(find.byKey(SignInView.googleButton));
+      await tester.tap(find.byKey(SignInView.googleButton));
+      await tester.pumpAndSettle();
+      expect(log, isEmpty,
+          reason: 'unticked: no acceptance and no Google account');
+      await tester.tap(find.byKey(LegalConsentFieldsView.termsCheckbox));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(SignInView.googleButton));
+      await tester.tap(find.byKey(SignInView.googleButton));
+      await tester.pumpAndSettle();
+      expect(log, <String>['accept:false', 'google']);
+    });
+
+    testWidgets('a store signal BELOW ADULT never calls Google either',
+        (WidgetTester tester) async {
+      final List<String> log = <String>[];
+      await pumpChassis(
+          tester, kPhone, signInBoth(_minor, owed: true, log: log));
+      await tester.tap(find.byKey(LegalConsentFieldsView.termsCheckbox));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(SignInView.googleButton));
+      await tester.tap(find.byKey(SignInView.googleButton));
+      await tester.pumpAndSettle();
+      expect(log, isEmpty);
+      final ChassisLocalizations l10n =
+          ChassisLocalizations.of(tester.element(find.byType(SignInView)));
+      expect(find.text(l10n.signUpAgeRefused), findsOneWidget);
+    });
+
+    testWidgets('RETURNING: each door calls ITS provider and no other',
+        (WidgetTester tester) async {
+      final List<String> log = <String>[];
+      await pumpChassis(
+          tester, kPhone, signInBoth(_none, owed: false, log: log));
+      expect(find.byType(LegalConsentFieldsView), findsNothing);
+      await tester.ensureVisible(find.byKey(SignInView.googleButton));
+      await tester.tap(find.byKey(SignInView.googleButton));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(SignInView.appleButton));
+      await tester.tap(find.byKey(SignInView.appleButton));
+      await tester.pumpAndSettle();
+      expect(log, <String>['google', 'apple']);
     });
   });
 

@@ -64,6 +64,9 @@
 //               for ITS flow; floor MIN_LINK_CALLS
 //   wiring      each in-scope app and the brick's providers.dart construct
 //               SupabaseAuthRepository with `redirects: AuthRedirects.current(`
+//   policy      (PROVIDER-POLICY) auth_providers.dart `AuthProviders.configured`
+//               never declares `google: true` while `apple: false` — App Store
+//               Review Guideline 4.8
 //
 // Exit 0 = clean · 1 = a finding · 2 = COVERAGE LOST (the guard could not read
 // what it exists to read, or read fewer call sites / targets than its floor).
@@ -625,6 +628,45 @@ export function checkWiring(root, apps) {
   return problems;
 }
 
+// ── the provider policy ──────────────────────────────────────────────────────
+// ⏱ 2026-09-25 · O-GOOGLE-SIGN-IN-NOT-BUILT · limb PROVIDER-POLICY. The Google
+// door is built and gated on `AuthProviders.configured.google`. App Store Review
+// Guideline 4.8 requires Sign in with Apple beside any third-party sign-in on
+// iOS, so `google: true` with `apple: false` is a rejected build — and nothing
+// else in the tree would notice until review. The flags are read as LITERALS:
+// anything but `true`/`false` is COVERAGE LOST, never a guess.
+export const AUTH_PROVIDERS = 'packages/auth_supabase/lib/src/auth_providers.dart';
+
+export function checkProviderPolicy(root) {
+  const problems = [];
+  const coverageLost = (m) => problems.push(`COVERAGE LOST — ${m}`);
+  const text = read(join(root, AUTH_PROVIDERS));
+  if (text === null) {
+    coverageLost(`${AUTH_PROVIDERS} is missing, so which providers ship cannot be read.`);
+    return { problems, providers: null };
+  }
+  const src = stripDart(text);
+  const m = /\bstatic\s+const\s+AuthProviders\s+configured\s*=\s*AuthProviders\s*\(/.exec(src);
+  if (!m) {
+    coverageLost(`${AUTH_PROVIDERS}: no \`static const AuthProviders configured = AuthProviders(\` — the declaration this limb reads moved or was renamed.`);
+    return { problems, providers: null };
+  }
+  const args = balanced(src, m.index + m[0].length - 1) ?? '';
+  const providers = {};
+  for (const name of ['apple', 'google']) {
+    const v = namedArg(args, name);
+    if (v !== 'true' && v !== 'false') {
+      coverageLost(`${AUTH_PROVIDERS}:${lineAt(src, m.index)}: \`${name}:\` is ${v === null ? 'absent' : `\`${v}\``}, not a literal true/false — the policy cannot be judged on a value it cannot read.`);
+      continue;
+    }
+    providers[name] = v === 'true';
+  }
+  if (providers.google === true && providers.apple === false) {
+    problems.push(`${AUTH_PROVIDERS}:${lineAt(src, m.index)}: \`google: true\` with \`apple: false\` — App Store Review Guideline 4.8 requires Sign in with Apple beside any third-party sign-in on iOS. Enable Apple first, or keep Google off.`);
+  }
+  return { problems, providers };
+}
+
 // ── everything ───────────────────────────────────────────────────────────────
 export function checkAll(root) {
   const d = readDerivation(root);
@@ -633,8 +675,9 @@ export function checkAll(root) {
   const allow = checkAllowList(root, reg.schemes, d.markers);
   const links = checkLinkCalls(root, d.markers);
   const wiring = checkWiring(root, apps);
-  const problems = [...d.problems, ...reg.problems, ...allow, ...links.problems, ...wiring];
-  return { problems, apps: apps.length, targets: reg.targets, markers: d.markers, calls: links.calls };
+  const policy = checkProviderPolicy(root);
+  const problems = [...d.problems, ...reg.problems, ...allow, ...links.problems, ...wiring, ...policy.problems];
+  return { problems, apps: apps.length, targets: reg.targets, markers: d.markers, calls: links.calls, providers: policy.providers };
 }
 
 /** For assert-screen-set: has the native auth callback SHIPPED? True only when
@@ -656,7 +699,7 @@ if (IS_MAIN) {
   if (r.apps === 0) coverageLost('no app under apps/ constructs SupabaseAuthRepository, so there is nothing whose callback could be checked.');
   else if (r.targets.length === 0) coverageLost(`${r.apps} app(s) in scope but 0 native targets proved — the target scan read nothing.`);
 
-  console.log(`${NAME}: ${r.apps} app(s) · ${r.targets.length} native target(s) [${r.targets.map((t) => `${t.app}/${t.target}`).join(', ')}] · ${r.markers.size} flow marker(s) [${[...r.markers.values()].join(', ')}] · ${r.calls} link-sending call(s)`);
+  console.log(`${NAME}: ${r.apps} app(s) · ${r.targets.length} native target(s) [${r.targets.map((t) => `${t.app}/${t.target}`).join(', ')}] · ${r.markers.size} flow marker(s) [${[...r.markers.values()].join(', ')}] · ${r.calls} link-sending call(s) · providers apple=${r.providers?.apple} google=${r.providers?.google}`);
   if (problems.length) {
     console.error('');
     for (const p of problems) console.error(`FAIL ${p}`);

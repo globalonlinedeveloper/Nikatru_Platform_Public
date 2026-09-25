@@ -129,15 +129,16 @@
 
 <div class="callout">
 <span class="tag">In one line</span>
-<p style="margin:8px 0 0">Nikatru Subscription Tracker collects 11 categories of personal data for 3 stated purposes, keeps each for a fixed period, shares none of it with anyone beyond the service providers named below, and records no network address at all.</p>
+<p style="margin:8px 0 0">Nikatru Subscription Tracker collects 12 categories of personal data for 3 stated purposes, keeps each for a fixed period, shares none of it with anyone beyond the service providers named below, and records no network address at all.</p>
 </div>
 
 <h2>1. What is collected</h2>
-<p>11 categories, in the vocabulary the Google Play Data safety form uses — the same words the sworn store declaration answers in, so the two cannot quietly disagree.</p>
+<p>12 categories, in the vocabulary the Google Play Data safety form uses — the same words the sworn store declaration answers in, so the two cannot quietly disagree.</p>
 <table>
 <tr><th>Category</th><th>What it is</th><th>Why</th><th>Kept for</th><th>Needed to use the app?</th><th>Shared?</th></tr>
 <tr><td>Location</td><td>Approximate location</td><td>Analytics</td><td>400 days</td><td>No</td><td>No</td></tr>
 <tr><td>Personal info</td><td>Email address</td><td>Account management, App functionality</td><td>730 days</td><td>Yes</td><td>No</td></tr>
+<tr><td>Personal info</td><td>Name</td><td>Account management</td><td>730 days</td><td>No</td><td>No</td></tr>
 <tr><td>Personal info</td><td>User IDs</td><td>Account management, App functionality</td><td>730 days</td><td>Yes</td><td>No</td></tr>
 <tr><td>Financial info</td><td>Purchase history</td><td>App functionality</td><td>730 days</td><td>No</td><td>No</td></tr>
 <tr><td>Financial info</td><td>Other financial info</td><td>App functionality</td><td>730 days</td><td>Yes</td><td>No</td></tr>
@@ -157,6 +158,9 @@
 <h3>Personal info — Email address</h3>
 <p>Login is mandatory in the apps (ADR 058) and identity is one Supabase auth project for the whole portfolio (C-ONE-IDENTITY-PER-USER), so an address is the account. It is held for the account's life and erased by the schema-derived erasure route, identity last.</p>
 <p class="meta">Read from <code>apps/subscriptiontracker/store/android-play/data-safety.json</code> on 2026-09-05.</p>
+<h3>Personal info — Name</h3>
+<p>Optional. The user can enter a name in Settings, and if the user chooses Sign in with Apple, an optional way to sign in, Apple shares the name on that account as the user allows; an account needs no name. It sits on the identity record beside the address, is held for the account's life and is erased with the identity.</p>
+<p class="meta">Read from <code>apps/subscriptiontracker/store/android-play/data-safety.json</code> on 2026-09-25.</p>
 <h3>Personal info — User IDs</h3>
 <p>The one identity per user across every app is a user id issued by the auth project; every app row keys on it, which is what makes erasure reach derivable from the schema rather than from a hand-kept list of tables.</p>
 <p class="meta">Read from <code>apps/subscriptiontracker/store/android-play/data-safety.json</code> on 2026-09-05.</p>

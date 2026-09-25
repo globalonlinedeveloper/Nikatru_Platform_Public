@@ -235,6 +235,16 @@ const Duration kProviderReauthFreshness = Duration(minutes: 5);
 /// How long [confirmIdentityWithProvider] waits for the provider sign-in to land.
 const Duration kProviderReauthTimeout = Duration(minutes: 5);
 
+/// ⏱ 2026-09-25 · O-GOOGLE-SIGN-IN-NOT-BUILT. Which provider sheet re-proves
+/// [user] before deletion: `google` for an account whose only OAuth identity is
+/// Google, `apple` for every other account — which is every account that could
+/// exist before Google sign-in did, so their sheet is unchanged.
+String reauthProviderOf(AuthUser user) =>
+    user.oauthProviders.contains('google') &&
+            !user.oauthProviders.contains('apple')
+        ? 'google'
+        : 'apple';
+
 /// ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH (owner ruling on OWNER_QUEUE A-10) — a
 /// PASSWORD-LESS account confirms deletion by signing in with its provider AGAIN,
 /// at the moment of deletion. Returns when [user] has freshly authenticated;
@@ -276,7 +286,13 @@ Future<void> confirmIdentityWithProvider({
             (last == null || u.lastSignInAt!.isAfter(last)),
       )
       .timeout(timeout);
-  await auth.signInWithApple();
+  // ⏱ 2026-09-25 · O-GOOGLE-SIGN-IN-NOT-BUILT. The sheet the account can pass:
+  // a Google-only account has no Apple identity to sign in with.
+  if (reauthProviderOf(user) == 'google') {
+    await auth.signInWithGoogle();
+  } else {
+    await auth.signInWithApple();
+  }
   try {
     await fresh;
   } on Object {

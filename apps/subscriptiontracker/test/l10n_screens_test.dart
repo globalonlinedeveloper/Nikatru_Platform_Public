@@ -433,6 +433,30 @@ void main() {
         expect(find.text(l10n.newHerePrompt), findsOneWidget);
       });
 
+      // ⏱ 2026-09-25 · O-GOOGLE-SIGN-IN-NOT-BUILT. Google is OFF in
+      // `AuthProviders.configured`, so its string is forced on here for the
+      // same reason Apple's was: a hidden widget proves nothing about
+      // translation.
+      testWidgets('[$code] the Google door, forced on', (
+        WidgetTester tester,
+      ) async {
+        final AppLocalizations l10n = await _load(code);
+        await _pump(
+          tester,
+          Locale(code),
+          const LoginScreen(),
+          overrides: <Override>[
+            authProvidersProvider.overrideWithValue(
+              const AuthProviders(apple: true, google: true),
+            ),
+          ],
+        );
+
+        expect(find.text(l10n.continueWithGoogle), findsOneWidget);
+        expect(find.text(l10n.continueWithApple), findsOneWidget);
+        expect(find.text(l10n.orDivider), findsOneWidget);
+      });
+
       testWidgets('[$code] the toggle shows the sign-up face', (
         WidgetTester tester,
       ) async {
@@ -544,6 +568,26 @@ void main() {
       expect(find.text('PASSWORD'), findsNothing);
     });
 
+    // A key missing from the ta arb falls back to English SILENTLY at
+    // generation time, so the Tamil build is asserted not to render it.
+    testWidgets('[ta] Continue with Google is not left in English', (
+      WidgetTester tester,
+    ) async {
+      final AppLocalizations en = await _load('en');
+      await _pump(
+        tester,
+        const Locale('ta'),
+        const LoginScreen(),
+        overrides: <Override>[
+          authProvidersProvider.overrideWithValue(
+            const AuthProviders(apple: true, google: true),
+          ),
+        ],
+      );
+      expect(find.text(en.continueWithGoogle), findsNothing);
+      expect(find.text('Continue with Google'), findsNothing);
+    });
+
     test('the copy decisions this screen encodes', () async {
       final AppLocalizations en = await _load('en');
       final AppLocalizations ta = await _load('ta');
@@ -574,6 +618,8 @@ void main() {
       for (final String s in <String>[
         en.continueWithApple,
         ta.continueWithApple,
+        en.continueWithGoogle,
+        ta.continueWithGoogle,
       ]) {
         expect(s, s.trim(), reason: 'padding whitespace is back in the value');
       }

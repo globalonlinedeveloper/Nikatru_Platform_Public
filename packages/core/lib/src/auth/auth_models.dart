@@ -16,6 +16,7 @@ class AuthUser {
     this.emailVerified = false,
     this.hasPasswordIdentity = true,
     this.lastSignInAt,
+    this.oauthProviders = const <String>[],
   });
 
   /// The provider's stable subject id — this is the `user_id` every server-side
@@ -66,6 +67,13 @@ class AuthUser {
   /// has just come back from one.
   final DateTime? lastSignInAt;
 
+  /// ⏱ 2026-09-25 · O-GOOGLE-SIGN-IN-NOT-BUILT. The OAuth sign-in methods linked
+  /// to this account (`apple`, `google`), in the provider's own words. Empty
+  /// when unknown or when the account has none. Read by
+  /// [confirmIdentityWithProvider] to open the sheet the account can actually
+  /// pass: a Google-only account sent to Apple's sheet has no account there.
+  final List<String> oauthProviders;
+
   String get initial {
     final String source = (displayName != null && displayName!.isNotEmpty)
         ? displayName!
@@ -89,6 +97,11 @@ class AuthUser {
     lastSignInAt: j['last_sign_in_at'] is String
         ? DateTime.tryParse(j['last_sign_in_at']! as String)
         : null,
+    oauthProviders: j['oauth_providers'] is List
+        ? List<String>.unmodifiable(
+            (j['oauth_providers']! as List<Object?>).whereType<String>(),
+          )
+        : const <String>[],
   );
 
   Map<String, Object?> toJson() => <String, Object?>{
@@ -99,6 +112,7 @@ class AuthUser {
     'has_password_identity': hasPasswordIdentity,
     if (lastSignInAt != null)
       'last_sign_in_at': lastSignInAt!.toUtc().toIso8601String(),
+    if (oauthProviders.isNotEmpty) 'oauth_providers': oauthProviders,
   };
 
   /// 🔴 `emailVerified` IS PART OF IDENTITY EQUALITY, and leaving it out is how
@@ -113,7 +127,8 @@ class AuthUser {
       other.displayName == displayName &&
       other.emailVerified == emailVerified &&
       other.hasPasswordIdentity == hasPasswordIdentity &&
-      other.lastSignInAt == lastSignInAt;
+      other.lastSignInAt == lastSignInAt &&
+      _sameStrings(other.oauthProviders, oauthProviders);
 
   @override
   int get hashCode => Object.hash(
@@ -123,10 +138,19 @@ class AuthUser {
     emailVerified,
     hasPasswordIdentity,
     lastSignInAt,
+    Object.hashAll(oauthProviders),
   );
 
   @override
   String toString() => 'AuthUser($id)';
+}
+
+bool _sameStrings(List<String> a, List<String> b) {
+  if (a.length != b.length) return false;
+  for (int i = 0; i < a.length; i++) {
+    if (a[i] != b[i]) return false;
+  }
+  return true;
 }
 
 /// A live session: the bearer token the Worker verifies, plus what is needed to

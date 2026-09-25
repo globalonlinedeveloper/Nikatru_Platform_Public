@@ -19,6 +19,8 @@ void main() {
     VoidCallback? onNeedAccount,
     bool showAppleButton = false,
     Future<void> Function()? onSignInWithApple,
+    bool showGoogleButton = false,
+    Future<void> Function()? onSignInWithGoogle,
     core.AccountDeletionOutcome? deletion,
     String? deletionDetail,
     VoidCallback? onDismissDeletionNotice,
@@ -29,6 +31,8 @@ void main() {
         onNeedAccount: onNeedAccount ?? () {},
         showAppleButton: showAppleButton,
         onSignInWithApple: onSignInWithApple ?? () async {},
+        showGoogleButton: showGoogleButton,
+        onSignInWithGoogle: onSignInWithGoogle,
         appleTermsOwed: false,
         consentFields: ({
           required bool termsAccepted,
@@ -199,6 +203,35 @@ void main() {
       await tester.tap(find.byKey(SignInView.appleButton));
       await tester.pumpAndSettle();
       expect(taps, 1);
+    });
+  });
+
+  // ⏱ 2026-09-25 · O-GOOGLE-SIGN-IN-NOT-BUILT. The same both-directions pair
+  // for Google, whose default is OFF: `AuthProviders.configured` says false.
+  group('property: sign-in-shows-google-only-when-told-to', () {
+    testWidgets('absent by default, even beside Apple',
+        (WidgetTester tester) async {
+      await pumpChassis(tester, kPhone, view(showAppleButton: true));
+      expect(find.byKey(SignInView.googleButton), findsNothing);
+      expect(find.byKey(SignInView.appleButton), findsOneWidget);
+    });
+
+    testWidgets('present, and wired to GOOGLE, when the caller says true',
+        (WidgetTester tester) async {
+      final List<String> calls = <String>[];
+      await pumpChassis(
+        tester,
+        kPhone,
+        view(
+          showGoogleButton: true,
+          onSignInWithApple: () async => calls.add('apple'),
+          onSignInWithGoogle: () async => calls.add('google'),
+        ),
+      );
+      expect(find.byKey(SignInView.appleButton), findsNothing);
+      await tester.tap(find.byKey(SignInView.googleButton));
+      await tester.pumpAndSettle();
+      expect(calls, <String>['google']);
     });
   });
 

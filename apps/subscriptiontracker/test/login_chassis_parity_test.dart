@@ -228,6 +228,11 @@ const AuthProviders kNoProviders = AuthProviders(apple: false, google: false);
 /// thing that stops the arm above from passing by deletion.
 const AuthProviders kAppleEnabled = AuthProviders(apple: true, google: false);
 
+/// ⏱ 2026-09-25 · O-GOOGLE-SIGN-IN-NOT-BUILT. Google FORCED ON beside Apple —
+/// the only arrangement App Store Guideline 4.8 and `assert-auth-callbacks`'s
+/// provider-policy limb allow. No shipping build sees this.
+const AuthProviders kBothEnabled = AuthProviders(apple: true, google: true);
+
 Future<void> pumpLogin(
   WidgetTester tester, {
   core.AuthRepository? auth,
@@ -545,6 +550,53 @@ void main() {
         reason: 'Apple is enabled, so the federated limb and its divider show',
       );
     });
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // ⏱ 2026-09-25 · O-GOOGLE-SIGN-IN-NOT-BUILT. The Google door is BUILT and
+  // OFF. Both directions, as for Apple: the shipping default must not show it,
+  // and forcing it on must — or the first case passes by deletion. Its
+  // clickwrap and age gate are pinned in `age_gate_sign_up_test.dart`, beside
+  // Apple's.
+  group('Continue with Google is built, and off', () {
+    testWidgets('THE SHIPPING DEFAULT does not offer it — no overrides', (
+      WidgetTester tester,
+    ) async {
+      await pumpLogin(tester, caps: kWithRedirect);
+
+      expect(
+        find.text(en.continueWithGoogle),
+        findsNothing,
+        reason:
+            '`AuthProviders.configured` says google: false — no client id '
+            'exists, so the identity server would answer 400',
+      );
+      expect(find.text(en.continueWithApple), findsOneWidget);
+    });
+
+    testWidgets('forced on, a capable platform offers it beside Apple', (
+      WidgetTester tester,
+    ) async {
+      await pumpLogin(tester, caps: kWithRedirect, providers: kBothEnabled);
+
+      expect(find.text(en.continueWithGoogle), findsOneWidget);
+      expect(find.text(en.continueWithApple), findsOneWidget);
+      expect(
+        find.text(en.orDivider),
+        findsOneWidget,
+        reason: 'one divider above both doors',
+      );
+    });
+
+    testWidgets(
+      'forced on, a platform that cannot redirect is not offered it',
+      (WidgetTester tester) async {
+        await pumpLogin(tester, caps: kNoRedirect, providers: kBothEnabled);
+
+        expect(find.text(en.continueWithGoogle), findsNothing);
+        expect(find.text(en.orDivider), findsNothing);
+      },
+    );
   });
 
   // ───────────────────────────────────────────────────────────────────────────

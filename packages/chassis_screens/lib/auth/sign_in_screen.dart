@@ -46,6 +46,8 @@ class SignInView extends StatefulWidget {
     required this.appleTermsOwed,
     required this.consentFields,
     required this.onAcceptTerms,
+    this.showGoogleButton = false,
+    this.onSignInWithGoogle,
     this.ageSignals,
     this.deletion,
     this.deletionDetail,
@@ -59,6 +61,7 @@ class SignInView extends StatefulWidget {
   static const Key forgotButton = Key('signInForgot');
   static const Key needAccountButton = Key('signInNeedAccount');
   static const Key appleButton = Key('signInApple');
+  static const Key googleButton = Key('signInGoogle');
 
   /// Sends the credentials. Throws `core.AuthFailure` with a message to show.
   /// The client-side preflight below runs FIRST and never reaches this.
@@ -79,6 +82,15 @@ class SignInView extends StatefulWidget {
   final bool showAppleButton;
 
   final Future<void> Function() onSignInWithApple;
+
+  /// ⏱ 2026-09-25 · O-GOOGLE-SIGN-IN-NOT-BUILT. The Google door, collapsed by
+  /// the adapter exactly as [showAppleButton] is. It sits behind the SAME
+  /// clickwrap ([appleTermsOwed] — the name predates this door) and the same
+  /// age gate, through the same handler: Google can create an account too.
+  final bool showGoogleButton;
+
+  /// Required whenever [showGoogleButton] is true.
+  final Future<void> Function()? onSignInWithGoogle;
 
   /// ⏱ 2026-09-15 · O-SIWA-NO-CLICKWRAP. Whether THIS DEVICE still owes the terms
   /// clickwrap: true when nothing current was accepted here (a fresh install, or
@@ -171,7 +183,12 @@ class _SignInViewState extends State<SignInView> {
     }
   }
 
-  Future<void> _appleGated(ChassisLocalizations l10n) async {
+  /// Both provider doors go through this ONE handler, so Google inherits the
+  /// clickwrap, the age gate and their order rather than a copy of them.
+  Future<void> _providerGated(
+    ChassisLocalizations l10n, {
+    required bool google,
+  }) async {
     // ⏱ 2026-09-15 · O-SIWA-NO-CLICKWRAP. The clickwrap first: a device that owes
     // the terms cannot reach the provider without the tick. The keyboard and a
     // stale rebuild both reach this handler directly, so the disabled button
@@ -200,7 +217,11 @@ class _SignInViewState extends State<SignInView> {
     if (widget.appleTermsOwed) {
       await widget.onAcceptTerms(marketingEmail: _marketingEmail);
     }
-    await widget.onSignInWithApple();
+    if (google) {
+      await widget.onSignInWithGoogle!();
+    } else {
+      await widget.onSignInWithApple();
+    }
   }
 
   Future<void> _signIn(ChassisLocalizations l10n) => _run(() async {
@@ -352,10 +373,11 @@ class _SignInViewState extends State<SignInView> {
                 onPressed: _busy ? null : () => _forgot(l10n),
                 child: Text(l10n.forgotPassword),
               ),
-              if (widget.showAppleButton) ...<Widget>[
+              if (widget.showAppleButton || widget.showGoogleButton) ...<Widget>[
                 const SizedBox(height: 8),
                 // The SAME tick boxes and wording as sign-up, directly above the
-                // one control they gate, and only while this device owes them.
+                // provider buttons they gate, and only while this device owes
+                // them. Rendered ONCE for both doors: one tick, one acceptance.
                 if (widget.appleTermsOwed) ...<Widget>[
                   widget.consentFields(
                     termsAccepted: _acceptedTerms,
@@ -370,14 +392,26 @@ class _SignInViewState extends State<SignInView> {
                 ],
                 // 🔴 DISABLED UNTIL THE TERMS BOX IS TICKED WHEN IT IS OWED — and
                 // never on the marketing box (GDPR Art 7(4)).
-                OutlinedButton(
-                  key: SignInView.appleButton,
-                  onPressed:
-                      (_busy || (widget.appleTermsOwed && !_acceptedTerms))
-                      ? null
-                      : () => _run(() => _appleGated(l10n)),
-                  child: Text(l10n.continueWithApple),
-                ),
+                if (widget.showAppleButton)
+                  OutlinedButton(
+                    key: SignInView.appleButton,
+                    onPressed:
+                        (_busy || (widget.appleTermsOwed && !_acceptedTerms))
+                        ? null
+                        : () => _run(() => _providerGated(l10n, google: false)),
+                    child: Text(l10n.continueWithApple),
+                  ),
+                if (widget.showAppleButton && widget.showGoogleButton)
+                  const SizedBox(height: 8),
+                if (widget.showGoogleButton)
+                  OutlinedButton(
+                    key: SignInView.googleButton,
+                    onPressed:
+                        (_busy || (widget.appleTermsOwed && !_acceptedTerms))
+                        ? null
+                        : () => _run(() => _providerGated(l10n, google: true)),
+                    child: Text(l10n.continueWithGoogle),
+                  ),
               ],
               const SizedBox(height: 16),
               TextButton(
