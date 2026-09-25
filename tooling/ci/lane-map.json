@@ -1,0 +1,120 @@
+{
+  "_readme": [
+    "THE LANE MAP (ADR 095). One register naming each CI lane and the paths that make it run.",
+    "tooling/ci/lane-detect.mjs --lane <name> is the `detect` job of each lane's callee workflow",
+    "(.github/workflows/lane-<name>.yml): it answers affected=true on a push to main, on any event that",
+    "is not a pull_request, on a changed path this map does not name at all, and whenever the diff",
+    "cannot be read; otherwise affected is true only when a changed path matches that lane's globs.",
+    "tooling/ci/lane-verdict.mjs is each callee's always-run tail job, and the only licence it gives a",
+    "skipped work job is detect's affected=false.",
+    "`unclaimed` names paths no lane grades beyond the guards that always run: a change touching only",
+    "these runs no lane. A path matching NEITHER a lane nor `unclaimed` is unmapped, and an unmapped",
+    "path runs every lane: the map failing open is the safe direction.",
+    "A lane's globs name everything its jobs READ, not only the directory they build: the Worker",
+    "tests read every workflow file, the ops register and one Dart source, so those are workers paths.",
+    "`lane-detect.mjs --check` (guard-meta) fails on a tracked file no entry claims and on a glob that",
+    "matches no tracked file. Glob syntax: `**` spans directories, `*` stays inside one path segment.",
+    "A lane's `callee`, when present, is the workflow whose detect job runs `lane-detect.mjs --lane",
+    "<name>`, and --check fails when that file is missing or names another lane.",
+    "Only `workers` has a callee today (extensions-ci.yml keeps its own discover job until it adopts",
+    "lane-detect); the other lanes' globs are written now so that `unmapped` means new to the map,",
+    "not a lane that has not moved yet (O-CI-LANES-NOT-CALLABLE-UNITS)."
+  ],
+  "lanes": {
+    "workers": {
+      "callee": ".github/workflows/lane-workers.yml",
+      "globs": [
+        "services/subscriptiontracker-api/**",
+        "services/platform/**",
+        "services/_shared/**",
+        "catalog/apps.json",
+        "catalog/bundles.json",
+        "contracts/package.json",
+        "contracts/entitlement/*.js",
+        "contracts/entitlement/*.d.ts",
+        "contracts/entitlement/*.json",
+        "extensions/catalog/extensions.json",
+        "packages/core/lib/src/analytics/analytics.dart",
+        "tooling/channel-register.json",
+        "tooling/monitor-register.json",
+        "tooling/versions.json",
+        "tooling/bundle-availability.mjs",
+        "tooling/legal/data-inventory.json",
+        "tooling/ops/**",
+        "tooling/ci/release-manifest.mjs",
+        "tooling/ci/channel-surface.mjs",
+        "tooling/ci/tree-walk.mjs",
+        "tooling/ci/lane-map.json",
+        "tooling/ci/lane-detect.mjs",
+        "tooling/ci/lane-verdict.mjs",
+        ".github/actions/setup-node/**",
+        ".github/workflows/*.yml"
+      ]
+    },
+    "guards": {
+      "globs": [
+        ".github/**",
+        ".githooks/**",
+        "tooling/**",
+        "catalog/**",
+        "contracts/**",
+        ".agentdocs.baseline.json",
+        ".gitattributes",
+        ".gitignore",
+        ".gitleaks.toml",
+        "osv-scanner.toml",
+        "renovate.json",
+        "package.json",
+        "pnpm-lock.yaml",
+        "pnpm-workspace.yaml"
+      ]
+    },
+    "sites": {
+      "globs": [
+        "sites/**",
+        "packages/tokens/**",
+        "contracts/tokens/**",
+        "catalog/apps-landing.json",
+        "tooling/sites/**",
+        "tooling/content_pipeline/**"
+      ]
+    },
+    "apps": {
+      "globs": [
+        "apps/**",
+        "packages/**",
+        "pubspec.yaml",
+        "pubspec.lock",
+        "mason.yaml",
+        "tooling/bricks/**",
+        "tooling/app-yaml/**",
+        ".github/actions/setup-flutter/**"
+      ]
+    },
+    "build": {
+      "globs": [
+        "apps/**",
+        "packages/**",
+        "pubspec.yaml",
+        "pubspec.lock",
+        "catalog/apps.json",
+        "tooling/release/**",
+        "tooling/store/**",
+        "tooling/versions.json",
+        ".github/actions/setup-flutter/**"
+      ]
+    },
+    "extensions": {
+      "globs": [
+        "extensions/**",
+        "_playwright/**"
+      ]
+    }
+  },
+  "unclaimed": [
+    "docs/**",
+    "*.md",
+    ".editorconfig",
+    ".ignore"
+  ]
+}

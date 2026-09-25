@@ -5233,8 +5233,11 @@ describe('assert-ops-register — [14]O-3b · RED SINCE: a failed run is graded,
     // ⏱ 2026-09-24: three. duty.workflow.extensions-ci.yml joined them — a called
     // workflow declares no `workflow_dispatch` (it runs only as a call), so a merge
     // is its only exit and it is excluded by the same derived reason.
-    assert.equal(census.excluded.length, 3, 'the committed register has exactly three trigger rows with no non-merge exit');
+    // ⏱ 2026-09-24: four. duty.workflow.lane-workers.yml, the first ci.yml lane moved
+    // into a callee (ADR 095), is excluded for the same reason.
+    assert.equal(census.excluded.length, 4, 'the committed register has exactly four trigger rows with no non-merge exit');
     assert.ok(census.excluded.some((l) => /duty\.workflow\.extensions-ci\.yml/.test(l)), 'the extensions CI callee is excluded by derivation');
+    assert.ok(census.excluded.some((l) => /duty\.workflow\.lane-workers\.yml/.test(l)), 'the workers lane callee is excluded by derivation');
     assert.ok(census.excluded.every((l) => /declares NO `workflow_dispatch`/.test(l)), 'every exclusion must carry the derived reason');
   });
 

@@ -261,6 +261,19 @@ const CLASSIFIED_ELSEWHERE = new Map([
   ],
 
   [
+    // The Worker test jobs moved out of ci.yml into this callee (ADR 095, row
+    // O-CI-LANES-NOT-CALLABLE-UNITS). It has only a `workflow_call` trigger.
+    'lane-workers.yml',
+    'runs the CI jobs of the two Workers (services/subscriptiontracker-api and services/platform), which ' +
+      'are Workers and not apps from the pubspec workspace. It is started only by `workflow_call`: ' +
+      "ci.yml's `lane-workers` job calls it on every push and pull request. It builds no app, deploys " +
+      'nothing and submits nothing to a store. R-1 quantifies over the workspace APP set, so this lane has ' +
+      'nothing for this guard to compare and would report a permanent empty-set pass if it were graded. ' +
+      'The owning stage is stage 14 ops, through the duty row `duty.workflow.lane-workers.yml` in ' +
+      'tooling/ops/register.json. [ADR 095].',
+  ],
+
+  [
     'deploy-workers.yml',
     'deploys services/*, which are Workers and not apps. R-1 quantifies over the workspace APP set, so a ' +
       'lane that never builds an app has nothing for this guard to compare and would report a permanent ' +
