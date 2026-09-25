@@ -143,10 +143,12 @@ without the other is the failure that step exists to catch.
 🔴 A SECOND `apt-get install -y clang cmake …` LINE HERE WOULD BE THE
 DUPLICATION [pipeline F-2] AND generate-snapcraft.mjs'S WHOLE PARSER EXIST
 TO PREVENT. build-platforms.yml's "Linux build deps" step is the single
-declaration of what a Linux build of this app needs; the recipe's
-`stage-packages` is already that same list, extracted. So this step asks
-the same extractor for it. The workflow gaining a package because a build
-broke then reaches BOTH jobs, or neither — never one.
+declaration of what a Linux build of this app needs, and the recipe's
+`stage-packages` is derived from that same extraction (its runtime
+libraries, through the generator's RUNTIME_OF, since 2026-09-24). So this
+step asks the same extractor for the build list. The workflow gaining a
+package because a build broke then reaches BOTH jobs, or neither — never
+one.
 
 `$deps` is deliberately unquoted in the install: the emitted value is one
 line of space-separated package names and must SPLIT into arguments.

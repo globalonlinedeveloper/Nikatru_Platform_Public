@@ -35,11 +35,14 @@
 //   3. NO ABSOLUTE HOST PATHS. A recipe carrying `/home/runner/...` or a Windows
 //      drive letter builds on one machine and nowhere else — and a Windows path
 //      is not something snapcraft can parse at all.
-//   4. `stage-packages` IS NON-EMPTY AND EQUALS THE WORKFLOW'S apt LIST. This is
-//      the limb the generator's whole parser exists for. A retyped list, a list
-//      truncated at the first shell line continuation, and a workflow that grew
-//      a package the recipe did not are all one failure: the snap builds and the
-//      app does not start.
+//   4. `stage-packages` EQUALS THE RUNTIME LIST DERIVED FROM THE WORKFLOW'S apt
+//      LIST through the generator's RUNTIME_OF. (⏱ 2026-09-24: it equalled the
+//      apt list itself until then, which staged a compiler and header trees into
+//      a `dump` build.) A retyped list, a list truncated at the first shell line
+//      continuation, and a workflow that grew a package the recipe did not
+//      follow are all one failure: the snap builds and the app does not start.
+//      And no BUILD package is staged: nothing the lane installs by name, and
+//      nothing ending in `-dev`.
 //   5. `confinement: strict`. `classic` needs manual store review and an argued
 //      case; a generator that quietly emitted it would turn a submission into a
 //      negotiation.
@@ -67,11 +70,31 @@
 //      must carry `snap/gui/<name>.desktop` whose `Icon` is exactly the installed
 //      path `${SNAP}/meta/gui/<name>.png`, with that PNG beside it.
 //
-// ⚠️ EVERY EXPECTATION IS IMPORTED, NEVER RETYPED. `DESKTOP_PLUGS`, `GRADE`,
-// `CONFINEMENT` and `BASE_FOR_RUNNER` come from the generator; the listing values
-// come from the store tree; the apt list comes from the workflow through the
-// generator's own exported parser. A guard holding its own copy of a constant
-// agrees with a generator that has drifted, which is a check that cannot fail.
+// ── AND WHAT THE RUNTIME-STAGE CHANGE ADDED (⏱ 2026-09-24) ──────────────────
+//  10. NO `build-packages` ON THE PART. `dump` compiles nothing; the key would
+//      install a toolchain on the packing host for a step that never runs.
+//  11. THE APP DECLARES SNAP_EXTENSIONS (`gnome`). RUNTIME_OF leaves GTK,
+//      libsecret and liblzma unstaged BECAUSE the extension's content snap
+//      carries them; without the extension nothing in the recipe provides them.
+//  12. THE PLUGS CARRY [ADR 015] §3's SET (ADR_015_PLUGS, LOCKED) and every plug
+//      RUNTIME_OF requires of a lane library (password-manager-service, for
+//      libsecret). Plug-equality alone passes a DESKTOP_PLUGS that dropped one,
+//      because the recipe is generated from that same array.
+//  13. EVERY RUNTIME_OF ENTRY CARRIES ITS SOURCES: the page its runtime name was
+//      read from, and where each supplied-by claim was read.
+//  14. tooling/wsl-setup.sh's FIRST `apt-get install` IS A SUPERSET OF THE LANE'S
+//      LIST. That script runs on a fresh WSL install before node exists ("sed,
+//      not node"), so it cannot call --emit-build-deps and keeps a literal list;
+//      this limb is what holds the literal to the lane. A script with no install
+//      command to read is COVERAGE LOST.
+//
+// ⚠️ EVERY EXPECTATION IS IMPORTED, NEVER RETYPED. `DESKTOP_PLUGS`,
+// `ADR_015_PLUGS`, `SNAP_EXTENSIONS`, `RUNTIME_OF`, `GRADE`, `CONFINEMENT` and
+// `BASE_FOR_RUNNER` come from the generator; the listing values come from the
+// store tree; the apt list comes from the workflow through the generator's own
+// exported parser, and the stage list through its own `stagePackagesFor`. A
+// guard holding its own copy of a constant agrees with a generator that has
+// drifted, which is a check that cannot fail.
 //
 // ── AND TWO THINGS ONLY THE PACKING JOB CAN ASK ─────────────────────────────
 // Both are `--emitted`-mode checks, because both are about a recipe that is one
@@ -112,6 +135,7 @@ import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
 import {
+  ADR_015_PLUGS,
   BASE_FOR_RUNNER,
   BUILD_WORKFLOW,
   CONFINEMENT,
@@ -121,11 +145,15 @@ import {
   GUI_DIR,
   RECIPE_PATH,
   REGISTER,
+  RUNTIME_OF,
+  SNAP_EXTENSIONS,
   SnapcraftUngenerable,
   baseForRunner,
   licenceForRecipe,
   linuxStoreRow,
   readLinuxBuildLane,
+  runtimeOfProblems,
+  stagePackagesFor,
 } from '../release/generate-snapcraft.mjs';
 import { readLinuxIdentity, LinuxBrandUnavailable, HICOLOR_SIZES } from '../store/render-linux-icons.mjs';
 
@@ -477,7 +505,7 @@ export function validateEmitted({ yaml, expected, label, packBase = null, projec
     eq('version', doc.version, expected.version);
   }
 
-  // ── stage-packages: non-empty, and EQUAL to the workflow's list ────────────
+  // ── stage-packages: EQUAL to the runtime list derived from the workflow's ──
   /** The bundle `source:` really resolves to, once limb 7 has agreed it does.
    *  Limb 9b reads the icon question out of it. */
   let bundleAt = null;
@@ -509,26 +537,67 @@ export function validateEmitted({ yaml, expected, label, packBase = null, projec
         bundleAt = r.at;
       }
     }
-    const staged = Array.isArray(part['stage-packages']) ? part['stage-packages'] : null;
-    if (staged === null) {
-      bad('the part declares no `stage-packages` list at all.');
-    } else if (staged.length === 0) {
-      bad('`stage-packages` is EMPTY. A snap with no staged dependencies builds and then fails to start.');
+    // ── limb 10 — no build-packages ──────────────────────────────────────────
+    if (part['build-packages'] !== undefined) {
+      bad(
+        `the part declares \`build-packages\` (${JSON.stringify(part['build-packages'])}). \`plugin: dump\` compiles ` +
+          'nothing: the key installs a toolchain on the packing host for a step that never runs, and it reads ' +
+          'as though the bundle were built here. The bundle is built by the Linux lane; this part only copies it.',
+      );
+    }
+    const raw = part['stage-packages'];
+    const staged = Array.isArray(raw) ? raw : null;
+    if (raw !== undefined && raw !== null && staged === null) {
+      bad(`\`stage-packages\` is ${JSON.stringify(raw)}, not a list.`);
+    }
+    // No BUILD package is staged, whatever the derivation says: a package the
+    // lane installs BY NAME is a compiler, a build system or a -dev package,
+    // and a `-dev` package from anywhere is headers and link-time names.
+    const lanePkgs = expected.lanePackages ?? [];
+    const build = (staged ?? []).filter((p) => lanePkgs.includes(p));
+    if (build.length) {
+      bad(
+        `\`stage-packages\` stages the build dependenc${build.length === 1 ? 'y' : 'ies'} ${build.map((p) => `"${p}"`).join(', ')} ` +
+          `that ${BUILD_WORKFLOW}'s Linux lane installs to COMPILE the bundle. Nothing of a compiler, a build ` +
+          "system or a header package is loaded at runtime; the snap needs each one's runtime library, which " +
+          'RUNTIME_OF names.',
+      );
+    }
+    const dev = (staged ?? []).filter((p) => /-dev$/.test(p) && !lanePkgs.includes(p));
+    if (dev.length) {
+      bad(`\`stage-packages\` stages the development package(s) ${dev.join(', ')}: headers and link-time names, not runtime libraries.`);
+    }
+    const want = expected.stagePackages;
+    if (want === null) {
+      // The derivation refused (an unmapped lane package), and that refusal is
+      // already a problem of its own. Equality against nothing is not asked.
+    } else if (want.length === 0) {
+      if (staged !== null && staged.length) {
+        bad(
+          `\`stage-packages\` lists ${staged.join(', ')}, and RUNTIME_OF derives NOTHING to stage from ` +
+            `${BUILD_WORKFLOW}'s apt list: every runtime library in it is carried by the extension's content snap.`,
+        );
+      }
+    } else if (staged === null) {
+      bad(
+        `the part declares no \`stage-packages\` list at all, and RUNTIME_OF derives [${want.join(', ')}] from ` +
+          `${BUILD_WORKFLOW}'s apt list. A snap with no staged dependencies builds and then fails to start.`,
+      );
     } else {
-      const want = new Set(expected.stagePackages);
+      const wantSet = new Set(want);
       const got = new Set(staged);
-      const missing = [...want].filter((p) => !got.has(p));
-      const extra = [...got].filter((p) => !want.has(p));
+      const missing = [...wantSet].filter((p) => !got.has(p));
+      const extra = [...got].filter((p) => !wantSet.has(p));
       if (staged.length !== got.size) {
         bad(`\`stage-packages\` repeats a package (${staged.length} entries, ${got.size} distinct).`);
       }
       if (missing.length || extra.length) {
         bad(
-          `\`stage-packages\` and ${BUILD_WORKFLOW}'s apt list disagree — ` +
-            `${missing.length} in the workflow and not the recipe (${missing.join(', ') || 'none'}), ` +
-            `${extra.length} in the recipe and not the workflow (${extra.join(', ') || 'none'}). ` +
-            'They are one list by construction; a difference means the recipe stopped deriving it, or ' +
-            'the workflow grew a package because a build broke and the snap did not follow.',
+          `\`stage-packages\` and the runtime list derived from ${BUILD_WORKFLOW}'s apt list disagree — ` +
+            `${missing.length} derived and not staged (${missing.join(', ') || 'none'}), ` +
+            `${extra.length} staged and not derived (${extra.join(', ') || 'none'}). ` +
+            'The stage list is derived through RUNTIME_OF; a difference means the recipe stopped deriving it, ' +
+            'or the workflow grew a package because a build broke and the snap did not follow.',
         );
       }
     }
@@ -562,6 +631,37 @@ export function validateEmitted({ yaml, expected, label, packBase = null, projec
       bad(
         `\`plugs\` is [${plugs.join(', ')}]; DESKTOP_PLUGS declares [${expected.plugs.join(', ')}]. ` +
           'Under strict confinement an interface the app does not declare is a capability it does not have.',
+      );
+    }
+    // ── limb 12 — [ADR 015] §3's plugs, and the plugs the lane's libraries need ──
+    // Asked of the EMITTED list, so a DESKTOP_PLUGS that dropped one reddens here
+    // even though plug-equality above agrees with it.
+    const lockedMissing = ADR_015_PLUGS.filter((p) => !plugs.includes(p));
+    if (lockedMissing.length) {
+      bad(
+        `\`plugs\` lacks ${lockedMissing.join(', ')}, which [ADR 015] §3 requires: the snap "must declare ` +
+          `\`plugs: [${ADR_015_PLUGS.join(', ')}]\`" (the linux-snap row of ${REGISTER}). [ADR 015] is LOCKED; ` +
+          'dropping one reverses an owner decision, which is made by amending the ADR, not the recipe.',
+      );
+    }
+    for (const { pkg, plug } of expected.requiredPlugs ?? []) {
+      if (!plugs.includes(plug)) {
+        bad(
+          `\`plugs\` lacks "${plug}", which RUNTIME_OF requires of "${pkg}" in ${BUILD_WORKFLOW}'s Linux lane. ` +
+            'Under strict confinement an interface the app does not plug is a service it is not granted; for ' +
+            "libsecret, a Secret Service D-Bus client, that service is the desktop keyring SecureStore keeps its secrets in.",
+        );
+      }
+    }
+    // ── limb 11 — the extension RUNTIME_OF relies on ─────────────────────────
+    const exts = Array.isArray(appEntry.extensions) ? appEntry.extensions : [];
+    const extMissing = expected.extensions.filter((x) => !exts.includes(x));
+    const extExtra = exts.filter((x) => !expected.extensions.includes(x));
+    if (extMissing.length || extExtra.length) {
+      bad(
+        `\`apps.${expected.name}.extensions\` is [${exts.join(', ')}]; SNAP_EXTENSIONS declares ` +
+          `[${expected.extensions.join(', ')}]. RUNTIME_OF leaves GTK, libsecret and liblzma unstaged BECAUSE the ` +
+          "gnome extension's content snap carries them; without it nothing in the recipe provides them.",
       );
     }
     // ⏱ 2026-09-23 · the app's own D-Bus name. The Linux runner is a unique
@@ -683,6 +783,35 @@ export function guiPairProblems({ projectDir, snapName, expectIcon }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// tooling/wsl-setup.sh's apt list, for limb 14.
+//
+// The FIRST `apt-get install` command in the script, with comment lines dropped
+// and shell line continuations joined, is the system-package install; the
+// later ones install the Android SDK. Tokens after `install` that do not begin
+// with a dash are the packages. `packages: null` (with `why`) when there is no
+// file or no such command, which the scan reports as COVERAGE LOST.
+// ─────────────────────────────────────────────────────────────────────────────
+const WSL_SETUP = 'tooling/wsl-setup.sh';
+
+function readWslAptList(root) {
+  const path = join(root, WSL_SETUP);
+  if (!existsSync(path)) return { packages: null, why: `${WSL_SETUP} does not exist under ${root}` };
+  const lines = readFileSync(path, 'utf8').replace(/\r\n?/g, '\n').split('\n');
+  for (let k = 0; k < lines.length; k++) {
+    if (/^\s*#/.test(lines[k])) continue;
+    const line = k + 1;
+    let cmd = lines[k];
+    while (/\\\s*$/.test(cmd) && k + 1 < lines.length) cmd = `${cmd.replace(/\\\s*$/, ' ')}${lines[++k]}`;
+    for (const seg of cmd.split(/&&|\|\||;|\|/)) {
+      if (!/\bapt-get\s+install\b/.test(seg)) continue;
+      const toks = seg.trim().split(/\s+/);
+      return { packages: toks.slice(toks.indexOf('install') + 1).filter((t) => t !== '' && !t.startsWith('-')), line };
+    }
+  }
+  return { packages: null, why: `${WSL_SETUP} holds no \`apt-get install\` command` };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // WHAT THE TREE SAYS THE ANSWER SHOULD BE
 // ─────────────────────────────────────────────────────────────────────────────
 function readListing(root, dirRel, file) {
@@ -692,7 +821,7 @@ function readListing(root, dirRel, file) {
   return v === '' ? null : v;
 }
 
-function expectationsFor({ root, row, app, lane, version, expectIcon }) {
+function expectationsFor({ root, row, app, lane, stagePackages, version, expectIcon }) {
   const dirRel = row.storeMetadataDir.replace('{app}', app);
   const fields = {
     name: 'snap-name.txt',
@@ -702,7 +831,12 @@ function expectationsFor({ root, row, app, lane, version, expectIcon }) {
     listedLicence: 'license.txt',
   };
   const out = {
-    stagePackages: lane.packages,
+    // DERIVED through the generator's own `stagePackagesFor`; `null` when that
+    // refused, which the scan has already recorded as a problem.
+    stagePackages,
+    lanePackages: lane.packages,
+    requiredPlugs: lane.packages.filter((p) => RUNTIME_OF.get(p)?.plug).map((p) => ({ pkg: p, plug: RUNTIME_OF.get(p).plug })),
+    extensions: [...SNAP_EXTENSIONS],
     plugs: [...DESKTOP_PLUGS],
     grade: GRADE,
     confinement: CONFINEMENT,
@@ -793,6 +927,39 @@ if (apps.length === 0) {
   ]);
 }
 
+// ── limb 13 — every RUNTIME_OF entry carries its sources ────────────────────
+for (const p of runtimeOfProblems()) problems.push(`tooling/release/generate-snapcraft.mjs — ${p}`);
+
+// ── the stage list this tree derives, through the generator's own function ──
+/** `null` when the derivation refused; the refusal is then a problem, and the
+ *  equality limb is not asked (see validateEmitted). */
+let derivedStage = null;
+try {
+  derivedStage = stagePackagesFor(lane.packages);
+} catch (e) {
+  if (!(e instanceof SnapcraftUngenerable)) throw e;
+  problems.push(`${BUILD_WORKFLOW}:${lane.line} — ${e.lines.join(' ')}`);
+}
+
+// ── limb 14 — tooling/wsl-setup.sh installs at least what the lane installs ──
+const wsl = readWslAptList(ROOT);
+if (wsl.packages === null || wsl.packages.length === 0) {
+  coverageLost([
+    `${wsl.why ?? `${WSL_SETUP}:${wsl.line} has an \`apt-get install\` that names no package`}, so the superset limb has nothing to read.`,
+    `It holds that script's literal apt list to the Linux lane's (${BUILD_WORKFLOW}:${lane.line}). With no install`,
+    'command to read, a missing package there would pass unseen: the owner\'s WSL build then fails with an',
+    'error that names a pkg-config module, not the package.',
+  ]);
+}
+const wslMissing = lane.packages.filter((p) => !wsl.packages.includes(p));
+if (wslMissing.length) {
+  problems.push(
+    `${WSL_SETUP}:${wsl.line} — its first \`apt-get install\` lacks ${wslMissing.join(', ')}, which the Linux lane installs at ` +
+      `${BUILD_WORKFLOW}:${lane.line}. The script keeps a literal list because it runs before node exists ("sed, not node"), ` +
+      'and it has to install at least what CI builds with, or the owner\'s WSL build fails where CI passes.',
+  );
+}
+
 const tmpRoot = mkdtempSync(join(tmpdir(), 'nikatru-snapgen-'));
 /** ATTEMPTED vs VALIDATED, and the distinction is not pedantry — it was a real
  *  defect in this file's first version. The REQUIRED_COVERAGE assertion below
@@ -808,7 +975,14 @@ try {
   for (const app of apps) {
     attempted++;
     const label = `${row.id} · ${app}`;
-    const { expected, missing, dirRel } = expectationsFor({ root: ROOT, row, app, lane, version: EMITTED ? null : FIXTURE_VERSION });
+    const { expected, missing, dirRel } = expectationsFor({
+      root: ROOT,
+      row,
+      app,
+      lane,
+      stagePackages: derivedStage,
+      version: EMITTED ? null : FIXTURE_VERSION,
+    });
 
     if (missing.length) {
       problems.push(
@@ -939,8 +1113,10 @@ if (validated === 0) {
 for (const n of notes) console.log(`    ${n}`);
 console.log(
   `ok  snapcraft generable — ${validated} recipe(s) for ${apps.length} app(s) on ${row.id}: parse, ` +
-    `name from the store tree, no host paths, strict confinement, and ${lane.packages.length} stage-package(s) ` +
-    `equal to ${BUILD_WORKFLOW}:${lane.line}'s apt list (base ${BASE_FOR_RUNNER.get(lane.runner)} from ${lane.runner})` +
+    `name from the store tree, no host paths, strict confinement, no build-packages, extension(s) ` +
+    `${SNAP_EXTENSIONS.join(', ')}, and ${derivedStage.length} stage-package(s) derived through RUNTIME_OF from the ` +
+    `${lane.packages.length}-package apt list at ${BUILD_WORKFLOW}:${lane.line}, which ${WSL_SETUP}:${wsl.line} ` +
+    `installs a superset of (base ${BASE_FOR_RUNNER.get(lane.runner)} from ${lane.runner})` +
     (PACK_RUNNER ? `, packed on ${PACK_RUNNER} whose base is ${packBase}` : '') +
     (EMITTED ? ', and its `source` resolves from the project directory to a bundle holding the binary.' : '.') +
     (PACK_RUNNER

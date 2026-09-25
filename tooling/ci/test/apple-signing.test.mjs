@@ -296,10 +296,19 @@ function makeRoot({
    *  so "either row armed ⇒ fatal" is a real property and needs a fixture that
    *  can arm exactly one of them. */
   rowOverrides = {},
+  /** tooling/apple-provisioning.json, copied from the REAL tree: --app keeps only
+   *  the profiles whose bundle id its row names (O-SECOND-APP-SIGNS-AS-THE-FIRST).
+   *  Copied rather than restated, so no Apple id is spelt in this file; the
+   *  filter's own cases, with a synthetic register, are in
+   *  apple-signing-app-filter.test.mjs. */
+  provisioning = true,
 } = {}) {
   const root = join(TMP, `root${seq++}`);
   mkdirSync(join(root, 'tooling'), { recursive: true });
   mkdirSync(join(root, 'catalog'), { recursive: true });
+  if (provisioning) {
+    writeFileSync(join(root, 'tooling', 'apple-provisioning.json'), readFileSync(join(REPO_ROOT, 'tooling', 'apple-provisioning.json')));
+  }
   if (register) {
     const channels = channelIds.map((id) => {
       const row = {
@@ -346,10 +355,20 @@ function runPrepare(root, env, { app = 'subscriptiontracker' } = {}) {
   return { r, outDir, ghEnv, exported: existsSync(ghEnv) ? readFileSync(ghEnv, 'utf8') : '' };
 }
 
+/** The profiles secret as the account issues it: one iOS and one macOS profile
+ *  for the app, in a zip. apple-signing.mjs refuses anything but exactly one of
+ *  each for `--app`, so a lone .mobileprovision no longer reaches the checks
+ *  after that refusal. `ios` / `macos` override one profile's fields. */
+const PROFILES = ({ ios = {}, macos = {} } = {}) =>
+  makeZip([
+    { name: 'subscriptiontracker-ios.mobileprovision', bytes: fakeProfile({ name: 'Subly iOS', ...ios }), method: 0 },
+    { name: 'subscriptiontracker-macos.provisionprofile', bytes: fakeProfile({ name: 'Subly macOS', ...macos }), method: 8 },
+  ]).toString('base64');
+
 const FULL = () => ({
   [ROLE_ENV.p12]: fakeP12().toString('base64'),
   [ROLE_ENV.p12Password]: 'fixture-passphrase',
-  [ROLE_ENV.profiles]: fakeProfile().toString('base64'),
+  [ROLE_ENV.profiles]: PROFILES(),
   [ROLE_ENV.teamId]: TEAM,
 });
 
@@ -1405,7 +1424,7 @@ describe('apple-signing — a secret that is not what it claims to be', () => {
   test('FAILS when a profile belongs to a DIFFERENT team than APPLE_TEAM_ID', () => {
     const { r } = runPrepare(makeRoot(), {
       ...FULL(),
-      [ROLE_ENV.profiles]: fakeProfile({ team: OTHER_TEAM }).toString('base64'),
+      [ROLE_ENV.profiles]: PROFILES({ ios: { team: OTHER_TEAM } }),
     });
     assert.equal(r.status, 1, out(r));
     assert.match(out(r), /belonging to a different team/);
@@ -1414,7 +1433,7 @@ describe('apple-signing — a secret that is not what it claims to be', () => {
   test('FAILS on an EXPIRED provisioning profile, with the date in the message', () => {
     const { r } = runPrepare(makeRoot(), {
       ...FULL(),
-      [ROLE_ENV.profiles]: fakeProfile({ expires: '2020-01-01T00:00:00Z' }).toString('base64'),
+      [ROLE_ENV.profiles]: PROFILES({ ios: { expires: '2020-01-01T00:00:00Z' } }),
     });
     assert.equal(r.status, 1, out(r));
     assert.match(out(r), /EXPIRED provisioning profile/);
