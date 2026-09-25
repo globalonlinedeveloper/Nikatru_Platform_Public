@@ -55,6 +55,11 @@ export async function launchFirefox({ addonId, bin = FIREFOX_BIN, extraPrefs = {
   fs.writeFileSync(path.join(profile, 'user.js'), userJs(prefs));
   const args = ['--no-remote', '--profile', profile, '--remote-debugging-port=0'];
   if (!process.env.HEADFUL) args.unshift('--headless');
+  /* On Windows a headful firefox.exe is a LAUNCHER that starts the real browser and exits 0, so
+     the BiDi line went with it (2026-09-25, Firefox 156.0.1: "exited 0 before serving BiDi") and
+     the browser was left orphaned. --wait-for-browser keeps the launcher until the browser exits.
+     Headless runs are untouched. */
+  if (process.env.HEADFUL && process.platform === 'win32') args.push('--wait-for-browser');
   const proc = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, MOZ_REMOTE_ALLOW_SYSTEM_ACCESS: '1' } });
   const endpoint = await new Promise((resolve, reject) => {
     let buf = '';

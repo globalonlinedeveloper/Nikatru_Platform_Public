@@ -19,6 +19,12 @@
 
    Exit: 0 every outcome as expected · 1 one differs · 2 coverage lost (no
    Firefox, older than 140, BiDi refused, or no size graded).
+
+   e2e-display: headful — a HEADLESS Firefox clipboard holds text only. On
+   2026-09-25, Firefox 156.0.1, this suite headless read back no type at all for
+   3 of 3 sizes ('unverified'), and headful read back 3 of 3 ('ok'). The
+   e2e-suite step reads that marker and runs this file under xvfb-run -a with
+   HEADFUL=1; by hand, run it with HEADFUL=1 for the same reason.
    ========================================================================== */
 import fs from 'node:fs';
 import path from 'node:path';

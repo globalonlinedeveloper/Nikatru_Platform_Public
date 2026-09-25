@@ -1027,6 +1027,12 @@ reason; it is a rule this tree cleaned up once and does not regress.
 The runner loads the extension straight from the tool directory — no
 build step, which is also the repo's law for the extensions themselves.
 
+2026-09-25 — a suite whose source carries `e2e-display: headful` is spawned
+under `xvfb-run -a` with `HEADFUL=1` (the step above installs xvfb), because a
+headless Firefox clipboard holds text only: gecko-clipboard.mjs read back no
+image/png headless and all three sizes headful on Firefox 156.0.1, while every
+other suite still runs headless with no DISPLAY.
+
 🔴 `run: node run.mjs` WAS THIS ENTIRE STEP UNTIL 2026-08-25, AND THAT IS
 WHY A GREEN E2E TICK PROVED LESS THAN ANY READER WOULD TAKE IT FOR.
 Measured that day in Extension/Full_Screen_Shot/test/e2e: twelve `.mjs`
