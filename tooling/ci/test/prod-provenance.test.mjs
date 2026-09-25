@@ -378,9 +378,13 @@ describe('assert-prod-provenance — the gate limb', () => {
     assert.ok(s.includes(from), `${rel} no longer carries the text this case mutates: ${from}`);
     writeFileSync(join(root, rel), s.replace(from, to));
   };
+  // ⏱ 2026-09-25 [pd2d] the record step gained DEPLOY_OUTPUT, the Worker version
+  // rollback.yml re-promotes; the case still moves the WHOLE step.
   const PLATFORM_RECORD =
     "      - name: Record the deployed SHA\n        if: always() && steps.deploy.outcome == 'success'\n        env:\n          GH_TOKEN: ${{ github.token }}\n" +
-    '        run: node tooling/ci/record-deployment.mjs platform https://platform.nikatru.com\n';
+    '          # why: the Worker version — see the subscriptiontracker-api job.\n' +
+    '          DEPLOY_OUTPUT: ${{ steps.deploy.outputs.command-output }}\n' +
+    '        run: node tooling/ci/record-deployment.mjs platform https://platform.nikatru.com --wrangler-output-env DEPLOY_OUTPUT\n';
 
   // The copy carries no catalog/apps.json, so every withTree run is already red on the app
   // catalogue; the cases below are told apart by their message, and this is their green control.
