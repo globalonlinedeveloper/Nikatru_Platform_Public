@@ -322,6 +322,84 @@ describe('check-heartbeats — the occurrence parser, which decides whether a ru
   });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-24 (O-OPS-WATCHDOG-STUCK-RUNS-HOURLY) · ONE HOURLY SHAPE, AND THE
+// ABSENCE ANCHOR MOVES FOR EVERY JOB.
+//
+// The platform Worker's stuck-run check runs on `15 * * * *`. Both parsers now
+// read exactly `<literal minute 0-59> * * * *` and still refuse every other shape.
+// Accepting it alone is not enough: the old anchor graded the NEWEST occurrence
+// and asked whether its grace had expired, and an hourly job's newest occurrence
+// is never more than an hour old, so an hourly job could never be ABSENT. The
+// anchor is now the newest occurrence WHOSE GRACE HAS ENDED, for every job. That
+// also closes a 6-hourly hole: a missed 18:00 read green at 00:30, graded against
+// the 00:00 slot that was only half an hour past due.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('check-heartbeats — the hourly shape, and an anchor whose grace has ended', () => {
+  const at = (s) => Date.parse(s);
+  const iso = (ms) => new Date(ms).toISOString();
+  const HOURLY = '15 * * * *';
+  const GRID = ['0 0 * * *', '0 6 * * *', '0 12 * * *', '0 18 * * *'];
+
+  test('H1 — `<minute> * * * *` is an interval of ONE hour, at any literal minute 0-59', () => {
+    assert.equal(cronIntervalHours(HOURLY), 1);
+    assert.equal(cronIntervalHours('0 * * * *'), 1);
+    assert.equal(cronIntervalHours('59 * * * *'), 1);
+  });
+
+  test('H2 — the hourly occurrence is this hour\'s minute once it has passed, else the previous hour\'s, across a day boundary', () => {
+    assert.equal(iso(lastExpectedFireMs(HOURLY, at('2026-09-24T12:20:00Z'))), '2026-09-24T12:15:00.000Z');
+    assert.equal(iso(lastExpectedFireMs(HOURLY, at('2026-09-24T12:10:00Z'))), '2026-09-24T11:15:00.000Z');
+    assert.equal(iso(lastExpectedFireMs(HOURLY, at('2026-09-24T12:15:00Z'))), '2026-09-24T12:15:00.000Z');
+    assert.equal(iso(lastExpectedFireMs(HOURLY, at('2026-09-01T00:05:00Z'))), '2026-08-31T23:15:00.000Z');
+  });
+
+  test('H3 — every other `*`-hour shape is still refused by BOTH parsers, and by firstFireAfterMs', () => {
+    for (const bad of ['60 * * * *', '* * * * *', '*/15 * * * *', '15,45 * * * *', '0-5 * * * *', '15 */2 * * *', '15 * * * 1', '15 * 1 * *', '15 * * 1 *', '15 *']) {
+      assert.equal(cronIntervalHours(bad), null, `interval should refuse ${JSON.stringify(bad)}`);
+      assert.equal(lastExpectedFireMs(bad, NOW), null, `occurrence should refuse ${JSON.stringify(bad)}`);
+      assert.equal(firstFireAfterMs(bad, NOW), null, `first fire should refuse ${JSON.stringify(bad)}`);
+    }
+  });
+
+  test('H4 — an hourly job with NO row is NOT YET DUE until its first `:15` after the declaration plus the grace, then ABSENT', () => {
+    const declared = at('2026-09-24T07:58:14Z');
+    assert.equal(firstFireAfterMs(HOURLY, declared), at('2026-09-24T08:15:00Z'));
+    assert.equal(firstFireAfterMs(HOURLY, at('2026-09-24T08:15:00Z')), at('2026-09-24T09:15:00Z'), 'declared AT a slot, a job owes the NEXT one');
+    const waiting = evaluateJob('ops_stuck_runs', [], HOURLY, at('2026-09-24T10:15:00Z'), declared);
+    assert.equal(waiting.ok, true, waiting.reason);
+    assert.equal(waiting.pending, true);
+    assert.match(waiting.reason, /grace on that slot ends 2026-09-24T10:15:00\.000Z/);
+    const late = evaluateJob('ops_stuck_runs', [], HOURLY, at('2026-09-24T10:15:01Z'), declared);
+    assert.equal(late.ok, false);
+    assert.equal(late.kind, 'absent');
+  });
+
+  test('🔴 H5 — an hourly job whose newest row is 3 h old is ABSENT, graded on the newest `:15` whose grace has ended', () => {
+    const v = evaluateJob('ops_stuck_runs', [row({ ran_at: '2026-09-24T09:15:31Z' })], HOURLY, at('2026-09-24T12:20:00Z'));
+    assert.equal(v.ok, false, v.reason);
+    assert.equal(v.kind, 'absent');
+    assert.match(v.reason, /due at 2026-09-24T10:15:00\.000Z/);
+  });
+
+  test('🔴 H6 — a 6-hourly job that missed 18:00 is ABSENT at 00:30, not graded against the 00:00 slot half an hour past due', () => {
+    const v = evaluateJob('ops_watchdog', [row({ ran_at: '2026-09-23T12:00:40Z' })], GRID, at('2026-09-24T00:30:00Z'));
+    assert.equal(v.ok, false, v.reason);
+    assert.equal(v.kind, 'absent');
+    assert.match(v.reason, /due at 2026-09-23T18:00:00\.000Z/);
+  });
+
+  test('H7 — one hourly slot still inside its grace is late, not missed: green, naming the slot it covered', () => {
+    const v = evaluateJob('ops_stuck_runs', [row({ ran_at: '2026-09-24T11:15:40Z' })], HOURLY, at('2026-09-24T12:20:00Z'));
+    assert.equal(v.ok, true, v.reason);
+    assert.match(v.reason, /the run due 2026-09-24T10:15:00\.000Z is recorded/);
+    // And the recorded 6-hourly case: the 18:00 row read at 00:30 covers the 18:00 slot.
+    const grid = evaluateJob('ops_watchdog', [row({ ran_at: '2026-09-23T18:00:40Z' })], GRID, at('2026-09-24T00:30:00Z'));
+    assert.equal(grid.ok, true, grid.reason);
+    assert.match(grid.reason, /the run due 2026-09-23T18:00:00\.000Z is recorded/);
+  });
+});
+
 describe('check-heartbeats — the watched set is DERIVED, and cannot silently empty', () => {
   /** A fixture repo whose derivation succeeds, so each mutation below is proven
    *  to fail for its own reason. */
@@ -526,6 +604,19 @@ describe('check-heartbeats — the watched set is DERIVED, and cannot silently e
     assert.match(problems.join(' '), /failing closed rather than guessing/);
   });
 
+  test('H8 — an hourly `15 * * * *` cron kept by its own job derives beside a daily one, with no problems', () => {
+    // ⏱ 2026-09-24 (O-OPS-WATCHDOG-STUCK-RUNS-HOURLY). deriveWatchedJobs asks BOTH
+    // parsers, so this is the case that reds if only one of them learns the shape.
+    const { jobs, problems } = deriveWatchedJobs(makeRepo((s) => {
+      s.wrangler.triggers.crons = ['0 6 * * *', '15 * * * *'];
+      s.source += "export const HOURLY_JOB = 'hourly_job';\nawait recordHeartbeat(env, rows, HOURLY_JOB);\n";
+      s.row.watchedJobs = { demo_job: ['0 6 * * *'], hourly_job: ['15 * * * *'] };
+      s.row.watchedJobsDeclaredAt = { demo_job: '2026-08-01T00:00:00Z', hourly_job: '2026-09-24T07:58:14Z' };
+    }));
+    assert.deepEqual(problems, []);
+    assert.deepEqual(jobs.find((j) => j.job === 'hourly_job')?.cron, ['15 * * * *']);
+  });
+
   test('a D1 binding with no migrations_dir is COVERAGE LOST — the heartbeat DB is unresolvable', () => {
     const { problems } = deriveWatchedJobs(makeRepo((s) => { delete s.wrangler.d1_databases[0].migrations_dir; }));
     assert.match(problems.join(' '), /no D1 binding carrying `migrations_dir`/);
@@ -562,9 +653,13 @@ describe('check-heartbeats — end to end through the real register', () => {
   // for the whole period `analytics_liveness` ran unwatched — a fixture naming
   // only the job it knew about cannot notice a job it does not.
   const WATCHED = deriveWatchedJobs(REPO).jobs.map((j) => j.job);
+  // ⏱ 2026-09-24: 08:15, not 06:00. Read at 09:00, the real register's hourly
+  // `ops_stuck_runs` is owed the 06:15 row (its grace ended 08:15), so a 06:00 row
+  // is ABSENT for it; 08:15 is at or after every watched job's owed slot.
+  const FRESH = '2026-08-02T08:15:00Z';
   /** A healthy row set covering EVERY watched job, whatever that set becomes. */
   const healthy = (over = {}) =>
-    Object.fromEntries(WATCHED.map((job) => [job, [row({ job, ...over })]]));
+    Object.fromEntries(WATCHED.map((job) => [job, [row({ job, ran_at: FRESH, ...over })]]));
 
   test('the real register derives a NON-EMPTY watched set — the floor every test below stands on', () => {
     // Without this, an accidentally-empty derivation makes `healthy()` an empty
@@ -603,7 +698,7 @@ describe('check-heartbeats — end to end through the real register', () => {
     // each job in turn is the ONLY unhealthy one, and each must be caught.
     for (const job of WATCHED) {
       const rows = healthy();
-      rows[job] = [row({ job, ok: 0, detail: 'broken' })];
+      rows[job] = [row({ job, ok: 0, detail: 'broken', ran_at: FRESH })];
       const r = run(fixture(rows), '2026-08-02T09:00:00Z');
       assert.equal(r.status, 1, `a failing "${job}" was NOT caught`);
       assert.match(r.stderr, new RegExp(job));

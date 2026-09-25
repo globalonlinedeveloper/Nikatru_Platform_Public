@@ -86,7 +86,13 @@
       "⬜ THE ONE THAT REOPENS A DECISION: d1.databasesPerAccount is the ceiling [ADR 020] cites for the",
       "CLIENT-ONLY default stamp — 'a per-app database is affordable for at most nine apps'",
       "(tooling/ci/assert-clone-contract.mjs). At 50,000 that argument no longer holds. That does not make",
-      "the default WRONG; it makes the RECORDED REASON wrong. Revisiting it is an ADR, not an edit."
+      "the default WRONG; it makes the RECORDED REASON wrong. Revisiting it is an ADR, not an edit.",
+      "",
+      "⏱ APPENDED 2026-09-25 (O-OPS-WATCHDOG-STUCK-RUNS-HOURLY): ONE ROW NOW CARRIES THE PAID NUMBER.",
+      "workers.cronTriggersPerAccount's `value` is the Workers Paid 250 (the plan read live by the parent",
+      "on 2026-09-24 about 07:55Z), adopted because the hourly stuck-run cron is a sixth trigger. Every",
+      "OTHER row's `value` is still the FREE number, so the sentence above now holds for every row but",
+      "that one. `verifiedOn` is untouched: the vendor page was not re-read."
     ],
     "note": "Cloudflare publishes Free and Paid side by side on the same pages. Where both exist, the row records the FREE value in `value` and the paid one in `paidValue`, so an upgrade is a one-line edit rather than a re-research."
   },
@@ -395,7 +401,7 @@
     },
     {
       "id": "workers.cronTriggersPerAccount",
-      "value": 5,
+      "value": 250,
       "paidValue": 250,
       "unit": "triggers",
       "scope": "per-account",
@@ -406,7 +412,7 @@
       "sourceText": "Cron Triggers per account: 5 (Free) / 250 (Paid)",
       "verifiedOn": "2026-08-01",
       "ambiguity": "None.",
-      "note": "🔴 THE REASON [4]B-11 IS 'ONE CRON FOR THE PORTFOLIO'. Five triggers account-wide cannot be one-per-app at 50 apps; it cannot even be one-per-app at six. The consolidated 06:00 UTC scheduler with a per-app fan-out is not a tidiness preference, it is this number. Limb 5 counts the crons across every wrangler config in the repo, brick template included, so a stamped app that adds its own is caught at the stamp rather than at the account."
+      "note": "🔴 THE REASON [4]B-11 IS 'ONE CRON FOR THE PORTFOLIO'. Five triggers account-wide cannot be one-per-app at 50 apps; it cannot even be one-per-app at six. The consolidated 06:00 UTC scheduler with a per-app fan-out is not a tidiness preference, it is this number. Limb 5 counts the crons across every wrangler config in the repo, brick template included, so a stamped app that adds its own is caught at the stamp rather than at the account. ⏱ APPENDED 2026-09-24 (O-OPS-WATCHDOG-STUCK-RUNS-HOURLY): `value` moved 5 -> 250, this row's recorded `paidValue`, when services/platform gained a SIXTH trigger (`15 * * * *`, the hourly stuck-run check). The account is on Workers Paid (planOfRecord.cloudflare, and read live by the parent on 2026-09-24 from the account's subscriptions: `workers_paid`, state Paid). The Free number was the binding one while it held; on Paid it would refuse a sixth cron the account can run. `verifiedOn` is unchanged: the vendor limits page was NOT re-read for this edit, and 250 is the figure already recorded in `sourceText`."
     },
     {
       "id": "workers.requestsPerDay",

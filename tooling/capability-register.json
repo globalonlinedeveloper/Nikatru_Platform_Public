@@ -216,7 +216,8 @@
         "PLATFORM_CRON_HEARTBEAT_URL",
         "OPS_WATCHDOG_HEARTBEAT_URL",
         "GLITCHTIP_TOKEN",
-        "GLITCHTIP_URL"
+        "GLITCHTIP_URL",
+        "OPS_STUCK_RUNS_HEARTBEAT_URL"
       ],
       "openProtocol": "YES — speaks the Sentry protocol, so the sentry_flutter SDK talks to it unmodified and any Sentry-protocol sink is a drop-in.",
       "seam": {

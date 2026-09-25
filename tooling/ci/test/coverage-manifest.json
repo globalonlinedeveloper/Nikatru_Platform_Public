@@ -110,7 +110,7 @@
   "guard-sweep-invocations.test.mjs": 5,
   "guards-refuse-empty.test.mjs": 17,
   "guards.test.mjs": 403,
-  "heartbeats.test.mjs": 69,
+  "heartbeats.test.mjs": 77,
   "heavy-lock.test.mjs": 36,
   "hostname-depth.test.mjs": 7,
   "hyperdrive-cap.test.mjs": 13,

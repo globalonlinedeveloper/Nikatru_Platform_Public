@@ -34,7 +34,13 @@ import {
 } from './lib/erasure-ledger';
 import { deleteIdentity, erasePlatformRows, purgeVerifiedSignups } from './lib/platform-erasure';
 import { dropAppleToken, revokeAppleToken } from './lib/apple-revoke';
-import { runOpsWatchdogChecks, type HeartbeatRow } from './ops-watchdog';
+import {
+  runOpsWatchdogChecks,
+  scanStuckRuns,
+  OPS_STUCK_RUNS_TARGET,
+  type HeartbeatRow,
+  type StuckRunScan,
+} from './ops-watchdog';
 
 /** The job name recorded in `cron_heartbeat`. */
 export const KEEPALIVE_JOB = 'supabase_keepalive';
@@ -2273,6 +2279,9 @@ export const BACKUP_CRON = '30 2 * * *';
  * Worker secret PLATFORM_CRON_HEARTBEAT_URL. GlitchTip lives on Box B, which
  * this Worker already watches from outside (BOXB_REACH_JOB), so the two watch
  * each other and neither lives on GitHub.
+ * ⏱ 2026-09-24: every firing EXCEPT OPS_HOURLY_CRON's, which beats its own URL
+ * (opsStuckRunsJob). Monitor 37 proves the dispatcher grid and the backup ran;
+ * an hourly beat here would keep it green while the grid had stopped.
  *
  * ⚠️ THE BEAT IS SENT ONLY AFTER THE FIRING'S OWN WORK HAS RETURNED, so it
  * claims "the timer fired AND its limbs ran to the end", not merely "an isolate
@@ -2315,14 +2324,18 @@ async function sendHeartbeat(raw: string | undefined, name: string): Promise<'be
  * [O-LAPTOP-ROUTINES-DIE-OVERNIGHT] The laptop watchdog's portable work — see
  * src/ops-watchdog.ts for what it checks and why `ok` means "the check ran".
  *
- * 🔴 IT KEEPS THE DISPATCHER'S GRID (every firing except the 02:30 backup), NOT A
- * NEW TRIGGER. The laptop routine was hourly; an hourly Worker cron would need
- * 24 literal expressions, because tooling/ops/check-heartbeats.mjs refuses
- * `0 * * * *` (see wrangler.jsonc), and widening that parser is a change to the
- * thing every freshness verdict rests on. Six-hourly is a real loss of
- * resolution against hourly, stated here rather than hidden; what it buys is a
- * watchdog that runs with the lid shut, which the hourly one never did (monitor
- * 30's measured worst gap was 4.98h anyway).
+ * 🔴 IT KEEPS THE DISPATCHER'S GRID (every firing except the 02:30 backup and the
+ * hourly stuck-run firing). Main's conclusions and the GlitchTip monitors are
+ * read six-hourly; that is a loss of resolution against the laptop routine's
+ * hourly pass, stated here rather than hidden, and what it buys is a watchdog
+ * that runs with the lid shut (monitor 30's measured worst gap was 4.98h anyway).
+ *
+ * ⏱ 2026-09-24 (O-OPS-WATCHDOG-STUCK-RUNS-HOURLY): THE STUCK-RUN CHECK LEFT THIS
+ * JOB for its own hourly trigger, OPS_HOURLY_CRON, below. Until then this doc said
+ * an hourly Worker cron would need 24 literal expressions because
+ * tooling/ops/check-heartbeats.mjs refused `0 * * * *`. That reader now accepts
+ * exactly `<minute> * * * *`, and its absence anchor moved with it, so one
+ * expression is judged as honestly as the four literal ones on this grid.
  */
 export const OPS_WATCHDOG_JOB = 'ops_watchdog';
 
@@ -2355,9 +2368,75 @@ export async function opsWatchdogJob(
   return sendHeartbeat(env.OPS_WATCHDOG_HEARTBEAT_URL, 'OPS_WATCHDOG_HEARTBEAT_URL');
 }
 
+/**
+ * [O-OPS-WATCHDOG-STUCK-RUNS-HOURLY] The trigger the stuck-run check runs on,
+ * hourly at :15. Asserted against wrangler.jsonc by scheduled-crons.test.ts.
+ *
+ * 🔴 IT IS ITS OWN FIRING, NOT A BRANCH INSIDE ANOTHER ONE. `scheduled` routes it
+ * before `runFiring` and returns: it dispatches nothing, runs no nightly limb,
+ * and never beats PLATFORM_CRON_HEARTBEAT_URL or OPS_WATCHDOG_HEARTBEAT_URL,
+ * whose monitors (37 and 40) prove the six-hourly grid ran. :15 keeps it clear
+ * of the :00 grid firings and the 02:30 backup.
+ */
+export const OPS_HOURLY_CRON = '15 * * * *';
+
+/** The job the hourly firing records under. `ops_watchdog` keeps (b) and (c). */
+export const OPS_STUCK_RUNS_JOB = 'ops_stuck_runs';
+
+/**
+ * Scan for stuck runs, record the ROW, and beat OPS_STUCK_RUNS_HEARTBEAT_URL
+ * ONLY when the scan read every active run and left no stuck run unhandled.
+ *
+ * 🔴 THE BEAT CARRIES THE FINDING, AND THE ROW DOES NOT. The row keeps
+ * ops-watchdog.ts's rule — a stuck run is ok=1 with FINDING: in `detail`, or a
+ * stuck run would freeze the merge queue through ops-watch — while this beat
+ * stops, and its GlitchTip monitor pages. Withheld on any of: a check that did
+ * not run cleanly (ok=0: not configured, unreadable, a refused cancel), a stuck
+ * run left unhandled (every one while OPS_WATCHDOG_CANCEL_STUCK is off), or a run
+ * list longer than one page. Each is logged as `heartbeat WITHHELD: <why>`.
+ * A scan that throws records one ok=0 row under the same target, so the next
+ * good firing supersedes it, and withholds the beat.
+ */
+export async function opsStuckRunsJob(
+  env: Env,
+  scan: (env: Env) => Promise<StuckRunScan> = scanStuckRuns,
+): Promise<'beat' | 'skipped' | 'failed' | 'withheld'> {
+  let result: StuckRunScan;
+  try {
+    result = await scan(env);
+  } catch (err) {
+    console.log(`[cron] ops stuck-runs: heartbeat WITHHELD: the scan threw: ${String(err).slice(0, 120)}`);
+    await recordHeartbeat(
+      env,
+      [{ target: OPS_STUCK_RUNS_TARGET, ok: false, detail: `scan threw, heartbeat withheld: ${String(err)}`.slice(0, 200) }],
+      OPS_STUCK_RUNS_JOB,
+    );
+    return 'withheld';
+  }
+  await recordHeartbeat(env, [result.row], OPS_STUCK_RUNS_JOB);
+  const why = !result.row.ok
+    ? `the check did not run cleanly: ${result.row.detail}`
+    : result.unhandled > 0
+      ? `${result.unhandled} stuck run(s) unhandled`
+      : result.truncated
+        ? 'a run list held more than one page, so a stuck run may not have been seen'
+        : null;
+  if (why !== null) {
+    console.log(`[cron] ops stuck-runs: heartbeat WITHHELD: ${why.slice(0, 200)}`);
+    return 'withheld';
+  }
+  return sendHeartbeat(env.OPS_STUCK_RUNS_HEARTBEAT_URL, 'OPS_STUCK_RUNS_HEARTBEAT_URL');
+}
+
 export const scheduled: ExportedHandlerScheduledHandler<Env> = async (event, env, ctx) => {
   ctx.waitUntil(
     (async () => {
+      // The hourly stuck-run firing is its own work and its own beat, and never
+      // reaches runFiring or platformCronBeat - see OPS_HOURLY_CRON.
+      if (typeof event?.cron === 'string' && event.cron === OPS_HOURLY_CRON) {
+        await opsStuckRunsJob(env);
+        return;
+      }
       await runFiring(event, env);
       // Last, and only once the firing's rows have landed - see platformCronBeat.
       await platformCronBeat(env);
@@ -2375,10 +2454,12 @@ async function runFiring(event: ScheduledController | undefined, env: Env): Prom
   }
   // Every other cron but the nightly one is a MARGIN firing: the dispatcher,
   // and nothing else. An unrecognised value falls through to the full handler
-  // — see NIGHTLY_CRON for why that is the safe direction.
+  // — see NIGHTLY_CRON for why that is the safe direction. OPS_HOURLY_CRON never
+  // arrives here: `scheduled` routes it to opsStuckRunsJob and returns.
   if (typeof event?.cron === 'string' && event.cron !== NIGHTLY_CRON) {
     await dispatchGithubWorkflows(env);
-    // Read-only (cancel only behind the owner's flag), bounded by 10s per call.
+    // Read-only, bounded by 10s per call. It cancels nothing since the stuck-run
+    // check moved to OPS_HOURLY_CRON (2026-09-24).
     await opsWatchdogJob(env);
     return;
   }

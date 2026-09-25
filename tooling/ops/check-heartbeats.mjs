@@ -29,9 +29,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // THREE WAYS TO BE RED, AND THE THIRD IS THE ONE THAT MATTERS.
 //
-//   1. ABSENT   — the job's most recent SCHEDULED OCCURRENCE left no row, and
-//                 the grace on that occurrence has expired. Anchored on when the
-//                 run was DUE, not on how old the newest row is.
+//   1. ABSENT   — the job's most recent SCHEDULED OCCURRENCE WHOSE GRACE HAS
+//                 EXPIRED left no row (⏱ 2026-09-24: "whose grace has expired"
+//                 moved into the choice of occurrence; see evaluateJob). Anchored
+//                 on when the run was DUE, not on how old the newest row is.
 //                 🔴 It was the latter until 2026-08-06 — "older than 1.5× the
 //                 interval" — and that rule is GREEN ON A SINGLE MISSED NIGHTLY
 //                 RUN, because a daily reader looking at a daily cron sees a
@@ -166,16 +167,23 @@ export function parseJsonc(text) {
 
 /**
  * Cron expression → interval in hours. DELIBERATELY NARROW: it recognises only
- * the two shapes this repo actually uses and returns null for everything else,
+ * the shapes this repo actually uses and returns null for everything else,
  * which the caller treats as UNKNOWN and therefore RED. A generous parser that
  * guessed would be a silent source of a wrong window, and a wrong window is a
  * staleness check that cannot fire.
+ *
+ * ⏱ 2026-09-24 (O-OPS-WATCHDOG-STUCK-RUNS-HOURLY): THREE SHAPES, NOT TWO. A
+ * literal minute and hour, daily or on one weekday, as before; and exactly
+ * `<literal minute 0-59> * * * *`, hourly, for the platform Worker's stuck-run
+ * check. Every other `*` hour — a step, a list, a range, a `*` minute, an hourly
+ * shape with any day or month field — is still refused, by both parsers.
  */
 export function cronIntervalHours(expr) {
   const parts = String(expr ?? '').trim().split(/\s+/);
   if (parts.length !== 5) return null;
   const [min, hour, dom, mon, dow] = parts;
   const literal = (v) => /^\d+$/.test(v);
+  if (hour === '*') return literal(min) && Number(min) <= 59 && dom === '*' && mon === '*' && dow === '*' ? 1 : null;
   if (!literal(min) || !literal(hour)) return null;
   if (mon !== '*') return null;
   if (dom === '*' && dow === '*') return 24;
@@ -190,6 +198,9 @@ export function cronIntervalHours(expr) {
  * so the two never disagree about what this reader understands: a widened
  * parser here would silently compute an occurrence for a schedule the interval
  * limb had already refused, and the two answers would drift apart unseen.
+ * ⏱ 2026-09-24: both were widened TOGETHER, by the one hourly shape
+ * `<literal minute 0-59> * * * *` and nothing else (see `cronIntervalHours`);
+ * `deriveWatchedJobs` still asks both, and heartbeats.test.mjs holds the refusals.
  *
  * All arithmetic is UTC. `cron_heartbeat.ran_at` is written with `toISOString()`
  * and Cloudflare's scheduler is UTC, so introducing a local timezone anywhere on
@@ -201,6 +212,14 @@ export function lastExpectedFireMs(expr, nowMs) {
   if (parts.length !== 5) return null;
   const [min, hour, dom, mon, dow] = parts;
   const literal = (v) => /^\d+$/.test(v);
+  if (hour === '*') {
+    if (!literal(min) || Number(min) > 59 || dom !== '*' || mon !== '*' || dow !== '*') return null;
+    // This hour's minute once it has passed, else the previous hour's. UTC has no
+    // DST, so stepping back one hour is exact.
+    const now = new Date(nowMs);
+    const thisHour = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), now.getUTCHours(), Number(min), 0, 0);
+    return thisHour <= nowMs ? thisHour : thisHour - 3_600_000;
+  }
   if (!literal(min) || !literal(hour)) return null;
   if (mon !== '*') return null;
   const m = Number(min);
@@ -317,8 +336,17 @@ export function evaluateJob(job, rows, cronExpr, nowMs, declaredAtMs = null) {
   // of the Worker's crons while the nightly limbs fire on one; judging it
   // against the 06:00 expression alone would call it absent every evening.
   // A string is still accepted so the 50-odd single-cron cases read unchanged.
+  //
+  // ⏱ 2026-09-24 (O-OPS-WATCHDOG-STUCK-RUNS-HOURLY) — THE ANCHOR IS THE NEWEST
+  // OCCURRENCE WHOSE GRACE HAS ENDED, for every job. It was the newest occurrence,
+  // judged only once its own grace had passed, and that asked about one slot:
+  // the newest. An hourly job's newest slot is never more than an hour old, so
+  // it could never be ABSENT however long it had been dead; and a 6-hourly job
+  // that missed 18:00 read green at 00:30, graded on the 00:00 slot half an hour
+  // past due. Stepping back by the grace first grades the newest slot that is
+  // OWED a row, so a late run inside its grace is still not an alarm.
   const cronList = Array.isArray(cronExpr) ? cronExpr : [cronExpr];
-  const dues = cronList.map((c) => lastExpectedFireMs(c, nowMs));
+  const dues = cronList.map((c) => lastExpectedFireMs(c, nowMs - MISSED_RUN_GRACE_HOURS * 3_600_000));
   // ⚠️ ANY unreadable expression is refused, not skipped: taking the max over
   // "the ones that parsed" would quietly judge a job against a subset of its own
   // schedule, which is the shape of every silent narrowing in this file.
@@ -334,7 +362,7 @@ export function evaluateJob(job, rows, cronExpr, nowMs, declaredAtMs = null) {
     };
   }
   const sinceDueHours = (nowMs - dueMs) / 3_600_000;
-  if (sinceDueHours > MISSED_RUN_GRACE_HOURS && stamp < dueMs) {
+  if (stamp < dueMs) {
     return {
       ok: false,
       kind: 'absent',

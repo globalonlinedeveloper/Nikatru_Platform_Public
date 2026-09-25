@@ -30,6 +30,15 @@
 // honest failures of the check itself — not configured, refused, unreadable.
 // That is the same line the laptop routine drew: findings never withheld its beat.
 //
+// ⏱ 2026-09-24 (O-OPS-WATCHDOG-STUCK-RUNS-HOURLY): (a) LEFT THE 6-HOURLY GRID. It
+// runs on its own hourly cron (`OPS_HOURLY_CRON`, scheduled.ts `opsStuckRunsJob`)
+// through `scanStuckRuns`, and is no longer part of `runOpsWatchdogChecks`. Its
+// ROW keeps the rule above — a finding is still ok=1 — but its BEAT, a separate
+// GlitchTip monitor, is the page: it is sent only when the scan read every
+// active run and no stuck run is left unhandled, so a stuck run stops the beat.
+// That is the one beat here a finding withholds, and it is a different signal
+// from this job's rows, which ops-watch.yml reads.
+//
 // ⚠️ NOTHING HERE LOGS OR RECORDS A CREDENTIAL. Tokens go into headers only, and
 // no URL that carries one is ever printed (see the heartbeat URL in scheduled.ts).
 // ─────────────────────────────────────────────────────────────────────────────
@@ -73,21 +82,35 @@ export const OPS_FETCH_TIMEOUT_MS = 10_000;
 
 /**
  * THE EXTERNAL SUBREQUESTS ONE WATCHDOG PASS CAN SPEND, COUNTED, not estimated:
- *   2  run lists (status=in_progress, status=queued)
- * + 3  cancels at most (OPS_MAX_CANCELS_PER_RUN)
- * + 1  main's HEAD commit (the branch-head anchor, read once per pass)
+ *   1  main's HEAD commit (the branch-head anchor, read once per pass)
  * + 8  main conclusions: per OPS_MAIN_WORKFLOWS entry, OPS_MAIN_READ_ATTEMPTS
  *      attempts of (one page + one cross-read) — see "THE STALE PAGE" below
  * + 1  the head_sha second path, per OPS_PUSH_TRIGGERED_ON_MAIN entry, read
  *      only when every attempt was refused — see "THE SECOND PATH" below
  * + 2  GlitchTip monitor reads (OPS_GLITCHTIP_MONITORS)
  * + 1  the watchdog's own heartbeat POST (scheduled.ts, opsWatchdogJob)
- * = 18. test/ops-watchdog.test.ts recomputes this from the arrays above.
+ * = 13. test/ops-watchdog.test.ts recomputes this from the arrays above.
+ * ⏱ 2026-09-24: it was 18 while the pass also read the two run lists and made up
+ * to three cancels; those moved to the hourly firing (OPS_STUCK_RUNS_MAX_SUBREQUESTS).
  * On the 06:00 firing it sits beside keep-alive (1+), Box B (3), Box A (N),
  * the dispatcher (≤3) and the cron beat (1): far inside 50 (Free) and 10,000 (Paid).
  * @ceiling workers.externalSubrequests lte
  */
-export const OPS_WATCHDOG_MAX_SUBREQUESTS = 18;
+export const OPS_WATCHDOG_MAX_SUBREQUESTS = 13;
+
+/**
+ * THE EXTERNAL SUBREQUESTS ONE HOURLY STUCK-RUN FIRING CAN SPEND, COUNTED:
+ *   2  run lists (status=in_progress, status=queued)
+ * + 3  cancels at most (OPS_MAX_CANCELS_PER_RUN), only behind the owner's flag
+ * + 1  its own heartbeat POST (scheduled.ts, opsStuckRunsJob)
+ * = 6. The firing runs nothing else. test/ops-watchdog.test.ts recomputes this
+ * and drives the worst case against it.
+ * @ceiling workers.externalSubrequests lte
+ */
+export const OPS_STUCK_RUNS_MAX_SUBREQUESTS = 6;
+
+/** The cron_heartbeat target the stuck-run scan writes, on every path. */
+export const OPS_STUCK_RUNS_TARGET = 'actions-stuck-runs';
 
 function githubHeaders(token: string): Record<string, string> {
   return {
@@ -118,11 +141,21 @@ async function listRuns(token: string, status: 'in_progress' | 'queued'): Promis
   return { runs, total: typeof body.total_count === 'number' ? body.total_count : runs.length };
 }
 
+/**
+ * One stuck-run scan: the ROW it records, and the two facts the hourly beat is
+ * decided on. `unhandled` counts the stuck runs NOT cancelled on this pass
+ * (every one of them while the owner's flag is off); `truncated` says a run list
+ * held more than one page, so a stuck run may exist that was never seen.
+ */
+export type StuckRunScan = { row: HeartbeatRow; unhandled: number; truncated: boolean };
+
 /** (a) Flag stuck runs; cancel them only when the owner's flag allows it. */
-export async function checkStuckRuns(env: Env, nowMs: number = Date.now()): Promise<HeartbeatRow> {
-  const target = 'actions-stuck-runs';
+export async function scanStuckRuns(env: Env, nowMs: number = Date.now()): Promise<StuckRunScan> {
+  const target = OPS_STUCK_RUNS_TARGET;
   const token = env.GITHUB_DISPATCH_TOKEN;
-  if (!token) return { target, ok: false, detail: 'not configured: GITHUB_DISPATCH_TOKEN is not set on this Worker' };
+  if (!token) {
+    return { row: { target, ok: false, detail: 'not configured: GITHUB_DISPATCH_TOKEN is not set on this Worker' }, unhandled: 0, truncated: false };
+  }
   const allowCancel = env.OPS_WATCHDOG_CANCEL_STUCK === 'true';
   let examined = 0;
   let truncated = false;
@@ -135,7 +168,7 @@ export async function checkStuckRuns(env: Env, nowMs: number = Date.now()): Prom
       for (const r of runs) if (runAgeMinutes(r, nowMs) >= OPS_STUCK_RUN_MINUTES) stuck.push(r);
     }
   } catch (err) {
-    return { target, ok: false, detail: `unreadable: ${String(err).slice(0, 150)}` };
+    return { row: { target, ok: false, detail: `unreadable: ${String(err).slice(0, 150)}` }, unhandled: 0, truncated: false };
   }
   const notes: string[] = [];
   let cancelled = 0;
@@ -161,14 +194,23 @@ export async function checkStuckRuns(env: Env, nowMs: number = Date.now()): Prom
     ? `none stuck: ${examined} active run(s) examined, threshold ${OPS_STUCK_RUN_MINUTES}m`
     : `FINDING: ${stuck.length} run(s) past ${OPS_STUCK_RUN_MINUTES}m: ${ids}; ` +
       (allowCancel ? `cancelled=${cancelled} refused=${refused}` : 'flag-only (OPS_WATCHDOG_CANCEL_STUCK is not "true")');
-  if (stuck.length > 0) console.log(`[cron] ops watchdog: ${summary}`);
+  if (stuck.length > 0) console.log(`[cron] ops stuck-runs: ${summary}`);
   // A refused cancel IS a failure of the check's own action — most likely the
   // token lacks actions:write — so it is ok=0 rather than a finding.
   return {
-    target,
-    ok: refused === 0,
-    detail: [summary, truncated ? 'more runs than one page, first page only' : '', ...notes].filter(Boolean).join('; '),
+    row: {
+      target,
+      ok: refused === 0,
+      detail: [summary, truncated ? 'more runs than one page, first page only' : '', ...notes].filter(Boolean).join('; '),
+    },
+    unhandled: stuck.length - cancelled,
+    truncated,
   };
+}
+
+/** (a) as a row alone — `scanStuckRuns` without the facts the hourly beat reads. */
+export async function checkStuckRuns(env: Env, nowMs: number = Date.now()): Promise<HeartbeatRow> {
+  return (await scanStuckRuns(env, nowMs)).row;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -422,10 +464,10 @@ export async function checkGlitchtipMonitors(env: Env): Promise<HeartbeatRow[]> 
   return rows;
 }
 
-/** (a)–(c) in order. Each limb contains its own errors; a throw out of here is a bug. */
+/** (b) and (c) in order — (a) runs hourly on its own firing since 2026-09-24
+ *  (`scanStuckRuns`). Each limb contains its own errors; a throw out of here is a bug. */
 export async function runOpsWatchdogChecks(env: Env): Promise<HeartbeatRow[]> {
   return [
-    await checkStuckRuns(env),
     ...(await checkMainConclusions(env)),
     ...(await checkGlitchtipMonitors(env)),
   ];
