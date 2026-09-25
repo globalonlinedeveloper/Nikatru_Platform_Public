@@ -193,6 +193,7 @@
   "public-citations-shards.test.mjs": 10,
   "public-citations-tagpin.test.mjs": 10,
   "publish-records.test.mjs": 53,
+  "publish-steps-guarded.test.mjs": 14,
   "purchase-path.test.mjs": 133,
   "redeploy-stranded.test.mjs": 49,
   "refresh-executed-floor.test.mjs": 11,

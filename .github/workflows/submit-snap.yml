@@ -64,6 +64,10 @@ jobs:
       - name: Derive the release line from pubspec
         id: ver
         run: node tooling/ci/assert-app-versioning.mjs --emit apps/subscriptiontracker >> "$GITHUB_OUTPUT"
+      # why: O-SUBMIT-LANES-SKIP-PRECONDITION-GATES. A lane green over a name the owner has not HELD
+      # or proven free submits one nobody ruled on; limb 3 of assert-publish-steps-guarded.mjs.
+      - name: Name clearance holds for linux-snap (owner HELD or PROVEN-FREE)
+        run: node tooling/ci/assert-name-clearance.mjs --for-submission=linux-snap
       - name: Build linux
         working-directory: apps/subscriptiontracker
         run: >
@@ -244,6 +248,10 @@ jobs:
       - name: Derive the release line from pubspec
         id: ver
         run: node tooling/ci/assert-app-versioning.mjs --emit apps/subscriptiontracker >> "$GITHUB_OUTPUT"
+      # why: O-SUBMIT-LANES-SKIP-PRECONDITION-GATES. A lane green over a name the owner has not HELD
+      # or proven free submits one nobody ruled on; limb 3 of assert-publish-steps-guarded.mjs.
+      - name: Name clearance holds for linux-snap (owner HELD or PROVEN-FREE)
+        run: node tooling/ci/assert-name-clearance.mjs --for-submission=linux-snap
       - name: Build linux
         working-directory: apps/subscriptiontracker
         run: >

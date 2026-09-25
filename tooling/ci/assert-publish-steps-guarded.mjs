@@ -42,10 +42,18 @@
 // Windows lane had no GITHUB_ACTIONS lane gate. Limb 2 asks that question of
 // every workflow in the tree. See "LIMB 2" below.
 //
+// 🔴 LIMB 3, ADDED 2026-09-25 — A SUBMIT LANE THAT NEVER ASKED THE STORE'S GATES.
+// Row O-SUBMIT-LANES-SKIP-PRECONDITION-GATES, measured on `main` at 80ef8e39: no
+// submit-*.yml ran assert-name-clearance.mjs or assert-iap-review-screenshots.mjs,
+// so a submit dry run went green over an uncleared name, and the one gate a lane
+// did run (assert-play-device-coverage.mjs) could be deleted green. Limb 3 reads
+// which lanes owe which gates from the register and submit-preconditions.mjs, and
+// grades every one. See "LIMB 3" below.
+//
 // Usage:
 //   node tooling/ci/assert-publish-steps-guarded.mjs
 //   node tooling/ci/assert-publish-steps-guarded.mjs --workflow <rel> --job <name>
-//   node tooling/ci/assert-publish-steps-guarded.mjs --limb dry-run|owner-word|all
+//   node tooling/ci/assert-publish-steps-guarded.mjs --limb dry-run|owner-word|preconditions|all
 //   node tooling/ci/assert-publish-steps-guarded.mjs --repo-root <path>
 //
 // EXIT CODES, the corpus convention: 0 every publishing surface is guarded and
@@ -105,9 +113,11 @@ import {
   basenameSource,
   readSteps,
   envAt,
+  stepModel,
   storePublishSteps,
   publishBasenamesOf,
 } from './workflow-scan.mjs';
+import { SUBMIT_PRECONDITIONS, submits } from './submit-preconditions.mjs';
 
 const argv = process.argv.slice(2);
 const opt = (name, fallback) => {
@@ -132,8 +142,8 @@ const LIMB = opt('limb', 'all');
  *  and this is the absence of evidence either way. */
 const EXIT_COVERAGE_LOST = 2;
 
-if (!['dry-run', 'owner-word', 'all'].includes(LIMB)) {
-  console.error(`FAIL COVERAGE LOST — --limb ${JSON.stringify(LIMB)} names no limb; expected dry-run, owner-word or all.`);
+if (!['dry-run', 'owner-word', 'preconditions', 'all'].includes(LIMB)) {
+  console.error(`FAIL COVERAGE LOST — --limb ${JSON.stringify(LIMB)} names no limb; expected dry-run, owner-word, preconditions or all.`);
   console.error('     A mistyped limb would otherwise run nothing and print nothing, which is a pass over nothing.');
   console.error('\nassert-publish-steps-guarded: FAILED');
   process.exit(EXIT_COVERAGE_LOST);
@@ -723,10 +733,185 @@ function ownerWordLimb(problems, summaries) {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
+// LIMB 3 — THE STORE'S PRECONDITION GATES, IN EVERY SUBMIT LANE
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// Row O-SUBMIT-LANES-SKIP-PRECONDITION-GATES. The gates exist —
+// assert-name-clearance.mjs and assert-iap-review-screenshots.mjs each take
+// --for-submission — and a lane that does not run them rehearses a submission
+// the owner never ruled on. Limb 1 and limb 2 both read these jobs and neither
+// asked whether they ran anything before the upload.
+//
+// THE OBLIGATION IS READ FROM THE REGISTER ON EVERY RUN. For every channel row
+// with a `submission.workflow` W, and every entry of SUBMIT_PRECONDITIONS
+// (tooling/ci/submit-preconditions.mjs) that applies to the row, every job in W
+// that is
+//   · the row's `submission.job` — the dry run, the floor — or
+//   · a job holding a store publish step (storePublishSteps, limb 2's set)
+// must hold a step whose `run:` has a command segment `node <guard> <arg>`, and
+// that step must be able to fail its job:
+//   · no `continue-on-error:` other than `false`, on the step or on its job;
+//   · no `||` or `|` straight after the command, and no later segment that is
+//     `true`, `:` or `exit 0` — each ends the step green whatever the gate said;
+//   · no `if:` other than none or `success()` — any other condition is a way
+//     for the gate to be skipped while the job goes on;
+//   · in a job that publishes, AHEAD of the job's first store publish step. A
+//     gate after the upload grades a submission already made.
+//
+// ⚠️ WHAT THIS CANNOT PROVE. That the gate passes — that is the gate's own run,
+// in the lane. This limb proves the lane ASKS, which is the shape whose absence
+// was measured.
+//
+// Its own COVERAGE LOST (exit 2), because every property above is true of an
+// empty set:
+//   · no register row carries a `submission.workflow`;
+//   · a table guard is not on disk, or a channel the table names outright is not
+//     a register row;
+//   · a row's workflow, or its `submission.job`, is not in the resolved tree;
+//   · zero (row, gate) pairs to grade.
+// A submission row no table entry applies to is PRINTED with its surface on
+// every run (NOT GRADED), so an ungraded lane is on screen rather than silent.
+
+const COE_STEP = /^ {6}(?:- | {2})continue-on-error:\s*(.+?)\s*$/;
+const COE_JOB = /^ {4}continue-on-error:\s*(.+?)\s*$/;
+const ENDS_GREEN = /^(?:true|:|exit\s+0)$/;
+
+/** The command segment of `run` that invokes `node <guard>` with `arg` as a whole
+ *  word, and what after it would turn the gate's exit into a green step. Node's
+ *  own options may sit between `node` and the guard. `null` when no segment does. */
+function gateInvocation(run, guard, arg) {
+  const parts = String(run ?? '').split(/(&&|\|\||[;|])/); // [segment, delimiter, segment, …]
+  for (let i = 0; i < parts.length; i += 2) {
+    const words = parts[i].trim().split(/\s+/);
+    const at = words.indexOf(guard);
+    if (words[0] !== 'node' || at < 1 || words.slice(1, at).some((w) => !w.startsWith('-'))) continue;
+    if (!words.slice(at + 1).includes(arg)) continue;
+    const masks = [];
+    if (parts[i + 1] === '||') masks.push('a || follows the gate, so its failure runs the fallback instead of failing the step');
+    if (parts[i + 1] === '|') masks.push(`the gate is piped into \`${(parts[i + 2] ?? '').trim()}\`, and the step reports that command's exit`);
+    for (let j = i + 2; j < parts.length; j += 2) {
+      if (ENDS_GREEN.test(parts[j].trim())) masks.push(`a later \`${parts[j].trim()}\` segment ends the step green whatever the gate said`);
+    }
+    return { masks };
+  }
+  return null;
+}
+
+function preconditionsLimb(problems, summaries) {
+  const register = readRegister(ROOT);
+  const rows = (register.channels ?? []).filter((c) => typeof c?.id === 'string');
+  const submitting = rows.filter(submits);
+  if (submitting.length === 0) {
+    return [
+      `${REGISTER_REL} declares no channel row with a submission.workflow.`,
+      'Limb 3 reads which lanes owe the precondition gates from those rows. With none it grades no lane and',
+      'would print ok, which is exactly what a register whose submission blocks were renamed or dropped looks like.',
+    ];
+  }
+  const coverage = [];
+  const ids = new Set(rows.map((c) => c.id));
+  for (const e of SUBMIT_PRECONDITIONS) {
+    if (!existsSync(join(ROOT, e.guard))) {
+      coverage.push(`submit-preconditions.mjs names ${e.guard}, which is not on disk under ${ROOT}. A lane step naming it would be graded as a gate that cannot run.`);
+    }
+    for (const id of e.channels ?? []) {
+      if (!ids.has(id)) coverage.push(`submit-preconditions.mjs applies ${e.guard} to channel "${id}", which ${REGISTER_REL} does not declare, so the entry grades no lane.`);
+    }
+  }
+  if (coverage.length) return coverage;
+
+  const workflows = resolvedTree().workflows;
+  const publishing = storePublishSteps(workflows, register);
+  const mine = [];
+  const graded = [];
+  const ungraded = [];
+  for (const row of submitting) {
+    const entries = SUBMIT_PRECONDITIONS.filter((e) => e.appliesTo(row));
+    const W = row.submission.workflow;
+    if (entries.length === 0) {
+      ungraded.push({ id: row.id, line: `${row.id} (surface ${row.surface ?? 'undeclared'}; ${W} job "${row.submission.job}")` });
+      continue;
+    }
+    const wf = workflows.find((w) => w.rel === W);
+    if (wf === undefined) {
+      coverage.push(`channel "${row.id}" submits through ${W}, which the resolved tree does not hold, so its gates cannot be graded.`);
+      continue;
+    }
+    const jobNames = [...new Set([row.submission.job, ...publishing.filter((p) => p.wf === wf).map((p) => p.job.name)])];
+    for (const name of jobNames) {
+      const job = wf.jobs.get(name);
+      if (job === undefined) {
+        coverage.push(`channel "${row.id}" names submission.job "${name}", and ${W} declares no such job [${[...wf.jobs.keys()].join(', ')}], so the dry-run floor is not there to grade.`);
+        continue;
+      }
+      const steps = readSteps(job);
+      const firstPublish = steps.findIndex((raw) => publishing.some((p) => p.job === job && p.raw.n === raw.n));
+      const jobCoe = job.lines.map((l) => l.text.match(COE_JOB)).find(Boolean);
+      for (const e of entries) {
+        const arg = e.arg(row);
+        const cmd = `node ${e.guard} ${arg}`;
+        const where = `${W} job "${name}" channel ${row.id}`;
+        let found = null;
+        for (let i = 0; i < steps.length && found === null; i++) {
+          const step = stepModel(steps[i]);
+          const inv = gateInvocation(step.run, e.guard, arg);
+          if (inv !== null) found = { i, raw: steps[i], step, masks: inv.masks };
+        }
+        if (found === null) {
+          mine.push(
+            `MISSING PRECONDITION  ${where}\n    no step runs: ${cmd}\n    ` +
+              'add it beside "Derive the release line from pubspec", with a # why: citing O-SUBMIT-LANES-SKIP-PRECONDITION-GATES.',
+          );
+          continue;
+        }
+        const masks = [...found.masks];
+        const cond = bareCond(found.step.cond);
+        if (cond !== '' && cond !== 'success()') masks.push(`its if: (${cond}) lets the gate be skipped while the job goes on`);
+        const coe = found.raw.lines.map((l) => l.text.match(COE_STEP)).find(Boolean);
+        if (coe && coe[1] !== 'false') masks.push(`the step carries continue-on-error: ${coe[1]}`);
+        if (jobCoe && jobCoe[1] !== 'false') masks.push(`job "${name}" carries continue-on-error: ${jobCoe[1]}`);
+        if (firstPublish !== -1 && found.i > firstPublish) {
+          masks.push(`it runs after the job's first store publish step (${placeOf(wf, steps[firstPublish].n)}), so it grades a submission already made`);
+        }
+        const label = `${placeOf(wf, found.raw.n)} job "${name}" channel ${row.id}`;
+        if (masks.length) mine.push(`MASKED PRECONDITION  ${label}\n    ${cmd}\n    ${masks.join('\n    ')}`);
+        else graded.push({ wf: W, job: `${W}#${name}`, channel: row.id, label, cmd });
+      }
+    }
+  }
+
+  for (const u of ungraded) console.log(`NOT GRADED  ${u.line} — no entry of submit-preconditions.mjs applies to this row.`);
+  for (const g of graded) console.log(`PRECONDITION  ${g.label}\n              ${g.cmd}`);
+  if (graded.length === 0 && mine.length === 0 && coverage.length === 0) {
+    coverage.push(
+      `ZERO (channel, gate) pairs graded across ${submitting.length} submission row(s) of ${REGISTER_REL}.`,
+      'No table entry applies to any row, so every property this limb grades is vacuously true.',
+    );
+  }
+  if (mine.length) {
+    problems.push(...mine);
+    problems.push(`FAIL ${mine.length} precondition finding(s) above. A submit lane would rehearse, or make, a submission its store's gates were never asked about.`);
+  }
+  if (coverage.length) return coverage;
+  if (!mine.length) {
+    const jobs = new Set(graded.map((g) => g.job)).size;
+    const wfs = new Set(graded.map((g) => g.wf)).size;
+    const channels = new Set(graded.map((g) => g.channel)).size;
+    summaries.push(
+      `preconditions: ${graded.length} gate step(s) across ${jobs} job(s) in ${wfs} workflow(s), for ${channels} channel(s) — each unconditional, unmasked, and ahead of any store publish in its job.` +
+        (ungraded.length ? ` Not graded: ${ungraded.map((u) => u.id).join(', ')} (no table entry applies).` : ''),
+    );
+  }
+  return [];
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 const problems = [];
 const summaries = [];
-if (LIMB !== 'owner-word') dryRunLimb(problems, summaries);
-const coverage = LIMB !== 'dry-run' ? ownerWordLimb(problems, summaries) : [];
+const coverage = [];
+if (LIMB === 'dry-run' || LIMB === 'all') dryRunLimb(problems, summaries);
+if (LIMB === 'owner-word' || LIMB === 'all') coverage.push(...ownerWordLimb(problems, summaries));
+if (LIMB === 'preconditions' || LIMB === 'all') coverage.push(...preconditionsLimb(problems, summaries));
 
 if (problems.length || coverage.length) {
   console.error('');
