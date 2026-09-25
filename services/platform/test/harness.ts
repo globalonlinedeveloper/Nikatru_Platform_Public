@@ -50,6 +50,7 @@ import appleTokens0012 from '../migrations/0012_apple_provider_tokens.sql?raw';
 import contentReports0013 from '../migrations/0013_content_reports.sql?raw';
 import revenuecatOwnership0015 from '../migrations/0015_revenuecat_ownership.sql?raw';
 import providerTokens0016 from '../migrations/0016_provider_tokens.sql?raw';
+import extDevices0017 from '../migrations/0017_ext_devices.sql?raw';
 
 type SQLValue = string | number | bigint | null | Uint8Array;
 
@@ -91,6 +92,9 @@ export const PLATFORM_MIGRATIONS: readonly string[] = [
   // ⏱ 2026-09-24 · O-GOOGLE-SIGN-IN-NOT-BUILT — one token row per (subject,
   // provider), with 0012's Apple rows copied in.
   providerTokens0016,
+  // ⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT — the extension's one-time
+  // code and its per-device credential.
+  extDevices0017,
 ];
 
 /**
@@ -136,6 +140,8 @@ export const REPLAY_SAFE_MIGRATIONS: readonly string[] = [
   // the conflict clause (test/provider-tokens-migration.test.ts applies it twice).
   // It reads 0012's table, which is listed above it.
   providerTokens0016,
+  // 0017 is CREATE TABLE / CREATE [UNIQUE] INDEX IF NOT EXISTS only — it replays.
+  extDevices0017,
 ];
 
 // `node:sqlite` is fetched through `process.getBuiltinModule` rather than a

@@ -295,6 +295,7 @@ const extensionStore = () => ({
   deploymentEnvironment: '{app}-chrome-webstore',
   storeMetadataDir: 'extensions/Extension/{tool}/store/chrome',
   extensionStoreKey: 'chrome',
+  extensionRedirectUri: null,
   ownerQueue: null,
   accountStatus: { status: 'live', asOf: '2026-08-12', note: 'publisher account open' },
   deferral: { reason: 'never submitted', alsoBlockedBy: null },
@@ -3336,6 +3337,60 @@ describe('assert-channel-register — the extension surface carries the store ob
     }));
     assert.equal(code, 1, out);
     assert.match(out, /Two spellings of one store id/);
+  });
+
+  // ⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT — `extensionRedirectUri`, one case per shape.
+  test('PASSES with extensionRedirectUri null — a null refuses the channel, and is the dark launch', () => {
+    const { code, out } = run(tree({ withExtension: true }));
+    assert.equal(code, 0, out);
+  });
+
+  test('PASSES with a Chromium redirect of the real shape: https://<32 a-p>.chromiumapp.org/', () => {
+    const { code, out } = run(tree({
+      withExtension: true,
+      mutate: (r) => { r.channels.at(-1).extensionRedirectUri = 'https://abcdefghijklmnopabcdefghijklmnop.chromiumapp.org/'; },
+    }));
+    assert.equal(code, 0, out);
+  });
+
+  test('PASSES with a Firefox redirect of the real shape on a firefox row: https://<40 hex>.extensions.allizom.org/', () => {
+    const { code, out } = run(tree({
+      withExtension: true,
+      mutate: (r) => {
+        const row = r.channels.at(-1);
+        row.platforms = ['firefox'];
+        row.extensionRedirectUri = 'https://35b64b676900f491c00e7f618d43f7040e88422e.extensions.allizom.org/';
+      },
+    }));
+    // The fixture's other limbs are chrome-shaped; only this limb's verdict is graded.
+    assert.doesNotMatch(out, /extensionRedirectUri/, out);
+  });
+
+  test('FAILS when a Firefox-shaped redirect sits on a Chromium row — the shape follows the platform', () => {
+    const { code, out } = run(tree({
+      withExtension: true,
+      mutate: (r) => { r.channels.at(-1).extensionRedirectUri = 'https://35b64b676900f491c00e7f618d43f7040e88422e.extensions.allizom.org/'; },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /is not the shape identity\.getRedirectURL\(\) returns/);
+  });
+
+  test('R13 — FAILS on https://abc.chromiumapp.org/ (not 32 a-p characters)', () => {
+    const { code, out } = run(tree({
+      withExtension: true,
+      mutate: (r) => { r.channels.at(-1).extensionRedirectUri = 'https://abc.chromiumapp.org/'; },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /declares extensionRedirectUri "https:\/\/abc\.chromiumapp\.org\/"/);
+  });
+
+  test('FAILS when the row carries no extensionRedirectUri key at all — null is a value, absence is not', () => {
+    const { code, out } = run(tree({
+      withExtension: true,
+      mutate: (r) => { delete r.channels.at(-1).extensionRedirectUri; },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /no `extensionRedirectUri` key/);
   });
 
   test('FAILS when the row carries no extensionStoreKey at all', () => {

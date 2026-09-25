@@ -100,6 +100,18 @@ export interface Env {
    */
   MONEY_CEILING_LIMITER?: RateLimiterBinding;
 
+  /**
+   * ⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. The SAME server-derived
+   * ceiling for POST /v1/ext/token — the extension's one-time-code exchange,
+   * which carries no Supabase session because the code IS the credential. Its own
+   * namespace so a code-guessing flood cannot spend another route's budget.
+   *
+   * Optional, and absence fails OPEN, for the same reason as the other three.
+   * The route's fail-CLOSED property is the 128-bit single-use code and the
+   * PKCE S256 verifier, not the limiter.
+   */
+  EXT_TOKEN_CEILING_LIMITER?: RateLimiterBinding;
+
   // Non-secret vars (wrangler.jsonc vars).
   APP_ID: string;
 

@@ -108,6 +108,18 @@ describe('wrangler.jsonc declares BOTH halves of the cost circuit breaker', () =
     expect(e!.simple?.period).toBe(60);
   });
 
+  it('declares the ceiling for POST /v1/ext/token, the extension code exchange', () => {
+    // ⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. routes/ext.ts fails OPEN
+    // without it (src/lib/edge-ceiling.ts), so deleting this entry removes the
+    // only burst bound on an unauthenticated route that burns a D1 write per
+    // guess — and no runtime test can see that, because the limiter fails open.
+    const e = byName.get('EXT_TOKEN_CEILING_LIMITER');
+    expect(e, 'EXT_TOKEN_CEILING_LIMITER missing — /v1/ext/token has no ceiling').toBeDefined();
+    expect(String(e!.namespace_id)).toBe('1005');
+    expect(e!.simple?.limit).toBe(60);
+    expect(e!.simple?.period).toBe(60);
+  });
+
   it('the three limiters have DISTINCT namespace ids, so they do not share a budget', () => {
     const ids = rl.map((e) => String(e.namespace_id));
     expect(new Set(ids).size, `namespace_id collision among ${ids.join(', ')}`).toBe(ids.length);

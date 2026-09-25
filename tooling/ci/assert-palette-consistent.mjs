@@ -238,7 +238,10 @@ const MUST_COMPARE = [
  *  compliance pages Razorpay's website checks and the Consumer Protection
  *  (E-Commerce) Rules 2020 require. Measured off this tree by the guard's own
  *  ok line: 22 page(s). */
-const MIN_PAGES = 22;
+/*  22 -> 23 on 2026-09-24: sites/nikatru/ext/connect.html, the browser
+ *  extension's account-link page (O-EXTENSION-ACCOUNT-CHECK-UNBUILT). Measured
+ *  off this tree by the guard's own ok line: 23 page(s) (22 at 42acef7c). */
+const MIN_PAGES = 23;
 /** What the exclusion must still match. */
 const MIN_SNAPSHOTS = 3;
 /** `:root` blocks across every source. Today 33. EXACT: a block is a page's
@@ -269,7 +272,12 @@ const MIN_SNAPSHOTS = 3;
  *  GREEN when it is supposed to go red, which is the only way a stale exact
  *  floor ever announces itself. Re-verified after the raise: the same mutation
  *  exits 2 again. */
-const MIN_ROOT_BLOCKS = 56;
+/*  56 -> 59 on 2026-09-24, with MIN_PAGES above: ext/connect.html receives
+ *  shared chrome (the `scale-css` `:root`) and declares both a light `:root` and
+ *  a dark override — three blocks. Measured by the guard's own ok line: 59
+ *  `:root` block(s) (56 at 42acef7c). Re-verified after the raise:
+ *  palette-consistent.test.mjs's page-floor and block-floor controls exit 2. */
+const MIN_ROOT_BLOCKS = 59;
 /** Declarations inside those blocks. Today 358 (265 until 2026-09-09), floored SLACK on purpose. The
  *  three exact floors already fence the subject; this one exists for the single
  *  failure they cannot see — a reducer that blanks one character too many and

@@ -682,6 +682,50 @@ function checkExtensionStoreRow(c, where, req) {
       : 'is `submittable: true` with no `submission` block. On the extension surface the flag means "this factory has a repeatable path", and there is none — set it false, or land the block.',
   );
 
+  // ⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT — `extensionRedirectUri`.
+  // The exact URL this browser's `identity.getRedirectURL()` returns for OUR
+  // extension id; services/platform/src/lib/ext-redirects.ts reads it, and
+  // POST /v1/ext/codes mints a code only for a redirect_uri BYTE-EQUAL to it.
+  // `null` is allowed and means "refused" — every row is null until the parent
+  // measures the real id, which is the dark launch. The KEY is required, so a
+  // row cannot be silently absent from the server's allow-list; a non-null value
+  // must have the shape that browser actually produces, so a typo'd or
+  // attacker-shaped host (a prefix, a path, a lookalike domain) is refused here
+  // before the Worker ever serves it:
+  //   · Chromium (chrome, edge): `https://<id>.chromiumapp.org/`, where <id> is
+  //     the 32-character a-p extension id.
+  //   · Firefox: `https://<sha1-hex(add-on id)>.extensions.allizom.org/` —
+  //     MEASURED from gecko's toolkit/components/extensions/child/ext-identity.js
+  //     (`getRedirectURL`: `https://${computeHash(extension.id)}.${redirectDomain}/`,
+  //     computeHash = SHA-1, `CommonUtils.bytesAsHex`, i.e. 40 lower-case hex;
+  //     read 2026-09-24; gecko's test_ext_identity.html expects
+  //     `https://35b64b676900f491c00e7f618d43f7040e88422e.example.com/` with the
+  //     domain pref set to example.com). MDN's identity pages say only that the
+  //     subdomain is "derived from the add-on's ID". ⚠️ The DEFAULT of
+  //     `extensions.webextensions.identity.redirectDomain` (extensions.allizom.org)
+  //     was not read at source here; the parent's measurement of the real
+  //     `getRedirectURL()` value is what fills this row, and it must pass this.
+  const EXT_REDIRECT_SHAPES = {
+    chrome: /^https:\/\/[a-p]{32}\.chromiumapp\.org\/$/,
+    edge: /^https:\/\/[a-p]{32}\.chromiumapp\.org\/$/,
+    firefox: /^https:\/\/[0-9a-f]{40}\.extensions\.allizom\.org\/$/,
+  };
+  const hasRedirectKey = Object.prototype.hasOwnProperty.call(c, 'extensionRedirectUri');
+  const redirect = c.extensionRedirectUri;
+  if (
+    req(
+      hasRedirectKey,
+      'is an extension store channel with no `extensionRedirectUri` key. Write `null` until the extension id is measured — a null REFUSES the channel at POST /v1/ext/codes — but the key must be there, so the server\'s redirect allow-list is a declaration and not an absence.',
+    ) &&
+    redirect !== null
+  ) {
+    const shapes = (Array.isArray(c.platforms) ? c.platforms : []).map((p) => EXT_REDIRECT_SHAPES[p]).filter(Boolean);
+    req(
+      typeof redirect === 'string' && shapes.length > 0 && shapes.every((re) => re.test(redirect)),
+      `declares extensionRedirectUri ${JSON.stringify(redirect)}, which is not the shape identity.getRedirectURL() returns on [${(c.platforms ?? []).join(', ')}] — Chromium: https://<32 a-p>.chromiumapp.org/ ; Firefox: https://<40 hex>.extensions.allizom.org/. The Worker delivers a one-time code to this URL, so a value no browser produces is either a typo or a redirect to somebody else.`,
+    );
+  }
+
   const st = c.accountStatus;
   const accountOpen =
     st !== null && typeof st === 'object' && (st.status === 'live' || st.status === 'verified') && /^\d{4}-\d{2}-\d{2}$/.test(String(st.asOf ?? ''));

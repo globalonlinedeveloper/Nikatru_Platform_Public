@@ -4314,6 +4314,52 @@
       "source": "verified"
     },
     {
+      "id": "retention.d1.platform_db.ext_codes",
+      "kind": "retention",
+      "store": "d1:platform_db:ext_codes",
+      "what": "⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. One row per one-time code minted on https://nikatru.com/ext/connect for the browser extension: SHA-256 of the code (never the code), the Supabase `sub`, the product, the store channel, the exact redirect_uri, the PKCE S256 challenge, `created_at`, `expires_at` (created_at + 120 s) and `used_at`. Written only by POST /v1/ext/codes and consumed by POST /v1/ext/token (services/platform/src/routes/ext.ts).",
+      "rule": "period",
+      "periodDays": 1,
+      "declaredBy": "the extension account-check design (§3.4: a code is deleted 24 h after `expires_at`); the value lives in services/platform/src/scheduled.ts `EXT_CODES_RETENTION_DAYS`, and this row and that constant are cross-checked by services/platform/test/retention-sweep.test.ts",
+      "detector": "tooling/ci/assert-retention-coverage.mjs — the store set is ENUMERATED from migrations, so a store cannot leave the domain by having no rule.",
+      "response": "n/a — the nightly sweep deletes a code one day after its `expires_at`; a code can never be exchanged after `expires_at`, so nothing live is lost. Erasure: DELETE /v1/account empties the table for the account, because the column is spelled `user_id` (tooling/legal/data-inventory.json `table:platform_db.ext_codes`, erasure `purge`).",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/platform/migrations/0017_ext_devices.sql",
+        "record": "the table itself",
+        "failingValue": "a row whose `expires_at` is more than 1 day in the past",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs (coverage half); the deletion half is `deletingJob`"
+      },
+      "deletingJob": "retention_sweep — the nightly Cloudflare cron limb `retentionSweep` in services/platform/src/scheduled.ts, watched by duty.platform-cron.watchedJobs and read by tooling/ops/check-heartbeats.mjs. The `ext_codes` limb deletes rows whose `expires_at` is older than EXT_CODES_RETENTION_DAYS, at most 1000 per run (MAX_ROWS_PER_SWEEP). Held by services/platform/test/retention-sweep.test.ts, which keeps an UNEXPIRED code through the sweep.",
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "retention.d1.platform_db.ext_devices",
+      "kind": "retention",
+      "store": "d1:platform_db:ext_devices",
+      "what": "⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. One row per browser that has linked the extension to an account: a random link id (`link_id`), the Supabase `sub`, the product, the store channel, SHA-256 of the device credential (never the credential), `created_at`, `last_seen_at` (written at most once per UTC day) and `revoked_at`. Written by POST /v1/ext/token and POST /v1/ext/revoke; read by middleware/ext-device-auth.ts.",
+      "rule": "keep",
+      "keepWhy": "A row IS a live credential: while it exists and `revoked_at` is NULL, the extension on that browser can read its entitlement. An age sweep would sign a paying user out of a product they still use, with no signal to them. It goes when the user revokes the device (`revoked_at`) or erases the account (the `user_id` walk). ⬜ OPEN: a REVOKED row answers 401 whether or not it exists, so it has no function; whether and after how long to sweep revoked rows is a question for the parent — no number is invented here.",
+      "detector": "tooling/ci/assert-retention-coverage.mjs — the store set is ENUMERATED from wrangler bindings and migrations, so a store cannot leave the domain by having no rule.",
+      "response": "n/a",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/platform/migrations/0017_ext_devices.sql",
+        "record": "the table itself",
+        "failingValue": "rows older than a declared period — not applicable to a reasoned keep",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      },
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
       "id": "retention.d1.subscriptiontracker_db.subscriptions",
       "kind": "retention",
       "store": "d1:subscriptiontracker_db:subscriptions",

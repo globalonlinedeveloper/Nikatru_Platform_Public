@@ -139,7 +139,7 @@ describe('assert-prod-provenance — the gate limb', () => {
   test('the real tree passes, and says out loud that it has not seen production', () => {
     const r = spawnSync(process.execPath, [GATE, REPO], { cwd: REPO, encoding: 'utf8' });
     assert.equal(r.status, 0, r.stdout + r.stderr);
-    assert.match(r.stdout, /20 table\(s\) enumerated/); // ⏱ 2026-09-18: 18 -> 19, 0013 content_reports (O-PLAY-AI-CONTENT-REPORTING). ⏱ 2026-09-24: 19 -> 20, 0016 provider_tokens (O-GOOGLE-SIGN-IN-NOT-BUILT).
+    assert.match(r.stdout, /22 table\(s\) enumerated/); // ⏱ 2026-09-18: 18 -> 19, 0013 content_reports (O-PLAY-AI-CONTENT-REPORTING). ⏱ 2026-09-24: 19 -> 20, 0016 provider_tokens (O-GOOGLE-SIGN-IN-NOT-BUILT). ⏱ 2026-09-25: 20 -> 22, 0017 ext_codes + ext_devices (O-EXTENSION-ACCOUNT-CHECK-UNBUILT).
     assert.match(r.stdout, /HAS NOT LOOKED AT PRODUCTION/);
     assert.match(r.stdout, /MONITOR/);
   });
@@ -386,7 +386,7 @@ describe('check-prod-provenance — the monitor limb', () => {
     const r = run({});
     assert.equal(r.status, 0, r.stdout + r.stderr);
     assert.match(r.stdout, /THIS IS A MONITOR, NOT A GATE/);
-    assert.match(r.stdout, /20 table\(s\) enumerated/); // ⏱ 2026-09-18: 18 -> 19, 0013 content_reports (O-PLAY-AI-CONTENT-REPORTING). ⏱ 2026-09-24: 19 -> 20, 0016 provider_tokens (O-GOOGLE-SIGN-IN-NOT-BUILT).
+    assert.match(r.stdout, /22 table\(s\) enumerated/); // ⏱ 2026-09-18: 18 -> 19, 0013 content_reports (O-PLAY-AI-CONTENT-REPORTING). ⏱ 2026-09-24: 19 -> 20, 0016 provider_tokens (O-GOOGLE-SIGN-IN-NOT-BUILT). ⏱ 2026-09-25: 20 -> 22, 0017 ext_codes + ext_devices (O-EXTENSION-ACCOUNT-CHECK-UNBUILT).
   });
 
   test('the real production consent row resolves — it is a shipped build, not residue', () => {
@@ -474,6 +474,14 @@ describe('check-prod-provenance — the monitor limb', () => {
     const bad = run({ pending_erasures: [{ marker: 'platform:renamed', n: 1 }] });
     assert.equal(bad.status, 1);
     assert.match(bad.stderr, /pending_erasures: 1 row\(s\)/);
+  });
+
+  test('⏱ 2026-09-24 · an extension-account row resolves only against the EXTENSION catalogue — an app slug does not', () => {
+    const ok = run({ ext_devices: [{ marker: 'fullshot', n: 2 }] });
+    assert.equal(ok.status, 0, ok.stdout + ok.stderr);
+    const bad = run({ ext_codes: [{ marker: 'subscriptiontracker', n: 1 }] });
+    assert.equal(bad.status, 1);
+    assert.match(bad.stderr, /ext_codes: 1 row\(s\).*extension `subscriptiontracker` has no entry in extensions\/catalog\/extensions\.json/s);
   });
 
   test('a revocation reason outside the migration seed does not resolve', () => {

@@ -15,6 +15,13 @@
 //                                  evidence on its own.
 //   SIGNED  POST   /v1/money/:provider — the merchant-of-record webhook ([5]M-1).
 //                                  HMAC over the raw body; no user session.
+//   AUTHED  POST   /v1/ext/codes  — the extension account check: the signed-in
+//                                  nikatru.com/ext/connect page mints a one-time code.
+//   PUBLIC  POST   /v1/ext/token  — the extension exchanges that code (PKCE S256)
+//                                  for its per-device credential. Edge-ceilinged.
+//   DEVICE  POST   /v1/ext/revoke — a device credential revokes itself.
+//   DEVICE  GET    /v1/entitlements — the ONE read route that also accepts the
+//                                  device credential (ADR 059 D10); JWT otherwise.
 //   CRON    0 6 * * *           — Supabase keep-alive + per-app renewals fan-out.
 // ─────────────────────────────────────────────────────────────────────────────
 import { Hono } from 'hono';
@@ -31,10 +38,12 @@ import {
 import { reportWorkerError } from './lib/error-sink';
 import { corsMiddleware } from './middleware/cors';
 import { platformAuth } from './middleware/auth';
+import { entitlementsAuth } from './middleware/ext-device-auth';
 import providerToken from './routes/provider-token';
 import account from './routes/account';
 import config from './routes/config';
 import entitlements from './routes/entitlements';
+import ext from './routes/ext';
 import events from './routes/events';
 import cancellation from './routes/cancellation';
 import report from './routes/report';
@@ -204,19 +213,33 @@ app.route('/v1', providerToken);
 // entitlement read in the repo was inside services/subscriptiontracker-api, so every
 // CLIENT-ONLY stamped app had no way to ask whether its user had paid.
 // Path-scoped for the same reason as /v1/account above.
-app.use('/v1/entitlements', platformAuth);
-// 🔴 A SECOND LINE, AND IT IS NOT REDUNDANT. `app.use('/v1/entitlements', …)`
-// matches THAT PATH AND NOTHING BELOW IT — Hono needs an explicit `/*` for the
-// sub-tree. When `/v1/entitlements/subject` landed (2026-09-09, the bundle read)
-// it was therefore mounted OUTSIDE the middleware: the route existed, answered
-// 200, and `c.get('userId')` was undefined for an anonymous caller. The query
-// binds that undefined to `user_id = ?`, so it returned an empty set rather than
-// somebody else's rows — but "the injury was small" is not the same as "the
-// route was authenticated", and the next sub-route would not have been so lucky.
-// test/bundle-entitlements.test.ts asserts the 401 specifically, because a
-// missing route also returns non-2xx and would satisfy a weaker claim.
-app.use('/v1/entitlements/*', platformAuth);
+//
+// 🔴 HISTORY: THIS WAS TWO LINES, `app.use('/v1/entitlements', platformAuth)` and
+// `app.use('/v1/entitlements/*', platformAuth)`. The second was added when
+// `/v1/entitlements/subject` landed (2026-09-09, the bundle read) mounted OUTSIDE
+// the first: the route existed, answered 200, and `c.get('userId')` was
+// undefined for an anonymous caller. test/bundle-entitlements.test.ts asserts
+// the 401 specifically, because a missing route also returns non-2xx.
+//
+// ⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT — NOW ONE LINE, AND THE ONE
+// LINE IS A MEASUREMENT. test/ext-auth.test.ts asked this app's real router:
+// `/v1/entitlements/*` ALSO matches the exact path `/v1/entitlements` (hono
+// 4.13.8), so the two lines both ran `platformAuth` there. A device-aware
+// middleware on the exact path alone would have let the extension's credential
+// through and then been 401'd by the `/*` line. So the whole tree now has ONE
+// path-aware middleware: exactly `GET /v1/entitlements` with an `nkx1_` bearer
+// goes to the device check, and EVERY other request in the tree — `/subject`
+// and any sub-route added later — goes to `platformAuth`, JWT-only by default.
+app.use('/v1/entitlements/*', entitlementsAuth);
 app.route('/v1', entitlements);
+
+// The extension account check (O-EXTENSION-ACCOUNT-CHECK-UNBUILT, design §3.4).
+// 🔴 NO `app.use` HERE, DELIBERATELY: each route carries its own auth AT THE
+// HANDLER (routes/ext.ts) — `/ext/codes` platformAuth, `/ext/revoke` the device
+// credential, `/ext/token` none, behind EXT_TOKEN_CEILING_LIMITER — so no
+// middleware can leak onto a sibling path the way `/v1/entitlements/subject`
+// once went unauthenticated.
+app.route('/v1', ext);
 
 // AUTHENTICATED: the ROSCA cancel path ([5]M-9). Cancelling has to be a real
 // server call the user can make from inside the app, not a support email — and

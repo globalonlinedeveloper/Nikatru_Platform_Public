@@ -338,6 +338,39 @@ describe('assert-mor-adapters — one verifier between a provider and the entitl
     assert.match(r.out, /mounts \/v1\/entitlements WITHOUT platformAuth/);
   });
 
+  // ⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT — the one-line composite mount.
+  const COMPOSITE_INDEX_TS = INDEX_TS.replace(
+    "app.use('/v1/entitlements', platformAuth);",
+    "app.use('/v1/entitlements/*', entitlementsAuth);",
+  );
+  const EXT_DEVICE_AUTH_TS = `
+export const entitlementsAuth = async (c, next) => {
+  if (c.req.method === 'GET' && c.req.path === '/v1/entitlements' && deviceBearer(c) !== null) {
+    return extDeviceAuth(c, next);
+  }
+  return platformAuth(c, next);
+};
+`;
+
+  test('PASSES when the tree is behind the composite whose fall-through IS platformAuth', () => {
+    const r = run({
+      index: COMPOSITE_INDEX_TS,
+      extra: { 'services/platform/src/middleware/ext-device-auth.ts': EXT_DEVICE_AUTH_TS },
+    });
+    assert.doesNotMatch(r.out, /WITHOUT platformAuth/, r.out);
+  });
+
+  test('FAILS when the composite falls through to next() instead of platformAuth', () => {
+    const r = run({
+      index: COMPOSITE_INDEX_TS,
+      extra: {
+        'services/platform/src/middleware/ext-device-auth.ts': EXT_DEVICE_AUTH_TS.replace('return platformAuth(c, next);', 'return next();'),
+      },
+    });
+    assert.equal(r.code, 1);
+    assert.match(r.out, /mounts \/v1\/entitlements WITHOUT platformAuth/);
+  });
+
   test('FAILS on an UNDECLARED entitlements writer anywhere in services/**', () => {
     const r = run({ extra: { 'services/platform/src/routes/config.ts': "const q = 'INSERT INTO entitlements (user_id) VALUES (?)';\n" } });
     assert.equal(r.code, 1);

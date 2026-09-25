@@ -474,6 +474,39 @@
       "noLimiterReason": "NOT APPLICABLE — `auth: required`, so limb 4 does not range over it. Recorded anyway because it is a heavier read than the per-app route (one query per live grant to resolve pinned members) against an ACCOUNT-WIDE 100k Worker-requests/day ceiling shared by ~50 apps: it is an account-page read, never a per-screen one."
     },
     {
+      "id": "ext-codes",
+      "method": "POST",
+      "path": "/v1/ext/codes",
+      "auth": "required",
+      "owningFile": "services/platform/src/routes/ext.ts",
+      "purpose": "⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT (design §3.2, §3.4). The signed-in page https://nikatru.com/ext/connect mints a 120-second, single-use code for the browser extension, bound to {product, channel, redirect_uri, code_challenge} (PKCE S256 only). `platformAuth` is carried AT THE HANDLER, not by an `app.use`, so it cannot leak onto a sibling path. It refuses a product other than `fullshot`, a channel other than the three extension store rows, a channel whose `extensionRedirectUri` in tooling/channel-register.json is null (all three today — the dark launch), and a redirect_uri not byte-equal to that register value. It answers {code, redirect_uri} with the REGISTER's value, so the page can never be steered to a URL of the caller's choosing.",
+      "client": {
+        "file": "sites/nikatru/ext/connect.js",
+        "expression": "'https://platform.nikatru.com/v1/ext/codes'",
+        "note": "The URL the connect page POSTs to, at its one declaration — the page builds no other platform URL."
+      },
+      "noLimiterReason": "NOT APPLICABLE — `auth: required`, so limb 4 does not range over it. One INSERT per sign-in by an authenticated user."
+    },
+    {
+      "id": "ext-token",
+      "method": "POST",
+      "path": "/v1/ext/token",
+      "auth": "public",
+      "owningFile": "services/platform/src/routes/ext.ts",
+      "purpose": "⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. The extension exchanges {code, code_verifier, redirect_uri} for {token, link_id}. No Supabase session: the one-time code IS the credential, consumed by ONE atomic UPDATE (single use, now < expires_at), then checked against the stored S256 challenge and the byte-exact redirect_uri. Every failure answers the same `invalid_grant` body. The token (`nkx1_…`) is returned once and only its SHA-256 is stored. Behind EXT_TOKEN_CEILING_LIMITER, keyed on the edge, never an IP.",
+      "unconsumedReason": "THE CLIENT ARRIVES IN PR-X, the extension half (extensions/Extension/Full_Screen_Shot pro/pro.js and background.js), which this PR deliberately does not touch. Until the parent fills a measured `extensionRedirectUri` no code can be minted in production, so no caller can reach a 200 here; the route is live and inert."
+    },
+    {
+      "id": "ext-revoke",
+      "method": "POST",
+      "path": "/v1/ext/revoke",
+      "auth": "required",
+      "owningFile": "services/platform/src/routes/ext.ts",
+      "purpose": "⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT (ADR 059 D7: revocation per session). A device credential revokes ITSELF — `revoked_at` on the calling device only, named by its own credential hash. `extDeviceAuth` is carried AT THE HANDLER. Required auth here is the DEVICE credential, not a JWT: a JWT is refused. After it, that credential answers 401 everywhere, which is the extension's signal to delete it.",
+      "unconsumedReason": "THE CLIENT ARRIVES IN PR-X, the extension half (sign-out in the options page), which this PR deliberately does not touch.",
+      "noLimiterReason": "NOT APPLICABLE — `auth: required` (the device credential), so limb 4 does not range over it. One guarded UPDATE by an authenticated device."
+    },
+    {
       "id": "plan-cancel",
       "method": "POST",
       "path": "/v1/plan/cancel",
@@ -637,6 +670,15 @@
       "purpose": "The server-derived ceiling for POST /v1/money/:provider, keyed `edge:<colo>:<asn>`. Its OWN namespace so a flood of forged notifications cannot exhaust the budget analytics ingest and config resolution depend on — both of those are on every app's LAUNCH path, so borrowing from them would let anyone who finds this URL degrade the whole portfolio.",
       "readers": [
         "services/platform/src/routes/money.ts"
+      ]
+    },
+    {
+      "binding": "EXT_TOKEN_CEILING_LIMITER",
+      "kind": "ratelimits",
+      "scope": "shared",
+      "purpose": "⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. The server-derived ceiling for POST /v1/ext/token, keyed `edge:<colo>:<asn>` — never an IP. `simple: { limit: 60, period: 60 }`: one exchange per sign-in, room for a shared NAT, and the end of a flood against a 128-bit code. Its OWN namespace (1005) so a code-guessing flood cannot spend the budget analytics ingest, config resolution or the money rail depend on.",
+      "readers": [
+        "services/platform/src/routes/ext.ts"
       ]
     }
   ]

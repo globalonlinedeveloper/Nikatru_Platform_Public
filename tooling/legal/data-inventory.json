@@ -313,6 +313,57 @@
       }
     },
     {
+      "id": "table:platform_db.ext_codes",
+      "kind": "d1-table",
+      "name": "ext_codes",
+      "personalData": true,
+      "holds": "⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. One row per one-time code minted when a signed-in user connects the browser extension on https://nikatru.com/ext/connect: SHA-256 of the code (the code itself is never stored), WHO minted it (the Supabase `sub`, from the verified JWT), the product (`fullshot`), the store channel, the exact redirect_uri the code may be delivered to, the PKCE S256 challenge, and `created_at` / `expires_at` / `used_at`. A code lives 120 seconds and is single-use. It holds no name and no email address.",
+      "retention": {
+        "kind": "swept",
+        "periodDays": 1,
+        "sweptBy": "services/platform/src/scheduled.ts",
+        "reason": "One day past `expires_at`, enforced by the platform Worker's nightly `retentionSweep` (EXT_CODES_RETENTION_DAYS) — the design's 24 hours after expiry. After `expires_at` a code can never be exchanged, so the row is only a record that a sign-in was attempted; the day keeps it readable the morning after a failed connect. The cutoff is on `expires_at`, so an unexpired code is never swept. `swept`, not `ttl`: D1 has no expiry."
+      },
+      "erasure": {
+        "kind": "purge",
+        "route": "services/platform/src/routes/account.ts",
+        "reason": "A code is a record of the account that minted it. The column is spelled `user_id` ON PURPOSE (0017_ext_devices.sql): the shared erasure walk DELETES the row. Verified rather than assumed — adding the table turned services/platform/test/auth.test.ts's empty-derivation fixture and erasure-derivation.test.ts's pinned set red."
+      },
+      "writtenBy": [
+        "services/platform/migrations/0017_ext_devices.sql",
+        "services/platform/src/routes/ext.ts"
+      ],
+      "disclosure": {
+        "page": "privacy.html",
+        "quote": "when you contact support, send feedback, or (in apps that offer accounts) create an account"
+      }
+    },
+    {
+      "id": "table:platform_db.ext_devices",
+      "kind": "d1-table",
+      "name": "ext_devices",
+      "personalData": true,
+      "holds": "⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. One row per browser that has linked the extension to an account: a random link id (`link_id`), the Supabase `sub`, the product (`fullshot`), the store channel, SHA-256 of the device credential (the credential is returned once to the extension and never stored), `created_at`, `last_seen_at` (at most once per UTC day) and `revoked_at`. The credential can read that one product's entitlement and revoke itself, nothing else. It holds no name and no email address.",
+      "retention": {
+        "kind": "keep",
+        "reason": "Kept WHILE IT IS A LIVE CREDENTIAL: an age sweep would sign a paying user out of a product they still use. It ends when the user revokes the device (`revoked_at`, POST /v1/ext/revoke) or erases the account. ⬜ OPEN: a revoked row answers 401 whether or not it exists; whether to sweep revoked rows, and after how long, is an open question for the parent — no period is invented here."
+      },
+      "erasure": {
+        "kind": "purge",
+        "route": "services/platform/src/routes/account.ts",
+        "reason": "A linked device is a record of the account. The column is spelled `user_id` ON PURPOSE (0017_ext_devices.sql): the shared erasure walk DELETES the row, which also kills the credential — a deleted row answers 401. Verified rather than assumed — adding the table turned services/platform/test/auth.test.ts's empty-derivation fixture and erasure-derivation.test.ts's pinned set red."
+      },
+      "writtenBy": [
+        "services/platform/migrations/0017_ext_devices.sql",
+        "services/platform/src/routes/ext.ts",
+        "services/platform/src/middleware/ext-device-auth.ts"
+      ],
+      "disclosure": {
+        "page": "privacy.html",
+        "quote": "when you contact support, send feedback, or (in apps that offer accounts) create an account"
+      }
+    },
+    {
       "id": "table:platform_db.pending_erasures",
       "kind": "d1-table",
       "name": "pending_erasures",
