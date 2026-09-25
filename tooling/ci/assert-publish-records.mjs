@@ -145,7 +145,11 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseWorkflow, parseAllWorkflows, shellSegments, RECORD_CALL, expandMatrixEnvironment } from './workflow-scan.mjs';
+// ⏱ 2026-09-24 — P-A1: the lanes are read through parseResolvedWorkflows, so a
+// record or submit step behind `uses: ./.github/actions/<x>` or a local reusable
+// workflow is graded where it lives. The flat self-check below stays on
+// parseAllWorkflows: it is the deliberately different reader.
+import { parseAllWorkflows, parseResolvedWorkflows, lineAt, placeOf, refusalText, shellSegments, RECORD_CALL, expandMatrixEnvironment } from './workflow-scan.mjs';
 import { resolveEnvironment, STATES, SUBMIT_TIME_STATES, STATE_MEANING } from './deployment-record.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
@@ -355,10 +359,30 @@ function recordCalls(job, appSlugs = APP_SLUGS) {
   return out;
 }
 
+const resolved = parseResolvedWorkflows(ROOT);
+if (resolved.refusal !== null) {
+  coverageLost([
+    refusalText(resolved.refusal),
+    'A record or submit step behind that reference would be graded as absent, and absent reads as clean.',
+  ]);
+}
+const resolvedByRel = new Map(resolved.workflows.map((w) => [w.rel, w]));
+
 function openWorkflow(rel, why) {
-  const wf = parseWorkflow(ROOT, rel);
+  const wf = resolvedByRel.get(rel) ?? null;
+  if (wf === null && existsSync(join(ROOT, rel))) {
+    coverageLost([
+      `${REGISTER_REL} names ${rel} as ${why}, and that file only runs when another workflow calls it.`,
+      'Name the calling workflow and its call job: that is where the lane runs, with the caller\'s triggers.',
+    ]);
+  }
   if (wf === null) coverageLost([`${REGISTER_REL} names ${rel} as ${why}, and that file does not exist.`]);
-  if (wf.rawStepCount === 0) {
+  // ⏱ P-A1: a workflow whose jobs are all calls to a local reusable workflow has
+  // no step bullet of its own; its steps are the callee's, read into child jobs.
+  const calleeSteps = [...wf.jobs.values()]
+    .filter((j) => j.calledBy !== undefined)
+    .reduce((sum, j) => sum + j.lines.filter((l) => /^\s+-\s+(name|run|uses):/.test(l.text)).length, 0);
+  if (wf.rawStepCount + calleeSteps === 0) {
     coverageLost([`${rel} parsed to ZERO steps, so nothing in it could ever be found.`, 'The parse is broken, not the workflow.']);
   }
   return wf;
@@ -375,6 +399,13 @@ function openJob(wf, jobName, why) {
   return job;
 }
 
+/** A register-named job and, when it is a `uses: ./.github/workflows/<x>` call,
+ *  the callee jobs it runs (`<job>/<calleeJob>`). The steps of a call job live
+ *  in its callees, so a lane graded on the call job alone would find nothing. */
+function withCallees(wf, job) {
+  return [job, ...[...wf.jobs.values()].filter((j) => j.calledBy === job.name)];
+}
+
 // ── 1. SERVED CHANNELS — the deploy lane must record what it shipped ─────────
 const seenRecordLines = new Set();
 /** Mark every RAW line a record call occupies as reached. ⏱ 2026-09-22 — a call
@@ -389,8 +420,12 @@ function markRecordLinesSeen(wf, job, calls) {
   const lastRaw = job.lines.length ? job.lines[job.lines.length - 1].n : null;
   for (const c of calls) {
     const next = starts.find((n) => n > c.n);
-    const end = next !== undefined ? next - 1 : (lastRaw ?? c.n);
-    for (let n = c.n; n <= end; n++) seenRecordLines.add(`${wf.rel}:${n}`);
+    // ⏱ 2026-09-24 — P-A1: the span is the job's own lines up to the next logical
+    // line, keyed by where each really is. A callee's line numbers are fractional
+    // in the caller and its flat hit is `<callee>.yml:<line>`; `n++` from a
+    // fractional start marks nothing the flat reader can name.
+    const end = next !== undefined ? next : (lastRaw ?? c.n) + 1;
+    for (const l of job.lines) if (l.n >= c.n && l.n < end) seenRecordLines.add(placeOf(wf, l.n));
   }
 }
 let deployRecordCalls = 0;
@@ -410,10 +445,10 @@ let wideningsAccepted = 0;
  *
  * `subject` names the step in the failure text; `what` names the thing recorded.
  */
-function gradeSkippability(rel, jobName, call, subject, what) {
+function gradeSkippability(wf, jobName, call, subject, what) {
   if (call.ctx === null) {
     coverageLost([
-      `${rel}: the record call for ${what} at :${call.n} belongs to no step this parse could find.`,
+      `${wf.rel}: the record call for ${what} at ${lineAt(wf, call.n)} belongs to no step this parse could find.`,
       'Rule 6 (a skippable record step) is graded from the step containing the call, so a call this reader',
       'cannot place is a rule it cannot apply — and it would otherwise report "no guards found", which is',
       'the exact shape the previous `stepGuards` shipped in for a month. Fix the step splitter, not the workflow.',
@@ -422,7 +457,7 @@ function gradeSkippability(rel, jobName, call, subject, what) {
   stepsGraded++;
   if (call.ctx.step.continueOnError) {
     problems.push(
-      `[10]D-9 · ${rel}:${call.ctx.step.continueOnError.n} — ${subject} carries \`continue-on-error: true\`, so the ` +
+      `[10]D-9 · ${placeOf(wf, call.ctx.step.continueOnError.n)} — ${subject} carries \`continue-on-error: true\`, so the ` +
         'job can finish GREEN having shipped and not recorded. D-9\'s wording is "ends without writing one fails"; ' +
         "swallowing the recorder's own failure is how a job ends without writing one while the call is still in the YAML.",
     );
@@ -431,7 +466,7 @@ function gradeSkippability(rel, jobName, call, subject, what) {
   const verdict = narrowingReason(call.ctx.step.stepIf.cond);
   if (typeof verdict === 'string') {
     problems.push(
-      `[10]D-9 · ${rel}:${call.ctx.step.stepIf.n} — ${subject} carries a NARROWING step-level \`if:\` ` +
+      `[10]D-9 · ${placeOf(wf, call.ctx.step.stepIf.n)} — ${subject} carries a NARROWING step-level \`if:\` ` +
         `(\`${call.ctx.step.stepIf.cond}\`): ${verdict}. So the job can finish having shipped and not recorded, ` +
         'which is D-9\'s "ends without writing one". The one accepted form is ' +
         "`always() && steps.<publishing-step-id>.outcome == 'success'` — a strict WIDENING of the `success()` every " +
@@ -442,7 +477,7 @@ function gradeSkippability(rel, jobName, call, subject, what) {
   const unknown = verdict.ids.filter((id) => !call.ctx.priorIds.has(id));
   if (unknown.length) {
     problems.push(
-      `[10]D-9 · ${rel}:${call.ctx.step.stepIf.n} — ${subject} is conditioned on step id(s) ` +
+      `[10]D-9 · ${placeOf(wf, call.ctx.step.stepIf.n)} — ${subject} is conditioned on step id(s) ` +
         `\`${unknown.join('`, `')}\` that NO EARLIER step in job "${jobName}" declares ` +
         `(earlier ids: ${[...call.ctx.priorIds].map((i) => `\`${i}\``).join(', ') || 'none'}). GitHub resolves ` +
         '`steps.<unknown>.outcome` to null instead of erroring, so this record would silently never be written and ' +
@@ -452,7 +487,7 @@ function gradeSkippability(rel, jobName, call, subject, what) {
   }
   wideningsAccepted++;
   prints.push(
-    `[10]D-9 · ${rel}:${call.ctx.step.stepIf.n} — ${what} is recorded on \`${call.ctx.step.stepIf.cond}\`: a WIDENING ` +
+    `[10]D-9 · ${placeOf(wf, call.ctx.step.stepIf.n)} — ${what} is recorded on \`${call.ctx.step.stepIf.cond}\`: a WIDENING ` +
       'of the inherited `success()` (that step being green was already required), so the record survives a ' +
       'post-deploy smoke that fails after the bytes shipped. Run 144, 2026-08-08.',
   );
@@ -472,8 +507,11 @@ for (const row of servedRows) {
   }
   const wf = openWorkflow(rel, `the served "${row.id}" channel's lane`);
   const job = openJob(wf, row.lane.job, `the served "${row.id}" channel's lane job`);
-  const calls = recordCalls(job);
-  markRecordLinesSeen(wf, job, calls);
+  const calls = withCallees(wf, job).flatMap((j) => {
+    const own = recordCalls(j);
+    markRecordLinesSeen(wf, j, own);
+    return own;
+  });
   deployRecordCalls += calls.length;
 
   for (const env of envs) {
@@ -483,11 +521,11 @@ for (const row of servedRows) {
         `[10]D-9 · the "${row.id}" channel is SERVED and ${wf.rel} job "${row.lane.job}" never records "${env}". ` +
           `A deploy that ships and records nothing makes "what is live?" answerable only by inference, which is ` +
           `the state this requirement abolishes. Add a step running \`node tooling/ci/${RECORDER} ${env} <url>\`. ` +
-          `(Found ${calls.length} record call(s) in that job: ${calls.map((c) => `${c.environment}@:${c.n}`).join(', ') || 'none'}.)`,
+          `(Found ${calls.length} record call(s) in that job: ${calls.map((c) => `${c.environment}@${lineAt(wf, c.n)}`).join(', ') || 'none'}.)`,
       );
       continue;
     }
-    gradeSkippability(wf.rel, row.lane.job, hit, `the step recording "${env}"`, `"${env}"`);
+    gradeSkippability(wf, row.lane.job, hit, `the step recording "${env}"`, `"${env}"`);
   }
 }
 
@@ -567,7 +605,7 @@ for (const row of submittableRows) {
     return out;
   };
 
-  if (invocationsIn(declaredJob).length === 0) {
+  if (withCallees(wf, declaredJob).every((j) => invocationsIn(j).length === 0)) {
     coverageLost([
       `${REGISTER_REL} says the "${row.id}" channel submits via ${sub.script} in ${wf.rel} job "${sub.job}", and no step there runs it.`,
       'Either the register points at nothing or this parse has stopped seeing run steps. Both are the scan breaking, not the tree.',
@@ -594,7 +632,7 @@ for (const row of submittableRows) {
   const reachedJobNames = new Set(censusJobs.map((e) => e.job.name));
   const unreachedInvocationLines = wf.lines
     .filter((l) => l.text.includes(scriptName) && jobOfLine.has(l.n) && !reachedJobNames.has(jobOfLine.get(l.n)))
-    .map((l) => `${wf.rel}:${l.n} — inside job "${jobOfLine.get(l.n)}"`);
+    .map((l) => `${placeOf(wf, l.n)} — inside job "${jobOfLine.get(l.n)}"`);
   if (unreachedInvocationLines.length > 0) {
     coverageLost([
       `${unreachedInvocationLines.length} line(s) of ${wf.rel} name ${scriptName} inside a job this census never reached:`,
@@ -618,7 +656,7 @@ for (const row of submittableRows) {
         const after = calls.filter((c) => c.n !== null);
         if (after.length > 0 && !invocations.some((i) => i.canPublish)) {
           problems.push(
-            `[10]D-9 · ${wf.rel}:${after[0].n} — job "${job.name}" writes a deployment record, and its only ` +
+            `[10]D-9 · ${placeOf(wf, after[0].n)} — job "${job.name}" writes a deployment record, and its only ` +
               `invocation(s) of ${scriptName} are rehearsals (\`--dry-run\`, which contacts nobody). A ledger row ` +
               'for a submission that never happened is worse than a missing one: a gap is visible, a fiction is not.',
           );
@@ -632,14 +670,14 @@ for (const row of submittableRows) {
       });
       if (!record) {
         problems.push(
-          `[10]D-9 · ${wf.rel}:${inv.n} — job "${job.name}" can perform a REAL submission on the "${row.id}" ` +
+          `[10]D-9 · ${placeOf(wf, inv.n)} — job "${job.name}" can perform a REAL submission on the "${row.id}" ` +
             `channel (${inv.interpolated ? 'its mode is assembled from a `${{ … }}` expression, so it is not statically a rehearsal' : 'no `--dry-run` on this command'}) ` +
             `and no later step records it. Add, as the last step of the job:\n` +
             `      run: node tooling/ci/${RECORDER} ${String(rowEnvTemplate).replace('{app}', '<app>')} --state ${SUBMIT_TIME_STATES[0]} --listing-url <url>`,
         );
         continue;
       }
-      gradeSkippability(wf.rel, job.name, record, `the record step for a real "${row.id}" submission`, `the "${row.id}" submission`);
+      gradeSkippability(wf, job.name, record, `the record step for a real "${row.id}" submission`, `the "${row.id}" submission`);
     }
 
     // Rules 4 and 5 apply to EVERY record call in a submission workflow, whether
@@ -655,7 +693,7 @@ for (const row of submittableRows) {
       .filter((i) => i.canPublish)
       .map((i) => pinnedEvent(stepContext(job, i.n)?.step.stepIf ?? null));
     for (const c of calls) {
-      const key = `${wf.rel}:${c.n}`;
+      const key = placeOf(wf, c.n);
       if (gradedRecordLines.has(key)) continue;
       gradedRecordLines.add(key);
       const recordEvent = pinnedEvent(c.ctx?.step.stepIf ?? null);
@@ -665,7 +703,7 @@ for (const row of submittableRows) {
         publishEvents.every((e) => e !== null && e !== recordEvent)
       ) {
         prints.push(
-          `[10]D-9 · ${wf.rel}:${c.n} — not graded as a "${row.id}" submission record: its step runs only on ` +
+          `[10]D-9 · ${placeOf(wf, c.n)} — not graded as a "${row.id}" submission record: its step runs only on ` +
             `\`${recordEvent}\`, and every publishing invocation in job "${job.name}" runs only on ` +
             `${[...new Set(publishEvents)].map((e) => `\`${e}\``).join(', ')}, so no submitting run reaches it.`,
         );
@@ -673,7 +711,7 @@ for (const row of submittableRows) {
       }
       if (c.state !== null && !SUBMIT_TIME_STATES.includes(c.state) && !/\$\{\{/.test(c.state)) {
         problems.push(
-          `[10]D-9 · ${wf.rel}:${c.n} records \`--state ${c.state}\` from the "${row.id}" SUBMISSION workflow. ` +
+          `[10]D-9 · ${placeOf(wf, c.n)} records \`--state ${c.state}\` from the "${row.id}" SUBMISSION workflow. ` +
             `A submitting run knows one fact — it submitted — and "${SUBMIT_TIME_STATES[0]}" is the only state that ` +
             `says it. "${c.state}": ${STATE_MEANING[c.state] ?? 'not a state at all — expected one of ' + STATES.join(', ')} ` +
             'A later run (a status poll, or a dispatch a human triggers on the review email) writes that transition.',
@@ -681,14 +719,14 @@ for (const row of submittableRows) {
       }
       if (c.state === null) {
         problems.push(
-          `[10]D-9 · ${wf.rel}:${c.n} records a store environment with no \`--state\`. There is no default for a ` +
+          `[10]D-9 · ${placeOf(wf, c.n)} records a store environment with no \`--state\`. There is no default for a ` +
             'store channel on purpose: a forgotten flag must not be the difference between "we submitted it" and ' +
             '"the store approved it".',
         );
       }
       if (c.listingUrl === null) {
         problems.push(
-          `[10]D-9 · ${wf.rel}:${c.n} records a store environment with no \`--listing-url\`. A store record whose ` +
+          `[10]D-9 · ${placeOf(wf, c.n)} records a store environment with no \`--listing-url\`. A store record whose ` +
             'listing nobody can open says something shipped and gives no way to look at it — and [12]\'s cross-promo ' +
             'and G-31\'s openStoreListing() fallback both consume exactly that field.',
         );
@@ -786,7 +824,7 @@ if (missedInsideLanes.length > 0) {
 // every record call in the repository rather than only to declared lanes.
 const STEP_OUTCOME_REF = /steps\.([A-Za-z_][A-Za-z0-9_-]*)\.(outcome|conclusion)/g;
 let danglingChecked = 0;
-for (const wf of parseAllWorkflows(ROOT)) {
+for (const wf of resolved.workflows) {
   for (const job of wf.jobs.values()) {
     for (const call of recordCalls(job)) {
       if (!call.ctx?.step?.stepIf) continue;
@@ -797,7 +835,7 @@ for (const wf of parseAllWorkflows(ROOT)) {
       const dangling = referenced.filter((id) => !call.ctx.priorIds.has(id));
       if (dangling.length === 0) continue;
       problems.push(
-        `[10]D-9 · ${wf.rel}:${call.ctx.step.stepIf.n} — the step recording "${call.environment}" is conditioned on ` +
+        `[10]D-9 · ${placeOf(wf, call.ctx.step.stepIf.n)} — the step recording "${call.environment}" is conditioned on ` +
           `step id(s) \`${dangling.join('`, `')}\` that NO EARLIER step in job "${job.name}" declares ` +
           `(earlier ids: ${[...call.ctx.priorIds].map((i) => `\`${i}\``).join(', ') || 'none'}). GitHub resolves ` +
           '`steps.<unknown>.outcome` to null rather than erroring, so this record would silently never be written ' +

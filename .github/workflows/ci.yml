@@ -1269,7 +1269,7 @@ jobs:
           --posture debug
       # why: nothing here leaves the runner — no upload-artifact, no symbols, no GlitchTip.
       # A debug-signed PR build is discarded, and release-provenance gives a gate
-      # constituent no credit for publishing (assert-release-provenance.mjs:735-770).
+      # constituent no credit for publishing (assert-release-provenance.mjs:752-788).
 
   # why: the extensions CI lane, as ONE constituent of ci-gate. extensions-ci.yml runs
   # only as a call, and its jobs report inside this run; this job's result is red when

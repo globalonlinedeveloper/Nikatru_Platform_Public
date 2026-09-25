@@ -2817,3 +2817,77 @@ describe('assert-release-durable.mjs — a job that cannot run on a tag is a bui
     assert.match(r.out, /its own `if:` carries/);
   });
 });
+
+// ⏱ 2026-09-24 — P-A1: the guard reads workflows through parseResolvedWorkflows, so
+// a step moved behind `uses: ./.github/actions/<x>` is graded where it now lives.
+// Before it, an upload inside a local composite was a job with no upload at all.
+describe('assert-release-durable.mjs — a step moved into a local composite action', () => {
+  const UP_ACTION = `name: Up
+runs:
+  using: composite
+  steps:
+    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      with:
+        name: subscriptiontracker-linux
+        path: |
+          apps/subscriptiontracker/build/app/outputs/flutter-apk/*.apk
+          apps/subscriptiontracker/build/linux/x64/release/bundle
+        retention-days: 7
+`;
+  const withAction = (root) => {
+    mkdirSync(join(root, '.github', 'actions', 'up'), { recursive: true });
+    writeFileSync(join(root, '.github', 'actions', 'up', 'action.yml'), UP_ACTION);
+    return root;
+  };
+
+  test('an upload behind a local composite, with no release job: red, at the action file line', () => {
+    const r = run(withAction(fixture({ workflows: { 'build.yml': lane({ upload: '      - uses: ./.github/actions/up\n', releaseJob: false }) } })));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /job "build" uploads an installable artifact \(.*first at \.github\/actions\/up\/action\.yml:5\)/);
+    assert.match(r.out, /NOTHING in it or downstream of it publishes/);
+  });
+
+  test('the same upload with its release job downstream: ok', () => {
+    const r = run(withAction(fixture({ workflows: { 'build.yml': lane({ upload: '      - uses: ./.github/actions/up\n' }) } })));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /1 job\(s\) publish durably/);
+  });
+});
+
+// ⏱ 2026-09-24 — P-A1, RC4: a build job moved into a local reusable workflow
+// (`on: workflow_call`) is read as a child job `<caller>/<job>` of the CALLER. It
+// inherits the caller's triggers, so the tag trigger that makes the caller a
+// release lane makes the child's upload a release upload; and a job that
+// `needs:` the call job is downstream of every child, as GitHub runs it.
+describe('assert-release-durable.mjs — a job moved into a local reusable workflow', () => {
+  const CALLEE = `name: Build lib
+on:
+  workflow_call:
+jobs:
+  pack:
+    runs-on: ubuntu-24.04
+    steps:
+${UPLOAD}`;
+  const caller = (releaseJob) =>
+    lane({ releaseJob }).replace(
+      `  build:\n    runs-on: ubuntu-24.04\n    steps:\n${UPLOAD}`,
+      '  build:\n    uses: ./.github/workflows/build-lib.yml\n',
+    );
+
+  test('the child inherits the caller\'s tag trigger: an upload with no release job is red, named as the child', () => {
+    const body = caller(false);
+    assert.ok(body.includes('uses: ./.github/workflows/build-lib.yml'), body);
+    const r = run(fixture({ workflows: { 'build.yml': body, 'build-lib.yml': CALLEE } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /job "build\/pack" uploads an installable artifact/);
+    assert.match(r.out, /triggers on `push: tags:`/);
+  });
+
+  test('a release job that needs the call job is downstream of the child: ok', () => {
+    const body = caller(true);
+    assert.ok(body.includes('uses: ./.github/workflows/build-lib.yml'), body);
+    const r = run(fixture({ workflows: { 'build.yml': body, 'build-lib.yml': CALLEE } }));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /1 job\(s\) publish durably/);
+  });
+});

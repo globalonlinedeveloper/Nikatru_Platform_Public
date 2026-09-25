@@ -171,6 +171,34 @@ for (const rel of rows.keys()) {
   }
 }
 
+// ── R5 · ⏱ 2026-09-24 · P-A2 · A ROW THAT SAYS IT RESOLVES LOCAL `uses:` DOES ──
+// O-GUARDS-DO-NOT-FOLLOW-LOCAL-USES. A step moved behind `uses: ./.github/actions/<x>`,
+// or into a local reusable workflow, leaves a guard that reads one workflow file at a
+// time looking at a workflow with the step gone, and it reports clean. A row carrying
+// `resolves: "local-uses"` declares a guard whose subject such a move would hide; its
+// code, comments blanked, must call parseResolvedWorkflows( or list .github/actions
+// itself. WHICH rows carry it is the declaration and is not graded here; the code is.
+// Placed after R4, not beside R2, so the line numbers other files cite in this one stay true.
+const RESOLVES = new Set(['local-uses']);
+const RESOLVES_BY = [/\bparseResolvedWorkflows\(/, /['"`]\.github['"`]\s*,\s*['"`]actions['"`]|['"`]\.github\/actions/];
+let resolving = 0;
+for (const row of rows.values()) {
+  if (row.resolves === undefined) continue;
+  if (!RESOLVES.has(row.resolves)) {
+    problems.push(`R5 ${row.path} — resolves ${JSON.stringify(row.resolves)} is not one of ${[...RESOLVES].join(', ')}.`);
+    continue;
+  }
+  const hit = found.get(row.path);
+  if (!hit) continue; // R4 has already named a row whose file is gone or reads nothing.
+  resolving++;
+  if (!RESOLVES_BY.some((re) => re.test(hit.code))) {
+    problems.push(
+      `R5 ${row.path} is declared \`resolves: "local-uses"\` and its code neither calls parseResolvedWorkflows( nor lists ` +
+        '.github/actions — a step moved behind a local `uses:` would leave its subject unread.',
+    );
+  }
+}
+
 if (problems.length) {
   console.error(`✗ workflow readers — ${problems.length} problem(s):`);
   for (const p of problems) console.error(`    ${p}`);
@@ -184,3 +212,4 @@ console.log(
   `ok  workflow readers — ${found.size} reader(s) (${ciReaders} in ${CI_PREFIX}) in ${scanned} code file(s) outside .github/: ` +
     Object.entries(byProp).map(([k, v]) => `${v} ${k}`).join(' · '),
 );
+console.log(`    R5 — ${resolving} row(s) declare \`resolves: "local-uses"\`, each calling parseResolvedWorkflows( or listing .github/actions`);

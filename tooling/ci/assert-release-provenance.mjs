@@ -235,7 +235,11 @@ import { stripSourceComments } from './text-reductions.mjs';
 // travelled with it and is recorded in workflow-scan.mjs's header. This guard's
 // own semantics (the gate walk, the publish classification, the per-segment
 // dry-run rule) stayed here: they are R-6's, not everybody's.
-import { parseWorkflow } from './workflow-scan.mjs';
+// ⏱ 2026-09-24 (O-GUARDS-DO-NOT-FOLLOW-LOCAL-USES) — read through the RESOLVED
+// view: a publish, a gate call or a record moved behind `uses: ./.github/actions/<x>`
+// or into a `uses: ./.github/workflows/<f>.yml` callee is graded where it runs,
+// and a finding on such a line prints its real `<file>:<line>` via lineAt/placeOf.
+import { parseResolvedWorkflows, lineAt, placeOf, refusalText } from './workflow-scan.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const WORKFLOWS = '.github/workflows';
@@ -552,7 +556,20 @@ if (wfFiles.length === 0) coverageLost([`${WORKFLOWS} contains no workflow files
 // workflow this guard could not parse and carry on — silence reported as
 // success, which is the one outcome this file's header forbids. Without it an
 // unparseable workflow is a loud crash on the next line instead.
-const workflows = wfFiles.map((f) => parseWorkflow(ROOT, `${WORKFLOWS}/${f}`));
+// ⏱ 2026-09-24 — the parse is now parseResolvedWorkflows, and the same rule
+// holds in two checks: a local reference it could not follow is COVERAGE LOST
+// here, and every file listed above must be one it READ (a workflow_call-only
+// callee is read, then graded as its callers' `<caller>/<job>` children).
+const resolved = parseResolvedWorkflows(ROOT);
+if (resolved.refusal !== null) {
+  coverageLost([
+    refusalText(resolved.refusal),
+    'A publish or gate call behind that reference would be graded as absent, and absent reads as clean.',
+  ]);
+}
+const unread = wfFiles.filter((f) => !resolved.filesRead.includes(`${WORKFLOWS}/${f}`));
+if (unread.length > 0) coverageLost([`the resolved parse never read ${unread.join(', ')}.`]);
+const workflows = resolved.workflows;
 
 // ── coverage self-check on the stripper ──────────────────────────────────────
 // A stripper that ate the file makes every "does this call X" question below run
@@ -722,13 +739,13 @@ function findGate(wf, job) {
 function neutralizedCredit(wf, job, r, doing) {
   if (r.kind === 'coe') {
     return (
-      `${wf.rel}: job "${job.name}" ${doing}, and its gate job "${r.gate.name}" carries \`continue-on-error: true\` at :${r.gate.continueOnError.n}. ` +
+      `${wf.rel}: job "${job.name}" ${doing}, and its gate job "${r.gate.name}" carries \`continue-on-error: true\` at ${lineAt(wf, r.gate.continueOnError.n)}. ` +
       `${GATE_SCRIPT} failing can no longer fail that job, so every \`needs\` edge to it is satisfied on a RED gate — the edge exists and enforces nothing.`
     );
   }
   return (
     `${wf.rel}: job "${job.name}" ${doing}, and its only path to ${GATE_SCRIPT} (job "${r.gate.name}") is neutralized: ` +
-    `job "${r.blockedBy.job.name}" has a job-level \`if:\` at :${r.blockedBy.line.n} containing \`always()\`/\`failure()\`, so it runs even when the gate FAILED and the \`needs\` edge enforces nothing.`
+    `job "${r.blockedBy.job.name}" has a job-level \`if:\` at ${lineAt(wf, r.blockedBy.line.n)} containing \`always()\`/\`failure()\`, so it runs even when the gate FAILED and the \`needs\` edge enforces nothing.`
   );
 }
 
@@ -815,7 +832,7 @@ for (const wf of workflows) {
       if (gateJob) {
         if (gateJob.name === job.name && gateJob.gateCall.n > job.releaseBuilds[0].n) {
           problems.push(
-            `${wf.rel}: job "${job.name}" calls ${GATE_SCRIPT} at :${gateJob.gateCall.n}, AFTER its first release build at :${job.releaseBuilds[0].n}. ` +
+            `${wf.rel}: job "${job.name}" calls ${GATE_SCRIPT} at ${lineAt(wf, gateJob.gateCall.n)}, AFTER its first release build at ${lineAt(wf, job.releaseBuilds[0].n)}. ` +
               'A gate consulted after the build has verified nothing — the artifact already exists.',
           );
         }
@@ -824,11 +841,11 @@ for (const wf of workflows) {
         // build here IS a red gate. See the gate-constituent block above.
       } else if (refused.length > 0) {
         problems.push(
-          neutralizedCredit(wf, job, refused[0], `runs ${job.releaseBuilds.length} release build(s) (first at :${job.releaseBuilds[0].n})`),
+          neutralizedCredit(wf, job, refused[0], `runs ${job.releaseBuilds.length} release build(s) (first at ${lineAt(wf, job.releaseBuilds[0].n)})`),
         );
       } else {
         problems.push(
-          `${wf.rel}: job "${job.name}" runs ${job.releaseBuilds.length} release build(s) (first at :${job.releaseBuilds[0].n}) and neither it nor any job it \`needs\` calls ${GATE_SCRIPT}. ` +
+          `${wf.rel}: job "${job.name}" runs ${job.releaseBuilds.length} release build(s) (first at ${lineAt(wf, job.releaseBuilds[0].n)}) and neither it nor any job it \`needs\` calls ${GATE_SCRIPT}. ` +
             'An artifact can then be built from any dispatched ref, including one whose gate is RED, and nothing downstream can tell the difference.',
         );
       }
@@ -840,12 +857,12 @@ for (const wf of workflows) {
       const lastPublish = job.publishes[job.publishes.length - 1];
       if (!job.markerCall) {
         problems.push(
-          `${wf.rel}: job "${job.name}" performs ${lastPublish.what} at :${lastPublish.n} and never calls ${MARKER_SCRIPT}. ` +
+          `${wf.rel}: job "${job.name}" performs ${lastPublish.what} at ${lineAt(wf, lastPublish.n)} and never calls ${MARKER_SCRIPT}. ` +
             'The code shipped and nothing can say what shipped — which is the state [10]D-9\'s ledger exists to abolish.',
         );
       } else if (job.markerCall.n < lastPublish.n) {
         problems.push(
-          `${wf.rel}: job "${job.name}" records the deployment at :${job.markerCall.n}, BEFORE its last publish at :${lastPublish.n}. ` +
+          `${wf.rel}: job "${job.name}" records the deployment at ${lineAt(wf, job.markerCall.n)}, BEFORE its last publish at ${lineAt(wf, lastPublish.n)}. ` +
             'A marker written before the publish records an intention, not an outcome, and it survives a failed deploy.',
         );
       }
@@ -859,7 +876,7 @@ for (const wf of workflows) {
       const { clean: gateJob, refused } = findGate(wf, job);
       if (!gateJob) {
         if (refused.length > 0) {
-          problems.push(neutralizedCredit(wf, job, refused[0], `performs ${lastPublish.what} at :${lastPublish.n}`));
+          problems.push(neutralizedCredit(wf, job, refused[0], `performs ${lastPublish.what} at ${lineAt(wf, lastPublish.n)}`));
         } else {
           problems.push(
             `${wf.rel}: job "${job.name}" performs ${lastPublish.what} without any \`${GATE_SCRIPT}\` call in itself or a job it \`needs\`.`,
@@ -867,7 +884,7 @@ for (const wf of workflows) {
         }
       } else if (gateJob.name === job.name && gateJob.gateCall.n > firstPublish.n) {
         problems.push(
-          `${wf.rel}: job "${job.name}" calls ${GATE_SCRIPT} at :${gateJob.gateCall.n}, AFTER its first publish at :${firstPublish.n}. A gate consulted after the artifact left the runner has verified nothing.`,
+          `${wf.rel}: job "${job.name}" calls ${GATE_SCRIPT} at ${lineAt(wf, gateJob.gateCall.n)}, AFTER its first publish at ${lineAt(wf, firstPublish.n)}. A gate consulted after the artifact left the runner has verified nothing.`,
         );
       }
     }
@@ -906,7 +923,7 @@ for (const wf of workflows) {
       if (!job.lines.some((l) => /^ {4}environment:/.test(l.text))) {
         submitProblems++;
         problems.push(
-          `${wf.rel}: job "${job.name}" invokes a \`--submit\` verb at :${first.n} and declares no job-level \`environment:\`. ` +
+          `${wf.rel}: job "${job.name}" invokes a \`--submit\` verb at ${lineAt(wf, first.n)} and declares no job-level \`environment:\`. ` +
             '[ADR 031:117-124] makes promoting a release owner-only per instance and names the environment as the enforcement; a job without one runs the moment it is dispatched, ' +
             'with no approval and no record of one. A store upload is not undoable — Play binds the upload certificate at the first upload and Snap auto-updates silently.',
         );
@@ -922,12 +939,12 @@ for (const wf of workflows) {
       // fixture and prints an `ok` line saying each script performs the read.
       for (const call of job.submitCalls) {
         if (call.script === null) {
-          unnamedSubmitScripts.push(`${wf.rel}:${call.n} (job "${job.name}")`);
+          unnamedSubmitScripts.push(`${placeOf(wf, call.n)} (job "${job.name}")`);
           continue;
         }
         const src = read(call.script);
         if (src === null) {
-          unnamedSubmitScripts.push(`${wf.rel}:${call.n} → ${call.script} (not readable under ${ROOT})`);
+          unnamedSubmitScripts.push(`${placeOf(wf, call.n)} → ${call.script} (not readable under ${ROOT})`);
           continue;
         }
         submitScriptsChecked.add(call.script);
@@ -936,7 +953,7 @@ for (const wf of workflows) {
         if (!reads) {
           submitProblems++;
           problems.push(
-            `${wf.rel}: job "${job.name}" invokes \`${call.script} --submit\` at :${call.n}, and that script never reads the deployment environment's protection rules ` +
+            `${wf.rel}: job "${job.name}" invokes \`${call.script} --submit\` at ${lineAt(wf, call.n)}, and that script never reads the deployment environment's protection rules ` +
               '(no `/environments/` API path AND `protection_rules` survives comment stripping in it). ' +
               '`environment:` on its own FAILS OPEN — GitHub\'s own documentation, quoted at docs/ci/submit-play.md:41-44, says a workflow referencing an environment that does not exist CREATES it, unprotected, and runs. ' +
               'The run history then shows a deployment that reads exactly like an approval. So the YAML line is the pause and this read is the proof the pause was real; a lane with only the first has a gate that a typo silently removes.',

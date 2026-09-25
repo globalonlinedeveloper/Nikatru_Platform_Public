@@ -74,6 +74,10 @@
 //      Added 2026-09-24: store-screenshots.yml's failure upload read
 //      `path: ${{ steps.reg.outputs.dir }}/`, which is `/` when `reg` never ran.
 //      See "limb 8" below.
+//   9. every `uses:` in our own `.github/actions/*/action.yml` is SHA-pinned like
+//      a workflow's, and every `uses: ./` reference names a file this scan reads
+//      (one that names nothing is exit 2). Added 2026-09-25 (P-A2). A third-party
+//      composite is never opened (ADR 067 A3). See "limb 9" below.
 //
 // ⚠️ TRADE-OFF ON RECORD: a pinned action stops receiving updates, including
 // security fixes. That is the deliberate exchange — "silently gets new code"
@@ -249,8 +253,8 @@ const ANY_USES = /^\s*-?\s*uses:\s*(\S+)/;
  *  of a `uses:` whose value is on the next line — the two shapes ANY_USES cannot
  *  read. Still key-shaped, so prose inside a `run:` block is not miscounted. */
 const LOOSE_USES = /^\s*-?\s*uses\s*:/;
-/** Local (`./…`) and container (`docker://…`) forms are not tag-pinnable. They
- *  are ACCOUNTED FOR rather than skipped — a skip is invisible, a bucket is not. */
+/** Local (`./…`) and container (`docker://…`) forms are not tag-pinnable. They are ACCOUNTED FOR
+ *  rather than skipped — a skip is invisible, a bucket is not — and limb 9 follows every `./` one. */
 const NOT_PINNABLE = /^(\.{1,2}[/\\]|docker:\/\/)/;
 
 const problems = [];
@@ -1909,6 +1913,90 @@ if (liveArg === null) {
   liveLine = verdict.liveLine;
 }
 
+// ── limb 9: our own composite actions, and every `uses: ./` resolved ─────────
+// ⏱ 2026-09-24 — P-A2. A step moved out of a workflow into a local composite
+// action (`uses: ./.github/actions/<x>`) took its own `uses:` lines out of limb
+// 1's reach: the workflow's line reads `./…`, which is not tag-pinnable, and the
+// action file was never opened. Each `.github/actions/<x>/action.yml` is now read
+// by limb 1's matchers and accounted by its own loose count, and every `./`
+// reference in a workflow or an action is RESOLVED: it must name a workflow, or
+// an action file this limb reads — anything else is a subject this scan cannot
+// read (exit 2). A THIRD-PARTY composite is never opened (ADR 067 A3): its pin is
+// the `@<sha>` on our own line, which limb 1 already grades.
+const actionsDir = join(repoRoot, '.github', 'actions');
+const actionFiles = [];
+if (existsSync(actionsDir)) {
+  for (const d of listDir(actionsDir).sort()) {
+    for (const n of ['action.yml', 'action.yaml']) {
+      if (existsSync(join(actionsDir, d, n))) actionFiles.push(`.github/actions/${d}/${n}`);
+    }
+  }
+}
+let actionUses = 0;
+let actionNotPinnable = 0;
+let actionUnparsed = 0;
+let actionLoose = 0;
+let localRefs = 0;
+const unresolved = [];
+/** The file a `./` reference names, or null when the tree holds none. */
+const resolveLocal = (ref) => {
+  const rel = ref.replace(/^\.\//, '').replace(/\/$/, '');
+  if (/\.ya?ml$/.test(rel)) return existsSync(join(repoRoot, rel)) ? rel : null;
+  for (const n of ['action.yml', 'action.yaml']) if (existsSync(join(repoRoot, rel, n))) return `${rel}/${n}`;
+  return null;
+};
+const resolveLocalRefs = (rel, text) =>
+  text.split('\n').forEach((line, i) => {
+    const nc = /^\s*#/.test(line) ? '' : line.replace(/\s#.*$/, '');
+    const any = ANY_USES.exec(nc);
+    if (!any || !any[1].startsWith('./')) return;
+    localRefs++;
+    const to = resolveLocal(any[1]);
+    if (to === null) unresolved.push(`${rel}:${i + 1} \`uses: ${any[1]}\` names no file in this tree (missing)`);
+    else if (!to.startsWith('.github/workflows/') && !actionFiles.includes(to)) {
+      unresolved.push(`${rel}:${i + 1} \`uses: ${any[1]}\` resolves to ${to}, outside the .github/actions/*/action.yml this limb reads`);
+    }
+  });
+for (const rel of actionFiles) {
+  const text = readFileSync(join(repoRoot, rel), 'utf8');
+  resolveLocalRefs(rel, text);
+  text.split('\n').forEach((line, i) => {
+    const nc = /^\s*#/.test(line) ? '' : line.replace(/\s#.*$/, '');
+    if (LOOSE_USES.test(nc)) actionLoose++;
+    const any = ANY_USES.exec(nc);
+    if (!any) return;
+    if (NOT_PINNABLE.test(any[1])) {
+      actionNotPinnable++;
+      return;
+    }
+    const m = USES.exec(nc);
+    if (!m) {
+      actionUnparsed++;
+      problems.push(`${rel}:${i + 1} \`uses: ${any[1]}\` is a reference this scan cannot parse, so it cannot be proven pinned.`);
+      return;
+    }
+    actionUses++;
+    const [, action, ref] = m;
+    if (!/^[0-9a-f]{40}$/.test(ref)) {
+      problems.push(`${rel}:${i + 1} \`${action}@${ref}\` is a movable reference — pin it to a 40-char commit SHA`);
+    }
+  });
+}
+for (const f of files) resolveLocalRefs(`.github/workflows/${f}`, readFileSync(join(wfDir, f), 'utf8'));
+if (unresolved.length) {
+  refuse([
+    `${unresolved.length} local \`uses: ./\` reference(s) limb 9 cannot follow:`,
+    ...unresolved.map((u) => `  ${u}`),
+    'A step behind a reference this scan cannot open is a step whose pins were never read, and unread reads as pinned.',
+  ]);
+}
+if (actionLoose !== actionUses + actionNotPinnable + actionUnparsed) {
+  coverageLost([
+    `${actionLoose} \`uses:\` line(s) are present in ${actionFiles.length} local action(s) but only ${actionUses + actionNotPinnable + actionUnparsed} were accounted for.`,
+    'The strict matcher has stopped seeing references in the action files the loose one still finds.',
+  ]);
+}
+
 if (problems.length) {
   console.error(`✗ ${problems.length} workflow hardening problem(s):`);
   for (const p of problems) console.error(`    ${p}`);
@@ -1952,4 +2040,8 @@ console.log(
 console.log(
   `    limb 8 — ${failureUsesJudged} non-success \`uses:\` step(s) judged (a raw read of their lines agrees, ${failureUsesRaw}); ` +
     "no `with:` input reads a step output that can be '' on the run it serves",
+);
+console.log(
+  `    limb 9 — ${actionFiles.length} local composite action(s) read, ${actionUses} action(s) in them all SHA-pinned; ` +
+    `${localRefs} \`uses: ./\` reference(s), each resolved to a file this scan reads`,
 );
