@@ -55,8 +55,20 @@
 //     (Limbs 3, 4 and 5 stay on the DEPLOYED set; the reason each does is written
 //     out at the config-discovery block below, beside the widening of 1 and 2.)
 //
+// ⏱ 2026-09-24 · FOUR SUB-LIMBS, for wrangler ENVIRONMENTS and the secret register
+// (O-RAZORPAY-CHECKOUT-ADAPTER, the India rail of [ADR 076] §10):
+//   1b every `env.<name>` of a money-door config declares its OWN `vars` with
+//      MONEY_ENVIRONMENT exactly `live` or `sandbox`; a door-less config's
+//      environment declares none.
+//   1c a SANDBOX environment binds no top-level route or custom domain, runs no
+//      cron, and binds a PLATFORM_DB that is not the production database.
+//   3b no destination secret is a key of any `env.<name>.vars`.
+//   3c every destination secret is declared in tooling/channel-register.json
+//      `ciSecretRegister.nonSigning`.
+//   With no environment anywhere, 1b, 1c and 3b pass VACUOUSLY and the run says so.
+//
 // ── HOW THIS GUARD READS SOURCE (2026-08-21) ────────────────────────────────
-// SIX FILE READS LIVE IN THIS GUARD AND THIS LIST IS ALL OF THEM. An
+// SEVEN FILE READS LIVE IN THIS GUARD AND THIS LIST IS ALL OF THEM. An
 // enumeration that omits a reader is exactly how the weakest reader stays
 // invisible — the first version of this block, written earlier the same day,
 // omitted limb 2's, which was the most permissive comment reader in the file.
@@ -78,6 +90,9 @@
 //   · LIMBS 1 and 4 keep their OLDER line-prefix strip (drop a line whose first
 //     non-space is `//` or `*`). Weaker on a TRAILING comment, measured to move
 //     no verdict here today, and left alone rather than opening a third idiom.
+//   · LIMB 3c (2026-09-24) reads tooling/channel-register.json with a plain
+//     `JSON.parse`: strict JSON carries no comments to strip, and a register it
+//     cannot read is COVERAGE LOST, never a pass.
 // THE SHARED REDUCTION IS `stripSourceComments(src, ext)` from
 // `text-reductions.mjs` — the one implementation several guards share, blanking
 // comments to spaces so offsets and line numbers survive, and passing STRING
@@ -397,6 +412,139 @@ if (declaringEnvironment.filter((d) => d.deployed).length === 0) {
   }
 }
 
+// ── LIMBS 1b + 1c · wrangler ENVIRONMENTS carry their own money world ────────
+// ⏱ 2026-09-24. Limb 1 reads the TOP-LEVEL `vars` only, and a named wrangler
+// environment (`env.<name>`, deployed with `--env <name>`) is a second deploy of
+// the same Worker. What an environment inherits decides what can go wrong, so it
+// was READ, not assumed — developers.cloudflare.com/workers/wrangler/configuration/,
+// 2026-09-24: `routes`/`route`, `triggers` and `workers_dev` ARE inherited;
+// `vars`, `kv_namespaces`, `r2_buckets` and `services` are NOT, and neither are
+// `d1_databases`. So an environment that omits `vars` has no money world at all,
+// and a sandbox environment that omits `routes` or `triggers` binds the
+// production hostnames and runs the production crons — the destructive nightly
+// `retentionSweep` among them — against whatever database it binds.
+//
+// 1b ranges over every config; 1c over the money-door configs' SANDBOX
+// environments: one named `sandbox`, or one that declares the sandbox world.
+// With no `env` anywhere both pass VACUOUSLY; the run prints that rather than
+// claiming environment coverage.
+const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+const parsedOnce = new Map();
+/** Each config parsed ONCE for the environment limbs (limbs 1 and 3 keep their own reads). */
+function parsedConfig(c) {
+  if (!parsedOnce.has(c.rel)) parsedOnce.set(c.rel, parseJsonc(c.raw, c.rel));
+  return parsedOnce.get(c.rel);
+}
+/** `[name, block]` for every named environment a parsed config declares. */
+function environmentsOf(c, cfg) {
+  if (cfg?.env === undefined) return [];
+  if (!isObject(cfg.env)) {
+    fail(`${c.rel} declares \`env\` as something other than an object, so no environment in it can be read — and an environment nobody can read is one whose money world nobody checked. [5]M-12`);
+    return [];
+  }
+  return Object.entries(cfg.env);
+}
+/** The HOSTNAMES a config block binds, from `route` and `routes` (a string, or an
+ *  object with a `pattern` — `custom_domain` entries included). */
+function routeHosts(block) {
+  const out = [];
+  const add = (r) => {
+    const p = typeof r === 'string' ? r : isObject(r) && typeof r.pattern === 'string' ? r.pattern : null;
+    if (p !== null) out.push(p.split('/')[0].toLowerCase());
+  };
+  if (block?.route !== undefined) add(block.route);
+  if (Array.isArray(block?.routes)) block.routes.forEach(add);
+  return out;
+}
+const d1Of = (block) => (Array.isArray(block?.d1_databases) ? block.d1_databases.filter(isObject) : []);
+
+const doorRelSet = new Set(doorConfigs.map((c) => c.rel));
+let environmentCount = 0;
+let sandboxEnvironmentCount = 0;
+for (const c of configs) {
+  const cfg = parsedConfig(c);
+  if (cfg === null) continue;
+  const hasDoor = doorRelSet.has(c.rel);
+  for (const [name, e] of environmentsOf(c, cfg)) {
+    environmentCount++;
+    const where = `${c.rel} env.${name}`;
+    // LIMB 1b
+    if (!hasDoor) {
+      if (e?.vars?.MONEY_ENVIRONMENT !== undefined) {
+        fail(
+          `${where} declares MONEY_ENVIRONMENT but no file under that config's own src/ refuses with ` +
+            '`money_rail_not_configured` — a declaration without a door is a second rail nobody decided to run, in an ' +
+            'environment exactly as at the top level (limb 1). [5]M-12',
+        );
+      }
+      continue;
+    }
+    if (!isObject(e?.vars)) {
+      fail(
+        `${where} declares no \`vars\`. Wrangler does not inherit \`vars\` into an environment, so this environment ` +
+          'has no MONEY_ENVIRONMENT and its money door answers 503 to every notification — and a copy of the top-level ' +
+          'block would make it "live" by accident. It must declare its own world, exactly "live" or "sandbox". [5]M-12',
+      );
+      continue;
+    }
+    const world = e.vars.MONEY_ENVIRONMENT;
+    if (world !== 'live' && world !== 'sandbox') {
+      fail(
+        `${where} declares MONEY_ENVIRONMENT = ${JSON.stringify(world)}. An environment of a money-door Worker must ` +
+          'say exactly "live" or "sandbox"; the route refuses anything else, and a guard that let it through would ' +
+          'certify a deploy whose every money read 503s. [5]M-12',
+      );
+    }
+    // LIMB 1c
+    if (name !== 'sandbox' && world !== 'sandbox') continue;
+    sandboxEnvironmentCount++;
+    const topHosts = new Set(routeHosts(cfg));
+    if (e?.route === undefined && e?.routes === undefined) {
+      if (topHosts.size > 0) {
+        fail(
+          `${where} declares no \`routes\`, so it INHERITS the top level's (${[...topHosts].join(', ')}). A sandbox ` +
+            'deploy would then answer on the production hostnames, and a sandbox payment would be served as a real ' +
+            'one. Declare `routes: []` (or its own hostnames). [5]M-12',
+        );
+      }
+    } else {
+      for (const h of routeHosts(e)) {
+        if (topHosts.has(h)) {
+          fail(`${where} binds \`${h}\`, a hostname the top level (the production deploy) already binds. A sandbox rail must never answer on a production host. [5]M-12`);
+        }
+      }
+    }
+    const crons = e?.triggers?.crons;
+    if (!Array.isArray(crons) || crons.length !== 0) {
+      fail(
+        `${where} ${Array.isArray(crons) ? `runs ${crons.length} cron(s)` : 'declares no `triggers.crons`, so it INHERITS the top level\'s'}. ` +
+          'A sandbox environment must declare `triggers: { "crons": [] }`: the production crons include the destructive ' +
+          'nightly retention sweep, and a second copy of it has no business running from a sandbox. [5]M-12',
+      );
+    }
+    const topD1 = d1Of(cfg);
+    const topIds = new Set(topD1.map((d) => d.database_id).filter((id) => typeof id === 'string'));
+    const topPlatformDb = topD1.find((d) => d.binding === 'PLATFORM_DB');
+    const envPlatformDb = d1Of(e).find((d) => d.binding === 'PLATFORM_DB');
+    if (topPlatformDb !== undefined) {
+      if (envPlatformDb === undefined) {
+        fail(`${where} binds no PLATFORM_DB. Wrangler does not inherit \`d1_databases\`, so the sandbox money door would have no store to record a notification in. [5]M-12`);
+      } else if (typeof envPlatformDb.database_id !== 'string' || envPlatformDb.database_id.trim() === '') {
+        fail(`${where} binds PLATFORM_DB with no \`database_id\`. Wrangler 4 can PROVISION a database for a binding that names none, on deploy — a resource nobody decided to create. Name the sandbox database. [5]M-12`);
+      }
+    }
+    for (const d of d1Of(e)) {
+      if (typeof d.database_id === 'string' && topIds.has(d.database_id)) {
+        fail(
+          `${where} binds ${d.binding} to a PRODUCTION database (${d.database_id}, bound at the top level). Sandbox ` +
+            'money written there is indistinguishable from real money to every reader of that table, so a sandbox ' +
+            'environment binds no production database. [5]M-12',
+        );
+      }
+    }
+  }
+}
+
 // ── LIMB 2 · no sandbox shape anywhere in a deployed config ─────────────────
 for (const c of configs) {
   // Comments are stripped: the config's own prose explains what a sandbox value
@@ -496,6 +644,66 @@ for (const c of configs) {
         `${c.rel} declares ${v} as a committed \`vars\` entry. It is a SECRET — \`wrangler secret put\` — and this ` +
           'repository is PUBLIC. A committed destination secret lets anyone sign a notification that grants themselves Pro.',
       );
+    }
+  }
+}
+
+// ── LIMB 3b · …nor a committed var in any wrangler ENVIRONMENT (2026-09-24) ──
+// The loop above reads the top-level `vars` only, and an environment's `vars` is
+// just as committed and just as public. Vacuous with no `env`, like 1b and 1c.
+for (const c of configs) {
+  const cfg = parsedConfig(c);
+  if (cfg === null) continue;
+  for (const [name, e] of environmentsOf(c, cfg)) {
+    for (const v of secretVars) {
+      if (isObject(e?.vars) && e.vars[v] !== undefined) {
+        fail(
+          `${c.rel} env.${name} declares ${v} as a committed \`vars\` entry. It is a SECRET — \`wrangler secret put ` +
+            `--env ${name}\` — and this repository is PUBLIC; a sandbox destination secret committed here still lets ` +
+            'anyone sign a notification that environment accepts.',
+        );
+      }
+    }
+  }
+}
+
+// ── LIMB 3c · every destination secret is DECLARED in the CI secret register ─
+// ⏱ 2026-09-24 (O-RAZORPAY-CHECKOUT-ADAPTER). tooling/channel-register.json's
+// `ciSecretRegister.nonSigning` is the register a workflow may name a secret from
+// ([9]R-3 limb 2, assert-channel-register.mjs). A destination secret nobody
+// declared is one the deploy lane FAILS on the day it lists it under `secrets:`,
+// so the set derived above must be a subset of that register — checked here,
+// where the set is already derived, rather than by a second scanner.
+const CHANNEL_REGISTER = 'tooling/channel-register.json';
+let registeredSecretCount = null;
+{
+  const p = join(ROOT, CHANNEL_REGISTER);
+  let register = null;
+  if (!existsSync(p)) {
+    coverageLost(`${CHANNEL_REGISTER} does not exist, so no destination secret can be checked against \`ciSecretRegister.nonSigning\`.`);
+  } else {
+    try {
+      register = JSON.parse(readFileSync(p, 'utf8'));
+    } catch (err) {
+      coverageLost(`${CHANNEL_REGISTER} could not be parsed (${err.message}), so no destination secret can be checked against it.`);
+    }
+  }
+  if (register !== null) {
+    const rows = register?.ciSecretRegister?.nonSigning;
+    if (!Array.isArray(rows)) {
+      coverageLost(`${CHANNEL_REGISTER} carries no \`ciSecretRegister.nonSigning\` array, so limb 3c has no register to compare against.`);
+    } else {
+      const declared = new Set(rows.map((r) => (typeof r?.name === 'string' ? r.name.trim() : '')).filter((n) => n !== ''));
+      registeredSecretCount = declared.size;
+      for (const v of secretVars) {
+        if (!declared.has(v)) {
+          fail(
+            `${v}, a registered rail's destination secret, is not declared in ${CHANNEL_REGISTER} ` +
+              '`ciSecretRegister.nonSigning`. Every secret a verifier reads is declared there with a kind and a reason, ' +
+              'or the deploy lane fails the day it names it — and nothing says whether it was ever classified.',
+          );
+        }
+      }
     }
   }
 }
@@ -644,6 +852,10 @@ for (const svc of doorConfigs.filter((c) => c.deployed).map((c) => c.service)) {
 }
 
 // ── report ───────────────────────────────────────────────────────────────────
+if (environmentCount === 0) {
+  // A vacuous pass is not coverage, so it is printed and never claimed.
+  console.log('⬜ no wrangler environments in any config — limbs 1b, 1c and 3b ranged over nothing and prove nothing about environments.');
+}
 if (problems.length) {
   console.error(`✗ money config — ${problems.length} problem(s):`);
   for (const p of problems) console.error(`    ${p}`);
@@ -657,6 +869,10 @@ console.log(
   `ok  money config — ${deployedConfigs.length} deployed config(s) + ${templateConfigs.length} brick service ` +
     `template(s) scanned; MONEY_ENVIRONMENT declared by exactly the ${doorConfigs.length} money-door Worker(s) ` +
     `{${doorServices.join(', ')}} and every value is "live"; no sandbox credential or host in any of them; ` +
-    `${secretVars.length} destination secret(s) derived from the adapter registry, none committed; each deployed ` +
-    `door refuses an undeclared environment and its own tests fire the 503`,
+    `${secretVars.length} destination secret(s) derived from the adapter registry, none committed, each declared in ` +
+    `${CHANNEL_REGISTER}'s ${registeredSecretCount} nonSigning row(s); ` +
+    (environmentCount === 0
+      ? 'no wrangler environments; '
+      : `${environmentCount} wrangler environment(s), ${sandboxEnvironmentCount} sandbox, each with its own money world; `) +
+    `each deployed door refuses an undeclared environment and its own tests fire the 503`,
 );

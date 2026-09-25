@@ -31,8 +31,9 @@ import type { MoRWebhookVerifier, ParseOutcome, VerifyOutcome } from './contract
 //      BE DERIVED FROM THE SIGNATURE. `nowMs` is therefore unused here, and that
 //      is a property of the rail rather than an oversight — inventing a window
 //      from a body field would be a guess wearing a check's clothes. Replay
-//      defence for this rail is the store's idempotency on the event id, which is
-//      where it belongs and where Razorpay's own documentation puts it.
+//      defence for this rail STARTS at the store's idempotency on the event id,
+//      where Razorpay's own documentation puts it, and does not end there: that id
+//      is an unsigned header (see "AND THE ID IS NOT SIGNED" below).
 //   2. THE DIGEST IS OVER THE BODY ALONE, so `raw` is passed through untouched.
 //   3. THE EVENT ID IS A HEADER, NOT A BODY FIELD. See `parse` below.
 //
@@ -66,13 +67,22 @@ import type { MoRWebhookVerifier, ParseOutcome, VerifyOutcome } from './contract
 // to know what it says. That is a real security boundary shipped early, not a
 // half-finished feature: a forged body is rejected today.
 //
-// ⚬ AND THE EVENT ID IS WHY THE SECOND HALF CANNOT BE FINISHED BY READING DOCS.
-// `parse(raw)` takes the body alone — it must, because `scheduled.ts` re-parses
-// STORED payloads where no header survives. Razorpay's unique event id lives in
-// `x-razorpay-event-id`, a header. So a correct `parse` needs either a body field
-// that no documentation promises, or the store to keep that header beside the
-// payload. That is a decision about the money boundary, and it is made with a
-// real sample in hand, not from a doc page.
+// ⚬ THE EVENT-ID SOURCE IS DECIDED (⏱ 2026-09-24, O-RAZORPAY-CHECKOUT-ADAPTER).
+// Razorpay's unique event id lives in `x-razorpay-event-id`, a header, and
+// `scheduled.ts` re-parses STORED payloads where no header survives. So the id
+// travels beside the body instead of inside it: this verifier names the header
+// (`eventIdHeader` below), the door refuses a verified delivery without it (400
+// `missing_event_id`, nothing stored) and passes its value to `parse` as
+// `eventIdHint`, the store persists that id as `provider_event_id`, and the
+// nightly replay passes the stored id back as the same hint. No body field that
+// no documentation promises is needed. What `parse` still waits on is the BODY
+// SHAPE, and that is read from a real test-mode event, not from a doc page.
+//
+// ⚠️ AND THE ID IS NOT SIGNED. The digest covers the body alone (difference 2
+// above), so the header is caller-controlled: a replayed genuine body under a
+// fresh id passes `verify` and is not a duplicate by id. Whatever `parse` derives
+// must therefore stay safe to apply twice on what the SIGNED body says, never
+// lean on the id alone for replay defence.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Razorpay's own header, spelled as the documentation spells it. Header lookup
@@ -120,6 +130,9 @@ export async function razorpaySignature(secret: string, raw: string): Promise<st
 export const razorpayVerifier: MoRWebhookVerifier = {
   provider: 'razorpay',
   secretEnvVar: 'RAZORPAY_WEBHOOK_SECRET',
+  // "is unique per event" — the header this rail's event id arrives in. The door
+  // reads it by this name; nothing else in the Worker spells it.
+  eventIdHeader: 'x-razorpay-event-id',
 
   async verify(raw: string, headers: Headers, secret: string, _nowMs: number): Promise<VerifyOutcome> {
     if (secret.length === 0) {
@@ -148,20 +161,21 @@ export const razorpayVerifier: MoRWebhookVerifier = {
     return { ok: true };
   },
 
-  parse(_raw: string): ParseOutcome {
-    // See the header of this file. The signature scheme is sourced; the event
-    // payload shapes are not, and no account exists to sample. Refusing is a 400
-    // that writes nothing and lets the rail retry — the stored entitlement keeps
-    // whatever it already said.
+  parse(_raw: string, _eventIdHint?: string): ParseOutcome {
+    // See the header of this file. The signature scheme is sourced and the event
+    // id's source is decided; the event payload shapes are not, and no event has
+    // been delivered to sample. Refusing is a 400 that writes nothing and lets the
+    // rail retry — the stored entitlement keeps whatever it already said.
     return {
       ok: false,
       reason:
         'razorpay: the payload shape is not established from a primary source yet. The signature scheme is ' +
         '(razorpay.com/docs/webhooks/validate-test/, read 2026-09-12) and is enforced by `verify`, so a forged ' +
-        'body is already refused. What is missing is a real event sample and a decision about where the event ' +
-        "id comes from: Razorpay's unique id is the `x-razorpay-event-id` HEADER, and this function is also run " +
-        'over STORED payloads (scheduled.ts) where no header survives. The ACCOUNT is live and KYC-complete ' +
-        '(2026-09-05); what is missing is a configured webhook, its captured secret, and one delivered event.',
+        "body is already refused. The event id is decided: Razorpay's unique id is the `x-razorpay-event-id` " +
+        'HEADER, which the door reads and passes here as the hint, the store persists as `provider_event_id`, and ' +
+        'the nightly replay (scheduled.ts) passes back. What is missing is a real event sample to read the body ' +
+        'from. The ACCOUNT is live and KYC-complete (2026-09-05); what is missing is a configured webhook, its ' +
+        'captured secret, and one delivered event.',
     };
   },
 };

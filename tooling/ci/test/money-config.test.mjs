@@ -276,6 +276,50 @@ const MONEY_DOOR_TS = `
 export const refuse = (c) => c.json({ error: 'money_rail_not_configured' }, 503);
 `;
 
+// ── FIXTURES FOR LIMBS 1b, 1c, 3b AND 3c (added 2026-09-24) ──────────────────
+/** The CI secret register limb 3c reads. It declares BOTH fixture rails'
+ *  destination secrets — paddle's, and the `second` adapter's above — so every
+ *  case that is not about the register passes limb 3c exactly as before. */
+const CHANNEL_REGISTER_JSON = JSON.stringify({
+  ciSecretRegister: {
+    kinds: { 'service-credential': 'authenticates a service' },
+    nonSigning: [
+      { name: 'PADDLE_NOTIFICATION_SECRET', kind: 'service-credential', why: 'the paddle fixture rail destination secret' },
+      { name: 'SECOND_RAIL_SECRET', kind: 'service-credential', why: 'the second fixture rail destination secret' },
+    ],
+  },
+});
+
+const PROD_DB_ID = '00000000-0000-4000-8000-000000000001';
+const SANDBOX_DB_ID = '00000000-0000-4000-8000-000000000002';
+
+/** A sandbox environment that satisfies every limb: its own world, no route, no
+ *  cron, and its own database. Each red case below breaks exactly one of those. */
+const SANDBOX_ENV = {
+  vars: { APP_ID: 'platform', MONEY_ENVIRONMENT: 'sandbox' },
+  routes: [],
+  workers_dev: true,
+  triggers: { crons: [] },
+  d1_databases: [{ binding: 'PLATFORM_DB', database_name: 'platform_db_sandbox', database_id: SANDBOX_DB_ID, migrations_dir: 'migrations' }],
+};
+
+/** The platform config with a production host, a cron and a database at the top
+ *  level — the three things a sandbox environment inherits or must not share. */
+function platformWithEnv(env) {
+  return JSON.stringify(
+    {
+      name: 'platform',
+      vars: { APP_ID: 'platform', MONEY_ENVIRONMENT: 'live' },
+      d1_databases: [{ binding: 'PLATFORM_DB', database_name: 'platform_db', database_id: PROD_DB_ID, migrations_dir: 'migrations' }],
+      triggers: { crons: ['0 6 * * *'] },
+      routes: [{ pattern: 'platform.example.com', custom_domain: true }],
+      env,
+    },
+    null,
+    2,
+  );
+}
+
 function run(o = {}) {
   const root = join(TMP, `case-${(seq += 1)}`);
   if (o.brickWrangler !== null) write(root, `${BRICK_DIR}/wrangler.jsonc`, o.brickWrangler ?? BRICK_WRANGLER);
@@ -289,6 +333,8 @@ function run(o = {}) {
   write(root, 'services/platform/test/money.test.ts', o.moneyTest ?? MONEY_TEST_TS);
   if (o.subscriptiontrackerSrc) write(root, 'services/subscriptiontracker-api/src/routes/webhooks.ts', o.subscriptiontrackerSrc);
   if (o.subscriptiontrackerTest) write(root, 'services/subscriptiontracker-api/test/webhooks.test.ts', o.subscriptiontrackerTest);
+  // `channelRegister: null` means the register is ABSENT (limb 3c's COVERAGE LOST case).
+  if (o.channelRegister !== null) write(root, 'tooling/channel-register.json', o.channelRegister ?? CHANNEL_REGISTER_JSON);
   const r = spawnSync(process.execPath, [GUARD, root], { encoding: 'utf8' });
   return { code: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
 }
@@ -606,5 +652,146 @@ describe('assert-money-config — sandbox money cannot grant a production unlock
     });
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /the Paddle SANDBOX API base URL/);
+  });
+
+  // ── WRANGLER ENVIRONMENTS AND THE SECRET REGISTER (2026-09-24) ─────────────
+  // O-RAZORPAY-CHECKOUT-ADAPTER. Limbs 1 and 3 read the TOP-LEVEL `vars` only;
+  // a wrangler `env.<name>` is a second deploy of the same Worker, and it
+  // inherits `routes` and `triggers` while inheriting no `vars` and no D1.
+
+  test('limbs 1b/1c/3b: with NO environment anywhere the run PRINTS that it proved nothing about environments', () => {
+    const r = run();
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /no wrangler environments in any config — limbs 1b, 1c and 3b ranged over nothing/);
+  });
+
+  test('limbs 1b/1c: PASSES on a sandbox environment with its own world, no route, no cron and its own database', () => {
+    // The positive control for every environment case below: each one breaks
+    // exactly one property of this block.
+    const r = run({ platformWrangler: platformWithEnv({ sandbox: SANDBOX_ENV }) });
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /1 wrangler environment\(s\), 1 sandbox, each with its own money world/);
+  });
+
+  test('limb 1b: FAILS on an environment of the money-door Worker that declares no vars', () => {
+    const r = run({ platformWrangler: platformWithEnv({ sandbox: { ...SANDBOX_ENV, vars: undefined } }) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /env\.sandbox declares no `vars`\. Wrangler does not inherit `vars` into an environment/);
+  });
+
+  test('limb 1b: FAILS on an environment whose money world is neither "live" nor "sandbox"', () => {
+    const r = run({ platformWrangler: platformWithEnv({ staging: { ...SANDBOX_ENV, vars: { MONEY_ENVIRONMENT: 'test' } } }) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /env\.staging declares MONEY_ENVIRONMENT = "test"/);
+  });
+
+  test("limb 1b: FAILS on a door-less Worker's environment that declares a money world", () => {
+    const r = run({
+      subscriptiontrackerWrangler: JSON.stringify({
+        name: 'subscriptiontracker-api',
+        vars: { APP_ID: 'subscriptiontracker' },
+        env: { sandbox: { vars: { MONEY_ENVIRONMENT: 'sandbox' } } },
+      }),
+    });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /subscriptiontracker-api\/wrangler\.jsonc env\.sandbox declares MONEY_ENVIRONMENT but no file under that config's own src\/ refuses/);
+  });
+
+  test('limb 1c: FAILS on a sandbox environment that omits routes and so INHERITS the production hosts', () => {
+    const r = run({ platformWrangler: platformWithEnv({ sandbox: { ...SANDBOX_ENV, routes: undefined } }) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /env\.sandbox declares no `routes`, so it INHERITS the top level's \(platform\.example\.com\)/);
+  });
+
+  test('limb 1c: FAILS on a sandbox environment that binds a production hostname', () => {
+    const r = run({ platformWrangler: platformWithEnv({ sandbox: { ...SANDBOX_ENV, routes: [{ pattern: 'platform.example.com/*' }] } }) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /env\.sandbox binds `platform\.example\.com`, a hostname the top level/);
+  });
+
+  test('limb 1c: FAILS on a sandbox environment that omits triggers and so INHERITS the production crons', () => {
+    const r = run({ platformWrangler: platformWithEnv({ sandbox: { ...SANDBOX_ENV, triggers: undefined } }) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /env\.sandbox declares no `triggers\.crons`, so it INHERITS the top level's/);
+  });
+
+  test('limb 1c: FAILS on a sandbox environment that runs a cron of its own', () => {
+    const r = run({ platformWrangler: platformWithEnv({ sandbox: { ...SANDBOX_ENV, triggers: { crons: ['0 6 * * *'] } } }) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /env\.sandbox runs 1 cron\(s\)/);
+  });
+
+  test('limb 1c: FAILS on a sandbox environment bound to the PRODUCTION database', () => {
+    const r = run({
+      platformWrangler: platformWithEnv({
+        sandbox: { ...SANDBOX_ENV, d1_databases: [{ binding: 'PLATFORM_DB', database_name: 'platform_db', database_id: PROD_DB_ID }] },
+      }),
+    });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /env\.sandbox binds PLATFORM_DB to a PRODUCTION database/);
+  });
+
+  test('limb 1c: FAILS on a sandbox PLATFORM_DB with no database_id — wrangler could provision one on deploy', () => {
+    const r = run({
+      platformWrangler: platformWithEnv({ sandbox: { ...SANDBOX_ENV, d1_databases: [{ binding: 'PLATFORM_DB', database_name: 'platform_db_sandbox' }] } }),
+    });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /env\.sandbox binds PLATFORM_DB with no `database_id`/);
+  });
+
+  test('limb 1c: FAILS on a sandbox environment that binds no PLATFORM_DB at all', () => {
+    const r = run({ platformWrangler: platformWithEnv({ sandbox: { ...SANDBOX_ENV, d1_databases: undefined } }) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /env\.sandbox binds no PLATFORM_DB/);
+  });
+
+  test('limb 1c: an environment that DECLARES the sandbox world is held to it under any name', () => {
+    const r = run({ platformWrangler: platformWithEnv({ preview: { ...SANDBOX_ENV, routes: undefined } }) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /env\.preview declares no `routes`, so it INHERITS/);
+  });
+
+  test('limb 3b: FAILS when a destination secret is committed in an environment\'s vars', () => {
+    const r = run({
+      platformWrangler: platformWithEnv({
+        sandbox: { ...SANDBOX_ENV, vars: { ...SANDBOX_ENV.vars, PADDLE_NOTIFICATION_SECRET: NTF_SECRET } },
+      }),
+    });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /env\.sandbox declares PADDLE_NOTIFICATION_SECRET as a committed `vars` entry/);
+  });
+
+  test('limb 3c: FAILS when a registered rail\'s destination secret has no ciSecretRegister row', () => {
+    const r = run({
+      registry: REGISTRY_TS_STALE_DOC,
+      second: SECOND_ADAPTER_TS,
+      channelRegister: CHANNEL_REGISTER_JSON.replace(/,\{"name":"SECOND_RAIL_SECRET"[^}]*\}/, ''),
+    });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /SECOND_RAIL_SECRET, a registered rail's destination secret, is not declared in tooling\/channel-register\.json/);
+  });
+
+  test('limb 3c: the positive control — both rails declared, both pass', () => {
+    const r = run({ registry: REGISTRY_TS_STALE_DOC, second: SECOND_ADAPTER_TS });
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /2 destination secret\(s\) derived from the adapter registry, none committed, each declared/);
+  });
+
+  test('limb 3c: COVERAGE LOST when tooling/channel-register.json is absent', () => {
+    const r = run({ channelRegister: null });
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /COVERAGE LOST — tooling\/channel-register\.json does not exist/);
+  });
+
+  test('limb 3c: COVERAGE LOST when tooling/channel-register.json cannot be parsed', () => {
+    const r = run({ channelRegister: '{ "ciSecretRegister": ' });
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /COVERAGE LOST — tooling\/channel-register\.json could not be parsed/);
+  });
+
+  test('limb 3c: COVERAGE LOST when the register carries no nonSigning array', () => {
+    const r = run({ channelRegister: '{ "ciSecretRegister": { "kinds": {} } }' });
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /COVERAGE LOST — tooling\/channel-register\.json carries no `ciSecretRegister\.nonSigning` array/);
   });
 });

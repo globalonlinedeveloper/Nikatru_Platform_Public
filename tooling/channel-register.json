@@ -1400,6 +1400,26 @@
         "why": "The RevenueCat webhook SIGNING secret that services/platform's revenuecatVerifier (services/platform/src/lib/mor/revenuecat.ts, `secretEnvVar`) uses to check the X-RevenueCat-Webhook-Signature HMAC on POST /v1/money/revenuecat. It authenticates the VENDOR to our Worker rather than CI to a service, so no kind here fits exactly; service-credential is the nearest (a backend secret that never enters an artifact and signs nothing shipped). DECLARED AHEAD OF ITS LANE, as the BOXA_* rows were: added 2026-09-16 (O-REVENUECAT-VERIFIER leg c), when no workflow names it and no repository secret of this name exists. It is a Worker secret, set with `wrangler secret put` today; the day deploy-workers.yml's platform job lists it under `secrets:` (as it does SUPABASE_ANON_KEY), this row is what keeps that lane green. It is NOT the retired REVENUECAT_WEBHOOK_SECRET, the bearer string the legacy subscriptiontracker-api route compared — RevenueCat issues the signing secret separately and shows it once."
       },
       {
+        "name": "RAZORPAY_KEY_ID",
+        "kind": "service-credential",
+        "why": "The Razorpay API key id, the identifying half of the key pair the India rail's checkout creator will authenticate to Razorpay with ([ADR 076] §10, [ADR 094]). NOTHING READS IT YET: the creator is a later increment of O-RAZORPAY-CHECKOUT-ADAPTER, and `Env.RAZORPAY_KEY_ID` in services/platform/src/types.ts declares the name ahead of it. It authenticates our Worker to a backend service it operates on, never enters an artifact and signs nothing. DECLARED AHEAD OF ITS LANE, as REVENUECAT_WEBHOOK_SIGNING_SECRET was: added 2026-09-24 (O-RAZORPAY-CHECKOUT-ADAPTER), when no workflow names it and no repository secret of this name exists. It is a Worker secret, set with `wrangler secret put`; the owner pastes it through the vault one-command."
+      },
+      {
+        "name": "RAZORPAY_KEY_SECRET",
+        "kind": "service-credential",
+        "why": "The secret half of the Razorpay API key pair RAZORPAY_KEY_ID names, for the same checkout creator ([ADR 076] §10, [ADR 094]). NOTHING READS IT YET, for the same reason: the creator is a later increment of O-RAZORPAY-CHECKOUT-ADAPTER and `Env.RAZORPAY_KEY_SECRET` declares the name ahead of it. It authenticates our Worker to a backend service, never enters an artifact and signs nothing. DECLARED AHEAD OF ITS LANE: added 2026-09-24 (O-RAZORPAY-CHECKOUT-ADAPTER), when no workflow names it and no repository secret of this name exists. It is a Worker secret, set with `wrangler secret put`; the owner pastes it through the vault one-command."
+      },
+      {
+        "name": "RAZORPAY_WEBHOOK_SECRET",
+        "kind": "service-credential",
+        "why": "The Razorpay webhook SIGNING secret that services/platform's razorpayVerifier (services/platform/src/lib/mor/razorpay.ts, `secretEnvVar`) uses to check the X-Razorpay-Signature HMAC on POST /v1/money/razorpay. It authenticates the VENDOR to our Worker rather than CI to a service, so no kind here fits exactly; service-credential is the nearest, as it is for REVENUECAT_WEBHOOK_SIGNING_SECRET. DECLARED AHEAD OF ITS LANE: added 2026-09-24 (O-RAZORPAY-CHECKOUT-ADAPTER), when no workflow names it and no repository secret of this name exists; until the owner pastes it through the vault one-command the route answers 503. It is a Worker secret, set with `wrangler secret put`; the day deploy-workers.yml's platform job lists it under `secrets:`, this row is what keeps that lane green. tooling/ci/assert-money-config.mjs requires a row here for every registered rail's destination secret."
+      },
+      {
+        "name": "PADDLE_NOTIFICATION_SECRET",
+        "kind": "service-credential",
+        "why": "Paddle's per-destination notification secret that services/platform's paddleVerifier (services/platform/src/lib/mor/paddle.ts, `secretEnvVar`) uses to check the Paddle-Signature HMAC on POST /v1/money/paddle. Same classification as REVENUECAT_WEBHOOK_SIGNING_SECRET, for the same reason: it authenticates the VENDOR to our Worker, never enters an artifact and signs nothing. It is a Worker secret, set with `wrangler secret put`, and no workflow names it. It had no row until 2026-09-24 because nothing required one: tooling/ci/assert-money-config.mjs now requires a row here for every registered rail's destination secret (O-RAZORPAY-CHECKOUT-ADAPTER), and this rail's was the one missing. PADDLE_API_KEY is a checkout credential rather than a destination secret, and gets its row with the checkout creators."
+      },
+      {
         "name": "REVENUECAT_PUBLIC_KEY_GOOGLE",
         "kind": "build-config",
         "why": "RevenueCat's PUBLIC SDK key for the Play Store app (appa553a1e2c6), compiled into the android-play builds as `--dart-define=REVENUECAT_KEY` so the app can configure the store bridge. Public by construction — it ships inside every Play binary — and held as a repository secret only to keep it out of the public tree, which is the definition of build-config. `purchaseRails.storeKeyDefine` maps the `play-billing` rail to this name and assert-channel-register limb 6b-iii holds every Play build segment to it. NOT the webhook signing secret above, which authenticates the vendor to our Worker."

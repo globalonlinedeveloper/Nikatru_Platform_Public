@@ -1230,6 +1230,7 @@
     "claims": [
       "ADR 004",
       "ADR 039",
+      "ADR 076",
       "M-1",
       "M-12"
     ],
@@ -1238,7 +1239,9 @@
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-money-config.mjs",
-    "references": [],
+    "references": [
+      "R-3"
+    ],
     "state": "WIRED"
   },
   {

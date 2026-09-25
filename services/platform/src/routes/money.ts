@@ -20,6 +20,8 @@
 //   3 · PARSE, OR REFUSE LOUDLY. A body whose shape the adapter does not
 //       recognise is a 400 and NOT a row. An invented shape that silently
 //       mis-parses writes a wrong entitlement that looks exactly like a right one.
+//       A rail whose event id is a HEADER (the verifier's `eventIdHeader`) is
+//       refused 400 `missing_event_id` first when that header is absent or empty.
 //   4 · PERSIST VERBATIM. Exactly once per event id; a re-delivery keeps the
 //       first copy.
 //   5 · DERIVE. In the same request (a single D1 write pair is well inside the
@@ -112,7 +114,21 @@ money.post('/:provider', async (c) => {
     return c.json({ error: 'unverified', detail: verified.reason }, verified.status);
   }
 
-  const parsed = verifier.parse(read.text);
+  // A rail whose event id is a HEADER rather than a body field (the verifier
+  // names it) is refused here when that header is absent or empty: 400, no parse,
+  // no row. Persisting without the id would break exactly-once — the store keys
+  // on (provider, provider_event_id) — and the header is covered by nothing the
+  // signature checks, so there is no value to fall back to.
+  let eventIdHint: string | undefined;
+  if (verifier.eventIdHeader !== undefined) {
+    eventIdHint = (c.req.header(verifier.eventIdHeader) ?? '').trim();
+    if (eventIdHint === '') {
+      console.warn(`[money/${providerId}] rid=${rid} refused: no ${verifier.eventIdHeader} header`);
+      return c.json({ error: 'missing_event_id', detail: `no ${verifier.eventIdHeader} header` }, 400);
+    }
+  }
+
+  const parsed = eventIdHint === undefined ? verifier.parse(read.text) : verifier.parse(read.text, eventIdHint);
   if (!parsed.ok) {
     // 400 and NO ROW. The rail retries with a body we can read; nothing about the
     // stored entitlement changes in the meantime.
