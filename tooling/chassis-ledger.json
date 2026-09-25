@@ -20,7 +20,7 @@
   "_rootsNote": "TWO roots since 2026-09-07 ([ADR 067] phase 2, unit app-shell). The Worker half of the template - 13 files, 917 lines every stamped backend app inherits - was outside this ledger entirely while `root` was one string, and `git ls-files -- <that one root>` could not see it to complain. assert-chassis-ledger.mjs is the authority on this list and cross-checks it; a row's `root` is optional and defaults to roots[0], which is why the 96 rows written against the single root are unchanged. ⏱ THE FIGURES IN THIS NOTE MOVED ON 2026-09-08 AND ARE CORRECTED RATHER THAN REWRITTEN: the Worker half is now 14 files and 1,021 lines, because the template gained src/lib/error-sink.ts — a stamped backend had NO crash sink at all and failed tooling/ci/assert-worker-error-sink.mjs on limbs 2, 3 and 5 at its first CI run. The guard PRINTS both figures per root on every run, which is the number to read; this sentence is prose and prose rots.",
   "totals": {
     "files": 133,
-    "lines": 18598,
+    "lines": 18699,
     "unclassified": 0,
     "unclassifiedLines": 0
   },
@@ -169,9 +169,9 @@
     },
     {
       "path": "lib/features/monetization/manage_plan_screen.dart",
-      "lines": 183,
+      "lines": 269,
       "verdict": "MOVES",
-      "why": "[ADR 067] decision 2 — MEASURED 2026-09-06: 245 -> 183 brick lines, 155 package lines, callSiteDelta -62. The smallest shrink of the four, and the reason is stated rather than hidden: five of this screen's labels (`managePlanTitle`, `plan{Active,Inactive}`, `cancelPlan`, `restorePurchasesHint`) and two of its four outcome sentences live in the APP's `.arb`, not in ChassisLocalizations, so they cross the seam as parameters. `.requestCancellation()` stays (assert-screen-set:289 and the register's own reachability pattern), as do `_restore` → `refreshEntitlements(ref)` and the hoisted ProviderContainer.",
+      "why": "[ADR 067] decision 2 — MEASURED 2026-09-06: 245 -> 183 brick lines, 155 package lines, callSiteDelta -62. The smallest shrink of the four, and the reason is stated rather than hidden: five of this screen's labels (`managePlanTitle`, `plan{Active,Inactive}`, `cancelPlan`, `restorePurchasesHint`) and two of its four outcome sentences live in the APP's `.arb`, not in ChassisLocalizations, so they cross the seam as parameters. `.requestCancellation()` stays (assert-screen-set:289 and the register's own reachability pattern), as do `_restore` and the hoisted ProviderContainer. ⏱ RE-MEASURED 2026-09-25 (O-STORE-RESTORE-ASKS-ONLY-THE-SERVER): 183 -> 269, by assert-chassis-ledger. `_restore` now calls `restorePurchasesOf(rail)`, then re-reads the entitlement through a hoisted container; when the store was asked it waits through `_converge` (the paywall's `EntitlementConvergence.awaitUnlock`, bounded), and `_restoreMessage` picks one of three restore sentences from the app's `.arb`. All of that is `nikatru_purchases` and Riverpod, which the package declares neither of, so it stays in the adapter. totals.lines 18598 -> 18699 with the two `.arb` rows below.",
       "target": "packages/chassis_screens/lib/monetization/manage_plan_screen.dart",
       "callSiteDelta": -62
     },
@@ -193,15 +193,15 @@
     },
     {
       "path": "lib/l10n/app_en.arb",
-      "lines": 51,
+      "lines": 63,
       "verdict": "MOVES",
-      "why": "[ADR 067] decision 2 — 149 of the 161 keys are CHASSIS copy and moved to packages/design_system/lib/src/l10n/chassis_en.arb, where gen-l10n emits ChassisLocalizations and one translation fix reaches every stamped app. What stays is the app-owned residue: appTitle (its value is the {{display_name_json}} mustache tag, and assert-stamp-text-fidelity reads it out of THIS file) plus the eleven keys whose English value carries a cloneTells.domainNoun — assert-no-clone-tells forbids that vocabulary in packages/, so copy naming what an app SELLS cannot be shared.",
+      "why": "[ADR 067] decision 2 — 149 of the 161 keys are CHASSIS copy and moved to packages/design_system/lib/src/l10n/chassis_en.arb, where gen-l10n emits ChassisLocalizations and one translation fix reaches every stamped app. What stays is the app-owned residue: appTitle (its value is the {{display_name_json}} mustache tag, and assert-stamp-text-fidelity reads it out of THIS file) plus the eleven keys whose English value carries a cloneTells.domainNoun — assert-no-clone-tells forbids that vocabulary in packages/, so copy naming what an app SELLS cannot be shared. ⏱ 2026-09-25: fourteen, not eleven — the three restore sentences (`restoreFoundPlan`, `restoreNothingFound`, `restoreCouldNotReachStore`, O-STORE-RESTORE-ASKS-ONLY-THE-SERVER) each name the subscription, so they stay here for the same reason.",
       "target": "packages/design_system/lib/src/l10n/chassis_en.arb",
       "callSiteDelta": -641
     },
     {
       "path": "lib/l10n/app_ta.arb",
-      "lines": 15,
+      "lines": 18,
       "verdict": "MOVES",
       "why": "[ADR 067] decision 2 — the Tamil half of the same move, key for key. Parity in both directions is enforced by packages/design_system/test/chassis_l10n_parity_test.dart, which also proves the delegate loads and every key renders non-empty in both locales.",
       "target": "packages/design_system/lib/src/l10n/chassis_ta.arb",

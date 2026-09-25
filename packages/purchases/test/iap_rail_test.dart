@@ -6,11 +6,13 @@ class _FakeBridge implements IapBridge {
   _FakeBridge({
     this.configureAnswer = true,
     this.purchaseAnswer = const IapPurchaseResult(IapPurchaseOutcome.submitted),
+    this.restoreAnswer = const IapPurchaseResult(IapPurchaseOutcome.submitted),
     this.state = IapCustomerState.unknown,
   });
 
   bool configureAnswer;
   IapPurchaseResult purchaseAnswer;
+  IapPurchaseResult restoreAnswer;
   IapCustomerState state;
 
   int configureCalls = 0;
@@ -65,7 +67,7 @@ class _FakeBridge implements IapBridge {
   @override
   Future<IapPurchaseResult> restore() async {
     restoreCalls++;
-    return const IapPurchaseResult(IapPurchaseOutcome.submitted);
+    return restoreAnswer;
   }
 
   @override
@@ -77,6 +79,24 @@ class _FakeBridge implements IapBridge {
   @override
   Stream<IapCustomerState> get customerState =>
       Stream<IapCustomerState>.value(state);
+}
+
+/// A rail that is ONLY a [PurchaseRail] — the shape of every test fake in the
+/// apps. [restorePurchasesOf] must still answer for it.
+class _BareRail implements PurchaseRail {
+  @override
+  List<Offering> get offerings => const <Offering>[];
+
+  @override
+  bool get canStartCheckout => false;
+
+  @override
+  Future<CheckoutStart> startCheckout(Offering offering) async =>
+      const CheckoutRefused(CheckoutRefusal.railNotConfigured);
+
+  @override
+  Future<CancellationOutcome> requestCancellation() async =>
+      CancellationOutcome.noActivePlan;
 }
 
 class _RecordingLauncher implements CheckoutLauncher {
@@ -313,22 +333,128 @@ void main() {
       );
     });
 
-    test('restore is offered on a store rail and refused on a hosted one',
-        () async {
+    test(
+        'restore asks the store on a store rail, and only the server on a '
+        'hosted one', () async {
       final _FakeBridge bridge = _FakeBridge();
       expect(
-        (await _rail(channel: PurchaseChannel.androidPlay, bridge: bridge)
-                .restorePurchases())
-            .outcome,
-        IapPurchaseOutcome.submitted,
+        await _rail(channel: PurchaseChannel.androidPlay, bridge: bridge)
+            .restorePurchases(),
+        RestoreOutcome.askedStore,
       );
       expect(bridge.restoreCalls, 1);
+      final _FakeBridge hosted = _FakeBridge();
       expect(
-        (await _rail(channel: PurchaseChannel.web, bridge: _FakeBridge())
-                .restorePurchases())
-            .outcome,
-        IapPurchaseOutcome.unavailable,
+        await _rail(channel: PurchaseChannel.web, bridge: hosted)
+            .restorePurchases(),
+        RestoreOutcome.serverOnly,
       );
+      // A channel that sells through no store never wakes the SDK for a
+      // restore it has nothing to ask.
+      expect(hosted.restoreCalls, 0);
+      expect(hosted.configureCalls, 0);
+    });
+  });
+
+  // O-STORE-RESTORE-ASKS-ONLY-THE-SERVER. The Restore control re-read our own
+  // server and never asked the store, so a StoreKit or Play purchase made on
+  // another device had nothing to bring it back. Every production rail now
+  // answers [RestoresPurchases], and a screen asks through
+  // [restorePurchasesOf], which answers for any rail at all.
+  group('[5]M-10 · every rail answers a restore, and none of them unlocks', () {
+    test('the store rail is a RestoresPurchases', () {
+      expect(
+        _rail(channel: PurchaseChannel.androidPlay),
+        isA<RestoresPurchases>(),
+      );
+    });
+
+    test('the hosted rail is a RestoresPurchases and answers serverOnly',
+        () async {
+      final HostedCheckoutRail rail = HostedCheckoutRail(
+        config: const RailConfig(
+          offerings: <Offering>[_monthly],
+          checkoutUrlTemplate: null,
+          manageUrlTemplate: null,
+        ),
+        appId: 'probe',
+        returnUrl: 'https://example.test/return',
+        accountId: () async => 'user-123',
+        accessToken: () async => 'token',
+        cancellationTransport: _FakeCancellations(
+          const core.Result<core.CancellationReceipt>.ok(
+            core.CancellationReceipt(
+              hasActivePlan: false,
+              recorded: false,
+              executed: false,
+            ),
+          ),
+        ),
+      );
+      expect(rail, isA<RestoresPurchases>());
+      expect(await restorePurchasesOf(rail), RestoreOutcome.serverOnly);
+    });
+
+    test(
+        'the rail that sells nothing is a RestoresPurchases and answers '
+        'serverOnly', () async {
+      final UnavailablePurchaseRail rail = UnavailablePurchaseRail(
+        refusal: const BillingRailUnavailable(
+          BillingRailRefusal.iapBridgeMissing,
+          detail: 'no bridge in this build',
+        ),
+        config: RailConfig.empty,
+        appId: 'probe',
+        accessToken: () async => 'token',
+        cancellationTransport: _FakeCancellations(
+          const core.Result<core.CancellationReceipt>.ok(
+            core.CancellationReceipt(
+              hasActivePlan: false,
+              recorded: false,
+              executed: false,
+            ),
+          ),
+        ),
+      );
+      expect(rail, isA<RestoresPurchases>());
+      expect(await restorePurchasesOf(rail), RestoreOutcome.serverOnly);
+    });
+
+    test('a rail that is not a RestoresPurchases answers serverOnly', () async {
+      expect(await restorePurchasesOf(_BareRail()), RestoreOutcome.serverOnly);
+    });
+
+    test('restorePurchasesOf reaches the store through the store rail',
+        () async {
+      final _FakeBridge bridge = _FakeBridge();
+      final IapRail rail =
+          _rail(channel: PurchaseChannel.iosAppStore, bridge: bridge);
+      expect(await restorePurchasesOf(rail), RestoreOutcome.askedStore);
+      expect(bridge.restoreCalls, 1);
+    });
+
+    test('a store that cannot be reached is couldNotAsk, not an unlock',
+        () async {
+      final _FakeBridge bridge = _FakeBridge(
+        restoreAnswer: const IapPurchaseResult(
+          IapPurchaseOutcome.unavailable,
+          detail: 'offline',
+        ),
+      );
+      final IapRail rail =
+          _rail(channel: PurchaseChannel.androidPlay, bridge: bridge);
+      expect(await rail.restorePurchases(), RestoreOutcome.couldNotAsk);
+      expect(bridge.restoreCalls, 1);
+    });
+
+    test(
+        'a bridge that cannot configure is couldNotAsk, and the store '
+        'is never asked', () async {
+      final _FakeBridge bridge = _FakeBridge(configureAnswer: false);
+      final IapRail rail =
+          _rail(channel: PurchaseChannel.androidPlay, bridge: bridge);
+      expect(await rail.restorePurchases(), RestoreOutcome.couldNotAsk);
+      expect(bridge.restoreCalls, 0);
     });
   });
 

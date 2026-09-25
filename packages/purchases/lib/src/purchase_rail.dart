@@ -174,3 +174,57 @@ Future<void> refreshOfferingsOf(PurchaseRail rail) async {
 }
 
 final Listenable _never = Listenable.merge(const <Listenable?>[]);
+
+/// What happened when the user asked to restore purchases — [pipeline 5]M-10.
+///
+/// 🔴 NOT ONE OF THESE VALUES IS AN UNLOCK. A restore is a claim about the
+/// past and the entitlement row is the answer: whichever value comes back, the
+/// screen re-reads `GET /v1/entitlements` AFTERWARDS and shows what the SERVER
+/// says. These values decide only whether the screen waits for the server to
+/// catch up, and which sentence the user is told.
+enum RestoreOutcome {
+  /// The store was asked and answered. Whatever it holds for this account is
+  /// now with the provider, whose webhook reaches our Worker — so the unlock
+  /// arrives from the server read that follows, possibly some time after it,
+  /// which is why the screen converges (bounded) on this value alone.
+  askedStore,
+
+  /// This rail has no store to ask. The entitlement is a server row keyed
+  /// `(user_id, app_id)`, so the server read that follows IS the whole
+  /// restore: the hosted rail, the rail that sells nothing, and any rail that
+  /// is not a [RestoresPurchases].
+  serverOnly,
+
+  /// This rail has a store and it could not be asked, or did not answer: the
+  /// SDK could not be configured or switched to the signed-in account, the
+  /// device is offline, or the store declined. The server read still runs, so
+  /// a plan the server already holds is still shown.
+  couldNotAsk,
+}
+
+/// A rail that can ask a STORE to give back prior purchases — [pipeline 5]M-10.
+///
+/// 🔴 WHY THIS IS NOT ON [PurchaseRail] — the [LoadsOfferings] reason again.
+/// Only a store rail has anything to ask; every other rail's restore is the
+/// server read the screen makes anyway. A screen never asks
+/// `is RestoresPurchases` itself: it calls [restorePurchasesOf], which answers
+/// for every rail.
+///
+/// Apple guideline 3.1.1 requires an explicit Restore control in a build that
+/// sells through StoreKit, and a control that only re-reads our own server
+/// never asks StoreKit for anything — which is why the store rail answers this
+/// and the screen asks it before the server read.
+abstract interface class RestoresPurchases {
+  /// Ask the store, when this rail has one. Never throws, and never unlocks.
+  Future<RestoreOutcome> restorePurchases();
+}
+
+/// Ask [rail]'s store to restore prior purchases; [RestoreOutcome.serverOnly]
+/// for a rail that has no store to ask. The caller re-reads the entitlement
+/// AFTER this returns — the store's answer is not the unlock.
+Future<RestoreOutcome> restorePurchasesOf(PurchaseRail rail) async {
+  if (rail case final RestoresPurchases restores) {
+    return restores.restorePurchases();
+  }
+  return RestoreOutcome.serverOnly;
+}

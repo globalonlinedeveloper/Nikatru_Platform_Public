@@ -190,7 +190,7 @@
   "public-citations-shards.test.mjs": 10,
   "public-citations-tagpin.test.mjs": 10,
   "publish-records.test.mjs": 48,
-  "purchase-path.test.mjs": 116,
+  "purchase-path.test.mjs": 133,
   "redeploy-stranded.test.mjs": 49,
   "refresh-executed-floor.test.mjs": 11,
   "release-durable.test.mjs": 150,
