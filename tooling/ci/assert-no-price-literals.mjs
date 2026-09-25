@@ -566,9 +566,16 @@ for (const a of ALLOW) {
       let inTree = 0;
       for (const name of names) {
         const p = join(ROOT, dir, name);
-        if (!existsSync(p) || !statSync(p).isFile()) continue;
+        // why: read once and classify the error, never check-then-read (CodeQL js/file-system-race on #949).
+        let text;
+        try {
+          text = readFileSync(p, 'utf8');
+        } catch (e) {
+          if (e && (e.code === 'ENOENT' || e.code === 'EISDIR')) continue;
+          throw e;
+        }
         inTree += 1;
-        scanListing(`${dir}/${name}`, readFileSync(p, 'utf8'));
+        scanListing(`${dir}/${name}`, text);
       }
       if (inTree === 0) {
         coverageLost(
