@@ -32,6 +32,8 @@ import {
   appVersionDefine,
   stampShape,
 } from '../../e2e/app-version-stamp.mjs';
+import { CAPTURE_WORKERS, sandboxBackend } from '../../store/capture-backend.mjs';
+import { parseJsonc } from '../d1-sql-inventory.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '..', '..', '..');
@@ -42,6 +44,15 @@ const SHOTS = '.github/workflows/store-screenshots.yml';
 const REG = 'tooling/prod-provenance.json';
 const RUNNER = 'tooling/store/capture-play-screenshots.mjs';
 const SHA40 = 'abcdef0123456789abcdef0123456789abcdef01';
+// ⏱ 2026-09-25 — L6 reads both capture Workers' configs (sandboxBackend()), so
+// every fixture tree carries the REAL two, and the store-capture fixtures purge
+// the env.sandbox databases they name. The e2e fixtures keep production's.
+const PLATFORM_CFG = CAPTURE_WORKERS.platform;
+const API_CFG = CAPTURE_WORKERS['subscriptiontracker-api'];
+const SBX_PLATFORM_DB = 'ead92001-03e1-4f71-9b92-c64963a24925';
+const SBX_APP_DB = '4e7c7730-3dc7-4004-9895-403b17702b91';
+const PROD_PLATFORM_DB = '9d1c5c63-97fe-4f82-bc7d-f3fd22e9b351';
+const PROD_APP_DB = '0a36d6a0-c909-40aa-853e-970de3482321';
 const CAPTURE_ENV = (over = {}) => ({
   GITHUB_ACTIONS: 'true',
   GITHUB_WORKFLOW_REF: 'nikatru/platform/.github/workflows/store-screenshots.yml@refs/heads/main',
@@ -103,7 +114,8 @@ jobs:
         env:
           E2E_APP_ID: subscriptiontracker
           E2E_CONSENT_LEDGER: \${{ runner.temp }}/store-capture-consent.json
-          PLATFORM_D1_DATABASE_ID: 9d1c5c63-97fe-4f82-bc7d-f3fd22e9b351
+          PLATFORM_D1_DATABASE_ID: ead92001-03e1-4f71-9b92-c64963a24925
+          SUBSCRIPTIONTRACKER_D1_DATABASE_ID: 4e7c7730-3dc7-4004-9895-403b17702b91
         run: node tooling/e2e/purge.mjs
 `;
 
@@ -136,7 +148,14 @@ const REG_OBJ = () => ({
 });
 const REG_GREEN = JSON.stringify(REG_OBJ(), null, 2);
 
-const GREEN = { [E2E]: E2E_GREEN, [SHOTS]: SHOTS_GREEN, [RUNNER]: RUNNER_GREEN, [REG]: REG_GREEN };
+const GREEN = {
+  [E2E]: E2E_GREEN,
+  [SHOTS]: SHOTS_GREEN,
+  [RUNNER]: RUNNER_GREEN,
+  [REG]: REG_GREEN,
+  [PLATFORM_CFG]: readFileSync(join(REPO, PLATFORM_CFG), 'utf8'),
+  [API_CFG]: readFileSync(join(REPO, API_CFG), 'utf8'),
+};
 
 let TMP;
 before(() => { TMP = mkdtempSync(join(tmpdir(), 'nikatru-livewriter-')); });
@@ -515,7 +534,8 @@ jobs:
     const edit = swap(`        env:
           E2E_APP_ID: subscriptiontracker
           E2E_CONSENT_LEDGER: \${{ runner.temp }}/store-capture-consent.json
-          PLATFORM_D1_DATABASE_ID: 9d1c5c63-97fe-4f82-bc7d-f3fd22e9b351
+          PLATFORM_D1_DATABASE_ID: ead92001-03e1-4f71-9b92-c64963a24925
+          SUBSCRIPTIONTRACKER_D1_DATABASE_ID: 4e7c7730-3dc7-4004-9895-403b17702b91
 `, '');
     const r = run(tree({ [SHOTS]: edit }));
     expectExit(r, 1);
@@ -634,6 +654,8 @@ function realCopy(edit = {}) {
   for (const name of readdirSync(join(REPO, '.github', 'workflows'))) files[`.github/workflows/${name}`] = readFileSync(join(REPO, '.github', 'workflows', name), 'utf8');
   files[REG] = readFileSync(join(REPO, REG), 'utf8');
   files[RUNNER] = readFileSync(join(REPO, RUNNER), 'utf8');
+  files[PLATFORM_CFG] = readFileSync(join(REPO, PLATFORM_CFG), 'utf8');
+  files[API_CFG] = readFileSync(join(REPO, API_CFG), 'utf8');
   for (const [rel, v] of Object.entries(edit)) files[rel] = typeof v === 'function' ? v(files[rel]) : v;
   const root = join(TMP, `real${seq++}`);
   for (const [rel, body] of Object.entries(files)) {
@@ -686,5 +708,95 @@ describe('assert-live-writer-provenance: the real tree', () => {
     assert.ok(job, 'ci.yml has a guards-platform job');
     const text = job.logical.map((l) => l.text).join('\n');
     assert.ok(text.includes('node --single-threaded tooling/ci/assert-live-writer-provenance.mjs'), 'guards-platform runs the guard');
+  });
+});
+
+// ── L6: a sandbox lane reaches the sandbox, and purges the sandbox ───────────
+// ⏱ 2026-09-25 (capsand-b). Each case is written out by hand.
+const capturePurgeId = (key, id) => (text) => {
+  const re = new RegExp(`^([ \\t]*${key}: )\\S+$`, 'm');
+  assert.match(text, re, `mutation anchor not found: ${key}`);
+  return text.replace(re, `$1${id}`);
+};
+
+describe('assert-live-writer-provenance L6: a sandbox lane reaches only the sandbox', () => {
+  test('L6a: the real tree is green, and L6 holds its four capture jobs', () => {
+    const r = spawnSync(process.execPath, [GUARD], { cwd: REPO, encoding: 'utf8' });
+    expectExit(r, 0);
+    says(r, 'sandboxJobs=4');
+  });
+
+  test('the fixture sandbox ids are the ones sandboxBackend() reads from the real configs', () => {
+    const b = sandboxBackend();
+    assert.equal(b.platform.sandboxIds['d1:PLATFORM_DB'], SBX_PLATFORM_DB);
+    assert.equal(b['subscriptiontracker-api'].sandboxIds['d1:APP_DB'], SBX_APP_DB);
+    assert.equal(b.platform.productionIds['d1:PLATFORM_DB'], PROD_PLATFORM_DB);
+    assert.equal(b['subscriptiontracker-api'].productionIds['d1:APP_DB'], PROD_APP_DB);
+    const r = run(tree());
+    expectExit(r, 0);
+    says(r, 'sandboxJobs=1');
+  });
+
+  test('🔴 L6b: a capture step that names API_BASE_URL from secrets is a finding', () => {
+    const edit = swap(`          E2E_CONSENT_LEDGER: \${{ runner.temp }}/store-capture-consent.json
+        run: |`, `          E2E_CONSENT_LEDGER: \${{ runner.temp }}/store-capture-consent.json
+          API_BASE_URL: \${{ secrets.API_BASE_URL }}
+        run: |`);
+    const t = edit(SHOTS_GREEN);
+    const r = run(tree({ [SHOTS]: t }));
+    expectExit(r, 1);
+    says(r, `${SHOTS}:${lineOf(t, 'API_BASE_URL: ')} (job "capture-linux") — a step env names API_BASE_URL in the sandbox lane \`store-capture\``);
+    says(r, `${SHOTS}:${lineOf(t, 'API_BASE_URL: ')} (job "capture-linux") — reads secrets.API_BASE_URL in the sandbox lane`);
+  });
+
+  test('🔴 L6c: a preflight that re-adds secrets.API_BASE_URL under another name is a finding', () => {
+    const edit = swap(`      - name: Provision a throwaway user
+`, `      - name: Preflight — secrets present
+        env:
+          HOST: \${{ secrets.API_BASE_URL }}
+        run: test -n "$HOST"
+      - name: Provision a throwaway user
+`);
+    const t = edit(SHOTS_GREEN);
+    const r = run(tree({ [SHOTS]: t }));
+    expectExit(r, 1);
+    says(r, `${SHOTS}:${lineOf(t, 'HOST: ')} (job "capture-linux") — reads secrets.API_BASE_URL in the sandbox lane \`store-capture\``);
+  });
+
+  test('🔴 L6d: a capture purge on the PRODUCTION platform database is a finding', () => {
+    const r = run(tree({ [SHOTS]: capturePurgeId('PLATFORM_D1_DATABASE_ID', PROD_PLATFORM_DB) }));
+    expectExit(r, 1);
+    says(r, `${SHOTS_PURGE_AT} — PLATFORM_D1_DATABASE_ID=${PROD_PLATFORM_DB} is a PRODUCTION database id`);
+    says(r, `must name ${PLATFORM_CFG} env.sandbox PLATFORM_DB (${SBX_PLATFORM_DB})`);
+  });
+
+  test('🔴 L6e: a capture purge on the PRODUCTION app database is a finding', () => {
+    const r = run(tree({ [SHOTS]: capturePurgeId('SUBSCRIPTIONTRACKER_D1_DATABASE_ID', PROD_APP_DB) }));
+    expectExit(r, 1);
+    says(r, `${SHOTS_PURGE_AT} — SUBSCRIPTIONTRACKER_D1_DATABASE_ID=${PROD_APP_DB} is a PRODUCTION database id`);
+    says(r, `must name ${API_CFG} env.sandbox APP_DB (${SBX_APP_DB})`);
+  });
+
+  test('🔴 a capture purge with no SUBSCRIPTIONTRACKER_D1_DATABASE_ID is a finding', () => {
+    const edit = swap(`          SUBSCRIPTIONTRACKER_D1_DATABASE_ID: ${SBX_APP_DB}
+`, '');
+    const r = run(tree({ [SHOTS]: edit }));
+    expectExit(r, 1);
+    says(r, `${shotsPurgeAt(edit(SHOTS_GREEN))} — the purge in the sandbox lane \`store-capture\` carries no SUBSCRIPTIONTRACKER_D1_DATABASE_ID`);
+  });
+
+  test('🔴 L6f: the API config without env.sandbox is COVERAGE LOST, exit 2', () => {
+    const cfg = parseJsonc(readFileSync(join(REPO, API_CFG), 'utf8'));
+    assert.ok(cfg.env?.sandbox, 'the real API config has an env.sandbox to delete');
+    delete cfg.env.sandbox;
+    const r = run(tree({ [API_CFG]: JSON.stringify(cfg, null, 2) }));
+    expectExit(r, 2);
+    says(r, 'COVERAGE LOST — L6: tooling/store/capture-backend.mjs sandboxBackend() refuses');
+    says(r, 'has no `env.sandbox` block');
+  });
+
+  test('L6g: store-capture is the only stamp lane marked backend sandbox, and e2e-run is a production lane', () => {
+    assert.deepEqual(STAMP_LANES.filter((l) => l.backend === 'sandbox').map((l) => l.resolver), ['store-capture']);
+    assert.equal(STAMP_LANES.find((l) => l.resolver === 'e2e-run').backend, undefined);
   });
 });

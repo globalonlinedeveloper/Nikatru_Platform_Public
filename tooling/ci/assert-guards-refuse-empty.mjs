@@ -395,7 +395,7 @@ const importsFrom = (rel, src) => {
   // bytes. The stripped text answers "where am I", never "what does it say".
   //
   // ⬜ NAMED AND NOT CLOSED — this oracle is STRICTLY WEAKER than `codeMask` in
-  // assert-guard-coverage.mjs:1139, which is the repo's real answer to this
+  // assert-guard-coverage.mjs:1148, which is the repo's real answer to this
   // question and already carries its own canaries. `codeMask` also understands
   // TEMPLATE LITERALS, line/block comments mid-line, and regex literals; this
   // one knows only `'…'` and "…". A fixture written in backticks is therefore

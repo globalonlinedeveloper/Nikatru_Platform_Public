@@ -1,0 +1,128 @@
+name: Deploy sandbox
+
+run-name: "Deploy sandbox (${{ inputs.worker }}) from ${{ github.ref_name }}"
+
+# What this file does and why it is its own workflow is in
+# docs/ci/store-screenshots.md, section "Backend". Only `# why:` lines live here.
+
+# why: DISPATCH ONLY. The sandbox never rides a production merge, and a push to
+# deploy-workers.yml redeploys production, so it is not an input there.
+on:
+  workflow_dispatch:
+    inputs:
+      worker:
+        description: "Which sandbox Worker to deploy"
+        required: false
+        default: all
+        type: choice
+        options:
+          - all
+          - platform
+          - subscriptiontracker-api
+
+concurrency:
+  group: deploy-sandbox
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  checks: read
+
+jobs:
+  platform:
+    name: Deploy platform-sandbox
+    if: ${{ inputs.worker == 'all' || inputs.worker == 'platform' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: sandbox
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      # why: dispatch-only, so a dispatch from any branch or tag but main exits 1
+      # here, before the gate and the irreversible migration. Held FIRST by
+      # assert-workflow-hardening limb 10.
+      - name: Refuse any ref but main
+        run: node tooling/ci/assert-deploy-ref.mjs --allow main
+      # why: a sandbox deploy of an ungated SHA is still wrong, and the
+      # gate runs before `d1 migrations apply --remote`, which is irreversible.
+      - name: Require ci-gate to have passed for this commit
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node tooling/ci/assert-gate-passed.mjs ${{ github.sha }}
+      - uses: ./.github/actions/setup-node
+      - run: npm ci
+        working-directory: services/platform
+      # why: migrations before deploy, as in deploy-workers.yml. platform is the
+      # sole applier of platform_db_sandbox migrations too.
+      - name: Apply PLATFORM_DB migrations to the sandbox (before deploy)
+        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          wranglerVersion: '4.135.0'   # why: package.json says ^4.0.0, which floats. [F-2]
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: services/platform
+          command: d1 migrations apply PLATFORM_DB --env sandbox --remote
+      # why: RELEASE only. No GLITCHTIP_DSN, so sandbox errors stay out of
+      # production error tracking, and no secret is uploaded.
+      - uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          wranglerVersion: '4.135.0'   # why: package.json says ^4.0.0, which floats. [F-2]
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: services/platform
+          command: deploy --env sandbox --var RELEASE:${{ github.sha }}
+      # why: the host is computed from the wrangler config, never typed here.
+      - name: Smoke — the sandbox Worker answers at THIS commit
+        run: |
+          host="$(node tooling/store/capture-backend.mjs --print-host platform)"
+          node tooling/ops/post-deploy-smoke.mjs --url "$host/v1/health" --field build --expect "$GITHUB_SHA" --require-ok
+
+  subscriptiontracker-api:
+    name: Deploy subscriptiontracker-api-sandbox
+    # why: after platform. The API's health probes PLATFORM_DB, and only the
+    # platform job migrates platform_db_sandbox. A skipped platform job is fine.
+    needs: platform
+    if: ${{ !cancelled() && (inputs.worker == 'all' || inputs.worker == 'subscriptiontracker-api') && (needs.platform.result == 'success' || needs.platform.result == 'skipped') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: sandbox
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      # why: dispatch-only, so a dispatch from any branch or tag but main exits 1
+      # here, before the gate and the irreversible migration. Held FIRST by
+      # assert-workflow-hardening limb 10.
+      - name: Refuse any ref but main
+        run: node tooling/ci/assert-deploy-ref.mjs --allow main
+      # why: own gate, not the platform job's: that job may be skipped.
+      - name: Require ci-gate to have passed for this commit
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node tooling/ci/assert-gate-passed.mjs ${{ github.sha }}
+      - uses: ./.github/actions/setup-node
+      - run: npm ci
+        working-directory: services/subscriptiontracker-api
+      - name: Apply APP_DB migrations to the sandbox (before deploy)
+        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          wranglerVersion: '4.135.0'   # why: package.json says ^4.0.0, which floats. [F-2]
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: services/subscriptiontracker-api
+          command: d1 migrations apply APP_DB --env sandbox --remote
+      # why: RELEASE only, as in the platform job.
+      - uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          wranglerVersion: '4.135.0'   # why: package.json says ^4.0.0, which floats. [F-2]
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: services/subscriptiontracker-api
+          command: deploy --env sandbox --var RELEASE:${{ github.sha }}
+      - name: Smoke — the sandbox Worker answers at THIS commit
+        run: |
+          host="$(node tooling/store/capture-backend.mjs --print-host subscriptiontracker-api)"
+          node tooling/ops/post-deploy-smoke.mjs --url "$host/v1/health" --field build --expect "$GITHUB_SHA" --require-ok

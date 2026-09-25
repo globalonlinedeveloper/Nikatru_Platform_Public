@@ -1829,6 +1829,29 @@
       "source": "verified"
     },
     {
+      "_whyThisRowExists": "APPENDED 2026-09-25 for O-STORE-CAPTURE-WRITES-UNATTRIBUTED-ROWS (capsand-b). assert-ops-register.mjs holds every workflow file to a duty row anchored at it, so .github/workflows/deploy-sandbox.yml and this row land together.",
+      "id": "duty.workflow.deploy-sandbox.yml",
+      "kind": "duty",
+      "what": "Deploys the `env.sandbox` block of the platform and subscriptiontracker-api Workers (scripts platform-sandbox and subscriptiontracker-api-sandbox, on workers.dev only): gate, `d1 migrations apply <binding> --env sandbox --remote`, `deploy --env sandbox`, then a /v1/health smoke at the host tooling/store/capture-backend.mjs --print-host derives. These are the Workers store-screenshots.yml captures against. No GitHub Deployment is recorded: the ledger is production's.",
+      "detector": "Attended: a human or agent dispatches it and reads the run. The smoke fails the job unless the sandbox Worker answers ok at THIS commit's build. Between dispatches, each store-screenshots.yml capture job re-asks both sandbox hosts for /v1/health before it builds, and fails closed with \"the sandbox is not deployed: dispatch deploy-sandbox.yml\".",
+      "response": "Read the run. A red gate step means ci-gate did not pass for the dispatched SHA: dispatch from a green commit. A red migration or deploy step is a Cloudflare error on the sandbox resources only; production is not touched by this workflow. A red smoke names the host and the build it read.",
+      "cadence": "on-demand",
+      "why": "The sandbox needs a deploy when its Worker code, its migrations or its `env.sandbox` block changes and a capture is about to run, not on a clock and not on a merge: a push-triggered sandbox deploy would ride every production merge, which is the coupling this workflow exists to avoid. A failure costs nothing until the next capture, and that capture's own health preflight names it.",
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": ".github/workflows/deploy-sandbox.yml",
+        "record": "GitHub Actions run history for deploy-sandbox.yml",
+        "failingValue": "conclusion = failure: the gate, a migration, a deploy or the /v1/health smoke",
+        "readBy": "the dispatching human or agent, plus the health preflight of every store-screenshots.yml capture job"
+      },
+      "accessProviders": [
+        "github",
+        "cloudflare"
+      ],
+      "source": "unverified",
+      "unverifiedWhy": "The workflow has not run yet. Its first dispatch, after this row reaches main, is the first sandbox deploy, and the Store-screenshots dispatch hold lifts only once that run is green."
+    },
+    {
       "id": "duty.workflow.symbolication-proof.yml",
       "kind": "duty",
       "what": "The end-to-end proof that GlitchTip symbolicates an obfuscated Flutter Android crash onto the right source line: an obfuscated release build of apps/subscriptiontracker/live_probe/symbolication_crash_probe.dart runs on an emulator, throws at a marked line, and two readings are taken — GROUND TRUTH (the raw trace decoded offline by the pinned native_stack_traces against the build's own .symbols) and SINK (the GlitchTip event's frame at the throw address). ⏱ APPENDED 2026-09-20: both readings are then held against the RECORDED state in tooling/ops/symbolication-expectation.json ([ADR 090]), not against an ideal, so this lane is red when a reading CHANGES rather than for a finding already decided. `flutter symbolize` is NOT the decoder (run 35463786607: too old for the 3.47.4 snapshot layout).",

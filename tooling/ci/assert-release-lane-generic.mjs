@@ -317,6 +317,19 @@ const CLASSIFIED_ELSEWHERE = new Map([
       'empty-set pass if it were graded.',
   ],
   [
+    // Classified 2026-09-25 (capsand-b), the round the workflow landed.
+    'deploy-sandbox.yml',
+    'deploys the `env.sandbox` block of services/platform and services/subscriptiontracker-api, which are ' +
+      'Workers and not apps, by dispatch only, to the workers.dev hosts the store capture writes to. It ' +
+      'builds no app and ships nothing a user reaches. R-1 quantifies over the workspace APP set, so this ' +
+      'lane has nothing for this guard to compare and would report a permanent empty-set pass if it were ' +
+      'graded — the reason deploy-workers.yml gives just above, restated because this map is read one ' +
+      'entry at a time. Its deploys are held by assert-release-provenance.mjs limb 2b (gated, and excused ' +
+      'from the ledger only as proven-sandbox `--env` deploys) and by assert-money-config.mjs limb 1c. The ' +
+      'owning stage is stage 14 ops, through the duty row `duty.workflow.deploy-sandbox.yml` in ' +
+      'tooling/ops/register.json.',
+  ],
+  [
     'ops-watch.yml',
     'reads a D1 table and files an issue. It builds nothing, ships nothing and names no app; [14]O-4 owns ' +
       'it. Grading it would add a workflow to the denominator that can never move the answer.',

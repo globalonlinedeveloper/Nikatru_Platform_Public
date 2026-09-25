@@ -747,6 +747,8 @@
   {
     "claims": [],
     "invokedBy": [
+      ".github/workflows/deploy-sandbox.yml#platform",
+      ".github/workflows/deploy-sandbox.yml#subscriptiontracker-api",
       ".github/workflows/deploy-web.yml#deploy-web",
       ".github/workflows/deploy-workers.yml#platform",
       ".github/workflows/deploy-workers.yml#subscriptiontracker-api",
@@ -946,6 +948,8 @@
     ],
     "invokedBy": [
       ".github/workflows/build-platforms.yml#gate",
+      ".github/workflows/deploy-sandbox.yml#platform",
+      ".github/workflows/deploy-sandbox.yml#subscriptiontracker-api",
       ".github/workflows/extensions.yml#release",
       ".github/workflows/submit-appstore.yml#gate",
       ".github/workflows/submit-play.yml#gate",
@@ -3006,6 +3010,14 @@
     "state": "LIBRARY"
   },
   {
+    "claims": [],
+    "invokedBy": [],
+    "kind": "guard",
+    "ref": "tooling/ci/wrangler-environments.mjs",
+    "references": [],
+    "state": "LIBRARY"
+  },
+  {
     "claims": [
       "ADR 007",
       "ADR 019"
@@ -3308,6 +3320,8 @@
     ],
     "invokedBy": [
       ".github/workflows/build-platforms.yml#release",
+      ".github/workflows/deploy-sandbox.yml#platform",
+      ".github/workflows/deploy-sandbox.yml#subscriptiontracker-api",
       ".github/workflows/deploy-web.yml#deploy-web",
       ".github/workflows/deploy-workers.yml#platform",
       ".github/workflows/deploy-workers.yml#subscriptiontracker-api",
@@ -3704,6 +3718,21 @@
     ],
     "kind": "script",
     "ref": "tooling/smoke/smoke-web-artifact.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/deploy-sandbox.yml#platform",
+      ".github/workflows/deploy-sandbox.yml#subscriptiontracker-api",
+      ".github/workflows/store-screenshots.yml#capture",
+      ".github/workflows/store-screenshots.yml#capture-desktop-native",
+      ".github/workflows/store-screenshots.yml#capture-ios",
+      ".github/workflows/store-screenshots.yml#capture-linux"
+    ],
+    "kind": "script",
+    "ref": "tooling/store/capture-backend.mjs",
     "references": [],
     "state": "WIRED"
   },
