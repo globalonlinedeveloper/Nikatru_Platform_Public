@@ -93,6 +93,32 @@ was not, because that unit did not own this workflow.
 ([ADR 067] decision 6, unit `cutover-blockers`) to remove the first of the two
 Phase-5 blockers `runbooks/auth-cutover.md` records.
 
+⏱ **2026-09-25 — THE TARGETS NAME SECRET SETS, AND WHAT A RUN EXPECTS IS DERIVED.**
+`hosted` / `boxa` hard-coded two facts each — the stack's captcha posture AND
+whether the Workers trust its issuer — and the Phase 5 cutover moves those two at
+different moments: the repo secrets rotate to Box C first (C6), the switch commit
+moves `vars.SUPABASE_URL` after (C7). In between, the default run is on a
+captcha-ON stack the Workers do not trust yet, which neither old target expected.
+So the targets are now:
+
+- `production` (the default) resolves to `SUPABASE_URL` / `SUPABASE_ANON_KEY` /
+  `SUPABASE_SERVICE_ROLE_KEY`;
+- `selfhosted` resolves to `SELFHOSTED_SUPABASE_URL` / `SELFHOSTED_SUPABASE_ANON_KEY`
+  / `SELFHOSTED_SUPABASE_SERVICE_ROLE_KEY` (Box C). No `BOXA_*` secret is read any
+  more;
+
+and the step **Derive what this run expects** (`tooling/e2e/derive_expectation.mjs`
+over `auth_target_expectation.mjs` `deriveExpectation`) writes two facts to
+`$GITHUB_ENV`: `E2E_STACK` (`hosted` for a `https://<ref>.supabase.co` origin,
+else `selfhosted`) and `E2E_WORKERS_TRUST` (`yes` when the URL's origin is
+`tooling/platform-register.json` `vars.SUPABASE_URL` at the checked-out sha, else
+`no`). Every consumer reads the fact it needs and exits 2 on an unset or unknown
+one; `app_test.dart` takes them as the REQUIRED defines `E2E_EXPECT_CAPTCHA_GATE`
+and `E2E_EXPECT_WORKERS_TRUST`. `E2E_AUTH_TARGET` is retired. Any target but
+`production` is refused on `main`, and a rehearsal is now dispatched as
+`git push origin main:rehearse-selfhosted && gh workflow run e2e.yml --ref rehearse-selfhosted -f auth_target=selfhosted`.
+The paragraphs below are the record as it was written for `hosted` / `boxa`.
+
 Until this input existed, the live suite could only ever describe the auth
 project it happened to be pointed at, so *"does the live end-to-end path still
 pass on Box A?"* was a question that could first be asked **inside** the cutover
@@ -286,6 +312,10 @@ asserts the answer that belongs to this run's target:
 | `hosted` | `400 invalid_credentials` | the token was ignored and the password was really checked, so the `deploy-web.yml` define is safe |
 | `boxa` | `400 captcha_failed` | the gate is on and refuses before the password, so the magic-link login path is load-bearing rather than optional |
 
+⏱ 2026-09-25: the row is chosen by `E2E_STACK` (`hosted` / `selfhosted`), not by
+the target, and whether the Workers trust the stack never enters this step. An
+unset or unknown `E2E_STACK` is exit 2 before the probe is sent.
+
 ⚬ **IT CREATES NOTHING.** GoTrue makes no user on that route, so `auth.users` is
 untouched whatever the answer is — which is what makes it safe to run against
 production auth on every nightly. Its failing cases are exercised by
@@ -314,6 +344,11 @@ not a test failure.
 ⚠️ It runs on BOTH targets on purpose. The `boxa` expectation is then exercised
 code rather than a comment, and the `hosted` expectation is a second, independent
 reading of the fact Phase 5 is going to move.
+
+⏱ 2026-09-25: the direction is `E2E_WORKERS_TRUST`, not the target. `yes` must be
+answered **200** and a 401 names "the Workers refuse the production issuer";
+`no` must be answered **401**. From the switch commit on, the register names the
+self-hosted GoTrue and the production run expects 200 from it with no edit here.
 
 🔴 **ADDED 2026-09-22 — IT NOW READS THE `iss` CLAIM BACK, AS COMPARISONS.**
 Until then the step printed `token issuer: the Box A auth stack`, a fixed string
