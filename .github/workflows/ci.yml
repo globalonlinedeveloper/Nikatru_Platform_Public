@@ -64,7 +64,7 @@ jobs:
           GLITCHTIP_TOKEN: ${{ secrets.GLITCHTIP_TOKEN }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: node --test --test-reporter=spec  --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination="${{ runner.temp }}/guard-tests.junit.xml" "tooling/ci/test/*.test.mjs"
+        run: node --import ./tooling/scripts/spawn-ceiling.mjs --test-timeout=600000 --test --test-reporter=spec  --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination="${{ runner.temp }}/guard-tests.junit.xml" "tooling/ci/test/*.test.mjs"
       # The per-suite EXECUTED counts are the only Linux measurement of what ran.
       # tooling/scripts/refresh-executed-floor.mjs reads this artifact from a green
       # main run to raise tooling/ci/test/executed-floor.json; nothing local writes it.
@@ -766,7 +766,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-node
       - name: The pipeline's own tests
-        run: node --test "tooling/content_pipeline/test/*.test.mjs"
+        run: node --import ./tooling/scripts/spawn-ceiling.mjs --test-timeout=600000 --test "tooling/content_pipeline/test/*.test.mjs"
       - name: The pipeline builds and signs the example pack, through the CLI
         run: |
           node tooling/content_pipeline/cli.mjs validate --recipe tooling/content_pipeline/examples/lingo-phrases/recipe.json

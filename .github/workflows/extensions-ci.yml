@@ -405,9 +405,9 @@ jobs:
       # selftest case mutates. Running them here is what stops that suite being cases
       # nobody executes.
       - name: ...and that gate can still fail
-        run: node --test scripts/test/contracts-sync.test.mjs
+        run: node --import ../tooling/scripts/spawn-ceiling.mjs --test-timeout=600000 --test scripts/test/contracts-sync.test.mjs
       - name: The listing-asset guard can still fail
-        run: node --test scripts/test/listing-assets.test.mjs
+        run: node --import ../tooling/scripts/spawn-ceiling.mjs --test-timeout=600000 --test scripts/test/listing-assets.test.mjs
 
   gates:
     name: gates · ${{ matrix.tool }}
@@ -641,7 +641,7 @@ jobs:
       # 2026-09-06). So the pair lives in a node:test file and runs in the same job, and
       # the exemption in selftest.node.js's NO_CASE_RECORDED points at it by name.
       - name: The hang guard's ceiling must be proven to fire
-        run: node --test scripts/test/hang-guard.test.mjs
+        run: node --import ../tooling/scripts/spawn-ceiling.mjs --test-timeout=600000 --test scripts/test/hang-guard.test.mjs
 
   templates:
     name: templates parse (the tree every future tool is stamped from)
