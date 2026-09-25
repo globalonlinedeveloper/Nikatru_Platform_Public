@@ -49,6 +49,7 @@ import {
   repoRoot, loadAllTools, readJson, walk,
   RE_TOOL_ID, RE_CATEGORY_DIR, RE_TOOL_DIR
 } from './lib/toolinfo.mjs';
+import { readHouseIdentity, identityFromHouse, geckoIdFor, isPlaceholderValue } from './lib/tool-identity.mjs';
 
 /* `--dry-run` is a boolean and parseArgs takes the next token as a flag's value
    (report.mjs:137-139), so `--dry-run <anything>` read as dry-run OFF and this
@@ -249,6 +250,36 @@ r.note('tool.json tests: ' + (tests.length ? tests.join(', ') : 'none found'));
   }
 }
 
+/* ---------------- the house identity ---------------- */
+/* O-NEW-TOOL-HAS-NO-FIREFOX-IDENTITY. The owner domain, support address,
+   privacy URL and homepage are the same for every tool, and are recorded once in
+   <the directory above this extensions root>/tooling/house-identity.json. They
+   are written into the new tool's publish/identity.json, and the add-on id they
+   imply into its Firefox manifest, so a stamped tool carries a real identity
+   from its first commit. Until 2026-09-25 this script copied the template's
+   REPLACE-WITH-YOUR-DOMAIN values and printed an owner action; AMO fixes an
+   add-on's id at first signing, so a placeholder is refused here, before
+   anything is written, rather than reported after. */
+const house = readHouseIdentity(path.join(root, '..'));
+let identity = null;
+if (house.error) {
+  r.fail('the house identity can be read', house.error + '\n' +
+    'publish/identity.json is written from it, and no script can choose an owner domain on the owner\'s behalf.');
+} else {
+  const placeholders = Object.keys(house.value).filter(k => isPlaceholderValue(house.value[k]));
+  if (placeholders.length) {
+    r.fail('the house identity holds no placeholder',
+      house.rel + ' ' + placeholders.map(k => k + ' = "' + house.value[k] + '"').join(', ') + '.\n' +
+      'Every tool stamped from it would carry that value, and the Firefox add-on id built from it is\n' +
+      'permanent from the moment AMO signs it.');
+  } else {
+    identity = identityFromHouse(house.value, id);
+    r.pass('the identity comes from ' + house.rel, 'add-on id ' + geckoIdFor(identity) + ' · support ' + identity.supportEmail +
+      ' · privacy ' + identity.privacyPolicyUrl);
+  }
+}
+if (!identity) process.exit(r.finish());
+
 if (dryRun) {
   r.note('');
   r.note('tool.json that would be written:');
@@ -292,26 +323,45 @@ if (sourceFiles.includes('skeleton.json')) {
 }
 
 /* TEMPLATE.md §1: the identity is the FIRST edit, and the slug is the signal
-   the tool's own test tier reads to decide whether it is still the skeleton. */
+   the tool's own test tier reads to decide whether it is still the skeleton.
+   The house values overwrite the template's placeholders field by field, so the
+   template's README and NOTES keys come along unchanged. */
 const identityAbs = path.join(destAbs, 'publish', 'identity.json');
 /* Answered from the copied list, as skeleton.json is above (CodeQL #73). */
 if (sourceFiles.includes('publish/identity.json')) {
   const p = readJson(identityAbs);
-  if (p.value) {
-    p.value.slug = id;
+  if (p.value && typeof p.value === 'object' && !Array.isArray(p.value)) {
+    Object.assign(p.value, identity);
     fs.writeFileSync(identityAbs, JSON.stringify(p.value, null, 2) + '\n', 'utf8');
-    r.pass('set publish/identity.json slug to "' + id + '"',
-      'TEMPLATE.md §1 — the tool\'s own sim reads this to know it is no longer the skeleton');
-    const ownerDomain0 = String(p.value.ownerDomain || '');
-    /* The slot token anywhere, or the reserved TLD at the end — two tests (CodeQL #46). */
-    if (/REPLACE/i.test(ownerDomain0) || /\.example$/i.test(ownerDomain0)) {
-      r.owner('publish/identity.json ownerDomain is still a placeholder',
-        'The Firefox add-on id is derived as ' + id + '@<ownerDomain>, and AMO FIXES THE ADD-ON IDENTITY AT\n' +
-        'FIRST SIGNING — a placeholder that ships once is an add-on that belongs to nobody, permanently.\n' +
-        'No script can pick a domain for you. The packager already refuses to write a Firefox package\n' +
-        'until this is real, which is the gate that matters.');
-    }
-  } else r.warn('publish/identity.json did not parse — slug not set', p.error);
+    r.pass('wrote the house identity into publish/identity.json', 'slug "' + id + '", owner domain ' + identity.ownerDomain +
+      ' — TEMPLATE.md §1; the tool\'s own sim reads the slug to know it is no longer the skeleton');
+  } else {
+    r.fail('the template\'s publish/identity.json is a JSON object', (p.error || 'it parsed, but not as an object') + '\n' +
+      relDir + ' was written without its identity; delete that directory, fix the template, and run this again.');
+  }
+} else {
+  fs.mkdirSync(path.dirname(identityAbs), { recursive: true });
+  fs.writeFileSync(identityAbs, JSON.stringify(identity, null, 2) + '\n', 'utf8');
+  r.pass('wrote publish/identity.json from the house identity', 'the template carries none · slug "' + id + '"');
+}
+
+/* The Firefox manifest carries the add-on id AMO reads, and it is the one
+   geckoIdFor() derives from the identity just written. */
+const ffManifestRel = toolJson.targets.firefox && toolJson.targets.firefox.overlay;
+if (typeof ffManifestRel === 'string' && ffManifestRel) {
+  const ffAbs = path.join(destAbs, ffManifestRel);
+  const p = readJson(ffAbs);
+  if (p.value && typeof p.value === 'object' && !Array.isArray(p.value)) {
+    const bss = (p.value.browser_specific_settings && typeof p.value.browser_specific_settings === 'object')
+      ? p.value.browser_specific_settings : (p.value.browser_specific_settings = {});
+    const gecko = (bss.gecko && typeof bss.gecko === 'object') ? bss.gecko : (bss.gecko = {});
+    gecko.id = geckoIdFor(identity);
+    fs.writeFileSync(ffAbs, JSON.stringify(p.value, null, 2) + '\n', 'utf8');
+    r.pass('set the Firefox add-on id in ' + ffManifestRel, gecko.id);
+  } else {
+    r.fail('the template\'s ' + ffManifestRel + ' is a JSON object', (p.error || 'it parsed, but not as an object') + '\n' +
+      relDir + ' was written without its Firefox add-on id; delete that directory, fix the template, and run this again.');
+  }
 }
 
 const toolJsonAbs = path.join(destAbs, 'tool.json');

@@ -195,6 +195,34 @@ jobs:
           fi
           exit "$code"
 
+      # why: A KEY ROTATED ON THE AUTH HOST BREAKS SIGN-IN WITH NOTHING RED. The
+      # site serves sites/nikatru/js/signin.js with the publishable key as a
+      # literal, and every page still answers 200 when the auth host no longer
+      # accepts it. This reads the script the LIVE site serves, takes its auth host
+      # and its one sb_publishable_ key, and asks that host's /auth/v1/settings
+      # with the key in `apikey`, as a browser would. The key is printed as sha8
+      # only. It needs no secret: the key is public by design, so there is no `env:`.
+      #
+      # why: IN THIS JOB because it is the job that holds the live auth config
+      # against what the repo recorded, and supabase-drift is already a unit of
+      # duty.workflow.ops-watch.yml, so it needs no register row of its own. It runs
+      # whatever the step above found: that step reads the hosted project and its
+      # PAT, this one reads the self-hosted host with no credential at all.
+      - name: The live site's sign-in key is accepted by the auth host
+        if: ${{ !cancelled() }}
+        timeout-minutes: 3
+        run: |
+          set +e
+          node tooling/ops/check-live-signin-key.mjs
+          code=$?
+          set -e
+          if [ "$code" -eq 2 ]; then
+            echo "::error title=The live sign-in key is UNKNOWN - it was not judged::The site or the auth host did not answer, answered 429/5xx through every retry, hung, or answered something that says nothing about the key. NOTHING about whether sign-in works is known from this run, and that is never a pass. The step log names the URL."
+          elif [ "$code" -eq 1 ]; then
+            echo "::error title=Sign-in is broken - the live site's publishable key is refused or missing::Either the auth host refuses the key the live site serves (401/403: it was rotated on the host and not in sites/nikatru/js/signin.js), or the live script still holds the placeholder, carries no key or several, names no auth host, or is not served at all. The step log says which, with the key as sha8 only. Put the host's current publishable key in signin.js and redeploy the site; this red reaches ci-gate on every open pull request."
+          fi
+          exit "$code"
+
   prod-provenance:
     name: Every row in production traces to a released build
     runs-on: ubuntu-24.04
