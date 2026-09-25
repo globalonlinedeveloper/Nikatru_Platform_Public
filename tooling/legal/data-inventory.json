@@ -345,8 +345,10 @@
       "personalData": true,
       "holds": "⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. One row per browser that has linked the extension to an account: a random link id (`link_id`), the Supabase `sub`, the product (`fullshot`), the store channel, SHA-256 of the device credential (the credential is returned once to the extension and never stored), `created_at`, `last_seen_at` (at most once per UTC day) and `revoked_at`. The credential can read that one product's entitlement and revoke itself, nothing else. It holds no name and no email address.",
       "retention": {
-        "kind": "keep",
-        "reason": "Kept WHILE IT IS A LIVE CREDENTIAL: an age sweep would sign a paying user out of a product they still use. It ends when the user revokes the device (`revoked_at`, POST /v1/ext/revoke) or erases the account. ⬜ OPEN: a revoked row answers 401 whether or not it exists; whether to sweep revoked rows, and after how long, is an open question for the parent — no period is invented here."
+        "kind": "swept",
+        "periodDays": 30,
+        "sweptBy": "services/platform/src/scheduled.ts",
+        "reason": "⏱ 2026-09-25. Thirty days after `revoked_at`, enforced by the platform Worker's nightly `retentionSweep` (EXT_DEVICES_RETENTION_DAYS). A device that was never revoked is a LIVE CREDENTIAL and is never swept, however old: an age sweep would sign a paying user out of a product they still use. It ends when the user revokes the device (`revoked_at`, POST /v1/ext/revoke) and 30 days pass, or when the account is erased. The credential itself has no expiry, so no longer window is needed: a revoked row answers 401 from the moment it is revoked, and a deleted row answers the same 401. `swept`, not `ttl`: D1 has no expiry."
       },
       "erasure": {
         "kind": "purge",
