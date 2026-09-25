@@ -6,7 +6,15 @@
     "sha": "a9a982c84bc1a7234e80d5b976ebb1077de2899c",
     "at": "2026-09-18T22:59:26Z"
   },
-  "lowered": [],
+  "lowered": [
+    {
+      "suite": "windows-signing.test.mjs",
+      "from": 75,
+      "to": null,
+      "reason": "retired with its subject: tooling/ci/windows-signing.mjs and this suite leave the tree in the same change as the build-platforms.yml step that was the script's only caller (O-WINDOWS-DIRECT-DEAD-CHANNEL-LIVES, branch 2). No green main run without the suite can exist before that change merges, so this lowering carries no run.",
+      "run": null
+    }
+  ],
   "suites": {
     "a11y-coverage.test.mjs": 35,
     "adapter-capabilities.test.mjs": 26,
@@ -221,7 +229,6 @@
     "web-sourcemaps.test.mjs": 18,
     "well-known-shape.test.mjs": 29,
     "wildcard-dns.test.mjs": 13,
-    "windows-signing.test.mjs": 75,
     "windows-store-submission.test.mjs": 33,
     "worker-error-sink.test.mjs": 18,
     "worker-shared-modules.test.mjs": 13,
