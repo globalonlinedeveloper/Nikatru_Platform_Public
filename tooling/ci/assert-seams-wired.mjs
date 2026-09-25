@@ -1264,8 +1264,13 @@ try {
    *  2241754f: 23 release builds in 18 workflows, 5 exempt, 18 graded, all 18 on a
    *  Flutter row. The floor is what exists today, moved with the workflows in the
    *  same change — a floor left behind is one that would accept a build silently
-   *  leaving the census. */
-  const MIN_GRADED = 18;
+   *  leaving the census.
+   *
+   *  ⏱ RE-BASED 18 → 16 on 2026-09-25 (O-SUBMIT-REBUILDS-WHAT-THE-DRY-RUN-BUILT), measured
+   *  on the C2 tree: 16 graded, and the two gone are exactly the builds C2 removed —
+   *  submit-play.yml#submit `flutter build appbundle` and submit-windows-store.yml#submit
+   *  `flutter build windows`, whose jobs now ship their dry-run job's bytes. */
+  const MIN_GRADED = 16;
   const DSN_QUESTION = 'whether its release builds must --dart-define GLITCHTIP_DSN';
 
   let register = null;

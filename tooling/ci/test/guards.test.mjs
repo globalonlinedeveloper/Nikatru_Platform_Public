@@ -3410,7 +3410,9 @@ Future<void> _signOut(BuildContext context, WidgetRef ref, AppLocalizations l10n
    *  ⏱ 2026-09-24 — the lanes are now a CROSS-CHECK and the floor is on graded
    *  BUILDS (MIN_GRADED, 18 on the real census). Each row declares `platforms`
    *  because gradeDomain holds a stamp to the row's platforms; the four lane
-   *  builds plus CENSUS_FILL undeclared ones make the eighteen. */
+   *  builds plus CENSUS_FILL undeclared ones make the eighteen.
+   *  ⏱ 2026-09-25 — sixteen: MIN_GRADED re-based 18 → 16 when C2 removed the two
+   *  submit-job rebuilds, so CENSUS_FILL is twelve. */
   // ⏱ 2026-09-15 — lanes are scoped by the surface's DECLARED `flutterApp` (O-EXT-SURFACE-AXIS).
   const CHANNEL_REGISTER = JSON.stringify(
     {
@@ -3426,9 +3428,9 @@ Future<void> _signOut(BuildContext context, WidgetRef ref, AppLocalizations l10n
     2,
   );
   /** The graded builds beyond the four lanes that bring the fixture's census to
-   *  the guard's MIN_GRADED (18): the real tree's census grades 18, most of them
-   *  in jobs no row names, which is the point of grading a census. */
-  const CENSUS_FILL = 14;
+   *  the guard's MIN_GRADED (16 since 2026-09-25; 18 before): the real tree's census
+   *  grades 16, most of them in jobs no row names, which is the point of grading a census. */
+  const CENSUS_FILL = 12;
   /** `count` web builds, one per job, in a workflow no row declares. */
   const censusFill = (count) => {
     const jobs = [];
@@ -3833,7 +3835,7 @@ Future<void> main() async {
       cwd: build('seams-census-shrunk', { fill: CENSUS_FILL - 1 }),
     });
     assert.equal(code, 2, out);
-    assert.match(out, /the census graded only 17 release build\(s\) on a Flutter channel, fewer than the 18 that exist today/);
+    assert.match(out, /the census graded only 15 release build\(s\) on a Flutter channel, fewer than the 16 that exist today/);
   });
 
   // A lane naming a job that is gone is a register that has drifted from the
@@ -3905,7 +3907,7 @@ Future<void> main() async {
     });
     assert.equal(code, 0, out);
     assert.match(out, /NOT GRADED — \.github\/workflows\/deploy-web\.yml:13 \(job "preview", `flutter build web`\): a fixture preview build: deployed to a throwaway URL/);
-    assert.match(out, /crash sink wired — 18 census-graded release build\(s\).*1 exempt build\(s\) named above/);
+    assert.match(out, /crash sink wired — 16 census-graded release build\(s\).*1 exempt build\(s\) named above/);
   });
 
   test('T5 · FAILS when a `#` on the build line puts the define behind a comment', () => {
@@ -3937,7 +3939,7 @@ Future<void> main() async {
       cwd: build('seams-exempt-below-floor', { register: JSON.stringify(exempted, null, 2) }),
     });
     assert.equal(code, 2, out);
-    assert.match(out, /the census graded only 17 release build\(s\) on a Flutter channel, fewer than the 18 that exist today/);
+    assert.match(out, /the census graded only 15 release build\(s\) on a Flutter channel, fewer than the 16 that exist today/);
     assert.match(out, /NOT GRADED — \.github\/workflows\/census-fill\.yml:8 \(job "fill_0", `flutter build web`\)/);
   });
 
@@ -4364,13 +4366,14 @@ class Ed25519PackVerifier implements PackVerifier {
   // both lane workflows — a bare deploy-web.yml no longer answers the question
   // the guard now asks.
   // ⏱ 2026-09-24 — and since the limb grades workflow-scan's CENSUS, each build
-  // stamps the channel it is for, and the tree carries the 18 graded builds the
-  // guard floors at (MIN_GRADED): the four lanes plus fourteen in census-fill.yml.
+  // stamps the channel it is for, and the tree carries the 16 graded builds the
+  // guard floors at (MIN_GRADED, re-based 18 → 16 on 2026-09-25): the four lanes
+  // plus twelve in census-fill.yml.
   const laneJob = (name, target = 'web', channel = 'web') =>
     `  ${name}:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: flutter build ${target} --release --dart-define=RELEASE_CHANNEL=${channel} --dart-define=GLITCHTIP_DSN=\${{ secrets.GLITCHTIP_DSN }}\n`;
   const fillJobs = () => {
     let jobs = '';
-    for (let i = 0; i < 14; i++) jobs += laneJob(`fill_${i}`);
+    for (let i = 0; i < 12; i++) jobs += laneJob(`fill_${i}`);
     return jobs;
   };
   // [pipeline 7]P-9 consumer half · [8]K-9. Since 2026-08-03 `pack_verifier` is
