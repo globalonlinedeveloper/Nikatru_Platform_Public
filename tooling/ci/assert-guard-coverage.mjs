@@ -345,6 +345,10 @@ const NOT_A_SCANNER = new Map([
     'writes a GitHub Deployment record. It performs an action rather than scanning anything, so there is no scope for it to silently cover less.',
   ],
   [
+    'submit-preconditions.mjs',
+    'is not a guard: it is the ONE table of the gates a store submission must pass — `SUBMIT_PRECONDITIONS` (each gate\'s path, the argument a lane passes it, and which register rows owe it) and `IAP_REVIEW_CHANNELS`. Pure data and predicates over a register row: no filesystem, no tree, no exit. Added 2026-09-25 (row O-SUBMIT-LANES-SKIP-PRECONDITION-GATES) with its two readers: limb 3 of assert-publish-steps-guarded.mjs, which grades every submit lane against it and turns a table guard not on disk, a named channel the register does not declare, and a register with no submission row into its own COVERAGE LOST; and assert-iap-review-screenshots.mjs, which reads its channel from IAP_REVIEW_CHANNELS and refuses a second entry as COVERAGE LOST. "Did my scan still reach the tree" belongs to those two. Its failing cases are in test/publish-steps-guarded.test.mjs, each against a copy of the REAL tree after a green control. It sits flat in tooling/ci because the stray-.mjs check above (correctly) treats a subdirectory as a guard escaping the scan.',
+  ],
+  [
     'tree-walk.mjs',
     'is not a guard: it is the ONE directory listing — `listDir`, `boundedGlob` and the `.git`/`.claude` rule that decides what is not part of the tree under test — imported by every guard in tooling/ci that reads a directory. It scans nothing of its own, so "did my scan still reach the tree" belongs to those importers, each of which carries its own COVERAGE LOST over what it reads. What it CAN lose is its refusal, and that is not left to prose: assert-walks-bounded.mjs builds a real nested checkout in a temp directory on every run and fails if listDir or boundedGlob returns anything from inside it.',
   ],

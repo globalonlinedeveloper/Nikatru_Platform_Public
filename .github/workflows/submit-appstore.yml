@@ -49,6 +49,17 @@ jobs:
       - name: Derive the release line from pubspec
         id: ver
         run: node tooling/ci/assert-app-versioning.mjs --emit apps/subscriptiontracker >> "$GITHUB_OUTPUT"
+      # why: O-SUBMIT-LANES-SKIP-PRECONDITION-GATES. A dry run green over a name the owner has not HELD
+      # or proven free rehearses a submission nobody ruled on; limb 3 of assert-publish-steps-guarded.mjs.
+      - name: Name clearance holds for ios-appstore (owner HELD or PROVEN-FREE)
+        run: node tooling/ci/assert-name-clearance.mjs --for-submission=ios-appstore
+      # why: O-SUBMIT-LANES-SKIP-PRECONDITION-GATES. One step per channel, so a red names the store.
+      - name: Name clearance holds for macos-appstore (owner HELD or PROVEN-FREE)
+        run: node tooling/ci/assert-name-clearance.mjs --for-submission=macos-appstore
+      # why: O-SUBMIT-LANES-SKIP-PRECONDITION-GATES. App Review rejects an auto-renewable with no
+      # review screenshot; under --for-submission a deferred product is a finding, not a note.
+      - name: Every auto-renewable has its review screenshot (--for-submission)
+        run: node tooling/ci/assert-iap-review-screenshots.mjs --for-submission
       - name: Toolchain under test
         run: |
           sw_vers

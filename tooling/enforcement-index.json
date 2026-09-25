@@ -1023,7 +1023,8 @@
   {
     "claims": [],
     "invokedBy": [
-      ".github/workflows/ci.yml#guards-store"
+      ".github/workflows/ci.yml#guards-store",
+      ".github/workflows/submit-appstore.yml#dry-run"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-iap-review-screenshots.mjs",
@@ -1297,7 +1298,14 @@
     ],
     "invokedBy": [
       ".github/workflows/ci.yml#guards-store",
-      ".github/workflows/ops-watch.yml#heartbeats"
+      ".github/workflows/ops-watch.yml#heartbeats",
+      ".github/workflows/submit-appstore.yml#dry-run",
+      ".github/workflows/submit-play.yml#dry-run",
+      ".github/workflows/submit-play.yml#submit",
+      ".github/workflows/submit-snap.yml#dry-run",
+      ".github/workflows/submit-snap.yml#submit",
+      ".github/workflows/submit-windows-store.yml#dry-run",
+      ".github/workflows/submit-windows-store.yml#submit"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-name-clearance.mjs",
@@ -2843,6 +2851,14 @@
     "ref": "tooling/ci/stamp-channel.mjs",
     "references": [],
     "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [],
+    "kind": "guard",
+    "ref": "tooling/ci/submit-preconditions.mjs",
+    "references": [],
+    "state": "LIBRARY"
   },
   {
     "claims": [],

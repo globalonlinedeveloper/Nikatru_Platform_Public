@@ -42,9 +42,9 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { listDir } from './tree-walk.mjs';
+import { IAP_REVIEW_CHANNELS } from './submit-preconditions.mjs';
 
 const FOR_SUBMISSION = process.argv.includes('--for-submission');
-const CHANNEL = 'ios-appstore';
 const REGISTER = join('tooling', 'channel-register.json');
 const PRODUCTS = join('services', 'platform', 'src', 'app-config-data.json');
 
@@ -66,6 +66,18 @@ const lost = (why) => {
   console.error('assert-iap-review-screenshots: FAILED');
   process.exit(2);
 };
+
+// The channel is the one entry of IAP_REVIEW_CHANNELS in submit-preconditions.mjs,
+// the table limb 3 of assert-publish-steps-guarded.mjs reads to put this reader in
+// a submit lane (O-SUBMIT-LANES-SKIP-PRECONDITION-GATES). This reader grades ONE
+// channel's tree, so a second entry would be a lane running it over a channel it
+// never reads: refused here rather than graded as the first.
+if (IAP_REVIEW_CHANNELS.length !== 1) {
+  lost(
+    `submit-preconditions.mjs IAP_REVIEW_CHANNELS names ${IAP_REVIEW_CHANNELS.length} channel(s) [${IAP_REVIEW_CHANNELS.join(', ')}]; this reader grades exactly one channel's tree.`,
+  );
+}
+const CHANNEL = IAP_REVIEW_CHANNELS[0];
 
 // ── a THIRD copy of the PNG header reader, and that is a debt, not a design ──
 // `tooling/store/chrome-raster.mjs` exports one and `tooling/ci/assert-listing-
