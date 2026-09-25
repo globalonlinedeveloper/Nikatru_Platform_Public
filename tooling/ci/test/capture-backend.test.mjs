@@ -104,6 +104,7 @@ describe('capture-backend: the sandbox is computed from the wrangler configs', (
       'ratelimit:EVENTS_CEILING_LIMITER': '1008',
       'ratelimit:CONFIG_CEILING_LIMITER': '1009',
       'ratelimit:EXT_TOKEN_CEILING_LIMITER': '1010',
+      'ratelimit:SESSIONS_LIMITER': '1012',
     });
     assert.deepEqual(b['subscriptiontracker-api'].sandboxIds, {
       'd1:APP_DB': '4e7c7730-3dc7-4004-9895-403b17702b91',

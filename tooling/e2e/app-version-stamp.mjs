@@ -102,7 +102,11 @@ export const stampDeletable = (s) =>
  *  says where the stamp comes from:
  *    'env'             — a step or job env key the workflow sets (`env`);
  *    'actions-default' — derived by captureStamp from the Actions default env,
- *                        so the workflow sets nothing. */
+ *                        so the workflow sets nothing.
+ *  ⏱ 2026-09-25 — `backend: 'sandbox'` marks a lane whose drives reach the
+ *  env.sandbox Workers (tooling/store/capture-backend.mjs), not production:
+ *  assert-live-writer-provenance.mjs L6 then holds its jobs to the sandbox hosts
+ *  and its purges to the sandbox D1 ids. A lane without it is a production lane. */
 export const STAMP_LANES = Object.freeze([
   Object.freeze({
     resolver: 'e2e-run',
@@ -116,6 +120,7 @@ export const STAMP_LANES = Object.freeze([
     workflow: CAPTURE_WORKFLOW,
     prefix: 'cap',
     source: 'actions-default',
+    backend: 'sandbox',
   }),
 ]);
 

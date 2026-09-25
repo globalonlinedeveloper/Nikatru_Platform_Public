@@ -216,6 +216,25 @@
 //      argues from, did reproduce.
 // No code changed for any of the three.
 //
+// ── limb 2b (added 2026-09-25) A SANDBOX DEPLOY IS EXCUSED FROM THE LEDGER ───
+// ── ONLY, NEVER FROM THE GATE ────────────────────────────────────────────────
+// deploy-sandbox.yml deploys the two sandbox Workers the store captures write
+// to, and brief Ruling 5 forbids it to call `record-deployment.mjs`: the release
+// ledger is the PRODUCTION record, and a sandbox row in it would say production
+// shipped a commit it never ran. Parent ruling CAPSAND-5 item 1 therefore excuses
+// a publishing job from limb 2's marker requirement when, and only when, EVERY
+// publish in it is a `cloudflare/wrangler-action` whose `command:` carries
+// `--env <name>`, and `env.<name>` of the config in that step's
+// `workingDirectory` declares MONEY_ENVIRONMENT "sandbox" and passes
+// `sandboxEnvironmentFindings()` — the predicate assert-money-config.mjs limb 1c
+// fails the build on, imported from wrangler-environments.mjs rather than
+// restated here. What it does NOT excuse: the gate. The job still needs
+// `assert-gate-passed.mjs` before its first publish, on limb 2's own order rule;
+// a sandbox deploy of an ungated SHA is still wrong. Any other publish in the
+// job (a shell `wrangler deploy`, a release upload, a default-command action,
+// a `--config` override, an `--env` spelled as an expression) withdraws the
+// excuse for the whole job, and the FAIL line names which one did.
+//
 // Usage:  node tooling/ci/assert-release-provenance.mjs [repoRoot]
 // Exit 0 = every release build is gated and every publish is recorded.
 // Exit 1 = a finding. 2 = COVERAGE LOST (EXIT 1 in the dated measurements below, before 2026-09-16).
@@ -248,6 +267,9 @@ import { stripSourceComments } from './text-reductions.mjs';
 // rule followed the parser out, AS THEY WERE: assert-workflow-hardening limb 10
 // grades the same publish set. The gate walk stays here.
 import { parseWorkflow, parseResolvedWorkflows, lineAt, placeOf, refusalText, storePublishSteps, laneRunHost, laneRefusalText, shellSegments, classifyPublishes } from './workflow-scan.mjs';
+// limb 2b. The repo's one JSONC reader, and the one sandbox predicate.
+import { parseJsonc } from './d1-sql-inventory.mjs';
+import { isObject, sandboxEnvironmentFindings } from './wrangler-environments.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const WORKFLOWS = '.github/workflows';
@@ -676,6 +698,72 @@ function neutralizedCredit(wf, job, r, doing) {
   );
 }
 
+// ── limb 2b · the sandbox exemption from the marker (see the header) ─────────
+const ENV_FLAG = /(?:^|\s)(?:--env|-e)(?:=|\s+)(\S+)/;
+const CONFIG_FLAG = /(?:^|\s)(?:--config|-c)(?:=|\s|$)/;
+/** { exempt, tried, reasons, targets } for one publishing job. `tried` is true
+ *  when any publish names an `--env`, so the FAIL line explains a refused
+ *  excuse only to a job that asked for one. */
+function sandboxExemption(wf, job) {
+  const reasons = [];
+  const targets = [];
+  let tried = false;
+  for (const p of job.publishes) {
+    const at = lineAt(wf, p.n);
+    if (p.what !== 'a Cloudflare deploy action' || typeof p.command !== 'string') {
+      const tail = p.what === 'a Cloudflare deploy action' ? ' with no `command:` (its default, a top-level deploy)' : '';
+      reasons.push(`${at} is ${p.what}${tail}, not an \`--env\` deploy action`);
+      continue;
+    }
+    const m = p.command.match(ENV_FLAG);
+    if (!m) {
+      reasons.push(`${at} runs \`wrangler ${p.command}\` with no \`--env\`, which deploys the TOP LEVEL — production`);
+      continue;
+    }
+    tried = true;
+    const name = m[1].replace(/^['"]|['"]$/g, '');
+    if (/[${}]/.test(name)) {
+      reasons.push(`${at} names its environment as an expression (\`${name}\`), which only the run can resolve`);
+      continue;
+    }
+    if (CONFIG_FLAG.test(p.command)) {
+      reasons.push(`${at} passes \`--config\`, so the config it deploys is not the one in its working directory`);
+      continue;
+    }
+    const dir = (p.dir ?? '.').replace(/^\.\/+/, '').replace(/\/+$/, '') || '.';
+    const cfgRel = ['wrangler.jsonc', 'wrangler.json'].map((f) => (dir === '.' ? f : `${dir}/${f}`)).find((r) => existsSync(join(ROOT, r)));
+    if (cfgRel === undefined) {
+      reasons.push(`${at} deploys \`--env ${name}\` from ${dir}, which holds no wrangler.jsonc or wrangler.json`);
+      continue;
+    }
+    let cfg;
+    try {
+      cfg = parseJsonc(readFileSync(join(ROOT, cfgRel), 'utf8'));
+    } catch (err) {
+      reasons.push(`${cfgRel} does not parse (${err.message}), so \`--env ${name}\` at ${at} cannot be read`);
+      continue;
+    }
+    const e = isObject(cfg?.env) ? cfg.env[name] : undefined;
+    if (!isObject(e)) {
+      reasons.push(`${at} deploys \`--env ${name}\` and ${cfgRel} declares no \`env.${name}\``);
+      continue;
+    }
+    const world = isObject(e.vars) ? e.vars.MONEY_ENVIRONMENT : undefined;
+    if (world !== 'sandbox') {
+      reasons.push(`${cfgRel} env.${name} (deployed at ${at}) declares MONEY_ENVIRONMENT = ${JSON.stringify(world)}, not "sandbox"`);
+      continue;
+    }
+    const findings = sandboxEnvironmentFindings(`${cfgRel} env.${name}`, cfg, e);
+    if (findings.length > 0) {
+      reasons.push(...findings);
+      continue;
+    }
+    targets.push(`${cfgRel} env.${name}`);
+  }
+  return { exempt: job.publishes.length > 0 && reasons.length === 0, tried, reasons, targets };
+}
+const exemptJobs = [];
+
 // ── the gate's own builds are gated by construction ──────────────────────────
 // Widening RELEASE BUILD to Flutter's default mode (above) pulls ci.yml's
 // stamped-probe build — `flutter build web --pwa-strategy=none`, [pipeline S-3]
@@ -819,10 +907,16 @@ for (const wf of workflows) {
     if (job.publishes.length > 0) {
       publishJobs++;
       const lastPublish = job.publishes[job.publishes.length - 1];
-      if (!job.markerCall) {
+      const excused = job.markerCall ? null : sandboxExemption(wf, job);
+      if (excused?.exempt) {
+        // limb 2b: every publish is a proven-sandbox `--env` deploy. The gate
+        // checks below still run.
+        exemptJobs.push(`${wf.rel}#${job.name} → ${[...new Set(excused.targets)].join(', ')}`);
+      } else if (!job.markerCall) {
         problems.push(
           `${wf.rel}: job "${job.name}" performs ${lastPublish.what} at ${lineAt(wf, lastPublish.n)} and never calls ${MARKER_SCRIPT}. ` +
-            'The code shipped and nothing can say what shipped — which is the state [10]D-9\'s ledger exists to abolish.',
+            'The code shipped and nothing can say what shipped — which is the state [10]D-9\'s ledger exists to abolish.' +
+            (excused.tried ? ` It is not excused as a sandbox deploy (limb 2b): ${excused.reasons.join('; ')}.` : ''),
         );
       } else if (job.markerCall.n < lastPublish.n) {
         problems.push(
@@ -1123,6 +1217,10 @@ ok(
       ? '; each declares an `environment:` and its script performs a run-time protection-rules read'
       : `; ${submitProblems} of those assertions FAILED — see the FAIL line(s) below`) +
     `. The two environment names are NOT compared. limb 4 also ranges over the ${storeStepsBeyondSubmit} store publish step(s) no \`--submit\` verb reaches, in ${storeStepJobs.size} job(s) (EXT-3); it does NOT range over the ${publishJobs} publish job(s) — see the header.`,
+);
+ok(
+  `limb 2b: ${exemptJobs.length} publishing job(s) excused from ${MARKER_SCRIPT} as proven-sandbox \`--env\` deploys, each still gated` +
+    (exemptJobs.length > 0 ? ` (${exemptJobs.join('; ')})` : ''),
 );
 ok(`${servedLanes.length} served-channel lane(s) from ${REGISTER}: ${servedLanes.map((l) => l.key).join(', ') || '(none)'}`);
 
