@@ -192,6 +192,29 @@ jobs:
         working-directory: extensions/${{ matrix.suite.dir }}/test/e2e
         run: npx playwright install --with-deps chromium
 
+      # why: THE GECKO SUITES (gecko-smoke.mjs, gecko-clipboard.mjs, 2026-09-24)
+      # DRIVE THE FIREFOX ALREADY ON THE RUNNER IMAGE, over raw WebDriver BiDi --
+      # no Playwright-Firefox (a patched build, not the Firefox a user installs),
+      # no geckodriver, nothing installed. This step finds it, prints its version
+      # into the log (the AI-HANDOFF-ENVELOPE.md section 13 row quotes it), and
+      # hands its path to the suites. No Firefox, or one older than 140, fails
+      # HERE with a named error instead of two suites exiting 2 further down.
+      - name: Firefox on the image
+        run: |
+          bin="$(command -v firefox || true)"
+          if [ -z "$bin" ]; then
+            echo "::error::no firefox on this runner image; gecko-smoke.mjs and gecko-clipboard.mjs cannot run"
+            exit 1
+          fi
+          ver="$("$bin" --version)"
+          echo "firefox: $bin -> $ver"
+          major="$(printf '%s\n' "$ver" | sed -n 's/.* \([0-9][0-9]*\)\..*/\1/p')"
+          if [ -z "$major" ] || [ "$major" -lt 140 ]; then
+            echo "::error::'$ver' is not Firefox 140 or newer"
+            exit 1
+          fi
+          echo "FS_E2E_FIREFOX=$bin" >> "$GITHUB_ENV"
+
       - name: Run every suite in test/e2e (derived, not listed)
         working-directory: extensions/${{ matrix.suite.dir }}/test/e2e
         env:

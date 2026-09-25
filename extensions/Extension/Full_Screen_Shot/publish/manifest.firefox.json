@@ -25,7 +25,6 @@
     "page": "pages/options.html",
     "open_in_tab": true
   },
-  "content_security_policy": null,
   "minimum_chrome_version": null,
   "options_page": null
 }

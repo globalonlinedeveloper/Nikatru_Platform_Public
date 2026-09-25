@@ -19,7 +19,7 @@ said out loud rather than smoothed over.
 
 | | Principle | Enforcement today |
 |---|---|---|
-| **P1** | Nothing leaves your machine | Gate (repo-level + per-tool, static). Runtime audit: **absent** |
+| **P1** | Nothing leaves your machine | Gate (repo-level + per-tool, static). Runtime audit: **absent** ⏱ 2026-09-24: runtime audit **present** for FullShot on Chromium — `test/e2e/network-audit.mjs` (G11), below |
 | **P2** | No remote code | Gate (repo-level + per-tool, static) |
 | **P3** | The fewest permissions the job allows, each justified in writing | Gate (repo-level, against `tool.json`). Listing-copy half: skeleton-derived tools only |
 | **P4** | Processing happens on the device | Follows from P1; no separate gate |
@@ -62,6 +62,13 @@ only network reach was a WebRTC data channel would pass CI and be caught only by
 grader. Widen `scripts/policy-check.mjs` to the same list; until then, do not describe the CI gate as
 complete.
 
+⏱ **2026-09-24 (G3): widened.** `scripts/policy-check.mjs` `NETWORK` names `RTCPeerConnection` (and its
+vendor-prefixed forms) and `SharedWorker`, and `tooling/ci/test/extensions-shared-constants.test.mjs`
+fails if either row leaves it or the template grader's list stops naming the same seven APIs.
+`Extension/Full_Screen_Shot/publish/package.node.js` no longer scans anything: its `main()` and
+`verifyPackage()` were a packer no workflow ran, and they are retired. The paragraph above is the
+record of the day the hole was open.
+
 **Not yet enforced at runtime — say so out loud.** The intended second half is a real-browser pass
 that intercepts every request the extension's contexts make and asserts the only schemes seen are
 `chrome-extension:`, `data:` and `blob:`. **No such check exists in this repository today.** Do not be
@@ -71,6 +78,18 @@ intercepts no requests. A static scan proves no network *API* is present in the 
 is strong, but it is a claim about source text and not an observation of behaviour. Until the runtime
 audit is written, treat P1 as "gated at the package, unverified at run time" — and do not let a
 listing say otherwise.
+
+⏱ **2026-09-24 (G11): the runtime audit exists, for FullShot, on Chromium.**
+`Extension/Full_Screen_Shot/test/e2e/network-audit.mjs` runs the PACKED extension, opens every
+extension page and one real capture, records the DevTools Network log of each page, every call to a
+network API (including the ones a Network log never shows, such as `RTCPeerConnection`) and every CSP
+violation, and fails on anything outside `chrome-extension:`, `data:` and `blob:`. Two sentinels make
+it refuse (exit 2) rather than pass when its own instrument is off. It runs in the `e2e-suite` job,
+which is label-gated (`run-e2e`) and weekly, not on every push. What it does NOT cover, said out loud:
+the service worker's top-level code has run before any driver reaches it, so a request made at
+worker boot is graded by the static scan and `test/background-sim.node.js` only; and Firefox is
+covered by `test/e2e/gecko-smoke.mjs` (no violations, no network-API call per page), not by a
+Network log.
 
 ---
 

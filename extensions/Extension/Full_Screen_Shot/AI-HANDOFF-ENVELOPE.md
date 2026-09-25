@@ -585,6 +585,16 @@ no clipboard size ceiling was reached at the sizes this product can produce.
 The probes are not in the repository; they are reproducible from §9's table, which is the part that
 matters.
 
+**2026-09-24: two probes are in the repository now** (O-FIREFOX-BUILD-NEVER-RUN-IN-A-BROWSER, limbs
+3 and 4). Both run the PACKED add-on (`test/e2e/packed-lib.mjs`: the zip `scripts/pack.mjs` builds,
+plus `tabs`, `<all_urls>` and `clipboardRead` for the driver — never `clipboardWrite`), and both READ
+THE CLIPBOARD BACK instead of spying on the write.
+
+| engine | suite | what it measures | measured |
+|---|---|---|---|
+| Chromium | `test/e2e/real-copy.mjs` | the result page's Copy button, clicked, read back as `image/png` | 2026-09-24, Chromium build 1194 headless on Linux (the draft sandbox): exit 0; `image/png` + `text/plain` on the clipboard 318 ms after the click, 974×1180 from a 1242×1505 canvas (the handoff's export fit, same aspect) |
+| Firefox | `test/e2e/gecko-clipboard.mjs` | `fsCopyBlobToClipboard` in a user activation, per size in `test/e2e/clipboard-expect.json`, with click-to-write ms | **UNMEASURED.** Written without a Firefox; the first `e2e-suite` run on the runner's Firefox is the measurement, and its run id, Firefox version and per-size table go on the next line |
+
 ---
 
 ## 14. FullShot's own conformance, as of this document

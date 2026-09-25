@@ -66,12 +66,19 @@ const stripJsLineComments = s => s.replace(/^[ \t]*\/\/.*$/gm, ' ');
    used only where the loss can make a check fail, never pass. */
 const stripJsComments = s => stripJsLineComments(s).replace(/\/\*[\s\S]*?\*\//g, ' ');
 
-/* Every <style> block of a page, concatenated. These pages carry their layout
-   inline rather than in a second stylesheet, so this IS the page's CSS. */
+/* A page's OWN CSS: every stylesheet it links other than the shared common.css,
+   then any <style> block it still carries, concatenated. Until 2026-09-24 these
+   pages carried their layout in one inline <style> block each; it moved into
+   pages/<page>.css so the CSP can say style-src 'self', and this reads it there.
+   The <style> half is kept so a block that comes back is still graded here
+   (policy-check.mjs fails it separately). */
 function pageCss(file) {
   const html = read(file);
-  return (html.match(/<style[^>]*>[\s\S]*?<\/style>/gi) || [])
-    .map(b => b.replace(/<\/?style[^>]*>/gi, '')).join('\n');
+  const dir = path.posix.dirname(file);
+  const linked = [...html.matchAll(/<link\b[^>]*\bhref="([^"]+\.css)"[^>]*>/gi)]
+    .map(m => path.posix.join(dir, m[1])).filter(f => f !== 'pages/common.css');
+  return linked.map(read).concat((html.match(/<style[^>]*>[\s\S]*?<\/style>/gi) || [])
+    .map(b => b.replace(/<\/?style[^>]*>/gi, ''))).join('\n');
 }
 
 function tagAttrs(body) {
@@ -679,7 +686,7 @@ console.log('\n=== a live region, so finishing and failing are not silent ===');
        outline colour still gets a numbered badge on each block and a numbered
        button that jumps to it. */
     check('...and each mark carries a number, so it is not conveyed by colour alone',
-      /review-badge/.test(rjs) && /reviewMarkLabel/.test(rjs) && /review-badge/.test(html),
+      /review-badge/.test(rjs) && /reviewMarkLabel/.test(rjs) && /review-badge/.test(pageCss('pages/result.html')),
       '');
     /* The outline layer is decoration over an image the person is judging; the
        information is in the numbered list beside it. */

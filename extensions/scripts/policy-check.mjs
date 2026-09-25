@@ -484,7 +484,17 @@ const NETWORK = [
   { name: 'WebSocket', re: /\bWebSocket\b/g },
   { name: 'EventSource', re: /\bEventSource\b/g },
   { name: 'navigator.sendBeacon', re: /\bnavigator\s*\.\s*sendBeacon\b/g },
-  { name: 'Navigator.prototype.sendBeacon', re: /\bsendBeacon\s*\(/g }
+  { name: 'Navigator.prototype.sendBeacon', re: /\bsendBeacon\s*\(/g },
+  /* THE TWO BELOW JOINED 2026-09-24 (G3), FROM THE PACKER THAT USED TO GRADE THEM.
+     publish/package.node.js's verifyPackage() carried a NET regex that named both,
+     and it ran only when somebody ran that packer by hand — no CI job ever did. It
+     is retired, so the names live here, in the gate CI runs on every PR.
+     RTCPeerConnection opens a peer-to-peer channel (and its ICE gathering talks to
+     STUN servers) with no fetch in sight; a SharedWorker is a script context whose
+     own network calls this scan never reads. The vendor-prefixed constructors are
+     the same object under an older name, so the pattern takes the prefix too. */
+  { name: 'RTCPeerConnection', re: /\b(?:webkit|moz)?RTCPeerConnection\b/g },
+  { name: 'SharedWorker', re: /\bSharedWorker\b/g }
 ];
 
 const allow = Array.isArray(tool.policy.networkAllowlist) ? tool.policy.networkAllowlist : null;
@@ -795,7 +805,11 @@ if (typeof cspDeclared === 'string') {
    RFC 7386 null member, deliberately, so the AMO build keeps the strict MV3
    default. That is recorded in the tool's own tool.json and is not this gate's
    subject: nothing below reads the overlay, and a Firefox package carrying no
-   CSP is not a finding here. */
+   CSP is not a finding here.
+   ⏱ 2026-09-24 (G8): no longer so. The null member is gone, the Firefox package
+   inherits this policy, and block 1c after this one fails an overlay that
+   names content_security_policy at all. This gate still grades manifest.json;
+   1c is what makes that the policy of both packages. */
 const CSP_POSTURE = [
   { name: 'script-src', intent: ["'self'"], fallback: ['default-src'],
     why: 'packaged script only. A remote or inline source here is the MV3 remote-code rule broken at the browser, where the scans above cannot see it.' },
@@ -822,7 +836,12 @@ const CSP_POSTURE = [
   { name: 'script-src-attr', intent: ["'self'"], fallback: ['script-src', 'default-src'],
     why: 'preferred over script-src for inline event-handler attributes. \'self\' does not permit them; \'unsafe-inline\' or a hash does, and that widening would be invisible to a script-src-only reading.' },
   { name: 'worker-src', intent: ["'self'"], fallback: ['child-src', 'script-src', 'default-src'],
-    why: 'a Worker is a second script context with its own fetch. Its fallback runs through child-src BEFORE script-src, so a child-src opened for framing silently opens workers too.' }
+    why: 'a Worker is a second script context with its own fetch. Its fallback runs through child-src BEFORE script-src, so a child-src opened for framing silently opens workers too.' },
+  /* GRADED FROM 2026-09-24 (O-FULLSHOT-CSP-HAS-NO-DEFAULT-SRC). It sat in
+     UNMODELLED below until the pages stopped carrying inline CSS: the gate above
+     ("no inline CSS in packaged HTML") is what makes 'self' the whole intent. */
+  { name: 'style-src', intent: ["'self'"], fallback: ['default-src'],
+    why: 'packaged stylesheets only. \'unsafe-inline\' re-admits the <style> blocks and style="" attributes the packaged-HTML gate refuses, and a remote host is a stylesheet fetched on every page open — a beacon, and CSS that can read attribute values back out through url().' }
 ];
 /* Directive -> where its intended value is ALREADY declared. Anything named
    here must never appear in CSP_POSTURE. */
@@ -837,7 +856,8 @@ const POSTURE_ELSEWHERE = new Map([
    chains here rather than in prose is the point: a fallback list in a comment
    is a claim, and this one is executed. */
 const UNMODELLED = [
-  { name: 'style-src', fallback: ['default-src'] },
+  /* style-src left this list for CSP_POSTURE on 2026-09-24; its two children
+     stay, and inherit it. */
   { name: 'style-src-elem', fallback: ['style-src', 'default-src'] },
   { name: 'style-src-attr', fallback: ['style-src', 'default-src'] },
   { name: 'font-src', fallback: ['default-src'] },
@@ -1091,20 +1111,62 @@ const CLOSED_SOURCE = new Set(["'self'", 'data:', 'blob:', 'filesystem:']);
        note above rather than warned about. */
     const war = Array.isArray(mf.web_accessible_resources) ? mf.web_accessible_resources.length : 0;
     const noUmbrella = unrestricted.filter(n => n !== 'frame-ancestors');
+    /* A FAILURE SINCE 2026-09-24 (O-FULLSHOT-CSP-HAS-NO-DEFAULT-SRC). It was a
+       warning while Extension/Full_Screen_Shot declared no default-src and the
+       fix waited on its pages losing their inline CSS; both landed together, so
+       the one tool this family ships now carries the umbrella, and a manifest
+       that drops it again is a regression rather than a coverage statement. The
+       text below is the warning's, kept, because it still says what is wrong. */
     if (noUmbrella.length) {
-      r.warn(noUmbrella.length + ' CSP directive(s) this gate does not model are UNRESTRICTED',
+      r.fail(noUmbrella.length + ' CSP directive(s) unrestricted: this gate does not model them and nothing declared covers them',
         noUmbrella.join(', ') + '\n' +
         'None of them is declared, none has a declared fallback, and this manifest declares NO\n' +
         'default-src — so the browser permits everything for each of them on this tool\'s extension\n' +
-        'pages. This is a COVERAGE STATEMENT, not a regression: no gate here ever graded them, and\n' +
-        'saying so is the point. `default-src \'self\'` in manifest.json closes all ' + noUmbrella.length + ' in one line and\n' +
+        'pages. No gate here grades them against an intent, and until 2026-09-24 this was only a\n' +
+        'warning. `default-src \'none\'` in manifest.json closes all ' + noUmbrella.length + ' in one line and\n' +
         'changes nothing about the ' + CSP_POSTURE.length + ' directives graded above.\n' +
-        'A warning rather than a failure: the fix is an edit to manifest.json, the packaged-HTML gate\n' +
-        'below already refuses a remote subresource in a shipped page, and frame-ancestors — absent\n' +
-        'here too, with no fallback in any manifest — is stated in the note above instead, because ' +
+        'frame-ancestors — absent here too, with no fallback in any manifest — is stated in the note\n' +
+        'above instead of failing, because ' +
         (war ? war + ' web_accessible_resources entry/entries exist so a web page could frame them'
              : 'this manifest declares no web_accessible_resources, so no web page can frame these pages at all') + '.');
+    } else {
+      r.pass('0 CSP directive(s) unrestricted',
+        'every directive this gate does not model resolves to a declared source (frame-ancestors aside; see the note)');
     }
+  }
+}
+
+/* ---------------- 1c. the Firefox package carries the same CSP (G8) ----------------
+   2026-09-24. Everything above grades manifest.json, which is the Chromium
+   manifest. Until this date publish/manifest.firefox.json deleted
+   content_security_policy again for Gecko with an RFC 7386 null member, so the
+   AMO build ran every extension page under Firefox's default policy: no
+   connect-src, no img-src, no form-action — the posture above held in one
+   browser. An RFC 7386 patch that does not NAME a member leaves it inherited,
+   so the question is asked of the patch itself: it must not carry
+   content_security_policy at all, null or otherwise. That is exact, and it
+   needs no second merge implementation here. publish/verify-firefox-package.
+   node.js asks the same question of the MERGED manifest and of a built zip. */
+{
+  const ovRel = tool.targets && tool.targets.firefox && tool.targets.firefox.overlay;
+  if (typeof ovRel === 'string' && ovRel) {
+    const p = readJson(path.join(tool.dirAbs, ovRel));
+    if (p.error || p.value === null || typeof p.value !== 'object' || Array.isArray(p.value)) {
+      r.fail('the Firefox overlay can be read for its CSP', ovRel + ' is not a JSON object' + (p.error ? ' (' + p.error + ')' : '') +
+        ', so whether the Firefox package keeps this CSP cannot be graded.');
+    } else if (Object.prototype.hasOwnProperty.call(p.value, 'content_security_policy')) {
+      r.fail('the Firefox package inherits manifest.json\'s CSP',
+        ovRel + ' sets content_security_policy to ' + JSON.stringify(p.value.content_security_policy) + '.\n' +
+        (p.value.content_security_policy === null
+          ? 'Under RFC 7386 a null member DELETES the key, so the Firefox add-on ships with NO extension-page\n' +
+            'CSP and every directive graded above holds in Chromium only.'
+          : 'An overlay value REPLACES the Chromium policy for Firefox, and nothing above grades it.') +
+        '\nDelete the member from the overlay; an absent member inherits manifest.json\'s policy.');
+    } else {
+      r.pass('the Firefox package inherits manifest.json\'s CSP', ovRel + ' does not name content_security_policy');
+    }
+  } else {
+    r.note('no Firefox overlay is named in tool.json targets.firefox.overlay, so there is no second CSP to compare.');
   }
 }
 
@@ -1206,6 +1268,40 @@ const CLOSED_SOURCE = new Set(["'self'", 'data:', 'blob:', 'filesystem:']);
   if (links.length) {
     r.note('external <a href> link(s) (navigation, not a subresource — reported, not failed):');
     for (const l of links) r.note('  ' + l.rel + ':' + l.line + '  ' + l.name);
+  }
+}
+
+/* Inline CSS in packaged HTML (2026-09-24, O-FULLSHOT-CSP-HAS-NO-DEFAULT-SRC).
+   An extension page's CSS lives in FILES: the posture below grades style-src
+   'self', and under it the browser DROPS a <style> element and a style=""
+   attribute without a word — the page renders unstyled and every gate here
+   stays green. templates/tool/pages/options.html has said so in a comment since
+   the template was written; this is the line that enforces it. HTML comments
+   are blanked first, so a sentence ABOUT a <style> block is not one. The tag
+   body is read with the same quote-aware pattern as TAG above, so a '>' inside
+   a quoted value cannot end the tag early. */
+{
+  const hits = [];
+  const ANY_TAG = /<\s*([a-zA-Z][a-zA-Z0-9-]*)\b((?:"[^"]*"|'[^']*'|[^>"']|"(?![^"]*")|'(?![^']*'))*)>/g;
+  const STYLE_ATTR = /(?:^|[\s"'/])style\s*=/i;
+  for (const rel of htmlFiles) {
+    const src = raw(rel);
+    const code = src.replace(/<!--[\s\S]*?-->/g, c => c.replace(/[^\n]/g, ' '));
+    for (const m of code.matchAll(ANY_TAG)) {
+      const tag = m[1].toLowerCase();
+      if (tag === 'style') hits.push({ rel, name: '<style> element', line: lineOf(src, m.index), text: lineText(src, m.index) });
+      else if (STYLE_ATTR.test(m[2] || '')) hits.push({ rel, name: '<' + tag + ' style="...">', line: lineOf(src, m.index), text: lineText(src, m.index) });
+    }
+  }
+  if (hits.length) {
+    r.fail('no inline CSS in packaged HTML',
+      hits.length + ' inline style(s) in the shipped pages:\n' + hits.map(fmt).join('\n') +
+      '\n\nMove each into the page\'s own stylesheet (pages/<page>.css) and use a class or an id. Under\n' +
+      'style-src \'self\' the browser ignores inline CSS, so this is a page that renders wrong while\n' +
+      'every scan passes.');
+  } else {
+    passOverSet('no inline CSS in ' + htmlFiles.length + ' packaged page(s)', 'no <style> element, no style="" attribute',
+      htmlFiles.length, 'page(s)', shippable.filter(isHtml).length);
   }
 }
 

@@ -31,6 +31,29 @@ Exit code 0 = all pass. Inspect the stitched images in `test/e2e/out/`.
   budget, sticky-bottom bar with visibility override, inner panel + iframes,
   deep + bottom markers, restore integrity.
 
+## The packed-tree suites (2026-09-24, EXT-5)
+
+Four suites run what `scripts/pack.mjs` BUILDS, not the source tree. `packed-lib.mjs` packs into a temp
+`--out`, adds exactly `tabs`, `host_permissions <all_urls>` and `clipboardRead` to the unpacked
+manifest (never `clipboardWrite`), and exits 2 if the manifest delta is anything else or if any other
+file's bytes differ from the zip. Every page they open carries a CSP-violation and network-API
+recorder (`PAGE_RECORDER`).
+
+| suite | browser | what it proves | exit 2 when |
+|---|---|---|---|
+| `network-audit.mjs` (G11) | Chromium | every extension page and one capture reach nothing outside `chrome-extension:`, `data:`, `blob:`; no network-API call; no CSP violation | sentinel A (a packaged icon, in the DevTools Network log) or sentinel B (a `fetch` the recorder and the CSP listener must both see) is missing |
+| `real-copy.mjs` | Chromium | the result page's Copy button puts an `image/png` on the REAL clipboard, read back | the clipboard already held an image |
+| `gecko-smoke.mjs` | Firefox | AMO's package installs over WebDriver BiDi, `background.js` answers a page, each page's own stylesheet is applied under the inherited CSP | no Firefox, Firefox < 140, or BiDi refuses install, navigation or script |
+| `gecko-clipboard.mjs` | Firefox | `fsCopyBlobToClipboard` per size in `clipboard-expect.json`, read back, with click-to-write ms | as above, or no size graded |
+
+The Firefox pair drives the Firefox on the runner image (`Firefox on the image` step in
+`.github/workflows/extensions.yml`) through `bidi-lib.mjs`: raw WebDriver BiDi over Node's global
+`WebSocket`, with no new dependency. The add-on's `moz-extension://` host is pinned through the
+profile's `extensions.webextensions.uuids` pref. The e2e-suite step picks every one of them up
+because no other file imports it; `packed-lib.mjs` and `bidi-lib.mjs` are libraries for the same
+reason. Local Chromium: `FS_E2E_CHROMIUM=<path to chrome> node network-audit.mjs`. Local Firefox:
+`FS_E2E_FIREFOX=<path to firefox> node gecko-smoke.mjs`.
+
 ## The redact block captures the page TWICE — on purpose
 
 `redact-e2e.html` is captured once with `redactPII` **off** (`out/redact-baseline.png`)
