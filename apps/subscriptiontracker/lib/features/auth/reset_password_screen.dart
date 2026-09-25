@@ -7,7 +7,7 @@ import 'package:nikatru_design_system/nikatru_design_system.dart'
 
 import '../../l10n/app_localizations.dart';
 import '../../state/providers.dart';
-import 'auth_error_text.dart';
+import 'auth_error_sentence.dart';
 
 /// Where a password-reset link lands — the half of the feature that did not
 /// exist.
@@ -124,14 +124,12 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
     try {
       await auth.updatePassword(newPassword: _password.text);
       if (mounted) setState(() => _done = true);
-    } on core.AuthFailure catch (e) {
+    } catch (e) {
       // NOT captcha-gated — `updatePassword` is not one of the six gated routes —
       // but it leaked the server's raw English exactly like the two that are.
-      if (mounted) {
-        setState(() => _error = authErrorText(AppLocalizations.of(context), e));
-      }
-    } catch (e) {
-      if (mounted) setState(() => _error = '$e');
+      // ⏱ 2026-09-24 — ONE arm now, and the failure carries GoTrue's reasons,
+      // so a breached password reads `passwordBreached` here too.
+      if (mounted) setState(() => _error = authErrorSentence(context, e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }

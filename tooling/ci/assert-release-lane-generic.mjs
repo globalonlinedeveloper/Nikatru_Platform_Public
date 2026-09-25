@@ -419,6 +419,17 @@ const CLASSIFIED_ELSEWHERE = new Map([
       'against the workspace app set would compare a proof harness against the release set. Row ' +
       'O-GLITCHTIP-FLUTTER-SYMBOLICATION-UNPROVEN.',
   ],
+  [
+    'rollback.yml',
+    'an attended, dispatch-only RE-PROMOTION: it puts back a Pages deployment or Worker version a ledger ' +
+      'Deployment already recorded. It builds no app, produces no release artifact and names no app id: the ' +
+      'unit is a dispatch input, resolved against tooling/channel-register.json at run time by ' +
+      'tooling/ops/rollback.mjs, so any app\'s `<app>-web` is taken the same way. R-1 would carry it in the ' +
+      'denominator as a permanent empty-set pass, the reason already written out for redeploy-stranded.yml. ' +
+      'The owning stage is stage 14 ops, through the duty row `duty.workflow.rollback.yml` in ' +
+      'tooling/ops/register.json (row O-DEPLOY-IS-NOT-ONE-GATED-LANE, limb 4). What holds its behaviour ' +
+      'correct is tooling/ci/test/rollback.test.mjs. Classified 2026-09-25, the round the workflow landed.',
+  ],
 ]);
 
 // ── the workflow set, anchored to what git tracks ────────────────────────────

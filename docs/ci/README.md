@@ -571,6 +571,7 @@ naming the job it belonged to and the line it sat above.
 | [`ops-watch.md`](ops-watch.md) | `.github/workflows/ops-watch.yml` | the alarm clock, twelve cron slots and one durable issue |
 | [`redeploy-stranded.md`](redeploy-stranded.md) | `.github/workflows/redeploy-stranded.yml` | re-entering a deploy lane its own red ci-gate stranded, and never one that really failed |
 | [`renovate.md`](renovate.md) | `.github/workflows/renovate.yml` | dependency updates, and why the cron is daily against a weekly duty |
+| [`rollback.md`](rollback.md) | `.github/workflows/rollback.yml` | dispatch-only: a recorded Pages deployment or Worker version put back live, recorded at the commit it put back |
 | [`site-drift-repair.md`](site-drift-repair.md) | `.github/workflows/site-drift-repair.yml` | the post-merge sitemap repair no pre-merge lane can do |
 | [`store-screenshots.md`](store-screenshots.md) | `.github/workflows/store-screenshots.yml` | the live Play capture, proposed for review rather than pushed |
 | [`submit-appstore.md`](submit-appstore.md) | `.github/workflows/submit-appstore.yml` | the Apple dry run, unsigned until a distribution certificate is issued (the account is active) |

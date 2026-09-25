@@ -4,6 +4,7 @@ import 'package:nikatru_chassis_screens/auth/legal_consent_fields.dart';
 import 'package:nikatru_chassis_screens/auth/reaccept_terms_screen.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
+import 'support/raw_vendor_error.dart';
 import 'support/width_harness.dart';
 
 /// `ReacceptTermsView` — the interstitial every signed-in user meets when
@@ -129,6 +130,8 @@ void main() {
       expect(out, 1);
     });
 
+    // ⏱ 2026-09-24 — SHOWN, and MAPPED: this asserted the exception's own text
+    // appeared, which is the defect the shared mapper removes.
     testWidgets('a sign-out that throws is SHOWN, not swallowed',
         (WidgetTester tester) async {
       await pumpChassis(
@@ -140,8 +143,29 @@ void main() {
       await tester.pumpAndSettle();
       expect(
         tester.widget<Text>(find.byKey(ReacceptTermsView.statusLine)).data,
-        contains('the network is gone'),
+        _en.authNetworkError,
+      );
+      expect(find.textContaining('StateError'), findsNothing);
+    });
+
+    // 🔴 THE `'$e'` ARM.
+    testWidgets('a NON-AuthFailure is mapped, never printed',
+        (WidgetTester tester) async {
+      await pumpChassis(
+        tester,
+        kPhone,
+        view(onSignOut: () async => throw const RawVendorError()),
+      );
+      await tester.tap(find.byKey(ReacceptTermsView.signOutButton));
+      await tester.pumpAndSettle();
+      expect(find.textContaining(rawVendorFragment), findsNothing);
+      expect(
+        tester.widget<Text>(find.byKey(ReacceptTermsView.statusLine)).data,
+        _en.authCaptchaFailed,
       );
     });
   });
 }
+
+/// ⏱ 2026-09-24 — the sentences the shared `authErrorText` answers with.
+final ChassisLocalizations _en = lookupChassisLocalizations(const Locale('en'));

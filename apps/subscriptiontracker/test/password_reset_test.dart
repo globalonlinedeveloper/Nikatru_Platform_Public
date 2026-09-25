@@ -51,6 +51,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
     show InMemoryAuthRepository;
 import 'package:nikatru_core/nikatru_core.dart' as core;
+import 'package:nikatru_design_system/nikatru_design_system.dart'
+    show ChassisLocalizations;
 import 'package:subscriptiontracker/core/router.dart';
 import 'package:subscriptiontracker/features/auth/login_screen.dart';
 import 'package:subscriptiontracker/features/auth/reset_password_screen.dart';
@@ -130,8 +132,13 @@ Future<String> _pump(
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: c,
+      // The delegate list `SublyApp` composes: an auth failure reads the chassis
+      // strings since the error mapper became shared (2026-09-24).
       child: MaterialApp.router(
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        localizationsDelegates: <LocalizationsDelegate<dynamic>>[
+          ...AppLocalizations.localizationsDelegates,
+          ChassisLocalizations.delegate,
+        ],
         supportedLocales: AppLocalizations.supportedLocales,
         routerConfig: c.read(routerProvider),
       ),

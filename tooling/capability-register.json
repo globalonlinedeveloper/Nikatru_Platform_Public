@@ -96,7 +96,7 @@
       }
     },
     "cloudflare": {
-      "surface": "Workers runtime, D1 (platform_db, subscriptiontracker_db), KV (config, JWKS cache, signups), the events/config/money rate-limiters, and ONE R2 bucket. ~~NO R2 surface as of 2026-08-01~~ — WITHDRAWN 2026-09-05: `nikatru-backups` is bound for the nightly off-vendor export of D1 and KV (research/revamp-2026-09-05/06 sec 4.2). It is the LEAST sticky surface here, not a new dependency — R2 is S3-compatible, so rclone reads it today and would read a replacement tomorrow, and the objects are gzipped JSON lines that nothing but our own script parses.",
+      "surface": "Workers runtime, D1 (platform_db, subscriptiontracker_db), KV (config, JWKS cache, signups, the signed-out-session list), the events/config/money rate-limiters, and ONE R2 bucket. ~~NO R2 surface as of 2026-08-01~~ — WITHDRAWN 2026-09-05: `nikatru-backups` is bound for the nightly off-vendor export of D1 and KV (research/revamp-2026-09-05/06 sec 4.2). It is the LEAST sticky surface here, not a new dependency — R2 is S3-compatible, so rclone reads it today and would read a replacement tomorrow, and the objects are gzipped JSON lines that nothing but our own script parses.",
       "stickiness": "★★★ — portability-standard.md names KV/DO as a sticky point.",
       "surfaces": [
         "PLATFORM_DB",
@@ -104,6 +104,7 @@
         "APP_DB",
         "CONFIG_KV",
         "JWKS_CACHE",
+        "SESSION_REVOKED",
         "SIGNUPS",
         "EVENTS_LIMITER",
         "EVENTS_CEILING_LIMITER",
@@ -383,6 +384,7 @@
     "MONEY_ENVIRONMENT": "OUR OWN declaration of which money world a deploy is — exactly `live` or `sandbox`, [pipeline 5]M-12. No external system is behind it: it exists because NEITHER the notification payload NOR the destination secret distinguishes sandbox from live (developer.paddle.com documents one `pdl_ntfset_` prefix for both), so the deploy has to say. POST /v1/money/:provider answers 503 when it is absent or unrecognised — a default in either direction would silently honour sandbox money as real, or silently stop honouring real money. Added 2026-08-01.",
     "MONEY_CEILING_LIMITER": "OUR OWN Cloudflare rate-limit namespace for POST /v1/money/:provider, keyed `edge:<colo>:<asn>`. Not a vendor surface — it is the same Workers Rate Limiting binding already claimed under `cloudflare`'s platform surfaces, given its own namespace so a flood of forged notifications cannot exhaust the budget analytics ingest and config resolution depend on. Added 2026-08-01.",
     "EXT_TOKEN_CEILING_LIMITER": "OUR OWN Cloudflare rate-limit namespace for POST /v1/ext/token (the browser extension's one-time-code exchange, O-EXTENSION-ACCOUNT-CHECK-UNBUILT), keyed `edge:<colo>:<asn>` — never an IP. Not a vendor surface — it is the same Workers Rate Limiting binding already claimed under `cloudflare`'s platform surfaces, given its own namespace so a code-guessing flood cannot exhaust the budget of analytics ingest, config resolution or the money rail. Added 2026-09-24.",
+    "SESSIONS_LIMITER": "OUR OWN Cloudflare rate-limit namespace for the four /v1/sessions routes (AUTH-REVOKE-AT-WORKERS: list your sessions, sign one out, sign out everywhere, sign out the others), keyed `sessions:<sub>` on the VERIFIED account id. Not a vendor surface — it is the same Workers Rate Limiting binding already claimed under `cloudflare`'s platform surfaces, given its own namespace (1011) so it bounds the revocation list's KV writes and the service-role RPC without spending any other route's budget. Added 2026-09-25.",
     "CHECKOUT_RETURN_URL": "OUR OWN return address for a hosted checkout — the page the merchant of record sends the buyer back to. Not a vendor surface: it is a URL WE host and WE choose, and it carries no credential. It exists as a define rather than a constant because the web case is a full-page navigation AWAY from a canvas-rendered Flutter app, so the returning session is a cold start that has to land somewhere that knows a purchase was in flight (G-43's fragment-vs-query lesson, for auth, is the same shape). Added 2026-08-01, [pipeline 5]M-6.",
     "BOXB_REACH_URLS": "our own Box B hostnames, probed from Cloudflare because the GlitchTip monitors that watch Box B run ON Box B (O-BOXB-OUTAGE-INVISIBLE-TO-GLITCHTIP)",
     "BOXA_REACH_URLS": "our own Box A URLs, probed over HTTP from Cloudflare by boxaReachability so Box A reachability no longer depends on the laptop being open (O-LAPTOP-ROUTINES-DIE-OVERNIGHT). No default: absent is a recorded not-configured row. Added 2026-09-18.",

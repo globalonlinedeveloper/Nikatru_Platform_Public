@@ -4,6 +4,7 @@ import 'package:nikatru_chassis_screens/auth/sign_in_screen.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
+import 'support/raw_vendor_error.dart';
 import 'support/width_harness.dart';
 
 /// `SignInView` — the preflight, the OAuth gate and the deletion notice.
@@ -128,20 +129,43 @@ void main() {
       expect(sent, <String>['someone@example.com']);
     });
 
-    testWidgets('a failure from the seam lands UNDER the fields',
+    // ⏱ 2026-09-24 — it lands MAPPED. This case asserted the server's words
+    // appeared verbatim, which is the defect it now rules out.
+    testWidgets('a failure from the seam lands UNDER the fields, mapped',
         (WidgetTester tester) async {
       await pumpChassis(
         tester,
         kPhone,
         view(
-          onSignIn: (String _, String __) async =>
-              throw core.AuthFailure('wrong password'),
+          onSignIn: (String _, String __) async => throw core.AuthFailure(
+            'Invalid login credentials',
+            code: 'invalid_credentials',
+          ),
         ),
       );
       await fill(tester);
       await tester.tap(find.byKey(SignInView.submitButton));
       await tester.pumpAndSettle();
-      expect(find.text('wrong password'), findsOneWidget);
+      expect(find.text(_en.authIncorrect), findsOneWidget);
+      expect(find.textContaining('Invalid login credentials'), findsNothing);
+    });
+
+    // 🔴 THE `'$e'` ARM. `signInWithEmail` let the vendor's own exception out
+    // until 2026-09-25, and this view printed it whole.
+    testWidgets('a NON-AuthFailure is mapped, never printed',
+        (WidgetTester tester) async {
+      await pumpChassis(
+        tester,
+        kPhone,
+        view(
+          onSignIn: (String _, String __) async => throw const RawVendorError(),
+        ),
+      );
+      await fill(tester);
+      await tester.tap(find.byKey(SignInView.submitButton));
+      await tester.pumpAndSettle();
+      expect(find.textContaining(rawVendorFragment), findsNothing);
+      expect(find.text(_en.authCaptchaFailed), findsOneWidget);
     });
   });
 
@@ -263,3 +287,6 @@ void main() {
     expect(taps, 1);
   });
 }
+
+/// ⏱ 2026-09-24 — the sentences the shared `authErrorText` answers with.
+final ChassisLocalizations _en = lookupChassisLocalizations(const Locale('en'));

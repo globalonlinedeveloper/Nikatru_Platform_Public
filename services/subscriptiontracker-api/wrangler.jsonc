@@ -2,7 +2,7 @@
   // ───────────────────────────────────────────────────────────────────────────
   // Cloudflare Worker — subscriptiontracker-api. Wrangler v4 / jsonc (migrated from v3 toml).
   // CLONE CONTRACT: APP_DB is PER-APP; PLATFORM_DB + JWKS_CACHE +
-  // SUPABASE_URL are SHARED across every NIKATRU app (one entitlements table,
+  // SESSION_REVOKED + SUPABASE_URL are SHARED across every NIKATRU app (one entitlements table,
   // one identity project). Matches tooling/bricks/app __brick__ services template.
   //
   // Migrations: APP_DB only (services/subscriptiontracker-api/migrations = subscriptiontracker_db). The
@@ -82,7 +82,10 @@
   ],
   "kv_namespaces": [
     // Caches the Supabase JWKS document (cuts JWT-verify latency). Shared.
-    { "binding": "JWKS_CACHE", "id": "bcfcb1618d1a4bfd8d02f87d3d21010d" }
+    { "binding": "JWKS_CACHE", "id": "bcfcb1618d1a4bfd8d02f87d3d21010d" },
+    // The revocation list (`rev:<sub>`), READ ONLY here by
+    // src/middleware/auth.ts; services/platform writes it. Shared.
+    { "binding": "SESSION_REVOKED", "id": "aa46ad5002874231931cc5dc5b6e2904" }
   ],
 
   // ───────────────────────────────────────────────────────────────────────────

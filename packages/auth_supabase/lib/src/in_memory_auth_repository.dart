@@ -287,7 +287,13 @@ class InMemoryAuthRepository implements core.AuthRepository {
       throw core.AuthFailure('Your reset link is no longer valid.');
     }
     if (newPassword.length < core.kMinPasswordLength) {
-      throw core.AuthFailure('Password should be at least 8 characters');
+      // ⏱ 2026-09-25 — coded as the real repository's refusal is, so a screen
+      // reads `passwordTooShort` here too, never the uncoded `passwordTooWeak`.
+      throw core.AuthFailure(
+        'Password should be at least 8 characters',
+        code: core.AuthFailure.weakPassword,
+        reasons: const <String>[core.AuthFailure.reasonLength],
+      );
     }
     passwordsSet.add(newPassword);
     _changes.add(current);

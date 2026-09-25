@@ -586,6 +586,40 @@ const WIRE_CONTRACTS = [
       keys: ['app_id', 'reason', 'content_ref', 'content_excerpt', 'note'],
     },
   },
+  // ⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS — the four /v1/sessions routes
+  // (services/platform/src/routes/sessions.ts). Gaps, one per route, because the
+  // client half ships in the web PR AFTER this Worker deploys: the server must
+  // be live first. `absentFromDart` keeps each claim checked — the day that PR
+  // builds one of these paths, the gap becomes a false statement and this fails,
+  // which is exactly when its wire contract has to be pinned.
+  {
+    id: 'sessions-list',
+    kind: 'gap',
+    reason:
+      'NO CLIENT YET, AND IT IS A STATE RATHER THAN A CONSTRUCTION: the sessions list ships in the web PR after this Worker deploys. There is no released client of ours to break. The answer is `{sessions:[{id, current, createdAt, lastActiveAt, device}]}`, pinned by services/platform/test/sessions.test.ts until a client reads it.',
+    absentFromDart: '/v1/sessions',
+  },
+  {
+    id: 'sessions-revoke',
+    kind: 'gap',
+    reason:
+      'NO CLIENT YET: requestSessionRevocation ships in the web PR after this Worker deploys. Success is a 204 with no body; each refusal is a status with `{error}` (404 not_found, 409 current_session, 429 rate_limited, 503 sessions_unavailable), so what that PR pins is the status set.',
+    absentFromDart: '/v1/sessions/',
+  },
+  {
+    id: 'sessions-revoke-all',
+    kind: 'gap',
+    reason:
+      'NO CLIENT YET: sign-out-everywhere ships in the web PR after this Worker deploys. No request body; success is a 204 with no body, and a refusal is a status with `{error}` (429 rate_limited, 503 revocation_unavailable).',
+    absentFromDart: '/v1/sessions/revoke-all',
+  },
+  {
+    id: 'sessions-revoke-others',
+    kind: 'gap',
+    reason:
+      'NO CLIENT YET: sign-out-other-devices ships in the web PR after this Worker deploys. No request body; success is a 204 with no body, and a refusal is a status with `{error}` (409 current_session_unknown, 429 rate_limited, 503 sessions_unavailable or revocation_unavailable).',
+    absentFromDart: '/v1/sessions/revoke-others',
+  },
 ];
 
 /** Where limb 5's "no Dart client" claims are checked. Roots rather than the

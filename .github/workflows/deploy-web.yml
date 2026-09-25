@@ -385,4 +385,7 @@ jobs:
         working-directory: .
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node tooling/ci/record-deployment.mjs ${{ matrix.app }}-web ${{ steps.target.outputs.site_url }}
+          # why: the Pages deployment rollback.yml re-promotes (row
+          # O-DEPLOY-IS-NOT-ONE-GATED-LANE, limb 4). Through env:, never spliced into run:.
+          PAGES_DEPLOYMENT_ID: ${{ steps.deploy.outputs.pages-deployment-id }}
+        run: node tooling/ci/record-deployment.mjs ${{ matrix.app }}-web ${{ steps.target.outputs.site_url }} --pages-deployment-id "$PAGES_DEPLOYMENT_ID"

@@ -61,6 +61,21 @@
 //     → `version_code` joins the Deployment payload. REQUIRED on a row whose register entry
 //       carries a `versionCodeHighWater` block (android-play) and REFUSED on every other row;
 //       tooling/ci/read-ledger-version-code.mjs reads the largest one back for --play-floor.
+//   node tooling/ci/record-deployment.mjs <app>-web <url> --pages-deployment-id <id>
+//   node tooling/ci/record-deployment.mjs <service> <url> --wrangler-output-env <VAR>
+//   node tooling/ci/record-deployment.mjs <service> <url> --worker-version-id <id>
+//     → ⏱ 2026-09-25 · THE UNIT OF REVERT. Every payload carries `pages_deployment_id` and
+//       `worker_version_id`, null when the step had none — never omitted. A web record takes
+//       the Pages deployment id; a service record takes the Worker version id, read out of the
+//       `wrangler deploy` output in the named variable or given as-is. Either flag on the wrong
+//       kind of unit is REFUSED; an empty or unreadable id is a warning and a null, and the
+//       record is still written. tooling/ops/rollback.mjs reads them back.
+//   node tooling/ci/record-deployment.mjs <unit> <url> --rollback-of <ledger id> --ref <sha> <id flag> <id>
+//     → ⏱ 2026-09-25 · A RE-PROMOTION (rollback.yml). The record's `ref` and description name
+//       --ref, the commit that went back live, NOT GITHUB_SHA: plan-deploy.mjs reads the
+//       newest successful Deployment as what is live, and main's HEAD is not. The payload
+//       gains `rollback: true` and `rollback_of`. Web and service units only; --ref without
+//       --rollback-of, and --rollback-of without --ref, are REFUSED.
 //   env:  GH_TOKEN (or GITHUB_TOKEN), GITHUB_REPOSITORY, GITHUB_SHA
 //         GITHUB_API_URL — the real origin or loopback only (a test seam; see githubApiBase)
 //         ⏱ 2026-09-23 · GITHUB_WORKFLOW_REF, GITHUB_RUN_ID, GITHUB_RUN_ATTEMPT,
@@ -465,6 +480,141 @@ export function runIdentity(env = process.env) {
   return { payload: { workflow: wf[1], run_id, run_attempt, run_number }, missing };
 }
 
+// ── ⏱ 2026-09-25 · THE UNIT OF REVERT — row O-DEPLOY-IS-NOT-ONE-GATED-LANE, limb 4 ──
+// A SHA says what was built; it does not say which Cloudflare object serves it.
+// Re-promoting a known-good release (tooling/ops/rollback.mjs, run by
+// rollback.yml) needs the Pages DEPLOYMENT id or the Worker VERSION id that went
+// live, and until now the ledger held neither. Both keys are in every payload,
+// null when the step had none, so "this record cannot be re-promoted" is a value
+// a reader sees rather than a key it has to notice is missing.
+//
+// The id SHAPE is an assumption — a UUID. wrangler's own source writes both ids
+// as bare strings and no example of either is on disk, so an id that is not a
+// UUID is recorded as null with a warning, never refused: a deploy that
+// succeeded is never left unrecorded over its id.
+export const PUBLISHED_ID_KEYS = Object.freeze(['pages_deployment_id', 'worker_version_id']);
+export const CLOUDFLARE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Which id flag each kind of unit takes. A kind not named here publishes
+ *  nothing rollback.yml can re-promote, so it takes none. */
+export const PUBLISHED_ID_FLAGS = Object.freeze({
+  web: Object.freeze(['pages-deployment-id']),
+  service: Object.freeze(['wrangler-output-env', 'worker-version-id']),
+});
+const ALL_ID_FLAGS = [...new Set(Object.values(PUBLISHED_ID_FLAGS).flat())];
+
+/** PURE. The Worker version id out of `wrangler deploy` or `wrangler rollback`
+ *  output — the line `Current Version ID: <id>` both print — or null when there
+ *  is none, when it is not an id, or when two lines name different ids: a guess
+ *  between two versions is a rollback to the wrong one. */
+export function workerVersionIdFrom(output) {
+  const ids = new Set();
+  for (const m of String(output ?? '').matchAll(/Current Version ID:[ \t]*(\S+)/g)) ids.add(m[1].toLowerCase());
+  if (ids.size !== 1) return null;
+  const [id] = ids;
+  return CLOUDFLARE_ID.test(id) ? id : null;
+}
+
+/** PURE. `{ ids, warnings, refusal }` for one record of a unit of `kind`.
+ *  `flags` maps each id flag to its raw value, or null when it was not given;
+ *  `env` is where `--wrangler-output-env` names a variable. `ids` always
+ *  carries both PUBLISHED_ID_KEYS. A flag the kind does not take is a REFUSAL:
+ *  the call is wired to the wrong unit, and nothing is written. A flag whose
+ *  value is empty or not an id is a WARNING and a null id: the deploy happened
+ *  and its record must not be lost. No warning quotes the wrangler output — it
+ *  prints the Worker's vars. */
+export function publishedIds(kind, flags, env = process.env) {
+  const ids = { pages_deployment_id: null, worker_version_id: null };
+  const warnings = [];
+  const allowed = PUBLISHED_ID_FLAGS[kind] ?? [];
+  const given = ALL_ID_FLAGS.filter((f) => flags[f] !== null && flags[f] !== undefined);
+  const wrong = given.find((f) => !allowed.includes(f));
+  if (wrong) {
+    return {
+      ids,
+      warnings,
+      refusal:
+        `--${wrong} was given for a unit of kind "${kind}", which ${
+          allowed.length ? `takes ${allowed.map((f) => `--${f}`).join(' or ')}` : 'publishes nothing rollback.yml can re-promote'
+        }. An id filed under the wrong unit would re-promote the wrong thing.`,
+    };
+  }
+  if (given.includes('wrangler-output-env') && given.includes('worker-version-id')) {
+    return { ids, warnings, refusal: '--wrangler-output-env and --worker-version-id were both given; a record names one Worker version' };
+  }
+  const idOrWarn = (raw, what) => {
+    if (CLOUDFLARE_ID.test(raw)) return raw.toLowerCase();
+    warnings.push(raw === '' ? `the ${what} is empty` : `the ${what} is not an id (${raw.length} characters, not a UUID)`);
+    return null;
+  };
+  if (given.includes('pages-deployment-id')) {
+    ids.pages_deployment_id = idOrWarn(flags['pages-deployment-id'], 'Pages deployment id');
+  }
+  if (given.includes('worker-version-id')) {
+    ids.worker_version_id = idOrWarn(flags['worker-version-id'], 'Worker version id');
+  }
+  if (given.includes('wrangler-output-env')) {
+    const name = flags['wrangler-output-env'];
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+      return { ids, warnings, refusal: `--wrangler-output-env "${name}" is not an environment variable name` };
+    }
+    const output = env[name];
+    if (output === undefined || output === '') {
+      warnings.push(`${name} is ${output === undefined ? 'not set' : 'empty'}, so the deploy output named no Worker version`);
+    } else {
+      ids.worker_version_id = workerVersionIdFrom(output);
+      if (ids.worker_version_id === null) {
+        warnings.push(`the deploy output in ${name} (${output.length} characters) names no single \`Current Version ID:\``);
+      }
+    }
+  }
+  return { ids, warnings, refusal: null };
+}
+
+// ── ⏱ 2026-09-25 · A RE-PROMOTION RECORDS THE COMMIT THAT WENT BACK LIVE ──
+// rollback.yml puts an older Pages deployment or Worker version back, then
+// records it here. Recorded at GITHUB_SHA (main's HEAD, the build that was just
+// taken DOWN), the ledger would say the bad build is live: plan-deploy.mjs would
+// then plan "nothing to deploy" on the next push, and the rollback would outlive
+// the fix. So a rollback names the commit it put back, and says it is one.
+export const ROLLBACK_KINDS = Object.freeze(['web', 'service']);
+
+/** PURE. `{ sha, payload, refusal }` for the --rollback-of / --ref pair. Neither
+ *  given: `{ sha: null, payload: {} }` — an ordinary deploy record. */
+export function rollbackRecord(kind, rollbackOf, ref) {
+  const none = { sha: null, payload: {}, refusal: null };
+  if (rollbackOf === null && ref === null) return none;
+  if (rollbackOf === null) {
+    return {
+      ...none,
+      refusal:
+        '--ref was given without --rollback-of. A deploy records the commit it built (GITHUB_SHA); only a ' +
+        're-promotion names another one, and it says which ledger Deployment it re-promoted.',
+    };
+  }
+  if (ref === null) {
+    return {
+      ...none,
+      refusal:
+        '--rollback-of was given without --ref. Recorded at GITHUB_SHA, the ledger would name the build that was ' +
+        'just taken down as live, and plan-deploy.mjs would never roll forward past it.',
+    };
+  }
+  if (!/^[1-9]\d*$/.test(rollbackOf) || !Number.isSafeInteger(Number(rollbackOf))) {
+    return { ...none, refusal: `--rollback-of "${rollbackOf}" is not a ledger Deployment id (a whole number)` };
+  }
+  if (!/^[0-9a-f]{40}$/i.test(ref)) {
+    return { ...none, refusal: `--ref "${ref}" is not a full 40-character commit SHA` };
+  }
+  if (!ROLLBACK_KINDS.includes(kind)) {
+    return {
+      ...none,
+      refusal: `--rollback-of was given for a unit of kind "${kind}"; only a ${ROLLBACK_KINDS.join(' or ')} unit is re-promoted`,
+    };
+  }
+  return { sha: ref.toLowerCase(), payload: { rollback: true, rollback_of: Number(rollbackOf) }, refusal: null };
+}
+
 async function main() {
   const argv = process.argv.slice(2);
   const positional = [];
@@ -474,7 +624,8 @@ async function main() {
   }
   const [environment, environmentUrl] = positional;
   const repo = process.env.GITHUB_REPOSITORY;
-  const sha = process.env.GITHUB_SHA;
+  // ⏱ 2026-09-25 — replaced by --ref on a re-promotion (rollbackRecord, above).
+  let sha = process.env.GITHUB_SHA;
   const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
 
   if (!environment) return fail('no environment given — usage: record-deployment.mjs <environment> [url] [--state <s>] [--listing-url <u>]');
@@ -489,10 +640,16 @@ async function main() {
   let submittable = false;
   let versionCodeRaw = null;
   let recordsVersionCode = false;
+  let kind = null;
+  let idFlags = {};
+  let rollback = null;
   try {
     state = flagValue(argv, 'state');
     listingUrl = flagValue(argv, 'listing-url');
     versionCodeRaw = flagValue(argv, 'version-code');
+    idFlags = Object.fromEntries(ALL_ID_FLAGS.map((f) => [f, flagValue(argv, f)]));
+    const rollbackOf = flagValue(argv, 'rollback-of');
+    const ref = flagValue(argv, 'ref');
     if (state !== null && !STATES.includes(state)) {
       return fail(
         `--state "${state}" is not one of ${STATES.join(', ')}. A free-text state is a state nobody can ` +
@@ -528,7 +685,11 @@ async function main() {
     // and is reviewing it" from "the artifact exists and somebody still has to
     // upload it by hand". `=== false` rather than falsy, so a row that forgot the
     // field keeps the stricter submission rules rather than escaping them.
-    const isStore = resolved.channel.kind === 'store';
+    kind = resolved.channel.kind;
+    const isStore = kind === 'store';
+    rollback = rollbackRecord(kind, rollbackOf, ref);
+    if (rollback.refusal) return fail(rollback.refusal);
+    if (rollback.sha) sha = rollback.sha;
     const cannotSubmit = isStore && resolved.channel.submittable === false;
     submittable = resolved.channel.submittable === true;
     // ⏱ 2026-09-24 — does this row record the versionCode each upload consumes? Read from the
@@ -638,10 +799,21 @@ async function main() {
         'Drop the flag, or record the row\'s high-water block first.',
     );
   }
-  const payload =
-    identity.payload || versionCode !== null
-      ? { ...(identity.payload ?? {}), ...(versionCode !== null ? { version_code: versionCode } : {}) }
-      : null;
+  // ── ⏱ 2026-09-25 · WHICH PAGES DEPLOYMENT OR WORKER VERSION WENT LIVE (above) ──
+  const published = publishedIds(kind, idFlags, process.env);
+  if (published.refusal) return fail(published.refusal);
+  for (const w of published.warnings) {
+    console.log(
+      `::warning title=This Deployment names no re-promotable id::${w}. The record IS written, with the id null; ` +
+        'rollback.yml cannot re-promote this record.',
+    );
+  }
+  const payload = {
+    ...(identity.payload ?? {}),
+    ...(versionCode !== null ? { version_code: versionCode } : {}),
+    ...published.ids,
+    ...rollback.payload,
+  };
 
   // ── the transport: the real API, or a loopback test seam ─────────────────
   const transport = githubApiBase();
@@ -674,10 +846,12 @@ async function main() {
       // deployment to recover a field we were already writing; writing the
       // encoding here costs nothing and makes the cheap query the correct one.
       description,
-      // ⏱ 2026-09-23 — the run that wrote this record, by id. Omitted only on a
+      // ⏱ 2026-09-23 — the run that wrote this record, by id. Absent only on a
       // non-submittable channel run outside Actions; see RUN_IDENTITY_ENV.
       // ⏱ 2026-09-24 — plus `version_code` on a versionCodeHighWater row (above).
-      ...(payload ? { payload } : {}),
+      // ⏱ 2026-09-25 — plus both PUBLISHED_ID_KEYS, always, so the payload is
+      // never absent: a record with no id says so with two nulls.
+      payload,
       auto_merge: false,
       required_contexts: [],
       transient_environment: false,
@@ -698,6 +872,9 @@ async function main() {
     console.log(
       `ok  recorded ${environment} ${state} at ${sha.slice(0, 8)}` +
         `${versionCode !== null ? ` · versionCode ${versionCode}` : ''}` +
+        `${payload.pages_deployment_id ? ` · Pages deployment ${payload.pages_deployment_id}` : ''}` +
+        `${payload.worker_version_id ? ` · Worker version ${payload.worker_version_id}` : ''}` +
+        `${payload.rollback ? ` · re-promoted from ledger Deployment ${payload.rollback_of}` : ''}` +
         `${listingUrl ? ` · listing ${listingUrl}` : ''}${environmentUrl ? ` → ${environmentUrl}` : ''}`,
     );
 
@@ -740,6 +917,10 @@ async function main() {
               `GITHUB_RUN_ATTEMPT=${identity.payload.run_attempt} GITHUB_RUN_NUMBER=${identity.payload.run_number}`
           : `  This run carried no readable identity (${identity.missing.join(', ')}), so the recovery record will carry no run payload.`,
       );
+      // ⏱ 2026-09-25 — and the id it published, as the flag a hand recovery takes:
+      // the variable --wrangler-output-env named is gone once this job ends.
+      if (payload.pages_deployment_id) console.error(`  Keep its id: --pages-deployment-id ${payload.pages_deployment_id}`);
+      if (payload.worker_version_id) console.error(`  Keep its id: --worker-version-id ${payload.worker_version_id}`);
       process.exitCode = 2;
       return;
     }
