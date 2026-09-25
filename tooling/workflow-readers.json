@@ -63,13 +63,13 @@
       "path": "tooling/ci/assert-deploy-triggers-deploy.mjs",
       "property": "refuses-blind",
       "evidence": "COVERAGE LOST: no workflow files under",
-      "reads": "each workflow with a paths filter and a push.paths trigger"
+      "reads": "each workflow and the deploy unit it hands plan-deploy.mjs; while a deploy still carries push.paths or a paths filter, those too"
     },
     {
       "path": "tooling/ci/assert-deploy-triggers.mjs",
       "property": "refuses-blind",
       "evidence": "COVERAGE LOST — no .github/workflows under",
-      "reads": "each deploy workflow and the paths that trigger it"
+      "reads": "each Flutter workflow that plans a deploy unit: its build steps and the scripts it runs"
     },
     {
       "path": "tooling/ci/assert-discovery-surface.mjs",

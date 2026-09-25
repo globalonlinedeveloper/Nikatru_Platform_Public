@@ -369,7 +369,7 @@ function tagItems(lines, at, keyIndent, rest) {
  *   `\`   the next character is literal
  * Every other character, `.` included, is itself.
  *
- * 🔴 NOT `globToRe` in assert-deploy-triggers.mjs. That one is a path glob: it
+ * 🔴 NOT the path glob `globToRe` assert-deploy-triggers.mjs once carried: it
  * escapes `+` and `[`, so `[0-9]+` — the shape the extension lane's tag filter
  * is written in — matches nothing, and it reads `?` as "any one character",
  * which is the shell's meaning and not GitHub's. A pattern this cannot read is

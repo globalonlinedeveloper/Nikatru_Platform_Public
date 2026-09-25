@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // ─────────────────────────────────────────────────────────────────────────────
-// assert-deploy-triggers.mjs — a path-filtered deploy must list every input that
+// assert-deploy-triggers.mjs — a Flutter deploy's unit must claim every input that
 // changes what it ships.
 //
 // 🔴 THE FAILURE IS A DEPLOY THAT DOES NOT HAPPEN, and nothing anywhere goes
@@ -20,12 +20,18 @@
 // is worth, and a trigger that omits a build input is a claim over a lane that
 // will not run.
 //
-// WHAT IT CHECKS. For every workflow that (a) builds Flutter and (b) filters its
-// push trigger by path, the filter must reach:
+// WHAT IT CHECKS [ADR 095 §4]. The deploy no longer decides on its own push
+// trigger: ci.yml calls it after ci-gate, and its plan step publishes a unit only
+// when a changed path matches that unit's globs in tooling/ci/lane-map.json
+// `deployUnits`. The miss above is the same miss one list over, so for every
+// workflow that (a) builds Flutter and (b) plans a unit
+// (`plan-deploy.mjs <environment>`), the unit's globs must claim — by
+// `globClaims`, the matcher the plan itself publishes on:
 //   · pubspec.yaml         — the workspace list: which packages resolve at all
 //   · pubspec.lock         — the one resolved dependency set the build compiles
 //   · tooling/versions.json — the single declaration this lane's pins are held
 //                             to [pipeline F-2]
+//   · catalog/apps.json    — the address the build is compiled for [ADR 075]
 //   · its own file          — or editing the build steps deploys nothing
 //   · every tooling/ci/*.mjs script the lane RUNS — DERIVED from the workflow
 //     text rather than hand-listed, so it extends itself when a step is added.
@@ -36,29 +42,31 @@
 //     to hold ci.yml's invocation list to the guard set.)
 //
 // ⚠️ COMMENTS ARE NOT CLAIMS, and this guard was written knowing its own subject
-// carries a prose block naming all three files. The scan strips comments before
-// looking, so the explanation above a `paths:` list can never satisfy the check
-// it explains — the same lesson assert-lane-coverage.mjs and check-site-
-// integrity.mjs each learned the hard way. `!`-negations and `paths-ignore:` are
-// honoured in the other direction: a required file EXCLUDED is not covered.
+// carries prose naming these files. The scan strips comments before looking, so
+// an explanation in the workflow can never satisfy the check it explains, and a
+// script or a plan named only in a comment is neither demanded nor graded — the
+// same lesson assert-lane-coverage.mjs and check-site-integrity.mjs each learned
+// the hard way. The unit is JSON, which carries no comments to mistake.
 //
 // SCOPE, stated rather than implied: TS/Worker lanes are not checked, because a
 // Worker's dependency inputs (`services/<x>/package.json`, its lockfile) live
-// inside the directory its filter already names. Flutter is the odd one out
+// inside the directory its unit already names. Flutter is the odd one out
 // precisely because the workspace resolves from the repository ROOT.
 //
 // LANE-BOUND: deploy-web.yml — but ONLY as a REQUIRED_COVERAGE floor, not as the subject set. The scan
-// grades every path-filtered workflow that builds a Flutter artifact; naming this one is what stops the
-// grade being computed over an empty set when the lane is renamed or its trigger restructured, which is
-// the failure this repo has hit more often than a broken check. A second path-filtered Flutter deploy is
-// graded automatically the day it lands and needs no edit here. [pipeline 9]R-1 limb B.
+// grades every workflow that builds a Flutter artifact and plans a deploy unit; naming this one is what
+// stops the grade being computed over an empty set when the lane is renamed or its plan restructured,
+// which is the failure this repo has hit more often than a broken check. A second Flutter deploy is
+// graded automatically the day it plans a unit and needs no edit here. [pipeline 9]R-1 limb B.
 //
 // Usage:  node tooling/ci/assert-deploy-triggers.mjs [repoRoot]
-// Exit 0 = every path-filtered Flutter deploy lane lists its real inputs.
+// Exit 0 = every Flutter deploy's unit claims its real inputs.  Exit 1 = a
+// finding.  Exit 2 = COVERAGE LOST: the units or the lanes could not be read.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { listDir } from './tree-walk.mjs';
+import { UNITS_REL, readUnits, plannedEnvironments, unitKeyFor, globClaims } from './assert-deploy-triggers-deploy.mjs';
 
 const ROOT = resolve(process.argv[2] ?? process.cwd());
 const WF_DIR = join(ROOT, '.github', 'workflows');
@@ -72,7 +80,7 @@ const REQUIRED = [
   ['pubspec.lock', 'the single resolved dependency set every member compiles against'],
   // ⚠️ WEAKER THAN THE OTHER TWO, said plainly. Today every value this lane
   // takes from versions.json (the Flutter and wrangler pins) is ALSO written as
-  // a literal in the workflow, which is already in the filter and which
+  // a literal in the workflow, which is already in the unit and which
   // assert-version-consistency.mjs forces to move in lockstep — so on the
   // current tree a versions.json edit cannot reach the artifact alone. It is
   // required anyway because that coupling is a property of today's steps, not
@@ -86,7 +94,7 @@ const REQUIRED = [
   // row, and the row is what says the app is served at `/<id>/`.
   //
   // ⚠️ THE FAILURE THIS CLOSES IS SILENT AND TOTAL. Without the catalogue in this
-  // filter, a commit that changed only the address would deploy the ROUTER (the
+  // unit, a commit that changed only the address would deploy the ROUTER (the
   // `nikatru` Pages project is Git-connected and redeploys on every push to main)
   // while the app kept the base href of the PREVIOUS address. index.html would
   // answer 200 and every asset would 404 — a white page, with a green lane and a
@@ -109,6 +117,13 @@ if (!existsSync(WF_DIR)) {
   coverageLost();
 }
 
+const units = readUnits(ROOT);
+if (units === null) {
+  console.error(`✗ COVERAGE LOST — ${UNITS_REL} under ${ROOT} holds no readable \`deployUnits\`.`);
+  console.error('  The units are what the plan step publishes on; with none read there is nothing to grade.');
+  coverageLost();
+}
+
 /** Strip YAML comments. A `#` that starts a line or follows whitespace begins a
  *  comment; anything else (a fragment in a URL, say) is left alone. */
 const stripComments = (raw) =>
@@ -117,136 +132,65 @@ const stripComments = (raw) =>
     .map((l) => l.replace(/(^|\s)#.*$/, '$1'))
     .join('\n');
 
-/** The line range [lo,hi) of the block under `key:`, searched at the shallowest
- *  indentation present in `range` — i.e. this descends one YAML level. */
-function descend(lines, [lo, hi], key) {
-  let base = Infinity;
-  for (let i = lo; i < hi; i++) {
-    if (lines[i].trim() === '') continue;
-    base = Math.min(base, lines[i].match(/^\s*/)[0].length);
-  }
-  if (base === Infinity) return null;
-  const re = new RegExp(`^\\s{${base}}(['"]?)${key}\\1\\s*:`);
-  for (let i = lo; i < hi; i++) {
-    if (!re.test(lines[i])) continue;
-    let j = i + 1;
-    for (; j < hi; j++) {
-      if (lines[j].trim() === '') continue;
-      if (lines[j].match(/^\s*/)[0].length <= base) break;
-    }
-    return [i + 1, j];
-  }
-  return null;
-}
-
-/** The `- item` entries in a range, unquoted. */
-function items(lines, range) {
-  if (!range) return [];
-  const out = [];
-  for (let i = range[0]; i < range[1]; i++) {
-    const m = lines[i].match(/^\s*-\s*(.+?)\s*$/);
-    if (m) out.push(m[1].replace(/^['"]|['"]$/g, ''));
-  }
-  return out;
-}
-
-/** GitHub path-filter glob → RegExp. `**` crosses `/`, `*` does not. */
-function globToRe(pattern) {
-  let re = '';
-  for (let i = 0; i < pattern.length; i++) {
-    const c = pattern[i];
-    if (c === '*') {
-      if (pattern[i + 1] === '*') {
-        re += '.*';
-        i++;
-        if (pattern[i + 1] === '/') i++; // `a/**/b` also matches `a/b`
-      } else {
-        re += '[^/]*';
-      }
-    } else if (c === '?') re += '[^/]';
-    else re += c.replace(/[.+^${}()|[\]\\]/g, '\\$&');
-  }
-  return new RegExp(`^${re}$`);
-}
-
-const matches = (pattern, file) => globToRe(pattern).test(file);
-
-/** Is `file` reached by this filter? Later `!`-negations win, as GitHub does. */
-function covers(paths, file) {
-  let hit = false;
-  for (const p of paths) {
-    if (p.startsWith('!')) {
-      if (matches(p.slice(1), file)) hit = false;
-    } else if (matches(p, file)) hit = true;
-  }
-  return hit;
-}
-
 const files = listDir(WF_DIR).filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'));
 const problems = [];
+const undecidable = [];
 const graded = [];
 let checks = 0;
 
 for (const name of files) {
   const text = stripComments(readFileSync(join(WF_DIR, name), 'utf8'));
-  const lines = text.split('\n');
 
   // Only lanes that actually resolve the Dart workspace are in scope.
   if (!/flutter\s+(build|pub\s+get)/.test(text)) continue;
 
-  const on = descend(lines, [0, lines.length], 'on');
-  if (!on) continue;
-  const push = descend(lines, on, 'push');
-  if (!push) continue;
+  // A Flutter workflow that plans no unit publishes nothing through a plan, so
+  // there is no unit to under-claim. An environment with NO unit is
+  // assert-deploy-triggers-deploy.mjs's finding (limb 1), not a skip here.
+  const keys = [...new Set(plannedEnvironments(text).map((e) => unitKeyFor(units, e)).filter((k) => k !== null))];
+  if (keys.length === 0) continue;
 
-  const paths = items(lines, descend(lines, push, 'paths'));
-  const ignored = items(lines, descend(lines, push, 'paths-ignore'));
-
-  // 🔴 A FILTER THE PARSER CANNOT READ MUST BE LOUD, NOT SKIPPED. `paths:` in
-  // YAML flow style (`paths: ['a/**']`) yields zero entries from items(), which
-  // is indistinguishable from "no filter" — so a second lane written that way
-  // would drop out of scope while this still printed ok over the first.
-  if (/^\s*(['"]?)paths(-ignore)?\1\s*:/m.test(lines.slice(push[0], push[1]).join('\n'))
-      && paths.length === 0 && ignored.length === 0) {
-    console.error(`✗ COVERAGE LOST — ${name} declares a push path filter this scan parsed as EMPTY.`);
-    console.error('  Only block-style `- entry` lists are understood. An unparsed filter reads exactly');
-    console.error('  like an unfiltered lane, which is the one thing this guard must never assume.');
-    coverageLost();
-  }
-  // No filter at all = runs on every push. Nothing to under-reach.
-  if (paths.length === 0 && ignored.length === 0) continue;
-
-  graded.push(name);
+  graded.push(`${keys.join(', ')} by ${name}`);
+  const globs = keys.flatMap((k) => units[k]);
   const required = [
     ...REQUIRED,
     [`.github/workflows/${name}`, 'the lane\'s own definition — its build steps and pins'],
     ...invokedScripts(text).map((s) => [
       s,
       'a script this lane RUNS — it decides whether the deploy proceeds, what version it '
-        + 'stamps, or what it records, none of which is visible in the source tree it filters on',
+        + 'stamps, or what it records, none of which is visible in the source tree it claims',
     ]),
   ];
   for (const [file, why] of required) {
     checks++;
-    const reached =
-      paths.length > 0 ? covers(paths, file) : !ignored.some((p) => matches(p, file));
+    let reached = false;
+    for (const g of globs) {
+      const c = globClaims(g, file);
+      if (c === null && !undecidable.includes(g)) undecidable.push(g);
+      if (c) reached = true;
+    }
     if (!reached) {
-      problems.push(`${name} — the push filter never reaches \`${file}\`: ${why}.`);
+      problems.push(`${name} — deployUnits[${keys.map((k) => `"${k}"`).join(', ')}] never claims \`${file}\`: ${why}.`);
     }
   }
 }
 
 // ── coverage self-check, BEFORE reporting clean ──────────────────────────────
+if (undecidable.length) {
+  console.error(`✗ COVERAGE LOST — deployUnits glob(s) of a shape globClaims cannot decide: ${undecidable.join(', ')}`);
+  console.error('  plan-deploy.mjs refuses these at run time; judging them here would be a guess.');
+  coverageLost();
+}
 if (graded.length === 0) {
-  console.error(`✗ COVERAGE LOST — no path-filtered Flutter deploy lane found under ${WF_DIR}.`);
+  console.error(`✗ COVERAGE LOST — no Flutter workflow under ${WF_DIR} plans a deploy unit.`);
   console.error('  This guard graded nothing. Either the lane was renamed/retired and this scan');
-  console.error('  was not taught, or the trigger shape changed out from under the parser.');
+  console.error('  was not taught, or the plan step changed out from under the reader.');
   coverageLost();
 }
 // Deliberately NOT gated on scanningRealRepo: a self-check that cannot fire
 // against a fixture is a self-check with no recorded failing case.
 {
-  const dropped = REQUIRED_COVERAGE.filter((n) => !graded.includes(n));
+  const dropped = REQUIRED_COVERAGE.filter((n) => !graded.some((g) => g.endsWith(` by ${n}`)));
   if (dropped.length) {
     console.error(`✗ COVERAGE LOST — named lane(s) no longer graded: ${dropped.join(', ')}`);
     console.error('  They are the reason this guard exists. Point REQUIRED_COVERAGE at their new');
@@ -260,23 +204,23 @@ if (scanningRealRepo) {
   const missing = REQUIRED.map(([f]) => f).filter((f) => !existsSync(join(ROOT, f)));
   if (missing.length) {
     console.error(`✗ COVERAGE LOST — required input(s) do not exist at ${ROOT}: ${missing.join(', ')}`);
-    console.error('  A trigger checked against a phantom file passes for the wrong reason.');
+    console.error('  A unit checked against a phantom file passes for the wrong reason.');
     coverageLost();
   }
 }
 
 if (problems.length) {
-  console.error(`✗ deploy triggers — ${problems.length} unlisted build input(s):`);
+  console.error(`✗ deploy triggers — ${problems.length} unclaimed build input(s):`);
   for (const p of problems) console.error(`    ${p}`);
   console.error('');
-  console.error('  A build input outside the filter means a commit that changes what gets built');
-  console.error('  deploys NOTHING, with every check green and no error anywhere. Add the path.');
+  console.error('  A build input outside the unit means a commit that changes what gets built');
+  console.error(`  deploys NOTHING, with every check green and no error anywhere. Add the path to ${UNITS_REL}.`);
   process.exit(1);
 }
 
 console.log(
-  `ok  deploy triggers — ${graded.length} path-filtered Flutter lane(s) (${graded.join(', ')}), ` +
-    `${checks} build input(s) all reachable`,
+  `ok  deploy triggers — ${graded.length} Flutter deploy unit(s) (${graded.join('; ')}), ` +
+    `${checks} build input(s) all claimed`,
 );
 
 /** The one COVERAGE LOST stop: each could-not-look branch above prints its own reason and ends

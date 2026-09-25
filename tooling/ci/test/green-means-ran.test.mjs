@@ -594,3 +594,78 @@ describe('§A8 — every called-only workflow ends in one always-run verdict job
     caught(run(root), /COVERAGE LOST — \.github\/workflows\/extensions-ci\.yml names workflow_call above `jobs:`, and the event reader did not read it as a trigger/, 2);
   });
 });
+
+// ⏱ 2026-09-25 — rule A9, the post-gate class [ADR 095 §4]: a deploy is a job AFTER
+// ci-gate in the same run. The real tree may hold none yet, so the job and its callee
+// are written onto a copy of the real workflows.
+describe('§A9 — a post-gate job runs only after its aggregator, and only on a push to main', () => {
+  const POST_GATE_IF = "github.event_name == 'push' && github.ref == 'refs/heads/main'";
+  const DEPLOY_X = [
+    'name: Deploy X',
+    'on:',
+    '  workflow_call:',
+    'permissions:',
+    '  contents: read',
+    'jobs:',
+    '  deploy:',
+    '    runs-on: ubuntu-24.04',
+    '    timeout-minutes: 5',
+    '    steps:',
+    '      - run: echo deploy',
+  ].join('\n');
+  const POST_GATE = [
+    '  deploy-x:',
+    '    needs: [ci-gate]',
+    `    if: ${POST_GATE_IF}`,
+    '    uses: ./.github/workflows/deploy-x.yml',
+    '    permissions:',
+    '      contents: read',
+  ];
+  /** ci.yml with `jobLines` appended after ci-gate, plus the callee deploy-x.yml. */
+  const withDeployX = (jobLines, callee = DEPLOY_X) => {
+    const root = mutant([['ci.yml', /echo "All lanes green"\n$/, `echo "All lanes green"\n\n${jobLines.join('\n')}\n`]]);
+    writeFileSync(join(root, '.github', 'workflows', 'deploy-x.yml'), `${callee}\n`);
+    return root;
+  };
+  const withIf = (cond) => POST_GATE.map((l) => (l.startsWith('    if:') ? `    if: ${cond}` : l));
+
+  test('a post-gate job with the exact `if:` is green, and it gates its callee', () => {
+    const r = run(withDeployX(POST_GATE));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /, 1 post-gate job\(s\) run only after their aggregator on a push to main, 1 of 1 post-gate callee\(s\) with no job-level `if:`/);
+    assert.match(r.out, /, (\d+) of \1 ending in one always-run verdict job over every other job/);
+  });
+
+  test("RC5: dropping ci-gate from the post-gate job's needs fails A9, and A2 and A6 apply again", () => {
+    const r = run(withDeployX(POST_GATE.filter((l) => !l.startsWith('    needs:'))));
+    caught(r, /job "deploy-x" carries the post-gate `if:` and does not need "ci-gate"/);
+    assert.match(r.out, /job "ci-gate" does not `need` "deploy-x"/);
+    assert.match(r.out, /lane "deploy-x" carries a job-level `if: github\.event_name == 'push' && github\.ref == 'refs\/heads\/main'`/);
+  });
+
+  test('RC6: widening the `if:` to every push fails A9, and A6 applies', () => {
+    const r = run(withDeployX(withIf("github.event_name == 'push'")));
+    caught(r, /job "deploy-x" needs "ci-gate" and its job-level `if:` is `github\.event_name == 'push'`, not exactly/);
+    assert.match(r.out, /lane "deploy-x" carries a job-level `if: github\.event_name == 'push'`/);
+    assert.doesNotMatch(r.out, /job "ci-gate" does not `need` "deploy-x"/, 'A2 must never tell the author to close a cycle');
+  });
+
+  test('a job that needs ci-gate with no `if:` fails A9: it would run after the gate on every pull request', () => {
+    caught(run(withDeployX(POST_GATE.filter((l) => !l.startsWith('    if:')))), /job "deploy-x" needs "ci-gate" and its job-level `if:` is absent/);
+  });
+
+  test('the predicate is byte-equal or nothing: an expression wrapper or swapped clauses fail', () => {
+    caught(run(withDeployX(withIf(`\${{ ${POST_GATE_IF} }}`))), /job "deploy-x" needs "ci-gate" and its job-level `if:` is `\$\{\{/);
+    caught(run(withDeployX(withIf("github.ref == 'refs/heads/main' && github.event_name == 'push'"))), /job "deploy-x" needs "ci-gate" and its job-level `if:` is `github\.ref ==/);
+  });
+
+  test('a job-level `if:` inside a post-gate callee fails A9: the call would be green over a skipped deploy', () => {
+    const callee = DEPLOY_X.replace('    runs-on: ubuntu-24.04', "    if: github.ref == 'refs/heads/main'\n    runs-on: ubuntu-24.04");
+    caught(run(withDeployX(POST_GATE, callee)), /deploy-x\.yml is a post-gate callee, and job "deploy" carries `if: github\.ref == 'refs\/heads\/main'`/);
+  });
+
+  test('a callee called by a job that is neither a constituent nor post-gate fails A7', () => {
+    const r = run(withDeployX(withIf("github.event_name == 'push'")));
+    assert.match(r.out, /deploy-x\.yml can be started only by `workflow_call`, and no constituent of an aggregator .* calls it, nor a post-gate job after one/);
+  });
+});

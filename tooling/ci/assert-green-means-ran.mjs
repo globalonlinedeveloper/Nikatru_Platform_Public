@@ -96,6 +96,11 @@ const AGGREGATORS = [
  *  edit here. */
 const REQUIRED_SECRET_GATES = ['.github/workflows/e2e.yml'];
 
+/** THE POST-GATE PREDICATE, byte for byte (rule A9). [ADR 095 §4] A job that `needs`
+ *  an aggregator runs only after it, and this is the ONE `if:` that exempts such a
+ *  job from A2 and A6: a push to main, nothing wider. */
+const POST_GATE_IF = "github.event_name == 'push' && github.ref == 'refs/heads/main'";
+
 const problems = [];
 
 /** COVERAGE LOST is fatal on the spot: every remaining check quantifies over the
@@ -210,6 +215,8 @@ const bodyOf = (job) => job.lines.map((l) => l.text);
 
 // ═════ A. every aggregating job's verdict set is complete ════════════════════
 let aggregatorsChecked = 0;
+/** aggregator target → the jobs A9 admits as post-gate (exempt from A2 and A6). */
+const postGateJobs = new Map();
 
 for (const target of AGGREGATORS) {
   const wf = workflow(target.workflow);
@@ -245,6 +252,34 @@ for (const target of AGGREGATORS) {
   const others = [...wf.jobs.keys()].filter((j) => j !== target.job);
   const needs = job.needs;
 
+  // A9. ⏱ 2026-09-25 — THE POST-GATE CLASS. [ADR 095 §4] A deploy runs AFTER the gate,
+  // in the same run: its job `needs` the aggregator, so a red gate yields a SKIPPED
+  // deploy, and the aggregator cannot need it back (GitHub refuses a cycle). That job
+  // is exempt from A2 and A6, and it is the ONLY job that is: only when its `if:` is
+  // byte-equal to POST_GATE_IF. A wider `if:` publishes on an event the gate was never
+  // asked about; the predicate without the aggregator in `needs` publishes whether the
+  // gate is green or red.
+  const postGate = [];
+  for (const j of others) {
+    const other = wf.jobs.get(j);
+    const c = other.jobIf === null ? null : other.jobIf.cond;
+    const needsGate = other.needs.includes(target.job);
+    if (needsGate && c === POST_GATE_IF) {
+      postGate.push(j);
+    } else if (needsGate) {
+      problems.push(
+        `${target.workflow}: job "${j}" needs "${target.job}" and its job-level \`if:\` is ${c === null ? 'absent' : `\`${c}\``}, not exactly \`${POST_GATE_IF}\`. ` +
+          'A job after the gate runs only on a push to main (the post-gate class, [ADR 095 §4]); anything wider runs it on events the gate never judged for a deploy.',
+      );
+    } else if (c === POST_GATE_IF) {
+      problems.push(
+        `${target.workflow}: job "${j}" carries the post-gate \`if:\` and does not need "${target.job}". ` +
+          'A post-gate job whose needs omit the aggregator is red ([ADR 095 §4]): it would run on every push to main whether the gate is green or red. Put the aggregator in its `needs`; never the job in the aggregator\'s.',
+      );
+    }
+  }
+  postGateJobs.set(target, postGate);
+
   // A1. `if: always()` — LOAD-BEARING. Without it the aggregate inherits the
   // default success(), reports SKIPPED whenever a lane fails, and GitHub counts
   // a skipped required check as satisfied: branch protection goes green over a
@@ -259,8 +294,9 @@ for (const target of AGGREGATORS) {
   }
 
   // A2. needs-completeness. The failure channel is adding a lane and forgetting
-  // it: the new lane can fail while the aggregate goes green.
-  const missing = others.filter((j) => !needs.includes(j));
+  // it: the new lane can fail while the aggregate goes green. A job that needs the
+  // aggregator is A9's to judge: the aggregator needing it back is a cycle, never the fix.
+  const missing = others.filter((j) => !needs.includes(j) && !wf.jobs.get(j).needs.includes(target.job));
   const ghost = needs.filter((j) => !wf.jobs.has(j));
   if (missing.length) {
     problems.push(
@@ -313,8 +349,8 @@ for (const target of AGGREGATORS) {
   // resolves to `skipped` on every run the condition is false, which now fails
   // the aggregate. Better to say so here, at authoring time, than at 03:00 in a
   // red CI run — and the alternative (letting the lane opt out) is precisely the
-  // hole this file closes.
-  for (const j of others) {
+  // hole this file closes. A9's post-gate jobs are the one exemption.
+  for (const j of others.filter((o) => !postGate.includes(o))) {
     const laneIf = wf.jobs.get(j).jobIf;
     const c = laneIf === null ? null : laneIf.cond;
     if (c === null) continue;
@@ -350,25 +386,34 @@ for (const target of AGGREGATORS) {
       'the answer "none" would be a guess.',
     ]);
   }
-  aggregatorCalls.push({ target, needs: wf.jobs.get(target.job).needs, resolved });
+  aggregatorCalls.push({ target, needs: wf.jobs.get(target.job).needs, postGate: postGateJobs.get(target) ?? [], resolved });
 }
+// A post-gate job (A9) gates its callee too, from the other side: the callee runs
+// only after the aggregator is green. A callee called ONLY that way is a post-gate
+// callee; no aggregator reads its result, so A8 below is not its rule, A9's is.
 let calledOnlyGated = 0;
+const postGateCallees = [];
 for (const callee of calledOnly) {
   const gatedBy = [];
-  for (const { target, needs, resolved } of aggregatorCalls) {
+  const afterGate = [];
+  for (const { target, needs, postGate, resolved } of aggregatorCalls) {
     for (const c of resolved.calls) {
-      if (c.callee.rel === callee.rel && needs.includes(c.job)) gatedBy.push(`${target.workflow} "${c.job}" (a need of "${target.job}")`);
+      if (c.callee.rel !== callee.rel) continue;
+      if (needs.includes(c.job)) gatedBy.push(`${target.workflow} "${c.job}" (a need of "${target.job}")`);
+      else if (postGate.includes(c.job)) afterGate.push(`${target.workflow} "${c.job}" (after "${target.job}")`);
     }
   }
-  if (gatedBy.length === 0) {
+  if (gatedBy.length === 0 && afterGate.length === 0) {
     problems.push(
-      `${callee.rel} can be started only by \`workflow_call\`, and no constituent of an aggregator (${AGGREGATORS.map((a) => `${a.workflow} "${a.job}"`).join(', ')}) calls it. ` +
+      `${callee.rel} can be started only by \`workflow_call\`, and no constituent of an aggregator (${AGGREGATORS.map((a) => `${a.workflow} "${a.job}"`).join(', ')}) calls it, nor a post-gate job after one. ` +
         'Its jobs report only through the job that calls them, so with no gated caller every red in it gates nothing.',
     );
     continue;
   }
-  calledOnlyGated++;
+  if (gatedBy.length === 0) postGateCallees.push(callee);
+  else calledOnlyGated++;
 }
+const laneCallees = calledOnly.filter((c) => !postGateCallees.includes(c));
 
 // A7/A8's canary. Both rules range over `calledOnly`, which is only as good as
 // `workflowEvents`: it reads the flow and block forms of `on:`, not the scalar
@@ -409,7 +454,7 @@ const VERDICT_BY_NAME = new Map([
 const LANE_VERDICT_RUN = /(^|[\s;&|])node\s+tooling\/ci\/lane-verdict\.mjs(\s|$)/m;
 const NEEDS_AS_JSON = /^(['"]?)\$\{\{\s*toJSON\(\s*needs\s*\)\s*\}\}\1$/;
 let calleeVerdicts = 0;
-for (const callee of calledOnly) {
+for (const callee of laneCallees) {
   const jobNames = [...callee.jobs.keys()];
   const named = VERDICT_BY_NAME.get(callee.rel) ?? null;
   if (named !== null && !callee.jobs.has(named)) {
@@ -460,6 +505,26 @@ for (const callee of calledOnly) {
   }
   if (problems.length === before) calleeVerdicts++;
 }
+
+// A9, inside the callee. ⏱ 2026-09-25 [ADR 095 §4] A post-gate callee has no verdict
+// job: nothing aggregates a deploy's result, and lane-verdict.mjs licenses a skip only
+// through a lane's detect job. The rule that keeps its green honest is A6's, applied
+// inside it: no job-level `if:`. A job there can then be skipped only when one of its
+// needs failed, which fails the callee, so a green call job means every job in it RAN.
+// A deploy that decides not to publish decides at STEP level and prints why.
+let postGateCalleesClean = 0;
+for (const callee of postGateCallees) {
+  const conditional = [...callee.jobs.values()].filter((j) => j.jobIf !== null);
+  if (conditional.length) {
+    problems.push(
+      `${callee.rel} is a post-gate callee, and ${conditional.map((j) => `job "${j.name}" carries \`if: ${j.jobIf.cond}\``).join('; ')}. ` +
+        'A skipped job does not fail a workflow, so the call job would report success over a deploy job that never ran. Decide inside a step (the plan step prints its decision) and leave every job unconditional.',
+    );
+    continue;
+  }
+  postGateCalleesClean++;
+}
+const postGateCount = [...postGateJobs.values()].reduce((n, xs) => n + xs.length, 0);
 
 if (aggregatorsChecked !== AGGREGATORS.length) {
   coverageLost([
@@ -608,6 +673,8 @@ const drifts = [...driftFiles.values()].reduce((n, xs) => n + xs.length, 0);
 console.log(
   `ok  green means ran — ${aggregatorsChecked} aggregating job(s) fail on failure/cancelled/skipped over every lane, ` +
     `${gates} secret-presence check(s) fail closed, ${drifts} drift check(s) delete their artifact before rebuilding it` +
-    `${calledOnly.length ? `, ${calledOnlyGated} of ${calledOnly.length} called-only workflow(s) called by an aggregator constituent` : ''}` +
-    `${calledOnly.length ? `, ${calleeVerdicts} of ${calledOnly.length} ending in one always-run verdict job over every other job` : ''}`,
+    `${laneCallees.length ? `, ${calledOnlyGated} of ${laneCallees.length} called-only workflow(s) called by an aggregator constituent` : ''}` +
+    `${laneCallees.length ? `, ${calleeVerdicts} of ${laneCallees.length} ending in one always-run verdict job over every other job` : ''}` +
+    `${postGateCount ? `, ${postGateCount} post-gate job(s) run only after their aggregator on a push to main` : ''}` +
+    `${postGateCallees.length ? `, ${postGateCalleesClean} of ${postGateCallees.length} post-gate callee(s) with no job-level \`if:\`` : ''}`,
 );
