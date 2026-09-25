@@ -237,6 +237,13 @@ export const EXTRA_INSTALLABLE = new Map([]);
  * continues to exit 0. So the honest statement is that the die PRINTS the gap and
  * the lane stays GREEN. Making it fail closed means capturing the exit code in
  * that step, which is build-platforms.yml's to do and not this file's.
+ * ⏱ 2026-09-26 — DONE, AND IT WAS NOT HYPOTHETICAL (O-APP-RELEASE-RECORDS-NO-DEPLOYMENT-SILENTLY).
+ * #958 took the .msix out of every app Release, so every app tag reached that
+ * exit 1 and the lane stayed green. Both record loops now assign the substitution
+ * first (`set -e` fails the step on it), build-platforms.yml asks this command
+ * BARE before `gh release create`, and assert-workflow-hardening.mjs limb 12
+ * refuses `for … in $(…)` in any `run:` body. This file reads the post-#958
+ * release, which carries no installer, as the declared empty (`releaseOwed`).
  * ⚠️ It is still a different empty from the one `signingPosture` produces below:
  * a row that matched and was withheld for posture exits 0 with the reason on
  * stderr. The CLI distinguishes them explicitly and says why — the distinction is
@@ -432,6 +439,28 @@ export function laneBackedFormats(register, { forWorkflow = null, surface = null
     for (const f of c?.artifactFormats ?? []) if (isFileFormat(f)) out.add(f);
   }
   return out;
+}
+
+/**
+ * ⏱ 2026-09-26 (O-APP-RELEASE-RECORDS-NO-DEPLOYMENT-SILENTLY) — WHAT A RELEASE ON
+ * `surface` IS OWED, read ONE way for both of its readers: `--stage` (did an
+ * installer arrive?) and `--emit-environments` (does this release owe a [10]D-9
+ * origin record?). Two copies of this derivation are how the first reader learnt,
+ * in #958, that "no installer, none owed" is the register's own answer, while the
+ * second kept calling the identical release an undeclared gap and exited 1.
+ *   · `carried`    — the formats a Release on the surface may carry as a loose
+ *                    installer: installable, not a bundle member, not store-only.
+ *   · `laneBacked` — the formats a declared lane on the surface emits.
+ *   · `owed`       — the lane-backed formats a Release carries. EMPTY while
+ *                    `laneBacked` is not is the declared empty: every lane emits
+ *                    only store-only files, so no lane owes this release anything.
+ */
+export function releaseOwed(register, surface) {
+  const storeOnly = storeOnlyFormats(register, surface);
+  const carried = new Set([...installableExtensions(register, surface)].filter((x) => !BUNDLE_MEMBERS.has(x) && !storeOnly.has(x)));
+  const laneBacked = laneBackedFormats(register, { surface });
+  const owed = [...laneBacked].filter((f) => carried.has(f));
+  return { storeOnly, carried, laneBacked, owed, noneOwed: laneBacked.size > 0 && owed.length === 0 };
 }
 
 /**
@@ -1219,8 +1248,10 @@ async function main() {
     const stageRegister = loadRegister();
     // ⏱ 2026-09-24 — and MINUS the store-only formats, which the judge below
     // refuses rather than stages (O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER).
-    const storeOnly = storeOnlyFormats(stageRegister, stageSurface);
-    const exts = new Set([...installableExtensions(stageRegister, stageSurface)].filter((x) => !BUNDLE_MEMBERS.has(x) && !storeOnly.has(x)));
+    // ⏱ 2026-09-26 — read through `releaseOwed`, the one derivation --emit-environments shares.
+    const owedHere = releaseOwed(stageRegister, stageSurface);
+    const storeOnly = owedHere.storeOnly;
+    const exts = owedHere.carried;
     mkdirSync(out, { recursive: true });
 
     // ⏱ 2026-09-24 — COLLECT, JUDGE, THEN MOVE (O-BOXA-CAPTCHA-REFUSES-NATIVE-SIGN-IN).
@@ -1275,9 +1306,8 @@ async function main() {
       // release only once its pin is set. That empty is the register's own answer,
       // printed, exit 0. COVERAGE LOST stays for the other empty: a lane on this
       // surface DOES emit a format a Release carries, and none arrived.
-      const laneBacked = laneBackedFormats(stageRegister, { surface: stageSurface });
-      const laneCarried = [...laneBacked].filter((f) => exts.has(f));
-      if (laneBacked.size > 0 && laneCarried.length === 0) {
+      const laneBacked = owedHere.laneBacked;
+      if (owedHere.noneOwed) {
         const stampsDir = stampsDirFor(stageSurface, '--stage');
         if (stampsDir !== null) mkdirSync(stampsDir, { recursive: true });
         console.log(`nothing staged: no installer under ${from}, and none is owed.`);
@@ -1489,7 +1519,8 @@ async function main() {
     // emitted `subscriptiontracker-chrome-webstore`.
     const emitSurface = requireSurface(resolve(flag('repo-root') ?? DEFAULT_ROOT), app, '--emit-environments');
     const { names } = assetFiles(dir);
-    const { environments, omitted, submitted, ruledOut } = originEnvironments(loadRegister(), app, names, emitSurface);
+    const emitRegister = loadRegister();
+    const { environments, omitted, submitted, ruledOut } = originEnvironments(emitRegister, app, names, emitSurface);
     // 🔴 STDERR, NOT STDOUT. The release job reads this command as a word list
     // (`for environment in $(node … --emit-environments …)`), so a reason printed
     // on stdout becomes an argument to record-deployment.mjs.
@@ -1535,6 +1566,27 @@ async function main() {
       console.error(`ruled-out  ${x.environment} — channel "${x.id}" is forbidden by ${x.constraint}: a release is never its origin, whatever its signing posture.`);
     }
     if (environments.length === 0 && omitted.length === 0 && submitted.length === 0 && ruledOut.length === 0) {
+      // ⏱ 2026-09-26 — TWO EMPTIES, THE SAME TWO `--stage` TELLS APART, read through
+      // the same `releaseOwed` (O-APP-RELEASE-RECORDS-NO-DEPLOYMENT-SILENTLY). Since
+      // #958 (7d037113) no app Release carries an .msix, so the only row an app
+      // Release ever matched (windows-direct, now ruled out) matches nothing, and
+      // every app tag reached the `die` below: exit 1, which the record step's
+      // `for … in $(…)` swallowed. A release carrying NO installer of ANY surface,
+      // on a surface whose lanes emit only store-only files, is the register's
+      // declared empty: nothing here is the origin of a channel, and each store's
+      // own submission writes its record. Exit 0, the reason on stderr. A release
+      // that carries an installer no origin row takes (the apps.gov.in .apk once
+      // its pin is set, a stray extension .zip), or that a lane owes an installer
+      // it lacks, is still the undeclared gap, and still exits 1.
+      const owed = releaseOwed(emitRegister, emitSurface);
+      const anyInstaller = [...installableExtensions(emitRegister, null)];
+      const installers = names.filter((n) => anyInstaller.some((f) => n.toLowerCase().endsWith(f.toLowerCase())));
+      if (installers.length === 0 && owed.noneOwed) {
+        console.error(`no [10]D-9 origin record for this release, and none is owed: it carries no installer (${names.join(', ') || '(nothing)'}).`);
+        console.error(`  Every format a lane on surface "${emitSurface}" emits is store-only: ${[...owed.laneBacked].sort().join(', ')} (derived from ${REGISTER_REL}); each store's submission records its own.`);
+        console.error(`  A Release on this surface may carry ${[...owed.carried].sort().join(', ') || 'no file format'} as an installer; this one carries none, as --stage said.`);
+        process.exit(0);
+      }
       die(
         `no \`kind: "direct"\` and no \`surface: "extension"\` channel in ${REGISTER_REL} declares a format this release carries.`,
         `The release holds: ${names.join(', ') || '(nothing)'}, and \`--app ${app}\` is on the "${emitSurface}" surface — only that surface's channels were considered.`,
@@ -1561,6 +1613,8 @@ async function main() {
     // what the log says, and exit 0 with a printed reason is the honest reading of
     // a state the register declares out loud. The `die` above keeps exit 1 for the
     // undeclared gap for the same reason: it is the reading, not the lane.
+    // ⏱ 2026-09-26 — THE LANE NOW READS IT (O-APP-RELEASE-RECORDS-NO-DEPLOYMENT-SILENTLY):
+    // each exit code here is the step's, before the publish and in the record loop.
     if (environments.length === 0 && omitted.length > 0) {
       // ⬜ DECLARED WIDENING, not a hole: the leading `\n` is a blank SEPARATOR
       // line, and dropping it leaves release-durable.test.mjs at EXIT 0 / 86 pass /

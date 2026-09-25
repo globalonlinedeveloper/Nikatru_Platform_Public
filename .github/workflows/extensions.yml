@@ -1491,7 +1491,10 @@ jobs:
           TOOL: ${{ steps.tag.outputs.id }}
         run: |
           set -euo pipefail
-          for environment in $(node tooling/ci/release-manifest.mjs --emit-environments extensions/dist --app "$TOOL"); do
+          # 🔴 AN ASSIGNMENT, NOT A `for` WORD LIST: `set -e` fails the step on the assignment's
+          # exit and never on a word list's (O-APP-RELEASE-RECORDS-NO-DEPLOYMENT-SILENTLY).
+          environments="$(node tooling/ci/release-manifest.mjs --emit-environments extensions/dist --app "$TOOL")"
+          for environment in $environments; do
             node tooling/ci/record-deployment.mjs "$environment" "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$GITHUB_REF_NAME" --state pending_manual_publish
           done
       # why: a SKIPPED step prints nothing, so every run ends by saying whether it could publish --
