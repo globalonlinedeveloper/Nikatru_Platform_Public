@@ -287,7 +287,7 @@ answered "does the WEB deploy supply the DSN" rather than the question
 the requirement asks. It now derives the set of jobs that must supply it
 from the `lane` of every row in tooling/channel-register.json — this job
 is the lane of `android-play` — so a new channel acquires the obligation
-by being given a lane.
+by being given a lane. ⏱ 2026-09-24: until then this said the guard graded the declared lane job; since O-SEAMS-WIRED-GRADES-DECLARED-LANES-ONLY (patch B) it grades every census-graded Flutter build — each `flutter build` whose RELEASE_CHANNEL stamp names a Flutter channel, in any job — on its own command, and reads the define's WRITTEN value: `GLITCHTIP_DSN=` with nothing after it fails, while `${{ secrets.GLITCHTIP_DSN }}` passes whatever the secret holds at run time.
 
 ⚠️ On a fork PR `secrets.GLITCHTIP_DSN` is empty and the build falls back
 to the NoOp client. That is the correct outcome for an untrusted build,

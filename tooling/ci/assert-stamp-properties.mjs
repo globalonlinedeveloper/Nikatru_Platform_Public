@@ -2912,7 +2912,7 @@ const PACK_READ_RE = /\b(?:watch|read|listen)\(\s*contentPackProvider\b/;
 /** Where the OWNER GATE's state is readable. Parsed as a MAP below, never
  *  grepped: the doc comment around it discusses keys at length, so a text
  *  search would "find" keys the map does not contain — the same trap
- *  assert-seams-wired.mjs:791 names at its own copy of this parse. */
+ *  assert-seams-wired.mjs:888 names at its own copy of this parse. */
 const PACK_KEYS_FILE = 'packages/core/lib/src/content/pack_verifier.dart';
 /** Where the OTHER gate's state is readable — the object store a published pack
  *  would sit in. See `boundPackBuckets` for why this is parsed, not grepped. */
@@ -2942,7 +2942,7 @@ function contentPackReaders(libDir) {
  *
  *  🔴 null IS NOT ZERO, and the distinction is the whole point: reporting an
  *  owner gate as SHUT on the strength of a failed read would let this limb
- *  blame the owner for a gap that is ours. assert-seams-wired.mjs:769 hoists its
+ *  blame the owner for a gap that is ours. assert-seams-wired.mjs:862 hoists its
  *  own count for the same stated reason. */
 function pinnedPackKeys() {
   try {

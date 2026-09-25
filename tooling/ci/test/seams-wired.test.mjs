@@ -143,7 +143,13 @@ Future<void> _signOut(BuildContext context, WidgetRef ref, AppLocalizations l10n
 }
 `;
 
-  const DSN = 'run: flutter build web --release --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}\n';
+  // ⏱ 2026-09-24 — the crash-sink limb grades workflow-scan's CENSUS
+  // (O-SEAMS-WIRED-GRADES-DECLARED-LANES-ONLY, patch B), so each build stamps the
+  // channel it is for, and the tree carries the 18 graded builds the limb floors
+  // at (MIN_GRADED): the four lanes plus fourteen in census-fill.yml.
+  const dsnBuild = (target, channel) =>
+    `run: flutter build ${target} --release --dart-define=RELEASE_CHANNEL=${channel} --dart-define=GLITCHTIP_DSN=\${{ secrets.GLITCHTIP_DSN }}\n`;
+  const DSN = dsnBuild('web', 'web');
   const jobWith = (name, body) =>
     `  ${name}:\n    runs-on: ubuntu-24.04\n    steps:\n      - name: build\n        ${body
       .trimEnd()
@@ -157,10 +163,10 @@ Future<void> _signOut(BuildContext context, WidgetRef ref, AppLocalizations l10n
     {
       surfaces: { app: { flutterApp: true }, extension: { flutterApp: false } },
       channels: [
-        { id: 'web', surface: 'app', lane: { workflow: '.github/workflows/deploy-web.yml', job: 'deploy-web' } },
-        { id: 'android-play', surface: 'app', lane: { workflow: '.github/workflows/build-platforms.yml', job: 'linux_web_android' } },
-        { id: 'windows-store', surface: 'app', lane: { workflow: '.github/workflows/build-platforms.yml', job: 'windows' } },
-        { id: 'linux-snap', surface: 'app', lane: { workflow: '.github/workflows/submit-snap.yml', job: 'dry-run' } },
+        { id: 'web', surface: 'app', platforms: ['web'], lane: { workflow: '.github/workflows/deploy-web.yml', job: 'deploy-web' } },
+        { id: 'android-play', surface: 'app', platforms: ['android'], lane: { workflow: '.github/workflows/build-platforms.yml', job: 'linux_web_android' } },
+        { id: 'windows-store', surface: 'app', platforms: ['windows'], lane: { workflow: '.github/workflows/build-platforms.yml', job: 'windows' } },
+        { id: 'linux-snap', surface: 'app', platforms: ['linux'], lane: { workflow: '.github/workflows/submit-snap.yml', job: 'dry-run' } },
       ],
     },
     null,
@@ -197,6 +203,10 @@ Future<void> _signOut(BuildContext context, WidgetRef ref, AppLocalizations l10n
     // 14 filler files: the guard fails COVERAGE LOST below 12 scanned dart files,
     // which would redden every case here for the wrong reason.
     for (let i = 0; i < 14; i++) files[`apps/subscriptiontracker/lib/filler_${i}.dart`] = '// filler\n';
+    // 14 more graded web builds, one per job: with the four lanes, the 18 the
+    // crash-sink limb floors its census at.
+    const fill = [];
+    for (let i = 0; i < 14; i++) fill.push(jobWith(`fill_${i}`, DSN));
     Object.assign(files, {
       'packages/core/lib/src/content/ed25519_pack_verifier.dart':
         'class Ed25519PackVerifier implements PackVerifier {\n  verify() async { if (x == null) return false; return await _ed.verify(m); }\n}\n',
@@ -268,10 +278,11 @@ const String kPrivacyPolicyVersion = '2026-07-26';
       'tooling/channel-register.json': CHANNEL_REGISTER,
       '.github/workflows/deploy-web.yml': workflow(jobWith('deploy-web', DSN)),
       '.github/workflows/build-platforms.yml': workflow(
-        jobWith('linux_web_android', DSN),
-        jobWith('windows', DSN),
+        jobWith('linux_web_android', dsnBuild('appbundle', 'android-play')),
+        jobWith('windows', dsnBuild('windows', 'windows-store')),
       ),
-      '.github/workflows/submit-snap.yml': workflow(jobWith('dry-run', DSN)),
+      '.github/workflows/submit-snap.yml': workflow(jobWith('dry-run', dsnBuild('linux', 'linux-snap'))),
+      '.github/workflows/census-fill.yml': workflow(...fill),
       'apps/subscriptiontracker/lib/pack_consumer.dart': subscriptiontracker,
       [`${BRICK}/test/chassis_properties_test.dart`]: brickTest,
       'services/platform/wrangler.jsonc': wrangler,

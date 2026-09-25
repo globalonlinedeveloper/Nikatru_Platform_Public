@@ -1513,7 +1513,12 @@
     "regionRailsRequiredOn": [
       "chrome-webstore",
       "edge-addons",
-      "amo"
+      "amo",
+      "web",
+      "windows-direct",
+      "linux-appimage",
+      "windows-store",
+      "linux-snap"
     ],
     "_regionRailsRequiredOnWhy": [
       "🔴 THE CHANNELS THAT MUST CARRY A `purchaseRail.regionRails` ENTRY, AND WHY A LIST EXISTS AT ALL.",
@@ -1526,6 +1531,18 @@
       "[ADR 094] (LOCKED 2026-09-22, owner verbatim \"1 and 2 - Razorpay\") puts a buyer IN INDIA of any of",
       "the three browser extensions on Razorpay and leaves every other buyer on Paddle. [ADR 094] §4 item 2",
       "records that one rail per row cannot express that.",
+      "",
+      "⏱ 2026-09-25: `web`, `windows-direct`, `linux-appimage`, `windows-store` AND `linux-snap` JOIN",
+      "THIS LIST. [ADR 076] §1 row 1 decides \"India domestic web / direct\" on Razorpay, for the reason",
+      "[ADR 094] gives for the extensions: the India monthly SKU has no Paddle price at all ([ADR 076] §1",
+      "and §3). `web`, `windows-direct` and `linux-appimage` are that row of §1 — our own site, and the",
+      "two builds served from our own domain through the same hosted checkout. `windows-store` and",
+      "`linux-snap` sell through that same web checkout, not through store billing, and [ADR 076]'s",
+      "2026-09-23 append puts their India buyers on the same rail. Every other buyer of the five stays on",
+      "the row's own `rail`, `paddle` (for the two listings, [ADR 076] §1 row 3). The list names eight",
+      "channels from today, so where the first paragraph says \"all three blocks\", read eight. Like the",
+      "extension entries, these record the DECISION; the ⛔ paragraph of `_why` above holds for them",
+      "unchanged.",
       "",
       "⬜ `apps-gov-in` IS NOT IN THIS LIST AND ITS ABSENCE IS DELIBERATE. [ADR 094] §4 item 1 says the row",
       "must take Razorpay, and item 5 says its `store/apps-gov-in/form-answers.json` answers — the payment",
@@ -1561,7 +1578,13 @@
       "⚠️ WINDOWS ALREADY MODELS THE SPLIT AND IS THE CONTROL CASE. `windows-store` and `windows-direct`",
       "are two rows for one platform — and they take the SAME rail, so the split is invisible in the",
       "answer. Android and macOS are the two places where the same app takes DIFFERENT rails by channel,",
-      "which is exactly why those two are the ones the register failed to model."
+      "which is exactly why those two are the ones the register failed to model.",
+      "",
+      "⏱ 2026-09-25: BOTH ENTRIES ARE DIRECT CHANNELS, SO [ADR 076] §1 row 1 (\"India domestic web /",
+      "direct\" on Razorpay) REACHES THEM TOO. `windows-direct` and `linux-appimage` carry that as a",
+      "`purchaseRail.regionRails` entry and an id in `regionRailsRequiredOn`; the two entries below carry",
+      "neither, because §I of assert-purchase-path.mjs ranges over `channels` rows only. Promoting either",
+      "one adds its IN → `razorpay` entry and its id to that list in the same increment."
     ],
     "awaitingChannelRow": [
       {
@@ -1777,7 +1800,15 @@
           "apple-iap"
         ],
         "forbidsWhy": "MECHANICAL, not policy: neither store's billing SDK exists in a browser. Listed anyway because `forbids` is what a checker reads to catch a SHIPMENT rather than an omission, and a rail that cannot work is still a rail that must not ship.",
-        "source": "[ADR 039] D1"
+        "source": "[ADR 039] D1",
+        "regionRails": [
+          {
+            "region": "IN",
+            "rail": "razorpay",
+            "why": "A buyer in India could not buy the monthly plan on our own site at all: [ADR 076] §1 marks the India monthly SKU \"Paddle is not available for it at any price\", §3 carries the arithmetic, and §1 row 1 puts \"India domestic web / direct\" on Razorpay. Nothing about the CHANNEL changes — no store sits between us and the buyer, and the checkout is still our own. Only who collects changes, and on this rail Nikatru is the seller of record and issues the GST invoice itself ([ADR 076] §10.1). Until the Razorpay checkout exists, no request resolves this entry (see `_why`: THE SERVER DOES NOT ROUTE BY COUNTRY YET), and `tooling/legal/provider-register.json` says whether the rail is live.",
+            "source": "[ADR 076] §1, §10.1"
+          }
+        ]
       },
       "artifactFormats": [
         "static-bundle"
@@ -2436,7 +2467,7 @@
             "APPLE_DIST_CERT_PASSWORD": "The passphrase on that .p12. Two secrets for one credential because that is the only shape `security import -P` accepts.",
             "APPLE_PROVISIONING_PROFILES_BASE64": "The .provisionprofile for the Mac App Store record, base64 for the same path reason. Signing CONFIGURATION rather than key material: it binds the certificate to this bundle id and its entitlements, and a build signed by the right key against the wrong profile is refused at upload.",
             "APPLE_TEAM_ID": "The 10-character Team identifier xcodebuild resolves the signing identity against. An identifier, but an INPUT TO SIGNING — with the wrong value xcodebuild selects a different identity or none at all.",
-            "APPLE_INSTALLER_CERT_P12_BASE64": "🔴 macOS ONLY — DO NOT COPY THIS NAME ONTO THE ios-appstore ROW. A Mac App Store submission is a .pkg, and productbuild signs it with a MAC INSTALLER DISTRIBUTION identity ('3rd Party Mac Developer Installer'), which is a FIFTH certificate and a DIFFERENT one from the Apple Distribution identity APPLE_DIST_CERT_P12_BASE64 carries — that one signs the .app INSIDE the package and cannot sign the package itself. iOS ships an .ipa and needs no installer certificate at all, so declaring it on that row would name a credential the lane can never use, which is exactly the ceiling §8 exists to bound. Until OWNER_QUEUE A-4 creates the account nothing can issue it; apple-signing.mjs plans the productbuild step and PRINTS the gap rather than pretending the command is runnable."
+            "APPLE_INSTALLER_CERT_P12_BASE64": "🔴 macOS ONLY — DO NOT COPY THIS NAME ONTO THE ios-appstore ROW. A Mac App Store submission is a .pkg, and productbuild signs it with a MAC INSTALLER DISTRIBUTION identity ('3rd Party Mac Developer Installer'), which is a FIFTH certificate and a DIFFERENT one from the Apple Distribution identity APPLE_DIST_CERT_P12_BASE64 carries — that one signs the .app INSIDE the package and cannot sign the package itself. iOS ships an .ipa and needs no installer certificate at all, so declaring it on that row would name a credential the lane can never use, which is exactly the ceiling §8 exists to bound. Until OWNER_QUEUE A-4 creates the account nothing can issue it; apple-signing.mjs plans the productbuild step and PRINTS the gap rather than pretending the command is runnable. ⏱ CORRECTED 2026-09-24: the last sentence is no longer true on either count. OWNER_QUEUE A-4 closed 2026-08-31 (this row's `accountStatus`), so what nothing has issued is the certificate, not the account; and since #563 (2026-09-09) apple-signing.mjs imports this identity when it is supplied (`installerImportPlan`), and build-platforms.yml's `apple` job runs `productbuild --component … --sign \"$APPLE_INSTALLER_IDENTITY\"` itself rather than printing it as an intent."
           }
         },
         "seam": {
@@ -2528,7 +2559,15 @@
           "apple-iap"
         ],
         "forbidsWhy": "MECHANICAL: neither store's billing exists on Windows. TWO CONDITIONS RIDE WITH THE `paddle` ANSWER and are not optional — Paddle must be identified as the seller at purchase time (its hosted checkout does this), and the third-party purchase API must be DECLARED in Partner Center at submission (Private/runbooks/store-submission-windows.md carries that step).",
-        "source": "[ADR 039] D1"
+        "source": "[ADR 039] D1",
+        "regionRails": [
+          {
+            "region": "IN",
+            "rail": "razorpay",
+            "why": "A buyer in India who comes through the Microsoft Store listing pays at our own web checkout, not through Store billing — the checkout `windows-direct` uses — so [ADR 076]'s 2026-09-23 append puts that buyer on Razorpay, the rail §1 row 1 gives \"India domestic web / direct\": the India monthly SKU is one \"Paddle is not available for it at any price\" (§1, arithmetic in §3). Every other buyer of the listing stays on `paddle` (§1 row 3). ⚠️ The seller-identification condition in `forbidsWhy` above is written for Paddle; on this rail the seller the checkout must identify is Nikatru, the seller of record, which issues the GST invoice itself ([ADR 076] §10.1). Until the Razorpay checkout exists, no request resolves this entry (see `_why`: THE SERVER DOES NOT ROUTE BY COUNTRY YET), and `tooling/legal/provider-register.json` says whether the rail is live.",
+            "source": "[ADR 076] §1, §10.1 and its 2026-09-23 append"
+          }
+        ]
       },
       "artifactFormats": [
         ".msix"
@@ -2702,7 +2741,15 @@
           "apple-iap"
         ],
         "forbidsWhy": "MECHANICAL: neither store's billing exists on Windows.",
-        "source": "[ADR 039] D1"
+        "source": "[ADR 039] D1",
+        "regionRails": [
+          {
+            "region": "IN",
+            "rail": "razorpay",
+            "why": "A buyer in India who downloads the Windows build from our own domain is the \"India domestic web / direct\" case [ADR 076] §1 row 1 puts on Razorpay: the India monthly SKU is one \"Paddle is not available for it at any price\" (§1, arithmetic in §3), and this row already pays through the same hosted checkout the web channel uses. Nothing about the CHANNEL changes — no store, no gatekeeper, no commerce policy. Only who collects changes, and on this rail Nikatru is the seller of record and issues the GST invoice itself ([ADR 076] §10.1). Until the Razorpay checkout exists, no request resolves this entry (see `_why`: THE SERVER DOES NOT ROUTE BY COUNTRY YET), and `tooling/legal/provider-register.json` says whether the rail is live.",
+            "source": "[ADR 076] §1, §10.1"
+          }
+        ]
       },
       "artifactFormats": [
         ".msix",
@@ -2851,7 +2898,15 @@
           "apple-iap"
         ],
         "forbidsWhy": "MECHANICAL: neither store's billing exists on Linux.",
-        "source": "[ADR 039] D1"
+        "source": "[ADR 039] D1",
+        "regionRails": [
+          {
+            "region": "IN",
+            "rail": "razorpay",
+            "why": "A buyer in India who installs from the Snap Store pays at our own web checkout — the Snap Store takes no part in the sale, as this row's own `why` says — so [ADR 076]'s 2026-09-23 append puts that buyer on Razorpay, the rail §1 row 1 gives \"India domestic web / direct\": the India monthly SKU is one \"Paddle is not available for it at any price\" (§1, arithmetic in §3). Every other buyer of the listing stays on `paddle` (§1 row 3). Nothing about the CHANNEL changes; only who collects, and on this rail Nikatru is the seller of record and issues the GST invoice itself ([ADR 076] §10.1). Until the Razorpay checkout exists, no request resolves this entry (see `_why`: THE SERVER DOES NOT ROUTE BY COUNTRY YET), and `tooling/legal/provider-register.json` says whether the rail is live.",
+            "source": "[ADR 076] §1, §10.1 and its 2026-09-23 append"
+          }
+        ]
       },
       "artifactFormats": [
         ".snap"
@@ -3054,7 +3109,15 @@
           "apple-iap"
         ],
         "forbidsWhy": "MECHANICAL: neither store's billing exists on Linux.",
-        "source": "[ADR 039] D1"
+        "source": "[ADR 039] D1",
+        "regionRails": [
+          {
+            "region": "IN",
+            "rail": "razorpay",
+            "why": "An AppImage buyer in India is a direct-download buyer, the \"India domestic web / direct\" case [ADR 076] §1 row 1 puts on Razorpay: the India monthly SKU is one \"Paddle is not available for it at any price\" (§1, arithmetic in §3), so on this row's own rail that buyer could not buy the monthly plan at all. Nothing about the CHANNEL changes — dl.nikatru.com still serves it and nothing takes a cut. Only who collects changes, and on this rail Nikatru is the seller of record and issues the GST invoice itself ([ADR 076] §10.1). Until the Razorpay checkout exists, no request resolves this entry (see `_why`: THE SERVER DOES NOT ROUTE BY COUNTRY YET), and `tooling/legal/provider-register.json` says whether the rail is live.",
+            "source": "[ADR 076] §1, §10.1"
+          }
+        ]
       },
       "artifactFormats": [
         ".AppImage"
@@ -3345,7 +3408,7 @@
           "dart"
         ],
         "native": false,
-        "note": "THE DART LAYER ONLY, and this row NAMES NO LANE, so assert-seams-wired.mjs does not grade it — the declaration records what the artifact carries, not a promise an absent lane makes. The .apk this channel would upload is the one build-platforms.yml's `linux_web_android` job already emits for android-play, and that job supplies --dart-define=GLITCHTIP_DSN. Native (NDK) frames are not captured on any Android channel here; that is the same gap the android-play row records, not a new one."
+        "note": "THE DART LAYER ONLY, and this row NAMES NO LANE, so assert-seams-wired.mjs does not grade it — the declaration records what the artifact carries, not a promise an absent lane makes. The .apk this channel would upload is the one build-platforms.yml's `linux_web_android` job already emits for android-play, and that job supplies --dart-define=GLITCHTIP_DSN. Native (NDK) frames are not captured on any Android channel here; that is the same gap the android-play row records, not a new one. ⏱ 2026-09-24: until then this said assert-seams-wired graded only a row's declared lane job; since O-SEAMS-WIRED-GRADES-DECLARED-LANES-ONLY (patch B) it grades every census-graded Flutter build, so the apk stamped RELEASE_CHANNEL=apps-gov-in in build-platforms.yml's `linux_web_android` job is graded with no lane named here."
       },
       "deploymentEnvironment": "{app}-apps-gov-in",
       "storeMetadataDir": "apps/{app}/store/apps-gov-in",

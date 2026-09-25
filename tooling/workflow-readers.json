@@ -197,9 +197,7 @@
     },
     {
       "path": "tooling/ci/assert-seams-wired.mjs",
-      "property": "refuses-blind",
-      "evidence": "which does not exist, so its crash-sink obligation is unenforceable.",
-      "reads": "each channel lane's job and its GLITCHTIP_DSN define"
+      "property": "workflow-scan"
     },
     {
       "path": "tooling/ci/assert-sink-disclosure.mjs",

@@ -633,6 +633,7 @@ export function expandMatrixEnvironment(raw, appSlugs) {
 // ⚠️ IT IS STILL NOT A GUARD. `gradeDomain` returns the split; whether an empty
 // `graded` set is COVERAGE LOST, and what a finding costs, belongs to each
 // caller — as does the floor on how much it expected to see.
+// ⏱ 2026-09-24: `defineValueIn` reads a define's VALUE per segment, for the reader that needs more than its name.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** `flutter build <target>` — a release build unless it says otherwise.
@@ -678,6 +679,23 @@ export function definesIn(segment) {
   const out = new Set();
   for (const m of live.matchAll(/--dart-define(?:=|\s+)([A-Za-z_][A-Za-z0-9_]*)=/g)) out.add(m[1]);
   return out;
+}
+
+/** The VALUE one shell segment passes for `--dart-define=<name>=`, unquoted, or
+ *  null when the segment passes no such define. `''` means the define is there
+ *  with nothing in it — `NAME=`, `NAME=""` and `NAME=''` all read as `''`.
+ *
+ *  🔴 A NAME IS NOT A VALUE. `definesIn` answers "is the flag passed", and an
+ *  empty `GLITCHTIP_DSN=` is passed: ci.yml's exempt android-artifacts builds
+ *  carry exactly that, which is the NoOp crash client the seams-wired limb exists
+ *  to catch. So that limb reads the value, cut at the first `#` as `definesIn`
+ *  cuts — a define behind a comment marker is prose, and reads as null. */
+export function defineValueIn(segment, name) {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(String(name))) throw new Error(`defineValueIn: "${name}" is not a dart-define name`);
+  const live = String(segment ?? '').split('#')[0];
+  // A `${{ … }}` expression holds spaces, so it is read whole before the bare `\S*`.
+  const m = live.match(new RegExp(`--dart-define(?:=|\\s+)${name}=("[^"]*"|'[^']*'|\\$\\{\\{.*?\\}\\}\\S*|\\S*)`));
+  return m === null ? null : unquote(m[1]);
 }
 
 /**
