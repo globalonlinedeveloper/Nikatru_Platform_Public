@@ -58,6 +58,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fetchWithBoundedRetry } from './bounded-retry.mjs';
+import { compareAuthRecord } from './auth-record-compare.mjs';
 import {
   compareServedTemplates,
   fingerprint,
@@ -205,20 +206,13 @@ async function verifyHosted() {
   // Ops watch printed a green "the live auth config still matches what the repo
   // recorded" over eight fields out of eighteen.
   //
-  // So the derivation is now real: every key of `supabaseAuth` is a live field
-  // name and is compared, with exactly three exclusions, each of which has to say
-  // why out loud rather than sit in a list:
-  //   · `_`-prefixed keys are this register's own prose (`_why`, `_whyHardening`),
-  //     not fields — the same convention the rest of this file uses;
-  //   · `transport` is the register's VOCABULARY, not a Supabase field. Live has
-  //     no such key, so comparing it would report permanent drift against a word
-  //     we invented. assert-mail-transport-claims.mjs is what validates it.
-  //   · `subjects` (2026-09-24) is a MAP keyed by template (`confirmation`,
-  //     `magic_link`, `recovery`), not one field. Each key IS compared, just
-  //     below, against the live field it names: `mailer_subjects_<key>`.
-  // Anything else in the record that live does not carry is DRIFT, not a skip:
-  // that is how a typo'd field name gets caught instead of quietly checking eight
-  // things while claiming eighteen.
+  // ⏱ 2026-09-25 — the comparison itself (both loops, the field count, and the
+  // paragraph naming which keys are compared and why each exclusion is one) moved
+  // VERBATIM to auth-record-compare.mjs, a pure function a case can call with a
+  // record and a live object. The one new case there is `sameMeaning`: a value
+  // pair the record itself declares equal for one named field (run 36097413255
+  // read `sessions_timebox: 0` where the record says null; to GoTrue both mean
+  // "never"). The register is still read HERE, above, and handed over.
   //
   // `smtp_pass` is deliberately not comparable: the register carries no secret, so
   // the most that can be said is whether live holds one at all. Said, not skipped.
@@ -226,45 +220,10 @@ async function verifyHosted() {
   // answers a 64-character `smtp_pass` while the real credential is 36. The API
   // does not give that value back, so nothing here can compare it and nothing
   // anywhere should write it back.
-  const NOT_A_LIVE_FIELD = new Set(['transport', 'subjects']);
-  const COMPARE = Object.keys(expectedAuth).filter((k) => !k.startsWith('_') && !NOT_A_LIVE_FIELD.has(k));
-  let transportChecked = 0;
-  for (const field of COMPARE) {
-    transportChecked += 1;
-    const want = expectedAuth[field];
-    const got = live[field];
-    // A key the live config does not carry AT ALL is its own sentence. Folding it
-    // into the value comparison below prints `live says null`, which reads as "the
-    // setting is off" when what happened is that the register names a field this
-    // API has never heard of — a typo, or a field that was renamed upstream.
-    if (!Object.prototype.hasOwnProperty.call(live, field)) {
-      drift.push(`auth \`${field}\`: the register records ${JSON.stringify(want)}, and the live config has NO SUCH FIELD. Either the name is wrong here or it was renamed upstream; nothing is being checked either way.`);
-      continue;
-    }
-    // String-compare: the API returns smtp_port as a string and booleans as
-    // booleans, and a JSON register cannot promise which it wrote.
-    if (String(want) !== String(got)) {
-      drift.push(`auth \`${field}\`: register says ${JSON.stringify(want)}, live says ${JSON.stringify(got ?? null)}.`);
-    } else {
-      ok.push(`${field} ≡ ${JSON.stringify(want)}`);
-    }
-  }
-  // The subjects map: each recorded key against `mailer_subjects_<key>`, with the
-  // same NO-SUCH-FIELD sentence as above, so a misspelt key is drift, not a skip.
-  for (const [key, want] of Object.entries(expectedAuth.subjects ?? {})) {
-    const field = `mailer_subjects_${key}`;
-    transportChecked += 1;
-    if (!Object.prototype.hasOwnProperty.call(live, field)) {
-      drift.push(`auth subject \`${key}\`: the register records ${JSON.stringify(want)}, and the live config has NO SUCH FIELD \`${field}\`.`);
-    } else if (String(want) !== String(live[field])) {
-      drift.push(`auth \`${field}\`: register says ${JSON.stringify(want)}, live says ${JSON.stringify(live[field] ?? null)}.`);
-    } else {
-      ok.push(`${field} ≡ ${JSON.stringify(want)}`);
-    }
-  }
-  if (transportChecked === 0) {
-    drift.push('the register\'s `supabaseAuth` declared no comparable field at all, so NOTHING about the live auth config was checked. That is a gap, not a match.');
-  }
+  const compared = compareAuthRecord(expectedAuth, live);
+  drift.push(...compared.drift);
+  ok.push(...compared.ok);
+  const transportChecked = compared.checked;
   if (!live.smtp_pass) {
     drift.push('live `smtp_pass` is EMPTY — custom SMTP cannot authenticate, so auth mail falls back to the provider\'s own sender, which only delivers to project team members.');
   }
