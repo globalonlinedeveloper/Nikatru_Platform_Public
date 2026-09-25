@@ -118,8 +118,8 @@ jobs:
           # `Extension/<Tool>/publish/` prefix cannot match that, and was
           # verified to produce a byte-identical list on the current workflows.
           # ⏱ 2026-09-24: BOTH files. The CI lane lives in extensions-ci.yml; a script
-          # named only by extensions.yml's release job must exist all the same.
-          called=$(grep -rhoE '(scripts|Extension/[A-Za-z0-9_]+/publish)/[A-Za-z0-9][A-Za-z0-9._/-]*\.(mjs|node\.js)' "$GITHUB_WORKSPACE/.github/workflows/extensions-ci.yml" "$GITHUB_WORKSPACE/.github/workflows/extensions.yml" | sort -u) || true  # `|| true` is what lets a no-match reach the `::error::` below instead of ending the step — see the `set -euo` line at the top of this body.
+          # named only by extensions.yml's release job must exist all the same. ⏱ 2026-09-25: `../tooling/scripts/` is captured WHOLE and resolved from extensions/ as written — the bare `scripts/` alternative read the spawn-ceiling preload as if it lived under extensions/ and reported it ABSENT (this comment names no path the pattern can match: prose here is inventoried too) (PR #942, measured: 33 of 33 present, the list otherwise byte-identical).
+          called=$(grep -rhoE '(../tooling/scripts|scripts|Extension/[A-Za-z0-9_]+/publish)/[A-Za-z0-9][A-Za-z0-9._/-]*\.(mjs|node\.js)' "$GITHUB_WORKSPACE/.github/workflows/extensions-ci.yml" "$GITHUB_WORKSPACE/.github/workflows/extensions.yml" | sort -u) || true  # `|| true` is what lets a no-match reach the `::error::` below instead of ending the step — see the `set -euo` line at the top of this body.
           if [ -z "$called" ]; then
             echo "::error::this check found no gate-script call in .github/workflows at all — its own pattern is broken, and it was about to report a clean inventory over an empty set."
             exit 1
