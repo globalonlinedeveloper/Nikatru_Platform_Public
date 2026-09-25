@@ -9,7 +9,7 @@
 // read it. A fourth copy here would be the defect that module's own header
 // names: two readings of one register that agree until the day they do not.
 //
-// ── THE THREE VERDICTS, AND WHY THE MIDDLE ONE IS NOT A SKIP ─────────────────
+// ── THE VERDICTS (THREE HERE, `skip` BELOW), AND WHY `pending` IS NOT A SKIP ──
 //   go       every declared credential is present and the register ARMS the row.
 //            The caller publishes.
 //   refuse   a credential is EMPTY and the register ARMS the row. Exit 1. This is
@@ -30,6 +30,15 @@
 // with its own loud line. A secret that exists for a channel nothing arms is not
 // an authorisation to publish: the register is the switch, never the vault.
 //
+// ⏱ 2026-09-25 (R-8, O-NEW-TOOL-HAS-NO-FIREFOX-IDENTITY) — A FOURTH VERDICT, `skip`,
+// for a lane that declares its build `target` (amo → firefox) and a TOOL that
+// declares neither that target nor that store: the tool has no package for the
+// channel, so there is nothing to publish and nothing to refuse. It is decided
+// from what the tool DECLARES, never from an absence it could not read: a target
+// without its store, or a store without its target, is COVERAGE LOST (exit 2).
+// On a dispatch that asked for the store, the workflow turns `skip` red with
+// "NOT PUBLISHED" — a skip is an answer about the tool, not a publish.
+//
 // ⚠️ NOTHING HERE READS OR PRINTS A SECRET VALUE. It reads `process.env[name]`
 // only to ask whether it is a non-empty string, and reports NAMES.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -38,6 +47,7 @@ import { join, resolve, dirname, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { armingOf, armingOfTool } from '../../tooling/ci/channel-arming.mjs';
 import { CWS_SA_ENV, CWS_SA_DOC } from './publish-cws-token.mjs';
+import { derivedListingId } from './lib/tool-identity.mjs';
 
 /** The repository root, resolved from THIS file rather than from the working
  *  directory: `extensions.yml` runs its steps with `working-directory: extensions`
@@ -99,6 +109,14 @@ export class ArmingCoverageLost extends Error {
   }
 }
 
+/** The tool's add-on id is present and cannot be used: two sources for it, a
+ *  placeholder, or a manifest and publish/identity.json that disagree. It is a
+ *  FINDING about the tree rather than a scan that could not run, and it extends
+ *  ArmingCoverageLost so that every caller which already refuses on that class
+ *  (publish-amo, publish-cws, publish-edge, the preflight CLI) refuses on this
+ *  one too, with exit 1. */
+export class ArmingIdentityRefused extends ArmingCoverageLost {}
+
 /** The register row for `channelId`, read from disk once. */
 export function readChannel(channelId, root = REPO_ROOT) {
   const abs = join(root, REGISTER);
@@ -144,6 +162,11 @@ export function readChannel(channelId, root = REPO_ROOT) {
  * `tool.json`'s `storeMetadata.stores` in both directions — so a store this
  * register claims and the tool has never heard of is already a build failure,
  * and this function inherits that agreement rather than restating it.
+ *
+ * ⏱ 2026-09-25: a store whose target manifest declares the add-on id (Firefox,
+ * `browser_specific_settings.gecko.id`) has its id DERIVED from the tool's own
+ * files instead, and a hand `listingId` on that store is refused as a second
+ * source — see the block at the end of this function.
  *
  * A missing tool.json, a missing store row, or a store key the row does not
  * declare is COVERAGE LOST, never "no id, therefore not armed": deciding "unarmed"
@@ -219,11 +242,104 @@ export function toolListingId({ toolId, storeKey, root = REPO_ROOT }) {
   // both stores need a manual first publish (ADR 067 decision 8), so a submit
   // through the API happens only after it is set. null is carried, never guessed.
   const url = tool?.listings?.[storeKey] ?? null;
+  const listingUrl = typeof url === 'string' && /^https:\/\//.test(url.trim()) ? url.trim() : null;
+
+  // ⏱ 2026-09-25 (O-NEW-TOOL-HAS-NO-FIREFOX-IDENTITY): AN ADD-ON ID THE PACKAGE
+  // DECLARES IS READ FROM THE PACKAGE'S SOURCES, NOT FROM THIS ROW. Firefox takes
+  // the id from `browser_specific_settings.gecko.id` in the manifest web-ext
+  // signs, and AMO fixes it at the first signing, so the value that addresses the
+  // listing is the one the build writes. `derivedListingId` (lib/tool-identity.mjs)
+  // reads that: manifest.json merged with the store target's overlay, held equal
+  // to geckoIdFor(publish/identity.json). A hand `listingId` on such a store is a
+  // second source for one id and is REFUSED rather than compared — the day the
+  // two agree it says nothing, and the day they differ one of them names a
+  // listing no build addresses.
+  //
+  // A tool directory with no manifest (the gate self-test's minimal fixtures)
+  // declares no add-on id, so it keeps the store-issued path below. So does a
+  // store whose merged manifest declares none: Chrome and Edge issue their ids.
+  const dirRel = rel.slice(0, rel.lastIndexOf('/'));
+  const toolDir = dirname(abs);
+  const manifestRel = typeof tool.manifest === 'string' && tool.manifest !== '' ? tool.manifest : 'manifest.json';
+  const derived = existsSync(join(toolDir, manifestRel)) ? derivedListingId({ tool, storeKey, root: toolDir }) : null;
+  if (derived !== null) {
+    const field = `${dirRel} (${derived.manifest}) browser_specific_settings.gecko.id`;
+    if (derived.problem !== null) {
+      // An id was read and cannot be used (placeholder, disagreement) → a finding.
+      // Nothing could be read far enough to find one → the scan did not run.
+      const Refusal = derived.manifestId !== '' && derived.identityId !== null ? ArmingIdentityRefused : ArmingCoverageLost;
+      throw new Refusal([
+        `${Refusal === ArmingIdentityRefused ? '🔴 REFUSED' : 'COVERAGE LOST'} — ${dirRel}: ${derived.problem}.`,
+        `The ${storeKey} package declares its own add-on id and the store fixes it at the first signing; an id this lane`,
+        'cannot derive from the tool\'s own files is a destination it must not address.',
+      ]);
+    }
+    if (raw !== null) {
+      throw new ArmingIdentityRefused([
+        `🔴 REFUSED — two sources for one add-on id: ${rel} storeMetadata.stores.${storeKey}.listingId is ${JSON.stringify(raw)}, and ${field} is "${derived.listingId}".`,
+        `The id is derived from ${dirRel}/publish/identity.json through the manifest the build signs. Delete the listingId`,
+        'from that store row; a second copy is one that can name a listing the package never addresses.',
+      ]);
+    }
+    return { field, listingId: derived.listingId, listingUrl, source: 'derived' };
+  }
+
   return {
     field: `${rel} storeMetadata.stores.${storeKey}.listingId`,
     listingId: typeof raw === 'string' && raw.trim() !== '' ? raw.trim() : null,
-    listingUrl: typeof url === 'string' && /^https:\/\//.test(url.trim()) ? url.trim() : null,
+    listingUrl,
+    source: 'declared',
   };
+}
+
+/**
+ * ⏱ 2026-09-25 (R-8): does the TOOL have a surface on a lane whose build target
+ * is `target` (amo → "firefox")? `{ skip: true, reason }` when it declares
+ * neither `targets.<target>` nor `storeMetadata.stores.<storeKey>`; `{ skip: false }`
+ * when it declares both, or when it declares no `targets` block at all (the gate
+ * self-test's minimal fixtures, which toolListingId grades as before).
+ *
+ * One half without the other is COVERAGE LOST: a target nothing publishes, or a
+ * store row with no build behind it, is a tool.json this lane cannot be graded
+ * against, and calling either a skip would decide "nothing to publish" from a
+ * declaration that says otherwise. Zero or two declaring manifests are left to
+ * toolListingId, which already refuses both.
+ */
+export function toolSurfaceOn({ toolId, storeKey, target, root = REPO_ROOT }) {
+  const surfaces = declaringToolJson(root, toolId);
+  if (surfaces.length !== 1) return { skip: false };
+  const rel = surfaces[0].where;
+  let tool;
+  try {
+    tool = JSON.parse(readFileSync(join(root, rel), 'utf8'));
+  } catch {
+    return { skip: false };
+  }
+  const stores = tool?.storeMetadata?.stores;
+  const targets = tool?.targets;
+  const hasStore = stores !== null && typeof stores === 'object' && Object.prototype.hasOwnProperty.call(stores, storeKey);
+  const targetsDeclared = targets !== null && typeof targets === 'object';
+  const hasTarget = targetsDeclared && Object.prototype.hasOwnProperty.call(targets, target) && targets[target] !== null;
+  if (!hasStore && !hasTarget) {
+    return {
+      skip: true,
+      reason: `tool "${toolId}" declares neither a ${target} build target (${rel} targets.${target}) nor a ${storeKey} store (storeMetadata.stores.${storeKey}), so it has no package for this channel`,
+    };
+  }
+  if (hasTarget && !hasStore) {
+    throw new ArmingCoverageLost([
+      `COVERAGE LOST — ${rel} builds a ${target} target and declares no ${storeKey} store (storeMetadata.stores.${storeKey}).`,
+      'A package this lane builds and no store row describes is neither a skip nor a destination. Declare the store,',
+      `or remove targets.${target}.`,
+    ]);
+  }
+  if (hasStore && targetsDeclared && !hasTarget) {
+    throw new ArmingCoverageLost([
+      `COVERAGE LOST — ${rel} declares a ${storeKey} store and no ${target} build target (targets.${target}).`,
+      'A store row with no build behind it names a listing nothing packages. Declare the target, or remove the store row.',
+    ]);
+  }
+  return { skip: false };
 }
 
 /**
@@ -237,7 +353,7 @@ export function toolListingId({ toolId, storeKey, root = REPO_ROOT }) {
  * @param {string} [o.root]         repository root
  * @returns {{verdict:'go'|'refuse'|'pending', row:object, arming:object, missing:string[], lines:string[]}}
  */
-export function publishVerdict({ channelId, secrets, ownerStep, toolId = null, env = process.env, root = REPO_ROOT }) {
+export function publishVerdict({ channelId, secrets, ownerStep, toolId = null, target = null, env = process.env, root = REPO_ROOT }) {
   if (!Array.isArray(secrets) || secrets.length === 0) {
     throw new ArmingCoverageLost([
       `COVERAGE LOST — no credential names were declared for channel "${channelId}".`,
@@ -246,6 +362,21 @@ export function publishVerdict({ channelId, secrets, ownerStep, toolId = null, e
     ]);
   }
   const row = readChannel(channelId, root);
+
+  // ── THE SURFACE AXIS (⏱ 2026-09-25, R-8) ─────────────────────────────────────
+  // Asked before credentials and before the listing id: a tool with no package
+  // for this channel needs neither. Only a lane that declares its `target` asks.
+  if (toolId !== null && target !== null) {
+    const surface = toolSurfaceOn({ toolId, storeKey: row.extensionStoreKey, target, root });
+    if (surface.skip) {
+      const lines = [
+        `⬜ SKIPPED — channel "${channelId}": ${surface.reason}.`,
+        '   Nothing is published to this channel for this tool and nothing is refused. On a dispatch that asked',
+        '   for this store the workflow turns this red as NOT PUBLISHED: a skip is an answer about the tool, not a publish.',
+      ];
+      return { verdict: 'skip', row, arming: armingOf(row), identity: null, missing: [], reason: surface.reason, lines };
+    }
+  }
 
   // ── THE TOOL AXIS ──────────────────────────────────────────────────────────
   // The register answers per CHANNEL; this lane runs per TOOL. `armingOfTool`
@@ -370,6 +501,11 @@ export const LANES = Object.freeze({
   amo: {
     channelId: 'amo',
     label: 'Firefox Add-ons (addons.mozilla.org)',
+    // ⏱ 2026-09-25 (R-8): the tool.json BUILD target this lane packages. A lane
+    // that names one can answer `skip` for a tool that declares neither it nor
+    // the store; a lane without one never skips. Chrome and Edge share the
+    // chromium build, so a missing chromium target is not a per-store answer.
+    target: 'firefox',
     secrets: [
       { name: 'AMO_JWT_ISSUER', why: `the AMO API key (JWT issuer), passed to web-ext as --api-key (${AMO_DOC})` },
       { name: 'AMO_JWT_SECRET', why: `the AMO API secret (JWT secret), passed to web-ext as --api-secret (${AMO_DOC})` },
@@ -410,7 +546,7 @@ export const LANES = Object.freeze({
 
 /** The verdict for a named lane, so a caller names a LANE and never a list of
  *  secrets it typed out again. */
-export function laneVerdict(laneId, { toolId = null, env = process.env, root = REPO_ROOT } = {}) {
+function laneOf(laneId) {
   const lane = LANES[laneId];
   if (lane === undefined) {
     throw new ArmingCoverageLost([
@@ -419,7 +555,67 @@ export function laneVerdict(laneId, { toolId = null, env = process.env, root = R
       'pass produced by a typo.',
     ]);
   }
-  return publishVerdict({ channelId: lane.channelId, secrets: lane.secrets, ownerStep: lane.ownerStep, toolId, env, root });
+  return lane;
+}
+
+export function laneVerdict(laneId, { toolId = null, env = process.env, root = REPO_ROOT } = {}) {
+  const lane = laneOf(laneId);
+  return publishVerdict({ channelId: lane.channelId, secrets: lane.secrets, ownerStep: lane.ownerStep, toolId, target: lane.target ?? null, env, root });
+}
+
+/**
+ * ⏱ 2026-09-25 (R-9): the PLAN — what a release of `toolId` on `laneId` would be
+ * graded against, on any run, with NO credential read (it takes no `env`; the
+ * credential axis is the one axis only a release run has). It prints the arming
+ * axis and the identity axis and ends "SKIPPED: not a release run".
+ *
+ * `exitCode`: 1 when the register ARMS the channel and the tool's listing id is
+ * null or refused (placeholder, mismatch, two sources) — the release run would
+ * refuse, so the plan says so first. 2 when the answer could not be read
+ * (COVERAGE LOST). 0 otherwise, including a refused id on a channel the register
+ * does not arm: that is printed, and the arming change is where it turns red.
+ */
+export function planVerdict(laneId, { toolId, root = REPO_ROOT } = {}) {
+  const lane = laneOf(laneId);
+  if (typeof toolId !== 'string' || toolId === '') {
+    throw new ArmingCoverageLost([`COVERAGE LOST — --plan grades one tool, and no --tool was given for lane "${laneId}".`]);
+  }
+  const row = readChannel(lane.channelId, root);
+  const channel = armingOf(row);
+  const lines = [
+    `PLAN — lane "${laneId}" (${lane.label}), tool "${toolId}". No credential is read.`,
+    `   arming axis: channel "${lane.channelId}" is ${channel.armed ? 'ARMED' : 'NOT ARMED'} in ${REGISTER}`,
+  ];
+  for (const r of channel.reasons) lines.push(`      armed because ${r}`);
+  for (const b of channel.blockers) lines.push(`      ${b}`);
+  if (lane.target !== undefined) {
+    const surface = toolSurfaceOn({ toolId, storeKey: row.extensionStoreKey, target: lane.target, root });
+    if (surface.skip) {
+      lines.push(`   surface axis: ⬜ SKIP — ${surface.reason}`);
+      lines.push('SKIPPED: not a release run');
+      return { verdict: 'skip', exitCode: 0, lines };
+    }
+    lines.push(`   surface axis: the tool builds the ${lane.target} target and declares the ${row.extensionStoreKey} store`);
+  }
+  let identity;
+  try {
+    identity = toolListingId({ toolId, storeKey: row.extensionStoreKey, root });
+  } catch (e) {
+    if (!(e instanceof ArmingIdentityRefused)) throw e;
+    lines.push(`   identity axis: ${channel.armed ? '🔴' : '⚠️'} ${e.lines[0]}`);
+    for (const l of e.lines.slice(1)) lines.push(`      ${l}`);
+    if (!channel.armed) lines.push('      the channel is not armed, so no release is refused today; arming it with this id refuses every release');
+    lines.push('SKIPPED: not a release run');
+    return { verdict: channel.armed ? 'refuse' : 'pending', exitCode: channel.armed ? 1 : 0, lines };
+  }
+  lines.push(`   identity axis: ${identity.listingId === null ? 'null' : JSON.stringify(identity.listingId)} — ${identity.source}, from ${identity.field}`);
+  if (channel.armed && identity.listingId === null) {
+    lines.push(`   🔴 the channel is ARMED and the listing id is null: a release run REFUSES here, and this lane will not guess one`);
+    lines.push('SKIPPED: not a release run');
+    return { verdict: 'refuse', exitCode: 1, lines };
+  }
+  lines.push('SKIPPED: not a release run');
+  return { verdict: channel.armed ? 'go' : 'pending', exitCode: 0, lines };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -428,6 +624,13 @@ export function laneVerdict(laneId, { toolId = null, env = process.env, root = R
 // credential is empty. It is deliberately NOT named `publish-<store>.mjs`: the
 // dry-run-guard check treats that spelling as a publishing surface, and a
 // preflight that publishes nothing must be able to run on a rehearsal.
+//
+// ⏱ 2026-09-25 (R-8, R-9): it ends with `ARMING_VERDICT=<go|refuse|pending|skip>`
+// and `ARMING_REASON=<one line>`, which the workflow copies to $GITHUB_OUTPUT so
+// the submit step's `if:` reads the verdict rather than re-deriving it. Exit 1 is
+// a finding (refused); exit 2 is COVERAGE LOST — an answer that could not be read
+// is not a refusal of a release, and it is not a pass either. `--plan` prints the
+// plan (planVerdict) and reads no credential.
 // ─────────────────────────────────────────────────────────────────────────────
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const arg = (n) => { const i = process.argv.indexOf('--' + n); return i !== -1 && i + 1 < process.argv.length ? process.argv[i + 1] : null; };
@@ -442,13 +645,23 @@ if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.a
   } else {
     try {
       const toolArg = arg('tool');
-      const result = laneVerdict(laneId, { ...(rootArg === null ? {} : { root: rootArg }), ...(toolArg === null ? {} : { toolId: toolArg }) });
-      for (const l of result.lines) console.log(l);
-      if (result.verdict === 'refuse') process.exitCode = 1;
+      const opts = { ...(rootArg === null ? {} : { root: rootArg }), ...(toolArg === null ? {} : { toolId: toolArg }) };
+      if (process.argv.includes('--plan')) {
+        const plan = planVerdict(laneId, opts);
+        for (const l of plan.lines) console.log(l);
+        process.exitCode = plan.exitCode;
+      } else {
+        const result = laneVerdict(laneId, opts);
+        for (const l of result.lines) console.log(l);
+        const reason = String(result.reason ?? result.lines[0] ?? '').replace(/[\r\n]+/g, ' ');
+        console.log(`ARMING_VERDICT=${result.verdict}`);
+        console.log(`ARMING_REASON=${reason}`);
+        if (result.verdict === 'refuse') process.exitCode = 1;
+      }
     } catch (e) {
       if (e instanceof ArmingCoverageLost) {
         for (const l of e.lines) console.error(l);
-        process.exitCode = 1;
+        process.exitCode = e instanceof ArmingIdentityRefused ? 1 : 2;
       } else {
         throw e;
       }

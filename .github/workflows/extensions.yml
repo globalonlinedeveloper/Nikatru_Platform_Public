@@ -1559,19 +1559,47 @@ jobs:
       # the lane job the register names for all three stores. The verdict is the REGISTER's, taken
       # through tooling/ci/channel-arming.mjs: armed row + empty secret = exit 1; unarmed row = the
       # owner step, printed.
+      # why: ⏱ 2026-09-25 (R-8, O-NEW-TOOL-HAS-NO-FIREFOX-IDENTITY) the verdict is written to
+      # $GITHUB_OUTPUT as amo=<go|skip|pending> with its reason, for the log only: THIS step's
+      # exit is the gate, and no later step reads the output (assert-green-means-ran B2). A skip
+      # (no Firefox package) or a pending channel on a real dispatch goes red HERE as NOT PUBLISHED:
+      # the owner asked for this store and nothing will be sent. A rehearsal (dry_run) publishes
+      # nothing either way, so it prints the verdict and stays green. Exit 1 refused, 2 COVERAGE LOST.
       - name: Firefox (AMO) — credentials present, or the owner step
+        id: amo_arming
         if: inputs.confirm == 'SUBMIT-TO-FIREFOX-AMO'
         env:
           AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
           AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          TOOL: ${{ steps.tag.outputs.id }}
         run: |
           set -euo pipefail
           if [ -z "$AMO_JWT_ISSUER" ] || [ -z "$AMO_JWT_SECRET" ]; then
             echo "one or more AMO_* repository secrets are empty; the register decides what that means."
           fi
-          if ! node extensions/scripts/publish-arming.mjs --channel amo --tool "${{ steps.tag.outputs.id }}"; then
-            echo "::error::the register ARMS the amo channel and its credentials are missing, so this run cannot submit to addons.mozilla.org. This is a failed publish, not a skipped store."
+          code=0
+          out=$(node extensions/scripts/publish-arming.mjs --channel amo --tool "$TOOL" 2>&1) || code=$?
+          printf '%s\n' "$out"
+          if [ "$code" -ne 0 ]; then
+            echo "::error::NOT PUBLISHED to Firefox Add-ons: the arming preflight exited ${code} (1 = the register ARMS the amo channel and the credentials or the add-on id are refused; 2 = COVERAGE LOST, the verdict could not be read). This is a failed publish, not a skipped store."
             exit 1
+          fi
+          verdict=$(sed -n 's/^ARMING_VERDICT=//p' <<< "$out")
+          reason=$(sed -n 's/^ARMING_REASON=//p' <<< "$out")
+          if [ -z "$verdict" ]; then
+            echo "::error::NOT PUBLISHED to Firefox Add-ons: the arming preflight printed no ARMING_VERDICT line, so there is no verdict to act on."
+            exit 1
+          fi
+          echo "amo=${verdict}" >> "$GITHUB_OUTPUT"
+          echo "reason=${reason}" >> "$GITHUB_OUTPUT"
+          if [ "$verdict" != go ]; then
+            if [ "$DRY_RUN" = true ]; then
+              echo "::notice::rehearsal: Firefox Add-ons verdict is '${verdict}': ${reason}"
+            else
+              echo "::error::NOT PUBLISHED to Firefox Add-ons: ${reason}"
+              exit 1
+            fi
           fi
 
       # why: a STORE publish is the owner's word alone -- reachable only from a dispatch on the

@@ -33,6 +33,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { geckoIdFor } from '../../../scripts/lib/tool-identity.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = process.env.SK_ROOT ? path.resolve(process.env.SK_ROOT) : path.join(HERE, '..');
@@ -66,8 +67,7 @@ export function changelogTop(text) {
 }
 
 export function geckoId() {
-  const id = readJson('publish/identity.json');
-  return String(id.slug) + '@' + String(id.ownerDomain);
+  return geckoIdFor(readJson('publish/identity.json'));
 }
 
 /* THE PURE CHECK. Returns a list of human-readable problems; empty means every

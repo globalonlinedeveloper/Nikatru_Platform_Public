@@ -1122,6 +1122,20 @@ console.log('\nfs read-once (CodeQL #71 #74 #75 #76)');
 }
 
 console.log('\nnew-tool.mjs');
+/* new-tool reads the house identity from <the directory above --repo-root>/tooling/
+   house-identity.json — in the real layout, the Public root above extensions/. Every
+   fixture root is TMP/case-N, so the fixture house is written once, at TMP/tooling/.
+   Made-up values that are not placeholders. */
+const HOUSE_FIXTURE = house => JSON.stringify({
+  ownerDomain: { value: house.ownerDomain, why: 'fixture' },
+  supportEmail: { value: house.supportEmail, why: 'fixture' },
+  privacyPolicyUrlPattern: { value: house.privacyPolicyUrlPattern, why: 'fixture' },
+  homepageUrl: { value: house.homepageUrl, why: 'fixture' }
+}, null, 2) + '\n';
+w(TMP, 'tooling/house-identity.json', HOUSE_FIXTURE({
+  ownerDomain: 'selftest-house.org', supportEmail: 'help@selftest-house.org',
+  privacyPolicyUrlPattern: 'https://selftest-house.org/{slug}/privacy', homepageUrl: 'https://selftest-house.org/'
+}));
 {
   const NEW_TOOL_TEMPLATE = r2 => {
     /* A minimal templates/tool so the copy is fast and the precedence rule
@@ -1156,6 +1170,9 @@ console.log('\nnew-tool.mjs');
     ['skeleton.json stamped with the tool name', fs.existsSync(path.join(made, 'skeleton.json')) && JSON.parse(fs.readFileSync(path.join(made, 'skeleton.json'), 'utf8')).tool === 'Tab_Digest'],
     ['skeletonVersion left alone', JSON.parse(fs.readFileSync(path.join(made, 'skeleton.json'), 'utf8')).skeletonVersion === '1.1.0'],
     ['identity slug set to the tool id', JSON.parse(fs.readFileSync(path.join(made, 'publish/identity.json'), 'utf8')).slug === 'tabdigest'],
+    ['identity ownerDomain is the house one, not the template placeholder', JSON.parse(fs.readFileSync(path.join(made, 'publish/identity.json'), 'utf8')).ownerDomain === 'selftest-house.org'],
+    ['identity privacy URL is the house pattern with the slug expanded', JSON.parse(fs.readFileSync(path.join(made, 'publish/identity.json'), 'utf8')).privacyPolicyUrl === 'https://selftest-house.org/tabdigest/privacy'],
+    ['no REPLACE placeholder survives in the stamped identity', !/REPLACE/.test(fs.readFileSync(path.join(made, 'publish/identity.json'), 'utf8'))],
     ["the previous tool's release zip did NOT come along", !fs.existsSync(path.join(made, 'publish/old-release-1.0.0.zip'))],
     ['a CHANGELOG was seeded at the manifest version', fs.readFileSync(path.join(made, 'CHANGELOG.md'), 'utf8').includes('## [0.0.1]')],
     ['permission justifications are EMPTY, so policy-check is red by design', JSON.parse(fs.readFileSync(path.join(made, 'tool.json'), 'utf8')).policy.permissions.storage === '']
@@ -1192,6 +1209,33 @@ console.log('\nnew-tool.mjs');
     script: 'new-tool.mjs', argv: ['--category', 'extension', '--name', 'Nope', '--id', 'nope'],
     root, code: 2, contains: 'not Capitalized_Singular'
   });
+
+  /* A house holding the template placeholder is refused before anything is written. Its own
+     parent directory, because the house is read from the directory above --repo-root. */
+  {
+    const badRoot = path.join(TMP, 'badhouse', 'extensions');
+    copyDir(BASE, badRoot);
+    NEW_TOOL_TEMPLATE(badRoot);
+    w(path.join(TMP, 'badhouse'), 'tooling/house-identity.json', HOUSE_FIXTURE({
+      ownerDomain: 'REPLACE-WITH-YOUR-DOMAIN.example', supportEmail: 'help@selftest-house.org',
+      privacyPolicyUrlPattern: 'https://selftest-house.org/{slug}/privacy', homepageUrl: 'https://selftest-house.org/'
+    }));
+    expect('a placeholder in the house identity is refused', {
+      script: 'new-tool.mjs', argv: ['--category', 'Extension', '--name', 'Bad House', '--id', 'badhouse'],
+      root: badRoot, code: 1, contains: 'ownerDomain = "REPLACE-WITH-YOUR-DOMAIN.example"'
+    });
+    if (!fs.existsSync(path.join(badRoot, 'Extension/Bad_House'))) ok('and nothing was written for it');
+    else bad('and nothing was written for it', 'Extension/Bad_House exists');
+  }
+  {
+    const noHouseRoot = path.join(TMP, 'nohouse', 'extensions');
+    copyDir(BASE, noHouseRoot);
+    NEW_TOOL_TEMPLATE(noHouseRoot);
+    expect('no house identity at all is refused', {
+      script: 'new-tool.mjs', argv: ['--category', 'Extension', '--name', 'No House', '--id', 'nohouse'],
+      root: noHouseRoot, code: 1, contains: 'tooling/house-identity.json could not be read'
+    });
+  }
 }
 
 /* A half-built templates/tool with no manifest must not win precedence over a
@@ -3261,7 +3305,9 @@ expect('publish-arming.mjs reports COVERAGE LOST when the row is absent, never "
     w(r, 'tooling/channel-register.json', JSON.stringify({ channels: [] }));
     return r;
   })(),
-  code: 1, contains: 'COVERAGE LOST'
+  // ⏱ 2026-09-25: exit 2, not 1 — COVERAGE LOST is its own exit code now that
+  // the CLI's `1` means one finding (a refusal) and nothing else.
+  code: 2, contains: 'COVERAGE LOST'
 });
 
 
