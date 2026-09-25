@@ -260,6 +260,20 @@ export const TEXTLESS_WINDOW = 9;
  * Alpha is carried through untouched: the frames are opaque by the time
  * anything here reads them, and averaging a constant would only invite the
  * question.
+ *
+ * ⏱ 2026-09-25 · ONE ROW PER CALL, AND THAT IS A SPEED FIX WITH THE OUTPUT
+ * UNCHANGED. Every program that runs this now runs `--single-threaded` (the
+ * exit deadlock, nodejs/node#54918). That flag turns off concurrent
+ * recompilation, and with it off, a loop that runs for seconds inside ONE call
+ * stayed out of optimised code for that call. Measured over the five glyphless
+ * fixture frames (430x932): 1.6-2.2 s per frame with default flags, and 3.0-3.6 s
+ * for each of the first three frames with `--single-threaded` or
+ * `--no-concurrent-recompilation` alone (`--single-threaded-gc` alone: no
+ * change). The row loop below is the same code, split out so that it is called
+ * `height` times per frame. A function that is called often is optimised
+ * between calls, with or without a background thread. The bytes it returns are
+ * identical to the single-loop version's on every committed fixture, store and
+ * calibration frame (compared sha-for-sha when this landed).
  */
 export function textlessFrame(img) {
   const { width: w, height: h, rgba } = img;
@@ -269,39 +283,43 @@ export function textlessFrame(img) {
   // again, so the per-pixel cost is the window and not 256.
   const bins = new Int32Array(256);
   const touched = new Int32Array(TEXTLESS_WINDOW * TEXTLESS_WINDOW);
-  for (let y = 0; y < h; y++) {
-    const y0 = Math.max(0, y - r);
-    const y1 = Math.min(h - 1, y + r);
-    for (let x = 0; x < w; x++) {
-      const x0 = Math.max(0, x - r);
-      const x1 = Math.min(w - 1, x + r);
-      for (let c = 0; c < 3; c++) {
-        let n = 0;
-        let best = -1;
-        let bestCount = 0;
-        for (let yy = y0; yy <= y1; yy++) {
-          const rowBase = yy * w * 4 + c;
-          for (let xx = x0; xx <= x1; xx++) {
-            const v = rgba[rowBase + xx * 4];
-            const count = ++bins[v];
-            touched[n++] = v;
-            // ⚠️ STRICTLY GREATER, so a tie is broken by the value that reached
-            // the count FIRST — i.e. by scan order, which is deterministic.
-            // `>=` would make the result depend on which of two equally common
-            // values happened to be visited last, and two runs over the same
-            // bytes must give the same number.
-            if (count > bestCount) {
-              bestCount = count;
-              best = v;
-            }
+  for (let y = 0; y < h; y++) textlessRow(rgba, out, w, h, y, r, bins, touched);
+  return { width: w, height: h, rgba: out };
+}
+
+/** Row `y` of `textlessFrame`: the per-channel mode of each pixel's window,
+ *  written into `out`. `bins` is all zeroes on entry and on return. */
+function textlessRow(rgba, out, w, h, y, r, bins, touched) {
+  const y0 = Math.max(0, y - r);
+  const y1 = Math.min(h - 1, y + r);
+  for (let x = 0; x < w; x++) {
+    const x0 = Math.max(0, x - r);
+    const x1 = Math.min(w - 1, x + r);
+    for (let c = 0; c < 3; c++) {
+      let n = 0;
+      let best = -1;
+      let bestCount = 0;
+      for (let yy = y0; yy <= y1; yy++) {
+        const rowBase = yy * w * 4 + c;
+        for (let xx = x0; xx <= x1; xx++) {
+          const v = rgba[rowBase + xx * 4];
+          const count = ++bins[v];
+          touched[n++] = v;
+          // ⚠️ STRICTLY GREATER, so a tie is broken by the value that reached
+          // the count FIRST — i.e. by scan order, which is deterministic.
+          // `>=` would make the result depend on which of two equally common
+          // values happened to be visited last, and two runs over the same
+          // bytes must give the same number.
+          if (count > bestCount) {
+            bestCount = count;
+            best = v;
           }
         }
-        out[(y * w + x) * 4 + c] = best;
-        for (let i = 0; i < n; i++) bins[touched[i]] = 0;
       }
+      out[(y * w + x) * 4 + c] = best;
+      for (let i = 0; i < n; i++) bins[touched[i]] = 0;
     }
   }
-  return { width: w, height: h, rgba: out };
 }
 
 /** The pair the register records for one frame: what it measures, and what the
