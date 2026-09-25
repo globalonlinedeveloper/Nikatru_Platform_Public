@@ -1042,7 +1042,14 @@
         "(O-LAPTOP-ROUTINES-DIE-OVERNIGHT): the laptop watchdog and ops-check portable work, moved onto this Worker.",
         "An ops_watchdog row is ok=1 when the check READ its subject; findings (a red main, a stuck run, a monitor",
         "down) travel in detail, never as ok=0, or a red main would freeze the queue that must merge its fix.",
-        "Not-configured limbs (no GLITCHTIP_TOKEN / BOXA_REACH_URLS) ARE ok=0: set them before this deploys."
+        "Not-configured limbs (no GLITCHTIP_TOKEN / BOXA_REACH_URLS) ARE ok=0: set them before this deploys.",
+        "",
+        "🔴 `ops_stuck_runs` KEEPS ITS OWN HOURLY CRON `15 * * * *`, added 2026-09-25 (O-OPS-WATCHDOG-STUCK-RUNS-HOURLY):",
+        "the stuck-run check, moved OFF the 6-hourly dispatcher grid, because a run stuck for hours froze the queue",
+        "while the grid could leave it unread for up to 6 h. Hourly is the finest cadence check-heartbeats.mjs",
+        "parses, and :15 keeps it off every grid minute. It beats its OWN OPS_STUCK_RUNS_HEARTBEAT_URL, and that",
+        "beat is WITHHELD while a run is stuck (unhandled > 0), the scan was truncated, or the read failed — so the",
+        "monitor goes down on the condition, not only on a dead timer. Its row stays ok=1 on a read that found work."
       ],
       "watchedJobs": {
         "supabase_keepalive": [
@@ -1089,6 +1096,9 @@
           "0 6 * * *",
           "0 12 * * *",
           "0 18 * * *"
+        ],
+        "ops_stuck_runs": [
+          "15 * * * *"
         ]
       },
       "watchedJobsDeclaredAt": {
@@ -1104,7 +1114,8 @@
         "github_dispatch": "2026-09-03T06:50:37Z",
         "boxb_reachability": "2026-09-12T11:22:49Z",
         "boxa_reachability": "2026-09-18T11:22:08Z",
-        "ops_watchdog": "2026-09-18T11:22:08Z"
+        "ops_watchdog": "2026-09-18T11:22:08Z",
+        "ops_stuck_runs": "2026-09-25T00:17:02Z"
       },
       "_watchedJobsDeclaredAtWhy": [
         "⏱ 2026-09-11 — WHEN THE REGISTER BEGAN WATCHING EACH JOB, so a job with NO heartbeat row at all is NOT YET DUE until the",
@@ -1149,7 +1160,7 @@
     {
       "id": "duty.platform-cron-beat",
       "kind": "duty",
-      "what": "The platform Worker's off-Cloudflare heartbeat: every firing of services/platform's crons (00:00, 02:30, 06:00, 12:00 and 18:00 UTC, services/platform/wrangler.jsonc) ends in `platformCronBeat` (services/platform/src/scheduled.ts), which POSTs the GlitchTip Heartbeat URL held in the Worker secret PLATFORM_CRON_HEARTBEAT_URL — AFTER the firing's own limbs have returned, so a beat claims the timer fired and its work ran to the end. It is the half of O-GITHUB-SCHEDULER that does not live on GitHub: duty.platform-cron's only other absence watcher is check-heartbeats.mjs on ops-watch.yml, which runs on GitHub's scheduler (measured 10.1% on time) and is itself dispatched by this same Worker.",
+      "what": "The platform Worker's off-Cloudflare heartbeat: every firing of services/platform's crons (00:00, 02:30, 06:00, 12:00 and 18:00 UTC, services/platform/wrangler.jsonc) ends in `platformCronBeat` (services/platform/src/scheduled.ts), which POSTs the GlitchTip Heartbeat URL held in the Worker secret PLATFORM_CRON_HEARTBEAT_URL — AFTER the firing's own limbs have returned, so a beat claims the timer fired and its work ran to the end. It is the half of O-GITHUB-SCHEDULER that does not live on GitHub: duty.platform-cron's only other absence watcher is check-heartbeats.mjs on ops-watch.yml, which runs on GitHub's scheduler (measured 10.1% on time) and is itself dispatched by this same Worker. ⏱ APPENDED 2026-09-25 (O-OPS-WATCHDOG-STUCK-RUNS-HOURLY, C5): the sixth cron, the hourly `15 * * * *` stuck-run firing, does NOT beat this URL — it returns before `platformCronBeat` and beats its own OPS_STUCK_RUNS_HEARTBEAT_URL, so this monitor still speaks for the five crons above and no others.",
       "detector": "GlitchTip heartbeat monitor 37 'Platform Worker cron', project `ops` (\"2\"), interval 32400 s, confirmationThreshold 1, created 2026-09-15T00:47:27Z on the owner's word (2026-09-14, \"Yes, create and set both\"). A firing that does not run, a limb that throws past its catch, an unset or wrong secret and a Worker that no longer deploys all read as the same silence.",
       "response": "Read the platform Worker's logs for the last firing (`[cron]` lines: \"PLATFORM_CRON_HEARTBEAT_URL is not set\" means the secret went missing; a non-2xx or transport failure is logged without the URL), then the `cron_heartbeat` rows duty.platform-cron reads. A silent monitor with fresh cron_heartbeat rows means the BEAT is broken, not the cron.",
       "cadence": "6h",
@@ -1188,7 +1199,7 @@
     {
       "id": "duty.platform-ops-watchdog-beat",
       "kind": "duty",
-      "what": "The laptop watchdog's PORTABLE work, moved onto the platform Worker (#802, O-LAPTOP-ROUTINES-DIE-OVERNIGHT): on every firing of services/platform's dispatcher grid (00:00, 06:00, 12:00 and 18:00 UTC — every cron in services/platform/wrangler.jsonc except the 02:30 backup), `opsWatchdogJob` (services/platform/src/scheduled.ts) runs `runOpsWatchdogChecks` (services/platform/src/ops-watchdog.ts) — stuck Actions runs on the Public repo, main's latest completed ci.yml and ops-watch.yml, GlitchTip monitors 6 and 22 — records the rows under cron_heartbeat job `ops_watchdog`, and ONLY THEN POSTs the GlitchTip Heartbeat URL held in the Worker secret OPS_WATCHDOG_HEARTBEAT_URL. If the checks throw, the beat is withheld. It is the half of duty.laptop.nikatru-watchdog and duty.laptop.nikatru-ops-check that runs with the lid shut.",
+      "what": "The laptop watchdog's PORTABLE work, moved onto the platform Worker (#802, O-LAPTOP-ROUTINES-DIE-OVERNIGHT): on every firing of services/platform's dispatcher grid (00:00, 06:00, 12:00 and 18:00 UTC — every cron in services/platform/wrangler.jsonc except the 02:30 backup), `opsWatchdogJob` (services/platform/src/scheduled.ts) runs `runOpsWatchdogChecks` (services/platform/src/ops-watchdog.ts) — stuck Actions runs on the Public repo, main's latest completed ci.yml and ops-watch.yml, GlitchTip monitors 6 and 22 — records the rows under cron_heartbeat job `ops_watchdog`, and ONLY THEN POSTs the GlitchTip Heartbeat URL held in the Worker secret OPS_WATCHDOG_HEARTBEAT_URL. If the checks throw, the beat is withheld. It is the half of duty.laptop.nikatru-watchdog and duty.laptop.nikatru-ops-check that runs with the lid shut. ⏱ APPENDED 2026-09-24 (O-OPS-WATCHDOG-STUCK-RUNS-HOURLY): the stuck-Actions-run check left this job on 2026-09-24 for its own hourly firing (`15 * * * *`, `opsStuckRunsJob`), recorded under cron_heartbeat job `ops_stuck_runs`; `runOpsWatchdogChecks` now reads main's conclusions and the two GlitchTip monitors only.",
       "detector": "GlitchTip heartbeat monitor 40 'Platform Worker ops watchdog', project `ops` (\"2\"), interval 32400 s, confirmationThreshold 1, created 2026-09-18T10:12:56Z. A firing that does not run, checks that throw (beat withheld by design), an unset or wrong secret and a Worker that no longer deploys all read as the same silence.",
       "response": "Read the platform Worker's logs for the last firing (`[cron] ops watchdog threw - heartbeat WITHHELD` means the checks threw; \"OPS_WATCHDOG_HEARTBEAT_URL is not set\" means the secret went missing; a non-2xx or transport failure is logged without the URL), then the `ops_watchdog` rows in cron_heartbeat, which duty.platform-cron reads. A silent monitor with fresh ops_watchdog rows means the BEAT is broken, not the checks. Findings (a red main, a stuck run) travel in those rows' `detail`, never in this beat.",
       "cadence": "6h",
@@ -2881,7 +2892,7 @@
       "cadence": "1h",
       "mechanism": {
         "substrate": "supabase-box-cron",
-        "anchor": "Private/runbooks/boxes/oracle.md",
+        "anchor": "Private/runbooks/boxes/boxc.md",
         "record": "GlitchTip heartbeat monitor 27's check history, plus events in the GlitchTip `ops` project",
         "failingValue": "no successful heartbeat inside the window — which is what a dead cron, a failed send and a box that is off all look like. ⚠️ The absence of an EVENT is still not information, and never will be: an ops project with no disk events is indistinguishable from a healthy disk. The beat is what makes the reporter's own silence readable, and that is the only claim this row makes.",
         "readBy": "tooling/ci/assert-ops-register.mjs, through this row's `recordQuery`, and tooling/ops/verify-monitors.mjs on the ops-watch schedule",

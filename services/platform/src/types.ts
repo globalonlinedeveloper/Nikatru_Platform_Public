@@ -196,6 +196,12 @@ export interface Env {
    *  POSTs ONLY after its checks returned. Absent ⇒ a logged no-op. Set with
    *  `wrangler secret put OPS_WATCHDOG_HEARTBEAT_URL`: the path is the credential. */
   OPS_WATCHDOG_HEARTBEAT_URL?: string;
+  /** [O-OPS-WATCHDOG-STUCK-RUNS-HOURLY] GlitchTip Heartbeat URL the hourly
+   *  stuck-run firing POSTs ONLY when its scan read every active run and no stuck
+   *  run is left unhandled, so a stuck run stops the beat and the monitor pages
+   *  (`opsStuckRunsJob`). Absent ⇒ a logged no-op. Set with
+   *  `wrangler secret put OPS_STUCK_RUNS_HEARTBEAT_URL`: the path is the credential. */
+  OPS_STUCK_RUNS_HEARTBEAT_URL?: string;
   /** Exactly the string "true" lets the ops watchdog CANCEL a stuck Actions run.
    *  Anything else, absent included, means flag-only. Default OFF until the
    *  owner widens GITHUB_DISPATCH_TOKEN to `actions:write` on the repo. */

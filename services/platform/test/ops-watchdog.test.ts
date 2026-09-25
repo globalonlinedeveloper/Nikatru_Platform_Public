@@ -5,9 +5,13 @@ import {
   BOXA_REACH_JOB,
   opsWatchdogJob,
   OPS_WATCHDOG_JOB,
+  opsStuckRunsJob,
+  OPS_STUCK_RUNS_JOB,
 } from '../src/scheduled';
 import {
   checkStuckRuns,
+  scanStuckRuns,
+  runOpsWatchdogChecks,
   checkMainConclusions,
   checkGlitchtipMonitors,
   OPS_STUCK_RUN_MINUTES,
@@ -15,6 +19,7 @@ import {
   OPS_MAIN_WORKFLOWS,
   OPS_GLITCHTIP_MONITORS,
   OPS_WATCHDOG_MAX_SUBREQUESTS,
+  OPS_STUCK_RUNS_MAX_SUBREQUESTS,
   OPS_MAIN_READ_ATTEMPTS,
   OPS_MAIN_PAGE_SIZE,
   OPS_PUSH_TRIGGERED_ON_MAIN,
@@ -71,6 +76,8 @@ const HEAD_SHA = 'a'.repeat(40);
 /** A GitHub + GlitchTip double. `runs` are served under in_progress; queued is empty. */
 function apiDouble(opts: {
   runs?: { id: number; status: string; run_started_at?: string; created_at?: string }[];
+  /** total_count for the in_progress list; above runs.length means "more than one page". */
+  total?: number;
   cancelStatus?: number;
   conclusion?: string;
   stale?: boolean;
@@ -84,7 +91,7 @@ function apiDouble(opts: {
     calls.push({ url, method });
     opts.events?.push(url === BEAT ? 'beat' : 'fetch');
     if (url === BEAT) return new Response('', { status: 200 });
-    if (url.includes('/actions/runs?status=in_progress')) return json({ total_count: opts.runs?.length ?? 0, workflow_runs: opts.runs ?? [] });
+    if (url.includes('/actions/runs?status=in_progress')) return json({ total_count: opts.total ?? opts.runs?.length ?? 0, workflow_runs: opts.runs ?? [] });
     if (url.includes('/actions/runs?status=queued')) return json({ total_count: 0, workflow_runs: [] });
     if (url.endsWith('/cancel')) return new Response('', { status: opts.cancelStatus ?? 202 });
     if (url.endsWith('/commits/main')) return json({ sha: HEAD_SHA, commit: { message: 'm', committer: { date: minutesAgo(600) } } });
@@ -272,7 +279,8 @@ describe('opsWatchdogJob — beat only after the work, never when it throws', ()
     expect(await opsWatchdogJob(e)).toBe('beat');
     expect(events).toEqual(['batch', 'beat']);
     const notOk = bound.filter((r) => r[2] === 0).map((r) => r[1]);
-    expect(notOk).toEqual(['actions-stuck-runs', 'main:ci.yml', 'main:ops-watch.yml', 'glitchtip-monitor-6', 'glitchtip-monitor-22']);
+    // ⏱ 2026-09-24: 'actions-stuck-runs' left this list with the check (O-OPS-WATCHDOG-STUCK-RUNS-HOURLY).
+    expect(notOk).toEqual(['main:ci.yml', 'main:ops-watch.yml', 'glitchtip-monitor-6', 'glitchtip-monitor-22']);
   });
 
   it('🔴 when the checks THROW: one ok=0 row, and the beat is WITHHELD', async () => {
@@ -312,12 +320,14 @@ describe('opsWatchdogJob — beat only after the work, never when it throws', ()
   });
 
   it('@ceiling — the declared subrequest budget is the sum of its parts, and the worst case stays inside it', async () => {
+    // ⏱ 2026-09-24: the two run lists and the cancels left this pass (18 -> 13); OPS_STUCK_RUNS_MAX_SUBREQUESTS holds them.
     expect(OPS_WATCHDOG_MAX_SUBREQUESTS).toBe(
-      2 + OPS_MAX_CANCELS_PER_RUN + 1 + OPS_MAIN_WORKFLOWS.length * OPS_MAIN_READ_ATTEMPTS * 2 + OPS_PUSH_TRIGGERED_ON_MAIN.length +
+      1 + OPS_MAIN_WORKFLOWS.length * OPS_MAIN_READ_ATTEMPTS * 2 + OPS_PUSH_TRIGGERED_ON_MAIN.length +
         OPS_GLITCHTIP_MONITORS.length + 1,
     );
-    // Worst case: every cancel, AND every main page stale on every attempt, so each spends its retry and its
-    // cross-reads, and every push-triggered workflow then spends its one head_sha second path.
+    // Worst case: every main page stale on every attempt, so each spends its retry and its cross-reads, and
+    // every push-triggered workflow then spends its one head_sha second path. The stuck runs and the cancel
+    // flag stay in the double: a pile-up of them must cost this pass nothing now.
     const runs = Array.from({ length: 20 }, (_, i) => ({ id: i + 1, status: 'in_progress', run_started_at: minutesAgo(9999) }));
     const { f } = apiDouble({ runs, stale: true });
     vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -326,6 +336,139 @@ describe('opsWatchdogJob — beat only after the work, never when it throws', ()
     });
     await opsWatchdogJob(e);
     expect(f.mock.calls.length).toBe(OPS_WATCHDOG_MAX_SUBREQUESTS);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-24 (O-OPS-WATCHDOG-STUCK-RUNS-HOURLY) — the stuck-run check on its own
+// hourly firing. The ROW keeps "ok means the check ran" (a finding is ok=1); the
+// BEAT carries the finding: it goes out only when the scan read every active run
+// and left no stuck run unhandled.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('scanStuckRuns and opsStuckRunsJob — the beat stops while a run is stuck', () => {
+  const STUCK_BEAT = 'https://glitchtip.example/api/0/organizations/o/heartbeat_check/STUCK-SECRET-ID/';
+  const stuckRun = (id: number) => ({ id, status: 'in_progress', run_started_at: minutesAgo(OPS_STUCK_RUN_MINUTES + 60) });
+
+  /** apiDouble, plus the stuck-run beat URL answering 200 and counted as 'beat'. */
+  function stuckDouble(opts: Parameters<typeof apiDouble>[0]) {
+    const d = apiDouble(opts);
+    const inner = d.f.getMockImplementation()!;
+    d.f.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === STUCK_BEAT) {
+        d.calls.push({ url: STUCK_BEAT, method: init?.method ?? 'GET' });
+        opts.events?.push('beat');
+        return new Response('', { status: 200 });
+      }
+      return inner(input, init);
+    });
+    return d;
+  }
+
+  it('O1 — scanStuckRuns returns { row, unhandled, truncated }, and checkStuckRuns is exactly its row', async () => {
+    stuckDouble({});
+    const clean = await scanStuckRuns(env({ GITHUB_DISPATCH_TOKEN: TOKEN }).e, NOW);
+    expect(clean).toEqual({
+      row: { target: 'actions-stuck-runs', ok: true, detail: `none stuck: 0 active run(s) examined, threshold ${OPS_STUCK_RUN_MINUTES}m` },
+      unhandled: 0,
+      truncated: false,
+    });
+    stuckDouble({ runs: [stuckRun(1), { id: 2, status: 'in_progress', run_started_at: minutesAgo(5) }], total: 150 });
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const found = await scanStuckRuns(env({ GITHUB_DISPATCH_TOKEN: TOKEN }).e, NOW);
+    expect(found.row.ok).toBe(true); // a finding is still ok=1 on the ROW
+    expect(found.row.detail).toMatch(/^FINDING: 1 run\(s\) past 120m: 1\(180m in_progress\); flag-only/);
+    expect(found.unhandled).toBe(1);
+    expect(found.truncated).toBe(true);
+    stuckDouble({ runs: [stuckRun(1)] });
+    const e = env({ GITHUB_DISPATCH_TOKEN: TOKEN }).e;
+    expect(await checkStuckRuns(e, NOW)).toEqual((await scanStuckRuns(e, NOW)).row);
+  });
+
+  it('O2 — with no stuck run it records the row under ops_stuck_runs FIRST, then beats exactly once', async () => {
+    const events: string[] = [];
+    stuckDouble({ events });
+    const { e, bound } = env({ GITHUB_DISPATCH_TOKEN: TOKEN, OPS_STUCK_RUNS_HEARTBEAT_URL: STUCK_BEAT }, events);
+    expect(await opsStuckRunsJob(e)).toBe('beat');
+    expect(events.filter((x) => x !== 'fetch')).toEqual(['batch', 'beat']);
+    expect(bound.map((r) => [r[0], r[1], r[2]])).toEqual([[OPS_STUCK_RUNS_JOB, 'actions-stuck-runs', 1]]);
+  });
+
+  it('🔴 O3 — the beat is WITHHELD, and the log says why, for a stuck run, a truncated list, a check that did not run cleanly, and a throw', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const withheldBy = async (opts: Parameters<typeof apiDouble>[0], over: Partial<Env>, scan?: Parameters<typeof opsStuckRunsJob>[1]) => {
+      const events: string[] = [];
+      stuckDouble({ ...opts, events });
+      const { e, bound } = env({ GITHUB_DISPATCH_TOKEN: TOKEN, OPS_STUCK_RUNS_HEARTBEAT_URL: STUCK_BEAT, ...over }, events);
+      log.mockClear();
+      const result = await opsStuckRunsJob(e, scan);
+      expect(events).not.toContain('beat');
+      expect(bound).toHaveLength(1); // the row is recorded on every path
+      expect(bound[0][0]).toBe(OPS_STUCK_RUNS_JOB);
+      expect(bound[0][1]).toBe('actions-stuck-runs');
+      return { result, row: bound[0], logged: log.mock.calls.flat().join('\n') };
+    };
+    // A stuck run, flag off: the ROW is ok=1 FINDING, the BEAT is withheld.
+    const stuck = await withheldBy({ runs: [stuckRun(7)] }, {});
+    expect(stuck.result).toBe('withheld');
+    expect(stuck.row[2]).toBe(1);
+    expect(stuck.logged).toMatch(/\[cron\] ops stuck-runs: heartbeat WITHHELD: 1 stuck run\(s\) unhandled/);
+    // No stuck run seen, but the list held more than one page.
+    const truncated = await withheldBy({ runs: [], total: 101 }, {});
+    expect(truncated.result).toBe('withheld');
+    expect(truncated.logged).toMatch(/heartbeat WITHHELD: a run list held more than one page/);
+    // No token: the check did not run (ok=0).
+    const unconfigured = await withheldBy({}, { GITHUB_DISPATCH_TOKEN: undefined });
+    expect(unconfigured.row[2]).toBe(0);
+    expect(unconfigured.logged).toMatch(/heartbeat WITHHELD: the check did not run cleanly: not configured/);
+    // A refused cancel with the flag on (ok=0).
+    const refused = await withheldBy({ runs: [stuckRun(8)], cancelStatus: 403 }, { OPS_WATCHDOG_CANCEL_STUCK: 'true' });
+    expect(refused.row[2]).toBe(0);
+    expect(refused.logged).toMatch(/heartbeat WITHHELD: the check did not run cleanly: .*cancel 8 HTTP 403/);
+    // The scan throws: one ok=0 row under the SAME target, so the next good firing supersedes it.
+    const threw = await withheldBy({}, {}, async () => { throw new Error('boom'); });
+    expect(threw.result).toBe('withheld');
+    expect(threw.row[2]).toBe(0);
+    expect(String(threw.row[3])).toMatch(/scan threw, heartbeat withheld: Error: boom/);
+    expect(threw.logged).toMatch(/heartbeat WITHHELD: the scan threw: Error: boom/);
+  });
+
+  it('O4 — the check MOVED: the 6-hourly pass reads no run list, and a flag-on firing that cancels every stuck run beats', async () => {
+    const { calls } = stuckDouble({ runs: [stuckRun(3)] });
+    const rows = await runOpsWatchdogChecks(env({ GITHUB_DISPATCH_TOKEN: TOKEN, GLITCHTIP_TOKEN: GT_TOKEN }).e);
+    expect(rows.map((r) => r.target)).not.toContain('actions-stuck-runs');
+    expect(calls.filter((c) => c.url.includes('/actions/runs?status='))).toEqual([]);
+    // Flag on, every stuck run cancelled (202): nothing is left unhandled, so the beat goes out.
+    const events: string[] = [];
+    stuckDouble({ runs: [stuckRun(4), stuckRun(5)], events });
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const { e } = env({ GITHUB_DISPATCH_TOKEN: TOKEN, OPS_STUCK_RUNS_HEARTBEAT_URL: STUCK_BEAT, OPS_WATCHDOG_CANCEL_STUCK: 'true' }, events);
+    expect(await opsStuckRunsJob(e)).toBe('beat');
+    // More stuck runs than the per-firing cancel cap: the rest are unhandled, so it is withheld.
+    const over = Array.from({ length: OPS_MAX_CANCELS_PER_RUN + 1 }, (_, i) => stuckRun(10 + i));
+    stuckDouble({ runs: over });
+    const capped = env({ GITHUB_DISPATCH_TOKEN: TOKEN, OPS_STUCK_RUNS_HEARTBEAT_URL: STUCK_BEAT, OPS_WATCHDOG_CANCEL_STUCK: 'true' }).e;
+    expect(await opsStuckRunsJob(capped)).toBe('withheld');
+  });
+
+  it('@ceiling — the hourly firing\'s budget is the sum of its parts, and the worst case spends exactly that', async () => {
+    expect(OPS_STUCK_RUNS_MAX_SUBREQUESTS).toBe(2 + OPS_MAX_CANCELS_PER_RUN + 1);
+    // Worst case: every cancel spent and all accepted, and the beat sent. Only
+    // OPS_MAX_CANCELS_PER_RUN stuck runs, so none is left unhandled and the beat goes out.
+    const runs = Array.from({ length: OPS_MAX_CANCELS_PER_RUN }, (_, i) => stuckRun(20 + i));
+    const { f } = stuckDouble({ runs });
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const { e } = env({ GITHUB_DISPATCH_TOKEN: TOKEN, OPS_STUCK_RUNS_HEARTBEAT_URL: STUCK_BEAT, OPS_WATCHDOG_CANCEL_STUCK: 'true' });
+    expect(await opsStuckRunsJob(e)).toBe('beat');
+    expect(f.mock.calls.length).toBe(OPS_STUCK_RUNS_MAX_SUBREQUESTS);
+  });
+
+  it('⚠️ no token or heartbeat path reaches a stuck-run row or log line', async () => {
+    stuckDouble({ runs: [stuckRun(9)], cancelStatus: 403 });
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const { e, bound } = env({ GITHUB_DISPATCH_TOKEN: TOKEN, OPS_STUCK_RUNS_HEARTBEAT_URL: STUCK_BEAT, OPS_WATCHDOG_CANCEL_STUCK: 'true' });
+    await opsStuckRunsJob(e);
+    const surface = JSON.stringify(bound) + log.mock.calls.flat().join('\n');
+    expect(surface).not.toMatch(/SECRET-TOKEN-VALUE|STUCK-SECRET-ID/);
   });
 });
 

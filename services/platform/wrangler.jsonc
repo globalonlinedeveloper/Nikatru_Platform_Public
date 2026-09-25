@@ -290,14 +290,14 @@
       // `retentionSweep` — the one limb that DESTROYS anything — still fires
       // once a day.
       //
-      // ⚠️ WHY FOUR EXPRESSIONS RATHER THAN ONE HOURLY ONE. The reader that
-      // judges these (tooling/ops/check-heartbeats.mjs) accepts a deliberately
-      // narrow grammar: literal minute AND hour. `0 * * * *` and `0 0,6 * * *`
-      // are both REFUSED — measured, not assumed. Widening that parser is a
-      // change to the thing every freshness verdict rests on, and its own header
-      // warns that both parsers must move together. Four literal expressions
-      // need no such change and cost 4 of the 250 cron triggers Workers Paid
-      // allows (it was 5 on Free, which is why this file used to say "ONE cron").
+      // ⚠️ WHY FOUR EXPRESSIONS RATHER THAN ONE. The reader that judges these
+      // (tooling/ops/check-heartbeats.mjs) accepts a deliberately narrow grammar:
+      // a literal minute AND hour, daily or weekly, and — since 2026-09-24 —
+      // exactly `<minute> * * * *`, hourly. A step or a list (`0 */6 * * *`,
+      // `0 0,6,12,18 * * *`) is still REFUSED, so a six-hourly grid is four
+      // literal expressions. With the backup and the hourly stuck-run firing
+      // below, this file holds 6 of the 250 cron triggers Workers Paid allows
+      // (it was 5 on Free, which is why this file used to say "ONE cron").
       //
       // The margin this buys, measured: the schedule it replaces (ops-watch's
       // own 12 slots) delivered 2.3 successful runs/day with a MAX GAP of 48.8h
@@ -314,7 +314,13 @@
       "30 2 * * *",
       "0 6 * * *",
       "0 12 * * *",
-      "0 18 * * *"
+      "0 18 * * *",
+      // 🔴 THE STUCK-RUN CHECK'S OWN HOURLY FIRING (O-OPS-WATCHDOG-STUCK-RUNS-HOURLY,
+      // 2026-09-24). src/scheduled.ts routes `OPS_HOURLY_CRON` to `opsStuckRunsJob`
+      // alone: no dispatch, no nightly limb, no cron beat. Its own GlitchTip beat
+      // (OPS_STUCK_RUNS_HEARTBEAT_URL) goes out only while no Actions run is stuck.
+      // :15 keeps it off the :00 grid and the 02:30 backup.
+      "15 * * * *"
     ]
   },
   "routes": [

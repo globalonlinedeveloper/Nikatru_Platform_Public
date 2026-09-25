@@ -65,8 +65,13 @@ because a caller can get them wrong in ways the others do not offer.)
    (`edge:<colo>:<asn>`) ceiling `/v1/events` uses — the 5-minute edge cache does
    not collapse cache-busting query strings, so without it an anonymous caller
    can spend one KV read per request.
-2. **Consolidated nightly cron** (`0 6 * * *`) — one cron for the whole account,
-   plus `0 18 * * *` which runs the GitHub dispatcher and nothing else.
+2. **Consolidated nightly cron** (`0 6 * * *`) — the nightly handler for the whole
+   account, below. `wrangler.jsonc` declares six triggers in all: `0 0`, `0 12` and
+   `0 18 * * *` run the GitHub dispatcher and the 6-hourly ops watchdog and nothing
+   else (the 06:00 firing runs both inside the nightly chain); `30 2 * * *` runs the
+   off-vendor backup alone; and `15 * * * *` runs the stuck-Actions-run check alone
+   (`opsStuckRunsJob`, since 2026-09-24), whose own heartbeat
+   (`OPS_STUCK_RUNS_HEARTBEAT_URL`) is sent only while no run is stuck.
    ⚠️ This read *"(Free-tier caps at 5 cron triggers/account)"* until 2026-09-03.
    The account is on **Workers Paid**, where the ceiling is **250 per account**
    ([limits](https://developers.cloudflare.com/workers/platform/limits/)).
