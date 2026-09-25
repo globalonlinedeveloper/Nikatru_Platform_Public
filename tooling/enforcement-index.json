@@ -733,6 +733,22 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/deploy-web.yml#deploy-web",
+      ".github/workflows/deploy-workers.yml#platform",
+      ".github/workflows/deploy-workers.yml#subscriptiontracker-api",
+      ".github/workflows/extensions.yml#store-publish",
+      ".github/workflows/submit-play.yml#submit",
+      ".github/workflows/submit-snap.yml#submit",
+      ".github/workflows/submit-windows-store.yml#submit"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-deploy-ref.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "ADR 067",
       "O-7"
@@ -1915,7 +1931,6 @@
   },
   {
     "claims": [
-      "ADR 015",
       "D-9",
       "F-10",
       "F-2",
@@ -2943,6 +2958,7 @@
   },
   {
     "claims": [
+      "ADR 015",
       "D-2b",
       "D-9",
       "O-7",

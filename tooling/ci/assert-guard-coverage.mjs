@@ -355,6 +355,10 @@ const NOT_A_SCANNER = new Map([
     'asks the GitHub API for one environment\'s latest successful Deployment, through record-deployment.mjs\'s client, and asks git whether one commit is an ancestor of another and which paths differ between them. There is no tree to under-reach; everything it cannot establish (an unreadable ledger, a shallow clone, a glob shape globClaims cannot decide, an environment deployUnits does not name) exits 1 and nothing publishes. test/plan-deploy.test.mjs reds each of those against a real git history and a fixture ledger.',
   ],
   [
+    'assert-deploy-ref.mjs',
+    'reads two environment variables the runner sets, GITHUB_EVENT_NAME and GITHUB_REF, and its --allow arguments, and answers whether this job may publish from that ref. There is no tree to under-reach; its failure modes are argument handling and the ref reading (a missing variable, a negative or unreadable tag filter exits 2), which test/deploy-ref.test.mjs reds one case at a time.',
+  ],
+  [
     'record-deployment.mjs',
     'writes a GitHub Deployment record. It performs an action rather than scanning anything, so there is no scope for it to silently cover less.',
   ],

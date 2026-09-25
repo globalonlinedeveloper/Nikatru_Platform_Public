@@ -210,6 +210,13 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+      # why: ONLY main SUBMITS, CHECKED BEFORE ANYTHING ELSE RUNS (row
+      # O-DEPLOY-IS-NOT-ONE-GATED-LANE, limb 2). `workflow_dispatch` runs on whatever ref
+      # the dispatcher picks, and `environment: store-publish` alone fails open (above),
+      # so a dispatch from any branch or tag but main exits 1 here. Held FIRST by
+      # assert-workflow-hardening limb 10.
+      - name: Refuse any ref but main
+        run: node tooling/ci/assert-deploy-ref.mjs --allow main
       - name: A real submission must name the listing it will be recorded against
         env:
           LISTING_URL: ${{ inputs.listing_url }}

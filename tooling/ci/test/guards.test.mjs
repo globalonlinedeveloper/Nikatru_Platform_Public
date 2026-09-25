@@ -2080,6 +2080,130 @@ describe('assert-workflow-hardening', () => {
       assert.match(out, /\.github\/workflows\/a\.yml:\d+ `uses: \.\/\.github\/actions\/gone` names no file in this tree \(missing\)/);
     });
   });
+
+  // ── limb 10 · ⏱ 2026-09-25 · pd2c · A PUBLISHING JOB DECLARES environment: AND CHECKS ITS REF FIRST ──
+  // O-DEPLOY-IS-NOT-ONE-GATED-LANE limb 2. a.yml and b.yml hold every other limb
+  // green; c.yml (and, where a case says so, a callee or a named workflow) carries
+  // the publishing job, written out whole per case, so each verdict below is
+  // limb 10's. The cases marked RC8, RC9 and RC11 are the pd2c brief's red
+  // controls in fixture form; each is also run against the real tree. A job is
+  // reported at its first body line — `runs-on:`, :7 in every fixture here — and
+  // a step at its `- ` line.
+  describe('limb 10 — a publishing job declares `environment:` and runs assert-deploy-ref.mjs first', () => {
+    const HEAD = 'name: X\non: push\npermissions:\n  contents: read\njobs:\n';
+    const CHECKOUT = `      - uses: actions/checkout@${SHA}\n        with:\n          persist-credentials: false\n`;
+    const CHECK = '      - name: Refuse any ref but main\n        run: node tooling/ci/assert-deploy-ref.mjs --allow main\n';
+    const A0 = `      - uses: actions/act0@${SHA}\n`;
+    const REST = `      - uses: actions/act1@${SHA}\n      - uses: actions/act2@${SHA}\n      - name: Deploy\n        run: npx wrangler deploy\n`;
+    const job = ({ name = 'deploy', env = '    environment: production\n', steps = CHECKOUT + CHECK + A0 + REST } = {}) =>
+      `  ${name}:\n    runs-on: ubuntu-24.04\n    timeout-minutes: 5\n${env}    steps:\n${steps}`;
+    const refs = Array.from({ length: 4 }, (_, i) => `actions/act${i}@${SHA}`);
+    const verdict = (name, files) =>
+      run('assert-workflow-hardening.mjs', {
+        args: [fixture(name, { '.github/workflows/a.yml': wf(refs), '.github/workflows/b.yml': wf(refs), ...files })],
+      });
+
+    test('PASSES on `environment:` plus the ref check first after checkout, and limb 10 prints what it graded', () => {
+      const { code, out } = verdict('wh-l10-ok', { '.github/workflows/c.yml': HEAD + job() });
+      assert.equal(code, 0, out);
+      assert.match(out, /limb 10 — 1 publishing job\(s\), each with a job-level `environment:` and assert-deploy-ref\.mjs as its first step after checkout; floor NOT armed/);
+    });
+
+    test('🔴 RC8 — FAILS on a publishing job with no `environment:`, naming file, line and what it publishes', () => {
+      const { code, out } = verdict('wh-l10-noenv', { '.github/workflows/c.yml': HEAD + job({ env: '' }) });
+      assert.equal(code, 1, out);
+      assert.match(out, /c\.yml:7 job `deploy` publishes \(a Cloudflare deploy\) and declares no job-level `environment:`/);
+      assert.doesNotMatch(out, /assert-deploy-ref\.mjs as step|never runs/);
+    });
+
+    test('🔴 RC9 — FAILS on a publishing job that never runs the ref check', () => {
+      const { code, out } = verdict('wh-l10-nocheck', { '.github/workflows/c.yml': HEAD + job({ steps: CHECKOUT + A0 + REST }) });
+      assert.equal(code, 1, out);
+      assert.match(out, /c\.yml:7 job `deploy` publishes \(a Cloudflare deploy\) and never runs tooling\/ci\/assert-deploy-ref\.mjs/);
+      assert.doesNotMatch(out, /declares no job-level/);
+    });
+
+    test('🔴 RC11 — FAILS on the ref check moved to step 2 after checkout, saying "first step"', () => {
+      const { code, out } = verdict('wh-l10-second', { '.github/workflows/c.yml': HEAD + job({ steps: CHECKOUT + A0 + CHECK + REST }) });
+      assert.equal(code, 1, out);
+      assert.match(out, /c\.yml:15 job `deploy` publishes \(a Cloudflare deploy\) and runs assert-deploy-ref\.mjs as step 3, not as its first step after checkout \(step 2 is at \.github\/workflows\/c\.yml:14\)/);
+    });
+
+    test('🔴 FAILS on a first-step ref check that carries an `if:` — a refused ref could still reach the publish', () => {
+      const guarded = CHECK + "        if: github.ref == 'refs/heads/main'\n";
+      const { code, out } = verdict('wh-l10-if', { '.github/workflows/c.yml': HEAD + job({ steps: CHECKOUT + guarded + A0 + REST }) });
+      assert.equal(code, 1, out);
+      assert.match(out, /c\.yml:14 job `deploy` publishes \(a Cloudflare deploy\); its first step runs assert-deploy-ref\.mjs but carries `if: github\.ref == 'refs\/heads\/main'`/);
+    });
+
+    test('🔴 FAILS on a first-step ref check with `continue-on-error: true`', () => {
+      const soft = CHECK + '        continue-on-error: true\n';
+      const { code, out } = verdict('wh-l10-soft', { '.github/workflows/c.yml': HEAD + job({ steps: CHECKOUT + soft + A0 + REST }) });
+      assert.equal(code, 1, out);
+      assert.match(out, /c\.yml:14 job `deploy` publishes \(a Cloudflare deploy\); its first step runs assert-deploy-ref\.mjs but carries `continue-on-error:`/);
+    });
+
+    test('🔴 FAILS on a checkout that names its own `ref:` — the check vouches for GITHUB_REF, not those bytes', () => {
+      const moved = `      - uses: actions/checkout@${SHA}\n        with:\n          ref: release\n`;
+      const { code, out } = verdict('wh-l10-ref', { '.github/workflows/c.yml': HEAD + job({ steps: moved + CHECK + A0 + REST }) });
+      assert.equal(code, 1, out);
+      assert.match(out, /c\.yml:11 job `deploy` publishes \(a Cloudflare deploy\), and its checkout sets `ref:`/);
+    });
+
+    test('🔴 grades a publishing job in a `workflow_call` callee, at the callee\'s own line — the shape deploy-web.yml has', () => {
+      const caller = `${HEAD}  call:\n    uses: ./.github/workflows/d.yml\n`;
+      const callee = 'name: D\non:\n  workflow_call:\npermissions:\n  contents: read\njobs:\n' + job({ env: '' });
+      const { code, out } = verdict('wh-l10-callee', { '.github/workflows/c.yml': caller, '.github/workflows/d.yml': callee });
+      assert.equal(code, 1, out);
+      assert.match(out, /d\.yml:8 job `call\/deploy` publishes \(a Cloudflare deploy\) and declares no job-level `environment:`/);
+    });
+
+    test('🔴 FAILS on a GitHub Release job the named list does not hold — a release is graded like any publish', () => {
+      const release = job({ name: 'release', env: '', steps: CHECKOUT + A0 + REST.replace('npx wrangler deploy', 'gh release create v1') });
+      const { code, out } = verdict('wh-l10-release', { '.github/workflows/c.yml': HEAD + release });
+      assert.equal(code, 1, out);
+      assert.match(out, /c\.yml:7 job `release` publishes \(a GitHub Release publish\) and declares no job-level `environment:`/);
+      assert.match(out, /c\.yml:7 job `release` publishes \(a GitHub Release publish\) and never runs tooling\/ci\/assert-deploy-ref\.mjs/);
+    });
+
+    test('a NAMED GitHub-Release-only job is not graded, and is printed with its reason', () => {
+      const release = job({ name: 'release', env: '', steps: CHECKOUT + A0 + REST.replace('npx wrangler deploy', 'gh release create v1') });
+      const { code, out } = verdict('wh-l10-named', {
+        '.github/workflows/c.yml': HEAD + job(),
+        '.github/workflows/build-platforms.yml': HEAD + release,
+      });
+      assert.equal(code, 0, out);
+      assert.match(out, /limb 10 — 1 publishing job\(s\)/);
+      assert.match(out, /not graded, named: \.github\/workflows\/build-platforms\.yml :: release — runs on the Monday\/Thursday schedule/);
+    });
+
+    test('🔴 FAILS on a NAMED release job that also deploys — the name holds only while it publishes nothing else', () => {
+      const both = job({ name: 'release', env: '', steps: CHECKOUT + A0 + REST.replace('npx wrangler deploy', 'gh release create v1 && npx wrangler deploy') });
+      const { code, out } = verdict('wh-l10-named-deploys', {
+        '.github/workflows/c.yml': HEAD + job(),
+        '.github/workflows/build-platforms.yml': HEAD + both,
+      });
+      assert.equal(code, 1, out);
+      assert.match(out, /build-platforms\.yml:7 job `release` publishes \(a Cloudflare deploy, a GitHub Release publish\) and declares no job-level `environment:`/);
+      assert.match(out, /limb 10's GITHUB_RELEASE_ONLY names `release`, which is not a job that publishes GitHub Releases and nothing else/);
+    });
+
+    test('REFUSES (exit 2) when the tree declares publishers and limb 10 grades none', () => {
+      const { code, out } = verdict('wh-l10-floor', {
+        '.github/workflows/c.yml': wf(refs),
+        'tooling/ci/lane-map.json': JSON.stringify({ deployUnits: { web: {} } }),
+      });
+      assert.equal(code, 2, out);
+      assert.match(out, /limb 10 graded ZERO publishing jobs in a tree that declares publishers \(1 lane-map deployUnits\)/);
+    });
+
+    test('REFUSES (exit 2) when the resolver cannot place a callee — a job it cannot follow is a publish it cannot see', () => {
+      const orphan = 'name: D\non:\n  workflow_call:\npermissions:\n  contents: read\njobs:\n' + job();
+      const { code, out } = verdict('wh-l10-orphan', { '.github/workflows/c.yml': HEAD + job(), '.github/workflows/d.yml': orphan });
+      assert.equal(code, 2, out);
+      assert.match(out, /limb 10: .*d\.yml/);
+    });
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
