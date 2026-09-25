@@ -240,7 +240,7 @@
   "setup-flutter-env.test.mjs": 4,
   "signup-consent-shape.test.mjs": 33,
   "signup-retention.test.mjs": 12,
-  "single-threaded-relaunch.test.mjs": 8,
+  "single-threaded-relaunch.test.mjs": 9,
   "sink-disclosure.test.mjs": 49,
   "site-integrity.test.mjs": 108,
   "smoke-web-artifact.test.mjs": 30,
