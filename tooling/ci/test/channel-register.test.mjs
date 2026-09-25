@@ -3707,6 +3707,39 @@ describe('assert-channel-register — a store channel that can never be scripted
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ⏱ ADDED 2026-09-24 — `deferral.ruledOutBy` (O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER,
+// red control R6). release-manifest.mjs `storeOnlyFormats` reads the field to decide
+// what a GitHub Release may carry, so the two shapes that would make that reading
+// unsafe are refused where the register is owned: a SERVED row that is ruled out,
+// and an id that is not a constraint id. Both exit 0 on the guard as it stood.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-channel-register — a ruled-out channel names its constraint and is never served', () => {
+  test('CONTROL — a deferred row ruled out by a constraint id passes, and PRINTS which constraint', () => {
+    const { code, out } = run(tree({
+      mutate: (r) => { r.channels[1].deferral = { reason: 'forbidden', alsoBlockedBy: null, ruledOutBy: 'C-WINDOWS-STORE-ONLY' }; },
+    }));
+    assert.equal(code, 0, out);
+    assert.match(out, /RULED OUT: channel "windows-store" is forbidden by C-WINDOWS-STORE-ONLY/);
+  });
+
+  test('R6 — FAILS when a SERVED row carries `ruledOutBy`', () => {
+    const { code, out } = run(tree({
+      mutate: (r) => { r.channels[0].deferral = { reason: 'forbidden', alsoBlockedBy: null, ruledOutBy: 'C-WINDOWS-STORE-ONLY' }; },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /channel "web" is SERVED and carries `deferral\.ruledOutBy` "C-WINDOWS-STORE-ONLY"/);
+  });
+
+  test('R6 — FAILS when `ruledOutBy` is not a constraint id', () => {
+    const { code, out } = run(tree({
+      mutate: (r) => { r.channels[1].deferral = { reason: 'forbidden', alsoBlockedBy: null, ruledOutBy: 'windows store only' }; },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /channel "windows-store" has `deferral\.ruledOutBy` "windows store only", which is not a constraint id/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ⏱ ADDED 2026-09-22 — limb 6b-iv, PAIRING (P1-2 consumer C6).
 // ⏱ 2026-09-23 — RE-CUT onto the census. Since 6b-ii fails a PLATFORM mismatch
 // (an apk stamped `ios-appstore`), the ios-appstore-in-the-Android-job example

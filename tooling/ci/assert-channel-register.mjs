@@ -1101,6 +1101,36 @@ for (const c of channels) {
     );
   }
 
+  // ── a channel a CONSTRAINT rules out ──────────────────────────────────────
+  // ⏱ 2026-09-24 (O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER). `deferral.ruledOutBy`
+  // names the locked constraint that forbids this channel, and
+  // release-manifest.mjs `storeOnlyFormats` reads it: a ruled-out row takes
+  // nothing from a Release, so a format only it and the submittable stores
+  // accept is refused by `--stage`. Two things make that reading unsafe, and both
+  // are refused here, where the register is owned: an id that is not a
+  // constraint id (a sentence, a row id, a non-string), because a typo would
+  // still rule the channel out and nothing would say which constraint did; and a
+  // SERVED row carrying one, because a channel cannot ship and be forbidden at
+  // once, and `--stage` would refuse the very file the served row takes.
+  const ruledOutBy = c.deferral !== null && typeof c.deferral === 'object' ? c.deferral.ruledOutBy : undefined;
+  if (ruledOutBy !== undefined) {
+    if (typeof ruledOutBy !== 'string' || !/^C-[A-Z0-9]+(?:-[A-Z0-9]+)*$/.test(ruledOutBy)) {
+      problems.push(
+        `${where} has \`deferral.ruledOutBy\` ${JSON.stringify(ruledOutBy)}, which is not a constraint id (\`C-\` then upper-case words joined by \`-\`, e.g. C-WINDOWS-STORE-ONLY). ` +
+          'release-manifest.mjs rules the channel out on any value, so a malformed one still changes what a Release may carry while naming no constraint anybody can read.',
+      );
+    }
+    if (c.served === true) {
+      problems.push(
+        `${where} is SERVED and carries \`deferral.ruledOutBy\` ${JSON.stringify(ruledOutBy)}. A channel a constraint forbids cannot also ship: ` +
+          'release-manifest.mjs --stage would refuse the very files this row takes from the Release. Drop the constraint id, or the served flag.',
+      );
+    }
+    if (typeof ruledOutBy === 'string' && c.served !== true) {
+      prints.push(`RULED OUT: channel "${c.id}" is forbidden by ${ruledOutBy}; a Release takes none of its formats on its account.`);
+    }
+  }
+
   // ── what SERVED additionally means ────────────────────────────────────────
   if (c.served === true) {
     if (typeof c.deploymentEnvironment !== 'string' || !c.deploymentEnvironment.includes('{app}')) {

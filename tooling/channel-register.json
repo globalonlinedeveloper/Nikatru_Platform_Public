@@ -74,6 +74,8 @@
     "  · disqualified channels are named with the LOCKED ADR that killed them, and printed every run",
     "  · every native row carries a boolean `nativeAuth`, a web or extension row carries none, and",
     "    `served: true` on a native row needs it true             [O-BOXA-CAPTCHA-REFUSES-NATIVE-SIGN-IN]",
+    "  · a `deferral.ruledOutBy` is a constraint id (`C-…`), and a SERVED row carries none",
+    "                                                            [O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER]",
     "  · COVERAGE LOST when the register is absent, empty, or has nothing served   [D-1 requires loud]",
     "",
     "🔴 `storefrontKey` IS THE STOREFRONT'S NAME FOR THIS CHANNEL, AND IT LIVES HERE SO THAT ADDING A",
@@ -138,7 +140,19 @@
     "While it is false, assert-channel-register.mjs refuses `served: true` on the row, and",
     "`release-manifest.mjs --stage` refuses, on a release tag, every installer the row claims (an",
     "untagged build-proof run only warns). Flip it on OBSERVED evidence — a native build completing",
-    "sign-in, sign-up and recovery against that backend — never on a changed setting alone."
+    "sign-in, sign-up and recovery against that backend — never on a changed setting alone.",
+    "",
+    "⛔ `deferral.ruledOutBy` SAYS A CONSTRAINT FORBIDS THIS CHANNEL, NOT THAT IT IS WAITING. A deferred",
+    "row is work that has not started; a ruled-out row is a channel a locked constraint says will not",
+    "ship, and the value is that constraint's id (windows-direct: C-WINDOWS-STORE-ONLY, Windows ships",
+    "through the Microsoft Store only). It decides what a GitHub Release may carry: a Release carries a",
+    "file only when some row takes that file FROM the Release — a live `kind: direct` row, a store with",
+    "no submission path (a person uploads the Release's file by hand), or any row on a surface whose",
+    "`flutterApp` is false. A format every accepting row of which is a ruled-out row or a `submittable`",
+    "app store is STORE-ONLY: that store's own submission workflow builds its package, nothing reads it",
+    "from the Release, and `release-manifest.mjs --stage` refuses it on every run, tagged or not",
+    "(`storeOnlyFormats`). assert-channel-register.mjs refuses a malformed id and a ruled-out row that",
+    "is served (O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER)."
   ],
   "aggregatingJob": {
     "_why": [
@@ -2929,7 +2943,8 @@
       "ownerQueue": null,
       "deferral": {
         "reason": "39-CHASSIS §4 cut 5, and it is the more expensive of the two Windows paths.",
-        "alsoBlockedBy": "Needs a purchased code-signing certificate."
+        "alsoBlockedBy": "Needs a purchased code-signing certificate.",
+        "ruledOutBy": "C-WINDOWS-STORE-ONLY"
       },
       "notes": [
         "🔬 THE SECOND WINDOWS ROW, and it exists because the two paths have OPPOSITE signing answers.",

@@ -196,12 +196,12 @@ const LANE_OUTPUTS = new Map([
         {
           ext: '.msix',
           dir: 'build/windows/msix',
-          why: 'the Microsoft Store package. THE recorded failing case: with Release/ present, an absent .msix is accepted by the upload and by every text-reading guard',
+          why: 'the Microsoft Store package. THE recorded failing case: with Release/ present, an absent .msix is accepted by the upload and by every text-reading guard. ⏱ 2026-09-24: store-only under C-WINDOWS-STORE-ONLY, so it uploads as `store-<app>-windows-msix` for the submission path and never reaches a release (O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER)',
         },
         {
           tree: 'build/windows/x64/runner/Release',
           bundleMember: '.exe',
-          why: 'the Windows runner bundle. The .exe is asserted INSIDE it rather than lifted out: it loads flutter_windows.dll and data/ from beside itself, which is why release-manifest.mjs declares it a bundle member and never stages it alone',
+          why: 'the Windows runner bundle. The .exe is asserted INSIDE it rather than lifted out: it loads flutter_windows.dll and data/ from beside itself, which is why release-manifest.mjs declares it a bundle member and never stages it alone. ⏱ 2026-09-24: nor archives it — windows-direct, the one row that takes an .exe, is ruled out by C-WINDOWS-STORE-ONLY, so the bundle uploads as `store-<app>-windows`, outside the release download (O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER)',
         },
       ],
       gaps: [],

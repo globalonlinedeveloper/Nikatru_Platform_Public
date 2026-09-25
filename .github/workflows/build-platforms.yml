@@ -409,12 +409,19 @@ jobs:
           path: apps/${{ matrix.app }}/build/app/outputs/flutter-apk/*.apk
           retention-days: 90
           if-no-files-found: error
+      # why `store-`: the .aab is store-only, so it stays outside the release job's `<app>-*` download — docs/ci/build-platforms.md §store-only.
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: store-${{ matrix.app }}-android-aab-${{ env.ANDROID_SIGNING_POSTURE }}
+          path: |
+            apps/${{ matrix.app }}/build/app/outputs/bundle/release/*.aab
+            apps/${{ matrix.app }}/build/app/outputs/bundle/release/*.aab.channel.json
+          retention-days: 90
+          if-no-files-found: error
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ matrix.app }}-linux-web-android-${{ env.ANDROID_SIGNING_POSTURE }}
           path: |
-            apps/${{ matrix.app }}/build/app/outputs/bundle/release/*.aab
-            apps/${{ matrix.app }}/build/app/outputs/bundle/release/*.aab.channel.json
             apps/${{ matrix.app }}/build/linux/x64/release/bundle
           retention-days: 90
           if-no-files-found: error
@@ -557,7 +564,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: ${{ matrix.app }}-windows-msix-diagnostic
+          name: store-${{ matrix.app }}-windows-msix-diagnostic
           path: |
             apps/${{ matrix.app }}/build/windows/msix/*.msix
             apps/${{ matrix.app }}/build/windows/msix/*.msix.channel.json
@@ -639,11 +646,18 @@ jobs:
             --dir "apps/${env:APP}/build/symbols/windows" `
             --org $gt.org --project $gt.project
           if ($LASTEXITCODE -ne 0) { Write-Error "upload-native-symbols exited $LASTEXITCODE" }
+      # why `store-`: the runner and the .msix are store-only under C-WINDOWS-STORE-ONLY — docs/ci/build-platforms.md §store-only.
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: ${{ matrix.app }}-windows
+          name: store-${{ matrix.app }}-windows
           path: |
             apps/${{ matrix.app }}/build/windows/x64/runner/Release
+          retention-days: 90
+          if-no-files-found: error
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: store-${{ matrix.app }}-windows-msix
+          path: |
             apps/${{ matrix.app }}/build/windows/msix/*.msix
             apps/${{ matrix.app }}/build/windows/msix/*.msix.channel.json
           retention-days: 90
@@ -1059,10 +1073,11 @@ jobs:
       # for the same reason the iOS one is — the .pkg is the submittable format
       # and the .app is the build proof, and an artifact list that cannot tell
       # them apart is how an unsigned proof gets mistaken for a release.
+      # why `store-` on the .pkg and the .ipa: both are store-only, outside the release job's `<app>-*` download — docs/ci/build-platforms.md §store-only.
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: env.APPLE_SIGNING_POSTURE == 'release-signed'
         with:
-          name: ${{ matrix.app }}-macos-pkg
+          name: store-${{ matrix.app }}-macos-pkg
           path: |
             apps/${{ matrix.app }}/build/macos/pkg/*.pkg
             apps/${{ matrix.app }}/build/macos/pkg/*.pkg.channel.json
@@ -1071,7 +1086,7 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: env.APPLE_SIGNING_POSTURE == 'release-signed'
         with:
-          name: ${{ matrix.app }}-ios-${{ env.APPLE_SIGNING_POSTURE }}
+          name: store-${{ matrix.app }}-ios-${{ env.APPLE_SIGNING_POSTURE }}
           path: |
             apps/${{ matrix.app }}/build/ios/ipa/*.ipa
             apps/${{ matrix.app }}/build/ios/ipa/*.ipa.channel.json
@@ -1185,6 +1200,8 @@ jobs:
           # Each installer's build stamp goes to stamps/, never to dist/ (flat, and
           # published whole); the next step reads each file's channel from there.
           node tooling/ci/release-manifest.mjs --stage downloads --out dist --stamps stamps --app "$APP" --tag "$TAG" --ref-type "$REF_TYPE"
+          # --stage has already refused any store-only file under downloads/, so
+          # nothing this loop archives is one (docs/ci/build-platforms.md §store-only).
           for d in downloads/*/; do
             [ -d "$d" ] || continue
             n="$(basename "$d")"
