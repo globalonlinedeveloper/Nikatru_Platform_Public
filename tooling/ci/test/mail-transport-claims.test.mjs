@@ -379,6 +379,52 @@ describe('assert-mail-transport-claims — the architecture is checked STRUCTURA
     low.supabaseAuth.rate_limit_email_sent = 2;
     assert.equal(run(makeRoot({ register: low })).status, 0);
   });
+
+  // ⏱ 2026-09-25 — `supabaseAuth.sameMeaning` is refused STATICALLY when malformed,
+  // so CI is red before Ops watch is. The four shapes are the live checker's own
+  // (tooling/ops/auth-record-compare.mjs), read through the same function.
+  test('SM1 PASSES a well-formed sameMeaning for a recorded null', () => {
+    const reg = GOOD_REGISTER();
+    reg.supabaseAuth.sessions_timebox = null;
+    reg.supabaseAuth.sameMeaning = { sessions_timebox: [null, 0] };
+    const r = run(makeRoot({ register: reg }));
+    assert.equal(r.status, 0, out(r));
+  });
+
+  test('SM2 FAILS a sameMeaning key that is not a compared field of the record', () => {
+    const reg = GOOD_REGISTER();
+    reg.supabaseAuth.sameMeaning = { sessions_timeboxx: [null, 0] };
+    const r = run(makeRoot({ register: reg }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /sameMeaning\.sessions_timeboxx`: `sessions_timeboxx` is not a compared field/);
+  });
+
+  test('SM3 FAILS a sameMeaning list that does not contain the recorded value', () => {
+    const reg = GOOD_REGISTER();
+    reg.supabaseAuth.sessions_timebox = null;
+    reg.supabaseAuth.sameMeaning = { sessions_timebox: [0, 60] };
+    const r = run(makeRoot({ register: reg }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /does not contain the recorded value null/);
+  });
+
+  test('SM4 FAILS a sameMeaning value that is not an array of JSON scalars', () => {
+    const reg = GOOD_REGISTER();
+    reg.supabaseAuth.sessions_timebox = null;
+    reg.supabaseAuth.sameMeaning = { sessions_timebox: [null, { seconds: 0 }] };
+    const r = run(makeRoot({ register: reg }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /is not an array of JSON scalars/);
+  });
+
+  test('SM5 FAILS an empty sameMeaning list rather than reading it as a declaration', () => {
+    const reg = GOOD_REGISTER();
+    reg.supabaseAuth.sessions_timebox = null;
+    reg.supabaseAuth.sameMeaning = { sessions_timebox: [] };
+    const r = run(makeRoot({ register: reg }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /the list is EMPTY/);
+  });
 });
 
 describe('assert-mail-transport-claims — the live half must stay wired to the record', () => {
@@ -862,6 +908,38 @@ describe('verify-supabase-templates — every RECORDED auth field is compared', 
     const r = runAgainst(WITH_SUBJECTS, { mailer_subjects_confirmation: 'Confirm — T', mailer_subjects_magic_link: 'Sign in — T' });
     assert.equal(r.status, 1, out(r));
     assert.match(out(r), /auth subject `recovery`: .*NO SUCH FIELD `mailer_subjects_recovery`/);
+  });
+
+  // ⏱ 2026-09-25 — `sameMeaning`, end to end through the real checker. Run
+  // 36097413255 read `sessions_timebox: 0` against a recorded null and exited 1.
+  const WITH_SESSIONS = {
+    ...HARDENED,
+    sessions_timebox: null,
+    sessions_inactivity_timeout: null,
+    sameMeaning: { sessions_timebox: [null, 0], sessions_inactivity_timeout: [null, 0] },
+  };
+
+  test('A10 — live 0 against a recorded null, declared same meaning: exit 0, printed as such, count unchanged', () => {
+    const r = runAgainst(WITH_SESSIONS, { sessions_timebox: 0, sessions_inactivity_timeout: 0 });
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /sessions_timebox ≡ null \(live 0, declared same meaning\)/);
+    assert.match(out(r), /sessions_inactivity_timeout ≡ null \(live 0, declared same meaning\)/);
+    // HARDENED's 5 plus the two session keys; `sameMeaning` itself is not a field.
+    assert.match(out(r), /\(7 field\(s\) compared\)/);
+    assert.doesNotMatch(out(r), /auth `sameMeaning`/);
+  });
+
+  test('A11 — a value OUTSIDE the declared list is still drift: exit 1', () => {
+    const r = runAgainst(WITH_SESSIONS, { sessions_timebox: 3600, sessions_inactivity_timeout: 0 });
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /auth `sessions_timebox`: register says null, live says 3600\./);
+  });
+
+  test('A12 — a malformed sameMeaning is a DRIFT line from the live checker too, and grants nothing: exit 1', () => {
+    const r = runAgainst({ ...WITH_SESSIONS, sameMeaning: { sessions_timebox: [] } }, { sessions_timebox: 0 });
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /auth `sameMeaning\.sessions_timebox`: the list is EMPTY/);
+    assert.match(out(r), /auth `sessions_timebox`: register says null, live says 0\./);
   });
 });
 

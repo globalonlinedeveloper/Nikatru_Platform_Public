@@ -140,7 +140,27 @@
     "refresh_token_rotation_enabled": true,
     "security_refresh_token_reuse_interval": 10,
     "sessions_timebox": null,
-    "sessions_inactivity_timeout": null
+    "sessions_inactivity_timeout": null,
+    "_whySameMeaning": [
+      "⏱ 2026-09-25 — Ops watch run 36097413255 (05:09:58Z, main ee9b4599) read `sessions_timebox` and",
+      "`sessions_inactivity_timeout` as 0 where this record says null, and printed DRIFT for both. Run",
+      "36093365693 (04:10Z), against the same record, read them unset and was green. WHY the live values",
+      "went from unset to 0 is NOT established: no lane PATCHes the hosted auth config, and none is known",
+      "to have. To GoTrue both fields are durations where unset and 0 both mean \"no limit\", which is the",
+      "owner's rule above (null = never), so the two readings are one setting, not a change of policy.",
+      "",
+      "`sameMeaning` says exactly that and no more: for each named field, the values the live API may",
+      "answer that mean the same as the recorded one. It is not a live field (the checker excludes it),",
+      "the recorded values stay null, and membership is strict: null and 0 are two members, the string",
+      "\"0\" is neither. A value outside the list is still DRIFT. A malformed entry (a name that is not a",
+      "compared field, a list that is empty, not an array of JSON scalars, or missing the recorded value)",
+      "is refused in CI by assert-mail-transport-claims.mjs and as a DRIFT line by the live checker, and",
+      "grants nothing. tooling/ops/auth-record-compare.mjs is where the rule is read."
+    ],
+    "sameMeaning": {
+      "sessions_timebox": [null, 0],
+      "sessions_inactivity_timeout": [null, 0]
+    }
   },
 
   "supersededTransportClaims": {
