@@ -64,6 +64,10 @@ jobs:
           set -euo pipefail
           node tooling/ci/assert-app-versioning.mjs --emit apps/subscriptiontracker >> "$GITHUB_OUTPUT"
           echo "GITHUB_SHA_SHORT=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+      # why: O-SUBMIT-LANES-SKIP-PRECONDITION-GATES. A lane green over a name the owner has not HELD
+      # or proven free submits one nobody ruled on; limb 3 of assert-publish-steps-guarded.mjs.
+      - name: Name clearance holds for windows-store (owner HELD or PROVEN-FREE)
+        run: node tooling/ci/assert-name-clearance.mjs --for-submission=windows-store
       # why: the backend defines. Without them AppConfig.isBackendLive stays
       # false, every field is at its PLACEHOLDER, and the packaged .msix is the
       # DEMO build -- mock sign-in, seeded data, no crash sink. Graded by
@@ -244,6 +248,10 @@ jobs:
           set -euo pipefail
           node tooling/ci/assert-app-versioning.mjs --emit apps/subscriptiontracker >> "$GITHUB_OUTPUT"
           echo "GITHUB_SHA_SHORT=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+      # why: O-SUBMIT-LANES-SKIP-PRECONDITION-GATES. A lane green over a name the owner has not HELD
+      # or proven free submits one nobody ruled on; limb 3 of assert-publish-steps-guarded.mjs.
+      - name: Name clearance holds for windows-store (owner HELD or PROVEN-FREE)
+        run: node tooling/ci/assert-name-clearance.mjs --for-submission=windows-store
       - name: Build windows
         working-directory: apps/subscriptiontracker
         run: >

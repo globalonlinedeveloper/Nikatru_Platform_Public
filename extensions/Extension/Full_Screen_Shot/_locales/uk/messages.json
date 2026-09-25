@@ -473,7 +473,7 @@
     "message": "Збережено ✓"
   },
   "optionsSaveFailed": {
-    "message": "Not saved ✕"
+    "message": "Не збережено ✕"
   },
   "optionsSectionData": {
     "message": "Ваші дані"
@@ -550,7 +550,7 @@
     }
   },
   "optionsSweepPartial": {
-    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "message": "Видалено: $COUNT$ з $FOUND$ · Звільнено: $SIZE$ · Решту видалити не вдалося. Спробуйте ще раз або перезапустіть браузер.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -848,7 +848,7 @@
     "message": "Знімок видалено."
   },
   "redactActsLine": {
-    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "message": "Приховування ввімкнено. Знайдено: $MATCHED$, зафарбовано: $PAINTED$, підтверджено як непрозоре на цьому зображенні: $VERIFIED$.",
     "placeholders": {
       "matched": {
         "content": "$1",
@@ -865,11 +865,11 @@
     }
   },
   "redactActsNone": {
-    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "message": "Приховування нічого не знайшло в прочитаному тексті й не намалювало жодного блоку. Нижче нічого не обведено.",
     "placeholders": {}
   },
   "redactActsShortfall": {
-    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "message": "Приховування знайшло $MATCHED$ і закрило $COVERED$.",
     "placeholders": {
       "matched": {
         "content": "$1",
@@ -882,7 +882,7 @@
     }
   },
   "redactActsUncoveredOne": {
-    "message": "$COUNT$ match is not covered in this image.",
+    "message": "$COUNT$ збіг не закрито на цьому зображенні.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -891,7 +891,7 @@
     }
   },
   "redactActsUncoveredFew": {
-    "message": "$COUNT$ matches are not covered in this image.",
+    "message": "$COUNT$ збіги не закрито на цьому зображенні.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -900,7 +900,7 @@
     }
   },
   "redactActsUncoveredMany": {
-    "message": "$COUNT$ matches are not covered in this image.",
+    "message": "$COUNT$ збігів не закрито на цьому зображенні.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -909,7 +909,7 @@
     }
   },
   "redactActsUncoveredOther": {
-    "message": "$COUNT$ matches are not covered in this image.",
+    "message": "$COUNT$ збігу не закрито на цьому зображенні.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -918,15 +918,15 @@
     }
   },
   "redactActsWalkTruncated": {
-    "message": "FullShot did not finish walking this page.",
+    "message": "FullShot не завершив обхід цієї сторінки.",
     "placeholders": {}
   },
   "redactActsCountPartial": {
-    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "message": "Це число може бути заниженим: FullShot не прочитав частину тексту на цьому знімку.",
     "placeholders": {}
   },
   "redactActsScanLimits": {
-    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "message": "Фрагменти тексту, які не прочитано: $REFUSED$. Знайдені, але не намальовані блоки: $LOST$.",
     "placeholders": {
       "refused": {
         "content": "$1",
@@ -939,7 +939,7 @@
     }
   },
   "redactActsBakeLimits": {
-    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "message": "Блоки, які не вдалося розмістити на цьому зображенні: $UNPLACED$. Намальовані, але не перечитані блоки: $UNREAD$.",
     "placeholders": {
       "unplaced": {
         "content": "$1",
@@ -952,7 +952,7 @@
     }
   },
   "redactActsNoLedger": {
-    "message": "This record carries no account of a redaction pass on this capture.",
+    "message": "Цей запис не містить жодних відомостей про прохід приховування для цього знімка.",
     "placeholders": {}
   },
   "redactActsUnknownCount": {
@@ -960,15 +960,15 @@
     "placeholders": {}
   },
   "reviewTitle": {
-    "message": "Before you copy",
+    "message": "Перед копіюванням",
     "placeholders": {}
   },
   "reviewLimit": {
-    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "message": "FullShot читає текст, який відкриває сторінка. Це зображення він бачити не може. Ніщо, намальоване пікселями, — полотно, зображення, сторінка PDF, кадр відео — ніколи не читалося.",
     "placeholders": {}
   },
   "reviewMarks": {
-    "message": "$COUNT$ blocks are outlined on the image below.",
+    "message": "Обведені блоки на зображенні нижче: $COUNT$.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -977,11 +977,11 @@
     }
   },
   "reviewNoMarks": {
-    "message": "No blocks are outlined on the image below.",
+    "message": "На зображенні нижче не обведено жодного блоку.",
     "placeholders": {}
   },
   "reviewScale": {
-    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "message": "Показано в масштабі $PERCENT$% від розміру, який буде скопійовано.",
     "placeholders": {
       "percent": {
         "content": "$1",
@@ -990,11 +990,11 @@
     }
   },
   "reviewReduced": {
-    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "message": "Цей знімок надто високий, щоб скопіювати його одним читабельним зображенням, тому нижче показано зменшений огляд усієї сторінки. Дрібний текст на ньому не читається — ні тут, ні в буфері обміну.",
     "placeholders": {}
   },
   "reviewMarkLabel": {
-    "message": "Block $INDEX$",
+    "message": "Блок $INDEX$",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -1003,7 +1003,7 @@
     }
   },
   "reviewMarkAt": {
-    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "message": "Блок $INDEX$, $PERCENT$% від верху зображення",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -1016,23 +1016,23 @@
     }
   },
   "reviewPrevView": {
-    "message": "Previous view",
+    "message": "Попередній вигляд",
     "placeholders": {}
   },
   "reviewNextView": {
-    "message": "Next view",
+    "message": "Наступний вигляд",
     "placeholders": {}
   },
   "reviewZoomOut": {
-    "message": "Zoom out",
+    "message": "Зменшити",
     "placeholders": {}
   },
   "reviewZoomIn": {
-    "message": "Zoom in",
+    "message": "Збільшити",
     "placeholders": {}
   },
   "reviewViewPos": {
-    "message": "View $INDEX$ of $TOTAL$",
+    "message": "Вигляд $INDEX$ з $TOTAL$",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -1045,7 +1045,7 @@
     }
   },
   "reviewImgRegion": {
-    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "message": "Зображення, яке зараз буде скопійовано, $DIMS$ пікселів — прокручуйте його клавішами зі стрілками",
     "placeholders": {
       "dims": {
         "content": "$1",
@@ -1054,15 +1054,15 @@
     }
   },
   "reviewConfirm": {
-    "message": "I have looked — copy",
+    "message": "Я переглянув — копіювати",
     "placeholders": {}
   },
   "reviewCancel": {
-    "message": "Cancel",
+    "message": "Скасувати",
     "placeholders": {}
   },
   "reviewImgAlt": {
-    "message": "The image that is about to be copied",
+    "message": "Зображення, яке зараз буде скопійовано",
     "placeholders": {}
   },
   "resultAiOverviewOnly": {

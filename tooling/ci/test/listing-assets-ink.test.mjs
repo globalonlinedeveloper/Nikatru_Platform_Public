@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // listing-assets-ink.test.mjs — THE INK limb of assert-listing-assets.mjs must
 // be able to fail, and must be able to fail for the ONE defect it was added for:
-// a frame of a text-bearing screen with no text in it.
+// a run of frames of text-bearing screens with no text in them.
 //
 // ── THE DEFECT THIS GRADES ──────────────────────────────────────────────────
 // From #567 to #854 this listing carried four screenshots with NO GLYPHS IN
@@ -10,58 +10,74 @@
 // bundled icons and the colours all came out correct. Every limb in that guard
 // passed them: right size, right colour type, posture "live", worst top band
 // 0.009. #847 bundled the fonts and closed the CAUSE; the row it belongs to
-// (O-STORE-FRAMES-CARRY-NO-TEXT) says the blindness is the other half, because
-// "fixing only the instance leaves the next one equally invisible".
+// (O-STORE-FRAMES-CARRY-NO-TEXT) says the blindness is the other half.
 //
-// ── WHY A SEPARATE FILE FROM listing-assets.test.mjs ────────────────────────
-// That file's fixture is the pre-ink shape — flat frames, a register with no
-// `inkFloor` — and 79 cases there assert other limbs against it. The ink limb
-// needs the opposite fixture: frames carrying glyph-shaped strokes and a
-// register that records a floor for each. Folding the two together would make
-// an ink-floor change fail cases that assert the alpha limb or the provenance
-// limb, for a reason that has nothing to do with what they assert — which is
-// how a check gets switched off by whoever hits it next.
+// ── ⏱ REWRITTEN 2026-09-24 FOR ROW O-STORE-INK-FLOOR-HAND-PASTED ────────────
+// The limb used to compare each named frame with a `{measured,
+// textlessControl}` row pasted into the register. It now judges each device
+// class's RUN median of removed ink, after each frame is area-averaged to the
+// class's CSS width, against a floor it COMPUTES from that class's committed
+// calibration frames: the geometric mean of the served and glyphless run
+// medians, refused when they are under `inkRule.minSeparation` apart. The
+// register's `storeMetadataContract.inkRule._why` has the measured table.
 //
-// ⚠️ THE GUARD MAKES THE SAME SPLIT AND IT IS LOAD-BEARING HERE: a FIXTURE root
-// with frames and no `inkFloor` block PRINTS that it was not judged, while the
-// REAL repository in that state is COVERAGE LOST. That is what keeps the older
-// fixtures in the neighbouring file honest rather than red.
+// 🔴 THE FRAMES IN THE CASES THAT MATTER MOST ARE REAL. `fixtures/
+// frames-ink-2026-09-23/` holds five pages of the live app at 430x932, DPR 1,
+// served and with every font request answered 200 text/html — the defect,
+// reproduced. A class declared at that geometry and calibrated from those
+// frames passes the served five (I1) and FAILS the glyphless five (I2). I2 is
+// this limb's own red control on real glyphless frames; the old per-frame limb
+// could not be pointed at a class, so it has no earlier reading to compare to.
+// The other cases use the metric's own synthetic pair, `inkFixtureFrame`, at
+// 360x640 declared as CSS 180x320 at DPR 2, so the downscale is exercised too.
 //
 // ── 🔴 REAL-TREE MUTATIONS FIRST, FIXTURES SECOND ──────────────────────────
-// Run against the ACTUAL repository on 2026-09-21 at origin/main 9f548515,
-// predictions written first, everything restored byte-exact afterwards:
+// Run against the ACTUAL repository on 2026-09-24, BASE 7dd09500 and this
+// change, each restored byte-exact before the next. At the time the class
+// calibration directories were not yet committed, so "after" is the tree with
+// no calibration set, where every class is COVERAGE LOST:
 //
-//   · the tree as it stands
-//       ⇒ exit 0, "8 committed frame(s) measured", tightest margin
-//         screenshots-tablet/03-insights.png at 0.00530 against a floor of
-//         0.00371 — 1.43x
-//   · screenshots/01-home.png replaced by a TEXTLESS build of ITSELF — the same
-//     frame with its glyphs removed by a 9x9 mode filter, so the layout, the
-//     cards, the bundled icons and the colours all survive, which is what the
-//     fonts-never-loaded capture actually produced
-//       ⇒ exit 1, FAIL "…/01-home.png measures 0.01307 ink and the floor
-//         recorded for it is 0.01781"
-//   · restored (sha256 equal), then screenshots-tablet/02-calendar.png given
-//     the same treatment. The tablet set is walked by NO OTHER LIMB in that
-//     file, so a limb reading only `screenshots.dir` would have judged four
-//     frames of the eight while printing a healthy-looking count
-//       ⇒ exit 1, FAIL "…/screenshots-tablet/02-calendar.png measures 0.00104
-//         ink and the floor recorded for it is 0.00385"
-//   · restored (sha256 equal); guard green again; `git status` clean.
+//   mutation                                             BASE  after
+//   RC1 01-home.png replaced by one flat colour            1     2, and the
+//       per-frame FAIL for 01-home.png is printed above the COVERAGE LOST
+//   RC2 01-home.png one column wider (1081x1920)           1*    2, naming 1081x1920
+//   RC3 sets.tablet.capture.dpr 2 -> 3                     —     2, 1800x3200 is not 2700x4800
+//   RC4 inkRule.classes["android-play/tablet"] deleted     —     2, tablet frames with no class
+//   RC5 inkRule.minSeparation 3 -> 1000                    —     2, no calibration to refuse
+//   * the CAPTURE.json pixels limb; the old ink limb said nothing about the size.
+//
+// With the calibration set committed (the local writer, 2026-09-25, BASE
+// ca7e500a), each restored byte-exact before the next:
+//   RC1 1, the per-frame FAIL for 01-home.png (a flat field); the phone run
+//       median alone stays above its floor, which is why the per-frame limb exists
+//   RC2 2, naming 1081x1920
+//   RC3 2, 1800x3200 is not 2700x4800
+//   RC4 2, tablet frames with no class
+//   RC5 1, both classes "does not separate". A refused calibration counts as
+//       looked at (inkFramesRefused); the zero-judged limb runs only on the real
+//       tree, so I3b, the fixture form, could not see that it once read 2.
+//
+// ⚠️ THE GUARD MAKES A SPLIT AND IT IS LOAD-BEARING HERE: a FIXTURE root with
+// frames and no `inkRule` at all PRINTS that it was not judged, while the REAL
+// repository in that state is COVERAGE LOST. That is what keeps the older
+// fixtures in listing-assets.test.mjs honest rather than red. Once a rule IS
+// declared, every refusal below is the same on a fixture root as on the tree.
 //
 // ⚠️ WHICH CASE CATCHES WHICH EDIT, because a limb with one defence has exactly
 // one way to be switched off:
-//   · the comparison deleted (`if (ink < floor)` made unreachable)  -> I1
-//   · one frame's floor pushed under the reading it must catch      -> I5
-//   · every floor flattened at once                                 -> I5b
-//   · the metric itself replaced by a constant                      -> I13, I14
-//   · the floors deleted, or a frame moved out of their reach       -> I8, I3
+//   · the run comparison deleted or inverted                    -> I2, I1
+//   · the separation refusal deleted                            -> I3
+//   · the size gate deleted                                     -> I4
+//   · the calibration checks relaxed                            -> I5, I6, I9
+//   · the per-frame "any ink at all" check deleted              -> I7, I8
+//   · the metric itself replaced by a constant                  -> I18, I19
+//   · the rule deleted, or a set moved out of every class       -> I10, I11
 //
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
@@ -69,24 +85,19 @@ import { fileURLToPath } from 'node:url';
 import { deflateSync } from 'node:zlib';
 // The same encoder the capture path and the Linux icons use, so a fixture
 // cannot disagree with production about what a PNG is.
-import { encodeRgba } from '../../store/png-codec.mjs';
+import { encodeRgba, decodeRgba } from '../../store/png-codec.mjs';
 // 🔴 THE SAME READING OF "INK" THE GUARD ENFORCES, NOT A SECOND ONE. A fixture
 // painting its own idea of a text-bearing frame would grade the guard against a
 // definition the guard does not hold — the failure recorded against
 // assert-seams-wired.mjs, whose six fixture tests all passed a broken check.
 // `inkFixtureFrame` is what the metric self-tests itself with.
-import { inkFixtureFrame } from '../../store/frame-ink.mjs';
+import { inkFixtureFrame, removedInkRunMedian } from '../../store/frame-ink.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HERE, '..', '..', '..');
 const GUARD = join(REPO, 'tooling', 'ci', 'assert-listing-assets.mjs');
-
-/** The fixture frame's own readings at 1080x1920, measured 2026-09-21 with
- *  tooling/store/frame-ink.mjs. They are the FIXTURE's numbers, never the real
- *  set's: a fixture carrying the repository's floors would pass or fail on
- *  pixels it does not have. */
-const FIXTURE_INK = 0.007933;
-const FIXTURE_INK_TEXTLESS = 0.000276;
+const E2E_FRAMES = join(HERE, 'fixtures', 'frames-ink-2026-09-23');
+const E2E_NAMES = ['00-consent.png', '01-onboarding.png', '03-reset-password.png', '03-sign-in.png', '03-sign-up.png'];
 
 /** A structurally valid PNG whose pixels cannot be decoded — a correct header
  *  over a one-byte IDAT. Every size and format limb passes it; the ink limb must
@@ -129,22 +140,28 @@ function crc32(buf) {
 }
 
 /**
- * A screenshot fixture with REAL COMPRESSED PIXELS.
- *
- * `glyphs: false` is the whole point of this file: the SAME layout, the same
- * cards, the same filled icon blocks, with the strokes gone. A fixture that was
- * an empty canvas would be separated by any metric at all and would prove
- * nothing about this one.
- *
- * `opaque: true` because Google states "JPEG or 24-bit PNG (no alpha)" for
- * screenshots; a colour-type-6 fixture would trip the alpha limb and every case
- * here would be asserting the wrong failure.
+ * A screenshot fixture with REAL COMPRESSED PIXELS: the metric's own synthetic
+ * pair. `glyphs: false` is the same layout, the same cards, the same filled
+ * icon blocks, with the strokes gone — a fixture that was an empty canvas would
+ * be separated by any metric at all and would prove nothing about this one.
+ * `opaque: true` because Google states "JPEG or 24-bit PNG (no alpha)".
  */
 function shotAt(width, height, glyphs = true) {
   return encodeRgba(inkFixtureFrame({ width, height, glyphs }), { opaque: true });
 }
 
+/** One flat colour, edge to edge: no ink at all, at any size. */
+function flatAt(width, height) {
+  const rgba = Buffer.alloc(width * height * 4, 0xf7);
+  return encodeRgba({ width, height, rgba }, { opaque: true });
+}
+
 const SOURCE = 'https://support.google.com/googleplay/android-developer/answer/9866151 (fetched 2026-08-04) — fixture';
+const LISTING = 'apps/subscriptiontracker/store/android-play';
+/** The synthetic class: 360x640 frames, judged at 180 CSS px. */
+const PHONE = { logicalWidth: 180, logicalHeight: 320, dpr: 2 };
+/** The e2e geometry the committed real frames were captured at. */
+const E2E = { logicalWidth: 430, logicalHeight: 932, dpr: 1 };
 
 /** The same shapes the real register and the real tree use, so a change in
  *  either breaks these cases rather than leaving them passing against a world
@@ -163,6 +180,14 @@ function fixture(mutate = () => {}) {
     ],
     storeMetadataContract: {
       requiredFiles: ['README.md'],
+      inkRule: {
+        metric: 'local-contrast-ink-v1',
+        normalise: 'area-average each frame to its capture logicalWidth',
+        floorRule: "geometric mean of the calibration set's served and glyphless run medians",
+        minSeparation: 3,
+        classes: { 'android-play/phone': { calibration: 'cal/phone' } },
+        source: `${SOURCE} — ink rule fixture: calibration frames are this file's own shotAt() pair`,
+      },
       perChannel: {
         'android-play': {
           additionalFiles: ['feature-graphic.png', 'store-icon-512.png'],
@@ -182,15 +207,7 @@ function fixture(mutate = () => {}) {
               maxAspectRatio: 2,
               recommendedPortrait: { width: 1080, height: 1920 },
               source: SOURCE,
-              inkFloor: {
-                metric: 'local-contrast-ink-v1',
-                minFractionOfMeasured: 0.7,
-                source: `${SOURCE} — ink measured 2026-09-21 with tooling/store/frame-ink.mjs against this file's own shotAt() at 1080x1920: ${FIXTURE_INK} with its strokes, ${FIXTURE_INK_TEXTLESS} without`,
-                frames: {
-                  'screenshots/01.png': { measured: FIXTURE_INK, textlessControl: FIXTURE_INK_TEXTLESS },
-                  'screenshots/02.png': { measured: FIXTURE_INK, textlessControl: FIXTURE_INK_TEXTLESS },
-                },
-              },
+              deviceTypeCoverage: { sets: { phone: { dir: 'screenshots', capture: { ...PHONE } } } },
             },
           },
         },
@@ -202,9 +219,9 @@ function fixture(mutate = () => {}) {
   // composition root where `debugShowCheckedModeBanner: false` lives. Without
   // them every case here would fail for a reason unrelated to the ink.
   const files = {
-    'apps/subscriptiontracker/store/android-play/feature-graphic.png': png({ width: 1024, height: 500, colourType: 2 }),
-    'apps/subscriptiontracker/store/android-play/store-icon-512.png': png({ width: 512, height: 512, colourType: 6 }),
-    'apps/subscriptiontracker/store/android-play/screenshots/README.md': Buffer.from('# slot\n'),
+    [`${LISTING}/feature-graphic.png`]: png({ width: 1024, height: 500, colourType: 2 }),
+    [`${LISTING}/store-icon-512.png`]: png({ width: 512, height: 512, colourType: 6 }),
+    [`${LISTING}/screenshots/README.md`]: Buffer.from('# slot\n'),
     'packages/design_system/lib/src/tokens/app_colors.dart':
       Buffer.from('class AppColors {\n  static const Color warn = Color(0xFFF59E0B);\n}\n'),
     'apps/subscriptiontracker/lib/app.dart':
@@ -224,17 +241,40 @@ function write(root, rel, buf) {
   writeFileSync(p, buf);
 }
 
-/** Two frames plus the provenance record they need to reach the ink limb at
- *  all — a set with no CAPTURE.json fails earlier, and the case would then be
- *  asserting the provenance limb while claiming to assert this one. */
+const rule = (s) => s.register.storeMetadataContract.inkRule;
+const shots = (s) => s.register.storeMetadataContract.perChannel['android-play'].graphicAssets.screenshots;
+
+/** Two listing frames plus the provenance record they need to reach the ink
+ *  limb at all — a set with no CAPTURE.json fails earlier, and the case would
+ *  then be asserting the provenance limb while claiming to assert this one. */
 const twoShots = (s, opts = {}) => {
-  const w = opts.width ?? 1080;
-  const h = opts.height ?? 1920;
-  s.files['apps/subscriptiontracker/store/android-play/screenshots/01.png'] = shotAt(w, h);
-  s.files['apps/subscriptiontracker/store/android-play/screenshots/02.png'] = shotAt(w, h, opts.glyphs !== false);
-  s.files['apps/subscriptiontracker/store/android-play/screenshots/CAPTURE.json'] = Buffer.from(
-    JSON.stringify({ posture: 'live', ...(opts.record ?? {}) }),
-  );
+  s.files[`${LISTING}/screenshots/01.png`] = shotAt(360, 640);
+  s.files[`${LISTING}/screenshots/02.png`] = opts.second ?? shotAt(360, 640, opts.glyphs !== false);
+  s.files[`${LISTING}/screenshots/CAPTURE.json`] = Buffer.from(JSON.stringify({ posture: 'live' }));
+};
+
+/** The synthetic class's calibration set: `names` in both modes by default. */
+const calibration = (s, opts = {}) => {
+  const served = opts.served ?? ['01.png', '02.png', '03.png', '04.png'];
+  const glyphless = opts.glyphless ?? served;
+  for (const n of served) s.files[`cal/phone/served/${n}`] = shotAt(360, 640, true);
+  for (const n of glyphless) s.files[`cal/phone/glyphless/${n}`] = shotAt(360, 640, false);
+};
+
+/** The e2e geometry: the class declared at 430x932 DPR 1, calibrated from the
+ *  committed real frames (glyphless from `glyphlessFrom`), and a listing of
+ *  the five frames of `listingMode`. The aspect limb is dropped because a
+ *  430x932 browser page is 2.17:1 and Play's 2:1 is not what these assert. */
+const e2eClass = (s, { listingMode, glyphlessFrom = 'glyphless' }) => {
+  shots(s).deviceTypeCoverage.sets.phone.capture = { ...E2E };
+  delete shots(s).maxAspectRatio;
+  rule(s).classes['android-play/phone'].calibration = 'cal/e2e';
+  for (const n of E2E_NAMES) {
+    s.files[`cal/e2e/served/${n}`] = readFileSync(join(E2E_FRAMES, 'served', n));
+    s.files[`cal/e2e/glyphless/${n}`] = readFileSync(join(E2E_FRAMES, glyphlessFrom, n));
+    s.files[`${LISTING}/screenshots/${n}`] = readFileSync(join(E2E_FRAMES, listingMode, n));
+  }
+  s.files[`${LISTING}/screenshots/CAPTURE.json`] = Buffer.from(JSON.stringify({ posture: 'live' }));
 };
 
 // BOUNDED, so a spawned script that hangs at exit (nodejs/node#54918 — and this
@@ -300,188 +340,295 @@ function mutatedGuard(rel, mutate) {
   return join(dir, 'tooling', 'ci', 'assert-listing-assets.mjs');
 }
 
-describe('assert-listing-assets.mjs — THE INK, and a frame with no text in it', () => {
-  test('I0 · GREEN CONTROL — two frames carrying glyph-shaped strokes pass, and the count is printed', () => {
-    const r = run(build((s) => twoShots(s)));
+describe('assert-listing-assets.mjs — THE INK, judged per device class against a computed floor', () => {
+  test('I0 · GREEN CONTROL — two text-bearing frames clear the class floor, and the reading is printed', () => {
+    const r = run(build((s) => {
+      twoShots(s);
+      calibration(s);
+    }));
     assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /2 committed frame\(s\) measured against the floor recorded for THAT frame/);
+    assert.match(r.out, /2 committed frame\(s\) judged per device class, each at its CSS width/);
+    assert.match(r.out, /ink class "android-play\/phone" \(subscriptiontracker, 180x320@2\): n 2, run median of removed ink [\d.]+ at 180 CSS px, floor [\d.]+/);
+    assert.match(r.out, /served median [\d.]+, glyphless median [\d.]+, separation [\d.]+x — headroom [\d.]+x/);
     assert.match(r.out, /metric "local-contrast-ink-v1" \(per-channel delta 24\) SELF-TESTED this run/);
   });
 
-  test('I1 · a TEXTLESS frame FAILS and is named — same layout, same icons, no strokes', () => {
-    const r = run(build((s) => twoShots(s, { glyphs: false })));
-    assert.equal(r.code, 1);
-    assert.match(r.out, /02\.png measures 0\.00028 ink and the floor recorded for it is 0\.00555/);
-    // The other half, without which the limb is a constant somebody will delete:
-    // the frame that DID keep its strokes must not be named.
-    assert.doesNotMatch(r.out, /01\.png measures/);
+  test('I1 · RC6 — REAL served frames clear a class calibrated from real frames, headroom printed', () => {
+    const r = run(build((s) => e2eClass(s, { listingMode: 'served' })));
+    assert.equal(r.code, 0, r.out);
+    // served median 0.032481, glyphless 0.003698: floor 0.010960, 2.96x.
+    assert.match(r.out, /n 5, run median of removed ink 0\.032481 at 430 CSS px, floor 0\.01096\d/);
+    assert.match(r.out, /served median 0\.032481, glyphless median 0\.003698, separation 8\.78x — headroom 2\.96x/);
   });
 
-  test('I2 · the ink FAIL says what the frame looks like, so a reader can act on it', () => {
-    const r = run(build((s) => twoShots(s, { glyphs: false })));
-    assert.match(r.out, /at the level of a capture with no glyphs at all/);
-    assert.match(r.out, /Open the frame before assuming a false alarm/);
+  test('I2 · RC7 — the SAME pages rendered with no fonts FAIL the class, exit 1', () => {
+    // 🔴 THE RED CONTROL IS THE POINT OF THE LIMB. These are not filtered
+    // estimates: they are the defect, reproduced on the real app.
+    const r = run(build((s) => e2eClass(s, { listingMode: 'glyphless' })));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /FAIL class "android-play\/phone" \(subscriptiontracker, 430x932@1\): n 5, run median of removed ink 0\.003698/);
+    assert.match(r.out, /headroom 0\.34x\. The run's frames carry no text/);
+    assert.match(r.out, /do not lower the floor/);
+    assert.doesNotMatch(r.out, /ok {3}THE INK/);
   });
 
-  test('I3 · a committed frame with NO floor row FAILS rather than being skipped', () => {
-    const r = run(build((s) => {
-      twoShots(s, { record: { count: 3 } });
-      s.files['apps/subscriptiontracker/store/android-play/screenshots/03.png'] = shotAt(1080, 1920);
-    }));
-    assert.equal(r.code, 1);
-    assert.match(r.out, /03\.png is committed and .* records NO ink floor for "screenshots\/03\.png"/);
+  test('I3 · RC11 — a calibration set that does not separate is refused, never judged with', () => {
+    const r = run(build((s) => e2eClass(s, { listingMode: 'served', glyphlessFrom: 'served' })));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /class "android-play\/phone": the calibration set does not separate — .*separation 1\.00x, and .*minSeparation needs >= 3x/);
+    assert.match(r.out, /was NOT judged with it/);
+    // …and no run verdict was reached with that floor, either way.
+    assert.doesNotMatch(r.out, /headroom/);
   });
 
-  test('I4 · a floor row naming a frame that is not there FAILS', () => {
-    const r = run(build((s) => {
-      twoShots(s);
-      s.register.storeMetadataContract.perChannel['android-play'].graphicAssets.screenshots.inkFloor.frames['screenshots/99-gone.png'] = {
-        measured: 0.02,
-        textlessControl: 0.001,
-      };
-    }));
-    assert.equal(r.code, 1);
-    assert.match(r.out, /records an ink floor for "screenshots\/99-gone\.png" and no such frame is committed/);
-  });
-
-  test('I5 · a floor pushed under its own TEXTLESS control FAILS — it could not have fired', () => {
-    // The shape of "edited into something that never matches": every number is
-    // still there, the row still looks measured, and the floor now sits below
-    // the reading it has to be able to catch. ONE frame only, so the case is not
-    // being carried by the self-test that catches I5b.
+  test('I3b · RC5 shape — a raised minSeparation refuses a GOOD calibration (1), and is not read as a broken metric', () => {
+    // The synthetic calibration separates about 41x at 180 CSS px. Held to
+    // 1000x it must be refused as a calibration finding, exit 1 — never
+    // reported as the metric failing its self-test (2), which it did not.
     const r = run(build((s) => {
       twoShots(s);
-      s.register.storeMetadataContract.perChannel['android-play'].graphicAssets.screenshots.inkFloor.frames['screenshots/01.png'].measured = 0.0003;
+      calibration(s);
+      rule(s).minSeparation = 1000;
     }));
-    assert.equal(r.code, 1);
-    assert.match(r.out, /screenshots\/01\.png"\] puts the floor at 0\.00021/);
-    assert.match(r.out, /could not have caught the frames this listing carried from #567 to #854/);
-    // …and the frame that kept its honest floor is still judged, not skipped.
-    assert.doesNotMatch(r.out, /screenshots\/02\.png"\] puts the floor/);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /the calibration set does not separate — .*minSeparation needs >= 1000x/);
+    assert.doesNotMatch(r.out, /FAILED ITS OWN SELF-TEST/);
   });
 
-  test('I5b · flattening EVERY floor at once is caught a layer earlier, by the self-test', () => {
-    // 🔴 THE TWO DEFENCES ARE NOT THE SAME DEFENCE. I5 is the per-frame row
-    // carrying its own disproof; this is the metric's self-test, which measures
-    // the SAME fraction against a synthetic pair before any real frame is read.
+  test('I4 · RC8 — a listing frame of a size the class was not calibrated for is COVERAGE LOST', () => {
     const r = run(build((s) => {
-      twoShots(s);
-      s.register.storeMetadataContract.perChannel['android-play'].graphicAssets.screenshots.inkFloor.minFractionOfMeasured = 0.001;
+      twoShots(s, { second: shotAt(362, 640) });
+      calibration(s);
     }));
-    assert.equal(r.code, 2);
-    assert.match(r.out, /the ink metric FAILED ITS OWN SELF-TEST and no frame was measured/);
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /COVERAGE LOST — THE INK — android-play\/phone could not be judged/);
+    assert.match(r.out, /screenshots\/02\.png is 362x640, and the class captures 180x320 at DPR 2 = 360x640/);
   });
 
-  test('I6 · a fraction of 0 is COVERAGE LOST — every floor would be 0 and a blank frame would clear it', () => {
+  test('I5 · RC9 — a calibration set with 3 frames per mode is COVERAGE LOST, naming the class', () => {
     const r = run(build((s) => {
       twoShots(s);
-      s.register.storeMetadataContract.perChannel['android-play'].graphicAssets.screenshots.inkFloor.minFractionOfMeasured = 0;
+      calibration(s, { served: ['01.png', '02.png', '03.png'] });
     }));
-    assert.equal(r.code, 2);
-    assert.match(r.out, /COVERAGE LOST/);
-    assert.match(r.out, /which is not a fraction strictly between 0 and 1/);
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /android-play\/phone: the calibration set is too small — cal\/phone\/served\/ holds 3 frame\(s\) and a class needs at least 4 per mode/);
   });
 
-  test('I7 · floors recorded against a metric this guard does not compute are COVERAGE LOST', () => {
+  test('I6 · RC10 — served/ and glyphless/ naming different pages is COVERAGE LOST', () => {
     const r = run(build((s) => {
       twoShots(s);
-      s.register.storeMetadataContract.perChannel['android-play'].graphicAssets.screenshots.inkFloor.metric = 'byte-size-v0';
+      calibration(s, { glyphless: ['01.png', '02.png', '03.png', '05.png'] });
     }));
-    assert.equal(r.code, 2);
-    assert.match(r.out, /records ink floors against metric "byte-size-v0" and this guard computes "local-contrast-ink-v1"/);
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /android-play\/phone: the calibration set's served\/ and glyphless\/ name different frames \(served only: 04\.png; glyphless only: 05\.png\)/);
   });
 
-  test('I8 · frames committed with NO inkFloor block PRINTS on a fixture root, and says the real tree is worse', () => {
-    // 🔴 THE SPLIT IS DELIBERATE AND IT IS WHY THE OLDER FIXTURES NEXT DOOR ARE
-    // STILL HONEST. On the real repository this combination is COVERAGE LOST —
-    // measured by hand on 2026-09-21, see this file's header — and a fixture
-    // root is the weaker situation the guard already names for its brick limb
-    // and its capture limb.
+  test('I7 · a BLANK frame FAILS on its own, even when the run median of the class would pass', () => {
+    // Three text-bearing frames and one flat one: the median of four still
+    // clears the floor, which is exactly why each frame is held to SOME ink.
     const r = run(build((s) => {
       twoShots(s);
-      delete s.register.storeMetadataContract.perChannel['android-play'].graphicAssets.screenshots.inkFloor;
+      s.files[`${LISTING}/screenshots/03.png`] = shotAt(360, 640);
+      s.files[`${LISTING}/screenshots/04.png`] = flatAt(360, 640);
+      calibration(s);
+    }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /FAIL apps\/subscriptiontracker\/store\/android-play\/screenshots\/04\.png measures 0 ink at its native 360x640 and loses 0 of it/);
+    assert.match(r.out, /It has no edge in it at all/);
+    assert.doesNotMatch(r.out, /screenshots\/0[123]\.png measures/);
+    // The class verdict itself passed: the one FAIL is the frame's.
+    assert.doesNotMatch(r.out, /carry no text/);
+  });
+
+  test('I8 · RC1 shape — a blank frame is named even when the class then cannot be calibrated', () => {
+    // 🔴 THE PRECEDENCE THE BRIEF FIXED: COVERAGE LOST still wins the exit code,
+    // and the per-frame FAIL found before it is printed above it.
+    const r = run(build((s) => twoShots(s, { second: flatAt(360, 640) })));
+    assert.equal(r.code, 2, r.out);
+    const fail = r.out.indexOf('FAIL apps/subscriptiontracker/store/android-play/screenshots/02.png measures 0 ink');
+    const lost = r.out.indexOf('COVERAGE LOST — THE INK — android-play/phone could not be judged');
+    assert.notEqual(fail, -1, r.out);
+    assert.notEqual(lost, -1, r.out);
+    assert.ok(fail < lost, 'the per-frame FAIL must be printed before the COVERAGE LOST that ends the run');
+  });
+
+  test('I9 · a class with NO calibration set is COVERAGE LOST, naming it', () => {
+    const r = run(build((s) => twoShots(s)));
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /android-play\/phone: no calibration set — cal\/phone\/ does not exist/);
+  });
+
+  test('I10 · RC4 shape — a set with frames and no class is COVERAGE LOST, not skipped', () => {
+    const r = run(build((s) => {
+      twoShots(s);
+      calibration(s);
+      shots(s).deviceTypeCoverage.sets.tablet = { dir: 'screenshots-tablet', capture: { logicalWidth: 180, logicalHeight: 320, dpr: 2 } };
+      s.files[`${LISTING}/screenshots-tablet/01.png`] = shotAt(360, 640);
+    }));
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /android-play\/tablet: 1 committed frame\(s\) under .*screenshots-tablet\/ and storeMetadataContract\.inkRule\.classes names no "android-play\/tablet"/);
+  });
+
+  test('I11 · frames with NO inkRule PRINT on a fixture root, and say the real tree is worse', () => {
+    const r = run(build((s) => {
+      twoShots(s);
+      delete s.register.storeMetadataContract.inkRule;
     }));
     assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /NO INK FLOOR \(fixture root, NOT JUDGED\): channel "android-play" has 2 committed frame\(s\)/);
+    assert.match(r.out, /NO INK RULE \(fixture root, NOT JUDGED\): channel "android-play" has 2 committed frame\(s\)/);
     assert.match(r.out, /On the real repository this is COVERAGE LOST/);
-    // …and it must NOT claim to have measured anything.
-    assert.doesNotMatch(r.out, /committed frame\(s\) measured against the floor/);
+    // …and it must NOT claim to have judged anything.
+    assert.doesNotMatch(r.out, /judged per device class/);
   });
 
-  test('I9 · an empty `frames` map is COVERAGE LOST', () => {
+  test('I12 · an inkRule with no `source` fails rather than being enforced', () => {
     const r = run(build((s) => {
       twoShots(s);
-      s.register.storeMetadataContract.perChannel['android-play'].graphicAssets.screenshots.inkFloor.frames = {};
+      calibration(s);
+      delete rule(s).source;
     }));
-    assert.equal(r.code, 2);
-    assert.match(r.out, /declares an EMPTY `frames` map/);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /storeMetadataContract\.inkRule declares dimensions with NO `source`/);
   });
 
-  test('I10 · an inkFloor block with no `source` fails rather than being enforced', () => {
+  test('I13 · a rule recorded against a metric this guard does not compute is COVERAGE LOST', () => {
     const r = run(build((s) => {
       twoShots(s);
-      delete s.register.storeMetadataContract.perChannel['android-play'].graphicAssets.screenshots.inkFloor.source;
+      calibration(s);
+      rule(s).metric = 'byte-size-v0';
     }));
-    assert.equal(r.code, 1);
-    assert.match(r.out, /graphicAssets\.screenshots\.inkFloor declares dimensions with NO `source`/);
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /is recorded against metric "byte-size-v0" and this guard computes "local-contrast-ink-v1"/);
   });
 
-  test('I11 · the metric self-tests even with no frame committed at all', () => {
-    const r = run(build());
-    assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /SELF-TESTED this run: a synthetic frame carrying glyph-shaped strokes measured/);
-    assert.match(r.out, /0 committed frame\(s\) measured/);
-  });
-
-  test('I12 · a frame that cannot be DECODED is a finding, never a frame that was measured', () => {
+  test('I14 · a minSeparation of 1 is COVERAGE LOST — two identical modes would be accepted', () => {
     const r = run(build((s) => {
       twoShots(s);
-      s.files['apps/subscriptiontracker/store/android-play/screenshots/02.png'] = png({ width: 1080, height: 1920, colourType: 2 });
+      calibration(s);
+      rule(s).minSeparation = 1;
     }));
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /inkRule\.minSeparation is 1, not a number above 1/);
+  });
+
+  test('I15 · a class whose set has no `capture` block is COVERAGE LOST — no size, no CSS width', () => {
+    const r = run(build((s) => {
+      twoShots(s);
+      calibration(s);
+      delete shots(s).deviceTypeCoverage.sets.phone.capture;
+    }));
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /android-play\/phone: deviceTypeCoverage\.sets\["phone"\]\.capture is null, not \{logicalWidth, logicalHeight, dpr\} in whole device pixels/);
+  });
+
+  test('I16 · a class naming a set no channel declares FAILS — it calibrates nothing', () => {
+    const r = run(build((s) => {
+      twoShots(s);
+      calibration(s);
+      rule(s).classes['android-play/watch'] = { calibration: 'cal/watch' };
+    }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /inkRule\.classes names "android-play\/watch", and no channel declares a device-type set of that name/);
+  });
+
+  test('I17 · a frame that cannot be DECODED is a finding, never a frame that was measured', () => {
+    const r = run(build((s) => {
+      twoShots(s, { second: png({ width: 360, height: 640, colourType: 2 }) });
+      calibration(s);
+    }));
+    assert.equal(r.code, 1, r.out);
     assert.match(r.out, /02\.png could not be decoded, so its ink was never measured/);
     // …and the run reports no count at all, because a failing run prints no ok
     // lines. "I could not look" must never reach a reader as a measurement.
-    assert.doesNotMatch(r.out, /committed frame\(s\) measured/);
+    assert.doesNotMatch(r.out, /judged per device class/);
   });
 
-  // 🔴 THE MUTATION THE FIXTURES ABOVE CANNOT REACH. A floor is DATA, so I5 and
-  // I6 catch it being edited. The metric is CODE, resolved relative to the
-  // guard, and the failure that costs everything is it being edited into
-  // something that never fires — at which point every frame clears every floor
-  // forever and this limb prints ok having measured nothing. The same argument
-  // the guard's header already makes about its account-address expression.
-  test('I13 · a metric edited to return a constant is COVERAGE LOST before a frame is read', () => {
+  // 🔴 THE MUTATION THE FIXTURES ABOVE CANNOT REACH. A calibration is DATA, and
+  // I3/I5/I6 catch it being edited. The metric is CODE, resolved relative to
+  // the guard, and the failure that costs everything is it being edited into
+  // something that returns a constant — every calibration then reads the same
+  // and every run is judged for the same wrong reason.
+  test('I18 · a metric edited to return a constant is COVERAGE LOST before a frame is read', () => {
     const guard = mutatedGuard('tooling/store/frame-ink.mjs', (src) =>
-      src.replace('export function inkFraction(img) {', 'export function inkFraction(img) {\n  return 1; // MUTANT: clears every floor'),
+      src.replace('export function inkFraction(img) {', 'export function inkFraction(img) {\n  return 1; // MUTANT: every frame full of ink'),
     );
-    const r = result('mutant', spawnSync(process.execPath, [guard, build((s) => twoShots(s))], { encoding: 'utf8', ...BOUND }));
+    const root = build((s) => {
+      twoShots(s);
+      calibration(s);
+    });
+    const r = result('mutant', spawnSync(process.execPath, [guard, root], { encoding: 'utf8', ...BOUND }));
     assert.equal(r.code, 2, r.out);
     assert.match(r.out, /the ink metric FAILED ITS OWN SELF-TEST and no frame was measured/);
   });
 
-  test('I14 · a metric edited to measure nothing is COVERAGE LOST too', () => {
+  test('I19 · a metric edited to measure nothing is COVERAGE LOST too', () => {
     const guard = mutatedGuard('tooling/store/frame-ink.mjs', (src) =>
       src.replace('export function inkFraction(img) {', 'export function inkFraction(img) {\n  return 0; // MUTANT: measures nothing'),
     );
-    const r = result('mutant', spawnSync(process.execPath, [guard, build((s) => twoShots(s))], { encoding: 'utf8', ...BOUND }));
+    const root = build((s) => {
+      twoShots(s);
+      calibration(s);
+    });
+    const r = result('mutant', spawnSync(process.execPath, [guard, root], { encoding: 'utf8', ...BOUND }));
     assert.equal(r.code, 2, r.out);
     assert.match(r.out, /FAILED ITS OWN SELF-TEST/);
   });
 
-  test('I15 · GREEN CONTROL for the copy itself — unmutated, it behaves exactly like the guard', () => {
-    // Without this, I13 and I14 prove only that a copied tree fails somehow.
+  test('I20 · GREEN CONTROL for the copy itself — unmutated, it behaves exactly like the guard', () => {
+    // Without this, I18 and I19 prove only that a copied tree fails somehow.
     const guard = mutatedGuard('tooling/store/frame-ink.mjs', (src) => `${src}\n// untouched behaviour\n`);
-    const r = result('copy', spawnSync(process.execPath, [guard, build((s) => twoShots(s))], { encoding: 'utf8', ...BOUND }));
+    const root = build((s) => {
+      twoShots(s);
+      calibration(s);
+    });
+    const r = result('copy', spawnSync(process.execPath, [guard, root], { encoding: 'utf8', ...BOUND }));
     assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /2 committed frame\(s\) measured/);
+    assert.match(r.out, /2 committed frame\(s\) judged per device class/);
   });
 
-  test('I16 · the working guard still runs with V8 background tasks OFF — this limb decodes MORE', () => {
-    // The ink limb adds a full decode of every frame in every declared device
-    // set to a process that already needed the relaunch (nodejs/node#54918).
-    const r = run(build((s) => twoShots(s)));
+  test('I21 · the working guard still runs with V8 background tasks OFF — this limb decodes MORE', () => {
+    // The ink limb decodes every frame of every class AND its calibration set,
+    // in a process that already needed the relaunch (nodejs/node#54918).
+    const r = run(build((s) => {
+      twoShots(s);
+      calibration(s);
+    }));
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /V8 background tasks: OFF \(--single-threaded\)/);
+  });
+});
+
+describe('the rule the real register declares, and the one floor already on main', () => {
+  test('I22 · R6 — the helpers reproduce the e2e floor from the committed e2e fixtures', () => {
+    // 🔴 ONE CONSISTENCY CASE, NOT A UNIFICATION. framesCarryText's 0.011 was
+    // measured as the geometric mean of these two run medians at 430 px, DPR 1.
+    // Computing it here with the helpers the store classes are judged by proves
+    // the two lanes read one quantity; the e2e guard keeps its own block.
+    const frames = (mode) => E2E_NAMES.map((n) => decodeRgba(readFileSync(join(E2E_FRAMES, mode, n))));
+    assert.deepEqual(readdirSync(join(E2E_FRAMES, 'served')).filter((f) => f.endsWith('.png')).sort(), E2E_NAMES);
+    const served = removedInkRunMedian(frames('served'), 430);
+    const glyphless = removedInkRunMedian(frames('glyphless'), 430);
+    assert.equal(served, 0.032481);
+    assert.equal(glyphless, 0.003698);
+    const block = JSON.parse(readFileSync(join(REPO, 'tooling', 'e2e-leg-register.json'), 'utf8')).framesCarryText;
+    assert.equal(block.calibratedWidth, 430);
+    assert.equal(Number(Math.sqrt(served * glyphless).toFixed(3)), block.minMedianRemovedInk);
+  });
+
+  test('I23 · the real register carries the rule once, per class, and no per-frame number anywhere', () => {
+    const text = readFileSync(join(REPO, 'tooling', 'channel-register.json'), 'utf8');
+    const reg = JSON.parse(text);
+    const inkRule = reg.storeMetadataContract.inkRule;
+    assert.equal(inkRule.metric, 'local-contrast-ink-v1');
+    assert.equal(inkRule.minSeparation, 3);
+    assert.deepEqual(Object.keys(inkRule.classes).sort(), ['android-play/phone', 'android-play/tablet']);
+    // R2: no per-channel `inkFloor`, no drift fraction, no pasted frame rows.
+    assert.doesNotMatch(text, /"inkFloor"\s*:/);
+    assert.doesNotMatch(text, /"minFractionOfMeasured"\s*:/);
+    assert.doesNotMatch(text, /"textlessControl"\s*:/);
+    // R3: each class takes its geometry from its set's own `capture` block.
+    const sets = reg.storeMetadataContract.perChannel['android-play'].graphicAssets.screenshots.deviceTypeCoverage.sets;
+    assert.deepEqual(sets.phone.capture, { logicalWidth: 360, logicalHeight: 640, dpr: 3 });
+    assert.deepEqual(sets.tablet.capture, { logicalWidth: 900, logicalHeight: 1600, dpr: 2 });
   });
 });

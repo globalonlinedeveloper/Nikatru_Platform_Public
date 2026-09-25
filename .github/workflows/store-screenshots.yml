@@ -158,15 +158,19 @@ jobs:
             apps/subscriptiontracker/store/android-play/screenshots/
             apps/subscriptiontracker/store/android-play/screenshots-tablet/
 
-      # why: a guard failure names ONE frame and one number; re-basing a floor
-      # needs BOTH halves for EVERY frame, from one instrument, on the same bytes
-      # (measure-frame-ink.mjs header). Printing the paste-ready row here lets a
-      # legitimate screen change be re-based from the run's own log, with no
-      # artifact download. Run 35819066562 (2026-09-23): #890 dropped the bars on
-      # uncapped budget rows and tablet 04-budget fell under its floor, and the
-      # log said so for one frame only. Gated on the listing guard's own outcome,
-      # so a run that died before capturing prints nothing misleading.
-      - name: Print the paste-ready ink row of a FAILED run, for diagnosis only
+      # why: a guard failure names the class and its run median; diagnosing it
+      # needs every frame's reading and the class's calibration medians, floor
+      # and headroom, from the same instrument on the same bytes
+      # (measure-frame-ink.mjs header). Printing that reading here shows from the
+      # run's own log whether the screens lost their text or the calibration no
+      # longer separates, with no artifact download. Nothing is pasted back: the
+      # floor is computed from the committed calibration set on every run.
+      # Run 35819066562 (2026-09-23) is why this step exists: #890 dropped the
+      # bars on uncapped budget rows, tablet 04-budget fell under its per-frame
+      # floor, and the log said so for one frame only. Gated on the listing
+      # guard's own outcome, so a run that died before capturing prints nothing
+      # misleading.
+      - name: Print the ink reading of a FAILED run, for diagnosis only
         if: failure() && steps.listing.outcome == 'failure'
         run: node --single-threaded tooling/store/measure-frame-ink.mjs apps/subscriptiontracker/store/android-play/screenshots apps/subscriptiontracker/store/android-play/screenshots-tablet
 
@@ -419,9 +423,9 @@ jobs:
           if-no-files-found: ignore
           path: ${{ steps.reg.outputs.dir }}/
 
-      # why: the Play job's reason — the paste-ready row for every frame, from
+      # why: the Play job's reason — the ink reading of every frame, from
       # the run's own log. Through env, never `${{ }}` inside `run:`.
-      - name: Print the paste-ready ink row of a FAILED run, for diagnosis only
+      - name: Print the ink reading of a FAILED run, for diagnosis only
         if: failure() && steps.listing.outcome == 'failure'
         env:
           FRAMES_DIR: ${{ steps.reg.outputs.dir }}
@@ -672,9 +676,9 @@ jobs:
           if-no-files-found: ignore
           path: ${{ steps.reg.outputs.dir }}/
 
-      # why: the Play job's reason — the paste-ready row for every frame, from
+      # why: the Play job's reason — the ink reading of every frame, from
       # the run's own log. Through env, never `${{ }}` inside `run:`.
-      - name: Print the paste-ready ink row of a FAILED run, for diagnosis only
+      - name: Print the ink reading of a FAILED run, for diagnosis only
         if: failure() && steps.listing.outcome == 'failure'
         env:
           FRAMES_DIR: ${{ steps.reg.outputs.dir }}
@@ -923,9 +927,9 @@ jobs:
           if-no-files-found: ignore
           path: apps/subscriptiontracker/store/ios-appstore/
 
-      # why: the Play job's reason — the paste-ready row for every frame, from
+      # why: the Play job's reason — the ink reading of every frame, from
       # the run's own log.
-      - name: Print the paste-ready ink row of a FAILED run, for diagnosis only
+      - name: Print the ink reading of a FAILED run, for diagnosis only
         if: failure() && steps.listing.outcome == 'failure'
         run: node --single-threaded tooling/store/measure-frame-ink.mjs apps/subscriptiontracker/store/ios-appstore/screenshots apps/subscriptiontracker/store/ios-appstore/screenshots-ipad
 

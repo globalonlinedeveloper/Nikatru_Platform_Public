@@ -473,7 +473,7 @@
     "message": "సేవ్ అయింది ✓"
   },
   "optionsSaveFailed": {
-    "message": "Not saved ✕"
+    "message": "సేవ్ కాలేదు ✕"
   },
   "optionsSectionData": {
     "message": "మీ డేటా"
@@ -550,7 +550,7 @@
     }
   },
   "optionsSweepPartial": {
-    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "message": "తీసివేసినవి: $FOUND$ లో $COUNT$ · ఖాళీ అయిన స్థలం: $SIZE$ · మిగిలినవి తీసివేయలేకపోయాం. మళ్లీ ప్రయత్నించండి లేదా మీ బ్రౌజర్‌ను రీస్టార్ట్ చేయండి.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -830,7 +830,7 @@
     "message": "స్క్రీన్‌షాట్ తొలగించబడింది."
   },
   "redactActsLine": {
-    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "message": "రిడాక్షన్ ఆన్‌లో ఉంది. $MATCHED$ సరిపోలాయి, $PAINTED$ రంగు వేయబడ్డాయి, $VERIFIED$ ఈ చిత్రంలో అపారదర్శకమని నిర్ధారించబడ్డాయి.",
     "placeholders": {
       "matched": {
         "content": "$1",
@@ -847,11 +847,11 @@
     }
   },
   "redactActsNone": {
-    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "message": "చదివిన టెక్స్ట్‌లో రిడాక్షన్ దేనినీ సరిపోల్చలేదు, ఏ బ్లాక్‌నూ గీయలేదు. కింద దేనికీ అంచు గీయబడలేదు.",
     "placeholders": {}
   },
   "redactActsShortfall": {
-    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "message": "రిడాక్షన్ $MATCHED$ సరిపోల్చింది, $COVERED$ కప్పింది.",
     "placeholders": {
       "matched": {
         "content": "$1",
@@ -864,7 +864,7 @@
     }
   },
   "redactActsUncoveredOne": {
-    "message": "$COUNT$ match is not covered in this image.",
+    "message": "$COUNT$ సరిపోలిక ఈ చిత్రంలో కప్పబడలేదు.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -873,7 +873,7 @@
     }
   },
   "redactActsUncoveredOther": {
-    "message": "$COUNT$ matches are not covered in this image.",
+    "message": "$COUNT$ సరిపోలికలు ఈ చిత్రంలో కప్పబడలేదు.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -882,15 +882,15 @@
     }
   },
   "redactActsWalkTruncated": {
-    "message": "FullShot did not finish walking this page.",
+    "message": "FullShot ఈ పేజీని పూర్తిగా పరిశీలించడం ముగించలేదు.",
     "placeholders": {}
   },
   "redactActsCountPartial": {
-    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "message": "ఈ సంఖ్య తక్కువగా ఉండవచ్చు: ఈ క్యాప్చర్‌లోని కొంత టెక్స్ట్‌ను FullShot చదవలేదు.",
     "placeholders": {}
   },
   "redactActsScanLimits": {
-    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "message": "చదవని టెక్స్ట్ ముక్కలు: $REFUSED$. కనుగొన్నా గీయని బ్లాక్‌లు: $LOST$.",
     "placeholders": {
       "refused": {
         "content": "$1",
@@ -903,7 +903,7 @@
     }
   },
   "redactActsBakeLimits": {
-    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "message": "ఈ చిత్రంలో ఉంచలేకపోయిన బ్లాక్‌లు: $UNPLACED$. గీసినా మళ్లీ చదవని బ్లాక్‌లు: $UNREAD$.",
     "placeholders": {
       "unplaced": {
         "content": "$1",
@@ -916,7 +916,7 @@
     }
   },
   "redactActsNoLedger": {
-    "message": "This record carries no account of a redaction pass on this capture.",
+    "message": "ఈ క్యాప్చర్‌పై జరిగిన ఏ రిడాక్షన్ దశ గురించీ ఈ రికార్డ్‌లో వివరం లేదు.",
     "placeholders": {}
   },
   "redactActsUnknownCount": {
@@ -924,15 +924,15 @@
     "placeholders": {}
   },
   "reviewTitle": {
-    "message": "Before you copy",
+    "message": "కాపీ చేసే ముందు",
     "placeholders": {}
   },
   "reviewLimit": {
-    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "message": "పేజీ బహిర్గతం చేసే టెక్స్ట్‌ను FullShot చదువుతుంది. ఇది ఈ చిత్రాన్ని చూడలేదు. పిక్సెల్‌లుగా గీసినది ఏదైనా – కాన్వాస్, చిత్రం, PDF పేజీ, వీడియో ఫ్రేమ్ – ఎప్పుడూ చదవబడలేదు.",
     "placeholders": {}
   },
   "reviewMarks": {
-    "message": "$COUNT$ blocks are outlined on the image below.",
+    "message": "కింది చిత్రంలో అంచు గీసిన బ్లాక్‌లు: $COUNT$.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -941,11 +941,11 @@
     }
   },
   "reviewNoMarks": {
-    "message": "No blocks are outlined on the image below.",
+    "message": "కింది చిత్రంలో ఏ బ్లాక్‌కూ అంచు గీయబడలేదు.",
     "placeholders": {}
   },
   "reviewScale": {
-    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "message": "కాపీ అయ్యే పరిమాణంలో $PERCENT$% వద్ద చూపబడుతోంది.",
     "placeholders": {
       "percent": {
         "content": "$1",
@@ -954,11 +954,11 @@
     }
   },
   "reviewReduced": {
-    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "message": "ఈ క్యాప్చర్ చదవగలిగే ఒకే చిత్రంగా కాపీ చేయడానికి చాలా పొడవుగా ఉంది, కాబట్టి కింది చిత్రం మొత్తం పేజీ యొక్క కుదించిన అవలోకనం. అందులోని చిన్న టెక్స్ట్ చదవలేము – ఇక్కడా కాదు, క్లిప్‌బోర్డ్‌లోనూ కాదు.",
     "placeholders": {}
   },
   "reviewMarkLabel": {
-    "message": "Block $INDEX$",
+    "message": "బ్లాక్ $INDEX$",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -967,7 +967,7 @@
     }
   },
   "reviewMarkAt": {
-    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "message": "బ్లాక్ $INDEX$, చిత్రం పై నుండి $PERCENT$% కిందకు",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -980,23 +980,23 @@
     }
   },
   "reviewPrevView": {
-    "message": "Previous view",
+    "message": "మునుపటి వీక్షణ",
     "placeholders": {}
   },
   "reviewNextView": {
-    "message": "Next view",
+    "message": "తదుపరి వీక్షణ",
     "placeholders": {}
   },
   "reviewZoomOut": {
-    "message": "Zoom out",
+    "message": "జూమ్ అవుట్",
     "placeholders": {}
   },
   "reviewZoomIn": {
-    "message": "Zoom in",
+    "message": "జూమ్ ఇన్",
     "placeholders": {}
   },
   "reviewViewPos": {
-    "message": "View $INDEX$ of $TOTAL$",
+    "message": "వీక్షణ $INDEX$ / $TOTAL$",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -1009,7 +1009,7 @@
     }
   },
   "reviewImgRegion": {
-    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "message": "కాపీ కాబోతున్న చిత్రం, $DIMS$ పిక్సెల్‌లు – బాణం కీలతో స్క్రోల్ చేయండి",
     "placeholders": {
       "dims": {
         "content": "$1",
@@ -1018,15 +1018,15 @@
     }
   },
   "reviewConfirm": {
-    "message": "I have looked — copy",
+    "message": "నేను చూశాను – కాపీ చేయి",
     "placeholders": {}
   },
   "reviewCancel": {
-    "message": "Cancel",
+    "message": "రద్దు చేయి",
     "placeholders": {}
   },
   "reviewImgAlt": {
-    "message": "The image that is about to be copied",
+    "message": "కాపీ కాబోతున్న చిత్రం",
     "placeholders": {}
   },
   "resultAiOverviewOnly": {

@@ -6,5 +6,11 @@
   "optionsRedactPIIDesc": "In the text the page reveals it finds e-mail addresses, telephone numbers, credit card numbers, resident registration numbers and API keys and covers the matched parts with an opaque block in the image that is saved. Text drawn as pixels it cannot read — a canvas, an image, a PDF, a video frame. Detection is done only inside the user's device, and nothing at all is transmitted anywhere. It applies to whole-page (document scroll) captures, and the block cannot be undone, so please check the result yourself.",
   "scrollclipFormatHint": "GIF plays anywhere. WebM is smaller and smoother (it is recorded in real time inside the browser you are using).",
   "batchPermissionHint": "To open these pages a one-off permission is needed the first time only.",
-  "batchPermissionDeclined": "The permission to open those pages was denied."
+  "batchPermissionDeclined": "The permission to open those pages was denied.",
+  "redactActsNone": "The masking did not match anything in the text it read and did not paint a single block. There is nothing with a border shown below.",
+  "redactActsShortfall": "The masking matched 3 and covered 2.",
+  "redactActsUncoveredOne": "In this image, 1 matching item is not covered.",
+  "redactActsUncoveredOther": "In this image, 2 matching items are not covered.",
+  "reviewLimit": "FullShot reads the text that a page reveals. It cannot see this image. What is drawn in pixels (canvas, image, PDF page, video frame) has never been read.",
+  "reviewNoMarks": "There are no bordered blocks in the image below."
 }

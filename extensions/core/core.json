@@ -122,7 +122,7 @@
       "shipped": false,
       "owns": "Node-side fake DOM for simulations: elements, shadow roots, computed style, ranges, a window with device-pixel-ratio quantised scrolling.",
       "promotedFrom": "Extension/Full_Screen_Shot/test/pixel-sim/fakedom.js",
-      "sourceSha256": "8479fc889ef0c2155ec7e03d4de40fcaaf9cd77e17a27dcd9e6a15ba5ad35e8e"
+      "sourceSha256": "76840b2f73b6a97d82bd8f20ae4f7806ac71e203d98d9dc0135a7fd12bce1803"
     },
     "dev/canvas2d.js": {
       "status": "built",

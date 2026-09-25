@@ -132,6 +132,24 @@ describe('guard-sweep sees a flagged node invocation', () => {
     }
   });
 
+  // ⏱ 2026-09-25 — ONE DECLARED PER-GUARD CEILING (release train W3, the lead's
+  // ruling 2 on ard2r). assert-listing-assets.mjs measured 298-316 s on the
+  // laptop, above the flat 300 s, so it gets 600 s. Every other guard keeps the
+  // flat 300 s. The source check is what catches a spawn that stopped reading
+  // the map: `--ceilings` would still print the right numbers.
+  test('🔴 a guard NOT in CEILINGS still gets the flat 300_000 ms', () => {
+    const r = spawnSync(process.execPath, [SWEEP, '--ceilings'], { cwd: REPO, encoding: 'utf8' });
+    assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+    const ceilings = JSON.parse(r.stdout);
+    assert.equal(ceilings['assert-listing-assets.mjs'], 600_000);
+    const unlisted = Object.entries(ceilings).filter(([n]) => n !== 'assert-listing-assets.mjs');
+    assert.ok(unlisted.length >= 100, `expected the whole tooling/ci domain, got ${unlisted.length} unlisted file(s)`);
+    for (const [n, ms] of unlisted) assert.equal(ms, 300_000, `${n} is not in CEILINGS and got ${ms}`);
+    const src = readFileSync(SWEEP, 'utf8');
+    assert.match(src, /timeout:\s*ceilingFor\(name\)/, 'the guard spawn no longer takes its timeout from ceilingFor(name)');
+    assert.doesNotMatch(src, /timeout:\s*\d/, 'a literal timeout is back beside the ceiling map');
+  });
+
   test('the node flags are CARRIED, not merely tolerated', () => {
     // If the flags were matched and then thrown away, the sweep would execute
     // those four guards in exactly the configuration the flag exists to avoid.

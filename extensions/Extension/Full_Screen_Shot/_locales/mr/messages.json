@@ -473,7 +473,7 @@
     "message": "जतन झाले ✓"
   },
   "optionsSaveFailed": {
-    "message": "Not saved ✕"
+    "message": "सेव्ह झाले नाही ✕"
   },
   "optionsSectionData": {
     "message": "तुमचा डेटा"
@@ -550,7 +550,7 @@
     }
   },
   "optionsSweepPartial": {
-    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "message": "काढले: $FOUND$ पैकी $COUNT$ · मोकळी झालेली जागा: $SIZE$ · उरलेले काढता आले नाहीत. पुन्हा प्रयत्न करा किंवा ब्राउझर पुन्हा सुरू करा.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -830,7 +830,7 @@
     "message": "स्क्रीनशॉट हटवला."
   },
   "redactActsLine": {
-    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "message": "रिडॅक्शन सुरू आहे. $MATCHED$ जुळले, $PAINTED$ रंगवले, $VERIFIED$ या प्रतिमेत अपारदर्शक असल्याची पुष्टी झाली.",
     "placeholders": {
       "matched": {
         "content": "$1",
@@ -847,11 +847,11 @@
     }
   },
   "redactActsNone": {
-    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "message": "रिडॅक्शनला वाचलेल्या मजकुरात काहीही जुळले नाही आणि त्याने एकही ब्लॉक रंगवला नाही. खाली काहीही चौकटीत नाही.",
     "placeholders": {}
   },
   "redactActsShortfall": {
-    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "message": "रिडॅक्शनला $MATCHED$ जुळले आणि त्याने $COVERED$ झाकले.",
     "placeholders": {
       "matched": {
         "content": "$1",
@@ -864,7 +864,7 @@
     }
   },
   "redactActsUncoveredOne": {
-    "message": "$COUNT$ match is not covered in this image.",
+    "message": "$COUNT$ जुळणी या प्रतिमेत झाकलेली नाही.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -873,7 +873,7 @@
     }
   },
   "redactActsUncoveredOther": {
-    "message": "$COUNT$ matches are not covered in this image.",
+    "message": "$COUNT$ जुळण्या या प्रतिमेत झाकलेल्या नाहीत.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -882,15 +882,15 @@
     }
   },
   "redactActsWalkTruncated": {
-    "message": "FullShot did not finish walking this page.",
+    "message": "FullShot ने हे पेज पूर्ण तपासले नाही.",
     "placeholders": {}
   },
   "redactActsCountPartial": {
-    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "message": "ही संख्या कमी असू शकते: FullShot ने या कॅप्चरमधील काही मजकूर वाचला नाही.",
     "placeholders": {}
   },
   "redactActsScanLimits": {
-    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "message": "न वाचलेले मजकुराचे तुकडे: $REFUSED$. सापडलेले पण न काढलेले ब्लॉक: $LOST$.",
     "placeholders": {
       "refused": {
         "content": "$1",
@@ -903,7 +903,7 @@
     }
   },
   "redactActsBakeLimits": {
-    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "message": "या प्रतिमेत ठेवता न आलेले ब्लॉक: $UNPLACED$. काढलेले पण पुन्हा न वाचलेले ब्लॉक: $UNREAD$.",
     "placeholders": {
       "unplaced": {
         "content": "$1",
@@ -916,7 +916,7 @@
     }
   },
   "redactActsNoLedger": {
-    "message": "This record carries no account of a redaction pass on this capture.",
+    "message": "या नोंदीत या कॅप्चरवरील कोणत्याही रिडॅक्शन फेरीचा तपशील नाही.",
     "placeholders": {}
   },
   "redactActsUnknownCount": {
@@ -924,15 +924,15 @@
     "placeholders": {}
   },
   "reviewTitle": {
-    "message": "Before you copy",
+    "message": "कॉपी करण्यापूर्वी",
     "placeholders": {}
   },
   "reviewLimit": {
-    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "message": "FullShot पेज उघड करत असलेला मजकूर वाचतो. त्याला ही प्रतिमा दिसू शकत नाही. पिक्सेल म्हणून काढलेले काहीही – कॅनव्हास, प्रतिमा, PDF पेज, व्हिडिओ फ्रेम – कधीही वाचले गेले नाही.",
     "placeholders": {}
   },
   "reviewMarks": {
-    "message": "$COUNT$ blocks are outlined on the image below.",
+    "message": "खालील प्रतिमेतील चौकटीत दाखवलेले ब्लॉक: $COUNT$.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -941,11 +941,11 @@
     }
   },
   "reviewNoMarks": {
-    "message": "No blocks are outlined on the image below.",
+    "message": "खालील प्रतिमेत एकही ब्लॉक चौकटीत दाखवलेला नाही.",
     "placeholders": {}
   },
   "reviewScale": {
-    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "message": "कॉपी होणाऱ्या आकाराच्या $PERCENT$% वर दाखवले आहे.",
     "placeholders": {
       "percent": {
         "content": "$1",
@@ -954,11 +954,11 @@
     }
   },
   "reviewReduced": {
-    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "message": "हे कॅप्चर एक वाचनीय प्रतिमा म्हणून कॉपी करण्यासाठी खूप उंच आहे, म्हणून खालील चित्र संपूर्ण पेजचे लहान केलेले विहंगावलोकन आहे. त्यातील लहान मजकूर वाचता येत नाही – इथेही नाही आणि क्लिपबोर्डवरही नाही.",
     "placeholders": {}
   },
   "reviewMarkLabel": {
-    "message": "Block $INDEX$",
+    "message": "ब्लॉक $INDEX$",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -967,7 +967,7 @@
     }
   },
   "reviewMarkAt": {
-    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "message": "ब्लॉक $INDEX$, प्रतिमेच्या वरून $PERCENT$% खाली",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -980,23 +980,23 @@
     }
   },
   "reviewPrevView": {
-    "message": "Previous view",
+    "message": "मागील दृश्य",
     "placeholders": {}
   },
   "reviewNextView": {
-    "message": "Next view",
+    "message": "पुढील दृश्य",
     "placeholders": {}
   },
   "reviewZoomOut": {
-    "message": "Zoom out",
+    "message": "झूम आउट",
     "placeholders": {}
   },
   "reviewZoomIn": {
-    "message": "Zoom in",
+    "message": "झूम इन",
     "placeholders": {}
   },
   "reviewViewPos": {
-    "message": "View $INDEX$ of $TOTAL$",
+    "message": "दृश्य $INDEX$ / $TOTAL$",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -1009,7 +1009,7 @@
     }
   },
   "reviewImgRegion": {
-    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "message": "कॉपी होणार असलेली प्रतिमा, $DIMS$ पिक्सेल – बाण कळांनी स्क्रोल करा",
     "placeholders": {
       "dims": {
         "content": "$1",
@@ -1018,15 +1018,15 @@
     }
   },
   "reviewConfirm": {
-    "message": "I have looked — copy",
+    "message": "मी पाहिले आहे – कॉपी करा",
     "placeholders": {}
   },
   "reviewCancel": {
-    "message": "Cancel",
+    "message": "रद्द करा",
     "placeholders": {}
   },
   "reviewImgAlt": {
-    "message": "The image that is about to be copied",
+    "message": "कॉपी होणार असलेली प्रतिमा",
     "placeholders": {}
   },
   "resultAiOverviewOnly": {

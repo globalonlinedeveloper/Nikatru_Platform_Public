@@ -362,6 +362,11 @@ const REAL = {
   source: 'contracts/legal/fullshot-privacy.md',
   site: 'sites/nikatru/fullshot/privacy.html',
   ext: 'extensions/Extension/Full_Screen_Shot/publish/PRIVACY-POLICY.html',
+  // ⏱ 2026-09-25 (EXT-4, Q2) — what the renderer reads to decide whether its
+  // `when=pro` paragraphs are published: the gate module and the two facts.
+  gate: 'contracts/legal/pro-gate.mjs',
+  tool: 'extensions/Extension/Full_Screen_Shot/tool.json',
+  offerings: 'services/platform/src/app-config-data.json',
 };
 
 function runReal({ site = (t) => t, ext = (t) => t } = {}) {
@@ -391,6 +396,27 @@ describe('assert-legal-text-parity — assertion 3: the published BYTES are the 
     const r = runReal();
     const c = spawnSync(process.execPath, [join(r.root, REAL.renderer), '--check'], { encoding: 'utf8' });
     assert.equal(c.status, 0, `${c.stdout ?? ''}${c.stderr ?? ''}`);
+  });
+
+  test('Q2: FullShot neither transmits nor sells, so no Pro paragraph is published', () => {
+    const r = runReal();
+    const c = spawnSync(process.execPath, [join(r.root, REAL.renderer), '--stdout'], { encoding: 'utf8' });
+    assert.equal(c.status, 0, c.stderr);
+    assert.doesNotMatch(c.stdout, /FullShot Pro is optional/);
+    assert.match(c.stdout, /It does not have accounts/);
+  });
+
+  test('Q2: a tool.json that TRANSMITS publishes the Pro paragraph and retires the no-accounts lead', () => {
+    const r = runReal();
+    const t = JSON.parse(readFileSync(join(r.root, REAL.tool), 'utf8'));
+    t.policy.networkAllowlist = ['api.example.test'];
+    const alt = join(r.root, 'tool-transmits.json');
+    writeFileSync(alt, JSON.stringify(t, null, 2));
+    const c = spawnSync(process.execPath, [join(r.root, REAL.renderer), '--stdout', '--tool', alt], { encoding: 'utf8' });
+    assert.equal(c.status, 0, c.stderr);
+    assert.match(c.stdout, /FullShot Pro is optional/);
+    assert.doesNotMatch(c.stdout, /It does not have accounts/);
+    assert.doesNotMatch(c.stdout, /api\.example\.test/, 'the privacy text never names a host');
   });
 
   test('a fresh render wraps EVERY mailto anchor WHOLE in the served copy, and leaves the store copy unmarked', () => {

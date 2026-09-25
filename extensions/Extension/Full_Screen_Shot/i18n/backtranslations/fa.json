@@ -6,5 +6,11 @@
   "optionsRedactPIIDesc": "It searches the text that the page makes available for e-mail addresses, telephone numbers, credit card numbers, national numbers and API keys and, in the saved image, draws a solid block over what matched. Text that is drawn as pixels it cannot read — a drawing canvas, an image, a PDF, a video frame. Detection is carried out on your device; nothing is ever sent anywhere. For whole-page captures (document scrolling); this block is permanent, so review the result yourself.",
   "scrollclipFormatHint": "GIF plays everywhere. WebM is smaller and more fluid (it is recorded live in your own browser).",
   "batchPermissionHint": "Opening these pages needs a one-off permission the first time.",
-  "batchPermissionDeclined": "The permission to open those pages was rejected."
+  "batchPermissionDeclined": "The permission to open those pages was rejected.",
+  "redactActsNone": "The covering found nothing in the text it read and drew no block. Nothing is framed below.",
+  "redactActsShortfall": "The covering found 3 items and covered 2 items.",
+  "redactActsUncoveredOne": "1 found item is not covered in this image.",
+  "redactActsUncoveredOther": "2 found items are not covered in this image.",
+  "reviewLimit": "FullShot reads the text that the page makes available. It cannot see this image. Anything that is drawn as pixels – a canvas, an image, a PDF page, a video frame – was never read.",
+  "reviewNoMarks": "No block is framed in the image below."
 }

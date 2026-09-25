@@ -57,7 +57,7 @@
 // ── WHERE THE NUMBER 24 COMES FROM ──────────────────────────────────────────
 // Not picked. Measured, on 2026-09-21, over the eight committed frames at
 // origin/main 9f548515 and over a textless control built from each (see
-// `selfTestInkMetric` for the same relationship in miniature). The worst
+// `inkFixtureFrame`). The worst
 // text-bearing-to-textless ratio across all eight frames, by threshold:
 //
 //     delta    8    16    24    32    48    64
@@ -158,35 +158,6 @@ export function inkFixtureFrame({ width, height, glyphs }) {
   return decodeRgba(encodeRgba({ width, height, rgba }, { opaque: true }));
 }
 
-/**
- * 🔴 THE METRIC PROVES ITSELF ON EVERY RUN, and this is what stops the floor
- * from being edited into something that never fires.
- *
- * The failure that costs everything here is not the threshold being slightly
- * wrong. It is `inkFraction` being changed into something that returns a large
- * constant, or the comparison being inverted — at which point every frame
- * clears every floor forever and the limb prints ok while measuring nothing.
- * The same argument this guard's account-address detector already makes about
- * its one regular expression.
- *
- * So two frames are built here, in memory, on every invocation: the same layout
- * with glyph-shaped strokes and without them. The strokes must lift the reading
- * above `minFraction` of the text-bearing frame, and their absence must drop it
- * below — the EXACT relationship the register's floors encode, so a metric that
- * can no longer tell the two apart is reported before any real frame is read.
- */
-export function selfTestInkMetric(minFraction) {
-  const withText = inkFraction(inkFixtureFrame({ width: 360, height: 640, glyphs: true }));
-  const textless = inkFraction(inkFixtureFrame({ width: 360, height: 640, glyphs: false }));
-  const floor = withText * minFraction;
-  return {
-    withText,
-    textless,
-    floor,
-    ok: withText > 0 && textless < floor && withText >= floor,
-  };
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // 🔴 THE TEXTLESS CONTROL HAD NO PRODUCER IN THE TREE, AND THE ROWS DEPEND ON IT.
 //
@@ -253,6 +224,17 @@ export function selfTestInkMetric(minFraction) {
 // It prints and never writes: the register is a sworn store contract, and a
 // tool that edited it would let a recapture lower its own floor on the way
 // past. Its own cases are in tooling/ci/test/measure-frame-ink.test.mjs.
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ AMENDED 2026-09-24 (row O-STORE-INK-FLOOR-HAND-PASTED), appended rather than
+// edited so the history above stays readable: the register no longer carries
+// `inkFloor`. Its per-frame rows and their 0.7 fraction were replaced by
+// `storeMetadataContract.inkRule`, which judges each device class's RUN median
+// of removed ink against a floor `assert-listing-assets.mjs` computes from that
+// class's calibration frames, using `areaDownscale` and `removedInkRunMedian`
+// at the end of this file. `measure-frame-ink.mjs` prints that reading and no
+// longer prints a block to paste. `selfTestInkMetric` was retired in the same
+// change: the listing guard, its only caller, self-tests through the class
+// arithmetic instead, and its doc described the per-frame floor.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** The neighbourhood the mode is taken over. 9 is the register's number, and it
@@ -333,4 +315,135 @@ export function measureFrameInk(img) {
     measured: Number(inkFraction(img).toFixed(6)),
     textlessControl: Number(inkFraction(textlessFrame(img)).toFixed(6)),
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔴 REMOVED INK IS A FRACTION OF PIXELS, SO IT MOVES WITH THE DEVICE PIXEL
+// RATIO — and the store frames are captured at two of them. Measured 2026-09-24
+// at 7dd09500 with the metric above, unchanged: the committed phone set
+// (1080x1920, DPR 3) has a run median of removed ink of 0.00871 at native size
+// and 0.035093 once each frame is area-averaged down to its 360 CSS pixels; the
+// tablet set (1800x3200, DPR 2) reads 0.004313 native and 0.008659 at 900. At
+// native size both text-bearing sets sat UNDER the e2e floor (0.011, measured
+// at 430 CSS pixels, DPR 1), so a floor can only be compared at the size the
+// layout was drawn at — and even there the tablet class reads 0.79x of the e2e
+// floor, which is why `assert-listing-assets.mjs` computes one floor PER DEVICE
+// CLASS, from that class's own calibration frames, rather than borrowing one.
+//
+// The two helpers below are the whole of that normalisation. The metric itself
+// (`inkFraction`, `INK_DELTA`, `textlessFrame`, `TEXTLESS_WINDOW`) is untouched:
+// a frame is resized to its CSS width and then measured exactly as before.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** One axis of an area average: for each of `dst` output cells, the source
+ *  indices it covers and the share of the cell each one contributes. The
+ *  shares of one cell sum to 1, so a flat region keeps its exact colour. */
+function areaTaps(src, dst) {
+  const scale = src / dst;
+  const out = [];
+  for (let o = 0; o < dst; o++) {
+    const a = o * scale;
+    const b = (o + 1) * scale;
+    const taps = [];
+    for (let s = Math.floor(a); s < Math.min(src, Math.ceil(b)); s++) {
+      const w = Math.min(b, s + 1) - Math.max(a, s);
+      if (w > 0) taps.push([s, w / scale]);
+    }
+    out.push(taps);
+  }
+  return out;
+}
+
+/**
+ * [img] area-averaged down to `targetWidth` pixels wide, the height scaled by
+ * the same factor and rounded: `round(height * targetWidth / width)`. Returned
+ * in the shape `decodeRgba` returns, so every reading above takes it as it is.
+ *
+ * An AREA AVERAGE, because that is what a display of lower density does to the
+ * same layout: each output pixel is the mean of the source pixels it covers,
+ * weighted by how much of each it covers. At an integer factor (1080 -> 360,
+ * 1800 -> 900) that is a plain box of 3x3 or 2x2. A target equal to the width
+ * is the frame itself, pixel for pixel.
+ *
+ * ⚠️ THE TARGET IS AN INTEGER THE CALLER READ, NEVER `width / dpr` COMPUTED
+ * HERE. A class declares its CSS width in the register, and a floating-point
+ * quotient would put a frame 1px off that width on the other side of a
+ * rounding edge without anybody having chosen it. So a non-integer, a
+ * non-positive and an UPWARD target are refused rather than approximated.
+ */
+export function areaDownscale(img, targetWidth) {
+  const { width: w, height: h, rgba } = img;
+  if (!Number.isInteger(targetWidth) || targetWidth <= 0) {
+    throw new RangeError(`areaDownscale: the target width must be a positive integer, got ${JSON.stringify(targetWidth)}`);
+  }
+  if (targetWidth > w) {
+    throw new RangeError(`areaDownscale: ${w}px wide cannot be area-averaged UP to ${targetWidth}px`);
+  }
+  const tw = targetWidth;
+  const th = Math.max(1, Math.round((h * tw) / w));
+  const xs = areaTaps(w, tw);
+  const ys = areaTaps(h, th);
+  // Horizontal pass first, kept in floating point so the vertical pass averages
+  // exact values and the one rounding happens once, at the end.
+  const mid = new Float64Array(h * tw * 4);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < tw; x++) {
+      const o = (y * tw + x) * 4;
+      for (const [sx, share] of xs[x]) {
+        const i = (y * w + sx) * 4;
+        mid[o] += rgba[i] * share;
+        mid[o + 1] += rgba[i + 1] * share;
+        mid[o + 2] += rgba[i + 2] * share;
+        mid[o + 3] += rgba[i + 3] * share;
+      }
+    }
+  }
+  const out = Buffer.alloc(tw * th * 4);
+  for (let y = 0; y < th; y++) {
+    for (let x = 0; x < tw; x++) {
+      const o = (y * tw + x) * 4;
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      let a = 0;
+      for (const [sy, share] of ys[y]) {
+        const i = (sy * tw + x) * 4;
+        r += mid[i] * share;
+        g += mid[i + 1] * share;
+        b += mid[i + 2] * share;
+        a += mid[i + 3] * share;
+      }
+      out[o] = Math.min(255, Math.round(r));
+      out[o + 1] = Math.min(255, Math.round(g));
+      out[o + 2] = Math.min(255, Math.round(b));
+      out[o + 3] = Math.min(255, Math.round(a));
+    }
+  }
+  return { width: tw, height: th, rgba: out };
+}
+
+/**
+ * The median, over a run of frames, of each frame's REMOVED ink —
+ * `measured - textlessControl` from `measureFrameInk` — after each frame is
+ * area-averaged to `targetWidth`. The statistic
+ * `tooling/e2e/assert-frames-carry-text.mjs` judges, at a size the caller
+ * names, so a store class and the e2e lane read one quantity.
+ *
+ * The median of an even count is the mean of the middle two, rounded to the
+ * same six places `measureFrameInk` rounds to. An EMPTY run is refused: a
+ * median of nothing returned as 0 or NaN would compare as a reading, and a
+ * floor computed from it would be a floor nobody measured.
+ */
+export function removedInkRunMedian(imgs, targetWidth) {
+  if (!Array.isArray(imgs) || imgs.length === 0) {
+    throw new RangeError('removedInkRunMedian: a run median needs at least one frame, and got none');
+  }
+  const removed = imgs
+    .map((img) => {
+      const { measured, textlessControl } = measureFrameInk(areaDownscale(img, targetWidth));
+      return Number((measured - textlessControl).toFixed(6));
+    })
+    .sort((a, b) => a - b);
+  const mid = removed.length >> 1;
+  return removed.length % 2 ? removed[mid] : Number(((removed[mid - 1] + removed[mid]) / 2).toFixed(6));
 }

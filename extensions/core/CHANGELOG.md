@@ -13,6 +13,13 @@ breaking change becomes `core/v2/` beside it rather than a new number here.
 
 ## [Unreleased]
 
+### Changed — `dev/fakedom.js` re-promoted
+
+- FullShot's `test/pixel-sim/fakedom.js` gained `document.fonts` (a `FontsFake` whose `ready` a
+  scenario can hold, as latefont and neverfont do). The copy under `dev/` was re-promoted from it byte for byte
+  (`sha256 76840b2f73b6a97d82bd8f20ae4f7806ac71e203d98d9dc0135a7fd12bce1803`), and `core.json`'s
+  `sourceSha256` follows it. `dev/` is not vendored, so no tool's copy moves.
+
 ## [0.2.0] — 2026-09-06
 
 ### Added — `v1/entitlement-contract.js`, the money vocabulary, on the vendored surface

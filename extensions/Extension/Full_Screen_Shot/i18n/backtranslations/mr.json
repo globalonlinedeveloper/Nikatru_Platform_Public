@@ -6,5 +6,11 @@
   "optionsRedactPIIDesc": "In the text the page discloses it searches for e-mails, telephone numbers, credit card numbers, national identity numbers (SSN) and API keys and places a solid black block over what matched, in the image being saved. It cannot read text drawn as pixels — canvas, image, PDF, video frame. This recognition runs on your own device; nothing at all is ever sent anywhere. This applies to captures of the whole page (document-scroll); the block is permanent, so check the result yourself.",
   "scrollclipFormatHint": "GIF runs everywhere. WebM is small and more smooth (it is recorded live right in your browser).",
   "batchPermissionHint": "To open these pages a permission is needed only once, the first time.",
-  "batchPermissionDeclined": "The permission to open those pages was refused."
+  "batchPermissionDeclined": "The permission to open those pages was refused.",
+  "redactActsNone": "The redaction found nothing matching in the text it read and did not paint a single block. Nothing below is framed.",
+  "redactActsShortfall": "The redaction found 3 matches and covered 2.",
+  "redactActsUncoveredOne": "1 match is not covered in this image.",
+  "redactActsUncoveredOther": "2 matches are not covered in this image.",
+  "reviewLimit": "FullShot reads the text the page reveals. It cannot see this image. Anything drawn as pixels – canvas, image, PDF page, video frame – was never read.",
+  "reviewNoMarks": "Not a single block is framed in the image below."
 }

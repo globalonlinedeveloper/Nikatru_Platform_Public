@@ -6,5 +6,11 @@
   "optionsRedactPIIDesc": "Scans the text that the page exposes for e-mail addresses, telephones, card numbers, identity numbers and API keys and covers with a solid frame whatever matches in the saved image. It cannot read text drawn as pixels — a canvas, an image, a PDF, a video frame. The detection happens on your device; nothing is ever sent anywhere. Applies to captures of the whole page (with document scrolling); the covering is permanent, so check the result yourselves.",
   "scrollclipFormatHint": "GIF plays everywhere. WebM is smaller and more smooth (it is recorded live in your browser).",
   "batchPermissionHint": "Opening these pages needs a one-off permission the first time.",
-  "batchPermissionDeclined": "The permission for the opening of these pages was rejected."
+  "batchPermissionDeclined": "The permission for the opening of these pages was rejected.",
+  "redactActsNone": "The hiding detected nothing in the text it read and did not draw any block. Nothing is outlined below.",
+  "redactActsShortfall": "The hiding detected 3 and covered 2.",
+  "redactActsUncoveredOne": "1 match is not covered in this image.",
+  "redactActsUncoveredOther": "2 matches are not covered in this image.",
+  "reviewLimit": "FullShot reads the text that a page exposes. It cannot see this image. Nothing of what is drawn as pixels – a canvas, an image, a PDF page, a video frame – was ever read.",
+  "reviewNoMarks": "No block is outlined in the image below."
 }

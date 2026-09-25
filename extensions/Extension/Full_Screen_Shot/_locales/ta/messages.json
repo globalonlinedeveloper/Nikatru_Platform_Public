@@ -473,7 +473,7 @@
     "message": "சேமிக்கப்பட்டது ✓"
   },
   "optionsSaveFailed": {
-    "message": "Not saved ✕"
+    "message": "சேமிக்கப்படவில்லை ✕"
   },
   "optionsSectionData": {
     "message": "உங்கள் தரவு"
@@ -550,7 +550,7 @@
     }
   },
   "optionsSweepPartial": {
-    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "message": "அகற்றப்பட்டவை: $FOUND$ இல் $COUNT$ · விடுவிக்கப்பட்ட இடம்: $SIZE$ · மீதமுள்ளவற்றை அகற்ற முடியவில்லை. மீண்டும் முயலவும் அல்லது உலாவியை மீண்டும் தொடங்கவும்.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -830,7 +830,7 @@
     "message": "திரைப்பிடிப்பு நீக்கப்பட்டது."
   },
   "redactActsLine": {
-    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "message": "மறைப்பு இயக்கத்தில் உள்ளது. $MATCHED$ பொருந்தின, $PAINTED$ வண்ணம் பூசப்பட்டன, $VERIFIED$ இந்தப் படத்தில் ஒளிபுகாதவை என உறுதிசெய்யப்பட்டன.",
     "placeholders": {
       "matched": {
         "content": "$1",
@@ -847,11 +847,11 @@
     }
   },
   "redactActsNone": {
-    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "message": "படித்த உரையில் மறைப்பு எதையும் பொருத்தவில்லை, எந்தத் தொகுதியையும் வரையவில்லை. கீழே எதற்கும் கோடிடப்படவில்லை.",
     "placeholders": {}
   },
   "redactActsShortfall": {
-    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "message": "மறைப்பு $MATCHED$ பொருத்தியது, $COVERED$ மூடியது.",
     "placeholders": {
       "matched": {
         "content": "$1",
@@ -864,7 +864,7 @@
     }
   },
   "redactActsUncoveredOne": {
-    "message": "$COUNT$ match is not covered in this image.",
+    "message": "$COUNT$ பொருத்தம் இந்தப் படத்தில் மூடப்படவில்லை.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -873,7 +873,7 @@
     }
   },
   "redactActsUncoveredOther": {
-    "message": "$COUNT$ matches are not covered in this image.",
+    "message": "$COUNT$ பொருத்தங்கள் இந்தப் படத்தில் மூடப்படவில்லை.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -882,15 +882,15 @@
     }
   },
   "redactActsWalkTruncated": {
-    "message": "FullShot did not finish walking this page.",
+    "message": "FullShot இந்தப் பக்கத்தை முழுவதும் கடந்து முடிக்கவில்லை.",
     "placeholders": {}
   },
   "redactActsCountPartial": {
-    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "message": "இந்த எண்ணிக்கை குறைவாக இருக்கலாம்: இந்தப் பிடிப்பில் உள்ள உரையின் ஒரு பகுதியை FullShot படிக்கவில்லை.",
     "placeholders": {}
   },
   "redactActsScanLimits": {
-    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "message": "படிக்காத உரைத் துண்டுகள்: $REFUSED$. கண்டறிந்தும் வரையாத தொகுதிகள்: $LOST$.",
     "placeholders": {
       "refused": {
         "content": "$1",
@@ -903,7 +903,7 @@
     }
   },
   "redactActsBakeLimits": {
-    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "message": "இந்தப் படத்தில் வைக்க முடியாத தொகுதிகள்: $UNPLACED$. வரைந்தும் மீண்டும் படிக்காத தொகுதிகள்: $UNREAD$.",
     "placeholders": {
       "unplaced": {
         "content": "$1",
@@ -916,7 +916,7 @@
     }
   },
   "redactActsNoLedger": {
-    "message": "This record carries no account of a redaction pass on this capture.",
+    "message": "இந்தப் பிடிப்பின் மீதான எந்த மறைப்புச் சுற்றைப் பற்றியும் இந்தப் பதிவில் விவரம் இல்லை.",
     "placeholders": {}
   },
   "redactActsUnknownCount": {
@@ -924,15 +924,15 @@
     "placeholders": {}
   },
   "reviewTitle": {
-    "message": "Before you copy",
+    "message": "நகலெடுப்பதற்கு முன்",
     "placeholders": {}
   },
   "reviewLimit": {
-    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "message": "ஒரு பக்கம் வெளிப்படுத்தும் உரையை FullShot படிக்கிறது. இந்தப் படத்தை அதனால் பார்க்க முடியாது. பிக்சல்களாக வரையப்பட்ட எதுவும் – கேன்வாஸ், படம், PDF பக்கம், வீடியோ சட்டகம் – ஒருபோதும் படிக்கப்படவில்லை.",
     "placeholders": {}
   },
   "reviewMarks": {
-    "message": "$COUNT$ blocks are outlined on the image below.",
+    "message": "கீழே உள்ள படத்தில் கோடிடப்பட்ட தொகுதிகள்: $COUNT$.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -941,11 +941,11 @@
     }
   },
   "reviewNoMarks": {
-    "message": "No blocks are outlined on the image below.",
+    "message": "கீழே உள்ள படத்தில் எந்தத் தொகுதிக்கும் கோடிடப்படவில்லை.",
     "placeholders": {}
   },
   "reviewScale": {
-    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "message": "நகலெடுக்கப்படும் அளவின் $PERCENT$% இல் காட்டப்படுகிறது.",
     "placeholders": {
       "percent": {
         "content": "$1",
@@ -954,11 +954,11 @@
     }
   },
   "reviewReduced": {
-    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "message": "இந்தப் பிடிப்பு படிக்கக்கூடிய ஒரே படமாக நகலெடுக்க மிக உயரமானது, எனவே கீழே உள்ள படம் முழுப் பக்கத்தின் சுருக்கப்பட்ட மேலோட்டம். அதில் உள்ள சிறிய உரை படிக்கக்கூடியதாக இல்லை – இங்கும் இல்லை, கிளிப்போர்டிலும் இல்லை.",
     "placeholders": {}
   },
   "reviewMarkLabel": {
-    "message": "Block $INDEX$",
+    "message": "தொகுதி $INDEX$",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -967,7 +967,7 @@
     }
   },
   "reviewMarkAt": {
-    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "message": "தொகுதி $INDEX$, படத்தின் மேலிருந்து $PERCENT$% கீழே",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -980,23 +980,23 @@
     }
   },
   "reviewPrevView": {
-    "message": "Previous view",
+    "message": "முந்தைய காட்சி",
     "placeholders": {}
   },
   "reviewNextView": {
-    "message": "Next view",
+    "message": "அடுத்த காட்சி",
     "placeholders": {}
   },
   "reviewZoomOut": {
-    "message": "Zoom out",
+    "message": "சிறிதாக்கு",
     "placeholders": {}
   },
   "reviewZoomIn": {
-    "message": "Zoom in",
+    "message": "பெரிதாக்கு",
     "placeholders": {}
   },
   "reviewViewPos": {
-    "message": "View $INDEX$ of $TOTAL$",
+    "message": "காட்சி $INDEX$ / $TOTAL$",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -1009,7 +1009,7 @@
     }
   },
   "reviewImgRegion": {
-    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "message": "நகலெடுக்கப்பட உள்ள படம், $DIMS$ பிக்சல்கள் – அம்புக்குறி விசைகளால் உருட்டவும்",
     "placeholders": {
       "dims": {
         "content": "$1",
@@ -1018,15 +1018,15 @@
     }
   },
   "reviewConfirm": {
-    "message": "I have looked — copy",
+    "message": "நான் பார்த்துவிட்டேன் – நகலெடு",
     "placeholders": {}
   },
   "reviewCancel": {
-    "message": "Cancel",
+    "message": "ரத்துசெய்",
     "placeholders": {}
   },
   "reviewImgAlt": {
-    "message": "The image that is about to be copied",
+    "message": "நகலெடுக்கப்பட உள்ள படம்",
     "placeholders": {}
   },
   "resultAiOverviewOnly": {

@@ -473,7 +473,7 @@
     "message": "Imehifadhiwa ✓"
   },
   "optionsSaveFailed": {
-    "message": "Not saved ✕"
+    "message": "Haijahifadhiwa ✕"
   },
   "optionsSectionData": {
     "message": "Data yako"
@@ -550,7 +550,7 @@
     }
   },
   "optionsSweepPartial": {
-    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "message": "Zimeondolewa: $COUNT$ kati ya $FOUND$ · Nafasi iliyoachiwa: $SIZE$ · Zilizobaki hazikuweza kuondolewa. Jaribu tena, au zima na uwashe upya kivinjari chako.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -830,7 +830,7 @@
     "message": "Picha ya skrini imefutwa."
   },
   "redactActsLine": {
-    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "message": "Ufichaji umewashwa. $MATCHED$ zimelingana, $PAINTED$ zimepakwa rangi, $VERIFIED$ zimethibitishwa kuwa hazipitishi mwanga katika picha hii.",
     "placeholders": {
       "matched": {
         "content": "$1",
@@ -847,11 +847,11 @@
     }
   },
   "redactActsNone": {
-    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "message": "Ufichaji haukulinganisha chochote katika maandishi uliyosoma na haukupaka kizuizi chochote. Hakuna kilichowekewa mpaka hapa chini.",
     "placeholders": {}
   },
   "redactActsShortfall": {
-    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "message": "Ufichaji ulilinganisha $MATCHED$ na kufunika $COVERED$.",
     "placeholders": {
       "matched": {
         "content": "$1",
@@ -864,7 +864,7 @@
     }
   },
   "redactActsUncoveredOne": {
-    "message": "$COUNT$ match is not covered in this image.",
+    "message": "Ulinganifu $COUNT$ haujafunikwa katika picha hii.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -873,7 +873,7 @@
     }
   },
   "redactActsUncoveredOther": {
-    "message": "$COUNT$ matches are not covered in this image.",
+    "message": "Ulinganifu $COUNT$ haujafunikwa katika picha hii.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -882,15 +882,15 @@
     }
   },
   "redactActsWalkTruncated": {
-    "message": "FullShot did not finish walking this page.",
+    "message": "FullShot haikumaliza kupitia ukurasa huu.",
     "placeholders": {}
   },
   "redactActsCountPartial": {
-    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "message": "Idadi hii huenda ni pungufu: FullShot haikusoma sehemu ya maandishi katika picha hii ya skrini.",
     "placeholders": {}
   },
   "redactActsScanLimits": {
-    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "message": "Vipande vya maandishi ambavyo haikusoma: $REFUSED$. Vizuizi ilivyopata na haikuchora: $LOST$.",
     "placeholders": {
       "refused": {
         "content": "$1",
@@ -903,7 +903,7 @@
     }
   },
   "redactActsBakeLimits": {
-    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "message": "Vizuizi ambavyo haikuweza kuweka katika picha hii: $UNPLACED$. Vizuizi ilivyochora na haikusoma tena: $UNREAD$.",
     "placeholders": {
       "unplaced": {
         "content": "$1",
@@ -916,7 +916,7 @@
     }
   },
   "redactActsNoLedger": {
-    "message": "This record carries no account of a redaction pass on this capture.",
+    "message": "Rekodi hii haina maelezo yoyote kuhusu mzunguko wa ufichaji kwenye picha hii ya skrini.",
     "placeholders": {}
   },
   "redactActsUnknownCount": {
@@ -924,15 +924,15 @@
     "placeholders": {}
   },
   "reviewTitle": {
-    "message": "Before you copy",
+    "message": "Kabla ya kunakili",
     "placeholders": {}
   },
   "reviewLimit": {
-    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "message": "FullShot husoma maandishi ambayo ukurasa unaonyesha. Haiwezi kuona picha hii. Chochote kilichochorwa kama pikseli – turubai, picha, ukurasa wa PDF, fremu ya video – hakijawahi kusomwa.",
     "placeholders": {}
   },
   "reviewMarks": {
-    "message": "$COUNT$ blocks are outlined on the image below.",
+    "message": "Vizuizi vilivyowekewa mpaka kwenye picha iliyo hapa chini: $COUNT$.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -941,11 +941,11 @@
     }
   },
   "reviewNoMarks": {
-    "message": "No blocks are outlined on the image below.",
+    "message": "Hakuna kizuizi kilichowekewa mpaka kwenye picha iliyo hapa chini.",
     "placeholders": {}
   },
   "reviewScale": {
-    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "message": "Inaonyeshwa kwa $PERCENT$% ya ukubwa utakaonakiliwa.",
     "placeholders": {
       "percent": {
         "content": "$1",
@@ -954,11 +954,11 @@
     }
   },
   "reviewReduced": {
-    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "message": "Picha hii ya skrini ni ndefu mno kunakiliwa kama picha moja inayosomeka, kwa hivyo picha iliyo hapa chini ni muhtasari uliopunguzwa wa ukurasa mzima. Maandishi madogo ndani yake hayasomeki – hapa wala kwenye ubao wa kunakili.",
     "placeholders": {}
   },
   "reviewMarkLabel": {
-    "message": "Block $INDEX$",
+    "message": "Kizuizi $INDEX$",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -967,7 +967,7 @@
     }
   },
   "reviewMarkAt": {
-    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "message": "Kizuizi $INDEX$, $PERCENT$% kutoka juu ya picha",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -980,23 +980,23 @@
     }
   },
   "reviewPrevView": {
-    "message": "Previous view",
+    "message": "Mwonekano uliopita",
     "placeholders": {}
   },
   "reviewNextView": {
-    "message": "Next view",
+    "message": "Mwonekano unaofuata",
     "placeholders": {}
   },
   "reviewZoomOut": {
-    "message": "Zoom out",
+    "message": "Punguza ukubwa",
     "placeholders": {}
   },
   "reviewZoomIn": {
-    "message": "Zoom in",
+    "message": "Ongeza ukubwa",
     "placeholders": {}
   },
   "reviewViewPos": {
-    "message": "View $INDEX$ of $TOTAL$",
+    "message": "Mwonekano $INDEX$ kati ya $TOTAL$",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -1009,7 +1009,7 @@
     }
   },
   "reviewImgRegion": {
-    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "message": "Picha inayokaribia kunakiliwa, pikseli $DIMS$ – isogeze kwa vitufe vya mishale",
     "placeholders": {
       "dims": {
         "content": "$1",
@@ -1018,15 +1018,15 @@
     }
   },
   "reviewConfirm": {
-    "message": "I have looked — copy",
+    "message": "Nimeangalia – nakili",
     "placeholders": {}
   },
   "reviewCancel": {
-    "message": "Cancel",
+    "message": "Ghairi",
     "placeholders": {}
   },
   "reviewImgAlt": {
-    "message": "The image that is about to be copied",
+    "message": "Picha inayokaribia kunakiliwa",
     "placeholders": {}
   },
   "resultAiOverviewOnly": {

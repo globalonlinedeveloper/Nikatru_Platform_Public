@@ -473,7 +473,7 @@
     "message": "സേവ് ചെയ്തു ✓"
   },
   "optionsSaveFailed": {
-    "message": "Not saved ✕"
+    "message": "സംരക്ഷിച്ചില്ല ✕"
   },
   "optionsSectionData": {
     "message": "നിങ്ങളുടെ ഡാറ്റ"
@@ -550,7 +550,7 @@
     }
   },
   "optionsSweepPartial": {
-    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "message": "നീക്കം ചെയ്തത്: $FOUND$-ൽ $COUNT$ · ഒഴിഞ്ഞ ഇടം: $SIZE$ · ബാക്കിയുള്ളവ നീക്കം ചെയ്യാനായില്ല. വീണ്ടും ശ്രമിക്കുക, അല്ലെങ്കിൽ ബ്രൗസർ പുനരാരംഭിക്കുക.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -830,7 +830,7 @@
     "message": "സ്ക്രീൻഷോട്ട് ഇല്ലാതാക്കി."
   },
   "redactActsLine": {
-    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "message": "റിഡാക്ഷൻ ഓണാണ്. $MATCHED$ പൊരുത്തപ്പെട്ടു, $PAINTED$ ചായം പൂശി, $VERIFIED$ ഈ ചിത്രത്തിൽ അതാര്യമെന്ന് സ്ഥിരീകരിച്ചു.",
     "placeholders": {
       "matched": {
         "content": "$1",
@@ -847,11 +847,11 @@
     }
   },
   "redactActsNone": {
-    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "message": "വായിച്ച വാചകത്തിൽ റിഡാക്ഷൻ ഒന്നും പൊരുത്തപ്പെടുത്തിയില്ല, ഒരു ബ്ലോക്കും വരച്ചില്ല. താഴെ ഒന്നിനും അതിർവരയിട്ടിട്ടില്ല.",
     "placeholders": {}
   },
   "redactActsShortfall": {
-    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "message": "റിഡാക്ഷൻ $MATCHED$ പൊരുത്തപ്പെടുത്തി, $COVERED$ മറച്ചു.",
     "placeholders": {
       "matched": {
         "content": "$1",
@@ -864,7 +864,7 @@
     }
   },
   "redactActsUncoveredOne": {
-    "message": "$COUNT$ match is not covered in this image.",
+    "message": "$COUNT$ പൊരുത്തം ഈ ചിത്രത്തിൽ മറച്ചിട്ടില്ല.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -873,7 +873,7 @@
     }
   },
   "redactActsUncoveredOther": {
-    "message": "$COUNT$ matches are not covered in this image.",
+    "message": "$COUNT$ പൊരുത്തങ്ങൾ ഈ ചിത്രത്തിൽ മറച്ചിട്ടില്ല.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -882,15 +882,15 @@
     }
   },
   "redactActsWalkTruncated": {
-    "message": "FullShot did not finish walking this page.",
+    "message": "FullShot ഈ പേജിലൂടെയുള്ള നടത്തം പൂർത്തിയാക്കിയില്ല.",
     "placeholders": {}
   },
   "redactActsCountPartial": {
-    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "message": "ഈ എണ്ണം കുറവായിരിക്കാം: ഈ ക്യാപ്‌ചറിലെ കുറച്ച് വാചകം FullShot വായിച്ചില്ല.",
     "placeholders": {}
   },
   "redactActsScanLimits": {
-    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "message": "വായിക്കാത്ത വാചക ശകലങ്ങൾ: $REFUSED$. കണ്ടെത്തിയെങ്കിലും വരയ്ക്കാത്ത ബ്ലോക്കുകൾ: $LOST$.",
     "placeholders": {
       "refused": {
         "content": "$1",
@@ -903,7 +903,7 @@
     }
   },
   "redactActsBakeLimits": {
-    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "message": "ഈ ചിത്രത്തിൽ സ്ഥാപിക്കാനാകാത്ത ബ്ലോക്കുകൾ: $UNPLACED$. വരച്ചെങ്കിലും വീണ്ടും വായിക്കാത്ത ബ്ലോക്കുകൾ: $UNREAD$.",
     "placeholders": {
       "unplaced": {
         "content": "$1",
@@ -916,7 +916,7 @@
     }
   },
   "redactActsNoLedger": {
-    "message": "This record carries no account of a redaction pass on this capture.",
+    "message": "ഈ ക്യാപ്‌ചറിലെ ഒരു റിഡാക്ഷൻ ഘട്ടത്തെക്കുറിച്ചും ഈ രേഖയിൽ വിവരമില്ല.",
     "placeholders": {}
   },
   "redactActsUnknownCount": {
@@ -924,15 +924,15 @@
     "placeholders": {}
   },
   "reviewTitle": {
-    "message": "Before you copy",
+    "message": "പകർത്തുന്നതിന് മുമ്പ്",
     "placeholders": {}
   },
   "reviewLimit": {
-    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "message": "ഒരു പേജ് തുറന്നുകാട്ടുന്ന വാചകം FullShot വായിക്കുന്നു. ഈ ചിത്രം കാണാൻ അതിന് കഴിയില്ല. പിക്സലുകളായി വരച്ച ഒന്നും – ക്യാൻവാസ്, ചിത്രം, PDF പേജ്, വീഡിയോ ഫ്രെയിം – ഒരിക്കലും വായിച്ചിട്ടില്ല.",
     "placeholders": {}
   },
   "reviewMarks": {
-    "message": "$COUNT$ blocks are outlined on the image below.",
+    "message": "താഴെയുള്ള ചിത്രത്തിൽ അതിർവരയിട്ട ബ്ലോക്കുകൾ: $COUNT$.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -941,11 +941,11 @@
     }
   },
   "reviewNoMarks": {
-    "message": "No blocks are outlined on the image below.",
+    "message": "താഴെയുള്ള ചിത്രത്തിൽ ഒരു ബ്ലോക്കിനും അതിർവരയിട്ടിട്ടില്ല.",
     "placeholders": {}
   },
   "reviewScale": {
-    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "message": "പകർത്തുന്ന വലുപ്പത്തിന്റെ $PERCENT$% ആയി കാണിക്കുന്നു.",
     "placeholders": {
       "percent": {
         "content": "$1",
@@ -954,11 +954,11 @@
     }
   },
   "reviewReduced": {
-    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "message": "വായിക്കാവുന്ന ഒരൊറ്റ ചിത്രമായി പകർത്താൻ ഈ ക്യാപ്‌ചർ വളരെ ഉയരമുള്ളതാണ്, അതിനാൽ താഴെയുള്ളത് പേജ് മുഴുവന്റെയും ചെറുതാക്കിയ അവലോകനമാണ്. അതിലെ ചെറിയ അക്ഷരങ്ങൾ വായിക്കാനാകില്ല – ഇവിടെയും ക്ലിപ്പ്ബോർഡിലും.",
     "placeholders": {}
   },
   "reviewMarkLabel": {
-    "message": "Block $INDEX$",
+    "message": "ബ്ലോക്ക് $INDEX$",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -967,7 +967,7 @@
     }
   },
   "reviewMarkAt": {
-    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "message": "ബ്ലോക്ക് $INDEX$, ചിത്രത്തിന്റെ മുകളിൽ നിന്ന് $PERCENT$% താഴെ",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -980,23 +980,23 @@
     }
   },
   "reviewPrevView": {
-    "message": "Previous view",
+    "message": "മുമ്പത്തെ കാഴ്ച",
     "placeholders": {}
   },
   "reviewNextView": {
-    "message": "Next view",
+    "message": "അടുത്ത കാഴ്ച",
     "placeholders": {}
   },
   "reviewZoomOut": {
-    "message": "Zoom out",
+    "message": "സൂം ഔട്ട്",
     "placeholders": {}
   },
   "reviewZoomIn": {
-    "message": "Zoom in",
+    "message": "സൂം ഇൻ",
     "placeholders": {}
   },
   "reviewViewPos": {
-    "message": "View $INDEX$ of $TOTAL$",
+    "message": "കാഴ്ച $INDEX$ / $TOTAL$",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -1009,7 +1009,7 @@
     }
   },
   "reviewImgRegion": {
-    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "message": "പകർത്താൻ പോകുന്ന ചിത്രം, $DIMS$ പിക്സലുകൾ – അമ്പടയാള കീകൾ ഉപയോഗിച്ച് സ്ക്രോൾ ചെയ്യുക",
     "placeholders": {
       "dims": {
         "content": "$1",
@@ -1018,15 +1018,15 @@
     }
   },
   "reviewConfirm": {
-    "message": "I have looked — copy",
+    "message": "ഞാൻ നോക്കി – പകർത്തുക",
     "placeholders": {}
   },
   "reviewCancel": {
-    "message": "Cancel",
+    "message": "റദ്ദാക്കുക",
     "placeholders": {}
   },
   "reviewImgAlt": {
-    "message": "The image that is about to be copied",
+    "message": "പകർത്താൻ പോകുന്ന ചിത്രം",
     "placeholders": {}
   },
   "resultAiOverviewOnly": {

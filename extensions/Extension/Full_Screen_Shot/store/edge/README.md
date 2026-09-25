@@ -2,7 +2,9 @@
 
 Edge takes the **same chromium zip as Chrome** — `tool.json` declares
 `targets.chromium.stores = ["chrome","edge"]`, and `release.yml` says "the identical file
-goes to both". What differs is the listing, which is why this directory exists.
+goes to both". What differs is the listing, which is why this directory exists. Every
+`.txt` here is RENDERED from `../listing.json` by `scripts/render-listing.mjs`; edit the copy
+there, never here.
 
 ## Limits enforced here
 

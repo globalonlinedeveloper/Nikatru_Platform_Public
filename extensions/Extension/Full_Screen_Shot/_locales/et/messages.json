@@ -473,7 +473,7 @@
     "message": "Salvestatud ✓"
   },
   "optionsSaveFailed": {
-    "message": "Not saved ✕"
+    "message": "Ei salvestatud ✕"
   },
   "optionsSectionData": {
     "message": "Sinu andmed"
@@ -550,7 +550,7 @@
     }
   },
   "optionsSweepPartial": {
-    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "message": "Eemaldatud: $COUNT$/$FOUND$ · Vabastatud ruum: $SIZE$ · Ülejäänut ei õnnestunud eemaldada. Proovige uuesti või taaskäivitage brauser.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -830,7 +830,7 @@
     "message": "Kuvatõmmis on kustutatud."
   },
   "redactActsLine": {
-    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "message": "Varjamine sees. Leitud: $MATCHED$, üle värvitud: $PAINTED$, selles pildis läbipaistmatuks kinnitatud: $VERIFIED$.",
     "placeholders": {
       "matched": {
         "content": "$1",
@@ -847,11 +847,11 @@
     }
   },
   "redactActsNone": {
-    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "message": "Varjamine ei leidnud loetud tekstist midagi ega joonistanud ühtegi plokki. Allpool pole midagi ääristatud.",
     "placeholders": {}
   },
   "redactActsShortfall": {
-    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "message": "Varjamine leidis $MATCHED$ ja kattis $COVERED$.",
     "placeholders": {
       "matched": {
         "content": "$1",
@@ -864,7 +864,7 @@
     }
   },
   "redactActsUncoveredOne": {
-    "message": "$COUNT$ match is not covered in this image.",
+    "message": "$COUNT$ vaste pole selles pildis kaetud.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -873,7 +873,7 @@
     }
   },
   "redactActsUncoveredOther": {
-    "message": "$COUNT$ matches are not covered in this image.",
+    "message": "$COUNT$ vastet pole selles pildis kaetud.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -882,15 +882,15 @@
     }
   },
   "redactActsWalkTruncated": {
-    "message": "FullShot did not finish walking this page.",
+    "message": "FullShot ei läbinud seda lehte lõpuni.",
     "placeholders": {}
   },
   "redactActsCountPartial": {
-    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "message": "See arv võib olla liiga väike: FullShot ei lugenud osa selle kuvatõmmise tekstist.",
     "placeholders": {}
   },
   "redactActsScanLimits": {
-    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "message": "Lugemata tekstitükid: $REFUSED$. Leitud, kuid joonistamata plokid: $LOST$.",
     "placeholders": {
       "refused": {
         "content": "$1",
@@ -903,7 +903,7 @@
     }
   },
   "redactActsBakeLimits": {
-    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "message": "Plokid, mida ei saanud sellesse pilti paigutada: $UNPLACED$. Joonistatud, kuid tagasi lugemata plokid: $UNREAD$.",
     "placeholders": {
       "unplaced": {
         "content": "$1",
@@ -916,7 +916,7 @@
     }
   },
   "redactActsNoLedger": {
-    "message": "This record carries no account of a redaction pass on this capture.",
+    "message": "See kirje ei sisalda teavet ühegi varjamiskäigu kohta selle kuvatõmmise puhul.",
     "placeholders": {}
   },
   "redactActsUnknownCount": {
@@ -924,15 +924,15 @@
     "placeholders": {}
   },
   "reviewTitle": {
-    "message": "Before you copy",
+    "message": "Enne kopeerimist",
     "placeholders": {}
   },
   "reviewLimit": {
-    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "message": "FullShot loeb teksti, mille leht avaldab. Seda pilti ta ei näe. Midagi, mis on joonistatud pikslitena – lõuend, pilt, PDF-i leht, videokaader –, pole kunagi loetud.",
     "placeholders": {}
   },
   "reviewMarks": {
-    "message": "$COUNT$ blocks are outlined on the image below.",
+    "message": "Ääristatud plokid allolevas pildis: $COUNT$.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -941,11 +941,11 @@
     }
   },
   "reviewNoMarks": {
-    "message": "No blocks are outlined on the image below.",
+    "message": "Allolevas pildis pole ühtegi plokki ääristatud.",
     "placeholders": {}
   },
   "reviewScale": {
-    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "message": "Kuvatud $PERCENT$% suuruses sellest, mis kopeeritakse.",
     "placeholders": {
       "percent": {
         "content": "$1",
@@ -954,11 +954,11 @@
     }
   },
   "reviewReduced": {
-    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "message": "See kuvatõmmis on liiga kõrge, et seda ühe loetava pildina kopeerida, seega on allolev pilt kogu lehe vähendatud ülevaade. Väike tekst selles pole loetav – ei siin ega lõikelaual.",
     "placeholders": {}
   },
   "reviewMarkLabel": {
-    "message": "Block $INDEX$",
+    "message": "Plokk $INDEX$",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -967,7 +967,7 @@
     }
   },
   "reviewMarkAt": {
-    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "message": "Plokk $INDEX$, $PERCENT$% pildi ülaservast",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -980,23 +980,23 @@
     }
   },
   "reviewPrevView": {
-    "message": "Previous view",
+    "message": "Eelmine vaade",
     "placeholders": {}
   },
   "reviewNextView": {
-    "message": "Next view",
+    "message": "Järgmine vaade",
     "placeholders": {}
   },
   "reviewZoomOut": {
-    "message": "Zoom out",
+    "message": "Vähenda",
     "placeholders": {}
   },
   "reviewZoomIn": {
-    "message": "Zoom in",
+    "message": "Suurenda",
     "placeholders": {}
   },
   "reviewViewPos": {
-    "message": "View $INDEX$ of $TOTAL$",
+    "message": "Vaade $INDEX$/$TOTAL$",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -1009,7 +1009,7 @@
     }
   },
   "reviewImgRegion": {
-    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "message": "Pilt, mis kohe kopeeritakse, $DIMS$ pikslit – kerige seda nooleklahvidega",
     "placeholders": {
       "dims": {
         "content": "$1",
@@ -1018,15 +1018,15 @@
     }
   },
   "reviewConfirm": {
-    "message": "I have looked — copy",
+    "message": "Vaatasin üle – kopeeri",
     "placeholders": {}
   },
   "reviewCancel": {
-    "message": "Cancel",
+    "message": "Tühista",
     "placeholders": {}
   },
   "reviewImgAlt": {
-    "message": "The image that is about to be copied",
+    "message": "Pilt, mis kohe kopeeritakse",
     "placeholders": {}
   },
   "resultAiOverviewOnly": {

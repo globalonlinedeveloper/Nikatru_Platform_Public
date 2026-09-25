@@ -473,7 +473,7 @@
     "message": "保存しました ✓"
   },
   "optionsSaveFailed": {
-    "message": "Not saved ✕"
+    "message": "保存されませんでした ✕"
   },
   "optionsSectionData": {
     "message": "あなたのデータ"
@@ -550,7 +550,7 @@
     }
   },
   "optionsSweepPartial": {
-    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "message": "削除: $FOUND$ 件中 $COUNT$ 件 · 解放された容量: $SIZE$ · 残りは削除できませんでした。もう一度お試しいただくか、ブラウザを再起動してください。",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -821,7 +821,7 @@
     "message": "スクリーンショットを削除しました。"
   },
   "redactActsLine": {
-    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "message": "墨消しオン。一致 $MATCHED$ 件、塗りつぶし $PAINTED$ 件、この画像で不透明と確認 $VERIFIED$ 件。",
     "placeholders": {
       "matched": {
         "content": "$1",
@@ -838,11 +838,11 @@
     }
   },
   "redactActsNone": {
-    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "message": "墨消しは読み取ったテキストの中で何にも一致せず、ブロックを一つも塗りませんでした。下の画像には何も枠が付いていません。",
     "placeholders": {}
   },
   "redactActsShortfall": {
-    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "message": "墨消しは $MATCHED$ 件に一致し、$COVERED$ 件を覆いました。",
     "placeholders": {
       "matched": {
         "content": "$1",
@@ -855,7 +855,7 @@
     }
   },
   "redactActsUncoveredOther": {
-    "message": "$COUNT$ matches are not covered in this image.",
+    "message": "この画像では $COUNT$ 件の一致が覆われていません。",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -864,15 +864,15 @@
     }
   },
   "redactActsWalkTruncated": {
-    "message": "FullShot did not finish walking this page.",
+    "message": "FullShot はこのページの走査を最後まで終えていません。",
     "placeholders": {}
   },
   "redactActsCountPartial": {
-    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "message": "この件数は実際より少ない可能性があります: FullShot はこのキャプチャのテキストの一部を読み取っていません。",
     "placeholders": {}
   },
   "redactActsScanLimits": {
-    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "message": "読み取らなかったテキスト片: $REFUSED$。見つけたが描画しなかったブロック: $LOST$。",
     "placeholders": {
       "refused": {
         "content": "$1",
@@ -885,7 +885,7 @@
     }
   },
   "redactActsBakeLimits": {
-    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "message": "この画像に配置できなかったブロック: $UNPLACED$。描画したが読み戻していないブロック: $UNREAD$。",
     "placeholders": {
       "unplaced": {
         "content": "$1",
@@ -898,7 +898,7 @@
     }
   },
   "redactActsNoLedger": {
-    "message": "This record carries no account of a redaction pass on this capture.",
+    "message": "この記録には、このキャプチャに対する墨消し処理についての記述がありません。",
     "placeholders": {}
   },
   "redactActsUnknownCount": {
@@ -906,15 +906,15 @@
     "placeholders": {}
   },
   "reviewTitle": {
-    "message": "Before you copy",
+    "message": "コピーする前に",
     "placeholders": {}
   },
   "reviewLimit": {
-    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "message": "FullShot はページが公開しているテキストを読み取ります。この画像を見ることはできません。ピクセルとして描かれたもの（キャンバス、画像、PDF のページ、動画のフレーム）は一度も読み取られていません。",
     "placeholders": {}
   },
   "reviewMarks": {
-    "message": "$COUNT$ blocks are outlined on the image below.",
+    "message": "下の画像で枠が付いたブロック: $COUNT$ 件。",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -923,11 +923,11 @@
     }
   },
   "reviewNoMarks": {
-    "message": "No blocks are outlined on the image below.",
+    "message": "下の画像には枠が付いたブロックはありません。",
     "placeholders": {}
   },
   "reviewScale": {
-    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "message": "コピーされるサイズの $PERCENT$% で表示しています。",
     "placeholders": {
       "percent": {
         "content": "$1",
@@ -936,11 +936,11 @@
     }
   },
   "reviewReduced": {
-    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "message": "このキャプチャは縦に長すぎて一枚の読める画像としてコピーできないため、下の画像はページ全体を縮小した概観です。その中の小さな文字は読めません（ここでも、クリップボード上でも）。",
     "placeholders": {}
   },
   "reviewMarkLabel": {
-    "message": "Block $INDEX$",
+    "message": "ブロック $INDEX$",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -949,7 +949,7 @@
     }
   },
   "reviewMarkAt": {
-    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "message": "ブロック $INDEX$、画像の上から $PERCENT$% の位置",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -962,23 +962,23 @@
     }
   },
   "reviewPrevView": {
-    "message": "Previous view",
+    "message": "前の表示",
     "placeholders": {}
   },
   "reviewNextView": {
-    "message": "Next view",
+    "message": "次の表示",
     "placeholders": {}
   },
   "reviewZoomOut": {
-    "message": "Zoom out",
+    "message": "縮小",
     "placeholders": {}
   },
   "reviewZoomIn": {
-    "message": "Zoom in",
+    "message": "拡大",
     "placeholders": {}
   },
   "reviewViewPos": {
-    "message": "View $INDEX$ of $TOTAL$",
+    "message": "表示 $INDEX$ / $TOTAL$",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -991,7 +991,7 @@
     }
   },
   "reviewImgRegion": {
-    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "message": "これからコピーされる画像、$DIMS$ ピクセル — 矢印キーでスクロールできます",
     "placeholders": {
       "dims": {
         "content": "$1",
@@ -1000,15 +1000,15 @@
     }
   },
   "reviewConfirm": {
-    "message": "I have looked — copy",
+    "message": "確認しました — コピー",
     "placeholders": {}
   },
   "reviewCancel": {
-    "message": "Cancel",
+    "message": "キャンセル",
     "placeholders": {}
   },
   "reviewImgAlt": {
-    "message": "The image that is about to be copied",
+    "message": "これからコピーされる画像",
     "placeholders": {}
   },
   "resultAiOverviewOnly": {
