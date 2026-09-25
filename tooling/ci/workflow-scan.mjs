@@ -1093,3 +1093,294 @@ export function resolveLocalCalls(wf, parsedAll) {
   }
   return { calls, remote, refusal };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE RESOLVED VIEW — every workflow with its LOCAL references followed, once.
+//
+// ⏱ ADDED 2026-09-24 (O-GUARDS-DO-NOT-FOLLOW-LOCAL-USES). The release and publish
+// guards read only the top-level files, so a step moved behind
+// `uses: ./.github/actions/<x>` or a job moved behind
+// `uses: ./.github/workflows/<f>.yml` left their view while every one of them
+// kept printing ok: moved code silences guards. This is the one resolver they
+// read through instead. It is built on resolveLocalCalls above (the call jobs)
+// and on parseWorkflow (the one comment reduction, used for action.yml too), and
+// it adds no parse of its own beyond locating a composite's `runs.steps`.
+//
+// parseAllWorkflows is deliberately NOT changed: it has 37 importers, and every
+// inlined line would move the `wf:line` a finding prints. A reader opts in here,
+// and tooling/workflow-readers.json records which readers must.
+//
+// THE LINE NUMBERS. An inlined line keeps a NUMERIC `n` so every "is X before Y"
+// comparison a guard already makes still orders it correctly, but that `n` is a
+// fraction and names no real line: composite lines sit at `<the calling step's
+// first line> + k·1e-8`, callee lines at `<the call job's uses: line> +
+// <callee line>·1e-4`. Its real place is `wf.origin.get(n)` — `<file>:<line>` —
+// and lineAt / placeOf below are how a finding prints it. A finding that printed
+// the bare fraction would send its reader to a line that does not hold the text.
+//
+// ⚠️ STILL NOT A GUARD. It never exits: a reference it cannot follow comes back
+// as `refusal`, and each reader turns that into its own COVERAGE LOST.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const COMPOSITE_STEP_SCALE = 1e-8;
+const CALLEE_LINE_SCALE = 1e-4;
+const INPUT_EXPR = /\$\{\{\s*inputs\.([A-Za-z_][A-Za-z0-9_-]*)\s*\}\}/g;
+
+/** A STEP-level `uses: ./<path>` on this job line, or null. Job-level `uses:`
+ *  (exactly four spaces, no dash) is a call job and belongs to resolveLocalCalls. */
+function localStepUses(text) {
+  const m = text.match(/^(\s*)(-\s+)?uses:\s*(['"]?)(\.\/[^'"\s]*?)\3\s*$/);
+  if (!m) return null;
+  if (!m[2] && m[1].length <= 4) return null;
+  return m[4];
+}
+
+/** `./.github/actions/x` → `.github/actions/x/action.yml` (or `.yaml`, if only that exists). */
+function localActionRel(root, ref) {
+  const dir = ref.replace(/^\.\//, '').replace(/\/+$/, '');
+  const yml = `${dir}/action.yml`;
+  const yaml = `${dir}/action.yaml`;
+  return !existsSync(join(root, yml)) && existsSync(join(root, yaml)) ? yaml : yml;
+}
+
+/**
+ * A local action's `runs.steps` lines and its input defaults, read through
+ * parseWorkflow (so comments are blanked by the same reduction every workflow
+ * gets). Returns `{ rel, kind: 'ok', steps, defaults }`, or `{ rel, kind }` with
+ * `kind` `missing` or `not-composite`.
+ */
+function readComposite(root, ref) {
+  const rel = localActionRel(root, ref);
+  const parsed = parseWorkflow(root, rel);
+  if (parsed === null) return { rel, kind: 'missing' };
+  const lines = parsed.lines;
+  const block = (key, from, indent) => {
+    const head = new RegExp(`^ {${indent}}${key}:\\s*$`);
+    const at = lines.findIndex((l, i) => i >= from && head.test(l.text));
+    if (at === -1) return null;
+    let end = at + 1;
+    while (end < lines.length && !(lines[end].text.trim() !== '' && indentOf(lines[end].text) <= indent)) end += 1;
+    return { at, end };
+  };
+  const runs = block('runs', 0, 0);
+  if (runs === null) return { rel, kind: 'not-composite' };
+  const using = lines.slice(runs.at + 1, runs.end).find((l) => /^ {2}using:/.test(l.text));
+  if (!using || !/^ {2}using:\s*(['"]?)composite\1\s*$/.test(using.text)) return { rel, kind: 'not-composite' };
+  const steps = block('steps', runs.at + 1, 2);
+  if (steps === null || steps.at >= runs.end) return { rel, kind: 'not-composite' };
+  const defaults = new Map();
+  const inputs = block('inputs', 0, 0);
+  if (inputs !== null) {
+    for (const input of keysBelow(lines, inputs.at + 1, inputs.end, 0)) {
+      const def = keysBelow(lines, input.i + 1, inputs.end, indentOf(lines[input.i].text)).find((k) => k.key === 'default');
+      if (def) defaults.set(input.key, def.value);
+    }
+  }
+  return { rel, kind: 'ok', steps: lines.slice(steps.at + 1, Math.min(steps.end, runs.end)), defaults };
+}
+
+/** The `KEY: value` lines directly below a key at `keyIndent`, as
+ *  `[{ key, value, i }]` (`i` the index into `lines`). Unlike mappingBelow it
+ *  keeps a `-` in a key: action inputs are named `cache-dependency-path`. */
+function keysBelow(lines, from, to, keyIndent) {
+  const out = [];
+  let childIndent = null;
+  for (let j = from; j < to; j++) {
+    const t = lines[j].text;
+    if (t.trim() === '') continue;
+    const at = indentOf(t);
+    if (at <= keyIndent) break;
+    if (childIndent === null) childIndent = at;
+    if (at !== childIndent) continue;
+    const m = t.match(/^\s*([A-Za-z_][A-Za-z0-9_-]*):\s*(.*?)\s*$/);
+    if (m) out.push({ key: m[1], value: unquote(m[2]), i: j });
+  }
+  return out;
+}
+
+/**
+ * A job with every step-level `uses: ./…` replaced, at its index, by that
+ * composite's steps. Returns `{ lines, added, refusal }`, where `added` is the
+ * inlined lines' `[n, from]` pairs. The composite's items are re-indented to
+ * the calling step's, `${{ inputs.X }}` becomes the caller's `with: X` text (or
+ * the action's `default:`), and the calling step's `if:` is written onto each
+ * inlined step that has none of its own. A composite that itself uses a local
+ * action is `nested`: this follows one level, never two.
+ */
+function inlineComposites(wf, lines, read, placeOfN) {
+  const out = [];
+  const added = [];
+  let refusal = null;
+  // A step item's own keys, `- ` read as two spaces: `[{ key, value, j }]`.
+  const itemKeys = (ls, item) => {
+    const keys = [];
+    for (let j = item.start; j < item.end; j++) {
+      const text = j === item.start ? ls[j].text.replace(/^(\s*)-\s/, '$1  ') : ls[j].text;
+      const k = text.match(/^( *)([A-Za-z_][A-Za-z0-9_-]*):\s*(.*?)\s*$/);
+      if (k && k[1].length === item.indent + 2) keys.push({ key: k[2], value: k[3], j });
+    }
+    return keys;
+  };
+  for (let i = 0; i < lines.length; i++) {
+    const ref = localStepUses(lines[i].text);
+    if (ref === null) {
+      out.push(lines[i]);
+      continue;
+    }
+    const item = stepItemAround(lines, i);
+    const comp = read(ref);
+    if (comp.kind !== 'ok' || item === null) {
+      refusal ??= { kind: comp.kind === 'ok' ? 'not-composite' : comp.kind, at: placeOfN(lines[i].n), path: comp.rel };
+      out.push(lines[i]);
+      continue;
+    }
+    // The calling step's own keys: `with:` feeds the inputs, `if:` gates every inlined step.
+    const own = itemKeys(lines, item);
+    const withKey = own.find((k) => k.key === 'with' && k.value === '');
+    const withMap = new Map(
+      withKey ? keysBelow(lines, withKey.j + 1, item.end, item.indent + 2).map((k) => [k.key, k.value]) : [],
+    );
+    const ifKey = own.find((k) => k.key === 'if');
+    const cond = ifKey ? { text: ifKey.value, from: placeOfN(lines[ifKey.j].n) } : null;
+    const nestedAt = comp.steps.find((l) => localStepUses(l.text) !== null);
+    if (nestedAt) refusal ??= { kind: 'nested', at: `${comp.rel}:${nestedAt.n}`, path: localStepUses(nestedAt.text) };
+    const itemIndent = indentOf(comp.steps.find((l) => isStepItem(l.text))?.text ?? '');
+    const shift = item.indent - itemIndent;
+    const reindent = (t) => (t.trim() === '' ? '' : shift >= 0 ? ' '.repeat(shift) + t : t.slice(Math.min(-shift, indentOf(t))));
+    const subst = (t) =>
+      t.replace(INPUT_EXPR, (all, name) => (withMap.has(name) ? withMap.get(name) : comp.defaults.has(name) ? comp.defaults.get(name) : all));
+    const body = [];
+    for (let s = 0; s < comp.steps.length; ) {
+      const l = comp.steps[s];
+      if (!(isStepItem(l.text) && indentOf(l.text) === itemIndent)) {
+        body.push({ text: subst(reindent(l.text)), from: `${comp.rel}:${l.n}` });
+        s += 1;
+        continue;
+      }
+      // One composite step: its lines, then the caller's `if:` LAST when it has
+      // none of its own — last, so it never lands inside a `run: |` block.
+      const span = stepItemAround(comp.steps, s);
+      for (let x = span.start; x < span.end; x++) {
+        body.push({ text: subst(reindent(comp.steps[x].text)), from: `${comp.rel}:${comp.steps[x].n}` });
+      }
+      if (cond !== null && !itemKeys(comp.steps, span).some((k) => k.key === 'if')) {
+        body.push({ text: `${' '.repeat(item.indent + 2)}if: ${cond.text}`, from: cond.from });
+      }
+      s = span.end;
+    }
+    // The calling step's lines BEFORE its `uses:` were already pushed; the step is replaced whole.
+    out.splice(out.length - (i - item.start), i - item.start);
+    const base = lines[item.start].n;
+    body.forEach((b, k) => {
+      const n = base + (k + 1) * COMPOSITE_STEP_SCALE;
+      out.push({ n, text: b.text });
+      added.push([n, b.from]);
+    });
+    i = item.end - 1;
+  }
+  return { lines: out, added, refusal };
+}
+
+/** A job object shaped like parseWorkflow's, over new `lines`, with the
+ *  logical lines recomputed by the one joinBlockScalars. */
+function rebuildJob(job, lines, extra = {}) {
+  return { ...job, lines, logical: joinBlockScalars(lines), ...extra };
+}
+
+/**
+ * Every workflow under `.github/workflows`, RESOLVED:
+ *   · a step `uses: ./.github/actions/<x>` is replaced at its index by that
+ *     composite's `runs.steps` (inlineComposites above);
+ *   · a job `uses: ./.github/workflows/<f>.yml` (resolveLocalCalls) keeps its
+ *     call job and gains one child per callee job, named `<caller>/<calleeJob>`,
+ *     in the CALLER's workflow — so it is graded under the caller's `on:` — with
+ *     the caller job's `needs` added to its own (rewritten to child names) and
+ *     the caller job's `if:` when it has one. `environment:` stays the callee
+ *     job's own: a call job cannot carry one;
+ *   · a workflow whose only trigger is `workflow_call` is not returned on its
+ *     own: it runs only as its callers' children.
+ *
+ * Returns `{ workflows, filesRead, refusal }`. `filesRead` is every workflow and
+ * action.yml this read (repo-relative). `refusal` is null or the FIRST of
+ * `{ kind, at, path }`, `kind` one of:
+ *   `nested`        a composite that uses a local action, or a callee that calls again;
+ *   `missing`       a local action or callee that is not in the tree;
+ *   `remote`        a job-level `uses:` that is not `./` (a step-level third-party
+ *                   `uses:` is an ordinary action, never a refusal);
+ *   `not-composite` a local action whose `runs.using` is not `composite`;
+ *   `orphan-callee` a `workflow_call`-only workflow no workflow here calls.
+ */
+export function parseResolvedWorkflows(root) {
+  const all = parseAllWorkflows(root);
+  const filesRead = all.map((w) => w.rel);
+  let refusal = null;
+  const composites = new Map();
+  const read = (ref) => {
+    if (!composites.has(ref)) {
+      const comp = readComposite(root, ref);
+      composites.set(ref, comp);
+      if (comp.kind !== 'missing' && !filesRead.includes(comp.rel)) filesRead.push(comp.rel);
+    }
+    return composites.get(ref);
+  };
+  const called = new Set();
+  const resolved = [];
+  for (const wf of all) {
+    const origin = new Map();
+    const jobs = new Map();
+    const inline = (lines) => {
+      const r = inlineComposites(wf, lines, read, (n) => origin.get(n) ?? `${wf.rel}:${n}`);
+      for (const [n, from] of r.added) origin.set(n, from);
+      refusal ??= r.refusal;
+      return r.lines;
+    };
+    const { calls, remote, refusal: callRefusal } = resolveLocalCalls(wf, all);
+    if (callRefusal) refusal ??= { kind: callRefusal.kind, at: `${wf.rel}:${callRefusal.n}`, path: callRefusal.callee };
+    for (const r of remote) refusal ??= { kind: 'remote', at: `${wf.rel}:${r.n}`, path: r.ref };
+    for (const job of wf.jobs.values()) {
+      jobs.set(job.name, rebuildJob(job, inline(job.lines)));
+      const call = calls.find((c) => c.job === job.name);
+      if (!call) continue;
+      called.add(call.callee.rel);
+      const at = (n) => call.n + n * CALLEE_LINE_SCALE;
+      for (const cj of call.callee.jobs.values()) {
+        const mapped = cj.lines.map((l) => {
+          origin.set(at(l.n), `${call.callee.rel}:${l.n}`);
+          return { n: at(l.n), text: l.text };
+        });
+        const moved = (v) => (v === null ? null : { ...v, n: at(v.n) });
+        jobs.set(`${job.name}/${cj.name}`, rebuildJob(cj, inline(mapped), {
+          name: `${job.name}/${cj.name}`,
+          needs: [...job.needs, ...cj.needs.map((d) => `${job.name}/${d}`)],
+          jobIf: job.jobIf ?? moved(cj.jobIf),
+          continueOnError: job.continueOnError ?? moved(cj.continueOnError),
+          calledBy: job.name,
+        }));
+      }
+    }
+    resolved.push({ ...wf, jobs, origin });
+  }
+  const callOnly = (wf) => {
+    const events = workflowEvents(wf);
+    return events.size === 1 && events.has('workflow_call');
+  };
+  for (const wf of all) {
+    if (callOnly(wf) && !called.has(wf.rel)) {
+      refusal ??= { kind: 'orphan-callee', at: `${wf.rel}:1`, path: wf.rel };
+    }
+  }
+  return { workflows: resolved.filter((wf) => !callOnly(wf)), filesRead, refusal };
+}
+
+/** Where line `n` of a resolved workflow really is, for a finding that already
+ *  names `wf.rel`: `:<n>` for the file's own line, `<file>:<line>` for a line
+ *  inlined from a composite or a callee. */
+export const lineAt = (wf, n) => wf?.origin?.get(n) ?? `:${n}`;
+
+/** The same, as a full `<file>:<line>` in both cases. */
+export const placeOf = (wf, n) => wf?.origin?.get(n) ?? `${wf.rel}:${n}`;
+
+/** The one sentence a reader prints when parseResolvedWorkflows refused. */
+export const refusalText = (r) =>
+  `workflow-scan could not resolve a local reference (${r.kind}) at ${r.at}: ${r.path}. ` +
+  'A step or job it cannot follow is a step or job this guard cannot see.';

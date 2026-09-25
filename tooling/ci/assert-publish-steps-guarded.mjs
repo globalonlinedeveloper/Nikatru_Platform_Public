@@ -88,7 +88,10 @@
 import { resolve, join, dirname } from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { parseWorkflow, parseAllWorkflows, workflowEvents, joinBlockScalars, shellSegments, WORKFLOW_DIR } from './workflow-scan.mjs';
+// ⏱ 2026-09-24 — P-A1: both limbs read workflows through parseResolvedWorkflows, so
+// a step behind `uses: ./.github/actions/<x>` or a local reusable workflow is
+// graded where it lives, and labelled with that file's line.
+import { parseWorkflow, parseResolvedWorkflows, placeOf, refusalText, workflowEvents, joinBlockScalars, shellSegments, WORKFLOW_DIR } from './workflow-scan.mjs';
 
 const argv = process.argv.slice(2);
 const opt = (name, fallback) => {
@@ -201,6 +204,19 @@ function readRegister(root) {
  *  where it is read, not escaped here. */
 const basenameSource = (p) => p.split('/').pop().split('.').join('[.]');
 
+/** The resolved tree, read ONCE for both limbs. A refusal is COVERAGE LOST for
+ *  either: a step behind a reference this parse cannot follow is a step neither
+ *  limb can grade, and an ungraded publish reads as a guarded one. */
+let resolvedCache = null;
+function resolvedTree() {
+  if (resolvedCache !== null) return resolvedCache;
+  resolvedCache = parseResolvedWorkflows(ROOT);
+  if (resolvedCache.refusal !== null) {
+    coverageLost([refusalText(resolvedCache.refusal), 'A publishing step behind that reference would go ungraded, and ungraded reads as guarded.']);
+  }
+  return resolvedCache;
+}
+
 /** The step bullet is the literal six-space "      - ", under `jobs:` → `<job>:` →
  *  `steps:` — the same kind of anchor `parseWorkflow` uses for job keys at four.
  *  Each step keeps its raw (comment-blanked) lines; both limbs read these. */
@@ -304,7 +320,13 @@ const NON_PUBLISHING_SCRIPTS = new Map([
 const ANY_PUBLISH_SCRIPT = /(?<![A-Za-z0-9._-])publish-[A-Za-z0-9._-]+[.]mjs/g;
 
 function dryRunLimb(problems, summaries) {
-  const wf = parseWorkflow(ROOT, WORKFLOW);
+  const wf = resolvedTree().workflows.find((w) => w.rel === WORKFLOW) ?? null;
+  if (wf === null && parseWorkflow(ROOT, WORKFLOW) !== null) {
+    coverageLost([
+      `${WORKFLOW} is not a workflow the resolved parse returns: it runs only when another workflow calls it.`,
+      'Point --workflow and --job at the caller and its call job; the callee is graded there, under the caller\'s triggers.',
+    ]);
+  }
   if (wf === null) {
     coverageLost([
       `${WORKFLOW} does not exist under ${ROOT}.`,
@@ -338,7 +360,9 @@ function dryRunLimb(problems, summaries) {
 
   const steps = [];
   const invokedScripts = new Map(); // basename -> first line it appears on
-  for (const raw of readSteps(job)) {
+  // A call job's steps live in its callees (`<job>/<calleeJob>`); the region is all of them.
+  const region = [job, ...[...wf.jobs.values()].filter((j) => j.calledBy === job.name)];
+  for (const raw of region.flatMap((j) => readSteps(j))) {
     const current = { n: raw.n, name: null, cond: null, uses: null, surface: null };
     steps.push(current);
     for (const line of raw.lines) {
@@ -379,7 +403,7 @@ function dryRunLimb(problems, summaries) {
     if (why.length === 0) continue;
 
     graded++;
-    const label = `${WORKFLOW}:${step.n} step ${JSON.stringify(step.name ?? '(unnamed)')}`;
+    const label = `${placeOf(wf, step.n)} step ${JSON.stringify(step.name ?? '(unnamed)')}`;
     const cond = step.cond ?? '';
     if (cond.includes('||')) {
       mine.push(
@@ -406,7 +430,7 @@ function dryRunLimb(problems, summaries) {
     if (declaredBasenames.has(basename)) continue;
     if (NON_PUBLISHING_SCRIPTS.has(basename)) continue;
     mine.push(
-      `UNDECLARED publish script  ${basename}\n             ${WORKFLOW}:${atLine}, job \"${JOB}\"\n` +
+      `UNDECLARED publish script  ${basename}\n             ${placeOf(wf, atLine)}, job \"${JOB}\"\n` +
         `             no channel row in ${REGISTER_REL} names it as its \`publishScript\` on this lane, and it is not on this ` +
         'guard list of publish-named scripts that publish nothing (NON_PUBLISHING_SCRIPTS). Declare the channel it submits to, or ' +
         'add it there with the reason — an undeclared submission is one nothing records.',
@@ -638,7 +662,7 @@ function ownerWordLimb(problems, summaries) {
   /** basename -> repo-relative path, derived from every row that declares one. */
   const publishBasenames = new Map(publishRows.map((c) => [c.publishScript.trim().split('/').pop(), c.publishScript.trim()]));
 
-  const workflows = parseAllWorkflows(ROOT);
+  const workflows = resolvedTree().workflows;
   const coverage = [];
   if (workflows.length === 0) {
     coverageLost([
@@ -664,7 +688,7 @@ function ownerWordLimb(problems, summaries) {
         const step = stepModel(raw);
         const { hits, scripts } = storeSurfaces(step, publishBasenames);
         if (hits.length === 0) continue;
-        const label = `${wf.rel}:${step.n} job "${job.name}" step ${JSON.stringify(step.name ?? '(unnamed)')}`;
+        const label = `${placeOf(wf, step.n)} job "${job.name}" step ${JSON.stringify(step.name ?? '(unnamed)')}`;
         const why = [];
         const stepCond = bareCond(step.cond);
         if (stepCond !== '' && !conjunctive(stepCond)) {

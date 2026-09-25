@@ -145,6 +145,19 @@ export function collectTargets(repoRoot) {
     console.error('  remaining targets with each other and still prints "ok".');
     coverageLost();
   }
+  // ⏱ 2026-09-24 — P-A1: a step moved out of a workflow into a local composite
+  // action (`uses: ./.github/actions/<x>`) takes its pins with it, so each
+  // `.github/actions/<x>/action.yml` is read by the same rules as a workflow.
+  // Added AFTER the zero-workflows check on purpose: an action file must never be
+  // the reason that check is satisfied.
+  const actionsDir = join(repoRoot, '.github', 'actions');
+  if (existsSync(actionsDir)) {
+    for (const d of listDir(actionsDir)) {
+      for (const f of ['action.yml', 'action.yaml']) {
+        if (existsSync(join(actionsDir, d, f))) TARGETS.push(join('.github', 'actions', d, f));
+      }
+    }
+  }
   // 🔴 REQUIRED, NEVER existsSync-GATED — and this is the BRICK_PKG lesson below
   // being paid for a second time. Both of these landed `if (existsSync)` on
   // 2026-08-17 and the hole was mutation-proven the same day: HIDING
@@ -433,6 +446,37 @@ function main() {
         ]);
       }
     }
+  }
+
+  // ⏱ 2026-09-24 — P-A1: THE PINS OF A `uses:` THIS SCAN CANNOT OPEN ARE UNREAD.
+  // A local composite or reusable workflow is read above only if its file is in
+  // the tree, and a REMOTE reusable workflow's pins never are, so a reference to
+  // either is a file this scan did not look at — COVERAGE LOST, as the four
+  // workflow-scan readers refuse the same two shapes.
+  for (const rel of TARGETS) {
+    if (!/^\.github[/\\]/.test(rel)) continue;
+    readFileSync(join(repoRoot, rel), 'utf8').split('\n').forEach((line, i) => {
+      const m = /^\s*(?:-\s+)?uses:\s*['"]?([^\s'"#]+)/.exec(stripComments(rel, line));
+      if (!m) return;
+      const ref = m[1];
+      if (ref.startsWith('./')) {
+        const p = join(repoRoot, ref);
+        const present = /\.ya?ml$/.test(ref)
+          ? existsSync(p)
+          : existsSync(join(p, 'action.yml')) || existsSync(join(p, 'action.yaml'));
+        if (!present) {
+          lostBlocks.push([
+            `✗ COVERAGE LOST — ${rel}:${i + 1} uses ${ref}, which names no file in this tree (missing).`,
+            '  Any pin it carries is a pin this scan never read.',
+          ]);
+        }
+      } else if (/^[^./][^@]*\/\.github\/workflows\/[^@]+@/.test(ref)) {
+        lostBlocks.push([
+          `✗ COVERAGE LOST — ${rel}:${i + 1} calls a REMOTE reusable workflow ${ref} (remote).`,
+          '  Its jobs and their pins are not in this tree, so this scan cannot read them.',
+        ]);
+      }
+    });
   }
 
   // ── coverage self-check, BEFORE reporting clean ──────────────────────────────

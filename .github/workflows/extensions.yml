@@ -117,7 +117,7 @@ jobs:
   # a ci-gate constituent, so its `if:` is legitimate; the same callee runs under
   # ci.yml's `extensions` job on every push to main and every pull request.
   ci:
-    if: github.event_name == 'workflow_dispatch' && inputs.lane == 'ci'
+    if: github.event_name == 'workflow_dispatch' && inputs.lane == 'ci' && !startsWith(github.ref, 'refs/tags/')
     uses: ./.github/workflows/extensions-ci.yml
     permissions:
       contents: read
