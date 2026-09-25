@@ -3,6 +3,7 @@ import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 import 'age_signal_host.dart';
+import 'auth_error_text.dart';
 import 'legal_consent_fields.dart';
 
 /// Sign-in — [pipeline C-13], inherited by every stamped app.
@@ -174,10 +175,16 @@ class _SignInViewState extends State<SignInView> {
     });
     try {
       await action();
-    } on core.AuthFailure catch (e) {
-      if (mounted) setState(() => _error = e.message);
     } catch (e) {
-      if (mounted) setState(() => _error = '$e');
+      // ⏱ 2026-09-24 — ONE arm, through the mapper. This was `e.message` for an
+      // AuthFailure and `'$e'` for anything else, and `signInWithEmail` lets
+      // the vendor's own exception out: a wrong password printed
+      // `AuthApiException(message: Invalid login credentials, …)`. This
+      // screen's own sentences above are `AuthFailure.localized`, which the
+      // mapper shows as written.
+      if (mounted) {
+        setState(() => _error = authErrorText(context.chassisL10n, e));
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -194,7 +201,7 @@ class _SignInViewState extends State<SignInView> {
     // stale rebuild both reach this handler directly, so the disabled button
     // below is not enough on its own.
     if (widget.appleTermsOwed && !_acceptedTerms) {
-      throw core.AuthFailure(l10n.legalMustAcceptTerms);
+      throw core.AuthFailure.localized(l10n.legalMustAcceptTerms);
     }
     // ⏱ 2026-09-15 · [ADR 082] §5 — Sign in with Apple CAN CREATE AN ACCOUNT, so it
     // passes the store age gate BEFORE the provider is called. Whether this tap
@@ -205,7 +212,7 @@ class _SignInViewState extends State<SignInView> {
       widget.ageSignals ?? defaultAgeSignalSource(),
     );
     if (core.signUpAgeGate(signal) == core.SignUpAgeGate.refuse) {
-      throw core.AuthFailure(l10n.signUpAgeRefused);
+      throw core.AuthFailure.localized(l10n.signUpAgeRefused);
     }
     // 🔴 ACCEPTANCE RECORDED BEFORE THE PROVIDER IS CALLED, and after the age gate
     // (a refused tap records nothing). The order is the whole fix: the account
@@ -241,7 +248,7 @@ class _SignInViewState extends State<SignInView> {
       password: _password.text,
     );
     if (problem != null) {
-      throw core.AuthFailure(switch (problem) {
+      throw core.AuthFailure.localized(switch (problem) {
         core.CredentialsProblem.incomplete => l10n.authEnterBoth,
         core.CredentialsProblem.emailMalformed => l10n.authInvalidEmail,
         // Unreachable from this door, stated rather than defaulted so a future
@@ -258,7 +265,7 @@ class _SignInViewState extends State<SignInView> {
   Future<void> _forgot(ChassisLocalizations l10n) => _run(() async {
     final String email = _email.text.trim();
     if (core.passwordResetProblem(email: email) != null) {
-      throw core.AuthFailure(l10n.emailRequired);
+      throw core.AuthFailure.localized(l10n.emailRequired);
     }
     await widget.onForgotPassword(email);
     if (!mounted) return;

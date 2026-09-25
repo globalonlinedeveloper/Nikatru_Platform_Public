@@ -239,20 +239,42 @@ class SupabaseAuthRepository implements core.AuthRepository {
     return u;
   }
 
+  /// ⏱ 2026-09-24 · A vendor refusal as OUR type, with its MACHINE half kept.
+  ///
+  /// This was `core.AuthFailure(e.message)`, which kept GoTrue's English and
+  /// threw away the two things a screen can map without guessing: the
+  /// `error_code`, and — for `AuthWeakPasswordException` — the `reasons` list.
+  /// The reset screen could therefore never say "this password is in a data
+  /// breach": `pwned` arrived here and was dropped on this line.
+  static core.AuthFailure _failureOf(sb.AuthException e) => core.AuthFailure(
+        e.message,
+        code: e.code,
+        reasons:
+            e is sb.AuthWeakPasswordException ? e.reasons : const <String>[],
+      );
+
+  /// 🔴 WRAPS THE VENDOR EXCEPTION, which it did not until 2026-09-24:
+  /// `sb.AuthException` escaped this method as itself, so a sign-up screen had
+  /// to catch a Supabase type — or, as five screens did, print it.
   @override
   Future<core.AuthUser> signUpWithEmail({
     required String email,
     required String password,
     String? captchaToken,
   }) async {
-    final sb.AuthResponse res = await _auth.signUp(
-      email: email,
-      password: password,
-      captchaToken: captchaToken,
-      // The confirmation mail's link. Without it the user confirms into the
-      // project's Site URL — app #1's web home — whichever app they signed up in.
-      emailRedirectTo: redirects(AuthFlow.signUpConfirm),
-    );
+    final sb.AuthResponse res;
+    try {
+      res = await _auth.signUp(
+        email: email,
+        password: password,
+        captchaToken: captchaToken,
+        // The confirmation mail's link. Without it the user confirms into the
+        // project's Site URL — app #1's web home — whichever app they signed up in.
+        emailRedirectTo: redirects(AuthFlow.signUpConfirm),
+      );
+    } on sb.AuthException catch (e) {
+      throw _failureOf(e);
+    }
     final core.AuthUser? u = _map(res.user);
     if (u == null) throw core.AuthFailure('Sign-up failed');
     return u;
@@ -370,10 +392,11 @@ class SupabaseAuthRepository implements core.AuthRepository {
   /// on a device that never held the PKCE verifier leaves exactly this state.
   ///
   /// The `AuthException` remap keeps the SERVER's English in [core.AuthFailure.
-  /// message] on purpose. Screens match on that text to choose a localized
-  /// sentence (`login_screen.dart`'s `_friendlyMessage`), so translating it here
-  /// would break the matching — the mapping is from a vendor TYPE to ours, not
-  /// from their words to ours.
+  /// message] on purpose, and — ⏱ 2026-09-24 — its `code` and weak-password
+  /// `reasons` beside it ([_failureOf]). Screens map the code first and the
+  /// text only as a fallback (`authErrorText`, in `nikatru_chassis_screens`),
+  /// so translating it here would break the fallback — the mapping is from a
+  /// vendor TYPE to ours, not from their words to ours.
   @override
   Future<core.AuthUser> updatePassword({required String newPassword}) async {
     if (_auth.currentSession == null) {
@@ -389,7 +412,7 @@ class SupabaseAuthRepository implements core.AuthRepository {
       if (u == null) throw core.AuthFailure('Could not set your new password');
       return u;
     } on sb.AuthException catch (e) {
-      throw core.AuthFailure(e.message);
+      throw _failureOf(e);
     }
   }
 

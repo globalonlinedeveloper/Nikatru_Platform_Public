@@ -758,6 +758,82 @@ void main() {
         ),
       );
     });
+
+    // 🔴 ⏱ 2026-09-24 — THE REASONS SURVIVE THE WRAP. This line was
+    // `core.AuthFailure(e.message)`, so `pwned` was dropped here and the reset
+    // screen could only ever say "choose a stronger password" about a password
+    // that is in a breach corpus.
+    test('a weak-password refusal keeps its CODE and its REASONS', () async {
+      final _FakeGoTrue g = _FakeGoTrue(
+        session: _session('live'),
+        updateUserError: sb.AuthWeakPasswordException(
+          message: 'Password is known to be weak and easy to guess.',
+          statusCode: '422',
+          reasons: <String>['length', 'pwned'],
+        ),
+      );
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(client: g);
+
+      final Object? thrown = await auth
+          .updatePassword(newPassword: 'hunter22')
+          .then<Object?>((_) => null, onError: (Object e) => e);
+
+      expect(thrown, isA<core.AuthFailure>());
+      expect(thrown, isNot(isA<sb.AuthException>()));
+      final core.AuthFailure f = thrown! as core.AuthFailure;
+      expect(f.code, core.AuthFailure.weakPassword);
+      expect(f.reasons, <String>['length', 'pwned']);
+      expect(f.message, 'Password is known to be weak and easy to guess.');
+      expect(f.localized, isFalse);
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // ⏱ 2026-09-24 · SIGN-UP WRAPS THE VENDOR TYPE. `signUpWithEmail` let
+  // `sb.AuthException` escape as itself — the one path a sign-up screen could
+  // only survive by catching a Supabase class, or, as five screens did, by
+  // printing it with `'$e'`.
+  // ══════════════════════════════════════════════════════════════════════════
+  group('signUpWithEmail wraps sb.AuthException', () {
+    Future<Object?> refusedWith(sb.AuthException boom) async {
+      final _FakeGoTrue g = _FakeGoTrue(session: null, signUpError: boom);
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(client: g);
+      return auth
+          .signUpWithEmail(email: 'a@b.com', password: 'hunter22')
+          .then<Object?>((_) => null, onError: (Object e) => e);
+    }
+
+    test('a weak password arrives as OUR type, with code and reasons',
+        () async {
+      final Object? thrown = await refusedWith(
+        sb.AuthWeakPasswordException(
+          message: 'Password is known to be weak and easy to guess.',
+          statusCode: '422',
+          reasons: <String>['pwned'],
+        ),
+      );
+      expect(thrown, isA<core.AuthFailure>());
+      expect(thrown, isNot(isA<sb.AuthException>()));
+      final core.AuthFailure f = thrown! as core.AuthFailure;
+      expect(f.code, core.AuthFailure.weakPassword);
+      expect(f.reasons, <String>['pwned']);
+    });
+
+    test('a captcha refusal keeps its code, and carries no reasons', () async {
+      final Object? thrown = await refusedWith(
+        const sb.AuthApiException(
+          'captcha protection: request disallowed (invalid-input-response)',
+          statusCode: '400',
+          code: 'captcha_failed',
+        ),
+      );
+      expect(thrown, isA<core.AuthFailure>());
+      expect(thrown, isNot(isA<sb.AuthException>()));
+      final core.AuthFailure f = thrown! as core.AuthFailure;
+      expect(f.code, 'captcha_failed');
+      expect(f.reasons, isEmpty);
+      expect(f.message, contains('captcha protection'));
+    });
   });
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -1111,7 +1187,12 @@ class _FakeGoTrue extends sb.GoTrueClient {
     this.hold,
     this.updateUserError,
     this.signOutFailure = false,
+    this.signUpError,
   }) : super(autoRefreshToken: false);
+
+  /// What `signUp` throws instead of succeeding — ⏱ 2026-09-24, so the wrap
+  /// of the vendor type on the sign-up path is observable at all.
+  final sb.AuthException? signUpError;
 
   sb.Session? session;
   final bool failRefresh;
@@ -1307,6 +1388,8 @@ class _FakeGoTrue extends sb.GoTrueClient {
     sb.OtpChannel channel = sb.OtpChannel.sms,
   }) async {
     signUpCaptchaTokens.add(captchaToken);
+    final sb.AuthException? boom = signUpError;
+    if (boom != null) throw boom;
     session = _session('signed-up');
     return sb.AuthResponse(session: session);
   }

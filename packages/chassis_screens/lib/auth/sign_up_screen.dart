@@ -3,6 +3,7 @@ import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 import 'age_signal_host.dart';
+import 'auth_error_text.dart';
 import 'legal_consent_fields.dart';
 
 /// Sign-up — [pipeline C-13], inherited by every stamped app.
@@ -94,7 +95,14 @@ class _SignUpViewState extends State<SignUpView> {
         // Checked HERE as well as server-side. The server is the authority, but
         // a round trip to be told "too short" is a worse experience than being
         // told before sending — and this is the one rule we can state exactly.
-        throw core.AuthFailure(l10n.passwordTooShort);
+        // ⏱ 2026-09-24 — raised in the SERVER's own vocabulary (code and
+        // reason), so `authErrorText` answers it through the same arm as
+        // GoTrue's length refusal.
+        throw core.AuthFailure(
+          l10n.passwordTooShort,
+          code: core.AuthFailure.weakPassword,
+          reasons: const <String>[core.AuthFailure.reasonLength],
+        );
       }
       // ⏱ 2026-09-15 · [ADR 082] §5 — THE STORE AGE GATE, BEFORE ANYTHING IS
       // CREATED. Below adult: no account and no terms recorded (`onSignUp` is
@@ -104,17 +112,18 @@ class _SignUpViewState extends State<SignUpView> {
         widget.ageSignals ?? defaultAgeSignalSource(),
       );
       if (core.signUpAgeGate(signal) == core.SignUpAgeGate.refuse) {
-        throw core.AuthFailure(l10n.signUpAgeRefused);
+        throw core.AuthFailure.localized(l10n.signUpAgeRefused);
       }
       await widget.onSignUp(
         email: _email.text.trim(),
         password: _password.text,
         marketingEmail: _marketingEmail,
       );
-    } on core.AuthFailure catch (e) {
-      if (mounted) setState(() => _error = e.message);
     } catch (e) {
-      if (mounted) setState(() => _error = '$e');
+      // ⏱ 2026-09-24 — ONE arm, through the mapper. This was `e.message` for an
+      // AuthFailure (the server's English) and `'$e'` for anything else (the
+      // vendor's exception, printed whole).
+      if (mounted) setState(() => _error = authErrorText(l10n, e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
