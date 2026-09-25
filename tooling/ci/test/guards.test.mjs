@@ -8569,6 +8569,13 @@ describe('per-root coverage — a root that contributes nothing is named', () =>
       // A Node package under packages/ with no dart in it at all — the shape the
       // guards' NO_DART / NO_SOURCE declaration exists for.
       'packages/tokens/package.json': '{"name":"tokens"}\n',
+      // One store channel and one listing field, for assert-no-price-literals
+      // limb C (2026-09-24, O-PRICE-GUARD-IS-DART-ONLY): with no register that
+      // limb is COVERAGE LOST, and these cases measure per-root coverage only.
+      'tooling/channel-register.json':
+        '{"channels":[{"id":"android-play","kind":"store","surface":"app","storeMetadataDir":"apps/{app}/store/android-play"}]}\n',
+      'catalog/apps.json': '[{"slug":"subscriptiontracker"}]\n',
+      'apps/subscriptiontracker/store/android-play/title.txt': 'Subly\n',
     };
     // Enough filler to clear BOTH union floors (40 dart, 80 dart/ts/sql) from a
     // single root — which is precisely why the floors cannot see a quiet one.

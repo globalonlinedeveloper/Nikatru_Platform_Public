@@ -1419,6 +1419,7 @@
   {
     "claims": [
       "ADR 066",
+      "ADR 093",
       "M-11"
     ],
     "invokedBy": [
@@ -2719,6 +2720,16 @@
     "ref": "tooling/ci/plan-deploy.mjs",
     "references": [],
     "state": "WIRED"
+  },
+  {
+    "claims": [
+      "ADR 093"
+    ],
+    "invokedBy": [],
+    "kind": "guard",
+    "ref": "tooling/ci/price-figure.mjs",
+    "references": [],
+    "state": "LIBRARY"
   },
   {
     "claims": [

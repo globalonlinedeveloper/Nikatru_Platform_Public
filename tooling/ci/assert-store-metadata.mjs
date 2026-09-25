@@ -154,6 +154,7 @@ import { join, resolve, dirname, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
 import { STORE_FORM_RULES } from '../../contracts/store/vocabulary.js';
+import { PRICE, LIFETIME } from './price-figure.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER = 'tooling/channel-register.json';
@@ -961,10 +962,13 @@ const STEP3_COUNT = 11;
  *  checked by their own limbs above. A file absent from a tree is skipped, not
  *  demanded — `additionalFiles` and the contract decide which must exist. */
 const PRICE_FREE_LISTING_FILES = ['title.txt', 'short-description.txt', 'long-description.txt'];
-/** A money figure, in the notations the listings could plausibly use: `₹499`,
- *  `Rs. 499`, `Rs 1,499`, `INR 499`, `$4.99`, `USD 4.99`. NOT a bare number —
- *  "7 days", "3 apps" and a version are not prices. */
-const PRICE_FIGURE = /(?:₹|\bRs\.?\s*|\bINR\s+|\$|\bUSD\s+)\s?\d[\d,]*(?:\.\d{1,2})?/i;
+// A money figure is `PRICE` from ./price-figure.mjs, imported above: `₹499`,
+// `Rs. 499`, `Rs 1,499`, `INR 499`, `$4.99`, `USD 4.99`, and since 2026-09-24
+// `€4.99`, `£1,299` and a code after the figure. NOT a bare number — "7 days",
+// "3 apps" and a version are not prices. The regex that stood here read no `€`,
+// so `€4.99` in this listing passed; it is the union of this and the dart
+// matcher now, and assert-no-price-literals.mjs reads the same one
+// (O-PRICE-GUARD-IS-DART-ONLY).
 
 /** form-answers.json, on an app tree and on the brick alike. On the brick, a
  *  `from` naming a PNG the stamp generates (post_gen, see above) is not a file yet.
@@ -1097,9 +1101,13 @@ function checkFormAnswers(dir, row, rules, onBrick = false) {
   // [ADR 093] §2 "Lifetime": it "stays on the web checkout only, and — per
   // §11.2 — no app and no store listing mentions it", and [ADR 078] §11.2 (which
   // [ADR 093] §5 restates as still standing) keeps the web price out of both.
-  // The one guard that hunts price literals, tooling/ci/assert-no-price-literals.mjs,
-  // reads `.dart` files (SCAN_ROOTS + the non-test dart filter): the store's own
-  // text is outside it, and the store's text is where a price is READ by a buyer.
+  // ⏱ CORRECTED 2026-09-24 (O-PRICE-GUARD-IS-DART-ONLY): this said the one guard
+  // that hunts price literals, tooling/ci/assert-no-price-literals.mjs, reads
+  // `.dart` only. Its limb C now reads every listing text field on every store
+  // channel, this tree's three included, with the same PRICE and LIFETIME
+  // (./price-figure.mjs). This limb stays: it belongs to the apps-gov-in form,
+  // whose `description` answer is `{ from: 'long-description.txt' }`, and it
+  // counts toward the form rules this guard reports.
   // Deliberately NOT checked here: a nikatru.com URL. The shipped listing carries
   // the privacy policy and the contact page as URLs the portal asks for, so the
   // "website" half of §11.2 is a scope question for the owner, not a rule this
@@ -1108,13 +1116,13 @@ function checkFormAnswers(dir, row, rules, onBrick = false) {
     const body = read(posix.join(dir, name));
     if (body === null) continue;
     formRuleChecks++;
-    const figure = PRICE_FIGURE.exec(body);
+    const figure = PRICE.exec(body);
     if (figure) {
       problems.push(
         `${posix.join(dir, name)} names a price (${JSON.stringify(figure[0].trim())}). A store listing states no price: the buyer is charged by the rail, the rail's figure moves ([ADR 093] set today's), and a listing nobody re-reads is the copy that keeps the old one.`,
       );
     }
-    if (/\blifetime\b/i.test(body)) {
+    if (LIFETIME.test(body)) {
       problems.push(
         `${posix.join(dir, name)} names the lifetime plan. [ADR 093] §2: lifetime "stays on the web checkout only, and — per §11.2 — no app and no store listing mentions it".`,
       );

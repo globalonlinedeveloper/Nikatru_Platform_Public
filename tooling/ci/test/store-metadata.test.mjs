@@ -1634,6 +1634,16 @@ describe("a store's own form rules — apps.gov.in", () => {
     assert.match(out, /short-description\.txt names a price \("\$4\.99"\)/);
   });
 
+  // RC6 (O-PRICE-GUARD-IS-DART-ONLY): the matcher this limb carried until
+  // 2026-09-24 read no `€`, so this listing passed. It reads the shared union in
+  // tooling/ci/price-figure.mjs now.
+  test('RC6 · FAILS a listing that names a euro price', () => {
+    const { code, out } = run(agiTree({ listing: { 'long-description.txt': 'Pro is €4.99 a month.\n' } }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /long-description\.txt names a price \("€4\.99"\)/);
+  });
+
   test('FAILS a listing that names the lifetime plan', () => {
     const { code, out } = run(agiTree({ listing: { 'long-description.txt': 'A lifetime plan is available.\n' } }));
     assert.equal(code, 1, out);

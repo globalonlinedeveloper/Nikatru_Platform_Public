@@ -27,6 +27,27 @@
 //   B · POSITIVE — the paywall renders through the offerings model. Without B,
 //       deleting the paywall's price display entirely would pass A.
 //
+// ⏱ 2026-09-24 — A THIRD LIMB, BECAUSE THE BUYER READS THE LISTING FIRST
+// (O-PRICE-GUARD-IS-DART-ONLY):
+//   C · LISTING — no price figure and no lifetime plan in any listing TEXT
+//       field on any store channel.
+// Until today this guard read `.dart` and nothing else, so `Lifetime ₹2,499`
+// appended to the Play long description exited 0 here, and the one listing
+// check that hunted a price (assert-store-metadata.mjs) read three files of the
+// apps-gov-in tree only. [ADR 093] §2 keeps the lifetime plan on the web
+// checkout, "and — per §11.2 — no app and no store listing mentions it"; a
+// listing states no price at all, because the rail's figure moves and a listing
+// nobody re-reads keeps the old one.
+// The file set is the vocabulary's, not a suffix: every
+// contracts/store/vocabulary.js LISTING_FIELDS entry of `kind: 'text'`, crossed
+// with what each tooling/channel-register.json row carries — its surface's
+// column, plus the row's own `perChannel.additionalFiles` — in every tree the
+// row's `storeMetadataDir` names: each app in catalog/apps.json, each tool under
+// extensions/Extension, and the factory that stamps the next one (the app brick,
+// the extension template). A README.md or a `url` field is not listing text and
+// is not read. The OK line counts per channel, and a channel whose trees yield
+// no listing text is COVERAGE LOST by name.
+//
 // Usage:  node tooling/ci/assert-no-price-literals.mjs [repoRoot]
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync, statSync } from 'node:fs';
@@ -34,6 +55,8 @@ import { join, resolve, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
 import { delegationOfAbs as delegationOf } from './chassis-delegation.mjs';
+import { PRICE, LIFETIME } from './price-figure.mjs';
+import { LISTING_FIELDS } from '../../contracts/store/vocabulary.js';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const problems = [];
@@ -42,16 +65,13 @@ const notes = [];
 const ok = (m) => console.log(`ok   ${m}`);
 
 // ── the matcher ─────────────────────────────────────────────────────────────
-// A price is a currency marker next to a number. Three shapes, because all three
-// occur in real code: symbol-first (`$4.99`, `₹399`), code-first (`USD 4.99`) and
-// code-last (`4.99 USD`).
-const PRICE = new RegExp(
-  [
-    String.raw`[$€£¥₹]\s?\d[\d,]*(?:\.\d{1,2})?`,
-    String.raw`\b(?:USD|EUR|GBP|INR|JPY|AUD|CAD)\s?\d[\d,]*(?:\.\d{1,2})?\b`,
-    String.raw`\b\d[\d,]*(?:\.\d{1,2})?\s?(?:USD|EUR|GBP|INR|JPY|AUD|CAD)\b`,
-  ].join('|'),
-);
+// A price is a currency marker next to a number: symbol-first (`$4.99`, `₹399`),
+// `Rs`-first (`Rs 1,499`), code-first (`USD 4.99`) and code-last (`4.99 USD`).
+// ⏱ 2026-09-24 (O-PRICE-GUARD-IS-DART-ONLY): the regex that lived here is now
+// ./price-figure.mjs, the union of this file's three shapes and the listing
+// matcher assert-store-metadata.mjs carried (which added `Rs` and read case-
+// insensitively). Both guards import it. The proof below still runs against
+// it on every run, before anything is scanned.
 
 /**
  * 🔴 THE MATCHER IS PROVEN AGAINST KNOWN-DIRTY INPUT BEFORE IT IS TRUSTED.
@@ -74,6 +94,12 @@ const CANARY = [
   "'USD 4.99'",
   "'19.99 EUR'",
   "'£1,299.00'",
+  // The listing notations the union added (2026-09-24): if either half of the
+  // union is lost, one of these goes unmatched and the run is COVERAGE LOST.
+  "'Rs 2,499'",
+  "'₹2,499'",
+  "'€4.99'",
+  "'inr 499'",
 ];
 const NOT_PRICES = [
   "'v1.0.0'",
@@ -393,6 +419,181 @@ for (const a of ALLOW) {
     } else {
       ok('Offering formats from amount + ISO currency, not from a supplied string');
     }
+  }
+}
+
+// ── C · the LISTING text names no price and no lifetime plan ────────────────
+// On every store channel, not the apps-gov-in tree alone; see the header. A
+// finding names `file:line`, because a listing is edited by hand and the line
+// is where the edit goes. There is no allowlist: a listing has no legitimate
+// price in it.
+{
+  const REGISTER = 'tooling/channel-register.json';
+  const APPS = 'catalog/apps.json';
+  const EXT_ROOT = 'extensions/Extension';
+  /** The factory tree that stamps the next product's listing, per placeholder. */
+  const factoryOf = (tpl) =>
+    tpl.includes('{app}')
+      ? `tooling/bricks/app/__brick__/${tpl.replace('{app}', '{{app_id}}')}`
+      : tpl.startsWith(`${EXT_ROOT}/{tool}/`)
+        ? tpl.replace(`${EXT_ROOT}/{tool}`, 'extensions/templates/tool')
+        : null;
+  // WHERE A TEXT FIELD LIVES, by its LISTING_FIELDS column value. A value not
+  // named here is a placement this limb was never taught, and it refuses
+  // (COVERAGE LOST) rather than skip the field.
+  const IN_EVERY_TREE = new Set(['required', 'per-store']);
+  const IF_THE_ROW_DECLARES = new Set(['additional']); // perChannel.<id>.additionalFiles
+  const WHERE_ON_DISK = new Set(['per-store-additional']); // one store takes it; read where present
+  // A surface's column is a LISTING_FIELDS key named after it (`app`,
+  // `extension`); these keys describe the field and are no surface's column.
+  const NOT_A_COLUMN = new Set(['name', 'kind', 'rendered']);
+
+  const isDirRel = (rel) => existsSync(join(ROOT, rel)) && statSync(join(ROOT, rel)).isDirectory();
+  const readJson = (rel) => {
+    if (!existsSync(join(ROOT, rel))) return { lost: `${rel} does not exist` };
+    try {
+      return { value: JSON.parse(readFileSync(join(ROOT, rel), 'utf8')) };
+    } catch (e) {
+      return { lost: `${rel} is not valid JSON (${e.message})` };
+    }
+  };
+  const readAppSlugs = () => {
+    const a = readJson(APPS);
+    const slugs = Array.isArray(a.value)
+      ? a.value.map((x) => x?.slug).filter((s) => typeof s === 'string' && s !== '')
+      : [];
+    if (slugs.length === 0) {
+      coverageLost(
+        `${a.lost ?? `${APPS} names no app`}, so limb C could name no app's listing tree. Only the brick's was read, and "no price in any listing" would be a claim about apps it never opened.`,
+      );
+    }
+    return slugs;
+  };
+  const listTools = () => {
+    let found = [];
+    try {
+      found = listDir(join(ROOT, EXT_ROOT))
+        .filter((d) => existsSync(join(ROOT, EXT_ROOT, d, 'tool.json')))
+        .sort();
+    } catch {
+      found = [];
+    }
+    if (found.length === 0) {
+      coverageLost(
+        `${EXT_ROOT}/ holds no tool (no directory with a tool.json), so limb C could name no tool's listing tree. Only the extension template's was read, and "no price in any listing" would be a claim about tools it never opened.`,
+      );
+    }
+    return found;
+  };
+
+  // The lifetime matcher is proven like the price matcher above, before use.
+  if (!LIFETIME.test('Lifetime ₹2,499') || !LIFETIME.test('a LIFETIME plan')) {
+    coverageLost('the lifetime matcher no longer matches "Lifetime ₹2,499" or "a LIFETIME plan". Every clean listing below would be a result from a matcher that matches nothing.');
+  }
+  const PRICE_ALL = new RegExp(PRICE.source, `${PRICE.flags}g`);
+  const LIFETIME_ALL = new RegExp(LIFETIME.source, `${LIFETIME.flags}g`);
+  const lineOf = (text, index) => text.slice(0, index).split('\n').length;
+  const listingHits = [];
+  const scanListing = (rel, text) => {
+    for (const m of text.matchAll(PRICE_ALL)) {
+      listingHits.push(
+        `\`${rel}:${lineOf(text, m.index)}\` names a price (${JSON.stringify(m[0].trim())}). A store listing states no price: the buyer is charged by the rail, the rail's figure moves ([ADR 093] set today's), and a listing nobody re-reads is the copy that keeps the old one.`,
+      );
+    }
+    for (const m of text.matchAll(LIFETIME_ALL)) {
+      listingHits.push(
+        `\`${rel}:${lineOf(text, m.index)}\` names the lifetime plan (${JSON.stringify(m[0])}). [ADR 093] §2: lifetime "stays on the web checkout only, and — per §11.2 — no app and no store listing mentions it".`,
+      );
+    }
+  };
+
+  const reg = readJson(REGISTER);
+  const channels = Array.isArray(reg.value?.channels) ? reg.value.channels : [];
+  const rows = channels.filter((c) => c && (c.kind === 'store' || typeof c.storeMetadataDir === 'string'));
+  if (reg.lost) {
+    coverageLost(`${reg.lost}, so limb C cannot say which channels carry a listing, and no listing text was read.`);
+  } else if (rows.length === 0) {
+    coverageLost(`${REGISTER} declares no store channel and no \`storeMetadataDir\`, so limb C ranged over nothing.`);
+  }
+  const perChannel = reg.value?.storeMetadataContract?.perChannel ?? {};
+  let appSlugs = null;
+  let tools = null;
+  const counted = [];
+
+  for (const row of rows) {
+    const id = String(row.id);
+    const col = row.surface;
+    if (typeof col !== 'string' || NOT_A_COLUMN.has(col) || !LISTING_FIELDS.some((f) => Object.hasOwn(f, col))) {
+      coverageLost(
+        `channel "${id}" is on surface ${JSON.stringify(col ?? null)}, which has no column in contracts/store/vocabulary.js LISTING_FIELDS, so which of its files are listing text is undecidable. Its listing was not read.`,
+      );
+      continue;
+    }
+    const declared = new Set((perChannel[id]?.additionalFiles ?? []).filter((f) => typeof f === 'string'));
+    const names = [];
+    for (const f of LISTING_FIELDS) {
+      const place = f[col];
+      if (f.kind !== 'text' || place === null || place === undefined) continue;
+      if (IN_EVERY_TREE.has(place) || WHERE_ON_DISK.has(place)) names.push(f.name);
+      else if (IF_THE_ROW_DECLARES.has(place)) {
+        if (declared.has(f.name)) names.push(f.name);
+      } else {
+        coverageLost(
+          `LISTING_FIELDS "${f.name}" is a text field placed ${JSON.stringify(place)} on the ${col} surface, a placement limb C was never taught: it cannot say which directory holds the file, so channel "${id}"'s copy was not read.`,
+        );
+      }
+    }
+
+    const tpl = typeof row.storeMetadataDir === 'string' ? row.storeMetadataDir : '';
+    const trees = [];
+    if (tpl.includes('{app}')) {
+      appSlugs ??= readAppSlugs();
+      for (const s of appSlugs) trees.push(tpl.replace('{app}', s));
+    } else if (tpl.includes('{tool}')) {
+      tools ??= listTools();
+      for (const t of tools) trees.push(tpl.replace('{tool}', t));
+    } else if (tpl !== '') {
+      trees.push(tpl);
+    }
+    const factory = tpl === '' ? null : factoryOf(tpl);
+    if (factory) trees.push(factory);
+
+    let files = 0;
+    let treesRead = 0;
+    for (const dir of trees) {
+      if (!isDirRel(dir)) continue; // an absent tree is assert-store-metadata's finding, not a read
+      treesRead += 1;
+      let inTree = 0;
+      for (const name of names) {
+        const p = join(ROOT, dir, name);
+        if (!existsSync(p) || !statSync(p).isFile()) continue;
+        inTree += 1;
+        scanListing(`${dir}/${name}`, readFileSync(p, 'utf8'));
+      }
+      if (inTree === 0) {
+        coverageLost(
+          `${dir} exists and holds none of the ${names.length} listing text field(s) channel "${id}" carries (${names.join(', ') || 'none'}). The tree was opened and nothing in it was read.`,
+        );
+      }
+      files += inTree;
+    }
+    if (files === 0) {
+      coverageLost(
+        `channel "${id}" yielded ZERO listing text files from ${trees.length} candidate tree(s) (storeMetadataDir ${JSON.stringify(row.storeMetadataDir ?? null)}). Its listing was not read, and "no price in any listing" would be a claim about a channel this limb never opened.`,
+      );
+    }
+    counted.push({ id, files, trees: treesRead });
+  }
+
+  for (const h of listingHits) problems.push(h);
+  if (counted.length) {
+    ok(
+      `listing text reaches ${counted.reduce((n, c) => n + c.files, 0)} file(s) on ${counted.length} channel(s): ` +
+        counted.map((c) => `${c.id} ${c.files} in ${c.trees} tree(s)`).join(', '),
+    );
+  }
+  if (counted.some((c) => c.files > 0) && listingHits.length === 0) {
+    ok('no price figure and no lifetime plan in listing text');
   }
 }
 
