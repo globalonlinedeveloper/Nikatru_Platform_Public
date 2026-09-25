@@ -1079,6 +1079,164 @@ describe('assert-workflow-hardening', () => {
     assert.match(out, /b\.yml:\d+ `cancel-in-progress: \$\{\{ !startsWith\(github\.ref, 'refs\/tags\/'\) \}\}` can cancel an in-flight run on `main`/);
   });
 
+  // ── limb 8 · ⏱ 2026-09-24 · A FAILURE-PATH INPUT NEVER READS AN UNGUARDED STEP OUTPUT ──
+  // O-CAPTURE-FAILURE-UPLOAD-RESOLVES-TO-ROOT: store-screenshots.yml uploaded on
+  // `if: failure()` with `path: ${{ steps.reg.outputs.dir }}/`, which is `/` on a run
+  // that failed before `reg`. `wf()` writes bare `- uses:` lines and cannot express an
+  // `if:` or a `with:`, so each case writes its own upload step into c.yml; a.yml and
+  // b.yml hold every other limb green, so each verdict below is limb 8's.
+  const failureRoot = (name, step) => {
+    const c =
+      'name: X\non: push\npermissions:\n  contents: read\njobs:\n  j:\n    runs-on: ubuntu-24.04\n    timeout-minutes: 5\n    steps:\n' +
+      '      - name: What the register says\n        id: reg\n        run: echo "dir=x" >> "$GITHUB_OUTPUT"\n' +
+      step;
+    const dir = fixture(name, {
+      '.github/workflows/a.yml': wf([`actions/x@${SHA}`]),
+      '.github/workflows/b.yml': wf([`actions/y@${SHA}`]),
+      '.github/workflows/c.yml': c,
+    });
+    return { dir, lineOf: (needle) => c.split('\n').findIndex((l) => l.includes(needle)) + 1 };
+  };
+
+  test('🔴 limb 8 — FAILS on `if: failure()` handing `steps.reg.outputs.dir` to `path:`, naming file, line and output', () => {
+    const { dir, lineOf } = failureRoot(
+      'wh-fail-failure',
+      `      - name: Keep the frames\n        if: failure()\n        uses: actions/upload-artifact@${SHA}\n        with:\n          name: shots\n          path: \${{ steps.reg.outputs.dir }}/\n`,
+    );
+    const { code, out } = run('assert-workflow-hardening.mjs', { args: [dir] });
+    assert.equal(code, 1, out);
+    assert.match(out, new RegExp(`c\\.yml:${lineOf('path:')} \`path:\` hands \`steps\\.reg\\.outputs\\.dir\` to \`actions/upload-artifact@${SHA}\``));
+    assert.match(out, /archives the runner's root/);
+  });
+
+  test('🔴 limb 8 — FAILS on `if: always()` with the same input', () => {
+    const { dir, lineOf } = failureRoot(
+      'wh-fail-always',
+      `      - name: Keep the frames\n        if: always()\n        uses: actions/upload-artifact@${SHA}\n        with:\n          name: shots\n          path: \${{ steps.reg.outputs.dir }}/\n`,
+    );
+    const { code, out } = run('assert-workflow-hardening.mjs', { args: [dir] });
+    assert.equal(code, 1, out);
+    assert.match(out, new RegExp(`c\\.yml:${lineOf('path:')} \`path:\` hands \`steps\\.reg\\.outputs\\.dir\``));
+  });
+
+  test('🔴 limb 8 — FAILS on `if: ${{ !cancelled() }}` with the same input', () => {
+    const { dir, lineOf } = failureRoot(
+      'wh-fail-notcancelled',
+      `      - name: Keep the frames\n        if: \${{ !cancelled() }}\n        uses: actions/upload-artifact@${SHA}\n        with:\n          name: shots\n          path: \${{ steps.reg.outputs.dir }}/\n`,
+    );
+    const { code, out } = run('assert-workflow-hardening.mjs', { args: [dir] });
+    assert.equal(code, 1, out);
+    assert.match(out, new RegExp(`c\\.yml:${lineOf('path:')} \`path:\` hands \`steps\\.reg\\.outputs\\.dir\``));
+  });
+
+  test('🔴 limb 8 — FAILS when the guard sits behind a top-level `||`, which re-opens the empty case', () => {
+    const { dir, lineOf } = failureRoot(
+      'wh-fail-or',
+      `      - name: Keep the frames\n        if: failure() || steps.reg.outputs.dir != ''\n        uses: actions/upload-artifact@${SHA}\n        with:\n          name: shots\n          path: \${{ steps.reg.outputs.dir }}/\n`,
+    );
+    const { code, out } = run('assert-workflow-hardening.mjs', { args: [dir] });
+    assert.equal(code, 1, out);
+    assert.match(out, new RegExp(`c\\.yml:${lineOf('path:')} \`path:\` hands \`steps\\.reg\\.outputs\\.dir\``));
+  });
+
+  test('🔴 limb 8 — FAILS on a `path: |` block whose CONTINUATION line reads the output, naming the key\'s line', () => {
+    const { dir, lineOf } = failureRoot(
+      'wh-fail-block',
+      `      - name: Keep the frames\n        if: failure()\n        uses: actions/upload-artifact@${SHA}\n        with:\n          name: shots\n          path: |\n            logs/\n            \${{ steps.reg.outputs.dir }}/\n`,
+    );
+    const { code, out } = run('assert-workflow-hardening.mjs', { args: [dir] });
+    assert.equal(code, 1, out);
+    assert.match(out, new RegExp(`c\\.yml:${lineOf('path: |')} \`path:\` hands \`steps\\.reg\\.outputs\\.dir\``));
+  });
+
+  test('🔴 limb 8 — FAILS on an output read INSIDE `format(…)`, not only alone in its expression', () => {
+    const { dir, lineOf } = failureRoot(
+      'wh-fail-format',
+      `      - name: Keep the frames\n        if: failure()\n        uses: actions/upload-artifact@${SHA}\n        with:\n          name: shots\n          path: \${{ format('{0}/', steps.reg.outputs.dir) }}\n`,
+    );
+    const { code, out } = run('assert-workflow-hardening.mjs', { args: [dir] });
+    assert.equal(code, 1, out);
+    assert.match(out, new RegExp(`c\\.yml:${lineOf('path:')} \`path:\` hands \`steps\\.reg\\.outputs\\.dir\``));
+  });
+
+  test('limb 8 — PASSES on `failure() && steps.reg.outputs.dir != \'\'`, and says what it judged', () => {
+    const { dir } = failureRoot(
+      'wh-fail-guarded',
+      `      - name: Keep the frames\n        if: failure() && steps.reg.outputs.dir != ''\n        uses: actions/upload-artifact@${SHA}\n        with:\n          name: shots\n          path: \${{ steps.reg.outputs.dir }}/\n`,
+    );
+    const { code, out } = run('assert-workflow-hardening.mjs', { args: [dir] });
+    assert.equal(code, 0, out);
+    assert.match(out, /limb 8 — 1 non-success `uses:` step\(s\) judged \(a raw read of their lines agrees, 1\)/);
+  });
+
+  test('limb 8 — PASSES on `failure() && steps.reg.outcome == \'success\'`', () => {
+    const { dir } = failureRoot(
+      'wh-fail-outcome',
+      `      - name: Keep the frames\n        if: failure() && steps.reg.outcome == 'success'\n        uses: actions/upload-artifact@${SHA}\n        with:\n          name: shots\n          path: \${{ steps.reg.outputs.dir }}/\n`,
+    );
+    const { code, out } = run('assert-workflow-hardening.mjs', { args: [dir] });
+    assert.equal(code, 0, out);
+    assert.match(out, /limb 8 — 1 non-success `uses:` step\(s\) judged/);
+  });
+
+  test('limb 8 — PASSES when the expression itself falls back to a non-empty literal', () => {
+    const { dir } = failureRoot(
+      'wh-fail-fallback',
+      `      - name: Keep the frames\n        if: failure()\n        uses: actions/upload-artifact@${SHA}\n        with:\n          name: shots\n          path: \${{ steps.reg.outputs.dir || 'no-dir' }}/\n`,
+    );
+    const { code, out } = run('assert-workflow-hardening.mjs', { args: [dir] });
+    assert.equal(code, 0, out);
+    assert.match(out, /limb 8 — 1 non-success `uses:` step\(s\) judged/);
+  });
+
+  test('limb 8 — PASSES on an `if: failure()` step whose `with:` reads no step output', () => {
+    const { dir } = failureRoot(
+      'wh-fail-literal',
+      `      - name: Keep the logs\n        if: failure()\n        uses: actions/upload-artifact@${SHA}\n        with:\n          name: logs-\${{ github.run_id }}\n          path: build/logs/\n`,
+    );
+    const { code, out } = run('assert-workflow-hardening.mjs', { args: [dir] });
+    assert.equal(code, 0, out);
+    assert.match(out, /limb 8 — 1 non-success `uses:` step\(s\) judged/);
+  });
+
+  test('limb 8 — PASSES on a success-path `uses:` that reads the output, and judges it not at all', () => {
+    const { dir } = failureRoot(
+      'wh-fail-success-path',
+      `      - name: Upload the set\n        uses: actions/upload-artifact@${SHA}\n        with:\n          name: shots\n          path: \${{ steps.reg.outputs.dir }}/\n`,
+    );
+    const { code, out } = run('assert-workflow-hardening.mjs', { args: [dir] });
+    assert.equal(code, 0, out);
+    assert.match(out, /limb 8 — 0 non-success `uses:` step\(s\) judged \(a raw read of their lines agrees, 0\)/);
+  });
+
+  test('COVERAGE LOST when limb 8 stops judging the failure-path steps a raw read still finds (self-check 4)', () => {
+    // The root carries ONE guarded `if: failure()` upload, so the raw read counts 1.
+    // Cutting the judged counter out of a COPY makes the `cond` reading go blind while
+    // the raw one does not; the repository is never mutated, and the unmutated copy
+    // runs first so a broken copy mechanism cannot pass this case for the wrong reason.
+    const { dir } = failureRoot(
+      'wh-fail-cov-root',
+      `      - name: Keep the frames\n        if: failure() && steps.reg.outputs.dir != ''\n        uses: actions/upload-artifact@${SHA}\n        with:\n          name: shots\n          path: \${{ steps.reg.outputs.dir }}/\n`,
+    );
+    const src = readFileSync(join(CI_DIR, 'assert-workflow-hardening.mjs'), 'utf8');
+    const SUBJECT = 'failureUsesJudged++;';
+    const code = stripSourceComments(src, '.mjs');
+    assert.equal(code.split(SUBJECT).length - 1, 1, 'the judged counter must appear exactly once outside comments');
+    const at = code.indexOf(SUBJECT);
+    const modules = {};
+    for (const m of ['tree-walk.mjs', 'workflow-scan.mjs']) modules[m] = readFileSync(join(CI_DIR, m), 'utf8');
+    const copy = (name, body) => join(fixture(name, { ...modules, 'g.mjs': body }), 'g.mjs');
+    const exec = (script) => {
+      const r = spawnSync(process.execPath, [script, dir], { cwd: ROOT, encoding: 'utf8' });
+      return { code: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
+    };
+    const control = exec(copy('wh-fail-cov-control', src));
+    assert.equal(control.code, 0, control.out);
+    const broken = exec(copy('wh-fail-cov-off', `${src.slice(0, at)};${src.slice(at + SUBJECT.length)}`));
+    assert.equal(broken.code, 2, broken.out);
+    assert.match(broken.out, /COVERAGE LOST — limb 8 judged 0 non-success `uses:` step\(s\) from their `if:` field, but a raw read of those steps' lines finds 1/);
+  });
+
   test('PASSES when every action is SHA-pinned and every workflow declares permissions', () => {
     const { code, out } = run('assert-workflow-hardening.mjs', { args: [build('wh-ok')] });
     assert.equal(code, 0, out);

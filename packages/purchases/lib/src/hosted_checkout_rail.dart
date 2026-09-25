@@ -7,19 +7,25 @@ import 'purchase_capabilities.dart';
 import 'purchase_rail.dart';
 import 'rail_config.dart';
 
-/// The one [PurchaseRail] implementation: a hosted checkout page owned by the
-/// merchant of record, opened in the user's own browser.
+/// The hosted-checkout [PurchaseRail]: a checkout page owned by the merchant of
+/// record, opened in the user's own browser. It is one of several rails —
+/// `ChassisBilling.railForDeclared` hands a store-billing channel `IapRail`
+/// ([ADR 067]) and a channel it cannot sell on `UnavailablePurchaseRail`.
 ///
 /// ## What this deliberately is NOT
-/// It is not a native in-app-purchase rail. 39-CHASSIS §4 cut 5 defers that, and
-/// [PurchaseCapabilities] records the consequence honestly rather than papering
-/// over it: on iOS, macOS-App-Store and Play the checkout is REFUSED by policy,
-/// and the paywall says so. Shipping a second rail to close that gap is a
-/// decision nobody has taken.
+/// It is not a native in-app-purchase rail, and it has no store to ask. As a
+/// [RestoresPurchases] it answers [RestoreOutcome.serverOnly]: its entitlement
+/// is a server row keyed `(user_id, app_id)`, so the screen's server re-read is
+/// the whole restore. [PurchaseCapabilities] still records where its checkout
+/// is REFUSED by policy (iOS, macOS-App-Store, Play), and the paywall says so.
+///
+/// ⚠️ CORRECTED 2026-09-25: this read "The one [PurchaseRail] implementation"
+/// and "39-CHASSIS §4 cut 5 defers" a native rail. `IapRail` shipped under
+/// [ADR 067]; only the comment had not moved.
 ///
 /// It is also not a client that grants anything. `startCheckout` opens a page
 /// and returns. The unlock comes from the server, later, and only from there.
-class HostedCheckoutRail implements PurchaseRail {
+class HostedCheckoutRail implements PurchaseRail, RestoresPurchases {
   HostedCheckoutRail({
     required RailConfig config,
     required String appId,
@@ -130,6 +136,13 @@ class HostedCheckoutRail implements PurchaseRail {
     }
     return CheckoutOpened(offering: offering, url: url);
   }
+
+  /// [pipeline 5]M-10 — nothing to ask. A hosted checkout leaves nothing on the
+  /// device to give back, and the entitlement is a server row keyed
+  /// `(user_id, app_id)`, so the server read the screen makes after this IS the
+  /// restore.
+  @override
+  Future<RestoreOutcome> restorePurchases() async => RestoreOutcome.serverOnly;
 
   @override
   Future<CancellationOutcome> requestCancellation() async {

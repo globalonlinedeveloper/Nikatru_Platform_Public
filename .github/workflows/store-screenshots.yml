@@ -412,7 +412,7 @@ jobs:
       # nowhere. A different artifact name and `if: failure()`, so bytes that did
       # NOT pass the guard can never be mistaken for the set.
       - name: Keep the frames of a FAILED run, for diagnosis only
-        if: failure()
+        if: failure() && steps.reg.outputs.dir != ''
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: FAILED-not-a-listing-set-${{ github.run_id }}
@@ -581,10 +581,11 @@ jobs:
       # one declared set, because the upload and the `git add` below are written
       # for one directory; (2) a `capture.runner` that is not the label this job
       # actually runs on, which is the drift the `runs-on` expression above
-      # cannot prevent by itself; (3) a physical frame the runner's screen
-      # cannot hold — on Linux the X screen is a flag this repository sets, but
-      # a hosted Windows or macOS runner arrives with the desktop it arrives
-      # with, so the size is a fact to be CHECKED rather than chosen.
+      # cannot prevent by itself; (3) no `capture` limb, or more than one. The
+      # frame SIZE is not this step's business: a hosted Windows or macOS
+      # desktop is whatever size the image ships, so the runner passes the
+      # register geometry to the suite as STORE_CAPTURE_VIEW, the suite imposes
+      # it, and the layer shutter refuses a root layer of any other size.
       - name: What the register says this channel captures
         id: reg
         run: |
@@ -615,8 +616,6 @@ jobs:
             const out = [
               "dir=apps/subscriptiontracker/store/" + channel + "/" + dirs[0],
               "device=" + c.flutterDevice,
-              "width=" + c.logicalWidth * c.dpr,
-              "height=" + c.logicalHeight * c.dpr,
             ];
             fs.appendFileSync(process.env.GITHUB_OUTPUT, out.join("\n") + "\n");
             console.log(out.join("\n"));
@@ -634,33 +633,6 @@ jobs:
       - name: flutter pub get
         working-directory: apps/subscriptiontracker
         run: flutter pub get --enforce-lockfile
-
-      # 🔴 A HOSTED DESKTOP IS NOT A DISPLAY THIS REPOSITORY CHOSE. The Linux
-      # job sizes its own X screen; here the screen is whatever the image ships
-      # with, and a window cannot be larger than the desktop it opens on. If the
-      # suite sets its own surface size this check is merely noise; if it does
-      # NOT, a screen smaller than the register's physical size produces smaller
-      # frames, and assert-listing-assets.mjs refuses them AFTER the whole build
-      # — the expensive way to learn it. So measure first and say so plainly.
-      - name: The runner's desktop can hold the frame the register asks for
-        run: |
-          set -uo pipefail
-          W="${{ steps.reg.outputs.width }}"
-          H="${{ steps.reg.outputs.height }}"
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            read -r SW SH < <(powershell -NoProfile -Command "Add-Type -AssemblyName System.Windows.Forms; \$b=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds; Write-Output \"\$(\$b.Width) \$(\$b.Height)\"")
-          else
-            SW=$(system_profiler SPDisplaysDataType 2>/dev/null | sed -n 's/.*Resolution: *\([0-9]*\) *x *\([0-9]*\).*/\1/p' | head -1)
-            SH=$(system_profiler SPDisplaysDataType 2>/dev/null | sed -n 's/.*Resolution: *\([0-9]*\) *x *\([0-9]*\).*/\2/p' | head -1)
-          fi
-          echo "register wants ${W}x${H} physical; runner desktop reports ${SW:-unknown}x${SH:-unknown}"
-          if [ -z "${SW:-}" ] || [ -z "${SH:-}" ]; then
-            echo "::warning title=Desktop size not measurable::This runner did not report a resolution. The capture proceeds; assert-listing-assets.mjs is still the judge of the pixels."
-            exit 0
-          fi
-          if [ "$SW" -lt "$W" ] || [ "$SH" -lt "$H" ]; then
-            echo "::warning title=The desktop is smaller than the frame the register asks for::The runner's desktop is ${SW}x${SH} and tooling/channel-register.json asks for ${W}x${H} physical. If integration_test sets its own surface size this does not matter; if it does not, the frames will come out at the smaller size and assert-listing-assets.mjs will refuse them a few minutes from now. The fix is a register acceptedSize this desktop can hold, NOT a resize of a captured frame."
-          fi
 
       - name: Provision throwaway confirmed user
         id: user
@@ -693,7 +665,7 @@ jobs:
         run: node --single-threaded tooling/ci/assert-play-device-coverage.mjs
 
       - name: Keep the frames of a FAILED run, for diagnosis only
-        if: failure()
+        if: failure() && steps.reg.outputs.dir != ''
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: FAILED-not-a-listing-set-${{ github.run_id }}

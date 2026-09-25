@@ -736,26 +736,116 @@ let registerChannels = []; // the register's channel rows, whole
       );
     }
 
-    // ── F · RESTORE — [5]M-10 ─────────────────────────────────────────────
-    // On this rail the entitlement is a server row keyed (user_id, app_id), so
-    // signing in IS the restore. The CONTROL still has to exist, and it has to
-    // do a server read rather than consult the cache.
-    const manage = files.find((f) => f.endsWith(join('monetization', 'manage_plan_screen.dart')));
-    if (!manage) {
-      coverageLost(`the manage-plan screen is missing, so restore ([5]M-10) could not be checked.`);
+    // ── F · RESTORE ASKS THE STORE, THEN THE SERVER — [5]M-10 ─────────────
+    // O-STORE-RESTORE-ASKS-ONLY-THE-SERVER. This limb used to require a
+    // server read in `_restore` and nothing else, because the hosted rail keeps
+    // the entitlement as a server row keyed (user_id, app_id) and signing in IS
+    // its restore. The store rail changed that: a StoreKit or Play purchase
+    // the server has not heard about is brought back only by asking the STORE,
+    // and a Restore that re-read our own server never asked it. So each
+    // adapter's `_restore` must now:
+    //   · call `restorePurchasesOf(` — which answers `serverOnly` on a rail
+    //     with no store, so one call is right for every channel;
+    //   · re-read the entitlement AFTER that call (`refreshEntitlements(`,
+    //     `refreshEntitlementsIn(` or `.invalidate(entitlementsProvider)`).
+    //     The ORDER is the point: the store's answer is not the unlock, and a
+    //     re-read made before the store was asked shows the stale plan.
+    // And the Restore control must be WIRED to `_restore` (`onTap:` or
+    // `onRestore:`). The old "names `restorePurchases`" test is gone, because
+    // `restorePurchasesOf(` now satisfies it by itself.
+    //
+    // 🔴 EVERY ADAPTER, NOT THE FIRST ONE FOUND. This read
+    // `files.find(…manage_plan_screen.dart)` — the BRICK's adapter, always, so
+    // apps/subscriptiontracker's own screen was never graded. The set is the
+    // brick lib's adapter plus every `apps/*/lib/**/monetization/
+    // manage_plan_screen.dart`; the chassis VIEW a brick adapter delegates to is
+    // NOT an adapter (package-boundaries limb C keeps `nikatru_purchases` out of
+    // it, so it cannot hold a rail call) and is left out by name of the walk
+    // that found it. An empty set is COVERAGE LOST, never a pass.
+    //
+    // 🔴 SCOPED TO `_restore`, NOT TO THE FILE: a file-level match would be
+    // satisfied by `_cancel`'s own re-read. The body window is RESTORE_WINDOW
+    // characters of comment-stripped code; a `_restore` longer than that reads
+    // as absent and goes red, and the finding prints the window beside the
+    // body's measured length so the fix is a number, not a guess. The wait and
+    // the sentence mapping live in helpers outside the body for that reason.
+    // 600 was tried first and does not fit: measured 2026-09-25, the app's body
+    // is 670 characters and the brick's 729.
+    //
+    // ⚠️ THE ORDER LIMB IS STRICT: ANY re-read before `restorePurchasesOf(` is
+    // red, even with another after it. The looser form, "some read after the
+    // store call", passes a `_restore` that reads, asks, then reads again —
+    // and that first read is the stale plan the order exists to keep off
+    // screen.
+    const RESTORE_WINDOW = 1200;
+    const MANAGE_TAIL = join('monetization', 'manage_plan_screen.dart');
+    const adapters = files.filter((f) => f.endsWith(MANAGE_TAIL) && !delegatedFiles.includes(f));
+    const brickAdapter = join(ROOT, BRICK_LIB, 'features', MANAGE_TAIL);
+    {
+      const collect = (d) => {
+        for (const de of listDir(d, { withFileTypes: true })) {
+          const f = join(d, de.name);
+          if (de.isDirectory()) collect(f);
+          else if (f.endsWith(MANAGE_TAIL) && !adapters.includes(f)) adapters.push(f);
+        }
+      };
+      const appsDir = join(ROOT, 'apps');
+      if (existsSync(appsDir)) {
+        for (const app of listDir(appsDir, { withFileTypes: true })) {
+          const appLib = join(appsDir, app.name, 'lib');
+          if (app.isDirectory() && existsSync(appLib)) collect(appLib);
+        }
+      }
+    }
+    const relOf = (f) => f.slice(ROOT.length + 1).replace(/\\/g, '/');
+    if (adapters.length === 0) {
+      coverageLost(
+        'no manage-plan adapter was found — not in the brick lib and not under apps/*/lib — so restore ([5]M-10) was graded over an empty set. An empty set reads exactly like a compliant one.',
+      );
     } else {
-      const s = code(readFileSync(manage, 'utf8'));
-      // 🔴 SCOPED TO `_restore`, NOT TO THE FILE: a file-level match would be
-      // satisfied by any other call site the file grows, and so would pass
-      // with the restore control's own server read deleted.
-      const restoreBody =
-        new RegExp(String.raw`Future<void>\s+_restore\(\)\s*async\s*\{[\s\S]{0,600}?\n  \}`).exec(s)?.[0] ?? '';
-      if (!/refreshEntitlements\(/.test(restoreBody) || !/restorePurchases/.test(s)) {
-        problems.push(
-          `NO RESTORE CONTROL — manage_plan_screen.dart has no \`_restore\` calling \`refreshEntitlements\`. Apple guideline 3.1.1 makes an explicit Restore control mandatory the day a native IAP rail ships, and its absence is a documented rejection cause.`,
+      if (!adapters.includes(brickAdapter)) {
+        coverageLost(
+          `${relOf(brickAdapter)} is missing, so the adapter every stamped app inherits was not graded for restore ([5]M-10).`,
         );
-      } else {
-        ok('restore control present and backed by a server read');
+      }
+      const SERVER_READ = /\brefreshEntitlements(?:In)?\s*\(|\.invalidate\s*\(\s*entitlementsProvider\s*\)/g;
+      const before = problems.length;
+      for (const f of adapters.sort()) {
+        const rel = relOf(f);
+        const s = code(readFileSync(f, 'utf8'));
+        const restoreBody =
+          new RegExp(
+            String.raw`Future<void>\s+_restore\(\)\s*async\s*\{[\s\S]{0,${RESTORE_WINDOW}}?\n  \}`,
+          ).exec(s)?.[0] ?? '';
+        if (restoreBody === '' || !/\b_restore\b(?!\s*\()/.test(s)) {
+          const whole = /Future<void>\s+_restore\(\)\s*async\s*\{[\s\S]*?\n {2}\}/.exec(s)?.[0];
+          const measured =
+            whole === undefined ? 'no `_restore` body was found at all' : `the body measures ${whole.length}`;
+          problems.push(
+            `NO RESTORE CONTROL — ${rel} has no \`_restore\` (within the ${RESTORE_WINDOW}-character window of code; ${measured}) wired to its Restore control (\`onTap:\` or \`onRestore:\`). Apple guideline 3.1.1 makes an explicit Restore control mandatory in a build that sells through StoreKit, and its absence is a documented rejection cause.`,
+          );
+          continue;
+        }
+        const store = /\brestorePurchasesOf\s*\(/.exec(restoreBody);
+        const reads = [...restoreBody.matchAll(SERVER_READ)].map((m) => m.index);
+        if (!store) {
+          problems.push(
+            `RESTORE ASKS ONLY THE SERVER — ${rel}'s \`_restore\` never calls \`restorePurchasesOf(\`. On a store build that is a Restore control that never asks StoreKit or Play for anything: a purchase the store holds and our server has not heard about stays lost (O-STORE-RESTORE-ASKS-ONLY-THE-SERVER).`,
+          );
+        } else if (reads.length === 0) {
+          problems.push(
+            `RESTORE READS NO SERVER — ${rel}'s \`_restore\` asks the store and never re-reads the entitlement. The store's answer is not the unlock ([5]M-5); the server row is, and the plan row on this screen shows only what was re-read.`,
+          );
+        } else if (reads.some((i) => i < store.index)) {
+          problems.push(
+            `RESTORE READS THE SERVER BEFORE IT ASKS THE STORE — ${rel}'s \`_restore\` re-reads the entitlement before it calls \`restorePurchasesOf(\`. Every re-read has to come AFTER the store's answer, or the screen shows the plan as it was before the restore.`,
+          );
+        }
+      }
+      if (problems.length === before) {
+        ok(
+          `restore asks the store, then the server, in ${adapters.length} manage-plan adapter(s): ${adapters.map(relOf).join(', ')}`,
+        );
       }
     }
   }

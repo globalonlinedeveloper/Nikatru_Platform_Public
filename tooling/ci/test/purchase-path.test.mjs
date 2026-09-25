@@ -24,6 +24,16 @@
 //        navigating (the REAL 2026-08-01 defect)        UNREACHABLE"
 //   PP10 `_restore` loses its server read while       -> caught after a FIX (c)
 //        `_cancel` keeps one
+//   PP11 (2026-09-24, on a scratch copy) BOTH manage- -> caught by the rewritten
+//        plan adapters put back to BASE 53e5fd85,        §F: "RESTORE ASKS ONLY
+//        whose `_restore` never asked the store          THE SERVER", both named
+//        (the BASE §F exits 0 on the same copy)
+//   PP12 (2026-09-24, real tree) the store call and   -> caught: "RESTORE READS
+//        the re-read swapped in the brick adapter        THE SERVER BEFORE IT
+//                                                        ASKS THE STORE"
+//   PP13 (2026-09-25) a re-read BEFORE the store call -> ok under the old order
+//        with another one after it                       limb; caught now that
+//                                                        the limb is strict
 //
 // 🔴 THREE DEFECTS THE MUTATION RUN FOUND IN THE GUARD ITSELF:
 //   (a) PP3 WAS NOT CAUGHT. The `why` capture ran `[\s\S]*?` to the closing
@@ -468,15 +478,42 @@ class _ManagePlanScreenState extends ConsumerState<ManagePlanScreen> {
   }
 
   Future<void> _restore() async {
+    final PurchaseRail rail = ref.read(purchaseRailProvider);
+    setState(() => _busy = true);
+    final RestoreOutcome restored = await restorePurchasesOf(rail);
+    await refreshEntitlementsIn(container);
+    if (!mounted) return;
+    setState(() => _busy = false);
+  }
+
+  Widget build(BuildContext context) => ListTile(title: Text(l10n.restorePurchases), onTap: _restore);
+}
+`;
+
+// The same adapter as it stood at BASE 53e5fd85 — a Restore that re-read the
+// server and never asked the store (O-STORE-RESTORE-ASKS-ONLY-THE-SERVER).
+const MANAGE_SERVER_ONLY = `
+class ManagePlanScreen extends ConsumerStatefulWidget {
+  const ManagePlanScreen({super.key});
+}
+class _ManagePlanScreenState extends ConsumerState<ManagePlanScreen> {
+  Future<void> _cancel() async {
+    await ref.read(purchaseRailProvider).requestCancellation();
+    await refreshEntitlements(ref);
+  }
+
+  Future<void> _restore() async {
     setState(() => _busy = true);
     await refreshEntitlements(ref);
     if (!mounted) return;
     setState(() => _busy = false);
   }
 
-  Widget build(BuildContext context) => ListTile(title: Text(l10n.restorePurchases));
+  Widget build(BuildContext context) => ListTile(title: Text(l10n.restorePurchases), onTap: _restore);
 }
 `;
+
+const APP_MANAGE = 'apps/subscriptiontracker/lib/features/monetization/manage_plan_screen.dart';
 
 const PAYWALL = `
 class PaywallScreen extends ConsumerStatefulWidget {
@@ -538,7 +575,7 @@ function run(o = {}) {
   write(root, `${BRICK}/lib/core/router.dart`, o.router ?? ROUTER);
   write(root, `${BRICK}/lib/features/home/home_screen.dart`, o.home ?? HOME);
   write(root, `${BRICK}/lib/features/settings/settings_screen.dart`, o.settings ?? SETTINGS);
-  write(root, `${BRICK}/lib/features/monetization/manage_plan_screen.dart`, o.manage ?? MANAGE);
+  if (o.manage !== null) write(root, `${BRICK}/lib/features/monetization/manage_plan_screen.dart`, o.manage ?? MANAGE);
   write(root, `${BRICK}/lib/features/monetization/paywall_screen.dart`, PAYWALL);
   // Extra fixture files — the chassis package a delegating screen points at.
   if (o.extraFiles) for (const [rel, body] of Object.entries(o.extraFiles)) write(root, rel, body);
@@ -782,14 +819,172 @@ describe('assert-purchase-path — the client money rail', () => {
     // The defect the mutation run exposed: a file-level `refreshEntitlements(`
     // match was satisfied by the CANCEL path, so the restore control could be
     // gutted with the guard printing ok.
-    const r = run({
-      manage: MANAGE.replace(
-        '  Future<void> _restore() async {\n    setState(() => _busy = true);\n    await refreshEntitlements(ref);',
-        '  Future<void> _restore() async {\n    setState(() => _busy = true);',
-      ),
-    });
-    assert.equal(r.code, 1);
+    const manage = MANAGE.replace('    await refreshEntitlementsIn(container);\n', '');
+    assert.notEqual(manage, MANAGE, 'the mutation was a NO-OP, so the case would test the passing input');
+    const r = run({ manage });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /RESTORE READS NO SERVER/);
+  });
+
+  // ── O-STORE-RESTORE-ASKS-ONLY-THE-SERVER ──────────────────────────────────
+  // Real-tree controls first, recorded in the PR: the rewritten §F on a copy
+  // of the tree holding BOTH BASE 53e5fd85 adapters exits 1 naming both, and
+  // the BASE §F on that copy exits 0; the store and server calls swapped in the
+  // real brick adapter exit 1. The fixtures below re-encode those inputs.
+  test('PASSES on the wired adapter, and SAYS which adapters it graded', () => {
+    const r = run();
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /restore asks the store, then the server, in 1 manage-plan adapter\(s\)/);
+  });
+
+  test('🔴 FAILS when `_restore` asks ONLY the server — the BASE shape', () => {
+    const r = run({ manage: MANAGE_SERVER_ONLY });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /RESTORE ASKS ONLY THE SERVER/);
+    assert.match(r.out, /tooling\/bricks\/app\/__brick__\/apps\/\{\{app_id\}\}\/lib\/features\/monetization\/manage_plan_screen\.dart/);
+  });
+
+  test('🔴 FAILS when the server is read BEFORE the store is asked — the order is the point', () => {
+    const manage = MANAGE.replace(
+      '    final RestoreOutcome restored = await restorePurchasesOf(rail);\n    await refreshEntitlementsIn(container);\n',
+      '    await refreshEntitlementsIn(container);\n    final RestoreOutcome restored = await restorePurchasesOf(rail);\n',
+    );
+    assert.notEqual(manage, MANAGE, 'the mutation was a NO-OP, so the case would test the passing input');
+    const r = run({ manage });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /RESTORE READS THE SERVER BEFORE IT ASKS THE STORE/);
+  });
+
+  test('🔴 FAILS when a read BEFORE the store call is followed by another — the order limb is strict', () => {
+    // The looser limb ("some read after the store call") passed this: the
+    // first read is the stale plan the order exists to keep off screen.
+    const manage = MANAGE.replace(
+      '    final RestoreOutcome restored = await restorePurchasesOf(rail);\n',
+      '    await refreshEntitlementsIn(container);\n    final RestoreOutcome restored = await restorePurchasesOf(rail);\n',
+    );
+    assert.notEqual(manage, MANAGE, 'the mutation was a NO-OP, so the case would test the passing input');
+    const r = run({ manage });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /RESTORE READS THE SERVER BEFORE IT ASKS THE STORE/);
+  });
+
+  test('a mounted check and a bounded wait between the store call and the re-read stay green', () => {
+    const manage = MANAGE.replace(
+      '    await refreshEntitlementsIn(container);\n',
+      '    if (!mounted) return;\n    core.Entitlements ent = await refreshEntitlementsIn(container);\n    if (asked == RestoreOutcome.askedStore) {\n      ent = await _converge(container, ent);\n    }\n',
+    );
+    assert.notEqual(manage, MANAGE, 'the mutation was a NO-OP, so the case would test the passing input');
+    const r = run({ manage });
+    assert.equal(r.code, 0, r.out);
+  });
+
+  test('a `_restore` body past 600 characters and inside the window is still graded', () => {
+    // 600 was the first window tried; the real adapters measure 670 and 729.
+    const manage = MANAGE.replace(
+      '    setState(() => _busy = true);\n',
+      '    setState(() => _busy = true);\n' + '    setState(() => _busy = true);\n'.repeat(20),
+    );
+    assert.notEqual(manage, MANAGE, 'the mutation was a NO-OP, so the case would test the passing input');
+    const r = run({ manage });
+    assert.equal(r.code, 0, r.out);
+  });
+
+  test('🔴 a `_restore` longer than the window is red, and the finding prints the window and the measured length', () => {
+    const manage = MANAGE.replace(
+      '    setState(() => _busy = true);\n',
+      '    setState(() => _busy = true);\n' + '    setState(() => _busy = true);\n'.repeat(40),
+    );
+    assert.notEqual(manage, MANAGE, 'the mutation was a NO-OP, so the case would test the passing input');
+    const r = run({ manage });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /NO RESTORE CONTROL — .*within the 1200-character window of code; the body measures \d{4}\)/);
+  });
+
+  test('the brick spelling of the re-read — `container.invalidate(entitlementsProvider)` — counts', () => {
+    const manage = MANAGE.replace(
+      '    await refreshEntitlementsIn(container);\n',
+      '    container.invalidate(entitlementsProvider);\n    await container.read(entitlementsProvider.future);\n',
+    );
+    assert.notEqual(manage, MANAGE, 'the mutation was a NO-OP, so the case would test the passing input');
+    const r = run({ manage });
+    assert.equal(r.code, 0, r.out);
+  });
+
+  test('🔴 a store call that survives only in a COMMENT is still red', () => {
+    const manage = MANAGE.replace(
+      '    final RestoreOutcome restored = await restorePurchasesOf(rail);\n',
+      '    // final RestoreOutcome restored = await restorePurchasesOf(rail);\n',
+    );
+    assert.notEqual(manage, MANAGE, 'the mutation was a NO-OP, so the case would test the passing input');
+    const r = run({ manage });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /RESTORE ASKS ONLY THE SERVER/);
+  });
+
+  test('🔴 FAILS when the Restore control is not wired to `_restore`', () => {
+    const manage = MANAGE.replace('onTap: _restore)', 'onTap: null)');
+    assert.notEqual(manage, MANAGE, 'the mutation was a NO-OP, so the case would test the passing input');
+    const r = run({ manage });
+    assert.equal(r.code, 1, r.out);
     assert.match(r.out, /NO RESTORE CONTROL/);
+  });
+
+  // 🔴 EVERY ADAPTER — decision 3 of the brief. §F used to grade the FIRST
+  // manage-plan file it found, which was always the brick's.
+  test('PASSES with the brick AND an app adapter wired, and grades both', () => {
+    const r = run({ extraFiles: { [APP_MANAGE]: MANAGE } });
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /in 2 manage-plan adapter\(s\)/);
+    assert.match(r.out, /apps\/subscriptiontracker\/lib\/features\/monetization\/manage_plan_screen\.dart/);
+  });
+
+  test('🔴 FAILS on the APP adapter while the brick adapter is green', () => {
+    const r = run({ extraFiles: { [APP_MANAGE]: MANAGE_SERVER_ONLY } });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /RESTORE ASKS ONLY THE SERVER — apps\/subscriptiontracker\/lib\/features\/monetization\/manage_plan_screen\.dart/);
+    assert.doesNotMatch(r.out, /RESTORE ASKS ONLY THE SERVER — tooling\/bricks/);
+  });
+
+  test('🔴 FAILS on the BRICK adapter while the app adapter is green', () => {
+    const r = run({ manage: MANAGE_SERVER_ONLY, extraFiles: { [APP_MANAGE]: MANAGE } });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /RESTORE ASKS ONLY THE SERVER — tooling\/bricks/);
+    assert.doesNotMatch(r.out, /RESTORE ASKS ONLY THE SERVER — apps\//);
+  });
+
+  test('🔴 both BASE adapters are red, and BOTH are named', () => {
+    const r = run({ manage: MANAGE_SERVER_ONLY, extraFiles: { [APP_MANAGE]: MANAGE_SERVER_ONLY } });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /RESTORE ASKS ONLY THE SERVER — apps\/subscriptiontracker/);
+    assert.match(r.out, /RESTORE ASKS ONLY THE SERVER — tooling\/bricks/);
+  });
+
+  test('COVERAGE LOST when no manage-plan adapter exists at all — an empty set is not a pass', () => {
+    const r = run({ manage: null });
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /COVERAGE LOST — no manage-plan adapter was found/);
+  });
+
+  test('COVERAGE LOST when only an app adapter exists — the brick adapter every stamp inherits went ungraded', () => {
+    const r = run({ manage: null, extraFiles: { [APP_MANAGE]: MANAGE } });
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /COVERAGE LOST — tooling\/bricks\/app\/__brick__\/apps\/\{\{app_id\}\}\/lib\/features\/monetization\/manage_plan_screen\.dart is missing/);
+  });
+
+  test('the chassis VIEW the brick adapter delegates to is read by §E and NOT graded as an adapter', () => {
+    // The view holds no rail call by construction (package-boundaries limb C),
+    // so grading it as an adapter would be red on every correct tree.
+    const view =
+      'class ManagePlanView extends StatelessWidget {\n  const ManagePlanView({super.key});\n' +
+      '  Widget build(BuildContext context) => const SizedBox.shrink();\n}\n';
+    const manage =
+      "import 'package:nikatru_chassis_screens/monetization/manage_plan_screen.dart';\n" +
+      MANAGE.replace('Widget build(BuildContext context) => ListTile(', 'Widget build(BuildContext context) => ManagePlanView(child: ListTile(');
+    assert.notEqual(manage.slice(manage.indexOf('\n') + 1), MANAGE, 'the mutation was a NO-OP, so the case would test the passing input');
+    const r = run({ manage, extraFiles: { 'packages/chassis_screens/lib/monetization/manage_plan_screen.dart': view } });
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /§E also read 1 chassis file\(s\) the template delegates to: packages\/chassis_screens\/lib\/monetization\/manage_plan_screen\.dart/);
+    assert.match(r.out, /in 1 manage-plan adapter\(s\)/);
   });
 
   // ── [13]T-11 · the renewal-notice tripwire ────────────────────────────────

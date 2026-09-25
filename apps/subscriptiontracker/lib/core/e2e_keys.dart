@@ -68,4 +68,10 @@ class E2EKeys {
   static const Key accountDeletionNoticeDetail = Key(
     'accountDeletionNoticeDetail',
   );
+
+  /// The `RepaintBoundary` at the app root that the store capture's desktop
+  /// shutter renders to a PNG (`integration_test/store_frame_shutter.dart`).
+  /// A desktop window's own pixels are whatever size the runner's desktop
+  /// allows; this layer is the size the suite imposed.
+  static const Key storeFrame = Key('e2e_store_frame');
 }

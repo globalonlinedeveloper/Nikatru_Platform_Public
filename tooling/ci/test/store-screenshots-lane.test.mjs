@@ -36,6 +36,7 @@ import {
   BAND_ROW_FRACTION,
   RED_LEAD,
 } from '../../store/capture-network-posture.mjs';
+import { storeViewDefineArgs } from '../../store/capture-suite-scan.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HERE, '..', '..', '..');
@@ -807,5 +808,58 @@ describe('a failed capture keeps its frames for diagnosis', () => {
     assert.match(steps, /if-no-files-found: ignore/);
     // The real set still fails closed when it is empty.
     assert.match(steps, /if-no-files-found: error/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-24 — O-DESKTOP-CAPTURE-HAS-NO-SHUTTER. A desktop drive is told the
+// geometry its layer shutter imposes and checks (STORE_CAPTURE_VIEW); a web or
+// simulator drive is told none, and the suite refuses one there. Behavioural by
+// import, then ONE structural check that the runner's native arm is where the
+// pair is spread: a helper nobody spreads is the present-and-unused failure the
+// launch-define describe above exists for.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('a desktop capture is told its geometry, and only a desktop capture', () => {
+  test('storeViewDefineArgs emits the two-token STORE_CAPTURE_VIEW pair for linux', () => {
+    assert.deepEqual(
+      storeViewDefineArgs({ flutterDevice: 'linux', cssWidth: 1280, cssHeight: 800, dpr: 2 }),
+      ['--dart-define', 'STORE_CAPTURE_VIEW=1280x800@2'],
+    );
+  });
+
+  test('storeViewDefineArgs emits the same pair for windows', () => {
+    assert.deepEqual(
+      storeViewDefineArgs({ flutterDevice: 'windows', cssWidth: 1280, cssHeight: 800, dpr: 2 }),
+      ['--dart-define', 'STORE_CAPTURE_VIEW=1280x800@2'],
+    );
+  });
+
+  test('storeViewDefineArgs emits the same pair for macos', () => {
+    assert.deepEqual(
+      storeViewDefineArgs({ flutterDevice: 'macos', cssWidth: 1280, cssHeight: 800, dpr: 2 }),
+      ['--dart-define', 'STORE_CAPTURE_VIEW=1280x800@2'],
+    );
+  });
+
+  test('storeViewDefineArgs emits nothing for an iOS simulator, which photographs through the plugin', () => {
+    assert.deepEqual(
+      storeViewDefineArgs({ flutterDevice: 'iPhone 17 Pro Max', cssWidth: 440, cssHeight: 956, dpr: 3 }),
+      [],
+    );
+  });
+
+  test('storeViewDefineArgs emits nothing for a web capture (flutterDevice null)', () => {
+    assert.deepEqual(storeViewDefineArgs({ flutterDevice: null, cssWidth: 360, cssHeight: 640, dpr: 3 }), []);
+  });
+
+  test('the runner spreads it into the NATIVE drive arm, and the web arm carries none', () => {
+    const code = stripSourceComments(readFileSync(RUNNER, 'utf8'), '.mjs');
+    const nativeAt = code.indexOf('const args = NATIVE');
+    assert.notEqual(nativeAt, -1, 'the runner no longer builds `const args = NATIVE ? … : …`');
+    const webAt = code.indexOf(': [', nativeAt);
+    assert.notEqual(webAt, -1, 'the web arm `: [` after `const args = NATIVE` is gone');
+    const webEnd = code.indexOf('];', webAt);
+    assert.match(code.slice(nativeAt, webAt), /\.\.\.storeViewDefineArgs\(cap\)/);
+    assert.doesNotMatch(code.slice(webAt, webEnd), /storeViewDefineArgs/);
   });
 });

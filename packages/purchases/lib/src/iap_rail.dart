@@ -57,7 +57,12 @@ import 'store_plan.dart';
 /// placeholder while the store is asked, and not as a fallback when it cannot
 /// be. Until the store answers, [offerings] is empty and [canStartCheckout] is
 /// false, which the paywall already explains in a sentence.
-class IapRail implements PurchaseRail, IdentifiesBuyer, LoadsOfferings {
+class IapRail
+    implements
+        PurchaseRail,
+        IdentifiesBuyer,
+        LoadsOfferings,
+        RestoresPurchases {
   IapRail({
     required IapBridge bridge,
     required IapBridgeConfig bridgeConfig,
@@ -362,34 +367,42 @@ class IapRail implements PurchaseRail, IdentifiesBuyer, LoadsOfferings {
 
   /// Ask the store to restore prior purchases — [pipeline 5]M-10.
   ///
-  /// Returns whether the store had anything to give back. It STILL does not
-  /// unlock: the caller converges on the server afterwards, the same as after a
-  /// purchase, because a restore is a claim about the past and the entitlement
-  /// row is the answer.
-  Future<IapPurchaseResult> restorePurchases() async {
-    if (!_railKind.isStoreBilling) {
-      return const IapPurchaseResult(
-        IapPurchaseOutcome.unavailable,
-        detail: 'This channel does not sell through a store billing rail.',
-      );
-    }
+  /// Answers whether the store could be asked ([RestoresPurchases]). It STILL
+  /// does not unlock: the caller re-reads the server afterwards, the same as
+  /// after a purchase, because a restore is a claim about the past and the
+  /// entitlement row is the answer. The store's own `detail` goes to the log
+  /// and never to a screen — it is untranslated engineering text.
+  @override
+  Future<RestoreOutcome> restorePurchases() async {
+    // A channel that does not sell through a store has no store to ask, so its
+    // restore is the server read alone.
+    if (!_railKind.isStoreBilling) return RestoreOutcome.serverOnly;
     if (!await _ensureConfigured()) {
-      return const IapPurchaseResult(
-        IapPurchaseOutcome.unavailable,
-        detail: 'The store billing SDK could not be configured on this device.',
-      );
+      debugPrint('[purchases] restore: the store billing SDK could not be '
+          'configured on this device.');
+      return RestoreOutcome.couldNotAsk;
     }
     // A restore under the wrong identity moves the store's purchases onto the
     // wrong account on the provider's side — the same [ADR 085] B rule as a
     // purchase.
     if (!await _serially(_syncIdentity)) {
-      return const IapPurchaseResult(
-        IapPurchaseOutcome.unavailable,
-        detail: 'The store billing SDK could not be switched to the signed-in '
-            'account.',
-      );
+      debugPrint('[purchases] restore: the store billing SDK could not be '
+          'switched to the signed-in account.');
+      return RestoreOutcome.couldNotAsk;
     }
-    return _bridge.restore();
+    final IapPurchaseResult r;
+    try {
+      r = await _bridge.restore();
+    } catch (e) {
+      // The seam says restore must not throw; a bridge that does anyway must
+      // not leave the Restore control spinning.
+      debugPrint('[purchases] restore: the store bridge threw: $e');
+      return RestoreOutcome.couldNotAsk;
+    }
+    if (r.isSubmitted) return RestoreOutcome.askedStore;
+    debugPrint('[purchases] restore: the store answered ${r.outcome.name}: '
+        '${r.detail}');
+    return RestoreOutcome.couldNotAsk;
   }
 
   @override

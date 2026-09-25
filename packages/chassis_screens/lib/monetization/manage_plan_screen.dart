@@ -119,12 +119,13 @@ class ManagePlanView extends StatelessWidget {
               title: Text(planStatusLabel),
             ),
             const Divider(),
-            // [pipeline 5]M-10. On this rail the entitlement is a server row keyed
-            // (user_id, app_id), so a fresh install on a new device is unlocked by
-            // signing in — there is nothing device-local to restore. The control
-            // exists because a user who has just paid wants a button, and because
-            // Apple guideline 3.1.1 makes one mandatory the day a native IAP rail
-            // ships (deferred, 39-CHASSIS §4 cut 5).
+            // [pipeline 5]M-10. `onRestore` is the adapter's `_restore`: it asks
+            // the rail first (the store, on a store build — Apple guideline 3.1.1
+            // makes this control mandatory there), then re-reads the server,
+            // whose entitlement row keyed (user_id, app_id) is the only unlock.
+            // On a rail with no store the server re-read is the whole restore.
+            // This view holds no rail call: package-boundaries limb C keeps
+            // `nikatru_purchases` out of it.
             ListTile(
               key: restoreTile,
               leading: const Icon(Icons.refresh),

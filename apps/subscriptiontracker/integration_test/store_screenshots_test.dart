@@ -86,6 +86,7 @@ import 'consent.dart';
 import 'store_board_census.dart';
 import 'store_capture_guard.dart';
 import 'store_frame_fold.dart';
+import 'store_frame_shutter.dart';
 
 /// Illustrative subscriptions created through the app's OWN "Add subscription"
 /// sheet, so nothing on screen is a capability the shipping app does not have.
@@ -427,6 +428,11 @@ void main() {
   /// asset by accident.
   const bool allowDemo = bool.fromEnvironment('STORE_CAPTURE_ALLOW_DEMO');
 
+  /// The desktop capture geometry, `<width>x<height>@<dpr>`, which the runner
+  /// builds from the register's `capture` block for a linux, windows or macOS
+  /// device and passes nowhere else. Empty on web, android and iOS.
+  const String storeView = String.fromEnvironment('STORE_CAPTURE_VIEW');
+
   // The app animates forever in places (the scan progress ring), so
   // pumpAndSettle() hangs. Advance a fixed wall-clock slice instead — this still
   // lets real network futures resolve on the live binding.
@@ -499,9 +505,13 @@ void main() {
   // Behind a one-line wrapper there is exactly one call site and the static
   // association collapses to nothing, which is a scan over nothing printing ok.
   //
-  // `binding.takeScreenshot` is passed as a TEAR-OFF, never called here: the
-  // same guard fails on any direct `takeScreenshot(` in this file, so a second
-  // unguarded shutter cannot be added by writing the obvious line.
+  // Every frame's `take:` is the ONE `shutter` bound at the top of the test
+  // (store_frame_shutter.dart), which photographs through the plugin on web,
+  // android and iOS and renders the root layer on the desktops. The same
+  // guard fails on any other `take:`, on a second `storeShutter(` binding, on
+  // a direct call of the shutter, and on any direct `takeScreenshot(` in this
+  // file, so a second unguarded shutter cannot be added by writing the
+  // obvious line.
 
   testWidgets('captures the Play phone screenshot set', (
     WidgetTester tester,
@@ -524,6 +534,43 @@ void main() {
     // that leaves that global changed, so the last line of this body puts it
     // back — the shape `launchApp` already uses at app_test.dart:638.
     final ErrorWidgetBuilder builderBeforeTest = ErrorWidget.builder;
+
+    // ── the shutter ──────────────────────────────────────────────────────────
+    // The desktops photograph the root layer at the geometry the runner sends,
+    // imposed here BEFORE app.main() so the first frame is already that size.
+    // A define on the wrong platform, or none on a desktop, is a harness that
+    // does not know what it is capturing: refused, not guessed around.
+    final StoreShutterKind kind = currentStoreShutterKind();
+    if (kind == StoreShutterKind.layer && storeView.isEmpty) {
+      fail(
+        'This is a desktop capture (the layer shutter) and no '
+        'STORE_CAPTURE_VIEW was passed, so there is no geometry to impose or '
+        'to check the frame against. '
+        'tooling/store/capture-play-screenshots.mjs passes it for every '
+        'linux, windows and macos capture; run the capture through it.',
+      );
+    }
+    if (kind == StoreShutterKind.plugin && storeView.isNotEmpty) {
+      fail(
+        'STORE_CAPTURE_VIEW=$storeView was passed to a capture that uses the '
+        'platform shutter (web, android or iOS), which photographs the '
+        'surface as it is and imposes nothing. The runner sends it only to '
+        'a desktop device; a caller that sends it here is not the runner.',
+      );
+    }
+    final StoreViewGeometry? geometry = kind == StoreShutterKind.layer
+        ? StoreViewGeometry.parse(storeView)
+        : null;
+    if (geometry != null) {
+      imposeStoreGeometry(tester, geometry);
+    }
+    final StoreShutter shutter = storeShutter(
+      tester: tester,
+      sink: BindingScreenshotSink(binding),
+      kind: kind,
+      geometry: geometry,
+    );
+
     // Installed BEFORE app.main(), so an error thrown by the very first build
     // is reported too — that is the half a handler installed after the first
     // pump would miss, and "the app failed to start" is exactly the failure
@@ -1433,11 +1480,7 @@ void main() {
     // public listing; see the header.
     await pumpFor(tester, const Duration(seconds: 2));
     expect(find.byType(HomeScreen), findsWidgets);
-    await captureFrame(
-      take: binding.takeScreenshot,
-      frame: '01-home',
-      forbidden: forbidden,
-    );
+    await captureFrame(take: shutter, frame: '01-home', forbidden: forbidden);
     markFrame('01-home');
     recordFold(tester, '01-home');
 
@@ -1450,7 +1493,7 @@ void main() {
     await pumpFor(tester, const Duration(seconds: 3));
     expect(find.byType(CalendarScreen), findsWidgets);
     await captureFrame(
-      take: binding.takeScreenshot,
+      take: shutter,
       frame: '02-calendar',
       forbidden: forbidden,
     );
@@ -1461,7 +1504,7 @@ void main() {
     await pumpFor(tester, const Duration(seconds: 3));
     expect(find.byType(InsightsScreen), findsWidgets);
     await captureFrame(
-      take: binding.takeScreenshot,
+      take: shutter,
       frame: '03-insights',
       forbidden: forbidden,
     );
@@ -1471,11 +1514,7 @@ void main() {
     await tester.tap(find.byIcon(Icons.account_balance_wallet_rounded));
     await pumpFor(tester, const Duration(seconds: 4));
     expect(find.byType(BudgetScreen), findsWidgets);
-    await captureFrame(
-      take: binding.takeScreenshot,
-      frame: '04-budget',
-      forbidden: forbidden,
-    );
+    await captureFrame(take: shutter, frame: '04-budget', forbidden: forbidden);
     markFrame('04-budget');
     recordFold(tester, '04-budget');
 
