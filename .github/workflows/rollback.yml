@@ -1,0 +1,106 @@
+name: Rollback
+
+# Everything this file does, and why each step is where it is, is in
+# docs/ci/rollback.md. Only `# why:` lines live here, and docs/ci/README.md
+# carries the rules every workflow has to obey.
+
+on:
+  # why: an ATTENDED re-promotion (row O-DEPLOY-IS-NOT-ONE-GATED-LANE, limb 4).
+  # No event starts it: a person names the unit and the ledger Deployment that was
+  # good, and dry_run defaults to true, so a dispatch that changes nothing is the
+  # one a stray click produces.
+  workflow_dispatch:
+    inputs:
+      unit:
+        description: 'Ledger environment: <app>-web, subscriptiontracker-api or platform. Never a database.'
+        required: true
+        type: string
+      deployment:
+        description: 'Id of the ledger Deployment whose Pages deployment or Worker version goes back live.'
+        required: true
+        type: string
+      dry_run:
+        description: 'Print the exact command and change nothing. Untick to re-promote.'
+        required: true
+        type: boolean
+        default: true
+
+concurrency:
+  # why: two rollbacks at once would race to be the ledger's newest record.
+  group: rollback
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  rollback:
+    name: Re-promote a recorded Pages deployment or Worker version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    # why: the production environment's protection rules hold this job before
+    # any step runs; its deployment-branch policy is an owner setting.
+    environment: production
+    permissions:
+      contents: read
+      # why: the ledger Deployment is read, and the re-promotion is recorded.
+      deployments: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      # why: the first step after the checkout it needs. A dispatch names its own
+      # ref, and only main re-promotes anything (limb 2's check).
+      - name: The dispatch ref is main
+        run: node tooling/ci/assert-deploy-ref.mjs --allow main
+      - uses: ./.github/actions/setup-node
+      # why: the wrangler island deploy-web.yml already installs, at its locked
+      # version; a Worker rollback runs its binary. Skipped on a dry run.
+      - name: Install the wrangler island
+        if: ${{ !inputs.dry_run }}
+        run: npm ci --ignore-scripts --prefix tooling/wrangler
+      # why: inputs reach the script through env:, never spliced into run:.
+      - name: Re-promote the recorded Pages deployment or Worker version
+        id: rollback
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          UNIT: ${{ inputs.unit }}
+          DEPLOYMENT: ${{ inputs.deployment }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        shell: bash
+        run: |
+          dry=()
+          if [ "$DRY_RUN" = true ]; then dry=(--dry-run); fi
+          node tooling/ops/rollback.mjs --unit "$UNIT" --deployment "$DEPLOYMENT" "${dry[@]}"
+      # why: the smoke the unit's deploy runs, joined to the re-promoted build:
+      # the web build number is the recorded run's number, the Worker build is
+      # the recorded SHA. rollback.mjs hands over both.
+      - name: Smoke — the live surface serves the re-promoted build
+        if: steps.rollback.outputs.dry_run == 'false'
+        env:
+          SMOKE_URL: ${{ steps.rollback.outputs.smoke_url }}
+          SMOKE_FIELD: ${{ steps.rollback.outputs.smoke_field }}
+          SMOKE_EXPECT: ${{ steps.rollback.outputs.smoke_expect }}
+          SMOKE_REQUIRE_OK: ${{ steps.rollback.outputs.smoke_require_ok }}
+        shell: bash
+        run: |
+          ok=()
+          if [ "$SMOKE_REQUIRE_OK" = true ]; then ok=(--require-ok); fi
+          node tooling/ops/post-deploy-smoke.mjs --url "$SMOKE_URL" --field "$SMOKE_FIELD" --expect "$SMOKE_EXPECT" "${ok[@]}"
+      # why: conditioned on the RE-PROMOTION, not on the smoke, like both deploy
+      # lanes' record steps. Recorded at the re-promoted SHA, never main's HEAD:
+      # plan-deploy.mjs reads the newest record as what is live. UNIT is the unit
+      # rollback.mjs RESOLVED against tooling/channel-register.json, not the input.
+      - name: Record the re-promotion
+        if: always() && steps.rollback.outcome == 'success' && steps.rollback.outputs.dry_run == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UNIT: ${{ steps.rollback.outputs.unit }}
+          DEPLOYMENT: ${{ inputs.deployment }}
+          ENVIRONMENT_URL: ${{ steps.rollback.outputs.environment_url }}
+          SHA: ${{ steps.rollback.outputs.sha }}
+          ID_FLAG: ${{ steps.rollback.outputs.id_flag }}
+          ID: ${{ steps.rollback.outputs.id }}
+        run: node tooling/ci/record-deployment.mjs "$UNIT" "$ENVIRONMENT_URL" --rollback-of "$DEPLOYMENT" --ref "$SHA" "$ID_FLAG" "$ID"

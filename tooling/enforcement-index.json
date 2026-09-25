@@ -739,6 +739,7 @@
       ".github/workflows/deploy-workers.yml#platform",
       ".github/workflows/deploy-workers.yml#subscriptiontracker-api",
       ".github/workflows/extensions.yml#store-publish",
+      ".github/workflows/rollback.yml#rollback",
       ".github/workflows/submit-play.yml#submit",
       ".github/workflows/submit-snap.yml#submit",
       ".github/workflows/submit-windows-store.yml#submit"
@@ -2793,6 +2794,7 @@
       ".github/workflows/deploy-workers.yml#subscriptiontracker-api",
       ".github/workflows/extensions.yml#release",
       ".github/workflows/extensions.yml#store-publish",
+      ".github/workflows/rollback.yml#rollback",
       ".github/workflows/submit-play.yml#submit",
       ".github/workflows/submit-snap.yml#submit",
       ".github/workflows/submit-windows-store.yml#submit"
@@ -3280,6 +3282,7 @@
       ".github/workflows/deploy-workers.yml#subscriptiontracker-api",
       ".github/workflows/extensions.yml#release",
       ".github/workflows/extensions.yml#store-publish",
+      ".github/workflows/rollback.yml#rollback",
       ".github/workflows/submit-play.yml#submit"
     ],
     "kind": "script",
@@ -3294,6 +3297,16 @@
     ],
     "kind": "script",
     "ref": "tooling/ops/redeploy-stranded.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/rollback.yml#rollback"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/rollback.mjs",
     "references": [],
     "state": "WIRED"
   },
