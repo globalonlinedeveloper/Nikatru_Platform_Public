@@ -8,7 +8,12 @@
 //                                        ├▶ …/short-description.txt
 //                                        ├▶ …/category.txt
 //                                        ├▶ …/privacy-policy-url.txt
-//                                        └▶ …/support-url.txt
+//                                        ├▶ …/support-url.txt
+//                                        └▶ …/terms-of-use-url.txt (declaring channels)
+//
+// Each channel gets only the rendered fields it DECLARES: the register's
+// `storeMetadataContract.requiredFiles` plus that channel's own
+// `perChannel.<id>.additionalFiles`. See `channelListingFiles` below.
 //
 // and, when the declaration carries a `shortName`, the FIVE OS-level icon-label
 // fields this script owns — CFBundleDisplayName (iOS + macOS), android:label,
@@ -104,6 +109,24 @@ export const APP_SCHEMA_PATH = join(HERE, 'schema', 'app.schema.json');
  *  this array is; tooling/ci/assert-store-vocabulary.mjs compares them BY VALUE
  *  and fails on a restated literal. */
 export const RENDERED_LISTING_FILES = renderedListingFiles();
+
+/** The rendered listing files ONE channel's tree carries: RENDERED_LISTING_FILES
+ *  filtered to the register's `requiredFiles` plus that channel's own
+ *  `perChannel.<id>.additionalFiles`, in vocabulary order.
+ *
+ *  ⏱ 2026-09-24 (O-APPLE-LISTING-HAS-NO-EULA). Until then the loop below wrote
+ *  EVERY rendered file into EVERY channel directory. That was harmless while all
+ *  five rendered fields were required everywhere. `terms-of-use-url.txt` is the
+ *  first rendered field only some channels carry (the two Apple rows), and the
+ *  unfiltered loop wrote it into all six trees. The set assert-store-metadata.mjs
+ *  requires of a tree is the set this renders into it. */
+export function channelListingFiles(contract, channelId) {
+  const declared = new Set([
+    ...(Array.isArray(contract?.requiredFiles) ? contract.requiredFiles : []),
+    ...(Array.isArray(contract?.perChannel?.[channelId]?.additionalFiles) ? contract.perChannel[channelId].additionalFiles : []),
+  ]);
+  return RENDERED_LISTING_FILES.filter((f) => declared.has(f));
+}
 
 /** The category a channel's category.txt carries. The app's own app.yaml
  *  `category`, unless the channel's store has its own form rules (contracts/store/
@@ -319,6 +342,11 @@ export function plan(root) {
     lost.push(`${REGISTER} declares zero \`kind: "store"\` rows with a \`storeMetadataDir\`. Every listing file below is written into one of those directories, so the listing half of this renderer would cover nothing.`);
     return { declarations, files, problems, lost };
   }
+  const listingContract = register.storeMetadataContract;
+  if (!Array.isArray(listingContract?.requiredFiles) || listingContract.requiredFiles.length === 0) {
+    lost.push(`${REGISTER} carries no \`storeMetadataContract.requiredFiles\`. With \`perChannel.<id>.additionalFiles\` it is the set of listing files a channel's tree carries, and this renderer writes a rendered field only into a channel that declares it. Without it no tree would get any required field.`);
+    return { declarations, files, problems, lost };
+  }
 
   const schema = JSON.parse(readFileSync(APP_SCHEMA_PATH, 'utf8'));
 
@@ -430,8 +458,20 @@ export function plan(root) {
         'category.txt': channelCategory(c.id, doc.category),
         'privacy-policy-url.txt': doc.legal.privacyPolicyUrl,
         'support-url.txt': doc.legal.supportUrl,
+        'terms-of-use-url.txt': doc.legal.termsUrl,
       };
+      // 🔴 EVERY rendered name needs a value, whichever channel is being
+      // written. A vocabulary row marked `rendered` with no entry above used to
+      // be written as the string `undefined`, into every tree, with exit 0.
       for (const f of RENDERED_LISTING_FILES) {
+        if (typeof values[f] !== 'string') {
+          throw new Error(
+            `render.mjs: contracts/store/vocabulary.js marks "${f}" rendered, and this renderer has no value for it (${APPS_DIR}/${id}/app.yaml, channel "${c.id}"). ` +
+              'Add its source to the `values` map in tooling/app-yaml/render.mjs, or mark the field `rendered: false`. Nothing was written.',
+          );
+        }
+      }
+      for (const f of channelListingFiles(listingContract, c.id)) {
         files.set(`${dir}/${f}`, `${values[f]}\n`);
         listingFiles += 1;
       }

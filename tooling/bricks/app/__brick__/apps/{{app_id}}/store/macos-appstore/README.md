@@ -16,14 +16,14 @@ complete AND that the brick still emits it, so an app stamped tomorrow gets the
 same listing without anyone opening a console.
 
 `title.txt` and `short-description.txt` are compared on every CI run against
-`sites/_shared/_data/apps.json` (`name` and `tagline`), and the two URLs
+`sites/_shared/_data/apps.json` (`name` and `tagline`), and the three URLs
 against `tooling/channel-register.json` → `storeMetadataContract.portfolioUrls`.
 **Editing a derived file here without editing its source fails the build.** That
 is the point: the console is a copy of this directory, never the other way round.
 
 ## Changing the copy
 
-- A DERIVED field (title, short description, the two URLs): change the source,
+- A DERIVED field (title, short description, the three URLs): change the source,
   not this file.
 - An EDITORIAL field (`long-description.txt`, and the per-channel files below):
   edit it here. It is stamped with a truthful description of what the chassis
@@ -39,6 +39,10 @@ is the point: the console is a copy of this directory, never the other way round
   actually type.
 - `promotional-text.txt` — the one field Apple lets you change WITHOUT a new
   review. Worth keeping short and worth keeping current.
+- `terms-of-use-url.txt` — DERIVED, not editorial: the Terms of Use link, from
+  `tooling/channel-register.json` → `storeMetadataContract.portfolioUrls.termsUrl`,
+  the same page `lib/core/app_config.dart` links to as `termsUrl`. The
+  `Terms of use:` line in `long-description.txt` must carry the same URL.
 
 ## ⚠️ UNVERIFIED
 

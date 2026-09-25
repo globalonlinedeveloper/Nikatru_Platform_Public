@@ -61,7 +61,8 @@
 //      MONEY_ENVIRONMENT exactly `live` or `sandbox`; a door-less config's
 //      environment declares none.
 //   1c a SANDBOX environment binds no top-level route or custom domain, runs no
-//      cron, and binds a PLATFORM_DB that is not the production database.
+//      cron, declares `workers_dev: true`, and binds a PLATFORM_DB that is not
+//      the production database.
 //   3b no destination secret is a key of any `env.<name>.vars`.
 //   3c every destination secret is declared in tooling/channel-register.json
 //      `ciSecretRegister.nonSigning`.
@@ -520,6 +521,19 @@ for (const c of configs) {
         `${where} ${Array.isArray(crons) ? `runs ${crons.length} cron(s)` : 'declares no `triggers.crons`, so it INHERITS the top level\'s'}. ` +
           'A sandbox environment must declare `triggers: { "crons": [] }`: the production crons include the destructive ' +
           'nightly retention sweep, and a second copy of it has no business running from a sandbox. [5]M-12',
+      );
+    }
+    // `workers_dev` is inherited too (above), and with `routes: []` the
+    // workers.dev host is the ONLY one a sandbox answers on — the
+    // `<name>-sandbox.<subdomain>.workers.dev` URL a smoke or a store capture
+    // addresses. Absent, the environment serves whatever the top level decides;
+    // false, it serves nothing. Either way the sandbox URL is a guess. (RZPA-7
+    // item 4, accepted for PR A as vacuous and added with the first environment.)
+    if (e?.workers_dev !== true) {
+      fail(
+        `${where} ${e?.workers_dev === undefined ? 'declares no `workers_dev`, so it INHERITS the top level\'s' : `sets workers_dev = ${JSON.stringify(e.workers_dev)}`}. ` +
+          'A sandbox environment must declare `"workers_dev": true`: with no route of its own, its workers.dev host is ' +
+          'the one address it has, and an inherited value is a deploy target nobody decided. [5]M-12',
       );
     }
     const topD1 = d1Of(cfg);

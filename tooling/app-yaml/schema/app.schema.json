@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://nikatru.com/tooling/app-yaml/schema/app.schema.json",
   "title": "NIKATRU app declaration",
-  "description": "apps/<id>/app.yaml — the ONE place an app's identity, hosts, platforms, storefront listings and legal URLs are written. catalog/apps.json and every apps/<id>/store/<channel>/{title,short-description,category,privacy-policy-url,support-url}.txt are RENDERED from it by tooling/app-yaml/render.mjs; none of them is authored. [ADR 067] decision 2.",
+  "description": "apps/<id>/app.yaml — the ONE place an app's identity, hosts, platforms, storefront listings and legal URLs are written. catalog/apps.json, every apps/<id>/store/<channel>/{title,short-description,category,privacy-policy-url,support-url}.txt and the Apple channels' terms-of-use-url.txt are RENDERED from it by tooling/app-yaml/render.mjs; none of them is authored. [ADR 067] decision 2.",
   "type": "object",
   "additionalProperties": false,
   "required": ["id", "name", "tagline", "category", "status", "hosts", "platforms", "listings", "legal", "ai"],
@@ -80,13 +80,14 @@
       "properties": {}
     },
     "legal": {
-      "description": "The two listing URLs every channel requires. They are compared to tooling/channel-register.json's storeMetadataContract.portfolioUrls by assert-store-metadata.mjs, so a fork here fails the build rather than pointing a store reviewer at somebody else's policy.",
+      "description": "The listing URLs. privacyPolicyUrl and supportUrl go into every channel's tree; termsUrl (added 2026-09-24, O-APPLE-LISTING-HAS-NO-EULA) goes only into the channels whose register row names terms-of-use-url.txt in its additionalFiles, today the two Apple rows. All three are compared to tooling/channel-register.json's storeMetadataContract.portfolioUrls by assert-store-metadata.mjs, so a fork here fails the build rather than pointing a store reviewer at somebody else's policy.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["privacyPolicyUrl", "supportUrl"],
+      "required": ["privacyPolicyUrl", "supportUrl", "termsUrl"],
       "properties": {
         "privacyPolicyUrl": { "type": "string", "format": "https-url" },
-        "supportUrl": { "type": "string", "format": "https-url" }
+        "supportUrl": { "type": "string", "format": "https-url" },
+        "termsUrl": { "type": "string", "format": "https-url" }
       }
     },
     "markets": {

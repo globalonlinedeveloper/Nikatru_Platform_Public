@@ -318,6 +318,37 @@ describe('purge.mjs refuses a miswired consent source', () => {
     assert.equal(r.status, 1, r.stderr);
     assert.match(r.stderr, /REFUSED: E2E_CONSENT_LEDGER is set but PLATFORM_D1_DATABASE_ID is not/);
   });
+
+  // PB1/PB2 — a store capture writes to the SANDBOX databases, so a capture's
+  // purge (the one run that sets E2E_CONSENT_LEDGER) aimed at a production id
+  // would delete by its ids where it wrote nothing. 9d1c5c63… is the top-level
+  // PLATFORM_DB id in services/platform/wrangler.jsonc.
+  test('🔴 PB1: E2E_CONSENT_LEDGER with a PRODUCTION platform database id is refused before any request', () => {
+    const r = spawnSync(process.execPath, [PURGE], {
+      encoding: 'utf8',
+      timeout: 60_000,
+      env: bare({
+        E2E_CONSENT_LEDGER: join(TMP, 'prod-ledger.json'),
+        PLATFORM_D1_DATABASE_ID: '9d1c5c63-97fe-4f82-bc7d-f3fd22e9b351',
+      }),
+    });
+    assert.equal(r.status, 1, r.stderr);
+    assert.match(r.stderr, /REFUSED: E2E_CONSENT_LEDGER is set and PLATFORM_D1_DATABASE_ID is 9d1c5c63-97fe-4f82-bc7d-f3fd22e9b351, a PRODUCTION database/);
+    assert.doesNotMatch(r.stderr, /Missing required env var/);
+  });
+
+  test('PB2: without a ledger the same production id is not refused by that check', () => {
+    // The e2e and drive-log purges clean the production rows they wrote; only
+    // the ledger run is a store capture. The credential check still stops this one.
+    const r = spawnSync(process.execPath, [PURGE], {
+      encoding: 'utf8',
+      timeout: 60_000,
+      env: bare({ PLATFORM_D1_DATABASE_ID: '9d1c5c63-97fe-4f82-bc7d-f3fd22e9b351' }),
+    });
+    assert.equal(r.status, 1, r.stderr);
+    assert.doesNotMatch(r.stderr, /a PRODUCTION database/);
+    assert.match(r.stderr, /Missing required env var: CLOUDFLARE_ACCOUNT_ID/);
+  });
 });
 
 // ── COVERAGE SELF-CHECK — the two ends of the contract this module sits between ─

@@ -16,6 +16,7 @@ import 'brand_assets.dart';
 ///     apps/<id>/app.yaml  ──▶  catalog/apps.json  ──▶  sites/_shared/_data/apps.json
 ///                         └─▶  apps/<id>/store/<channel>/{title,short-description,
 ///                              category,privacy-policy-url,support-url}.txt
+///                         └─▶  apps/<id>/store/{ios,macos}-appstore/terms-of-use-url.txt
 ///
 /// This hook writes the FIRST file in that chain and runs
 /// `tooling/app-yaml/render.mjs` for the rest. It used to write the catalogue
@@ -452,7 +453,7 @@ void _registerInWorkspace(HookContext context, {required String id}) {
 ///
 /// So the stamp now writes `apps/<id>/app.yaml` — the app's own declaration —
 /// and calls `tooling/app-yaml/render.mjs`, which writes the catalogue row and
-/// the five derived listing files in every store channel the app carries. The
+/// the derived listing files each store channel the app carries declares. The
 /// stamp is still TOTAL: when it returns, the catalogue lists the app.
 ///
 /// Returns whether the declaration was written; a `false` means the render step
@@ -470,10 +471,11 @@ bool _writeAppDeclaration(
   required List<String> markets,
   required String audience,
 }) {
-  // 🔴 THE TWO LISTING URLS ARE READ, NOT TYPED. They are declared once, in
+  // 🔴 THE LISTING URLS ARE READ, NOT TYPED. They are declared once, in
   // tooling/channel-register.json's `storeMetadataContract.portfolioUrls`, and
   // assert-store-metadata.mjs compares every app's rendered
-  // privacy-policy-url.txt and support-url.txt back to that block. A literal
+  // privacy-policy-url.txt, support-url.txt and (Apple only)
+  // terms-of-use-url.txt back to that block. A literal
   // here would be a second declaration and the first to drift — the same
   // reasoning that moved `keyKinds` out of assert-channel-register.mjs.
   final urls = _portfolioUrls(context);
@@ -485,7 +487,8 @@ bool _writeAppDeclaration(
     ..writeln('# THIS FILE IS THE SOURCE. catalog/apps.json, the six OS-level icon')
     ..writeln('# label fields, and every')
     ..writeln('# store/<channel>/{title,short-description,category,privacy-policy-url,')
-    ..writeln('# support-url}.txt are RENDERED from it. Change a value here, then run:')
+    ..writeln('# support-url}.txt, and terms-of-use-url.txt in the two Apple channels, are')
+    ..writeln('# RENDERED from it. Change a value here, then run:')
     ..writeln('#')
     ..writeln('#     node tooling/app-yaml/render.mjs')
     ..writeln('#')
@@ -522,6 +525,7 @@ bool _writeAppDeclaration(
     ..writeln('legal:')
     ..writeln('  privacyPolicyUrl: ${urls.privacyUrl}')
     ..writeln('  supportUrl: ${urls.supportUrl}')
+    ..writeln('  termsUrl: ${urls.termsUrl}')
     // O-PLAY-AI-CONTENT-REPORTING. Required of every app and FALSE at the stamp,
     // matching `AppConfig.generatesAiContent` in the template: a fresh app
     // generates nothing until somebody builds the feature that does, and then
@@ -573,16 +577,18 @@ void _renderFromDeclarations(HookContext context, {required String id}) {
   context.logger.success('apps.json: added "$id" (SHOW-1) — rendered from apps/$id/app.yaml, with its store listing copy.');
 }
 
-/// The two portfolio listing URLs from the channel register, or null with the reason
+/// The three portfolio listing URLs from the channel register, or null with the reason
 /// logged. Null makes the caller skip writing a declaration at all rather than
 /// write one carrying guessed URLs: an unanswered question caught at the gate
-/// beats a wrong answer shipped to a store reviewer.
-({String privacyUrl, String supportUrl})? _portfolioUrls(HookContext context) {
+/// beats a wrong answer shipped to a store reviewer. `termsUrl` joined the other
+/// two on 2026-09-24 (O-APPLE-LISTING-HAS-NO-EULA): app.schema.json requires
+/// `legal.termsUrl`, so a declaration written without it would fail the gate.
+({String privacyUrl, String supportUrl, String termsUrl})? _portfolioUrls(HookContext context) {
   const register = 'tooling/channel-register.json';
   final file = File(register);
   if (!file.existsSync()) {
     context.logger.err(
-      'app.yaml: $register is missing, so the two portfolio listing URLs cannot be read and no '
+      'app.yaml: $register is missing, so the portfolio listing URLs cannot be read and no '
       'declaration was written. They are declared there once and compared back to it by '
       'tooling/ci/assert-store-metadata.mjs; typing them here would be the second declaration.',
     );
@@ -599,14 +605,20 @@ void _renderFromDeclarations(HookContext context, {required String id}) {
   final urls = contract is Map ? contract['portfolioUrls'] : null;
   final privacy = urls is Map ? urls['privacyUrl'] : null;
   final support = urls is Map ? urls['supportUrl'] : null;
-  if (privacy is! String || privacy.isEmpty || support is! String || support.isEmpty) {
+  final terms = urls is Map ? urls['termsUrl'] : null;
+  if (privacy is! String ||
+      privacy.isEmpty ||
+      support is! String ||
+      support.isEmpty ||
+      terms is! String ||
+      terms.isEmpty) {
     context.logger.err(
-      'app.yaml: $register declares no storeMetadataContract.portfolioUrls.{privacyUrl,supportUrl}; '
+      'app.yaml: $register declares no storeMetadataContract.portfolioUrls.{privacyUrl,supportUrl,termsUrl}; '
       'no declaration was written.',
     );
     return null;
   }
-  return (privacyUrl: privacy, supportUrl: support);
+  return (privacyUrl: privacy, supportUrl: support, termsUrl: terms);
 }
 
 /// The header line, kept in one place so the notice and the app it names cannot

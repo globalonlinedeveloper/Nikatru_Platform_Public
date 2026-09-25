@@ -573,7 +573,7 @@
         "services/platform/src/routes/events.ts",
         "services/platform/src/scheduled.ts",
         "services/subscriptiontracker-api/src/routes/entitlements.ts",
-        "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/src/routes/account.ts"
+        "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/src/index.ts"
       ]
     },
     {

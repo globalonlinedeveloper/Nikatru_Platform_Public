@@ -10,7 +10,8 @@
 # It renders catalog/apps.json (the published catalogue, from which the live
 # site's feed is generated in turn) and, in every store channel directory this
 # app carries, title.txt · short-description.txt · category.txt ·
-# privacy-policy-url.txt · support-url.txt.
+# privacy-policy-url.txt · support-url.txt, plus terms-of-use-url.txt in the
+# two Apple channels, whose register rows declare it.
 #
 # It does NOT render, and must never render:
 #   · the four SWORN declarations — android-play/data-safety.json,
@@ -167,6 +168,7 @@ listings:
 legal:
   privacyPolicyUrl: https://nikatru.com/privacy
   supportUrl: https://nikatru.com/contact
+  termsUrl: https://nikatru.com/terms
 
 # O-PLAY-AI-CONTENT-REPORTING. Required of every app, false included. This app
 # tracks subscriptions and generates nothing with AI; assert-app-yaml limb 7

@@ -39,6 +39,7 @@ import { fileURLToPath } from 'node:url';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const GUARD = join(CI_DIR, 'assert-adapter-capabilities.mjs');
+const REPO = resolve(CI_DIR, '..', '..');
 
 let TMP;
 before(() => { TMP = mkdtempSync(join(tmpdir(), 'nikatru-caps-')); });
@@ -60,12 +61,12 @@ const ADAPTERS = [
 
 /** A capability source covering all six platforms, taking the platform as a param.
  *
- *  `schedules` adds a `canSchedule` field, which is the DERIVED DOMAIN of the
- *  [pipeline 13]T-7 schedule-contract limb: a descriptor that promises a
- *  platform can schedule owes the register a contract naming the OS arguments
- *  that make the promise true. Only the notifications fixture sets it, exactly
- *  as only one real adapter does. */
-const capsSrc = (symbol, { dropLinux = false, hostOnly = false, schedules = false } = {}) => `
+ *  It declares no `canSchedule` field. That field is the DERIVED DOMAIN of the
+ *  [pipeline 13]T-7 schedule-contract limb and of limb 8's platformMatrix
+ *  parity, so only the notifications fixture declares it — through
+ *  `notifCapsSrc` below, in the real descriptor's shape — exactly as only one
+ *  real adapter does. */
+const capsSrc = (symbol, { dropLinux = false, hostOnly = false } = {}) => `
 import 'package:flutter/foundation.dart' show TargetPlatform, immutable;
 
 /// Doc mentioning desktop Windows/Linux and web in PROSE — deliberately, because
@@ -75,7 +76,7 @@ class ${symbol} {
   const ${symbol}({required this.works, required this.note});
   final bool works;
   final String note;
-${schedules ? '  bool get canSchedule => works;\n' : ''}
+
   static ${symbol} ${hostOnly ? 'current' : 'forPlatform'}(
     TargetPlatform platform, {
     required bool isWeb,
@@ -90,6 +91,69 @@ ${schedules ? '  bool get canSchedule => works;\n' : ''}
   }
 }
 `;
+
+/** The notifications descriptor, in the REAL file's shape: an `if (isWeb)`
+ *  branch, then a `switch` STATEMENT whose three stacked labels (android, iOS,
+ *  macOS) share one return. Limb 8 extracts both booleans per platform from
+ *  this and compares them to the register's `platformMatrix`.
+ *
+ *  `windows` replaces the windows return's arguments (R7). `switchExpression`
+ *  rewrites the switch as a Dart 3 switch EXPRESSION, the refactor that leaves
+ *  the extractor with no `case` label to read (R8). */
+const notifCapsSrc = (symbol, { windows = 'canNotify: false, canSchedule: false', switchExpression = false } = {}) => `
+import 'package:flutter/foundation.dart' show TargetPlatform, immutable;
+
+/// Doc naming Windows, Linux and web in PROSE, as the real one does.
+@immutable
+class ${symbol} {
+  const ${symbol}({required this.canNotify, required this.canSchedule});
+  final bool canNotify;
+  final bool canSchedule;
+
+  static ${symbol} forPlatform(
+    TargetPlatform platform, {
+    required bool isWeb,
+  }) {
+    if (isWeb) {
+      return const ${symbol}(canNotify: false, canSchedule: false);
+    }
+${switchExpression ? `    return switch (platform) {
+      TargetPlatform.android || TargetPlatform.iOS || TargetPlatform.macOS =>
+        const ${symbol}(canNotify: true, canSchedule: true),
+      TargetPlatform.linux => const ${symbol}(canNotify: true, canSchedule: false),
+      TargetPlatform.windows => const ${symbol}(${windows}),
+      TargetPlatform.fuchsia => const ${symbol}(canNotify: false, canSchedule: false),
+    };` : `    switch (platform) {
+      case TargetPlatform.android:
+      case TargetPlatform.iOS:
+      case TargetPlatform.macOS:
+        // Full support: immediate display + repeating daily schedule.
+        return const ${symbol}(
+          canNotify: true,
+          canSchedule: true,
+        );
+      case TargetPlatform.linux:
+        return const ${symbol}(canNotify: true, canSchedule: false);
+      case TargetPlatform.windows:
+        return const ${symbol}(${windows});
+      case TargetPlatform.fuchsia:
+        return const ${symbol}(canNotify: false, canSchedule: false);
+    }`}
+  }
+}
+`;
+
+/** What the notifications fixture's `forPlatform` returns, as the register
+ *  declares it. Fresh per call, so a case can mutate its copy. */
+const platformMatrix = () => ({
+  android: { canNotify: true, canSchedule: true },
+  ios: { canNotify: true, canSchedule: true },
+  macos: { canNotify: true, canSchedule: true },
+  linux: { canNotify: true, canSchedule: false },
+  windows: { canNotify: false, canSchedule: false },
+  fuchsia: { canNotify: false, canSchedule: false },
+  web: { canNotify: false, canSchedule: false },
+});
 
 const testSrc = (symbol, { callsForPlatform = true } = {}) => `
 import 'package:flutter_test/flutter_test.dart';
@@ -175,7 +239,7 @@ function tree({ mutateRegister = (r) => r, capsOverride = {}, testOverride = {},
         test: `packages/${a}/test/caps_test.dart`,
         pinnedTo: 'some_sdk 1.x',
         degradesOn: 'web differs',
-        ...(a === 'notifications' ? { scheduleContract: JSON.parse(JSON.stringify(SCHED_CONTRACT)) } : {}),
+        ...(a === 'notifications' ? { platformMatrix: platformMatrix(), scheduleContract: JSON.parse(JSON.stringify(SCHED_CONTRACT)) } : {}),
       },
     };
   });
@@ -188,7 +252,7 @@ function tree({ mutateRegister = (r) => r, capsOverride = {}, testOverride = {},
     // Each adapter needs a third-party dep or the derivation will not see it.
     files[`packages/${a}/pubspec.yaml`] = `name: nikatru_${a}\ndependencies:\n  flutter:\n    sdk: flutter\n  some_sdk: ^1.0.0\n`;
     files[`packages/${a}/lib/src/caps.dart`] =
-      capsOverride[a] ?? capsSrc(symbol, { schedules: a === 'notifications' });
+      capsOverride[a] ?? (a === 'notifications' ? notifCapsSrc(symbol) : capsSrc(symbol));
     files[`packages/${a}/test/caps_test.dart`] = testOverride[a] ?? testSrc(symbol);
   }
   files['packages/notifications/lib/src/impl.dart'] = schedImpl;
@@ -462,7 +526,7 @@ describe('assert-adapter-capabilities', () => {
   // indistinguishable from every assertion holding.
   test('FAILS with COVERAGE LOST when no descriptor declares canSchedule at all', () => {
     const { code, out } = run(tree({
-      capsOverride: { notifications: capsSrc('NotificationsCapabilities', { schedules: false }) },
+      capsOverride: { notifications: capsSrc('NotificationsCapabilities') },
       mutateRegister: (r) => {
         delete r.capabilities.find((c) => c.id === 'notifications').capabilityMatrix.scheduleContract;
         return r;
@@ -470,6 +534,84 @@ describe('assert-adapter-capabilities', () => {
     }));
     assert.equal(code, 2, 'COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)');
     assert.match(out, /COVERAGE LOST — no capability descriptor declares a `canSchedule` field/);
+  });
+
+  // ── limb 8 · the register's platformMatrix is what forPlatform returns ─────
+  //
+  // O-RENEWAL-REMINDERS-OFF-ON-DESKTOP. assert-store-metadata.mjs refuses a
+  // reminder claim in a listing whose channel cannot schedule, and it reads
+  // that answer from the register's `platformMatrix`. These cases hold the
+  // register to the Dart. Proven on the REAL tree first (2026-09-25): the
+  // register's linux.canSchedule flipped to true → 1; platformMatrix deleted →
+  // 1; the Dart's windows return flipped to true/true → 1 (both booleans
+  // named, at :89); every `case TargetPlatform.` label renamed → 2.
+  test('platformMatrix parity is GREEN on the real tree', () => {
+    const { code, out } = run(REPO);
+    assert.equal(code, 0, out);
+    assert.match(
+      out,
+      /ok {3}platformMatrix parity — NotificationCapabilities: 7 platform\(s\) agree with packages\/notifications\/lib\/src\/notification_capabilities\.dart/,
+    );
+    assert.match(out, /shows, cannot schedule: linux/);
+  });
+
+  test('R6 · FAILS when the register says linux can schedule and the Dart says it cannot', () => {
+    const { code, out } = run(tree({
+      mutateRegister: (r) => {
+        r.capabilities.find((c) => c.id === 'notifications').capabilityMatrix.platformMatrix.linux.canSchedule = true;
+        return r;
+      },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /platformMatrix PARITY — linux\.canSchedule: tooling\/capability-register\.json `packages\/notifications` says true, packages\/notifications\/lib\/src\/caps\.dart:\d+ returns false/);
+  });
+
+  test('R7 · FAILS when the Dart flips windows to show and schedule and the register does not follow', () => {
+    const { code, out } = run(tree({
+      capsOverride: { notifications: notifCapsSrc('NotificationsCapabilities', { windows: 'canNotify: true, canSchedule: true' }) },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /platformMatrix PARITY — windows\.canNotify: .* says false, packages\/notifications\/lib\/src\/caps\.dart:\d+ returns true/);
+    assert.match(out, /platformMatrix PARITY — windows\.canSchedule: .* says false, packages\/notifications\/lib\/src\/caps\.dart:\d+ returns true/);
+  });
+
+  test('R8 · COVERAGE LOST when the switch is rewritten so that no case can be extracted', () => {
+    const { code, out } = run(tree({
+      capsOverride: { notifications: notifCapsSrc('NotificationsCapabilities', { switchExpression: true }) },
+    }));
+    assert.equal(code, 2, `an unread switch is not a pass and not a finding:\n${out}`);
+    assert.match(out, /COVERAGE LOST — `NotificationsCapabilities` owes a platformMatrix and its `forPlatform` in packages\/notifications\/lib\/src\/caps\.dart could not be read/);
+    assert.match(out, /ZERO `case TargetPlatform\.X:` labels were found/);
+  });
+
+  test('FAILS when a canSchedule descriptor declares no platformMatrix', () => {
+    const { code, out } = run(tree({
+      mutateRegister: (r) => {
+        delete r.capabilities.find((c) => c.id === 'notifications').capabilityMatrix.platformMatrix;
+        return r;
+      },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /`NotificationsCapabilities` declares a `canSchedule` row but its capabilityMatrix has no `platformMatrix`/);
+  });
+
+  // Three stacked labels share ONE return. The FIRST label is the one furthest
+  // from it, so it is the one an extractor that pairs each return with only
+  // the label just above it would drop — and android would then read as "no
+  // row" rather than as the mismatch asserted here.
+  test('every label in a stacked run takes the one return that ends it', () => {
+    const green = run(tree());
+    assert.equal(green.code, 0, green.out);
+    assert.match(green.out, /NotificationsCapabilities: 7 platform\(s\) agree .*shows and schedules: android, ios, macos/);
+    const { code, out } = run(tree({
+      mutateRegister: (r) => {
+        r.capabilities.find((c) => c.id === 'notifications').capabilityMatrix.platformMatrix.android.canSchedule = false;
+        return r;
+      },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /platformMatrix PARITY — android\.canSchedule: .* says false, packages\/notifications\/lib\/src\/caps\.dart:\d+ returns true/);
+    assert.doesNotMatch(out, /returns no row for it/);
   });
 
   // ── [pipeline 13]T-6 · the promo tripwire, whose domain is empty today ─────

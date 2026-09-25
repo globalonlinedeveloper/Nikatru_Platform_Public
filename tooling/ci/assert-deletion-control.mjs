@@ -101,6 +101,19 @@
 //   6. THE SERVER HOOK IS NOT NULLED. `requestServerDeletion: null` makes every
 //      limb above pass against a flow that can only ever refuse. That is not
 //      hypothetical: it is exactly what the brick shipped until [pipeline C-15].
+//   7. ⏱ 2026-09-24 · O-BRICK-ERASURE-DESTROYS-THE-IDENTITY · THE DELETION
+//      ENTERS AT THE PLATFORM. The client handed to
+//      `requestAccountDeletion(ref.read(X))` must be a provider built on
+//      `kPlatformBaseUrl` or `AppConfig.platformBaseUrl`, never on
+//      `apiBaseUrl`. The platform Worker empties platform_db, relays to each
+//      app's own Worker and deletes the identity LAST; an app Worker erases its
+//      own rows and nothing else. So a client that sends deletion to the app's
+//      own Worker deletes rows and leaves the login working — and until today
+//      the brick did exactly that, while its stamped route deleted the identity
+//      itself as a second deleter. `X` is resolved across the root's whole
+//      `lib/` (the live app defines it in `providers/auth.dart`), and a root
+//      with no such call, or an `X` defined nowhere, is a finding: a host this
+//      scan cannot name is not a host it has checked.
 //
 // B. THE CONFIRMATION'S BEHAVIOUR, ASSERTED WHERE IT ACTUALLY LIVES.
 //    [CONFIRMATION_PROPERTIES] below is ONE list, applied to ONE tree per root,
@@ -435,6 +448,56 @@ const showDialogArgs = (src) => {
   return out;
 };
 
+/** Every .dart file under `dir`, each comment-stripped, with its repo-relative
+ *  path — limb 7 has to say WHICH file defines the client, which the
+ *  concatenated [readDartTree] cannot. String literals are KEPT: the host is
+ *  spelled inside one (`'$kPlatformBaseUrl/v1'`). */
+const dartFilesUnder = (dir) => {
+  const out = [];
+  const walk = (d) => {
+    if (!existsSync(d)) return;
+    for (const e of listDir(d, { withFileTypes: true })) {
+      const p = join(d, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (e.name.endsWith('.dart')) {
+        out.push({
+          file: p.slice(ROOT.length + 1).replaceAll('\\', '/'),
+          code: stripSourceComments(readFileSync(p, 'utf8'), '.dart'),
+        });
+      }
+    }
+  };
+  walk(dir);
+  return out;
+};
+
+/** The balanced `( … )` that opens at `open` in `src`, quotes skipped — the
+ *  same scan as [showDialogArgs], for one call. */
+const balancedFrom = (src, open) => {
+  let depth = 0;
+  let quote = null;
+  for (let i = open; i < src.length; i++) {
+    const c = src[i];
+    if (quote !== null) {
+      if (c === '\\') i++;
+      else if (c === quote) quote = null;
+      continue;
+    }
+    if (c === "'" || c === '"') quote = c;
+    else if (c === '(') depth++;
+    else if (c === ')') {
+      depth--;
+      if (depth === 0) return src.slice(open, i + 1);
+    }
+  }
+  return src.slice(open);
+};
+
+/** Limb 7's two hosts. The platform is the erasure ENTRY POINT; `apiBaseUrl` is
+ *  the app's own Worker, which erases its own rows and nothing else. */
+const PLATFORM_HOST = /\bkPlatformBaseUrl\b|\bAppConfig\.platformBaseUrl\b/;
+const APP_WORKER_HOST = /\bapiBaseUrl\b/;
+
 /** Which of [CONFIRMATION_PROPERTIES] `src` does NOT satisfy. */
 const missingProperties = (src) =>
   CONFIRMATION_PROPERTIES.filter((p) =>
@@ -646,6 +709,52 @@ for (const root of roots) {
           `Delegating to \`${CHASSIS.file}\` discharges it — that widget is checked separately, and ` +
           'that is how [ADR 065] chassis step 4 is meant to land.',
       );
+    }
+  }
+
+  // 7 — the deletion ENTERS AT THE PLATFORM. See the header. Skipped only where
+  // limb 5 already fired: a nulled hook sends nothing, and one finding for one
+  // cause is the rule this guard keeps.
+  if (!/requestServerDeletion:\s*null/.test(src)) {
+    const files = dartFilesUnder(lib);
+    const calls = [];
+    for (const f of files) {
+      for (const m of f.code.matchAll(/\brequestAccountDeletion\(\s*ref\.read\(\s*([A-Za-z_]\w*)\s*\)/g)) {
+        calls.push({ name: m[1], at: f.file });
+      }
+    }
+    if (calls.length === 0) {
+      problems.push(
+        `${root}: no \`requestAccountDeletion(ref.read(<client>))\` call under ${root}/lib, so the host account ` +
+          'deletion is sent to cannot be named. It must enter at the shared platform Worker, which deletes the ' +
+          'identity LAST after every app Worker has erased its own rows; a host this scan cannot name is not one it ' +
+          'has checked.',
+      );
+    }
+    for (const { name, at } of calls) {
+      const def = new RegExp(`\\b${name}\\s*=\\s*Provider\\b[\\w.<>\\s]*\\(`);
+      const home = files.find((f) => def.test(f.code));
+      if (!home) {
+        problems.push(
+          `${root}: ${at} sends account deletion through \`${name}\`, and no \`${name} = Provider…(\` is defined ` +
+            `anywhere under ${root}/lib — the client deletion rides cannot be resolved to a host.`,
+        );
+        continue;
+      }
+      const m = def.exec(home.code);
+      const body = balancedFrom(home.code, m.index + m[0].length - 1);
+      if (APP_WORKER_HOST.test(body) || !PLATFORM_HOST.test(body)) {
+        problems.push(
+          `${root}: account deletion rides \`${name}\` (${home.file}), which is built on ` +
+            `${APP_WORKER_HOST.test(body) ? '`apiBaseUrl` — the app\'s OWN Worker' : 'no platform host'}. ` +
+            'Deletion must enter at the shared platform Worker (`kPlatformBaseUrl` / `AppConfig.platformBaseUrl`): ' +
+            'it empties platform_db, relays to each app Worker, and deletes the identity LAST. An app Worker erases ' +
+            'its own rows and nothing else, so a deletion sent there leaves the login working. ' +
+            '[O-BRICK-ERASURE-DESTROYS-THE-IDENTITY]',
+        );
+        continue;
+      }
+      notes.push(`⬜ ${root}: account deletion enters at the platform — \`${name}\`, defined in ${home.file}`);
     }
   }
 }

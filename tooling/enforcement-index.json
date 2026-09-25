@@ -879,6 +879,7 @@
       "ADR 087"
     ],
     "invokedBy": [
+      ".github/workflows/ci.yml#app-brick",
       ".github/workflows/ci.yml#guards-legal"
     ],
     "kind": "guard",
@@ -1428,6 +1429,7 @@
   {
     "claims": [
       "ADR 066",
+      "ADR 093",
       "M-11"
     ],
     "invokedBy": [
@@ -2728,6 +2730,16 @@
     "ref": "tooling/ci/plan-deploy.mjs",
     "references": [],
     "state": "WIRED"
+  },
+  {
+    "claims": [
+      "ADR 093"
+    ],
+    "invokedBy": [],
+    "kind": "guard",
+    "ref": "tooling/ci/price-figure.mjs",
+    "references": [],
+    "state": "LIBRARY"
   },
   {
     "claims": [

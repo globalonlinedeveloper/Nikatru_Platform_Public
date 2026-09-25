@@ -374,6 +374,24 @@ describe('assert-store-vocabulary — the ordered listing arrays', () => {
     assert.equal(code, 1, out);
     assert.match(out, /ORDER IS LOAD-BEARING/);
   });
+
+  // O-APPLE-LISTING-HAS-NO-EULA (2026-09-24): terms-of-use-url.txt is the third
+  // url-kind field, and the register's urlFiles must list it where the
+  // vocabulary declares it, after the two required URLs.
+  test('urlFiles must list terms-of-use-url.txt in vocabulary order', async () => {
+    const root = makeRoot('url-order', {
+      registerEdit: (r) => {
+        const u = r.storeMetadataContract.urlFiles;
+        assert.deepEqual(u, ['privacy-policy-url.txt', 'support-url.txt', 'terms-of-use-url.txt'], 'the green register lists terms last');
+        r.storeMetadataContract.urlFiles = ['terms-of-use-url.txt', 'privacy-policy-url.txt', 'support-url.txt'];
+      },
+    });
+    await materialiseTrees(root);
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /listingFields\(url\): the contract's `kind: url` fields are not tooling\/channel-register\.json's urlFiles, in order/);
+    assert.match(out, /contract: \["privacy-policy-url\.txt","support-url\.txt","terms-of-use-url\.txt"\]/);
+  });
 });
 
 describe('assert-store-vocabulary — the ids that are deliberately not vocabulary', () => {

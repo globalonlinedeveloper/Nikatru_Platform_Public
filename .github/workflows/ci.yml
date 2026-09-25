@@ -883,6 +883,9 @@ jobs:
           npm install --no-audit --no-fund
           npx tsc --noEmit
           npm test
+      # why: O-BRICK-ERASURE-DESTROYS-THE-IDENTITY. The stamped Worker is a fan-out leaf; limb 6 alone, because the full run fails limb 4 on a stamp not yet in APP_ERASURE_ENDPOINTS.
+      - name: The stamped Worker is not an identity deleter
+        run: node tooling/ci/assert-erasure-reach.mjs --stamped services/probeapi-api
       - name: The app spec is one validated input contract
         run: node tooling/ci/assert-input-contract.mjs
       - name: A stamped app claims only platforms it is built for

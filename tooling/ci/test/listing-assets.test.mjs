@@ -758,7 +758,7 @@ describe('capture-play-screenshots.mjs — the posture gate', () => {
   /** Every variable the live path keys off, explicitly absent. */
   const scrubbed = () => {
     const env = { ...process.env };
-    for (const k of ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'API_BASE_URL', 'E2E_EMAIL', 'E2E_PASSWORD']) delete env[k];
+    for (const k of ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'E2E_EMAIL', 'E2E_PASSWORD']) delete env[k];
     return env;
   };
 
@@ -785,7 +785,7 @@ describe('capture-play-screenshots.mjs — the posture gate', () => {
     // Past the posture gate on purpose — the point is that a missing suite is
     // caught instead of producing a clean run over zero screenshots.
     const env = scrubbed();
-    for (const k of ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'API_BASE_URL', 'E2E_EMAIL', 'E2E_PASSWORD']) env[k] = 'x';
+    for (const k of ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'E2E_EMAIL', 'E2E_PASSWORD']) env[k] = 'x';
     const r = capture(['--app', 'no-such-app'], env);
     assert.equal(r.code, 1);
     assert.match(r.out, /carries no integration_test\/store_screenshots_test\.dart/);

@@ -67,6 +67,7 @@ const FIELD = {
   'category.txt': 'Productivity\n',
   'privacy-policy-url.txt': 'https://nikatru.com/privacy.html\n',
   'support-url.txt': 'https://nikatru.com/contact.html\n',
+  'terms-of-use-url.txt': 'https://nikatru.com/terms\n',
   'screenshots/README.md': 'slot; dimensions UNVERIFIED\n',
   'search-terms.txt': 'a\nb\nc\n',
 };
@@ -128,18 +129,23 @@ const playRow = (over = {}) => ({
 
 const contract = () => ({
   requiredFiles: [...REQUIRED],
-  urlFiles: ['privacy-policy-url.txt', 'support-url.txt'],
+  urlFiles: ['privacy-policy-url.txt', 'support-url.txt', 'terms-of-use-url.txt'],
   derivedFields: {
     _why: 'generated from the spec, checked rather than asserted',
     'title.txt': { source: 'apps.json', field: 'name', brickVar: 'short_name' },
     'short-description.txt': { source: 'apps.json', field: 'tagline', brickVar: 'description' },
     'privacy-policy-url.txt': { source: 'portfolioUrls', field: 'privacyUrl' },
     'support-url.txt': { source: 'portfolioUrls', field: 'supportUrl' },
+    'terms-of-use-url.txt': { source: 'portfolioUrls', field: 'termsUrl', alsoStatedIn: 'long-description.txt' },
   },
+  // termsUrl since 2026-09-24 (O-APPLE-LISTING-HAS-NO-EULA), as in the real
+  // register. This fixture's windows-store row does not carry the file; the
+  // Apple fixture below does.
   portfolioUrls: {
     privacyUrl: 'https://nikatru.com/privacy.html',
     supportUrl: 'https://nikatru.com/contact.html',
-    agreesWithAppConfigConst: { privacyUrl: 'privacyUrl' },
+    termsUrl: 'https://nikatru.com/terms',
+    agreesWithAppConfigConst: { privacyUrl: 'privacyUrl', termsUrl: 'termsUrl' },
   },
   // BOTH layouts, ordered. apps/subscriptiontracker keeps its config under lib/core/config/
   // and the brick stamps lib/core/ — a single template reached only the first,
@@ -162,6 +168,47 @@ const contract = () => ({
   },
 });
 
+/** The linux-snap row. Linux SHOWS a notification and cannot SCHEDULE one,
+ *  which is what makes it the REMINDER CLAIMS case a canNotify key would miss. */
+const linuxRow = (over = {}) =>
+  storeRow({ id: 'linux-snap', name: 'Snap Store', platforms: ['linux'], artifactFormats: ['.snap'], storeMetadataDir: 'apps/{app}/store/linux-snap', ownerQueue: 'A-6', packageIdentity: undefined, ...over });
+
+/** tooling/capability-register.json, cut to what the REMINDER CLAIMS limb
+ *  reads: the notifications capability's platformMatrix, as the real register
+ *  declares it (assert-adapter-capabilities.mjs holds that to forPlatform). */
+const capabilityRegister = () => ({
+  capabilities: [
+    {
+      id: 'notifications',
+      owner: 'packages/notifications',
+      capabilityMatrix: {
+        platformMatrix: {
+          android: { canNotify: true, canSchedule: true },
+          ios: { canNotify: true, canSchedule: true },
+          macos: { canNotify: true, canSchedule: true },
+          linux: { canNotify: true, canSchedule: false },
+          windows: { canNotify: false, canSchedule: false },
+          fuchsia: { canNotify: false, canSchedule: false },
+          web: { canNotify: false, canSchedule: false },
+        },
+      },
+    },
+  ],
+});
+
+/** The first seven lines of the windows-store and linux-snap long-description
+ *  as they stood at f46a6aa6 — line 7 is the reminder claim the row removes. */
+const BASE_LEDE_WITH_CLAIM_AT_7 = [
+  'Nikatru Subscription Tracker keeps every subscription you pay for in one',
+  'list, so the renewal that would have surprised you next month is a thing you',
+  'already knew about.',
+  '',
+  'Add each service once with its price and billing cycle. The app works out what',
+  'you spend per month and per year, shows the next payment date for each one,',
+  'and reminds you before a free trial turns into a charge.',
+  '',
+].join('\n');
+
 const pubspec = (over = {}) => {
   const cfg = {
     display_name: 'Subly',
@@ -179,6 +226,7 @@ const appConfig = () =>
     'class AppConfig {',
     "  static const String privacyUrl = 'https://nikatru.com/privacy.html';",
     "  static const String contactUrl = 'https://nikatru.com/contact.html';",
+    "  static const String termsUrl = 'https://nikatru.com/terms';",
     '}',
     '',
   ].join('\n');
@@ -222,6 +270,7 @@ const POST_GEN_DART = [
 function tree({
   mutateRegister = null,
   omitRegister = false,
+  mutateCapabilities = null,
   fields = {},
   omitFiles = [],
   extraDirs = [],
@@ -233,6 +282,8 @@ function tree({
   playFields = {},
   omitPlayFiles = [],
   omitPlayTree = false,
+  withLinux = false,
+  linuxFields = {},
   brickFields = {},
   omitBrickFiles = [],
   omitBrickTree = false,
@@ -274,10 +325,16 @@ function tree({
     ],
   };
   if (withPlay) register.channels.push(playRow());
+  if (withLinux) register.channels.push(linuxRow());
   if (mutateRegister) mutateRegister(register);
+
+  // The REMINDER CLAIMS limb reads which platforms can schedule from here.
+  const capabilities = capabilityRegister();
+  if (mutateCapabilities) mutateCapabilities(capabilities);
 
   write('catalog/apps.json', JSON.stringify(apps, null, 2));
   if (!omitRegister) write('tooling/channel-register.json', JSON.stringify(register, null, 2));
+  write('tooling/capability-register.json', JSON.stringify(capabilities, null, 2));
 
   for (const app of apps) {
     write(`apps/${app.slug}/lib/core/config/app_config.dart`, appConfig());
@@ -295,6 +352,9 @@ function tree({
         if (omitPlayFiles.includes(rel)) continue;
         write(`apps/${app.slug}/store/android-play/${rel}`, playFields[rel] ?? FIELD[rel]);
       }
+    }
+    if (withLinux) {
+      for (const rel of REQUIRED) write(`apps/${app.slug}/store/linux-snap/${rel}`, linuxFields[rel] ?? FIELD[rel]);
     }
   }
 
@@ -705,6 +765,10 @@ describe('assert-store-metadata — the listing exists, is complete, and is deri
 // ─────────────────────────────────────────────────────────────────────────────
 const APPLE_SOURCE = 'developer.apple.com/help/app-store-connect/reference/app-information/ — fetched 2026-07-29';
 
+/** The Apple long description states the Terms of Use URL, as the register's
+ *  derivedFields["terms-of-use-url.txt"].alsoStatedIn requires (2026-09-24). */
+const APPLE_LONG_DESCRIPTION = 'A longer description.\nTerms of use: https://nikatru.com/terms\n';
+
 /** A minimal Apple-shaped fixture: one store row, maxChars, no packageIdentity. */
 function appleTree({ mutateRegister = null, fields = {} } = {}) {
   const root = join(TMP, `a${seq++}`);
@@ -736,22 +800,26 @@ function appleTree({ mutateRegister = null, fields = {} } = {}) {
     },
     storeMetadataContract: {
       requiredFiles: [...REQUIRED],
-      urlFiles: ['privacy-policy-url.txt', 'support-url.txt'],
+      urlFiles: ['privacy-policy-url.txt', 'support-url.txt', 'terms-of-use-url.txt'],
       derivedFields: {
         _why: 'generated from the spec',
         'short-description.txt': { source: 'apps.json', field: 'tagline', brickVar: 'description' },
         'privacy-policy-url.txt': { source: 'portfolioUrls', field: 'privacyUrl' },
         'support-url.txt': { source: 'portfolioUrls', field: 'supportUrl' },
+        'terms-of-use-url.txt': { source: 'portfolioUrls', field: 'termsUrl', alsoStatedIn: 'long-description.txt' },
       },
       portfolioUrls: {
         privacyUrl: 'https://nikatru.com/privacy.html',
         supportUrl: 'https://nikatru.com/contact.html',
-        agreesWithAppConfigConst: { privacyUrl: 'privacyUrl' },
+        termsUrl: 'https://nikatru.com/terms',
+        agreesWithAppConfigConst: { privacyUrl: 'privacyUrl', termsUrl: 'termsUrl' },
       },
       appConfigPaths: ['apps/{app}/lib/core/config/app_config.dart', 'apps/{app}/lib/core/app_config.dart'],
       perChannel: {
         'ios-appstore': {
-          additionalFiles: ['subtitle.txt', 'keywords.txt'],
+          // terms-of-use-url.txt: the Apple listings' Terms of Use URL, as in the
+          // real register since 2026-09-24 (O-APPLE-LISTING-HAS-NO-EULA).
+          additionalFiles: ['subtitle.txt', 'keywords.txt', 'terms-of-use-url.txt'],
           maxChars: {
             'title.txt': { max: 30, min: 2, source: APPLE_SOURCE },
             'subtitle.txt': { max: 30, source: APPLE_SOURCE },
@@ -779,11 +847,17 @@ function appleTree({ mutateRegister = null, fields = {} } = {}) {
   const apps = [{ slug: 'subscriptiontracker', name: 'Subly', tagline: 'Track every subscription in one place', platforms: ['web'] }];
   write('catalog/apps.json', JSON.stringify(apps, null, 2));
   write('tooling/channel-register.json', JSON.stringify(register, null, 2));
+  write('tooling/capability-register.json', JSON.stringify(capabilityRegister(), null, 2));
   write('apps/subscriptiontracker/lib/core/config/app_config.dart', appConfig());
   write('apps/subscriptiontracker/pubspec.yaml', 'name: subscriptiontracker\nversion: 1.0.0+1\n');
 
-  const body = { ...FIELD, 'subtitle.txt': 'Every subscription, one list\n', 'keywords.txt': 'subscription,tracker\n' };
-  for (const rel of [...REQUIRED, 'subtitle.txt', 'keywords.txt']) {
+  const body = {
+    ...FIELD,
+    'long-description.txt': APPLE_LONG_DESCRIPTION,
+    'subtitle.txt': 'Every subscription, one list\n',
+    'keywords.txt': 'subscription,tracker\n',
+  };
+  for (const rel of [...REQUIRED, 'subtitle.txt', 'keywords.txt', 'terms-of-use-url.txt']) {
     write(`apps/subscriptiontracker/store/ios-appstore/${rel}`, fields[rel] ?? body[rel]);
   }
   // The FACTORY half, so these limit cases exercise the limits rather than
@@ -793,11 +867,12 @@ function appleTree({ mutateRegister = null, fields = {} } = {}) {
   write('tooling/bricks/app/hooks/brand_assets.dart', BRAND_ASSETS_DART);
   write('tooling/bricks/app/hooks/post_gen.dart', POST_GEN_DART);
   write('tooling/bricks/app/__brick__/apps/{{app_id}}/lib/core/app_config.dart', appConfig());
+  const brick = { ...BRICK_FIELD, 'long-description.txt': APPLE_LONG_DESCRIPTION };
   for (const row of register.channels.filter((c) => c.kind === 'store' && typeof c.storeMetadataDir === 'string')) {
     const dir = `tooling/bricks/app/__brick__/${row.storeMetadataDir.replace('{app}', '{{app_id}}')}`;
     const extra = register.storeMetadataContract?.perChannel?.[row.id]?.additionalFiles ?? [];
     for (const rel of [...(register.storeMetadataContract?.requiredFiles ?? []), ...extra]) {
-      write(`${dir}/${rel}`, BRICK_FIELD[rel] ?? body[rel] ?? 'stamped\n');
+      write(`${dir}/${rel}`, brick[rel] ?? body[rel] ?? 'stamped\n');
     }
   }
   return root;
@@ -870,6 +945,100 @@ describe('assert-store-metadata — maxChars, the Apple limit kind', () => {
     assert.equal(code, 1, out);
     assertComplained(out);
     assert.match(out, /subtitle\.txt is missing/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// terms-of-use-url.txt — the Apple listings' Terms of Use URL
+// (O-APPLE-LISTING-HAS-NO-EULA, 2026-09-24).
+//
+// The guard gained no code for it: the file reaches every limb through the
+// register (ios-appstore `additionalFiles`, `urlFiles`, `derivedFields` from
+// `portfolioUrls.termsUrl`, and `agreesWithAppConfigConst.termsUrl`). These
+// cases prove each limb reaches it. R1 was also run on the REAL tree: moving
+// apps/subscriptiontracker/store/ios-appstore/terms-of-use-url.txt away exits 1
+// naming it. On the base commit the file did not exist and the guard exited 0
+// without a word about terms. The pre-change guard CODE exits 1 on this tree as
+// well, which is the point: the requirement is register data, not guard code.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-store-metadata — terms-of-use-url.txt on the Apple listings', () => {
+  test('R1: FAILS when ios-appstore carries no terms-of-use-url.txt, and names it', () => {
+    const root = appleTree();
+    rmSync(join(root, 'apps/subscriptiontracker/store/ios-appstore/terms-of-use-url.txt'), { force: true });
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /apps\/subscriptiontracker\/store\/ios-appstore\/terms-of-use-url\.txt is missing/);
+  });
+
+  test('R2: FAILS when the terms URL has forked from portfolioUrls.termsUrl', () => {
+    const { code, out } = run(appleTree({ fields: { 'terms-of-use-url.txt': 'https://nikatru.com/terms-old\n' } }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /terms-of-use-url\.txt has forked from its spec source/);
+    assert.match(out, /portfolioUrls:termsUrl says "https:\/\/nikatru\.com\/terms"/);
+  });
+
+  test('R3: FAILS when an app_config termsUrl disagrees with portfolioUrls.termsUrl', () => {
+    const root = appleTree();
+    writeFileSync(
+      join(root, 'apps/subscriptiontracker/lib/core/config/app_config.dart'),
+      [
+        'class AppConfig {',
+        "  static const String privacyUrl = 'https://nikatru.com/privacy.html';",
+        "  static const String termsUrl = 'https://nikatru.com/terms-of-service';",
+        '}',
+        '',
+      ].join('\n'),
+    );
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /compiles `termsUrl = "https:\/\/nikatru\.com\/terms-of-service"`/);
+    assert.match(out, /portfolioUrls\.termsUrl publishes "https:\/\/nikatru\.com\/terms"/);
+  });
+
+  test("FAILS when the brick's Apple terms-of-use-url.txt is not portfolioUrls.termsUrl", () => {
+    const root = appleTree();
+    writeFileSync(join(root, 'tooling/bricks/app/__brick__/apps/{{app_id}}/store/ios-appstore/terms-of-use-url.txt'), 'https://nikatru.com/eula\n');
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /ios-appstore\/terms-of-use-url\.txt reads "https:\/\/nikatru\.com\/eula"/);
+    assert.match(out, /portfolioUrls\.termsUrl says "https:\/\/nikatru\.com\/terms"/);
+  });
+
+  // ── alsoStatedIn: the long description must STATE the URL (R6) ────────────
+  // On the real tree, dropping the line from the ios-appstore long description
+  // exits 1 on this guard and 0 on the pre-change one.
+  test('R6: FAILS when the Apple long description drops its `Terms of use:` line', () => {
+    const { code, out } = run(appleTree({ fields: { 'long-description.txt': 'A longer description.\n' } }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /apps\/subscriptiontracker\/store\/ios-appstore\/long-description\.txt does not state "https:\/\/nikatru\.com\/terms"/);
+  });
+
+  test('R6: a LONGER url that merely contains the terms URL does not count', () => {
+    const { code, out } = run(appleTree({ fields: { 'long-description.txt': 'A longer description.\nTerms of use: https://nikatru.com/terms-old\n' } }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /ios-appstore\/long-description\.txt does not state "https:\/\/nikatru\.com\/terms"/);
+  });
+
+  // The token rule must not fire on CORRECT input: a URL that ends a sentence.
+  test('R6: PASSES when the URL ends a sentence with a full stop', () => {
+    const { code, out } = run(appleTree({ fields: { 'long-description.txt': 'A longer description.\nRead the terms at https://nikatru.com/terms.\n' } }));
+    assert.equal(code, 0, out);
+    assert.match(out, /2 derived value\(s\) found stated verbatim/);
+  });
+
+  test("R6: FAILS when the brick's Apple long description does not state the URL", () => {
+    const root = appleTree();
+    writeFileSync(join(root, 'tooling/bricks/app/__brick__/apps/{{app_id}}/store/ios-appstore/long-description.txt'), 'A longer description.\n');
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /__brick__\/apps\/\{\{app_id\}\}\/store\/ios-appstore\/long-description\.txt does not state "https:\/\/nikatru\.com\/terms"/);
   });
 });
 
@@ -1465,6 +1634,16 @@ describe("a store's own form rules — apps.gov.in", () => {
     assert.match(out, /short-description\.txt names a price \("\$4\.99"\)/);
   });
 
+  // RC6 (O-PRICE-GUARD-IS-DART-ONLY): the matcher this limb carried until
+  // 2026-09-24 read no `€`, so this listing passed. It reads the shared union in
+  // tooling/ci/price-figure.mjs now.
+  test('RC6 · FAILS a listing that names a euro price', () => {
+    const { code, out } = run(agiTree({ listing: { 'long-description.txt': 'Pro is €4.99 a month.\n' } }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /long-description\.txt names a price \("€4\.99"\)/);
+  });
+
   test('FAILS a listing that names the lifetime plan', () => {
     const { code, out } = run(agiTree({ listing: { 'long-description.txt': 'A lifetime plan is available.\n' } }));
     assert.equal(code, 1, out);
@@ -1740,5 +1919,100 @@ describe("a store's own form rules — apps.gov.in", () => {
     assert.equal(code, 1, out);
     assertComplained(out);
     assert.match(out, /__brick__\/.*form-answers\.json step1\.minimumPlatform says SDK 24 is "Nougat"/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REMINDER CLAIMS — O-RENEWAL-REMINDERS-OFF-ON-DESKTOP. A listing may promise a
+// reminder only on a channel whose every platform can schedule one, read from
+// tooling/capability-register.json's notifications platformMatrix.
+//
+// Proven on the REAL tree first (2026-09-25), each mutation restored after:
+// windows-store long-description :7 restored → 1 (BASE guard 0); the same line
+// in linux-snap → 1 (BASE 0); search term "renewal reminder" → 1 (BASE 0);
+// "Reminders" in the brick's windows-store template → 1 (BASE 0);
+// platformMatrix deleted → 2; linux.canSchedule flipped to true in the
+// register → 0 here, and assert-adapter-capabilities limb 8 → 1.
+// ─────────────────────────────────────────────────────────────────────────────
+const onlyFails = (out) => out.split('\n').filter((l) => l.startsWith('FAIL '));
+
+describe('assert-store-metadata — REMINDER CLAIMS follow canSchedule', () => {
+  test('R1 · FAILS when the windows-store long-description promises a reminder at :7', () => {
+    const { code, out } = run(tree({ fields: { 'long-description.txt': BASE_LEDE_WITH_CLAIM_AT_7 } }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /REMINDER CLAIM — apps\/subscriptiontracker\/store\/windows-store\/long-description\.txt:7 reads "and reminds you before a free trial turns into a charge\."/);
+    assert.match(out, /a listing may promise a reminder only on a channel whose every platform can schedule one/);
+    assert.equal(onlyFails(out).length, 1, out);
+  });
+
+  // The case that separates canSchedule from canNotify: linux SHOWS a
+  // notification, so a canNotify key passes this line.
+  test('R2 · FAILS the same line on linux-snap, which can notify but cannot schedule', () => {
+    const { code, out } = run(tree({ withLinux: true, linuxFields: { 'long-description.txt': BASE_LEDE_WITH_CLAIM_AT_7 } }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /REMINDER CLAIM — apps\/subscriptiontracker\/store\/linux-snap\/long-description\.txt:7 reads "and reminds you/);
+    assert.match(out, /Channel "linux-snap" runs on linux, where .* says canSchedule: false/);
+    assert.equal(onlyFails(out).length, 1, out);
+  });
+
+  test('R3 · FAILS a reminder in the Windows search terms', () => {
+    const { code, out } = run(tree({ fields: { 'search-terms.txt': 'subscription tracker\nrecurring payments\nrenewal reminder\n' } }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /REMINDER CLAIM — apps\/subscriptiontracker\/store\/windows-store\/search-terms\.txt:3 reads "renewal reminder"/);
+    assert.equal(onlyFails(out).length, 1, out);
+  });
+
+  // The brick is scanned too, so a stamped app cannot inherit the promise.
+  test('R4 · FAILS "Reminders" in the brick windows-store template', () => {
+    const { code, out } = run(tree({ brickFields: { 'windows-store/long-description.txt': 'WHAT YOU GET\n- Reminders before a renewal.\n' } }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /REMINDER CLAIM — tooling\/bricks\/app\/__brick__\/apps\/\{\{app_id\}\}\/store\/windows-store\/long-description\.txt:2 reads "- Reminders before a renewal\." \(matched "Remind"\)/);
+    assert.equal(onlyFails(out).length, 1, out);
+  });
+
+  test('R5 · COVERAGE LOST when the notifications platformMatrix is deleted', () => {
+    const { code, out } = run(tree({ mutateCapabilities: (c) => delete c.capabilities[0].capabilityMatrix.platformMatrix }));
+    assert.equal(code, 2, `no matrix is not a pass and not a finding:\n${out}`);
+    assert.match(out, /COVERAGE LOST — tooling\/capability-register\.json capability "notifications" capabilityMatrix\.platformMatrix is missing/);
+  });
+
+  test('COVERAGE LOST when a store row runs on a platform the matrix does not declare', () => {
+    const { code, out } = run(tree({ mutateCapabilities: (c) => delete c.capabilities[0].capabilityMatrix.platformMatrix.windows }));
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST — channel "windows-store" runs on platform "windows", and .* has no boolean "windows"\.canSchedule/);
+  });
+
+  // Every platform of an empty list "can schedule", so an empty list would let
+  // the row promise anything.
+  test('COVERAGE LOST when a store row declares no platforms', () => {
+    const { code, out } = run(tree({ mutateRegister: (r) => (r.channels.find((c) => c.id === 'windows-store').platforms = []) }));
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST — channel "windows-store" declares no `platforms`/);
+  });
+
+  // A channel that CAN schedule keeps its reminder copy: the limb grades the
+  // promise against the capability, it does not ban the word.
+  test('a deliverable row (android-play) keeps its reminder claim and PASSES', () => {
+    const { code, out } = run(tree({ withPlay: true, playFields: { 'long-description.txt': 'Reminders before a renewal or the end of a free trial.\n' } }));
+    assert.equal(code, 0, out);
+    assert.match(out, /ok {3}REMINDER CLAIMS — 2 store row\(s\), 1 not deliverable \(windows-store\), 2 tree\(s\), 14 file\(s\) scanned, 0 claims/);
+  });
+
+  // The backstop: trees that exist and yield no .txt mean the scan read nothing.
+  test('COVERAGE LOST when the not-deliverable trees hold no .txt at all', () => {
+    const { code, out } = run(tree({
+      mutateRegister: (r) => {
+        r.storeMetadataContract.requiredFiles = ['README.md', 'screenshots/README.md'];
+        r.storeMetadataContract.derivedFields = { _why: 'none in this fixture' };
+        r.storeMetadataContract.perChannel = {};
+      },
+      omitFiles: ['title.txt', 'short-description.txt', 'long-description.txt', 'category.txt', 'privacy-policy-url.txt', 'support-url.txt', 'search-terms.txt'],
+    }));
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST — 1 channel\(s\) cannot schedule a reminder \(windows-store\), and their 2 tree\(s\) yielded ZERO \.txt files/);
   });
 });

@@ -721,6 +721,18 @@ describe('assert-money-config — sandbox money cannot grant a production unlock
     assert.match(r.out, /env\.sandbox runs 1 cron\(s\)/);
   });
 
+  test('limb 1c: FAILS on a sandbox environment that omits workers_dev and so INHERITS the top level\'s', () => {
+    const r = run({ platformWrangler: platformWithEnv({ sandbox: { ...SANDBOX_ENV, workers_dev: undefined } }) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /env\.sandbox declares no `workers_dev`, so it INHERITS the top level's/);
+  });
+
+  test('limb 1c: FAILS on a sandbox environment that sets workers_dev false and so answers on no host', () => {
+    const r = run({ platformWrangler: platformWithEnv({ sandbox: { ...SANDBOX_ENV, workers_dev: false } }) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /env\.sandbox sets workers_dev = false/);
+  });
+
   test('limb 1c: FAILS on a sandbox environment bound to the PRODUCTION database', () => {
     const r = run({
       platformWrangler: platformWithEnv({

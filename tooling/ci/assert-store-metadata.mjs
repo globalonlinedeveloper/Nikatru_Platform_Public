@@ -42,6 +42,7 @@
 //   tree PRESENT but incomplete   -> FAIL  (this is the case that matters)
 //   tree present, field emptied   -> FAIL
 //   tree present, field forked from its spec source -> FAIL
+//   tree present, a derived value its `alsoStatedIn` file does not state -> FAIL
 //   a tree with no register row   -> FAIL  (a channel renamed out from under it)
 //   EVERY expected tree gone      -> COVERAGE LOST
 //
@@ -153,6 +154,7 @@ import { join, resolve, dirname, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
 import { STORE_FORM_RULES } from '../../contracts/store/vocabulary.js';
+import { PRICE, LIFETIME } from './price-figure.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER = 'tooling/channel-register.json';
@@ -414,6 +416,21 @@ function specValue(app, spec) {
   return { problem: `${REGISTER} storeMetadataContract.derivedFields declares source "${spec.source}", which this guard cannot resolve. A derivation nobody can evaluate is a field nobody checks.` };
 }
 
+/** ⏱ 2026-09-24 (O-APPLE-LISTING-HAS-NO-EULA). Whether `text` states `value` as
+ *  a whole token. A derivedFields entry that names `alsoStatedIn` must have its
+ *  value there verbatim, on every tree that carries the field: the register's
+ *  `_why` on terms-of-use-url.txt says why a reviewer reads it there.
+ *
+ *  A TOKEN, not a substring: `https://nikatru.com/terms-old` and
+ *  `https://nikatru.com/terms.html` both CONTAIN `https://nikatru.com/terms`.
+ *  The value may end a sentence, so one closing `.`, `,`, `;`, `:` or `)` is
+ *  allowed after it, and a `.` only when whitespace or the end follows. */
+function statesValue(text, value) {
+  const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(?:^|[\\s(])${escaped}(?=$|[\\s),;:]|\\.(?:\\s|$))`, 'm').test(text);
+}
+let statedChecked = 0;
+
 // ── per tree ─────────────────────────────────────────────────────────────────
 let treesChecked = 0;
 let filesChecked = 0;
@@ -604,6 +621,30 @@ for (const { row, app, dir } of expected) {
           );
         }
       }
+    }
+  }
+
+  // ── a derived value this tree must also STATE, in another of its files ────
+  const treeFiles = [...requiredFiles, ...extraFiles];
+  for (const rel of treeFiles) {
+    const spec = derived[rel];
+    if (!spec || typeof spec !== 'object' || typeof spec.alsoStatedIn !== 'string') continue;
+    const got = specValue(app, spec);
+    if (typeof got.value !== 'string') continue; // the problem or gap is reported above
+    const where = posix.join(dir, spec.alsoStatedIn);
+    const text = read(where);
+    if (text === null) {
+      // A file the tree must carry anyway is already reported missing above.
+      if (!treeFiles.includes(spec.alsoStatedIn)) {
+        problems.push(`${where} does not exist, and ${REGISTER} storeMetadataContract.derivedFields["${rel}"].alsoStatedIn names it as the file that must state ${JSON.stringify(got.value)}.`);
+      }
+      continue;
+    }
+    statedChecked++;
+    if (!statesValue(text, got.value)) {
+      problems.push(
+        `${where} does not state ${JSON.stringify(got.value)}. ${REGISTER} storeMetadataContract.derivedFields["${rel}"].alsoStatedIn requires it there, word for word, in every tree that carries ${rel}. The field file alone passes every other check here and is still not what a reviewer reads.`,
+      );
     }
   }
 }
@@ -798,6 +839,25 @@ for (const row of storeRows) {
       }
     }
   }
+
+  // The `alsoStatedIn` limb, on the template: a portfolio URL is a literal in
+  // the brick, so the template itself must state it, or every app the factory
+  // stamps fails the per-app limb above on its first run.
+  for (const rel of [...requiredFiles, ...extraFiles]) {
+    const spec = derived[rel];
+    if (!spec || typeof spec !== 'object' || typeof spec.alsoStatedIn !== 'string' || spec.source !== 'portfolioUrls') continue;
+    const want = portfolioUrls[spec.field];
+    if (typeof want !== 'string' || want.trim() === '') continue; // reported by specValue
+    const where = posix.join(dir, spec.alsoStatedIn);
+    const text = read(where);
+    if (text === null) continue; // a missing template is reported above
+    statedChecked++;
+    if (!statesValue(text, want.trim())) {
+      problems.push(
+        `${where} does not state ${JSON.stringify(want.trim())}. ${REGISTER} storeMetadataContract.derivedFields["${rel}"].alsoStatedIn requires it there, so every app the factory stamps would fail the per-app check on its "${row.id}" listing.`,
+      );
+    }
+  }
 }
 
 // ── the two PNGs the brick cannot template, and the wiring that writes them ──
@@ -902,10 +962,13 @@ const STEP3_COUNT = 11;
  *  checked by their own limbs above. A file absent from a tree is skipped, not
  *  demanded — `additionalFiles` and the contract decide which must exist. */
 const PRICE_FREE_LISTING_FILES = ['title.txt', 'short-description.txt', 'long-description.txt'];
-/** A money figure, in the notations the listings could plausibly use: `₹499`,
- *  `Rs. 499`, `Rs 1,499`, `INR 499`, `$4.99`, `USD 4.99`. NOT a bare number —
- *  "7 days", "3 apps" and a version are not prices. */
-const PRICE_FIGURE = /(?:₹|\bRs\.?\s*|\bINR\s+|\$|\bUSD\s+)\s?\d[\d,]*(?:\.\d{1,2})?/i;
+// A money figure is `PRICE` from ./price-figure.mjs, imported above: `₹499`,
+// `Rs. 499`, `Rs 1,499`, `INR 499`, `$4.99`, `USD 4.99`, and since 2026-09-24
+// `€4.99`, `£1,299` and a code after the figure. NOT a bare number — "7 days",
+// "3 apps" and a version are not prices. The regex that stood here read no `€`,
+// so `€4.99` in this listing passed; it is the union of this and the dart
+// matcher now, and assert-no-price-literals.mjs reads the same one
+// (O-PRICE-GUARD-IS-DART-ONLY).
 
 /** form-answers.json, on an app tree and on the brick alike. On the brick, a
  *  `from` naming a PNG the stamp generates (post_gen, see above) is not a file yet.
@@ -1038,9 +1101,13 @@ function checkFormAnswers(dir, row, rules, onBrick = false) {
   // [ADR 093] §2 "Lifetime": it "stays on the web checkout only, and — per
   // §11.2 — no app and no store listing mentions it", and [ADR 078] §11.2 (which
   // [ADR 093] §5 restates as still standing) keeps the web price out of both.
-  // The one guard that hunts price literals, tooling/ci/assert-no-price-literals.mjs,
-  // reads `.dart` files (SCAN_ROOTS + the non-test dart filter): the store's own
-  // text is outside it, and the store's text is where a price is READ by a buyer.
+  // ⏱ CORRECTED 2026-09-24 (O-PRICE-GUARD-IS-DART-ONLY): this said the one guard
+  // that hunts price literals, tooling/ci/assert-no-price-literals.mjs, reads
+  // `.dart` only. Its limb C now reads every listing text field on every store
+  // channel, this tree's three included, with the same PRICE and LIFETIME
+  // (./price-figure.mjs). This limb stays: it belongs to the apps-gov-in form,
+  // whose `description` answer is `{ from: 'long-description.txt' }`, and it
+  // counts toward the form rules this guard reports.
   // Deliberately NOT checked here: a nikatru.com URL. The shipped listing carries
   // the privacy policy and the contact page as URLs the portal asks for, so the
   // "website" half of §11.2 is a scope question for the owner, not a rule this
@@ -1049,13 +1116,13 @@ function checkFormAnswers(dir, row, rules, onBrick = false) {
     const body = read(posix.join(dir, name));
     if (body === null) continue;
     formRuleChecks++;
-    const figure = PRICE_FIGURE.exec(body);
+    const figure = PRICE.exec(body);
     if (figure) {
       problems.push(
         `${posix.join(dir, name)} names a price (${JSON.stringify(figure[0].trim())}). A store listing states no price: the buyer is charged by the rail, the rail's figure moves ([ADR 093] set today's), and a listing nobody re-reads is the copy that keeps the old one.`,
       );
     }
-    if (/\blifetime\b/i.test(body)) {
+    if (LIFETIME.test(body)) {
       problems.push(
         `${posix.join(dir, name)} names the lifetime plan. [ADR 093] §2: lifetime "stays on the web checkout only, and — per §11.2 — no app and no store listing mentions it".`,
       );
@@ -1299,6 +1366,146 @@ for (const row of storeRows) {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ── REMINDER CLAIMS: a listing promises a reminder only where one can fire ──
+// ─────────────────────────────────────────────────────────────────────────────
+// O-RENEWAL-REMINDERS-OFF-ON-DESKTOP. MEASURED at f46a6aa6: the windows-store
+// and linux-snap long-descriptions said "reminds you before a free trial turns
+// into a charge" and "Reminders before a renewal or the end of a free trial",
+// and the Windows search terms carried "renewal reminder" — on two channels
+// where the app cannot schedule one. NotificationCapabilities.forPlatform
+// returns canSchedule: false for both, and the app gates every reminder on
+// canSchedule (notification_service.dart `unavailability`). Every other limb in
+// this file was green over that copy, because none of them reads what a
+// listing PROMISES.
+//
+// The rule, quoted in every finding: a listing may promise a reminder only on
+// a channel whose every platform can schedule one.
+//
+// 🔴 KEYED ON canSchedule, NOT canNotify. Linux is canNotify: true,
+// canSchedule: false: it shows a notification the moment it is asked and
+// cannot fire one at the time a user was promised. A canNotify key passes the
+// linux-snap claim, so restoring that line is the red control that tells the
+// two keys apart.
+//
+// The answer comes from tooling/capability-register.json, capability
+// "notifications", `capabilityMatrix.platformMatrix` — not from the Dart.
+// assert-adapter-capabilities.mjs limb 8 holds that table to forPlatform row
+// for row, so the day the Dart gains Windows scheduling the parity limb is red
+// until the register agrees, and only then does this limb let the copy back.
+//
+// DOMAIN: every store row this guard grades (`storeRows`) with a platform that
+// is not canSchedule: true, × each tree that row has — every app's
+// apps/<app>/store/<row> and the brick's template tree — × every `*.txt` in
+// those trees at any depth. Files are listed from disk rather than from the
+// contract, so a listing field added tomorrow is scanned the day it lands.
+//
+// ⚠️ STATED LIMIT: this is a word match, /\bremind|\bnotif|renewal alert/i. It
+// reads the promise, not a paraphrase of it: "the remembering" made the same
+// promise, does not match, and was reworded by hand in the same change.
+const CAPABILITY_REGISTER = 'tooling/capability-register.json';
+const REMINDER_CAPABILITY = 'notifications';
+const REMINDER_CLAIM = /\bremind|\bnotif|renewal alert/i;
+const REMINDER_RULE = 'a listing may promise a reminder only on a channel whose every platform can schedule one';
+
+/** Every `*.txt` under the repo-relative `dir`, at any depth, sorted. */
+function txtFilesUnder(dir) {
+  const out = [];
+  for (const e of listDir(abs(dir), { withFileTypes: true })) {
+    const rel = posix.join(dir, e.name);
+    if (e.isDirectory()) out.push(...txtFilesUnder(rel));
+    else if (e.isFile() && e.name.endsWith('.txt')) out.push(rel);
+  }
+  return out.sort();
+}
+
+function reminderClaims() {
+  const where = `${CAPABILITY_REGISTER} capability "${REMINDER_CAPABILITY}" capabilityMatrix.platformMatrix`;
+  const raw = read(CAPABILITY_REGISTER);
+  if (raw === null) {
+    coverageLost([
+      `${CAPABILITY_REGISTER} does not exist.`,
+      'The REMINDER CLAIMS limb reads which platforms can schedule a notification from it. Without it no',
+      'channel can be graded, and every listing would be free to promise reminders it cannot send.',
+    ]);
+  }
+  let capReg;
+  try {
+    capReg = JSON.parse(raw);
+  } catch (e) {
+    coverageLost([`${CAPABILITY_REGISTER} is not valid JSON — ${e.message}`, 'The REMINDER CLAIMS limb cannot read platformMatrix.']);
+  }
+  const cap = (Array.isArray(capReg?.capabilities) ? capReg.capabilities : []).find((c) => c && c.id === REMINDER_CAPABILITY);
+  const matrix = cap?.capabilityMatrix?.platformMatrix;
+  if (matrix === null || typeof matrix !== 'object' || Array.isArray(matrix)) {
+    coverageLost([
+      `${where} is missing (${cap ? 'the capability has no platformMatrix' : 'no capability has that id'}).`,
+      'It is the only declaration of which platforms can schedule a reminder. Without it the REMINDER',
+      'CLAIMS limb has no answer for any channel, and would pass every claim by grading none.',
+    ]);
+  }
+
+  const notDeliverable = [];
+  for (const row of storeRows) {
+    const platforms = Array.isArray(row.platforms) ? row.platforms : [];
+    if (platforms.length === 0) {
+      coverageLost([
+        `channel "${row.id}" declares no \`platforms\`, so the REMINDER CLAIMS limb cannot tell whether it can schedule.`,
+        'Every platform of an EMPTY list trivially "can schedule", which would let that channel promise anything.',
+      ]);
+    }
+    for (const p of platforms) {
+      if (matrix[p] === null || typeof matrix[p] !== 'object' || typeof matrix[p].canSchedule !== 'boolean') {
+        coverageLost([
+          `channel "${row.id}" runs on platform "${p}", and ${where} has no boolean "${p}".canSchedule.`,
+          'The REMINDER CLAIMS limb cannot decide whether this channel may promise a reminder. Add the',
+          `platform to platformMatrix with what forPlatform returns for it (assert-adapter-capabilities.mjs holds the two equal).`,
+        ]);
+      }
+    }
+    if (!platforms.every((p) => matrix[p].canSchedule === true)) notDeliverable.push(row);
+  }
+
+  let trees = 0;
+  let files = 0;
+  let claims = 0;
+  for (const row of notDeliverable) {
+    const template = row.storeMetadataDir;
+    if (typeof template !== 'string' || !template.includes('{app}')) continue; // already a problem above
+    const cannot = row.platforms.filter((p) => matrix[p].canSchedule !== true).join(', ');
+    const dirs = [
+      ...apps.filter((a) => typeof a.slug === 'string' && a.slug !== '').map((a) => template.replace('{app}', a.slug)),
+      brickPath(template),
+    ].filter(isDir);
+    for (const dir of dirs) {
+      trees++;
+      for (const rel of txtFilesUnder(dir)) {
+        files++;
+        const lines = read(rel).split('\n');
+        for (let i = 0; i < lines.length; i++) {
+          const m = REMINDER_CLAIM.exec(lines[i]);
+          if (!m) continue;
+          claims++;
+          problems.push(
+            `REMINDER CLAIM — ${rel}:${i + 1} reads ${JSON.stringify(lines[i].trim())} (matched "${m[0]}"). Channel "${row.id}" runs on ${cannot}, where ${where} says canSchedule: false. The rule: ${REMINDER_RULE}. The app refuses to schedule there, so this sentence promises what the user will never receive.`,
+          );
+        }
+      }
+    }
+  }
+  // A tree that exists and yields no .txt means the scan is not reading the
+  // listing. (With NO tree at all, the brick limb has already failed the row by
+  // name, and a COVERAGE LOST here would only mask that finding.)
+  if (notDeliverable.length > 0 && trees > 0 && files === 0) {
+    coverageLost([
+      `${notDeliverable.length} channel(s) cannot schedule a reminder (${notDeliverable.map((r) => r.id).join(', ')}), and their ${trees} tree(s) yielded ZERO .txt files.`,
+      'The REMINDER CLAIMS limb then read no listing text, and would report no claim over copy it never saw.',
+    ]);
+  }
+  return { rows: storeRows.length, notDeliverable: notDeliverable.map((r) => r.id), trees, files, claims };
+}
+const reminder = reminderClaims();
+
 // ── report ───────────────────────────────────────────────────────────────────
 if (prints.length) {
   console.log('');
@@ -1319,10 +1526,15 @@ if (problems.length) {
   );
   ok(`${formRuleChecks} store form rule(s) checked against the store's own upload form (contracts/store/vocabulary.js STORE_FORM_RULES)`);
   ok(`${filesChecked} listing field(s) non-empty, ${derivedChecked} of them compared to their spec source, ${limitsChecked} measured against a SOURCED store limit, ${identitiesChecked} package-identity field(s) agree`);
+  ok(`${statedChecked} derived value(s) found stated verbatim where derivedFields[].alsoStatedIn requires them, app trees and brick templates together`);
   ok(
     `REQUIRED_COVERAGE (THE FACTORY) — ${storeRows.length} store channel(s) → ${brickTreesChecked} brick template tree(s) under ${BRICK}, ` +
       `${brickFilesChecked} template(s) read, ${brickDerivedChecked} field(s) proven GENERATED from a spec var rather than typed, ` +
       `${generatedGraphics.size} graphic(s) wired to the stamp, ${configsCompared} app_config constant(s) agree with the register`,
+  );
+  ok(
+    `REMINDER CLAIMS — ${reminder.rows} store row(s), ${reminder.notDeliverable.length} not deliverable (${reminder.notDeliverable.join(', ') || 'none'}), ` +
+      `${reminder.trees} tree(s), ${reminder.files} file(s) scanned, ${reminder.claims} claims`,
   );
   console.log('\nassert-store-metadata: ok');
 }

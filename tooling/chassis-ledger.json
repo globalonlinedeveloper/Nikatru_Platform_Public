@@ -19,21 +19,21 @@
   ],
   "_rootsNote": "TWO roots since 2026-09-07 ([ADR 067] phase 2, unit app-shell). The Worker half of the template - 13 files, 917 lines every stamped backend app inherits - was outside this ledger entirely while `root` was one string, and `git ls-files -- <that one root>` could not see it to complain. assert-chassis-ledger.mjs is the authority on this list and cross-checks it; a row's `root` is optional and defaults to roots[0], which is why the 96 rows written against the single root are unchanged. ⏱ THE FIGURES IN THIS NOTE MOVED ON 2026-09-08 AND ARE CORRECTED RATHER THAN REWRITTEN: the Worker half is now 14 files and 1,021 lines, because the template gained src/lib/error-sink.ts — a stamped backend had NO crash sink at all and failed tooling/ci/assert-worker-error-sink.mjs on limbs 2, 3 and 5 at its first CI run. The guard PRINTS both figures per root on every run, which is the number to read; this sentence is prose and prose rots.",
   "totals": {
-    "files": 134,
-    "lines": 18946,
+    "files": 138,
+    "lines": 19222,
     "unclassified": 0,
     "unclassifiedLines": 0
   },
   "floors": {
-    "_why": "ADR 096: brick lib/ and lib/state are CEILINGS, not bands, set at their measured size with zero headroom. assert-chassis-ledger.mjs counts every git-tracked file under the Dart app root's lib/ (the .arb files included) with the same line rule as the rows, prints both totals, and exits 1 when either is over its max. A PR that grows brick lib/ raises floors.*.max in the same PR and names why in its body; a fall is banked by lowering the max. First values measured at 60b63fb9 (#931): ADR 096 recorded 6,702 / 3,046 at 24189ff3 (#930), and #931 (sign-out-everywhere) then moved lib/ by net +31 (settings_screen.dart +20, state/providers.dart +11) and lib/state by net +11, named under ADR 096 rule 4. ⏱ 2026-09-25 (O-GOOGLE-SIGN-IN-NOT-BUILT): lib.max 6733 -> 6737, lib/features/auth/sign_in_screen.dart +4 (104 -> 108) — the two arguments that hand the chassis SignInView its Google door (`showGoogleButton`, gated on caps.oauthRedirect and AuthProviders.google, and `onSignInWithGoogle`) and the two comment lines that say google stays false until the owner provisions the client. lib/state is unchanged in size (the two version constants moved in place). Raised 2026-09-25 to 6784 (+47) by O-PAYWALL-SPEAKS-ONLY-WEB-CHECKOUT, named under ADR 096 rule 4: the brick paywall_screen.dart grew 229 -> 276 for the exhaustive refusal-route switch and the rail-kind in-flight copy; lib/state is unchanged at 3057.",
+    "_why": "ADR 096: brick lib/ and lib/state are CEILINGS, not bands, set at their measured size with zero headroom. assert-chassis-ledger.mjs counts every git-tracked file under the Dart app root's lib/ (the .arb files included) with the same line rule as the rows, prints both totals, and exits 1 when either is over its max. A PR that grows brick lib/ raises floors.*.max in the same PR and names why in its body; a fall is banked by lowering the max. First values measured at 60b63fb9 (#931): ADR 096 recorded 6,702 / 3,046 at 24189ff3 (#930), and #931 (sign-out-everywhere) then moved lib/ by net +31 (settings_screen.dart +20, state/providers.dart +11) and lib/state by net +11, named under ADR 096 rule 4. ⏱ 2026-09-25 (O-GOOGLE-SIGN-IN-NOT-BUILT): lib.max 6733 -> 6737, lib/features/auth/sign_in_screen.dart +4 (104 -> 108) — the two arguments that hand the chassis SignInView its Google door (`showGoogleButton`, gated on caps.oauthRedirect and AuthProviders.google, and `onSignInWithGoogle`) and the two comment lines that say google stays false until the owner provisions the client. lib/state is unchanged in size (the two version constants moved in place). Raised 2026-09-25 to 6784 (+47) by O-PAYWALL-SPEAKS-ONLY-WEB-CHECKOUT, named under ADR 096 rule 4: the brick paywall_screen.dart grew 229 -> 276 for the exhaustive refusal-route switch and the rail-kind in-flight copy; lib/state is unchanged at 3057. Raised 2026-09-25 to 6824 (+40) and lib/state to 3097 (+40) by O-BRICK-ERASURE-DESTROYS-THE-IDENTITY, named under ADR 096 rule 4: the brick lib/state/providers.dart grew 2721 -> 2761 for platformRestClientProvider on the platform base URL, which account deletion and the Apple token now ride to the shared platform Worker instead of the stamped Worker.",
     "lib": {
-      "max": 6784,
+      "max": 6824,
       "adr": "ADR 096",
       "asOf": "2026-09-25",
       "verify": "node tooling/ci/assert-chassis-ledger.mjs"
     },
     "state": {
-      "max": 3057,
+      "max": 3097,
       "adr": "ADR 096",
       "asOf": "2026-09-25",
       "verify": "node tooling/ci/assert-chassis-ledger.mjs"
@@ -244,7 +244,7 @@
     },
     {
       "path": "lib/state/providers.dart",
-      "lines": 2721,
+      "lines": 2761,
       "verdict": "STAYS",
       "why": "MEASURED: undeletable (9 guards) and NOT reducible to declarations — a 98-line stub carrying all 51 provider names and all 14 class/typedef signatures still left 8 guards red. MIN_DOMAIN=59 is NOT the binding constraint (its regex does accept a one-line delegation, verified: 51 such lines count 51); the binding constraints are 37 literal anchors in assert-stamp-properties, the analytics envelope literal (assert-analytics-contract:207), the consent gate (assert-policy-claims POLICY_CONSTS), two sole non-test seam call sites (assert-seams-wired:588,622) and MIN_PROVIDERS=20 (assert-provider-graph-acyclic:419, the stub parsed 9). [ADR 072] D1, 2026-09-22 (O-CHASSIS-PHASE-2B): STAYS as the composition root — the brick's Riverpod graph is what every adapter reads and every package view is handed values from; nothing here moves, callSiteDelta 0. ⏱ RE-MEASURED 2026-09-24 (AUTH-LOGOUT-ALL): 2710 -> 2721 — `signOutAndForgetUser` takes a `scope`, because the `session_end` trigger permits `.signOut(` in this file only."
     },
@@ -352,9 +352,9 @@
     },
     {
       "path": "store/ios-appstore/long-description.txt",
-      "lines": 18,
+      "lines": 19,
       "verdict": "STAYS",
-      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave. ⏱ RE-MEASURED 2026-09-24: 18 -> 19, the `Terms of use:` line assert-store-metadata.mjs requires through derivedFields[\"terms-of-use-url.txt\"].alsoStatedIn (O-APPLE-LISTING-HAS-NO-EULA)."
     },
     {
       "path": "store/ios-appstore/privacy-manifest.json",
@@ -376,9 +376,9 @@
     },
     {
       "path": "store/ios-appstore/README.md",
-      "lines": 55,
+      "lines": 59,
       "verdict": "STAYS",
-      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave. ⏱ RE-MEASURED 2026-09-24: 55 -> 59, after terms-of-use-url.txt joined the per-channel fields (O-APPLE-LISTING-HAS-NO-EULA)."
     },
     {
       "path": "store/ios-appstore/screenshots/README.md",
@@ -415,6 +415,12 @@
       "lines": 1,
       "verdict": "STAYS",
       "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/ios-appstore/terms-of-use-url.txt",
+      "lines": 1,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave. Added 2026-09-24 (O-APPLE-LISTING-HAS-NO-EULA): the Terms of Use URL, which assert-store-metadata.mjs compares to portfolioUrls.termsUrl."
     },
     {
       "path": "store/ios-appstore/title.txt",
@@ -496,9 +502,9 @@
     },
     {
       "path": "store/macos-appstore/long-description.txt",
-      "lines": 18,
+      "lines": 19,
       "verdict": "STAYS",
-      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave. ⏱ RE-MEASURED 2026-09-24: 18 -> 19, the `Terms of use:` line assert-store-metadata.mjs requires through derivedFields[\"terms-of-use-url.txt\"].alsoStatedIn (O-APPLE-LISTING-HAS-NO-EULA)."
     },
     {
       "path": "store/macos-appstore/privacy-policy-url.txt",
@@ -514,9 +520,9 @@
     },
     {
       "path": "store/macos-appstore/README.md",
-      "lines": 55,
+      "lines": 59,
       "verdict": "STAYS",
-      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave. ⏱ RE-MEASURED 2026-09-24: 55 -> 59, after terms-of-use-url.txt joined the per-channel fields (O-APPLE-LISTING-HAS-NO-EULA)."
     },
     {
       "path": "store/macos-appstore/screenshots/README.md",
@@ -541,6 +547,12 @@
       "lines": 1,
       "verdict": "STAYS",
       "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/macos-appstore/terms-of-use-url.txt",
+      "lines": 1,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave. Added 2026-09-24 (O-APPLE-LISTING-HAS-NO-EULA): the Terms of Use URL, which assert-store-metadata.mjs compares to portfolioUrls.termsUrl."
     },
     {
       "path": "store/macos-appstore/title.txt",
@@ -657,6 +669,12 @@
       "why": "MEASURED: pinned by NOTHING but this ledger. Stays on value: provider graph acyclic, and the erasure closure resolves its REST client."
     },
     {
+      "path": "test/platform_client_test.dart",
+      "lines": 83,
+      "verdict": "STAYS",
+      "why": "2026-09-24 (O-BRICK-ERASURE-DESTROYS-THE-IDENTITY): account deletion and the Apple token now ride platformRestClientProvider to the shared platform Worker; this pins that the erasure closure can resolve that client without a provider cycle (#258) and that it is not the app Worker client. The host itself is held by assert-deletion-control limb 7."
+    },
+    {
       "path": "test/responsive_width_test.dart",
       "lines": 276,
       "verdict": "STAYS",
@@ -708,7 +726,7 @@
     {
       "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
       "path": "README.md",
-      "lines": 57,
+      "lines": 61,
       "verdict": "STAYS",
       "why": "Per-app operator README; assert-stamp-text-fidelity derives its hosts from the app vars."
     },
@@ -729,7 +747,7 @@
     {
       "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
       "path": "src/index.ts",
-      "lines": 192,
+      "lines": 193,
       "verdict": "STAYS",
       "why": "Per-app route table and the erasureAuth mount. assert-deploy-triggers-deploy reads the import graph from here."
     },
@@ -775,9 +793,16 @@
     {
       "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
       "path": "src/routes/account.ts",
-      "lines": 150,
+      "lines": 123,
       "verdict": "STAYS",
-      "why": "Per-app erasure route: it re-checks the assurance label, applies the shared recent-sign-in rule (services/_shared/src/auth.ts deletionRecencyRefusal), and names this app's own tables."
+      "why": "Per-app erasure route: it re-checks the assurance label, applies the shared recent-sign-in rule (services/_shared/src/auth.ts deletionRecencyRefusal), and names this app's own tables. 2026-09-24 (O-BRICK-ERASURE-DESTROYS-THE-IDENTITY): 150 -> 123 lines. It erases this app's APP_DB rows only; the shared entitlements and the identity record are the platform Worker's, which the stamped client now enters at."
+    },
+    {
+      "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
+      "path": "test/account-route.test.ts",
+      "lines": 162,
+      "verdict": "STAYS",
+      "why": "2026-09-24 (O-BRICK-ERASURE-DESTROYS-THE-IDENTITY): the stamped erasure route erases APP_DB rows, makes no outbound request and never reads PLATFORM_DB, and Env carries no service-role field. Per-app because it runs in the stamped Worker's own suite."
     },
     {
       "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
@@ -796,7 +821,7 @@
     {
       "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
       "path": "src/lib/erase-subject.ts",
-      "lines": 49,
+      "lines": 51,
       "verdict": "STAYS",
       "why": "ADR 081 (2026-09-15): this app Worker APP_DB erasure walk, shared by the public route and the retry entrypoint."
     },
@@ -810,7 +835,7 @@
     {
       "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
       "path": "src/types.ts",
-      "lines": 81,
+      "lines": 80,
       "verdict": "STAYS",
       "why": "Per-app Env bindings - APP_DB and this app's own vars."
     },
