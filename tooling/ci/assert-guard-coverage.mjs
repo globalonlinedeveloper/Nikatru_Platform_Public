@@ -54,6 +54,12 @@
 // environment's Deployments through record-deployment.mjs's client, beside
 // assert-gate-passed.mjs and record-deployment.mjs.
 //
+// ⏱ APPENDED 2026-09-24, later the same day — TWENTY-SEVEN entries, counted the same
+// way (the TWENTY-FIVE above had rotted to 26 before this one). The new one is the
+// same API shape again: plan-deploy.mjs reads one environment's latest successful
+// Deployment through that client before a deploy job publishes (row
+// O-DEPLOY-IS-NOT-ONE-GATED-LANE, limb 3).
+//
 // It also self-checks, because a guard-coverage guard that stopped finding
 // guards would report perfect coverage over an empty set.
 //
@@ -339,6 +345,10 @@ const NOT_A_SCANNER = new Map([
   [
     'read-ledger-version-code.mjs',
     'asks the GitHub API one question about one environment. There is no tree to under-reach; its failure modes are an unreadable answer (exit 2) and the payload reading, which deployment-record.test.mjs covers.',
+  ],
+  [
+    'plan-deploy.mjs',
+    'asks the GitHub API for one environment\'s latest successful Deployment, through record-deployment.mjs\'s client, and asks git whether one commit is an ancestor of another and which paths differ between them. There is no tree to under-reach; everything it cannot establish (an unreadable ledger, a shallow clone, a glob shape globClaims cannot decide, an environment deployUnits does not name) exits 1 and nothing publishes. test/plan-deploy.test.mjs reds each of those against a real git history and a fixture ledger.',
   ],
   [
     'record-deployment.mjs',

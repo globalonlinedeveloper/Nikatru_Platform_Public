@@ -2702,6 +2702,18 @@
     "state": "LIBRARY"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/deploy-web.yml#deploy-web",
+      ".github/workflows/deploy-workers.yml#platform",
+      ".github/workflows/deploy-workers.yml#subscriptiontracker-api"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/plan-deploy.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "D-3"
     ],

@@ -29,6 +29,7 @@ on:
       - 'tooling/ci/assert-release-lane-generic.mjs'
       - 'tooling/ci/assert-catalog-reachable.mjs'
       - 'tooling/ci/record-deployment.mjs'
+      - 'tooling/ci/plan-deploy.mjs'
       - 'tooling/smoke/smoke-web-artifact.mjs'
       - 'tooling/web/**'
       - 'tooling/ops/post-deploy-smoke.mjs'
@@ -92,6 +93,9 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+          # why: the plan below reads ancestry and a diff against the live SHA, which a
+          # depth-1 clone does not hold; plan-deploy.mjs exits 1 on a shallow clone.
+          fetch-depth: 0
 
       - name: Require ci-gate to have passed for this commit
         working-directory: .
@@ -100,11 +104,25 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: node tooling/ci/assert-gate-passed.mjs ${{ github.sha }}
 
+      # why: a superseded SHA never publishes (row O-DEPLOY-IS-NOT-ONE-GATED-LANE, limb 3).
+      # The plan reads this app's latest successful Deployment from the ledger, and every
+      # later step runs only on deploy == 'true'. An unreadable ledger exits 1: nothing
+      # publishes, and the next main push plans again from the last success.
+      - name: Plan from the Deployment ledger
+        id: plan
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node tooling/ci/plan-deploy.mjs ${{ matrix.app }}-web
+
       - uses: ./.github/actions/setup-flutter
+        if: steps.plan.outputs.deploy == 'true'
 
       - run: flutter pub get --enforce-lockfile
+        if: steps.plan.outputs.deploy == 'true'
 
       - name: Derive the release line from pubspec
+        if: steps.plan.outputs.deploy == 'true'
         id: ver
         working-directory: .
         run: node tooling/ci/assert-app-versioning.mjs --emit apps/${{ matrix.app }} >> "$GITHUB_OUTPUT"
@@ -166,11 +184,13 @@ jobs:
       # WHITE PAGE. The emitter fails loudly on every "I could not tell" case for
       # exactly that reason.
       - name: Resolve this app's base href from the catalogue
+        if: steps.plan.outputs.deploy == 'true'
         id: base
         working-directory: .
         run: node tooling/ci/assert-catalog-reachable.mjs --emit-base-href ${{ matrix.app }} >> "$GITHUB_OUTPUT"
 
       - name: Build web (release, no service worker)
+        if: steps.plan.outputs.deploy == 'true'
         run: >
           flutter build web --release --pwa-strategy=none --source-maps --no-web-resources-cdn
           --base-href ${{ steps.base.outputs.base_href }}
@@ -186,13 +206,16 @@ jobs:
           --dart-define=RELEASE_CHANNEL=web
 
       - uses: ./.github/actions/setup-node
+        if: steps.plan.outputs.deploy == 'true'
 
       # why: fallback fonts come from the app origin, never fonts.gstatic.com; sha256-pinned (docs/ci/deploy-web.md).
       - name: Self-host the engine's fallback fonts, pinned by sha256
+        if: steps.plan.outputs.deploy == 'true'
         working-directory: .
         run: node tooling/web/self-host-fallback-fonts.mjs apps/${{ matrix.app }}/build/web
 
       - name: Install glitchtip-cli (pinned by version AND by digest)
+        if: steps.plan.outputs.deploy == 'true'
         working-directory: .
         run: |
           set -euo pipefail
@@ -215,6 +238,7 @@ jobs:
           echo "$got"
 
       - name: Inject debug ids into the web bundle
+        if: steps.plan.outputs.deploy == 'true'
         run: |
           set -euo pipefail
           "${RUNNER_TEMP}/glitchtip-cli" sourcemaps inject build/web
@@ -225,6 +249,7 @@ jobs:
       # why: it boots under its own _headers CSP, and each --connect origin (the build's URL-valued defines) is
       # fetched from the page and answered by the smoke, never sent; hand-passed until row O-WEB-CSP-HAND-LIST-UNSMOKED derives them.
       - name: Launch the built bundle once, before it is published
+        if: steps.plan.outputs.deploy == 'true'
         working-directory: .
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -238,6 +263,7 @@ jobs:
       # CLI has no retry, and one 522 from the origin failed run 35831511489. The script
       # sends the CLI's own body through the shared bounded retry (docs/ci/deploy-web.md).
       - name: Create and finalize the GlitchTip release
+        if: steps.plan.outputs.deploy == 'true'
         working-directory: .
         env:
           GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
@@ -273,6 +299,7 @@ jobs:
             --release "$release" --org "$gt_org" --project "$gt_project"
 
       - name: Upload the source maps to GlitchTip
+        if: steps.plan.outputs.deploy == 'true'
         working-directory: .
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.GLITCHTIP_TOKEN }}
@@ -297,6 +324,7 @@ jobs:
       # from the CDN, and the SPA fallback makes a missing one indistinguishable from a
       # present one by status code.
       - name: Delete the source maps from the bundle that gets published
+        if: steps.plan.outputs.deploy == 'true'
         run: |
           set -euo pipefail
           find build/web -type f -name '*.map' -print -delete
@@ -308,6 +336,7 @@ jobs:
           echo "0 .map files remain in build/web"
 
       - name: Ensure the Pages project exists (Direct Upload, idempotent)
+        if: steps.plan.outputs.deploy == 'true'
         working-directory: .
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -327,11 +356,13 @@ jobs:
           exit 1
 
       - name: Resolve this app's published origin from the catalogue
+        if: steps.plan.outputs.deploy == 'true'
         id: target
         working-directory: .
         run: node tooling/ci/assert-catalog-reachable.mjs --emit-url ${{ matrix.app }} >> "$GITHUB_OUTPUT"
 
       - name: Deploy to Cloudflare Pages
+        if: steps.plan.outputs.deploy == 'true'
         id: deploy
         uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3
         with:
@@ -344,6 +375,7 @@ jobs:
       # why: the probe asserts a FIELD from version.json, never a status code -- see the
       # source-map step above for why 200 proves nothing on this host.
       - name: Smoke — the live site serves THIS build
+        if: steps.plan.outputs.deploy == 'true'
         working-directory: .
         run: >
           node tooling/ops/post-deploy-smoke.mjs

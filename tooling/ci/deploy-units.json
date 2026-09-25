@@ -1,0 +1,46 @@
+{
+  "_readme": [
+    "deployUnits: for each production deploy unit, the repo paths whose change makes a new publish of that unit worth doing. Keyed by the ledger environment tooling/ci/record-deployment.mjs writes the unit's Deployment under; the key \"<app>-web\" stands for every app in deploy-web.yml's matrix (subscriptiontracker-web, and each app after it).",
+    "Read by tooling/ci/plan-deploy.mjs before every publish: it diffs the unit's latest SUCCESSFUL Deployment against the target commit and publishes only when a changed path matches one of these globs (row O-DEPLOY-IS-NOT-ONE-GATED-LANE, limb 3).",
+    "Today the globs are COPIES: \"<app>-web\" of deploy-web.yml's on.push.paths, and the two Workers of deploy-workers.yml's dorny/paths-filter filters, character for character. tooling/ci/test/deploy-units.test.mjs fails the build when a copy and its workflow disagree in either direction. D2b points the workflows at this section and retires that test; D1-1 moves the section, globs unchanged, into tooling/ci/lane-map.json.",
+    "Glob shapes: `X/**` (a tree), `X/*.ext` or `X/*` (files directly in X), or a literal path. plan-deploy.mjs refuses any other shape rather than guessing, through globClaims in assert-deploy-triggers-deploy.mjs."
+  ],
+  "deployUnits": {
+    "<app>-web": [
+      "apps/**",
+      "packages/**",
+      "pubspec.yaml",
+      "pubspec.lock",
+      "tooling/versions.json",
+      "catalog/apps.json",
+      "tooling/ci/assert-gate-passed.mjs",
+      "tooling/ci/assert-app-versioning.mjs",
+      "tooling/ci/assert-release-lane-generic.mjs",
+      "tooling/ci/assert-catalog-reachable.mjs",
+      "tooling/ci/record-deployment.mjs",
+      "tooling/ci/plan-deploy.mjs",
+      "tooling/smoke/smoke-web-artifact.mjs",
+      "tooling/web/**",
+      "tooling/ops/post-deploy-smoke.mjs",
+      "tooling/ops/create-glitchtip-release.mjs",
+      "tooling/ops/upload-web-sourcemaps.mjs",
+      ".github/workflows/deploy-web.yml"
+    ],
+    "subscriptiontracker-api": [
+      "services/subscriptiontracker-api/**",
+      "services/_shared/**",
+      ".github/workflows/deploy-workers.yml"
+    ],
+    "platform": [
+      "services/platform/**",
+      "services/_shared/**",
+      "catalog/apps.json",
+      "contracts/entitlement/*.js",
+      "contracts/entitlement/*.json",
+      "catalog/bundles.json",
+      "extensions/catalog/extensions.json",
+      "tooling/channel-register.json",
+      ".github/workflows/deploy-workers.yml"
+    ]
+  }
+}
