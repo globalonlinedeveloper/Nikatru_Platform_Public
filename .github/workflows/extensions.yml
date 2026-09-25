@@ -192,6 +192,43 @@ jobs:
         working-directory: extensions/${{ matrix.suite.dir }}/test/e2e
         run: npx playwright install --with-deps chromium
 
+      # why: THE GECKO SUITES (gecko-smoke.mjs, gecko-clipboard.mjs, 2026-09-24)
+      # DRIVE THE FIREFOX ALREADY ON THE RUNNER IMAGE, over raw WebDriver BiDi --
+      # no Playwright-Firefox (a patched build, not the Firefox a user installs),
+      # no geckodriver, nothing installed. This step finds it, prints its version
+      # into the log (the AI-HANDOFF-ENVELOPE.md section 13 row quotes it), and
+      # hands its path to the suites. No Firefox, or one older than 140, fails
+      # HERE with a named error instead of two suites exiting 2 further down.
+      - name: Firefox on the image
+        run: |
+          bin="$(command -v firefox || true)"
+          if [ -z "$bin" ]; then
+            echo "::error::no firefox on this runner image; gecko-smoke.mjs and gecko-clipboard.mjs cannot run"
+            exit 1
+          fi
+          ver="$("$bin" --version)"
+          echo "firefox: $bin -> $ver"
+          major="$(printf '%s\n' "$ver" | sed -n 's/.* \([0-9][0-9]*\)\..*/\1/p')"
+          if [ -z "$major" ] || [ "$major" -lt 140 ]; then
+            echo "::error::'$ver' is not Firefox 140 or newer"
+            exit 1
+          fi
+          echo "FS_E2E_FIREFOX=$bin" >> "$GITHUB_ENV"
+
+      # why: a HEADLESS Firefox clipboard holds text only, so gecko-clipboard.mjs read
+      # back no image/png in runs 36178398044 and 36180890284 (types empty, all 3 sizes)
+      # while a headful run of the same suite on Firefox 156.0.1 read back all 3
+      # (2026-09-25). A suite whose source says `e2e-display: headful` runs under
+      # `xvfb-run -a` with HEADFUL=1 in the next step; the others stay headless.
+      - name: Xvfb, for suites that need a real display
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+          if ! command -v xvfb-run; then
+            echo "::error::xvfb is installed but xvfb-run is not on PATH; a suite that declares e2e-display: headful cannot run"
+            exit 1
+          fi
+
       - name: Run every suite in test/e2e (derived, not listed)
         working-directory: extensions/${{ matrix.suite.dir }}/test/e2e
         env:
@@ -746,6 +783,16 @@ jobs:
             const STEP_BUDGET_MS = 35 * 60 * 1000;
             const AUDIT_FLOOR_MS = 2 * 60 * 1000;
             const DEADLINE = Date.now() + STEP_BUDGET_MS;
+            /* A SUITE THAT NEEDS A REAL DISPLAY SAYS SO IN ITS OWN SOURCE, ADDED
+               2026-09-25: `e2e-display: headful` runs it under xvfb-run -a with
+               HEADFUL=1 (the switch bidi-lib.mjs and the Playwright suites read).
+               Every other suite is spawned exactly as before, headless, with no
+               DISPLAY. The reason is a measurement, not a preference: a headless
+               Firefox clipboard holds text only (see the Xvfb step above). */
+            const DISPLAY_MARK = /\be2e-display:\s*headful\b/;
+            const spawnSuite = (f, timeout) => DISPLAY_MARK.test(src.get(f))
+              ? cp.spawnSync("xvfb-run", ["-a", process.execPath, f], { stdio: "inherit", timeout, env: { ...process.env, HEADFUL: "1" } })
+              : cp.spawnSync(process.execPath, [f], { stdio: "inherit", timeout });
             const failed = [];
             for (const s of suites) {
               const t = Date.now();
@@ -755,7 +802,7 @@ jobs:
                  clock. Twenty minutes against a slowest suite measured at 451s
                  on the author machine: room for a much slower runner before the
                  cap, rather than the suite, is the thing that bites. */
-              const r = cp.spawnSync(process.execPath, [s], { stdio: "inherit", timeout: 20 * 60 * 1000 });
+              const r = spawnSuite(s, 20 * 60 * 1000);
               console.log("::endgroup::");
               const code = r.error ? 1 : (r.status === null ? 1 : r.status);
               const extra = r.error ? ` (${r.error.message})` : (r.signal ? ` (signal ${r.signal})` : "");
@@ -863,7 +910,7 @@ jobs:
               }
               const qt = Date.now();
               console.log(`::group::quarantine audit — node ${q.file} (recorded ${c.date}, exit ${c.exit})`);
-              const qr = cp.spawnSync(process.execPath, [q.file], { stdio: "inherit", timeout: Math.min(left, 20 * 60 * 1000) });
+              const qr = spawnSuite(q.file, Math.min(left, 20 * 60 * 1000));
               console.log("::endgroup::");
               const qs = Math.round((Date.now() - qt) / 1000);
               if (qr.error || qr.status === null) {

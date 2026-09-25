@@ -1,0 +1,216 @@
+/* pages/editor.html's own stylesheet. Until 2026-09-24 this was an inline
+   <style> block in that page; it moved here so the extension-page CSP can say
+   style-src 'self' (O-FULLSHOT-CSP-HAS-NO-DEFAULT-SRC). Moved verbatim, one
+   level of indent removed; the <link> stands where the block stood, so the
+   cascade order against common.css is unchanged. */
+body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+.toolbar {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  padding: 8px 14px;
+  background: var(--panel); border-bottom: 1px solid var(--line);
+}
+.tgroup {
+  display: flex; align-items: center; gap: 2px;
+  padding: 2px; border: 1px solid var(--line); border-radius: 10px;
+  background: var(--bg);
+}
+.tool {
+  width: 34px; height: 32px;
+  display: grid; place-items: center;
+  border: none; border-radius: 8px;
+  background: none; color: var(--fg);
+  font-size: 15px; cursor: pointer;
+}
+.tool:hover { background: var(--bg2); }
+/* --accent-fg, not a hard #fff: pages/common.css owns the pairing, and it is
+   graded there at 4.5:1 against --accent in both themes (4.60:1 dark, 6.29:1
+   light). A literal here would be a second opinion that nothing re-measures
+   the day the accent moves — and the dark accent moved during this very
+   release, from #6d64f0 (4.44:1, a real AA failure) to #6a61ef. */
+.tool.active { background: var(--accent); color: var(--accent-fg); }
+.tool:disabled { opacity: .4; cursor: default; }
+
+.swatch {
+  width: 22px; height: 22px; border-radius: 50%;
+  /* The ring was --line (#e2e2ea): 1.29:1 against the white panel, which made
+     the WHITE swatch an invisible control — a 1.4.11 failure, because that
+     boundary is the only thing that says a control is there at all.
+     --control-line is the token pages/common.css declares for exactly this
+     job ("a boundary that IS the control"): 3.57:1 light, 3.51:1 dark, both
+     clear of the 3:1 the rule asks. */
+  border: 2px solid var(--panel); outline: 1px solid var(--control-line);
+  cursor: pointer; padding: 0;
+}
+.swatch.active { outline: 2px solid var(--accent); }
+#customColor { width: 26px; height: 26px; border: none; background: none; cursor: pointer; padding: 0; }
+
+.sep { width: 1px; height: 24px; background: var(--line); margin: 0 4px; }
+.toolbar .spacer { flex: 1; }
+.toolbar label { font-size: 12px; color: var(--fg2); }
+
+#stage {
+  flex: 1; overflow: auto;
+  display: grid; place-items: center;
+  padding: 26px;
+  background:
+    repeating-conic-gradient(var(--bg2) 0% 25%, transparent 0% 50%) 0 0 / 22px 22px,
+    var(--bg);
+}
+#canvasWrap { position: relative; box-shadow: var(--shadow); line-height: 0; }
+#canvas { background: #fff; cursor: crosshair; }
+
+#textInput {
+  position: absolute; display: none;
+  background: transparent; color: inherit;
+  border: 1.5px dashed var(--accent); border-radius: 4px;
+  outline: none; resize: none; overflow: hidden;
+  font-weight: 600; font-family: system-ui, sans-serif;
+  padding: 2px; min-width: 60px; min-height: 1.2em;
+  z-index: 5;
+}
+
+/* Centred without naming an edge — see the note on #fs-toast in common.css. */
+#cropBar {
+  position: fixed; inset-block-end: 26px; inset-inline: 0;
+  width: fit-content; margin-inline: auto;
+  display: none; gap: 8px; z-index: 20;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 12px; padding: 8px; box-shadow: var(--shadow);
+}
+#cropBar.show { display: flex; }
+
+#emojiPop {
+  position: absolute; display: none; z-index: 30;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 12px; padding: 8px; box-shadow: var(--shadow);
+  grid-template-columns: repeat(6, 34px);
+}
+#emojiPop.show { display: grid; }
+#emojiPop button {
+  width: 34px; height: 34px; font-size: 19px;
+  border: none; background: none; border-radius: 8px; cursor: pointer;
+}
+#emojiPop button:hover { background: var(--bg2); }
+
+#loading { flex: 1; display: grid; place-items: center; color: var(--fg2); }
+
+/* `right: 0` anchored these to the physical right edge. Under RTL the
+   toolbar flips but the menu did not: measured, the Export menu's centre
+   landed at x = -2 on a 1280px viewport — off the screen — and dragged 97px
+   of horizontal scroll onto the page with it. inset-inline-end pins it to
+   the button's own trailing edge in either direction. */
+#moreMenu, #exportMenu {
+  position: absolute; inset-inline-end: 0; inset-block-start: 40px;
+  display: none; z-index: 40;
+  min-width: 190px; max-width: min(280px, 90vw);
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 12px; padding: 6px; box-shadow: var(--shadow);
+}
+#moreMenu.show, #exportMenu.show { display: block; }
+#moreMenu button, #exportMenu button {
+  display: block; width: 100%; text-align: start;
+  padding: 9px 12px; border: none; border-radius: 8px;
+  background: none; color: var(--fg);
+  font: 13px system-ui, sans-serif; cursor: pointer;
+}
+#moreMenu button:hover, #exportMenu button:hover { background: var(--bg2); }
+
+#shortcutsPop {
+  position: fixed; inset: 0; z-index: 60;
+  display: none; place-items: center;
+  background: rgba(0,0,0,.45);
+}
+#shortcutsPop.show { display: grid; }
+#shortcutsPop .box {
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 14px; padding: 20px 24px; max-width: 420px;
+  box-shadow: var(--shadow); font-size: 13px;
+}
+#shortcutsPop h3 { margin: 0 0 10px; font-size: 15px; }
+#shortcutsPop table { border-collapse: collapse; width: 100%; }
+#shortcutsPop td { padding: 3px 0; color: var(--fg2); }
+#shortcutsPop td:first-child { color: var(--fg); font-weight: 600; padding-inline-end: 18px; white-space: nowrap; }
+/* The left column is a list of key chords — ASCII punctuation that reorders
+   in an RTL paragraph. Same treatment as <kbd>. */
+#shortcutsPop td:first-child { direction: ltr; unicode-bidi: isolate; text-align: start; }
+/* The chords themselves are now <kbd>, which is what they always were: a
+   keyboard literal that must never be translated, and which common.css
+   already isolates LTR. The rule above stays for the separators BETWEEN
+   them (" / "), which are bare punctuation and belong to the cell. <kbd>'s
+   browser default is monospace; this table is not, and the look here is the
+   table's. */
+#shortcutsPop kbd { font: inherit; }
+#shortcutsClose-row { margin-block-start: 14px; text-align: end; }
+
+/* ---- the drawing surface is a COORDINATE SYSTEM, not text ----
+   #canvas must never be mirrored. editor.js maps a pointer with
+   (e.clientX - canvas.getBoundingClientRect().left), which is viewport
+   geometry and is already direction-agnostic; a transform: scaleX(-1) here
+   "to make RTL feel right" would silently invert every annotation, every
+   crop rectangle and every exported pixel. The stage AROUND it may mirror
+   freely — it is centred, so nothing moves.
+
+   THE SAME RULE NOW COVERS THE ARROW KEYS. ArrowRight nudges +x in IMAGE
+   space in every locale: editor.js reads no direction anywhere, and the key
+   is bound to a sign, not to "the leading edge". A crop confirmed in Arabic
+   has to be the same rectangle as the one confirmed in English, because it
+   is the same saved shot. Graded in test/editor-sim.node.js under
+   "canvas geometry never mirrors". */
+#canvasWrap, #canvas { direction: ltr; }
+
+/* ---- accessibility ----------------------------------------------------
+   Announced but never painted. The editor tells a screen reader which tool
+   is live, what was just placed, where a selection moved to and what the
+   pending crop measures; none of that has anywhere to go on a canvas, which
+   is one opaque bitmap to the accessibility tree. clip-path over `clip`
+   because clip is deprecated, and white-space:nowrap so a long sentence is
+   not collapsed into one announced character per line. */
+.sr-only {
+  position: absolute; width: 1px; height: 1px;
+  margin: -1px; padding: 0; border: 0;
+  overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+}
+
+/* A FOCUS RING THE USER CAN SEE. :focus-visible only, so a pointer click
+   does not paint a ring nobody asked for, and outline (not box-shadow) so it
+   survives forced-colors mode. outline-offset pushes the ring OFF the
+   control onto the surface behind it, which is what keeps it legible on the
+   one control that is itself accent-coloured: the active tool chip. A ring
+   drawn AT the chip's edge would be accent on accent, 1.00:1.
+   The ratios are not restated here — they are computed from the shipped
+   custom properties and printed by test/editor-sim.node.js under
+   "contrast: computed ratios", so they cannot go stale when the palette
+   moves. Every one clears the 3:1 that SC 1.4.11 asks, in both themes. */
+.toolbar .tool:focus-visible,
+.toolbar .btn:focus-visible,
+.toolbar .ctl:focus-visible,
+.swatch:focus-visible,
+#customColor:focus-visible,
+#cropBar .btn:focus-visible,
+#shortcutsPop .btn:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
+/* Inside a menu or the emoji sheet the ring goes INWARD: an outward ring on a
+   full-width row is clipped by the panel it lives in. */
+#moreMenu button:focus-visible,
+#exportMenu button:focus-visible,
+#emojiPop button:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: -2px;
+}
+/* The canvas ring sits 3px clear of the image so it is never read against
+   arbitrary screenshot pixels — at that offset it lands on the stage's
+   chequerboard, not on the shot.
+   Deliberately :focus and not :focus-visible: everywhere else a ring after a
+   mouse click is noise, but here the arrow keys, Enter and Delete only do
+   anything while the canvas holds focus, so the ring is the answer to "why
+   did my arrow key just scroll the page?" — it has to be there however focus
+   arrived. */
+#canvas:focus { outline: 3px solid var(--accent); outline-offset: 3px; }
+
+/* ---- formerly inline style="" attributes (moved 2026-09-24 for style-src 'self') ---- */
+#undoBtn, #redoBtn { width: auto; padding: 0 8px; font-size: 13px; }
+#zoomBtn { width: auto; padding: 0 8px; font-size: 12.5px; }
+.menu-anchor { position: relative; }
+/* editor.js writes this box with innerHTML when a shot is missing. */
+.not-found { text-align: center; }

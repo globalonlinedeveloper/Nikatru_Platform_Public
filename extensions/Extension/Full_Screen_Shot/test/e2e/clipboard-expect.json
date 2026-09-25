@@ -1,0 +1,26 @@
+{
+  "_note": [
+    "WHAT gecko-clipboard.mjs EXPECTS FROM FIREFOX, one row per image size, and the suite fails on any row",
+    "whose observed outcome differs. An outcome is 'ok' (the PNG read back at the size written),",
+    "'refused' (navigator.clipboard.write rejected; the error text is printed) or 'unverified' (the",
+    "write resolved and the read-back did not return that image).",
+    "",
+    "WRITTEN 2026-09-24 WITHOUT A FIREFOX: the draft sandbox had none, so every row below is the",
+    "HYPOTHESIS (the shipped manifest's copy works in Firefox without clipboardWrite, inside a user",
+    "gesture), not a measurement, and `measured` is null to say so. The first e2e-suite run on the",
+    "runner's Firefox measures it; its outcome per size, its click-to-write ms and the run id go into",
+    "`measured` and into AI-HANDOFF-ENVELOPE.md section 13, and a row that differs is corrected HERE, in",
+    "the same commit, with the engine, version and error text beside it.",
+    "",
+    "If a row measures 'refused' without clipboardWrite: the standing ruling is to add clipboardWrite",
+    "for that engine only, with a store justification line, unless that raises a new install-time",
+    "warning on an already published listing."
+  ],
+  "engine": "gecko",
+  "measured": null,
+  "sizes": [
+    { "w": 256, "h": 256, "expect": "ok" },
+    { "w": 1920, "h": 1080, "expect": "ok" },
+    { "w": 1920, "h": 10000, "expect": "ok" }
+  ]
+}

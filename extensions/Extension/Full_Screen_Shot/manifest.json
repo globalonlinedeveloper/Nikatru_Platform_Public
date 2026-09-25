@@ -7,7 +7,7 @@
   "default_locale": "en",
   "minimum_chrome_version": "116",
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'none'; img-src 'self' data: blob:; connect-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'"
+    "extension_pages": "default-src 'none'; script-src 'self'; object-src 'none'; img-src 'self' data: blob:; style-src 'self'; connect-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'"
   },
   "permissions": [
     "activeTab",

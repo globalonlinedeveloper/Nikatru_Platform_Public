@@ -353,6 +353,33 @@ expect('a real fetch() in a shipped file fails', {
   script: 'policy-check.mjs', argv: ['goodtool'], code: 1, contains: 'zero network calls',
   root: fixture(root => { edit(root, TOOL + '/background.js', s => s + 'fetch("https://example.com/ping");\n'); })
 });
+/* G3, 2026-09-24: the two network APIs publish/package.node.js's retired
+   verifyPackage() named and the CI gate did not. Each is its own case, by hand. */
+expect('a new RTCPeerConnection() in a shipped file fails', {
+  script: 'policy-check.mjs', argv: ['goodtool'], code: 1, contains: 'RTCPeerConnection',
+  root: fixture(root => { edit(root, TOOL + '/background.js', s => s + 'const pc = new RTCPeerConnection();\n'); })
+});
+expect('a vendor-prefixed webkitRTCPeerConnection in a shipped file fails', {
+  script: 'policy-check.mjs', argv: ['goodtool'], code: 1, contains: 'RTCPeerConnection',
+  root: fixture(root => { edit(root, TOOL + '/background.js', s => s + 'const pc = new webkitRTCPeerConnection({});\n'); })
+});
+expect('a new SharedWorker() in a shipped file fails', {
+  script: 'policy-check.mjs', argv: ['goodtool'], code: 1, contains: 'SharedWorker',
+  root: fixture(root => { edit(root, TOOL + '/background.js', s => s + 'const w = new SharedWorker("w.js");\n'); })
+});
+/* Inline CSS in a shipped page, 2026-09-24 (O-FULLSHOT-CSP-HAS-NO-DEFAULT-SRC). */
+expect('a style="" attribute in a shipped page fails', {
+  script: 'policy-check.mjs', argv: ['goodtool'], code: 1, contains: 'no inline CSS in packaged HTML',
+  root: fixture(root => { edit(root, TOOL + '/popup/popup.html', s => s.replace('<body>', '<body>\n<p style="margin-top:8px">x</p>')); })
+});
+expect('a <style> element in a shipped page fails', {
+  script: 'policy-check.mjs', argv: ['goodtool'], code: 1, contains: 'no inline CSS in packaged HTML',
+  root: fixture(root => { edit(root, TOOL + '/popup/popup.html', s => s.replace('<body>', '<body>\n<style>p { color: red; }</style>')); })
+});
+expect('a <style> named inside an HTML comment does not fail', {
+  script: 'policy-check.mjs', argv: ['goodtool'], code: 0,
+  root: fixture(root => { edit(root, TOOL + '/popup/popup.html', s => s.replace('<body>', '<body>\n<!-- layout lives in a file, never a <style> block or a style="" attribute -->')); })
+});
 expect('the word fetch in a COMMENT does not fail, and is still reported', {
   script: 'policy-check.mjs', argv: ['goodtool'], code: 0, contains: 'only inside comments or strings',
   root: fixture(root => {
@@ -486,7 +513,10 @@ expect('keyword case and source order do not change the verdict', {
   script: 'policy-check.mjs', argv: ['goodtool'], code: 0, contains: 'hold the intended posture',
   root: fixture(root => setCsp(root,
     "form-action 'NONE'; base-uri 'None'; frame-src 'none'; connect-src 'none'; " +
-    "img-src BLOB: 'SELF' data:; object-src 'none'; script-src 'self'"))
+    "img-src BLOB: 'SELF' data:; object-src 'none'; script-src 'self'; " +
+    // ⏱ 2026-09-24: the umbrella and style-src are graded now, so the reordered
+    // policy has to carry them too — in odd case, which is the point of the case.
+    "style-src 'Self'; default-src 'SELF'"))
 });
 expect('no content_security_policy at all is a FAILURE, not an empty pass', {
   script: 'policy-check.mjs', argv: ['goodtool'], code: 1, contains: 'THIS GATE HAS NO SUBJECT',
@@ -591,15 +621,44 @@ expect('a directive READ AS A FALLBACK is named as such, not listed as flatly un
    Both halves are graded through --warnings-as-errors, because this limb warns
    rather than fails and an exit code is the only thing that separates
    "reported" from "not reported". */
+/* ⏱ 2026-09-24 (O-FULLSHOT-CSP-HAS-NO-DEFAULT-SRC): the limb FAILS now, so the
+   second case runs with no flag at all, and style-src moved into CSP_POSTURE —
+   font-src is the untabled directive the first case reads. The paragraph above
+   is the record of the day it was a warning. */
 expect('the unmodelled directives are named every run, with what each one resolves to', {
   script: 'policy-check.mjs', argv: ['goodtool', '--warnings-as-errors'], code: 0,
-  contains: 'style-src: absent, inherits default-src',
+  contains: 'font-src: absent, inherits default-src',
   root: fixture()
 });
-expect('and with no default-src umbrella they are UNRESTRICTED, and the gate says so', {
-  script: 'policy-check.mjs', argv: ['goodtool', '--warnings-as-errors'], code: 1,
-  contains: 'CSP directive(s) this gate does not model are UNRESTRICTED',
-  root: fixture(root => setCsp(root, cspWithout('default-src', "img-src 'self' data: blob:")))
+expect('with the default-src umbrella the gate says 0 CSP directive(s) unrestricted', {
+  script: 'policy-check.mjs', argv: ['goodtool'], code: 0,
+  contains: '0 CSP directive(s) unrestricted',
+  root: fixture()
+});
+expect('and with no default-src umbrella they are UNRESTRICTED, and that is a FAILURE with no flag', {
+  script: 'policy-check.mjs', argv: ['goodtool'], code: 1,
+  contains: 'CSP directive(s) unrestricted: this gate does not model them',
+  root: fixture(root => setCsp(root, cspWithout('default-src', "img-src 'self' data: blob:; style-src 'self'")))
+});
+/* G8, 2026-09-24: the Firefox overlay may not name content_security_policy. */
+const withOverlay = overlay => fixture(root => {
+  const t = readJson(root, TOOL + '/tool.json');
+  t.targets.firefox = { overlay: 'publish/manifest.firefox.json' };
+  writeJson(root, TOOL + '/tool.json', t);
+  writeJson(root, TOOL + '/publish/manifest.firefox.json', overlay);
+});
+expect('a Firefox overlay that leaves content_security_policy alone inherits the CSP', {
+  script: 'policy-check.mjs', argv: ['goodtool'], code: 0, contains: 'the Firefox package inherits manifest.json\'s CSP',
+  root: withOverlay({ browser_specific_settings: { gecko: { id: 'goodtool@example.test' } } })
+});
+expect('a Firefox overlay that deletes content_security_policy with a null member fails', {
+  script: 'policy-check.mjs', argv: ['goodtool'], code: 1, contains: 'a null member DELETES the key',
+  root: withOverlay({ browser_specific_settings: { gecko: { id: 'goodtool@example.test' } }, content_security_policy: null })
+});
+expect('style-src \'unsafe-inline\' fails the posture, naming style-src', {
+  script: 'policy-check.mjs', argv: ['goodtool'], code: 1,
+  contains: "permitted and not intended: 'unsafe-inline'",
+  root: fixture(root => setCsp(root, cspWithout(null, "style-src 'self' 'unsafe-inline'")))
 });
 
 /* 🔴 AN EMPTY TABLE IS A GATE WITH NO SUBJECT. Measured 2026-08-26: emptying
@@ -892,10 +951,14 @@ expect('--release passes a tree with nothing awaiting translation', {
   script: 'policy-check.mjs', argv: ['--release', 'goodtool'], code: 0, contains: 'no string in _locales/en is awaiting translation',
   root: fixture()
 });
-expect('--release does NOT make every warning fatal (the CSP coverage WARN is not a release refusal)', {
+expect('--release does NOT make every warning fatal (the comment-only network WARN is not a release refusal)', {
   script: 'policy-check.mjs', argv: ['--release', 'goodtool'], code: 0,
-  contains: 'CSP directive(s) this gate does not model are UNRESTRICTED',
-  root: fixture(root => setCsp(root, cspWithout('default-src', "img-src 'self' data: blob:")))
+  contains: 'only inside comments or strings',
+  root: fixture(root => {
+    edit(root, TOOL + '/background.js', s =>
+      '// This extension never calls fetch(), XMLHttpRequest or navigator.sendBeacon.\n' +
+      '/* Not a WebSocket in sight, and no EventSource either. */\n' + s);
+  })
 });
 
 /* =====================================================================
