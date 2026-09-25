@@ -1,0 +1,87 @@
+/* pages/beautify.html's own stylesheet. Until 2026-09-24 this was an inline
+   <style> block in that page; it moved here so the extension-page CSP can say
+   style-src 'self' (O-FULLSHOT-CSP-HAS-NO-DEFAULT-SRC). Moved verbatim, one
+   level of indent removed; the <link> stands where the block stood, so the
+   cascade order against common.css is unchanged. */
+body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+.topbar { display: flex; align-items: center; gap: 12px; padding: 10px 16px;
+  background: var(--panel); border-bottom: 1px solid var(--line); }
+.topbar h1 { font-size: 15px; margin: 0; font-weight: 650; }
+.topbar .spacer { flex: 1; }
+.wrap { flex: 1; display: flex; min-height: 0; }
+/* overflow: auto, not overflow-y. A rail that only scrolls vertically hands
+   any horizontal overflow to the page, and at 200% zoom with a long
+   translation there IS horizontal overflow. */
+.controls { width: 300px; flex: none; overflow: auto; padding: 16px;
+  border-inline-end: 1px solid var(--line); background: var(--panel); }
+.stage { flex: 1; display: grid; place-items: center; overflow: auto; padding: 24px;
+  background: repeating-conic-gradient(var(--bg2) 0% 25%, var(--bg) 0% 50%) 50% / 24px 24px; }
+/* Preview surface: a coordinate space, never mirrored. See editor.html. */
+#bfCanvas { direction: ltr; max-width: 100%; max-height: calc(100vh - 130px);
+  box-shadow: 0 8px 40px rgba(0,0,0,.25); border-radius: 4px; }
+.field { margin-bottom: 18px; }
+/* var(--muted) was never defined — not here, not in common.css. For an
+   inherited property an unresolvable var() is "invalid at computed-value
+   time", which means INHERIT, so every one of these captions has been
+   quietly painting in the body colour rather than the muted one since the
+   rail was written. --fg2 is the token that exists, and it is graded:
+   5.20:1 light / 6.13:1 dark on --panel, which is the rail's background. */
+.field > label, .field > .field-label {
+  display: block; font-size: 12px; font-weight: 650; color: var(--fg2);
+  text-transform: uppercase; letter-spacing: .04em; margin-bottom: 8px; }
+.seg { display: flex; flex-wrap: wrap; gap: 4px; }
+/* No white-space: nowrap. Five buttons in a 300px rail is already tight in
+   English; "Hochformat", "செவ்வக வடிவம்" and "Pystysuunta" simply painted
+   outside it. Wrapping a two-word label onto two lines costs a few pixels of
+   height and is the only thing that keeps the rail a rail. */
+.seg button { flex: 1 1 auto; min-width: 0; padding: 7px 8px;
+  border: 1px solid var(--control-line); border-radius: 8px;
+  background: var(--bg); color: var(--fg); font-size: 12px; cursor: pointer; }
+.seg button.active, .seg button[aria-pressed="true"] {
+  background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.bf-swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+.bf-swatch { width: 40px; height: 40px; border-radius: 10px; border: 2px solid var(--panel);
+  outline: 1px solid var(--control-line); cursor: pointer; padding: 0; }
+.bf-swatch.active { outline: 2px solid var(--accent); outline-offset: 1px; }
+.row { display: flex; align-items: center; gap: 8px; }
+.row input[type=range] { flex: 1; accent-color: var(--accent); }
+.row .val { width: 34px; text-align: end; font-variant-numeric: tabular-nums; font-size: 12px; color: var(--fg2); }
+.chk { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; cursor: pointer; }
+.chk input { flex: none; margin-block-start: 2px; }
+/* See scrollclip.html: two buttons at flex:1 in a 300px rail wrap their
+   labels in every language longer than English. */
+.actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.actions .btn { flex: 1 1 130px; justify-content: center; }
+/* W×H of the capture — data, pinned LTR and isolated. The whole readout goes
+   through one message (beautifyDims) rather than a concatenation, so the pin
+   is what keeps the pair from reversing: the × sits INSIDE the message,
+   between two placeholders, where fsDims's U+2066/U+2069 cannot reach it. */
+#bfDims { font-size: 12px; color: var(--fg2); font-variant-numeric: tabular-nums;
+  direction: ltr; unicode-bidi: isolate; }
+/* The back arrow is a DIRECTION, not a word: it points the way the reader
+   came, so it swaps outright in a right-to-left page. It is CSS content and
+   not a text node because U+2190's bidi mirroring only fires when the run
+   around it resolves right-to-left, which it does not while the label is
+   still the Latin-script English fallback. Same reasoning as the canvas pin
+   above: layout mirrors, content does not, and this glyph is layout. */
+#backBtn .nav-arrow::before { content: '\2190'; }
+[dir="rtl"] #backBtn .nav-arrow::before { content: '\2192'; }
+#bfLoading { flex: 1; display: grid; place-items: center; }
+/* 200% ZOOM. body is height:100vh; overflow:hidden with a 300px rail beside
+   a canvas — at 200% a 1280px window is 640 CSS px, so the rail is nearly
+   half the page and the canvas has nothing left. Below 720px the two stack
+   and the page is allowed to scroll, which is what WCAG 1.4.10 asks for:
+   content reflows to a single column rather than demanding two-dimensional
+   scrolling. The height/overflow release has to come with the stack — a
+   column layout inside a viewport-height box with overflow:hidden simply
+   hides the second half. */
+@media (max-width: 720px) {
+  body { height: auto; min-height: 100vh; overflow: auto; }
+  .wrap { flex-direction: column; }
+  .controls { width: auto; overflow: visible;
+    border-inline-end: 0; border-block-end: 1px solid var(--line); }
+  #bfCanvas { max-height: 60vh; }
+}
+
+/* ---- formerly inline style="" attributes (moved 2026-09-24 for style-src 'self') ---- */
+.chk.chk-gap { margin-top: 8px; }

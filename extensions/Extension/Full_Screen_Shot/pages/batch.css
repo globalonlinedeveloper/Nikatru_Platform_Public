@@ -1,0 +1,101 @@
+/* pages/batch.html's own stylesheet. Until 2026-09-24 this was an inline
+   <style> block in that page; it moved here so the extension-page CSP can say
+   style-src 'self' (O-FULLSHOT-CSP-HAS-NO-DEFAULT-SRC). Moved verbatim, one
+   level of indent removed; the <link> stands where the block stood, so the
+   cascade order against common.css is unchanged. */
+/* batch.html deliberately does not share pages/common.css, and Chrome does
+   NOT substitute __MSG_@@bidi_dir__ inside an inline <style> — substitution
+   happens in manifest.json and in .css FILES only. So this page's direction
+   is set by pages/batch.js on the dir attribute, one paint later, and this
+   rule only says "inherit whatever landed there". Recorded because the
+   obvious copy-paste of the common.css line would silently do nothing.
+   ⏱ 2026-09-24: these rules now live in a .css FILE, where Chrome DOES
+   substitute. Nothing here was changed to rely on that: batch.js still sets
+   the dir attribute and this rule still inherits it. */
+/* ---- this page's own palette --------------------------------------------
+   `color-scheme: light dark` tells the browser it may flip Canvas and
+   CanvasText underneath this page — and it does, to roughly #121212 on
+   #ffffff text. Every colour below used to be a hard-coded light-theme
+   value under that declaration, so in a dark profile the page painted
+   #4f46e5 filenames and #6b7280 body copy on near-black: 2.98:1 and 3.88:1,
+   both under AA, and the greys were the ones carrying the row numbers and
+   the permission hint. Two blocks now, and test/a11y-sim.node.js computes
+   every one of these against BOTH of the browser's own canvases.
+   Tokens rather than literals because that is the only way the dark half
+   can exist at all — this page shares no stylesheet with the rest of the
+   product (see the note above the title) and has to carry its own.
+   (No angle-bracketed tag names in this comment: test/i18n-sim.node.js walks
+   the file with a tag scanner and one inside a CSS comment opens an element
+   that is never closed.) */
+:root {
+  color-scheme: light dark;
+  --bq-sub: #5b6270;        /* the intro paragraph            6.13:1 */
+  --bq-label: #5f6570;      /* panel headings, row numbers    5.86:1 */
+  --bq-link: #4338ca;       /* derived filename, "open" link  7.90:1 */
+  --bq-btn: #4f46e5;
+  --bq-btn-fg: #ffffff;     /* on --bq-btn                    6.29:1 */
+  --bq-btn-off: #6b7280;    /* disabled: exempt from 1.4.3, still legible */
+  --bq-skip: #8a4a06;       /* the skipped-URLs line          6.86:1 */
+  --bq-done: #15803d;       /* a finished row                 5.02:1 */
+  --bq-error: #c81e1e;      /* a failed row                   5.74:1 */
+  --bq-busy: #8a5206;       /* the row being captured         6.38:1 */
+  --bq-line: #767b85;       /* the textarea's only boundary   4.25:1 */
+  --bq-rule: rgba(90,95,110,.30);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bq-sub: #a8adb8;      /*  8.33:1 */
+    --bq-label: #a1a7b3;    /*  7.76:1 */
+    --bq-link: #a5a0fa;     /*  8.04:1 */
+    --bq-btn: #6a61ef;      /*  white on it: 4.60:1 */
+    --bq-btn-fg: #ffffff;
+    --bq-btn-off: #8c93a1;
+    --bq-skip: #f0a860;     /*  9.34:1 */
+    --bq-done: #4ade80;     /* 10.75:1 */
+    --bq-error: #f87171;    /*  6.77:1 */
+    --bq-busy: #fbbf24;     /* 11.22:1 */
+    --bq-line: #767b85;     /*  4.41:1 */
+    --bq-rule: rgba(160,166,180,.30);
+  }
+}
+/* This page declares no transition and no animation, so there is nothing for
+   a reduce query to switch off. Recorded rather than left blank: "no
+   @media (prefers-reduced-motion) here" should read as a checked fact. */
+body { font: 14px/1.5 system-ui, -apple-system, sans-serif; margin: 0; padding: 26px; max-width: 860px; overflow-wrap: break-word; }
+h1 { font-size: 19px; margin: 0 0 4px; }
+p.sub { color: var(--bq-sub); margin: 0 0 16px; }
+/* No shared stylesheet means no shared focus ring either. Same shape as the
+   one in pages/common.css: :focus-visible so a mouse click paints nothing,
+   2px offset so the ring on the filled button lands on the page behind it
+   rather than on the button's own indigo. */
+:where(a[href], button, input, select, textarea):focus-visible {
+  outline: 2px solid var(--bq-btn);
+  outline-offset: 2px;
+}
+/* The box holds URLs the user pastes: LTR whatever the chrome is doing. */
+textarea { width: 100%; box-sizing: border-box; min-height: 150px; font: 13px/1.45 ui-monospace, SFMono-Regular, monospace; padding: 11px; border: 1px solid var(--bq-line); border-radius: 9px; resize: vertical; background: Canvas; color: CanvasText; direction: ltr; }
+.bar { display: flex; gap: 12px; align-items: center; margin: 12px 0; flex-wrap: wrap; }
+button { font: 600 14px system-ui; padding: 9px 20px; border: 0; border-radius: 9px; background: var(--bq-btn); color: var(--bq-btn-fg); cursor: pointer; }
+button:disabled { background: var(--bq-btn-off); cursor: default; }
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; margin-top: 10px; }
+@media (max-width: 680px) { .cols { grid-template-columns: 1fr; } }
+.panel h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--bq-label); margin: 0 0 8px; }
+.bq-count { font-weight: 600; margin-bottom: 6px; }
+.bq-row { display: flex; gap: 9px; align-items: baseline; padding: 3px 0; border-bottom: 1px solid var(--bq-rule); font-size: 12px; }
+.bq-n { color: var(--bq-label); min-width: 20px; text-align: end; }
+/* A URL and a derived filename are the USER's, and both are punctuation-heavy:
+   pinned LTR and isolated so an RTL chrome cannot reorder them. */
+.bq-url { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  direction: ltr; unicode-bidi: isolate; }
+.bq-fn { color: var(--bq-link); font-family: ui-monospace, monospace; font-size: 11px;
+  direction: ltr; unicode-bidi: isolate; }
+.bq-st { min-width: 60px; text-align: end; }
+.bq-st a { color: var(--bq-link); }
+.bq-skip { color: var(--bq-skip); margin-top: 9px; font-size: 12px; }
+.bq-done .bq-st { color: var(--bq-done); }
+.bq-error .bq-st { color: var(--bq-error); }
+.bq-capturing .bq-url { font-weight: 600; }
+.bq-capturing .bq-st { color: var(--bq-busy); }
+
+/* ---- formerly inline style="" attributes (moved 2026-09-24 for style-src 'self') ---- */
+#bqHint { color: var(--bq-label); font-size: 12px; }

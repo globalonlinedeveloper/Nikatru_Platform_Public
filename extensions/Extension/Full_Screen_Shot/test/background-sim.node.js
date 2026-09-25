@@ -33,10 +33,50 @@ const vm = require('vm');
 const ROOT = process.env.FS_ROOT || path.join(__dirname, '..');
 const BG_PATH = process.env.FS_BG || path.join(ROOT, 'background.js');
 const BG_SRC = fs.readFileSync(BG_PATH, 'utf8');
+/* THE ENGINE THIS RUN MODELS (2026-09-24, O-FIREFOX-BUILD-NEVER-RUN-IN-A-BROWSER
+   limb 1). 'chromium' is the default and is every run before that date: an MV3
+   SERVICE WORKER, where the sandbox hands the worker a real importScripts().
+   'gecko' is set by test/background-sim.firefox.node.js and models what Firefox
+   does with the SAME file: it ignores background.service_worker, loads the
+   merged Firefox manifest's background.scripts IN ORDER into one global, and
+   there is no importScripts in scope at all. Before this, the sandbox supplied
+   importScripts on every run, so the sims took the branch Chrome takes and the
+   Firefox branch of background.js:24 had never been executed by anything. */
+const ENGINE = process.env.FS_ENGINE === undefined ? 'chromium' : process.env.FS_ENGINE;
+if (ENGINE !== 'chromium' && ENGINE !== 'gecko') {
+  console.error('FS_ENGINE=' + JSON.stringify(ENGINE) + ' is neither chromium nor gecko. This sim will not guess which\n' +
+    'browser it is modelling: COVERAGE LOST, not a pass.');
+  process.exit(2);
+}
 /* The shipped manifest and the shipped English message file, read off disk. The
    worker reports one of them in its diagnostic bundle and names keys out of the
-   other, and both claims are only worth grading against the real files. */
-const MANIFEST = JSON.parse(fs.readFileSync(path.join(ROOT, 'manifest.json'), 'utf8'));
+   other, and both claims are only worth grading against the real files.
+   Under 'gecko' the manifest is the one Firefox receives: manifest.json with the
+   overlay tool.json names applied by publish/package.node.js's mergePatch, which
+   tooling/ci/test/extensions-shared-constants.test.mjs grades equal to
+   scripts/pack.mjs's — so it is the manifest the Firefox zip carries. */
+const MANIFEST = (() => {
+  const base = JSON.parse(fs.readFileSync(path.join(ROOT, 'manifest.json'), 'utf8'));
+  if (ENGINE !== 'gecko') return base;
+  const tool = JSON.parse(fs.readFileSync(path.join(ROOT, 'tool.json'), 'utf8'));
+  const rel = tool.targets && tool.targets.firefox && tool.targets.firefox.overlay;
+  if (typeof rel !== 'string' || !fs.existsSync(path.join(ROOT, rel))) {
+    console.error('FS_ENGINE=gecko, but tool.json names no Firefox overlay on disk (' + JSON.stringify(rel) + ').\n' +
+      'There is no Firefox manifest to model: COVERAGE LOST, not a pass.');
+    process.exit(2);
+  }
+  const { mergePatch } = require(path.join(ROOT, 'publish', 'package.node.js'));
+  return mergePatch(base, JSON.parse(fs.readFileSync(path.join(ROOT, rel), 'utf8')));
+})();
+/* What Firefox loads, in the order it loads it. Refused rather than defaulted:
+   a gecko run that could not say which files Firefox runs has nothing to model. */
+const GECKO_BG_SCRIPTS = ENGINE === 'gecko' ? (MANIFEST.background || {}).scripts : null;
+if (ENGINE === 'gecko' && !(Array.isArray(GECKO_BG_SCRIPTS) && GECKO_BG_SCRIPTS.length &&
+    GECKO_BG_SCRIPTS[GECKO_BG_SCRIPTS.length - 1] === 'background.js')) {
+  console.error('FS_ENGINE=gecko, but the merged Firefox manifest\'s background.scripts is ' +
+    JSON.stringify(GECKO_BG_SCRIPTS) + ',\nnot a list ending in background.js. COVERAGE LOST, not a pass.');
+  process.exit(2);
+}
 const EN_MESSAGES = JSON.parse(fs.readFileSync(path.join(ROOT, '_locales/en/messages.json'), 'utf8'));
 
 const EXT_ID = 'fullshotsimextensionid';
@@ -207,6 +247,11 @@ function makeEnv(opts) {
     // and a cleanup that removes the evidence must not also remove the check.
     framesWritten: [],
     logs: [], network: [], downloads: [], syncGets: [], permQueries: [], permRequests: [], creates: [],
+    // One entry per permissions.request a PAGE made: was it inside the user
+    // gesture that asked for it? (limb 5 — see GESTURE, below.)
+    permGestures: [],
+    // Under ENGINE 'gecko': the background.scripts Firefox ran, in order.
+    geckoLoaded: [],
     reads: { keys: [], getAll: [], hasKey: [] },   // which shape the worker asks the database for
     confirms: [],                      // every sentence a page put in front of the user
     blobs: [],                         // every blob a page turned into a download
@@ -222,7 +267,9 @@ function makeEnv(opts) {
        — which is what the popup and this sim have always run against, and what
        every English assertion in this file grades. */
     locale: o.locale || null, i18nAsked: [],
-    userAgent: o.userAgent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.6613.120 Safari/537.36',
+    userAgent: o.userAgent || (ENGINE === 'gecko'
+      ? 'Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0'
+      : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.6613.120 Safari/537.36'),
     hasBatchPage: o.hasBatchPage !== false,   // is pages/batch.html listening?
     /* navigator.storage — the API this whole item is asked and answered through.
        estimate() reports what the fake database is ACTUALLY holding, so "how
@@ -736,13 +783,19 @@ function boot(env) {
        Window. A worker that reached for it would find undefined. */
     navigator: { userAgent: env.userAgent, storage: env.storageManager(false) },
     /* Real importScripts: the shipped files must parse and must not touch
-       IndexedDB at load time. FSDB's storage layer is swapped out below. */
-    importScripts() {
-      Array.from(arguments).forEach(f => {
-        env.imports.push(f);
-        vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), sandbox, { filename: f });
-      });
-    },
+       IndexedDB at load time. FSDB's storage layer is swapped out below.
+       CHROMIUM ONLY. Firefox runs this file as one of background.scripts, a
+       classic script with no importScripts in scope, so under ENGINE 'gecko' the
+       sandbox has none and an unguarded call throws ReferenceError exactly as it
+       would in Firefox. */
+    ...(ENGINE === 'gecko' ? {} : {
+      importScripts() {
+        Array.from(arguments).forEach(f => {
+          env.imports.push(f);
+          vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), sandbox, { filename: f });
+        });
+      }
+    }),
     fetch() { env.network.push('fetch'); throw new Error('zero-network doctrine: no fetch in the worker'); },
     XMLHttpRequest() { env.network.push('xhr'); throw new Error('zero-network doctrine: no XHR in the worker'); },
     WebSocket() { env.network.push('ws'); throw new Error('zero-network doctrine: no sockets in the worker'); },
@@ -750,7 +803,17 @@ function boot(env) {
   };
   sandbox.self = sandbox;
   vm.createContext(sandbox);
-  vm.runInContext(BG_SRC, sandbox, { filename: 'background.js' });
+  if (ENGINE === 'gecko') {
+    /* Firefox: every background.scripts entry, in order, into ONE global —
+       background.js last, and read from BG_PATH so FS_BG still swaps it. */
+    for (const f of GECKO_BG_SCRIPTS) {
+      env.geckoLoaded.push(f);
+      const src = f === 'background.js' ? BG_SRC : fs.readFileSync(path.join(ROOT, f), 'utf8');
+      vm.runInContext(src, sandbox, { filename: f });
+    }
+  } else {
+    vm.runInContext(BG_SRC, sandbox, { filename: 'background.js' });
+  }
 
   const realFSDB = sandbox.FSDB || {};
   const realFrameKey = realFSDB.frameKey || ((c, i) => c + ':' + i);
@@ -805,6 +868,33 @@ const POPUP_MODES = (POPUP_HTML.match(/data-mode="([^"]+)"/g) || []).map(s => s.
 const ERR_BLOCK = (/<div id="err"[\s\S]*?<\/div>/.exec(POPUP_HTML) || [''])[0];
 const ERR_PARTS = (ERR_BLOCK.match(/id="([^"]+)"/g) || []).map(s => s.slice(4, -1));
 
+/* THE USER GESTURE, MODELLED (2026-09-24, limb 5). A browser lets a page call
+   permissions.request only from inside a user-input handler. Firefox holds that
+   to the handler's SYNCHRONOUS extent: a request made after an `await` — even
+   an await on permissions.contains() — is refused with "permissions.request may
+   only be called from a user input handler". Chromium carries the gesture a
+   little further, which is why popup.js asked after an await for as long as it
+   did and nothing noticed. `live` is true only while a dispatched handler is
+   running synchronously; both page harnesses set it, and both request stubs
+   record it (and under ENGINE 'gecko' refuse, as Firefox does). */
+const GESTURE = { live: false };
+function inGesture(fn, ev) {
+  let p;
+  GESTURE.live = true;
+  try { p = fn(ev); } finally { GESTURE.live = false; }
+  return p;
+}
+function gestureRequest(env) {
+  return q => {
+    env.permRequests.push(q);
+    env.permGestures.push(GESTURE.live);
+    if (ENGINE === 'gecko' && !GESTURE.live) {
+      return Promise.reject(new Error('permissions.request may only be called from a user input handler'));
+    }
+    return Promise.resolve(true);
+  };
+}
+
 function makeEl(id, tagName) {
   const el = {
     id: id || '', tagName: tagName || 'DIV', className: '', hidden: false,
@@ -812,7 +902,7 @@ function makeEl(id, tagName) {
     addEventListener(type, fn) { (el.listeners[type] = el.listeners[type] || []).push(fn); },
     async dispatch(type, ev) {
       const fns = (el.listeners[type] || []).slice();
-      for (const fn of fns) await fn(Object.assign({ target: el, preventDefault() {} }, ev || {}));
+      for (const fn of fns) await inGesture(fn, Object.assign({ target: el, preventDefault() {} }, ev || {}));
     }
   };
   return el;
@@ -860,7 +950,7 @@ function popupChrome(env) {
     storage: env.chrome.storage,
     permissions: {
       contains: env.chrome.permissions.contains,
-      request: async q => { env.permRequests.push(q); return true; }
+      request: gestureRequest(env)
     }
   };
 }
@@ -966,7 +1056,7 @@ function makeOptEl(doc, tag, attrs) {
     addEventListener(type, fn) { (el.listeners[type] = el.listeners[type] || []).push(fn); },
     async dispatch(type, ev) {
       for (const fn of (el.listeners[type] || []).slice()) {
-        await fn(Object.assign({ target: el, key: '', preventDefault() {} }, ev || {}));
+        await inGesture(fn, Object.assign({ target: el, key: '', preventDefault() {} }, ev || {}));
       }
     }
   };
@@ -1021,7 +1111,7 @@ function pageChrome(env) {
     downloads: env.chrome.downloads,
     permissions: {
       contains: env.chrome.permissions.contains,
-      request: async q => { env.permRequests.push(q); return true; }
+      request: gestureRequest(env)
     }
   };
 }
@@ -1123,11 +1213,28 @@ const quotaError = (message) => {
 
 (async () => {
   /* ================= boot ================= */
-  console.log('\n=== boot ===');
+  console.log('\n=== boot (' + ENGINE + ') ===');
   {
-    const env = newEnv();
-    check('imports the two shipped worker libraries, db first',
-      env.imports.join(',') === 'pages/db.js,pages/batch.js', env.imports.join(','));
+    /* A worker that throws at load registers nothing, and under 'gecko' that is
+       precisely the failure this engine exists to catch (an unguarded
+       importScripts is a ReferenceError on line 1 in Firefox). Reported as the
+       finding it is, then stopped: every check after this one needs a worker. */
+    let env;
+    try { env = newEnv(); } catch (e) {
+      check('background.js loads under ' + ENGINE + (ENGINE === 'gecko' ? ' (background.scripts, no importScripts)' : ''),
+        false, String(e && e.stack || e).split('\n').slice(0, 3).join(' | '));
+      console.log('\nFAILURES: ' + FAILS + ' — the worker did not load, so nothing else could be graded.');
+      process.exit(1);
+    }
+    if (ENGINE === 'gecko') {
+      check('loads the merged Firefox manifest\'s background.scripts in order, background.js last',
+        env.geckoLoaded.join(',') === GECKO_BG_SCRIPTS.join(','), env.geckoLoaded.join(','));
+      check('...with no importScripts in scope, as in Firefox',
+        typeof env.sandbox.importScripts === 'undefined' && env.imports.length === 0, typeof env.sandbox.importScripts);
+    } else {
+      check('imports the two shipped worker libraries, db first',
+        env.imports.join(',') === 'pages/db.js,pages/batch.js', env.imports.join(','));
+    }
     check('real FSBatch pure core is live in the worker',
       !!(env.sandbox.FSBatch && env.sandbox.FSBatch.fsNextJob), typeof env.sandbox.FSBatch);
     check('real FSDB frameKey survives the storage swap',
@@ -1154,8 +1261,13 @@ const quotaError = (message) => {
     const tab = env.addTab({ script: { frames: 1 } });
     await startCapture(env, tab.id, 'full');
     check('a whole capture makes no fetch/XHR/socket call', env.network.length === 0, JSON.stringify(env.network));
-    check('every importScripts target is a packaged relative path',
-      env.imports.every(f => !/^[a-z]+:\/\//i.test(f)), env.imports.join(','));
+    if (ENGINE === 'gecko') {
+      check('every background.scripts entry is a packaged relative path',
+        GECKO_BG_SCRIPTS.every(f => !/^[a-z]+:\/\//i.test(f) && fs.existsSync(path.join(ROOT, f))), GECKO_BG_SCRIPTS.join(','));
+    } else {
+      check('every importScripts target is a packaged relative path',
+        env.imports.every(f => !/^[a-z]+:\/\//i.test(f)), env.imports.join(','));
+    }
     check('the worker never calls chrome.downloads (downloads belong to the pages)',
       env.downloads.length === 0, env.downloads.length);
   }
@@ -3693,7 +3805,8 @@ const quotaError = (message) => {
     const b = (res || {}).bundle || {};
     check('the bundle names the extension version from the shipped manifest',
       b.version === MANIFEST.version, b.version + ' vs ' + MANIFEST.version);
-    check('...and the browser, as a name and a number', /^Chrome 128$/.test(String(b.browser)), b.browser);
+    check('...and the browser, as a name and a number',
+      (ENGINE === 'gecko' ? /^Firefox 140$/ : /^Chrome 128$/).test(String(b.browser)), b.browser);
     check('...and the settings actually in force',
       b.settings && b.settings.imageFormat === 'jpeg' && b.settings.captureDelay === 300 && b.settings.theme === 'dark',
       JSON.stringify(b.settings));
@@ -4754,6 +4867,38 @@ const quotaError = (message) => {
     check('the popup never renders an exception message it caught itself',
       !/error:\s*e\.message/.test(POPUP_SRC),
       (POPUP_SRC.match(/error:\s*e\.message/g) || []).join(','));
+  }
+  {
+    /* LIMB 5 (2026-09-24). Switching "expand inner content" on asks for the
+       optional <all_urls> grant. popup.js asked inside
+       permissions.contains().then(...), i.e. AFTER an await, which Firefox
+       refuses outright (see GESTURE). The ask has to be the first thing the
+       change handler does; permissions.request on a grant already held resolves
+       true without a prompt, so asking unconditionally costs nothing. */
+    const env = newEnv({ granted: false });
+    env.addTab({ id: 99, active: true });
+    const pop = await bootPopup(env);
+    const toggle = pop.doc.getElementById('expandInner');
+    toggle.checked = true;
+    await toggle.dispatch('change');
+    await pump(env, { budget: 2000 });
+    check('switching expandInner on in the popup asks for <all_urls> once',
+      env.permRequests.length === 1 && JSON.stringify(env.permRequests[0]) === '{"origins":["<all_urls>"]}',
+      JSON.stringify(env.permRequests));
+    check('...from INSIDE the change handler, before any await (Firefox refuses a request made after one)',
+      env.permGestures.length === 1 && env.permGestures[0] === true, JSON.stringify(env.permGestures));
+    check('...and the choice is saved even if the permission dialog closes the popup',
+      env.sync.expandInner === true, String(env.sync.expandInner));
+  }
+  {
+    const env = newEnv({ granted: false });
+    const page = await bootOptions(env);
+    page.el('expandInner').checked = true;
+    await page.el('expandInner').dispatch('change');
+    await pump(env, { budget: 30000 });
+    await page.click('expandPermBtn');
+    check('the options page asks for <all_urls> from inside both of its user gestures',
+      env.permGestures.length === 2 && env.permGestures.every(g => g === true), JSON.stringify(env.permGestures));
   }
   {
     const pop = await bootPopup(newEnv());

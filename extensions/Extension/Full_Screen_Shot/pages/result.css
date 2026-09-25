@@ -1,0 +1,117 @@
+/* pages/result.html's own stylesheet. Until 2026-09-24 this was an inline
+   <style> block in that page; it moved here so the extension-page CSP can say
+   style-src 'self' (O-FULLSHOT-CSP-HAS-NO-DEFAULT-SRC). Moved verbatim, one
+   level of indent removed; the <link> stands where the block stood, so the
+   cascade order against common.css is unchanged. */
+.topbar .actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+#progress {
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+  padding: 110px 20px; color: var(--fg2);
+}
+#progress .spin { width: 30px; height: 30px; }
+
+#view { max-width: 1400px; margin: 0 auto; padding: 22px 18px 60px; }
+.seg-wrap { margin-bottom: 26px; }
+.seg-head {
+  display: flex; align-items: center; gap: 10px;
+  margin: 0 2px 8px; color: var(--fg2); font-size: 12.5px;
+}
+.seg-head { flex-wrap: wrap; }
+.seg-head .grow { flex: 1; }
+.seg-head button { font-size: 12px; padding: 4px 10px; }
+/* "Part 2 of 7 · 1280×4096" — digits and × around a translated phrase.
+   Isolated so the run cannot reorder against an RTL sentence beside it. */
+.seg-head > span:first-child { unicode-bidi: isolate; }
+/* The captured image is the user's, and it is a coordinate space. */
+.shot-img { direction: ltr; }
+.shot-img {
+  display: block; width: 100%; height: auto;
+  background: #fff;
+  border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: var(--shadow);
+}
+#empty {
+  text-align: center; padding: 120px 20px; color: var(--fg2);
+}
+#empty h2 { color: var(--fg); }
+.hint { text-align: center; color: var(--fg2); font-size: 12px; margin-top: -8px; }
+/* The acts line. ONE appearance, no variants: a second colour or a heavier
+   border would be a verdict rendered in CSS, which is the same claim wearing
+   a stylesheet. The words carry the whole message; the styling only makes it
+   findable. */
+.redactline {
+  max-width: 900px; margin: 0 auto 4px; padding: 8px 12px; font-size: 13px;
+  line-height: 1.45; color: var(--fg2); border-inline-start: 3px solid var(--fg2);
+  background: var(--bg2);
+}
+
+/* ---- the review step (REDACTION-CLAIM-SPEC.md §3) ---------------------- */
+#reviewDlg {
+  position: fixed; inset: 0; z-index: 60; display: flex;
+  align-items: center; justify-content: center; padding: 24px;
+  background: rgba(0, 0, 0, 0.55);
+}
+#reviewDlg[hidden] { display: none; }
+/* overflow:auto is the LAST GUARANTEE THAT THE BUTTONS EXIST. The panel is a
+   column with a flexible image region in the middle, and a flex item does not
+   shrink below its own min-height — so on a short window the footer was
+   pushed out of the panel and Cancel and Confirm were simply not on screen.
+   A confirmation dialog whose confirmation cannot be reached is not a dialog.
+   With this the panel scrolls instead, and every control stays reachable at
+   any window size. */
+.review-panel {
+  display: flex; flex-direction: column; gap: 10px;
+  width: min(980px, 100%); max-height: 100%; overflow: auto;
+  padding: 18px 18px 14px; border-radius: 12px;
+  background: var(--bg); color: var(--fg); box-shadow: var(--shadow);
+  border: 1px solid var(--line);
+}
+.review-panel h2 { margin: 0; font-size: 16px; }
+.review-panel p { margin: 0; font-size: 13px; line-height: 1.5; color: var(--fg2); }
+/* The ONE bolded line in the design, and it is reached only when a match is
+   not covered. Never a colour on its own. */
+.review-panel p.review-short { color: var(--fg); font-weight: 700; }
+.review-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.review-controls .grow { flex: 1; }
+/* BOUNDED, because the number of marks is bounded only by the box ceiling —
+   two thousand of them. Every one stays reachable (the list scrolls, and
+   focusing a control scrolls it into view); what it may not do is grow until
+   it pushes the image and the confirm button off the screen, which is what
+   the ceiling fixture did. A landmark list that displaces the thing it is a
+   list OF has stopped being a landmark list. */
+.review-jumps {
+  display: flex; gap: 6px; flex-wrap: wrap;
+  max-height: 74px; overflow-y: auto; flex: 1 1 auto; min-width: 0;
+}
+.review-jumps button { font-size: 12px; padding: 3px 8px; }
+/* "View 3 of 14" — where in the picture the person is. Digits around a
+   translated phrase, so it is isolated for the same reason .seg-head is. */
+.review-pos { font-size: 12px; color: var(--fg2); white-space: nowrap; unicode-bidi: isolate; }
+/* The image is the artifact under judgement, so it gets the room and its own
+   scroll region; nothing is ever drawn over its pixels.
+   min-height is deliberately generous: the panel is a column and this is the
+   only member of it that should absorb the slack, because it is the only
+   member of it anybody is here to look at. */
+#reviewImgWrap {
+  position: relative; overflow: auto; background: #fff; direction: ltr;
+  border: 1px solid var(--line); border-radius: 8px; min-height: 220px; flex: 1;
+}
+/* No interpolation opinion is declared. What is on screen when the preview is
+   magnified is the EXPORT's own pixels made bigger — blurred by the downscale
+   that already happened and by nothing else. That is the honest thing to
+   show: if a word cannot be resolved here, it cannot be resolved by whatever
+   receives the image either. */
+#reviewImg { display: block; }
+#reviewMarkLayer { position: absolute; inset: 0; pointer-events: none; }
+/* OUTLINE AND BADGE, NEVER A FILL: the mark must not cover any pixel of the
+   thing being judged. */
+.review-mark {
+  position: absolute; border: 2px solid #d81b60; border-radius: 2px; background: none;
+}
+.review-badge {
+  position: absolute; top: -2px; inset-inline-start: -2px;
+  padding: 0 4px; font: 700 11px/16px system-ui, sans-serif;
+  color: #fff; background: #d81b60; border-radius: 2px;
+}
+.review-foot { display: flex; gap: 8px; justify-content: flex-end; align-items: center; }

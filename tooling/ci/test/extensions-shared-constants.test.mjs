@@ -236,3 +236,61 @@ describe('the Chrome Web Store secret name is ONE constant', () => {
     assert.deepEqual([...new Set(mapped.map((m) => m.secret))].sort(), [...preflight].sort());
   });
 });
+
+// ── 4 ───────────────────────────────────────────────────────────────────────
+// G3, 2026-09-24. publish/package.node.js's main() and verifyPackage() were a
+// second packer no workflow ran, and they were retired. Two things they graded
+// had no other reader, and these cases are those readers now: its NET regex was
+// the only list naming RTCPeerConnection and SharedWorker, and its main() was the
+// only thing comparing its mergePatch with scripts/pack.mjs's.
+const NETWORK_SAMPLES = {
+  'fetch(': 'fetch(url)',
+  XMLHttpRequest: 'const x = new XMLHttpRequest();',
+  WebSocket: 'const s = new WebSocket(url);',
+  EventSource: 'const e = new EventSource(url);',
+  sendBeacon: 'navigator.sendBeacon(url, data);',
+  RTCPeerConnection: 'const pc = new RTCPeerConnection();',
+  SharedWorker: "const w = new SharedWorker('w.js');",
+};
+
+/** policy-check.mjs's NETWORK table, evaluated from its own source: the gate is a
+ *  script that runs when imported, so the table is read rather than imported. */
+function policyCheckNetwork() {
+  const src = readFileSync(join(EXT, 'scripts', 'policy-check.mjs'), 'utf8');
+  const m = /\nconst NETWORK = (\[[\s\S]*?\n\]);/.exec(src);
+  assert.ok(m, 'scripts/policy-check.mjs no longer declares `const NETWORK = [ ... ];` at column 0');
+  const table = new Function(`return ${m[1]};`)();
+  assert.ok(Array.isArray(table) && table.length >= 7, `NETWORK has ${table && table.length} row(s)`);
+  return table;
+}
+const flaggedBy = (table, line) => table.filter(({ re }) => new RegExp(re.source, re.flags.replace('g', '')).test(line)).map((r) => r.name);
+
+describe('one network-API list, and it names what the retired packer named', () => {
+  test('policy-check NETWORK flags each of the seven network APIs, RTCPeerConnection and SharedWorker among them', () => {
+    const table = policyCheckNetwork();
+    const missed = Object.entries(NETWORK_SAMPLES).filter(([, line]) => flaggedBy(table, line).length === 0).map(([api]) => api);
+    assert.deepEqual(missed, [], `policy-check.mjs NETWORK does not flag: ${missed.join(', ')}`);
+  });
+
+  test('policy-check NETWORK does not flag a line that names no network API', () => {
+    const table = policyCheckNetwork();
+    assert.deepEqual(flaggedBy(table, 'const peer = makePeer(); const worker = new Worker("w.js");'), []);
+  });
+
+  test('the template verify-package NET regex flags the same seven APIs', () => {
+    const src = readFileSync(join(EXT, 'templates', 'tool', 'publish', 'verify-package.node.js'), 'utf8');
+    const m = /\nconst NET = (\/.+\/g);\n/.exec(src);
+    assert.ok(m, 'templates/tool/publish/verify-package.node.js no longer declares `const NET = /.../g;`');
+    const NET = new Function(`return ${m[1]};`)();
+    const missed = Object.entries(NETWORK_SAMPLES).filter(([, line]) => !new RegExp(NET.source).test(line)).map(([api]) => api);
+    assert.deepEqual(missed, [], `the template NET regex does not flag: ${missed.join(', ')}`);
+  });
+
+  test('Full_Screen_Shot\'s package.node.js mergePatch is scripts/pack.mjs\'s mergePatch', () => {
+    const PKG = createRequire(import.meta.url)(join(EXT, FULLSHOT_PKG));
+    assert.equal(typeof PKG.mergePatchDrift, 'function', `${FULLSHOT_PKG} no longer exports mergePatchDrift`);
+    const drift = PKG.mergePatchDrift();
+    assert.notEqual(drift, null, 'scripts/pack.mjs is not reachable from the packager, so nothing was compared');
+    assert.equal(drift, '', drift);
+  });
+});

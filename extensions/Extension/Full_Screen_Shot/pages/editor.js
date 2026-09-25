@@ -148,7 +148,7 @@
          message file's text is allowed to land. The English stays in the markup
          as the fallback, same rule as every data-i18n element on this page. */
       const box = $('loading');
-      box.innerHTML = '<div style="text-align:center"><h2>Screenshot not found</h2>' +
+      box.innerHTML = '<div class="not-found"><h2>Screenshot not found</h2>' +
         '<a class="btn primary" href="history.html">Open history</a></div>';
       const heading = box.querySelector('h2'), link = box.querySelector('a');
       if (heading) heading.textContent = msg('editorNotFound', null, 'Screenshot not found');
