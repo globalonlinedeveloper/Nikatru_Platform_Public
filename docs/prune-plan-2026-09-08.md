@@ -559,3 +559,5 @@ node -e "const j=require('./tooling/enforcement-index.json'); \
 
 🔴 Capture every exit code on its own line. `$?` after a pipe is the last stage's status, and a script
 ending in `grep -c` exits 1 on **zero** matches — read the artefact before reporting a failure.
+
+<!-- scratch RC3 (batch v606, pd11): a docs-only change; never merged. -->
