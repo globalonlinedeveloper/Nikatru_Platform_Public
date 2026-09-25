@@ -74,6 +74,8 @@
     "  · disqualified channels are named with the LOCKED ADR that killed them, and printed every run",
     "  · every native row carries a boolean `nativeAuth`, a web or extension row carries none, and",
     "    `served: true` on a native row needs it true             [O-BOXA-CAPTCHA-REFUSES-NATIVE-SIGN-IN]",
+    "  · a `deferral.ruledOutBy` is a constraint id (`C-…`), and a SERVED row carries none",
+    "                                                            [O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER]",
     "  · COVERAGE LOST when the register is absent, empty, or has nothing served   [D-1 requires loud]",
     "",
     "🔴 `storefrontKey` IS THE STOREFRONT'S NAME FOR THIS CHANNEL, AND IT LIVES HERE SO THAT ADDING A",
@@ -138,7 +140,19 @@
     "While it is false, assert-channel-register.mjs refuses `served: true` on the row, and",
     "`release-manifest.mjs --stage` refuses, on a release tag, every installer the row claims (an",
     "untagged build-proof run only warns). Flip it on OBSERVED evidence — a native build completing",
-    "sign-in, sign-up and recovery against that backend — never on a changed setting alone."
+    "sign-in, sign-up and recovery against that backend — never on a changed setting alone.",
+    "",
+    "⛔ `deferral.ruledOutBy` SAYS A CONSTRAINT FORBIDS THIS CHANNEL, NOT THAT IT IS WAITING. A deferred",
+    "row is work that has not started; a ruled-out row is a channel a locked constraint says will not",
+    "ship, and the value is that constraint's id (windows-direct: C-WINDOWS-STORE-ONLY, Windows ships",
+    "through the Microsoft Store only). It decides what a GitHub Release may carry: a Release carries a",
+    "file only when some row takes that file FROM the Release — a live `kind: direct` row, a store with",
+    "no submission path (a person uploads the Release's file by hand), or any row on a surface whose",
+    "`flutterApp` is false. A format every accepting row of which is a ruled-out row or a `submittable`",
+    "app store is STORE-ONLY: that store's own submission workflow builds its package, nothing reads it",
+    "from the Release, and `release-manifest.mjs --stage` refuses it on every run, tagged or not",
+    "(`storeOnlyFormats`). assert-channel-register.mjs refuses a malformed id and a ruled-out row that",
+    "is served (O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER)."
   ],
   "aggregatingJob": {
     "_why": [
@@ -2649,11 +2663,11 @@
           "note": "No key of ours exists on this path. This is what makes Microsoft the cheapest real store channel."
         },
         "seam": {
-          "_why": "LIFTED 2026-08-20 from tooling/store-pipeline/signing-seams.mjs, deleted in the same commit. `artifactGlob` existed nowhere else in the repository. `prepare` and `verify` name the scripts that arrange a credential and read the result back out of the artifact — a pair, because a step that arranges a thing and then reports its own success is the \"green means ran\" failure with extra stages.",
-          "prepare": "tooling/ci/windows-signing.mjs",
-          "verify": null,
+          "_why": "LIFTED 2026-08-20 from tooling/store-pipeline/signing-seams.mjs, deleted in the same commit. `artifactGlob` existed nowhere else in the repository. `prepare` and `verify` name the scripts that arrange a credential and read the result back out of the artifact — a pair, because a step that arranges a thing and then reports its own success is the \"green means ran\" failure with extra stages. ⏱ 2026-09-25 (O-WINDOWS-DIRECT-DEAD-CHANNEL-LIVES, branch 2): `prepare` is null. This row holds no key (`keyKind: \"none\"`) and the Store re-signs the submitted MSIX, so there is no credential to arrange for it. The script this field used to name, tooling/ci/windows-signing.mjs, read the windows-direct row's secrets and materialised that row's certificate, never this one's; it was retired with the build-platforms.yml step that was its only caller. Restoring it means pointing windows-direct's seam at it, not this one.",
+          "prepare": null,
+          "verify": "tooling/ci/assert-artifact-signed-msix.mjs",
           "artifactGlob": "apps/*/build/windows/msix/*.msix",
-          "why": "🔴 NOTHING IN THIS REPOSITORY READS THE SIGNATURE OUT OF AN .msix. The preparation seam exists; the proof does not. Until it does, a Microsoft Store channel cannot honestly claim a verified artifact."
+          "why": "🔴 NOTHING IN THIS REPOSITORY READS THE SIGNATURE OUT OF AN .msix. The preparation seam exists; the proof does not. Until it does, a Microsoft Store channel cannot honestly claim a verified artifact. ⏱ CORRECTED 2026-09-24 (O-STORE-BUILD-GUARD-GRADES-DECLARED-JOBS-ONLY, amended closes): the proof exists, and `verify` now names it. tooling/ci/assert-artifact-signed-msix.mjs opens the packaged .msix and compares the identity inside it with this row's declaration; it expects NO signature, because the Store signs. assert-channel-register.mjs §10 limb (iv) requires it in the step straight after every step that runs the `.msix` packagerCommand, in any workflow. The sentence above was true when written and is left as it was."
         }
       },
       "minimumToolchain": [
@@ -2929,7 +2943,8 @@
       "ownerQueue": null,
       "deferral": {
         "reason": "39-CHASSIS §4 cut 5, and it is the more expensive of the two Windows paths.",
-        "alsoBlockedBy": "Needs a purchased code-signing certificate."
+        "alsoBlockedBy": "Needs a purchased code-signing certificate.",
+        "ruledOutBy": "C-WINDOWS-STORE-ONLY"
       },
       "notes": [
         "🔬 THE SECOND WINDOWS ROW, and it exists because the two paths have OPPOSITE signing answers.",
@@ -4003,7 +4018,14 @@
       "",
       "⚠️ `.exe` IS THE ENTRY WORTH READING. The windows-direct channel declares that format and nothing",
       "in this repository packages one. That gap was recorded nowhere else, and deleting the old file",
-      "without this block would have deleted the only written record of it."
+      "without this block would have deleted the only written record of it.",
+      "",
+      "⏱ ADDED 2026-09-24 — `packagerCommand` is the STRUCTURED half of `packagedBy`: the token a",
+      "workflow step runs to make the artifact (`.msix` carries one today). assert-channel-register.mjs",
+      "§10 limb (iv) finds every step that runs it, in every job of every workflow, and requires the",
+      "step straight after to run the `signing.seam.verify` of a row declaring that format. A format",
+      "whose `packagedBy` is prose and which carries no `packagerCommand` is outside that census, and",
+      "the guard prints it as such on every run."
     ],
     "formats": {
       ".zip": {
@@ -4029,11 +4051,12 @@
       },
       ".pkg": {
         "flutterTarget": "macos",
-        "packagedBy": "productbuild + notarisation — tooling/ci/apple-signing.mjs and the Apple lane. 🔴 CORRECTED 2026-08-25 — that sentence describes an intent, not a step. NOT IMPLEMENTED ANYWHERE IN THIS REPOSITORY: `productbuild` appears in no workflow in this repository, and apple-signing.mjs:182 states it in its own words — the `productbuild` step stays a printed intent. The `apple` job runs `flutter build macos --release` and uploads the Release directory; no .pkg is produced. Held by assert-channel-register.mjs §10 limb (iii)."
+        "packagedBy": "productbuild + notarisation — tooling/ci/apple-signing.mjs and the Apple lane. 🔴 CORRECTED 2026-08-25 — that sentence describes an intent, not a step. NOT IMPLEMENTED ANYWHERE IN THIS REPOSITORY: `productbuild` appears in no workflow in this repository, and apple-signing.mjs:195 states it in its own words — the `productbuild` step stays a printed intent. The `apple` job runs `flutter build macos --release` and uploads the Release directory; no .pkg is produced. Held by assert-channel-register.mjs §10 limb (iii)."
       },
       ".msix": {
         "flutterTarget": "windows",
-        "packagedBy": "`dart run msix:create` — the lane workflow the register names."
+        "packagedBy": "`dart run msix:create` — the lane workflow the register names.",
+        "packagerCommand": "msix:create"
       },
       ".exe": {
         "flutterTarget": "windows",

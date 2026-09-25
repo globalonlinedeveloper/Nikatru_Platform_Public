@@ -1079,18 +1079,23 @@ function stageDownloads(from) {
 
 const listed = (dir) => (existsSync(dir) ? readdirSync(dir).sort() : []);
 
+// ⏱ 2026-09-24 — NO CASE BELOW STAGES THE PLAY .aab ANY MORE. It is store-only
+// (O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER): android-play is a submittable store, so
+// build-platforms.yml uploads it as `store-<app>-android-aab-<posture>`, outside
+// the `<app>-*` download, and `--stage` refuses one that arrives. S1, S3, S4 and S5
+// stand on the apps.gov.in .apk, the one real-register installer a Release carries;
+// S6 is the tree a pin-null run downloads now, which holds no installer at all.
 describe('--stage reads each installer\'s channel from its build stamp', () => {
   const AGI = 'subscriptiontracker-apps-gov-in-1.0.7.apk';
 
   test('S1 GREEN CONTROL — stamped installers are staged, and each stamp follows its file under the staged name', () => {
     const from = downloadTree([
-      { artifact: 'subscriptiontracker-linux-web-android-release-signed', file: 'app-release.aab', body: 'aab bytes', stamp: { channel: 'android-play' } },
       { artifact: 'subscriptiontracker-apps-gov-in', file: AGI, body: 'apk bytes', stamp: { channel: 'apps-gov-in' } },
     ]);
     const { r, out, stamps } = stageDownloads(from);
     assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
-    assert.deepEqual(listed(out), [`${UNTAGGED_TAG}-app-release.aab`, `${UNTAGGED_TAG}-${AGI}`]);
-    assert.deepEqual(listed(stamps), [`${UNTAGGED_TAG}-app-release.aab.channel.json`, `${UNTAGGED_TAG}-${AGI}.channel.json`]);
+    assert.deepEqual(listed(out), [`${UNTAGGED_TAG}-${AGI}`]);
+    assert.deepEqual(listed(stamps), [`${UNTAGGED_TAG}-${AGI}.channel.json`]);
     assert.equal(JSON.parse(readFileSync(join(stamps, `${UNTAGGED_TAG}-${AGI}.channel.json`), 'utf8')).channel, 'apps-gov-in');
     assert.deepEqual(listed(join(from, 'subscriptiontracker-apps-gov-in')), [], 'neither the file nor its stamp is left to be archived');
   });
@@ -1112,21 +1117,21 @@ describe('--stage reads each installer\'s channel from its build stamp', () => {
 
   test('S3 COVERAGE LOST — a shippable file whose stamp is missing is exit 2, never a default channel', () => {
     const from = downloadTree([
-      { artifact: 'subscriptiontracker-linux-web-android-release-signed', file: 'app-release.aab', body: 'aab bytes', stamp: null },
+      { artifact: 'subscriptiontracker-apps-gov-in', file: AGI, body: 'apk bytes', stamp: null },
     ]);
     const { r, out } = stageDownloads(from);
     assert.equal(r.status, 2, `${r.stdout}${r.stderr}`);
-    assert.match(r.stderr, /COVERAGE LOST — 1 installer\(s\) carry no build stamp: app-release\.aab\./);
+    assert.match(r.stderr, new RegExp(`COVERAGE LOST — 1 installer\\(s\\) carry no build stamp: ${AGI.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.`));
     assert.deepEqual(listed(out), []);
   });
 
   test('S4 RED — a stamp whose sha256 belongs to another file is refused', () => {
     const from = downloadTree([
-      { artifact: 'subscriptiontracker-linux-web-android-release-signed', file: 'app-release.aab', body: 'aab bytes', stamp: { sha: sha256('the bytes of another file') } },
+      { artifact: 'subscriptiontracker-apps-gov-in', file: AGI, body: 'apk bytes', stamp: { channel: 'apps-gov-in', sha: sha256('the bytes of another file') } },
     ]);
     const { r, out } = stageDownloads(from);
     assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
-    assert.match(r.stderr, /✗ app-release\.aab — its stamp records sha256 "[0-9a-f]{64}", and the bytes hash to [0-9a-f]{64}: the stamp was written for other bytes\./);
+    assert.match(r.stderr, new RegExp(`✗ ${AGI.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} — its stamp records sha256 "[0-9a-f]{64}", and the bytes hash to [0-9a-f]{64}: the stamp was written for other bytes\\.`));
     assert.deepEqual(listed(out), []);
   });
 
@@ -1140,7 +1145,6 @@ describe('--stage reads each installer\'s channel from its build stamp', () => {
 
   test('S5 GREEN CONTROL — the UPLOADABLE download is staged with its apps-gov-in stamp, and the record names it apps-gov-in', () => {
     const from = downloadTree([
-      { artifact: 'subscriptiontracker-linux-web-android-release-signed', file: 'app-release.aab', body: 'aab bytes', stamp: { channel: 'android-play' } },
       { artifact: AGI_ARTIFACT, file: AGI, body: 'apk bytes', stamp: { channel: 'apps-gov-in' } },
     ]);
     const step = runAgiStep(REPO, join(from, AGI_ARTIFACT));
@@ -1148,7 +1152,7 @@ describe('--stage reads each installer\'s channel from its build stamp', () => {
     assert.match(step.stdout, /^uploadable apps\.gov\.in apk downloaded into \S+apps-gov-in-subscriptiontracker-apk; --stage takes it with its stamp\n$/);
     const { r, out, stamps } = stageDownloads(from);
     assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
-    assert.deepEqual(listed(out), [`${UNTAGGED_TAG}-app-release.aab`, `${UNTAGGED_TAG}-${AGI}`]);
+    assert.deepEqual(listed(out), [`${UNTAGGED_TAG}-${AGI}`]);
     assert.deepEqual(listed(join(from, AGI_ARTIFACT)), [], 'the .apk and its stamp left the download tree');
     const emit = run(EMITTER, [
       '--emit-release-json', out,
@@ -1170,15 +1174,19 @@ describe('--stage reads each installer\'s channel from its build stamp', () => {
 
   test('S6 the pin null — no UPLOADABLE download: one line naming the null pin, exit 0, and no .apk staged', () => {
     const root = registerTree(null);
+    // ⏱ 2026-09-24 — the Linux bundle is all a pin-null run's `<app>-*` download
+    // holds now (O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER): no installer, and `--stage`
+    // says none is owed, exit 0, rather than COVERAGE LOST.
     const from = downloadTree([
-      { artifact: 'subscriptiontracker-linux-web-android-release-signed', file: 'app-release.aab', body: 'aab bytes', stamp: { channel: 'android-play' } },
+      { artifact: 'subscriptiontracker-linux-web-android-release-signed', file: 'subscriptiontracker', body: 'elf bytes', stamp: null },
     ]);
     const step = runAgiStep(root, join(from, AGI_ARTIFACT));
     assert.equal(step.status, 0, `${step.stdout}${step.stderr}`);
     assert.equal(step.stdout, 'no uploadable apps.gov.in apk: signingCertificate.sha256 is null\n');
     const { r, out } = stageDownloads(from);
     assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
-    assert.deepEqual(listed(out), [`${UNTAGGED_TAG}-app-release.aab`]);
+    assert.match(r.stdout, /nothing staged: no installer under \S+, and none is owed\./);
+    assert.deepEqual(listed(out), []);
   });
 
   test('S7 RED — a pin set and no UPLOADABLE download is exit 1, never the null-pin line', () => {

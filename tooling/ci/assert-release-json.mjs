@@ -486,7 +486,12 @@ export function gradeStampWiring({ root, register }) {
     }
   }
   if (counts.stagers === 0) lost.push('no workflow runs release-manifest.mjs --stage, so no upload is known to reach a release and limb 9 graded nothing.');
-  else if (counts.installerPaths === 0) lost.push('no upload the release job downloads names an installer path, so limb 9 graded nothing: the release would stage nothing.');
+  // ⏱ 2026-09-24 — ADAPTATION (O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER): every installer a
+  // `<app>-*` upload carried was store-only (.aab, .msix, .ipa, .pkg), and build-platforms.yml
+  // names those uploads `store-<app>-…` now, outside the release download. The one installer a
+  // release still takes arrives by the apps.gov.in download limb 10 grades, so a stager with
+  // that download is not "a release that would stage nothing". Without it, it still is.
+  else if (counts.installerPaths === 0 && counts.agiDownloads === 0) lost.push('no upload the release job downloads names an installer path, and it downloads no apps.gov.in .apk, so limb 9 graded nothing: the release would stage nothing.');
   return { findings, lost, counts };
 }
 
@@ -701,9 +706,12 @@ export function selfTest(root) {
   staticCase(
     'limb 9: the Play .apk put back into the <app>-* upload the release downloads',
     'flutter-apk/*.apk and not',
+    // ⏱ 2026-09-24 — anchored on the Linux bundle: the .aab line it used to sit beside is
+    // in the `store-<app>-android-aab-…` upload now, which the release never downloads
+    // (O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER).
     [
-      '            apps/${{ matrix.app }}/build/app/outputs/bundle/release/*.aab\n',
-      '            apps/${{ matrix.app }}/build/app/outputs/flutter-apk/*.apk\n            apps/${{ matrix.app }}/build/app/outputs/bundle/release/*.aab\n',
+      '            apps/${{ matrix.app }}/build/linux/x64/release/bundle\n',
+      '            apps/${{ matrix.app }}/build/app/outputs/flutter-apk/*.apk\n            apps/${{ matrix.app }}/build/linux/x64/release/bundle\n',
     ],
   );
 

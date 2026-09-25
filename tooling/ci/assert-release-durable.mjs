@@ -51,6 +51,16 @@
 //   build-platforms.yml's `release` job → this guard exits 1 naming all three
 //   platform jobs. Proven against the real tree, not a fixture, 2026-08-06.
 //
+// LIMB 1b (⏱ 2026-09-24, O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER) The converse for one
+//   kind of file: no upload a publishing job's `download-artifact` takes may carry
+//   a STORE-ONLY file (release-manifest.mjs `storeOnlyFormats`) — not a file in
+//   one of those formats, and not a desktop bundle whose platform's bundle member
+//   is one (the Windows runner, once windows-direct is ruled out).
+//   RECORDED FAILING CASE: this guard over the build-platforms.yml of e9492c3e →
+//   exit 1 naming five uploads (the Android .aab one, the Windows diagnostic and
+//   final ones, the .pkg and the .ipa); renaming `store-${{ matrix.app }}-windows`
+//   back into the `<app>-*` namespace on the real tree → exit 1 naming it.
+//
 // LIMB 2  A durable publish must carry an INTEGRITY RECORD it has re-derived.
 //   The publishing job must run `release-manifest.mjs --write <dir>` and then
 //   `--verify <dir>` before it publishes, and must publish FROM `<dir>`. The
@@ -81,6 +91,10 @@
 //   (5) at least one installable upload step was FOUND. A classifier that stops
 //       matching is the failure this file exists to prevent, and it would
 //       otherwise report a clean tree with no subjects at all.
+//   (6) ⏱ 2026-09-24 — limb 1b read at least one `download-artifact` step in a
+//       publishing job of a release lane, and release-manifest.mjs still exports
+//       `storeOnlyFormats` and `BUNDLE_MEMBERS`. Without a download read, "no
+//       store-only file reaches a Release" is a claim about nothing.
 //
 // ⚠️ THE HONEST LIMIT, restated 2026-08-08 after it was measured. Limb 1 proves a
 // durable destination EXISTS and is reachable; it cannot prove the step will RUN
@@ -145,7 +159,7 @@ import { listDir } from './tree-walk.mjs';
 // upload or a publish behind `uses: ./.github/actions/<x>`, or in a job of a
 // `uses: ./.github/workflows/<f>.yml` callee, is graded where it runs, under the
 // CALLER's `on:` (a callee's own trigger is only `workflow_call`).
-import { parseResolvedWorkflows, laneRunHost, laneRefusalText, lineAt, refusalText, WORKFLOW_DIR, shellSegments, releaseTriggerLine, emitInvocations } from './workflow-scan.mjs';
+import { parseResolvedWorkflows, laneRunHost, laneRefusalText, lineAt, placeOf, refusalText, WORKFLOW_DIR, shellSegments, releaseTriggerLine, emitInvocations, refFilterToRegExp } from './workflow-scan.mjs';
 
 // Flags are filtered out of the positional scan BEFORE the root is taken, or
 // `--fail-on-mixed-upload-paths` would be resolved as a repository path and every
@@ -190,8 +204,10 @@ let MANIFEST_NAME;
 let RELEASE_JSON_NAME;
 let installableExtensions;
 let EXTRA_INSTALLABLE;
+let storeOnlyFormats;
+let BUNDLE_MEMBERS;
 try {
-  ({ MANIFEST_NAME, RELEASE_JSON_NAME, installableExtensions, EXTRA_INSTALLABLE } = await import(
+  ({ MANIFEST_NAME, RELEASE_JSON_NAME, installableExtensions, EXTRA_INSTALLABLE, storeOnlyFormats, BUNDLE_MEMBERS } = await import(
     `file://${manifestAbs.replace(/\\/g, '/')}`
   ));
 } catch (e) {
@@ -202,10 +218,12 @@ if (
   MANIFEST_NAME === '' ||
   typeof RELEASE_JSON_NAME !== 'string' ||
   RELEASE_JSON_NAME === '' ||
-  typeof installableExtensions !== 'function'
+  typeof installableExtensions !== 'function' ||
+  typeof storeOnlyFormats !== 'function' ||
+  !(BUNDLE_MEMBERS instanceof Map)
 ) {
   coverageLost([
-    `${MANIFEST_SCRIPT_REL} no longer exports \`MANIFEST_NAME\`, \`RELEASE_JSON_NAME\` and \`installableExtensions\`.`,
+    `${MANIFEST_SCRIPT_REL} no longer exports \`MANIFEST_NAME\`, \`RELEASE_JSON_NAME\`, \`installableExtensions\`, \`storeOnlyFormats\` and \`BUNDLE_MEMBERS\`.`,
     'This guard reads both OUT of that file so there is exactly one declaration of each. Without them it',
     'would have to carry its own copy — and a private copy of a constant is the first thing to drift,',
     'silently, in the direction that prints ok.',
@@ -827,6 +845,116 @@ for (const wf of workflows) {
   }
 }
 
+// ── limb 1b — the Release never carries a store-only file ────────────────────
+// ⏱ 2026-09-24 (O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER, C-WINDOWS-STORE-ONLY).
+// Limb 1 asks whether an installable REACHES a durable destination. This asks
+// the converse of one kind of file: whether a STORE-ONLY one does. The release
+// job's `actions/download-artifact` takes every upload its `pattern:` matches,
+// and whatever `--stage` does not lift the tar loop archives — so an upload that
+// matches is published, loose or archived. release-manifest.mjs `--stage` refuses
+// such a file at run time; this is the same rule read off the workflow TEXT, so
+// the edit that re-admits one fails on its own PR, not on the next scheduled run.
+//
+//   · STORE-ONLY is `storeOnlyFormats(register)`, imported: a format every
+//     accepting row of which is ruled out or a submittable app store.
+//   · An upload path is store-only when it ends in such a format, or when it is a
+//     desktop bundle DIRECTORY (`build/<platform>/…`, `isInstallablePath`) whose
+//     platform's rows accept a bundle member (`BUNDLE_MEMBERS`, imported) that is
+//     store-only. The Windows runner is the case: windows-direct takes `.exe` and
+//     is ruled out, so `build/windows/x64/runner/Release` ships nowhere.
+//   · Which uploads a download takes is read with workflow-scan.mjs
+//     `refFilterToRegExp`, every `${{ … }}` neutralised to one token on both
+//     sides. An upload whose name is nothing but an expression, and a download
+//     with neither `pattern:` nor `name:`, are read as matching: unreadable
+//     resolves to graded, never to exempt. Only jobs upstream of the durable
+//     job (`downstream`, above) are graded.
+const EXPR = /\$\{\{[^}]*\}\}/g;
+const neutral = (s) => String(s).replace(EXPR, 'X');
+function withKey(step, key) {
+  const lines = step.lines.map((l) => l.text);
+  const at = lines.findIndex((t) => /^\s*(?:-\s+)?with:\s*$/.test(t));
+  if (at === -1) return null;
+  const base = lines[at].match(/^\s*/)[0].length + (/^\s*-\s+with:/.test(lines[at]) ? 2 : 0);
+  for (let i = at + 1; i < lines.length; i++) {
+    const t = lines[i];
+    if (t.trim() === '') continue;
+    if (t.match(/^\s*/)[0].length <= base) break;
+    const m = t.match(new RegExp(`^\\s*${key}:\\s*(.*?)\\s*$`));
+    if (m) return m[1].replace(/^['"]|['"]$/g, '');
+  }
+  return null;
+}
+const STORE_ONLY = storeOnlyFormats(register ?? {});
+/** The store-only format this upload path carries, or null. */
+function storeOnlyIn(rawPath) {
+  const p = rawPath.replace(EXPR, '_').trim().replace(/\/+$/, '');
+  const lower = p.toLowerCase();
+  const byExt = [...STORE_ONLY].filter((e) => lower.endsWith(e.toLowerCase())).sort((a, b) => b.length - a.length)[0];
+  if (byExt !== undefined) return byExt;
+  if (!isInstallablePath(rawPath, new Set())) return null;
+  const platform = p.match(/(?:^|\/)build\/([^/]+)/)?.[1];
+  if (!platform) return null;
+  for (const member of BUNDLE_MEMBERS.keys()) {
+    if (!STORE_ONLY.has(member)) continue;
+    const taken = (register?.channels ?? []).some(
+      (c) => Array.isArray(c?.platforms) && c.platforms.includes(platform) && (c?.artifactFormats ?? []).includes(member),
+    );
+    if (taken) return member;
+  }
+  return null;
+}
+let storeOnlyDownloads = 0;
+let storeOnlyUploadsGraded = 0;
+for (const wf of workflows) {
+  if (wf.releaseTrigger === null) continue;
+  for (const job of wf.jobs.values()) {
+    if (job.durable.length === 0) continue;
+    const downloads = job.steps.filter((s) => /uses:\s*actions\/download-artifact@/.test(s.text));
+    const readers = [];
+    for (const d of downloads) {
+      storeOnlyDownloads++;
+      const target = withKey(d, 'pattern') ?? withKey(d, 'name');
+      if (target === null) { readers.push({ d, target: '(every artifact of the run)', reaches: () => true }); continue; }
+      let re;
+      try {
+        re = refFilterToRegExp(neutral(target));
+      } catch (e) {
+        coverageLost([`${placeOf(wf, d.n)} (job "${job.name}") downloads \`${target}\`, which the pattern reader cannot read (${e.message}).`, 'Which uploads reach the Release is then unknown, and limb 1b would grade nothing and print ok.']);
+      }
+      readers.push({ d, target, reaches: (name) => name.replace(EXPR, '').trim() === '' || re.test(neutral(name)) });
+    }
+    if (readers.length === 0) continue;
+    for (const up of wf.jobs.values()) {
+      if (up.name !== job.name && !downstream(wf, up.name).has(job.name)) continue;
+      for (const step of up.steps) {
+        if (!/uses:\s*actions\/upload-artifact@/.test(step.text)) continue;
+        const name = withKey(step, 'name') ?? '';
+        const reader = readers.find((r) => r.reaches(name));
+        if (!reader) continue;
+        storeOnlyUploadsGraded++;
+        const hits = stepPaths(step).map((p) => ({ p, f: storeOnlyIn(p) })).filter((h) => h.f !== null);
+        if (hits.length === 0) continue;
+        // ⚠️ No template literal here OPENS with an SQL keyword: assert-d1-sql-inventory.mjs
+        // reads a literal that starts `with …` and names a `from` as SQL (measured on this line).
+        const listed = hits.map((h) => `${h.p} (${h.f})`).join(', ');
+        problems.push(
+          `${wf.rel}: job "${up.name}" uploads "${name}" at ${lineAt(wf, step.n)}, and job "${job.name}"'s download \`${reader.target}\` at ${lineAt(wf, reader.d.n)} takes it into the Release — ` +
+            `its store-only path(s): ${listed}. ` +
+            'No channel takes a store-only file out of a Release (release-manifest.mjs `storeOnlyFormats`: a submittable store builds its own copy, and a ruled-out channel ships nowhere). ' +
+            '`--stage` would refuse it on the run; name the upload outside the pattern (`store-<app>-…`) so the Release never sees it. O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER',
+        );
+      }
+    }
+  }
+}
+if (scanningRealRepo && storeOnlyDownloads === 0) {
+  coverageLost([
+    'limb 1b read NO `actions/download-artifact` step in any publishing job of a release lane.',
+    'Which uploads reach a Release is read from those steps; with none read, "no store-only file reaches a Release" is a claim',
+    'about nothing — the shape build-platforms.yml\'s release job would take if its download moved or its publish did.',
+  ]);
+}
+
 // ── limb 4 — the mixed upload path (WARNING this increment; see the header) ──
 // ⚠️ THE WORD `glob` IS NEVER WRITTEN IMMEDIATELY BEFORE AN OPENING PAREN in this
 // file, here or anywhere. assert-walks-bounded.mjs forbids the fs enumerators in
@@ -999,6 +1127,10 @@ ok(
 ok(
   `condition clause — ${durableSteps} durable step(s), ${durableWithParsedIf} of them conditional (${durableWithRawIf} carry a raw \`if:\` line), ` +
     `${durableCanonical} on the canonical \`${CANONICAL_PUBLISH_IF}\`; anything else is treated as unable to run`,
+);
+ok(
+  `limb 1b — ${storeOnlyDownloads} release download(s) read; ${storeOnlyUploadsGraded} upload(s) they take graded against ${STORE_ONLY.size} store-only format(s) ` +
+    `{${[...STORE_ONLY].sort().join(' ')}} from ${MANIFEST_SCRIPT_REL} \`storeOnlyFormats\``,
 );
 for (const p of printed) note(p);
 for (const w of warnings) {

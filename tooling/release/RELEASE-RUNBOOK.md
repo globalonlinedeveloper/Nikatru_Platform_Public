@@ -68,9 +68,9 @@ gate ─► prepare ─┬─► linux_web_android ─┐
 
 * **`gate`** — `ci-gate` must already have passed for this SHA (§1).
 * **`prepare`** — derives the app set from the pub workspace; the matrix below iterates it.
-* **the three build jobs** — six platforms, each preceded by its credential step
-  (`android-signing.mjs`, `appimage-signing.mjs`, `windows-signing.mjs`,
-  `apple-signing.mjs`).
+* **the three build jobs** — six platforms; the signed ones are each preceded by their
+  credential step (`android-signing.mjs`, `appimage-signing.mjs`, `apple-signing.mjs`).
+  `windows` has none: it builds the Store's .msix, and the Store re-signs it.
 * **`release`** — runs on *every* trigger; only `gh release create` and the deployment
   record are tag-only (`if: github.ref_type == 'tag'`). That is deliberate: a job-level
   `if:` resolves to `skipped`, and `all_platforms` correctly treats `skipped` as not-green.

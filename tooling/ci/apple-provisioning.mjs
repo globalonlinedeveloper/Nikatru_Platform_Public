@@ -196,6 +196,23 @@ export function validateRegister(reg) {
   return p;
 }
 
+/** O-SECOND-APP-SIGNS-AS-THE-FIRST — the bundle id `slug` signs with, read off
+ *  the register rather than derived again by the caller: validateRegister above
+ *  is where `com.nikatru.<slug>` is decided, so a second derivation would be a
+ *  second place for it to drift. Throws on an unusable register and on a slug
+ *  with no row, naming the slug; it never answers with a guess. */
+export function bundleIdOf(reg, slug) {
+  const problems = validateRegister(reg);
+  if (problems.length) throw new Error(`${REGISTER} is unusable, so it names no bundle id for "${slug}": ${problems.join('; ')}`);
+  const row = Object.hasOwn(reg.apps, slug) ? reg.apps[slug] : undefined;
+  if (!row) {
+    throw new Error(
+      `${REGISTER} declares no app "${slug}" (it declares: ${Object.keys(reg.apps).join(', ') || 'none'}), so there is no bundle id to sign "${slug}" with`,
+    );
+  }
+  return row.bundleId;
+}
+
 /** An App Store Connect resource id: ten upper-case letters and digits. */
 const RESOURCE_ID = /^[A-Z0-9]{10}$/;
 const RETIRED_KINDS = Object.freeze(['bundleId', 'profile', 'certificate']);
