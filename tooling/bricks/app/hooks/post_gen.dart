@@ -18,8 +18,8 @@ import 'brand_assets.dart';
 ///                              category,privacy-policy-url,support-url}.txt
 ///                         └─▶  apps/<id>/store/{ios,macos}-appstore/terms-of-use-url.txt
 ///
-/// This hook writes the FIRST file in that chain and runs
-/// `tooling/app-yaml/render.mjs` for the rest. It used to write the catalogue
+/// This hook writes the FIRST file in that chain and, once the app is complete,
+/// runs `tooling/sites/regen.mjs` (render.mjs first) for the rest. It used to write the catalogue
 /// row directly, which is why the listing text and the catalogue agreed: two
 /// templates spelled the same words, and no mechanism could tell that apart from
 /// a generator. Writing anywhere else in the chain is a row the website never
@@ -93,7 +93,6 @@ void run(HookContext context) {
         .toList(),
     audience: (v['audience'] ?? '').toString(),
   );
-  if (wrote) _renderFromDeclarations(context, id: id);
 
   _registerInWorkspace(context, id: id);
 
@@ -133,6 +132,11 @@ void run(HookContext context) {
     id: id,
     displayName: (v['short_name'] ?? displayName).toString(),
   );
+
+  // The site chain runs LAST, over the complete app: render.mjs writes
+  // msix_config.display_name only into a pubspec that already has the block
+  // `_writeMsixConfig` just wrote, and the chain after it reads what render wrote.
+  if (wrote) _runSiteChain(context, id: id);
 
   final apiHost = apiDomain.isEmpty ? '$id-api.nikatru.com' : apiDomain;
 
@@ -562,27 +566,47 @@ bool _writeAppDeclaration(
   return true;
 }
 
-/// Run the renderer. The catalogue row and the listing copy are its output, so a
-/// failure here is a stamp that succeeded while the app is listed nowhere —
-/// which is precisely the silent gap the inversion exists to remove. It is
-/// reported as an ERROR and left for the gate: `assert-catalog-contract.mjs`,
-/// `assert-store-metadata.mjs` and `assert-app-yaml.mjs` all fail on the result,
-/// so the gap is caught rather than carried.
-void _renderFromDeclarations(HookContext context, {required String id}) {
-  final result = Process.runSync(
-    'node',
-    <String>['tooling/app-yaml/render.mjs'],
-    runInShell: Platform.isWindows,
-  );
-  if (result.exitCode != 0) {
-    context.logger.err(
-      'apps.json: the renderer exited ${result.exitCode}, so "$id" was NOT added to catalog/apps.json '
-      'and no listing copy was written. Run `node tooling/app-yaml/render.mjs` and read what it says.\n'
-      '${result.stdout}${result.stderr}',
+/// Run the site chain, then the release-tag filter, over the COMPLETE app.
+///
+/// `tooling/sites/regen.mjs` owns the order of the site generators, render.mjs
+/// first; the catalogue row, the listing copy, the site feed, the landing
+/// payload and the discovery pages are its output. `tooling/ci/tag-owner.mjs
+/// --write` then regenerates the release lanes' `tags:` filters from the product
+/// registers. This hook lists neither the generators nor their order: it runs
+/// the one CLI that does.
+///
+/// Warns rather than throws, for the reason `_writeBrandAssets` does: post_gen
+/// runs AFTER the tree is written, so throwing leaves a half-stamped app. A
+/// failure is not silent — `tooling/kit/stamp-app.mjs` exits non-zero on the
+/// same state through its `--check` post-conditions, and
+/// `assert-catalog-contract.mjs`, `assert-store-metadata.mjs` and
+/// `assert-app-yaml.mjs` fail on it at the gate.
+void _runSiteChain(HookContext context, {required String id}) {
+  const commands = <List<String>>[
+    <String>['tooling/sites/regen.mjs'],
+    <String>['tooling/ci/tag-owner.mjs', '--write'],
+  ];
+  for (final args in commands) {
+    final result = Process.runSync(
+      'node',
+      args,
+      runInShell: Platform.isWindows,
     );
-    return;
+    if (result.exitCode != 0) {
+      final command = 'node ${args.join(' ')}';
+      context.logger.warn(
+        'site chain: `$command` exited ${result.exitCode}, so "$id" is stamped but the site surface or the '
+        'release tag filter may not carry it. Re-run from the repo root:  $command  and read what it says; '
+        'then `node tooling/sites/regen.mjs --check` and `node tooling/ci/tag-owner.mjs --check` must both exit 0.\n'
+        '${result.stdout}${result.stderr}',
+      );
+      return;
+    }
   }
-  context.logger.success('apps.json: added "$id" (SHOW-1) — rendered from apps/$id/app.yaml, with its store listing copy.');
+  context.logger.success(
+    'site chain: rendered "$id" (SHOW-1) from apps/$id/app.yaml through tooling/sites/regen.mjs, '
+    'then tooling/ci/tag-owner.mjs --write.',
+  );
 }
 
 /// The three portfolio listing URLs from the channel register, or null with the reason

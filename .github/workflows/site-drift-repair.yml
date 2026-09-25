@@ -36,6 +36,12 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+      - uses: ./.github/actions/setup-node
+
+      # why: discovery is regenerated from what the other site generators wrote, so
+      # their outputs are compared first; --check writes nothing, and the repair below still stages sites/ only.
+      - name: The site generator chain is current (compare only)
+        run: node tooling/sites/regen.mjs --check
 
       - name: Regenerate the discovery surface
         run: node tooling/sites/generate-discovery.mjs

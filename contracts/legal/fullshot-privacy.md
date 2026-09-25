@@ -2,29 +2,25 @@
   fullshot-privacy.md — THE TEXT of FullShot's published privacy policy, held
   once.
 
-  🔴 THIS FILE IS A SEED AND NOTHING RENDERS IT YET. Two copies of this text
-  ship today and they are HTML, not Markdown:
+  🔴 THIS FILE IS THE SOURCE, AND IT IS RENDERED. The two copies that ship are
+  HTML, not Markdown, and both are written from this file by
+  contracts/legal/render-fullshot-privacy.mjs:
 
       sites/nikatru/fullshot/privacy.html                             (served at
                                                      nikatru.com/fullshot/privacy)
       extensions/Extension/Full_Screen_Shot/publish/PRIVACY-POLICY.html
                                                      (submitted to three stores)
 
-  Measured 2026-09-05, with the markup stripped from both: THE TWO ARE
-  CHARACTER-FOR-CHARACTER IDENTICAL IN TEXT. The only difference between the
-  files is their HTML comments — one names the other as its source, and the two
-  palette notes are worded differently. They agree today. What has never
-  existed is anything that would notice if they stopped.
+  Change the text HERE, then run
+      node contracts/legal/render-fullshot-privacy.mjs
+  and commit both copies. Its --check, and tooling/ci/assert-legal-text-parity.mjs
+  in CI, fail when either copy differs from this file or from its sibling. This
+  leading comment is not rendered into either copy.
 
-  What joins them today is the served copy's own comment, which says so:
-
-      "No guard in either repo can see across the repository boundary …
-       so THIS COMMENT is the only thing joining the two copies."
-
-  That sentence was true when it was written and it is the reason this file
-  exists. Both copies are now in one tree, so a guard CAN see them both. See
-  README.md in this directory for the guard that has to be written and the two
-  facts it must assert.
+  Until 2026-09-25 this comment said the file was a seed that nothing rendered,
+  which stopped being true when the renderer landed. The history before that —
+  two hand-kept copies joined only by a comment in the served one — is in git
+  and in README.md in this directory.
 -->
 
 # FullShot — Privacy Policy

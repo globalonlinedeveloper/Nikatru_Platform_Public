@@ -1,7 +1,7 @@
 # Store listing — ⟨TOOL⟩
 
 Every field the Chrome Web Store, Edge Add-ons and AMO dashboards ask for, in
-one file, written once. Fill in every `⟨SLOT⟩`; `node publish/preflight.node.js`
+one file, written once. Fill in every `⟨SLOT⟩`; `node publish/preflight.mjs`
 is red while any survives.
 
 This is not a nice-to-have document. Two of the three most common rejection
