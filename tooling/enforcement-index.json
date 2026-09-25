@@ -3486,6 +3486,19 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#content-gate",
+      ".github/workflows/ci.yml#guard-meta",
+      ".github/workflows/extensions-ci.yml#core",
+      ".github/workflows/extensions-ci.yml#selftest"
+    ],
+    "kind": "script",
+    "ref": "tooling/scripts/spawn-ceiling.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "ADR 075"
     ],
