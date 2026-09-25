@@ -23,20 +23,47 @@
 // BEFORE the sweep means the archive holds the night the sweep is about to prune.
 // ─────────────────────────────────────────────────────────────────────────────
 import { dumpD1Database, dumpKvNamespace, gzipAndDigest } from './dump';
+import type { D1QueryPool } from './dump';
 
 /**
- * The per-invocation D1 query budget this export may spend.
+ * The per-invocation D1 query budget this export may spend: ONE pool, shared by
+ * every database in the list below, in order.
  *
  * @ceiling d1.queriesPerInvocation lte
  *
- * 🔴 THE HEADROOM IS DELIBERATE AND SMALL. The recorded value is the FREE number
+ * 🔴 THE ARITHMETIC, AND WHY THIS WAS 45. The recorded value is the FREE number
  * (50) even though the plan of record is Workers Paid (1,000) — tooling/ceilings.json
  * keeps free numbers on purpose, so a cap derived here is needlessly tight rather
- * than dangerously loose. 45 leaves five queries for the heartbeat write and any
- * limb that runs alongside this one on the same firing. Today's cost is ~2 + one
- * page per table across two databases, well under it.
+ * than dangerously loose. The backup firing runs ALONE (scheduled.ts, runFiring),
+ * so the only other D1 spend in its invocation is the heartbeat write:
+ * `recordHeartbeat` batches ONE statement per row this function returns, and
+ * ceilings.json mandates the worst-case reading (one statement = one query).
+ * That is 8 rows (two D1, three KV, d1-budget, manifest, retention), so the
+ * pool is 50 - 8 = 42. The old comment said 45 "leaves five queries for the
+ * heartbeat write" when that write was already seven statements, and the
+ * catalogue query ran outside the budget, one per database.
+ * test/backup-export.test.ts counts the whole invocation on the databases
+ * themselves and fails if pool + batch ever exceeds the recorded ceiling.
+ *
+ * ESTIMATED, not measured: one catalogue query plus one page per table per
+ * database, from the table counts of their migrations plus `d1_migrations`,
+ * and assuming every table still fits one D1_PAGE_ROWS page — 21 for
+ * platform_db and 6 for subscriptiontracker_db, 27 of 42. The MEASURED number
+ * is the `d1-budget` heartbeat row, written every night.
  */
-export const MAX_D1_QUERIES_PER_RUN = 45;
+export const MAX_D1_QUERIES_PER_RUN = 42;
+
+/**
+ * The share of MAX_D1_QUERIES_PER_RUN, in percent, a night may spend before the
+ * `d1-budget` heartbeat row turns red.
+ *
+ * @ceiling none — an ALARM LINE inside the pool above, not a platform resource.
+ *   Its job is to go red while the export is still COMPLETE, so the pool is
+ *   raised, or the REST export built (dump.ts header), before a night truncates.
+ *   27 of 42 is 64%, under it; the first growth that crosses it is a warning
+ *   with room left, not a partial backup.
+ */
+export const D1_BUDGET_WARN_PERCENT = 80;
 
 /**
  * Keys read per KV namespace per run.
@@ -44,7 +71,7 @@ export const MAX_D1_QUERIES_PER_RUN = 45;
  * @ceiling workers.subrequestsToCloudflareServices lte
  *
  * Each `get` is one subrequest to a Cloudflare service. Three namespaces at this
- * cap is 750, plus 45 D1 queries and under a dozen R2 operations — inside the
+ * cap is 750, plus 42 D1 queries and under a dozen R2 operations — inside the
  * 1,000 the recorded (Free) value allows, with the paid value ten times that.
  * Measured today: `platform-config` and `platform-jwks` hold a handful of keys
  * each and `nikatru-signups` took 0 writes in seven days (`06 §3.4`).
@@ -97,6 +124,8 @@ interface ManifestEntry {
   rows?: number;
   keys?: number;
   tables?: number;
+  /** D1 only: the queries this database's dump drew from the shared pool. */
+  queries?: number;
   truncated: boolean;
 }
 
@@ -146,7 +175,8 @@ export async function runBackup(env: BackupEnv, nowMs: number = Date.now()): Pro
   }
 
   const manifest: ManifestEntry[] = [];
-  let queriesSpent = 0;
+  const pool: D1QueryPool = { budget: MAX_D1_QUERIES_PER_RUN, spent: 0 };
+  const spentPerDatabase: string[] = [];
 
   // ── D1 ────────────────────────────────────────────────────────────────────
   const databases: { name: string; db: D1Database }[] = [
@@ -155,9 +185,9 @@ export async function runBackup(env: BackupEnv, nowMs: number = Date.now()): Pro
   ];
   for (const { name, db } of databases) {
     const key = `d1/${name}/${date}.jsonl.gz`;
+    const spentBefore = pool.spent;
     try {
-      const dump = await dumpD1Database(db, name, MAX_D1_QUERIES_PER_RUN - queriesSpent, nowIso);
-      queriesSpent += dump.queries;
+      const dump = await dumpD1Database(db, name, pool, nowIso);
       const blob = await gzipAndDigest(dump.jsonl);
       await bucket.put(key, blob.body, {
         // 🔴 NO `contentEncoding: 'gzip'` HERE, AND THE DRILL IS WHY. It was set on the
@@ -177,6 +207,7 @@ export async function runBackup(env: BackupEnv, nowMs: number = Date.now()): Pro
         sha256: blob.sha256,
         rows: dump.rows,
         tables: dump.tables.length,
+        queries: dump.queries,
         truncated: dump.truncated,
       });
       out.push({
@@ -189,6 +220,8 @@ export async function runBackup(env: BackupEnv, nowMs: number = Date.now()): Pro
     } catch (err) {
       out.push({ target: `d1:${name}`, ok: false, detail: `export failed: ${String(err)}` });
     }
+    // Read off the pool, so a dump that threw is charged for what it spent.
+    spentPerDatabase.push(`${name} ${pool.spent - spentBefore}`);
   }
 
   // ── KV ────────────────────────────────────────────────────────────────────
@@ -231,6 +264,24 @@ export async function runBackup(env: BackupEnv, nowMs: number = Date.now()): Pro
   // verifies each SHA-256 before the file joins the backup tree. A silent
   // half-transfer therefore cannot become a green backup.
   const complete = out.every((o) => o.ok);
+
+  // ── The D1 budget ─────────────────────────────────────────────────────────
+  //
+  // 🔴 PUSHED AFTER `complete` IS COMPUTED, AND IT NEVER CHANGES IT. Box B
+  // refuses any manifest that is not `complete`, so a pool running warm must not
+  // cost a night's off-vendor copy: every object above is whole and verified.
+  // This row is the early warning that has to arrive BEFORE a night truncates.
+  // A red row here alarms (ops-watch's heartbeat read) and blocks no deploy.
+  const warm = pool.spent * 100 > pool.budget * D1_BUDGET_WARN_PERCENT;
+  const spend =
+    `${pool.spent} of ${pool.budget} D1 queries (${Math.round((pool.spent * 100) / pool.budget)}%), ` +
+    `red above ${D1_BUDGET_WARN_PERCENT}% — ${spentPerDatabase.join(', ')}`;
+  out.push({
+    target: 'd1-budget',
+    ok: !warm,
+    detail: warm ? `OVER THE WARN LINE: ${spend}; export complete=${complete}` : spend,
+  });
+
   const doc = JSON.stringify(
     { date, exportedAt: nowIso, generator: 'platform-worker-backup/1', complete, objects: manifest },
     null,
