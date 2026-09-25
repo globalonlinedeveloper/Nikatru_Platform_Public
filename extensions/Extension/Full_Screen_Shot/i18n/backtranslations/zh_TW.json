@@ -6,5 +6,11 @@
   "optionsRedactPIIDesc": "Scans the text the page makes public, looking for e-mail addresses, telephone numbers, credit card numbers, national identity card numbers and API keys, and in the saved image puts a solid colour block over the content that matched. It cannot read text drawn as pixels — a canvas, a picture, a PDF, a video frame. Detection is carried out on your device; no data at all will ever be transmitted to any place. Applies to whole-page (document scrolling) captures; the colour block cannot be reverted, so please check the result yourself.",
   "scrollclipFormatHint": "GIF can be played wherever you go. WebM has a smaller file and a smoother picture (recorded in real time inside your browser).",
   "batchPermissionHint": "The first time these pages are opened, a one-time permission is needed.",
-  "batchPermissionDeclined": "The permission to open those pages was refused."
+  "batchPermissionDeclined": "The permission to open those pages was refused.",
+  "redactActsNone": "The masking did not match any content in the text it read, and did not paint any block. No content below is framed.",
+  "redactActsShortfall": "The masking matched 3 places and covered 2 places.",
+  "redactActsUncoveredOne": "In this image 1 match is not covered.",
+  "redactActsUncoveredOther": "In this image 2 matches are not covered.",
+  "reviewLimit": "FullShot reads the text the page makes public. It cannot see this image. Any content drawn with pixels (canvas, picture, PDF page, video frame) has never been read.",
+  "reviewNoMarks": "There are no framed blocks in the image below."
 }

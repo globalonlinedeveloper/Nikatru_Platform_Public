@@ -231,8 +231,26 @@ class RangeFake {
   detach() {}
 }
 
+/* document.fonts — a FontFaceSet fake (EXT-4, 2026-09-25). `ready` settles at
+   once, as it does on a page with no web font. A scenario that has one calls
+   hold(ms): `ready` settles `ms` later, or never for hold(Infinity). Without
+   this every fixture's `document.fonts` was undefined, capture.js skipped its
+   wait on the `document.fonts &&` guard, and the CAPTURE-GATES row "web-font late
+   load ✅" was asserted by nothing — the latefont/neverfont scenarios in
+   run.node.js are the assertion, and they fail if this class is removed. */
+class FontsFake {
+  constructor() { this.status = 'loaded'; this.ready = Promise.resolve(this); }
+  hold(ms) {
+    this.status = 'loading';
+    this.ready = Number.isFinite(ms)
+      ? new Promise(r => setTimeout(() => { this.status = 'loaded'; r(this); }, ms))
+      : new Promise(() => {});
+    return this;
+  }
+}
+
 class Doc {
-  constructor() { this.documentElement = null; this.body = null; this.defaultView = null; }
+  constructor() { this.documentElement = null; this.body = null; this.defaultView = null; this.fonts = new FontsFake(); }
   get scrollingElement() { return this.documentElement; }
   createElement(tag) { return new El(tag, this, { clientH: 0, clientW: 0, contentH: 0 }); }
   createRange() { return new RangeFake(); }

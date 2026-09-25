@@ -473,7 +473,7 @@
     "message": "تم الحفظ ✓"
   },
   "optionsSaveFailed": {
-    "message": "Not saved ✕"
+    "message": "لم يُحفظ ✕"
   },
   "optionsSectionData": {
     "message": "بياناتك"
@@ -550,7 +550,7 @@
     }
   },
   "optionsSweepPartial": {
-    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "message": "أُزيل: $COUNT$ من $FOUND$ · المساحة المحررة: $SIZE$ · تعذّرت إزالة الباقي. أعد المحاولة أو أعد تشغيل المتصفح.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -866,7 +866,7 @@
     "message": "تم حذف لقطة الشاشة."
   },
   "redactActsLine": {
-    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "message": "الإخفاء مفعّل. المطابقات: $MATCHED$، المطليّة: $PAINTED$، المؤكَّد أنها معتمة في هذه الصورة: $VERIFIED$.",
     "placeholders": {
       "matched": {
         "content": "$1",
@@ -883,11 +883,11 @@
     }
   },
   "redactActsNone": {
-    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "message": "لم يطابق الإخفاء أي شيء في النص الذي قرأه ولم يرسم أي كتلة. لا شيء محاط بإطار أدناه.",
     "placeholders": {}
   },
   "redactActsShortfall": {
-    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "message": "طابق الإخفاء $MATCHED$ وغطّى $COVERED$.",
     "placeholders": {
       "matched": {
         "content": "$1",
@@ -900,7 +900,7 @@
     }
   },
   "redactActsUncoveredZero": {
-    "message": "$COUNT$ matches are not covered in this image.",
+    "message": "$COUNT$ مطابقة غير مغطاة في هذه الصورة.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -909,7 +909,7 @@
     }
   },
   "redactActsUncoveredOne": {
-    "message": "$COUNT$ match is not covered in this image.",
+    "message": "مطابقة واحدة غير مغطاة في هذه الصورة.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -918,7 +918,7 @@
     }
   },
   "redactActsUncoveredTwo": {
-    "message": "$COUNT$ matches are not covered in this image.",
+    "message": "مطابقتان غير مغطاتين في هذه الصورة.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -927,7 +927,7 @@
     }
   },
   "redactActsUncoveredFew": {
-    "message": "$COUNT$ matches are not covered in this image.",
+    "message": "$COUNT$ مطابقات غير مغطاة في هذه الصورة.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -936,7 +936,7 @@
     }
   },
   "redactActsUncoveredMany": {
-    "message": "$COUNT$ matches are not covered in this image.",
+    "message": "$COUNT$ مطابقة غير مغطاة في هذه الصورة.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -945,7 +945,7 @@
     }
   },
   "redactActsUncoveredOther": {
-    "message": "$COUNT$ matches are not covered in this image.",
+    "message": "$COUNT$ مطابقة غير مغطاة في هذه الصورة.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -954,15 +954,15 @@
     }
   },
   "redactActsWalkTruncated": {
-    "message": "FullShot did not finish walking this page.",
+    "message": "لم ينهِ FullShot المرور على هذه الصفحة.",
     "placeholders": {}
   },
   "redactActsCountPartial": {
-    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "message": "قد يكون هذا العدد ناقصًا: لم يقرأ FullShot جزءًا من النص في هذه اللقطة.",
     "placeholders": {}
   },
   "redactActsScanLimits": {
-    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "message": "أجزاء النص التي لم يقرأها: $REFUSED$. الكتل التي وجدها ولم يرسمها: $LOST$.",
     "placeholders": {
       "refused": {
         "content": "$1",
@@ -975,7 +975,7 @@
     }
   },
   "redactActsBakeLimits": {
-    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "message": "الكتل التي تعذّر وضعها في هذه الصورة: $UNPLACED$. الكتل التي رسمها ولم يُعِد قراءتها: $UNREAD$.",
     "placeholders": {
       "unplaced": {
         "content": "$1",
@@ -988,7 +988,7 @@
     }
   },
   "redactActsNoLedger": {
-    "message": "This record carries no account of a redaction pass on this capture.",
+    "message": "لا يتضمن هذا السجل أي بيان عن مرور للإخفاء على هذه اللقطة.",
     "placeholders": {}
   },
   "redactActsUnknownCount": {
@@ -996,15 +996,15 @@
     "placeholders": {}
   },
   "reviewTitle": {
-    "message": "Before you copy",
+    "message": "قبل النسخ",
     "placeholders": {}
   },
   "reviewLimit": {
-    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "message": "يقرأ FullShot النص الذي تكشفه الصفحة. ولا يمكنه رؤية هذه الصورة. كل ما رُسم بكسلات – لوحة رسم، صورة، صفحة PDF، إطار فيديو – لم يُقرأ أبدًا.",
     "placeholders": {}
   },
   "reviewMarks": {
-    "message": "$COUNT$ blocks are outlined on the image below.",
+    "message": "الكتل المحاطة بإطار في الصورة أدناه: $COUNT$.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -1013,11 +1013,11 @@
     }
   },
   "reviewNoMarks": {
-    "message": "No blocks are outlined on the image below.",
+    "message": "لا توجد كتل محاطة بإطار في الصورة أدناه.",
     "placeholders": {}
   },
   "reviewScale": {
-    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "message": "معروضة بنسبة $PERCENT$% من الحجم الذي سيُنسخ.",
     "placeholders": {
       "percent": {
         "content": "$1",
@@ -1026,11 +1026,11 @@
     }
   },
   "reviewReduced": {
-    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "message": "هذه اللقطة أطول من أن تُنسخ كصورة واحدة مقروءة، لذا فالصورة أدناه عرض عام مصغّر للصفحة كاملة. النص الصغير فيها غير مقروء – لا هنا ولا في الحافظة.",
     "placeholders": {}
   },
   "reviewMarkLabel": {
-    "message": "Block $INDEX$",
+    "message": "الكتلة $INDEX$",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -1039,7 +1039,7 @@
     }
   },
   "reviewMarkAt": {
-    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "message": "الكتلة $INDEX$، على بُعد $PERCENT$% من أعلى الصورة",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -1052,23 +1052,23 @@
     }
   },
   "reviewPrevView": {
-    "message": "Previous view",
+    "message": "العرض السابق",
     "placeholders": {}
   },
   "reviewNextView": {
-    "message": "Next view",
+    "message": "العرض التالي",
     "placeholders": {}
   },
   "reviewZoomOut": {
-    "message": "Zoom out",
+    "message": "تصغير",
     "placeholders": {}
   },
   "reviewZoomIn": {
-    "message": "Zoom in",
+    "message": "تكبير",
     "placeholders": {}
   },
   "reviewViewPos": {
-    "message": "View $INDEX$ of $TOTAL$",
+    "message": "العرض $INDEX$ من $TOTAL$",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -1081,7 +1081,7 @@
     }
   },
   "reviewImgRegion": {
-    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "message": "الصورة التي ستُنسخ الآن، $DIMS$ بكسل – مرّرها بمفاتيح الأسهم",
     "placeholders": {
       "dims": {
         "content": "$1",
@@ -1090,15 +1090,15 @@
     }
   },
   "reviewConfirm": {
-    "message": "I have looked — copy",
+    "message": "لقد نظرت – انسخ",
     "placeholders": {}
   },
   "reviewCancel": {
-    "message": "Cancel",
+    "message": "إلغاء",
     "placeholders": {}
   },
   "reviewImgAlt": {
-    "message": "The image that is about to be copied",
+    "message": "الصورة التي ستُنسخ الآن",
     "placeholders": {}
   },
   "resultAiOverviewOnly": {

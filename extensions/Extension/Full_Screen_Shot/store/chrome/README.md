@@ -1,9 +1,10 @@
 # Chrome Web Store listing
 
-The fields the Chrome Web Store dashboard asks for, one per file. Extracted from
-`publish/STORE-LISTING.md`, which keeps the REASONING — why the redaction bullet is
-worded the way it is, which policy each claim answers to. This directory is the COPY;
-that document is the argument.
+The fields the Chrome Web Store dashboard asks for, one per file. Every `.txt` here is
+RENDERED from `../listing.json` by `node scripts/render-listing.mjs fullshot` (from
+`extensions/`), and check-store-metadata.mjs fails a hand edit — change the copy in
+`listing.json`. `publish/STORE-LISTING.md` keeps the REASONING — why the redaction bullet
+is worded the way it is, which policy each claim answers to.
 
 ## Limits enforced here
 

@@ -473,7 +473,7 @@
     "message": "Sparat ✓"
   },
   "optionsSaveFailed": {
-    "message": "Not saved ✕"
+    "message": "Inte sparat ✕"
   },
   "optionsSectionData": {
     "message": "Dina data"
@@ -550,7 +550,7 @@
     }
   },
   "optionsSweepPartial": {
-    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "message": "Borttagna: $COUNT$ av $FOUND$ · Frigjort utrymme: $SIZE$ · Resten kunde inte tas bort. Försök igen eller starta om webbläsaren.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -830,7 +830,7 @@
     "message": "Skärmbilden har tagits bort."
   },
   "redactActsLine": {
-    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "message": "Maskering på. $MATCHED$ träffar, $PAINTED$ övermålade, $VERIFIED$ bekräftade täckande i den här bilden.",
     "placeholders": {
       "matched": {
         "content": "$1",
@@ -847,11 +847,11 @@
     }
   },
   "redactActsNone": {
-    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "message": "Maskeringen hittade inget i texten den läste och målade inga block. Inget är markerat nedan.",
     "placeholders": {}
   },
   "redactActsShortfall": {
-    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "message": "Maskeringen hittade $MATCHED$ och täckte $COVERED$.",
     "placeholders": {
       "matched": {
         "content": "$1",
@@ -864,7 +864,7 @@
     }
   },
   "redactActsUncoveredOne": {
-    "message": "$COUNT$ match is not covered in this image.",
+    "message": "$COUNT$ träff är inte täckt i den här bilden.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -873,7 +873,7 @@
     }
   },
   "redactActsUncoveredOther": {
-    "message": "$COUNT$ matches are not covered in this image.",
+    "message": "$COUNT$ träffar är inte täckta i den här bilden.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -882,15 +882,15 @@
     }
   },
   "redactActsWalkTruncated": {
-    "message": "FullShot did not finish walking this page.",
+    "message": "FullShot gick inte igenom hela den här sidan.",
     "placeholders": {}
   },
   "redactActsCountPartial": {
-    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "message": "Antalet kan vara för lågt: FullShot läste inte en del av texten i den här skärmbilden.",
     "placeholders": {}
   },
   "redactActsScanLimits": {
-    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "message": "Textbitar som inte lästes: $REFUSED$. Block som hittades men inte ritades: $LOST$.",
     "placeholders": {
       "refused": {
         "content": "$1",
@@ -903,7 +903,7 @@
     }
   },
   "redactActsBakeLimits": {
-    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "message": "Block som inte kunde placeras i den här bilden: $UNPLACED$. Block som ritades men inte lästes tillbaka: $UNREAD$.",
     "placeholders": {
       "unplaced": {
         "content": "$1",
@@ -916,7 +916,7 @@
     }
   },
   "redactActsNoLedger": {
-    "message": "This record carries no account of a redaction pass on this capture.",
+    "message": "Den här posten innehåller ingen redogörelse för någon maskeringskörning på den här skärmbilden.",
     "placeholders": {}
   },
   "redactActsUnknownCount": {
@@ -924,15 +924,15 @@
     "placeholders": {}
   },
   "reviewTitle": {
-    "message": "Before you copy",
+    "message": "Innan du kopierar",
     "placeholders": {}
   },
   "reviewLimit": {
-    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "message": "FullShot läser texten som en sida exponerar. Den kan inte se den här bilden. Allt som är ritat som pixlar – en canvas, en bild, en PDF-sida, en videobildruta – lästes aldrig.",
     "placeholders": {}
   },
   "reviewMarks": {
-    "message": "$COUNT$ blocks are outlined on the image below.",
+    "message": "Markerade block i bilden nedan: $COUNT$.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -941,11 +941,11 @@
     }
   },
   "reviewNoMarks": {
-    "message": "No blocks are outlined on the image below.",
+    "message": "Inga block är markerade i bilden nedan.",
     "placeholders": {}
   },
   "reviewScale": {
-    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "message": "Visas i $PERCENT$ % av storleken som kopieras.",
     "placeholders": {
       "percent": {
         "content": "$1",
@@ -954,7 +954,7 @@
     }
   },
   "reviewReduced": {
-    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "message": "Den här skärmbilden är för hög för att kopieras som en enda läsbar bild, så bilden nedan är en förminskad översikt av hela sidan. Liten text i den går inte att läsa – varken här eller i urklipp.",
     "placeholders": {}
   },
   "reviewMarkLabel": {
@@ -967,7 +967,7 @@
     }
   },
   "reviewMarkAt": {
-    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "message": "Block $INDEX$, $PERCENT$ % ner i bilden",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -980,23 +980,23 @@
     }
   },
   "reviewPrevView": {
-    "message": "Previous view",
+    "message": "Föregående vy",
     "placeholders": {}
   },
   "reviewNextView": {
-    "message": "Next view",
+    "message": "Nästa vy",
     "placeholders": {}
   },
   "reviewZoomOut": {
-    "message": "Zoom out",
+    "message": "Zooma ut",
     "placeholders": {}
   },
   "reviewZoomIn": {
-    "message": "Zoom in",
+    "message": "Zooma in",
     "placeholders": {}
   },
   "reviewViewPos": {
-    "message": "View $INDEX$ of $TOTAL$",
+    "message": "Vy $INDEX$ av $TOTAL$",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -1009,7 +1009,7 @@
     }
   },
   "reviewImgRegion": {
-    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "message": "Bilden som snart kopieras, $DIMS$ pixlar – rulla den med piltangenterna",
     "placeholders": {
       "dims": {
         "content": "$1",
@@ -1018,15 +1018,15 @@
     }
   },
   "reviewConfirm": {
-    "message": "I have looked — copy",
+    "message": "Jag har tittat – kopiera",
     "placeholders": {}
   },
   "reviewCancel": {
-    "message": "Cancel",
+    "message": "Avbryt",
     "placeholders": {}
   },
   "reviewImgAlt": {
-    "message": "The image that is about to be copied",
+    "message": "Bilden som snart kopieras",
     "placeholders": {}
   },
   "resultAiOverviewOnly": {

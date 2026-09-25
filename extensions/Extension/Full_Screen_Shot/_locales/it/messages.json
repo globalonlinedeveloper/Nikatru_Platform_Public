@@ -473,7 +473,7 @@
     "message": "Salvato ✓"
   },
   "optionsSaveFailed": {
-    "message": "Not saved ✕"
+    "message": "Non salvato ✕"
   },
   "optionsSectionData": {
     "message": "I tuoi dati"
@@ -550,7 +550,7 @@
     }
   },
   "optionsSweepPartial": {
-    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "message": "Rimossi: $COUNT$ su $FOUND$ · Spazio liberato: $SIZE$ · Il resto non è stato rimosso. Riprova o riavvia il browser.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -839,7 +839,7 @@
     "message": "Screenshot eliminato."
   },
   "redactActsLine": {
-    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "message": "Oscuramento attivo. $MATCHED$ rilevati, $PAINTED$ coperti, $VERIFIED$ confermati opachi in questa immagine.",
     "placeholders": {
       "matched": {
         "content": "$1",
@@ -856,11 +856,11 @@
     }
   },
   "redactActsNone": {
-    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "message": "L'oscuramento non ha rilevato nulla nel testo letto e non ha disegnato alcun blocco. Qui sotto non c'è nulla di evidenziato.",
     "placeholders": {}
   },
   "redactActsShortfall": {
-    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "message": "L'oscuramento ha rilevato $MATCHED$ e coperto $COVERED$.",
     "placeholders": {
       "matched": {
         "content": "$1",
@@ -873,7 +873,7 @@
     }
   },
   "redactActsUncoveredOne": {
-    "message": "$COUNT$ match is not covered in this image.",
+    "message": "$COUNT$ corrispondenza non è coperta in questa immagine.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -882,7 +882,7 @@
     }
   },
   "redactActsUncoveredMany": {
-    "message": "$COUNT$ matches are not covered in this image.",
+    "message": "$COUNT$ corrispondenze non sono coperte in questa immagine.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -891,7 +891,7 @@
     }
   },
   "redactActsUncoveredOther": {
-    "message": "$COUNT$ matches are not covered in this image.",
+    "message": "$COUNT$ corrispondenze non sono coperte in questa immagine.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -900,15 +900,15 @@
     }
   },
   "redactActsWalkTruncated": {
-    "message": "FullShot did not finish walking this page.",
+    "message": "FullShot non ha finito di percorrere questa pagina.",
     "placeholders": {}
   },
   "redactActsCountPartial": {
-    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "message": "Questo conteggio potrebbe essere inferiore al reale: FullShot non ha letto parte del testo di questa acquisizione.",
     "placeholders": {}
   },
   "redactActsScanLimits": {
-    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "message": "Porzioni di testo non lette: $REFUSED$. Blocchi trovati e non disegnati: $LOST$.",
     "placeholders": {
       "refused": {
         "content": "$1",
@@ -921,7 +921,7 @@
     }
   },
   "redactActsBakeLimits": {
-    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "message": "Blocchi che non è stato possibile collocare in questa immagine: $UNPLACED$. Blocchi disegnati e non riletti: $UNREAD$.",
     "placeholders": {
       "unplaced": {
         "content": "$1",
@@ -934,7 +934,7 @@
     }
   },
   "redactActsNoLedger": {
-    "message": "This record carries no account of a redaction pass on this capture.",
+    "message": "Questo record non contiene alcun resoconto di un passaggio di oscuramento su questa acquisizione.",
     "placeholders": {}
   },
   "redactActsUnknownCount": {
@@ -942,15 +942,15 @@
     "placeholders": {}
   },
   "reviewTitle": {
-    "message": "Before you copy",
+    "message": "Prima di copiare",
     "placeholders": {}
   },
   "reviewLimit": {
-    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "message": "FullShot legge il testo che una pagina espone. Non può vedere questa immagine. Tutto ciò che è disegnato come pixel – un canvas, un'immagine, una pagina PDF, un fotogramma video – non è mai stato letto.",
     "placeholders": {}
   },
   "reviewMarks": {
-    "message": "$COUNT$ blocks are outlined on the image below.",
+    "message": "Blocchi evidenziati nell'immagine qui sotto: $COUNT$.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -959,11 +959,11 @@
     }
   },
   "reviewNoMarks": {
-    "message": "No blocks are outlined on the image below.",
+    "message": "Nessun blocco è evidenziato nell'immagine qui sotto.",
     "placeholders": {}
   },
   "reviewScale": {
-    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "message": "Visualizzata al $PERCENT$% della dimensione che verrà copiata.",
     "placeholders": {
       "percent": {
         "content": "$1",
@@ -972,11 +972,11 @@
     }
   },
   "reviewReduced": {
-    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "message": "Questa acquisizione è troppo alta per essere copiata come un'unica immagine leggibile, quindi l'immagine qui sotto è una panoramica ridotta dell'intera pagina. Il testo piccolo non è leggibile, né qui né negli appunti.",
     "placeholders": {}
   },
   "reviewMarkLabel": {
-    "message": "Block $INDEX$",
+    "message": "Blocco $INDEX$",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -985,7 +985,7 @@
     }
   },
   "reviewMarkAt": {
-    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "message": "Blocco $INDEX$, al $PERCENT$% dall'alto dell'immagine",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -998,23 +998,23 @@
     }
   },
   "reviewPrevView": {
-    "message": "Previous view",
+    "message": "Vista precedente",
     "placeholders": {}
   },
   "reviewNextView": {
-    "message": "Next view",
+    "message": "Vista successiva",
     "placeholders": {}
   },
   "reviewZoomOut": {
-    "message": "Zoom out",
+    "message": "Riduci",
     "placeholders": {}
   },
   "reviewZoomIn": {
-    "message": "Zoom in",
+    "message": "Ingrandisci",
     "placeholders": {}
   },
   "reviewViewPos": {
-    "message": "View $INDEX$ of $TOTAL$",
+    "message": "Vista $INDEX$ di $TOTAL$",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -1027,7 +1027,7 @@
     }
   },
   "reviewImgRegion": {
-    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "message": "L'immagine che sta per essere copiata, $DIMS$ pixel – scorrila con i tasti freccia",
     "placeholders": {
       "dims": {
         "content": "$1",
@@ -1036,15 +1036,15 @@
     }
   },
   "reviewConfirm": {
-    "message": "I have looked — copy",
+    "message": "Ho guardato – copia",
     "placeholders": {}
   },
   "reviewCancel": {
-    "message": "Cancel",
+    "message": "Annulla",
     "placeholders": {}
   },
   "reviewImgAlt": {
-    "message": "The image that is about to be copied",
+    "message": "L'immagine che sta per essere copiata",
     "placeholders": {}
   },
   "resultAiOverviewOnly": {

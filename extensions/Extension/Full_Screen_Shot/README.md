@@ -1,6 +1,6 @@
 # FullShot — Full Page Screen Capture
 
-A complete, GoFullPage-style Chrome extension (Manifest V3). No external libraries, no build step. Permissions, as `manifest.json` declares them: `permissions` (:12) `activeTab`, `scripting`, `downloads`, `storage` and `unlimitedStorage`, plus `optional_host_permissions` (:19) `<all_urls>`, requested at run time only for cross-origin iframe expansion and Batch URL capture. Each is justified in `tool.json` `policy`, which `node scripts/policy-check.mjs fullshot` (run from `extensions/`) grades against `manifest.json`; the dashboard text is `publish/STORE-LISTING.md` "## Permission justifications (one per dashboard field)".
+A complete Manifest V3 full-page screenshot extension. No external libraries, no build step. Permissions, as `manifest.json` declares them: `permissions` (:12) `activeTab`, `scripting`, `downloads`, `storage` and `unlimitedStorage`, plus `optional_host_permissions` (:19) `<all_urls>`, requested at run time only for cross-origin iframe expansion and Batch URL capture. Each is justified in `tool.json` `policy`, which `node scripts/policy-check.mjs fullshot` (run from `extensions/`) grades against `manifest.json`; the dashboard text is `publish/STORE-LISTING.md` "## Permission justifications (one per dashboard field)".
 
 ## Install (developer mode)
 
@@ -40,7 +40,7 @@ A complete, GoFullPage-style Chrome extension (Manifest V3). No external librari
 **Result page**
 - Download as PNG, JPEG, or WebP, drag the image straight to your desktop, or copy to clipboard (auto-fits huge copies to the 25MP Google Docs paste limit).
 - **PDF export**: one page at exact image size, or flowed across A4/Letter/Legal pages (portrait/landscape), with optional URL + date stamp in the footer.
-- **Smart page splitting** (free — competitors charge for this): page breaks land on section tops when the page reports them (v1.5.0), else snap to visual gaps — lines of text are never cut in half.
+- **Smart page splitting** (free): page breaks land on section tops when the page reports them (v1.5.0), else snap to visual gaps — lines of text are never cut in half.
 - Auto-download and auto-open-editor workflow options.
 
 **Editor**
@@ -109,7 +109,7 @@ themselves on screen.
 
 ## Known limitations
 
-- Browser-internal pages (`chrome://…`), the Chrome Web Store, and some DRM-protected content cannot be captured — Chrome blocks all extensions there, including GoFullPage.
+- Browser-internal pages (`chrome://…`), the Chrome Web Store, and some DRM-protected content cannot be captured — Chrome blocks all extensions there.
 - Cross-origin iframes are captured as rendered unless **Expand scrollable content** is on and the optional permission is granted.
 - Expansion can't help virtualized lists (they only render what's near the visible area — expanded space may show blanks) or panels inside fixed sidebars (clipped to the viewport by definition). Expansion grows panels down *and* right (v1.4.0); the main pane on app-shell pages is deliberately *scrolled*, not expanded, so virtualized feeds still render every screenful.
 - Side rails are unrolled from their top down their column and clipped to the main story's height: a rail longer than the story is cut at the canvas bottom, a shorter one leaves white below its last row. In-flow rails are unrolled on app-shell captures (v1.4.0); fixed edge-anchored rails are unrolled on document captures too (v1.5.0). Fixed elements that are *not* rail-shaped (centered overlays, FABs) still appear once, as seen. Virtualized rails that only render near the visible fold may show blanks in the expanded region — the scroll pass helps only rails that report a real scroll range. If a pane's bottom edge is cut off by the window, the few rows that can never be shown on screen are excluded rather than left as a white void.

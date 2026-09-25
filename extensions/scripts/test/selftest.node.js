@@ -867,6 +867,37 @@ expect('but the matrix can still be built — a policy gap is not a contract bre
   root: fixture(root => { const t = readJson(root, TOOL + '/tool.json'); delete t.policy.networkAllowlist; writeJson(root, TOOL + '/tool.json', t); })
 });
 
+/* 🔴 6b · A STRING STILL AWAITING TRANSLATION WARNS, AND A RELEASE REFUSES IT
+   (EXT-4, O-FULLSHOT-UNTRANSLATED-STRINGS-SHIP). FullShot shipped 31 dialog
+   strings in English to 54 listed languages while every gate passed. The
+   marker lives in the English description; the limb reads it. */
+const awaiting = root => edit(root, TOOL + '/_locales/en/messages.json', s => {
+  const m = JSON.parse(s);
+  m.appDescription.description = 'The store summary. AWAITING-TRANSLATION: no locale has translated this yet.';
+  return JSON.stringify(m, null, 2) + '\n';
+});
+expect('a key AWAITING-TRANSLATION warns on a plain run and names the key', {
+  script: 'policy-check.mjs', argv: ['goodtool'], code: 0, contains: 'a --release run fails on it',
+  root: fixture(awaiting)
+});
+expect('...and --release fails on it, with the flag BEFORE the tool id', {
+  script: 'policy-check.mjs', argv: ['--release', 'goodtool'], code: 1, contains: '1 string(s) in _locales/en are AWAITING-TRANSLATION',
+  root: fixture(awaiting)
+});
+expect('...and with the flag after the tool id', {
+  script: 'policy-check.mjs', argv: ['goodtool', '--release'], code: 1, contains: 'so --release refuses it',
+  root: fixture(awaiting)
+});
+expect('--release passes a tree with nothing awaiting translation', {
+  script: 'policy-check.mjs', argv: ['--release', 'goodtool'], code: 0, contains: 'no string in _locales/en is awaiting translation',
+  root: fixture()
+});
+expect('--release does NOT make every warning fatal (the CSP coverage WARN is not a release refusal)', {
+  script: 'policy-check.mjs', argv: ['--release', 'goodtool'], code: 0,
+  contains: 'CSP directive(s) this gate does not model are UNRESTRICTED',
+  root: fixture(root => setCsp(root, cspWithout('default-src', "img-src 'self' data: blob:")))
+});
+
 /* =====================================================================
    sync-core + check-core-sync
    ===================================================================== */
@@ -1610,6 +1641,167 @@ expect('a complete three-store layer passes', {
   script: 'check-store-metadata.mjs', argv: ['goodtool'], code: 0, contains: '3 store row(s) graded',
   root: withStores()
 });
+
+/* 🔴 8 · SHIPPED TEXT MAKES NO CLAIM ABOUT ANOTHER PRODUCT (EXT-4, 2026-09-25).
+   One case per place text ships from, and the clean tree above is the green. */
+expect('the claims limb passes clean shipped text', {
+  script: 'check-store-metadata.mjs', argv: ['goodtool'], code: 0, contains: 'shipped text makes no claim about another product',
+  root: withStores()
+});
+expect('a star rating in a store listing file is refused', {
+  script: 'check-store-metadata.mjs', argv: ['goodtool'], code: 1, contains: 'long-description.txt:1  star rating',
+  root: withStores((t, root) => { w(root, TOOL + '/store/edge/long-description.txt', 'Loved by users, 4.9★ on every store.\n'); })
+});
+expect('a competitor name in the README is refused', {
+  script: 'check-store-metadata.mjs', argv: ['goodtool'], code: 1, contains: 'README.md:2  competitor name "GoFullPage"',
+  root: withStores((t, root) => { w(root, TOOL + '/README.md', '# Good Tool\nWorks like GoFullPage.\n'); })
+});
+expect('a comparative superlative in a locale MESSAGE is refused', {
+  script: 'check-store-metadata.mjs', argv: ['goodtool'], code: 1, contains: 'comparative superlative "faster than any"',
+  root: withStores((t, root) => edit(root, TOOL + '/_locales/en/messages.json', s => {
+    const m = JSON.parse(s);
+    m.appDescription.message = 'Captures pages faster than any other extension.';
+    return JSON.stringify(m, null, 2) + '\n';
+  }))
+});
+expect('a claim about other products in CAPTURE-GATES.md is refused', {
+  script: 'check-store-metadata.mjs', argv: ['goodtool'], code: 1, contains: 'CAPTURE-GATES.md:1  claim about other products "competitors"',
+  root: withStores((t, root) => { w(root, TOOL + '/CAPTURE-GATES.md', 'We clear more gates than the competitors.\n'); })
+});
+
+/* 🔴 6a · THE LISTING IS RENDERED FROM store/listing.json, AND ITS PRO TEXT IS
+   GATED ON A FACT (EXT-4, 2026-09-25). The fixture listing renders exactly the
+   STORE_FILES above while the tool neither transmits nor sells, so the free
+   control is byte-exact and every Pro case below is the gate opening. The
+   offerings file is the fixture's own (--app-config), never the repository's. */
+const LISTING_SRC = {
+  title: STORE_FILES['title.txt'],
+  short: STORE_FILES['short-description.txt'],
+  long: [
+    STORE_FILES['long-description.txt'],
+    { when: 'pro', text: 'Optional Pro: sign in.' },
+    { when: 'sells', stores: ['chrome'], text: 'Sold by {{seller}}, not by Google.' },
+    { when: 'sells', stores: ['firefox'], text: 'Sold by {{seller}}, not by Mozilla.' },
+    { when: 'sells', stores: ['edge'], requires: 'priceRange', text: 'Pro: {{priceRange}}.' },
+  ],
+  stores: { chrome: { category: 'Productivity' }, edge: { category: 'Productivity' }, firefox: { category: 'Productivity' } },
+};
+const OFFER = (term, amount) => ({ product_id: 'pro_' + term, amount_minor: amount, currency_code: 'USD', term, trial_days: 0 });
+function withListing(offerings, mutate = () => {}) {
+  return withStores((t, root) => {
+    writeJson(root, TOOL + '/store/listing.json', LISTING_SRC);
+    writeJson(root, 'app-config.json', { apps: offerings ? { goodtool: { paywall: { enabled: false, offerings } } } : {} });
+    mutate(t, root);
+  });
+}
+const cfg = root => ['--app-config', path.join(root, 'app-config.json')];
+{
+  const root = withListing(null);
+  expect('render-listing: a free tool renders its listing byte-exact and keeps the Pro lines dark', {
+    script: 'render-listing.mjs', argv: ['goodtool', '--check', ...cfg(root)], code: 0, contains: 'does not render (the tool neither transmits nor sells)', root
+  });
+  expect('check-store-metadata passes the same free listing through planListing', {
+    script: 'check-store-metadata.mjs', argv: ['goodtool', ...cfg(root)], code: 0, contains: 'listing files are what store/listing.json renders', root
+  });
+}
+{
+  const root = withListing(null, (t, root) => { w(root, TOOL + '/store/edge/long-description.txt', 'hand-edited\n'); });
+  expect('check-store-metadata fails a hand edit to a rendered listing file', {
+    script: 'check-store-metadata.mjs', argv: ['goodtool', ...cfg(root)], code: 1, contains: 'the file differs from the rendering — a hand edit', root
+  });
+}
+{
+  const root = withListing(null, (t, root) => { edit(root, TOOL + '/store/listing.json', s => { const o = JSON.parse(s); delete o.stores.firefox; return JSON.stringify(o, null, 2) + '\n'; }); });
+  expect('a store tree listing.json does not cover is COVERAGE LOST (2), never a pass', {
+    script: 'check-store-metadata.mjs', argv: ['goodtool', ...cfg(root)], code: 2, contains: 'has no stores.firefox', root
+  });
+}
+{
+  /* §4 of STORE-LISTING.md is rendered from tool.json policy (the fixture's two
+     permissions, in tool.json order); a hand edit between the markers fails. */
+  const justified = text => (t, root) => {
+    w(root, TOOL + '/publish/STORE-LISTING.md', '# listing\n\n<!-- GENERATED:permission-justifications — rendered -->\n\n' +
+      text + '<!-- /GENERATED:permission-justifications -->\n\ntail\n');
+  };
+  const JUST = '**storage**\n```\nremembers the user\'s settings\n```\n\n**activeTab**\n```\nacts on the tab the user invoked it on\n```\n\n';
+  const good = withListing(null, justified(JUST));
+  expect('the permission justifications in STORE-LISTING.md are what tool.json policy renders', {
+    script: 'check-store-metadata.mjs', argv: ['goodtool', ...cfg(good)], code: 0, contains: 'listing files are what store/listing.json renders', root: good
+  });
+  const bent = withListing(null, justified(JUST.replace('remembers', 'forgets')));
+  expect('...and a hand edit between the justification markers fails', {
+    script: 'check-store-metadata.mjs', argv: ['goodtool', ...cfg(bent)], code: 1, contains: 'STORE-LISTING.md is what scripts/render-listing.mjs renders', root: bent
+  });
+}
+{
+  /* R12 — sells, and LICENSE's Required Notice is still a placeholder: the seller
+     line cannot be written, so nothing may render. */
+  const root = withListing([OFFER('month', 599)], (t, root) => {
+    t.policy.networkAllowlist = ['api.example.test'];
+    w(root, TOOL + '/LICENSE', 'Required Notice: Copyright <OWNER LEGAL NAME OR COMPANY> (<OPTIONAL URL>)\n');
+  });
+  expect('a tool that sells with a placeholder licensor cannot render its Pro text (2)', {
+    script: 'render-listing.mjs', argv: ['goodtool', '--check', ...cfg(root)], code: 2, contains: 'still a placeholder', root
+  });
+}
+{
+  /* R13 — sells with an EMPTY allowlist: the account check is a network call. */
+  const root = withListing([OFFER('month', 599)]);
+  expect('a tool that sells with an empty networkAllowlist is a finding (1)', {
+    script: 'render-listing.mjs', argv: ['goodtool', '--check', ...cfg(root)], code: 1, contains: 'policy.networkAllowlist is empty', root
+  });
+}
+{
+  /* R16 — monthly, yearly AND one_time: the range is the two recurring amounts,
+     and the lifetime price is never read (ADR 093). Rendered for real, then the
+     Edge file is read back: the range lands on Edge, the seller line on Chrome. */
+  const root = withListing([OFFER('month', 599), OFFER('year', 3499), OFFER('one_time', 8900)], t => { t.policy.networkAllowlist = ['api.example.test']; });
+  const res = run('render-listing.mjs', ['goodtool', ...cfg(root)], root);
+  const edge = fs.readFileSync(path.join(root, TOOL, 'store/edge/long-description.txt'), 'utf8');
+  const chrome = fs.readFileSync(path.join(root, TOOL, 'store/chrome/long-description.txt'), 'utf8');
+  const label = 'the Edge price range is the RECURRING offerings only, and Chrome carries the seller instead';
+  if (res.code === 0 && edge.includes('Pro: USD 5.99 a month to USD 34.99 a year.') && !/89\.00/.test(edge + chrome + res.out) &&
+      chrome.includes('Sold by Example Licensor, not by Google.') && !chrome.includes('USD')) ok(label, 'exit 0 · edge: USD 5.99 a month to USD 34.99 a year');
+  else bad(label, 'exit ' + res.code + '\n--- edge ---\n' + edge.slice(-200) + '\n--- chrome ---\n' + chrome.slice(-200) + '\n--- output ---\n' + res.out.slice(-800));
+}
+{
+  /* R17 — a tool that SELLS renders each store's `when: sells` line: the seller
+     on Chrome and on Firefox (each naming its own store), the price range on
+     Edge; and every store carries the `when: pro` line. */
+  const root = withListing([OFFER('month', 599), OFFER('year', 3499)], t => { t.policy.networkAllowlist = ['api.example.test']; });
+  const res = run('render-listing.mjs', ['goodtool', ...cfg(root)], root);
+  const read = s => fs.readFileSync(path.join(root, TOOL, 'store/' + s + '/long-description.txt'), 'utf8');
+  const [chrome, firefox, edge] = [read('chrome'), read('firefox'), read('edge')];
+  const label = 'a tool that sells renders the Chrome, Firefox and Edge "sells" lines, each on its own store only';
+  if (res.code === 0 && chrome.includes('Sold by Example Licensor, not by Google.') && !chrome.includes('Mozilla') && !chrome.includes('Pro: USD') &&
+      firefox.includes('Sold by Example Licensor, not by Mozilla.') && !firefox.includes('Google') && !firefox.includes('Pro: USD') &&
+      edge.includes('Pro: USD 5.99 a month to USD 34.99 a year.') && !edge.includes('Sold by') &&
+      chrome.includes('Optional Pro: sign in.') && firefox.includes('Optional Pro: sign in.') && edge.includes('Optional Pro: sign in.')) ok(label, 'exit 0 · three sells lines, one per store');
+  else bad(label, 'exit ' + res.code + '\n--- chrome ---\n' + chrome.slice(-200) + '\n--- firefox ---\n' + firefox.slice(-200) + '\n--- edge ---\n' + edge.slice(-200) + '\n--- output ---\n' + res.out.slice(-800));
+}
+{
+  /* R17 — a tool that TRANSMITS but does not sell renders the `when: pro` line
+     and none of the `when: sells` lines: a seller or a price is never shown for
+     a product nobody can buy. */
+  const root = withListing(null, t => { t.policy.networkAllowlist = ['api.example.test']; });
+  const res = run('render-listing.mjs', ['goodtool', ...cfg(root)], root);
+  const all = ['chrome', 'firefox', 'edge'].map(s => fs.readFileSync(path.join(root, TOOL, 'store/' + s + '/long-description.txt'), 'utf8')).join('\n');
+  const label = 'a tool that transmits and does not sell renders the Pro line and NO "sells" line';
+  if (res.code === 0 && all.split('Optional Pro: sign in.').length === 4 && !all.includes('Sold by') && !/^Pro: /m.test(all)) ok(label, 'exit 0 · the pro line x3, no seller, no price');
+  else bad(label, 'exit ' + res.code + '\n' + all.slice(-400) + '\n--- output ---\n' + res.out.slice(-800));
+}
+{
+  /* R18 — two currencies: one range per currency_code, joined with "; ". Sorting
+     every recurring offering by amount across currencies would print "INR 5.99
+     a month to USD 3499.00 a year" or similar — a range nobody is charged. */
+  const INR = (term, amount) => ({ ...OFFER(term, amount), product_id: 'pro_inr_' + term, currency_code: 'INR' });
+  const root = withListing([OFFER('month', 599), OFFER('year', 3499), INR('month', 49900), INR('year', 349900)], t => { t.policy.networkAllowlist = ['api.example.test']; });
+  const res = run('render-listing.mjs', ['goodtool', ...cfg(root)], root);
+  const edge = fs.readFileSync(path.join(root, TOOL, 'store/edge/long-description.txt'), 'utf8');
+  const label = 'two currencies give two ranges, one per currency, joined with "; "';
+  if (res.code === 0 && edge.includes('Pro: INR 499.00 a month to INR 3499.00 a year; USD 5.99 a month to USD 34.99 a year.')) ok(label, 'exit 0 · INR …; USD …');
+  else bad(label, 'exit ' + res.code + '\n--- edge ---\n' + edge.slice(-300) + '\n--- output ---\n' + res.out.slice(-800));
+}
 
 /* 🔴 THE LICENSOR IS NAMED, AND THE NOTICE SHIPS (EXT-3, 2026-09-24). */
 expect('a LICENSE whose Required Notice is still a placeholder is caught', {

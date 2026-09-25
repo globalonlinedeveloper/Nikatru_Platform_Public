@@ -1,7 +1,8 @@
 /* FullShot i18n — BACK-TRANSLATION NEGATION CHECK.  BUILD-TIME ONLY.
    ------------------------------------------------------------------
    WHAT THIS IS FOR, AND WHAT IT IS NOT FOR.
-   Eight strings in FullShot make a claim about privacy or about a permission.
+   Eight strings in FullShot make a claim about privacy or about a permission,
+   and six more state what redaction did NOT do (added 2026-09-25, EXT-4).
    The failure that matters is not clumsy phrasing — it is a DROPPED or INVERTED
    NEGATION: "nothing is ever sent anywhere" coming back as "everything is sent",
    or the whole clause simply vanishing.  That is a false claim shipped in 54
@@ -119,6 +120,54 @@ export const CLAIMS = {
       { any: ['declined', 'denied', 'refused', 'rejected', 'withheld', 'not granted', 'not given', 'was not', 'turned down'], polarity: 'present', claim: 'the permission was DECLINED (not granted)' }
     ],
     forbidUnnegated: ['was granted', 'has been granted', 'was allowed', 'is granted']
+  },
+
+  /* ⏱ 2026-09-25 (EXT-4, O-FULLSHOT-UNTRANSLATED-STRINGS-SHIP). The six
+     POLARITY-CRITICAL redaction strings were translated for the first time, so
+     they join the graded set in the same edit: each one's whole message is a
+     negation ("NOT covered", "cannot see", "No blocks") or a count that must not
+     gain one, which is exactly the failure this file exists to catch. The two
+     plural forms are graded as the English forms; a language with a single
+     plural category back-translates its one form under both keys. */
+  redactActsNone: {
+    english: 'Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.',
+    anchors: [
+      { any: ['matched', 'match', 'found', 'detected', 'identified', 'recognised', 'recognized'], polarity: 'negative', claim: 'redaction matched NOTHING and painted no block' },
+      { any: ['outlined', 'marked', 'highlighted', 'framed', 'bordered', 'indicated', 'shown'], polarity: 'negative', claim: 'NOTHING is outlined below' }
+    ]
+  },
+  redactActsShortfall: {
+    english: 'Redaction matched 3 and covered 2.',
+    anchors: [
+      { any: ['matched', 'match', 'found', 'detected', 'identified', 'recognised', 'recognized'], polarity: 'positive', claim: 'the detector DID match' },
+      { any: ['covered', 'cover', 'concealed', 'hidden', 'masked', 'painted', 'blocked'], polarity: 'positive', claim: 'it DID cover the smaller number' }
+    ]
+  },
+  redactActsUncoveredOne: {
+    english: '1 match is not covered in this image.',
+    anchors: [
+      { any: ['covered', 'cover', 'concealed', 'hidden', 'masked', 'painted', 'blocked'], polarity: 'negative', claim: 'the match is NOT covered in the image' }
+    ]
+  },
+  redactActsUncoveredOther: {
+    english: '2 matches are not covered in this image.',
+    anchors: [
+      { any: ['covered', 'cover', 'concealed', 'hidden', 'masked', 'painted', 'blocked'], polarity: 'negative', claim: 'the matches are NOT covered in the image' }
+    ]
+  },
+  reviewLimit: {
+    english: 'FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.',
+    anchors: [
+      { any: ['reads', 'read'], polarity: 'positive', claim: 'FullShot DOES read the text a page exposes' },
+      { any: ['see', 'sees', 'view', 'look', 'perceive'], polarity: 'negative', claim: 'it CANNOT see the image' },
+      { any: ['pixel'], polarity: 'present', claim: 'the pixel-drawn examples are named' }
+    ]
+  },
+  reviewNoMarks: {
+    english: 'No blocks are outlined on the image below.',
+    anchors: [
+      { any: ['outlined', 'marked', 'highlighted', 'framed', 'bordered', 'indicated', 'shown'], polarity: 'negative', claim: 'NO block is outlined' }
+    ]
   }
 };
 

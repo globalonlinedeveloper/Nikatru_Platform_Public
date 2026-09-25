@@ -6,5 +6,11 @@
   "optionsRedactPIIDesc": "It looks through the text the page discloses, searching for e-mail addresses, telephone numbers, payment card numbers, personal codes and API keys, and in the recorded image covers with a solid rectangle that which matched. Text drawn in pixels it cannot read – a canvas, a picture, a PDF, a video frame. The detection takes place in your device; nothing is ever sent anywhere. Applies to whole-page (document scrolling) pictures; the rectangle cannot be removed, so review the result yourselves.",
   "scrollclipFormatHint": "GIF plays everywhere. WebM is smaller and smoother (it is recorded straight in your browser).",
   "batchPermissionHint": "To open these pages a one-off permission is needed the first time.",
-  "batchPermissionDeclined": "The permission to open those pages was rejected."
+  "batchPermissionDeclined": "The permission to open those pages was rejected.",
+  "redactActsNone": "The darkening found nothing in the read text and drew not a single block. Nothing is outlined below.",
+  "redactActsShortfall": "The darkening found 3 and covered 2.",
+  "redactActsUncoveredOne": "1 match is not covered in this image.",
+  "redactActsUncoveredOther": "2 matches are not covered in this image.",
+  "reviewLimit": "FullShot reads the text that the page opens. It does not see this image. Nothing that is drawn in pixels – canvas, picture, PDF page, video frame – was ever read.",
+  "reviewNoMarks": "Not a single block is outlined in the image below."
 }

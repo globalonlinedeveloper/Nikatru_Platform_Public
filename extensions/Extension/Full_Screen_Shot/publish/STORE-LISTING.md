@@ -36,9 +36,9 @@ Recommended: **Productivity** (screenshot/utility tools list here). Alternative:
 
 ## Summary (short description — 132-char hard limit)
 ```
-Full-page, region & element screenshots. Annotate, auto-redact PII, export PNG/JPEG/WebP/PDF. 100% local — no account, no cloud.
+Full-page, region & element screenshots. Annotate, auto-redact PII, export PNG/JPEG/WebP/PDF. 100% local — no account needed.
 ```
-(128 characters — verified under the 132 limit.)
+(The 132 limit is enforced on store/chrome/short-description.txt by check-store-metadata.mjs, from tool.json storeMetadata.)
 
 ---
 
@@ -46,12 +46,12 @@ Full-page, region & element screenshots. Annotate, auto-redact PII, export PNG/J
 ```
 FullShot captures any web page the way you actually see it — the whole thing, seam-free.
 
-Capture the FULL page (not just the visible screen), the VISIBLE area, a REGION you drag, or a single ELEMENT you click. Then annotate, redact, beautify, and export — all on your own device. No account. No cloud. No tracking. Works offline.
+Capture the FULL page (not just the visible screen), the VISIBLE area, a REGION you drag, or a single ELEMENT you click. Then annotate, redact, beautify, and export — all on your own device. No account needed. Screenshots never leave your device. No tracking. Works offline.
 
 ── CAPTURE ANYTHING ──
 • Full page, visible area, drag-to-select region, or click-to-pick element
 • Seam-free stitching at any zoom or display scale (125% / 150% / Retina)
-• App-shell pages captured correctly — Gmail, ChatGPT, dashboards and other inner-scroll layouts (competing tools grab the wrong scroller)
+• App-shell pages captured correctly — Gmail, ChatGPT, dashboards and other inner-scroll layouts, from the pane that actually scrolls
 • Fixed side navigation unrolled to its full content (Reddit-style rails)
 • Wide tables, boards and code blocks captured across, not cut off
 • Smart multi-part splitting never cuts through a post, image, or line of text
@@ -73,7 +73,7 @@ Capture the FULL page (not just the visible screen), the VISIBLE area, a REGION 
 
 ── PRIVACY BY DESIGN ──
 • Everything runs locally. Your screenshots never leave your computer.
-• No sign-in, no analytics, no telemetry, no ads, no data sold — ever.
+• No account needed, no analytics, no telemetry, no ads, no data sold — ever.
 • No remotely hosted code (Manifest V3).
 • Core single-tab capture needs only the "active tab" permission. Broad site access is OPTIONAL and requested at the moment you turn on a feature that needs it (cross-site frame expansion or batch URL capture) — decline and everything else keeps working.
 
@@ -82,7 +82,7 @@ Capture the FULL page (not just the visible screen), the VISIBLE area, a REGION 
 • Alt+Shift+V — capture visible area
 (Region and element capture shortcuts can be assigned at chrome://extensions/shortcuts.)
 
-Everything the other tools charge for — free, private, and pixel-perfect.
+Free, private, and pixel-perfect.
 ```
 
 ---
@@ -98,6 +98,8 @@ FullShot's single purpose is to capture screenshots of web pages — the full pa
 
 Each is written to satisfy the "minimum permission" requirement: narrowest scope
 for the feature, least-privileged option chosen, tied to the single purpose.
+
+<!-- GENERATED:permission-justifications — rendered from tool.json policy.permissions and policy.optionalHostPermissions by scripts/render-listing.mjs. DO NOT EDIT BETWEEN THESE MARKERS. -->
 
 **activeTab**
 ```
@@ -128,6 +130,8 @@ Finished screenshots are kept in a local IndexedDB history on the user's device 
 ```
 <all_urls> is declared as an OPTIONAL host permission, never requested at install time. FullShot requests it through chrome.permissions.request only when the user turns on one of two optional features: (1) expanding scrollable content inside cross-origin iframes so those frames are captured in full, and (2) Batch URL capture, which opens and captures a user-provided list of URLs. Chrome shows its own grant prompt at that moment; if the user declines, every other feature keeps working. Core single-tab capture uses only activeTab and requires no host permission.
 ```
+
+<!-- /GENERATED:permission-justifications -->
 
 **Remote code**
 ```

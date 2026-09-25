@@ -473,7 +473,7 @@
     "message": "Uložené ✓"
   },
   "optionsSaveFailed": {
-    "message": "Not saved ✕"
+    "message": "Neuložené ✕"
   },
   "optionsSectionData": {
     "message": "Vaše údaje"
@@ -550,7 +550,7 @@
     }
   },
   "optionsSweepPartial": {
-    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "message": "Odstránené: $COUNT$ z $FOUND$ · Uvoľnené miesto: $SIZE$ · Zvyšok sa nepodarilo odstrániť. Skúste to znova alebo reštartujte prehliadač.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -848,7 +848,7 @@
     "message": "Snímka bola odstránená."
   },
   "redactActsLine": {
-    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "message": "Začierňovanie zapnuté. Nájdené: $MATCHED$, zamaľované: $PAINTED$, v tomto obrázku potvrdené ako nepriehľadné: $VERIFIED$.",
     "placeholders": {
       "matched": {
         "content": "$1",
@@ -865,11 +865,11 @@
     }
   },
   "redactActsNone": {
-    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "message": "Začierňovanie v prečítanom texte nič nenašlo a nenamaľovalo žiadny blok. Nižšie nie je nič ohraničené.",
     "placeholders": {}
   },
   "redactActsShortfall": {
-    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "message": "Začierňovanie našlo $MATCHED$ a zakrylo $COVERED$.",
     "placeholders": {
       "matched": {
         "content": "$1",
@@ -882,7 +882,7 @@
     }
   },
   "redactActsUncoveredOne": {
-    "message": "$COUNT$ match is not covered in this image.",
+    "message": "$COUNT$ zhoda nie je v tomto obrázku zakrytá.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -891,7 +891,7 @@
     }
   },
   "redactActsUncoveredFew": {
-    "message": "$COUNT$ matches are not covered in this image.",
+    "message": "$COUNT$ zhody nie sú v tomto obrázku zakryté.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -900,7 +900,7 @@
     }
   },
   "redactActsUncoveredMany": {
-    "message": "$COUNT$ matches are not covered in this image.",
+    "message": "$COUNT$ zhody nie je v tomto obrázku zakrytých.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -909,7 +909,7 @@
     }
   },
   "redactActsUncoveredOther": {
-    "message": "$COUNT$ matches are not covered in this image.",
+    "message": "$COUNT$ zhôd nie je v tomto obrázku zakrytých.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -918,15 +918,15 @@
     }
   },
   "redactActsWalkTruncated": {
-    "message": "FullShot did not finish walking this page.",
+    "message": "FullShot nedokončil prechádzanie tejto stránky.",
     "placeholders": {}
   },
   "redactActsCountPartial": {
-    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "message": "Tento počet môže byť nižší než skutočnosť: FullShot neprečítal časť textu v tejto snímke.",
     "placeholders": {}
   },
   "redactActsScanLimits": {
-    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "message": "Časti textu, ktoré neprečítal: $REFUSED$. Bloky, ktoré našiel a nenakreslil: $LOST$.",
     "placeholders": {
       "refused": {
         "content": "$1",
@@ -939,7 +939,7 @@
     }
   },
   "redactActsBakeLimits": {
-    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "message": "Bloky, ktoré sa nepodarilo umiestniť do tohto obrázka: $UNPLACED$. Bloky nakreslené a znova neprečítané: $UNREAD$.",
     "placeholders": {
       "unplaced": {
         "content": "$1",
@@ -952,7 +952,7 @@
     }
   },
   "redactActsNoLedger": {
-    "message": "This record carries no account of a redaction pass on this capture.",
+    "message": "Tento záznam neobsahuje žiadny údaj o prechode začierňovania pri tejto snímke.",
     "placeholders": {}
   },
   "redactActsUnknownCount": {
@@ -960,15 +960,15 @@
     "placeholders": {}
   },
   "reviewTitle": {
-    "message": "Before you copy",
+    "message": "Pred skopírovaním",
     "placeholders": {}
   },
   "reviewLimit": {
-    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "message": "FullShot číta text, ktorý stránka sprístupňuje. Tento obrázok nevidí. Nič, čo je nakreslené ako pixely – canvas, obrázok, strana PDF, snímka videa –, sa nikdy neprečítalo.",
     "placeholders": {}
   },
   "reviewMarks": {
-    "message": "$COUNT$ blocks are outlined on the image below.",
+    "message": "Ohraničené bloky na obrázku nižšie: $COUNT$.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -977,11 +977,11 @@
     }
   },
   "reviewNoMarks": {
-    "message": "No blocks are outlined on the image below.",
+    "message": "Na obrázku nižšie nie sú ohraničené žiadne bloky.",
     "placeholders": {}
   },
   "reviewScale": {
-    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "message": "Zobrazené na $PERCENT$ % veľkosti, ktorá sa skopíruje.",
     "placeholders": {
       "percent": {
         "content": "$1",
@@ -990,11 +990,11 @@
     }
   },
   "reviewReduced": {
-    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "message": "Táto snímka je príliš vysoká na to, aby sa skopírovala ako jeden čitateľný obrázok, preto je obrázok nižšie zmenšený prehľad celej stránky. Drobný text v ňom nie je čitateľný – ani tu, ani v schránke.",
     "placeholders": {}
   },
   "reviewMarkLabel": {
-    "message": "Block $INDEX$",
+    "message": "Blok $INDEX$",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -1003,7 +1003,7 @@
     }
   },
   "reviewMarkAt": {
-    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "message": "Blok $INDEX$, $PERCENT$ % od horného okraja obrázka",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -1016,23 +1016,23 @@
     }
   },
   "reviewPrevView": {
-    "message": "Previous view",
+    "message": "Predchádzajúci pohľad",
     "placeholders": {}
   },
   "reviewNextView": {
-    "message": "Next view",
+    "message": "Ďalší pohľad",
     "placeholders": {}
   },
   "reviewZoomOut": {
-    "message": "Zoom out",
+    "message": "Oddialiť",
     "placeholders": {}
   },
   "reviewZoomIn": {
-    "message": "Zoom in",
+    "message": "Priblížiť",
     "placeholders": {}
   },
   "reviewViewPos": {
-    "message": "View $INDEX$ of $TOTAL$",
+    "message": "Pohľad $INDEX$ z $TOTAL$",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -1045,7 +1045,7 @@
     }
   },
   "reviewImgRegion": {
-    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "message": "Obrázok, ktorý sa chystá skopírovať, $DIMS$ pixelov – posúvajte ho šípkami",
     "placeholders": {
       "dims": {
         "content": "$1",
@@ -1054,15 +1054,15 @@
     }
   },
   "reviewConfirm": {
-    "message": "I have looked — copy",
+    "message": "Pozrel som sa – kopírovať",
     "placeholders": {}
   },
   "reviewCancel": {
-    "message": "Cancel",
+    "message": "Zrušiť",
     "placeholders": {}
   },
   "reviewImgAlt": {
-    "message": "The image that is about to be copied",
+    "message": "Obrázok, ktorý sa chystá skopírovať",
     "placeholders": {}
   },
   "resultAiOverviewOnly": {

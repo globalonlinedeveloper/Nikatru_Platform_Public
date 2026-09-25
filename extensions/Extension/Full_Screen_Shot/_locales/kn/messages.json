@@ -473,7 +473,7 @@
     "message": "ಉಳಿಸಲಾಗಿದೆ ✓"
   },
   "optionsSaveFailed": {
-    "message": "Not saved ✕"
+    "message": "ಉಳಿಸಲಾಗಿಲ್ಲ ✕"
   },
   "optionsSectionData": {
     "message": "ನಿಮ್ಮ ಡೇಟಾ"
@@ -550,7 +550,7 @@
     }
   },
   "optionsSweepPartial": {
-    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "message": "ತೆಗೆದುಹಾಕಲಾಗಿದೆ: $FOUND$ ರಲ್ಲಿ $COUNT$ · ಮುಕ್ತಗೊಂಡ ಸ್ಥಳ: $SIZE$ · ಉಳಿದವುಗಳನ್ನು ತೆಗೆದುಹಾಕಲು ಆಗಲಿಲ್ಲ. ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ ಅಥವಾ ನಿಮ್ಮ ಬ್ರೌಸರ್ ಅನ್ನು ಮರುಪ್ರಾರಂಭಿಸಿ.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -830,7 +830,7 @@
     "message": "ಸ್ಕ್ರೀನ್‌ಶಾಟ್ ಅಳಿಸಲಾಗಿದೆ."
   },
   "redactActsLine": {
-    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "message": "ರಿಡ್ಯಾಕ್ಷನ್ ಆನ್ ಆಗಿದೆ. $MATCHED$ ಹೊಂದಿಕೆಯಾಗಿವೆ, $PAINTED$ ಬಣ್ಣ ಹಚ್ಚಲಾಗಿದೆ, $VERIFIED$ ಈ ಚಿತ್ರದಲ್ಲಿ ಅಪಾರದರ್ಶಕವೆಂದು ದೃಢಪಟ್ಟಿವೆ.",
     "placeholders": {
       "matched": {
         "content": "$1",
@@ -847,11 +847,11 @@
     }
   },
   "redactActsNone": {
-    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "message": "ರಿಡ್ಯಾಕ್ಷನ್ ಓದಿದ ಪಠ್ಯದಲ್ಲಿ ಏನನ್ನೂ ಹೊಂದಿಸಲಿಲ್ಲ ಮತ್ತು ಯಾವುದೇ ಬ್ಲಾಕ್ ಅನ್ನು ಬಣ್ಣಿಸಲಿಲ್ಲ. ಕೆಳಗೆ ಯಾವುದಕ್ಕೂ ಗಡಿ ಗುರುತಿಸಲಾಗಿಲ್ಲ.",
     "placeholders": {}
   },
   "redactActsShortfall": {
-    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "message": "ರಿಡ್ಯಾಕ್ಷನ್ $MATCHED$ ಹೊಂದಿಸಿದೆ ಮತ್ತು $COVERED$ ಮುಚ್ಚಿದೆ.",
     "placeholders": {
       "matched": {
         "content": "$1",
@@ -864,7 +864,7 @@
     }
   },
   "redactActsUncoveredOne": {
-    "message": "$COUNT$ match is not covered in this image.",
+    "message": "$COUNT$ ಹೊಂದಾಣಿಕೆ ಈ ಚಿತ್ರದಲ್ಲಿ ಮುಚ್ಚಲ್ಪಟ್ಟಿಲ್ಲ.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -873,7 +873,7 @@
     }
   },
   "redactActsUncoveredOther": {
-    "message": "$COUNT$ matches are not covered in this image.",
+    "message": "$COUNT$ ಹೊಂದಾಣಿಕೆಗಳು ಈ ಚಿತ್ರದಲ್ಲಿ ಮುಚ್ಚಲ್ಪಟ್ಟಿಲ್ಲ.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -882,15 +882,15 @@
     }
   },
   "redactActsWalkTruncated": {
-    "message": "FullShot did not finish walking this page.",
+    "message": "FullShot ಈ ಪುಟವನ್ನು ಪೂರ್ತಿಯಾಗಿ ಹಾದುಹೋಗುವುದನ್ನು ಮುಗಿಸಲಿಲ್ಲ.",
     "placeholders": {}
   },
   "redactActsCountPartial": {
-    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "message": "ಈ ಸಂಖ್ಯೆ ಕಡಿಮೆ ಇರಬಹುದು: FullShot ಈ ಕ್ಯಾಪ್ಚರ್‌ನ ಕೆಲವು ಪಠ್ಯವನ್ನು ಓದಲಿಲ್ಲ.",
     "placeholders": {}
   },
   "redactActsScanLimits": {
-    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "message": "ಓದದ ಪಠ್ಯದ ತುಣುಕುಗಳು: $REFUSED$. ಕಂಡುಬಂದರೂ ಬಿಡಿಸದ ಬ್ಲಾಕ್‌ಗಳು: $LOST$.",
     "placeholders": {
       "refused": {
         "content": "$1",
@@ -903,7 +903,7 @@
     }
   },
   "redactActsBakeLimits": {
-    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "message": "ಈ ಚಿತ್ರದಲ್ಲಿ ಇರಿಸಲಾಗದ ಬ್ಲಾಕ್‌ಗಳು: $UNPLACED$. ಬಿಡಿಸಿದರೂ ಮತ್ತೆ ಓದದ ಬ್ಲಾಕ್‌ಗಳು: $UNREAD$.",
     "placeholders": {
       "unplaced": {
         "content": "$1",
@@ -916,7 +916,7 @@
     }
   },
   "redactActsNoLedger": {
-    "message": "This record carries no account of a redaction pass on this capture.",
+    "message": "ಈ ದಾಖಲೆಯಲ್ಲಿ ಈ ಕ್ಯಾಪ್ಚರ್ ಮೇಲಿನ ಯಾವುದೇ ರಿಡ್ಯಾಕ್ಷನ್ ಸುತ್ತಿನ ವಿವರ ಇಲ್ಲ.",
     "placeholders": {}
   },
   "redactActsUnknownCount": {
@@ -924,15 +924,15 @@
     "placeholders": {}
   },
   "reviewTitle": {
-    "message": "Before you copy",
+    "message": "ನಕಲಿಸುವ ಮೊದಲು",
     "placeholders": {}
   },
   "reviewLimit": {
-    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "message": "FullShot ಪುಟವು ತೆರೆದಿಡುವ ಪಠ್ಯವನ್ನು ಓದುತ್ತದೆ. ಇದು ಈ ಚಿತ್ರವನ್ನು ನೋಡಲು ಸಾಧ್ಯವಿಲ್ಲ. ಪಿಕ್ಸೆಲ್‌ಗಳಾಗಿ ಬಿಡಿಸಿದ ಯಾವುದೇ ವಿಷಯ – ಕ್ಯಾನ್ವಾಸ್, ಚಿತ್ರ, PDF ಪುಟ, ವೀಡಿಯೊ ಫ್ರೇಮ್ – ಎಂದಿಗೂ ಓದಲ್ಪಟ್ಟಿಲ್ಲ.",
     "placeholders": {}
   },
   "reviewMarks": {
-    "message": "$COUNT$ blocks are outlined on the image below.",
+    "message": "ಕೆಳಗಿನ ಚಿತ್ರದಲ್ಲಿ ಗಡಿ ಗುರುತಿಸಿದ ಬ್ಲಾಕ್‌ಗಳು: $COUNT$.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -941,11 +941,11 @@
     }
   },
   "reviewNoMarks": {
-    "message": "No blocks are outlined on the image below.",
+    "message": "ಕೆಳಗಿನ ಚಿತ್ರದಲ್ಲಿ ಯಾವುದೇ ಬ್ಲಾಕ್‌ಗೆ ಗಡಿ ಗುರುತಿಸಲಾಗಿಲ್ಲ.",
     "placeholders": {}
   },
   "reviewScale": {
-    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "message": "ನಕಲಿಸಲಾಗುವ ಗಾತ್ರದ $PERCENT$% ನಲ್ಲಿ ತೋರಿಸಲಾಗಿದೆ.",
     "placeholders": {
       "percent": {
         "content": "$1",
@@ -954,11 +954,11 @@
     }
   },
   "reviewReduced": {
-    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "message": "ಈ ಕ್ಯಾಪ್ಚರ್ ಓದಬಹುದಾದ ಒಂದೇ ಚಿತ್ರವಾಗಿ ನಕಲಿಸಲು ತುಂಬಾ ಉದ್ದವಾಗಿದೆ, ಆದ್ದರಿಂದ ಕೆಳಗಿನ ಚಿತ್ರವು ಇಡೀ ಪುಟದ ಕುಗ್ಗಿಸಿದ ಅವಲೋಕನವಾಗಿದೆ. ಅದರಲ್ಲಿನ ಸಣ್ಣ ಪಠ್ಯ ಓದಲಾಗುವುದಿಲ್ಲ – ಇಲ್ಲಿಯೂ ಇಲ್ಲ, ಕ್ಲಿಪ್‌ಬೋರ್ಡ್‌ನಲ್ಲಿಯೂ ಇಲ್ಲ.",
     "placeholders": {}
   },
   "reviewMarkLabel": {
-    "message": "Block $INDEX$",
+    "message": "ಬ್ಲಾಕ್ $INDEX$",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -967,7 +967,7 @@
     }
   },
   "reviewMarkAt": {
-    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "message": "ಬ್ಲಾಕ್ $INDEX$, ಚಿತ್ರದ ಮೇಲಿನಿಂದ $PERCENT$% ಕೆಳಗೆ",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -980,23 +980,23 @@
     }
   },
   "reviewPrevView": {
-    "message": "Previous view",
+    "message": "ಹಿಂದಿನ ನೋಟ",
     "placeholders": {}
   },
   "reviewNextView": {
-    "message": "Next view",
+    "message": "ಮುಂದಿನ ನೋಟ",
     "placeholders": {}
   },
   "reviewZoomOut": {
-    "message": "Zoom out",
+    "message": "ಝೂಮ್ ಔಟ್",
     "placeholders": {}
   },
   "reviewZoomIn": {
-    "message": "Zoom in",
+    "message": "ಝೂಮ್ ಇನ್",
     "placeholders": {}
   },
   "reviewViewPos": {
-    "message": "View $INDEX$ of $TOTAL$",
+    "message": "ನೋಟ $INDEX$ / $TOTAL$",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -1009,7 +1009,7 @@
     }
   },
   "reviewImgRegion": {
-    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "message": "ನಕಲಿಸಲಾಗಲಿರುವ ಚಿತ್ರ, $DIMS$ ಪಿಕ್ಸೆಲ್‌ಗಳು – ಬಾಣದ ಕೀಲಿಗಳಿಂದ ಸ್ಕ್ರಾಲ್ ಮಾಡಿ",
     "placeholders": {
       "dims": {
         "content": "$1",
@@ -1018,15 +1018,15 @@
     }
   },
   "reviewConfirm": {
-    "message": "I have looked — copy",
+    "message": "ನಾನು ನೋಡಿದ್ದೇನೆ – ನಕಲಿಸಿ",
     "placeholders": {}
   },
   "reviewCancel": {
-    "message": "Cancel",
+    "message": "ರದ್ದುಮಾಡಿ",
     "placeholders": {}
   },
   "reviewImgAlt": {
-    "message": "The image that is about to be copied",
+    "message": "ನಕಲಿಸಲಾಗಲಿರುವ ಚಿತ್ರ",
     "placeholders": {}
   },
   "resultAiOverviewOnly": {
