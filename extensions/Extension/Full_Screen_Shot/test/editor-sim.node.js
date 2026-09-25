@@ -39,6 +39,8 @@ const EDITOR_PATH = process.env.FS_EDITOR
   ? path.resolve(process.env.FS_EDITOR) : path.join(ROOT, 'pages', 'editor.js');
 const EDITOR_SRC = fs.readFileSync(EDITOR_PATH, 'utf8');
 const EDITOR_HTML = fs.readFileSync(path.join(ROOT, 'pages', 'editor.html'), 'utf8');
+/* The editor's own stylesheet — its inline <style> block until 2026-09-24. */
+const EDITOR_CSS = fs.readFileSync(path.join(ROOT, 'pages', 'editor.css'), 'utf8');
 
 /* The REAL pages/common.js, loaded as a module. The failure-text checks at the
    bottom of this file grade what the SHIPPED reducer does with a hostile
@@ -2191,10 +2193,10 @@ console.log('\n=== a11y: what pages/editor.html promises ===');
     (H.match(/role="menuitem" tabindex="-1"/g) || []).length === 8,
     (H.match(/role="menuitem"/g) || []).length + ' menuitem(s)');
   check('a visible focus ring is declared for the toolbar, the palette and the surface',
-    /\.toolbar \.tool:focus-visible/.test(H) && /\.swatch:focus-visible/.test(H) &&
-    /#canvas:focus \{[^}]*outline:/.test(H) && /outline-offset/.test(H), '');
+    /\.toolbar \.tool:focus-visible/.test(EDITOR_CSS) && /\.swatch:focus-visible/.test(EDITOR_CSS) &&
+    /#canvas:focus \{[^}]*outline:/.test(EDITOR_CSS) && /outline-offset/.test(EDITOR_CSS), '');
   check('the crosshair-bearing surface is still pinned direction: ltr',
-    /#canvasWrap, #canvas \{ direction: ltr; \}/.test(H), '');
+    /#canvasWrap, #canvas \{ direction: ltr; \}/.test(EDITOR_CSS), '');
 }
 
 /* ================================================================
@@ -2315,7 +2317,8 @@ console.log('\n=== contrast: computed ratios, light and dark ===');
   }
   const COMMON_CSS = fs.readFileSync(path.join(ROOT, 'pages', 'common.css'), 'utf8');
   const POPUP_CSS = fs.readFileSync(path.join(ROOT, 'popup', 'popup.css'), 'utf8');
-  const EDITOR_STYLE = (/<style>[\s\S]*?<\/style>/.exec(EDITOR_HTML) || [''])[0]
+  /* pages/editor.css since 2026-09-24 (it was editor.html's inline <style>). */
+  const EDITOR_STYLE = EDITOR_CSS
     .replace(/\/\*[\s\S]*?\*\//g, ' ');
 
   /* WHICH TOKEN THE RULE ACTUALLY NAMES. Grading a hard-coded pair of token
@@ -2364,7 +2367,7 @@ console.log('\n=== contrast: computed ratios, light and dark ===');
      sit on an arbitrary screenshot rather than on a theme surface — which is
      why the crosshair is drawn twice, white under accent. */
   {
-    const style = (/<style>[\s\S]*?<\/style>/.exec(EDITOR_HTML) || [''])[0]
+    const style = EDITOR_CSS
       .replace(/\/\*[\s\S]*?\*\//g, ' ');
     /* One exemption, by exact text, with a reason a person can read — the same
        shape as PHYSICAL_OK and BARE_OK in test/i18n-sim.node.js, and for the

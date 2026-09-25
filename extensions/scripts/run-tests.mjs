@@ -53,6 +53,13 @@
    It is now test/pixel-sim/run.node.js and the floor counts 11. The convention
    below is unchanged; the file moved to meet it.
 
+   ⏱ 2026-09-24 (EXT-5, limb 1): the floor counts 12. The twelfth,
+   test/background-sim.firefox.node.js, runs test/background-sim.node.js again
+   as Firefox runs background.js. It is a separate FILE rather than an
+   argument because each sim below is spawned as `node <file>` with no
+   arguments and an unchanged environment; the file sets FS_ENGINE=gecko for
+   itself before it requires the sim.
+
    (Neither glob above is written out in its real form, because a doubled star
    followed by a slash is a block-comment terminator and this is a block
    comment. templates/tool/TEMPLATE.md records that costing this family twice;

@@ -32,7 +32,7 @@
 // different · 2 = COVERAGE LOST (no bundle, an unreadable plist, no plan).
 // ─────────────────────────────────────────────────────────────────────────────
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -52,12 +52,41 @@ const decode = (s) =>
     e[0] === '#' ? String.fromCodePoint(e[1] === 'x' ? parseInt(e.slice(2), 16) : Number(e.slice(1))) : XML_ENTITIES[e],
   );
 
+// Comments are found with indexOf and skipped at the offset they start at in the
+// text as given. Nothing is cut out and re-scanned, so removing one comment can
+// never splice two fragments into a new comment opener, and no regular
+// expression here spells a comment at all.
+
+/** The index just past the comment opening at `open`, or -1 if it never ends. */
+function pastComment(src, open) {
+  const shut = src.indexOf('-->', open + 4);
+  return shut === -1 ? -1 : shut + 3;
+}
+
+/** A leaf's text from `from` up to its `</name>`, each comment skipped where it
+ *  stands, and the index just past that close tag; null for a leaf that never
+ *  closes or a comment inside it that never ends. */
+function leafText(src, from, name) {
+  const close = `</${name}>`;
+  let text = '';
+  let at = from;
+  for (;;) {
+    const end = src.indexOf(close, at);
+    if (end === -1) return null;
+    const open = src.indexOf('<!--', at);
+    if (open === -1 || open > end) return { text: text + src.slice(at, end), next: end + close.length };
+    const past = pastComment(src, open);
+    if (past === -1) return null;
+    text += src.slice(at, open);
+    at = past;
+  }
+}
+
 /** The ROOT dict of an XML plist, as Map<key, value>: a `<string>` is its text,
  *  `<true/>`/`<false/>` a boolean, anything else `{ element }`. A key seen twice
  *  at the root is listed in `duplicates`. Returns null for text that is not a
  *  plist whose root is a dict. */
-export function readPlistXml(xml) {
-  const src = xml.replace(/<!--[\s\S]*?-->/g, '');
+export function readPlistXml(src) {
   const tag = /<(\/?)([A-Za-z][A-Za-z0-9]*)\b[^>]*?(\/?)>/g;
   const LEAVES = new Set(['key', 'string', 'integer', 'real', 'date', 'data']);
   const stack = [];
@@ -70,8 +99,15 @@ export function readPlistXml(xml) {
     root.set(key, value);
     key = null;
   };
-  let m;
-  while ((m = tag.exec(src))) {
+  for (let from = 0, m; (m = tag.exec(src)); from = tag.lastIndex) {
+    const open = src.indexOf('<!--', from);
+    if (open !== -1 && open < m.index) {
+      // A comment starts before this tag: skip it whole and look again after it.
+      const past = pastComment(src, open);
+      if (past === -1) return null;
+      tag.lastIndex = past;
+      continue;
+    }
     const [, close, name, selfClose] = m;
     if (close) {
       if (stack.pop() !== name) return null;
@@ -88,10 +124,10 @@ export function readPlistXml(xml) {
       continue;
     }
     if (LEAVES.has(name)) {
-      const end = src.indexOf(`</${name}>`, tag.lastIndex);
-      if (end === -1) return null;
-      const text = decode(src.slice(tag.lastIndex, end));
-      tag.lastIndex = end + name.length + 3;
+      const leaf = leafText(src, tag.lastIndex, name);
+      if (leaf === null) return null;
+      const text = decode(leaf.text);
+      tag.lastIndex = leaf.next;
       if (!atRoot) continue;
       if (name === 'key') {
         if (key !== null) return null;
@@ -184,25 +220,42 @@ function main(argv) {
   return finish(lost, problems, oks);
 }
 
+/** The bytes at `abs`, or the error code that said why there are none: a path is
+ *  READ once, never checked and then read, so "is it there", "is it a directory"
+ *  and "what does it hold" are one observation (render-privacy.mjs readIf). Any
+ *  code other than these three is re-thrown: an unreadable bundle is not an
+ *  absent one. */
+function readOnce(abs) {
+  try {
+    return { bytes: readFileSync(abs) };
+  } catch (e) {
+    if (e && (e.code === 'ENOENT' || e.code === 'EISDIR' || e.code === 'ENOTDIR')) return { code: e.code };
+    throw e;
+  }
+}
+
 /** { target, where, plist } for a readable bundle, or { lost } saying why not. */
 function readBundle(abs) {
-  if (!existsSync(abs)) return { lost: 'no such bundle (a missing build, or a glob that matched nothing)' };
+  const self = readOnce(abs);
+  if (self.code && self.code !== 'EISDIR') return { lost: 'no such bundle (a missing build, or a glob that matched nothing)' };
   let bytes;
   let target;
   let where;
-  if (statSync(abs).isDirectory()) {
+  if (self.code === 'EISDIR') {
     if (!abs.endsWith('.app')) return { lost: 'a directory that is not an .app bundle' };
-    if (existsSync(join(abs, 'Contents', 'Info.plist'))) {
-      target = MACOS;
-      where = 'Contents/Info.plist';
-    } else if (existsSync(join(abs, 'Info.plist'))) {
-      target = IOS;
-      where = 'Info.plist';
-    } else return { lost: 'an .app with neither Contents/Info.plist (macOS) nor Info.plist (iOS)' };
-    bytes = readFileSync(join(abs, where));
+    for (const [t, w] of [[MACOS, 'Contents/Info.plist'], [IOS, 'Info.plist']]) {
+      const got = readOnce(join(abs, ...w.split('/')));
+      if (got.bytes) {
+        target = t;
+        where = w;
+        bytes = got.bytes;
+        break;
+      }
+    }
+    if (!bytes) return { lost: 'an .app with neither Contents/Info.plist (macOS) nor Info.plist (iOS)' };
   } else {
     if (!abs.endsWith('.ipa')) return { lost: 'a file that is not an .ipa' };
-    const entries = unzip(readFileSync(abs));
+    const entries = unzip(self.bytes);
     if (entries === null) return { lost: 'an .ipa that is not a readable zip' };
     const hits = entries.filter((e) => IPA_PLIST.test(e.name));
     if (hits.length !== 1) return { lost: `an .ipa with ${hits.length} Payload/*.app/Info.plist member(s); exactly one is the bundle` };

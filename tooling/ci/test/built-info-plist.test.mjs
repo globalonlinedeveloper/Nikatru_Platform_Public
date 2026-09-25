@@ -222,4 +222,12 @@ describe('assert-built-info-plist — the built bundle carries the two keys app.
     assert.deepEqual(doc.duplicates, []);
     assert.equal(readPlistXml('<plist version="1.0">\n<array>\n\t<string>A</string>\n</array>\n</plist>\n'), null);
   });
+
+  test('readPlistXml skips a comment where it stands: a commented-out key is not read, a comment inside a value is not its text', () => {
+    const doc = readPlistXml(
+      '<plist version="1.0">\n<dict>\n\t<!-- <key>GONE</key><string>no</string> -->\n\t<key>A</key>\n\t<string>x<!-- </string> -->y</string>\n</dict>\n</plist>\n',
+    );
+    assert.deepEqual([...doc.root.entries()], [['A', 'xy']]);
+    assert.equal(readPlistXml('<plist version="1.0">\n<dict>\n\t<key>A</key>\n\t<string>x<!-- never ends</string>\n</dict>\n</plist>\n'), null);
+  });
 });
