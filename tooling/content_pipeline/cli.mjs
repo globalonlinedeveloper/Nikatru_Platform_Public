@@ -134,8 +134,8 @@ try {
       refuse(
         'publish REFUSED — every gate passed and there is NO PUBLISH TARGET.\n' +
           '  The shared R2 bucket, the packs.nikatru.com binding, the cache policy and latest.json hosting are\n' +
-          "  [4]B-18's, and services/platform/wrangler.jsonc still declares no r2_buckets. Stage 7 owns the gate;\n" +
-          '  stage 4 owns the shelf. Do not create a bucket from here.',
+          "  [4]B-18's, and the pack-delivery bucket does not exist (the backup bucket services/platform binds is\n" +
+          '  not a shelf). Stage 7 owns the gate; stage 4 owns the shelf. Do not create a bucket from here.',
       );
       break;
     }

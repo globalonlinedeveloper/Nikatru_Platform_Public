@@ -10,8 +10,8 @@
 // ⛔ THE PUBLISH TARGET DOES NOT EXIST AND THIS FILE DOES NOT CREATE ONE.
 // `[4]B-18` owns the shelf: one shared R2 bucket with an `<app_id>/` prefix per
 // [ADR 020], the `packs.nikatru.com` custom-domain binding, the cache policy and
-// `latest.json` hosting. services/platform/wrangler.jsonc still reads "NO
-// r2_buckets YET". Stage 7 owns the GATE, and a gate is about refusing — refusing
+// `latest.json` hosting. services/platform binds only the backup bucket
+// `BACKUPS_R2`, not a shelf. Stage 7 owns the GATE, and a gate is about refusing — refusing
 // needs no destination, which is why this half is buildable and negative-testable
 // with no bucket at all.
 //
