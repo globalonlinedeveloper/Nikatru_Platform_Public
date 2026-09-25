@@ -1,5 +1,7 @@
 // Restores both stores to pristine after the E2E run: deletes every D1 row owned
-// by the throwaway user (all four tables), then deletes the Supabase auth user,
+// by the throwaway user (every table in the leg register's
+// `apps.<E2E_APP_ID>.userTables`, in the database the app's Worker binds as
+// APP_DB — tooling/e2e/backend.mjs), then deletes the Supabase auth user,
 // and — when the run exported one — the consent artifact the drive wrote into
 // platform_db. Runs even when the test fails (workflow `if: always()`). Node 20
 // fetch only.
@@ -46,10 +48,15 @@
 // to find this row, and a teardown that ran first would make the audit fail on
 // an upload that worked.
 //
-// Env: E2E_USER_ID, CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN,
-//      SUBSCRIPTIONTRACKER_D1_DATABASE_ID, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
-//      and, for the consent artifact only: E2E_APP_ID, PLATFORM_D1_DATABASE_ID,
+// Env: E2E_USER_ID, CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN, E2E_APP_ID,
+//      SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+//      and, for the consent artifact only: PLATFORM_D1_DATABASE_ID,
 //      E2E_RESPONSE_DATA / E2E_DRIVE_LOG (the run's exported anon_id).
+//      The app's database id is not an env key (O-E2E-LANE-WIRED-TO-ONE-APP,
+//      2026-09-25): E2E_APP_ID resolves it through tooling/e2e/backend.mjs —
+//      the Worker's `env.sandbox` block when E2E_CONSENT_LEDGER is set (a store
+//      capture drives the sandbox Workers), its top level otherwise. A refusal
+//      there is exit 1 before any request.
 //      E2E_APP_VERSION is OPTIONAL and is read for its message only — it is the
 //      `e2e-<run_number>-<sha7>` stamp e2e.yml derives once into $GITHUB_ENV, and
 //      it is what the failure below can point a human at.
@@ -59,10 +66,10 @@
 //      with E2E_RESPONSE_DATA / E2E_DRIVE_LOG (the nightly's single-drive
 //      sources), and it requires PLATFORM_D1_DATABASE_ID: either mix is a wiring
 //      defect and is refused before any request is made. Since 2026-09-25 a
-//      ledger also refuses a PRODUCTION database id in PLATFORM_D1_DATABASE_ID
-//      or SUBSCRIPTIONTRACKER_D1_DATABASE_ID: a store capture drives the sandbox
-//      Workers (tooling/store/capture-backend.mjs), so its rows are in the
-//      sandbox databases, and its purge has no business in production's.
+//      ledger also refuses a PRODUCTION database id in PLATFORM_D1_DATABASE_ID,
+//      and an app sandbox database that resolves to one: a store capture drives
+//      the sandbox Workers (tooling/store/capture-backend.mjs), so its rows are
+//      in the sandbox databases, and its purge has no business in production's.
 //
 // 🔴 PLATFORM_D1_DATABASE_ID IS THE SWITCH THAT SAYS "THIS INVOCATION OWNS THE
 // CONSENT ARTIFACT", and it decides whether an unresolved anon_id is a failure
@@ -73,6 +80,7 @@
 import { resolveConsentAnonId, resolveCaptureConsentIds } from './consent_anon_id.mjs';
 import { stampDeletable } from './app-version-stamp.mjs';
 import { sandboxBackend, productionD1Ids, CaptureBackendRefused } from '../store/capture-backend.mjs';
+import { e2eTargetOrExit } from './backend.mjs';
 
 const userId = process.env.E2E_USER_ID;
 
@@ -100,8 +108,8 @@ if (ledgerPath && !process.env.PLATFORM_D1_DATABASE_ID) {
 // production ids are the top-level D1 ids of both Workers' wrangler.jsonc, as
 // sandboxBackend() reads them. A backend it refuses is refused here too, since
 // a purge that cannot tell production from sandbox has no safe target.
+let productionIds = null;
 if (ledgerPath) {
-  let productionIds;
   try {
     productionIds = productionD1Ids(sandboxBackend());
   } catch (e) {
@@ -112,16 +120,16 @@ if (ledgerPath) {
     );
     process.exit(1);
   }
-  for (const key of ['PLATFORM_D1_DATABASE_ID', 'SUBSCRIPTIONTRACKER_D1_DATABASE_ID']) {
-    if (process.env[key] && productionIds.has(process.env[key])) {
-      console.error(
-        `REFUSED: E2E_CONSENT_LEDGER is set and ${key} is ${process.env[key]}, a PRODUCTION database. ` +
-          'A store capture drives the sandbox Workers, so its rows are in the sandbox databases; pointing ' +
-          'its purge at production would delete by its ids where it wrote nothing. Nothing was purged.',
-      );
-      process.exit(1);
-    }
+  const platformDb = process.env.PLATFORM_D1_DATABASE_ID;
+  if (productionIds.has(platformDb)) {
+    console.error(
+      `REFUSED: E2E_CONSENT_LEDGER is set and PLATFORM_D1_DATABASE_ID is ${platformDb}, a PRODUCTION database. ` +
+        'A store capture drives the sandbox Workers, so its rows are in the sandbox databases; pointing ' +
+        'its purge at production would delete by its ids where it wrote nothing. Nothing was purged.',
+    );
+    process.exit(1);
   }
+  // The app database is checked below, once E2E_APP_ID has resolved it.
 }
 
 // Resolved BEFORE the early exit below, because the two are independent: the
@@ -175,17 +183,43 @@ const token = need('CLOUDFLARE_API_TOKEN');
 // instead of the code that was asked for. Hoisting the credential checks keeps
 // the only `exit()` calls in this file on the side of the first fetch where they
 // are safe.
-const dbId = userId ? need('SUBSCRIPTIONTRACKER_D1_DATABASE_ID') : null;
 const supaUrl = userId ? need('SUPABASE_URL').replace(/\/+$/, '') : null;
 const serviceKey = userId ? need('SUPABASE_SERVICE_ROLE_KEY') : null;
-// A capture needs it even with zero ids: the stamp delete below binds it too.
-const appId = ids.length > 0 || capture ? need('E2E_APP_ID') : null;
+// A user's rows need it to name their database; a capture needs it even with
+// zero ids, because the stamp delete below binds it too.
+const appId = userId || ids.length > 0 || capture ? need('E2E_APP_ID') : null;
+
+// The app's own database and its user tables, from E2E_APP_ID. Still above the
+// first request, so a refusal here may exit.
+let dbId = null;
+let userTables = [];
+if (userId) {
+  ({ appDb: dbId, userTables } = e2eTargetOrExit(appId, {
+    env: ledgerPath ? 'sandbox' : 'production',
+    code: 1,
+    prefix: 'REFUSED',
+  }));
+  if (productionIds?.has(dbId)) {
+    console.error(
+      `REFUSED: E2E_CONSENT_LEDGER is set and ${appId}'s sandbox APP_DB resolves to a PRODUCTION database. ` +
+        'A store capture drives the sandbox Workers, so its purge has no business there. Nothing was purged.',
+    );
+    process.exit(1);
+  }
+  // D1 cannot bind a table name, so each is checked here, where the DELETE is built.
+  const bad = userTables.filter((t) => !/^[A-Za-z_][A-Za-z0-9_$]*$/.test(t));
+  if (bad.length > 0) {
+    console.error(`REFUSED: ${JSON.stringify(bad)} in ${appId}'s userTables is not a plain table name. Nothing was purged.`);
+    process.exit(1);
+  }
+}
 
 let failures = 0;
 
 if (userId) {
-  // Order child-tables first, though all are keyed by user_id so order is cosmetic.
-  for (const table of ['payment_history', 'subscriptions', 'budget_categories', 'budgets']) {
+  // The register lists child tables first, though all are keyed by user_id so
+  // order is cosmetic.
+  for (const table of userTables) {
     try {
       const result = await d1(dbId, `DELETE FROM ${table} WHERE user_id = ?`, [userId]);
       const changes = result?.[0]?.meta?.changes ?? 0;
@@ -210,7 +244,7 @@ if (userId) {
     console.error(`WARN: user delete returned ${del.status}\n${await del.text()}`);
   }
 } else {
-  console.log('E2E_USER_ID unset (user was never provisioned) — no subscriptiontracker_db rows or identity to purge.');
+  console.log('E2E_USER_ID unset (user was never provisioned) — no app-database rows or identity to purge.');
 }
 
 for (const id of ids) {

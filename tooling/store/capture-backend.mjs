@@ -25,7 +25,12 @@
 //     production cron to the sandbox script); a sandbox script name equal to a
 //     top-level script name (a `--env sandbox` deploy would replace production);
 //     a sandbox D1, KV or ratelimit id that is empty or equal to any top-level
-//     id in either config.
+//     id in either config; and, for an app Worker (`<app>-api`), whatever
+//     tooling/e2e/backend.mjs refuses for `backendOf(<app>, { env: 'sandbox' })`
+//     (limb `backend`): an `env.sandbox` without binding APP_DB or PLATFORM_DB,
+//     or an APP_DB another app's sandbox also binds. A capture's purge resolves
+//     its app database through that same call, so a sandbox this module accepts
+//     is one the purge can resolve.
 //   · captureBackendDefines() — a caller env that carries API_BASE_URL,
 //     PLATFORM_BASE_URL or CONFIG_BASE_URL at all, because a supplied host is how
 //     production reached the capture; a final host that is a production host or
@@ -48,6 +53,7 @@ import { readFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseJsonc } from '../ci/d1-sql-inventory.mjs';
+import { backendOf, BackendRefused } from '../e2e/backend.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(join(HERE, '..', '..'));
@@ -179,6 +185,26 @@ export function sandboxBackend({ read = defaultRead } = {}) {
           'id-reuse',
           `${rel} env.sandbox ${binding} = ${id} is also the ${topIds.get(String(id))}: a sandbox binding on a production store writes production.`,
         );
+      }
+    }
+    // An app Worker's sandbox goes through the e2e resolver too. A fixture
+    // `read` names only these configs, so the resolver's cross-app check is
+    // limited to them; the default read lists every services/<app>-api.
+    if (worker.endsWith('-api')) {
+      try {
+        backendOf(worker.slice(0, -'-api'.length), {
+          env: 'sandbox',
+          read,
+          appIds:
+            read === defaultRead
+              ? undefined
+              : Object.keys(CAPTURE_WORKERS)
+                  .filter((w) => w.endsWith('-api'))
+                  .map((w) => w.slice(0, -'-api'.length)),
+        });
+      } catch (e) {
+        if (!(e instanceof BackendRefused)) throw e;
+        throw new CaptureBackendRefused('backend', e.message);
       }
     }
     const routes = Array.isArray(cfg.routes) ? cfg.routes : cfg.route ? [cfg.route] : [];

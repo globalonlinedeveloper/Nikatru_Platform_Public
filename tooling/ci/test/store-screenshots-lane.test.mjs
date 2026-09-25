@@ -38,6 +38,7 @@ import {
 } from '../../store/capture-network-posture.mjs';
 import { storeViewDefineArgs } from '../../store/capture-suite-scan.mjs';
 import { sandboxBackend, productionD1Ids } from '../../store/capture-backend.mjs';
+import { backendOf } from '../../e2e/backend.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HERE, '..', '..', '..');
@@ -486,10 +487,40 @@ describe('capture-play-screenshots.mjs stamps its drive and refuses without a le
     // from the wrangler configs, and no production database id is in the file.
     assert.match(reh, /import \{ sandboxBackend, CaptureBackendRefused \} from '\.\/capture-backend\.mjs';/);
     assert.match(reh, /PLATFORM_D1_DATABASE_ID: SANDBOX\.platform\.sandboxIds\['d1:PLATFORM_DB'\],/);
-    assert.match(reh, /SUBSCRIPTIONTRACKER_D1_DATABASE_ID: SANDBOX\['subscriptiontracker-api'\]\.sandboxIds\['d1:APP_DB'\],/);
+    // The app's sandbox database is not handed over at all: purge.mjs resolves
+    // it from E2E_APP_ID. The one database key the purge env sets is the
+    // platform one, the consent switch.
+    assert.deepEqual([...new Set(reh.match(/\b[A-Z][A-Z0-9_]*_D1_DATABASE_ID(?=:)/g) ?? [])], ['PLATFORM_D1_DATABASE_ID']);
     const production = [...productionD1Ids(sandboxBackend())];
     assert.equal(production.length, 2, `expected the two production D1 ids, read ${production.join(', ')}`);
     for (const id of production) assert.ok(!reh.includes(id), `the rehearsal names production database ${id}`);
+    // What purge.mjs resolves beside a ledger is the `env.sandbox` block's
+    // APP_DB, never the top level's: on a fixture, the synthetic sandbox id...
+    const SBX_APP_DB = '44444444-4444-4444-8444-444444444444';
+    const wrangler = JSON.stringify({
+      d1_databases: [
+        { binding: 'APP_DB', database_id: '55555555-5555-4555-8555-555555555555' },
+        { binding: 'PLATFORM_DB', database_id: '66666666-6666-4666-8666-666666666666' },
+      ],
+      env: {
+        sandbox: {
+          d1_databases: [
+            { binding: 'APP_DB', database_id: SBX_APP_DB },
+            { binding: 'PLATFORM_DB', database_id: '77777777-7777-4777-8777-777777777777' },
+          ],
+        },
+      },
+    });
+    const read = (rel) => {
+      if (rel === 'services/subscriptiontracker-api/wrangler.jsonc') return wrangler;
+      throw new Error(`the fixture has no ${rel}`);
+    };
+    assert.equal(backendOf('subscriptiontracker', { env: 'sandbox', read, appIds: ['subscriptiontracker'] }).appDb, SBX_APP_DB);
+    // ...and on the real tree, an id that is not a production one.
+    assert.ok(
+      !production.includes(backendOf('subscriptiontracker', { env: 'sandbox' }).appDb),
+      "the app's sandbox APP_DB resolves to a production database",
+    );
     assert.match(reh, /E2E_APP_ID: APP,/);
     // The purge is still the one in `finally`, after the capture.
     assert.ok(reh.indexOf('STORE_CAPTURE_APP_VERSION: rehearsalStamp') < reh.indexOf("'purge the throwaway user'"));

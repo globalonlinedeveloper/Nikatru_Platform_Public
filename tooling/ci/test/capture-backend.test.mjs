@@ -214,6 +214,20 @@ describe('capture-backend: an env.sandbox that would inherit production is refus
       refusedOn('id-reuse', /env\.sandbox d1:APP_DB = top-platform-db is also the .* top-level d1:PLATFORM_DB/),
     );
   });
+
+  // O-E2E-LANE-WIRED-TO-ONE-APP: an app Worker's sandbox goes through
+  // tooling/e2e/backend.mjs, the resolver a capture's purge uses for its app
+  // database. Without the call this fixture passes: no id is empty or reused.
+  test('B12: an app sandbox with no APP_DB binding is refused on limb `backend`, naming the file and the binding', () => {
+    const f = fixture();
+    f['subscriptiontracker-api'].env.sandbox.d1_databases = [
+      { binding: 'PLATFORM_DB', database_name: 'platform_db_sandbox', database_id: 'sbx-platform-db' },
+    ];
+    assert.throws(
+      () => sandboxBackend({ read: reader(f) }),
+      refusedOn('backend', /services\/subscriptiontracker-api\/wrangler\.jsonc env\.sandbox declares no D1 binding APP_DB/),
+    );
+  });
 });
 
 describe('capture-backend: --proof', () => {
