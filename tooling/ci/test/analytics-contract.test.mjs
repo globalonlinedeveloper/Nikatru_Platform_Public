@@ -686,7 +686,7 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
   // The numbers are PINNED rather than derived on purpose — a derived count
   // agrees with any register, including one that quietly stopped enumerating —
   // so they move in the same change as the routes that moved them.
-  test('PASSES on the real tree: 17 routes, 10 pinned, 7 printed gaps', () => {
+  test('PASSES on the real tree: 21 routes, 10 pinned, 11 printed gaps', () => {
     const r = run(makeRepo());
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /wire health — deploy-smoke fields/);
@@ -713,7 +713,9 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
     assert.match(r.out, /GAP {2}wire ext-token/);
     assert.match(r.out, /GAP {2}wire ext-revoke/);
     // ⏱ 2026-09-25: 14 -> 17 routes, 4 -> 7 gaps with the three extension routes.
-    assert.match(r.out, /17 shared route\(s\) from tooling\/platform-register\.json: 10 pinned, 7 printed gap/); // ⏱ 2026-09-18: POST /v1/report joined as a gap, then became a body pin the same day when the chassis transport landed (O-PLAY-AI-CONTENT-REPORTING). ⏱ 2026-09-24: PUT /v1/account/provider-token joined as a request pin (O-GOOGLE-SIGN-IN-NOT-BUILT).
+    // ⏱ 2026-09-25 (AUTH-REVOKE-AT-WORKERS): 17 -> 21 routes, 7 -> 11 gaps with the four /v1/sessions routes, gaps until the web PR ships their client.
+    assert.match(r.out, /GAP {2}wire sessions-list/);
+    assert.match(r.out, /21 shared route\(s\) from tooling\/platform-register\.json: 10 pinned, 11 printed gap/); // ⏱ 2026-09-18: POST /v1/report joined as a gap, then became a body pin the same day when the chassis transport landed (O-PLAY-AI-CONTENT-REPORTING). ⏱ 2026-09-24: PUT /v1/account/provider-token joined as a request pin (O-GOOGLE-SIGN-IN-NOT-BUILT).
     assert.match(r.out, /wire account-provider-token — request pinned: client sends \{provider, refreshToken, appId\}/);
     // [4]B-14's last clause: the config route's client half resolves in the
     // BRICK, so the count above is about apps that do not exist yet too.
@@ -1079,7 +1081,8 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
     // ⏱ 4 gaps since 2026-09-09 — TWO routes joined that day, not one; see the
     // re-measurement note on the real-tree case.
     // ⏱ 2026-09-25: 4 -> 7 gaps with the three extension account-check routes.
-    assert.match(r.out, /9 pinned, 7 printed gap/); // ⏱ 2026-09-18: POST /v1/report is now a body pin, not a gap (O-PLAY-AI-CONTENT-REPORTING chassis half). ⏱ 2026-09-24: +1 for the provider-token request pin.
+    // ⏱ 2026-09-25 (AUTH-REVOKE-AT-WORKERS): 7 -> 11 gaps with the four /v1/sessions routes.
+    assert.match(r.out, /9 pinned, 11 printed gap/); // ⏱ 2026-09-18: POST /v1/report is now a body pin, not a gap (O-PLAY-AI-CONTENT-REPORTING chassis half). ⏱ 2026-09-24: +1 for the provider-token request pin.
   });
 
   test('FAILS when the brick drops a key the server still requires', () => {

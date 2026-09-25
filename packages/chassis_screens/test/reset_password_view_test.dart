@@ -4,6 +4,7 @@ import 'package:nikatru_chassis_screens/auth/reset_password_screen.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
+import 'support/raw_vendor_error.dart';
 import 'support/width_harness.dart';
 
 /// `ResetPasswordView` — the three states, the width decision, and the one
@@ -186,14 +187,19 @@ void main() {
       expect(find.byKey(ResetPasswordView.doneLine), findsOneWidget);
     });
 
-    testWidgets('a failure from the seam is shown, not swallowed',
+    // ⏱ 2026-09-24 — shown MAPPED, by the reasons the adapter now carries.
+    // This case asserted the server's words appeared verbatim.
+    testWidgets('a failure from the seam is shown, mapped by its reasons',
         (WidgetTester tester) async {
       await pumpChassis(
         tester,
         kPhone,
         view(
-          onSubmit: (String _) async =>
-              throw core.AuthFailure('the server said no'),
+          onSubmit: (String _) async => throw core.AuthFailure(
+            'Password is known to be weak and easy to guess.',
+            code: core.AuthFailure.weakPassword,
+            reasons: const <String>[core.AuthFailure.reasonPwned],
+          ),
         ),
       );
       await tester.enterText(
@@ -206,7 +212,29 @@ void main() {
       expect(find.byKey(ResetPasswordView.doneLine), findsNothing);
       expect(
         tester.widget<Text>(find.byKey(ResetPasswordView.statusLine)).data,
-        'the server said no',
+        _en.passwordBreached,
+      );
+    });
+
+    // 🔴 THE `'$e'` ARM.
+    testWidgets('a NON-AuthFailure is mapped, never printed',
+        (WidgetTester tester) async {
+      await pumpChassis(
+        tester,
+        kPhone,
+        view(onSubmit: (String _) async => throw const RawVendorError()),
+      );
+      await tester.enterText(
+          find.byKey(ResetPasswordView.passwordField), 'correct-horse-1');
+      await tester.enterText(
+          find.byKey(ResetPasswordView.confirmField), 'correct-horse-1');
+      await tester.tap(find.byKey(ResetPasswordView.submitButton));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining(rawVendorFragment), findsNothing);
+      expect(
+        tester.widget<Text>(find.byKey(ResetPasswordView.statusLine)).data,
+        _en.authCaptchaFailed,
       );
     });
   });
@@ -236,3 +264,6 @@ void main() {
             'the router puts the user straight back here');
   });
 }
+
+/// ⏱ 2026-09-24 — the sentences the shared `authErrorText` answers with.
+final ChassisLocalizations _en = lookupChassisLocalizations(const Locale('en'));

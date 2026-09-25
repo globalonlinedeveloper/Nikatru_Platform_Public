@@ -170,7 +170,7 @@
       },
       {
         "ceiling": "kv.readsPerDay",
-        "where": "Cloudflare dashboard → Storage & Databases → KV → each namespace → Metrics, summed across CONFIG_KV and JWKS_CACHE.",
+        "where": "Cloudflare dashboard → Storage & Databases → KV → each namespace → Metrics, summed across every namespace this row's `surfaces` lists.",
         "url": "https://developers.cloudflare.com/kv/observability/metrics-analytics/",
         "reads": "read operations today, summed across every namespace"
       },
@@ -312,13 +312,14 @@
       "surfaces": [
         "CONFIG_KV",
         "JWKS_CACHE",
+        "SESSION_REVOKED",
         "SIGNUPS"
       ],
       "source": "https://developers.cloudflare.com/kv/platform/limits/",
       "sourceText": "Reads: 100,000 reads per day (Free) / Unlimited (Paid)",
       "verifiedOn": "2026-08-01",
       "ambiguity": "None in the number. `paidValue: null` here means UNLIMITED on paid, which is what the page says — it does not mean unsourced; a row is only treated as unsourced when `value` itself is null.",
-      "note": "Shared by EVERY app's launch path (config resolution) and every authenticated request (the JWKS warm cache). The 300s edge cache on GET /config/:app is what keeps this off the floor — but the query string is part of the cache key, so `?cb=<random>` misses deliberately and unboundedly. CONFIG_CEILING_LIMITER is the bound on that."
+      "note": "Shared by EVERY app's launch path (config resolution) and every authenticated request (the JWKS warm cache). The 300s edge cache on GET /config/:app is what keeps this off the floor — but the query string is part of the cache key, so `?cb=<random>` misses deliberately and unboundedly. CONFIG_CEILING_LIMITER is the bound on that. ⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS: 🔴 SESSION_REVOKED IS NOW THE LARGEST READER — every authenticated request on every Worker reads `rev:<sub>` once, after the token verifies, with NO cacheTtl and NO per-isolate memo (a cached \"not revoked\" would re-admit a signed-out token for the cache's life), and a get of an absent key is assumed to count as a read. On the free plan that would leave roughly (100,000 − config and JWKS reads) authenticated requests a day, portfolio-wide; the account is on Workers Paid since 2026-09-03 (`cloudflare: workers-paid` in this file), where this row is UNLIMITED (`paidValue: null`), so there is no floor to reach and the cost is billed reads. NOT MEASURED — the first week's KV read count after deploy is a dashboard read at this row's `where`, and a cache that re-admits revoked sessions is never the answer to it."
     },
     {
       "id": "kv.writesPerDay",
@@ -329,13 +330,14 @@
       "surfaces": [
         "CONFIG_KV",
         "JWKS_CACHE",
+        "SESSION_REVOKED",
         "SIGNUPS"
       ],
       "source": "https://developers.cloudflare.com/kv/platform/limits/",
       "sourceText": "Writes to different keys: 1,000 writes per day (Free) / Unlimited (Paid)",
       "verifiedOn": "2026-08-01",
       "ambiguity": "None.",
-      "note": "🔴 THE TIGHT ONE, AND THE ONE A CACHE WARMER CAN EXHAUST. A JWKS cache that re-put on every miss rather than on every expiry would spend this in minutes under cold-isolate churn. JWKS_TTL_SECONDS is derived from this row for exactly that reason: at one write per TTL expiry, 600s gives at most 144 writes/day per namespace."
+      "note": "🔴 THE TIGHT ONE, AND THE ONE A CACHE WARMER CAN EXHAUST. A JWKS cache that re-put on every miss rather than on every expiry would spend this in minutes under cold-isolate churn. JWKS_TTL_SECONDS is derived from this row for exactly that reason: at one write per TTL expiry, 600s gives at most 144 writes/day per namespace. ⏱ 2026-09-25 · SESSION_REVOKED is written ONLY by services/platform/src/routes/sessions.ts, one put per sign-out (two at most, on a retried failure), behind SESSIONS_LIMITER (5 per minute per account). Nothing writes it until the client half ships; at that point a write is a deliberate human action, not a cache fill."
     },
     {
       "id": "kv.namespacesPerAccount",
@@ -346,13 +348,14 @@
       "surfaces": [
         "CONFIG_KV",
         "JWKS_CACHE",
+        "SESSION_REVOKED",
         "SIGNUPS"
       ],
       "source": "https://developers.cloudflare.com/kv/platform/limits/",
       "sourceText": "Namespaces per account: 1,000 (Free and Paid)",
       "verifiedOn": "2026-08-01",
       "ambiguity": "None.",
-      "note": "Not a real constraint at this portfolio's scale — recorded so that the SHARED-namespace design (one CONFIG_KV keyed `config:<app>`, one JWKS_CACHE) is a deliberate choice rather than a workaround for a limit nobody checked. The reason for sharing is operational, not quota-driven."
+      "note": "Not a real constraint at this portfolio's scale — recorded so that the SHARED-namespace design (one CONFIG_KV keyed `config:<app>`, one JWKS_CACHE) is a deliberate choice rather than a workaround for a limit nobody checked. The reason for sharing is operational, not quota-driven. ⏱ 2026-09-25 · SESSION_REVOKED (`platform-session-revoked`) is ONE more, shared the same way: one identity project, one revocation list."
     },
     {
       "id": "r2.storageFree",

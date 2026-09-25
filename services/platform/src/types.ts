@@ -30,6 +30,21 @@ export interface Env {
   JWKS_CACHE?: KVNamespace;
 
   /**
+   * ⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. The revocation list: key
+   * `rev:<sub>`, value `{ before, sids }` (`_shared/src/auth.ts`). Read by
+   * `middleware/auth.ts` on every authenticated request; written ONLY by
+   * `routes/sessions.ts`, every write with `expirationTtl: REVOCATION_TTL_SECONDS`.
+   * ONE namespace portfolio-wide, the same one services/subscriptiontracker-api
+   * binds, because a sign-out must refuse the token at every Worker.
+   *
+   * Optional, and absence FAILS OPEN — the middleware admits and logs
+   * `auth_revocation_binding_missing`. That is today's behaviour, not a new
+   * hole; tooling/ci/assert-session-revocation.mjs reds a carrier whose config
+   * does not bind it.
+   */
+  SESSION_REVOKED?: KVNamespace;
+
+  /**
    * The signups namespace, bound for ONE reason: the nightly export
    * (src/backup/) cannot back up a namespace the Worker cannot read.
    *
@@ -111,6 +126,15 @@ export interface Env {
    * PKCE S256 verifier, not the limiter.
    */
   EXT_TOKEN_CEILING_LIMITER?: RateLimiterBinding;
+
+  /**
+   * ⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. The per-user ceiling on the four
+   * /v1/sessions routes, keyed `sessions:<sub>`. Every revoke is a KV write, and
+   * this is what bounds the writes a single account can cause.
+   *
+   * Optional, and absence fails OPEN, like the other limiters.
+   */
+  SESSIONS_LIMITER?: RateLimiterBinding;
 
   // Non-secret vars (wrangler.jsonc vars).
   APP_ID: string;
@@ -442,6 +466,12 @@ export interface Variables {
    * PUT /v1/account/provider-token refuses a token for a provider not in it.
    */
   linkedProviders?: readonly string[];
+  /**
+   * ⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. The verified token's `session_id`
+   * claim, set by `middleware/auth.ts`. Absent when the token carries none;
+   * `routes/sessions.ts` then cannot tell which session is the caller's.
+   */
+  sessionId?: string;
   /**
    * [pipeline B-16] WHICH APP THIS REQUEST IS FOR, set by each route the moment
    * it has resolved and VALIDATED one, and read by `app.onError`.

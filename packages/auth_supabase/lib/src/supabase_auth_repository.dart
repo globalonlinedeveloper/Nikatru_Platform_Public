@@ -223,36 +223,66 @@ class SupabaseAuthRepository implements core.AuthRepository {
     return core.AuthEvent(kind, user);
   }
 
+  /// 🔴 WRAPS THE VENDOR EXCEPTION, which it did not until 2026-09-25: a wrong
+  /// password or a captcha refusal escaped this method as `sb.AuthException`,
+  /// so the screen could map it only by its English, never by its code.
   @override
   Future<core.AuthUser> signInWithEmail({
     required String email,
     required String password,
     String? captchaToken,
   }) async {
-    final sb.AuthResponse res = await _auth.signInWithPassword(
-      email: email,
-      password: password,
-      captchaToken: captchaToken,
-    );
+    final sb.AuthResponse res;
+    try {
+      res = await _auth.signInWithPassword(
+        email: email,
+        password: password,
+        captchaToken: captchaToken,
+      );
+    } on sb.AuthException catch (e) {
+      throw _failureOf(e);
+    }
     final core.AuthUser? u = _map(res.user);
     if (u == null) throw core.AuthFailure('Sign-in failed');
     return u;
   }
 
+  /// ⏱ 2026-09-24 · A vendor refusal as OUR type, with its MACHINE half kept.
+  ///
+  /// This was `core.AuthFailure(e.message)`, which kept GoTrue's English and
+  /// threw away the two things a screen can map without guessing: the
+  /// `error_code`, and — for `AuthWeakPasswordException` — the `reasons` list.
+  /// The reset screen could therefore never say "this password is in a data
+  /// breach": `pwned` arrived here and was dropped on this line.
+  static core.AuthFailure _failureOf(sb.AuthException e) => core.AuthFailure(
+        e.message,
+        code: e.code,
+        reasons:
+            e is sb.AuthWeakPasswordException ? e.reasons : const <String>[],
+      );
+
+  /// 🔴 WRAPS THE VENDOR EXCEPTION, which it did not until 2026-09-24:
+  /// `sb.AuthException` escaped this method as itself, so a sign-up screen had
+  /// to catch a Supabase type — or, as five screens did, print it.
   @override
   Future<core.AuthUser> signUpWithEmail({
     required String email,
     required String password,
     String? captchaToken,
   }) async {
-    final sb.AuthResponse res = await _auth.signUp(
-      email: email,
-      password: password,
-      captchaToken: captchaToken,
-      // The confirmation mail's link. Without it the user confirms into the
-      // project's Site URL — app #1's web home — whichever app they signed up in.
-      emailRedirectTo: redirects(AuthFlow.signUpConfirm),
-    );
+    final sb.AuthResponse res;
+    try {
+      res = await _auth.signUp(
+        email: email,
+        password: password,
+        captchaToken: captchaToken,
+        // The confirmation mail's link. Without it the user confirms into the
+        // project's Site URL — app #1's web home — whichever app they signed up in.
+        emailRedirectTo: redirects(AuthFlow.signUpConfirm),
+      );
+    } on sb.AuthException catch (e) {
+      throw _failureOf(e);
+    }
     final core.AuthUser? u = _map(res.user);
     if (u == null) throw core.AuthFailure('Sign-up failed');
     return u;
@@ -354,13 +384,21 @@ class SupabaseAuthRepository implements core.AuthRepository {
   /// from a desktop build, arrives with nothing to match and cannot mint a
   /// session. That is a property of the flow, not a bug to be worked around
   /// here; the reset screen's job is to say so plainly when it happens.
+  ///
+  /// ⏱ 2026-09-25 — a refusal (the captcha, a rate limit) leaves as
+  /// [core.AuthFailure] with its code, never as the SDK's own type.
   @override
-  Future<void> sendPasswordReset(String email, {String? captchaToken}) =>
-      _auth.resetPasswordForEmail(
+  Future<void> sendPasswordReset(String email, {String? captchaToken}) async {
+    try {
+      await _auth.resetPasswordForEmail(
         email,
         redirectTo: redirects(AuthFlow.reset),
         captchaToken: captchaToken,
       );
+    } on sb.AuthException catch (e) {
+      throw _failureOf(e);
+    }
+  }
 
   /// 🔴 REFUSES WITH NO SESSION RATHER THAN LETTING THE SDK THROW ITS OWN TYPE.
   /// `updateUser` raises `AuthSessionMissingException` — a Supabase class — and
@@ -370,10 +408,11 @@ class SupabaseAuthRepository implements core.AuthRepository {
   /// on a device that never held the PKCE verifier leaves exactly this state.
   ///
   /// The `AuthException` remap keeps the SERVER's English in [core.AuthFailure.
-  /// message] on purpose. Screens match on that text to choose a localized
-  /// sentence (`login_screen.dart`'s `_friendlyMessage`), so translating it here
-  /// would break the matching — the mapping is from a vendor TYPE to ours, not
-  /// from their words to ours.
+  /// message] on purpose, and — ⏱ 2026-09-24 — its `code` and weak-password
+  /// `reasons` beside it ([_failureOf]). Screens map the code first and the
+  /// text only as a fallback (`authErrorText`, in `nikatru_chassis_screens`),
+  /// so translating it here would break the fallback — the mapping is from a
+  /// vendor TYPE to ours, not from their words to ours.
   @override
   Future<core.AuthUser> updatePassword({required String newPassword}) async {
     if (_auth.currentSession == null) {
@@ -389,7 +428,7 @@ class SupabaseAuthRepository implements core.AuthRepository {
       if (u == null) throw core.AuthFailure('Could not set your new password');
       return u;
     } on sb.AuthException catch (e) {
-      throw core.AuthFailure(e.message);
+      throw _failureOf(e);
     }
   }
 
@@ -466,20 +505,27 @@ class SupabaseAuthRepository implements core.AuthRepository {
   /// [sb.OtpType.signup] specifically — `emailChange` is a different mail with a
   /// different link, and sending it to a user who has not confirmed their
   /// ORIGINAL address confirms nothing.
+  ///
+  /// ⏱ 2026-09-25 — a refusal (the captcha, a rate limit) leaves as
+  /// [core.AuthFailure] with its code, never as the SDK's own type.
   @override
   Future<void> resendVerificationEmail({String? captchaToken}) async {
     final String? email = _auth.currentUser?.email;
     if (email == null || email.isEmpty) {
       throw core.AuthFailure('Sign in first, then we can resend the email.');
     }
-    await _auth.resend(
-      type: sb.OtpType.signup,
-      email: email,
-      captchaToken: captchaToken,
-      // The same destination as the first confirmation mail — a resend that
-      // pointed somewhere else would confirm the user into a different app.
-      emailRedirectTo: redirects(AuthFlow.signUpConfirm),
-    );
+    try {
+      await _auth.resend(
+        type: sb.OtpType.signup,
+        email: email,
+        captchaToken: captchaToken,
+        // The same destination as the first confirmation mail — a resend that
+        // pointed somewhere else would confirm the user into a different app.
+        emailRedirectTo: redirects(AuthFlow.signUpConfirm),
+      );
+    } on sb.AuthException catch (e) {
+      throw _failureOf(e);
+    }
   }
 
   /// 🔴 `refreshSession()`, NOT A LOCAL RE-READ. Confirmation happens in a mail

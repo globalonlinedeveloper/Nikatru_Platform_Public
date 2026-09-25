@@ -16,6 +16,12 @@ export interface Env {
   // KV — caches the Supabase JWKS document
   JWKS_CACHE: KVNamespace;
 
+  // ⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. KV — the shared revocation list
+  // (`rev:<sub>`), READ ONLY here, by middleware/auth.ts; services/platform
+  // writes it. Optional: absence fails OPEN, and
+  // tooling/ci/assert-session-revocation.mjs reds a config that does not bind it.
+  SESSION_REVOKED?: KVNamespace;
+
   // 🔴 `EXPORTS: R2Bucket` WAS HERE and was removed on 2026-08-01 with the
   // binding it typed ([4]B-18). It is worth naming why the TYPE had to go too:
   // assert-vendor-portability.mjs derives its surface set from the UNION of this

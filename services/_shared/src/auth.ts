@@ -297,3 +297,128 @@ export function deletionRecencyRefusal(
   }
   return null;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS — A REVOKED SESSION'S ACCESS TOKEN IS
+// REFUSED AT THE WORKERS, NOT ONLY AT ITS NEXT REFRESH.
+//
+// Signing a session out (GoTrue deletes its `auth.sessions` row) kills the
+// REFRESH token at once, but every access token that session already minted
+// stays valid until its own `exp` — up to `jwt_exp` (3600 s, in
+// tooling/mail-transport.json) — because a Worker verifies a JWT offline and
+// never asks GoTrue whether the session still exists. docs/design/auth-sessions.md §3a is
+// the design: a small per-user record in the `SESSION_REVOKED` KV namespace,
+// read by every auth middleware after the signature check, naming the sessions
+// that were signed out and an optional "everything issued before T".
+//
+// Everything below is PURE — record in, verdict or new record out — for the same
+// reason as the recency rule above: no `hono`, no `jose`, no bare import (see
+// this file's header), so every carrier reads one implementation. The KV read,
+// the fail-open policy and the write live with the carriers and the one route
+// module that writes (services/platform/src/routes/sessions.ts).
+//
+// The record, under `rev:<sub>`:
+//     { "before": <epoch seconds> | null, "sids": [["<session uuid>", <revokedAt s>], ...] }
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * @ceiling none — the lifetime of a revocation RECORD, derived from a token
+ * claim, not a platform resource: `jwt_exp` (3600 s, tooling/mail-transport.json
+ * `supabaseAuth.jwt_exp`) + CLOCK_SKEW_SECONDS (60). An entry older than this
+ * can only refuse a token that has already expired on its own, so it is pruned
+ * on every write and the whole key is written with this `expirationTtl`.
+ * tooling/ci/assert-session-revocation.mjs limb 2 holds the sum.
+ */
+export const REVOCATION_TTL_SECONDS = 3660;
+
+/** The KV key a user's revocation record lives under. `sub` IS the user id. */
+export function revocationKey(sub: string): string {
+  return `rev:${sub}`;
+}
+
+/** A well-formed, pruned record — the only shape the writers ever put. */
+export interface RevocationRecord {
+  before: number | null;
+  sids: Array<[string, number]>;
+}
+
+/** Why a verified token was refused. Logged by nobody (the carriers answer the
+ *  plain 401); returned so the tests can tell the two limbs apart. */
+export type RevocationRefusal = 'session_revoked' | 'issued_before_revoke';
+
+const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+  v !== null && typeof v === 'object' && !Array.isArray(v);
+
+const isFiniteNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+
+/** `["<id>", <revokedAt>]` with a non-empty string id and a finite time. Anything
+ *  else in `sids` is skipped, never trusted and never a refusal. */
+function isSidEntry(v: unknown): v is [string, number] {
+  return Array.isArray(v) && v.length === 2 && typeof v[0] === 'string' && v[0] !== '' && isFiniteNumber(v[1]);
+}
+
+/**
+ * THE DECISION. `null` = admit; otherwise the reason the carrier answers its
+ * ordinary 401 `{ error: 'unauthorized' }`. Called only on a payload `jwtVerify`
+ * has already accepted, with whatever the KV read returned (`null` for no key).
+ *
+ *   · the token's `session_id` is listed in `sids`       → 'session_revoked'
+ *   · `before` is set and the token's `iat` is earlier   → 'issued_before_revoke'
+ *   · `before` is set and the token has no usable `iat`  → 'issued_before_revoke'
+ *     (it cannot prove it was issued after, and every GoTrue token carries one)
+ *
+ * 🔴 A MALFORMED RECORD ADMITS. The record is ours, written only by the route
+ * module, so a shape this function does not recognise is a bug or a corruption —
+ * and refusing on it would turn one bad key into a signed-out user with no way
+ * back in for an hour. The worst case of admitting is today's behaviour.
+ * A token with no `session_id` is outside the `sids` limb; `before` still applies.
+ */
+export function revocationRefusal(payload: Record<string, unknown>, record: unknown): RevocationRefusal | null {
+  if (!isPlainObject(record)) return null;
+  const sid = payload.session_id;
+  if (typeof sid === 'string' && sid !== '' && Array.isArray(record.sids)) {
+    for (const entry of record.sids) {
+      if (isSidEntry(entry) && entry[0] === sid) return 'session_revoked';
+    }
+  }
+  const before = record.before;
+  if (isFiniteNumber(before)) {
+    const iat = payload.iat;
+    if (!isFiniteNumber(iat) || iat < before) return 'issued_before_revoke';
+  }
+  return null;
+}
+
+/**
+ * The record with everything that can no longer refuse a live token removed: a
+ * `sids` entry revoked at or before `now - REVOCATION_TTL_SECONDS`, and a
+ * `before` at or before that horizon (every token issued before it has expired).
+ * Malformed entries are dropped. Any input — including `null` or garbage — comes
+ * out well-formed, so a writer never re-puts a corruption it read.
+ */
+export function pruneRevocation(record: unknown, nowSeconds: number): RevocationRecord {
+  const horizon = nowSeconds - REVOCATION_TTL_SECONDS;
+  if (!isPlainObject(record)) return { before: null, sids: [] };
+  const sids: Array<[string, number]> = Array.isArray(record.sids)
+    ? record.sids.filter(isSidEntry).filter(([, at]) => at > horizon).map(([id, at]) => [id, at])
+    : [];
+  const before = isFiniteNumber(record.before) && record.before > horizon ? record.before : null;
+  return { before, sids };
+}
+
+/** Prune, then list `ids` as revoked at `now`. An id already listed is re-dated
+ *  to `now` (never two entries for one session). Non-string or empty ids are
+ *  ignored. */
+export function withRevokedSessions(record: unknown, ids: readonly unknown[], nowSeconds: number): RevocationRecord {
+  const pruned = pruneRevocation(record, nowSeconds);
+  const fresh = new Set(ids.filter((id): id is string => typeof id === 'string' && id !== ''));
+  const kept = pruned.sids.filter(([id]) => !fresh.has(id));
+  return { before: pruned.before, sids: [...kept, ...[...fresh].map((id): [string, number] => [id, nowSeconds])] };
+}
+
+/** Prune, then refuse every token issued before `now`. `before` only ever moves
+ *  LATER: an existing later value (clock skew between isolates) is kept. */
+export function withRevokedBefore(record: unknown, nowSeconds: number): RevocationRecord {
+  const pruned = pruneRevocation(record, nowSeconds);
+  return { before: pruned.before === null ? nowSeconds : Math.max(pruned.before, nowSeconds), sids: pruned.sids };
+}

@@ -20,7 +20,7 @@
   "_rootsNote": "TWO roots since 2026-09-07 ([ADR 067] phase 2, unit app-shell). The Worker half of the template - 13 files, 917 lines every stamped backend app inherits - was outside this ledger entirely while `root` was one string, and `git ls-files -- <that one root>` could not see it to complain. assert-chassis-ledger.mjs is the authority on this list and cross-checks it; a row's `root` is optional and defaults to roots[0], which is why the 96 rows written against the single root are unchanged. ⏱ THE FIGURES IN THIS NOTE MOVED ON 2026-09-08 AND ARE CORRECTED RATHER THAN REWRITTEN: the Worker half is now 14 files and 1,021 lines, because the template gained src/lib/error-sink.ts — a stamped backend had NO crash sink at all and failed tooling/ci/assert-worker-error-sink.mjs on limbs 2, 3 and 5 at its first CI run. The guard PRINTS both figures per root on every run, which is the number to read; this sentence is prose and prose rots.",
   "totals": {
     "files": 138,
-    "lines": 19222,
+    "lines": 19279,
     "unclassified": 0,
     "unclassifiedLines": 0
   },
@@ -777,9 +777,9 @@
     {
       "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
       "path": "src/middleware/auth.ts",
-      "lines": 262,
+      "lines": 310,
       "verdict": "MOVES",
-      "why": "[ADR 067] decision 2 / unit worker-shared-chassis, LEDGERED 2026-09-07 by unit app-shell - MEASURED: 287 -> 258 lines, callSiteDelta -29. A PARTIAL move, and the refusal is measured rather than a shortcut: the DECIDING moved to services/_shared/src/auth.ts (the ES256 pin, the twice-corrected isKeySetUnavailable predicate, JWKS_KV_KEY, JWKS_TTL_SECONDS, bearer, and the refusal to treat an empty JWKS document as a usable cache), while the jose/hono plumbing and the shared-secret fallback stay here because nothing under services/_shared may carry a bare import - each Worker runs its own npm ci in its own directory, and aliasing round it silently changes which build of jose is verified.",
+      "why": "[ADR 067] decision 2 / unit worker-shared-chassis, LEDGERED 2026-09-07 by unit app-shell - MEASURED: 287 -> 258 lines, callSiteDelta -29. A PARTIAL move, and the refusal is measured rather than a shortcut: the DECIDING moved to services/_shared/src/auth.ts (the ES256 pin, the twice-corrected isKeySetUnavailable predicate, JWKS_KV_KEY, JWKS_TTL_SECONDS, bearer, and the refusal to treat an empty JWKS document as a usable cache), while the jose/hono plumbing and the shared-secret fallback stay here because nothing under services/_shared may carry a bare import - each Worker runs its own npm ci in its own directory, and aliasing round it silently changes which build of jose is verified. RE-MEASURED 2026-09-25 (AUTH-REVOKE-AT-WORKERS): 262 -> 310, the sessionRevoked carrier and its check in supabaseAuth (both paths) and erasureAuth; the refuse-or-admit decision itself is revocationRefusal in services/_shared/src/auth.ts, so the carrier holds only the KV read and the fail-open log lines.",
       "target": "services/_shared/src/auth.ts",
       "callSiteDelta": -29
     },
@@ -835,7 +835,7 @@
     {
       "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
       "path": "src/types.ts",
-      "lines": 80,
+      "lines": 85,
       "verdict": "STAYS",
       "why": "Per-app Env bindings - APP_DB and this app's own vars."
     },
@@ -870,7 +870,7 @@
     {
       "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
       "path": "wrangler.jsonc",
-      "lines": 160,
+      "lines": 164,
       "verdict": "STAYS",
       "why": "Per-app Worker config: name, routes, D1 binding. Stamped, never shared."
     },

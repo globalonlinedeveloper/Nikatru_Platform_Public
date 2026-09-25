@@ -170,6 +170,27 @@ const KV = {
   put: async () => undefined,
 } as unknown as KVNamespace;
 
+/**
+ * ⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. A Map-backed SESSION_REVOKED. `get`
+ * honours the `'json'` type the middleware asks for, and every call is logged
+ * so a test can assert WHICH key was read and that no `cacheTtl` was passed.
+ */
+function revocationKv(records: Record<string, unknown> = {}, { throws = false } = {}) {
+  const store = new Map(Object.entries(records).map(([k, v]) => [k, JSON.stringify(v)]));
+  const calls: unknown[][] = [];
+  const kv = {
+    get: async (...args: unknown[]) => {
+      calls.push(args);
+      if (throws) throw new TypeError('KV GET failed: 503 Service Unavailable');
+      const raw = store.get(args[0] as string);
+      if (raw === undefined) return null;
+      return args[1] === 'json' ? JSON.parse(raw) : raw;
+    },
+    put: async () => undefined,
+  } as unknown as KVNamespace;
+  return { kv, calls };
+}
+
 async function token(
   claims: Record<string, unknown>,
   { issuer = ISSUER, audience = 'authenticated', key = null as KeyLike | null, alg = 'ES256' } = {},
@@ -205,6 +226,10 @@ function harness({
   // which is also what a real cold isolate has.
   supabaseUrl = SUPABASE_URL,
   erasureBinding = undefined as unknown,
+  // ⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. `null` = the binding is ABSENT — the
+  // same null-not-undefined rule as `serviceRoleKey` above. The default is an
+  // EMPTY list, so every other case here runs through the real read.
+  revoked = revocationKv().kv as KVNamespace | null,
 }: {
   serviceRoleKey?: string | null;
   db?: RealDb;
@@ -212,6 +237,7 @@ function harness({
   kv?: KVNamespace;
   supabaseUrl?: string;
   erasureBinding?: unknown;
+  revoked?: KVNamespace | null;
 } = {}) {
   identityCalls = [];
   identityStatus = 204;
@@ -231,7 +257,7 @@ function harness({
   app.use('/v1/account', platformAuth);
   app.route('/v1', account);
   app.get('/v1/whoami', platformAuth, (c) =>
-    c.json({ userId: c.get('userId'), email: c.get('userEmail') }),
+    c.json({ userId: c.get('userId'), email: c.get('userEmail'), sessionId: c.get('sessionId') }),
   );
 
   const env = {
@@ -243,6 +269,7 @@ function harness({
     APP_ID: 'platform',
     API_VERSION: 'v1',
     ERASURE_SUBSCRIPTIONTRACKER: erasureBinding,
+    SESSION_REVOKED: revoked ?? undefined,
   } as unknown as AppEnv['Bindings'];
 
   return {
@@ -490,6 +517,91 @@ describe('platformAuth ACCEPTS only a real ES256 token from THIS project', () =>
     // stop all pre-login analytics — the events that matter most.
     const res = await harness().get('/v1/health');
     expect(res.status).toBe(200);
+  });
+});
+
+/**
+ * ⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. A signed-out session's access token is
+ * refused HERE, not only at its next refresh. The decision itself is tested once
+ * in services/_shared/test/revocation.test.ts; these cases hold the WIRING — the
+ * read happens after verification, it refuses with the ordinary 401, and it
+ * fails OPEN (logged, never naming the token, the user or the session).
+ */
+describe('platformAuth refuses a REVOKED session, and fails open when it cannot tell', () => {
+  const SID = '6f1c0b2e-8a4d-4c1e-9b7a-2d3e4f5a6b7c';
+  const nowS = () => Math.floor(Date.now() / 1000);
+
+  it('🔴 a token whose session_id is in rev:<sub> ⇒ 401', async () => {
+    const { kv, calls } = revocationKv({ 'rev:user-a': { before: null, sids: [[SID, nowS()]] } });
+    const res = await harness({ revoked: kv }).get('/v1/whoami', `Bearer ${await token({ sub: 'user-a', session_id: SID })}`);
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: 'unauthorized' });
+    // The key is the VERIFIED subject's, read as JSON, with NO cacheTtl option.
+    expect(calls).toEqual([['rev:user-a', 'json']]);
+  });
+
+  it('🔴 a token issued before rev:<sub>.before ⇒ 401 (sign out everywhere)', async () => {
+    const { kv } = revocationKv({ 'rev:user-a': { before: nowS() + 120, sids: [] } });
+    const res = await harness({ revoked: kv }).get('/v1/whoami', `Bearer ${await token({ sub: 'user-a', session_id: SID })}`);
+    expect(res.status).toBe(401);
+  });
+
+  it('a token issued AFTER before — the sign-in that followed — passes', async () => {
+    const { kv } = revocationKv({ 'rev:user-a': { before: nowS() - 120, sids: [] } });
+    const res = await harness({ revoked: kv }).get('/v1/whoami', `Bearer ${await token({ sub: 'user-a', session_id: SID })}`);
+    expect(res.status).toBe(200);
+  });
+
+  it('no entry for the user ⇒ passes, and the session id reaches the context', async () => {
+    const { kv } = revocationKv({ 'rev:user-b': { before: nowS() + 120, sids: [[SID, nowS()]] } });
+    const res = await harness({ revoked: kv }).get('/v1/whoami', `Bearer ${await token({ sub: 'user-a', session_id: SID })}`);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ userId: 'user-a', sessionId: SID });
+  });
+
+  it('🔴 the KV read THROWS ⇒ admitted (fail open), with one log line naming the event and no identifier', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const { kv } = revocationKv({}, { throws: true });
+      const t = await token({ sub: 'user-a', session_id: SID });
+      const res = await harness({ revoked: kv }).get('/v1/whoami', `Bearer ${t}`);
+      expect(res.status).toBe(200);
+      const lines = warn.mock.calls.map((a) => a.map(String).join(' '));
+      const hits = lines.filter((l) => l.includes('auth_revocation_read_failed'));
+      expect(hits).toHaveLength(1);
+      expect(hits[0]).toContain('TypeError');
+      for (const l of lines) {
+        expect(l).not.toContain('user-a');
+        expect(l).not.toContain(SID);
+        expect(l).not.toContain(t);
+        expect(l).not.toContain('503'); // the error NAME only, never its message
+      }
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('🔴 the binding is ABSENT ⇒ admitted, and logged', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const res = await harness({ revoked: null }).get('/v1/whoami', `Bearer ${await token({ sub: 'user-a', session_id: SID })}`);
+      expect(res.status).toBe(200);
+      const lines = warn.mock.calls.map((a) => a.map(String).join(' '));
+      expect(lines.filter((l) => l.includes('auth_revocation_binding_missing'))).toHaveLength(1);
+      for (const l of lines) expect(l).not.toContain('user-a');
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('the read happens AFTER verification — a forged token never reaches KV', async () => {
+    const { kv, calls } = revocationKv();
+    const res = await harness({ revoked: kv }).get(
+      '/v1/whoami',
+      `Bearer ${await token({ sub: 'user-a', session_id: SID }, { key: foreignKey })}`,
+    );
+    expect(res.status).toBe(401);
+    expect(calls).toEqual([]);
   });
 });
 

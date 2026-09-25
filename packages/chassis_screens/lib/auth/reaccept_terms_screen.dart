@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
+import 'auth_error_text.dart';
 import 'legal_consent_fields.dart';
 
 /// The MATERIAL-CHANGE re-acceptance interstitial (research/43, adopted as an
@@ -89,14 +89,14 @@ class _ReacceptTermsViewState extends State<ReacceptTermsView> {
     });
     try {
       await widget.onSignOut();
-    } on core.AuthFailure catch (e) {
-      if (mounted) setState(() => _notice = e.message);
     } catch (e) {
-      // `'$e'` rather than a localized fallback, matching `VerifyEmailView`:
-      // the chassis has no generic auth-error string, and inventing one here
-      // would put a key in the template that every stamped app must then carry
-      // for a branch this screen alone reaches.
-      if (mounted) setState(() => _notice = '$e');
+      // ⏱ 2026-09-24 — through the mapper, like every auth view. This was
+      // `'$e'` "rather than a localized fallback" because the chassis had no
+      // generic auth-error string; it has `authUnknownError` now, which the
+      // shared mapper needed anyway, so that reason is gone.
+      if (mounted) {
+        setState(() => _notice = authErrorText(context.chassisL10n, e));
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }

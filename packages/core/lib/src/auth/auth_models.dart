@@ -232,12 +232,58 @@ class AuthSession {
 
 /// Raised by an [AuthRepository] when a sign-in / sign-up / reset fails.
 ///
-/// [message] is safe to show a user. Provider SDK exceptions must be mapped
-/// onto this at the implementation boundary so nothing above the data layer
-/// ever catches a Supabase (or any other vendor's) type.
+/// Provider SDK exceptions must be mapped onto this at the implementation
+/// boundary so nothing above the data layer ever catches a Supabase (or any
+/// other vendor's) type.
+///
+/// ⏱ 2026-09-24 — 🔴 [message] IS NOT USER TEXT, and this comment said it was.
+/// The Supabase adapter keeps the SERVER's English in it on purpose, so a
+/// screen that printed it printed "captcha protection: request disallowed".
+/// Screens hand the whole failure to `authErrorText`
+/// (`package:nikatru_chassis_screens/auth/auth_error_text.dart`), which reads
+/// [code] and [reasons] first and the English only as a fallback. The one
+/// exception is [AuthFailure.localized], whose message a screen wrote itself.
 class AuthFailure implements Exception {
-  AuthFailure(this.message);
+  AuthFailure(
+    this.message, {
+    this.code,
+    List<String> reasons = const <String>[],
+  }) : reasons = List<String>.unmodifiable(reasons),
+       localized = false;
+
+  /// A refusal raised on THIS side of the network whose [message] is already
+  /// the sentence the user reads, in their language — shown as written, never
+  /// re-mapped. Without it a client check that throws its own localized
+  /// sentence (the age gate, the clickwrap, an empty field) would be matched
+  /// as if it were server English and come out as "Something went wrong".
+  AuthFailure.localized(this.message)
+    : code = null,
+      reasons = const <String>[],
+      localized = true;
+
   final String message;
+
+  /// The provider's machine error code, when it gave one — GoTrue's
+  /// `error_code` (`weak_password`, `captcha_failed`, `invalid_credentials`…).
+  /// Null for a failure that never reached the server, or one it sent uncoded.
+  final String? code;
+
+  /// Why a [weakPassword] refusal was made: any of [reasonLength],
+  /// [reasonCharacters] and [reasonPwned], or a reason this build has never
+  /// heard of. Empty when the provider sent none.
+  final List<String> reasons;
+
+  /// True only for [AuthFailure.localized].
+  final bool localized;
+
+  /// GoTrue's code for a password it will not accept.
+  static const String weakPassword = 'weak_password';
+
+  /// The [weakPassword] reasons GoTrue sends (`internal/api/password.go`).
+  static const String reasonLength = 'length';
+  static const String reasonCharacters = 'characters';
+  static const String reasonPwned = 'pwned';
+
   @override
   String toString() => 'AuthFailure: $message';
 }
