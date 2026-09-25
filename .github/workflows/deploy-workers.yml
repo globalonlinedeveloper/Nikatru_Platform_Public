@@ -128,7 +128,11 @@ jobs:
         if: always() && steps.deploy.outcome == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node tooling/ci/record-deployment.mjs subscriptiontracker-api https://subscriptiontracker-api.nikatru.com
+          # why: the deploy's own output, which names the Worker version rollback.yml
+          # re-promotes (row O-DEPLOY-IS-NOT-ONE-GATED-LANE, limb 4). The recorder reads
+          # one line of it and prints none of it: wrangler lists the Worker's vars.
+          DEPLOY_OUTPUT: ${{ steps.deploy.outputs.command-output }}
+        run: node tooling/ci/record-deployment.mjs subscriptiontracker-api https://subscriptiontracker-api.nikatru.com --wrangler-output-env DEPLOY_OUTPUT
 
   platform:
     name: Deploy platform
@@ -216,4 +220,6 @@ jobs:
         if: always() && steps.deploy.outcome == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node tooling/ci/record-deployment.mjs platform https://platform.nikatru.com
+          # why: the Worker version — see the subscriptiontracker-api job.
+          DEPLOY_OUTPUT: ${{ steps.deploy.outputs.command-output }}
+        run: node tooling/ci/record-deployment.mjs platform https://platform.nikatru.com --wrangler-output-env DEPLOY_OUTPUT
