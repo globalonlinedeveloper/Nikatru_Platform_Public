@@ -430,7 +430,9 @@ const imp = p => import(pathToFileURL(path.join(ROOT, p)).href);
        locale, then for the rule, and the harm moved each time rather than dying.
        It deliberately does NOT grade the built zips — a zip is only ever as
        fresh as the last build, and a stale artifact is a release-process
-       question, not a source defect. publish/package.node.js grades those.
+       question, not a source defect. scripts/check-store-packages.mjs and
+       scripts/verify-refs.mjs grade those (publish/package.node.js did, until
+       its main() was retired on 2026-09-24).
 
        This block used to EVAL the packager's ALLOW/NEVER/MAX_DEPTH out of its
        source text and re-walk the tree with a copy of the algorithm. That is a
@@ -470,6 +472,19 @@ const imp = p => import(pathToFileURL(path.join(ROOT, p)).href);
     check('_locales is not governed by the ALLOW pattern language alone',
       PKG.collect().filter(f => f.startsWith('_locales/')).length === 55,
       'collect() unions localeMessageFiles() in unconditionally');
+    /* RE-HOMED 2026-09-24 (G3) from publish/package.node.js's retired main(),
+       which printed it on a run no workflow made. The union above keeps the
+       package right whatever NEVER says, so a NEVER that swallowed _locales
+       would be invisible to every check above; this is the one that says so. */
+    {
+      const viaRules = PKG.localesViaAllowRules();
+      const ruleBlind = localeFiles.filter(f => !viaRules.includes(f));
+      check('the generic allowlist rule still reaches _locales on its own', ruleBlind.length === 0,
+        ruleBlind.length
+          ? 'the always-rule is carrying ' + ruleBlind.length + '/' + localeFiles.length + ' locale(s) alone — ' +
+            'ALLOW/NEVER/MAX_DEPTH in publish/package.node.js no longer see them'
+          : localeFiles.length + ' locale(s) reachable by both paths');
+    }
 
     /* THE GATE ITSELF, graded rather than trusted. localeProblems() is pure, so
        the tier can hand it the file lists a broken build would produce. */
@@ -520,7 +535,7 @@ const imp = p => import(pathToFileURL(path.join(ROOT, p)).href);
     check('both manifests spend exactly the same __MSG__ keys',
       keysOf(chrome.mf) === keysOf(firefox.mf), keysOf(firefox.mf));
 
-    /* THE CHROME importScripts LIMB, PINNED. verifyPackage() asks this of a
+    /* THE CHROME importScripts LIMB, PINNED. verifyPackage() (retired 2026-09-24) asked this of a
        built zip, and nothing in the tree could redden it: it lives in a branch
        that only runs against a Chrome package, and a package is only ever as
        fresh as the last build. On 2026-08-20 background.js grew the Firefox
@@ -577,6 +592,14 @@ const imp = p => import(pathToFileURL(path.join(ROOT, p)).href);
     'pages/history.html', 'pages/options.html', 'pages/result.html', 'pages/scrollclip.html',
     'popup/popup.html'];
   const SHIPPED_CSS = ['pages/common.css', 'popup/popup.css'];
+  /* Each page's OWN stylesheet — the seven <style> blocks moved into files on
+     2026-09-24 so the CSP can say style-src 'self'. DERIVED from the <link>s
+     the shipped pages carry, so a page that links a new sheet is read here the
+     day it does; common.css and popup.css are the shared pair above. */
+  const PAGE_CSS = [...new Set(SHIPPED_HTML.flatMap(h => [...fs.readFileSync(path.join(ROOT, h), 'utf8')
+    .matchAll(/<link\b[^>]*\bhref="([^"]+\.css)"[^>]*>/gi)]
+    .map(m => path.posix.join(path.posix.dirname(h), m[1])))
+    .filter(f => !SHIPPED_CSS.includes(f)))];
   const SHIPPED_JS = ['pages/batch.js', 'pages/beautify.js', 'pages/common.js', 'pages/db.js',
     'pages/editor.js', 'pages/history.js', 'pages/options.js', 'pages/pdf.js', 'pages/result.js',
     'pages/scrollclip.js', 'popup/popup.js',
@@ -625,6 +648,7 @@ const imp = p => import(pathToFileURL(path.join(ROOT, p)).href);
       while ((m = re.exec(src))) out.push({ file, where, prop: m[2].toLowerCase(), value: m[3].trim(), text: m[2].trim() + ': ' + m[3].trim() });
     };
     for (const f of SHIPPED_CSS) scan(f, read(f), 'stylesheet');
+    for (const f of PAGE_CSS) scan(f, read(f), 'page stylesheet');
     for (const f of SHIPPED_HTML) {
       const html = read(f);
       for (const b of html.match(/<style[^>]*>[\s\S]*?<\/style>/gi) || []) scan(f, b.replace(/<\/?style[^>]*>/gi, ''), '<style>');
@@ -664,8 +688,8 @@ const imp = p => import(pathToFileURL(path.join(ROOT, p)).href);
     /* The scanner has to actually be looking at the CSS. A regex that silently
        matched nothing would make the check above pass on an empty set. */
     check('the declaration scanner sees every shipped stylesheet',
-      new Set(DECLS.map(d => d.file)).size === SHIPPED_CSS.length + SHIPPED_HTML.length - 1 && DECLS.length > 300,
-      DECLS.length + ' declarations across ' + new Set(DECLS.map(d => d.file)).size + ' files (popup.html carries no CSS of its own)');
+      new Set(DECLS.map(d => d.file)).size === SHIPPED_CSS.length + PAGE_CSS.length && DECLS.length > 300,
+      DECLS.length + ' declarations across ' + new Set(DECLS.map(d => d.file)).size + ' files (' + SHIPPED_CSS.length + ' shared + ' + PAGE_CSS.length + ' page stylesheets; no page carries inline CSS since 2026-09-24)');
   }
 
   console.log('\n=== direction: where dir comes from ===');
@@ -706,7 +730,7 @@ const imp = p => import(pathToFileURL(path.join(ROOT, p)).href);
        second copy of it, and the second copy is the one that goes stale. */
     const rtl = LOCALES.filter(l => l.dir === 'rtl').map(l => l.code);
     const guilty = [];
-    for (const f of [...SHIPPED_JS, ...SHIPPED_CSS, ...SHIPPED_HTML]) {
+    for (const f of [...SHIPPED_JS, ...SHIPPED_CSS, ...PAGE_CSS, ...SHIPPED_HTML]) {
       const src = read(f);
       if (rtl.every(c => new RegExp("['\"]" + c + "['\"]").test(src))) guilty.push(f);
     }
@@ -731,8 +755,8 @@ const imp = p => import(pathToFileURL(path.join(ROOT, p)).href);
        move fillText's origin, so the same saved shot would render differently
        in an Arabic browser than in an English one. Pinned in CSS, asserted
        here, and the pointer mapping is asserted alongside it. */
-    const pinned = [['pages/editor.html', '#canvas'], ['pages/scrollclip.html', '#scCanvas'],
-                    ['pages/beautify.html', '#bfCanvas']];
+    const pinned = [['pages/editor.css', '#canvas'], ['pages/scrollclip.css', '#scCanvas'],
+                    ['pages/beautify.css', '#bfCanvas']];
     const bad = [];
     for (const [f, sel] of pinned) {
       const blocks = rulesFor(read(f), sel);
@@ -740,7 +764,7 @@ const imp = p => import(pathToFileURL(path.join(ROOT, p)).href);
     }
     check('every drawing surface is pinned direction: ltr (a canvas is not text)',
       bad.length === 0, bad.join(',') || '#canvas · #scCanvas · #bfCanvas');
-    const mirrored = [...SHIPPED_CSS, ...SHIPPED_HTML, ...SHIPPED_JS]
+    const mirrored = [...SHIPPED_CSS, ...PAGE_CSS, ...SHIPPED_HTML, ...SHIPPED_JS]
       .filter(f => /scaleX\(\s*-|scale\(\s*-1/.test(stripComments(read(f))));
     check('nothing in the product mirrors a surface with a negative scale',
       mirrored.length === 0, mirrored.join(',') || 'no scaleX(-1) anywhere');
@@ -756,11 +780,11 @@ const imp = p => import(pathToFileURL(path.join(ROOT, p)).href);
        page-derived text and the declaration that has to be on it. */
     const NEEDS = [
       ['pages/common.css', '.topbar .meta', /unicode-bidi:\s*plaintext/, 'the captured page title'],
-      ['pages/history.html', '.card .title', /unicode-bidi:\s*plaintext/, 'the captured page title'],
-      ['pages/history.html', '.card .sub', /unicode-bidi:\s*plaintext/, 'date + dimensions'],
-      ['pages/history.html', '.card a.sub', /direction:\s*ltr/, 'the captured page URL'],
-      ['pages/batch.html', '.bq-url', /direction:\s*ltr/, 'a pasted URL'],
-      ['pages/batch.html', '.bq-fn', /direction:\s*ltr/, 'a derived filename'],
+      ['pages/history.css', '.card .title', /unicode-bidi:\s*plaintext/, 'the captured page title'],
+      ['pages/history.css', '.card .sub', /unicode-bidi:\s*plaintext/, 'date + dimensions'],
+      ['pages/history.css', '.card a.sub', /direction:\s*ltr/, 'the captured page URL'],
+      ['pages/batch.css', '.bq-url', /direction:\s*ltr/, 'a pasted URL'],
+      ['pages/batch.css', '.bq-fn', /direction:\s*ltr/, 'a derived filename'],
       ['pages/common.css', 'code, kbd, samp', /direction:\s*ltr/, 'technical literals']
     ];
     const bad = [];
@@ -810,12 +834,12 @@ const imp = p => import(pathToFileURL(path.join(ROOT, p)).href);
       ['pages/common.css', '.topbar {', /flex-wrap:\s*wrap/, 'history.html scrolled 253px sideways at 400 CSS px in ENGLISH'],
       ['pages/common.css', 'body {', /overflow-wrap:\s*break-word/, 'one 60-char compound noun dragged 105px of scroll onto the page'],
       ['popup/popup.css', 'body {', /overflow-wrap:\s*break-word/, 'the popup is 300px and cannot grow'],
-      ['pages/options.html', '.opt {', /flex-wrap:\s*wrap/, 'nine switches left the card entirely under compound labels'],
-      ['pages/options.html', '.opt .text {', /min-width:\s*0/, 'flex min-width:auto refuses to shrink below the longest WORD'],
-      ['pages/options.html', '.opt input[type="text"] {', /min-width:\s*0/, 'a 260px input in a 280px column at 200% zoom'],
-      ['pages/scrollclip.html', '.actions {', /flex-wrap:\s*wrap/, '"Einzelbild kopieren" wrapped to two lines at flex:1'],
-      ['pages/beautify.html', '.actions {', /flex-wrap:\s*wrap/, 'same rail, same two buttons'],
-      ['pages/history.html', '#searchBox {', /flex:\s*1 1 220px/, 'a fixed 220px search box is what overflowed the bar']
+      ['pages/options.css', '.opt {', /flex-wrap:\s*wrap/, 'nine switches left the card entirely under compound labels'],
+      ['pages/options.css', '.opt .text {', /min-width:\s*0/, 'flex min-width:auto refuses to shrink below the longest WORD'],
+      ['pages/options.css', '.opt input[type="text"] {', /min-width:\s*0/, 'a 260px input in a 280px column at 200% zoom'],
+      ['pages/scrollclip.css', '.actions {', /flex-wrap:\s*wrap/, '"Einzelbild kopieren" wrapped to two lines at flex:1'],
+      ['pages/beautify.css', '.actions {', /flex-wrap:\s*wrap/, 'same rail, same two buttons'],
+      ['pages/history.css', '#searchBox {', /flex:\s*1 1 220px/, 'a fixed 220px search box is what overflowed the bar']
     ];
     /* indexOf on the literal selector, not a built regex: escaping
        `.opt input[type="text"] {` into a pattern is three chances to get it

@@ -101,7 +101,12 @@ const OPTIONAL_ONLY = ['technicalAndInteraction'];
 /* Top-level keys allowed to differ between the Chrome and Firefox manifests.
    Anything else that differs is drift, not a port. */
 const ALLOWED_DELTA = ['background', 'browser_specific_settings',
-  'content_security_policy', 'minimum_chrome_version', 'options_page', 'options_ui'];
+  'minimum_chrome_version', 'options_page', 'options_ui'];
+/* ⏱ 2026-09-24 (G8): `content_security_policy` LEFT this list, and the paragraph
+   below is the record of why it was in it. The overlay no longer deletes the
+   key: Firefox receives manifest.json's policy, so the key must now be
+   IDENTICAL in both, which is what the drift limb asserts of every key not in
+   this list — and the absent-check it describes became an equality check. */
 /* `content_security_policy` added 2026-08-26, when manifest.json began declaring one
    and publish/manifest.firefox.json began deleting it with an RFC 7386 null member.
    THIS IS A CLASSIFICATION, NOT A RELAXATION, and the check that matters is untouched:
@@ -297,6 +302,21 @@ if (!gate('the overlay is a JSON OBJECT (a merge patch, not a replacement)',
   process.exit(1);
 }
 
+/* RE-HOMED 2026-09-24 (G3) from publish/package.node.js's retired main(), which
+   asked it on a run no workflow made ("the overlay restates nothing it should
+   inherit"). A member the overlay sets to the Chrome value merges CLEANLY — the
+   drift limb below compares MERGED keys and sees two equal values — right up to
+   the edit where manifest.json moves and the Firefox package silently keeps the
+   old one. So the question is asked of the PATCH: every member it carries must
+   be one of the documented Firefox deltas. */
+{
+  const restated = Object.keys(patch).filter(k => ALLOWED_DELTA.indexOf(k) === -1);
+  gate('the overlay sets only the documented Firefox deltas (' + ALLOWED_DELTA.join(', ') + ')',
+    restated.length === 0,
+    restated.length ? 'it also sets ' + restated.map(k => k + '=' + JSON.stringify(patch[k])).join(', ') : null,
+    'FIX: delete ' + restated.join(', ') + ' from publish/manifest.firefox.json. An overlay is a merge patch: it carries only what DIFFERS for Firefox and inherits everything else from manifest.json, so a bump there cannot leave the AMO package on the previous value.');
+}
+
 /* 🔴 THE SUBJECT OF EVERY RULE BELOW. This is the manifest Firefox receives:
    the Chrome manifest with the overlay applied, which is byte-for-byte what
    scripts/pack.mjs writes into the Firefox zip. Grading the overlay instead —
@@ -406,7 +426,15 @@ gate('no minimum_chrome_version (Chrome-only key, not in Mozilla\'s manifest ind
   'FIX: the merged Firefox manifest still carries "minimum_chrome_version". Add `"minimum_chrome_version": null` to publish/manifest.firefox.json — under RFC 7386 a null member DELETES the key. Do NOT simply remove the line: an absent member INHERITS the Chrome value.');
 check('no developer "key" field', !('key' in ff));
 check('no top-level update_url', !('update_url' in ff));
-check('no content_security_policy override (strict MV3 default applies)', !('content_security_policy' in ff));
+/* G8, 2026-09-24. Was `no content_security_policy override (strict MV3 default
+   applies)` — true, and it meant the Firefox add-on ran every extension page
+   with no connect-src, no img-src and no form-action. The Chromium policy is the
+   audited one; Firefox now receives it unchanged. */
+gate('content_security_policy is the Chromium manifest\'s, unchanged',
+  !!ch.content_security_policy && typeof ch.content_security_policy.extension_pages === 'string' &&
+    deepEqual(ff.content_security_policy, ch.content_security_policy),
+  JSON.stringify(ff.content_security_policy === undefined ? '(absent)' : ff.content_security_policy),
+  'FIX: publish/manifest.firefox.json must not name content_security_policy. A null member deletes the policy for Firefox; any other value replaces it with one nothing grades.');
 
 console.log('\n=== permissions surface (must match the audited Chrome package) ===');
 check('permissions identical to the Chrome manifest', deepEqual(ff.permissions, ch.permissions), JSON.stringify(ff.permissions));

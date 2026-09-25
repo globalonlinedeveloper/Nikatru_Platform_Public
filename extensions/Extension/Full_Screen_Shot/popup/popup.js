@@ -220,9 +220,13 @@ expandToggle.addEventListener('change', () => {
   // Save first — the permission dialog may close the popup.
   chrome.storage.sync.set({ expandInner: expandToggle.checked });
   if (expandToggle.checked) {
-    chrome.permissions.contains({ origins: ['<all_urls>'] }).then(granted => {
-      if (!granted) return chrome.permissions.request({ origins: ['<all_urls>'] });
-    }).catch(() => {});
+    /* Asked SYNCHRONOUSLY, inside this handler. Firefox only honours
+       permissions.request from a user-input handler's synchronous extent, so
+       the old contains().then(request) shape was refused there ("may only be
+       called from a user input handler"). A request for a grant already held
+       resolves true without a prompt, so asking unconditionally costs nothing.
+       test/background-sim.node.js grades the ordering (limb 5, 2026-09-24). */
+    chrome.permissions.request({ origins: ['<all_urls>'] }).catch(() => {});
   }
 });
 

@@ -99,7 +99,7 @@
   "extension-submission.test.mjs": 56,
   "extension-tool-identity.test.mjs": 77,
   "extensions-build-free.test.mjs": 14,
-  "extensions-shared-constants.test.mjs": 9,
+  "extensions-shared-constants.test.mjs": 13,
   "flag-exposure.test.mjs": 30,
   "free-api-scope-transient.test.mjs": 8,
   "fs-read-once.test.mjs": 15,
