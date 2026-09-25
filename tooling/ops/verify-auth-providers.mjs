@@ -54,14 +54,12 @@ import { fileURLToPath } from 'node:url';
 import { fetchWithBoundedRetry } from './bounded-retry.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const DECL = join(
-  ROOT,
-  'packages',
-  'auth_supabase',
-  'lib',
-  'src',
-  'auth_providers.dart',
-);
+/// Where `AuthProviders.configured` lives under a repo root. A function of the
+/// root, so tooling/ops/auth-cutover-preflight.mjs (C3) reads the declaration
+/// of the tree it was pointed at — a fixture in its tests — never this module's.
+const declPath = (root) =>
+  join(root, 'packages', 'auth_supabase', 'lib', 'src', 'auth_providers.dart');
+const DECL = declPath(ROOT);
 /// The local vault, overridable so a test can point it somewhere that does not
 /// exist.
 ///
@@ -144,8 +142,11 @@ export function compareProviders({ declared, live }) {
 /// anchored to the `static const AuthProviders configured = AuthProviders(…)`
 /// initialiser specifically, and an initialiser that does not parse is a
 /// FAILURE — an assertion that cannot find its subject must never report ok.
-export function declared() {
-  const src = readFileSync(DECL, 'utf8');
+///
+/// `root` defaults to this module's own repo, which is what the CLI and `main()`
+/// read. The cutover preflight passes the root it was given.
+export function declared(root = ROOT) {
+  const src = readFileSync(declPath(root), 'utf8');
   const m = src.match(
     /static\s+const\s+AuthProviders\s+configured\s*=\s*AuthProviders\s*\(([^;]*?)\)\s*;/s,
   );

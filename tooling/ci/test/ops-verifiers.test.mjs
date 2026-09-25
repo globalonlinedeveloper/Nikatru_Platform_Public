@@ -36,7 +36,8 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync, spawn } from 'node:child_process';
 import { createServer } from 'node:http';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -136,6 +137,24 @@ describe('verify-auth-providers — the judgement, both directions', () => {
     assert.ok(d, 'AuthProviders.configured did not parse out of auth_providers.dart');
     assert.equal(typeof d.apple, 'boolean');
     assert.equal(typeof d.google, 'boolean');
+    // The default root IS this repo: the CLI reads what the tree ships.
+    assert.deepEqual(declared(REPO), d);
+  });
+
+  test('declared(root) reads THAT root — a fixture declaring google ON parses as such; a reshaped one is null', () => {
+    // auth-cutover-preflight.mjs C3 passes the root it was pointed at, so this
+    // seam must read the given tree and not fall back to the module's own.
+    const tmp = mkdtempSync(join(tmpdir(), 'nikatru-declared-'));
+    try {
+      const dart = join(tmp, 'packages', 'auth_supabase', 'lib', 'src', 'auth_providers.dart');
+      mkdirSync(dirname(dart), { recursive: true });
+      writeFileSync(dart, 'class AuthProviders {\n  static const AuthProviders configured = AuthProviders(\n    apple: true,\n    google: true,\n  );\n}\n');
+      assert.deepEqual(declared(tmp), { apple: true, google: true });
+      writeFileSync(dart, 'class AuthProviders {\n  static const AuthProviders configured = AuthProviders.fromEnvironment();\n}\n');
+      assert.equal(declared(tmp), null);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
   });
 });
 
