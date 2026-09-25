@@ -113,7 +113,9 @@ class _FakeAuth extends core.AuthRepository {
   }
 
   @override
-  Future<void> signOut() async {
+  Future<void> signOut({
+    core.SignOutScope scope = core.SignOutScope.local,
+  }) async {
     signOutCalls++;
     signedIn = false;
     _authChanges.add(null);

@@ -1466,14 +1466,25 @@ Future<void> forgetSignedInUser(List<UserStateDrop> drops) async {
 ///
 /// A NAMED function for the same reason [signOutOnlyIfSessionIsGone] is: a test
 /// has to be able to drive it without a widget.
-Future<void> signOutAndForgetUser(WidgetRef ref) async {
+///
+/// [scope] is [core.SignOutScope.local] unless a control asks otherwise, and
+/// exactly one does: Settings → "Sign out of all devices" passes
+/// [core.SignOutScope.global]. It goes THROUGH here rather than calling
+/// `signOut(scope: …)` itself for the reason above — the `session_end`
+/// trigger permits `.signOut(` in this file only, and a global sign-out that
+/// skipped the forget would leave this device's per-user state behind exactly
+/// like the four leaks listed above did.
+Future<void> signOutAndForgetUser(
+  WidgetRef ref, {
+  core.SignOutScope scope = core.SignOutScope.local,
+}) async {
   // 🔴 BOTH READS HAPPEN HERE, BEFORE ANY AWAIT. See [userStateDrops].
   final core.AuthRepository auth = ref.read(authRepositoryProvider);
   final List<UserStateDrop> drops = userStateDrops(ref);
   Object? failure;
   StackTrace? stack;
   try {
-    await auth.signOut();
+    await auth.signOut(scope: scope);
   } catch (e, s) {
     failure = e;
     stack = s;

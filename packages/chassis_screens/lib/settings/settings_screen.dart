@@ -118,6 +118,7 @@ class SettingsView extends StatelessWidget {
     required this.supportEmail,
     required this.onContactSupport,
     required this.onSignOut,
+    required this.onSignOutEverywhere,
     required this.onDeleteAccount,
     required this.applicationName,
     required this.applicationVersion,
@@ -148,6 +149,13 @@ class SettingsView extends StatelessWidget {
   // for the six controls the review named, which is the stronger of the two
   // claims — a tap that reaches the callback cannot be satisfied by a string.
   static const Key signOutTile = Key('settingsSignOut');
+  static const Key signOutEverywhereTile = Key('settingsSignOutEverywhere');
+  static const Key signOutEverywhereConfirm = Key(
+    'settingsSignOutEverywhereConfirm',
+  );
+  static const Key signOutEverywhereCancel = Key(
+    'settingsSignOutEverywhereCancel',
+  );
   static const Key editProfileTile = Key('settingsEditProfile');
   static const Key privacyPolicyTile = Key('settingsPrivacyPolicy');
   static const Key termsTile = Key('settingsTerms');
@@ -240,6 +248,16 @@ class SettingsView extends StatelessWidget {
   final String supportEmail;
   final VoidCallback onContactSupport;
   final VoidCallback onSignOut;
+
+  /// "Sign out of all devices" — every session the account holds, this one
+  /// included. REQUIRED rather than optional so that no stamped app can ship
+  /// Settings without it: the owner's rule is that a user stays signed in until
+  /// they reset their password or sign out everywhere (2026-09-24), and the
+  /// second half of that rule is this control. The adapter routes it through
+  /// the same awaited sign-out-and-forget as [onSignOut], with the global scope.
+  ///
+  /// Fired only after the user CONFIRMS — see [_confirmSignOutEverywhere].
+  final VoidCallback onSignOutEverywhere;
   final VoidCallback onDeleteAccount;
 
   /// The RUNNING version, not the compiled-in constant — resolved in the adapter
@@ -476,6 +494,18 @@ class SettingsView extends StatelessWidget {
                 title: Text(l10n.signOut),
                 onTap: onSignOut,
               ),
+            // Below the ordinary sign-out and above delete, for the same reason
+            // that order exists: the commoner, narrower action first. Gated on a
+            // session because with none there is nothing to revoke anywhere —
+            // the server call is keyed to the session in hand.
+            if (hasSession)
+              ListTile(
+                key: signOutEverywhereTile,
+                leading: const Icon(Icons.devices_outlined),
+                title: Text(l10n.signOutEverywhere),
+                subtitle: Text(l10n.signOutEverywhereSubtitle),
+                onTap: () => _confirmSignOutEverywhere(context),
+              ),
             // [pipeline C-13] Only when there is an account to delete. Both
             // stores require an in-app deletion path where accounts EXIST; an
             // entry shown to a signed-out user is an offer the app cannot honour.
@@ -535,6 +565,39 @@ class SettingsView extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  /// 🔴 ONE TAP MUST NOT SIGN THE ACCOUNT OUT EVERYWHERE, the device in the
+  /// user's hand included — so the tile asks first (AUTH-LOGOUT-ALL, parent
+  /// ruling L2, 2026-09-24). The confirm lives HERE rather than in each
+  /// adapter so that no stamped app can wire the tile past it:
+  /// [onSignOutEverywhere] fires exactly once on the confirm button and never
+  /// on Cancel, a barrier tap or a back gesture (all three answer `false` or
+  /// `null`).
+  Future<void> _confirmSignOutEverywhere(BuildContext context) async {
+    final ChassisLocalizations l10n = context.chassisL10n;
+    final bool confirmed =
+        await showDialog<bool>(
+          context: context,
+          builder: (BuildContext c) => AlertDialog(
+            title: Text(l10n.signOutEverywhereConfirmTitle),
+            content: Text(l10n.signOutEverywhereConfirmBody),
+            actions: <Widget>[
+              TextButton(
+                key: signOutEverywhereCancel,
+                onPressed: () => Navigator.pop(c, false),
+                child: Text(l10n.cancel),
+              ),
+              FilledButton(
+                key: signOutEverywhereConfirm,
+                onPressed: () => Navigator.pop(c, true),
+                child: Text(l10n.signOutEverywhereConfirmAction),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (confirmed) onSignOutEverywhere();
   }
 }
 

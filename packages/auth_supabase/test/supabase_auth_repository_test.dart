@@ -264,6 +264,139 @@ void main() {
     });
   });
 
+  // ── AUTH-LOGOUT-ALL · the scope a sign-out carries to the SDK. ───────────
+  //
+  // 🔴 gotrue's `signOut` defaults to `SignOutScope.local`, so an adapter that
+  // forgot to forward the scope would compile, end THIS device's session, and
+  // leave every other device signed in — "Log out of all devices" doing what
+  // "Log out" does, with nothing on screen to tell the two apart.
+  group('SupabaseAuthRepository.signOut scope', () {
+    final DateTime now = DateTime.utc(2026, 8, 1, 12);
+    sb.Session live() =>
+        _session('live', expiry: now.add(const Duration(hours: 1)));
+    sb.Session stale() =>
+        _session('stale', expiry: now.subtract(const Duration(minutes: 5)));
+
+    test('signOut() keeps the LOCAL scope — the ordinary Log out is unchanged',
+        () async {
+      final _FakeGoTrue g = _FakeGoTrue(session: live());
+      final SupabaseAuthRepository auth =
+          SupabaseAuthRepository(client: g, clock: () => now);
+
+      await auth.signOut();
+
+      expect(g.signOutScopes, <sb.SignOutScope>[sb.SignOutScope.local]);
+      expect(auth.currentUser, isNull);
+    });
+
+    test('signOut(scope: global) reaches the client as SignOutScope.global',
+        () async {
+      final _FakeGoTrue g = _FakeGoTrue(session: live());
+      final SupabaseAuthRepository auth =
+          SupabaseAuthRepository(client: g, clock: () => now);
+
+      await auth.signOut(scope: core.SignOutScope.global);
+
+      expect(
+        g.signOutScopes,
+        <sb.SignOutScope>[sb.SignOutScope.global],
+        reason: 'a dropped scope is gotrue\'s default, local: the other '
+            'devices would stay signed in',
+      );
+      expect(auth.currentUser, isNull,
+          reason: 'a global sign-out ends this device too');
+      expect(g.refreshCalls, 0, reason: 'a live token needs no refresh');
+    });
+
+    // 🔴 gotrue sends the IN-MEMORY token and ignores the 401 an expired one
+    // earns, so an unrefreshed global sign-out revokes nothing and says nothing.
+    test('🔴 an EXPIRED token is refreshed BEFORE the global revoke is sent',
+        () async {
+      final _FakeGoTrue g = _FakeGoTrue(session: stale());
+      final SupabaseAuthRepository auth =
+          SupabaseAuthRepository(client: g, clock: () => now);
+
+      await auth.signOut(scope: core.SignOutScope.global);
+
+      expect(g.refreshCalls, 1);
+      expect(g.signOutScopes, <sb.SignOutScope>[sb.SignOutScope.global]);
+    });
+
+    test('UNREACHABLE refresh: refuses, and nothing is signed out anywhere',
+        () async {
+      final _FakeGoTrue g = _FakeGoTrue(
+        session: stale(),
+        refreshFailure: sb.AuthRetryableFetchException(
+          message: 'Failed host lookup',
+        ),
+      );
+      final SupabaseAuthRepository auth =
+          SupabaseAuthRepository(client: g, clock: () => now);
+
+      await expectLater(
+        auth.signOut(scope: core.SignOutScope.global),
+        throwsA(isA<core.AuthFailure>()),
+      );
+      expect(g.signOutCalls, 0);
+      expect(auth.currentUser, isNotNull,
+          reason: 'still signed in here, so the user can simply try again');
+    });
+
+    test('REFUSED refresh: signed out here, and it still says so loudly',
+        () async {
+      final _FakeGoTrue g = _FakeGoTrue(
+        session: stale(),
+        refreshFailure: const sb.AuthApiException(
+          'Invalid Refresh Token: Refresh Token Not Found',
+          statusCode: '400',
+          code: 'refresh_token_not_found',
+        ),
+      );
+      final SupabaseAuthRepository auth =
+          SupabaseAuthRepository(client: g, clock: () => now);
+
+      await expectLater(
+        auth.signOut(scope: core.SignOutScope.global),
+        throwsA(isA<core.AuthFailure>()),
+      );
+      expect(auth.currentUser, isNull);
+    });
+
+    test('a revoke that fails in transit surfaces as AuthFailure, not SDK',
+        () async {
+      final _FakeGoTrue g = _FakeGoTrue(session: live(), signOutFailure: true);
+      final SupabaseAuthRepository auth =
+          SupabaseAuthRepository(client: g, clock: () => now);
+
+      await expectLater(
+        auth.signOut(scope: core.SignOutScope.global),
+        throwsA(isA<core.AuthFailure>()),
+      );
+      expect(g.signOutScopes, <sb.SignOutScope>[sb.SignOutScope.global]);
+    });
+
+    test('every core scope maps to the SDK scope of the same name', () {
+      for (final core.SignOutScope s in core.SignOutScope.values) {
+        expect(SupabaseAuthRepository.sdkSignOutScopeOf(s).name, s.name);
+      }
+    });
+
+    // deleteAccount's own sign-out is the ordinary one: the server erasure
+    // removes the identity, and every session with it, on its own.
+    test('deleteAccount signs out with the local scope', () async {
+      final _FakeGoTrue g = _FakeGoTrue(session: live());
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(
+        client: g,
+        clock: () => now,
+        requestServerDeletion: () async {},
+      );
+
+      await auth.deleteAccount();
+
+      expect(g.signOutScopes, <sb.SignOutScope>[sb.SignOutScope.local]);
+    });
+  });
+
   // ── G2. The deletion hook, which used to be null on every stamped app. ────
   group('SupabaseAuthRepository.deleteAccount', () {
     test('calls the injected server request, then signs out', () async {
@@ -977,10 +1110,15 @@ class _FakeGoTrue extends sb.GoTrueClient {
     this.refreshFailure,
     this.hold,
     this.updateUserError,
+    this.signOutFailure = false,
   }) : super(autoRefreshToken: false);
 
   sb.Session? session;
   final bool failRefresh;
+
+  /// Shaped like gotrue's own `_signOut`: the local session is cleared FIRST,
+  /// then the `POST /logout` fails and is rethrown.
+  final bool signOutFailure;
 
   /// A refresh failure shaped the way gotrue 2.27.2 really behaves
   /// (`gotrue_client.dart:1624-1633`): a NON-retryable error removes the
@@ -1120,10 +1258,19 @@ class _FakeGoTrue extends sb.GoTrueClient {
     return sb.AuthResponse(session: session);
   }
 
+  /// The SDK scope every sign-out carried, in order. Recorded because gotrue's
+  /// own default is `local`: an adapter that dropped the scope would still
+  /// reach this method exactly once and sign this device out.
+  final List<sb.SignOutScope> signOutScopes = <sb.SignOutScope>[];
+
   @override
   Future<void> signOut({sb.SignOutScope scope = sb.SignOutScope.local}) async {
     signOutCalls++;
+    signOutScopes.add(scope);
     session = null;
+    if (signOutFailure) {
+      throw sb.AuthRetryableFetchException(message: 'Connection reset');
+    }
   }
 
   /// The captcha token each password sign-in carried, in order, null included.

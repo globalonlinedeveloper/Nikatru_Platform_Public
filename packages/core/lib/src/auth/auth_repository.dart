@@ -136,7 +136,34 @@ abstract class AuthRepository {
     throw AuthFailure('Setting a new password is not available here.');
   }
 
-  Future<void> signOut();
+  /// End the session on THIS device, or — with [SignOutScope.global] — every
+  /// session this account holds, on every device.
+  ///
+  /// The default is [SignOutScope.local], and it is the default ON PURPOSE:
+  /// the ordinary "Log out" leaves the account's other devices signed in, which
+  /// is what the owner asked for ("kept login until they reset password or
+  /// logout from all devices", 2026-09-24). Every caller that wrote `signOut()`
+  /// before the parameter existed keeps exactly that behaviour.
+  ///
+  /// 🔴 [SignOutScope.global] REVOKES REFRESH TOKENS, NOT ACCESS TOKENS. The
+  /// provider deletes every session row for the account, so no other device can
+  /// REFRESH again; an access token another device already holds is a signed,
+  /// stateless JWT and keeps passing a signature check until it expires
+  /// (`jwt_exp`, recorded in `tooling/mail-transport.json`). Closing that window
+  /// is Worker-side work — see `docs/design/auth-sessions.md`.
+  ///
+  /// ⚠️ "EVERY DEVICE" IS EVERY SESSION OF THE ACCOUNT, NOT OF THIS APP. The
+  /// portfolio shares one identity project, so a global sign-out also ends the
+  /// account's sessions in every other app built on this seam. On the web a
+  /// session is one browser profile's storage for this origin; each other
+  /// browser or profile is simply another session, and is revoked the same way.
+  ///
+  /// Implementations MUST end the local session under BOTH scopes, and a
+  /// global request that did not finish MUST NOT be reported as success: throw
+  /// [AuthFailure], so the screen can say so. Refusing BEFORE touching anything
+  /// is the better failure when the provider cannot be reached at all — the
+  /// user is still signed in everywhere and can simply try again.
+  Future<void> signOut({SignOutScope scope = SignOutScope.local});
 
   // ───────────────────────────────────────────────────────────────────────────
   // EMAIL VERIFICATION (owner lock, 2026-08-09 late) — the three members the
@@ -284,4 +311,21 @@ abstract class AuthRepository {
   /// session, which is the worst of both outcomes. Throws [AuthFailure] when the
   /// server refused, AFTER signing out.
   Future<void> deleteAccount();
+}
+
+/// Which sessions [AuthRepository.signOut] ends.
+///
+/// Declared HERE, not borrowed from the SDK: `core` never gains a provider
+/// dependency ([pipeline C-15]), so the adapter maps this onto its SDK's own
+/// type and nothing above the data layer ever names that type. The two values
+/// are the two a user can ask for; the SDK's third ("every session EXCEPT this
+/// one") has no control that asks for it, and an unused value is a branch no
+/// test can reach.
+enum SignOutScope {
+  /// This device's session only. The default, and what "Log out" does.
+  local,
+
+  /// Every session the account holds, on every device and in every app that
+  /// signs in to the same identity project — this one included.
+  global,
 }

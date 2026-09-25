@@ -67,6 +67,22 @@ void main() {
       expect(auth.currentUser, isNull);
     });
 
+    // One device here, so both scopes end the one session — and the scope is
+    // RECORDED, so a control that dropped it cannot pass as one that kept it.
+    test('a GLOBAL sign-out ends the session and is recorded as global',
+        () async {
+      await auth.signInWithEmail(email: 'a@b.com', password: 'pw');
+      await auth.signOut();
+      await auth.signInWithEmail(email: 'a@b.com', password: 'pw');
+      await auth.signOut(scope: core.SignOutScope.global);
+      expect(auth.currentUser, isNull);
+      expect(await auth.currentAccessToken(), isNull);
+      expect(auth.signOutScopes, <core.SignOutScope>[
+        core.SignOutScope.local,
+        core.SignOutScope.global,
+      ]);
+    });
+
     // A token store that hands back an expired token is how a caller ends up
     // retrying a 401 forever.
     test('an EXPIRED session yields no token', () async {

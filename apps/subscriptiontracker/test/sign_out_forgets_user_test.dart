@@ -67,6 +67,10 @@ class _FakeAuth extends core.AuthRepository {
   int signOutCalls = 0;
   int deleteCalls = 0;
 
+  /// The scope each sign-out carried, in order. "Log out" and "Log out of all
+  /// devices" each reach [signOut] once, so only the scope tells them apart.
+  final List<core.SignOutScope> signOutScopes = <core.SignOutScope>[];
+
   final StreamController<core.AuthUser?> _changes =
       StreamController<core.AuthUser?>.broadcast();
 
@@ -79,8 +83,11 @@ class _FakeAuth extends core.AuthRepository {
   Stream<core.AuthUser?> authStateChanges() => _changes.stream;
 
   @override
-  Future<void> signOut() async {
+  Future<void> signOut({
+    core.SignOutScope scope = core.SignOutScope.local,
+  }) async {
     signOutCalls++;
+    signOutScopes.add(scope);
     if (signOutThrows) throw core.AuthFailure('keyring locked');
     signedIn = false;
     _changes.add(null);
@@ -204,6 +211,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(auth.signOutCalls, 1);
+      expect(auth.signOutScopes, <core.SignOutScope>[
+        core.SignOutScope.local,
+      ], reason: 'the ordinary Log out must leave the other devices signed in');
       expect(
         rawEntitlementCache(h.secure),
         isNull,
@@ -226,6 +236,110 @@ void main() {
       );
     },
   );
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // AUTH-LOGOUT-ALL · "Log out of all devices".
+  //
+  // 🔴 THE SCOPE IS THE WHOLE FEATURE. Both controls reach `signOut` exactly
+  // once and both forget this device's user, so a control that dropped the
+  // scope would pass every other assertion in this file while leaving every
+  // other device signed in. The first assertion below is the one that goes red.
+  // ───────────────────────────────────────────────────────────────────────────
+  testWidgets(
+    '🔴 LOG OUT OF ALL DEVICES CARRIES THE GLOBAL SCOPE, AND FORGETS THE USER',
+    (WidgetTester tester) async {
+      final _FakeAuth auth = _FakeAuth();
+      final h = _harness(auth);
+      await seedLifetimePro(h.container.read(entitlementCacheProvider));
+
+      await _pumpSettings(tester, h.container);
+      await tester.tap(find.text('Log out of all devices'));
+      await tester.pumpAndSettle();
+
+      // Parent ruling L2: the tap only ASKS. Nothing is revoked yet.
+      expect(find.text('Log out of all devices?'), findsOneWidget);
+      expect(auth.signOutCalls, 0, reason: 'one tap must not sign out');
+
+      await tester.tap(find.text('Log out everywhere'));
+      await tester.pumpAndSettle();
+
+      expect(
+        auth.signOutScopes,
+        <core.SignOutScope>[core.SignOutScope.global],
+        reason:
+            'a dropped scope is the local default: this device signs out and '
+            'every other device stays signed in',
+      );
+      expect(
+        rawEntitlementCache(h.secure),
+        isNull,
+        reason:
+            'it goes through signOutAndForgetUser, so this device forgets the '
+            'user exactly as the ordinary Log out does',
+      );
+      expect(h.fork.cancelAllCalls, greaterThan(0));
+    },
+  );
+
+  testWidgets('🔴 A GLOBAL LOG OUT THAT FAILS SAYS SO, IN ITS OWN SENTENCE', (
+    WidgetTester tester,
+  ) async {
+    final _FakeAuth auth = _FakeAuth(signOutThrows: true);
+    final h = _harness(auth);
+
+    await _pumpSettings(tester, h.container);
+    await tester.tap(find.text('Log out of all devices'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Log out everywhere'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Logging out of all devices did not finish. Please try again.'),
+      findsOneWidget,
+      reason: 'it must not borrow the local sentence, which says "this device"',
+    );
+    expect(
+      find.text('Sign-out did not finish on this device. Please try again.'),
+      findsNothing,
+    );
+    expect(auth.signOutScopes, <core.SignOutScope>[core.SignOutScope.global]);
+  });
+
+  testWidgets('🔴 CANCEL ON THE LOG-OUT-EVERYWHERE DIALOG SIGNS NOTHING OUT', (
+    WidgetTester tester,
+  ) async {
+    final _FakeAuth auth = _FakeAuth();
+    final h = _harness(auth);
+    await seedLifetimePro(h.container.read(entitlementCacheProvider));
+
+    await _pumpSettings(tester, h.container);
+    await tester.tap(find.text('Log out of all devices'));
+    await tester.pumpAndSettle();
+    expect(find.text('Log out of all devices?'), findsOneWidget);
+
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Log out of all devices?'), findsNothing);
+    expect(auth.signOutCalls, 0, reason: 'Cancel must reach no sign-out');
+    expect(auth.signedIn, isTrue);
+    expect(
+      rawEntitlementCache(h.secure),
+      isNotNull,
+      reason: 'Cancel must not forget the user on this device either',
+    );
+  });
+
+  testWidgets('signed out: there is no Log out of all devices to press', (
+    WidgetTester tester,
+  ) async {
+    final _FakeAuth auth = _FakeAuth()..signedIn = false;
+    final h = _harness(auth);
+
+    await _pumpSettings(tester, h.container);
+
+    expect(find.text('Log out of all devices'), findsNothing);
+  });
 
   testWidgets('🔴 DELETING THE ACCOUNT FORGETS IT ON THIS DEVICE TOO', (
     WidgetTester tester,

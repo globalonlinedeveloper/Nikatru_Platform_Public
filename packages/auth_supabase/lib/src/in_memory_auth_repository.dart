@@ -82,6 +82,13 @@ class InMemoryAuthRepository implements core.AuthRepository {
   /// apart. This can.
   final List<String> passwordsSet = <String>[];
 
+  /// The scope of every [signOut] that has reached this seam, newest last.
+  ///
+  /// Same reasoning as [passwordsSet]: "Log out" and "Log out of all devices"
+  /// reach [signOut] exactly once each, so a counter cannot tell a control that
+  /// dropped its scope from one that kept it. This can.
+  final List<core.SignOutScope> signOutScopes = <core.SignOutScope>[];
+
   @override
   core.AuthUser? get currentUser => _user;
 
@@ -271,8 +278,14 @@ class InMemoryAuthRepository implements core.AuthRepository {
     return current;
   }
 
+  /// One device and one session, so both scopes end the same session here —
+  /// there are no other devices to reach. The scope is still RECORDED, in
+  /// [signOutScopes], so a control that drops it is visible to a test.
   @override
-  Future<void> signOut() async {
+  Future<void> signOut({
+    core.SignOutScope scope = core.SignOutScope.local,
+  }) async {
+    signOutScopes.add(scope);
     _user = null;
     _session = null;
     _changes.add(null);

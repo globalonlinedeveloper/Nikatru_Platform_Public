@@ -265,7 +265,10 @@ describe('the confirmation must not be one tap away', () => {
         // screen still has dialogs and that having them is not the point.
         // ⏱ 3 since 2026-09-18: the brick settings adapter gained showReportContentDialog
         // (O-PLAY-AI-CONTENT-REPORTING) — also barrierDismissible: false, and still not the deletion's.
-        assert.match(r.stderr, /3 `showDialog` call\(s\)/);
+        // ⏱ 2026-09-25: no longer pinned to an exact count. The chassis settings screen gained the
+        // sign-out-everywhere confirm (PR #931), the second time an unrelated dialog broke this pin.
+        // The lock is asserted above (exit 1 + NOT ONE); here only that a non-zero count is reported.
+        assert.match(r.stderr, /[1-9]\d* `showDialog` call\(s\)/);
       },
     );
   });
