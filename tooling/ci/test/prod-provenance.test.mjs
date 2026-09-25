@@ -463,11 +463,34 @@ describe('assert-prod-provenance — the gate limb', () => {
         assert.match(r.stderr, /`continue-on-error: true` at line \d+ lets the deploy and its record run past a failed migration/);
       },
     );
+    // ⏱ 2026-09-25 [PD2B-3] REPLACES the migration step's `if:` with one the deploy does not carry.
     withTree(
-      (root) => edit(root, DEPLOY_WORKERS, '      - name: Apply PLATFORM_DB migrations (before deploy)\n', "      - name: Apply PLATFORM_DB migrations (before deploy)\n        if: github.event_name == 'workflow_dispatch'\n"),
+      (root) =>
+        edit(
+          root,
+          DEPLOY_WORKERS,
+          "      - name: Apply PLATFORM_DB migrations (before deploy)\n        if: steps.plan.outputs.deploy == 'true'\n",
+          "      - name: Apply PLATFORM_DB migrations (before deploy)\n        if: github.event_name == 'push'\n",
+        ),
       (r) => {
         assert.equal(r.status, 1, r.stdout + r.stderr);
-        assert.match(r.stderr, /the migration step \(line \d+\) carries an `if:`/);
+        assert.match(r.stderr, /the migration step \(line \d+\) carries `if: github\.event_name == 'push'` and the `id: deploy` step \(line \d+\) carries `if: steps\.plan\.outputs\.deploy == 'true'`/);
+      },
+    );
+  });
+
+  test('limb 9: the migration step keeps its `if:` while the deploy step loses its own is RED (PD2B-3)', () => {
+    withTree(
+      (root) => {
+        const s = readFileSync(join(root, DEPLOY_WORKERS), 'utf8');
+        const deployIf = "        if: steps.plan.outputs.deploy == 'true'\n        id: deploy\n";
+        const at = s.indexOf(deployIf, s.indexOf('      - name: Apply PLATFORM_DB migrations (before deploy)\n'));
+        assert.ok(at !== -1, 'the platform job no longer carries the deploy `if:` this case deletes');
+        writeFileSync(join(root, DEPLOY_WORKERS), s.slice(0, at) + '        id: deploy\n' + s.slice(at + deployIf.length));
+      },
+      (r) => {
+        assert.equal(r.status, 1, r.stdout + r.stderr);
+        assert.match(r.stderr, /the migration step \(line \d+\) carries `if: steps\.plan\.outputs\.deploy == 'true'` and the `id: deploy` step \(line \d+\) carries no `if:`/);
       },
     );
   });

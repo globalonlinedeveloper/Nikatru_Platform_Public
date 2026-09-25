@@ -438,8 +438,17 @@ if (!workerDir) {
           'Only apply → deploy → record makes a platform Deployment proof that its migrations ran.',
       );
     } else {
-      if (stepOf(apply).some((l) => /^\s*if:/.test(l.text))) {
-        problems.push(`${where}: the migration step (line ${apply.n}) carries an \`if:\`, so a deploy can happen without it running.`);
+      // ⏱ 2026-09-25 [PD2B-3] The migration step may carry an `if:` only when every
+      // `if:` line in it is byte-equal, trimmed, to the `id: deploy` step's one `if:`:
+      // then both run on the one condition, and a failed migration still stops the deploy.
+      const ifsOf = (line) => stepOf(line).filter((l) => /^\s*if:/.test(l.text)).map((l) => l.text.trim());
+      const applyIfs = ifsOf(apply);
+      const deployIfs = ifsOf(deploy);
+      if (applyIfs.length && !(deployIfs.length === 1 && applyIfs.every((t) => t === deployIfs[0]))) {
+        problems.push(
+          `${where}: the migration step (line ${apply.n}) carries \`${applyIfs.join('` and `')}\` and the \`id: deploy\` step (line ${deploy.n}) carries ` +
+            `${deployIfs.length ? `\`${deployIfs.join('` and `')}\`` : 'no `if:`'}. The migration may carry an \`if:\` only when it is byte-equal to the deploy's, or a deploy can happen without it running.`,
+        );
       }
       if (!stepOf(record).some((l) => /^\s*if:.*steps\.deploy\.outcome\s*==\s*'success'/.test(l.text))) {
         problems.push(`${where}: the Deployment record (line ${record.n}) is not conditioned on \`steps.deploy.outcome == 'success'\`.`);

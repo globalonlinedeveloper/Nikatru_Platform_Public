@@ -6268,7 +6268,7 @@ describe('post-gate call jobs of the gate workflow — read, graded, admitted (A
   const CI = () => files.get('ci.yml');
   const q = (jobs, over = {}) => ({ reader: 'github-run-history', workflow: 'ci.yml', event: 'push', headBranch: 'main', unit: { jobs }, ...over });
   const row = (id, jobs, over = {}) => ({ id, kind: 'duty', cadence: 'trigger', mechanism: { recordQuery: q(jobs, over) } });
-  const RUN = { id: 3843, conclusion: 'success', updated_at: '2026-09-25T08:00:00Z', head_branch: 'main' };
+  const RUN = { id: 3843, conclusion: 'success', updated_at: '2026-09-25T08:00:00Z', head_branch: 'main', event: 'push' };
   const j = (name, conclusion) => ({ name, status: 'completed', conclusion });
   const GATE_OK = j('ci-gate', 'success');
 
@@ -6332,6 +6332,90 @@ describe('post-gate call jobs of the gate workflow — read, graded, admitted (A
     const red = decideUnitRedSince(q(['deploy-web']), [e(4, '2026-09-25T09:00:00Z', 'failure'), e(3, '2026-09-25T08:00:00Z', 'lost'), e(2, '2026-09-25T07:00:00Z', 'success')], false);
     assert.deepEqual([red.failure.id, red.success.id, red.lost], [4, 2, undefined]);
     assert.equal(classifyRedSince(r, red).verdict, 'red');
+  });
+
+  // ⏱ 2026-09-25 [ADR 095 §4] PD2B2-4 · THE THREE NEUTRAL ARMS of the zero-entry shape.
+  // RUN_3848 is main CI run 3848 (id 36106900356, c02e6d33) as the /jobs list gave
+  // it: 31 jobs, ci-gate success, no deploy entry — the run every RED-SINCE read
+  // reaches first after the merge. Names and conclusions only.
+  const RUN_3848_JOBS = [
+    ['Guards — the guards can still fail', 'success'],
+    ['Guards — platform, data and ops', 'success'],
+    ['Shared site build', 'success'],
+    ['App brick (stamp both variants + analyze + validate the clone contract)', 'success'],
+    ['Guards — privacy, legal and money', 'success'],
+    ['extensions / secrets-scan', 'success'],
+    ['extensions / The shared contract has not drifted', 'success'],
+    ['Design tokens (build + drift, all three outputs)', 'success'],
+    ['Static sites (functions parse + required files)', 'success'],
+    ['Workspace gate (melos analyze + test)', 'success'],
+    ['extensions / Gate self-test (do the gates bite?)', 'success'],
+    ['extensions / The extensions are still build-free', 'success'],
+    ['extensions / Proof freshness (is the weekly cron alive?)', 'success'],
+    ['extensions / Discover affected tools', 'success'],
+    ['extensions / Gate inventory (which gates exist)', 'success'],
+    ['extensions / templates parse (the tree every future tool is stamped from)', 'success'],
+    ['extensions / catalogue', 'success'],
+    ['extensions / gates · ${{ matrix.tool }}', 'skipped'],
+    ['extensions / sims · ${{ matrix.tool }} · node ${{ matrix.node }}', 'skipped'],
+    ['Android artifacts (built, inspected, discarded) (subscriptiontracker)', 'success'],
+    ['extensions / ci-required', 'success'],
+    ['extensions / package · ${{ matrix.tool }} · ${{ matrix.target }} · ${{ matrix.os }}', 'skipped'],
+    ['Content pipeline (recipe -> pack -> sign -> gate)', 'success'],
+    ['Guards — store, release and versioning', 'success'],
+    ['Security — secret and workflow scanners', 'success'],
+    ['Derive the Android app set from the pub workspace', 'success'],
+    ['subscriptiontracker-api Worker (typecheck + test + dry-run)', 'success'],
+    ['extensions / core sims', 'success'],
+    ['platform Worker (typecheck + test + dry-run)', 'success'],
+    ['Guards — chassis, app surface and packages', 'success'],
+    ['ci-gate', 'success'],
+  ].map(([name, conclusion]) => j(name, conclusion));
+  const REF = (file) => ({ path: `globalonlinedeveloper/Nikatru_Platform_Public/.github/workflows/${file}@c02e6d3304b4024208ac3c69b25654f0bf923f00` });
+  const RUN_3848 = { id: 36106900356, conclusion: 'success', updated_at: '2026-09-25T07:53:19Z', head_branch: 'main', event: 'push', referenced_workflows: [REF('extensions-ci.yml')] };
+
+  test('RC-a — run 3848 predates the call (referenced_workflows names only extensions-ci.yml), a push to main: neutral, where it was lost', () => {
+    assert.equal(RUN_3848_JOBS.length, 31);
+    assert.equal(RUN_3848_JOBS.find((x) => x.name === 'ci-gate')?.conclusion, 'success');
+    for (const id of ['deploy-web', 'deploy-workers']) {
+      const c = unitConclusion(q([id]), RUN_3848, RUN_3848_JOBS, CI());
+      assert.equal(c.verdict, 'neutral', c.detail);
+      assert.ok(c.detail.includes(`(a) its referenced_workflows name no "/.github/workflows/${id}.yml@"`), c.detail);
+    }
+  });
+
+  test('RC-a2 — the same list, referenced_workflows ALSO naming deploy-web.yml: lost (G4 fail-closed)', () => {
+    const run = { ...RUN_3848, referenced_workflows: [REF('extensions-ci.yml'), REF('deploy-web.yml')] };
+    const c = unitConclusion(q(['deploy-web']), run, RUN_3848_JOBS, CI());
+    assert.equal(c.verdict, 'lost', c.detail);
+    assert.ok(c.detail.includes(G4_UNMEASURED), c.detail);
+    assert.equal(unitConclusion(q(['deploy-workers']), run, RUN_3848_JOBS, CI()).verdict, 'neutral', 'deploy-workers.yml is still unreferenced');
+  });
+
+  test('RC-a3 — no referenced_workflows key at all: lost, because arm (a) cannot fire for it', () => {
+    const { referenced_workflows: _drop, ...run } = RUN_3848;
+    assert.equal('referenced_workflows' in run, false);
+    const c = unitConclusion(q(['deploy-web']), run, RUN_3848_JOBS, CI());
+    assert.equal(c.verdict, 'lost', c.detail);
+    assert.equal(unitConclusion(q(['deploy-web']), { ...run, referenced_workflows: null }, RUN_3848_JOBS, CI()).verdict, 'lost', 'a non-array is not an array');
+  });
+
+  test('RC-b — the post-gate if: cannot hold (a schedule run, or a push off main), zero entries: neutral', () => {
+    const refs = [REF('extensions-ci.yml'), REF('deploy-web.yml')];
+    const sched = unitConclusion(q(['deploy-web']), { ...RUN_3848, event: 'schedule', referenced_workflows: refs }, RUN_3848_JOBS, CI());
+    assert.equal(sched.verdict, 'neutral', sched.detail);
+    assert.match(sched.detail, /\(b\) its `if:` is POST_GATE_IF and the run is "schedule" on "main"/);
+    const branch = unitConclusion(q(['deploy-web']), { ...RUN_3848, head_branch: 'feature', referenced_workflows: refs }, RUN_3848_JOBS, CI());
+    assert.equal(branch.verdict, 'neutral', branch.detail);
+  });
+
+  test('RC-c — ci-gate did not pass, the callee referenced, zero entries: neutral (that red is the gate row)', () => {
+    const run = { ...RUN_3848, conclusion: 'failure', referenced_workflows: [REF('deploy-web.yml'), REF('deploy-workers.yml')] };
+    const jobs = RUN_3848_JOBS.map((x) => (x.name === 'ci-gate' ? j('ci-gate', 'failure') : x));
+    const c = unitConclusion(q(['deploy-web']), run, jobs, CI());
+    assert.equal(c.verdict, 'neutral', c.detail);
+    assert.match(c.detail, /\(c\) the job it needs, ci-gate, came back "failure"/);
+    assert.equal(unitConclusion(q(['deploy-web']), { ...run, conclusion: 'success' }, RUN_3848_JOBS, CI()).verdict, 'lost', 'the same run with ci-gate success stays lost');
   });
 
   test('collectRunJobs walks every page to total_count, and a list that does not add up THROWS', async () => {

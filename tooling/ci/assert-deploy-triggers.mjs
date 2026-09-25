@@ -177,7 +177,7 @@ for (const name of files) {
 
 // ── coverage self-check, BEFORE reporting clean ──────────────────────────────
 if (undecidable.length) {
-  console.error(`✗ COVERAGE LOST — deployUnits glob(s) of a shape globClaims cannot decide: ${undecidable.join(', ')}`);
+  console.error(`✗ COVERAGE LOST — deployUnits glob pattern(s) of a shape globClaims cannot decide: ${undecidable.join(', ')}`);
   console.error('  plan-deploy.mjs refuses these at run time; judging them here would be a guess.');
   coverageLost();
 }

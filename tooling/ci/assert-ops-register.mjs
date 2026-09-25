@@ -2842,7 +2842,13 @@ export const isCallJob = (job) => (job?.lines ?? []).some((l) => /^ {4}uses:\s*\
 /** ⏱ 2026-09-25 [ADR 095 §4] The one sentence every call-job shape that was not
  *  measured ends in. G1-G3 were measured on real runs; how GitHub lists a call
  *  job that is skipped AS A WHOLE was not, so a run that lists the call job in
- *  no shape at all is COVERAGE LOST (exit 2), never "absent, so neutral". */
+ *  no shape at all is COVERAGE LOST (exit 2), never "absent, so neutral" —
+ *  EXCEPT on the three neutral arms (PD2B2-4), checked in this order, where the
+ *  run cannot have run the call: (a) the run's `referenced_workflows` is an
+ *  array that names no `/<callee>@`, so the run predates the call; (b) the call
+ *  job's `if:` is POST_GATE_IF and the run is not a push to main; (c) a job the
+ *  call job `needs` is in the run with a conclusion other than success. A run
+ *  object with no `referenced_workflows` array stays COVERAGE LOST. */
 export const G4_UNMEASURED = 'G4: whole-call-job skip shape unmeasured (cloud-drafts/pd2b/d2b2-ruling-verify.md)';
 
 /** PURE. Does an API job `name` belong to workflow job `jobId`? The API reports a
@@ -2875,6 +2881,28 @@ export function apiJobMatcher(jobId, job) {
   };
 }
 
+/** PURE. Why a call job with ZERO entries in `run` could not have run there, or
+ *  null. The three neutral arms of G4_UNMEASURED (PD2B2-4), in order: (a) the
+ *  run predates the call; (b) its `if:` could not hold; (c) the gate it needs did
+ *  not pass — that red belongs to the gate's own row. Null keeps it COVERAGE LOST. */
+export function zeroEntryNeutral(job, run, apiJobs, wf) {
+  const uses = (job?.lines ?? []).map((l) => String(l?.text ?? '').match(/^ {4}uses:\s*(['"]?)(\S+?)\1\s*$/)).find(Boolean);
+  const callee = uses ? uses[2].replace(/^\.\//, '') : null;
+  const refs = run?.referenced_workflows;
+  if (callee && Array.isArray(refs) && !refs.some((r) => String(r?.path ?? '').includes(`/${callee}@`))) {
+    return `(a) its referenced_workflows name no "/${callee}@": the run predates the call`;
+  }
+  if (job?.jobIf?.cond === POST_GATE_IF && (run?.event !== 'push' || run?.head_branch !== 'main')) {
+    return `(b) its \`if:\` is POST_GATE_IF and the run is ${JSON.stringify(run?.event ?? null)} on ${JSON.stringify(run?.head_branch ?? null)}, not a push to main`;
+  }
+  for (const need of job?.needs ?? []) {
+    const match = apiJobMatcher(need, wf?.jobs?.get?.(need));
+    const red = (apiJobs ?? []).find((j) => match(j?.name) && j?.conclusion !== 'success');
+    if (red) return `(c) the job it needs, ${need}, came back ${JSON.stringify(red?.conclusion ?? null)}: that red is the gate's own row`;
+  }
+  return null;
+}
+
 /** PURE. ONE run's verdict for ONE unit: `{ verdict: 'success' | 'failure' |
  *  'neutral' | 'lost', detail }`. `apiJobs` is that run's /jobs answer; `wf` the parsed
  *  workflow the unit's ids are declared in. Neutral is "this run says nothing
@@ -2901,7 +2929,8 @@ export function unitConclusion(q, run, apiJobs, wf) {
     if (isCallJob(job)) {
       // ⏱ 2026-09-25 [ADR 095 §4] THREE SHAPES, and only two of them measured:
       // children present → grade the children; exactly one entry named just the
-      // call job, `skipped` → the lane was skipped; anything else → `lost`.
+      // call job, `skipped` → the lane was skipped; zero entries on a run that
+      // could not have run the call (zeroEntryNeutral) → neutral; else → `lost`.
       const display = nonEmpty(job.displayName) ? job.displayName : String(id);
       const own = found.filter((j) => String(j?.name ?? '') === display);
       const children = found.filter((j) => String(j?.name ?? '') !== display);
@@ -2913,6 +2942,10 @@ export function unitConclusion(q, run, apiJobs, wf) {
           why: `was skipped as a whole in run ${run?.id} (one entry "${display}", no "${display} / …" child)`,
         });
         return;
+      }
+      if (own.length === 0) {
+        const neutral = zeroEntryNeutral(job, run, apiJobs, wf);
+        if (neutral) { parts.push({ what: `call job ${id}`, c: 'neutral', why: `has NO entry in run ${run?.id}, and ${neutral}` }); return; }
       }
       parts.push({
         what: `call job ${id}`,
