@@ -20,14 +20,14 @@
   "_rootsNote": "TWO roots since 2026-09-07 ([ADR 067] phase 2, unit app-shell). The Worker half of the template - 13 files, 917 lines every stamped backend app inherits - was outside this ledger entirely while `root` was one string, and `git ls-files -- <that one root>` could not see it to complain. assert-chassis-ledger.mjs is the authority on this list and cross-checks it; a row's `root` is optional and defaults to roots[0], which is why the 96 rows written against the single root are unchanged. ⏱ THE FIGURES IN THIS NOTE MOVED ON 2026-09-08 AND ARE CORRECTED RATHER THAN REWRITTEN: the Worker half is now 14 files and 1,021 lines, because the template gained src/lib/error-sink.ts — a stamped backend had NO crash sink at all and failed tooling/ci/assert-worker-error-sink.mjs on limbs 2, 3 and 5 at its first CI run. The guard PRINTS both figures per root on every run, which is the number to read; this sentence is prose and prose rots.",
   "totals": {
     "files": 134,
-    "lines": 18892,
+    "lines": 18946,
     "unclassified": 0,
     "unclassifiedLines": 0
   },
   "floors": {
-    "_why": "ADR 096: brick lib/ and lib/state are CEILINGS, not bands, set at their measured size with zero headroom. assert-chassis-ledger.mjs counts every git-tracked file under the Dart app root's lib/ (the .arb files included) with the same line rule as the rows, prints both totals, and exits 1 when either is over its max. A PR that grows brick lib/ raises floors.*.max in the same PR and names why in its body; a fall is banked by lowering the max. First values measured at 60b63fb9 (#931): ADR 096 recorded 6,702 / 3,046 at 24189ff3 (#930), and #931 (sign-out-everywhere) then moved lib/ by net +31 (settings_screen.dart +20, state/providers.dart +11) and lib/state by net +11, named under ADR 096 rule 4. ⏱ 2026-09-25 (O-GOOGLE-SIGN-IN-NOT-BUILT): lib.max 6733 -> 6737, lib/features/auth/sign_in_screen.dart +4 (104 -> 108) — the two arguments that hand the chassis SignInView its Google door (`showGoogleButton`, gated on caps.oauthRedirect and AuthProviders.google, and `onSignInWithGoogle`) and the two comment lines that say google stays false until the owner provisions the client. lib/state is unchanged in size (the two version constants moved in place).",
+    "_why": "ADR 096: brick lib/ and lib/state are CEILINGS, not bands, set at their measured size with zero headroom. assert-chassis-ledger.mjs counts every git-tracked file under the Dart app root's lib/ (the .arb files included) with the same line rule as the rows, prints both totals, and exits 1 when either is over its max. A PR that grows brick lib/ raises floors.*.max in the same PR and names why in its body; a fall is banked by lowering the max. First values measured at 60b63fb9 (#931): ADR 096 recorded 6,702 / 3,046 at 24189ff3 (#930), and #931 (sign-out-everywhere) then moved lib/ by net +31 (settings_screen.dart +20, state/providers.dart +11) and lib/state by net +11, named under ADR 096 rule 4. ⏱ 2026-09-25 (O-GOOGLE-SIGN-IN-NOT-BUILT): lib.max 6733 -> 6737, lib/features/auth/sign_in_screen.dart +4 (104 -> 108) — the two arguments that hand the chassis SignInView its Google door (`showGoogleButton`, gated on caps.oauthRedirect and AuthProviders.google, and `onSignInWithGoogle`) and the two comment lines that say google stays false until the owner provisions the client. lib/state is unchanged in size (the two version constants moved in place). Raised 2026-09-25 to 6784 (+47) by O-PAYWALL-SPEAKS-ONLY-WEB-CHECKOUT, named under ADR 096 rule 4: the brick paywall_screen.dart grew 229 -> 276 for the exhaustive refusal-route switch and the rail-kind in-flight copy; lib/state is unchanged at 3057.",
     "lib": {
-      "max": 6737,
+      "max": 6784,
       "adr": "ADR 096",
       "asOf": "2026-09-25",
       "verify": "node tooling/ci/assert-chassis-ledger.mjs"
@@ -192,9 +192,9 @@
     },
     {
       "path": "lib/features/monetization/paywall_screen.dart",
-      "lines": 229,
+      "lines": 276,
       "verdict": "MOVES",
-      "why": "[ADR 067] decision 2 — MEASURED 2026-09-06: 297 -> 212 brick lines, 240 package lines, callSiteDelta -85. The RENDERING moved; the phase machine did not. Retained here and each for a named reason: the four `funnel.on*` emissions (stamp-properties `money-funnel-emitted-as-a-set`, and they take a WidgetRef), `PurchaseRail.startCheckout` and `awaitUnlock` (the purchase seam, assert-purchase-path/:287 and assert-seams-wired:473), `.formattedPrice` read where the Offering is still in scope (assert-no-price-literals:371 reads adapter ∪ chassis, so either side satisfies it), and `_PaywallPhase` — now `typedef _PaywallPhase = PaywallPhase;`, an ALIAS of the package enum, because screen-register's reachability limb reads ONE file and does not follow the delegation. One enum, not two. ⏱ RE-MEASURED 2026-09-23 (O-IAP-PAYWALL-SHOWS-WEB-PRICE): 212 -> 230. The paywall now reads each plan's term and trial from the store product rather than the web price table, and passes it to the chassis body; formatted with `dart format --language-version=3.9` before counting (it had 1 unformatted line). ⏱ RE-MEASURED 2026-09-23 again: 230 -> 229, after CI's dart format joined the onCheckAgain refresh onto one expression.",
+      "why": "[ADR 067] decision 2 — MEASURED 2026-09-06: 297 -> 212 brick lines, 240 package lines, callSiteDelta -85. The RENDERING moved; the phase machine did not. Retained here and each for a named reason: the four `funnel.on*` emissions (stamp-properties `money-funnel-emitted-as-a-set`, and they take a WidgetRef), `PurchaseRail.startCheckout` and `awaitUnlock` (the purchase seam, assert-purchase-path/:287 and assert-seams-wired:473), `.formattedPrice` read where the Offering is still in scope (assert-no-price-literals:371 reads adapter ∪ chassis, so either side satisfies it), and `_PaywallPhase` — now `typedef _PaywallPhase = PaywallPhase;`, an ALIAS of the package enum, because screen-register's reachability limb reads ONE file and does not follow the delegation. One enum, not two. ⏱ RE-MEASURED 2026-09-23 (O-IAP-PAYWALL-SHOWS-WEB-PRICE): 212 -> 230. The paywall now reads each plan's term and trial from the store product rather than the web price table, and passes it to the chassis body; formatted with `dart format --language-version=3.9` before counting (it had 1 unformatted line). ⏱ RE-MEASURED 2026-09-23 again: 230 -> 229, after CI's dart format joined the onCheckAgain refresh onto one expression. ⏱ RE-MEASURED 2026-09-25 (O-PAYWALL-SPEAKS-ONLY-WEB-CHECKOUT): 229 -> 276. Every checkout refusal is now routed by the one exhaustive `refusalRouteOf` switch (sign-in, retry, back-to-choosing, unavailable), the in-flight copy is chosen from the rail kind (`_checkoutStyleOf`), and the refusal detail goes to the log only; the rendering of both stays in the chassis body.",
       "target": "packages/chassis_screens/lib/monetization/paywall_screen.dart",
       "callSiteDelta": -85
     },
@@ -616,7 +616,7 @@
     },
     {
       "path": "test/chassis_properties_test.dart",
-      "lines": 5721,
+      "lines": 5728,
       "verdict": "STAYS",
       "why": "MEASURED: undeletable — assert-stamp-properties:2197 exits 1 with COVERAGE LOST, and all SIX feature rows in the brick dod.json resolve to declarations that exist ONLY in this file. 26 property groups, 123 cases, 3,595 code lines. Its bulk is WIRING proof, not duplication: 42 cases boot the real stamped app root and none unit-tests a package class. Reducible only per-property, which the file itself sanctions. One genuine candidate: the content-pack group (117 lines) tests a rail 0 of 600 shipped Dart files read."
     },
