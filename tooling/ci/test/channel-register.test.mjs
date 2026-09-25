@@ -27,10 +27,11 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { parseAllWorkflows, workflowSteps, shellSegments, joinShellContinuations } from '../workflow-scan.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const GUARD = join(CI_DIR, 'assert-channel-register.mjs');
@@ -3269,6 +3270,170 @@ describe('assert-channel-register — §10 artifactBuild and the signing seams',
     assert.equal(code, 0, out);
     assert.match(out, /artifactBuild — \d+ format\(s\), every one declared by a channel/);
     assert.match(out, /signing seams — \d+ channel\(s\) carry one/);
+  });
+
+  // ── limb (iv), 2026-09-24 · the read-back runs where the artifact is made ──
+  // (O-STORE-BUILD-GUARD-GRADES-DECLARED-JOBS-ONLY, amended closes.) Each case
+  // declares `.msix` packagerCommand "msix:create", points the windows-store
+  // row's seam.verify at a stub, and writes ONE workflow whose steps ARE the
+  // case, so every verdict below is about step order and nothing else. The
+  // real-tree evidence is the R9 case at the end of this block, and the PR's
+  // mutation of submit-windows-store.yml#submit.
+  const MSIX_VERIFY = 'tooling/ci/assert-artifact-signed-msix.mjs';
+  const MSIX_WORKFLOW = '.github/workflows/package-msix.yml';
+  // Line 9 of the written file is this step's `run:`; the finding cites it.
+  const PACKAGE_STEP = ['      - name: Package MSIX', '        run: dart run msix:create --version=1.0.0.0'];
+  const READ_BACK = ['      - name: Read the package back', `        run: node ${MSIX_VERIFY} build/app.msix`];
+  const UPLOAD_ALWAYS = [
+    '      - name: Keep the package',
+    '        if: always()',
+    '        uses: actions/upload-artifact@v4',
+    '        with:',
+    '          name: diagnostic',
+    '          path: build/app.msix',
+  ];
+  const msixTree = ({ steps, packagerCommand = 'msix:create', verify = MSIX_VERIFY }) =>
+    tree({
+      mutate: (r) => { r.channels[1].signing.seam.verify = verify; },
+      breakArtifactBuild: (r) => { r.artifactBuild.formats['.msix'].packagerCommand = packagerCommand; },
+      extraFiles: {
+        [MSIX_VERIFY]: '// fixture stub: limb (iv) asks only where this runs\n',
+        [MSIX_WORKFLOW]: ['name: Package msix', 'on:', '  workflow_dispatch:', 'jobs:', '  package:', '    runs-on: windows-2025', '    steps:', ...steps, ''].join(NL),
+      },
+    });
+
+  test('limb (iv) GREEN: read-back straight after the packager, then an always() upload and a step gated on a LATER success', () => {
+    const { code, out } = run(msixTree({
+      steps: [
+        ...PACKAGE_STEP,
+        ...READ_BACK,
+        ...UPLOAD_ALWAYS,
+        '      - name: Hand the package over',
+        '        id: handover',
+        '        run: node tooling/release/hand-over.mjs build/app.msix',
+        '      - name: Record the hand-over',
+        "        if: always() && steps.handover.outcome == 'success'",
+        '        run: echo recorded',
+      ],
+    }));
+    assert.equal(code, 0, out);
+    assert.match(out, /read-back where the artifact is made — 1 packaging step\(s\) in 1 job\(s\), for "\.msix"/);
+    // The gap is printed, not hidden: a format with prose packagedBy and no packagerCommand.
+    assert.match(out, /read-back census does not cover "static-bundle"/);
+  });
+
+  test('limb (iv) FAILS a job that packages and uploads with no read-back at all', () => {
+    const { code, out } = run(msixTree({ steps: [...PACKAGE_STEP, ...UPLOAD_ALWAYS] }));
+    assert.equal(code, 1, out);
+    assert.match(out, /package-msix\.yml:9 \(job "package"\) packages \.msix with "msix:create" and the next step is "Keep the package", not tooling\/ci\/assert-artifact-signed-msix\.mjs/);
+  });
+
+  test('limb (iv) R4 FAILS a read-back that comes AFTER the upload', () => {
+    const { code, out } = run(msixTree({ steps: [...PACKAGE_STEP, ...UPLOAD_ALWAYS, ...READ_BACK] }));
+    assert.equal(code, 1, out);
+    assert.match(out, /package-msix\.yml:9 \(job "package"\) packages \.msix with "msix:create" and the next step is "Keep the package"/);
+  });
+
+  test('limb (iv) R5 FAILS a read-back carrying continue-on-error: true', () => {
+    const { code, out } = run(msixTree({ steps: [...PACKAGE_STEP, READ_BACK[0], '        continue-on-error: true', READ_BACK[1]] }));
+    assert.equal(code, 1, out);
+    assert.match(out, /reads back \.msix and carries `continue-on-error: true`/);
+  });
+
+  test('limb (iv) R5 FAILS a read-back whose command ends in || true', () => {
+    const { code, out } = run(msixTree({ steps: [...PACKAGE_STEP, READ_BACK[0], `        run: node ${MSIX_VERIFY} build/app.msix || true`] }));
+    assert.equal(code, 1, out);
+    assert.match(out, /reads back \.msix and its command carries `\|\| true`/);
+  });
+
+  test('limb (iv) FAILS a read-back under an if: that can skip it', () => {
+    const { code, out } = run(msixTree({ steps: [...PACKAGE_STEP, READ_BACK[0], "        if: github.event_name == 'push'", READ_BACK[1]] }));
+    assert.equal(code, 1, out);
+    assert.match(out, /reads back \.msix under `if: github\.event_name == 'push'`/);
+  });
+
+  test('limb (iv) R6 COVERAGE LOST (exit 2) when the packagerCommand matches no step', () => {
+    const { code, out } = run(msixTree({ packagerCommand: 'msix:build', steps: [...PACKAGE_STEP, ...READ_BACK] }));
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST — artifactBuild\.formats\["\.msix"\] declares packagerCommand "msix:build" and no step/);
+  });
+
+  test('limb (iv) R7 FAILS a non-upload step that runs on always() after the read-back', () => {
+    const { code, out } = run(msixTree({
+      steps: [
+        ...PACKAGE_STEP,
+        ...READ_BACK,
+        '      - name: Hand the package over anyway',
+        '        if: always()',
+        '        run: node tooling/release/hand-over.mjs build/app.msix',
+      ],
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /step "Hand the package over anyway" runs on `if: always\(\)` after the read-back/);
+  });
+
+  test('limb (iv) FAILS an always() step gated on the success of a step BEFORE the read-back', () => {
+    const { code, out } = run(msixTree({
+      steps: [
+        '      - name: Package MSIX',
+        '        id: pack',
+        '        run: dart run msix:create --version=1.0.0.0',
+        ...READ_BACK,
+        '      - name: Hand the package over',
+        "        if: always() && steps.pack.outcome == 'success'",
+        '        run: node tooling/release/hand-over.mjs build/app.msix',
+      ],
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /step "Hand the package over" runs on `if: always\(\) && steps\.pack\.outcome == 'success'` after the read-back/);
+  });
+
+  test('limb (iv) (a) FAILS a packagerCommand when no row declaring the format carries a seam.verify', () => {
+    const { code, out } = run(msixTree({ verify: null, steps: [...PACKAGE_STEP, ...READ_BACK] }));
+    assert.equal(code, 1, out);
+    assert.match(out, /declares packagerCommand "msix:create" and no row declaring "\.msix" carries a non-null `signing\.seam\.verify`/);
+  });
+
+  // R9's static half. The verifier's own suite proves a wrong identity exits 1
+  // (artifact-signed-msix.test.mjs, "the declaration is compared to the BYTES").
+  // This reads the REAL workflows directly, not through the guard, and asks the
+  // other half: once the read-back exits 1, nothing in its job carries on past it
+  // except an upload, or a step gated on the success of a later step.
+  test('R9 the REAL tree: every .msix read-back can stop its job, and only an upload runs past a refused one', () => {
+    const REPO = resolve(CI_DIR, '..', '..');
+    const reg = JSON.parse(readFileSync(join(REPO, 'tooling/channel-register.json'), 'utf8'));
+    const cmd = reg.artifactBuild.formats['.msix'].packagerCommand;
+    const verify = reg.channels.find((c) => c.id === 'windows-store').signing.seam.verify;
+    assert.equal(typeof cmd, 'string');
+    assert.equal(typeof verify, 'string');
+    const bodyOf = (job, step) => job.lines.filter((l) => l.n >= step.first && l.n <= step.last).map((l) => l.text).join(NL);
+    const readBacks = [];
+    let packagingSteps = 0;
+    for (const wf of parseAllWorkflows(REPO)) {
+      for (const [jobName, job] of wf.jobs) {
+        const steps = workflowSteps(job);
+        for (const step of steps) {
+          const text = step.run ? joinShellContinuations(step.run.text) : '';
+          if (shellSegments(text).some((s) => s.trim().split(/\s+/).includes(cmd))) packagingSteps++;
+          if (text.includes(`node ${verify} `)) readBacks.push({ wf, jobName, job, step, steps });
+        }
+      }
+    }
+    assert.ok(readBacks.length > 0, 'no workflow step runs the .msix read-back');
+    assert.equal(readBacks.length, packagingSteps, `${readBacks.length} read-back step(s) for ${packagingSteps} packaging step(s)`);
+    for (const { wf, jobName, job, step, steps } of readBacks) {
+      const where = `${wf.rel} job "${jobName}", the read-back at line ${step.first}`;
+      assert.doesNotMatch(bodyOf(job, step), /continue-on-error/, where);
+      assert.doesNotMatch(step.run.text, /\|\|/, where);
+      assert.equal(step.cond, null, where);
+      for (const later of steps.slice(step.index + 1)) {
+        if (later.cond === null || !/\b(?:always|failure|cancelled)\(\)/.test(later.cond)) continue;
+        const isUpload = /uses:\s*actions\/upload-artifact@/.test(bodyOf(job, later));
+        const gate = later.cond.match(/^always\(\)\s*&&\s*steps\.([A-Za-z0-9_-]+)\.outcome\s*==\s*'success'$/);
+        const gatedOnLater = gate !== null && steps.some((s) => s.id === gate[1] && s.index > step.index && s.index < later.index && s.cond === null);
+        assert.ok(isUpload || gatedOnLater, `${where}: the step at line ${later.first} runs on \`${later.cond}\` past it and is not an upload`);
+      }
+    }
   });
 });
 

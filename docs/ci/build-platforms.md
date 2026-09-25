@@ -800,6 +800,13 @@ second red would report one defect twice.
 `if: always()`: under its old name the release job's `<app>-*` download
 took this copy of a store-only .msix too (§store-only).
 
+⏱ 2026-09-24 — this upload now runs AFTER `The MSIX carries the identity
+the register declares`, which assert-channel-register.mjs §10 limb (iv)
+requires straight after `Package MSIX`, and nothing diagnostic is lost:
+`if: always()` still keeps the .msix a refused read-back leaves on disk,
+and the stamp's `*.msix.channel.json`, skipped after a refusal, is simply
+absent from the upload.
+
 ### before step **Prepare the Windows code-signing certificate, and read the signature back**
 
 ── THE CERTIFICATE, AND THE READ-BACK IT EXISTS FOR ────────────────

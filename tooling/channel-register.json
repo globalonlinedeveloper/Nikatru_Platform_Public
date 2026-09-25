@@ -2665,9 +2665,9 @@
         "seam": {
           "_why": "LIFTED 2026-08-20 from tooling/store-pipeline/signing-seams.mjs, deleted in the same commit. `artifactGlob` existed nowhere else in the repository. `prepare` and `verify` name the scripts that arrange a credential and read the result back out of the artifact — a pair, because a step that arranges a thing and then reports its own success is the \"green means ran\" failure with extra stages.",
           "prepare": "tooling/ci/windows-signing.mjs",
-          "verify": null,
+          "verify": "tooling/ci/assert-artifact-signed-msix.mjs",
           "artifactGlob": "apps/*/build/windows/msix/*.msix",
-          "why": "🔴 NOTHING IN THIS REPOSITORY READS THE SIGNATURE OUT OF AN .msix. The preparation seam exists; the proof does not. Until it does, a Microsoft Store channel cannot honestly claim a verified artifact."
+          "why": "🔴 NOTHING IN THIS REPOSITORY READS THE SIGNATURE OUT OF AN .msix. The preparation seam exists; the proof does not. Until it does, a Microsoft Store channel cannot honestly claim a verified artifact. ⏱ CORRECTED 2026-09-24 (O-STORE-BUILD-GUARD-GRADES-DECLARED-JOBS-ONLY, amended closes): the proof exists, and `verify` now names it. tooling/ci/assert-artifact-signed-msix.mjs opens the packaged .msix and compares the identity inside it with this row's declaration; it expects NO signature, because the Store signs. assert-channel-register.mjs §10 limb (iv) requires it in the step straight after every step that runs the `.msix` packagerCommand, in any workflow. The sentence above was true when written and is left as it was."
         }
       },
       "minimumToolchain": [
@@ -4018,7 +4018,14 @@
       "",
       "⚠️ `.exe` IS THE ENTRY WORTH READING. The windows-direct channel declares that format and nothing",
       "in this repository packages one. That gap was recorded nowhere else, and deleting the old file",
-      "without this block would have deleted the only written record of it."
+      "without this block would have deleted the only written record of it.",
+      "",
+      "⏱ ADDED 2026-09-24 — `packagerCommand` is the STRUCTURED half of `packagedBy`: the token a",
+      "workflow step runs to make the artifact (`.msix` carries one today). assert-channel-register.mjs",
+      "§10 limb (iv) finds every step that runs it, in every job of every workflow, and requires the",
+      "step straight after to run the `signing.seam.verify` of a row declaring that format. A format",
+      "whose `packagedBy` is prose and which carries no `packagerCommand` is outside that census, and",
+      "the guard prints it as such on every run."
     ],
     "formats": {
       ".zip": {
@@ -4048,7 +4055,8 @@
       },
       ".msix": {
         "flutterTarget": "windows",
-        "packagedBy": "`dart run msix:create` — the lane workflow the register names."
+        "packagedBy": "`dart run msix:create` — the lane workflow the register names.",
+        "packagerCommand": "msix:create"
       },
       ".exe": {
         "flutterTarget": "windows",

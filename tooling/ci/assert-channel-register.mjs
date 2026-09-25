@@ -121,7 +121,7 @@ import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
 import { stripSourceComments, stripStringLiterals } from './text-reductions.mjs';
 import { FLUTTER_APP_FIELD, flutterAppChannel } from './channel-surface.mjs';
-import { parseAllWorkflows, flutterReleaseBuilds, gradeDomain, buildAt, shellSegments, resolveLocalCalls } from './workflow-scan.mjs';
+import { parseAllWorkflows, flutterReleaseBuilds, gradeDomain, buildAt, shellSegments, resolveLocalCalls, workflowSteps, commandAt, joinShellContinuations } from './workflow-scan.mjs';
 import { parseYaml } from '../app-yaml/yaml.mjs';
 import { lanesOfSurface } from './tag-owner.mjs';
 import { ARTIFACT_FORMATS } from '../../contracts/store/vocabulary.js';
@@ -3731,6 +3731,180 @@ if (gradleFilesCrossChecked > 0) {
     problems.push('COVERAGE LOST — no channel carries a `signing.seam`, so every seam check above ranged over nothing.');
   } else {
     ok(`signing seams — ${seamsChecked} channel(s) carry one, ${seamPathsResolved} named script(s) resolve on disk, every null explained [lifted from store-pipeline 2026-08-20]`);
+  }
+
+  // ── limb (iv), added 2026-09-24 · THE READ-BACK RUNS WHERE THE ARTIFACT IS
+  //    MADE ──────────────────────────────────────────────────────────────────
+  // (O-STORE-BUILD-GUARD-GRADES-DECLARED-JOBS-ONLY, amended closes; ADR 064.)
+  // The seams above prove a `verify` script EXISTS. Nothing asked whether it
+  // RUNS where the package is made: build-platforms.yml read its .msix back,
+  // while submit-windows-store.yml packaged the same .msix in two jobs
+  // (`dry-run` and `submit`) and handed it to the Store tooling with no
+  // read-back in either, every guard green. A limb naming those two files would
+  // be a floor again, and the next workflow that runs the packager would sit
+  // outside it. So both halves come from the register:
+  // `artifactBuild.formats[f].packagerCommand` is the token that makes the
+  // artifact, and `signing.seam.verify` of a row declaring `f` is the script
+  // that reads it back. Every step, in every job of every workflow, whose shell
+  // segments run the packager is a PACKAGING STEP, and:
+  //   (a) the command is a non-empty string, and some row declaring the format
+  //       carries a non-null `seam.verify`: a packager nobody reads back FAILS;
+  //   (b) the NEXT step of the same job runs `node <verify>` in command
+  //       position, with no `continue-on-error`, no `if:`, and no `|| true`,
+  //       `|| :`, `|| exit 0` or `|| echo`: each one lets the job carry on over
+  //       a package the read-back refused;
+  //   (c) a declared packagerCommand that matches no step anywhere is COVERAGE
+  //       LOST (exit 2): a renamed command must not make this limb pass over
+  //       nothing;
+  //   (d) after the read-back, a step that can run past a failure (its `if:`
+  //       names `always()`, `failure()` or `cancelled()`) is an
+  //       `actions/upload-artifact` step, or its condition is exactly
+  //       `always() && steps.<id>.outcome == 'success'` for a LATER step <id>
+  //       that itself runs only on success: <id> cannot have succeeded unless
+  //       the read-back passed. Anything else runs past a failed read-back.
+  // A format whose `packagedBy` is prose and which carries no `packagerCommand`
+  // is PRINTED as outside this census on every run.
+  // ⚠️ WHAT IT CANNOT SEE: a packager run inside a composite action or a script
+  // (only workflow `run:` text is read), and a read-back step that reads a
+  // DIFFERENT path from the one the packager wrote.
+  {
+    const formats = register.artifactBuild?.formats;
+    const packagers = [];
+    const uncovered = [];
+    for (const [fmt, e] of Object.entries(formats && typeof formats === 'object' ? formats : {})) {
+      if (e === null || typeof e !== 'object') continue;
+      if (!Object.prototype.hasOwnProperty.call(e, 'packagerCommand')) {
+        if (typeof e.packagedBy === 'string' && e.packagedBy.trim() !== '') uncovered.push(fmt);
+        continue;
+      }
+      if (typeof e.packagerCommand !== 'string' || e.packagerCommand.trim() === '') {
+        problems.push(
+          `artifactBuild.formats["${fmt}"].packagerCommand is not a non-empty string. It is the token §10 limb (iv) finds packaging steps by; ` +
+            'an empty one matches nothing, and a census over nothing requires no read-back anywhere.',
+        );
+        continue;
+      }
+      const verifiers = [
+        ...new Set(
+          (register.channels ?? [])
+            .filter((c) => Array.isArray(c.artifactFormats) && c.artifactFormats.includes(fmt))
+            .map((c) => c.signing?.seam?.verify)
+            .filter((v) => typeof v === 'string' && v !== ''),
+        ),
+      ];
+      if (verifiers.length === 0) {
+        problems.push(
+          `artifactBuild.formats["${fmt}"] declares packagerCommand "${e.packagerCommand}" and no row declaring "${fmt}" carries a non-null ` +
+            '`signing.seam.verify`. A packager nobody reads back ships whatever it wrote: name the script that reads the artifact back ' +
+            'on the row, or remove the packagerCommand.',
+        );
+        continue;
+      }
+      packagers.push({ fmt, cmd: e.packagerCommand.trim(), verifiers });
+    }
+
+    // A step's own keys that workflowSteps does not return, read inside the
+    // step's [first, last] lines at the item's key indent, the way
+    // assert-release-json.mjs reads `uses:`.
+    const stepKey = (job, step, key) => {
+      const lines = job.lines.filter((l) => l.n >= step.first && l.n <= step.last);
+      if (lines.length === 0) return null;
+      const keyIndent = lines[0].text.match(/^ */)[0].length + 2;
+      for (const [i, l] of lines.entries()) {
+        const text = i === 0 ? l.text.replace(/^(\s*)-\s/, '$1  ') : l.text;
+        const m = text.match(/^( *)([A-Za-z_][A-Za-z0-9_-]*):\s*(.*?)\s*$/);
+        if (m && m[1].length === keyIndent && m[2] === key) return m[3].replace(/^(['"])(.*)\1$/, '$2');
+      }
+      return null;
+    };
+    const label = (job, step) => {
+      if (!step) return 'none (the job ends there)';
+      if (step.name) return `"${step.name}"`;
+      const uses = stepKey(job, step, 'uses');
+      if (uses) return `\`uses: ${uses}\``;
+      return step.run ? `\`${step.run.text.slice(0, 80)}\`` : `the step at line ${step.first}`;
+    };
+    const segmentsOf = (step) => (step?.run ? shellSegments(joinShellContinuations(step.run.text)) : []);
+    const CARRY_ON = /\|\|\s*(?:true|:|exit\s+0|echo)(?![\w-])/;
+    const RUNS_PAST_FAILURE = /\b(?:always|failure|cancelled)\(\)/;
+    const unwrap = (cond) => String(cond).trim().replace(/^\$\{\{\s*([\s\S]*?)\s*\}\}$/, '$1');
+    const GATED_ON_LATER_SUCCESS = /^always\(\)\s*&&\s*steps\.([A-Za-z_][A-Za-z0-9_-]*)\.(?:outcome|conclusion)\s*==\s*'success'$/;
+
+    let packagingSteps = 0;
+    const packagingJobs = new Set();
+    const packagedFormats = new Set();
+    let findings = 0;
+    const fail = (m) => { findings++; problems.push(m); };
+    const workflows = packagers.length === 0 ? [] : parseAllWorkflows(ROOT);
+    for (const wf of workflows) {
+      for (const [jobName, job] of wf.jobs) {
+        const steps = workflowSteps(job);
+        for (const [i, step] of steps.entries()) {
+          const segs = segmentsOf(step);
+          for (const p of packagers) {
+            const packages = new RegExp(`(?:^|\\s)${rx(p.cmd)}(?=\\s|$)`);
+            if (!segs.some((s) => packages.test(s))) continue;
+            packagingSteps++;
+            packagingJobs.add(`${wf.rel}#${jobName}`);
+            packagedFormats.add(p.fmt);
+            const at = `${wf.rel}:${step.run.n} (job "${jobName}")`;
+            const next = steps[i + 1] ?? null;
+            const reads = segmentsOf(next).some((seg) => p.verifiers.some((v) => commandAt(seg, `node\\s+(?:\\./)?${rx(v)}(?=\\s|$)`)));
+            if (!reads) {
+              fail(
+                `${at} packages ${p.fmt} with "${p.cmd}" and the next step is ${label(job, next)}, not ${p.verifiers.join(' or ')}. ` +
+                  'Every step after the packager uses a package nobody has read back, so the identity the register declares is ' +
+                  `never compared with the one inside the ${p.fmt}. Put a step running \`node ${p.verifiers[0]} <the package>\` straight after it.`,
+              );
+              continue;
+            }
+            const readAt = `${wf.rel}:${next.run.n} (job "${jobName}")`;
+            const coe = stepKey(job, next, 'continue-on-error');
+            if (coe !== null && coe !== 'false') {
+              fail(`${readAt} reads back ${p.fmt} and carries \`continue-on-error: ${coe}\`, so a refused package leaves the job green and every later step uses it. The read-back must be able to stop the job.`);
+            }
+            if (next.cond !== null) {
+              fail(`${readAt} reads back ${p.fmt} under \`if: ${next.cond}\`. Whenever that is false the read-back is skipped and every later step uses an unread package. The read-back runs unconditionally, straight after the packager.`);
+            }
+            if (CARRY_ON.test(next.run.text)) {
+              fail(`${readAt} reads back ${p.fmt} and its command carries \`${next.run.text.match(CARRY_ON)[0]}\`, which turns a refusal into success. The verifier's exit code must be the step's.`);
+            }
+            for (const later of steps.slice(i + 2)) {
+              if (later.cond === null || !RUNS_PAST_FAILURE.test(later.cond)) continue;
+              if (/^actions\/upload-artifact@/.test(stepKey(job, later, 'uses') ?? '')) continue;
+              const gate = unwrap(later.cond).match(GATED_ON_LATER_SUCCESS);
+              const gateStep = gate ? steps.find((s) => s.id === gate[1] && s.index > next.index && s.index < later.index) : null;
+              if (gateStep && (gateStep.cond === null || !RUNS_PAST_FAILURE.test(gateStep.cond))) continue;
+              fail(
+                `${wf.rel}:${later.first} (job "${jobName}") step ${label(job, later)} runs on \`if: ${later.cond}\` after the read-back at ${readAt}, ` +
+                  'and it is not an actions/upload-artifact step. It runs past a read-back that refused the package, so it uses the package anyway. ' +
+                  "Only an upload may run there (a refusal must leave the evidence behind), or a step gated `always() && steps.<id>.outcome == 'success'` on a later step that runs only on success.",
+              );
+            }
+          }
+        }
+      }
+    }
+    for (const p of packagers) {
+      if (packagedFormats.has(p.fmt)) continue;
+      coverageLost([
+        `artifactBuild.formats["${p.fmt}"] declares packagerCommand "${p.cmd}" and no step in the ${workflows.length} workflow(s) under ${WORKFLOW_DIR} runs it.`,
+        `§10 limb (iv) finds packaging steps by that token alone, so a renamed or mistyped command makes it require a read-back of ${p.fmt} nowhere.`,
+        'Either the packager moved out of the workflows, or the register names a command no step runs. Correct the register or the workflow.',
+      ]);
+    }
+    if (uncovered.length > 0) {
+      prints.push(
+        `read-back census does not cover ${fmtList(uncovered)} — each describes its packaging in prose (\`packagedBy\`) and declares no ` +
+          '`packagerCommand`, so no step that makes one is required to read it back [§10 limb (iv)].',
+      );
+    }
+    if (packagers.length > 0 && findings === 0) {
+      ok(
+        `read-back where the artifact is made — ${packagingSteps} packaging step(s) in ${packagingJobs.size} job(s), for ${fmtList(packagers.map((p) => p.fmt))}; ` +
+          `each is followed straight away by its row's \`seam.verify\` with no bypass, and only an upload can run past a refused read-back [§10 limb (iv), 2026-09-24]`,
+      );
+    }
   }
 }
 

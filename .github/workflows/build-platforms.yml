@@ -552,6 +552,12 @@ jobs:
       - name: Package MSIX (Microsoft Store)
         working-directory: apps/${{ matrix.app }}
         run: dart run msix:create --version=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}.0
+      # why: straight after msix:create, before the stamp or any upload uses the package — assert-channel-register §10 limb (iv).
+      - name: The MSIX carries the identity the register declares
+        shell: bash
+        run: >
+          node tooling/ci/assert-artifact-signed-msix.mjs
+          apps/${{ matrix.app }}/build/windows/msix/${{ matrix.app }}.msix
       # why: bash, because pwsh hands a glob to node unexpanded; the .msix is what `build_windows` compiled — docs/ci/build-platforms.md §channel-stamps.
       - name: Stamp the .msix with the channel its build compiled in
         shell: bash
@@ -560,6 +566,7 @@ jobs:
           apps/${{ matrix.app }}/build/windows/msix/*.msix
       # why: the artifact is preserved BEFORE the identity check that can reject it. A
       # refusal must leave the evidence behind, not delete it.
+      # ⏱ 2026-09-24: now AFTER the read-back, which must follow msix:create directly; `if: always()` still keeps the .msix it refuses.
       - name: Keep the .msix even if what follows refuses it
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -570,11 +577,6 @@ jobs:
             apps/${{ matrix.app }}/build/windows/msix/*.msix.channel.json
           retention-days: 14
           if-no-files-found: warn
-      - name: The MSIX carries the identity the register declares
-        shell: bash
-        run: >
-          node tooling/ci/assert-artifact-signed-msix.mjs
-          apps/${{ matrix.app }}/build/windows/msix/${{ matrix.app }}.msix
       - name: Prepare the Windows code-signing certificate, and read the signature back
         shell: bash
         env:
