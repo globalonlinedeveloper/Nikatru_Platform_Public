@@ -563,10 +563,82 @@ jobs:
           fi
           exit "$code"
 
+  failure-ledger:
+    name: Failed-run ledger (weekly, print-only)
+    # why: the digest's slot predicate, verbatim. The ledger reads eight days of
+    # failed runs, so one run a week is its whole cadence; every other slot skips.
+    if: github.event.schedule == '45 7 * * 1' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    # why: the ceiling. A cached walk of eight days is expected well under five
+    # minutes, and every request is bounded by bounded-retry.mjs inside it.
+    timeout-minutes: 20
+    # why: read-only, exactly three scopes, because this job's own token is the
+    # reader's credential (D1, 2026-09-25): contents for the checkout, actions
+    # for the run lists, job lists and job logs, and pull-requests for the
+    # reader's one pulls path (--no-prs skips it here). The reader writes
+    # nothing.
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      exit: ${{ steps.ledger.outputs.exit }}
+      unexplained: ${{ steps.ledger.outputs.unexplained }}
+    steps:
+      # why: fetch-depth 0 is load-bearing. The reader holds every merge commit its
+      # causes register names to origin/main, and a shallow clone refuses (exit 2).
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup-node
+
+      - name: The ISO week the log cache is keyed by
+        id: week
+        run: echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
+
+      # why: one cache per ISO week, so a re-dispatch inside the same week does not
+      # re-read logs it already holds. The reader never caches a newest-run answer.
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .cache/triage
+          key: failure-ledger-${{ steps.week.outputs.week }}
+
+      # why: GH_TOKEN is this job's own token (D1, 2026-09-25), read-only by the
+      # permissions above: no long-lived credential, no expiry, no owner step,
+      # and the ledger reads only this repository, which the job token can. That
+      # token's quota is shared with the other jobs here, so the reader guards
+      # it: it asks GET /rate_limit first and refuses (exit 2, "quota floor")
+      # unless the remaining quota minus its request ceiling is at least 400, and
+      # --max-requests (default 300) is a hard ceiling, exit 2 at it.
+      # why: --branch main reads main's runs only (push, schedule, workflow_dispatch); a PR's own reds belong to that PR and its land script (FIX-1 (C), 2026-09-25).
+      - name: Every failed run of the last eight days, and the recorded cause it maps to
+        id: ledger
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          since="$(date -u -d '8 days ago' +%Y-%m-%dT%H:%M:%SZ)"
+          set +e
+          node tooling/ops/triage-failed-runs.mjs --since "$since" --no-prs --branch main --cache-dir .cache/triage > "${RUNNER_TEMP}/ledger.txt" 2>&1
+          code=$?
+          set -e
+          cat "${RUNNER_TEMP}/ledger.txt"
+          unexplained="$(sed -n -E 's/^UNEXPLAINED: ([0-9]+)$/\1/p' "${RUNNER_TEMP}/ledger.txt" | tail -n 1)"
+          echo "exit=${code}" >> "$GITHUB_OUTPUT"
+          echo "unexplained=${unexplained:-none printed}" >> "$GITHUB_OUTPUT"
+          if [ "$code" -eq 2 ]; then
+            echo "::error title=The failed-run ledger is UNKNOWN - nothing was graded::The quota floor refused to start, the request ceiling was reached, a 403, a capped run list, an unreadable log, a malformed causes register, or a clone that cannot answer the merge-base check. The count above, if any, is over a SUBSET. The step log names which."
+          elif [ "$code" -eq 1 ]; then
+            echo "::error title=A failed run has no recorded cause, or a recorded fix is not on main::The step log lists each unexplained run with its signature, or each cause whose merge commit is not an ancestor of origin/main. Add the cause to tooling/ops/failed-run-causes.json with its fixedBy, or fix the run."
+          fi
+          exit "$code"
+
   alert:
     name: Open or refresh the ops-watch issue
     needs:
-      [heartbeats, status, supabase-drift, prod-provenance, pages-deployments, runner-budget, glitchtip]
+      [heartbeats, status, supabase-drift, prod-provenance, pages-deployments, runner-budget, glitchtip, failure-ledger]
     # why: schedule only, and the issue is REUSED rather than reopened -- later
     # failures arrive as comments and it is never closed automatically, so closing it
     # is the acknowledgement that a human looked.
@@ -637,7 +709,10 @@ jobs:
     name: Weekly digest
     # why: this pins the digest to ONE of the twelve cron slots. Without the schedule
     # equality every slot would send a weekly digest.
-    if: github.event.schedule == '45 7 * * 1' || github.event_name == 'workflow_dispatch'
+    # why: always(), because the digest reports the ledger's exit, and a red
+    # ledger is the week the digest is most worth reading.
+    needs: [failure-ledger]
+    if: always() && (github.event.schedule == '45 7 * * 1' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -653,6 +728,9 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          LEDGER_RESULT: ${{ needs.failure-ledger.result }}
+          LEDGER_EXIT: ${{ needs.failure-ledger.outputs.exit }}
+          LEDGER_UNEXPLAINED: ${{ needs.failure-ledger.outputs.unexplained }}
         run: |
           set +e
           {
@@ -697,6 +775,14 @@ jobs:
             fi
             echo "exit: $code"
             echo '```'
+            # A skipped or cancelled ledger job leaves no exit output: that prints
+            # as "did not run", never as a blank line that reads like a pass.
+            echo '## Failed-run ledger'
+            if [ -n "${LEDGER_EXIT}" ]; then
+              echo "exit ${LEDGER_EXIT} — UNEXPLAINED ${LEDGER_UNEXPLAINED:-none printed} (0 = every failure in the last 8 days maps to a recorded cause)"
+            else
+              echo "exit: did not run (the failure-ledger job was ${LEDGER_RESULT:-not reached})"
+            fi
           } > "${RUNNER_TEMP}/digest-body.md"
           set -e
 

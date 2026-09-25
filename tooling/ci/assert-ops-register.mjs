@@ -2903,6 +2903,71 @@ export function zeroEntryNeutral(job, run, apiJobs, wf) {
   return null;
 }
 
+// ⏱ 2026-09-25 · O-FAILURE-LEDGER-NEVER-RUNS. A WEEKLY JOB IN A TWELVE-SLOT
+// WORKFLOW. duty.failure-ledger's unit is ops-watch.yml's `failure-ledger` job,
+// which its own `if:` runs on the Mondays 07:45 UTC slot only. Every other run
+// reports it skipped-by-own-if (neutral), so the scan read one job list per run
+// back to the newest Monday — up to ~84 per guard run, and 44 requests against
+// the replay's ceiling of 30. The weekdays a job CAN run on are in its own `if:`,
+// so a `schedule` run created on any other UTC weekday is neutral without its job
+// list being read. The parse is strict: any clause that is not
+// `github.event.schedule == '<cron>'` or `github.event_name == 'workflow_dispatch'`,
+// or a cron whose day-of-month or month is not `*`, returns null and every run is
+// read as before. The one miss is loud, not silent: a Monday run the scheduler
+// created on a Tuesday is not read, so no success is found and the row ages red.
+
+/** PURE. The UTC weekdays (0 = Sunday) on which a job whose `if:` is `cond` can
+ *  run from a schedule, or null when the condition does not say so exactly. */
+export function scheduleWeekdays(cond) {
+  if (!nonEmpty(cond)) return null;
+  const body = String(cond).trim().replace(/^\$\{\{\s*([\s\S]*?)\s*\}\}$/, '$1');
+  if (/&&|!/.test(body)) return null;
+  const days = new Set();
+  let crons = 0;
+  for (const raw of body.split('||')) {
+    const clause = raw.trim().replace(/^\((.*)\)$/, '$1').trim();
+    if (/^github\.event_name == 'workflow_dispatch'$/.test(clause)) continue;
+    const m = clause.match(/^github\.event\.schedule == '([^']+)'$/);
+    if (!m) return null;
+    const f = m[1].trim().split(/\s+/);
+    if (f.length !== 5 || f[2] !== '*' || f[3] !== '*' || f[4] === '*') return null;
+    for (const part of f[4].split(',')) {
+      const r = part.match(/^([0-7])(?:-([0-7]))?$/);
+      if (!r) return null;
+      const lo = Number(r[1]);
+      const hi = r[2] === undefined ? lo : Number(r[2]);
+      if (hi < lo) return null;
+      for (let d = lo; d <= hi; d++) days.add(d % 7);
+    }
+    crons++;
+  }
+  return crons > 0 ? days : null;
+}
+
+/** PURE. The UTC weekdays on which ANY job of a `jobs` unit can run from a
+ *  schedule, or null when one of them is not restricted that way (or the unit is
+ *  not a `jobs` unit, or the workflow does not declare the job). */
+export function unitScheduleWeekdays(q, wf) {
+  const u = unitOf(q);
+  if (u.kind !== 'jobs' || u.jobs.length === 0) return null;
+  const all = new Set();
+  for (const id of u.jobs) {
+    const days = scheduleWeekdays(wf?.jobs?.get?.(id)?.jobIf?.cond);
+    if (!days) return null;
+    for (const d of days) all.add(d);
+  }
+  return all;
+}
+
+/** PURE. Is `run` a schedule run created on a UTC weekday outside `days`? Its
+ *  `created_at` is the slot it was created for and survives a re-run, which
+ *  moves `updated_at`; a run without one is read. */
+export function runOutsideScheduleDays(run, days) {
+  if (!days || run?.event !== 'schedule') return false;
+  const ms = Date.parse(run?.created_at ?? '');
+  return Number.isFinite(ms) && !days.has(new Date(ms).getUTCDay());
+}
+
 /** PURE. ONE run's verdict for ONE unit: `{ verdict: 'success' | 'failure' |
  *  'neutral' | 'lost', detail }`. `apiJobs` is that run's /jobs answer; `wf` the parsed
  *  workflow the unit's ids are declared in. Neutral is "this run says nothing
@@ -3299,8 +3364,13 @@ async function scanUnit(q, repo, wf, cache, filters, what) {
   const u = unitOf(q);
   if (u.kind === 'invalid' || u.kind === 'run') throw new Error(`${q?.workflow}: a unit scan was asked for a ${u.kind} unit`);
   const { runs, pageFull } = await unitRunsPage(q, repo, filters, what);
+  const days = unitScheduleWeekdays(q, wf);
   const entries = [];
   for (const run of runs) {
+    if (runOutsideScheduleDays(run, days)) {
+      entries.push({ run, c: { verdict: 'neutral', detail: `run ${run.id}: not read — a schedule run created on UTC weekday ${new Date(Date.parse(run.created_at)).getUTCDay()}, and the unit's own \`if:\` admits only weekday(s) ${[...days].sort().join(',')}` } });
+      continue;
+    }
     const c = unitConclusion(q, run, await jobsOfRun(repo, run.id, cache), wf);
     entries.push({ run, c });
     if (c.verdict === 'success') break;
