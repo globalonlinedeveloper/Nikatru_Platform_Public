@@ -163,3 +163,47 @@ describe('assert-workflow-readers', () => {
     assert.match(out, /COVERAGE LOST — read \d+ code file\(s\) and detected ZERO workflow readers/);
   });
 });
+
+// ── R5 · ⏱ 2026-09-24 · P-A2 · `resolves: "local-uses"` is checked against the code ──
+// O-GUARDS-DO-NOT-FOLLOW-LOCAL-USES. Each case below is written out by hand.
+describe('assert-workflow-readers — R5, a row that declares it resolves local `uses:`', () => {
+  test('passes: a workflow-scan row whose file calls parseResolvedWorkflows(', () => {
+    const reg = baseRegister();
+    reg.readers[0].resolves = 'local-uses';
+    const { code, out } = run(fixture({ files: { 'tooling/scripts/gen.mjs': `${SCAN_READER}const all = parseResolvedWorkflows(ROOT);\n` }, register: reg }));
+    assert.equal(code, 0, out);
+    assert.match(out, /R5 — 1 row\(s\) declare `resolves: "local-uses"`/);
+  });
+
+  test('passes: a row whose file lists .github/actions itself', () => {
+    const reg = baseRegister();
+    reg.readers[2].resolves = 'local-uses';
+    const { code, out } = run(fixture({ files: { 'tooling/ci/assert-something.mjs': `${CI_READER}const actions = join(ROOT, '.github', 'actions');\n` }, register: reg }));
+    assert.equal(code, 0, out);
+    assert.match(out, /R5 — 1 row\(s\) declare/);
+  });
+
+  test('R5: a row declared to resolve local uses whose file reads one workflow at a time fails', () => {
+    const reg = baseRegister();
+    reg.readers[0].resolves = 'local-uses';
+    const { code, out } = run(fixture({ register: reg }));
+    assert.equal(code, 1, out);
+    assert.match(out, /R5 tooling\/scripts\/gen\.mjs is declared `resolves: "local-uses"` and its code neither calls parseResolvedWorkflows\( nor lists \.github\/actions/);
+  });
+
+  test('R5: a parseResolvedWorkflows( call that survives only inside a comment does not count', () => {
+    const reg = baseRegister();
+    reg.readers[0].resolves = 'local-uses';
+    const { code, out } = run(fixture({ files: { 'tooling/scripts/gen.mjs': `${SCAN_READER}// const all = parseResolvedWorkflows(ROOT);\n` }, register: reg }));
+    assert.equal(code, 1, out);
+    assert.match(out, /R5 tooling\/scripts\/gen\.mjs is declared `resolves: "local-uses"`/);
+  });
+
+  test('R5: an unknown resolves value fails', () => {
+    const reg = baseRegister();
+    reg.readers[0].resolves = 'everything';
+    const { code, out } = run(fixture({ register: reg }));
+    assert.equal(code, 1, out);
+    assert.match(out, /R5 tooling\/scripts\/gen\.mjs — resolves "everything" is not one of local-uses/);
+  });
+});

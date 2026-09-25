@@ -109,7 +109,7 @@
   "guard-declaration.test.mjs": 8,
   "guard-sweep-invocations.test.mjs": 5,
   "guards-refuse-empty.test.mjs": 17,
-  "guards.test.mjs": 429,
+  "guards.test.mjs": 432,
   "heartbeats.test.mjs": 77,
   "heavy-lock.test.mjs": 36,
   "hostname-depth.test.mjs": 7,
@@ -269,7 +269,7 @@
   "windows-store-submission.test.mjs": 33,
   "worker-error-sink.test.mjs": 18,
   "worker-shared-modules.test.mjs": 13,
-  "workflow-readers.test.mjs": 14,
+  "workflow-readers.test.mjs": 19,
   "workflow-scan.test.mjs": 57,
   "workflow-timeouts.test.mjs": 21,
   "xcode-floor.test.mjs": 21

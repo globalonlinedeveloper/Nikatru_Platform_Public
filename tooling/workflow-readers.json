@@ -167,15 +167,18 @@
     },
     {
       "path": "tooling/ci/assert-publish-records.mjs",
-      "property": "workflow-scan"
+      "property": "workflow-scan",
+      "resolves": "local-uses"
     },
     {
       "path": "tooling/ci/assert-publish-steps-guarded.mjs",
-      "property": "workflow-scan"
+      "property": "workflow-scan",
+      "resolves": "local-uses"
     },
     {
       "path": "tooling/ci/assert-release-durable.mjs",
-      "property": "workflow-scan"
+      "property": "workflow-scan",
+      "resolves": "local-uses"
     },
     {
       "path": "tooling/ci/assert-release-json.mjs",
@@ -187,7 +190,8 @@
     },
     {
       "path": "tooling/ci/assert-release-provenance.mjs",
-      "property": "workflow-scan"
+      "property": "workflow-scan",
+      "resolves": "local-uses"
     },
     {
       "path": "tooling/ci/assert-retired-names.mjs",
@@ -221,7 +225,8 @@
       "path": "tooling/ci/assert-version-consistency.mjs",
       "property": "refuses-blind",
       "evidence": "remaining targets with each other and still prints",
-      "reads": "every version pin written in a workflow"
+      "reads": "every version pin written in a workflow",
+      "resolves": "local-uses"
     },
     {
       "path": "tooling/ci/assert-worker-error-sink.mjs",
@@ -231,7 +236,8 @@
     },
     {
       "path": "tooling/ci/assert-workflow-hardening.mjs",
-      "property": "workflow-scan"
+      "property": "workflow-scan",
+      "resolves": "local-uses"
     },
     {
       "path": "tooling/ci/assert-workflow-timeouts.mjs",
@@ -298,5 +304,12 @@
       "property": "workflow-scan",
       "reads": "every tooling/ci invocation and its arguments"
     }
+  ],
+  "_resolves": [
+    "⏱ 2026-09-24 — P-A2, O-GUARDS-DO-NOT-FOLLOW-LOCAL-USES. A row may carry resolves: local-uses. It declares a guard whose",
+    "subject a step moved behind uses: ./.github/actions/<x>, or into a local reusable workflow, would hide. R5 in",
+    "assert-workflow-readers.mjs checks that the file calls parseResolvedWorkflows( or lists .github/actions in executable",
+    "code. Which rows carry it is this declaration: the five guards P-A1 moved onto parseResolvedWorkflows, and",
+    "assert-workflow-hardening (limb 9, P-A2). Written after readers so no line cited in this file moves further."
   ]
 }

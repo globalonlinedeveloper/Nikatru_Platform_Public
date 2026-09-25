@@ -1900,10 +1900,13 @@ describe('assert-workflow-hardening', () => {
     const BAD = '          SNAPCRAFT_STORE_CREDENTIALS: ${ secrets.SNAPCRAFT_STORE_CREDENTIALS }\n';
 
     /** The real snap workflow beside two ordinary ones — three files, which is
-     *  what clears the scan's own no-manifest floor. */
+     *  what clears the scan's own no-manifest floor. ⏱ P-A2: with the real
+     *  composite it calls, because limb 9 refuses a `uses: ./` naming no file. */
+    const SETUP_FLUTTER_REL = '.github/actions/setup-flutter/action.yml';
     const withSnap = (name, snap) =>
       fixture(name, {
         [SNAP_REL]: snap,
+        [SETUP_FLUTTER_REL]: readFileSync(resolve(CI_DIR, '..', '..', SETUP_FLUTTER_REL), 'utf8'),
         '.github/workflows/b.yml': wf([`actions/x@${SHA}`]),
         '.github/workflows/c.yml': wf([`actions/y@${SHA}`]),
       });
@@ -2010,6 +2013,40 @@ describe('assert-workflow-hardening', () => {
       assert.equal(broken.code, 2, broken.out);
       assert.match(broken.out, /limb 6's own canaries failed \(\d+\)/);
       assert.match(broken.out, /E3 MIXED FILE/);
+    });
+  });
+
+  // ── limb 9 · ⏱ 2026-09-24 · P-A2 · OUR OWN COMPOSITE ACTIONS ARE READ ──────────
+  // A step moved into `.github/actions/<x>/action.yml` takes its `uses:` with it,
+  // and the workflow's `uses: ./…` line is not pinnable — so the action file is
+  // read by limb 1's matchers, and every `./` reference must name a file.
+  describe('limb 9 — local composite actions are read, and every `uses: ./` is resolved', () => {
+    const action = (ref) => `name: A\nruns:\n  using: composite\n  steps:\n    - uses: ${ref}\n`;
+    const withAction = (name, ref, callRef = './.github/actions/x') =>
+      fixture(name, {
+        '.github/workflows/a.yml': wf([`actions/act0@${SHA}`, `actions/act1@${SHA}`, `actions/act2@${SHA}`, callRef]),
+        '.github/workflows/b.yml': wf(Array.from({ length: 4 }, (_, i) => `actions/act${i}@${SHA}`)),
+        '.github/workflows/c.yml': wf(Array.from({ length: 4 }, (_, i) => `actions/act${i}@${SHA}`)),
+        '.github/actions/x/action.yml': action(ref),
+      });
+
+    test('a pinned local composite passes, and limb 9 prints what it read', () => {
+      const { code, out } = run('assert-workflow-hardening.mjs', { args: [withAction('wh-l9-ok', `actions/setup-node@${SHA}`)] });
+      assert.equal(code, 0, out);
+      assert.match(out, /limb 9 — 1 local composite action\(s\) read, 1 action\(s\) in them all SHA-pinned; 1 `uses: \.\/` reference\(s\), each resolved to a file this scan reads/);
+    });
+
+    test('FAILS on a movable reference inside a local composite action, naming the action file', () => {
+      const { code, out } = run('assert-workflow-hardening.mjs', { args: [withAction('wh-l9-movable','actions/setup-node@v4')] });
+      assert.equal(code, 1, out);
+      assert.match(out, /\.github\/actions\/x\/action\.yml:5 `actions\/setup-node@v4` is a movable reference/);
+    });
+
+    test('REFUSES (exit 2) on a `uses: ./` that names no file in the tree', () => {
+      const { code, out } = run('assert-workflow-hardening.mjs', { args: [withAction('wh-l9-missing', `actions/setup-node@${SHA}`, './.github/actions/gone')] });
+      assert.equal(code, 2, out);
+      assert.match(out, /REFUSING TO REPORT — 1 local `uses: \.\/` reference\(s\) limb 9 cannot follow/);
+      assert.match(out, /\.github\/workflows\/a\.yml:\d+ `uses: \.\/\.github\/actions\/gone` names no file in this tree \(missing\)/);
     });
   });
 });
