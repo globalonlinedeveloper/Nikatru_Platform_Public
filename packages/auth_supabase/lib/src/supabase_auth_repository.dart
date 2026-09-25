@@ -320,8 +320,67 @@ class SupabaseAuthRepository implements core.AuthRepository {
     }
   }
 
+  /// 🔴 THE SCOPE IS MAPPED, NEVER DROPPED. gotrue's own default is
+  /// [sb.SignOutScope.local], so a `signOut()` here that forgot to pass the
+  /// scope would compile, sign this device out, and leave every other device
+  /// signed in — a "Log out of all devices" that looks like it worked.
+  /// `packages/auth_supabase/test/supabase_auth_repository_test.dart` asserts
+  /// the scope that reaches the client for both values.
+  ///
+  /// 🔴 A GLOBAL SIGN-OUT FIRST MAKES SURE IT HOLDS A LIVE TOKEN, because gotrue
+  /// will not. gotrue 2.26.0 `_signOut` (`gotrue_client.dart:984-1008`) sends
+  /// whatever access token is IN MEMORY and IGNORES a 401 (and a 403 and a
+  /// 404). An app resumed after an hour in the background still holds an
+  /// expired token — the ticker is stopped while paused, see
+  /// [currentAccessToken] — so without this the server would 401 the revoke,
+  /// gotrue would swallow it, this device would sign out, and every other
+  /// device would stay signed in behind a control that reported success.
+  ///
+  /// So, for [core.SignOutScope.global] with a session in hand:
+  ///   · a token that refreshes (or never needed to) → the revoke is sent;
+  ///   · a refresh that could not REACH the server (gotrue kept the session;
+  ///     see [sessionIsGone]) → refuse BEFORE touching anything, so the user
+  ///     is still signed in here and can simply try again;
+  ///   · a refresh the server REFUSED → gotrue has already dropped the session
+  ///     and emitted `signedOut` (`gotrue_client.dart:1533-1541`), so this
+  ///     device is signed out; nothing proves the others are, so it throws.
+  /// Anything the global call itself throws — the revoke request, or clearing
+  /// the session stored on this device — is rethrown as [core.AuthFailure],
+  /// never as the SDK's own type, and says only that it did not finish.
+  ///
+  /// [core.SignOutScope.local] is exactly the call it always was.
   @override
-  Future<void> signOut() => _auth.signOut();
+  Future<void> signOut({
+    core.SignOutScope scope = core.SignOutScope.local,
+  }) async {
+    if (scope == core.SignOutScope.local) {
+      return _auth.signOut(scope: sdkSignOutScopeOf(scope));
+    }
+    if (_auth.currentSession != null && await currentAccessToken() == null) {
+      throw core.AuthFailure(
+        _auth.currentSession != null
+            ? 'Could not reach the server. You are still signed in on every '
+                'device.'
+            : 'Signed out on this device, but the other devices could not be '
+                'reached.',
+      );
+    }
+    try {
+      await _auth.signOut(scope: sdkSignOutScopeOf(scope));
+    } catch (_) {
+      throw core.AuthFailure('Signing out of every device did not finish.');
+    }
+  }
+
+  /// The SDK's name for [scope]. An exhaustive switch, so a third value added
+  /// to [core.SignOutScope] fails to compile here instead of falling through to
+  /// a default.
+  @visibleForTesting
+  static sb.SignOutScope sdkSignOutScopeOf(core.SignOutScope scope) =>
+      switch (scope) {
+        core.SignOutScope.local => sb.SignOutScope.local,
+        core.SignOutScope.global => sb.SignOutScope.global,
+      };
 
   /// 🔴 THE ADDRESS COMES FROM THE SESSION, NEVER FROM A CALLER. gotrue's
   /// `resend` takes an arbitrary email; passing one through from a screen would

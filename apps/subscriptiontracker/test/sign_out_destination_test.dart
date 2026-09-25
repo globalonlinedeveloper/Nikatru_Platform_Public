@@ -80,7 +80,9 @@ class _RaceyAuth extends core.AuthRepository {
   Stream<core.AuthUser?> authStateChanges() => _authChanges.stream;
 
   @override
-  Future<void> signOut() async {
+  Future<void> signOut({
+    core.SignOutScope scope = core.SignOutScope.local,
+  }) async {
     signOutCalls++;
     signedIn = false;
     // 1. subscribers are notified FIRST — the router can redirect from here

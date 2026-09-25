@@ -19,8 +19,8 @@
   ],
   "_rootsNote": "TWO roots since 2026-09-07 ([ADR 067] phase 2, unit app-shell). The Worker half of the template - 13 files, 917 lines every stamped backend app inherits - was outside this ledger entirely while `root` was one string, and `git ls-files -- <that one root>` could not see it to complain. assert-chassis-ledger.mjs is the authority on this list and cross-checks it; a row's `root` is optional and defaults to roots[0], which is why the 96 rows written against the single root are unchanged. ⏱ THE FIGURES IN THIS NOTE MOVED ON 2026-09-08 AND ARE CORRECTED RATHER THAN REWRITTEN: the Worker half is now 14 files and 1,021 lines, because the template gained src/lib/error-sink.ts — a stamped backend had NO crash sink at all and failed tooling/ci/assert-worker-error-sink.mjs on limbs 2, 3 and 5 at its first CI run. The guard PRINTS both figures per root on every run, which is the number to read; this sentence is prose and prose rots.",
   "totals": {
-    "files": 133,
-    "lines": 18598,
+    "files": 134,
+    "lines": 18787,
     "unclassified": 0,
     "unclassifiedLines": 0
   },
@@ -185,9 +185,9 @@
     },
     {
       "path": "lib/features/settings/settings_screen.dart",
-      "lines": 687,
+      "lines": 707,
       "verdict": "MOVES",
-      "why": "[ADR 067] decision 2 — MEASURED 2026-09-06: 968 -> 616 brick lines, 519 package lines, callSiteDelta -352. THE [ADR 066] PRESUMED 'NO' WAS WRONG, AND THE MEASUREMENT IS WHY. That presumption was taken before `ChassisLocalizations` existed: the page reads 46 chassis strings, and a package that could not see them would have taken all 46 as parameters — the 58-parameter tax the presumption was about. With the chassis catalogue in the package the constructor is 26 values and callbacks, and the page (the ListView, the width cap, every tile) is 352 lines lighter here. RETAINED, each for a named guard rather than for taste: `recordAnalyticsConsent(ref, granted: on)` and `ref.watch(analyticsConsentProvider)` (assert-consent-withdrawal-surface — DPDP §6(3)); `recordPromoObjection(` and `promoObjectedProvider` (GDPR Art 21); `NotificationCapabilities.forPlatform(` and `applyReminderChoice(` (stamp-properties :1123/:1131); `ref.watch(authUserProvider)` (:1081); `onSave: () => _saveProfile(` and `.updateProfile(displayName:` (:1077/:1078); `onConfirm: () => _deleteAccount(`, `await auth.deleteAccount()`, `await auth.signInWithEmail(` and `core.accountDeletionOutcomeOf(` (:1043-:1061); `_openUrl(AppConfig.<name>)` for all three published legal pages (:459); and `deleteAccountFailureMessage`, which `chassis_properties_test.dart:2100` calls by name. Every one of them needs a WidgetRef, url_launcher or nikatru_notifications — none of which `packages/chassis_screens` may declare (assert-package-boundaries limb C). Four screen-register rows were re-pointed at the adapter's wiring in the same commit and each says so in its own `why`.",
+      "why": "[ADR 067] decision 2 — MEASURED 2026-09-06: 968 -> 616 brick lines, 519 package lines, callSiteDelta -352. THE [ADR 066] PRESUMED 'NO' WAS WRONG, AND THE MEASUREMENT IS WHY. That presumption was taken before `ChassisLocalizations` existed: the page reads 46 chassis strings, and a package that could not see them would have taken all 46 as parameters — the 58-parameter tax the presumption was about. With the chassis catalogue in the package the constructor is 26 values and callbacks, and the page (the ListView, the width cap, every tile) is 352 lines lighter here. RETAINED, each for a named guard rather than for taste: `recordAnalyticsConsent(ref, granted: on)` and `ref.watch(analyticsConsentProvider)` (assert-consent-withdrawal-surface — DPDP §6(3)); `recordPromoObjection(` and `promoObjectedProvider` (GDPR Art 21); `NotificationCapabilities.forPlatform(` and `applyReminderChoice(` (stamp-properties :1123/:1131); `ref.watch(authUserProvider)` (:1081); `onSave: () => _saveProfile(` and `.updateProfile(displayName:` (:1077/:1078); `onConfirm: () => _deleteAccount(`, `await auth.deleteAccount()`, `await auth.signInWithEmail(` and `core.accountDeletionOutcomeOf(` (:1043-:1061); `_openUrl(AppConfig.<name>)` for all three published legal pages (:459); and `deleteAccountFailureMessage`, which `chassis_properties_test.dart:2100` calls by name. Every one of them needs a WidgetRef, url_launcher or nikatru_notifications — none of which `packages/chassis_screens` may declare (assert-package-boundaries limb C). Four screen-register rows were re-pointed at the adapter's wiring in the same commit and each says so in its own `why`. ⏱ RE-MEASURED 2026-09-24 (AUTH-LOGOUT-ALL): 687 -> 707. The tile is in the package; what grew here is the wiring a package cannot hold — `onSignOutEverywhere:` handing `_signOut` the global `core.SignOutScope`, and `_signOut` choosing the all-devices failure sentence. Proven end to end by test/sign_out_everywhere_test.dart.",
       "target": "packages/chassis_screens/lib/settings/settings_screen.dart",
       "callSiteDelta": -352
     },
@@ -229,9 +229,9 @@
     },
     {
       "path": "lib/state/providers.dart",
-      "lines": 2710,
+      "lines": 2721,
       "verdict": "STAYS",
-      "why": "MEASURED: undeletable (9 guards) and NOT reducible to declarations — a 98-line stub carrying all 51 provider names and all 14 class/typedef signatures still left 8 guards red. MIN_DOMAIN=59 is NOT the binding constraint (its regex does accept a one-line delegation, verified: 51 such lines count 51); the binding constraints are 37 literal anchors in assert-stamp-properties, the analytics envelope literal (assert-analytics-contract:207), the consent gate (assert-policy-claims POLICY_CONSTS), two sole non-test seam call sites (assert-seams-wired:588,622) and MIN_PROVIDERS=20 (assert-provider-graph-acyclic:419, the stub parsed 9). [ADR 072] D1, 2026-09-22 (O-CHASSIS-PHASE-2B): STAYS as the composition root — the brick's Riverpod graph is what every adapter reads and every package view is handed values from; nothing here moves, callSiteDelta 0."
+      "why": "MEASURED: undeletable (9 guards) and NOT reducible to declarations — a 98-line stub carrying all 51 provider names and all 14 class/typedef signatures still left 8 guards red. MIN_DOMAIN=59 is NOT the binding constraint (its regex does accept a one-line delegation, verified: 51 such lines count 51); the binding constraints are 37 literal anchors in assert-stamp-properties, the analytics envelope literal (assert-analytics-contract:207), the consent gate (assert-policy-claims POLICY_CONSTS), two sole non-test seam call sites (assert-seams-wired:588,622) and MIN_PROVIDERS=20 (assert-provider-graph-acyclic:419, the stub parsed 9). [ADR 072] D1, 2026-09-22 (O-CHASSIS-PHASE-2B): STAYS as the composition root — the brick's Riverpod graph is what every adapter reads and every package view is handed values from; nothing here moves, callSiteDelta 0. ⏱ RE-MEASURED 2026-09-24 (AUTH-LOGOUT-ALL): 2710 -> 2721 — `signOutAndForgetUser` takes a `scope`, because the `session_end` trigger permits `.signOut(` in this file only."
     },
     {
       "path": "pubspec.yaml",
@@ -646,6 +646,12 @@
       "lines": 276,
       "verdict": "STAYS",
       "why": "MEASURED: undeletable — assert-responsive-coverage:600 parses this corpus and floors it (:492)."
+    },
+    {
+      "path": "test/sign_out_everywhere_test.dart",
+      "lines": 158,
+      "verdict": "STAYS",
+      "why": "ADDED 2026-09-24 (AUTH-LOGOUT-ALL). Per-app by construction: the package test proves the SettingsView tile fires `onSignOutEverywhere` only through its confirm dialog (parent ruling L2 — Cancel fires nothing; re-measured 142 -> 158 for the confirm tap and the Cancel case), and only a stamped app can prove its own adapter hands that callback a sign-out carrying the GLOBAL scope through `signOutAndForgetUser`. A dropped scope is gotrue's local default — this device signs out and every other device stays signed in — and nothing else in the tree can see it."
     },
     {
       "path": "test/smoke_test.dart",

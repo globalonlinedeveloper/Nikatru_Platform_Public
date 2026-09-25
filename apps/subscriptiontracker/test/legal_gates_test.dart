@@ -1089,7 +1089,9 @@ class _SwitchableAuth extends core.AuthRepository {
   /// DRIVEN rather than simulated. A test that wrote the re-ask marker itself
   /// would be asserting its own arm.
   @override
-  Future<void> signOut() async {
+  Future<void> signOut({
+    core.SignOutScope scope = core.SignOutScope.local,
+  }) async {
     userId = null;
     changes.add(null);
   }

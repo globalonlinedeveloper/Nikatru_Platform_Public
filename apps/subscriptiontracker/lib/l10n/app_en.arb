@@ -602,6 +602,26 @@
   "@logOut": {
     "description": "Subly's sign-out label. NOT the chassis `signOut` (\"Sign out\") — test/sign_out_destination_test.dart:145 taps find.text('Log out')."
   },
+  "logOutAllDevices": "Log out of all devices",
+  "@logOutAllDevices": {
+    "description": "Settings control that ends every session of this account on every device, this one included. The owner's wording (2026-09-24): a user stays signed in until they reset their password or log out from all devices."
+  },
+  "logOutAllDevicesFailed": "Logging out of all devices did not finish. Please try again.",
+  "@logOutAllDevicesFailed": {
+    "description": "Shown when logging out of all devices throws. Says DID NOT FINISH, like signOutFailed, and names no cause: the step that failed may be reaching the server, clearing the session stored on this device, or forgetting this device's per-user state, and trying again is the honest instruction for all three. It never claims the other devices were logged out, because nothing proves they were."
+  },
+  "logOutAllDevicesConfirmTitle": "Log out of all devices?",
+  "@logOutAllDevicesConfirmTitle": {
+    "description": "Title of the dialog shown before logging out of all devices. The control is never fired by one tap: it logs THIS device out too, so it asks first (parent ruling L2, 2026-09-24)."
+  },
+  "logOutAllDevicesConfirmBody": "Every device signed in to this account, including this one, will need to sign in again.",
+  "@logOutAllDevicesConfirmBody": {
+    "description": "The one sentence in the log-out-everywhere confirm dialog. Says INCLUDING THIS ONE because a user reading 'all devices' as 'my other devices' would not expect this device to be logged out too."
+  },
+  "logOutAllDevicesConfirmAction": "Log out everywhere",
+  "@logOutAllDevicesConfirmAction": {
+    "description": "The confirm button of the log-out-everywhere dialog; the other button is cancel. Subly's 'Log out' wording, like logOut and logOutAllDevices."
+  },
   "deletingEllipsis": "Deleting…",
   "@deletingEllipsis": {
     "description": "The delete button's label while the request is in flight. Horizontal ellipsis U+2026, not three dots."

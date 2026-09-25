@@ -1004,6 +1004,26 @@ class SettingsScreen extends ConsumerWidget {
               onPressed: () => _signOut(context, ref, l10n),
             ),
 
+            // ── LOG OUT OF ALL DEVICES ───────────────────────────────────────
+            //
+            // The owner's rule (2026-09-24): a user stays signed in until they
+            // reset their password or log out from all devices. This is the
+            // second half. The SAME awaited handler as "Log out", with the
+            // global scope, so it runs the per-user forget on this device too
+            // and navigates nowhere — the router owns that, exactly as above.
+            //
+            // Gated on a session like delete, and for the same reason: with no
+            // session there is nothing to revoke anywhere.
+            if (ref.watch(authRepositoryProvider).currentUser !=
+                null) ...<Widget>[
+              const SizedBox(height: 10),
+              SoftButton(
+                label: l10n.logOutAllDevices,
+                color: AppColors.danger,
+                onPressed: () => _confirmLogOutAllDevices(context, ref, l10n),
+              ),
+            ],
+
             // ── DELETE ACCOUNT ───────────────────────────────────────────────
             //
             // 🔴 [ADR 027] BOTH STORES REQUIRE AN IN-APP DELETION PATH WHEREVER
@@ -1152,17 +1172,65 @@ class SettingsScreen extends ConsumerWidget {
   /// ⚠️ STILL NO NAVIGATION. The router owns where a signed-out user lands, and
   /// the note above this button records what happens when a screen tries to own
   /// it too — `test/sign_out_destination_test.dart` is the standing proof.
+  ///
+  /// [scope] is global for "Log out of all devices" only. Its failure gets its
+  /// own sentence, and it names no cause: the step that failed may be the
+  /// server revoke, this device's stored session or the per-user forget, and
+  /// "this device" is not the whole of what did not finish.
   Future<void> _signOut(
+    BuildContext context,
+    WidgetRef ref,
+    AppLocalizations l10n, {
+    core.SignOutScope scope = core.SignOutScope.local,
+  }) async {
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    try {
+      await signOutAndForgetUser(ref, scope: scope);
+    } catch (_) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            scope == core.SignOutScope.global
+                ? l10n.logOutAllDevicesFailed
+                : l10n.signOutFailed,
+          ),
+        ),
+      );
+    }
+  }
+
+  /// 🔴 ONE TAP MUST NOT LOG THE ACCOUNT OUT EVERYWHERE, the device in the
+  /// user's hand included — so "Log out of all devices" asks first
+  /// (AUTH-LOGOUT-ALL, parent ruling L2, 2026-09-24). The global [_signOut]
+  /// runs exactly once on "Log out everywhere" and never on Cancel, a barrier
+  /// tap or a back gesture (all three answer `false` or `null`).
+  /// `test/sign_out_forgets_user_test.dart` taps both buttons.
+  Future<void> _confirmLogOutAllDevices(
     BuildContext context,
     WidgetRef ref,
     AppLocalizations l10n,
   ) async {
-    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
-    try {
-      await signOutAndForgetUser(ref);
-    } catch (_) {
-      messenger.showSnackBar(SnackBar(content: Text(l10n.signOutFailed)));
-    }
+    final bool confirmed =
+        await showDialog<bool>(
+          context: context,
+          builder: (BuildContext c) => AlertDialog(
+            title: Text(l10n.logOutAllDevicesConfirmTitle),
+            content: Text(l10n.logOutAllDevicesConfirmBody),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.pop(c, false),
+                child: Text(l10n.cancel),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(c, true),
+                child: Text(l10n.logOutAllDevicesConfirmAction),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!confirmed || !context.mounted) return;
+    await _signOut(context, ref, l10n, scope: core.SignOutScope.global);
   }
 
   Future<void> _contactSupport() async {

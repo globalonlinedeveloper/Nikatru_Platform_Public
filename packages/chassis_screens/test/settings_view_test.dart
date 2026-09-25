@@ -39,6 +39,7 @@ void main() {
     VoidCallback? onEditProfile,
     VoidCallback? onContactSupport,
     VoidCallback? onSignOut,
+    VoidCallback? onSignOutEverywhere,
     VoidCallback? onUpgrade,
     VoidCallback? onManagePlan,
     VoidCallback? onOpenPrivacyPolicy,
@@ -69,6 +70,7 @@ void main() {
     supportEmail: 'support@example.com',
     onContactSupport: onContactSupport ?? () {},
     onSignOut: onSignOut ?? () {},
+    onSignOutEverywhere: onSignOutEverywhere ?? () {},
     onDeleteAccount: onDeleteAccount ?? () {},
     applicationName: 'Probe',
     applicationVersion: '1.2.3',
@@ -165,6 +167,7 @@ void main() {
     ) async {
       await pumpChassis(tester, kDesktop, view(hasSession: false));
       expect(find.byKey(SettingsView.deleteAccountTile), findsNothing);
+      expect(find.byKey(SettingsView.signOutEverywhereTile), findsNothing);
       expect(find.byKey(SettingsView.upgradeTile), findsNothing);
       expect(find.byKey(SettingsView.managePlanTile), findsNothing);
       expect(find.byType(CircleAvatar), findsNothing);
@@ -272,6 +275,12 @@ void main() {
       // offscreen children, so a `findsNothing` further down the page is
       // indistinguishable from a row that is not in the tree at all.
       await tester.scrollUntilVisible(find.byKey(key), 200);
+      // …and then brought FULLY on screen. `scrollUntilVisible` stops once the
+      // row is built, which can leave its centre on the viewport's edge — where
+      // the tap lands outside the render tree and the callback never fires.
+      // Measured: the all-devices row stopped at y == 900 on a 900-high window.
+      await tester.ensureVisible(find.byKey(key));
+      await tester.pump();
       await tester.tap(find.byKey(key));
       expect(fired, isTrue);
     }
@@ -282,6 +291,66 @@ void main() {
         SettingsView.signOutTile,
         (VoidCallback fire) => view(onSignOut: fire),
       );
+    });
+
+    // AUTH-LOGOUT-ALL. Its own callback, so a tile wired to `onSignOut` — the
+    // local sign-out — fails here: the count below is handed ONLY to
+    // `onSignOutEverywhere`. NOT `tapReaches`: parent ruling L2 (2026-09-24)
+    // puts a confirm between the tile and the callback, so the tile tap alone
+    // must reach NOTHING, and a tile wired straight to the callback — the
+    // confirm bypassed — fails the first `expect` below.
+    testWidgets('sign out of all devices: the tile asks; confirm fires once', (
+      WidgetTester tester,
+    ) async {
+      int fired = 0;
+      await pumpChassis(
+        tester,
+        kDesktop,
+        view(onSignOutEverywhere: () => fired++),
+      );
+      await tester.scrollUntilVisible(
+        find.byKey(SettingsView.signOutEverywhereTile),
+        200,
+      );
+      await tester.ensureVisible(find.byKey(SettingsView.signOutEverywhereTile));
+      await tester.pump();
+      await tester.tap(find.byKey(SettingsView.signOutEverywhereTile));
+      await tester.pumpAndSettle();
+
+      expect(fired, 0, reason: 'one tap must not sign out everywhere');
+      expect(find.byType(AlertDialog), findsOneWidget);
+
+      await tester.tap(find.byKey(SettingsView.signOutEverywhereConfirm));
+      await tester.pumpAndSettle();
+
+      expect(fired, 1);
+      expect(find.byType(AlertDialog), findsNothing);
+    });
+
+    testWidgets('sign out of all devices: Cancel fires nothing', (
+      WidgetTester tester,
+    ) async {
+      int fired = 0;
+      await pumpChassis(
+        tester,
+        kDesktop,
+        view(onSignOutEverywhere: () => fired++),
+      );
+      await tester.scrollUntilVisible(
+        find.byKey(SettingsView.signOutEverywhereTile),
+        200,
+      );
+      await tester.ensureVisible(find.byKey(SettingsView.signOutEverywhereTile));
+      await tester.pump();
+      await tester.tap(find.byKey(SettingsView.signOutEverywhereTile));
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsOneWidget);
+
+      await tester.tap(find.byKey(SettingsView.signOutEverywhereCancel));
+      await tester.pumpAndSettle();
+
+      expect(fired, 0, reason: 'Cancel must reach no sign-out');
+      expect(find.byType(AlertDialog), findsNothing);
     });
 
     testWidgets('edit profile', (WidgetTester tester) async {
