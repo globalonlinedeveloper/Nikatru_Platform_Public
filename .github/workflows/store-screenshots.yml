@@ -46,18 +46,17 @@ jobs:
         with:
           persist-credentials: false
 
-      # why: FAILS CLOSED on a missing secret rather than skipping. Without all four the
+      # why: FAILS CLOSED on a missing secret rather than skipping. Without all three the
       # app builds in DEMO posture -- every screen carries a "Demo data" banner and the
       # board is twelve third-party trademarks, which is a store filing nobody can ship.
       - name: Preflight — every secret the live capture needs must be present
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          API_BASE_URL: ${{ secrets.API_BASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           missing=""
-          for k in SUPABASE_URL SUPABASE_ANON_KEY API_BASE_URL SUPABASE_SERVICE_ROLE_KEY; do
+          for k in SUPABASE_URL SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY; do
             eval "v=\$$k"
             [ -z "$v" ] && missing="$missing $k"
           done
@@ -65,7 +64,7 @@ jobs:
             echo "::error title=Capture cannot run::Missing secret(s):$missing. Without them the app builds in DEMO posture, whose every screen carries a 'Demo data' banner and whose board is twelve third-party trademarks. This is a failed run, not a skipped one."
             exit 1
           fi
-          echo "All four secrets present — the build will be LIVE."
+          echo "All three secrets present — the build will be LIVE."
 
       # why: a VARIABLE, not a secret — a Turnstile site key is public, it ships
       # inside the web bundle. Checked in its own step because `vars` and
@@ -83,6 +82,19 @@ jobs:
           echo "TURNSTILE_SITE_KEY is set — the gated screens will render a real widget, as they do in production."
 
       - uses: ./.github/actions/setup-node
+
+      # why: a capture against an undeployed sandbox otherwise dies twenty minutes
+      # later as a network error. The hosts are computed from the wrangler configs.
+      - name: Preflight — both sandbox Workers answer healthy
+        run: |
+          for w in platform subscriptiontracker-api; do
+            host="$(node tooling/store/capture-backend.mjs --print-host "$w")"
+            body="$(curl --max-time 10 -fsS "$host/v1/health")" || body=""
+            case "$body" in
+              *'"ok":true'*) echo "$w sandbox is healthy at $host" ;;
+              *) echo "::error title=Capture cannot run::the sandbox is not deployed: dispatch deploy-sandbox.yml. $w at $host/v1/health answered: ${body:-nothing}"; exit 1 ;;
+            esac
+          done
 
       - uses: ./.github/actions/setup-flutter
 
@@ -104,7 +116,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          # why: no API_BASE_URL. The runner computes the sandbox hosts and refuses a supplied one.
           # why: same variable deploy-web.yml ships and e2e.yml drives with. The
           # runner refuses a live capture without it; see its `pass()` block.
           TURNSTILE_SITE_KEY: ${{ vars.TURNSTILE_SITE_KEY }}
@@ -270,14 +282,14 @@ jobs:
           E2E_USER_ID: ${{ steps.user.outputs.user_id }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          SUBSCRIPTIONTRACKER_D1_DATABASE_ID: 0a36d6a0-c909-40aa-853e-970de3482321
+          SUBSCRIPTIONTRACKER_D1_DATABASE_ID: 4e7c7730-3dc7-4004-9895-403b17702b91
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          # why: this capture's consent rows in platform_db. purge.mjs deletes by the
+          # why: this capture's consent rows in platform_db_sandbox. purge.mjs deletes by the
           # install ids in the runner's ledger and by its cap-* APP_VERSION stamp.
           E2E_APP_ID: subscriptiontracker
           E2E_CONSENT_LEDGER: ${{ runner.temp }}/store-capture-consent.json
-          PLATFORM_D1_DATABASE_ID: 9d1c5c63-97fe-4f82-bc7d-f3fd22e9b351
+          PLATFORM_D1_DATABASE_ID: ead92001-03e1-4f71-9b92-c64963a24925
         run: node tooling/e2e/purge.mjs
 
   # ── THE SNAP STORE SET ──────────────────────────────────────────────────────
@@ -300,7 +312,7 @@ jobs:
         with:
           persist-credentials: false
 
-      # why: the same four, failing closed for the same reason as the Play job —
+      # why: the same three, failing closed for the same reason as the Play job —
       # without them the app builds in DEMO posture and the frames are a "Demo
       # data" banner over twelve third-party trademarks. TURNSTILE_SITE_KEY is
       # deliberately NOT here: TurnstileGate renders in the WEB build, and this
@@ -310,11 +322,10 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          API_BASE_URL: ${{ secrets.API_BASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           missing=""
-          for k in SUPABASE_URL SUPABASE_ANON_KEY API_BASE_URL SUPABASE_SERVICE_ROLE_KEY; do
+          for k in SUPABASE_URL SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY; do
             eval "v=\$$k"
             [ -z "$v" ] && missing="$missing $k"
           done
@@ -322,9 +333,22 @@ jobs:
             echo "::error title=Capture cannot run::Missing secret(s):$missing. Without them the app builds in DEMO posture, whose every screen carries a 'Demo data' banner and whose board is twelve third-party trademarks. This is a failed run, not a skipped one."
             exit 1
           fi
-          echo "All four secrets present — the build will be LIVE."
+          echo "All three secrets present — the build will be LIVE."
 
       - uses: ./.github/actions/setup-node
+
+      # why: a capture against an undeployed sandbox otherwise dies twenty minutes
+      # later as a network error. The hosts are computed from the wrangler configs.
+      - name: Preflight — both sandbox Workers answer healthy
+        run: |
+          for w in platform subscriptiontracker-api; do
+            host="$(node tooling/store/capture-backend.mjs --print-host "$w")"
+            body="$(curl --max-time 10 -fsS "$host/v1/health")" || body=""
+            case "$body" in
+              *'"ok":true'*) echo "$w sandbox is healthy at $host" ;;
+              *) echo "::error title=Capture cannot run::the sandbox is not deployed: dispatch deploy-sandbox.yml. $w at $host/v1/health answered: ${body:-nothing}"; exit 1 ;;
+            esac
+          done
 
       - uses: ./.github/actions/setup-flutter
 
@@ -391,7 +415,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          # why: no API_BASE_URL. The runner computes the sandbox hosts and refuses a supplied one.
           E2E_EMAIL: ${{ steps.user.outputs.email }}
           E2E_PASSWORD: ${{ steps.user.outputs.password }}
           # why: the runner records each drive's consent answer and install id here;
@@ -510,14 +534,14 @@ jobs:
           E2E_USER_ID: ${{ steps.user.outputs.user_id }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          SUBSCRIPTIONTRACKER_D1_DATABASE_ID: 0a36d6a0-c909-40aa-853e-970de3482321
+          SUBSCRIPTIONTRACKER_D1_DATABASE_ID: 4e7c7730-3dc7-4004-9895-403b17702b91
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          # why: this capture's consent rows in platform_db. purge.mjs deletes by the
+          # why: this capture's consent rows in platform_db_sandbox. purge.mjs deletes by the
           # install ids in the runner's ledger and by its cap-* APP_VERSION stamp.
           E2E_APP_ID: subscriptiontracker
           E2E_CONSENT_LEDGER: ${{ runner.temp }}/store-capture-consent.json
-          PLATFORM_D1_DATABASE_ID: 9d1c5c63-97fe-4f82-bc7d-f3fd22e9b351
+          PLATFORM_D1_DATABASE_ID: ead92001-03e1-4f71-9b92-c64963a24925
         run: node tooling/e2e/purge.mjs
 
   # 🔴 ONE JOB FOR BOTH NATIVE DESKTOP STORES, not two copies of the Linux job.
@@ -553,7 +577,7 @@ jobs:
         with:
           persist-credentials: false
 
-      # why: the same four secrets and the same closed failure as the other two
+      # why: the same three secrets and the same closed failure as the other two
       # jobs — without them the app builds in DEMO posture and every frame is a
       # "Demo data" banner over twelve third-party trademarks. TURNSTILE_SITE_KEY
       # is deliberately absent for the same reason the Linux job gives: the gate
@@ -562,11 +586,10 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          API_BASE_URL: ${{ secrets.API_BASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           missing=""
-          for k in SUPABASE_URL SUPABASE_ANON_KEY API_BASE_URL SUPABASE_SERVICE_ROLE_KEY; do
+          for k in SUPABASE_URL SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY; do
             eval "v=\$$k"
             [ -z "$v" ] && missing="$missing $k"
           done
@@ -574,9 +597,22 @@ jobs:
             echo "::error title=Capture cannot run::Missing secret(s):$missing. Without them the app builds in DEMO posture, whose every screen carries a 'Demo data' banner and whose board is twelve third-party trademarks. This is a failed run, not a skipped one."
             exit 1
           fi
-          echo "All four secrets present — the build will be LIVE."
+          echo "All three secrets present — the build will be LIVE."
 
       - uses: ./.github/actions/setup-node
+
+      # why: a capture against an undeployed sandbox otherwise dies twenty minutes
+      # later as a network error. The hosts are computed from the wrangler configs.
+      - name: Preflight — both sandbox Workers answer healthy
+        run: |
+          for w in platform subscriptiontracker-api; do
+            host="$(node tooling/store/capture-backend.mjs --print-host "$w")"
+            body="$(curl --max-time 10 -fsS "$host/v1/health")" || body=""
+            case "$body" in
+              *'"ok":true'*) echo "$w sandbox is healthy at $host" ;;
+              *) echo "::error title=Capture cannot run::the sandbox is not deployed: dispatch deploy-sandbox.yml. $w at $host/v1/health answered: ${body:-nothing}"; exit 1 ;;
+            esac
+          done
 
       - uses: ./.github/actions/setup-flutter
 
@@ -653,7 +689,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          # why: no API_BASE_URL. The runner computes the sandbox hosts and refuses a supplied one.
           E2E_EMAIL: ${{ steps.user.outputs.email }}
           E2E_PASSWORD: ${{ steps.user.outputs.password }}
           # why: the runner records each drive's consent answer and install id here;
@@ -762,14 +798,14 @@ jobs:
           E2E_USER_ID: ${{ steps.user.outputs.user_id }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          SUBSCRIPTIONTRACKER_D1_DATABASE_ID: 0a36d6a0-c909-40aa-853e-970de3482321
+          SUBSCRIPTIONTRACKER_D1_DATABASE_ID: 4e7c7730-3dc7-4004-9895-403b17702b91
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          # why: this capture's consent rows in platform_db. purge.mjs deletes by the
+          # why: this capture's consent rows in platform_db_sandbox. purge.mjs deletes by the
           # install ids in the runner's ledger and by its cap-* APP_VERSION stamp.
           E2E_APP_ID: subscriptiontracker
           E2E_CONSENT_LEDGER: ${{ runner.temp }}/store-capture-consent.json
-          PLATFORM_D1_DATABASE_ID: 9d1c5c63-97fe-4f82-bc7d-f3fd22e9b351
+          PLATFORM_D1_DATABASE_ID: ead92001-03e1-4f71-9b92-c64963a24925
         run: node tooling/e2e/purge.mjs
 
   # 🔴 ONE JOB, TWO SETS, ONE PULL REQUEST. iOS is the first channel in this
@@ -791,7 +827,7 @@ jobs:
         with:
           persist-credentials: false
 
-      # why: the same four, failing closed for the same reason as every other
+      # why: the same three, failing closed for the same reason as every other
       # capture job — without them the app builds in DEMO posture and the frames
       # are a "Demo data" banner over twelve third-party trademarks.
       # TURNSTILE_SITE_KEY is deliberately absent: the gate renders in the WEB
@@ -800,11 +836,10 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          API_BASE_URL: ${{ secrets.API_BASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           missing=""
-          for k in SUPABASE_URL SUPABASE_ANON_KEY API_BASE_URL SUPABASE_SERVICE_ROLE_KEY; do
+          for k in SUPABASE_URL SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY; do
             eval "v=\$$k"
             [ -z "$v" ] && missing="$missing $k"
           done
@@ -812,9 +847,22 @@ jobs:
             echo "::error title=Capture cannot run::Missing secret(s):$missing. Without them the app builds in DEMO posture, whose every screen carries a 'Demo data' banner and whose board is twelve third-party trademarks. This is a failed run, not a skipped one."
             exit 1
           fi
-          echo "All four secrets present — the build will be LIVE."
+          echo "All three secrets present — the build will be LIVE."
 
       - uses: ./.github/actions/setup-node
+
+      # why: a capture against an undeployed sandbox otherwise dies twenty minutes
+      # later as a network error. The hosts are computed from the wrangler configs.
+      - name: Preflight — both sandbox Workers answer healthy
+        run: |
+          for w in platform subscriptiontracker-api; do
+            host="$(node tooling/store/capture-backend.mjs --print-host "$w")"
+            body="$(curl --max-time 10 -fsS "$host/v1/health")" || body=""
+            case "$body" in
+              *'"ok":true'*) echo "$w sandbox is healthy at $host" ;;
+              *) echo "::error title=Capture cannot run::the sandbox is not deployed: dispatch deploy-sandbox.yml. $w at $host/v1/health answered: ${body:-nothing}"; exit 1 ;;
+            esac
+          done
 
       - uses: ./.github/actions/setup-flutter
 
@@ -900,7 +948,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          # why: no API_BASE_URL. The runner computes the sandbox hosts and refuses a supplied one.
           E2E_EMAIL: ${{ steps.user.outputs.email }}
           E2E_PASSWORD: ${{ steps.user.outputs.password }}
           # why: the runner records each drive's consent answer and install id here;
@@ -1016,12 +1064,12 @@ jobs:
           E2E_USER_ID: ${{ steps.user.outputs.user_id }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          SUBSCRIPTIONTRACKER_D1_DATABASE_ID: 0a36d6a0-c909-40aa-853e-970de3482321
+          SUBSCRIPTIONTRACKER_D1_DATABASE_ID: 4e7c7730-3dc7-4004-9895-403b17702b91
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          # why: this capture's consent rows in platform_db. purge.mjs deletes by the
+          # why: this capture's consent rows in platform_db_sandbox. purge.mjs deletes by the
           # install ids in the runner's ledger and by its cap-* APP_VERSION stamp.
           E2E_APP_ID: subscriptiontracker
           E2E_CONSENT_LEDGER: ${{ runner.temp }}/store-capture-consent.json
-          PLATFORM_D1_DATABASE_ID: 9d1c5c63-97fe-4f82-bc7d-f3fd22e9b351
+          PLATFORM_D1_DATABASE_ID: ead92001-03e1-4f71-9b92-c64963a24925
         run: node tooling/e2e/purge.mjs

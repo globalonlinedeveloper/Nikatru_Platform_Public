@@ -60,6 +60,11 @@
 // Deployment through that client before a deploy job publishes (row
 // O-DEPLOY-IS-NOT-ONE-GATED-LANE, limb 3).
 //
+// ⏱ APPENDED 2026-09-25 — THIRTY-TWO entries now, counted the same way (31
+// before this one). The new one is the shared-module shape: wrangler-environments.mjs,
+// extracted from assert-money-config.mjs limb 1c when assert-release-provenance.mjs
+// limb 2b needed the same sandbox-environment predicate.
+//
 // It also self-checks, because a guard-coverage guard that stopped finding
 // guards would report perfect coverage over an empty set.
 //
@@ -446,6 +451,10 @@ const NOT_A_SCANNER = new Map([
   [
     'run-page-anchor.mjs',
     'is not a guard: it is the ONE answer to "is this page of GitHub Actions run history CURRENT, or a stale replica\'s page?" — the self-run floor (GITHUB_RUN_ID of the running workflow on the running ref), the branch-head anchor (main HEAD from the commits endpoint, for a workflow `pushTriggersBranch` reads as run on every push), the cross-read by creation date, and `judgeRunPage`, which returns `stale page — …` when one is violated. Pure functions: pages, env and a commit body in, a verdict out; no network, no filesystem, no exit. Extracted 2026-09-18 (coverage unit stale-run-page) when GitHub served the SAME stale page to both widths of reconcileRunReads three times in one day — ops-watch run 35369631763, PR #806\'s CI and the platform Worker watchdog — so four node readers share it rather than each growing a copy: assert-ops-register.mjs (every shared branch page, through anchoredBranchPage) and, since 2026-09-24 (trap ci-48), the three freshness readers through anchored-run-read.mjs — assert-platform-proof-fresh.mjs, assert-e2e-proof-fresh.mjs and extensions/scripts/assert-e2e-proof-fresh.mjs. Each turns the refusal into its OWN unreadable / COVERAGE LOST, so "did my read reach a current history" belongs to them. Its failing cases are in test/run-page-anchor.test.mjs: the four measured pages, each beside a GREEN CONTROL, reached THROUGH their callers, plus a wiring case per caller that reds when a reader stops calling it (mutation-proved 2026-09-18 and 2026-09-24). It sits flat in tooling/ci because the stray-.mjs check above (correctly) treats a subdirectory as a guard escaping the scan.',
+  ],
+  [
+    'wrangler-environments.mjs',
+    'is not a guard: it is the ONE reading of "this wrangler environment is a SANDBOX deploy target that cannot touch production" — `routeHosts`, `d1Of` and `sandboxEnvironmentFindings` (routes that inherit or share a top-level host, any cron, `workers_dev` not true, a missing or unnamed PLATFORM_DB, a D1 binding to a top-level database). Pure functions over an already-parsed config: no filesystem, no tree, no exit. Extracted 2026-09-25 from assert-money-config.mjs limb 1c, its five messages moved byte for byte, when assert-release-provenance.mjs limb 2b had to excuse a proven-sandbox `--env` deploy from record-deployment.mjs on the SAME proof — two copies of that predicate would disagree in the one direction that reports clean, a sandbox the provenance guard accepts and the money guard would have refused. Both importers carry their own COVERAGE LOST over what they read. MOVED CODE SILENCES GUARDS, so the extraction was PROVED rather than assumed: the 58 cases of test/money-config.test.mjs, limb 1c\'s reds among them, ran green against the moved code. Its own failing cases are in test/wrangler-environments.test.mjs, one per finding plus a green control. It sits flat in tooling/ci because the stray-.mjs check above (correctly) treats a subdirectory as a guard escaping the scan.',
   ],
 ]);
 

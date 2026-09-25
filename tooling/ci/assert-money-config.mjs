@@ -63,6 +63,8 @@
 //   1c a SANDBOX environment binds no top-level route or custom domain, runs no
 //      cron, declares `workers_dev: true`, and binds a PLATFORM_DB that is not
 //      the production database.
+//   1d ⏱ 2026-09-25 — a SANDBOX environment declares every top-level rate
+//      limiter by name, each on a namespace_id no top-level limiter uses.
 //   3b no destination secret is a key of any `env.<name>.vars`.
 //   3c every destination secret is declared in tooling/channel-register.json
 //      `ciSecretRegister.nonSigning`.
@@ -127,6 +129,7 @@ import { join, resolve, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
 import { stripSourceComments } from './text-reductions.mjs';
+import { isObject, sandboxEnvironmentFindings } from './wrangler-environments.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 
@@ -429,7 +432,11 @@ if (declaringEnvironment.filter((d) => d.deployed).length === 0) {
 // environments: one named `sandbox`, or one that declares the sandbox world.
 // With no `env` anywhere both pass VACUOUSLY; the run prints that rather than
 // claiming environment coverage.
-const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+// ⏱ 2026-09-25 — 1c's conditions live in wrangler-environments.mjs
+// `sandboxEnvironmentFindings()`, moved there unchanged, because
+// assert-release-provenance.mjs limb 2b excuses a `--env <name>` deploy from
+// record-deployment.mjs on the same proof, and two readings of "sandbox" could
+// disagree about which deploys reach the production ledger.
 const parsedOnce = new Map();
 /** Each config parsed ONCE for the environment limbs (limbs 1 and 3 keep their own reads). */
 function parsedConfig(c) {
@@ -445,19 +452,35 @@ function environmentsOf(c, cfg) {
   }
   return Object.entries(cfg.env);
 }
-/** The HOSTNAMES a config block binds, from `route` and `routes` (a string, or an
- *  object with a `pattern` — `custom_domain` entries included). */
-function routeHosts(block) {
+
+/** LIMB 1d · ⏱ 2026-09-25 — rate limiters are not inherited into an
+ *  environment, and every limiter binding fails OPEN when absent, so a sandbox
+ *  missing one runs with no breaker and no error anyone sees. A sandbox limiter
+ *  on a top-level namespace_id is counted against production's budget. */
+function limiterParityFindings(where, cfg, e) {
+  const top = Array.isArray(cfg?.ratelimits) ? cfg.ratelimits : [];
+  const mine = Array.isArray(e?.ratelimits) ? e.ratelimits : [];
+  const topNamespaces = new Set(top.map((r) => String(r?.namespace_id)));
   const out = [];
-  const add = (r) => {
-    const p = typeof r === 'string' ? r : isObject(r) && typeof r.pattern === 'string' ? r.pattern : null;
-    if (p !== null) out.push(p.split('/')[0].toLowerCase());
-  };
-  if (block?.route !== undefined) add(block.route);
-  if (Array.isArray(block?.routes)) block.routes.forEach(add);
+  for (const r of top) {
+    if (!mine.some((m) => m?.name === r?.name)) {
+      out.push(
+        `${where} declares no rate limiter \`${r?.name}\`, which the top level binds. Wrangler does not inherit ` +
+          '`ratelimits` into an environment and an absent limiter fails open, so this sandbox would run that route ' +
+          'with no breaker at all. Declare it here, on a namespace_id of its own. [5]M-12',
+      );
+    }
+  }
+  for (const m of mine) {
+    if (topNamespaces.has(String(m?.namespace_id))) {
+      out.push(
+        `${where} rate limiter \`${m?.name}\` uses namespace_id ${m?.namespace_id}, which a top-level limiter uses: ` +
+          "a public sandbox URL would spend the budget production's callers are counted against. [5]M-12",
+      );
+    }
+  }
   return out;
 }
-const d1Of = (block) => (Array.isArray(block?.d1_databases) ? block.d1_databases.filter(isObject) : []);
 
 const doorRelSet = new Set(doorConfigs.map((c) => c.rel));
 let environmentCount = 0;
@@ -499,63 +522,9 @@ for (const c of configs) {
     // LIMB 1c
     if (name !== 'sandbox' && world !== 'sandbox') continue;
     sandboxEnvironmentCount++;
-    const topHosts = new Set(routeHosts(cfg));
-    if (e?.route === undefined && e?.routes === undefined) {
-      if (topHosts.size > 0) {
-        fail(
-          `${where} declares no \`routes\`, so it INHERITS the top level's (${[...topHosts].join(', ')}). A sandbox ` +
-            'deploy would then answer on the production hostnames, and a sandbox payment would be served as a real ' +
-            'one. Declare `routes: []` (or its own hostnames). [5]M-12',
-        );
-      }
-    } else {
-      for (const h of routeHosts(e)) {
-        if (topHosts.has(h)) {
-          fail(`${where} binds \`${h}\`, a hostname the top level (the production deploy) already binds. A sandbox rail must never answer on a production host. [5]M-12`);
-        }
-      }
-    }
-    const crons = e?.triggers?.crons;
-    if (!Array.isArray(crons) || crons.length !== 0) {
-      fail(
-        `${where} ${Array.isArray(crons) ? `runs ${crons.length} cron(s)` : 'declares no `triggers.crons`, so it INHERITS the top level\'s'}. ` +
-          'A sandbox environment must declare `triggers: { "crons": [] }`: the production crons include the destructive ' +
-          'nightly retention sweep, and a second copy of it has no business running from a sandbox. [5]M-12',
-      );
-    }
-    // `workers_dev` is inherited too (above), and with `routes: []` the
-    // workers.dev host is the ONLY one a sandbox answers on — the
-    // `<name>-sandbox.<subdomain>.workers.dev` URL a smoke or a store capture
-    // addresses. Absent, the environment serves whatever the top level decides;
-    // false, it serves nothing. Either way the sandbox URL is a guess. (RZPA-7
-    // item 4, accepted for PR A as vacuous and added with the first environment.)
-    if (e?.workers_dev !== true) {
-      fail(
-        `${where} ${e?.workers_dev === undefined ? 'declares no `workers_dev`, so it INHERITS the top level\'s' : `sets workers_dev = ${JSON.stringify(e.workers_dev)}`}. ` +
-          'A sandbox environment must declare `"workers_dev": true`: with no route of its own, its workers.dev host is ' +
-          'the one address it has, and an inherited value is a deploy target nobody decided. [5]M-12',
-      );
-    }
-    const topD1 = d1Of(cfg);
-    const topIds = new Set(topD1.map((d) => d.database_id).filter((id) => typeof id === 'string'));
-    const topPlatformDb = topD1.find((d) => d.binding === 'PLATFORM_DB');
-    const envPlatformDb = d1Of(e).find((d) => d.binding === 'PLATFORM_DB');
-    if (topPlatformDb !== undefined) {
-      if (envPlatformDb === undefined) {
-        fail(`${where} binds no PLATFORM_DB. Wrangler does not inherit \`d1_databases\`, so the sandbox money door would have no store to record a notification in. [5]M-12`);
-      } else if (typeof envPlatformDb.database_id !== 'string' || envPlatformDb.database_id.trim() === '') {
-        fail(`${where} binds PLATFORM_DB with no \`database_id\`. Wrangler 4 can PROVISION a database for a binding that names none, on deploy — a resource nobody decided to create. Name the sandbox database. [5]M-12`);
-      }
-    }
-    for (const d of d1Of(e)) {
-      if (typeof d.database_id === 'string' && topIds.has(d.database_id)) {
-        fail(
-          `${where} binds ${d.binding} to a PRODUCTION database (${d.database_id}, bound at the top level). Sandbox ` +
-            'money written there is indistinguishable from real money to every reader of that table, so a sandbox ' +
-            'environment binds no production database. [5]M-12',
-        );
-      }
-    }
+    for (const m of sandboxEnvironmentFindings(where, cfg, e)) fail(m);
+    // LIMB 1d
+    for (const m of limiterParityFindings(where, cfg, e)) fail(m);
   }
 }
 

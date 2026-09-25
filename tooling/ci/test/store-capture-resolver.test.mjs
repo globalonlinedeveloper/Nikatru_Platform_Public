@@ -129,18 +129,24 @@ describe('captureStamp derives the stamp and refuses everything else', () => {
   });
 });
 
-// ── the monitor ACCEPTS a witnessed stamp ───────────────────────────────────
-describe('store-capture ACCEPTS a stamp a real capture run witnesses', () => {
-  test('a cap-57-40c0787 consent row with a matching capture run is green, and printed', () => {
+// ── the monitor NAMES a witnessed stamp, and since 2026-09-25 REFUSES it ─────
+// ⏱ 2026-09-25 (capsand-b) — these two cases asserted exit 0 until today. The
+// capture now reaches the sandbox Workers (docs/ci/store-screenshots.md, section
+// "Backend"), so a production consent row a capture run witnesses means a
+// sandbox lane wrote production: a FINDING. The resolver still has to WITNESS the
+// value for the finding to name its run, which is what the second case keeps.
+describe('store-capture: a witnessed cap-* consent row in production is a FINDING', () => {
+  test('🔴 PP1: a cap-57-40c0787 consent row with a matching capture run exits 1, "a sandbox lane wrote production"', () => {
     const r = run(consent('cap-57-40c0787', 2));
-    assert.equal(r.status, 0, r.stdout + r.stderr);
-    assert.match(r.stdout, /second-resolver acceptance/);
-    assert.match(r.stdout, /accepted by the narrower `store-capture`: written by store-screenshots\.yml run 57/);
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /consent_artifacts: 2 row\(s\) — a sandbox lane wrote production: cap-57-40c0787 \(run 57\)/);
+    assert.doesNotMatch(r.stdout, /second-resolver acceptance/);
   });
 
-  test('an IN-PROGRESS capture run witnesses its own rows (the ops-watch-during-capture case)', () => {
+  test('🔴 an IN-PROGRESS capture run\'s row is a finding too, and the witness still names the run', () => {
     const r = run(consent('cap-57-40c0787'));
-    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /a sandbox lane wrote production: cap-57-40c0787 \(run 57\)/);
     assert.match(r.stdout, /store-capture-witnessed stamp accepted: cap-57-40c0787 ← store-screenshots\.yml run 57 \(in_progress\/-\)/);
   });
 });
@@ -247,11 +253,15 @@ describe('the register is what makes store-capture apply', () => {
     return root;
   }
 
-  test('🔴 drop store-capture from consent_artifacts.alsoResolves and the same cap row goes red (control: the unmutated copy is green)', () => {
+  // ⏱ 2026-09-25 — the control was "green" until the witnessed row became a
+  // finding (PP1 above). It is now "red for the sandbox reason", and the mutation
+  // must turn it red for the SHAPE reason instead.
+  test('🔴 drop store-capture from consent_artifacts.alsoResolves and the same cap row goes red on its shape (control: the unmutated copy names the sandbox)', () => {
     const root = realRoot();
     try {
       const control = run(consent('cap-57-40c0787'), { root });
-      assert.equal(control.status, 0, `the unmutated copy must be green, or the mutation below proves nothing\n${control.stdout}${control.stderr}`);
+      assert.equal(control.status, 1, `the unmutated copy must report the sandbox finding, or the mutation below proves nothing\n${control.stdout}${control.stderr}`);
+      assert.match(control.stderr, /a sandbox lane wrote production: cap-57-40c0787/);
       const regPath = join(root, 'tooling', 'prod-provenance.json');
       const reg = JSON.parse(readFileSync(regPath, 'utf8'));
       reg.tables.consent_artifacts.alsoResolves = reg.tables.consent_artifacts.alsoResolves.filter((id) => id !== 'store-capture');
@@ -259,6 +269,7 @@ describe('the register is what makes store-capture apply', () => {
       const r = run(consent('cap-57-40c0787'), { root });
       assert.equal(r.status, 1, r.stdout + r.stderr);
       assert.match(r.stderr, /not the shape a shipped build produces/);
+      assert.doesNotMatch(r.stderr, /a sandbox lane wrote production/);
       assert.doesNotMatch(r.stdout, /store-capture-witnessed/);
     } finally {
       rmSync(root, { recursive: true, force: true });
