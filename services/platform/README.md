@@ -100,7 +100,10 @@ because a caller can get them wrong in ways the others do not offer.)
   in-app AI content report, O-PLAY-AI-CONTENT-REPORTING) and
   `0014_consent_artifacts_app_id_rename` (that one-time consent-row rename — the
   single exemption `tooling/ci/assert-analytics-contract.mjs` grants the
-  append-only rule, pinned to that file and its one statement). Additive-only, enforced
+  append-only rule, pinned to that file and its one statement), then
+  `0016_provider_tokens` (the Apple token table widened to one row per subject and
+  provider, the Apple rows copied in; `apple_provider_tokens` stays until a later
+  change drops it). Additive-only, enforced
   by `tooling/ci/check-migrations.mjs`. (This list had stopped at 0008 until
   2026-09-18; nothing guards it, so the directory is the authority.)
 - **`subscriptiontracker_db`** (binding `SUBSCRIPTIONTRACKER_DB`) — bound read/write for the renewals fan-out
@@ -155,7 +158,7 @@ so the line retires itself instead of becoming the next thing to remember.
 
 Apple requires an app offering Sign in with Apple to REVOKE the user's tokens when
 their account is deleted. `DELETE /v1/account` does that through
-`POST https://appleid.apple.com/auth/revoke` (`src/lib/apple-revoke.ts`), which
+`POST https://appleid.apple.com/auth/revoke` (`src/lib/provider-revoke.ts`), which
 takes a client secret signed with a Sign in with Apple key. **No agent creates or
 downloads that key.** Until all four secrets are set, a deletion for an account
 that has a stored Apple token answers `202 erasure_pending`, keeps the identity,
@@ -186,3 +189,9 @@ and is retried nightly — it is never reported as finished.
 The client secret is minted per call and lives five minutes; Apple's own cap is six
 months, so nothing long-lived is stored anywhere. Rotating the key is one
 `wrangler secret put` of the new `.p8` plus its Key ID.
+
+**Google needs no secret.** The same deletion revokes a stored Google token through
+`POST https://oauth2.googleapis.com/revoke` (same file), which takes the token and
+no client credential, so there is no `GOOGLE_*` value to set. A token Google already
+considers revoked or expired (`400 invalid_token`) settles; an unreachable Google
+keeps the deletion pending under `platform:google-revoke`, exactly as Apple does.

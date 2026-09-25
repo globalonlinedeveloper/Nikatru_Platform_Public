@@ -79,17 +79,43 @@ Future<void> requestAccountDeletion(
 ///
 /// Throws [ApiException] on a refusal, which the caller treats as "not captured"
 /// — the next sign-in offers another token.
+///
+/// ⏱ 2026-09-24 · KEPT, UNCHANGED ON THE WIRE, for callers that only ever held an
+/// Apple token (the app template). The server keeps this path as an alias that
+/// writes `provider = 'apple'`; [storeProviderRefreshToken] is the general form.
 Future<void> storeAppleRefreshToken(
   RestClient client,
   String refreshToken, {
   required String appId,
   String path = '/account/apple-token',
 }) async {
-  await client.put(
-    path,
-    // `appId` is the row's PROVENANCE MARKER, not a permission: the shared
-    // Worker's production monitor attributes each stored token to an app the
-    // factory ships, the way it does for a pending erasure.
-    body: <String, Object?>{'refreshToken': refreshToken, 'appId': appId},
-  );
+  // `appId` is the row's PROVENANCE MARKER, not a permission: the shared
+  // Worker's production monitor attributes each stored token to an app the
+  // factory ships, the way it does for a pending erasure.
+  final Map<String, Object?> appleTokenBody = <String, Object?>{
+    'refreshToken': refreshToken,
+    'appId': appId,
+  };
+  await client.put(path, body: appleTokenBody);
+}
+
+/// ⏱ 2026-09-24 · O-GOOGLE-SIGN-IN-NOT-BUILT — `PUT {baseUrl}/account/provider-token`.
+///
+/// [storeAppleRefreshToken] for any identity provider the server revokes at on
+/// deletion: `provider` is `apple` or `google`, and the server refuses (400) a
+/// provider this account has not linked. Same rules as above: the token goes in
+/// the body, nothing here logs it, and a refusal throws [ApiException].
+Future<void> storeProviderRefreshToken(
+  RestClient client, {
+  required String provider,
+  required String refreshToken,
+  required String appId,
+  String path = '/account/provider-token',
+}) async {
+  final Map<String, Object?> providerTokenBody = <String, Object?>{
+    'provider': provider,
+    'refreshToken': refreshToken,
+    'appId': appId,
+  };
+  await client.put(path, body: providerTokenBody);
 }

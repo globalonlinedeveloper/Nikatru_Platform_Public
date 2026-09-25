@@ -447,6 +447,8 @@ void main() {
     // RED CONTROL (recorded 2026-09-22): moving `lastSent = token;` back above
     // `await send(token);` in apple_token_keeper.dart turns the first two red —
     // the retry re-reads the session, finds the token already "sent", and stops.
+    // ⏱ 2026-09-24: that line is now `await send(provider, token);` in
+    // provider_token_keeper.dart, which keepAppleRefreshToken wraps.
     group('delivery is retried, bounded, and reported', () {
       const List<Duration> quick = <Duration>[Duration.zero, Duration.zero];
       const AuthUser u = AuthUser(id: 'u1', email: 'a@b.test');

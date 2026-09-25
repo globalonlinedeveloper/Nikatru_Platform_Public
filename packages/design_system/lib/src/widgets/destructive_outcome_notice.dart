@@ -11,7 +11,7 @@ import 'destructive_confirm_dialog.dart';
 /// NEVER SEEN. Deleting an account signs the user out; the auth stream fires and
 /// the router replaces the page stack with the sign-in screen. A `SnackBar` —
 /// or a dialog, which is a PAGELESS ROUTE on the page being removed — goes with
-/// it. `apps/subscriptiontracker/lib/state/providers/auth.dart:568-574` records the
+/// it. `lastAccountDeletionOutcomeProvider` in apps/subscriptiontracker records the
 /// measurement: the first version of that flow rendered the result in the
 /// dialog, and the router-driven test found zero widgets with the result key
 /// once the redirect settled, so *502 — your data is gone and your login still

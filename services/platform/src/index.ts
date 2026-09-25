@@ -31,7 +31,7 @@ import {
 import { reportWorkerError } from './lib/error-sink';
 import { corsMiddleware } from './middleware/cors';
 import { platformAuth } from './middleware/auth';
-import appleToken from './routes/apple-token';
+import providerToken from './routes/provider-token';
 import account from './routes/account';
 import config from './routes/config';
 import entitlements from './routes/entitlements';
@@ -193,9 +193,11 @@ app.use('/v1/account', platformAuth);
 // `app.use('/v1/account', …)` on that path ALONE, so `PUT /v1/account/apple-token`
 // would be reached with no `userId` set. That route writes a credential keyed by
 // the caller's subject; unauthenticated it would key it by nothing.
+// ⏱ 2026-09-24 · `PUT /v1/account/provider-token` (routes/provider-token.ts, which
+// also serves the apple-token alias) sits under the same line for the same reason.
 app.use('/v1/account/*', platformAuth);
 app.route('/v1', account);
-app.route('/v1', appleToken);
+app.route('/v1', providerToken);
 
 // AUTHENTICATED: the shared entitlement read ([5]M-4). The other half of what
 // [4]B-3's middleware lift was for — until this route existed, the only working

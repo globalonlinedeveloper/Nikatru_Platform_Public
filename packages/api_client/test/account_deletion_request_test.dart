@@ -177,4 +177,40 @@ void main() {
       throwsA(isA<core.AuthFailure>()),
     );
   });
+
+  // ⏱ 2026-09-24 · O-GOOGLE-SIGN-IN-NOT-BUILT. The two token PUTs, by what they
+  // put on the wire: the path, and the exact keys the server reads.
+  test('storeProviderRefreshToken PUTs /account/provider-token naming it',
+      () async {
+    final _FakeAdapter adapter = _FakeAdapter(status: 200);
+    await storeProviderRefreshToken(
+      _client(adapter),
+      provider: 'google',
+      refreshToken: 'google-refresh-1',
+      appId: 'subscriptiontracker',
+    );
+    expect(adapter.lastRequest!.method, 'PUT');
+    expect(adapter.lastRequest!.path, '/account/provider-token');
+    expect(adapter.lastRequest!.data, <String, Object?>{
+      'provider': 'google',
+      'refreshToken': 'google-refresh-1',
+      'appId': 'subscriptiontracker',
+    });
+  });
+
+  test('storeAppleRefreshToken is unchanged: /account/apple-token, two keys',
+      () async {
+    final _FakeAdapter adapter = _FakeAdapter(status: 200);
+    await storeAppleRefreshToken(
+      _client(adapter),
+      'apple-refresh-1',
+      appId: 'subscriptiontracker',
+    );
+    expect(adapter.lastRequest!.method, 'PUT');
+    expect(adapter.lastRequest!.path, '/account/apple-token');
+    expect(adapter.lastRequest!.data, <String, Object?>{
+      'refreshToken': 'apple-refresh-1',
+      'appId': 'subscriptiontracker',
+    });
+  });
 }

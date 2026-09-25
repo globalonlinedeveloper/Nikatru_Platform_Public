@@ -336,19 +336,50 @@ bool shouldHoldForPasswordReset({
 ///
 /// Held open for the app's whole life by a `ref.watch` in the root widget: a
 /// provider nobody reads is a listener that never subscribes.
+///
+/// ⏱ 2026-09-24 · O-GOOGLE-SIGN-IN-NOT-BUILT — EVERY PROVIDER'S TOKEN, NOT ONLY
+/// APPLE'S. The keeper is `core.keepProviderRefreshToken`, which names the
+/// provider that issued the token; [sendProviderRefreshToken] decides where it
+/// goes. The provider keeps its Apple-era name because the `apple-token-kept`
+/// stamp property and the root widget read it by that name.
 final Provider<void> appleTokenKeeperProvider = Provider<void>((ref) {
-  final StreamSubscription<core.AuthUser?> sub = core.keepAppleRefreshToken(
+  final StreamSubscription<core.AuthUser?> sub = core.keepProviderRefreshToken(
     auth: ref.watch(authRepositoryProvider),
-    send: (String token) => storeAppleRefreshToken(
+    send: (String provider, String token) => sendProviderRefreshToken(
       ref.read(platformRestClientProvider),
+      provider,
       token,
-      appId: AppConfig.appId,
     ),
     onError: reportAppleTokenNotKept,
     retryDelays: ref.watch(appleTokenRetryDelaysProvider),
   );
   ref.onDispose(sub.cancel);
 });
+
+/// ⏱ 2026-09-24 · O-GOOGLE-SIGN-IN-NOT-BUILT — WHERE EACH PROVIDER'S TOKEN GOES.
+///
+/// Apple's goes exactly where it always went — `PUT /account/apple-token`, body
+/// `{refreshToken, appId}` — so the Apple path is unchanged on the wire. Every
+/// other provider's goes to `PUT /account/provider-token`, which names it; the
+/// shared Worker refuses a provider this account has not linked.
+///
+/// NAMED rather than an inline closure for the reason [reportAppleTokenNotKept]
+/// is: a closure written into the argument list is a decision no test can reach.
+Future<void> sendProviderRefreshToken(
+  RestClient client,
+  String provider,
+  String token,
+) {
+  if (provider == 'apple') {
+    return storeAppleRefreshToken(client, token, appId: AppConfig.appId);
+  }
+  return storeProviderRefreshToken(
+    client,
+    provider: provider,
+    refreshToken: token,
+    appId: AppConfig.appId,
+  );
+}
 
 /// ⏱ 2026-09-22 · O-APPLE-KEEPER-NO-ONERROR — THE ROUND'S BOUND, AS A PROVIDER,
 /// BECAUSE A PROOF THAT GIVING UP IS REPORTED HAS TO REACH THE GIVING UP.

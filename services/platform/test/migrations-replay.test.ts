@@ -194,8 +194,9 @@ describe('platform_db migrations re-apply cleanly', () => {
       .rows("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
       .map((r) => String(r.name));
     expect(tables).toEqual([
-      // 0012 — the Apple refresh token a deletion revokes with
-      // (O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE).
+      // 0012 — the Apple refresh token a deletion revoked with
+      // (O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE). Since 0016 it is only the source
+      // of the copy into `provider_tokens`; no code reads or writes it.
       'apple_provider_tokens',
       // 0009 — the bundle purchase ([ADR 057]). Four tables, and the list is
       // spelled out here rather than counted so a migration silently dropped
@@ -217,6 +218,9 @@ describe('platform_db migrations re-apply cleanly', () => {
       'pending_erasures',
       'provider_accounts',
       'provider_notifications',
+      // ⏱ 2026-09-24 · migration 0016 — one token row per (subject, provider)
+      // (O-GOOGLE-SIGN-IN-NOT-BUILT). 0012's table above stays until a later drop.
+      'provider_tokens',
       'revocation_reasons',
       'rollup_state',
       // ⏱ 2026-09-15 · [ADR 087] migration 0011.

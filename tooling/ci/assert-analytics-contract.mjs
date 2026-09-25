@@ -386,14 +386,32 @@ const WIRE_CONTRACTS = [
     // on its way to the deletion that revokes it.
     id: 'account-apple-token',
     kind: 'request',
-    server: 'services/platform/src/routes/apple-token.ts',
+    // ⏱ 2026-09-24 · the route moved to provider-token.ts, which serves this path
+    // as the Apple alias of PUT /v1/account/provider-token (the next pin).
+    server: 'services/platform/src/routes/provider-token.ts',
     client: {
       file: 'packages/api_client/lib/src/account_deletion_request.dart',
-      marker: 'body:',
+      // A named literal rather than `body:`: the file now builds TWO request
+      // bodies, and the first `body:` is no longer necessarily this one.
+      marker: 'appleTokenBody =',
     },
     keys: ['refreshToken', 'appId'],
     responseIsNotTheContract:
       'storeAppleRefreshToken awaits client.put and returns void: it subscripts no key of { ok, stored }, and the caller (keepAppleRefreshToken) only cares whether the call threw. Pinning that body would pin something no released client can break on. The REQUEST is what both sides must agree about — a renamed key there is a 400 for every released build, and the token then never reaches the server that has to revoke it.',
+  },
+  {
+    // ⏱ 2026-09-24 · O-GOOGLE-SIGN-IN-NOT-BUILT. Any provider's refresh token —
+    // the same request-only shape as the Apple pin above, plus `provider`.
+    id: 'account-provider-token',
+    kind: 'request',
+    server: 'services/platform/src/routes/provider-token.ts',
+    client: {
+      file: 'packages/api_client/lib/src/account_deletion_request.dart',
+      marker: 'providerTokenBody =',
+    },
+    keys: ['provider', 'refreshToken', 'appId'],
+    responseIsNotTheContract:
+      'storeProviderRefreshToken awaits client.put and returns void: it subscripts no key of { ok, stored }, and the caller (keepProviderRefreshToken) only cares whether the call threw. As for the Apple pin, the REQUEST is the contract — a renamed key is a 400 for every released build, and a token the server never receives is a grant the deletion cannot revoke.',
   },
   {
     id: 'entitlements',

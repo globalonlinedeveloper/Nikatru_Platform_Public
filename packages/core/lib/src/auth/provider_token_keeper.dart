@@ -6,6 +6,15 @@ import 'auth_repository.dart';
 /// ⏱ 2026-09-16 · O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE — KEEP THE ONE VALUE A
 /// DELETION CANNOT BE DONE WITHOUT, AND KEEP IT SERVER-SIDE.
 ///
+/// ⏱ 2026-09-24 · O-GOOGLE-SIGN-IN-NOT-BUILT — FOR EVERY PROVIDER, NOT ONLY
+/// APPLE. Moved from `apple_token_keeper.dart`. Deleting an account must cut the
+/// app's grant at Google the same way it does at Apple, so the keeper now hands
+/// [send] the provider that issued the token ([AuthSession.oauthProvider]) along
+/// with the token, and the server keeps one row per (account, provider). The
+/// Apple-only names below ([keepAppleRefreshToken], [AppleTokenNotKept],
+/// [appleTokenNotKeptReport], [appleTokenRetryDelays]) are kept for callers that
+/// only ever held an Apple token, and behave exactly as they did.
+///
 /// 🔴 THE TOKEN IS OFFERED EXACTLY ONCE AND NOBODY ELSE IS HOLDING IT. Apple
 /// requires an app offering Sign in with Apple to revoke the user's tokens when
 /// their account is deleted, and that call takes a token. The identity provider
@@ -20,7 +29,7 @@ import 'auth_repository.dart';
 /// ⚠️ IT DOES NOT STORE THE TOKEN ON THE DEVICE. [send] posts it to the server
 /// that will do the revoking, and nothing here writes it anywhere else: a copy in
 /// device storage would be a credential this app has no use for. Nothing here
-/// logs it either — see [AppleTokenNotKept].
+/// logs it either — see [ProviderTokenNotKept].
 ///
 /// Sends at most once per distinct token that the server ACCEPTED — a sign-out
 /// and back in mints a new one and that one is sent.
@@ -39,22 +48,29 @@ import 'auth_repository.dart';
 ///  • `lastSent` is set only after [send] returns — which the REST client does
 ///    only on a 2xx; anything else throws.
 ///  • A failed delivery is retried after each of [retryDelays], then STOPS and
-///    reports ONE [AppleTokenNotKept] through [onError]. The next auth-state
+///    reports ONE [ProviderTokenNotKept] through [onError]. The next auth-state
 ///    change starts a fresh bounded round, because the token was never recorded
 ///    as delivered.
 ///  • Every attempt re-reads the session rather than holding the token between
 ///    attempts, so a retry sends what the session carries NOW — after a sign-out
 ///    it sends nothing, and after a switch of account it can never pair one
-///    account's Apple token with another account's bearer. That is also why the
-///    old worry, "a retry loop around a credential is a place for one to sit in
-///    memory", does not apply: between attempts the keeper holds no copy.
+///    account's provider token with another account's bearer. That is also why
+///    the old worry, "a retry loop around a credential is a place for one to sit
+///    in memory", does not apply: between attempts the keeper holds no copy.
 ///  • A sign-out, or cancelling the returned subscription, abandons a pending
 ///    retry and cancels its timer.
-StreamSubscription<AuthUser?> keepAppleRefreshToken({
+///
+/// ⚠️ A SESSION THAT NAMES NO PROVIDER IS APPLE'S. Until 2026-09-24 Apple's was
+/// the only provider token any app kept, so that is what a session built by a
+/// repository that does not map [AuthSession.oauthProvider] has always meant.
+/// A repository that signs in with Google must name `google` on that session;
+/// otherwise its token is offered to the server as Apple's, which the server
+/// refuses (400) for an account that never linked Apple.
+StreamSubscription<AuthUser?> keepProviderRefreshToken({
   required AuthRepository auth,
-  required Future<void> Function(String refreshToken) send,
+  required Future<void> Function(String provider, String refreshToken) send,
   void Function(Object error)? onError,
-  List<Duration> retryDelays = appleTokenRetryDelays,
+  List<Duration> retryDelays = providerTokenRetryDelays,
 }) {
   String? lastSent;
   _Round? active;
@@ -69,14 +85,17 @@ StreamSubscription<AuthUser?> keepAppleRefreshToken({
   Future<void> run(_Round round) async {
     int failures = 0;
     String? tried;
+    String? triedFor;
     Object? lastError;
     while (!round.abandoned) {
       try {
         final AuthSession? session = await auth.currentSession();
         final String? token = session?.providerRefreshToken;
         if (token == null || token.isEmpty || token == lastSent) break;
+        final String provider = session?.oauthProvider ?? legacyTokenProvider;
         tried = token;
-        await send(token);
+        triedFor = provider;
+        await send(provider, token);
         lastSent = token;
         failures = 0;
         // Loop once more: a newer token may have landed while this one was on
@@ -89,7 +108,9 @@ StreamSubscription<AuthUser?> keepAppleRefreshToken({
             // A failed capture must never break a sign-in: the person is signed
             // in either way, and the cost is that their next deletion has
             // nothing to revoke with — which the server refuses loudly.
-            onError?.call(AppleTokenNotKept._(failures, lastError, tried));
+            final ProviderTokenNotKept report =
+                ProviderTokenNotKept._(failures, lastError, tried, triedFor);
+            onError?.call(report);
           }
           break;
         }
@@ -115,30 +136,39 @@ StreamSubscription<AuthUser?> keepAppleRefreshToken({
   return _KeeperSubscription(inner, abandonActive);
 }
 
+/// The provider a session that names none is taken to be — see
+/// [keepProviderRefreshToken].
+const String legacyTokenProvider = 'apple';
+
 /// The waits between delivery attempts: 1 s, 4 s, 15 s — four attempts over
-/// about twenty seconds, then [AppleTokenNotKept]. Long enough to ride out a
+/// about twenty seconds, then [ProviderTokenNotKept]. Long enough to ride out a
 /// dropped connection or a Worker cold start, short enough that the session
 /// which carries the token is still the one in hand.
-const List<Duration> appleTokenRetryDelays = <Duration>[
+const List<Duration> providerTokenRetryDelays = <Duration>[
   Duration(seconds: 1),
   Duration(seconds: 4),
   Duration(seconds: 15),
 ];
 
-/// What [keepAppleRefreshToken] reports through `onError` when every attempt in
-/// a round failed. It carries how many attempts were made and a DESCRIPTION of
-/// the last failure with the token cut out of it — never the error object
-/// itself, whose message is not ours to vouch for, and never the token.
-class AppleTokenNotKept implements Exception {
-  AppleTokenNotKept._(this.attempts, Object? lastError, String? token)
-      : lastError = _redacted(lastError, token);
+/// What [keepProviderRefreshToken] reports through `onError` when every attempt
+/// in a round failed. It carries how many attempts were made, which provider's
+/// token it was, and a DESCRIPTION of the last failure with the token cut out of
+/// it — never the error object itself, whose message is not ours to vouch for,
+/// and never the token.
+class ProviderTokenNotKept implements Exception {
+  ProviderTokenNotKept._(
+    this.attempts,
+    Object? lastError,
+    String? token,
+    this.provider,
+  ) : lastError = _redacted(lastError, token);
 
   /// The FIXED sentence every app reports. Fixed, and not the failure's own
   /// words, because it is the search term somebody grepping the error tracker
   /// for this class of failure will type, and because a server's message is
   /// not ours to forward: it is the one place a token could still ride out.
   static const String reason =
-      'Apple refresh token was not delivered to the server';
+      'Provider refresh token was not delivered to the server';
 
   /// How many times delivery was attempted in the round that gave up.
   final int attempts;
@@ -146,36 +176,75 @@ class AppleTokenNotKept implements Exception {
   /// The last failure, as text, with any occurrence of the token replaced.
   final String lastError;
 
+  /// Whose token it was (`apple`, `google`), or null when no attempt read one.
+  final String? provider;
+
   static String _redacted(Object? error, String? token) {
     final String text = '$error';
     if (token == null || token.isEmpty) return text;
-    return text.replaceAll(token, '[apple-refresh-token]');
+    return text.replaceAll(token, '[provider-refresh-token]');
   }
 
   @override
   String toString() =>
-      'AppleTokenNotKept: $attempts attempt(s) failed; last: $lastError';
+      'ProviderTokenNotKept: $attempts attempt(s) failed; last: $lastError';
 }
 
 /// ⏱ 2026-09-22 · O-APPLE-KEEPER-NO-ONERROR — WHAT A CALLER SENDS ITS ERROR
 /// TRACKER, DECIDED ONCE, HERE.
 ///
-/// 🔴 EVERY CALLER REPORTS THE SAME TWO THINGS, AND THIS IS WHY IT IS A
-/// FUNCTION. The app and the app TEMPLATE both hand [keepAppleRefreshToken] an
-/// `onError`, and two hand-written report strings a template apart drift: one
-/// app would ship the failure's own text, which is the one string a token can
-/// still be hiding in ([AppleTokenNotKept] redacts the token it KNOWS about,
-/// and a server that echoed it back some other way is not covered). So the
-/// payload is a REASON and a COUNT: [AppleTokenNotKept.reason] verbatim, plus
-/// how many attempts the round made. Nothing else — not the token, not
-/// [AppleTokenNotKept.lastError], not the bearer, not the user.
+/// 🔴 EVERY CALLER REPORTS THE SAME THINGS, AND THIS IS WHY IT IS A FUNCTION.
+/// The app and the app TEMPLATE both hand the keeper an `onError`, and two
+/// hand-written report strings a template apart drift: one app would ship the
+/// failure's own text, which is the one string a token can still be hiding in
+/// ([ProviderTokenNotKept] redacts the token it KNOWS about, and a server that
+/// echoed it back some other way is not covered). So the payload is a REASON,
+/// the PROVIDER and a COUNT: [ProviderTokenNotKept.reason] verbatim, whose token
+/// it was, and how many attempts the round made. Nothing else — not the token,
+/// not [ProviderTokenNotKept.lastError], not the bearer, not the user.
 ///
 /// The count is carried because it is the one number that separates "the
 /// server is down for everybody" from "this one account cannot deliver".
-String appleTokenNotKeptReport(Object error) {
-  final int attempts = error is AppleTokenNotKept ? error.attempts : 0;
-  return '${AppleTokenNotKept.reason} (attempts: $attempts)';
+String providerTokenNotKeptReport(Object error) {
+  final int attempts = error is ProviderTokenNotKept ? error.attempts : 0;
+  final String provider =
+      (error is ProviderTokenNotKept ? error.provider : null) ?? 'unknown';
+  return '${ProviderTokenNotKept.reason} '
+      '(provider: $provider, attempts: $attempts)';
 }
+
+// ── THE APPLE-ONLY NAMES, KEPT ──────────────────────────────────────────────
+// The app template still wires these, and its stamped apps offer only Sign in
+// with Apple. Each is the general form above, restricted to Apple's tokens.
+
+/// [keepProviderRefreshToken] for a caller that only ever held Apple's token:
+/// [send] receives Apple's token and nothing else — a token whose session names
+/// another provider is never offered to it.
+StreamSubscription<AuthUser?> keepAppleRefreshToken({
+  required AuthRepository auth,
+  required Future<void> Function(String refreshToken) send,
+  void Function(Object error)? onError,
+  List<Duration> retryDelays = appleTokenRetryDelays,
+}) {
+  return keepProviderRefreshToken(
+    auth: auth,
+    send: (String provider, String refreshToken) async {
+      if (provider == 'apple') await send(refreshToken);
+    },
+    onError: onError,
+    retryDelays: retryDelays,
+  );
+}
+
+/// [providerTokenRetryDelays], under the name the Apple keeper used.
+const List<Duration> appleTokenRetryDelays = providerTokenRetryDelays;
+
+/// [ProviderTokenNotKept], under the name the Apple keeper used.
+typedef AppleTokenNotKept = ProviderTokenNotKept;
+
+/// [providerTokenNotKeptReport], under the name the Apple keeper used.
+String appleTokenNotKeptReport(Object error) =>
+    providerTokenNotKeptReport(error);
 
 /// One delivery round's cancellable wait.
 class _Round {

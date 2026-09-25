@@ -162,6 +162,20 @@ async function warmCache(env: Env): Promise<void> {
 export { authRecencyOf } from '../../../_shared/src/auth';
 
 /**
+ * ⏱ 2026-09-24 · O-GOOGLE-SIGN-IN-NOT-BUILT. The identity providers the VERIFIED
+ * token says this account has linked: `app_metadata.providers`, the claim
+ * `authRecencyOf` reads too. GoTrue writes `app_metadata` and a user cannot, so it
+ * is the server's word, not the caller's. Strings only; an absent or malformed
+ * claim is the empty list, which links nothing — so a route that cross-checks a
+ * body against it refuses rather than guesses.
+ */
+export function linkedProvidersOf(payload: Record<string, unknown>): string[] {
+  const meta = payload.app_metadata;
+  const providers = meta && typeof meta === 'object' ? (meta as { providers?: unknown }).providers : undefined;
+  return Array.isArray(providers) ? providers.filter((p): p is string => typeof p === 'string') : [];
+}
+
+/**
  * Hono middleware. On success sets `userId` (+ `userEmail` when the token
  * carries one) and calls next(). On ANY failure it answers 401 with
  * `{ error: 'unauthorized' }` and nothing else — the reason a token was refused
@@ -200,6 +214,7 @@ export const platformAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
     const email = (payload as { email?: unknown }).email;
     if (typeof email === 'string') c.set('userEmail', email);
     c.set('authRecency', authRecencyOf(payload as Record<string, unknown>));
+    c.set('linkedProviders', linkedProvidersOf(payload as Record<string, unknown>));
     await next();
     return;
   } catch {

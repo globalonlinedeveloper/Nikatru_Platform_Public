@@ -239,7 +239,8 @@ const LIMB5_FILES = [
   'packages/api_client/lib/src/dio_cancellation_transport.dart',
   // ⏱ 2026-09-16 · O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE: the request-only pin — the
   // client that SENDS Apple's refresh token, and the route that reads it.
-  'services/platform/src/routes/apple-token.ts',
+  // ⏱ 2026-09-24 · the route moved to provider-token.ts (O-GOOGLE-SIGN-IN-NOT-BUILT).
+  'services/platform/src/routes/provider-token.ts',
   'packages/api_client/lib/src/account_deletion_request.dart',
   // ⏱ 2026-09-18 · O-PLAY-AI-CONTENT-REPORTING chassis half: the report body pin.
   'services/platform/src/routes/report.ts',
@@ -685,7 +686,7 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
   // The numbers are PINNED rather than derived on purpose — a derived count
   // agrees with any register, including one that quietly stopped enumerating —
   // so they move in the same change as the routes that moved them.
-  test('PASSES on the real tree: 13 routes, 9 pinned, 4 printed gaps', () => {
+  test('PASSES on the real tree: 14 routes, 10 pinned, 4 printed gaps', () => {
     const r = run(makeRepo());
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /wire health — deploy-smoke fields/);
@@ -704,7 +705,8 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
     // …and the fourth, added with the receipt route. Its gap is a STATE too: the
     // day a Dart client builds /v1/receipts the guard fails and demands a pin.
     assert.match(r.out, /GAP {2}wire receipts/);
-    assert.match(r.out, /13 shared route\(s\) from tooling\/platform-register\.json: 9 pinned, 4 printed gap/); // ⏱ 2026-09-18: POST /v1/report joined as a gap, then became a body pin the same day when the chassis transport landed (O-PLAY-AI-CONTENT-REPORTING).
+    assert.match(r.out, /14 shared route\(s\) from tooling\/platform-register\.json: 10 pinned, 4 printed gap/); // ⏱ 2026-09-18: POST /v1/report joined as a gap, then became a body pin the same day when the chassis transport landed (O-PLAY-AI-CONTENT-REPORTING). ⏱ 2026-09-24: PUT /v1/account/provider-token joined as a request pin (O-GOOGLE-SIGN-IN-NOT-BUILT).
+    assert.match(r.out, /wire account-provider-token — request pinned: client sends \{provider, refreshToken, appId\}/);
     // [4]B-14's last clause: the config route's client half resolves in the
     // BRICK, so the count above is about apps that do not exist yet too.
     assert.match(r.out, /wire config — .*client half INHERITED by every stamped app: 10 key\(s\) in tooling\/bricks\//);
@@ -1041,6 +1043,24 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
     assert.match(gone.out, /`kConfigWireKeys` is DECLARED in .* and used nowhere else in it/);
   });
 
+  // ⏱ 2026-09-24 · O-GOOGLE-SIGN-IN-NOT-BUILT — the provider-token request pin
+  // can fail, from either side.
+  test('FAILS when the client renames the provider-token request key', () => {
+    const r = run(makeRepo((f) =>
+      mutate(f, 'packages/api_client/lib/src/account_deletion_request.dart',
+        "    'provider': provider,", "    'providerName': provider,")));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /account-provider-token — the request literal sends \{providerName, refreshToken, appId\}/);
+  });
+
+  test('FAILS when the server stops reading the provider the client sends', () => {
+    const r = run(makeRepo((f) =>
+      mutate(f, 'services/platform/src/routes/provider-token.ts',
+        '(body as { provider?: unknown } | null)?.provider;', '(body as { kind?: unknown } | null)?.kind;')));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /account-provider-token — the client sends \{provider\} and services\/platform\/src\/routes\/provider-token\.ts never reads it/);
+  });
+
   test('FAILS when the server gains a config key the brick does not carry', () => {
     const r = run(makeRepo((f) =>
       mutate(f, 'services/platform/test/config.test.ts',
@@ -1050,7 +1070,7 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
     // and the route stops counting as pinned — the number moves, honestly.
     // ⏱ 4 gaps since 2026-09-09 — TWO routes joined that day, not one; see the
     // re-measurement note on the real-tree case.
-    assert.match(r.out, /8 pinned, 4 printed gap/); // ⏱ 2026-09-18: POST /v1/report is now a body pin, not a gap (O-PLAY-AI-CONTENT-REPORTING chassis half).
+    assert.match(r.out, /9 pinned, 4 printed gap/); // ⏱ 2026-09-18: POST /v1/report is now a body pin, not a gap (O-PLAY-AI-CONTENT-REPORTING chassis half). ⏱ 2026-09-24: +1 for the provider-token request pin.
   });
 
   test('FAILS when the brick drops a key the server still requires', () => {

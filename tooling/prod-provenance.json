@@ -203,7 +203,12 @@
     "apple_provider_tokens": {
       "marker": "app_id",
       "resolver": "app-catalogue",
-      "reason": "⏱ 2026-09-16 · O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE. NO app_version COLUMN AND NO USABLE TIMESTAMP: rows are written by PUT /v1/account/apple-token from an authenticated app, hold the user's Apple refresh token, and that token may NEVER be read by a monitor — so the marker is app_id, the app whose sign-in produced the token, resolved against the shipped catalogue exactly as pending_erasures is. A row naming anything but an app this factory ships is unattributed and says so."
+      "reason": "⏱ 2026-09-16 · O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE. NO app_version COLUMN AND NO USABLE TIMESTAMP: rows were written by PUT /v1/account/apple-token from an authenticated app, hold the user's Apple refresh token, and that token may NEVER be read by a monitor — so the marker is app_id, the app whose sign-in produced the token, resolved against the shipped catalogue exactly as pending_erasures is. A row naming anything but an app this factory ships is unattributed and says so. ⏱ 2026-09-24: retired by 0016 (copied into provider_tokens, no longer written); the rule stands until the table is dropped."
+    },
+    "provider_tokens": {
+      "marker": "app_id",
+      "resolver": "app-catalogue",
+      "reason": "⏱ 2026-09-24 · O-GOOGLE-SIGN-IN-NOT-BUILT (migration 0016). NO app_version COLUMN AND NO USABLE TIMESTAMP: rows are written by PUT /v1/account/provider-token (and its Apple alias PUT /v1/account/apple-token) from an authenticated app, or copied from apple_provider_tokens by 0016, and hold the user's Apple or Google refresh token, which may NEVER be read by a monitor — so the marker is app_id, the app whose sign-in produced the token, resolved against the shipped catalogue exactly as apple_provider_tokens and pending_erasures are. A row naming anything but an app this factory ships is unattributed and says so."
     },
     "content_reports": {
       "marker": "app_id",
