@@ -86,7 +86,11 @@
         "the one-issuer refusal (the deployed Worker rejects a Box A-minted session), not this leg.",
         "Prose, deliberately: making the status target-shaped would need the guard to learn the axis,",
         "and assert-e2e-legs.mjs is not this unit's file. Recorded so the first reader of a green",
-        "'asserted' after a boxa dispatch is not told the dashboard was reached."
+        "'asserted' after a boxa dispatch is not told the dashboard was reached.",
+        "⏱ 2026-09-25: the axis is no longer a target name. e2e.yml derives E2E_WORKERS_TRUST from the",
+        "run's SUPABASE_URL and tooling/platform-register.json vars.SUPABASE_URL, and `asserted` is a",
+        "fact of a run with trust `yes` (production, before and after the Phase 5 switch). A run with",
+        "trust `no` (a `selfhosted` dispatch before the switch) reads exactly as boxa did above."
       ],
       "anchors": [
         "E2EKeys.loginSubmit",
@@ -127,7 +131,9 @@
         "are not reached — the run returns early into the one-issuer refusal, because the deployed",
         "Worker that performs the erasure trusts exactly one issuer and a Box A-minted session is",
         "refused by design until Phase 5 moves it. tooling/e2e/verify_purged.mjs still runs and still",
-        "re-reads the admin API, so nothing is skipped; what changes is which fact the run proves."
+        "re-reads the admin API, so nothing is skipped; what changes is which fact the run proves.",
+        "⏱ 2026-09-25: as for sign-in, the reading keys on E2E_WORKERS_TRUST, not a target name:",
+        "`asserted` is a fact of a run with trust `yes`; a run with trust `no` reads as boxa did above."
       ],
       "_why": [
         "PROMOTED 2026-08-08, and the excuse it replaced is the THIRD this leg has killed — which is the",

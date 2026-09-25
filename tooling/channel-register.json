@@ -1297,19 +1297,19 @@
         "why": "Bypasses row-level security, so it is a real secret — but it authenticates CI to the database (e2e seeding, screenshot fixtures). It never touches an artifact and no build target signs with it."
       },
       {
-        "name": "BOXA_SUPABASE_URL",
+        "name": "SELFHOSTED_SUPABASE_URL",
         "kind": "build-config",
-        "why": "The SELF-HOSTED GoTrue endpoint on Box A (auth-api.nikatru.com since [ADR 080]; api-auth.nikatru.com is held until an auth_target=boxa run is green on it), the `boxa` half of e2e.yml's auth_target axis. Same class as SUPABASE_URL and for the same reason: a URL, not a credential, held as a secret only so the address is not restated in the public tree. Added 2026-09-07 ([ADR 067] decision 6, unit cutover-blockers). ⚠️ NOT SET YET — a `boxa` dispatch fails at e2e.yml's preflight naming it, which is the designed behaviour; adding it is an owner step."
+        "why": "The SELF-HOSTED GoTrue endpoint on Box C (auth-api.nikatru.com, [ADR 080]), read by e2e.yml's `selfhosted` target. Same class as SUPABASE_URL and for the same reason: a URL, not a credential, held as a secret only so the address is not restated in the public tree. It replaced BOXA_SUPABASE_URL on 2026-09-25, when the `boxa` target became `selfhosted`; what a run against it expects is derived from the URL and tooling/platform-register.json, not from the target name."
       },
       {
-        "name": "BOXA_SUPABASE_ANON_KEY",
+        "name": "SELFHOSTED_SUPABASE_ANON_KEY",
         "kind": "build-config",
-        "why": "Box A's PUBLISHABLE key, the `boxa` half of SUPABASE_ANON_KEY. It ships inside every client the same way and is bounded by row-level security rather than by secrecy. Added 2026-09-07; not set yet."
+        "why": "Box C's anon key, the `selfhosted` half of SUPABASE_ANON_KEY. It ships inside every client the same way and is bounded by row-level security rather than by secrecy. It replaced BOXA_SUPABASE_ANON_KEY on 2026-09-25."
       },
       {
-        "name": "BOXA_SUPABASE_SERVICE_ROLE_KEY",
+        "name": "SELFHOSTED_SUPABASE_SERVICE_ROLE_KEY",
         "kind": "service-credential",
-        "why": "Box A's service-role key, the `boxa` half of SUPABASE_SERVICE_ROLE_KEY, on exactly the same terms: it bypasses row-level security so it is a real secret, it authenticates CI to the identity stack for e2e provisioning and teardown, it never touches an artifact and no build target signs with it. 🔴 IT IS ALSO THE KEY THAT BYPASSES THE TURNSTILE GATE (auth-cutover.md §4.7), which is why the harness — and never the browser — is the only thing that holds it. Added 2026-09-07; not set yet."
+        "why": "Box C's service-role key, the `selfhosted` half of SUPABASE_SERVICE_ROLE_KEY, on exactly the same terms: it bypasses row-level security so it is a real secret, it authenticates CI to the identity stack for e2e provisioning and teardown, it never touches an artifact and no build target signs with it. 🔴 IT IS ALSO THE KEY THAT BYPASSES THE TURNSTILE GATE (auth-cutover.md §4.7), which is why the harness — and never the browser — is the only thing that holds it. It replaced BOXA_SUPABASE_SERVICE_ROLE_KEY on 2026-09-25."
       },
       {
         "name": "SUPABASE_PAT",
