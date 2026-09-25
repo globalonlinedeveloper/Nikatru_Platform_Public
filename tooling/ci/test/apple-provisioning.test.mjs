@@ -43,6 +43,7 @@ import {
   PROFILE_KINDS,
   bundleIdNameProblem,
   appleResourceIds,
+  bundleIdOf,
 } from '../apple-provisioning.mjs';
 import { profileMembers, parseMobileProvision } from '../apple-signing.mjs';
 import { ascClient, ascJwt } from '../../ops/provision-apple.mjs';
@@ -151,6 +152,21 @@ describe('the register', () => {
   test('the real derivation: Runner.entitlements carries Declared Age Range only', () => {
     assert.deepEqual([...expectedEntitlements(REAL, 'subscriptiontracker')], [[DAR, true]]);
     assert.deepEqual(expectedProfileKeys(REAL, 'subscriptiontracker', 'IOS_APP_STORE').sort(), [SIWA, DAR].sort());
+  });
+  // ── O-SECOND-APP-SIGNS-AS-THE-FIRST — the bundle id apple-signing keeps ─────
+  test('bundleIdOf answers the real app its register row — the green control', () => {
+    assert.equal(bundleIdOf(REAL, 'subscriptiontracker'), 'com.nikatru.subscriptiontracker');
+  });
+  test('bundleIdOf refuses a slug the register has no row for, naming it', () => {
+    assert.throws(() => bundleIdOf(REAL, 'zz'), /declares no app "zz"/);
+  });
+  test('bundleIdOf refuses an unusable register rather than answering from it', () => {
+    const r = clone(REAL);
+    delete r.anchor;
+    assert.throws(() => bundleIdOf(r, 'subscriptiontracker'), /is unusable/);
+  });
+  test('bundleIdOf does not answer a prototype key', () => {
+    assert.throws(() => bundleIdOf(REAL, 'constructor'), /declares no app "constructor"/);
   });
 });
 

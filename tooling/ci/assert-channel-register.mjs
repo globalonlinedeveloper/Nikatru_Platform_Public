@@ -3625,7 +3625,7 @@ if (gradleFilesCrossChecked > 0) {
     //     2026-08-25: exactly 1 hit tree-wide, and it is this comment's own
     //     quotation of the pattern. appimage-signing.mjs:3 signs; never packages.
     //   · `.pkg` — "productbuild + notarisation". `productbuild` appears in no
-    //     workflow in this repository, and apple-signing.mjs:182 states it
+    //     workflow in this repository, and apple-signing.mjs:195 states it
     //     outright: "The `productbuild` step stays a printed intent."
     //   · `.ipa` — `null`, and no lane runs `flutter build ipa`.
     // Only `.exe` said so out loud, and it said so where nothing could read it.

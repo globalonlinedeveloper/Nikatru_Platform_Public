@@ -122,6 +122,9 @@
 //   node tooling/ci/apple-signing.mjs [--app <slug>] [--out <dir>]
 //                                     [--repo-root <path>] [--github-env <path>]
 //                                     [--method <app-store-connect|…>]
+//          --app also chooses the profiles: only those whose bundle id is
+//          apps.<slug>.bundleId in tooling/apple-provisioning.json go further,
+//          and exactly one iOS and one macOS profile must match.
 // Env in:  the four names WANTED below (the register declares them on both Apple
 //          rows; the fifth, row-only name is recognised and never read here)
 //          GITHUB_REF, GITHUB_WORKFLOW_REF — read to DERIVE whether this is a
@@ -140,6 +143,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { armedFatalLines, releaseGapVerdict, unarmedGapLines } from './channel-arming.mjs';
 import { boundedSpawn, timeoutFromEnv } from './bounded-spawn.mjs';
+import { REGISTER as PROVISIONING_REGISTER, bundleIdOf } from './apple-provisioning.mjs';
 
 export const APPS = 'catalog/apps.json';
 export const REGISTER = 'tooling/channel-register.json';
@@ -1454,11 +1458,56 @@ function main() {
     ]);
   }
 
+  // ── O-SECOND-APP-SIGNS-AS-THE-FIRST: only THIS app's profiles go further ──
+  // APPLE_PROVISIONING_PROFILES_BASE64 is one secret for the whole account, so
+  // from the second app on it carries every app's profiles. The exported profile
+  // names used to be an Object.fromEntries over ALL of them: the last member of
+  // the zip won, and `--app a` built with app b's profile until App Store
+  // Connect refused the upload. Everything below — the team and expiry checks,
+  // the install, ExportOptions.plist and the exported names — reads `kept`. The
+  // bundle id is read through apple-provisioning.mjs, where it is decided.
+  const provisioningRaw = read(PROVISIONING_REGISTER);
+  if (provisioningRaw === null) {
+    coverageLost([
+      `${PROVISIONING_REGISTER} does not exist, so there is no bundle id to keep ${ROLE_ENV.profiles}'s profiles to.`,
+      'Installing every profile the secret carries is how one app gets built with another app\'s profile.',
+    ]);
+  }
+  let provisioning;
+  try {
+    provisioning = JSON.parse(provisioningRaw);
+  } catch (e) {
+    coverageLost([`${PROVISIONING_REGISTER} is not valid JSON — ${e.message}`]);
+  }
+  let bundleId;
+  try {
+    bundleId = bundleIdOf(provisioning, app.slug);
+  } catch (e) {
+    die([`FAIL --app "${app.slug}": ${e.message}.`, '     Nothing was installed and no key material was written.']);
+  }
+  const kept = parsed.filter((p) => p.bundleId === bundleId);
+  const dropped = parsed.filter((p) => !kept.includes(p));
+  const keptIos = kept.filter((p) => !p.member.endsWith('.provisionprofile'));
+  const keptMacos = kept.filter((p) => p.member.endsWith('.provisionprofile'));
+  const profileListing = [
+    ...kept.map((p) => `        kept                 "${p.name}" → ${p.bundleId} · expires ${p.expires ?? 'unstated'}`),
+    ...dropped.map((p) => `        dropped (other app)  "${p.name}" → ${p.bundleId ?? '(no application-identifier)'}`),
+  ];
+  if (keptIos.length !== 1 || keptMacos.length !== 1) {
+    die([
+      `FAIL --app ${app.slug} signs as ${bundleId}, and ${ROLE_ENV.profiles} carries ${keptIos.length} iOS profile(s)`,
+      `     (.mobileprovision) and ${keptMacos.length} macOS profile(s) (.provisionprofile) for it. Exactly one of each is`,
+      '     required: none leaves the build nothing to sign with, and two would leave the exported name to',
+      '     whichever member came last in the zip. Profiles for other apps may stay in the secret.',
+      ...profileListing,
+    ]);
+  }
+
   // The team cross-check. A profile from a DIFFERENT team than the one
   // xcodebuild is told to use produces a build that codesigns and is refused at
   // upload — the failure surfaces at the store, which is the one place this
   // repository has decided failures must not surface.
-  const wrongTeam = parsed.filter((p) => !p.teamIds.includes(teamId));
+  const wrongTeam = kept.filter((p) => !p.teamIds.includes(teamId));
   if (wrongTeam.length) {
     die([
       `FAIL ${ROLE_ENV.profiles} carries profile(s) belonging to a different team than ${ROLE_ENV.teamId}.`,
@@ -1470,7 +1519,7 @@ function main() {
   }
 
   const now = Date.now();
-  const expired = parsed.filter((p) => p.expires !== null && Date.parse(p.expires) < now);
+  const expired = kept.filter((p) => p.expires !== null && Date.parse(p.expires) < now);
   if (expired.length) {
     die([
       `FAIL ${ROLE_ENV.profiles} carries EXPIRED provisioning profile(s).`,
@@ -1500,7 +1549,7 @@ function main() {
   // 0600 on a POSIX runner. Written outside the workspace either way.
   writeFileSync(p12Path, p12, { mode: 0o600 });
   mkdirSync(profileDir, { recursive: true });
-  for (const p of parsed) {
+  for (const p of kept) {
     const member = members.find((m) => m.name === p.member);
     writeFileSync(join(profileDir, p.member.split('/').pop()), member.bytes, { mode: 0o600 });
   }
@@ -1535,7 +1584,7 @@ function main() {
   const installedTo = [];
   for (const dir of xcodeProfileDirs()) {
     mkdirSync(dir, { recursive: true });
-    for (const p of parsed) {
+    for (const p of kept) {
       const member = members.find((m) => m.name === p.member);
       const ext = p.member.endsWith('.provisionprofile') ? 'provisionprofile' : 'mobileprovision';
       if (p.uuid === null) {
@@ -1554,7 +1603,7 @@ function main() {
   // consumed by the iOS `flutter build ipa --export-options-plist` and by
   // nothing else, because the macOS side never runs `-exportArchive` — `flutter
   // build macos` signs in place and `productbuild` wraps the result.
-  const iosProfiles = parsed.filter((p) => !p.member.endsWith('.provisionprofile'));
+  const iosProfiles = kept.filter((p) => !p.member.endsWith('.provisionprofile'));
   if (iosProfiles.length === 0) {
     coverageLost([
       `${ROLE_ENV.profiles} carries no iOS profile (.mobileprovision), so ExportOptions.plist would map NOTHING.`,
@@ -1716,7 +1765,7 @@ function main() {
       APPLE_DIST_IDENTITY: application,
       ...(installer === null ? {} : { APPLE_INSTALLER_IDENTITY: installer }),
       ...Object.fromEntries(
-        parsed
+        kept
           .filter((p) => p.name !== null)
           .map((p) => [p.member.endsWith('.provisionprofile') ? 'APPLE_MACOS_PROFILE_NAME' : 'APPLE_IOS_PROFILE_NAME', p.name]),
       ),
@@ -1726,8 +1775,9 @@ function main() {
 
   console.log('');
   console.log(`ok   distribution identity imported into a per-run keychain — ${p12.length} byte(s), outside the workspace`);
-  console.log(`ok   ${parsed.length} provisioning profile(s) decoded, team-checked and in date:`);
-  for (const p of parsed) console.log(`        "${p.name}" → ${p.bundleId ?? '(no application-identifier)'} · expires ${p.expires ?? 'unstated'}`);
+  console.log(`ok   ${kept.length} of ${parsed.length} provisioning profile(s) kept for ${bundleId} (--app ${app.slug}), team-checked and in date;`);
+  console.log(`     ${dropped.length} dropped (other app) — not checked, not installed, not exported:`);
+  for (const line of profileListing) console.log(line);
   console.log(`ok   installed into ${installedTo.length} Xcode profile director(ies), named by UUID — this is what`);
   console.log('     PROVISIONING_PROFILE_SPECIFIER resolves against; a temp directory is not searched:');
   for (const d of installedTo) console.log(`        ${d}`);

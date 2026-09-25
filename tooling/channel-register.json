@@ -4051,7 +4051,7 @@
       },
       ".pkg": {
         "flutterTarget": "macos",
-        "packagedBy": "productbuild + notarisation — tooling/ci/apple-signing.mjs and the Apple lane. 🔴 CORRECTED 2026-08-25 — that sentence describes an intent, not a step. NOT IMPLEMENTED ANYWHERE IN THIS REPOSITORY: `productbuild` appears in no workflow in this repository, and apple-signing.mjs:182 states it in its own words — the `productbuild` step stays a printed intent. The `apple` job runs `flutter build macos --release` and uploads the Release directory; no .pkg is produced. Held by assert-channel-register.mjs §10 limb (iii)."
+        "packagedBy": "productbuild + notarisation — tooling/ci/apple-signing.mjs and the Apple lane. 🔴 CORRECTED 2026-08-25 — that sentence describes an intent, not a step. NOT IMPLEMENTED ANYWHERE IN THIS REPOSITORY: `productbuild` appears in no workflow in this repository, and apple-signing.mjs:195 states it in its own words — the `productbuild` step stays a printed intent. The `apple` job runs `flutter build macos --release` and uploads the Release directory; no .pkg is produced. Held by assert-channel-register.mjs §10 limb (iii)."
       },
       ".msix": {
         "flutterTarget": "windows",
