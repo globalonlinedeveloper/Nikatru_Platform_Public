@@ -69,6 +69,8 @@ import {
   usableJwksDocument,
   verifyOptions,
   authRecencyOf,
+  revocationKey,
+  revocationRefusal,
 } from '../../../_shared/src/auth';
 import type { AppEnv, Env } from '../types';
 
@@ -155,6 +157,45 @@ async function warmCache(env: Env): Promise<void> {
   }
 }
 
+/**
+ * ⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. True when the VERIFIED token belongs to
+ * a session that was signed out — its `session_id` is listed in the user's
+ * `rev:<sub>` record, or it was issued before that record's `before`. The
+ * decision is `revocationRefusal` in services/_shared/src/auth.ts; only the KV
+ * read and the fail-open policy are here. No `cacheTtl`: a cached miss would
+ * keep admitting a revoked token for as long as the cache lived.
+ *
+ * 🔴 IT FAILS OPEN, ON PURPOSE. A read that throws (a KV incident, or a record
+ * that is not JSON) and a missing binding both ADMIT, with one log line naming
+ * the event and nothing else — never the token, the user id or a session id.
+ * The worst case of admitting is today's behaviour (a signed-out session's
+ * access token lives until its own `exp`); failing closed would turn a KV
+ * incident into a portfolio-wide 401, which every client reads as a dead
+ * session. A binding missing from a Worker's config is a CI red instead
+ * (tooling/ci/assert-session-revocation.mjs), not a runtime refusal.
+ *
+ * Takes the ONE binding it needs, not `Env` — the `localSetFromCache` rule.
+ */
+async function sessionRevoked(
+  revoked: KVNamespace | undefined,
+  sub: string,
+  payload: Record<string, unknown>,
+  logPrefix: string,
+): Promise<boolean> {
+  if (!revoked) {
+    console.warn(`${logPrefix} auth_revocation_binding_missing: SESSION_REVOKED is not bound; admitted unchecked`);
+    return false;
+  }
+  let record: unknown;
+  try {
+    record = await revoked.get(revocationKey(sub), 'json');
+  } catch (err) {
+    console.warn(`${logPrefix} auth_revocation_read_failed: ${err instanceof Error ? err.name : typeof err}; admitted`);
+    return false;
+  }
+  return revocationRefusal(payload, record) !== null;
+}
+
 // ⏱ 2026-09-16 · O-APP-API-DELETE-NO-RECENCY — `authRecencyOf` (how the verified
 // token's user signs in, and when they last AUTHENTICATED — `amr`, never `iat`) moved
 // VERBATIM to services/_shared/src/auth.ts, so every erasure door reads one
@@ -177,7 +218,7 @@ export function linkedProvidersOf(payload: Record<string, unknown>): string[] {
 
 /**
  * Hono middleware. On success sets `userId` (+ `userEmail` when the token
- * carries one) and calls next(). On ANY failure it answers 401 with
+ * carries one, + `sessionId`) and calls next(). On ANY failure it answers 401 with
  * `{ error: 'unauthorized' }` and nothing else — the reason a token was refused
  * is a fact about our verification, not information a caller is owed.
  */
@@ -210,7 +251,17 @@ export const platformAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
     if (typeof payload.sub !== 'string' || payload.sub === '') {
       return c.json({ error: 'unauthorized' }, 401);
     }
+    // ⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS — a signed-out session's token is
+    // refused here, with the same plain 401 as any other refusal.
+    const logPrefix = `[auth] rid=${c.get('requestId') ?? '-'} app=${c.env.APP_ID}`;
+    if (await sessionRevoked(c.env.SESSION_REVOKED, payload.sub, payload as Record<string, unknown>, logPrefix)) {
+      return c.json({ error: 'unauthorized' }, 401);
+    }
     c.set('userId', payload.sub);
+    // The session this token belongs to — GoTrue's `session_id` claim, absent on
+    // a token that carries none. /v1/sessions uses it to mark "this device" and to
+    // refuse revoking the caller's own session as if it were another's.
+    c.set('sessionId', typeof payload.session_id === 'string' ? payload.session_id : undefined);
     const email = (payload as { email?: unknown }).email;
     if (typeof email === 'string') c.set('userEmail', email);
     c.set('authRecency', authRecencyOf(payload as Record<string, unknown>));

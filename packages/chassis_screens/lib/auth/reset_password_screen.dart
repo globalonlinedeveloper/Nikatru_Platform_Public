@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
+import 'auth_error_text.dart';
+
 /// Where a password-reset link lands — the completion half of a feature that
 /// shipped with only its request half.
 ///
@@ -152,10 +154,11 @@ class _ResetPasswordViewState extends State<ResetPasswordView> {
     try {
       await widget.onSubmit(_password.text);
       if (mounted) setState(() => _done = true);
-    } on core.AuthFailure catch (e) {
-      if (mounted) setState(() => _error = e.message);
     } catch (e) {
-      if (mounted) setState(() => _error = '$e');
+      // ⏱ 2026-09-24 — ONE arm, through the mapper, which reads the failure's
+      // code and reasons: a breached password now says so, where this printed
+      // GoTrue's "known to be weak and easy to guess" as written.
+      if (mounted) setState(() => _error = authErrorText(l10n, e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }

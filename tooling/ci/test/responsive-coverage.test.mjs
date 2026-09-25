@@ -266,7 +266,10 @@ describe('the guard says YES on the tree as it is', () => {
       // ⏱ 2026-09-23 · 37 → 39 surfaces and 37 → 39 test files (chassis home):
       // WelcomeView + CatchUpBannerView, home_view_test.dart + a11y_home_test.dart.
       // Read off the guard's own summary line on the copied tree.
-      /39 reachable surface\(s\), 39 measured by 39 test file\(s\); 0 measured where they delegate to/,
+      // ⏱ 2026-09-24 · 39 → 41 TEST FILES, SURFACES UNCHANGED: the auth error
+      // mapper's suite and `support/raw_vendor_error.dart` joined the chassis
+      // corpus. Both per-root equalities above are untouched.
+      /39 reachable surface\(s\), 39 measured by 41 test file\(s\); 0 measured where they delegate to/,
     );
     assert.equal(fails(out).length, 0, out);
   });
@@ -825,7 +828,10 @@ describe('the chassis_screens floors are floors, not report lines', () => {
       // ⏱ 20/21 ON 2026-09-23: `a11y_home_test.dart` joined the corpus and THIS
       // case caught the floor left at 20 — deleting one file cleared it. The floor
       // was raised to the measured 21; the assertion was NOT loosened.
-      /COVERAGE LOST — `packages\/chassis_screens` yielded only 20 width test file\(s\).*checked-in floor is 21/s,
+      // ⏱ 22/23 ON 2026-09-24: the auth error mapper's suite and a shared test
+      // helper joined the corpus, and THIS case caught the floor left at 21. The
+      // floor was raised to the measured 23; the assertion was NOT loosened.
+      /COVERAGE LOST — `packages\/chassis_screens` yielded only 22 width test file\(s\).*checked-in floor is 23/s,
     );
     // This root ENFORCES, so the surface the deleted file measured is a FAIL and
     // not a print — the half R12 pins for apps/subscriptiontracker, here for the new root.

@@ -19,7 +19,7 @@ import '../../l10n/app_localizations.dart';
 import '../../state/providers.dart';
 import '../shared/widgets.dart';
 import 'legal_consent_fields.dart';
-import 'auth_error_text.dart';
+import 'auth_error_sentence.dart';
 
 // 🏗️ `_Tones` / `_tones()` LEFT THIS FILE ON 2026-09-04 ([ADR 065], chassis
 // step 2) and are now `FormTones` / `formTones()` in
@@ -71,7 +71,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   /// Null is the normal state today: with no `TURNSTILE_SITE_KEY` compiled in
   /// the gate renders nothing and never calls back, so every request goes out
   /// exactly as it did before. It becomes load-bearing the day SUPABASE_URL
-  /// points at Box A, where six auth endpoints refuse a request without one.
+  /// points at the self-hosted auth server — Box C,
+  /// `https://auth-api.nikatru.com` — where six auth endpoints refuse a request
+  /// without one.
   String? _captchaToken;
 
   @override
@@ -319,24 +321,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
+  /// Shows [e] through the ONE shared mapper (`auth_error_sentence.dart`),
+  /// which passes a sentence this screen already wrote straight through. The
+  /// mapping began here as a private `_friendlyMessage`, the only one any auth
+  /// screen had; the thin wrapper it left behind went on 2026-09-24.
   void _snack(Object e) {
     if (!mounted) return;
     // Read INSIDE the mounted check, not at the call site: this runs from a
-    // `catch` after an await, and `AppLocalizations.of` on a disposed element
+    // `catch` after an await, and reading localizations on a disposed element
     // throws where the old string literal simply could not.
-    final AppLocalizations l10n = AppLocalizations.of(context);
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(SnackBar(content: Text(_friendlyMessage(l10n, e))));
+    ).showSnackBar(SnackBar(content: Text(authErrorSentence(context, e))));
   }
-
-  /// Delegates to the shared mapper. This WAS the only implementation, private
-  /// to this screen — which is why the other three auth screens showed the
-  /// server's raw English instead. Moved to `auth_error_text.dart` 2026-09-04
-  /// so one change fixes every screen; kept as a thin method because `_snack`
-  /// and the tests both call it by name.
-  String _friendlyMessage(AppLocalizations l10n, Object e) =>
-      authErrorText(l10n, e);
 
   @override
   Widget build(BuildContext context) {

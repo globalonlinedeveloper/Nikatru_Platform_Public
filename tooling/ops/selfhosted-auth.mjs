@@ -8,6 +8,7 @@
 //     after the switch, when the Management API `GET /v1/projects/{ref}/config/auth`
 //     no longer describes the server that sends the mail;
 //   · auth-cutover-preflight.mjs — the switch checklist (C3, C6, C7).
+// Both take their default Box C origin from BOXC_DEFAULT_TARGET below.
 // One copy of "how a served template is compared" and "how the Box C env dump is
 // read", so the two readers cannot grade the same server two ways.
 //
@@ -32,6 +33,13 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fetchWithBoundedRetry } from './bounded-retry.mjs';
 import { AUTH_MAIL_SOURCE_DIR, AUTH_MAIL_TEMPLATES } from '../sites/gen-auth-mail.mjs';
+
+/** The Box C auth origin, when SELFHOSTED_SUPABASE_URL is not set. ONE copy for
+ *  both callers: the preflight's `--target` default and the verifier's
+ *  `--selfhosted` default. The vault still holds a retired host under another
+ *  name, and that host does not resolve. Not a credential: C1 requires it in a
+ *  public CSP header. */
+export const BOXC_DEFAULT_TARGET = 'https://auth-api.nikatru.com';
 
 /** `len=N sha256:abcd1234` — enough to tell two values apart, never the value. */
 export function fingerprint(value) {

@@ -394,6 +394,8 @@ jobs:
       - name: Account deletion reaches every user-owned table, never via a shared secret
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-erasure-reach.mjs
+      - name: Every Worker that verifies a token refuses a signed-out session's token
+        run: node tooling/ci/assert-session-revocation.mjs
       - name: Fail-closed seams have a real on-switch
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-seams-wired.mjs

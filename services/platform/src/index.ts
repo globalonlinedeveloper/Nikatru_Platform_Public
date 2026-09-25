@@ -50,6 +50,7 @@ import report from './routes/report';
 import checkout from './routes/checkout';
 import money from './routes/money';
 import receipts from './routes/receipts';
+import sessions from './routes/sessions';
 import { scheduled } from './scheduled';
 
 const app = new Hono<AppEnv>();
@@ -207,6 +208,15 @@ app.use('/v1/account', platformAuth);
 app.use('/v1/account/*', platformAuth);
 app.route('/v1', account);
 app.route('/v1', providerToken);
+
+// AUTHENTICATED: the caller's signed-in sessions, and signing them out at the
+// Workers (⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS, routes/sessions.ts). TWO lines
+// for the reason the account block above has two: `/v1/sessions` alone does not
+// match `/v1/sessions/:id` or `/v1/sessions/revoke-all`, and those routes key a
+// write by the caller's subject.
+app.use('/v1/sessions', platformAuth);
+app.use('/v1/sessions/*', platformAuth);
+app.route('/v1', sessions);
 
 // AUTHENTICATED: the shared entitlement read ([5]M-4). The other half of what
 // [4]B-3's middleware lift was for — until this route existed, the only working

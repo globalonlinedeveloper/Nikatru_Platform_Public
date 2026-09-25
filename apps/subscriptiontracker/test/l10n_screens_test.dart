@@ -32,6 +32,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
     show AuthProviders;
 import 'package:nikatru_core/nikatru_core.dart' as core;
+import 'package:nikatru_design_system/nikatru_design_system.dart'
+    show ChassisLocalizations;
 import 'package:subscriptiontracker/app.dart';
 import 'package:subscriptiontracker/core/app_config.dart';
 import 'package:subscriptiontracker/core/e2e_keys.dart';
@@ -73,9 +75,14 @@ Future<void> _pump(
         keyValueStoreProvider.overrideWith((_) async => MemStore()),
         ...overrides,
       ],
+      // The delegate list `SublyApp` composes: the login screen's messages go
+      // through the shared error mapper, which reads the chassis strings.
       child: MaterialApp(
         locale: locale,
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        localizationsDelegates: <LocalizationsDelegate<dynamic>>[
+          ...AppLocalizations.localizationsDelegates,
+          ChassisLocalizations.delegate,
+        ],
         supportedLocales: AppLocalizations.supportedLocales,
         home: screen,
       ),

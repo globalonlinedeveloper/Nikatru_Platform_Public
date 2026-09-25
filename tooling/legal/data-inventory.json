@@ -804,6 +804,29 @@
       "note": "The brick's backend variant binds the SAME namespace id, so this row covers both. Deduplicated by id, not by binding name — two Workers sharing a cache is one store."
     },
     {
+      "id": "kv:aa46ad5002874231931cc5dc5b6e2904",
+      "kind": "kv-namespace",
+      "name": "SESSION_REVOKED",
+      "personalData": true,
+      "holds": "⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. The signed-out-session list: one key per account that signed a session out, `rev:<account id>`, value `{ before: <epoch s>|null, sids: [[<session uuid>, <revoked-at epoch s>], ...] }`. An account id, session ids and times — no email, no device, no network address. Every Worker's auth middleware reads it after verifying a token and refuses a token whose session is listed (or was issued before `before`).",
+      "retention": {
+        "kind": "ttl",
+        "reason": "Every write is `put(..., { expirationTtl: REVOCATION_TTL_SECONDS })` (3660 s = the access token's 3600 s life + 60 s clock skew) in services/platform/src/routes/sessions.ts, and each write prunes entries older than that first. So a record outlives by at most the skew the last token it can refuse, and is gone within about an hour of the last sign-out. tooling/ci/assert-session-revocation.mjs holds 3660 = jwt_exp + skew."
+      },
+      "erasure": {
+        "kind": "no-route",
+        "blockedBy": "Account deletion deliberately does NOT delete `rev:<account id>`: deleting it would RE-ADMIT a token the person just revoked, for the rest of that token's hour. The record expires by itself within 3660 s of the last write, so an erased account's entry is gone about an hour after the erasure at the latest. (Follow-up: erasure writing `before = now` for the account, so an erased account's outstanding tokens are refused too.)"
+      },
+      "writtenBy": [
+        "services/platform/src/routes/sessions.ts"
+      ],
+      "disclosure": {
+        "page": "privacy.html",
+        "quote": "stores account credentials and sign-in sessions for apps that offer accounts"
+      },
+      "note": "The namespace is titled `platform-session-revoked` (created 2026-09-25). ONE namespace, bound by services/platform (the only writer), services/subscriptiontracker-api and the brick's backend (readers) — one identity project, so one revocation list. NOT in the nightly R2 export (services/platform/src/backup/index.ts): every record expires within the hour, so a restored copy would only resurrect expired refusals."
+    },
+    {
       "id": "kv:d73cf5ffd0fd4d8396012fccd15906ad",
       "kind": "kv-namespace",
       "name": "SIGNUPS",

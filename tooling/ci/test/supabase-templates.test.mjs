@@ -23,18 +23,28 @@
 // ⚠️ A FIXTURE AGREES WITH WHATEVER MISUNDERSTANDING WROTE IT. These are the
 // regression net; the mutation run against the real tree is the proof.
 //
+// ⏱ 2026-09-24 — THE ONE-APP LIMB (O-MAIL-TEMPLATES-NAME-ONE-APP). The guard now
+// refuses every catalog/apps.json name in a template or a recorded subject
+// (`supabaseAuth.subjects`). Day-zero red on the real tree, before the copy fix: exit 1
+// at exactly six sites (confirm-signup.html:8 and :14, magic-link.html:8, :14 and
+// :20, reset-password.html:8), measured again on 2026-09-25 at main 1cb7c630.
+// X1 below mutates a COPY of the real tree and restores it; the guard as it stood
+// before the limb exits 0 on X1's mutated copy, so the limb is what makes it red.
+// Every fixture root now carries a catalog by default too, because the limb reads it.
+//
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const GUARD = join(CI_DIR, 'assert-supabase-templates.mjs');
+const REPO = resolve(CI_DIR, '..', '..');
 
 let TMP;
 let seq = 0;
@@ -72,13 +82,18 @@ const GOOD_SUBJECTS = {
 const transportWith = (subjects) =>
   `${JSON.stringify({ supabaseAuth: { smtp_host: 'smtp.example.com', ...(subjects === undefined ? {} : { subjects }) } }, null, 2)}\n`;
 
+// What the one-app limb reads besides the templates and the subjects above:
+// catalog/apps.json, a top-level array of apps with a `name`.
+const APP = 'Nikatru Subscription Tracker';
+const GOOD_CATALOG = `${JSON.stringify([{ slug: 'subscriptiontracker', name: APP }], null, 2)}\n`;
+
 /**
  * `served`: the files under sites/nikatru/auth-mail/ — defaults to a BYTE copy of
  * `files` (what gen-auth-mail.mjs writes); `null` writes no served directory.
- * `headers` / `transport`: the _headers text and the mail-transport.json text;
- * `null` writes no file.
+ * `headers` / `transport` / `catalog`: the _headers text, the mail-transport.json
+ * text and the catalog/apps.json text; `null` writes no file.
  */
-function makeRoot({ files, readme, served, headers, transport } = {}) {
+function makeRoot({ files, readme, served, headers, transport, catalog } = {}) {
   const root = join(TMP, `r${seq++}`);
   const dir = join(root, 'docs', 'platform', 'supabase', 'email-templates');
   mkdirSync(dir, { recursive: true });
@@ -102,6 +117,10 @@ function makeRoot({ files, readme, served, headers, transport } = {}) {
     mkdirSync(join(root, 'tooling'), { recursive: true });
     writeFileSync(join(root, 'tooling', 'mail-transport.json'), transport ?? transportWith(GOOD_SUBJECTS));
   }
+  if (catalog !== null) {
+    mkdirSync(join(root, 'catalog'), { recursive: true });
+    writeFileSync(join(root, 'catalog', 'apps.json'), catalog ?? GOOD_CATALOG);
+  }
   return root;
 }
 
@@ -111,6 +130,37 @@ const DEFAULT_SET = () => ({
   'confirm-signup.html': GOOD('Confirm your email'),
   'magic-link.html': GOOD('Your sign-in link'),
   'reset-password.html': GOOD('Reset your password'),
+});
+
+/** A scratch root holding byte copies of the REAL files the guard reads: the DR
+ *  templates, their served copies and `_headers`, the README, the catalog and the register. */
+function copyOfRealTree() {
+  const root = join(TMP, `real${seq++}`);
+  const rels = [
+    'docs/platform/supabase/email-templates/confirm-signup.html',
+    'docs/platform/supabase/email-templates/magic-link.html',
+    'docs/platform/supabase/email-templates/reset-password.html',
+    'docs/platform/supabase/README.md',
+    'sites/nikatru/auth-mail/confirm-signup.html',
+    'sites/nikatru/auth-mail/magic-link.html',
+    'sites/nikatru/auth-mail/reset-password.html',
+    'sites/nikatru/_headers',
+    'catalog/apps.json',
+    'tooling/mail-transport.json',
+  ];
+  for (const rel of rels) {
+    const to = join(root, ...rel.split('/'));
+    mkdirSync(dirname(to), { recursive: true });
+    writeFileSync(to, readFileSync(join(REPO, ...rel.split('/'))));
+  }
+  return root;
+}
+
+/** The same body in all three templates. */
+const allThree = (body) => ({
+  'confirm-signup.html': body,
+  'magic-link.html': body,
+  'reset-password.html': body,
 });
 
 const run = (root) => spawnSync(process.execPath, [GUARD, root], { encoding: 'utf8' });
@@ -385,5 +435,140 @@ describe('assert-supabase-templates — the subjects record has exactly the thre
     assert.equal(r.status, 1, out(r));
     assert.match(out(r), /SERVED DRIFT/);
     assert.match(out(r), /COVERAGE LOST: tooling\/mail-transport\.json/);
+  });
+});
+
+describe('assert-supabase-templates — the shared mail names the house, never one app (O-MAIL-TEMPLATES-NAME-ONE-APP)', () => {
+  test('X1 — "Subscription Tracker" re-inserted at confirm-signup.html:8 of a copy of the REAL tree: exit 1; restored: exit 0', () => {
+    const root = copyOfRealTree();
+    const target = join(root, 'docs', 'platform', 'supabase', 'email-templates', 'confirm-signup.html');
+    const servedCopy = join(root, 'sites', 'nikatru', 'auth-mail', 'confirm-signup.html');
+    const original = readFileSync(target, 'utf8');
+    const control = run(root);
+    assert.equal(control.status, 0, `green control first — the unmutated copy must pass:\n${out(control)}`);
+
+    const lines = original.split('\n');
+    const mutated = lines[7].replace('>Nikatru</span>', '>Nikatru Subscription Tracker</span>');
+    assert.notEqual(mutated, lines[7], 'the mutation changed no bytes: a no-op mutation is a broken test');
+    lines[7] = mutated;
+    // The served copy gets the same bytes, as gen-auth-mail.mjs would write them, so the
+    // one-app limb is the only thing left to turn the run red.
+    writeFileSync(target, lines.join('\n'));
+    writeFileSync(servedCopy, lines.join('\n'));
+    const red = run(root);
+    assert.equal(red.status, 1, out(red));
+    assert.match(out(red), /confirm-signup\.html:8 — "Nikatru Subscription Tracker" — the shared templates name the house, not one app \(O-MAIL-TEMPLATES-NAME-ONE-APP\)/);
+    assert.doesNotMatch(out(red), /SERVED DRIFT/);
+
+    writeFileSync(target, original);
+    writeFileSync(servedCopy, original);
+    assert.equal(readFileSync(target, 'utf8'), original);
+    const restored = run(root);
+    assert.equal(restored.status, 0, out(restored));
+  });
+
+  test('X2 — "Nikatru" alone passes: the house name is not an app name, though the app name starts with it', () => {
+    const body = `<div>
+  <span>Nikatru</span><span>by Nikatru</span>
+  <p>Tap the button below to sign in to Nikatru as {{ .Email }}.</p>
+  <a href="{{ .ConfirmationURL }}">Sign in to Nikatru</a>
+</div>`;
+    const r = run(makeRoot({ files: allThree(body) }));
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /1 catalog\/apps\.json name\(s\) refused in 3 template\(s\)/);
+  });
+
+  test('X3 — an EMPTY catalog is COVERAGE LOST (exit 2), never a pass', () => {
+    const r = run(makeRoot({ catalog: '[]\n' }));
+    assert.equal(r.status, 2, out(r));
+    assert.match(out(r), /COVERAGE LOST: catalog\/apps\.json lists no app/);
+    assert.doesNotMatch(out(r), /assert-supabase-templates: OK/);
+  });
+
+  test('X3b — a MISSING catalog is COVERAGE LOST (exit 2)', () => {
+    const r = run(makeRoot({ catalog: null }));
+    assert.equal(r.status, 2, out(r));
+    assert.match(out(r), /COVERAGE LOST: catalog\/apps\.json does not exist/);
+  });
+
+  test('X3c — a catalog entry with no name is COVERAGE LOST (exit 2): that app could not be refused', () => {
+    const r = run(makeRoot({ catalog: JSON.stringify([{ name: APP }, { slug: 'second' }]) }));
+    assert.equal(r.status, 2, out(r));
+    assert.match(out(r), /COVERAGE LOST: catalog\/apps\.json entry 1 has no `name`/);
+  });
+
+  test('X4 — a recorded supabaseAuth.subjects.confirmation naming the app: exit 1, at its line in the register', () => {
+    const transport = transportWith({ ...GOOD_SUBJECTS, confirmation: 'Confirm your Subscription Tracker account' });
+    const r = run(makeRoot({ transport }));
+    assert.equal(r.status, 1, out(r));
+    // transportWith writes `"subjects": {` at line 4; "confirmation" is its first key, line 5.
+    assert.match(out(r), /tooling\/mail-transport\.json:5 — "Nikatru Subscription Tracker" — the shared templates name the house, not one app/);
+  });
+
+  test('X4b — control for X4: a subject naming only the house passes, and all three are counted as read', () => {
+    const transport = transportWith({ ...GOOD_SUBJECTS, confirmation: 'Confirm your Nikatru account' });
+    const r = run(makeRoot({ transport }));
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /in 3 recorded subject\(s\) \(`supabaseAuth\.subjects`\)/);
+  });
+
+  test('X5 — a MISSING register is COVERAGE LOST (exit 2): no recorded subject could be read', () => {
+    const r = run(makeRoot({ transport: null }));
+    assert.equal(r.status, 2, out(r));
+    assert.match(out(r), /COVERAGE LOST: tooling\/mail-transport\.json does not exist/);
+    assert.match(out(r), /tooling\/mail-transport\.json does not exist, so the one-app limb checked no recorded subject/);
+  });
+
+  test('X5b — no supabaseAuth.subjects object, or one holding no string: the limb says COVERAGE LOST, and the subjects finding keeps the exit at 1', () => {
+    const none = run(makeRoot({ transport: '{ "rails": [] }\n' }));
+    assert.equal(none.status, 1, out(none));
+    assert.match(out(none), /COVERAGE LOST: tooling\/mail-transport\.json has no `supabaseAuth\.subjects` object, so the one-app limb checked no recorded subject/);
+    const noString = run(makeRoot({ transport: transportWith({ confirmation: 1, magic_link: null, recovery: false }) }));
+    assert.equal(noString.status, 1, out(noString));
+    assert.match(out(noString), /COVERAGE LOST: tooling\/mail-transport\.json `supabaseAuth\.subjects` holds no string value, so the one-app limb checked no recorded subject/);
+  });
+
+  test('X6 — the names are READ from the catalog: a second app added there is refused in a template', () => {
+    const catalog = JSON.stringify([{ name: APP }, { name: 'Nikatru Habit Garden' }]);
+    const files = {
+      'confirm-signup.html': GOOD('Welcome to Habit Garden'),
+      'magic-link.html': GOOD('M'),
+      'reset-password.html': GOOD('R'),
+    };
+    const r = run(makeRoot({ files, catalog }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /confirm-signup\.html:2 — "Nikatru Habit Garden"/);
+  });
+
+  test('X7 — case does not hide a name: "the subscription tracker by Nikatru" is refused', () => {
+    const files = {
+      'confirm-signup.html': GOOD('Welcome, from the subscription tracker by Nikatru'),
+      'magic-link.html': GOOD('M'),
+      'reset-password.html': GOOD('R'),
+    };
+    const r = run(makeRoot({ files }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /confirm-signup\.html:2 — "Nikatru Subscription Tracker"/);
+  });
+
+  test('X8 — a name split across a line break or by &nbsp; is refused, at the line where it starts', () => {
+    const files = {
+      'confirm-signup.html': GOOD('C'),
+      'magic-link.html': `${GOOD('M')}\n<p>Sign in to Nikatru Subscription\n  Tracker</p>`,
+      'reset-password.html': `${GOOD('R')}\n<p>Subscription&nbsp;Tracker</p>`,
+    };
+    const r = run(makeRoot({ files }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /magic-link\.html:7 — "Nikatru Subscription Tracker"/);
+    assert.match(out(r), /reset-password\.html:7 — "Nikatru Subscription Tracker"/);
+  });
+
+  test('X9 — a name inside a longer word is not that name: "Notes" is refused, "footnotes" is not', () => {
+    const catalog = JSON.stringify([{ name: 'Nikatru Notes' }]);
+    const inWord = run(makeRoot({ catalog, files: allThree(`${GOOD('C')}\n<p>See the footnotes.</p>`) }));
+    assert.equal(inWord.status, 0, out(inWord));
+    const alone = run(makeRoot({ catalog, files: allThree(`${GOOD('C')}\n<p>Open Notes.</p>`) }));
+    assert.equal(alone.status, 1, out(alone));
+    assert.match(out(alone), /confirm-signup\.html:7 — "Nikatru Notes"/);
   });
 });

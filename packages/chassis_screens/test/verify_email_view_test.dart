@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_chassis_screens/auth/verify_email_screen.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
+import 'support/raw_vendor_error.dart';
 import 'support/width_harness.dart';
 
 /// `VerifyEmailView` — the three controls, and what each one is FOR.
@@ -120,6 +121,8 @@ void main() {
               'exists and they cannot reach the app');
     });
 
+    // ⏱ 2026-09-24 — SHOWN, and MAPPED: this asserted the exception's own text
+    // appeared, which is the defect the shared mapper removes.
     testWidgets('a failure from any control is SHOWN, never swallowed',
         (WidgetTester tester) async {
       await pumpChassis(
@@ -131,8 +134,29 @@ void main() {
       await tester.pumpAndSettle();
       expect(
         tester.widget<Text>(find.byKey(VerifyEmailView.statusLine)).data,
-        contains('network is gone'),
+        _en.authNetworkError,
+      );
+      expect(find.textContaining('StateError'), findsNothing);
+    });
+
+    // 🔴 THE `'$e'` ARM — `resend` is captcha-gated on the self-hosted server.
+    testWidgets('a NON-AuthFailure is mapped, never printed',
+        (WidgetTester tester) async {
+      await pumpChassis(
+        tester,
+        kPhone,
+        view(onResend: () async => throw const RawVendorError()),
+      );
+      await tester.tap(find.byKey(VerifyEmailView.resendButton));
+      await tester.pumpAndSettle();
+      expect(find.textContaining(rawVendorFragment), findsNothing);
+      expect(
+        tester.widget<Text>(find.byKey(VerifyEmailView.statusLine)).data,
+        _en.authCaptchaFailed,
       );
     });
   });
 }
+
+/// ⏱ 2026-09-24 — the sentences the shared `authErrorText` answers with.
+final ChassisLocalizations _en = lookupChassisLocalizations(const Locale('en'));

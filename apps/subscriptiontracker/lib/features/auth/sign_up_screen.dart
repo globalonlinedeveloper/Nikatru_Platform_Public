@@ -8,7 +8,7 @@ import '../../l10n/app_localizations.dart';
 import '../../state/providers.dart';
 import 'legal_consent_fields.dart';
 import 'turnstile_gate.dart';
-import 'auth_error_text.dart';
+import 'auth_error_sentence.dart';
 
 /// Sign-up — [pipeline C-13], inherited by every stamped app.
 ///
@@ -64,7 +64,14 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
         // Checked HERE as well as server-side. The server is the authority, but
         // a round trip to be told "too short" is a worse experience than being
         // told before sending — and this is the one rule we can state exactly.
-        throw core.AuthFailure(l10n.passwordTooShort);
+        // ⏱ 2026-09-24 — raised in the SERVER's vocabulary (code and reason).
+        // It was a bare `AuthFailure(l10n.passwordTooShort)`, which the mapper
+        // read as unmatched server English and showed as `authUnknownError`.
+        throw core.AuthFailure(
+          l10n.passwordTooShort,
+          code: core.AuthFailure.weakPassword,
+          reasons: const <String>[core.AuthFailure.reasonLength],
+        );
       }
       // ⏱ 2026-09-15 · [ADR 082] §5 — THE STORE AGE GATE, BEFORE ANYTHING IS CREATED.
       // Below adult: no account and no terms recorded — both happen below this line.
@@ -131,14 +138,10 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
       if (auth.currentUser == null) {
         context.go('/check-inbox', extra: _email.text.trim());
       }
-    } on core.AuthFailure catch (e) {
-      // Was `_error = e.message` — the SERVER's English, shown verbatim. At the
-      // cutover that becomes "captcha protection: request disallowed".
-      if (mounted) {
-        setState(() => _error = authErrorText(AppLocalizations.of(context), e));
-      }
     } catch (e) {
-      if (mounted) setState(() => _error = '$e');
+      // ⏱ 2026-09-24 — ONE arm, through the shared mapper: the `'$e'` arm that
+      // stood here printed a vendor exception or a captcha refusal whole.
+      if (mounted) setState(() => _error = authErrorSentence(context, e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }

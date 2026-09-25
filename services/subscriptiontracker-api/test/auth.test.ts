@@ -40,6 +40,28 @@ const KV = {
   put: async () => undefined,
 } as unknown as KVNamespace;
 
+/**
+ * ⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. A Map-backed SESSION_REVOKED whose
+ * `get` honours the `'json'` type the middleware asks for. Every harness in
+ * this file binds an EMPTY one by default, so the existing cases run through the
+ * real read rather than the binding-missing branch.
+ */
+function revocationKv(records: Record<string, unknown> = {}, { throws = false } = {}) {
+  const store = new Map(Object.entries(records).map(([k, v]) => [k, JSON.stringify(v)]));
+  const calls: unknown[][] = [];
+  const kv = {
+    get: async (...args: unknown[]) => {
+      calls.push(args);
+      if (throws) throw new TypeError('KV GET failed: 503 Service Unavailable');
+      const raw = store.get(args[0] as string);
+      if (raw === undefined) return null;
+      return args[1] === 'json' ? JSON.parse(raw) : raw;
+    },
+    put: async () => undefined,
+  } as unknown as KVNamespace;
+  return { kv, calls };
+}
+
 /** `null` means NO fallback secret configured. (An `undefined` default would be
  *  swallowed by the parameter default — which it silently was, first time.) */
 function app(secret: string | null = SECRET) {
@@ -50,6 +72,7 @@ function app(secret: string | null = SECRET) {
     SUPABASE_URL,
     SUPABASE_JWT_SECRET: secret ?? undefined,
     JWKS_CACHE: KV,
+    SESSION_REVOKED: revocationKv().kv,
     APP_ID: 'subscriptiontracker',
     API_VERSION: 'v1',
   } as unknown as AppEnv['Bindings'];
@@ -223,6 +246,7 @@ describe('the JWKS outage does NOT downgrade this boundary to a shared secret', 
       SUPABASE_URL: url,
       SUPABASE_JWT_SECRET: secret ?? undefined,
       JWKS_CACHE: kv,
+      SESSION_REVOKED: revocationKv().kv,
       APP_ID: 'subscriptiontracker',
       API_VERSION: 'v1',
     } as unknown as AppEnv['Bindings'];
@@ -394,5 +418,158 @@ describe('the JWKS outage does NOT downgrade this boundary to a shared secret', 
     const res = await api({ kv: emptyKv, url, secret: null })(`Bearer ${await es256(url)}`);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ userId: 'user-a', assurance: 'asymmetric' });
+  });
+});
+
+/**
+ * ⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. A signed-out session's token is refused
+ * at BOTH boundaries of this Worker, on BOTH of supabaseAuth's verification
+ * paths, and the read fails OPEN. The decision is tested once, in
+ * services/_shared/test/revocation.test.ts; these cases hold the wiring.
+ *
+ * Self-contained on purpose: its own key pair, its own fetch stub, its own URLs,
+ * so it does not inherit whatever `mode` the outage block above left behind.
+ */
+describe('a REVOKED session is refused at both boundaries, and the read fails open', () => {
+  const SID = '6f1c0b2e-8a4d-4c1e-9b7a-2d3e4f5a6b7c';
+  const UP = 'https://revoke-up.test';
+  const DOWN = 'https://revoke-down.test';
+  const nowS = () => Math.floor(Date.now() / 1000);
+  let signer: KeyLike;
+  let jwk: Record<string, unknown>;
+
+  beforeAll(async () => {
+    const pair = await generateKeyPair('ES256', { extractable: true });
+    signer = pair.privateKey;
+    jwk = { ...(await exportJWK(pair.publicKey)), alg: 'ES256', kid: 'rev-key-1' };
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (new URL(url).origin === DOWN) throw new Error('Network connection lost');
+      if (url === `${UP}/auth/v1/.well-known/jwks.json`) {
+        return new Response(JSON.stringify({ keys: [jwk] }), { status: 200 });
+      }
+      throw new Error(`unexpected fetch in test: ${url}`);
+    });
+  });
+
+  function call({
+    middleware = supabaseAuth,
+    url = UP,
+    revoked = revocationKv().kv as KVNamespace | null,
+  }: { middleware?: typeof supabaseAuth; url?: string; revoked?: KVNamespace | null } = {}) {
+    const a = new Hono<AppEnv>();
+    a.use('*', async (c, next) => { c.set('requestId', 'rid-test'); await next(); });
+    a.use('*', middleware);
+    a.get('/me', (c) => c.json({ userId: c.get('userId'), assurance: c.get('tokenAssurance') }));
+    const env = {
+      SUPABASE_URL: url,
+      SUPABASE_JWT_SECRET: SECRET,
+      JWKS_CACHE: KV,
+      SESSION_REVOKED: revoked ?? undefined,
+      APP_ID: 'subscriptiontracker',
+      API_VERSION: 'v1',
+    } as unknown as AppEnv['Bindings'];
+    return (authz: string) => a.request('/me', { headers: { Authorization: authz } }, env);
+  }
+
+  const es256 = (claims: Record<string, unknown>) =>
+    new SignJWT(claims)
+      .setProtectedHeader({ alg: 'ES256', kid: 'rev-key-1' })
+      .setIssuedAt()
+      .setExpirationTime('1h')
+      .setIssuer(`${UP}/auth/v1`)
+      .setAudience('authenticated')
+      .sign(signer);
+
+  const listed = () => revocationKv({ 'rev:user-a': { before: null, sids: [[SID, nowS()]] } });
+
+  it('🔴 supabaseAuth, ES256 path: a listed session_id ⇒ 401', async () => {
+    const { kv, calls } = listed();
+    const res = await call({ revoked: kv })(`Bearer ${await es256({ sub: 'user-a', session_id: SID })}`);
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: 'unauthorized' });
+    expect(calls).toEqual([['rev:user-a', 'json']]);
+  });
+
+  it('🔴 supabaseAuth, HS256 FALLBACK path: a listed session_id ⇒ 401 too', async () => {
+    const hs = await new SignJWT({ sub: 'user-a', session_id: SID })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuedAt()
+      .setExpirationTime('1h')
+      .setIssuer(`${DOWN}/auth/v1`)
+      .setAudience('authenticated')
+      .sign(key);
+    // Control first: the same token with no record IS admitted, and symmetrically.
+    const ok = await call({ url: DOWN })(`Bearer ${hs}`);
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({ userId: 'user-a', assurance: 'symmetric' });
+    const res = await call({ url: DOWN, revoked: listed().kv })(`Bearer ${hs}`);
+    expect(res.status).toBe(401);
+  });
+
+  it('🔴 erasureAuth: a listed session_id ⇒ 401, logged with no identifier', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const t = await es256({ sub: 'user-a', session_id: SID });
+      const res = await call({ middleware: erasureAuth, revoked: listed().kv })(`Bearer ${t}`);
+      expect(res.status).toBe(401);
+      const lines = err.mock.calls.map((a) => a.map(String).join(' '));
+      expect(lines.some((l) => l.includes('signed out'))).toBe(true);
+      for (const l of lines) {
+        expect(l).not.toContain('user-a');
+        expect(l).not.toContain(SID);
+        expect(l).not.toContain(t);
+      }
+    } finally {
+      err.mockRestore();
+    }
+  });
+
+  it('🔴 erasureAuth: a token issued before rev:<sub>.before ⇒ 401', async () => {
+    const { kv } = revocationKv({ 'rev:user-a': { before: nowS() + 120, sids: [] } });
+    const res = await call({ middleware: erasureAuth, revoked: kv })(`Bearer ${await es256({ sub: 'user-a', session_id: SID })}`);
+    expect(res.status).toBe(401);
+  });
+
+  it('a session NOT listed is admitted at both boundaries', async () => {
+    const other = revocationKv({ 'rev:user-a': { before: null, sids: [['0d9e8f7a-6b5c-4d3e-8f2a-1b0c9d8e7f6a', nowS()]] } });
+    const t = await es256({ sub: 'user-a', session_id: SID });
+    expect((await call({ revoked: other.kv })(`Bearer ${t}`)).status).toBe(200);
+    expect((await call({ middleware: erasureAuth, revoked: other.kv })(`Bearer ${t}`)).status).toBe(200);
+  });
+
+  it('🔴 the KV read THROWS ⇒ admitted at both boundaries, logged by event name only', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const t = await es256({ sub: 'user-a', session_id: SID });
+      const { kv } = revocationKv({}, { throws: true });
+      expect((await call({ revoked: kv })(`Bearer ${t}`)).status).toBe(200);
+      expect((await call({ middleware: erasureAuth, revoked: kv })(`Bearer ${t}`)).status).toBe(200);
+      const lines = warn.mock.calls.map((a) => a.map(String).join(' '));
+      const hits = lines.filter((l) => l.includes('auth_revocation_read_failed'));
+      expect(hits).toHaveLength(2);
+      expect(hits[0]).toContain('[auth]');
+      expect(hits[1]).toContain('[erasure-auth]');
+      for (const l of lines) {
+        expect(l).not.toContain('user-a');
+        expect(l).not.toContain(SID);
+        expect(l).not.toContain(t);
+        expect(l).not.toContain('503');
+      }
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('the binding ABSENT ⇒ admitted, and logged', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const res = await call({ revoked: null })(`Bearer ${await es256({ sub: 'user-a', session_id: SID })}`);
+      expect(res.status).toBe(200);
+      const lines = warn.mock.calls.map((a) => a.map(String).join(' '));
+      expect(lines.filter((l) => l.includes('auth_revocation_binding_missing'))).toHaveLength(1);
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

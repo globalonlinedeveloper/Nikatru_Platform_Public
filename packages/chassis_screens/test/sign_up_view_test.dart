@@ -5,6 +5,7 @@ import 'package:nikatru_chassis_screens/auth/sign_up_screen.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
+import 'support/raw_vendor_error.dart';
 import 'support/width_harness.dart';
 
 /// `SignUpView` — the clickwrap, and the two ways past a disabled button.
@@ -216,7 +217,9 @@ void main() {
       expect(calls, 0);
     });
 
-    testWidgets('a failure from the seam is shown under the fields',
+    // ⏱ 2026-09-24 — shown MAPPED. This case asserted the server's words
+    // appeared verbatim, which is the defect it now rules out.
+    testWidgets('a failure from the seam is shown under the fields, mapped',
         (WidgetTester tester) async {
       await pumpChassis(
         tester,
@@ -227,13 +230,65 @@ void main() {
             required String password,
             required bool marketingEmail,
           }) async =>
-              throw core.AuthFailure('that address is taken'),
+              throw core.AuthFailure(
+            'User already registered',
+            code: 'user_already_exists',
+          ),
         ),
       );
       await complete(tester);
       await tester.tap(find.byKey(SignUpView.submitButton));
       await tester.pumpAndSettle();
-      expect(find.text('that address is taken'), findsOneWidget);
+      expect(find.text(_en.authAlreadyRegistered), findsOneWidget);
+      expect(find.textContaining('User already registered'), findsNothing);
+    });
+
+    // 🔴 THE `'$e'` ARM, and the RED CONTROL for this whole class of defect:
+    // restore `_error = '$e'` in `SignUpView` and this case fails.
+    testWidgets('a NON-AuthFailure is mapped, never printed',
+        (WidgetTester tester) async {
+      await pumpChassis(
+        tester,
+        kPhone,
+        view(
+          onSignUp: ({
+            required String email,
+            required String password,
+            required bool marketingEmail,
+          }) async =>
+              throw const RawVendorError(),
+        ),
+      );
+      await complete(tester);
+      await tester.tap(find.byKey(SignUpView.submitButton));
+      await tester.pumpAndSettle();
+      expect(find.textContaining(rawVendorFragment), findsNothing);
+      expect(find.text(_en.authCaptchaFailed), findsOneWidget);
+    });
+
+    // The LOCAL length refusal, raised before anything is sent. It rides the
+    // same mapper as the server's, so it must still read `passwordTooShort`.
+    testWidgets('a short password reads passwordTooShort, and sends nothing',
+        (WidgetTester tester) async {
+      int calls = 0;
+      await pumpChassis(
+        tester,
+        kPhone,
+        view(
+          onSignUp: ({
+            required String email,
+            required String password,
+            required bool marketingEmail,
+          }) async =>
+              calls++,
+        ),
+      );
+      await complete(tester, password: 'short');
+      await tester.tap(find.byKey(SignUpView.submitButton));
+      await tester.pumpAndSettle();
+      expect(find.text(_en.passwordTooShort), findsOneWidget);
+      expect(find.text(_en.authUnknownError), findsNothing);
+      expect(calls, 0);
     });
   });
 
@@ -259,3 +314,6 @@ void main() {
     expect(sent, <String>['someone@example.com']);
   });
 }
+
+/// ⏱ 2026-09-24 — the sentences the shared `authErrorText` answers with.
+final ChassisLocalizations _en = lookupChassisLocalizations(const Locale('en'));
