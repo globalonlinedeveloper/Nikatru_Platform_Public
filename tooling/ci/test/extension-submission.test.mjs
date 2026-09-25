@@ -428,6 +428,9 @@ describe('assert-publish-steps-guarded — the region is the job, and zero is no
 function realCopy(mutate = () => {}) {
   const root = join(TMP, `owner${seq++}`);
   cpSync(join(REPO, '.github', 'workflows'), join(root, '.github', 'workflows'), { recursive: true });
+  // ⏱ P-A1: the guard follows `uses: ./.github/actions/<x>`, and a reference it
+  // cannot follow is COVERAGE LOST — so the copy carries what the workflows call.
+  cpSync(join(REPO, '.github', 'actions'), join(root, '.github', 'actions'), { recursive: true });
   cpSync(join(REPO, 'tooling', 'channel-register.json'), join(root, 'tooling', 'channel-register.json'));
   for (const f of readdirSync(join(REPO, 'tooling', 'release')).filter((n) => /^submit-.*[.]mjs$/.test(n))) {
     cpSync(join(REPO, 'tooling', 'release', f), join(root, 'tooling', 'release', f));
@@ -606,5 +609,30 @@ describe("assert-publish-steps-guarded limb 2 — a store publish waits for the 
     const { code, out } = runGuard(['--limb', 'owner_word']);
     assert.equal(code, 2, out);
     assert.match(out, /names no limb/);
+  });
+});
+
+// ── P-A1: A PUBLISHING STEP MOVED INTO A LOCAL COMPOSITE ACTION ─────────────
+// The dry-run limb reads the job through parseResolvedWorkflows: the calling step
+// is replaced by the action's steps, each labelled at its own file and line, and
+// the caller's `if:` is carried onto every inlined step that declares none.
+describe('assert-publish-steps-guarded — a publish moved into a local composite action', () => {
+  const PUB_ACTION = 'name: Pub\nruns:\n  using: composite\n  steps:\n    - name: publish\n      shell: bash\n      run: gh release create x\n';
+
+  test('an UNGUARDED publish inside the composite FAILS, labelled at the action file', () => {
+    const root = workflowRoot([...EXEMPT, ...filler(), { name: 'via action', uses: './.github/actions/pub' }]);
+    write(root, '.github/actions/pub/action.yml', PUB_ACTION);
+    const { code, out } = runGuard(['--repo-root', root, '--workflow', '.github/workflows/fixture.yml', '--job', 'release', '--limb', 'dry-run']);
+    assert.equal(code, 1, out);
+    assert.match(out, /UNGUARDED {2}publishing surface/);
+    assert.match(out, /\.github\/actions\/pub\/action\.yml:5 step "publish"/);
+  });
+
+  test('the caller step\'s dry-run `if:` guards the composite\'s publish', () => {
+    const root = workflowRoot([...EXEMPT, ...filler(), { name: 'via action', if: 'inputs.dry_run != true', uses: './.github/actions/pub' }]);
+    write(root, '.github/actions/pub/action.yml', PUB_ACTION);
+    const { code, out } = runGuard(['--repo-root', root, '--workflow', '.github/workflows/fixture.yml', '--job', 'release', '--limb', 'dry-run']);
+    assert.equal(code, 0, out);
+    assert.match(out, /1 publishing-surface step\(s\)/);
   });
 });

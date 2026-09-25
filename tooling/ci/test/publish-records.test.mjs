@@ -810,3 +810,86 @@ describe('assert-publish-records — against the REAL repository', () => {
     }
   });
 });
+
+// ── P-A1: A RECORD STEP MOVED OUT OF THE WORKFLOW ───────────────────────────
+// The guard reads workflows through parseResolvedWorkflows, so a record step
+// behind `uses: ./.github/actions/<x>` is graded in the caller's job, and a
+// register row's `workflow#job` that is a call to a local reusable workflow is
+// graded through the callee's jobs. Before P-A1 the first shape read as a lane
+// that never records (a false red), and the second as a job with no steps.
+describe('assert-publish-records — a record step moved into a local composite or callee', () => {
+  const REC_ACTION = `name: Rec
+runs:
+  using: composite
+  steps:
+    - name: Record the deployed SHA
+      shell: bash
+      run: node tooling/ci/record-deployment.mjs subscriptiontracker-web https://subly.nikatru.com
+`;
+  const VIA_ACTION = `name: web
+on: [push]
+jobs:
+  deploy-web:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: ./.github/actions/rec
+`;
+  const withAction = (root, body) => {
+    mkdirSync(join(root, '.github/actions/rec'), { recursive: true });
+    writeFileSync(join(root, '.github/actions/rec/action.yml'), body);
+    return root;
+  };
+
+  test('a served lane whose record step lives in a local composite action passes', () => {
+    const root = withAction(served({ 'deploy-web.yml': VIA_ACTION }), REC_ACTION);
+    const { code, out } = run(root);
+    assert.equal(code, 0, out);
+    assert.match(out, /1 served channel\(s\) → 1 required environment\(s\)/);
+  });
+
+  test('a served lane whose local composite action records NOTHING fails', () => {
+    const root = withAction(
+      served({ 'deploy-web.yml': VIA_ACTION }),
+      'name: Rec\nruns:\n  using: composite\n  steps:\n    - shell: bash\n      run: echo deployed\n',
+    );
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /is SERVED and .* never records "subscriptiontracker-web"/);
+  });
+
+  test('a narrowing `if:` on a record step inside the composite fails, labelled at the action file', () => {
+    const root = withAction(
+      served({ 'deploy-web.yml': VIA_ACTION }),
+      REC_ACTION.replace('      shell: bash\n', "      if: github.actor == 'nobody'\n      shell: bash\n"),
+    );
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /NARROWING/);
+    assert.match(out, /\.github\/actions\/rec\/action\.yml:\d+/);
+  });
+
+  test('a served lane job that calls a local reusable workflow is graded through the callee', () => {
+    const lib = `name: web-lib
+on:
+  workflow_call:
+jobs:
+  ship:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Record the deployed SHA
+        run: node tooling/ci/record-deployment.mjs subscriptiontracker-web https://subly.nikatru.com
+`;
+    const caller = 'name: web\non: [push]\njobs:\n  deploy-web:\n    uses: ./.github/workflows/web-lib.yml\n';
+    const { code, out } = run(served({ 'deploy-web.yml': caller, 'web-lib.yml': lib }));
+    assert.equal(code, 0, out);
+    assert.match(out, /1 served channel\(s\) → 1 required environment\(s\)/);
+  });
+
+  test('a served lane job whose local reusable workflow records NOTHING fails', () => {
+    const lib = 'name: web-lib\non:\n  workflow_call:\njobs:\n  ship:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: echo deployed\n';
+    const caller = 'name: web\non: [push]\njobs:\n  deploy-web:\n    uses: ./.github/workflows/web-lib.yml\n';
+    const { code, out } = run(served({ 'deploy-web.yml': caller, 'web-lib.yml': lib }));
+    assert.equal(code, 1, out);
+    assert.match(out, /is SERVED and .* never records "subscriptiontracker-web"/);
+  });
+});

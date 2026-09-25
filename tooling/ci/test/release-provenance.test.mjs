@@ -1746,9 +1746,16 @@ describe('assert-release-provenance — the floors ABOVE the job parse', () => {
     // job in `uses:` form — a reusable-workflow call — has zero steps in both
     // counts, and without the conjunct `0 === 0` reads as "the stripper ate the
     // file" and false-reds a perfectly ordinary workflow.
-    const reusable = 'name: R\non:\n  workflow_call:\njobs:\n  call_build:\n    uses: ./.github/workflows/build.yml\n';
+    // ⏱ 2026-09-24 — P-A1: the caller is now push-triggered and its callee is
+    // named. The old fixture was an UNCALLED `workflow_call` file, which the
+    // resolved parse refuses as `orphan-callee` (design-local-uses.md:62) — an
+    // exit 2 that has nothing to do with this conjunct. The caller file still has
+    // jobs and zero steps in both counts, which is the shape this case pins.
+    const caller = 'name: R\non:\n  push:\njobs:\n  call_lib:\n    uses: ./.github/workflows/lib.yml\n';
+    const lib = 'name: L\non:\n  workflow_call:\njobs:\n  noop:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: echo lib\n';
     const root = tree();
-    writeFileSync(join(root, '.github/workflows/reusable.yml'), reusable);
+    writeFileSync(join(root, '.github/workflows/reusable.yml'), caller);
+    writeFileSync(join(root, '.github/workflows/lib.yml'), lib);
     const { code, out } = run(root);
     assert.equal(code, 0, out);
     assert.doesNotMatch(out, /COVERAGE LOST/);
@@ -2161,6 +2168,28 @@ describe('assert-release-provenance — the gate-constituent walk', () => {
     assert.equal(code, 1, out);
     assert.match(out, /2 jobs produce a check run named "ci-gate"/);
     assert.match(out, /polls that check BY NAME/);
+  });
+});
+
+// ⏱ 2026-09-24 — P-A1: the guard reads workflows through parseResolvedWorkflows, so
+// a publish moved behind `uses: ./.github/actions/<x>` is graded where it now
+// lives. Before it, the job below had no publish at all and its missing marker
+// was not a finding. Placed above the dated block that follows, which measured
+// this file on 2026-08-24 and is left as that record.
+describe('assert-release-provenance — a publish moved into a local composite action', () => {
+  const PUB_ACTION = 'name: Pub\nruns:\n  using: composite\n  steps:\n    - shell: bash\n      run: npx wrangler pages deploy build/web\n';
+  const deployVia = (tail) =>
+    `name: Deploy\non:\n  push:\n    branches: [main]\njobs:\n  deploy:\n    runs-on: ubuntu-24.04\n    steps:\n${GATE_STEP}\n      - uses: ./.github/actions/pub\n${tail}`;
+
+  test('FAILS when the composite deploys and the job never records, at the action file line', () => {
+    const { code, out } = run(tree({ deploy: deployVia(''), extraScript: { path: '.github/actions/pub/action.yml', body: PUB_ACTION } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /job "deploy" performs .* at \.github\/actions\/pub\/action\.yml:6 and never calls tooling\/ci\/record-deployment\.mjs/);
+  });
+
+  test('the same composite with the marker after it: ok', () => {
+    const { code, out } = run(tree({ deploy: deployVia(`${MARKER_STEP}\n`), extraScript: { path: '.github/actions/pub/action.yml', body: PUB_ACTION } }));
+    assert.equal(code, 0, out);
   });
 });
 
