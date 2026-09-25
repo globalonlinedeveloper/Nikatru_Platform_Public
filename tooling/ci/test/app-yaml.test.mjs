@@ -1595,11 +1595,15 @@ describe('every live vendor that receives personal data is named in each app not
     }
   });
 
-  test('the rendered notice itself carries a table row for every processor', () => {
+  // ⏱ 2026-09-25 — the cell is the register row's `name` (the company), no
+  // longer the id: O-APP-PRIVACY-OMITS-STORE-BILLING.
+  test('the rendered notice itself carries a table row for every processor, by its company name', () => {
     for (const { app, doc } of appDeclarations) {
       const html = readFileSync(join(REPO, 'sites', 'nikatru', app, 'privacy.html'), 'utf8');
       for (const pr of doc.processors ?? []) {
-        assert.ok(html.includes(`<tr><td>${pr.id}</td>`), `sites/nikatru/${app}/privacy.html has no row for ${pr.id}`);
+        const name = byId.get(pr.id)?.name;
+        assert.ok(typeof name === 'string', `processor ${pr.id} has no named row in tooling/legal/provider-register.json`);
+        assert.ok(html.includes(`<tr><td>${name}</td>`), `sites/nikatru/${app}/privacy.html has no row for ${pr.id} (${name})`);
       }
     }
   });
@@ -1984,6 +1988,181 @@ describe('limb 8 — an export-compliance `false` holds to the code the app ship
       const { code, out } = spawn(GUARD, [root]);
       assert.equal(code, 1, out);
       assert.match(out, /exportCompliance/);
+    } finally { kill(root); }
+  });
+});
+
+describe('limb 9 — every provider the app’s configuration triggers is declared in its privacy.yaml', () => {
+  const PROVIDER_REGISTER = 'tooling/legal/provider-register.json';
+  /** privacy.yaml with one `processors` row removed; the anchor asserts it was there. */
+  const dropProcessor = (root, id) => {
+    const text = get(root, PRIVACY_YAML);
+    const cut = text.replace(new RegExp(`^  - id: ${id}\\n(?: {4}.*\\n)+\\n?`, 'm'), '');
+    assert.notEqual(cut, text, `fixture anchor: privacy.yaml declares ${id}`);
+    put(root, PRIVACY_YAML, cut);
+  };
+  /** Re-render the notice so the case fails on limb 9 alone, not on a stale page. */
+  const rerender = (root) => {
+    const r = spawn(PRIVACY_RENDER, [root]);
+    assert.equal(r.code, 0, `the notice re-renders:\n${r.out}`);
+  };
+  const setRequiredWhen = (root, id, requiredWhen) => {
+    const reg = readJson(root, PROVIDER_REGISTER);
+    const row = reg.providers.find((p) => p.id === id);
+    assert.ok(row, `fixture anchor: ${PROVIDER_REGISTER} has a ${id} row`);
+    if (requiredWhen === undefined) delete row.requiredWhen;
+    else row.requiredWhen = requiredWhen;
+    putJson(root, PROVIDER_REGISTER, reg);
+  };
+
+  test('POSITIVE CONTROL — the shipped tree declares all ten providers its configuration triggers', () => {
+    const root = tree();
+    try {
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 0, `expected a clean tree, got ${code}:\n${out}`);
+      assert.match(out, /limb 9 — 1 app\(s\) graded: 10 required provider\(s\), each declared among 10 processor\(s\), and no `never` provider declared/);
+    } finally { kill(root); }
+  });
+
+  test('RC1 — revenuecat dropped is RED, pointing at the app.yaml line that names it', () => {
+    const root = tree();
+    try {
+      dropProcessor(root, 'revenuecat');
+      rerender(root);
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.ok(out.includes('apps/subscriptiontracker/privacy.yaml: processor "revenuecat" is required and not declared'), out);
+      assert.match(out, /apps\/subscriptiontracker\/app\.yaml:\d+ \(billing\.mobileIap\.provider\)/);
+    } finally { kill(root); }
+  });
+
+  test('google-play dropped is RED, pointing at the channel that sells on play-billing', () => {
+    const root = tree();
+    try {
+      dropProcessor(root, 'google-play');
+      rerender(root);
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.ok(out.includes('processor "google-play" is required and not declared'), out);
+      assert.match(out, /tooling\/channel-register\.json:\d+ \(android-play purchaseRail\.rail\)/);
+    } finally { kill(root); }
+  });
+
+  test('apple-app-store dropped is RED, naming both Apple channels', () => {
+    const root = tree();
+    try {
+      dropProcessor(root, 'apple-app-store');
+      rerender(root);
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.ok(out.includes('processor "apple-app-store" is required and not declared'), out);
+      assert.match(out, /\(ios-appstore purchaseRail\.rail\)/);
+      assert.match(out, /\(macos-appstore purchaseRail\.rail\)/);
+    } finally { kill(root); }
+  });
+
+  test('supabase dropped is RED, pointing at its own register row, because its kind is always', () => {
+    const root = tree();
+    try {
+      dropProcessor(root, 'supabase');
+      rerender(root);
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.ok(out.includes('processor "supabase" is required and not declared'), out);
+      assert.match(out, /tooling\/legal\/provider-register\.json:\d+ \(requiredWhen always\)/);
+    } finally { kill(root); }
+  });
+
+  test('RC2 — a `never` provider declared is RED, quoting the reason on its row', () => {
+    const root = tree();
+    try {
+      put(root, PRIVACY_YAML, `${get(root, PRIVACY_YAML)}
+  - id: microsoft-store
+    role: store_billing
+    purpose: Bills and delivers in-app purchases made through that store, under its own terms.
+    source: tooling/legal/provider-register.json
+    asOf: "2026-09-25"
+`);
+      rerender(root);
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.ok(out.includes('processor "microsoft-store" is declared, and its row at tooling/legal/provider-register.json:'), out);
+      assert.ok(out.includes('says requiredWhen never ("Every Windows channel sells on paddle'), out);
+    } finally { kill(root); }
+  });
+
+  test('RC4 — a requiredWhen kind the resolver does not know is COVERAGE LOST, never a pass', () => {
+    const root = tree();
+    try {
+      setRequiredWhen(root, 'supabase', { kind: 'sometimes' });
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 2, out);
+      assert.ok(out.includes('limb 9 cannot judge tooling/legal/provider-register.json'), out);
+      assert.ok(out.includes('provider "supabase" requiredWhen.kind is "sometimes"'), out);
+    } finally { kill(root); }
+  });
+
+  test('a register row with no requiredWhen at all is COVERAGE LOST, not a provider nobody needs', () => {
+    const root = tree();
+    try {
+      setRequiredWhen(root, 'revenuecat', undefined);
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 2, out);
+      assert.ok(out.includes('provider "revenuecat" has no requiredWhen object'), out);
+    } finally { kill(root); }
+  });
+
+  test('a `never` with a reason too short to read is RED as malformed', () => {
+    const root = tree();
+    try {
+      setRequiredWhen(root, 'lemon-squeezy', { kind: 'never', why: 'retired' });
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.ok(out.includes('tooling/legal/provider-register.json: provider "lemon-squeezy" requiredWhen.why must say'), out);
+    } finally { kill(root); }
+  });
+
+  test('a channelRail naming a rail no channel register row defines is RED as malformed', () => {
+    const root = tree();
+    try {
+      setRequiredWhen(root, 'paddle', { kind: 'channelRail', rail: 'padle' });
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.ok(out.includes('provider "paddle" requiredWhen.rail is "padle", which is not a selling rail'), out);
+    } finally { kill(root); }
+  });
+});
+
+describe('render-privacy — the notice names each processor by its company, from the register', () => {
+  test('the rendered table prints the register `name`, not the id', () => {
+    const root = tree();
+    try {
+      put(root, SITE_NOTICE, '');
+      const r = spawn(PRIVACY_RENDER, [root]);
+      assert.equal(r.code, 0, r.out);
+      const page = get(root, SITE_NOTICE);
+      assert.ok(page.includes('<tr><td>RevenueCat</td><td>iap aggregator</td>'), page);
+      assert.ok(page.includes('<tr><td>Apple App Store</td><td>store billing</td>'), page);
+      assert.ok(page.includes('<tr><td>Oracle Cloud</td><td>infrastructure</td>'), page);
+      assert.ok(!page.includes('<td>revenuecat</td>'), 'the id is a key, not a name a reader can look up');
+    } finally { kill(root); }
+  });
+
+  test('RC3 — a processor with no register row stops the render with exit 1, and nothing is written', () => {
+    const root = tree();
+    try {
+      const before = get(root, SITE_NOTICE);
+      put(root, PRIVACY_YAML, `${get(root, PRIVACY_YAML)}
+  - id: acme
+    role: infrastructure
+    purpose: A company the provider register has never heard of.
+    source: tooling/legal/provider-register.json
+    asOf: "2026-09-25"
+`);
+      const r = spawn(PRIVACY_RENDER, [root]);
+      assert.equal(r.code, 1, r.out);
+      assert.ok(r.out.includes('apps/subscriptiontracker/privacy.yaml: processor "acme" has no row in tooling/legal/provider-register.json'), r.out);
+      assert.equal(get(root, SITE_NOTICE), before, 'a refused render writes nothing');
     } finally { kill(root); }
   });
 });
