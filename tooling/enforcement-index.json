@@ -3049,7 +3049,8 @@
   {
     "claims": [],
     "invokedBy": [
-      ".github/workflows/apple-expiry-write.yml#write"
+      ".github/workflows/apple-expiry-write.yml#write",
+      ".github/workflows/ops-watch.yml#glitchtip"
     ],
     "kind": "script",
     "ref": "tooling/ops/check-apple-signing-expiry.mjs",

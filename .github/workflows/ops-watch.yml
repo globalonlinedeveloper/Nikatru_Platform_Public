@@ -420,6 +420,43 @@ jobs:
           fi
           exit "$code"
 
+      # ⏱ 2026-09-24 · THE APPLE SIGNING DATES ARE HELD AGAINST APPLE HERE (row
+      # O-APPLE-SIGNING-EXPIRY-UNWATCHED). The expiring.cert.apple-* and
+      # expiring.profile.apple-* rows in tooling/ops/register.json were written by
+      # apple-expiry-write.yml from App Store Connect, and ci-gate grades their
+      # dates against leadDays. Nothing else asks Apple again, and on 2026-09-16
+      # the profiles were re-minted twice after the first pair went INVALID: a
+      # renewed certificate, a re-minted profile id or an INVALID profile would
+      # leave a row grading a dead date green. This step reads the ids declared in
+      # tooling/apple-provisioning.json and exits 1 on any of those. It runs the
+      # checker in CHECK mode only; the write is the dispatch-only workflow, so
+      # this job stays read-only.
+      #
+      # why: IN THIS JOB, for the same reason the wildcard check is - every job in
+      # this workflow must be the unit of a duty row in tooling/ops/register.json,
+      # and what a vendor console holds is exactly this job's live-ops half. The
+      # three App Store Connect credentials reach this step alone, as step env,
+      # and its own `timeout-minutes` keeps a hung read from spending the steps
+      # after it.
+      - name: The Apple signing certificates and profiles in register.json still match App Store Connect
+        if: always()
+        timeout-minutes: 3
+        env:
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+        run: |
+          set +e
+          node tooling/ops/check-apple-signing-expiry.mjs
+          code=$?
+          set -e
+          if [ "$code" -eq 2 ]; then
+            echo "::error title=The Apple signing dates are UNKNOWN - App Store Connect was not read::A credential is missing, the key was refused (401 or 403), a read outlived the bounded retry, or an answer came back in a shape the checker cannot read. NOTHING about the certificates or profiles is known from this run, and that is never a pass."
+          elif [ "$code" -eq 1 ]; then
+            echo "::error title=An Apple certificate or profile no longer matches register.json::A date differs from App Store Connect, a row is missing, an id answered 404, or a profile is not ACTIVE. For a date or a missing row: cut a branch from main, dispatch apple-expiry-write.yml on it, open the pull request. A 404 or an INVALID profile is a re-mint first, by provision-apple on the laptop. This red reaches ci-gate on every open pull request. The step log names the row."
+          fi
+          exit "$code"
+
       # why: THE SECOND PLACE THE APP'S ADDRESS IS WRITTEN DOWN, AND THE ONE THAT
       # TOOK SIGN-IN OFFLINE. Measured 2026-09-12: the `nikatru-auth` Turnstile
       # widget allowed `localhost` and `subly.nikatru.com` while the app is served

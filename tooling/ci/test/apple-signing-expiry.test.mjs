@@ -26,10 +26,11 @@
 //   A14 --write with GITHUB_REF_NAME=main refuses before any request
 //   A15 --write with CI unset refuses before any request
 //   A16 the checker imports only `ascJwt` and names no non-GET method
+//   A17 ops-watch runs the checker (check mode) in a job a duty row claims,
+//       after a red sibling, bounded, with the three credentials as step env
 //   A18 apple-expiry-write.yml is dispatch-only, never runs on main, and holds
 //       `contents: write` on its job only
 //   A19 readAll requests only an id path; any other is COULD NOT LOOK, never fetched
-//   (A17 — ops-watch runs the checker — lands with the rows, in the second PR.)
 //
 // Red controls run against the checker, each restored byte-identical:
 //   R1 `profileState` ignored             → A4 RED
@@ -37,6 +38,7 @@
 //   R3 --write writes what it could read  → A13 RED
 //   R4 the GITHUB_REF_NAME=main refusal dropped → A14 RED
 //   R5 readAll's request-path check dropped      → A19 RED
+//   R6 A17 against ops-watch.yml before its step existed → A17 RED
 //
 // Run:  node --test tooling/ci/test/apple-signing-expiry.test.mjs
 // ─────────────────────────────────────────────────────────────────────────────
@@ -417,6 +419,66 @@ describe('check-apple-signing-expiry — what the key can do, and where the writ
       ['expiring.profile.apple-appstore-ios', 'IOS_APP_STORE', 30],
       ['expiring.profile.apple-appstore-macos', 'MAC_APP_STORE', 30],
     ]);
+  });
+
+  test('🔴 A17 · ops-watch runs the checker, read-only, in a job a duty row ALREADY claims', () => {
+    // The rows exist only because apple-expiry-write.yml wrote them; nothing but
+    // this step compares them with Apple again. Without it a renewed certificate,
+    // a re-minted profile or one that turned INVALID leaves a row that grades a
+    // dead date green until its lead window says "Renew it" about the wrong thing.
+    const wf = readFileSync(join(REPO, '.github', 'workflows', 'ops-watch.yml'), 'utf8');
+    const CALL = 'node tooling/ops/check-apple-signing-expiry.mjs';
+    const lines = wf.split('\n');
+    const at = lines.findIndex((l) => l.includes(CALL));
+    assert.ok(at > 0, 'ops-watch must run the checker, or nothing compares the rows with App Store Connect after they are written');
+    assert.equal(lines.filter((l) => l.includes(CALL)).length, 1, 'one step runs it');
+    assert.doesNotMatch(lines[at], /--write/, 'ops-watch only checks; the write runs in apple-expiry-write.yml, dispatched and never on main');
+
+    // WHICH job runs it is DERIVED from the workflow, never typed here: the job a
+    // step belongs to is the nearest `  <id>:` header above it.
+    let job = null;
+    for (let i = at; i >= 0; i -= 1) {
+      const m = lines[i].match(/^ {2}([a-z][a-z0-9-]*):$/);
+      if (m) {
+        job = m[1];
+        break;
+      }
+    }
+    assert.ok(job, 'could not derive which job runs the checker');
+    const register = JSON.parse(readFileSync(join(REPO, 'tooling', 'ops', 'register.json'), 'utf8'));
+    const rows = register.rows ?? [];
+    assert.ok(rows.length > 0, 'the register must have rows, or this check is vacuous');
+    const claiming = rows.filter((r) => (r.mechanism?.recordQuery?.unit?.jobs ?? []).includes(job)).map((r) => r.id);
+    assert.ok(claiming.length > 0, `the \`${job}\` job is the unit of no duty row, so a red Apple row would be watched by nobody`);
+
+    // The step itself: it runs after a red sibling, bounds itself, takes the three
+    // credentials as step env, and sits after the wildcard step it copies.
+    let start = at;
+    while (start > 0 && !/^ {6}- name: /.test(lines[start])) start -= 1;
+    let end = at;
+    while (end + 1 < lines.length && !/^ {6}(- |#)|^ {2}[a-z]/.test(lines[end + 1])) end += 1;
+    const step = lines.slice(start, end + 1).join('\n');
+    assert.match(step, /^ {8}if: always\(\)$/m, 'a red step before it must not skip it');
+    const t = step.match(/^ {8}timeout-minutes: (\d+)$/m);
+    assert.ok(t && Number(t[1]) <= 3, 'its own ceiling, so a hung read cannot spend the steps after it');
+    for (const k of ['APP_STORE_CONNECT_ISSUER_ID', 'APP_STORE_CONNECT_KEY_ID', 'APP_STORE_CONNECT_PRIVATE_KEY']) {
+      assert.match(step, new RegExp(`^ {10}${k}: \\$\\{\\{ secrets\\.${k} \\}\\}$`, 'm'), `${k} reaches this step, and only this step`);
+    }
+    assert.match(step, /^ {10}set \+e$/m, 'without set +e an exit 2 fails the step exactly like an exit 1');
+    assert.match(step, /^ {10}code=\$\?$/m);
+    assert.match(step, /^ {10}exit "\$code"$/m, 'the checker\'s own exit is the step\'s');
+    const annotations = step.split('\n').filter((l) => l.includes('::error title='));
+    assert.equal(annotations.length, 2, 'one annotation for exit 2 and one for exit 1');
+    for (const a of annotations) assert.doesNotMatch(a, /`/, 'a backtick in a run: annotation is a shell command substitution');
+    assert.match(step, /cut a branch from main, dispatch apple-expiry-write\.yml on it, open the pull request/, 'the exit 1 annotation names the remedy');
+    const wildcard = lines.findIndex((l) => l.includes('node tooling/ops/check-wildcard-dns.mjs'));
+    assert.ok(wildcard > 0 && wildcard < at, 'it sits after the wildcard step whose pattern it copies');
+
+    // The job holding the key stays read-only: ops-watch never gains a write.
+    const jobStart = lines.findIndex((l) => l === `  ${job}:`);
+    let jobEnd = jobStart + 1;
+    while (jobEnd < lines.length && !/^ {2}[a-z][a-z0-9-]*:$/.test(lines[jobEnd])) jobEnd += 1;
+    assert.doesNotMatch(lines.slice(jobStart, jobEnd).join('\n'), /: write$/m, `the \`${job}\` job runs with the App Store Connect key and must hold no write permission`);
   });
 
   test('🔴 A18 · apple-expiry-write.yml is dispatch-only, never runs on main, and holds `contents: write` on its job alone', () => {
