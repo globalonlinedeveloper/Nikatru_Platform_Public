@@ -25,7 +25,7 @@
 // database access, bypasses RLS) and CLOUDFLARE_API_TOKEN, and it calls a
 // third-party action maintained by an individual.
 //
-// Asserts eight things:
+// Asserts ten things:
 //   1. every `uses:` resolves to a 40-hex commit SHA
 //   2. every workflow declares an explicit `permissions:` block
 //   3. …and that block is not `write-all`. Until 2026-08-01 limb 2 was
@@ -78,6 +78,11 @@
 //      a workflow's, and every `uses: ./` reference names a file this scan reads
 //      (one that names nothing is exit 2). Added 2026-09-25 (P-A2). A third-party
 //      composite is never opened (ADR 067 A3). See "limb 9" below.
+//  10. every job that PUBLISHES declares a job-level `environment:` AND runs
+//      tooling/ci/assert-deploy-ref.mjs as its first step after checkout, with no
+//      `if:`. Added 2026-09-25 (row O-DEPLOY-IS-NOT-ONE-GATED-LANE, limb 2):
+//      `environment:` alone fails open, and the ref check is the refusal until the
+//      environment carries a deployment-branch policy. See "limb 10" below.
 //
 // ⚠️ TRADE-OFF ON RECORD: a pinned action stops receiving updates, including
 // security fixes. That is the deliberate exchange — "silently gets new code"
@@ -99,7 +104,8 @@
 //   Without it limbs 1-4 run exactly as before and limb 5 reports NOT CONSULTED.
 // Exit 0 = hardened. 1 = a real defect (a movable reference, a missing or
 // over-broad permissions block, an unbounded job, a single-brace expression, a
-// cancel that reaches main, a failure-path input that can resolve to empty).
+// cancel that reaches main, a failure-path input that can resolve to empty, a
+// publishing job with no `environment:` or no first-step ref check).
 // 2 = COVERAGE LOST or REFUSED — the repo-wide convention (AGENTS.md; the
 // markerInCode self-check in assert-guard-coverage.mjs holds it). COVERAGE LOST:
 // a lost coverage relationship, including a workflow GitHub holds that this
@@ -119,7 +125,18 @@ import { readFileSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { listDir } from './tree-walk.mjs';
-import { parseWorkflow, joinBlockScalars, workflowSteps, resolveLocalCalls, WORKFLOW_DIR } from './workflow-scan.mjs';
+import {
+  parseWorkflow,
+  joinBlockScalars,
+  workflowSteps,
+  resolveLocalCalls,
+  WORKFLOW_DIR,
+  parseResolvedWorkflows,
+  placeOf,
+  refusalText,
+  classifyPublishes,
+  storePublishSteps,
+} from './workflow-scan.mjs';
 
 /** Positionals and flags are separated so `--live-workflows=` (limb 5) can be
  *  passed alongside a fixture root. AN UNKNOWN `--flag` IS A REFUSAL, NOT A
@@ -1997,6 +2014,128 @@ if (actionLoose !== actionUses + actionNotPinnable + actionUnparsed) {
   ]);
 }
 
+// ── limb 10: a PUBLISH job declares `environment:` and checks its ref FIRST ──
+// ⏱ 2026-09-25 — row O-DEPLOY-IS-NOT-ONE-GATED-LANE, limb 2 (pd2c). A job that
+// hands an artifact to something outside the run — whatever classifyPublishes
+// finds (a Cloudflare deploy, an R2 upload, a store CLI; workflow-scan.mjs, the
+// answer assert-release-provenance.mjs grades) and every job storePublishSteps
+// finds — must carry BOTH halves:
+//   (a) a job-level `environment:`. On its own it FAILS OPEN: GitHub creates an
+//       environment a job names and nobody made, with no protection rules and
+//       no branch policy, and runs the job;
+//   (b) as its FIRST step — after any `actions/checkout`, which the script needs
+//       on disk and which publishes nothing — `node tooling/ci/assert-deploy-ref.mjs
+//       --allow …`, with no `if:` and no `continue-on-error`. That is the refusal
+//       that holds while (a)'s environment has no deployment-branch policy: a
+//       dispatch from any other branch or tag stops before anything else runs.
+// A leading checkout that names its own `ref:` or `repository:` is a finding
+// too: the check vouches for GITHUB_REF, and that checkout builds other bytes.
+// Read through the RESOLVED view: deploy-web.yml and deploy-workers.yml are
+// `workflow_call` callees, graded as ci.yml's `<call>/<job>` children. A
+// resolver refusal is exit 2 — a callee it cannot follow is a publish it cannot see.
+//
+// NAMED, WITH A REASON EACH: GITHUB_RELEASE_ONLY. Two jobs publish a GitHub
+// Release and nothing else, both run on triggers a ref check would fail by
+// design (a schedule, a label, a branch dispatch that rehearses), and each
+// gates its release step on the tag instead. An entry holds only while its job
+// publishes GitHub Releases and nothing else; an entry whose workflow is in the
+// tree and names no such job is a finding. Any OTHER release job is graded.
+const GITHUB_RELEASE_ONLY = new Map([
+  [
+    '.github/workflows/build-platforms.yml :: release',
+    "runs on the Monday/Thursday schedule and on a branch dispatch as a build rehearsal; its one publish step reads `if: github.ref_type == 'tag'`",
+  ],
+  [
+    '.github/workflows/extensions.yml :: release',
+    'runs on a tag push, the run-e2e label and the daily schedule; "The release job stays unbound: a tag push and a rehearsal never wait for a reviewer" (the comment above store-publish)',
+  ],
+]);
+const REF_CHECK = /(?:^|\s)node\s+(?:\.\/)?tooling\/ci\/assert-deploy-ref\.mjs(?=\s|$)/;
+const STEP_CONTINUES = /^\s+continue-on-error:\s*(?!false\s*$)\S/;
+const readJson = (rel) => {
+  if (!existsSync(join(repoRoot, rel))) return null;
+  try {
+    return JSON.parse(readFileSync(join(repoRoot, rel), 'utf8'));
+  } catch (e) {
+    return refuse([`limb 10 cannot read ${rel}: ${e.message}`, 'It decides which jobs publish and whether the publish floor is armed.']);
+  }
+};
+const resolvedAll = parseResolvedWorkflows(repoRoot);
+if (resolvedAll.refusal) {
+  refuse([`limb 10: ${refusalText(resolvedAll.refusal)}`, 'Limb 10 grades publishing jobs where they run, and a job it cannot follow is a publish it cannot see.']);
+}
+const channelRegister = readJson('tooling/channel-register.json');
+const deployUnits = Object.keys(readJson('tooling/ci/lane-map.json')?.deployUnits ?? {}).length;
+const storeJobs = new Set(storePublishSteps(resolvedAll.workflows, channelRegister).map((s) => `${s.wf.rel} :: ${s.job.name}`));
+const publishGraded = [];
+const publishExempt = [];
+for (const wf of resolvedAll.workflows) {
+  for (const job of wf.jobs.values()) {
+    const key = `${wf.rel} :: ${job.name}`;
+    const classes = [...new Set(classifyPublishes(job).map((p) => p.what))];
+    if (storeJobs.has(key)) classes.push('a store publish step');
+    if (classes.length === 0) continue;
+    if (GITHUB_RELEASE_ONLY.has(key) && classes.length === 1 && classes[0] === 'a GitHub Release publish') {
+      publishExempt.push(key);
+      continue;
+    }
+    publishGraded.push(key);
+    const where = placeOf(wf, (job.lines.find((l) => l.text.trim() !== '') ?? job.lines[0]).n);
+    const what = `job \`${job.name}\` publishes (${classes.join(', ')})`;
+    if (!job.lines.some((l) => /^ {4}environment:/.test(l.text))) {
+      problems.push(
+        `${where} ${what} and declares no job-level \`environment:\`. Add \`environment: production\` (a deploy) or ` +
+          '`environment: store-publish` (a store): it is the half GitHub pauses on and records.',
+      );
+    }
+    const steps = workflowSteps(job);
+    let k = 0;
+    for (; k < steps.length && /^actions\/checkout@/.test(steps[k].uses ?? ''); k++) {
+      const moved = ['ref', 'repository'].filter((x) => steps[k].with.has(x));
+      if (moved.length) {
+        problems.push(
+          `${placeOf(wf, steps[k].first)} ${what}, and its checkout sets \`${moved.join('`, `')}:\` — the ref check vouches for ` +
+            'GITHUB_REF, so a checkout of other bytes publishes what it never checked.',
+        );
+      }
+    }
+    const first = steps[k];
+    if (!first || !REF_CHECK.test(first.run?.text ?? '')) {
+      const later = steps.findIndex((s) => REF_CHECK.test(s.run?.text ?? ''));
+      problems.push(
+        later === -1
+          ? `${where} ${what} and never runs tooling/ci/assert-deploy-ref.mjs. Make it the first step after checkout: ` +
+              '`run: node tooling/ci/assert-deploy-ref.mjs --allow <main|tag:<filter>>`, the --allow read off the trigger.'
+          : `${placeOf(wf, steps[later].first)} ${what} and runs assert-deploy-ref.mjs as step ${later + 1}, not as its first step ` +
+              `after checkout (${first ? `step ${k + 1} is at ${placeOf(wf, first.first)}` : 'no step follows the checkout'}). ` +
+              'Every step before it runs on a ref nobody checked.',
+      );
+    } else if (first.cond !== null || job.lines.some((l) => l.n >= first.first && l.n <= first.last && STEP_CONTINUES.test(l.text))) {
+      problems.push(
+        `${placeOf(wf, first.first)} ${what}; its first step runs assert-deploy-ref.mjs but carries ` +
+          `${first.cond !== null ? `\`if: ${first.cond}\`` : '`continue-on-error:`'}, so a refused ref can still reach the publish.`,
+      );
+    }
+  }
+}
+for (const key of GITHUB_RELEASE_ONLY.keys()) {
+  const rel = key.split(' :: ')[0];
+  if (existsSync(join(repoRoot, rel)) && !publishExempt.includes(key)) {
+    problems.push(
+      `${rel} limb 10's GITHUB_RELEASE_ONLY names \`${key.split(' :: ')[1]}\`, which is not a job that publishes GitHub ` +
+        'Releases and nothing else. Delete the entry and grade the job.',
+    );
+  }
+}
+const publishFloorArmed = channelRegister !== null || deployUnits > 0;
+if (publishFloorArmed && publishGraded.length === 0) {
+  coverageLost([
+    `limb 10 graded ZERO publishing jobs in a tree that declares publishers (${channelRegister !== null ? 'tooling/channel-register.json' : ''}` +
+      `${channelRegister !== null && deployUnits ? ' and ' : ''}${deployUnits ? `${deployUnits} lane-map deployUnits` : ''}).`,
+    'classifyPublishes or storePublishSteps has stopped seeing the jobs that publish, and "every publish is gated" would be vacuous.',
+  ]);
+}
+
 if (problems.length) {
   console.error(`✗ ${problems.length} workflow hardening problem(s):`);
   for (const p of problems) console.error(`    ${p}`);
@@ -2045,3 +2184,8 @@ console.log(
   `    limb 9 — ${actionFiles.length} local composite action(s) read, ${actionUses} action(s) in them all SHA-pinned; ` +
     `${localRefs} \`uses: ./\` reference(s), each resolved to a file this scan reads`,
 );
+console.log(
+  `    limb 10 — ${publishGraded.length} publishing job(s), each with a job-level \`environment:\` and assert-deploy-ref.mjs ` +
+    `as its first step after checkout; floor ${publishFloorArmed ? 'armed (this tree declares publishers)' : 'NOT armed: no channel register and no lane-map deployUnits in this tree'}`,
+);
+for (const key of publishExempt) console.log(`      not graded, named: ${key} — ${GITHUB_RELEASE_ONLY.get(key)}`);

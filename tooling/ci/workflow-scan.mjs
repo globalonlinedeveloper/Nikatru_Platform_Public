@@ -1547,6 +1547,139 @@ export function storePublishSteps(workflows, register) {
   return out;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// PUBLISH — what hands an artifact to something outside the run, per job.
+//
+// ⏱ MOVED 2026-09-25 (pd2c, O-DEPLOY-IS-NOT-ONE-GATED-LANE limb 2) out of
+// assert-release-provenance.mjs, AS IT WAS: no pattern was widened or narrowed
+// and classifyPublishes' two passes are byte for byte what provenance ran. It
+// moved because a second guard now needs the same answer —
+// assert-workflow-hardening limb 10 requires `environment:` and a first-step ref
+// check on every job this classifies — and provenance is a script that runs on
+// import, so it cannot be imported. Provenance imports these three names from
+// here; every comment below travelled with the code it explains.
+
+/**
+ * A PUBLISH hands an artifact to something outside the run. Deliberately a
+ * NAMED list rather than a heuristic: a heuristic that stops matching reports
+ * "clean", and the whole point of this guard is that silence is not success.
+ * `actions/upload-artifact` is EXCLUDED on purpose — see the header of
+ * assert-release-provenance.mjs.
+ */
+export const PUBLISH = [
+  { re: /wrangler[^\n]*\bdeploy\b|pages\s+deploy/, what: 'a Cloudflare deploy' },
+  // `cloudflare/wrangler-action` is classified from its `with: command:` line,
+  // NOT from the `uses:` line — triage 2026-07-31 (mutation-proven): the verb
+  // lives on the `command:` line, so classifying the `uses:` line called a
+  // correctly-gated `command: deploy --dry-run` typecheck a publish and
+  // demanded a ledger entry for a deployment that never happened — the exact
+  // fabrication the header calls worse than recording nothing. `viaCommand`
+  // routes these steps through the command classifier below; a step with NO
+  // `command:` still counts, because the action's default command is `deploy`.
+  { re: /cloudflare\/wrangler-action/, what: 'a Cloudflare deploy action', viaCommand: true },
+  // `upload` as well as `create` — review 2026-07-31: the register's own
+  // linux-appimage row locks the AppImage flow to Releases-as-origin, and a lane
+  // adding assets to an existing release says `gh release upload`. Missing it
+  // meant the exact flow the register prescribes escaped this guard.
+  { re: /gh\s+release\s+(create|upload)|softprops\/action-gh-release|actions\/upload-release-asset/, what: 'a GitHub Release publish' },
+  // `r2 object put` — dl.nikatru.com is R2 behind a domain ([ADR 015] §4), so
+  // pushing an object there IS publishing a user-receivable artifact.
+  { re: /wrangler[^\n]*\br2\s+object\s+put\b/, what: 'an R2 artifact upload' },
+  { re: /snapcraft\s+upload|fastlane\s+(deliver|supply|pilot)|xcrun\s+altool/, what: 'a store submission' },
+  // The stores the register marks submittable that fastlane cannot reach:
+  // Microsoft's CLI/action, and the community Play-upload action.
+  { re: /msstore\s+publish|store-submission|r0adkll\/upload-google-play/, what: 'a store submission action' },
+];
+
+/**
+ * 🔴 A DRY RUN PUBLISHES NOTHING, AND MISSING THIS COST THE FIRST VERSION FIVE
+ * FALSE FAILURES. `ci.yml` typechecks both Workers with `npx wrangler deploy
+ * --dry-run` — RE-MEASURED 2026-08-21,
+ * `grep -cE "npx wrangler deploy --dry-run" .github/workflows/ci.yml` prints 3
+ * (:63, :1731 and :2225, the last inside the `run: |` block opened at :2222) — the
+ * word `deploy` is right there and not one byte leaves the runner. Demanding a
+ * gate check and a deployment marker around a dry run would have written three
+ * deployments that never happened into [10]D-9's ledger. Checked against the actual lines before believing the guard,
+ * which is the only reason this is a comment and not a commit.
+ *
+ * Triage 2026-07-31 (mutation-proven): the exclusion then over-rotated — it
+ * dropped the WHOLE LINE, so `npx wrangler deploy --dry-run && npx wrangler
+ * deploy`, a real publish, vanished on the strength of the dry run beside it.
+ * Lines are now split on the shell separators and each command segment answers
+ * for itself: only the segment that carries `--dry-run` is excluded, and any
+ * segment that publishes without it still counts.
+ */
+export const DRY_RUN = /--dry-run/;
+
+/**
+ * The publish set for one job. Two passes: `cloudflare/wrangler-action` steps
+ * are classified from their `with: command:` line — synthesized back into a
+ * `wrangler …` command so the SAME publish patterns and the SAME per-segment
+ * dry-run rule judge it, rather than a second vocabulary that could drift —
+ * and every other pattern is matched per shell segment of each logical line.
+ * A `command:` line the action pass consumed is skipped by the generic pass,
+ * so one deploy is never reported twice.
+ */
+export function classifyPublishes(job) {
+  const found = [];
+  const consumed = new Set();
+  for (let i = 0; i < job.logical.length; i++) {
+    const line = job.logical[i];
+    if (!/cloudflare\/wrangler-action/.test(line.text)) continue;
+    let command = null;
+    for (let k = i + 1; k < job.logical.length; k++) {
+      const t = job.logical[k].text;
+      if (/^\s*-\s/.test(t)) break; // next step — this step's `with:` block is over
+      const m = t.match(/^\s*command:\s*(\S.*?)\s*$/);
+      if (m) {
+        command = { n: job.logical[k].n, text: m[1].replace(/^['"]|['"]$/g, '') };
+        break;
+      }
+    }
+    if (command === null) {
+      // No `command:` key — the action's DEFAULT command is `deploy`, so
+      // silence here IS a publish, reported at the `uses:` line.
+      found.push({ n: line.n, what: 'a Cloudflare deploy action' });
+      continue;
+    }
+    consumed.add(command.n);
+    const cmd = `wrangler ${command.text}`;
+    // 🔴 A `!p.viaCommand &&` CONJUNCT STOOD HERE AND WAS DELETED 2026-08-22.
+    // THE PROOF WRITTEN BESIDE THE DELETION WAS FALSE, AND I MEASURED IT FALSE
+    // ON 2026-08-24. What stood here, verbatim, was that the conjunct "could
+    // only change the verdict if a `viaCommand` pattern matched the command this
+    // line just synthesized", that any such line is re-entered by this loop and
+    // "pushed as the action's DEFAULT deploy at the same line with the same
+    // label", and so "MEASURED on such a tree: identical output, conjunct or
+    // not". A tree distinguishes them. A step whose `with: command:` value IS
+    // the literal `cloudflare/wrangler-action`, with a nested `command: deploy`
+    // below it, is re-entered as a second wrangler-action step that DOES find a
+    // `command:` — the nested one — so the two runs disagree about WHICH line
+    // carries the first publish, and limb 2's same-job order test flips on it.
+    // Measured on one such tree: shipped EXIT 1 ("calls assert-gate-passed.mjs
+    // at :12, AFTER its first publish at :11"), conjunct restored EXIT 0.
+    //
+    // THE DELETION STANDS, for the reason that is actually true rather than the
+    // one that was written: dropping the conjunct can only ADD a publish entry,
+    // never remove one, so nothing went blind — the guard got stricter on this
+    // shape, not blinder. And it is now HELD instead of argued: the case
+    // 'a `command:` naming the action ITSELF is a publish at its own line' in
+    // release-provenance.test.mjs goes RED the moment the conjunct comes back.
+    // The partition the conjunct expressed also survives where it can fail —
+    // the generic pass's `if (p.viaCommand) continue;`, which the sweep reddens.
+    const publishes = PUBLISH.some((p) => shellSegments(cmd).some((s) => p.re.test(s) && !DRY_RUN.test(s)));
+    if (publishes) found.push({ n: command.n, what: 'a Cloudflare deploy action' });
+  }
+  for (const p of PUBLISH) {
+    if (p.viaCommand) continue;
+    for (const l of job.logical) {
+      if (consumed.has(l.n)) continue;
+      if (shellSegments(l.text).some((s) => p.re.test(s) && !DRY_RUN.test(s))) found.push({ n: l.n, what: p.what });
+    }
+  }
+  return found.sort((a, b) => a.n - b.n);
+}
+
 /** THE POST-GATE PREDICATE, byte for byte. ⏱ 2026-09-25 [ADR 095 §4] A job that
  *  `needs` its workflow's aggregator runs only after it, and this is the ONE `if:`
  *  that makes such a job post-gate: a push to main, nothing wider. Exported once:

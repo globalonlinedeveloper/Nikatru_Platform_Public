@@ -37,6 +37,12 @@ jobs:
     name: Deploy subscriptiontracker-api
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    # why: THE ENVIRONMENT, AND WHY IT IS NOT THE REFUSAL (row O-DEPLOY-IS-NOT-ONE-GATED-LANE,
+    # limb 2). GitHub pauses on and records the environment a job names, but a name nobody
+    # created is created on first use with no protection rules and no branch policy, so
+    # this line alone fails open. The first step after checkout is the refusal until
+    # `production` allows main only. Held by assert-workflow-hardening limb 10.
+    environment: production
     # why: job-level, so a job that records nothing never holds write access.
     permissions:
       contents: read
@@ -48,6 +54,13 @@ jobs:
           # why: the plan reads ancestry and a diff against the live SHA, which a
           # depth-1 clone does not hold; plan-deploy.mjs exits 1 on a shallow clone.
           fetch-depth: 0
+      # why: ONLY main PUBLISHES, CHECKED BEFORE ANYTHING ELSE RUNS (row
+      # O-DEPLOY-IS-NOT-ONE-GATED-LANE, limb 2) — so before the irreversible migrations,
+      # too. A called workflow sees its caller's event and ref, and ci.yml calls this file
+      # from `on: push: branches: [main]` alone, so `--allow main` is that trigger read
+      # back. Any other ref exits 1 here. Held FIRST by assert-workflow-hardening limb 10.
+      - name: Refuse any ref but main
+        run: node tooling/ci/assert-deploy-ref.mjs --allow main
       # why: a superseded SHA never publishes (row O-DEPLOY-IS-NOT-ONE-GATED-LANE,
       # limb 3), and a commit that touches none of this Worker's deployUnits globs
       # does not publish it. Runs BEFORE the irreversible migrations: every later
@@ -121,6 +134,8 @@ jobs:
     name: Deploy platform
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    # why: see the subscriptiontracker-api job — alone, this line fails open.
+    environment: production
     # why: job-level — see the subscriptiontracker-api job.
     permissions:
       contents: read
@@ -131,6 +146,9 @@ jobs:
           persist-credentials: false
           # why: see the subscriptiontracker-api job — the plan needs full history.
           fetch-depth: 0
+      # why: the ref check, FIRST, exactly as in the subscriptiontracker-api job.
+      - name: Refuse any ref but main
+        run: node tooling/ci/assert-deploy-ref.mjs --allow main
       # why: the plan, exactly as in the subscriptiontracker-api job, for this Worker's
       # own ledger environment and deployUnits globs.
       - name: Plan from the Deployment ledger

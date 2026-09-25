@@ -134,6 +134,7 @@
       "tooling/ci/assert-catalog-reachable.mjs",
       "tooling/ci/record-deployment.mjs",
       "tooling/ci/plan-deploy.mjs",
+      "tooling/ci/assert-deploy-ref.mjs",
       "tooling/smoke/smoke-web-artifact.mjs",
       "tooling/web/**",
       "tooling/ops/post-deploy-smoke.mjs",
