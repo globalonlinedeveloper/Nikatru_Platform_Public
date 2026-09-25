@@ -55,8 +55,8 @@ class DestructiveActionReport {
 /// deletion outcome was posted at `:651` to the `ScaffoldMessenger` of the very
 /// screen the sign-out redirect was tearing down, so the message could be
 /// destroyed before it was read. `apps/subscriptiontracker` hit the same thing from the other
-/// side and recorded the measurement in
-/// `apps/subscriptiontracker/lib/state/providers/auth.dart:568-574`: its first version
+/// side and recorded the measurement on `lastAccountDeletionOutcomeProvider` in
+/// `apps/subscriptiontracker/lib/state/providers/auth.dart`: its first version
 /// rendered the result in the dialog, and the router-driven test found ZERO
 /// widgets with the result key once the redirect settled — so *the message that
 /// mattered most (502: your data is gone and your login still works) was the one

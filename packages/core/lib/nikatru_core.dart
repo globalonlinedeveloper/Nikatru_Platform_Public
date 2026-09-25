@@ -5,13 +5,15 @@ library;
 export 'src/analytics/analytics.dart';
 export 'src/auth/account_deletion.dart';
 export 'src/auth/age_signal.dart';
-export 'src/auth/apple_token_keeper.dart';
 export 'src/auth/auth_event.dart';
 export 'src/auth/auth_models.dart';
 export 'src/auth/auth_repository.dart';
 export 'src/auth/credentials_preflight.dart';
 export 'src/auth/identity_assurance.dart';
 export 'src/auth/password_policy.dart';
+// ⏱ 2026-09-24 · was src/auth/apple_token_keeper.dart; the Apple names it
+// exported (keepAppleRefreshToken, AppleTokenNotKept, …) are still exported here.
+export 'src/auth/provider_token_keeper.dart';
 export 'src/legal/legal_acceptance.dart';
 export 'src/analytics/analytics_lifecycle.dart';
 export 'src/analytics/analytics_recorder.dart';

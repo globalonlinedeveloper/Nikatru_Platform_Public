@@ -143,6 +143,7 @@ class AuthSession {
     this.refreshToken,
     this.expiresAt,
     this.providerRefreshToken,
+    this.oauthProvider,
   });
 
   final String accessToken;
@@ -155,6 +156,13 @@ class AuthSession {
   /// account is deleted; nothing else reads it, and nothing writes it to the
   /// device.
   final String? providerRefreshToken;
+
+  /// ⏱ 2026-09-24 · O-GOOGLE-SIGN-IN-NOT-BUILT. WHICH identity provider issued
+  /// [providerRefreshToken] — `apple` or `google` — so [keepProviderRefreshToken]
+  /// can tell the server where to revoke it. Null when the repository does not
+  /// say, which the keeper reads as Apple's: until Google sign-in, Apple's was
+  /// the only provider token any app kept.
+  final String? oauthProvider;
 
   /// Absolute expiry, UTC. Null when the provider does not report one — treated
   /// as "unknown", never as "never expires".

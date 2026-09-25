@@ -274,16 +274,16 @@
       ],
       "openProtocol": "PARTIAL — the call is plain OAuth 2.0 token revocation (RFC 7009 shape: `client_id`, `client_secret`, `token`, `token_type_hint`, form-encoded, 200 with no body), but the `client_secret` is an Apple-specific ES256 JWT (`iss` Team ID, `sub` client id, `aud` https://appleid.apple.com, `kid` the key id), so a generic OAuth client cannot be pointed at it unchanged.",
       "seam": {
-        "file": "services/platform/src/lib/apple-revoke.ts",
+        "file": "services/platform/src/lib/provider-revoke.ts",
         "symbol": "revokeAppleToken"
       },
       "configKeyed": {
         "kind": "runtime-secret",
         "reason": "Four Worker secrets, owner-provisioned with `wrangler secret put`. The private key is the `.p8` Apple issues ONCE in the developer portal; no agent creates or downloads it. Absent, the revoke returns `blocked`, the deletion stays 202 `erasure_pending` and the identity is not deleted — a refusal, never a skip."
       },
-      "ownTheRecord": "N/A — there is no record of ours here. The only thing held is the user's own Apple refresh token (platform_db.apple_provider_tokens), and it exists to be destroyed: the revoke consumes it and the row goes.",
+      "ownTheRecord": "N/A — there is no record of ours here. The only thing held is the user's own Apple refresh token (platform_db.provider_tokens with provider = 'apple', copied there from apple_provider_tokens by 0016), and it exists to be destroyed: the revoke consumes it and the row goes.",
       "exportPath": {
-        "detail": "NO EXPORT PATH, BECAUSE THERE IS NOTHING TO EXPORT, and the missing `path` is deliberate — the same shape cloudflare-turnstile uses. Nothing of ours lives at Apple through this surface: the single call is a DESTRUCTION (revoke the user's token) and Apple answers it with no body. The one value that exists is the user's own Apple refresh token, held in platform_db.apple_provider_tokens, which exports with that database's migrations and is deleted the moment the revoke succeeds."
+        "detail": "NO EXPORT PATH, BECAUSE THERE IS NOTHING TO EXPORT, and the missing `path` is deliberate — the same shape cloudflare-turnstile uses. Nothing of ours lives at Apple through this surface: the single call is a DESTRUCTION (revoke the user's token) and Apple answers it with no body. The one value that exists is the user's own Apple refresh token, held in platform_db.provider_tokens, which exports with that database's migrations and is deleted the moment the revoke succeeds."
       },
       "exitPlan": {
         "alternative": "None, and that is the honest answer: if the product offers Sign in with Apple, Apple is the revocation authority. Dropping Sign in with Apple as a sign-in option is what retires this vendor, and it retires the whole surface with it.",

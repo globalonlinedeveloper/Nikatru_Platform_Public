@@ -4234,10 +4234,32 @@
       "store": "d1:platform_db:apple_provider_tokens",
       "what": "One row per subject who signed in with Apple: Apple’s OAuth refresh token for this relying party, which the account deletion revokes with; O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE.",
       "rule": "keep",
-      "keepWhy": "⏱ 2026-09-16 · O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE. Kept WHILE THE ACCOUNT EXISTS, because it is what makes that account’s deletion revocable at Apple, then deleted the moment Apple answers the revoke (services/platform/src/lib/apple-revoke.ts) and again when the erasure completes (DELETE /v1/account and the nightly erasureRetry). NEVER on a timer: a row deleted by age would silently make that account’s deletion unrevokable, and Apple requires revocation on deletion. A revoke that cannot be completed keeps the row, keeps the identity, and turns the erasure_retry heartbeat red once the order is stuck.",
+      "keepWhy": "⏱ 2026-09-16 · O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE. ⏱ 2026-09-24 · RETIRED BY 0016: every row was copied into provider_tokens (the row below) and no code reads or writes this table any more. It is kept until a later migration drops it, once the copy has been read back in production; until then an erased account’s row is deleted when its erasure completes (services/platform/src/lib/provider-revoke.ts dropProviderTokens, from DELETE /v1/account and the nightly erasureRetry), because the copy did not move it. NEVER on a timer, for the reason the provider_tokens row gives.",
       "mechanism": {
         "substrate": "cloudflare-d1",
         "anchor": "services/platform/migrations/0012_apple_provider_tokens.sql",
+        "record": "the table itself",
+        "failingValue": "not applicable to a reasoned keep",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      }
+    },
+    {
+      "kind": "retention",
+      "detector": "tooling/ci/assert-retention-coverage.mjs — the store set is ENUMERATED from wrangler bindings and migrations, so a store cannot leave the domain by having no rule.",
+      "response": "n/a",
+      "cadence": "365d",
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified",
+      "id": "retention.d1.platform_db.provider_tokens",
+      "store": "d1:platform_db:provider_tokens",
+      "what": "One row per (subject, identity provider) the subject signed in with through OAuth, provider apple or google: that provider’s OAuth refresh token for this relying party, which the account deletion revokes with; O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE and O-GOOGLE-SIGN-IN-NOT-BUILT.",
+      "rule": "keep",
+      "keepWhy": "⏱ 2026-09-24 · O-GOOGLE-SIGN-IN-NOT-BUILT (migration 0016, Apple’s rows copied in from apple_provider_tokens). Kept WHILE THE ACCOUNT EXISTS, because it is what makes that account’s deletion revocable at each provider, then deleted the moment the provider settles the revoke (services/platform/src/lib/provider-revoke.ts) and again when the erasure completes (DELETE /v1/account and the nightly erasureRetry). NEVER on a timer: a row deleted by age would silently make that account’s deletion unrevokable, and Apple requires revocation on deletion. A revoke that cannot be completed keeps that provider’s row, keeps the identity, and turns the erasure_retry heartbeat red once the order is stuck.",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/platform/migrations/0016_provider_tokens.sql",
         "record": "the table itself",
         "failingValue": "not applicable to a reasoned keep",
         "readBy": "tooling/ci/assert-retention-coverage.mjs"

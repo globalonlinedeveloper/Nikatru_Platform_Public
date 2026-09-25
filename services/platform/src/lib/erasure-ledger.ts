@@ -61,6 +61,19 @@ export const SIGNUP_PURGE_STEP = 'platform:signups';
  */
 export const APPLE_REVOKE_STEP = 'platform:apple-revoke';
 
+/**
+ * ⏱ 2026-09-24 · O-GOOGLE-SIGN-IN-NOT-BUILT. The THIRD non-app step, Apple's twin
+ * for Google: revoking this subject's Google grant
+ * (`POST https://oauth2.googleapis.com/revoke`, the token and nothing else). When
+ * Google cannot be reached, or refuses the call, the route records an order under
+ * this id, the identity STAYS, and `erasureRetry` runs the revoke itself. A token
+ * Google already considers invalid settles, and never reaches this ledger.
+ *
+ * ⚠️ Same load-bearing `<NAME>_STEP` spelling read by
+ * tooling/ops/check-prod-provenance.mjs (resolver `erasure-step`).
+ */
+export const GOOGLE_REVOKE_STEP = 'platform:google-revoke';
+
 /** The binding for an app, or null when this Worker declares none for it. */
 export function erasureBindingFor(env: object, appId: string): ErasureBinding | null {
   const candidate = (env as Record<string, unknown>)[erasureBindingName(appId)];
