@@ -360,13 +360,16 @@ describe('upload-web-sourcemaps: the protocol', () => {
 
   test('a non-2xx from the API is fatal and names the status', async () => {
     await withStub({ chunkUploadStatus: 503 }, async (stub) => {
-      const r = await run(ok(buildDir()), { SENTRY_URL: stub.origin, ...TOKEN });
+      const r = await run(ok(buildDir()), { SENTRY_URL: stub.origin, ...TOKEN, OPS_SECOND_LOOK_GAP_MS: '0' });
       assert.equal(r.code, 1);
       assert.match(r.all, /503/);
       // ⏱ 2026-09-23: a 503 is "not now", so it was asked the plan's three times
       // before it became the red run — and never a fourth.
-      assert.equal(stub.seen.requests.filter((q) => q.endsWith('/chunk-upload/')).length, 3);
+      // ⏱ 2026-09-25 (row O-OPS-PROBE-US-EDGE-STALL): then ONE second look of
+      // four more — seven in all, and never an eighth.
+      assert.equal(stub.seen.requests.filter((q) => q.endsWith('/chunk-upload/')).length, 7);
       assert.match(r.all, /the same on all 3 attempt\(s\)/);
+      assert.match(r.all, /the same on all 4 second-look attempt\(s\)/);
     });
   });
 

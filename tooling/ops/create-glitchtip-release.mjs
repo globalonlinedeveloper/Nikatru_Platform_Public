@@ -119,7 +119,10 @@ export async function createRelease({
         const text = await r.text();
         return { status: r.status, statusText: r.statusText, ok: r.ok, headers: r.headers, text };
       },
-      { describe: (what) => `POST ${url}: ${what}`, sleep, note },
+      // ⏱ 2026-09-25 (row O-OPS-PROBE-US-EDGE-STALL): `secondLook` — when all
+      // three attempts got nothing, four more 15 s apart before the deploy
+      // fails. The re-send is safe for the reason recorded below `createRelease`.
+      { describe: (what) => `POST ${url}: ${what}`, sleep, note, secondLook: true },
     );
   } catch (e) {
     if (!(e instanceof CouldNotLook)) throw e;

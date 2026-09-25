@@ -388,7 +388,10 @@ try {
         headers: { Authorization: `Bearer ${TOKEN}`, Accept: 'application/json' },
         signal,
       }),
-    { describe: (why) => `the monitor list: ${why}` },
+    // ⏱ 2026-09-25 (row O-OPS-PROBE-US-EDGE-STALL): `secondLook` — one more
+    // spread-out pass before COVERAGE LOST, because a US edge stalling in front
+    // of the Mumbai tunnel can outlast the first ~50 s and red main for nothing.
+    { describe: (why) => `the monitor list: ${why}`, secondLook: true },
   );
   // ⏱ 2026-09-11 — EVERY BRANCH BELOW IS "I COULD NOT LOOK", SO EVERY ONE IS EXIT 2.
   // All three used to set exit 1, the code this file gives "the register and the

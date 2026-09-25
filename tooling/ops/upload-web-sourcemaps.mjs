@@ -390,7 +390,10 @@ const api = async (path, init = {}) => {
         const body = await r.text();
         return { status: r.status, statusText: r.statusText, ok: r.ok, headers: r.headers, body };
       },
-      { describe: (what) => `${method} ${url}: ${what}`, note: (line) => console.log(`  retry: ${line}`) },
+      // ⏱ 2026-09-25 (row O-OPS-PROBE-US-EDGE-STALL): `secondLook` — when all
+      // three attempts got nothing, four more 15 s apart before the deploy
+      // fails. Each re-send is safe for the reason recorded above.
+      { describe: (what) => `${method} ${url}: ${what}`, note: (line) => console.log(`  retry: ${line}`), secondLook: true },
     );
   } catch (e) {
     if (e instanceof CouldNotLook) die(e.message);
