@@ -213,9 +213,16 @@ export function toolListingId({ toolId, storeKey, root = REPO_ROOT }) {
     ]);
   }
   const raw = stores[storeKey]?.listingId ?? null;
+  // ⏱ 2026-09-24 (EXT-3): the tool's public listing URL for this store, from
+  // `listings.<store>` ("Store URLs, once live. null until then"). The Chrome and
+  // Edge publishers print it for the [10]D-9 record that follows their submit;
+  // both stores need a manual first publish (ADR 067 decision 8), so a submit
+  // through the API happens only after it is set. null is carried, never guessed.
+  const url = tool?.listings?.[storeKey] ?? null;
   return {
     field: `${rel} storeMetadata.stores.${storeKey}.listingId`,
     listingId: typeof raw === 'string' && raw.trim() !== '' ? raw.trim() : null,
+    listingUrl: typeof url === 'string' && /^https:\/\//.test(url.trim()) ? url.trim() : null,
   };
 }
 

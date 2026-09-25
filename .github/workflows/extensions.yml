@@ -69,16 +69,6 @@ on:
         type: string
         required: false
         default: ''
-      # why: [10]D-9 records a store submission against its listing. Chrome and Edge are
-      # `submittable: false` today; amo is armed, so its submit refuses without this.
-      listing_url:
-        description: >-
-          Required with SUBMIT-TO-FIREFOX-AMO: the add-on's addons.mozilla.org
-          listing, e.g. https://addons.mozilla.org/firefox/addon/<slug>/. The
-          submission is recorded against it. Ignored otherwise.
-        type: string
-        required: false
-        default: ''
       tag:
         description: >-
           The tag a release rehearsal stands in for, e.g. fullshot-v1.10.1. A
@@ -959,9 +949,10 @@ jobs:
       # why: the region is the JOB, parsed by tooling/ci/workflow-scan.mjs, and no longer a
       # pair of comment sentinels. PR 500 stripped prose comments out of the workflows and
       # deleted both sentinels with them, which emptied this check to zero step boundaries.
+      # Both jobs of the lane are named: the store steps live in `store-publish` (EXT-3).
       - name: Every publishing step carries the dry-run guard
         working-directory: .
-        run: node tooling/ci/assert-publish-steps-guarded.mjs --workflow .github/workflows/extensions.yml --job release
+        run: node tooling/ci/assert-publish-steps-guarded.mjs --workflow .github/workflows/extensions.yml --job release --job store-publish
       - name: Preflight — every gate this release runs must exist
         shell: bash
         run: |
@@ -1298,6 +1289,12 @@ jobs:
             exit 1
           fi
 
+      # why: the listing the AMO first submit will carry, printed on every release run so the
+      # owner reads it before typing the word (O-AMO-FIRST-SUBMIT-SENDS-NO-METADATA). A
+      # placeholder licence or an empty reviewer note refuses HERE, on the rehearsal.
+      - name: The AMO listing payload the first submit would carry (dry run)
+        run: node scripts/amo-metadata.mjs --tool "${{ steps.tag.outputs.id }}" --print
+
       - name: Reference integrity + leak check on every artifact
         run: |
           set -euo pipefail
@@ -1319,13 +1316,11 @@ jobs:
             echo "::error::build/unpacked-firefox does not exist — pack.mjs did not leave an unpacked Firefox tree for web-ext to lint, so the AMO package is going out ungraded."
             exit 1
           fi
-          # ⚠️ EXACT, NOT `web-ext@8`. A range resolves at run time, so the
-          # rehearsal and the tag push that follows it can lint under different
-          # releases of the linter and the rehearsal's green would be about a
-          # tool the publish never ran. 8.10.0 is what `web-ext@8` resolved to
-          # on 2026-08-26 (`npm view web-ext@8 version` → 8.7.0 8.7.1 8.8.0
-          # 8.9.0 8.10.0), so this pin changes no behaviour today.
-          npx --yes web-ext@8.10.0 lint --source-dir build/unpacked-firefox --warnings-as-errors
+          # why: the linter is the locked island's binary, the same web-ext that signs
+          # for AMO, installed from tooling/web-ext/package-lock.json. Never fetched
+          # from the registry at run time (O-WEB-EXT-FETCHED-AT-RUN-TIME).
+          npm ci --ignore-scripts --prefix ../tooling/web-ext
+          ../tooling/web-ext/node_modules/.bin/web-ext lint --source-dir build/unpacked-firefox --warnings-as-errors
 
       - name: Checksums
         shell: bash
@@ -1367,6 +1362,9 @@ jobs:
       # byte-reproducible by design (the notes above tell a reader to rebuild from
       # the tag and compare), and a wall clock would make the record the one file
       # that never reproduces.
+      # why: no --min-supported. The emitter states the floor as the first three
+      # components of --version, so a four-part store tag (fullshot-v1.10.1.2) no longer
+      # reaches the schema's X.Y.Z floor (O-EXTENSION-MINSUPPORTED-FOUR-PART-TAG).
       - name: Describe the release, versioned per artefact
         working-directory: .
         env:
@@ -1381,7 +1379,7 @@ jobs:
             --app "$TOOL" --tag "${TOOL}-v${VERSION}" --sha "$GITHUB_SHA" \
             --run-url "$RUN_URL" --notes-url "$NOTES_URL" \
             --released-at "$RELEASED_AT" \
-            --version "$VERSION" --min-supported "$VERSION"
+            --version "$VERSION"
 
       - name: The integrity record the platform requires of every release
         working-directory: .
@@ -1437,15 +1435,132 @@ jobs:
           node tooling/ops/post-deploy-smoke.mjs --release-repo "$REPO"
           --release-tag "$GITHUB_REF_NAME" --release-manifest extensions/dist/SHA256SUMS
 
+      - name: Record what shipped, per channel this release is the origin for
+        if: github.event_name == 'push' && inputs.dry_run != true
+        working-directory: .
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TOOL: ${{ steps.tag.outputs.id }}
+        run: |
+          set -euo pipefail
+          for environment in $(node tooling/ci/release-manifest.mjs --emit-environments extensions/dist --app "$TOOL"); do
+            node tooling/ci/record-deployment.mjs "$environment" "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$GITHUB_REF_NAME" --state pending_manual_publish
+          done
+      # why: a SKIPPED step prints nothing, so every run ends by saying whether it could publish --
+      # a tag push or a rehearsal must never read as a release that reached a store. Publishing is
+      # the `store-publish` job's alone, and that job prints its own store-by-store account.
+      - name: Store publication — what this job did and did not publish
+        if: always()
+        shell: bash
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          TOOL: ${{ steps.tag.outputs.id }}
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            why="a tag push builds and packages and never publishes to a store"
+          elif [ "${DRY_RUN:-}" = true ]; then
+            why="dry_run was checked, so this dispatch was a rehearsal"
+          else
+            why="this job builds and verifies only; the store-publish job submits the tag's Release assets to the one store named by confirm (${CONFIRM:-none}) once its reviewer approves"
+          fi
+          echo "::notice::NOT PUBLISHED by the release job (${TOOL:-?} v${VERSION:-?}): ${why}. To publish, dispatch extensions.yml ON the release tag with lane=release, dry_run unchecked and confirm set to one store's word."
+
+
+  # why: EVERY STORE PUBLISH RUNS HERE AND ONLY HERE (EXT-3, O-STORE-PUBLISH-STEP-DEFINED-THREE-WAYS).
+  # `environment: store-publish` makes GitHub pause for the required reviewer, and each publisher
+  # reads that environment back (extensions/scripts/lib/store-environment.mjs), because
+  # `environment:` alone fails open. It submits the TAG'S RELEASE ASSETS -- downloaded and
+  # checksum-verified -- never a fresh pack, so the store receives the bytes the rehearsal graded
+  # and the Release published. The release job stays unbound: a tag push and a rehearsal never
+  # wait for a reviewer. Store secrets stay repository secrets, named on the steps that use them.
+  store-publish:
+    name: Store publish — the owner's word, on the tag's released bytes
+    needs: release
+    if: github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/tags/') && inputs.lane == 'release' && inputs.dry_run != true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: store-publish
+    permissions:
+      contents: read
+      deployments: write     # the [10]D-9 ledger rows below.
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with: { node-version: '24' }
+
+      - name: The tag this run publishes (fullshot-v1.10.1 → id + version)
+        id: tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="$GITHUB_REF_NAME"
+          if ! printf '%s' "$TAG" | grep -qE '^[a-z0-9][a-z0-9-]*-v[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$'; then
+            echo "::error::NOT PUBLISHED: '${TAG}' is not a release tag, so there is no Release whose assets a store may receive."
+            exit 1
+          fi
+          echo "id=${TAG%%-v*}"     >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#*-v}" >> "$GITHUB_OUTPUT"
+
+      # why: the store receives what the Release published at the tag push, and nothing
+      # rebuilt since (O-SUBMIT-REBUILDS-WHAT-THE-DRY-RUN-BUILT, extensions half).
+      - name: Download the tag's Release assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rm -rf release-assets
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --dir release-assets --pattern '*.zip' --pattern 'SHA256SUMS.txt' --pattern 'SHA256SUMS'
+
+      - name: The downloaded assets are the bytes the Release published
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd release-assets
+          sha256sum -c SHA256SUMS.txt
+
+      # why: [14]O-7 -- this job records deployments, so it probes the surface it read them from
+      # in the same job: the Release must still carry every asset its manifest names, byte for byte.
+      - name: The Release still carries the bytes this job submits
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: >
+          node tooling/ops/post-deploy-smoke.mjs --release-repo "$REPO"
+          --release-tag "$GITHUB_REF_NAME" --release-manifest release-assets/SHA256SUMS
+
+      - name: Unpack the released Firefox package for the AMO signer
+        shell: bash
+        env:
+          TOOL: ${{ steps.tag.outputs.id }}
+        run: |
+          set -euo pipefail
+          rm -rf release-assets/unpacked-firefox
+          mkdir -p release-assets/unpacked-firefox
+          unzip -q "release-assets/${TOOL}-firefox.zip" -d release-assets/unpacked-firefox
+
+      - name: The AMO signer, from its locked island
+        run: npm ci --ignore-scripts --prefix tooling/web-ext
+
       # why: the LISTING IDENTITY is per TOOL, not per repository. `--tool` selects the
       # tool.json whose storeMetadata.stores.<key>.listingId names the destination; until
       # 2026-09-07 the Chrome item id and the Edge product id were repository secrets and a
       # second extension's tag would have uploaded to the first tool's listing.
-      # why: the preflight carries NO dry-run guard on purpose. It publishes nothing, and a
-      # rehearsal is exactly when a person wants to read which credential is still owed. The
-      # verdict is the REGISTER's, taken through tooling/ci/channel-arming.mjs: armed row +
-      # empty secret = exit 1; unarmed row = the owner step, printed.
+      # why: the preflight carries NO dry-run guard: it publishes nothing. ⏱ 2026-09-24 (EXT-3) it
+      # runs HERE, before its store's publish step and only on that store's word, because this is
+      # the lane job the register names for all three stores. The verdict is the REGISTER's, taken
+      # through tooling/ci/channel-arming.mjs: armed row + empty secret = exit 1; unarmed row = the
+      # owner step, printed.
       - name: Firefox (AMO) — credentials present, or the owner step
+        if: inputs.confirm == 'SUBMIT-TO-FIREFOX-AMO'
         env:
           AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
           AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
@@ -1454,8 +1569,8 @@ jobs:
           if [ -z "$AMO_JWT_ISSUER" ] || [ -z "$AMO_JWT_SECRET" ]; then
             echo "one or more AMO_* repository secrets are empty; the register decides what that means."
           fi
-          if ! node scripts/publish-arming.mjs --channel amo --tool "${{ steps.tag.outputs.id }}"; then
-            echo "::error::the register ARMS the amo channel and its credentials are missing, so this release cannot submit to addons.mozilla.org. This is a failed release, not a skipped store."
+          if ! node extensions/scripts/publish-arming.mjs --channel amo --tool "${{ steps.tag.outputs.id }}"; then
+            echo "::error::the register ARMS the amo channel and its credentials are missing, so this run cannot submit to addons.mozilla.org. This is a failed publish, not a skipped store."
             exit 1
           fi
 
@@ -1471,8 +1586,8 @@ jobs:
         env:
           AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
           AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+          GITHUB_TOKEN: ${{ github.token }}
           CONFIRM: ${{ inputs.confirm }}
-          LISTING_URL: ${{ inputs.listing_url }}
           TOOL: ${{ steps.tag.outputs.id }}
         run: |
           set -euo pipefail
@@ -1484,18 +1599,8 @@ jobs:
             echo "::error::NOT PUBLISHED to Firefox Add-ons: reached on event '${GITHUB_EVENT_NAME}' with confirm '${CONFIRM}'. Only a dispatch carrying SUBMIT-TO-FIREFOX-AMO may publish here, so this step's if: has been widened."
             exit 1
           fi
-          # [10]D-9: checked BEFORE the submit, because record-deployment.mjs refuses a
-          # store record with no listing -- after the submit that refusal is a submission
-          # nobody can account for.
-          case "$LISTING_URL" in
-            https://addons.mozilla.org/*) ;;
-            *)
-              echo "::error::NOT PUBLISHED to Firefox Add-ons: listing_url is '${LISTING_URL}', not an https://addons.mozilla.org/ URL. The [10]D-9 record names the listing, so re-dispatch with listing_url set, e.g. https://addons.mozilla.org/firefox/addon/<slug>/"
-              exit 1
-              ;;
-          esac
           code=0
-          out=$(node scripts/publish-amo.mjs --tool "$TOOL" --source-dir build/unpacked-firefox 2>&1) || code=$?
+          out=$(node extensions/scripts/publish-amo.mjs --tool "$TOOL" --source-dir release-assets/unpacked-firefox --artifacts-dir release-assets/amo --submit 2>&1) || code=$?
           printf '%s\n' "$out"
           if [ "$code" -ne 0 ]; then
             echo "::error::NOT PUBLISHED to Firefox Add-ons: the AMO publisher exited ${code}."
@@ -1505,29 +1610,38 @@ jobs:
             echo "::error::NOT PUBLISHED to Firefox Add-ons: the AMO publisher exited 0 without printing SUBMITTED, which is its answer for a channel the register does not arm. The owner asked for this store, so a run that sent nothing is a failure, not a pass."
             exit 1
           fi
+          # [10]D-9: the listing was READ BACK from AMO after the sign; never typed at dispatch.
+          listing=$(sed -n 's/^LISTING_URL=//p' <<< "$out" | tail -n 1)
+          case "$listing" in
+            https://addons.mozilla.org/*) ;;
+            *)
+              echo "::error::SUBMITTED to Firefox Add-ons, and no https://addons.mozilla.org/ listing URL was read back ('${listing}'). The record below cannot name the listing: record it by hand."
+              exit 1 ;;
+          esac
+          echo "listing_url=${listing}" >> "$GITHUB_OUTPUT"
           echo "published=yes" >> "$GITHUB_OUTPUT"
 
-      # why: [10]D-9 -- amo is `submittable: true`, so a submitting run records what it
-      # did in the SAME job, as `in_review` against the listing the owner named at
-      # dispatch. `always() && steps.amo.outcome == 'success'` is the one accepted
-      # widening (assert-publish-records.mjs rule 6): the record follows the ACT, so a
-      # later Chrome or Edge step failing cannot erase the AMO ledger row.
+      # why: [10]D-9 -- a submitting run records what it did in the SAME job, as `in_review`
+      # against the listing read back above. `always() && steps.amo.outcome == 'success'` is the
+      # one accepted widening (assert-publish-records.mjs rule 6): the record follows the ACT.
       - name: Record the AMO submission in the [10]D-9 ledger
         if: always() && steps.amo.outcome == 'success'
-        working-directory: .
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           TOOL: ${{ steps.tag.outputs.id }}
-          LISTING_URL: ${{ inputs.listing_url }}
+          LISTING_URL: ${{ steps.amo.outputs.listing_url }}
         run: node tooling/ci/record-deployment.mjs "$TOOL-amo" --state in_review --listing-url "$LISTING_URL"
 
+      # why: in this job and only for this store's word (EXT-3): the verdict is the register's, read
+      # before the publish step so an unarmed or uncredentialled lane says which, by name.
       # why: the Chrome lane authenticates with a SERVICE ACCOUNT as of 2026-09-09
       # (https://developer.chrome.com/docs/webstore/service-accounts). CWS_CLIENT_ID,
       # CWS_CLIENT_SECRET and CWS_REFRESH_TOKEN are retired -- a preflight that still
       # demanded them would refuse a fully credentialled lane over names no file reads,
       # which is a FALSE BLOCKER and not a floor.
       - name: Chrome Web Store — credentials present, or the owner step
+        if: inputs.confirm == 'SUBMIT-TO-CHROME-WEB-STORE'
         env:
           CWS_SERVICE_ACCOUNT_JSON: ${{ secrets.CWS_SERVICE_ACCOUNT_JSON }}
           CWS_PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
@@ -1536,8 +1650,8 @@ jobs:
           if [ -z "$CWS_SERVICE_ACCOUNT_JSON" ] || [ -z "$CWS_PUBLISHER_ID" ]; then
             echo "one or more CWS_* repository secrets are empty; the register decides what that means."
           fi
-          if ! node scripts/publish-arming.mjs --channel chrome-webstore --tool "${{ steps.tag.outputs.id }}"; then
-            echo "::error::the register ARMS the chrome-webstore channel and its credentials are missing, so this release cannot submit to the Chrome Web Store. This is a failed release, not a skipped store."
+          if ! node extensions/scripts/publish-arming.mjs --channel chrome-webstore --tool "${{ steps.tag.outputs.id }}"; then
+            echo "::error::the register ARMS the chrome-webstore channel and its credentials are missing, so this run cannot submit to the Chrome Web Store. This is a failed publish, not a skipped store."
             exit 1
           fi
 
@@ -1549,6 +1663,7 @@ jobs:
         env:
           CWS_SERVICE_ACCOUNT_JSON: ${{ secrets.CWS_SERVICE_ACCOUNT_JSON }}
           CWS_PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
+          GITHUB_TOKEN: ${{ github.token }}
           CONFIRM: ${{ inputs.confirm }}
           TOOL: ${{ steps.tag.outputs.id }}
         run: |
@@ -1562,7 +1677,7 @@ jobs:
             exit 1
           fi
           code=0
-          out=$(node scripts/publish-cws.mjs --tool "$TOOL" --zip "dist/${TOOL}-chromium.zip" 2>&1) || code=$?
+          out=$(node extensions/scripts/publish-cws.mjs --tool "$TOOL" --zip "release-assets/${TOOL}-chromium.zip" 2>&1) || code=$?
           printf '%s\n' "$out"
           if [ "$code" -ne 0 ]; then
             echo "::error::NOT PUBLISHED to the Chrome Web Store: the Chrome publisher exited ${code}."
@@ -1572,9 +1687,22 @@ jobs:
             echo "::error::NOT PUBLISHED to the Chrome Web Store: the Chrome publisher exited 0 without printing SUBMITTED, which is its answer for a channel the register does not arm. The owner asked for this store, so a run that sent nothing is a failure, not a pass."
             exit 1
           fi
+          echo "listing_url=$(sed -n 's/^LISTING_URL=//p' <<< "$out" | tail -n 1)" >> "$GITHUB_OUTPUT"
           echo "published=yes" >> "$GITHUB_OUTPUT"
 
+      # why: [10]D-9 -- the same record, for the same reason, as the AMO step's. The listing is
+      # the tool's `listings.chrome`, set at the manual first publish ADR 067 decision 8 requires.
+      - name: Record the Chrome Web Store submission in the [10]D-9 ledger
+        if: always() && steps.cws.outcome == 'success'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TOOL: ${{ steps.tag.outputs.id }}
+          LISTING_URL: ${{ steps.cws.outputs.listing_url }}
+        run: node tooling/ci/record-deployment.mjs "$TOOL-chrome-webstore" --state in_review --listing-url "$LISTING_URL"
+
       - name: Edge Add-ons — credentials present, or the owner step
+        if: inputs.confirm == 'SUBMIT-TO-EDGE-ADDONS'
         env:
           EDGE_CLIENT_ID: ${{ secrets.EDGE_CLIENT_ID }}
           EDGE_API_KEY: ${{ secrets.EDGE_API_KEY }}
@@ -1583,10 +1711,11 @@ jobs:
           if [ -z "$EDGE_CLIENT_ID" ] || [ -z "$EDGE_API_KEY" ]; then
             echo "one or more EDGE_* repository secrets are empty; the register decides what that means."
           fi
-          if ! node scripts/publish-arming.mjs --channel edge-addons --tool "${{ steps.tag.outputs.id }}"; then
-            echo "::error::the register ARMS the edge-addons channel and its credentials are missing, so this release cannot submit to Microsoft Edge Add-ons. This is a failed release, not a skipped store."
+          if ! node extensions/scripts/publish-arming.mjs --channel edge-addons --tool "${{ steps.tag.outputs.id }}"; then
+            echo "::error::the register ARMS the edge-addons channel and its credentials are missing, so this run cannot submit to Microsoft Edge Add-ons. This is a failed publish, not a skipped store."
             exit 1
           fi
+
 
       # why: the SAME chromium zip Chrome takes, byte-identical -- tool.json declares both
       # stores' target as `chromium`, which is what makes one artifact and two listings a
@@ -1599,6 +1728,7 @@ jobs:
         env:
           EDGE_CLIENT_ID: ${{ secrets.EDGE_CLIENT_ID }}
           EDGE_API_KEY: ${{ secrets.EDGE_API_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
           CONFIRM: ${{ inputs.confirm }}
           TOOL: ${{ steps.tag.outputs.id }}
         run: |
@@ -1612,7 +1742,7 @@ jobs:
             exit 1
           fi
           code=0
-          out=$(node scripts/publish-edge.mjs --tool "$TOOL" --zip "dist/${TOOL}-chromium.zip" 2>&1) || code=$?
+          out=$(node extensions/scripts/publish-edge.mjs --tool "$TOOL" --zip "release-assets/${TOOL}-chromium.zip" 2>&1) || code=$?
           printf '%s\n' "$out"
           if [ "$code" -ne 0 ]; then
             echo "::error::NOT PUBLISHED to Microsoft Edge Add-ons: the Edge publisher exited ${code}."
@@ -1622,28 +1752,26 @@ jobs:
             echo "::error::NOT PUBLISHED to Microsoft Edge Add-ons: the Edge publisher exited 0 without printing SUBMITTED, which is its answer for a channel the register does not arm. The owner asked for this store, so a run that sent nothing is a failure, not a pass."
             exit 1
           fi
+          echo "listing_url=$(sed -n 's/^LISTING_URL=//p' <<< "$out" | tail -n 1)" >> "$GITHUB_OUTPUT"
           echo "published=yes" >> "$GITHUB_OUTPUT"
 
-      - name: Record what shipped, per channel this release is the origin for
-        if: github.event_name == 'push' && inputs.dry_run != true
-        working-directory: .
+      # why: [10]D-9 -- as the Chrome record; the listing is the tool's `listings.edge`.
+      - name: Record the Edge Add-ons submission in the [10]D-9 ledger
+        if: always() && steps.edge.outcome == 'success'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           TOOL: ${{ steps.tag.outputs.id }}
-        run: |
-          set -euo pipefail
-          for environment in $(node tooling/ci/release-manifest.mjs --emit-environments extensions/dist --app "$TOOL"); do
-            node tooling/ci/record-deployment.mjs "$environment" "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$GITHUB_REF_NAME" --state pending_manual_publish
-          done
-      # why: a SKIPPED step prints nothing, so every run ends by saying, store by store, whether
-      # it published -- a tag push or a rehearsal must never read as a release that reached a store.
+          LISTING_URL: ${{ steps.edge.outputs.listing_url }}
+        run: node tooling/ci/record-deployment.mjs "$TOOL-edge-addons" --state in_review --listing-url "$LISTING_URL"
+
+      # why: a SKIPPED step prints nothing, so this job ends by saying, store by store, whether
+      # it published.
       - name: Store publication — what this run did and did not publish
         if: always()
         shell: bash
         env:
           CONFIRM: ${{ inputs.confirm }}
-          DRY_RUN: ${{ inputs.dry_run }}
           TOOL: ${{ steps.tag.outputs.id }}
           VERSION: ${{ steps.tag.outputs.version }}
           AMO: ${{ steps.amo.outputs.published }}
@@ -1659,11 +1787,7 @@ jobs:
               published=$((published + 1))
               continue
             fi
-            if [ "$GITHUB_EVENT_NAME" = push ]; then
-              why="a tag push builds and packages and never publishes to a store"
-            elif [ "${DRY_RUN:-}" = true ]; then
-              why="dry_run was checked, so this dispatch was a rehearsal"
-            elif [ "${CONFIRM:-}" = "$word" ]; then
+            if [ "${CONFIRM:-}" = "$word" ]; then
               why="the owner typed ${word} and the publish step did not complete; read its log above"
             else
               why="confirm did not name this store"
@@ -1671,7 +1795,6 @@ jobs:
             echo "::notice::NOT PUBLISHED to ${store}: ${why}. To publish, dispatch extensions.yml ON the release tag with lane=release, dry_run unchecked and confirm=${word}."
           done
           echo "${published} store(s) published by this run."
-
 
   # why: RETIRED DUTY, REPLACED DUTY -- 2026-09-09. This job existed because a Google OAuth
   # refresh token that goes unused is revoked. The lane no longer holds a refresh token: it
@@ -1719,6 +1842,7 @@ jobs:
       - ci
       - e2e-suite
       - release
+      - store-publish
       - cws-token-keepalive
     if: always()
     runs-on: ubuntu-24.04
@@ -1733,7 +1857,9 @@ jobs:
           CI: ${{ needs.ci.result }}
           E2E: ${{ needs.e2e-suite.result }}
           RELEASE: ${{ needs.release.result }}
+          STORE: ${{ needs.store-publish.result }}
           KEEPALIVE: ${{ needs.cws-token-keepalive.result }}
+          DRY_RUN: ${{ inputs.dry_run }}
           EVENT: ${{ github.event_name }}
           REF: ${{ github.ref }}
           ACTION: ${{ github.event.action }}
@@ -1753,7 +1879,7 @@ jobs:
           # So the guards are not trusted: the lane is derived here, separately,
           # from the event, and the results are required to match it.
           echo "event=$EVENT ref=$REF action=${ACTION:-none} label=${LABEL:-none} lane_input=${LANE:-none}"
-          echo "ci=$CI e2e=$E2E release=$RELEASE keepalive=$KEEPALIVE"
+          echo "ci=$CI e2e=$E2E release=$RELEASE store-publish=$STORE keepalive=$KEEPALIVE"
 
           # ⏱ 2026-09-24: the CI lane left this file for extensions-ci.yml, which ci.yml
           # calls on every pull request and push to main. Here it runs only on a dispatch
@@ -1798,6 +1924,22 @@ jobs:
             expect e2e-suite   "$E2E"     "$([ "$want" = e2e ] && echo yes || echo no)"
             expect release     "$RELEASE" "$([ "$want" = release ] && echo yes || echo no)"
           }
+
+          # The store-publish job is NOT a lane either: it runs only after a successful release
+          # job on a publishing dispatch (a workflow_dispatch on a tag, lane=release, dry_run
+          # unchecked). Any other event must leave it SKIPPED; that dispatch must see it run.
+          # (A failed release leaves it skipped too, and the release red already says so.)
+          if [ "$EVENT" = workflow_dispatch ] && [ "${REF#refs/tags/}" != "$REF" ] && [ "${LANE:-}" = release ] && [ "${DRY_RUN:-}" != true ] && [ "$RELEASE" = success ]; then
+            case "$STORE" in
+              success) ;;
+              *) echo "::error::'store-publish' came out '$STORE' on a publishing dispatch whose release job succeeded. The owner's word was typed and no store job completed."; fail=1 ;;
+            esac
+          else
+            case "$STORE" in
+              skipped) ;;
+              *) echo "::error::'store-publish' came out '$STORE' on an event that is not a publishing dispatch. A store job running outside the owner's word is a guard that is too wide."; fail=1 ;;
+            esac
+          fi
 
           # The keep-alive is NOT a lane and is deliberately graded separately: it is a weekly
           # credential exercise that rides the DAILY schedule the e2e lane already uses (it was a

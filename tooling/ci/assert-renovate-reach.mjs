@@ -71,6 +71,7 @@ const SENTINEL_SEMVER = '99.98.97';
 const SENTINEL_MAJOR = '99';
 const HAND_LABEL = 'needs-manual-check';
 const BRICK_PKG = 'tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/package.json';
+const WRANGLER_ISLAND_PKG = 'tooling/wrangler/package.json';
 // One version-guard run is about a second; the bound only has to catch a hang.
 const GUARD_TIMEOUT_MS = timeoutFromEnv('RENOVATE_REACH_TIMEOUT_MS', 60_000);
 
@@ -78,7 +79,8 @@ const GUARD_TIMEOUT_MS = timeoutFromEnv('RENOVATE_REACH_TIMEOUT_MS', 60_000);
  *  `re` names the span Renovate would rewrite as the `currentValue` group. */
 export const BUILTIN = [
   { key: 'melos', manager: 'pub', file: (p) => p === 'pubspec.yaml', re: '\\n\\s+melos:\\s*(?<currentValue>[0-9][^\\s#]*)' },
-  { key: 'wrangler', manager: 'npm', file: (p) => p === BRICK_PKG, re: '"wrangler":\\s*"(?<currentValue>[^"]+)"' },
+  // npm also reaches the tooling/wrangler island (2026-09-24, EXT-3): it is not under renovate.json ignorePaths.
+  { key: 'wrangler', manager: 'npm', file: (p) => p === BRICK_PKG || p === WRANGLER_ISLAND_PKG, re: '"wrangler":\\s*"(?<currentValue>[^"]+)"' },
   { key: 'wrangler', manager: 'github-actions', file: (p) => /^\.github\/workflows\/[^/]+\.ya?ml$/.test(p), re: "wranglerVersion:\\s*'(?<currentValue>[0-9][^']*)'" },
 ];
 

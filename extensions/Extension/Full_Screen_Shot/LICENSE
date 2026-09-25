@@ -165,16 +165,16 @@ of your licenses.
 
 ---------------------------------------------------------------------------
 
-Required Notice: Copyright <OWNER LEGAL NAME OR COMPANY> (<OPTIONAL URL>)
-
->>> OWNER ACTION — replace the line above BEFORE the first commit. <<<
+Required Notice: Copyright Rajasekar Selvam, trading as NIKATRU (https://nikatru.com)
 
 Everything above the rule is the PolyForm Shield License 1.0.0, verbatim and
 unmodified; do not edit it. The Required Notice line is the one thing this
 license expects the licensor to supply, and the Notices section makes it
-travel with every copy anyone receives. Left as a placeholder, the licensor
-is unnamed — and an unnamed licensor is a Noncompete term with nobody
-standing behind it.
+travel with every copy anyone receives: LICENSE ships inside every store zip
+(tool.json package.include) and addons.mozilla.org receives this text as the
+Custom License. An unnamed licensor is a Noncompete term with nobody standing
+behind it, so extensions/scripts/check-store-metadata.mjs fails on a
+placeholder in that line (filled 2026-09-24, O-EXTENSION-LICENSE-NOTICE-UNFILLED).
 
 Format follows the example in the Notices section above, e.g.
   Required Notice: Copyright Yoyodyne, Inc. (http://example.com)

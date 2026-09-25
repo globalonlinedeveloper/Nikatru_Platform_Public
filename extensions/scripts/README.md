@@ -10,9 +10,9 @@ file to keep in sync.
 > scheduler" used to stand here unqualified and it was never quite true: `grep -c 'shell: bash'
 > .github/workflows/ci.yml` is not zero, and each of those blocks is inline bash — a `for` loop, a
 > `[ -d ... ]` guard, a double-pack digest comparison — that no PowerShell prompt reproduces. It
-> also runs one thing that is not a `scripts/` gate at all: `npx --yes web-ext@8 lint`, the only npm
-> dependency in the gate workflows — which is why the "zero npm dependencies" line above says *here*
-> rather than *anywhere*. (`grep -nE 'npx|npm ' .github/workflows/*.yml`, 2026-08-22: `web-ext@8` in
+> also runs one thing that is not a `scripts/` gate at all: `web-ext lint`, the only npm dependency in
+> the gate workflows, installed from the locked `tooling/web-ext/` island (2026-09-24) — which is why the "zero npm dependencies" line above says *here*
+> rather than *anywhere*. (`grep -nE 'npx|npm ' .github/workflows/*.yml`, 2026-08-22: the web-ext v8 lint in
 > `ci.yml` and `release.yml`, plus `npm ci` and `npx playwright install` in the separate, non-blocking
 > `e2e.yml`.) Collapsing those blocks into `scripts/` gates is open work; until it happens the honest
 > form is this one — *every gate is a script call, and the workflows contain more than gates.* Stated

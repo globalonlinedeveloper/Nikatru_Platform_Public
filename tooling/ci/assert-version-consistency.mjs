@@ -265,6 +265,20 @@ export function collectTargets(repoRoot) {
     coverageLost();
   }
   TARGETS.push(BRICK_PKG);
+  // ⏱ 2026-09-24 (EXT-3) — THE WRANGLER ISLAND, REQUIRED FOR THE SAME REASON AS
+  // THE BRICK. deploy-web.yml creates each Pages project with the binary
+  // `npm ci --ignore-scripts --prefix tooling/wrangler` installs, so the island's
+  // exact `"wrangler"` devDependency is a live copy of the pin that publishes
+  // production. The "Wrangler (brick dep)" rule reads it; the target is not
+  // existsSync-gated, because a vanished island would shrink this scan in silence.
+  const WRANGLER_ISLAND_PKG = 'tooling/wrangler/package.json';
+  if (!existsSync(join(repoRoot, WRANGLER_ISLAND_PKG))) {
+    console.error(`✗ COVERAGE LOST — the wrangler island's package.json is gone from ${WRANGLER_ISLAND_PKG}.`);
+    console.error('  deploy-web.yml runs that island\'s wrangler; with the file gone its pin leaves this scan while');
+    console.error('  the workflows alone still clear the global floor. If the island moved, fix this path in the same change.');
+    coverageLost();
+  }
+  TARGETS.push(WRANGLER_ISLAND_PKG);
 
   return TARGETS;
 }
@@ -329,6 +343,12 @@ const REQUIRED_YIELD = [
     key: 'gitleaks',
     min: 1,
     what: "the `const VALIDATED_AGAINST = '<version>'` the volume parser was measured against",
+  },
+  {
+    where: /(^|[\\/])tooling[\\/]wrangler[\\/]package\.json$/,
+    key: 'wrangler',
+    min: 1,
+    what: 'the exact `"wrangler"` devDependency deploy-web.yml installs from the island lockfile',
   },
 ];
 /** 🔴 COVERAGE LOSS IS COLLECTED, NOT THROWN — it is reported ALONGSIDE drift,

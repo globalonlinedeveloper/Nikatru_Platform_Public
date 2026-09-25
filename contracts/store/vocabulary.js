@@ -274,6 +274,11 @@ export const LISTING_FIELDS = /** @type {const} */ ([
   // one store takes each, so neither can be required of every store directory.
   { name: 'search-terms.txt', kind: 'text', app: 'additional', extension: 'per-store-additional', rendered: false },
   { name: 'tags.txt', kind: 'text', app: null, extension: 'per-store-additional', rendered: false },
+  // ⏱ 2026-09-24 (EXT-3): AMO's version `approval_notes` — "Information for
+  // Mozilla reviewers ... Only visible to Mozilla" (mozilla.github.io/addons-server
+  // topics/api/addons.html, fetched 2026-09-24). extensions/scripts/amo-metadata.mjs
+  // sends store/firefox/reviewer-notes.txt as that field on the first submit.
+  { name: 'reviewer-notes.txt', kind: 'text', app: null, extension: 'per-store-additional', rendered: false },
   { name: 'snap-name.txt', kind: 'text', app: 'additional', extension: null, rendered: false },
   { name: 'license.txt', kind: 'text', app: 'additional', extension: null, rendered: false },
   { name: 'privacy-manifest.json', kind: 'json', app: 'additional', extension: null, rendered: false },

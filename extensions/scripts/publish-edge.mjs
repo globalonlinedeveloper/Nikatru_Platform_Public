@@ -35,6 +35,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { laneVerdict, ArmingCoverageLost, readSubmittablePackage } from './publish-arming.mjs';
+import { requireStorePublishEnvironment } from './lib/store-environment.mjs';
 
 const PRIMARY_SOURCES = Object.freeze({
   api: 'https://learn.microsoft.com/en-us/microsoft-edge/extensions/update/api/using-addons-api',
@@ -99,6 +100,15 @@ async function main() {
     packageBytes = readSubmittablePackage(ZIP);
   } catch (err) {
     die([`FAIL ${err.message}`]);
+    return;
+  }
+
+  // [ADR 031] class A — the store-publish environment is read back immediately
+  // before the first store call. lib/store-environment.mjs; EXT-3, 2026-09-24.
+  const gate = await requireStorePublishEnvironment();
+  for (const l of gate.lines) (gate.ok ? console.log : console.error)(l);
+  if (!gate.ok) {
+    die(['     NOT SUBMITTED: the store-publish environment was not shown to gate this run.']);
     return;
   }
   // 🔴 THE PRODUCT ID COMES OFF THE TOOL, NOT OUT OF THE ENVIRONMENT. Same
@@ -173,6 +183,8 @@ async function main() {
     return;
   }
   console.log(`ok   publish status — ${pubStatusText.slice(0, 300)}`);
+  // The listing the [10]D-9 record names: the tool's `listings.edge`.
+  if (result.identity.listingUrl !== null) console.log(`LISTING_URL=${result.identity.listingUrl}`);
   console.log(`publish-edge: SUBMITTED — ${TOOL} uploaded and submitted for certification on Microsoft Edge Add-ons.`);
 }
 
