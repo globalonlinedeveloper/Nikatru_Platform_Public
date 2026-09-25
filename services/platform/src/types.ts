@@ -780,6 +780,35 @@ export interface AppConfig {
   theme?: Record<string, unknown>;
 }
 
+/**
+ * A value the config service resolves PER RELEASE CHANNEL — O-UPDATE-FLOOR-HAS-NO-CHANNEL.
+ *
+ * A scalar means every channel. A map is keyed by a channel id from
+ * tooling/channel-register.json, and `default` answers every channel the map
+ * does not name. Maps live ONLY in `app-config-data.json` and in a KV override:
+ * `GET /config/<app>?channel=<id>` collapses each one to the value that channel
+ * is served (src/config.ts `forChannel`), so `AppConfig` above — the wire —
+ * stays scalar and no client parses a map.
+ *
+ * 🔴 WHY IT IS NOT ONE VALUE ANY MORE. `min_supported_version` was a single
+ * string for the whole app. Raising it for the web build (the only channel that
+ * reloads itself) walled every store build too, including ones whose store has
+ * not yet approved the version the wall asks for — and `update_url` had the
+ * same shape: one destination for a direct download and a store listing alike.
+ */
+export type PerChannel<T> = T | ({ default: T } & Record<string, T>);
+
+/**
+ * The per-app config as STORED — `defaults` deep-merged with the app's entry,
+ * then with a KV override — before `forChannel` collapses the two per-channel
+ * fields. `buildRegistry` produces this; only `forChannel` turns it into an
+ * `AppConfig`.
+ */
+export type StoredAppConfig = Omit<AppConfig, 'min_supported_version' | 'update_url'> & {
+  min_supported_version: PerChannel<string>;
+  update_url: PerChannel<string | null>;
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Analytics (ADR 011 / G-12). The wire envelope + row shapes are LOCKED here and
 // in migrations/0002_analytics.sql; the /v1/events route lands with G-12.

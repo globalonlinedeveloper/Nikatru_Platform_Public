@@ -165,3 +165,89 @@ describe('GET /config/:app is behind the same server-derived ceiling as /v1/even
     expect(kv.reads).toEqual(['config:subscriptiontracker']);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// O-UPDATE-FLOOR-HAS-NO-CHANNEL — `?channel=<id>` picks the channel's floor and
+// update destination. Measured at the base commit: the route ignored the query
+// string, so a KV override raising `min_supported_version` to 9.0.0 served 9.0.0
+// to EVERY build — the web build reloads itself, a store build waits on review,
+// and both were walled at once. A KV override is the fixture here because it is
+// the runtime lever the owner actually pulls; config.test.ts drives the same
+// resolution through the value document.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('GET /config/:app?channel= serves that channel’s floor and exit', () => {
+  type Body = { app_id: string; min_supported_version: unknown; update_url: unknown };
+  const WEB_RAISED = JSON.stringify({ min_supported_version: { web: '9.0.0' } });
+
+  it('RC1 — the closes’ control: web raised to 9.0.0 does not wall android-play', async () => {
+    const { get } = harness({ kvValue: WEB_RAISED });
+    const play = await get('subscriptiontracker', undefined, '?channel=android-play');
+    expect(play.status).toBe(200);
+    expect(((await play.json()) as Body).min_supported_version).toBe('1.0.0');
+    const web = await get('subscriptiontracker', undefined, '?channel=web');
+    expect(web.status).toBe(200);
+    expect(((await web.json()) as Body).min_supported_version).toBe('9.0.0');
+  });
+
+  it('RC2 — an unknown channel is a 400 decided before the ceiling and before KV', async () => {
+    const { kv, ceiling, get } = harness({ kvValue: WEB_RAISED });
+    const res = await get('subscriptiontracker', { colo: 'MAA', asn: 24560 }, '?channel=nope');
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'unknown_channel' });
+    expect(kv.reads).toEqual([]);
+    expect(ceiling.keys).toEqual([]);
+  });
+
+  it('the fallback key and an empty value are not channels either', async () => {
+    const { kv, get } = harness();
+    expect((await get('subscriptiontracker', undefined, '?channel=default')).status).toBe(400);
+    expect((await get('subscriptiontracker', undefined, '?channel=')).status).toBe(400);
+    expect(kv.reads).toEqual([]);
+  });
+
+  it('an unknown APP is still the 404 first, whatever the channel says', async () => {
+    const { kv, get } = harness();
+    const res = await get('nope', undefined, '?channel=nope');
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: 'unknown_app' });
+    expect(kv.reads).toEqual([]);
+  });
+
+  it('a SCALAR KV override still means every channel — the override shape written before maps', async () => {
+    const { get } = harness({ kvValue: JSON.stringify({ min_supported_version: '2.0.0' }) });
+    const play = (await (await get('subscriptiontracker', undefined, '?channel=android-play')).json()) as Body;
+    const web = (await (await get('subscriptiontracker', undefined, '?channel=web')).json()) as Body;
+    expect(play.min_supported_version).toBe('2.0.0');
+    expect(web.min_supported_version).toBe('2.0.0');
+  });
+
+  it('no channel is served `default`, with the KV map applied', async () => {
+    const { kv, get } = harness({ kvValue: WEB_RAISED });
+    const res = await get('subscriptiontracker');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Body;
+    expect(body.min_supported_version).toBe('1.0.0');
+    expect(body.update_url).toBeNull();
+    expect(kv.reads).toEqual(['config:subscriptiontracker']);
+  });
+
+  it('a known channel reads one KV key, charges the ceiling once, and keeps the edge cache header', async () => {
+    const { kv, ceiling, get } = harness();
+    const res = await get('subscriptiontracker', { colo: 'MAA', asn: 24560 }, '?channel=web');
+    expect(res.status).toBe(200);
+    expect(kv.reads).toEqual(['config:subscriptiontracker']);
+    expect(ceiling.keys).toEqual(['edge:MAA:24560']);
+    expect(res.headers.get('Cache-Control')).toContain('s-maxage=300');
+  });
+
+  it('the wire stays scalar: a KV map naming a channel still serves that channel a string', async () => {
+    const { get } = harness({
+      kvValue: JSON.stringify({ update_url: { 'windows-direct': 'https://dl.example.invalid/win' } }),
+    });
+    const direct = (await (await get('subscriptiontracker', undefined, '?channel=windows-direct')).json()) as Body;
+    const web = (await (await get('subscriptiontracker', undefined, '?channel=web')).json()) as Body;
+    expect(direct.update_url).toBe('https://dl.example.invalid/win');
+    expect(web.update_url).toBeNull();
+    expect(typeof direct.min_supported_version).toBe('string');
+  });
+});
