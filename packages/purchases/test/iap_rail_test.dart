@@ -85,6 +85,9 @@ class _FakeBridge implements IapBridge {
 /// apps. [restorePurchasesOf] must still answer for it.
 class _BareRail implements PurchaseRail {
   @override
+  PurchaseRailKind get railKind => PurchaseRailKind.none;
+
+  @override
   List<Offering> get offerings => const <Offering>[];
 
   @override

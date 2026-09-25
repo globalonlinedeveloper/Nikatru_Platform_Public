@@ -31,19 +31,26 @@ void main() {
     PaywallPhase phase = PaywallPhase.choosing,
     List<PaywallOffer> plans = offers,
     bool canStartCheckout = true,
-    String detail = '',
+    PaywallCheckoutStyle checkoutStyle = PaywallCheckoutStyle.hosted,
+    PaywallRefusalView refusalView = PaywallRefusalView.retryable,
     void Function(PaywallOffer)? onBuy,
     VoidCallback? onCheckAgain,
     VoidCallback? onGoHome,
+    VoidCallback? onRetry,
   }) => PaywallView(
     phase: phase,
     offers: plans,
     canStartCheckout: canStartCheckout,
-    detail: detail,
+    checkoutStyle: checkoutStyle,
+    refusalView: refusalView,
     onBuy: onBuy ?? (PaywallOffer _) {},
     onCheckAgain: onCheckAgain ?? () {},
     onGoHome: onGoHome ?? () {},
+    onRetry: onRetry ?? () {},
   );
+
+  ChassisLocalizations l10nOf(WidgetTester tester) =>
+      ChassisLocalizations.of(tester.element(find.byType(PaywallView)));
 
   // ── (1) THE WIDTH DECISION, AT ALL THREE WINDOW CLASSES ───────────────────
   //
@@ -135,20 +142,80 @@ void main() {
       expect(went, isTrue);
     });
 
-    testWidgets('refused RENDERS THE REASON — a refusal with no reason is '
-        'indistinguishable from a broken button', (WidgetTester tester) async {
+    // O-PAYWALL-SPEAKS-ONLY-WEB-CHECKOUT. This case used to assert the
+    // OPPOSITE: that the refusal's engineering reason was painted verbatim. It
+    // was English on a Tamil screen, and on a store build it named the web.
+    // The view no longer takes one; each refusal shows a sentence the buyer can
+    // act on, and the control to act with.
+    testWidgets('refused, retryable: the retry sentence and Try again', (
+      WidgetTester tester,
+    ) async {
+      bool retried = false;
+      await pumpChassis(
+        tester,
+        kPhone,
+        view(phase: PaywallPhase.refused, onRetry: () => retried = true),
+      );
+      final ChassisLocalizations l10n = l10nOf(tester);
+      expect(find.text(l10n.paywallRetryMessage), findsOneWidget);
+      expect(find.text(l10n.paywallUnavailable), findsNothing);
+      expect(find.byKey(PaywallView.upgradeButton), findsNothing);
+      await tester.tap(find.byKey(PaywallView.tryAgainButton));
+      expect(retried, isTrue);
+    });
+
+    testWidgets('refused, unavailable: says so, and still offers Try again', (
+      WidgetTester tester,
+    ) async {
+      bool retried = false;
       await pumpChassis(
         tester,
         kPhone,
         view(
           phase: PaywallPhase.refused,
-          detail: 'this rail is not permitted on iOS',
+          refusalView: PaywallRefusalView.unavailable,
+          onRetry: () => retried = true,
         ),
       );
-      expect(
-        find.text('this rail is not permitted on iOS'),
-        findsOneWidget,
+      final ChassisLocalizations l10n = l10nOf(tester);
+      expect(find.text(l10n.paywallUnavailable), findsOneWidget);
+      expect(find.text(l10n.paywallRetryMessage), findsNothing);
+      await tester.tap(find.byKey(PaywallView.tryAgainButton));
+      expect(retried, isTrue);
+    });
+
+    // The in-flight sentence follows the RAIL, not the platform: a hosted page
+    // opens in the browser and says so; a store's own sheet names neither the
+    // web nor a browser. `settle: false` because the spinner never settles.
+    testWidgets('opening on a hosted rail names the browser', (
+      WidgetTester tester,
+    ) async {
+      await pumpChassis(
+        tester,
+        kPhone,
+        view(phase: PaywallPhase.opening),
+        settle: false,
       );
+      final ChassisLocalizations l10n = l10nOf(tester);
+      expect(find.text(l10n.paywallOpeningHosted), findsOneWidget);
+      expect(find.text(l10n.paywallOpeningStore), findsNothing);
+    });
+
+    testWidgets('opening on a store rail shows the store sentence', (
+      WidgetTester tester,
+    ) async {
+      await pumpChassis(
+        tester,
+        kPhone,
+        view(
+          phase: PaywallPhase.opening,
+          checkoutStyle: PaywallCheckoutStyle.store,
+        ),
+        settle: false,
+      );
+      final ChassisLocalizations l10n = l10nOf(tester);
+      expect(find.text(l10n.paywallOpeningStore), findsOneWidget);
+      expect(find.text(l10n.paywallOpeningHosted), findsNothing);
     });
   });
 

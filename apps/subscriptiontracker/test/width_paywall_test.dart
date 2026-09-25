@@ -98,6 +98,9 @@ class _MemSecureStore implements core.SecureStore {
 /// one that would wrap or overflow first if the cap moved.
 class _OfferingRail implements PurchaseRail {
   @override
+  PurchaseRailKind get railKind => PurchaseRailKind.paddle;
+
+  @override
   List<Offering> get offerings => const <Offering>[
     Offering(
       productId: 'pro_monthly',

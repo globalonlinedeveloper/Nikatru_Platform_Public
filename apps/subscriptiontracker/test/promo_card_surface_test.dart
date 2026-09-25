@@ -72,6 +72,9 @@ class _MemStore implements core.KeyValueStore {
 /// see the header.
 class _SellingRail implements PurchaseRail {
   @override
+  PurchaseRailKind get railKind => PurchaseRailKind.paddle;
+
+  @override
   List<Offering> get offerings => const <Offering>[
     Offering(
       productId: 'pro_monthly',
@@ -96,6 +99,9 @@ class _SellingRail implements PurchaseRail {
 /// Twelve and a half lakh rupees — where Indian and Western grouping differ in
 /// every separator position. Used ONLY by the locale-grouping case.
 class _InrSellingRail implements PurchaseRail {
+  @override
+  PurchaseRailKind get railKind => PurchaseRailKind.paddle;
+
   @override
   List<Offering> get offerings => const <Offering>[
     Offering(

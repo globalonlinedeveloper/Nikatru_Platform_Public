@@ -422,9 +422,13 @@
   "@paywallUpgrade": {
     "description": "The call to action that opens the checkout."
   },
-  "paywallOpening": "Opening the secure checkout in your browser…",
-  "@paywallOpening": {
-    "description": "Shown while the hosted checkout is being handed to the platform. Names the BROWSER deliberately: the page opens outside the app, and a user who is not told that reads the app-switch as a crash."
+  "paywallOpeningHosted": "Opening the secure checkout in your browser…",
+  "@paywallOpeningHosted": {
+    "description": "Shown while a HOSTED checkout is being handed to the platform — the rail whose kind is paddle, on the web and the desktop builds. Names the BROWSER deliberately: the page opens outside the app, and a user who is not told that reads the app-switch as a crash. Never shown on a store build: see paywallOpeningStore."
+  },
+  "paywallOpeningStore": "Connecting to the store…",
+  "@paywallOpeningStore": {
+    "description": "Shown while a STORE's own purchase sheet is being opened (Play Billing, Apple in-app purchase). 🔴 Names neither the web nor a browser, in any locale: a store build that points its buyer at an outside checkout breaks that store's billing rule. The parity tests fail on either word here."
   },
   "paywallPending": "Your payment is being confirmed. This can take a moment — nothing more is needed from you.",
   "@paywallPending": {
@@ -440,7 +444,15 @@
   },
   "paywallUnavailable": "Purchases are not available here.",
   "@paywallUnavailable": {
-    "description": "Shown when the rail is unconfigured, or when the store this build ships through forbids an external checkout. The specific reason is shown beneath it — a refusal with no reason is indistinguishable from a broken button."
+    "description": "Shown when this build cannot sell here: the store it ships through refuses the purchase, the platform cannot take one, or there are no plans to offer. After a refusal, paywallTryAgain sits beneath it. The engineering reason goes to the log and is NEVER rendered: it is English, and it names mechanisms a buyer has no use for. Store builds show this sentence, so it names neither the web nor a browser."
+  },
+  "paywallRetryMessage": "The purchase could not be started. Please try again.",
+  "@paywallRetryMessage": {
+    "description": "Shown when a purchase could not be started but may start on a second try: the checkout did not open, the rail was not ready, or the account had not yet reached the store. paywallTryAgain sits beneath it. Store builds show it, so it names neither the web nor a browser."
+  },
+  "paywallTryAgain": "Try again",
+  "@paywallTryAgain": {
+    "description": "After a refusal, returns the buyer to the plans so a purchase can be started again."
   },
   "paywallTerm": "Billed per {term}",
   "@paywallTerm": {
