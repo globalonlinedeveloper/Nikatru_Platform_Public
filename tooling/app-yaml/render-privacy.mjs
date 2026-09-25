@@ -94,6 +94,8 @@ import { REGIONS, openMarker, closeMarker, isCssRegion } from '../sites/chrome.m
 const HERE = dirname(fileURLToPath(import.meta.url));
 
 export const PRIVACY_SCHEMA_PATH = join(HERE, 'schema', 'privacy.schema.json');
+/** Where a processor id's company name is read from, relative to the root. */
+export const PROVIDER_REGISTER = 'tooling/legal/provider-register.json';
 export const APPS_DIR = 'apps';
 export const EXTENSIONS_DIR = 'extensions';
 /** The tool template. It ships NO declaration, on purpose — see `UNANSWERED`. */
@@ -208,7 +210,10 @@ const region = (name) => {
  * it is the same for every app and belongs in one place rather than in each
  * declaration.
  */
-export function renderAppPage(doc, { appName, appId, portfolioPolicyPath = '/privacy' }) {
+export function renderAppPage(doc, { appName, appId, providerNames, portfolioPolicyPath = '/privacy' }) {
+  if (!(providerNames instanceof Map)) {
+    throw new TypeError(`renderAppPage needs providerNames, the ${PROVIDER_REGISTER} id → name map`);
+  }
   const rows = doc.collects ?? [];
   const classes = [...new Set(rows.map((r) => r.retentionClass))].sort((a, b) => a - b);
   const purposes = [...new Set(rows.flatMap((r) => r.purposes ?? []))].sort();
@@ -312,7 +317,14 @@ export function renderAppPage(doc, { appName, appId, portfolioPolicyPath = '/pri
   p('<table>');
   p('<tr><th>Who</th><th>Role</th><th>What they do with it</th></tr>');
   for (const pr of procs) {
-    p(`<tr><td>${esc(pr.id)}</td><td>${esc(String(pr.role).replace(/_/g, ' '))}</td><td>${esc(pr.purpose)}</td></tr>`);
+    // ⏱ 2026-09-25 — the page names the COMPANY (the register row's `name`),
+    // not the register id: "revenuecat" is a key, "RevenueCat" is a party a
+    // reader can look up. O-APP-PRIVACY-OMITS-STORE-BILLING.
+    const name = providerNames.get(pr.id);
+    if (name === undefined) {
+      throw new Error(`processor "${pr.id}" has no row in ${PROVIDER_REGISTER}, so the notice has no company name to print for it.`);
+    }
+    p(`<tr><td>${esc(name)}</td><td>${esc(String(pr.role).replace(/_/g, ' '))}</td><td>${esc(pr.purpose)}</td></tr>`);
   }
   p('</table>');
 
@@ -501,6 +513,24 @@ export function planPrivacy(root) {
     );
     return { declarations, files, problems, lost };
   }
+  // The company name printed for each processor. Read here, once, for every app.
+  const registerText = readIf(join(root, PROVIDER_REGISTER));
+  if (registerText === null) {
+    lost.push(`${PROVIDER_REGISTER} does not exist, so no processor on an app notice can be named.`);
+    return { declarations, files, problems, lost };
+  }
+  let providerNames;
+  try {
+    const reg = JSON.parse(registerText);
+    providerNames = new Map(
+      (Array.isArray(reg.providers) ? reg.providers : [])
+        .filter((row) => row && typeof row.id === 'string' && typeof row.name === 'string')
+        .map((row) => [row.id, row.name]),
+    );
+  } catch (e) {
+    problems.push(`${PROVIDER_REGISTER}: not valid JSON (${e.message}), so no processor on an app notice can be named.`);
+    return { declarations, files, problems, lost };
+  }
   for (const [id, text] of appDeclarations) {
     const rel = `${APPS_DIR}/${id}/privacy.yaml`;
     const doc = gradeDoc(rel, text);
@@ -521,8 +551,15 @@ export function planPrivacy(root) {
       const m = /^name:\s*(.+)$/m.exec(appYaml);
       if (m) appName = m[1].trim().replace(/^["']|["']$/g, '');
     }
+    let page;
+    try {
+      page = renderAppPage(doc, { appName, appId: id, providerNames });
+    } catch (e) {
+      problems.push(`${rel}: ${e.message}`);
+      continue;
+    }
     declarations.push({ surface: 'app', id, rel, doc });
-    files.set(`${SITE_ROOT}/${id}/privacy.html`, renderAppPage(doc, { appName, appId: id }));
+    files.set(`${SITE_ROOT}/${id}/privacy.html`, page);
   }
 
   // ── the extension store blocks ────────────────────────────────────────────
