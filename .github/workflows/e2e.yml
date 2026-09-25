@@ -1,6 +1,6 @@
 name: E2E live
 
-run-name: "E2E live against ${{ inputs.auth_target || 'hosted' }} auth (${{ github.event_name }})"
+run-name: "E2E live against ${{ inputs.auth_target || 'production' }} secrets (${{ github.event_name }})"
 
 # The measurements, retractions and traps behind this file are in
 # docs/ci/e2e.md. Only `# why:` lines live here, and
@@ -14,16 +14,20 @@ on:
       # the auth project it was already pointed at, so "does this still pass on
       # Box A" could only be answered inside the cutover window itself. This
       # input answers it on demand, from the same code, before the window.
-      # `hosted` stays the default and the schedule below carries no input at
-      # all, so the unattended proof keeps grading production.
+      # `production` stays the default and the schedule below carries no input
+      # at all, so the unattended proof keeps grading production.
+      # ⏱ 2026-09-25 — the input names a SECRET SET, not a stack. What the run
+      # expects (captcha posture, and whether the Workers trust its issuer) is
+      # derived from the chosen SUPABASE_URL and tooling/platform-register.json
+      # in the step "Derive what this run expects"; see docs/ci/e2e.md.
       auth_target:
-        description: 'Which auth stack to run against: hosted Supabase, or Box A (self-hosted GoTrue).'
+        description: 'Which secret set to run against: production (SUPABASE_*) or selfhosted (SELFHOSTED_SUPABASE_*, Box C).'
         type: choice
         required: false
-        default: hosted
+        default: production
         options:
-          - hosted
-          - boxa
+          - production
+          - selfhosted
   # why: 03:17, computed rather than chosen -- including the wrap past midnight,
   # which a sorted list of slots never shows. This lane runs against LIVE Supabase,
   # the live Worker and live D1, so a red night may mean production is broken.
@@ -73,8 +77,8 @@ jobs:
       #
       # `auth_target` is a `type: choice` with exactly the two options declared
       # above, and the `schedule` trigger sends no input at all, so
-      # `${{ inputs.auth_target || 'hosted' }}` can only ever be `hosted` or
-      # `boxa`: this refusal is UNREACHABLE today. That is precisely why it may
+      # `${{ inputs.auth_target || 'production' }}` can only ever be `production`
+      # or `selfhosted`: this refusal is UNREACHABLE today. That is precisely why it may
       # not live inside the secrets preflight. assert-green-means-ran.mjs
       # section B1 asks whether a step that reads a secret and branches on its
       # emptiness contains ANY `exit <n>` (:378-385) — it cannot tell WHICH
@@ -89,11 +93,11 @@ jobs:
       # that protects the live suite.
       - name: Preflight — auth_target must be one of the declared options
         env:
-          TARGET: ${{ inputs.auth_target || 'hosted' }}
+          TARGET: ${{ inputs.auth_target || 'production' }}
         run: |
           set -uo pipefail
-          if [ "$TARGET" != 'hosted' ] && [ "$TARGET" != 'boxa' ]; then
-            echo "::error title=E2E cannot run::auth_target \"$TARGET\" is not one of hosted, boxa."
+          if [ "$TARGET" != 'production' ] && [ "$TARGET" != 'selfhosted' ]; then
+            echo "::error title=E2E cannot run::auth_target \"$TARGET\" is not one of production, selfhosted."
             exit 1
           fi
           echo "auth_target=${TARGET} is one of the two declared options."
@@ -102,9 +106,12 @@ jobs:
       # THE DIFFERENCE. `tooling/ops/register.json`'s `duty.workflow.e2e.yml` grades
       # the NEWEST run of this workflow on main, and its own text says what that
       # means: "Treat as production until proven otherwise." An `auth_target=boxa`
-      # run is the opposite of that claim — it drives a stack the deployed Workers
-      # DELIBERATELY refuse (one issuer, and it is not Box A until the Phase 5
-      # cutover), so its failure says nothing about whether production works.
+      # run was the opposite of that claim — it drove a stack the deployed Workers
+      # DELIBERATELY refused (one issuer, and it was not Box A), so its failure
+      # said nothing about whether production works.
+      # ⏱ 2026-09-25 — the targets are now `production` and `selfhosted`, and ANY
+      # target but `production` is refused on main: a `selfhosted` run reads a
+      # secret set production does not, whatever the Workers trust that day.
       #
       # 🔴 MEASURED 2026-09-12, AND IT COST TWO DEPLOYS. Run 34668296014
       # (auth_target=boxa, on main) failed at 02:43:21Z. assert-ops-register.mjs on the
@@ -124,12 +131,12 @@ jobs:
       # way to mark a production failure as a rehearsal after the fact.
       - name: Preflight — a rehearsal target may not run on the default branch
         env:
-          TARGET: ${{ inputs.auth_target || 'hosted' }}
+          TARGET: ${{ inputs.auth_target || 'production' }}
           REF_NAME: ${{ github.ref_name }}
         run: |
           set -uo pipefail
-          if [ "$TARGET" != 'hosted' ] && [ "$REF_NAME" = 'main' ]; then
-            echo "::error title=E2E cannot run::auth_target=${TARGET} is a REHEARSAL against a stack the deployed Workers deliberately refuse, and this dispatch is on main. duty.workflow.e2e.yml grades the newest e2e run on main as PRODUCTION health, so a rehearsal failure here turns ci-gate red and every deploy refuses to ship (measured 2026-09-12: run 34668296014 blocked Deploy web and Deploy workers on 0d3e61a8). Dispatch it on a branch at the same commit instead:  git push origin main:rehearse-${TARGET}  &&  gh workflow run e2e.yml --ref rehearse-${TARGET} -f auth_target=${TARGET}"
+          if [ "$TARGET" != 'production' ] && [ "$REF_NAME" = 'main' ]; then
+            echo "::error title=E2E cannot run::auth_target=${TARGET} is a REHEARSAL on a secret set production does not read, and this dispatch is on main. duty.workflow.e2e.yml grades the newest e2e run on main as PRODUCTION health, so a rehearsal failure here turns ci-gate red and every deploy refuses to ship (measured 2026-09-12: run 34668296014 blocked Deploy web and Deploy workers on 0d3e61a8). Dispatch it on a branch at the same commit instead:  git push origin main:rehearse-${TARGET}  &&  gh workflow run e2e.yml --ref rehearse-${TARGET} -f auth_target=${TARGET}"
             exit 1
           fi
           echo "auth_target=${TARGET} on ref ${REF_NAME}: allowed."
@@ -138,9 +145,11 @@ jobs:
       # HERE, AND IT FAILS CLOSED. Each of the three secrets for the chosen set
       # is checked for emptiness BY NAME, and a missing one ENDS the job naming
       # the secret — never a skip, never a fallback. This step does NOT hand the
-      # values on: the ONLY thing it writes to $GITHUB_ENV is E2E_AUTH_TARGET,
-      # which is not a secret. See the block above "Provision throwaway confirmed
-      # user" for how the resolved values reach the steps that consume them.
+      # values on, and since 2026-09-25 it writes nothing to $GITHUB_ENV: the
+      # target NAME reaches no consumer. What the run expects is written by the
+      # step "Derive what this run expects" below. See the block above "Provision
+      # throwaway confirmed user" for how the resolved values reach the steps
+      # that consume them.
       #
       # 🔴 NO COMMENT MAY SIT INSIDE THE `env:` BLOCK BELOW. assert-green-means-ran.mjs
       # reads a step's env line by line and STOPS at the first line that is not
@@ -153,13 +162,13 @@ jobs:
       - name: Preflight — the chosen auth target's secrets must be present
         id: pre
         env:
-          TARGET: ${{ inputs.auth_target || 'hosted' }}
+          TARGET: ${{ inputs.auth_target || 'production' }}
           HOSTED_URL: ${{ secrets.SUPABASE_URL }}
           HOSTED_ANON: ${{ secrets.SUPABASE_ANON_KEY }}
           HOSTED_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          BOXA_URL: ${{ secrets.BOXA_SUPABASE_URL }}
-          BOXA_ANON: ${{ secrets.BOXA_SUPABASE_ANON_KEY }}
-          BOXA_KEY: ${{ secrets.BOXA_SUPABASE_SERVICE_ROLE_KEY }}
+          SELFHOSTED_URL: ${{ secrets.SELFHOSTED_SUPABASE_URL }}
+          SELFHOSTED_ANON: ${{ secrets.SELFHOSTED_SUPABASE_ANON_KEY }}
+          SELFHOSTED_KEY: ${{ secrets.SELFHOSTED_SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           set -uo pipefail
           missing=''
@@ -174,11 +183,11 @@ jobs:
           # the two-tree measurement that forced the split. There is no `else`
           # here that ends the job, so section B1's "does this step exit?" can
           # only ever be answered by the refusal below.
-          if [ "$TARGET" = 'boxa' ]; then
-            prefix=BOXA_SUPABASE
-            if [ -z "$BOXA_URL" ];  then missing="${missing} BOXA_SUPABASE_URL"; fi
-            if [ -z "$BOXA_ANON" ]; then missing="${missing} BOXA_SUPABASE_ANON_KEY"; fi
-            if [ -z "$BOXA_KEY" ];  then missing="${missing} BOXA_SUPABASE_SERVICE_ROLE_KEY"; fi
+          if [ "$TARGET" = 'selfhosted' ]; then
+            prefix=SELFHOSTED_SUPABASE
+            if [ -z "$SELFHOSTED_URL" ];  then missing="${missing} SELFHOSTED_SUPABASE_URL"; fi
+            if [ -z "$SELFHOSTED_ANON" ]; then missing="${missing} SELFHOSTED_SUPABASE_ANON_KEY"; fi
+            if [ -z "$SELFHOSTED_KEY" ];  then missing="${missing} SELFHOSTED_SUPABASE_SERVICE_ROLE_KEY"; fi
           else
             prefix=SUPABASE
             if [ -z "$HOSTED_URL" ];  then missing="${missing} SUPABASE_URL"; fi
@@ -189,7 +198,6 @@ jobs:
             echo "::error title=E2E cannot run::auth_target=${TARGET} needs${missing}, and it is not set. The end-to-end proof did NOT run — this is a failed run, not a skipped one. Add or re-add the secret in Settings → Secrets and variables → Actions."
             exit 1
           fi
-          echo "E2E_AUTH_TARGET=${TARGET}" >> "$GITHUB_ENV"
           echo "auth_target=${TARGET}: ${prefix}_URL, ${prefix}_ANON_KEY and ${prefix}_SERVICE_ROLE_KEY are all present — running the live suite."
           echo "Auth target: **${TARGET}** (${prefix}_*)" >> "$GITHUB_STEP_SUMMARY"
 
@@ -242,6 +250,28 @@ jobs:
 
       - uses: ./.github/actions/setup-node
 
+      # why: WHAT THE RUN EXPECTS IS DERIVED FROM FACTS, NOT FROM THE TARGET NAME.
+      # Two facts, written to $GITHUB_ENV for every later step:
+      #   E2E_STACK          hosted when the chosen SUPABASE_URL is a
+      #                      `https://<ref>.supabase.co` origin, else selfhosted —
+      #                      the captcha posture to expect;
+      #   E2E_WORKERS_TRUST  yes when that origin IS tooling/platform-register.json
+      #                      vars.SUPABASE_URL at this sha (the one issuer the
+      #                      Workers trust, held equal to all three wrangler
+      #                      configs by assert-platform-register LIMB 5), else no —
+      #                      everything behind the Worker.
+      # The Phase 5 cutover rotates the repo secrets (C6) BEFORE the switch
+      # commit moves vars.SUPABASE_URL (C7); a target name could not say what the
+      # run in between expects, and these two facts do, with no edit here inside
+      # the window. The logic is tooling/e2e/auth_target_expectation.mjs
+      # `deriveExpectation`, unit-tested in tooling/ci/test/e2e-verify-target.test.mjs;
+      # the URL is a masked secret and only the two words are printed. An
+      # underivable run exits 2 and writes nothing, so every consumer refuses too.
+      - name: Derive what this run expects (stack and Workers trust)
+        env:
+          SUPABASE_URL: ${{ (inputs.auth_target || 'production') == 'selfhosted' && secrets.SELFHOSTED_SUPABASE_URL || (inputs.auth_target || 'production') == 'production' && secrets.SUPABASE_URL || '' }}
+        run: node tooling/e2e/derive_expectation.mjs
+
       - uses: ./.github/actions/setup-flutter
 
       - name: Set up ChromeDriver
@@ -264,39 +294,40 @@ jobs:
       #     per step again here, at the eight steps that actually consume it.
       #
       # (b) NO SILENT FALLBACK. A plain `A && B || C` ternary cannot carry the
-      #     target axis: an EMPTY BOXA_* secret is falsey, so the ternary hands
-      #     back the HOSTED value and the run grades production while its own
-      #     name says "boxa". The three-armed form below cannot do that — the
-      #     second arm tests `== 'hosted'` rather than being a bare else, so a
-      #     boxa run with an empty BOXA_* secret resolves to the EMPTY STRING and
-      #     the step dies on its own `need()`, never on the wrong stack. The
+      #     target axis: an EMPTY SELFHOSTED_* secret is falsey, so the ternary
+      #     hands back the PRODUCTION value and the run grades production while
+      #     its own name says "selfhosted". The three-armed form below cannot do
+      #     that — the second arm tests `== 'production'` rather than being a
+      #     bare else, so a selfhosted run with an empty SELFHOSTED_* secret
+      #     resolves to the EMPTY STRING and the step dies on its own `need()`
+      #     (or, in the derivation step, on exit 2), never on the wrong stack. The
       #     preflight above still fails first, and with the secret's NAME in the
       #     error; this shape is what makes that message the only way through
       #     rather than the only thing standing in the way.
       - name: Provision throwaway confirmed user
         id: user
         env:
-          SUPABASE_URL: ${{ (inputs.auth_target || 'hosted') == 'boxa' && secrets.BOXA_SUPABASE_URL || (inputs.auth_target || 'hosted') == 'hosted' && secrets.SUPABASE_URL || '' }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ (inputs.auth_target || 'hosted') == 'boxa' && secrets.BOXA_SUPABASE_SERVICE_ROLE_KEY || (inputs.auth_target || 'hosted') == 'hosted' && secrets.SUPABASE_SERVICE_ROLE_KEY || '' }}
+          SUPABASE_URL: ${{ (inputs.auth_target || 'production') == 'selfhosted' && secrets.SELFHOSTED_SUPABASE_URL || (inputs.auth_target || 'production') == 'production' && secrets.SUPABASE_URL || '' }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ (inputs.auth_target || 'production') == 'selfhosted' && secrets.SELFHOSTED_SUPABASE_SERVICE_ROLE_KEY || (inputs.auth_target || 'production') == 'production' && secrets.SUPABASE_SERVICE_ROLE_KEY || '' }}
         run: node tooling/e2e/provision_user.mjs
 
       - name: Provision the throwaway user the delete leg destroys
         id: delete_user
         env:
-          SUPABASE_URL: ${{ (inputs.auth_target || 'hosted') == 'boxa' && secrets.BOXA_SUPABASE_URL || (inputs.auth_target || 'hosted') == 'hosted' && secrets.SUPABASE_URL || '' }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ (inputs.auth_target || 'hosted') == 'boxa' && secrets.BOXA_SUPABASE_SERVICE_ROLE_KEY || (inputs.auth_target || 'hosted') == 'hosted' && secrets.SUPABASE_SERVICE_ROLE_KEY || '' }}
+          SUPABASE_URL: ${{ (inputs.auth_target || 'production') == 'selfhosted' && secrets.SELFHOSTED_SUPABASE_URL || (inputs.auth_target || 'production') == 'production' && secrets.SUPABASE_URL || '' }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ (inputs.auth_target || 'production') == 'selfhosted' && secrets.SELFHOSTED_SUPABASE_SERVICE_ROLE_KEY || (inputs.auth_target || 'production') == 'production' && secrets.SUPABASE_SERVICE_ROLE_KEY || '' }}
         run: node tooling/e2e/provision_user.mjs
 
       # why: THE ANSWER TO runbook §4.6's "expected, NOT YET MEASURED", taken on
       # every run rather than once. Shipping TURNSTILE_SITE_KEY to the web build
       # ahead of the cutover is safe only if a hosted GoTrue IGNORES a captcha
-      # token it never asked for; on Box A the same request must be REFUSED.
-      # Both are positive expectations, and the script asserts the one that
-      # belongs to this run's target, so neither half can rot unobserved.
+      # token it never asked for; on the self-hosted GoTrue the same request must
+      # be REFUSED. Both are positive expectations, and the script asserts the
+      # one that belongs to this run's E2E_STACK, so neither half can rot unobserved.
       - name: Measure the target's captcha posture (ignores it, or enforces it)
         env:
-          SUPABASE_URL: ${{ (inputs.auth_target || 'hosted') == 'boxa' && secrets.BOXA_SUPABASE_URL || (inputs.auth_target || 'hosted') == 'hosted' && secrets.SUPABASE_URL || '' }}
-          SUPABASE_ANON_KEY: ${{ (inputs.auth_target || 'hosted') == 'boxa' && secrets.BOXA_SUPABASE_ANON_KEY || (inputs.auth_target || 'hosted') == 'hosted' && secrets.SUPABASE_ANON_KEY || '' }}
+          SUPABASE_URL: ${{ (inputs.auth_target || 'production') == 'selfhosted' && secrets.SELFHOSTED_SUPABASE_URL || (inputs.auth_target || 'production') == 'production' && secrets.SUPABASE_URL || '' }}
+          SUPABASE_ANON_KEY: ${{ (inputs.auth_target || 'production') == 'selfhosted' && secrets.SELFHOSTED_SUPABASE_ANON_KEY || (inputs.auth_target || 'production') == 'production' && secrets.SUPABASE_ANON_KEY || '' }}
         run: node tooling/e2e/captcha_posture.mjs
 
       # why: apps/<app>/web/flutter_bootstrap.js sets `fontFallbackBaseUrl:
@@ -325,8 +356,8 @@ jobs:
         id: drive
         working-directory: apps/${{ matrix.app }}
         env:
-          SUPABASE_URL: ${{ (inputs.auth_target || 'hosted') == 'boxa' && secrets.BOXA_SUPABASE_URL || (inputs.auth_target || 'hosted') == 'hosted' && secrets.SUPABASE_URL || '' }}
-          SUPABASE_ANON_KEY: ${{ (inputs.auth_target || 'hosted') == 'boxa' && secrets.BOXA_SUPABASE_ANON_KEY || (inputs.auth_target || 'hosted') == 'hosted' && secrets.SUPABASE_ANON_KEY || '' }}
+          SUPABASE_URL: ${{ (inputs.auth_target || 'production') == 'selfhosted' && secrets.SELFHOSTED_SUPABASE_URL || (inputs.auth_target || 'production') == 'production' && secrets.SUPABASE_URL || '' }}
+          SUPABASE_ANON_KEY: ${{ (inputs.auth_target || 'production') == 'selfhosted' && secrets.SELFHOSTED_SUPABASE_ANON_KEY || (inputs.auth_target || 'production') == 'production' && secrets.SUPABASE_ANON_KEY || '' }}
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           # why: a repository VARIABLE, not a secret. The Turnstile SITE key is
           # public by design — it ships inside the web bundle and is meaningless
@@ -412,7 +443,8 @@ jobs:
             --dart-define=E2E_TOKEN_HASH="$E2E_TOKEN_HASH" \
             --dart-define=E2E_DELETE_TOKEN_HASH="$E2E_DELETE_TOKEN_HASH" \
             --dart-define=TURNSTILE_SITE_KEY="$TURNSTILE_SITE_KEY" \
-            --dart-define=E2E_AUTH_TARGET="$E2E_AUTH_TARGET" \
+            --dart-define=E2E_EXPECT_CAPTCHA_GATE="$E2E_EXPECT_CAPTCHA_GATE" \
+            --dart-define=E2E_EXPECT_WORKERS_TRUST="$E2E_WORKERS_TRUST" \
             --dart-define=E2E_DELETE_PASSWORD="$E2E_DELETE_PASSWORD" 2>&1 | tee "${RUNNER_TEMP}/drive.log"
           kill "$CHROMEDRIVER_PID" || true
 
@@ -459,25 +491,26 @@ jobs:
         run: node tooling/e2e/verify_row.mjs
 
       # why: THE ONE-ISSUER FACT, ASSERTED IN BOTH DIRECTIONS RATHER THAN SKIPPED.
-      # The Workers trust exactly one issuer (runbook Phase 5), so a Box A-minted
-      # JWT must be REFUSED by the deployed Worker until the cutover moves that
-      # issuer — and a hosted-minted one must be accepted. Running this on every
-      # target means the boxa expectation is exercised code, not a comment, and
-      # the day it flips the run says so instead of a golden-path leg going red
-      # for a reason nobody can read off the screenshot.
+      # The Workers trust exactly one issuer (runbook Phase 5), the register's
+      # vars.SUPABASE_URL, so a JWT from any other issuer must be REFUSED by the
+      # deployed Worker — and one from that issuer must be accepted. Which of the
+      # two this run expects is E2E_WORKERS_TRUST. Running this on every target
+      # means the refusal is exercised code, not a comment, and the day it flips
+      # the run says so instead of a golden-path leg going red for a reason
+      # nobody can read off the screenshot.
       - name: The Workers trust exactly one issuer (positive, both targets)
         env:
-          SUPABASE_URL: ${{ (inputs.auth_target || 'hosted') == 'boxa' && secrets.BOXA_SUPABASE_URL || (inputs.auth_target || 'hosted') == 'hosted' && secrets.SUPABASE_URL || '' }}
-          SUPABASE_ANON_KEY: ${{ (inputs.auth_target || 'hosted') == 'boxa' && secrets.BOXA_SUPABASE_ANON_KEY || (inputs.auth_target || 'hosted') == 'hosted' && secrets.SUPABASE_ANON_KEY || '' }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ (inputs.auth_target || 'hosted') == 'boxa' && secrets.BOXA_SUPABASE_SERVICE_ROLE_KEY || (inputs.auth_target || 'hosted') == 'hosted' && secrets.SUPABASE_SERVICE_ROLE_KEY || '' }}
+          SUPABASE_URL: ${{ (inputs.auth_target || 'production') == 'selfhosted' && secrets.SELFHOSTED_SUPABASE_URL || (inputs.auth_target || 'production') == 'production' && secrets.SUPABASE_URL || '' }}
+          SUPABASE_ANON_KEY: ${{ (inputs.auth_target || 'production') == 'selfhosted' && secrets.SELFHOSTED_SUPABASE_ANON_KEY || (inputs.auth_target || 'production') == 'production' && secrets.SUPABASE_ANON_KEY || '' }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ (inputs.auth_target || 'production') == 'selfhosted' && secrets.SELFHOSTED_SUPABASE_SERVICE_ROLE_KEY || (inputs.auth_target || 'production') == 'production' && secrets.SUPABASE_SERVICE_ROLE_KEY || '' }}
           E2E_EMAIL: ${{ steps.user.outputs.email }}
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
         run: node tooling/e2e/assert_one_issuer.mjs
 
       - name: Verify the in-app deletion really purged (leg 6)
         env:
-          SUPABASE_URL: ${{ (inputs.auth_target || 'hosted') == 'boxa' && secrets.BOXA_SUPABASE_URL || (inputs.auth_target || 'hosted') == 'hosted' && secrets.SUPABASE_URL || '' }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ (inputs.auth_target || 'hosted') == 'boxa' && secrets.BOXA_SUPABASE_SERVICE_ROLE_KEY || (inputs.auth_target || 'hosted') == 'hosted' && secrets.SUPABASE_SERVICE_ROLE_KEY || '' }}
+          SUPABASE_URL: ${{ (inputs.auth_target || 'production') == 'selfhosted' && secrets.SELFHOSTED_SUPABASE_URL || (inputs.auth_target || 'production') == 'production' && secrets.SUPABASE_URL || '' }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ (inputs.auth_target || 'production') == 'selfhosted' && secrets.SELFHOSTED_SUPABASE_SERVICE_ROLE_KEY || (inputs.auth_target || 'production') == 'production' && secrets.SUPABASE_SERVICE_ROLE_KEY || '' }}
           E2E_DELETE_USER_ID: ${{ steps.delete_user.outputs.user_id }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -535,8 +568,8 @@ jobs:
       - name: Purge test data (always — keep prod pristine)
         if: always() && steps.user.outcome != 'skipped'
         env:
-          SUPABASE_URL: ${{ (inputs.auth_target || 'hosted') == 'boxa' && secrets.BOXA_SUPABASE_URL || (inputs.auth_target || 'hosted') == 'hosted' && secrets.SUPABASE_URL || '' }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ (inputs.auth_target || 'hosted') == 'boxa' && secrets.BOXA_SUPABASE_SERVICE_ROLE_KEY || (inputs.auth_target || 'hosted') == 'hosted' && secrets.SUPABASE_SERVICE_ROLE_KEY || '' }}
+          SUPABASE_URL: ${{ (inputs.auth_target || 'production') == 'selfhosted' && secrets.SELFHOSTED_SUPABASE_URL || (inputs.auth_target || 'production') == 'production' && secrets.SUPABASE_URL || '' }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ (inputs.auth_target || 'production') == 'selfhosted' && secrets.SELFHOSTED_SUPABASE_SERVICE_ROLE_KEY || (inputs.auth_target || 'production') == 'production' && secrets.SUPABASE_SERVICE_ROLE_KEY || '' }}
           E2E_USER_ID: ${{ steps.user.outputs.user_id }}
           E2E_APP_ID: ${{ matrix.app }}
           E2E_RESPONSE_DATA: apps/${{ matrix.app }}/build/integration_response_data.json
@@ -550,8 +583,8 @@ jobs:
       - name: Purge the delete-leg user too (already gone on a green run)
         if: always() && steps.delete_user.outcome != 'skipped'
         env:
-          SUPABASE_URL: ${{ (inputs.auth_target || 'hosted') == 'boxa' && secrets.BOXA_SUPABASE_URL || (inputs.auth_target || 'hosted') == 'hosted' && secrets.SUPABASE_URL || '' }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ (inputs.auth_target || 'hosted') == 'boxa' && secrets.BOXA_SUPABASE_SERVICE_ROLE_KEY || (inputs.auth_target || 'hosted') == 'hosted' && secrets.SUPABASE_SERVICE_ROLE_KEY || '' }}
+          SUPABASE_URL: ${{ (inputs.auth_target || 'production') == 'selfhosted' && secrets.SELFHOSTED_SUPABASE_URL || (inputs.auth_target || 'production') == 'production' && secrets.SUPABASE_URL || '' }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ (inputs.auth_target || 'production') == 'selfhosted' && secrets.SELFHOSTED_SUPABASE_SERVICE_ROLE_KEY || (inputs.auth_target || 'production') == 'production' && secrets.SUPABASE_SERVICE_ROLE_KEY || '' }}
           E2E_USER_ID: ${{ steps.delete_user.outputs.user_id }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

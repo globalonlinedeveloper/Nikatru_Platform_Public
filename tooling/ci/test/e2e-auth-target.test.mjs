@@ -4,7 +4,9 @@
 //
 // `tooling/e2e/captcha_posture.mjs` and `tooling/e2e/assert_one_issuer.mjs` are
 // the halves of the cutover blocker that assert a DIFFERENT fact depending on
-// which auth stack `e2e.yml` pointed the run at. Every other file under
+// which auth stack `e2e.yml` pointed the run at — since 2026-09-25 read as two
+// derived facts, E2E_STACK and E2E_WORKERS_TRUST, never as a target name
+// (tooling/e2e/auth_target_expectation.mjs). Every other file under
 // `tooling/e2e/` carries an entry in assert-guard-coverage's
 // NO_NEGATIVE_TEST_NEEDED map, on the honest ground that a fixture cannot model
 // a live deletion or a live consent row. These two are not in that class: both
@@ -16,10 +18,14 @@
 //   · hosted answering `captcha_failed` — hosted Supabase has begun enforcing a
 //     captcha, so a web build carrying TURNSTILE_SITE_KEY may be one nobody can
 //     sign in to. Silence here would be a deploy that breaks sign-in.
-//   · boxa answering `invalid_credentials` — the captcha gate on the auth box is
-//     OFF, which is an open anonymous signup, not a test failure.
-//   · boxa's session being ACCEPTED by the Worker — the Workers now trust two
-//     issuers, which nothing in services/ implements and nobody decided.
+//   · a self-hosted stack answering `invalid_credentials` — the captcha gate on
+//     the auth box is OFF, which is an open anonymous signup, not a test failure.
+//   · an untrusted issuer's session being ACCEPTED by the Worker — the Workers
+//     now trust two issuers, which nothing in services/ implements and nobody decided.
+//   · the trusted issuer's session being REFUSED — the Workers refuse the
+//     production issuer, which after the switch is the self-hosted one.
+// And each must exit 2 BEFORE any request when the fact it reads is unset or
+// unknown — the `|| 'hosted'` default was O-E2E-EMPTY-TARGET-READS-HOSTED.
 // A green control precedes each of those, because a case that fails for the
 // wrong reason is not a case at all.
 //
@@ -27,15 +33,20 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { createServer } from 'node:http';
-import { readFileSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const CAPTCHA_POSTURE = join(REPO, 'tooling', 'e2e', 'captcha_posture.mjs');
 const ONE_ISSUER = join(REPO, 'tooling', 'e2e', 'assert_one_issuer.mjs');
+const HELPER = join(REPO, 'tooling', 'e2e', 'auth_target_expectation.mjs');
+
+/** Requests the fake has answered, so a refusal can be shown to come BEFORE one. */
+let hits = 0;
 
 /** What the fake GoTrue / Worker should answer on this case. Mutated per test. */
 const plan = {
@@ -79,6 +90,7 @@ before(async () => {
     // Bodies are read and discarded: what is under test is how the SCRIPT reads
     // an answer, not what GoTrue does with a request.
     req.resume();
+    hits++;
     if (path === '/auth/v1/token') return answer(plan.tokenStatus, plan.tokenBody);
     if (path === '/auth/v1/admin/generate_link') {
       return answer(plan.generateLinkStatus, plan.generateLinkBody);
@@ -95,6 +107,19 @@ before(async () => {
 after(async () => {
   await new Promise((done) => server.close(done));
 });
+
+/** A copy of one harness script beside a copy of its helper, with one edit
+ *  applied — the way a regression would arrive. Deleted by the caller. */
+function mutatedCopy(script, from, to) {
+  const dir = mkdtempSync(join(tmpdir(), 'nikatru-e2e-target-'));
+  copyFileSync(HELPER, join(dir, 'auth_target_expectation.mjs'));
+  const src = readFileSync(script, 'utf8');
+  const mutated = src.replace(from, to);
+  assert.notEqual(mutated, src, 'the mutation did not apply — agents-05');
+  const file = join(dir, script.split(/[\\/]/).pop());
+  writeFileSync(file, mutated);
+  return { dir, file };
+}
 
 /** Runs one of the two scripts and resolves with its exit code and output.
  *
@@ -127,11 +152,11 @@ function run(script, env) {
   });
 }
 
-describe('captcha_posture.mjs — what the target does with a token it never asked for', () => {
+describe('captcha_posture.mjs — what the stack does with a token it never asked for', () => {
   test('GREEN CONTROL · hosted ignores the token and checks the password', async () => {
     plan.tokenStatus = 400;
     plan.tokenBody = { error_code: 'invalid_credentials' };
-    const r = await run(CAPTCHA_POSTURE, { E2E_AUTH_TARGET: 'hosted' });
+    const r = await run(CAPTCHA_POSTURE, { E2E_STACK: 'hosted', E2E_WORKERS_TRUST: 'yes' });
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /MEASURED: hosted GoTrue IGNORED the captcha token/);
   });
@@ -139,44 +164,93 @@ describe('captcha_posture.mjs — what the target does with a token it never ask
   test('hosted answering captcha_failed FAILS — it has started enforcing a gate', async () => {
     plan.tokenStatus = 400;
     plan.tokenBody = { error_code: 'captcha_failed' };
-    const r = await run(CAPTCHA_POSTURE, { E2E_AUTH_TARGET: 'hosted' });
+    const r = await run(CAPTCHA_POSTURE, { E2E_STACK: 'hosted', E2E_WORKERS_TRUST: 'yes' });
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /Captcha posture changed/);
   });
 
-  test('GREEN CONTROL · boxa refuses at the captcha before the password', async () => {
+  test('GREEN CONTROL · selfhosted refuses at the captcha before the password', async () => {
     plan.tokenStatus = 400;
     plan.tokenBody = { error_code: 'captcha_failed' };
-    const r = await run(CAPTCHA_POSTURE, { E2E_AUTH_TARGET: 'boxa' });
+    const r = await run(CAPTCHA_POSTURE, { E2E_STACK: 'selfhosted', E2E_WORKERS_TRUST: 'no' });
     assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /Box A REFUSED the request at the captcha/);
+    assert.match(r.out, /the self-hosted GoTrue REFUSED the request at the captcha/);
   });
 
-  test('boxa answering invalid_credentials FAILS — the gate is off', async () => {
+  test('selfhosted answering invalid_credentials FAILS — the gate is off', async () => {
     plan.tokenStatus = 400;
     plan.tokenBody = { error_code: 'invalid_credentials' };
-    const r = await run(CAPTCHA_POSTURE, { E2E_AUTH_TARGET: 'boxa' });
+    const r = await run(CAPTCHA_POSTURE, { E2E_STACK: 'selfhosted', E2E_WORKERS_TRUST: 'no' });
     assert.equal(r.code, 1, r.out);
-    assert.match(r.out, /Box A captcha gate is not answering/);
+    assert.match(r.out, /Self-hosted captcha gate is not answering/);
   });
 
-  test('a 200 on the sign-in FAILS on either target — nobody signed anybody in', async () => {
+  test('selfhosted with TRUST yes (production after the switch): captcha_failed is still the pass', async () => {
+    plan.tokenStatus = 400;
+    plan.tokenBody = { error_code: 'captcha_failed' };
+    const r = await run(CAPTCHA_POSTURE, { E2E_STACK: 'selfhosted', E2E_WORKERS_TRUST: 'yes' });
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /the self-hosted GoTrue REFUSED the request at the captcha/);
+  });
+
+  test('selfhosted with TRUST yes answering invalid_credentials FAILS — trust never softens the gate', async () => {
+    plan.tokenStatus = 400;
+    plan.tokenBody = { error_code: 'invalid_credentials' };
+    const r = await run(CAPTCHA_POSTURE, { E2E_STACK: 'selfhosted', E2E_WORKERS_TRUST: 'yes' });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /Self-hosted captcha gate is not answering/);
+  });
+
+  test('a 200 on the sign-in FAILS on either stack — nobody signed anybody in', async () => {
     plan.tokenStatus = 200;
     plan.tokenBody = { access_token: 'this-should-never-happen' };
-    const hosted = await run(CAPTCHA_POSTURE, { E2E_AUTH_TARGET: 'hosted' });
+    const hosted = await run(CAPTCHA_POSTURE, { E2E_STACK: 'hosted', E2E_WORKERS_TRUST: 'yes' });
     assert.equal(hosted.code, 1, hosted.out);
-    const boxa = await run(CAPTCHA_POSTURE, { E2E_AUTH_TARGET: 'boxa' });
-    assert.equal(boxa.code, 1, boxa.out);
+    const selfhosted = await run(CAPTCHA_POSTURE, { E2E_STACK: 'selfhosted', E2E_WORKERS_TRUST: 'no' });
+    assert.equal(selfhosted.code, 1, selfhosted.out);
   });
 
-  test('an unknown target FAILS rather than defaulting to the safe-looking one', async () => {
-    const r = await run(CAPTCHA_POSTURE, { E2E_AUTH_TARGET: 'staging' });
-    assert.equal(r.code, 1, r.out);
-    assert.match(r.out, /must be "hosted" or "boxa"/);
+  test('an unknown E2E_STACK is exit 2 before any request, never a default', async () => {
+    plan.tokenStatus = 400;
+    plan.tokenBody = { error_code: 'invalid_credentials' };
+    const before = hits;
+    const r = await run(CAPTCHA_POSTURE, { E2E_STACK: 'staging', E2E_WORKERS_TRUST: 'yes' });
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /could not decide what to expect: E2E_STACK is "staging"/);
+    assert.equal(hits, before, 'the probe was sent although the stack was undecided');
+  });
+
+  test('an unset E2E_STACK is exit 2 before any request — it never reads as hosted', async () => {
+    plan.tokenStatus = 400;
+    plan.tokenBody = { error_code: 'invalid_credentials' };
+    const before = hits;
+    const r = await run(CAPTCHA_POSTURE, { E2E_STACK: '', E2E_WORKERS_TRUST: 'yes' });
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /could not decide what to expect: E2E_STACK is unset/);
+    assert.equal(hits, before, 'the probe was sent although the stack was undecided');
+  });
+
+  test("MUTATION · restoring `|| 'hosted'` turns an unset stack into a hosted pass (O-E2E-EMPTY-TARGET-READS-HOSTED)", async () => {
+    plan.tokenStatus = 400;
+    plan.tokenBody = { error_code: 'invalid_credentials' };
+    const { dir, file } = mutatedCopy(
+      CAPTCHA_POSTURE,
+      'decideStack(process.env.E2E_STACK)',
+      "decideStack(process.env.E2E_STACK || 'hosted')",
+    );
+    try {
+      const r = await run(file, { E2E_STACK: '', E2E_WORKERS_TRUST: 'yes' });
+      // The property the green case above holds: exit 2. The mutation passes as hosted.
+      assert.notEqual(r.code, 2, r.out);
+      assert.equal(r.code, 0, r.out);
+      assert.match(r.out, /MEASURED: hosted GoTrue IGNORED the captcha token/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   test('a missing SUPABASE_ANON_KEY FAILS rather than probing with an empty one', async () => {
-    const r = await run(CAPTCHA_POSTURE, { E2E_AUTH_TARGET: 'hosted', SUPABASE_ANON_KEY: '' });
+    const r = await run(CAPTCHA_POSTURE, { E2E_STACK: 'hosted', E2E_WORKERS_TRUST: 'yes', SUPABASE_ANON_KEY: '' });
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /Missing required env var: SUPABASE_ANON_KEY/);
   });
@@ -194,39 +268,97 @@ describe('assert_one_issuer.mjs — the Workers trust exactly one issuer', () =>
     plan.verifyBody = { access_token: goodToken };
   });
 
-  test('GREEN CONTROL · hosted mints a session the Worker accepts', async () => {
+  test('GREEN CONTROL · TRUST yes on hosted mints a session the Worker accepts', async () => {
     plan.apiStatus = 200;
-    const r = await run(ONE_ISSUER, { E2E_AUTH_TARGET: 'hosted' });
+    const r = await run(ONE_ISSUER, { E2E_STACK: 'hosted', E2E_WORKERS_TRUST: 'yes' });
     assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /ASSERTED: the deployed Worker accepts a hosted-minted session/);
+    assert.match(r.out, /ASSERTED: the deployed Worker accepts a session minted by this run's hosted issuer/);
   });
 
-  test('hosted being refused 401 FAILS — the Workers no longer trust the project they are configured for', async () => {
+  test('TRUST yes being refused 401 FAILS — the Workers no longer trust the project they are configured for', async () => {
     plan.apiStatus = 401;
-    const r = await run(ONE_ISSUER, { E2E_AUTH_TARGET: 'hosted' });
+    const r = await run(ONE_ISSUER, { E2E_STACK: 'hosted', E2E_WORKERS_TRUST: 'yes' });
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /One-issuer check/);
+    assert.match(r.out, /the Workers refuse the production issuer/);
   });
 
-  test('GREEN CONTROL · boxa is refused 401, and the refusal is the pass', async () => {
+  test('GREEN CONTROL · TRUST yes on a self-hosted issuer (after the switch): 200 is the pass', async () => {
+    plan.apiStatus = 200;
+    const r = await run(ONE_ISSUER, { E2E_STACK: 'selfhosted', E2E_WORKERS_TRUST: 'yes' });
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /ASSERTED: the deployed Worker accepts a session minted by this run's selfhosted issuer/);
+  });
+
+  test('TRUST yes on a self-hosted issuer answered 401 FAILS, naming the refused production issuer', async () => {
     plan.apiStatus = 401;
-    const r = await run(ONE_ISSUER, { E2E_AUTH_TARGET: 'boxa' });
+    const r = await run(ONE_ISSUER, { E2E_STACK: 'selfhosted', E2E_WORKERS_TRUST: 'yes' });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /the Workers refuse the production issuer/);
+  });
+
+  test('GREEN CONTROL · TRUST no is refused 401, and the refusal is the pass', async () => {
+    plan.apiStatus = 401;
+    const r = await run(ONE_ISSUER, { E2E_STACK: 'selfhosted', E2E_WORKERS_TRUST: 'no' });
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /Refusal here is the PASS/);
   });
 
-  test('boxa being ACCEPTED FAILS, and says so as a security finding', async () => {
+  test('TRUST no being ACCEPTED FAILS, and says so as a security finding', async () => {
     plan.apiStatus = 200;
-    const r = await run(ONE_ISSUER, { E2E_AUTH_TARGET: 'boxa' });
+    const r = await run(ONE_ISSUER, { E2E_STACK: 'selfhosted', E2E_WORKERS_TRUST: 'no' });
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /trust TWO issuers/);
+  });
+
+  test('an unset E2E_WORKERS_TRUST is exit 2 before any request — it never reads as trusted', async () => {
+    plan.apiStatus = 200;
+    const before = hits;
+    const r = await run(ONE_ISSUER, { E2E_STACK: 'hosted', E2E_WORKERS_TRUST: '' });
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /could not decide what to expect: E2E_WORKERS_TRUST is unset/);
+    assert.equal(hits, before, 'a request was sent although the trust answer was undecided');
+  });
+
+  test('an unknown E2E_WORKERS_TRUST (a retired target name) is exit 2 before any request', async () => {
+    plan.apiStatus = 200;
+    const before = hits;
+    const r = await run(ONE_ISSUER, { E2E_STACK: 'hosted', E2E_WORKERS_TRUST: 'hosted' });
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /could not decide what to expect: E2E_WORKERS_TRUST is "hosted"/);
+    assert.equal(hits, before, 'a request was sent although the trust answer was undecided');
+  });
+
+  test('an unset E2E_STACK is exit 2 before any request', async () => {
+    plan.apiStatus = 200;
+    const before = hits;
+    const r = await run(ONE_ISSUER, { E2E_STACK: '', E2E_WORKERS_TRUST: 'yes' });
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /could not decide what to expect: E2E_STACK is unset/);
+    assert.equal(hits, before, 'a request was sent although the stack was undecided');
+  });
+
+  test("MUTATION · restoring `|| 'hosted'`-style defaulting turns an unset trust answer into a pass", async () => {
+    plan.apiStatus = 200;
+    const { dir, file } = mutatedCopy(
+      ONE_ISSUER,
+      'decideTrust(process.env.E2E_WORKERS_TRUST)',
+      "decideTrust(process.env.E2E_WORKERS_TRUST || 'yes')",
+    );
+    try {
+      const r = await run(file, { E2E_STACK: 'hosted', E2E_WORKERS_TRUST: '' });
+      assert.notEqual(r.code, 2, r.out);
+      assert.equal(r.code, 0, r.out);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   test('no access_token FAILS before the Worker is ever asked', async () => {
     plan.apiStatus = 200;
     plan.verifyStatus = 403;
     plan.verifyBody = { error_code: 'otp_expired' };
-    const r = await run(ONE_ISSUER, { E2E_AUTH_TARGET: 'hosted' });
+    const r = await run(ONE_ISSUER, { E2E_STACK: 'hosted', E2E_WORKERS_TRUST: 'yes' });
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /Could not mint a session/);
     plan.verifyStatus = 200;
@@ -235,7 +367,7 @@ describe('assert_one_issuer.mjs — the Workers trust exactly one issuer', () =>
 
   test('generate_link answering without a hashed_token FAILS rather than sending an empty one', async () => {
     plan.generateLinkBody = { action_link: 'https://example.invalid/verify' };
-    const r = await run(ONE_ISSUER, { E2E_AUTH_TARGET: 'hosted' });
+    const r = await run(ONE_ISSUER, { E2E_STACK: 'hosted', E2E_WORKERS_TRUST: 'yes' });
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /No hashed_token in generate_link response/);
     plan.generateLinkBody = { hashed_token: 'pkce_deadbeefdeadbeefdeadbeefdeadbeef' };
@@ -245,9 +377,9 @@ describe('assert_one_issuer.mjs — the Workers trust exactly one issuer', () =>
   // THE `iss` READBACK — added 2026-09-22 for O-PHASE5-ISSUER-SUFFIX.
   //
   // 🔴 WHAT IS BEING PROTECTED HERE IS A READING, NOT A VERDICT. The step's
-  // 401-on-boxa / 200-on-hosted assertion is unchanged and is exercised by the
-  // six cases above. These four hold the three lines that were added to READ the
-  // live issuer out of the token, because `BOXA_SUPABASE_URL` is a repository
+  // 401-without-trust / 200-with-trust assertion is unchanged and is exercised by
+  // the cases above. These four hold the three lines that were added to READ the
+  // live issuer out of the token, because `SELFHOSTED_SUPABASE_URL` is a repository
   // secret: in a real log the value prints `***`, so the only evidence that
   // survives is the PATH and two yes/no comparisons computed in-process.
   // T2 is the defect the row was opened for — an issuer that is the bare URL,
@@ -259,7 +391,7 @@ describe('assert_one_issuer.mjs — the Workers trust exactly one issuer', () =>
   test('T1 · an iss equal to SUPABASE_URL + /auth/v1 reads "yes" on both comparisons', async () => {
     plan.apiStatus = 200;
     plan.verifyBody = { access_token: goodToken };
-    const r = await run(ONE_ISSUER, { E2E_AUTH_TARGET: 'hosted' });
+    const r = await run(ONE_ISSUER, { E2E_STACK: 'hosted', E2E_WORKERS_TRUST: 'yes' });
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /^iss path {4}: \/auth\/v1$/m);
     assert.match(r.out, /^iss host equals SUPABASE_URL host: yes$/m);
@@ -271,18 +403,18 @@ describe('assert_one_issuer.mjs — the Workers trust exactly one issuer', () =>
     plan.apiStatus = 200;
     // The historical shape: GOTRUE_JWT_ISSUER set to the bare project URL.
     plan.verifyBody = { access_token: tokenWithPayload({ iss: origin, sub: 'fixture-user-id' }) };
-    const bare = await run(ONE_ISSUER, { E2E_AUTH_TARGET: 'hosted' });
+    const bare = await run(ONE_ISSUER, { E2E_STACK: 'hosted', E2E_WORKERS_TRUST: 'yes' });
     assert.equal(bare.code, 0, bare.out); // the reading reports; the assertion judges
     assert.match(bare.out, /^iss path {4}: \/$/m);
     assert.match(bare.out, /^iss host equals SUPABASE_URL host: yes$/m);
     assert.match(bare.out, /^iss equals SUPABASE_URL \+ \/auth\/v1: no$/m);
     assert.match(bare.out, /READ BACK, NOT ASSERTED/);
-    assert.match(bare.out, /ASSERTED: the deployed Worker accepts a hosted-minted session/);
+    assert.match(bare.out, /ASSERTED: the deployed Worker accepts a session minted by this run's hosted issuer/);
 
     // 🔴 AND THE NEAR MISS, because `jwtVerify`'s `issuer` is a string compare:
     // one trailing slash is a different issuer and must not read as "yes".
     plan.verifyBody = { access_token: tokenWithPayload({ iss: `${origin}/auth/v1/` }) };
-    const slash = await run(ONE_ISSUER, { E2E_AUTH_TARGET: 'hosted' });
+    const slash = await run(ONE_ISSUER, { E2E_STACK: 'hosted', E2E_WORKERS_TRUST: 'yes' });
     assert.equal(slash.code, 0, slash.out);
     assert.match(slash.out, /^iss host equals SUPABASE_URL host: yes$/m);
     assert.match(slash.out, /^iss equals SUPABASE_URL \+ \/auth\/v1: no$/m);
@@ -299,13 +431,13 @@ describe('assert_one_issuer.mjs — the Workers trust exactly one issuer', () =>
     ];
     for (const [why, token] of undecodable) {
       plan.verifyBody = { access_token: token };
-      const r = await run(ONE_ISSUER, { E2E_AUTH_TARGET: 'hosted' });
+      const r = await run(ONE_ISSUER, { E2E_STACK: 'hosted', E2E_WORKERS_TRUST: 'yes' });
       // 2, not 1: the one-issuer FACT is untouched — the Worker answered 200 and
       // the assertion below it passed — and the run still fails, because a step
       // that cannot take its reading must not report one.
       assert.equal(r.code, 2, `${why}: ${r.out}`);
       assert.match(r.out, /::error title=Issuer readback::/);
-      assert.match(r.out, /ASSERTED: the deployed Worker accepts a hosted-minted session/);
+      assert.match(r.out, /ASSERTED: the deployed Worker accepts a session minted by this run's hosted issuer/);
       assert.doesNotMatch(r.out, /^iss equals SUPABASE_URL \+ \/auth\/v1: (yes|no)$/m);
     }
     plan.verifyBody = { access_token: goodToken };
@@ -314,7 +446,7 @@ describe('assert_one_issuer.mjs — the Workers trust exactly one issuer', () =>
   test('T4 · nothing the readback prints carries the token, the payload or the service key', async () => {
     plan.apiStatus = 200;
     plan.verifyBody = { access_token: goodToken };
-    const r = await run(ONE_ISSUER, { E2E_AUTH_TARGET: 'hosted' });
+    const r = await run(ONE_ISSUER, { E2E_STACK: 'hosted', E2E_WORKERS_TRUST: 'yes' });
     assert.equal(r.code, 0, r.out);
     // The ONLY line allowed to carry the token is the one that tells Actions to
     // mask it, and it has to be there: without it the raw token reaches the log.
@@ -420,6 +552,7 @@ function sitekeyLimbMissing(text) {
 
 /** What each harness script needs from the resolved set, read off its own header. */
 const NEEDS = new Map([
+  ['tooling/e2e/derive_expectation.mjs', ['SUPABASE_URL']],
   ['tooling/e2e/provision_user.mjs', ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']],
   ['tooling/e2e/captcha_posture.mjs', ['SUPABASE_URL', 'SUPABASE_ANON_KEY']],
   ['tooling/e2e/assert_one_issuer.mjs', ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY']],
@@ -452,25 +585,29 @@ function unboundConsumers(text) {
  * (measured on head f045baf9, step "Provision throwaway confirmed user"). At
  * run time that is an `auth_target=boxa` run provisioning its throwaway user on
  * the HOSTED PRODUCTION project while the run is named boxa — verbatim the false
- * green tooling/publishable-inputs.json's E2E_AUTH_TARGET residual says this
+ * green tooling/publishable-inputs.json's E2E_AUTH_TARGET residual said this
  * axis exists to make impossible. One limb, one place, and every future
  * consuming step is graded for free.
+ *
+ * ⏱ 2026-09-25 — re-keyed with the targets: `boxa`/`BOXA_*` became
+ * `selfhosted`/`SELFHOSTED_*`, and the named middle arm is `== 'production'`.
+ * The shape and the reasons above are unchanged.
  */
 function crossContaminating(text) {
   const bad = [];
   for (const step of e2eSteps(text)) {
     for (const [name, value] of step.env) {
       if (!JOB_WIDE.includes(name)) continue;
-      if (!/secrets\.BOXA_/.test(value)) {
+      if (!/secrets\.SELFHOSTED_/.test(value)) {
         if (/secrets\.(SUPABASE_URL|SUPABASE_ANON_KEY|SUPABASE_SERVICE_ROLE_KEY)\b/.test(value)) {
           bad.push(
-            `${step.name}: ${name} resolves to the hosted secret with no target axis at all — ` +
-              'an auth_target=boxa run would drive this step against the hosted production project',
+            `${step.name}: ${name} resolves to the production secret with no target axis at all — ` +
+              'an auth_target=selfhosted run would drive this step against the production project',
           );
         }
         continue;
       }
-      if (!/== 'hosted' && secrets\./.test(value)) bad.push(`${step.name}: ${name} falls back instead of resolving`);
+      if (!/== 'production' && secrets\./.test(value)) bad.push(`${step.name}: ${name} falls back instead of resolving`);
       if (!/\|\| '' \}\}$/.test(value)) bad.push(`${step.name}: ${name} has no empty final arm`);
     }
   }
@@ -503,9 +640,12 @@ describe('e2e.yml — the resolved auth values are bound per step, never job-wid
   });
 
   test('MUTATION · re-adding the $GITHUB_ENV write is caught', () => {
+    // Anchored on the preflight's closing summary line: since 2026-09-25 that
+    // step writes nothing to $GITHUB_ENV, so the write is ADDED in front of it.
+    const anchor = '          echo "auth_target=${TARGET}: ${prefix}_URL';
     const mutated = real.replace(
-      'echo "E2E_AUTH_TARGET=${TARGET}" >> "$GITHUB_ENV"',
-      'echo "SUPABASE_SERVICE_ROLE_KEY=${key}" >> "$GITHUB_ENV"',
+      anchor,
+      `          echo "SUPABASE_SERVICE_ROLE_KEY=\${key}" >> "$GITHUB_ENV"\n${anchor}`,
     );
     assert.notEqual(mutated, real, 'the mutation did not apply — agents-05');
     assert.equal(jobWideWrites(mutated).length, 1);
@@ -530,8 +670,9 @@ describe('e2e.yml — the resolved auth values are bound per step, never job-wid
   test('MUTATION · re-binding one step to the raw hosted secret is caught', () => {
     // The proven hole, shipped as its own case. On head f045baf9 this exact edit
     // left the suite at 25/25 EXIT 0, because crossContaminating() skipped any
-    // value that did not name `secrets.BOXA_` before checking anything.
-    const line = real.split('\n').find((l) => /^ {10}SUPABASE_URL: .*BOXA_SUPABASE_URL/.test(l));
+    // value that did not name `secrets.BOXA_` (now `secrets.SELFHOSTED_`) before
+    // checking anything.
+    const line = real.split('\n').find((l) => /^ {10}SUPABASE_URL: .*SELFHOSTED_SUPABASE_URL/.test(l));
     assert.ok(line, 'no three-armed SUPABASE_URL binding to flatten');
     const mutated = real.replace(line, '          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}');
     assert.notEqual(mutated, real, 'the mutation did not apply — agents-05');
@@ -541,7 +682,7 @@ describe('e2e.yml — the resolved auth values are bound per step, never job-wid
   });
 
   test('MUTATION · re-binding the service-role key to the raw hosted secret is caught', () => {
-    const line = real.split('\n').find((l) => /^ {10}SUPABASE_SERVICE_ROLE_KEY: .*BOXA_SUPABASE_SERVICE_ROLE_KEY/.test(l));
+    const line = real.split('\n').find((l) => /^ {10}SUPABASE_SERVICE_ROLE_KEY: .*SELFHOSTED_SUPABASE_SERVICE_ROLE_KEY/.test(l));
     assert.ok(line, 'no three-armed SUPABASE_SERVICE_ROLE_KEY binding to flatten');
     const mutated = real.replace(line, '          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}');
     assert.notEqual(mutated, real, 'the mutation did not apply — agents-05');
@@ -554,20 +695,114 @@ describe('e2e.yml — the resolved auth values are bound per step, never job-wid
 
   test('MUTATION · a second `exit` folded back into the secrets preflight is caught', () => {
     const mutated = real.replace(
-      "          if [ \"$TARGET\" = 'boxa' ]; then\n",
-      "          if [ \"$TARGET\" = 'nonsense' ]; then\n            echo \"::error title=E2E cannot run::unknown target\"\n            exit 1\n          elif [ \"$TARGET\" = 'boxa' ]; then\n",
+      "          if [ \"$TARGET\" = 'selfhosted' ]; then\n",
+      "          if [ \"$TARGET\" = 'nonsense' ]; then\n            echo \"::error title=E2E cannot run::unknown target\"\n            exit 1\n          elif [ \"$TARGET\" = 'selfhosted' ]; then\n",
     );
     assert.notEqual(mutated, real, 'the mutation did not apply — agents-05');
     assert.equal(preflightExits(mutated).length, 2);
   });
 
-  test('MUTATION · the two-armed ternary (an empty BOXA_* silently reads hosted) is caught', () => {
-    const two = "${{ inputs.auth_target == 'boxa' && secrets.BOXA_SUPABASE_URL || secrets.SUPABASE_URL }}";
-    const three = real.split('\n').find((l) => /^ {10}SUPABASE_URL: .*BOXA_SUPABASE_URL/.test(l));
+  test('MUTATION · the two-armed ternary (an empty SELFHOSTED_* silently reads production) is caught', () => {
+    const two = "${{ inputs.auth_target == 'selfhosted' && secrets.SELFHOSTED_SUPABASE_URL || secrets.SUPABASE_URL }}";
+    const three = real.split('\n').find((l) => /^ {10}SUPABASE_URL: .*SELFHOSTED_SUPABASE_URL/.test(l));
     assert.ok(three, 'no three-armed SUPABASE_URL binding to weaken');
     const mutated = real.replace(three, `          SUPABASE_URL: ${two}`);
     assert.notEqual(mutated, real, 'the mutation did not apply — agents-05');
     assert.ok(crossContaminating(mutated).length >= 1, 'the weakening was not seen');
+  });
+
+  test('MUTATION · the derivation step bound to the raw production secret is caught', () => {
+    // The step that decides what the run expects reads the URL too; a selfhosted
+    // run whose derivation read production would grade Box C against hosted facts.
+    const steps = e2eSteps(real);
+    const derive = steps.find((s) => s.text.includes('tooling/e2e/derive_expectation.mjs'));
+    assert.ok(derive, 'no derivation step in e2e.yml');
+    const line = `          SUPABASE_URL: ${derive.env.get('SUPABASE_URL')}`;
+    assert.ok(real.includes(line), 'the derivation step binds no SUPABASE_URL');
+    const mutated = real.replace(line, '          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}');
+    assert.notEqual(mutated, real, 'the mutation did not apply — agents-05');
+    assert.ok(
+      crossContaminating(mutated).some((f) => f.startsWith(`${derive.name}:`)),
+      'the raw production binding in the derivation step was not seen',
+    );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE REHEARSAL-ON-MAIN REFUSAL, RUN RATHER THAN READ. duty.workflow.e2e.yml
+// grades the newest e2e run on main as production health, so any target but
+// `production` must be refused there. The step's own shell is extracted and run
+// with bash, so what is graded is what Actions would execute.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The `run: |` body of the e2e step whose name matches, dedented. */
+function stepScript(text, nameRe) {
+  const step = e2eSteps(text).find((s) => nameRe.test(s.name));
+  if (!step) return null;
+  const lines = step.text.split('\n');
+  const at = lines.findIndex((l) => /^ {8}run: \|\s*$/.test(l));
+  if (at === -1) return null;
+  const body = [];
+  for (const l of lines.slice(at + 1)) {
+    if (l.trim() === '') { body.push(''); continue; }
+    if (!l.startsWith('          ')) break;
+    body.push(l.slice(10));
+  }
+  return body.join('\n');
+}
+
+/** Runs a step body with bash and only the env the step itself binds. */
+function runScript(script, env) {
+  const r = spawnSync('bash', ['-c', script], { env: { PATH: process.env.PATH, ...env }, encoding: 'utf8' });
+  return { code: r.status, out: `${r.stdout}${r.stderr}` };
+}
+
+const REHEARSAL = /a rehearsal target may not run on the default branch/;
+const DECLARED = /auth_target must be one of the declared options/;
+
+/** FINDING for every way the rehearsal refusal fails to hold. [] = it holds. */
+function rehearsalProblems(text) {
+  const script = stepScript(text, REHEARSAL);
+  if (script === null) return ['no rehearsal-refusal step to run'];
+  const bad = [];
+  const onMain = runScript(script, { TARGET: 'selfhosted', REF_NAME: 'main' });
+  if (onMain.code !== 1) bad.push(`selfhosted on main exited ${onMain.code}, not 1`);
+  const prod = runScript(script, { TARGET: 'production', REF_NAME: 'main' });
+  if (prod.code !== 0) bad.push(`production on main exited ${prod.code}, not 0`);
+  const branch = runScript(script, { TARGET: 'selfhosted', REF_NAME: 'rehearse-selfhosted' });
+  if (branch.code !== 0) bad.push(`selfhosted on a branch exited ${branch.code}, not 0`);
+  return bad;
+}
+
+describe('e2e.yml — any target but production is refused on main', () => {
+  const real = readFileSync(E2E_YML, 'utf8');
+
+  test('GREEN CONTROL · selfhosted on main refuses; production on main and selfhosted on a branch run', () => {
+    assert.deepEqual(rehearsalProblems(real), []);
+  });
+
+  test('MUTATION · dropping the refusal lets a selfhosted run on main through', () => {
+    const script = stepScript(real, REHEARSAL);
+    assert.ok(script, 'no rehearsal-refusal step');
+    const mutated = real.replace(
+      "          if [ \"$TARGET\" != 'production' ] && [ \"$REF_NAME\" = 'main' ]; then\n",
+      "          if false; then\n",
+    );
+    assert.notEqual(mutated, real, 'the mutation did not apply — agents-05');
+    assert.ok(rehearsalProblems(mutated).includes('selfhosted on main exited 0, not 1'), rehearsalProblems(mutated).join('; '));
+  });
+
+  test('the declared-options preflight accepts production and selfhosted, and refuses the retired boxa', () => {
+    const script = stepScript(real, DECLARED);
+    assert.ok(script, 'no declared-options preflight');
+    assert.equal(runScript(script, { TARGET: 'production' }).code, 0);
+    assert.equal(runScript(script, { TARGET: 'selfhosted' }).code, 0);
+    assert.equal(runScript(script, { TARGET: 'boxa' }).code, 1);
+    assert.equal(runScript(script, { TARGET: 'hosted' }).code, 1);
+  });
+
+  test('the missing-secret message keeps the shape triage-failed-runs.mjs matches', () => {
+    assert.match(real, /auth_target=\$\{TARGET\} needs\$\{missing\}, and it is not set\./);
   });
 });
 

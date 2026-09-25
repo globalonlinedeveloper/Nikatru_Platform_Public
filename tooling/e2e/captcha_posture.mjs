@@ -20,31 +20,43 @@
 // what makes it safe to run against PRODUCTION auth on every nightly.
 //
 // The two answers are BOTH positive expectations, and which one is required is
-// decided by E2E_AUTH_TARGET:
+// decided by E2E_STACK — the stack the run's SUPABASE_URL points at, derived by
+// e2e.yml's step "Derive what this run expects" (tooling/e2e/derive_expectation.mjs),
+// never by the name of the secret set:
 //
-//   hosted → 400 `invalid_credentials`. The token was IGNORED and the password
-//            was actually checked. That is the fact the web build's define
-//            depends on; if hosted ever starts enforcing a captcha, this step
-//            goes red BEFORE a deploy ships a build nobody can sign in to.
+//   hosted     → 400 `invalid_credentials`. The token was IGNORED and the
+//                password was actually checked. That is the fact the web build's
+//                define depends on; if hosted ever starts enforcing a captcha,
+//                this step goes red BEFORE a deploy ships a build nobody can
+//                sign in to.
 //
-//   boxa   → 400 `captcha_failed`. The gate is on and refuses a bad token
-//            BEFORE the password is looked at (measured on the box 2026-09-03,
-//            §4.5 row 3). A `boxa` run that got `invalid_credentials` would mean
-//            the captcha had been switched off on the auth box, which is a
-//            security regression, not a convenience.
+//   selfhosted → 400 `captcha_failed`. The gate is on and refuses a bad token
+//                BEFORE the password is looked at (measured on the box 2026-09-03,
+//                §4.5 row 3). A self-hosted run that got `invalid_credentials`
+//                would mean the captcha had been switched off on the auth box,
+//                which is a security regression, not a convenience. Whether the
+//                Workers trust that stack does not enter this step at all.
 //
-// Env: SUPABASE_URL, SUPABASE_ANON_KEY, E2E_AUTH_TARGET (default `hosted`).
+// ⏱ 2026-09-25 — AN UNSET OR UNKNOWN E2E_STACK IS EXIT 2, NEVER `hosted`. Until
+// today this line read `process.env.E2E_AUTH_TARGET || 'hosted'`, so a run whose
+// target never arrived was graded as hosted (O-E2E-EMPTY-TARGET-READS-HOSTED).
+//
+// Env: SUPABASE_URL, SUPABASE_ANON_KEY, E2E_STACK (hosted | selfhosted, required).
 
 import { randomBytes } from 'node:crypto';
+import { decideStack } from './auth_target_expectation.mjs';
 
 const url = need('SUPABASE_URL').replace(/\/+$/, '');
 const anonKey = need('SUPABASE_ANON_KEY');
-const target = process.env.E2E_AUTH_TARGET || 'hosted';
+const decided = decideStack(process.env.E2E_STACK);
+if (!decided.stack) {
+  console.error(decided.why);
+  process.exit(2); // safe: this runs BEFORE any request, so no undici handle is open
+}
+const stack = decided.stack;
 
-if (target !== 'hosted' && target !== 'boxa') {
-  console.error(`E2E_AUTH_TARGET must be "hosted" or "boxa", not "${target}".`);
-  process.exitCode = 1;
-} else {
+// A plain block: the body below was the `else` arm of the retired target check.
+{
   // No user is ever created on this route, and the address is one nobody has.
   const email = `subscriptiontracker-captcha-posture+${Date.now()}@nikatru.com`;
   const password = `E2e${randomBytes(24).toString('hex')}`;
@@ -87,12 +99,12 @@ if (target !== 'hosted' && target !== 'boxa') {
   const captcha = /captcha/i.test(code);
   const credentials = /invalid_credentials|invalid_grant|invalid login/i.test(code);
 
-  console.log(`auth target      : ${target}`);
+  console.log(`auth stack       : ${stack}`);
   console.log(`HTTP status      : ${res.status}`);
   console.log(`error code       : ${code}`);
   console.log(`reads as captcha : ${captcha}`);
 
-  if (target === 'hosted') {
+  if (stack === 'hosted') {
     if (res.status === 400 && credentials && !captcha) {
       console.log(
         'MEASURED: hosted GoTrue IGNORED the captcha token and checked the password. ' +
@@ -110,12 +122,13 @@ if (target !== 'hosted' && target !== 'boxa') {
     }
   } else if (res.status === 400 && captcha) {
     console.log(
-      'MEASURED: Box A REFUSED the request at the captcha, before the password was checked. ' +
-        'The gate is on, which is what makes the magic-link login path (provision_user.mjs) load-bearing.',
+      'MEASURED: the self-hosted GoTrue REFUSED the request at the captcha, before the password was ' +
+        'checked. The gate is on, which is what makes the magic-link login path (provision_user.mjs) ' +
+        'load-bearing.',
     );
   } else {
     console.error(
-      `::error title=Box A captcha gate is not answering::boxa answered ${res.status} "${code}" to a ` +
+      `::error title=Self-hosted captcha gate is not answering::selfhosted answered ${res.status} "${code}" to a ` +
         'password sign-in carrying an invalid captcha token. It was expected to answer 400 ' +
         'captcha_failed. If the gate is off, anonymous signup on the auth box is open — see ' +
         'runbooks/auth-cutover.md §4.5.',

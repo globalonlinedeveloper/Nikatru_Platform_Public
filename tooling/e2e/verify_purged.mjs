@@ -55,25 +55,26 @@
 // the top run before any request, so `process.exit(2)` is safe there and only
 // there — exactly the shape `verify_row.mjs` terminates with.
 //
-// ── TARGET-AWARE since 2026-09-22 ───────────────────────────────────────────
-// What "fine" means depends on the auth target (E2E_AUTH_TARGET), and the
-// expectation and every verdict line live in tooling/e2e/auth_target_expectation.mjs:
-//   hosted → the identity GONE (404) and 0 rows, exactly as before.
-//   boxa   → the identity STILL RESOLVES on Box A (2xx naming this user) and 0
-//            rows. Until the Phase 5 cutover the Worker refuses a Box A session,
-//            so the delete leg stops at that refusal and never reaches the
-//            erasure route. A 404 or a row is exit 1: something erased or wrote
-//            what the Worker should have refused.
+// ── TRUST-AWARE since 2026-09-22 (re-keyed from the target name 2026-09-25) ─
+// What "fine" means depends on whether the Workers trust this run's issuer
+// (E2E_WORKERS_TRUST), and the expectation and every verdict line live in
+// tooling/e2e/auth_target_expectation.mjs:
+//   yes → the identity GONE (404) and 0 rows, exactly as before.
+//   no  → the identity STILL RESOLVES on this run's stack (2xx naming this user)
+//         and 0 rows. The Worker refuses the session, so the delete leg stops at
+//         that refusal and never reaches the erasure route. A 404 or a row is
+//         exit 1: something erased or wrote what the Worker should have refused.
 //   unset or anything else → exit 2, "could not decide what to expect", before
-//            any request. Never defaulted: the targets expect opposite answers.
+//         any request. Never defaulted: the two answers expect opposite outcomes.
 //
 // Env: E2E_DELETE_USER_ID, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY,
 //      CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN, SUBSCRIPTIONTRACKER_D1_DATABASE_ID,
-//      E2E_AUTH_TARGET (written to $GITHUB_ENV by e2e.yml's preflight)
+//      E2E_WORKERS_TRUST (written to $GITHUB_ENV by e2e.yml's step "Derive what
+//      this run expects")
 // NOTE: CLOUDFLARE_API_TOKEN needs D1 READ access for this account.
 // ─────────────────────────────────────────────────────────────────────────────
 import {
-  decideAuthTarget,
+  decideTrust,
   expectationLine,
   identityVerdict,
   rowsVerdict,
@@ -100,8 +101,8 @@ const acct = need('CLOUDFLARE_ACCOUNT_ID');
 const dbId = need('SUBSCRIPTIONTRACKER_D1_DATABASE_ID');
 const token = need('CLOUDFLARE_API_TOKEN');
 
-const auth = decideAuthTarget(process.env.E2E_AUTH_TARGET);
-if (!auth.target) {
+const auth = decideTrust(process.env.E2E_WORKERS_TRUST);
+if (!auth.trust) {
   console.error(`COULD NOT LOOK: ${auth.why}`);
   process.exit(2); // safe: this runs BEFORE any fetch, so no undici handle is open
 }
@@ -110,7 +111,7 @@ console.log(
   `Auditing the effect of DELETE ${ERASURE_ROUTE} for user ${userId} — ` +
     'the identity record and every user-owned row in subscriptiontracker_db.',
 );
-console.log(expectationLine('verify_purged', auth.target));
+console.log(expectationLine('verify_purged', auth.trust));
 
 // TWO INDEPENDENT FINDINGS, RESOLVED AT THE END — not one number raised as it
 // goes. `Math.max` would order the codes 0 < 1 < 2 and report "could not look"
@@ -126,8 +127,8 @@ const worse = (code) => {
 };
 
 // ── A · THE IDENTITY ────────────────────────────────────────────────────────
-// On hosted, 404 is the goal state and 200 is the failure the user cannot see.
-// On boxa it is the other way round (see the header). On both, anything else is
+// With trust, 404 is the goal state and 200 is the failure the user cannot see.
+// Without it, it is the other way round (see the header). Either way, anything else is
 // "could not look" — a 401 here says the key is wrong, not that the account
 // survived or vanished, and reporting it as either would send somebody hunting a
 // bug that is not there.
@@ -144,9 +145,9 @@ try {
 }
 
 if (identity) {
-  // The body is read only to NAME the account that answered: boxa's pass is a
-  // resolving identity, and it counts only if it is THIS user. Hosted's verdict
-  // never looks at it.
+  // The body is read only to NAME the account that answered: without trust the
+  // pass is a resolving identity, and it counts only if it is THIS user. The
+  // trusted verdict never looks at it.
   let bodyId;
   if (identity.ok) {
     try {
@@ -155,7 +156,7 @@ if (identity) {
       bodyId = undefined;
     }
   }
-  worse(say(identityVerdict(auth.target, { status: identity.status, ok: identity.ok, bodyId, userId })));
+  worse(say(identityVerdict(auth.trust, { status: identity.status, ok: identity.ok, bodyId, userId })));
 }
 
 // ── B · THE APP'S ROWS, over a schema-derived table set ─────────────────────
@@ -187,11 +188,11 @@ if (tables === null) {
     }
     // Zero is the pass on both targets; what a row MEANS differs, and so does
     // whether an unreadable count may stand for zero — the verdict decides.
-    worse(say(rowsVerdict(auth.target, table, rows)));
+    worse(say(rowsVerdict(auth.trust, table, rows)));
   }
 }
 
-say(purgedSummary(auth.target, { survived, blind }));
+say(purgedSummary(auth.trust, { survived, blind }));
 
 // `exitCode`, not `exit()` — see the header. Undici keep-alives are open by now.
 process.exitCode = survived ? 1 : blind ? 2 : 0;
@@ -262,7 +263,7 @@ async function userOwnedTables() {
 
 /** Surviving rows for the deleted user in one table, AS D1 ANSWERED — not yet
  *  a number, because whether a missing count may stand for 0 is the verdict's
- *  call (hosted: yes, as it always was; boxa: never). `null` = the read failed.
+ *  call (trust yes: yes, as it always was; trust no: never). `null` = the read failed.
  *
  *  The table name is interpolated because D1 cannot bind an identifier — it
  *  comes from sqlite_master, never from an argument, and RESERVED has already
