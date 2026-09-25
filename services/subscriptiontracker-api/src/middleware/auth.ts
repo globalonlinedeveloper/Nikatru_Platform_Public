@@ -60,6 +60,8 @@ import {
   usableJwksDocument,
   verifyOptions,
   authRecencyOf,
+  revocationKey,
+  revocationRefusal,
 } from '../../../_shared/src/auth';
 import type { AppEnv, Env, TokenAssurance } from '../types';
 
@@ -226,6 +228,43 @@ async function verifySupabaseToken(
 }
 
 /**
+ * ⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. True when the VERIFIED token belongs to
+ * a session that was signed out — its `session_id` is listed in the user's
+ * `rev:<sub>` record, or it was issued before that record's `before`. The
+ * decision is `revocationRefusal` in services/_shared/src/auth.ts; only the KV
+ * read and the fail-open policy are here. No `cacheTtl`: a cached miss would
+ * keep admitting a revoked token for as long as the cache lived.
+ *
+ * 🔴 IT FAILS OPEN, ON PURPOSE — see the same helper in
+ * services/platform/src/middleware/auth.ts for the whole argument. A read that
+ * throws and a missing binding both ADMIT, with one log line naming the event
+ * and nothing else — never the token, the user id or a session id.
+ *
+ * ⚠️ It takes the ONE binding it needs, not `Env`, for the reason
+ * [localSetFromCache] gives: [erasureAuth] calls it, and nothing reachable from
+ * that boundary may be handed the environment that holds `SUPABASE_JWT_SECRET`.
+ */
+async function sessionRevoked(
+  revoked: KVNamespace | undefined,
+  sub: string,
+  payload: Record<string, unknown>,
+  logPrefix: string,
+): Promise<boolean> {
+  if (!revoked) {
+    console.warn(`${logPrefix} auth_revocation_binding_missing: SESSION_REVOKED is not bound; admitted unchecked`);
+    return false;
+  }
+  let record: unknown;
+  try {
+    record = await revoked.get(revocationKey(sub), 'json');
+  } catch (err) {
+    console.warn(`${logPrefix} auth_revocation_read_failed: ${err instanceof Error ? err.name : typeof err}; admitted`);
+    return false;
+  }
+  return revocationRefusal(payload, record) !== null;
+}
+
+/**
  * Hono middleware. On success sets `userId` (+ optional `userEmail`) and
  * `tokenAssurance`, then calls next(). On any failure returns 401 JSON
  * `{ error: 'unauthorized' }`.
@@ -239,6 +278,13 @@ export const supabaseAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
   try {
     const { payload, assurance } = await verifySupabaseToken(token, c.env);
     if (!payload.sub) {
+      return c.json({ error: 'unauthorized' }, 401);
+    }
+    // ⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS — on BOTH verification paths, the
+    // HS256 fallback included: a signed-out session's token is refused whichever
+    // key verified it.
+    const logPrefix = `[auth] rid=${c.get('requestId') ?? '-'} app=${c.env.APP_ID}`;
+    if (await sessionRevoked(c.env.SESSION_REVOKED, payload.sub, payload as Record<string, unknown>, logPrefix)) {
       return c.json({ error: 'unauthorized' }, 401);
     }
     c.set('userId', payload.sub);
@@ -293,6 +339,13 @@ export const erasureAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
     // undefined — which on a DELETE is the difference between erasing nothing
     // and being asked to erase everything.
     if (typeof payload.sub !== 'string' || payload.sub === '') {
+      return c.json({ error: 'unauthorized' }, 401);
+    }
+    // ⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS — a signed-out session cannot delete
+    // the account. Logged like the other refusals here, with no identifier.
+    const logPrefix = `[erasure-auth] rid=${c.get('requestId') ?? '-'} app=${c.env.APP_ID}`;
+    if (await sessionRevoked(c.env.SESSION_REVOKED, payload.sub, payload as Record<string, unknown>, logPrefix)) {
+      console.error(`${logPrefix} refused: the token's session was signed out.`);
       return c.json({ error: 'unauthorized' }, 401);
     }
     c.set('userId', payload.sub);

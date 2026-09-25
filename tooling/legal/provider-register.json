@@ -105,7 +105,10 @@
       "ext",
       "codes",
       "token",
-      "revoke"
+      "revoke",
+      "sessions",
+      "revoke-all",
+      "revoke-others"
     ],
     "_subject": [
       "🟢 `subject` ADDED 2026-09-09, AND THIS LIMB CAUGHT IT AGAIN. GET /v1/entitlements/subject is the",

@@ -336,6 +336,8 @@ jobs:
         run: node tooling/ci/assert-deletion-control.mjs
       - name: Account deletion reaches every user-owned table, never via a shared secret
         run: node tooling/ci/assert-erasure-reach.mjs
+      - name: Every Worker that verifies a token refuses a signed-out session's token
+        run: node tooling/ci/assert-session-revocation.mjs
       - name: Fail-closed seams have a real on-switch
         run: node tooling/ci/assert-seams-wired.mjs
       - name: Analytics consent can be WITHDRAWN, not only given

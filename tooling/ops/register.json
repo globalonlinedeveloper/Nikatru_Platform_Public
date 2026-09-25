@@ -4680,6 +4680,50 @@
       "source": "verified"
     },
     {
+      "id": "retention.kv.platform.SESSION_REVOKED",
+      "kind": "retention",
+      "store": "kv:platform:SESSION_REVOKED",
+      "what": "⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. The signed-out-session list, one key per account: `rev:<account id>` → `{ before, sids: [[session uuid, revoked-at], ...] }`. The platform Worker is its ONLY writer (services/platform/src/routes/sessions.ts, behind the four /v1/sessions routes) and every auth middleware reads it.",
+      "rule": "ttl",
+      "detector": "tooling/ci/assert-retention-coverage.mjs — the `ttl` limb requires `mechanism.ttlSource` to appear VERBATIM in the anchor. The VALUE is held separately: tooling/ci/assert-session-revocation.mjs limb 2 requires REVOCATION_TTL_SECONDS (services/_shared/src/auth.ts) = jwt_exp + CLOCK_SKEW_SECONDS.",
+      "response": "n/a — expiry is set on every write. A record shorter-lived than the tokens it refuses would RE-ADMIT a signed-out session, which is why the value is a guarded relation and not a free constant.",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-kv",
+        "anchor": "services/platform/src/routes/sessions.ts",
+        "record": "the expirationTtl on every `rev:<sub>` put in the anchor; each put prunes entries older than the same period first (pruneRevocation), so a record never carries an entry it no longer needs",
+        "failingValue": "a put in the anchor without `expirationTtl: REVOCATION_TTL_SECONDS` — a record that never expires — or REVOCATION_TTL_SECONDS dropping below jwt_exp + skew",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs",
+        "ttlSource": "expirationTtl: REVOCATION_TTL_SECONDS"
+      },
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "retention.kv.subscriptiontracker-api.SESSION_REVOKED",
+      "kind": "retention",
+      "store": "kv:subscriptiontracker-api:SESSION_REVOKED",
+      "what": "The SAME namespace the platform Worker binds, seen from a READ-ONLY binding: src/middleware/auth.ts reads `rev:<sub>` after verifying a token. The rule is the same rule, set at the same place, and this row points at that place rather than restating a period beside it.",
+      "rule": "ttl",
+      "detector": "tooling/ci/assert-retention-coverage.mjs — the `ttl` limb requires `mechanism.ttlSource` to appear VERBATIM in the anchor.",
+      "response": "n/a from this binding. ⚠️ THIS WORKER NEVER WRITES THE NAMESPACE, so it can neither set nor extend any key's expiry; Workers KV fixes expiry at WRITE time and the only writer is the anchor.",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-kv",
+        "anchor": "services/platform/src/routes/sessions.ts",
+        "record": "the expirationTtl on every `rev:<sub>` put in the anchor — the only writer of this namespace",
+        "failingValue": "the anchor losing the declared period, or this Worker gaining a WRITE to the namespace — a second writer could set a different expiry and make this row's pointer to a single anchor false",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs",
+        "ttlSource": "expirationTtl: REVOCATION_TTL_SECONDS"
+      },
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
       "id": "retention.kv.nikatru-signups.rate-limit",
       "kind": "retention",
       "store": "kv:nikatru-signups:rl-prefix",
