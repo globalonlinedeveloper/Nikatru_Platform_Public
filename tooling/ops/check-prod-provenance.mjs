@@ -2326,6 +2326,13 @@ async function main() {
       if (why !== null) {
         for (const [id, fn] of alts) {
           if (fn(g.marker) !== null) continue;
+          // ⏱ 2026-09-25 (capsand-b) — the capture writes the SANDBOX Workers now,
+          // so a witnessed `cap-*` consent row in production means a sandbox lane
+          // wrote production. It is a FINDING, never an acceptance.
+          if (id === 'store-capture' && name === 'consent_artifacts') {
+            why = `a sandbox lane wrote production: ${g.marker} (run ${String(g.marker).match(STORE_CAPTURE_SHAPE)?.[1] ?? '?'})`;
+            break;
+          }
           alsoAccepted.push(
             id === 'erasure-step'
               ? `${name}: ${n} row(s) with \`${marker}\` = \`${g.marker}\` — refused by \`${rule.resolver}\` and accepted by ` +
