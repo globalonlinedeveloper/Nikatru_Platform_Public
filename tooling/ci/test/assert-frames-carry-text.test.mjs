@@ -20,13 +20,10 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, readFileSync, readdirSync, rmSync, copyFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, copyFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-import { decodeRgba, encodeRgba } from '../../store/png-codec.mjs';
-import { textlessFrame } from '../../store/frame-ink.mjs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..', '..');
@@ -37,16 +34,58 @@ const SERVED = join(FIXTURES, 'served');
 const GLYPHLESS = join(FIXTURES, 'glyphless');
 const STORE_PHONE = join(ROOT, 'apps', 'subscriptiontracker', 'store', 'android-play', 'screenshots');
 
+const V8_OFF = /V8 background tasks: OFF \(--single-threaded\)/;
+
+/** The last lines a killed spawn had printed. A timeout AFTER the verdict line
+ *  is an exit that never completed; one before it is work that never did. */
+const tail = (r) => `${r.stdout ?? ''}${r.stderr ?? ''}`.trimEnd().split('\n').slice(-6).join('\n') || '(nothing)';
+
 // ⏱ 2026-09-25 · the spawn has a ceiling. With none, one hung run held ci.yml's
 // guard-meta job until its 25-minute kill (run 36106900356, job 107981386553)
 // and named nothing; this file took 23.5 s in the green run 36104371801.
+// ⏱ 2026-09-25 (later) · the ceiling then fired on the glyphless case of run
+// 36192015901 at 120 s, while the served, mixed and filtered cases took 3.2-5.6 s
+// in the same file: an exit deadlock (nodejs/node#54918), fixed in the guard by
+// the single-threaded relaunch. The message now carries status, signal and what
+// the guard had printed, so the next timeout says WHICH of the two it was.
 const run = (...args) => {
   const r = spawnSync(process.execPath, [GUARD, ...args], { cwd: ROOT, encoding: 'utf8', timeout: 120_000 });
-  assert.equal(r.error, undefined, `tooling/e2e/assert-frames-carry-text.mjs did not finish (${r.error?.code ?? r.error}): the 120 s spawn ceiling stopped it`);
+  assert.equal(
+    r.error,
+    undefined,
+    `tooling/e2e/assert-frames-carry-text.mjs did not finish (${r.error?.code ?? r.error}; status ${r.status}, signal ${r.signal}): ` +
+      `the 120 s spawn ceiling stopped it. Its last output:\n${tail(r)}`,
+  );
   return r;
 };
 
 const pngs = (dir) => readdirSync(dir).filter((f) => f.endsWith('.png')).sort();
+
+/** `textlessFrame` of every frame in `from`, written to `to` — computed in a
+ *  `--single-threaded` child, not in this test process. It is the same pixel
+ *  loop the guard relaunches for, and this process exits under the test runner,
+ *  where a deadlock at exit has no ceiling but the job's. */
+function filterFramesInChild(from, to) {
+  const codec = pathToFileURL(join(ROOT, 'tooling', 'store', 'png-codec.mjs')).href;
+  const ink = pathToFileURL(join(ROOT, 'tooling', 'store', 'frame-ink.mjs')).href;
+  const src = [
+    "import { readdirSync, readFileSync, writeFileSync } from 'node:fs';",
+    "import { join } from 'node:path';",
+    `import { decodeRgba, encodeRgba } from ${JSON.stringify(codec)};`,
+    `import { textlessFrame } from ${JSON.stringify(ink)};`,
+    'const [from, to] = process.argv.slice(1);',
+    "for (const f of readdirSync(from).filter((n) => n.endsWith('.png')).sort()) {",
+    '  writeFileSync(join(to, f), encodeRgba(textlessFrame(decodeRgba(readFileSync(join(from, f)))), { opaque: true }));',
+    '}',
+  ].join('\n');
+  const r = spawnSync(process.execPath, ['--single-threaded', '--input-type=module', '-e', src, from, to], {
+    encoding: 'utf8',
+    timeout: 120_000,
+  });
+  assert.equal(r.error, undefined, `filtering the served frames did not finish (${r.error?.code ?? r.error}).\n${tail(r)}`);
+  assert.equal(r.status, 0, `filtering the served frames failed.\n${tail(r)}`);
+  assert.deepEqual(pngs(to), pngs(from), 'every served frame must have its filtered twin');
+}
 
 describe('assert-frames-carry-text, as the program CI runs', () => {
   test('a run of real pages with their text drawn is green', () => {
@@ -56,6 +95,10 @@ describe('assert-frames-carry-text, as the program CI runs', () => {
     const r = run(SERVED);
     assert.equal(r.status, 0, `real frames that carry drawn text must pass.\n${r.stdout}\n${r.stderr}`);
     assert.match(r.stdout, /carry drawn text/);
+    // Spawned bare, exactly as a caller without the flag would: the pixels were
+    // read by the relaunched single-threaded child. Drop the relaunch and this
+    // line says ON.
+    assert.match(r.stdout, V8_OFF, 'the frames must be measured with V8 background tasks OFF (nodejs/node#54918)');
   });
 
   test('the SAME pages rendered with no fonts are a FINDING, exit 1', () => {
@@ -69,6 +112,9 @@ describe('assert-frames-carry-text, as the program CI runs', () => {
     assert.equal(r.status, 1, `a glyphless run must be a finding (1), not a pass and not a 2.\n${r.stdout}\n${r.stderr}`);
     assert.match(r.stderr, /carry no text/);
     assert.doesNotMatch(r.stderr, /lower(ing)? the floor to/i);
+    // The case that hung (run 36192015901): it is the one that leaves through
+    // process.exit(1), and its exit status must come through the relaunch.
+    assert.match(r.stdout, V8_OFF, 'the finding must be computed with V8 background tasks OFF (nodejs/node#54918)');
   });
 
   test('one page that keeps its text does not rescue a glyphless run', () => {
@@ -93,10 +139,7 @@ describe('assert-frames-carry-text, as the program CI runs', () => {
     // went" and it must stay red too.
     const dir = mkdtempSync(join(tmpdir(), 'frames-carry-text-filtered-'));
     try {
-      for (const f of pngs(SERVED)) {
-        const src = decodeRgba(readFileSync(join(SERVED, f)));
-        writeFileSync(join(dir, f), encodeRgba(textlessFrame(src), { opaque: true }));
-      }
+      filterFramesInChild(SERVED, dir);
       const r = run(dir);
       assert.equal(r.status, 1, `filtered frames must be a finding.\n${r.stdout}\n${r.stderr}`);
       assert.match(r.stderr, /carry no text/);
