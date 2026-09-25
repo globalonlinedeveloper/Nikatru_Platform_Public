@@ -1509,6 +1509,14 @@ const flat = (v) =>
 // OPTIONAL `purchaseRail.regionRails` — `{region, rail, why, source}` — and this
 // section is what keeps that field from being prose in a JSON file.
 //
+// ⏱ 2026-09-25: [ADR 076] §1 row 1 puts "India domestic web / direct" on
+// Razorpay for the same reason, so `web`, `windows-direct` and `linux-appimage`
+// carry the same entry and sit in the same required list — and so do
+// `windows-store` and `linux-snap`, which sell through that web checkout
+// ([ADR 076]'s 2026-09-23 append). That makes eight channels, not three; where
+// I0's note below says "all three blocks", read eight. The limbs are
+// unchanged — they range over whatever the register lists.
+//
 // 🔴 THE FAILURE THIS SECTION EXISTS FOR IS A CLAIM THE TREE CANNOT SETTLE. A
 // row saying "in IN this channel takes razorpay" is a sentence about MONEY: it
 // tells a reader, a store reviewer and the next increment that an Indian buyer
@@ -1568,7 +1576,7 @@ const LEGAL_REGISTER = 'tooling/legal/provider-register.json';
     );
   } else if (required.length === 0) {
     coverageLost(
-      `${CHANNELS}'s \`purchaseRails.regionRailsRequiredOn\` is EMPTY, so §I ranges over no channel at all. [ADR 094] requires a region rail on chrome-webstore, edge-addons and amo; an empty list is either that decision being unwound as a data edit, or the register having lost the ids. Neither is a pass.`,
+      `${CHANNELS}'s \`purchaseRails.regionRailsRequiredOn\` is EMPTY, so §I ranges over no channel at all. [ADR 094] requires a region rail on chrome-webstore, edge-addons and amo, and [ADR 076] one on web, windows-direct, linux-appimage, windows-store and linux-snap; an empty list is either those decisions being unwound as a data edit, or the register having lost the ids. Neither is a pass.`,
     );
   } else {
     const rowById = new Map(registerChannels.map((c) => [c.id, c]));
@@ -1583,7 +1591,7 @@ const LEGAL_REGISTER = 'tooling/legal/provider-register.json';
         );
       } else if (entriesOf(row).length === 0) {
         problems.push(
-          `CHANNEL \`${id}\` MUST CARRY A REGION RAIL AND CARRIES NONE — ${CHANNELS} lists it in \`purchaseRails.regionRailsRequiredOn\` and its \`purchaseRail\` declares only \`${typeof row.purchaseRail?.rail === 'string' ? row.purchaseRail.rail : '(none)'}\`, which then reads as the rail for every buyer everywhere. [ADR 094] routes an India buyer of this channel to Razorpay; with the block gone, the register says they pay through the rail [ADR 076] §3 measured as unable to sell them the monthly plan. If the decision really was unwound, remove the id here in the same edit.`,
+          `CHANNEL \`${id}\` MUST CARRY A REGION RAIL AND CARRIES NONE — ${CHANNELS} lists it in \`purchaseRails.regionRailsRequiredOn\` and its \`purchaseRail\` declares only \`${typeof row.purchaseRail?.rail === 'string' ? row.purchaseRail.rail : '(none)'}\`, which then reads as the rail for every buyer everywhere. [ADR 094] (the extensions) or [ADR 076] (web, direct, and the Microsoft Store and Snap listings) routes an India buyer of this channel to Razorpay; with the block gone, the register says they pay through the rail [ADR 076] §3 measured as unable to sell them the monthly plan. If the decision really was unwound, remove the id here in the same edit.`,
         );
       }
     }
