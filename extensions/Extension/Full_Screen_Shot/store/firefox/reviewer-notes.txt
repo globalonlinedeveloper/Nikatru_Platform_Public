@@ -1,0 +1,13 @@
+FullShot is a screenshot utility that runs entirely on-device. There are no accounts, no servers, and no test credentials to provide.
+
+To exercise the add-on: open any web page, click the FullShot toolbar icon, and choose Full page / Visible / Region / Element. The capture opens in the extension's own result page, where it can be annotated, redacted, beautified, and exported as PNG / JPEG / WebP / PDF.
+
+Notes for review:
+- No remotely hosted code. Every script is a local relative path inside the package; there is no eval, no new Function, no CDN, and no WASM.
+- No network activity of any kind. The package contains no fetch, XMLHttpRequest, WebSocket, sendBeacon, or EventSource call.
+- Broad host access is declared as an OPTIONAL host permission and is never requested at install. It is requested at runtime, from a user gesture, only when the user enables cross-origin frame expansion (Options) or Batch URL capture. Declining leaves all other functionality working.
+- The optional PII redaction feature scans page text locally and paints opaque blocks over matches. Detected values are never stored, indexed, or sent.
+- data_collection_permissions declares that no data is collected: every byte FullShot touches stays in the add-on's own storage on the user's machine.
+- In Firefox the background runs from background.scripts (pages/db.js, pages/batch.js, background.js); background.js guards its importScripts calls behind a typeof check, because importScripts exists only in a service worker.
+- permissions.request is called only from user gestures (the Options toggle, the popup capture click, and Batch "start").
+- The code ships unminified and unobfuscated; no build step or source archive is needed for review.

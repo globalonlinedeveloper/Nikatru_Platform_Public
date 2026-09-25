@@ -20,7 +20,7 @@
        "Leak check (no test/, docs, ...)"      node scripts/verify-refs.mjs --zip dist/<tool>-<target>.zip --leaks
        "Determinism check (zip is byte-        node scripts/pack.mjs <tool> --target <target> --out dist2
         reproducible)"                        ...then sha256.mjs dist/<...>.zip == sha256.mjs dist2/<...>.zip
-       "web-ext lint (Firefox only)"           web-ext@8 lint --source-dir dist/unpacked-firefox --warnings-as-errors
+       "web-ext lint (Firefox only)"           tooling/web-ext island: web-ext lint --source-dir dist/unpacked-firefox --warnings-as-errors
 
      release.yml, job `release`
        "Build all store packages"              node scripts/pack.mjs <id> --target chromium --out dist --release
@@ -28,7 +28,7 @@
        "Reference integrity + leak check       node scripts/verify-refs.mjs --zip "$z" --strict --leaks
         on every artifact"
        "web-ext lint"                          [ -d dist/unpacked-firefox ] || the release stops there,
-                                               then the same web-ext@8 lint as CI
+                                               then the same island web-ext lint as CI
        "Checksums"                             sha256sum *.zip  (coreutils, not sha256.mjs)
 
    ⚠️ CORRECTED 2026-08-22. The block above used to cite these by line —

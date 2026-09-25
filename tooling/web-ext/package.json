@@ -1,0 +1,8 @@
+{
+  "name": "tooling-web-ext",
+  "private": true,
+  "description": "The ONE web-ext install: the Firefox lint in extensions-ci.yml and extensions.yml, and the AMO signer in extensions/scripts/publish-amo.mjs, all run node_modules/.bin/web-ext from here after `npm ci --ignore-scripts --prefix tooling/web-ext`. The version is exact and lives only in this file and its lockfile; Renovate's npm manager proposes each move. No node_modules is committed. Follows the _playwright/ island.",
+  "devDependencies": {
+    "web-ext": "10.6.0"
+  }
+}

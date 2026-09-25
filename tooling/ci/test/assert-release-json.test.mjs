@@ -88,10 +88,11 @@ function stage({ app = 'subscriptiontracker', tag = 'subscriptiontracker-v1.0.0'
     '--notes-url', 'https://github.com/nikatru/platform/releases/tag/x',
     '--released-at', '2026-09-22T10:00:00Z',
     '--version', version,
-    // The app surface READS its floor (app-config-data.json) and refuses the flag;
-    // every other surface states it. Which one is decided by the tree, as the
-    // emitter decides it — never by a list of ids typed here.
-    ...(onApp ? ['--stamps', stamps] : ['--min-supported', '1.0.0']),
+    // The app surface READS its floor (app-config-data.json); the extension surface
+    // states the release line of --version (EXT-3). Both refuse --min-supported.
+    // Which one is decided by the tree, as the emitter decides it — never by a
+    // list of ids typed here.
+    ...(onApp ? ['--stamps', stamps] : []),
     '--build', '7',
     '--repo-root', REPO,
     ...emitArgs,
@@ -398,7 +399,11 @@ describe('the release record\'s minSupported is the served floor', () => {
     rmSync(root, { recursive: true, force: true });
   });
 
-  test('F11 RED — the extension surface still STATES its floor: no --min-supported there is refused', () => {
+  // ⏱ 2026-09-24 (EXT-3, O-EXTENSION-MINSUPPORTED-FOUR-PART-TAG): F11 was a RED
+  // for "no --min-supported on the extension surface is refused". The extension
+  // surface now STATES its floor from --version and refuses the flag, so F11 is
+  // the green control and F11b/F11c hold the two halves of the closes.
+  test('F11 GREEN — the extension surface states the release line of --version as its floor, with no flag', () => {
     const dir = mkdtempSync(join(tmpdir(), 'release-floor-dir-'));
     writeFileSync(join(dir, 'fullshot-chromium.zip'), 'chromium bytes');
     const r = run(EMITTER, [
@@ -406,8 +411,39 @@ describe('the release record\'s minSupported is the served floor', () => {
       '--sha', 'a'.repeat(40), '--run-url', 'https://x/1', '--notes-url', 'https://x/2',
       '--released-at', '2026-09-22T10:00:00Z', '--version', '1.0.0', '--repo-root', REPO,
     ]);
+    assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+    assert.equal(JSON.parse(readFileSync(join(dir, 'release.json'), 'utf8')).minSupported, '1.0.0');
+    assert.match(r.stdout, /minSupported {2}1\.0\.0 {2}the release line of --version 1\.0\.0/);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test('F11b a FOUR-part store tag records a THREE-part floor, and the record grades clean', () => {
+    const s = stage({
+      app: 'fullshot',
+      tag: 'fullshot-v1.10.1.2',
+      version: '1.10.1.2',
+      assets: [['fullshot-chromium.zip', 'chromium bytes'], ['fullshot-firefox.zip', 'firefox bytes']],
+    });
+    assert.equal(s.emit.status, 0, `${s.emit.stdout}${s.emit.stderr}`);
+    const record = s.record();
+    assert.equal(record.minSupported, '1.10.1');
+    assert.equal(record.artefacts[0].version, '1.10.1.2');
+    const g = grade(s.dir);
+    assert.equal(g.status, 0, `${g.stdout}${g.stderr}`);
+    rmSync(s.dir, { recursive: true, force: true });
+  });
+
+  test('F11c RED — --min-supported on the extension surface is REFUSED, naming where the floor comes from', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'release-floor-dir-'));
+    writeFileSync(join(dir, 'fullshot-chromium.zip'), 'chromium bytes');
+    const r = run(EMITTER, [
+      '--emit-release-json', dir, '--app', 'fullshot', '--tag', 'fullshot-v1.10.1.2',
+      '--sha', 'a'.repeat(40), '--run-url', 'https://x/1', '--notes-url', 'https://x/2',
+      '--released-at', '2026-09-22T10:00:00Z', '--version', '1.10.1.2', '--min-supported', '1.10.1.2', '--repo-root', REPO,
+    ]);
     assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
-    assert.match(r.stderr, /needs --min-supported <X\.Y\.Z> for --app "fullshot" on the "extension" surface/);
+    assert.match(r.stderr, /--min-supported is refused on the "extension" surface: --app "fullshot" states its floor as the first three components of --version/);
+    assert.equal(existsSync(join(dir, 'release.json')), false);
     rmSync(dir, { recursive: true, force: true });
   });
 });
@@ -808,13 +844,13 @@ describe('every --emit-release-json a workflow runs emits a record the schema ac
     rmSync(root, { recursive: true, force: true });
   });
 
-  test('C3 RED — a lane that passes a MAJOR.MINOR floor is caught by the schema line run 35829208001 printed', () => {
-    // The extension surface still takes the flag, so this is the one place a
-    // typed floor can still be malformed — and the guard names it verbatim.
-    const root = mutatedWorkflows('extensions.yml', '--min-supported "$VERSION"', '--min-supported "1.0"');
+  test('C3 RED — an extension lane that types a MAJOR.MINOR floor is refused at the emit, naming where the floor comes from', () => {
+    // Re-anchored 2026-09-24 (EXT-3): the extension lane no longer passes the flag,
+    // so the mutation ADDS one to the emit step's --version line.
+    const root = mutatedWorkflows('extensions.yml', '            --version "$VERSION"\n', '            --version "$VERSION" --min-supported "1.0"\n');
     const { problems } = gradeEveryEmitter(root);
     const joined = problems.join('\n');
-    assert.ok(joined.includes('[limb 1] schema: #/minSupported: "1.0" does not match ^[0-9]+\\.[0-9]+\\.[0-9]+$'), joined);
+    assert.match(joined, /--min-supported is refused on the "extension" surface/, joined);
     rmSync(root, { recursive: true, force: true });
   });
 
@@ -894,7 +930,7 @@ describe('every --emit-release-json a workflow runs emits a record the schema ac
       '',
     ].join('\n'));
     const probe = probeProblems(gradeEveryEmitter(root).problems);
-    assert.ok(probe.includes('[limb 1] schema: #/minSupported: "1.0" does not match ^[0-9]+\\.[0-9]+\\.[0-9]+$'), probe || 'the probe lane was never found');
+    assert.match(probe, /--min-supported is refused on the "extension" surface/, probe || 'the probe lane was never found');
     rmSync(root, { recursive: true, force: true });
   });
 
@@ -918,7 +954,7 @@ describe('every --emit-release-json a workflow runs emits a record the schema ac
       '',
     ].join('\n'));
     const probe = probeProblems(gradeEveryEmitter(root).problems);
-    assert.ok(probe.includes('[limb 1] schema: #/minSupported: "1.0" does not match ^[0-9]+\\.[0-9]+\\.[0-9]+$'), probe || 'the probe lane was never found');
+    assert.match(probe, /--min-supported is refused on the "extension" surface/, probe || 'the probe lane was never found');
     rmSync(root, { recursive: true, force: true });
   });
 
@@ -957,7 +993,7 @@ describe('every --emit-release-json a workflow runs emits a record the schema ac
       '',
     ].join('\n'));
     const probe = probeProblems(gradeEveryEmitter(root).problems);
-    assert.ok(probe.includes('[limb 1] schema: #/minSupported: "1.0" does not match ^[0-9]+\\.[0-9]+\\.[0-9]+$'), probe || 'the probe lane was never found');
+    assert.match(probe, /--min-supported is refused on the "extension" surface/, probe || 'the probe lane was never found');
     rmSync(root, { recursive: true, force: true });
   });
 
@@ -973,6 +1009,29 @@ describe('every --emit-release-json a workflow runs emits a record the schema ac
     assert.equal(g.ok, true, g.output);
     assert.equal(g.surface, 'extension');
     rmSync(root, { recursive: true, force: true });
+  });
+
+  test('C13 RED — the extension lane with `--min-supported "$VERSION"` re-added is refused on a four-part store tag', () => {
+    // The closes of O-EXTENSION-MINSUPPORTED-FOUR-PART-TAG, as the lane runs it.
+    const root = mutatedWorkflows('extensions.yml', '            --version "$VERSION"\n', '            --version "$VERSION" --min-supported "$VERSION"\n');
+    const inv = emitInvocations(root);
+    assert.equal(inv.length, 1);
+    const ctx = laneContext();
+    const fourPart = { ...ctx, expressions: { ...ctx.expressions, 'github.ref_name': 'fullshot-v1.10.1.2', 'steps.tag.outputs.version': '1.10.1.2' } };
+    const g = gradeInvocation(root, inv[0], fourPart);
+    assert.equal(g.ok, false, g.output);
+    assert.match(g.output, /--min-supported is refused on the "extension" surface/);
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test('C14 GREEN — the extension lane as written grades clean on a four-part store tag', () => {
+    const inv = emitInvocations(REPO).filter((i) => i.wf.rel === '.github/workflows/extensions.yml');
+    assert.equal(inv.length, 1);
+    const ctx = laneContext();
+    const fourPart = { ...ctx, expressions: { ...ctx.expressions, 'github.ref_name': 'fullshot-v1.10.1.2', 'steps.tag.outputs.version': '1.10.1.2' } };
+    const g = gradeInvocation(REPO, inv[0], fourPart);
+    assert.equal(g.ok, true, g.output);
+    assert.equal(g.surface, 'extension');
   });
 
   test('C12 RED — the app lane with its `--stamps` dropped is refused, not described from the extensions', () => {

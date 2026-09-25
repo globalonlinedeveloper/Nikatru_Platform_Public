@@ -3527,8 +3527,12 @@
       ],
       "lane": {
         "workflow": ".github/workflows/extensions.yml",
-        "job": "release",
+        "job": "store-publish",
         "_why": [
+          "⏱ 2026-09-24 (EXT-3): the lane is the `store-publish` job, the ONE job that hands this row's",
+          "artifact to the store. It needs `release`, carries `environment: store-publish`, and submits the",
+          "Release's own downloaded, checksum-verified zips. What follows describes the `release` job, which",
+          "still BUILDS them.",
           "The job that EMITS the format this row accepts: `release` runs scripts/pack.mjs for both",
           "targets and writes dist/<tool>-chromium.zip and dist/<tool>-firefox.zip. The chromium zip is",
           "the artifact BOTH this row and `edge-addons` accept, byte-identical — which is why two rows",
@@ -3628,7 +3632,7 @@
       ],
       "lane": {
         "workflow": ".github/workflows/extensions.yml",
-        "job": "release",
+        "job": "store-publish",
         "_why": [
           "The SAME job and the SAME artifact as `chrome-webstore`: one chromium zip, two listings.",
           "tool.json's `storeMetadata.stores.chrome.target` and `.edge.target` both read `chromium`,",
@@ -3739,8 +3743,9 @@
       ],
       "lane": {
         "workflow": ".github/workflows/extensions.yml",
-        "job": "release",
+        "job": "store-publish",
         "_why": [
+          "⏱ 2026-09-24 (EXT-3): `store-publish` submits the Release's firefox zip; `release` builds it.",
           "The `release` job packs the firefox target as well as the chromium one — two builds, three",
           "stores. This row accepts dist/<tool>-firefox.zip, which is a DIFFERENT artifact from the one",
           "the two chromium rows accept, and tool.json's `targets` is where that split is declared."
@@ -3750,18 +3755,18 @@
         "_why": [
           "⏱ 2026-09-22 — [10]D-10 limb (i) for AMO, the one store whose API can make a FIRST submission",
           "(ADR 067 decision 8). The script is the one `publishScript` already names; the step that runs it",
-          "is `Submit to Firefox Add-ons (AMO)` in the release job, which spells it `scripts/publish-amo.mjs`",
-          "because extensions.yml sets `defaults: run: working-directory: extensions` —",
-          "assert-channel-register.mjs resolves that default rather than asking the workflow to respell it.",
+          "is `Submit to Firefox Add-ons (AMO)` in the `store-publish` job (⏱ 2026-09-24, EXT-3; it was the",
+          "release job), which sets `defaults: run: working-directory: .` and spells it in full, with `--submit`.",
           "ARMING IS NOT PUBLISHING: that step still needs a workflow_dispatch on a tag carrying the typed",
-          "word SUBMIT-TO-FIREFOX-AMO, and re-checks both inside the step. What arming changes is the tag",
-          "push: the AMO preflight answers `go` when the credentials are present and FAILS the release when",
-          "they are missing, instead of printing `pending`. Limb (ii) is the runbook below; limb (iii), a",
+          "word SUBMIT-TO-FIREFOX-AMO, and re-checks both inside the step. What arming changes is the",
+          "preflight: it answers `go` when the credentials are present and FAILS when they are missing,",
+          "instead of printing `pending`. ⏱ 2026-09-24 (EXT-3): that preflight runs in `store-publish` on the",
+          "AMO word, beside the other two stores', no longer on every tag push. Limb (ii) is the runbook below; limb (iii), a",
           "record in the [10]D-9 ledger, stays unsatisfied until the owner's first dispatch."
         ],
         "script": "extensions/scripts/publish-amo.mjs",
         "workflow": ".github/workflows/extensions.yml",
-        "job": "release",
+        "job": "store-publish",
         "runbook": "Private/runbooks/store-submission-extensions.md"
       },
       "crashSink": {

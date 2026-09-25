@@ -1384,3 +1384,163 @@ export const placeOf = (wf, n) => wf?.origin?.get(n) ?? `${wf.rel}:${n}`;
 export const refusalText = (r) =>
   `workflow-scan could not resolve a local reference (${r.kind}) at ${r.at}: ${r.path}. ` +
   'A step or job it cannot follow is a step or job this guard cannot see.';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STORE PUBLISH STEPS — the one definition the three guards import.
+//
+// ⏱ MOVED 2026-09-24 (EXT-3, O-STORE-PUBLISH-STEP-DEFINED-THREE-WAYS) out of
+// assert-publish-steps-guarded.mjs limb 2, AS IT WAS: no pattern below was
+// widened or narrowed in the move. Until then limb 2 classified store steps with
+// this code, assert-release-provenance.mjs limb 4 keyed on the `--submit` verb
+// alone, and assert-publish-records.mjs ranged over the register's submittable
+// rows — three answers to "which step publishes to a store", and a Chrome or Edge
+// step fell outside two of them. assert-publish-steps-guarded (limb 2),
+// assert-release-provenance (limb 4) and assert-publish-records (rule 2b) now
+// call storePublishSteps() and nothing else to find them.
+//
+// A STORE PUBLISH STEP is any step, in any job of any workflow, that
+//   · runs a `node … .mjs --submit` verb (the submission scripts' mode flag),
+//   · runs a script some channel row in the register declares as `publishScript`, or
+//   · names a store CLI verb or a store host (STORE_CLI, STORE_HOST_PARTS).
+// A command segment carrying `--dry-run` publishes nothing and is not one.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** A host pattern that admits only real SUBDOMAINS of the given host, and ends at
+ *  a path, port, query or fragment. (CodeQL js/regex/missing-regexp-anchor,
+ *  2026-09-07: the unanchored class admitted `evil-addons.mozilla.org.attacker.test`.) */
+export const storeHost = (h) => `https?://(?:[A-Za-z0-9-]+\\.)*${h}(?:[/:?#]|$)`;
+
+/** The STORE hosts — the hosts that address a store rather than a GitHub Release. */
+export const STORE_HOST_PARTS = [
+  storeHost('addons[.]mozilla[.]org'),
+  storeHost('chromewebstore[.]googleapis[.]com'),
+  `${storeHost('googleapis[.]com')}?upload`,
+  storeHost('clients2[.]google[.]com'),
+  storeHost('addons[.]microsoftedge[.]microsoft[.]com'),
+];
+
+/** Store CLIs whose verb hands a package to a store. Matched per command segment. */
+export const STORE_CLI = [
+  /\bsnapcraft\s+(?:upload|push|release)\b/,
+  /\bfastlane\s+(?:deliver|supply|pilot)\b/,
+  /\bxcrun\s+altool\b/,
+  /\bmsstore\s+publish\b/,
+  /\bweb-ext(?:@\S+)?\s+(?:sign|submit)\b/,
+  /\bchrome-webstore-(?:upload|api)\b/,
+];
+/** Store-submitting third-party actions, matched on `uses:`. */
+export const STORE_ACTIONS = [/^r0adkll\/upload-google-play$/];
+const STORE_HOSTS = STORE_HOST_PARTS.map((s) => new RegExp(s));
+
+/** The mode flag of a submission script — the exact token assert-release-provenance
+ *  limb 4 keys on, so the guards cannot disagree about which invocation submits. */
+export const SUBMIT_FLAG = /(?:^|\s)--submit(?=\s|$)/;
+const STORE_DRY_RUN = /--dry-run\b/;
+
+/** A publish-script basename, as a regex source with no backslash in it: every
+ *  dot is a literal `[.]`. */
+export const basenameSource = (p) => p.split('/').pop().split('.').join('[.]');
+
+/** The step bullet is the literal six-space "      - ", under `jobs:` → `<job>:` →
+ *  `steps:`. Each step keeps its raw (comment-blanked) lines. */
+export function readSteps(job) {
+  const steps = [];
+  let current = null;
+  for (const line of job.lines) {
+    if (/^ {6}- /.test(line.text)) {
+      current = { n: line.n, lines: [] };
+      steps.push(current);
+    }
+    if (current !== null) current.lines.push(line);
+  }
+  return steps;
+}
+
+/** `env:` entries directly under a key at `indent` spaces, from comment-blanked lines. */
+export function envAt(lines, indent) {
+  const env = new Map();
+  const key = new RegExp(`^ {${indent}}(?:- )?env:\\s*$`);
+  const at = lines.findIndex((l) => key.test(l.text) || (indent === 8 && /^ {6}- env:\s*$/.test(l.text)));
+  if (at === -1) return env;
+  for (const l of lines.slice(at + 1)) {
+    if (l.text.trim() === '') continue;
+    const ind = l.text.match(/^ */)[0].length;
+    if (ind <= indent) break;
+    const m = l.text.match(/^\s+([A-Za-z_][A-Za-z0-9_]*):\s*(.*?)\s*$/);
+    if (m && ind === indent + 2) env.set(m[1], m[2]);
+  }
+  return env;
+}
+
+/** One step: name, own `if:`, `uses:`, step `env:`, and the `run:` body as ONE
+ *  logical line (joinBlockScalars — a `|` block joined with ` ; `). */
+export function stepModel(raw) {
+  const s = { n: raw.n, name: null, cond: null, uses: null, env: envAt(raw.lines, 8), run: '' };
+  for (const line of raw.lines) {
+    let m;
+    if (s.name === null && (m = line.text.match(/^ {6}(?:- | {2})name:\s*(.+?)\s*$/))) s.name = m[1];
+    if (s.cond === null && (m = line.text.match(/^ {6}(?:- | {2})if:\s*(.+?)\s*$/))) s.cond = m[1];
+    if (s.uses === null && (m = line.text.match(/^ {6}(?:- | {2})uses:\s*(\S+)/))) s.uses = m[1].split('@')[0];
+  }
+  for (const l of joinBlockScalars(raw.lines)) {
+    const m = l.text.match(/^ {6}(?:- | {2})run:\s*(.*)$/);
+    if (m) {
+      s.run = m[1];
+      break;
+    }
+  }
+  return s;
+}
+
+/** What makes this step a store publish, and which scripts it runs to do it. */
+export function storeSurfaces(step, publishBasenames) {
+  const hits = [];
+  const scripts = new Set();
+  if (step.uses !== null && STORE_ACTIONS.some((re) => re.test(step.uses))) hits.push(`store action ${step.uses}`);
+  for (const seg of shellSegments(step.run)) {
+    if (STORE_DRY_RUN.test(seg)) continue;
+    const mjs = seg.match(/(\S+[.]mjs)\b/);
+    if (/\bnode\b/.test(seg) && SUBMIT_FLAG.test(seg) && mjs) {
+      hits.push(`--submit verb  ${seg.trim()}`);
+      scripts.add(mjs[1].replace(/^["']/, ''));
+    }
+    for (const [base, rel] of publishBasenames) {
+      if (new RegExp(`(?<![A-Za-z0-9._-])${basenameSource(base)}`).test(seg)) {
+        hits.push(`register publishScript  ${seg.trim()}`);
+        scripts.add(rel);
+      }
+    }
+    for (const re of [...STORE_CLI, ...STORE_HOSTS]) if (re.test(seg)) hits.push(`store CLI or host  ${seg.trim()}`);
+  }
+  return { hits, scripts: [...scripts] };
+}
+
+/** basename -> repo-relative path, for every register row that declares a `publishScript`. */
+export function publishBasenamesOf(register) {
+  const rows = (register?.channels ?? []).filter((c) => typeof c?.publishScript === 'string' && c.publishScript.trim() !== '');
+  return new Map(rows.map((c) => [c.publishScript.trim().split('/').pop(), c.publishScript.trim()]));
+}
+
+/**
+ * Every store publish step across `workflows` (the three guards pass
+ * parseResolvedWorkflows' resolved view, so a step behind a local `uses:` is
+ * still found), in file order: `{ wf, job, raw, step, hits, scripts }`. `step` is stepModel(raw);
+ * `scripts` are the repo-relative publish scripts it runs (a register path, or
+ * the `.mjs` a `--submit` verb names as written). What an empty answer means is
+ * the caller's to say: each caller turns zero into its own COVERAGE LOST.
+ */
+export function storePublishSteps(workflows, register) {
+  const publishBasenames = publishBasenamesOf(register);
+  const out = [];
+  for (const wf of workflows) {
+    for (const job of wf.jobs.values()) {
+      for (const raw of readSteps(job)) {
+        const step = stepModel(raw);
+        const { hits, scripts } = storeSurfaces(step, publishBasenames);
+        if (hits.length === 0) continue;
+        out.push({ wf, job, raw, step, hits, scripts });
+      }
+    }
+  }
+  return out;
+}

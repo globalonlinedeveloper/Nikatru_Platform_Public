@@ -62,6 +62,7 @@
 
 import { laneVerdict, ArmingCoverageLost, readSubmittablePackage } from './publish-arming.mjs';
 import { mintAccessToken, CWS_SA_ENV, CWS_SA_DOC } from './publish-cws-token.mjs';
+import { requireStorePublishEnvironment } from './lib/store-environment.mjs';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PRIMARY SOURCES — fetched 2026-09-07.
@@ -110,6 +111,16 @@ async function main() {
     return;
   }
   if (result.verdict !== 'go') return;
+
+  // [ADR 031] class A — the store-publish environment is read back immediately
+  // before the first store call (the token mint is the first request this lane
+  // makes on the store's behalf). lib/store-environment.mjs; EXT-3, 2026-09-24.
+  const gate = await requireStorePublishEnvironment();
+  for (const l of gate.lines) (gate.ok ? console.log : console.error)(l);
+  if (!gate.ok) {
+    die(['     NOT SUBMITTED: the store-publish environment was not shown to gate this run.']);
+    return;
+  }
 
   const tok = await mintAccessToken({ serviceAccountJson: process.env[CWS_SA_ENV] });
   if (!tok.ok) {
@@ -169,6 +180,8 @@ async function main() {
     return;
   }
   console.log(`ok   published — ${pubText.slice(0, 300)}`);
+  // The listing the [10]D-9 record names: the tool's `listings.chrome`.
+  if (result.identity.listingUrl !== null) console.log(`LISTING_URL=${result.identity.listingUrl}`);
   console.log(`publish-cws: SUBMITTED — ${TOOL} uploaded and submitted for review on the Chrome Web Store.`);
 }
 

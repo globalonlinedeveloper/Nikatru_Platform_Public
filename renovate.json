@@ -217,8 +217,8 @@
       "description": [
         "wrangler: ONE branch for every manager that writes a wrangler copy. github-actions writes each",
         "wranglerVersion input (github actions group), npm writes the app brick's package.json (dev tooling),",
-        "the regex manager writes tooling/versions.json - three branches, each red alone. Must stay LAST among",
-        "rules that set groupName for wrangler."
+        "the regex manager writes tooling/versions.json, npm writes the tooling/wrangler island (2026-09-24) -",
+        "each red alone. Must stay LAST among rules that set groupName for wrangler."
       ],
       "matchDepNames": [
         "wrangler"
@@ -560,39 +560,8 @@
     {
       "customType": "regex",
       "description": [
-        "tooling/versions.json - web_ext [pipeline F-2, 14]O-9",
-        "ADDED 2026-09-07 (phase 3 unit store-lanes, second pass). The AMO signer landed as the EXACT pin",
-        "web-ext@10.6.0 written inside extensions/scripts/publish-amo.mjs and nowhere else, so",
-        "tooling/ci/assert-update-coverage.mjs — which quantifies over the KEYS of tooling/versions.json —",
-        "could not see it, and the unit's own acceptance recorded that guard's EXIT 0 as though it had. A pin",
-        "no update mechanism reaches is a pin that rots, and this one signs and SUBMITS a listed add-on.",
-        "🔴 depNameTemplate AND packageNameTemplate DIFFER ON PURPOSE, for the same reason they do on the",
-        "gitleaks manager above: assert-update-coverage.mjs keys its coverage map on depNameTemplate, so that",
-        "MUST be the versions.json key `web_ext`, while npm must be asked for the package name `web-ext`.",
-        "Collapsing the two breaks precisely one of them, silently.",
-        "⚠️ A MAJOR HERE IS A BEHAVIOUR CHANGE, NOT A BUMP: v10 made `web-ext sign` sign AND submit a listed",
-        "version, which is the whole reason the AMO lane can make a first submission at all. Read the release",
-        "notes before merging one.",
-        "⚠️ THIS MANAGER DOES NOT REACH extensions.yml’s LINT PINS (`web-ext@8` at :612, `8.10.0` at :1976).",
-        "Those are the CI lint lane, outside this unit's owned region, and are carried as a NAMED RESIDUE",
-        "rather than edited — Private/pre-prune-2026-09-08:research/revamp-2026-09-05/phase3-store-lanes.md. A v8 lint is not",
-        "evidence about a v10 sign."
-      ],
-      "matchStrings": [
-        "\"web_ext\":\\s*\"(?<currentValue>[^\"]+)\""
-      ],
-      "depNameTemplate": "web_ext",
-      "packageNameTemplate": "web-ext",
-      "datasourceTemplate": "npm",
-      "managerFilePatterns": [
-        "/^tooling\\/versions\\.json$/"
-      ]
-    },
-    {
-      "customType": "regex",
-      "description": [
         "tooling/versions.json - msstore_cli [pipeline F-2, 14]O-9",
-        "ADDED 2026-09-07 (phase 3 unit store-lanes, second pass), the same defect as web_ext beside it: the",
+        "ADDED 2026-09-07 (phase 3 unit store-lanes, second pass), the same defect the retired web-ext key had: the",
         "Microsoft Store submission transport was pinned to 0.4.2 inside the workflow that installs it and",
         "nowhere assert-update-coverage.mjs could read.",
         "🔴 THE GIT TAG CARRIES A LEADING `v` AND THIS FILE DOES NOT. Measured 2026-09-07 against",

@@ -239,7 +239,7 @@ import { stripSourceComments } from './text-reductions.mjs';
 // view: a publish, a gate call or a record moved behind `uses: ./.github/actions/<x>`
 // or into a `uses: ./.github/workflows/<f>.yml` callee is graded where it runs,
 // and a finding on such a line prints its real `<file>:<line>` via lineAt/placeOf.
-import { parseResolvedWorkflows, lineAt, placeOf, refusalText } from './workflow-scan.mjs';
+import { parseWorkflow, parseResolvedWorkflows, lineAt, placeOf, refusalText, storePublishSteps } from './workflow-scan.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const WORKFLOWS = '.github/workflows';
@@ -503,6 +503,22 @@ const ENV_API_READ = /\/environments\//;
 // `protection_rules` field' and 'a SINGULAR `deployment_protection_rule` id
 // is not the `protection_rules` array'.
 const ENV_PROTECTION_READ = /protection_rules/;
+
+/** ⏱ 2026-09-24 (EXT-3) — THE SHARED READ. The three extension publishers do not
+ *  inline the environment read; they call `requireStorePublishEnvironment()` from
+ *  this helper, which performs it. A script is credited with the run-time half
+ *  when its own code performs the read OR calls the helper and the helper's code
+ *  performs it — the helper is graded by the same two patterns, so deleting the
+ *  read from it un-credits every caller at once. The CALL is the condition, not
+ *  the import: an imported helper nobody calls reads nothing. */
+const STORE_ENV_HELPER = 'extensions/scripts/lib/store-environment.mjs';
+const STORE_ENV_CALL = /\brequireStorePublishEnvironment\(/;
+const performsRead = (code) => ENV_API_READ.test(code) && ENV_PROTECTION_READ.test(code);
+const helperPerformsRead = (() => {
+  const src = existsSync(join(ROOT, STORE_ENV_HELPER)) ? readFileSync(join(ROOT, STORE_ENV_HELPER), 'utf8') : null;
+  return src !== null && performsRead(stripSourceComments(src, '.mjs'));
+})();
+const readsEnvironmentAtRunTime = (code) => performsRead(code) || (STORE_ENV_CALL.test(code) && helperPerformsRead);
 // 🔴 SAME FINDING ON THIS TOKEN, MEASURED 2026-08-24: its CASE is a condition and
 // the widening is the blind kind. `protection_rules` is the JSON key GitHub
 // returns; a script reading `PROTECTION_RULES` off that response reads
@@ -949,7 +965,7 @@ for (const wf of workflows) {
         }
         submitScriptsChecked.add(call.script);
         const code = stripSourceComments(src, '.mjs');
-        const reads = ENV_API_READ.test(code) && ENV_PROTECTION_READ.test(code);
+        const reads = readsEnvironmentAtRunTime(code);
         if (!reads) {
           submitProblems++;
           problems.push(
@@ -986,6 +1002,67 @@ for (const wf of workflows) {
     }
   }
 }
+
+// ── limb 4, SECOND DOMAIN: every STORE PUBLISH STEP ─────────────────────────
+// ⏱ 2026-09-24 (EXT-3, O-STORE-PUBLISH-STEP-DEFINED-THREE-WAYS). The `--submit`
+// verb above is one spelling of a store publish; the Chrome and Edge lanes never
+// used it, so limb 4 never ranged over them and a Chrome upload could run in a job
+// with no `environment:` while this guard printed ok. The domain here is
+// workflow-scan.mjs `storePublishSteps()`, the one definition limb 2 of
+// assert-publish-steps-guarded.mjs and rule 2b of assert-publish-records.mjs also
+// read: its job must declare `environment:`, and every script it runs must read
+// that environment back at run time (directly, or through STORE_ENV_HELPER).
+// Two things keep it from grading a job twice: a store step whose own `run:`
+// carries the `--submit` verb is (b)'s above, parsed by SUBMIT_SCRIPT (the script
+// after `node`, not the first `.mjs` on the line); and a job with any `--submit`
+// call already had its `environment:` graded by (a). What is left is the step the
+// verb never reached — a register `publishScript` run without `--submit`.
+let registerJson = null;
+try {
+  registerJson = JSON.parse(readFileSync(join(ROOT, REGISTER), 'utf8'));
+} catch {
+  // An unreadable register is reported by the served-lane read above; this domain
+  // then has no publishScript set to grade against and adds nothing.
+}
+const publishScriptSet = new Set(
+  (registerJson?.channels ?? []).map((c) => c?.publishScript).filter((x) => typeof x === 'string' && x.trim() !== '').map((x) => x.trim()),
+);
+const storeSteps = registerJson === null ? [] : storePublishSteps(workflows.filter(Boolean), registerJson);
+const storeStepJobs = new Set();
+let storeStepsBeyondSubmit = 0;
+for (const { wf, job, step, scripts } of storeSteps) {
+  if (SUBMIT_FLAG.test(step.run)) continue;
+  storeStepsBeyondSubmit++;
+  const key = `${wf.rel}#${job.name}`;
+  if (!storeStepJobs.has(key)) {
+    storeStepJobs.add(key);
+    if (job.submitCalls.length === 0 && !job.lines.some((l) => /^ {4}environment:/.test(l.text))) {
+      submitProblems++;
+      problems.push(
+        `${wf.rel}: job "${job.name}" runs the store publish step ${JSON.stringify(step.name ?? '(unnamed)')} at ${lineAt(wf, step.n)} and declares no job-level \`environment:\`. ` +
+          '[ADR 031] makes a store publish owner-only per instance and names the environment as the enforcement; a job without one runs the moment it is dispatched.',
+      );
+    }
+  }
+  for (const rel of scripts.filter((x) => publishScriptSet.has(x))) {
+    const src = read(rel);
+    if (src === null) {
+      unnamedSubmitScripts.push(`${placeOf(wf, step.n)} → ${rel} (not readable under ${ROOT})`);
+      continue;
+    }
+    submitScriptsChecked.add(rel);
+    if (!readsEnvironmentAtRunTime(stripSourceComments(src, '.mjs'))) {
+      submitProblems++;
+      problems.push(
+        `${wf.rel}: job "${job.name}" runs ${rel} as a store publish at ${lineAt(wf, step.n)}, and that script never reads the deployment environment's protection rules — ` +
+          `not itself, and not by calling requireStorePublishEnvironment() from ${STORE_ENV_HELPER}. \`environment:\` on its own FAILS OPEN.`,
+      );
+    }
+  }
+}
+// No floor of its own: every `node … --submit` call above is also a store publish
+// step, so an empty second domain implies `submitJobs === 0`, and that floor below
+// is COVERAGE LOST already.
 
 // ── the domain must not be empty ─────────────────────────────────────────────
 if (releaseJobs === 0) {
@@ -1085,7 +1162,7 @@ ok(
     (submitProblems === 0
       ? '; each declares an `environment:` and its script performs a run-time protection-rules read'
       : `; ${submitProblems} of those assertions FAILED — see the FAIL line(s) below`) +
-    `. The two environment names are NOT compared. limb 4 does NOT range over the ${publishJobs} publish job(s) — see the header.`,
+    `. The two environment names are NOT compared. limb 4 also ranges over the ${storeStepsBeyondSubmit} store publish step(s) no \`--submit\` verb reaches, in ${storeStepJobs.size} job(s) (EXT-3); it does NOT range over the ${publishJobs} publish job(s) — see the header.`,
 );
 ok(`${servedLaneWorkflows.size} served-channel lane(s) from ${REGISTER}: ${[...servedLaneWorkflows].join(', ') || '(none)'}`);
 

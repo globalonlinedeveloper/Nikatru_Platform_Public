@@ -331,6 +331,15 @@ gate('gecko.id is NOT the placeholder', !PLACEHOLDER_ID.test(String(gecko.id || 
 check('gecko.id matches Mozilla\'s email-style format', GECKO_ID_RE.test(String(gecko.id || '')), gecko.id);
 check('gecko.id is 80 characters or less', String(gecko.id || '').length <= 80, String(gecko.id || '').length);
 check('gecko.strict_min_version present', typeof gecko.strict_min_version === 'string', gecko.strict_min_version);
+/* ⏱ 2026-09-24 (EXT-3, Q1 of O-FULLSHOT-PRO-OWNER-QUESTIONS): the floor is the
+   first Firefox that honours data_collection_permissions. Extension Workshop,
+   "Firefox built-in data collection consent" (fetched 2026-09-24): "Firefox
+   supports built-in consent for data collection and transmission in Firefox for
+   desktop 140 and later, and Firefox for Android 142 and later." Below 140 the
+   declaration this package carries is a key the browser does not read. */
+const MIN_GECKO_FOR_DATA_CONSENT = 140;
+check('gecko.strict_min_version is at least ' + MIN_GECKO_FOR_DATA_CONSENT + '.0 (built-in data-collection consent)',
+  parseInt(String(gecko.strict_min_version || '0'), 10) >= MIN_GECKO_FOR_DATA_CONSENT, gecko.strict_min_version);
 check('gecko.update_url absent (listed AMO add-ons must not self-host updates)', !('update_url' in gecko));
 
 console.log('\n=== data_collection_permissions (required for new add-ons since 2025-11-03) ===');

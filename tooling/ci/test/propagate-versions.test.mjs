@@ -63,6 +63,8 @@ const DECL = {
 const BRICK = 'tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/package.json';
 const ANDROID = 'apps/demo/android/app/build.gradle.kts';
 const SCAN_SECRETS = 'tooling/ci/scan-secrets.mjs';
+// The wrangler island (EXT-3, 2026-09-24): a REQUIRED target of collectTargets, like the brick.
+const WRANGLER_ISLAND = 'tooling/wrangler/package.json';
 
 const workflow = ({ flutter = DECL.flutter, node = DECL.node, melos = DECL.melos, java = DECL.java } = {}) =>
   `name: X\njobs:\n  j:\n    steps:\n` +
@@ -113,6 +115,7 @@ function build(name, { decl = {}, omit = [], workflowOpts = {} } = {}) {
     [SCAN_SECRETS]: scanSecrets(),
     [ANDROID]: androidModule(),
     [BRICK]: JSON.stringify({ devDependencies: { wrangler: DECL.wrangler } }),
+    [WRANGLER_ISLAND]: JSON.stringify({ devDependencies: { wrangler: DECL.wrangler } }),
   };
   for (const [rel, body] of Object.entries(files)) {
     if (omit.includes(rel)) continue;
@@ -135,6 +138,7 @@ function snapshot(dir) {
     SCAN_SECRETS,
     ANDROID,
     BRICK,
+    WRANGLER_ISLAND,
   ];
   return rels
     .filter((r) => existsSync(join(dir, r)))
@@ -294,6 +298,7 @@ describe('propagate-versions', () => {
     writeFileSync(join(dir, SCAN_SECRETS), '// nothing here\n');
     writeFileSync(join(dir, ANDROID), 'android {\n}\n');
     writeFileSync(join(dir, BRICK), '{}\n');
+    writeFileSync(join(dir, WRANGLER_ISLAND), '{}\n');
     const { code, out } = propagate(dir, ['--write']);
     assert.equal(code, 2);
     assert.match(out, /matched 0 version reference\(s\)/);
