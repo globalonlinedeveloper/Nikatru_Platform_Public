@@ -690,7 +690,10 @@ jobs:
           APPLE_PROVISIONING_PROFILES_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILES_BASE64 }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_INSTALLER_CERT_P12_BASE64: ${{ secrets.APPLE_INSTALLER_CERT_P12_BASE64 }}
-        run: node tooling/ci/apple-signing.mjs --app ${{ matrix.app }}
+        # why: both rows by name — ONE identity signs the .ipa and the .pkg, so
+        # an arming of either makes a tag push fatal. Naming them here is what a
+        # later per-channel job narrows; absent, the script reads both anyway.
+        run: node tooling/ci/apple-signing.mjs --app ${{ matrix.app }} --channel ios-appstore --channel macos-appstore
       # why: the Flutter templates ship AUTOMATIC signing with an empty team, and
       # automatic signing asks Apple for a profile at build time — the one thing
       # `apple-signing.mjs` refuses on purpose (see the box on exportOptionsPlist).

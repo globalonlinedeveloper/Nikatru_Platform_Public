@@ -330,13 +330,13 @@ function makeRoot({
 
 const out = (r) => `${r.stdout}${r.stderr}`;
 
-function runPrepare(root, env, { app = 'subscriptiontracker' } = {}) {
+function runPrepare(root, env, { app = 'subscriptiontracker', args = [] } = {}) {
   const outDir = join(TMP, `out${seq++}`);
   const ghEnv = join(TMP, `ghenv${seq++}.txt`);
   const blank = Object.fromEntries(WANTED.map((n) => [n, '']));
   const r = spawnSync(
     process.execPath,
-    [PREPARE, '--app', app, '--repo-root', root, '--out', outDir, '--github-env', ghEnv],
+    [PREPARE, '--app', app, '--repo-root', root, '--out', outDir, '--github-env', ghEnv, ...args],
     {
       encoding: 'utf8',
       env: {
@@ -1281,6 +1281,48 @@ describe('apple-signing — the endings, run as a process', () => {
     assert.match(out(r), /build-platforms\.yml · job "apple"/);
     // The unarmed sibling is NOT reported as armed — the split has to be real.
     assert.doesNotMatch(out(r), /channel "ios-appstore" IS ARMED/);
+  });
+
+  // ── ⏱ 2026-09-25 — `--channel <id>`, repeatable: the rows this run signs for.
+  // Absent, both Apple rows (the pair above). Named, only those — so the arming
+  // verdict is over the rows the CALLER serves, and build-platforms.yml names
+  // both. A name that is not an Apple row is refused, never dropped: dropping it
+  // would sign for the default set under a flag that said something else.
+  test('🔴 `--channel` narrows the verdict: the armed macOS row does not arm an iOS-only run', () => {
+    const armedMac = () =>
+      makeRoot({
+        rowOverrides: {
+          'macos-appstore': {
+            submittable: true,
+            served: false,
+            lane: { workflow: '.github/workflows/build-platforms.yml', job: 'apple' },
+          },
+        },
+      });
+    const iosOnly = runPrepare(armedMac(), ON_TAG, { args: ['--channel', 'ios-appstore'] });
+    assert.equal(iosOnly.r.status, 0, out(iosOnly.r));
+    assert.match(out(iosOnly.r), /channel "ios-appstore" is NOT ARMED/);
+    assert.doesNotMatch(out(iosOnly.r), /macos-appstore/);
+    // Both named — what build-platforms.yml passes — is the same fatal as none named.
+    const both = runPrepare(armedMac(), ON_TAG, { args: ['--channel', 'ios-appstore', '--channel', 'macos-appstore'] });
+    assert.equal(both.r.status, 1, out(both.r));
+    assert.match(out(both.r), /channel "macos-appstore" IS ARMED/);
+  });
+
+  test('`--channel` named twice reads the row once', () => {
+    const { r } = runPrepare(makeRoot(), ON_TAG, { args: ['--channel', 'ios-appstore', '--channel', 'ios-appstore'] });
+    assert.equal(r.status, 0, out(r));
+    assert.equal(out(r).split('channel "ios-appstore" is NOT ARMED').length - 1, 1, out(r));
+  });
+
+  test('🔴 `--channel` with a row this script does not sign, or with no value, FAILS and exports nothing', () => {
+    for (const args of [['--channel', 'android-play'], ['--channel'], ['--channel', '--app', 'subscriptiontracker']]) {
+      const { r, exported } = runPrepare(makeRoot(), {}, { args });
+      assert.equal(r.status, 1, `${args.join(' ')}\n${out(r)}`);
+      assert.match(out(r), /is not a channel this script signs/);
+      assert.match(out(r), /It signs ios-appstore and macos-appstore/);
+      assert.equal(exported, '', 'a refused run must not label a posture');
+    }
   });
 
   test('🔴 the rescope is RELEASE-LANE-ONLY: a branch push prints not one word of it', () => {
