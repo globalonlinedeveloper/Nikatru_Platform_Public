@@ -18,7 +18,7 @@
 // RED on `is_active: 1`; remove `await moneyRederive(env)` from the nightly
 // handler and test/scheduled-crons.test.ts goes RED on the missing job.
 // ─────────────────────────────────────────────────────────────────────────────
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   MAX_REDERIVE_PER_RUN,
   MONEY_REDERIVE_JOB,
@@ -33,6 +33,8 @@ import {
   type DerivationState,
 } from '../src/lib/mor/store';
 import { PADDLE_CUSTOM_DATA_APP_ID, PADDLE_CUSTOM_DATA_USER_ID, paddleVerifier } from '../src/lib/mor/paddle';
+import { razorpayVerifier } from '../src/lib/mor/razorpay';
+import type { NormalizedNotification } from '../src/lib/mor/contract';
 import { isKnownProduct } from '../src/config';
 import { realPlatformDb, type RealDb } from './harness';
 import type { Env } from '../src/types';
@@ -197,6 +199,41 @@ describe('the sweep is bounded, and it fails closed', () => {
   it('the per-run bound is a positive number the limb actually passes to the query', async () => {
     expect(MAX_REDERIVE_PER_RUN).toBeGreaterThan(0);
     expect(REDERIVE_MAX_AGE_DAYS).toBeGreaterThan(0);
+  });
+});
+
+// ⏱ 2026-09-24 · THE EVENT-ID SEAM (O-RAZORPAY-CHECKOUT-ADAPTER). A rail whose
+// event id arrived as a HEADER has no other way to get it back on a replay: no
+// header survives into a stored payload. The sweep passes the stored
+// `provider_event_id` to `parse` as the hint. Razorpay's `parse` still refuses, so
+// no Razorpay row can reach the table through the door; this one is written
+// straight through the store's own `persistNotification`, and what is observed is
+// the call on the registered verifier.
+describe('the replay hands the stored event id back to parse', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('replay passes row.provider_event_id to parse', async () => {
+    const db = realPlatformDb();
+    const payload = '{"entity":"event","event":"subscription.charged","created_at":1757650000}';
+    const stored: NormalizedNotification = {
+      provider: 'razorpay',
+      eventId: 'evt_TEST_PR_A_0001',
+      notificationId: null,
+      eventType: 'subscription.charged',
+      occurredAt: '2026-09-09T00:00:00.000Z',
+      subject: { kind: 'unknown', detail: 'a stored fixture row; never derived' },
+    };
+    await persistNotification({ db: db as unknown as D1Database, environment: 'live', nowMs: NOW_MS, isKnownProduct }, stored, payload);
+    const spy = vi.spyOn(razorpayVerifier, 'parse');
+
+    await moneyRederive(envFor(db), NOW_MS);
+
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalledWith(payload, 'evt_TEST_PR_A_0001');
+    // parse still refuses, so the row is counted, not derived.
+    expect(heartbeat(db).detail).toContain('unparseable=1');
   });
 });
 

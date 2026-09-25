@@ -26,7 +26,8 @@
 //      the server's declaration of the route and cannot outlive a rename.
 //   2. It ranged over ROUTES ONLY, so it could not see the violation that was
 //      live in production: `services/subscriptiontracker-api` bound a per-app R2 bucket
-//      (`EXPORTS` → `subscriptiontracker-exports`, created 2026-07-17) whose only occurrence
+//      (`EXPORTS` → `subly-exports`, created 2026-07-17 — its name then; see the
+//      rename note in services/subscriptiontracker-api/wrangler.jsonc) whose only occurrence
 //      anywhere in `services/**/*.ts` was its own type declaration. Limb 3 makes
 //      bindings first-class, and requires a READER that is not the Env type.
 //   3. Its coverage was implicit. Here both floors are RELATIONSHIPS derived from

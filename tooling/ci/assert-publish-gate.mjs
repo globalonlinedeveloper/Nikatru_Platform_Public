@@ -18,10 +18,16 @@
 // ⛔ THE PUBLISH TARGET IS BLOCKED AND NOT BY THIS STAGE. `[4]B-18` owns the
 // shelf — one shared R2 bucket with an `<app_id>/` prefix per [ADR 020], the
 // packs.nikatru.com custom-domain binding, the cache policy and latest.json
-// hosting. services/platform/wrangler.jsonc still reads "NO r2_buckets YET".
+// hosting. THE GAP IS THAT PACK-DELIVERY BUCKET, NOT R2 AS SUCH:
+// services/platform binds a backup bucket (`BACKUPS_R2`, since #487,
+// 2026-09-05), and a backup store is not a shelf. No Worker binds a bucket
+// that serves packs, and this pipeline has no upload step; the PR that builds
+// B-18 adds both, and must rewrite this paragraph and the print below.
 // Stage 7 owns the gate. A gate is about refusing, and refusing needs no
 // destination, which is why this is fully buildable and fully negative-testable
 // with no bucket at all. Do not create one from here.
+//   ⏱ Until 2026-09-25 this said services/platform/wrangler.jsonc "still reads
+//   NO r2_buckets YET", which stopped being so on 2026-09-05 (#487).
 //
 // 🔴 P-10 PRINTS, NEVER FAILS, AND THAT IS DELIBERATE. The restore drill is
 // physical owner work: restore the seed from each stored copy in turn, sign, and
@@ -214,9 +220,10 @@ for (const keyId of productionIds) {
   }
 }
 prints.push(
-  '⛔ THE PUBLISH TARGET IS BLOCKED ON [4]B-18 — one shared R2 bucket with an <app_id>/ prefix ([ADR 020]), the ' +
-    'packs.nikatru.com binding, the cache policy and latest.json hosting. services/platform/wrangler.jsonc still declares no ' +
-    'r2_buckets. Stage 7 owns the gate and it is complete; stage 4 owns the shelf. `publish` refuses even with all five gates green.',
+  '⛔ THE PUBLISH TARGET IS BLOCKED ON [4]B-18 — the pack-delivery bucket does not exist: one shared R2 bucket with an ' +
+    '<app_id>/ prefix ([ADR 020]), the packs.nikatru.com binding, the cache policy and latest.json hosting are all unbuilt. ' +
+    'R2 itself is bound (services/platform binds the backup bucket); that is not the shelf. Stage 7 owns the gate and it is ' +
+    'complete; stage 4 owns the shelf. `publish` refuses even with all five gates green.',
 );
 
 if (problems.length) {

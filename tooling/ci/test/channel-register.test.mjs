@@ -3908,4 +3908,39 @@ describe('assert-channel-register — grader-is-run: every storeMetadataGradedBy
     assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST — \.github\/workflows\/ci\.yml job `extensions` is a need of ci-gate and calls \.github\/workflows\/gone\.yml, which the grader-is-run limb cannot follow \(missing\)/);
   });
+
+  // ⏱ 2026-09-24 (ADR 095): a lane callee's aggregate is the job that runs
+  // tooling/ci/lane-verdict.mjs, not a job named ci-required.
+  const laneCalleeYml = (verdictRun) =>
+    ['name: Lane workers', 'on:', '  workflow_call:', 'defaults:', '  run:', '    working-directory: extensions', 'jobs:',
+      '  work:', '    runs-on: ubuntu-24.04', '    steps:', '      - run: node scripts/check-store-metadata.mjs fullshot',
+      '  lane-verdict:', '    runs-on: ubuntu-24.04', '    needs: [work]', '    if: always()', '    steps:', `      - run: ${verdictRun}`, ''].join(NL);
+
+  test('PASSES when the grader runs in a lane callee job that the callee\'s lane-verdict job needs', () => {
+    const { code, out } = run(tree({
+      gate: false,
+      mutate: extGraded,
+      extraFiles: {
+        [EXT_GRADER]: '// the extension listing grader\n',
+        [GATE_CI]: ciYml(callJob(CALLEE), ['extensions']),
+        [CALLEE]: laneCalleeYml('node tooling/ci/lane-verdict.mjs'),
+      },
+    }));
+    assert.equal(code, 0, out);
+    assert.match(out, /run by \.github\/workflows\/lane-ci\.yml job "work" \(ci-gate → extensions → \.github\/workflows\/lane-ci\.yml lane-verdict → work\)/);
+  });
+
+  test('COVERAGE LOST (exit 2) when a called workflow has neither ci-required nor a job running lane-verdict.mjs', () => {
+    const { code, out } = run(tree({
+      gate: false,
+      mutate: extGraded,
+      extraFiles: {
+        [EXT_GRADER]: '// the extension listing grader\n',
+        [GATE_CI]: ciYml(callJob(CALLEE), ['extensions']),
+        [CALLEE]: laneCalleeYml('echo no verdict here'),
+      },
+    }));
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST — \.github\/workflows\/lane-ci\.yml, called by ci-gate's need `extensions`, has no verdict job: neither `ci-required` nor a job that runs tooling\/ci\/lane-verdict\.mjs/);
+  });
 });

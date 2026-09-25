@@ -36,7 +36,8 @@
 //   was verified green.
 //
 // 🔴 AND THE RED THIS GUARD WAS BUILT TO RECORD, on the tree as it stood:
-//   services/subscriptiontracker-api bound `EXPORTS` -> `subscriptiontracker-exports` (created 2026-07-17)
+//   services/subscriptiontracker-api bound `EXPORTS` -> `subly-exports` (created 2026-07-17)
+//   (its name then; see the rename note in services/subscriptiontracker-api/wrangler.jsonc)
 //   whose ONLY occurrence in the whole TypeScript tree was its own declaration
 //   in src/types.ts. Run against that tree the guard said, verbatim:
 //     "EXPORTS — declared as a `r2_buckets` binding in

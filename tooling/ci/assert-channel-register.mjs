@@ -538,6 +538,10 @@ function workflowsInvoking(scriptRel) {
 // and asks each job, through this guard's own `workflow()` and
 // `jobInvokesScript()`, whether it runs the grader. A call it cannot follow is
 // COVERAGE LOST: the walk would otherwise end early and call that "not run".
+// ⏱ 2026-09-24 (ADR 095): a callee's aggregate is its VERDICT job — `ci-required` in
+// extensions-ci.yml, or the job that runs tooling/ci/lane-verdict.mjs in a lane
+// callee (lane-workers.yml), the same two shapes green-means-ran A8 accepts. Keyed
+// on `ci-required` alone, this limb read the first lane callee as COVERAGE LOST.
 const GATE_WORKFLOW = `${WORKFLOW_DIR}/ci.yml`;
 const graderWalk = [];
 // A FIXTURE root that carries no ci.yml has no gate to walk and is skipped, the
@@ -565,15 +569,19 @@ if (!gateSkipped) {
   }
   for (const call of calls) {
     if (!gateNeeds.includes(call.job)) continue;
-    const aggregate = call.callee.jobs.get('ci-required');
+    const calleeWf = workflow(call.callee.rel);
+    const verdictJob = call.callee.jobs.has('ci-required')
+      ? 'ci-required'
+      : [...call.callee.jobs.keys()].find((j) => calleeWf !== null && jobInvokesScript(calleeWf, j, 'tooling/ci/lane-verdict.mjs')) ?? null;
+    const aggregate = verdictJob === null ? null : call.callee.jobs.get(verdictJob);
     if (!aggregate) {
       coverageLost([
-        `${call.callee.rel}, called by ci-gate's need \`${call.job}\`, has no job \`ci-required\`.`,
+        `${call.callee.rel}, called by ci-gate's need \`${call.job}\`, has no verdict job: neither \`ci-required\` nor a job that runs tooling/ci/lane-verdict.mjs.`,
         'The grader-is-run limb follows the callee\'s own aggregate; with it gone the walk stops at the call.',
       ]);
     }
     for (const job of aggregate.needs) {
-      graderWalk.push({ rel: call.callee.rel, job, via: `ci-gate → ${call.job} → ${call.callee.rel} ci-required → ${job}` });
+      graderWalk.push({ rel: call.callee.rel, job, via: `ci-gate → ${call.job} → ${call.callee.rel} ${verdictJob} → ${job}` });
     }
   }
 }
@@ -604,7 +612,7 @@ for (const [name, def] of Object.entries(gateSkipped ? {} : surfaceDefs)) {
     }
     problems.push(
       `${REGISTER} surfaces."${name}" is graded by ${grader}, and no job ci-gate waits on runs it ` +
-        `(walked ${graderWalk.length} job(s): ci-gate's needs, a local call one level in, the callee's ci-required needs). ` +
+        `(walked ${graderWalk.length} job(s): ci-gate's needs, a local call one level in, the callee's verdict-job needs). ` +
         (elsewhere.length ? `It is invoked only by ${elsewhere.join(', ')}, outside that closure. ` : 'No workflow invokes it at all. ') +
         'A metadata grade nothing required runs is advisory: red, it blocks no merge.',
     );

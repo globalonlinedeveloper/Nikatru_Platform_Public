@@ -962,6 +962,7 @@
   },
   {
     "claims": [
+      "ADR 095",
       "R-5"
     ],
     "invokedBy": [
@@ -1230,6 +1231,7 @@
     "claims": [
       "ADR 004",
       "ADR 039",
+      "ADR 076",
       "M-1",
       "M-12"
     ],
@@ -1238,7 +1240,9 @@
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-money-config.mjs",
-    "references": [],
+    "references": [
+      "R-3"
+    ],
     "state": "WIRED"
   },
   {
@@ -2653,6 +2657,31 @@
   },
   {
     "claims": [
+      "ADR 095"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guard-meta",
+      ".github/workflows/lane-workers.yml#detect"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/lane-detect.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "ADR 095"
+    ],
+    "invokedBy": [
+      ".github/workflows/lane-workers.yml#lane-verdict"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/lane-verdict.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
       "K-10",
       "P-5"
     ],
@@ -3453,6 +3482,19 @@
     ],
     "kind": "script",
     "ref": "tooling/scripts/provision-backend.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#content-gate",
+      ".github/workflows/ci.yml#guard-meta",
+      ".github/workflows/extensions-ci.yml#core",
+      ".github/workflows/extensions-ci.yml#selftest"
+    ],
+    "kind": "script",
+    "ref": "tooling/scripts/spawn-ceiling.mjs",
     "references": [],
     "state": "WIRED"
   },

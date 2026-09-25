@@ -572,7 +572,9 @@ try {
 step(
   'guard suites (whole glob, as ci.yml runs it)',
   'ci.yml runs `node --test "tooling/ci/test/*.test.mjs"`. Running a single file is a SUBSET and hides every other suite.',
-  () => run('node', ['--test', '"tooling/ci/test/*.test.mjs"']),
+  // The same preload and ceilings as ci.yml (tooling/scripts/spawn-ceiling.mjs);
+  // on a slower host set NIKATRU_SPAWN_CEILING_MS rather than drop the preload.
+  () => run('node', ['--import', './tooling/scripts/spawn-ceiling.mjs', '--test-timeout=600000', '--test', '"tooling/ci/test/*.test.mjs"']),
 );
 
 // ── 2 · the guards themselves, over the real tree ───────────────────────────

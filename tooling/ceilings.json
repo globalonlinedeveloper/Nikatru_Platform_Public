@@ -182,7 +182,7 @@
       },
       {
         "ceiling": "r2.storageFree",
-        "where": "Cloudflare dashboard → R2 object storage → select the bucket → Metrics tab. Read the STORED bytes for the account, not one bucket: the allowance is per account and `nikatru-backups` is one of three (`ratel-media` holds ~130 MB, `subscriptiontracker-exports` is empty and unbound). ⚠️ MONTHLY, so a mid-month reading is not the month's figure.",
+        "where": "Cloudflare dashboard → R2 object storage → select the bucket → Metrics tab. Read the STORED bytes for the account, not one bucket: the allowance is per account, so the reading counts every bucket on it, including any this repository does not bind. ⚠️ MONTHLY, so a mid-month reading is not the month's figure.",
         "url": "https://developers.cloudflare.com/r2/platform/metrics-analytics/",
         "reads": "stored bytes, summed across every bucket on the account"
       },
