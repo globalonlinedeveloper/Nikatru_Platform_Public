@@ -57,7 +57,7 @@
 // ── WHERE THE NUMBER 24 COMES FROM ──────────────────────────────────────────
 // Not picked. Measured, on 2026-09-21, over the eight committed frames at
 // origin/main 9f548515 and over a textless control built from each (see
-// `selfTestInkMetric` for the same relationship in miniature). The worst
+// `inkFixtureFrame`). The worst
 // text-bearing-to-textless ratio across all eight frames, by threshold:
 //
 //     delta    8    16    24    32    48    64
@@ -158,35 +158,6 @@ export function inkFixtureFrame({ width, height, glyphs }) {
   return decodeRgba(encodeRgba({ width, height, rgba }, { opaque: true }));
 }
 
-/**
- * 🔴 THE METRIC PROVES ITSELF ON EVERY RUN, and this is what stops the floor
- * from being edited into something that never fires.
- *
- * The failure that costs everything here is not the threshold being slightly
- * wrong. It is `inkFraction` being changed into something that returns a large
- * constant, or the comparison being inverted — at which point every frame
- * clears every floor forever and the limb prints ok while measuring nothing.
- * The same argument this guard's account-address detector already makes about
- * its one regular expression.
- *
- * So two frames are built here, in memory, on every invocation: the same layout
- * with glyph-shaped strokes and without them. The strokes must lift the reading
- * above `minFraction` of the text-bearing frame, and their absence must drop it
- * below — the EXACT relationship the register's floors encode, so a metric that
- * can no longer tell the two apart is reported before any real frame is read.
- */
-export function selfTestInkMetric(minFraction) {
-  const withText = inkFraction(inkFixtureFrame({ width: 360, height: 640, glyphs: true }));
-  const textless = inkFraction(inkFixtureFrame({ width: 360, height: 640, glyphs: false }));
-  const floor = withText * minFraction;
-  return {
-    withText,
-    textless,
-    floor,
-    ok: withText > 0 && textless < floor && withText >= floor,
-  };
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // 🔴 THE TEXTLESS CONTROL HAD NO PRODUCER IN THE TREE, AND THE ROWS DEPEND ON IT.
 //
@@ -261,9 +232,9 @@ export function selfTestInkMetric(minFraction) {
 // of removed ink against a floor `assert-listing-assets.mjs` computes from that
 // class's calibration frames, using `areaDownscale` and `removedInkRunMedian`
 // at the end of this file. `measure-frame-ink.mjs` prints that reading and no
-// longer prints a block to paste. `selfTestInkMetric` is unchanged and no
-// longer imported by the listing guard, which self-tests through the class
-// arithmetic instead.
+// longer prints a block to paste. `selfTestInkMetric` was retired in the same
+// change: the listing guard, its only caller, self-tests through the class
+// arithmetic instead, and its doc described the per-frame floor.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** The neighbourhood the mode is taken over. 9 is the register's number, and it

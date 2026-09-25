@@ -70,7 +70,7 @@
 // of the merge-base with origin/main and fails only on a red that main does not
 // have. This file's exit code is unchanged: completeness, never greenness.
 //
-// Usage:  node tooling/scripts/guard-sweep.mjs [--verbose] [--scan-only] [--json <path>]
+// Usage:  node tooling/scripts/guard-sweep.mjs [--verbose] [--scan-only] [--json <path>] [--ceilings]
 // Exit:   0 = every file run or explained · 1 = a file the sweep could not reach
 //         2 = a usage error (`--json` without a path)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -124,6 +124,37 @@ const files = readdirSync(CI_DIR, { withFileTypes: true })
 if (files.length === 0) {
   console.error('✗ COVERAGE LOST — no .mjs found in tooling/ci. The sweep would report a clean empty domain.');
   process.exit(1);
+}
+
+// ── 2026-09-25 — ONE DECLARED PER-GUARD CEILING, NOT A RAISED FLAT ONE ────────
+// Every guard is spawned with DEFAULT_CEILING_MS. A guard named in CEILINGS gets
+// its own, and the entry carries the runtime it was measured at and the date.
+// The flat 300 s stays for every other guard: raising it for all of them would
+// hide the next guard that slows down, which is the thing a ceiling is for.
+// When the spawn times out, `r.status` is null, and the row reads RED(null) for
+// a guard CI passes. A key naming no file in tooling/ci is refused, because a
+// stale key is a ceiling that applies to nothing.
+const DEFAULT_CEILING_MS = 300_000;
+const CEILINGS = {
+  // ard2r: the ink floor is computed from the committed calibration set (24 frames).
+  'assert-listing-assets.mjs': {
+    ms: 600_000,
+    measured: '298 s on the laptop with ~12 other node processes, 2026-09-25 (release train W3); 316 s loaded, 2026-09-24 (the ard2r reviewer); 7 s before the calibration set',
+  },
+};
+const staleCeilings = Object.keys(CEILINGS).filter((n) => !files.includes(n));
+if (staleCeilings.length) {
+  console.error(`✗ CEILINGS names ${staleCeilings.join(', ')}, which is not a file in tooling/ci. Remove the entry or fix the name.`);
+  process.exit(1);
+}
+const ceilingFor = (name) => CEILINGS[name]?.ms ?? DEFAULT_CEILING_MS;
+
+/** `--ceilings`: print the spawn timeout every file in the domain would get, as
+ *  JSON, and stop. test/guard-sweep-invocations.test.mjs reads it to prove that a
+ *  guard NOT in CEILINGS still gets DEFAULT_CEILING_MS. */
+if (process.argv.includes('--ceilings')) {
+  console.log(JSON.stringify(Object.fromEntries(files.map((n) => [n, ceilingFor(n)])), null, 2));
+  process.exit(0);
 }
 
 // ── every workflow invocation, with its real arguments ───────────────────────
@@ -476,7 +507,7 @@ for (const name of files) {
     const r = spawnSync(process.execPath, [...call.flags, join(CI_DIR, name), ...argv], {
       cwd: ROOT,
       encoding: 'utf8',
-      timeout: 300_000,
+      timeout: ceilingFor(name),
     });
     ran++;
     const out = `${r.stdout ?? ''}${r.stderr ?? ''}`;

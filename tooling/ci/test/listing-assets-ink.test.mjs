@@ -46,8 +46,16 @@
 //   RC5 inkRule.minSeparation 3 -> 1000                    —     2, no calibration to refuse
 //   * the CAPTURE.json pixels limb; the old ink limb said nothing about the size.
 //
-// With the calibration set in place RC5 is 1 (the calibration does not
-// separate by 1000x) — the fixture form of that is I3b.
+// With the calibration set committed (the local writer, 2026-09-25, BASE
+// ca7e500a), each restored byte-exact before the next:
+//   RC1 1, the per-frame FAIL for 01-home.png (a flat field); the phone run
+//       median alone stays above its floor, which is why the per-frame limb exists
+//   RC2 2, naming 1081x1920
+//   RC3 2, 1800x3200 is not 2700x4800
+//   RC4 2, tablet frames with no class
+//   RC5 1, both classes "does not separate". A refused calibration counts as
+//       looked at (inkFramesRefused); the zero-judged limb runs only on the real
+//       tree, so I3b, the fixture form, could not see that it once read 2.
 //
 // ⚠️ THE GUARD MAKES A SPLIT AND IT IS LOAD-BEARING HERE: a FIXTURE root with
 // frames and no `inkRule` at all PRINTS that it was not judged, while the REAL

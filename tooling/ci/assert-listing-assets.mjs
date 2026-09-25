@@ -1140,6 +1140,7 @@ const MIN_CALIBRATION_FRAMES = 4;
 const INK_RULE = 'storeMetadataContract.inkRule';
 
 let inkFramesJudged = 0;
+let inkFramesRefused = 0;
 let inkSelfTest = null;
 const inkReadings = [];
 {
@@ -1456,6 +1457,8 @@ const inkReadings = [];
             ? `class "${key}": the calibration set does not separate — ${calLine}, and ${INK_RULE}.minSeparation needs >= ${minSeparation}x. A floor between two medians that close would pass a glyphless run or fail a correct one, so this class was NOT judged with it. Re-capture the calibration set; do not lower minSeparation.`
             : `class "${key}": the calibration set does not separate — ${calLine}. A glyphless median at or below 0 puts the geometric-mean floor at 0, under which no run can fall, so this class was NOT judged with it.`,
         );
+        // why: a class refused for its calibration WAS looked at; counting it keeps the zero-judged limb for frames that moved (RC5 = 1, not 2).
+        for (const imgs of byApp.values()) inkFramesRefused += imgs.length;
         continue;
       }
       for (const [app, imgs] of byApp) {
@@ -1496,7 +1499,7 @@ const inkReadings = [];
     // elsewhere in this file and it prints; the repository CI runs against has
     // eight committed frames, and a run of it that judged none of them has lost
     // the limb, not found it satisfied.
-    if (scanningRealRepo && inkFramesJudged === 0) {
+    if (scanningRealRepo && inkFramesJudged + inkFramesRefused === 0) {
       coverageLost([
         `${REGISTER} declares \`${INK_RULE}\` and ZERO committed frames were judged against it.`,
         'Either the frames moved out of the directories the register declares, or every one of them failed to',
