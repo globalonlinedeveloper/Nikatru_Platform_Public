@@ -32,11 +32,20 @@
 <!-- render: class=meta nbsp-dots -->
 Effective date: 2026-08-21 · Last updated: 2026-09-05 · Applies to: FullShot – Full Page Screen Capture, the browser extension for Google Chrome, Microsoft Edge, and Mozilla Firefox, version 1.10.1 and later.
 
-<!-- render: class=lead -->
+<!-- render: class=lead when=free -->
 FullShot is a screenshot tool that runs entirely on your own computer. It does not have accounts, does not send your data anywhere, and does not track you. This policy explains exactly what that means.
 
-<!-- render: callout=In one line -->
+<!-- render: class=lead when=pro -->
+FullShot is a screenshot tool that runs on your own computer. Capturing needs no account, sends nothing anywhere, and does not track you. This policy explains exactly what that means.
+
+<!-- render: when=free callout=In one line -->
 Your screenshots and settings stay on your device. FullShot has no servers, collects no analytics, shows no ads, and never sells or transmits your data.
+
+<!-- render: when=pro callout=In one line -->
+Your screenshots and settings stay on your device. Capturing collects no analytics, shows no ads, and never sells or transmits your data.
+
+<!-- render: when=pro -->
+FullShot Pro is optional. It adds watermark and logo images, brand kits, and annotation and redaction presets, and it is tied to a Nikatru account, which the Nikatru privacy policy covers. Capturing, annotating, redacting and exporting stay free and need no account, and nothing else this policy says about them changes.
 
 ## 1. Who we are
 
@@ -86,7 +95,14 @@ If you turn on "Redact PII," FullShot scans the captured page's text **on your d
 
 ## 5. Data sharing and transmission
 
+<!-- render: when=free -->
 None. FullShot makes no network requests to any server, ours or a third party's. There is no cloud component. Because nothing is transmitted, there is nothing for us to share, sell, or hand over. (Files you deliberately save to Downloads or copy to the clipboard are then in your control, like any other file.)
+
+<!-- render: when=pro -->
+**If you sign in to FullShot Pro.** Pro is optional. If you sign in with a Nikatru account, FullShot contacts Nikatru's server when you sign in and from time to time afterwards, to confirm that your account has Pro. It sends a sign-in token and the product name, and nothing else: never your screenshots, the pages you capture or your browsing history. If you use Pro's brand features, the watermark and logo images, brand kits and presets you create are stored with your account so they follow you to any browser you sign in on. Cloudflare (which hosts Nikatru's server) and Supabase (which runs account sign-in) process this data for us. You can sign out at any time; the free features keep working without an account.
+
+<!-- render: when=sells ADR 094 -->
+If you buy FullShot Pro, Paddle handles the payment, or Razorpay for buyers in India. We receive a record of the purchase, never your card details.
 
 ## 6. Permissions and why they are used
 
@@ -109,7 +125,11 @@ FullShot contains no remotely hosted code; all code ships inside the extension (
 
 ## 8. Security
 
+<!-- render: when=free -->
 Your data stays on your device and is never transmitted by FullShot, which removes the main network exposure. Local data is protected by your operating system and the browser's per-extension storage isolation. We ship no remote code that could later change this behavior.
+
+<!-- render: when=pro -->
+Local data is protected by your operating system and the browser's per-extension storage isolation. We ship no remote code that could later change this behavior.
 
 ## 9. Age requirement
 

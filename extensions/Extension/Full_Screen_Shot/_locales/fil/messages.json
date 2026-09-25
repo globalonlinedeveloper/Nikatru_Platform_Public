@@ -473,7 +473,7 @@
     "message": "Na-save ✓"
   },
   "optionsSaveFailed": {
-    "message": "Not saved ✕"
+    "message": "Hindi na-save ✕"
   },
   "optionsSectionData": {
     "message": "Ang iyong data"
@@ -550,7 +550,7 @@
     }
   },
   "optionsSweepPartial": {
-    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "message": "Naalis: $COUNT$ sa $FOUND$ · Na-free na espasyo: $SIZE$ · Hindi naalis ang iba. Subukang muli, o i-restart ang iyong browser.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -830,7 +830,7 @@
     "message": "Natanggal ang screenshot."
   },
   "redactActsLine": {
-    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "message": "Naka-on ang redaction. $MATCHED$ tumugma, $PAINTED$ napinturahan, $VERIFIED$ nakumpirmang opaque sa larawang ito.",
     "placeholders": {
       "matched": {
         "content": "$1",
@@ -847,11 +847,11 @@
     }
   },
   "redactActsNone": {
-    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "message": "Walang tinugma ang redaction sa tekstong binasa nito at wala itong ipinintang block. Walang naka-outline sa ibaba.",
     "placeholders": {}
   },
   "redactActsShortfall": {
-    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "message": "Tumugma ang redaction sa $MATCHED$ at natakpan ang $COVERED$.",
     "placeholders": {
       "matched": {
         "content": "$1",
@@ -864,7 +864,7 @@
     }
   },
   "redactActsUncoveredOne": {
-    "message": "$COUNT$ match is not covered in this image.",
+    "message": "$COUNT$ tugma ang hindi natakpan sa larawang ito.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -873,7 +873,7 @@
     }
   },
   "redactActsUncoveredOther": {
-    "message": "$COUNT$ matches are not covered in this image.",
+    "message": "$COUNT$ na tugma ang hindi natakpan sa larawang ito.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -882,15 +882,15 @@
     }
   },
   "redactActsWalkTruncated": {
-    "message": "FullShot did not finish walking this page.",
+    "message": "Hindi natapos ng FullShot ang pagdaan sa page na ito.",
     "placeholders": {}
   },
   "redactActsCountPartial": {
-    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "message": "Maaaring kulang ang bilang na ito: hindi binasa ng FullShot ang ilang bahagi ng teksto sa capture na ito.",
     "placeholders": {}
   },
   "redactActsScanLimits": {
-    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "message": "Mga piraso ng tekstong hindi nito binasa: $REFUSED$. Mga block na nakita nito at hindi iginuhit: $LOST$.",
     "placeholders": {
       "refused": {
         "content": "$1",
@@ -903,7 +903,7 @@
     }
   },
   "redactActsBakeLimits": {
-    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "message": "Mga block na hindi nito mailagay sa larawang ito: $UNPLACED$. Mga block na iginuhit nito at hindi binasang muli: $UNREAD$.",
     "placeholders": {
       "unplaced": {
         "content": "$1",
@@ -916,7 +916,7 @@
     }
   },
   "redactActsNoLedger": {
-    "message": "This record carries no account of a redaction pass on this capture.",
+    "message": "Walang anumang tala ang record na ito tungkol sa isang redaction pass sa capture na ito.",
     "placeholders": {}
   },
   "redactActsUnknownCount": {
@@ -924,15 +924,15 @@
     "placeholders": {}
   },
   "reviewTitle": {
-    "message": "Before you copy",
+    "message": "Bago ka kumopya",
     "placeholders": {}
   },
   "reviewLimit": {
-    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "message": "Binabasa ng FullShot ang tekstong inilalantad ng page. Hindi nito nakikita ang larawang ito. Anumang iginuhit bilang mga pixel – canvas, larawan, page ng PDF, frame ng video – ay hindi kailanman nabasa.",
     "placeholders": {}
   },
   "reviewMarks": {
-    "message": "$COUNT$ blocks are outlined on the image below.",
+    "message": "Mga naka-outline na block sa larawan sa ibaba: $COUNT$.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -941,11 +941,11 @@
     }
   },
   "reviewNoMarks": {
-    "message": "No blocks are outlined on the image below.",
+    "message": "Walang naka-outline na block sa larawan sa ibaba.",
     "placeholders": {}
   },
   "reviewScale": {
-    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "message": "Ipinapakita sa $PERCENT$% ng laking kokopyahin.",
     "placeholders": {
       "percent": {
         "content": "$1",
@@ -954,7 +954,7 @@
     }
   },
   "reviewReduced": {
-    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "message": "Masyadong mahaba ang capture na ito para kopyahin bilang isang nababasang larawan, kaya ang larawan sa ibaba ay isang pinaliit na overview ng buong page. Hindi nababasa ang maliit na teksto rito – dito man o sa clipboard.",
     "placeholders": {}
   },
   "reviewMarkLabel": {
@@ -967,7 +967,7 @@
     }
   },
   "reviewMarkAt": {
-    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "message": "Block $INDEX$, $PERCENT$% mula sa itaas ng larawan",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -980,23 +980,23 @@
     }
   },
   "reviewPrevView": {
-    "message": "Previous view",
+    "message": "Nakaraang view",
     "placeholders": {}
   },
   "reviewNextView": {
-    "message": "Next view",
+    "message": "Susunod na view",
     "placeholders": {}
   },
   "reviewZoomOut": {
-    "message": "Zoom out",
+    "message": "Mag-zoom out",
     "placeholders": {}
   },
   "reviewZoomIn": {
-    "message": "Zoom in",
+    "message": "Mag-zoom in",
     "placeholders": {}
   },
   "reviewViewPos": {
-    "message": "View $INDEX$ of $TOTAL$",
+    "message": "View $INDEX$ ng $TOTAL$",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -1009,7 +1009,7 @@
     }
   },
   "reviewImgRegion": {
-    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "message": "Ang larawang kokopyahin na, $DIMS$ pixel – i-scroll gamit ang mga arrow key",
     "placeholders": {
       "dims": {
         "content": "$1",
@@ -1018,15 +1018,15 @@
     }
   },
   "reviewConfirm": {
-    "message": "I have looked — copy",
+    "message": "Tiningnan ko na – kopyahin",
     "placeholders": {}
   },
   "reviewCancel": {
-    "message": "Cancel",
+    "message": "Kanselahin",
     "placeholders": {}
   },
   "reviewImgAlt": {
-    "message": "The image that is about to be copied",
+    "message": "Ang larawang kokopyahin na",
     "placeholders": {}
   },
   "resultAiOverviewOnly": {

@@ -6,5 +6,11 @@
   "optionsRedactPIIDesc": "Scans the text the page exposes in order to find e-mail addresses, telephone numbers, credit card numbers, personal identification numbers and API keys, then covers the matched part with a solid block in the image that is saved. Text drawn in the form of picture dots it cannot read — a canvas, an image, a PDF file, a video frame. The detection runs right on your device; nothing is sent anywhere at all. Applies to whole-page captures (scrolling the entire document); the covering block is permanent, so please review the result yourself.",
   "scrollclipFormatHint": "GIF can be played back everywhere. WebM is lighter and smoother (it is recorded directly, right inside your browser).",
   "batchPermissionHint": "Opening these pages needs a permission that is asked only one single time, at the first run.",
-  "batchPermissionDeclined": "The permission to open those pages has been refused."
+  "batchPermissionDeclined": "The permission to open those pages has been refused.",
+  "redactActsNone": "The covering feature did not match any content in the text it read and did not paint any block. Nothing is bordered below.",
+  "redactActsShortfall": "The covering feature matched 3 and covered 2.",
+  "redactActsUncoveredOne": "1 match is not covered in this image.",
+  "redactActsUncoveredOther": "2 matches are not covered in this image.",
+  "reviewLimit": "FullShot reads the text that the page displays. It cannot see this image. Everything drawn with pixels – canvas, image, PDF page, video frame – has never been read.",
+  "reviewNoMarks": "No block is bordered on the image below."
 }

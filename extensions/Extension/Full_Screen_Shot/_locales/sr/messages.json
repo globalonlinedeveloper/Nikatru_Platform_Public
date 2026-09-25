@@ -473,7 +473,7 @@
     "message": "Сачувано ✓"
   },
   "optionsSaveFailed": {
-    "message": "Not saved ✕"
+    "message": "Није сачувано ✕"
   },
   "optionsSectionData": {
     "message": "Ваши подаци"
@@ -550,7 +550,7 @@
     }
   },
   "optionsSweepPartial": {
-    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "message": "Уклоњено: $COUNT$ од $FOUND$ · Ослобођен простор: $SIZE$ · Остатак није могао да се уклони. Покушајте поново или поново покрените прегледач.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -839,7 +839,7 @@
     "message": "Снимак је обрисан."
   },
   "redactActsLine": {
-    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "message": "Затамњивање укључено. Пронађено: $MATCHED$, префарбано: $PAINTED$, на овој слици потврђено као непрозирно: $VERIFIED$.",
     "placeholders": {
       "matched": {
         "content": "$1",
@@ -856,11 +856,11 @@
     }
   },
   "redactActsNone": {
-    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "message": "Затамњивање у прочитаном тексту није пронашло ништа и није нацртало ниједан блок. Испод ништа није уоквирено.",
     "placeholders": {}
   },
   "redactActsShortfall": {
-    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "message": "Затамњивање је пронашло $MATCHED$ и прекрило $COVERED$.",
     "placeholders": {
       "matched": {
         "content": "$1",
@@ -873,7 +873,7 @@
     }
   },
   "redactActsUncoveredOne": {
-    "message": "$COUNT$ match is not covered in this image.",
+    "message": "$COUNT$ подударање није прекривено на овој слици.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -882,7 +882,7 @@
     }
   },
   "redactActsUncoveredFew": {
-    "message": "$COUNT$ matches are not covered in this image.",
+    "message": "$COUNT$ подударања нису прекривена на овој слици.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -891,7 +891,7 @@
     }
   },
   "redactActsUncoveredOther": {
-    "message": "$COUNT$ matches are not covered in this image.",
+    "message": "$COUNT$ подударања није прекривено на овој слици.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -900,15 +900,15 @@
     }
   },
   "redactActsWalkTruncated": {
-    "message": "FullShot did not finish walking this page.",
+    "message": "FullShot није завршио пролазак кроз ову страницу.",
     "placeholders": {}
   },
   "redactActsCountPartial": {
-    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "message": "Овај број је можда премали: FullShot није прочитао део текста на овом снимку.",
     "placeholders": {}
   },
   "redactActsScanLimits": {
-    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "message": "Делови текста које није прочитао: $REFUSED$. Блокови које је пронашао и није нацртао: $LOST$.",
     "placeholders": {
       "refused": {
         "content": "$1",
@@ -921,7 +921,7 @@
     }
   },
   "redactActsBakeLimits": {
-    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "message": "Блокови које није могао да смести на ову слику: $UNPLACED$. Блокови које је нацртао и није поново прочитао: $UNREAD$.",
     "placeholders": {
       "unplaced": {
         "content": "$1",
@@ -934,7 +934,7 @@
     }
   },
   "redactActsNoLedger": {
-    "message": "This record carries no account of a redaction pass on this capture.",
+    "message": "Овај запис не садржи никакав извештај о проласку затамњивања за овај снимак.",
     "placeholders": {}
   },
   "redactActsUnknownCount": {
@@ -942,15 +942,15 @@
     "placeholders": {}
   },
   "reviewTitle": {
-    "message": "Before you copy",
+    "message": "Пре копирања",
     "placeholders": {}
   },
   "reviewLimit": {
-    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "message": "FullShot чита текст који страница излаже. Не може да види ову слику. Ништа што је нацртано као пиксели – платно, слика, страница PDF-а, кадар видео снимка – никада није прочитано.",
     "placeholders": {}
   },
   "reviewMarks": {
-    "message": "$COUNT$ blocks are outlined on the image below.",
+    "message": "Уоквирени блокови на слици испод: $COUNT$.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -959,11 +959,11 @@
     }
   },
   "reviewNoMarks": {
-    "message": "No blocks are outlined on the image below.",
+    "message": "На слици испод није уоквирен ниједан блок.",
     "placeholders": {}
   },
   "reviewScale": {
-    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "message": "Приказано у $PERCENT$% величине која ће бити копирана.",
     "placeholders": {
       "percent": {
         "content": "$1",
@@ -972,11 +972,11 @@
     }
   },
   "reviewReduced": {
-    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "message": "Овај снимак је превисок да би се копирао као једна читљива слика, па је слика испод умањени преглед целе странице. Ситан текст на њој није читљив – ни овде ни у привременој меморији.",
     "placeholders": {}
   },
   "reviewMarkLabel": {
-    "message": "Block $INDEX$",
+    "message": "Блок $INDEX$",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -985,7 +985,7 @@
     }
   },
   "reviewMarkAt": {
-    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "message": "Блок $INDEX$, $PERCENT$% од врха слике",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -998,23 +998,23 @@
     }
   },
   "reviewPrevView": {
-    "message": "Previous view",
+    "message": "Претходни приказ",
     "placeholders": {}
   },
   "reviewNextView": {
-    "message": "Next view",
+    "message": "Следећи приказ",
     "placeholders": {}
   },
   "reviewZoomOut": {
-    "message": "Zoom out",
+    "message": "Умањи",
     "placeholders": {}
   },
   "reviewZoomIn": {
-    "message": "Zoom in",
+    "message": "Увећај",
     "placeholders": {}
   },
   "reviewViewPos": {
-    "message": "View $INDEX$ of $TOTAL$",
+    "message": "Приказ $INDEX$ од $TOTAL$",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -1027,7 +1027,7 @@
     }
   },
   "reviewImgRegion": {
-    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "message": "Слика која ће управо бити копирана, $DIMS$ пиксела – померајте је тастерима са стрелицама",
     "placeholders": {
       "dims": {
         "content": "$1",
@@ -1036,15 +1036,15 @@
     }
   },
   "reviewConfirm": {
-    "message": "I have looked — copy",
+    "message": "Погледао сам – копирај",
     "placeholders": {}
   },
   "reviewCancel": {
-    "message": "Cancel",
+    "message": "Откажи",
     "placeholders": {}
   },
   "reviewImgAlt": {
-    "message": "The image that is about to be copied",
+    "message": "Слика која ће управо бити копирана",
     "placeholders": {}
   },
   "resultAiOverviewOnly": {

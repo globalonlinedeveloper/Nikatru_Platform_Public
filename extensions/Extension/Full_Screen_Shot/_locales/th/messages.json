@@ -473,7 +473,7 @@
     "message": "บันทึกแล้ว ✓"
   },
   "optionsSaveFailed": {
-    "message": "Not saved ✕"
+    "message": "ไม่ได้บันทึก ✕"
   },
   "optionsSectionData": {
     "message": "ข้อมูลของคุณ"
@@ -550,7 +550,7 @@
     }
   },
   "optionsSweepPartial": {
-    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "message": "ลบแล้ว: $COUNT$ จาก $FOUND$ · พื้นที่ที่คืนมา: $SIZE$ · ลบส่วนที่เหลือไม่ได้ ลองอีกครั้ง หรือรีสตาร์ตเบราว์เซอร์",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -821,7 +821,7 @@
     "message": "ลบภาพหน้าจอแล้ว"
   },
   "redactActsLine": {
-    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "message": "เปิดการปิดบังอยู่ ตรงกัน $MATCHED$ ระบายทับ $PAINTED$ ยืนยันว่าทึบในภาพนี้ $VERIFIED$",
     "placeholders": {
       "matched": {
         "content": "$1",
@@ -838,11 +838,11 @@
     }
   },
   "redactActsNone": {
-    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "message": "การปิดบังไม่พบสิ่งที่ตรงกันในข้อความที่อ่าน และไม่ได้ระบายบล็อกใดเลย ไม่มีสิ่งใดถูกตีกรอบด้านล่าง",
     "placeholders": {}
   },
   "redactActsShortfall": {
-    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "message": "การปิดบังพบสิ่งที่ตรงกัน $MATCHED$ และปิดทับได้ $COVERED$",
     "placeholders": {
       "matched": {
         "content": "$1",
@@ -855,7 +855,7 @@
     }
   },
   "redactActsUncoveredOther": {
-    "message": "$COUNT$ matches are not covered in this image.",
+    "message": "มีสิ่งที่ตรงกัน $COUNT$ รายการที่ไม่ได้ถูกปิดทับในภาพนี้",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -864,15 +864,15 @@
     }
   },
   "redactActsWalkTruncated": {
-    "message": "FullShot did not finish walking this page.",
+    "message": "FullShot ไล่อ่านหน้านี้ไม่จบ",
     "placeholders": {}
   },
   "redactActsCountPartial": {
-    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "message": "ตัวเลขนี้อาจน้อยกว่าจริง: FullShot ไม่ได้อ่านข้อความบางส่วนในภาพจับหน้าจอนี้",
     "placeholders": {}
   },
   "redactActsScanLimits": {
-    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "message": "ส่วนของข้อความที่ไม่ได้อ่าน: $REFUSED$ บล็อกที่พบแต่ไม่ได้วาด: $LOST$",
     "placeholders": {
       "refused": {
         "content": "$1",
@@ -885,7 +885,7 @@
     }
   },
   "redactActsBakeLimits": {
-    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "message": "บล็อกที่วางลงในภาพนี้ไม่ได้: $UNPLACED$ บล็อกที่วาดแล้วแต่ไม่ได้อ่านกลับ: $UNREAD$",
     "placeholders": {
       "unplaced": {
         "content": "$1",
@@ -898,7 +898,7 @@
     }
   },
   "redactActsNoLedger": {
-    "message": "This record carries no account of a redaction pass on this capture.",
+    "message": "บันทึกนี้ไม่มีข้อมูลใดเกี่ยวกับรอบการปิดบังสำหรับภาพจับหน้าจอนี้",
     "placeholders": {}
   },
   "redactActsUnknownCount": {
@@ -906,15 +906,15 @@
     "placeholders": {}
   },
   "reviewTitle": {
-    "message": "Before you copy",
+    "message": "ก่อนคัดลอก",
     "placeholders": {}
   },
   "reviewLimit": {
-    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "message": "FullShot อ่านข้อความที่หน้าเว็บเปิดเผย มันมองไม่เห็นภาพนี้ สิ่งที่วาดเป็นพิกเซล เช่น แคนวาส รูปภาพ หน้า PDF หรือเฟรมวิดีโอ ไม่เคยถูกอ่านเลย",
     "placeholders": {}
   },
   "reviewMarks": {
-    "message": "$COUNT$ blocks are outlined on the image below.",
+    "message": "บล็อกที่ถูกตีกรอบในภาพด้านล่าง: $COUNT$",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -923,11 +923,11 @@
     }
   },
   "reviewNoMarks": {
-    "message": "No blocks are outlined on the image below.",
+    "message": "ไม่มีบล็อกใดถูกตีกรอบในภาพด้านล่าง",
     "placeholders": {}
   },
   "reviewScale": {
-    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "message": "แสดงที่ $PERCENT$% ของขนาดที่จะคัดลอก",
     "placeholders": {
       "percent": {
         "content": "$1",
@@ -936,11 +936,11 @@
     }
   },
   "reviewReduced": {
-    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "message": "ภาพจับหน้าจอนี้สูงเกินกว่าจะคัดลอกเป็นภาพเดียวที่อ่านได้ ภาพด้านล่างจึงเป็นภาพรวมย่อขนาดของทั้งหน้า ข้อความตัวเล็กในภาพอ่านไม่ออก ทั้งที่นี่และในคลิปบอร์ด",
     "placeholders": {}
   },
   "reviewMarkLabel": {
-    "message": "Block $INDEX$",
+    "message": "บล็อก $INDEX$",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -949,7 +949,7 @@
     }
   },
   "reviewMarkAt": {
-    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "message": "บล็อก $INDEX$ ที่ $PERCENT$% จากด้านบนของภาพ",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -962,23 +962,23 @@
     }
   },
   "reviewPrevView": {
-    "message": "Previous view",
+    "message": "มุมมองก่อนหน้า",
     "placeholders": {}
   },
   "reviewNextView": {
-    "message": "Next view",
+    "message": "มุมมองถัดไป",
     "placeholders": {}
   },
   "reviewZoomOut": {
-    "message": "Zoom out",
+    "message": "ย่อ",
     "placeholders": {}
   },
   "reviewZoomIn": {
-    "message": "Zoom in",
+    "message": "ขยาย",
     "placeholders": {}
   },
   "reviewViewPos": {
-    "message": "View $INDEX$ of $TOTAL$",
+    "message": "มุมมอง $INDEX$ จาก $TOTAL$",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -991,7 +991,7 @@
     }
   },
   "reviewImgRegion": {
-    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "message": "ภาพที่กำลังจะถูกคัดลอก $DIMS$ พิกเซล — เลื่อนด้วยปุ่มลูกศร",
     "placeholders": {
       "dims": {
         "content": "$1",
@@ -1000,15 +1000,15 @@
     }
   },
   "reviewConfirm": {
-    "message": "I have looked — copy",
+    "message": "ฉันดูแล้ว — คัดลอก",
     "placeholders": {}
   },
   "reviewCancel": {
-    "message": "Cancel",
+    "message": "ยกเลิก",
     "placeholders": {}
   },
   "reviewImgAlt": {
-    "message": "The image that is about to be copied",
+    "message": "ภาพที่กำลังจะถูกคัดลอก",
     "placeholders": {}
   },
   "resultAiOverviewOnly": {

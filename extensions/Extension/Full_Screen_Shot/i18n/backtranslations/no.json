@@ -6,5 +6,11 @@
   "optionsRedactPIIDesc": "Searches through the text the page shows, for e-mail addresses, telephone numbers, card numbers, national identity numbers and API keys, and lays a fully covering field over what hit, in the saved image. Text that is drawn as pixels it cannot read – a canvas, an image, a PDF, a video frame. The recognition runs on your device; nothing is ever sent anywhere. Applies to recordings of the whole page (document scrolling); the field is permanent, so look over the result yourself.",
   "scrollclipFormatHint": "GIF is played back everywhere. WebM is smaller and more even (it is recorded directly in your browser).",
   "batchPermissionHint": "The first time, a one-time permission is required in order to open these pages.",
-  "batchPermissionDeclined": "The permission to open those pages was turned down."
+  "batchPermissionDeclined": "The permission to open those pages was turned down.",
+  "redactActsNone": "The redaction found nothing in the text it read and painted no blocks. Nothing is marked below.",
+  "redactActsShortfall": "The redaction found 3 and covered 2.",
+  "redactActsUncoveredOne": "1 hit is not covered in this image.",
+  "redactActsUncoveredOther": "2 hits are not covered in this image.",
+  "reviewLimit": "FullShot reads the text a page exposes. It cannot see this image. Everything drawn as pixels – a canvas, an image, a PDF page, a video frame – was never read.",
+  "reviewNoMarks": "No blocks are marked in the image below."
 }

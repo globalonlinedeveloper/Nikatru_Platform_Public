@@ -6,5 +6,11 @@
   "optionsRedactPIIDesc": "Searches the text that a page discloses for e-mail addresses, telephone numbers, credit card numbers, social security numbers and API keys and lays an opaque bar over what was found, in the saved image. Text that is drawn as pixels it cannot read – a canvas, an image, a PDF, a video picture. The detection runs on your device; nothing is ever sent anywhere. Applies to full-page captures (document scroll); the bar is permanent, so check the result yourself.",
   "scrollclipFormatHint": "GIF runs everywhere. WebM is smaller and smoother (recorded live in your browser).",
   "batchPermissionHint": "To open these pages a one-time permission is necessary the first time.",
-  "batchPermissionDeclined": "The permission to open these pages was declined."
+  "batchPermissionDeclined": "The permission to open these pages was declined.",
+  "redactActsNone": "The redaction recognised nothing in the text it read and painted no bars. Nothing is outlined below.",
+  "redactActsShortfall": "The redaction recognised 3 and covered 2.",
+  "redactActsUncoveredOne": "1 hit is not covered in this image.",
+  "redactActsUncoveredOther": "2 hits are not covered in this image.",
+  "reviewLimit": "FullShot reads the text that a page discloses. It cannot see this image. Everything drawn as pixels – a canvas, a picture, a PDF page, a video frame – was never read.",
+  "reviewNoMarks": "No bars are outlined in the image below."
 }

@@ -6,5 +6,11 @@
   "optionsRedactPIIDesc": "Scans the text the web page reveals in order to find e-mails, telephone numbers, credit card numbers, national identity numbers and API keys, then paints a solid block over what matches in the saved picture. Text that is drawn as pixels cannot be read, whether it is a canvas, an image, a PDF or a video frame. The detection works on your device. No data at all is ever sent out to anywhere. It can be used with whole-page captures (scrolling the whole document) and this block cannot be removed, so you should check the result yourself every time.",
   "scrollclipFormatHint": "GIF can be played anywhere. As for WebM, the file is smaller and it is smoother (recorded live in your browser).",
   "batchPermissionHint": "Opening these pages requires asking for a one-time-only permission on the first use.",
-  "batchPermissionDeclined": "The permission to open those pages was refused."
+  "batchPermissionDeclined": "The permission to open those pages was refused.",
+  "redactActsNone": "The hiding did not find anything matching in the text it read and did not paint any block. Nothing is framed below.",
+  "redactActsShortfall": "The hiding found 3 matches and covered 2.",
+  "redactActsUncoveredOne": "There is 1 match that was not covered in this image.",
+  "redactActsUncoveredOther": "There are 2 matches that were not covered in this image.",
+  "reviewLimit": "FullShot reads the text the web page reveals. It cannot see this image. Things drawn as pixels, such as a canvas, image, PDF page or video frame, were never read at all.",
+  "reviewNoMarks": "No block is framed in the image below."
 }

@@ -1,7 +1,8 @@
 # Firefox Add-ons (AMO) listing
 
 AMO takes a **different build** from Chrome and Edge — the firefox target, with
-`publish/manifest.firefox.json` applied as an RFC 7386 merge patch.
+`publish/manifest.firefox.json` applied as an RFC 7386 merge patch. Every `.txt` here is
+RENDERED from `../listing.json` by `scripts/render-listing.mjs`; edit the copy there, never here.
 
 ## Limits enforced here
 

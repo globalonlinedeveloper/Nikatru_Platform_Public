@@ -72,6 +72,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
 import { normaliseForMatch, visibleText } from './text-reductions.mjs';
+import { fullshotPro, dropGated, FULLSHOT_TOOL_REL, APP_CONFIG_REL } from '../../contracts/legal/pro-gate.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 
@@ -92,6 +93,9 @@ const DOCUMENTS = [
     renderedBy: 'node contracts/legal/render-fullshot-privacy.mjs',
     /** Assertion 3 RUNS this, in a scratch tree, and compares bytes. */
     renderer: 'contracts/legal/render-fullshot-privacy.mjs',
+    /** ⏱ 2026-09-25 (EXT-4, Q2) — the files the renderer reads to decide which
+     *  `when=pro|sells|free` paragraphs are published; copied into the scratch tree. */
+    rendererReads: ['contracts/legal/pro-gate.mjs', FULLSHOT_TOOL_REL, APP_CONFIG_REL],
     copies: [
       {
         file: 'sites/nikatru/fullshot/privacy.html',
@@ -267,7 +271,20 @@ for (const doc of DOCUMENTS) {
     coverageLost(`${doc.source} does not exist, so its ${doc.copies.length} published copy/copies are compared to nothing.`);
     continue;
   }
-  const sourceText = markdownVisibleText(readFileSync(sourceAbs, 'utf8'));
+  // ⏱ 2026-09-25 (EXT-4, Q2). A `when=pro|sells|free` paragraph is published only
+  // on one side of FullShot's transmits-or-sells facts, so the Markdown side is
+  // reduced by the renderer's own dropGated() first. A source that gates a
+  // paragraph in a tree where those facts cannot be read is COVERAGE LOST.
+  let sourceMd = readFileSync(sourceAbs, 'utf8').replace(/\r\n/g, '\n');
+  if (/<!--\s*render:[^>]*\bwhen=(?:pro|sells|free)\b/.test(sourceMd)) {
+    let gate;
+    try { gate = fullshotPro(ROOT); } catch (e) {
+      coverageLost(`${doc.source} gates paragraphs on FullShot Pro and ${e.message}.`);
+      continue;
+    }
+    sourceMd = dropGated(sourceMd, gate);
+  }
+  const sourceText = markdownVisibleText(sourceMd);
   if (sourceText.length < MIN_CHARACTERS) {
     coverageLost(
       `${doc.source} reduced to ${sourceText.length} character(s), below the ${MIN_CHARACTERS} floor. ` +
@@ -351,7 +368,8 @@ for (const doc of DOCUMENTS) {
   }
   const scratch = mkdtempSync(join(tmpdir(), 'nikatru-ltp-render-'));
   try {
-    for (const rel of [doc.renderer, doc.source]) {
+    for (const rel of [doc.renderer, doc.source, ...(doc.rendererReads ?? [])]) {
+      if (!existsSync(join(ROOT, rel))) continue; // the renderer names what it could not read
       mkdirSync(dirname(join(scratch, rel)), { recursive: true });
       copyFileSync(join(ROOT, rel), join(scratch, rel));
     }
