@@ -787,7 +787,9 @@ describe('runPreflight — all fourteen, end to end on a fixture', () => {
     assert.ok(!text.includes(ANON), 'the anon key must never be printed');
     assertNothingSecret(text);
     assert.match(text, /SELFHOSTED_SUPABASE_ANON_KEY len=27 sha256:[0-9a-f]{8}/);
-    assert.match(text, /CLOUDFLARE_API_TOKEN len=19 sha256:[0-9a-f]{8} · CLOUDFLARE_ACCOUNT_ID len=20 sha256:[0-9a-f]{8}/);
+    assert.match(text, /CLOUDFLARE_API_TOKEN set · CLOUDFLARE_ACCOUNT_ID len=20 sha256:[0-9a-f]{8}/);
+    // Not even a fingerprint of the token: CodeQL js/insufficient-password-hash.
+    assert.doesNotMatch(text, /CLOUDFLARE_API_TOKEN len=/);
   });
 
   test('the same state without a Cloudflare token: C9 and C10 LOST with the reason, C11 still read, exit 2', async () => {

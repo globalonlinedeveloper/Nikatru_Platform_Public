@@ -26,8 +26,9 @@
 // A check whose input is absent (credential, token, attestation, env file) is
 // LOST with the reason, never PASS. Credentials come from the ENVIRONMENT only
 // (SELFHOSTED_SUPABASE_URL, SELFHOSTED_SUPABASE_ANON_KEY, CLOUDFLARE_API_TOKEN,
-// CLOUDFLARE_ACCOUNT_ID) and are printed as a name, a length and a short hash;
-// the account id is `<account>` in every URL a line prints. It never writes: no
+// CLOUDFLARE_ACCOUNT_ID) and are printed as a name, a length and a short hash —
+// except CLOUDFLARE_API_TOKEN, printed only as `set` or `NOT SET`; the account
+// id is `<account>` in every URL a line prints. It never writes: no
 // user is created, no config is changed, nothing is deployed.
 //
 // The fourteen, and what each reuses (plan: research/session-2026-09-23/
@@ -657,7 +658,10 @@ export async function runPreflight({
   const lines = [
     head,
     `target ${tgt} (from ${targetFrom}) · SELFHOSTED_SUPABASE_ANON_KEY ${anonKey ? fingerprint(anonKey) : 'NOT SET'} · env dump ${boxcEnvFile ? 'given' : 'none'} · attest ${attest.length ? attest.join(',') : 'none'}`,
-    `cloudflare CLOUDFLARE_API_TOKEN ${env.CLOUDFLARE_API_TOKEN ? fingerprint(env.CLOUDFLARE_API_TOKEN) : 'NOT SET'} · CLOUDFLARE_ACCOUNT_ID ${env.CLOUDFLARE_ACCOUNT_ID ? fingerprint(env.CLOUDFLARE_ACCOUNT_ID) : 'NOT SET'}`,
+    // 🔴 NOTHING DERIVED FROM THE CLOUDFLARE TOKEN REACHES A LINE, not even a
+    // length-and-hash fingerprint: CodeQL js/insufficient-password-hash (high)
+    // flagged the SHA-256 of it on PR #953. Only whether it is set is printed.
+    `cloudflare CLOUDFLARE_API_TOKEN ${env.CLOUDFLARE_API_TOKEN ? 'set' : 'NOT SET'} · CLOUDFLARE_ACCOUNT_ID ${env.CLOUDFLARE_ACCOUNT_ID ? fingerprint(env.CLOUDFLARE_ACCOUNT_ID) : 'NOT SET'}`,
     ...results.map((r) => `${r.verdict.padEnd(4)}  ${r.id} ${r.name}: ${r.detail}`),
     summary,
   ];
