@@ -67,6 +67,7 @@ import { join, resolve, extname, sep } from 'node:path';
 // worktrees under `.claude/` and reads another checkout's files as this tree's,
 // which is green in CI and red on the one machine actually looking at it.
 import { listDir } from './tree-walk.mjs';
+import { sameMeaningFindings } from '../ops/auth-record-compare.mjs';
 
 const repoRoot = resolve(process.argv.slice(2).find((a) => !a.startsWith('--')) ?? process.cwd());
 /** No argument means CI's own invocation against the real repository, where the
@@ -248,6 +249,17 @@ if (transport !== 'custom-smtp' && transport !== 'provider-default') {
   if (!Number.isInteger(auth.rate_limit_email_sent)) {
     problems.push(`${REGISTER_REL}: \`rate_limit_email_sent\` is not an integer, so the recorded reading is unusable.`);
   }
+}
+
+// ⏱ 2026-09-25 — `supabaseAuth.sameMeaning`, refused STATICALLY when malformed.
+// The live checker already refuses a bad entry as a DRIFT line, but that is Ops
+// watch at night, and a red Ops watch holds every deploy lane. The four shapes
+// (a name that is not a compared field; not an array of JSON scalars; an empty
+// list; a list without the recorded value) are read by the SAME function the
+// live checker uses, imported rather than restated, so CI and Ops watch cannot
+// disagree about what a well-formed declaration is.
+for (const why of sameMeaningFindings(auth).refused) {
+  problems.push(`${REGISTER_REL}: ${why}`);
 }
 
 // ── the corpus ──────────────────────────────────────────────────────────────
