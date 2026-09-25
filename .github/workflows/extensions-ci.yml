@@ -362,6 +362,13 @@ jobs:
       # private generators' --check into the repo's pre-commit runner (spec-guards).
       - name: The README catalog table is what the tool.json files generate
         run: node scripts/gen-catalog.mjs --check
+      # why: O-NEW-TOOL-HAS-NO-FIREFOX-IDENTITY. tooling/house-identity.json holds the
+      # owner domain every Firefox add-on id is built from, and AMO fixes that id at
+      # first signing; every tool's publish/identity.json must equal it. Runs from the
+      # repository root because the house file is outside extensions/.
+      - name: Every tool carries the house identity
+        working-directory: .
+        run: node tooling/ci/assert-house-identity.mjs .
 
   core:
     name: core sims

@@ -42,37 +42,44 @@
 // is a probe that always answers the same way.
 //
 // ── WHAT IT DOES AND DOES NOT FAIL ON ────────────────────────────────────────
-//   · `chrome-webstore` ARMED and the mint FAILS  → exit 1. The credential the
-//     release lane depends on is dead and somebody has to re-issue it.
-//   · ARMED and the mint succeeds                 → exit 0, printing the account
+// ⏱ 2026-09-25 (EXT-6): the gate is PRESENCE, not arming (keepaliveGate in
+// store-poll.mjs, shared with store-key-keepalive.mjs). Before, an unarmed row
+// skipped the mint even with the key set — and CWS_SERVICE_ACCOUNT_JSON has been
+// set since 2026-09-09 while chrome-webstore is unarmed, so the key was never
+// exercised. Now:
+//   · the key is SET and the mint FAILS           → exit 1, armed or not. A dead
+//     key is somebody's job to re-issue before a release depends on it.
+//   · the key is SET and the mint succeeds        → exit 0, printing the account
 //     email, the lifetime and the scope, never the token and never the key.
-//   · NOT ARMED                                   → exit 0, printing the owner
+//   · the key is ABSENT and the row is ARMED      → exit 1: the release lane
+//     depends on a key that is not there.
+//   · the key is ABSENT and the row is NOT ARMED  → exit 0, printing the owner
 //     step. [pipeline C-6]: no agent can create these secrets, so failing here
 //     would redden a scheduled lane on work only the owner can do.
+// SEAM: CWS_OAUTH_TOKEN_URL accepts the canonical token URL or http on loopback
+// only (loopbackBase), for the self-test's stub token server; no workflow sets it.
 //
 // ⚠️ NEVER `process.exit()` AFTER A `fetch` ON WINDOWS (TRAPS shell-12).
 //
 // Usage:  node scripts/publish-cws-keepalive.mjs
 // ─────────────────────────────────────────────────────────────────────────────
-import { publishVerdict, LANES, ArmingCoverageLost, REPO_ROOT } from './publish-arming.mjs';
+import { ArmingCoverageLost, REPO_ROOT } from './publish-arming.mjs';
+import { keepaliveGate, loopbackBase, overrideLine } from './store-poll.mjs';
 
 /** --repo-root points the REGISTER READ at another tree, so the gate self-test can
  *  drive a fixture row rather than the live register. */
 const rootArg = (() => { const i = process.argv.indexOf('--repo-root'); return i !== -1 && i + 1 < process.argv.length ? process.argv[i + 1] : REPO_ROOT; })();
-import { mintAccessToken, CWS_SA_ENV, CWS_SA_DOC } from './publish-cws-token.mjs';
+import { mintAccessToken, CWS_SA_ENV, CWS_SA_DOC, TOKEN_URL } from './publish-cws-token.mjs';
 
-/** The subset of the Chrome lane this job actually exercises: the ONE value the
- *  token mint needs. CWS_PUBLISHER_ID is a route segment, not a credential, and
- *  nothing here addresses a publisher — asking for it would make this job red on
- *  a value it never uses. Taken FROM the lane table by name rather than retyped,
- *  so the reason each one exists has exactly one home. */
-const KEEPALIVE = [CWS_SA_ENV];
-const KEEPALIVE_SECRETS = LANES['chrome-webstore'].secrets.filter((s) => KEEPALIVE.includes(s.name));
+// The gate asks for the ONE value the token mint needs, CWS_SA_ENV (store-poll's
+// KEEPALIVE_NAMES). CWS_PUBLISHER_ID is a route segment, not a credential, and
+// nothing here addresses a publisher — asking for it would make this job red on
+// a value it never uses.
 
 async function main() {
   let result = null;
   try {
-    result = publishVerdict({ channelId: 'chrome-webstore', secrets: KEEPALIVE_SECRETS, ownerStep: LANES['chrome-webstore'].ownerStep, root: rootArg });
+    result = keepaliveGate('chrome-webstore', process.env, rootArg);
   } catch (e) {
     if (e instanceof ArmingCoverageLost) {
       console.error('');
@@ -85,24 +92,35 @@ async function main() {
   }
   for (const l of result.lines) console.log(l);
 
-  if (result.verdict === 'refuse') {
+  if (result.gate === 'refuse') {
     // Armed with a missing credential: the release lane cannot publish, and the
     // whole point of a scheduled check is to say so on a scheduled run rather
     // than on a tag.
+    console.error(`FAIL the register ARMS chrome-webstore and ${CWS_SA_ENV} is absent.`);
+    console.error('\ncws-token-keepalive: FAILED');
     process.exitCode = 1;
     return;
   }
-  if (result.verdict !== 'go') {
-    console.log('cws-token-keepalive: NOTHING TO CHECK — the register does not arm chrome-webstore.');
+  if (result.gate === 'owner-step') {
+    console.log(`cws-token-keepalive: NOTHING TO CHECK — ${CWS_SA_ENV} is not set and the register does not arm chrome-webstore.`);
     return;
   }
 
-  const tok = await mintAccessToken({ serviceAccountJson: process.env[CWS_SA_ENV] });
+  // A refused override stops the run before any request, to any host.
+  const seam = loopbackBase('CWS_OAUTH_TOKEN_URL', TOKEN_URL);
+  if (seam.error !== undefined) {
+    console.error(`FAIL ${seam.error}`);
+    console.error('\ncws-token-keepalive: FAILED');
+    process.exitCode = 1;
+    return;
+  }
+  if (seam.override) console.log(overrideLine('CWS_OAUTH_TOKEN_URL', seam.base));
+  const tok = await mintAccessToken({ serviceAccountJson: process.env[CWS_SA_ENV], tokenUrl: seam.base });
   if (!tok.ok) {
     console.error('');
     console.error(`FAIL the service-account token mint returned HTTP ${tok.status}: ${tok.detail}`);
-    console.error(`     Source: ${CWS_SA_DOC}. The register ARMS chrome-webstore, so the release lane depends`);
-    console.error(`     on this credential and it is not working. Check the key in ${CWS_SA_ENV} against the`);
+    console.error(`     Source: ${CWS_SA_DOC}. The key in ${CWS_SA_ENV} is set, so a release would use it,`);
+    console.error(`     and it is not working. Check it against the`);
     console.error('     Google Cloud console: a disabled, deleted or rotated key fails exactly here, and');
     console.error('     nothing else in the tree would notice before a tag push.');
     console.error('\ncws-token-keepalive: FAILED');

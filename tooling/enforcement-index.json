@@ -1012,6 +1012,16 @@
   {
     "claims": [],
     "invokedBy": [
+      ".github/workflows/extensions-ci.yml#catalogue"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-house-identity.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
       ".github/workflows/ci.yml#guards-platform"
     ],
     "kind": "guard",
@@ -3120,6 +3130,16 @@
     ],
     "kind": "script",
     "ref": "tooling/ops/check-heartbeats.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ops-watch.yml#supabase-drift"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/check-live-signin-key.mjs",
     "references": [],
     "state": "WIRED"
   },

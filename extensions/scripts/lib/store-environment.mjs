@@ -16,8 +16,9 @@
 // `environment:` AND its publisher to a call of requireStorePublishEnvironment().
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { githubApiBase } from '../../../tooling/ci/record-deployment.mjs';
+
 export const STORE_PUBLISH_ENVIRONMENT = 'store-publish';
-const GITHUB_BASE = 'https://api.github.com';
 
 /**
  * @param {{ env?: NodeJS.ProcessEnv, fetchImpl?: typeof fetch }} [opts]
@@ -45,7 +46,12 @@ export async function requireStorePublishEnvironment({ env = process.env, fetchI
       ],
     };
   }
-  const envUrl = `${GITHUB_BASE}/repos/${repo}/environments/${STORE_PUBLISH_ENVIRONMENT}`;
+  // The GitHub origin goes through the one loopback rule the deploy recorder
+  // uses, so the publishers' stub tests can answer this read without the real API
+  // (EXT-6, 2026-09-25). Anything but the real origin or http loopback refuses.
+  const gh = githubApiBase(env);
+  if (gh.error !== undefined) return { ok: false, lines: [`FAIL ${gh.error}`] };
+  const envUrl = `${gh.base}/repos/${repo}/environments/${STORE_PUBLISH_ENVIRONMENT}`;
   let res;
   try {
     res = await fetchImpl(envUrl, {
@@ -89,6 +95,7 @@ export async function requireStorePublishEnvironment({ env = process.env, fetchI
   return {
     ok: true,
     lines: [
+      ...(gh.override ? [`⬜   GITHUB_API_URL override in effect: ${gh.base} — this is a LOOPBACK TEST SEAM, not the real service.`] : []),
       `ok   "${STORE_PUBLISH_ENVIRONMENT}" carries ${reviewerRule.reviewers.length} required reviewer(s)` +
         (bypass
           ? '; ⚠️ can_admins_bypass is true, so reaching this line does NOT prove one of them approved.'

@@ -83,8 +83,7 @@
       },
       "firefox": {
         "target": "firefox", "dir": "store/firefox", "served": false,
-        "listingId": "fullshot@nikatru.com",
-        "_listingIdWhy": "THE ADD-ON ID, AND IT IS THE ONE LISTING IDENTITY THIS FACTORY OWNS. AMO reads it from the manifest in web-ext's --source-dir rather than from a URL path, so extensions/scripts/publish-amo.mjs names no id at all and this row is DECLARATIVE: it records what the package carries so a reader can see all three destinations in one place. It is not null because Mozilla does not issue it — we do, in the package — which is the same fact that makes AMO the only store whose API can make a first submission.",
+        "_listingIdWhy": "NO listingId ON THIS ROW, DELIBERATELY (⏱ 2026-09-25, O-NEW-TOOL-HAS-NO-FIREFOX-IDENTITY). The add-on id is the one listing identity this factory issues: AMO reads it from browser_specific_settings.gecko.id in the manifest web-ext signs and fixes it at the first signing. extensions/scripts/publish-arming.mjs toolListingId() reads it from manifest.json + publish/manifest.firefox.json, holds it equal to publish/identity.json (slug@ownerDomain = fullshot@nikatru.com), and REFUSES a listingId written here as a second source for one id. It was written here by hand until 2026-09-25.",
         "limits": {
           "short-description.txt": { "max": 250, "source": "https://extensionworkshop.com/documentation/develop/create-an-appealing-listing/ (fetched 2026-08-20) — verbatim: \"The summary description for your add-on is limited to 250 characters\"" }
         }

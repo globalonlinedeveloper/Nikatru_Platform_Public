@@ -80,6 +80,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { Report, parseArgs, die } from './lib/report.mjs';
+import { geckoIdFor, isPlaceholderValue, isPlaceholderIdentity } from './lib/tool-identity.mjs';
 import {
   repoRoot, resolveTool, packagedFiles, readText, readJson, walk,
   resolveMessages, versionProblem
@@ -1825,9 +1826,15 @@ const PLACEHOLDER = /^(?:|todo\b.*|tbd\b.*|fixme\b.*|\?+|xxx+|replace.*|why\b.*)
 
       const od = typeof id.ownerDomain === 'string' ? id.ownerDomain.trim() : '';
       /* Two refusals, not one alternation (CodeQL #48): the slot token ANYWHERE, or the
-         reserved .example TLD at the END. Grouping them under one $ would accept x@REPLACE-WITH-YOUR-DOMAIN.com. */
-      if (!od || /REPLACE/i.test(od) || /\.example$/i.test(od)) {
-        r.owner('publish/identity.json ownerDomain is ' + (od ? 'still a placeholder ("' + od + '")' : 'missing or empty'),
+         reserved .example TLD at the END. Grouping them under one $ would accept x@REPLACE-WITH-YOUR-DOMAIN.com.
+         ⏱ 2026-09-25: both are lib/tool-identity.mjs's isPlaceholderIdentity, still two tests.
+         A FAILURE since 2026-09-25, not an owner action (O-NEW-TOOL-HAS-NO-FIREFOX-IDENTITY): the
+         owner domain is chosen once, in tooling/house-identity.json, and scripts/new-tool.mjs writes
+         it into every stamped tool, so a placeholder here is a defect in the tree, not a decision
+         still waiting on the owner. */
+      if (isPlaceholderIdentity({ ownerDomain: od })) {
+        r.fail('publish/identity.json ownerDomain is ' + (od ? 'still a placeholder ("' + od + '")' : 'missing or empty'),
+          'The house value is in tooling/house-identity.json; scripts/new-tool.mjs writes it into every new tool.\n' +
           'The Firefox add-on id is derived as <slug>@<ownerDomain>, and AMO FIXES THE ADD-ON IDENTITY AT\n' +
           'FIRST SIGNING. A placeholder that ships once is not a typo you correct later — it is an add-on\n' +
           'that belongs to nobody, forever, and the only remedy is publishing a different add-on and\n' +
@@ -1836,7 +1843,7 @@ const PLACEHOLDER = /^(?:|todo\b.*|tbd\b.*|fixme\b.*|\?+|xxx+|replace.*|why\b.*)
           'recognises, so nothing downstream stops it. Set a domain you control, then run:\n' +
           '  node publish/bump-version.mjs --sync   (from ' + tool.rel + ')');
       } else if (typeof id.slug === 'string' && id.slug) {
-        derivedGeckoId = id.slug + '@' + od;
+        derivedGeckoId = geckoIdFor({ slug: id.slug, ownerDomain: od });
       }
     }
   } else if (ffSurface) {
@@ -1862,8 +1869,9 @@ const PLACEHOLDER = /^(?:|todo\b.*|tbd\b.*|fixme\b.*|\?+|xxx+|replace.*|why\b.*)
         ffRel + ' parsed as ' + (Array.isArray(p.value) ? 'an array' : p.value === null ? 'null' : typeof p.value) + '.');
     } else {
       const gid = (((p.value.browser_specific_settings || {}).gecko) || {}).id || '';
-      /* The slot token anywhere, or the reserved TLD at the end — two tests (CodeQL #49). */
-      if (/REPLACE/i.test(gid) || /\.example$/i.test(gid) || !gid || /@(?:undefined|null)$/i.test(gid)) {
+      /* The slot token anywhere, or the reserved TLD at the end — two tests (CodeQL #49),
+         both in lib/tool-identity.mjs's isPlaceholderValue, which also refuses the empty id. */
+      if (isPlaceholderValue(gid) || /@(?:undefined|null)$/i.test(gid)) {
         r.owner('the Firefox add-on id is ' + (gid ? 'a placeholder ("' + gid + '")' : 'not set') + ' in ' + ffRel,
           'Permanent from the moment AMO signs it. Do not upload this package to AMO until it names a\n' +
           'domain you control.' + (ffZips.length ? '\n' + ffZips.length + ' -firefox.zip file(s) are already built in publish/ and carry it.' : ''));

@@ -241,3 +241,14 @@ keywords = []
   # to please this scanner would delete the test's entire subject.
   description = "packages/telemetry/test/pii_scrubber_test.dart — the deliberately Aadhaar-shaped order id that pins the scrubber's fail-closed over-redaction."
   regexes = ['''\b480000123456\b''']
+
+# The PUBLISHABLE key in the site sign-in script (see the `sb_publishable_` note above: public by design).
+# One rule, one file, one prefix, all three required (AND). Not a [[rules]] block: scan-secrets.mjs
+# counts `id =` lines as rules and wants a canary for each.
+[[allowlists]]
+description = "sb_publishable_ in sites/nikatru/js/signin.js, generic-api-key only"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''(^|[\\/])sites[\\/]nikatru[\\/]js[\\/]signin\.js$''']
+regexTarget = "secret"
+regexes = ['''^sb_publishable_[A-Za-z0-9_-]{20,}$''']

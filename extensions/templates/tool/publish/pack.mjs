@@ -54,6 +54,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
 import { assertLocalesInPackage } from '../_locales/package-guard.mjs';
 import { DOS_TIME, DOS_DATE } from '../../../scripts/lib/zip-time.mjs';
+import { geckoIdFor, isPlaceholderValue } from '../../../scripts/lib/tool-identity.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = process.env.SK_ROOT ? path.resolve(process.env.SK_ROOT) : path.join(HERE, '..');
@@ -163,11 +164,12 @@ export function collect() {
 export function readIdentity() {
   return JSON.parse(fs.readFileSync(path.join(PUBLISH, 'identity.json'), 'utf8'));
 }
-export function geckoIdFor(identity) {
-  return String(identity.slug) + '@' + String(identity.ownerDomain);
-}
+/* The id and the placeholder test are scripts/lib/tool-identity.mjs's, the one
+   implementation every factory script uses; they are re-exported under the names
+   preflight.mjs and test/skeleton-sim.node.js already import. */
+export { geckoIdFor };
 export function isPlaceholderId(id) {
-  return /REPLACE|\.example$|^$/i.test(String(id || ''));
+  return isPlaceholderValue(id);
 }
 
 /* ---------------- minimal zip writer (deflate, deterministic) ------------- */
