@@ -89,10 +89,11 @@ collects:
     required: false
     shared: false
     basis: >-
-      Optional. The name comes from the Apple or Google profile when the user
-      chooses Sign in with Apple or Sign in with Google, two optional ways to
-      sign in, and the user can edit it in Settings; an account needs no name. It sits on the identity record beside the address, is held for
-      the account's life and is erased with the identity.
+      Optional. The user can enter a name in Settings, and if the user chooses
+      Sign in with Apple, an optional way to sign in, Apple shares the name on
+      that account as the user allows; an account needs no name. It sits on
+      the identity record beside the address, is held for the account's life
+      and is erased with the identity.
     source: apps/subscriptiontracker/store/android-play/data-safety.json
     asOf: "2026-09-25"
 

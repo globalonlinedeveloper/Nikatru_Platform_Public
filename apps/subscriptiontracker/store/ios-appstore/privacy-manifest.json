@@ -528,7 +528,7 @@
         "purposes": [
           "NSPrivacyCollectedDataTypePurposeAppFunctionality"
         ],
-        "linkedBasis": "⏱ 2026-09-25 · O-OAUTH-NAME-UNDECLARED. Held on the identity record beside the email address (Supabase user metadata `full_name`): from the Apple or Google profile at the user's choice, or typed in Settings. Optional. Play purpose was 'Account management'; Apple has no Account management purpose.",
+        "linkedBasis": "⏱ 2026-09-25 · O-OAUTH-NAME-UNDECLARED. Held on the identity record beside the email address (Supabase user metadata `full_name`): typed in Settings, or from the Apple profile when the user chooses Sign in with Apple. Optional. Play purpose was 'Account management'; Apple has no Account management purpose.",
         "purposeMappingLoss": "Account management -> AppFunctionality"
       },
       {

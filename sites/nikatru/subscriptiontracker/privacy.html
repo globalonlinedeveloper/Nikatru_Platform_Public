@@ -159,7 +159,7 @@
 <p>Login is mandatory in the apps (ADR 058) and identity is one Supabase auth project for the whole portfolio (C-ONE-IDENTITY-PER-USER), so an address is the account. It is held for the account's life and erased by the schema-derived erasure route, identity last.</p>
 <p class="meta">Read from <code>apps/subscriptiontracker/store/android-play/data-safety.json</code> on 2026-09-05.</p>
 <h3>Personal info — Name</h3>
-<p>Optional. The name comes from the Apple or Google profile when the user chooses Sign in with Apple or Sign in with Google, two optional ways to sign in, and the user can edit it in Settings; an account needs no name. It sits on the identity record beside the address, is held for the account's life and is erased with the identity.</p>
+<p>Optional. The user can enter a name in Settings, and if the user chooses Sign in with Apple, an optional way to sign in, Apple shares the name on that account as the user allows; an account needs no name. It sits on the identity record beside the address, is held for the account's life and is erased with the identity.</p>
 <p class="meta">Read from <code>apps/subscriptiontracker/store/android-play/data-safety.json</code> on 2026-09-25.</p>
 <h3>Personal info — User IDs</h3>
 <p>The one identity per user across every app is a user id issued by the auth project; every app row keys on it, which is what makes erasure reach derivable from the schema rather than from a hand-kept list of tables.</p>
