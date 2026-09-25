@@ -165,6 +165,19 @@ billing:
 # invented URL is a link a stranger follows into a 404.
 listings:
 
+# O-SECOND-APP-SIGNS-AS-THE-FIRST limb (1). The Windows identity Partner Center
+# issued to THIS app, copied verbatim from tooling/channel-register.json's
+# windows-store `packageIdentity` (read from Partner Center 2026-09-22, Product
+# -> Product identity). An app with no Partner Center product yet writes
+# PARTNER-CENTER-PENDING in both fields. assert-store-metadata fails two apps
+# that declare the same identityName, and fails this record while it disagrees
+# with the channel row's copy. `publisher` and `publisherDisplayName` are
+# account-wide and stay on the channel row.
+stores:
+  windows-store:
+    identityName: 60210NIKATRU.NikatruSubscriptionTracker
+    packageFamilyName: 60210NIKATRU.NikatruSubscriptionTracker_ab30hnb4490ma
+
 legal:
   privacyPolicyUrl: https://nikatru.com/privacy
   supportUrl: https://nikatru.com/contact
