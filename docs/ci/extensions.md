@@ -2001,7 +2001,14 @@ Each store gets a pair inside the `release` job:
 |---|---|---|
 | AMO | `web-ext@10.6.0 sign --channel listed` — exact pin, because a range resolves at run time | extensionworkshop.com web-ext command reference |
 | Chrome Web Store | `POST …/upload/v2/publishers/{P}/items/{I}:upload` then `POST …/v2/publishers/{P}/items/{I}:publish`, on a **service-account JWT-bearer mint** at `https://oauth2.googleapis.com/token` | developer.chrome.com "Use the Chrome Web Store API" + "Service accounts" (2026-09-09) |
-| Edge Add-ons | four calls with `Authorization: ApiKey` + `X-ClientID` — upload, poll, publish, poll — at `https://api.addons.microsoftedge.microsoft.com` | learn.microsoft.com "Use the REST API" |
+| Edge Add-ons | four steps with `Authorization: ApiKey` + `X-ClientID` — upload, poll the upload to a terminal state, publish, poll the publish to a terminal state — at `https://api.addons.microsoftedge.microsoft.com` | learn.microsoft.com "Use the REST API" |
+
+⏱ **2026-09-25 (EXT-6): both API publishers now poll to a terminal state.** Each
+poll in the Edge row is a bounded loop in `extensions/scripts/store-poll.mjs`
+(an interval and a ceiling, each read classified against the store's documented
+states), and the Chrome publish is followed by the same kind of poll on
+`:fetchStatus`. A run that reaches the ceiling without a terminal state exits 1
+rather than reporting the submission as made.
 
 ⚠️ **The Chrome path is v2, and the brief said v1.1.** The primary source fetched
 2026-09-07 documents only `v2/publishers/{PUBLISHER_ID}/items/{EXTENSION_ID}`;
@@ -2080,3 +2087,39 @@ than by lane: it must succeed on `schedule` and be SKIPPED on everything else.
 `cws-token-keepalive` as this duty's detector; renaming the job while that file
 is owned elsewhere would point a detector at a job that does not exist. Its prose
 rows are OWED an update.
+
+⏱ **2026-09-25 (EXT-6): the gate is PRESENCE, not arming.** The paragraph above
+describes the gate as it was written: "armed row and a failed mint → exit 1;
+unarmed → the owner step". `CWS_SERVICE_ACCOUNT_JSON` has been set since
+2026-09-09 while `chrome-webstore` is unarmed, so that gate never minted. The job
+now passes `keepaliveGate` in `extensions/scripts/store-poll.mjs`: a SET key is
+minted whether or not the row is armed, and a failed mint exits 1; an absent key
+on an armed row exits 1; an absent key on an unarmed row prints the owner step.
+The register row's `detector` carries the same dated note.
+
+### `store-key-keepalive` (2026-09-25, EXT-6)
+
+A second job on the same `schedule` and `timeout-minutes: 10`, for the two keys
+that had no scheduled exercise: `AMO_JWT_ISSUER` + `AMO_JWT_SECRET` and
+`EDGE_API_KEY` + `EDGE_CLIENT_ID`. It runs `node scripts/store-key-keepalive.mjs`,
+which passes the same `keepaliveGate` per store and sends each present key ONE
+read-only request that submits nothing:
+
+* **AMO** — `GET /api/v5/accounts/profile/` with an HS256 JWT signed by
+  `amoJwt` in `publish-amo.mjs`. 200 is alive.
+* **Edge** — `GET /v1/products/<edge listingId>/submissions/operations/<zero guid>`.
+  404 or 200 is alive: measured 2026-09-09, a real key answers 404 for an
+  operation that never existed and a bogus key answers 403 "Client ID is Invalid".
+* 401 or 403 is a rejected key, exit 1. Any other status exits 1 and is printed.
+  A read that could not complete after the bounded retries exits 1 "could not
+  look".
+
+⚠️ **The first scheduled run is a measurement.** The status a REVOKED key gets
+on either read is unmeasured (the Edge 403 above is a bogus key, not a revoked
+one). Read that run's log line by line before trusting a green.
+
+The job has no `environment:` and no step outputs. `extensions-lane-accounting`
+grades it and `cws-token-keepalive` through one `grade_scheduled` function: each
+must succeed on `schedule` and be SKIPPED on every other event. The rows
+`expiring.store-credential.amo-api-key` and `expiring.store-credential.edge-api-key`
+in `tooling/ops/register.json` name it in `detector` and `mechanism.readBy`.

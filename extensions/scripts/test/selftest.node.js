@@ -1122,6 +1122,20 @@ console.log('\nfs read-once (CodeQL #71 #74 #75 #76)');
 }
 
 console.log('\nnew-tool.mjs');
+/* new-tool reads the house identity from <the directory above --repo-root>/tooling/
+   house-identity.json — in the real layout, the Public root above extensions/. Every
+   fixture root is TMP/case-N, so the fixture house is written once, at TMP/tooling/.
+   Made-up values that are not placeholders. */
+const HOUSE_FIXTURE = house => JSON.stringify({
+  ownerDomain: { value: house.ownerDomain, why: 'fixture' },
+  supportEmail: { value: house.supportEmail, why: 'fixture' },
+  privacyPolicyUrlPattern: { value: house.privacyPolicyUrlPattern, why: 'fixture' },
+  homepageUrl: { value: house.homepageUrl, why: 'fixture' }
+}, null, 2) + '\n';
+w(TMP, 'tooling/house-identity.json', HOUSE_FIXTURE({
+  ownerDomain: 'selftest-house.org', supportEmail: 'help@selftest-house.org',
+  privacyPolicyUrlPattern: 'https://selftest-house.org/{slug}/privacy', homepageUrl: 'https://selftest-house.org/'
+}));
 {
   const NEW_TOOL_TEMPLATE = r2 => {
     /* A minimal templates/tool so the copy is fast and the precedence rule
@@ -1156,6 +1170,9 @@ console.log('\nnew-tool.mjs');
     ['skeleton.json stamped with the tool name', fs.existsSync(path.join(made, 'skeleton.json')) && JSON.parse(fs.readFileSync(path.join(made, 'skeleton.json'), 'utf8')).tool === 'Tab_Digest'],
     ['skeletonVersion left alone', JSON.parse(fs.readFileSync(path.join(made, 'skeleton.json'), 'utf8')).skeletonVersion === '1.1.0'],
     ['identity slug set to the tool id', JSON.parse(fs.readFileSync(path.join(made, 'publish/identity.json'), 'utf8')).slug === 'tabdigest'],
+    ['identity ownerDomain is the house one, not the template placeholder', JSON.parse(fs.readFileSync(path.join(made, 'publish/identity.json'), 'utf8')).ownerDomain === 'selftest-house.org'],
+    ['identity privacy URL is the house pattern with the slug expanded', JSON.parse(fs.readFileSync(path.join(made, 'publish/identity.json'), 'utf8')).privacyPolicyUrl === 'https://selftest-house.org/tabdigest/privacy'],
+    ['no REPLACE placeholder survives in the stamped identity', !/REPLACE/.test(fs.readFileSync(path.join(made, 'publish/identity.json'), 'utf8'))],
     ["the previous tool's release zip did NOT come along", !fs.existsSync(path.join(made, 'publish/old-release-1.0.0.zip'))],
     ['a CHANGELOG was seeded at the manifest version', fs.readFileSync(path.join(made, 'CHANGELOG.md'), 'utf8').includes('## [0.0.1]')],
     ['permission justifications are EMPTY, so policy-check is red by design', JSON.parse(fs.readFileSync(path.join(made, 'tool.json'), 'utf8')).policy.permissions.storage === '']
@@ -1192,6 +1209,33 @@ console.log('\nnew-tool.mjs');
     script: 'new-tool.mjs', argv: ['--category', 'extension', '--name', 'Nope', '--id', 'nope'],
     root, code: 2, contains: 'not Capitalized_Singular'
   });
+
+  /* A house holding the template placeholder is refused before anything is written. Its own
+     parent directory, because the house is read from the directory above --repo-root. */
+  {
+    const badRoot = path.join(TMP, 'badhouse', 'extensions');
+    copyDir(BASE, badRoot);
+    NEW_TOOL_TEMPLATE(badRoot);
+    w(path.join(TMP, 'badhouse'), 'tooling/house-identity.json', HOUSE_FIXTURE({
+      ownerDomain: 'REPLACE-WITH-YOUR-DOMAIN.example', supportEmail: 'help@selftest-house.org',
+      privacyPolicyUrlPattern: 'https://selftest-house.org/{slug}/privacy', homepageUrl: 'https://selftest-house.org/'
+    }));
+    expect('a placeholder in the house identity is refused', {
+      script: 'new-tool.mjs', argv: ['--category', 'Extension', '--name', 'Bad House', '--id', 'badhouse'],
+      root: badRoot, code: 1, contains: 'ownerDomain = "REPLACE-WITH-YOUR-DOMAIN.example"'
+    });
+    if (!fs.existsSync(path.join(badRoot, 'Extension/Bad_House'))) ok('and nothing was written for it');
+    else bad('and nothing was written for it', 'Extension/Bad_House exists');
+  }
+  {
+    const noHouseRoot = path.join(TMP, 'nohouse', 'extensions');
+    copyDir(BASE, noHouseRoot);
+    NEW_TOOL_TEMPLATE(noHouseRoot);
+    expect('no house identity at all is refused', {
+      script: 'new-tool.mjs', argv: ['--category', 'Extension', '--name', 'No House', '--id', 'nohouse'],
+      root: noHouseRoot, code: 1, contains: 'tooling/house-identity.json could not be read'
+    });
+  }
 }
 
 /* A half-built templates/tool with no manifest must not win precedence over a
@@ -3146,6 +3190,111 @@ expect('publish-cws-keepalive.mjs does NOT demand CWS_PUBLISHER_ID, which it nev
   env: { CWS_SERVICE_ACCOUNT_JSON: '', CWS_PUBLISHER_ID: 'fixture' }, code: 1, contains: 'CWS_SERVICE_ACCOUNT_JSON'
 });
 
+/* ─────────────────────────────────────────────────────────────────────────────
+   ⏱ 2026-09-25 (EXT-6) — THE KEEPALIVES' GATE IS PRESENCE, NOT ARMING.
+
+   🔴 THE RED IS "UNARMED, KEY PRESENT, AND NOTHING EXERCISED". The Chrome key has
+   been set since 2026-09-09 while its row is unarmed, and the old gate skipped the
+   mint for exactly that state. The cases below drive both keepalives against a
+   LOOPBACK stub (a child process: run() blocks this one in spawnSync) through the
+   CWS_OAUTH_TOKEN_URL and EDGE_API_BASE_URL seams. Every key is a FIXTURE: the
+   RSA key is generated here, and no case reaches a store.
+   ───────────────────────────────────────────────────────────────────────────── */
+const KEY_STUB_SRC = `
+const http = require('http'); const fs = require('fs');
+const s = http.createServer((req, res) => {
+  let body = ''; req.on('data', (c) => { body += c; }); req.on('end', () => {
+    const send = (code, obj) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(obj)); };
+    const form = new URLSearchParams(body);
+    const assertion = String(form.get('assertion') || '').split('.').length === 3;
+    if (req.method === 'POST' && req.url === '/token' && assertion) return send(200, { access_token: 'fixture-token', expires_in: 3599, token_type: 'Bearer' });
+    if (req.method === 'POST' && req.url === '/revoked') return send(400, { error: 'invalid_grant', error_description: 'fixture: the key was revoked' });
+    if (req.method === 'GET' && req.url.startsWith('/v1/products/')) {
+      return req.headers['x-clientid'] === 'fixture-client' ? send(404, {}) : send(403, { message: 'Client ID is Invalid' });
+    }
+    send(418, { error: 'the stub has no route for ' + req.method + ' ' + req.url });
+  });
+});
+setTimeout(() => process.exit(0), 150000).unref();
+s.listen(0, '127.0.0.1', () => fs.writeFileSync(process.argv[1], String(s.address().port)));
+`;
+const keyStubPortFile = path.join(TMP, 'key-stub.port');
+const keyStub = require('child_process').spawn(process.execPath, ['-e', KEY_STUB_SRC, keyStubPortFile], { stdio: 'ignore' });
+let keyStubPort = '';
+{
+  const tick = new Int32Array(new SharedArrayBuffer(4));
+  for (let i = 0; i < 200 && keyStubPort === ''; i++) {
+    Atomics.wait(tick, 0, 0, 50);
+    try { keyStubPort = fs.readFileSync(keyStubPortFile, 'utf8').trim(); } catch { /* not written yet */ }
+  }
+}
+const FIXTURE_SA = (() => {
+  const { privateKey } = require('crypto').generateKeyPairSync('rsa', {
+    modulusLength: 2048, privateKeyEncoding: { type: 'pkcs8', format: 'pem' }, publicKeyEncoding: { type: 'spki', format: 'pem' }
+  });
+  return JSON.stringify({ type: 'service_account', client_email: 'fixture@fixture.iam.gserviceaccount.com', private_key: privateKey });
+})();
+/* One tree holding BOTH the amo and edge-addons rows, which store-key-keepalive
+   reads together; `armed` names the rows that are submittable. */
+function keyTree(armed) {
+  const root = path.join(TMP, 'storekeys-' + (++storeLaneNo));
+  w(root, 'tooling/channel-register.json', JSON.stringify({
+    channels: ['amo', 'edge-addons'].map(id => ({ id, kind: 'store', surface: 'extension', served: false,
+      submittable: armed.includes(id), extensionStoreKey: STORE_KEY[id],
+      lane: { workflow: '.github/workflows/extensions.yml', job: 'release' } }))
+  }, null, 2));
+  w(root, 'extensions/Extension/fullshot/tool.json', JSON.stringify({
+    id: 'fullshot',
+    storeMetadata: { stores: {
+      firefox: { target: 'firefox', dir: 'store/firefox', served: false, listingId: LISTED.amo },
+      edge: { target: 'chromium', dir: 'store/edge', served: false, listingId: LISTED['edge-addons'] }
+    } }
+  }, null, 2));
+  return root;
+}
+const NO_STORE_KEYS = { AMO_JWT_ISSUER: '', AMO_JWT_SECRET: '', EDGE_API_KEY: '', EDGE_CLIENT_ID: '' };
+
+if (keyStubPort === '') {
+  bad('the loopback key stub started', 'no port was written to ' + keyStubPortFile + ' within 10 s, so the keepalive probe cases below did not run');
+} else {
+  const stubBase = 'http://127.0.0.1:' + keyStubPort;
+  expect('publish-cws-keepalive.mjs MINTS while chrome-webstore is unarmed and the key is present', {
+    script: 'publish-cws-keepalive.mjs', argv: [], root: unarmedTree('chrome-webstore'),
+    env: { CWS_SERVICE_ACCOUNT_JSON: FIXTURE_SA, CWS_OAUTH_TOKEN_URL: stubBase + '/token' }, code: 0, contains: 'cws-token-keepalive: OK'
+  });
+  expect('publish-cws-keepalive.mjs exits 1 on a dead key while chrome-webstore is unarmed', {
+    script: 'publish-cws-keepalive.mjs', argv: [], root: unarmedTree('chrome-webstore'),
+    env: { CWS_SERVICE_ACCOUNT_JSON: FIXTURE_SA, CWS_OAUTH_TOKEN_URL: stubBase + '/revoked' }, code: 1, contains: 'invalid_grant'
+  });
+  expect('store-key-keepalive.mjs probes a present Edge key on an unarmed row: 404 is alive', {
+    script: 'store-key-keepalive.mjs', argv: [], root: keyTree([]),
+    env: { ...NO_STORE_KEYS, EDGE_API_KEY: 'fixture-api-key', EDGE_CLIENT_ID: 'fixture-client', EDGE_API_BASE_URL: stubBase },
+    code: 0, contains: 'Edge OK — the key authenticated: HTTP 404'
+  });
+  expect('store-key-keepalive.mjs exits 1 when the Edge key is rejected (403)', {
+    script: 'store-key-keepalive.mjs', argv: [], root: keyTree([]),
+    env: { ...NO_STORE_KEYS, EDGE_API_KEY: 'fixture-api-key', EDGE_CLIENT_ID: 'bogus-client', EDGE_API_BASE_URL: stubBase },
+    code: 1, contains: 'REJECTED — HTTP 403'
+  });
+}
+keyStub.kill();
+
+expect('publish-cws-keepalive.mjs refuses a non-loopback CWS_OAUTH_TOKEN_URL before any request', {
+  script: 'publish-cws-keepalive.mjs', argv: [], root: unarmedTree('chrome-webstore'),
+  env: { CWS_SERVICE_ACCOUNT_JSON: FIXTURE_SA, CWS_OAUTH_TOKEN_URL: 'https://example.invalid/token' }, code: 1, contains: 'neither https://oauth2.googleapis.com/token nor loopback'
+});
+expect('store-key-keepalive.mjs prints the owner step and exits 0 while neither store is armed and no key is set', {
+  script: 'store-key-keepalive.mjs', argv: [], root: keyTree([]), env: NO_STORE_KEYS, code: 0, contains: 'Edge NOTHING TO CHECK'
+});
+expect('store-key-keepalive.mjs exits 1 when the register ARMS amo and its key is absent', {
+  script: 'store-key-keepalive.mjs', argv: [], root: keyTree(['amo']), env: NO_STORE_KEYS, code: 1, contains: 'the register ARMS amo'
+});
+expect('store-key-keepalive.mjs refuses a non-loopback EDGE_API_BASE_URL before any request', {
+  script: 'store-key-keepalive.mjs', argv: [], root: keyTree([]),
+  env: { ...NO_STORE_KEYS, EDGE_API_KEY: 'fixture-api-key', EDGE_CLIENT_ID: 'fixture-client', EDGE_API_BASE_URL: 'https://example.invalid' },
+  code: 1, contains: 'EDGE_API_BASE_URL points at https://example.invalid'
+});
+
 /* The COVERAGE limb: a register the script cannot read is NOT an unarmed
    channel. Without this, every red above would be consistent with a script that
    refuses whenever it fails to find anything. */
@@ -3156,7 +3305,9 @@ expect('publish-arming.mjs reports COVERAGE LOST when the row is absent, never "
     w(r, 'tooling/channel-register.json', JSON.stringify({ channels: [] }));
     return r;
   })(),
-  code: 1, contains: 'COVERAGE LOST'
+  // ⏱ 2026-09-25: exit 2, not 1 — COVERAGE LOST is its own exit code now that
+  // the CLI's `1` means one finding (a refusal) and nothing else.
+  code: 2, contains: 'COVERAGE LOST'
 });
 
 

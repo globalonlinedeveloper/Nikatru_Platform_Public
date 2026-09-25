@@ -1,14 +1,12 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
 import { REAUTH_REQUIRED_BODY, REAUTH_REQUIRED_STATUS, deletionRecencyRefusal } from '../../../_shared/src/auth';
-import { run } from '../lib/d1';
 import { eraseSubjectRows } from '../lib/erase-subject';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// G2 — in-app account deletion (server side). DELETE /v1/account purges every
-// row this user owns from the app database, their shared-platform entitlements,
-// AND their identity record, then returns what was deleted. The client
-// (Settings → Delete account) calls this, then signs the user out of Supabase.
+// G2 — in-app account deletion, THIS APP'S HALF. DELETE /v1/account purges every
+// row this user owns from the app database (APP_DB) and returns what was
+// deleted. That is all it does.
 //
 // ⏱ 2026-09-12 · NOTHING TO EXTEND PER APP ANY MORE, AND THAT IS THE POINT.
 // This used to read "add every user-owned APP_DB table to `appTables`", with a
@@ -21,14 +19,40 @@ import { eraseSubjectRows } from '../lib/erase-subject';
 // migration alone. Both live Workers had already been fixed this way; the
 // template had not, which is the whole of the defect.
 //
-// 🔴 THREE LIMBS, AND THE THIRD IS THE ONE THAT WAS MISSING. This route used to
-// purge `appTables` + entitlements and return `{ ok: true }` — with the identity
-// record untouched. So after "your account has been deleted" the same email and
-// password still logged in, to an account with no data. That is a deletion the
-// user cannot detect as incomplete, which is exactly the failure the client half
-// refuses to fake. Deleting the identity needs the SERVICE ROLE key, which no
-// Worker held; it is now a required secret and the route REFUSES rather than
-// reporting a success it cannot deliver.
+// ── ⏱ 2026-09-24 · O-BRICK-ERASURE-DESTROYS-THE-IDENTITY · THE FLAGSHIP SHAPE ──
+// ⚠️ IT DOES NOT DELETE THE IDENTITY RECORD, AND IT DOES NOT TOUCH PLATFORM_DB.
+// Until today this template's route did both: it purged APP_DB, deleted the
+// caller's rows from the SHARED entitlements table, and then deleted the Supabase
+// identity itself with the service-role key. The live app Worker
+// (services/subscriptiontracker-api/src/routes/account.ts) had been built the
+// other way, and the template had not followed it. So every stamped backend was
+// born as a SECOND identity deleter — one that skipped what the platform's
+// deleter does before it (the signup-list purge, the Apple token revoke, the
+// fan-out to every other app) and needed the most dangerous credential in the
+// account to do it.
+//
+// The identity is portfolio-wide, and it is destroyed by ONE piece of code:
+// services/platform/src/lib/platform-erasure.ts, behind the shared Worker's
+// DELETE /v1/account. The division is the live app's:
+//
+//   services/platform   — platform_db + the identity, and the ORDERING
+//   this Worker         — this app's APP_DB, and nothing else
+//
+// The client enters at the shared Worker (the stamped app's
+// `platformRestClientProvider`). The shared route relays to this route with the
+// caller's own bearer token — once this app is named in its
+// APP_ERASURE_ENDPOINTS, which is a provisioning act — AFTER its own
+// precondition and BEFORE it deletes the identity, so a failure here stops the
+// erasure while the user still has a login to retry with.
+//
+// 🔴 `assert-erasure-reach.mjs` limb 6 counts the Worker source files that call
+// the identity-delete endpoint, over every Worker and this template: exactly one,
+// inside the shared Worker. Putting the call back here is red on that guard,
+// and on the `account-deletion-works` absent anchors in
+// `assert-stamp-properties.mjs`.
+//
+// ⚠️ CONSEQUENCE, STATED RATHER THAN HIDDEN: `{ ok: true }` from THIS route means
+// "APP_DB no longer holds this user", NOT "the account is gone".
 // ─────────────────────────────────────────────────────────────────────────────
 const account = new Hono<AppEnv>();
 
@@ -78,73 +102,22 @@ account.delete('/', async (c) => {
 
   const userId = c.get('userId');
 
-  // PRECONDITION, checked BEFORE anything is destroyed. Discovering halfway
-  // through that the identity cannot be deleted would leave a user with no data
-  // and a working login — strictly worse than refusing up front. Set it once per
-  // Worker with:  wrangler secret put SUPABASE_SERVICE_ROLE_KEY
-  const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!serviceRoleKey) {
-    console.error(
-      `[account] rid=${c.get('requestId') ?? '-'} refusing deletion: SUPABASE_SERVICE_ROLE_KEY is not set, so the identity record cannot be removed`,
-    );
-    return c.json({ error: 'account_deletion_unconfigured' }, 501);
-  }
-
   // ⏱ 2026-09-15 · [ADR 081]: THE APP_DB WALK MOVED TO src/lib/erase-subject.ts,
   // unchanged in behaviour, so the platform's Service Binding retry
   // (src/erasure-entrypoint.ts) runs the SAME deletion code this route runs. Its
   // two refusals keep their 503: a failed schema read, and 🔴 AN EMPTY SET IS A
-  // FAILURE, NOT A FAST PATH — a walk that found nothing would report ok and the
-  // identity would then be deleted below, orphaning every row behind it.
+  // FAILURE, NOT A FAST PATH — a walk that found nothing would report ok, the
+  // shared route would take that as permission to delete the identity, and every
+  // row here would be orphaned behind a login that no longer exists.
   const walked = await eraseSubjectRows(c.env.APP_DB, userId);
   if (!walked.ok) {
-    console.error(`[account] rid=${c.get('requestId') ?? '-'} refusing deletion: ${walked.reason}`);
+    console.error(`[account] rid=${c.get('requestId') ?? '-'} app=${c.env.APP_ID} refusing deletion: ${walked.reason}`);
     return c.json({ error: walked.error }, 503);
   }
-  const deleted: Record<string, number> = { ...walked.deleted };
-  const unlinked: Record<string, number> = { ...walked.unlinked };
-
-  // Shared entitlements (PLATFORM_DB). Best-effort: the table may not exist in a
-  // fresh platform database, so a failure here must not block the deletion.
-  try {
-    const res = await run(
-      c.env.PLATFORM_DB.prepare('DELETE FROM entitlements WHERE user_id = ?').bind(userId),
-    );
-    deleted['entitlements'] = res.meta.changes ?? 0;
-  } catch {
-    deleted['entitlements'] = 0;
-  }
-
-  // The IDENTITY record, last — the row that decides whether the login still
-  // works. 404 counts as done: the user is gone, which is what was asked for,
-  // and a retry after a partial failure must not fail on the second pass.
-  // The key is never echoed, logged, or returned.
-  const identityRes = await fetch(
-    `${c.env.SUPABASE_URL}/auth/v1/admin/users/${encodeURIComponent(userId)}`,
-    {
-      method: 'DELETE',
-      headers: {
-        apikey: serviceRoleKey,
-        Authorization: `Bearer ${serviceRoleKey}`,
-      },
-    },
-  );
-  if (!identityRes.ok && identityRes.status !== 404) {
-    console.error(
-      `[account] rid=${c.get('requestId') ?? '-'} identity delete failed with ${identityRes.status}`,
-    );
-    // NOT ok:true. The data is gone and the login is not — the user must be
-    // told, and the client turns this into a visible failure rather than a
-    // "deleted" they cannot verify. The purges above are idempotent, so a retry
-    // is safe.
-    return c.json({ error: 'identity_delete_failed' }, 502);
-  }
-  deleted['identity'] = 1;
-
   // `unlinked` is reported beside `deleted` because they are different claims:
   // rows removed, versus rows that merely stopped naming this person. A caller
   // that read one as the other would be told more than happened.
-  return c.json({ ok: true, deleted, unlinked });
+  return c.json(walked);
 });
 
 export default account;

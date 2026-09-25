@@ -879,6 +879,7 @@
       "ADR 087"
     ],
     "invokedBy": [
+      ".github/workflows/ci.yml#app-brick",
       ".github/workflows/ci.yml#guards-legal"
     ],
     "kind": "guard",
@@ -1005,6 +1006,16 @@
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-hostname-depth.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/extensions-ci.yml#catalogue"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-house-identity.mjs",
     "references": [],
     "state": "WIRED"
   },
@@ -1418,6 +1429,7 @@
   {
     "claims": [
       "ADR 066",
+      "ADR 093",
       "M-11"
     ],
     "invokedBy": [
@@ -2731,6 +2743,16 @@
   },
   {
     "claims": [
+      "ADR 093"
+    ],
+    "invokedBy": [],
+    "kind": "guard",
+    "ref": "tooling/ci/price-figure.mjs",
+    "references": [],
+    "state": "LIBRARY"
+  },
+  {
+    "claims": [
       "D-3"
     ],
     "invokedBy": [
@@ -3118,6 +3140,16 @@
     ],
     "kind": "script",
     "ref": "tooling/ops/check-heartbeats.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ops-watch.yml#supabase-drift"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/check-live-signin-key.mjs",
     "references": [],
     "state": "WIRED"
   },

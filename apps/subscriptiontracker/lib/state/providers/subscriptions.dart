@@ -80,12 +80,33 @@ final Provider<ApiClient> apiClientProvider = Provider<ApiClient>((ref) {
     return PersistedApiClient(SeedApiClient(), store);
   }
   final core.AppConfig? cfg = ref.watch(appConfigProvider).valueOrNull;
-  final String baseUrl = cfg?.apiBaseUrl ?? '${AppConfig.apiBaseUrl}/v1';
+  final String baseUrl = apiBaseFor(
+    pinned: AppConfig.pinnedBackend,
+    configured: cfg?.apiBaseUrl,
+    define: AppConfig.apiBaseUrl,
+  );
   return cachedApiClientOver(
     DioApiClient(baseUrl: baseUrl, tokenProvider: ref.watch(authTokenProvider)),
     store,
   );
 });
+
+/// The API base URL [apiClientProvider] builds its client on.
+///
+/// 🔴 A PINNED BUILD TAKES THE DEFINE AND NEVER THE CONFIG DOCUMENT (F1, row
+/// O-STORE-CAPTURE-WRITES-UNATTRIBUTED-ROWS). Unpinned, the CFG-1
+/// `api_base_url` wins whenever a config document has resolved — including the
+/// compiled seed `kAppDefaultConfig`, which names the PRODUCTION API and is what
+/// resolves under `SKIP_REMOTE_CONFIG=true`. That is how a store capture given
+/// a sandbox `API_BASE_URL` still wrote to production. `pinned` is
+/// [AppConfig.pinnedBackend], which only the capture runner sets; a production
+/// build is unpinned and behaves exactly as before. A pure function, so both
+/// directions are provable under `flutter test`, which carries no define.
+String apiBaseFor({
+  required bool pinned,
+  required String? configured,
+  required String define,
+}) => pinned ? '$define/v1' : (configured ?? '$define/v1');
 
 /// The client the CONFIGURED posture gets: [network] behind the device cache.
 ///

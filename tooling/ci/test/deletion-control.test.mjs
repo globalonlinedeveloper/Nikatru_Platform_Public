@@ -344,6 +344,80 @@ describe('the server hook must not be nulled out from under it', () => {
   });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-24 · O-BRICK-ERASURE-DESTROYS-THE-IDENTITY — LIMB 7: THE DELETION
+// ENTERS AT THE PLATFORM. The client handed to `requestAccountDeletion(ref.read(X))`
+// must be built on the platform host; the app's own Worker erases its own rows
+// and nothing else. Each case mutates the REAL tree by literal string, through
+// [mutate], so a spelling that moves upstream fails here by name.
+// ─────────────────────────────────────────────────────────────────────────────
+const BRICK_PROVIDERS = `${BRICK}/lib/state/providers.dart`;
+const BRICK_PLATFORM_CLIENT =
+  'final Provider<RestClient> platformRestClientProvider = Provider<RestClient>(\n' +
+  '  (ref) => RestClient(\n' +
+  "    baseUrl: '$kPlatformBaseUrl/v1',\n" +
+  '    tokenProvider: ref.watch(authTokenProvider),\n' +
+  '  ),\n' +
+  ');\n';
+
+describe('limb 7 — account deletion enters at the shared platform Worker', () => {
+  test('brick red when deletion rides restClientProvider', () => {
+    // The brick's shape until 2026-09-24: the app's own Worker, whose stamped
+    // route then deleted the identity itself as a second deleter.
+    withTree(
+      (root) =>
+        mutate(root, BRICK_PROVIDERS, (s) =>
+          s.replace(
+            'requestAccountDeletion(ref.read(platformRestClientProvider))',
+            'requestAccountDeletion(ref.read(restClientProvider))',
+          ),
+        ),
+      (r) => {
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(
+          r.stderr,
+          /tooling\/bricks\/app\/__brick__\/apps\/\{\{app_id\}\}: account deletion rides `restClientProvider` \(.*lib\/state\/providers\.dart\), which is built on `apiBaseUrl`/,
+        );
+      },
+    );
+  });
+
+  test('flagship red when its platform client is rebuilt on apiBaseUrl', () => {
+    withTree(
+      (root) =>
+        mutate(root, SUBLY_AUTH_PROVIDERS, (s) =>
+          s.replace("baseUrl: '${AppConfig.platformBaseUrl}/v1',", 'baseUrl: AppConfig.apiBaseUrl,'),
+        ),
+      (r) => {
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(
+          r.stderr,
+          /apps\/subscriptiontracker: account deletion rides `platformRestClientProvider` \(apps\/subscriptiontracker\/lib\/state\/providers\/auth\.dart\), which is built on `apiBaseUrl`/,
+        );
+      },
+    );
+  });
+
+  test('a provider defined in another file of the root still resolves', () => {
+    // GREEN, and it names where it resolved: the live app already defines its
+    // client in a different file from the barrel, so a resolver that read one
+    // file would be red on a tree that is right.
+    withTree(
+      (root) => {
+        mutate(root, BRICK_PROVIDERS, (s) => s.replace(BRICK_PLATFORM_CLIENT, ''));
+        writeFileSync(join(root, BRICK, 'lib/state/platform_client.dart'), BRICK_PLATFORM_CLIENT);
+      },
+      (r) => {
+        assert.equal(r.status, 0, r.stderr);
+        assert.match(
+          r.stdout,
+          /apps\/\{\{app_id\}\}: account deletion enters at the platform — `platformRestClientProvider`, defined in .*\/lib\/state\/platform_client\.dart/,
+        );
+      },
+    );
+  });
+});
+
 describe('the domain filter is derived, and cannot become a waiver', () => {
   test('an app with NO account surface owes nothing, and says so out loud', () => {
     withTree(

@@ -256,7 +256,18 @@ app.post('/revenuecat', async (c) => {
 });
 `;
 
+// ⏱ 2026-09-24 · O-BRICK-ERASURE-DESTROYS-THE-IDENTITY: the stamped route is the
+// flagship shape — it erases its own APP_DB and never writes the shared table. It
+// is still WRITTEN into every fixture, because REQUIRED_COVERAGE demands the brick
+// tree be scanned and a tree with no .ts under it is COVERAGE LOST.
 const BRICK_ACCOUNT_TS = `
+app.delete('/', async (c) => {
+  const walked = await eraseSubjectRows(c.env.APP_DB, userId);
+  return c.json(walked);
+});
+`;
+/** The route as it stood until 2026-09-24: a per-app Worker deleting from the SHARED table. */
+const OLD_BRICK_ACCOUNT_TS = `
 app.delete('/', async (c) => {
   await c.env.PLATFORM_DB.prepare('DELETE FROM entitlements WHERE user_id = ?').bind(userId).run();
   return c.json({ ok: true });
@@ -439,10 +450,14 @@ export const entitlementsAuth = async (c, next) => {
     assert.match(r.out, /services\/subscriptiontracker-api\/src\/routes\/webhooks\.ts WRITES the shared `entitlements` table and is NOT declared/);
   });
 
-  test("FAILS when the brick's erasure DELETE stops being narrowed to the caller", () => {
-    const r = run({ brickAccount: BRICK_ACCOUNT_TS.replace("DELETE FROM entitlements WHERE user_id = ?", 'DELETE FROM entitlements') });
+  // ⏱ 2026-09-24 · REWRITTEN IN PLACE. This case pinned that the brick's
+  // declared DELETE stayed narrowed to the caller. The brick is no longer a
+  // declared writer at all, so the honest property is stronger: the old route —
+  // narrowed or not — is an undeclared write into the money table.
+  test("FAILS when the brick's erasure route writes entitlements at all — an app Worker is not a declared writer", () => {
+    const r = run({ brickAccount: OLD_BRICK_ACCOUNT_TS });
     assert.equal(r.code, 1);
-    assert.match(r.out, /a DELETE narrowed to `WHERE user_id = \?` could not be found/);
+    assert.match(r.out, /\{\{app_id\}\}-api\/src\/routes\/account\.ts WRITES the shared `entitlements` table and is NOT declared/);
   });
 
   test('FAILS when the verifier registry is called by NOTHING outside the file that declares it', () => {

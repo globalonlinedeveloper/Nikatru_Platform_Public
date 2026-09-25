@@ -365,6 +365,7 @@
     "APP_ENV": "build metadata",
     "STORE_CAPTURE_ALLOW_DEMO": "OUR OWN test-harness switch, and it exists to make a mistake LOUD rather than to enable a feature. No external system is behind it. apps/subscriptiontracker/integration_test/store_screenshots_test.dart refuses to run against a DEMO build unless this define is set, because a demo build is a different app on screen — app_shell.dart paints 'Demo data - sample subscriptions, not your account' over every screen and demo_data.dart seeds twelve third-party trademarks, both confirmed by capturing one on 2026-08-04 — and a screenshot of that must never reach a Play listing. It is passed ONLY by `tooling/store/capture-play-screenshots.mjs --proof`, which sends its output to a throwaway directory and refuses to point at the listing directory at all; the live lane never sets it. It reaches no shipping binary: the suite is under integration_test/, which `flutter build` does not compile. Read once, at the top of the capture suite, as a bool.fromEnvironment that defaults false — so the fail-closed direction is the default and setting it is the deliberate act. Added 2026-08-04.",
     "STORE_CAPTURE_VIEW": "OUR OWN capture geometry for the store screenshot suite on a desktop device, written `<width>x<height>@<dpr>` (e.g. `1280x800@2`). No external system is behind it: `tooling/store/capture-play-screenshots.mjs` builds it with `storeViewDefineArgs` (tooling/store/capture-suite-scan.mjs) from the register's own `capture` block (logicalWidth, logicalHeight, dpr), and passes it ONLY to a linux, windows or macos device. apps/subscriptiontracker/integration_test/store_screenshots_test.dart reads it once, imposes that geometry on the view, and its layer shutter (integration_test/store_frame_shutter.dart) refuses a root layer of any other size. The suite fails when a desktop capture has none and when a web, android or iOS capture has one. It reaches no shipping binary: the suite is under integration_test/, which `flutter build` does not compile. Added 2026-09-24 (O-DESKTOP-CAPTURE-HAS-NO-SHUTTER).",
+    "PIN_BACKEND_HOSTS": "OUR OWN capture switch, and no external system is behind it: the literal `true`, meant for the store capture's live build (tooling/store/capture-play-screenshots.mjs) and passed by no other lane. `AppConfig.pinnedBackend` reads it, and `apiBaseFor` (apps/subscriptiontracker/lib/state/providers/subscriptions.dart) then takes the API host from the API_BASE_URL define and never from the resolved config document, whose compiled seed `kAppDefaultConfig` names the production API. Without it a build chooses its host as it did before. It reaches no shipping binary: no store lane, `deploy-web.yml` build or release build passes it. Added 2026-09-25 (O-STORE-CAPTURE-WRITES-UNATTRIBUTED-ROWS, F1).",
     "APP_VERSION": "build metadata — injected at build time, deliberately not read from package_info_plus",
     "RELEASE": "build metadata — the commit a WORKER was deployed from, supplied as `--var RELEASE:<sha>` by deploy-workers.yml and used as the release id on the crash reports services/*/src/lib/error-sink.ts sends ([pipeline 11]E-8). No external system is behind it: it is OUR OWN git SHA. It exists as a separate surface rather than reusing `API_VERSION` because that var is the literal \"v1\" in both Workers and has never changed, so using it as a release id would group every error this factory ever reports into one bucket named after a URL prefix. [9]R-2 replaces it with a real release id. Added 2026-08-02.",
     "RELEASE_CHANNEL": "OUR OWN id for the distribution channel a binary was built for — a row id in tooling/channel-register.json, e.g. `web`. No external system is behind it: it is a fact ABOUT the artifact, in the same class as APP_VERSION and RELEASE above. Compile-time on purpose, and deliberately the OPPOSITE of UPDATE_URL below: an update DESTINATION baked into a binary makes the force-update wall circular (owner decision #19), while the CHANNEL is what distinguishes two artifacts built from ONE commit for two channels — a value fetched at runtime could not tell them apart at all. A typo is the one failure mode a free-text define has, so assert-channel-register.mjs fails the build on any value that does not resolve to a register row. Added 2026-08-03, [pipeline 9]R-10 limb 3.",
@@ -855,7 +856,37 @@
         "symbol": "NotificationCapabilities",
         "test": "packages/notifications/test/notification_capabilities_test.dart",
         "pinnedTo": "flutter_local_notifications 17.x — re-review on any bump",
-        "degradesOn": "Linux shows but cannot schedule (zonedSchedule unimplemented in 17.x-19.x); Windows can do neither on 17.x (support landed in 18.x); web and fuchsia neither. Unsupported calls no-op so a caller falls back to an in-app nudge. 2026-08-01, TIMEZONE: with no LocalTimezoneResolver injected the service used to install tz.local = UTC, so a reminder core documents as firing at [hour]:[minute] LOCAL time was built at that hour in UTC -- 14:30 IST for a 09:00 reminder, and the middle of the night across the Americas. No consumer injected a resolver and every test injected 'UTC', the one value where the bug and the correct behaviour agree. The fallback is now the DEVICE's own current UTC offset (deviceOffsetLocation), exact for the schedule being made and needing no plugin; an injected IANA resolver still wins and is what removes the residual one-hour drift across a DST transition.",
+        "degradesOn": "Linux shows but cannot schedule (zonedSchedule unimplemented in 17.x-19.x); Windows can do neither on 17.x (support landed in 18.x); web and fuchsia neither. Each platform's pair is declared in platformMatrix; a listing claim follows it (assert-store-metadata.mjs REMINDER CLAIMS refuses a reminder in any store listing whose channel cannot schedule). Unsupported calls no-op so a caller falls back to an in-app nudge. 2026-08-01, TIMEZONE: with no LocalTimezoneResolver injected the service used to install tz.local = UTC, so a reminder core documents as firing at [hour]:[minute] LOCAL time was built at that hour in UTC -- 14:30 IST for a 09:00 reminder, and the middle of the night across the Americas. No consumer injected a resolver and every test injected 'UTC', the one value where the bug and the correct behaviour agree. The fallback is now the DEVICE's own current UTC offset (deviceOffsetLocation), exact for the schedule being made and needing no plugin; an injected IANA resolver still wins and is what removes the residual one-hour drift across a DST transition.",
+        "platformMatrix": {
+          "android": {
+            "canNotify": true,
+            "canSchedule": true
+          },
+          "ios": {
+            "canNotify": true,
+            "canSchedule": true
+          },
+          "macos": {
+            "canNotify": true,
+            "canSchedule": true
+          },
+          "linux": {
+            "canNotify": true,
+            "canSchedule": false
+          },
+          "windows": {
+            "canNotify": false,
+            "canSchedule": false
+          },
+          "fuchsia": {
+            "canNotify": false,
+            "canSchedule": false
+          },
+          "web": {
+            "canNotify": false,
+            "canSchedule": false
+          }
+        },
         "scheduleContract": {
           "file": "packages/notifications/lib/src/local_notification_service_io.dart",
           "unobservable": "[13]T-7, 2026-08-02. These two arguments are passed BELOW the NotificationPlugin port -- the port's scheduleDaily takes (id, title, body, when) and nothing else -- so no fake plugin can observe them and NO behavioural test can be written for either. That is stated here rather than papered over with a test that asserts something else: this is a source-shape assertion, and it is the only kind available.",

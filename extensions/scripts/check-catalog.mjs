@@ -43,6 +43,13 @@
      5  SOURCE     a tool.json is "shipping" if and only if it has a listing —
                    which is the rule Extension/Full_Screen_Shot/tool.json writes
                    down about itself, and nothing enforced it
+     6  IDENTITY   no extension tool's publish/identity.json carries a
+                   placeholder in a field a store listing shows (ownerDomain,
+                   supportEmail, privacyPolicyUrl — lib/tool-identity.mjs's
+                   LISTED_IDENTITY_FIELDS). O-NEW-TOOL-HAS-NO-FIREFOX-IDENTITY:
+                   until 2026-09-25 a tool stamped from the template carried
+                   REPLACE-WITH-YOUR-DOMAIN and this was an owner action, not a
+                   failure
 
    ── WHY THE STORE VOCABULARY IS DERIVED AND THE HOSTS ARE NOT ────────────────
 
@@ -98,6 +105,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Report, parseArgs, die } from './lib/report.mjs';
 import { repoRoot, loadAllTools, readJson, RE_TOOL_ID } from './lib/toolinfo.mjs';
+import { LISTED_IDENTITY_FIELDS, isPlaceholderValue } from './lib/tool-identity.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -397,6 +405,35 @@ for (const t of extensions) {
 r.check('every tool.json status agrees with its own listings', sourceProblems.length === 0,
   extensions.map((t) => t.id + '=' + t.status).join(', '),
   sourceProblems.join('\n'));
+
+/* ── LIMB 6: NO PLACEHOLDER IDENTITY ──────────────────────────────────────── */
+/* The owner domain becomes the Firefox add-on id, which AMO fixes at first
+   signing; the support address and the privacy URL are shown on every listing.
+   A tool with no publish/identity.json is not graded here — policy-check.mjs
+   decides whether its Firefox surface needs one. */
+const identityProblems = [];
+let identitiesRead = 0;
+for (const t of extensions) {
+  const idRel = t.rel + '/publish/identity.json';
+  const idAbs = path.join(t.dirAbs, 'publish', 'identity.json');
+  if (!fs.existsSync(idAbs)) continue;
+  const p = readJson(idAbs);
+  if (p.error || p.value === null || typeof p.value !== 'object' || Array.isArray(p.value)) {
+    identityProblems.push(idRel + ' does not parse as a JSON object' + (p.error ? ': ' + p.error : ''));
+    continue;
+  }
+  identitiesRead++;
+  for (const field of LISTED_IDENTITY_FIELDS) {
+    if (isPlaceholderValue(p.value[field])) {
+      identityProblems.push(idRel + '  ' + field + ' is ' +
+        (p.value[field] ? 'the placeholder "' + p.value[field] + '"' : 'empty or missing') +
+        ' — scripts/new-tool.mjs writes it from tooling/house-identity.json; set it to that value');
+    }
+  }
+}
+r.check('no tool\'s publish/identity.json carries a placeholder in a listed field', identityProblems.length === 0,
+  identitiesRead + ' identity file(s) read · fields: ' + LISTED_IDENTITY_FIELDS.join(', '),
+  identityProblems.join('\n'));
 
 /* ── THE GAP ONLY THE OWNER CAN CLOSE ─────────────────────────────────────── */
 /* Counted from the parsed rows, not from the tool.json set, because the message

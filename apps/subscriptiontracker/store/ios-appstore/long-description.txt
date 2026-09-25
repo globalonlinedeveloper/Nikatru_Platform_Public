@@ -23,5 +23,6 @@ PRIVACY
 It does not sell your data and does not show ads. Analytics are off until
 you turn them on, and you can delete your account and its data from inside
 the app. Full policy: https://nikatru.com/privacy
+Terms of use: https://nikatru.com/terms
 
 Made by Nikatru. Questions: https://nikatru.com/contact

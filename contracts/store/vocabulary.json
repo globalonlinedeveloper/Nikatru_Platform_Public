@@ -114,6 +114,13 @@
       "rendered": true
     },
     {
+      "name": "terms-of-use-url.txt",
+      "kind": "url",
+      "app": "additional",
+      "extension": null,
+      "rendered": true
+    },
+    {
       "name": "screenshots/README.md",
       "kind": "doc",
       "app": "required",

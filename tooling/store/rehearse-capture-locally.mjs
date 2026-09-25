@@ -66,6 +66,7 @@ import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { sandboxBackend, CaptureBackendRefused } from './capture-backend.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(join(HERE, '..', '..'));
@@ -141,11 +142,14 @@ function readVault(path) {
   return map;
 }
 
-// ── 2. the four the workflow's own preflight demands ────────────────────────
-// Same four names, same fail-closed behaviour, same stated reason. A capture
+// ── 2. the three the workflow's own preflight demands ───────────────────────
+// Same three names, same fail-closed behaviour, same stated reason. A capture
 // missing any of them is a DEMO build — every screen banded "Demo data" and the
 // board twelve third-party trademarks — which is a failed run, not a skipped one.
-const REQUIRED_FROM_VAULT = ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'API_BASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'];
+// API_BASE_URL was the fourth until 2026-09-25: the capture now computes the
+// sandbox API host itself (tooling/store/capture-backend.mjs) and REFUSES a run
+// whose environment sets one, so it is neither read from the vault nor passed.
+const REQUIRED_FROM_VAULT = ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY'];
 
 /** The repository VARIABLE, read from the repository — the same source
  *  `vars.TURNSTILE_SITE_KEY` is, rather than a second copy in the vault that
@@ -301,7 +305,7 @@ const missing = REQUIRED_FROM_VAULT.filter((k) => !vault.get(k));
 if (missing.length) {
   cannotSetUp([
     `the vault holds no ${missing.join(', ')}.`,
-    'These are the FOUR names store-screenshots.yml\'s own preflight demands, and it fails closed on them',
+    'These are the THREE names store-screenshots.yml\'s own preflight demands, and it fails closed on them',
     'for a reason worth repeating: without them the app builds in DEMO posture, every screen carries the',
     '"Demo data — sample subscriptions, not your account" banner and the board is twelve third-party',
     'trademarks. That is a store filing nobody can ship, so an absent key is a failed rehearsal rather',
@@ -322,6 +326,18 @@ if (!chrome) {
   ]);
 }
 
+// The sandbox backend the capture drives and whose databases the purge below
+// targets, read from the two wrangler.jsonc `env.sandbox` blocks. A refusal
+// here is the one the capture itself would make, found before a throwaway user
+// is provisioned.
+let SANDBOX;
+try {
+  SANDBOX = sandboxBackend();
+} catch (e) {
+  if (!(e instanceof CaptureBackendRefused)) throw e;
+  refuse([`the capture backend was refused on limb ${e.limb}.`, e.message]);
+}
+
 console.log('── the rehearsal, resolved ────────────────────────────────────────');
 console.log(`app                        ${APP}`);
 console.log(`vault                      ${vaultPath()}`);
@@ -330,6 +346,8 @@ console.log(`  ${shape('TURNSTILE_SITE_KEY', turnstile.value)}  ← ${turnstile.
 console.log(`flutter                    ${flutter.path}  (pin ${flutter.pin}, from ${flutter.from})`);
 console.log(`chromedriver               ${driver.path}  (${driver.from})`);
 console.log(`CHROME_EXECUTABLE          ${chrome}`);
+console.log(`sandbox API                ${SANDBOX['subscriptiontracker-api'].sandboxHost}`);
+console.log(`sandbox platform           ${SANDBOX.platform.sandboxHost}`);
 console.log('');
 
 if (PRINT_PLAN) {
@@ -350,7 +368,6 @@ const baseEnv = {
   SUPABASE_URL: vault.get('SUPABASE_URL'),
   SUPABASE_ANON_KEY: vault.get('SUPABASE_ANON_KEY'),
   SUPABASE_SERVICE_ROLE_KEY: vault.get('SUPABASE_SERVICE_ROLE_KEY'),
-  API_BASE_URL: vault.get('API_BASE_URL'),
   TURNSTILE_SITE_KEY: turnstile.value,
   CHROMEDRIVER: driver.path,
   CHROME_EXECUTABLE: chrome,
@@ -602,14 +619,15 @@ try {
       E2E_USER_ID: provisioned.userId,
       CLOUDFLARE_ACCOUNT_ID: vault.get('CLOUDFLARE_ACCOUNT_ID') ?? '',
       CLOUDFLARE_API_TOKEN: vault.get('CLOUDFLARE_API_TOKEN') ?? '',
-      // The same literal the workflow's purge step carries. A database id is not
-      // a credential; it is in the workflow in clear for the same reason.
-      SUBSCRIPTIONTRACKER_D1_DATABASE_ID: '0a36d6a0-c909-40aa-853e-970de3482321',
-      // The capture's consent rows live in platform_db, not the app's own D1:
-      // the same literal store-screenshots.yml's purge steps carry. With the
-      // ledger the capture wrote, purge.mjs deletes by every drive's install id
-      // and by the rehearsal stamp.
-      PLATFORM_D1_DATABASE_ID: '9d1c5c63-97fe-4f82-bc7d-f3fd22e9b351',
+      // The SANDBOX databases the capture wrote into, read from the two
+      // wrangler.jsonc `env.sandbox` blocks by sandboxBackend() — the same ids
+      // store-screenshots.yml's purge steps carry. A database id is not a
+      // credential. The consent rows are in platform_db_sandbox, the seeded
+      // subscriptions in subscriptiontracker_db_sandbox; with the ledger the
+      // capture wrote, purge.mjs deletes by every drive's install id and by the
+      // rehearsal stamp, and it refuses a production id beside a ledger.
+      SUBSCRIPTIONTRACKER_D1_DATABASE_ID: SANDBOX['subscriptiontracker-api'].sandboxIds['d1:APP_DB'],
+      PLATFORM_D1_DATABASE_ID: SANDBOX.platform.sandboxIds['d1:PLATFORM_DB'],
       E2E_APP_ID: APP,
       E2E_CONSENT_LEDGER: consentLedger,
     });

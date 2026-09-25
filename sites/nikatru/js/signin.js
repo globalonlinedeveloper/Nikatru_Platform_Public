@@ -34,9 +34,9 @@
 /** The GoTrue host. Self-hosted since 2026-09-24; never a *.supabase.co host. */
 export const SUPABASE_URL = 'https://auth-api.nikatru.com';
 
-/** The PUBLISHABLE key — public by design (.gitleaks.toml records why). The
- *  parent fills it before merge; this placeholder is refused by GoTrue. */
-export const SUPABASE_PUBLISHABLE_KEY = '__SUPABASE_PUBLISHABLE_KEY__';
+/** The PUBLISHABLE key of the self-hosted GoTrue — public by design. Filled
+ *  2026-09-25; .gitleaks.toml records why and allows exactly this one. */
+export const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_QNEBX6oUcWllQVU212e41A_Axpy1gmh';
 
 const AUTH = `${SUPABASE_URL}/auth/v1`;
 const STASH_KEY = 'nikatru.signin.pkce';

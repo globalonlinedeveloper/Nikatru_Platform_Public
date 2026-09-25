@@ -155,6 +155,115 @@ const insideSome = (spans, idx) => spans.some(([a, b]) => idx > a && idx < b);
 const occursInATest = (code, spans, re) =>
   [...code.matchAll(re)].some((m) => insideSome(spans, m.index));
 
+/** Index of the `}` that closes the `{` at `open` in stripped code, or -1. */
+function closingBrace(code, open) {
+  if (open < 0 || code[open] !== '{') return -1;
+  let depth = 0;
+  for (let k = open; k < code.length; k++) {
+    if (code[k] === '{') depth++;
+    else if (code[k] === '}' && --depth === 0) return k;
+  }
+  return -1;
+}
+
+/**
+ * The two booleans `forPlatform` returns for each platform, read out of the
+ * descriptor's own code — limb 8 compares them to the register's
+ * `platformMatrix`. The shape follows assert-purchase-path.mjs's ROW_RE: the
+ * register declares a table, and a guard extracts the Dart switch to hold the
+ * table to it.
+ *
+ * `code` is `stripDart` output, so a comment or a string literal cannot supply
+ * a row. What is read is the shape the descriptor has: an `if (isWeb)` branch
+ * that returns first (the `web` row), then a `switch (platform)` statement in
+ * which each run of STACKED `case TargetPlatform.X:` labels ends in ONE
+ * `return const <Symbol>(canNotify: A, canSchedule: B)`, and every label in the
+ * run takes that return. A label is lowercased (`iOS` → `ios`, `macOS` →
+ * `macos`), which is the channel register's platform spelling.
+ *
+ * Anything else — a `default:` arm, a return with no label before it, a label
+ * with no return after it, a return of something other than the symbol, a
+ * switch EXPRESSION — lands in `lost` rather than being guessed at. An
+ * extractor that reads half a switch compares half a table and reports that
+ * it agrees.
+ */
+function extractForPlatform(code, symbol) {
+  const rows = new Map();
+  const lost = [];
+  const lineAt = (idx) => code.slice(0, idx).split('\n').length;
+  const decl = /\bstatic\s+\w+\s+forPlatform\s*\(/.exec(code);
+  if (!decl) return { rows, lost: ['no `static … forPlatform(` declaration was found'] };
+  // Step over the parameter list first: its named parameters sit in `{…}`,
+  // which would otherwise be taken for the body.
+  let k = decl.index + decl[0].length - 1;
+  for (let depth = 0; k < code.length; k++) {
+    if (code[k] === '(') depth++;
+    else if (code[k] === ')' && --depth === 0) break;
+  }
+  const open = code.indexOf('{', k);
+  const close = closingBrace(code, open);
+  if (close === -1) return { rows, lost: ['the body of `forPlatform` could not be delimited'] };
+  const body = code.slice(open, close + 1);
+
+  const ctor = `return\\s+(?:const\\s+)?${symbol}\\s*\\(([^()]*)\\)`;
+  const readArgs = (args, line) => {
+    const n = /\bcanNotify\s*:\s*(true|false)\b/.exec(args);
+    const s = /\bcanSchedule\s*:\s*(true|false)\b/.exec(args);
+    if (!n || !s) {
+      lost.push(`the return at line ${line} does not pass both \`canNotify:\` and \`canSchedule:\` as literals`);
+      return null;
+    }
+    return { canNotify: n[1] === 'true', canSchedule: s[1] === 'true', line };
+  };
+
+  const web = new RegExp(`\\bif\\s*\\(\\s*isWeb\\s*\\)\\s*\\{?\\s*${ctor}`).exec(body);
+  if (!web) {
+    lost.push('no `if (isWeb) return …` branch was found, so the web row has no source');
+  } else {
+    const r = readArgs(web[1], lineAt(open + web.index));
+    if (r) rows.set('web', r);
+  }
+
+  const sw = /\bswitch\s*\(\s*\w+\s*\)\s*\{/.exec(body);
+  if (!sw) {
+    lost.push('no `switch (platform) { … }` was found in `forPlatform`');
+    return { rows, lost };
+  }
+  const swOpen = open + sw.index + sw[0].length - 1;
+  const swClose = closingBrace(code, swOpen);
+  if (swClose === -1) {
+    lost.push('the `switch` in `forPlatform` could not be delimited');
+    return { rows, lost };
+  }
+  const swBody = code.slice(swOpen, swClose);
+  const TOKEN = new RegExp(`\\bcase\\s+TargetPlatform\\.(\\w+)\\s*:|\\bdefault\\s*:|\\b${ctor}|\\breturn\\b`, 'g');
+  let pending = [];
+  let labels = 0;
+  for (const t of swBody.matchAll(TOKEN)) {
+    const line = lineAt(swOpen + t.index);
+    if (t[1] !== undefined) {
+      labels++;
+      pending.push(t[1].toLowerCase());
+    } else if (/^default/.test(t[0])) {
+      lost.push(`a \`default:\` arm at line ${line} hides which platforms take it`);
+    } else if (t[2] !== undefined) {
+      if (pending.length === 0) {
+        lost.push(`the return at line ${line} has no \`case TargetPlatform.X:\` label before it`);
+        continue;
+      }
+      const r = readArgs(t[2], line);
+      if (r) for (const p of pending) rows.set(p, r);
+      pending = [];
+    } else {
+      lost.push(`the return at line ${line} is not \`${symbol}(canNotify: …, canSchedule: …)\``);
+      pending = [];
+    }
+  }
+  if (pending.length) lost.push(`\`case TargetPlatform.${pending.join('`/`')}\` reaches no return this extractor can read`);
+  if (labels === 0) lost.push('ZERO `case TargetPlatform.X:` labels were found in the switch');
+  return { rows, lost };
+}
+
 const ROOT = process.cwd();
 const REGISTER = 'tooling/capability-register.json';
 const problems = []; const coverageLost = (m) => problems.push(`COVERAGE LOST — ${m}`); // exit 2 only if EVERY problem is one (summary below)
@@ -223,6 +332,10 @@ let checked = 0;
 // clauses means a contract exists but pins nothing.
 let scheduleDescriptors = 0;
 let scheduleClauses = 0;
+// Limb 8 counters. Its domain is limb 7's (a `canSchedule` descriptor), so the
+// empty-domain case is limb 7's COVERAGE LOST below; these say what was compared.
+let parityFaults = 0;
+const paritySummaries = [];
 // Flattened deliberately: the unit of work is a MATRIX, not a package, because a
 // package with two capabilities has two matrices and both have to hold.
 const matrixJobs = [];
@@ -394,6 +507,81 @@ for (const { pkg, cap } of matrixJobs) {
     }
   }
 
+  // 8 · THE REGISTER'S `platformMatrix` IS WHAT `forPlatform` RETURNS, ROW FOR
+  //     ROW (O-RENEWAL-REMINDERS-OFF-ON-DESKTOP).
+  //
+  // assert-store-metadata.mjs refuses a reminder claim in any store listing
+  // whose channel has a platform that cannot schedule, and it takes that
+  // answer from `capabilityMatrix.platformMatrix` in the register — a listing
+  // guard that parsed Dart would be a second extractor of this one switch. So
+  // the register's table has to equal the switch, and this limb is where that
+  // is held: both booleans, every platform, in both directions.
+  //
+  // The domain is limb 7's: a descriptor that declares a `canSchedule` field
+  // owes a matrix, and a missing one is a FINDING. When the Dart moves — the
+  // flutter_local_notifications bump that brings scheduling to Windows — this
+  // limb is red until the register says the same, and only then does the
+  // listing guard let reminder copy back into that channel. An extractor that
+  // cannot read a file that owes a matrix is COVERAGE LOST, never a pass.
+  if (declaresSchedule) {
+    const pm = m.platformMatrix;
+    if (pm === null || typeof pm !== 'object' || Array.isArray(pm)) {
+      parityFaults++;
+      problems.push(
+        `\`${m.symbol}\` declares a \`canSchedule\` row but its capabilityMatrix has no \`platformMatrix\`. assert-store-metadata.mjs reads that table to decide which store listings may promise a reminder, so without it no listing can be graded against what ${m.file} actually returns. Declare every platform \`forPlatform\` returns, with \`canNotify\` and \`canSchedule\`.`,
+      );
+    } else {
+      const { rows, lost } = extractForPlatform(code, m.symbol);
+      if (lost.length) {
+        parityFaults++;
+        coverageLost(
+          `\`${m.symbol}\` owes a platformMatrix and its \`forPlatform\` in ${m.file} could not be read: ${lost.join('; ')}. With the switch unread, the register's table is compared to nothing and would report agreement.`,
+        );
+      } else {
+        const declared = Object.keys(pm).filter((p) => !p.startsWith('_'));
+        const before = problems.length;
+        for (const [p, got] of rows) {
+          const want = pm[p];
+          if (want === null || typeof want !== 'object' || Array.isArray(want)) {
+            problems.push(
+              `platformMatrix PARITY — ${m.file}:${got.line} returns "${p}" as canNotify ${got.canNotify}, canSchedule ${got.canSchedule}, and ${REGISTER} \`${pkg}\` capabilityMatrix.platformMatrix declares no "${p}" row. A platform the listing guard cannot look up is a platform whose listings it cannot grade.`,
+            );
+            continue;
+          }
+          for (const field of ['canNotify', 'canSchedule']) {
+            if (typeof want[field] !== 'boolean') {
+              problems.push(`platformMatrix PARITY — ${REGISTER} \`${pkg}\` platformMatrix.${p}.${field} is ${JSON.stringify(want[field])}, not a boolean; ${m.file}:${got.line} returns ${got[field]}.`);
+            } else if (want[field] !== got[field]) {
+              problems.push(
+                `platformMatrix PARITY — ${p}.${field}: ${REGISTER} \`${pkg}\` says ${want[field]}, ${m.file}:${got.line} returns ${got[field]}. assert-store-metadata.mjs grades store listings on the register, so every listing on that platform would be graded on something the app does not do. The Dart is what ships: make the register say what it returns.`,
+              );
+            }
+          }
+        }
+        for (const p of declared) {
+          if (!rows.has(p)) {
+            problems.push(
+              `platformMatrix PARITY — ${REGISTER} \`${pkg}\` platformMatrix declares "${p}" and ${m.symbol}.forPlatform in ${m.file} returns no row for it. A register row with no Dart behind it grades listings on a platform the descriptor never answers for.`,
+            );
+          }
+        }
+        if (problems.length > before) {
+          parityFaults++;
+        } else {
+          const groups = new Map();
+          for (const [p, r] of rows) {
+            const g = r.canSchedule ? (r.canNotify ? 'shows and schedules' : 'schedules, cannot show') : (r.canNotify ? 'shows, cannot schedule' : 'neither');
+            if (!groups.has(g)) groups.set(g, []);
+            groups.get(g).push(p);
+          }
+          paritySummaries.push(
+            `${m.symbol}: ${rows.size} platform(s) agree with ${m.file} (${[...groups].map(([g, ps]) => `${g}: ${ps.join(', ')}`).join(' · ')})`,
+          );
+        }
+      }
+    }
+  }
+
   if (m.degradesOn) notes.push(`· ${pkg.split('/')[1]} (${m.pinnedTo ?? 'unpinned'})\n    ${m.degradesOn}`);
 }
 
@@ -431,6 +619,9 @@ if (scheduleDescriptors === 0) {
   );
 } else {
   ok(`${scheduleClauses} OS scheduling rule(s) pinned across ${scheduleDescriptors} scheduling adapter(s)`);
+}
+if (paritySummaries.length > 0 && parityFaults === 0) {
+  for (const s of paritySummaries) ok(`platformMatrix parity — ${s}`);
 }
 
 if (adapters.length > 0 && checked === 0) {

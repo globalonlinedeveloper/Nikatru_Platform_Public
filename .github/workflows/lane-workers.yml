@@ -55,6 +55,9 @@ jobs:
       - run: npx tsc --noEmit
       - run: npm test
       - run: npx wrangler deploy --dry-run
+      # why: env.sandbox is deployed only by the manual deploy-sandbox.yml, so
+      # this is the one place a broken sandbox block fails before a dispatch.
+      - run: npx wrangler deploy --env sandbox --dry-run
 
   worker-platform:
     # why: this job was 1,818 of ci.yml's 2,696 lines and ran 105 guards behind a
@@ -77,6 +80,9 @@ jobs:
       - run: npx tsc --noEmit
       - run: npm test
       - run: npx wrangler deploy --dry-run
+      # why: env.sandbox is deployed only by the manual deploy-sandbox.yml, so
+      # this is the one place a broken sandbox block fails before a dispatch.
+      - run: npx wrangler deploy --env sandbox --dry-run
 
   lane-verdict:
     # why: the callee's conclusion is what ci-gate sees, and a callee whose work jobs

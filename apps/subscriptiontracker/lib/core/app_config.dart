@@ -142,6 +142,18 @@ class AppConfig {
     defaultValue: _phApiBase,
   );
 
+  /// Pins the API host to [apiBaseUrl], over any config document (F1, row
+  /// O-STORE-CAPTURE-WRITES-UNATTRIBUTED-ROWS). `apiClientProvider` otherwise
+  /// prefers the resolved config's `apiBaseUrl`, and under
+  /// `SKIP_REMOTE_CONFIG=true` that config is the compiled seed
+  /// `kAppDefaultConfig`, whose `apiBaseUrl` is the PRODUCTION host — so a
+  /// store capture that passed a sandbox `API_BASE_URL` still wrote
+  /// production. Only the capture runner
+  /// (`tooling/store/capture-backend.mjs`) passes `PIN_BACKEND_HOSTS`;
+  /// production builds never do, so CFG-1's config-driven host is unchanged
+  /// for them.
+  static const bool pinnedBackend = bool.fromEnvironment('PIN_BACKEND_HOSTS');
+
   /// The SHARED platform Worker: first-party analytics ingest + the consent
   /// artifact (G-12), and in future entitlements and account deletion. Every
   /// app in the portfolio points here — it is not per-app ([ADR 020]).

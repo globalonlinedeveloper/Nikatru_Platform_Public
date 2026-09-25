@@ -384,6 +384,71 @@ describe('an anchor whose line moved into the chassis is judged there', () => {
   });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-24 · O-BRICK-ERASURE-DESTROYS-THE-IDENTITY — AN ABSENT ANCHOR.
+//
+// `account-deletion-works` used to REQUIRE the stamped route to call the
+// identity-delete endpoint with the service-role key, which made every stamp a
+// second identity deleter. The two anchors are now `absent: true`: the shape
+// must NOT be in the route. These two cases run over the REAL brick route
+// (copied into the shared fixture by before()), so they are about the file every
+// stamp ships and not a stand-in for it.
+//
+// ⚠️ THE SECOND CASE IS THE ONE THAT KEEPS THE INVERSION HONEST. An absence
+// check over a file that could not be read is the vacuous pass this guard
+// refuses everywhere else, so a missing route must still be red.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('account-deletion-works — the stamped route must NOT be an identity deleter', () => {
+  const ROUTE = 'tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/src/routes/account.ts';
+  const restoreRoute = () => cpSync(join(REPO, ROUTE), join(BASE, ROUTE));
+  // The delegation block above ends each case by DELETING packages/chassis_screens
+  // from the shared fixture; put the real package back, for the reason the
+  // exit-code block below gives (the exempt app's count otherwise leaves its floor).
+  before(() => {
+    const filter = (src) => !src.split(sep).some((p) => SKIP_DIRS.has(p));
+    cpSync(join(REPO, 'packages', 'chassis_screens'), join(BASE, 'packages', 'chassis_screens'), { recursive: true, filter });
+  });
+
+  test('an absent anchor over the REAL brick route goes red when the identity fetch returns', () => {
+    try {
+      // GREEN CONTROL FIRST, over the same tree: without it the red below is
+      // equally consistent with a guard that cannot load.
+      const clean = run({ missingGroups: FLOOR });
+      assert.equal(clean.code, 0, clean.out);
+      const real = readFileSync(join(REPO, ROUTE), 'utf8');
+      const target = '  return c.json(walked);\n';
+      assert.ok(real.includes(target), `the mutation target is gone from ${ROUTE} - re-point this case, or it mutates nothing`);
+      writeFileSync(
+        join(BASE, ROUTE),
+        real.replace(
+          target,
+          "  await fetch(`${c.env.SUPABASE_URL}/auth/v1/admin/users/${encodeURIComponent(userId)}`, { method: 'DELETE' });\n" + target,
+        ),
+      );
+      const { code, out } = run({ missingGroups: FLOOR });
+      assert.equal(code, 1, out);
+      assert.match(
+        out,
+        /apps\/\{\{app_id\}\}: property 'account-deletion-works' — .*src\/routes\/account\.ts still does what it must not: the stamped route must NOT delete the identity record/,
+      );
+    } finally {
+      restoreRoute();
+    }
+  });
+
+  test('an absent anchor over an unreadable route file is not a pass', () => {
+    rmSync(join(BASE, ROUTE), { force: true });
+    try {
+      const { code, out } = run({ missingGroups: FLOOR });
+      assert.notEqual(code, 0, out);
+      assert.match(out, /property 'account-deletion-works': .*src\/routes\/account\.ts could not be read/);
+      assert.doesNotMatch(out, /property 'account-deletion-works' asserted and implemented/);
+    } finally {
+      restoreRoute();
+    }
+  });
+});
+
 // ── O-EXIT2-CONVENTION-GAP: the exit code of each kind of stop, pinned ────────
 // 0 green · 1 a finding · 2 COVERAGE LOST (could not look). Until 2026-09-19 both the hard stop
 // (the brick's property test missing) and a run whose every FAIL was a COVERAGE LOST exited 1.
