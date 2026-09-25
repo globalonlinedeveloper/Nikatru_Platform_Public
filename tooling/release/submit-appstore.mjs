@@ -74,6 +74,7 @@ import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { readAppleBundleId } from '../ci/read-identity.mjs';
+import { appleArtifactPath } from '../ci/apple-signing.mjs';
 
 const CHANNELS = ['ios-appstore', 'macos-appstore'];
 const REGISTER = 'tooling/channel-register.json';
@@ -390,11 +391,19 @@ if (declaredBundle === '' || declaredInTemplate === '') {
 // so its location is a convention this repo chooses. Nothing here is claimed as
 // sourced, and the register's artifactFormats is what decides whether the file
 // is even the right KIND.
-const ARTIFACT = {
-  'ios-appstore': `apps/${app.slug}/build/ios/ipa/${app.slug}.ipa`,
-  'macos-appstore': `apps/${app.slug}/build/macos/pkg/${app.slug}.pkg`,
-};
-const artifactRel = ARTIFACT[CHANNEL_ID];
+// ⏱ 2026-09-25 (O-APPLE-PROVER-SKIPS-THE-PKG): the path is the row's own
+// `signing.seam.artifactGlob`, through apple-signing.mjs's appleArtifactPath —
+// the glob bp's upload and PROVE are held to. The two literals that stood here
+// were a third copy of it.
+let artifactRel;
+try {
+  artifactRel = appleArtifactPath(channel, app.slug);
+} catch (e) {
+  coverageLost([
+    `channel "${CHANNEL_ID}" gives no artifact path: ${e.message}.`,
+    `${REGISTER}'s signing.seam.artifactGlob is the one path the upload, PROVE and this script read.`,
+  ]);
+}
 const acceptedFormats = (channel.artifactFormats ?? []).filter((f) => typeof f === 'string');
 if (!acceptedFormats.some((f) => artifactRel.endsWith(f))) {
   problems.push(

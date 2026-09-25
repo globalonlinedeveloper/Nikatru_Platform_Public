@@ -176,6 +176,25 @@ export const REGISTER = 'tooling/channel-register.json';
  *  carries one name iOS cannot use; the comparison is therefore per row. */
 export const CHANNEL_IDS = ['ios-appstore', 'macos-appstore'];
 
+// The one path of an Apple row's artifact for one app (O-APPLE-PROVER-SKIPS-THE-PKG): the row's
+// `signing.seam.artifactGlob` with the app directory and the file stem both set to `slug`.
+// `apps/*/build/macos/pkg/*.pkg` gives `apps/<slug>/build/macos/pkg/<slug>.pkg`, which is where
+// build-platforms.yml's `Package the macOS .pkg` step writes it. submit-appstore.mjs and
+// assert-artifact-shape.mjs read their paths here, and `assert-artifact-signed-apple.mjs --static`
+// holds bp's upload and PROVE paths to the same glob.
+//
+// Throws on a row with no glob, on a glob that is not `apps/*/<dir>/*<.ext>`, and on a slug that is
+// not one path segment: a caller handed a wrong path reports the artifact MISSING, which blames the
+// build for a fault in the register.
+export function appleArtifactPath(row, slug) {
+  const glob = row?.signing?.seam?.artifactGlob;
+  if (typeof glob !== 'string') throw new Error(`channel "${row?.id}" declares no signing.seam.artifactGlob`);
+  const m = /^apps\/\*\/([^*]+)\/\*(\.[A-Za-z0-9]+)$/.exec(glob);
+  if (!m) throw new Error(`channel "${row.id}" artifactGlob "${glob}" is not apps/*/<dir>/*<.ext>`);
+  if (typeof slug !== 'string' || !/^[a-z0-9][a-z0-9_-]*$/.test(slug)) throw new Error(`${JSON.stringify(slug)} is not an app slug`);
+  return `apps/${slug}/${m[1]}/${slug}${m[2]}`;
+}
+
 export const POSTURE_ENV = 'APPLE_SIGNING_POSTURE';
 export const RELEASE_SIGNED = 'release-signed';
 export const UNSIGNED_PROOF = 'unsigned-build-proof';

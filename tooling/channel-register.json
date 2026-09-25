@@ -2555,7 +2555,7 @@
           "_why": "LIFTED 2026-08-20 from tooling/store-pipeline/signing-seams.mjs, deleted in the same commit. `artifactGlob` existed nowhere else in the repository. `prepare` and `verify` name the scripts that arrange a credential and read the result back out of the artifact — a pair, because a step that arranges a thing and then reports its own success is the \"green means ran\" failure with extra stages.",
           "prepare": "tooling/ci/apple-signing.mjs",
           "verify": "tooling/ci/assert-artifact-signed-apple.mjs",
-          "artifactGlob": "apps/*/build/macos/Build/Products/Release/*.pkg",
+          "artifactGlob": "apps/*/build/macos/pkg/*.pkg",
           "why": "Same seam as iOS, different artifact and a different bundle identifier. This register holds both."
         }
       },

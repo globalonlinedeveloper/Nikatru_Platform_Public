@@ -65,6 +65,7 @@ import {
   newlineOffenders,
   unzip,
   profileMembers,
+  appleArtifactPath,
 } from '../apple-signing.mjs';
 import { armingOf } from '../channel-arming.mjs';
 
@@ -1735,5 +1736,47 @@ describe('apple-signing — against the REAL tooling/channel-register.json', () 
       assert.equal(row.served, false, `${row.id} must NOT be served — submitting remains the owner's call`);
       assert.deepEqual(a.blockers, [], `${row.id} still reports a blocker: ${a.blockers.join(' | ')}`);
     }
+  });
+});
+
+// ⏱ ADDED 2026-09-25 (O-APPLE-PROVER-SKIPS-THE-PKG). The macos-appstore row's
+// glob said `…/Build/Products/Release/*.pkg` while build-platforms.yml wrote the
+// .pkg to `build/macos/pkg/<app>.pkg`, and submit-appstore.mjs and
+// assert-artifact-shape.mjs each carried a literal of their own. appleArtifactPath
+// is the one reader of that glob; these cases hold it to where the build writes.
+describe('apple-signing — appleArtifactPath, the one Apple artifact path', () => {
+  const realRow = (id) => {
+    const reg = JSON.parse(readFileSync(join(REPO_ROOT, 'tooling', 'channel-register.json'), 'utf8'));
+    const row = reg.channels.find((c) => c.id === id);
+    assert.ok(row, `the register declares no ${id} row`);
+    return row;
+  };
+
+  test('the REAL macos-appstore row gives build/macos/pkg/<app>.pkg — where `Package the macOS .pkg` writes it', () => {
+    assert.equal(
+      appleArtifactPath(realRow('macos-appstore'), 'subscriptiontracker'),
+      'apps/subscriptiontracker/build/macos/pkg/subscriptiontracker.pkg',
+    );
+  });
+
+  test('the REAL ios-appstore row gives build/ios/ipa/<app>.ipa', () => {
+    assert.equal(
+      appleArtifactPath(realRow('ios-appstore'), 'subscriptiontracker'),
+      'apps/subscriptiontracker/build/ios/ipa/subscriptiontracker.ipa',
+    );
+  });
+
+  test('a row with no signing.seam.artifactGlob throws, naming the row', () => {
+    assert.throws(() => appleArtifactPath({ id: 'macos-appstore', signing: {} }, 'subscriptiontracker'), /"macos-appstore" declares no signing\.seam\.artifactGlob/);
+  });
+
+  test('a glob that is not apps/*/<dir>/*<.ext> throws rather than guessing a path', () => {
+    const row = { id: 'macos-appstore', signing: { seam: { artifactGlob: 'apps/*/build/**/*.pkg' } } };
+    assert.throws(() => appleArtifactPath(row, 'subscriptiontracker'), /is not apps\/\*\/<dir>\/\*<\.ext>/);
+  });
+
+  test('a slug that is not one path segment throws', () => {
+    const row = { id: 'ios-appstore', signing: { seam: { artifactGlob: 'apps/*/build/ios/ipa/*.ipa' } } };
+    assert.throws(() => appleArtifactPath(row, '../subscriptiontracker'), /is not an app slug/);
   });
 });

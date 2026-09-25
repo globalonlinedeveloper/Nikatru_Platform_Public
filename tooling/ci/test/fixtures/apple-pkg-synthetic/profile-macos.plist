@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>AppIDName</key>
+	<string>SYNTHETIC subscriptiontracker</string>
+	<key>ExpirationDate</key>
+	<date>2027-09-25T00:00:00Z</date>
+	<key>Entitlements</key>
+	<dict>
+		<key>com.apple.application-identifier</key>
+		<string>A1B2C3D4E5.com.nikatru.subscriptiontracker</string>
+		<key>com.apple.developer.team-identifier</key>
+		<string>A1B2C3D4E5</string>
+		<key>keychain-access-groups</key>
+		<array>
+			<string>A1B2C3D4E5.*</string>
+		</array>
+	</dict>
+	<key>Name</key>
+	<string>SYNTHETIC Mac App Store subscriptiontracker</string>
+	<key>TeamIdentifier</key>
+	<array>
+		<string>A1B2C3D4E5</string>
+	</array>
+	<key>UUID</key>
+	<string>00000000-0000-0000-0000-000000000002</string>
+</dict>
+</plist>
