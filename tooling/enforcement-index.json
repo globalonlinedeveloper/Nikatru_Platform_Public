@@ -962,6 +962,7 @@
   },
   {
     "claims": [
+      "ADR 095",
       "R-5"
     ],
     "invokedBy": [
@@ -2651,6 +2652,31 @@
     ],
     "kind": "guard",
     "ref": "tooling/ci/install-pinned-tool.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "ADR 095"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guard-meta",
+      ".github/workflows/lane-workers.yml#detect"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/lane-detect.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "ADR 095"
+    ],
+    "invokedBy": [
+      ".github/workflows/lane-workers.yml#lane-verdict"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/lane-verdict.mjs",
     "references": [],
     "state": "WIRED"
   },

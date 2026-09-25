@@ -1397,6 +1397,26 @@
       "source": "verified"
     },
     {
+      "id": "duty.workflow.lane-workers.yml",
+      "kind": "duty",
+      "what": "The workers CI lane — detect, the subscriptiontracker-api and platform Workers (npm ci, tsc --noEmit, npm test, wrangler deploy --dry-run) and the lane-verdict job — as a reusable workflow that runs only as a call. Moved out of ci.yml on 2026-09-24 (ADR 095, O-CI-LANES-NOT-CALLABLE-UNITS), the first lane to become a callee behind tooling/ci/lane-map.json.",
+      "detector": "ci-gate red on the pull request or push that caused it (required check), through ci.yml's `lane-workers` call job, whose result is red when any job of this workflow is. The two Worker jobs skip only under detect's affected=false; lane-verdict is red on any other skip.",
+      "response": "Fix before merge. Branch protection is the enforcement, through ci-gate; `lane-verdict` is not, and must never be, a required check of its own.",
+      "cadence": "trigger",
+      "trigger": "called by ci.yml (`lane-workers` job) on every push to main and every pull request",
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": ".github/workflows/lane-workers.yml",
+        "record": "GitHub Actions run history for ci.yml (a called workflow's jobs run inside the caller's run)",
+        "failingValue": "conclusion = failure",
+        "readBy": "ci-gate (required check), through ci.yml's `lane-workers` call job"
+      },
+      "accessProviders": [
+        "github"
+      ],
+      "source": "verified"
+    },
+    {
       "id": "duty.workflow.build-platforms.yml",
       "kind": "duty",
       "what": "The six-platform compile proof — the ONLY place macOS, iOS, Windows, Linux and Android are ever compiled.",

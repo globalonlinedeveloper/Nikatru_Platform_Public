@@ -248,6 +248,10 @@
       "property": "workflow-scan"
     },
     {
+      "path": "tooling/ci/lane-detect.mjs",
+      "property": "workflow-scan"
+    },
+    {
       "path": "tooling/ci/scan-secrets.mjs",
       "property": "refuses-blind",
       "evidence": "gitleaks over the wrong directory",

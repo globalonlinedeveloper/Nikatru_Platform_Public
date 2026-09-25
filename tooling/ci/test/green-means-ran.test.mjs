@@ -160,7 +160,7 @@ describe('§A — an aggregating job cannot go green over a lane that did not ru
   });
 
   test('a `needs` entry naming a job that does not exist fails', () => {
-    const root = mutant([['ci.yml', '      - worker-subscriptiontracker-api\n', '      - worker-subscriptiontracker-api\n      - ghost-lane\n']]);
+    const root = mutant([['ci.yml', '      - lane-workers\n', '      - lane-workers\n      - ghost-lane\n']]);
     caught(run(root), /needs "ghost-lane", which \.github\/workflows\/ci\.yml does not declare/);
   });
 
@@ -473,5 +473,124 @@ describe('§C — a drift check cannot pass by diffing the checkout against itse
 describe('the fixture base is real', () => {
   test('the workflow directory this suite copies from actually exists', () => {
     assert.ok(existsSync(WORKFLOWS), `${WORKFLOWS} is missing — every mutation above would be applied to nothing`);
+  });
+});
+
+// ⏱ 2026-09-24 — rule A8 [ADR 095]: inside a called-only workflow, `skipped` is still
+// not green. Each case mutates the real callee(s), or adds one hand-written callee
+// beside the real workflows.
+describe('§A8 — every called-only workflow ends in one always-run verdict job over every other job', () => {
+  /** A called-only workflow, written out whole, for the cases the real tree has no callee shaped like. */
+  const LANE_X_HEAD = [
+    'name: Lane X',
+    'on:',
+    '  workflow_call:',
+    'permissions:',
+    '  contents: read',
+    'jobs:',
+    '  detect:',
+    '    runs-on: ubuntu-24.04',
+    '    timeout-minutes: 5',
+    '    steps:',
+    '      - run: node tooling/ci/lane-detect.mjs --lane x',
+    '  work:',
+    '    needs: detect',
+    "    if: needs.detect.outputs.affected == 'true'",
+    '    runs-on: ubuntu-24.04',
+    '    timeout-minutes: 5',
+    '    steps:',
+    '      - run: echo work',
+  ].join('\n');
+
+  const withLaneX = (text) => {
+    const root = mutant([]);
+    writeFileSync(join(root, '.github', 'workflows', 'lane-x.yml'), `${text}\n`);
+    return root;
+  };
+
+  test('the real tree reports every called-only workflow as ending in its verdict job', () => {
+    const r = run(mutant([]));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /, (\d+) of \1 ending in one always-run verdict job over every other job/);
+  });
+
+  test("dropping a job from extensions-ci.yml's ci-required needs fails A8", () => {
+    const root = mutant([['extensions-ci.yml', ', templates, e2e-proof-fresh]\n    if: always()', ', templates]\n    if: always()']]);
+    caught(run(root), /extensions-ci\.yml: verdict job "ci-required" does not `need` "e2e-proof-fresh"/);
+  });
+
+  test("removing ci-required's `if: always()` fails A8 — the first red need would skip the verdict", () => {
+    const root = mutant([['extensions-ci.yml', ', e2e-proof-fresh]\n    if: always()\n', ', e2e-proof-fresh]\n']]);
+    caught(run(root), /extensions-ci\.yml: verdict job "ci-required" has no job-level `if: always\(\)` \(found no `if:` at all\)/);
+  });
+
+  test('renaming the verdict job accepted by name fails A8, rather than dropping the callee from the rule', () => {
+    const root = mutant([['extensions-ci.yml', '\n  ci-required:\n', '\n  ci-verdict:\n']]);
+    caught(run(root), /extensions-ci\.yml is accepted by its verdict job's name, "ci-required", and declares no such job/);
+  });
+
+  test('a called-only workflow with no verdict job fails A8', () => {
+    caught(run(withLaneX(LANE_X_HEAD)), /lane-x\.yml can be started only by `workflow_call` and has NO verdict job\(s\)/);
+  });
+
+  test('a verdict job that runs lane-verdict.mjs without toJSON(needs) fails A8', () => {
+    const text = [
+      LANE_X_HEAD,
+      '  lane-verdict:',
+      '    needs: [detect, work]',
+      '    if: always()',
+      '    runs-on: ubuntu-24.04',
+      '    timeout-minutes: 5',
+      '    steps:',
+      '      - run: node tooling/ci/lane-verdict.mjs',
+    ].join('\n');
+    caught(run(withLaneX(text)), /lane-x\.yml: verdict job "lane-verdict" runs lane-verdict\.mjs without `LANE_NEEDS: \$\{\{ toJSON\(needs\) \}\}`/);
+  });
+
+  test('two verdict jobs in one callee fail A8 — exactly one decides', () => {
+    const text = [
+      LANE_X_HEAD,
+      '  lane-verdict:',
+      '    needs: [detect, work, second-verdict]',
+      '    if: always()',
+      '    runs-on: ubuntu-24.04',
+      '    timeout-minutes: 5',
+      '    steps:',
+      '      - run: node tooling/ci/lane-verdict.mjs',
+      '        env:',
+      '          LANE_NEEDS: ${{ toJSON(needs) }}',
+      '  second-verdict:',
+      '    needs: [detect, work]',
+      '    if: always()',
+      '    runs-on: ubuntu-24.04',
+      '    timeout-minutes: 5',
+      '    steps:',
+      '      - run: node tooling/ci/lane-verdict.mjs',
+      '        env:',
+      '          LANE_NEEDS: ${{ toJSON(needs) }}',
+    ].join('\n');
+    caught(run(withLaneX(text)), /lane-x\.yml can be started only by `workflow_call` and has 2 verdict job\(s\) \(lane-verdict, second-verdict\)/);
+  });
+
+  test("RC5: dropping worker-platform from lane-workers.yml's lane-verdict needs fails A8", () => {
+    const root = mutant([['lane-workers.yml', 'needs: [detect, worker-subscriptiontracker-api, worker-platform]', 'needs: [detect, worker-subscriptiontracker-api]']]);
+    caught(run(root), /lane-workers\.yml: verdict job "lane-verdict" does not `need` "worker-platform"/);
+  });
+
+  test("RC4: dropping lane-workers from ci-gate's needs fails A2, and A7 with it", () => {
+    const root = mutant([['ci.yml', '      - lane-workers\n      - guard-meta\n', '      - guard-meta\n']]);
+    const r = run(root);
+    caught(r, /job "ci-gate" does not `need` "lane-workers"/);
+    assert.match(r.out, /lane-workers\.yml can be started only by `workflow_call`, and no constituent of an aggregator/);
+  });
+
+  test('RC6: an `if:` on the lane-workers call job fails A6 — the rule is unchanged for a lane callee', () => {
+    const root = mutant([['ci.yml', '  lane-workers:\n    name: lane-workers\n', "  lane-workers:\n    if: github.event_name == 'pull_request'\n    name: lane-workers\n"]]);
+    caught(run(root), /lane "lane-workers" carries a job-level `if: github\.event_name == 'pull_request'`, and "ci-gate" aggregates it/);
+  });
+
+  test('a callee whose `on: workflow_call` the event reader cannot read is COVERAGE LOST (exit 2)', () => {
+    const root = mutant([['extensions-ci.yml', '\non:\n  workflow_call:\n', '\non: workflow_call\n']]);
+    caught(run(root), /COVERAGE LOST — \.github\/workflows\/extensions-ci\.yml names workflow_call above `jobs:`, and the event reader did not read it as a trigger/, 2);
   });
 });

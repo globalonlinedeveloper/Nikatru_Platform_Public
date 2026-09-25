@@ -1,0 +1,99 @@
+name: Lane — workers
+
+# The workers lane of ci.yml, as a callee (ADR 095). It runs ONLY as a call: ci.yml's
+# `lane-workers` job calls it with no `if:` on every push to main and every pull
+# request, and ci-gate needs that job, so a red job here is a red required check.
+# `detect` decides from tooling/ci/lane-map.json whether this change touches the
+# lane; the two Worker jobs run only when it says affected=true; `lane-verdict`
+# refuses every skip detect did not license. docs/ci/README.md §3 has the lane map.
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+# why: no `concurrency:` key. The caller's group governs the run, and a callee group
+# equal to the caller's would cancel the call from inside it.
+
+jobs:
+  detect:
+    # why: fetch-depth 0, so `git diff <base>...<head>` has the merge base. It fails
+    # open: a push, a non-PR event, an unmapped path or an unreadable diff all say
+    # affected=true (tooling/ci/lane-detect.mjs).
+    name: detect (workers)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      affected: ${{ steps.detect.outputs.affected }}
+      reason: ${{ steps.detect.outputs.reason }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-node
+      - id: detect
+        name: Does this change touch the workers lane
+        run: node tooling/ci/lane-detect.mjs --lane workers
+
+  worker-subscriptiontracker-api:
+    name: subscriptiontracker-api Worker (typecheck + test + dry-run)
+    needs: detect
+    if: needs.detect.outputs.affected == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: services/subscriptiontracker-api
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm test
+      - run: npx wrangler deploy --dry-run
+
+  worker-platform:
+    # why: this job was 1,818 of ci.yml's 2,696 lines and ran 105 guards behind a
+    # name that described four steps. It is now only those four steps; the guards
+    # are ci.yml's guard-* shards.
+    name: platform Worker (typecheck + test + dry-run)
+    needs: detect
+    if: needs.detect.outputs.affected == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: services/platform
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm test
+      - run: npx wrangler deploy --dry-run
+
+  lane-verdict:
+    # why: the callee's conclusion is what ci-gate sees, and a callee whose work jobs
+    # all skipped concludes success. This job needs every other job, runs always(),
+    # and is red on failure, cancelled, a detect that did not succeed, or a skip
+    # detect did not license (assert-green-means-ran A8 asserts the shape).
+    name: lane-verdict
+    needs: [detect, worker-subscriptiontracker-api, worker-platform]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node
+      - name: Every need is green, or skipped under detect's affected=false
+        env:
+          LANE_NEEDS: ${{ toJSON(needs) }}
+        run: node tooling/ci/lane-verdict.mjs
