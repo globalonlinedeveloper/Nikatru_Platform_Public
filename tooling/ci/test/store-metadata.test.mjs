@@ -67,6 +67,7 @@ const FIELD = {
   'category.txt': 'Productivity\n',
   'privacy-policy-url.txt': 'https://nikatru.com/privacy.html\n',
   'support-url.txt': 'https://nikatru.com/contact.html\n',
+  'terms-of-use-url.txt': 'https://nikatru.com/terms\n',
   'screenshots/README.md': 'slot; dimensions UNVERIFIED\n',
   'search-terms.txt': 'a\nb\nc\n',
 };
@@ -128,18 +129,23 @@ const playRow = (over = {}) => ({
 
 const contract = () => ({
   requiredFiles: [...REQUIRED],
-  urlFiles: ['privacy-policy-url.txt', 'support-url.txt'],
+  urlFiles: ['privacy-policy-url.txt', 'support-url.txt', 'terms-of-use-url.txt'],
   derivedFields: {
     _why: 'generated from the spec, checked rather than asserted',
     'title.txt': { source: 'apps.json', field: 'name', brickVar: 'short_name' },
     'short-description.txt': { source: 'apps.json', field: 'tagline', brickVar: 'description' },
     'privacy-policy-url.txt': { source: 'portfolioUrls', field: 'privacyUrl' },
     'support-url.txt': { source: 'portfolioUrls', field: 'supportUrl' },
+    'terms-of-use-url.txt': { source: 'portfolioUrls', field: 'termsUrl', alsoStatedIn: 'long-description.txt' },
   },
+  // termsUrl since 2026-09-24 (O-APPLE-LISTING-HAS-NO-EULA), as in the real
+  // register. This fixture's windows-store row does not carry the file; the
+  // Apple fixture below does.
   portfolioUrls: {
     privacyUrl: 'https://nikatru.com/privacy.html',
     supportUrl: 'https://nikatru.com/contact.html',
-    agreesWithAppConfigConst: { privacyUrl: 'privacyUrl' },
+    termsUrl: 'https://nikatru.com/terms',
+    agreesWithAppConfigConst: { privacyUrl: 'privacyUrl', termsUrl: 'termsUrl' },
   },
   // BOTH layouts, ordered. apps/subscriptiontracker keeps its config under lib/core/config/
   // and the brick stamps lib/core/ — a single template reached only the first,
@@ -179,6 +185,7 @@ const appConfig = () =>
     'class AppConfig {',
     "  static const String privacyUrl = 'https://nikatru.com/privacy.html';",
     "  static const String contactUrl = 'https://nikatru.com/contact.html';",
+    "  static const String termsUrl = 'https://nikatru.com/terms';",
     '}',
     '',
   ].join('\n');
@@ -705,6 +712,10 @@ describe('assert-store-metadata — the listing exists, is complete, and is deri
 // ─────────────────────────────────────────────────────────────────────────────
 const APPLE_SOURCE = 'developer.apple.com/help/app-store-connect/reference/app-information/ — fetched 2026-07-29';
 
+/** The Apple long description states the Terms of Use URL, as the register's
+ *  derivedFields["terms-of-use-url.txt"].alsoStatedIn requires (2026-09-24). */
+const APPLE_LONG_DESCRIPTION = 'A longer description.\nTerms of use: https://nikatru.com/terms\n';
+
 /** A minimal Apple-shaped fixture: one store row, maxChars, no packageIdentity. */
 function appleTree({ mutateRegister = null, fields = {} } = {}) {
   const root = join(TMP, `a${seq++}`);
@@ -736,22 +747,26 @@ function appleTree({ mutateRegister = null, fields = {} } = {}) {
     },
     storeMetadataContract: {
       requiredFiles: [...REQUIRED],
-      urlFiles: ['privacy-policy-url.txt', 'support-url.txt'],
+      urlFiles: ['privacy-policy-url.txt', 'support-url.txt', 'terms-of-use-url.txt'],
       derivedFields: {
         _why: 'generated from the spec',
         'short-description.txt': { source: 'apps.json', field: 'tagline', brickVar: 'description' },
         'privacy-policy-url.txt': { source: 'portfolioUrls', field: 'privacyUrl' },
         'support-url.txt': { source: 'portfolioUrls', field: 'supportUrl' },
+        'terms-of-use-url.txt': { source: 'portfolioUrls', field: 'termsUrl', alsoStatedIn: 'long-description.txt' },
       },
       portfolioUrls: {
         privacyUrl: 'https://nikatru.com/privacy.html',
         supportUrl: 'https://nikatru.com/contact.html',
-        agreesWithAppConfigConst: { privacyUrl: 'privacyUrl' },
+        termsUrl: 'https://nikatru.com/terms',
+        agreesWithAppConfigConst: { privacyUrl: 'privacyUrl', termsUrl: 'termsUrl' },
       },
       appConfigPaths: ['apps/{app}/lib/core/config/app_config.dart', 'apps/{app}/lib/core/app_config.dart'],
       perChannel: {
         'ios-appstore': {
-          additionalFiles: ['subtitle.txt', 'keywords.txt'],
+          // terms-of-use-url.txt: the Apple listings' Terms of Use URL, as in the
+          // real register since 2026-09-24 (O-APPLE-LISTING-HAS-NO-EULA).
+          additionalFiles: ['subtitle.txt', 'keywords.txt', 'terms-of-use-url.txt'],
           maxChars: {
             'title.txt': { max: 30, min: 2, source: APPLE_SOURCE },
             'subtitle.txt': { max: 30, source: APPLE_SOURCE },
@@ -782,8 +797,13 @@ function appleTree({ mutateRegister = null, fields = {} } = {}) {
   write('apps/subscriptiontracker/lib/core/config/app_config.dart', appConfig());
   write('apps/subscriptiontracker/pubspec.yaml', 'name: subscriptiontracker\nversion: 1.0.0+1\n');
 
-  const body = { ...FIELD, 'subtitle.txt': 'Every subscription, one list\n', 'keywords.txt': 'subscription,tracker\n' };
-  for (const rel of [...REQUIRED, 'subtitle.txt', 'keywords.txt']) {
+  const body = {
+    ...FIELD,
+    'long-description.txt': APPLE_LONG_DESCRIPTION,
+    'subtitle.txt': 'Every subscription, one list\n',
+    'keywords.txt': 'subscription,tracker\n',
+  };
+  for (const rel of [...REQUIRED, 'subtitle.txt', 'keywords.txt', 'terms-of-use-url.txt']) {
     write(`apps/subscriptiontracker/store/ios-appstore/${rel}`, fields[rel] ?? body[rel]);
   }
   // The FACTORY half, so these limit cases exercise the limits rather than
@@ -793,11 +813,12 @@ function appleTree({ mutateRegister = null, fields = {} } = {}) {
   write('tooling/bricks/app/hooks/brand_assets.dart', BRAND_ASSETS_DART);
   write('tooling/bricks/app/hooks/post_gen.dart', POST_GEN_DART);
   write('tooling/bricks/app/__brick__/apps/{{app_id}}/lib/core/app_config.dart', appConfig());
+  const brick = { ...BRICK_FIELD, 'long-description.txt': APPLE_LONG_DESCRIPTION };
   for (const row of register.channels.filter((c) => c.kind === 'store' && typeof c.storeMetadataDir === 'string')) {
     const dir = `tooling/bricks/app/__brick__/${row.storeMetadataDir.replace('{app}', '{{app_id}}')}`;
     const extra = register.storeMetadataContract?.perChannel?.[row.id]?.additionalFiles ?? [];
     for (const rel of [...(register.storeMetadataContract?.requiredFiles ?? []), ...extra]) {
-      write(`${dir}/${rel}`, BRICK_FIELD[rel] ?? body[rel] ?? 'stamped\n');
+      write(`${dir}/${rel}`, brick[rel] ?? body[rel] ?? 'stamped\n');
     }
   }
   return root;
@@ -870,6 +891,100 @@ describe('assert-store-metadata — maxChars, the Apple limit kind', () => {
     assert.equal(code, 1, out);
     assertComplained(out);
     assert.match(out, /subtitle\.txt is missing/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// terms-of-use-url.txt — the Apple listings' Terms of Use URL
+// (O-APPLE-LISTING-HAS-NO-EULA, 2026-09-24).
+//
+// The guard gained no code for it: the file reaches every limb through the
+// register (ios-appstore `additionalFiles`, `urlFiles`, `derivedFields` from
+// `portfolioUrls.termsUrl`, and `agreesWithAppConfigConst.termsUrl`). These
+// cases prove each limb reaches it. R1 was also run on the REAL tree: moving
+// apps/subscriptiontracker/store/ios-appstore/terms-of-use-url.txt away exits 1
+// naming it. On the base commit the file did not exist and the guard exited 0
+// without a word about terms. The pre-change guard CODE exits 1 on this tree as
+// well, which is the point: the requirement is register data, not guard code.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-store-metadata — terms-of-use-url.txt on the Apple listings', () => {
+  test('R1: FAILS when ios-appstore carries no terms-of-use-url.txt, and names it', () => {
+    const root = appleTree();
+    rmSync(join(root, 'apps/subscriptiontracker/store/ios-appstore/terms-of-use-url.txt'), { force: true });
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /apps\/subscriptiontracker\/store\/ios-appstore\/terms-of-use-url\.txt is missing/);
+  });
+
+  test('R2: FAILS when the terms URL has forked from portfolioUrls.termsUrl', () => {
+    const { code, out } = run(appleTree({ fields: { 'terms-of-use-url.txt': 'https://nikatru.com/terms-old\n' } }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /terms-of-use-url\.txt has forked from its spec source/);
+    assert.match(out, /portfolioUrls:termsUrl says "https:\/\/nikatru\.com\/terms"/);
+  });
+
+  test('R3: FAILS when an app_config termsUrl disagrees with portfolioUrls.termsUrl', () => {
+    const root = appleTree();
+    writeFileSync(
+      join(root, 'apps/subscriptiontracker/lib/core/config/app_config.dart'),
+      [
+        'class AppConfig {',
+        "  static const String privacyUrl = 'https://nikatru.com/privacy.html';",
+        "  static const String termsUrl = 'https://nikatru.com/terms-of-service';",
+        '}',
+        '',
+      ].join('\n'),
+    );
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /compiles `termsUrl = "https:\/\/nikatru\.com\/terms-of-service"`/);
+    assert.match(out, /portfolioUrls\.termsUrl publishes "https:\/\/nikatru\.com\/terms"/);
+  });
+
+  test("FAILS when the brick's Apple terms-of-use-url.txt is not portfolioUrls.termsUrl", () => {
+    const root = appleTree();
+    writeFileSync(join(root, 'tooling/bricks/app/__brick__/apps/{{app_id}}/store/ios-appstore/terms-of-use-url.txt'), 'https://nikatru.com/eula\n');
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /ios-appstore\/terms-of-use-url\.txt reads "https:\/\/nikatru\.com\/eula"/);
+    assert.match(out, /portfolioUrls\.termsUrl says "https:\/\/nikatru\.com\/terms"/);
+  });
+
+  // ── alsoStatedIn: the long description must STATE the URL (R6) ────────────
+  // On the real tree, dropping the line from the ios-appstore long description
+  // exits 1 on this guard and 0 on the pre-change one.
+  test('R6: FAILS when the Apple long description drops its `Terms of use:` line', () => {
+    const { code, out } = run(appleTree({ fields: { 'long-description.txt': 'A longer description.\n' } }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /apps\/subscriptiontracker\/store\/ios-appstore\/long-description\.txt does not state "https:\/\/nikatru\.com\/terms"/);
+  });
+
+  test('R6: a LONGER url that merely contains the terms URL does not count', () => {
+    const { code, out } = run(appleTree({ fields: { 'long-description.txt': 'A longer description.\nTerms of use: https://nikatru.com/terms-old\n' } }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /ios-appstore\/long-description\.txt does not state "https:\/\/nikatru\.com\/terms"/);
+  });
+
+  // The token rule must not fire on CORRECT input: a URL that ends a sentence.
+  test('R6: PASSES when the URL ends a sentence with a full stop', () => {
+    const { code, out } = run(appleTree({ fields: { 'long-description.txt': 'A longer description.\nRead the terms at https://nikatru.com/terms.\n' } }));
+    assert.equal(code, 0, out);
+    assert.match(out, /2 derived value\(s\) found stated verbatim/);
+  });
+
+  test("R6: FAILS when the brick's Apple long description does not state the URL", () => {
+    const root = appleTree();
+    writeFileSync(join(root, 'tooling/bricks/app/__brick__/apps/{{app_id}}/store/ios-appstore/long-description.txt'), 'A longer description.\n');
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /__brick__\/apps\/\{\{app_id\}\}\/store\/ios-appstore\/long-description\.txt does not state "https:\/\/nikatru\.com\/terms"/);
   });
 });
 

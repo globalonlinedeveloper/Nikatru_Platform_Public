@@ -42,6 +42,7 @@
 //   tree PRESENT but incomplete   -> FAIL  (this is the case that matters)
 //   tree present, field emptied   -> FAIL
 //   tree present, field forked from its spec source -> FAIL
+//   tree present, a derived value its `alsoStatedIn` file does not state -> FAIL
 //   a tree with no register row   -> FAIL  (a channel renamed out from under it)
 //   EVERY expected tree gone      -> COVERAGE LOST
 //
@@ -414,6 +415,21 @@ function specValue(app, spec) {
   return { problem: `${REGISTER} storeMetadataContract.derivedFields declares source "${spec.source}", which this guard cannot resolve. A derivation nobody can evaluate is a field nobody checks.` };
 }
 
+/** ⏱ 2026-09-24 (O-APPLE-LISTING-HAS-NO-EULA). Whether `text` states `value` as
+ *  a whole token. A derivedFields entry that names `alsoStatedIn` must have its
+ *  value there verbatim, on every tree that carries the field: the register's
+ *  `_why` on terms-of-use-url.txt says why a reviewer reads it there.
+ *
+ *  A TOKEN, not a substring: `https://nikatru.com/terms-old` and
+ *  `https://nikatru.com/terms.html` both CONTAIN `https://nikatru.com/terms`.
+ *  The value may end a sentence, so one closing `.`, `,`, `;`, `:` or `)` is
+ *  allowed after it, and a `.` only when whitespace or the end follows. */
+function statesValue(text, value) {
+  const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(?:^|[\\s(])${escaped}(?=$|[\\s),;:]|\\.(?:\\s|$))`, 'm').test(text);
+}
+let statedChecked = 0;
+
 // ── per tree ─────────────────────────────────────────────────────────────────
 let treesChecked = 0;
 let filesChecked = 0;
@@ -606,6 +622,30 @@ for (const { row, app, dir } of expected) {
       }
     }
   }
+
+  // ── a derived value this tree must also STATE, in another of its files ────
+  const treeFiles = [...requiredFiles, ...extraFiles];
+  for (const rel of treeFiles) {
+    const spec = derived[rel];
+    if (!spec || typeof spec !== 'object' || typeof spec.alsoStatedIn !== 'string') continue;
+    const got = specValue(app, spec);
+    if (typeof got.value !== 'string') continue; // the problem or gap is reported above
+    const where = posix.join(dir, spec.alsoStatedIn);
+    const text = read(where);
+    if (text === null) {
+      // A file the tree must carry anyway is already reported missing above.
+      if (!treeFiles.includes(spec.alsoStatedIn)) {
+        problems.push(`${where} does not exist, and ${REGISTER} storeMetadataContract.derivedFields["${rel}"].alsoStatedIn names it as the file that must state ${JSON.stringify(got.value)}.`);
+      }
+      continue;
+    }
+    statedChecked++;
+    if (!statesValue(text, got.value)) {
+      problems.push(
+        `${where} does not state ${JSON.stringify(got.value)}. ${REGISTER} storeMetadataContract.derivedFields["${rel}"].alsoStatedIn requires it there, word for word, in every tree that carries ${rel}. The field file alone passes every other check here and is still not what a reviewer reads.`,
+      );
+    }
+  }
 }
 
 // ── the scan must still be comparing something ───────────────────────────────
@@ -796,6 +836,25 @@ for (const row of storeRows) {
       } else {
         brickDerivedChecked++;
       }
+    }
+  }
+
+  // The `alsoStatedIn` limb, on the template: a portfolio URL is a literal in
+  // the brick, so the template itself must state it, or every app the factory
+  // stamps fails the per-app limb above on its first run.
+  for (const rel of [...requiredFiles, ...extraFiles]) {
+    const spec = derived[rel];
+    if (!spec || typeof spec !== 'object' || typeof spec.alsoStatedIn !== 'string' || spec.source !== 'portfolioUrls') continue;
+    const want = portfolioUrls[spec.field];
+    if (typeof want !== 'string' || want.trim() === '') continue; // reported by specValue
+    const where = posix.join(dir, spec.alsoStatedIn);
+    const text = read(where);
+    if (text === null) continue; // a missing template is reported above
+    statedChecked++;
+    if (!statesValue(text, want.trim())) {
+      problems.push(
+        `${where} does not state ${JSON.stringify(want.trim())}. ${REGISTER} storeMetadataContract.derivedFields["${rel}"].alsoStatedIn requires it there, so every app the factory stamps would fail the per-app check on its "${row.id}" listing.`,
+      );
     }
   }
 }
@@ -1319,6 +1378,7 @@ if (problems.length) {
   );
   ok(`${formRuleChecks} store form rule(s) checked against the store's own upload form (contracts/store/vocabulary.js STORE_FORM_RULES)`);
   ok(`${filesChecked} listing field(s) non-empty, ${derivedChecked} of them compared to their spec source, ${limitsChecked} measured against a SOURCED store limit, ${identitiesChecked} package-identity field(s) agree`);
+  ok(`${statedChecked} derived value(s) found stated verbatim where derivedFields[].alsoStatedIn requires them, app trees and brick templates together`);
   ok(
     `REQUIRED_COVERAGE (THE FACTORY) — ${storeRows.length} store channel(s) → ${brickTreesChecked} brick template tree(s) under ${BRICK}, ` +
       `${brickFilesChecked} template(s) read, ${brickDerivedChecked} field(s) proven GENERATED from a spec var rather than typed, ` +

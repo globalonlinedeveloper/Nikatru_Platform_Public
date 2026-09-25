@@ -19,8 +19,8 @@
   ],
   "_rootsNote": "TWO roots since 2026-09-07 ([ADR 067] phase 2, unit app-shell). The Worker half of the template - 13 files, 917 lines every stamped backend app inherits - was outside this ledger entirely while `root` was one string, and `git ls-files -- <that one root>` could not see it to complain. assert-chassis-ledger.mjs is the authority on this list and cross-checks it; a row's `root` is optional and defaults to roots[0], which is why the 96 rows written against the single root are unchanged. ⏱ THE FIGURES IN THIS NOTE MOVED ON 2026-09-08 AND ARE CORRECTED RATHER THAN REWRITTEN: the Worker half is now 14 files and 1,021 lines, because the template gained src/lib/error-sink.ts — a stamped backend had NO crash sink at all and failed tooling/ci/assert-worker-error-sink.mjs on limbs 2, 3 and 5 at its first CI run. The guard PRINTS both figures per root on every run, which is the number to read; this sentence is prose and prose rots.",
   "totals": {
-    "files": 134,
-    "lines": 18946,
+    "files": 136,
+    "lines": 18958,
     "unclassified": 0,
     "unclassifiedLines": 0
   },
@@ -352,9 +352,9 @@
     },
     {
       "path": "store/ios-appstore/long-description.txt",
-      "lines": 18,
+      "lines": 19,
       "verdict": "STAYS",
-      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave. ⏱ RE-MEASURED 2026-09-24: 18 -> 19, the `Terms of use:` line assert-store-metadata.mjs requires through derivedFields[\"terms-of-use-url.txt\"].alsoStatedIn (O-APPLE-LISTING-HAS-NO-EULA)."
     },
     {
       "path": "store/ios-appstore/privacy-manifest.json",
@@ -376,9 +376,9 @@
     },
     {
       "path": "store/ios-appstore/README.md",
-      "lines": 55,
+      "lines": 59,
       "verdict": "STAYS",
-      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave. ⏱ RE-MEASURED 2026-09-24: 55 -> 59, after terms-of-use-url.txt joined the per-channel fields (O-APPLE-LISTING-HAS-NO-EULA)."
     },
     {
       "path": "store/ios-appstore/screenshots/README.md",
@@ -415,6 +415,12 @@
       "lines": 1,
       "verdict": "STAYS",
       "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/ios-appstore/terms-of-use-url.txt",
+      "lines": 1,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave. Added 2026-09-24 (O-APPLE-LISTING-HAS-NO-EULA): the Terms of Use URL, which assert-store-metadata.mjs compares to portfolioUrls.termsUrl."
     },
     {
       "path": "store/ios-appstore/title.txt",
@@ -496,9 +502,9 @@
     },
     {
       "path": "store/macos-appstore/long-description.txt",
-      "lines": 18,
+      "lines": 19,
       "verdict": "STAYS",
-      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave. ⏱ RE-MEASURED 2026-09-24: 18 -> 19, the `Terms of use:` line assert-store-metadata.mjs requires through derivedFields[\"terms-of-use-url.txt\"].alsoStatedIn (O-APPLE-LISTING-HAS-NO-EULA)."
     },
     {
       "path": "store/macos-appstore/privacy-policy-url.txt",
@@ -514,9 +520,9 @@
     },
     {
       "path": "store/macos-appstore/README.md",
-      "lines": 55,
+      "lines": 59,
       "verdict": "STAYS",
-      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave. ⏱ RE-MEASURED 2026-09-24: 55 -> 59, after terms-of-use-url.txt joined the per-channel fields (O-APPLE-LISTING-HAS-NO-EULA)."
     },
     {
       "path": "store/macos-appstore/screenshots/README.md",
@@ -541,6 +547,12 @@
       "lines": 1,
       "verdict": "STAYS",
       "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/macos-appstore/terms-of-use-url.txt",
+      "lines": 1,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave. Added 2026-09-24 (O-APPLE-LISTING-HAS-NO-EULA): the Terms of Use URL, which assert-store-metadata.mjs compares to portfolioUrls.termsUrl."
     },
     {
       "path": "store/macos-appstore/title.txt",

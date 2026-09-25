@@ -556,6 +556,103 @@ describe('assert-app-yaml — the declaration and its renderings', () => {
       assert.equal(existsSync(join(root, 'apps/subscriptiontracker/store/linux-snap')), false);
     } finally { kill(root); }
   });
+
+  // ── O-APPLE-LISTING-HAS-NO-EULA (2026-09-24) ─────────────────────────────
+  // terms-of-use-url.txt is the first RENDERED listing field that only some
+  // channels carry. Until this change the renderer wrote every rendered field
+  // into every channel tree, and wrote the string `undefined` for a rendered
+  // field it had no value for. Measured on the base commit with the new
+  // vocabulary row: its renderer wrote terms-of-use-url.txt into all six trees,
+  // android-play included, each reading `undefined`.
+  test('MUTATION: `legal` without `termsUrl` is a FINDING (1), not a coverage loss', () => {
+    const root = tree();
+    try {
+      const text = get(root, APP_YAML);
+      assert.match(text, /^ {2}termsUrl: \S+$/m, 'the real declaration must carry legal.termsUrl for this case to remove it');
+      put(root, APP_YAML, text.replace(/^ {2}termsUrl: .*\n/m, ''));
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, `expected a finding, got ${code}:\n${out}`);
+      assert.match(out, /required property "termsUrl" is absent/);
+    } finally { kill(root); }
+  });
+
+  test('R4: a channel whose additionalFiles omit terms-of-use-url.txt gets no terms file', () => {
+    const TERMS = 'terms-of-use-url.txt';
+    const root = tree();
+    try {
+      const register = readJson(root, 'tooling/channel-register.json');
+      const smc = register.storeMetadataContract;
+      assert.ok(smc.perChannel['macos-appstore'].additionalFiles.includes(TERMS), 'the real register declares terms on macos-appstore');
+      smc.perChannel['macos-appstore'].additionalFiles = smc.perChannel['macos-appstore'].additionalFiles.filter((f) => f !== TERMS);
+      putJson(root, 'tooling/channel-register.json', register);
+      rmSync(join(root, 'apps/subscriptiontracker/store/macos-appstore', TERMS));
+      const { code, out } = spawn(RENDER, [root]);
+      assert.equal(code, 0, out);
+      // READ FROM THE DECLARATION, not typed, like the tagline case above.
+      const termsUrl = get(root, APP_YAML).match(/^ {2}termsUrl: (\S+)$/m)[1];
+      // The expected set comes from the register and the filesystem, never from
+      // plan(): a case that asked the renderer what it should write would agree
+      // with any renderer.
+      const rows = register.channels.filter((c) => c && c.kind === 'store' && typeof c.storeMetadataDir === 'string' && c.storeMetadataDir.includes('{app}'));
+      let declaring = 0;
+      let notDeclaring = 0;
+      for (const c of rows) {
+        const dir = c.storeMetadataDir.replace('{app}', 'subscriptiontracker');
+        if (!existsSync(join(root, dir))) continue;
+        const declared = [...smc.requiredFiles, ...(smc.perChannel[c.id]?.additionalFiles ?? [])].includes(TERMS);
+        assert.equal(existsSync(join(root, dir, TERMS)), declared, `${dir}/${TERMS} must exist exactly when "${c.id}" declares it:\n${out}`);
+        if (declared) {
+          declaring += 1;
+          assert.equal(get(root, `${dir}/${TERMS}`), `${termsUrl}\n`);
+        } else {
+          notDeclaring += 1;
+        }
+      }
+      assert.equal(existsSync(join(root, 'apps/subscriptiontracker/store/android-play', TERMS)), false, 'android-play declares no terms URL');
+      assert.ok(declaring >= 1 && notDeclaring >= 2, `the case needs both kinds of channel to mean anything: ${declaring} declaring, ${notDeclaring} not`);
+    } finally { kill(root); }
+  });
+
+  test('R5: a rendered field with no value THROWS and writes nothing — never the string `undefined`', () => {
+    const root = tree();
+    try {
+      // render.mjs imports the vocabulary by a path relative to ITSELF, so this
+      // case runs a copy of the real renderer and its imports inside the
+      // fixture, beside a vocabulary that marks one more field rendered.
+      for (const rel of [
+        'tooling/app-yaml/render.mjs',
+        'tooling/app-yaml/yaml.mjs',
+        'tooling/app-yaml/schema-validate.mjs',
+        'tooling/app-yaml/schema/app.schema.json',
+        'tooling/sites/apex.mjs',
+        'contracts/store/vocabulary.js',
+      ]) {
+        mkdirSync(join(root, dirname(rel)), { recursive: true });
+        cpSync(join(REPO, rel), join(root, rel));
+      }
+      const copy = join(root, 'tooling/app-yaml/render.mjs');
+      // Green control first: the copy, unmutated, agrees with the tree.
+      const green = spawn(copy, [root, '--check']);
+      assert.equal(green.code, 0, green.out);
+
+      const vocabRel = 'contracts/store/vocabulary.js';
+      const anchor = "  { name: 'terms-of-use-url.txt', kind: 'url', app: 'additional', extension: null, rendered: true },\n";
+      assert.ok(get(root, vocabRel).includes(anchor), 'the vocabulary must still carry the row this case anchors on');
+      put(root, vocabRel, get(root, vocabRel).replace(anchor, `${anchor}  { name: 'eula-url.txt', kind: 'url', app: 'additional', extension: null, rendered: true },\n`));
+      // Declared on a channel, so a renderer that skipped the value check would
+      // write it there.
+      const register = readJson(root, 'tooling/channel-register.json');
+      register.storeMetadataContract.perChannel['ios-appstore'].additionalFiles.push('eula-url.txt');
+      putJson(root, 'tooling/channel-register.json', register);
+
+      const { code, out } = spawn(copy, [root]);
+      assert.equal(code, 1, out);
+      assert.match(out, /marks "eula-url\.txt" rendered, and this renderer has no value for it/);
+      for (const d of listingDirs(root)) {
+        assert.equal(existsSync(join(root, d, 'eula-url.txt')), false, `${d}/eula-url.txt must not be written:\n${out}`);
+      }
+    } finally { kill(root); }
+  });
 });
 
 describe('yaml.mjs — the subset REFUSES what it does not implement', () => {

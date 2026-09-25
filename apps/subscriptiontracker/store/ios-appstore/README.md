@@ -30,12 +30,13 @@ run, so drift is a build failure rather than a discovery at submission time.
 | `title.txt` | App Name | `sites/_shared/_data/apps.json` → `name` | ✅ exact match, **and ≤ 30 / ≥ 2 chars** |
 | `subtitle.txt` | Subtitle | hand-written; condensed from `short-description.txt` | ✅ **≤ 30 chars** |
 | `short-description.txt` | *(no Apple field of this name)* | `sites/_shared/_data/apps.json` → `tagline` | ✅ exact match |
-| `long-description.txt` | Description | the app's differentiation line (`app_brick` var `description`), expanded | non-empty |
+| `long-description.txt` | Description | the app's differentiation line (`app_brick` var `description`), expanded | non-empty, **and its `Terms of use:` line states the `terms-of-use-url.txt` URL word for word** |
 | `keywords.txt` | Keywords | listing copy, comma-separated | non-empty — **limit UNVERIFIED** |
 | `promotional-text.txt` | Promotional Text | listing copy | non-empty — **limit UNVERIFIED** |
 | `category.txt` | Primary Category | `app_brick` var `category` | non-empty |
 | `privacy-policy-url.txt` | Privacy Policy URL | `apps/subscriptiontracker/lib/core/app_config.dart` → `privacyUrl` | ✅ exact match |
 | `support-url.txt` | Support URL | `apps/subscriptiontracker/lib/core/app_config.dart` → `contactUrl` | ✅ exact match |
+| `terms-of-use-url.txt` | Terms of Use (EULA) link — no console field is filled from this file yet: `tooling/release/submit-appstore.mjs` pushes no EULA field, so the link reaches a reviewer through the `Terms of use:` line in `long-description.txt` | `tooling/channel-register.json` → `storeMetadataContract.portfolioUrls.termsUrl`, rendered through `apps/subscriptiontracker/app.yaml` → `legal.termsUrl`; it must equal `apps/subscriptiontracker/lib/core/app_config.dart` → `termsUrl`, the link the app itself shows | ✅ exact match |
 | `screenshots/` | App Previews and Screenshots | not derivable — see that directory's README | slot must exist |
 | `privacy-manifest.json` | *(not a listing field — see below)* | **measured from the tree** on 2026-08-31: the plugin closure, each plugin's own `PrivacyInfo.xcprivacy`, and `apps/subscriptiontracker/store/android-play/data-safety.json` for the collected-data rows | ✅ `tooling/ci/assert-apple-privacy-manifest.mjs` re-derives **both** `PrivacyInfo.xcprivacy` files from it and compares |
 

@@ -258,6 +258,13 @@ export const LISTING_FIELDS = /** @type {const} */ ([
   { name: 'category.txt', kind: 'text', app: 'required', extension: 'per-store', rendered: true },
   { name: 'privacy-policy-url.txt', kind: 'url', app: 'required', extension: 'shared', rendered: true },
   { name: 'support-url.txt', kind: 'url', app: 'required', extension: 'shared', rendered: true },
+  // ⏱ 2026-09-24 (O-APPLE-LISTING-HAS-NO-EULA): the Terms of Use URL. It sits
+  // beside the other two URLs because `urlFiles` is compared to this table IN
+  // ORDER. It is `additional`, not required, because only the two Apple rows
+  // name it in their `additionalFiles`, and render.mjs writes a rendered field
+  // only into a channel that declares it. Its value is
+  // `portfolioUrls.termsUrl`, the page the app already links to as `termsUrl`.
+  { name: 'terms-of-use-url.txt', kind: 'url', app: 'additional', extension: null, rendered: true },
   { name: 'screenshots/README.md', kind: 'doc', app: 'required', extension: 'shared', rendered: false },
 
   // ── ADDITIONAL: a field some channels have and others do not. WHICH channels

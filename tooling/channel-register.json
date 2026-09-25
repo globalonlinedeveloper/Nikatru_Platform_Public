@@ -182,7 +182,8 @@
     ],
     "urlFiles": [
       "privacy-policy-url.txt",
-      "support-url.txt"
+      "support-url.txt",
+      "terms-of-use-url.txt"
     ],
     "derivedFields": {
       "_why": "GENERATED FROM THE SPEC is [10]D-5's headline, and a README saying so is not a mechanism. Each entry names the ONE place the value already lives, and the guard compares the file to it — so a listing edited in a console and pasted back here without touching the spec fails the build instead of quietly forking.",
@@ -210,6 +211,12 @@
       "support-url.txt": {
         "source": "portfolioUrls",
         "field": "supportUrl"
+      },
+      "terms-of-use-url.txt": {
+        "_why": "⏱ 2026-09-24 (O-APPLE-LISTING-HAS-NO-EULA). `alsoStatedIn`: the Apple long descriptions must carry this URL word for word, as their `Terms of use:` line. tooling/release/submit-appstore.mjs pushes listing text and has no EULA field, so the description is the one place in this repository that puts the link in front of an App Store reviewer. Filling App Store Connect's own EULA field is a console step outside this repository. assert-store-metadata.mjs checks the line on every app tree carrying this file and on the brick's templates.",
+        "source": "portfolioUrls",
+        "field": "termsUrl",
+        "alsoStatedIn": "long-description.txt"
       }
     },
     "portfolioUrls": {
@@ -230,12 +237,16 @@
         "So the portfolio's two listing URLs are declared HERE, once, and both limbs read them: the",
         "per-app trees and the brick's templates. `appConfigPaths` below still exists and is still",
         "checked — `privacyUrl` must AGREE with every app_config that declares it, in both layouts — so",
-        "moving the declaration bought reach without losing the tie to the code."
+        "moving the declaration bought reach without losing the tie to the code.",
+        "",
+        "⏱ 2026-09-24 (O-APPLE-LISTING-HAS-NO-EULA): `termsUrl` is the THIRD, the Terms of Use URL the two Apple listings carry as terms-of-use-url.txt. It is the page the app already links to as `AppConfig.termsUrl` in both layouts, sites/nikatru/terms.html is its canonical, and check-site-integrity.mjs already lists that page as a legal page. `agreesWithAppConfigConst` ties it to that const."
       ],
       "privacyUrl": "https://nikatru.com/privacy",
       "supportUrl": "https://nikatru.com/contact",
+      "termsUrl": "https://nikatru.com/terms",
       "agreesWithAppConfigConst": {
-        "privacyUrl": "privacyUrl"
+        "privacyUrl": "privacyUrl",
+        "termsUrl": "termsUrl"
       }
     },
     "appConfigPaths": [
@@ -462,7 +473,8 @@
           "keywords.txt",
           "promotional-text.txt",
           "privacy-manifest.json",
-          "age-rating.json"
+          "age-rating.json",
+          "terms-of-use-url.txt"
         ],
         "maxChars": {
           "_why": [
@@ -646,7 +658,8 @@
         "additionalFiles": [
           "subtitle.txt",
           "keywords.txt",
-          "promotional-text.txt"
+          "promotional-text.txt",
+          "terms-of-use-url.txt"
         ],
         "maxChars": {
           "title.txt": {
