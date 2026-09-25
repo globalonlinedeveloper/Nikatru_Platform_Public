@@ -892,4 +892,55 @@ jobs:
     assert.equal(code, 1, out);
     assert.match(out, /is SERVED and .* never records "subscriptiontracker-web"/);
   });
+
+  // ⏱ 2026-09-25 [ADR 095 §4] — the register row names the lane's OWN file after
+  // it became `on: workflow_call` only; ci.yml calls it after ci-gate. It is
+  // graded as the one child `<callJob>/deploy-web` in the caller.
+  const CALL_ONLY = `name: Deploy web
+on:
+  workflow_call:
+jobs:
+  deploy-web:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Record the deployed SHA
+        run: node tooling/ci/record-deployment.mjs subscriptiontracker-web https://subly.nikatru.com
+`;
+  const CI_CALLER = 'name: CI\non: [push]\njobs:\n  ci-gate:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: echo gate\n  deploy-web:\n    needs: [ci-gate]\n    uses: ./.github/workflows/deploy-web.yml\n';
+
+  test('a served lane named by its call-only file is graded as the one call job that runs it', () => {
+    const { code, out } = run(served({ 'deploy-web.yml': CALL_ONLY, 'ci.yml': CI_CALLER }));
+    assert.equal(code, 0, out);
+    assert.match(out, /1 served channel\(s\) → 1 required environment\(s\)/);
+  });
+
+  test('that call-only lane recording NOTHING fails, named at the caller child', () => {
+    const lib = CALL_ONLY.replace(/      - name: Record[\s\S]*$/, '      - run: echo deployed\n');
+    const { code, out } = run(served({ 'deploy-web.yml': lib, 'ci.yml': CI_CALLER }));
+    assert.equal(code, 1, out);
+    assert.match(out, /\.github\/workflows\/ci\.yml job "deploy-web\/deploy-web" never records "subscriptiontracker-web"/);
+  });
+
+  test('a call-only lane NO workflow calls is COVERAGE LOST, not a pass (the resolver refuses the orphan)', () => {
+    const { code, out } = run(served({ 'deploy-web.yml': CALL_ONLY }));
+    assert.equal(code, 2, out);
+    assert.match(out, /orphan-callee/);
+  });
+
+  test('a call-only lane TWO call jobs run is COVERAGE LOST: one caller would go unread', () => {
+    const twice = `${CI_CALLER}  deploy-web-again:\n    needs: [ci-gate]\n    uses: ./.github/workflows/deploy-web.yml\n`;
+    const { code, out } = run(served({ 'deploy-web.yml': CALL_ONLY, 'ci.yml': twice }));
+    assert.equal(code, 2, out);
+    assert.match(out, /2 call job\(s\) run it/);
+  });
+
+  // ⏱ 2026-09-25 [ADR 095 §4] — the host is found (one call job runs the file)
+  // but the register's job is not among its children: the lane has no subject.
+  test('a call-only lane whose named job the one caller does not run is COVERAGE LOST, naming the child', () => {
+    const renamed = CALL_ONLY.replace('  deploy-web:', '  renamed:');
+    const { code, out } = run(served({ 'deploy-web.yml': renamed, 'ci.yml': CI_CALLER }));
+    assert.equal(code, 2, out);
+    assert.match(out, /its child "deploy-web\/deploy-web" is not there/);
+    assert.match(out, /Children present: deploy-web\/renamed/);
+  });
 });

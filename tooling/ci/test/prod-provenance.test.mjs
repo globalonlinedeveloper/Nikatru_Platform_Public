@@ -32,6 +32,7 @@ import {
   attestationDeployments,
   CouldNotLook,
   collectPaged,
+  makeReleasedBuildResolver,
   migrationMerge,
   PENDING_LIMIT_HOURS,
   pendingMigrationVerdict,
@@ -1341,9 +1342,11 @@ describe('check-prod-provenance — a SUBMISSION lane build', () => {
   });
 
   test('S-12 a fixture run on a workflow that is NO release lane is COULD NOT LOOK, never judged', () => {
-    const r = run(ROW5, [WEB101, { ...RUN5, path: '.github/workflows/ci.yml' }], [DEP5]);
+    // ⏱ 2026-09-25 [ADR 095 §4]: ops-watch.yml, not ci.yml — ci.yml is now the run
+    // host of the deploy-web callee lane, so its runs ARE read (S-40..S-47).
+    const r = run(ROW5, [WEB101, { ...RUN5, path: '.github/workflows/ops-watch.yml' }], [DEP5]);
     assert.equal(r.status, 2, r.stdout + r.stderr);
-    assert.match(r.stderr, /names workflow ci\.yml, which is no release lane/);
+    assert.match(r.stderr, /names workflow ops-watch\.yml, which is no release lane/);
   });
 
   test('S-13 a submission run with no `id` is COULD NOT LOOK, never a guess', () => {
@@ -1452,6 +1455,9 @@ describe('check-prod-provenance — the release lanes', () => {
       return { workflow, kind, environments: envs.split(',').filter(Boolean) };
     });
 
+  // ⏱ 2026-09-25 [ADR 095 §4] — an emit reads each lane's run host from
+  // .github/workflows, so the fixture carries a plain workflow for every file
+  // its register names.
   function emitFixture(register) {
     const root = mkdtempSync(join(tmpdir(), 'nikatru-release-lanes-'));
     try {
@@ -1459,6 +1465,7 @@ describe('check-prod-provenance — the release lanes', () => {
       mkdirSync(join(root, 'catalog'), { recursive: true });
       writeFileSync(join(root, CHANNELS), JSON.stringify(register, null, 2));
       writeFileSync(join(root, CATALOGUE), JSON.stringify([{ slug: 'subscriptiontracker' }]));
+      writeStubWorkflows(root, register);
       return spawnSync(process.execPath, [MONITOR, '--root', root, '--emit-release-lanes'], { cwd: REPO, encoding: 'utf8' });
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -1522,8 +1529,8 @@ describe('check-prod-provenance — the release lanes', () => {
     });
     assert.equal(r.status, 0, r.stdout + r.stderr);
     assert.deepEqual(r.stdout.trim().split('\n').sort(), [
-      'deploy-web.yml\tserved\tsubscriptiontracker-web',
-      'submit-play.yml\tsubmission\tsubscriptiontracker-android-play',
+      'deploy-web.yml\tserved\tsubscriptiontracker-web\tdeploy-web.yml',
+      'submit-play.yml\tsubmission\tsubscriptiontracker-android-play\tsubmit-play.yml',
     ]);
   });
 
@@ -1544,6 +1551,220 @@ describe('check-prod-provenance — the release lanes', () => {
     const r = emitFixture({ surfaces: SURFACES, channels: [PLAYROW] });
     assert.equal(r.status, 2, r.stdout + r.stderr);
     assert.match(r.stderr, /no served lane in tooling\/channel-register\.json/);
+  });
+});
+
+// ── ⏱ 2026-09-25 [ADR 095 §4] · A CALL-ONLY LANE RUNS AS ITS CALLER ───────────
+// deploy-web.yml becomes `workflow_call`-only and ci.yml's post-gate job
+// `deploy-web` calls it. Inside a called workflow GITHUB_WORKFLOW_REF and
+// run_number are the CALLER's, so a web stamp reads `<line>.<ci run_number>+<sha7>`
+// and a Deployment payload names ci.yml. These cases build that tree in a copy
+// (the real tree moves in a later commit) and hold the reader to it.
+const STUB_WORKFLOW = `name: Stub
+on:
+  workflow_dispatch:
+jobs:
+  one:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - run: echo stub
+`;
+
+/** A plain workflow for every file a channel register names; `files` overrides by basename. */
+function writeStubWorkflows(root, register, files = {}) {
+  const dir = join(root, '.github', 'workflows');
+  mkdirSync(dir, { recursive: true });
+  for (const c of register.channels ?? []) {
+    for (const p of [c?.lane?.workflow, c?.submission?.workflow]) {
+      if (typeof p === 'string') writeFileSync(join(dir, p.split('/').pop()), STUB_WORKFLOW);
+    }
+  }
+  for (const [f, text] of Object.entries(files)) writeFileSync(join(dir, f), text);
+}
+
+/** A workflow whose post-gate job `job` calls deploy-web.yml. */
+const callerYml = (name, job) => `name: ${name}
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - run: echo gate
+  ${job}:
+    needs: gate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/deploy-web.yml
+`;
+
+const CALLEE_DEPLOY_WEB = `name: Deploy web
+on:
+  workflow_call:
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment: subscriptiontracker-web
+    steps:
+      - run: echo deploy
+`;
+
+describe('check-prod-provenance — a workflow_call-only lane is read in its caller\'s runs', () => {
+  const CHANNELS = 'tooling/channel-register.json';
+  const SHA_CI = 'c1c2c3c4' + '00112233445566778899aabbccddeeff';
+  const SHA_OLD = 'd1d2d3d4' + '00112233445566778899aabbccddeeff';
+  const WEB101 = { run_number: 101, head_sha: 'e138f5be72555ab717d0391e771b40c0883d9fab', conclusion: 'success' };
+  // ci.yml's run 3850, which ran deploy-web.yml as its `deploy-web` job.
+  const CI3850 = { workflow: 'ci.yml', id: 38500000001, run_number: 3850, head_sha: SHA_CI, conclusion: 'success' };
+  // deploy-web.yml's OWN run 3850 from before the move, at another commit.
+  const OLD3850 = { run_number: 3850, head_sha: SHA_OLD, conclusion: 'success' };
+  const rowsOf = (...markers) => ({ consent_artifacts: markers.map((marker) => ({ marker, n: 1 })) });
+  const CALLED = { 'deploy-web.yml': CALLEE_DEPLOY_WEB, 'ci.yml': callerYml('CI', 'deploy-web') };
+
+  /** What the monitor opens in offline mode, with `workflows` (basename → text)
+   *  over a stub for every register file; `null` writes no .github at all. */
+  function calleeRoot(workflows) {
+    const root = mkdtempSync(join(tmpdir(), 'nikatru-callee-lane-'));
+    mkdirSync(join(root, 'tooling', 'legal'), { recursive: true });
+    mkdirSync(join(root, 'catalog'), { recursive: true });
+    for (const f of [REGISTER, CHANNELS, 'tooling/legal/provider-register.json', 'catalog/apps.json']) cpSync(join(REPO, f), join(root, f));
+    cpSync(join(REPO, MIGRATIONS), join(root, MIGRATIONS), { recursive: true });
+    cpSync(join(REPO, 'services/platform/src'), join(root, 'services/platform/src'), { recursive: true });
+    for (const e of readdirSync(join(REPO, 'apps'), { withFileTypes: true })) {
+      const src = join(REPO, 'apps', e.name, 'pubspec.yaml');
+      if (!e.isDirectory() || !existsSync(src)) continue;
+      mkdirSync(join(root, 'apps', e.name), { recursive: true });
+      cpSync(src, join(root, 'apps', e.name, 'pubspec.yaml'));
+    }
+    if (workflows !== null) writeStubWorkflows(root, JSON.parse(readFileSync(join(REPO, CHANNELS), 'utf8')), workflows);
+    return root;
+  }
+
+  function monitor(args, files = {}, workflows = CALLED) {
+    const root = calleeRoot(workflows);
+    try {
+      const argv = [MONITOR, '--root', root, ...args];
+      for (const [flagName, v] of Object.entries(files)) {
+        const p = join(root, `${flagName.replace(/^--/, '')}.json`);
+        writeFileSync(p, JSON.stringify(v));
+        argv.push(flagName, p);
+      }
+      return spawnSync(process.execPath, argv, { cwd: REPO, encoding: 'utf8' });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }
+
+  test('S-40 a stamp carrying CI\'s run_number resolves to the ci.yml run, and the log says ci.yml run 3850', () => {
+    const r = monitor([], { '--rows-file': rowsOf('1.0.3850+c1c2c3c'), '--runs-file': [WEB101, CI3850], '--deployments-file': [] });
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(
+      r.stdout,
+      /host-resolved build accepted: 1\.0\.3850\+c1c2c3c — resolved in ci\.yml run 3850 at c1c2c3c, the run host of deploy-web\.yml \(call job `deploy-web`\)/,
+    );
+    assert.match(
+      r.stdout,
+      /release lane · served · deploy-web\.yml: 2 completed run\(s\) \(listed in deploy-web\.yml \+ ci\.yml; run host ci\.yml job `deploy-web`, branch=main&event=push\)/,
+    );
+  });
+
+  test('S-41 RED CONTROL · a same-numbered run at ANOTHER commit binds nothing, in the lane\'s file or in its caller', () => {
+    // deploy-web.yml run 3850 is at d1d2d3d and ci.yml run 3850 at c1c2c3c; a
+    // stamp claiming 3850 at e1e2e3e matches neither. Without the sha7 check the
+    // first same-numbered successful run would resolve it.
+    const r = monitor([], { '--rows-file': rowsOf('1.0.3850+e1e2e3e'), '--runs-file': [WEB101, OLD3850, CI3850], '--deployments-file': [] });
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /run 3850 shipped d1d2d3d, not e1e2e3e · ci\.yml run 3850 shipped c1c2c3c, not e1e2e3e/);
+  });
+
+  test('S-42 each of two same-numbered runs resolves at its OWN commit, and only the caller\'s is announced as host-resolved', () => {
+    const r = monitor([], {
+      '--rows-file': rowsOf('1.0.3850+c1c2c3c', '1.0.3850+d1d2d3d'),
+      '--runs-file': [WEB101, OLD3850, CI3850],
+      '--deployments-file': [],
+    });
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /host-resolved build accepted: 1\.0\.3850\+c1c2c3c — resolved in ci\.yml run 3850/);
+    assert.doesNotMatch(r.stdout, /host-resolved build accepted: 1\.0\.3850\+d1d2d3d/);
+  });
+
+  test('S-43 the emit: the callee lane lists its caller; every lane that is no callee lists only itself', () => {
+    const r = monitor(['--emit-release-lanes']);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    const rows = r.stdout.trim().split('\n').map((l) => l.trim().split('\t'));
+    assert.deepEqual(rows.find((c) => c[0] === 'deploy-web.yml'), ['deploy-web.yml', 'served', 'subscriptiontracker-web', 'deploy-web.yml,ci.yml']);
+    const others = rows.filter((c) => c[0] !== 'deploy-web.yml');
+    assert.ok(others.length >= 4, r.stdout);
+    for (const c of others) assert.equal(c[3], c[0], `${c[0]} is no callee, so its runs are its own`);
+  });
+
+  test('S-44 THE REAL TREE: no submission lane is a callee, so each is its own run workflow', () => {
+    const r = spawnSync(process.execPath, [MONITOR, '--emit-release-lanes'], { cwd: REPO, encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    const subs = r.stdout.trim().split('\n').map((l) => l.trim().split('\t')).filter((c) => c[1] === 'submission');
+    assert.ok(subs.length >= 4, r.stdout);
+    for (const c of subs) assert.equal(c[3], c[0]);
+  });
+
+  test('S-45 a lane with TWO callers is COVERAGE LOST (exit 2), in the emit and in the walk', () => {
+    const two = { ...CALLED, 'release.yml': callerYml('Release', 'ship-web') };
+    for (const [args, files] of [
+      [['--emit-release-lanes'], {}],
+      [[], { '--rows-file': rowsOf('1.0.3850+c1c2c3c'), '--runs-file': [WEB101, CI3850], '--deployments-file': [] }],
+    ]) {
+      const r = monitor(args, files, two);
+      assert.equal(r.status, 2, r.stdout + r.stderr);
+      assert.match(
+        r.stderr,
+        /COVERAGE LOST — release lane deploy-web\.yml: \.github\/workflows\/deploy-web\.yml is `workflow_call`-only and 2 call job\(s\) run it/,
+      );
+    }
+  });
+
+  test('S-46 no .github/workflows: the emit is COVERAGE LOST; only a --runs-file fixture reads each lane as itself, and says so', () => {
+    const emit = monitor(['--emit-release-lanes'], {}, null);
+    assert.equal(emit.status, 2, emit.stdout + emit.stderr);
+    assert.match(emit.stderr, /\.github\/workflows is not in /);
+    const walk = monitor([], { '--rows-file': rowsOf('1.0.101+e138f5b'), '--runs-file': [WEB101], '--deployments-file': [] }, null);
+    assert.equal(walk.status, 0, walk.stdout + walk.stderr);
+    assert.match(walk.stdout, /run hosts: NOT READ — this fixture root has no \.github\/workflows/);
+  });
+
+  test('S-47 footing (c): a callee lane binds a payload naming its caller; a lane that is no callee still refuses one', () => {
+    const ENV = 'subscriptiontracker-android-play';
+    const runOn = (workflow) => ({ workflow, id: 900001, run_number: 3850, head_sha: SHA_CI, conclusion: 'success' });
+    const dep = { environment: ENV, sha: SHA_CI, id: 77, payload: { workflow: 'ci.yml', run_id: 900001, run_attempt: 1, run_number: 3850 } };
+    const calleeLane = {
+      kind: 'submission',
+      workflow: 'submit-play.yml',
+      runWorkflows: ['submit-play.yml', 'ci.yml'],
+      host: { workflow: 'ci.yml', callJob: 'submit-play', filter: 'branch=main&event=push' },
+      channels: ['android-play'],
+      environments: [ENV],
+    };
+    const notes = [];
+    const viaCaller = makeReleasedBuildResolver(new Set(['1.0']), [runOn('ci.yml')], {
+      lanes: [calleeLane],
+      deployments: [dep],
+      onWitness: (w) => notes.push(w.note),
+    });
+    assert.equal(viaCaller('1.0.3850+c1c2c3c'), null);
+    assert.match(notes.join('\n'), /ci\.yml run 3850 at c1c2c3c, Deployment 77 on subscriptiontracker-android-play whose payload names run 900001/);
+
+    const ownLane = { ...calleeLane, runWorkflows: ['submit-play.yml'], host: null };
+    const own = makeReleasedBuildResolver(new Set(['1.0']), [runOn('submit-play.yml')], { lanes: [ownLane], deployments: [dep] });
+    assert.match(
+      String(own('1.0.3850+c1c2c3c')),
+      /submit-play\.yml run 3850 concluded `success` but no Deployment on subscriptiontracker-android-play names run 900001/,
+    );
+    // Control: the same lane binds a payload naming its own workflow.
+    const ownDep = { ...dep, payload: { ...dep.payload, workflow: 'submit-play.yml' } };
+    const control = makeReleasedBuildResolver(new Set(['1.0']), [runOn('submit-play.yml')], { lanes: [ownLane], deployments: [ownDep] });
+    assert.equal(control('1.0.3850+c1c2c3c'), null);
   });
 });
 
@@ -1578,6 +1799,8 @@ describe('check-prod-provenance — a row both served and submittable is judged 
       mkdirSync(join(root, 'apps', e.name), { recursive: true });
       cpSync(src, join(root, 'apps', e.name, 'pubspec.yaml'));
     }
+    // ⏱ 2026-09-25 [ADR 095 §4] — the emit reads each lane's run host.
+    cpSync(join(REPO, '.github'), join(root, '.github'), { recursive: true });
     const reg = JSON.parse(readFileSync(join(REPO, CHANNELS), 'utf8'));
     const snap = reg.channels.find((c) => c.id === 'linux-snap');
     assert.equal(snap.served, false, 'the real linux-snap row is not served today; if it is, this copy tests nothing new');
@@ -1607,7 +1830,7 @@ describe('check-prod-provenance — a row both served and submittable is judged 
     const r = monitor(['--emit-release-lanes']);
     assert.equal(r.status, 0, r.stdout + r.stderr);
     const snapLines = r.stdout.trim().split('\n').filter((l) => l.startsWith('submit-snap.yml\t'));
-    assert.deepEqual(snapLines, ['submit-snap.yml\tsubmission\tsubscriptiontracker-linux-snap']);
+    assert.deepEqual(snapLines, ['submit-snap.yml\tsubmission\tsubscriptiontracker-linux-snap\tsubmit-snap.yml']);
   });
 
   test('S-34 a successful snap DRY RUN with no Deployment stays unattributable when the row is also served', () => {

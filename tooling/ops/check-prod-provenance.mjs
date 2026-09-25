@@ -222,6 +222,10 @@ import { githubApiBase } from '../ci/record-deployment.mjs';
 // APP_VERSION stamp) is the surface's `flutterApp` answer, read the way six guards
 // already read it; a row on a surface that answers nothing is CouldNotLook.
 import { flutterAppChannel, undeclaredSurfaceLine } from '../ci/channel-surface.mjs';
+// ⏱ 2026-09-25 [ADR 095 §4] — which workflow's runs carry a lane's stamps is the
+// workflow scanner's run-host answer: a `workflow_call`-only lane runs as its one
+// caller's child, and inherits that caller's run_number and GITHUB_WORKFLOW_REF.
+import { parseResolvedWorkflows, laneRunHost, laneRefusalText, WORKFLOW_DIR } from '../ci/workflow-scan.mjs';
 import { CouldNotLook, classifyThrown, transientLook, isTransientStatus, retryAfterMs, readWithBoundedRetry, fetchWithBoundedRetry, backoffPlan } from './bounded-retry.mjs';
 // ⏱ 2026-09-23 — the non-release stamp shapes live in ONE module, which the
 // store capture's define helper and assert-live-writer-provenance also import:
@@ -326,14 +330,14 @@ function releaseLines() {
  *  workflow. Deciding it here decides it once for every reader of the lanes:
  *  `--emit-release-lanes`, the live walk, the fixture placement, the resolver
  *  and the census. */
-function releaseLanes() {
+function releaseLanes({ lenientWhenUnread = false } = {}) {
   const reg = readJson(CHANNELS_REL);
   const slugs = appSlugs();
   const expand = (tpl) => (tpl.includes('{app}') ? slugs.map((s) => tpl.replace('{app}', s)) : [tpl]);
   const byKind = { served: new Map(), submission: new Map() }; // workflow basename → lane
   const add = (kind, wfPath, row) => {
     const workflow = wfPath.split('/').pop();
-    const lane = byKind[kind].get(workflow) ?? { kind, workflow, channels: [], environments: new Set() };
+    const lane = byKind[kind].get(workflow) ?? { kind, workflow, path: wfPath, channels: [], environments: new Set() };
     lane.channels.push(row.id);
     if (typeof row.deploymentEnvironment === 'string') for (const e of expand(row.deploymentEnvironment)) lane.environments.add(e);
     byKind[kind].set(workflow, lane);
@@ -357,8 +361,67 @@ function releaseLanes() {
     ...byKind.submission.values(),
   ].map((l) => ({ ...l, environments: [...l.environments] }));
   if (!out.some((l) => l.kind === 'served')) throw new CouldNotLook(`no served lane in ${CHANNELS_REL}, so the released-build set has no footing`);
-  return out;
+  // The register is judged first, so a malformed row is named before any
+  // workflow file is read.
+  return withRunHosts(out, { lenientWhenUnread });
 }
+
+/** The listing filter on a CALLER's runs: a lane called from ci.yml runs only
+ *  on the post-gate class (POST_GATE_IF: a push to main), so a pull-request or
+ *  branch run of the caller never carried a stamp of this lane. */
+const HOST_RUN_FILTER = 'branch=main&event=push';
+
+/** ⏱ 2026-09-25 [ADR 095 §4] WHICH WORKFLOW'S RUNS CARRY A LANE'S STAMPS.
+ *  A workflow_call-only lane (deploy-web.yml once ci.yml calls it) has no runs
+ *  of its own from then on: GITHUB_WORKFLOW_REF and run_number are the CALLER's,
+ *  so its stamps read `<line>.<ci run_number>+<sha7>` and its Deployment payloads
+ *  name `ci.yml`. Each lane therefore carries `runWorkflows`:
+ *    · a callee lane: [<its own file>, <its one caller>] — its own file for the
+ *      runs from before the move, the caller's `branch=main&event=push` runs after;
+ *    · every other lane: [<its own file>].
+ *  The run number alone never binds: every footing also checks that the stamp's
+ *  sha7 is the run's head_sha prefix, so a deploy-web.yml run and a ci.yml run
+ *  that share a number resolve only at their own commits.
+ *  A laneRunHost refusal (two callers, an orphan, a missing file) is COVERAGE
+ *  LOST: grading one of two hosts would leave the other unread. Two lanes on one
+ *  run workflow are refused too — the resolver places a run on ONE lane.
+ *  `lenientWhenUnread`: only a --runs-file fixture root with no .github/workflows
+ *  at all reads each lane as its own run workflow (main prints NOT READ); a live
+ *  run or an emit is never lenient. */
+function withRunHosts(lanes, { lenientWhenUnread }) {
+  if (!existsSync(join(ROOT, WORKFLOW_DIR))) {
+    if (lenientWhenUnread) return lanes.map((l) => ({ ...l, runWorkflows: [l.workflow], host: null }));
+    throw new CouldNotLook(`${WORKFLOW_DIR} is not in ${ROOT}, so the workflow whose runs carry each release lane's stamps could not be read`);
+  }
+  // parseResolvedWorkflows' own `refusal` concerns a composite or call edge
+  // anywhere in the tree; laneRunHost refuses what bears on a lane's run host.
+  const scan = parseResolvedWorkflows(ROOT);
+  const ownerOf = new Map(); // run workflow basename → lane workflow
+  return lanes.map((l) => {
+    const h = laneRunHost(scan, l.path);
+    if (h.refusal) throw new CouldNotLook(`COVERAGE LOST — release lane ${l.workflow}: ${laneRefusalText(h.refusal)}`);
+    const host = h.callJob === null ? null : { workflow: h.workflow.split('/').pop(), callJob: h.callJob, filter: HOST_RUN_FILTER };
+    const runWorkflows = host ? [l.workflow, host.workflow] : [l.workflow];
+    for (const wf of runWorkflows) {
+      if (ownerOf.has(wf)) {
+        throw new CouldNotLook(
+          `${wf} carries the runs of two release lanes (${ownerOf.get(wf)} and ${l.workflow}), so a run of it could not be ` +
+            'placed on one lane — COVERAGE LOST, not a guess',
+        );
+      }
+      ownerOf.set(wf, l.workflow);
+    }
+    return { ...l, runWorkflows, host };
+  });
+}
+
+/** The listing filter a lane's run workflow is read with: '' for its own file,
+ *  the host filter for its caller's. */
+const runFilterOf = (lane, wf) => (lane.host && wf === lane.host.workflow ? lane.host.filter : '');
+
+/** A lane's run workflows; a lane built by hand without them (an exported
+ *  resolver's caller) runs as its own workflow. */
+const runWorkflowsOf = (lane) => lane?.runWorkflows ?? (typeof lane?.workflow === 'string' ? [lane.workflow] : []);
 
 /** 🔴 A SUBMISSION RUN WITH NO `id` IS REFUSED, NOT GUESSED. Footing (c) asks
  *  whether a Deployment's payload names THIS run, by id; a run without one
@@ -893,9 +956,11 @@ function floorRuns(runs, workflowFile, { requireConclusion = true } = {}) {
  *  exists for, and filtering it out here would put it beyond reach.
  *  ⏱ 2026-09-23 — `{ status: null }` lists runs of EVERY status (the
  *  store-capture witness); the default keeps every release-lane call as it was. */
-async function githubRuns(workflowFile, { status = 'completed' } = {}) {
+async function githubRuns(workflowFile, { status = 'completed', filter = '' } = {}) {
   const { token, repo } = githubCredentials();
-  const what = status === 'completed' ? `listing runs of ${workflowFile}` : `listing ${status ?? 'all'} runs of ${workflowFile}`;
+  const what =
+    (status === 'completed' ? `listing runs of ${workflowFile}` : `listing ${status ?? 'all'} runs of ${workflowFile}`) +
+    (filter ? ` (${filter})` : '');
   return collectPaged({
     what,
     idOf: (r) => r.id,
@@ -903,7 +968,7 @@ async function githubRuns(workflowFile, { status = 'completed' } = {}) {
       const body = await ghJson(
         repo,
         token,
-        `/actions/workflows/${workflowFile}/runs?${status ? `status=${status}&` : ''}per_page=100&page=${page}`,
+        `/actions/workflows/${workflowFile}/runs?${filter ? `${filter}&` : ''}${status ? `status=${status}&` : ''}per_page=100&page=${page}`,
         what,
       );
       const runs = body?.workflow_runs;
@@ -1025,24 +1090,42 @@ function makeReleasedBuildResolver(
   const laneOf = (r) =>
     r?.kind === 'attested'
       ? { kind: 'attested' }
-      : (lanes?.find((l) => l.workflow === r?.workflow) ?? { kind: 'served', workflow: r?.workflow ?? null });
+      : (lanes?.find((l) => runWorkflowsOf(l).includes(r?.workflow)) ?? { kind: 'served', workflow: r?.workflow ?? null });
+  // ⏱ 2026-09-25 [ADR 095 §4] — a run listed under the lane's CALLER (ci.yml
+  // once deploy-web.yml is workflow_call-only) is named by that workflow in
+  // every reason and acceptance, so "run 3850" is never ambiguous in the log.
+  const viaHost = (run, lane) => typeof run?.workflow === 'string' && lane?.workflow !== undefined && run.workflow !== lane.workflow;
 
-  const judgeServed = (run, value, n, sha) => {
+  const judgeServed = (run, lane, value, n, sha) => {
     const head = String(run.head_sha ?? '').toLowerCase();
-    if (!head.startsWith(sha.toLowerCase())) return `run ${n} shipped ${head.slice(0, 7)}, not ${sha}`;
+    const via = viaHost(run, lane) ? `${run.workflow} ` : '';
+    // The sha7 check is what keeps a run-number collision between the lane's own
+    // runs and its host's from resolving on the wrong run.
+    if (!head.startsWith(sha.toLowerCase())) return `${via}run ${n} shipped ${head.slice(0, 7)}, not ${sha}`;
     const conclusion = run.conclusion ?? 'success';
-    if (conclusion === 'success') return null;
+    const hostNote = () => {
+      if (via) {
+        onWitness({
+          footing: 'host',
+          note:
+            `${value} — resolved in ${run.workflow} run ${n} at ${head.slice(0, 7)}, the run host of ${lane.workflow}` +
+            (lane.host?.callJob ? ` (call job \`${lane.host.callJob}\`)` : ''),
+        });
+      }
+      return null;
+    };
+    if (conclusion === 'success') return hostNote();
     if (deployedShas?.has(head)) {
       onWitness({
         footing: 'served',
         note:
-          `${value} — run ${n} concluded \`${conclusion}\`, and a GitHub Deployment for ${head.slice(0, 7)} on a ` +
+          `${value} — ${via}run ${n} concluded \`${conclusion}\`, and a GitHub Deployment for ${head.slice(0, 7)} on a ` +
           'served environment witnesses that it shipped anyway (a deploy step that succeeded before a later step failed)',
       });
-      return null;
+      return hostNote();
     }
     return (
-      `run ${n} concluded \`${conclusion}\` and NO GitHub Deployment names ${head.slice(0, 7)} on a served ` +
+      `${via}run ${n} concluded \`${conclusion}\` and NO GitHub Deployment names ${head.slice(0, 7)} on a served ` +
       'environment, so nothing witnesses that this build was ever published'
     );
   };
@@ -1058,19 +1141,25 @@ function makeReleasedBuildResolver(
   // a dry run re-run so its updated_at moved past it, resolved on the upload's
   // witness. A run id is unique to one run (a re-run attempt keeps the id, but a
   // dry run's attempts never wrote a Deployment to be named).
+  // ⏱ 2026-09-25 [ADR 095 §4] — the payload's `workflow` binds when it is ANY of
+  // the lane's run workflows: a callee lane's Deployment is recorded inside its
+  // caller's run, whose GITHUB_WORKFLOW_REF names the caller. A lane that is not
+  // a callee has one run workflow, so a payload naming any other is still refused.
   const judgeSubmission = (run, lane, value, n, sha) => {
     const head = String(run.head_sha ?? '').toLowerCase();
-    if (!head.startsWith(sha)) return `${lane.workflow} run ${n} shipped ${head.slice(0, 7)}, not ${sha}`;
+    const runWf = viaHost(run, lane) ? run.workflow : lane.workflow;
+    const bindsTo = runWorkflowsOf(lane);
+    if (!head.startsWith(sha)) return `${runWf} run ${n} shipped ${head.slice(0, 7)}, not ${sha}`;
     const runId = String(run.id);
     const onLane = (deployments ?? []).filter(
       (d) => d.environment !== null && lane.environments.includes(d.environment) && d.sha === head,
     );
-    const bound = onLane.find((d) => d.payload !== null && String(d.payload.run_id) === runId && d.payload.workflow === lane.workflow);
+    const bound = onLane.find((d) => d.payload !== null && String(d.payload.run_id) === runId && bindsTo.includes(d.payload.workflow));
     if (bound) {
       onWitness({
         footing: 'submission',
         note:
-          `${value} — ${lane.workflow} run ${n} at ${head.slice(0, 7)}, Deployment ${bound.id ?? '?'} on ` +
+          `${value} — ${runWf} run ${n} at ${head.slice(0, 7)}, Deployment ${bound.id ?? '?'} on ` +
           `${bound.environment} whose payload names run ${runId}`,
       });
       return null;
@@ -1081,7 +1170,7 @@ function makeReleasedBuildResolver(
         (b) =>
           b.deploymentId === String(d.id) &&
           b.runId === runId &&
-          b.workflow === lane.workflow &&
+          bindsTo.includes(b.workflow) &&
           b.environment === d.environment &&
           b.sha === d.sha,
       );
@@ -1089,13 +1178,13 @@ function makeReleasedBuildResolver(
       onWitness({
         footing: 'submission',
         note:
-          `${value} — ${lane.workflow} run ${n} at ${head.slice(0, 7)}, Deployment ${d.id} on ${d.environment} ` +
+          `${value} — ${runWf} run ${n} at ${head.slice(0, 7)}, Deployment ${d.id} on ${d.environment} ` +
           `carries no payload and is bound to run ${runId} by legacyDeploymentBindings (measured ${legacy.measured})`,
       });
       return null;
     }
     return (
-      `${lane.workflow} run ${n} concluded \`${run.conclusion}\` but no Deployment on ${lane.environments.join(', ')} ` +
+      `${runWf} run ${n} concluded \`${run.conclusion}\` but no Deployment on ${lane.environments.join(', ')} ` +
       `names run ${runId}; a dry run writes none, and a hand-written recovery Deployment must carry the run payload`
     );
   };
@@ -1118,7 +1207,7 @@ function makeReleasedBuildResolver(
           ? judgeAttested(run, n, sha)
           : lane.kind === 'submission'
             ? judgeSubmission(run, lane, value, n, sha)
-            : judgeServed(run, value, n, m[4]);
+            : judgeServed(run, lane, value, n, m[4]);
       if (why === null) return null;
       reasons.push(why);
     }
@@ -1185,25 +1274,32 @@ async function pointReadBuild({ value, read, lanes }) {
   // Served lanes first: deploy-web is where nearly every stamped build ships.
   const ordered = [...lanes.filter((l) => l.kind === 'served'), ...lanes.filter((l) => l.kind !== 'served')];
   const atCommit = [];
+  // ⏱ 2026-09-25 [ADR 095 §4] — each lane's run workflows in order: its own
+  // file, then (for a callee lane) its caller's `branch=main&event=push` runs.
+  // A hit needs the run number AND the full head_sha, so a same-numbered run of
+  // the other workflow at another commit is never the one found.
   for (const lane of ordered) {
-    const path = `actions/workflows/${lane.workflow}/runs?head_sha=${full}&status=completed&per_page=100`;
-    const listing = await ask(path);
-    if (listing.status !== 200) throw refused(path, listing.status);
-    const runs = listing.body?.workflow_runs;
-    if (!Array.isArray(runs)) throw new CouldNotLook(`point read · ${value}: GET ${path} carried no workflow_runs array`);
-    floorRuns(runs, lane.workflow);
-    const hit = runs.find((r) => String(r.run_number) === n && String(r.head_sha ?? '').toLowerCase() === full);
-    if (hit) return { value, found: { ...hit, workflow: lane.workflow }, reads, verdict: null };
-    // One commit with more than a page of completed runs on one lane is not a
-    // shape this repository produces; if it ever does, the unread page could hold
-    // the run, so it is COVERAGE LOST rather than "not found".
-    if (typeof listing.body?.total_count === 'number' && listing.body.total_count > runs.length) {
-      throw new CouldNotLook(
-        `point read · ${value}: GET ${path} claimed ${listing.body.total_count} run(s) and served ${runs.length}, so the run ` +
-          'this reader is looking for could be on a page it did not read',
-      );
+    for (const wf of runWorkflowsOf(lane)) {
+      const filter = runFilterOf(lane, wf);
+      const path = `actions/workflows/${wf}/runs?head_sha=${full}&${filter ? `${filter}&` : ''}status=completed&per_page=100`;
+      const listing = await ask(path);
+      if (listing.status !== 200) throw refused(path, listing.status);
+      const runs = listing.body?.workflow_runs;
+      if (!Array.isArray(runs)) throw new CouldNotLook(`point read · ${value}: GET ${path} carried no workflow_runs array`);
+      floorRuns(runs, wf);
+      const hit = runs.find((r) => String(r.run_number) === n && String(r.head_sha ?? '').toLowerCase() === full);
+      if (hit) return { value, found: { ...hit, workflow: wf }, reads, verdict: null };
+      // One commit with more than a page of completed runs on one lane is not a
+      // shape this repository produces; if it ever does, the unread page could hold
+      // the run, so it is COVERAGE LOST rather than "not found".
+      if (typeof listing.body?.total_count === 'number' && listing.body.total_count > runs.length) {
+        throw new CouldNotLook(
+          `point read · ${value}: GET ${path} claimed ${listing.body.total_count} run(s) and served ${runs.length}, so the run ` +
+            'this reader is looking for could be on a page it did not read',
+        );
+      }
+      for (const r of runs) atCommit.push(`${wf} run ${r.run_number}`);
     }
-    for (const r of runs) atCommit.push(`${lane.workflow} run ${r.run_number}`);
   }
   return {
     value,
@@ -1671,8 +1767,11 @@ async function main() {
   // submission lane's printed environments to the `record-deployment.mjs <env>`
   // calls in that lane's workflow file, so this is the function the live read
   // uses, reached by a test.
+  // ⏱ 2026-09-25 [ADR 095 §4] — a fourth column, `<run,workflows>`: where the
+  // lane's runs are listed (a callee lane adds its caller). Never lenient: an
+  // emit with no .github/workflows is COVERAGE LOST.
   if (args.includes('--emit-release-lanes')) {
-    for (const l of releaseLanes()) console.log(`${l.workflow}\t${l.kind}\t${l.environments.join(',')}`);
+    for (const l of releaseLanes()) console.log(`${l.workflow}\t${l.kind}\t${l.environments.join(',')}\t${l.runWorkflows.join(',')}`);
     process.exitCode = 0;
     return;
   }
@@ -1733,9 +1832,15 @@ async function main() {
   // entry placed on its lane by `path`/`workflow` (an entry naming neither is a
   // served-lane run, which is what every older fixture means), and an entry
   // naming a workflow that is no lane is refused rather than judged.
-  const lanes = releaseLanes();
+  //
+  // ⏱ 2026-09-25 [ADR 095 §4] — "a workflow" here is a RUN workflow: a callee
+  // lane is walked in its own file and in its caller's push-to-main runs, each
+  // run tagged by the workflow it was listed under, and a fixture entry naming
+  // the caller is placed on the callee's lane.
+  const lanes = releaseLanes({ lenientWhenUnread: Boolean(runsFile) });
+  const runHostsUnread = !existsSync(join(ROOT, WORKFLOW_DIR));
   const servedLane = lanes.find((l) => l.kind === 'served');
-  const laneByWorkflow = new Map(lanes.map((l) => [l.workflow, l]));
+  const laneByWorkflow = new Map(lanes.flatMap((l) => l.runWorkflows.map((wf) => [wf, l])));
   const fixtureRuns = (arr) => {
     if (!Array.isArray(arr)) throw new CouldNotLook(`${runsFile} is not an array of runs`);
     return arr.map((r) => {
@@ -1751,7 +1856,9 @@ async function main() {
     ? fixtureRuns(JSON.parse(readFileSync(runsFile, 'utf8')))
     : (
         await Promise.all(
-          [...laneByWorkflow.keys()].map(async (wf) => (await githubRuns(wf)).map((r) => ({ ...r, workflow: wf }))),
+          [...laneByWorkflow.entries()].map(async ([wf, lane]) =>
+            (await githubRuns(wf, { filter: runFilterOf(lane, wf) })).map((r) => ({ ...r, workflow: wf })),
+          ),
         )
       ).flat();
   const lines = releaseLines();
@@ -1761,7 +1868,10 @@ async function main() {
   // found none of deploy-web's runs is a read that failed, whatever else it found.
   const servedRuns = runs.filter((r) => laneByWorkflow.get(r.workflow)?.kind === 'served');
   if (servedRuns.length === 0) {
-    throw new CouldNotLook(`no completed run of the served lane ${servedLane.workflow} was found, so the released-build set has no served footing`);
+    throw new CouldNotLook(
+      `no completed run of the served lane ${servedLane.workflow} was found (listed in ${servedLane.runWorkflows.join(', ')}), ` +
+        'so the released-build set has no served footing',
+    );
   }
 
   // ── witness (b): the GitHub Deployment ledger ─────────────────────────────
@@ -1811,6 +1921,8 @@ async function main() {
   if (!Array.isArray(captureRuns)) throw new CouldNotLook(`${captureRunsFile} is not an array of runs`);
   const witnessed = [];
   const submissionWitnessed = [];
+  // ⏱ 2026-09-25 [ADR 095 §4] — a stamp resolved in a lane's CALLER's run.
+  const hostResolved = [];
   const captureWitnessed = [];
 
   // ── attested manual deploys — tooling/ops/manual-deploys.json ─────────────
@@ -1884,7 +1996,7 @@ async function main() {
   const buildReleased = (extra, onWitness) =>
     makeReleasedBuildResolver(lines, [...runs, ...attested, ...extra], { lanes, deployments, deployedShas, legacyBindings, onWitness });
   const recordWitness = ({ footing, note }) => {
-    const into = footing === 'submission' ? submissionWitnessed : witnessed;
+    const into = footing === 'submission' ? submissionWitnessed : footing === 'host' ? hostResolved : witnessed;
     if (!into.includes(note)) into.push(note);
   };
   let releasedBuild = buildReleased([], () => {});
@@ -2266,8 +2378,12 @@ async function main() {
   }
   for (const l of pendingLines) console.log(l);
   for (const u of unplaced) console.log(`⬜  ${u}`);
+  if (runHostsUnread) {
+    console.log(`⬜  run hosts: NOT READ — this fixture root has no ${WORKFLOW_DIR}, so each release lane is read as its own run workflow`);
+  }
   for (const l of lanes) {
-    const laneRuns = runs.filter((r) => r.workflow === l.workflow && laneByWorkflow.get(r.workflow)?.kind === l.kind).length;
+    const laneRuns = runs.filter((r) => l.runWorkflows.includes(r.workflow) && laneByWorkflow.get(r.workflow) === l).length;
+    const listedIn = l.host ? ` (listed in ${l.runWorkflows.join(' + ')}; run host ${l.host.workflow} job \`${l.host.callJob}\`, ${l.host.filter})` : '';
     const deps =
       deployments === null
         ? 'NOT READ'
@@ -2276,7 +2392,7 @@ async function main() {
               l.kind === 'served' ? d.environment === null || ledger.has(d.environment) : l.environments.includes(d.environment),
             ).length,
           );
-    console.log(`⬜  release lane · ${l.kind} · ${l.workflow}: ${laneRuns} completed run(s) · ${deps} Deployment(s) on ${l.environments.join(', ') || '(none declared)'}`);
+    console.log(`⬜  release lane · ${l.kind} · ${l.workflow}: ${laneRuns} completed run(s)${listedIn} · ${deps} Deployment(s) on ${l.environments.join(', ') || '(none declared)'}`);
   }
   // ⏱ 2026-09-23 — one line per walk ATTEMPT (with its consistency verdict) and
   // one per point read, then the point-read total, on every run.
@@ -2289,6 +2405,9 @@ async function main() {
   // ⏱ 2026-09-23 — and a build accepted on footing (c) says which run and which
   // Deployment carried it, on every run.
   for (const w of submissionWitnessed) console.log(`⬜  submission-witnessed build accepted: ${w}`);
+  // ⏱ 2026-09-25 [ADR 095 §4] — and a stamp resolved in a lane's caller says
+  // which workflow's run it was (`ci.yml run 3850`), on every run.
+  for (const w of hostResolved) console.log(`⬜  host-resolved build accepted: ${w}`);
   // ⏱ 2026-09-23 — and a store-capture stamp says which capture run witnessed it.
   for (const w of captureWitnessed) console.log(`⬜  store-capture-witnessed stamp accepted: ${w}`);
   for (const a of alsoAccepted) console.log(`⬜  second-resolver acceptance: ${a}`);

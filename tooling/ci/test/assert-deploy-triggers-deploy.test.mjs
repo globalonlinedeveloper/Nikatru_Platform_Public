@@ -19,14 +19,10 @@ import { resolve } from 'node:path';
 
 import {
   judgeUnits,
-  judgeEquality,
   unitKeyFor,
   plannedEnvironments,
   readUnits,
-  parseTriggerPaths,
-  parseFilters,
   workflowFiles,
-  usesPathsFilter,
   REPO_ROOT,
   WORKFLOW_DIR,
   MIN_UNITS,
@@ -126,36 +122,6 @@ describe('assert-deploy-triggers-deploy — reading a plan the way plan-deploy.m
   });
 });
 
-describe('assert-deploy-triggers-deploy — limb 4 (⏳ transitional equality)', () => {
-  const keys = ['subscriptiontracker-api', 'platform'];
-  const paths = ['services/subscriptiontracker-api/**', 'services/platform/**', SELF];
-  const filters = { subscriptiontracker_api: OK_UNITS['subscriptiontracker-api'], platform: OK_UNITS.platform };
-
-  test('PASSES when on.push.paths is the union of the units and each filter equals its unit', () => {
-    assert.deepEqual(judgeEquality(OK_UNITS, WF, keys, paths, filters), []);
-    assert.deepEqual(judgeEquality(OK_UNITS, WF, keys, paths, null), []);
-  });
-
-  test('🔴 FAILS both ways on a trigger that differs from the units', () => {
-    const extra = judgeEquality(OK_UNITS, WF, keys, [...paths, 'catalog/**'], null);
-    assert.equal(extra.length, 1, extra.join('\n'));
-    assert.match(extra[0], /`catalog\/\*\*` is in .* on\.push\.paths and not in its unit/);
-    const short = judgeEquality(OK_UNITS, WF, keys, paths.slice(1), null);
-    assert.equal(short.length, 1, short.join('\n'));
-    assert.match(short[0], /`services\/subscriptiontracker-api\/\*\*` is in its unit/);
-  });
-
-  test('🔴 FAILS on a filter that differs from its unit, a unit with no filter, and a filter with no unit', () => {
-    const drift = judgeEquality(OK_UNITS, WF, keys, null, { ...filters, platform: ['services/platform/**'] });
-    assert.equal(drift.length, 1, drift.join('\n'));
-    assert.match(drift[0], /is in deployUnits\["platform"\] and not in .* filter `platform`/);
-    const missing = judgeEquality(OK_UNITS, WF, keys, null, { platform: OK_UNITS.platform });
-    assert.ok(missing.some((p) => p.includes('plans deployUnits["subscriptiontracker-api"] and carries no filter')));
-    const stray = judgeEquality(OK_UNITS, WF, keys, null, { ...filters, newapp_api: ['services/newapp-api/**'] });
-    assert.ok(stray.some((p) => p.includes('filter `newapp_api` spells no unit')));
-  });
-});
-
 describe('assert-deploy-triggers-deploy — against the REAL tree', () => {
   const files = workflowFiles();
   const units = readUnits(REPO_ROOT);
@@ -173,26 +139,6 @@ describe('assert-deploy-triggers-deploy — against the REAL tree', () => {
     const { problems, owners } = judgeUnits(units, plans);
     assert.deepEqual(problems, []);
     for (const [key, by] of owners) assert.ok(by.length > 0, `${key} planned by nothing`);
-  });
-
-  // ⏳ Goes with limb 4, in the commit that removes the deploy workflows' own triggers.
-  test('every real deploy trigger still carried equals its units (limb 4)', () => {
-    let asserted = 0;
-    for (const { workflow } of plans) {
-      const text = readFileSync(resolve(WORKFLOW_DIR, workflow), 'utf8');
-      const triggerPaths = parseTriggerPaths(text);
-      const filters = usesPathsFilter(text) ? parseFilters(text) : null;
-      if (triggerPaths === null && filters === null) continue;
-      const keys = [...judgeUnits(units, plans).owners].filter(([, by]) => by.includes(workflow)).map(([k]) => k);
-      // The header comment and the guard's own name both mention workflow
-      // files; a grep-based reader would count those as coverage.
-      for (const list of [triggerPaths ?? [], ...Object.values(filters ?? {})]) {
-        for (const p of list) assert.ok(!p.startsWith('#'), `${workflow}: picked up a comment: ${p}`);
-      }
-      assert.deepEqual(judgeEquality(units, workflow, keys, triggerPaths, filters), [], `${workflow} does not equal its units`);
-      asserted += 1;
-    }
-    assert.ok(asserted >= 1, `asserted over ${asserted} workflow(s) — the loop ran dry`);
   });
 });
 

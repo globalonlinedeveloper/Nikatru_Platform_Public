@@ -65,7 +65,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
-import { parseWorkflow, parseAllWorkflows, resolveLocalCalls, workflowEvents } from './workflow-scan.mjs';
+import { parseWorkflow, parseAllWorkflows, resolveLocalCalls, workflowEvents, POST_GATE_IF, postGateClass } from './workflow-scan.mjs';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
 
@@ -96,10 +96,10 @@ const AGGREGATORS = [
  *  edit here. */
 const REQUIRED_SECRET_GATES = ['.github/workflows/e2e.yml'];
 
-/** THE POST-GATE PREDICATE, byte for byte (rule A9). [ADR 095 §4] A job that `needs`
- *  an aggregator runs only after it, and this is the ONE `if:` that exempts such a
- *  job from A2 and A6: a push to main, nothing wider. */
-const POST_GATE_IF = "github.event_name == 'push' && github.ref == 'refs/heads/main'";
+/* THE POST-GATE PREDICATE (rule A9) is POST_GATE_IF, and the class is postGateClass,
+   both from workflow-scan.mjs [ADR 095 §4]: assert-ops-register admits its RED-SINCE
+   rows by the same export, so both readers ask one definition which job is
+   post-gate. It is the ONE `if:` that exempts a job from A2 and A6. */
 
 const problems = [];
 
@@ -260,18 +260,15 @@ for (const target of AGGREGATORS) {
   // asked about; the predicate without the aggregator in `needs` publishes whether the
   // gate is green or red.
   const postGate = [];
-  for (const j of others) {
-    const other = wf.jobs.get(j);
-    const c = other.jobIf === null ? null : other.jobIf.cond;
-    const needsGate = other.needs.includes(target.job);
-    if (needsGate && c === POST_GATE_IF) {
+  for (const { id: j, kind, cond: c } of postGateClass(wf, target.job)) {
+    if (kind === 'post') {
       postGate.push(j);
-    } else if (needsGate) {
+    } else if (kind === 'wide-if') {
       problems.push(
         `${target.workflow}: job "${j}" needs "${target.job}" and its job-level \`if:\` is ${c === null ? 'absent' : `\`${c}\``}, not exactly \`${POST_GATE_IF}\`. ` +
           'A job after the gate runs only on a push to main (the post-gate class, [ADR 095 §4]); anything wider runs it on events the gate never judged for a deploy.',
       );
-    } else if (c === POST_GATE_IF) {
+    } else {
       problems.push(
         `${target.workflow}: job "${j}" carries the post-gate \`if:\` and does not need "${target.job}". ` +
           'A post-gate job whose needs omit the aggregator is red ([ADR 095 §4]): it would run on every push to main whether the gate is green or red. Put the aggregator in its `needs`; never the job in the aggregator\'s.',

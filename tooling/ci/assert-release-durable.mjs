@@ -145,7 +145,7 @@ import { listDir } from './tree-walk.mjs';
 // upload or a publish behind `uses: ./.github/actions/<x>`, or in a job of a
 // `uses: ./.github/workflows/<f>.yml` callee, is graded where it runs, under the
 // CALLER's `on:` (a callee's own trigger is only `workflow_call`).
-import { parseResolvedWorkflows, lineAt, refusalText, WORKFLOW_DIR, shellSegments, releaseTriggerLine } from './workflow-scan.mjs';
+import { parseResolvedWorkflows, laneRunHost, laneRefusalText, lineAt, refusalText, WORKFLOW_DIR, shellSegments, releaseTriggerLine } from './workflow-scan.mjs';
 
 // Flags are filtered out of the positional scan BEFORE the root is taken, or
 // `--fail-on-mixed-upload-paths` would be resolved as a repository path and every
@@ -308,16 +308,43 @@ if (totalJobs === 0) {
   coverageLost([`parsed ${workflows.length} workflow file(s) and found ZERO jobs. The job parser has stopped reaching the files.`]);
 }
 
+/**
+ * WHERE A REGISTER LANE RUNS. ⏱ 2026-09-25 [ADR 095 §4] workflow-scan's
+ * laneRunHost is the one derivation, imported, never re-derived here. Returns
+ * `{ refusal }` (orphan-callee, ambiguous-callee, missing), or
+ * `{ wf, callJob, name, job, jobs }`: `wf` the resolved workflow the lane runs
+ * in (the caller, for a call-only file), `name` the lane job's id there (the
+ * child `<callJob>/<job>` for a call-only file), `job` that job or null, and
+ * `jobs` the lane FILE's jobs as they run — the whole workflow for a file that
+ * runs as itself, the host's children for a call-only one, never the caller's
+ * other jobs.
+ */
+function laneAt(lane) {
+  const host = laneRunHost(resolved, lane.workflow);
+  if (host.refusal) return { refusal: host.refusal };
+  const wf = byRel.get(host.workflow);
+  const name = host.callJob === null ? lane.job : `${host.callJob}/${lane.job}`;
+  const jobs = host.children ?? [...wf.jobs.values()];
+  return { wf, callJob: host.callJob, name, job: jobs.find((j) => j.name === name) ?? null, jobs };
+}
+
 // ── (4) every register lane resolves ─────────────────────────────────────────
 let lanesChecked = 0;
 for (const c of register?.channels ?? []) {
   const lane = c?.lane;
   if (!lane || typeof lane.workflow !== 'string' || typeof lane.job !== 'string') continue;
   lanesChecked++;
-  const wf = byRel.get(lane.workflow);
-  if (!wf || !wf.jobs.has(lane.job)) {
+  // ⏱ 2026-09-25 [ADR 095 §4] — a lane file that is `on: workflow_call` only
+  // (deploy-web.yml, called by ci.yml after ci-gate) is not a resolved workflow of
+  // its own. laneAt places it through laneRunHost, and the job it must resolve is
+  // then the host's child `<callJob>/<job>` in the caller, held to this same check.
+  const at = laneAt(lane);
+  if (at.refusal || at.job === null) {
     coverageLost([
       `${REGISTER_REL}'s "${c.id}" row names lane ${lane.workflow}#${lane.job}, which this scan did not resolve.`,
+      at.refusal
+        ? laneRefusalText(at.refusal)
+        : `It runs as ${at.wf.rel}${at.callJob === null ? '' : ` call job "${at.callJob}"`}, and ${at.callJob === null ? `job "${at.name}"` : `its child "${at.name}"`} is not there.`,
       'Limb 3 grades a served channel through its lane. A lane this parse cannot see is a channel this',
       'guard silently stops covering — and assert-channel-register.mjs already holds the same lanes, so a',
       'divergence here means the two readings have come apart.',
@@ -939,11 +966,18 @@ for (const wf of workflows) {
 const servedNonWeb = (register?.channels ?? []).filter((c) => c?.served === true && c?.kind !== 'web');
 for (const c of servedNonWeb) {
   const lane = c.lane;
-  const wf = lane ? byRel.get(lane.workflow) : null;
-  const anyDurable = wf ? [...wf.jobs.values()].some((j) => j.durable.length > 0) : false;
+  // ⏱ 2026-09-25 [ADR 095 §4] — graded over laneAt's `jobs`: the lane file's own
+  // jobs as they run. A call-only file is its one caller's children, not the
+  // caller's whole workflow, where a sibling job's publish would credit it.
+  const at = lane && typeof lane.workflow === 'string' ? laneAt(lane) : null;
+  if (at?.refusal && at.refusal.kind !== 'missing') {
+    coverageLost([`${REGISTER_REL}'s "${c.id}" row is SERVED and its lane cannot be placed.`, laneRefusalText(at.refusal)]);
+  }
+  const anyDurable = at && !at.refusal ? at.jobs.some((j) => j.durable.length > 0) : false;
+  const runAs = at && !at.refusal && at.callJob !== null ? ` (run as ${at.wf.rel} job "${at.name}")` : '';
   if (!anyDurable) {
     problems.push(
-      `${REGISTER_REL}: channel "${c.id}" is SERVED and is not the web channel, and its lane ${lane ? `${lane.workflow}#${lane.job}` : '(none declared)'} contains no durable publish. ` +
+      `${REGISTER_REL}: channel "${c.id}" is SERVED and is not the web channel, and its lane ${lane ? `${lane.workflow}#${lane.job}${runAs}` : '(none declared)'} contains no durable publish. ` +
         'A served native channel with nowhere to publish means the artifact a user is told to download does not exist anywhere after the run.',
     );
   }

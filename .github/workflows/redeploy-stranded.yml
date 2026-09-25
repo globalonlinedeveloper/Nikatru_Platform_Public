@@ -15,10 +15,12 @@ on:
     # gates on ci-gate. The lanes' own completions close the race where a lane
     # fails its gate AFTER CI at a later commit is already green. Build apps is
     # here since 2026-09-23: the Worker's 00:00Z dispatch (#102) failed its gate
-    # and nothing re-entered it. redeploy-stranded.test.mjs holds this list
+    # and nothing re-entered it. The two deploy lanes left on 2026-09-25
+    # ([ADR 095] §4): ci.yml calls them after ci-gate in the same run, so they
+    # have no run of their own to strand. redeploy-stranded.test.mjs holds this list
     # equal to the lanes the tool derives, both ways. `branches: [main]` keeps a
     # tag-triggered Build apps run (a release) out.
-    workflows: [CI, Deploy web, Deploy workers, Build apps]
+    workflows: [CI, Build apps]
     types: [completed]
     branches: [main]
   workflow_dispatch:

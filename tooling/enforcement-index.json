@@ -916,8 +916,6 @@
     ],
     "invokedBy": [
       ".github/workflows/build-platforms.yml#gate",
-      ".github/workflows/deploy-web.yml#deploy-web",
-      ".github/workflows/deploy-workers.yml#detect",
       ".github/workflows/extensions.yml#release",
       ".github/workflows/submit-appstore.yml#gate",
       ".github/workflows/submit-play.yml#gate",

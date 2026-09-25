@@ -596,8 +596,9 @@ describe('§A8 — every called-only workflow ends in one always-run verdict job
 });
 
 // ⏱ 2026-09-25 — rule A9, the post-gate class [ADR 095 §4]: a deploy is a job AFTER
-// ci-gate in the same run. The real tree may hold none yet, so the job and its callee
-// are written onto a copy of the real workflows.
+// ci-gate in the same run. The real tree holds two (ci.yml deploy-web, deploy-workers);
+// a third job and its callee are written onto a copy of the real workflows, directly
+// after ci-gate, so each case moves exactly one job the real two do not share.
 describe('§A9 — a post-gate job runs only after its aggregator, and only on a push to main', () => {
   const POST_GATE_IF = "github.event_name == 'push' && github.ref == 'refs/heads/main'";
   const DEPLOY_X = [
@@ -623,16 +624,22 @@ describe('§A9 — a post-gate job runs only after its aggregator, and only on a
   ];
   /** ci.yml with `jobLines` appended after ci-gate, plus the callee deploy-x.yml. */
   const withDeployX = (jobLines, callee = DEPLOY_X) => {
-    const root = mutant([['ci.yml', /echo "All lanes green"\n$/, `echo "All lanes green"\n\n${jobLines.join('\n')}\n`]]);
+    const root = mutant([['ci.yml', /echo "All lanes green"\n/, `echo "All lanes green"\n\n${jobLines.join('\n')}\n`]]);
     writeFileSync(join(root, '.github', 'workflows', 'deploy-x.yml'), `${callee}\n`);
     return root;
   };
   const withIf = (cond) => POST_GATE.map((l) => (l.startsWith('    if:') ? `    if: ${cond}` : l));
 
+  test('the real tree: ci.yml deploy-web and deploy-workers are the post-gate jobs, and their callees carry no job-level `if:`', () => {
+    const r = run(REPO);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /, 2 post-gate job\(s\) run only after their aggregator on a push to main, 2 of 2 post-gate callee\(s\) with no job-level `if:`/);
+  });
+
   test('a post-gate job with the exact `if:` is green, and it gates its callee', () => {
     const r = run(withDeployX(POST_GATE));
     assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /, 1 post-gate job\(s\) run only after their aggregator on a push to main, 1 of 1 post-gate callee\(s\) with no job-level `if:`/);
+    assert.match(r.out, /, 3 post-gate job\(s\) run only after their aggregator on a push to main, 3 of 3 post-gate callee\(s\) with no job-level `if:`/);
     assert.match(r.out, /, (\d+) of \1 ending in one always-run verdict job over every other job/);
   });
 

@@ -63,7 +63,7 @@
       "path": "tooling/ci/assert-deploy-triggers-deploy.mjs",
       "property": "refuses-blind",
       "evidence": "COVERAGE LOST: no workflow files under",
-      "reads": "each workflow and the deploy unit it hands plan-deploy.mjs; while a deploy still carries push.paths or a paths filter, those too"
+      "reads": "each workflow and the deploy unit it hands plan-deploy.mjs"
     },
     {
       "path": "tooling/ci/assert-deploy-triggers.mjs",
@@ -275,7 +275,13 @@
     {
       "path": "tooling/ops/check-pages-deployments.mjs",
       "property": "workflow-scan",
-      "reads": "deploy-web.yml on.push.paths and each job's timeout-minutes, to derive a direct-upload Pages project's expected commit and deploy-lane window"
+      "reads": "the environment deploy-web.yml hands plan-deploy.mjs (its lane-map.json deploy unit) and each job's timeout-minutes, to derive a direct-upload Pages project's expected commit and deploy-lane window"
+    },
+    {
+      "path": "tooling/ops/check-prod-provenance.mjs",
+      "property": "workflow-scan",
+      "resolves": "local-uses",
+      "reads": "each release lane's workflow file and, for a lane that is only a `workflow_call` callee, its one caller (laneRunHost), to name the workflow whose run_number a build stamp carries"
     },
     {
       "path": "tooling/ops/redeploy-stranded.mjs",

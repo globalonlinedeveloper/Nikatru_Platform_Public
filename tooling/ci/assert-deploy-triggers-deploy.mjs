@@ -84,10 +84,11 @@
 //      broken import in these lanes; inventing a path here would only produce a
 //      demand nobody could satisfy.
 //
-//   4. ⏳ TRANSITIONAL — the EQUALITY limb, while a deploy workflow still carries
-//      its own `on.push.paths` or dorny filters: those lists equal its units,
-//      both ways, so the re-pointed limbs above judge the same globs the
-//      trigger does. It goes in the commit that removes the triggers.
+//   The transitional equality limb (a deploy's own `on.push.paths` and dorny
+//   filters equal its units) went with the triggers it compared, when ci.yml
+//   began calling the deploys after ci-gate. `parseTriggerPaths` and
+//   `usesPathsFilter` stay exported: tooling/ci/test/deploy-units.test.mjs
+//   fails a deploy workflow that grows either trigger back.
 //
 // ── HOW IT READS THE FILE ───────────────────────────────────────────────────
 // By indentation-scoped structure, never by grepping for a string. A `grep` for
@@ -218,35 +219,6 @@ export function parseTriggerPaths(text) {
   return null;
 }
 
-/**
- * The `filters:` block-scalar handed to dorny/paths-filter, as
- * `{ name: [path, ...] }`. Read from the literal block, so a filter added in a
- * different step or a different workflow is deliberately NOT counted.
- */
-export function parseFilters(text) {
-  const lines = text.split(/\r?\n/);
-  let idx = -1;
-  let keyIndent = -1;
-  for (let i = 0; i < lines.length; i += 1) {
-    if (/^\s+filters:\s*\|\s*$/.test(lines[i])) { idx = i; keyIndent = indentOf(lines[i]); break; }
-  }
-  if (idx === -1) return null;
-
-  const out = {};
-  let current = null;
-  for (let i = idx + 1; i < lines.length; i += 1) {
-    const line = lines[i];
-    if (!line.trim()) continue;
-    if (indentOf(line) <= keyIndent) break; // block scalar ended
-    const trimmed = line.trim();
-    const keyMatch = trimmed.match(/^([A-Za-z0-9_-]+):\s*$/);
-    if (keyMatch) { current = keyMatch[1]; out[current] = []; continue; }
-    const itemMatch = trimmed.match(/^-\s+(.*)$/);
-    if (itemMatch && current) out[current].push(unquote(itemMatch[1]));
-  }
-  return out;
-}
-
 // ── LIMBS 1-2 · which workflow plans which unit ─────────────────────────────
 
 /** `deployUnits` under `root`, or null when the file or the key is absent or is
@@ -344,55 +316,6 @@ export function judgeUnits(units, plans) {
     }
   }
   return { problems, owners };
-}
-
-// ── LIMB 4 · ⏳ TRANSITIONAL: a trigger that still exists equals its units ──
-
-/** Both directions of one set comparison, as problems naming the side a glob is
- *  missing from. */
-function sameGlobs(a, aName, b, bName) {
-  const A = new Set(a);
-  const B = new Set(b);
-  return [
-    ...[...A].filter((g) => !B.has(g)).map((g) => `\`${g}\` is in ${aName} and not in ${bName}`),
-    ...[...B].filter((g) => !A.has(g)).map((g) => `\`${g}\` is in ${bName} and not in ${aName}`),
-  ];
-}
-
-/**
- * Limb 4, pure. For a workflow that plans `keys` and still carries its own
- * `on.push.paths` (`triggerPaths`, or null) and dorny `filters` (or null): the
- * paths equal the union of its units, and each filter equals the unit its name
- * spells (`subscriptiontracker_api` is the unit `subscriptiontracker-api`). Until
- * the triggers go, GitHub starts the run on one list and the plan publishes on
- * the other; this is what holds them to one reading.
- */
-export function judgeEquality(units, workflow, keys, triggerPaths, filters) {
-  const problems = [];
-  const self = `.github/workflows/${workflow}`;
-  const union = [...new Set(keys.flatMap((k) => units[k]))];
-  if (triggerPaths !== null) {
-    for (const d of sameGlobs(triggerPaths, `${self} on.push.paths`, union, `its unit(s) ${keys.join(', ')}`)) {
-      problems.push(`${d}: the run starts on one list and the plan publishes on the other.`);
-    }
-  }
-  if (filters !== null) {
-    const byUnit = new Map(Object.entries(filters).map(([n, g]) => [n.replace(/_/g, '-'), [n, g]]));
-    for (const [key, [name]] of byUnit) {
-      if (!keys.includes(key)) problems.push(`${self} filter \`${name}\` spells no unit this workflow plans.`);
-    }
-    for (const key of keys) {
-      const hit = byUnit.get(key);
-      if (!hit) {
-        problems.push(`${self} plans deployUnits["${key}"] and carries no filter for it.`);
-        continue;
-      }
-      for (const d of sameGlobs(hit[1], `${self} filter \`${hit[0]}\``, units[key], `deployUnits["${key}"]`)) {
-        problems.push(`${d}: the job starts on one list and the plan publishes on the other.`);
-      }
-    }
-  }
-  return problems;
 }
 
 // ── LIMB 3 · what a claimed tree imports from outside itself ────────────────
@@ -590,21 +513,6 @@ function main() {
   const { problems: unitProblems, owners } = judgeUnits(units, plans);
   problems.push(...unitProblems);
 
-  // Limb 4, ⏳ TRANSITIONAL: only while a deploy workflow still carries a trigger of its own.
-  const equalityChecked = [];
-  for (const { workflow } of plans) {
-    const keys = [...owners].filter(([, by]) => by.includes(workflow)).map(([k]) => k);
-    const text = texts.get(workflow);
-    const triggerPaths = parseTriggerPaths(text);
-    const filters = usesPathsFilter(text) ? parseFilters(text) : null;
-    if (triggerPaths === null && filters === null) continue;
-    equalityChecked.push(
-      `${workflow} (${triggerPaths === null ? 'no' : triggerPaths.length} path(s), ` +
-        `${filters === null ? 'no' : Object.keys(filters).length} filter(s))`,
-    );
-    for (const p of judgeEquality(units, workflow, keys, triggerPaths, filters)) problems.push(p);
-  }
-
   // Limb 3.
   const imports = judgeImports(REPO_ROOT, units);
   problems.push(...imports.problems);
@@ -636,9 +544,6 @@ function main() {
     `ok  ${Object.keys(units).length} deploy unit(s) in ${UNITS_REL}, planned by ${plans.length} of ${files.length} ` +
       `workflow(s) scanned — ${summary}; every unit is planned, and claims the workflow that deploys it.`,
   );
-  if (equalityChecked.length) {
-    console.log(`ok  limb 4 (transitional) — ${equalityChecked.join('; ')} equal their units, both ways.`);
-  }
   console.log(
     `ok  limb 3 — ${imports.scanned} bundled source file(s) read; ${imports.external.length} import(s) leave a ` +
       'claimed tree and every one is claimed by its own unit:',

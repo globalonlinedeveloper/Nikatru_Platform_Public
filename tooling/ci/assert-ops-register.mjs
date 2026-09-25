@@ -234,7 +234,7 @@ import { listDir } from './tree-walk.mjs';
 // The ONE workflow parser. Four copies of it drift in the way that reports
 // "clean" — which lines they can see — so [14]O-7's deploy-job derivation goes
 // through the same one assert-release-provenance and assert-no-secret-defines use.
-import { parseAllWorkflows, workflowEvents, shellSegments, RECORD_CALL, expandMatrixEnvironment } from './workflow-scan.mjs';
+import { parseAllWorkflows, workflowEvents, shellSegments, RECORD_CALL, expandMatrixEnvironment, POST_GATE_IF, postGateJobs } from './workflow-scan.mjs';
 // The ONE comment tokenizer, for the same reason as the workflow parser above.
 import { stripSourceComments } from './text-reductions.mjs';
 // The ONE calendar-date check. The copy that stood here read `Date.parse(s)`
@@ -2835,11 +2835,32 @@ export function describeUnit(q) {
   return `an unreadable unit of ${q?.workflow}`;
 }
 
+/** PURE. Is this parsed job a reusable-workflow CALL — a job-level `uses:` (four
+ *  spaces: a job's keys, never a step's) in place of steps? */
+export const isCallJob = (job) => (job?.lines ?? []).some((l) => /^ {4}uses:\s*\S/.test(String(l?.text ?? '')));
+
+/** ⏱ 2026-09-25 [ADR 095 §4] The one sentence every call-job shape that was not
+ *  measured ends in. G1-G3 were measured on real runs; how GitHub lists a call
+ *  job that is skipped AS A WHOLE was not, so a run that lists the call job in
+ *  no shape at all is COVERAGE LOST (exit 2), never "absent, so neutral". */
+export const G4_UNMEASURED = 'G4: whole-call-job skip shape unmeasured (cloud-drafts/pd2b/d2b2-ruling-verify.md)';
+
 /** PURE. Does an API job `name` belong to workflow job `jobId`? The API reports a
  *  job by its `name:` with expressions substituted, and a matrix leg with its
- *  values appended in parentheses; a job with no `name:` by its id. */
+ *  values appended in parentheses; a job with no `name:` by its id.
+ *  ⏱ 2026-09-25 [ADR 095 §4] A CALL job has no conclusion of its own that the
+ *  API reports while it runs: its jobs come back as `<call job> / <callee job>`.
+ *  Without this arm `{ jobs: ["deploy-web"] }` matched only the skipped
+ *  placeholder and never a real conclusion — neutral forever, a silent green.
+ *  The arm is taken only for a job whose own key is `uses:`. */
 export function apiJobMatcher(jobId, job) {
   const display = nonEmpty(job?.displayName) ? job.displayName : String(jobId);
+  if (isCallJob(job)) {
+    return (name) => {
+      const n = String(name ?? '');
+      return n === display || n.startsWith(`${display} / `);
+    };
+  }
   if (display.includes('${{')) {
     const body = display
       .split(/\$\{\{[^}]*\}\}/)
@@ -2855,9 +2876,10 @@ export function apiJobMatcher(jobId, job) {
 }
 
 /** PURE. ONE run's verdict for ONE unit: `{ verdict: 'success' | 'failure' |
- *  'neutral', detail }`. `apiJobs` is that run's /jobs answer; `wf` the parsed
+ *  'neutral' | 'lost', detail }`. `apiJobs` is that run's /jobs answer; `wf` the parsed
  *  workflow the unit's ids are declared in. Neutral is "this run says nothing
- *  about the unit" — never a pass. */
+ *  about the unit" — never a pass. Lost is a call job in a shape nobody measured
+ *  (`G4_UNMEASURED`) — COVERAGE LOST, never neutral. */
 export function unitConclusion(q, run, apiJobs, wf) {
   const u = unitOf(q);
   if (u.kind === 'run') {
@@ -2876,6 +2898,31 @@ export function unitConclusion(q, run, apiJobs, wf) {
     if (!job) { parts.push({ what: `job ${id}`, c: 'neutral', why: 'is not declared in the workflow file' }); return; }
     const match = apiJobMatcher(id, job);
     const found = apiJobs.filter((j) => match(j?.name));
+    if (isCallJob(job)) {
+      // ⏱ 2026-09-25 [ADR 095 §4] THREE SHAPES, and only two of them measured:
+      // children present → grade the children; exactly one entry named just the
+      // call job, `skipped` → the lane was skipped; anything else → `lost`.
+      const display = nonEmpty(job.displayName) ? job.displayName : String(id);
+      const own = found.filter((j) => String(j?.name ?? '') === display);
+      const children = found.filter((j) => String(j?.name ?? '') !== display);
+      if (children.length) { for (const j of children) visit(job, j); return; }
+      if (own.length === 1 && own[0]?.conclusion === 'skipped') {
+        parts.push({
+          what: `job ${id}`,
+          c: nonEmpty(job.jobIf?.cond) ? 'skipped-by-own-if' : 'neutral',
+          why: `was skipped as a whole in run ${run?.id} (one entry "${display}", no "${display} / …" child)`,
+        });
+        return;
+      }
+      parts.push({
+        what: `call job ${id}`,
+        c: 'lost',
+        why: own.length === 0
+          ? `has NO entry in run ${run?.id}, neither "${display}" nor "${display} / …". ${G4_UNMEASURED}`
+          : `came back in run ${run?.id} as ${own.length} entry(ies) named "${display}" (${own.map((j) => JSON.stringify(j?.conclusion ?? null)).join(', ')}) and no child. ${G4_UNMEASURED}`,
+      });
+      return;
+    }
     if (found.length === 0) { parts.push({ what: `job ${id}`, c: 'neutral', why: `is absent from run ${run?.id}` }); return; }
     for (const j of found) visit(job, j);
   };
@@ -2899,6 +2946,10 @@ export function unitConclusion(q, run, apiJobs, wf) {
       else parts.push({ what: `step "${u.step}"`, c: 'neutral', why: `concluded ${JSON.stringify(c)}` });
     });
   }
+  // 2 beats 1: a run whose call job came back in an unmeasured shape is
+  // "could not tell", whatever else in the unit concluded.
+  const lost = parts.filter((p) => p.c === 'lost');
+  if (lost.length) return { verdict: 'lost', detail: `run ${run?.id}: ${lost.map((p) => `${p.what} ${p.why}`).join(' · ')}` };
   const failed = parts.filter((p) => p.c === 'failure');
   if (failed.length) return { verdict: 'failure', detail: `run ${run?.id}: ${failed.map((p) => `${p.what} ${p.why}`).join(' · ')}` };
   const silent = parts.filter((p) => p.c === 'neutral');
@@ -2938,6 +2989,10 @@ export function decideUnitFreshness(q, entries, pageFull, repo) {
 export function decideUnitRedSince(q, entries, pageFull) {
   let failure = null;
   for (const e of entries ?? []) {
+    // ⏱ 2026-09-25 [ADR 095 §4] A `lost` run NEWER than every decisive one is
+    // the row's answer: COVERAGE LOST. Older than a failure already found, it
+    // cannot un-red that failure, so the scan reads past it for the success term.
+    if (e.c?.verdict === 'lost' && !failure) return { lost: { id: e.run.id, at: e.run.updated_at, detail: e.c.detail } };
     if (e.c?.verdict === 'success') {
       return failure
         ? { success: { id: e.run.id, at: e.run.updated_at }, failure }
@@ -3000,6 +3055,7 @@ export function checkLiveVerdictScopes(reg, topology) {
 export function checkRunUnits(reg, parsedByFile, topology) {
   const errors = [];
   const prints = [];
+  const postGate = postGateAdmission(parsedByFile, topology);
   const byFile = new Map();
   for (const r of reg?.rows ?? []) {
     const q = r?.mechanism?.recordQuery;
@@ -3070,8 +3126,16 @@ export function checkRunUnits(reg, parsedByFile, topology) {
           continue;
         }
       }
-      const why = unitNeedsGuard(wf, u);
-      if (why) {
+      const why = unitNeedsGuard(wf, u, topology);
+      if (why && postGateUnit(q, postGate)?.ok) {
+        // ⏱ 2026-09-25 [ADR 095 §4] The one exemption: every job of the unit is
+        // post-gate, so it cannot redden its own run's gate, and its route is
+        // OWN HOST — it PRINTS in this file and blocks in the other guard hosts.
+        prints.push(
+          `[INV4] ${r.id} — every job of its unit (${u.jobs.join(' · ')}) is post-gate in ${file}: ${why}. OWN HOST — ` +
+            `its red PRINTS in ${file} and blocks in every other guard host.`,
+        );
+      } else if (why) {
         errors.push(
           `${r.id} — its unit contains this guard's own verdict: ${why}. [INV4] No host requires itself — judged by ` +
             `that unit, this duty could not go green in ${file} while ${file} is red, and ${file} is red whenever this guard is.`,
@@ -3092,7 +3156,9 @@ export function checkRunUnits(reg, parsedByFile, topology) {
       const job = key.split('::')[0];
       if (jobOwner.has(job)) errors.push(`${owner} — is judged by a step of job ${job} in ${file}, and ${jobOwner.get(job)} is judged by that whole job: the units overlap, so one of them ages the other. [INV3]`);
     }
-    if (shared && wf) {
+    // ⏱ 2026-09-25 [ADR 095 §4] For the gate workflow completeness ranges over
+    // its post-gate jobs only (below); its other jobs are the gate's own business.
+    if (shared && wf && postGate?.gateWorkflow !== file) {
       const stepJobs = new Set([...stepOwner.keys()].map((k) => k.split('::')[0]));
       const unowned = [...wf.jobs.entries()]
         .filter(([id, j]) => !jobOwner.has(id) && !stepJobs.has(id) && !workflowRunsScript({ lines: j.lines }, GUARD_SCRIPT_REL))
@@ -3106,6 +3172,30 @@ export function checkRunUnits(reg, parsedByFile, topology) {
       }
       prints.push(`[INV3] ${file} — ${group.length} duty rows, each judged by its OWN unit: ${group.map((g) => `${g.id} ← ${describeUnit(g.mechanism.recordQuery)}`).join(' · ')}`);
     }
+  }
+  // ⏱ 2026-09-25 [ADR 095 §4] INV3 for the gate workflow: every post-gate job is
+  // the unit of exactly one row (two is refused above as an overlap). Ranged
+  // whether one row reads the gate workflow or none — a post-gate job is a lane
+  // that runs after the gate, and one no row reads is a red nobody is paged for.
+  if (postGate) {
+    const owners = new Map([...postGate.jobs].map((j) => [j, []]));
+    for (const r of byFile.get(postGate.gateWorkflow) ?? []) {
+      const u = unitOf(r.mechanism.recordQuery);
+      if (u.kind === 'jobs') for (const j of u.jobs) owners.get(j)?.push(r.id);
+    }
+    const unowned = [...owners].filter(([, o]) => o.length === 0).map(([j]) => j);
+    if (unowned.length) {
+      errors.push(
+        `${WORKFLOW_DIR_REL}/${postGate.gateWorkflow} — post-gate job(s) ${unowned.join(' · ')} (needs \`${postGate.gateJob}\`, ` +
+          `\`if: ${POST_GATE_IF}\`) are the unit of no row. [INV3] A post-gate job is a lane that runs after the gate on ` +
+          'main; red, it would be watched by nobody in this register. Give each a `duty.workflow.*` row whose ' +
+          `\`recordQuery\` reads ${postGate.gateWorkflow} with \`unit: { "jobs": [id] }\`.`,
+      );
+    }
+    prints.push(
+      `[INV3] ${postGate.gateWorkflow} — ${owners.size} post-gate job(s)` +
+        (owners.size ? `, each the unit of: ${[...owners].map(([j, o]) => `${j} ← ${o.join(' · ') || 'NONE'}`).join(' · ')}` : ''),
+    );
   }
   return { errors, prints };
 }
@@ -3141,16 +3231,33 @@ async function unitRunsPage(q, repo, filters, what) {
   return { runs, pageFull: wide.workflow_runs.length >= UNIT_PAGE };
 }
 
-/** IMPURE. One run's job list, cached for the whole guard run. */
+/** Pages of 100 read before a run's job list is refused as too long to walk. */
+export const RUN_JOB_PAGES = 10;
+
+/** PURE given `fetchPage(page)`. ⏱ 2026-09-25 [ADR 095 §4] One run's WHOLE job
+ *  list. A job on page 2 of a one-page read reads ABSENT, which is neutral, which
+ *  is a silent green — and ci.yml's job count grows with every call child. So the
+ *  pages are walked until `total_count` is reached, and a list that does not add
+ *  up THROWS (unreadable at both call sites), never a short answer. */
+export async function collectRunJobs(runId, fetchPage) {
+  const jobs = [];
+  for (let page = 1; page <= RUN_JOB_PAGES; page++) {
+    const body = await fetchPage(page);
+    if (!Array.isArray(body?.jobs)) throw new Error(`the job list of run ${runId} came back without a jobs array (page ${page})`);
+    if (!Number.isInteger(body?.total_count)) throw new Error(`the job list of run ${runId} came back without a total_count, so a job past page ${page} would read as absent`);
+    jobs.push(...body.jobs);
+    if (jobs.length >= body.total_count) return jobs;
+    if (body.jobs.length === 0) throw new Error(`run ${runId} reports ${body.total_count} job(s) and page ${page} came back empty after ${jobs.length}`);
+  }
+  throw new Error(`run ${runId} lists more than ${RUN_JOB_PAGES * 100} jobs, so the rest would read as absent`);
+}
+
+/** IMPURE. One run's job list, cached for the whole guard run. Page 1 keeps the
+ *  URL it always had. */
 function jobsOfRun(repo, runId, cache) {
   if (!cache.has(runId)) {
-    cache.set(
-      runId,
-      ghJson(`/repos/${repo}/actions/runs/${runId}/jobs?per_page=100&filter=latest`).then((body) => {
-        if (!Array.isArray(body?.jobs)) throw new Error(`the job list of run ${runId} came back without a jobs array`);
-        return body.jobs;
-      }),
-    );
+    const base = `/repos/${repo}/actions/runs/${runId}/jobs?per_page=100&filter=latest`;
+    cache.set(runId, collectRunJobs(runId, (page) => ghJson(page === 1 ? base : `${base}&page=${page}`)));
   }
   return cache.get(runId);
 }
@@ -3569,6 +3676,45 @@ export function feedsTheGate(hostWorkflow, topology) {
   );
 }
 
+/** PURE. The job id of the gate aggregator inside `wf`, or null — null unless
+ *  `wf` IS `topology.gateWorkflow` and exactly one of its jobs answers to
+ *  `topology.gateName`. ⏱ 2026-09-25 [ADR 095 §4]. */
+export function gateJobOf(wf, topology) {
+  if (!wf || !topology?.gateWorkflow || !nonEmpty(topology?.gateName)) return null;
+  if (String(wf.rel ?? '').split('/').pop() !== topology.gateWorkflow) return null;
+  const hits = [...(wf.jobs?.entries?.() ?? [])]
+    .filter(([id, j]) => j?.displayName === topology.gateName || id === topology.gateName)
+    .map(([id]) => id);
+  return hits.length === 1 ? hits[0] : null;
+}
+
+/** PURE. ⏱ 2026-09-25 [ADR 095 §4] The post-gate jobs of the gate workflow —
+ *  `needs:` the aggregator and `if:` byte-equal to `POST_GATE_IF`, through the
+ *  one definition in workflow-scan.mjs that assert-green-means-ran's A9 also asks
+ *  — as `{ gateWorkflow, gateJob, jobs: Set<id> }`, or null when the topology
+ *  names no gate job. A post-gate job cannot redden its own run's gate, and its
+ *  red routes OWN HOST (prints in the gate workflow, blocks elsewhere), which is
+ *  why a trigger row judged by post-gate jobs alone is admitted to RED SINCE with
+ *  no `workflow_dispatch`: a red one never has to merge through itself. */
+export function postGateAdmission(parsedByFile, topology) {
+  const file = topology?.gateWorkflow ?? null;
+  const wf = file ? (parsedByFile?.get?.(file) ?? null) : null;
+  const gateJob = gateJobOf(wf, topology);
+  if (!gateJob) return null;
+  return { gateWorkflow: file, gateJob, jobs: new Set(postGateJobs(wf, gateJob)) };
+}
+
+/** PURE. How `postGate` reads one row's query: null when the row does not read
+ *  the gate workflow; `{ ok: true }` when its unit is post-gate jobs only;
+ *  `{ ok: false, off }` naming the unit's jobs that are not. */
+export function postGateUnit(q, postGate) {
+  if (!(postGate?.jobs instanceof Set) || String(q?.workflow ?? '') !== postGate.gateWorkflow) return null;
+  const u = unitOf(q);
+  if (u.kind !== 'jobs' || u.jobs.length === 0) return { ok: false, off: [describeUnit(q)] };
+  const off = u.jobs.filter((j) => !postGate.jobs.has(j));
+  return off.length ? { ok: false, off } : { ok: true };
+}
+
 /** The events on which a guard host judges a PROPOSED change rather than the
  *  default branch itself. INV1 is about exactly these: a verdict read off main's
  *  history is not a property of the proposal, and the proposal is how it gets
@@ -3960,8 +4106,15 @@ export function checkReaderIndependence(wf) {
  *  own workflow, or `null`. The whole run of a guard host does; so does the job
  *  that runs this guard; so does any job that `needs:` it, and any later step in
  *  its job, that carries no condition under which it still runs after a failure —
- *  because a guard that fails SKIPS those, and a skipped duty is not a green one. */
-export function unitNeedsGuard(wf, unit) {
+ *  because a guard that fails SKIPS those, and a skipped duty is not a green one.
+ *
+ *  ⏱ 2026-09-25 [ADR 095 §4] `topology` (optional) names the gate aggregator. A
+ *  job whose `if:` is byte-equal to `POST_GATE_IF` and which needs that
+ *  aggregator is walked THROUGH it: the aggregator RUNS after a failure (its own
+ *  `always()`) but does not PASS after one, and the post-gate `if:` carries no
+ *  status function, so GitHub's implicit `success()` skips the job. Without
+ *  `topology` the walk stops at the aggregator, as it always did. */
+export function unitNeedsGuard(wf, unit, topology = null) {
   if (!wf || !unit) return null;
   const guardJobs = [...(wf.jobs?.entries?.() ?? [])]
     .filter(([, j]) => workflowRunsScript({ lines: j.lines }, GUARD_SCRIPT_REL))
@@ -3970,15 +4123,20 @@ export function unitNeedsGuard(wf, unit) {
   if (unit.kind === 'run' || unit.kind === 'invalid') {
     return `the whole run includes job ${guardJobs.join(' · ')}, which runs ${GUARD_SCRIPT_REL}`;
   }
-  const jobNeeds = (id, seen = new Set()) => {
+  const gateJob = gateJobOf(wf, topology);
+  const jobNeeds = (id, seen = new Set(), through = false) => {
     if (seen.has(id)) return null;
     seen.add(id);
     const j = wf.jobs.get(id);
     if (!j) return null;
     if (guardJobs.includes(id)) return `job ${id} runs ${GUARD_SCRIPT_REL}`;
-    if (RUNS_AFTER_FAILURE.test(String(j.jobIf?.cond ?? ''))) return null;
+    if (!through && RUNS_AFTER_FAILURE.test(String(j.jobIf?.cond ?? ''))) return null;
+    const post = j.jobIf?.cond === POST_GATE_IF;
     for (const dep of j.needs ?? []) {
-      const why = jobNeeds(dep, seen);
+      const via = post && gateJob !== null && dep === gateJob;
+      const why = jobNeeds(dep, seen, via);
+      if (why && via) return `job ${id} carries the post-gate \`if:\` and needs ${dep}, the gate aggregator, which RUNS after a failure but does not PASS after one — ${why}`;
+      if (why && through) return `job ${id} needs ${dep} and concludes failure when it fails — ${why}`;
       if (why) return `job ${id} needs ${dep} with no always()/failure()/!cancelled() condition, so it is SKIPPED when that fails — ${why}`;
     }
     return null;
@@ -4022,7 +4180,7 @@ export function unitNeedsHosts(row, topology, parsedByFile) {
   const out = [];
   if (!file || !topology) return out;
   if (topology.guardHosts?.has(file)) {
-    const why = unitNeedsGuard(parsedByFile?.get(file) ?? null, unitOf(q));
+    const why = unitNeedsGuard(parsedByFile?.get(file) ?? null, unitOf(q), topology);
     if (why) {
       out.push({
         host: file,
@@ -4144,7 +4302,7 @@ export function routeLiveVerdicts(live, policy, topology, reg, parsedByFile) {
  *  only on evidence that its remedy is reachable. The silence that direction
  *  costs is answered by `redSinceTriggerCensus`, which names every unadmitted
  *  trigger row and its reason on every run. */
-export function redSinceDomain(reg, dispatchable = null) {
+export function redSinceDomain(reg, dispatchable = null, postGate = null) {
   return (reg?.rows ?? []).filter((r) => {
     if (r?.kind !== 'duty' || !String(r?.id ?? '').startsWith('duty.workflow.')) return false;
     const q = r?.mechanism?.recordQuery;
@@ -4152,6 +4310,10 @@ export function redSinceDomain(reg, dispatchable = null) {
     const cadence = String(r?.cadence ?? '');
     if (TIME_CADENCE.test(cadence)) return true;
     if (cadence !== 'trigger') return false;
+    // ⏱ 2026-09-25 [ADR 095 §4] Or a trigger row whose unit is post-gate jobs of
+    // the gate workflow ONLY (`postGateAdmission`, handed in like `dispatchable`):
+    // those jobs run after the gate passed, so their red never blocks their own merge.
+    if (postGateUnit(q, postGate)?.ok) return true;
     return dispatchable instanceof Set && dispatchable.has(String(q.workflow));
   });
 }
@@ -4166,15 +4328,24 @@ export function redSinceDomain(reg, dispatchable = null) {
  *  same shape as shortening a list, arrived at from the other side. Printing the
  *  exclusions with their reasons on EVERY run means that shrink is a sentence in
  *  the log rather than a number that got smaller. */
-export function redSinceTriggerCensus(reg, dispatchable = null) {
+export function redSinceTriggerCensus(reg, dispatchable = null, postGate = null) {
   const admitted = [];
   const excluded = [];
+  // ⏱ 2026-09-25 [ADR 095 §4] Why each admitted row is in: 'workflow_dispatch' or
+  // 'post-gate'. Two admissions, printed apart, so losing one is visible on its own.
+  const admittedBy = {};
   for (const r of reg?.rows ?? []) {
     if (r?.kind !== 'duty' || !String(r?.id ?? '').startsWith('duty.workflow.')) continue;
     if (String(r?.cadence ?? '') !== 'trigger') continue;
     const file = rowWorkflowFile(r);
     const q = r?.mechanism?.recordQuery;
     const hasQuery = q?.reader === 'github-run-history' && nonEmpty(q?.workflow) && nonEmpty(q?.headBranch);
+    const pg = hasQuery ? postGateUnit(q, postGate) : null;
+    if (pg?.ok) {
+      admitted.push(r.id);
+      admittedBy[r.id] = 'post-gate';
+      continue;
+    }
     if (!(dispatchable instanceof Set)) {
       excluded.push(
         `${r.id} — no workflow-dispatch derivation was supplied on this run, so NO trigger row was admitted. ` +
@@ -4185,6 +4356,15 @@ export function redSinceTriggerCensus(reg, dispatchable = null) {
     }
     if (file === null) {
       excluded.push(`${r.id} — neither a \`recordQuery.workflow\` nor a \`${WORKFLOW_DIR_REL}/…\` anchor names a workflow file, so nothing on disk could be read for a \`workflow_dispatch\` trigger.`);
+      continue;
+    }
+    if (pg && !dispatchable.has(file)) {
+      excluded.push(
+        `${r.id} — reads \`${WORKFLOW_DIR_REL}/${file}\`, the gate workflow, and job(s) ${pg.off.join(' · ')} of its unit ` +
+          `are not post-gate (\`needs: [${postGate.gateJob}]\` and \`if: ${POST_GATE_IF}\`, byte-equal). A unit that can ` +
+          'redden its own gate can be made green only by MERGING, so it is not graded. Excluded by DERIVATION from ' +
+          'the workflow file.',
+      );
       continue;
     }
     if (!dispatchable.has(file)) {
@@ -4206,8 +4386,9 @@ export function redSinceTriggerCensus(reg, dispatchable = null) {
       continue;
     }
     admitted.push(r.id);
+    admittedBy[r.id] = 'workflow_dispatch';
   }
-  return { admitted, excluded };
+  return { admitted, excluded, admittedBy };
 }
 
 /** PURE. The shape a `trigger` row's `recordQuery` must have, and the split it
@@ -4319,6 +4500,16 @@ export function classifyRedSince(row, probe) {
   const where = `${q.workflow} on ${q.headBranch}${unit.kind === 'run' ? '' : ` (${describeUnit(q)})`}`;
   if (!probe) return { verdict: 'unreadable', line: `${id} — the RED-SINCE read of ${where} produced no result at all on this run.` };
   if (probe.unreadable) return { verdict: 'unreadable', line: `${id} — the RED-SINCE read of ${where} could not run here: ${probe.why}` };
+  // ⏱ 2026-09-25 [ADR 095 §4] The newest graded run lists a call job in a shape
+  // nobody measured (`G4_UNMEASURED`): exit 2 wherever this row blocks.
+  if (probe.lost) {
+    return {
+      verdict: 'lost',
+      line:
+        `${id} — ${where}: the newest run read, ${probe.lost.id} (${probe.lost.at}), cannot be graded — ${probe.lost.detail}. ` +
+        'COVERAGE LOST for this row, neither a pass nor a RED.',
+    };
+  }
 
   const fail = probe.failure ?? null;
   const ok = probe.success ?? null;
@@ -4398,11 +4589,11 @@ export function classifyRedSince(row, probe) {
  *  function no longer decides where a verdict is routed — ⏱ 2026-09-11, that is
  *  `routeLiveVerdicts`, once for both limbs, because a router per limb is how the
  *  2026-09-09 exemption came to cover one limb and not the other. */
-export function evaluateRedSince(reg, probes, dispatchable = null) {
+export function evaluateRedSince(reg, probes, dispatchable = null, postGate = null) {
   const errors = [];
   const prints = [];
   const live = [];
-  const domain = redSinceDomain(reg, dispatchable);
+  const domain = redSinceDomain(reg, dispatchable, postGate);
   // ⏱ 2026-09-09. The shape rules for the `trigger` rows admitted above, which
   // `evaluateRunRecords` cannot state because its domain is the clocked rows.
   errors.push(...redSinceTriggerShape(reg));
@@ -4426,11 +4617,12 @@ export function evaluateRedSince(reg, probes, dispatchable = null) {
   // 🔴 THE SHRINK, PRINTED — see `redSinceTriggerCensus`. Built here, before any
   // answer is classified, because it is a fact about the register and the
   // workflow tree and prints whether or not the live reads were made.
-  const census = redSinceTriggerCensus(reg, dispatchable);
+  const census = redSinceTriggerCensus(reg, dispatchable, postGate);
+  const admittedText = census.admitted.map((id) => `${id} (${census.admittedBy[id]})`).join(' · ');
   const censusLines = [
     census.excluded.length
-      ? `[14]O-3b — TRIGGER ROWS NOT GRADED FOR REDNESS: ${census.excluded.length} (admitted: ${census.admitted.join(' · ') || 'none'})`
-      : `[14]O-3b — TRIGGER ROWS: every \`duty.workflow.*\` trigger row is graded for redness (${census.admitted.join(' · ') || 'there are none'}).`,
+      ? `[14]O-3b — TRIGGER ROWS NOT GRADED FOR REDNESS: ${census.excluded.length} (admitted: ${admittedText || 'none'})`
+      : `[14]O-3b — TRIGGER ROWS: every \`duty.workflow.*\` trigger row is graded for redness (${admittedText || 'there are none'}).`,
     ...census.excluded.map((l) => `[14]O-3b — NOT GRADED · ${l}`),
   ];
   // ⏱ 2026-09-11 — no answers on this host (`liveReadPlan`): the shape rules and
@@ -4440,7 +4632,7 @@ export function evaluateRedSince(reg, probes, dispatchable = null) {
     return { errors, prints, live: [], stats: { domain: domain.length, notRead: true } };
   }
 
-  const tally = { green: 0, red: 0, unreadable: 0, blind: 0, quota: 0 };
+  const tally = { green: 0, red: 0, unreadable: 0, blind: 0, quota: 0, lost: 0 };
   const darkLines = [];
   for (const r of domain) {
     const c = classifyRedSince(r, probes?.get?.(r.id));
@@ -4455,7 +4647,7 @@ export function evaluateRedSince(reg, probes, dispatchable = null) {
         'enough. The duty is NOT unwatched — the sibling [14]O-3 limb still grades "no successful run at all" as FAILING.';
       errors.push(line);
       live.push({ id: r.id, line, code: 2, limb: '[14]O-3b' });
-    } else if (c.verdict === 'quota') {
+    } else if (c.verdict === 'quota' || c.verdict === 'lost') {
       errors.push(c.line);
       live.push({ id: r.id, line: c.line, code: 2, limb: '[14]O-3b' });
     } else if (c.verdict === 'unreadable') {
@@ -4471,17 +4663,18 @@ export function evaluateRedSince(reg, probes, dispatchable = null) {
   const clocked = domain.filter((r) => TIME_CADENCE.test(String(r?.cadence ?? ''))).length;
   prints.push(
     `[14]O-3b — RED SINCE: ${domain.length} workflow duty(ies) graded (${clocked} on a clock · ` +
-      `${domain.length - clocked} \`trigger\` row(s) whose workflow declares \`workflow_dispatch\`, so a red lane ` +
-      `has an exit that is not a merge) · ${tally.green} whose newest run on their own ` +
+      `${domain.length - clocked} \`trigger\` row(s) whose workflow declares \`workflow_dispatch\` or whose unit is ` +
+      `post-gate jobs of the gate workflow, so a red lane has an exit that is not a merge) · ${tally.green} whose newest run on their own ` +
       `branch is GREEN · ${tally.red} RED · ${tally.unreadable} unreadable on this runner · ` +
       `${tally.blind} with no success to compare against · ${tally.quota} whose newest failure died ONLY on the installation ` +
-      'rate limit (COVERAGE LOST) — whether each RED blocks THIS host is decided once, for ' +
+      `rate limit (COVERAGE LOST) · ${tally.lost} whose newest run lists a call job in an unmeasured shape (COVERAGE LOST) ` +
+      '— whether each RED blocks THIS host is decided once, for ' +
       'every live verdict, under HOST POLICY below',
   );
   // 🔴 THE SHRINK, PRINTED — built above, before the answers were classified.
   prints.push(...censusLines);
   for (const l of darkLines) prints.push(`[14]O-3b — ${l}`);
-  if (tally.green === 0 && tally.red === 0 && tally.blind === 0 && tally.quota === 0) {
+  if (tally.green === 0 && tally.red === 0 && tally.blind === 0 && tally.quota === 0 && tally.lost === 0) {
     prints.push(
       '[14]O-3b — 🔴 THE RED-SINCE LIMB ORDERED ZERO PAIRS ON THIS RUN. Every watched workflow was unreadable here ' +
         '(no token, or the API could not be reached), so nothing above could have failed. This line exists so that ' +
@@ -4559,10 +4752,10 @@ async function probeGithubRedSince(q, repo, cache = new Map()) {
  *  there is nothing to de-duplicate. A "run" unit is read by the two-status read
  *  above, unchanged; a job or step unit by `probeUnitRedSince` (INV3), sharing one
  *  job-list cache with the freshness limb. */
-async function probeRedSince(reg, dispatchable = null, parsedByFile = new Map(), jobsCache = new Map()) {
+async function probeRedSince(reg, dispatchable = null, parsedByFile = new Map(), jobsCache = new Map(), postGate = null) {
   const probes = new Map();
   const repo = process.env.GITHUB_REPOSITORY || DEFAULT_REPO;
-  for (const r of redSinceDomain(reg, dispatchable)) {
+  for (const r of redSinceDomain(reg, dispatchable, postGate)) {
     if (!ghToken()) {
       probes.set(r.id, {
         unreadable: true,
@@ -5425,8 +5618,9 @@ async function main() {
 
   // [14]O-3b asks a DIFFERENT question of the same record — not "is the newest
   // success recent" but "is the newest FAILURE newer than it". See its header.
-  const redProbes = readPlan.read ? await probeRedSince(reg, dispatchable, parsedByFile, jobsCache) : LIVE_READS_NOT_MADE;
-  const red = evaluateRedSince(reg, redProbes, dispatchable);
+  const postGate = postGateAdmission(parsedByFile, topology);
+  const redProbes = readPlan.read ? await probeRedSince(reg, dispatchable, parsedByFile, jobsCache, postGate) : LIVE_READS_NOT_MADE;
+  const red = evaluateRedSince(reg, redProbes, dispatchable, postGate);
   prints.push(...(red.prints ?? []));
   if (red.coverageLost) {
     for (const p of prints) console.log(`⬜  ${p}`);

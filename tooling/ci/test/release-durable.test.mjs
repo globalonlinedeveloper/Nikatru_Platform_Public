@@ -639,6 +639,63 @@ describe('assert-release-durable.mjs — REQUIRED_COVERAGE', () => {
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /a_job_nobody_wrote/);
   });
+
+  // ⏱ 2026-09-25 [ADR 095 §4] — deploy-web.yml became `on: workflow_call` only and
+  // the register still names it: the lane resolves as the caller's one child.
+  test('a register lane naming a call-only file resolves as the one call job that runs it', () => {
+    const register = JSON.parse(JSON.stringify(REGISTER));
+    register.channels[0].lane = { workflow: '.github/workflows/lib.yml', job: 'ship' };
+    const lib = 'name: lib\non:\n  workflow_call:\njobs:\n  ship:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: echo shipped\n';
+    const caller = 'name: CI\non: [push]\njobs:\n  deploy:\n    uses: ./.github/workflows/lib.yml\n';
+    const workflows = { 'build.yml': lane(), 'lib.yml': lib, 'ci.yml': caller };
+    const ok = run(fixture({ register, workflows }));
+    assert.equal(ok.code, 0, ok.out);
+    register.channels[0].lane.job = 'a_job_nobody_wrote';
+    const lost = run(fixture({ register, workflows }));
+    assert.equal(lost.code, 2, lost.out);
+    assert.match(lost.out, /lib\.yml#a_job_nobody_wrote/);
+    assert.match(lost.out, /its child "deploy\/a_job_nobody_wrote" is not there/);
+  });
+
+  test('a register lane naming a call-only file TWO call jobs run is COVERAGE LOST in laneRefusalText\'s words', () => {
+    const register = JSON.parse(JSON.stringify(REGISTER));
+    register.channels[0].lane = { workflow: '.github/workflows/lib.yml', job: 'ship' };
+    const lib = 'name: lib\non:\n  workflow_call:\njobs:\n  ship:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: echo shipped\n';
+    const caller = 'name: CI\non: [push]\njobs:\n  deploy:\n    uses: ./.github/workflows/lib.yml\n  again:\n    uses: ./.github/workflows/lib.yml\n';
+    const r = run(fixture({ register, workflows: { 'build.yml': lane(), 'lib.yml': lib, 'ci.yml': caller } }));
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /2 call job\(s\) run it/);
+  });
+});
+
+// ⏱ 2026-09-25 [ADR 095 §4] — LIMB 3 THROUGH A CALL-ONLY LANE. A served native
+// row whose lane file is `on: workflow_call` only is graded over the jobs its ONE
+// caller runs from that file (laneRunHost's `children`), exactly as an own-run
+// lane is graded over its own file's jobs — never over the caller's whole file,
+// where any sibling job's publish would credit the lane.
+describe('assert-release-durable.mjs — limb 3 through a call-only lane', () => {
+  const libWith = (steps) => `name: lib\non:\n  workflow_call:\njobs:\n  ship:\n    runs-on: ubuntu-24.04\n    steps:\n${steps}`;
+  const servedCallee = () => {
+    const register = JSON.parse(JSON.stringify(REGISTER));
+    register.channels[2].served = true;
+    register.channels[2].lane = { workflow: '.github/workflows/lib.yml', job: 'ship' };
+    return register;
+  };
+
+  test('GREEN CONTROL — the callee lane publishes durably: ok', () => {
+    const caller = 'name: CI\non: [push]\njobs:\n  deploy:\n    uses: ./.github/workflows/lib.yml\n';
+    const r = run(fixture({ register: servedCallee(), workflows: { 'build.yml': lane(), 'lib.yml': libWith(PUBLISH_STEPS), 'ci.yml': caller } }));
+    assert.equal(r.code, 0, r.out);
+  });
+
+  test('RED CONTROL — the callee lane\'s durable publish is dropped while a SIBLING caller job still publishes: FAILS', () => {
+    const caller =
+      'name: CI\non: [push]\njobs:\n  deploy:\n    uses: ./.github/workflows/lib.yml\n' +
+      `  sibling:\n    runs-on: ubuntu-24.04\n    steps:\n${PUBLISH_STEPS}`;
+    const r = run(fixture({ register: servedCallee(), workflows: { 'build.yml': lane(), 'lib.yml': libWith('      - run: echo shipped\n'), 'ci.yml': caller } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /channel "windows-direct" is SERVED and is not the web channel, and its lane \.github\/workflows\/lib\.yml#ship \(run as \.github\/workflows\/ci\.yml job "deploy\/ship"\) contains no durable publish/);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
