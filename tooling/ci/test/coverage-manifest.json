@@ -130,6 +130,7 @@
   "lint-inheritance.test.mjs": 13,
   "listing-assets-ink.test.mjs": 25,
   "listing-assets.test.mjs": 90,
+  "live-signin-key.test.mjs": 19,
   "live-writer-provenance.test.mjs": 54,
   "local-chromedriver.test.mjs": 12,
   "mail-auth-dns.test.mjs": 35,
