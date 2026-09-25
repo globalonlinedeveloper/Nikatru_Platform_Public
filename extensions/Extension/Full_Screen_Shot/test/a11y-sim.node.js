@@ -77,8 +77,8 @@ function pageCss(file) {
   const dir = path.posix.dirname(file);
   const linked = [...html.matchAll(/<link\b[^>]*\bhref="([^"]+\.css)"[^>]*>/gi)]
     .map(m => path.posix.join(dir, m[1])).filter(f => f !== 'pages/common.css');
-  return linked.map(read).concat((html.match(/<style[^>]*>[\s\S]*?<\/style>/gi) || [])
-    .map(b => b.replace(/<\/?style[^>]*>/gi, ''))).join('\n');
+  return linked.map(read).concat([...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)]
+    .map(m => m[1])).join('\n');
 }
 
 function tagAttrs(body) {
