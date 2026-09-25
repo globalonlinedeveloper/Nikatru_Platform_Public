@@ -853,7 +853,37 @@
         "symbol": "NotificationCapabilities",
         "test": "packages/notifications/test/notification_capabilities_test.dart",
         "pinnedTo": "flutter_local_notifications 17.x — re-review on any bump",
-        "degradesOn": "Linux shows but cannot schedule (zonedSchedule unimplemented in 17.x-19.x); Windows can do neither on 17.x (support landed in 18.x); web and fuchsia neither. Unsupported calls no-op so a caller falls back to an in-app nudge. 2026-08-01, TIMEZONE: with no LocalTimezoneResolver injected the service used to install tz.local = UTC, so a reminder core documents as firing at [hour]:[minute] LOCAL time was built at that hour in UTC -- 14:30 IST for a 09:00 reminder, and the middle of the night across the Americas. No consumer injected a resolver and every test injected 'UTC', the one value where the bug and the correct behaviour agree. The fallback is now the DEVICE's own current UTC offset (deviceOffsetLocation), exact for the schedule being made and needing no plugin; an injected IANA resolver still wins and is what removes the residual one-hour drift across a DST transition.",
+        "degradesOn": "Linux shows but cannot schedule (zonedSchedule unimplemented in 17.x-19.x); Windows can do neither on 17.x (support landed in 18.x); web and fuchsia neither. Each platform's pair is declared in platformMatrix; a listing claim follows it (assert-store-metadata.mjs REMINDER CLAIMS refuses a reminder in any store listing whose channel cannot schedule). Unsupported calls no-op so a caller falls back to an in-app nudge. 2026-08-01, TIMEZONE: with no LocalTimezoneResolver injected the service used to install tz.local = UTC, so a reminder core documents as firing at [hour]:[minute] LOCAL time was built at that hour in UTC -- 14:30 IST for a 09:00 reminder, and the middle of the night across the Americas. No consumer injected a resolver and every test injected 'UTC', the one value where the bug and the correct behaviour agree. The fallback is now the DEVICE's own current UTC offset (deviceOffsetLocation), exact for the schedule being made and needing no plugin; an injected IANA resolver still wins and is what removes the residual one-hour drift across a DST transition.",
+        "platformMatrix": {
+          "android": {
+            "canNotify": true,
+            "canSchedule": true
+          },
+          "ios": {
+            "canNotify": true,
+            "canSchedule": true
+          },
+          "macos": {
+            "canNotify": true,
+            "canSchedule": true
+          },
+          "linux": {
+            "canNotify": true,
+            "canSchedule": false
+          },
+          "windows": {
+            "canNotify": false,
+            "canSchedule": false
+          },
+          "fuchsia": {
+            "canNotify": false,
+            "canSchedule": false
+          },
+          "web": {
+            "canNotify": false,
+            "canSchedule": false
+          }
+        },
         "scheduleContract": {
           "file": "packages/notifications/lib/src/local_notification_service_io.dart",
           "unobservable": "[13]T-7, 2026-08-02. These two arguments are passed BELOW the NotificationPlugin port -- the port's scheduleDaily takes (id, title, body, when) and nothing else -- so no fake plugin can observe them and NO behavioural test can be written for either. That is stated here rather than papered over with a test that asserts something else: this is a source-shape assertion, and it is the only kind available.",

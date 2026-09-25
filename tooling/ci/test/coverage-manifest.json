@@ -1,6 +1,6 @@
 {
   "a11y-coverage.test.mjs": 35,
-  "adapter-capabilities.test.mjs": 26,
+  "adapter-capabilities.test.mjs": 32,
   "adapter-set.test.mjs": 6,
   "ads-declarations.test.mjs": 62,
   "agent-docs.test.mjs": 12,
@@ -248,7 +248,7 @@
   "store-capture-resolver.test.mjs": 17,
   "store-identity.test.mjs": 46,
   "store-matrix.test.mjs": 24,
-  "store-metadata.test.mjs": 137,
+  "store-metadata.test.mjs": 146,
   "store-screenshots-lane.test.mjs": 54,
   "store-vocabulary.test.mjs": 27,
   "submission-safety.test.mjs": 22,
