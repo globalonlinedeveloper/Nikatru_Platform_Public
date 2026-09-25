@@ -131,6 +131,7 @@ class IapRail
   bool _loadAgain = false;
 
   /// The rail this channel sells through, as the register decides it.
+  @override
   PurchaseRailKind get railKind => _railKind;
 
   /// The channel this rail was built for. Exposed so the paywall can name it in

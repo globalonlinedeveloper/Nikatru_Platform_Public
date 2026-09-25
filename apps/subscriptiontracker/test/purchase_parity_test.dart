@@ -27,6 +27,10 @@
 //     purchase_capabilities_test), and apps.gov.in, which an installed build
 //     cannot tell apart from a Play install at runtime (it resolves the
 //     android-play row here, which also refuses).
+//     ⏱ CORRECTED 2026-09-25 (O-PAYWALL-SPEAKS-ONLY-WEB-CHECKOUT): the web
+//     channel is driven now. R4 in test/paywall_refusal_routes_test.dart
+//     picks the app's rail for 'web' (`purchaseRailFor`) and proves its
+//     in-flight sentence and its declined-page retry.
 //   · NOT BUILT: a store billing rail for Android/iOS/macOS. No store-billing
 //     plugin exists in this repository's dependency graph — see the PR.
 //     ⏱ CORRECTED 2026-09-22 (O-IAP-BRIDGE-NOT-WIRED-IN-THE-APP): it is built
@@ -38,11 +42,21 @@
 //     and that build must still offer nothing — no price, no button, no web
 //     book — rather than fall back to the web rail.
 //
+//   · AND WHAT THE SELLING TARGETS SAY MID-CHECKOUT (O-PAYWALL-SPEAKS-ONLY-
+//     WEB-CHECKOUT): windows-store and linux-appimage sell through the hosted
+//     rail, so with the page held open they say `paywallOpeningHosted`, never
+//     the store sentence. The store channels' in-flight sentence needs a key
+//     and a bridge, which this keyless file does not build; it is pinned in
+//     test/paywall_refusal_routes_test.dart.
+//
 // MUTATION PROOF (run and recorded in the PR): set `channelPermitted: true` on
 // the `iosAppStore` row of purchase_capabilities.dart and the iOS case goes red.
+import 'dart:async' show Completer;
+
 import 'package:flutter/foundation.dart'
     show debugDefaultTargetPlatformOverride;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show MethodCall, MethodChannel;
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -65,6 +79,20 @@ class _MemSecureStore implements core.SecureStore {
   Future<String?> read(String key) async => data[key];
   @override
   Future<void> write(String key, String value) async => data[key] = value;
+}
+
+/// A session, so the hosted rail gets past attribution and reaches the page.
+class _SignedIn extends core.AuthRepository {
+  @override
+  core.AuthUser? get currentUser =>
+      const core.AuthUser(id: 'user-under-test', email: 'buyer@example.test');
+
+  @override
+  Stream<core.AuthUser?> authStateChanges() =>
+      const Stream<core.AuthUser?>.empty();
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 /// A config that can sell, everywhere the matrix allows it to.
@@ -95,8 +123,9 @@ final core.AppConfig _selling = core.AppConfig(
 Future<void> _pumpOn(
   WidgetTester tester,
   TargetPlatform platform,
-  String releaseChannel,
-) async {
+  String releaseChannel, {
+  core.AuthRepository? auth,
+}) async {
   await tester.binding.setSurfaceSize(const Size(800, 1600));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   final ProviderContainer c = ProviderContainer(
@@ -104,6 +133,7 @@ Future<void> _pumpOn(
       ...defaultWidthOverrides(),
       secureStoreProvider.overrideWithValue(_MemSecureStore()),
       appConfigProvider.overrideWith((_) async => _selling),
+      if (auth != null) authRepositoryProvider.overrideWithValue(auth),
       purchaseRailProvider.overrideWith(
         (ref) => purchaseRailFor(ref, releaseChannel, revenueCatKey: ''),
       ),
@@ -177,13 +207,45 @@ void main() {
     testWidgets('${p.name} / $channel: the same config SELLS — the positive '
         'control', (WidgetTester tester) async {
       await _onPlatform(p, () async {
-        await _pumpOn(tester, p, channel);
+        // url_launcher's `canLaunch`, held: the hosted rail is mid-checkout,
+        // with its in-flight sentence on screen, until the test answers.
+        const MethodChannel launcher = MethodChannel(
+          'plugins.flutter.io/url_launcher',
+        );
+        final Completer<bool> held = Completer<bool>();
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(
+              launcher,
+              (MethodCall call) => call.method == 'canLaunch'
+                  ? held.future
+                  : Future<bool>.value(true),
+            );
+        addTearDown(
+          () => TestDefaultBinaryMessengerBinding
+              .instance
+              .defaultBinaryMessenger
+              .setMockMethodCallHandler(launcher, null),
+        );
+
+        await _pumpOn(tester, p, channel, auth: _SignedIn());
         expect(find.text(r'$4.99'), findsOneWidget);
         expect(
           find.widgetWithText(FilledButton, en.paywallUpgrade),
           findsOneWidget,
         );
         expect(find.text(en.paywallUnavailable), findsNothing);
+
+        await tester.tap(find.widgetWithText(FilledButton, en.paywallUpgrade));
+        for (int i = 0; i < 6; i++) {
+          await tester.pump();
+        }
+        expect(find.text(en.paywallOpeningHosted), findsOneWidget);
+        expect(find.text(en.paywallOpeningStore), findsNothing);
+
+        held.complete(false);
+        for (int i = 0; i < 6; i++) {
+          await tester.pump();
+        }
       });
     });
   }

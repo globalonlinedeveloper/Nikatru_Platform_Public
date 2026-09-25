@@ -32,6 +32,17 @@ enum PaywallTrigger {
 /// would be exactly the hand-maintained drift this package exists to remove.
 typedef _PaywallPhase = PaywallPhase;
 
+/// The in-flight sentence for a rail of this [kind]: only a hosted page opens
+/// in the browser, so only a hosted rail may say so. A store's own sheet — and
+/// the no-rail case, which never reaches the opening state — gets the sentence
+/// that names neither the web nor a browser.
+PaywallCheckoutStyle _checkoutStyleOf(PurchaseRailKind kind) => switch (kind) {
+  PurchaseRailKind.paddle => PaywallCheckoutStyle.hosted,
+  PurchaseRailKind.playBilling ||
+  PurchaseRailKind.appleIap ||
+  PurchaseRailKind.none => PaywallCheckoutStyle.store,
+};
+
 /// Paywall — the ADAPTER half.
 ///
 /// 🏗️ THE BODY IS IN `package:nikatru_chassis_screens` ([ADR 067] decision 2).
@@ -67,7 +78,7 @@ class PaywallScreen extends ConsumerStatefulWidget {
 
 class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   _PaywallPhase _phase = _PaywallPhase.choosing;
-  String _detail = '';
+  PaywallRefusalView _refusalView = PaywallRefusalView.retryable;
 
   @override
   void initState() {
@@ -125,10 +136,39 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     if (start is CheckoutRefused) {
       await funnel.onPurchaseFailed(start.reason.name);
       if (!mounted) return;
-      setState(() {
-        _phase = _PaywallPhase.refused;
-        _detail = start.detail;
-      });
+      // The refusal's `detail` is English and names mechanisms, so it goes to
+      // the log and never to the screen. What the buyer sees is chosen by the
+      // refusal's ROUTE — one exhaustive switch, so a new refusal cannot land
+      // here unrouted (O-PAYWALL-SPEAKS-ONLY-WEB-CHECKOUT).
+      debugPrint(
+        '[paywall] checkout refused (${start.reason.name}): ${start.detail}',
+      );
+      switch (refusalRouteOf(start.reason)) {
+        case RefusalRoute.backToChoosing:
+          // The buyer's own cancel: back to the plans, with nothing to explain.
+          setState(() => _phase = _PaywallPhase.choosing);
+        case RefusalRoute.signIn:
+          // No session: sign in, then come back here. A session the rail has
+          // not been told about (it missed the auth event): tell it once and
+          // offer Try again — the sign-in route bounces a signed-in user home.
+          final String? signedInAs = ref
+              .read(authRepositoryProvider)
+              .currentUser
+              ?.id;
+          if (signedInAs == null) {
+            context.go('/sign-in?next=%2Fpaywall');
+            return;
+          }
+          if (rail case final IdentifiesBuyer buyer) {
+            await buyer.identifyBuyer(signedInAs);
+            if (!mounted) return;
+          }
+          _showRefusal(PaywallRefusalView.retryable);
+        case RefusalRoute.retry:
+          _showRefusal(PaywallRefusalView.retryable);
+        case RefusalRoute.unavailable:
+          _showRefusal(PaywallRefusalView.unavailable);
+      }
       return;
     }
 
@@ -180,6 +220,11 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     setState(() => _phase = _PaywallPhase.pending);
   }
 
+  void _showRefusal(PaywallRefusalView view) => setState(() {
+    _phase = _PaywallPhase.refused;
+    _refusalView = view;
+  });
+
   @override
   Widget build(BuildContext context) {
     final PurchaseRail rail = ref.watch(purchaseRailProvider);
@@ -194,8 +239,9 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         final List<Offering> offerings = rail.offerings;
         return PaywallView(
           phase: _phase,
-          detail: _detail,
           canStartCheckout: rail.canStartCheckout,
+          checkoutStyle: _checkoutStyleOf(rail.railKind),
+          refusalView: _refusalView,
           offers: <PaywallOffer>[
             for (final Offering o in offerings)
               PaywallOffer(
@@ -222,6 +268,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
             );
           },
           onGoHome: () => context.go('/'),
+          onRetry: () => setState(() => _phase = _PaywallPhase.choosing),
         );
       },
     );

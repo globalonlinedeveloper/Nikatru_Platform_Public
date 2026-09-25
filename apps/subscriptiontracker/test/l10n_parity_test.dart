@@ -203,28 +203,87 @@ void main() {
     });
   });
 
-  // ── THE BLOCKING SCREENS, WHERE AN UNTRANSLATED VALUE IS UNRECOVERABLE ─────
+  // ── AN UNTRANSLATED VALUE, WHICH KEY PARITY CANNOT SEE ─────────────────────
   //
-  // 🔴 PARITY CANNOT SEE THIS ONE. A Tamil entry that is the English sentence
-  // pasted across has the key, so limbs 1 and 2 both pass and the diagnostic
-  // file stays empty — and a Tamil reader gets English anyway. The general rule
-  // "ta must differ from en" would be WRONG (`OK`, a brand name and a bare `…`
-  // legitimately match), so this is scoped to the screens where being stuck on
-  // English has no way out.
+  // 🔴 A Tamil entry that is the English sentence pasted across HAS the key, so
+  // the key-set limbs below both pass and the diagnostic file stays empty — and
+  // a Tamil reader gets English anyway. So EVERY key's Tamil value must differ
+  // from its English one, unless the key is named in `sameInBothLocales` with
+  // the reason it legitimately matches (O-PAYWALL-SPEAKS-ONLY-WEB-CHECKOUT).
   //
-  // The force-update wall is the sharpest case in the app: when it fires it
-  // REPLACES EVERYTHING and offers exactly one control. Until 2026-09-04 it had
-  // no arb keys at all in either tree — `ForceUpdateGate`'s English parameter
-  // defaults were the only copy any app ever shipped, and no check could see it
-  // because `assert-no-hardcoded-strings.mjs` does not scan `packages/`.
-  group('a screen with no way out is really translated', () {
+  // This rule used to cover the force-update wall alone, on the ground that a
+  // general rule would be wrong where a value legitimately matches (a brand
+  // name, a language's own name). The named list answers that: each match is
+  // written down with its why, and a match that is not written down fails.
+  //
+  // The force-update wall is still the sharpest case: when it fires it REPLACES
+  // EVERYTHING and offers exactly one control. Until 2026-09-04 it had no arb
+  // keys at all in either tree — `ForceUpdateGate`'s English parameter defaults
+  // were the only copy any app ever shipped, and no check could see it because
+  // `assert-no-hardcoded-strings.mjs` does not scan `packages/`. So its keys
+  // may never be added to the list.
+  group('every Tamil value is a translation, not the English pasted across', () {
+    // Measured at 60b63fb9: these seven, and only these, were identical.
+    const Map<String, String> sameInBothLocales = <String, String>{
+      'appTitle': 'the product name, which is a name and is not translated',
+      'legalese': 'the copyright mark and the company name',
+      'languageEnglish':
+          'the language picker names each language in itself, so a reader '
+          'looking for English finds "English"',
+      'languageTamil':
+          'the language picker names each language in itself: "தமிழ்" is '
+          'Tamil written in Tamil, in both files',
+      'versionFooter':
+          'placeholders, a version mark and the copyright mark: no word in it '
+          'to translate',
+      'emailHint':
+          'an example address, whose shape is the same in any language',
+      'a11yCategoryShare': 'two placeholders and a space: no word to translate',
+    };
     const List<String> unrecoverable = <String>[
       'updateRequiredTitle',
       'updateRequiredMessage',
       'updateRequiredAction',
     ];
 
-    test('the force-update wall carries Tamil, not English pasted across', () {
+    test('no Tamil value equals its English one unless it is named', () {
+      final List<String> pasted = <String>[
+        for (final String key in enKeys.toList()..sort())
+          if (taKeys.contains(key) &&
+              ta[key] == en[key] &&
+              !sameInBothLocales.containsKey(key))
+            '$key = ${jsonEncode(en[key])}',
+      ];
+      expect(
+        pasted,
+        isEmpty,
+        reason:
+            '${pasted.length} key(s) carry the SAME value in app_ta.arb as in '
+            'app_en.arb, so a Tamil reader is shown English:\n  '
+            '${pasted.join('\n  ')}\n'
+            'Translate each. Only a value that is legitimately the same in both '
+            'languages goes in `sameInBothLocales`, with its why.',
+      );
+    });
+
+    test('every named key still exists and still matches', () {
+      // An entry for a key that was since translated or renamed would excuse
+      // the next English paste under that name, so it must leave the list.
+      final List<String> stale = <String>[
+        for (final String key in sameInBothLocales.keys)
+          if (!enKeys.contains(key) || ta[key] != en[key]) key,
+      ];
+      expect(
+        stale,
+        isEmpty,
+        reason:
+            'These keys are in `sameInBothLocales` but are gone from app_en.arb '
+            'or now differ in Tamil. Remove them from the list:\n  '
+            '${stale.join('\n  ')}',
+      );
+    });
+
+    test('the force-update wall carries Tamil, and is never on the list', () {
       for (final String key in unrecoverable) {
         expect(
           enKeys,
@@ -232,6 +291,14 @@ void main() {
           reason:
               'COVERAGE LOST — $key is gone from app_en.arb, so the '
               'comparison below has nothing to compare.',
+        );
+        expect(
+          sameInBothLocales.keys,
+          isNot(contains(key)),
+          reason:
+              '$key was added to `sameInBothLocales`. On a screen that replaces '
+              'the whole app and cannot be dismissed, English is a Tamil reader '
+              'locked out in a language they may not read.',
         );
         expect(
           ta[key],
@@ -248,6 +315,65 @@ void main() {
               '$key is blank in Tamil — the wall would render nothing at all',
         );
       }
+    });
+  });
+
+  // ── WHAT A STORE BUILD SHOWS NAMES NO WEB CHECKOUT ──────────────────────────
+  //
+  // A store build that points its buyer at an outside checkout breaks that
+  // store's billing rule. These keys render on a store rail — the in-flight
+  // sentence, the refusal sentences and every restore string — so none may
+  // name the web, a site or a browser, in any locale
+  // (O-PAYWALL-SPEAKS-ONLY-WEB-CHECKOUT). `paywallOpeningHosted` is left out on
+  // purpose: it renders only on the hosted rail, where naming the browser is
+  // the point.
+  group('what a store build shows names no web checkout', () {
+    final RegExp webWording = RegExp(
+      r'browser|web|site|உலாவி|இணைய',
+      caseSensitive: false,
+    );
+    const List<String> storeReachable = <String>[
+      'paywallOpeningStore',
+      'paywallRetryMessage',
+      'paywallUnavailable',
+      'paywallTryAgain',
+    ];
+
+    test('no store-reachable value names the web, in any locale', () {
+      final List<String> keys = <String>[
+        ...storeReachable,
+        ...(enKeys.where((String k) => k.startsWith('restore')).toList()
+          ..sort()),
+      ];
+      expect(
+        keys.length,
+        greaterThan(storeReachable.length),
+        reason:
+            'COVERAGE LOST — no `restore*` key was found in app_en.arb, so the '
+            'restore strings a store build shows are not being checked.',
+      );
+      final List<String> hits = <String>[];
+      for (final (String locale, Map<String, dynamic> arb)
+          in <(String, Map<String, dynamic>)>[('en', en), ('ta', ta)]) {
+        for (final String key in keys) {
+          expect(
+            arb.containsKey(key),
+            isTrue,
+            reason:
+                'COVERAGE LOST — $key is not in the $locale arb, so its '
+                'wording was not checked.',
+          );
+          final RegExpMatch? m = webWording.firstMatch(arb[key] as String);
+          if (m != null) hits.add('$locale $key names "${m[0]}": ${arb[key]}');
+        }
+      }
+      expect(
+        hits,
+        isEmpty,
+        reason:
+            'A string a store build shows names the web or a browser:\n  '
+            '${hits.join('\n  ')}',
+      );
     });
   });
 

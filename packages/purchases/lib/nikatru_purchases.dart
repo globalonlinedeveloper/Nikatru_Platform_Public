@@ -2,7 +2,9 @@
 ///
 /// One inherited purchase path for every stamped app:
 /// - prices come from the RAIL CONFIG, never from app code ([5]M-11);
-/// - checkout is a hosted page the merchant of record owns ([ADR 004]);
+/// - checkout is the rail the CHANNEL takes ([ADR 039]): a hosted page the
+///   merchant of record owns ([ADR 004]), or the store's own billing through
+///   `IapRail` on a store channel ([ADR 067]);
 /// - the unlock is a SERVER read the client converges on ([5]M-5, [5]M-6) — the
 ///   client grants nothing, ever;
 /// - cancellation is a real request to our own host ([5]M-9);

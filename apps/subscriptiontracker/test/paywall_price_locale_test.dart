@@ -43,6 +43,9 @@ class _MemSecureStore implements core.SecureStore {
 /// in every separator position.
 class _InrRail implements PurchaseRail {
   @override
+  PurchaseRailKind get railKind => PurchaseRailKind.paddle;
+
+  @override
   List<Offering> get offerings => const <Offering>[
     Offering(
       productId: 'pro_lifetime_inr',
@@ -89,6 +92,9 @@ class _StoreRail extends ChangeNotifier
     ];
     notifyListeners();
   }
+
+  @override
+  PurchaseRailKind get railKind => PurchaseRailKind.playBilling;
 
   @override
   List<Offering> get offerings => _plans;

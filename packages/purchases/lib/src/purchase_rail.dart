@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show Listenable, immutable;
 
 import 'offering.dart';
+import 'purchase_rail_kind.dart';
 
 /// Why a checkout could not be started. Every value is a state the UI has to be
 /// able to explain in a sentence — that is the test for whether it belongs here.
@@ -76,9 +77,49 @@ final class CheckoutRefused extends CheckoutStart {
 
   final CheckoutRefusal reason;
 
-  /// Human-readable context, e.g. the capability row's `why`. Never shown alone.
+  /// Engineering context for the log, e.g. the capability row's `why`.
+  ///
+  /// 🔴 NEVER RENDERED. It is English, written for whoever reads the log, and
+  /// on a store build it can name the web — the paywall shows the sentence its
+  /// [refusalRouteOf] route owns, in the user's language, and nothing else.
   final String detail;
 }
+
+/// Where a paywall goes after a [CheckoutRefused] — the ONE answer, so the app
+/// screen and every stamped app's adapter cannot each decide it differently.
+enum RefusalRoute {
+  /// Back to the offers, with nothing said. The buyer chose not to buy.
+  backToChoosing,
+
+  /// The purchase needs somebody to attribute it to, and there is nobody yet.
+  signIn,
+
+  /// Something between the app and the checkout failed and may not fail
+  /// again: a sentence that says so, and Try again.
+  retry,
+
+  /// This build cannot sell here. The sentence says that, truthfully, and Try
+  /// again is still offered, because the refusal is a state and not a verdict.
+  unavailable,
+}
+
+/// The route for [refusal].
+///
+/// 🔴 NO `default`, ON PURPOSE. A seventh [CheckoutRefusal] fails to compile
+/// here until somebody decides where it goes. With a default it would land in
+/// whichever route the default named, silently — which is how every refusal,
+/// the buyer's own cancel included, once reached "Purchases are not available
+/// here".
+RefusalRoute refusalRouteOf(CheckoutRefusal refusal) => switch (refusal) {
+      CheckoutRefusal.purchaseCancelled => RefusalRoute.backToChoosing,
+      CheckoutRefusal.notSignedIn => RefusalRoute.signIn,
+      CheckoutRefusal.couldNotOpen ||
+      CheckoutRefusal.railNotConfigured =>
+        RefusalRoute.retry,
+      CheckoutRefusal.channelNotPermitted ||
+      CheckoutRefusal.platformNotSupported =>
+        RefusalRoute.unavailable,
+    };
 
 /// What happened when the user asked to cancel.
 enum CancellationOutcome {
@@ -108,14 +149,25 @@ enum CancellationOutcome {
 
 /// The client half of the money rail, as one seam.
 ///
-/// ## Why this is an interface with exactly one implementation
-/// Not for a second vendor — [ADR 004] locks the merchant of record, and the
-/// PROVIDER swap happens server-side in `services/platform/src/lib/mor/`, which
-/// is the whole reason the entitlement table speaks our vocabulary and not
-/// theirs. It is an interface because the alternative is a widget test that
-/// cannot construct a purchase path, and an untestable purchase path is one
-/// nobody has ever seen work.
+/// ## Why this is an interface
+/// Three rails implement it — the hosted checkout (`HostedCheckoutRail`), the
+/// store's own billing (`IapRail`, [ADR 067]) and the rail that sells nothing
+/// (`UnavailablePurchaseRail`) — and `ChassisBilling.railFor` picks one from
+/// the CHANNEL, so no screen constructs any of them. A PROVIDER swap within a
+/// rail still happens server-side in `services/platform/src/lib/mor/`, which is
+/// why the entitlement table speaks our vocabulary and not the vendor's.
+///
+/// ⚠️ CORRECTED 2026-09-25: this read "an interface with exactly one
+/// implementation", from before `IapRail` shipped.
 abstract interface class PurchaseRail {
+  /// Which rail this is — the one fact a screen needs to pick its words.
+  ///
+  /// A MEMBER, not an optional capability with a fallback: a rail that did not
+  /// answer would have its copy chosen for it, and on a store build the wrong
+  /// choice names a browser the buyer is never sent to. So every rail answers,
+  /// and a new one does not compile until it does.
+  PurchaseRailKind get railKind;
+
   /// The plans this rail can sell, described by whoever charges for them: the
   /// rail config on the web, the STORE on a store rail. Empty is a normal
   /// answer and means the paywall shows its unavailable state.
@@ -132,7 +184,8 @@ abstract interface class PurchaseRail {
   /// an honest sentence.
   bool get canStartCheckout;
 
-  /// Open the hosted checkout for [offering].
+  /// Start a checkout for [offering]: hand the hosted page to the platform, or
+  /// run the store's own purchase sheet, whichever [railKind] this rail is.
   Future<CheckoutStart> startCheckout(Offering offering);
 
   /// Ask to cancel. A real call to our own host, not a mailto: link

@@ -122,10 +122,20 @@ final class BillingRailReady extends BillingRailResult {
 /// wiring answer, and it is returned rather than thrown so a paywall can show a
 /// sentence instead of crashing.
 final class BillingRailUnavailable extends BillingRailResult {
-  const BillingRailUnavailable(this.reason, {required this.detail});
+  const BillingRailUnavailable(
+    this.reason, {
+    required this.detail,
+    this.kind = PurchaseRailKind.none,
+  });
 
   final BillingRailRefusal reason;
   final String detail;
+
+  /// The rail the channel WOULD sell through, when [railFor] knew it: a store
+  /// channel with no bridge is still a store build, and its paywall must speak
+  /// as one. [PurchaseRailKind.none] when no channel was known, or the channel
+  /// sells nothing.
+  final PurchaseRailKind kind;
 }
 
 /// THE FACADE — one call, one rail, and the channel decides which.
@@ -202,6 +212,7 @@ abstract final class ChassisBilling {
       if (bridge == null || bridgeConfig == null) {
         return BillingRailUnavailable(
           BillingRailRefusal.iapBridgeMissing,
+          kind: kind,
           detail:
               'Channel ${channel.registerId} sells through ${kind.registerId}, '
               'but this build ships no IapBridge. An app opts in by depending on '
@@ -278,6 +289,12 @@ class UnavailablePurchaseRail implements PurchaseRail, RestoresPurchases {
 
   /// Why no rail was built — the facade's own answer, unchanged.
   final BillingRailUnavailable refusal;
+
+  /// The kind [ChassisBilling.railFor] resolved for the channel, carried
+  /// through [refusal]: a store kind when only the bridge was missing,
+  /// otherwise [PurchaseRailKind.none].
+  @override
+  PurchaseRailKind get railKind => refusal.kind;
 
   final RailConfig _config;
   final String _appId;

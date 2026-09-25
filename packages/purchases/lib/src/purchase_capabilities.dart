@@ -64,8 +64,10 @@ class PurchaseCapabilities {
   /// through a rail that is not the platform's own billing system.
   final bool channelPermitted;
 
-  /// The one-line reason, shown in the honest-refusal UI and in CI output. Never
-  /// empty: a `false` with no reason is indistinguishable from an oversight.
+  /// The one-line reason, in CI output and as a refusal's `detail` in the log.
+  /// Never empty: a `false` with no reason is indistinguishable from an
+  /// oversight. Never rendered either — it is English written for an engineer,
+  /// and the paywall says what its `refusalRouteOf` route owns instead.
   final String why;
 
   /// Whether a purchase may actually be STARTED here. Both halves, always —
@@ -93,10 +95,9 @@ class PurchaseCapabilities {
           technicallySupported: true,
           channelPermitted: false,
           why:
-              'Google Play requires Play Billing for in-app digital purchases. '
-              '39-CHASSIS §4 cut 5 defers a native IAP rail, so this app sells '
-              'nothing here — it points at the web instead of shipping a second '
-              'rail nobody has built.',
+              'Google Play requires Play Billing for in-app digital purchases, '
+              'so this channel sells through Play Billing (IapRail, ADR 067) '
+              'and never opens a hosted checkout.',
         );
       case PurchaseChannel.iosAppStore:
         return const PurchaseCapabilities(

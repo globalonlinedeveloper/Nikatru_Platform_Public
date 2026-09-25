@@ -5,6 +5,7 @@ import 'checkout_launcher.dart';
 import 'offering.dart';
 import 'purchase_capabilities.dart';
 import 'purchase_rail.dart';
+import 'purchase_rail_kind.dart';
 import 'rail_config.dart';
 
 /// The hosted-checkout [PurchaseRail]: a checkout page owned by the merchant of
@@ -57,9 +58,13 @@ class HostedCheckoutRail implements PurchaseRail, RestoresPurchases {
   final CheckoutLauncher _launcher;
   final PurchaseCapabilities _capabilities;
 
-  /// What this platform and channel allow. Exposed so the paywall can show the
-  /// REASON rather than only the refusal.
+  /// What this platform and channel allow. Its `why` travels with a refusal as
+  /// `detail`, for the log — the paywall does not render it.
   PurchaseCapabilities get capabilities => _capabilities;
+
+  /// Always the merchant-of-record page: this rail opens nothing else.
+  @override
+  PurchaseRailKind get railKind => PurchaseRailKind.paddle;
 
   @override
   List<Offering> get offerings => _config.offerings;

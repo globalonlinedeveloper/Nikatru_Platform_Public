@@ -478,6 +478,9 @@ class _FakeRail implements PurchaseRail {
   int startCalls = 0;
 
   @override
+  PurchaseRailKind get railKind => PurchaseRailKind.paddle;
+
+  @override
   List<Offering> get offerings => const <Offering>[
     Offering(
       productId: 'pro_monthly',
@@ -499,9 +502,13 @@ class _FakeRail implements PurchaseRail {
   Future<CheckoutStart> startCheckout(Offering offering) async {
     startCalls++;
     if (refuse) {
+      // couldNotOpen, NOT notSignedIn: a signed-out refusal now routes to
+      // sign-in (`refusalRouteOf`), which needs a router this host does not
+      // build. couldNotOpen still lands on the refused screen and still emits
+      // `purchase_failed`, the path these tests measure.
       return const CheckoutRefused(
-        CheckoutRefusal.notSignedIn,
-        detail: 'no session',
+        CheckoutRefusal.couldNotOpen,
+        detail: 'the checkout did not open',
       );
     }
     return CheckoutOpened(
@@ -3965,7 +3972,7 @@ void main() {
         );
         final Map<String, Object?> params =
             (failed['params']! as Map<String, Object?>);
-        expect(params['reason'], CheckoutRefusal.notSignedIn.name);
+        expect(params['reason'], CheckoutRefusal.couldNotOpen.name);
         final Map<String, Object?> viewed = events.sent.firstWhere(
           (Map<String, Object?> e) => e['event'] == 'paywall_viewed',
         );

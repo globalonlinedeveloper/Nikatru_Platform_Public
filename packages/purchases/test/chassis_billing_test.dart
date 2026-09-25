@@ -377,4 +377,34 @@ void main() {
       expect(PurchaseRailKind.appleIap.isStoreBilling, isTrue);
     });
   });
+
+  // ── EVERY RAIL SAYS WHICH RAIL IT IS ──────────────────────────────────────
+  // The paywall picks its in-flight sentence from `PurchaseRail.railKind`, so
+  // the rail a UI is handed must answer the CHANNEL's kind whichever branch
+  // built it — including the rail that sells nothing. A Play build whose key
+  // was not compiled in is still a Play build: answering `none` there would
+  // hand its paywall the hosted wording the day `none` stops meaning "store".
+  group('PurchaseRail.railKind', () {
+    for (final bool withBridge in <bool>[true, false]) {
+      for (final PurchaseChannel channel in PurchaseChannel.values) {
+        test(
+            '${channel.registerId} ${withBridge ? 'with' : 'without'} a '
+            'bridge answers ${PurchaseRailKind.forChannel(channel).name}', () {
+          final ChassisBillingConfig config = withBridge
+              ? _config(bridge: _FakeBridge(), bridgeConfig: _bridgeConfig)
+              : _config();
+          final PurchaseRail rail =
+              ChassisBilling.railFor(channel, config).orUnavailableRail(config);
+          expect(rail.railKind, PurchaseRailKind.forChannel(channel));
+        });
+      }
+    }
+
+    test('an undeclared channel answers none', () {
+      final PurchaseRail rail = ChassisBilling.railForDeclared('dev', _config())
+          .orUnavailableRail(_config());
+      expect(rail, isA<UnavailablePurchaseRail>());
+      expect(rail.railKind, PurchaseRailKind.none);
+    });
+  });
 }

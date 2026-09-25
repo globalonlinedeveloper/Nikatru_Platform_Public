@@ -28,6 +28,18 @@ enum PaywallTrigger {
 /// every one of them is a state the user can be shown a sentence about.
 enum _PaywallPhase { choosing, opening, pending, unlocked, refused }
 
+/// What a refused checkout shows. Both offer Try again. A cancel never gets
+/// here (it returns to the plans) and a signed-out buyer is sent to sign-in, so
+/// only the two sentences a buyer can be SHOWN remain.
+enum _RefusedView {
+  /// The checkout did not open, the rail was not ready, or the account had not
+  /// reached the store yet: a second try may well work.
+  retryable,
+
+  /// The store refused, or this platform cannot take a purchase.
+  unavailable,
+}
+
 /// The paywall — [pipeline 5]M-6, and the consumer [PaywallGate] never had.
 ///
 /// ## The three states this screen exists to keep apart
@@ -36,7 +48,8 @@ enum _PaywallPhase { choosing, opening, pending, unlocked, refused }
 /// that. So between the two there is a real window in which the user HAS paid
 /// and the server does NOT know.
 ///
-///   · **opening**  — we handed the page to the browser.
+///   · **opening**  — we handed the purchase to the rail: a hosted page to the
+///                    browser, or the store's own sheet.
 ///   · **pending**  — they came back, we asked the server, it does not see it
 ///                    yet. This is NOT a failure and must never be worded as
 ///                    one: it is somebody's money in flight.
@@ -58,7 +71,7 @@ class PaywallScreen extends ConsumerStatefulWidget {
 
 class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   _PaywallPhase _phase = _PaywallPhase.choosing;
-  String _detail = '';
+  _RefusedView _refusedView = _RefusedView.retryable;
 
   @override
   void initState() {
@@ -112,10 +125,40 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     if (start is CheckoutRefused) {
       await funnel.onPurchaseFailed(start.reason.name);
       if (!mounted) return;
-      setState(() {
-        _phase = _PaywallPhase.refused;
-        _detail = start.detail;
-      });
+      // The refusal's `detail` is English and names mechanisms, so it goes to
+      // the log and never to the screen. What the buyer sees is chosen by the
+      // refusal's ROUTE — one exhaustive switch, so a new refusal cannot land
+      // here unrouted (O-PAYWALL-SPEAKS-ONLY-WEB-CHECKOUT).
+      debugPrint(
+        '[paywall] checkout refused (${start.reason.name}): ${start.detail}',
+      );
+      switch (refusalRouteOf(start.reason)) {
+        case RefusalRoute.backToChoosing:
+          // The buyer's own cancel: back to the plans, with nothing to explain.
+          setState(() => _phase = _PaywallPhase.choosing);
+        case RefusalRoute.signIn:
+          // No session: sign in, then come back here. A session the rail has
+          // not been told about (it missed the auth event): tell it once and
+          // offer Try again — `/sign-in` bounces a signed-in user to `/home`
+          // (`router/gates.dart:393`).
+          final String? signedInAs = ref
+              .read(authRepositoryProvider)
+              .currentUser
+              ?.id;
+          if (signedInAs == null) {
+            context.go('/sign-in?next=%2Fpaywall');
+            return;
+          }
+          if (rail case final IdentifiesBuyer buyer) {
+            await buyer.identifyBuyer(signedInAs);
+            if (!mounted) return;
+          }
+          _showRefusal(_RefusedView.retryable);
+        case RefusalRoute.retry:
+          _showRefusal(_RefusedView.retryable);
+        case RefusalRoute.unavailable:
+          _showRefusal(_RefusedView.unavailable);
+      }
       return;
     }
 
@@ -164,6 +207,11 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     if (!mounted) return;
     setState(() => _phase = _PaywallPhase.pending);
   }
+
+  void _showRefusal(_RefusedView view) => setState(() {
+    _phase = _PaywallPhase.refused;
+    _refusedView = view;
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -220,7 +268,16 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         return <Widget>[
           const Center(child: CircularProgressIndicator()),
           const SizedBox(height: 16),
-          Text(l10n.paywallOpening, textAlign: TextAlign.center),
+          // Only a hosted page opens in the browser, so only a hosted rail may
+          // say so. A store's own sheet names neither the web nor a browser:
+          // a store build that points its buyer at an outside checkout breaks
+          // that store's billing rule.
+          Text(switch (rail.railKind) {
+            PurchaseRailKind.paddle => l10n.paywallOpeningHosted,
+            PurchaseRailKind.playBilling ||
+            PurchaseRailKind.appleIap ||
+            PurchaseRailKind.none => l10n.paywallOpeningStore,
+          }, textAlign: TextAlign.center),
         ];
       case _PaywallPhase.pending:
         return <Widget>[
@@ -260,17 +317,19 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           ),
         ];
       case _PaywallPhase.refused:
+        // A sentence the buyer can act on, and the control to act with. The
+        // refusal's engineering reason is logged in `_buy` and never painted:
+        // it is English on a Tamil screen, and on a store build it could name
+        // the web.
         return <Widget>[
-          Text(l10n.paywallUnavailable, textAlign: TextAlign.center),
-          const SizedBox(height: 8),
-          // The REASON, verbatim from the capability row or the rail. A refusal
-          // with no reason is indistinguishable from a broken button, and a user
-          // on iOS deserves to know the rail is not available in this app rather
-          // than to conclude the app is broken.
-          Text(
-            _detail,
-            style: theme.textTheme.bodySmall,
-            textAlign: TextAlign.center,
+          Text(switch (_refusedView) {
+            _RefusedView.retryable => l10n.paywallRetryMessage,
+            _RefusedView.unavailable => l10n.paywallUnavailable,
+          }, textAlign: TextAlign.center),
+          const SizedBox(height: 16),
+          FilledButton(
+            onPressed: () => setState(() => _phase = _PaywallPhase.choosing),
+            child: Text(l10n.paywallTryAgain),
           ),
         ];
       case _PaywallPhase.choosing:

@@ -20,12 +20,38 @@ import 'package:nikatru_design_system/nikatru_design_system.dart';
 /// that. So between the two there is a real window in which the user HAS paid
 /// and the server does NOT know.
 ///
-///   · **opening**  — we handed the page to the browser.
+///   · **opening**  — we handed the purchase to the rail: a hosted page to the
+///                    browser, or the store's own sheet ([PaywallCheckoutStyle]).
 ///   · **pending**  — they came back, we asked the server, it does not see it
 ///                    yet. This is NOT a failure and must never be worded as
 ///                    one: it is somebody's money in flight.
 ///   · **unlocked** — the server confirmed. Only this state grants anything.
 enum PaywallPhase { choosing, opening, pending, unlocked, refused }
+
+/// Which in-flight sentence the opening state shows: the rail's kind, reduced
+/// to the one distinction the copy needs.
+///
+/// 🔴 A CHASSIS-OWNED VALUE, NOT `PurchaseRailKind`. This package's pubspec
+/// allows no purchases dependency, so the adapter maps the rail's kind onto
+/// this. [hosted] names the browser, because the page opens outside the app;
+/// [store] names neither the web nor a browser, because a store build that
+/// points its buyer at an outside checkout breaks that store's billing rule.
+enum PaywallCheckoutStyle { hosted, store }
+
+/// What a refused checkout shows. Both offer Try again ([PaywallView.onRetry]).
+///
+/// The adapter reduces a refusal's route to this. A cancel never gets here (it
+/// returns to the plans) and a signed-out buyer is sent to sign-in, so only the
+/// two sentences a buyer can be SHOWN remain.
+enum PaywallRefusalView {
+  /// The checkout did not open, the rail was not ready, or the account had not
+  /// reached the store yet: a second try may well work.
+  retryable,
+
+  /// The store refused, or this platform cannot take a purchase. Still offers
+  /// Try again, and says truthfully that buying is not available here.
+  unavailable,
+}
 
 /// One purchasable plan, as the PAINTER needs it.
 ///
@@ -90,10 +116,12 @@ class PaywallView extends StatelessWidget {
     required this.phase,
     required this.offers,
     required this.canStartCheckout,
+    required this.checkoutStyle,
+    required this.refusalView,
     required this.onBuy,
     required this.onCheckAgain,
     required this.onGoHome,
-    this.detail = '',
+    required this.onRetry,
     super.key,
   });
 
@@ -107,6 +135,9 @@ class PaywallView extends StatelessWidget {
   /// The way out once the server has confirmed.
   static const Key goHomeButton = Key('paywallGoHome');
 
+  /// "Try again" — the control every refusal the buyer is shown offers.
+  static const Key tryAgainButton = Key('paywallTryAgain');
+
   final PaywallPhase phase;
 
   /// The plans, already formatted. Empty is a real state and is rendered as
@@ -116,13 +147,20 @@ class PaywallView extends StatelessWidget {
   /// Whether the rail can open a checkout on THIS platform at all.
   final bool canStartCheckout;
 
-  /// The REASON a refusal happened, verbatim from the capability row or the
-  /// rail. A refusal with no reason is indistinguishable from a broken button.
-  final String detail;
+  /// The in-flight sentence the opening state shows.
+  final PaywallCheckoutStyle checkoutStyle;
+
+  /// The sentence the refused state shows. A refusal's engineering `detail` is
+  /// not a field here ON PURPOSE: it is English and names mechanisms, so the
+  /// adapter sends it to the log and the buyer is shown one of these.
+  final PaywallRefusalView refusalView;
 
   final void Function(PaywallOffer offer) onBuy;
   final VoidCallback onCheckAgain;
   final VoidCallback onGoHome;
+
+  /// Leaves a refusal for the plans, so a purchase can be started again.
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -169,7 +207,13 @@ class PaywallView extends StatelessWidget {
         return <Widget>[
           const Center(child: CircularProgressIndicator()),
           const SizedBox(height: 16),
-          Text(l10n.paywallOpening, textAlign: TextAlign.center),
+          Text(
+            switch (checkoutStyle) {
+              PaywallCheckoutStyle.hosted => l10n.paywallOpeningHosted,
+              PaywallCheckoutStyle.store => l10n.paywallOpeningStore,
+            },
+            textAlign: TextAlign.center,
+          ),
         ];
       case PaywallPhase.pending:
         return <Widget>[
@@ -201,17 +245,23 @@ class PaywallView extends StatelessWidget {
           ),
         ];
       case PaywallPhase.refused:
+        // A sentence the buyer can act on, and the control to act with. The
+        // refusal's engineering reason is logged by the adapter and never
+        // painted: it is English on a Tamil screen, and on a store build it
+        // could name the web.
         return <Widget>[
-          Text(l10n.paywallUnavailable, textAlign: TextAlign.center),
-          const SizedBox(height: 8),
-          // The REASON, verbatim from the capability row or the rail. A refusal
-          // with no reason is indistinguishable from a broken button, and a user
-          // on iOS deserves to know the rail is not available in this app rather
-          // than to conclude the app is broken.
           Text(
-            detail,
-            style: theme.textTheme.bodySmall,
+            switch (refusalView) {
+              PaywallRefusalView.retryable => l10n.paywallRetryMessage,
+              PaywallRefusalView.unavailable => l10n.paywallUnavailable,
+            },
             textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 16),
+          FilledButton(
+            key: tryAgainButton,
+            onPressed: onRetry,
+            child: Text(l10n.paywallTryAgain),
           ),
         ];
       case PaywallPhase.choosing:

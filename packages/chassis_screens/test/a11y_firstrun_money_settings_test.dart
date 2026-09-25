@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_chassis_screens/firstrun/onboarding_screen.dart';
 import 'package:nikatru_chassis_screens/monetization/manage_plan_screen.dart';
@@ -244,10 +243,12 @@ void main() {
             phase: PaywallPhase.choosing,
             offers: offers,
             canStartCheckout: true,
-            detail: '',
+            checkoutStyle: PaywallCheckoutStyle.hosted,
+            refusalView: PaywallRefusalView.retryable,
             onBuy: (PaywallOffer _) {},
             onCheckAgain: () {},
             onGoHome: () {},
+            onRetry: () {},
           ),
         );
         expectSweepHadSubjects(
@@ -274,10 +275,12 @@ void main() {
             phase: PaywallPhase.choosing,
             offers: offers,
             canStartCheckout: true,
-            detail: '',
+            checkoutStyle: PaywallCheckoutStyle.hosted,
+            refusalView: PaywallRefusalView.retryable,
             onBuy: (PaywallOffer _) {},
             onCheckAgain: () {},
             onGoHome: () {},
+            onRetry: () {},
           ),
           brightness: Brightness.dark,
         );
@@ -307,10 +310,12 @@ void main() {
             phase: PaywallPhase.unlocked,
             offers: offers,
             canStartCheckout: true,
-            detail: '',
+            checkoutStyle: PaywallCheckoutStyle.hosted,
+            refusalView: PaywallRefusalView.retryable,
             onBuy: (PaywallOffer _) {},
             onCheckAgain: () {},
             onGoHome: () {},
+            onRetry: () {},
           ),
         );
         expectSweepHadSubjects(
@@ -338,10 +343,12 @@ void main() {
             phase: PaywallPhase.pending,
             offers: offers,
             canStartCheckout: true,
-            detail: 'Waiting for the store.',
+            checkoutStyle: PaywallCheckoutStyle.store,
+            refusalView: PaywallRefusalView.retryable,
             onBuy: (PaywallOffer _) {},
             onCheckAgain: () {},
             onGoHome: () {},
+            onRetry: () {},
           ),
           settle: false,
         );
@@ -359,8 +366,9 @@ void main() {
       }
     });
 
-    testWidgets('light, kDesktop — refused hands the tap-target family NOTHING '
-        '— PINNED', (WidgetTester tester) async {
+    testWidgets('light, kDesktop — refused, whose one control is Try again', (
+      WidgetTester tester,
+    ) async {
       final SemanticsHandle handle = tester.ensureSemantics();
       try {
         await pumpForA11y(
@@ -370,40 +378,28 @@ void main() {
             phase: PaywallPhase.refused,
             offers: offers,
             canStartCheckout: true,
-            detail: 'The store refused the purchase.',
+            checkoutStyle: PaywallCheckoutStyle.store,
+            refusalView: PaywallRefusalView.unavailable,
             onBuy: (PaywallOffer _) {},
             onCheckAgain: () {},
             onGoHome: () {},
+            onRetry: () {},
           ),
         );
-        // 🔴 PINNED AT ZERO, NOT SWEPT WITH A FLOOR OF ONE. This arm renders an
-        // explanation and no control, so `androidTapTargetGuideline` would
-        // return `Evaluation.pass()` having inspected nothing — the vacuous
-        // shape [ADR 048] records. The pin says so out loud: the day a control
-        // lands in the refused arm this case fails and asks for the tap-target
-        // floor the other four cases carry.
-        final int tappable = tester.semantics
-            .simulatedAccessibilityTraversal()
-            .where(
-              (SemanticsNode n) =>
-                  n.getSemanticsData().hasAction(SemanticsAction.tap),
-            )
-            .length;
-        expect(
-          tappable,
-          0,
-          reason:
-              'the refused arm gained a control; give this case the tap-target '
-              'floor the other paywall cases carry instead of this pin',
-        );
-        // The CONTRAST limb is not vacuous here — the refusal and its reason are
-        // the only thing on the screen, and unreadable prose is the whole defect.
+        // This case was PINNED AT ZERO controls while the refused arm rendered
+        // an explanation and nothing to press — a tap-target sweep over it would
+        // have passed having inspected nothing, the vacuous shape [ADR 048]
+        // records — and the pin asked for the tap-target floor the day a
+        // control landed here. Try again is that control
+        // (O-PAYWALL-SPEAKS-ONLY-WEB-CHECKOUT), so the arm now carries the same
+        // floor and the same three sweeps as the other paywall cases.
         expectSweepHadSubjects(
           tester,
           'paywall (refused)',
-          tappable: 0,
+          tappable: 1,
           labelled: 4,
         );
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
         await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
         await expectLater(tester, meetsGuideline(textContrastGuideline));
       } finally {
