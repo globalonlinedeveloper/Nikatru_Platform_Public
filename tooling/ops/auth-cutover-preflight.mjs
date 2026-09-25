@@ -10,7 +10,7 @@
 //   --phase pre   hosted is still live, Box C is meant to be ready;
 //   --phase post  Box C is meant to be everywhere.
 //   --target      the Box C auth origin (default SELFHOSTED_SUPABASE_URL, else
-//                 https://auth-api.nikatru.com).
+//                 BOXC_DEFAULT_TARGET from selfhosted-auth.mjs).
 //   --boxc-env    a KEY=VALUE dump of the GoTrue env. Only the keys C6 and C7
 //                 need are read (selfhosted-auth.mjs); values are never printed.
 //   --attest apple-return-url
@@ -25,9 +25,10 @@
 //   exit 0  all fourteen PASS.
 // A check whose input is absent (credential, token, attestation, env file) is
 // LOST with the reason, never PASS. Credentials come from the ENVIRONMENT only
-// (SELFHOSTED_SUPABASE_URL, SELFHOSTED_SUPABASE_ANON_KEY) and are printed as a
-// name, a length and a short hash. It never writes: no user is created, no
-// config is changed, nothing is deployed.
+// (SELFHOSTED_SUPABASE_URL, SELFHOSTED_SUPABASE_ANON_KEY, CLOUDFLARE_API_TOKEN,
+// CLOUDFLARE_ACCOUNT_ID) and are printed as a name, a length and a short hash;
+// the account id is `<account>` in every URL a line prints. It never writes: no
+// user is created, no config is changed, nothing is deployed.
 //
 // The fourteen, and what each reuses (plan: research/session-2026-09-23/
 // cutover-prep/public-prep-plan.md section 5):
@@ -42,17 +43,34 @@
 //   C6  redirect list    GOTRUE_URI_ALLOW_LIST / GOTRUE_SITE_URL vs mail-transport.json
 //   C7  templates        the served mail templates, byte for byte (selfhosted-auth.mjs)
 //   C8  secret names     repo secrets SUPABASE_URL / _ANON_KEY / _SERVICE_ROLE_KEY exist
-//   C9  live Worker vars Cloudflare script settings — needs a Cloudflare token
-//   C10 KV               supabase_jwks — needs wrangler + a Cloudflare token
-//   C11 Workers health   the health route's supabase_jwks reading — not read here yet
+//   C9  live Worker vars Cloudflare `workers/scripts/<name>/settings`, the SUPABASE_URL
+//                        binding: plain_text, pre = the hosted origin C2 reads,
+//                        post = the target; secret_text or absent is FAIL
+//   C10 KV               Cloudflare `storage/kv/.../values/<JWKS_KV_KEY>` in the
+//                        JWKS_CACHE namespace: absent (404) PASS; post: every cached
+//                        kid is one the target's JWKS (C4's read) serves
+//   C11 Workers health   GET https://<worker host>/v1/health, its checks[] entry
+//                        supabase_jwks: ok PASS, anything else FAIL; post also
+//                        needs C9's read of that Worker to be the target
 //   C12 keep-alive       services/platform keepAliveTargets resolution, mirrored
 //   C13 web build        the deployed main.dart.js names the expected auth host
 //   C14 gates            the deployed bundle carries the passwordBreached copy;
 //                        the Apple return URL is attested
 //
-// C9, C10 and C11 have no reader here yet, so they are always LOST and the best
-// result today is exit 2: the operator reads those three by hand (the LOST line
-// names how) before the switch. Exit 0 needs those readers to land first.
+// C9 and C10 need CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID in the
+// environment (read-only: Workers Scripts read, Workers KV read); without them
+// both are LOST. The Workers they read are DERIVED, never listed: every
+// services/*/wrangler.jsonc that binds JWKS_CACHE, by its `name`, with its health
+// host the custom-domain route whose first label is that name, and the KV key is
+// JWKS_KV_KEY read from services/_shared/src/auth.ts.
+//
+// C11 needs no token, and is no longer read by hand. The health route names no
+// origin (its reasons are fixed strings; the route is public), so an `ok` says
+// only that the JWKS at WHATEVER SUPABASE_URL the Worker holds is up. In post
+// that is not enough, so post pairs each reading with C9's read of the same
+// Worker: an `ok` from a Worker still on the hosted origin is FAIL, and one whose
+// origin C9 could not read is LOST. That pairing is the old "after the Worker
+// deploy" note, made a check: before the deploy, post fails C9 and C11 together.
 // ─────────────────────────────────────────────────────────────────────────────
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
@@ -60,6 +78,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { fetchWithBoundedRetry } from './bounded-retry.mjs';
 import {
+  BOXC_DEFAULT_TARGET,
   compareServedTemplates,
   fingerprint,
   gradeSettings,
@@ -72,7 +91,8 @@ import { AUTH_MAIL_TEMPLATES } from '../sites/gen-auth-mail.mjs';
 import { listDir } from '../ci/tree-walk.mjs';
 import { stripComments } from '../ci/assert-platform-register.mjs';
 
-export const BOXC_DEFAULT_TARGET = 'https://auth-api.nikatru.com';
+// Declared once in selfhosted-auth.mjs, which verify-supabase-templates.mjs shares.
+export { BOXC_DEFAULT_TARGET };
 export const REPO_SLUG = 'globalonlinedeveloper/Nikatru_Platform_Public';
 export const REQUIRED_REPO_SECRETS = Object.freeze(['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY']);
 const HOSTED_ORIGIN = /^https:\/\/[a-z0-9]+\.supabase\.co$/;
@@ -172,18 +192,28 @@ export async function checkGoTrueUp({ target, anonKey, doFetch }) {
   return { verdict, detail: verdict === 'PASS' ? 'health 200; email on, Apple on, autoconfirm false, sign-up open' : notes.join('; ') };
 }
 
-export async function checkKeys({ target, anonKey, doFetch }) {
+/** ONE read of the target's JWKS, shared by C4 and C10 (post compares the cached
+ *  kids with it). `{ url, keys }` on a JSON answer, else `{ url, verdict, detail }`
+ *  saying how the read failed, in C4's terms. */
+export async function readTargetJwks({ target, anonKey, doFetch }) {
   const url = `${target}/auth/v1/.well-known/jwks.json`;
   let res;
   try {
     res = await get(doFetch, url, anonKey ? { apikey: anonKey } : {});
   } catch (e) {
-    return { verdict: 'LOST', detail: `GET ${url} failed (${e?.message ?? e})` };
+    return { url, verdict: 'LOST', detail: `GET ${url} failed (${e?.message ?? e})` };
   }
-  if (!res.ok) return { verdict: res.status === 404 ? 'FAIL' : 'LOST', detail: `GET ${url} answered HTTP ${res.status}` };
+  if (!res.ok) return { url, verdict: res.status === 404 ? 'FAIL' : 'LOST', detail: `GET ${url} answered HTTP ${res.status}` };
   let body;
-  try { body = await res.json(); } catch { return { verdict: 'LOST', detail: 'the JWKS body is not JSON' }; }
-  const keys = Array.isArray(body?.keys) ? body.keys : [];
+  try { body = await res.json(); } catch { return { url, verdict: 'LOST', detail: 'the JWKS body is not JSON' }; }
+  return { url, keys: Array.isArray(body?.keys) ? body.keys : [] };
+}
+
+/** C4. `jwks` is a prior readTargetJwks() result; without one it reads its own. */
+export async function checkKeys({ target, anonKey, doFetch, jwks }) {
+  const read = jwks ?? await readTargetJwks({ target, anonKey, doFetch });
+  if (!read.keys) return { verdict: read.verdict, detail: read.detail };
+  const keys = read.keys;
   const es = keys.filter((k) => k?.alg === 'ES256' || (k?.kty === 'EC' && k?.crv === 'P-256'));
   if (es.length === 0) return { verdict: 'FAIL', detail: `the JWKS holds ${keys.length} key(s), none ES256` };
   return { verdict: 'PASS', detail: `${es.length} ES256 key(s) (kid ${es.map((k) => k.kid ?? '?').join(', ')}); issuer by token needs a throwaway user and is not minted here` };
@@ -292,6 +322,217 @@ export function checkSecretNames({ phase, windowStart, gh }) {
   return { verdict: 'PASS', detail: `${REQUIRED_REPO_SECRETS.join(', ')} exist (names only)${phase === 'post' ? `, all updated after ${windowStart}` : ''}; the platform Worker's secret names are C9's input` };
 }
 
+// ── C9 / C10 / C11 — the Workers that verify Supabase tokens ─────────────────
+const CF_API = 'https://api.cloudflare.com/client/v4';
+const JWKS_BINDING = 'JWKS_CACHE';
+/** The name of the health route's JWKS reading (`probeJwks`, services/_shared/src/
+ *  health.ts, named in each Worker's src/index.ts). A probe name, not the KV key. */
+const HEALTH_JWKS_CHECK = 'supabase_jwks';
+
+/** The Workers the switch moves, DERIVED from the tree: every
+ *  services/<dir>/wrangler.jsonc that binds JWKS_CACHE, with its script `name`,
+ *  that namespace id, and its health host — the custom-domain route whose first
+ *  label is the script name ([ADR 080], `<name>.nikatru.com`), or null.
+ *  `{ workers }`, sorted by script, or `{ lost }`. */
+export function cutoverWorkers(root) {
+  const services = join(root, 'services');
+  if (!existsSync(services)) return { lost: 'no services/ directory — no Worker config to read' };
+  const workers = [];
+  for (const e of listDir(services, { withFileTypes: true })) {
+    if (!e.isDirectory() || !existsSync(join(services, e.name, 'wrangler.jsonc'))) continue;
+    const config = `services/${e.name}/wrangler.jsonc`;
+    let cfg;
+    try { cfg = readJsonc(join(services, e.name, 'wrangler.jsonc')); } catch (err) { return { lost: `${config} could not be parsed (${err.message})` }; }
+    const kv = (cfg.kv_namespaces ?? []).find((n) => n?.binding === JWKS_BINDING);
+    if (!kv) continue;
+    if (!cfg.name || !kv.id) return { lost: `${config} binds ${JWKS_BINDING} but names no script \`name\` or no namespace \`id\`` };
+    const route = (cfg.routes ?? []).find((r) => r?.custom_domain === true && String(r.pattern ?? '').split('.')[0] === cfg.name);
+    workers.push({ config, script: cfg.name, namespace: kv.id, host: route ? route.pattern : null });
+  }
+  if (workers.length === 0) return { lost: `no services/*/wrangler.jsonc binds ${JWKS_BINDING} — no Worker to read` };
+  return { workers: workers.sort((a, b) => a.script.localeCompare(b.script)) };
+}
+
+/** JWKS_KV_KEY as services/_shared/src/auth.ts declares it (both Workers import
+ *  it), or null. Read, never retyped, so a renamed key moves C10 with it. */
+export function jwksKvKey(root) {
+  const p = join(root, 'services', '_shared', 'src', 'auth.ts');
+  if (!existsSync(p)) return null;
+  const m = readFileSync(p, 'utf8').match(/export const JWKS_KV_KEY\s*=\s*['"]([^'"]+)['"]/);
+  return m ? m[1] : null;
+}
+
+/** The Cloudflare credentials, from the ENVIRONMENT only: `{ token, account }`, or
+ *  `{ lost }` naming whichever is absent. */
+export function cloudflareCreds(env) {
+  const missing = ['CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID'].filter((n) => !env[n]);
+  if (missing.length) return { lost: `${missing.join(' and ')} ${missing.length > 1 ? 'are' : 'is'} not in the environment` };
+  return { token: env.CLOUDFLARE_API_TOKEN, account: env.CLOUDFLARE_ACCOUNT_ID };
+}
+
+/** `text` with the token and the account id replaced by their names. */
+function scrub(text, cf) {
+  let out = String(text);
+  if (cf.token) out = out.split(cf.token).join('<token>');
+  if (cf.account) out = out.split(cf.account).join('<account>');
+  return out;
+}
+
+/** One read-only Cloudflare API GET, under the shared per-request ceiling. The
+ *  account id is in the URL and the token in a header; neither reaches a line:
+ *  the request is described as `/accounts/<account>/…`, and every text that
+ *  comes back is scrubbed. `{ res, shown }` or `{ lost, shown }`. */
+async function cfGet(doFetch, cf, path) {
+  const shown = `GET /accounts/<account>/${path}`;
+  try {
+    const res = await fetchWithBoundedRetry(
+      ({ signal }) => doFetch(`${CF_API}/accounts/${cf.account}/${path}`, { headers: { Authorization: `Bearer ${cf.token}` }, signal }),
+      { describe: (why) => `${shown}: ${why}` },
+    );
+    return { res, shown };
+  } catch (e) {
+    return { lost: scrub(`${shown} failed (${e?.message ?? e})`, cf), shown };
+  }
+}
+
+/** A non-OK Cloudflare answer as one line: the status and the API's error codes. */
+async function cfRefusal(res, shown, cf) {
+  let why = '';
+  try {
+    const body = await res.json();
+    why = (Array.isArray(body?.errors) ? body.errors : []).map((e) => `${e?.code ?? '?'} ${e?.message ?? ''}`.trim()).join('; ');
+  } catch { /* the status alone is the line */ }
+  return scrub(`${shown} answered HTTP ${res.status}${why ? ` (${why})` : ''}`, cf);
+}
+
+/** C9's read, which C11 (post) reuses: each Worker's SUPABASE_URL binding as
+ *  Cloudflare holds it. `{ script, binding: { type, text } | null }`, or
+ *  `{ script, lost }`. A secret_text binding carries no `text`. */
+export async function readWorkerVars({ workers, cf, doFetch }) {
+  const reads = [];
+  for (const w of workers) {
+    if (cf.lost) { reads.push({ script: w.script, lost: cf.lost }); continue; }
+    const { res, lost, shown } = await cfGet(doFetch, cf, `workers/scripts/${encodeURIComponent(w.script)}/settings`);
+    if (lost) { reads.push({ script: w.script, lost }); continue; }
+    if (!res.ok) { reads.push({ script: w.script, lost: await cfRefusal(res, shown, cf) }); continue; }
+    let body;
+    try { body = await res.json(); } catch { reads.push({ script: w.script, lost: `${shown}: the body is not JSON` }); continue; }
+    if (body?.success !== true || !Array.isArray(body?.result?.bindings)) {
+      reads.push({ script: w.script, lost: `${shown}: no result.bindings[] in a successful answer` });
+      continue;
+    }
+    const b = body.result.bindings.find((x) => x?.name === 'SUPABASE_URL');
+    reads.push({ script: w.script, binding: b ? { type: b.type, text: b.text } : null });
+  }
+  return reads;
+}
+
+/** One Worker's SUPABASE_URL against the origin the phase expects: [leg, note]. */
+function gradeWorkerVar(read, want, phase) {
+  const s = read.script;
+  if (read.lost) return ['LOST', `${s}: ${read.lost}`];
+  if (!read.binding) return ['FAIL', `${s}: no SUPABASE_URL binding — the design says plain_text (a wrangler.jsonc var)`];
+  if (read.binding.type === 'secret_text') return ['FAIL', `${s}: SUPABASE_URL is secret_text, whose value is never returned — the design says plain_text (a wrangler.jsonc var)`];
+  if (read.binding.type !== 'plain_text') return ['FAIL', `${s}: SUPABASE_URL is a ${read.binding.type} binding — the design says plain_text`];
+  const got = trimSlash(read.binding.text);
+  if (got !== want) return ['FAIL', `${s}: SUPABASE_URL is ${got}, not the ${phase} origin ${want}`];
+  return ['PASS', `${s}: plain_text ${got}`];
+}
+
+export function checkWorkerVars({ root, phase, target, fleet, reads }) {
+  if (fleet.lost) return { verdict: 'LOST', detail: fleet.lost };
+  const want = expectedAuthOrigin(root, phase, target);
+  if (!want) return { verdict: 'LOST', detail: 'pre expects the hosted origin, and platform-register.json records no hosted vars.SUPABASE_URL' };
+  const graded = reads.map((r) => gradeWorkerVar(r, want, phase));
+  const verdict = verdictOf(graded.map(([leg]) => leg));
+  return {
+    verdict,
+    detail: verdict === 'PASS'
+      ? `SUPABASE_URL is plain_text ${want} (the ${phase} origin) on ${reads.map((r) => r.script).join(', ')}`
+      : graded.map(([, note]) => note).join('; '),
+  };
+}
+
+/** `kid alg` for each key — never key material. */
+const kidList = (keys) => keys.map((k) => `${k?.kid ?? '(no kid)'} ${k?.alg ?? k?.kty ?? '?'}`).join(', ');
+
+/** C10 for one JWKS_CACHE namespace: [leg, note]. `targetKids` is a Set in post. */
+async function gradeKvNamespace({ ns, kvKey, cf, doFetch, phase, targetKids }) {
+  const base = `storage/kv/namespaces/${ns}`;
+  const { res, lost, shown } = await cfGet(doFetch, cf, `${base}/values/${encodeURIComponent(kvKey)}`);
+  if (lost) return ['LOST', lost];
+  if (res.status === 404) {
+    // A 404 means "no such key" only in a namespace that exists: a wrong account
+    // id or namespace id also answers 404, and that is not an empty cache.
+    const meta = await cfGet(doFetch, cf, base);
+    if (meta.lost) return ['LOST', `${shown} answered HTTP 404, and the namespace could not be confirmed: ${meta.lost}`];
+    if (!meta.res.ok) return ['LOST', `${shown} answered HTTP 404, and the namespace could not be confirmed: ${await cfRefusal(meta.res, meta.shown, cf)}`];
+    return ['PASS', `${kvKey} is absent from namespace ${ns} (HTTP 404; the namespace exists) — the Workers fill it lazily`];
+  }
+  if (!res.ok) return ['LOST', await cfRefusal(res, shown, cf)];
+  let doc;
+  try { doc = JSON.parse(await res.text()); } catch { return ['LOST', `the cached ${kvKey} in namespace ${ns} is not JSON`]; }
+  if (!Array.isArray(doc?.keys)) return ['LOST', `the cached ${kvKey} in namespace ${ns} holds no keys[] array`];
+  const keys = doc.keys;
+  if (phase === 'pre') return ['PASS', `${kvKey} in namespace ${ns} caches ${keys.length} key(s): ${kidList(keys) || 'none'}`];
+  const foreign = keys.filter((k) => !targetKids.has(k?.kid));
+  if (foreign.length) {
+    return ['FAIL', `${kvKey} in namespace ${ns} still caches kid(s) the target does not serve: ${kidList(foreign)} — the Workers keep accepting tokens signed by them until the cached copy expires (JWKS_TTL_SECONDS)`];
+  }
+  return ['PASS', `every kid cached in ${kvKey} in namespace ${ns} is served by the target: ${kidList(keys) || 'none'}`];
+}
+
+export async function checkKv({ phase, fleet, kvKey, cf, jwks, doFetch }) {
+  if (fleet.lost) return { verdict: 'LOST', detail: fleet.lost };
+  if (!kvKey) return { verdict: 'LOST', detail: 'services/_shared/src/auth.ts declares no JWKS_KV_KEY — the key to read is unknown' };
+  if (cf.lost) return { verdict: 'LOST', detail: `the ${kvKey} key in ${JWKS_BINDING}: ${cf.lost}` };
+  let targetKids = null;
+  if (phase === 'post') {
+    if (!jwks?.keys) return { verdict: 'LOST', detail: `post compares the cached kids with the target's JWKS, and that read failed: ${jwks?.detail ?? 'not read'}` };
+    targetKids = new Set(jwks.keys.map((k) => k?.kid).filter((kid) => kid !== undefined));
+  }
+  const graded = [];
+  for (const ns of [...new Set(fleet.workers.map((w) => w.namespace))]) {
+    graded.push(await gradeKvNamespace({ ns, kvKey, cf, doFetch, phase, targetKids }));
+  }
+  return { verdict: verdictOf(graded.map(([leg]) => leg)), detail: graded.map(([, note]) => note).join('; ') };
+}
+
+/** C11 for one Worker: [leg, note]. */
+async function gradeWorkerHealth({ worker, phase, target, reads, doFetch }) {
+  if (!worker.host) return ['LOST', `${worker.script}: ${worker.config} has no custom-domain route whose first label is ${worker.script} — no health host to read`];
+  const url = `https://${worker.host}/v1/health`;
+  let res;
+  try {
+    res = await get(doFetch, url);
+  } catch (e) {
+    return ['LOST', `GET ${url} failed (${e?.message ?? e})`];
+  }
+  if (!res.ok) return ['LOST', `GET ${url} answered HTTP ${res.status}`];
+  let body;
+  try { body = await res.json(); } catch { return ['LOST', `${url}: the body is not JSON`]; }
+  if (!Array.isArray(body?.checks)) return ['LOST', `${url}: no checks[] array`];
+  const entry = body.checks.find((c) => c?.name === HEALTH_JWKS_CHECK);
+  if (!entry) return ['LOST', `${url}: checks[] has no ${HEALTH_JWKS_CHECK} entry`];
+  const age = Number.isFinite(entry.ageMs) ? `, ageMs ${entry.ageMs}` : '';
+  if (entry.status !== 'ok') return ['FAIL', `${worker.host} ${HEALTH_JWKS_CHECK} is ${JSON.stringify(entry.status)} (reason ${JSON.stringify(entry.reason ?? null)}${age})`];
+  if (phase === 'pre') return ['PASS', `${worker.host} ${HEALTH_JWKS_CHECK} ok${age}`];
+  // The route names no origin, so in post an `ok` counts only for a Worker C9
+  // read as holding the target.
+  const read = reads.find((r) => r.script === worker.script);
+  const origin = read?.binding?.type === 'plain_text' ? trimSlash(read.binding.text) : null;
+  if (origin === target) return ['PASS', `${worker.host} ${HEALTH_JWKS_CHECK} ok${age}, and C9 read ${worker.script} as holding the target`];
+  if (origin) return ['FAIL', `${worker.host} ${HEALTH_JWKS_CHECK} ok${age}, but C9 read ${worker.script} as holding ${origin}, not the target ${target} — that ok is a reading of ${origin}'s JWKS`];
+  return ['LOST', `${worker.host} ${HEALTH_JWKS_CHECK} ok${age}, but the route names no origin and C9 could not read which SUPABASE_URL ${worker.script} holds (${read?.lost ?? 'no plain_text binding'})`];
+}
+
+export async function checkWorkersHealth({ phase, target, fleet, reads = [], doFetch }) {
+  if (fleet.lost) return { verdict: 'LOST', detail: fleet.lost };
+  const graded = [];
+  for (const worker of fleet.workers) graded.push(await gradeWorkerHealth({ worker, phase, target, reads, doFetch }));
+  return { verdict: verdictOf(graded.map(([leg]) => leg)), detail: graded.map(([, note]) => note).join('; ') };
+}
+
 // ── C12 ──────────────────────────────────────────────────────────────────────
 /** services/platform/src/scheduled.ts `keepAliveTargets`, mirrored: the comma list
  *  when set, else the single SUPABASE_URL; trimmed, slash-normalised, deduped. */
@@ -367,13 +608,11 @@ export function checkGates({ root, bundle, attest }) {
 }
 
 // ── the run ──────────────────────────────────────────────────────────────────
-const NEEDS_CLOUDFLARE = 'needs a Cloudflare API token and account id, which this preflight does not hold';
-
 /**
  * Run all fourteen checks. Returns `{ code, lines, results }`. Every outside
  * look goes through an injectable dependency so the test suite touches no
- * network: `doFetch` (fetch), `gh` (argv → {status, stdout, stderr}) and
- * `runGuard` (root → {status, firstLine}).
+ * network: `doFetch` (fetch, the Cloudflare API included), `gh` (argv →
+ * {status, stdout, stderr}) and `runGuard` (root → {status, firstLine}).
  */
 export async function runPreflight({
   root,
@@ -391,20 +630,24 @@ export async function runPreflight({
   const tgt = trimSlash(target || env.SELFHOSTED_SUPABASE_URL || BOXC_DEFAULT_TARGET);
   const targetFrom = target ? '--target' : env.SELFHOSTED_SUPABASE_URL ? 'SELFHOSTED_SUPABASE_URL' : 'default';
   const anonKey = env.SELFHOSTED_SUPABASE_ANON_KEY;
+  const cf = cloudflareCreds(env);
   const boxEnv = boxcEnvFile ? readEnvFileKeys(boxcEnvFile) : null;
   const bundle = await fetchBundle({ root, doFetch });
+  const jwks = await readTargetJwks({ target: tgt, anonKey, doFetch });
+  const fleet = cutoverWorkers(root);
+  const reads = fleet.lost ? [] : await readWorkerVars({ workers: fleet.workers, cf, doFetch });
   const results = [
     ['C1', 'CSP', checkCsp({ root, phase, target: tgt })],
     ['C2', 'config agreement', checkConfigAgreement({ root, phase, target: tgt, runGuard })],
     ['C3', 'GoTrue up', await checkGoTrueUp({ target: tgt, anonKey, doFetch })],
-    ['C4', 'keys and issuer', await checkKeys({ target: tgt, anonKey, doFetch })],
+    ['C4', 'keys and issuer', await checkKeys({ jwks })],
     ['C5', 'captcha posture', await checkCaptcha({ root, target: tgt, anonKey, doFetch, gh })],
     ['C6', 'redirect allow list', checkRedirects({ root, env: boxEnv })],
     ['C7', 'templates', await checkTemplates({ root, env: boxEnv && !boxEnv.error ? boxEnv : null, doFetch })],
     ['C8', 'secret names', checkSecretNames({ phase, windowStart, gh })],
-    ['C9', 'live Worker vars', { verdict: 'LOST', detail: `SUPABASE_URL on the platform and subscriptiontracker-api Workers ${NEEDS_CLOUDFLARE}` }],
-    ['C10', 'KV', { verdict: 'LOST', detail: `the supabase_jwks key in JWKS_CACHE ${NEEDS_CLOUDFLARE} (wrangler kv key get, read only)` }],
-    ['C11', 'Workers health', { verdict: 'LOST', detail: 'the supabase_jwks field of each Worker health route (https://subscriptiontracker-api.nikatru.com/v1/health) is not read here yet — read it by hand after the Worker deploy' }],
+    ['C9', 'live Worker vars', checkWorkerVars({ root, phase, target: tgt, fleet, reads })],
+    ['C10', 'KV', await checkKv({ phase, fleet, kvKey: jwksKvKey(root), cf, jwks, doFetch })],
+    ['C11', 'Workers health', await checkWorkersHealth({ phase, target: tgt, fleet, reads, doFetch })],
     ['C12', 'keep-alive', checkKeepAlive({ root, phase, target: tgt })],
     ['C13', 'web build', checkWebBuild({ root, phase, target: tgt, bundle })],
     ['C14', 'gates', checkGates({ root, bundle, attest })],
@@ -414,6 +657,7 @@ export async function runPreflight({
   const lines = [
     head,
     `target ${tgt} (from ${targetFrom}) · SELFHOSTED_SUPABASE_ANON_KEY ${anonKey ? fingerprint(anonKey) : 'NOT SET'} · env dump ${boxcEnvFile ? 'given' : 'none'} · attest ${attest.length ? attest.join(',') : 'none'}`,
+    `cloudflare CLOUDFLARE_API_TOKEN ${env.CLOUDFLARE_API_TOKEN ? fingerprint(env.CLOUDFLARE_API_TOKEN) : 'NOT SET'} · CLOUDFLARE_ACCOUNT_ID ${env.CLOUDFLARE_ACCOUNT_ID ? fingerprint(env.CLOUDFLARE_ACCOUNT_ID) : 'NOT SET'}`,
     ...results.map((r) => `${r.verdict.padEnd(4)}  ${r.id} ${r.name}: ${r.detail}`),
     summary,
   ];
