@@ -31,7 +31,7 @@ an edit here.
 
 | Path | Purpose |
 | --- | --- |
-| `_data/apps.json` | 🔴 **The one genuinely consumed file in this directory.** Single source of truth for the Nikatru app registry (SHOW-1), read by ~40 call sites — `tooling/sites/generate-discovery.mjs`, the four store-submission scripts, the signing scripts, `services/platform/src/config.ts` and the brick's `post_gen.dart`. Append new apps here. |
+| `_data/apps.json` | 🔴 **The one genuinely consumed file in this directory. GENERATED — do not hand-edit.** `tooling/sites/generate-apps-data.mjs` writes it from `catalog/apps.json`, the published Nikatru app registry (SHOW-1), and CI deletes it, re-runs that generator and `git diff --exit-code`s the result (`ci.yml` step "Site feed must equal a fresh generation from the catalogue"), so a hand edit goes red. Read by Eleventy as `{{ apps }}` and by `tooling/sites/generate-discovery.mjs`. Add an app in its declaration, `apps/<id>/app.yaml`, never here: `tooling/app-yaml/render.mjs` renders that into `catalog/apps.json`. |
 | `_includes/base.njk` | HTML5 base layout: head/meta, tokens + base CSS, SEO partial, header/nav/main/footer. Zero JS, WCAG-minded. **Its `<link rel="stylesheet">` tags resolve only inside the Eleventy demo build** — see the 404 note below. |
 | `_includes/partials/app-card.njk` | Renders one app object as an accessible card. |
 | `_includes/partials/seo.njk` | Canonical + OG/Twitter meta and JSON-LD (`Organization`, or `SoftwareApplication` when a page sets `app` in front matter). |
@@ -59,20 +59,27 @@ the directory being dead — `_data/apps.json` and `assets/tokens.css` are not.
 }
 ```
 
-Add more apps by appending objects to the array in `_data/apps.json`.
+Add an app in `apps/<id>/app.yaml` (rendered into `catalog/apps.json` by
+`tooling/app-yaml/render.mjs`), then run `node tooling/sites/generate-apps-data.mjs`.
 
 **Who reads it today, precisely.** `sites/nikatru` reads it *through the
-generator*: `tooling/sites/generate-discovery.mjs` writes `apps/index.html` and
-`apps/subscriptiontracker.html` from these rows, and those files are committed and
-byte-diffed by `tooling/ci/assert-discovery-surface.mjs`. Two surfaces
-deliberately do **not**: `sites/nikatru/index.html`'s hand-written
-`const APPS = [` array at `:470` (whether a live app is named on the public
-homepage is an owner announcement decision, which `check-site-integrity.mjs`
-refuses to take and prints instead), and `sites/rajasekarselvam`, which ships no
+generator*: `tooling/sites/generate-discovery.mjs` writes `apps/index.html`,
+`apps/subscriptiontracker.html` and the homepage app grid — the span between
+`<!-- APPS-GRID -->` and `<!-- /APPS-GRID -->` in `sites/nikatru/index.html`
+(`applyHomeGrid`, #564, 2026-09-09) — from these rows. All three are committed
+and byte-diffed by `tooling/ci/assert-discovery-surface.mjs` through
+`planDiscovery`. `tooling/ci/check-site-integrity.mjs` reads the rendered cards
+against `catalog/apps.json`: a card for an app that is not `live` is exit 1; a
+`live` app with no card PRINTS as UNANNOUNCED on every run (announcing is the
+owner's call); a missing sentinel pair is COVERAGE LOST. One surface
+deliberately does **not** read it: `sites/rajasekarselvam`, which ships no
 `apps/` directory at all. *(This file used to say "both sites will read this
 list". They do not, and one of them is structurally prevented from doing so —
 an `apps/` directory there would make the root app-facing and immediately owe
 four legal pages it does not have.)*
+*(⏱ Until 2026-09-25 this paragraph also named the homepage's hand-written app
+array as a second surface that does not read the list. That array was deleted on
+2026-09-09 (#564), when the grid became generated.)*
 
 ## 🔴 Why the 18 live pages each inline their own CSS — measured, and settled
 

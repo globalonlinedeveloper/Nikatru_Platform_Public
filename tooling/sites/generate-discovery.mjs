@@ -77,15 +77,20 @@
 //     `"operatingSystem": "iOS, Android, Windows, macOS, Linux, Web"`. (Same
 //     correction, same day: this read `:71`, which is a `.shots img` CSS rule.)
 //
-// ── THE ONE THING IT DELIBERATELY DOES NOT TOUCH ─────────────────────────────
-// 🔴 `sites/nikatru/index.html`'s `const APPS = [` ARRAY. Whether a `live` app
-// is named on the public HOMEPAGE is an OWNER decision (soft launch vs
-// launched), which `check-site-integrity.mjs` deliberately refuses to take and
-// PRINTS every run instead, in its bracket-depth scan from `const APPS = [`.
-// (Anchored, not numbered: this read `:574-660` until 2026-08-21, and those
-// lines are the sitemap `lastmod` limb, not the homepage one.) Making the
-// homepage a function of the registry would settle that question silently. It
-// stays open and the PRINT stays firing.
+// ── THE HOMEPAGE GRID: GENERATED HERE, ANNOUNCED BY THE OWNER ────────────────
+// 🔴 `sites/nikatru/index.html`'s app grid, between `<!-- APPS-GRID -->` and
+// `<!-- /APPS-GRID -->`, is written by `applyHomeGrid` below (#564, 2026-09-09)
+// from the registry's `live` rows. Whether a `live` app is announced on the
+// public HOMEPAGE stays an OWNER decision (soft launch vs launched), and it is
+// taken in the registry — an app's `status`, declared in `apps/<id>/app.yaml`
+// and rendered into `catalog/apps.json` — never here. `check-site-integrity.mjs`
+// reads the rendered cards against `catalog/apps.json` and PRINTS, every run,
+// any `live` app the grid does not carry, as UNANNOUNCED.
+//   ⏱ Until 2026-09-25 this paragraph was headed "THE ONE THING IT DELIBERATELY
+//   DOES NOT TOUCH" and said the homepage's hand-written app array stayed out of
+//   this generator so that the announcement question stayed open. #564 deleted
+//   that array on 2026-09-09 and made the grid a function of the registry. The
+//   paragraph is corrected rather than deleted, as the one below is.
 //
 // ⚠️ THE TAIL OF THIS PARAGRAPH WAS STALE AND IS CORRECTED, NOT DELETED, so the
 // next reader knows the claim was retired rather than lost. It said "the hub
