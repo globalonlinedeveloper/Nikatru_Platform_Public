@@ -218,7 +218,7 @@ secret-presence branch to end the job rather than skip it.
 
 ### above `concurrency:`
 
-deploy-workers.yml:28-30 and ops-watch.yml:36-37's shape, NOT ci.yml's. A run
+deploy-workers.yml:26-28 (re-measured 2026-09-25) and ops-watch.yml:36-37's shape, NOT ci.yml's. A run
 of this workflow is the only thing that will notice the drift the merge just
 created, so a newer push must QUEUE behind it and must never cancel it.
 Cancelling is precisely the defect ci.yml:22 was changed to stop.

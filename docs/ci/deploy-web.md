@@ -5,6 +5,20 @@ one-line `# why:` on each non-obvious decision; everything that explains,
 retracts or records a measurement is here. Read `docs/ci/README.md` first —
 it carries the rules every workflow in this repository has to obey.
 
+## ⏱ 2026-09-25 — a post-gate call job of ci.yml ([ADR 095] §4)
+
+This file is now only a `workflow_call` callee. It runs as ci.yml's `deploy-web` call job,
+which has `needs: [ci-gate]` and the post-gate `if:`
+(`github.event_name == 'push' && github.ref == 'refs/heads/main'`), so a red or skipped gate
+never starts it. The push trigger, the `paths:` list and the `workflow_dispatch` button are
+gone. Which changes publish is `deployUnits["<app>-web"]` in `tooling/ci/lane-map.json`, read by
+`plan-deploy.mjs`. A run is listed as `deploy-web / <job>` inside a CI run, so a build stamp
+`<line>.<run_number>+<sha7>` carries CI's run number. check-prod-provenance resolves it through
+`laneRunHost` (the lane's run workflows are `deploy-web.yml,ci.yml`). The ops register reads the lane there
+(`duty.workflow.deploy-web.yml`, unit `{jobs: [deploy-web]}`). The sections below keep the
+file's earlier prose as it was written. Where they describe `paths:`, they describe the file
+before this change.
+
 ## File header
 
 ### above `on:`

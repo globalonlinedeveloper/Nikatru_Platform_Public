@@ -2238,3 +2238,115 @@ describe('assert-release-provenance — a publish moved into a local composite a
 //         (tooling/release/submit-play.mjs, tooling/release/submit-snap.mjs)
 //     ok  1 served-channel lane(s) from tooling/channel-register.json
 // ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-25 — THE GATE VERDICT IN THE SAME RUN. [ADR 095 §4] The deploys are
+// ci.yml call jobs that `needs: [ci-gate]`; the callee calls no gate script, and
+// its jobs reach the verdict job through the call's inherited `needs`. Each red
+// case below is the credit's own neutralizer, or the served-lane lookup the move
+// broke: deploy-web.yml is call-only and has no resolved workflow of its own.
+const POST_GATE = "github.event_name == 'push' && github.ref == 'refs/heads/main'";
+
+function verdictCaller({ callNeeds = '    needs: [ci-gate]\n', callIf = POST_GATE, verdictCoe = false } = {}) {
+  const coe = verdictCoe ? '    continue-on-error: true\n' : '';
+  const ifLine = callIf === null ? '' : `    if: ${callIf}\n`;
+  return (
+    'name: CI\non:\n  push:\n    branches: [main]\njobs:\n' +
+    '  lane:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: echo lane\n' +
+    `  ci-gate:\n    name: ci-gate\n    runs-on: ubuntu-24.04\n    needs: [lane]\n    if: always()\n${coe}    steps:\n      - run: echo aggregate\n` +
+    `  ship:\n${callNeeds}${ifLine}    uses: ./.github/workflows/ship.yml\n`
+  );
+}
+
+function shipCallee({ publishes = true } = {}) {
+  const body = publishes ? `${BUILD_STEP}\n${DEPLOY_STEP}\n${MARKER_STEP}\n` : '      - run: echo ship it\n';
+  return (
+    'name: Ship\non:\n  workflow_call:\njobs:\n' +
+    '  prepare:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: echo prepare\n' +
+    `  deploy:\n    runs-on: ubuntu-24.04\n    needs: prepare\n    steps:\n${body}`
+  );
+}
+
+function postGateTree({ caller = verdictCaller(), callee = shipCallee(), servedLane = '.github/workflows/ship.yml' } = {}) {
+  const root = tree({ servedLane });
+  writeFileSync(join(root, '.github/workflows/ci.yml'), caller);
+  writeFileSync(join(root, '.github/workflows/ship.yml'), callee);
+  return root;
+}
+
+describe('assert-release-provenance — a call job that needs the gate verdict gates its callee', () => {
+  test('PASSES a callee that builds, publishes and records, called after ci-gate — and grades it as the served lane', () => {
+    const { code, out } = run(postGateTree());
+    assert.equal(code, 0, out);
+    assert.match(out, /1 served-channel lane\(s\) from tooling\/channel-register\.json: \.github\/workflows\/ship\.yml/);
+  });
+
+  test('FAILS both limbs when the call does not need ci-gate — the callee has no gate of its own', () => {
+    const { code, out } = run(postGateTree({ caller: verdictCaller({ callNeeds: '' }) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /job "ship\/deploy" runs 1 release build\(s\) \(first at \.github\/workflows\/ship\.yml:\d+\) and neither it nor any job it `needs` calls/);
+    assert.match(out, /job "ship\/deploy" performs a Cloudflare deploy without any .* and no clean path to the "ci-gate" verdict in this run\./);
+  });
+
+  test('FAILS when the call carries `if: always()` — it starts on a RED verdict', () => {
+    const { code, out } = run(postGateTree({ caller: verdictCaller({ callIf: 'always()' }) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /job "ship\/deploy" runs 1 release build\(s\).*\(job "ci-gate"\) is neutralized/);
+  });
+
+  test('FAILS when the verdict job swallows its own failure with continue-on-error', () => {
+    const { code, out } = run(postGateTree({ caller: verdictCaller({ verdictCoe: true }) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /its gate job "ci-gate" carries `continue-on-error: true`/);
+  });
+
+  test('no credit while a SECOND job claims the ci-gate name', () => {
+    const root = postGateTree();
+    const second = 'name: Other\non:\n  push:\njobs:\n  other:\n    name: ci-gate\n    runs-on: ubuntu-24.04\n    steps:\n      - run: echo me too\n';
+    writeFileSync(join(root, '.github/workflows/other.yml'), second);
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /2 jobs produce a check run named "ci-gate"/);
+    assert.match(out, /job "ship\/deploy" runs 1 release build\(s\)/);
+  });
+
+  test('FAILS limb 3 when a served CALLEE lane reaches no gate', () => {
+    const { code, out } = run(postGateTree({ caller: verdictCaller({ callNeeds: '' }), callee: shipCallee({ publishes: false }) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /\.github\/workflows\/ship\.yml#deploy is the lane for a SERVED channel/);
+  });
+
+  test('COVERAGE LOST when a served lane matches no workflow and no call job', () => {
+    const { code, out } = run(postGateTree({ servedLane: '.github/workflows/gone.yml' }));
+    assert.equal(code, 2, out);
+    assert.match(out, /served lane\(s\) \.github\/workflows\/gone\.yml#deploy from tooling\/channel-register\.json matched no job/);
+  });
+
+  // ⏱ 2026-09-25 [ADR 095 §4] — the served lane is placed by laneRunHost and is
+  // the NAMED child only, exactly as an own-run lane is its named job: a sibling
+  // callee job that calls the gate does not gate a lane that never needs it.
+  test('FAILS limb 3 when only a SIBLING callee job is gated — the lane is the named child, not the whole callee', () => {
+    const callee =
+      'name: Ship\non:\n  workflow_call:\njobs:\n' +
+      `  prepare:\n    runs-on: ubuntu-24.04\n    steps:\n${GATE_STEP}\n` +
+      '  deploy:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: echo ship it\n';
+    const { code, out } = run(postGateTree({ caller: verdictCaller({ callNeeds: '' }), callee }));
+    assert.equal(code, 1, out);
+    assert.match(out, /\.github\/workflows\/ship\.yml#deploy is the lane for a SERVED channel/);
+  });
+
+  test('COVERAGE LOST when TWO call jobs run the served callee lane — one would go ungraded', () => {
+    const caller = `${verdictCaller()}  again:\n    needs: [ci-gate]\n    if: ${POST_GATE}\n    uses: ./.github/workflows/ship.yml\n`;
+    const { code, out } = run(postGateTree({ caller }));
+    assert.equal(code, 2, out);
+    assert.match(out, /the served lane \.github\/workflows\/ship\.yml#deploy from tooling\/channel-register\.json has no one place it runs/);
+    assert.match(out, /2 call job\(s\) run it/);
+  });
+
+  test('COVERAGE LOST when the one caller runs no child of the served job\'s name, and the children are named', () => {
+    const { code, out } = run(postGateTree({ callee: shipCallee().replace('  deploy:\n', '  renamed:\n') }));
+    assert.equal(code, 2, out);
+    assert.match(out, /ship\.yml#deploy from tooling\/channel-register\.json matched no job/);
+    assert.match(out, /ship\.yml#deploy runs as \.github\/workflows\/ci\.yml call job "ship", whose children are: ship\/prepare, ship\/renamed\./);
+  });
+});

@@ -149,7 +149,7 @@ import { fileURLToPath } from 'node:url';
 // record or submit step behind `uses: ./.github/actions/<x>` or a local reusable
 // workflow is graded where it lives. The flat self-check below stays on
 // parseAllWorkflows: it is the deliberately different reader.
-import { parseWorkflow, parseAllWorkflows, parseResolvedWorkflows, lineAt, placeOf, refusalText, shellSegments, RECORD_CALL, expandMatrixEnvironment, storePublishSteps } from './workflow-scan.mjs';
+import { parseAllWorkflows, parseResolvedWorkflows, lineAt, placeOf, refusalText, shellSegments, RECORD_CALL, expandMatrixEnvironment, storePublishSteps, laneRunHost, laneRefusalText } from './workflow-scan.mjs';
 import { resolveEnvironment, STATES, SUBMIT_TIME_STATES, STATE_MEANING } from './deployment-record.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
@@ -406,6 +406,40 @@ function withCallees(wf, job) {
   return [job, ...[...wf.jobs.values()].filter((j) => j.calledBy === job.name)];
 }
 
+/** ⏱ 2026-09-25 [ADR 095 §4] — a served lane whose register row names its OWN
+ *  file after that file became `on: workflow_call` only (deploy-web.yml, called
+ *  by ci.yml after ci-gate). WHERE it runs is workflow-scan's laneRunHost, the
+ *  one derivation every lane reader imports: a file that runs as itself opens
+ *  through openWorkflow/openJob as before; a file exactly one call job runs is
+ *  graded as that host's child `<callJob>/<laneJob>`, in the caller, under the
+ *  caller's `on:` and `needs`; a refusal (orphan-callee, ambiguous-callee,
+ *  missing) is COVERAGE LOST in laneRefusalText's words. Submission rows keep
+ *  openWorkflow's refusal of a lane naming a callee (P-A1). */
+function openServedLane(rel, jobName, why) {
+  const host = laneRunHost(resolved, rel);
+  if (host.refusal) {
+    const absent = host.refusal.kind === 'missing' && !existsSync(join(ROOT, rel));
+    coverageLost([
+      `${REGISTER_REL} names ${rel} job "${jobName}" as ${why}, and ${absent ? 'that file does not exist' : 'no one call job runs it'}.`,
+      laneRefusalText(host.refusal),
+    ]);
+  }
+  if (host.callJob === null) {
+    const wf = openWorkflow(rel, why);
+    return { wf, job: openJob(wf, jobName, `${why} job`) };
+  }
+  const wf = resolvedByRel.get(host.workflow);
+  const childName = `${host.callJob}/${jobName}`;
+  const job = host.children.find((j) => j.name === childName);
+  if (!job) {
+    coverageLost([
+      `${REGISTER_REL} names ${rel} job "${jobName}" as ${why}; that file runs only as ${host.workflow} call job "${host.callJob}", and its child "${childName}" is not there.`,
+      `Children present: ${host.children.map((j) => j.name).join(', ') || '(none)'}.`,
+    ]);
+  }
+  return { wf, job };
+}
+
 // ── 1. SERVED CHANNELS — the deploy lane must record what it shipped ─────────
 const seenRecordLines = new Set();
 /** Mark every RAW line a record call occupies as reached. ⏱ 2026-09-22 — a call
@@ -505,8 +539,7 @@ for (const row of servedRows) {
   if (typeof rel !== 'string') {
     coverageLost([`served channel "${row.id}" declares no \`lane.workflow\`, so nothing can be checked for it.`]);
   }
-  const wf = openWorkflow(rel, `the served "${row.id}" channel's lane`);
-  const job = openJob(wf, row.lane.job, `the served "${row.id}" channel's lane job`);
+  const { wf, job } = openServedLane(rel, row.lane.job, `the served "${row.id}" channel's lane`);
   const calls = withCallees(wf, job).flatMap((j) => {
     const own = recordCalls(j);
     markRecordLinesSeen(wf, j, own);
@@ -518,14 +551,14 @@ for (const row of servedRows) {
     const hit = calls.find((c) => c.environment === env);
     if (!hit) {
       problems.push(
-        `[10]D-9 · the "${row.id}" channel is SERVED and ${wf.rel} job "${row.lane.job}" never records "${env}". ` +
+        `[10]D-9 · the "${row.id}" channel is SERVED and ${wf.rel} job "${job.name}" never records "${env}". ` +
           `A deploy that ships and records nothing makes "what is live?" answerable only by inference, which is ` +
           `the state this requirement abolishes. Add a step running \`node tooling/ci/${RECORDER} ${env} <url>\`. ` +
           `(Found ${calls.length} record call(s) in that job: ${calls.map((c) => `${c.environment}@${lineAt(wf, c.n)}`).join(', ') || 'none'}.)`,
       );
       continue;
     }
-    gradeSkippability(wf, row.lane.job, hit, `the step recording "${env}"`, `"${env}"`);
+    gradeSkippability(wf, job.name, hit, `the step recording "${env}"`, `"${env}"`);
   }
 }
 

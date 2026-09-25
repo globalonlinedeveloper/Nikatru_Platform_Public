@@ -9,8 +9,8 @@
 // can tell a licensed skip from a lane that went dark.
 //
 // ONE MAP, ONE DETECTOR. The paths each lane answers to are in
-// tooling/ci/lane-map.json. deploy-workers.yml's dorny/paths-filter block is the
-// shape this replaces for CI: a filter list per workflow, each kept honest by its
+// tooling/ci/lane-map.json. deploy-workers.yml's dorny/paths-filter block (gone
+// 2026-09-25) was the shape this replaced: a filter list per workflow, each kept honest by its
 // own guard, is five lists for five lanes. This reads one register.
 //
 //   node tooling/ci/lane-detect.mjs --lane <name> [--root <dir>]

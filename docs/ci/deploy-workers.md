@@ -11,6 +11,20 @@ parsed YAML changed only where that unit deliberately changed it — the two `se
 globs — which is shown as a canonical-JSON diff in
 `Private/pre-prune-2026-09-08:research/revamp-2026-09-05/phase2-spine-worker-shared-chassis.md`.
 
+## ⏱ 2026-09-25 — a post-gate call job of ci.yml ([ADR 095] §4)
+
+This file is now only a `workflow_call` callee. It runs as ci.yml's `deploy-workers` call
+job, which has `needs: [ci-gate]` and the post-gate `if:`
+(`github.event_name == 'push' && github.ref == 'refs/heads/main'`), so ci-gate has passed
+before `d1 migrations apply --remote` can start. The push trigger, the `paths:` list and the
+`workflow_dispatch` button are gone. Each job's plan step (`plan-deploy.mjs`) now decides from
+the job's own unit in `tooling/ci/lane-map.json` `deployUnits`, graded by
+`assert-deploy-triggers-deploy.mjs`. A run of this lane is listed as `deploy-workers / <job>`
+inside a CI run. The ops register reads it there (`duty.workflow.deploy-workers.yml`,
+`recordQuery.workflow: ci.yml`, unit `{jobs: [deploy-workers]}`), and `redeploy-stranded.yml`
+listens to `CI`. The sections below keep the file's earlier prose as it was written. Where they
+describe `on.push.paths` or the manual run, they describe the file before this change.
+
 ## File header
 
 ### above `on:`

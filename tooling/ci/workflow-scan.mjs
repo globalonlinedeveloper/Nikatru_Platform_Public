@@ -369,7 +369,7 @@ function tagItems(lines, at, keyIndent, rest) {
  *   `\`   the next character is literal
  * Every other character, `.` included, is itself.
  *
- * 🔴 NOT `globToRe` in assert-deploy-triggers.mjs. That one is a path glob: it
+ * 🔴 NOT the path glob `globToRe` assert-deploy-triggers.mjs once carried: it
  * escapes `+` and `[`, so `[0-9]+` — the shape the extension lane's tag filter
  * is written in — matches nothing, and it reads `?` as "any one character",
  * which is the shell's meaning and not GitHub's. A pattern this cannot read is
@@ -1295,8 +1295,9 @@ function rebuildJob(job, lines, extra = {}) {
  *     call job and gains one child per callee job, named `<caller>/<calleeJob>`,
  *     in the CALLER's workflow — so it is graded under the caller's `on:` — with
  *     the caller job's `needs` added to its own (rewritten to child names) and
- *     the caller job's `if:` when it has one. `environment:` stays the callee
- *     job's own: a call job cannot carry one;
+ *     the caller job's `if:` when it has one. Each child carries `calledBy` (the
+ *     call job) and `callee` (the callee file, repo-relative). `environment:`
+ *     stays the callee job's own: a call job cannot carry one;
  *   · a workflow whose only trigger is `workflow_call` is not returned on its
  *     own: it runs only as its callers' children.
  *
@@ -1355,6 +1356,7 @@ export function parseResolvedWorkflows(root) {
           jobIf: job.jobIf ?? moved(cj.jobIf),
           continueOnError: job.continueOnError ?? moved(cj.continueOnError),
           calledBy: job.name,
+          callee: call.callee.rel,
         }));
       }
     }
@@ -1544,3 +1546,73 @@ export function storePublishSteps(workflows, register) {
   }
   return out;
 }
+
+/** THE POST-GATE PREDICATE, byte for byte. ⏱ 2026-09-25 [ADR 095 §4] A job that
+ *  `needs` its workflow's aggregator runs only after it, and this is the ONE `if:`
+ *  that makes such a job post-gate: a push to main, nothing wider. Exported once:
+ *  assert-green-means-ran rule A9 grades the class and assert-ops-register admits
+ *  its RED-SINCE rows by it, and two spellings would shrink that domain unseen. */
+export const POST_GATE_IF = "github.event_name == 'push' && github.ref == 'refs/heads/main'";
+
+/**
+ * Every job of `wf` that touches the post-gate class of aggregator job `gateJob`,
+ * in file order, as `{ id, kind, cond }`:
+ *   `post`     it needs `gateJob` and its job-level `if:` is exactly POST_GATE_IF;
+ *   `wide-if`  it needs `gateJob` and its `if:` is anything else, or absent;
+ *   `ungated`  its `if:` is POST_GATE_IF and it does not need `gateJob`.
+ * `cond` is the job-level `if:` text, or null. Jobs in none of the three are
+ * left out. A call job's children (`calledBy`, from parseResolvedWorkflows) are
+ * graded through their call job, never on their own.
+ */
+export function postGateClass(wf, gateJob) {
+  const out = [];
+  for (const [id, job] of wf.jobs) {
+    if (id === gateJob || job.calledBy) continue;
+    const cond = job.jobIf === null ? null : job.jobIf.cond;
+    const needsGate = job.needs.includes(gateJob);
+    if (needsGate && cond === POST_GATE_IF) out.push({ id, kind: 'post', cond });
+    else if (needsGate) out.push({ id, kind: 'wide-if', cond });
+    else if (cond === POST_GATE_IF) out.push({ id, kind: 'ungated', cond });
+  }
+  return out;
+}
+
+/** The ids of `wf`'s post-gate jobs after aggregator `gateJob` (postGateClass `post`). */
+export const postGateJobs = (wf, gateJob) => postGateClass(wf, gateJob).filter((c) => c.kind === 'post').map((c) => c.id);
+
+/**
+ * WHERE A LANE FILE RUNS. ⏱ 2026-09-25 [ADR 095 §4] A lane names the file that
+ * holds its steps. A `workflow_call`-only file never runs on its own: it runs as
+ * the children of the ONE call job that calls it, under that caller's `on:`, run
+ * number and run id. `scan` is parseResolvedWorkflows(root). Returns one of:
+ *   `{ workflow: file, callJob: null, children: null }`  `file` runs as itself;
+ *   `{ workflow, callJob, children }`  exactly one call job runs it: `workflow` is
+ *       the caller, `children` its resolved `<callJob>/<job>` jobs;
+ *   `{ refusal: { kind, at, path, hosts } }`  `kind` is `orphan-callee` (no call
+ *       job runs it), `ambiguous-callee` (two or more do: reading one would leave
+ *       the other ungraded) or `missing` (no such workflow).
+ * The one derivation every lane reader uses; laneRefusalText is its sentence.
+ */
+export function laneRunHost(scan, file) {
+  if (scan.workflows.some((w) => w.rel === file)) return { workflow: file, callJob: null, children: null };
+  const hosts = new Map();
+  for (const wf of scan.workflows) {
+    for (const job of wf.jobs.values()) {
+      if (job.callee !== file) continue;
+      const key = `${wf.rel}#${job.calledBy}`;
+      if (!hosts.has(key)) hosts.set(key, { workflow: wf.rel, callJob: job.calledBy, children: [] });
+      hosts.get(key).children.push(job);
+    }
+  }
+  if (hosts.size === 1) return [...hosts.values()][0];
+  const kind = hosts.size > 1 ? 'ambiguous-callee' : scan.filesRead.includes(file) ? 'orphan-callee' : 'missing';
+  return { refusal: { kind, at: hosts.size > 1 ? [...hosts.keys()].join(', ') : `${file}:1`, path: file, hosts: hosts.size } };
+}
+
+/** The one sentence a lane reader prints when laneRunHost refused. */
+export const laneRefusalText = (r) =>
+  r.kind === 'ambiguous-callee'
+    ? `${r.path} is \`workflow_call\`-only and ${r.hosts} call job(s) run it (${r.at}). A lane has ONE run host; grading one of them would leave the other unread.`
+    : r.kind === 'orphan-callee'
+      ? `${r.path} is \`workflow_call\`-only and no call job runs it (orphan-callee), so the lane it names never runs.`
+      : `${r.path} is not a workflow in this tree (missing).`;
