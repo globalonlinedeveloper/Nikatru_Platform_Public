@@ -348,7 +348,9 @@ const APP_CONFIG = 'lib/core/app_config.dart';
 //   · `delete-account.html` is reached from a real in-app CONTROL rather than
 //     from a link (the erasure path performs the deletion; the page explains
 //     it), and that control is already asserted by the `account-deletion-works`
-//     key including its `ACCOUNT_ROUTE` identity-delete anchor. Linking it as a
+//     key including its `ACCOUNT_ROUTE` identity-delete anchor (⏱ 2026-09-24:
+//     now an ABSENT anchor — the stamped route must leave the identity to the
+//     platform, which the stamped client enters at). Linking it as a
 //     third document as well would put two different affordances for the same
 //     irreversible action next to each other, which [pipeline C-13] deliberately
 //     avoided when it ordered sign-out above delete.
@@ -1094,8 +1096,19 @@ const REQUIRED_COVERAGE = [
       // …and wiring it to a route that leaves the identity behind would be
       // worse than the refusal: "your account is deleted" followed by a login
       // that still works is the one failure a user cannot detect.
-      { file: ACCOUNT_ROUTE, re: /auth\/v1\/admin\/users\//, what: 'the stamped route must delete the IDENTITY record too — purging rows and entitlements while the login still works is a deletion the user can never verify [master §0.1 G2]' },
-      { file: ACCOUNT_ROUTE, re: /SUPABASE_SERVICE_ROLE_KEY/, what: 'the identity delete needs the service-role credential, and the route must refuse rather than report a success it cannot deliver' },
+      //
+      // ⏱ 2026-09-24 · O-BRICK-ERASURE-DESTROYS-THE-IDENTITY · INVERTED. These
+      // two anchors used to REQUIRE the stamped route to call
+      // `auth/v1/admin/users` with the service-role key, which made every stamp a
+      // SECOND identity deleter beside the platform's — one that skipped the
+      // signup purge, the Apple revoke and the fan-out the platform runs first.
+      // The identity is still deleted, by the shared platform Worker, which the
+      // stamped client now enters at; so the property the user relies on is
+      // kept, and the stamped Worker must NOT do it. `absent: true` reads over
+      // the same comment-stripped source, so a sentence ABOUT the endpoint in a
+      // comment is not a call, and an unreadable route is still a failure.
+      { file: ACCOUNT_ROUTE, absent: true, re: /auth\/v1\/admin\/users/, what: 'the stamped route must NOT delete the identity record — the platform is the one deleter' },
+      { file: ACCOUNT_ROUTE, absent: true, re: /SUPABASE_SERVICE_ROLE_KEY/, what: 'the stamped Worker must not hold the service-role credential' },
     ],
     why: 'both stores require a WORKING in-app deletion path wherever an account can be created',
   },
@@ -1619,7 +1632,11 @@ const DOMAIN_RE = /^final\s+[\w<>,?\s.()]*?\b(\w+Provider)\s*=/gm;
 // POST /v1/report). NOT classified under a property: it is an admitted, dated gap in
 // UNASSERTED, because every stamp is `generatesAiContent = false` and a stamped-app
 // property needs one that is true. Same commit as the provider.
-const MIN_DOMAIN = 62;
+// 2026-09-24: 62 → 63 with `platformRestClientProvider`
+// (O-BRICK-ERASURE-DESTROYS-THE-IDENTITY: account deletion and the Apple token now
+// enter at the shared platform Worker). An ADMITTED gap in UNASSERTED, with its
+// reason; same commit as the provider.
+const MIN_DOMAIN = 63;
 
 // Each key names the property that actually exercises it — the property test
 // must drive this provider, not merely construct it.
@@ -1874,6 +1891,7 @@ const COVERED_BY = {
 // it stays uncomfortable. Per the C-16 lock, new properties arrive WITH their
 // features; nothing here is to be invented to empty the list.
 const UNASSERTED = {
+  platformRestClientProvider: '2026-09-24 · O-BRICK-ERASURE-DESTROYS-THE-IDENTITY. The client account deletion and the Apple refresh token ride to the SHARED platform Worker. Its host is held statically by tooling/ci/assert-deletion-control.mjs limb 7 (built on kPlatformBaseUrl, never apiBaseUrl), and the brick\'s test/platform_client_test.dart drives the erasure closure\'s read of it (no provider cycle, #258). No CHASSIS property drives it: that needs chassis_properties_test.dart, which this lane does not edit',
   // The money rail's remaining gaps. Each is exercised in packages/purchases'
   // own suite; what is missing is a STAMPED-APP assertion, which is a different
   // and stronger claim.
@@ -2549,8 +2567,17 @@ function auditPropertyRoot(root, sink) {
         anchored = false;
         break;
       }
-      if (!s.re.test(src)) {
-        sink.fail(`${root}: property '${p.key}' is asserted but its IMPLEMENTATION is gone in ${path} — ${s.what}${domain.length > 1 ? ` (searched the whole spine: ${domain.length} file(s))` : ''}`);
+      // ⏱ 2026-09-24 · AN ABSENT ANCHOR. `absent: true` inverts the test: the
+      // shape must NOT be in the comment-stripped source. It is read through the
+      // same `try` above, so a route file that cannot be read is still "could
+      // not be read" — never an absence that passes because nothing was looked at.
+      const hit = s.re.test(src);
+      if (s.absent ? hit : !hit) {
+        sink.fail(
+          s.absent
+            ? `${root}: property '${p.key}' — ${path} still does what it must not: ${s.what}`
+            : `${root}: property '${p.key}' is asserted but its IMPLEMENTATION is gone in ${path} — ${s.what}${domain.length > 1 ? ` (searched the whole spine: ${domain.length} file(s))` : ''}`,
+        );
         anchored = false;
         break;
       }

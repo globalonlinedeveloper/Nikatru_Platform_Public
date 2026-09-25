@@ -486,6 +486,34 @@ const String kPlatformBaseUrl = String.fromEnvironment(
   defaultValue: 'https://platform.nikatru.com',
 );
 
+/// The authenticated REST client for the SHARED platform Worker — where account
+/// deletion ENTERS, and where Apple's refresh token is kept for its revoke.
+///
+/// ⏱ 2026-09-24 · O-BRICK-ERASURE-DESTROYS-THE-IDENTITY. Deletion used to ride
+/// [restClientProvider] to this app's own Worker, whose route then deleted the
+/// identity itself — a second identity deleter in every stamped app, beside the
+/// platform's, skipping the signup purge, the Apple revoke and the fan-out to
+/// every other app. The platform's `DELETE /v1/account` does all of those, relays
+/// to this app's Worker for its own rows, and deletes the identity LAST. This is
+/// the live app's shape (`apps/subscriptiontracker/lib/state/providers/auth.dart`,
+/// its own `platformRestClientProvider`), per app rather than in a package
+/// because `packages/**` is a deploy path.
+///
+/// 🔴 IT WATCHES [authTokenProvider], NEVER [authRepositoryProvider]. The erasure
+/// closure in [authRepositoryProvider] reads THIS provider, and Riverpod's
+/// `ref.read` throws `CircularDependencyError` when the target has the reader as
+/// an ancestor — the live app's defect #258, which sent zero `/v1/account`
+/// requests. [authTokenProvider] only READS the repository, so no edge exists.
+/// `tooling/ci/assert-deletion-control.mjs` limb 7 holds the host: the client
+/// deletion rides must be built on [kPlatformBaseUrl], never on
+/// `AppConfig.apiBaseUrl`.
+final Provider<RestClient> platformRestClientProvider = Provider<RestClient>(
+  (ref) => RestClient(
+    baseUrl: '$kPlatformBaseUrl/v1',
+    tokenProvider: ref.watch(authTokenProvider),
+  ),
+);
+
 /// The in-app AI content report — `POST /v1/report` on the SHARED platform
 /// host. O-PLAY-AI-CONTENT-REPORTING.
 ///
@@ -1044,7 +1072,14 @@ String _generateInstallId() {
 /// user was signed OUT and never deleted. Both stores require a WORKING in-app
 /// deletion path wherever an account can be created.
 ///
-/// `ref.read` INSIDE the closure, not at build time: [restClientProvider]
+/// ⏱ 2026-09-24 · IT GOES TO [platformRestClientProvider], NOT
+/// [restClientProvider], AND IT STAYS ONE CALL. The shared platform Worker is
+/// the erasure ENTRY POINT: it empties `platform_db`, relays to this app's own
+/// Worker (once the app is listed in its `APP_ERASURE_ENDPOINTS`), and deletes
+/// the identity LAST. This app's Worker erases its own rows and nothing else,
+/// so pointing deletion at it would delete rows and leave the login working.
+///
+/// `ref.read` INSIDE the closure, not at build time: [platformRestClientProvider]
 /// watches [authTokenProvider], which reads this provider, so resolving the
 /// client out here would be a cycle. Deletion happens long after both exist.
 ///
@@ -1061,7 +1096,7 @@ authRepositoryProvider = Provider<core.AuthRepository>((ref) {
   if (!AppConfig.isBackendLive) return InMemoryAuthRepository();
   return SupabaseAuthRepository(
     requestServerDeletion: () =>
-        requestAccountDeletion(ref.read(restClientProvider)),
+        requestAccountDeletion(ref.read(platformRestClientProvider)),
     // 🔴 WITHOUT THIS EVERY AUTH MAIL POINTS AT THE PROJECT'S SITE URL, which
     // is ONE URL for the whole portfolio — so a stamped app's users would
     // confirm, reset and return from OAuth into a DIFFERENT app. Nothing
@@ -1293,11 +1328,16 @@ final Provider<Future<String?> Function()> authTokenProvider =
 ///
 /// Held open for the app's whole life by a `ref.watch` in the root widget: a
 /// provider nobody reads is a listener that never subscribes.
+///
+/// ⏱ 2026-09-24 · SENT TO THE PLATFORM, via [platformRestClientProvider]. The
+/// token is stored by `PUT /v1/account/apple-token` on the SHARED Worker, which
+/// is the one that revokes it at deletion; this app's own Worker has no such
+/// route, so sending it there kept nothing to revoke with.
 final Provider<void> appleTokenKeeperProvider = Provider<void>((ref) {
   final StreamSubscription<core.AuthUser?> sub = core.keepAppleRefreshToken(
     auth: ref.watch(authRepositoryProvider),
     send: (String token) => storeAppleRefreshToken(
-      ref.read(restClientProvider),
+      ref.read(platformRestClientProvider),
       token,
       appId: AppConfig.appId,
     ),

@@ -147,24 +147,16 @@ const DECLARED_WRITERS = [
     worldColumnWhy:
       'the shared entitlement read decides live-vs-sandbox from this column; a row without it is undecidable and is denied',
   },
-  {
-    // 🔴 FOUND BY THIS GUARD ON ITS FIRST RUN AGAINST THE REAL TREE, and it is
-    // the reason limb 1 scans the brick template rather than services/** alone:
-    // every app this factory stamps inherits a Worker that deletes rows from the
-    // SHARED entitlements table. That is not a money write and it is entirely
-    // correct — but it IS a per-app Worker touching the portfolio's money table,
-    // which is precisely the class of thing that must be declared rather than
-    // discovered.
-    file: 'tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/src/routes/account.ts',
-    gate: 'authenticated_erasure',
-    why: 'G2 in-app account deletion. It DELETES the calling user\'s own entitlement rows as part of a DPDP erasure — it never grants, never revokes-for-non-payment, and never writes a row. Reached only behind the Supabase JWT middleware, and narrowed to the authenticated subject.',
-    retire:
-      'NOT scheduled for retirement — erasure is identity, not money ([ADR 020]:57 lists DELETE /v1/account beside the MoR webhook as a separate concern). It is declared here so that a per-app Worker touching the shared money table is a line in a diff rather than something a later reader has to notice.',
-    // The structural property: the delete must be narrowed to the authenticated
-    // user. An unfiltered DELETE here would empty the portfolio's entitlements.
-    proof: /DELETE\s+FROM\s+entitlements\s+WHERE\s+user_id\s*=\s*\?/i,
-    proofWhat: 'a DELETE narrowed to `WHERE user_id = ?`',
-  },
+  // ⏱ 2026-09-24 · O-BRICK-ERASURE-DESTROYS-THE-IDENTITY — THE BRICK ROW IS GONE,
+  // WITH THE WRITE IT DECLARED. It named the stamped Worker's
+  // `src/routes/account.ts` (gate `authenticated_erasure`), which deleted the
+  // caller's rows from the SHARED entitlements table as part of G2 — found by
+  // this guard on its first run, and the reason limb 1 scans the brick template
+  // at all. That route now erases its own APP_DB and nothing else; the shared
+  // Worker erases the entitlement rows before it deletes the identity. So a
+  // stamped app Worker writes this table nowhere, and if one ever does again it
+  // is undeclared and red here — the brick stays in REQUIRED_COVERAGE for exactly
+  // that. Removed in the same commit as the write it declared.
 ];
 
 // ── the scan ─────────────────────────────────────────────────────────────────

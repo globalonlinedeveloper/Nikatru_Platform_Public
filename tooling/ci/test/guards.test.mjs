@@ -4836,6 +4836,9 @@ final Provider<core.AgeSignalSource> ageSignalSourceProvider = X();
 // Here for the same both-directions classification reason as the rows above.
 final Provider<void> appleTokenKeeperProvider = X();
 final Provider<void> _appleKeeper = core.keepAppleRefreshToken(auth: X(), send: X(), onError: X());
+// O-BRICK-ERASURE-DESTROYS-THE-IDENTITY, 2026-09-24 — the platform client deletion
+// and the Apple token ride. Here for the same both-directions classification reason.
+final Provider<RestClient> platformRestClientProvider = X();
 final Provider<core.ConsentStatus> analyticsConsentProvider = X();
 final Provider<bool> consentDecidedProvider = X();
 // The legal gate's anchors, and all three are load-bearing for the
@@ -5233,18 +5236,20 @@ class NotificationTapObserver {
   // deletion still be a lie: this route used to purge the app's rows and the
   // user's entitlements and leave the identity record alone, so the same
   // password still logged in afterwards.
+  //
+  // ⏱ 2026-09-24 · O-BRICK-ERASURE-DESTROYS-THE-IDENTITY: the fix for that made
+  // the stamped route a SECOND identity deleter. The identity is the platform
+  // Worker's to delete, so the good route is now the flagship shape — APP_DB rows
+  // only — and the two cases below pin the inverted (absent) anchors.
   const ACCOUNT_ROUTE =
     'tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/src/routes/account.ts';
   const goodAccountRoute = `
 account.delete('/', async (c) => {
-  const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!serviceRoleKey) return c.json({ error: 'account_deletion_unconfigured' }, 501);
-  const identityRes = await fetch(
-    \`\${c.env.SUPABASE_URL}/auth/v1/admin/users/\${encodeURIComponent(userId)}\`,
-    { method: 'DELETE', headers: { apikey: serviceRoleKey } },
-  );
-  if (!identityRes.ok && identityRes.status !== 404) return c.json({ error: 'identity_delete_failed' }, 502);
-  return c.json({ ok: true, deleted });
+  const assurance = c.get('tokenAssurance');
+  if (assurance !== 'asymmetric') return c.json({ error: 'erasure_requires_asymmetric_auth' }, 403);
+  const walked = await eraseSubjectRows(c.env.APP_DB, userId);
+  if (!walked.ok) return c.json({ error: walked.error }, 503);
+  return c.json(walked);
 });
 `;
 
@@ -6991,27 +6996,35 @@ onTap: () => _openUrl(AppConfig.refundUrl),
       assert.match(out, /must resolve WHICH refusal it was/);
     });
 
-    // …and wiring it to a route that leaves the identity behind is WORSE than
-    // the refusal: the user is told they are deleted and their login still
-    // works, which is the one failure they can never detect.
-    test('FAILS when the server route stops deleting the identity record', () => {
+    // ⏱ 2026-09-24 · O-BRICK-ERASURE-DESTROYS-THE-IDENTITY — INVERTED, IN PLACE.
+    // These two cases used to pin that the stamped route DID delete the identity
+    // with the service-role key. The identity has one deleter, in the platform
+    // Worker the stamped client now enters at; a stamped route that calls the
+    // identity endpoint, or reads the key, is a second one.
+    test('FAILS when the stamped route calls the identity endpoint', () => {
+      const route = goodAccountRoute.replace(
+        '  return c.json(walked);\n',
+        "  await fetch(`${c.env.SUPABASE_URL}/auth/v1/admin/users/${encodeURIComponent(userId)}`, { method: 'DELETE' });\n  return c.json(walked);\n",
+      );
+      assert.notEqual(route, goodAccountRoute, 'the mutation did not apply — a test that mutates nothing proves nothing');
       const { code, out } = run('assert-stamp-properties.mjs', {
-        cwd: build('sp-noidentity', {
-          accountRoute: goodAccountRoute.replace('/auth/v1/admin/users/', '/rest/v1/records/'),
-        }),
+        cwd: build('sp-noidentity', { accountRoute: route }),
       });
       assert.equal(code, 1);
-      assert.match(out, /must delete the IDENTITY record too/);
+      assert.match(out, /still does what it must not: the stamped route must NOT delete the identity record/);
     });
 
-    test('FAILS when the route stops requiring the service-role credential', () => {
+    test('FAILS when the stamped route reads the service-role credential', () => {
+      const route = goodAccountRoute.replace(
+        "  const assurance = c.get('tokenAssurance');\n",
+        "  const assurance = c.get('tokenAssurance');\n  const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY;\n",
+      );
+      assert.notEqual(route, goodAccountRoute, 'the mutation did not apply — a test that mutates nothing proves nothing');
       const { code, out } = run('assert-stamp-properties.mjs', {
-        cwd: build('sp-nosvcrole', {
-          accountRoute: goodAccountRoute.replaceAll('SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_ANON_KEY'),
-        }),
+        cwd: build('sp-nosvcrole', { accountRoute: route }),
       });
       assert.equal(code, 1);
-      assert.match(out, /needs the service-role credential/);
+      assert.match(out, /still does what it must not: the stamped Worker must not hold the service-role credential/);
     });
   });
 
@@ -7385,7 +7398,9 @@ onTap: () => _openUrl(AppConfig.refundUrl),
       // `apple-token-kept`, so the gap count does not move.
       // 62 since 2026-09-18: `contentReportTransportProvider`, an ADMITTED gap, so the
       // gap count below moves too (10 → 11).
-      assert.match(out, /tracked domain: 62 chassis behaviour\(s\)/);
+      // 63 since 2026-09-24: `platformRestClientProvider`, an ADMITTED gap, so the gap
+      // count below moves too (11 → 12).
+      assert.match(out, /tracked domain: 63 chassis behaviour\(s\)/);
       // The admitted gaps must PRINT. An inventory nobody sees is a list that
       // quietly grows; this is the same reasoning as the owner-gated residual.
       // 9, not 10: [pipeline C-13] moved notificationServiceProvider out of the
@@ -7417,7 +7432,11 @@ onTap: () => _openUrl(AppConfig.refundUrl),
       // them as covered because a test somewhere touches them is exactly the
       // inflation the two moves above were corrections FOR. The third addition,
       // `promoObjectedProvider`, is genuinely driven and does not appear here.
-      assert.match(out, /11 chassis behaviour\(s\) a stamped app does NOT prove/);
+      //
+      // 12 since 2026-09-24: `platformRestClientProvider`, admitted with its reason —
+      // limb 7 of assert-deletion-control holds its host and a brick Dart test its
+      // cycle, but no CHASSIS property drives it.
+      assert.match(out, /12 chassis behaviour\(s\) a stamped app does NOT prove/);
       // A gap that is STILL a gap, named — so this assertion cannot be
       // satisfied by the list going empty.
       assert.match(out, /featureFlagsProvider/);
@@ -7473,7 +7492,8 @@ onTap: () => _openUrl(AppConfig.refundUrl),
       // ([ADR 082] §5); MIN_DOMAIN went 59 → 60 in the same commit.
       // 2026-09-16: 59 → 60 for `appleTokenKeeperProvider`; MIN_DOMAIN went 60 → 61.
       // 2026-09-18: 60 → 61 for `contentReportTransportProvider`; MIN_DOMAIN went 61 → 62.
-      assert.match(out, /COVERAGE LOST — the domain parse found 61/);
+      // 2026-09-24: 61 → 62 for `platformRestClientProvider`; MIN_DOMAIN went 62 → 63.
+      assert.match(out, /COVERAGE LOST — the domain parse found 62/);
     });
 
     // The scanner-stopped-scanning case, which is how this repo has been bitten

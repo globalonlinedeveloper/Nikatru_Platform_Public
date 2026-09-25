@@ -542,9 +542,9 @@ String deleteAccountFailureMessage(
     // chassis is a compile error here instead of a silently wrong sentence.
     case core.AccountDeletionOutcome.deleted:
       return l10n.deleteAccountFailed;
-    // 501 — the route refused BEFORE touching anything, because it cannot
-    // remove the identity record (`SUPABASE_SERVICE_ROLE_KEY` is an owner
-    // action). Nothing was deleted, and that is safe to say.
+    // 501 — the shared platform Worker refused BEFORE touching anything: it
+    // cannot remove the identity record (its `SUPABASE_SERVICE_ROLE_KEY` is an
+    // owner action). Nothing was deleted, and that is safe to say.
     // ⏱ 2026-09-15 · 202 erasure_pending ([ADR 081]): accepted and still
     // finishing. Not a failure and not "deleted" — its own sentence.
     case core.AccountDeletionOutcome.pending:

@@ -2,7 +2,8 @@
 // Worker entrypoint for {{app_id}}-api. Wires CORS, a public health check, and a
 // Supabase-JWT-protected /v1 API group (incl. G2 account deletion).
 //   PUBLIC  GET    /v1/health   — deploy verification, no auth.
-//   AUTH    DELETE /v1/account  — G2 in-app account deletion.
+//   AUTH    DELETE /v1/account  — G2 in-app account deletion, this app's APP_DB
+//                                 half; the platform Worker relays to it.
 // ─────────────────────────────────────────────────────────────────────────────
 import { Hono } from 'hono';
 import type { AppEnv } from './types';
@@ -46,10 +47,10 @@ app.use('*', corsMiddleware);
 //
 // ── WHY THESE THREE DEPENDENCIES, AND ONLY THESE ─────────────────────────────
 //   app_db         this app's own D1. Every user-owned row lives here.
-//   platform_db    the SHARED entitlements database `DELETE /v1/account` purges
-//                  from — and that route swallows a failure there, so a broken
-//                  read leaves entitlements behind on a deletion the user was
-//                  told succeeded, with nothing else to report it.
+//   platform_db    the SHARED entitlements database this Worker binds. ⏱
+//                  2026-09-24: `DELETE /v1/account` no longer purges from it —
+//                  the platform Worker erases those rows — so this probe now
+//                  reports only that the shared binding is reachable.
 //   supabase_jwks  the document every ES256 verification in middleware/auth.ts
 //                  rests on; when it is unreachable every authenticated route
 //                  401s while the Worker itself is perfectly well.

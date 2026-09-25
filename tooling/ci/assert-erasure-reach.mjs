@@ -39,6 +39,12 @@
 // TEMPLATE ROOT below cannot ask limb 1's question through the register and asks
 // a different one instead: does the route's table set COVER the template's own
 // schema. Both shipped routes say so in their own headers; nothing enforced it.
+// ⏱ 2026-09-24 · CORRECTED BESIDE THE WORDS ABOVE, which were stale before today:
+// the brick's route has carried no `appTables` list since 2026-09-12 (it derives
+// through `src/lib/erase-subject.ts` → services/_shared/src/erasure.ts, which T1
+// follows), and since O-BRICK-ERASURE-DESTROYS-THE-IDENTITY it erases APP_DB rows
+// and nothing else — no PLATFORM_DB, no identity. T1 still asks its question for
+// the day a template goes back to a list.
 //
 // ── WHAT IS CHECKED ─────────────────────────────────────────────────────────
 //   1. NO USER-OWNED TABLE IS ORPHANED. Every table whose migrations give it a
@@ -67,6 +73,21 @@
 //      erasure route must be named in that Worker's `APP_ERASURE_ENDPOINTS`, and
 //      every name in that list must be a service that exists. Both directions, so
 //      binding app #2's database cannot silently skip its erasure.
+//   6. ⏱ 2026-09-24 · O-BRICK-ERASURE-DESTROYS-THE-IDENTITY · ONE IDENTITY
+//      DELETER. Across every Worker `src` tree — each live service, the shared
+//      `services/_shared/src` and every template — read comment-stripped with
+//      strings KEPT (the endpoint is spelled inside one): EXACTLY ONE file
+//      references `auth/v1/admin/users`, it lies inside the entry Worker, and
+//      no template references it. Until today the brick template REQUIRED its
+//      stamped route to delete the identity, so every stamped app was born a
+//      second deleter that skipped the signup purge, the Apple revoke and the
+//      fan-out. Finding NONE is COVERAGE LOST (the scan is broken, or the one
+//      deleter moved beyond it). Test files are not counted: they stub the
+//      endpoint, they do not call it. `--stamped <dir>` runs this limb ALONE
+//      over one stamped Worker (0 callers, and it must carry
+//      src/routes/account.ts), because the full run fails limb 4 on a stamp
+//      that is not yet in APP_ERASURE_ENDPOINTS — which is correct, and not
+//      this question.
 //
 // ── THE TEMPLATE ROOT, AND WHY LIMBS 1–4 COULD NOT SEE IT ───────────────────
 // 🔴 THE SUBJECT WAS `services/` AND THE REGISTER, AND THAT IS ONE OF TWO ROOTS.
@@ -184,6 +205,7 @@
 // renamed the identifier to a different word, which the unanchored regex caught.
 //
 // Usage:  node tooling/ci/assert-erasure-reach.mjs [repoRoot]
+//         node tooling/ci/assert-erasure-reach.mjs --stamped <workerDir> [repoRoot]
 // ─────────────────────────────────────────────────────────────────────────────
 import { existsSync, readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
@@ -192,7 +214,13 @@ import { dirname, join, resolve, sep } from 'node:path';
 import { stripSourceComments, stripStringLiterals } from './text-reductions.mjs';
 import { listDir, boundedGlob } from './tree-walk.mjs';
 
-const ROOT = resolve(process.argv[2] ?? process.cwd());
+// ⏱ 2026-09-24 · `--stamped <dir>` is taken out of argv FIRST, so the positional
+// repo root keeps the meaning it has always had.
+const ARGS = process.argv.slice(2);
+const STAMPED_FLAG = ARGS.indexOf('--stamped');
+const STAMPED = STAMPED_FLAG === -1 ? null : (ARGS[STAMPED_FLAG + 1] ?? '');
+const POSITIONAL = STAMPED_FLAG === -1 ? ARGS : ARGS.filter((_, i) => i !== STAMPED_FLAG && i !== STAMPED_FLAG + 1);
+const ROOT = resolve(POSITIONAL[0] ?? process.cwd());
 const SERVICES = join(ROOT, 'services');
 const REGISTER = join(ROOT, 'tooling', 'legal', 'data-inventory.json');
 
@@ -227,6 +255,52 @@ const coverageLost = (lines) => {
 
 const jsoncParse = (text) => JSON.parse(stripSourceComments(text, '.ts').replace(/,(\s*[}\]])/g, '$1'));
 const readCode = (p) => stripSourceComments(readFileSync(p, 'utf8'), '.ts');
+
+/** LIMB 6's subject: the Supabase admin endpoint that deletes an identity. Read
+ *  over comment-stripped code with strings KEPT — the path is spelled inside a
+ *  template literal, so blanking strings would blank the subject. */
+const IDENTITY_ENDPOINT = /auth\/v1\/admin\/users/;
+
+// ── `--stamped <dir>` · LIMB 6 ALONE, OVER ONE STAMPED WORKER ────────────────
+// ⏱ 2026-09-24 · O-BRICK-ERASURE-DESTROYS-THE-IDENTITY. ci.yml's app-brick job
+// stamps `services/probeapi-api` and runs this over it: the row's "stamp-probe
+// run whose scratch Worker has no admin/users call". The full run cannot be used
+// there — a fresh stamp is not in APP_ERASURE_ENDPOINTS, so limb 4 is red on it,
+// correctly. Exit 2 if the directory carries no src/routes/account.ts: a check
+// over a Worker with no erasure route says nothing about its erasure route.
+if (STAMPED !== null) {
+  if (STAMPED === '') {
+    coverageLost(['`--stamped` was given no directory, so there is no stamped Worker to read.']);
+  }
+  const dir = resolve(ROOT, STAMPED);
+  const shown = STAMPED.replaceAll('\\', '/');
+  if (!existsSync(join(dir, 'src', 'routes', 'account.ts'))) {
+    coverageLost([
+      `${shown}/src/routes/account.ts does not exist, so ${shown} is not a stamped backend Worker this limb can read.`,
+      'A stamped Worker carries its erasure route there. Over a directory without one, "0 identity-delete callers"',
+      'would be true of anything — which is the vacuous pass this guard refuses everywhere else.',
+    ]);
+  }
+  const files = codeFilesUnder(join(dir, 'src'));
+  const callers = files.filter((f) => IDENTITY_ENDPOINT.test(readCode(f)));
+  if (callers.length) {
+    console.error(`✗ erasure reach --stamped — ${shown} is an identity deleter:`);
+    for (const f of callers) {
+      console.error(
+        `    ${shown}/${f.slice(dir.length + 1).replaceAll('\\', '/')} calls \`auth/v1/admin/users\`. A stamped Worker ` +
+          'erases its own APP_DB rows and nothing else; the identity is deleted by ONE piece of code, in the shared ' +
+          'platform Worker, after every app has erased its rows. [O-BRICK-ERASURE-DESTROYS-THE-IDENTITY]',
+      );
+    }
+    process.exit(1);
+  }
+  console.log(
+    `ok  erasure reach --stamped ${shown} — 0 caller(s) of \`auth/v1/admin/users\` across ${files.length} src file(s), ` +
+      'comments stripped and strings kept: this stamped Worker is not an identity deleter (limb 6 alone; the full run ' +
+      'is not applicable to a stamp that APP_ERASURE_ENDPOINTS does not name yet)',
+  );
+  process.exit(0);
+}
 
 // ── the domain ──────────────────────────────────────────────────────────────
 if (!existsSync(SERVICES)) {
@@ -1025,7 +1099,9 @@ const enclosingBlockStart = (text, idx) => {
   }
   return -1;
 };
-const codeFilesUnder = (dir) => {
+// A function DECLARATION since 2026-09-24, so it is hoisted: the `--stamped`
+// branch near the top of this file calls it before this line runs.
+function codeFilesUnder(dir) {
   const out = [];
   if (!existsSync(dir)) return out;
   for (const d of listDir(dir, { withFileTypes: true })) {
@@ -1034,7 +1110,7 @@ const codeFilesUnder = (dir) => {
     else if (/\.(ts|js|mjs)$/.test(d.name)) out.push(abs);
   }
   return out;
-};
+}
 for (const row of verifiedRows) {
   const e = row.erasure ?? {};
   const table = String(row.name ?? '');
@@ -1362,6 +1438,65 @@ for (const tpl of templateOwners) {
   }
 }
 
+// ── LIMB 6 · ⏱ 2026-09-24 · ONE IDENTITY DELETER, AND IT IS THE ENTRY WORKER'S ──
+// See the header. Every Worker `src` tree this guard knows — each live service,
+// the shared home every carrier re-exports, and every template — so a second
+// deleter cannot hide in a file no other limb opens. The entry Worker is the one
+// limb 4 found (the owner of platform_db), never a path typed here.
+const deleterTrees = [
+  ...services.map((s) => ({ dir: join(s.dir, 'src'), kind: 'live' })),
+  { dir: join(SERVICES, '_shared', 'src'), kind: 'shared' },
+  ...templateConfigs.map((c) => ({
+    dir: join(ROOT, ...c.slice(0, c.lastIndexOf('/')).split('/'), 'src'),
+    kind: 'template',
+  })),
+];
+let deleterFilesRead = 0;
+const deleters = [];
+for (const t of deleterTrees) {
+  for (const f of codeFilesUnder(t.dir)) {
+    deleterFilesRead++;
+    if (IDENTITY_ENDPOINT.test(readCode(f))) deleters.push({ file: toPosix(f.slice(ROOT.length + 1)), kind: t.kind, abs: f });
+  }
+}
+const inEntry = deleters.filter((d) => d.kind === 'live' && d.abs.startsWith(entry.dir + sep));
+if (deleters.length === 0) {
+  const why = [
+    `no Worker src file references \`auth/v1/admin/users\` (${deleterFilesRead} file(s) read across ${deleterTrees.length} tree(s)).`,
+    'Limb 6 asserts there is exactly ONE identity deleter. Finding none means the scan stopped seeing it, or it moved',
+    'somewhere no tree above reaches — and "no second deleter" over a scan that sees no first one proves nothing.',
+  ];
+  if (problems.length === 0) coverageLost(why);
+  problems.push(`COVERAGE LOST — ${why.join(' ')}`);
+}
+for (const d of deleters) {
+  if (d.kind === 'template') {
+    problems.push(
+      `${d.file} references \`auth/v1/admin/users\`, and it is a TEMPLATE: every app stamped from it is born a second ` +
+        'identity deleter. A stamped Worker erases its own APP_DB rows and nothing else; the shared platform Worker ' +
+        'deletes the identity, after every app has erased its rows. [O-BRICK-ERASURE-DESTROYS-THE-IDENTITY]',
+    );
+  } else if (!inEntry.includes(d)) {
+    problems.push(
+      `${d.file} references \`auth/v1/admin/users\` and is outside the entry Worker (services/${entry.id}). The identity ` +
+        'is deleted by ONE piece of code, inside the Worker that orders the whole erasure; a deleter anywhere else ' +
+        'skips that ordering. [O-BRICK-ERASURE-DESTROYS-THE-IDENTITY]',
+    );
+  }
+}
+if (inEntry.length > 1) {
+  problems.push(
+    `${inEntry.length} files in services/${entry.id} reference \`auth/v1/admin/users\` (${inEntry.map((d) => d.file).join(', ')}). ` +
+      'There is ONE identity deleter; a second copy inside the same Worker is two paths that must stay equal.',
+  );
+}
+if (deleters.length > 0 && inEntry.length === 0) {
+  problems.push(
+    `the entry Worker (services/${entry.id}) references \`auth/v1/admin/users\` in no src file, and ${deleters.length} file(s) ` +
+      'elsewhere do. The one identity deleter belongs to the Worker that orders the erasure.',
+  );
+}
+
 // ── report ──────────────────────────────────────────────────────────────────
 if (problems.length) {
   console.error(`✗ erasure reach — ${problems.length} problem(s):`);
@@ -1388,6 +1523,11 @@ console.log(
 console.log(
   `    ${verifiedRows.length} address-keyed table(s) reached by CONFIRMED email ([ADR 087]): each delete reads \`email_confirmed_at\` first, ` +
     `and all ${verifiedCallsChecked} identity delete(s) in services/${entry.id}/src call the purge before them in their own block`,
+);
+console.log(
+  `    limb 6: ONE identity deleter — ${inEntry[0].file}, inside the entry Worker; 0 anywhere else across ` +
+    `${deleterFilesRead} Worker src file(s) in ${deleterTrees.length} tree(s) ` +
+    `(${deleterTrees.filter((t) => t.kind === 'template').length} template(s)), comments stripped, strings kept`,
 );
 // 🔴 THE TEMPLATE ROOT IS REPORTED SEPARATELY AND ITS BRANCH IS PRINTED. A
 // second root folded into the counts above would be a union, and the reader

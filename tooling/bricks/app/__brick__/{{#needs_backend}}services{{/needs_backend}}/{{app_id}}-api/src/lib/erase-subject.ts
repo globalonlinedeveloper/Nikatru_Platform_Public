@@ -7,7 +7,9 @@
 // Binding (src/erasure-entrypoint.ts), and the ADR's rule is that the retry runs
 // "the SAME deletion code the public route runs". So the APP_DB walk lives HERE
 // and both doors call it; the public route keeps what only it does (the
-// shared entitlements and the identity record).
+// asymmetric-token and recency refusals, and the HTTP shape). ⏱ 2026-09-24 ·
+// O-BRICK-ERASURE-DESTROYS-THE-IDENTITY: it no longer touches the shared
+// entitlements or the identity record — both are the platform Worker's.
 //
 // The set is DERIVED FROM THE SCHEMA, never listed: `user_id` means the row IS
 // this person's (DELETE), `*_user_id` means the row REFERENCES them (NULL). See
