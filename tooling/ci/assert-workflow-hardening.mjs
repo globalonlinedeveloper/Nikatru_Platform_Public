@@ -25,7 +25,7 @@
 // database access, bypasses RLS) and CLOUDFLARE_API_TOKEN, and it calls a
 // third-party action maintained by an individual.
 //
-// Asserts six things:
+// Asserts eight things:
 //   1. every `uses:` resolves to a 40-hex commit SHA
 //   2. every workflow declares an explicit `permissions:` block
 //   3. …and that block is not `write-all`. Until 2026-08-01 limb 2 was
@@ -66,6 +66,14 @@
 //      be a grep and for what it does not catch.
 //      INV-125 (`Private/requirements/invariants.json`, added 2026-08-26) states
 //      this rule, names this script as its guard, and limb 6 answers to that.
+//   7. no `cancel-in-progress:` can cancel an in-flight run on the default
+//      branch. See "limb 7" below.
+//   8. a `uses:` step that can run after a failure (`failure()`, `always()`,
+//      `cancelled()`) never hands an action a step output that may be empty,
+//      unless its `if:` or the expression itself rules the empty value out.
+//      Added 2026-09-24: store-screenshots.yml's failure upload read
+//      `path: ${{ steps.reg.outputs.dir }}/`, which is `/` when `reg` never ran.
+//      See "limb 8" below.
 //
 // ⚠️ TRADE-OFF ON RECORD: a pinned action stops receiving updates, including
 // security fixes. That is the deliberate exchange — "silently gets new code"
@@ -86,7 +94,8 @@
 //   …where <file> is the body of `gh api repos/OWNER/REPO/actions/workflows`.
 //   Without it limbs 1-4 run exactly as before and limb 5 reports NOT CONSULTED.
 // Exit 0 = hardened. 1 = a real defect (a movable reference, a missing or
-// over-broad permissions block, an unbounded job, a single-brace expression).
+// over-broad permissions block, an unbounded job, a single-brace expression, a
+// cancel that reaches main, a failure-path input that can resolve to empty).
 // 2 = COVERAGE LOST or REFUSED — the repo-wide convention (AGENTS.md; the
 // markerInCode self-check in assert-guard-coverage.mjs holds it). COVERAGE LOST:
 // a lost coverage relationship, including a workflow GitHub holds that this
@@ -106,7 +115,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { listDir } from './tree-walk.mjs';
-import { parseWorkflow, joinBlockScalars, resolveLocalCalls, WORKFLOW_DIR } from './workflow-scan.mjs';
+import { parseWorkflow, joinBlockScalars, workflowSteps, resolveLocalCalls, WORKFLOW_DIR } from './workflow-scan.mjs';
 
 /** Positionals and flags are separated so `--live-workflows=` (limb 5) can be
  *  passed alongside a fixture root. AN UNKNOWN `--flag` IS A REFUSAL, NOT A
@@ -737,6 +746,104 @@ function cancelOnMainDefects(rel, lines) {
   return { judged: found.length, defects };
 }
 
+// ── limb 8: a failure-path action input never reads a step output unguarded ──
+// ⏱ 2026-09-24 (O-CAPTURE-FAILURE-UPLOAD-RESOLVES-TO-ROOT). store-screenshots.yml
+// uploaded its captures on `if: failure()` with `path: ${{ steps.reg.outputs.dir }}/`.
+// When the job fails BEFORE `reg` runs, `reg` is skipped, a skipped step's outputs
+// are the empty string, and upload-artifact is handed `path: /` — the runner's
+// root. A step on a non-success path (`failure()`, `always()`, `cancelled()`,
+// `!cancelled()`) runs precisely when an earlier step may not have, so an output
+// it reads can be empty for the exact run it exists to serve.
+//
+// The rule: on a `uses:` step whose `if:` can run after a failure, every
+// `steps.X.outputs.K` inside a `${{ … }}` of a `with:` value must be covered.
+// Covered means a top-level `&&` conjunct of the `if:` is `steps.X.outputs.K != ''`,
+// `steps.X.outcome == 'success'` or `steps.X.conclusion == 'success'`, or that
+// same expression ends in `|| '<non-empty literal>'`. An `if:` with a top-level
+// `||` covers nothing, since either side alone can open it.
+//
+// ⚠️ KNOWN LIMIT: parseWorkflow blanks ` #…` to the end of a line, so a `#` inside
+// a quoted `with:` value hides the rest of that value from this limb.
+//
+// Reach is a RELATIONSHIP, not a floor, because every fixture in guards.test.mjs
+// is free to carry no failure-path action at all: a raw re-read of each `uses:`
+// step's own lines must count the same non-success `if:`s the `cond` reading
+// judged — self-check (4) below. Only on the real tree does zero also refuse.
+const NON_SUCCESS = /(?:^|[^A-Za-z_.])(?:failure|always|cancelled)\s*\(\s*\)/;
+const RAW_STEP_IF = /^\s*(?:-\s+)?if:\s*(.*)$/;
+const EXPR_SPAN = /\$\{\{([\s\S]*?)\}\}/g;
+const STEP_OUTPUT = /steps\.([A-Za-z0-9_-]+)\.outputs\.([A-Za-z0-9_-]+)/g;
+const NON_EMPTY_FALLBACK = /\|\|\s*(?:'[^']+'|"[^"]+")\s*$/;
+
+/** A condition's top-level `&&` conjuncts, or null when it has a top-level `||`. */
+function conjuncts(cond) {
+  const text = cond.replace(/\$\{\{/g, ' ').replace(/\}\}/g, ' ');
+  const parts = [];
+  let depth = 0;
+  let quote = null;
+  let from = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quote !== null) {
+      if (c === quote) quote = null;
+      continue;
+    }
+    if (c === "'" || c === '"') quote = c;
+    else if (c === '(') depth += 1;
+    else if (c === ')') depth -= 1;
+    else if (depth === 0 && text.startsWith('||', i)) return null;
+    else if (depth === 0 && text.startsWith('&&', i)) {
+      parts.push(text.slice(from, i));
+      from = i + 2;
+      i += 1;
+    }
+  }
+  parts.push(text.slice(from));
+  return parts.map((p) => p.trim());
+}
+
+/** What an `if:` proves non-empty: `steps.X` (every output of X) or `steps.X.outputs.K`. */
+function coveredBy(cond) {
+  const covered = new Set();
+  for (const c of conjuncts(cond) ?? []) {
+    let m;
+    if ((m = c.match(/^steps\.([A-Za-z0-9_-]+)\.outputs\.([A-Za-z0-9_-]+)\s*!=\s*(?:''|"")$/))) covered.add(`steps.${m[1]}.outputs.${m[2]}`);
+    else if ((m = c.match(/^steps\.([A-Za-z0-9_-]+)\.(?:outcome|conclusion)\s*==\s*(?:'success'|"success")$/))) covered.add(`steps.${m[1]}`);
+  }
+  return covered;
+}
+
+/** Limb 8 over one job of one workflow. Counts into the two reach counters. */
+function failureInputDefects(rel, parsed, job) {
+  const defects = [];
+  for (const step of workflowSteps(job)) {
+    if (step.uses === null) continue;
+    const own = parsed.lines.slice(step.first - 1, step.last);
+    if (own.some((l) => NON_SUCCESS.test(l.text.match(RAW_STEP_IF)?.[1] ?? ''))) failureUsesRaw++;
+    if (step.cond === null || !NON_SUCCESS.test(step.cond)) continue;
+    failureUsesJudged++;
+    const covered = coveredBy(step.cond);
+    for (const [key, input] of step.with) {
+      for (const span of input.value.matchAll(EXPR_SPAN)) {
+        if (NON_EMPTY_FALLBACK.test(span[1].trim())) continue;
+        for (const out of span[1].matchAll(STEP_OUTPUT)) {
+          if (covered.has(`steps.${out[1]}`) || covered.has(out[0])) continue;
+          defects.push(
+            `${rel}:${input.n} \`${key}:\` hands \`${out[0]}\` to \`${step.uses}\` on a step that runs on \`if: ${step.cond}\`. ` +
+              `If step \`${out[1]}\` was skipped or failed before writing \`${out[2]}\`, that output is '' and the action ` +
+              "receives it: `path: ${{ steps.reg.outputs.dir }}/` becomes `path: /` and archives the runner's root. " +
+              `Add \`&& ${out[0]} != ''\` (or \`&& steps.${out[1]}.outcome == 'success'\`) to the step's \`if:\`, ` +
+              "or end that expression with `|| '<non-empty literal>'`.",
+          );
+        }
+      }
+    }
+  }
+  return defects;
+}
+
+let failureUsesRaw = 0;
+let failureUsesJudged = 0;
 let jobsChecked = 0;
 let cancelJudged = 0;
 let exprWorkflowsScanned = 0;
@@ -784,6 +891,7 @@ for (const f of files) {
     const cancel = cancelOnMainDefects(f, parsed.lines);
     cancelJudged += cancel.judged;
     for (const d of cancel.defects) problems.push(d);
+    for (const job of parsed.jobs.values()) for (const d of failureInputDefects(f, parsed, job)) problems.push(d);
   }
   if (parsed === null || parsed.jobs.size === 0) {
     // Every GitHub workflow has jobs, so zero is never a fact about the tree —
@@ -998,6 +1106,25 @@ if (exprWorkflowsScanned === 0 || exprLinesScanned === 0) {
     'A scan that read no line found no single-brace expression for the same reason an unplugged smoke alarm',
     'reports no fire. Either the walk stopped opening files, or every line was taken for a `run:` body and',
     'judged by nothing at all — and both of those print as agreement in the ok line below.',
+  ]);
+}
+
+// (4) FAILURE-PATH INPUT REACH. Limb 8 judges a step from `workflowSteps`'s `cond`
+//     field; the raw count re-reads the same steps' own lines for a non-success
+//     `if:`. Unequal means the field reader has stopped seeing conditions the file
+//     still carries, and every step it missed was judged by nothing. guards.test.mjs
+//     supplies the failing input by cutting `failureUsesJudged++;` out of a copy.
+if (failureUsesRaw !== failureUsesJudged) {
+  coverageLost([
+    `limb 8 judged ${failureUsesJudged} non-success \`uses:\` step(s) from their \`if:\` field, but a raw read of those steps' lines finds ${failureUsesRaw}.`,
+    'The two readings of one set of steps disagree, so some failure-path action had its `with:` inputs judged',
+    'by nothing, and an input that resolves to `/` on the run it exists for would still print as clean.',
+  ]);
+}
+if (scanningRealRepo && failureUsesJudged === 0) {
+  coverageLost([
+    'limb 8 judged 0 non-success `uses:` steps across the real tree.',
+    'store-screenshots.yml alone uploads on `if: failure()` in three jobs, so zero means both readings went blind together.',
   ]);
 }
 
@@ -1821,4 +1948,8 @@ console.log(
 console.log(
   `    limb 7 — ${cancelJudged} \`cancel-in-progress\` declaration(s) judged across ${exprWorkflowsScanned} workflow(s); ` +
     'none can cancel an in-flight run on the default branch',
+);
+console.log(
+  `    limb 8 — ${failureUsesJudged} non-success \`uses:\` step(s) judged (a raw read of their lines agrees, ${failureUsesRaw}); ` +
+    "no `with:` input reads a step output that can be '' on the run it serves",
 );

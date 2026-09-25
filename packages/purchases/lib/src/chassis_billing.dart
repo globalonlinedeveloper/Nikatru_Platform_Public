@@ -264,7 +264,7 @@ abstract final class ChassisBilling {
 /// cancelling must be no harder than buying — does not depend on which rail
 /// this build has, so the cancel request goes to our own host exactly as the
 /// hosted rail sends it.
-class UnavailablePurchaseRail implements PurchaseRail {
+class UnavailablePurchaseRail implements PurchaseRail, RestoresPurchases {
   UnavailablePurchaseRail({
     required this.refusal,
     required RailConfig config,
@@ -314,6 +314,13 @@ class UnavailablePurchaseRail implements PurchaseRail {
       detail: refusal.detail,
     );
   }
+
+  /// [pipeline 5]M-10 — no store to ask: this build could not build a rail
+  /// that has one. A customer who bought on another channel is still restored,
+  /// by the server read the screen makes after this, for the same reason this
+  /// rail still cancels.
+  @override
+  Future<RestoreOutcome> restorePurchases() async => RestoreOutcome.serverOnly;
 
   @override
   Future<CancellationOutcome> requestCancellation() async {

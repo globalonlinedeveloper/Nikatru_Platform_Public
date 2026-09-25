@@ -5,8 +5,10 @@ import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'package:nikatru_purchases/nikatru_purchases.dart';
 
+import '../../core/app_config.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/money_providers.dart';
+import '../../state/providers.dart';
 
 /// Manage subscription — [pipeline 5]M-9 (ROSCA) and [pipeline 5]M-10 (restore).
 ///
@@ -37,6 +39,7 @@ class ManagePlanScreen extends ConsumerStatefulWidget {
 class _ManagePlanScreenState extends ConsumerState<ManagePlanScreen> {
   bool _busy = false;
   CancellationOutcome? _outcome;
+  _Restored? _restored;
 
   Future<void> _cancel() async {
     final AppLocalizations l10n = AppLocalizations.of(context);
@@ -56,8 +59,8 @@ class _ManagePlanScreenState extends ConsumerState<ManagePlanScreen> {
     // non-autoDispose `entitlementsProvider` went on reporting the plan the
     // server had just cancelled for the rest of the session.
     //
-    // `_restore` below stays on the `WidgetRef` form, where the read already
-    // precedes every await and the disposal assert is worth keeping.
+    // `_restore` below hoists the container for the same reason: its server
+    // read now follows the store's answer, so it too comes after an await.
     final ProviderContainer container = ProviderScope.containerOf(
       context,
       listen: false,
@@ -98,14 +101,65 @@ class _ManagePlanScreenState extends ConsumerState<ManagePlanScreen> {
     setState(() {
       _busy = false;
       _outcome = outcome;
+      _restored = null;
     });
   }
 
+  // 🔴 THE STORE FIRST, THEN THE SERVER — [pipeline 5]M-10,
+  // O-STORE-RESTORE-ASKS-ONLY-THE-SERVER. This control used to re-read our own
+  // server and nothing else, so on a store build it never asked StoreKit or
+  // Play for anything: a purchase the store held and our server had not yet
+  // heard about stayed lost, and Apple guideline 3.1.1's Restore control was a
+  // refresh button. The store rail now asks the store, whose answer reaches our
+  // Worker through the provider's webhook; the hosted rail has no store and
+  // answers `serverOnly`. The ORDER is the point: the server read that follows
+  // is what the plan row shows, and it is the only thing that unlocks.
+  //
+  // Container and rail are both resolved BEFORE the first await — the note on
+  // `_cancel` above. The wait and the sentence live in `_converge` and
+  // `_restoreMessage`, outside this body, so `assert-purchase-path.mjs` §F
+  // reads the whole of it.
   Future<void> _restore() async {
+    final ProviderContainer container = ProviderScope.containerOf(
+      context,
+      listen: false,
+    );
+    final PurchaseRail rail = ref.read(purchaseRailProvider);
     setState(() => _busy = true);
-    await refreshEntitlements(ref);
+    final RestoreOutcome asked = await restorePurchasesOf(rail);
     if (!mounted) return;
-    setState(() => _busy = false);
+    core.Entitlements ent = await refreshEntitlementsIn(container);
+    if (asked == RestoreOutcome.askedStore) {
+      ent = await _converge(container, ent);
+    }
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _restored = (outcome: asked, planActive: ent.isProAt(DateTime.now()));
+      _outcome = null;
+    });
+  }
+
+  /// The store answered, and what it holds reaches our server through the
+  /// provider's webhook — so it can land AFTER the re-read above. The wait is
+  /// the paywall's own bounded one ([EntitlementConvergence.awaitUnlock] over
+  /// [kCheckoutConvergenceDelays], about a minute at most); a restore adds no
+  /// timer of its own. Skipped when the re-read already shows the plan.
+  Future<core.Entitlements> _converge(
+    ProviderContainer container,
+    core.Entitlements now,
+  ) async {
+    if (now.isProAt(DateTime.now())) return now;
+    final ConvergenceResult r = await container
+        .read(entitlementConvergenceProvider)
+        .awaitUnlock(
+          appId: AppConfig.appId,
+          accessToken: container
+              .read(authRepositoryProvider)
+              .currentAccessToken,
+        );
+    if (!r.isUnlocked) return now;
+    return refreshEntitlementsIn(container);
   }
 
   @override
@@ -193,12 +247,11 @@ class _ManagePlanScreenState extends ConsumerState<ManagePlanScreen> {
               title: Text(isPro ? l10n.planActive : l10n.planInactive),
             ),
             const Divider(),
-            // [pipeline 5]M-10. On this rail the entitlement is a server row keyed
-            // (user_id, app_id), so a fresh install on a new device is unlocked by
-            // signing in — there is nothing device-local to restore. The control
-            // exists because a user who has just paid wants a button, and because
-            // Apple guideline 3.1.1 makes one mandatory the day a native IAP rail
-            // ships (deferred, 39-CHASSIS §4 cut 5).
+            // [pipeline 5]M-10. The entitlement is a server row keyed
+            // (user_id, app_id), so on the hosted rail a fresh install is
+            // unlocked by signing in and this re-reads it. On a store build
+            // Apple guideline 3.1.1 makes the control mandatory, and there it
+            // asks the store first — see `_restore`.
             ListTile(
               leading: const Icon(Icons.refresh),
               title: Text(l10n.restorePurchases),
@@ -218,6 +271,11 @@ class _ManagePlanScreenState extends ConsumerState<ManagePlanScreen> {
               Padding(
                 padding: const EdgeInsets.only(top: 16),
                 child: Text(_outcomeMessage(l10n, _outcome!)),
+              ),
+            if (_restored != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 16),
+                child: Text(_restoreMessage(l10n, _restored!)),
               ),
           ],
         ),
@@ -242,4 +300,23 @@ class _ManagePlanScreenState extends ConsumerState<ManagePlanScreen> {
         return l10n.cancelFailed;
     }
   }
+
+  /// 🔒 THE SENTENCE FOLLOWS THE SERVER, NOT THE STORE. A plan the re-read
+  /// shows is "found" whatever the store answered, because the plan row above
+  /// is that same read and the two must agree. With no plan, a store that
+  /// could not be asked gets its own sentence — "nothing found" would be a
+  /// claim we never checked. The store's `detail` is never shown — it is
+  /// untranslated engineering text.
+  String _restoreMessage(AppLocalizations l10n, _Restored r) {
+    if (r.planActive) return l10n.restoreFoundPlan;
+    return switch (r.outcome) {
+      RestoreOutcome.couldNotAsk => l10n.restoreCouldNotReachStore,
+      RestoreOutcome.askedStore ||
+      RestoreOutcome.serverOnly => l10n.restoreNothingFound,
+    };
+  }
 }
+
+/// What a finished restore reports: what the rail answered, and whether the
+/// server's entitlement shows an active plan after the re-read.
+typedef _Restored = ({RestoreOutcome outcome, bool planActive});
