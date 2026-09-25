@@ -163,6 +163,9 @@ function addCollectsRow(root) {
 const put = (root, rel, text) => writeFileSync(join(root, rel), text);
 const get = (root, rel) => readFileSync(join(root, rel), 'utf8');
 const kill = (root) => rmSync(root, { recursive: true, force: true });
+/** Every RegExp metacharacter escaped, the backslash included: a path spliced
+ *  into a pattern matches only itself (the idiom assert-auth-callbacks.mjs uses). */
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** The declaration with its top-level `billing:` block removed. ⏱ 2026-09-22 —
  *  apps/subscriptiontracker opted in to mobile IAP, so a case that appends its
@@ -1898,7 +1901,7 @@ describe('limb 8 — an export-compliance `false` holds to the code the app ship
       put(root, VERIFIER, `${get(root, VERIFIER)}\nfinal _sealer = AesGcm.with256bits();\n`);
       const { code, out } = spawn(GUARD, [root]);
       assert.equal(code, 1, out);
-      assert.match(out, new RegExp(`names the cipher \`AesGcm\` at ${VERIFIER.replace(/[./]/g, '\\$&')}:\\d+`));
+      assert.match(out, new RegExp(`names the cipher \`AesGcm\` at ${escapeRe(VERIFIER)}:\\d+`));
     } finally { kill(root); }
   });
 

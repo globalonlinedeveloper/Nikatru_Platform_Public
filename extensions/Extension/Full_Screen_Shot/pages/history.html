@@ -4,74 +4,7 @@
 <meta charset="utf-8">
 <title data-i18n="historyPageTitle">History — FullShot</title>
 <link rel="stylesheet" href="common.css">
-<style>
-  #grid {
-    max-width: 1200px; margin: 0 auto;
-    padding: 22px 18px 60px;
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-    gap: 16px;
-  }
-  .card {
-    background: var(--panel);
-    border: 1px solid var(--line); border-radius: 14px;
-    overflow: hidden; box-shadow: var(--shadow);
-    display: flex; flex-direction: column;
-    position: relative;
-  }
-  .card.selected { outline: 2px solid var(--accent); }
-  /* The thumbnail is a BUTTON that contains an image, not an image with a
-     click handler. It used to be the latter: <img> is not focusable, takes no
-     Enter or Space, and is announced as an image, so the largest and most
-     obvious control on this page was reachable by mouse only. Wrapping it
-     costs a reset (buttons bring their own padding, border and font) and buys
-     the keyboard, the accessibility tree, and the shared focus ring. */
-  .card .thumb {
-    display: block; width: 100%; height: 170px; padding: 0;
-    border: 0; border-bottom: 1px solid var(--line);
-    background: #fff; cursor: pointer;
-  }
-  .card .thumb img {
-    display: block; width: 100%; height: 100%;
-    object-fit: cover; object-position: top;
-  }
-  .card .info { padding: 10px 12px 6px; }
-  /* The title is the CAPTURED PAGE's title and the sub-line carries its URL:
-     both belong to the user, not to FullShot's chrome, so each takes its own
-     direction rather than the UI's. See .fs-user / .fs-ltr in common.css. */
-  .card .title {
-    font-weight: 600; font-size: 13px;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    unicode-bidi: plaintext;
-  }
-  .card .sub { color: var(--fg2); font-size: 11.5px; margin-top: 2px; unicode-bidi: plaintext; }
-  .card a.sub { direction: ltr; unicode-bidi: isolate; }
-  /* .card .sub.redactline — THE ACTS LINE, and it is deliberately absent from
-     this stylesheet. `redactline` is the same NAME the result page puts on its
-     permanent line (see .redactline in result.html), and it exists so that the
-     sentence can be found — by a reader of this file, by a test, by whoever
-     comes next. It is not a style, and it must not become one: a rule here that
-     gave the shortfall arm its own colour, weight or border would be a verdict
-     rendered in CSS, shown for exactly the records the deleted design graded as
-     bad, and REDACTION-CLAIM-SPEC.md §0.1 forbids that "however it is
-     computed". The line inherits .sub and says the whole thing in words. */
-  .card .row {
-    display: flex; gap: 4px; padding: 6px 8px 10px; flex-wrap: wrap;
-  }
-  .card .row button { font-size: 12px; padding: 5px 10px; }
-  .card input[type="checkbox"] {
-    position: absolute; inset-block-start: 10px; inset-inline-start: 10px;
-    width: 18px; height: 18px; accent-color: var(--accent);
-  }
-  /* Elastic, not 220px: at 200% zoom this bar was 253px wider than the page in
-     English before a word was translated. */
-  #searchBox {
-    padding: 7px 12px; border: 1px solid var(--control-line); border-radius: 9px;
-    background: var(--bg); color: var(--fg); font: 13px system-ui, sans-serif;
-    flex: 1 1 220px; min-width: 120px; max-width: 100%;
-  }
-  #emptyState { text-align: center; padding: 110px 20px; color: var(--fg2); }
-  #emptyState h2 { color: var(--fg); }
-</style>
+<link rel="stylesheet" href="history.css">
 </head>
 <body>
 <!-- Every user-visible string carries data-i18n (text) or data-i18n-attr (a

@@ -109,10 +109,12 @@ const PLACEHOLDER_ID = { test: (s) => isPlaceholderValue(s) };
 /* MDN: email-style id, 80 characters or less. */
 const GECKO_ID_RE = /^[a-zA-Z0-9\-._]*@[a-zA-Z0-9\-._]+$/;
 
-/* Where a built package can be found. `publish/` is where
-   publish/package.node.js writes; `dist/` is where pack.mjs writes and what
-   ci.yml and release.yml pass as --out. Both are searched so the gate does not
-   depend on which packer last ran. */
+/* Where a built package can be found. `dist/` is where pack.mjs writes and what
+   ci.yml and release.yml pass as --out. `publish/` is where the retired
+   publish/package.node.js packer wrote (its main() was retired 2026-09-24, G3,
+   and pack.mjs is the only packer now); it is still searched, because a zip
+   that packer left behind is still a package somebody could upload, and this
+   gate grades what is on disk. */
 const DEFAULT_DIRS = ['publish', 'dist'];
 
 const args = parseArgs(process.argv.slice(2));

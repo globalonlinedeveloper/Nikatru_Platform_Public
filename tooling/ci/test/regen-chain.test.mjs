@@ -24,7 +24,7 @@ import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -99,15 +99,26 @@ const regen = (root, ...flags) => {
   return { code: r.status === null ? -1 : r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
 };
 
-/** Path → sha256 of every file under `root`: the whole fixture, byte for byte. */
+/** Path → sha256 of every file under `root`: the whole fixture, byte for byte.
+ *  Each entry is READ once and a directory is known by EISDIR, never stat-then-
+ *  read: the kind and the bytes are one observation (render-privacy.mjs readIf). */
 function snapshot(root) {
   const out = new Map();
   const walk = (abs, rel) => {
     for (const name of readdirSync(abs).sort()) {
       const a = join(abs, name);
       const r = rel ? `${rel}/${name}` : name;
-      if (statSync(a).isDirectory()) walk(a, r);
-      else out.set(r, createHash('sha256').update(readFileSync(a)).digest('hex'));
+      let bytes;
+      try {
+        bytes = readFileSync(a);
+      } catch (e) {
+        if (e && e.code === 'EISDIR') {
+          walk(a, r);
+          continue;
+        }
+        throw e;
+      }
+      out.set(r, createHash('sha256').update(bytes).digest('hex'));
     }
   };
   walk(root, '');

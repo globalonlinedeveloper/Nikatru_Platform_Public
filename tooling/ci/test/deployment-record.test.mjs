@@ -37,8 +37,26 @@ import {
   SUBMISSION_STATES,
   STATE_MEANING,
 } from '../deployment-record.mjs';
-import { RECORD_CALL, expandMatrixEnvironment, isShellVariableEnvironment, shellSegments, parseWorkflow, stepShell } from '../workflow-scan.mjs';
-import { isRetryable, retryDelayMs, RETRY_ATTEMPTS, runIdentity, RUN_IDENTITY_ENV } from '../record-deployment.mjs';
+import {
+  RECORD_CALL,
+  expandMatrixEnvironment,
+  isShellVariableEnvironment,
+  shellSegments,
+  parseWorkflow,
+  stepShell,
+  workflowSteps,
+} from '../workflow-scan.mjs';
+import {
+  isRetryable,
+  retryDelayMs,
+  RETRY_ATTEMPTS,
+  runIdentity,
+  RUN_IDENTITY_ENV,
+  publishedIds,
+  workerVersionIdFrom,
+  PUBLISHED_ID_KEYS,
+  rollbackRecord,
+} from '../record-deployment.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const ROOT = resolve(CI_DIR, '../..');
@@ -151,6 +169,7 @@ function record(args, env = {}, script = RECORDER) {
   const log = join(TMP, `replay-${seq++}.log`);
   const r = spawnSync(process.execPath, ['--import', pathToFileURL(REPLAY).href, script, ...args], {
     encoding: 'utf8',
+    timeout: 60_000,
     env: {
       ...process.env,
       GITHUB_REPOSITORY: 'x/y',
@@ -247,6 +266,31 @@ describe('deployment-record — the LEGACY form is unparseable, never "live"', (
  *  leaves the channel as literal text, so the channel is readable here even though
  *  the app is not: the suffix must complete ONE register template EXACTLY. Returns
  *  that row's id, or null when the token is not this shape or no row claims it. */
+/**
+ * ⏱ 2026-09-25 · THE SECOND PRODUCER. True when the step holding the call at
+ * `file:line` feeds `name` from `${{ steps.<id>.outputs.unit }}`, and the
+ * step with that id runs EARLIER in the same job and runs
+ * `node tooling/ops/rollback.mjs`. That tool writes `unit` only after resolving
+ * it against tooling/channel-register.json (resolveEnvironment) and refusing one
+ * no row claims — tooling/ci/test/rollback.test.mjs holds the refusal. A dispatch
+ * input fed straight into the call is NOT this, and stays red.
+ */
+function fedByRollbackResolution(file, line, name) {
+  const wf = parseWorkflow(ROOT, `.github/workflows/${file}`);
+  for (const job of wf.jobs.values()) {
+    const steps = workflowSteps(job);
+    const caller = steps.find((s) => s.first <= line && line <= s.last);
+    if (!caller) continue;
+    const fed = String(caller.env.get(name)?.value ?? '').match(/^\$\{\{\s*steps\.([A-Za-z0-9_-]+)\.outputs\.unit\s*\}\}$/);
+    if (!fed) return false;
+    const producer = steps.find((s) => s.id === fed[1]);
+    return Boolean(
+      producer && producer.index < caller.index && /(^|[\s;])node\s+tooling\/ops\/rollback\.mjs\s/.test(producer.run?.text ?? ''),
+    );
+  }
+  return false;
+}
+
 function appSlotChannel(register, written) {
   const m = String(written).match(/^\$\{?[A-Za-z_][A-Za-z0-9_]*\}?(-[a-z0-9][a-z0-9-]*)$/);
   if (!m) return null;
@@ -414,6 +458,8 @@ describe('deployment-record — the environment resolves against the register', 
       // again before it writes.
       if (appSlotChannel(REAL_REGISTER, c.written) !== null) continue;
       const name = c.written.replace(/^\$\{?/, '').replace(/\}$/, '');
+      // rollback.yml records the unit rollback.mjs resolved (fedByRollbackResolution).
+      if (fedByRollbackResolution(c.file, c.line, name)) continue;
       const producer = readFileSync(join(dir, c.file), 'utf8')
         .split('\n')
         .filter((l) => !/^\s*#/.test(l))
@@ -422,7 +468,8 @@ describe('deployment-record — the environment resolves against the register', 
       assert.ok(
         producer,
         `${c.file}:${c.line} records \`${c.written}\`, a value this scan cannot read, and no line in that file ` +
-          `feeds \`${name}\` from \`release-manifest.mjs --emit-environments\` — so nothing ties what it records ` +
+          `feeds \`${name}\` from \`release-manifest.mjs --emit-environments\` or from the \`unit\` output of an ` +
+          `earlier \`tooling/ops/rollback.mjs\` step — so nothing ties what it records ` +
           'back to tooling/channel-register.json.',
       );
     }
@@ -779,6 +826,8 @@ describe('record-deployment — the DEPLOYMENT and its STATUS carry the same sha
 // ─────────────────────────────────────────────────────────────────────────────
 const PLAY_IDENTITY = { workflow: 'submit-play.yml', run_id: 35787897094, run_attempt: 1, run_number: 5 };
 const NO_IDENTITY = Object.fromEntries(RUN_IDENTITY_ENV.map((k) => [k, undefined]));
+/** ⏱ 2026-09-25 — the two id keys every payload carries, here with no id. */
+const NO_IDS = { pages_deployment_id: null, worker_version_id: null };
 
 /** Every `node … record-deployment.mjs` invocation in one workflow, and each
  *  thing in that file that would stop it carrying the runner's run identity:
@@ -888,7 +937,7 @@ describe('record-deployment — every Deployment names the run that wrote it', (
     );
     assert.equal(code, 0, out);
     assert.equal(requests[0].pathname, '/repos/x/y/deployments');
-    assert.deepEqual(requests[0].body.payload, { ...PLAY_IDENTITY, version_code: 5 });
+    assert.deepEqual(requests[0].body.payload, { ...PLAY_IDENTITY, version_code: 5, ...NO_IDS });
   });
 
   test('a WEB record carries the run payload too — every Deployment names the run that wrote it', () => {
@@ -900,7 +949,7 @@ describe('record-deployment — every Deployment names the run that wrote it', (
       GITHUB_RUN_NUMBER: '101',
     });
     assert.equal(code, 0, out);
-    assert.deepEqual(requests[0].body.payload, { workflow: 'deploy-web.yml', run_id: 35700000101, run_attempt: 2, run_number: 101 });
+    assert.deepEqual(requests[0].body.payload, { workflow: 'deploy-web.yml', run_id: 35700000101, run_attempt: 2, run_number: 101, ...NO_IDS });
   });
 
   test('a SUBMITTABLE channel with no run identity is REFUSED, exit 2, before anything is written', () => {
@@ -920,7 +969,8 @@ describe('record-deployment — every Deployment names the run that wrote it', (
     });
     assert.equal(code, 0, out);
     assert.equal(requests.length, 2);
-    assert.equal(requests[0].body.payload, undefined);
+    // ⏱ 2026-09-25 — no run and no id, and the payload still says so: two nulls, never an absent key.
+    assert.deepEqual(requests[0].body.payload, NO_IDS);
   });
 
   test('THE REAL TREE: every workflow runs the recorder straight from a step shell that has the run identity', () => {
@@ -1145,5 +1195,248 @@ describe('record-deployment — the write is retried, and only where retrying is
     // This runs at the end of a real deploy. A long sleep here holds a runner
     // open to re-ask a question already answered twice.
     assert.ok(waits.reduce((a, b) => a + b, 0) <= 10_000, `total backoff ${waits} must stay under 10s`);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-25 · THE UNIT OF REVERT (row O-DEPLOY-IS-NOT-ONE-GATED-LANE, limb 4).
+// A SHA does not say which Cloudflare object serves it, and rollback.yml
+// re-promotes an OBJECT: a Pages deployment or a Worker version. Every payload
+// now names both, null when the step had none. The id's shape (a UUID) is an
+// assumption, so an unreadable id is a warning and a null — the record of a
+// deploy that happened is never lost over it — while an id flag on the wrong
+// kind of unit is refused before anything is written.
+// ─────────────────────────────────────────────────────────────────────────────
+const PAGES_ID = '3f2b8c1a-5d4e-4f60-8a7b-9c0d1e2f3a4b';
+const WORKER_ID = '5f0e7a52-1c3b-4d2e-9f60-7a8b9c0d1e2f';
+/** A made-up `wrangler deploy` output. The var line is the reason no warning
+ *  may quote this text: wrangler prints the Worker's vars. */
+const DEPLOY_OUTPUT = [
+  'Total Upload: 100.00 KiB / gzip: 20.00 KiB',
+  'Your Worker has access to the following bindings:',
+  'env.GLITCHTIP_DSN ("https://made-up-fixture-key@example.invalid/1")',
+  'Uploaded platform (2.00 sec)',
+  'Deployed platform triggers (0.50 sec)',
+  '  https://platform.nikatru.com',
+  `Current Version ID: ${WORKER_ID}`,
+].join('\n');
+
+describe('record-deployment — every payload names the Pages deployment or Worker version it published', () => {
+  test('the two keys are the ones rollback.mjs reads', () => {
+    assert.deepEqual([...PUBLISHED_ID_KEYS], ['pages_deployment_id', 'worker_version_id']);
+  });
+
+  test('workerVersionIdFrom reads the id off the `Current Version ID:` line', () => {
+    assert.equal(workerVersionIdFrom(DEPLOY_OUTPUT), WORKER_ID);
+  });
+
+  test('workerVersionIdFrom returns null when two lines name DIFFERENT versions — a guess is a rollback to the wrong one', () => {
+    const two = `${DEPLOY_OUTPUT}\nCurrent Version ID: 00000000-0000-4000-8000-000000000000`;
+    assert.equal(workerVersionIdFrom(two), null);
+  });
+
+  test('workerVersionIdFrom returns null for output with no version line, and for a value that is not an id', () => {
+    assert.equal(workerVersionIdFrom('Uploaded platform (2.00 sec)'), null);
+    assert.equal(workerVersionIdFrom('Current Version ID: (none)'), null);
+  });
+
+  test('publishedIds: a web unit takes --pages-deployment-id and lower-cases it', () => {
+    const r = publishedIds('web', { 'pages-deployment-id': PAGES_ID.toUpperCase() }, {});
+    assert.equal(r.refusal, null);
+    assert.deepEqual(r.warnings, []);
+    assert.deepEqual(r.ids, { pages_deployment_id: PAGES_ID, worker_version_id: null });
+  });
+
+  test('publishedIds: a store unit takes no id flag at all', () => {
+    const r = publishedIds('store', { 'worker-version-id': WORKER_ID }, {});
+    assert.match(r.refusal, /--worker-version-id was given for a unit of kind "store", which publishes nothing rollback\.yml can re-promote/);
+  });
+
+  test('a WEB record writes the Pages deployment id it was given', () => {
+    const { code, out, requests } = record(
+      ['subscriptiontracker-web', 'https://nikatru.com/subscriptiontracker/', '--pages-deployment-id', PAGES_ID],
+      { RECORD_REPLAY_STATUS: '201' },
+    );
+    assert.equal(code, 0, out);
+    assert.equal(requests[0].body.payload.pages_deployment_id, PAGES_ID);
+    assert.equal(requests[0].body.payload.worker_version_id, null);
+    assert.match(out, new RegExp(`Pages deployment ${PAGES_ID}`));
+  });
+
+  test('a SERVICE record reads the Worker version out of the deploy output in the named variable — and never prints that output', () => {
+    const { code, out, requests } = record(
+      ['platform', 'https://platform.nikatru.com', '--wrangler-output-env', 'DEPLOY_OUTPUT'],
+      { RECORD_REPLAY_STATUS: '201', DEPLOY_OUTPUT },
+    );
+    assert.equal(code, 0, out);
+    assert.equal(requests[0].body.payload.worker_version_id, WORKER_ID);
+    assert.equal(requests[0].body.payload.pages_deployment_id, null);
+    assert.ok(!out.includes('made-up-fixture-key'), 'wrangler prints the Worker vars; the recorder must not echo them');
+  });
+
+  test('an EMPTY Pages deployment id warns and writes the record anyway, with the id null', () => {
+    const { code, out, requests } = record(
+      ['subscriptiontracker-web', 'https://nikatru.com/subscriptiontracker/', '--pages-deployment-id', ''],
+      { RECORD_REPLAY_STATUS: '201' },
+    );
+    assert.equal(code, 0, out);
+    assert.equal(requests.length, 2, 'the deploy happened; its record is written');
+    assert.equal(requests[0].body.payload.pages_deployment_id, null);
+    assert.match(out, /::warning title=This Deployment names no re-promotable id::the Pages deployment id is empty/);
+  });
+
+  test('deploy output with no version line warns and writes the record anyway, with the id null', () => {
+    const { code, out, requests } = record(
+      ['platform', 'https://platform.nikatru.com', '--wrangler-output-env', 'DEPLOY_OUTPUT'],
+      { RECORD_REPLAY_STATUS: '201', DEPLOY_OUTPUT: 'Uploaded platform (2.00 sec)' },
+    );
+    assert.equal(code, 0, out);
+    assert.equal(requests.length, 2);
+    assert.equal(requests[0].body.payload.worker_version_id, null);
+    assert.match(out, /the deploy output in DEPLOY_OUTPUT \(28 characters\) names no single `Current Version ID:`/);
+  });
+
+  test('a Worker version id that is not an id warns, and is recorded as null rather than as the bad value', () => {
+    const { code, out, requests } = record(
+      ['subscriptiontracker-api', 'https://subscriptiontracker-api.nikatru.com', '--worker-version-id', 'latest'],
+      { RECORD_REPLAY_STATUS: '201' },
+    );
+    assert.equal(code, 0, out);
+    assert.equal(requests[0].body.payload.worker_version_id, null);
+    assert.match(out, /the Worker version id is not an id \(6 characters, not a UUID\)/);
+  });
+
+  test('a Pages id on a SERVICE unit is REFUSED, exit 1, before anything is written', () => {
+    const { code, out, requests } = record(
+      ['platform', 'https://platform.nikatru.com', '--pages-deployment-id', PAGES_ID],
+      { RECORD_REPLAY_STATUS: '201' },
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /--pages-deployment-id was given for a unit of kind "service", which takes --wrangler-output-env or --worker-version-id/);
+    assert.deepEqual(requests, []);
+  });
+
+  test('a Worker id on a WEB unit is REFUSED, exit 1, before anything is written', () => {
+    const { code, out, requests } = record(
+      ['subscriptiontracker-web', 'https://nikatru.com/subscriptiontracker/', '--worker-version-id', WORKER_ID],
+      { RECORD_REPLAY_STATUS: '201' },
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /--worker-version-id was given for a unit of kind "web", which takes --pages-deployment-id/);
+    assert.deepEqual(requests, []);
+  });
+
+  test('both Worker id sources at once is REFUSED — a record names one Worker version', () => {
+    const { code, out, requests } = record(
+      ['platform', 'https://platform.nikatru.com', '--wrangler-output-env', 'DEPLOY_OUTPUT', '--worker-version-id', WORKER_ID],
+      { RECORD_REPLAY_STATUS: '201', DEPLOY_OUTPUT },
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /--wrangler-output-env and --worker-version-id were both given/);
+    assert.deepEqual(requests, []);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-25 · …AND THE DEPLOY WORKFLOWS HAND IT OVER. A recorder that can
+// take an id is worth nothing if the step calling it passes none: every record
+// would carry two nulls and rollback.yml would have nothing to re-promote.
+// ─────────────────────────────────────────────────────────────────────────────
+/** Every step of one workflow that runs the recorder, with its job's name. */
+function recorderSteps(file) {
+  const wf = parseWorkflow(ROOT, `.github/workflows/${file}`);
+  const out = [];
+  for (const job of wf.jobs.values()) {
+    for (const step of workflowSteps(job)) {
+      if (step.run && /record-deployment\.mjs/.test(step.run.text)) out.push({ job: job.name, step });
+    }
+  }
+  return out;
+}
+
+describe('the deploy workflows hand the recorder the id their deploy step published', () => {
+  test('THE REAL TREE: deploy-web.yml passes the Pages deployment id, through env:', () => {
+    const steps = recorderSteps('deploy-web.yml');
+    assert.equal(steps.length, 1, `deploy-web.yml records ${steps.length} time(s)`);
+    const [{ step }] = steps;
+    assert.equal(step.env.get('PAGES_DEPLOYMENT_ID')?.value, '${{ steps.deploy.outputs.pages-deployment-id }}');
+    assert.match(step.run.text, /--pages-deployment-id "\$PAGES_DEPLOYMENT_ID"(\s|$)/);
+  });
+
+  test('THE REAL TREE: each deploy-workers.yml job passes its deploy output, through env:', () => {
+    const steps = recorderSteps('deploy-workers.yml');
+    assert.deepEqual(steps.map((s) => s.job), ['subscriptiontracker-api', 'platform']);
+    assert.equal(steps[0].step.env.get('DEPLOY_OUTPUT')?.value, '${{ steps.deploy.outputs.command-output }}');
+    assert.match(steps[0].step.run.text, /--wrangler-output-env DEPLOY_OUTPUT(\s|$)/);
+    assert.equal(steps[1].step.env.get('DEPLOY_OUTPUT')?.value, '${{ steps.deploy.outputs.command-output }}');
+    assert.match(steps[1].step.run.text, /--wrangler-output-env DEPLOY_OUTPUT(\s|$)/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-25 · A RE-PROMOTION RECORDS THE COMMIT THAT WENT BACK LIVE.
+// rollback.yml records its outcome here. At GITHUB_SHA the ledger would name
+// the build just taken down as live, and plan-deploy.mjs — which reads the
+// newest successful Deployment as what is live — would never roll forward.
+// ─────────────────────────────────────────────────────────────────────────────
+const REPROMOTED = '0123456789abcdef0123456789abcdef01234567';
+
+describe('record-deployment — a re-promotion is recorded at the commit it put back', () => {
+  test('--rollback-of with --ref: ref and description name the re-promoted commit, and the payload says it is a rollback', () => {
+    const { code, out, requests } = record(
+      [
+        'subscriptiontracker-web',
+        'https://nikatru.com/subscriptiontracker/',
+        '--rollback-of',
+        '9001',
+        '--ref',
+        REPROMOTED.toUpperCase(),
+        '--pages-deployment-id',
+        PAGES_ID,
+      ],
+      { RECORD_REPLAY_STATUS: '201' },
+    );
+    assert.equal(code, 0, out);
+    assert.equal(requests[0].body.ref, REPROMOTED);
+    assert.equal(requests[0].body.description, encodeDescription({ state: 'live', sha: REPROMOTED, listingUrl: null }));
+    assert.equal(requests[0].body.payload.rollback, true);
+    assert.equal(requests[0].body.payload.rollback_of, 9001);
+    assert.equal(requests[0].body.payload.pages_deployment_id, PAGES_ID);
+    assert.match(out, /re-promoted from ledger Deployment 9001/);
+  });
+
+  test('--ref without --rollback-of is REFUSED, before anything is written', () => {
+    const { code, out, requests } = record(
+      ['platform', 'https://platform.nikatru.com', '--ref', REPROMOTED],
+      { RECORD_REPLAY_STATUS: '201' },
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /--ref was given without --rollback-of/);
+    assert.deepEqual(requests, []);
+  });
+
+  test('--rollback-of without --ref is REFUSED: recorded at GITHUB_SHA it would name the bad build live', () => {
+    const { code, out, requests } = record(
+      ['platform', 'https://platform.nikatru.com', '--rollback-of', '9001', '--worker-version-id', WORKER_ID],
+      { RECORD_REPLAY_STATUS: '201' },
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /--rollback-of was given without --ref/);
+    assert.deepEqual(requests, []);
+  });
+
+  test('--rollback-of on a STORE unit is REFUSED: only web and service units are re-promoted', () => {
+    const { code, out, requests } = record(
+      ['subscriptiontracker-android-play', '--state', 'in_review', '--listing-url', 'https://play.google.com/store/apps/details?id=x', '--rollback-of', '9001', '--ref', REPROMOTED],
+      { RECORD_REPLAY_STATUS: '201' },
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /--rollback-of was given for a unit of kind "store"/);
+    assert.deepEqual(requests, []);
+  });
+
+  test('rollbackRecord: an abbreviated --ref is refused; neither flag is an ordinary record', () => {
+    assert.match(rollbackRecord('web', '9001', 'abc12345').refusal, /is not a full 40-character commit SHA/);
+    assert.deepEqual(rollbackRecord('web', null, null), { sha: null, payload: {}, refusal: null });
   });
 });

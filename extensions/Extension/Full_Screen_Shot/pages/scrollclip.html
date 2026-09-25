@@ -4,69 +4,7 @@
 <meta charset="utf-8">
 <title data-i18n="scrollclipPageTitle">Scroll clip — FullShot</title>
 <link rel="stylesheet" href="common.css">
-<style>
-  body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
-  .topbar { display: flex; align-items: center; gap: 12px; padding: 10px 16px;
-    background: var(--panel); border-bottom: 1px solid var(--line); }
-  .topbar h1 { font-size: 15px; margin: 0; font-weight: 650; }
-  .topbar .spacer { flex: 1; }
-  .wrap { flex: 1; display: flex; min-height: 0; }
-  /* overflow: auto, not overflow-y — see beautify.html. A rail that only
-     scrolls one axis hands the other to the page. */
-  .controls { width: 300px; flex: none; overflow: auto; padding: 16px;
-    border-inline-end: 1px solid var(--line); background: var(--panel); }
-  .stage { flex: 1; display: grid; place-items: center; overflow: auto; padding: 24px;
-    background: repeating-conic-gradient(var(--bg2) 0% 25%, var(--bg) 0% 50%) 50% / 24px 24px; }
-  /* Preview surface: a coordinate space, never mirrored. See editor.html. */
-  #scCanvas { direction: ltr; max-width: 100%; max-height: calc(100vh - 130px);
-    box-shadow: 0 8px 40px rgba(0,0,0,.25); border-radius: 4px; background: #0b0b0d; }
-  .field { margin-bottom: 18px; }
-  /* var(--muted) was never defined anywhere — see the same note in
-     beautify.html. An unresolvable var() on an inherited property means
-     INHERIT, so these captions were painting in the body colour. --fg2 is the
-     token that exists, and it is graded against --panel in both themes. */
-  .field > label, .field > .field-label {
-    display: block; font-size: 12px; font-weight: 650; color: var(--fg2);
-    text-transform: uppercase; letter-spacing: .04em; margin-bottom: 8px; }
-  .seg { display: flex; flex-wrap: wrap; gap: 4px; }
-  /* No white-space: nowrap — a rail button that may not wrap is a rail button
-     that paints outside a 300px rail the moment its label stops being English. */
-  .seg button { flex: 1 1 auto; min-width: 0; padding: 7px 8px;
-    border: 1px solid var(--control-line); border-radius: 8px;
-    background: var(--bg); color: var(--fg); font-size: 12px; cursor: pointer; }
-  .seg button.active, .seg button[aria-pressed="true"] {
-    background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
-  .row { display: flex; align-items: center; gap: 8px; }
-  .row input[type=range] { flex: 1; accent-color: var(--accent); }
-  .row .val { width: 40px; text-align: end; font-variant-numeric: tabular-nums; font-size: 12px; color: var(--fg2); }
-  .chk { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; cursor: pointer; }
-  .chk input { flex: none; margin-block-start: 2px; }
-  /* Two buttons at flex:1 in a 300px rail forced "Einzelbild kopieren" and
-     "Копировать кадр" onto two lines. flex-basis + wrap lets them stack
-     instead of shrinking below their own words. */
-  .actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
-  .actions .btn { flex: 1 1 130px; justify-content: center; }
-  .hint { font-size: 11px; color: var(--fg2); margin-top: 6px; line-height: 1.4; }
-  /* The capture's own W×H — data, not chrome: pinned LTR and isolated so the
-     digits do not reorder around the ×. The line around them is a translated
-     sentence now (scrollclipDims), but the pin stays on the container for the
-     same reason the region overlay's readout is pinned: a measurement that
-     reverses is FullShot corrupting the user's own numbers. */
-  #scDims { font-size: 12px; color: var(--fg2); font-variant-numeric: tabular-nums;
-    direction: ltr; unicode-bidi: isolate; }
-  #scLoading { flex: 1; display: grid; place-items: center; }
-  /* 200% ZOOM — the same breakpoint and the same reasoning as beautify.html:
-     a 300px rail beside a canvas inside a viewport-height box with
-     overflow:hidden has nowhere to reflow to. Below 720px they stack and the
-     page may scroll (WCAG 1.4.10). */
-  @media (max-width: 720px) {
-    body { height: auto; min-height: 100vh; overflow: auto; }
-    .wrap { flex-direction: column; }
-    .controls { width: auto; overflow: visible;
-      border-inline-end: 0; border-block-end: 1px solid var(--line); }
-    #scCanvas { max-height: 60vh; }
-  }
-</style>
+<link rel="stylesheet" href="scrollclip.css">
 </head>
 <body>
   <!-- Every user-visible string carries data-i18n (text) or data-i18n-attr (a
@@ -146,7 +84,7 @@
       <div class="field">
         <span class="field-label" data-i18n="scrollclipFieldMotion">Motion</span>
         <label class="chk"><input type="checkbox" id="scBounce"> <span data-i18n="scrollclipBounce">Bounce (scroll back to top)</span></label>
-        <label class="chk" style="margin-top:8px"><input type="checkbox" id="scLoop" checked> <span data-i18n="scrollclipLoop">Loop forever</span></label>
+        <label class="chk chk-gap"><input type="checkbox" id="scLoop" checked> <span data-i18n="scrollclipLoop">Loop forever</span></label>
       </div>
       <div class="field">
         <span class="field-label" data-i18n="beautifyFieldExport">Export</span>
