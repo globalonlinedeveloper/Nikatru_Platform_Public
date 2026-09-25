@@ -143,6 +143,9 @@ import { fileURLToPath } from 'node:url';
 // full copies of this repo — resolving citations into stale branches today.
 import { listDir } from './tree-walk.mjs';
 import { flutterAppChannel, undeclaredSurfaceLine, declaredSurfaces, FLUTTER_APP_FIELD } from './channel-surface.mjs';
+// The validator assert-release-json.mjs limb 1 grades the record with — the emitter
+// refuses to write a record that validator would refuse (O-RELEASE-EMITTER-WRITES-UNCHECKED).
+import { validate, SchemaError } from '../app-yaml/schema-validate.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = resolve(join(HERE, '..', '..'));  // tooling/ci -> repo root
@@ -162,6 +165,11 @@ export const MANIFEST_NAME = 'SHA256SUMS';
  *  and `assert-release-durable.mjs` read this name OUT OF THIS FILE. A private copy
  *  in either would be the first thing to drift, and the drift reports "clean". */
 export const RELEASE_JSON_NAME = 'release.json';
+
+/** And the record's schema, for the same reason: `--emit-release-json` validates
+ *  against it before its write, and `tooling/ci/assert-release-json.mjs` grades
+ *  against it after — both read this one path OUT OF THIS FILE. */
+export const RELEASE_SCHEMA_REL = 'contracts/release.schema.json';
 
 /**
  * 🔴 THE EXTENSION SET IS DERIVED FROM THE CHANNEL REGISTER, NOT TYPED HERE.
@@ -1454,6 +1462,17 @@ async function main() {
         return { name: n, sha256: createHash('sha256').update(bytes).digest('hex'), size: bytes.length, stamp };
       }),
     });
+    // O-RELEASE-EMITTER-WRITES-UNCHECKED — graded BEFORE the file exists, by the
+    // schema and validator assert-release-json.mjs limb 1 uses. Written first, a
+    // record the schema refuses sat in the release directory as its description
+    // until the grade step refused it; on a lane that skipped the grade, nothing did.
+    const schemaProblems = releaseSchemaProblems(treeRoot, json);
+    if (schemaProblems.length > 0) {
+      console.error(`✗ ${out} was NOT written: the record fails ${RELEASE_SCHEMA_REL}.`);
+      for (const p of schemaProblems) console.error(`  schema: ${p}`);
+      process.exitCode = 1;
+      return;
+    }
     try {
       writeFileSync(out, `${JSON.stringify(json, null, 2)}\n`, { flag: 'wx' });
     } catch (e) {
@@ -2036,5 +2055,40 @@ function judgeStageStamps(register, found, { surface }) {
       'and listed in its upload\'s `path:`. Nothing was moved. An unstamped installer is never given a default channel:',
       'that default is the guess O-RELEASE-RECORD-GUESSES-CHANNEL-FROM-EXTENSION removes.',
     );
+  }
+}
+
+/**
+ * O-RELEASE-EMITTER-WRITES-UNCHECKED — the schema problems of a record about to
+ * be written, through the validator and the schema file assert-release-json.mjs
+ * limb 1 grades with. [] when it conforms. A missing or unreadable schema, or one
+ * using a keyword the validator does not implement, is COVERAGE LOST (exit 2):
+ * the emit could not look, and writing anyway would be the unchecked write this
+ * exists to remove.
+ *
+ * DECLARED LAST, HOISTED, for the reason `releaseFloor` gives above.
+ */
+function releaseSchemaProblems(treeRoot, record) {
+  const abs = join(treeRoot, RELEASE_SCHEMA_REL);
+  if (!existsSync(abs)) {
+    coverageLost(
+      `COVERAGE LOST — ${RELEASE_SCHEMA_REL} does not exist under ${treeRoot}.`,
+      'The record is validated against it before it is written, and assert-release-json.mjs grades it against the',
+      'same file after. Writing an unvalidated record is the defect; nothing was written.',
+    );
+  }
+  let schema;
+  try {
+    schema = JSON.parse(readFileSync(abs, 'utf8'));
+  } catch (e) {
+    coverageLost(`COVERAGE LOST — ${RELEASE_SCHEMA_REL} could not be parsed (${e.message}). Nothing was written.`);
+  }
+  try {
+    return validate(record, schema);
+  } catch (e) {
+    if (e instanceof SchemaError) {
+      coverageLost(`COVERAGE LOST — ${RELEASE_SCHEMA_REL} uses a keyword the validator does not implement: ${e.message}. Nothing was written.`);
+    }
+    throw e;
   }
 }

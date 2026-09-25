@@ -83,6 +83,9 @@
 //      `if:`. Added 2026-09-25 (row O-DEPLOY-IS-NOT-ONE-GATED-LANE, limb 2):
 //      `environment:` alone fails open, and the ref check is the refusal until the
 //      environment carries a deployment-branch policy. See "limb 10" below.
+//  11. every `run: node tooling/ci/assert-*` step of a `guards-*` job carries
+//      `if: ${{ !cancelled() }}` (⏱ 2026-09-25, O-GUARD-SHARD-STOPS-AT-FIRST-RED).
+//      See "limb 11" below.
 //
 // ⚠️ TRADE-OFF ON RECORD: a pinned action stops receiving updates, including
 // security fixes. That is the deliberate exchange — "silently gets new code"
@@ -1149,6 +1152,49 @@ if (scanningRealRepo && failureUsesJudged === 0) {
   ]);
 }
 
+// ── limb 11: a guard shard runs every assert step past an earlier red ────────
+// ⏱ 2026-09-25 · O-GUARD-SHARD-STOPS-AT-FIRST-RED. A step's default condition is
+// `success()`, so the first red `assert-*` step of a `guards-*` shard skipped
+// every assert step after it: CI reported ONE failure per shard, and the second
+// was found a full round trip later. `if: ${{ !cancelled() }}` runs a step after
+// an earlier failure and still stops it on a cancel; the job stays red either
+// way. Read through workflow-scan's `workflowSteps` only. A shard count below
+// SHARD_FLOOR or an assert-step count below ASSERT_STEP_FLOOR is COVERAGE LOST —
+// on the real repository, and on any tree that has a `guards-*` job at all — so
+// a renamed shard or a reshaped `run:` cannot shrink the limb to nothing.
+const NOT_CANCELLED = /^\$\{\{\s*!cancelled\(\)\s*\}\}$/;
+const SHARD_ASSERT_RUN = /^node\s+tooling\/ci\/assert-[A-Za-z0-9._-]+\.mjs(?:\s|$)/;
+const SHARD_FLOOR = 4;
+const ASSERT_STEP_FLOOR = 100;
+let shards = 0;
+let shardAsserts = 0;
+for (const wf of parsedAll) {
+  for (const job of wf.jobs.values()) {
+    if (!job.name.startsWith('guards-')) continue;
+    shards++;
+    for (const s of workflowSteps(job)) {
+      if (!s.run || !SHARD_ASSERT_RUN.test(s.run.text.trim())) continue;
+      shardAsserts++;
+      if (s.cond !== null && NOT_CANCELLED.test(s.cond.trim())) continue;
+      problems.push(
+        `${wf.rel}:${s.first} job "${job.name}" step "${s.name ?? s.run.text.trim()}" ` +
+          `${s.cond === null ? 'has no `if:`' : `has \`if: ${s.cond}\``}, so an earlier red assert step in the shard skips it ` +
+          'and CI reports one failure where there may be several. Add `if: ${{ !cancelled() }}` as the line after its `name:`.',
+      );
+    }
+  }
+}
+if (scanningRealRepo || shards > 0) {
+  if (shards < SHARD_FLOOR || shardAsserts < ASSERT_STEP_FLOOR) {
+    coverageLost([
+      `limb 11 read ${shards} \`guards-*\` shard(s) and ${shardAsserts} \`run: node tooling/ci/assert-*\` step(s); the floors are ` +
+        `${SHARD_FLOOR} and ${ASSERT_STEP_FLOOR}.`,
+      'A shard renamed out of `guards-*`, or assert steps whose `run:` stopped reading as one, would leave this limb',
+      'grading a remnant — and "every assert step runs past an earlier red" would be true of whatever was left.',
+    ]);
+  }
+}
+
 // ── limb 5: SCAN vs THE LIVE WORKFLOW LIST — the orphan blind spot ───────────
 // 🔴 CHECK (1) ABOVE ANSWERS "DID I REACH THE TREE", AND THAT IS A SMALLER
 // QUESTION THAN "DID I REACH EVERY WORKFLOW GITHUB WILL RUN". Both of its inputs
@@ -2189,3 +2235,8 @@ console.log(
     `as its first step after checkout; floor ${publishFloorArmed ? 'armed (this tree declares publishers)' : 'NOT armed: no channel register and no lane-map deployUnits in this tree'}`,
 );
 for (const key of publishExempt) console.log(`      not graded, named: ${key} — ${GITHUB_RELEASE_ONLY.get(key)}`);
+console.log(
+  shards
+    ? `    limb 11 — ${shardAsserts} assert step(s) across ${shards} \`guards-*\` shard(s), each \`if: \${{ !cancelled() }}\`: an earlier red skips none of them`
+    : '    limb 11 — no `guards-*` shard in this tree, so no assert step was judged',
+);

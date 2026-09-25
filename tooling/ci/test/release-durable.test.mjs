@@ -183,6 +183,12 @@ function fixture({ workflows = {}, register = REGISTER, withManifestScript = tru
   if (withManifestScript) copyFileSync(RELEASE_JSON_GUARD, join(root, 'tooling', 'ci', 'assert-release-json.mjs'));
   // ⏱ 2026-09-15 — release-manifest.mjs imports channel-surface.mjs too (O-EXT-SURFACE-AXIS).
   if (withManifestScript) copyFileSync(join(REPO, 'tooling', 'ci', 'channel-surface.mjs'), join(root, 'tooling', 'ci', 'channel-surface.mjs'));
+  // ⏱ 2026-09-25 — and the schema validator `--emit-release-json` runs before its
+  // write (O-RELEASE-EMITTER-WRITES-UNCHECKED).
+  if (withManifestScript) {
+    mkdirSync(join(root, 'tooling', 'app-yaml'), { recursive: true });
+    copyFileSync(join(REPO, 'tooling', 'app-yaml', 'schema-validate.mjs'), join(root, 'tooling', 'app-yaml', 'schema-validate.mjs'));
+  }
   for (const [name, body] of Object.entries(workflows)) writeFileSync(join(root, '.github', 'workflows', name), body);
   return root;
 }

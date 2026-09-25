@@ -53,6 +53,29 @@
 // inside the directory its unit already names. Flutter is the odd one out
 // precisely because the workspace resolves from the repository ROOT.
 //
+// ⏱ 2026-09-25 · O-DEPLOY-TRIGGERS-MISS-IMPORTED-MODULES — AND WHAT THOSE
+// SCRIPTS PULL IN. A script in the unit is a promise about one file; the
+// modules it imports change what the lane runs just as much. deploy-web.yml
+// listed tooling/ops/create-glitchtip-release.mjs and not the bounded retry it
+// imports. So the "script this lane RUNS" read above now takes any
+// `tooling/**` .mjs or .json the lane text names, and an IMPORT LIMB runs over
+// EVERY workflow that plans a deploy unit (deploy-web.yml and
+// deploy-workers.yml, REQUIRED_IMPORT_COVERAGE): it expands the `tooling/`
+// entries of the units it plans against the tree and walks each listed .mjs, following
+//   · static relative imports, transitively, through
+//     assert-deploy-triggers-deploy.mjs's `relativeSpecifiersOf` and
+//     `resolveSpecifier` (one specifier reading, not a third);
+//   · a `'tooling/….json'` string literal on a code line;
+//   · `join(HERE, '<seg>', …, '<x>.json')`, resolved from the module.
+// Each reached `tooling/**` file the unit does not claim is refused, naming
+// the file and the module that reads it. A read OUTSIDE tooling/** is out of
+// scope — counted in the ok line, never graded. Reads by any other shape (a
+// computed path, a `require` of a variable) are not seen. deploy-workers.yml is
+// graded on the tooling files its units LIST; the scripts it only RUNS are not held
+// to its units here. On the real repo a listed tooling file that does not
+// exist, zero reads followed, or a REQUIRED_IMPORT_COVERAGE workflow not graded
+// is COVERAGE LOST.
+//
 // LANE-BOUND: deploy-web.yml — but ONLY as a REQUIRED_COVERAGE floor, not as the subject set. The scan
 // grades every workflow that builds a Flutter artifact and plans a deploy unit; naming this one is what
 // stops the grade being computed over an empty set when the lane is renamed or its plan restructured,
@@ -60,13 +83,17 @@
 // graded automatically the day it plans a unit and needs no edit here. [pipeline 9]R-1 limb B.
 //
 // Usage:  node tooling/ci/assert-deploy-triggers.mjs [repoRoot]
-// Exit 0 = every Flutter deploy's unit claims its real inputs.  Exit 1 = a
-// finding.  Exit 2 = COVERAGE LOST: the units or the lanes could not be read.
+// Exit 0 = every Flutter deploy's unit claims its real inputs, and every planned
+// unit claims what its listed tooling modules read.  Exit 1 = a finding.
+// Exit 2 = COVERAGE LOST: the units or the lanes could not be read.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join, resolve, posix } from 'node:path';
 import { listDir } from './tree-walk.mjs';
-import { UNITS_REL, readUnits, plannedEnvironments, unitKeyFor, globClaims } from './assert-deploy-triggers-deploy.mjs';
+import {
+  UNITS_REL, readUnits, plannedEnvironments, unitKeyFor, globClaims,
+  relativeSpecifiersOf, resolveSpecifier, bundledFilesUnder, claimedTree,
+} from './assert-deploy-triggers-deploy.mjs';
 
 const ROOT = resolve(process.argv[2] ?? process.cwd());
 const WF_DIR = join(ROOT, '.github', 'workflows');
@@ -103,9 +130,13 @@ const REQUIRED = [
   ['catalog/apps.json', 'the address and therefore the `--base-href` this lane compiles with [ADR 075]'],
 ];
 
-/** Scripts the lane executes, pulled out of its own text. */
+/** Tooling files the lane executes or reads, pulled out of its own text: every
+ *  `tooling/**` `.mjs` or `.json` path it names (⏱ 2026-09-25,
+ *  O-DEPLOY-TRIGGERS-MISS-IMPORTED-MODULES — this read `tooling/ci/*.mjs` only, so
+ *  `node -p "require('./tooling/ops/glitchtip-project.json')…"` was a read no
+ *  unit was held to). A `tooling/` inside a longer path is not one. */
 const invokedScripts = (text) =>
-  [...new Set([...text.matchAll(/tooling\/ci\/([A-Za-z0-9._-]+\.mjs)/g)].map((m) => `tooling/ci/${m[1]}`))];
+  [...new Set([...text.matchAll(/(?<![A-Za-z0-9_-]\/)(?<![A-Za-z0-9._-])tooling\/[A-Za-z0-9._/-]+\.(?:mjs|json)\b/g)].map((m) => m[0]))];
 
 /** Lanes that must still be graded. A guard whose subject was renamed or
  *  restructured out of scope reports "ok" over an empty set, and this repo has
@@ -155,11 +186,13 @@ for (const name of files) {
   const required = [
     ...REQUIRED,
     [`.github/workflows/${name}`, 'the lane\'s own definition — its build steps and pins'],
-    ...invokedScripts(text).map((s) => [
-      s,
-      'a script this lane RUNS — it decides whether the deploy proceeds, what version it '
-        + 'stamps, or what it records, none of which is visible in the source tree it claims',
-    ]),
+    ...invokedScripts(text)
+      .filter((s) => !REQUIRED.some(([f]) => f === s))
+      .map((s) => [
+        s,
+        'a script this lane RUNS, or a file it reads — it decides whether the deploy proceeds, what version it '
+          + 'stamps, or what it records, none of which is visible in the source tree it claims',
+      ]),
   ];
   for (const [file, why] of required) {
     checks++;
@@ -209,18 +242,133 @@ if (scanningRealRepo) {
   }
 }
 
+// ── THE IMPORT LIMB · O-DEPLOY-TRIGGERS-MISS-IMPORTED-MODULES ────────────────
+// The read shapes it follows and its COVERAGE LOST conditions are in the header.
+// A read outside tooling/** is counted, never graded: a Worker's tree is limb 3
+// of assert-deploy-triggers-deploy.mjs, and apps/ and packages/ are their own
+// unit entries.
+const REQUIRED_IMPORT_COVERAGE = ['deploy-web.yml', 'deploy-workers.yml'];
+const importProblems = [];
+const importGraded = [];
+const importLost = [];
+const importUnreadable = [];
+let importWalked = 0;
+let importFollowed = 0;
+let importReached = 0;
+const importOutOfScope = new Set();
+{
+  const isCodeLine = (l) => !/^\s*(\/\/|\/\*|\*)/.test(l);
+  /** Every tooling file one module reads, as repo-relative paths, by the three shapes above. */
+  const readsOf = (rel) => {
+    const src = readFileSync(join(ROOT, ...rel.split('/')), 'utf8');
+    const out = [];
+    for (const spec of relativeSpecifiersOf(src)) {
+      const hit = resolveSpecifier(ROOT, rel, spec);
+      if (hit !== null) out.push(hit);
+    }
+    for (const line of src.split('\n').filter(isCodeLine)) {
+      for (const m of line.matchAll(/['"`](tooling\/[A-Za-z0-9._/-]+\.json)['"`]/g)) {
+        if (existsSync(join(ROOT, ...m[1].split('/')))) out.push(m[1]);
+      }
+      for (const m of line.matchAll(/\bjoin\(\s*HERE\s*,\s*((?:['"][^'"]+['"]\s*,\s*)*['"][^'"]+\.json['"])\s*\)/g)) {
+        const segs = [...m[1].matchAll(/['"]([^'"]+)['"]/g)].map((s) => s[1]);
+        const hit = posix.normalize(`${posix.dirname(rel)}/${segs.join('/')}`);
+        if (!hit.startsWith('..') && existsSync(join(ROOT, ...hit.split('/')))) out.push(hit);
+      }
+    }
+    return [...new Set(out)];
+  };
+
+  for (const name of files) {
+    const text = stripComments(readFileSync(join(WF_DIR, name), 'utf8'));
+    const keys = [...new Set(plannedEnvironments(text).map((e) => unitKeyFor(units, e)).filter((k) => k !== null))];
+    if (keys.length === 0) continue;
+    const paths = keys.flatMap((k) => units[k]);
+    if (paths.length === 0) continue;
+    importGraded.push(name);
+    const unitNames = `deployUnits[${keys.map((k) => `"${k}"`).join(', ')}]`;
+
+    // The unit's own tooling entries, expanded against the tree.
+    const listed = new Set();
+    for (const p of paths.filter((x) => x.startsWith('tooling/'))) {
+      if (!/[*?[\]]/.test(p)) {
+        if (existsSync(join(ROOT, ...p.split('/')))) listed.add(p);
+        else importLost.push(`${name} — ${unitNames} lists \`${p}\`, which does not exist — a unit entry checked against a phantom file passes for the wrong reason`);
+        continue;
+      }
+      const tree = claimedTree(p);
+      const dir = tree ?? /^([^*?[\]]+)\/\*(\.[A-Za-z0-9.]+)?$/.exec(p)?.[1];
+      if (!dir) {
+        importUnreadable.push(`${name} — ${unitNames} lists \`${p}\`, a glob shape this limb cannot expand (it reads \`X/**\`, \`X/*\`, \`X/*.ext\` and literal paths)`);
+        continue;
+      }
+      for (const f of bundledFilesUnder(ROOT, dir)) if (globClaims(p, f)) listed.add(f);
+    }
+
+    const reached = (file) => paths.some((g) => globClaims(g, file) === true);
+    const queue = [...listed].filter((f) => f.endsWith('.mjs'));
+    const seen = new Set();
+    while (queue.length) {
+      const file = queue.shift();
+      if (seen.has(file)) continue;
+      seen.add(file);
+      importWalked++;
+      for (const hit of readsOf(file)) {
+        importFollowed++;
+        if (!hit.startsWith('tooling/')) {
+          importOutOfScope.add(hit);
+          continue;
+        }
+        importReached++;
+        if (!reached(hit)) {
+          const line = `${name} — \`${file}\` reads \`${hit}\`, and ${unitNames} never claims it: an edit to it changes what this lane runs and deploys nothing.`;
+          if (!importProblems.includes(line)) importProblems.push(line);
+        }
+        if (hit.endsWith('.mjs') && !seen.has(hit)) queue.push(hit);
+      }
+    }
+  }
+}
+// Not gated: a glob this limb cannot expand is unread on any tree.
+if (importUnreadable.length) {
+  for (const l of importUnreadable) console.error(`✗ COVERAGE LOST — ${l}.`);
+  coverageLost();
+}
+// Gated, as the REQUIRED inputs above are: a fixture holds neither the listed
+// files nor the second deploy workflow.
+if (scanningRealRepo) {
+  const dropped = REQUIRED_IMPORT_COVERAGE.filter((n) => !importGraded.includes(n));
+  if (dropped.length) importLost.push(`named workflow(s) no longer graded by the import limb: ${dropped.join(', ')}`);
+  if (importFollowed === 0) importLost.push('the import limb followed ZERO reads out of every listed tooling module, so "every module they pull in is listed" was asserted over nothing');
+  if (importLost.length) {
+    for (const l of importLost) console.error(`✗ COVERAGE LOST — ${l}.`);
+    coverageLost();
+  }
+}
+
 if (problems.length) {
   console.error(`✗ deploy triggers — ${problems.length} unclaimed build input(s):`);
   for (const p of problems) console.error(`    ${p}`);
   console.error('');
   console.error('  A build input outside the unit means a commit that changes what gets built');
   console.error(`  deploys NOTHING, with every check green and no error anywhere. Add the path to ${UNITS_REL}.`);
-  process.exit(1);
 }
+if (importProblems.length) {
+  console.error(`✗ deploy-trigger imports — ${importProblems.length} unclaimed tooling module(s) or file(s):`);
+  for (const p of importProblems) console.error(`    ${p}`);
+  console.error('');
+  console.error(`  Add each named file to that workflow's unit in ${UNITS_REL} as its exact path.`);
+}
+if (problems.length || importProblems.length) process.exit(1);
 
 console.log(
   `ok  deploy triggers — ${graded.length} Flutter deploy unit(s) (${graded.join('; ')}), ` +
     `${checks} build input(s) all claimed`,
+);
+console.log(
+  `ok  deploy-trigger imports — ${importGraded.length} unit-planning workflow(s) graded (${importGraded.join(', ')}): ` +
+    `${importWalked} tooling module(s) walked, ${importFollowed} read(s) followed, ${importReached} tooling file(s) reached, ` +
+    `all claimed by their unit (${importOutOfScope.size} read(s) outside tooling/ out of scope)`,
 );
 
 /** The one COVERAGE LOST stop: each could-not-look branch above prints its own reason and ends

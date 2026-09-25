@@ -1237,6 +1237,21 @@ jobs:
       # second one is the one a downloader and a store both read.
       - name: Grade the release record against the bytes beside it
         run: node tooling/ci/assert-release-json.mjs --dir dist
+      # why: the publish below is tag-gated, so on every other run (the cron, a dispatch) the
+      # record and its manifest left with the runner (O-NON-TAG-RELEASE-RECORD-DISCARDED). Named
+      # release-record-<app>, never <app>-…: the first download above takes `<app>-*`, and a
+      # re-run would pull an <app>- name into downloads/ and stage it as a build artifact.
+      # `!cancelled()`: a record the grade refused is the one most worth keeping.
+      - name: Keep the release record (non-tag runs)
+        if: ${{ !cancelled() && github.ref_type != 'tag' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-record-${{ matrix.app }}
+          path: |
+            dist/release.json
+            dist/SHA256SUMS
+          if-no-files-found: warn
+          retention-days: 90
       - name: Publish the GitHub Release (tag pushes only)
         if: github.ref_type == 'tag'
         env:

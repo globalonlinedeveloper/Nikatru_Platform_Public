@@ -42,6 +42,7 @@ import {
   profileName,
   PROFILE_KINDS,
   bundleIdNameProblem,
+  appleResourceIds,
 } from '../apple-provisioning.mjs';
 import { profileMembers, parseMobileProvision } from '../apple-signing.mjs';
 import { ascClient, ascJwt } from '../../ops/provision-apple.mjs';
@@ -54,6 +55,11 @@ const REAL = JSON.parse(readFileSync(join(REPO, 'tooling', 'apple-provisioning.j
 const clone = (x) => JSON.parse(JSON.stringify(x));
 
 const ANCHOR = 'com.nikatru.platform';
+// O-APPLE-RESOURCE-IDS-IN-COMMENTS: the real resource ids are READ from the
+// register, never written here — assert-apple-entitlements refuses a literal one.
+const [P_IOS, P_MAC] = REAL.protected.profiles;
+const [DIST_CERT] = REAL.protected.certificates;
+const APP_ID = REAL.apps.subscriptiontracker.resourceId;
 const DAR = 'com.apple.developer.declared-age-range';
 const SIWA = 'com.apple.developer.applesignin';
 
@@ -117,6 +123,30 @@ describe('the register', () => {
   test('an App ID name with a special character is refused, as Apple refuses it', () => {
     assert.equal(bundleIdNameProblem('Nikatru Subscription Tracker'), null);
     assert.match(bundleIdNameProblem('Nikatru — Tracker'), /Apple refuses it/);
+  });
+  // ── O-APPLE-RESOURCE-IDS-IN-COMMENTS — the retired list and the id set ──────
+  test('a retired entry with no why is refused', () => {
+    const r = clone(REAL);
+    r.retired[0].why = ' ';
+    assert.match(validateRegister(r).join('\n'), /retired\[0\]\.why is empty/);
+  });
+  test('a retired id that is still named live is refused — one id, two states', () => {
+    const r = clone(REAL);
+    r.retired[0].id = P_IOS;
+    assert.match(validateRegister(r).join('\n'), /is retired AND still named live/);
+  });
+  test('a retiredOn that is neither a date nor "unknown" is refused', () => {
+    const r = clone(REAL);
+    r.retired[0].retiredOn = 'mid-September';
+    assert.match(validateRegister(r).join('\n'), /retiredOn must be YYYY-MM-DD, or "unknown"/);
+  });
+  test('the id set is every live and retired resource id, and no bundle identifier', () => {
+    const ids = appleResourceIds(REAL);
+    for (const id of [...REAL.protected.profiles, ...REAL.protected.certificates, REAL.anchor.resourceId, APP_ID]) assert.ok(ids.has(id), id);
+    for (const r of REAL.retired) assert.ok(ids.has(r.id), r.id);
+    assert.equal(ids.has(ANCHOR), false);
+    assert.equal(ids.has('com.nikatru.subscriptiontracker'), false);
+    assert.equal(ids.size, REAL.protected.profiles.length + REAL.protected.certificates.length + 2 + REAL.retired.length);
   });
   test('the real derivation: Runner.entitlements carries Declared Age Range only', () => {
     assert.deepEqual([...expectedEntitlements(REAL, 'subscriptiontracker')], [[DAR, true]]);
@@ -257,7 +287,7 @@ describe('planning profiles', () => {
     assert.equal(profileName(name, MAC), 'Nikatru Subscription Tracker macOS App Store');
   });
   test('ACTIVE profiles with every key are kept — green control', () => {
-    assert.deepEqual(plan([prof('JWVU72A2N6', IOS, 'ACTIVE'), prof('26RV2N2Y4L', MAC, 'ACTIVE')]).map((x) => x.action), ['keep', 'keep']);
+    assert.deepEqual(plan([prof(P_IOS, IOS, 'ACTIVE'), prof(P_MAC, MAC, 'ACTIVE')]).map((x) => x.action), ['keep', 'keep']);
   });
   test('nothing is minted while the capabilities are unsettled', () => {
     assert.deepEqual(plan([], false).map((x) => x.action), ['deferred', 'deferred']);
@@ -271,7 +301,7 @@ describe('planning profiles', () => {
     assert.match(p[1].why, /declared-age-range/);
   });
   test('a PROTECTED profile is refused, never re-minted', () => {
-    const p = plan([prof('JWVU72A2N6', IOS, 'INVALID'), prof('26RV2N2Y4L', MAC, 'ACTIVE')]);
+    const p = plan([prof(P_IOS, IOS, 'INVALID'), prof(P_MAC, MAC, 'ACTIVE')]);
     assert.equal(p[0].action, 'refused');
     assert.match(p[0].why, /PROTECTED/);
   });
@@ -299,8 +329,15 @@ describe('the live client’s safety rails', () => {
     };
     return { calls, fetchImpl };
   };
-  const PROT = new Set(['JWVU72A2N6', '26RV2N2Y4L', 'ND3WDZ2B5K', 'RDYD44LRCZ', 'D4GCNS78PP', '5Y2628ZNU7', 'com.nikatru.subscriptiontracker', ANCHOR]);
-  const CERTS = new Set(['ND3WDZ2B5K', 'RDYD44LRCZ']);
+  // Built from the register the way provision-apple.mjs builds its own.
+  const PROT = new Set([
+    ...REAL.protected.profiles,
+    ...REAL.protected.certificates,
+    REAL.anchor.resourceId,
+    APP_ID,
+    ...REAL.protected.bundleIds,
+  ]);
+  const CERTS = new Set(REAL.protected.certificates);
   test('a dry run refuses every non-GET BEFORE it is sent, and counts zero mutating', async () => {
     const { calls, fetchImpl } = recorder();
     const api = ascClient({ jwt: 't', dryRun: true, fetchImpl });
@@ -313,17 +350,17 @@ describe('the live client’s safety rails', () => {
   test('an apply refuses anything that names a protected resource', async () => {
     const { calls, fetchImpl } = recorder();
     const api = ascClient({ jwt: 't', dryRun: false, protectedIds: PROT, protectedCertificates: CERTS, fetchImpl });
-    await assert.rejects(api.call('DELETE', '/v1/profiles/JWVU72A2N6'), /PROTECTED/);
-    await assert.rejects(api.call('DELETE', '/v1/bundleIds/5Y2628ZNU7'), /PROTECTED/);
-    await assert.rejects(api.call('DELETE', '/v1/certificates/ND3WDZ2B5K'), /PROTECTED/);
-    await assert.rejects(api.call('POST', '/v1/bundleIdCapabilities', capabilityWriteBody(REAL, '5Y2628ZNU7', 'IN_APP_PURCHASE')), /PROTECTED/);
+    await assert.rejects(api.call('DELETE', `/v1/profiles/${P_IOS}`), /PROTECTED/);
+    await assert.rejects(api.call('DELETE', `/v1/bundleIds/${APP_ID}`), /PROTECTED/);
+    await assert.rejects(api.call('DELETE', `/v1/certificates/${DIST_CERT}`), /PROTECTED/);
+    await assert.rejects(api.call('POST', '/v1/bundleIdCapabilities', capabilityWriteBody(REAL, APP_ID, 'IN_APP_PURCHASE')), /PROTECTED/);
     await assert.rejects(api.call('POST', '/v1/bundleIds', { data: { attributes: { identifier: 'com.nikatru.subscriptiontracker' } } }), /PROTECTED/);
     assert.deepEqual(calls, []);
   });
   test('a new profile may NAME the protected distribution certificate — the green control', async () => {
     const { calls, fetchImpl } = recorder();
     const api = ascClient({ jwt: 't', dryRun: false, protectedIds: PROT, protectedCertificates: CERTS, fetchImpl });
-    await api.call('POST', '/v1/profiles', { data: { relationships: { bundleId: { data: { id: 'NEWAPP' } }, certificates: { data: [{ id: 'ND3WDZ2B5K' }] } } } });
+    await api.call('POST', '/v1/profiles', { data: { relationships: { bundleId: { data: { id: 'NEWAPP' } }, certificates: { data: [{ id: DIST_CERT }] } } } });
     assert.deepEqual(calls, ['POST https://api.appstoreconnect.apple.com/v1/profiles']);
     assert.equal(api.counts.mutating, 1);
   });
@@ -425,6 +462,41 @@ describe('assert-apple-entitlements — the tree guard, against a copied tree', 
   test('an unreadable register is COVERAGE LOST (2)', () => {
     const r = run(tree({ mutate: (t) => writeFileSync(join(t, 'tooling', 'apple-provisioning.json'), '{') }));
     assert.equal(r.status, 2);
+  });
+
+  // ── O-APPLE-RESOURCE-IDS-IN-COMMENTS — the id limb ──────────────────────────
+  const plant = (t, rel, text) => {
+    mkdirSync(dirname(join(t, rel)), { recursive: true });
+    writeFileSync(join(t, rel), text);
+  };
+  test('ids · a retired resource id in a tooling/ci comment fails, naming file:line', () => {
+    const id = REAL.retired[0].id;
+    const r = run(tree({ mutate: (t) => plant(t, 'tooling/ci/test/x.test.mjs', `// fine\n// the old profile was ${id}\n`) }));
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, new RegExp(`tooling/ci/test/x\\.test\\.mjs:2 names Apple resource id ${id}`));
+  });
+  test('ids · a protected id as a code literal fails too', () => {
+    const r = run(tree({ mutate: (t) => plant(t, 'tooling/ci/y.mjs', `export const X = '${DIST_CERT}';\n`) }));
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, new RegExp(`tooling/ci/y\\.mjs:1 names Apple resource id ${DIST_CERT}`));
+  });
+  test('ids · a .mjs that points at the register instead is green — the control', () => {
+    const r = run(tree({ mutate: (t) => plant(t, 'tooling/ci/y.mjs', '// the live ids are protected in tooling/apple-provisioning.json\n') }));
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /ok {3}ids: 1 \.mjs file\(s\) under tooling\/ci name none of the register's \d+ Apple resource id\(s\)/);
+  });
+  test('ids · a register that names no resource id is COVERAGE LOST (2)', () => {
+    const r = run(tree({ mutate: (t) => edit(t, 'tooling/apple-provisioning.json', (s) => {
+      const j = JSON.parse(s);
+      delete j.anchor.resourceId;
+      delete j.apps.subscriptiontracker.resourceId;
+      j.protected.profiles = [];
+      j.protected.certificates = [];
+      j.retired = [];
+      return JSON.stringify(j);
+    }) }));
+    assert.equal(r.status, 2, r.stdout + r.stderr);
+    assert.match(r.stderr, /names no App Store Connect resource id/);
   });
 
   // ── ⏱ 2026-09-18 · O-STAMP-APPLE-MACOS-ENTITLEMENTS — the macOS limb ──────
