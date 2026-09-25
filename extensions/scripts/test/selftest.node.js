@@ -2551,9 +2551,16 @@ let COVERAGE_NOTE = '';
    prefix is required, because a bare `publish/<name>.node.js` is a
    tool-relative path that does not resolve from the repository root and
    appears in prose. A fresh RegExp per call — a shared /g literal carries
-   lastIndex between calls and would silently drop matches. */
+   lastIndex between calls and would silently drop matches.
+   ⏱ 2026-09-25 — `../tooling/scripts` joined the alternatives, in step with
+   extensions-ci.yml's `gate-inventory` (b440f042). The spawn-ceiling preload
+   is loaded as `--import ../tooling/scripts/spawn-ceiling.mjs`, and without the
+   alternative its TAIL matched as `scripts/spawn-ceiling.mjs` — a file in this
+   tree that does not exist — which reddened PR #942's Gate self-test (run
+   36130094190, job 108055128077). Leftmost match wins, so the whole path is
+   read before its tail can be. */
 const gateHits = text => text.match(
-  /(?:scripts|Extension\/[A-Za-z0-9_]+\/publish)\/[A-Za-z0-9][A-Za-z0-9._/-]*\.(?:mjs|node\.js)/g
+  /(?:\.\.\/tooling\/scripts|scripts|Extension\/[A-Za-z0-9_]+\/publish)\/[A-Za-z0-9][A-Za-z0-9._/-]*\.(?:mjs|node\.js)/g
 ) || [];
 
 /* One line in, one line out, comment removed. YAML comments and the shell
@@ -2693,6 +2700,8 @@ const NO_CASE_RECORDED = [
     why: 'OPEN GAP, recorded 2026-08-25. It lives in a tool\'s publish/, not in scripts/, and the run() helper here resolves against SCRIPTS and appends --repo-root, which this gate does not take — it takes --zip. It needs its own runner before it can have a case.' },
   { gate: 'scripts/check-listing-assets.mjs',
     why: 'COVERED, ELSEWHERE AND IN CI, recorded 2026-09-20 — this is not an open gap. Its ten cases are in scripts/test/listing-assets.test.mjs and every one of them SPAWNS this gate (`spawnSync(process.execPath, [GUARD, \'fullshot\', \'--repo-root\', root])`), not a re-implementation of it: a GREEN CONTROL that also asserts the run graded something, then eight reds — a deleted required asset, one at the WRONG SIZE by a single pixel, the 128x128 icon stripped of its alpha channel, a file that is not a PNG at all, ZERO screenshots, SIX screenshots (Chrome takes five), a screenshot at a size only one of the three stores accepts, and a tool with no listing tree at all proven to be a NOTE rather than a failure — and a final RESTORED case proving the same tree is green again, so the reds above moved it and the green is not vacuous. extensions.yml runs that suite in the same job that runs the gate. They are not in THIS file for the same reason as check-contracts-sync: every case here mutates one tree through --repo-root, while these need a synthetic listing tree with real PNG bytes whose IHDR the gate decodes.' },
+  { gate: '../tooling/scripts/spawn-ceiling.mjs',
+    why: 'COVERED ELSEWHERE, recorded 2026-09-25 — this is not an open gap. It is a PRELOAD from the tooling tree, not a gate of this one: every `node --test` step in extensions-ci.yml loads it with `--import ../tooling/scripts/spawn-ceiling.mjs` so a hung spawnSync stops at a ceiling instead of wedging the job. Its red/green pairs are in tooling/ci/test/spawn-ceiling.test.mjs (a hung synchronous spawn stops at the ceiling; a call that passed its own timeout keeps it; every workflow `node --test` loads the preload), which ci.yml\'s guard-tests step runs. It cannot have a case HERE: run() resolves against SCRIPTS and appends --repo-root, and a preload takes no arguments at all.' },
   { gate: 'scripts/test/listing-assets.test.mjs',
     why: 'PERMANENT, recorded 2026-09-20. It is a suite, not a gate — the same reason scripts/test/selftest.node.js and scripts/test/contracts-sync.test.mjs are in this list. It appears in the invoked set only because extensions.yml runs it by path, which is deliberate: the negative suite has to run in CI or the gate above is covered only on somebody\'s laptop.' }
 ];
@@ -2745,6 +2754,23 @@ function unexplainedGaps(invoked, covered, recorded) {
     bad('a gate named only in a comment is not counted as invoked',
       'the comment stripper let through ' + JSON.stringify([...seen]) +
       '; prose would enter the invoked set and this whole case would grade the wrong thing');
+  }
+}
+
+/* ---- a preload from the tooling tree is read WHOLE, never by its tail ---- */
+/* ⏱ 2026-09-25, the #942 red. Without the `../tooling/scripts` alternative the
+   same line yields `scripts/ghost-preload.mjs`, an in-tree path, and the case
+   above then demands a red/green pair for a file that is not in this tree. */
+{
+  const preload = '../tooling/scripts/' + 'ghost-preload.mjs';
+  const tail = 'scripts/' + 'ghost-preload.mjs';
+  const seen = gateHits(stripAll(
+    '        run: node --import ' + preload + ' --test-timeout=600000 --test scripts/test/a.test.mjs\n'));
+  if (seen.includes(preload) && !seen.includes(tail)) {
+    ok('a --import preload from ../tooling/scripts is read as its whole path', 'not as the in-tree tail ' + tail);
+  } else {
+    bad('a --import preload from ../tooling/scripts is read as its whole path',
+      'the gate pattern yielded ' + JSON.stringify(seen) + '; the tail would enter the invoked set as a gate of this tree');
   }
 }
 

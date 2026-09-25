@@ -105,7 +105,7 @@
 // Exit:   0 = every probed executable refused · 1 = one printed ok over nothing,
 //         or the scan itself could not be trusted.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, writeFileSync, existsSync, mkdirSync, mkdtempSync, copyFileSync, rmSync } from 'node:fs';
+import { readFileSync, readdirSync, writeFileSync, existsSync, mkdirSync, mkdtempSync, copyFileSync, rmSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, resolve, dirname, posix } from 'node:path';
@@ -551,6 +551,72 @@ for (const [rel, src] of sourceOf) {
   }
 }
 
+// ⏱ ADDED 2026-09-25 — A PRELOAD IS IMPORTED TOO, by node rather than by a
+// sibling. tooling/scripts/spawn-ceiling.mjs has no main BY DESIGN: it wraps
+// spawnSync the moment it is loaded, and every workflow `node --test` loads it
+// with `node --import <path>`. The edges above are only `from`/`import()` between
+// guard-home sources, so this file called the preload dead ("nothing imports
+// it") and reddened PR #942 (run 36130094190, job 108055127917). A `--import` in
+// a workflow's executable text is the same edge with the runtime as the
+// importer. It is DERIVED from the workflows GitHub runs, never listed: a
+// preload named only in a YAML comment is no edge, and the home prefix is
+// required, so a `--import` of another tree's file promotes nothing here. The
+// leading `./` or `../` is not resolved — it depends on the step's
+// working-directory, and a wrong one fails that step loudly on its own.
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const PRELOAD_RE = new RegExp(
+  `--import(?:=|\\s+)['"]?(?:\\.{1,2}/)*(${HOMES.map(escapeRe).join('|')})/([A-Za-z0-9][A-Za-z0-9._-]*\\.mjs)`,
+  'g',
+);
+/** A YAML line up to its comment: `#` at the head or after whitespace. A `#`
+ *  inside a quoted run string also cuts, which can only LOSE an edge — the
+ *  module is then reported dead, loudly, never passed silently. */
+const yamlCode = (text) =>
+  text
+    .split(/\r?\n/)
+    .map((l) => {
+      const i = l.search(/(?:^|\s)#/);
+      return i === -1 ? l : l.slice(0, i);
+    })
+    .join('\n');
+const preloadsFrom = (text) => [...yamlCode(text).matchAll(PRELOAD_RE)].map((m) => `${m[1]}/${m[2]}`);
+
+// The matcher's own negative test, on every run, like the import canaries above.
+// Assembled from halves so no whole path to a file that is not on disk appears
+// as one token in this repository.
+const CANARY_PRELOAD_NAME = 'canary-' + 'preload.mjs';
+const canaryPreloadRun = preloadsFrom(
+  `        run: node --import ../tooling/scripts/${CANARY_PRELOAD_NAME} --test-timeout=600000 --test x.test.mjs`,
+);
+const canaryPreloadComment = preloadsFrom(
+  `        # run: node --import ./tooling/scripts/${CANARY_PRELOAD_NAME} --test x.test.mjs`,
+);
+const canaryPreloadForeign = preloadsFrom(`        run: node --import ./packages/lib/${CANARY_PRELOAD_NAME} --test x.test.mjs`);
+if (
+  canaryPreloadRun.length !== 1 ||
+  canaryPreloadRun[0] !== `tooling/scripts/${CANARY_PRELOAD_NAME}` ||
+  canaryPreloadComment.length !== 0 ||
+  canaryPreloadForeign.length !== 0
+) {
+  coverageLost([
+    'the preload matcher no longer reads `node --import <guard-home file>` as an edge, or reads one it must not.',
+    `A run line yielded [${canaryPreloadRun.join(', ')}] (must be exactly tooling/scripts/${CANARY_PRELOAD_NAME}),`,
+    `the same line in a YAML comment yielded [${canaryPreloadComment.join(', ')}] (must be empty), and a preload`,
+    `from outside the guard homes yielded [${canaryPreloadForeign.join(', ')}] (must be empty).`,
+  ]);
+}
+
+const WORKFLOWS = join(ROOT, '.github', 'workflows');
+const preloaded = new Set();
+if (existsSync(WORKFLOWS)) {
+  for (const f of readdirSync(WORKFLOWS).filter((n) => /\.ya?ml$/i.test(n)).sort()) {
+    for (const target of preloadsFrom(readFileSync(join(WORKFLOWS, f), 'utf8'))) {
+      preloaded.add(target);
+      importedBy.set(target, (importedBy.get(target) ?? 0) + 1);
+    }
+  }
+}
+
 const libraries = [];
 const probed = [];
 // COUNTED, not assumed to be 1. This file is absent from a checkout of any
@@ -845,7 +911,7 @@ try {
       `ok  guards refuse empty — ${refused} of ${probed.length} probed executable(s) refused a tree with no ` +
         `subject in it; ${vacuousDeclared.length} exited 0 and declared why. ${executables.length} enumerated ` +
         `across ${HOMES.join(' + ')} (${tracked.length} tracked), ${libraries.length} derived as libraries with ` +
-        `no main, ${EXEMPT.size} exempt, ${selfExcluded} self-excluded. Private/requirements/tooling is deliberately out of ` +
+        `no main (${libraries.filter((l) => preloaded.has(l)).length} of them a workflow \`--import\` preload), ${EXEMPT.size} exempt, ${selfExcluded} self-excluded. Private/requirements/tooling is deliberately out of ` +
         'scope: it is not in the public checkout, so a probe of it would pass by finding nothing.',
     );
   }
