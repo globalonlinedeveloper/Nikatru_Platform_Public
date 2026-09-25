@@ -144,6 +144,7 @@
       "tooling/app-yaml/schema-validate.mjs",
       "tooling/app-yaml/schema/privacy.schema.json",
       "tooling/app-yaml/yaml.mjs",
+      "tooling/legal/provider-register.json",
       "tooling/bundle-availability.mjs",
       "tooling/channel-register.json",
       "tooling/ci/app-set.mjs",
