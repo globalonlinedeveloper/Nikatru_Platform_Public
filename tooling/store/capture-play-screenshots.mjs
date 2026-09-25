@@ -259,18 +259,25 @@ const ratioOf = (v) => {
 /** One entry per DEVICE TYPE. The `type` key must name a set in the register,
  *  and the register is where that set's directory lives — never here.
  *
- *  🔴 PLAY'S TWO VIEWPORTS STAY WRITTEN DOWN, UNCHANGED. 360x640@3 and
- *  900x1600@2 are the geometry every frame in the live Play listing was
- *  captured at; moving them into the register would re-derive them through a
- *  second file on the first run after this change, and a screenshot set that
- *  silently changes size is the one failure this whole lane exists to prevent.
- *  So: Play reads from here, and a channel with no such history declares its
- *  geometry in its own `deviceTypeCoverage.sets[<type>].capture` limb, which
- *  this file reads. The Play plan is byte-identical before and after. */
-export const PLAY_CAPTURES = [
-  { type: 'phone', cssWidth: 360, cssHeight: 640, dpr: 3, rules: PLAY_SCREENSHOTS },
-  { type: 'tablet', cssWidth: 900, cssHeight: 1600, dpr: 2, rules: PLAY_TABLET_SCREENSHOTS },
-];
+ *  🔴 PLAY'S TWO VIEWPORTS ARE READ FROM THE REGISTER SINCE 2026-09-24, and
+ *  this comment used to argue the opposite. It said 360x640@3 and 900x1600@2
+ *  should stay written here, because re-deriving them through a second file
+ *  risked a set that silently changes size. Two things changed that. The ink
+ *  limb of `assert-listing-assets.mjs` now judges each frame at its CSS width,
+ *  so it needs the SAME geometry, and a guard cannot import this file — it
+ *  drives a browser from its top level. And the size can no longer change
+ *  silently: that limb refuses (exit 2) any committed frame that is not
+ *  exactly `logicalWidth*dpr x logicalHeight*dpr`. So the two viewports live in
+ *  `android-play`'s `deviceTypeCoverage.sets.{phone,tablet}.capture`, the shape
+ *  every other channel already declares, with the numbers they had here; this
+ *  file keeps its own `rules` objects, and `deviceTypeSets()` refuses the run
+ *  if either block is missing or unreadable. */
+const PLAY_SETS = REG?.storeMetadataContract?.perChannel?.['android-play']?.graphicAssets?.screenshots?.deviceTypeCoverage?.sets ?? null;
+const playCapture = (type, rules) => {
+  const c = PLAY_SETS?.[type]?.capture ?? null;
+  return { type, cssWidth: c?.logicalWidth, cssHeight: c?.logicalHeight, dpr: c?.dpr, rules };
+};
+export const PLAY_CAPTURES = [playCapture('phone', PLAY_SCREENSHOTS), playCapture('tablet', PLAY_TABLET_SCREENSHOTS)];
 
 /** The viewport list for a channel that declares its own capture geometry.
  *  A set with NO `capture` limb is skipped rather than guessed at, and
@@ -609,6 +616,24 @@ function deviceTypeSets() {
       fail([`${REGISTER} declares set "${t}" with no \`dir\`, so there is no directory to capture into.`]);
     }
     dirs[t] = d;
+  }
+  // 🔴 THE VIEWPORT IS THE REGISTER'S, SO AN UNREADABLE ONE STOPS THE RUN HERE,
+  // before anything is deleted. Without this a missing `capture` block would
+  // reach flutter drive as `--browser-dimension=undefinedxundefined@undefined`,
+  // and a DPR that does not land on whole device pixels would produce a frame
+  // the ink limb then refuses for its size, after a full capture.
+  for (const c of CAPTURES) {
+    const okSide = (v) => Number.isInteger(v) && v > 0;
+    const whole = okSide(c.cssWidth) && okSide(c.cssHeight) && Number.isFinite(c.dpr) && c.dpr > 0 &&
+      Number.isInteger(c.cssWidth * c.dpr) && Number.isInteger(c.cssHeight * c.dpr);
+    if (!whole) {
+      fail([
+        `${REGISTER} …perChannel["${CHANNEL}"]…deviceTypeCoverage.sets["${c.type}"].capture is ` +
+          `${JSON.stringify(sets[c.type]?.capture ?? null)}, not {logicalWidth, logicalHeight, dpr} in whole device pixels.`,
+        'That block is the viewport this set is captured at and the size assert-listing-assets.mjs holds its',
+        'frames to. Restore it before capturing; do not guess a viewport here.',
+      ]);
+    }
   }
   const minDistinct = Number.isInteger(cov.minDistinctTypes) ? cov.minDistinctTypes : null;
   // 🔴 REFUSE BEFORE THE BROWSER STARTS IF THE RUN CANNOT SUCCEED. Viewports and

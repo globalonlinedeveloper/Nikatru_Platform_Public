@@ -36,11 +36,13 @@
 // missing from EVERY page at once, and the run medians sit 2.97x under and
 // 2.95x over the floor. The full table is in the register block's `_why`.
 //
-// 🔴 ITS OWN THRESHOLD, NOT THE STORE ONE. The store block's 0.7
-// (channel-register.json …inkFloor.minFractionOfMeasured) is how far a
-// recapture of a recorded store frame may drift. Borrowing it made this guard
-// fail a correct frame on origin/main. The two numbers answer different
-// questions and now live in different registers.
+// 🔴 ITS OWN THRESHOLD, NOT THE STORE ONE. The store rule
+// (channel-register.json storeMetadataContract.inkRule) computes one floor per
+// store device class from that class's calibration frames. The first version
+// of this guard borrowed the store's then per-frame drift fraction, 0.7, and it
+// failed a correct frame on origin/main. The two floors are computed by the
+// same arithmetic and answer different questions, so they live in different
+// registers.
 //
 // 🔴 ONE WIDTH. Removed ink is a fraction of pixels and falls roughly as 1/DPR,
 // so the floor holds only at the width it was measured at. A frame of another

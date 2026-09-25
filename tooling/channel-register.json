@@ -242,6 +242,77 @@
       "apps/{app}/lib/core/config/app_config.dart",
       "apps/{app}/lib/core/app_config.dart"
     ],
+    "inkRule": {
+      "_why": [
+        "🔴 THE STORE FRAMES CARRY TEXT, JUDGED THE WAY THE e2e FRAMES ALREADY ARE. Between #567 and #854",
+        "the Play listing carried frames with NO GLYPHS IN THEM AT ALL: the capture fetched its fallback",
+        "fonts at run time, CI never got them, and Flutter drew none, while the layout, the cards, the",
+        "bundled icons and the colours were all correct. Every other check passed them. #847 bundled the",
+        "fonts; the ink limb of tooling/ci/assert-listing-assets.mjs is the check that sees the pixels.",
+        "Nothing here reads a word: the metric (tooling/store/frame-ink.mjs) counts the pixels standing in",
+        "local contrast to their neighbours, and REMOVED ink is what its 9x9 glyph filter takes away.",
+        "",
+        "🔴 WHAT THIS REPLACED: A FLOOR PER NAMED FRAME, HAND-PASTED. Until 2026-09-24 each channel carried",
+        "an `inkFloor` block of eight `{measured, textlessControl}` rows and a 0.7 drift fraction. Nobody",
+        "could re-take the recorded controls (frame-ink.mjs's header measured them 3% to 36% off the tool",
+        "in the tree), every recapture had to paste eight new numbers, and the tablet 04-budget frame",
+        "fell under its row on a legitimate screen change (run 35819066562). A per-frame RATIO against a",
+        "textless control was measured as the alternative and does not separate: no textless store frame",
+        "exists in history (#567 only renamed #542's frames), with the substitute set max(textless)",
+        "4.6748 > min(text) 1.3926, and the e2e register records the same at DPR 1 (a glyphless ratio",
+        "of 0.135-0.922). Row O-STORE-INK-FLOOR-HAND-PASTED.",
+        "",
+        "🔴 SO THE VERDICT IS ON THE RUN, PER DEVICE CLASS, AGAINST A FLOOR COMPUTED FROM FRAMES. For each",
+        "class the guard reads the class's calibration directory — `served/` and `glyphless/`, the same",
+        "file names in both, at least four of each — takes each mode's run median of removed ink, and",
+        "puts the floor at their geometric mean. A calibration whose served median is under",
+        "`minSeparation` times its glyphless median is refused (exit 1) and never judged with: at 3 each",
+        "median sits at least 1.73x from the floor. The listing's own run median must reach the floor.",
+        "The e2e floor on main is the same arithmetic: sqrt(0.032481 x 0.003698) = 0.010960, which is",
+        "framesCarryText.minMedianRemovedInk (0.011) in tooling/e2e-leg-register.json, and",
+        "listing-assets-ink.test.mjs recomputes it from the committed e2e fixtures with the guard's",
+        "helpers.",
+        "",
+        "🔴 NORMALISED TO CSS PIXELS, AND STILL ONE FLOOR PER CLASS — MEASURED 2026-09-24 AT 7dd09500.",
+        "Removed ink is a fraction of pixels and falls with the device pixel ratio, so every frame is",
+        "area-averaged to its class's `capture.logicalWidth` before it is measured. Run medians then:",
+        "",
+        "  set                                        n  run median  vs the e2e 0.011",
+        "  store phone, 1080x1920 area-averaged to 360   4  0.035093    3.19x",
+        "  store tablet, 1800x3200 area-averaged to 900  4  0.008659    0.79x",
+        "  e2e served, 430 at DPR 1                      5  0.032481    2.95x",
+        "  e2e glyphless, 430 at DPR 1                   5  0.003698    0.34x",
+        "  store phone / tablet NOT normalised           4  0.008709 / 0.004313",
+        "",
+        "The text-bearing tablet set reads UNDER the e2e floor even at its CSS width, so a floor borrowed",
+        "across classes would fail a correct listing; the floor is computed per class from that class's",
+        "own calibration frames. Without the normalisation both committed sets read under it.",
+        "",
+        "⚠️ THE GEOMETRY IS THE SET'S OWN `capture` BLOCK (deviceTypeCoverage.sets.<set>.capture), which",
+        "capture-play-screenshots.mjs captures at. A committed frame that is not exactly",
+        "logicalWidth*dpr x logicalHeight*dpr is COVERAGE LOST: the floor was not calibrated for it.",
+        "Each frame must also carry SOME ink and lose some to the glyph filter at native size, which is",
+        "what keeps a blank frame red when a median of four would not see it.",
+        "",
+        "⚠️ THE CALIBRATION FRAMES ARE THE LIVE SIGNED-OUT WEB APP at each class's geometry, once as",
+        "served and once with every font request answered 200 text/html (the defect, reproduced), made",
+        "the way the e2e fixtures were (Private/research/session-2026-09-23/frames-ink/). Signed-in pages",
+        "cannot be captured glyphless without the E2E secrets; the e2e floor carries the same limit."
+      ],
+      "metric": "local-contrast-ink-v1",
+      "normalise": "area-average each frame to its capture logicalWidth",
+      "floorRule": "geometric mean of the calibration set's served and glyphless run medians",
+      "minSeparation": 3,
+      "classes": {
+        "android-play/phone": {
+          "calibration": "tooling/ci/test/fixtures/store-ink-calibration/android-play-phone"
+        },
+        "android-play/tablet": {
+          "calibration": "tooling/ci/test/fixtures/store-ink-calibration/android-play-tablet"
+        }
+      },
+      "source": "Measured 2026-09-24 at Public main 7dd09500 by tooling/store/frame-ink.mjs (metric local-contrast-ink-v1, per-channel delta 24, 9x9 glyph filter) with areaDownscale and removedInkRunMedian, over the committed Play frames, the committed e2e fixtures (tooling/ci/test/fixtures/frames-ink-2026-09-23/) and each class's calibration directory. The floor is not written here: tooling/ci/assert-listing-assets.mjs computes it on every run. Row O-STORE-INK-FLOOR-HAND-PASTED; it replaces the per-frame inkFloor of row O-STORE-FRAMES-CARRY-NO-TEXT."
+    },
     "perChannel": {
       "_why": [
         "🔴 EVERY NUMBER IN THIS BLOCK CARRIES ITS CITATION, AND A FIELD WITH NO SOURCED LIMIT",
@@ -716,9 +787,10 @@
             "at dpr 1.5 -> 1920x1200), not a lossy recompression and not a crop: a resized frame is a photograph",
             "of something the app never drew. Change `capture.dpr` below and re-capture; do not touch the PNGs.",
             "",
-            "No `inkFloor` rows are declared because the directory holds no frames yet. assert-listing-assets.mjs",
-            "treats COMMITTED frames with no ink floor as exit 2 (COVERAGE LOST), so the ink floor arrives in the",
-            "same change as the first frames — measured with tooling/store/measure-frame-ink.mjs, never typed."
+            "No `storeMetadataContract.inkRule.classes` entry names this set because the directory holds no",
+            "frames yet. assert-listing-assets.mjs treats COMMITTED frames in a set with no ink class as exit 2",
+            "(COVERAGE LOST), so the class and its calibration directory arrive in the same change as the first",
+            "frames; tooling/store/measure-frame-ink.mjs prints the class's reading once they are in."
           ],
           "screenshots": {
             "dir": "screenshots",
@@ -996,62 +1068,6 @@
               "colour read live from the design-system token file rather than pinned, and it self-tests the",
               "detector on every run so the limb cannot go dark while this directory is still empty."
             ],
-            "inkFloor": {
-              "_why": [
-                "🔴 THE FOURTH THING A FRAME CAN BE WRONG ABOUT, AND THE ONE THAT SHIPPED. Between #567 and",
-                "#854 this listing carried four screenshots with NO TEXT IN THEM AT ALL — the capture fetched",
-                "its fallback fonts at run time, CI never got them, and Flutter drew no glyphs. The layout, the",
-                "cards, the bundled icons and the colours were all correct, so every check in the tree passed:",
-                "right size, right colour type, posture 'live', worst top band 0.009. assert-listing-assets.mjs",
-                "said so in its own header — 'ANY TEXT AT ALL, IN ANY FRAME … this is not a gap to close later'",
-                "— and pointed at the capture limb, which answers whether a frame leaks the signed-in account",
-                "and would have passed a textless set exactly as it passed that one. #847 bundled the fonts and",
-                "closed the cause; this block closes the BLINDNESS, which is what let it run for weeks.",
-                "",
-                "⚠️ NOTHING HERE READS A WORD, AND THE OLD ARGUMENT AGAINST AN OCR PASS STILL STANDS. A text",
-                "detector that reads some fonts and not others reports clean for the frames it cannot read. What",
-                "is measured instead is COVERAGE: the fraction of a frame's pixels standing in local contrast to",
-                "the pixel right of them or below them. Glyphs are thousands of small sharp transitions spread",
-                "over a frame; a card, a flat background and a gradient are none of them. So the reading",
-                "collapses when the glyphs go and the icons stay, in any script, because no part of it asks what",
-                "was drawn. The metric and the threshold it uses live in tooling/store/frame-ink.mjs with the",
-                "measurement table that chose them.",
-                "",
-                "🔴 NOT THE BYTE SIZE, WHICH IS HOW A HUMAN SPOTTED IT. The sizes either way are in `source`",
-                "below and they are a real signal — about the COMPRESSOR. A palette change or a longer gradient",
-                "moves them with no text involved, so a byte floor fires on correct input, which this file has",
-                "already paid for once with a made-up '120 characters or fewer' against a fixture at 129.",
-                "",
-                "🔴 PER NAMED FRAME, BECAUSE A PER-CLASS FLOOR DOES NOT SEPARATE, and that was measured rather",
-                "than assumed. 01-home carries a full-bleed hero panel and reads 0.0254 where 03-insights reads",
-                "0.0168; the TEXTLESS home frame reads 0.0131, which is BELOW the text-bearing insights frame.",
-                "One number covering the class would therefore either pass a textless home or fail a correct",
-                "insights. Each frame is compared to its own recorded reading instead, and the fraction below is",
-                "the one thing shared: every frame measured here lost at least 49% of its ink when its glyphs",
-                "were removed (worst case home, 0.0254 -> 0.0131), so 0.7 sits clear of both clusters — every",
-                "real frame is at least 1.43x above its floor and every textless control at least 1.36x below it.",
-                "",
-                "⚠️ A RECAPTURE THAT MOVES A FRAME'S INK BY MORE THAN 30% UPDATES THE ROW IN THE SAME CHANGE,",
-                "with the command re-run and the date re-written. That is the intended cost: a floor nobody has",
-                "to maintain is a floor nobody has measured. The guard refuses a floor that would sit at or below",
-                "its own recorded textless control — such a floor could not have caught the set that shipped —",
-                "and refuses one at or above the recorded reading, which would fire on the frame it was taken",
-                "from."
-              ],
-              "metric": "local-contrast-ink-v1",
-              "minFractionOfMeasured": 0.7,
-              "source": "measured 2026-09-21 against the committed set at origin/main 9f548515, by the reading in tooling/store/frame-ink.mjs (metric local-contrast-ink-v1, per-channel delta 24) — `measured` is each committed frame's ink fraction; `textlessControl` is the same frame with its glyphs removed by a 9x9 mode filter, which is what a capture with no fonts produced between #567 and #854. Byte sizes that day, with text vs without: home 459549/381194, calendar 157296/65609, insights 129114/73649, budget 153442/73806 — recorded because they are what a human noticed, and NOT what is enforced. Row O-STORE-FRAMES-CARRY-NO-TEXT.",
-              "frames": {
-                "screenshots/01-home.png": { "measured": 0.025445, "textlessControl": 0.013069 },
-                "screenshots/02-calendar.png": { "measured": 0.017765, "textlessControl": 0.006713 },
-                "screenshots/03-insights.png": { "measured": 0.016806, "textlessControl": 0.007159 },
-                "screenshots/04-budget.png": { "measured": 0.016896, "textlessControl": 0.007669 },
-                "screenshots-tablet/01-home.png": { "measured": 0.016420, "textlessControl": 0.005209 },
-                "screenshots-tablet/02-calendar.png": { "measured": 0.005503, "textlessControl": 0.001039 },
-                "screenshots-tablet/03-insights.png": { "measured": 0.005301, "textlessControl": 0.001305 },
-                "screenshots-tablet/04-budget.png": { "measured": 0.008408, "textlessControl": 0.003374 }
-              }
-            },
             "deviceTypeCoverage": {
               "_why": [
                 "🔴 PLAY'S MINIMUM IS NOT A COUNT OF FILES, IT IS A COUNT OF DEVICE TYPES, AND THIS TREE HAD",
@@ -1078,9 +1094,17 @@
                 "WENT FALSE ON 2026-08-21 rather than staying a policy. The `tablet` row below carries",
                 "minSide, maxSide and a portrait aspect ratio, every one of them quoted from the page",
                 "re-fetched that day — which is the rule above being HONOURED, not waived. A `sets` row is",
-                "still allowed to record only WHERE a type's screenshots live: `phone` does exactly that,",
-                "because its dimensions are already the `recommendedPortrait` block above it and a second",
-                "copy would be the first to drift.",
+                "still allowed to record only WHERE a type's screenshots live and the viewport they are",
+                "captured at: `phone` carries no dimension rule, because its dimensions are already the",
+                "`recommendedPortrait` block above it and a second rule would be the first to drift.",
+                "",
+                "🔴 `capture` IS THE VIEWPORT, NOT A RULE, AND SINCE 2026-09-24 IT IS THE ONLY DECLARATION OF",
+                "IT. capture-play-screenshots.mjs used to write Play's two viewports as constants beside a",
+                "comment arguing they should stay there; the ink limb of assert-listing-assets.mjs now needs",
+                "the same geometry to judge a frame at its CSS width, and a guard cannot import a script that",
+                "drives a browser from its top level. So PLAY_CAPTURES is built from these two blocks, with",
+                "the numbers it carried (360x640@3, 900x1600@2). A phone frame is held to 1080x1920 three",
+                "ways at once: CAPTURE.json's `pixels`, `recommendedPortrait`, and `capture` times `dpr`.",
                 "",
                 "THE PRINT/FAIL SPLIT IS THE ONE assert-listing-assets.mjs ALREADY USES. android-play is",
                 "`served: false`, so on the shared lane a shortfall PRINTS. On the submission lane it is",
@@ -1091,7 +1115,12 @@
               "sets": {
                 "phone": {
                   "dir": "screenshots",
-                  "_why": "The same directory `screenshots.dir` names, and the guard asserts the two agree rather than trusting either: two declarations of where the phone set lives is one more than can stay correct."
+                  "capture": {
+                    "logicalWidth": 360,
+                    "logicalHeight": 640,
+                    "dpr": 3
+                  },
+                  "_why": "The same directory `screenshots.dir` names, and the guard asserts the two agree rather than trusting either: two declarations of where the phone set lives is one more than can stay correct. `capture` is the viewport the set is photographed at (CSS 360x640 at DPR 3 -> 1080x1920), the shape every other channel's set already uses: capture-play-screenshots.mjs builds PLAY_CAPTURES from it, and assert-listing-assets.mjs judges each frame's ink at its 360 CSS pixels and refuses a frame that is not exactly 1080x1920."
                 },
                 "tablet": {
                   "dir": "screenshots-tablet",
@@ -1100,6 +1129,11 @@
                   "statedMaxSideForTablets": 7680,
                   "portraitAspect": "9:16",
                   "minCount": 4,
+                  "capture": {
+                    "logicalWidth": 900,
+                    "logicalHeight": 1600,
+                    "dpr": 2
+                  },
                   "source": "https://support.google.com/googleplay/android-developer/answer/9866151 (fetched 2026-08-21) — Screenshots, verbatim: \"For Chromebook and tablets, you can add a minimum of 4 screenshots to demonstrate your in-app experience. Upload screenshots between 1,080 and 7,680px Use a 16:9 aspect ratio for landscape and a 9:16 aspect ratio for portrait\" · and, from the line enumerating the slots, verbatim: \"Supported device types include phones, tablets (7-inch and 10-inch), Chromebooks\"",
                   "_why": [
                     "🔴 THE SECOND DEVICE TYPE, ADDED 2026-08-21. Until this row existed the listing declared ONE",

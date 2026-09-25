@@ -43,11 +43,15 @@
 //   `assets` ABSENT (a screenshots-only block)    -> none owed; `assets: {}` -> COVERAGE LOST
 //   a block with neither assets nor screenshots   -> COVERAGE LOST
 //   a `.png` in additionalFiles with no assets row -> FAIL   ← deleting `assets` is not a pass
-//   a frame under the ink floor recorded for IT   -> FAIL
-//   a committed frame with no ink floor recorded  -> FAIL
-//   an ink floor at or under its textless control -> FAIL   ← it could not fire
-//   frames committed and no `inkFloor` declared   -> COVERAGE LOST
-//   ink floors recorded and NO frame found        -> COVERAGE LOST  ← see below
+//   a frame with no ink, or none the glyph filter
+//     removes, at its native size                 -> FAIL
+//   a class's run median under its computed floor -> FAIL
+//   a calibration set that does not separate      -> FAIL   ← its floor could not fire
+//   a frame not exactly its class's capture size  -> COVERAGE LOST
+//   a class with no usable calibration set        -> COVERAGE LOST
+//   frames in a set with no ink class             -> COVERAGE LOST
+//   frames committed and no `inkRule` declared    -> COVERAGE LOST
+//   an ink rule declared and NO frame judged      -> COVERAGE LOST  ← see below
 //   NOTHING evaluated                             -> COVERAGE LOST
 //
 // 🔴 THE SECOND LINE IS DELIBERATE AND IT IS WHERE THIS GUARD DIFFERS FROM ITS
@@ -146,9 +150,10 @@
 //     already records itself making once before ("No static guard can read a
 //     banner out of a PNG"), and the correction is the same shape: the property
 //     that actually changes is measured, without reading anything. See THE INK
-//     limb near the end of this file — a frame whose ink coverage collapses
-//     against the floor recorded for THAT FRAME in the register fails, and the
-//     metric self-tests on every run, exactly as the banner detector does.
+//     limb near the end of this file — a device class whose run median of
+//     removed ink falls under the floor computed from that class's own
+//     calibration frames fails, and the metric self-tests on every run, exactly
+//     as the banner detector does.
 //
 //     🔴 AND THE REDIRECTION BELOW IS NOT THE ANSWER TO THIS ONE, WHICH IS HOW
 //     THE GAP SURVIVED. THE CAPTURE limb near the end of this file reads the
@@ -189,7 +194,13 @@ import { scanCaptureSuite, selfTestAccountAddressDetector, SUITE_FILE, DESKTOP_D
 // the guard and its tests must hold ONE reading of "there is text on this
 // screen", or the fixture ends up encoding a different definition from the
 // check it is meant to exercise.
-import { METRIC_ID as INK_METRIC, INK_DELTA, inkFraction, selfTestInkMetric } from '../store/frame-ink.mjs';
+import {
+  METRIC_ID as INK_METRIC,
+  INK_DELTA,
+  inkFixtureFrame,
+  measureFrameInk,
+  removedInkRunMedian,
+} from '../store/frame-ink.mjs';
 // The ONE relaunch with V8 background tasks off — see that module's header.
 import { backgroundTasksNote, relaunchSingleThreaded } from './single-threaded-relaunch.mjs';
 
@@ -1086,238 +1097,413 @@ let debugBannerBrickChecked = false;
 // reports "clean" for the frames it cannot read. Nothing here asks what was
 // drawn: `inkFraction` counts the pixels standing in local contrast to the
 // pixel right of them or below them, and glyphs are thousands of such
-// transitions where a card, a flat background and a gradient are none. When the
-// glyphs go and the icons stay, the number collapses — in any script.
+// transitions where a card, a flat background and a gradient are none. REMOVED
+// ink is what the 9x9 glyph filter takes away from a frame. When the glyphs go
+// and the icons stay, it collapses — in any script.
 //
-// 🔴 THE FLOOR IS THE REGISTER'S, PER NAMED FRAME, AND IT CARRIES ITS OWN
-// DISPROOF. Each row records what the committed frame measured and what the
-// TEXTLESS control of that same frame measured, so a floor that would sit at or
-// under its own control is refused here rather than enforced: such a floor
-// could not have caught the set that actually shipped, which is the one thing
-// this limb has to be able to do. A per-class floor was measured first and does
-// not separate — the textless 01-home frame reads 0.0131, above the
-// text-bearing 03-insights frame at 0.0168 × 0.7 — and that measurement is in
-// the register's `_why` beside the numbers.
+// 🔴 REWRITTEN 2026-09-24 FOR ROW O-STORE-INK-FLOOR-HAND-PASTED: THE VERDICT IS
+// ON THE RUN, PER DEVICE CLASS, AGAINST A FLOOR COMPUTED HERE. The first version
+// compared each named frame with a `{measured, textlessControl}` row pasted into
+// the register, and those rows could not be re-taken by the tool in the tree. A
+// per-frame ratio against a textless control was measured as the alternative
+// and does not separate. The e2e lane already had the instrument that does —
+// tooling/e2e/assert-frames-carry-text.mjs, the run median of removed ink — and
+// its floor is the geometric mean of a served and a glyphless calibration run.
+// So for each class `storeMetadataContract.inkRule.classes` names
+// (`<channel>/<set>`, geometry from that set's `capture` block):
 //
-// A frame with no floor row FAILS. Committing a frame nobody measured is
-// exactly how the set that shipped got here, and a silent skip would let the
-// next rename take a frame out of this limb's reach with nothing going red.
-let inkBlocksRead = 0;
-let inkFramesMeasured = 0;
+//   1. every committed frame is exactly logicalWidth*dpr x logicalHeight*dpr,
+//      or COVERAGE LOST — its floor was calibrated for no other size;
+//   2. every frame carries ink and loses some to the glyph filter at its native
+//      size, or FAIL — a blank frame, which a median of four cannot see;
+//   3. the class's calibration directory holds `served/` and `glyphless/`, at
+//      least MIN_CALIBRATION_FRAMES each, the same names in both, at the
+//      class's native size, or COVERAGE LOST, naming the class;
+//   4. floor = sqrt(served median x glyphless median), each the run median of
+//      removed ink after `areaDownscale` to logicalWidth. A calibration whose
+//      separation is under `minSeparation` is a FAIL and is never judged with;
+//   5. the listing's run median, after the same downscale, reaches the floor,
+//      or FAIL.
+//
+// The measured table that chose this shape — and why ONE floor for every class
+// would fail the correct tablet set — is in the register's `inkRule._why`.
+// Every number the verdict uses is computed from committed frames on every run.
+//
+// A committed frame in a set with no class is COVERAGE LOST, and so is a set of
+// frames when no rule is declared at all: committing a frame nobody calibrated
+// for is exactly how the set that shipped got here.
+
+/** Fewer calibration frames per mode than this and a "median" is one or two
+ *  pages' reading, which one text-light page can carry. Four is what the Play
+ *  capture produces per device type. */
+const MIN_CALIBRATION_FRAMES = 4;
+const INK_RULE = 'storeMetadataContract.inkRule';
+
+let inkFramesJudged = 0;
 let inkSelfTest = null;
-let tightestInk = null;
+const inkReadings = [];
 {
+  const rule = contract.inkRule;
+
+  // WHERE THE FRAMES ARE, and which declared device-type set each directory is.
+  // The phone set and the tablet set are the same pixels at two viewports, and
+  // a limb that read only `screenshots.dir` would judge four frames of the
+  // eight while printing a healthy-looking count.
+  const listing = [];
   for (const row of withGraphics) {
-    const g = contract.perChannel[row.id].graphicAssets;
-    const s = g?.screenshots;
+    const s = contract.perChannel[row.id].graphicAssets.screenshots;
     if (!s || typeof s !== 'object') continue;
     const template = row.storeMetadataDir;
     // Already reported by the scan above; repeating it would be one fault with
     // two verdicts.
     if (typeof template !== 'string' || !template.includes('{app}')) continue;
-
-    // WHERE THE FRAMES ARE. The screenshot directory plus every device-type set
-    // the register declares, taken from the register itself: the phone set and
-    // the tablet set are the same pixels captured at two viewports, and a limb
-    // that read only `screenshots.dir` would judge four frames of the eight
-    // while printing a healthy-looking count.
-    const dirs = [s.dir ?? 'screenshots'];
-    const sets = s.deviceTypeCoverage?.sets;
-    if (sets !== null && typeof sets === 'object') {
-      for (const [name, spec] of Object.entries(sets)) {
-        if (name === '_why') continue;
-        if (spec && typeof spec.dir === 'string' && !dirs.includes(spec.dir)) dirs.push(spec.dir);
-      }
+    const declared = s.deviceTypeCoverage?.sets;
+    const sets = declared !== null && typeof declared === 'object' && !Array.isArray(declared) ? declared : {};
+    const setOfDir = new Map();
+    for (const [name, spec] of Object.entries(sets)) {
+      if (name === '_why' || !spec || typeof spec.dir !== 'string') continue;
+      if (!setOfDir.has(spec.dir)) setOfDir.set(spec.dir, name);
     }
-
-    /** Every committed frame, keyed the way the register keys a floor: the path
-     *  INSIDE the metadata tree, so one map covers both device types. */
+    if (!setOfDir.has(s.dir ?? 'screenshots')) setOfDir.set(s.dir ?? 'screenshots', null);
     const frames = [];
     for (const app of apps) {
       if (typeof app.slug !== 'string' || app.slug === '') continue;
-      const dir = template.replace('{app}', app.slug);
-      if (!isDir(dir)) continue;
-      for (const sub of dirs) {
-        const shotDir = posix.join(dir, sub);
-        if (!isDir(shotDir)) continue;
-        for (const f of listDir(abs(shotDir))
+      const base = template.replace('{app}', app.slug);
+      if (!isDir(base)) continue;
+      for (const [sub, set] of setOfDir) {
+        const dir = posix.join(base, sub);
+        if (!isDir(dir)) continue;
+        for (const f of listDir(abs(dir))
           .filter((x) => x.toLowerCase().endsWith('.png'))
           .sort()) {
-          frames.push({ key: posix.join(sub, f), rel: posix.join(shotDir, f) });
+          frames.push({ app: app.slug, set, dir, rel: posix.join(dir, f) });
         }
       }
     }
+    listing.push({ id: row.id, sets, frames });
+  }
+  const committed = listing.reduce((n, l) => n + l.frames.length, 0);
 
-    const floors = s.inkFloor;
-    if (floors === null || typeof floors !== 'object' || Array.isArray(floors)) {
-      // 🔴 FRAMES COMMITTED AND NO FLOOR DECLARED IS THE STATE THIS LISTING WAS
-      // IN FROM #567 TO #854, so on the real repository it is COVERAGE LOST. A
-      // caller pointing this at a FIXTURE root is the weaker situation named at
-      // the top of this file — most fixtures model a listing tree written before
-      // this limb existed — and it says so out loud rather than failing every
-      // fixture, the same split the capture limb and the brick limb already make.
-      if (frames.length > 0 && scanningRealRepo) {
-        coverageLost([
-          `channel "${row.id}" has ${frames.length} committed screenshot(s) and ${REGISTER} declares no \`graphicAssets.screenshots.inkFloor\`.`,
-          'That block IS the right-hand side of "these frames carry text". Without it this limb ranges over',
-          'nothing and every frame is certified by never being measured — which is the state the listing was',
-          'in from #567 to #854, when four frames with no glyphs in them passed every other check here.',
-        ]);
-      }
+  if (rule === undefined || rule === null || typeof rule !== 'object' || Array.isArray(rule)) {
+    // 🔴 FRAMES COMMITTED AND NO RULE DECLARED IS THE STATE THIS LISTING WAS IN
+    // FROM #567 TO #854, so on the real repository it is COVERAGE LOST. A caller
+    // pointing this at a FIXTURE root is the weaker situation named at the top
+    // of this file — most fixtures model a listing tree written before this limb
+    // existed — and it says so out loud rather than failing every fixture, the
+    // same split the capture limb and the brick limb already make.
+    if (committed > 0 && scanningRealRepo) {
+      coverageLost([
+        `${committed} screenshot(s) are committed and ${REGISTER} declares no \`${INK_RULE}\`.`,
+        'That block IS the right-hand side of "these frames carry text". Without it this limb ranges over',
+        'nothing and every frame is certified by never being measured — which is the state the listing was',
+        'in from #567 to #854, when four frames with no glyphs in them passed every other check here.',
+      ]);
+    }
+    for (const l of listing) {
       prints.push(
-        frames.length > 0
-          ? `NO INK FLOOR (fixture root, NOT JUDGED): channel "${row.id}" has ${frames.length} committed frame(s) and declares no \`graphicAssets.screenshots.inkFloor\`. On the real repository this is COVERAGE LOST, not this line.`
-          : `NO INK FLOOR: channel "${row.id}" declares no \`graphicAssets.screenshots.inkFloor\`, and no frame is committed for it either, so nothing could be measured. The floor arrives with the frames.`,
+        l.frames.length > 0
+          ? `NO INK RULE (fixture root, NOT JUDGED): channel "${l.id}" has ${l.frames.length} committed frame(s) and ${REGISTER} declares no \`${INK_RULE}\`. On the real repository this is COVERAGE LOST, not this line.`
+          : `NO INK RULE: channel "${l.id}" has no committed frame and ${REGISTER} declares no \`${INK_RULE}\`, so nothing could be measured.`,
       );
-      continue;
     }
-    if (typeof floors.source !== 'string' || floors.source.trim() === '') {
-      problems.push(unsourced(`storeMetadataContract.perChannel["${row.id}"].graphicAssets.screenshots.inkFloor`));
-      continue;
-    }
-    // 🔴 A FLOOR RECORDED AGAINST A DIFFERENT METRIC IS A NUMBER WHOSE MEANING
-    // CHANGED UNDERNEATH IT. Comparing today's reading to a threshold measured
-    // by another definition is worse than not comparing: it looks like a check.
-    if (floors.metric !== INK_METRIC) {
+  } else if (typeof rule.source !== 'string' || rule.source.trim() === '') {
+    problems.push(unsourced(INK_RULE));
+  } else {
+    // 🔴 A RULE RECORDED AGAINST A DIFFERENT METRIC IS A RULE WHOSE MEANING
+    // CHANGED UNDERNEATH IT. The calibration medians are readings of one
+    // definition of ink; judging a listing with another compares nothing.
+    if (rule.metric !== INK_METRIC) {
       coverageLost([
-        `${REGISTER} records ink floors against metric ${JSON.stringify(floors.metric ?? null)} and this guard computes "${INK_METRIC}".`,
-        'Each floor is a number MEASURED by one definition of ink. Enforcing it with another compares two',
-        'different quantities and reports a verdict about neither. Re-measure the set with the metric this',
-        'guard computes, or restore the one those numbers were taken with.',
+        `${REGISTER} ${INK_RULE} is recorded against metric ${JSON.stringify(rule.metric ?? null)} and this guard computes "${INK_METRIC}".`,
+        'Its floors are computed from calibration frames MEASURED by one definition of ink. Enforcing them with',
+        'another compares two different quantities and reports a verdict about neither.',
       ]);
     }
-    const fraction = floors.minFractionOfMeasured;
-    if (!Number.isFinite(fraction) || fraction <= 0 || fraction >= 1) {
+    const minSeparation = rule.minSeparation;
+    if (!Number.isFinite(minSeparation) || minSeparation <= 1) {
       coverageLost([
-        `${REGISTER} …inkFloor.minFractionOfMeasured is ${JSON.stringify(fraction ?? null)}, which is not a fraction strictly between 0 and 1.`,
-        'At 0 or below, every floor is 0 and every frame clears it — including a blank one. At 1 or above,',
-        'every floor sits at or over the reading it was taken from and fires on the frame that defined it.',
-        'Either way the comparison below stops being a comparison, which is the failure this limb exists to',
-        'remove rather than to become.',
+        `${REGISTER} ${INK_RULE}.minSeparation is ${JSON.stringify(minSeparation ?? null)}, not a number above 1.`,
+        'It is how far apart a calibration set\'s served and glyphless medians must be before a floor between',
+        'them is used. At 1 or below a calibration whose two modes read the same would be accepted, and the',
+        'floor it produced would pass a glyphless run as readily as a correct one.',
       ]);
     }
-    const rows = floors.frames;
-    if (rows === null || typeof rows !== 'object' || Array.isArray(rows) || Object.keys(rows).filter((k) => k !== '_why').length === 0) {
+    const classes = rule.classes;
+    if (classes === null || typeof classes !== 'object' || Array.isArray(classes)) {
       coverageLost([
-        `${REGISTER} …inkFloor declares an EMPTY \`frames\` map.`,
-        'The loop below iterates it. Empty, no committed frame has a floor, every frame is reported as',
-        'carrying no recorded floor, and a set that was never measured reads exactly like a set that was.',
+        `${REGISTER} ${INK_RULE}.classes is ${JSON.stringify(classes ?? null)}, not a map of "<channel>/<set>" to { calibration }.`,
+        'Every frame is judged through the class of the set it sits in. Without the map no frame has a class,',
+        'no floor can be computed, and every committed frame would be certified by never being judged.',
       ]);
     }
-    inkBlocksRead++;
+
+    /** The class floor from two run medians, and whether it may be used. */
+    const calibrate = (served, glyphless) => {
+      const floor = glyphless > 0 && served > 0 ? Math.sqrt(served * glyphless) : 0;
+      const separation = glyphless > 0 ? served / glyphless : 0;
+      return { floor, separation, usable: glyphless > 0 && separation >= minSeparation };
+    };
 
     // 🔴 THE METRIC PROVES ITSELF BEFORE A SINGLE REAL FRAME IS READ, for the
     // reason the banner detector does and the account-address matcher does: the
-    // failure that costs everything is not the threshold being slightly wrong,
-    // it is `inkFraction` being edited into something that returns a constant,
-    // at which point every frame clears every floor forever and this limb prints
-    // ok having measured nothing. See that module's `selfTestInkMetric`.
-    const st = selfTestInkMetric(fraction);
-    inkSelfTest = st;
-    if (!st.ok) {
+    // failure that costs everything is not a floor slightly wrong, it is
+    // `inkFraction` or `textlessFrame` edited into something that returns a
+    // constant, at which point every calibration reads the same, every run
+    // clears or fails its floor forever, and this limb prints having measured
+    // nothing. The synthetic pair is the one frame-ink.mjs owns.
+    //
+    // ⚠️ IT IS HELD TO ORDERING, NOT TO `minSeparation`. How far apart a class's
+    // two modes must be is a property of REAL frames at that class's size, and
+    // the calibration check below enforces it on them; holding the synthetic
+    // pair to the same number would turn a raised `minSeparation` into a report
+    // that the metric broke, when what changed is the rule.
+    const stWith = removedInkRunMedian([inkFixtureFrame({ width: 360, height: 640, glyphs: true })], 360);
+    const stWithout = removedInkRunMedian([inkFixtureFrame({ width: 360, height: 640, glyphs: false })], 360);
+    inkSelfTest = { withText: stWith, without: stWithout, minSeparation };
+    if (!(stWith > 0 && stWith > stWithout)) {
       coverageLost([
         'the ink metric FAILED ITS OWN SELF-TEST and no frame was measured.',
-        `a synthetic frame carrying glyph-shaped strokes measured ${st.withText.toFixed(5)} (needs >= ${st.floor.toFixed(5)}),`,
-        `and the same layout with the strokes removed measured ${st.textless.toFixed(5)} (needs < ${st.floor.toFixed(5)}).`,
-        `The floor in that pair is ${fraction} of the text-bearing reading — the same relationship every row`,
-        'in the register encodes. The metric can no longer tell a frame with text from one without, so it',
-        'would pass every real frame for the same reason, silently.',
+        `a synthetic frame carrying glyph-shaped strokes lost ${stWith} of its ink to the glyph filter, and the same`,
+        `layout with no strokes lost ${stWithout}; the frame with strokes must lose more.`,
+        'The metric can no longer tell a frame with text from one without, so every calibration would read the',
+        'same and every real run would be judged for the same wrong reason, silently.',
       ]);
     }
 
-    // A floor row matching no committed frame describes a set that is not here.
-    // Only asked when frames exist: a channel whose screenshots have not landed
-    // yet is the gap the limb above already PRINTS, not a stale register.
-    if (frames.length > 0) {
-      const present = new Set(frames.map((f) => f.key));
-      for (const k of Object.keys(rows)) {
-        if (k === '_why') continue;
-        if (!present.has(k)) {
+    /** Could-not-judge findings, one per class. Collected rather than exited on
+     *  at once, so ONE COVERAGE LOST names every class that could not be judged
+     *  and the per-frame FAILs found first are still printed above it. */
+    const inkLost = [];
+    const inkFrameFails = [];
+    const side = (v) => Number.isInteger(v) && v > 0;
+
+    const classOf = new Map();
+    for (const [key, spec] of Object.entries(classes)) {
+      if (key === '_why') continue;
+      const cut = key.indexOf('/');
+      const channel = cut > 0 ? key.slice(0, cut) : '';
+      const setName = cut > 0 ? key.slice(cut + 1) : '';
+      const l = listing.find((x) => x.id === channel);
+      const set = l && setName !== '_why' ? l.sets[setName] : undefined;
+      if (!set || typeof set !== 'object') {
+        problems.push(
+          `${REGISTER} ${INK_RULE}.classes names "${key}", and no channel declares a device-type set of that name (a class key is "<channel>/<set>", a set of that channel's deviceTypeCoverage.sets). A class for a set that is not there calibrates nothing, and a set renamed out from under it is judged against no floor at all.`,
+        );
+        continue;
+      }
+      const c = set.capture;
+      const whole =
+        c && typeof c === 'object' && side(c.logicalWidth) && side(c.logicalHeight) && Number.isFinite(c.dpr) && c.dpr > 0 &&
+        Number.isInteger(c.logicalWidth * c.dpr) && Number.isInteger(c.logicalHeight * c.dpr);
+      const cal = spec?.calibration;
+      if (!whole) {
+        inkLost.push(
+          `${key}: deviceTypeCoverage.sets["${setName}"].capture is ${JSON.stringify(c ?? null)}, not {logicalWidth, logicalHeight, dpr} in whole device pixels, so there is no size to hold its frames to and no CSS width to measure them at.`,
+        );
+        classOf.set(key, null);
+      } else if (typeof cal !== 'string' || cal.trim() === '' || cal.startsWith('/') || cal.split('/').includes('..')) {
+        inkLost.push(`${key}: its \`calibration\` is ${JSON.stringify(cal ?? null)}, not a repository-relative directory, so the class has no calibration set to compute a floor from.`);
+        classOf.set(key, null);
+      } else {
+        classOf.set(key, {
+          key,
+          lw: c.logicalWidth,
+          lh: c.logicalHeight,
+          dpr: c.dpr,
+          w: c.logicalWidth * c.dpr,
+          h: c.logicalHeight * c.dpr,
+          calibration: cal.replace(/\/+$/, ''),
+        });
+      }
+    }
+
+    // Every declared set is a class or says why it is not; frames in a
+    // directory no set names belong to no class at all.
+    const groups = new Map();
+    for (const l of listing) {
+      for (const name of Object.keys(l.sets)) {
+        if (name === '_why') continue;
+        const key = `${l.id}/${name}`;
+        const frames = l.frames.filter((f) => f.set === name);
+        if (!classOf.has(key)) {
+          if (frames.length > 0) {
+            inkLost.push(
+              `${key}: ${frames.length} committed frame(s) under ${frames[0].dir}/ and ${INK_RULE}.classes names no "${key}", so nothing says what size they are judged at or what their text is calibrated against.`,
+            );
+          } else {
+            prints.push(
+              `NO INK CLASS: "${key}" is a declared device-type set with no \`${INK_RULE}.classes\` entry and no committed frame, so nothing could be measured. The class and its calibration set arrive with the frames.`,
+            );
+          }
+          continue;
+        }
+        if (classOf.get(key) !== null) groups.set(key, frames);
+      }
+      const loose = l.frames.filter((f) => f.set === null);
+      if (loose.length > 0) {
+        inkLost.push(
+          `${l.id}: ${loose.length} committed frame(s) under ${loose[0].dir}/, a directory no deviceTypeCoverage set names, so they belong to no ink class and were not judged.`,
+        );
+      }
+    }
+
+    // ── per frame, at native size: size first, then "is there ink at all" ──
+    const judged = [];
+    for (const [key, frames] of groups) {
+      const cls = classOf.get(key);
+      const byApp = new Map();
+      let sized = true;
+      for (const fr of frames) {
+        const buf = read(fr.rel);
+        if (buf === null) {
+          problems.push(`${fr.rel} was listed in the tree and could not be read back, so its ink was never measured.`);
+          continue;
+        }
+        let img;
+        try {
+          img = decodeRgba(buf);
+        } catch (e) {
+          if (!(e instanceof PngUnreadable)) throw e;
           problems.push(
-            `${REGISTER} records an ink floor for "${k}" and no such frame is committed for channel "${row.id}". The measurement describes a frame that is not there, so it holds nothing — and the frame that replaced it is measured against a floor nobody took from it.`,
+            `${fr.rel} could not be decoded, so its ink was never measured: ${e.lines[0]}. A frame this guard cannot look at must not be reported as one it looked at.`,
+          );
+          continue;
+        }
+        if (img.width !== cls.w || img.height !== cls.h) {
+          sized = false;
+          inkLost.push(
+            `${key}: ${fr.rel} is ${img.width}x${img.height}, and the class captures ${cls.lw}x${cls.lh} at DPR ${cls.dpr} = ${cls.w}x${cls.h}. The class's floor was calibrated at that size; a frame of any other size is one nobody calibrated for, so it is not judged against it.`,
+          );
+          continue;
+        }
+        const { measured, textlessControl } = measureFrameInk(img);
+        const removed = Number((measured - textlessControl).toFixed(6));
+        if (!(measured > 0) || !(removed > 0)) {
+          const finding =
+            `${fr.rel} measures ${measured} ink at its native ${img.width}x${img.height} and loses ${removed} of it to the glyph filter. ` +
+            `${measured > 0 ? 'Nothing in it is small enough to be text' : 'It has no edge in it at all — a flat field'}, and a class's run median cannot see one such frame among four, so every frame is held to carrying SOME. Between #567 and #854 this listing carried frames whose fonts never loaded; open the frame before assuming a false alarm.`;
+          problems.push(finding);
+          inkFrameFails.push(finding);
+        }
+        if (!byApp.has(fr.app)) byApp.set(fr.app, []);
+        byApp.get(fr.app).push(img);
+      }
+      judged.push({ key, cls, byApp, sized });
+    }
+
+    /** A class's calibration frames, decoded and checked, or why they cannot be used. */
+    const calibrationOf = (cls) => {
+      const lost = (why) => ({ lost: why });
+      if (!isDir(cls.calibration)) {
+        return lost(`no calibration set — ${cls.calibration}/ does not exist. The floor is computed on every run from that directory's served/ and glyphless/ frames, so without it this class has no floor and its frames were not judged.`);
+      }
+      const names = {};
+      for (const mode of ['served', 'glyphless']) {
+        const dir = posix.join(cls.calibration, mode);
+        if (!isDir(dir)) return lost(`no calibration set — ${dir}/ does not exist, and a floor needs both modes of the same pages.`);
+        names[mode] = listDir(abs(dir)).filter((x) => x.toLowerCase().endsWith('.png')).sort();
+        if (names[mode].length < MIN_CALIBRATION_FRAMES) {
+          return lost(`the calibration set is too small — ${dir}/ holds ${names[mode].length} frame(s) and a class needs at least ${MIN_CALIBRATION_FRAMES} per mode, or its median is one or two pages' reading.`);
+        }
+      }
+      const onlyServed = names.served.filter((f) => !names.glyphless.includes(f));
+      const onlyGlyphless = names.glyphless.filter((f) => !names.served.includes(f));
+      if (onlyServed.length > 0 || onlyGlyphless.length > 0) {
+        return lost(
+          `the calibration set's served/ and glyphless/ name different frames (served only: ${onlyServed.join(', ') || 'none'}; glyphless only: ${onlyGlyphless.join(', ') || 'none'}). Each page must be captured in both modes, or the two medians describe different pages.`,
+        );
+      }
+      const imgs = { served: [], glyphless: [] };
+      for (const mode of ['served', 'glyphless']) {
+        for (const f of names[mode]) {
+          const rel = posix.join(cls.calibration, mode, f);
+          const buf = read(rel);
+          let img = null;
+          try {
+            img = buf === null ? null : decodeRgba(buf);
+          } catch (e) {
+            if (!(e instanceof PngUnreadable)) throw e;
+          }
+          if (img === null) return lost(`calibration frame ${rel} could not be read or decoded, so the class has no floor.`);
+          if (img.width !== cls.w || img.height !== cls.h) {
+            return lost(`calibration frame ${rel} is ${img.width}x${img.height}, not the class's ${cls.w}x${cls.h}; a floor calibrated at another size says nothing about this one.`);
+          }
+          imgs[mode].push(img);
+        }
+      }
+      return imgs;
+    };
+
+    // ── per class: calibrate, then judge the run ─────────────────────────────
+    for (const { key, cls, byApp, sized } of judged) {
+      if (!sized) continue;
+      if (byApp.size === 0) {
+        prints.push(`NO INK FRAMES: class "${key}" is declared and no frame of it could be read, so its calibration was not needed.`);
+        continue;
+      }
+      const cal = calibrationOf(cls);
+      if (cal.lost) {
+        inkLost.push(`${key}: ${cal.lost}`);
+        continue;
+      }
+      const served = removedInkRunMedian(cal.served, cls.lw);
+      const glyphless = removedInkRunMedian(cal.glyphless, cls.lw);
+      const c = calibrate(served, glyphless);
+      const calLine = `calibration ${cls.calibration}/ (${cal.served.length} page(s)): served median ${served}, glyphless median ${glyphless}, separation ${c.separation.toFixed(2)}x`;
+      if (!c.usable) {
+        problems.push(
+          glyphless > 0
+            ? `class "${key}": the calibration set does not separate — ${calLine}, and ${INK_RULE}.minSeparation needs >= ${minSeparation}x. A floor between two medians that close would pass a glyphless run or fail a correct one, so this class was NOT judged with it. Re-capture the calibration set; do not lower minSeparation.`
+            : `class "${key}": the calibration set does not separate — ${calLine}. A glyphless median at or below 0 puts the geometric-mean floor at 0, under which no run can fall, so this class was NOT judged with it.`,
+        );
+        continue;
+      }
+      for (const [app, imgs] of byApp) {
+        const runMedian = removedInkRunMedian(imgs, cls.lw);
+        const headroom = runMedian / c.floor;
+        inkFramesJudged += imgs.length;
+        inkReadings.push({ key, app, n: imgs.length, runMedian, floor: c.floor, headroom });
+        const reading =
+          `class "${key}" (${app}, ${cls.lw}x${cls.lh}@${cls.dpr}): n ${imgs.length}, run median of removed ink ${runMedian} at ${cls.lw} CSS px, ` +
+          `floor ${c.floor.toFixed(6)} — ${calLine} — headroom ${headroom.toFixed(2)}x`;
+        console.log(`     ink ${reading}`);
+        if (runMedian < c.floor) {
+          problems.push(
+            `${reading}. The run's frames carry no text: removing the glyphs took almost nothing from the typical frame because there were almost no glyphs — the layout, the cards and the icons are there and the words are not. Between #567 and #854 this listing carried exactly such frames. Open them before assuming a false alarm; do not lower the floor, and re-capture the calibration set only when the app's text rendering legitimately changed.`,
           );
         }
       }
     }
 
-    for (const fr of frames) {
-      const spec = rows[fr.key];
-      if (spec === undefined || spec === null || typeof spec !== 'object') {
-        problems.push(
-          `${fr.rel} is committed and ${REGISTER} records NO ink floor for "${fr.key}". A frame nobody measured is a frame this limb cannot judge, and passing it would certify it by never looking — which is how four frames with no glyphs in them stayed in this listing from #567 to #854. Measure it and add the row with its date and the command.`,
-        );
-        continue;
-      }
-      const measured = spec.measured;
-      const control = spec.textlessControl;
-      if (!Number.isFinite(measured) || !Number.isFinite(control)) {
-        problems.push(
-          `${REGISTER} …inkFloor.frames["${fr.key}"] declares ${JSON.stringify({ measured: measured ?? null, textlessControl: control ?? null })}, and both must be numbers. The floor is ${fraction} of \`measured\`, and \`textlessControl\` is the reading that proves such a floor can fire at all; a row missing either enforces a limit nobody took.`,
-        );
-        continue;
-      }
-      const floor = measured * fraction;
-      // 🔴 THE ROW CARRIES ITS OWN DISPROOF, AND IT IS CHECKED. A floor at or
-      // under the textless reading of the same frame is a floor that would have
-      // passed the set that shipped — an assertion that cannot fail, wearing the
-      // appearance of one that can.
-      if (!(control < floor)) {
-        problems.push(
-          `${REGISTER} …inkFloor.frames["${fr.key}"] puts the floor at ${floor.toFixed(5)} (${fraction} of ${measured}) and records its own TEXTLESS control at ${control}. A floor at or below the textless reading of the same frame could not have caught the frames this listing carried from #567 to #854, which is the one thing it exists to do.`,
-        );
-        continue;
-      }
-      const buf = read(fr.rel);
-      if (buf === null) {
-        problems.push(`${fr.rel} was listed in the tree and could not be read back, so its ink was never measured.`);
-        continue;
-      }
-      let img;
-      try {
-        img = decodeRgba(buf);
-      } catch (e) {
-        if (!(e instanceof PngUnreadable)) throw e;
-        problems.push(
-          `${fr.rel} could not be decoded, so its ink was never measured: ${e.lines[0]}. A frame this guard cannot look at must not be reported as one it looked at.`,
-        );
-        continue;
-      }
-      const ink = inkFraction(img);
-      inkFramesMeasured++;
-      const ratio = ink / floor;
-      if (tightestInk === null || ratio < tightestInk.ratio) tightestInk = { rel: fr.rel, ink, floor, ratio };
-      if (ink < floor) {
-        problems.push(
-          `${fr.rel} measures ${ink.toFixed(5)} ink and the floor recorded for it is ${floor.toFixed(5)} (${fraction} of the ${measured} this frame measured when it was captured with its text). The textless control for the same frame reads ${control}, so this frame is ${ink < control * 1.2 ? 'at the level of a capture with no glyphs at all' : 'well down towards one'}. Between #567 and #854 this listing carried four frames whose fonts never loaded: correct layout, correct icons, correct colours, no title, label, amount or nav caption anywhere. Open the frame before assuming a false alarm; if the screen legitimately changed, re-measure it and update the row with the date.`,
-        );
-      }
+    if (inkLost.length > 0) {
+      // The per-frame FAILs were found first and are printed first: a class
+      // that then cannot be calibrated must not hide a blank frame.
+      if (inkFrameFails.length > 0) console.error('');
+      for (const f of inkFrameFails) console.error(`FAIL ${f}`);
+      const named = [...new Set(inkLost.map((l) => l.slice(0, l.indexOf(':'))))];
+      coverageLost([
+        `THE INK — ${named.join(', ')} could not be judged, so ${named.length === 1 ? 'its' : 'their'} frames were not compared with any floor.`,
+        ...inkLost,
+        '',
+        'Each class is judged against a floor computed from its own calibration frames at its own capture size.',
+        'A class that cannot be calibrated, or a frame of a size it was not calibrated for, is a limb that could',
+        'not look — never a pass. Do not delete the class, its calibration set or its frames to get green.',
+      ]);
     }
-  }
 
-  // 🔴 "NOTHING TO MEASURE" IS NOT A PASS ON THE REAL TREE. A fixture root with
-  // no screenshots is the weaker situation `scanningRealRepo` names elsewhere in
-  // this file and it prints; the repository CI runs against has eight committed
-  // frames, and a run of it that measured none of them has lost the limb, not
-  // found it satisfied.
-  if (scanningRealRepo && inkBlocksRead === 0) {
-    coverageLost([
-      `no channel in ${REGISTER} declares \`graphicAssets.screenshots.inkFloor\`, so no frame's ink was measured.`,
-      'That block is the only declaration of what a frame carrying text looks like. Without it a textless set',
-      'passes every remaining check in this file, exactly as one did from #567 to #854.',
-    ]);
-  }
-  if (scanningRealRepo && inkFramesMeasured === 0) {
-    coverageLost([
-      `${inkBlocksRead} ink floor block(s) were read and ZERO frames were measured against them.`,
-      'Either the frames moved out of the directories the register declares, or every one of them failed to',
-      'decode. Both report every committed frame full of text by never reading one.',
-      '',
-      '⚠️ THIS IS STRICTER THAN THE "screenshots absent, row deferred -> PRINT" LINE ABOVE, DELIBERATELY.',
-      'That line is about a set that has never been captured, which is owner- and secret-gated work. A',
-      'register that RECORDS a floor for eight named frames is a register describing a set somebody did',
-      'capture, and finding none of them is a different fact. If the set is being withdrawn on purpose,',
-      'withdraw its floors in the same change and this limb goes quiet with it.',
-    ]);
+    // 🔴 "NOTHING TO MEASURE" IS NOT A PASS ON THE REAL TREE. A fixture root
+    // with no screenshots is the weaker situation `scanningRealRepo` names
+    // elsewhere in this file and it prints; the repository CI runs against has
+    // eight committed frames, and a run of it that judged none of them has lost
+    // the limb, not found it satisfied.
+    if (scanningRealRepo && inkFramesJudged === 0) {
+      coverageLost([
+        `${REGISTER} declares \`${INK_RULE}\` and ZERO committed frames were judged against it.`,
+        'Either the frames moved out of the directories the register declares, or every one of them failed to',
+        'decode. Both report every committed frame full of text by never reading one. If the set is being',
+        'withdrawn on purpose, withdraw its classes in the same change.',
+      ]);
+    }
   }
 }
 
@@ -1407,21 +1593,23 @@ if (problems.length) {
   if (inkSelfTest !== null) {
     console.log(
       `ok   THE INK — metric "${INK_METRIC}" (per-channel delta ${INK_DELTA}) SELF-TESTED this run: a synthetic frame ` +
-        `carrying glyph-shaped strokes measured ${inkSelfTest.withText.toFixed(5)}, the same layout with none measured ` +
-        `${inkSelfTest.textless.toFixed(5)}, floor ${inkSelfTest.floor.toFixed(5)}. ${inkFramesMeasured} committed frame(s) ` +
-        'measured against the floor recorded for THAT frame in the register.',
+        `carrying glyph-shaped strokes lost ${inkSelfTest.withText} of its ink to the glyph filter, the same layout with none ` +
+        `lost ${inkSelfTest.without}. ${inkFramesJudged} committed frame(s) judged per device class, each at its CSS ` +
+        'width, against a floor computed this run from that class\'s calibration frames, each calibration held to ' +
+        `>= ${inkSelfTest.minSeparation}x separation.`,
     );
-    if (tightestInk !== null) {
+    const tightest = inkReadings.reduce((t, r) => (t === null || r.headroom < t.headroom ? r : t), null);
+    if (tightest !== null) {
       console.log(
-        `     tightest margin: ${tightestInk.rel} at ${tightestInk.ink.toFixed(5)} against a floor of ` +
-          `${tightestInk.floor.toFixed(5)} — ${tightestInk.ratio.toFixed(2)}x. Nothing here READS a word; it measures ` +
-          'how much of the frame stands in local contrast, which is what collapses when glyphs vanish and icons stay.',
+        `     tightest headroom: class "${tightest.key}" (${tightest.app}) at a run median of ${tightest.runMedian} against ` +
+          `a floor of ${tightest.floor.toFixed(6)} — ${tightest.headroom.toFixed(2)}x. Nothing here READS a word; it measures ` +
+          'how much of each frame the glyph filter removes, which is what collapses when glyphs vanish and icons stay.',
       );
     }
   } else {
-    console.log('   ⬜ THE INK — no `inkFloor` block was read, so the metric never self-tested and no frame was');
-    console.log('      measured; the printed line above names the channel. On the real repository, frames with no');
-    console.log('      floor declared for them are COVERAGE LOST rather than this line.');
+    console.log('   ⬜ THE INK — no `inkRule` was judged, so the metric never self-tested and no frame was');
+    console.log('      measured; the printed line above says why. On the real repository, committed frames with no');
+    console.log('      rule declared for them are COVERAGE LOST rather than this line.');
   }
   console.log('   ⚠️ CANNOT SEE: whether a screenshot is REPRESENTATIVE of the app, or whether the feature');
   console.log('      graphic is any good. Size, format, count, recorded posture, the ABSENCE OF THE DEMO BANNER');

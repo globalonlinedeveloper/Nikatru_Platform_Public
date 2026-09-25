@@ -164,7 +164,7 @@
   "framesCarryText": {
     "_why": [
       "🔴 THE e2e LANE'S OWN THRESHOLD, read by tooling/e2e/assert-frames-carry-text.mjs and by nothing else.",
-      "It is deliberately NOT the store block's inkFloor.minFractionOfMeasured (tooling/channel-register.json).",
+      "It is deliberately NOT the store rule, storeMetadataContract.inkRule (tooling/channel-register.json), nor the per-frame inkFloor 0.7 that rule replaced on 2026-09-24.",
       "That 0.7 means \"a recapture of a recorded store frame may lose up to 30% of its ink\" — a drift",
       "allowance between two captures of the same frame. Reused here it meant \"a frame's textless version",
       "must be below 0.7 of itself\", a different quantity, and it failed a correct frame on origin/main",
