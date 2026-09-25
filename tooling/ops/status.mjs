@@ -103,11 +103,29 @@
 // prints a loud banner so its presence in a real ops-watch log is unmistakable.
 //
 // Usage:  node tooling/ops/status.mjs [--root <repoRoot>] [--probes-file <json>]
+//
+// ⏱ APPENDED 2026-09-25 (row O-OPS-PROBE-US-EDGE-STALL): ops-watch went red with
+// NOTHING ANSWERED three times (runs 35996417635, 36110724525, 36113462303) while
+// Box B was up: US Cloudflare edges stalled in front of the Mumbai tunnel (edge
+// 499, origin 0, cloudflared silent; 35 of ~1,300 US-edge requests, 0 of 1,056
+// Indian) and all three ~33 s attempts landed in one stall. The sweep now ends
+// with ONE parallel SECOND LOOK at whatever it left unreached, spread in time
+// (runStatus); an answer is graded like any other, nothing is still exit 2, and
+// a `⚠ SLOW PATH` block names every surface that needed it.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readWithBoundedRetry, classifyThrown, READ_ATTEMPTS } from './bounded-retry.mjs';
+import {
+  readWithBoundedRetry,
+  classifyThrown,
+  secondLook,
+  secondLookGapMs,
+  secondLookWallMs,
+  READ_ATTEMPTS,
+  RETRY_WALL_CEILING_MS,
+  SECOND_LOOK_ATTEMPTS,
+} from './bounded-retry.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -129,6 +147,13 @@ const DELEGATE_REL = 'tooling/monitor-register.json';
  * per-request ceiling, so one request carries one ceiling. It stays at 10 s
  * because this reader probes every surface in sequence and its fan-out
  * arithmetic is sized on it (row O-OPS-READER-NO-CEILING).
+ *
+ * ⏱ APPENDED 2026-09-25: the second look runs under it too, and the fan-out
+ * arithmetic is no longer prose — `statusWorstCaseMs(n)` DERIVES it from this
+ * constant and bounded-retry's: n × (3 × 10 s + 10 s) + (4 × 10 s + 3 × 15 s) =
+ * 525 s at the 11 surfaces probed on 2026-09-25, against the status job's
+ * `timeout-minutes: 10`. ops-status.test.mjs case (d) re-derives n from the
+ * register and the budget from ops-watch.yml.
  */
 const PROBE_TIMEOUT_MS = 10_000;
 
@@ -435,39 +460,95 @@ export function evaluateSurface(surface, probe) {
  * fails on the very blip this change exists to absorb.
  */
 export async function probeLive(surface, { doFetch = fetch, sleep, note } = {}) {
+  let attempts = 0;
+  const read = probeRead(surface, doFetch);
   try {
     return await readWithBoundedRetry(
-      async (_attempt, { signal }) => {
-        let res;
-        try {
-          // NO `CF-Connecting-IP` HEADER, EVER — Cloudflare's edge rejects any client
-          // request carrying one with error 1000 BEFORE the origin is reached, so a
-          // probe that sent it would report every surface down and be believed.
-          res = await doFetch(surface.url, {
-            method: 'GET',
-            redirect: 'follow',
-            headers: { accept: '*/*' },
-            signal,
-          });
-        } catch (e) {
-          throw classifyThrown(e, e?.message ?? String(e));
-        }
-        // Always drained: an unread body holds the socket open, and this runs in a
-        // loop over every surface. A body that dies MID-READ is the wire dropping
-        // too, so it is classified by the same rule rather than read as an empty one.
-        let body;
-        try {
-          body = await res.text();
-        } catch (e) {
-          throw classifyThrown(e, e?.message ?? String(e));
-        }
-        return { status: res.status, body };
+      (attempt, opts) => {
+        attempts = attempt;
+        return read(attempt, opts);
       },
       { sleep, note, timeoutMs: PROBE_TIMEOUT_MS },
     );
   } catch (e) {
-    return { unreached: e?.message ?? String(e) };
+    // ⏱ 2026-09-25: `attempts` rides along so the SLOW PATH block can say how
+    // many first-pass attempts got nothing. An answer never carries it.
+    return { unreached: e?.message ?? String(e), attempts };
   }
+}
+
+/** ONE GET of one surface, the read both passes share: an answer of any status
+ *  is `{ status, body }`, a wire that dropped is a `transientLook`. */
+function probeRead(surface, doFetch) {
+  return async (_attempt, { signal }) => {
+    let res;
+    try {
+      // NO `CF-Connecting-IP` HEADER, EVER — Cloudflare's edge rejects any client
+      // request carrying one with error 1000 BEFORE the origin is reached, so a
+      // probe that sent it would report every surface down and be believed.
+      res = await doFetch(surface.url, {
+        method: 'GET',
+        redirect: 'follow',
+        headers: { accept: '*/*' },
+        signal,
+      });
+    } catch (e) {
+      throw classifyThrown(e, e?.message ?? String(e));
+    }
+    // Always drained: an unread body holds the socket open, and this runs in a
+    // loop over every surface. A body that dies MID-READ is the wire dropping
+    // too, so it is classified by the same rule rather than read as an empty one.
+    let body;
+    try {
+      body = await res.text();
+    } catch (e) {
+      throw classifyThrown(e, e?.message ?? String(e));
+    }
+    return { status: res.status, body };
+  };
+}
+
+/**
+ * ⏱ 2026-09-25 — THE SECOND LOOK at ONE surface the sweep left `unreached`
+ * (row O-OPS-PROBE-US-EDGE-STALL; the evidence and the numbers are in
+ * bounded-retry.mjs, "THE SECOND LOOK"). The same read as the first pass, on
+ * the shared time-spread plan: SECOND_LOOK_ATTEMPTS attempts SECOND_LOOK_GAP_MS
+ * apart, each under PROBE_TIMEOUT_MS, each on a new connection.
+ *
+ * Resolves to `{ probe, attempt }` — the answer and the second-look attempt that
+ * produced it, graded by evaluateSurface exactly like a first-pass answer — or
+ * `{ probe: { unreached } }` when nothing answered this pass either.
+ */
+export async function secondLookLive(surface, { doFetch = fetch, sleep, note } = {}) {
+  try {
+    const { value, attempt } = await secondLook(probeRead(surface, doFetch), { sleep, note, timeoutMs: PROBE_TIMEOUT_MS });
+    return { probe: value, attempt };
+  } catch (e) {
+    return { probe: { unreached: e?.message ?? String(e) } };
+  }
+}
+
+/** PURE. The offline twin of secondLookLive, for `--probes-file`: a fixture row
+ *  may carry `secondLook: [probe, …]`, one entry per second-look attempt. The
+ *  first entry that is not `unreached` is the answer; none is nothing. */
+export function secondLookFromFixture(row) {
+  const looks = Array.isArray(row?.secondLook) ? row.secondLook.slice(0, SECOND_LOOK_ATTEMPTS) : [];
+  const i = looks.findIndex((p) => !(p && typeof p === 'object' && p.unreached));
+  if (i >= 0) return { probe: looks[i], attempt: i + 1 };
+  return { probe: { unreached: `${row?.unreached ?? 'nothing answered'} — and nothing on the second look (fixture)` } };
+}
+
+/**
+ * PURE. THE WORST WALL CLOCK ONE RUN MAY TAKE, DERIVED from the constants and
+ * never typed (row O-OPS-READER-NO-CEILING, the fan-out arithmetic): the sweep
+ * probes `n` surfaces IN SEQUENCE, each for at most READ_ATTEMPTS attempts at
+ * PROBE_TIMEOUT_MS plus the most the shared plan may wait between them
+ * (RETRY_WALL_CEILING_MS); the second look then runs ONCE, IN PARALLEL over
+ * whatever the sweep left unreached, so it adds one secondLookWallMs and not n.
+ * 11 surfaces on 2026-09-25: 11 × (30 s + 10 s) + 85 s = 525 s.
+ */
+export function statusWorstCaseMs(n) {
+  return n * (READ_ATTEMPTS * PROBE_TIMEOUT_MS + RETRY_WALL_CEILING_MS) + secondLookWallMs(PROBE_TIMEOUT_MS);
 }
 function printUsage() {
   console.log('Usage: node tooling/ops/status.mjs [--root <repoRoot>] [--probes-file <json>]');
@@ -477,6 +558,7 @@ function printUsage() {
   console.log('');
   console.log('  --root <dir>          read the delegate register from this tree instead of the repo.');
   console.log('  --probes-file <json>  { "<hostname>": { "status": 200, "body": "…" } | { "error": "…" } | { "unreached": "…" } }');
+  console.log('                        an `unreached` row may carry "secondLook": [ <probe>, … ], one per second-look attempt.');
   console.log('                        OFFLINE: nothing is contacted. Announces itself loudly.');
   console.log('');
   console.log(`  exit ${EXIT_OK} = every probed surface answered as declared`);
@@ -484,40 +566,82 @@ function printUsage() {
   console.log(`  exit ${EXIT_CANNOT_LOOK} = I COULD NOT LOOK (coverage lost, or the run's inputs are unusable)`);
 }
 
-async function main() {
-  if (process.argv.includes('--help') || process.argv.includes('-h')) {
-    printUsage();
-    return EXIT_OK;
-  }
-
-  const { surfaces, gaps, problems } = deriveSurfaces(ROOT);
+/**
+ * The whole run, returning its exit code. main() is this with the real console,
+ * the real `fetch` and the real clock; ⏱ 2026-09-25 it is exported so the exit
+ * codes of the second look are proven with an injected `doFetch` and `sleep` —
+ * no socket, no real wait (ops-status.test.mjs, "the second look").
+ */
+export async function runStatus({
+  root = ROOT,
+  probesFile = flag('--probes-file'),
+  doFetch = fetch,
+  sleep,
+  out = (line) => console.log(line),
+  err = (line) => console.error(line),
+} = {}) {
+  const { surfaces, gaps, problems } = deriveSurfaces(root);
   if (problems.length) {
-    for (const p of problems) console.error(`✗ ${p}`);
-    console.error('');
-    console.error(`    Exit code ${EXIT_CANNOT_LOOK}, deliberately distinct from ${EXIT_UNHEALTHY}: "I could not look" must never be`);
-    console.error('    readable as "I looked and everything was fine". NOTHING was probed on this run.');
+    for (const p of problems) err(`✗ ${p}`);
+    err('');
+    err(`    Exit code ${EXIT_CANNOT_LOOK}, deliberately distinct from ${EXIT_UNHEALTHY}: "I could not look" must never be`);
+    err('    readable as "I looked and everything was fine". NOTHING was probed on this run.');
     return EXIT_CANNOT_LOOK;
   }
 
-  const probesFile = flag('--probes-file');
   let fixture = null;
   if (probesFile) {
-    console.log('!!  OFFLINE FIXTURE MODE — --probes-file is set, so NO surface was contacted.');
-    console.log('!!  This must NEVER appear in a real ops-watch log.');
+    out('!!  OFFLINE FIXTURE MODE — --probes-file is set, so NO surface was contacted.');
+    out('!!  This must NEVER appear in a real ops-watch log.');
     try {
       fixture = JSON.parse(readFileSync(probesFile, 'utf8'));
     } catch (e) {
-      console.error(`✗ could not read probe fixture ${probesFile}: ${e.message}`);
-      console.error(`    Exit ${EXIT_CANNOT_LOOK} — an unusable input is a refusal to answer, not an empty set of results.`);
+      err(`✗ could not read probe fixture ${probesFile}: ${e.message}`);
+      err(`    Exit ${EXIT_CANNOT_LOOK} — an unusable input is a refusal to answer, not an empty set of results.`);
       return EXIT_CANNOT_LOOK;
     }
+  }
+
+  const looked = [];
+  for (const s of surfaces) {
+    const probe = fixture ? fixture[s.hostname] : await probeLive(s, { doFetch, sleep, note: (m) => out(`⏳  ${s.hostname}: ${m}`) });
+    looked.push({ s, probe });
+  }
+
+  // ── ⏱ 2026-09-25 · THE SECOND LOOK (row O-OPS-PROBE-US-EDGE-STALL) ─────────
+  // ONLY the surfaces the sweep left `unreached`, ALL AT ONCE, on the shared
+  // time-spread plan. An answer replaces the first pass's nothing and is graded
+  // below exactly like any other; nothing again stays `unreached`, which is
+  // still COVERAGE LOST. No hostname is named: whatever the register derives is
+  // what gets a second look.
+  const firstPassLost = looked.filter((l) => l.probe && typeof l.probe === 'object' && l.probe.unreached);
+  const slow = [];
+  if (firstPassLost.length) {
+    out(
+      `⏳  ${firstPassLost.length} surface(s) answered NOTHING on the first pass; one SECOND LOOK at them, in parallel — ` +
+        `${SECOND_LOOK_ATTEMPTS} attempts ${secondLookGapMs() / 1000}s apart, each on a new connection.`,
+    );
+    await Promise.all(
+      firstPassLost.map(async (l) => {
+        const first = l.probe;
+        const second = fixture
+          ? secondLookFromFixture(first)
+          : await secondLookLive(l.s, { doFetch, sleep, note: (m) => out(`⏳  ${l.s.hostname}: ${m}`) });
+        l.probe = second.probe;
+        if (second.attempt) {
+          slow.push(
+            `${l.s.hostname} — nothing on any of the ${first.attempts ?? READ_ATTEMPTS} first-pass attempt(s); ` +
+              `second-look attempt ${second.attempt}/${SECOND_LOOK_ATTEMPTS} answered ${l.probe?.status ?? '(no status)'}.`,
+          );
+        }
+      }),
+    );
   }
 
   const failures = [];
   const lost = [];
   const healthy = [];
-  for (const s of surfaces) {
-    const probe = fixture ? fixture[s.hostname] : await probeLive(s, { note: (m) => console.log(`⏳  ${s.hostname}: ${m}`) });
+  for (const { s, probe } of looked) {
     const verdict = evaluateSurface(s, probe);
     if (verdict.ok) healthy.push(verdict.reason);
     else if (verdict.kind === 'unreached') lost.push(verdict.reason);
@@ -525,31 +649,42 @@ async function main() {
   }
 
   const dataBearing = surfaces.filter((s) => s.dataBearing).length;
-  console.log(
+  out(
     `⬜  probing ${surfaces.length} surface(s) derived from ${DELEGATE_REL} ` +
       `(${dataBearing} data-bearing, i.e. the body is asserted too): ${surfaces.map((s) => s.url).join(', ')}`,
   );
-  for (const l of healthy) console.log(`ok  ${l}`);
+  for (const l of healthy) out(`ok  ${l}`);
+
+  // 🔴 PRINTED WHENEVER THE SECOND LOOK ANSWERED, GREEN RUN OR NOT. A run that
+  // needed it is evidence the path to that surface is degrading, and a green
+  // headline must not hide that it took two passes to get there.
+  if (slow.length) {
+    out(`⚠ SLOW PATH — ${slow.length} surface(s) answered only on the SECOND LOOK (graded on that answer, like any other):`);
+    for (const l of slow) out(`    ${l}`);
+    out('    The first pass is about 33 s; a US Cloudflare edge stalling in front of the Mumbai tunnel can outlast');
+    out('    it (row O-OPS-PROBE-US-EDGE-STALL). A surface that is really down answers at once — 530/1033 with');
+    out('    no connector, 502 with no origin — and is graded on that answer.');
+  }
 
   // ── the owner-gated gap, printed on EVERY run, WITH ITS COUNT ──────────────
   const declared = surfaces.length + gaps.length;
   if (gaps.length) {
-    console.log(`--  ${gaps.length} of ${declared} declared hostname(s) CANNOT BE PROBED from the register — printed not hidden:`);
-    for (const g of gaps) console.log(`      ${g.hostname} — ${g.why}${g.action ? ` ACTION: ${g.action}` : ''}`);
-    console.log('    This prints rather than failing the build because a guard that reddens every branch on a change');
-    console.log('    to somebody else\'s monitoring instance gets disabled, and a disabled guard checks nothing. It is');
-    console.log('    NOT a claim that the work is owner-only: creating a monitor (ids 11, 12) and converting one');
-    console.log('    (ids 3, 4, 5) were both done with the vault token and the GlitchTip API. It stops being printed');
-    console.log('    when it stops being true.');
+    out(`--  ${gaps.length} of ${declared} declared hostname(s) CANNOT BE PROBED from the register — printed not hidden:`);
+    for (const g of gaps) out(`      ${g.hostname} — ${g.why}${g.action ? ` ACTION: ${g.action}` : ''}`);
+    out('    This prints rather than failing the build because a guard that reddens every branch on a change');
+    out('    to somebody else\'s monitoring instance gets disabled, and a disabled guard checks nothing. It is');
+    out('    NOT a claim that the work is owner-only: creating a monitor (ids 11, 12) and converting one');
+    out('    (ids 3, 4, 5) were both done with the vault token and the GlitchTip API. It stops being printed');
+    out('    when it stops being true.');
   } else {
-    console.log(`--  0 of ${declared} declared hostname(s) are unprobeable — every one carries a GET and an expectedStatus.`);
+    out(`--  0 of ${declared} declared hostname(s) are unprobeable — every one carries a GET and an expectedStatus.`);
   }
 
   // ── the bound on what a green run here means ───────────────────────────────
-  console.log('--  WHAT A GREEN RUN DOES NOT PROVE: a non-vacuous body proves the surface produced its expected');
-  console.log('    output. It does NOT prove the pipe behind it carries anything — platform, config and api all');
-  console.log('    answer {"ok":true} while events and consent_artifacts hold ZERO rows. That limb is a row count,');
-  console.log('    it is not in this command, and this exit code must never be read as covering it.');
+  out('--  WHAT A GREEN RUN DOES NOT PROVE: a non-vacuous body proves the surface produced its expected');
+  out('    output. It does NOT prove the pipe behind it carries anything — platform, config and api all');
+  out('    answer {"ok":true} while events and consent_artifacts hold ZERO rows. That limb is a row count,');
+  out('    it is not in this command, and this exit code must never be read as covering it.');
 
   // 🔴 BOTH BLOCKS PRINT, ALWAYS, AND COVERAGE LOST WINS THE CODE. Same rule and
   // same reason as check-heartbeats.mjs, the other ops-watch reader that buckets a
@@ -557,29 +692,40 @@ async function main() {
   // actionable, but the run's headline cannot be "I looked" when part of the set was
   // never reached. One convention inside ops-watch is worth more than a preference.
   if (lost.length) {
-    console.error(`✗ COVERAGE LOST — ${lost.length} of ${surfaces.length} probed surface(s) NEVER ANSWERED, on any of the ${READ_ATTEMPTS} attempts:`);
-    for (const l of lost) console.error(`    ${l}`);
+    err(
+      `✗ COVERAGE LOST — ${lost.length} of ${surfaces.length} probed surface(s) NEVER ANSWERED, on any of the ${READ_ATTEMPTS} attempts ` +
+        `nor on any of the ${SECOND_LOOK_ATTEMPTS} second-look attempts:`,
+    );
+    for (const l of lost) err(`    ${l}`);
   }
   if (failures.length) {
-    console.error(`✗ ${failures.length} of ${surfaces.length} probed surface(s) are NOT healthy:`);
-    for (const f of failures) console.error(`    ${f}`);
+    err(`✗ ${failures.length} of ${surfaces.length} probed surface(s) are NOT healthy:`);
+    for (const f of failures) err(`    ${f}`);
   }
   if (lost.length) {
-    console.error('');
-    console.error(`    Exit ${EXIT_CANNOT_LOOK} — I COULD NOT LOOK. A surface that never answered after a bounded retry is not`);
-    console.error('    evidence that it is down, and it is certainly not evidence that it is up. Until 2026-09-21');
-    console.error(`    this exited ${EXIT_UNHEALTHY}, which accused a healthy surface of being broken every time the runner's`);
-    console.error('    own network blipped (row O-PAGES-FETCH-TRANSIENT-NOT-RETRIED, sweep clause).');
+    err('');
+    err(`    Exit ${EXIT_CANNOT_LOOK} — I COULD NOT LOOK. A surface that never answered after a bounded retry is not`);
+    err('    evidence that it is down, and it is certainly not evidence that it is up. Until 2026-09-21');
+    err(`    this exited ${EXIT_UNHEALTHY}, which accused a healthy surface of being broken every time the runner's`);
+    err('    own network blipped (row O-PAGES-FETCH-TRANSIENT-NOT-RETRIED, sweep clause).');
     return EXIT_CANNOT_LOOK;
   }
   if (failures.length) {
-    console.error('');
-    console.error(`    Exit ${EXIT_UNHEALTHY} — I looked, and it is broken. [pipeline O-2]`);
+    err('');
+    err(`    Exit ${EXIT_UNHEALTHY} — I looked, and it is broken. [pipeline O-2]`);
     return EXIT_UNHEALTHY;
   }
 
-  console.log(`ok  every probed surface produced its expected output — ${surfaces.length} probed, ${gaps.length} owner-gated gap(s) [pipeline O-2]`);
+  out(`ok  every probed surface produced its expected output — ${surfaces.length} probed, ${gaps.length} owner-gated gap(s) [pipeline O-2]`);
   return EXIT_OK;
+}
+
+async function main() {
+  if (process.argv.includes('--help') || process.argv.includes('-h')) {
+    printUsage();
+    return EXIT_OK;
+  }
+  return runStatus();
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {

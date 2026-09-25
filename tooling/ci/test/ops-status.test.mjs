@@ -48,11 +48,15 @@ import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
-import { deriveSurfaces, evaluateSurface, EXIT_OK, EXIT_UNHEALTHY, EXIT_CANNOT_LOOK } from '../../ops/status.mjs';
+import { deriveSurfaces, evaluateSurface, runStatus, statusWorstCaseMs, EXIT_OK, EXIT_UNHEALTHY, EXIT_CANNOT_LOOK } from '../../ops/status.mjs';
+import { secondLookWallMs, READ_ATTEMPTS, RETRY_WALL_CEILING_MS } from '../../ops/bounded-retry.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = resolve(CI_DIR, '..', '..');
 const STATUS = join(REPO, 'tooling/ops/status.mjs');
+/** ⏱ 2026-09-25: the most any one spawn of status.mjs may take here before it is
+ *  killed — a hung child is a red case, never a hung suite. */
+const SPAWN_TIMEOUT_MS = 60_000;
 
 let TMP;
 before(() => { TMP = mkdtempSync(join(tmpdir(), 'nikatru-ops-status-')); });
@@ -355,7 +359,10 @@ describe('status — through the CLI: exit codes, the printed count, and the liv
     writeFileSync(p, JSON.stringify(obj));
     return p;
   };
-  const run = (args) => spawnSync(process.execPath, [STATUS, ...args], { cwd: REPO, encoding: 'utf8' });
+  // ⏱ 2026-09-25: every spawn carries a `timeout`, and `env` lets the LIVE case
+  // shorten the second look's gaps (row O-OPS-PROBE-US-EDGE-STALL).
+  const run = (args, env = {}) =>
+    spawnSync(process.execPath, [STATUS, ...args], { cwd: REPO, encoding: 'utf8', timeout: SPAWN_TIMEOUT_MS, env: { ...process.env, ...env } });
 
   /** One healthy surface, one gap-free tree; used for the 0-gap print. */
   function cleanTree() {
@@ -485,11 +492,158 @@ describe('status — through the CLI: exit codes, the printed count, and the liv
         hosts: [{ hostname: 'nikatru-ops-status.invalid', derivedFrom: 'appCatalogue', monitor: { id: 99, type: 'GET', expectedStatus: 200 } }],
       }),
     );
-    const r = run(['--root', root]);
+    // ⏱ 2026-09-25: the unreached surface now also takes the SECOND LOOK; its
+    // 15 s gaps are shortened to 0 here (the knob can only shorten), so the case
+    // still spends the real ceiling and not a minute of sleep.
+    const r = run(['--root', root], { OPS_SECOND_LOOK_GAP_MS: '0' });
     assert.equal(r.status, EXIT_CANNOT_LOOK, `${r.stdout}\n${r.stderr}`);
     assert.match(r.stderr, /COVERAGE LOST/);
     assert.match(r.stderr, /NOTHING ANSWERED/);
+    assert.match(r.stdout, /SECOND LOOK/);
     assert.doesNotMatch(r.stdout, /OFFLINE FIXTURE MODE/);
+  });
+
+  test('🔴 FIXTURE — nothing on the first pass, an answer on second-look attempt 2: exit 0, and the SLOW PATH block names it', () => {
+    const r = run([
+      '--root', cleanTree(),
+      '--probes-file', probes({
+        'api.example.test': { unreached: 'no answer within 10s (stub)', secondLook: [{ unreached: 'again' }, { status: 200, body: '{"ok":true}' }] },
+      }),
+    ]);
+    assert.equal(r.status, EXIT_OK, `${r.stdout}\n${r.stderr}`);
+    assert.match(r.stdout, /⚠ SLOW PATH — 1 surface\(s\) answered only on the SECOND LOOK/);
+    assert.match(r.stdout, /api\.example\.test — nothing on any of the 3 first-pass attempt\(s\); second-look attempt 2\/4 answered 200\./);
+  });
+
+  test('🔴 FIXTURE — an unreached row with no second-look answer is still exit 2, COVERAGE LOST', () => {
+    const r = run(['--root', cleanTree(), '--probes-file', probes({ 'api.example.test': { unreached: 'no answer (stub)' } })]);
+    assert.equal(r.status, EXIT_CANNOT_LOOK, `${r.stdout}\n${r.stderr}`);
+    assert.match(r.stderr, /COVERAGE LOST/);
+    assert.doesNotMatch(r.stdout, /SLOW PATH/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-25 — THE SECOND LOOK (row O-OPS-PROBE-US-EDGE-STALL). ops-watch went
+// red with NOTHING ANSWERED three times (runs 35996417635, 36110724525,
+// 36113462303) from surfaces that were up: a US Cloudflare edge stalled in front
+// of the Mumbai tunnel (edge 499, origin 0) for longer than the ~33 s first pass.
+// runStatus is driven IN PROCESS with an injected fetch and a recording sleep:
+// no socket, no real wait. The stall is a dropped connection, the same class a
+// hung attempt ends in, so it is re-asked exactly like one.
+describe('status — the second look: a stall is looked at twice, and never forgiven', () => {
+  const stall = () => {
+    throw Object.assign(new TypeError('fetch failed'), { cause: Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' }) });
+  };
+  const answer = (status, body = '{"ok":true}') => new Response(body, { status });
+  /** A fetch that answers per HOST from a script (the last entry repeats). */
+  const scripted = (byHost) => {
+    const calls = {};
+    const doFetch = async (url) => {
+      const host = new URL(url).hostname;
+      calls[host] = (calls[host] ?? 0) + 1;
+      const plan = byHost[host];
+      return plan[Math.min(calls[host] - 1, plan.length - 1)]();
+    };
+    return { doFetch, calls };
+  };
+  const tree = (hosts) => {
+    const root = join(TMP, `s${seq++}`);
+    mkdirSync(join(root, 'tooling'), { recursive: true });
+    writeFileSync(
+      join(root, 'tooling', 'monitor-register.json'),
+      JSON.stringify({
+        _derivation: { appCatalogue: 'the catalogue' },
+        hosts: hosts.map((hostname, i) => ({ hostname, derivedFrom: 'appCatalogue', monitor: { id: 50 + i, type: 'GET', path: '/v1/health', expectedStatus: 200 } })),
+      }),
+    );
+    return root;
+  };
+  const go = async (hosts, byHost) => {
+    const { doFetch, calls } = scripted(byHost);
+    const slept = [];
+    const out = [];
+    const err = [];
+    const code = await runStatus({
+      root: tree(hosts),
+      probesFile: null,
+      doFetch,
+      sleep: async (ms) => { slept.push(ms); },
+      out: (l) => out.push(l),
+      err: (l) => err.push(l),
+    });
+    return { code, calls, slept, out: out.join('\n'), err: err.join('\n') };
+  };
+
+  test('(a) 🔴 nothing on the first pass, healthy on the second look → exit 0, and the SLOW PATH block is printed', async () => {
+    const r = await go(['a.example.test'], { 'a.example.test': [stall, stall, stall, stall, () => answer(200)] });
+    assert.equal(r.code, EXIT_OK, `${r.out}\n${r.err}`);
+    assert.equal(r.calls['a.example.test'], 5, '3 first-pass attempts + 2 second-look attempts, and not one more');
+    assert.deepEqual(r.slept, [1000, 2000, 15_000]);
+    assert.match(r.out, /⚠ SLOW PATH — 1 surface\(s\) answered only on the SECOND LOOK/);
+    assert.match(r.out, /a\.example\.test — nothing on any of the 3 first-pass attempt\(s\); second-look attempt 2\/4 answered 200\./);
+    assert.match(r.out, /ok {2}every probed surface produced its expected output/);
+  });
+
+  test('(b) 🔴 the second look answers UNHEALTHY → exit 1, graded exactly like a first-pass answer', async () => {
+    const r = await go(['a.example.test'], { 'a.example.test': [stall, stall, stall, () => answer(502, 'error code: 502')] });
+    assert.equal(r.code, EXIT_UNHEALTHY, `${r.out}\n${r.err}`);
+    assert.match(r.err, /1 of 1 probed surface\(s\) are NOT healthy/);
+    assert.doesNotMatch(r.err, /COVERAGE LOST/);
+    assert.match(r.out, /second-look attempt 1\/4 answered 502\./, 'the slow path is printed on a red run too');
+  });
+
+  test('(c) 🔴 nothing on the second look either → exit 2, COVERAGE LOST, after 3 + 4 attempts', async () => {
+    const r = await go(['a.example.test'], { 'a.example.test': [stall] });
+    assert.equal(r.code, EXIT_CANNOT_LOOK, `${r.out}\n${r.err}`);
+    assert.equal(r.calls['a.example.test'], 7);
+    assert.deepEqual(r.slept, [1000, 2000, 15_000, 15_000, 15_000]);
+    assert.match(r.err, /COVERAGE LOST — 1 of 1 probed surface\(s\) NEVER ANSWERED, on any of the 3 attempts nor on any of the 4 second-look attempts/);
+    assert.match(r.err, /SECOND LOOK: /);
+    assert.doesNotMatch(r.out, /SLOW PATH/);
+  });
+
+  test('only the UNREACHED are looked at again, and they are looked at IN PARALLEL', { timeout: 5000 }, async () => {
+    // Each lost surface's first second-look attempt waits until BOTH have
+    // arrived. Looked at one after the other, the first would wait for ever and
+    // the case's { timeout } would red it; in parallel, nobody waits.
+    let arrived = 0;
+    let release;
+    const barrier = new Promise((r) => { release = r; });
+    const meet = async () => {
+      arrived += 1;
+      if (arrived === 2) release();
+      await barrier;
+      return answer(200);
+    };
+    const r = await go(['up.example.test', 'b.example.test', 'c.example.test'], {
+      'up.example.test': [() => answer(200)],
+      'b.example.test': [stall, stall, stall, meet],
+      'c.example.test': [stall, stall, stall, meet],
+    });
+    assert.equal(r.code, EXIT_OK, `${r.out}\n${r.err}`);
+    assert.equal(r.calls['up.example.test'], 1, 'a surface that answered is never asked twice');
+    assert.equal(r.calls['b.example.test'], 4);
+    assert.equal(r.calls['c.example.test'], 4);
+    assert.match(r.out, /⚠ SLOW PATH — 2 surface\(s\)/);
+  });
+
+  test('(d) the DERIVED worst case of one status run fits the status job\'s timeout-minutes, with margin', (t) => {
+    // Every term comes from a constant, never from a number typed here.
+    assert.equal(statusWorstCaseMs(0), secondLookWallMs(10_000), 'the second look runs ONCE, whatever the count');
+    assert.equal(statusWorstCaseMs(1) - statusWorstCaseMs(0), READ_ATTEMPTS * 10_000 + RETRY_WALL_CEILING_MS, 'one surface costs one bounded read');
+    const n = deriveSurfaces(REPO).surfaces.length;
+    assert.ok(n > 0, 'the real register derived ZERO surfaces, so this fits nothing');
+    const wf = readFileSync(join(REPO, '.github/workflows/ops-watch.yml'), 'utf8');
+    const job = wf.match(/\n {2}status:\n([\s\S]*?)(?=\n {2}[a-z][\w-]*:\n)/);
+    assert.ok(job, 'no `status:` job in ops-watch.yml');
+    assert.match(job[1], /node tooling\/ops\/status\.mjs/, 'the `status:` job no longer runs status.mjs');
+    const minutes = Number(job[1].match(/\n {4}timeout-minutes: (\d+)/)?.[1]);
+    assert.ok(minutes > 0, 'the status job carries no timeout-minutes');
+    const worst = statusWorstCaseMs(n);
+    const budget = minutes * 60_000;
+    t.diagnostic(`${n} surfaces: worst case ${worst / 1000} s against ${budget / 1000} s — ${(budget - worst) / 1000} s spare`);
+    assert.ok(worst <= budget, `${n} surfaces × ${(READ_ATTEMPTS * 10_000 + RETRY_WALL_CEILING_MS) / 1000} s + ${secondLookWallMs(10_000) / 1000} s = ${worst / 1000} s exceeds the ${minutes}-minute job`);
   });
 });
 
@@ -507,7 +661,7 @@ describe('status — end to end through the REAL delegate register', () => {
   };
   const healthy = (over = {}) =>
     Object.fromEntries(real.surfaces.map((s) => [s.hostname, { status: s.expectedStatus, body: '{"ok":true}', ...over }]));
-  const run = (file) => spawnSync(process.execPath, [STATUS, '--probes-file', file], { cwd: REPO, encoding: 'utf8' });
+  const run = (file) => spawnSync(process.execPath, [STATUS, '--probes-file', file], { cwd: REPO, encoding: 'utf8', timeout: SPAWN_TIMEOUT_MS });
 
   test('the real register derives cleanly and yields a NON-EMPTY probed set — the floor every case below stands on', () => {
     // Without this, an accidentally-empty derivation makes `healthy()` an empty

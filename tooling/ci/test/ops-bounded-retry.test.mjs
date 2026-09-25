@@ -85,6 +85,10 @@ import {
   READ_WALL_CEILING_MS,
   requestTimeoutMs,
   runDeadline,
+  SECOND_LOOK_ATTEMPTS,
+  SECOND_LOOK_GAP_MS,
+  secondLookGapMs,
+  secondLookWallMs,
 } from '../../ops/bounded-retry.mjs';
 import { probeLive, evaluateSurface, EXIT_UNHEALTHY, EXIT_CANNOT_LOOK } from '../../ops/status.mjs';
 import { cf as cfWildcard } from '../../ops/check-wildcard-dns.mjs';
@@ -1362,5 +1366,86 @@ describe('B12 — the per-request ceiling: a read that never answers still ends'
     idle.cancel();
     await new Promise((r) => setTimeout(r, 40));
     assert.equal(idle.signal.aborted, false, 'a cancelled deadline never fires');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-25 — THE SECOND LOOK (row O-OPS-PROBE-US-EDGE-STALL). ops-watch went
+// red three times with NOTHING ANSWERED from a healthy Box B surface: a US
+// Cloudflare edge stalled in front of the Mumbai tunnel (edge 499, origin 0)
+// for longer than the first pass. The numbers are pinned here so a change to
+// them is a reviewed diff; the exit codes are proven in ops-status.test.mjs.
+describe('B13 — the second look: one more spread-out pass before COULD NOT LOOK', () => {
+  const stall = () => {
+    throw transientLook('nothing answered (stub)');
+  };
+
+  test('the numbers: 4 attempts, 15 s apart, and the wall clock is DERIVED from them', () => {
+    assert.equal(SECOND_LOOK_ATTEMPTS, 4);
+    assert.equal(SECOND_LOOK_GAP_MS, 15_000);
+    assert.equal(secondLookWallMs(10_000), 4 * 10_000 + 3 * 15_000, 'status.mjs: 85 s');
+    assert.equal(secondLookWallMs(), 4 * REQUEST_TIMEOUT_MS + 3 * 15_000, 'every other taker: 105 s');
+    assert.equal(secondLookWallMs(60_000), secondLookWallMs(), 'a caller may not LENGTHEN an attempt here either');
+  });
+
+  test('OPS_SECOND_LOOK_GAP_MS only SHORTENS the gap; nonsense is ignored', () => {
+    assert.equal(secondLookGapMs({}), SECOND_LOOK_GAP_MS);
+    assert.equal(secondLookGapMs({ OPS_SECOND_LOOK_GAP_MS: '0' }), 0);
+    assert.equal(secondLookGapMs({ OPS_SECOND_LOOK_GAP_MS: '50' }), 50);
+    assert.equal(secondLookGapMs({ OPS_SECOND_LOOK_GAP_MS: '600000' }), SECOND_LOOK_GAP_MS, 'a knob may not LENGTHEN it');
+    for (const bad of ['', '-5', 'abc', null]) {
+      assert.equal(secondLookGapMs({ OPS_SECOND_LOOK_GAP_MS: bad }), SECOND_LOOK_GAP_MS, `${JSON.stringify(bad)} is not a gap`);
+    }
+  });
+
+  test('GREEN CONTROL — without `secondLook` nothing changes: 3 attempts, then COULD NOT LOOK', async () => {
+    const { slept, sleep } = recorder();
+    let calls = 0;
+    const err = await readWithBoundedRetry(() => { calls += 1; return stall(); }, { sleep }).then(() => null, (e) => e);
+    assert.ok(err instanceof CouldNotLook);
+    assert.equal(calls, 3);
+    assert.deepEqual(slept, [1000, 2000]);
+    assert.doesNotMatch(err.message, /SECOND LOOK/);
+  });
+
+  test('🔴 nothing on the first pass, an answer on second-look attempt 3: returned, and SLOW PATH says which attempt', async () => {
+    const { slept, sleep } = recorder();
+    const lines = [];
+    let calls = 0;
+    const value = await readWithBoundedRetry(
+      () => { calls += 1; return calls < 6 ? stall() : 'answered'; },
+      { sleep, secondLook: true, slowPath: (l) => lines.push(l) },
+    );
+    assert.equal(value, 'answered');
+    assert.equal(calls, 6, '3 first-pass attempts + 3 second-look attempts, and not one more');
+    assert.deepEqual(slept, [1000, 2000, 15_000, 15_000], 'no lead-in gap, then 15 s between second-look attempts');
+    assert.equal(lines.length, 1);
+    assert.match(lines[0], /⚠ SLOW PATH — nothing answered on any of the 3 first-pass attempt\(s\); second-look attempt 3\/4 answered/);
+  });
+
+  test('🔴 nothing on either pass is still COULD NOT LOOK — after 3 + 4 attempts, never an eighth', async () => {
+    const { slept, sleep } = recorder();
+    const lines = [];
+    let calls = 0;
+    const err = await readWithBoundedRetry(() => { calls += 1; return stall(); }, { sleep, secondLook: true, slowPath: (l) => lines.push(l) })
+      .then(() => null, (e) => e);
+    assert.ok(err instanceof CouldNotLook, `ended as ${err?.name}: ${err?.message}`);
+    assert.equal(calls, 7);
+    assert.deepEqual(slept, [1000, 2000, 15_000, 15_000, 15_000]);
+    assert.match(err.message, /the same on all 3 attempt\(s\).*SECOND LOOK: .*the same on all 4 second-look attempt\(s\), 15s apart/);
+    assert.deepEqual(lines, [], 'no SLOW PATH line when nothing answered');
+  });
+
+  test('an ANSWER on the first pass is never looked at twice, and a non-transient failure is not either', async () => {
+    const { slept, sleep } = recorder();
+    let calls = 0;
+    assert.equal(await readWithBoundedRetry(() => { calls += 1; return 'first'; }, { sleep, secondLook: true }), 'first');
+    assert.equal(calls, 1);
+    calls = 0;
+    const err = await readWithBoundedRetry(() => { calls += 1; throw new CouldNotLook('403: no'); }, { sleep, secondLook: true })
+      .then(() => null, (e) => e);
+    assert.match(err.message, /403: no/);
+    assert.equal(calls, 1, 'an answer that says NO is not a stall');
+    assert.deepEqual(slept, []);
   });
 });
