@@ -14,12 +14,13 @@
 //     namespace OWNER_QUEUE A-6 claims. A generator that could not find it and
 //     carried on would publish under a name nobody reviewed.
 //
-//   · A STAGE-PACKAGE DROPPED FROM THE WORKFLOW AFTER THE RECIPE WAS WRITTEN.
-//     This is the whole point of extracting the apt list rather than retyping it,
-//     and it is the failure that reports clean: the snap builds, and the app does
-//     not start on a machine that happens to lack the library. The case is driven
-//     through `--emitted`, which is the only way to make the two reads disagree
-//     without giving the guard a backdoor that supplies its own answer.
+//   · A LIBRARY DROPPED FROM THE WORKFLOW AFTER THE RECIPE WAS WRITTEN. The
+//     stage list is DERIVED from the apt list (through the generator's
+//     RUNTIME_OF, since 2026-09-24), and a derivation that stopped following the
+//     workflow is the failure that reports clean: the snap builds, and the app
+//     does not start on a machine that happens to lack the library. The case is
+//     driven through `--emitted`, which is the only way to make the two reads
+//     disagree without giving the guard a backdoor that supplies its own answer.
 //
 //   · PLACEHOLDER TEXT IN THE EMITTED RECIPE. An angle-bracket slot is what an
 //     emitter produces when an interpolation silently resolved to nothing, and a
@@ -62,7 +63,36 @@ let seq = 0;
 // every time the Linux build gained a dependency. What is under test is the
 // PARSER — the block scalar, the shell line continuation, the flag filtering —
 // and a six-package list split across two continuation lines exercises all three.
-const FIXTURE_PACKAGES = ['clang', 'cmake', 'ninja-build', 'pkg-config', 'libgtk-3-dev', 'liblzma-dev'];
+//
+// ⏱ 2026-09-24 · the six now cover every kind of RUNTIME_OF entry: three build
+// tools (nothing staged), a library the gnome content snap supplies (nothing
+// staged), and two libraries that ARE staged — both on the LAST continuation
+// line, so a parser that stopped at the first one derives an empty stage list.
+const FIXTURE_PACKAGES = ['clang', 'cmake', 'ninja-build', 'libgtk-3-dev', 'libjsoncpp-dev', 'libcurl4-openssl-dev'];
+/** What RUNTIME_OF derives from FIXTURE_PACKAGES, typed here so the generator's
+ *  derivation is checked against an answer it did not produce. */
+const FIXTURE_STAGED = ['libjsoncpp25', 'libcurl4t64'];
+
+/** tooling/wsl-setup.sh's shape: a first install over continuation lines, then
+ *  a second (the Android SDK's), which the superset limb must not read. */
+const wslSetupWith = (packages, { noApt = false } = {}) =>
+  [
+    '#!/usr/bin/env bash',
+    '# sed, not node: this script runs on a fresh WSL install before any toolchain exists.',
+    '# (a comment naming apt-get install is not the command)',
+    'sudo apt-get update -qq',
+    ...(noApt
+      ? []
+      : [
+          'sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \\',
+          '  openjdk-17-jdk-headless \\',
+          `  ${packages.join(' ')} \\`,
+          '  xz-utils git curl unzip',
+          'sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \\',
+          '  google-android-platform-tools-installer',
+        ]),
+    '',
+  ].join('\n');
 
 const workflowWith = (packages, { runner = 'ubuntu-24.04', extraInstallStep = false, buildsLinux = true } = {}) => {
   const head = packages.slice(0, 3).join(' ');
@@ -135,6 +165,11 @@ function tree({
   // Per-file listing overrides. The licence cases need a tree whose
   // `license.txt` is a real SPDX identifier, which the default fixture is not.
   listing = {},
+  // tooling/wsl-setup.sh: installs `wslPackages` (default: the lane's list),
+  // has no apt-get install at all, or is absent.
+  wslPackages = null,
+  wslNoApt = false,
+  omitWsl = false,
 } = {}) {
   const root = join(TMP, `r${seq++}`);
   const write = (rel, body) => {
@@ -165,6 +200,7 @@ function tree({
   if (!omitWorkflow) {
     write('.github/workflows/build-platforms.yml', workflowWith(packages, { runner, extraInstallStep, buildsLinux }));
   }
+  if (!omitWsl) write('tooling/wsl-setup.sh', wslSetupWith(wslPackages ?? packages, { noApt: wslNoApt }));
   if (!omitCmake) write('apps/subscriptiontracker/linux/CMakeLists.txt', CMAKE);
   if (!omitStoreTree) {
     for (const [rel, body] of Object.entries(LISTING)) {
@@ -238,17 +274,62 @@ describe('generate-snapcraft — the recipe is derived, and refuses when it cann
   });
 
   // 🔴 the continuation case: a parser that stopped at the first trailing
-  // backslash would produce a SHORTER but non-empty list and no error anywhere.
+  // backslash would produce a SHORTER list and no error anywhere. Both staged
+  // libraries come from the LAST continuation line, so that parser stages nothing.
   test('extracts EVERY apt package, across both shell line continuations', () => {
     const root = tree();
     const g = generate(root, ['--bundle', bundle()]);
     assert.equal(g.code, 0, g.out);
     const yaml = readFileSync(g.recipe, 'utf8');
-    for (const p of FIXTURE_PACKAGES) assert.match(yaml, new RegExp(`^ {6}- ${p}$`, 'm'), `${p} missing`);
+    const block = yaml.slice(yaml.indexOf('    stage-packages:'));
+    assert.deepEqual([...block.matchAll(/^ {6}- (\S+)$/gm)].map((m) => m[1]), FIXTURE_STAGED);
     // and the flag is not a package
     assert.doesNotMatch(yaml, /^ {6}- -y$/m);
     // and `apt-get update` contributed nothing
     assert.doesNotMatch(yaml, /^ {6}- update$/m);
+    const deps = spawnSync(process.execPath, [GENERATOR, '--repo-root', root, '--emit-build-deps'], { encoding: 'utf8' });
+    assert.equal(deps.stdout.trim(), FIXTURE_PACKAGES.join(' '), 'all six build packages read, head line and tail line');
+  });
+
+  // ⏱ 2026-09-24 · the stage list is the RUNTIME list, not the build list.
+  test('stages the runtime libraries RUNTIME_OF derives, and no build package', () => {
+    const g = generate(tree(), ['--bundle', bundle()]);
+    assert.equal(g.code, 0, g.out);
+    const yaml = readFileSync(g.recipe, 'utf8');
+    assert.match(yaml, /^ {4}stage-packages:\n {6}- libjsoncpp25\n {6}- libcurl4t64\n/m);
+    // the compiler, the build systems and every -dev package stay out
+    assert.doesNotMatch(yaml, /^ {6}- clang$/m);
+    assert.doesNotMatch(yaml, /^ {6}- cmake$/m);
+    assert.doesNotMatch(yaml, /^ {6}- \S+-dev$/m);
+    // GTK is the gnome content snap's, so its runtime is not staged either
+    assert.doesNotMatch(yaml, /^ {6}- libgtk-3-0t64$/m);
+    assert.doesNotMatch(yaml, /^\s+build-packages:/m, 'dump compiles nothing');
+    assert.match(g.out, /2 stage-package\(s\) derived from 6 build package\(s\)/);
+  });
+
+  test('the app declares the gnome extension', () => {
+    const g = generate(tree(), ['--bundle', bundle()]);
+    assert.equal(g.code, 0, g.out);
+    assert.match(readFileSync(g.recipe, 'utf8'), /^ {4}extensions:\n {6}- gnome\n {4}plugs:$/m);
+  });
+
+  test('a lane whose every library the content snap supplies stages NOTHING, and says so', () => {
+    const g = generate(tree({ packages: ['clang', 'cmake', 'ninja-build', 'libgtk-3-dev', 'liblzma-dev', 'libsecret-1-dev'] }), [
+      '--bundle',
+      bundle(),
+    ]);
+    assert.equal(g.code, 0, g.out);
+    const yaml = readFileSync(g.recipe, 'utf8');
+    assert.doesNotMatch(yaml, /^ {4}stage-packages:/m);
+    assert.match(yaml, /# NO stage-packages: every runtime library of the apt list at/);
+  });
+
+  // 🔴 R3 — a lane package RUNTIME_OF does not know.
+  test('REFUSES a lane package with no RUNTIME_OF entry rather than passing it through', () => {
+    const g = generate(tree({ packages: [...FIXTURE_PACKAGES, 'libmpv-dev'] }), ['--bundle', bundle()]);
+    assert.equal(g.code, 1, g.out);
+    assertComplained(g.out);
+    assert.match(g.out, /names libmpv-dev, which has no entry in RUNTIME_OF/);
   });
 
   test('the base is DERIVED from the lane runner, not typed', () => {
@@ -426,8 +507,8 @@ describe('assert-snapcraft-generable — it runs the generator and grades the re
     assert.equal(g.code, 0, g.out);
   });
 
-  // 🔴 NEGATIVE TEST 2 — a stage-package dropped from the workflow AFTER the
-  // recipe was emitted. This is the equality limb, and it is the whole reason
+  // 🔴 NEGATIVE TEST 2 — a library dropped from the workflow AFTER the recipe
+  // was emitted. This is the derived-equality limb, and it is the whole reason
   // the apt list is extracted rather than retyped.
   test('the stage-packages equality REDDENS when a package leaves the workflow mid-run', () => {
     const root = tree();
@@ -436,24 +517,36 @@ describe('assert-snapcraft-generable — it runs the generator and grades the re
     // green first, so the redness below is attributable to the mutation alone
     assert.equal(guard(root, ['--emitted', gen.recipe, '--app', 'subscriptiontracker']).code, 0);
 
-    const shorter = FIXTURE_PACKAGES.filter((p) => p !== 'liblzma-dev');
+    const shorter = FIXTURE_PACKAGES.filter((p) => p !== 'libcurl4-openssl-dev');
     writeFileSync(join(root, '.github/workflows/build-platforms.yml'), workflowWith(shorter));
 
     const g = guard(root, ['--emitted', gen.recipe, '--app', 'subscriptiontracker']);
     assert.equal(g.code, 1, g.out);
     assertComplained(g.out);
-    assert.match(g.out, /`stage-packages` and .* apt list disagree/);
-    assert.match(g.out, /1 in the recipe and not the workflow \(liblzma-dev\)/);
+    assert.match(g.out, /`stage-packages` and the runtime list derived from .* apt list disagree/);
+    assert.match(g.out, /1 staged and not derived \(libcurl4t64\)/);
   });
 
   test('the stage-packages equality REDDENS when the workflow GAINS a package the recipe lacks', () => {
+    const root = tree({ packages: FIXTURE_PACKAGES.filter((p) => p !== 'libjsoncpp-dev') });
+    const gen = generate(root, ['--bundle', bundle()]);
+    assert.equal(gen.code, 0, gen.out);
+    assert.equal(guard(root, ['--emitted', gen.recipe, '--app', 'subscriptiontracker']).code, 0);
+    writeFileSync(join(root, '.github/workflows/build-platforms.yml'), workflowWith(FIXTURE_PACKAGES));
+    const g = guard(root, ['--emitted', gen.recipe, '--app', 'subscriptiontracker']);
+    assert.equal(g.code, 1, g.out);
+    assert.match(g.out, /1 derived and not staged \(libjsoncpp25\)/);
+  });
+
+  test('FAILS a recipe that stages something when RUNTIME_OF derives nothing to stage', () => {
     const root = tree();
     const gen = generate(root, ['--bundle', bundle()]);
     assert.equal(gen.code, 0, gen.out);
-    writeFileSync(join(root, '.github/workflows/build-platforms.yml'), workflowWith([...FIXTURE_PACKAGES, 'libsecret-1-dev']));
+    writeFileSync(join(root, '.github/workflows/build-platforms.yml'), workflowWith(['clang', 'cmake', 'ninja-build', 'libgtk-3-dev']));
     const g = guard(root, ['--emitted', gen.recipe, '--app', 'subscriptiontracker']);
     assert.equal(g.code, 1, g.out);
-    assert.match(g.out, /1 in the workflow and not the recipe \(libsecret-1-dev\)/);
+    assertComplained(g.out);
+    assert.match(g.out, /`stage-packages` lists libjsoncpp25, libcurl4t64, and RUNTIME_OF derives NOTHING to stage/);
   });
 
   test('FAILS an emitted recipe whose stage-packages list is empty', () => {
@@ -918,6 +1011,167 @@ describe('the launcher: snap/gui, an absolute Icon, and no `desktop:` key', () =
   });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-24 · THE RUNTIME STAGE (O-SNAP-RECIPE-STAGES-BUILD-DEPS).
+//
+// Until this date the recipe staged the lane's BUILD list verbatim — clang,
+// cmake and the -dev packages — into a `dump` part that compiles nothing, and
+// the guard held it EQUAL to that list. Each case below is one way back to that
+// state, or one of the facts the derived list rests on, and each must redden.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-snapcraft-generable — runtime libraries staged, build packages not', () => {
+  /** Generate from `treeOptions`, prove the guard green, apply `mutate` to the
+   *  emitted recipe text, and grade the result. */
+  const emittedAfter = (mutate, treeOptions = {}) => {
+    const root = tree(treeOptions);
+    const gen = generate(root, ['--bundle', bundle()]);
+    assert.equal(gen.code, 0, gen.out);
+    assert.equal(guard(root, ['--emitted', gen.recipe, '--app', 'subscriptiontracker']).code, 0, 'green before the mutation');
+    const before = readFileSync(gen.recipe, 'utf8');
+    const after = mutate(before);
+    assert.notEqual(after, before, 'the mutation must change the recipe');
+    writeFileSync(gen.recipe, after);
+    return guard(root, ['--emitted', gen.recipe, '--app', 'subscriptiontracker']);
+  };
+
+  // 🔴 R1
+  test('FAILS a recipe that stages a -dev package the lane builds with', () => {
+    const g = emittedAfter((y) => y.replace(/^( {4}stage-packages:\n)/m, '$1      - libgtk-3-dev\n'));
+    assert.equal(g.code, 1, g.out);
+    assertComplained(g.out);
+    assert.match(g.out, /stages the build dependency "libgtk-3-dev"/);
+    assert.match(g.out, /1 staged and not derived \(libgtk-3-dev\)/);
+  });
+
+  // 🔴 R2
+  test('FAILS a recipe that stages the compiler', () => {
+    const g = emittedAfter((y) => y.replace(/^( {4}stage-packages:\n)/m, '$1      - clang\n'));
+    assert.equal(g.code, 1, g.out);
+    assertComplained(g.out);
+    assert.match(g.out, /stages the build dependency "clang"/);
+  });
+
+  test('FAILS a recipe that stages a -dev package from outside the lane', () => {
+    const g = emittedAfter((y) => y.replace(/^( {4}stage-packages:\n)/m, '$1      - libfoo-dev\n'));
+    assert.equal(g.code, 1, g.out);
+    assertComplained(g.out);
+    assert.match(g.out, /stages the development package\(s\) libfoo-dev/);
+  });
+
+  // 🔴 R3, from the guard's side: the generator refuses, and so does the scan.
+  test('FAILS the scan when the lane gains a package RUNTIME_OF does not map', () => {
+    const g = guard(tree({ packages: [...FIXTURE_PACKAGES, 'libmpv-dev'] }));
+    assert.equal(g.code, 1, g.out);
+    assertComplained(g.out);
+    assert.match(g.out, /names libmpv-dev, which has no entry in RUNTIME_OF/);
+  });
+
+  // 🔴 R4
+  test('FAILS a recipe whose part declares build-packages', () => {
+    const g = emittedAfter((y) => y.replace(/^( {4}plugin: dump\n)/m, '$1    build-packages:\n      - clang\n'));
+    assert.equal(g.code, 1, g.out);
+    assertComplained(g.out);
+    assert.match(g.out, /the part declares `build-packages` \(\["clang"\]\)/);
+  });
+
+  // 🔴 R5
+  test('FAILS a recipe whose app drops the gnome extension', () => {
+    const g = emittedAfter((y) => y.replace(/^ {4}extensions:\n {6}- gnome\n/m, ''));
+    assert.equal(g.code, 1, g.out);
+    assertComplained(g.out);
+    assert.match(g.out, /`apps\.subscriptiontracker\.extensions` is \[\]; SNAP_EXTENSIONS declares \[gnome\]/);
+  });
+
+  // 🔴 R6
+  test('FAILS a recipe that plugs `home` back in', () => {
+    const g = emittedAfter((y) => y.replace(/^( {6}- network\n)/m, '$1      - home\n'));
+    assert.equal(g.code, 1, g.out);
+    assertComplained(g.out);
+    assert.match(g.out, /`plugs` is \[[^\]]*\bhome\b[^\]]*\]; DESKTOP_PLUGS declares/);
+  });
+
+  // 🔴 R7
+  test('FAILS a recipe that drops audio-playback, citing the LOCKED ADR 015 §3', () => {
+    const g = emittedAfter((y) => y.replace(/^ {6}- audio-playback\n/m, ''));
+    assert.equal(g.code, 1, g.out);
+    assertComplained(g.out);
+    assert.match(g.out, /`plugs` lacks audio-playback, which \[ADR 015\] §3 requires/);
+    assert.match(g.out, /\[ADR 015\] is LOCKED/);
+  });
+
+  // 🔴 R8
+  test('FAILS a recipe that drops password-manager-service while the lane builds against libsecret', () => {
+    const g = emittedAfter((y) => y.replace(/^ {6}- password-manager-service\n/m, ''), {
+      packages: [...FIXTURE_PACKAGES, 'libsecret-1-dev'],
+    });
+    assert.equal(g.code, 1, g.out);
+    assertComplained(g.out);
+    assert.match(g.out, /`plugs` lacks "password-manager-service", which RUNTIME_OF requires of "libsecret-1-dev"/);
+  });
+
+  // 🔴 R9
+  test('FAILS when tooling/wsl-setup.sh installs less than the Linux lane', () => {
+    const g = guard(tree({ wslPackages: FIXTURE_PACKAGES.filter((p) => p !== 'libcurl4-openssl-dev') }));
+    assert.equal(g.code, 1, g.out);
+    assertComplained(g.out);
+    assert.match(g.out, /tooling\/wsl-setup\.sh:5 — its first `apt-get install` lacks libcurl4-openssl-dev/);
+  });
+
+  test('PASSES when tooling/wsl-setup.sh installs MORE than the Linux lane — a superset, not an equality', () => {
+    const g = guard(tree({ wslPackages: [...FIXTURE_PACKAGES, 'libstdc++-12-dev'] }));
+    assert.equal(g.code, 0, g.out);
+    assert.match(g.out, /tooling\/wsl-setup\.sh:5 installs a superset/);
+  });
+
+  // 🔴 R10
+  test('COVERAGE LOST when tooling/wsl-setup.sh has no apt-get install to read', () => {
+    const g = guard(tree({ wslNoApt: true }));
+    assert.equal(g.code, 2, g.out);
+    assert.match(g.out, /COVERAGE LOST — tooling\/wsl-setup\.sh holds no `apt-get install` command/);
+  });
+
+  test('COVERAGE LOST when tooling/wsl-setup.sh is gone', () => {
+    const g = guard(tree({ omitWsl: true }));
+    assert.equal(g.code, 2, g.out);
+    assert.match(g.out, /COVERAGE LOST — tooling\/wsl-setup\.sh does not exist/);
+  });
+
+  // 🔴 R12 — the function the guard runs over the real RUNTIME_OF, driven with
+  // doctored maps. The real map passing is asserted too, so a guard that
+  // stopped calling it would still leave this case meaningful.
+  test('runtimeOfProblems FAILS an entry whose staged runtime has no source', async () => {
+    const { RUNTIME_OF, runtimeOfProblems } = await import(pathToFileURL(GENERATOR).href);
+    assert.deepEqual(runtimeOfProblems(RUNTIME_OF), [], 'the real map carries every source');
+    const noSource = new Map([['libjsoncpp-dev', { runtime: 'libjsoncpp25', suppliedBy: null, read: '2026-09-24' }]]);
+    assert.deepEqual(runtimeOfProblems(noSource), [
+      'RUNTIME_OF "libjsoncpp-dev" carries no `source` URL, so its answer is remembered rather than read.',
+    ]);
+  });
+
+  test('runtimeOfProblems FAILS a supplied-by claim with no source for the claim', async () => {
+    const { runtimeOfProblems } = await import(pathToFileURL(GENERATOR).href);
+    const unsourcedSupply = new Map([
+      [
+        'libgtk-3-dev',
+        { runtime: 'libgtk-3-0t64', suppliedBy: 'gnome-46-2404', source: 'https://packages.ubuntu.com/noble/libgtk-3-dev', read: '2026-09-24' },
+      ],
+    ]);
+    const found = runtimeOfProblems(unsourcedSupply);
+    assert.equal(found.length, 1, found.join('\n'));
+    assert.match(found[0], /says "gnome-46-2404" supplies libgtk-3-0t64 and carries no `suppliedSource` URL/);
+  });
+
+  test('runtimeOfProblems FAILS a -dev package mapped as its own runtime', async () => {
+    const { runtimeOfProblems } = await import(pathToFileURL(GENERATOR).href);
+    const devAsRuntime = new Map([
+      ['libcurl4-openssl-dev', { runtime: 'libcurl4-openssl-dev', suppliedBy: null, source: 'https://packages.ubuntu.com/noble/libcurl4-openssl-dev', read: '2026-09-24' }],
+    ]);
+    const found = runtimeOfProblems(devAsRuntime);
+    assert.equal(found.length, 1, found.join('\n'));
+    assert.match(found[0], /maps to "libcurl4-openssl-dev", a development package, as its runtime/);
+  });
+});
+
 describe('generate-snapcraft --emit-build-deps — one apt list, two jobs', () => {
   // 🔴 WHY THIS MODE EXISTS. submit-snap.yml compiles the Linux bundle it packs,
   // so it needs the same toolchain build-platforms.yml installs. A second
@@ -933,21 +1187,25 @@ describe('generate-snapcraft --emit-build-deps — one apt list, two jobs', () =
     assert.match(r.stderr, /build dep\(s\) from/);
   });
 
-  test('it is the SAME list the recipe stages — one extraction, not two', () => {
+  // ⏱ 2026-09-24 · the recipe stages the RUNTIME list derived from the build list
+  // this mode prints; the two are no longer equal, and must not be.
+  test('the recipe stages what RUNTIME_OF derives from the SAME list — one extraction, not two', async () => {
     const root = tree();
     const gen = generate(root, ['--bundle', bundle()]);
     assert.equal(gen.code, 0, gen.out);
-    // Only the `stage-packages:` block — `plugs:` entries sit at the same indent,
-    // so a bare `- item` match would compare the apt list against both.
+    // Only the `stage-packages:` block — `plugs:` and `extensions:` entries sit
+    // at the same indent, so a bare `- item` match would read all three.
     const yaml = readFileSync(gen.recipe, 'utf8');
     const block = yaml.slice(yaml.indexOf('    stage-packages:'));
     const staged = [...block.matchAll(/^ {6}- (\S+)$/gm)].map((m) => m[1]);
-    assert.deepEqual(staged, FIXTURE_PACKAGES, 'the block extraction itself must be reading the packages');
+    assert.deepEqual(staged, FIXTURE_STAGED, 'the block extraction itself must be reading the packages');
 
     const emitted = spawnSync(process.execPath, [GENERATOR, '--repo-root', root, '--emit-build-deps'], { encoding: 'utf8' })
       .stdout.trim()
       .split(' ');
-    assert.deepEqual(emitted, staged, 'apt installs exactly what the snap stages, from one read of one file');
+    assert.deepEqual(emitted, FIXTURE_PACKAGES, 'apt installs the build list');
+    const { stagePackagesFor } = await import(pathToFileURL(GENERATOR).href);
+    assert.deepEqual(stagePackagesFor(emitted), staged, 'the snap stages the runtime list derived from that one read of one file');
   });
 
   test('REFUSES rather than emitting an empty list when the workflow parse breaks', () => {

@@ -409,11 +409,13 @@ reject the result, nothing downstream could tell. So the file that was
 just emitted is read back and graded: it parses, its `name` is the one
 apps/*/store/linux-snap/snap-name.txt claims, it carries no absolute host
 paths, `confinement` is `strict` (`classic` needs a manual store review
-nobody has argued for), and `stage-packages` EQUALS the apt list the
-"Linux build deps" step above installs — a retyped list, a list truncated
-at the first line continuation, and a workflow that grew a package the
-recipe did not are one failure: the snap builds and the app does not
-start.
+nobody has argued for), and `stage-packages` EQUALS the runtime list
+derived, through the generator's RUNTIME_OF, from the apt list the
+"Linux build deps" step above installs, with no build package staged
+(2026-09-24; it equalled the apt list itself before) — a retyped list, a
+list truncated at the first line continuation, and a workflow that grew a
+package the recipe did not follow are one failure: the snap builds and
+the app does not start.
 
 ### before step **Prepare the Android upload key**
 
@@ -796,7 +798,26 @@ would be wrong there: if `msix:create` produced nothing, the step above
 already failed and this upload has nothing to add — turning that into a
 second red would report one defect twice.
 
+⏱ 2026-09-24 — renamed `store-<app>-windows-msix-diagnostic`, keeping
+`if: always()`: under its old name the release job's `<app>-*` download
+took this copy of a store-only .msix too (§store-only).
+
+⏱ 2026-09-24 — this upload now runs AFTER `The MSIX carries the identity
+the register declares`, which assert-channel-register.mjs §10 limb (iv)
+requires straight after `Package MSIX`, and nothing diagnostic is lost:
+`if: always()` still keeps the .msix a refused read-back leaves on disk,
+and the stamp's `*.msix.channel.json`, skipped after a refusal, is simply
+absent from the upload.
+
 ### before step **Prepare the Windows code-signing certificate, and read the signature back**
+
+⏱ 2026-09-25 — this step and `tooling/ci/windows-signing.mjs`, its only
+callee, are retired (O-WINDOWS-DIRECT-DEAD-CHANNEL-LIVES, branch 2): the
+script signed for windows-direct, which C-WINDOWS-STORE-ONLY rules out, and
+the Store re-signs the .msix this job builds. What follows is history. Read
+the script back with `git show <commit>^:tooling/ci/windows-signing.mjs`,
+where `<commit>` is `git log -1 --format=%H --diff-filter=D --
+tooling/ci/windows-signing.mjs`.
 
 ── THE CERTIFICATE, AND THE READ-BACK IT EXISTS FOR ────────────────
 🔴 THIS STEP RAN BEFORE `Build windows` UNTIL 2026-08-20, AND WAS NEVER
@@ -1220,6 +1241,14 @@ change every matrix app was staged under one app's tag, and the version check,
 with no `--app`, compared that tag only with the app the tag itself named, so
 it passed on every leg.
 
+⏱ 2026-09-24 — first of all, `--stage` refuses any STORE-ONLY file in the
+download tree (§store-only), bundle members included, on every run and
+before anything moves: the tar loop below would otherwise archive a runner
+bundle into the Release whole. With the store-only uploads named
+`store-<app>-…`, a run whose apps.gov.in pin is null downloads no installer
+at all, and `--stage` says none is owed and exits 0 rather than COVERAGE
+LOST (O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER).
+
 Expressions go through `env:` rather than into the shell body: a ref name
 is attacker-influenced text and `${{ }}` in a `run:` is substituted before
 bash ever sees it. [zizmor template-injection]
@@ -1254,6 +1283,14 @@ named mode and ask nothing. release-manifest.mjs refuses that spelling
 outright today ("--expect-formats is read by --verify alone", exit 1,
 measured 2026-08-27), so the misplacement is loud rather than silent —
 but the placement is the reason it works, not that refusal.
+
+⏱ 2026-09-24 — narrowed to this file, the expected set is EMPTY now: every
+format this workflow's lanes emit is store-only (§store-only), and a
+Release carries none. release-manifest.mjs prints that the register
+expects no release format of this workflow and the step stands on the
+consistency half; it re-arms with no edit the day a lane here emits a
+format a Release carries. COVERAGE LOST stays for the other empty, a
+workflow whose rows name no lane at all.
 
 ### before step **Publish the GitHub Release (tag pushes only)**
 
@@ -1563,11 +1600,15 @@ carries the file lists `<file glob>.channel.json` too.
 
 | build step `id:` | its define | the stamped file | upload |
 |---|---|---|---|
-| `build_aab` | `android-play` | `bundle/release/*.aab` | `<app>-linux-web-android-<posture>` |
+| `build_aab` | `android-play` | `bundle/release/*.aab` | `store-<app>-android-aab-<posture>` |
 | `build_apk_agi` | `apps-gov-in` | `build/apps-gov-in/<app>-apps-gov-in-<ver>.apk` | its own (`apps-gov-in-…`, see §apps-gov-in) |
-| `build_windows` | `windows-store` | `build/windows/msix/*.msix` | `<app>-windows` and `<app>-windows-msix-diagnostic` |
-| `build_macos` | `macos-appstore` | `build/macos/pkg/*.pkg` (signed posture) | `<app>-macos-pkg` |
-| `build_ipa` | `ios-appstore` | `build/ios/ipa/*.ipa` (signed posture) | `<app>-ios-release-signed` |
+| `build_windows` | `windows-store` | `build/windows/msix/*.msix` | `store-<app>-windows-msix` and `store-<app>-windows-msix-diagnostic` |
+| `build_macos` | `macos-appstore` | `build/macos/pkg/*.pkg` (signed posture) | `store-<app>-macos-pkg` |
+| `build_ipa` | `ios-appstore` | `build/ios/ipa/*.ipa` (signed posture) | `store-<app>-ios-release-signed` |
+
+⏱ 2026-09-24 — every upload in that table but the apps.gov.in one is named `store-<app>-…`, outside
+the release job's `<app>-*` download: each file is store-only (§store-only), so the stamps travel
+with files no release stages. The apps.gov.in .apk is the release's one stamped installer.
 
 The Play .apk is a build proof, not a release file. It is uploaded as
 `ci-proof-android-play-apk-<app>`, a name the release job's `<app>-*` download never matches, so no
@@ -1599,6 +1640,70 @@ its `--build-step` names. Per upload the release job downloads, every installer 
 earlier in its job and listed again as `<path>.channel.json`. The self-test runs it over the real
 tree, and over two mutations of it: a stamp saying `android-play` over the `apps-gov-in` build, and
 the Play .apk put back into the `<app>-*` upload.
+
+⏱ 2026-09-24 — no `<app>-*` upload names an installer path any more (§store-only), so limb 9 counts
+the apps.gov.in download limb 10 grades as the release's installer source: a stager with neither is
+still COVERAGE LOST. The Play .apk mutation now lands beside the Linux bundle, the one path left in
+the `<app>-linux-web-android-<posture>` upload.
+
+## store-only — a Release never carries a file only a store takes
+
+*Added 2026-09-24 · O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER · C-WINDOWS-STORE-ONLY.* Every `§store-only`
+pointer in `build-platforms.yml` lands here.
+
+### The rule, and where it comes from
+
+A GitHub Release is a download origin. It carries a file only when some channel row takes that file
+FROM the Release: a live `kind: "direct"` row, a store with no submission path (a person uploads the
+Release's file by hand: apps.gov.in), or any row on a surface whose `flutterApp` is false (the
+extension stores take the extension release's own zip). A format every accepting row of which is a
+submittable app store, or a row a constraint rules out, is STORE-ONLY: the store's own `submit-*.yml`
+builds and submits its own package, and nothing reads this one from a Release.
+
+`tooling/channel-register.json` records the constraint on the row it forbids:
+`windows-direct.deferral.ruledOutBy` is `C-WINDOWS-STORE-ONLY`. `release-manifest.mjs
+storeOnlyFormats` derives the set from the register on every run, so the rule names no format
+itself. On today's register it is the .aab, .ipa, .pkg, .msix and .snap, and the runner `.exe`,
+whose only row is the ruled-out one.
+
+The scope is the rule applied literally, and it is wider than Windows as a consequence: no
+consistent reading refuses the .msix and keeps the .aab, the .ipa or the .pkg.
+
+### What the lane does
+
+- `build-platforms.yml` uploads every store-only file as `store-<app>-…`: the Android .aab
+  (`store-<app>-android-aab-<posture>`), the Windows runner (`store-<app>-windows`) and .msix
+  (`store-<app>-windows-msix`, and the diagnostic copy `store-<app>-windows-msix-diagnostic`), the
+  .pkg (`store-<app>-macos-pkg`) and the .ipa (`store-<app>-ios-<posture>`). The release job's
+  `pattern: ${{ matrix.app }}-*` never matches those names, exactly as it never matches
+  `ci-proof-*` and `apps-gov-in-*`. The Android and Windows uploads are split so each half fails
+  on its own.
+- `--stage` walks the whole download tree, bundle members included, and refuses (exit 1, before
+  anything moves) any store-only file it finds. On every run, tagged or not: the untagged dist a
+  scheduled run stages is the tag's rehearsal.
+- A lane set that emits nothing a Release carries is a DECLARED empty, not COVERAGE LOST: every
+  format an app-surface lane emits is store-only today, and the apps.gov.in .apk reaches a release
+  only once its pin is set. `--stage` then prints "nothing staged … none is owed" and exits 0, and
+  `--verify --expect-formats --for-workflow` prints that the register expects no release format of
+  this workflow. Both stay COVERAGE LOST when a lane DOES emit a format a Release carries and none
+  arrived, or when no lane emits anything.
+- `--emit-environments` never records a ruled-out row as an origin, whatever its signing posture,
+  and says so on stderr.
+
+### What holds it
+
+- `assert-release-durable.mjs` limb 1b reads the release job's download `pattern:` and fails on any
+  upload it takes whose path is store-only — by extension, or as a desktop bundle directory whose
+  platform's bundle member is store-only (the Windows runner).
+- `assert-channel-register.mjs` refuses a `ruledOutBy` that is not a constraint id, and one on a
+  served row.
+- `release-durable.test.mjs` holds the red controls; `channel-register.test.mjs` holds the register's.
+
+### Not fixed here
+
+The tar loop still archives what remains of the `<app>-*` downloads: the Linux bundle, the macOS
+`.app` and the unsigned iOS build. No channel takes any of them from a Release either. That is its
+own row (O-RELEASE-ARCHIVES-UNCHANNELED-BUNDLES), not this one.
 
 ## Obfuscation and native symbols
 

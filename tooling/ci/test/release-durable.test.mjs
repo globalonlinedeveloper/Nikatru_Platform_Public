@@ -30,6 +30,7 @@ import {
   installableExtensions,
   laneIsWorkflow,
   expectedReleaseFormats,
+  storeOnlyFormats,
   missingReleaseFormats,
   originEnvironments as originEnvironmentsRaw,
   channelIsOnSurface,
@@ -332,6 +333,52 @@ describe('assert-release-durable.mjs — limb 1 (a release lane cannot end at up
     const r = run(fixture({ workflows: { 'shots.yml': lane({ upload: shots, releaseJob: false }), 'build.yml': lane() } }));
     assert.equal(r.code, 0, r.out);
     assert.doesNotMatch(r.out, /screenshots/);
+  });
+});
+
+// ⏱ ADDED 2026-09-24 — limb 1b (O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER). The release
+// job's download pattern decides which uploads reach the Release; a store-only file
+// in one of them is refused here, on the workflow text. R5 on the real tree: this
+// guard over e9492c3e's build-platforms.yml exits 1 naming five uploads.
+describe('assert-release-durable.mjs — limb 1b (no store-only file reaches a Release)', () => {
+  const STORE_REGISTER = (submittable) => ({
+    channels: [
+      { id: 'web', kind: 'web', surface: 'app', served: true, artifactFormats: ['static-bundle'], deploymentEnvironment: '{app}-web' },
+      { id: 'android-play', kind: 'store', surface: 'app', served: false, submittable, platforms: ['android'], artifactFormats: ['.aab'] },
+    ],
+  });
+  const aabUpload = (name) => `      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${name}
+          path: |
+            apps/\${{ matrix.app }}/build/app/outputs/bundle/release/*.aab
+          retention-days: 7
+`;
+  const DOWNLOAD = `      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: downloads
+          pattern: \${{ matrix.app }}-*
+`;
+
+  test('RED — an .aab upload the release download takes is named, with the download that takes it', () => {
+    const root = fixture({ register: STORE_REGISTER(true), workflows: { 'b.yml': lane({ upload: aabUpload('${{ matrix.app }}-android'), publish: DOWNLOAD + PUBLISH_STEPS }) } });
+    const r = run(root);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /FAIL \.github\/workflows\/b\.yml: job "build" uploads "\$\{\{ matrix\.app \}\}-android" at :\d+, and job "release"'s download `\$\{\{ matrix\.app \}\}-\*` at :\d+ takes it into the Release — its store-only path\(s\): apps\/\$\{\{ matrix\.app \}\}\/build\/app\/outputs\/bundle\/release\/\*\.aab \(\.aab\)\./);
+  });
+
+  test('GREEN CONTROL — the same upload named outside the pattern (`store-<app>-…`) passes, and the limb says what it read', () => {
+    const root = fixture({ register: STORE_REGISTER(true), workflows: { 'b.yml': lane({ upload: aabUpload('store-${{ matrix.app }}-android'), publish: DOWNLOAD + PUBLISH_STEPS }) } });
+    const r = run(root);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /ok {3}limb 1b — 1 release download\(s\) read; 0 upload\(s\) they take graded against 1 store-only format\(s\) \{\.aab\}/);
+  });
+
+  test('the rule follows the REGISTER — a store with no submission path takes the .aab from the Release, so it passes', () => {
+    const root = fixture({ register: STORE_REGISTER(false), workflows: { 'b.yml': lane({ upload: aabUpload('${{ matrix.app }}-android'), publish: DOWNLOAD + PUBLISH_STEPS }) } });
+    const r = run(root);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /limb 1b — 1 release download\(s\) read; 1 upload\(s\) they take graded against 0 store-only format\(s\)/);
   });
 });
 
@@ -1152,8 +1199,9 @@ describe('release-manifest.mjs — origin channels are gated on signing posture'
 
     // A register with no `channels` key, and no register at all, are both empty
     // answers rather than a crash in the middle of a release job.
-    assert.deepEqual(originEnvironments({}, 'subscriptiontracker', ['subscriptiontracker-v1-subscriptiontracker.msix']), { environments: [], omitted: [], submitted: [] });
-    assert.deepEqual(originEnvironments(undefined, 'subscriptiontracker', ['subscriptiontracker-v1-subscriptiontracker.msix']), { environments: [], omitted: [], submitted: [] });
+    // ⏱ 2026-09-24 — `ruledOut` is the fourth list (O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER).
+    assert.deepEqual(originEnvironments({}, 'subscriptiontracker', ['subscriptiontracker-v1-subscriptiontracker.msix']), { environments: [], omitted: [], submitted: [], ruledOut: [] });
+    assert.deepEqual(originEnvironments(undefined, 'subscriptiontracker', ['subscriptiontracker-v1-subscriptiontracker.msix']), { environments: [], omitted: [], submitted: [], ruledOut: [] });
   });
 
   // 🔴 THE `new Set(out)` DEDUPE HAD NOTHING HOLDING IT — pinned 2026-08-22 by the
@@ -1580,6 +1628,10 @@ describe('release-manifest.mjs — origin channels are gated on signing posture'
     writeFileSync(join(d, 'subscriptiontracker-v1.0.0-subscriptiontracker.msix'), 'msix');
     const r = cli(['--emit-environments', d, '--app', 'subscriptiontracker']);
     const withheld = direct.filter((c) => signingPosture(c).state === 'sentinel').map((c) => c.id);
+    // ⏱ 2026-09-24 — windows-direct is ruled out by C-WINDOWS-STORE-ONLY, and a
+    // ruled-out row is skipped BEFORE its posture is read: whichever arm runs, the
+    // real register records nothing for it and says why on stderr. `--stage`
+    // refuses the .msix, so this directory is one no real run stages any more.
     if (withheld.includes('windows-direct')) {
       // 🔴 THIS IS THE STATE ON 2026-08-21 and the assertion is written so that
       // FILLING THE PIN IN turns it into the other branch rather than into a
@@ -1588,7 +1640,8 @@ describe('release-manifest.mjs — origin channels are gated on signing posture'
       // records no deployment for it.
       assert.equal(r.code, 0, r.out);
       assert.equal(r.stdout.trim(), '', 'the real register must not emit an environment for an identity that does not exist');
-      assert.match(r.stderr, /omitted {2}subscriptiontracker-windows-direct/);
+      // inverted by O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER: was "omitted" (withheld on posture); ruled out now, before posture.
+      assert.match(r.stderr, /ruled-out {2}subscriptiontracker-windows-direct — channel "windows-direct" is forbidden by C-WINDOWS-STORE-ONLY/);
     } else {
       // The certificate was purchased and the pin filled. The row is recordable
       // again and this side of the branch is what proves the gate opens.
@@ -1604,7 +1657,8 @@ describe('release-manifest.mjs — origin channels are gated on signing posture'
       // state, not an assertion that cannot fail — the day `signing` is filled in
       // it runs, and if the gate does not open it fails.
       assert.equal(r.code, 0, r.out);
-      assert.equal(r.stdout.trim(), 'subscriptiontracker-windows-direct');
+      // inverted by O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER: a filled pin no longer opens the gate while the row is ruled out.
+      assert.equal(r.stdout.trim(), '');
     }
   });
 });
@@ -1698,7 +1752,10 @@ describe('release-manifest.mjs — the expected-format set is DERIVED, not typed
   });
 
   test('a BUNDLE MEMBER is never expected loose — it travels inside its platform archive', () => {
-    const withExe = { channels: [{ id: 'x', artifactFormats: ['.exe', '.msix'], lane: { workflow: 'w.yml', job: 'j' } }] };
+    // ⏱ 2026-09-24 — `kind: 'direct'` added: a row with no kind takes nothing from
+    // a Release, so its formats are store-only and none is expected
+    // (O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER). The case measures the bundle member.
+    const withExe = { channels: [{ id: 'x', kind: 'direct', artifactFormats: ['.exe', '.msix'], lane: { workflow: 'w.yml', job: 'j' } }] };
     const expected = expectedReleaseFormats(withExe);
     assert.ok(expected.has('.msix'));
     assert.ok(!expected.has('.exe'), 'requiring a format --stage deliberately never lifts is an assertion that cannot pass');
@@ -1763,7 +1820,12 @@ describe('release-manifest.mjs — the expected-format set is DERIVED, not typed
     // set below grows with this one rather than staying behind it.
     // ⏱ 2026-09-24 — `.apk` left with the declared extra; the `apps-gov-in` row that
     // accepts it has no lane (O-RELEASE-RECORD-GUESSES-CHANNEL-FROM-EXTENSION).
-    assert.deepEqual([...expectedReleaseFormats(real)].sort(), ['.aab', '.ipa', '.msix', '.pkg', '.snap', '.zip']);
+    // ⏱ 2026-09-24 — and every app-store format left with `storeOnlyFormats`: .aab,
+    // .ipa, .pkg and .snap are taken only by submittable stores, .msix only by
+    // windows-store once windows-direct is ruled out. `.zip` stays: the extension
+    // stores take the extension release's own bytes.
+    // inverted by O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER
+    assert.deepEqual([...expectedReleaseFormats(real)].sort(), ['.zip']);
   });
 
   // ⚠️ THE QUESTION THE NOTE ABOVE PARKED WAS ANSWERED 2026-08-27, AND ONLY HALF
@@ -1776,13 +1838,15 @@ describe('release-manifest.mjs — the expected-format set is DERIVED, not typed
   test('narrowed to the workflow that STAGES the dist, the .snap is not demanded of it', () => {
     const real = JSON.parse(readFileSync(join(REPO, 'tooling', 'channel-register.json'), 'utf8'));
     const bp = expectedReleaseFormats(real, '.github/workflows/build-platforms.yml');
-    assert.deepEqual([...bp].sort(), ['.aab', '.ipa', '.msix', '.pkg']);
+    // inverted by O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER: every format build-platforms.yml's lanes emit is store-only.
+    assert.deepEqual([...bp].sort(), []);
     assert.ok(!bp.has('.snap'), 'submit-snap.yml is a different workflow on a different trigger; download-artifact cannot reach its output');
   });
 
   test('narrowed to submit-snap.yml the .snap IS demanded and the store artifacts are not', () => {
     const real = JSON.parse(readFileSync(join(REPO, 'tooling', 'channel-register.json'), 'utf8'));
-    assert.deepEqual([...expectedReleaseFormats(real, 'submit-snap.yml')].sort(), ['.snap']);
+    // inverted by O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER: the Snap Store takes the .snap submit-snap.yml builds, never a Release's.
+    assert.deepEqual([...expectedReleaseFormats(real, 'submit-snap.yml')].sort(), []);
   });
 
   test('narrowing is a FILTER on the unnarrowed set', () => {
@@ -1896,16 +1960,19 @@ describe('release-manifest.mjs — `--verify --expect-formats` (the G3 half)', (
     const plain = cli(['--verify', d]);
     assert.equal(plain.code, 0, 'the manifest is CORRECT — it describes this directory exactly, which is the point');
     const strict = cli(['--verify', d, '--expect-formats']);
-    assert.equal(strict.code, 1, strict.out);
-    assert.match(strict.out, /missing 1 expected release format\(s\): \.msix/);
-    assert.match(strict.out, /a release missing a/);
+    // inverted by O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER: the .msix is store-only, so a release without one IS complete.
+    // The recorded failing case this name describes moved to the .zip, below ("UNNARROWED, THAT SAME DIST IS RED").
+    assert.equal(strict.code, 0, strict.out);
+    assert.doesNotMatch(strict.out, /missing 1 expected release format\(s\): \.msix/);
+    assert.doesNotMatch(strict.out, /a release missing a/);
   });
 
   test('a complete release passes and NAMES what it checked', () => {
     const d = staged(COMPLETE);
     const r = cli(['--verify', d, '--expect-formats']);
     assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /all 6 expected format\(s\) present: \.aab, \.ipa, \.msix, \.pkg, \.snap, \.zip/);
+    // inverted by O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER: five of the six are store-only and no longer expected.
+    assert.match(r.out, /all 1 expected format\(s\) present: \.zip/);
   });
 
   test('DEFAULT BEHAVIOUR IS UNCHANGED — without the flag nothing new can go red', () => {
@@ -2001,8 +2068,9 @@ describe('release-manifest.mjs — `--verify --expect-formats` (the G3 half)', (
     const d = staged(BUILD_PLATFORMS.filter((f) => !f.endsWith('.msix')));
     assert.equal(cli(['--verify', d]).code, 0, 'plain --verify is still silent about the missing platform');
     const r = cli(['--verify', d, '--expect-formats', '--for-workflow', 'build-platforms.yml']);
-    assert.equal(r.code, 1, r.out);
-    assert.match(r.out, /missing 1 expected release format\(s\): \.msix/);
+    // inverted by O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER: the .msix is store-only, so its absence is the correct dist.
+    assert.equal(r.code, 0, r.out);
+    assert.doesNotMatch(r.out, /missing 1 expected release format\(s\): \.msix/);
   });
 
   test('narrowed to build-platforms.yml, its own complete dist passes and NAMES the four', () => {
@@ -2010,7 +2078,11 @@ describe('release-manifest.mjs — `--verify --expect-formats` (the G3 half)', (
     const r = cli(['--verify', d, '--expect-formats', '--for-workflow', '.github/workflows/build-platforms.yml']);
     assert.equal(r.code, 0, r.out);
     // ⏱ 2026-09-24 — five until the .apk left the release (O-RELEASE-RECORD-GUESSES-CHANNEL-FROM-EXTENSION).
-    assert.match(r.out, /all 4 expected format\(s\) present: \.aab, \.ipa, \.msix, \.pkg/);
+    // inverted by O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER: the four are NAMED as store-only, none is expected,
+    // and the empty is the register's declaration rather than COVERAGE LOST.
+    assert.match(r.out, /the register expects no release format of \.github\/workflows\/build-platforms\.yml: every format its lanes emit is store-only \(\.aab, \.ipa, \.msix, \.pkg\)/);
+    assert.doesNotMatch(r.out, /expected format\(s\) present/);
+    assert.doesNotMatch(r.out, /COVERAGE LOST/);
   });
 
   test('🔴 UNNARROWED, THAT SAME DIST IS RED — which is why the flag could not be wired as it stood', () => {
@@ -2021,7 +2093,8 @@ describe('release-manifest.mjs — `--verify --expect-formats` (the G3 half)', (
     const d = staged(BUILD_PLATFORMS);
     const r = cli(['--verify', d, '--expect-formats']);
     assert.equal(r.code, 1, r.out);
-    assert.match(r.out, /missing 2 expected release format\(s\): \.snap, \.zip/);
+    // ⏱ 2026-09-24 — `.snap` is store-only now (O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER); the .zip remains.
+    assert.match(r.out, /missing 1 expected release format\(s\): \.zip/);
   });
 
   test('--for-workflow WITHOUT --expect-formats refuses — a silent no-op would print ok', () => {
@@ -2065,7 +2138,8 @@ describe('release-manifest.mjs — `--verify --expect-formats` (the G3 half)', (
     const d = staged(COMPLETE);
     const r = cli(['--verify', d, '--expect-formats']);
     assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /all 6 expected format\(s\) present: \.aab, \.ipa, \.msix, \.pkg, \.snap, \.zip/);
+    // inverted by O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER: the unnarrowed expectation is the .zip alone.
+    assert.match(r.out, /all 1 expected format\(s\) present: \.zip/);
   });
 });
 
@@ -2101,9 +2175,39 @@ describe('release-manifest.mjs — the CLI refuses rather than producing a hollo
     mkdirSync(join(from, 'subscriptiontracker-web'), { recursive: true });
     writeFileSync(join(from, 'subscriptiontracker-web', 'index.html'), '<html>');
     const out = join(TMP, `o${seq++}`);
-    const r = cli(['--stage', from, '--out', out, '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-v1', '--ref-type', 'tag']);
+    const stamps = join(TMP, `t${seq++}`);
+    const r = cli(['--stage', from, '--out', out, '--stamps', stamps, '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-v1', '--ref-type', 'tag']);
+    // inverted by O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER: on the REAL register every format a lane on the app
+    // surface emits is store-only, so "no installer" is the register's own answer — printed, exit 0, nothing
+    // staged. The COVERAGE LOST this case pinned is held by the next case, on a register where a lane DOES
+    // emit a format a Release carries.
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /nothing staged: no installer under .*, and none is owed\./);
+    assert.match(r.out, /Every format a lane on surface "app" emits is store-only: \.aab, \.ipa, \.msix, \.pkg, \.snap/);
+    assert.deepEqual(assetFiles(out).names, []);
+    assert.deepEqual(assetFiles(stamps).names, [], 'the stamps directory exists for --emit-release-json, and is empty');
+  });
+
+  test('--stage STILL refuses an empty tree when a lane emits a format a Release carries — COVERAGE LOST', () => {
+    // O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER: the declared empty above is narrow. Here a
+    // direct row with a lane emits .AppImage, so an empty download tree is an
+    // installer that did not arrive, and "a release of nothing" is refused as before.
+    const root = fixture({
+      register: {
+        channels: [
+          { id: 'linux-appimage', kind: 'direct', surface: 'app', artifactFormats: ['.AppImage'], lane: { workflow: 'w.yml', job: 'j' } },
+          { id: 'android-play', kind: 'store', surface: 'app', submittable: true, artifactFormats: ['.aab'], lane: { workflow: 'w.yml', job: 'j' } },
+        ],
+      },
+    });
+    const from = join(TMP, `s${seq++}`);
+    mkdirSync(join(from, 'subscriptiontracker-web'), { recursive: true });
+    writeFileSync(join(from, 'subscriptiontracker-web', 'index.html'), '<html>');
+    const out = join(TMP, `o${seq++}`);
+    const r = cli(['--stage', from, '--out', out, '--stamps', join(TMP, `t${seq++}`), '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-v1', '--ref-type', 'tag', '--repo-root', root]);
     assert.equal(r.code, 2, r.out); // COVERAGE LOST is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(r.out, /no installable artifact found/);
+    assert.match(r.out, /Looked for: \.AppImage \(derived from/);
     assert.match(r.out, /A release with no installer is a release of nothing/);
   });
 
@@ -2173,37 +2277,43 @@ describe('release-manifest.mjs — the CLI refuses rather than producing a hollo
   // subject of the first case on purpose: every native row there says
   // `nativeAuth: false` today, and this is what stops a tag shipping one. When a
   // row flips on observed evidence, this case is the one that has to move.
+  // ⏱ 2026-09-24 — THE NEXT THREE CASES STAGE THE apps.gov.in .apk, NOT THE PLAY
+  // .aab THEY USED TO. The .aab is store-only on the real register now, and the
+  // store-only judge refuses it before the native-auth question is asked
+  // (O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER, red control R2). These cases measure
+  // native auth, so they stand on the one real-register installer a Release
+  // carries; apps-gov-in says `nativeAuth: false` today, as android-play does.
   test('--stage on a release tag REFUSES a native installer of the real register, and moves nothing', () => {
     const from = join(TMP, `s${seq++}`);
-    mkdirSync(join(from, 'subscriptiontracker-linux', 'app', 'outputs'), { recursive: true });
-    writeFileSync(join(from, 'subscriptiontracker-linux', 'app', 'outputs', 'app-release.aab'), 'aab');
-    stampBeside(join(from, 'subscriptiontracker-linux', 'app', 'outputs', 'app-release.aab'), 'android-play');
+    mkdirSync(join(from, 'apps-gov-in-subscriptiontracker-apk'), { recursive: true });
+    writeFileSync(join(from, 'apps-gov-in-subscriptiontracker-apk', 'app-release.apk'), 'apk');
+    stampBeside(join(from, 'apps-gov-in-subscriptiontracker-apk', 'app-release.apk'), 'apps-gov-in');
     const out = join(TMP, `o${seq++}`);
     const r = cli(['--stage', from, '--out', out, '--stamps', join(TMP, `t${seq++}`), '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-v1.0.0', '--ref-type', 'tag']);
     assert.equal(r.code, 1, r.out);
-    assert.match(r.stderr, /✗ app-release\.aab — it is the native build of [^\n]*"android-play"[^\n]*\(O-BOXA-CAPTCHA-REFUSES-NATIVE-SIGN-IN\)/);
+    assert.match(r.stderr, /✗ app-release\.apk — it is the native build of [^\n]*"apps-gov-in"[^\n]*\(O-BOXA-CAPTCHA-REFUSES-NATIVE-SIGN-IN\)/);
     assert.match(r.stderr, /--stage refuses 1 native installer\(s\) on release tag "subscriptiontracker-v1\.0\.0"/);
     assert.deepEqual(assetFiles(out).names, [], 'a refused release stages nothing');
-    assert.deepEqual(assetFiles(join(from, 'subscriptiontracker-linux', 'app', 'outputs')).names, ['app-release.aab', 'app-release.aab.channel.json'], 'the refusal lands before any move');
+    assert.deepEqual(assetFiles(join(from, 'apps-gov-in-subscriptiontracker-apk')).names, ['app-release.apk', 'app-release.apk.channel.json'], 'the refusal lands before any move');
   });
 
   test('--stage on the untagged ref of a non-tag run WARNS "would refuse" and still stages', () => {
     const from = join(TMP, `s${seq++}`);
-    mkdirSync(join(from, 'subscriptiontracker-linux', 'app', 'outputs'), { recursive: true });
-    writeFileSync(join(from, 'subscriptiontracker-linux', 'app', 'outputs', 'app-release.aab'), 'aab');
-    stampBeside(join(from, 'subscriptiontracker-linux', 'app', 'outputs', 'app-release.aab'), 'android-play');
+    mkdirSync(join(from, 'apps-gov-in-subscriptiontracker-apk'), { recursive: true });
+    writeFileSync(join(from, 'apps-gov-in-subscriptiontracker-apk', 'app-release.apk'), 'apk');
+    stampBeside(join(from, 'apps-gov-in-subscriptiontracker-apk', 'app-release.apk'), 'apps-gov-in');
     const out = join(TMP, `o${seq++}`);
     const r = cli(['--stage', from, '--out', out, '--stamps', join(TMP, `t${seq++}`), '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-untagged-abc1234', '--ref-type', 'branch']);
     assert.equal(r.code, 0, r.out);
-    assert.match(r.stderr, /⚠ would refuse on a release tag: app-release\.aab — it is the native build of [^\n]*"android-play"/);
-    assert.deepEqual(assetFiles(out).names, ['subscriptiontracker-untagged-abc1234-app-release.aab']);
+    assert.match(r.stderr, /⚠ would refuse on a release tag: app-release\.apk — it is the native build of [^\n]*"apps-gov-in"/);
+    assert.deepEqual(assetFiles(out).names, ['subscriptiontracker-untagged-abc1234-app-release.apk']);
   });
 
   test('--stage judges a ref it cannot read as a release, and refuses', () => {
     const from = join(TMP, `s${seq++}`);
-    mkdirSync(join(from, 'subscriptiontracker-linux', 'app', 'outputs'), { recursive: true });
-    writeFileSync(join(from, 'subscriptiontracker-linux', 'app', 'outputs', 'app-release.aab'), 'aab');
-    stampBeside(join(from, 'subscriptiontracker-linux', 'app', 'outputs', 'app-release.aab'), 'android-play');
+    mkdirSync(join(from, 'apps-gov-in-subscriptiontracker-apk'), { recursive: true });
+    writeFileSync(join(from, 'apps-gov-in-subscriptiontracker-apk', 'app-release.apk'), 'apk');
+    stampBeside(join(from, 'apps-gov-in-subscriptiontracker-apk', 'app-release.apk'), 'apps-gov-in');
     const out = join(TMP, `o${seq++}`);
     // ⏱ 2026-09-25 — made here, as the lane's `mkdir -p dist` makes it: the refusal
     // below now lands before `--stage` would have made it.
@@ -2214,7 +2324,7 @@ describe('release-manifest.mjs — the CLI refuses rather than producing a hollo
     // no app, so the tag-unit judgement stops it before the walk (O-TAG-BUILDS-EVERY-APP).
     assert.match(r.stderr, /--stage --tag "subscriptiontracker" names no unit: tag-owner\.mjs reads neither/);
     assert.deepEqual(assetFiles(out).names, []);
-    assert.deepEqual(assetFiles(join(from, 'subscriptiontracker-linux', 'app', 'outputs')).names, ['app-release.aab', 'app-release.aab.channel.json'], 'the refusal lands before any move');
+    assert.deepEqual(assetFiles(join(from, 'apps-gov-in-subscriptiontracker-apk')).names, ['app-release.apk', 'app-release.apk.channel.json'], 'the refusal lands before any move');
   });
 
   // ⏱ 2026-09-24 — THE REF TYPE, NOT THE STRING, SAYS "UNTAGGED". This tag matches the
@@ -2467,6 +2577,141 @@ describe('release-manifest.mjs — the CLI refuses rather than producing a hollo
     const r = cli([]);
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /no mode given/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ ADDED 2026-09-24 — A RELEASE NEVER CARRIES A STORE-ONLY FILE
+// (O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER, C-WINDOWS-STORE-ONLY). Red controls R1-R4
+// and R7. R1 and R2 were each run against the BASE copy of release-manifest.mjs
+// before this change: both exit 0 there — R1 stages the .apk and leaves the
+// runner for the tar loop to archive into the Release, R2 stages the .msix as
+// `<tag>-subscriptiontracker.msix`. Every case is on an UNTAGGED ref on purpose:
+// the refusal is unconditional, and a tag would reach the native-auth refusal too.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('release-manifest.mjs — a Release never carries a store-only file', () => {
+  const stampBeside = (abs, channel) => writeFileSync(`${abs}.channel.json`, JSON.stringify({
+    channel,
+    file: abs.split(/[/\\]/).pop(),
+    sha256: createHash('sha256').update(readFileSync(abs)).digest('hex'),
+    runId: '1',
+  }));
+  const realRegister = () => JSON.parse(readFileSync(join(REPO, 'tooling', 'channel-register.json'), 'utf8'));
+  const UNTAGGED = 'subscriptiontracker-untagged-abc1234';
+
+  test('R1 — the Windows runner bundle in the download tree is REFUSED, and nothing moves', () => {
+    const from = join(TMP, `s${seq++}`);
+    const release = join(from, 'subscriptiontracker-windows', 'Release');
+    mkdirSync(join(release, 'data'), { recursive: true });
+    writeFileSync(join(release, 'subscriptiontracker.exe'), 'exe');
+    writeFileSync(join(release, 'flutter_windows.dll'), 'dll');
+    writeFileSync(join(release, 'data', 'app.so'), 'so');
+    mkdirSync(join(from, 'apps-gov-in-subscriptiontracker-apk'), { recursive: true });
+    writeFileSync(join(from, 'apps-gov-in-subscriptiontracker-apk', 'app-release.apk'), 'apk');
+    stampBeside(join(from, 'apps-gov-in-subscriptiontracker-apk', 'app-release.apk'), 'apps-gov-in');
+    const out = join(TMP, `o${seq++}`);
+    const r = cli(['--stage', from, '--out', out, '--stamps', join(TMP, `t${seq++}`), '--app', 'subscriptiontracker', '--tag', UNTAGGED, '--ref-type', 'branch']);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.stderr, /✗ subscriptiontracker-windows\/Release\/subscriptiontracker\.exe — a \.exe file, and no channel takes it from a Release: "windows-direct" is ruled out by C-WINDOWS-STORE-ONLY\./);
+    assert.match(r.stderr, /--stage refuses 1 store-only file\(s\) under /);
+    assert.deepEqual(assetFiles(out).names, [], 'a refused stage stages nothing, the .apk included');
+    assert.deepEqual(assetFiles(join(from, 'apps-gov-in-subscriptiontracker-apk')).names, ['app-release.apk', 'app-release.apk.channel.json'], 'the refusal lands before any move');
+  });
+
+  test('R2 — a .msix is REFUSED on an untagged run too, and names the two Windows rows', () => {
+    const from = join(TMP, `s${seq++}`);
+    mkdirSync(join(from, 'subscriptiontracker-windows'), { recursive: true });
+    writeFileSync(join(from, 'subscriptiontracker-windows', 'subscriptiontracker.msix'), 'msix');
+    stampBeside(join(from, 'subscriptiontracker-windows', 'subscriptiontracker.msix'), 'windows-store');
+    const out = join(TMP, `o${seq++}`);
+    const r = cli(['--stage', from, '--out', out, '--stamps', join(TMP, `t${seq++}`), '--app', 'subscriptiontracker', '--tag', UNTAGGED, '--ref-type', 'branch']);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.stderr, /✗ subscriptiontracker-windows\/subscriptiontracker\.msix — a \.msix file, and no channel takes it from a Release: "windows-store" is a submittable store whose own submission workflow builds what it submits; "windows-direct" is ruled out by C-WINDOWS-STORE-ONLY\./);
+    assert.deepEqual(assetFiles(out).names, []);
+  });
+
+  test('R2 — the .aab, .ipa and .pkg are store-only by the same rule, and are refused together', () => {
+    const from = join(TMP, `s${seq++}`);
+    mkdirSync(join(from, 'x'), { recursive: true });
+    for (const f of ['app-release.aab', 'Runner.ipa', 'subscriptiontracker.pkg']) writeFileSync(join(from, 'x', f), f);
+    const out = join(TMP, `o${seq++}`);
+    const r = cli(['--stage', from, '--out', out, '--stamps', join(TMP, `t${seq++}`), '--app', 'subscriptiontracker', '--tag', UNTAGGED, '--ref-type', 'branch']);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.stderr, /✗ x\/app-release\.aab — a \.aab file, and no channel takes it from a Release: "android-play" is a submittable store/);
+    assert.match(r.stderr, /✗ x\/Runner\.ipa — a \.ipa file, and no channel takes it from a Release: "ios-appstore" is a submittable store/);
+    assert.match(r.stderr, /✗ x\/subscriptiontracker\.pkg — a \.pkg file, and no channel takes it from a Release: "macos-appstore" is a submittable store/);
+    assert.match(r.stderr, /--stage refuses 3 store-only file\(s\)/);
+  });
+
+  test('R3 — the apps.gov.in .apk beside the Linux bundle is staged, and the bundle stays for its archive', () => {
+    const from = join(TMP, `s${seq++}`);
+    mkdirSync(join(from, 'apps-gov-in-subscriptiontracker-apk'), { recursive: true });
+    mkdirSync(join(from, 'subscriptiontracker-linux-web-android-debug-signed', 'bundle', 'lib'), { recursive: true });
+    writeFileSync(join(from, 'apps-gov-in-subscriptiontracker-apk', 'app-release.apk'), 'apk');
+    stampBeside(join(from, 'apps-gov-in-subscriptiontracker-apk', 'app-release.apk'), 'apps-gov-in');
+    writeFileSync(join(from, 'subscriptiontracker-linux-web-android-debug-signed', 'bundle', 'subscriptiontracker'), 'elf');
+    writeFileSync(join(from, 'subscriptiontracker-linux-web-android-debug-signed', 'bundle', 'lib', 'libapp.so'), 'so');
+    const out = join(TMP, `o${seq++}`);
+    const r = cli(['--stage', from, '--out', out, '--stamps', join(TMP, `t${seq++}`), '--app', 'subscriptiontracker', '--tag', UNTAGGED, '--ref-type', 'branch']);
+    assert.equal(r.code, 0, r.out);
+    assert.deepEqual(assetFiles(out).names, [`${UNTAGGED}-app-release.apk`]);
+    assert.deepEqual(assetFiles(join(from, 'subscriptiontracker-linux-web-android-debug-signed', 'bundle')).names, ['subscriptiontracker']);
+  });
+
+  test('R4 — the SAME register without `ruledOutBy` stages the .msix: the refusal is keyed on the register fact', () => {
+    const reg = realRegister();
+    delete reg.channels.find((c) => c.id === 'windows-direct').deferral.ruledOutBy;
+    const root = fixture({ register: reg });
+    const from = join(TMP, `s${seq++}`);
+    mkdirSync(join(from, 'subscriptiontracker-windows'), { recursive: true });
+    writeFileSync(join(from, 'subscriptiontracker-windows', 'subscriptiontracker.msix'), 'msix');
+    stampBeside(join(from, 'subscriptiontracker-windows', 'subscriptiontracker.msix'), 'windows-store');
+    const out = join(TMP, `o${seq++}`);
+    const r = cli(['--stage', from, '--out', out, '--stamps', join(TMP, `t${seq++}`), '--app', 'subscriptiontracker', '--tag', UNTAGGED, '--ref-type', 'branch', '--repo-root', root]);
+    assert.equal(r.code, 0, r.out);
+    assert.deepEqual(assetFiles(out).names, [`${UNTAGGED}-subscriptiontracker.msix`]);
+    assert.ok(!storeOnlyFormats(reg).has('.msix'), 'a live direct row takes the .msix from the Release');
+    assert.ok(!storeOnlyFormats(reg).has('.exe'));
+  });
+
+  test('R7 — expectedReleaseFormats demands no store-only format, narrowed or not', () => {
+    const real = realRegister();
+    for (const expected of [expectedReleaseFormats(real), expectedReleaseFormats(real, '.github/workflows/build-platforms.yml')]) {
+      for (const f of ['.msix', '.aab', '.ipa', '.pkg']) assert.ok(!expected.has(f), `${f} is store-only and must not be demanded`);
+    }
+    // ADAPTATION at e9492c3e: the design's R7 also required `.apk` in the set. Since
+    // O-RELEASE-RECORD-GUESSES-CHANNEL-FROM-EXTENSION the .apk has no declared extra and
+    // its row (apps-gov-in) no lane, so it is not demanded; what holds is that it is
+    // NOT store-only — the one real-register installer a Release carries.
+    assert.ok(!storeOnlyFormats(real).has('.apk'));
+  });
+
+  test('storeOnlyFormats on the real register: every app-store format, and the ruled-out runner', () => {
+    assert.deepEqual([...storeOnlyFormats(realRegister(), 'app')].sort(), ['.aab', '.exe', '.ipa', '.msix', '.pkg', '.snap']);
+    assert.deepEqual([...storeOnlyFormats(realRegister(), 'extension')].sort(), [], 'the extension stores take the extension release\'s own zip');
+  });
+
+  test('storeOnlyFormats: each kind of row that takes a file from a Release keeps its formats out', () => {
+    const reg = withSurfaces({
+      channels: [
+        { id: 'play', kind: 'store', surface: 'app', submittable: true, artifactFormats: ['.aab'] },
+        { id: 'manual', kind: 'store', surface: 'app', submittable: false, artifactFormats: ['.apk'] },
+        { id: 'direct', kind: 'direct', surface: 'app', submittable: false, artifactFormats: ['.AppImage'] },
+        { id: 'gone', kind: 'direct', surface: 'app', submittable: false, artifactFormats: ['.exe'], deferral: { ruledOutBy: 'C-X' } },
+        { id: 'amo', kind: 'store', surface: 'extension', submittable: true, artifactFormats: ['.xpi'] },
+        { id: 'web', kind: 'web', surface: 'app', submittable: false, artifactFormats: ['static-bundle'] },
+      ],
+    });
+    assert.deepEqual([...storeOnlyFormats(reg)].sort(), ['.aab', '.exe']);
+    assert.deepEqual([...storeOnlyFormats(reg, 'extension')].sort(), [], 'a flutterApp:false surface is a Release origin, submittable or not');
+  });
+
+  test('originEnvironments: a ruled-out direct row is returned in `ruledOut`, even with its pin filled', () => {
+    const reg = registerWith((wd) => { wd.deferral = { reason: 'x', ruledOutBy: 'C-WINDOWS-STORE-ONLY' }; });
+    const r = originEnvironments(reg, 'subscriptiontracker', ['subscriptiontracker-v1-subscriptiontracker.msix']);
+    assert.deepEqual(r.environments, [], 'the pin is CONFIGURED in this fixture, and the row is still not an origin');
+    assert.deepEqual(r.omitted, []);
+    assert.deepEqual(r.ruledOut, [{ id: 'windows-direct', environment: 'subscriptiontracker-windows-direct', constraint: 'C-WINDOWS-STORE-ONLY' }]);
   });
 });
 

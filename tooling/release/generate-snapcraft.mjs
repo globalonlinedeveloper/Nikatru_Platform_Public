@@ -37,8 +37,11 @@
 //   base          the LINUX BUILD JOB'S OWN RUNNER LABEL in
 //                 .github/workflows/build-platforms.yml, mapped through
 //                 BASE_FOR_RUNNER below
-//   stage-packages  THE SAME apt LIST that workflow installs for the Linux
-//                 build, extracted by the documented parser in this file
+//   stage-packages  DERIVED from the apt list that workflow installs for the
+//                 Linux build (extracted by the documented parser in this
+//                 file) through RUNTIME_OF: each build package's runtime
+//                 library, less what the gnome extension's content snap carries
+//   extensions    SNAP_EXTENSIONS below
 //   version       --version, the release line the lane already derives
 //   source        --bundle, emitted RELATIVE to --out so no host path leaks
 //   which store   tooling/channel-register.json — the `kind: "store"` row whose
@@ -48,7 +51,8 @@
 // generator already read. It adds no new source of truth.
 //
 // ── WHAT IS NOT DERIVED, AND WHY EACH ONE IS A CONSTANT ─────────────────────
-// `grade`, `confinement` and the plug set. Each carries its reasoning at its
+// `grade`, `confinement`, the plug set, the extension and the runtime map
+// (RUNTIME_OF). Each carries its reasoning at its
 // declaration below rather than here, and each is EXPORTED so that
 // tooling/ci/assert-snapcraft-generable.mjs asserts against this declaration
 // instead of a retyped copy of it.
@@ -73,7 +77,8 @@
 //     --out build/snap/subscriptiontracker --version 1.0.75
 //   node tooling/release/generate-snapcraft.mjs --emit-build-deps
 //     → the Linux lane's apt list, space-separated on stdout, for a second job
-//       that must install the same toolchain (see the CLI block at the bottom)
+//       that must install the same toolchain (see the CLI block at the bottom).
+//       It is the BUILD list; the recipe stages the runtime list derived from it.
 //   [--repo-root path]  read the maintained artifacts from another tree (tests)
 //   [--print]           write the recipe to stdout as well as to --out
 //
@@ -151,30 +156,47 @@ export const CONFINEMENT = 'strict';
 /**
  * THE DESKTOP INTERFACE SET A FLUTTER GTK APP DECLARES.
  *
- * ✅ FOUR OF THESE ARE SOURCED. tooling/channel-register.json's `linux-snap` row
- * records [ADR 015] §3 verbatim: the snap "must declare `plugs: [opengl,
- * wayland, x11, audio-playback]`". They are read there, not invented here.
+ * ✅ FOUR OF THESE ARE [ADR 015] §3's. tooling/channel-register.json's
+ * `linux-snap` row records it verbatim: the snap "must declare `plugs: [opengl,
+ * wayland, x11, audio-playback]`". They are ADR_015_PLUGS below, and the guard
+ * refuses a recipe missing any of them.
  *
- * ⚠️ THE OTHER FOUR ARE CONVENTION, AND THAT IS WRITTEN DOWN RATHER THAN
- * SMOOTHED OVER. `desktop`, `desktop-legacy`, `home` and `network` are what a
- * GTK desktop application observably declares; no primary Snap interfaces page
- * was fetched in this increment, so they carry no citation. They are recorded as
- * a SET rather than derived per-app because THIS REPOSITORY HOLDS NOTHING THAT
- * MAPS A PUBSPEC DEPENDENCY TO AN INTERFACE — deriving the set from the app's
- * manifests would mean inventing that map, and an invented map fires on correct
- * input, silently, at install time. That is the same class of mistake as an
- * invented character limit, which this repo has already paid for once. When a
- * primary source is read, the four unsourced entries either gain a citation or
- * leave.
+ * ✅ THE REST ARE SOURCED AS OF 2026-09-24 (every page read that day):
+ *   · `desktop`, `desktop-legacy` — the gnome extension connects both to every
+ *     app that uses it, alongside opengl, wayland and x11 ("Included app plugs",
+ *     https://ubuntu.com/docs/snapcraft/stable/reference/extensions/gnome-extension/).
+ *     Declared here as well so the recipe states its whole interface set.
+ *   · `network` — "allows client access to the network"; auto-connect: yes
+ *     (https://snapcraft.io/docs/reference/interfaces/network-interface/). The
+ *     app talks to its API.
+ *   · `password-manager-service` — "access to the global password manager
+ *     services provided by popular desktop environments, such as Secret Service
+ *     and KWallet"; auto-connect: NO
+ *     (https://snapcraft.io/docs/reference/interfaces/password-manager-service-interface/).
+ *     flutter_secure_storage binds libsecret (the lane's libsecret-1-dev, ADR 005),
+ *     a "Secret Service D-Bus client library"
+ *     (https://gnome.pages.gitlab.gnome.org/libsecret/), and this interface is
+ *     what grants a strict snap that service. RUNTIME_OF names it on
+ *     libsecret-1-dev and the guard holds this array to that. Because it does not
+ *     auto-connect, the store auto-connect request is an owner step at un-defer
+ *     time.
  *
- * 🔴 TWO ARE KNOWN CANDIDATES TO DROP, named so the next reader does not have to
- * rediscover them. `audio-playback` is among the sourced four because [ADR 015]
- * §3 assumed media_kit, and [ADR 013] keeps media_kit OFF Linux — so nothing in
- * a Linux build plays audio today. `home` is not needed by an app whose storage
- * goes through path_provider into the snap's own user data. Neither is removed
- * here: removing an interface is a decision about the shipped product, and this
- * file's job is to stop the recipe being hand-typed, not to make that call
- * unannounced.
+ * 🔴 `home` LEFT ON 2026-09-24. The interface grants "access to non-hidden
+ * files owned by the user in the user's home ($HOME) directory"
+ * (https://snapcraft.io/docs/reference/interfaces/home-interface/), and this
+ * app's storage goes through path_provider into the snap's own user data. A
+ * strict snap declares the capabilities it uses, and it does not use this one.
+ *
+ * ⚠️ `audio-playback` STAYS, AND IT STAYS BECAUSE [ADR 015] IS LOCKED. §3
+ * assumed media_kit, and [ADR 013] keeps media_kit OFF Linux, so nothing in a
+ * Linux build plays audio today. Dropping it reverses an owner decision, which
+ * this file does not do. The owner is not being asked while native Linux is
+ * deferred ([ADR 015] §2): revisit it on NEW evidence when Linux is un-deferred.
+ *
+ * The set is a SET rather than derived per-app because THIS REPOSITORY HOLDS
+ * NOTHING THAT MAPS A PUBSPEC DEPENDENCY TO AN INTERFACE — deriving it from the
+ * app's manifests would mean inventing that map, and an invented map fires on
+ * correct input, silently, at install time.
  *
  * Exported so the guard asserts the emitted list against THIS array. A guard
  * carrying its own copy of the set would agree with a generator that had drifted.
@@ -185,9 +207,177 @@ export const DESKTOP_PLUGS = Object.freeze([
   'wayland',
   'x11',
   'opengl',
-  'home',
   'network',
   'audio-playback',
+  'password-manager-service',
+]);
+
+/**
+ * [ADR 015] §3's plug set, verbatim from tooling/channel-register.json's
+ * `linux-snap` row: "must declare `plugs: [opengl, wayland, x11,
+ * audio-playback]`". [ADR 015] is LOCKED, so the guard refuses a recipe — or a
+ * DESKTOP_PLUGS — that lacks any of these, whatever else changes around it.
+ */
+export const ADR_015_PLUGS = Object.freeze(['opengl', 'wayland', 'x11', 'audio-playback']);
+
+/**
+ * ⏱ 2026-09-24 · THE EXTENSION THE APP DECLARES: `gnome`.
+ *
+ * ✅ SOURCED, read 2026-09-24:
+ * https://ubuntu.com/docs/snapcraft/stable/reference/extensions/gnome-extension/
+ * — "helps build snaps that use GTK 3, GNOME 42 and higher, and GLib"; "This
+ * extension is compatible with the core22 and core24 bases". On core24 it plugs
+ * the content snap `gnome-46-2404` (default-provider gnome-46-2404, target
+ * `$SNAP/gnome-platform`), whose recipe
+ * (https://raw.githubusercontent.com/ubuntu/gnome-sdk/gnome-46-2404/snap/snapcraft.yaml)
+ * stages the whole `gnome-46-2404-sdk` snap's `usr` and
+ * `lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR` trees, headers and .pc files excluded.
+ *
+ * That content snap is what lets RUNTIME_OF mark GTK, libsecret and liblzma as
+ * SUPPLIED rather than staged: the extension plugs it at `$SNAP/gnome-platform`
+ * and sets `SNAP_DESKTOP_RUNTIME` to that path (same reference). That the primed
+ * app then RESOLVES them there is the pack-time read-back RUNTIME_OF names as
+ * open.
+ */
+export const SNAP_EXTENSIONS = Object.freeze(['gnome']);
+
+/** The gnome-46-2404-sdk recipe every `suppliedBy` claim below was read from.
+ *  The platform recipe that stages it is cited on SNAP_EXTENSIONS. */
+const GNOME_46_SDK_RECIPE = 'https://raw.githubusercontent.com/ubuntu/gnome-sdk/gnome-46-2404-sdk/snapcraft.yaml';
+
+/**
+ * ⏱ 2026-09-24 · WHAT EACH LINUX-LANE BUILD PACKAGE LEAVES THE BUNDLE NEEDING
+ * AT RUNTIME.
+ *
+ * The lane installs BUILD packages: a compiler, build systems, and `-dev`
+ * packages whose headers and link-time `.so` names the bundle compiled against.
+ * None of them is what a running app loads. Until 2026-09-24 the recipe staged
+ * that list verbatim, so a `plugin: dump` part — which compiles nothing —
+ * shipped clang, cmake and a stack of header trees.
+ *
+ * `stage-packages` is therefore DERIVED from the lane list through this map:
+ *   · `runtime: null` — a build tool. Nothing of it is loaded at runtime, and
+ *     `why` quotes the package page that says what it is.
+ *   · `runtime: 'pkg'` — the noble package the `-dev` package depends on, i.e.
+ *     the library the bundle links. It is STAGED, unless
+ *   · `suppliedBy: 'snap'` — the gnome extension's content snap already carries
+ *     that library (`suppliedSource` says where that was read), so staging it
+ *     would ship a duplicate of what the platform mounts.
+ *   · `plug` — an interface the library needs under strict confinement.
+ *     DESKTOP_PLUGS has to carry it, and the guard checks that.
+ *
+ * ✅ EVERY NAME WAS READ, NOT REMEMBERED. Noble renamed libraries in the t64
+ * transition (libgtk-3-0 → libgtk-3-0t64, libcurl4 → libcurl4t64: jammy's
+ * libgtk-3-dev and libcurl4-openssl-dev pages, read the same day, depend on
+ * the old names), so a name recalled from jammy is wrong on core24. `source` is
+ * the packages.ubuntu.com page each runtime name was read from (the `-dev`
+ * package's "dep:" list), on `read`. The names are NOBLE'S because core24
+ * stages from noble: a lane that moves to another runner needs this map read
+ * again, since a name the new archive does not carry cannot be staged.
+ *
+ * 🔴 AN UNMAPPED LANE PACKAGE IS A REFUSAL, the rule BASE_FOR_RUNNER applies to
+ * an unmapped label. A package the workflow gained because a build broke is a
+ * library the app may now load; passing its name through stages a `-dev`
+ * package, and skipping it ships without the library. Both are silent.
+ *
+ * ⬜ WHAT THIS DOES NOT PROVE: that the primed snap resolves every DT_NEEDED of
+ * the bundle. The map covers the libraries the lane installs on purpose; the
+ * transitive rest is the base's and the platform's to carry. A pack-time `ldd`
+ * read-back is row O-SNAP-PRIMED-LIBS-UNREAD, gated on un-deferring Linux.
+ *
+ * Exported so the guard derives its expectation through `stagePackagesFor` and
+ * grades each entry's sources with `runtimeOfProblems`.
+ */
+export const RUNTIME_OF = new Map([
+  [
+    'clang',
+    {
+      runtime: null,
+      why: '"C, C++ and Objective-C compiler (LLVM based)" — the compiler the bundle was built with',
+      source: 'https://packages.ubuntu.com/noble/clang',
+      read: '2026-09-24',
+    },
+  ],
+  [
+    'cmake',
+    {
+      runtime: null,
+      why: '"cross-platform, open-source make system" — the build system Flutter drives',
+      source: 'https://packages.ubuntu.com/noble/cmake',
+      read: '2026-09-24',
+    },
+  ],
+  [
+    'ninja-build',
+    {
+      runtime: null,
+      why: '"small build system closest in spirit to Make" — the executor CMake generates for',
+      source: 'https://packages.ubuntu.com/noble/ninja-build',
+      read: '2026-09-24',
+    },
+  ],
+  [
+    'pkg-config',
+    {
+      runtime: null,
+      why: '"manage compile and link flags for libraries" — read at configure time only',
+      source: 'https://packages.ubuntu.com/noble/pkg-config',
+      read: '2026-09-24',
+    },
+  ],
+  [
+    'libgtk-3-dev',
+    {
+      runtime: 'libgtk-3-0t64',
+      suppliedBy: 'gnome-46-2404',
+      source: 'https://packages.ubuntu.com/noble/libgtk-3-dev',
+      suppliedSource: `${GNOME_46_SDK_RECIPE} — part \`gtk3\` builds GTK 3.24.52 from source`,
+      read: '2026-09-24',
+    },
+  ],
+  [
+    'liblzma-dev',
+    {
+      runtime: 'liblzma5',
+      suppliedBy: 'gnome-46-2404',
+      source: 'https://packages.ubuntu.com/noble/liblzma-dev',
+      suppliedSource: `${GNOME_46_SDK_RECIPE} — part \`debs\` lists \`liblzma5\` in its stage-packages`,
+      read: '2026-09-24',
+    },
+  ],
+  [
+    'libsecret-1-dev',
+    {
+      runtime: 'libsecret-1-0',
+      suppliedBy: 'gnome-46-2404',
+      plug: 'password-manager-service',
+      source: 'https://packages.ubuntu.com/noble/libsecret-1-dev',
+      suppliedSource: `${GNOME_46_SDK_RECIPE} — part \`libsecret\` builds libsecret 0.21.7 from source`,
+      plugSource: 'https://snapcraft.io/docs/reference/interfaces/password-manager-service-interface/',
+      read: '2026-09-24',
+    },
+  ],
+  [
+    'libjsoncpp-dev',
+    {
+      // Neither gnome-sdk recipe names jsoncpp, so it is staged.
+      runtime: 'libjsoncpp25',
+      suppliedBy: null,
+      source: 'https://packages.ubuntu.com/noble/libjsoncpp-dev',
+      read: '2026-09-24',
+    },
+  ],
+  [
+    'libcurl4-openssl-dev',
+    {
+      // The SDK stages libcurl4-openssl-dev, but its runtime package is not
+      // named in either recipe, so it is staged rather than assumed.
+      runtime: 'libcurl4t64',
+      suppliedBy: null,
+      source: 'https://packages.ubuntu.com/noble/libcurl4-openssl-dev',
+      read: '2026-09-24',
+    },
+  ],
 ]);
 
 /**
@@ -307,12 +497,16 @@ const refuse = (lines) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // THE apt LIST, EXTRACTED — never retyped.
 //
-// [pipeline F-2] in its purest form: the packages the Linux build needs are
-// declared once, in the workflow that installs them, and the snap's
-// `stage-packages` is THE SAME LIST. Two copies would drift in the direction
-// that reports clean — the workflow gains a package because a build broke, the
-// recipe does not, and the snap builds and then fails to start on a machine that
-// happens not to have it.
+// [pipeline F-2]: the packages the Linux build needs are declared once, in the
+// workflow that installs them. The snap's `stage-packages` is DERIVED from that
+// list through RUNTIME_OF — each build package's runtime library, less what the
+// gnome extension's content snap carries — and is NOT the list itself: staging
+// the build list put a compiler and header trees into a `dump` build and none of
+// the libraries under their runtime names (2026-09-24). A retyped runtime list
+// would drift in the direction that reports clean — the workflow gains a package
+// because a build broke, the typed list does not gain its runtime, and the snap
+// builds and then fails to start. Deriving it, through a map that refuses an
+// unmapped package, turns that drift into a refusal.
 //
 // ⚠️ THE LIST IS INLINE YAML, so it is extracted rather than imported, and the
 // parser is documented here rather than being a regex somebody has to reverse-
@@ -339,8 +533,8 @@ const refuse = (lines) => {
 //     have to choose, and a chooser with no stated rule picks silently.
 //   · Its job must also build Linux, so the list belongs to the lane whose
 //     artifact is being packaged rather than to some other job's toolchain.
-//   · A non-empty result. An empty `stage-packages` is a snap that builds and
-//     ships without its dependencies.
+//   · A non-empty result. An empty apt list derives an empty `stage-packages`,
+//     which is a snap that builds and ships without its dependencies.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** `{ packages, job, runner, line }` for the Linux build lane. */
@@ -420,6 +614,64 @@ export function readLinuxBuildLane(root) {
     ]);
   }
   return { packages: lane.packages, job: lane.job, runner, line: lane.n };
+}
+
+/**
+ * The recipe's `stage-packages`, DERIVED from the lane's apt list through
+ * RUNTIME_OF: the runtime package of every lane package that has one and is not
+ * supplied by the extension's content snap, in lane order, once each. It may be
+ * EMPTY — every library supplied — and the recipe then carries no
+ * `stage-packages` key. An unmapped lane package REFUSES.
+ */
+export function stagePackagesFor(packages, map = RUNTIME_OF) {
+  const unmapped = packages.filter((p) => !map.has(p));
+  if (unmapped.length) {
+    refuse([
+      `${BUILD_WORKFLOW}'s Linux apt list names ${unmapped.join(', ')}, which has no entry in RUNTIME_OF.`,
+      'The recipe stages the RUNTIME library each build package leaves the bundle needing, and nothing',
+      'here says what that is for this package. Passing the name through would stage a build package;',
+      'skipping it would ship without its library. Read its noble page on packages.ubuntu.com (the',
+      '"dep:" list of a -dev package), check the gnome-sdk recipes for it, and add the entry with both',
+      'sources and the read date.',
+    ]);
+  }
+  const out = [];
+  for (const p of packages) {
+    const e = map.get(p);
+    if (e.runtime && !e.suppliedBy && !out.includes(e.runtime)) out.push(e.runtime);
+  }
+  return out;
+}
+
+/**
+ * Every RUNTIME_OF entry, graded for its SOURCES. Returns one line per defect.
+ * Exported so the guard runs it over the real map and the test over a doctored
+ * one. "Possibility is not observation": an entry with no page behind it is a
+ * remembered name, and noble's t64 renames are exactly where memory is wrong.
+ */
+export function runtimeOfProblems(map = RUNTIME_OF) {
+  const out = [];
+  const url = (v) => typeof v === 'string' && /^https:\/\/\S+/.test(v);
+  const date = (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
+  if (map.size === 0) out.push('RUNTIME_OF is EMPTY, so every lane package is unmapped and nothing can be staged.');
+  for (const [pkg, e] of map) {
+    const at = `RUNTIME_OF "${pkg}"`;
+    if (!url(e?.source)) out.push(`${at} carries no \`source\` URL, so its answer is remembered rather than read.`);
+    if (!date(e?.read)) out.push(`${at} carries no \`read\` date (YYYY-MM-DD) for its source.`);
+    if (e?.runtime === null) {
+      if (typeof e.why !== 'string' || e.why.trim() === '') out.push(`${at} maps to no runtime package and says no \`why\`.`);
+      if (e.suppliedBy) out.push(`${at} maps to no runtime package, so there is nothing for "${e.suppliedBy}" to supply.`);
+    } else if (typeof e?.runtime !== 'string' || !/^[a-z0-9][a-z0-9+.-]*$/.test(e.runtime)) {
+      out.push(`${at} has runtime ${JSON.stringify(e?.runtime)}, which is not a package name.`);
+    } else {
+      if (/-dev$/.test(e.runtime)) out.push(`${at} maps to "${e.runtime}", a development package, as its runtime.`);
+      if (e.suppliedBy && !url(e.suppliedSource)) {
+        out.push(`${at} says "${e.suppliedBy}" supplies ${e.runtime} and carries no \`suppliedSource\` URL where that was read.`);
+      }
+    }
+    if (e?.plug && !url(e.plugSource)) out.push(`${at} requires plug "${e.plug}" and carries no \`plugSource\` URL.`);
+  }
+  return out;
 }
 
 /** snapcraft `base` for the runner the Linux bundle is compiled on. */
@@ -568,6 +820,7 @@ export function deriveSnapcraftFacts({ root, app, bundle, out, version }) {
 
   const lane = readLinuxBuildLane(root);
   const base = baseForRunner(lane.runner);
+  const stagePackages = stagePackagesFor(lane.packages);
 
   const snapName = listingField(root, dirRel, 'snap-name.txt');
   if (snapName.includes('\n')) {
@@ -725,9 +978,10 @@ export function deriveSnapcraftFacts({ root, app, bundle, out, version }) {
     grade: GRADE,
     confinement: CONFINEMENT,
     plugs: [...DESKTOP_PLUGS],
+    extensions: [...SNAP_EXTENSIONS],
     dbusSlot: DBUS_SLOT,
     busName: identity.applicationId,
-    stagePackages: lane.packages,
+    stagePackages,
     command: identity.binaryName,
     applicationId: identity.applicationId,
     baseDesktopEntry,
@@ -853,6 +1107,11 @@ export function renderSnapcraftYaml(f) {
   // snapcraft copies to meta/gui verbatim and where the `Icon` can be the absolute
   // installed path the snap format requires. Both are emitted by this generator.
   L.push(`    # The launcher lives in ${GUI_DIR}/, not here — see the generator's snapGuiFiles.`);
+  L.push('    # The gnome extension plugs its content snap (GTK, libsecret and the rest of the');
+  L.push('    # GNOME 46 stack) as the desktop runtime at $SNAP/gnome-platform. The stage list');
+  L.push('    # below leaves those libraries out because of it.');
+  L.push('    extensions:');
+  for (const e of f.extensions) L.push(`      - ${e}`);
   L.push('    plugs:');
   for (const p of f.plugs) L.push(`      - ${p}`);
   L.push('    slots:');
@@ -865,12 +1124,20 @@ export function renderSnapcraftYaml(f) {
   L.push('    # entry and hicolor icons CMake installs under share/ are all already in it.');
   L.push('    plugin: dump');
   L.push(`    source: ${f.sourceRel}`);
-  L.push('    # THE SAME apt LIST the Linux build lane installs, extracted from');
-  L.push(`    # ${BUILD_WORKFLOW}:${f.lane.line} rather than retyped. Two copies of this list`);
-  L.push('    # drift in the direction that reports clean: the workflow gains a package');
-  L.push('    # because a build broke, this one does not, and the snap ships without it.');
-  L.push('    stage-packages:');
-  for (const p of f.stagePackages) L.push(`      - ${p}`);
+  L.push('    # No build-packages: dump compiles nothing, and the key would install a');
+  L.push('    # toolchain on the packing host for a step that never runs.');
+  if (f.stagePackages.length) {
+    L.push('    # The RUNTIME libraries of the apt list the Linux build lane installs at');
+    L.push(`    # ${BUILD_WORKFLOW}:${f.lane.line}, derived through the generator's RUNTIME_OF`);
+    L.push("    # and less what the gnome extension's content snap carries. The build");
+    L.push('    # packages themselves (compiler, headers) are never loaded, so never staged.');
+    L.push('    stage-packages:');
+    for (const p of f.stagePackages) L.push(`      - ${p}`);
+  } else {
+    L.push(`    # NO stage-packages: every runtime library of the apt list at`);
+    L.push(`    # ${BUILD_WORKFLOW}:${f.lane.line} is carried by the gnome extension's`);
+    L.push("    # content snap, per the generator's RUNTIME_OF.");
+  }
   L.push('');
   return L.join('\n');
 }
@@ -893,8 +1160,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const root = resolve(opt('repo-root') ?? join(HERE, '..', '..'));
 
   // ── --emit-build-deps: THE apt LIST, FOR A SECOND JOB THAT NEEDS IT ────────
-  // 🔴 IT IS THE SAME EXTRACTION `stage-packages` USES, EXPOSED RATHER THAN
-  // RETYPED. submit-snap.yml compiles the Linux bundle it packs, so it needs the
+  // 🔴 IT IS THE SAME EXTRACTION `stage-packages` IS DERIVED FROM, EXPOSED
+  // RATHER THAN RETYPED — the BUILD list, which the recipe no longer stages
+  // verbatim. submit-snap.yml compiles the Linux bundle it packs, so it needs the
   // same GTK/secret-storage/curl toolchain build-platforms.yml installs — and a
   // second `sudo apt-get install -y clang cmake …` line in that file would be the
   // exact [pipeline F-2] duplication `readLinuxBuildLane` exists to prevent, one
@@ -958,7 +1226,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   console.log(`generate-snapcraft: ok — ${join(out, RECIPE_PATH)}`);
   console.log(`   snap "${f.name}" ${f.version} · base ${f.base} · ${f.grade}/${f.confinement}`);
   console.log(
-    `   command ${f.command} · ${f.plugs.length} plug(s) · ${f.stagePackages.length} stage-package(s) from ${BUILD_WORKFLOW}:${f.lane.line}`,
+    `   command ${f.command} · ${f.plugs.length} plug(s) · extension(s) ${f.extensions.join(', ')} · ` +
+      `${f.stagePackages.length} stage-package(s) derived from ${f.lane.packages.length} build package(s) at ${BUILD_WORKFLOW}:${f.lane.line}`,
   );
   console.log(
     `   launcher ${f.guiDesktopRel}` +

@@ -379,22 +379,6 @@
       "proves": "Renames every real row and requires the same verdict. A module carrying a copy of the register keyed on channel ids would change its answer."
     },
     {
-      "file": "tooling/ci/windows-signing.mjs",
-      "anchor": "register's list, so the two cannot drift apart silently either.",
-      "status": "proven",
-      "test": "tooling/ci/test/windows-signing.test.mjs",
-      "case": "🔴 COVERAGE LOST when the register stops declaring the base64 transport name",
-      "proves": "The fixture register drops WINDOWS_CODESIGN_PFX_BASE64; the run must exit 2 naming it. Mutation-verified 2026-09-18: removing the refusal turns it red."
-    },
-    {
-      "file": "tooling/ci/windows-signing.mjs",
-      "anchor": "against the register's declared names below, so it cannot drift silently.",
-      "status": "proven",
-      "test": "tooling/ci/test/windows-signing.test.mjs",
-      "case": "🔴 COVERAGE LOST when the register stops declaring the base64 transport name",
-      "proves": "The docblock on B64_ENV restating the header claim at :61; the same case grades it."
-    },
-    {
       "file": "tooling/ci/assert-app-yaml.mjs",
       "anchor": "only way two readers of one contract cannot drift is for there to be one",
       "status": "demoted",
