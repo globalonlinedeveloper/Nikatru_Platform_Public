@@ -54,10 +54,21 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { fullshotPro, dropGated } from './pro-gate.mjs';
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..');
 const SOURCE_REL = 'contracts/legal/fullshot-privacy.md';
 const check = process.argv.includes('--check');
+// ⏱ 2026-09-25 (EXT-4, Q2). `when=pro` / `when=sells` / `when=free` paragraphs
+// are published only on the matching side of FullShot's transmits-or-sells
+// facts (pro-gate.mjs).
+// `--tool` / `--app-config` point that fact at other files and `--stdout` prints
+// the served copy instead of writing, so a test can open the gate without
+// touching the tree.
+const argAfter = (flag) => { const i = process.argv.indexOf(flag); return i > 0 ? process.argv[i + 1] : undefined; };
+const toStdout = process.argv.includes('--stdout');
+const GATE = fullshotPro(ROOT, { toolJson: argAfter('--tool'), appConfig: argAfter('--app-config') });
 
 /** The shared CSS. One string, so the two files cannot disagree about it. */
 const STYLE_BODY = `  :root { --ink:#0B1220; --muted:#586275; --line:#E2E8F0; --accent:#2563EB; }
@@ -140,7 +151,7 @@ const TARGETS = [
 ];
 
 // ── the source ──────────────────────────────────────────────────────────────
-const md = readFileSync(join(ROOT, SOURCE_REL), 'utf8').replace(/\r\n/g, '\n');
+const md = dropGated(readFileSync(join(ROOT, SOURCE_REL), 'utf8').replace(/\r\n/g, '\n'), GATE);
 
 /** Drop the leading HTML comment block(s) that are notes to readers of the
  *  Markdown itself — anything that is not a `render:` directive. */
@@ -274,6 +285,10 @@ function directiveOf(raw) {
   rest = rest.replace(/(^|\s)nbsp-dots(?=\s|$)/, (m, p1) => { d.nbspDots = true; return p1; });
   rest = rest.replace(/(^|\s)class=(\S+)/, (m, p1, v) => { d.class = v; return p1; });
   rest = rest.replace(/(^|\s)callout=(.*)$/, (m, p1, v) => { d.callout = v; return p1; });
+  // An ADR citation (`when=sells ADR 094`) is a note for readers of the
+  // Markdown, not a rendering instruction: lifted out by its exact shape, so
+  // any other leftover is still refused.
+  rest = rest.replace(/(^|\s)ADR \d{3}(?=\s|$)/g, '$1');
   if (rest.trim() !== '') throw new Error(`unknown render directive(s): "${rest.trim()}" in "${raw}"`);
   return d;
 }
@@ -394,6 +409,11 @@ function render(target) {
     '</html>',
   ];
   return out.join('\n') + '\n';
+}
+
+if (toStdout) {
+  process.stdout.write(render(TARGETS[0]));
+  process.exit(0);
 }
 
 let drift = 0;

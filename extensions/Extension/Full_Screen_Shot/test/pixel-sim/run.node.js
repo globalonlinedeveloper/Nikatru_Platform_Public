@@ -1313,6 +1313,120 @@ function expectLateImage(seg, state, segs) {
   check('bottom marker present (~152 rows)', Math.abs(blue - 152) <= 4, blue + ' rows');
 }
 
+/* ========== scenarios: a web font that loads late, and one that never loads ==========
+   CAPTURE-GATES.md "Web-font late load causing reflow mid-capture ✅" names
+   these two (EXT-4, 2026-09-25). Until they existed the row was asserted by
+   nothing: fakedom had no document.fonts, so capture.js's wait was skipped on
+   its own guard in every scenario.
+     latefont   the font lands FONT_LATE_MS after the page is built, and the text
+                block reflows from 20px to 30px lines when it does. Every frame
+                must be grabbed after it lands: capture.js awaits fonts.ready.
+     neverfont  fonts.ready never settles. The capture must still finish, on the
+                fallback font, because the wait is raced with a 1500 ms cap —
+                without the cap it runs into runCapture's 30 s deadline.
+   The page keeps its OWN clock for "the font has landed", so a fakedom without
+   document.fonts cannot make latefont pass by skipping the wait. */
+const WF = { header: [40, 60, 150], text: [20, 20, 30], fallback: [220, 120, 0], bottom: [0, 136, 255] };
+const WF_HEADER = 120, WF_LINES = 40, WF_BOTTOM = 150, FONT_LATE_MS = 400;
+
+function buildWebFont(name, holdMs) {
+  const dpr = 1;
+  const doc = new Doc();
+  const html = new El('html', doc, { clientH: VP_H, clientW: VP_W });
+  const body = new El('body', doc, { clientW: VP_W });
+  doc.documentElement = html; doc.body = body; html.appendChild(body);
+  const win = makeWindow(doc, { w: VP_W, h: VP_H, dpr });
+  const landsAt = Number.isFinite(holdMs) ? Date.now() + holdMs : Infinity;
+  if (doc.fonts) doc.fonts.hold(holdMs);
+  const landed = () => Date.now() >= landsAt;
+  const textH = () => WF_LINES * (landed() ? 30 : 20);
+  const stats = { framesBeforeFont: 0, frames: 0 };
+
+  body.appendChild(new El('div', doc, { clientH: WF_HEADER, clientW: VP_W }));
+  body.appendChild(new El('div', doc, { clientH: WF_LINES * 30, clientW: VP_W }));
+  body.appendChild(new El('div', doc, { clientH: WF_BOTTOM, clientW: VP_W }));
+  body._base.contentH = () => WF_HEADER + textH() + WF_BOTTOM;
+  html._base.contentH = () => body.clientHeight;
+  win.scrollY = 0;
+
+  function render() {
+    stats.frames++;
+    if (!landed()) stats.framesBeforeFont++;
+    const img = makeBuf(VP_W, VP_H);
+    const tH = textH();
+    for (let vy = 0; vy < VP_H; vy++) {
+      const row = win.scrollY + vy;
+      if (row < WF_HEADER) fillRect(img, 0, vy, VP_W, 1, WF.header);
+      else if (row < WF_HEADER + tH) fillRect(img, 0, vy, VP_W, 1, landed() ? WF.text : WF.fallback);
+      else if (row < WF_HEADER + tH + WF_BOTTOM) fillRect(img, 0, vy, VP_W, 1, WF.bottom);
+    }
+    return img;
+  }
+  return { name, doc, html, body, win, render, dpr, bannerH: 0, refs: {}, stats };
+}
+
+function expectLateFont(scn) {
+  return (seg) => {
+    const x = 640;
+    check('every frame was grabbed after the web font landed (capture awaited fonts.ready)',
+      scn.stats.frames > 0 && scn.stats.framesBeforeFont === 0,
+      scn.stats.framesBeforeFont + ' of ' + scn.stats.frames + ' frame(s) on the fallback font');
+    const fallback = countRowsWithColor(seg, x, 0, seg.h, WF.fallback);
+    check('no fallback-font rows in the stitched image', fallback === 0, fallback + ' rows');
+    const text = countRowsWithColor(seg, x, 0, seg.h, WF.text);
+    check('text block at its loaded height (~' + (WF_LINES * 30) + ' rows)', Math.abs(text - WF_LINES * 30) <= 4, text + ' rows');
+    const bottom = countRowsWithColor(seg, x, 0, seg.h, WF.bottom);
+    check('bottom marker present after the reflow (~' + WF_BOTTOM + ' rows)', Math.abs(bottom - WF_BOTTOM) <= 4, bottom + ' rows');
+  };
+}
+
+function expectNeverFont(scn) {
+  return (seg) => {
+    const x = 640;
+    check('the capture finished although fonts.ready never settled (the wait is capped)',
+      scn.stats.frames > 0, scn.stats.frames + ' frame(s)');
+    const fallback = countRowsWithColor(seg, x, 0, seg.h, WF.fallback);
+    check('the fallback-font text block is captured whole (~' + (WF_LINES * 20) + ' rows)',
+      Math.abs(fallback - WF_LINES * 20) <= 4, fallback + ' rows');
+    const bottom = countRowsWithColor(seg, x, 0, seg.h, WF.bottom);
+    check('bottom marker present (~' + WF_BOTTOM + ' rows)', Math.abs(bottom - WF_BOTTOM) <= 4, bottom + ' rows');
+  };
+}
+
+/* ========== the record: every ✅ row in CAPTURE-GATES.md names a scenario ==========
+   CAPTURE-GATES.md's legend defines ✅ as "asserted by the sims". Until
+   2026-09-25 nothing checked that sentence, and one ✅ row (web-font late load)
+   was asserted by no scenario at all. The table's Sim column is read here: a ✅
+   row must name at least one scenario, and every name must be a scenario this
+   file runs or a test/*.node.js file that exists. Scenario names are read from
+   this file's own runScenario('<name>' calls, so FS_ONLY does not narrow them. */
+function checkCaptureGatesRecord() {
+  console.log('\n=== CAPTURE-GATES.md — every ✅ row names its scenario ===');
+  const md = fs.readFileSync(path.join(ROOT, 'CAPTURE-GATES.md'), 'utf8');
+  const self = fs.readFileSync(__filename, 'utf8');
+  const scenarios = new Set([...self.matchAll(/runScenario\('([a-z0-9-]+)'/g)].map(m => m[1]));
+  let headerCols = null, rows = 0;
+  const bad = [];
+  for (const line of md.split('\n')) {
+    if (!line.startsWith('|')) { headerCols = null; continue; }
+    const cells = line.split('|').slice(1, -1).map(c => c.trim());
+    if (!headerCols) { headerCols = cells; continue; }
+    if (cells.every(c => /^-+$/.test(c))) continue;
+    const st = headerCols.indexOf('Status'), sim = headerCols.indexOf('Sim');
+    if (st < 0 || cells[st] !== '✅') continue;
+    rows++;
+    if (sim < 0) { bad.push(cells[0] + ': the table has no Sim column'); continue; }
+    const names = cells[sim].split(',').map(s => s.replace(/`/g, '').trim()).filter(s => s && s !== '—');
+    if (!names.length) { bad.push(cells[0] + ': names no scenario'); continue; }
+    for (const n of names) {
+      const ok = scenarios.has(n) || (/^test\/[\w.-]+\.node\.js$/.test(n) && fs.existsSync(path.join(ROOT, n)));
+      if (!ok) bad.push(cells[0] + ': "' + n + '" is neither a pixel-sim scenario nor a test/*.node.js file');
+    }
+  }
+  check('CAPTURE-GATES.md carries ✅ rows to grade', rows > 0, rows + ' row(s)');
+  check('every ✅ row names a scenario that exists', bad.length === 0, bad.join(' | ') || rows + ' row(s) tied to ' + scenarios.size + ' scenario name(s)');
+}
+
 /* ========== scenario: lazy-growing footer — bottom truncation (v1.6.5) ========== */
 /* A page whose bottom "mega-footer" only finishes rendering once scrolled near
    the bottom (Amazon's AbeBooks/AWS/… grid). The engine measures totalH before
@@ -5429,6 +5543,15 @@ function expectRailInlineSplit(seg, state, segs, out) {
 /* ================= main ================= */
 
 (async () => {
+  /* The record is graded FIRST: its scenario set is read statically from this
+     file, so nothing below has to run for it, and a bad record fails in under
+     a second instead of after every scenario. */
+  checkCaptureGatesRecord();
+  if (FAILS) {
+    console.log('\nFAILURES: ' + FAILS + ' (CAPTURE-GATES.md record — no scenario was run)');
+    process.exit(1);
+  }
+
   const only = n => !process.env.FS_ONLY || process.env.FS_ONLY.split(',').includes(n);
   const s1 = buildAppShell({ bannerH: 0, dpr: 1 });
   await runScenario('appshell', s1, (seg, state) => expectAppShell(seg, state, { bannerH: 0, dpr: 1 }));
@@ -5491,6 +5614,12 @@ function expectRailInlineSplit(seg, state, segs, out) {
 
   const s12 = buildLateImage();
   await runScenario('lateimage', s12, expectLateImage);
+
+  const s12f = buildWebFont('latefont', FONT_LATE_MS);
+  await runScenario('latefont', s12f, expectLateFont(s12f));
+
+  const s12n = buildWebFont('neverfont', Infinity);
+  await runScenario('neverfont', s12n, expectNeverFont(s12n));
 
   const s13 = buildLazyFooter();
   await runScenario('lazyfooter', s13, expectLazyFooter);

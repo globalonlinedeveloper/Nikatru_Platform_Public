@@ -473,7 +473,7 @@
     "message": "已保存 ✓"
   },
   "optionsSaveFailed": {
-    "message": "Not saved ✕"
+    "message": "未保存 ✕"
   },
   "optionsSectionData": {
     "message": "你的数据"
@@ -550,7 +550,7 @@
     }
   },
   "optionsSweepPartial": {
-    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "message": "已删除：$COUNT$/$FOUND$ · 释放空间：$SIZE$ · 其余项目无法删除。请重试，或重新启动浏览器。",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -821,7 +821,7 @@
     "message": "截图已删除。"
   },
   "redactActsLine": {
-    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "message": "遮盖已开启。匹配 $MATCHED$ 处，涂盖 $PAINTED$ 处，在此图像中确认为不透明 $VERIFIED$ 处。",
     "placeholders": {
       "matched": {
         "content": "$1",
@@ -838,11 +838,11 @@
     }
   },
   "redactActsNone": {
-    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "message": "遮盖在读取的文字中没有匹配到任何内容，也没有涂盖任何区块。下方没有任何内容被框出。",
     "placeholders": {}
   },
   "redactActsShortfall": {
-    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "message": "遮盖匹配到 $MATCHED$ 处，覆盖了 $COVERED$ 处。",
     "placeholders": {
       "matched": {
         "content": "$1",
@@ -855,7 +855,7 @@
     }
   },
   "redactActsUncoveredOther": {
-    "message": "$COUNT$ matches are not covered in this image.",
+    "message": "此图像中有 $COUNT$ 处匹配未被覆盖。",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -864,15 +864,15 @@
     }
   },
   "redactActsWalkTruncated": {
-    "message": "FullShot did not finish walking this page.",
+    "message": "FullShot 没有完成对此页面的遍历。",
     "placeholders": {}
   },
   "redactActsCountPartial": {
-    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "message": "此数字可能偏少：FullShot 没有读取此截图中的部分文字。",
     "placeholders": {}
   },
   "redactActsScanLimits": {
-    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "message": "未读取的文字片段：$REFUSED$。已找到但未绘制的区块：$LOST$。",
     "placeholders": {
       "refused": {
         "content": "$1",
@@ -885,7 +885,7 @@
     }
   },
   "redactActsBakeLimits": {
-    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "message": "无法放入此图像的区块：$UNPLACED$。已绘制但未回读的区块：$UNREAD$。",
     "placeholders": {
       "unplaced": {
         "content": "$1",
@@ -898,7 +898,7 @@
     }
   },
   "redactActsNoLedger": {
-    "message": "This record carries no account of a redaction pass on this capture.",
+    "message": "此记录中没有关于此截图遮盖处理的任何说明。",
     "placeholders": {}
   },
   "redactActsUnknownCount": {
@@ -906,15 +906,15 @@
     "placeholders": {}
   },
   "reviewTitle": {
-    "message": "Before you copy",
+    "message": "复制之前",
     "placeholders": {}
   },
   "reviewLimit": {
-    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "message": "FullShot 读取页面公开的文字。它看不到这张图像。以像素绘制的任何内容（画布、图片、PDF 页面、视频帧）都从未被读取。",
     "placeholders": {}
   },
   "reviewMarks": {
-    "message": "$COUNT$ blocks are outlined on the image below.",
+    "message": "下方图像中被框出的区块：$COUNT$ 个。",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -923,11 +923,11 @@
     }
   },
   "reviewNoMarks": {
-    "message": "No blocks are outlined on the image below.",
+    "message": "下方图像中没有被框出的区块。",
     "placeholders": {}
   },
   "reviewScale": {
-    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "message": "以将要复制尺寸的 $PERCENT$% 显示。",
     "placeholders": {
       "percent": {
         "content": "$1",
@@ -936,11 +936,11 @@
     }
   },
   "reviewReduced": {
-    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "message": "此截图太高，无法作为一张可读的图像复制，因此下方的图片是整个页面的缩小概览。其中的小字无法辨认——无论在这里还是在剪贴板中。",
     "placeholders": {}
   },
   "reviewMarkLabel": {
-    "message": "Block $INDEX$",
+    "message": "区块 $INDEX$",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -949,7 +949,7 @@
     }
   },
   "reviewMarkAt": {
-    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "message": "区块 $INDEX$，位于图像自上而下 $PERCENT$% 处",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -962,23 +962,23 @@
     }
   },
   "reviewPrevView": {
-    "message": "Previous view",
+    "message": "上一视图",
     "placeholders": {}
   },
   "reviewNextView": {
-    "message": "Next view",
+    "message": "下一视图",
     "placeholders": {}
   },
   "reviewZoomOut": {
-    "message": "Zoom out",
+    "message": "缩小",
     "placeholders": {}
   },
   "reviewZoomIn": {
-    "message": "Zoom in",
+    "message": "放大",
     "placeholders": {}
   },
   "reviewViewPos": {
-    "message": "View $INDEX$ of $TOTAL$",
+    "message": "视图 $INDEX$/$TOTAL$",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -991,7 +991,7 @@
     }
   },
   "reviewImgRegion": {
-    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "message": "即将复制的图像，$DIMS$ 像素——用方向键滚动",
     "placeholders": {
       "dims": {
         "content": "$1",
@@ -1000,15 +1000,15 @@
     }
   },
   "reviewConfirm": {
-    "message": "I have looked — copy",
+    "message": "我已查看——复制",
     "placeholders": {}
   },
   "reviewCancel": {
-    "message": "Cancel",
+    "message": "取消",
     "placeholders": {}
   },
   "reviewImgAlt": {
-    "message": "The image that is about to be copied",
+    "message": "即将复制的图像",
     "placeholders": {}
   },
   "resultAiOverviewOnly": {

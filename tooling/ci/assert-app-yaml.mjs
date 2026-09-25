@@ -40,7 +40,8 @@
 //   3 · every `apps/<id>/privacy.yaml` satisfies
 //       tooling/app-yaml/schema/privacy.schema.json, names only processors that
 //       exist in `tooling/legal/provider-register.json`, and declares no network
-//       address.
+//       address — and every extension's `publish/privacy.yaml` is held to the
+//       same processor and network-address cross-checks (2026-09-25).
 //   4 · every `collects` row in `apps/<id>/privacy.yaml` appears in that app's
 //       `store/android-play/data-safety.json` as a row `collected: true` under
 //       the declared build posture AND in `store/ios-appstore/privacy-manifest.
@@ -130,6 +131,7 @@ import { planPrivacy } from '../app-yaml/render-privacy.mjs';
 // for an SDK row in exactly the inventories that are rendered into bundles.
 import { PLATFORMS as APPLE_PLATFORMS } from '../store/render-apple-privacy-manifest.mjs';
 import { listDir } from './tree-walk.mjs';
+import { transmits } from '../../contracts/legal/pro-gate.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(process.argv[2] ?? join(HERE, '..', '..'));
@@ -235,23 +237,10 @@ if (providerIds.size === 0) {
   ]);
 }
 
-let privacyGraded = 0;
-const problemsBeforePrivacy = problems.length;
-for (const { id } of declarations) {
-  const rel = `${APPS_DIR}/${id}/privacy.yaml`;
-  if (!existsSync(join(ROOT, rel))) continue;
-  privacyGraded += 1;
-  let doc;
-  try {
-    doc = parseYaml(readFileSync(join(ROOT, rel), 'utf8'));
-  } catch (e) {
-    problems.push(`${rel}: ${e instanceof YamlError ? e.message : String(e)}`);
-    continue;
-  }
-  for (const bad of validate(doc, privacySchema, rel)) problems.push(bad);
-  if (doc && doc.app !== id) {
-    problems.push(`${rel}: declares app "${doc.app}" but lives in ${APPS_DIR}/${id}/ — two files describing two different apps.`);
-  }
+/** The two cross-checks a schema cannot do, for ONE parsed declaration of
+ *  either surface: every processor is a party the register names, and no
+ *  string names a network address. */
+function crossCheck(rel, doc) {
   for (const p of Array.isArray(doc?.processors) ? doc.processors : []) {
     if (p && typeof p.id === 'string' && !providerIds.has(p.id)) {
       problems.push(
@@ -270,6 +259,26 @@ for (const { id } of declarations) {
     }
   }
 }
+
+let privacyGraded = 0;
+const problemsBeforePrivacy = problems.length;
+for (const { id } of declarations) {
+  const rel = `${APPS_DIR}/${id}/privacy.yaml`;
+  if (!existsSync(join(ROOT, rel))) continue;
+  privacyGraded += 1;
+  let doc;
+  try {
+    doc = parseYaml(readFileSync(join(ROOT, rel), 'utf8'));
+  } catch (e) {
+    problems.push(`${rel}: ${e instanceof YamlError ? e.message : String(e)}`);
+    continue;
+  }
+  for (const bad of validate(doc, privacySchema, rel)) problems.push(bad);
+  if (doc && doc.app !== id) {
+    problems.push(`${rel}: declares app "${doc.app}" but lives in ${APPS_DIR}/${id}/ — two files describing two different apps.`);
+  }
+  crossCheck(rel, doc);
+}
 if (privacyGraded === 0) {
   coverageLost([
     `none of the ${declarations.length} declaring app(s) carries a privacy.yaml.`,
@@ -277,8 +286,146 @@ if (privacyGraded === 0) {
     'while this guard still prints two green lines about the other two limbs.',
   ]);
 }
+
+// ⏱ 2026-09-25 (EXT-4, O-EXTENSION-ACCOUNT-CHECK-UNBUILT part 2, S2-claims-08).
+// The loop above walks APPS only, so an extension's `processors` were read by
+// the renderer (schema-validated, limb 5) and checked against the register by
+// nothing: a FullShot row naming "cloudflre" passed. The extension surface's
+// declarations come from the renderer's own plan — the one reader of those
+// files — and get the same two cross-checks; schema validity stays with the
+// renderer, which already reports it through limb 5.
+const privacyPlan = planPrivacy(ROOT);
+const extensionDeclarations = privacyPlan.declarations.filter((d) => d.surface === 'extension');
+for (const { rel, doc } of extensionDeclarations) crossCheck(rel, doc);
+
+// ⏱ 2026-09-25 (EXT-4). The app loop above holds `app:` to the directory the
+// declaration lives in; an extension's directory name (Full_Screen_Shot) is not
+// its id, so the same check reads the slug from the identity.json beside the
+// declaration — the file every publish/ script already takes the slug from.
+for (const { rel, doc } of extensionDeclarations) {
+  const idRel = `${dirname(rel)}/identity.json`;
+  if (!existsSync(join(ROOT, idRel))) {
+    coverageLost([
+      `${rel} has no ${idRel} beside it.`,
+      'Its `app:` is compared to that file\'s slug; without it a declaration could describe another extension unread.',
+    ]);
+  }
+  let slug;
+  try {
+    slug = JSON.parse(readFileSync(join(ROOT, idRel), 'utf8'))?.slug;
+  } catch (e) {
+    coverageLost([`${idRel} is not valid JSON (${e.message}); the slug check has no right-hand side.`]);
+  }
+  if (doc && doc.app !== slug) {
+    problems.push(`${rel}: declares app "${doc?.app}" but ${idRel} names slug "${slug}" — two files describing two different extensions.`);
+  }
+}
+
+// ⏱ 2026-09-25 (EXT-4, O-EXTENSION-ACCOUNT-CHECK-UNBUILT part 3, S2-claims-01).
+// An extension declaration saying `processors: []` is a sworn "nothing leaves
+// the device" — FullShot's limitedUse basis says it in words, and the store
+// dashboard answers are rendered from it. The one machine-readable statement of
+// where the code may connect is tool.json `policy.networkAllowlist`, which
+// policy-check grades against the shipped code. The two are held to each other
+// in both directions: a host the tool may reach is a party the declaration must
+// name, and a declaration that names a party describes a tool that reaches one.
+// A declaration with no tool.json beside its publish/ directory has no
+// allowlist to compare, so that is COVERAGE LOST, never a pass.
+let transmitting = 0;
+const transmittingDeclarations = [];
+for (const { rel, doc } of extensionDeclarations) {
+  const toolRel = `${dirname(dirname(rel))}/tool.json`;
+  const toolAbs = join(ROOT, toolRel);
+  if (!existsSync(toolAbs)) {
+    coverageLost([
+      `${rel} has no ${toolRel} beside it.`,
+      'The processor rows are compared to that file\'s policy.networkAllowlist; without it an extension that reaches',
+      'a server would be graded as one that transmits nothing.',
+    ]);
+  }
+  let toolRaw;
+  try {
+    toolRaw = JSON.parse(readFileSync(toolAbs, 'utf8'));
+  } catch (e) {
+    coverageLost([`${toolRel} is not valid JSON (${e.message}); the transmits check has no left-hand side.`]);
+  }
+  const allow = toolRaw?.policy?.networkAllowlist;
+  if (transmits(toolRaw)) transmittingDeclarations.push({ rel, doc });
+  if (!Array.isArray(allow)) {
+    problems.push(`${toolRel}: policy.networkAllowlist is not an array, so whether ${rel} may say "transmits nothing" cannot be decided.`);
+    continue;
+  }
+  const processors = Array.isArray(doc?.processors) ? doc.processors : [];
+  if (allow.length) transmitting += 1;
+  if (allow.length && !processors.length) {
+    problems.push(
+      `${rel}: declares \`processors: []\` — nothing leaves the device — but ${toolRel} allowlists ` +
+        `${allow.length} network destination(s). A tool that transmits names the party it transmits to; ` +
+        'add the processor row (and answer the store disclosures for it), or empty the allowlist.',
+    );
+  } else if (!allow.length && processors.length) {
+    problems.push(
+      `${rel}: names ${processors.length} processor(s) but ${toolRel} allowlists no network destination, ` +
+        'so the code cannot reach any of them. One of the two files is wrong about this tool.',
+    );
+  }
+}
+ok(`limb 3b — ${transmitting} transmitting tools among ${extensionDeclarations.length} extension declaration(s); each declaration's processors agree with its tool.json networkAllowlist`);
+
+// ── limb 8 · a tool that transmits stops saying it does not ─────────────────
+// ⏱ 2026-09-25 (EXT-4). Limb 3b holds `processors` to the allowlist; a tool
+// that transmits (contracts/legal/pro-gate.mjs `transmits`, the one definition
+// the listing renderer and the privacy renderer also read) owes more than that:
+// (a) its declaration collects something, names who processes it, and does not
+// answer the Authentication category `not-collected` — a sign-in token IS
+// authentication information; and (b) no rendered store text it ships says the
+// opposite in words. A transmitting tool with no rendered store text has had
+// (b) graded over nothing, which is COVERAGE LOST, never a pass.
+const DENIES_TRANSMISSION = /\b(?:no cloud|no sign-in|transmits nothing|no network requests?)\b/i;
+for (const { rel, doc } of transmittingDeclarations) {
+  if (!Array.isArray(doc?.collects) || doc.collects.length === 0) {
+    problems.push(`${rel}: the tool transmits, but the declaration says \`collects: []\`. Name what reaches the server.`);
+  }
+  if (!Array.isArray(doc?.processors) || doc.processors.length === 0) {
+    problems.push(`${rel}: the tool transmits, but the declaration says \`processors: []\`. Name who receives it.`);
+  }
+  const auth = (Array.isArray(doc?.storeDisclosures) ? doc.storeDisclosures : []).find(
+    (d) => d && d.category === 'Authentication information',
+  );
+  if (!auth || auth.disposition === 'not-collected') {
+    problems.push(
+      `${rel}: the tool transmits, but "Authentication information" is ${auth ? '`not-collected`' : 'not answered'}. ` +
+        'A signed-in tool sends a sign-in token; answer the category for it.',
+    );
+  }
+  const storeRel = `${dirname(dirname(rel))}/store`;
+  const texts = [];
+  for (const store of existsSync(join(ROOT, storeRel)) ? listDir(join(ROOT, storeRel), { withFileTypes: true }) : []) {
+    if (!store.isDirectory()) continue;
+    for (const f of listDir(join(ROOT, storeRel, store.name))) {
+      if (f.endsWith('.txt')) texts.push(`${storeRel}/${store.name}/${f}`);
+    }
+  }
+  if (texts.length === 0) {
+    coverageLost([
+      `${rel}: the tool transmits, and ${storeRel}/*/ holds no rendered .txt file.`,
+      'Limb 8 (b) reads the shipped store text for a sentence denying transmission; with none it has read nothing.',
+    ]);
+  }
+  for (const t of texts) {
+    const hit = readFileSync(join(ROOT, t), 'utf8').match(DENIES_TRANSMISSION);
+    if (hit) {
+      problems.push(`${t}: says "${hit[0]}", but the tool transmits (${rel}). Reword the listing source, then re-render.`);
+    }
+  }
+}
+ok(`limb 8 — ${transmittingDeclarations.length} transmitting tools; each declares what it collects, who processes it and its sign-in, and no rendered store text denies it`);
+
 if (problems.length === problemsBeforePrivacy) {
-  ok(`${privacyGraded} privacy declaration(s) valid, with every processor named in ${PROVIDERS} and no network address anywhere`);
+  ok(
+    `${privacyGraded} app and ${extensionDeclarations.length} extension privacy declaration(s) valid, with every ` +
+      `processor named in ${PROVIDERS} and no network address anywhere`,
+  );
 }
 
 // ── limb 4 · the declaration and the two SWORN declarations agree ───────────
@@ -433,7 +580,7 @@ if (problems.length === problemsBeforeSworn) {
 }
 
 // ── limb 5 · every notice surface is what the declaration renders to ────────
-const privacyPlan = planPrivacy(ROOT);
+// `privacyPlan` is the plan limb 3 already asked for (its extension half).
 if (privacyPlan.lost.length) coverageLost(privacyPlan.lost);
 if (privacyPlan.problems.length) {
   for (const p of privacyPlan.problems) problems.push(p);
@@ -881,5 +1028,6 @@ if (problems.length) {
 }
 console.log(
   `\nassert-app-yaml: ok — ${declarations.length} app declaration(s), ${files.size} rendering(s) fresh, ` +
-    `${privacyGraded} privacy declaration(s) graded against ${providerIds.size} named provider(s).`,
+    `${privacyGraded} app and ${extensionDeclarations.length} extension privacy declaration(s) graded against ` +
+    `${providerIds.size} named provider(s).`,
 );

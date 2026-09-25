@@ -75,6 +75,11 @@ function tree() {
     'sites/nikatru/subscriptiontracker/privacy.html',
     'extensions/Extension/Full_Screen_Shot/publish/privacy.yaml',
     'extensions/Extension/Full_Screen_Shot/publish/STORE-LISTING.md',
+    // limb 3b holds the extension declaration's processors to this file's
+    // policy.networkAllowlist, and refuses (2) a declaration without it.
+    'extensions/Extension/Full_Screen_Shot/tool.json',
+    // the declaration's `app:` is held to this file's slug.
+    'extensions/Extension/Full_Screen_Shot/publish/identity.json',
     'extensions/templates/tool/publish/STORE-LISTING.md',
     // ── the six icon-label targets ────────────────────────────────────────
     // Not decoration: a declaration carrying `shortName` and NO target file is
@@ -91,6 +96,8 @@ function tree() {
     cpSync(join(REPO, rel), join(root, rel));
   }
   cpSync(join(REPO, 'apps/subscriptiontracker/store'), join(root, 'apps/subscriptiontracker/store'), { recursive: true });
+  // limb 8 (b) reads the rendered store/*/*.txt of a transmitting extension.
+  cpSync(join(REPO, 'extensions/Extension/Full_Screen_Shot/store'), join(root, 'extensions/Extension/Full_Screen_Shot/store'), { recursive: true });
   // ⏱ 2026-09-24 — every repository-path `source` the two declarations name.
   // render-privacy refuses a source that does not exist, so a fixture without
   // them would exercise that refusal on every case below. Read off the
@@ -299,6 +306,122 @@ describe('assert-app-yaml — the declaration and its renderings', () => {
       const { code, out } = spawn(GUARD, [root]);
       assert.equal(code, 1, out);
       assert.match(out, /is not a row in tooling\/legal\/provider-register\.json/);
+    } finally { kill(root); }
+  });
+
+  test('MUTATION: an EXTENSION processor nobody has named is refused too (S2-claims-08)', () => {
+    // ⏱ 2026-09-25. Limb 3 walked apps only, so this exact row — a misspelt
+    // processor on the extension surface — exited 0.
+    const root = tree();
+    try {
+      const rel = 'extensions/Extension/Full_Screen_Shot/publish/privacy.yaml';
+      const text = get(root, rel);
+      assert.ok(text.includes('\nprocessors: []\n'), 'the extension declaration must still carry `processors: []` for this mutation to mean anything');
+      put(root, rel, text.replace('\nprocessors: []\n', [
+        '',
+        'processors:',
+        '  - id: cloudflre',
+        '    role: infrastructure',
+        '    purpose: A misspelt party, schema-valid in every other respect.',
+        '    source: tooling/legal/provider-register.json',
+        '    asOf: "2026-09-25"',
+        '',
+      ].join('\n')));
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.match(out, /processor "cloudflre" is not a row in tooling\/legal\/provider-register\.json/);
+    } finally { kill(root); }
+  });
+
+  test('MUTATION: an extension that allowlists a host while declaring `processors: []` is refused (S2-claims-01)', () => {
+    const root = tree();
+    try {
+      const rel = 'extensions/Extension/Full_Screen_Shot/tool.json';
+      const t = readJson(root, rel);
+      assert.deepEqual(t.policy.networkAllowlist, [], 'FullShot must still allowlist nothing for this mutation to mean anything');
+      t.policy.networkAllowlist = ['api.example.test'];
+      putJson(root, rel, t);
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.match(out, /declares `processors: \[\]` — nothing leaves the device — but .*tool\.json allowlists 1 network destination/);
+      // limb 8 (a): the same tool now transmits, and all three halves of its
+      // declaration still say it does not.
+      assert.match(out, /the tool transmits, but the declaration says `collects: \[\]`/);
+      assert.match(out, /the tool transmits, but the declaration says `processors: \[\]`/);
+      assert.match(out, /the tool transmits, but "Authentication information" is `not-collected`/);
+      assert.match(out, /limb 8 — 1 transmitting tools/);
+    } finally { kill(root); }
+  });
+
+  test('MUTATION: a transmitting extension whose rendered store text says "No cloud" is refused (limb 8 b)', () => {
+    const root = tree();
+    try {
+      const toolRel = 'extensions/Extension/Full_Screen_Shot/tool.json';
+      const t = readJson(root, toolRel);
+      t.policy.networkAllowlist = ['api.example.test'];
+      putJson(root, toolRel, t);
+      const txt = 'extensions/Extension/Full_Screen_Shot/store/edge/long-description.txt';
+      put(root, txt, `${get(root, txt)}No cloud.\n`);
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.match(out, /store\/edge\/long-description\.txt: says "No cloud", but the tool transmits/);
+    } finally { kill(root); }
+  });
+
+  test('COVERAGE LOST: a transmitting extension with no rendered store text exits 2 (limb 8 b)', () => {
+    const root = tree();
+    try {
+      const toolRel = 'extensions/Extension/Full_Screen_Shot/tool.json';
+      const t = readJson(root, toolRel);
+      t.policy.networkAllowlist = ['api.example.test'];
+      putJson(root, toolRel, t);
+      rmSync(join(root, 'extensions/Extension/Full_Screen_Shot/store'), { recursive: true, force: true });
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 2, out);
+      assert.match(out, /holds no rendered \.txt file/);
+    } finally { kill(root); }
+  });
+
+  test('MUTATION: an extension declaration whose `app:` is not its identity.json slug is refused (R20)', () => {
+    const root = tree();
+    try {
+      const rel = 'extensions/Extension/Full_Screen_Shot/publish/privacy.yaml';
+      const text = get(root, rel);
+      assert.ok(text.includes('\napp: fullshot\n'), 'the extension declaration must still say `app: fullshot` for this mutation to mean anything');
+      put(root, rel, text.replace('\napp: fullshot\n', '\napp: fullshots\n'));
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.match(out, /declares app "fullshots" but .*identity\.json names slug "fullshot"/);
+    } finally { kill(root); }
+  });
+
+  test('COVERAGE LOST: an extension declaration with no identity.json beside it exits 2', () => {
+    const root = tree();
+    try {
+      rmSync(join(root, 'extensions/Extension/Full_Screen_Shot/publish/identity.json'));
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 2, out);
+      assert.match(out, /has no extensions\/Extension\/Full_Screen_Shot\/publish\/identity\.json beside it/);
+    } finally { kill(root); }
+  });
+
+  test('POSITIVE CONTROL: the real extension transmits nothing and says so — 0 transmitting tools', () => {
+    const root = tree();
+    try {
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 0, out);
+      assert.match(out, /limb 3b — 0 transmitting tools among 1 extension declaration/);
+      assert.match(out, /limb 8 — 0 transmitting tools/);
+    } finally { kill(root); }
+  });
+
+  test('COVERAGE LOST: an extension declaration with no tool.json beside it exits 2', () => {
+    const root = tree();
+    try {
+      rmSync(join(root, 'extensions/Extension/Full_Screen_Shot/tool.json'));
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 2, out);
+      assert.match(out, /has no extensions\/Extension\/Full_Screen_Shot\/tool\.json beside it/);
     } finally { kill(root); }
   });
 

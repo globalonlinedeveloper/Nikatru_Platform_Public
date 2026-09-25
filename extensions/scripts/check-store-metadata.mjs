@@ -76,6 +76,7 @@ import { fileURLToPath } from 'node:url';
 import { Report, parseArgs, die } from './lib/report.mjs';
 import { repoRoot, resolveTool, loadAllTools, readText } from './lib/toolinfo.mjs';
 import { requiredNotice } from './lib/licence.mjs';
+import { planListing, LISTING_REL } from './render-listing.mjs';
 import {
   LISTING_FIELDS,
   extensionPerStoreListingFiles,
@@ -122,7 +123,7 @@ const ADDITIONAL_PER_STORE = extensionAdditionalListingFiles();
 const KIND_OF = new Map(LISTING_FIELDS.map((f) => [f.name, f.kind]));
 
 const args = parseArgs(process.argv.slice(2));
-args.rejectUnknown(['all', 'repo-root']);
+args.rejectUnknown(['all', 'repo-root', 'app-config']);
 const root = repoRoot(args);
 
 /* 🔴 `--all` HAD NEVER RUN, AND IT IS IN THIS FILE'S OWN USAGE LINE.
@@ -384,6 +385,30 @@ function gradeScreenshots(rel, abs, anyServed) {
     'zero .png/.jpg in the directory. No store row is served, so this prints rather than blocking.\n' +
     'Capturing them is owner work; every store requires at least one before a listing can be submitted.');
 }
+
+/* ── 8. 🔴 SHIPPED TEXT MAKES NO CLAIM ABOUT ANOTHER PRODUCT ────────────────
+   ⏱ 2026-09-25 (EXT-4, O-CAPTURE-GATES-RECORD-TRUNCATED). FullShot's
+   CAPTURE-GATES.md said "4.9★ reputation" and "clears more gates than any
+   competitor", its README named GoFullPage twice, and every store long
+   description ended "Everything the other tools charge for" — with every gate
+   green, because no limb read the copy as copy. A star rating nobody measured,
+   a comparison nobody ran and a rival's trademark are each a listing-policy
+   finding on their own, and none of them is a fact this repository can check.
+   So the shapes are refused outright, wherever text ships from or is rendered
+   from: the per-store listing files, their source store/listing.json (whose
+   gated lines no .txt renders while the gate is shut),
+   publish/STORE-LISTING.md, the locale MESSAGES (not the translator notes), the
+   tool README and CAPTURE-GATES.md. There is no per-file exemption: a fact that
+   needs a rival's name is restated without it. The same pass measures
+   CAPTURE-GATES.md — its gate rows and ✅ rows are counted, never typed — and
+   fails it when its last byte is not a newline, which is what the truncated
+   write that cut it off mid-row looked like. */
+const CLAIM_SHAPES = [
+  { kind: 'star rating', re: /★|\b\d(?:[.,]\d)?\s*stars?\b/i },
+  { kind: 'comparative superlative', re: /\b(?:better|faster|more [a-z]+) than any\b|\bthan any (?:other|competitor)\b|#1\b|\bnumber one\b|\bbest[- ]in[- ]class\b/i },
+  { kind: 'claim about other products', re: /\b(?:the other tools|competing tools|competitors?|unlike other)\b/i },
+  { kind: 'competitor name', re: /\b(?:GoFullPage|Awesome Screenshot|FireShot|Nimbus Screenshot|Lightshot|Snagit|Screenpresso|Monosnap|Gyazo|Greenshot|ShareX)\b/i },
+];
 
 for (const tool of tools) {
   const sm = tool.raw?.storeMetadata ?? tool.storeMetadata;
@@ -714,6 +739,54 @@ for (const tool of tools) {
     }
   }
 
+  /* ── 6a. 🔴 THE LISTING FILES ARE WHAT store/listing.json RENDERS ──────
+     ⏱ 2026-09-25 (EXT-4, O-EXTENSION-LISTING-COPY-HAND-KEPT). The three
+     stores' copy was three hand-typed trees. It is rendered now, by
+     render-listing.mjs, from `store/listing.json`, and this limb asks the
+     renderer's own planListing() what every file must hold: a listing file that
+     differs is a hand edit (FAIL), a .txt in a store directory the plan does not
+     render is hand-kept copy (FAIL), and a store directory the source does not
+     cover means nothing here can say what that store receives (exit 2). A tool
+     with store directories and no listing.json at all WARNS: its copy is
+     hand-kept, which is how every tool started. */
+  {
+    const plan = planListing(root, tool, { appConfigPath: args.get('app-config') });
+    if (plan.lost.length) die(plan.lost.join('\n'));
+    for (const p of plan.problems) r.fail(tool.rel + ' store/listing.json renders', p);
+    const dirs = Object.values(rows).filter((x) => x && typeof x.dir === 'string' && fs.existsSync(path.join(tool.dirAbs, x.dir)));
+    if (!plan.source) {
+      if (dirs.length) {
+        r.warn(tool.rel + ' listing copy is hand-kept',
+          dirs.length + ' store listing director(ies) and no store/listing.json. Nothing renders these files, so\n' +
+          'the same sentence is typed once per store. Add store/listing.json and run scripts/render-listing.mjs.');
+      }
+    } else {
+      let fresh = 0;
+      for (const [rel, body] of plan.files) {
+        const abs = path.join(tool.dirAbs, rel);
+        const cur = fs.existsSync(abs) ? readText(abs) : null;
+        if (cur === body) { fresh++; continue; }
+        r.fail(tool.rel + '/' + rel + ' is what scripts/render-listing.mjs renders',
+          (cur === null ? 'the file is absent' : 'the file differs from the rendering — a hand edit') + '.\n' +
+          'The copy has one home: store/listing.json, and tool.json policy for the permission justifications\n' +
+          'in publish/STORE-LISTING.md. Edit it there, then: node scripts/render-listing.mjs ' + tool.id);
+      }
+      for (const x of dirs) {
+        for (const f of fs.readdirSync(path.join(tool.dirAbs, x.dir)).filter((n) => n.endsWith('.txt'))) {
+          if (!plan.files.has(x.dir + '/' + f)) {
+            r.fail(tool.rel + '/' + x.dir + '/' + f + ' is rendered from store/listing.json',
+              'a listing file nothing renders. It is hand-kept copy beside a rendered listing; move its text into\n' +
+              'store/listing.json or delete it.');
+          }
+        }
+      }
+      if (fresh === plan.files.size) {
+        r.pass(tool.rel + ' listing files are what store/listing.json renders',
+          fresh + ' file(s); Pro text ' + (plan.pro ? 'renders' : 'does not render — the tool neither transmits nor sells'));
+      }
+    }
+  }
+
   /* ── 6. the copy has ONE home, and this is what keeps it that way ───────
      `publish/STORE-LISTING.md` holds the REASONING behind the listing — why the
      redaction bullet is worded as it is, which policy each claim answers to —
@@ -761,6 +834,93 @@ for (const tool of tools) {
   /* ── 7. the unverified list is carried, not quietly dropped ────────────── */
   if (Array.isArray(sm._unverified) && sm._unverified.length) {
     r.note(tool.rel + ': ' + sm._unverified.length + ' store limit(s) recorded as UNVERIFIED and deliberately not enforced.');
+  }
+
+  gradeClaims(tool, rows);
+}
+
+function claimHits(rel, text) {
+  const hits = [];
+  text.split('\n').forEach((line, i) => {
+    for (const s of CLAIM_SHAPES) {
+      const m = s.re.exec(line);
+      if (m) hits.push(rel + ':' + (i + 1) + '  ' + s.kind + ' "' + m[0] + '"');
+    }
+  });
+  return hits;
+}
+
+/* CAPTURE-GATES.md's size is measured here and printed, so no sentence in it
+   has to carry a count. A gate row is a body row of a table whose header has a
+   Status column (the legend table has none). */
+function gradeGatesRecord(rel, text) {
+  let header = null, gates = 0, cleared = 0;
+  for (const line of text.split('\n')) {
+    if (!line.startsWith('|')) { header = null; continue; }
+    const cells = line.split('|').slice(1, -1).map((c) => c.trim());
+    if (!header) { header = cells; continue; }
+    if (cells.every((c) => /^-+$/.test(c))) continue;
+    const st = header.indexOf('Status');
+    if (st < 0) continue;
+    gates++;
+    if (cells[st] === '✅') cleared++;
+  }
+  const counts = gates + ' gate row(s), ' + cleared + ' of them ✅';
+  if (text.endsWith('\n')) r.pass(rel + ' ends with a newline', counts);
+  else {
+    r.fail(rel + ' ends with a newline', counts + '; the last byte is not a newline.\n' +
+      'This record was once cut off mid-row (O-CAPTURE-GATES-RECORD-TRUNCATED), and a file that stops\n' +
+      'without its final newline is what a truncated write looks like. Check the last row, then end the file with a newline.');
+  }
+}
+
+function gradeClaims(tool, rows) {
+  const hits = [];
+  let scanned = 0;
+  const readRel = (rel) => {
+    const abs = path.join(tool.dirAbs, rel);
+    if (!fs.existsSync(abs)) return null;
+    scanned++;
+    return readText(abs);
+  };
+  for (const rel of ['README.md', 'CAPTURE-GATES.md', LISTING_REL, 'publish/STORE-LISTING.md']) {
+    const t = readRel(rel);
+    if (t === null) continue;
+    hits.push(...claimHits(tool.rel + '/' + rel, t));
+    if (rel === 'CAPTURE-GATES.md') gradeGatesRecord(tool.rel + '/' + rel, t);
+  }
+  for (const row of Object.values(rows)) {
+    if (!row || typeof row.dir !== 'string') continue;
+    const dirAbs = path.join(tool.dirAbs, row.dir);
+    if (!fs.existsSync(dirAbs)) continue;
+    for (const f of fs.readdirSync(dirAbs).filter((n) => n.endsWith('.txt')).sort()) {
+      hits.push(...claimHits(tool.rel + '/' + row.dir + '/' + f, readRel(row.dir + '/' + f)));
+    }
+  }
+  const locAbs = path.join(tool.dirAbs, '_locales');
+  if (fs.existsSync(locAbs)) {
+    for (const loc of fs.readdirSync(locAbs).sort()) {
+      const rel = '_locales/' + loc + '/messages.json';
+      const t = readRel(rel);
+      if (t === null) continue;
+      let cat;
+      try { cat = JSON.parse(t); } catch (e) {
+        r.fail(tool.rel + '/' + rel + ' parses', 'the claims limb reads every locale message and this catalogue is not JSON: ' + e.message);
+        continue;
+      }
+      const text = Object.entries(cat).map(([k, v]) => k + ': ' + String(v && v.message)).join('\n');
+      hits.push(...claimHits(tool.rel + '/' + rel, text));
+    }
+  }
+  if (hits.length) {
+    r.fail(tool.rel + ' shipped text makes no claim about another product',
+      hits.map((h) => '  ' + h).join('\n') + '\n' +
+      'A star rating, a comparison with other products or a rival\'s name is a claim this repository cannot check\n' +
+      'and a store can reject. Restate the fact without it; every file is graded the same way.');
+  } else if (scanned) {
+    r.pass(tool.rel + ' shipped text makes no claim about another product', scanned + ' file(s) read');
+  } else {
+    r.note(tool.rel + ': no README, record, listing file or locale catalogue — the claims limb had nothing to read.');
   }
 }
 

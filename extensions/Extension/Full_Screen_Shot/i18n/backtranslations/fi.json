@@ -6,5 +6,11 @@
   "optionsRedactPIIDesc": "Looks in the text the page shows for e-mail addresses, telephone numbers, payment card numbers, personal identity codes and API keys and paints a solid bar over what matched, in the saved image. It cannot read text drawn as pixels – a canvas, an image, a PDF file, a video frame. Detection is done on your device; nothing is ever sent anywhere. Applies to whole-page (document scrolling) captures; the bar is permanent, so check the end result yourself.",
   "scrollclipFormatHint": "GIF plays everywhere. WebM is smaller and more fluent (it is recorded directly in your own browser).",
   "batchPermissionHint": "Opening these pages demands, on the first occasion, a one-off permission.",
-  "batchPermissionDeclined": "The permission to open these pages was refused."
+  "batchPermissionDeclined": "The permission to open these pages was refused.",
+  "redactActsNone": "The masking found nothing in the text it read and did not paint a single block. Nothing is outlined below.",
+  "redactActsShortfall": "The masking found 3 and covered 2.",
+  "redactActsUncoveredOne": "1 match is not covered in this image.",
+  "redactActsUncoveredOther": "2 matches are not covered in this image.",
+  "reviewLimit": "FullShot reads the text that the page brings out. It does not see this image. Nothing drawn as pixels – canvas, image, PDF page, video frame – was ever read.",
+  "reviewNoMarks": "There are no outlined blocks in the image below."
 }

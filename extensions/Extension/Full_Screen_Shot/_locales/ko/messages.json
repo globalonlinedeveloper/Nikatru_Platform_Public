@@ -473,7 +473,7 @@
     "message": "저장됨 ✓"
   },
   "optionsSaveFailed": {
-    "message": "Not saved ✕"
+    "message": "저장되지 않음 ✕"
   },
   "optionsSectionData": {
     "message": "내 데이터"
@@ -550,7 +550,7 @@
     }
   },
   "optionsSweepPartial": {
-    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "message": "삭제: $FOUND$개 중 $COUNT$개 · 확보된 공간: $SIZE$ · 나머지는 삭제하지 못했습니다. 다시 시도하거나 브라우저를 다시 시작하세요.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -821,7 +821,7 @@
     "message": "스크린샷을 삭제했습니다."
   },
   "redactActsLine": {
-    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "message": "가리기 켜짐. 일치 $MATCHED$개, 칠함 $PAINTED$개, 이 이미지에서 불투명 확인 $VERIFIED$개.",
     "placeholders": {
       "matched": {
         "content": "$1",
@@ -838,11 +838,11 @@
     }
   },
   "redactActsNone": {
-    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "message": "가리기가 읽은 텍스트에서 아무것도 일치하지 않았고 블록을 하나도 칠하지 않았습니다. 아래에 테두리가 표시된 것은 없습니다.",
     "placeholders": {}
   },
   "redactActsShortfall": {
-    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "message": "가리기가 $MATCHED$개와 일치했고 $COVERED$개를 가렸습니다.",
     "placeholders": {
       "matched": {
         "content": "$1",
@@ -855,7 +855,7 @@
     }
   },
   "redactActsUncoveredOther": {
-    "message": "$COUNT$ matches are not covered in this image.",
+    "message": "이 이미지에서 일치 항목 $COUNT$개가 가려지지 않았습니다.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -864,15 +864,15 @@
     }
   },
   "redactActsWalkTruncated": {
-    "message": "FullShot did not finish walking this page.",
+    "message": "FullShot이 이 페이지를 끝까지 훑지 못했습니다.",
     "placeholders": {}
   },
   "redactActsCountPartial": {
-    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "message": "이 수는 실제보다 적을 수 있습니다: FullShot이 이 캡처의 텍스트 일부를 읽지 않았습니다.",
     "placeholders": {}
   },
   "redactActsScanLimits": {
-    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "message": "읽지 않은 텍스트 조각: $REFUSED$. 찾았지만 그리지 않은 블록: $LOST$.",
     "placeholders": {
       "refused": {
         "content": "$1",
@@ -885,7 +885,7 @@
     }
   },
   "redactActsBakeLimits": {
-    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "message": "이 이미지에 배치할 수 없었던 블록: $UNPLACED$. 그렸지만 다시 읽지 않은 블록: $UNREAD$.",
     "placeholders": {
       "unplaced": {
         "content": "$1",
@@ -898,7 +898,7 @@
     }
   },
   "redactActsNoLedger": {
-    "message": "This record carries no account of a redaction pass on this capture.",
+    "message": "이 기록에는 이 캡처에 대한 가리기 처리 내역이 없습니다.",
     "placeholders": {}
   },
   "redactActsUnknownCount": {
@@ -906,15 +906,15 @@
     "placeholders": {}
   },
   "reviewTitle": {
-    "message": "Before you copy",
+    "message": "복사하기 전에",
     "placeholders": {}
   },
   "reviewLimit": {
-    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "message": "FullShot은 페이지가 드러내는 텍스트를 읽습니다. 이 이미지는 볼 수 없습니다. 픽셀로 그려진 것(캔버스, 이미지, PDF 페이지, 동영상 프레임)은 한 번도 읽히지 않았습니다.",
     "placeholders": {}
   },
   "reviewMarks": {
-    "message": "$COUNT$ blocks are outlined on the image below.",
+    "message": "아래 이미지에서 테두리가 표시된 블록: $COUNT$개.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -923,11 +923,11 @@
     }
   },
   "reviewNoMarks": {
-    "message": "No blocks are outlined on the image below.",
+    "message": "아래 이미지에는 테두리가 표시된 블록이 없습니다.",
     "placeholders": {}
   },
   "reviewScale": {
-    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "message": "복사될 크기의 $PERCENT$%로 표시됩니다.",
     "placeholders": {
       "percent": {
         "content": "$1",
@@ -936,11 +936,11 @@
     }
   },
   "reviewReduced": {
-    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "message": "이 캡처는 너무 길어서 읽을 수 있는 한 장의 이미지로 복사할 수 없으므로, 아래 그림은 전체 페이지를 축소한 개요입니다. 그 안의 작은 글자는 읽을 수 없습니다. 여기서도, 클립보드에서도 마찬가지입니다.",
     "placeholders": {}
   },
   "reviewMarkLabel": {
-    "message": "Block $INDEX$",
+    "message": "블록 $INDEX$",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -949,7 +949,7 @@
     }
   },
   "reviewMarkAt": {
-    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "message": "블록 $INDEX$, 이미지 위에서 $PERCENT$% 지점",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -962,23 +962,23 @@
     }
   },
   "reviewPrevView": {
-    "message": "Previous view",
+    "message": "이전 보기",
     "placeholders": {}
   },
   "reviewNextView": {
-    "message": "Next view",
+    "message": "다음 보기",
     "placeholders": {}
   },
   "reviewZoomOut": {
-    "message": "Zoom out",
+    "message": "축소",
     "placeholders": {}
   },
   "reviewZoomIn": {
-    "message": "Zoom in",
+    "message": "확대",
     "placeholders": {}
   },
   "reviewViewPos": {
-    "message": "View $INDEX$ of $TOTAL$",
+    "message": "보기 $INDEX$/$TOTAL$",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -991,7 +991,7 @@
     }
   },
   "reviewImgRegion": {
-    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "message": "곧 복사될 이미지, $DIMS$ 픽셀 — 화살표 키로 스크롤하세요",
     "placeholders": {
       "dims": {
         "content": "$1",
@@ -1000,15 +1000,15 @@
     }
   },
   "reviewConfirm": {
-    "message": "I have looked — copy",
+    "message": "확인했습니다 — 복사",
     "placeholders": {}
   },
   "reviewCancel": {
-    "message": "Cancel",
+    "message": "취소",
     "placeholders": {}
   },
   "reviewImgAlt": {
-    "message": "The image that is about to be copied",
+    "message": "곧 복사될 이미지",
     "placeholders": {}
   },
   "resultAiOverviewOnly": {

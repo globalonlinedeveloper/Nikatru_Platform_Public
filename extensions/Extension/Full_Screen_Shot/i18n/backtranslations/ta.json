@@ -6,5 +6,11 @@
   "optionsRedactPIIDesc": "For e-mails, telephone numbers, credit card numbers, national identity numbers and API keys it searches in the text the page exposes, and draws a solid bar over what matched, in the image being saved. Text drawn as picture dots cannot be read by it — canvas, image, PDF, video frame. The detection runs on your device itself; nothing at all is ever sent anywhere. Only for whole-page (document scrolling) captures; the bar is permanent, so check the result yourself.",
   "scrollclipFormatHint": "GIF will run everywhere. WebM is both smaller and smoother (it is recorded directly in your browser itself).",
   "batchPermissionHint": "To open these pages, a permission will be needed one time, only on the first occasion.",
-  "batchPermissionDeclined": "The permission to open those pages was refused."
+  "batchPermissionDeclined": "The permission to open those pages was refused.",
+  "redactActsNone": "The hiding did not match anything in the text it read and did not draw any block. Nothing below is outlined.",
+  "redactActsShortfall": "The hiding matched 3 and covered 2.",
+  "redactActsUncoveredOne": "1 match is not covered in this image.",
+  "redactActsUncoveredOther": "2 matches are not covered in this image.",
+  "reviewLimit": "FullShot reads the text a page reveals. It cannot see this image. Anything drawn as pixels – canvas, image, PDF page, video frame – has never been read.",
+  "reviewNoMarks": "No block is outlined in the image below."
 }

@@ -473,7 +473,7 @@
     "message": "ተቀምጧል ✓"
   },
   "optionsSaveFailed": {
-    "message": "Not saved ✕"
+    "message": "አልተቀመጠም ✕"
   },
   "optionsSectionData": {
     "message": "የእርስዎ ውሂብ"
@@ -550,7 +550,7 @@
     }
   },
   "optionsSweepPartial": {
-    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "message": "የተወገዱ፦ ከ$FOUND$ ውስጥ $COUNT$ · የተለቀቀ ቦታ፦ $SIZE$ · የቀሩትን ማስወገድ አልተቻለም። እንደገና ይሞክሩ ወይም አሳሽዎን እንደገና ያስጀምሩ።",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -830,7 +830,7 @@
     "message": "ቅጽበታዊ እይታው ተሰርዟል።"
   },
   "redactActsLine": {
-    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "message": "ማደብዘዝ በርቷል። የተዛመዱ $MATCHED$፣ የተቀቡ $PAINTED$፣ በዚህ ምስል ውስጥ ግልጽ ያልሆኑ መሆናቸው የተረጋገጠ $VERIFIED$።",
     "placeholders": {
       "matched": {
         "content": "$1",
@@ -847,11 +847,11 @@
     }
   },
   "redactActsNone": {
-    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "message": "ማደብዘዙ ባነበበው ጽሑፍ ውስጥ ምንም አላዛመደም፣ ምንም ብሎክም አልቀባም። ከታች ምንም ነገር በፍሬም አልተከበበም።",
     "placeholders": {}
   },
   "redactActsShortfall": {
-    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "message": "ማደብዘዙ $MATCHED$ አዛምዷል፣ $COVERED$ ሸፍኗል።",
     "placeholders": {
       "matched": {
         "content": "$1",
@@ -864,7 +864,7 @@
     }
   },
   "redactActsUncoveredOne": {
-    "message": "$COUNT$ match is not covered in this image.",
+    "message": "$COUNT$ ተዛማጅ በዚህ ምስል ውስጥ አልተሸፈነም።",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -873,7 +873,7 @@
     }
   },
   "redactActsUncoveredOther": {
-    "message": "$COUNT$ matches are not covered in this image.",
+    "message": "$COUNT$ ተዛማጆች በዚህ ምስል ውስጥ አልተሸፈኑም።",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -882,15 +882,15 @@
     }
   },
   "redactActsWalkTruncated": {
-    "message": "FullShot did not finish walking this page.",
+    "message": "FullShot ይህን ገጽ ማለፍ አልጨረሰም።",
     "placeholders": {}
   },
   "redactActsCountPartial": {
-    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "message": "ይህ ቁጥር ያነሰ ሊሆን ይችላል፦ FullShot በዚህ ቅጽበታዊ እይታ ውስጥ ያለውን ጽሑፍ በከፊል አላነበበም።",
     "placeholders": {}
   },
   "redactActsScanLimits": {
-    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "message": "ያላነበባቸው የጽሑፍ ቁርጥራጮች፦ $REFUSED$። ያገኛቸውና ያልሳላቸው ብሎኮች፦ $LOST$።",
     "placeholders": {
       "refused": {
         "content": "$1",
@@ -903,7 +903,7 @@
     }
   },
   "redactActsBakeLimits": {
-    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "message": "በዚህ ምስል ውስጥ ሊያስቀምጣቸው ያልቻላቸው ብሎኮች፦ $UNPLACED$። የሳላቸውና መልሶ ያላነበባቸው ብሎኮች፦ $UNREAD$።",
     "placeholders": {
       "unplaced": {
         "content": "$1",
@@ -916,7 +916,7 @@
     }
   },
   "redactActsNoLedger": {
-    "message": "This record carries no account of a redaction pass on this capture.",
+    "message": "ይህ መዝገብ በዚህ ቅጽበታዊ እይታ ላይ ስለተደረገ የማደብዘዝ ሂደት ምንም መረጃ አልያዘም።",
     "placeholders": {}
   },
   "redactActsUnknownCount": {
@@ -924,15 +924,15 @@
     "placeholders": {}
   },
   "reviewTitle": {
-    "message": "Before you copy",
+    "message": "ከመቅዳትዎ በፊት",
     "placeholders": {}
   },
   "reviewLimit": {
-    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "message": "FullShot ገጹ የሚያጋልጠውን ጽሑፍ ያነባል። ይህን ምስል ማየት አይችልም። እንደ ፒክሰል የተሳለ ማንኛውም ነገር – ሸራ፣ ምስል፣ የPDF ገጽ፣ የቪዲዮ ፍሬም – በጭራሽ አልተነበበም።",
     "placeholders": {}
   },
   "reviewMarks": {
-    "message": "$COUNT$ blocks are outlined on the image below.",
+    "message": "ከታች ባለው ምስል ላይ በፍሬም የተከበቡ ብሎኮች፦ $COUNT$።",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -941,11 +941,11 @@
     }
   },
   "reviewNoMarks": {
-    "message": "No blocks are outlined on the image below.",
+    "message": "ከታች ባለው ምስል ላይ በፍሬም የተከበበ ምንም ብሎክ የለም።",
     "placeholders": {}
   },
   "reviewScale": {
-    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "message": "ከሚቀዳው መጠን $PERCENT$% ሆኖ ይታያል።",
     "placeholders": {
       "percent": {
         "content": "$1",
@@ -954,11 +954,11 @@
     }
   },
   "reviewReduced": {
-    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "message": "ይህ ቅጽበታዊ እይታ እንደ አንድ ሊነበብ የሚችል ምስል ለመቅዳት በጣም ረጅም ነው፣ ስለዚህ ከታች ያለው ምስል የመላው ገጽ የተቀነሰ አጠቃላይ እይታ ነው። በውስጡ ያለው ትንሽ ጽሑፍ አይነበብም – እዚህም ሆነ በቅንጥብ ሰሌዳው ላይ።",
     "placeholders": {}
   },
   "reviewMarkLabel": {
-    "message": "Block $INDEX$",
+    "message": "ብሎክ $INDEX$",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -967,7 +967,7 @@
     }
   },
   "reviewMarkAt": {
-    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "message": "ብሎክ $INDEX$፣ ከምስሉ አናት $PERCENT$% ወደ ታች",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -980,23 +980,23 @@
     }
   },
   "reviewPrevView": {
-    "message": "Previous view",
+    "message": "ቀዳሚ እይታ",
     "placeholders": {}
   },
   "reviewNextView": {
-    "message": "Next view",
+    "message": "ቀጣይ እይታ",
     "placeholders": {}
   },
   "reviewZoomOut": {
-    "message": "Zoom out",
+    "message": "አሳንስ",
     "placeholders": {}
   },
   "reviewZoomIn": {
-    "message": "Zoom in",
+    "message": "አጉላ",
     "placeholders": {}
   },
   "reviewViewPos": {
-    "message": "View $INDEX$ of $TOTAL$",
+    "message": "እይታ $INDEX$ ከ$TOTAL$",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -1009,7 +1009,7 @@
     }
   },
   "reviewImgRegion": {
-    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "message": "ሊቀዳ ያለው ምስል፣ $DIMS$ ፒክሰል – በቀስት ቁልፎች ያሸብልሉት",
     "placeholders": {
       "dims": {
         "content": "$1",
@@ -1018,15 +1018,15 @@
     }
   },
   "reviewConfirm": {
-    "message": "I have looked — copy",
+    "message": "ተመልክቻለሁ – ቅዳ",
     "placeholders": {}
   },
   "reviewCancel": {
-    "message": "Cancel",
+    "message": "ይቅር",
     "placeholders": {}
   },
   "reviewImgAlt": {
-    "message": "The image that is about to be copied",
+    "message": "ሊቀዳ ያለው ምስል",
     "placeholders": {}
   },
   "resultAiOverviewOnly": {

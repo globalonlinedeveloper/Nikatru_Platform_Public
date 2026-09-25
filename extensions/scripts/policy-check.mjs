@@ -6,6 +6,7 @@
      node scripts/policy-check.mjs fullshot
      node scripts/policy-check.mjs fullshot --warnings-as-errors
      node scripts/policy-check.mjs fullshot --owner-actions-fatal
+     node scripts/policy-check.mjs fullshot --release
 
    The eight gates of spec §4.3, each one a past manual review finding turned
    into something that can never regress:
@@ -72,7 +73,9 @@
    Exit codes: 0 all gates pass · 1 a gate failed · 2 could not run.
    Owner actions (a domain to buy, a listing to create) are printed on every run
    and are not fatal unless --owner-actions-fatal: a build permanently red on
-   work only one person can do teaches everyone that red is negotiable. */
+   work only one person can do teaches everyone that red is negotiable.
+   --release implies --owner-actions-fatal and makes limb 6b (a string still
+   AWAITING-TRANSLATION) a failure; it does not imply --warnings-as-errors. */
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -82,8 +85,22 @@ import {
   resolveMessages, versionProblem
 } from './lib/toolinfo.mjs';
 
-const args = parseArgs(process.argv.slice(2));
-args.rejectUnknown(['warnings-as-errors', 'owner-actions-fatal', 'repo-root']);
+/* The three flags are BOOLEANS, and parseArgs takes the next token as a flag's
+   value (lib/report.mjs, the `next` branch), so `policy-check.mjs --release
+   fullshot` would swallow the tool id and grade nothing. Pinning them to the
+   `--key=true` form first keeps a positional a positional: pack.mjs's
+   BOOLEAN_FLAGS, copied rather than imported because pack.mjs is a script,
+   not a module.
+
+   `--release` is what the release job's Gates step passes. It makes owner
+   actions and the translations limb (6b) fatal, and deliberately NOT every
+   warning: the CSP coverage WARN is a statement about directives no gate here
+   models, and it is closed by its own change, not by a release refusing. */
+const BOOLEAN_FLAGS = ['release', 'warnings-as-errors', 'owner-actions-fatal'];
+const args = parseArgs(process.argv.slice(2)
+  .map(a => (a.startsWith('--') && BOOLEAN_FLAGS.includes(a.slice(2)) ? a + '=true' : a)));
+args.rejectUnknown(['release', 'warnings-as-errors', 'owner-actions-fatal', 'repo-root']);
+const release = args.bool('release');
 const root = repoRoot(args);
 const tool = resolveTool(root, args.positional[0]);
 const r = new Report('policy-check · ' + tool.id + ' (' + tool.rel + ')');
@@ -1653,6 +1670,40 @@ const PLACEHOLDER = /^(?:|todo\b.*|tbd\b.*|fixme\b.*|\?+|xxx+|replace.*|why\b.*)
   }
 }
 
+/* ---------------- 6b. every shipped string is translated ----------------
+   A key whose English `description` carries AWAITING-TRANSLATION has declared
+   itself untranslated: every locale renders the English (the tool's i18n-sim
+   holds the marker to the memories, so the declaration cannot lie in the other
+   direction). That is the right state for a working tree and the wrong one for
+   a release: the store then lists 54 languages and a dialog in each of them
+   reads English. So the limb WARNS on every run and FAILS under --release,
+   naming every key, and the release job's Gates step passes --release.
+   Measured on FullShot 2026-09-25: 31 keys, 1603 (locale, key) entries. */
+{
+  const dl = mf.default_locale;
+  const p = dl ? readJson(path.join(tool.dirAbs, '_locales', dl, 'messages.json')) : null;
+  const catalogue = (p && !p.error && p.value !== null && typeof p.value === 'object' && !Array.isArray(p.value)) ? p.value : null;
+  if (!dl) {
+    r.note('translations: no default_locale, so no string declares itself awaiting translation');
+  } else if (!catalogue) {
+    r.note('translations: the default catalogue did not parse — gate 6 has already failed by name');
+  } else {
+    const pending = Object.keys(catalogue).filter(k =>
+      catalogue[k] && typeof catalogue[k].description === 'string' && /AWAITING-TRANSLATION/.test(catalogue[k].description));
+    if (!pending.length) {
+      r.pass('no string in _locales/' + dl + ' is awaiting translation',
+        Object.keys(catalogue).length + ' key(s) read');
+    } else {
+      const label = pending.length + ' string(s) in _locales/' + dl + ' are AWAITING-TRANSLATION';
+      const why = pending.map(k => '  ' + k).join('\n') +
+        '\nEvery locale renders these in English. The description marker is the declaration; remove it in\n' +
+        'the edit that lands the translations (the tool\'s own generator prints the work order).';
+      if (release) r.fail(label, why + '\nA release ships this text to every store listing\'s languages, so --release refuses it.');
+      else r.warn(label, why + '\nNot fatal here; a --release run fails on it.');
+    }
+  }
+}
+
 /* ---------------- 7. icons ---------------- */
 {
   const REQUIRED = ['16', '32', '48', '128'];
@@ -1848,5 +1899,5 @@ const PLACEHOLDER = /^(?:|todo\b.*|tbd\b.*|fixme\b.*|\?+|xxx+|replace.*|why\b.*)
 
 process.exit(r.finish({
   warningsAsErrors: args.bool('warnings-as-errors'),
-  ownerActionsFatal: args.bool('owner-actions-fatal')
+  ownerActionsFatal: release || args.bool('owner-actions-fatal')
 }));

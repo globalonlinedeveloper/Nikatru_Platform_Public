@@ -6,8 +6,8 @@
    dev/, and nothing inside an extension may require this file.
 
    PROMOTED, NOT WRITTEN. Source: Extension/Full_Screen_Shot/test/pixel-sim/fakedom.js
-   sha256 of that source at promotion: 8479fc889ef0c2155ec7e03d4de40fcaaf9cd77e17a27dcd9e6a15ba5ad35e8e
-   Promoted 2026-08-14. Everything below this header is that file byte for byte;
+   sha256 of that source at promotion: 76840b2f73b6a97d82bd8f20ae4f7806ac71e203d98d9dc0135a7fd12bce1803
+   Promoted 2026-08-14, re-promoted 2026-09-25 (document.fonts). Everything below this header is that file byte for byte;
    the header is the only addition.
 
    THE ORIGINAL IS STILL THERE, AND THAT IS DELIBERATE. FullShot's sims require
@@ -257,8 +257,26 @@ class RangeFake {
   detach() {}
 }
 
+/* document.fonts — a FontFaceSet fake (EXT-4, 2026-09-25). `ready` settles at
+   once, as it does on a page with no web font. A scenario that has one calls
+   hold(ms): `ready` settles `ms` later, or never for hold(Infinity). Without
+   this every fixture's `document.fonts` was undefined, capture.js skipped its
+   wait on the `document.fonts &&` guard, and the CAPTURE-GATES row "web-font late
+   load ✅" was asserted by nothing — the latefont/neverfont scenarios in
+   run.node.js are the assertion, and they fail if this class is removed. */
+class FontsFake {
+  constructor() { this.status = 'loaded'; this.ready = Promise.resolve(this); }
+  hold(ms) {
+    this.status = 'loading';
+    this.ready = Number.isFinite(ms)
+      ? new Promise(r => setTimeout(() => { this.status = 'loaded'; r(this); }, ms))
+      : new Promise(() => {});
+    return this;
+  }
+}
+
 class Doc {
-  constructor() { this.documentElement = null; this.body = null; this.defaultView = null; }
+  constructor() { this.documentElement = null; this.body = null; this.defaultView = null; this.fonts = new FontsFake(); }
   get scrollingElement() { return this.documentElement; }
   createElement(tag) { return new El(tag, this, { clientH: 0, clientW: 0, contentH: 0 }); }
   createRange() { return new RangeFake(); }

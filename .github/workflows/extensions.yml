@@ -1182,7 +1182,7 @@ jobs:
       - name: Gates (manifest == CHANGELOG == tag, policy, core sync, lint, store metadata, catalogue)
         run: |
           node scripts/check-version.mjs ${{ steps.tag.outputs.id }} --expect ${{ steps.tag.outputs.version }}
-          node scripts/policy-check.mjs   ${{ steps.tag.outputs.id }}
+          node scripts/policy-check.mjs   ${{ steps.tag.outputs.id }} --release
           node scripts/check-core-sync.mjs ${{ steps.tag.outputs.id }}
           node scripts/lint.mjs ${{ steps.tag.outputs.id }}
           node scripts/check-store-metadata.mjs ${{ steps.tag.outputs.id }}

@@ -473,7 +473,7 @@
     "message": "Αποθηκεύτηκε ✓"
   },
   "optionsSaveFailed": {
-    "message": "Not saved ✕"
+    "message": "Δεν αποθηκεύτηκε ✕"
   },
   "optionsSectionData": {
     "message": "Τα δεδομένα σας"
@@ -550,7 +550,7 @@
     }
   },
   "optionsSweepPartial": {
-    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "message": "Καταργήθηκαν: $COUNT$ από $FOUND$ · Χώρος που ελευθερώθηκε: $SIZE$ · Τα υπόλοιπα δεν ήταν δυνατό να καταργηθούν. Δοκιμάστε ξανά ή επανεκκινήστε το πρόγραμμα περιήγησης.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -830,7 +830,7 @@
     "message": "Το στιγμιότυπο διαγράφηκε."
   },
   "redactActsLine": {
-    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "message": "Απόκρυψη ενεργή. Εντοπίστηκαν: $MATCHED$, βάφτηκαν: $PAINTED$, επιβεβαιώθηκαν αδιαφανή σε αυτή την εικόνα: $VERIFIED$.",
     "placeholders": {
       "matched": {
         "content": "$1",
@@ -847,11 +847,11 @@
     }
   },
   "redactActsNone": {
-    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "message": "Η απόκρυψη δεν εντόπισε τίποτα στο κείμενο που διάβασε και δεν ζωγράφισε κανένα μπλοκ. Τίποτα δεν είναι περιγραμμένο παρακάτω.",
     "placeholders": {}
   },
   "redactActsShortfall": {
-    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "message": "Η απόκρυψη εντόπισε $MATCHED$ και κάλυψε $COVERED$.",
     "placeholders": {
       "matched": {
         "content": "$1",
@@ -864,7 +864,7 @@
     }
   },
   "redactActsUncoveredOne": {
-    "message": "$COUNT$ match is not covered in this image.",
+    "message": "$COUNT$ αντιστοιχία δεν καλύπτεται σε αυτή την εικόνα.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -873,7 +873,7 @@
     }
   },
   "redactActsUncoveredOther": {
-    "message": "$COUNT$ matches are not covered in this image.",
+    "message": "$COUNT$ αντιστοιχίες δεν καλύπτονται σε αυτή την εικόνα.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -882,15 +882,15 @@
     }
   },
   "redactActsWalkTruncated": {
-    "message": "FullShot did not finish walking this page.",
+    "message": "Το FullShot δεν ολοκλήρωσε τη διέλευση αυτής της σελίδας.",
     "placeholders": {}
   },
   "redactActsCountPartial": {
-    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "message": "Αυτός ο αριθμός μπορεί να είναι μικρότερος από τον πραγματικό: το FullShot δεν διάβασε μέρος του κειμένου αυτής της λήψης.",
     "placeholders": {}
   },
   "redactActsScanLimits": {
-    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "message": "Τμήματα κειμένου που δεν διάβασε: $REFUSED$. Μπλοκ που βρήκε και δεν σχεδίασε: $LOST$.",
     "placeholders": {
       "refused": {
         "content": "$1",
@@ -903,7 +903,7 @@
     }
   },
   "redactActsBakeLimits": {
-    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "message": "Μπλοκ που δεν μπόρεσε να τοποθετήσει σε αυτή την εικόνα: $UNPLACED$. Μπλοκ που σχεδίασε και δεν ξαναδιάβασε: $UNREAD$.",
     "placeholders": {
       "unplaced": {
         "content": "$1",
@@ -916,7 +916,7 @@
     }
   },
   "redactActsNoLedger": {
-    "message": "This record carries no account of a redaction pass on this capture.",
+    "message": "Αυτή η εγγραφή δεν περιέχει καμία αναφορά σε πέρασμα απόκρυψης για αυτή τη λήψη.",
     "placeholders": {}
   },
   "redactActsUnknownCount": {
@@ -924,15 +924,15 @@
     "placeholders": {}
   },
   "reviewTitle": {
-    "message": "Before you copy",
+    "message": "Πριν αντιγράψετε",
     "placeholders": {}
   },
   "reviewLimit": {
-    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "message": "Το FullShot διαβάζει το κείμενο που εκθέτει μια σελίδα. Δεν μπορεί να δει αυτή την εικόνα. Τίποτα από όσα είναι σχεδιασμένα ως pixel – ένας καμβάς, μια εικόνα, μια σελίδα PDF, ένα καρέ βίντεο – δεν διαβάστηκε ποτέ.",
     "placeholders": {}
   },
   "reviewMarks": {
-    "message": "$COUNT$ blocks are outlined on the image below.",
+    "message": "Περιγραμμένα μπλοκ στην παρακάτω εικόνα: $COUNT$.",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -941,11 +941,11 @@
     }
   },
   "reviewNoMarks": {
-    "message": "No blocks are outlined on the image below.",
+    "message": "Κανένα μπλοκ δεν είναι περιγραμμένο στην παρακάτω εικόνα.",
     "placeholders": {}
   },
   "reviewScale": {
-    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "message": "Εμφανίζεται στο $PERCENT$% του μεγέθους που θα αντιγραφεί.",
     "placeholders": {
       "percent": {
         "content": "$1",
@@ -954,11 +954,11 @@
     }
   },
   "reviewReduced": {
-    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "message": "Αυτή η λήψη είναι πολύ ψηλή για να αντιγραφεί ως μία ευανάγνωστη εικόνα, οπότε η παρακάτω εικόνα είναι μια σμικρυμένη επισκόπηση ολόκληρης της σελίδας. Το μικρό κείμενο σε αυτήν δεν διαβάζεται – ούτε εδώ ούτε στο πρόχειρο.",
     "placeholders": {}
   },
   "reviewMarkLabel": {
-    "message": "Block $INDEX$",
+    "message": "Μπλοκ $INDEX$",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -967,7 +967,7 @@
     }
   },
   "reviewMarkAt": {
-    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "message": "Μπλοκ $INDEX$, στο $PERCENT$% από την κορυφή της εικόνας",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -980,23 +980,23 @@
     }
   },
   "reviewPrevView": {
-    "message": "Previous view",
+    "message": "Προηγούμενη προβολή",
     "placeholders": {}
   },
   "reviewNextView": {
-    "message": "Next view",
+    "message": "Επόμενη προβολή",
     "placeholders": {}
   },
   "reviewZoomOut": {
-    "message": "Zoom out",
+    "message": "Σμίκρυνση",
     "placeholders": {}
   },
   "reviewZoomIn": {
-    "message": "Zoom in",
+    "message": "Μεγέθυνση",
     "placeholders": {}
   },
   "reviewViewPos": {
-    "message": "View $INDEX$ of $TOTAL$",
+    "message": "Προβολή $INDEX$ από $TOTAL$",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -1009,7 +1009,7 @@
     }
   },
   "reviewImgRegion": {
-    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "message": "Η εικόνα που πρόκειται να αντιγραφεί, $DIMS$ pixel – κάντε κύλιση με τα πλήκτρα βέλους",
     "placeholders": {
       "dims": {
         "content": "$1",
@@ -1018,15 +1018,15 @@
     }
   },
   "reviewConfirm": {
-    "message": "I have looked — copy",
+    "message": "Την κοίταξα – αντιγραφή",
     "placeholders": {}
   },
   "reviewCancel": {
-    "message": "Cancel",
+    "message": "Ακύρωση",
     "placeholders": {}
   },
   "reviewImgAlt": {
-    "message": "The image that is about to be copied",
+    "message": "Η εικόνα που πρόκειται να αντιγραφεί",
     "placeholders": {}
   },
   "resultAiOverviewOnly": {
