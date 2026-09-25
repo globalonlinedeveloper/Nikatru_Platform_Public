@@ -34,7 +34,7 @@
 // only to ask whether it is a non-empty string, and reports NAMES.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
-import { join, resolve, dirname } from 'node:path';
+import { join, resolve, dirname, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { armingOf, armingOfTool } from '../../tooling/ci/channel-arming.mjs';
 import { CWS_SA_ENV, CWS_SA_DOC } from './publish-cws-token.mjs';
@@ -333,7 +333,10 @@ export function readSubmittablePackage(zipPath) {
   const raw = String(zipPath ?? '');
   if (raw === '') throw new Error('no package path was given — there is nothing to upload.');
   const resolved = resolve(raw);
-  const segments = resolved.split(/[\/]/);
+  // `sep`, not `/`: `resolve` answers in the host's separator, and a split on
+  // `/` alone found no `dist` segment in any Windows path, so every package was
+  // refused there (found by extension-publish.test.mjs, EXT-6, 2026-09-25).
+  const segments = resolved.split(sep);
   if (!resolved.toLowerCase().endsWith('.zip')) {
     throw new Error(`refusing to upload ${resolved}: a store package is a .zip, and this is not one. Only the release lane's own build output may be sent to a store.`);
   }

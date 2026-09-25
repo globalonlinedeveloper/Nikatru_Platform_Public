@@ -1836,6 +1836,35 @@ jobs:
             exit 1
           fi
 
+  # why (EXT-6, 2026-09-25): the AMO and Edge keys had no scheduled exercise at all, and the Edge
+  # key carries a printed expiry (O-EDGE-API-KEY-EXPIRES-2026-11-20). This job sends each one
+  # read-only request that submits nothing (extensions/scripts/store-key-keepalive.mjs), on the
+  # same daily schedule. The presence gate is inside the script (keepaliveGate, store-poll.mjs):
+  # a present key is probed armed or not; an absent key on an armed row is red; an absent key on
+  # an unarmed row prints the owner step ([pipeline C-6]). No step output and no environment:.
+  store-key-keepalive:
+    name: The AMO and Edge API keys still authenticate
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with: { node-version: '24' }
+      - name: Probe the AMO and Edge keys, or print the owner step
+        env:
+          AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+          AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+          EDGE_API_KEY: ${{ secrets.EDGE_API_KEY }}
+          EDGE_CLIENT_ID: ${{ secrets.EDGE_CLIENT_ID }}
+        run: |
+          set -euo pipefail
+          if ! node scripts/store-key-keepalive.mjs; then
+            echo "::error::an AMO or Edge API key the release lane depends on could not be exercised: it is absent on an armed row, was rejected, or the store could not be read. A dead key is invisible until a tag push tries to use it."
+            exit 1
+          fi
+
   extensions-lane-accounting:
     name: The lane that should have run, ran
     needs:
@@ -1844,6 +1873,7 @@ jobs:
       - release
       - store-publish
       - cws-token-keepalive
+      - store-key-keepalive
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -1859,6 +1889,7 @@ jobs:
           RELEASE: ${{ needs.release.result }}
           STORE: ${{ needs.store-publish.result }}
           KEEPALIVE: ${{ needs.cws-token-keepalive.result }}
+          STORE_KEEPALIVE: ${{ needs.store-key-keepalive.result }}
           DRY_RUN: ${{ inputs.dry_run }}
           EVENT: ${{ github.event_name }}
           REF: ${{ github.ref }}
@@ -1879,7 +1910,7 @@ jobs:
           # So the guards are not trusted: the lane is derived here, separately,
           # from the event, and the results are required to match it.
           echo "event=$EVENT ref=$REF action=${ACTION:-none} label=${LABEL:-none} lane_input=${LANE:-none}"
-          echo "ci=$CI e2e=$E2E release=$RELEASE store-publish=$STORE keepalive=$KEEPALIVE"
+          echo "ci=$CI e2e=$E2E release=$RELEASE store-publish=$STORE keepalive=$KEEPALIVE store-key-keepalive=$STORE_KEEPALIVE"
 
           # ⏱ 2026-09-24: the CI lane left this file for extensions-ci.yml, which ci.yml
           # calls on every pull request and push to main. Here it runs only on a dispatch
@@ -1948,16 +1979,23 @@ jobs:
           # is selected by the EVENT and not by `want`. Folding it into `expect` would have made
           # it look like a fourth lane and forced a fourth arm into the derivation above, which
           # is how a lane guard ends up too wide.
-          case "$EVENT:$KEEPALIVE" in
-            schedule:success) ;;
-            schedule:*)
-              echo "::error::'cws-token-keepalive' came out '$KEEPALIVE' on the daily schedule. That job is the only thing in this repository that exercises the Chrome Web Store service-account credential between releases; a skipped or failed run means the credential is unexercised and a disabled, deleted or rotated key stays invisible until a tag push."
-              fail=1 ;;
-            *:skipped) ;;
-            *)
-              echo "::error::'cws-token-keepalive' came out '$KEEPALIVE' on event '$EVENT'. It carries \`if: github.event_name == 'schedule'\`, so on any other event it must be SKIPPED — a credential exercise running on a pull request is a guard that is too wide."
-              fail=1 ;;
-          esac
+          # ⏱ 2026-09-25 (EXT-6): there are two keep-alives now (store-key-keepalive exercises the
+          # AMO and Edge keys), graded by one function so the two cannot be graded differently.
+          grade_scheduled() {  # grade_scheduled <job> <result>
+            local n=$1 r=$2
+            case "$EVENT:$r" in
+              schedule:success) ;;
+              schedule:*)
+                echo "::error::'$n' came out '$r' on the daily schedule. That job is the only thing in this repository that exercises its store credential between releases; a skipped or failed run means the credential is unexercised, and a disabled, revoked, rotated or expired key stays invisible until a tag push."
+                fail=1 ;;
+              *:skipped) ;;
+              *)
+                echo "::error::'$n' came out '$r' on event '$EVENT'. It carries \`if: github.event_name == 'schedule'\`, so on any other event it must be SKIPPED — a credential exercise running on a pull request is a guard that is too wide."
+                fail=1 ;;
+            esac
+          }
+          grade_scheduled cws-token-keepalive "$KEEPALIVE"
+          grade_scheduled store-key-keepalive "$STORE_KEEPALIVE"
 
           if [ "$want" = unknown ]; then
             echo "::error::this job could not derive a lane from event '$EVENT' on ref '$REF'. A new trigger was added to this workflow and this accounting was not taught about it, so nothing here graded the run. Add the case."

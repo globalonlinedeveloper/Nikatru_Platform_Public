@@ -3146,6 +3146,111 @@ expect('publish-cws-keepalive.mjs does NOT demand CWS_PUBLISHER_ID, which it nev
   env: { CWS_SERVICE_ACCOUNT_JSON: '', CWS_PUBLISHER_ID: 'fixture' }, code: 1, contains: 'CWS_SERVICE_ACCOUNT_JSON'
 });
 
+/* ─────────────────────────────────────────────────────────────────────────────
+   ⏱ 2026-09-25 (EXT-6) — THE KEEPALIVES' GATE IS PRESENCE, NOT ARMING.
+
+   🔴 THE RED IS "UNARMED, KEY PRESENT, AND NOTHING EXERCISED". The Chrome key has
+   been set since 2026-09-09 while its row is unarmed, and the old gate skipped the
+   mint for exactly that state. The cases below drive both keepalives against a
+   LOOPBACK stub (a child process: run() blocks this one in spawnSync) through the
+   CWS_OAUTH_TOKEN_URL and EDGE_API_BASE_URL seams. Every key is a FIXTURE: the
+   RSA key is generated here, and no case reaches a store.
+   ───────────────────────────────────────────────────────────────────────────── */
+const KEY_STUB_SRC = `
+const http = require('http'); const fs = require('fs');
+const s = http.createServer((req, res) => {
+  let body = ''; req.on('data', (c) => { body += c; }); req.on('end', () => {
+    const send = (code, obj) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(obj)); };
+    const form = new URLSearchParams(body);
+    const assertion = String(form.get('assertion') || '').split('.').length === 3;
+    if (req.method === 'POST' && req.url === '/token' && assertion) return send(200, { access_token: 'fixture-token', expires_in: 3599, token_type: 'Bearer' });
+    if (req.method === 'POST' && req.url === '/revoked') return send(400, { error: 'invalid_grant', error_description: 'fixture: the key was revoked' });
+    if (req.method === 'GET' && req.url.startsWith('/v1/products/')) {
+      return req.headers['x-clientid'] === 'fixture-client' ? send(404, {}) : send(403, { message: 'Client ID is Invalid' });
+    }
+    send(418, { error: 'the stub has no route for ' + req.method + ' ' + req.url });
+  });
+});
+setTimeout(() => process.exit(0), 150000).unref();
+s.listen(0, '127.0.0.1', () => fs.writeFileSync(process.argv[1], String(s.address().port)));
+`;
+const keyStubPortFile = path.join(TMP, 'key-stub.port');
+const keyStub = require('child_process').spawn(process.execPath, ['-e', KEY_STUB_SRC, keyStubPortFile], { stdio: 'ignore' });
+let keyStubPort = '';
+{
+  const tick = new Int32Array(new SharedArrayBuffer(4));
+  for (let i = 0; i < 200 && keyStubPort === ''; i++) {
+    Atomics.wait(tick, 0, 0, 50);
+    try { keyStubPort = fs.readFileSync(keyStubPortFile, 'utf8').trim(); } catch { /* not written yet */ }
+  }
+}
+const FIXTURE_SA = (() => {
+  const { privateKey } = require('crypto').generateKeyPairSync('rsa', {
+    modulusLength: 2048, privateKeyEncoding: { type: 'pkcs8', format: 'pem' }, publicKeyEncoding: { type: 'spki', format: 'pem' }
+  });
+  return JSON.stringify({ type: 'service_account', client_email: 'fixture@fixture.iam.gserviceaccount.com', private_key: privateKey });
+})();
+/* One tree holding BOTH the amo and edge-addons rows, which store-key-keepalive
+   reads together; `armed` names the rows that are submittable. */
+function keyTree(armed) {
+  const root = path.join(TMP, 'storekeys-' + (++storeLaneNo));
+  w(root, 'tooling/channel-register.json', JSON.stringify({
+    channels: ['amo', 'edge-addons'].map(id => ({ id, kind: 'store', surface: 'extension', served: false,
+      submittable: armed.includes(id), extensionStoreKey: STORE_KEY[id],
+      lane: { workflow: '.github/workflows/extensions.yml', job: 'release' } }))
+  }, null, 2));
+  w(root, 'extensions/Extension/fullshot/tool.json', JSON.stringify({
+    id: 'fullshot',
+    storeMetadata: { stores: {
+      firefox: { target: 'firefox', dir: 'store/firefox', served: false, listingId: LISTED.amo },
+      edge: { target: 'chromium', dir: 'store/edge', served: false, listingId: LISTED['edge-addons'] }
+    } }
+  }, null, 2));
+  return root;
+}
+const NO_STORE_KEYS = { AMO_JWT_ISSUER: '', AMO_JWT_SECRET: '', EDGE_API_KEY: '', EDGE_CLIENT_ID: '' };
+
+if (keyStubPort === '') {
+  bad('the loopback key stub started', 'no port was written to ' + keyStubPortFile + ' within 10 s, so the keepalive probe cases below did not run');
+} else {
+  const stubBase = 'http://127.0.0.1:' + keyStubPort;
+  expect('publish-cws-keepalive.mjs MINTS while chrome-webstore is unarmed and the key is present', {
+    script: 'publish-cws-keepalive.mjs', argv: [], root: unarmedTree('chrome-webstore'),
+    env: { CWS_SERVICE_ACCOUNT_JSON: FIXTURE_SA, CWS_OAUTH_TOKEN_URL: stubBase + '/token' }, code: 0, contains: 'cws-token-keepalive: OK'
+  });
+  expect('publish-cws-keepalive.mjs exits 1 on a dead key while chrome-webstore is unarmed', {
+    script: 'publish-cws-keepalive.mjs', argv: [], root: unarmedTree('chrome-webstore'),
+    env: { CWS_SERVICE_ACCOUNT_JSON: FIXTURE_SA, CWS_OAUTH_TOKEN_URL: stubBase + '/revoked' }, code: 1, contains: 'invalid_grant'
+  });
+  expect('store-key-keepalive.mjs probes a present Edge key on an unarmed row: 404 is alive', {
+    script: 'store-key-keepalive.mjs', argv: [], root: keyTree([]),
+    env: { ...NO_STORE_KEYS, EDGE_API_KEY: 'fixture-api-key', EDGE_CLIENT_ID: 'fixture-client', EDGE_API_BASE_URL: stubBase },
+    code: 0, contains: 'Edge OK — the key authenticated: HTTP 404'
+  });
+  expect('store-key-keepalive.mjs exits 1 when the Edge key is rejected (403)', {
+    script: 'store-key-keepalive.mjs', argv: [], root: keyTree([]),
+    env: { ...NO_STORE_KEYS, EDGE_API_KEY: 'fixture-api-key', EDGE_CLIENT_ID: 'bogus-client', EDGE_API_BASE_URL: stubBase },
+    code: 1, contains: 'REJECTED — HTTP 403'
+  });
+}
+keyStub.kill();
+
+expect('publish-cws-keepalive.mjs refuses a non-loopback CWS_OAUTH_TOKEN_URL before any request', {
+  script: 'publish-cws-keepalive.mjs', argv: [], root: unarmedTree('chrome-webstore'),
+  env: { CWS_SERVICE_ACCOUNT_JSON: FIXTURE_SA, CWS_OAUTH_TOKEN_URL: 'https://example.invalid/token' }, code: 1, contains: 'neither https://oauth2.googleapis.com/token nor loopback'
+});
+expect('store-key-keepalive.mjs prints the owner step and exits 0 while neither store is armed and no key is set', {
+  script: 'store-key-keepalive.mjs', argv: [], root: keyTree([]), env: NO_STORE_KEYS, code: 0, contains: 'Edge NOTHING TO CHECK'
+});
+expect('store-key-keepalive.mjs exits 1 when the register ARMS amo and its key is absent', {
+  script: 'store-key-keepalive.mjs', argv: [], root: keyTree(['amo']), env: NO_STORE_KEYS, code: 1, contains: 'the register ARMS amo'
+});
+expect('store-key-keepalive.mjs refuses a non-loopback EDGE_API_BASE_URL before any request', {
+  script: 'store-key-keepalive.mjs', argv: [], root: keyTree([]),
+  env: { ...NO_STORE_KEYS, EDGE_API_KEY: 'fixture-api-key', EDGE_CLIENT_ID: 'fixture-client', EDGE_API_BASE_URL: 'https://example.invalid' },
+  code: 1, contains: 'EDGE_API_BASE_URL points at https://example.invalid'
+});
+
 /* The COVERAGE limb: a register the script cannot read is NOT an unarmed
    channel. Without this, every red above would be consistent with a script that
    refuses whenever it fails to find anything. */

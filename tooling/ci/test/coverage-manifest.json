@@ -91,6 +91,7 @@
   "enforcement-index.test.mjs": 26,
   "entitlement-contract.test.mjs": 99,
   "erasure-reach.test.mjs": 49,
+  "extension-publish.test.mjs": 57,
   "extension-submission.test.mjs": 56,
   "extensions-build-free.test.mjs": 14,
   "extensions-shared-constants.test.mjs": 9,

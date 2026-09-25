@@ -3102,6 +3102,16 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ops-watch.yml#supabase-drift"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/check-live-signin-key.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "ADR 029"
     ],

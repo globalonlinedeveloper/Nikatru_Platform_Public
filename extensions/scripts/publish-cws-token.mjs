@@ -99,10 +99,14 @@ export function readServiceAccount(raw) {
  * "urn:ietf:params:oauth:grant-type:jwt-bearer"; response
  * {access_token, scope, token_type, expires_in}.
  *
+ * `tokenUrl` is TOKEN_URL except under the CWS_OAUTH_TOKEN_URL loopback seam,
+ * which the caller has already held to store-poll.mjs's `loopbackBase` rule
+ * (EXT-6, 2026-09-25); `aud` follows it, since the audience is the endpoint.
+ *
  * @returns {Promise<{ok:true, accessToken:string, expiresIn:(number|null), scope:(string|null), clientEmail:string}
  *                  | {ok:false, status:number, detail:string}>}
  */
-export async function mintAccessToken({ serviceAccountJson, scope = CWS_SCOPE, fetchImpl = fetch }) {
+export async function mintAccessToken({ serviceAccountJson, scope = CWS_SCOPE, fetchImpl = fetch, tokenUrl = TOKEN_URL }) {
   const parsed = readServiceAccount(serviceAccountJson);
   if (!parsed.ok) return { ok: false, status: 0, detail: parsed.detail };
   const sa = parsed.sa;
@@ -110,7 +114,7 @@ export async function mintAccessToken({ serviceAccountJson, scope = CWS_SCOPE, f
   const b64 = (v) => Buffer.from(v).toString('base64url');
   const now = Math.floor(Date.now() / 1000);
   const signingInput = `${b64(JSON.stringify({ alg: 'RS256', typ: 'JWT' }))}.${b64(
-    JSON.stringify({ iss: sa.client_email, scope, aud: TOKEN_URL, exp: now + 3600, iat: now }),
+    JSON.stringify({ iss: sa.client_email, scope, aud: tokenUrl, exp: now + 3600, iat: now }),
   )}`;
   let signature;
   try {
@@ -124,7 +128,7 @@ export async function mintAccessToken({ serviceAccountJson, scope = CWS_SCOPE, f
     };
   }
 
-  const r = await fetchImpl(TOKEN_URL, {
+  const r = await fetchImpl(tokenUrl, {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
