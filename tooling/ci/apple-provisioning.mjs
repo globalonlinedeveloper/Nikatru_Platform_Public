@@ -170,7 +170,57 @@ export function validateRegister(reg) {
       if (a.name !== undefined && bundleIdNameProblem(a.name)) p.push(`apps.${slug}.name: ${bundleIdNameProblem(a.name)}`);
     }
   }
+  // O-APPLE-RESOURCE-IDS-IN-COMMENTS: the ids that were live once. Absent reads
+  // as []. A retired id that is also live is one id in two states, and the
+  // guard's id set would then carry it for the wrong reason.
+  const retired = reg.retired ?? [];
+  if (!Array.isArray(retired)) {
+    p.push('retired must be an array of { id, kind, retiredOn, why }');
+  } else {
+    const live = new Set(liveResourceIds(reg));
+    const seen = new Set();
+    for (const [i, r] of retired.entries()) {
+      const at = `retired[${i}]`;
+      if (!r || typeof r !== 'object') { p.push(`${at} is not an object`); continue; }
+      if (!RESOURCE_ID.test(r.id ?? '')) p.push(`${at}.id "${r.id}" is not an App Store Connect resource id`);
+      if (!RETIRED_KINDS.includes(r.kind)) p.push(`${at}.kind must be one of ${RETIRED_KINDS.join(', ')}`);
+      if (!(r.retiredOn === 'unknown' || /^\d{4}-\d{2}-\d{2}$/.test(r.retiredOn ?? ''))) {
+        p.push(`${at}.retiredOn must be YYYY-MM-DD, or "unknown" when no record gives the day`);
+      }
+      if (typeof r.why !== 'string' || r.why.trim() === '') p.push(`${at}.why is empty — say what it was and what replaced it`);
+      if (seen.has(r.id)) p.push(`${at}.id ${r.id} is retired twice`);
+      if (live.has(r.id)) p.push(`${at}.id ${r.id} is retired AND still named live in this register`);
+      seen.add(r.id);
+    }
+  }
   return p;
+}
+
+/** An App Store Connect resource id: ten upper-case letters and digits. */
+const RESOURCE_ID = /^[A-Z0-9]{10}$/;
+const RETIRED_KINDS = Object.freeze(['bundleId', 'profile', 'certificate']);
+
+/** The resource ids the register names as live: the anchor's App ID, every app's
+ *  App ID, and the protected profiles and certificates. */
+function liveResourceIds(reg) {
+  return [
+    reg.anchor?.resourceId,
+    ...Object.values(reg.apps ?? {}).map((a) => a?.resourceId),
+    ...(Array.isArray(reg.protected?.profiles) ? reg.protected.profiles : []),
+    ...(Array.isArray(reg.protected?.certificates) ? reg.protected.certificates : []),
+  ].filter((id) => typeof id === 'string' && id);
+}
+
+/** O-APPLE-RESOURCE-IDS-IN-COMMENTS — every App Store Connect resource id this
+ *  register names, live or retired, as the set assert-apple-entitlements refuses
+ *  as a literal in any .mjs under tooling/ci. The register is the one tracked home of
+ *  these ids; a comment that restates one is stale the day it is re-minted.
+ *  Bundle IDENTIFIERS (com.nikatru.*) are names, not resource ids, and are not
+ *  in the set. The team id is not either: the register does not carry it, and
+ *  it is public in every signed binary's application-identifier. */
+export function appleResourceIds(reg) {
+  const retired = Array.isArray(reg?.retired) ? reg.retired.map((r) => r?.id) : [];
+  return new Set([...liveResourceIds(reg ?? {}), ...retired].filter((id) => typeof id === 'string' && id));
 }
 
 /** The entitlement key a capability puts into the app's OWN entitlements file on

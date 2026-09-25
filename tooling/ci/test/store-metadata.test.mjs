@@ -221,6 +221,20 @@ const pubspec = (over = {}) => {
   return ['name: subscriptiontracker', 'version: 1.0.0+1', '', 'msix_config:', ...Object.entries(cfg).map(([k, v]) => `  ${k}: ${v}`), ''].join('\n');
 };
 
+/** apps/<slug>/app.yaml cut to what the ONE WINDOWS IDENTITY limb reads.
+ *  `record` null writes no `stores` block; a field the record lacks is not
+ *  written, which is how a hole is built. assert-app-yaml, not this guard,
+ *  holds the rest of the file to the schema. */
+const appYaml = (slug, record = null) => {
+  const lines = [`id: ${slug}`];
+  if (record) {
+    lines.push('stores:', '  windows-store:');
+    if (record.identityName !== undefined) lines.push(`    identityName: ${record.identityName}`);
+    if (record.packageFamilyName !== undefined) lines.push(`    packageFamilyName: ${record.packageFamilyName}`);
+  }
+  return `${lines.join('\n')}\n`;
+};
+
 const appConfig = () =>
   [
     'class AppConfig {',
@@ -290,6 +304,9 @@ function tree({
   brandAssetsDart = BRAND_ASSETS_DART,
   postGenDart = POST_GEN_DART,
   apps = [{ slug: 'subscriptiontracker', name: 'Subly', tagline: 'Track every subscription in one place', platforms: ['web'] }],
+  // slug -> apps/<slug>/app.yaml text. An app with no entry has no app.yaml, as
+  // every case written before the ONE WINDOWS IDENTITY limb expects.
+  appYamls = {},
 } = {}) {
   const root = join(TMP, `r${seq++}`);
   const write = (rel, body) => {
@@ -341,6 +358,7 @@ function tree({
     if (!omitPubspec) {
       write(`apps/${app.slug}/pubspec.yaml`, noMsixConfig ? 'name: subscriptiontracker\nversion: 1.0.0+1\n' : pubspec(pubspecOver));
     }
+    if (typeof appYamls[app.slug] === 'string') write(`apps/${app.slug}/app.yaml`, appYamls[app.slug]);
     if (omitTree) continue;
     for (const rel of [...REQUIRED, 'search-terms.txt']) {
       if (omitFiles.includes(rel)) continue;
@@ -682,11 +700,14 @@ describe('assert-store-metadata — the listing exists, is complete, and is deri
   });
 
   test('PASSES when every identity field is real and both sides agree', () => {
-    const real = { identityName: 'Nikatru.Subly', publisherDisplayName: 'Nikatru', publisher: 'CN=NIKATRU' };
+    // packageFamilyName and the app.yaml record since O-SECOND-APP-SIGNS-AS-THE-FIRST:
+    // an issued channel copy with no app declaring it is now a FAIL of its own.
+    const real = { identityName: 'Nikatru.Subly', packageFamilyName: 'Nikatru.Subly_aaaaaaaaaaaaa', publisherDisplayName: 'Nikatru', publisher: 'CN=NIKATRU' };
     const { code, out } = run(
       tree({
         mutateRegister: (r) => Object.assign(r.channels.find((c) => c.id === 'windows-store').packageIdentity, real),
         pubspecOver: { identity_name: real.identityName, publisher_display_name: real.publisherDisplayName, publisher: real.publisher },
+        appYamls: { subscriptiontracker: appYaml('subscriptiontracker', real) },
       }),
     );
     assert.equal(code, 0, out);
@@ -743,6 +764,144 @@ describe('assert-store-metadata — the listing exists, is complete, and is deri
     assert.equal(code, 0, out);
     assert.match(out, /NO msix_config: apps\/probe\/pubspec\.yaml/);
     assert.match(out, /NO TREE \(deferred until \d{4}-\d{2}-\d{2}\): apps\/probe\/store\/windows-store/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ONE WINDOWS IDENTITY PER APP — O-SECOND-APP-SIGNS-AS-THE-FIRST limb (1).
+//
+// The identity cases above compare every app's msix_config with the ONE identity
+// on the channel row, so two apps packaging the same identity both agree with it
+// and pass. Each app now declares the identity Partner Center issued to it, in
+// app.yaml `stores.windows-store`. The same controls ran FIRST on a scratch copy
+// of the real tree (2026-09-25): RC1 a second app declaring subscriptiontracker's
+// identity, exit 0 before this limb and exit 1 after it, naming both; RC2 that
+// app's record on the sentinel, exit 0; RC3 the real record one character off,
+// exit 1. Every identity here is synthetic (ZZTest.*): none was issued by
+// Partner Center.
+// ─────────────────────────────────────────────────────────────────────────────
+const ZZ_ONE = { identityName: 'ZZTest.AppOne', packageFamilyName: 'ZZTest.AppOne_aaaaaaaaaaaaa' };
+const ZZ_PENDING = { identityName: SENTINEL, packageFamilyName: SENTINEL };
+const ZZ_ACCOUNT = { publisherDisplayName: 'ZZTest', publisher: 'CN=ZZTEST' };
+const ZZ_APP = { slug: 'subscriptiontracker', name: 'Subly', tagline: 'Track every subscription in one place', platforms: ['web'] };
+// Same name and tagline, so its store tree derives the same fields and the only
+// thing that can fail is the identity.
+const ZZ_SECOND = { ...ZZ_APP, slug: 'zzsecond' };
+
+/** The channel row carries ZZ_ONE as its copy and every app's pubspec packages
+ *  it — the state post_gen.dart stamps app #2 in. */
+const issued = (apps, appYamls) =>
+  tree({
+    mutateRegister: (r) => Object.assign(r.channels.find((c) => c.id === 'windows-store').packageIdentity, ZZ_ONE, ZZ_ACCOUNT),
+    pubspecOver: { identity_name: ZZ_ONE.identityName, publisher_display_name: ZZ_ACCOUNT.publisherDisplayName, publisher: ZZ_ACCOUNT.publisher },
+    apps,
+    appYamls,
+  });
+
+describe('assert-store-metadata — ONE WINDOWS IDENTITY PER APP (app.yaml stores.windows-store)', () => {
+  test('PASSES, and counts it, when the one app declaring the issued identity equals the channel copy', () => {
+    const { code, out } = run(issued([ZZ_APP], { subscriptiontracker: appYaml('subscriptiontracker', ZZ_ONE) }));
+    assert.equal(code, 0, out);
+    assert.match(out, /ONE WINDOWS IDENTITY PER APP — 1 app\.yaml stores\.windows-store record\(s\) read, 2 issued field\(s\) equal to the channel copy, 0 identityName shared/);
+  });
+
+  // RC1.
+  test('FAILS, naming both, when two apps declare the same issued identityName', () => {
+    const { code, out } = run(
+      issued([ZZ_APP, ZZ_SECOND], {
+        subscriptiontracker: appYaml('subscriptiontracker', ZZ_ONE),
+        zzsecond: appYaml('zzsecond', ZZ_ONE),
+      }),
+    );
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /Windows identity SHARED: apps "subscriptiontracker" and "zzsecond" all declare stores\.windows-store\.identityName = "ZZTest\.AppOne"/);
+  });
+
+  // RC2.
+  test('PASSES, and prints, when the second app declares the sentinel instead', () => {
+    const { code, out } = run(
+      issued([ZZ_APP, ZZ_SECOND], {
+        subscriptiontracker: appYaml('subscriptiontracker', ZZ_ONE),
+        zzsecond: appYaml('zzsecond', ZZ_PENDING),
+      }),
+    );
+    assert.equal(code, 0, out);
+    assert.match(out, /WINDOWS IDENTITY NOT YET ISSUED — app "zzsecond"/);
+    assert.match(out, /2 app\.yaml stores\.windows-store record\(s\) read, 2 issued field\(s\) equal to the channel copy, 0 identityName shared/);
+  });
+
+  test('PASSES when two apps and the channel are all still on the sentinel — two placeholders are not a collision', () => {
+    const { code, out } = run(
+      tree({
+        apps: [ZZ_APP, ZZ_SECOND],
+        appYamls: { subscriptiontracker: appYaml('subscriptiontracker', ZZ_PENDING), zzsecond: appYaml('zzsecond', ZZ_PENDING) },
+      }),
+    );
+    assert.equal(code, 0, out);
+    assert.match(out, /WINDOWS IDENTITY NOT YET ISSUED — app "subscriptiontracker"/);
+    assert.match(out, /WINDOWS IDENTITY NOT YET ISSUED — app "zzsecond"/);
+    assert.match(out, /0 identityName shared/);
+  });
+
+  // RC3.
+  test('FAILS when the record identityName is one character off the channel copy', () => {
+    const { code, out } = run(issued([ZZ_APP], { subscriptiontracker: appYaml('subscriptiontracker', { ...ZZ_ONE, identityName: 'ZZTest.AppOnf' }) }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /Windows identity DISAGREES for app "subscriptiontracker": apps\/subscriptiontracker\/app\.yaml stores\.windows-store\.identityName = "ZZTest\.AppOnf"/);
+  });
+
+  test('FAILS when the record packageFamilyName alone disagrees with the channel copy', () => {
+    const { code, out } = run(issued([ZZ_APP], { subscriptiontracker: appYaml('subscriptiontracker', { ...ZZ_ONE, packageFamilyName: 'ZZTest.AppOne_aaaaaaaaaaaab' }) }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /stores\.windows-store\.packageFamilyName = "ZZTest\.AppOne_aaaaaaaaaaaab"/);
+  });
+
+  // Without this direction, deleting the owner's record would turn (b) off
+  // rather than red: no record, nothing compared, exit 0.
+  test('FAILS when the channel copy is issued and no app.yaml declares it', () => {
+    const { code, out } = run(issued([ZZ_APP], { subscriptiontracker: appYaml('subscriptiontracker') }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /packageIdentity\.identityName = "ZZTest\.AppOne" is issued, and no apps\/<id>\/app\.yaml declares it/);
+  });
+
+  // The app-brick CI job's case: the brick writes no record until B4a-2, so a
+  // freshly stamped app has an app.yaml without one. Its pubspec still packages
+  // the channel identity (post_gen.dart), which is the hazard B4a-2 removes.
+  test('PRINTS, and does not fail, for a second app.yaml with no record while the owner record is checked', () => {
+    const { code, out } = run(
+      issued([ZZ_APP, ZZ_SECOND], {
+        subscriptiontracker: appYaml('subscriptiontracker', ZZ_ONE),
+        zzsecond: appYaml('zzsecond'),
+      }),
+    );
+    assert.equal(code, 0, out);
+    assert.match(out, /NO stores\.windows-store RECORD: apps\/zzsecond\/app\.yaml/);
+    assert.match(out, /1 app\.yaml stores\.windows-store record\(s\) read, 2 issued field\(s\) equal/);
+  });
+
+  test('FAILS when the record is HALF issued', () => {
+    const { code, out } = run(issued([ZZ_APP], { subscriptiontracker: appYaml('subscriptiontracker', { ...ZZ_ONE, packageFamilyName: SENTINEL }) }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /stores\.windows-store is HALF issued: packageFamilyName still PARTNER-CENTER-PENDING/);
+  });
+
+  test('FAILS when a record field is missing — a hole, not a placeholder', () => {
+    const { code, out } = run(issued([ZZ_APP], { subscriptiontracker: appYaml('subscriptiontracker', { identityName: ZZ_ONE.identityName }) }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /stores\.windows-store\.packageFamilyName missing or empty — a hole, not a placeholder/);
+  });
+
+  test('FAILS when an app.yaml does not parse, rather than skipping its record', () => {
+    const { code, out } = run(issued([ZZ_APP], { subscriptiontracker: `${appYaml('subscriptiontracker', ZZ_ONE)}id: subscriptiontracker\n` }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /apps\/subscriptiontracker\/app\.yaml does not parse \(.*duplicate key "id"/);
   });
 });
 

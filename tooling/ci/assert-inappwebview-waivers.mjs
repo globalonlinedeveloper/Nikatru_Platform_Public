@@ -15,8 +15,11 @@
 // 1.1.3, build.gradle:44 — AGP 9 throws), Windows in C++ on STL1011 from
 // flutter_inappwebview_windows including <experimental/coroutine>. Since PR 537
 // (2026-09-07) tooling/bricks/app/hooks/post_gen.dart PRINTS both at stamp time.
-// Nothing ENFORCED them, and ci.yml builds no native binary, so a missing waiver
-// is invisible on every required check until build-platforms.yml runs.
+// Nothing ENFORCED them. ci.yml's `android-artifacts` job (a ci-gate constituent)
+// builds the Android apk and appbundle, so the Gradle evaluation the Android waiver
+// is for runs on every PR — minutes in, after the toolchain installs. ci.yml builds
+// no Windows binary, so a missing Windows waiver is invisible on every required
+// check until build-platforms.yml runs, and this is the check that sees it first.
 //
 // ── WHAT IT ASSERTS ──────────────────────────────────────────────────────────
 //   W1 for every apps/<app> whose pubspec — or any local `path:` package it
@@ -182,7 +185,8 @@ if (problems.length) {
   console.error(`✗ inappwebview waivers — ${problems.length} problem(s):`);
   for (const p of problems) console.error(`    ${p}`);
   console.error('');
-  console.error('  O-BRICK-NATIVE-SCAFFOLDING: ci.yml builds no native binary, so this is the only required check that sees a missing waiver.');
+  console.error('  O-BRICK-NATIVE-SCAFFOLDING: ci.yml builds no Windows binary, so this is the only required check that sees a missing Windows waiver;');
+  console.error('  a missing Android waiver also fails ci.yml\'s android-artifacts build, later and less directly.');
   process.exit(1);
 }
 console.log(`ok  inappwebview waivers — ${apps.length} app(s), ${judged} judged on a native platform, puller set agrees with pubspec.lock`);

@@ -1762,7 +1762,8 @@ const COVERED_BY = {
   // machine will defend. Saying so is the honest version of the sentence it
   // replaces, which claimed a mechanical falsifier that does not exist.
   // NOT CLAIMED HERE: WHICH custody step is outstanding. The sources disagree
-  // and this guard cannot settle it — nikatru/OWNER_QUEUE.md:470 calls PRINTING
+  // and this guard cannot settle it — nikatru/owner-queue.json row
+  // S-3 calls PRINTING
   // the seed the only remaining step, while the private release plan and this
   // register's own `restoreDrill.note` both assert it is already printed and
   // name the drill as what is left. Left unresolved on purpose; `restoreDrill

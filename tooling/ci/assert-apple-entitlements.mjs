@@ -36,8 +36,18 @@
 // Release file — the key without which the sandboxed app reaches no backend —
 // and this guard exited 0 reporting "1 iOS tree(s) agree".
 //
+// O-APPLE-RESOURCE-IDS-IN-COMMENTS — AND NO APPLE RESOURCE ID OUTSIDE THE
+// REGISTER. apple-signing.mjs's header named eight App Store Connect ids as the
+// live ones; five of them had been deleted and re-minted, and the comment went on
+// saying they were live. The register is the one tracked home of an id, with a
+// `retired` list for the ones that were live once:
+//   · every .mjs under tooling/ci (tests included) is read, and a line carrying
+//     any id `appleResourceIds` returns — anchor, apps, protected, retired — is a
+//     finding naming file:line. Point at tooling/apple-provisioning.json instead.
+//
 // Exit 0 = agreement. 1 = a finding. 2 = COVERAGE LOST — the register is
-// unreadable, or no app's iOS tree, or no app's macOS tree, was read at all.
+// unreadable, or no app's iOS tree, or no app's macOS tree, was read at all, or
+// the register names no resource id (or, on the real repo, no .mjs was read).
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
@@ -51,9 +61,14 @@ import {
   macosEntitlementFileNames,
   parseFlatDict,
   compareFileToDeclared,
+  appleResourceIds,
 } from './apple-provisioning.mjs';
 
-const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+const ROOT = resolve(process.argv[2] ?? REPO_ROOT);
+// A fixture root carries no tooling/ci, so "no .mjs read" is COVERAGE LOST on the
+// real repo only.
+const scanningRealRepo = ROOT === REPO_ROOT;
 const ENTITLEMENTS = 'ios/Runner/Runner.entitlements';
 const PBXPROJ = 'ios/Runner.xcodeproj/project.pbxproj';
 const WANT_SETTING = 'CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;';
@@ -64,6 +79,17 @@ const MAC_PBXPROJ = 'macos/Runner.xcodeproj/project.pbxproj';
 function signedEntitlementFiles(pbxText) {
   const text = pbxText.replace(/\/\*[\s\S]*?\*\//g, '');
   return new Set([...text.matchAll(/CODE_SIGN_ENTITLEMENTS\s*=\s*"?([^;"]+?)"?\s*;/g)].map((m) => m[1].trim()));
+}
+
+/** Every .mjs under `dir`, repo-relative with forward slashes, through `listDir`. */
+function mjsUnder(dir, rel = 'tooling/ci') {
+  if (!existsSync(dir)) return [];
+  const out = [];
+  for (const e of listDir(dir, { withFileTypes: true })) {
+    if (e.isDirectory()) out.push(...mjsUnder(join(dir, e.name), `${rel}/${e.name}`));
+    else if (e.name.endsWith('.mjs')) out.push(`${rel}/${e.name}`);
+  }
+  return out;
 }
 
 function lost(why) {
@@ -197,6 +223,25 @@ function main() {
   // Every app ships all seven targets, macOS included, so a tree with iOS and no
   // macOS anywhere is a limb that read nothing — not a pass.
   if (checkedMac === 0) return lost('no apps/<slug>/macos/Runner tree was found, so no macOS entitlements file was compared');
+
+  // ── the id limb · O-APPLE-RESOURCE-IDS-IN-COMMENTS ──────────────────────────
+  const ids = appleResourceIds(reg);
+  if (ids.size === 0) return lost(`${REGISTER} names no App Store Connect resource id, so no .mjs was checked for one`);
+  const mjs = mjsUnder(join(ROOT, 'tooling', 'ci'));
+  if (scanningRealRepo && mjs.length === 0) return lost('no .mjs under tooling/ci was read, so no file was checked for an Apple resource id');
+  const idRe = new RegExp(`\\b(${[...ids].join('|')})\\b`, 'g');
+  const before = problems.length;
+  for (const rel of mjs) {
+    const lines = readFileSync(join(ROOT, rel), 'utf8').split('\n');
+    for (const [i, line] of lines.entries()) {
+      for (const m of line.matchAll(idRe)) {
+        problems.push(`${rel}:${i + 1} names Apple resource id ${m[1]} — the ids live in ${REGISTER} (protected / retired) only; point at it instead`);
+      }
+    }
+  }
+  if (problems.length === before) {
+    console.log(`ok   ids: ${mjs.length} .mjs file(s) under tooling/ci name none of the register's ${ids.size} Apple resource id(s)`);
+  }
 
   if (problems.length) {
     for (const p of problems) console.error(`✗ ${p}`);

@@ -329,3 +329,103 @@ jobs:
     assert.match(r.out, /COVERAGE LOST/);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE IMPORT LIMB · O-DEPLOY-TRIGGERS-MISS-IMPORTED-MODULES. deploy-web.yml
+// listed tooling/ops/create-glitchtip-release.mjs and not the bounded retry it
+// imports, so an edit to the retry changed what the lane ran and deployed
+// nothing. The REAL-TREE red is the closes clause's own: delete
+// `tooling/ops/bounded-retry.mjs` from deployUnits["<app>-web"] and the guard
+// exits 1 naming it. These fixtures cover each read shape the limb follows.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-deploy-triggers — the import limb', () => {
+  /** A fixture unit claiming `listed` tooling entries, plus the tooling `files` it holds. */
+  function importTree(listed, files) {
+    const root = fixture({ 'deploy-web.yml': lane() }, { '<app>-web': [...ALL, ...listed] });
+    for (const [rel, body] of Object.entries(files)) {
+      mkdirSync(dirname(join(root, rel)), { recursive: true });
+      writeFileSync(join(root, rel), body);
+    }
+    return root;
+  }
+
+  test('IL1 — a listed tooling module importing an unlisted one is refused, naming the file and its importer', () => {
+    const r = run(importTree(['tooling/ops/a.mjs'], {
+      'tooling/ops/a.mjs': "import { retry } from './b.mjs';\nexport const a = retry;\n",
+      'tooling/ops/b.mjs': 'export const retry = 1;\n',
+    }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /deploy-web\.yml — `tooling\/ops\/a\.mjs` reads `tooling\/ops\/b\.mjs`, and deployUnits\["<app>-web"\] never claims it/);
+  });
+
+  test('IL2 GREEN CONTROL — the imported module listed passes, and the limb prints its own ok line beside the Flutter one', () => {
+    const r = run(importTree(['tooling/ops/a.mjs', 'tooling/ops/b.mjs'], {
+      'tooling/ops/a.mjs': "import { retry } from './b.mjs';\nexport const a = retry;\n",
+      'tooling/ops/b.mjs': 'export const retry = 1;\n',
+    }));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /ok {2}deploy triggers — 1 Flutter deploy unit\(s\) \(<app>-web by deploy-web\.yml\)/);
+    assert.match(r.out, /ok {2}deploy-trigger imports — 1 unit-planning workflow\(s\) graded \(deploy-web\.yml\): 2 tooling module\(s\) walked, 1 read\(s\) followed/);
+  });
+
+  test('IL3 — the walk is TRANSITIVE: a module two imports deep is demanded, named with its own importer', () => {
+    const r = run(importTree(['tooling/ops/a.mjs', 'tooling/ops/b.mjs'], {
+      'tooling/ops/a.mjs': "import { b } from './b.mjs';\nexport const a = b;\n",
+      'tooling/ops/b.mjs': "import { c } from '../ci/c.mjs';\nexport const b = c;\n",
+      'tooling/ci/c.mjs': 'export const c = 1;\n',
+    }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /`tooling\/ops\/b\.mjs` reads `tooling\/ci\/c\.mjs`/);
+    assert.doesNotMatch(r.out, /`tooling\/ops\/a\.mjs` reads `tooling\/ops\/b\.mjs`/);
+  });
+
+  test("IL4 — a 'tooling/….json' literal on a code line is a read; the same kind of path in a comment is not", () => {
+    const r = run(importTree(['tooling/ops/a.mjs'], {
+      'tooling/ops/a.mjs': "// the old home was 'tooling/ops/doc.json'\nexport const REGISTER = 'tooling/ops/data.json';\n",
+      'tooling/ops/data.json': '{}\n',
+      'tooling/ops/doc.json': '{}\n',
+    }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /`tooling\/ops\/a\.mjs` reads `tooling\/ops\/data\.json`/);
+    assert.doesNotMatch(r.out, /doc\.json/);
+  });
+
+  test('IL5 — join(HERE, …, x.json) is resolved from the module and demanded', () => {
+    const r = run(importTree(['tooling/ops/a.mjs'], {
+      'tooling/ops/a.mjs': "const HERE = dirname(fileURLToPath(import.meta.url));\nexport const reg = readFileSync(join(HERE, '..', 'reg.json'), 'utf8');\n",
+      'tooling/reg.json': '{}\n',
+    }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /`tooling\/ops\/a\.mjs` reads `tooling\/reg\.json`/);
+  });
+
+  test('IL6 — a tooling .json the lane READS by name (not only a tooling/ci .mjs it runs) must be claimed by the unit', () => {
+    const r = run(
+      fixture(
+        {
+          'deploy-web.yml': lane().replace(
+            '      - run: flutter build web --release\n',
+            `      - run: node -p "require('./tooling/ops/project.json').org"\n      - run: flutter build web --release\n`,
+          ),
+        },
+        { '<app>-web': ALL },
+      ),
+    );
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /deployUnits\["<app>-web"\] never claims `tooling\/ops\/project\.json`/);
+  });
+
+  test('IL7 — on the real repo (no argv), a second deploy workflow not graded and zero reads followed are COVERAGE LOST (2)', () => {
+    const root = importTree([], {
+      'pubspec.yaml': 'name: w\n',
+      'pubspec.lock': '{}\n',
+      'tooling/versions.json': '{}\n',
+      'catalog/apps.json': '[]\n',
+    });
+    const r = spawnSync(process.execPath, [GUARD], { cwd: root, encoding: 'utf8' });
+    const out = `${r.stdout}${r.stderr}`;
+    assert.equal(r.status, 2, out);
+    assert.match(out, /COVERAGE LOST — named workflow\(s\) no longer graded by the import limb: deploy-workers\.yml/);
+    assert.match(out, /COVERAGE LOST — the import limb followed ZERO reads/);
+  });
+});

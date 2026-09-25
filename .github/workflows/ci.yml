@@ -150,26 +150,36 @@ jobs:
           fetch-depth: 0
       - uses: ./.github/actions/setup-node
       - name: No Worker schedules itself with a Durable Object alarm
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-no-do-alarms.mjs
       - name: Schema evolution is additive-only
         run: node tooling/ci/check-migrations.mjs
       - name: D1 bindings are real and consistent across Workers
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-d1-bindings.mjs
       - name: A D1 location hint is latency, never residency
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-d1-location-hint.mjs
       - name: A Hyperdrive configuration is capped, and the caps fit the origin
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-hyperdrive-cap.mjs
       - name: The shared server declares every route and every binding
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-platform-register.mjs
       - name: The served app set is data, and onboarding needs no Worker edit
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-config-registry.mjs
       - name: A Worker's unhandled error reaches a sink, not just the log
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-worker-error-sink.mjs
       - name: No Worker test mixes a pinned clock with the wall clock
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-test-clock-mix.mjs
       - name: Every hard cap derives from a sourced free-tier ceiling
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-ceiling-budget.mjs
       - name: CORS allowlist is derived from the app catalogue
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-cors-allowlist.mjs
       # The allowlist above is about ORIGINS. This one is about METHODS, and it is
       # the same defect twice: services/platform answered preflights without PUT
@@ -179,30 +189,37 @@ jobs:
       # method list. services/_shared/test/preflight.ts derives the list from the
       # routes; this is what makes importing it the only way to pass.
       - name: Every browser-serving Worker runs the shared preflight test
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-preflight-test-coverage.mjs
       # Since [ADR 075] every app shares one origin, so `Origin` can no longer tell
       # one app's caller from another's. This is the guard that keeps the CORS
       # middleware the ONLY place that reads it.
       - name: Origin decides CORS headers and nothing else
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-no-origin-authz.mjs
       # The app's public address is a path on the apex, and the route table, the
       # catalogue and the base href all say the same thing.
       - name: An app is published at a path on the apex, never on a subdomain
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-app-address-shape.mjs
       # One AASA and one assetlinks.json now serve every app on the shared apex, so a
       # hand-written entry for one app breaks deep linking for all of them. Today both
       # files are ABSENT and the guard asserts that absence as a measured pair.
       - name: The origin-wide association files are generated, or absent for a reason
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-well-known-shape.mjs
       - name: Every deployable unit is claimed by a lane
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-lane-coverage.mjs
       - name: Every deployed hostname is declared, and its monitor gap is visible
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-monitor-coverage.mjs
       # OFFLINE by design — no --live, no token. ci.yml's standing objection to a
       # CI limb depending on the GlitchTip box stands; what this asserts is that
       # the workflows agree with EACH OTHER and spell the project out, which is
       # the half that was false on 2026-09-09 and is knowable from the tree.
       - name: One GlitchTip project, spelled out, at every call site
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-glitchtip-project.mjs
       # OFFLINE by design — no --live, no token, for the same standing reason as
       # the step above. What the offline limbs assert is knowable from the tree:
@@ -213,8 +230,10 @@ jobs:
       # step (`--live`), never merge-blocking, because it depends on the
       # GlitchTip box. Owner ruling 2026-09-15, register O-CRASH-EVENT-IP-DROP.
       - name: No crash event carries an IP address, truncated or not
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-glitchtip-no-ip.mjs
       - name: Every failure has a detector, a response and a cadence
+        if: ${{ !cancelled() }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GLITCHTIP_TOKEN: ${{ secrets.GLITCHTIP_TOKEN }}
@@ -222,48 +241,68 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: node tooling/ci/assert-ops-register.mjs
       - name: Every alerting firing has a recorded disposition
+        if: ${{ !cancelled() }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node tooling/ci/assert-alert-disposition.mjs
       - name: No workflow or register names a repository that no longer exists
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-no-dead-repo-names.mjs
+      - name: No tracked text cites a line of a generated file, or asks for a hand edit to one
+        if: ${{ !cancelled() }}
+        run: node tooling/ci/assert-no-generated-line-cites.mjs
       - name: Every pinned input is reached by a live update manager
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-update-coverage.mjs
       - name: Every store the portfolio holds has a declared retention rule
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-retention-coverage.mjs
       - name: The events rollup stays lossless and the sweep stays fail-closed
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-rollup-lossless.mjs
       - name: Path-filtered deploys list every build input
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-deploy-triggers.mjs
       - name: Dependency resolution is reproducible
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-lockfile-discipline.mjs
       - name: Workflows are SHA-pinned and least-privilege
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-workflow-hardening.mjs
       - name: Every job is bounded once, at a number somebody chose
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-workflow-timeouts.mjs
       - name: A green tick means the work ran
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-green-means-ran.mjs
       - name: Every deploy trigger can reach a deploy job
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-deploy-triggers-deploy.mjs
       - name: The 6-platform proof is fresh
+        if: ${{ !cancelled() }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node tooling/ci/assert-platform-proof-fresh.mjs
       - name: The nightly golden-path proof is fresh
+        if: ${{ !cancelled() }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: node tooling/ci/assert-e2e-proof-fresh.mjs
       - name: The nightly exercised the legs it claims
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-e2e-legs.mjs
       - name: Every statement sent to D1 is one D1 will run
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-d1-sql-inventory.mjs
       - name: Every shared table declares how its rows are attributed
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-prod-provenance.mjs
       - name: Every live drive stamps a resolvable APP_VERSION and hands its purge the consent settings
         run: node --single-threaded tooling/ci/assert-live-writer-provenance.mjs
       - name: No provider reads a provider that already watches it
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-provider-graph-acyclic.mjs
       - name: Selection records resolve (N-9)
         run: node tooling/scripts/check-selection-record.mjs
@@ -297,68 +336,99 @@ jobs:
           fetch-depth: 0
       - uses: ./.github/actions/setup-node
       - name: An Apple privacy manifest that exists is one the build copies
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-privacy-manifest.mjs
       - name: The repository states its own legal posture
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-repo-posture.mjs
       - name: Every policy version a user consented to is still retrievable
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-policy-archive.mjs
       - name: Every published legal claim is paired, and the payment path is named
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-policy-claims.mjs
       - name: Every live sink declares what it holds, and no page denies it
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-sink-disclosure.mjs
       - name: Every store that holds data is inventoried and disclosed
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-data-inventory.mjs
       - name: The per-market duty matrix cannot silently rot
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-legal-tripwires.mjs
       - name: Every shipped asset has rights evidence, and every app shows it
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-licence-register.mjs
       - name: One analytics envelope, and the consent trail stays append-only
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-analytics-contract.mjs
       - name: The entitlement contract is complete before the first payment
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-entitlement-contract.mjs
       - name: ONE reader of the entitlement tables, mounted by every Worker
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-one-entitlement-reader.mjs
       - name: No writer can strand a NULL in a money-schema key column
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-no-null-entitlement-key.mjs
       - name: One verifier stands between a provider and the entitlement table
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-mor-adapters.mjs
       - name: Sandbox money cannot grant a production unlock
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-money-config.mjs
       - name: A stored notification replayed in any order reaches the same entitlement
         run: node tooling/ops/money-dry-run.mjs
       - name: The bundle's coming-soon gate is derived, and it moves in both directions
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-bundle-availability.mjs
       - name: No store surface promises a bundle that cannot be bought
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-no-store-bundle-copy.mjs
       - name: No bundle entitlement exists without a verified receipt
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-bundle-provenance.mjs
       - name: Every app with accounts ships a deletion control
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-deletion-control.mjs
       - name: Account deletion reaches every user-owned table, never via a shared secret
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-erasure-reach.mjs
       - name: Every Worker that verifies a token refuses a signed-out session's token
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-session-revocation.mjs
       - name: Fail-closed seams have a real on-switch
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-seams-wired.mjs
       - name: Analytics consent can be WITHDRAWN, not only given
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-consent-withdrawal-surface.mjs
       - name: Every captcha-gated auth call carries a token
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-captcha-gated-call-sites.mjs
       - name: No sign-up consent box is born ticked, and the terms tick blocks
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-signup-consent-shape.mjs
       - name: Every shared capability has one home and a real consumer
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-capability-register.mjs
       - name: The Supabase auth email templates stay restorable
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-supabase-templates.mjs
       - name: One record of how mail is sent, and no document contradicts it
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-mail-transport-claims.mjs
       - name: The purchase path is whole, bounded, declared and cancellable
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-purchase-path.mjs
       - name: No price is typed into app code
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-no-price-literals.mjs
       - name: The money funnel is wired, and the pseudonymity firewall holds
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-pseudonymity-firewall.mjs
       - name: A legal document published twice says the same thing in both places
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-legal-text-parity.mjs
 
   guards-store:
@@ -372,33 +442,45 @@ jobs:
           fetch-depth: 0
       - uses: ./.github/actions/setup-node
       - name: Build versions all match versions.json
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-version-consistency.mjs
       - name: Every Renovate bump reaches every copy the version guard reads
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-renovate-reach.mjs
       - name: The app version is derived and monotonic
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-app-versioning.mjs
       - name: Every claimed channel is a served channel
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-channel-register.mjs
       - name: Every store in the platform manifest has a channel row, and every store channel has a store
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-store-bijection.mjs
       - name: No public surface advertises an unserved or dead channel
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-channel-claims.mjs
       - name: Every declared store channel has a complete, spec-derived listing
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-store-metadata.mjs
       - name: The app declaration is valid and everything rendered from it is fresh
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-app-yaml.mjs
       - name: Both of an app's names are shippable — the store title and the icon label
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-app-naming.mjs
       # why: OFFLINE. It reads apps/<app>/name-clearance.json and never dials out —
       # the networked probe that WRITES that record takes ~14 s and is a routine, not
       # a gate. docs/name-clearance.md carries the measurement and the split.
       - name: Every declared app name carries a current, non-blocked clearance record
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-name-clearance.mjs
       - name: Every Linux store channel can produce a complete snapcraft recipe
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-snapcraft-generable.mjs
       - name: The Play listing graphics exist, are the sourced size, and say where they came from
         run: node --single-threaded tooling/ci/assert-listing-assets.mjs
       - name: The Play screenshot set spans enough device types
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-play-device-coverage.mjs
       # why a reader of its own and not a row in assert-listing-assets: that guard
       # grades a LISTING, a set of frames the register names outright. This one
@@ -410,10 +492,13 @@ jobs:
       - name: Every auto-renewable subscription has an App Store review screenshot
         run: node --single-threaded tooling/ci/assert-iap-review-screenshots.mjs
       - name: The Data safety and content-rating declarations still describe the code
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-play-declarations.mjs
       - name: The sworn store declarations have not regressed toward the stamp
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-sworn-store-files.mjs
       - name: The advertising declarations still describe the shipped tree
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-ads-declarations.mjs
       - name: The Microsoft Store submission path still walks (dry run)
         run: node tooling/release/submit-windows-store.mjs --dry-run --app subscriptiontracker --allow-missing-artifact
@@ -426,8 +511,10 @@ jobs:
       - name: The Google Play submission path still walks (dry run)
         run: node tooling/release/submit-play.mjs --dry-run --app subscriptiontracker --allow-missing-artifact
       - name: No release build from an ungated commit, no publish unrecorded
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-release-provenance.mjs
       - name: No release lane finishes with the artifact stuck inside the run
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-release-durable.mjs
       # why: THE ONLY PLACE THIS GUARD CAN RUN ON MAIN. It grades a staged release
       # directory, and no such directory exists outside a release run — so on every
@@ -435,47 +522,65 @@ jobs:
       # guard nobody knows works. `--self-test` builds real release directories in
       # os.tmpdir(), breaks one thing in each, and requires the guard to name it.
       - name: The release-record guard can still fail (mutation matrix)
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-release-json.mjs --self-test
       - name: Nothing is compiled into an artifact that was not declared shippable
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-no-secret-defines.mjs
       - name: Obfuscation and symbol retention are one increment or neither
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-obfuscation-coupled.mjs
       - name: No shipped client overrides TLS certificate trust
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-no-tls-pinning.mjs
       - name: The web channel declares a cache policy a deploy can be seen through
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-web-cache-policy.mjs . sites/nikatru sites/rajasekarselvam
       - name: Release lanes cover every app, and no guard hides a lane
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-release-lane-generic.mjs
       - name: Nothing is published without being launched once
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-launch-smoke.mjs
       - name: One app_id derives every store identity, on every platform
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-store-identity.mjs
       # why: THE TREE HALF OF O-STAMP-APPLE-PROVISIONING-MANUAL. Runner.entitlements
       # is derived from tooling/apple-provisioning.json; the live-profile half needs
       # the ASC key and is `node tooling/ops/provision-apple.mjs --app <slug>`.
       - name: Every iOS entitlements file is derived from its declared Apple capabilities
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-apple-entitlements.mjs
       - name: No live resource carries a retired name [ADR 079]
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-retired-names.mjs
       - name: No customer-visible surface names a retired product [ADR 074]
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-retired-names-visible.mjs
       - name: Every NIKATRU hostname is the apex or one label deep [ADR 080]
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-hostname-depth.mjs
       - name: No submission endangers the store identity
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-submission-safety.mjs
       - name: No publishing lane finishes without a [10]D-9 record
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-publish-records.mjs
       - name: The Android module pins the API level Google Play requires
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-android-target-sdk.mjs
       - name: No store artifact is the demo build
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-store-build-config.mjs
       - name: An app that pulls flutter_inappwebview carries its native build waivers
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-inappwebview-waivers.mjs
       # why: [ADR 067] decision 1's fourth artefact. Appended at the END of this
       # job on purpose — an insertion shifts every `ci.yml:NNNN` citation below
       # it, and the private corpus holds ~1,647 of them, so a new step goes where
       # it moves the fewest.
       - name: The store vocabulary has one home, and every word in it is used
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-store-vocabulary.mjs
       # why: the apps.gov.in media is DERIVED from the Play set; a PR that re-captures the Play set must re-derive it
       # in the same PR, not at the next build-platforms run — docs/ci/build-platforms.md §apps-gov-in.
@@ -484,6 +589,7 @@ jobs:
       # why: O-APP-ID-FORM-UNVALIDATED (a). Appended at the END of this job, like
       # the store vocabulary step, so it shifts as few `ci.yml:NNNN` citations as it can.
       - name: The app id has one rule, and the Worker, the callers and the schemas agree with it
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-app-id-contract.mjs
 
   guards-chassis:
@@ -497,30 +603,43 @@ jobs:
           fetch-depth: 0
       - uses: ./.github/actions/setup-node
       - name: No desktop app shows users a package id where its company name belongs
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-desktop-runner-identity.mjs
       - name: A stamped app CALLS every capability it declares
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-stamp-wiring.mjs
       - name: No capability exists twice, in an app or the template
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-no-seam-forks.mjs
       - name: Every shared package the template delegates to is adopted by every app
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-chassis-parity.mjs
       - name: Shared code carries no app-specific vocabulary
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-no-clone-tells.mjs
       - name: Core stays pure, the design system stays domain-free, apps use the seams
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-package-boundaries.mjs
       - name: Every package is earned, or dated
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-package-earned.mjs
       - name: Every vendor satisfies the portability checklist
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-vendor-portability.mjs
       - name: One convention set reaches every app, and can fail a build
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-lint-inheritance.mjs
       - name: No app has hollowed out the gates it inherited
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-no-gate-weakening.mjs
       - name: No hardcoded user-facing strings in the brick
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-no-hardcoded-strings.mjs
       - name: Every adapter declares where it works
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-adapter-capabilities.mjs
       - name: The inherited screen set is declared, present and reachable
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-screen-set.mjs
       # why its own step when assert-screen-set above already imports it: that
       # import only asks "has it shipped?" to judge a blocker, and a `present`
@@ -528,16 +647,22 @@ jobs:
       # target registers com.nikatru.<id>://auth-callback, the allow list admits
       # every flow, every link-sending call passes its redirect — on every push.
       - name: Every native target registers the app's auth callback, and every link-sending call passes its redirect
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-auth-callbacks.mjs
       - name: Every reachable surface has a width measurement, and every measurement a surface
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-responsive-coverage.mjs
       - name: Every reachable surface has an accessibility sweep, and every sweep a surface
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-a11y-coverage.mjs
       - name: A first-run gate is found by its CONTROL, never by its widget type
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-modal-detection.mjs
       - name: Every rollout read is an observed rollout
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-flag-exposure.mjs
       - name: Every app carries a done-record, and its DoD items really run
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-app-dod.mjs
       # why HERE and not in guard-meta: this is the STATIC half of the Dart
       # mutation harness — it resolves every done-record row to a real test
@@ -550,6 +675,7 @@ jobs:
       # measured at 90–140 minutes for a full sweep against a 25-minute cap. The
       # guard's own header carries the measurement and the argument.
       - name: Every mutation proof still addresses the code it was run against
+        if: ${{ !cancelled() }}
         run: node tooling/ci/assert-mutation-proofs.mjs
 
   security-scan:

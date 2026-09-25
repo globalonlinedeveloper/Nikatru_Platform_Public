@@ -67,8 +67,11 @@ export function appSet(root) {
 /** The `--emit-apps` mode of assert-release-lane-generic.mjs: the set as a JSON
  *  array of ids, the matrix four workflows iterate. Returns the exit code.
  *  Its output and its refusals are byte-identical to the block it was moved
- *  from; the four lanes read them. */
-export function emitApps(root) {
+ *  from; the four lanes read them.
+ *  ⏱ 2026-09-25 — `only` (O-TAG-BUILDS-EVERY-APP): the id a release tag names.
+ *  The whole set is judged first, then narrowed to `[only]`; an id the set does
+ *  not hold is refused, naming the set. The caller reads the id off the tag. */
+export function emitApps(root, { only = null } = {}) {
   const found = workspaceApps(root);
   if (found === null || found.length === 0) {
     console.error(`FAIL --emit-apps: ${join(root, 'pubspec.yaml')} declares no \`workspace:\` entry under apps/.`);
@@ -81,6 +84,15 @@ export function emitApps(root) {
     console.error(`FAIL --emit-apps: workspace entr${nested.length === 1 ? 'y' : 'ies'} ${nested.join(', ')} nest below apps/<id>.`);
     console.error('     The lanes address an app as `apps/${{ matrix.app }}`, which a nested path cannot round-trip.');
     return 1;
+  }
+  if (only !== null) {
+    if (!ids.includes(only)) {
+      console.error(`FAIL --emit-apps --tag: the tag names app "${only}", and the workspace declares ${ids.join(', ')}.`);
+      console.error('     A tag builds and stages only its own app, and this workspace holds no app of that id.');
+      return 1;
+    }
+    console.log(JSON.stringify([only]));
+    return 0;
   }
   console.log(JSON.stringify(ids));
   return 0;
