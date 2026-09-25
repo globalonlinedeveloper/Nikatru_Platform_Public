@@ -34,7 +34,7 @@
 // Usage:  node tooling/ops/check-live-signin-key.mjs
 //         node tooling/ops/check-live-signin-key.mjs --fixtures <file.json>
 //   --fixtures answers every request from a JSON file keyed by URL:
-//   {"<url>": {"status": 200, "body": "…", "apikeySha8": "…"}} or
+//   {"<url>": {"status": 200, "body": "…", "apikey": "…"}} or
 //   {"<url>": {"fail": "reset"|"hang"}}.
 //   It is the test seam; it prints a banner that must never appear in a real
 //   ops-watch log.
@@ -123,14 +123,15 @@ function liveFetch(url, { headers, signal }) {
 
 /** The --fixtures seam: answers from a file, never the network. A `hang` never
  *  settles until the per-request signal fires, which is how a timeout is proved.
- *  A row with `apikeySha8` models the gateway: it answers 401 unless the request
- *  carried, in `apikey`, the key with that fingerprint. */
+ *  A row with `apikey` models the gateway: it answers 401 unless the request
+ *  carried exactly that key in `apikey`. It compares the key, as the gateway
+ *  does, and never hashes the header (CodeQL js/insufficient-password-hash). */
 function fixtureFetchFrom(file) {
   const table = JSON.parse(readFileSync(file, 'utf8'));
   return (url, { headers, signal }) => {
     const row = table[url];
     if (!row) return Promise.reject(new Error(`fixture has no answer for ${url}`));
-    if (row.apikeySha8 !== undefined && sha8(headers?.apikey ?? '') !== row.apikeySha8) {
+    if (row.apikey !== undefined && (headers?.apikey ?? '') !== row.apikey) {
       return Promise.resolve(new Response('{"message":"Invalid API key"}', { status: 401 }));
     }
     if (row.fail === 'hang') {

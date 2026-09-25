@@ -115,7 +115,7 @@ describe('check-live-signin-key — the process, answered from fixtures', () => 
   test('K1 GREEN CONTROL: key served, host 200 — exit 0, sha8 printed, the key is not', () => {
     const r = run({
       [servedScriptUrl()]: { status: 200, body: scriptWith(FAKE_KEY) },
-      [SETTINGS]: { status: 200, body: SETTINGS_OK, apikeySha8: sha8(FAKE_KEY) },
+      [SETTINGS]: { status: 200, body: SETTINGS_OK, apikey: FAKE_KEY },
     });
     assert.equal(r.code, 0, r.all);
     assert.ok(r.out.includes(`sha8=${sha8(FAKE_KEY)}`), r.all);
@@ -148,7 +148,7 @@ describe('check-live-signin-key — the process, answered from fixtures', () => 
   test('K4 the host holds a ROTATED key — the served one is refused, RED, exit 1', () => {
     const r = run({
       [servedScriptUrl()]: { status: 200, body: scriptWith(FAKE_KEY) },
-      [SETTINGS]: { status: 200, body: SETTINGS_OK, apikeySha8: sha8(ROTATED_KEY) },
+      [SETTINGS]: { status: 200, body: SETTINGS_OK, apikey: ROTATED_KEY },
     });
     assert.equal(r.code, 1, r.all);
     assert.match(r.err, /refused by the auth host .*HTTP 401/);
