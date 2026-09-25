@@ -64,7 +64,22 @@
     "  · a denial that resolves to NO declared category FAILS unless it is classified",
     "    in `denialsOutOfScope` — a new denial cannot be published unscoped               [K-5]",
     "  · COVERAGE LOST on zero live infrastructure rows, an empty declared union, or",
-    "    zero denials extracted from the pages                                            [F-10]"
+    "    zero denials extracted from the pages                                            [F-10]",
+    "",
+    "`requiredWhen` — ON EVERY ROW. The condition under which an app must declare this provider in its",
+    "apps/<id>/privacy.yaml `processors`, evaluated by tooling/legal/required-providers.mjs against the",
+    "app's own app.yaml and the laned app channels of tooling/channel-register.json (surface app, lane not null).",
+    "One of five kinds:",
+    "  · always          every app with a privacy declaration: the shared stack",
+    "  · appYaml         {path, equals}: the app's app.yaml carries that dotted key with that value",
+    "  · mobileIapRail   {rail}: the app declares billing.mobileIap AND a laned app channel sells on that rail",
+    "  · channelRail     {rail, regionToo?}: a laned app channel sells on that rail (with regionToo, or names",
+    "                    it in purchaseRail.regionRails)",
+    "  · never           {why}: no app configuration makes it a processor; `why` is at least 20 characters",
+    "A key starting with `_` is a comment. Enforced by tooling/ci/assert-app-yaml.mjs limb 9: a required",
+    "provider missing from a privacy.yaml, or a `never` provider declared in one, is a finding (exit 1); a",
+    "row with no requiredWhen, or a kind the resolver does not know, is COVERAGE LOST (exit 2).",
+    "O-APP-PRIVACY-OMITS-STORE-BILLING."
   ],
   "nonProviderRouteSegments": {
     "_why": [
@@ -365,13 +380,18 @@
       "name": "Apple App Store",
       "role": "store_billing",
       "status": "deferred",
+      "requiredWhen": {
+        "kind": "mobileIapRail",
+        "rail": "apple-iap"
+      },
       "reachableAt": null,
       "tells": [
         "apple app store"
       ],
       "namedIn": [
         "privacy.html",
-        "refund.html"
+        "refund.html",
+        "subscriptiontracker/privacy.html"
       ],
       "privateRecord": "OWNER_QUEUE A-4 — the Apple Developer account. CLOSED 2026-08-31: the account EXISTS and the membership is ACTIVE, verified by an authenticated App Store Connect call on 2026-09-05 and again on 2026-09-08 (HTTP 200, ACCOUNT_HOLDER record). It holds zero certificates.",
       "notes": [
@@ -388,13 +408,18 @@
       "name": "Google Play",
       "role": "store_billing",
       "status": "deferred",
+      "requiredWhen": {
+        "kind": "mobileIapRail",
+        "rail": "play-billing"
+      },
       "reachableAt": null,
       "tells": [
         "google play"
       ],
       "namedIn": [
         "privacy.html",
-        "refund.html"
+        "refund.html",
+        "subscriptiontracker/privacy.html"
       ],
       "privateRecord": "OWNER_QUEUE A-3 — the Play publisher account.",
       "notes": [
@@ -412,6 +437,10 @@
       "name": "Microsoft Store",
       "role": "store_billing",
       "status": "deferred",
+      "requiredWhen": {
+        "kind": "never",
+        "why": "Every Windows channel sells on paddle (tooling/channel-register.json windows-store and windows-direct), so no app purchase is billed through the Microsoft Store; a Windows sale is the `paddle` row."
+      },
       "reachableAt": null,
       "tells": [
         "microsoft store"
@@ -431,6 +460,9 @@
       "name": "Cloudflare",
       "role": "infrastructure",
       "status": "live",
+      "requiredWhen": {
+        "kind": "always"
+      },
       "reachableAt": null,
       "tells": [
         "cloudflare"
@@ -469,6 +501,10 @@
       "name": "Paddle",
       "role": "merchant_of_record",
       "status": "live",
+      "requiredWhen": {
+        "kind": "channelRail",
+        "rail": "paddle"
+      },
       "ownerItem": "A-1",
       "reachableAt": null,
       "tells": [
@@ -554,6 +590,10 @@
       "name": "Lemon Squeezy",
       "role": "merchant_of_record",
       "status": "deferred",
+      "requiredWhen": {
+        "kind": "never",
+        "why": "Retired by [ADR 039] D4 (2026-08-09): no channel in tooling/channel-register.json sells on it, so no app configuration routes a purchase through it."
+      },
       "reachableAt": null,
       "tells": [
         "lemon squeezy",
@@ -587,13 +627,19 @@
       "name": "Razorpay",
       "role": "payment_gateway",
       "status": "wired-not-live",
+      "requiredWhen": {
+        "kind": "channelRail",
+        "rail": "razorpay",
+        "regionToo": true
+      },
       "reachableAt": null,
       "tells": [
         "razorpay"
       ],
       "namedIn": [
         "terms.html",
-        "refund.html"
+        "refund.html",
+        "subscriptiontracker/privacy.html"
       ],
       "privateRecord": null,
       "notes": [
@@ -716,13 +762,19 @@
       "name": "RevenueCat",
       "role": "iap_aggregator",
       "status": "wired-not-live",
+      "requiredWhen": {
+        "kind": "appYaml",
+        "path": "billing.mobileIap.provider",
+        "equals": "revenuecat"
+      },
       "reachableAt": null,
       "tells": [
         "revenuecat",
         "revenue cat"
       ],
       "namedIn": [
-        "privacy.html"
+        "privacy.html",
+        "subscriptiontracker/privacy.html"
       ],
       "privateRecord": null,
       "notes": [
@@ -770,12 +822,17 @@
       "name": "Supabase",
       "role": "identity",
       "status": "wired-not-live",
+      "requiredWhen": {
+        "kind": "always",
+        "_why": "Parent ruling 2026-09-25 (SUPABASE_KIND = always): the identity server every app signs in against. Until the Phase 5 cutover both Workers still point SUPABASE_URL at the hosted project (P4-2); at the cutover this becomes `never`, with a why citing P4-3."
+      },
       "reachableAt": null,
       "tells": [
         "supabase"
       ],
       "namedIn": [
-        "privacy.html"
+        "privacy.html",
+        "subscriptiontracker/privacy.html"
       ],
       "privateRecord": null,
       "notes": [
@@ -795,6 +852,10 @@
       "name": "Apple (Sign in with Apple)",
       "role": "identity",
       "status": "wired-not-live",
+      "requiredWhen": {
+        "kind": "never",
+        "why": "The user's own account provider for an optional sign-in, not a processor acting for us; each privacy page names it in its own sentence, not in the processor table."
+      },
       "reachableAt": null,
       "tells": [
         "sign in with apple"
@@ -823,6 +884,10 @@
       "name": "Google (Sign in with Google)",
       "role": "identity",
       "status": "wired-not-live",
+      "requiredWhen": {
+        "kind": "never",
+        "why": "The user's own account provider for an optional sign-in, not a processor acting for us; each privacy page names it in its own sentence, not in the processor table."
+      },
       "reachableAt": null,
       "tells": [
         "sign in with google"
@@ -853,6 +918,9 @@
       "name": "Hostinger",
       "role": "infrastructure",
       "status": "live",
+      "requiredWhen": {
+        "kind": "always"
+      },
       "reachableAt": null,
       "tells": [
         "hostinger"
@@ -906,6 +974,10 @@
       "name": "Oracle Cloud",
       "role": "infrastructure",
       "status": "wired-not-live",
+      "requiredWhen": {
+        "kind": "always",
+        "_why": "Parent ruling 2026-09-25 (SUPABASE_KIND = always, for both supabase and oracle-cloud). Since 2026-09-24 it runs none of the services and stores the encrypted third backup copy of the services box (duty.restic-third-copy in tooling/ops/register.json)."
+      },
       "reachableAt": null,
       "tells": [
         "oracle"
@@ -966,6 +1038,9 @@
       "name": "Resend",
       "role": "email_delivery",
       "status": "live",
+      "requiredWhen": {
+        "kind": "always"
+      },
       "reachableAt": null,
       "tells": [
         "resend"
@@ -1010,6 +1085,10 @@
       "name": "Sentry (Functional Software, Inc.) — browser SDK CDN",
       "role": "content_delivery",
       "status": "not-named-not-wired",
+      "requiredWhen": {
+        "kind": "never",
+        "why": "Egress closed 2026-09-12 (W5): no shipped Content-Security-Policy lets a browser reach browser.sentry-cdn.com, and crash reports go to the self-hosted GlitchTip (the `hostinger` row)."
+      },
       "reachableAt": null,
       "tells": [
         "sentry"
@@ -1039,6 +1118,10 @@
       "name": "Google (gstatic.com content delivery)",
       "role": "content_delivery",
       "status": "not-named-not-wired",
+      "requiredWhen": {
+        "kind": "never",
+        "why": "Egress closed 2026-09-12 (W5): web builds use --no-web-resources-cdn and self-hosted fallback fonts, so no visitor request reaches gstatic.com."
+      },
       "reachableAt": null,
       "tells": [
         "gstatic"
