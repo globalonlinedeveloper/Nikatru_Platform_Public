@@ -281,7 +281,7 @@ void main() {
   // there, and the horizontal span to read. `tooling/store/capture-row-edge.mjs`
   // then reads the three device rows just above the fold and FAILS the set on
   // any pixel off the ground: that is a card cut by the frame edge with no fade
-  // over it, which is the defect O-STORE-FRAME-FAB named.
+  // over it, which is the defect O-STORE-FRAME-FAB-COVERS-A-PRICE-ROW named.
   //
   // Recorded on BOTH postures, outside the live-backend block, because the
   // geometry does not depend on the board: a `--proof` run with no geometry is

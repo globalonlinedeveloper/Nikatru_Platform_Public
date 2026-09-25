@@ -79,7 +79,7 @@ The guard reads D1 through the SAME reader ops-watch uses
 JSON, no heartbeat row at all — exits 2 (COVERAGE LOST), never 0.
 
 ⛔ AND A GREEN VERDICT IS NOT A PROOF THAT THE LIVE PATH WORKS. That guard
-grades the FRESHNESS of the evidence. `O-E2E-UNPROVEN` stays open.
+grades the FRESHNESS of the evidence; the live-path proof is `O-E2E-UNPROVEN`.
 
 ⚠️ ONE ASYMMETRY IS LEFT OPEN AND NAMED. The `alert` job at the bottom of this
 file still gates on `github.event_name == 'schedule'`, so a Worker-DISPATCHED

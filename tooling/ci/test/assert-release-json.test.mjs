@@ -126,7 +126,7 @@ describe('assert-release-json', () => {
   test('M1 the record is schema-valid, and the schema is one the validator understands', () => {
     // A keyword schema-validate.mjs does not implement is REFUSED, not skipped,
     // so this also asserts that contracts/release.schema.json never grows a
-    // `minimum` or a `$ref` the grader would silently ignore.
+    // `maximum` or a `$ref` the grader would silently ignore.
     assert.ok(existsSync(SCHEMA));
     const s = stage();
     const g = grade(s.dir);

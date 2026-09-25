@@ -1,8 +1,8 @@
 # What is public, what is private, and how to tell
 
 This subtree is public. It lives at `extensions/` inside `Nikatru_Platform_Public`. Its private half is a subtree too. Until 2026-08-20 the only statement of
-where a file belongs lived in `.gitignore` comments — legible to somebody reading 205 lines of ignore
-rules, and to nobody else. This is that rule, written where a contributor will find it.
+where a file belongs lived in `.gitignore` comments — legible to somebody reading the whole ignore
+file, and to nobody else. This is that rule, written where a contributor will find it.
 
 > 🔴 **Repointed 2026-09-06.** Until 2026-09-05 the two halves were their own repositories,
 > `globalonlinedeveloper/Nikatru_Extensions_Public` and `…_Private`. Under [ADR 067] decision 1 they
@@ -70,7 +70,7 @@ and its own lesson. Measured against the test above:
 - `CAPTURE-GATES.md` — a capture gate matrix. Engineering behaviour a user can verify. **Public**, as D10 said.
 - `ROADMAP.md` — subtitled *Roadmap & Business Plan*, and carries a competitor feature matrix. Strategy by
   subject. **Private.**
-- `HANDOFF.md` — a 232 KB session log with owner gates and an internal work queue. **Private.**
+- `HANDOFF.md` — a session log with owner gates and an internal work queue. **Private.**
 
 The `.gitignore` had already been enforcing this since 2026-08-14; what was missing was anybody writing
 down that the decision had changed. A rule enforced in one place and contradicted in another is a rule
@@ -83,7 +83,7 @@ Root-level strategy (`TOOLS-PIPELINE.md`, `DISTRIBUTION.md`, `DECISIONS.md`, `AP
 planning set (`ROADMAP.md`, `HANDOFF.md`, `GIT-SETUP.md`, `V2-FEATURE-COMPLETE-PLAN.md`,
 `RESUME-PROMPT.md`) were all in `Nikatru_Platform_Private/pre-minimal-2026-09-08:extensions/`, at the same relative paths.
 **That directory was removed on 2026-09-08.** Its live half moves into the private corpus’s own `decisions/` and `requirements/` trees
-(the 13 extension ADRs, and the pipeline requirements register). Everything else is at the tag above: `git show pre-minimal-2026-09-08:<path>` in the private
+(the extension ADRs, and the pipeline requirements register). Everything else is at the tag above: `git show pre-minimal-2026-09-08:<path>` in the private
 checkout.
 
 They are **not** also kept here. Four of them were, byte-identical, until 2026-08-20 — two copies of one

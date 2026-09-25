@@ -5,7 +5,7 @@
 // that sends a link passes the redirect built for its flow.
 //
 // ⏱ 2026-09-23 · written with the native auth callback seam (PR A of the
-// sign-in audit, row O-AUTH-LINKS-RETURN-TO-THE-FIRST-APP folded in).
+// sign-in audit, with the auth-links row folded in).
 //
 // ── WHY THIS EXISTS ──────────────────────────────────────────────────────────
 // Sign-up confirmation, OAuth, identity linking, password reset and an email

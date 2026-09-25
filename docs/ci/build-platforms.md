@@ -1872,7 +1872,7 @@ and recorded here.
 
 ### ⏱ APPENDED 2026-09-07 (unit `symbols-everywhere`) — THE UPLOAD HALF IS NOW DONE, AND THE "OPEN RESIDUES" LIST ABOVE IS SUPERSEDED
 
-*[ADR 067] decision 6 · `programme.json` P1-11 · `open.json` O-NATIVE-SYMBOL-UPLOAD-LINUX-ONLY ·
+*[ADR 067] decision 6 · `programme.json` P1-11 ·
 end-to-end audit of 2026-09-07 §4 gap N9.* The wording above is left standing; read this as the
 correction.
 
