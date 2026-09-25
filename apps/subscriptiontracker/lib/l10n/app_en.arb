@@ -238,6 +238,10 @@
   "@continueWithApple": {
     "description": "OAuth sign-in. Shown only where the platform can complete a redirect."
   },
+  "continueWithGoogle": "Continue with Google",
+  "@continueWithGoogle": {
+    "description": "OAuth sign-in with Google. Shown only where the platform can complete a redirect and the identity server accepts Google."
+  },
   "signOut": "Sign out",
   "@signOut": {
     "description": "Ends the session on this device."

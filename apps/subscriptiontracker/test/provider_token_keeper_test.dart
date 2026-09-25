@@ -116,23 +116,34 @@ void main() {
       expect(sent['refreshToken'], 'google-refresh-1');
       expect(sent['appId'], AppConfig.appId);
       expect(sent, hasLength(3));
+      // PB-1: never the Apple route, where it would overwrite the Apple row.
+      expect(put.path, isNot('/account/apple-token'));
     });
 
-    test('Apple is unchanged: PUT /account/apple-token', () async {
+    // ⏱ 2026-09-25 · PROVIDER-TOKEN-ONE-PATH (PB-2): Apple moved onto the one
+    // route, naming itself. The server keeps `/account/apple-token` as an alias
+    // for installed builds; this app no longer calls it.
+    test('Apple PUTs /account/provider-token naming apple', () async {
       final _SignInAuth auth = _SignInAuth('apple-refresh-1', 'apple');
       final RequestOptions put = await _signIn(auth);
       expect(put.method, 'PUT');
-      expect(put.path, '/account/apple-token');
+      expect(put.path, '/account/provider-token');
       final Map<String, Object?> sent = put.data as Map<String, Object?>;
+      expect(sent['provider'], 'apple');
       expect(sent['refreshToken'], 'apple-refresh-1');
       expect(sent['appId'], AppConfig.appId);
-      expect(sent, hasLength(2));
+      expect(sent, hasLength(3));
     });
 
-    test('a session naming no provider is sent as Apple', () async {
-      final _SignInAuth auth = _SignInAuth('apple-refresh-1', null);
-      final RequestOptions put = await _signIn(auth);
-      expect(put.path, '/account/apple-token');
-    });
+    test(
+      'a session naming no provider (an old session) is sent as Apple',
+      () async {
+        final _SignInAuth auth = _SignInAuth('apple-refresh-1', null);
+        final RequestOptions put = await _signIn(auth);
+        expect(put.path, '/account/provider-token');
+        final Map<String, Object?> sent = put.data as Map<String, Object?>;
+        expect(sent['provider'], 'apple');
+      },
+    );
   });
 }

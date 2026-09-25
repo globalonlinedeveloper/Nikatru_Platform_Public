@@ -101,11 +101,14 @@ class InMemoryAuthRepository implements core.AuthRepository {
   core.AuthUser _signIn(
     String email, {
     core.AuthEventKind kind = core.AuthEventKind.signedIn,
+    String? oauthProvider,
   }) {
     final core.AuthUser u = core.AuthUser(
       id: 'in-memory-${email.hashCode.toUnsigned(32)}',
       email: email,
       emailVerified: emailVerified,
+      oauthProviders:
+          oauthProvider == null ? const <String>[] : <String>[oauthProvider],
     );
     _user = u;
     _session = core.AuthSession(
@@ -114,6 +117,10 @@ class InMemoryAuthRepository implements core.AuthRepository {
       accessToken: 'in-memory-token-${++_issued}',
       refreshToken: 'in-memory-refresh-$_issued',
       expiresAt: DateTime.now().toUtc().add(sessionLifetime),
+      // ⏱ 2026-09-25 · PB-1: a provider door names its provider, as the
+      // Supabase adapter does. No provider token is minted: there is no
+      // provider here to have issued one.
+      oauthProvider: oauthProvider,
     );
     _changes.add(u);
     _events.add(core.AuthEvent(kind, u));
@@ -198,7 +205,12 @@ class InMemoryAuthRepository implements core.AuthRepository {
   String? lastCaptchaToken;
 
   @override
-  Future<void> signInWithApple() async => _signIn('apple.user@example.com');
+  Future<void> signInWithApple() async =>
+      _signIn('apple.user@example.com', oauthProvider: 'apple');
+
+  @override
+  Future<void> signInWithGoogle() async =>
+      _signIn('google.user@example.com', oauthProvider: 'google');
 
   /// Every address a reset was asked for. Recorded, not sent: there is no
   /// mailbox, and the only way to complete a reset here is
@@ -237,7 +249,12 @@ class InMemoryAuthRepository implements core.AuthRepository {
   /// link to. Two refusals with two different messages, so a test can tell which
   /// rule fired.
   @override
-  Future<void> linkAppleIdentity() async {
+  Future<void> linkAppleIdentity() => _link();
+
+  @override
+  Future<void> linkGoogleIdentity() => _link();
+
+  Future<void> _link() async {
     if (!core.mayLinkIdentity(_user)) {
       throw core.AuthFailure(
         'Confirm your email address before linking another sign-in method.',

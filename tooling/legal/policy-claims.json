@@ -242,6 +242,20 @@
     },
     {
       "page": "privacy.html",
+      "claim": "Sign in with Apple",
+      "type": "provider",
+      "providers": ["sign-in-with-apple"],
+      "note": "⏱ 2026-09-25 · O-SIGN-IN-PROVIDERS-UNDISCLOSED. An OPTIONAL sign-in method, named in the sentence that also says what it shares (the email address and name on the account, as the user allows) and that the name can be changed in Settings. What makes it true in this tree: packages/auth_supabase/lib/src/auth_providers.dart `AuthProviders.configured` (apple: true), the email and password form every sign-in screen keeps beside it, and the Settings display-name edit (apps/subscriptiontracker/lib/features/settings/settings_screen.dart). The Name row in apps/subscriptiontracker/store/android-play/data-safety.json is the sworn half of the same sentence."
+    },
+    {
+      "page": "privacy.html",
+      "claim": "Sign in with Google",
+      "type": "provider",
+      "providers": ["sign-in-with-google"],
+      "note": "⏱ 2026-09-25 · O-GOOGLE-SIGN-IN-NOT-BUILT. BUILT AND OFF: `AuthProviders.configured` says google: false, so no app offers it yet, and the sentence opens 'Where an app offers them' for that reason. tooling/ci/assert-auth-callbacks.mjs refuses google: true while apple is false. Named before the switch on purpose, so the disclosure is in place before the button is."
+    },
+    {
+      "page": "privacy.html",
       "claim": "Resend",
       "type": "provider",
       "providers": ["resend"],

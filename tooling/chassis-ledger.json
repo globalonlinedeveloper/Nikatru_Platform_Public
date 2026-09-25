@@ -20,14 +20,14 @@
   "_rootsNote": "TWO roots since 2026-09-07 ([ADR 067] phase 2, unit app-shell). The Worker half of the template - 13 files, 917 lines every stamped backend app inherits - was outside this ledger entirely while `root` was one string, and `git ls-files -- <that one root>` could not see it to complain. assert-chassis-ledger.mjs is the authority on this list and cross-checks it; a row's `root` is optional and defaults to roots[0], which is why the 96 rows written against the single root are unchanged. ⏱ THE FIGURES IN THIS NOTE MOVED ON 2026-09-08 AND ARE CORRECTED RATHER THAN REWRITTEN: the Worker half is now 14 files and 1,021 lines, because the template gained src/lib/error-sink.ts — a stamped backend had NO crash sink at all and failed tooling/ci/assert-worker-error-sink.mjs on limbs 2, 3 and 5 at its first CI run. The guard PRINTS both figures per root on every run, which is the number to read; this sentence is prose and prose rots.",
   "totals": {
     "files": 134,
-    "lines": 18888,
+    "lines": 18892,
     "unclassified": 0,
     "unclassifiedLines": 0
   },
   "floors": {
-    "_why": "ADR 096: brick lib/ and lib/state are CEILINGS, not bands, set at their measured size with zero headroom. assert-chassis-ledger.mjs counts every git-tracked file under the Dart app root's lib/ (the .arb files included) with the same line rule as the rows, prints both totals, and exits 1 when either is over its max. A PR that grows brick lib/ raises floors.*.max in the same PR and names why in its body; a fall is banked by lowering the max. First values measured at 60b63fb9 (#931): ADR 096 recorded 6,702 / 3,046 at 24189ff3 (#930), and #931 (sign-out-everywhere) then moved lib/ by net +31 (settings_screen.dart +20, state/providers.dart +11) and lib/state by net +11, named under ADR 096 rule 4.",
+    "_why": "ADR 096: brick lib/ and lib/state are CEILINGS, not bands, set at their measured size with zero headroom. assert-chassis-ledger.mjs counts every git-tracked file under the Dart app root's lib/ (the .arb files included) with the same line rule as the rows, prints both totals, and exits 1 when either is over its max. A PR that grows brick lib/ raises floors.*.max in the same PR and names why in its body; a fall is banked by lowering the max. First values measured at 60b63fb9 (#931): ADR 096 recorded 6,702 / 3,046 at 24189ff3 (#930), and #931 (sign-out-everywhere) then moved lib/ by net +31 (settings_screen.dart +20, state/providers.dart +11) and lib/state by net +11, named under ADR 096 rule 4. ⏱ 2026-09-25 (O-GOOGLE-SIGN-IN-NOT-BUILT): lib.max 6733 -> 6737, lib/features/auth/sign_in_screen.dart +4 (104 -> 108) — the two arguments that hand the chassis SignInView its Google door (`showGoogleButton`, gated on caps.oauthRedirect and AuthProviders.google, and `onSignInWithGoogle`) and the two comment lines that say google stays false until the owner provisions the client. lib/state is unchanged in size (the two version constants moved in place).",
     "lib": {
-      "max": 6733,
+      "max": 6737,
       "adr": "ADR 096",
       "asOf": "2026-09-25",
       "verify": "node tooling/ci/assert-chassis-ledger.mjs"
@@ -144,7 +144,7 @@
     },
     {
       "path": "lib/features/auth/sign_in_screen.dart",
-      "lines": 104,
+      "lines": 108,
       "verdict": "MOVES",
       "why": "[ADR 067] decision 2 / [ADR 071] — MEASURED 2026-09-06: 298 -> 68 brick lines, 303 package lines, callSiteDelta -230. THREE things stayed, each for a named guard and not for taste: the caps.oauthRedirect read (assert-no-seam-forks:610-616 fails when a PARITY chassis file yields zero caps.<field> reads, and the zero-caps COVERAGE LOST names the ADAPTER), signInWithEmail( (dod.json:75 anchors the auth-redirect mutation proof at this path and assert-app-dod:836 fails when the symbol leaves the file), and the two context.go calls. The rest — the preflight, the busy latch, the FocusNode, the deletion notice — is now one file for every stamped app.",
       "target": "packages/chassis_screens/lib/auth/sign_in_screen.dart",

@@ -86,6 +86,21 @@ abstract class AuthRepository {
   /// and PWAs launched standalone (G-43).
   Future<void> signInWithApple();
 
+  /// ⏱ 2026-09-25 · O-GOOGLE-SIGN-IN-NOT-BUILT. Sign in with Google — the same
+  /// door as [signInWithApple], with the same redirect rules (G-43): the session
+  /// arrives on [authStateChanges], never as a return value.
+  ///
+  /// 🔴 A SESSION THIS DOOR PRODUCES MUST NAME `google` AS ITS
+  /// [AuthSession.oauthProvider]. A session that names nobody is read as
+  /// Apple's by `keepProviderRefreshToken`, so an unnamed Google token would be
+  /// stored in the Apple row and revoked at Apple.
+  ///
+  /// Refuses by default, so a test double written before this door existed
+  /// needs no change and cannot pretend the door works.
+  Future<void> signInWithGoogle() async {
+    throw AuthFailure('Signing in with Google is not available here.');
+  }
+
   /// Send the "set a new password" mail.
   ///
   /// ⚠️ WHERE THE EMAILED LINK POINTS IS NOT A PARAMETER HERE, and the omission
@@ -234,6 +249,13 @@ abstract class AuthRepository {
   /// Completes via redirect/deep link like [signInWithApple]; the result
   /// arrives on [authStateChanges], not as a return value.
   Future<void> linkAppleIdentity() async {
+    throw AuthFailure('Linking another sign-in method is not available here.');
+  }
+
+  /// ⏱ 2026-09-25 · O-GOOGLE-SIGN-IN-NOT-BUILT. Attach a Google identity to the
+  /// account that is ALREADY signed in — [linkAppleIdentity]'s rules exactly,
+  /// `mayLinkIdentity` refusal included.
+  Future<void> linkGoogleIdentity() async {
     throw AuthFailure('Linking another sign-in method is not available here.');
   }
 

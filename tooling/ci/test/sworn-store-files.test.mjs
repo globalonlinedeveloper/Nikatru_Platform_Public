@@ -999,6 +999,13 @@ describe('limb 6 — the UI anchor, which limb 5 cannot see', () => {
           const a = j.answers.find((x) => x.type === 'Files and docs');
           a.basis = 'No storage permission, no file-picker and no share package, so the app performs no file I/O.';
           j.dataSecurity.deletionRequestSupported.inAppControl = 'apps/subscriptiontracker/lib/app.dart';
+          // Since 2026-09-25 the Name row cites the Settings name edit too
+          // (O-OAUTH-NAME-UNDECLARED). A stale anchor is a declaration where NO
+          // sentence cites the file, so that row's two citations go as well.
+          const name = j.answers.find((x) => x.type === 'Name');
+          name.evidence = name.evidence.filter((p) => p !== SETTINGS);
+          name.basis = name.basis.replaceAll(SETTINGS, 'the Settings screen');
+          assert.ok(!JSON.stringify(j).includes(SETTINGS), 'the mutation left a citation of the anchored file');
         }),
       (r) => {
         assert.equal(r.status, 1);

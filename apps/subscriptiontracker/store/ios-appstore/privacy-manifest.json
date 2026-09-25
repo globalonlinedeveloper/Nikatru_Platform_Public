@@ -168,7 +168,7 @@
     ],
     "collectedDataTypes": {
       "witness": "knowledge",
-      "note": "🔴 NO LOCAL WITNESS EXISTS FOR ANY OF THESE. Every plugin manifest in the closure ships `NSPrivacyCollectedDataTypes` EMPTY, so not one `NSPrivacyCollectedDataType*` constant appears anywhere on this machine. The eleven strings under `collectedDataTypes` below are therefore the weakest-evidenced part of this file, and that is stated here rather than discovered at upload. A misspelling is a plist Apple ignores, not an error it reports — which is exactly why the mapping is cross-checked against data-safety.json instead of being trusted on its own."
+      "note": "🔴 NO LOCAL WITNESS EXISTS FOR ANY OF THESE. Every plugin manifest in the closure ships `NSPrivacyCollectedDataTypes` EMPTY, so not one `NSPrivacyCollectedDataType*` constant appears anywhere on this machine. The twelve strings under `collectedDataTypes` below are therefore the weakest-evidenced part of this file, and that is stated here rather than discovered at upload. A misspelling is a plist Apple ignores, not an error it reports — which is exactly why the mapping is cross-checked against data-safety.json instead of being trusted on its own."
     },
     "purposes": {
       "witness": "knowledge",
@@ -487,13 +487,13 @@
       "Play row flips without this file moving. That is the same relation",
       "assert-play-declarations.mjs limb (E) already holds between Data safety and content rating.",
       "",
-      "The posture is data-safety.json's `buildPosture.current` — `backend-live`. Eleven Play rows",
-      "are `collected: true` under it and eleven rows appear here. There is no twelfth and no tenth.",
+      "The posture is data-safety.json's `buildPosture.current` — `backend-live`. Twelve Play rows",
+      "are `collected: true` under it and twelve rows appear here. There is no thirteenth and no eleventh.",
       "",
       "`linked` is Apple's 'linked to the user's identity', which Play does not ask, so it is the one",
       "field per row that is NOT a translation and carries its own basis.",
       "",
-      "⚠️ APPLE HAS NO 'Account management' PURPOSE. The two Play rows carrying it map to",
+      "⚠️ APPLE HAS NO 'Account management' PURPOSE. The three Play rows carrying it map to",
       "AppFunctionality; the loss is recorded per row rather than silently dropped."
     ],
     "posture": "backend-live",
@@ -518,6 +518,17 @@
           "NSPrivacyCollectedDataTypePurposeAppFunctionality"
         ],
         "linkedBasis": "It IS the identity — Supabase GoTrue sign-in/sign-up/reset. Play purposes were 'Account management, App functionality'; Apple has no Account management purpose.",
+        "purposeMappingLoss": "Account management -> AppFunctionality"
+      },
+      {
+        "type": "NSPrivacyCollectedDataTypeName",
+        "fromPlayRow": "Name",
+        "linked": true,
+        "tracking": false,
+        "purposes": [
+          "NSPrivacyCollectedDataTypePurposeAppFunctionality"
+        ],
+        "linkedBasis": "⏱ 2026-09-25 · O-OAUTH-NAME-UNDECLARED. Held on the identity record beside the email address (Supabase user metadata `full_name`): from the Apple or Google profile at the user's choice, or typed in Settings. Optional. Play purpose was 'Account management'; Apple has no Account management purpose.",
         "purposeMappingLoss": "Account management -> AppFunctionality"
       },
       {
@@ -671,7 +682,7 @@
     {
       "id": "U-2",
       "title": "The App Privacy questionnaire in App Store Connect is a SEPARATE artefact from this file",
-      "question": "Who fills in App Store Connect's App Privacy section, and does it match these eleven rows?",
+      "question": "Who fills in App Store Connect's App Privacy section, and does it match these twelve rows?",
       "whyItIsNotGuessed": "It is a console questionnaire with no API this repo uses and no file to generate. It is a HARD GATE on a first submission ('required to submit new apps and app updates'), it asks the same questions as `collectedDataTypes` above, and a manifest that disagrees with the questionnaire is a contradiction Apple can see.",
       "decision": "This file is the answer key. The console is a copy of it, in the same direction as every other store artefact in this tree.",
       "owner": "owner — it rides OWNER_QUEUE O-3 (store-submit sign-offs), and it cannot be done before the app record exists"

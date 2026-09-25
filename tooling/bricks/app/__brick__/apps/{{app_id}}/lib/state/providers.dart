@@ -452,7 +452,7 @@ final Provider<core.EntitlementCache> entitlementCacheProvider =
 /// MUST equal `data-policy-version` on `sites/nikatru/privacy.html`. Without
 /// that equality a consent artifact proves someone tapped a button but not what
 /// they were shown, which is the one thing the record exists to establish.
-const String kPrivacyPolicyVersion = '2026-09-05';
+const String kPrivacyPolicyVersion = '2026-09-25';
 
 /// 🔒 The Terms-of-Service version the sign-up clickwrap accepts.
 ///
@@ -467,7 +467,7 @@ const String kPrivacyPolicyVersion = '2026-09-05';
 /// 🔴 BUMPING THIS PUTS AN INTERSTITIAL IN FRONT OF EVERY SIGNED-IN USER of
 /// every stamped app. That is re-acceptance working — a MATERIAL-CHANGE flag
 /// (research/43), never a version bump for its own sake.
-const String kTermsVersion = '2026-09-05';
+const String kTermsVersion = '2026-09-25';
 
 /// The pair the clickwrap accepts and the interstitial compares against. ONE
 /// constant, so no caller can compare half the question.
