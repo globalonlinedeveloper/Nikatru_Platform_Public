@@ -362,7 +362,9 @@
       "F-2"
     ],
     "invokedBy": [
-      ".github/workflows/build-platforms.yml#windows"
+      ".github/workflows/build-platforms.yml#windows",
+      ".github/workflows/submit-windows-store.yml#dry-run",
+      ".github/workflows/submit-windows-store.yml#submit"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-artifact-signed-msix.mjs",
@@ -2177,6 +2179,7 @@
   },
   {
     "claims": [
+      "ADR 015",
       "D-10",
       "D-5"
     ],
@@ -2978,18 +2981,6 @@
   },
   {
     "claims": [
-      "C-6"
-    ],
-    "invokedBy": [
-      ".github/workflows/build-platforms.yml#windows"
-    ],
-    "kind": "guard",
-    "ref": "tooling/ci/windows-signing.mjs",
-    "references": [],
-    "state": "WIRED"
-  },
-  {
-    "claims": [
       "ADR 067"
     ],
     "invokedBy": [],
@@ -3064,6 +3055,16 @@
     ],
     "kind": "script",
     "ref": "tooling/e2e/captcha_posture.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/e2e.yml#e2e"
+    ],
+    "kind": "script",
+    "ref": "tooling/e2e/derive_expectation.mjs",
     "references": [],
     "state": "WIRED"
   },

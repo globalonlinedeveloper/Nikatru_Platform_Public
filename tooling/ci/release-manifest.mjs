@@ -133,7 +133,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync, existsSync, statSync, copyFileSync, renameSync, unlinkSync, mkdirSync, constants as fsConstants } from 'node:fs';
-import { join, resolve, dirname, basename } from 'node:path';
+import { join, resolve, dirname, basename, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // 🔴 `listDir`, NOT `readdirSync` — assert-walks-bounded.mjs forbids a raw
@@ -215,6 +215,13 @@ export const EXTRA_INSTALLABLE = new Map([]);
  * uploads one and publishes nothing durable is still R-4's negation — but it is
  * never lifted out on its own. It travels inside its platform's archive, whole.
  * `.msix`, `.apk` and `.aab` are single self-contained packages and are lifted.
+ *
+ * ⏱ 2026-09-24 (O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER): the paragraphs below
+ * describe a Release that carried the runner bundle and the .msix. Neither
+ * reaches one now. windows-direct is ruled out by C-WINDOWS-STORE-ONLY, so `.exe`
+ * and `.msix` are store-only (`storeOnlyFormats`), build-platforms.yml uploads
+ * both outside the release job's `<app>-*` download, and `--stage` refuses either
+ * if one arrives. `.exe` stays a bundle member for the day a direct row takes it.
  *
  * ⚠️ THE CONSEQUENCE, RECORDED RATHER THAN HIDDEN: `originEnvironments` below
  * matches a channel against the LOOSE asset names, so the `windows-direct` row is
@@ -334,6 +341,99 @@ export function laneIsWorkflow(laneWorkflow, wanted) {
   return laneWorkflow === wanted || leaf(laneWorkflow) === leaf(wanted);
 }
 
+/** A register format that names a FILE (".aab"), as against a shape name
+ *  ("static-bundle"). The one test every derivation in this file applies. */
+const isFileFormat = (f) => typeof f === 'string' && /^\.[A-Za-z0-9]+$/.test(f);
+
+/** The constraint that forbids this channel (`deferral.ruledOutBy`), or null.
+ *  assert-channel-register.mjs holds the value to a constraint-id shape and
+ *  refuses it on a served row; here any non-empty string rules the row out. */
+export function ruledOutBy(c) {
+  const v = c?.deferral?.ruledOutBy;
+  return typeof v === 'string' && v !== '' ? v : null;
+}
+
+/**
+ * Does this row take its file FROM a GitHub Release? Three kinds of row do:
+ *   · a `kind: "direct"` row — the Release is the origin of dl.nikatru.com;
+ *   · any row on a surface whose `flutterApp` is false — the extension stores
+ *     take the very zip the extension release publishes (originEnvironments);
+ *   · a `kind: "store"` row that is not `submittable: true` — no submission
+ *     path exists, so a person uploads the Release's file by hand (apps-gov-in).
+ * A ruled-out row takes nothing. A submittable app store takes nothing either:
+ * its own submit-*.yml builds the package it submits, and never reads the
+ * Release. `=== true`, as originEnvironments reads the flag.
+ */
+export function releaseCarriesFor(register, c) {
+  if (ruledOutBy(c) !== null) return false;
+  if (c?.kind === 'direct') return true;
+  if (flutterAppChannel(register, c) === false) return true;
+  return c?.kind === 'store' && c.submittable !== true;
+}
+
+/**
+ * 🔴 THE STORE-ONLY FORMATS: every file format some row accepts and NO row takes
+ * from a Release (O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER, C-WINDOWS-STORE-ONLY).
+ *
+ * A Release is a download origin. A file only a store takes — the .aab only Play
+ * accepts, the .ipa and .pkg only Apple's stores accept, the .msix once the
+ * Windows direct row is ruled out — is an artifact nobody may download from it:
+ * the store's own submission workflow builds and submits its own copy, and a
+ * user who finds this one on a Release page holds a package that was never meant
+ * to be installed from there. `.exe` is store-only too, and not because a store
+ * takes it: its only row, windows-direct, is ruled out, so the Flutter runner it
+ * names ships nowhere.
+ *
+ * DERIVED from the register on every run; nothing here names a format. Rule a
+ * direct row back in, and its formats leave this set with no edit to this file.
+ * `surface` narrows it exactly as `installableExtensions` narrows (null = the
+ * whole register, which is what a guard asks).
+ */
+export function storeOnlyFormats(register, surface = null) {
+  const accepted = new Set();
+  const carried = new Set();
+  for (const c of register?.channels ?? []) {
+    if (surface !== null && !channelIsOnSurface(c, surface)) continue;
+    const formats = (c?.artifactFormats ?? []).filter(isFileFormat);
+    for (const f of formats) accepted.add(f);
+    if (releaseCarriesFor(register, c)) for (const f of formats) carried.add(f);
+  }
+  return new Set([...accepted].filter((f) => !carried.has(f)));
+}
+
+/** Why `format` is store-only, in the register's words: each accepting row on
+ *  the surface, and what keeps it from taking the file from a Release. */
+function storeOnlyWhy(register, format, surface) {
+  const rows = (register?.channels ?? []).filter(
+    (c) => channelIsOnSurface(c, surface) && (c?.artifactFormats ?? []).some((f) => typeof f === 'string' && f.toLowerCase() === format.toLowerCase()),
+  );
+  const parts = rows.map((c) => {
+    const constraint = ruledOutBy(c);
+    return constraint !== null
+      ? `"${c.id}" is ruled out by ${constraint}`
+      : `"${c.id}" is a submittable store whose own submission workflow builds what it submits`;
+  });
+  return `no channel takes it from a Release: ${parts.join('; ')}`;
+}
+
+/** The formats a declared LANE emits: rows with a `lane` {workflow, job},
+ *  narrowed to `forWorkflow` when given and to `surface` when given. The half of
+ *  `expectedReleaseFormats` the register contributes, BEFORE the store-only
+ *  subtraction — so a caller can tell "no lane emits anything" (the derivation
+ *  lost its input) from "every format the lanes emit is store-only" (the register
+ *  says a Release carries none of them). */
+export function laneBackedFormats(register, { forWorkflow = null, surface = null } = {}) {
+  const out = new Set();
+  for (const c of register?.channels ?? []) {
+    const lane = c?.lane;
+    if (!lane || typeof lane.workflow !== 'string' || typeof lane.job !== 'string') continue;
+    if (forWorkflow !== null && !laneIsWorkflow(lane.workflow, forWorkflow)) continue;
+    if (surface !== null && !channelIsOnSurface(c, surface)) continue;
+    for (const f of c?.artifactFormats ?? []) if (isFileFormat(f)) out.add(f);
+  }
+  return out;
+}
+
 /**
  * The formats a staged release is EXPECTED to carry — the completeness half that
  * `--verify` cannot answer on its own.
@@ -360,25 +460,26 @@ export function laneIsWorkflow(laneWorkflow, wanted) {
  *   · minus `BUNDLE_MEMBERS`. A `.exe` never travels loose — `--stage` leaves it
  *     inside its platform archive on purpose — so it can never appear in the flat
  *     release directory and requiring it would be an assertion that cannot pass.
+ *   · ⏱ 2026-09-24 — minus `storeOnlyFormats` (O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER).
+ *     `--stage` refuses every one of them, so demanding one would be an
+ *     assertion that cannot pass. On today's register that removes `.aab`,
+ *     `.ipa`, `.pkg`, `.msix` and `.snap`: every format a lane emits for an app store.
  * Plus the declared extras: the `.apk` has no channel row and cannot have one, and
  * it is the only Android artifact a person can install.
  *
  * ⚠️ IT CAN GO EMPTY, and that is a COVERAGE LOST at the call site rather than a
  * quiet pass — an empty expectation set makes "is this release complete" answer
- * yes for a directory holding nothing.
+ * yes for a directory holding nothing. ⏱ 2026-09-24 — UNLESS the lanes emit
+ * formats and every one is store-only: that empty is the register's declaration
+ * and the call site says so (see `laneBackedFormats`).
  */
 export function expectedReleaseFormats(register, forWorkflow = null) {
   const installable = installableExtensions(register);
-  const laneBacked = new Set();
-  for (const c of register?.channels ?? []) {
-    const lane = c?.lane;
-    if (!lane || typeof lane.workflow !== 'string' || typeof lane.job !== 'string') continue;
-    if (forWorkflow !== null && !laneIsWorkflow(lane.workflow, forWorkflow)) continue;
-    for (const f of c?.artifactFormats ?? []) if (typeof f === 'string' && /^\.[A-Za-z0-9]+$/.test(f)) laneBacked.add(f);
-  }
+  const storeOnly = storeOnlyFormats(register);
+  const laneBacked = laneBackedFormats(register, { forWorkflow });
   for (const e of EXTRA_INSTALLABLE.keys()) laneBacked.add(e);
   const out = new Set();
-  for (const e of laneBacked) if (installable.has(e) && !BUNDLE_MEMBERS.has(e)) out.add(e);
+  for (const e of laneBacked) if (installable.has(e) && !BUNDLE_MEMBERS.has(e) && !storeOnly.has(e)) out.add(e);
   return out;
 }
 
@@ -685,6 +786,16 @@ const RECORDABLE_POSTURES = new Set(['pinned', 'none']);
  *     `--expect-formats` and `gh release create` are untouched: the .msix is
  *     still published and still downloadable. Only the [10]D-9 record is held
  *     back, which is the half that would otherwise be false.
+ *     ⏱ 2026-09-24 — the .msix in that sentence is no longer published at all:
+ *     `--stage` refuses it (O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER).
+ *
+ * ⏱ 2026-09-24 — A RULED-OUT ROW IS NEVER AN ORIGIN, WHATEVER ITS POSTURE
+ * (O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER). windows-direct carries
+ * `deferral.ruledOutBy: "C-WINDOWS-STORE-ONLY"`: the day its certificate is bought
+ * and the pin filled, `signingPosture` would call it recordable and a Release
+ * carrying an .msix would write `<app>-windows-direct` into [10]D-9 for a channel
+ * a constraint forbids. It is returned in a fourth list, `ruledOut`, and the CLI
+ * prints it, so the answer is never a silently shorter list.
  */
 export function originEnvironments(register, app, assetNames, surface) {
   // 🔴 REQUIRED, AND IT THROWS RATHER THAN DEFAULTING. A default would be the
@@ -701,6 +812,7 @@ export function originEnvironments(register, app, assetNames, surface) {
   const out = [];
   const omitted = [];
   const submitted = [];
+  const ruledOut = [];
   // ⚠️ EVERY GUARD IN THIS LOOP IS FALSIFIABLE — READ TO THE END OF THIS BLOCK
   // BEFORE BELIEVING THE NUMBER: this paragraph said SIX and was short by three,
   // corrected 2026-08-24 at the bottom rather than overwritten.
@@ -814,6 +926,12 @@ export function originEnvironments(register, app, assetNames, surface) {
     // input exists on which the two readings disagree about a name, an exit code
     // or a pass/fail line.
     const environment = tpl.replace('{app}', app);
+    // ⏱ 2026-09-24 — ruled out by a constraint: never an origin (see the header).
+    const constraint = ruledOutBy(c);
+    if (constraint !== null) {
+      ruledOut.push({ id: c.id ?? '(unnamed)', environment, constraint });
+      continue;
+    }
     // ⏱ 2026-09-23 — A STORE ROW THIS FACTORY CAN SUBMIT THROUGH IS NOT AN ORIGIN
     // RECORD. The origin record's state is `pending_manual_publish`, and
     // record-deployment.mjs REFUSES that state on any row that is not
@@ -835,7 +953,7 @@ export function originEnvironments(register, app, assetNames, surface) {
     }
     out.push(environment);
   }
-  return { environments: [...new Set(out)].sort(), omitted, submitted };
+  return { environments: [...new Set(out)].sort(), omitted, submitted, ruledOut };
 }
 
 /** `<sha256>  <name>`, the classic two-space (text-mode) form GNU sha256sum
@@ -1099,26 +1217,75 @@ async function main() {
     // extension rows widened away until 2026-09-05.
     const stageSurface = requireSurface(resolve(flag('repo-root') ?? DEFAULT_ROOT), app, '--stage');
     const stageRegister = loadRegister();
-    const exts = new Set([...installableExtensions(stageRegister, stageSurface)].filter((x) => !BUNDLE_MEMBERS.has(x)));
+    // ⏱ 2026-09-24 — and MINUS the store-only formats, which the judge below
+    // refuses rather than stages (O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER).
+    const storeOnly = storeOnlyFormats(stageRegister, stageSurface);
+    const exts = new Set([...installableExtensions(stageRegister, stageSurface)].filter((x) => !BUNDLE_MEMBERS.has(x) && !storeOnly.has(x)));
     mkdirSync(out, { recursive: true });
 
     // ⏱ 2026-09-24 — COLLECT, JUDGE, THEN MOVE (O-BOXA-CAPTCHA-REFUSES-NATIVE-SIGN-IN).
     // The walk used to move each installer the moment it found one, so a refusal
     // could only land after some installers had already left the download tree.
     // Nothing moves now until every installer found has been judged.
+    // The walk also collects every STORE-ONLY file, bundle members included: a
+    // runner `.exe` is never lifted, and it is still a file the tar loop after
+    // this step would archive into the Release whole.
     const found = [];
+    const storeOnlyFound = [];
+    const longest = (set, name) => [...set].filter((x) => name.toLowerCase().endsWith(x.toLowerCase())).sort((a, b) => b.length - a.length)[0];
     const walk = (dir) => {
       for (const e of listDir(dir, { withFileTypes: true })) {
         const abs = join(dir, e.name);
         if (e.isDirectory()) { walk(abs); continue; }
+        const only = longest(storeOnly, e.name);
+        if (only !== undefined) storeOnlyFound.push({ abs, file: e.name, ext: only });
         // The LONGEST extension that matches is the file's format, as formatOf reads it.
-        const ext = [...exts].filter((x) => e.name.toLowerCase().endsWith(x.toLowerCase())).sort((a, b) => b.length - a.length)[0];
+        const ext = longest(exts, e.name);
         if (ext !== undefined) found.push({ abs, file: e.name, ext });
       }
     };
     walk(from);
 
+    // ⏱ 2026-09-24 — THE STORE-ONLY JUDGE, FIRST, AND ON EVERY RUN
+    // (O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER, C-WINDOWS-STORE-ONLY). Nothing in the
+    // download tree may be a file no channel takes from a Release: not lifted
+    // loose, and not left behind for the tar loop to archive. UNCONDITIONAL, not
+    // gated on `--ref-type tag`: the untagged dist a scheduled run stages is the
+    // rehearsal of the tag's, and a refusal that only fires on a tag would first
+    // be exercised on release day. Exit 1, a finding; before anything moves.
+    if (storeOnlyFound.length > 0) {
+      for (const f of storeOnlyFound) {
+        console.error(`✗ ${relative(from, f.abs).split(sep).join('/')} — a ${f.ext} file, and ${storeOnlyWhy(stageRegister, f.ext, stageSurface)}.`);
+      }
+      die(
+        `--stage refuses ${storeOnlyFound.length} store-only file(s) under ${from} (O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER).`,
+        'A GitHub Release is a download origin, and no channel takes these files from one: the store that accepts',
+        'each builds and submits its own copy, or the constraint that forbids its channel says it ships nowhere.',
+        'Upload them outside the release job\'s `<app>-*` download (build-platforms.yml names them `store-<app>-…`).',
+        'Nothing was moved.',
+      );
+    }
+
     if (found.length === 0) {
+      // ⏱ 2026-09-24 — ADAPTATION AT e9492c3e (O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER):
+      // TWO EMPTIES, AND ONLY ONE IS COVERAGE LOST. Once the store-only formats
+      // leave, a lane on this surface can emit nothing a Release carries — today
+      // every lane-backed app format is a store's (.aab, .ipa, .pkg, .msix, .snap)
+      // and the one Release-carried installer, the apps.gov.in .apk, reaches the
+      // release only once its pin is set. That empty is the register's own answer,
+      // printed, exit 0. COVERAGE LOST stays for the other empty: a lane on this
+      // surface DOES emit a format a Release carries, and none arrived.
+      const laneBacked = laneBackedFormats(stageRegister, { surface: stageSurface });
+      const laneCarried = [...laneBacked].filter((f) => exts.has(f));
+      if (laneBacked.size > 0 && laneCarried.length === 0) {
+        const stampsDir = stampsDirFor(stageSurface, '--stage');
+        if (stampsDir !== null) mkdirSync(stampsDir, { recursive: true });
+        console.log(`nothing staged: no installer under ${from}, and none is owed.`);
+        console.log(`  Every format a lane on surface "${stageSurface}" emits is store-only: ${[...laneBacked].sort().join(', ')} (derived from ${REGISTER_REL}).`);
+        console.log(`  A Release on this surface may carry ${[...exts].sort().join(', ') || 'no file format'}; no lane emits any of them.`);
+        console.log(`\nok  0 installable artifact(s) staged into ${out}`);
+        process.exit(0);
+      }
       coverageLost(
         `COVERAGE LOST — no installable artifact found under ${from}.`,
         `Looked for: ${[...exts].sort().join(', ')} (derived from ${REGISTER_REL}, surface "${stageSurface}").`,
@@ -1233,7 +1400,8 @@ async function main() {
     // ── the completeness half, opt-in — see the header ────────────────────────
     if (has('expect-formats')) {
       const forWorkflow = flag('for-workflow');
-      const expected = expectedReleaseFormats(loadRegister(), forWorkflow);
+      const verifyRegister = loadRegister();
+      const expected = expectedReleaseFormats(verifyRegister, forWorkflow);
       // 🔴 THE COVERAGE RAIL IS ON THE REGISTER'S CONTRIBUTION, NOT ON THE TOTAL.
       // The total can never be empty — `EXTRA_INSTALLABLE` always carries the
       // `.apk` — so a check for `expected.size === 0` would be an assertion with
@@ -1252,7 +1420,23 @@ async function main() {
       // (O-RELEASE-RECORD-GUESSES-CHANNEL-FROM-EXTENSION), so the total CAN be empty
       // now. The rail on the register's half still catches that empty, first.
       const fromRegister = [...expected].filter((e) => !EXTRA_INSTALLABLE.has(e));
+      // ⏱ 2026-09-24 — ADAPTATION AT e9492c3e (O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER):
+      // the register's half now goes empty two ways, and they are told apart
+      // BEFORE the store-only subtraction. No lane emits an installable format:
+      // the derivation lost its input, COVERAGE LOST as before. Lanes emit
+      // installable formats and EVERY one is store-only (build-platforms.yml
+      // today: .aab .ipa .msix .pkg): the register says a Release carries none,
+      // and demanding one would be an assertion that cannot pass. That empty is
+      // printed and the verify stands on its first half. It re-arms with no
+      // edit the day a lane emits a format a Release carries.
+      let declaredEmpty = null;
       if (fromRegister.length === 0) {
+        const installable = installableExtensions(verifyRegister);
+        const storeOnly = storeOnlyFormats(verifyRegister);
+        const laneInstallable = [...laneBackedFormats(verifyRegister, { forWorkflow })].filter((f) => installable.has(f) && !BUNDLE_MEMBERS.has(f)).sort();
+        if (laneInstallable.length > 0 && laneInstallable.every((f) => storeOnly.has(f))) declaredEmpty = laneInstallable;
+      }
+      if (fromRegister.length === 0 && declaredEmpty === null) {
         coverageLost(
           `COVERAGE LOST — no channel row in ${REGISTER_REL} with a declared \`lane\`${forWorkflow === null ? '' : ` for ${forWorkflow}`} contributes an installable format.`,
           `The expectation collapsed to the declared extras alone (${[...expected].sort().join(', ') || 'nothing'}), so this mode would certify`,
@@ -1272,7 +1456,13 @@ async function main() {
           'is complete. A lane that lost an artifact upstream would otherwise publish a platform short with every check green.',
         );
       }
-      console.log(`ok  all ${expected.size} expected format(s) present: ${[...expected].sort().join(', ')}`);
+      if (declaredEmpty !== null) {
+        console.log(
+          `--  the register expects no release format${forWorkflow === null ? '' : ` of ${forWorkflow}`}: every format its lanes emit is store-only ` +
+            `(${declaredEmpty.join(', ')}), and a Release carries none of them (O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER).`,
+        );
+      }
+      if (expected.size > 0) console.log(`ok  all ${expected.size} expected format(s) present: ${[...expected].sort().join(', ')}`);
     }
     process.exit(0);
   }
@@ -1299,7 +1489,7 @@ async function main() {
     // emitted `subscriptiontracker-chrome-webstore`.
     const emitSurface = requireSurface(resolve(flag('repo-root') ?? DEFAULT_ROOT), app, '--emit-environments');
     const { names } = assetFiles(dir);
-    const { environments, omitted, submitted } = originEnvironments(loadRegister(), app, names, emitSurface);
+    const { environments, omitted, submitted, ruledOut } = originEnvironments(loadRegister(), app, names, emitSurface);
     // 🔴 STDERR, NOT STDOUT. The release job reads this command as a word list
     // (`for environment in $(node … --emit-environments …)`), so a reason printed
     // on stdout becomes an argument to record-deployment.mjs.
@@ -1341,7 +1531,10 @@ async function main() {
     for (const s of submitted) {
       console.error(`submitted-lane  ${s.environment} — channel "${s.id}" is \`submittable: true\`: its [10]D-9 record is the submission step's \`--state in_review\`, never this release's origin record.`);
     }
-    if (environments.length === 0 && omitted.length === 0 && submitted.length === 0) {
+    for (const x of ruledOut) {
+      console.error(`ruled-out  ${x.environment} — channel "${x.id}" is forbidden by ${x.constraint}: a release is never its origin, whatever its signing posture.`);
+    }
+    if (environments.length === 0 && omitted.length === 0 && submitted.length === 0 && ruledOut.length === 0) {
       die(
         `no \`kind: "direct"\` and no \`surface: "extension"\` channel in ${REGISTER_REL} declares a format this release carries.`,
         `The release holds: ${names.join(', ') || '(nothing)'}, and \`--app ${app}\` is on the "${emitSurface}" surface — only that surface's channels were considered.`,

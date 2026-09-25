@@ -1,15 +1,26 @@
-// Asserts the ONE-ISSUER fact, in whichever direction this run's auth target
-// makes it true — positively, on every run, rather than as a leg that gets
-// skipped when the answer would be inconvenient.
+// Asserts the ONE-ISSUER fact, in whichever direction this run's stack makes
+// it true — positively, on every run, rather than as a leg that gets skipped
+// when the answer would be inconvenient.
 //
 // ── THE FACT
 //
 // `runbooks/auth-cutover.md` Phase 5: "every hosted-minted session 401s
 // portfolio-wide. There is no dual-issuer path in the code — the Workers trust
-// exactly one issuer." Today that issuer is the HOSTED Supabase project, so:
+// exactly one issuer." That issuer is tooling/platform-register.json
+// vars.SUPABASE_URL, and e2e.yml's step "Derive what this run expects"
+// (tooling/e2e/derive_expectation.mjs) compares it with this run's
+// SUPABASE_URL and writes the answer as E2E_WORKERS_TRUST:
 //
-//   hosted → a token this run minted is ACCEPTED by the deployed Worker (200).
-//   boxa   → the same request with a BOX A-minted token is REFUSED (401).
+//   yes → a token this run minted is ACCEPTED by the deployed Worker (200).
+//   no  → the same request with a token from an issuer the Workers do not
+//         trust is REFUSED (401).
+//
+// ⏱ 2026-09-25 — THE ANSWER FOLLOWS THE REGISTER, NOT A TARGET NAME. Until today
+// `hosted` meant "trusted" and `boxa` meant "refused". The Phase 5 switch commit
+// moves vars.SUPABASE_URL to the self-hosted GoTrue, and from that commit a
+// self-hosted run expects 200 with no edit here. An unset or unknown
+// E2E_WORKERS_TRUST or E2E_STACK is exit 2, never `hosted`
+// (O-E2E-EMPTY-TARGET-READS-HOSTED).
 //
 // Both are things that must be true. Writing only the first would leave the
 // second as a comment; writing only the second would leave it unexercised until
@@ -38,7 +49,7 @@
 // runbooks/auth-cutover.md records that /settings and /health both answer 401,
 // which leaves the token itself as the only place the value can be read from.
 //
-// 🔴 AND THE VALUE CANNOT BE PRINTED. `BOXA_SUPABASE_URL` and `SUPABASE_URL` are
+// 🔴 AND THE VALUE CANNOT BE PRINTED. `SELFHOSTED_SUPABASE_URL` and `SUPABASE_URL` are
 // repository SECRETS, so Actions masks them in every log line: a raw `iss`
 // printed here reads `***/auth/v1`, and run 35704944906 shows the same mask on
 // `GET ***/v1/subscriptions -> HTTP 401`. Evidence that survives a mask is a
@@ -46,26 +57,36 @@
 // two yes/no lines, each computed in-process where the unmasked value still is.
 //
 // ⚠️ THEY REPORT; THEY DO NOT JUDGE. A "no" on either line does NOT fail the
-// step: the 401-on-boxa / 200-on-hosted verdict below is the assertion, and it is
-// unchanged. A wrong issuer suffix is exactly what this row expects to find, and
+// step: the 401-without-trust / 200-with-trust verdict below is the assertion,
+// and it is unchanged. A wrong issuer suffix is exactly what this row expects to find, and
 // a red run that hides its own reading behind a failure would be worth less than
 // the reading. The one thing that DOES fail is a token that cannot be read at
 // all — see `readIssuerBack`'s `# why:`.
 //
 // Env: SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, E2E_EMAIL,
-//      API_BASE_URL, E2E_AUTH_TARGET (default `hosted`).
+//      API_BASE_URL, E2E_WORKERS_TRUST (yes | no, required),
+//      E2E_STACK (hosted | selfhosted, required; it only names the stack in the log).
+
+import { decideStack, decideTrust } from './auth_target_expectation.mjs';
 
 const url = need('SUPABASE_URL').replace(/\/+$/, '');
 const anonKey = need('SUPABASE_ANON_KEY');
 const serviceKey = need('SUPABASE_SERVICE_ROLE_KEY');
 const email = need('E2E_EMAIL');
 const apiBase = need('API_BASE_URL').replace(/\/+$/, '');
-const target = process.env.E2E_AUTH_TARGET || 'hosted';
+const decidedTrust = decideTrust(process.env.E2E_WORKERS_TRUST);
+const decidedStack = decideStack(process.env.E2E_STACK);
+for (const d of [decidedTrust, decidedStack]) {
+  if (d.why) {
+    console.error(d.why);
+    process.exit(2); // safe: this runs BEFORE any request, so no undici handle is open
+  }
+}
+const trust = decidedTrust.trust;
+const stack = decidedStack.stack;
 
-if (target !== 'hosted' && target !== 'boxa') {
-  console.error(`E2E_AUTH_TARGET must be "hosted" or "boxa", not "${target}".`);
-  process.exitCode = 1;
-} else {
+// A plain block: the body below was the `else` arm of the retired target check.
+{
   const linkRes = await fetch(`${url}/auth/v1/admin/generate_link`, {
     method: 'POST',
     headers: {
@@ -98,8 +119,8 @@ if (target !== 'hosted' && target !== 'boxa') {
       if (!accessToken) {
         console.error(
           `::error title=Could not mint a session::/verify answered HTTP ${verifyRes.status} with no ` +
-            'access_token, so nothing could be presented to the Worker. On boxa this is the ' +
-            'magic-link login path itself failing, which is a bigger finding than the one-issuer check.',
+            'access_token, so nothing could be presented to the Worker. On a captcha-gated stack this ' +
+            'is the magic-link login path itself failing, which is a bigger finding than the one-issuer check.',
         );
         process.exitCode = 1;
       } else {
@@ -107,37 +128,40 @@ if (target !== 'hosted' && target !== 'boxa') {
         const probe = await fetch(`${apiBase}/v1/subscriptions`, {
           headers: { Authorization: `Bearer ${accessToken}` },
         });
-        console.log(`auth target : ${target}`);
-        console.log(`token issuer: the ${target === 'boxa' ? 'Box A' : 'hosted'} auth stack`);
+        console.log(`auth stack  : ${stack}`);
+        console.log(`Workers trust this run's issuer: ${trust}`);
+        console.log(`token issuer: the ${stack} auth stack`);
         readIssuerBack(accessToken, url);
         console.log(`GET ${apiBase}/v1/subscriptions -> HTTP ${probe.status}`);
 
-        if (target === 'hosted') {
+        if (trust === 'yes') {
           if (probe.status === 200) {
             console.log(
-              'ASSERTED: the deployed Worker accepts a hosted-minted session. The one issuer the ' +
-                'Workers trust is still the hosted project, which is what Phase 5 moves.',
+              `ASSERTED: the deployed Worker accepts a session minted by this run's ${stack} issuer, ` +
+                'the one issuer the Workers trust (tooling/platform-register.json vars.SUPABASE_URL).',
             );
           } else {
             console.error(
               `::error title=One-issuer check::the Worker answered ${probe.status} to a token minted ` +
-                'by the auth project it is configured for. Either SUPABASE_URL on the Workers has ' +
-                'moved, or the JWKS fetch is failing — see runbooks/auth-cutover.md Phase 1.',
+                'by the auth stack it is configured for: the Workers refuse the production issuer. ' +
+                'Either SUPABASE_URL on the deployed Workers is not the one the register records, or ' +
+                'the JWKS fetch is failing — see runbooks/auth-cutover.md Phase 1.',
             );
             process.exitCode = 1;
           }
         } else if (probe.status === 401) {
           console.log(
-            'ASSERTED: the deployed Worker REFUSES a Box A-minted session with 401. This is the ' +
-              'one-issuer fact, and it is why the golden-path legs below cannot pass against boxa ' +
-              'until Phase 5 moves SUPABASE_URL on both Workers. Refusal here is the PASS.',
+            `ASSERTED: the deployed Worker REFUSES a session minted by this run's ${stack} issuer ` +
+              'with 401. This is the one-issuer fact: the register names another issuer, so the ' +
+              'golden-path legs below cannot pass on this stack until vars.SUPABASE_URL moves to it. ' +
+              'Refusal here is the PASS.',
           );
         } else {
           console.error(
-            `::error title=One-issuer check::the Worker answered ${probe.status}, not 401, to a Box ` +
-              'A-minted session. If it answered 200 the Workers now trust TWO issuers, which no code ' +
-              'path in services/ implements and which nobody decided — treat it as a security ' +
-              'finding, not a test failure.',
+            `::error title=One-issuer check::the Worker answered ${probe.status}, not 401, to a ` +
+              `session minted by this run's ${stack} issuer, which the register does not name. If it ` +
+              'answered 200 the Workers now trust TWO issuers, which no code path in services/ ' +
+              'implements and which nobody decided — treat it as a security finding, not a test failure.',
           );
           process.exitCode = 1;
         }
@@ -172,8 +196,8 @@ function asUrl(value) {
  *  asserted above. Nothing else from the payload is read, printed or kept.
  *
  *  # why: exit 2, not 1, when the token cannot be read back. In this file exit 1
- *  means THE ONE-ISSUER FACT IS WRONG — a hosted-minted token refused, or a Box
- *  A-minted token accepted — which is a finding about the deployed Workers. A
+ *  means THE ONE-ISSUER FACT IS WRONG — a token from the trusted issuer refused,
+ *  or one from an untrusted issuer accepted — a finding about the deployed Workers. A
  *  token that does not decode says nothing at all about the Workers: it says
  *  this step could not take its reading. That is the distinction Public #869
  *  drew when verify_row, verify_purged and verify_consent were given exit 2 for

@@ -193,8 +193,8 @@ describe('§A — an aggregating job cannot go green over a lane that did not ru
 describe('§B — a job cannot green-skip its own body when a secret is absent', () => {
   // 🔄 RE-ANCHORED 2026-09-07 ([ADR 067] decision 6, unit `cutover-blockers`).
   // e2e.yml's preflight stopped being a single `-z "$KEY"` when it gained the
-  // `auth_target` axis: it now binds SIX secrets (`HOSTED_*` and `BOXA_*`) and
-  // tests each of them by name. The GUARD is unchanged and still counts exactly
+  // `auth_target` axis: it now binds SIX secrets (`HOSTED_*` and `BOXA_*`,
+  // renamed `SELFHOSTED_*` on 2026-09-25) and tests each of them by name. The GUARD is unchanged and still counts exactly
   // one secret-presence check; only these two fixtures' anchors moved, and an
   // anchor that no longer matches fails loudly inside `mutant()` rather than
   // passing over nothing — which is how this was caught.
