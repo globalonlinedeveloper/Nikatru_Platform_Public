@@ -50,6 +50,21 @@
     "profiles": ["JWVU72A2N6", "26RV2N2Y4L"],
     "certificates": ["ND3WDZ2B5K", "RDYD44LRCZ"]
   },
+  "_retired_why": [
+    "O-APPLE-RESOURCE-IDS-IN-COMMENTS. App Store Connect resource ids that were live once and are not now, kept here",
+    "so an id read in an old log or PR still resolves to what it was. This register is the ONLY tracked home of an",
+    "Apple resource id: assert-apple-entitlements.mjs refuses any id from this file (anchor, protected, apps, retired)",
+    "written as a literal in tooling/ci/**/*.mjs, where a comment naming one goes stale the day it is re-minted.",
+    "`retiredOn` comes from git history; `unknown` where no commit records the day, never a guess."
+  ],
+  "retired": [
+    { "id": "YZGQND6Z9C", "kind": "bundleId", "retiredOn": "2026-09-09", "why": "The UNIVERSAL App ID for com.nikatru.subly. Deleted when the package identifier moved to com.nikatru.subscriptiontracker (ADR 067's slug rename); an App ID is not renamable. Recorded deleted in a7b92d8e (#576)." },
+    { "id": "TPT7N9XTC7", "kind": "profile", "retiredOn": "2026-09-09", "why": "The IOS_APP_STORE profile against YZGQND6Z9C. A profile is issued against one App ID, so it was deleted with it. Recorded deleted in a7b92d8e (#576)." },
+    { "id": "HRJS9Z65X6", "kind": "profile", "retiredOn": "2026-09-09", "why": "The MAC_APP_STORE profile against YZGQND6Z9C, deleted with it. Recorded deleted in a7b92d8e (#576)." },
+    { "id": "W5XX7RJ4WQ", "kind": "bundleId", "retiredOn": "unknown", "why": "The UNIVERSAL App ID for com.nikatru.subscriptiontracker minted in a7b92d8e (#576). Superseded by apps.subscriptiontracker.resourceId, first recorded in 500af608 (#780) on 2026-09-16; an identifier holds one App ID, so it was gone by then. No commit records the deletion day." },
+    { "id": "ZUHKLYLZNR", "kind": "profile", "retiredOn": "unknown", "why": "The IOS_APP_STORE profile against W5XX7RJ4WQ, minted in a7b92d8e (#576). Superseded by protected.profiles, first recorded in 500af608 (#780) on 2026-09-16. No commit records the deletion day." },
+    { "id": "97KS2MWMVC", "kind": "profile", "retiredOn": "unknown", "why": "The MAC_APP_STORE profile against W5XX7RJ4WQ, minted in a7b92d8e (#576). Superseded by protected.profiles, first recorded in 500af608 (#780) on 2026-09-16. No commit records the deletion day." }
+  ],
   "capabilities": {
     "IN_APP_PURCHASE": {
       "apiWritable": true,

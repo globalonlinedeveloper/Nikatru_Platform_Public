@@ -286,32 +286,30 @@ export const OWNER_GAP = 'App Store screenshots and the owner-run first submissi
 // many days. The 2026-09-08 text said the missing item was a distribution
 // CERTIFICATE. That was true when it was written and is not true now: on
 // 2026-09-09 the App Store Connect API issued, against this account and with the
-// key this repository already holds,
+// key this repository already holds, a DISTRIBUTION certificate, a
+// MAC_INSTALLER_DISTRIBUTION certificate, a UNIVERSAL App ID for
+// `com.nikatru.subly`, and one IOS_APP_STORE and one MAC_APP_STORE profile
+// against that App ID.
 //
-//   · DISTRIBUTION                 ND3WDZ2B5K  "Apple Distribution: ..."
-//   · MAC_INSTALLER_DISTRIBUTION   RDYD44LRCZ  "3rd Party Mac Developer Installer: ..."
-//   · bundleId  UNIVERSAL          YZGQND6Z9C  com.nikatru.subly
-//   · profile   IOS_APP_STORE      TPT7N9XTC7
-//   · profile   MAC_APP_STORE      HRJS9Z65X6
+// 🔴 NO RESOURCE ID IS WRITTEN HERE (O-APPLE-RESOURCE-IDS-IN-COMMENTS). This
+// header used to list them as the live ones after the App ID and both profiles
+// had been deleted and re-minted, and it went on saying so. The live ids are
+// `protected` (and each app's `resourceId`) in tooling/apple-provisioning.json;
+// the ones that were live once are its `retired` list, dated from git history.
+// assert-apple-entitlements.mjs refuses any of them written back into a .mjs
+// under tooling/ci.
 //
-// 🔴 THE BUNDLE ID AND BOTH PROFILES ABOVE NO LONGER EXIST. Superseded
-// 2026-09-09, later the same day, when the owner moved the package identifier to
+// The App ID and both profiles were superseded 2026-09-09, later the same day,
+// when the owner moved the package identifier to
 // `com.nikatru.subscriptiontracker` (ADR 067's slug rename). An App ID is not
 // renamable and a provisioning profile is issued against ONE App ID, so the
-// three identifier-bound resources were deleted and re-minted; the two
-// CERTIFICATES are identifier-INDEPENDENT and were REUSED unchanged, which is
-// why their ids above are still the live ones. Read from the API after the
-// change, and the deletions returned 204 in this order — profiles first, because
-// a profile referencing an App ID blocks its deletion:
-//
-//   · bundleId  UNIVERSAL          W5XX7RJ4WQ  com.nikatru.subscriptiontracker
-//                                                 "Nikatru Subscription Tracker"
-//                                                 capability IN_APP_PURCHASE, as before
-//   · profile   IOS_APP_STORE      ZUHKLYLZNR  "Nikatru Subscription Tracker iOS App Store"
-//   · profile   MAC_APP_STORE      97KS2MWMVC  "Nikatru Subscription Tracker macOS App Store"
-//
-// Both new profiles name certificate ND3WDZ2B5K, exactly as the deleted pair
-// did. `/v1/apps` held ZERO records before the deletion and holds zero now: no
+// three identifier-bound resources were deleted and re-minted — profiles first,
+// because a profile referencing an App ID blocks its deletion, and each deletion
+// returned 204. The re-minted App ID kept capability IN_APP_PURCHASE, and its two
+// profiles are named "Nikatru Subscription Tracker iOS App Store" and "…macOS App
+// Store". The two CERTIFICATES are identifier-INDEPENDENT and were REUSED
+// unchanged: both new profiles name the same distribution certificate the
+// deleted pair did. `/v1/apps` held ZERO records before the deletion and holds zero now: no
 // App Store Connect app record was ever created against `com.nikatru.subly`, so
 // that identifier was NOT permanently spent and the deletion was clean.
 // `APPLE_PROVISIONING_PROFILES_BASE64` was re-set from the two new profiles in

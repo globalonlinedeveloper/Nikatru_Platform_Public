@@ -24,7 +24,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -33,6 +33,7 @@ import {
   stepItemAround, workflowSteps, jobEnv, githubEnvWrites, joinShellContinuations, commandAt, flutterDrives,
   resolveLocalCalls, parseResolvedWorkflows, lineAt, placeOf, refusalText,
   POST_GATE_IF, postGateClass, postGateJobs, laneRunHost, laneRefusalText,
+  EMIT_RELEASE_JSON_MODE, emitOutputDir, emitInvocations,
 } from '../workflow-scan.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -1119,5 +1120,57 @@ describe('workflow-scan laneRunHost', () => {
     assert.equal(laneRunHost(scan, '.github/workflows/ship.yml').refusal.kind, 'orphan-callee');
     assert.match(laneRefusalText(laneRunHost(scan, '.github/workflows/ship.yml').refusal), /no call job runs it \(orphan-callee\)/);
     assert.equal(laneRunHost(scan, '.github/workflows/gone.yml').refusal.kind, 'missing');
+  });
+});
+
+// ⏱ 2026-09-25 · O-RELEASE-EMITTER-WRITES-UNCHECKED — the emitter's call sites,
+// found once for assert-release-json.test.mjs and assert-release-durable.mjs.
+const EMIT_YML = `name: E
+on: push
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      NOTE: --emit-release-json is named at job level and is no step
+    steps:
+      - run: echo build
+      - name: Describe the release
+        run: |
+          set -eu
+          node "$RM" --app a \\
+            --emit-release-json dist \\
+            --tag t
+      - run: node tooling/ci/release-manifest.mjs --write dist
+  other:
+    runs-on: ubuntu-latest
+    steps:
+      - run: node tooling/ci/release-manifest.mjs --emit-release-json out/x --app b
+`;
+
+describe('workflow-scan emit-release-json call sites', () => {
+  test('EMIT_RELEASE_JSON_MODE is the name release-manifest.mjs selects its mode by', () => {
+    const src = readFileSync(join(CI_DIR, 'release-manifest.mjs'), 'utf8');
+    assert.ok(src.includes(`has('${EMIT_RELEASE_JSON_MODE}')`), `release-manifest.mjs no longer selects has('${EMIT_RELEASE_JSON_MODE}')`);
+  });
+
+  test('emitOutputDir reads the token after the flag as the emitter does: across a continuation, never a following --flag', () => {
+    assert.equal(emitOutputDir('node tooling/ci/release-manifest.mjs --emit-release-json dist --app a'), 'dist');
+    assert.equal(emitOutputDir('node "$RM" --app a \\ ; --emit-release-json \\ ; extensions/dist \\ ; --tag t'), 'extensions/dist');
+    assert.equal(emitOutputDir('node rm.mjs --emit-release-json --app a'), null);
+    assert.equal(emitOutputDir('node rm.mjs --write dist'), null);
+  });
+
+  test('emitInvocations finds every step naming the mode, in any order, with its step, line and dir — and no job-level mention', () => {
+    const root = fixture({ 'e.yml': EMIT_YML });
+    const found = emitInvocations(root);
+    const lines = EMIT_YML.split('\n');
+    assert.deepEqual(
+      found.map((f) => [f.job.name, f.step.name, f.step.first, f.n, f.dir]),
+      [
+        ['release', 'Describe the release', lines.indexOf('      - name: Describe the release') + 1, lines.indexOf('        run: |') + 1, 'dist'],
+        ['other', null, lines.indexOf('      - run: node tooling/ci/release-manifest.mjs --emit-release-json out/x --app b') + 1, lines.indexOf('      - run: node tooling/ci/release-manifest.mjs --emit-release-json out/x --app b') + 1, 'out/x'],
+      ],
+    );
+    assert.deepEqual(emitInvocations(root, []), []);
   });
 });

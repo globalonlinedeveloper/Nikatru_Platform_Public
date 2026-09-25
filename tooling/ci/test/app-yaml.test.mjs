@@ -38,6 +38,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { parseYaml, YamlError } from '../../app-yaml/yaml.mjs';
 import { validate, assertSchemaUnderstood, SchemaError } from '../../app-yaml/schema-validate.mjs';
+import { appleCategoryUti } from '../../app-yaml/render.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '..', '..', '..');
@@ -91,6 +92,13 @@ function tree() {
     'apps/subscriptiontracker/ios/Runner/Info.plist',
     'apps/subscriptiontracker/macos/Runner/Info.plist',
     'apps/subscriptiontracker/pubspec.yaml',
+    // ── the shipped Dart limb 8 reads ─────────────────────────────────────
+    // Limb 8 refuses with COVERAGE LOST when the app's lib/ or every
+    // packages/*/lib holds no Dart file, and fails on an EXEMPT_CIPHER_IMPORTS
+    // row whose file is absent. These two are the least that satisfies both:
+    // one app file, and the one exempt importer.
+    'apps/subscriptiontracker/lib/main.dart',
+    'packages/core/lib/src/content/ed25519_pack_verifier.dart',
   ]) {
     mkdirSync(join(root, dirname(rel)), { recursive: true });
     cpSync(join(REPO, rel), join(root, rel));
@@ -155,6 +163,9 @@ function addCollectsRow(root) {
 const put = (root, rel, text) => writeFileSync(join(root, rel), text);
 const get = (root, rel) => readFileSync(join(root, rel), 'utf8');
 const kill = (root) => rmSync(root, { recursive: true, force: true });
+/** Every RegExp metacharacter escaped, the backslash included: a path spliced
+ *  into a pattern matches only itself (the idiom assert-auth-callbacks.mjs uses). */
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** The declaration with its top-level `billing:` block removed. ⏱ 2026-09-22 —
  *  apps/subscriptiontracker opted in to mobile IAP, so a case that appends its
@@ -1409,6 +1420,133 @@ describe('the icon label reaches the five OS-level name fields this renderer own
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-25 — O-APPLE-PLIST-KEYS-UNRENDERED. LSApplicationCategoryType and
+// ITSAppUsesNonExemptEncryption are rendered from app.yaml into both Apple
+// Info.plists. Until then neither key was in either file and assert-app-yaml
+// exited 0, because nothing read them: deleting one, or flipping the legal
+// answer by hand, was invisible.
+// ─────────────────────────────────────────────────────────────────────────────
+const IOS_PLIST = 'apps/subscriptiontracker/ios/Runner/Info.plist';
+const MAC_PLIST = 'apps/subscriptiontracker/macos/Runner/Info.plist';
+const CATEGORY_KEY = /\t<key>LSApplicationCategoryType<\/key>\n\t<string>[^<]*<\/string>\n/;
+const ENCRYPTION_KEY = /\t<key>ITSAppUsesNonExemptEncryption<\/key>\n\t<(?:true|false)\/>\n/;
+const withoutPlistKeys = (text) => text.replace(CATEGORY_KEY, '').replace(ENCRYPTION_KEY, '');
+
+describe('the two Apple Info.plist keys are rendered from app.yaml', () => {
+  test('the committed plists are exactly what a render of a key-less plist writes', () => {
+    const root = tree();
+    try {
+      put(root, IOS_PLIST, withoutPlistKeys(get(root, IOS_PLIST)));
+      put(root, MAC_PLIST, withoutPlistKeys(get(root, MAC_PLIST)));
+      assert.doesNotMatch(get(root, IOS_PLIST), /LSApplicationCategoryType|ITSAppUsesNonExemptEncryption/);
+      const stale = spawn(RENDER, [root, '--check']);
+      assert.equal(stale.code, 1, `a plist missing both keys is stale:\n${stale.out}`);
+      assert.ok(stale.out.includes(IOS_PLIST) && stale.out.includes(MAC_PLIST), stale.out);
+      assert.equal(spawn(RENDER, [root]).code, 0);
+      assert.equal(get(root, IOS_PLIST), readFileSync(join(REPO, IOS_PLIST), 'utf8'));
+      assert.equal(get(root, MAC_PLIST), readFileSync(join(REPO, MAC_PLIST), 'utf8'));
+      assert.match(get(root, MAC_PLIST), /<key>ITSAppUsesNonExemptEncryption<\/key>\n\t<false\/>\n<\/dict>\n<\/plist>\n$/);
+    } finally { kill(root); }
+  });
+
+  test('deleting ONE rendered key is RED in assert-app-yaml, naming that plist only', () => {
+    const root = tree();
+    try {
+      put(root, MAC_PLIST, get(root, MAC_PLIST).replace(CATEGORY_KEY, ''));
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, `the category key deleted from the macOS plist must not read as ok:\n${out}`);
+      assert.ok(out.includes(MAC_PLIST), out);
+      assert.ok(!out.includes(IOS_PLIST), `only the file that lost its key is stale:\n${out}`);
+    } finally { kill(root); }
+  });
+
+  test('a hand-edited category value is replaced in place, never written twice', () => {
+    const root = tree();
+    try {
+      put(root, IOS_PLIST, get(root, IOS_PLIST).replace('public.app-category.productivity', 'public.app-category.games'));
+      const stale = spawn(RENDER, [root, '--check']);
+      assert.equal(stale.code, 1, stale.out);
+      assert.ok(stale.out.includes(IOS_PLIST), stale.out);
+      assert.equal(spawn(RENDER, [root]).code, 0);
+      assert.equal(get(root, IOS_PLIST), readFileSync(join(REPO, IOS_PLIST), 'utf8'));
+      assert.equal(get(root, IOS_PLIST).split('<key>LSApplicationCategoryType</key>').length - 1, 1);
+    } finally { kill(root); }
+  });
+
+  test('declaring usesNonExemptEncryption: true flips <false/> to <true/> in both plists and changes nothing else', () => {
+    const root = tree();
+    try {
+      put(root, APP_YAML, get(root, APP_YAML).replace('  usesNonExemptEncryption: false', '  usesNonExemptEncryption: true'));
+      const iosBefore = get(root, IOS_PLIST);
+      const macBefore = get(root, MAC_PLIST);
+      const { code, out } = spawn(RENDER, [root]);
+      assert.equal(code, 0, out);
+      const flip = (t) => t.replace('<key>ITSAppUsesNonExemptEncryption</key>\n\t<false/>', '<key>ITSAppUsesNonExemptEncryption</key>\n\t<true/>');
+      assert.notEqual(flip(iosBefore), iosBefore, 'the fixture plist must carry the false this case flips');
+      assert.equal(get(root, IOS_PLIST), flip(iosBefore));
+      assert.equal(get(root, MAC_PLIST), flip(macBefore));
+    } finally { kill(root); }
+  });
+
+  test('an app with no Apple target is skipped, and its category is never asked for a UTI', () => {
+    const root = tree();
+    try {
+      rmSync(join(root, 'apps/subscriptiontracker/ios'), { recursive: true, force: true });
+      rmSync(join(root, 'apps/subscriptiontracker/macos'), { recursive: true, force: true });
+      put(root, APP_YAML, get(root, APP_YAML).replace(/^category: .*$/m, 'category: Games'));
+      const { code, out } = spawn(RENDER, [root]);
+      assert.equal(code, 0, `no Apple plist means no Apple category to map:\n${out}`);
+      assert.ok(!out.includes('APPLE_CATEGORY_UTI'), out);
+    } finally { kill(root); }
+  });
+
+  test('a plist with no root </dict> close is COVERAGE LOST, even though both keys are still in it', () => {
+    const root = tree();
+    try {
+      const text = get(root, MAC_PLIST);
+      const stripped = text.replace(/<\/dict>\n<\/plist>\n$/, '</plist>\n');
+      assert.notEqual(stripped, text, 'the fixture plist must end with the root close this case removes');
+      assert.match(stripped, /ITSAppUsesNonExemptEncryption/);
+      put(root, MAC_PLIST, stripped);
+      const r = spawn(RENDER, [root, '--check']);
+      assert.equal(r.code, 2, `a plist the renderer cannot anchor in must not read as ok or as stale:\n${r.out}`);
+      assert.ok(r.out.includes(MAC_PLIST), r.out);
+      const g = spawn(GUARD, [root]);
+      assert.equal(g.code, 2, g.out);
+    } finally { kill(root); }
+  });
+
+  test('a category with no Apple UTI is an authoring error that names the map, and nothing is written', () => {
+    const root = tree();
+    try {
+      put(root, APP_YAML, get(root, APP_YAML).replace(/^category: .*$/m, 'category: Games'));
+      const before = get(root, IOS_PLIST);
+      const { code, out } = spawn(RENDER, [root]);
+      assert.equal(code, 1, out);
+      assert.ok(out.includes('APPLE_CATEGORY_UTI') && out.includes('"Games"'), out);
+      assert.equal(get(root, IOS_PLIST), before, 'a refused render writes nothing');
+    } finally { kill(root); }
+  });
+
+  test('a key written twice is refused, not guessed', () => {
+    const root = tree();
+    try {
+      const text = get(root, IOS_PLIST);
+      put(root, IOS_PLIST, text.replace('</dict>\n</plist>\n', '\t<key>ITSAppUsesNonExemptEncryption</key>\n\t<true/>\n</dict>\n</plist>\n'));
+      const { code, out } = spawn(RENDER, [root, '--check']);
+      assert.equal(code, 1, out);
+      assert.ok(out.includes('<key>ITSAppUsesNonExemptEncryption</key> 2 times'), out);
+    } finally { kill(root); }
+  });
+
+  test('appleCategoryUti: an empty map is COVERAGE LOST, an unmapped word a problem, a mapped word its UTI', () => {
+    assert.ok(appleCategoryUti('Productivity', {}).lost);
+    assert.ok(appleCategoryUti('Games').problem);
+    assert.deepEqual(appleCategoryUti('Productivity'), { uti: 'public.app-category.productivity' });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ⏱ 2026-09-11 — ONE RULE FOR EVERY MACHINE THE DATA SITS ON.
 // apps/subscriptiontracker/privacy.yaml listed `oracle-cloud` (the vendor of the
 // identity machine) and omitted `hostinger` (the vendor of the LIVE crash sink)
@@ -1658,6 +1796,194 @@ describe('limb 7 — AI content is declared, and its consequences hold, both way
       const { code, out } = spawn(GUARD, [root]);
       assert.equal(code, 0, out);
       assert.match(out, /limb 7 — 1 of 1 app\(s\) generate AI content/);
+    } finally { kill(root); }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-25 — O-APPLE-PLIST-KEYS-UNRENDERED. `usesNonExemptEncryption: false`
+// is rendered into ITSAppUsesNonExemptEncryption, which App Store review reads
+// as a legal answer. Limb 8 holds that `false` to the Dart that ships: a cipher
+// import outside EXEMPT_CIPHER_IMPORTS, a cipher class name, or a direct cipher
+// dependency in the app's pubspec is RED. Every case mutates the real tree.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('limb 8 — an export-compliance `false` holds to the code the app ships', () => {
+  const VERIFIER = 'packages/core/lib/src/content/ed25519_pack_verifier.dart';
+  const APP_PUBSPEC = 'apps/subscriptiontracker/pubspec.yaml';
+  const BRICK = 'tooling/bricks/app/__brick__/apps/{{app_id}}';
+  const writeDart = (root, rel, text) => {
+    mkdirSync(join(root, dirname(rel)), { recursive: true });
+    put(root, rel, text);
+  };
+  const addDependency = (root, rel, line) => {
+    const text = get(root, rel);
+    assert.ok(/^dependencies:\n/m.test(text), `fixture anchor: ${rel} has a dependencies block`);
+    put(root, rel, text.replace(/^dependencies:\n/m, `dependencies:\n${line}\n`));
+  };
+
+  test('POSITIVE CONTROL — the shipped tree declares false and imports cryptography only in the recorded verifier', () => {
+    const root = tree();
+    try {
+      assert.match(get(root, VERIFIER), /^import 'package:cryptography\/cryptography\.dart';$/m, 'fixture anchor');
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 0, `expected a clean tree, got ${code}:\n${out}`);
+      assert.match(out, /limb 8 — 1 app\(s\) declare no non-exempt encryption; 2 shipped Dart file\(s\) carry no cipher class/);
+    } finally { kill(root); }
+  });
+
+  test('RC3 — a cipher dependency and its import in the app, with false declared, is RED on both', () => {
+    const root = tree();
+    try {
+      addDependency(root, APP_PUBSPEC, '  cryptography: ^2.7.0');
+      writeDart(root, 'apps/subscriptiontracker/lib/core/vault.dart', "import 'package:cryptography/cryptography.dart';\n\nfinal vault = 1;\n");
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.ok(out.includes('apps/subscriptiontracker/app.yaml declares no non-exempt encryption and imports cryptography at apps/subscriptiontracker/lib/core/vault.dart:1'), out);
+      assert.ok(out.includes(`${APP_PUBSPEC} depends directly on cryptography`), out);
+    } finally { kill(root); }
+  });
+
+  test('a direct cipher dependency in the app pubspec with no import anywhere is still RED', () => {
+    const root = tree();
+    try {
+      addDependency(root, APP_PUBSPEC, '  pointycastle: ^3.9.1');
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.ok(out.includes(`${APP_PUBSPEC} depends directly on pointycastle`), out);
+    } finally { kill(root); }
+  });
+
+  test('a cipher import in a shared package names the file and the line the import is on, past a block comment', () => {
+    const root = tree();
+    try {
+      writeDart(root, 'packages/core/lib/src/sealed.dart', "/* two\n   lines */\n// one\nimport 'package:pointycastle/export.dart';\n");
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.ok(out.includes('imports pointycastle at packages/core/lib/src/sealed.dart:4'), out);
+      assert.ok(out.includes('every app linking it (subscriptiontracker)'), out);
+    } finally { kill(root); }
+  });
+
+  test('an exemption covers one package in one file: the verifier importing a second cipher package is RED', () => {
+    const root = tree();
+    try {
+      put(root, VERIFIER, get(root, VERIFIER).replace("import 'package:cryptography/cryptography.dart';", "import 'package:cryptography/cryptography.dart';\nimport 'package:encrypt/encrypt.dart';"));
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.ok(out.includes(`imports encrypt at ${VERIFIER}:4`), out);
+      assert.ok(!out.includes('imports cryptography at'), `the recorded pair stays exempt:\n${out}`);
+    } finally { kill(root); }
+  });
+
+  test('a commented-out cipher import, and a comment naming a cipher class, are not code', () => {
+    // The block comment puts the import at the START of a line and the doc
+    // comment names a class the section 1 grep matches: both are red without
+    // the comment strip, which is what this case exists to hold.
+    const root = tree();
+    try {
+      writeDart(
+        root,
+        'apps/subscriptiontracker/lib/core/later.dart',
+        "/*\nimport 'package:sodium/sodium.dart';\n*/\n/// Signed, never sealed: no AesGcm here.\nfinal later = 1;\n",
+      );
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 0, out);
+    } finally { kill(root); }
+  });
+
+  test('a cipher class named in the EXEMPT file is RED: the exemption is for a package, not for what is done with it', () => {
+    const root = tree();
+    try {
+      put(root, VERIFIER, `${get(root, VERIFIER)}\nfinal _sealer = AesGcm.with256bits();\n`);
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.match(out, new RegExp(`names the cipher \`AesGcm\` at ${escapeRe(VERIFIER)}:\\d+`));
+    } finally { kill(root); }
+  });
+
+  test('an exemption whose file no longer imports its package is RED as stale', () => {
+    const root = tree();
+    try {
+      put(root, VERIFIER, get(root, VERIFIER).replace("import 'package:cryptography/cryptography.dart';\n", ''));
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.ok(out.includes(`records ${VERIFIER} importing cryptography, and it no longer does`), out);
+    } finally { kill(root); }
+  });
+
+  test('an exemption whose file is gone is RED as stale', () => {
+    const root = tree();
+    try {
+      rmSync(join(root, VERIFIER));
+      writeDart(root, 'packages/core/lib/nikatru_core.dart', 'library nikatru_core;\n');
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.ok(out.includes(`records ${VERIFIER} importing cryptography, and that file does not exist`), out);
+    } finally { kill(root); }
+  });
+
+  test('an app lib/ with no Dart file is COVERAGE LOST, never a pass', () => {
+    const root = tree();
+    try {
+      rmSync(join(root, 'apps/subscriptiontracker/lib'), { recursive: true, force: true });
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 2, out);
+      assert.ok(out.includes('limb 8 found no Dart file under apps/subscriptiontracker/lib.'), out);
+    } finally { kill(root); }
+  });
+
+  test('no Dart file under any packages/*/lib is COVERAGE LOST, never a pass', () => {
+    const root = tree();
+    try {
+      rmSync(join(root, 'packages'), { recursive: true, force: true });
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 2, out);
+      assert.ok(out.includes('limb 8 found no Dart file under any packages/*/lib.'), out);
+    } finally { kill(root); }
+  });
+
+  test('the app brick: a cipher dependency in its pubspec is RED, because it stamps false', () => {
+    const root = tree();
+    try {
+      writeDart(root, `${BRICK}/pubspec.yaml`, 'name: {{app_id}}\ndependencies:\n  flutter:\n    sdk: flutter\n  sodium: ^3.4.0\n');
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.ok(out.includes(`${BRICK}/pubspec.yaml depends directly on sodium`), out);
+    } finally { kill(root); }
+  });
+
+  test('the app brick: a cipher import in its lib/ is RED', () => {
+    const root = tree();
+    try {
+      writeDart(root, `${BRICK}/lib/main.dart`, "import 'package:flutter/material.dart';\nimport 'package:webcrypto/webcrypto.dart';\n");
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.ok(out.includes(`imports webcrypto at ${BRICK}/lib/main.dart:2`), out);
+    } finally { kill(root); }
+  });
+
+  test('declaring true is the conservative answer and is not graded: the same import passes', () => {
+    const root = tree();
+    try {
+      put(root, APP_YAML, get(root, APP_YAML).replace('  usesNonExemptEncryption: false', '  usesNonExemptEncryption: true'));
+      assert.equal(spawn(RENDER, [root]).code, 0, 'the plists re-render to <true/>');
+      writeDart(root, 'apps/subscriptiontracker/lib/core/vault.dart', "import 'package:cryptography/cryptography.dart';\n");
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 0, out);
+      assert.match(out, /limb 8 — every one of 1 app\(s\) declares `usesNonExemptEncryption: true`/);
+    } finally { kill(root); }
+  });
+
+  test('a declaration with no exportCompliance answer fails the schema', () => {
+    const root = tree();
+    try {
+      const text = get(root, APP_YAML);
+      const cut = text.replace(/^exportCompliance:\n(?: {2}.*\n)+/m, '');
+      assert.notEqual(cut, text, 'fixture anchor');
+      put(root, APP_YAML, cut);
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.match(out, /exportCompliance/);
     } finally { kill(root); }
   });
 });

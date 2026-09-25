@@ -143,6 +143,9 @@ import { fileURLToPath } from 'node:url';
 // full copies of this repo — resolving citations into stale branches today.
 import { listDir } from './tree-walk.mjs';
 import { flutterAppChannel, undeclaredSurfaceLine, declaredSurfaces, FLUTTER_APP_FIELD } from './channel-surface.mjs';
+// The validator assert-release-json.mjs limb 1 grades the record with — the emitter
+// refuses to write a record that validator would refuse (O-RELEASE-EMITTER-WRITES-UNCHECKED).
+import { validate, SchemaError } from '../app-yaml/schema-validate.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = resolve(join(HERE, '..', '..'));  // tooling/ci -> repo root
@@ -162,6 +165,11 @@ export const MANIFEST_NAME = 'SHA256SUMS';
  *  and `assert-release-durable.mjs` read this name OUT OF THIS FILE. A private copy
  *  in either would be the first thing to drift, and the drift reports "clean". */
 export const RELEASE_JSON_NAME = 'release.json';
+
+/** And the record's schema, for the same reason: `--emit-release-json` validates
+ *  against it before its write, and `tooling/ci/assert-release-json.mjs` grades
+ *  against it after — both read this one path OUT OF THIS FILE. */
+export const RELEASE_SCHEMA_REL = 'contracts/release.schema.json';
 
 /**
  * 🔴 THE EXTENSION SET IS DERIVED FROM THE CHANNEL REGISTER, NOT TYPED HERE.
@@ -1081,6 +1089,8 @@ async function main() {
     // defaulted ref type would be the same guess from the string this replaces.
     const refType = flag('ref-type') ?? die('--stage needs --ref-type <tag|branch>');
     if (refType !== 'tag' && refType !== 'branch') die(`--stage --ref-type must be tag or branch, got ${JSON.stringify(refType)}`);
+    // ⏱ 2026-09-25 — the tag must name `--app` before anything is walked (O-TAG-BUILDS-EVERY-APP).
+    await refuseAnotherUnitsTag('--stage', { app, tag, refType });
     // Installable MINUS the declared bundle members — see BUNDLE_MEMBERS above.
     // Lifting a bundle's executable out breaks the executable and the bundle.
     // NARROWED TO THE SURFACE `--app` IS ON: `.zip` is an extension channel's
@@ -1400,6 +1410,8 @@ async function main() {
     const minSupportedFlag = flag('min-supported'); // read only to be refused, on every surface: releaseFloor below
     const surfaceFlag = flag('surface');
     const build = has('build') ? flag('build') : null;
+    // ⏱ 2026-09-25 — the record's tag must name `--app` (O-TAG-BUILDS-EVERY-APP). No ref type is passed here.
+    await refuseAnotherUnitsTag('--emit-release-json', { app, tag, refType: null });
     const out = join(dir, RELEASE_JSON_NAME);
     // The refusal is the EXCLUSIVE CREATE at the write below (`flag: 'wx'`), never
     // an existsSync here: a check-then-write leaves a window between the two
@@ -1454,6 +1466,17 @@ async function main() {
         return { name: n, sha256: createHash('sha256').update(bytes).digest('hex'), size: bytes.length, stamp };
       }),
     });
+    // O-RELEASE-EMITTER-WRITES-UNCHECKED — graded BEFORE the file exists, by the
+    // schema and validator assert-release-json.mjs limb 1 uses. Written first, a
+    // record the schema refuses sat in the release directory as its description
+    // until the grade step refused it; on a lane that skipped the grade, nothing did.
+    const schemaProblems = releaseSchemaProblems(treeRoot, json);
+    if (schemaProblems.length > 0) {
+      console.error(`✗ ${out} was NOT written: the record fails ${RELEASE_SCHEMA_REL}.`);
+      for (const p of schemaProblems) console.error(`  schema: ${p}`);
+      process.exitCode = 1;
+      return;
+    }
     try {
       writeFileSync(out, `${JSON.stringify(json, null, 2)}\n`, { flag: 'wx' });
     } catch (e) {
@@ -1906,6 +1929,38 @@ async function refuseUnableNativeInstallers(register, files, { surface, tag, ref
   );
 }
 
+/**
+ * ⏱ 2026-09-25 — THE TAG NAMES `--app` (O-TAG-BUILDS-EVERY-APP). `--stage` renames
+ * every installer `<tag>-<file>` and `--emit-release-json` writes the tag into the
+ * record, so a tag that names ANOTHER unit publishes this app's files under that
+ * unit's name. build-platforms.yml's release matrix did exactly that: one app's tag
+ * ran every workspace app, and each staged its installers under that one tag.
+ * The unit is read with tag-owner.mjs's releaseTagOf, the split
+ * `assert-app-versioning.mjs --tag` and `assert-release-lane-generic.mjs --emit-apps --tag` read:
+ *   · `--stage` hands it the ref type it was given (github.ref_type);
+ *   · `--emit-release-json` is given none, so the tag is read in the two shapes
+ *     contracts/release.schema.json declares: the `<unit>-untagged-<sha>` value a
+ *     non-tag run synthesises (UNTAGGED_REF) as that, and anything else as a
+ *     release tag. Only the unit is taken from that reading, never the kind.
+ * A tag whose unit is not `app`, and a tag with no unit to read, exit 1 before
+ * a file is walked, moved or written. On `--stage` that includes the ref
+ * refuseUnableNativeInstallers would otherwise judge as a release: its
+ * `invalid` branch stays as the fail-closed default and no longer decides one.
+ * Imported dynamically, for the reason refuseUnableNativeInstallers gives.
+ */
+async function refuseAnotherUnitsTag(mode, { app, tag, refType }) {
+  const { releaseTagOf, UNTAGGED_REF } = await import('./tag-owner.mjs');
+  const ref = releaseTagOf(tag, { refType: refType ?? (UNTAGGED_REF.test(tag) ? 'branch' : 'tag') });
+  if (ref.kind !== 'invalid' && ref.slug === app) return;
+  die(
+    ref.kind === 'invalid'
+      ? `${mode} --tag "${tag}" names no unit: tag-owner.mjs reads neither <unit>-v<version> nor <unit>-untagged-<sha> in it${refType === null ? '' : ` on --ref-type ${refType}`}, and --app is "${app}".`
+      : `${mode} --tag "${tag}" is ${ref.kind === 'release' ? 'a release tag' : 'the untagged ref'} of "${ref.slug}", and --app is "${app}".`,
+    'Every file would be named after, or recorded under, a tag that is not this app\'s (O-TAG-BUILDS-EVERY-APP).',
+    'Nothing was walked, moved or written.',
+  );
+}
+
 /* ─────────────────────────────────────────────────────────────────────────────
  * ⏱ 2026-09-24 — THE BUILD'S CHANNEL STAMP (O-RELEASE-RECORD-GUESSES-CHANNEL-FROM-EXTENSION).
  *
@@ -2036,5 +2091,40 @@ function judgeStageStamps(register, found, { surface }) {
       'and listed in its upload\'s `path:`. Nothing was moved. An unstamped installer is never given a default channel:',
       'that default is the guess O-RELEASE-RECORD-GUESSES-CHANNEL-FROM-EXTENSION removes.',
     );
+  }
+}
+
+/**
+ * O-RELEASE-EMITTER-WRITES-UNCHECKED — the schema problems of a record about to
+ * be written, through the validator and the schema file assert-release-json.mjs
+ * limb 1 grades with. [] when it conforms. A missing or unreadable schema, or one
+ * using a keyword the validator does not implement, is COVERAGE LOST (exit 2):
+ * the emit could not look, and writing anyway would be the unchecked write this
+ * exists to remove.
+ *
+ * DECLARED LAST, HOISTED, for the reason `releaseFloor` gives above.
+ */
+function releaseSchemaProblems(treeRoot, record) {
+  const abs = join(treeRoot, RELEASE_SCHEMA_REL);
+  if (!existsSync(abs)) {
+    coverageLost(
+      `COVERAGE LOST — ${RELEASE_SCHEMA_REL} does not exist under ${treeRoot}.`,
+      'The record is validated against it before it is written, and assert-release-json.mjs grades it against the',
+      'same file after. Writing an unvalidated record is the defect; nothing was written.',
+    );
+  }
+  let schema;
+  try {
+    schema = JSON.parse(readFileSync(abs, 'utf8'));
+  } catch (e) {
+    coverageLost(`COVERAGE LOST — ${RELEASE_SCHEMA_REL} could not be parsed (${e.message}). Nothing was written.`);
+  }
+  try {
+    return validate(record, schema);
+  } catch (e) {
+    if (e instanceof SchemaError) {
+      coverageLost(`COVERAGE LOST — ${RELEASE_SCHEMA_REL} uses a keyword the validator does not implement: ${e.message}. Nothing was written.`);
+    }
+    throw e;
   }
 }

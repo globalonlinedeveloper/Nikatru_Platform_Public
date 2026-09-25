@@ -13,10 +13,12 @@
 // It has already cost us once — `packages/tokens` sat outside the workspace
 // emitting a Dart file nobody consumed, and the gate could never have caught it.
 //
-// It also scales badly. `tooling/bricks/app/hooks/post_gen.dart` does not add a
-// stamped app to `workspace:` (verified 2026-07-26 — the string does not appear
-// in the file), so without this guard EVERY app the factory produces is born
-// outside the gate.
+// It also scaled badly. `tooling/bricks/app/hooks/post_gen.dart` did not add a
+// stamped app to `workspace:` (verified 2026-07-26 — the string did not appear
+// in the file), so EVERY app the factory produced was born outside the gate.
+// Since then post_gen's `_registerInWorkspace` appends `  - apps/<id>` on every
+// stamp (re-read 2026-09-25). This guard stays: it is what notices when that
+// append, or a hand edit to the list, stops holding.
 //
 // Checks, in order:
 //   1. every dir with a pubspec.yaml under packages/ or apps/ IS a member

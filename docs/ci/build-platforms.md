@@ -156,6 +156,22 @@ Two reasons, and the second one is not cosmetic:
 The gating posture is unchanged: a red ci-gate skips `prepare`, which skips
 all three build jobs, which is what it did when they named `gate` directly.
 
+⏱ 2026-09-25, row O-TAG-BUILDS-EVERY-APP: on a TAG ref the matrix is the one
+app the tag names. The step "The matrix comes from the workspace, never from
+this file" passes `--tag "$REF_NAME"` to the emitter only when
+`github.ref_type` is `tag`, both through `env:`, and the emitter splits the
+tag with tag-owner.mjs's `releaseTagOf`, the reading the version check and
+`release-manifest.mjs` share. Before this, a tag for one app built
+every workspace app, and `release` staged each of them under that one tag, so
+a second app's installers would have been published as the first app's. It
+stayed latent only because the workspace holds one app. A tag that names no
+workspace app, or carries no `-v<version>`, now stops in this job; a schedule,
+and a dispatch on a branch, pass no tag and build the whole workspace as
+before. The proof is static and no tag was pushed for it:
+release-lane-generic.test.mjs runs the emitter over a fixture workspace with
+a second app, and R7 in release-durable.test.mjs reads this step's
+`if`/`else` through workflow-scan.mjs.
+
 ### above `GITHUB_SHA_SHORT: ${{ steps.workspace.outputs.GITHUB_SHA_SHORT }}`
 
 ── the release line's build metadata, derived ONCE for the whole run ────
@@ -1188,6 +1204,21 @@ installer (`<file>.channel.json`, §channel-stamps) and moves it to
 stage (exit 1); an installer with no stamp is COVERAGE LOST (exit 2). The
 next step reads each installer's channel from `stamps/`
 (O-RELEASE-RECORD-GUESSES-CHANNEL-FROM-EXTENSION).
+
+⏱ 2026-09-25, row O-TAG-BUILDS-EVERY-APP: FIRST, before the walk, `--stage`
+asks whether the tag names `--app`. It reads the tag with tag-owner.mjs's
+`releaseTagOf` and the `--ref-type` it was given, and exits 1 with nothing
+walked or moved when the tag is another app's release tag, another unit's
+untagged ref, or names no unit at all. A ref neither shape reads therefore
+stops here now, before the native-auth judgement above can judge it as a
+release. `--emit-release-json` in the next step asks the same question with no
+ref type, reading the tag in the shapes contracts/release.schema.json
+declares. The version check above `--stage` carries `--app "apps/$APP"`, so a
+tag is held to the matrix app being staged. `prepare` already narrows a tag
+run's matrix to the tag's app; these checks are the second line. Until this
+change every matrix app was staged under one app's tag, and the version check,
+with no `--app`, compared that tag only with the app the tag itself named, so
+it passed on every leg.
 
 Expressions go through `env:` rather than into the shell body: a ref name
 is attacker-influenced text and `${{ }}` in a `run:` is substituted before

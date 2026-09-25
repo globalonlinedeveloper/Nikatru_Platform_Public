@@ -15,7 +15,8 @@
     "deviceClasses",
     "listingFields",
     "listingCategories",
-    "storeFormRules"
+    "storeFormRules",
+    "appleCategoryUti"
   ],
   "additionalProperties": false,
   "properties": {
@@ -114,6 +115,13 @@
           }
         }
       }
+    },
+    "appleCategoryUti": {
+      "type": "object",
+      "minProperties": 1,
+      "description": "Per portfolio category word, the Apple category UTI tooling/app-yaml/render.mjs writes into LSApplicationCategoryType in both Apple Info.plists. Covers every category listingCategories lists on an Apple channel.",
+      "propertyNames": { "type": "string", "minLength": 1 },
+      "additionalProperties": { "type": "string", "pattern": "^public\\.app-category\\.[a-z-]+$" }
     }
   },
   "definitions": {

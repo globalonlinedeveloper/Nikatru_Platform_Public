@@ -30,23 +30,26 @@ function sandbox({ withConfig = true } = {}) {
   copyFileSync(HOOK, join(root, '.githooks', 'pre-commit'));
   mkdirSync(join(root, 'tooling', 'scripts'), { recursive: true });
   writeFileSync(join(root, 'tooling', 'scripts', 'spec-guards.mjs'), 'process.exit(0);\n');
-  if (withConfig) writeFileSync(join(root, '.gitleaks.toml'), '# stub config\n');
+  // Private shares this hook and has neither file, so the no-config box has no pin either.
+  if (withConfig) {
+    writeFileSync(join(root, '.gitleaks.toml'), '# stub config\n');
+    writeFileSync(join(root, 'tooling', 'versions.json'), '{ "gitleaks": "8.30.1" }\n');
+  }
   const bin = join(root, 'bin');
   mkdirSync(bin);
   const stub = join(bin, 'gitleaks');
-  writeFileSync(stub, '#!/bin/sh\nprintf "%s\\n" "$@" > "$STUB_LOG"\nexit "${STUB_EXIT:-0}"\n');
+  writeFileSync(stub, '#!/bin/sh\nif [ "$1" = "version" ]; then echo "${STUB_VERSION:-8.30.1}"; exit 0; fi\nprintf "%s\\n" "$@" > "$STUB_LOG"\nexit "${STUB_EXIT:-0}"\n');
   chmodSync(stub, 0o755);
   writeFileSync(join(root, 'staged.txt'), 'hello\n');
   git('add', 'staged.txt');
   return { root, bin, log: join(root, 'stub.log') };
 }
 
-function runHook(box, stubExit) {
-  const r = spawnSync('sh', ['.githooks/pre-commit'], {
-    cwd: box.root,
-    encoding: 'utf8',
-    env: { ...process.env, PATH: `${box.bin}${delimiter}${process.env.PATH}`, STUB_LOG: box.log, STUB_EXIT: String(stubExit) },
-  });
+function runHook(box, stubExit, stubVersion) {
+  const env = { ...process.env, PATH: `${box.bin}${delimiter}${process.env.PATH}`, STUB_LOG: box.log, STUB_EXIT: String(stubExit) };
+  delete env.STUB_VERSION;
+  if (stubVersion !== undefined) env.STUB_VERSION = stubVersion;
+  const r = spawnSync('sh', ['.githooks/pre-commit'], { cwd: box.root, encoding: 'utf8', env });
   return { code: r.status, out: `${r.stdout}${r.stderr}` };
 }
 
@@ -77,5 +80,27 @@ test('a repo with no .gitleaks.toml (Private shares this hook) is not scanned', 
     const { code, out } = runHook(box, 1);
     assert.equal(code, 0, out);
     assert.equal(existsSync(box.log), false, 'gitleaks must not be called without a config');
+  } finally { rmSync(box.root, { recursive: true, force: true }); }
+});
+
+// O-HOOK-GITLEAKS-PIN-UNREAD — the hook reads the pin from tooling/versions.json and
+// refuses a scanner that is not CI's, before any scan runs.
+test('an installed gitleaks that differs from the tooling/versions.json pin REFUSES, naming both', () => {
+  const box = sandbox();
+  try {
+    const { code, out } = runHook(box, 0, 'v8.29.0');
+    assert.equal(code, 1, out);
+    assert.match(out, /gitleaks 8\.29\.0 is installed/);
+    assert.match(out, /tooling\/versions\.json pins gitleaks 8\.30\.1/);
+    assert.equal(existsSync(box.log), false, 'no scan may run with the wrong scanner');
+  } finally { rmSync(box.root, { recursive: true, force: true }); }
+});
+
+test('GREEN CONTROL — an installed gitleaks equal to the pin (leading v stripped) passes and scans', () => {
+  const box = sandbox();
+  try {
+    const { code, out } = runHook(box, 0, 'v8.30.1');
+    assert.equal(code, 0, out);
+    assert.ok(readFileSync(box.log, 'utf8').split('\n').includes('--staged'), 'the scan ran');
   } finally { rmSync(box.root, { recursive: true, force: true }); }
 });

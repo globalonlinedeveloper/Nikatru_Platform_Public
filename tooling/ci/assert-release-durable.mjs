@@ -145,7 +145,7 @@ import { listDir } from './tree-walk.mjs';
 // upload or a publish behind `uses: ./.github/actions/<x>`, or in a job of a
 // `uses: ./.github/workflows/<f>.yml` callee, is graded where it runs, under the
 // CALLER's `on:` (a callee's own trigger is only `workflow_call`).
-import { parseResolvedWorkflows, laneRunHost, laneRefusalText, lineAt, refusalText, WORKFLOW_DIR, shellSegments, releaseTriggerLine } from './workflow-scan.mjs';
+import { parseResolvedWorkflows, laneRunHost, laneRefusalText, lineAt, refusalText, WORKFLOW_DIR, shellSegments, releaseTriggerLine, emitInvocations } from './workflow-scan.mjs';
 
 // Flags are filtered out of the positional scan BEFORE the root is taken, or
 // `--fail-on-mixed-upload-paths` would be resolved as a repository path and every
@@ -853,7 +853,11 @@ const VERIFY = new RegExp(`release-manifest\\.mjs\\s+--verify\\s+(\\S+)`);
 // actually published, and something must re-check it before the upload. The
 // emitter is deliberately matched on the same script: one file writes both
 // records, so a lane cannot acquire one and skip the other by importing a helper.
-const EMIT = new RegExp(`release-manifest\\.mjs\\s+--emit-release-json\\s+(\\S+)`);
+// ⏱ 2026-09-25 (O-RELEASE-EMITTER-WRITES-UNCHECKED): the emit step is found by
+// workflow-scan's `emitInvocations`, the finder assert-release-json.test.mjs
+// executes, and its directory is that finder's `dir`. The private regex this
+// replaced took an emit only as `release-manifest.mjs --emit-release-json <dir>`
+// and missed the flag in another order or on a continuation line.
 const GRADE = new RegExp(`assert-release-json\\.mjs\\s+--dir\\s+(\\S+)`);
 const RELEASE_JSON_GUARD_REL = 'tooling/ci/assert-release-json.mjs';
 let publishingJobs = 0;
@@ -896,7 +900,7 @@ for (const wf of workflows) {
       }
     }
     // ── the release record, same three rules, one lane at a time ───────────
-    const emit = job.logical.find((l) => EMIT.test(l.text));
+    const emit = emitInvocations(ROOT, [wf]).find((i) => i.job === job);
     const graded = job.logical.find((l) => GRADE.test(l.text));
     if (!emit) {
       problems.push(
@@ -906,7 +910,7 @@ for (const wf of workflows) {
           'Without it every consumer has to parse the file names, and a file name is a convention, not a contract.',
       );
     } else {
-      const edir = emit.text.match(EMIT)[1];
+      const edir = emit.dir;
       if (edir !== dir) {
         problems.push(
           `${wf.rel}: job "${job.name}" describes \`${edir}\` and manifests \`${dir}\`. ` +

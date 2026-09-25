@@ -404,6 +404,16 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/build-platforms.yml#apple"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-built-info-plist.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "ADR 057"
     ],
@@ -1388,6 +1398,16 @@
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-no-gate-weakening.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-no-generated-line-cites.mjs",
     "references": [],
     "state": "WIRED"
   },
@@ -3647,6 +3667,16 @@
     ],
     "kind": "script",
     "ref": "tooling/sites/lastmod.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/site-drift-repair.yml#repair"
+    ],
+    "kind": "script",
+    "ref": "tooling/sites/regen.mjs",
     "references": [],
     "state": "WIRED"
   },

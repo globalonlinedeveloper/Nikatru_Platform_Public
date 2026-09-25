@@ -69,11 +69,20 @@ jobs:
         run: node tooling/ci/assert-app-versioning.mjs --tag "$REF_NAME" --ref-type "$REF_TYPE"
       # why: DERIVED, NOT LISTED. A hand-written app list here is a second copy of the
       # workspace, and the copy is the one that rots.
+      # why: on a tag ref the matrix is the one app the tag names, so a tag builds and
+      # stages only its own app; every other run builds the whole workspace.
       - name: The matrix comes from the workspace, never from this file
         id: workspace
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
         run: |
           set -euo pipefail
-          apps="$(node tooling/ci/assert-release-lane-generic.mjs --emit-apps)"
+          if [ "$REF_TYPE" = "tag" ]; then
+            apps="$(node tooling/ci/assert-release-lane-generic.mjs --emit-apps --tag "$REF_NAME")"
+          else
+            apps="$(node tooling/ci/assert-release-lane-generic.mjs --emit-apps)"
+          fi
           echo "apps=${apps}" >> "$GITHUB_OUTPUT"
           echo "GITHUB_SHA_SHORT=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
           echo "Building: ${apps}" >> "$GITHUB_STEP_SUMMARY"
@@ -747,6 +756,11 @@ jobs:
         run: >
           node tooling/ci/assert-artifact-signed-apple.mjs
           apps/${{ matrix.app }}/build/macos/Build/Products/Release/*.app
+      # why: App Store review reads these keys from the bundle, not the repo; an INFOPLIST_KEY_* setting can override the rendered source plist.
+      - name: The macOS bundle carries the Info.plist keys app.yaml renders
+        run: >
+          node tooling/ci/assert-built-info-plist.mjs --app ${{ matrix.app }}
+          apps/${{ matrix.app }}/build/macos/Build/Products/Release/*.app
       # ⏱ CHANGED 2026-09-09 — THIS WAS `flutter build ios --release --no-codesign`
       # FROM THE FIRST COMMIT OF THIS LANE, AND THAT COMMAND CANNOT EMIT AN .ipa.
       # It produced `build/ios/iphoneos/Runner.app` and nothing else, so the
@@ -783,6 +797,11 @@ jobs:
         if: env.APPLE_SIGNING_POSTURE == 'release-signed'
         run: >
           node tooling/ci/stamp-channel.mjs --channel ios-appstore --build-step build_ipa
+          apps/${{ matrix.app }}/build/ios/ipa/*.ipa
+      - name: The .ipa carries the Info.plist keys app.yaml renders
+        if: env.APPLE_SIGNING_POSTURE == 'release-signed'
+        run: >
+          node tooling/ci/assert-built-info-plist.mjs --app ${{ matrix.app }}
           apps/${{ matrix.app }}/build/ios/ipa/*.ipa
       - name: Build ios (no codesign — unsigned build proof)
         if: env.APPLE_SIGNING_POSTURE != 'release-signed'
@@ -972,6 +991,11 @@ jobs:
         run: >
           node tooling/ci/assert-artifact-signed-apple.mjs
           apps/${{ matrix.app }}/build/ios/iphoneos/*.app
+      - name: The iOS bundle carries the Info.plist keys app.yaml renders
+        if: env.APPLE_SIGNING_POSTURE != 'release-signed'
+        run: >
+          node tooling/ci/assert-built-info-plist.mjs --app ${{ matrix.app }}
+          apps/${{ matrix.app }}/build/ios/iphoneos/*.app
       - name: Every artifact this lane claims exists, and is not empty
         run: >
           node tooling/ci/assert-artifact-shape.mjs
@@ -1156,7 +1180,7 @@ jobs:
           # refused), so every dispatch and every scheduled run still exercises
           # the parse and proves the code loads. Gating this on
           # `ref_type == 'tag'` would leave it dead until the first real release.
-          node tooling/ci/assert-app-versioning.mjs --tag "$TAG" --ref-type "$REF_TYPE"
+          node tooling/ci/assert-app-versioning.mjs --tag "$TAG" --ref-type "$REF_TYPE" --app "apps/$APP"
           mkdir -p dist
           # Each installer's build stamp goes to stamps/, never to dist/ (flat, and
           # published whole); the next step reads each file's channel from there.
@@ -1237,6 +1261,21 @@ jobs:
       # second one is the one a downloader and a store both read.
       - name: Grade the release record against the bytes beside it
         run: node tooling/ci/assert-release-json.mjs --dir dist
+      # why: the publish below is tag-gated, so on every other run (the cron, a dispatch) the
+      # record and its manifest left with the runner (O-NON-TAG-RELEASE-RECORD-DISCARDED). Named
+      # release-record-<app>, never <app>-…: the first download above takes `<app>-*`, and a
+      # re-run would pull an <app>- name into downloads/ and stage it as a build artifact.
+      # `!cancelled()`: a record the grade refused is the one most worth keeping.
+      - name: Keep the release record (non-tag runs)
+        if: ${{ !cancelled() && github.ref_type != 'tag' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-record-${{ matrix.app }}
+          path: |
+            dist/release.json
+            dist/SHA256SUMS
+          if-no-files-found: warn
+          retention-days: 90
       - name: Publish the GitHub Release (tag pushes only)
         if: github.ref_type == 'tag'
         env:

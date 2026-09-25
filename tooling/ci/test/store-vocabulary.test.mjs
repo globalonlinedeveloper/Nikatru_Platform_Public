@@ -486,3 +486,21 @@ describe('contracts/store/generate.mjs — its own floors', () => {
     assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
   });
 });
+
+// ⏱ 2026-09-25 — O-APPLE-PLIST-KEYS-UNRENDERED. render.mjs writes an Apple
+// channel's category into LSApplicationCategoryType through APPLE_CATEGORY_UTI,
+// and refuses (exit 1) a word the map lacks. This is the same refusal one step
+// earlier: a category an Apple channel lists and the map cannot resolve is red
+// here, before an app declares it. The channels are the ones PLIST_KEY_TARGETS
+// resolves a category for, read off the renderer rather than typed here.
+describe('APPLE_CATEGORY_UTI — every category an Apple channel lists resolves to a UTI', () => {
+  test('each Apple channel the renderer maps has its listed categories in the map', async () => {
+    const { APPLE_CATEGORY_UTI, LISTING_CATEGORIES } = await import(pathToFileURL(CONTRACT_JS).href);
+    const { PLIST_KEY_TARGETS } = await import(pathToFileURL(join(REPO, 'tooling', 'app-yaml', 'render.mjs')).href);
+    const channels = [...new Set(PLIST_KEY_TARGETS.map((t) => t.channel).filter(Boolean))].sort();
+    assert.deepEqual(channels, ['ios-appstore', 'macos-appstore'], 'the renderer must still resolve a category for both Apple channels');
+    const unresolved = channels.flatMap((c) => (LISTING_CATEGORIES[c] ?? []).filter((w) => !Object.hasOwn(APPLE_CATEGORY_UTI, w)).map((w) => `${c}: ${w}`));
+    assert.deepEqual(unresolved, [], 'add each word to APPLE_CATEGORY_UTI with its public.app-category.* UTI');
+    assert.ok((LISTING_CATEGORIES['ios-appstore'] ?? []).length > 0, 'an Apple channel listing no category would make this case vacuous');
+  });
+});

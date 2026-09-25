@@ -814,7 +814,8 @@ describe('apple-signing — the profiles container', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 // unzip — ZIP64, WHICH IS NOT AN APPLE CASE AND IS WHY IT IS TESTED HERE
 //
-// 🔴 unzip() HAS TWO CALLERS AND ONLY ONE OF THEM IS APPLE.
+// 🔴 unzip() HAS THREE CALLERS AND ONE OF THEM IS NOT APPLE (the third,
+// assert-built-info-plist.mjs, reads the Info.plist out of an .ipa).
 // tooling/ci/assert-artifact-signed-msix.mjs hands it a Windows .msix, and an
 // .msix is an OPC/APPX package: the packaging tool writes the ZIP64 end-of-
 // central-directory record, its locator and the 0xFFFF/0xFFFFFFFF sentinels

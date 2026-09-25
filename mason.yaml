@@ -1,6 +1,10 @@
-# Mason brick registry. Root-oriented: run from the repo root with `-o .` so a
-# stamp lands in place and appends to catalog/apps.json:
-#   mason get && mason make app -c <vars>.json -o . --on-conflict overwrite
+# Mason brick registry. Root-oriented: a stamp runs from the repo root with `-o .`
+# so it lands in place. Stamp an app with ONE command:
+#   node tooling/kit/stamp-app.mjs --vars <vars>.json [--overwrite]
+# It runs `mason get`, then `mason make app -c <vars>.json -o . --on-conflict
+# overwrite` (through mason.bat on Windows), and exits non-zero unless the site
+# chain and the release tag filter check clean afterwards. --overwrite is the only
+# thing that sets NIKATRU_ALLOW_OVERWRITE=1.
 #
 # The DEFAULT stamp emits only apps/<id>/ — client-only, no Worker, no D1, no R2
 # ([ADR 020]). It emits services/<id>-api/ as well ONLY when the vars file sets

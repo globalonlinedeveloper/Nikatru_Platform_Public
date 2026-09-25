@@ -32,8 +32,9 @@ import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { servedFloor, productSurfaces, channelStampName } from '../release-manifest.mjs';
-import { parseAllWorkflows, stepShell, workflowSteps } from '../workflow-scan.mjs';
+import { parseAllWorkflows, stepShell, workflowSteps, emitInvocations, EMIT_RELEASE_JSON_MODE } from '../workflow-scan.mjs';
 import { uploadableArtifactName } from '../assert-apps-gov-in-apk.mjs';
+import { gradeRelease } from '../assert-release-json.mjs';
 import { listDir } from '../tree-walk.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -291,6 +292,10 @@ function floorTree(config) {
   mkdirSync(join(root, 'apps', 'subscriptiontracker'), { recursive: true });
   mkdirSync(join(root, 'tooling'), { recursive: true });
   copyFileSync(join(REPO, 'tooling', 'channel-register.json'), join(root, 'tooling', 'channel-register.json'));
+  // ⏱ 2026-09-25: the emitter validates the record against --repo-root's schema
+  // before it writes it (O-RELEASE-EMITTER-WRITES-UNCHECKED).
+  mkdirSync(join(root, 'contracts'), { recursive: true });
+  copyFileSync(SCHEMA, join(root, 'contracts', 'release.schema.json'));
   if (config !== null) {
     mkdirSync(join(root, 'services', 'platform', 'src'), { recursive: true });
     writeFileSync(join(root, 'services', 'platform', 'src', 'app-config-data.json'), `${JSON.stringify(config, null, 2)}\n`);
@@ -446,6 +451,37 @@ describe('the release record\'s minSupported is the served floor', () => {
     assert.equal(existsSync(join(dir, 'release.json')), false);
     rmSync(dir, { recursive: true, force: true });
   });
+
+  // ── O-RELEASE-EMITTER-WRITES-UNCHECKED — the emitter grades BEFORE it writes ──
+  // --min-supported is refused on every surface before the record is built (EXT-3), so the
+  // schema's refusal is reached through `commit`: --sha passes into the record unchecked.
+  test('E1 RED — an extension record the schema refuses (a --sha that is not 40 hex) exits non-zero and leaves NO file', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'release-emit-schema-'));
+    writeFileSync(join(dir, 'fullshot-chromium.zip'), 'chromium bytes');
+    const r = run(EMITTER, [
+      '--emit-release-json', dir, '--app', 'fullshot', '--tag', 'fullshot-v1.0.0',
+      '--sha', 'g'.repeat(40), '--run-url', 'https://x/1', '--notes-url', 'https://x/2',
+      '--released-at', '2026-09-22T10:00:00Z', '--version', '1.0.0', '--repo-root', REPO,
+    ]);
+    assert.notEqual(r.status, 0, `${r.stdout}${r.stderr}`);
+    assert.match(r.stderr, /release\.json was NOT written: the record fails contracts\/release\.schema\.json/);
+    assert.match(r.stderr, /schema: #\/commit: "g{40}" does not match/);
+    assert.equal(existsSync(join(dir, 'release.json')), false, 'a record the schema refuses must never be written');
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test('E2 GREEN CONTROL — --min-supported 1.0.0 exits 0, and the record it writes passes gradeRelease', () => {
+    const s = stage({ app: 'fullshot', tag: 'fullshot-v1.0.0', assets: [['fullshot-chromium.zip', 'chromium bytes']] });
+    assert.equal(s.emit.status, 0, s.emit.stderr);
+    assert.equal(s.record().minSupported, '1.0.0');
+    const { findings } = gradeRelease({
+      dir: s.dir,
+      schema: JSON.parse(readFileSync(SCHEMA, 'utf8')),
+      register: JSON.parse(readFileSync(join(REPO, 'tooling', 'channel-register.json'), 'utf8')),
+    });
+    assert.deepEqual(findings, []);
+    rmSync(s.dir, { recursive: true, force: true });
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -538,51 +574,12 @@ function laneContext() {
 const indentOf = (t) => t.match(/^ */)[0].length;
 const unquote = (v) => v.replace(/^(['"])(.*)\1$/, '$2');
 
-/** The emitter's own name for the mode. release-manifest.mjs selects it with
- *  `has('emit-release-json')` — the flag at ANY position of its argv — so this
- *  one string is what the finder, the shim and the flat re-read all look for. */
-const EMIT_MODE = 'emit-release-json';
-
-/** The steps of one parsed job, as `{ start, end }` (1-based, inclusive): each
- *  `- ` item under the job's `steps:` key, through its last non-blank line. Read
- *  from workflow-scan's comment-blanked job lines, so a YAML comment never opens
- *  or closes a step, and bounded to the job, so a line outside every step (a
- *  job-level `env:`) belongs to none rather than to the nearest item above it. */
-function jobSteps(job) {
-  const isItem = (t) => /^\s*-(\s|$)/.test(t);
-  const at = job.lines.findIndex((l) => /^ {4}steps:\s*$/.test(l.text));
-  const steps = [];
-  if (at === -1) return steps;
-  let itemIndent = null;
-  for (const l of job.lines.slice(at + 1)) {
-    if (l.text.trim() === '') continue;
-    const ind = indentOf(l.text);
-    itemIndent ??= isItem(l.text) ? ind : -1;
-    if (itemIndent === -1 || ind < itemIndent || (ind === itemIndent && !isItem(l.text))) break;
-    if (ind === itemIndent) steps.push({ start: l.n, end: l.n });
-    else steps.at(-1).end = l.n;
-  }
-  return steps;
-}
-
-/** Every STEP under `wfRoot`'s workflows that names the emit mode anywhere, as
- *  `{ wf, job, step, n }` — `n` the first logical line that names it (a block
- *  scalar's is its `run:` key's line). Anywhere, not "right after the script
- *  path": see THE FINDER'S PREDICATE above. */
-function emitInvocations(wfRoot, parsed = parseAllWorkflows(wfRoot)) {
-  const found = [];
-  for (const wf of parsed) {
-    for (const job of wf.jobs.values()) {
-      const steps = jobSteps(job);
-      for (const l of job.logical) {
-        if (!l.text.includes(EMIT_MODE)) continue;
-        const step = steps.find((s) => s.start <= l.n && l.n <= s.end);
-        if (step && !found.some((f) => f.wf === wf && f.step === step)) found.push({ wf, job, step, n: l.n });
-      }
-    }
-  }
-  return found;
-}
+/** The emitter's own name for the mode (`EMIT_RELEASE_JSON_MODE`), the step
+ *  model (`workflowSteps`) and the finder (`emitInvocations`) come out of
+ *  workflow-scan.mjs, which assert-release-durable.mjs reads through too
+ *  (O-RELEASE-EMITTER-WRITES-UNCHECKED). The finder takes a step when the mode's
+ *  name appears anywhere in it — see THE FINDER'S PREDICATE above. */
+const EMIT_MODE = EMIT_RELEASE_JSON_MODE;
 
 /** Every line under `wfRoot/.github` — each workflow and each composite action —
  *  that names the emit mode, as `{ rel, n }`. FLAT: whole-line comments dropped,
@@ -620,7 +617,7 @@ function defaultsWorkingDirectory(lines, base) {
   return null;
 }
 
-/** The step at raw lines `start..end` (1-based, from jobSteps): its `env:`, its
+/** The step at raw lines `start..end` (1-based, a workflowSteps `first..last`): its `env:`, its
  *  `run:` script as the shell receives it, and its `working-directory:`. Read
  *  from the RAW file, not workflow-scan's comment-blanked lines — a `#` inside a
  *  script is the script's, and the script is what is executed here. A PLAIN
@@ -685,9 +682,9 @@ function gradeInvocation(wfRoot, inv, ctx) {
   const where = `${inv.wf.rel}:${inv.n} (job "${inv.job.name}")`;
   const fail = (output, extra = {}) => ({ where, ok: false, output, app: null, surface: null, ...extra });
   const raw = readFileSync(join(wfRoot, inv.wf.rel), 'utf8').split('\n');
-  const step = readStep(raw, inv.step);
+  const step = readStep(raw, { start: inv.step.first, end: inv.step.last });
   if (step.run === null) return fail(`the step names --${EMIT_MODE} and has no \`run:\` this can read`);
-  const sh = stepShell(inv.wf, inv.step.start);
+  const sh = stepShell(inv.wf, inv.step.first);
   if (sh.family !== 'bash') return fail(`the step runs under ${sh.shell ?? `an unknown shell (${sh.why})`}; only bash steps are executed here`);
   const unknown = [];
   const expand = (s) => s.replace(/\$\{\{\s*(.+?)\s*\}\}/g, (all, e) => ctx.expressions[e] ?? (unknown.push(e), all));
@@ -775,7 +772,7 @@ function gradeEveryEmitter(wfRoot) {
   const problems = graded.filter((g) => !g.ok).map((g) => `${g.where}\n${g.output}`);
   if (graded.length === 0) problems.push('no workflow runs `release-manifest.mjs --emit-release-json` — nothing was graded');
   for (const m of flatMentions(wfRoot)) {
-    if (found.some((f) => f.wf.rel === m.rel && f.step.start <= m.n && m.n <= f.step.end)) continue;
+    if (found.some((f) => f.wf.rel === m.rel && f.step.first <= m.n && m.n <= f.step.last)) continue;
     problems.push(`${m.rel}:${m.n} names --${EMIT_MODE} outside every step this test executed (a workflow- or job-level \`env:\`, a composite action, a key the parse does not read). Refusing to guess which step runs it: write the mode into the step that emits.`);
   }
   const register = JSON.parse(readFileSync(join(REPO, 'tooling', 'channel-register.json'), 'utf8'));
@@ -1215,3 +1212,45 @@ function runAgiStep(cwd, dir) {
   const { run: script } = readStep(readFileSync(join(REPO, wf.rel), 'utf8').split('\n'), { start: step.first, end: step.last });
   return spawnSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', script], { cwd, encoding: 'utf8', env: { ...process.env, AGI_DIR: dir.replace(/\\/g, '/') } });
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// O-NON-TAG-RELEASE-RECORD-DISCARDED — a run that is not a tag push keeps its
+// record. The publish is tag-gated, so without an upload the cron's release.json
+// and SHA256SUMS left with the runner. Read through workflow-scan only.
+// ─────────────────────────────────────────────────────────────────────────────
+/** The `with:` value `key` of one step, from the parse's comment-blanked lines. */
+function withValue(job, step, key) {
+  const lines = job.lines.filter((l) => l.n >= step.first && l.n <= step.last);
+  const at = lines.findIndex((l) => /^\s+with:\s*$/.test(l.text));
+  if (at === -1) return null;
+  const withIndent = indentOf(lines[at].text);
+  for (const l of lines.slice(at + 1)) {
+    if (l.text.trim() === '') continue;
+    if (indentOf(l.text) <= withIndent) break;
+    const m = l.text.match(new RegExp(`^\\s+${key}:\\s*(.*?)\\s*$`));
+    if (m) return unquote(m[1]);
+  }
+  return null;
+}
+/** A download-artifact `pattern:` as a RegExp over an artifact name (`*` = any run of non-`/`). */
+const patternRe = (p) => new RegExp(`^${p.split('*').map((s) => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('[^/]*')}$`);
+
+describe('O-NON-TAG-RELEASE-RECORD-DISCARDED — the release job keeps its record on a non-tag run', () => {
+  test('NT1 the step after the grade uploads the record, never on a tag, under a name no download pattern takes', () => {
+    const wf = parseAllWorkflows(REPO).find((w) => w.rel === '.github/workflows/build-platforms.yml');
+    const job = wf.jobs.get('release');
+    const steps = workflowSteps(job);
+    const gradeAt = steps.findIndex((s) => s.run?.text.includes('assert-release-json.mjs --dir dist'));
+    assert.notEqual(gradeAt, -1, 'build-platforms.yml job "release" holds no grade step');
+    const keep = steps[gradeAt + 1];
+    assert.equal(keep?.name, 'Keep the release record (non-tag runs)', 'the step right after the grade is not the record upload');
+    assert.match(keep.cond ?? '', /github\.ref_type != 'tag'/);
+    assert.match(keep.cond, /!cancelled\(\)/);
+    const at = (s) => s.replace(/\$\{\{\s*matrix\.app\s*\}\}/g, 'subscriptiontracker');
+    const name = withValue(job, keep, 'name');
+    assert.equal(at(name ?? ''), 'release-record-subscriptiontracker');
+    const patterns = steps.slice(0, gradeAt).map((s) => withValue(job, s, 'pattern')).filter(Boolean);
+    assert.ok(patterns.length >= 1, 'the release job downloads by no `pattern:` — this case read nothing');
+    for (const p of patterns) assert.doesNotMatch(at(name), patternRe(at(p)), `the download pattern ${p} would take ${name} back into downloads/`);
+  });
+});

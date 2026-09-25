@@ -79,7 +79,29 @@ TOP=$(git rev-parse --show-toplevel)
 if [ -f "$TOP/.gitleaks.toml" ]; then
   if ! command -v gitleaks >/dev/null 2>&1; then
     echo "pre-commit: gitleaks is not on PATH, so the staged diff was not scanned for PAN/GSTIN/Aadhaar." >&2
-    echo "  Refusing rather than passing — an unrun check is not a clean one. Install gitleaks 8.30.1 (ci.yml pins it)." >&2
+    echo "  Refusing rather than passing — an unrun check is not a clean one. Install the gitleaks version tooling/versions.json pins (ci.yml installs the same pin)." >&2
+    exit 1
+  fi
+  # O-HOOK-GITLEAKS-PIN-UNREAD — the pin is READ, never restated here. A different
+  # gitleaks than CI's can load the same .gitleaks.toml and match differently, so a
+  # clean local scan would be evidence about some other scanner. Both reads stay
+  # INSIDE this block: Private shares the hook and has no tooling/versions.json.
+  want=$(node -p "require('$TOP/tooling/versions.json').gitleaks")
+  code=$?        # captured immediately
+  if [ "$code" -ne 0 ] || [ -z "$want" ] || [ "$want" = "undefined" ]; then
+    echo "pre-commit: could not read the gitleaks pin from tooling/versions.json (exit $code, read '$want'). Commit refused." >&2
+    exit 1
+  fi
+  got=$(gitleaks version)
+  code=$?        # captured immediately
+  if [ "$code" -ne 0 ] || [ -z "$got" ]; then
+    echo "pre-commit: \`gitleaks version\` failed (exit $code), so the installed scanner is unknown. Commit refused." >&2
+    exit 1
+  fi
+  got=${got#v}
+  if [ "$got" != "$want" ]; then
+    echo "pre-commit: gitleaks $got is installed, but tooling/versions.json pins gitleaks $want. Commit refused." >&2
+    echo "  Install gitleaks $want — the scan must be CI's scanner, or a clean result here proves nothing about CI's." >&2
     exit 1
   fi
   gitleaks git --pre-commit --staged --no-banner --redact --config "$TOP/.gitleaks.toml" "$TOP"

@@ -256,6 +256,30 @@ on a shallow clone, because `git log` cannot answer a question about
 history that was never fetched. ci.yml:890 (job `sites`) carries this
 line for the same reason.
 
+### before step **The site generator chain is current (compare only)**
+
+Added 2026-09-25 (row O-NEW-APP-IS-NOT-ONE-COMMAND, its chain limb).
+Discovery reads the site feed `generate-apps-data.mjs` writes, which is
+rendered from the catalogue `tooling/app-yaml/render.mjs` writes, so a
+discovery repair built over a stale feed publishes a stale page and calls
+it a repair. `tooling/sites/regen.mjs` holds the generators' order in one
+`ORDER` list; this step runs its `--check`, which runs each generator's own
+`--check` (or, for well-known, compares `planWellKnown` with the disk in
+memory) and writes nothing. Discovery is the git-dated entry: `--check`
+names its skip on a line of its own, and the next step regenerates it.
+
+THIS STEP DOES NOT WIDEN THE REPAIR. The step after it is byte-for-byte
+what it was, still stages `sites/` only, and still counts
+`MAX_REPAIR_CHAIN`. A stale catalogue or listing is not something this
+workflow may commit: the fix is a pull request that runs
+`node tooling/sites/regen.mjs` and commits what it writes.
+
+⚠️ ORDERING, STATED: this step runs BEFORE the proposal, so a stale chain
+output reddens the run before any discovery repair is proposed. That is
+the opposite trade from the last step's (below), and it is deliberate:
+a repair drafted over a stale feed would be a wrong repair that merges
+itself.
+
 ### before step **Regenerate the discovery surface**
 
 THE GENERATOR, NOT THE GUARD. assert-discovery-surface.mjs regenerates
