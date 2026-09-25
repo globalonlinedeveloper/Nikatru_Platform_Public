@@ -8,18 +8,17 @@
 //
 // 🔴 WHY THIS EXISTS — O-SIGNING-PRIMITIVES-IN-FOUR-COPIES. Measured at Public
 // main 80ef8e39, with four signing scripts: `coverageLost` and `fail` in three
-// files, the base64 decode-and-magic check in three, `exportEnv` in three (only
-// ONE of them refusing a value with a line break in it), `decideSecretSet` in
-// two, and the release-lane derivation in all four. The copies had already
-// diverged in the one place that matters most: android refused a newline before
-// writing $GITHUB_ENV, and appimage did not. A primitive with a copy per script
-// is a fix that has to land N times, and the Nth is the one that is forgotten.
+// files, the base64 decode-and-magic check in three, `exportEnv` in three (each
+// refusing a line break with its own code and its own message), `decideSecretSet`
+// in two, and the release-lane derivation in all four. The copies had already
+// diverged in wording and in exit path, each guarding the same line break its
+// own way. A primitive with a copy per script is a fix that has to land N times,
+// and the Nth is the one that is forgotten.
 //
-// ⏱ 2026-09-25 — apple-signing.mjs is the FIRST adapter (C5a). android-signing
-// and appimage-signing still carry their own copies until C5b moves them; the
-// census in test/signing-seam-census.test.mjs names both as PENDING and fails
-// the day either stops defining the primitive it is listed for, so the list is
-// emptied by the change that empties it.
+// ⏱ 2026-09-25 — apple-signing.mjs was the FIRST adapter (C5a); android-signing
+// and appimage-signing moved onto it in C5b, and the census in
+// test/signing-seam-census.test.mjs has nothing PENDING. It fails on any
+// adapter that defines a primitive this module holds.
 //
 // ── THE ONE DESIGN CHOICE ───────────────────────────────────────────────────
 // `releaseLane()` asks the REGISTER, not the environment alone, whether this run
@@ -247,8 +246,8 @@ export function newlineOffenders(pairs) {
  * other reader see a HALF-supplied configuration.
  *
  * 🔴 A VALUE WITH A LINE BREAK IS REFUSED BEFORE ANYTHING IS WRITTEN, through
- * the adapter's `fail`. Android refused this; apple checked it; appimage did
- * not — the divergence this module was extracted to end.
+ * the adapter's `fail`. Every adapter refused this before the seam; now only
+ * the seam does — the divergence this module was extracted to end.
  *
  * `githubEnv` null, undefined or blank is "no $GITHUB_ENV": nothing is written,
  * and that is PRINTED — `unexported` is the adapter's line(s) saying what

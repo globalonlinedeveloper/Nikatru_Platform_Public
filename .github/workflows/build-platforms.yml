@@ -148,7 +148,7 @@ jobs:
       - name: Prepare the AppImage signing key
         env:
           APPIMAGE_SIGNING_KEY_B64: ${{ secrets.APPIMAGE_SIGNING_KEY_B64 }}
-        run: node tooling/ci/appimage-signing.mjs --app ${{ matrix.app }}
+        run: node tooling/ci/appimage-signing.mjs --app ${{ matrix.app }} --channel linux-appimage
       - name: Generate the snapcraft recipe
         run: >
           node tooling/release/generate-snapcraft.mjs
@@ -167,7 +167,7 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: node tooling/ci/android-signing.mjs --app ${{ matrix.app }}
+        run: node tooling/ci/android-signing.mjs --app ${{ matrix.app }} --channel android-play
       # why: these three Android builds also run on every PR as ci.yml android-artifacts; built-artifact-pr-lane.test.mjs holds the copies equal.
       - name: Build android (apk — sideloadable build proof)
         working-directory: apps/${{ matrix.app }}
@@ -216,13 +216,8 @@ jobs:
           set -euo pipefail
           scratch="${RUNNER_TEMP}/apps-gov-in-signing.env"
           : > "$scratch"
-          env -u GITHUB_REF -u GITHUB_WORKFLOW_REF -u GITHUB_ENV \
-            ANDROID_KEYSTORE_BASE64="$APPSGOVIN_KEYSTORE_BASE64" \
-            ANDROID_KEYSTORE_PASSWORD="$APPSGOVIN_KEYSTORE_PASSWORD" \
-            ANDROID_KEY_ALIAS="$APPSGOVIN_KEY_ALIAS" \
-            ANDROID_KEY_PASSWORD="$APPSGOVIN_KEY_PASSWORD" \
-            node tooling/ci/android-signing.mjs --app "$APP" \
-              --out "${RUNNER_TEMP}/apps-gov-in-key" --github-env "$scratch"
+          node tooling/ci/android-signing.mjs --app "$APP" --channel apps-gov-in \
+            --out "${RUNNER_TEMP}/apps-gov-in-key" --github-output "$scratch"
           posture="$(sed -n 's/^ANDROID_SIGNING_POSTURE=//p' "$scratch")"
           keystore="$(sed -n 's/^ANDROID_KEYSTORE_PATH=//p' "$scratch")"
           rm -f "$scratch"

@@ -2,17 +2,17 @@
 // signing-seam.mjs, and the ones that do not yet are named here, dated.
 //
 // 🔴 O-SIGNING-PRIMITIVES-IN-FOUR-COPIES. The copies had diverged in the one
-// place that mattered: android refused a line break before writing $GITHUB_ENV
-// and appimage did not. A seam fixes that only while nothing re-grows beside it,
+// place that mattered: how each refused a line break before writing $GITHUB_ENV
+// (appimage's copy did refuse one — the seam's header said otherwise until C5b).
+// A seam fixes that only while nothing re-grows beside it,
 // and a re-grown copy compiles, passes its own tests and prints nothing. This
 // census reads each adapter's CODE (comments blanked by text-reductions.mjs) for
 // the shapes a copy takes, and fails on one this file does not list.
 //
-// ⏱ 2026-09-25 — apple-signing.mjs is the first adapter (C5a). android-signing
-// and appimage-signing are PENDING until C5b: their entries below are exactly
-// what they carry at this commit, and the second test fails on an entry that no
-// longer fires — so the change that moves a copy deletes its entry in the same
-// commit, and the list ends empty.
+// ⏱ 2026-09-25 — apple-signing.mjs was the first adapter (C5a); android-signing
+// and appimage-signing followed in C5b, which emptied PENDING. The second test
+// fails on an entry that no longer fires, so a PENDING entry can only name a
+// copy that is really there.
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -54,19 +54,9 @@ function findingsIn(src) {
   return found;
 }
 
-/** ⏱ 2026-09-25 — measured at this commit; C5b empties it. */
-const PENDING = {
-  'android-signing.mjs': ['local:exportEnv', 'call:appendFileSync', 'decode:base64', 'write:0o600', 'import:missing'],
-  'appimage-signing.mjs': [
-    'local:decideSecretSet',
-    'local:exportEnv',
-    'call:releaseGapVerdict',
-    'call:appendFileSync',
-    'decode:base64',
-    'write:0o600',
-    'import:missing',
-  ],
-};
+/** ⏱ 2026-09-25 — empty since C5b moved android-signing and appimage-signing
+ *  onto the seam. An entry added here is a copy knowingly re-grown. */
+const PENDING = {};
 
 /** The adapters, from BOTH sources: every script a register row names as its
  *  `signing.seam.prepare`, and every `*-signing.mjs` in tooling/ci. A script one
