@@ -66,6 +66,10 @@ function run(script, env = {}, args = []) {
     env: {
       PATH: process.env.PATH,
       SystemRoot: process.env.SystemRoot,
+      // ⏱ 2026-09-25: the second look's 15 s gaps (row O-OPS-PROBE-US-EDGE-STALL)
+      // shortened to 0 — its plan is proven with a recorded sleep in
+      // ops-bounded-retry.test.mjs B13, not by spending a minute per case here.
+      OPS_SECOND_LOOK_GAP_MS: '0',
       ...env,
     },
   });
@@ -224,7 +228,7 @@ describe('verify-monitors / verify-alarm-chains — the GlitchTip pair', () => {
   };
   const runServed = (script, env) =>
     new Promise((ok) => {
-      const child = spawn(process.execPath, [join(OPS, script)], { cwd: REPO, env: { ...process.env, ...env } });
+      const child = spawn(process.execPath, [join(OPS, script)], { cwd: REPO, env: { ...process.env, OPS_SECOND_LOOK_GAP_MS: '0', ...env } });
       let out = '';
       child.stdout.on('data', (d) => { out += d; });
       child.stderr.on('data', (d) => { out += d; });
@@ -245,13 +249,20 @@ describe('verify-monitors / verify-alarm-chains — the GlitchTip pair', () => {
     const g = await serveSilence();
     try {
       const t0 = Date.now();
-      const { code, signal, out } = await runBounded(join(OPS, script), { ...glitchtipAt(g.url), OPS_REQUEST_TIMEOUT_MS: '300' });
+      // ⏱ 2026-09-25: OPS_SECOND_LOOK_GAP_MS=0 — the second look's 15 s gaps
+      // would otherwise outlast KILL_MS; the ceiling under test is unchanged.
+      const { code, signal, out } = await runBounded(join(OPS, script), {
+        ...glitchtipAt(g.url),
+        OPS_REQUEST_TIMEOUT_MS: '300',
+        OPS_SECOND_LOOK_GAP_MS: '0',
+      });
       const took = Date.now() - t0;
       assert.equal(signal, null, `killed after ${took} ms: the read had no per-request ceiling\n${out}`);
       assert.ok(g.seen.length >= 1, 'the script never reached the silent server:\n' + out);
       assert.equal(code, 2, out);
       assert.match(out, /COULD NOT LOOK/);
       assert.match(out, /per-request ceiling/, 'the line says WHY it could not look');
+      assert.match(out, /SECOND LOOK: .*all 4 second-look attempt\(s\)/, 'the second look ran, and got nothing either');
     } finally {
       await g.close();
     }

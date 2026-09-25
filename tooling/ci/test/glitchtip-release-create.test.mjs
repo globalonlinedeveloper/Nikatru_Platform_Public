@@ -135,16 +135,30 @@ describe('create-glitchtip-release — a transient origin error is re-asked, an 
     assert.match(r.lines[0], /returned 401/);
   });
 
-  test('🔴 a 522 that persists is still RED, after exactly 3 attempts and the 1 s + 2 s plan', async () => {
+  // ⏱ 2026-09-25 (row O-OPS-PROBE-US-EDGE-STALL): the plan is now 3 attempts at
+  // 1 s + 2 s, then ONE second look of 4 attempts 15 s apart — 7 in all — before
+  // the deploy fails. Still RED at the end, and never an eighth.
+  test('🔴 a 522 that persists is still RED, after 3 attempts at 1 s + 2 s and a 4-attempt second look 15 s apart', async () => {
     const { fetchImpl, calls } = scripted([e522]);
     const { slept, sleep } = recorder();
     const r = await create(fetchImpl, sleep);
     assert.equal(r.ok, false);
-    assert.equal(r.attempts, 3);
-    assert.equal(calls.length, 3);
-    assert.deepEqual(slept, [1000, 2000]);
+    assert.equal(r.attempts, 7);
+    assert.equal(calls.length, 7);
+    assert.deepEqual(slept, [1000, 2000, 15000, 15000, 15000]);
     assert.match(r.lines[0], /HTTP 522/);
     assert.match(r.lines[0], /the same on all 3 attempt\(s\)/);
+    assert.match(r.lines[0], /SECOND LOOK: .*the same on all 4 second-look attempt\(s\)/);
+  });
+
+  test('🔴 THE US-EDGE STALL — nothing on all 3 first-pass attempts, a 201 on second-look attempt 2, is GREEN', async () => {
+    const { fetchImpl, calls } = scripted([e522, e522, e522, e522, () => json(201, row())]);
+    const { slept, sleep } = recorder();
+    const r = await create(fetchImpl, sleep);
+    assert.equal(r.ok, true, JSON.stringify(r));
+    assert.equal(r.attempts, 5);
+    assert.equal(calls.length, 5);
+    assert.deepEqual(slept, [1000, 2000, 15000]);
   });
 
   test('a dropped connection (`TypeError: fetch failed`) then a 201 is GREEN on attempt 2', async () => {
@@ -157,7 +171,7 @@ describe('create-glitchtip-release — a transient origin error is re-asked, an 
     assert.equal(calls.length, 2);
   });
 
-  test('🔴 an origin that NEVER answers ends at the per-attempt ceiling, 3 times, and is RED', { timeout: 5000 }, async () => {
+  test('🔴 an origin that NEVER answers ends at the per-attempt ceiling, 3 + 4 times, and is RED', { timeout: 5000 }, async () => {
     const hang = (init) => new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(init.signal.reason)));
     const { fetchImpl, calls } = scripted([hang]);
     const before = process.env.OPS_REQUEST_TIMEOUT_MS;
@@ -165,8 +179,9 @@ describe('create-glitchtip-release — a transient origin error is re-asked, an 
     try {
       const r = await create(fetchImpl, recorder().sleep);
       assert.equal(r.ok, false);
-      assert.equal(calls.length, 3);
+      assert.equal(calls.length, 7);
       assert.match(r.lines[0], /all 3 attempt\(s\)/);
+      assert.match(r.lines[0], /all 4 second-look attempt\(s\)/);
     } finally {
       if (before === undefined) delete process.env.OPS_REQUEST_TIMEOUT_MS;
       else process.env.OPS_REQUEST_TIMEOUT_MS = before;

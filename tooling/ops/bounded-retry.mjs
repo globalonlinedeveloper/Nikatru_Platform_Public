@@ -77,6 +77,15 @@
 //   job above is `alert`, which runs no reader. Every job that runs a reader is
 //   `timeout-minutes: 10` (600 s), and the sum that has to fit it is the one in
 //   "THE PER-REQUEST CEILING" below, not this one. The 5 s clamp is unchanged.
+//   ⏱ APPENDED 2026-09-25 (row O-OPS-PROBE-US-EDGE-STALL): status.mjs now adds
+//   ONE second look, run IN PARALLEL over the surfaces its sweep left unreached,
+//   so it adds one second look's wall clock, not one per surface. Its worst case
+//   is DERIVED in status.mjs (`statusWorstCaseMs`) from these constants:
+//   N × (3 × 10 s + RETRY_WALL_CEILING_MS 10 s) + secondLookWallMs(10 s) 85 s
+//   = 11 × 40 s + 85 s = 525 s for the 11 surfaces probed on 2026-09-25, inside
+//   the status job's `timeout-minutes: 10` (600 s) with 75 s to spare.
+//   ops-status.test.mjs case (d) re-derives it from the live register and the
+//   workflow on every run. See "THE SECOND LOOK" below.
 //
 //   REQUEST_TIMEOUT_MS = 15 000. The longest ONE attempt may take, armed HERE
 //   and not in each reader (see "THE PER-REQUEST CEILING"). 15 s is the ceiling
@@ -169,6 +178,11 @@
 // (2026-09-23, row O-GLITCHTIP-CALLS-HAVE-NO-RETRY — each re-sends a WRITE, and
 // each records why that is safe at its own call site); and, outside tooling/ops,
 // tooling/ci/assert-runner-budget.mjs (2026-09-22, for the per-request ceiling).
+// ⏱ APPENDED 2026-09-25: the second look (below) is taken by status (directly,
+// in parallel), verify-monitors, verify-alarm-chains (GETs only),
+// create-glitchtip-release and upload-web-sourcemaps (`secondLook: true`) —
+// every GitHub-runner call to a tunnel host whose stall reds main or fails a
+// deploy (row O-OPS-PROBE-US-EDGE-STALL).
 // Failing cases: tooling/ci/test/ops-bounded-retry.test.mjs (this module and the
 // adoption, both directions) and tooling/ci/test/pages-deployments.test.mjs (the
 // green control for the move).
@@ -425,7 +439,16 @@ async function attemptWithCeiling(read, attempt, ceilingMs, callerSignal) {
  */
 export async function readWithBoundedRetry(
   read,
-  { attempts = READ_ATTEMPTS, baseMs = RETRY_BASE_MS, sleep = nap, note = () => {}, signal: callerSignal, timeoutMs } = {},
+  {
+    attempts = READ_ATTEMPTS,
+    baseMs = RETRY_BASE_MS,
+    sleep = nap,
+    note = () => {},
+    signal: callerSignal,
+    timeoutMs,
+    secondLook: withSecondLook = false,
+    slowPath = (line) => console.warn(line),
+  } = {},
 ) {
   const gaps = backoffPlan(attempts, baseMs);
   const ceilingMs = requestTimeoutMs(timeoutMs);
@@ -455,9 +478,122 @@ export async function readWithBoundedRetry(
       }
     }
   }
-  throw new CouldNotLook(
+  const exhausted = new CouldNotLook(
     `${last.message} — and the same on all ${attempts} attempt(s) over ${waited / 1000}s. A failure that ` +
       `outlives the retry is an OUTAGE, not a blip, so this is COULD NOT LOOK and not a pass.`,
+  );
+  if (!withSecondLook) throw exhausted;
+  // ⏱ 2026-09-25 — opted in: one more, time-spread look before the verdict
+  // ("THE SECOND LOOK", below). Its own exhaustion is still COULD NOT LOOK.
+  const { value, attempt } = await secondLook(read, { sleep, note, signal: callerSignal, timeoutMs, firstPass: exhausted });
+  slowPath(
+    `⚠ SLOW PATH — nothing answered on any of the ${attempts} first-pass attempt(s); second-look attempt ` +
+      `${attempt}/${SECOND_LOOK_ATTEMPTS} answered. Graded on that answer, exactly like a first-pass one.`,
+  );
+  return value;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-25 — THE SECOND LOOK (row O-OPS-PROBE-US-EDGE-STALL).
+//
+// 🔴 THE FIRST PASS IS TOO SHORT TO OUTLAST ONE STALL AT THE CLOUDFLARE EDGE. The
+// Box B hostnames are served by a Cloudflare Tunnel whose connectors sit in
+// Mumbai (colos bom06/bom09/bom10). A GitHub runner reaches them through a US
+// edge, and some US-edge requests STALL: the edge never gets an answer from the
+// tunnel, the client gives up, and Cloudflare logs edgeResponseStatus 499 with
+// originResponseStatus 0. cloudflared logs nothing, because the request never
+// reached it. 03:01-08:44Z on 2026-09-25 that was 35 stalls in about 1,300
+// requests, all at US colos (PDX 23, MSP 10, SJC 1, SEA 1), against 0 in 1,056 at
+// Indian colos; 22-24 Sep, about 100, all at US colos. status.mjs spent its three
+// attempts in about 33 s (10 s each, 1 s and 2 s apart), all three landed in one
+// stall, and ops-watch went red with NOTHING ANSWERED three times while the box
+// was up (runs 35996417635, 36110724525, 36113462303).
+//
+// So a caller may opt in (`secondLook: true`, or `secondLook()` directly) to ONE
+// more, time-spread look after its first pass is exhausted: SECOND_LOOK_ATTEMPTS
+// attempts, SECOND_LOOK_GAP_MS apart, each under the same per-request ceiling.
+//   · An ANSWER on the second look is graded exactly like a first-pass answer.
+//   · Nothing on the second look is still COULD NOT LOOK. Never a silent green.
+//   · It is never silent when it helped: the caller's `slowPath` line prints
+//     (default `console.warn`), because a run that needed it is evidence that
+//     the path is degrading, even when the verdict is green.
+//
+// ⚠️ EACH SECOND-LOOK ATTEMPT OPENS A NEW CONNECTION — measured 2026-09-25 on Node
+// v24.18.0 against a 127.0.0.1 server that holds the first requests unanswered.
+// An attempt this module aborts has its socket DESTROYED: attempts 1 and 3 each
+// arrived on a fresh connection. That matters because Cloudflare picks the edge
+// per connection: in run 36113462303 one glitchtip attempt hit MSP (499) and the
+// next hit ORD (200). THE ONE EXCEPTION, also measured: an idle keep-alive socket
+// left by an EARLIER ANSWERED request to the same origin IS reused (attempt 2
+// went out on the warm-up's socket). status.mjs's second look only re-asks a
+// surface that never answered in this process, so it holds no such socket.
+//
+// THE NUMBERS. SECOND_LOOK_ATTEMPTS = 4 and SECOND_LOOK_GAP_MS = 15 000 are
+// judgement: four looks spread over about a minute and a half, on top of the
+// first pass's half a minute, outlast every stall in the evidence without
+// Argo Smart Routing (a spend, owner-gated) or opening Box B ports (a security
+// change). The wall clock one second look may take is DERIVED
+// (`secondLookWallMs`): attempts × the ceiling + (attempts − 1) × the gap —
+// 4 × 15 s + 3 × 15 s = 105 s at REQUEST_TIMEOUT_MS, 4 × 10 s + 3 × 15 s = 85 s
+// at status.mjs's PROBE_TIMEOUT_MS. The gap is FIXED, not doubled and not
+// clamped by RETRY_AFTER_CEILING_MS: spreading the looks in time is the whole
+// point, and a 5 s clamp would silently fold them back into one stall.
+// OPS_SECOND_LOOK_GAP_MS is the test-only knob, and like OPS_REQUEST_TIMEOUT_MS
+// it may only SHORTEN the gap.
+
+/** How many second-look attempts, and how far apart. Judgement, defended in the
+ *  block above; a test pins both. */
+export const SECOND_LOOK_ATTEMPTS = 4;
+export const SECOND_LOOK_GAP_MS = 15_000;
+
+/** PURE. The gap the second look actually waits: SECOND_LOOK_GAP_MS, or the
+ *  test-only OPS_SECOND_LOOK_GAP_MS when that is SHORTER. A value that is
+ *  missing, negative or not a number is ignored; zero is accepted (no wait). */
+export function secondLookGapMs(env = process.env) {
+  const v = env?.OPS_SECOND_LOOK_GAP_MS;
+  const n = Number(v);
+  if (v === undefined || v === null || v === '' || !Number.isFinite(n) || n < 0) return SECOND_LOOK_GAP_MS;
+  return Math.min(SECOND_LOOK_GAP_MS, n);
+}
+
+/** PURE. The most wall clock ONE second look may take: every attempt hanging to
+ *  its ceiling, plus every gap. DERIVED from the constants, never typed. */
+export function secondLookWallMs(timeoutMs = REQUEST_TIMEOUT_MS) {
+  return SECOND_LOOK_ATTEMPTS * requestTimeoutMs(timeoutMs, {}) + (SECOND_LOOK_ATTEMPTS - 1) * SECOND_LOOK_GAP_MS;
+}
+
+/**
+ * The second look itself, for a caller that runs it on its own schedule
+ * (status.mjs re-asks every unreached surface IN PARALLEL after its sweep).
+ *
+ * `read(attempt, { signal })` is the SAME read the first pass used. Resolves to
+ * `{ value, attempt }`, the 1-based second-look attempt that answered. An answer
+ * (anything `read` throws that is not a `transientLook`) is re-thrown at once,
+ * un-retried, exactly as in the first pass. Exhaustion throws a plain
+ * `CouldNotLook` naming both passes.
+ */
+export async function secondLook(read, { sleep = nap, note = () => {}, signal: callerSignal, timeoutMs, firstPass } = {}) {
+  const ceilingMs = requestTimeoutMs(timeoutMs);
+  const gap = secondLookGapMs();
+  let last = null;
+  for (let i = 0; i < SECOND_LOOK_ATTEMPTS; i += 1) {
+    if (callerSignal?.aborted) throw callerSignal.reason;
+    if (i > 0) {
+      note(`second look ${i}/${SECOND_LOOK_ATTEMPTS} got nothing (${last.message}); asking again in ${gap / 1000}s`);
+      await sleep(gap);
+    }
+    try {
+      return { value: await attemptWithCeiling(read, i + 1, ceilingMs, callerSignal), attempt: i + 1 };
+    } catch (e) {
+      if (callerSignal?.aborted) throw callerSignal.reason;
+      if (!isTransientLook(e)) throw e;
+      last = e;
+    }
+  }
+  throw new CouldNotLook(
+    `${firstPass ? `${firstPass.message} ` : ''}SECOND LOOK: ${last.message} — and the same on all ` +
+      `${SECOND_LOOK_ATTEMPTS} second-look attempt(s), ${gap / 1000}s apart. Nothing answered either pass, ` +
+      'so this is COULD NOT LOOK and not a pass.',
   );
 }
 

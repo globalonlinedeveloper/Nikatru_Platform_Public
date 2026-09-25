@@ -156,7 +156,11 @@ async function api(path, init = {}, { sleep, note } = {}) {
       }
       return res.status === 204 ? null : res.json();
     },
-    { attempts, sleep, note },
+    // ⏱ 2026-09-25 (row O-OPS-PROBE-US-EDGE-STALL): a READ that got nothing on
+    // every attempt takes one spread-out second look before COVERAGE LOST (a US
+    // edge stalling in front of the Mumbai tunnel). A write never does: the
+    // same `isSafeMethod` rule as `attempts`, for the same reason.
+    { attempts, sleep, note, secondLook: isSafeMethod(method) },
   );
 }
 
