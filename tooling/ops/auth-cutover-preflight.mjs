@@ -319,7 +319,7 @@ export function checkSecretNames({ phase, windowStart, gh }) {
     const stale = REQUIRED_REPO_SECRETS.filter((n) => !(Date.parse(rows.get(n)) > Date.parse(windowStart)));
     if (stale.length) return { verdict: 'FAIL', detail: `not updated after ${windowStart}: ${stale.join(', ')}` };
   }
-  return { verdict: 'PASS', detail: `${REQUIRED_REPO_SECRETS.join(', ')} exist (names only)${phase === 'post' ? `, all updated after ${windowStart}` : ''}; the platform Worker's secret names are C9's input` };
+  return { verdict: 'PASS', detail: `${REQUIRED_REPO_SECRETS.join(', ')} exist (names only)${phase === 'post' ? `, all updated after ${windowStart}` : ''}; C9 reads none of these: it reads only each Worker's SUPABASE_URL binding` };
 }
 
 // ── C9 / C10 / C11 — the Workers that verify Supabase tokens ─────────────────

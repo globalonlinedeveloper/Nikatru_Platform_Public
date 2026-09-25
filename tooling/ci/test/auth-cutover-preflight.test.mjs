@@ -424,7 +424,11 @@ describe('C6 / C7 — the redirect list and the served templates', () => {
 
 describe('C8 secret names — names only, and post needs a window', () => {
   test('pre PASS when all three repo secrets exist', () => {
-    assert.equal(checkSecretNames({ phase: 'pre', gh: fakeGh() }).verdict, 'PASS');
+    const r = checkSecretNames({ phase: 'pre', gh: fakeGh() });
+    assert.equal(r.verdict, 'PASS');
+    // CRD-4: the PASS text said these names were C9's input; C9 reads only each
+    // Worker's SUPABASE_URL binding through the Cloudflare API.
+    assert.match(r.detail, /C9 reads none of these: it reads only each Worker's SUPABASE_URL binding/);
   });
 
   test('FAIL when a repo secret is absent', () => {
