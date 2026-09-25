@@ -37,6 +37,9 @@
 //   C2  config agreement assert-platform-register.mjs (LIMB 5) spawned, then the
 //                        recorded SUPABASE_URL: pre = hosted, post = the target
 //   C3  GoTrue up        /auth/v1/health 200; /auth/v1/settings email on, Apple on,
+//                        every federated provider equals AuthProviders.configured
+//                        (verify-auth-providers.mjs compareProviders, the judgement
+//                        ops-watch applies to Box C from the switch on),
 //                        autoconfirm false, sign-up open
 //   C4  keys             /auth/v1/.well-known/jwks.json carries an ES256 key
 //   C5  captcha posture  channel-register.json served native channels + the live
@@ -88,6 +91,8 @@ import {
   SITE_URL_ENV,
   URI_ALLOW_LIST_ENV,
 } from './selfhosted-auth.mjs';
+// Importing it fires no probe: its main() runs only when it is the executed script.
+import { compareProviders, declared } from './verify-auth-providers.mjs';
 import { AUTH_MAIL_TEMPLATES } from '../sites/gen-auth-mail.mjs';
 import { listDir } from '../ci/tree-walk.mjs';
 import { stripComments } from '../ci/assert-platform-register.mjs';
@@ -169,7 +174,21 @@ async function get(doFetch, url, headers = {}) {
   return fetchWithBoundedRetry(({ signal }) => doFetch(url, { headers, signal }), { describe: (why) => `GET ${url}: ${why}` });
 }
 
-export async function checkGoTrueUp({ target, anonKey, doFetch }) {
+const PROVIDERS_DECL = 'packages/auth_supabase/lib/src/auth_providers.dart';
+/** compareProviders' wording for a provider the live answer carries no boolean for. */
+const NO_BOOLEAN = 'the live settings response has no boolean';
+
+/** AuthProviders.configured as `root`'s tree declares it: `{ want }` or `{ lost }`.
+ *  A missing root is LOST, never this module's own tree. */
+function declaredProviders(root) {
+  if (!root) return { lost: 'no repo root was given, so AuthProviders.configured was not read' };
+  let want;
+  try { want = declared(root); } catch (e) { return { lost: `${PROVIDERS_DECL} could not be read (${e?.code ?? e?.message ?? e})` }; }
+  if (!want) return { lost: `AuthProviders.configured could not be parsed out of ${PROVIDERS_DECL}` };
+  return { want };
+}
+
+export async function checkGoTrueUp({ target, anonKey, doFetch, root }) {
   if (!anonKey) return { verdict: 'LOST', detail: 'SELFHOSTED_SUPABASE_ANON_KEY is not in the environment' };
   let health;
   try {
@@ -185,12 +204,32 @@ export async function checkGoTrueUp({ target, anonKey, doFetch }) {
   const graded = gradeSettings(s, { external_email_enabled: true, mailer_autoconfirm: false });
   const legs = graded.map((g) => g.verdict);
   const notes = graded.filter((g) => g.verdict !== 'PASS').map((g) => `${g.name}: ${g.detail}`);
+  // The App Store leg: "google: true NEVER SHIPS WITHOUT apple: true". Equality
+  // with the declaration alone does not enforce it, so it stays.
   if (typeof s?.external?.apple !== 'boolean') { legs.push('LOST'); notes.push('no boolean external.apple'); }
   else if (!s.external.apple) { legs.push('FAIL'); notes.push('Apple sign-in is OFF'); }
+  // The declaration leg: every federated provider Box C answers equals
+  // AuthProviders.configured, in both directions. ops-watch runs the same
+  // judgement (verify-auth-providers.mjs) against SUPABASE_URL, which is Box C
+  // from the switch on — so a disagreement read here is the red the first
+  // ops-watch after the switch would otherwise report, inside the window.
+  const decl = declaredProviders(root);
+  if (decl.lost) { legs.push('LOST'); notes.push(decl.lost); }
+  else {
+    for (const problem of compareProviders({ declared: decl.want, live: s?.external })) {
+      legs.push(problem.startsWith(NO_BOOLEAN) ? 'LOST' : 'FAIL');
+      notes.push(problem);
+    }
+  }
   if (typeof s?.disable_signup !== 'boolean') { legs.push('LOST'); notes.push('no boolean disable_signup'); }
   else if (s.disable_signup) { legs.push('FAIL'); notes.push('sign-up is DISABLED'); }
   const verdict = verdictOf(legs);
-  return { verdict, detail: verdict === 'PASS' ? 'health 200; email on, Apple on, autoconfirm false, sign-up open' : notes.join('; ') };
+  return {
+    verdict,
+    detail: verdict === 'PASS'
+      ? `health 200; email on, Apple on, apple and google as AuthProviders.configured declares (apple ${decl.want.apple}, google ${decl.want.google}), autoconfirm false, sign-up open`
+      : notes.join('; '),
+  };
 }
 
 /** ONE read of the target's JWKS, shared by C4 and C10 (post compares the cached
@@ -640,7 +679,7 @@ export async function runPreflight({
   const results = [
     ['C1', 'CSP', checkCsp({ root, phase, target: tgt })],
     ['C2', 'config agreement', checkConfigAgreement({ root, phase, target: tgt, runGuard })],
-    ['C3', 'GoTrue up', await checkGoTrueUp({ target: tgt, anonKey, doFetch })],
+    ['C3', 'GoTrue up', await checkGoTrueUp({ target: tgt, anonKey, doFetch, root })],
     ['C4', 'keys and issuer', await checkKeys({ jwks })],
     ['C5', 'captcha posture', await checkCaptcha({ root, target: tgt, anonKey, doFetch, gh })],
     ['C6', 'redirect allow list', checkRedirects({ root, env: boxEnv })],

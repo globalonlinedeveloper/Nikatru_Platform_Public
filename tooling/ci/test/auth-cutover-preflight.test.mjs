@@ -68,7 +68,23 @@ const CHANNELS = [
   { id: 'android-play', surface: 'app', kind: 'store', platforms: ['android'], served: false },
   { id: 'chrome-webstore', surface: 'extension', kind: 'store', platforms: ['chrome'], served: true },
 ];
-const GOOD_SETTINGS = { external: { email: true, apple: true }, mailer_autoconfirm: false, disable_signup: false };
+// `google: false` is what AuthProviders.configured declares today (and the fixture below).
+const GOOD_SETTINGS = { external: { email: true, apple: true, google: false }, mailer_autoconfirm: false, disable_signup: false };
+/** packages/auth_supabase/lib/src/auth_providers.dart, shaped as the real one: the
+ *  words "apple: false" in a comment must not be what the parse reads. */
+const providersDart = ({ apple = true, google = false } = {}) => [
+  'class AuthProviders {',
+  '  const AuthProviders({required this.apple, required this.google});',
+  '  final bool apple;',
+  '  final bool google;',
+  '  /// Never ship google without apple; `apple: false` here is prose, not the flag.',
+  '  static const AuthProviders configured = AuthProviders(',
+  `    apple: ${apple},`,
+  `    google: ${google},`,
+  '  );',
+  '}',
+  '',
+].join('\n');
 
 // C9-C11. Obvious fakes: no real token, account id or namespace id is written here.
 const CF_TOKEN = 'tok-FAKE-CANARY-CF1';
@@ -128,6 +144,7 @@ function makeRoot({
   sources = MAIL,
   jwksCache = true,
   kvKeySource = `export const JWKS_KV_KEY = '${KV_KEY}';\n`,
+  providers = providersDart(),
 } = {}) {
   const root = join(TMP, `r${seq++}`);
   if (csp !== null) put(root, 'apps/subscriptiontracker/web/_headers', `# CSP: connect-src ${HOSTED}\n/*\n  X-Frame-Options: DENY\n  Content-Security-Policy: ${csp}\n`);
@@ -139,6 +156,7 @@ function makeRoot({
   put(root, 'services/platform/wrangler.jsonc', `{\n  // the platform Worker\n  "name": "platform",\n  "vars": ${JSON.stringify(vars)},\n${kv}  "routes": [\n    { "pattern": "config.example.test", "custom_domain": true },\n    { "pattern": "platform.example.test", "custom_domain": true },\n  ],\n}\n`);
   put(root, 'services/subscriptiontracker-api/wrangler.jsonc', `{\n  "name": "subscriptiontracker-api",\n  "vars": ${JSON.stringify(vars)},\n${kv}  "routes": [{ "pattern": "subscriptiontracker-api.example.test", "custom_domain": true }],\n}\n`);
   if (kvKeySource !== null) put(root, 'services/_shared/src/auth.ts', kvKeySource);
+  if (providers !== null) put(root, 'packages/auth_supabase/lib/src/auth_providers.dart', providers);
   if (channels) put(root, 'tooling/channel-register.json', JSON.stringify({ channels }));
   if (arb) put(root, 'apps/subscriptiontracker/lib/l10n/app_en.arb', JSON.stringify(arb));
   put(root, 'catalog/apps.json', JSON.stringify([{ slug: 'subscriptiontracker', url: WEB, listings: { web: WEB } }]));
@@ -344,27 +362,71 @@ describe('C5 captcha posture — served native channels, the live probe, the sit
 });
 
 describe('C3 / C4 — GoTrue up, and its signing keys', () => {
-  test('C3 PASS: health 200, email on, Apple on, autoconfirm false, sign-up open', async () => {
-    const r = await checkGoTrueUp({ target: TARGET, anonKey: ANON, doFetch: fakeFetch() });
+  test('C3 PASS: health 200, email on, Apple on, apple and google as declared, autoconfirm false, sign-up open', async () => {
+    const r = await checkGoTrueUp({ target: TARGET, anonKey: ANON, doFetch: fakeFetch(), root: makeRoot() });
     assert.equal(r.verdict, 'PASS', r.detail);
+    assert.match(r.detail, /apple and google as AuthProviders\.configured declares \(apple true, google false\)/);
   });
 
   test('C3 FAIL when Apple sign-in is off', async () => {
-    const doFetch = fakeFetch({ [`${TARGET}/auth/v1/settings`]: () => json({ ...GOOD_SETTINGS, external: { email: true, apple: false } }) });
-    const r = await checkGoTrueUp({ target: TARGET, anonKey: ANON, doFetch });
+    const doFetch = fakeFetch({ [`${TARGET}/auth/v1/settings`]: () => json({ ...GOOD_SETTINGS, external: { email: true, apple: false, google: false } }) });
+    const r = await checkGoTrueUp({ target: TARGET, anonKey: ANON, doFetch, root: makeRoot() });
     assert.equal(r.verdict, 'FAIL');
     assert.match(r.detail, /Apple sign-in is OFF/);
   });
 
   test('C3 FAIL when autoconfirm is on', async () => {
     const doFetch = fakeFetch({ [`${TARGET}/auth/v1/settings`]: () => json({ ...GOOD_SETTINGS, mailer_autoconfirm: true }) });
-    const r = await checkGoTrueUp({ target: TARGET, anonKey: ANON, doFetch });
+    const r = await checkGoTrueUp({ target: TARGET, anonKey: ANON, doFetch, root: makeRoot() });
     assert.equal(r.verdict, 'FAIL');
   });
 
   test('C3 LOST without the anon key', async () => {
-    const r = await checkGoTrueUp({ target: TARGET, anonKey: '', doFetch: fakeFetch() });
+    const r = await checkGoTrueUp({ target: TARGET, anonKey: '', doFetch: fakeFetch(), root: makeRoot() });
     assert.equal(r.verdict, 'LOST');
+  });
+
+  // ── C3's declaration leg (row O-CUTOVER-PREFLIGHT-SKIPS-GOOGLE): Box C's
+  // external.apple / external.google against AuthProviders.configured, the
+  // judgement ops-watch applies to Box C from the switch on.
+  test('C3 FAIL when Box C answers google ON and the app declares it OFF — named, DECLARED DISABLED', async () => {
+    const doFetch = fakeFetch({ [`${TARGET}/auth/v1/settings`]: () => json({ ...GOOD_SETTINGS, external: { email: true, apple: true, google: true } }) });
+    const r = await checkGoTrueUp({ target: TARGET, anonKey: ANON, doFetch, root: makeRoot() });
+    assert.equal(r.verdict, 'FAIL', r.detail);
+    assert.match(r.detail, /google: DECLARED DISABLED, but the server says ENABLED/);
+  });
+
+  test('C3 LOST when Box C carries no boolean external.google — the declaration cannot be checked', async () => {
+    const doFetch = fakeFetch({ [`${TARGET}/auth/v1/settings`]: () => json({ ...GOOD_SETTINGS, external: { email: true, apple: true } }) });
+    const r = await checkGoTrueUp({ target: TARGET, anonKey: ANON, doFetch, root: makeRoot() });
+    assert.equal(r.verdict, 'LOST', r.detail);
+    assert.match(r.detail, /the live settings response has no boolean `external\.google`/);
+  });
+
+  test('C3 FAIL when the root declares google ON and Box C answers it OFF — DECLARED ENABLED', async () => {
+    const root = makeRoot({ providers: providersDart({ apple: true, google: true }) });
+    const r = await checkGoTrueUp({ target: TARGET, anonKey: ANON, doFetch: fakeFetch(), root });
+    assert.equal(r.verdict, 'FAIL', r.detail);
+    assert.match(r.detail, /google: DECLARED ENABLED, but the server says disabled/);
+  });
+
+  test('C3 LOST when the root declaration does not parse — never read as agreement', async () => {
+    const root = makeRoot({ providers: 'class AuthProviders {\n  static const AuthProviders configured = AuthProviders.fromEnvironment();\n}\n' });
+    const r = await checkGoTrueUp({ target: TARGET, anonKey: ANON, doFetch: fakeFetch(), root });
+    assert.equal(r.verdict, 'LOST', r.detail);
+    assert.match(r.detail, /AuthProviders\.configured could not be parsed out of packages\/auth_supabase\/lib\/src\/auth_providers\.dart/);
+  });
+
+  test('C3 LOST when the root has no auth_providers.dart — a read error is a reason, not a crash', async () => {
+    const r = await checkGoTrueUp({ target: TARGET, anonKey: ANON, doFetch: fakeFetch(), root: makeRoot({ providers: null }) });
+    assert.equal(r.verdict, 'LOST', r.detail);
+    assert.match(r.detail, /packages\/auth_supabase\/lib\/src\/auth_providers\.dart could not be read \(ENOENT\)/);
+  });
+
+  test('C3 LOST without a root — the module never falls back to its own tree', async () => {
+    const r = await checkGoTrueUp({ target: TARGET, anonKey: ANON, doFetch: fakeFetch() });
+    assert.equal(r.verdict, 'LOST', r.detail);
+    assert.match(r.detail, /no repo root was given, so AuthProviders\.configured was not read/);
   });
 
   test('C4 PASS with an ES256 key; FAIL when the JWKS holds only RS256', async () => {
@@ -816,6 +878,14 @@ describe('runPreflight — all fourteen, end to end on a fixture', () => {
     assert.deepEqual([byId.C9, byId.C10, byId.C11], ['FAIL', 'FAIL', 'FAIL'], r.lines.join('\n'));
     assert.equal(r.code, 1);
     assertNothingSecret(r.lines.join('\n'));
+  });
+
+  test('C3 reads the declaration of the root it was given: Box C google ON against the fixture OFF refuses at C3, exit 1', async () => {
+    const doFetch = fakeFetch({ [`${TARGET}/auth/v1/settings`]: () => json({ ...GOOD_SETTINGS, external: { email: true, apple: true, google: true } }) });
+    const r = await full(makeRoot(), { doFetch });
+    assert.equal(r.code, 1, r.lines.join('\n'));
+    assert.match(r.lines[0], /--phase pre: REFUSED by C3 GoTrue up \(FAIL\)/);
+    assert.match(r.lines.find((l) => l.startsWith('FAIL  C3')), /google: DECLARED DISABLED/);
   });
 
   test('one FAIL refuses the switch with exit 1 and names it first', async () => {
