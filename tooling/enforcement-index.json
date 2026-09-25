@@ -557,7 +557,8 @@
   {
     "claims": [
       "ADR 065",
-      "ADR 066"
+      "ADR 066",
+      "ADR 096"
     ],
     "invokedBy": [
       ".github/workflows/ci.yml#guard-meta"
